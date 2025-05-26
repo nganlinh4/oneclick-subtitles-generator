@@ -10,6 +10,10 @@ const activeDownloadIntervals = {};
 
 // Server URL for the local YouTube download server
 const SERVER_URL = 'http://localhost:3007'; // Changed from 3004 to match server port
+const WEBSOCKET_URL = 'ws://localhost:3007'; // WebSocket server URL
+
+// Global map to track active WebSocket connections
+const videoWebSockets = {};
 
 /**
  * Starts downloading a YouTube video to the local videos folder
@@ -38,67 +42,163 @@ export const startYoutubeVideoDownload = (youtubeUrl, forceRefresh = false) => {
     forceRefresh: forceRefresh // Store the forceRefresh flag
   };
 
-  // Start the download process asynchronously
-  (async () => {
-    try {
+  // Setup WebSocket connection if not already open
+  if (!videoWebSockets[videoId] || videoWebSockets[videoId].readyState === WebSocket.CLOSED) {
+    const ws = new WebSocket(WEBSOCKET_URL);
+    videoWebSockets[videoId] = ws;
 
+    ws.onopen = () => {
+      console.log(`WebSocket connection opened for videoId: ${videoId}`);
+      ws.send(JSON.stringify({ type: 'register', videoId: videoId }));
 
-      // Check if the video already exists on the server (unless forceRefresh is true)
-      if (!downloadQueue[videoId].forceRefresh) {
-        const checkResponse = await fetch(`${SERVER_URL}/api/video-exists/${videoId}`);
-        const checkData = await checkResponse.json();
+      // Proceed with the download initiation now that WebSocket is open
+      initiateDownload(videoId);
+    };
 
-        if (checkData.exists) {
-          // Video already exists, no need to download
-
-          downloadQueue[videoId].status = 'completed';
-          downloadQueue[videoId].progress = 100;
-          downloadQueue[videoId].url = `${SERVER_URL}${checkData.url}`;
-          return;
+    ws.onmessage = (event) => {
+      try {
+        const parsedMessage = JSON.parse(event.data);
+        if (parsedMessage.videoId === videoId) {
+          if (parsedMessage.type === 'downloadProgress') {
+            if (downloadQueue[videoId]) {
+              downloadQueue[videoId].progress = parsedMessage.progress;
+              downloadQueue[videoId].status = 'downloading'; // Ensure status is downloading
+            }
+          } else if (parsedMessage.type === 'registered') {
+            console.log(`WebSocket registered for videoId: ${videoId}`);
+          } else if (parsedMessage.type === 'error') {
+            console.error(`Server-side error for ${videoId}: ${parsedMessage.message}`);
+            if (downloadQueue[videoId]) {
+                downloadQueue[videoId].status = 'error';
+                downloadQueue[videoId].error = parsedMessage.message || 'Server-side WebSocket error';
+            }
+            // Optionally close WebSocket on server error message
+            // ws.close();
+          }
         }
-      } else {
+      } catch (e) {
+        console.error('Error parsing WebSocket message:', e);
+      }
+    };
 
+    ws.onclose = () => {
+      console.log(`WebSocket connection closed for videoId: ${videoId}`);
+      if (downloadQueue[videoId] && downloadQueue[videoId].status === 'downloading') {
+        // If download was in progress and not completed, mark as error
+        downloadQueue[videoId].status = 'error';
+        downloadQueue[videoId].error = 'WebSocket connection closed unexpectedly.';
+      }
+      delete videoWebSockets[videoId];
+    };
+
+    ws.onerror = (error) => {
+      console.error(`WebSocket error for videoId: ${videoId}:`, error);
+      if (downloadQueue[videoId]) {
+        downloadQueue[videoId].status = 'error';
+        downloadQueue[videoId].error = 'WebSocket connection error.';
+      }
+      delete videoWebSockets[videoId];
+    };
+  } else if (videoWebSockets[videoId].readyState === WebSocket.OPEN) {
+    // If WebSocket is already open, just ensure registration and proceed
+    videoWebSockets[videoId].send(JSON.stringify({ type: 'register', videoId: videoId }));
+    initiateDownload(videoId);
+  } else {
+    // WebSocket is CONNECTING or CLOSING, queue might need handling or wait
+    console.warn(`WebSocket for ${videoId} is in state: ${videoWebSockets[videoId].readyState}`);
+    // Potentially retry or wait for OPEN state, for now, we'll let initiateDownload proceed
+    // which might lead to download starting without WS progress if WS doesn't open in time.
+    // Or, defer initiateDownload until ws.onopen is confirmed.
+    // For simplicity, the current structure calls initiateDownload after attempting to set up ws.onopen.
+  }
+
+
+  // Asynchronous function to handle the actual download initiation
+  const initiateDownload = async (currentVideoId) => {
+    try {
+      // Ensure queue entry exists, especially if called when WS was already open
+      if (!downloadQueue[currentVideoId]) {
+        downloadQueue[currentVideoId] = {
+          status: 'checking',
+          progress: 0,
+          url: null,
+          error: null,
+          forceRefresh: forceRefresh
+        };
       }
 
-      // If not, start the download
-      downloadQueue[videoId].status = 'downloading';
-      downloadQueue[videoId].progress = 10;
+      if (!downloadQueue[currentVideoId].forceRefresh) {
+        const checkResponse = await fetch(`${SERVER_URL}/api/video-exists/${currentVideoId}`);
+        if (!checkResponse.ok) throw new Error(`Failed to check video existence: ${checkResponse.statusText}`);
+        const checkData = await checkResponse.json();
+        if (checkData.exists) {
+          downloadQueue[currentVideoId].status = 'completed';
+          downloadQueue[currentVideoId].progress = 100;
+          downloadQueue[currentVideoId].url = `${SERVER_URL}${checkData.url}`;
+          // If WebSocket is open, close it as download is "completed" (already existed)
+          if (videoWebSockets[currentVideoId] && videoWebSockets[currentVideoId].readyState === WebSocket.OPEN) {
+            videoWebSockets[currentVideoId].close();
+          }
+          return;
+        }
+      }
 
+      downloadQueue[currentVideoId].status = 'downloading';
+      // Small initial progress to indicate process has started
+      // downloadQueue[currentVideoId].progress = 5; // WebSocket will soon provide real progress
 
-
-      // Request server to download the video with audio prioritized
       const downloadResponse = await fetch(`${SERVER_URL}/api/download-video`, {
         method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          videoId,
-          forceRefresh: downloadQueue[videoId].forceRefresh // Pass the forceRefresh flag to the server
-        }),
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ videoId: currentVideoId, forceRefresh: downloadQueue[currentVideoId].forceRefresh }),
       });
-
-
 
       if (!downloadResponse.ok) {
         const errorData = await downloadResponse.json();
-        throw new Error(errorData.error || 'Failed to download video');
+        throw new Error(errorData.error || `Failed to start download: ${downloadResponse.statusText}`);
       }
 
       const downloadData = await downloadResponse.json();
-
-      // Update queue entry with success
-      downloadQueue[videoId].status = 'completed';
-      downloadQueue[videoId].progress = 100;
-      downloadQueue[videoId].url = `${SERVER_URL}${downloadData.url}`;
-
-
+      // The server's response means the download request was accepted.
+      // Actual completion is tracked by polling or WebSocket.
+      // If the server immediately says it's completed (e.g. from cache after forceRefresh), update.
+      if (downloadData.success && downloadData.url) {
+         // This part might be redundant if server relies on WS for progress and final status.
+         // However, if download-video can return completed (e.g. server cache hit), handle it.
+        if (downloadQueue[currentVideoId].status !== 'completed') { // Avoid race condition with WS updates
+            // downloadQueue[currentVideoId].status = 'completed'; // Let polling handle final 'completed' state
+            // downloadQueue[currentVideoId].progress = 100;
+            // downloadQueue[currentVideoId].url = `${SERVER_URL}${downloadData.url}`;
+        }
+      }
+      // Note: Actual 'completed' status and 100% progress should primarily be set by the polling logic
+      // in downloadYoutubeVideo, which verifies file existence, or if server sends a final WS message.
     } catch (error) {
-      console.error('Error in background download process:', error);
-      downloadQueue[videoId].status = 'error';
-      downloadQueue[videoId].error = error.message;
+      console.error(`Error in download initiation for ${currentVideoId}:`, error);
+      if (downloadQueue[currentVideoId]) {
+        downloadQueue[currentVideoId].status = 'error';
+        downloadQueue[currentVideoId].error = error.message;
+      }
+      // If WebSocket is open, send an error or close it
+      if (videoWebSockets[currentVideoId] && videoWebSockets[currentVideoId].readyState === WebSocket.OPEN) {
+        // videoWebSockets[currentVideoId].send(JSON.stringify({ type: 'error', videoId: currentVideoId, message: error.message }));
+        videoWebSockets[currentVideoId].close();
+      }
     }
-  })();
+  };
+
+  // If WebSocket is already open, call initiateDownload directly.
+  // Otherwise, it will be called in ws.onopen.
+  if (videoWebSockets[videoId] && videoWebSockets[videoId].readyState === WebSocket.OPEN) {
+    initiateDownload(videoId);
+  } else if (!videoWebSockets[videoId] || videoWebSockets[videoId].readyState === WebSocket.CLOSED) {
+    // WebSocket setup is in progress, initiateDownload will be called onopen
+  } else {
+    // WebSocket is CONNECTING or CLOSING, this case needs careful handling.
+    // For now, we assume onopen will eventually trigger or an error/close will occur.
+    // If it's CONNECTING, onopen will handle it. If CLOSING, it will soon be CLOSED.
+    console.warn(`WebSocket for ${videoId} in intermediate state ${videoWebSockets[videoId].readyState}, download might be delayed or fail if WS doesn't open.`);
+  }
 
   return videoId;
 };
@@ -150,20 +250,14 @@ export const downloadYoutubeVideo = async (youtubeUrl, onProgress = () => {}, fo
   return new Promise((resolve, reject) => {
     let attempts = 0;
     // No maximum attempts - we'll wait indefinitely
-    let simulatedProgress = 5;
+    // let simulatedProgress = 5; // Removed simulated progress
 
     const checkInterval = setInterval(async () => {
       const status = checkDownloadStatus(videoId);
 
-      // If status is 'downloading', simulate progress
-      if (status.status === 'downloading' && status.progress < 95) {
-        // Increment progress by a small amount each time
-        simulatedProgress = Math.min(95, simulatedProgress + 5);
-        downloadQueue[videoId].progress = simulatedProgress;
-        onProgress(simulatedProgress);
-      } else {
-        onProgress(status.progress);
-      }
+      // If status is 'downloading', progress is updated by WebSocket
+      // Call onProgress with the current progress from the queue
+      onProgress(status.progress);
 
       if (status.status === 'completed') {
         // Check if the video URL is valid by making a HEAD request
@@ -260,19 +354,27 @@ export const cancelYoutubeVideoDownload = (videoId) => {
     delete activeDownloadIntervals[videoId];
   }
 
+  // Close and delete WebSocket if it exists
+  if (videoWebSockets[videoId]) {
+    videoWebSockets[videoId].close();
+    delete videoWebSockets[videoId];
+  }
+
   // Try to cancel the download on the server
   fetch(`${SERVER_URL}/api/cancel-download/${videoId}`, { method: 'POST' })
     .then(response => response.json())
     .then(data => {
-
+      console.log('Server cancellation response:', data);
     })
     .catch(error => {
       console.error('Error cancelling download on server:', error);
     });
 
   // Update the download queue entry
-  downloadQueue[videoId].status = 'cancelled';
-  downloadQueue[videoId].error = 'Download cancelled by user';
+  if (downloadQueue[videoId]) { // Ensure entry exists before updating
+    downloadQueue[videoId].status = 'cancelled';
+    downloadQueue[videoId].error = 'Download cancelled by user';
+  }
 
 
   return true;

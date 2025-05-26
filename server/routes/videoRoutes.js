@@ -8,6 +8,7 @@ const fs = require('fs');
 const path = require('path');
 const { VIDEOS_DIR, SERVER_URL } = require('../config');
 const { downloadYouTubeVideo } = require('../services/youtube');
+// No direct need for WebSocket here, but it's related to the system
 const {
   splitVideoIntoSegments,
   splitMediaIntoSegments,
@@ -61,8 +62,7 @@ router.get('/segment-exists/:segmentId', (req, res) => {
  */
 router.post('/download-video', async (req, res) => {
   const { videoId } = req.body;
-
-
+  const videoSocketMap = req.app.get('videoSocketMap'); // Retrieve videoSocketMap
 
   if (!videoId) {
     return res.status(400).json({ error: 'Video ID is required' });
@@ -81,7 +81,8 @@ router.post('/download-video', async (req, res) => {
 
   try {
     // Download the video using JavaScript libraries with audio prioritized
-    const result = await downloadYouTubeVideo(videoId);
+    // Pass videoSocketMap to downloadYouTubeVideo
+    const result = await downloadYouTubeVideo(videoId, videoSocketMap);
 
     // Check if the file was created successfully
     if (fs.existsSync(videoPath)) {

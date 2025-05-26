@@ -48,8 +48,56 @@ if (isDevCuda) {
 
 // Start the server
 const server = app.listen(PORT, () => {
+  console.log(`Server listening on port ${PORT}`);
+});
 
+// WebSocket server setup
+const { WebSocketServer, WebSocket } = require('ws'); // Import WebSocket
+const wss = new WebSocketServer({ server });
+const videoSocketMap = {}; // Initialize videoSocketMap
 
+// Make wss and videoSocketMap accessible to routes
+app.set('wss', wss);
+app.set('videoSocketMap', videoSocketMap);
+
+console.log('WebSocket server created, listening for connections.');
+
+wss.on('connection', (ws) => {
+  console.log('Client connected via WebSocket');
+  let registeredVideoId = null; // Scope per client
+
+  ws.on('message', (message) => {
+    try {
+      const parsedMessage = JSON.parse(message);
+      if (parsedMessage.type === 'register' && parsedMessage.videoId) {
+        videoSocketMap[parsedMessage.videoId] = ws;
+        registeredVideoId = parsedMessage.videoId;
+        console.log(`WebSocket client registered for videoId: ${parsedMessage.videoId}`);
+        // Optional: Send a confirmation
+        ws.send(JSON.stringify({ type: 'registered', videoId: parsedMessage.videoId }));
+      }
+    } catch (e) {
+      console.error('Failed to parse WebSocket message or invalid message format:', e);
+      // Send an error message back to the client if the message is not valid JSON
+      ws.send(JSON.stringify({ type: 'error', message: 'Invalid message format.' }));
+    }
+  });
+
+  ws.on('close', () => {
+    console.log('Client disconnected from WebSocket');
+    if (registeredVideoId && videoSocketMap[registeredVideoId] === ws) {
+      delete videoSocketMap[registeredVideoId];
+      console.log(`WebSocket client for videoId: ${registeredVideoId} unregistered.`);
+    }
+  });
+
+  ws.on('error', (error) => {
+    console.error('WebSocket error:', error);
+    if (registeredVideoId && videoSocketMap[registeredVideoId] === ws) {
+      delete videoSocketMap[registeredVideoId];
+      console.log(`WebSocket client for videoId: ${registeredVideoId} unregistered due to error.`);
+    }
+  });
 });
 
 // Handle server shutdown

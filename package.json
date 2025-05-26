@@ -21,7 +21,6 @@
     "install:deps": "uv pip install flask flask-cors soundfile numpy torch torchaudio vocos",
     "install:yt-dlp": "node install-yt-dlp.js",
     "install:all": "npm install && node setup-narration.js && node install-yt-dlp.js",
-    "postinstall": "node install-yt-dlp.js",
     "setup:f5tts": "node setup-f5tts.js",
     "python:start:cuda": "uv run -- python server/narrationApp.py",
     "dev:cuda": "cross-env START_PYTHON_SERVER=true concurrently \"npm run start\" \"npm run server:start\"",
@@ -73,7 +72,7 @@
     "url": "^0.11.4",
     "util": "^0.12.5",
     "web-vitals": "^3.5.0",
-    "ws": "^8.18.2"
+    "ws": "^8.18.0"
   },
   "devDependencies": {
     "concurrently": "^8.2.2",

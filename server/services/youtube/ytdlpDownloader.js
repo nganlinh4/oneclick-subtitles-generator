@@ -13,9 +13,10 @@ const { safeMoveFile } = require('../../utils/fileOperations');
  * @param {string} videoURL - YouTube video URL
  * @param {string} outputPath - Path to save the video
  * @param {string} quality - Desired video quality (e.g., '144p', '360p', '720p')
+ * @param {function(number): void} [onProgress] - Optional callback for progress updates (0-100)
  * @returns {Promise<boolean>} - Success status
  */
-async function downloadWithYtdlp(videoURL, outputPath, quality = '360p') {
+async function downloadWithYtdlp(videoURL, outputPath, quality = '360p', onProgress) {
   return new Promise((resolve, reject) => {
 
 
@@ -57,7 +58,9 @@ async function downloadWithYtdlp(videoURL, outputPath, quality = '360p') {
       '-f', `bestvideo[height<=${resolution}]+bestaudio/best[height<=${resolution}]`,
       '-o', tempPath,
       '--no-playlist',
-      '--merge-output-format', 'mp4'
+      '--merge-output-format', 'mp4',
+      '--progress', // Add progress reporting
+      '--progress-template', '%(progress.percentage)s' // Template for progress output
     ];
 
 
@@ -72,6 +75,12 @@ async function downloadWithYtdlp(videoURL, outputPath, quality = '360p') {
       const output = data.toString();
       stdoutData += output;
 
+      // Parse progress information
+      // With the template, output will be just the percentage, e.g., "10.5"
+      const percentage = parseFloat(output.trim());
+      if (typeof onProgress === 'function' && !isNaN(percentage)) {
+        onProgress(percentage);
+      }
     });
 
     ytdlpProcess.stderr.on('data', (data) => {
