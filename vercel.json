@@ -1,40 +1,12 @@
 {
-  "buildCommand": "npm run build:vercel",
+  "buildCommand": "CI=false npm run build:vercel",
   "outputDirectory": "build",
-  "framework": "create-react-app",
-  "installCommand": "npm install --omit=optional --legacy-peer-deps",
-  "public": true,
-  "cleanUrls": false,
-  "trailingSlash": false,
+  "installCommand": "npm install --legacy-peer-deps",
+  "framework": null,
   "rewrites": [
     {
-      "source": "/((?!static|manifest.json|favicon.ico|logo192.png|logo512.png|robots.txt|.*\\.).*)",
+      "source": "/(.*)",
       "destination": "/index.html"
     }
-  ],
-  "headers": [
-    {
-      "source": "/(.*)",
-      "headers": [
-        {
-          "key": "Access-Control-Allow-Origin",
-          "value": "*"
-        },
-        {
-          "key": "Access-Control-Allow-Methods",
-          "value": "GET, POST, OPTIONS"
-        }
-      ]
-    }
-  ],
-  "env": {
-    "NODE_OPTIONS": "--max-old-space-size=4096"
-  },
-  "build": {
-    "env": {
-      "CI": "false",
-      "SKIP_PREFLIGHT_CHECK": "true",
-      "GENERATE_SOURCEMAP": "false"
-    }
-  }
+  ]
 }
