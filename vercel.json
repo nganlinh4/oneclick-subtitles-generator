@@ -3,40 +3,26 @@
   "outputDirectory": "build",
   "framework": "create-react-app",
   "installCommand": "npm install --omit=optional --legacy-peer-deps",
+  "public": true,
+  "cleanUrls": false,
+  "trailingSlash": false,
   "rewrites": [
     {
-      "source": "/((?!api|_next|favicon.ico|manifest.json|.*\\.).*)",
+      "source": "/((?!static|manifest.json|favicon.ico|logo192.png|logo512.png|robots.txt|.*\\.).*)",
       "destination": "/index.html"
     }
   ],
   "headers": [
     {
-      "source": "/manifest.json",
-      "headers": [
-        {
-          "key": "Cache-Control",
-          "value": "public, max-age=0, must-revalidate"
-        },
-        {
-          "key": "Access-Control-Allow-Origin",
-          "value": "*"
-        }
-      ]
-    },
-    {
       "source": "/(.*)",
       "headers": [
         {
-          "key": "X-Content-Type-Options",
-          "value": "nosniff"
+          "key": "Access-Control-Allow-Origin",
+          "value": "*"
         },
         {
-          "key": "X-Frame-Options",
-          "value": "DENY"
-        },
-        {
-          "key": "X-XSS-Protection",
-          "value": "1; mode=block"
+          "key": "Access-Control-Allow-Methods",
+          "value": "GET, POST, OPTIONS"
         }
       ]
     }
