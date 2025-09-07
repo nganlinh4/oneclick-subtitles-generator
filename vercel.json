@@ -2,11 +2,43 @@
   "buildCommand": "npm run build:vercel",
   "outputDirectory": "build",
   "framework": "create-react-app",
-  "installCommand": "npm install --omit=optional",
+  "installCommand": "npm install --omit=optional --legacy-peer-deps",
   "rewrites": [
     {
-      "source": "/(.*)",
+      "source": "/((?!api|_next|favicon.ico|manifest.json|.*\\.).*)",
       "destination": "/index.html"
+    }
+  ],
+  "headers": [
+    {
+      "source": "/manifest.json",
+      "headers": [
+        {
+          "key": "Cache-Control",
+          "value": "public, max-age=0, must-revalidate"
+        },
+        {
+          "key": "Access-Control-Allow-Origin",
+          "value": "*"
+        }
+      ]
+    },
+    {
+      "source": "/(.*)",
+      "headers": [
+        {
+          "key": "X-Content-Type-Options",
+          "value": "nosniff"
+        },
+        {
+          "key": "X-Frame-Options",
+          "value": "DENY"
+        },
+        {
+          "key": "X-XSS-Protection",
+          "value": "1; mode=block"
+        }
+      ]
     }
   ],
   "env": {
@@ -15,7 +47,8 @@
   "build": {
     "env": {
       "CI": "false",
-      "SKIP_PREFLIGHT_CHECK": "true"
+      "SKIP_PREFLIGHT_CHECK": "true",
+      "GENERATE_SOURCEMAP": "false"
     }
   }
 }
