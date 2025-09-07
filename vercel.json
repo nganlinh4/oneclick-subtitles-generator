@@ -17,10 +17,5 @@
       "CI": "false",
       "SKIP_PREFLIGHT_CHECK": "true"
     }
-  },
-  "functions": {
-    "api/**/*.js": {
-      "maxDuration": 30
-    }
   }
 }
