@@ -1,0 +1,54 @@
+# Dependencies
+.venv
+venv
+__pycache__
+*.pyc
+
+# Local development files
+server/
+chatterbox-fastapi/
+F5-TTS/
+video-renderer/
+scripts/
+yt-dlp/
+yt-dlp.exe
+
+# Test files
+test-*.js
+test-*.py
+*.test.js
+*.spec.js
+
+# Development scripts
+setup-*.js
+install-*.js
+check-*.js
+dev-server.js
+
+# Documentation
+README.md
+docs/
+
+# Git
+.git
+.gitignore
+
+# IDE
+.vscode
+.idea
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Environment files
+.env.local
+.env.development
+.env.test
+.env.version
+
+# Logs
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*

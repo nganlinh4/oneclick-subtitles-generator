@@ -1,7 +1,8 @@
 {
-  "buildCommand": "npm run build",
+  "buildCommand": "npm run build:vercel",
   "outputDirectory": "build",
   "framework": "create-react-app",
+  "installCommand": "npm install --omit=optional",
   "rewrites": [
     {
       "source": "/(.*)",
@@ -13,7 +14,13 @@
   },
   "build": {
     "env": {
-      "CI": "false"
+      "CI": "false",
+      "SKIP_PREFLIGHT_CHECK": "true"
+    }
+  },
+  "functions": {
+    "api/**/*.js": {
+      "maxDuration": 30
     }
   }
 }
