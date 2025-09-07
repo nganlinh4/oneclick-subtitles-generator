@@ -845,17 +845,14 @@ const TimelineVisualization = ({
 
 
 
-  // Handle mouse down - supports both click and drag
-  const handleMouseDown = (e) => {
-    e.preventDefault();
-    e.stopPropagation();
-
-    const startTime = pixelToTime(e.clientX);
-    const startX = e.clientX;
+  // Common logic for handling pointer down (mouse or touch)
+  const handlePointerDown = (clientX, clientY, isTouch = false) => {
+    const startTime = pixelToTime(clientX);
+    const startX = clientX;
     let hasMoved = false;
-    let dragThreshold = 5; // pixels - minimum movement to consider it a drag
+    let dragThreshold = isTouch ? 10 : 5; // pixels - higher threshold for touch to avoid accidental drags
 
-    console.log('[Timeline] Mouse down at time:', startTime.toFixed(2), 's');
+    console.log(`[Timeline] ${isTouch ? 'Touch' : 'Mouse'} down at time:`, startTime.toFixed(2), 's');
 
     // Initialize drag state for segment selection (if enabled)
     if (onSegmentSelect) {
@@ -869,8 +866,8 @@ const TimelineVisualization = ({
       setMoveDragOffsetPx(0);
     }
 
-    const handleMouseMove = (moveEvent) => {
-      const deltaX = Math.abs(moveEvent.clientX - startX);
+    const handlePointerMove = (moveClientX) => {
+      const deltaX = Math.abs(moveClientX - startX);
 
       // Check if we've moved enough to consider this a drag
       if (deltaX > dragThreshold) {
@@ -883,7 +880,7 @@ const TimelineVisualization = ({
             isDraggingRef.current = true;
           }
 
-          const currentTime = pixelToTime(moveEvent.clientX);
+          const currentTime = pixelToTime(moveClientX);
 
           // Only update if the time has changed significantly (avoid excessive updates)
           if (Math.abs(currentTime - (dragCurrentRef.current || 0)) > 0.1) {
@@ -894,10 +891,10 @@ const TimelineVisualization = ({
       }
     };
 
-    const handleMouseUp = (upEvent) => {
+    const handlePointerUp = (upClientX) => {
       if (hasMoved && onSegmentSelect && isDraggingRef.current) {
         // This was a drag - handle segment selection
-        console.log('[Timeline] Drag detected - creating segment');
+        console.log(`[Timeline] ${isTouch ? 'Touch' : 'Mouse'} drag detected - creating segment`);
 
         // Mark that dragging has been done in this session
         setHasDraggedInSession(true);
@@ -921,18 +918,18 @@ const TimelineVisualization = ({
           }
         }
       } else if (!hasMoved) {
-        // This was a click - handle timeline seeking
-        const clickTime = pixelToTime(upEvent.clientX);
-        console.log('[Timeline] Click detected - seeking to:', clickTime.toFixed(2), 's');
+        // This was a tap/click - handle timeline seeking
+        const clickTime = pixelToTime(upClientX);
+        console.log(`[Timeline] ${isTouch ? 'Tap' : 'Click'} detected - seeking to:`, clickTime.toFixed(2), 's');
         
-        // Check if click is inside any active range
+        // Check if tap/click is inside any active range
         const activeRange = actionBarRange || hiddenActionBarRange || selectedSegment;
         const isInsideRange = activeRange && 
           clickTime >= activeRange.start && 
           clickTime <= activeRange.end;
         
         if (isInsideRange) {
-          // Click inside range - set flag to prevent hiding
+          // Tap/click inside range - set flag to prevent hiding
           isClickingInsideRef.current = true;
           
           // Ensure action bar is shown
@@ -948,20 +945,27 @@ const TimelineVisualization = ({
             isClickingInsideRef.current = false;
           }, 100);
         } else {
-          // Click outside - clear everything
+          // Tap/click outside - clear everything
           setActionBarRange(null);
           setHiddenActionBarRange(null);
         }
         
-        // Always handle click as seek
-        handleClick(
-          upEvent,
-          timelineRef.current,
-          duration,
-          onTimelineClick,
-          getTimeRange(),
-          lastManualPanTime
-        );
+        // Always handle tap/click as seek (only for non-touch events)
+        if (!isTouch) {
+          handleClick(
+            { clientX: upClientX },
+            timelineRef.current,
+            duration,
+            onTimelineClick,
+            getTimeRange(),
+            lastManualPanTime
+          );
+        } else {
+          // For touch events, manually seek to the position
+          if (onTimelineClick) {
+            onTimelineClick(clickTime);
+          }
+        }
       }
 
       // Clean up drag state
@@ -973,13 +977,59 @@ const TimelineVisualization = ({
         dragCurrentRef.current = null;
         isDraggingRef.current = false;
       }
+    };
 
+    return { handlePointerMove, handlePointerUp };
+  };
+
+  // Handle mouse down - supports both click and drag
+  const handleMouseDown = (e) => {
+    e.preventDefault();
+    e.stopPropagation();
+
+    const { handlePointerMove, handlePointerUp } = handlePointerDown(e.clientX, e.clientY, false);
+
+    const handleMouseMove = (moveEvent) => {
+      handlePointerMove(moveEvent.clientX);
+    };
+
+    const handleMouseUp = (upEvent) => {
+      handlePointerUp(upEvent.clientX);
       document.removeEventListener('mousemove', handleMouseMove);
       document.removeEventListener('mouseup', handleMouseUp);
     };
 
     document.addEventListener('mousemove', handleMouseMove);
     document.addEventListener('mouseup', handleMouseUp);
+  };
+
+  // Handle touch start - supports both tap and drag for mobile devices
+  const handleTouchStart = (e) => {
+    // Don't prevent default to allow scrolling if needed
+    e.stopPropagation();
+
+    const touch = e.touches[0];
+    const { handlePointerMove, handlePointerUp } = handlePointerDown(touch.clientX, touch.clientY, true);
+
+    const handleTouchMove = (moveEvent) => {
+      // Prevent scrolling when dragging on timeline
+      moveEvent.preventDefault();
+      const moveTouch = moveEvent.touches[0];
+      handlePointerMove(moveTouch.clientX);
+    };
+
+    const handleTouchEnd = (endEvent) => {
+      // Use the last known touch position or the touch end position
+      const endTouch = endEvent.changedTouches[0];
+      handlePointerUp(endTouch.clientX);
+      document.removeEventListener('touchmove', handleTouchMove);
+      document.removeEventListener('touchend', handleTouchEnd);
+      document.removeEventListener('touchcancel', handleTouchEnd);
+    };
+
+    document.addEventListener('touchmove', handleTouchMove, { passive: false });
+    document.addEventListener('touchend', handleTouchEnd);
+    document.addEventListener('touchcancel', handleTouchEnd);
   };
 
   // Note: Timeline click handling is now integrated into handleMouseDown
@@ -1141,6 +1191,7 @@ const TimelineVisualization = ({
       <canvas
         ref={timelineRef}
         onMouseDown={handleMouseDown}
+        onTouchStart={handleTouchStart}
         onContextMenu={handleContextMenu}
         className="subtitle-timeline"
         style={{
@@ -1148,7 +1199,8 @@ const TimelineVisualization = ({
             ? 'ew-resize'
             : onSegmentSelect
               ? 'crosshair'
-              : 'pointer'
+              : 'pointer',
+          touchAction: onSegmentSelect ? 'none' : 'auto' // Disable touch gestures when range selection is enabled
         }}
       />
 
