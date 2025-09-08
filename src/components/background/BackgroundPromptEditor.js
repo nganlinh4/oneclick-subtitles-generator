@@ -34,34 +34,33 @@ const BackgroundPromptEditor = ({ isOpen, onClose }) => {
   const [initialPromptModel, setInitialPromptModel] = useState(promptModel);
   const [initialImageModel, setInitialImageModel] = useState(imageModel);
 
-  // Load the current prompts from the server
+  // Load the current prompts from localStorage (serverless)
   useEffect(() => {
-    if (isOpen) {
-      const fetchPrompts = async () => {
-        try {
-          const response = await fetch('http://127.0.0.1:3031/api/gemini/get-prompts');
-          if (response.ok) {
-            const data = await response.json();
-            if (data.promptOne) setPromptOne(data.promptOne);
-            if (data.promptTwo) setPromptTwo(data.promptTwo);
-            if (data.promptModel) setPromptModel(data.promptModel);
-            if (data.imageModel) setImageModel(data.imageModel);
+    if (!isOpen) return;
 
-	      // After loading, snapshot as initial values to compare for changes
-	      if (response.ok) {
-	        setInitialPromptOne((prev) => (data.promptOne ?? prev));
-	        setInitialPromptTwo((prev) => (data.promptTwo ?? prev));
-	        setInitialPromptModel((prev) => (data.promptModel ?? prev));
-	        setInitialImageModel((prev) => (data.imageModel ?? prev));
-	      }
+    try {
+      const p1 = localStorage.getItem('background_prompt_one');
+      const p2 = localStorage.getItem('background_prompt_two');
+      const pm = localStorage.getItem('background_prompt_model');
+      const im = localStorage.getItem('background_image_model');
 
-          }
-        } catch (error) {
-          console.error('Error fetching prompts:', error);
-        }
-      };
+      const nextP1 = p1 ?? promptOne;
+      const nextP2 = p2 ?? promptTwo;
+      const nextPM = pm ?? promptModel;
+      const nextIM = im ?? imageModel;
 
-      fetchPrompts();
+      setPromptOne(nextP1);
+      setPromptTwo(nextP2);
+      setPromptModel(nextPM);
+      setImageModel(nextIM);
+
+      // Snapshot initial values to detect changes
+      setInitialPromptOne(nextP1);
+      setInitialPromptTwo(nextP2);
+      setInitialPromptModel(nextPM);
+      setInitialImageModel(nextIM);
+    } catch (error) {
+      console.error('Error loading prompts from localStorage:', error);
     }
   }, [isOpen]);
 
@@ -99,33 +98,24 @@ const BackgroundPromptEditor = ({ isOpen, onClose }) => {
     };
   }, [isOpen, onClose]);
 
-  // Handle saving the prompts
+  // Handle saving the prompts (serverless -> localStorage)
   const handleSave = async () => {
     try {
       setIsSaving(true);
-      // Save the prompts and selected models to the server
-      const response = await fetch('http://127.0.0.1:3031/api/settings/update-prompts', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          promptOne,
-          promptTwo,
-          promptModel,
-          imageModel
-        }),
-      });
+      localStorage.setItem('background_prompt_one', promptOne);
+      localStorage.setItem('background_prompt_two', promptTwo);
+      localStorage.setItem('background_prompt_model', promptModel);
+      localStorage.setItem('background_image_model', imageModel);
 
-      if (!response.ok) {
-        const errorData = await response.json();
-        throw new Error(errorData.error || 'Failed to save prompts');
-      }
+      // Snapshot as new baseline to reset hasChanges
+      setInitialPromptOne(promptOne);
+      setInitialPromptTwo(promptTwo);
+      setInitialPromptModel(promptModel);
+      setInitialImageModel(imageModel);
 
-      // Close the modal
       onClose();
     } catch (error) {
-      console.error('Error saving prompts:', error);
+      console.error('Error saving prompts to localStorage:', error);
       alert(`Error saving prompts: ${error.message}`);
     } finally {
       setIsSaving(false);

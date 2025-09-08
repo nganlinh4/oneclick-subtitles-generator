@@ -154,8 +154,8 @@ Choose the right version for your needs:
 
 | Feature | OSG Lite | OSG Full | OSG Vercel |
 |---------|----------|------------|------------|
-| **AI Subtitle Generation** | ✅ Advanced AI transcription | ✅ Advanced AI transcription | ✅ Advanced AI transcription |
-| **Video Sources** | ✅ YouTube, Douyin/TikTok, 1000+ platforms | ✅ YouTube, Douyin/TikTok, 1000+ platforms | ❌ Not available |
+| **AI Subtitle Generation** | ✅ Gemini AI transcription | ✅ Gemini AI transcription | ✅ Gemini AI transcription |
+| **Video Sources** | ✅ YouTube, Douyin/TikTok, 1000+ platforms + Upload | ✅ YouTube, Douyin/TikTok, 1000+ platforms + Upload | Upload only |
 | **Subtitle Editor** | ✅ Visual timeline, waveform, real-time preview | ✅ Visual timeline, waveform, real-time preview | ✅ Visual timeline, waveform, real-time preview |
 | **Translation** | ✅ Multi-language with context awareness | ✅ Multi-language with context awareness | ✅ Multi-language with context awareness |
 | **Video Rendering** | ✅ GPU-accelerated with Remotion | ✅ GPU-accelerated with Remotion | ❌ Not available |

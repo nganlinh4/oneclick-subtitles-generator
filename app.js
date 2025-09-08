@@ -17,7 +17,7 @@ const subtitleRoutes = require('./server/routes/subtitleRoutes');
 const cacheRoutes = require('./server/routes/cacheRoutes');
 const updateRoutes = require('./server/routes/updateRoutes');
 const lyricsRoutes = require('./server/routes/lyricsRoutes');
-const geminiImageRoutes = require('./server/routes/geminiImageRoutes');
+
 const settingsRoutes = require('./server/routes/settingsRoutes');
 const douyinRoutes = require('./server/routes/douyinRoutes');
 const douyinPlaywrightRoutes = require('./server/routes/douyinPlaywrightRoutes');
@@ -363,7 +363,7 @@ app.use('/api', qualityScanRoutes);
 app.use('/api', downloadOnlyRoutes);
 app.use('/api/download-management', downloadManagementRoutes);
 app.use('/api/video', videoCompatibilityRoutes);
-app.use('/api/gemini', geminiImageRoutes);
+
 app.use('/api/narration', narrationRoutes);
 app.use('/api/test', testAudioRoute);
 app.use('/api/diagnostics', diagnosticsRoutes);

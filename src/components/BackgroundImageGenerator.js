@@ -7,6 +7,8 @@ import LoadingIndicator from './common/LoadingIndicator';
 import CustomScrollbarTextarea from './common/CustomScrollbarTextarea';
 import CustomDropdown from './common/CustomDropdown';
 
+import { generateBackgroundPrompt, generateBackgroundImage } from '../services/gemini/imageGenerationService';
+
 
 
 // Custom hook to detect current theme
@@ -99,25 +101,9 @@ const BackgroundImageGenerator = ({ lyrics, albumArt, songName, isExpanded = fal
     setError('');
 
     try {
-      const response = await fetch('http://127.0.0.1:3031/api/gemini/generate-prompt', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          lyrics: customLyrics,
-          songName: customSongName || songName || 'Unknown Song'
-        }),
-      });
-
-      if (!response.ok) {
-        const errorData = await response.json();
-        throw new Error(errorData.error || 'Failed to generate prompt');
-      }
-
-      const data = await response.json();
-      setGeneratedPrompt(data.prompt);
-      return data.prompt; // Return the prompt for chaining
+      const prompt = await generateBackgroundPrompt(customLyrics, customSongName || songName || 'Unknown Song');
+      setGeneratedPrompt(prompt);
+      return prompt;
     } catch (err) {
       setError(`Error generating prompt: ${err.message}`);
       console.error('Error generating prompt:', err);
@@ -166,24 +152,8 @@ const BackgroundImageGenerator = ({ lyrics, albumArt, songName, isExpanded = fal
 
       for (let i = 0; i < imagesToGenerate; i++) {
         try {
-          const response = await fetch('http://127.0.0.1:3031/api/gemini/generate-image', {
-            method: 'POST',
-            headers: {
-              'Content-Type': 'application/json',
-            },
-            body: JSON.stringify({
-              prompt: currentPrompt,
-              albumArtUrl: customAlbumArt
-            }),
-          });
-
-          if (!response.ok) {
-            const errorData = await response.json();
-            throw new Error(errorData.error || 'Failed to generate image');
-          }
-
-          const data = await response.json();
-          const imageUrl = `data:${data.mime_type};base64,${data.data}`;
+          const { mime_type, data } = await generateBackgroundImage(currentPrompt, customAlbumArt);
+          const imageUrl = `data:${mime_type};base64,${data}`;
 
           // Update this specific image in the array
           newImages[i] = {
@@ -395,24 +365,7 @@ const BackgroundImageGenerator = ({ lyrics, albumArt, songName, isExpanded = fal
           setIsGeneratingPrompt(true);
 
 
-          const promptResponse = await fetch('http://127.0.0.1:3031/api/gemini/generate-prompt', {
-            method: 'POST',
-            headers: {
-              'Content-Type': 'application/json',
-            },
-            body: JSON.stringify({
-              lyrics: customLyrics,
-              songName: customSongName || songName || 'Unknown Song'
-            }),
-          });
-
-          if (!promptResponse.ok) {
-            const errorData = await promptResponse.json();
-            throw new Error(errorData.error || 'Failed to generate prompt');
-          }
-
-          const promptData = await promptResponse.json();
-          const uniquePrompt = promptData.prompt;
+          const uniquePrompt = await generateBackgroundPrompt(customLyrics, customSongName || songName || 'Unknown Song');
 
           // Update the prompt in the UI for the latest generated prompt
           setGeneratedPrompt(uniquePrompt);
@@ -428,24 +381,8 @@ const BackgroundImageGenerator = ({ lyrics, albumArt, songName, isExpanded = fal
           // Generate image with the unique prompt
 
 
-          const imageResponse = await fetch('http://127.0.0.1:3031/api/gemini/generate-image', {
-            method: 'POST',
-            headers: {
-              'Content-Type': 'application/json',
-            },
-            body: JSON.stringify({
-              prompt: uniquePrompt,
-              albumArtUrl: customAlbumArt
-            }),
-          });
-
-          if (!imageResponse.ok) {
-            const errorData = await imageResponse.json();
-            throw new Error(errorData.error || 'Failed to generate image');
-          }
-
-          const imageData = await imageResponse.json();
-          const imageUrl = `data:${imageData.mime_type};base64,${imageData.data}`;
+          const { mime_type: iMime, data: iData } = await generateBackgroundImage(uniquePrompt, customAlbumArt);
+          const imageUrl = `data:${iMime};base64,${iData}`;
 
           // Update this specific image in the array
           newImages[i] = {
