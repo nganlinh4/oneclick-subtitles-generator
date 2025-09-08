@@ -3,6 +3,7 @@
  */
 
 import { COLOR_SCHEMES } from './constants';
+import specialStarIcon from '../../assets/specialStar.svg';
 
 /**
  * Create the special star HTML using the original SVG file
@@ -11,9 +12,8 @@ import { COLOR_SCHEMES } from './constants';
  * @returns {string} - HTML markup using img tag
  */
 export const createSpecialStarSVG = (isFilled, colorSchemeIndex = 0) => {
-  // Use the original specialStar.svg file directly as an image
-  // This ensures we get the exact same appearance as the floating settings button
-  return `<img src="/static/media/specialStar.b6c33e5e0da02ba2436528574cc26cff.svg" alt="Special Star" style="width: 100%; height: 100%; object-fit: contain;" />`;
+  // Use the original specialStar.svg via bundler import so hashed path works across environments
+  return `<img src="${specialStarIcon}" alt="Special Star" style="width: 100%; height: 100%; object-fit: contain;" />`;
 };
 
 /**
