@@ -13,6 +13,37 @@ import { createRequestController, removeRequestController } from './requestManag
 import i18n from '../../i18n/i18n';
 
 /**
+ * Validate if a file URI is still accessible
+ * @param {string} fileUri - The file URI to validate
+ * @param {string} apiKey - The API key to use
+ * @returns {Promise<boolean>} - True if valid, false if not
+ */
+const validateFileUri = async (fileUri, apiKey) => {
+  try {
+    // Make a lightweight test request to check if the file is accessible
+    const response = await fetch(
+      `https://generativelanguage.googleapis.com/v1beta/files?key=${apiKey}`,
+      {
+        method: 'GET',
+        headers: {
+          'Content-Type': 'application/json',
+        }
+      }
+    );
+    
+    if (response.ok) {
+      const files = await response.json();
+      // Check if our file URI is in the list
+      return files.files?.some(f => f.uri === fileUri) || false;
+    }
+    return false;
+  } catch (error) {
+    console.warn('[StreamingService] Error validating file URI:', error);
+    return false;
+  }
+};
+
+/**
  * Stream content generation from Gemini API
  * @param {File} file - The media file (already uploaded to Files API)
  * @param {string} fileUri - The uploaded file URI from Files API
@@ -20,8 +51,9 @@ import i18n from '../../i18n/i18n';
  * @param {Function} onChunk - Callback for each streaming chunk
  * @param {Function} onComplete - Callback when streaming is complete
  * @param {Function} onError - Callback for errors
+ * @param {number} retryCount - Internal retry counter
  */
-export const streamGeminiContent = async (file, fileUri, options = {}, onChunk, onComplete, onError) => {
+export const streamGeminiContent = async (file, fileUri, options = {}, onChunk, onComplete, onError, retryCount = 0) => {
   const { userProvidedSubtitles, modelId, videoMetadata, mediaResolution, autoSplitSubtitles: autoSplitEnabled, maxWordsPerSubtitle } = options;
   const MODEL = modelId || localStorage.getItem('gemini_model') || "gemini-2.5-flash";
   
@@ -36,6 +68,17 @@ export const streamGeminiContent = async (file, fileUri, options = {}, onChunk, 
   if (!geminiApiKey) {
     onError(new Error('No valid Gemini API key available. Please add at least one API key in Settings.'));
     return;
+  }
+  
+  // Validate file URI before proceeding (only on first attempt)
+  if (retryCount === 0 && fileUri) {
+    const isValid = await validateFileUri(fileUri, geminiApiKey);
+    if (!isValid) {
+      console.warn('[StreamingService] File URI is no longer valid, triggering re-upload...');
+      // Trigger a re-upload by calling the error handler with a specific error
+      onError(new Error('FILE_URI_EXPIRED: The cached file URI is no longer valid'));
+      return;
+    }
   }
 
   // Declare requestId and signal at function scope so they're accessible in catch block

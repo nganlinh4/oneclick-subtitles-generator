@@ -216,6 +216,19 @@ export const coordinateParallelStreaming = async (
         },
         // onError for this segment
         async (error) => {
+          // Check for file permission errors that should be propagated up immediately
+          if (error && error.message && 
+              ((error.message.includes('403') && 
+               (error.message.includes('PERMISSION_DENIED') || 
+                error.message.includes('You do not have permission to access the File') ||
+                error.message.includes('it may not exist'))) ||
+              error.message.includes('FILE_URI_EXPIRED'))) {
+            console.error(`[ParallelCoordinator] File URI expired for segment ${index + 1}, propagating error up`);
+            // Don't retry, propagate the error up to trigger re-upload
+            reject(error);
+            return;
+          }
+          
           // Check if this is a 503 error (overload) or 429 error (rate limit)
           const is503Error = error && error.message && (
             error.message.includes('503') ||
@@ -299,6 +312,24 @@ export const coordinateParallelStreaming = async (
   try {
     // Wait for all segments to complete (or fail)
     const results = await Promise.allSettled(segmentPromises);
+    
+    // Check for file permission errors first - these should trigger immediate re-upload
+    const filePermissionError = results.find(r => {
+      if (r.status === 'rejected' && r.reason && r.reason.message) {
+        return ((r.reason.message.includes('403') && 
+                (r.reason.message.includes('PERMISSION_DENIED') || 
+                 r.reason.message.includes('You do not have permission to access the File') ||
+                 r.reason.message.includes('it may not exist'))) ||
+               r.reason.message.includes('FILE_URI_EXPIRED'));
+      }
+      return false;
+    });
+    
+    if (filePermissionError) {
+      console.error('[ParallelCoordinator] File permission error detected, propagating to trigger re-upload');
+      onError(filePermissionError.reason);
+      return;
+    }
 
     console.log(`[ParallelCoordinator] All segments processed. Success: ${completedSegments}, Failed: ${failedSegments.length}`);
     
