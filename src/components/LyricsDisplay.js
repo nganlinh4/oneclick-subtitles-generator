@@ -35,6 +35,7 @@ const VirtualizedLyricRow = ({ index, style, data }) => {
     isDragging,
     onLyricClick,
     onMouseDown,
+    onTouchStart,
     getLastDragEnd,
     onDelete,
     onTextEdit,
@@ -58,6 +59,7 @@ const VirtualizedLyricRow = ({ index, style, data }) => {
         isDragging={isDragging}
         onLyricClick={onLyricClick}
         onMouseDown={onMouseDown}
+        onTouchStart={onTouchStart}
         getLastDragEnd={getLastDragEnd}
         onDelete={onDelete}
         onTextEdit={onTextEdit}
@@ -803,6 +805,45 @@ const LyricsDisplay = ({
     endDrag();
   };
 
+  // Touch drag support for mobile
+  const handleTouchStart = (e, index, field) => {
+    if (!e.touches || e.touches.length === 0) return;
+    e.preventDefault();
+    e.stopPropagation();
+    const touch = e.touches[0];
+    startDrag(index, field, touch.clientX, lyrics[index][field]);
+
+    document.addEventListener('touchmove', handleTouchMove, { passive: false });
+    document.addEventListener('touchend', handleTouchEnd, { passive: false });
+    document.addEventListener('touchcancel', handleTouchEnd, { passive: false });
+    document.body.classList.add('lyrics-dragging');
+  };
+
+  const handleTouchMove = (e) => {
+    if (!e.touches || e.touches.length === 0) return;
+    e.preventDefault();
+
+    const now = performance.now();
+    if (now - lastMoveTimeRef.current < 16) {
+      return;
+    }
+    lastMoveTimeRef.current = now;
+
+    const touch = e.touches[0];
+    requestAnimationFrame(() => {
+      handleDrag(touch.clientX, duration);
+    });
+  };
+
+  const handleTouchEnd = (e) => {
+    e.preventDefault();
+    document.removeEventListener('touchmove', handleTouchMove);
+    document.removeEventListener('touchend', handleTouchEnd);
+    document.removeEventListener('touchcancel', handleTouchEnd);
+    document.body.classList.remove('lyrics-dragging');
+    endDrag();
+  };
+
   return (
     <div className={`lyrics-display ${Object.keys(isDragging()).length > 0 ? 'dragging-active' : ''}`}>
       <div className="controls-timeline-container">
@@ -880,6 +921,7 @@ const LyricsDisplay = ({
                 onLyricClick(time);
               },
               onMouseDown: handleMouseDown,
+              onTouchStart: handleTouchStart,
               getLastDragEnd,
               onDelete: handleDeleteLyric,
               onTextEdit: handleTextEdit,

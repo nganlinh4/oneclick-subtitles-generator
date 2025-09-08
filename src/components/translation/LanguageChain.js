@@ -35,6 +35,9 @@ const LanguageChain = ({
   const [draggedItem, setDraggedItem] = useState(null);
   const [dropTarget, setDropTarget] = useState(null);
   const chainRef = useRef(null);
+  // Refs to avoid stale closures during touch drag
+  const draggedItemRef = useRef(null);
+  const dropTargetRef = useRef(null);
 
   // Available delimiters
   const delimiters = [
@@ -193,6 +196,57 @@ const LanguageChain = ({
             onDragOver={(e) => handleDragOver(e, index)}
             onDragEnd={handleDragEnd}
             onDrop={(e) => handleDrop(e, index)}
+            onTouchStart={(e) => {
+              // Simulate drag start for touch devices by tracking start index
+              if (disabled) return;
+              e.preventDefault();
+              e.stopPropagation();
+              setDraggedItem(index);
+              setDropTarget(index);
+              draggedItemRef.current = index;
+              dropTargetRef.current = index;
+              e.currentTarget.classList.add('dragging');
+
+              const startTarget = e.currentTarget;
+              const handleTouchMove = (te) => {
+                const touch = te.touches && te.touches[0];
+                if (!touch) return;
+                // Determine closest chain-item under finger to show drop target
+                const el = document.elementFromPoint(touch.clientX, touch.clientY);
+                const container = chainRef.current;
+                if (!container) return;
+                const chainItemEl = el && (el.closest && el.closest('.chain-item'));
+                if (chainItemEl && container.contains(chainItemEl)) {
+                  const targetIndex = parseInt(chainItemEl.getAttribute('data-index'), 10);
+                  if (!isNaN(targetIndex) && targetIndex !== dropTargetRef.current) {
+                    setDropTarget(targetIndex);
+                    dropTargetRef.current = targetIndex;
+                  }
+                }
+                te.preventDefault();
+              };
+              const handleTouchEnd = () => {
+                document.removeEventListener('touchmove', handleTouchMove);
+                document.removeEventListener('touchend', handleTouchEnd);
+                document.removeEventListener('touchcancel', handleTouchEnd);
+                // Commit move if indices are valid, using refs to avoid stale closure
+                const fromIndex = draggedItemRef.current;
+                const toIndex = dropTargetRef.current;
+                if (fromIndex !== null && toIndex !== null && fromIndex !== toIndex) {
+                  onMoveItem(fromIndex, toIndex);
+                }
+                // Cleanup classes and state
+                startTarget.classList.remove('dragging');
+                setDraggedItem(null);
+                setDropTarget(null);
+                draggedItemRef.current = null;
+                dropTargetRef.current = null;
+              };
+              document.addEventListener('touchmove', handleTouchMove, { passive: false });
+              document.addEventListener('touchend', handleTouchEnd);
+              document.addEventListener('touchcancel', handleTouchEnd);
+            }}
+            style={{ touchAction: 'none' }}
             data-index={index}
           >
             {item.type === 'language' ? (

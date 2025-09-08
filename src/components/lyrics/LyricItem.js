@@ -79,6 +79,7 @@ const LyricItem = ({
   isDragging,
   onLyricClick,
   onMouseDown,
+  onTouchStart,
   getLastDragEnd,
   onDelete,
   onTextEdit,
@@ -408,6 +409,8 @@ const LyricItem = ({
               <span
                 className={`time-control start-time ${isDragging(index, 'start') ? 'dragging' : ''}`}
                 onMouseDown={(e) => onMouseDown(e, index, 'start')}
+                onTouchStart={(e) => { if (typeof onTouchStart === 'function') onTouchStart(e, index, 'start'); }}
+                style={{ touchAction: 'none' }}
               >
                 {formatTime(lyric.start, timeFormat === 'seconds' ? 'seconds' : 'hms_ms')}
               </span>
@@ -417,6 +420,8 @@ const LyricItem = ({
               <span
                 className={`time-control end-time ${isDragging(index, 'end') ? 'dragging' : ''}`}
                 onMouseDown={(e) => onMouseDown(e, index, 'end')}
+                onTouchStart={(e) => { if (typeof onTouchStart === 'function') onTouchStart(e, index, 'end'); }}
+                style={{ touchAction: 'none' }}
               >
                 {formatTime(lyric.end, timeFormat === 'seconds' ? 'seconds' : 'hms_ms')}
               </span>

@@ -1079,6 +1079,47 @@ const TimelineVisualization = ({
           document.addEventListener('mouseup', onUp);
         };
 
+        // Touch equivalent for moving range on mobile
+        const handleMoveTouchStart = (e) => {
+          e.preventDefault();
+          e.stopPropagation();
+          const touch = e.touches && e.touches[0];
+          if (!touch) return;
+          const startX = touch.clientX;
+          const startOffset = moveDragOffsetPx;
+          const startRange = actionBarRange;
+          if (onBeginMoveRange && startRange) onBeginMoveRange(startRange.start, startRange.end);
+
+          const onMove = (te) => {
+            const t = (te.touches && te.touches[0]) || (te.changedTouches && te.changedTouches[0]);
+            if (!t) return;
+            const px = startOffset + (t.clientX - startX);
+            setMoveDragOffsetPx(px);
+            const deltaSeconds = px * timePerPx;
+            rangePreviewDeltaRef.current = deltaSeconds;
+            onPreviewMoveRange && onPreviewMoveRange(deltaSeconds);
+            te.preventDefault();
+          };
+
+          const onUp = () => {
+            document.removeEventListener('touchmove', onMove);
+            document.removeEventListener('touchend', onUp);
+            document.removeEventListener('touchcancel', onUp);
+            const deltaSeconds = moveDragOffsetPx * timePerPx;
+            if (onCommitMoveRange) onCommitMoveRange();
+            else if (onMoveRange && Math.abs(deltaSeconds) > 0.001)
+              onMoveRange(actionBarRange.start, actionBarRange.end, deltaSeconds);
+            setMoveDragOffsetPx(0);
+            rangePreviewDeltaRef.current = 0;
+            setActionBarRange(null);
+            setHiddenActionBarRange(null);
+          };
+
+          document.addEventListener('touchmove', onMove, { passive: false });
+          document.addEventListener('touchend', onUp);
+          document.addEventListener('touchcancel', onUp);
+        };
+
         const overlayRoot = document.getElementById('timeline-header-overlays-root');
         const actionBarRef = { current: null };
         let rafId;
@@ -1166,7 +1207,8 @@ const TimelineVisualization = ({
                 className="btn-base btn-primary btn-small"
                 title={t('timeline.moveRange', 'Drag to move subtitles in range')}
                 onMouseDown={handleMoveMouseDown}
-                style={{ width: 36, height: 36, minWidth: 36, padding: 0, borderRadius: '50%', cursor: 'grab' }}
+                onTouchStart={handleMoveTouchStart}
+                style={{ width: 36, height: 36, minWidth: 36, padding: 0, borderRadius: '50%', cursor: 'grab', touchAction: 'none' }}
               >
                 <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 -960 960 960" aria-hidden style={{ color: 'var(--md-on-primary)' }}>
                   <path fill="currentColor" d="m294-415 33 34q20 19 19 44.5T326-292q-18 18-44.18 18T238-292L96-433q-9-9.4-14.5-21.2-5.5-11.8-5.5-25 0-12.2 5.5-24.5T96-524l140-141q17.64-18 43.82-18T325-665q19 18 19 44.67 0 26.66-19 45.33l-30 31h370l-33-33q-20-18-18.5-44t21.5-44q18-18 44.18-18T723-665l141 141q9 9.4 14.5 21.2 5.5 11.8 5.5 24 0 13.2-5.5 25T864-433L723-292q-17.64 18-43.32 18T635-292q-20-19-20.5-45.17Q614-363.33 633-382l32-33H294Z"/>
@@ -1311,46 +1353,31 @@ const TimelineVisualization = ({
             onMouseDown={(e) => {
               const startX = e.clientX;
               const startZoom = zoom;
-              
+
               // Mark this as a manual interaction to prevent auto-scroll interference
               lastManualPanTime.current = performance.now();
-              
+
               const handleMouseMove = (moveEvent) => {
                 const deltaX = moveEvent.clientX - startX;
-                // Increased sensitivity for more responsive zooming
-                // Allow zoom from 1 (100% - full timeline) to 200 (very detailed view)
                 const newZoom = Math.max(1, Math.min(200, startZoom + (deltaX * 0.05)));
-                
-                // Get real-time playhead position during drag
                 const videoElement = document.querySelector('video');
-                const realTimeCurrentTime = videoElement && !isNaN(videoElement.currentTime) 
-                  ? videoElement.currentTime 
+                const realTimeCurrentTime = videoElement && !isNaN(videoElement.currentTime)
+                  ? videoElement.currentTime
                   : currentTime;
-                
-                // Apply zoom centering immediately with real-time playhead position
                 if (duration && setPanOffset) {
-                  // Calculate timeline end
                   const maxLyricTime = lyrics.length > 0
                     ? Math.max(...lyrics.map(lyric => lyric.end))
                     : duration;
                   const timelineEnd = Math.max(maxLyricTime, duration) * 1.05;
-                
-                  // Calculate new visible duration based on zoom
                   const newVisibleDuration = timelineEnd / newZoom;
                   const halfVisibleDuration = newVisibleDuration / 2;
-                
-                  // Center the view on the real-time playhead position
                   const newPanOffset = Math.max(0, Math.min(
                     realTimeCurrentTime - halfVisibleDuration,
                     timelineEnd - newVisibleDuration
                   ));
-                
-                  // Update zoom and pan offset immediately
                   currentZoomRef.current = newZoom;
                   setPanOffset(newPanOffset);
                 }
-                
-                // Also update the zoom state
                 setZoom(newZoom);
               };
 
@@ -1361,6 +1388,53 @@ const TimelineVisualization = ({
 
               document.addEventListener('mousemove', handleMouseMove);
               document.addEventListener('mouseup', handleMouseUp);
+              e.preventDefault();
+              e.stopPropagation();
+            }}
+            onTouchStart={(e) => {
+              const touch = e.touches && e.touches[0];
+              if (!touch) return;
+              const startX = touch.clientX;
+              const startZoom = zoom;
+              lastManualPanTime.current = performance.now();
+
+              const handleTouchMove = (te) => {
+                const t = (te.touches && te.touches[0]) || (te.changedTouches && te.changedTouches[0]);
+                if (!t) return;
+                const deltaX = t.clientX - startX;
+                const newZoom = Math.max(1, Math.min(200, startZoom + (deltaX * 0.05)));
+                const videoElement = document.querySelector('video');
+                const realTimeCurrentTime = videoElement && !isNaN(videoElement.currentTime)
+                  ? videoElement.currentTime
+                  : currentTime;
+                if (duration && setPanOffset) {
+                  const maxLyricTime = lyrics.length > 0
+                    ? Math.max(...lyrics.map(lyric => lyric.end))
+                    : duration;
+                  const timelineEnd = Math.max(maxLyricTime, duration) * 1.05;
+                  const newVisibleDuration = timelineEnd / newZoom;
+                  const halfVisibleDuration = newVisibleDuration / 2;
+                  const newPanOffset = Math.max(0, Math.min(
+                    realTimeCurrentTime - halfVisibleDuration,
+                    timelineEnd - newVisibleDuration
+                  ));
+                  currentZoomRef.current = newZoom;
+                  setPanOffset(newPanOffset);
+                }
+                setZoom(newZoom);
+                te.preventDefault();
+                te.stopPropagation();
+              };
+
+              const handleTouchEnd = () => {
+                document.removeEventListener('touchmove', handleTouchMove);
+                document.removeEventListener('touchend', handleTouchEnd);
+                document.removeEventListener('touchcancel', handleTouchEnd);
+              };
+
+              document.addEventListener('touchmove', handleTouchMove, { passive: false });
+              document.addEventListener('touchend', handleTouchEnd);
+              document.addEventListener('touchcancel', handleTouchEnd);
               e.preventDefault();
               e.stopPropagation();
             }}
