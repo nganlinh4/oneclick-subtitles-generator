@@ -57,17 +57,17 @@ const TimelineVisualization = ({
   const [showDragHint, setShowDragHint] = useState(false);
   const dragHintAnimationRef = useRef(null);
   const [dragHintAnimationTime, setDragHintAnimationTime] = useState(0);
-  
+
   // Animation state for processing
   const [animationTime, setAnimationTime] = useState(0);
   const processingAnimationRef = useRef(null);
-  
+
   // Track new segments for animation (only during streaming)
   const [newSegments, setNewSegments] = useState(new Map());
   const [isStreamingActive, setIsStreamingActive] = useState(false);
   const previousLyricsRef = useRef([]);
   const newSegmentAnimationRef = useRef(null);
-  
+
   // Handle processing animation
   useEffect(() => {
     if (isProcessingSegment) {
@@ -126,14 +126,14 @@ const TimelineVisualization = ({
       }
     }
   }, [onSegmentSelect, hasDraggedInSession]);
-  
+
   // Listen for streaming events and processing ranges
   useEffect(() => {
     const handleStreamingStart = () => {
       // console.log('[Timeline] Streaming started - enabling segment animations');
       setIsStreamingActive(true);
     };
-    
+
     const handleProcessingRanges = (e) => {
       const ranges = (e.detail && e.detail.ranges) || [];
       setProcessingRanges(ranges);
@@ -141,7 +141,7 @@ const TimelineVisualization = ({
         console.log('[Timeline] Parallel processing ranges set:', ranges);
       }
     };
-    
+
     const handleStreamingComplete = () => {
       // console.log('[Timeline] Streaming complete - disabling segment animations');
       // Keep animations active for a bit after streaming completes
@@ -151,13 +151,13 @@ const TimelineVisualization = ({
         setProcessingRanges([]);
       }, 1000);
     };
-    
+
     // Listen for custom streaming events
     window.addEventListener('streaming-update', handleStreamingStart);
     window.addEventListener('streaming-complete', handleStreamingComplete);
     window.addEventListener('save-after-streaming', handleStreamingComplete);
     window.addEventListener('processing-ranges', handleProcessingRanges);
-    
+
     return () => {
       window.removeEventListener('streaming-update', handleStreamingStart);
       window.removeEventListener('streaming-complete', handleStreamingComplete);
@@ -165,7 +165,7 @@ const TimelineVisualization = ({
       window.removeEventListener('processing-ranges', handleProcessingRanges);
     };
   }, []);
-  
+
   // Track new segments only during streaming
   useEffect(() => {
     // Only track changes if streaming is active
@@ -173,18 +173,18 @@ const TimelineVisualization = ({
       previousLyricsRef.current = [...lyrics];
       return;
     }
-    
+
     const previousLyrics = previousLyricsRef.current;
     const newSegmentMap = new Map();
-    
+
     // Find segments that are new (not in previous lyrics)
     lyrics.forEach(lyric => {
-      const isNew = !previousLyrics.some(prev => 
-        prev.start === lyric.start && 
-        prev.end === lyric.end && 
+      const isNew = !previousLyrics.some(prev =>
+        prev.start === lyric.start &&
+        prev.end === lyric.end &&
         prev.text === lyric.text
       );
-      
+
       if (isNew) {
         // Mark this segment as new with current timestamp
         newSegmentMap.set(`${lyric.start}-${lyric.end}`, {
@@ -193,19 +193,19 @@ const TimelineVisualization = ({
         });
       }
     });
-    
+
     // Merge with existing new segments (keep animations running)
     if (newSegmentMap.size > 0) {
       setNewSegments(prevMap => {
         const mergedMap = new Map(prevMap);
-        
+
         // Add new segments
         newSegmentMap.forEach((value, key) => {
           if (!mergedMap.has(key)) {
             mergedMap.set(key, value);
           }
         });
-        
+
         // Remove segments that have finished animating (after 800ms)
         const now = performance.now();
         mergedMap.forEach((value, key) => {
@@ -213,11 +213,11 @@ const TimelineVisualization = ({
             mergedMap.delete(key);
           }
         });
-        
+
         return mergedMap;
       });
     }
-    
+
     // Update previous lyrics reference
     previousLyricsRef.current = [...lyrics];
   }, [lyrics, isStreamingActive]);
@@ -340,7 +340,7 @@ const TimelineVisualization = ({
   const rangePreviewDeltaRef = useRef(0); // seconds delta during move drag
   const [hiddenActionBarRange, setHiddenActionBarRange] = useState(null); // Store range when action bar is hidden
   const isClickingInsideRef = useRef(false); // Track if we're clicking inside the range
-  
+
   // Notify parent component when selected range changes
   useEffect(() => {
     if (onSelectedRangeChange) {
@@ -402,21 +402,21 @@ const TimelineVisualization = ({
       segmentData
     );
   }, [lyrics, currentTime, duration, getTimeRange, panOffset, getVisibleRangeWithTempOffset, timeFormat, selectedSegment, isDraggingSegment, dragStartTime, dragCurrentTime, isProcessingSegment, animationTime, newSegments, actionBarRange, hiddenActionBarRange]);
-  
+
   // Animate new segments - must be after renderTimeline definition
   useEffect(() => {
     if (newSegments.size > 0) {
       const animate = () => {
         const now = performance.now();
         let hasActiveAnimations = false;
-        
+
         // Check if any animations are still active (800ms duration)
         newSegments.forEach((value) => {
           if (now - value.startTime < 800) {
             hasActiveAnimations = true;
           }
         });
-        
+
         if (hasActiveAnimations) {
           // Trigger re-render to update animations
           renderTimeline();
@@ -435,9 +435,9 @@ const TimelineVisualization = ({
           });
         }
       };
-      
+
       newSegmentAnimationRef.current = requestAnimationFrame(animate);
-      
+
       return () => {
         if (newSegmentAnimationRef.current) {
           cancelAnimationFrame(newSegmentAnimationRef.current);
@@ -538,9 +538,19 @@ const TimelineVisualization = ({
     }
   }, [renderTimeline]);
 
+
+	  // Helper: ignore shortcuts when typing in inputs/textareas/contenteditable editors
+	  const isEventFromEditable = (e) => {
+	    const el = (e && e.target) || document.activeElement;
+	    if (!el || typeof el.closest !== 'function') return false;
+	    // Match native inputs and common rich editors
+	    return !!el.closest('input, textarea, select, [contenteditable]:not([contenteditable="false"]), [role="textbox"], .monaco-editor, .cm-content, .CodeMirror');
+	  };
+
   // Add keyboard shortcuts
   useEffect(() => {
     const handleKeyDown = (e) => {
+      if (isEventFromEditable(e)) return;
       // Alt+S to toggle auto-scrolling
       if (e.altKey && e.key === 's') {
         disableAutoScroll.current = !disableAutoScroll.current;
@@ -569,20 +579,20 @@ const TimelineVisualization = ({
           }, 1500);
         }
       }
-      
+
       // Ctrl+A to select entire video range
       if (e.ctrlKey && e.key === 'a' && onSegmentSelect && duration) {
         e.preventDefault(); // Prevent default browser select all
-        
+
         console.log('[Timeline] Ctrl+A pressed - selecting entire video range');
-        
+
         // Set drag state to simulate range selection from 0 to duration
         const startTime = 0;
         const endTime = duration;
-        
+
         // Mark that dragging has been done in this session
         setHasDraggedInSession(true);
-        
+
         // Set drag state to show visual selection
         setIsDraggingSegment(true);
         setDragStartTime(startTime);
@@ -590,12 +600,12 @@ const TimelineVisualization = ({
         dragStartRef.current = startTime;
         dragCurrentRef.current = endTime;
         isDraggingRef.current = true;
-        
+
         // Force re-render to show selection
         renderTimeline();
-        
+
         console.log('[Timeline] Ctrl+A selection:', startTime.toFixed(2), '-', endTime.toFixed(2), 's');
-        
+
         // Show selection for 500ms, then open modal
         setTimeout(() => {
           // Clean up drag state
@@ -605,14 +615,14 @@ const TimelineVisualization = ({
           dragStartRef.current = null;
           dragCurrentRef.current = null;
           isDraggingRef.current = false;
-          
+
           // Helper function to check if there are subtitles in the range
           const checkForSubtitles = (start, end) => {
             if (!lyrics || lyrics.length === 0) return false;
             // Only consider subtitles fully contained within the range
             return lyrics.some(l => l.start >= start && l.end <= end);
           };
-          
+
           // Check if there are subtitles in the range
           if (checkForSubtitles(startTime, endTime)) {
             // Show action bar instead of opening modal
@@ -746,11 +756,11 @@ const TimelineVisualization = ({
   const handleContextMenu = (e) => {
     e.preventDefault();
     e.stopPropagation();
-    
+
     // Check if we have a selected segment and the click is within its bounds
     if (selectedSegment && onSegmentSelect) {
       const clickTime = pixelToTime(e.clientX);
-      
+
       // Check if the click is within the selected segment range
       if (clickTime >= selectedSegment.start && clickTime <= selectedSegment.end) {
         console.log('[Timeline] Right-click on selected segment - opening video processing modal');
@@ -764,6 +774,7 @@ const TimelineVisualization = ({
   useEffect(() => {
     if (!actionBarRange) return;
     const onKeyDown = (e) => {
+      if (isEventFromEditable(e)) return;
       if (e.key === 'Delete') {
         e.preventDefault();
         if (onClearRange) {
@@ -787,7 +798,7 @@ const TimelineVisualization = ({
   const handleMouseMoveForRange = useCallback((e) => {
     // Check both hiddenActionBarRange and selectedSegment
     if (!hiddenActionBarRange && !actionBarRange && !selectedSegment) return;
-    
+
     const canvas = timelineRef.current;
     const effectiveDuration = duration || 60;
     if (!canvas) return;
@@ -797,7 +808,7 @@ const TimelineVisualization = ({
     const timeRange = getTimeRange();
     const timePerPixel = (timeRange.end - timeRange.start) / canvas.clientWidth;
     const hoverTime = Math.max(0, Math.min(effectiveDuration, timeRange.start + (relativeX * timePerPixel)));
-    
+
     // Check if hovering within the hidden action bar range
     const range = hiddenActionBarRange || actionBarRange;
     if (range && hoverTime >= range.start && hoverTime <= range.end) {
@@ -806,9 +817,9 @@ const TimelineVisualization = ({
         setActionBarRange(hiddenActionBarRange);
       }
     }
-    
+
     // Check if hovering within the persistent selectedSegment (from subtitle generation)
-    if (selectedSegment && !actionBarRange && 
+    if (selectedSegment && !actionBarRange &&
         hoverTime >= selectedSegment.start && hoverTime <= selectedSegment.end) {
       // Check if there are subtitles in this segment
       if (hasSubtitlesInRange(selectedSegment.start, selectedSegment.end)) {
@@ -921,17 +932,17 @@ const TimelineVisualization = ({
         // This was a tap/click - handle timeline seeking
         const clickTime = pixelToTime(upClientX);
         console.log(`[Timeline] ${isTouch ? 'Tap' : 'Click'} detected - seeking to:`, clickTime.toFixed(2), 's');
-        
+
         // Check if tap/click is inside any active range
         const activeRange = actionBarRange || hiddenActionBarRange || selectedSegment;
-        const isInsideRange = activeRange && 
-          clickTime >= activeRange.start && 
+        const isInsideRange = activeRange &&
+          clickTime >= activeRange.start &&
           clickTime <= activeRange.end;
-        
+
         if (isInsideRange) {
           // Tap/click inside range - set flag to prevent hiding
           isClickingInsideRef.current = true;
-          
+
           // Ensure action bar is shown
           if (!actionBarRange && activeRange) {
             if (hasSubtitlesInRange(activeRange.start, activeRange.end)) {
@@ -939,7 +950,7 @@ const TimelineVisualization = ({
               setHiddenActionBarRange(activeRange);
             }
           }
-          
+
           // Reset flag after a short delay
           setTimeout(() => {
             isClickingInsideRef.current = false;
@@ -949,7 +960,7 @@ const TimelineVisualization = ({
           setActionBarRange(null);
           setHiddenActionBarRange(null);
         }
-        
+
         // Always handle tap/click as seek (only for non-touch events)
         if (!isTouch) {
           handleClick(
@@ -1162,11 +1173,11 @@ const TimelineVisualization = ({
                 if (isClickingInsideRef.current) {
                   return;
                 }
-                
+
                 // Hide the action bar when mouse leaves, but keep the range stored
                 // If this is for a selectedSegment, we want to be able to show it again
-                if (selectedSegment && 
-                    actionBarRange.start === selectedSegment.start && 
+                if (selectedSegment &&
+                    actionBarRange.start === selectedSegment.start &&
                     actionBarRange.end === selectedSegment.end) {
                   // For selectedSegment, just hide the bar but keep tracking
                   setHiddenActionBarRange(actionBarRange);
