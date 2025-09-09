@@ -1,3 +1,4 @@
+import { useRef } from "react";
 import { parseSrtContent } from "../../utils/srtParser";
 import { resetGeminiButtonState } from "../../utils/geminiEffects";
 import {
@@ -53,6 +54,9 @@ export const useAppHandlers = (appState) => {
     setIsProcessingSegment,
     t = (key, defaultValue) => defaultValue, // Provide a default implementation if t is not available
   } = appState;
+  // Holds auto-downloaded subtitle content until video download completes
+  const pendingAutoSubtitleRef = useRef(null);
+
 
   /**
    * Validate input before generating subtitles
@@ -271,6 +275,41 @@ export const useAppHandlers = (appState) => {
       message: t("output.uploading", "Uploading video..."),
       type: "loading",
     });
+
+
+    // Kick off auto subtitle fetch in parallel (do not await)
+    try {
+      if ((activeTab.includes("youtube") || activeTab === "unified-url") && selectedVideo?.url && (typeof localStorage === 'undefined' || localStorage.getItem('auto_import_site_subtitles') !== 'false')) {
+        const videoUrl = selectedVideo.url;
+        const storedPrefs = typeof localStorage !== 'undefined' ? localStorage.getItem('preferred_subtitle_langs') : null;
+        const navLang = (typeof navigator !== 'undefined' && navigator.language) ? navigator.language : 'en-US';
+        const defaultPrefs = [navLang, navLang.split('-')[0], 'en-US', 'en'];
+        const preferredLangs = storedPrefs ? JSON.parse(storedPrefs) : defaultPrefs;
+        const useCookies = typeof localStorage !== 'undefined' && localStorage.getItem('use_cookies_for_download') === 'true';
+
+        (async () => {
+          try {
+            const resp = await fetch('http://localhost:3031/api/download-best-subtitle', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ url: videoUrl, preferredLangs, useCookies })
+            });
+            if (resp.ok) {
+              const data = await resp.json();
+              if (data?.success && data?.content) {
+                // Defer applying subtitles until after video download completes
+                pendingAutoSubtitleRef.current = { content: data.content, fileName: data.fileName || 'site-subtitle.srt' };
+              }
+            } else if (resp.status !== 204) {
+              const errText = await resp.text().catch(() => '');
+              console.warn('[AppHandlers] Auto subtitle fetch failed:', resp.status, errText);
+            }
+          } catch (e) {
+            console.warn('[AppHandlers] Auto subtitle fetch error:', e);
+          }
+        })();
+      }
+    } catch {}
 
     // Clear the segments-status before starting the generation process
     setSegmentsStatus([]);
@@ -536,9 +575,24 @@ export const useAppHandlers = (appState) => {
       // Only set the default status if we haven't already set a cache-related status
       // We'll just set the default status since the cache-related status was already set above if needed
       // The cache logic above handles setting the appropriate status message
-      console.log(
-        "[AppHandlers] Video processing complete, ready for segment selection"
-      );
+      console.log("[AppHandlers] Video processing complete, ready for segment selection");
+      // Apply any pending auto-downloaded subtitles now that video download is complete
+      try {
+        if (pendingAutoSubtitleRef.current) {
+          const { content, fileName } = pendingAutoSubtitleRef.current;
+          pendingAutoSubtitleRef.current = null;
+          await handleSrtUpload(content, fileName || 'site-subtitle.srt');
+          // Special notice for auto-downloaded subtitle (not green, with glow/particles)
+          setStatus({
+            message: t('output.autoSubtitleNotice', 'Below are subtitles provided while the video is downloading. If you don’t like them, press Ctrl+A to select all and delete/regenerate'),
+            type: 'auto-subtitle'
+          });
+        }
+      } catch (e) {
+        console.warn('[AppHandlers] Failed to apply pending auto subtitle:', e);
+      }
+
+
     } catch (error) {
       console.error("Error in background processing:", error);
       setIsUploading(false);

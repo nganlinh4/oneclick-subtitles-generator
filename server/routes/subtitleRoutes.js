@@ -291,6 +291,37 @@ router.post('/delete-subtitles', (req, res) => {
       details: error.message
     });
   }
+
+});
+
+
+/**
+ * POST /api/download-best-subtitle - Try to fetch the best site-provided subtitle via yt-dlp
+ */
+router.post('/download-best-subtitle', async (req, res) => {
+  try {
+    const { url, preferredLangs = [], useCookies = false } = req.body || {};
+    if (!url) {
+      return res.status(400).json({ success: false, error: 'URL is required' });
+    }
+    const { downloadBestSubtitle } = require('../services/shared/subtitleDownloader');
+    const result = await downloadBestSubtitle(url, preferredLangs, useCookies);
+    if (!result.success) {
+      const status = result.reason === 'NO_SUBS' ? 204 : 502;
+      return res.status(status).json({ success: false, ...result });
+    }
+    res.json({
+      success: true,
+      id: result.id,
+      lang: result.lang,
+      source: result.source,
+      fileName: result.fileName,
+      content: result.content
+    });
+  } catch (error) {
+    console.error('[download-best-subtitle] Error:', error);
+    res.status(500).json({ success: false, error: error.message });
+  }
 });
 
 module.exports = router;

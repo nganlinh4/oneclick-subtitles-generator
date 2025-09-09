@@ -229,12 +229,14 @@ const OutputContainer = ({
       ) : (
         status?.message && (
           <div className={`status ${status.type}`}>
-            {/* Translate common status messages that might be hardcoded */}
-            {typeof status.message === 'string' ? (
-              status.message.includes('cache') ? t('output.subtitlesLoadedFromCache', 'Subtitles loaded from cache!') :
-              status.message.includes('Video segments ready') ? t('output.segmentsReady', 'Video segments are ready for processing!') :
-              status.message
-            ) : 'Processing...'}
+            <div className="status-message-text">
+              {/* Translate common status messages that might be hardcoded */}
+              {typeof status.message === 'string' ? (
+                status.message.includes('cache') ? t('output.subtitlesLoadedFromCache', 'Subtitles loaded from cache!') :
+                status.message.includes('Video segments ready') ? t('output.segmentsReady', 'Video segments are ready for processing!') :
+                status.message
+              ) : 'Processing...'}
+            </div>
           </div>
         )
       )}

@@ -375,6 +375,9 @@
   "tokens": "token",
   "useCookiesForDownload": "Sử dụng cookie trình duyệt cho tải video",
   "useCookiesForDownloadDescription": "Bật xác thực cookie trình duyệt để truy cập video chất lượng cao hơn và bỏ qua hạn chế đăng nhập. Tắt tính năng này sẽ làm cho việt tải xuống nhanh hơn nhưng có thể hạn chế chất lượng video có sẵn và gây lỗi trên nội dung bị hạn chế.",
+  "autoImportSiteSubtitles": "Tự động nhập phụ đề có sẵn từ trang (nếu có)",
+  "autoImportSiteSubtitlesDescription": "Khi có, tự động lấy và điền sẵn phụ đề đi kèm từ trang trong lúc tải video. Bạn có thể thay thế sau bằng cách upload phụ đề của mình hoặc tạo lại.",
+
   "enableYoutubeSearch": "Bật tìm kiếm YouTube",
   "enableYoutubeSearchDescription": "Hiển thị tab \"Tìm kiếm YouTube\" trong phương thức nhập và bật cài đặt xác thực YouTube API. Đây là phương pháp tùy chọn vì video YouTube có thể được tải xuống qua phương pháp \"URL bất kỳ\"",
   "concurrentClients": "Khách hàng Đồng thời",

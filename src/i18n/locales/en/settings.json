@@ -369,6 +369,9 @@
   "useCookiesForDownload": "Use browser cookies for video downloads",
   "useCookiesForDownloadDescription": "Enable browser cookie authentication to access higher quality videos and bypass login restrictions. Disabling this will make downloads faster but may limit available video qualities and cause failures on restricted content.",
   "enableYoutubeSearch": "Enable YouTube Search",
+  "autoImportSiteSubtitles": "Auto-import site subtitles (when available)",
+  "autoImportSiteSubtitlesDescription": "When available, automatically fetch and prefill subtitles from the site while the video is downloading. You can replace them later by uploading your own or regenerating.",
+
   "enableYoutubeSearchDescription": "Show the \"Search YouTube\" tab in input methods and enable YouTube API authentication settings. This is an optional method since Youtube videos can be download via \"Video URL\" method",
   "concurrentClients": "Concurrent Clients",
   "concurrentClientsDescription": "Number of simultaneous API requests to process in parallel. Higher values increase speed but may hit rate limits.",

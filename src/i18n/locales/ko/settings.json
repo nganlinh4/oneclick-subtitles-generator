@@ -375,6 +375,9 @@
   "thinkingMaximumDesc": "매우 복잡한 작업을 위한 광범위한 사고",
   "tokens": "토큰",
   "useCookiesForDownload": "비디오 다운로드에 브라우저 쿠키 사용",
+  "autoImportSiteSubtitles": "사이트 자막 자동 가져오기(가능한 경우)",
+  "autoImportSiteSubtitlesDescription": "가능한 경우, 비디오를 다운로드하는 동안 사이트에서 제공되는 자막을 자동으로 가져와 미리 채웁니다. 이후 언제든지 직접 업로드하거나 다시 생성하여 교체할 수 있습니다.",
+
   "useCookiesForDownloadDescription": "브라우저 쿠키 인증을 활성화하여 더 높은 품질의 비디오에 액세스하고 로그인 제한을 우회합니다. 이 기능을 비활성화하면 다운로드가 더 빨라지지만 사용 가능한 비디오 품질이 제한되고 제한된 콘텐츠에서 실패할 수 있습니다.",
   "enableYoutubeSearch": "YouTube 검색 활성화",
   "enableYoutubeSearchDescription": "입력 방법에서 \"YouTube 검색\" 탭을 표시하고 YouTube API 인증 설정을 활성화합니다. YouTube 비디오는 \"비디오 URL\" 방법으로도 다운로드할 수 있으므로 이는 선택적 방법입니다",

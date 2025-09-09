@@ -96,6 +96,8 @@
   "segmentReady": "Sẵn sàng để xử lý",
   "videoReady": "Video đã sẵn sàng để chọn phân đoạn...",
   "subtitleUploadSuccess": "Tập tin phụ đề đã được tải lên thành công!",
+  "autoSubtitleNotice": "Phía dưới là phụ đề đi kèm trong lúc tải video, nếu không thích, vui lòng Ctrl+A để xoá/tạo lại",
+
   "downloadAndViewWithSrt": "Tải xuống + Xem với SRT đã upload",
   "downloadAndGenerate": "Tải xuống + Tạo phụ đề có thời gian bằng AI",
   "preparingProcessing": "Đang chuẩn bị xử lý video...",

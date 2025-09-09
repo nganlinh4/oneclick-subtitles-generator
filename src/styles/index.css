@@ -324,6 +324,78 @@ input, select, textarea {
   animation: pulse var(--md-duration-long2) var(--md-easing-standard) infinite;
 }
 
+
+/* Auto-subtitle notice (different from success/green) */
+.status.auto-subtitle {
+  background-color: color-mix(in srgb, var(--md-secondary), transparent 88%);
+  color: var(--md-secondary);
+  border-left-color: var(--md-secondary);
+  position: relative;
+  overflow: hidden;
+  /* soft glow pulse */
+  animation: autoSubtitleGlow 2.2s ease-in-out infinite;
+}
+
+/* Leading dot color */
+.status.auto-subtitle::before {
+  background-color: var(--md-secondary);
+}
+
+/* Rich particle container */
+.status.auto-subtitle .status-particles {
+  position: absolute;
+  inset: -10%;
+  pointer-events: none;
+}
+
+/* First particle wave */
+.status.auto-subtitle .status-particles::before {
+  content: '';
+  position: absolute;
+  top: 50%; left: 50%;
+  width: 260px; height: 260px;
+  transform: translate(-50%, -50%);
+  opacity: 0.55;
+  background:
+    radial-gradient(circle at 45% 15%, #ff6b6b 0.5px, transparent 1px),
+    radial-gradient(circle at 85% 30%, #4ecdc4 0.5px, transparent 1px),
+    radial-gradient(circle at 25% 75%, #45b7d1 0.5px, transparent 1px),
+    radial-gradient(circle at 75% 85%, #f9ca24 0.5px, transparent 1px),
+    radial-gradient(circle at 15% 45%, #6c5ce7 0.5px, transparent 1px),
+    radial-gradient(circle at 65% 25%, #fd79a8 0.5px, transparent 1px),
+    radial-gradient(circle at 35% 65%, #00b894 0.5px, transparent 1px),
+    radial-gradient(circle at 55% 85%, #fdcb6e 0.5px, transparent 1px);
+  animation: particleShoot1 3s infinite ease-out;
+}
+
+/* Second particle wave */
+.status.auto-subtitle .status-particles::after {
+  content: '';
+  position: absolute;
+  top: 50%; left: 50%;
+  width: 280px; height: 280px;
+  transform: translate(-50%, -50%);
+  opacity: 0.35;
+  background:
+    radial-gradient(circle at 70% 20%, #e17055 0.5px, transparent 1px),
+    radial-gradient(circle at 20% 40%, #00cec9 0.5px, transparent 1px),
+    radial-gradient(circle at 80% 70%, #0984e3 0.5px, transparent 1px),
+    radial-gradient(circle at 40% 90%, #e84393 0.5px, transparent 1px),
+    radial-gradient(circle at 90% 50%, #a29bfe 0.5px, transparent 1px),
+    radial-gradient(circle at 30% 10%, #fd79a8 0.5px, transparent 1px),
+    radial-gradient(circle at 60% 40%, #00b894 0.5px, transparent 1px),
+    radial-gradient(circle at 10% 80%, #fdcb6e 0.5px, transparent 1px);
+  animation: particleShoot2 3.5s infinite ease-out 1.2s;
+}
+
+/* Foreground text stays crisp */
+.status.auto-subtitle .status-message-text { position: relative; z-index: 1; }
+
+@keyframes autoSubtitleGlow {
+  0%, 100% { box-shadow: 0 0 0px rgba(0,0,0,0); }
+  50% { box-shadow: 0 0 28px color-mix(in srgb, var(--md-secondary), transparent 65%); }
+}
+
 /* Material Design 3 status messages */
 .md-status-message {
   display: flex;
@@ -364,3 +436,35 @@ input, select, textarea {
 /* Old loading spinner styles removed - now using LoadingIndicator component */
 
 /* Old loading spinner styles removed - now using LoadingIndicator component */
+
+/* Ensure particle animations are available globally (fallback if specific CSS not loaded) */
+@keyframes particleShoot1 {
+  0% { transform: translate(-50%, -50%) scale(0.3); opacity: 0; }
+  15% { transform: translate(-50%, -50%) scale(0.8); opacity: 1; }
+  40% { transform: translate(-50%, -50%) scale(1.2); opacity: 0.8; }
+  70% { transform: translate(-50%, -50%) scale(1.8); opacity: 0.3; }
+  100% { transform: translate(-50%, -50%) scale(2.5); opacity: 0; }
+}
+@keyframes particleShoot2 {
+  0% { transform: translate(-50%, -50%) scale(0.2); opacity: 0; }
+  20% { transform: translate(-50%, -50%) scale(0.6); opacity: 1; }
+  45% { transform: translate(-50%, -50%) scale(1); opacity: 0.9; }
+  75% { transform: translate(-50%, -50%) scale(1.6); opacity: 0.2; }
+  100% { transform: translate(-50%, -50%) scale(2.2); opacity: 0; }
+}
+
+
+/* Professional toned-down style for auto-subtitle notice (override) */
+.status.auto-subtitle {
+  animation: none; /* disable glow */
+  background-color: color-mix(in srgb, var(--md-tertiary-container), transparent 0%);
+  color: var(--md-on-tertiary-container);
+  border-left-color: var(--md-tertiary);
+  font-weight: 500;
+}
+.status.auto-subtitle::before { background-color: var(--md-tertiary); }
+.status.auto-subtitle .status-particles { display: none !important; }
+.status.auto-subtitle::after { content: none !important; }
+
+
+

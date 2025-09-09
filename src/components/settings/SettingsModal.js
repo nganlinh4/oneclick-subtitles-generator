@@ -175,6 +175,11 @@ const SettingsModal = ({ onClose, onSave, apiKeysSet, setApiKeysSet }) => {
   const [transcriptionPrompt, setTranscriptionPrompt] = useState(DEFAULT_TRANSCRIPTION_PROMPT); // Custom transcription prompt
   const [useCookiesForDownload, setUseCookiesForDownload] = useState(false); // Default to not using cookies
   const [enableYoutubeSearch, setEnableYoutubeSearch] = useState(false); // Default to disabling YouTube search
+  // New: Auto-import site subtitles (default ON)
+  const [autoImportSiteSubtitles, setAutoImportSiteSubtitles] = useState(() => {
+    const saved = localStorage.getItem('auto_import_site_subtitles');
+    return saved === null ? true : saved === 'true';
+  });
   const [favoriteMaxSubtitleLength, setFavoriteMaxSubtitleLength] = useState(() => {
     const saved = localStorage.getItem('video_processing_max_words');
     return saved ? parseInt(saved, 10) : 12; // Default to 12 words
@@ -302,6 +307,10 @@ const SettingsModal = ({ onClose, onSave, apiKeysSet, setApiKeysSet }) => {
       const savedUseOptimizedPreview = localStorage.getItem('use_optimized_preview') === 'true'; // Default to false if not set
       const savedUseCookiesForDownload = localStorage.getItem('use_cookies_for_download') === 'true';
       const savedEnableYoutubeSearch = localStorage.getItem('enable_youtube_search') === 'true'; // Default to false
+      const savedAutoImportSiteSubtitles = (() => {
+        const v = localStorage.getItem('auto_import_site_subtitles');
+        return v === null ? true : v === 'true';
+      })();
       const savedFavoriteMaxSubtitleLength = parseInt(localStorage.getItem('video_processing_max_words') || '12');
       const savedShowFavoriteMaxLength = localStorage.getItem('show_favorite_max_length') === null ? true : localStorage.getItem('show_favorite_max_length') === 'true';
 
@@ -362,6 +371,7 @@ const SettingsModal = ({ onClose, onSave, apiKeysSet, setApiKeysSet }) => {
       setUseOptimizedPreview(savedUseOptimizedPreview);
       setUseCookiesForDownload(savedUseCookiesForDownload);
       setEnableYoutubeSearch(savedEnableYoutubeSearch);
+      setAutoImportSiteSubtitles(savedAutoImportSiteSubtitles);
       setFavoriteMaxSubtitleLength(savedFavoriteMaxSubtitleLength);
       setShowFavoriteMaxLength(savedShowFavoriteMaxLength);
       setThinkingBudgets(savedThinkingBudgets);
@@ -392,6 +402,7 @@ const SettingsModal = ({ onClose, onSave, apiKeysSet, setApiKeysSet }) => {
         useOptimizedPreview: savedUseOptimizedPreview,
         useCookiesForDownload: savedUseCookiesForDownload,
         enableYoutubeSearch: savedEnableYoutubeSearch,
+        autoImportSiteSubtitles: savedAutoImportSiteSubtitles,
         favoriteMaxSubtitleLength: savedFavoriteMaxSubtitleLength,
         showFavoriteMaxLength: savedShowFavoriteMaxLength,
         thinkingBudgets: savedThinkingBudgets,
@@ -492,6 +503,7 @@ const SettingsModal = ({ onClose, onSave, apiKeysSet, setApiKeysSet }) => {
       useOptimizedPreview !== originalSettings.useOptimizedPreview ||
       useCookiesForDownload !== originalSettings.useCookiesForDownload ||
       enableYoutubeSearch !== originalSettings.enableYoutubeSearch ||
+      autoImportSiteSubtitles !== (originalSettings.autoImportSiteSubtitles ?? true) ||
       favoriteMaxSubtitleLength !== originalSettings.favoriteMaxSubtitleLength ||
       showFavoriteMaxLength !== originalSettings.showFavoriteMaxLength ||
       JSON.stringify(thinkingBudgets) !== JSON.stringify(originalSettings.thinkingBudgets) ||
@@ -501,7 +513,7 @@ const SettingsModal = ({ onClose, onSave, apiKeysSet, setApiKeysSet }) => {
   }, [isSettingsLoaded, geminiApiKey, youtubeApiKey, geniusApiKey, segmentDuration, geminiModel, timeFormat, showWaveformLongVideos,
       segmentOffsetCorrection, transcriptionPrompt, useOAuth, youtubeClientId,
       youtubeClientSecret, useVideoAnalysis, videoAnalysisModel, videoAnalysisTimeout, enableGeminiEffects,
-      optimizeVideos, optimizedResolution, useOptimizedPreview, useCookiesForDownload, enableYoutubeSearch, favoriteMaxSubtitleLength, showFavoriteMaxLength, thinkingBudgets, customGeminiModels, originalSettings]);
+      optimizeVideos, optimizedResolution, useOptimizedPreview, useCookiesForDownload, enableYoutubeSearch, autoImportSiteSubtitles, favoriteMaxSubtitleLength, showFavoriteMaxLength, thinkingBudgets, customGeminiModels, originalSettings]);
 
   // Handle save button click
   const handleSave = async () => {
@@ -538,6 +550,7 @@ const SettingsModal = ({ onClose, onSave, apiKeysSet, setApiKeysSet }) => {
     localStorage.setItem('use_optimized_preview', useOptimizedPreview.toString());
     localStorage.setItem('use_cookies_for_download', useCookiesForDownload.toString());
     localStorage.setItem('enable_youtube_search', enableYoutubeSearch.toString());
+    localStorage.setItem('auto_import_site_subtitles', autoImportSiteSubtitles.toString());
     localStorage.setItem('thinking_budgets', JSON.stringify(thinkingBudgets));
     localStorage.setItem('custom_gemini_models', JSON.stringify(customGeminiModels));
     // Save the Gemini API key to the key manager
@@ -609,6 +622,7 @@ const SettingsModal = ({ onClose, onSave, apiKeysSet, setApiKeysSet }) => {
       useOptimizedPreview,
       useCookiesForDownload,
       enableYoutubeSearch,
+      autoImportSiteSubtitles,
       favoriteMaxSubtitleLength,
       showFavoriteMaxLength,
       thinkingBudgets,
@@ -806,6 +820,8 @@ const SettingsModal = ({ onClose, onSave, apiKeysSet, setApiKeysSet }) => {
               setUseCookiesForDownload={setUseCookiesForDownload}
               enableYoutubeSearch={enableYoutubeSearch}
               setEnableYoutubeSearch={setEnableYoutubeSearch}
+              autoImportSiteSubtitles={autoImportSiteSubtitles}
+              setAutoImportSiteSubtitles={setAutoImportSiteSubtitles}
               thinkingBudgets={thinkingBudgets}
               setThinkingBudgets={setThinkingBudgets}
               customGeminiModels={customGeminiModels}

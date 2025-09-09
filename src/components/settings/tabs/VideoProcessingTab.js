@@ -37,6 +37,8 @@ const VideoProcessingTab = ({
   setUseCookiesForDownload,
   enableYoutubeSearch,
   setEnableYoutubeSearch,
+  autoImportSiteSubtitles,
+  setAutoImportSiteSubtitles,
   customGeminiModels,
   setCustomGeminiModels,
   // New prop for gemini effects toggle
@@ -350,6 +352,27 @@ const VideoProcessingTab = ({
             <h4>{t('settings.downloadSettings', 'Download Settings')}</h4>
           </div>
           <div className="settings-card-content">
+            {/* Auto-import site subtitles (new) */}
+            <div className="compact-setting">
+              <div className="setting-header">
+                <label htmlFor="auto-import-site-subtitles">
+                  {t('settings.autoImportSiteSubtitles', 'Auto-import site subtitles (when available)')}
+                </label>
+                <div className="material-switch-container">
+                  <MaterialSwitch
+                    id="auto-import-site-subtitles"
+                    checked={autoImportSiteSubtitles}
+                    onChange={(e) => setAutoImportSiteSubtitles(e.target.checked)}
+                    ariaLabel={t('settings.autoImportSiteSubtitles', 'Auto-import site subtitles (when available)')}
+                    icons={true}
+                  />
+                </div>
+              </div>
+              <p className="setting-description">
+                {t('settings.autoImportSiteSubtitlesDescription', 'When available, automatically fetch and prefill subtitles that come from the site while the video is downloading. You can replace them later by uploading your own or regenerating.')}
+              </p>
+            </div>
+
             {/* Enable YouTube Search Setting */}
             <div className="compact-setting">
               <div className="setting-header">
