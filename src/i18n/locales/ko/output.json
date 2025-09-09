@@ -102,5 +102,6 @@
   "semiAutoGenerate": "반자동\u00a0자막\u00a0생성",
   "downloadAndGenerateSemiAuto": "다운로드 +\u00a0반자동 자막\u00a0생성",
   "autoFlow": "자동\u00a0자막\u00a0생성",
-  "downloadAndGenerateAuto": "다운로드 +\u00a0자동 자막\u00a0생성"
+  "downloadAndGenerateAuto": "다운로드 +\u00a0자동 자막\u00a0생성",
+  "semiAutoTooltip": "영상 분석이 필수가 아니므로 요청 수와 토큰을 절약합니다"
 }

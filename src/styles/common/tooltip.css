@@ -1,0 +1,93 @@
+/* Reusable tooltip styles (token-aware, balanced text, outlined arrow) */
+
+.oc-tooltip-wrapper {
+  position: relative;
+  display: inline-flex;
+}
+
+/* Trigger container so wrapper hover works even if child is disabled */
+.oc-tooltip-trigger {
+  display: inline-flex;
+}
+
+/* Tooltip box positioning */
+.oc-tooltip {
+  position: absolute;
+  left: 50%;
+  bottom: 100%; /* top placement */
+  transform: translate(-50%, -8px);
+  pointer-events: none;
+  opacity: 0;
+  transition: opacity 0.15s ease, transform 0.15s ease;
+  z-index: 1000;
+}
+
+/* Show on hover */
+.oc-tooltip-wrapper:hover .oc-tooltip {
+  opacity: 1;
+  transform: translate(-50%, -12px);
+}
+
+.oc-tooltip-content {
+  background: var(--tooltip-bg, #fff);
+  color: var(--tooltip-fg, var(--md-on-surface));
+  padding: 10px 12px;
+  font-size: 13px;
+  line-height: 1.35;
+  border-radius: 24px;
+  border: 1px solid var(--tooltip-border, var(--md-outline-variant));
+  box-shadow: var(--tooltip-shadow, var(--md-elevation-level3));
+  display: inline-block;
+  text-align: center;
+  position: relative;
+}
+
+/* Outlined arrow (border + fill) */
+.oc-tooltip-content::before,
+.oc-tooltip-content::after {
+  content: '';
+  position: absolute;
+  top: 100%;
+  left: 50%;
+  transform: translateX(-50%);
+  width: 0;
+  height: 0;
+  border-style: solid;
+}
+
+/* Border arrow (slightly larger) */
+.oc-tooltip-content::before {
+  border-width: 7px 7px 0 7px;
+  border-color: var(--tooltip-border, var(--md-outline-variant)) transparent transparent transparent;
+}
+
+/* Fill arrow (slightly smaller, overlays border to create outline) */
+.oc-tooltip-content::after {
+  margin-top: -1px; /* pull up to reveal the border outline */
+  border-width: 6px 6px 0 6px;
+  border-color: var(--tooltip-bg, #fff) transparent transparent transparent;
+}
+
+/* Smart text balance for tooltip content */
+.balanced-text {
+  text-wrap: balance;
+  -webkit-text-wrap: balance;
+  word-break: keep-all;
+  hyphens: auto;
+}
+
+/* Theme variables for light/dark using Material tokens */
+:root[data-theme='light'] .oc-tooltip-content {
+  --tooltip-bg: #ffffff;
+  --tooltip-fg: var(--md-on-surface);
+  --tooltip-border: var(--md-outline-variant);
+  --tooltip-shadow: var(--md-elevation-level3);
+}
+
+:root[data-theme='dark'] .oc-tooltip-content {
+  --tooltip-bg: var(--md-surface-3);
+  --tooltip-fg: var(--md-on-surface);
+  --tooltip-border: color-mix(in srgb, var(--md-outline-variant), transparent 35%);
+  --tooltip-shadow: var(--md-elevation-level4);
+}
+

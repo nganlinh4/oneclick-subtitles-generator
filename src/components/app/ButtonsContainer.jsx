@@ -8,6 +8,8 @@ import { abortAllRequests } from '../../services/geminiService';
 import { hasValidDownloadedVideo } from '../../utils/videoUtils';
 import { showInfoToast, showErrorToast } from '../../utils/toastUtils';
 import '../../styles/ButtonTextBalance.css';
+import Tooltip from '../common/Tooltip';
+
 
 /**
  * Component for rendering the buttons container
@@ -65,7 +67,7 @@ const ButtonsContainer = ({
 
   // Ref for WavyProgressIndicator animations
   const wavyProgressRef = useRef(null);
-  
+
   // Refs to track current state for autoflow (to avoid closure issues)
   const currentStateRef = useRef({
     uploadedFile: null,
@@ -78,14 +80,14 @@ const ButtonsContainer = ({
   const lastAutoTriggeredFileRef = useRef(null);
   const lastAutoTriggeredUrlRef = useRef(null);
   const prevSelectedUrlRef = useRef(null);
-  
+
   // Auto-generate flow implementation
   const startAutoGenerateFlow = async () => {
     if (isAutoGenerating) return;
-    
+
     setIsAutoGenerating(true);
     autoFlowAbortedRef.current = false;
-    
+
     try {
       // Step 0: Save current subtitle state (especially if cleared/empty)
       console.log('[AutoFlow] Step 0: Saving current subtitle state...');
@@ -96,11 +98,11 @@ const ButtonsContainer = ({
         // Wait a moment for save to complete
         await new Promise(resolve => setTimeout(resolve, 500));
       }
-      
+
       // Step 1: Trigger video loading (semi-automatic generate)
       setAutoFlowStep('loading');
       console.log('[AutoFlow] Step 1: Triggering video load...');
-      
+
       // Click the semi-automatic generate button to trigger video loading
       try {
         console.log('[AutoFlow] Calling handleGenerateSubtitles...');
@@ -110,33 +112,33 @@ const ButtonsContainer = ({
         console.error('[AutoFlow] Error calling handleGenerateSubtitles:', error);
         throw error;
       }
-      
+
       // Wait for video to be loaded (either uploaded or downloaded)
       console.log('[AutoFlow] Waiting for video to be ready...');
       await waitForVideoReady();
       console.log('[AutoFlow] Video ready, continuing to step 2');
-      
+
       if (autoFlowAbortedRef.current) return;
-      
+
       // Step 2: Trigger video analysis
       setAutoFlowStep('analyzing');
       console.log('[AutoFlow] Step 2: Starting video analysis...');
-      
+
       // Wait a moment for buttons to be ready after video load
       await new Promise(resolve => setTimeout(resolve, 500));
-      
+
       // Find the video analysis button - check for either the button or its container
       const analysisButton = document.querySelector('.video-analysis-button, .video-analysis-button-container button');
       console.log('[AutoFlow] Found analysis button:', analysisButton);
-      
+
       if (analysisButton && !analysisButton.disabled) {
         // Check if it already has analysis (edit mode)
         const hasAnalysis = analysisButton.classList.contains('has-analysis');
-        
+
         if (!hasAnalysis) {
           console.log('[AutoFlow] Triggering video analysis...');
           analysisButton.click();
-          
+
           // Wait for analysis to complete
           await waitForAnalysisComplete();
         } else {
@@ -149,13 +151,13 @@ const ButtonsContainer = ({
         // Show info toast about skipping analysis
         showInfoToast(t('autoFlow.analysisSkipped', 'Analysis skipped, continuing with default settings'), 3000);
       }
-      
+
       if (autoFlowAbortedRef.current) return;
-      
+
       // Step 3: Trigger Ctrl+A to select all and open processing modal
       setAutoFlowStep('processing');
       console.log('[AutoFlow] Step 3: Selecting all timeline and opening processing modal...');
-      
+
       // Dispatch Ctrl+A keyboard event
       const ctrlAEvent = new KeyboardEvent('keydown', {
         key: 'a',
@@ -164,33 +166,33 @@ const ButtonsContainer = ({
         bubbles: true
       });
       document.dispatchEvent(ctrlAEvent);
-      
+
       // Wait a moment for modal to open
       await new Promise(resolve => setTimeout(resolve, 1000));
-      
+
       if (autoFlowAbortedRef.current) return;
-      
+
       // Step 4: Click the process button in the modal
       console.log('[AutoFlow] Step 4: Starting processing...');
       const processBtn = document.querySelector('.video-processing-modal .process-btn');
       if (processBtn && !processBtn.disabled) {
         processBtn.click();
       }
-      
+
       // Auto-flow complete
       setAutoFlowStep('complete');
       console.log('[AutoFlow] Auto-generation flow completed successfully');
-      
+
     } catch (error) {
       console.error('[AutoFlow] Error during auto-generation:', error);
-      // Show error toast but continue gracefully  
+      // Show error toast but continue gracefully
       showErrorToast(t('autoFlow.error', 'Auto-generation encountered an error: {{message}}', { message: error.message }), 4000);
     } finally {
       setIsAutoGenerating(false);
       setAutoFlowStep('');
     }
   };
-  
+
   // Helper function to wait for video to be ready
   const waitForVideoReady = () => {
     console.log('[AutoFlow] waitForVideoReady started, initial state:', {
@@ -198,17 +200,17 @@ const ButtonsContainer = ({
       uploadedFileData: !!currentStateRef.current.uploadedFileData,
       isDownloading: currentStateRef.current.isDownloading
     });
-    
+
     return new Promise((resolve) => {
       let checkCount = 0;
       const maxChecks = 300; // 5 minutes max wait
-      
+
       const checkInterval = setInterval(() => {
         checkCount++;
-        
+
         // Get current state from ref (to avoid closure issues)
         const currentState = currentStateRef.current;
-        
+
         // Log current state every 5 checks
         if (checkCount % 5 === 0) {
           console.log('[AutoFlow] Check #' + checkCount + ', state:', {
@@ -218,7 +220,7 @@ const ButtonsContainer = ({
             downloadProgress: currentState.downloadProgress
           });
         }
-        
+
         // Check if video is ready (uploaded or downloaded)
         // Also check that we're not still downloading
         if ((currentState.uploadedFile || currentState.uploadedFileData) && !currentState.isDownloading) {
@@ -244,7 +246,7 @@ const ButtonsContainer = ({
       }, 1000); // Check every second
     });
   };
-  
+
   // Helper function to wait for analysis to complete
   const waitForAnalysisComplete = () => {
     return new Promise((resolve) => {
@@ -252,10 +254,10 @@ const ButtonsContainer = ({
       // Removed timeout - let analysis run as long as needed
       let modalDetected = false;
       let errorDetected = false;
-      
+
       const checkInterval = setInterval(() => {
         checkCount++;
-        
+
         // Check for error toasts that might have appeared
         const errorToast = document.querySelector('.custom-toast.error');
         if (errorToast && !errorDetected) {
@@ -268,21 +270,21 @@ const ButtonsContainer = ({
           }, 1000);
           return;
         }
-        
+
         // Check for the rules editor modal
         const rulesModal = document.querySelector('.rules-editor-modal');
         const hasRules = localStorage.getItem('transcription_rules');
-        
+
         if (rulesModal) {
           // Rules editor modal is open
           if (!modalDetected) {
             console.log('[AutoFlow] Rules editor modal detected with countdown');
             modalDetected = true;
-            
+
             // Check if countdown is enabled
             const timeoutSetting = localStorage.getItem('video_analysis_timeout') || '10';
             const showCountdown = sessionStorage.getItem('show_rules_editor_countdown') === 'true';
-            
+
             if (timeoutSetting !== 'none' && showCountdown) {
               const timeout = parseInt(timeoutSetting, 10);
               if (!isNaN(timeout) && timeout > 0) {
@@ -292,29 +294,29 @@ const ButtonsContainer = ({
               console.log('[AutoFlow] Rules editor opened without countdown or countdown disabled');
             }
           }
-          
+
           // Just wait while the modal is open
           // The countdown will auto-save or user will manually save/cancel
-          
+
         } else if (modalDetected && !rulesModal) {
           // Modal was open but now closed - analysis/editing is complete
           clearInterval(checkInterval);
           console.log('[AutoFlow] Rules editor modal closed');
-          
+
           // Clean up the countdown flag
           sessionStorage.removeItem('show_rules_editor_countdown');
-          
+
           // Give a small delay to ensure everything is properly saved
           setTimeout(() => {
             resolve();
           }, 500);
-          
+
         } else if (!modalDetected && hasRules && checkCount > 10) {
           // Rules exist but modal never opened (might happen if analysis was very fast)
           clearInterval(checkInterval);
           console.log('[AutoFlow] Analysis complete (rules saved without modal)');
           resolve();
-          
+
         } else if (autoFlowAbortedRef.current) {
           clearInterval(checkInterval);
           console.log('[AutoFlow] Analysis aborted');
@@ -324,7 +326,7 @@ const ButtonsContainer = ({
       }, 500); // Check every 500ms for faster response
     });
   };
-  
+
   // Stop auto-flow if user manually intervenes
   const stopAutoFlow = () => {
     if (isAutoGenerating) {
@@ -399,7 +401,7 @@ const ButtonsContainer = ({
       }
     }
   }, [selectedVideo, isGenerating, isDownloading, isAutoGenerating, isSrtOnlyMode, handleGenerateSubtitles]);
-  
+
   // Handle entrance/disappear animations for WavyProgressIndicator
   useEffect(() => {
     if (isDownloading && wavyProgressRef.current) {
@@ -562,61 +564,61 @@ const ButtonsContainer = ({
       {validateInput() && retryingSegments.length === 0 && !isRetrying && !segmentsStatus.some(segment => segment.status === 'retrying') && (
         <>
           {/* Semi-automatic Generate Button */}
-          <button
-            className={`generate-btn semi-auto ${isGenerating || isDownloading ? 'processing' : ''}`}
-            onClick={handleGenerateSubtitles}
-            disabled={isGenerating || isDownloading || isAutoGenerating}
-        >
-          {/* Static Gemini icons for fallback */}
-          <div className="gemini-icon-container">
-            <div className="gemini-mini-icon random-1 size-sm">
-              <svg viewBox="0 0 28 28" fill="none" xmlns="http://www.w3.org/2000/svg">
-                <path d="M14 28C14 26.0633 13.6267 24.2433 12.88 22.54C12.1567 20.8367 11.165 19.355 9.905 18.095C8.645 16.835 7.16333 15.8433 5.46 15.12C3.75667 14.3733 1.93667 14 0 14C1.93667 14 3.75667 13.6383 5.46 12.915C7.16333 12.1683 8.645 11.165 9.905 9.905C11.165 8.645 12.1567 7.16333 12.88 5.46C13.6267 3.75667 14 1.93667 14 0C14 1.93667 14.3617 3.75667 15.085 5.46C15.8317 7.16333 16.835 8.645 18.095 9.905C19.355 11.165 20.8367 12.1683 22.54 12.915C24.2433 13.6383 26.0633 14 28 14C26.0633 14 24.2433 14.3733 22.54 15.12C20.8367 15.8433 19.355 16.835 18.095 18.095C16.835 19.355 15.8317 20.8367 15.085 22.54C14.3617 24.2433 14 26.0633 14 28Z" stroke="currentColor" strokeWidth="1.5"/>
-              </svg>
-            </div>
-            <div className="gemini-mini-icon random-3 size-md">
-              <svg viewBox="0 0 28 28" fill="none" xmlns="http://www.w3.org/2000/svg">
-                <path d="M14 28C14 26.0633 13.6267 24.2433 12.88 22.54C12.1567 20.8367 11.165 19.355 9.905 18.095C8.645 16.835 7.16333 15.8433 5.46 15.12C3.75667 14.3733 1.93667 14 0 14C1.93667 14 3.75667 13.6383 5.46 12.915C7.16333 12.1683 8.645 11.165 9.905 9.905C11.165 8.645 12.1567 7.16333 12.88 5.46C13.6267 3.75667 14 1.93667 14 0C14 1.93667 14.3617 3.75667 15.085 5.46C15.8317 7.16333 16.835 8.645 18.095 9.905C19.355 11.165 20.8367 12.1683 22.54 12.915C24.2433 13.6383 26.0633 14 28 14C26.0633 14 24.2433 14.3733 22.54 15.12C20.8367 15.8433 19.355 16.835 18.095 18.095C16.835 19.355 15.8317 20.8367 15.085 22.54C14.3617 24.2433 14 26.0633 14 28Z" stroke="currentColor" strokeWidth="1.5"/>
-              </svg>
-            </div>
-          </div>
-          {isGenerating || isDownloading ? (
-            <span className="processing-text-container">
-              {/* Use opposite theme for better contrast; also override shape color directly */}
-              <LoadingIndicator
-                theme={isDarkTheme ? 'light' : 'dark'}
-                showContainer={false}
-                size={16}
-                className="buttons-processing-loading"
-                color={isDarkTheme ? '#324574' : '#FFFFFF'}
-              />
-              {/* Replace percentage text with plain downloading text + WavyProgressIndicator */}
-              {isDownloading ? (
-                <div className="processing-wavy" style={{ display: 'flex', alignItems: 'center', gap: 8, width: '100%' }}>
-                  <WavyProgressIndicator
-                    ref={wavyProgressRef}
-                    progress={Math.max(0, Math.min(1, (downloadProgress || 0) / 100))}
-                    animate={true}
-                    showStopIndicator={true}
-                    waveSpeed={1.2}
-                    width={140}
-                    autoAnimateEntrance={false}
-                    color={isDarkTheme ? '#FFFFFF' : '#FFFFFF'}
-                    trackColor={isDarkTheme ? '#404659' : 'rgba(255,255,255,0.35)'}
-                  />
+          <Tooltip content={t('output.semiAutoTooltip', 'Tiết kiệm request và token vì không bắt buộc phân tích video')}>
+            <button
+              className={`generate-btn semi-auto ${isGenerating || isDownloading ? 'processing' : ''}`}
+              onClick={handleGenerateSubtitles}
+              disabled={isGenerating || isDownloading || isAutoGenerating}
+            >
+              {/* Static Gemini icons for fallback */}
+              <div className="gemini-icon-container">
+                <div className="gemini-mini-icon random-1 size-sm">
+                  <svg viewBox="0 0 28 28" fill="none" xmlns="http://www.w3.org/2000/svg">
+                    <path d="M14 28C14 26.0633 13.6267 24.2433 12.88 22.54C12.1567 20.8367 11.165 19.355 9.905 18.095C8.645 16.835 7.16333 15.8433 5.46 15.12C3.75667 14.3733 1.93667 14 0 14C1.93667 14 3.75667 13.6383 5.46 12.915C7.16333 12.1683 8.645 11.165 9.905 9.905C11.165 8.645 12.1567 7.16333 12.88 5.46C13.6267 3.75667 14 1.93667 14 0C14 1.93667 14.3617 3.75667 15.085 5.46C15.8317 7.16333 16.835 8.645 18.095 9.905C19.355 11.165 20.8367 12.1683 22.54 12.915C24.2433 13.6383 26.0633 14 28 14C26.0633 14 24.2433 14.3733 22.54 15.12C20.8367 15.8433 19.355 16.835 18.095 18.095C16.835 19.355 15.8317 20.8367 15.085 22.54C14.3617 24.2433 14 26.0633 14 28Z" stroke="currentColor" strokeWidth="1.5"/>
+                  </svg>
                 </div>
-              ) : (
-                <span className="processing-text">
-                  {t('output.processingVideo').split('...')[0]}
+                <div className="gemini-mini-icon random-3 size-md">
+                  <svg viewBox="0 0 28 28" fill="none" xmlns="http://www.w3.org/2000/svg">
+                    <path d="M14 28C14 26.0633 13.6267 24.2433 12.88 22.54C12.1567 20.8367 11.165 19.355 9.905 18.095C8.645 16.835 7.16333 15.8433 5.46 15.12C3.75667 14.3733 1.93667 14 0 14C1.93667 14 3.75667 13.6383 5.46 12.915C7.16333 12.1683 8.645 11.165 9.905 9.905C11.165 8.645 12.1567 7.16333 12.88 5.46C13.6267 3.75667 14 1.93667 14 0C14 1.93667 14.3617 3.75667 15.085 5.46C15.8317 7.16333 16.835 8.645 18.095 9.905C19.355 11.165 20.8367 12.1683 22.54 12.915C24.2433 13.6383 26.0633 14 28 14C26.0633 14 24.2433 14.3733 22.54 15.12C20.8367 15.8433 19.355 16.835 18.095 18.095C16.835 19.355 15.8317 20.8367 15.085 22.54C14.3617 24.2433 14 26.0633 14 28Z" stroke="currentColor" strokeWidth="1.5"/>
+                  </svg>
+                </div>
+              </div>
+              {isGenerating || isDownloading ? (
+                <span className="processing-text-container">
+                  <LoadingIndicator
+                    theme={isDarkTheme ? 'light' : 'dark'}
+                    showContainer={false}
+                    size={16}
+                    className="buttons-processing-loading"
+                    color={isDarkTheme ? '#324574' : '#FFFFFF'}
+                  />
+                  {isDownloading ? (
+                    <div className="processing-wavy" style={{ display: 'flex', alignItems: 'center', gap: 8, width: '100%' }}>
+                      <WavyProgressIndicator
+                        ref={wavyProgressRef}
+                        progress={Math.max(0, Math.min(1, (downloadProgress || 0) / 100))}
+                        animate={true}
+                        showStopIndicator={true}
+                        waveSpeed={1.2}
+                        width={140}
+                        autoAnimateEntrance={false}
+                        color={isDarkTheme ? '#FFFFFF' : '#FFFFFF'}
+                        trackColor={isDarkTheme ? '#404659' : 'rgba(255,255,255,0.35)'}
+                      />
+                    </div>
+                  ) : (
+                    <span className="processing-text">
+                      {t('output.processingVideo').split('...')[0]}
+                    </span>
+                  )}
                 </span>
-              )}
-            </span>
-          ) : isSrtOnlyMode ? t('output.srtOnlyMode', 'Working with SRT only') :
-            hasUrlAndSrtOnly ? t('output.downloadAndViewWithSrt', 'Download + View with Uploaded SRT') :
-            selectedVideo && !uploadedFile ? t('output.downloadAndGenerateSemiAuto', 'Download + Generate (semi-auto)') :
-            t('output.semiAutoGenerate', 'Semi-auto')}
-          </button>
-          
+              ) : isSrtOnlyMode ? t('output.srtOnlyMode', 'Working with SRT only') :
+                hasUrlAndSrtOnly ? t('output.downloadAndViewWithSrt', 'Download + View with Uploaded SRT') :
+                selectedVideo && !uploadedFile ? t('output.downloadAndGenerateSemiAuto', 'Download + Generate (semi-auto)') :
+                t('output.semiAutoGenerate', 'Semi-auto')}
+            </button>
+          </Tooltip>
+
           {/* Auto Generate Button */}
           <button
             className={`generate-btn auto-generate ${isAutoGenerating ? 'processing' : ''}`}
@@ -712,7 +714,7 @@ const ButtonsContainer = ({
             if (isRetrying) {
               setIsRetrying(false);
             }
-            
+
             // Also reset processing segment state
             if (isProcessingSegment) {
               setIsProcessingSegment(false);
@@ -721,7 +723,7 @@ const ButtonsContainer = ({
                 window.dispatchEvent(new CustomEvent('processing-ranges', { detail: { ranges: [] } }));
               } catch {}
             }
-            
+
             // The state will be updated by the event listener in useSubtitles hook
           }}
           title={t('output.forceStopTooltip', 'Force stop all Gemini requests')}

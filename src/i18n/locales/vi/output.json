@@ -102,5 +102,6 @@
   "semiAutoGenerate": "Tạo sub\u00a0bán tự động",
   "downloadAndGenerateSemiAuto": "Tải +\u00a0Tạo sub bán tự động",
   "autoFlow": "Tạo sub\u00a0tự động",
-  "downloadAndGenerateAuto": "Tải +\u00a0Tạo sub tự động"
+  "downloadAndGenerateAuto": "Tải +\u00a0Tạo sub tự động",
+  "semiAutoTooltip": "Tiết kiệm request và token vì không bắt buộc phân tích video"
 }
