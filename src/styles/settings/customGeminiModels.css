@@ -54,34 +54,36 @@
   align-items: center;
 }
 
-.edit-model-btn,
-.delete-model-btn {
+.custom-model-item .edit-model-btn,
+.custom-model-item .delete-model-btn {
   display: flex;
   align-items: center;
   justify-content: center;
   width: 32px;
   height: 32px;
+  padding: 0; /* Override model management padding */
   border: none;
-  border-radius: 8px;
+  border-radius: 24px;
   cursor: pointer;
   transition: all 0.2s var(--md-easing-standard);
   background: transparent;
+  gap: 0; /* Override model management gap */
 }
 
-.edit-model-btn {
+.custom-model-item .edit-model-btn {
   color: var(--md-primary);
 }
 
-.edit-model-btn:hover {
+.custom-model-item .edit-model-btn:hover {
   background-color: rgba(var(--md-primary-rgb), 0.1);
   color: var(--md-primary);
 }
 
-.delete-model-btn {
+.custom-model-item .delete-model-btn {
   color: var(--md-error);
 }
 
-.delete-model-btn:hover {
+.custom-model-item .delete-model-btn:hover {
   background-color: rgba(var(--md-error-rgb), 0.1);
   color: var(--md-error);
 }
@@ -216,8 +218,8 @@
     gap: 4px;
   }
   
-  .edit-model-btn,
-  .delete-model-btn {
+  .custom-model-item .edit-model-btn,
+  .custom-model-item .delete-model-btn {
     width: 28px;
     height: 28px;
   }

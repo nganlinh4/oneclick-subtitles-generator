@@ -1,0 +1,126 @@
+/* Audio Alignment Notification Styles */
+
+.audio-alignment-notification-container {
+  position: fixed;
+  bottom: 20px;
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 9999;
+  pointer-events: auto;
+}
+
+.audio-alignment-notification {
+  display: flex;
+  align-items: center;
+  padding: 12px 16px;
+  border-radius: 8px;
+  box-shadow: var(--md-elevation-level3);
+  min-width: 300px;
+  max-width: 600px;
+
+  /* Warning styling - using proper Material Design warning colors */
+  background-color: color-mix(in srgb, var(--warning-color), white 85%);
+  color: var(--warning-color);
+  border-left: 4px solid var(--warning-color);
+  
+  /* Animation */
+  opacity: 0;
+  transform: translateY(100%);
+  transition: all 0.3s var(--md-easing-emphasized);
+  pointer-events: none;
+}
+
+.audio-alignment-notification.visible {
+  opacity: 1;
+  transform: translateY(0);
+  pointer-events: auto;
+}
+
+/* Notification icon */
+.audio-alignment-notification .notification-icon {
+  margin-right: 12px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 20px;
+  flex-shrink: 0;
+  color: var(--warning-color);
+}
+
+/* Notification message */
+.audio-alignment-notification .notification-message {
+  flex: 1;
+  font-size: 0.9rem;
+  line-height: 1.4;
+  font-weight: 500;
+}
+
+/* Close button */
+.audio-alignment-notification .notification-close-btn {
+  background: none;
+  border: 1px solid color-mix(in srgb, var(--warning-color), transparent 70%);
+  color: var(--warning-color);
+  cursor: pointer;
+  padding: 6px;
+  border-radius: 6px;
+  transition: all 0.2s ease;
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  margin-left: 12px;
+}
+
+.audio-alignment-notification .notification-close-btn:hover {
+  background-color: color-mix(in srgb, var(--warning-color), transparent 85%);
+  transform: scale(1.05);
+}
+
+.audio-alignment-notification .notification-close-btn:focus {
+  outline: 2px solid var(--warning-color);
+  outline-offset: 2px;
+}
+
+.audio-alignment-notification .notification-close-btn:active {
+  transform: scale(0.95);
+}
+
+/* Dark theme support */
+[data-theme="dark"] .audio-alignment-notification {
+  background-color: color-mix(in srgb, var(--warning-color), black 85%);
+  color: var(--warning-color);
+  border-left-color: var(--warning-color);
+}
+
+[data-theme="dark"] .audio-alignment-notification .notification-icon {
+  color: var(--warning-color);
+}
+
+[data-theme="dark"] .audio-alignment-notification .notification-close-btn {
+  border-color: color-mix(in srgb, var(--warning-color), transparent 70%);
+  color: var(--warning-color);
+}
+
+[data-theme="dark"] .audio-alignment-notification .notification-close-btn:hover {
+  background-color: color-mix(in srgb, var(--warning-color), transparent 85%);
+}
+
+[data-theme="dark"] .audio-alignment-notification .notification-close-btn:focus {
+  outline-color: var(--warning-color);
+}
+
+/* Responsive design */
+@media (max-width: 768px) {
+  .audio-alignment-notification-container {
+    left: 16px;
+    right: 16px;
+    transform: translateX(0);
+  }
+  
+  .audio-alignment-notification {
+    min-width: auto;
+    max-width: none;
+  }
+}

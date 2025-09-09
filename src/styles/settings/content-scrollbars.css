@@ -15,7 +15,7 @@
   padding: 20px 16px 25px 25px; /* Base padding */
   overflow-y: auto;
   flex: 1; /* Use flex instead of fixed height */
-  min-height: 300px; /* Reduced minimum height */
+  min-height: 50px; /* Reduced minimum height */
   /* Firefox */
   scrollbar-width: thin;
   scrollbar-color: var(--border-color) var(--background-secondary);

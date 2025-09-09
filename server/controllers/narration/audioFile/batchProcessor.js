@@ -77,8 +77,8 @@ const findBlankSpaces = (segments) => {
     const currentSegment = sortedSegments[i];
     const nextSegment = sortedSegments[i + 1];
 
-    // Calculate the effective end time (allowing 0.2s overlap at the end)
-    const currentEffectiveEnd = currentSegment.naturalEnd - 0.2;
+    // Calculate the effective end time (allowing 0.3s overlap at the end)
+    const currentEffectiveEnd = currentSegment.naturalEnd - 0.3;
 
     // Check if there's a gap between current segment's effective end and next segment's start
     if (nextSegment.start > currentEffectiveEnd) {
@@ -192,7 +192,7 @@ const calculateDistributedGroupShift = (segmentsToShift, blankSpaces, requiredSh
  * This creates a more natural narration by ensuring segments don't talk over each other
  *
  * Improvements:
- * 1. Allows 0.2s overlap at the end of each segment (more natural)
+ * 1. Allows 0.3s overlap at the end of each segment (more natural)
  * 2. When large adjustments (>0.5s) are needed, tries to find blank spaces to the left
  *    to move segments into, reducing the overall audio length
  *
@@ -250,8 +250,8 @@ const analyzeAndAdjustSegments = async (audioSegments) => {
     const previousSegment = adjustedSegments[i - 1];
 
     // Check if this segment would overlap with the previous one
-    // Allow 0.2s overlap at the end of the previous segment
-    const previousEffectiveEnd = previousSegment.naturalEnd - 0.2;
+    // Allow 0.3s overlap at the end of the previous segment
+    const previousEffectiveEnd = previousSegment.naturalEnd - 0.3;
     const wouldOverlap = segment.start < previousEffectiveEnd;
 
     if (wouldOverlap) {
@@ -276,7 +276,7 @@ const analyzeAndAdjustSegments = async (audioSegments) => {
 
       // If the adjustment is significant (>0.5s), try to shift THIS segment left into blank spaces
       if (basicShiftAmount > 0.5) {
-        console.log(`Large adjustment needed (${basicShiftAmount.toFixed(2)}s), looking for blank spaces to shift this segment left...`);
+        console.log(`Adjustment needed (${basicShiftAmount.toFixed(2)}s), looking for blank spaces to minimize duration extension...`);
 
         // Find all blank spaces in the current adjusted segments
         const blankSpaces = findBlankSpaces(adjustedSegments);
@@ -285,24 +285,30 @@ const analyzeAndAdjustSegments = async (audioSegments) => {
           console.log(`Found ${blankSpaces.length} blank spaces:`,
             blankSpaces.map(space => `${space.duration.toFixed(2)}s gap after segment ${space.afterSegmentId}`));
 
-          // Calculate distributed shift for ONLY this segment across multiple blank spaces
+          // Calculate distributed shift for this segment across multiple blank spaces
           const distributedShiftResult = calculateDistributedGroupShift([segment], blankSpaces, basicShiftAmount);
 
           if (distributedShiftResult.canUseBlankSpaces && distributedShiftResult.totalShiftAmount > 0) {
-            // Apply the distributed shift to ONLY this segment
+            // Apply the distributed shift to reduce the rightward push
             const totalLeftShift = Math.min(distributedShiftResult.totalShiftAmount, basicShiftAmount);
 
-            console.log(`Applying distributed shift across ${distributedShiftResult.distributedShifts.length} blank spaces:`);
+            console.log(`Using distributed shift across ${distributedShiftResult.distributedShifts.length} blank spaces:`);
             distributedShiftResult.distributedShifts.forEach((shift, index) => {
               console.log(`  Space ${index + 1}: ${shift.shiftAmount.toFixed(2)}s into gap after segment ${shift.blankSpace.afterSegmentId} (weight: ${shift.weight.toFixed(1)})`);
             });
-            console.log(`  Total shift: ${totalLeftShift.toFixed(2)}s left for segment ${segment.subtitle_id} only`);
-
-            // Shift ONLY the current segment left instead of right
-            finalAdjustedStart = segment.start - totalLeftShift;
-            finalShiftAmount = -totalLeftShift; // Negative because moving left
-            adjustmentStrategy = distributedShiftResult.strategy;
+            
+            // Reduce the rightward push by the amount we can shift left
+            finalAdjustedStart = basicAdjustedStart - totalLeftShift;
+            finalShiftAmount = finalAdjustedStart - segment.start;
+            adjustmentStrategy = `hybrid-shift-${distributedShiftResult.distributedShifts.length}-spaces`;
+            
+            console.log(`  Net adjustment: ${finalShiftAmount.toFixed(2)}s for segment ${segment.subtitle_id}`);
+          } else {
+            // No usable blank spaces, accept the full rightward push
+            console.log(`No usable blank spaces. Accepting full rightward push of ${basicShiftAmount.toFixed(2)}s`);
           }
+        } else {
+          console.log(`No blank spaces found. Accepting full rightward push of ${basicShiftAmount.toFixed(2)}s`);
         }
       }
 
@@ -350,30 +356,56 @@ const analyzeAndAdjustSegments = async (audioSegments) => {
     }
   });
 
+  // Skip the final 0.5s earlier adjustment to avoid creating new overlaps
+  // Since we're strictly avoiding overlaps, we don't want to risk creating new ones
+  console.log(`Skipping final timing adjustment to maintain strict overlap prevention.`);
+  const finalAdjustedSegments = adjustedSegments;
+
   if (adjustedCount > 0) {
     console.log(`Smart overlap resolution complete: Adjusted ${adjustedCount} of ${audioSegments.length} segments (${leftMoves} moved left, ${rightMoves} moved right) for optimized narration flow.`);
     if (maxAdjustmentSegment) {
       console.log(`Maximum adjustment: Segment ${maxAdjustmentSegment.segmentId} pushed ${maxAdjustmentSegment.adjustmentAmount.toFixed(2)}s right via ${maxAdjustmentSegment.strategy}`);
     }
+    
+    // Calculate total duration extension
+    const originalLastEnd = audioSegments[audioSegments.length - 1].end;
+    const adjustedLastEnd = finalAdjustedSegments[finalAdjustedSegments.length - 1].naturalEnd;
+    const durationExtension = adjustedLastEnd - originalLastEnd;
+    if (durationExtension > 0) {
+      console.log(`  - Total duration extended by ${durationExtension.toFixed(2)}s to prevent overlaps`);
+    }
   } else {
     console.log(`No overlaps detected among ${audioSegments.length} segments. No adjustments needed.`);
   }
-
-  // Final step: Move all segments 0.5s earlier for better timing
-  console.log(`Applying final timing adjustment: moving all segments 0.5s earlier...`);
-  const finalAdjustedSegments = adjustedSegments.map(segment => {
-    const newStart = Math.max(0, segment.start - 0.5); // Don't go below 0
-    return {
-      ...segment,
-      start: newStart,
-      naturalEnd: newStart + segment.actualDuration,
-      // Track this final adjustment
-      finalTimingAdjustment: segment.start - newStart, // How much we actually moved (might be less than 0.5 if original start was < 0.5)
-      originalStartBeforeFinalAdjustment: segment.start
-    };
-  });
-
-  console.log(`Final timing adjustment applied: all segments moved 0.5s earlier (or to start at 0s minimum).`);
+  
+  // Verify overlaps don't exceed the allowed 0.3s
+  let hasExcessiveOverlaps = false;
+  let allowedOverlapCount = 0;
+  for (let i = 1; i < finalAdjustedSegments.length; i++) {
+    const prev = finalAdjustedSegments[i - 1];
+    const curr = finalAdjustedSegments[i];
+    const overlapAmount = prev.naturalEnd - curr.start;
+    
+    if (overlapAmount > 0.3) {
+      // This is more than the allowed 0.3s overlap
+      hasExcessiveOverlaps = true;
+      console.error(`ERROR: Excessive overlap detected between segments ${prev.subtitle_id} and ${curr.subtitle_id}`);
+      console.error(`  Overlap: ${overlapAmount.toFixed(2)}s (max allowed: 0.3s)`);
+      console.error(`  Previous ends at ${prev.naturalEnd.toFixed(2)}s, Current starts at ${curr.start.toFixed(2)}s`);
+    } else if (overlapAmount > 0) {
+      // This is within the allowed 0.3s overlap
+      allowedOverlapCount++;
+    }
+  }
+  
+  if (!hasExcessiveOverlaps) {
+    console.log(`✅ Verification complete: All overlaps within allowed 0.3s threshold.`);
+    if (allowedOverlapCount > 0) {
+      console.log(`  - ${allowedOverlapCount} segments have natural overlaps (≤0.3s) for smooth transitions`);
+    }
+  } else {
+    console.error(`❌ Some segments have excessive overlaps exceeding the 0.3s threshold!`);
+  }
 
   // Return both adjusted segments and adjustment statistics
   return {
@@ -465,9 +497,10 @@ const processBatch = async (audioSegments, outputPath, batchIndex, totalDuration
       // If there's only one segment, just map it directly to output
       filterComplex += `${amixInputs[0]}asetpts=PTS-STARTPTS[aout]`;
     } else {
-      // For multiple segments, use amix with normalize=0 to prevent volume reduction during overlaps
-      // This is the key setting that ensures overlapping segments maintain their volume
-      filterComplex += `${amixInputs.join('')}amix=inputs=${segmentsToProcess.length}:dropout_transition=0:normalize=0[aout]`;
+      // For multiple segments, use amix with appropriate settings
+      // normalize=0 maintains full volume (important since we're preventing overlaps anyway)
+      // dropout_transition=2 provides smooth transitions if any micro-overlaps occur
+      filterComplex += `${amixInputs.join('')}amix=inputs=${segmentsToProcess.length}:dropout_transition=2:normalize=0[aout]`;
     }
   } else {
     // If there are no audio segments, the output is just the silent track

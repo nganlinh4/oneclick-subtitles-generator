@@ -48,6 +48,22 @@
   }
 }
 
+/* Smooth zoom-in with soft landing - no bounce */
+@keyframes subtleZoomIn {
+  0% {
+    opacity: 0;
+    transform: scale(0.94) translateZ(0);
+  }
+  70% {
+    opacity: 0.95;
+    transform: scale(0.99) translateZ(0);
+  }
+  100% {
+    opacity: 1;
+    transform: scale(1) translateZ(0);
+  }
+}
+
 /* State transition animations */
 .translation-controls {
   position: relative;
@@ -132,11 +148,15 @@
   animation-fill-mode: both;
 }
 
-/* Animation for sliders */
-.slider-with-value {
-  animation: slideInRight var(--md-duration-medium2) var(--md-easing-emphasized);
+/* Animation for sliders - Smooth zoom with soft landing */
+.slider-with-value,
+.slider-control,
+.standard-slider-container {
+  animation: subtleZoomIn 0.35s cubic-bezier(0.25, 0.1, 0.25, 1);
   animation-fill-mode: both;
-  animation-delay: 150ms;
+  animation-delay: 0ms;
+  transform-origin: center center;
+  will-change: transform, opacity;
 }
 
 /* Animation for translation actions */
