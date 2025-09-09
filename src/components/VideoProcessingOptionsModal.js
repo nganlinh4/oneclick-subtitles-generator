@@ -54,7 +54,7 @@ const VideoProcessingOptionsModal = ({
       setSelectedPromptPreset('timing-generation');
     }
   }, [isOpen, hasUserProvidedSubtitles]);
-  
+
   // REMOVED: Complex analysis recommendation logic - just use what user selected
 
   // If timing-generation is selected but unavailable, fall back to 'settings'
@@ -204,7 +204,7 @@ const VideoProcessingOptionsModal = ({
   const getFpsInterval = (value) => {
     // Calculate the interval in seconds between frames
     const interval = 1 / value;
-    
+
     // Format the interval nicely - always in seconds
     let formattedInterval;
     if (interval >= 10) {
@@ -221,7 +221,7 @@ const VideoProcessingOptionsModal = ({
         formattedInterval = interval.toFixed(2); // 0.05, 0.04, etc.
       }
     }
-    
+
     return `${formattedInterval}s intervals`;
   };
 
@@ -230,8 +230,9 @@ const VideoProcessingOptionsModal = ({
     const builtInModels = [
       { value: 'gemini-2.5-pro', label: t('settings.modelBestAccuracy', 'Gemini 2.5 Pro (Độ chính xác tốt nhất, dễ bị quá tải)'), maxTokens: 2000000 },
       { value: 'gemini-2.5-flash', label: t('settings.modelSmartFast', 'Gemini 2.5 Flash (Độ chính xác thứ hai)'), maxTokens: 1048575 },
-      { value: 'gemini-2.5-flash-lite', label: t('settings.modelFlash25Lite', 'Gemini 2.5 Flash Lite (Mô hình 2.5 nhanh nhất, dễ lỗi khi tạo sub)'), maxTokens: 1048575 }
-      // Note: Gemini 2.0 models removed as they don't support offset-style requests for timeline segments
+      { value: 'gemini-2.5-flash-lite', label: t('settings.modelFlash25Lite', 'Gemini 2.5 Flash Lite (Mô hình 2.5 nhanh nhất, dễ lỗi khi tạo sub)'), maxTokens: 1048575 },
+      { value: 'gemini-2.0-flash', label: t('settings.modelThirdBest', 'Gemini 2.0 Flash (Độ chính xác tốt, tốc độ trung bình)'), maxTokens: 1048575 },
+      { value: 'gemini-2.0-flash-lite', label: t('settings.modelFastest', 'Gemini 2.0 Flash Lite (Nhanh nhất, độ chính xác thấp nhất - chỉ thử nghiệm)'), maxTokens: 1048575 }
     ];
 
     const customModels = customGeminiModels.map(model => ({
@@ -241,10 +242,57 @@ const VideoProcessingOptionsModal = ({
       isCustom: true
     }));
 
-    return [...builtInModels, ...customModels];
+    // Disable Gemini 2.0 models when segment start is not near 0 (allow < 5s slack)
+    const startOffsetSec = (typeof selectedSegment?.start === 'number') ? selectedSegment.start : 0;
+    const exceedsStartAllowance = startOffsetSec >= 5; // allow small margin under 5s
+
+    const allModels = [...builtInModels, ...customModels];
+
+    if (exceedsStartAllowance) {
+      return allModels.map(m => {
+        if (m.value === 'gemini-2.0-flash') {
+          return {
+            ...m,
+            disabled: true,
+            label: t('settings.model20FlashDisabled', 'Gemini 2.0 Flash (Điểm bắt đầu phân đoạn phải ở đầu video)')
+          };
+        }
+        if (m.value === 'gemini-2.0-flash-lite') {
+          return {
+            ...m,
+            disabled: true,
+            label: t('settings.model20FlashLiteDisabled', 'Gemini 2.0 Flash Lite (Điểm bắt đầu phân đoạn phải ở đầu video)')
+          };
+        }
+        return m;
+      });
+    }
+
+    return allModels;
   };
 
   const modelOptions = getAllAvailableModels();
+
+
+  // Ensure a valid selectable model is chosen when current selection becomes disabled
+  useEffect(() => {
+    if (!isOpen) return;
+    const startOffsetSec = (typeof selectedSegment?.start === 'number') ? selectedSegment.start : 0;
+    const exceedsStartAllowance = startOffsetSec >= 5;
+
+    // If current selection is disabled under the current start offset, switch to a valid fallback
+    if (exceedsStartAllowance) {
+      const currentIsDisabled = modelOptions?.some(o => o.value === selectedModel && o.disabled);
+      if (currentIsDisabled) {
+        // Prefer 2.5 Flash if available, otherwise first non-disabled option
+        const preferred = modelOptions.find(o => o.value === 'gemini-2.5-flash' && !o.disabled) ||
+                          modelOptions.find(o => !o.disabled);
+        if (preferred && preferred.value !== selectedModel) {
+          setSelectedModel(preferred.value);
+        }
+      }
+    }
+  }, [isOpen, selectedSegment?.start, selectedModel, modelOptions]);
 
   // Listen for storage changes to sync auto-split setting
   useEffect(() => {
@@ -319,13 +367,13 @@ const VideoProcessingOptionsModal = ({
     const checkRulesAvailability = () => {
       const transcriptionRulesStr = localStorage.getItem('transcription_rules');
       let hasRules = false;
-      
+
       if (transcriptionRulesStr && transcriptionRulesStr.trim() !== '' && transcriptionRulesStr !== 'null') {
         try {
           const rules = JSON.parse(transcriptionRulesStr);
           // Check if rules object has any meaningful content
-          hasRules = rules && typeof rules === 'object' && 
-            (Object.keys(rules).length > 0) && 
+          hasRules = rules && typeof rules === 'object' &&
+            (Object.keys(rules).length > 0) &&
             // Make sure it's not just an empty object or only has empty arrays/strings
             Object.values(rules).some(value => {
               if (Array.isArray(value)) return value.length > 0;
@@ -338,7 +386,7 @@ const VideoProcessingOptionsModal = ({
           hasRules = false;
         }
       }
-      
+
       setTranscriptionRulesAvailable(hasRules);
 
       // If rules are not available, disable the switch
@@ -390,7 +438,7 @@ const VideoProcessingOptionsModal = ({
         };
         performTokenCount();
       }, 1000); // 1 second throttle delay
-      
+
       // Cleanup function to cancel pending API calls when dependencies change
       return () => {
         console.log('[TokenCounting] Canceling pending token count due to settings change');
@@ -583,7 +631,7 @@ const VideoProcessingOptionsModal = ({
 
       // Account for parallel processing splitting
       const numRequests = Math.ceil(segmentDuration / (maxDurationPerRequest * 60));
-      
+
       // Try to get total duration from video file or use segment duration as fallback
       let totalDuration = segmentDuration; // Conservative fallback
 
@@ -629,9 +677,9 @@ const VideoProcessingOptionsModal = ({
 
       // Apply all adjustments to the segment tokens
       const segmentTokensAdjusted = Math.round(baseSegmentTokens * fpsAdjustmentFactor * resolutionAdjustmentFactor);
-      
+
       // For display, show the maximum tokens per request when splitting
-      const tokensPerRequest = numRequests > 1 
+      const tokensPerRequest = numRequests > 1
         ? Math.round(segmentTokensAdjusted / numRequests)
         : segmentTokensAdjusted;
 
@@ -668,12 +716,12 @@ const VideoProcessingOptionsModal = ({
 
     // Calculate total tokens for the segment
     const totalSegmentTokens = Math.round(segmentDuration * (fps * frameTokens + audioTokens));
-    
+
     // Account for parallel processing splitting (same logic as real token counting)
     const numRequests = Math.ceil(segmentDuration / (maxDurationPerRequest * 60));
-    
+
     // Return tokens per request when splitting, otherwise total
-    return numRequests > 1 
+    return numRequests > 1
       ? Math.round(totalSegmentTokens / numRequests)
       : totalSegmentTokens;
   };
@@ -724,7 +772,7 @@ const VideoProcessingOptionsModal = ({
       autoSplitSubtitles,
       maxWordsPerSubtitle
     };
-    
+
     onProcess(options);
   };
 
@@ -865,7 +913,8 @@ const VideoProcessingOptionsModal = ({
                     onChange={(value) => setSelectedModel(value)}
                     options={modelOptions.map(option => ({
                       value: option.value,
-                      label: option.label
+                      label: option.label,
+                      disabled: option.disabled
                     }))}
                     placeholder={t('processing.selectModel', 'Select Model')}
                   />
@@ -934,7 +983,7 @@ const VideoProcessingOptionsModal = ({
                     options={getPromptPresetOptions().map(option => {
                       // Create SVG icon based on preset type
                       let IconComponent = null;
-                      
+
                       if (option.id === 'settings') {
                         // Settings/sliders icon for "Prompt from Settings"
                         IconComponent = () => (
@@ -1043,7 +1092,7 @@ const VideoProcessingOptionsModal = ({
                             );
                         }
                       }
-                      
+
                       return {
                         value: option.id,
                         label: IconComponent ? (

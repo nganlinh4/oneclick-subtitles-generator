@@ -20,6 +20,11 @@ import i18n from '../../i18n/i18n';
  */
 const validateFileUri = async (fileUri, apiKey) => {
   try {
+    // YouTube URIs are external and not part of Files API; treat as valid
+    if (/(youtube\.com|youtu\.be)\//.test(fileUri)) {
+      return true;
+    }
+
     // Make a lightweight test request to check if the file is accessible
     const response = await fetch(
       `https://generativelanguage.googleapis.com/v1beta/files?key=${apiKey}`,
@@ -30,7 +35,7 @@ const validateFileUri = async (fileUri, apiKey) => {
         }
       }
     );
-    
+
     if (response.ok) {
       const files = await response.json();
       // Check if our file URI is in the list
@@ -95,6 +100,11 @@ export const streamGeminiContent = async (file, fileUri, options = {}, onChunk, 
     const promptText = getTranscriptionPrompt(contentType, userProvidedSubtitles, { segmentInfo });
 
     // Create request data
+    const isYouTube = /(youtube\.com|youtu\.be)\//.test(fileUri);
+    const fileDataPart = isYouTube
+      ? { file_uri: fileUri }
+      : { file_uri: fileUri, mime_type: file.type };
+
     let requestData = {
       model: MODEL,
       contents: [
@@ -102,10 +112,7 @@ export const streamGeminiContent = async (file, fileUri, options = {}, onChunk, 
           role: "user",
           parts: [
             {
-              file_data: {
-                file_uri: fileUri,
-                mime_type: file.type
-              }
+              file_data: fileDataPart
             },
             { text: promptText }
           ]

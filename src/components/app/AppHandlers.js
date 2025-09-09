@@ -439,6 +439,9 @@ export const useAppHandlers = (appState) => {
         // File upload case - prepare the video for the new workflow
         processedFile = input; // uploadedFile
 
+        // Clear any stale YouTube URL reference so Files API uses file-based caching for uploads
+        try { localStorage.removeItem("current_video_url"); } catch {}
+
         // Check if we already have a blob URL for this file
         let blobUrl = localStorage.getItem("current_file_url");
         if (!blobUrl || !blobUrl.startsWith("blob:")) {

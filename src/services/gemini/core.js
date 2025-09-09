@@ -108,6 +108,11 @@ export const streamGeminiApiWithFilesApi = async (file, options = {}, onChunk, o
         }
 
         let uploadedFile = JSON.parse(localStorage.getItem(fileKey) || 'null');
+        const isYouTube = !!(currentVideoUrl && /(youtube\.com|youtu\.be)\//.test(currentVideoUrl));
+        if (isYouTube) {
+            // YouTube videos skip Files API upload; use the URL directly
+            uploadedFile = { uri: currentVideoUrl, mimeType: file?.type };
+        }
         let shouldUpload = !uploadedFile || !uploadedFile.uri || retryCount > 0;
 
         if (uploadedFile && uploadedFile.uri && retryCount === 0) {
@@ -251,6 +256,11 @@ export const callGeminiApiWithFilesApiForAnalysis = async (file, options = {}, a
         }
 
         let uploadedFile = JSON.parse(localStorage.getItem(fileKey) || 'null');
+        const isYouTube = !!(currentVideoUrl && /(youtube\.com|youtu\.be)\//.test(currentVideoUrl));
+        if (isYouTube) {
+            // YouTube videos skip Files API upload; use the URL directly
+            uploadedFile = { uri: currentVideoUrl, mimeType: file?.type };
+        }
         let shouldUpload = !uploadedFile || !uploadedFile.uri;
 
         if (uploadedFile && uploadedFile.uri) {
@@ -437,6 +447,11 @@ export const callGeminiApiWithFilesApi = async (file, options = {}, retryCount =
         }
 
         let uploadedFile = JSON.parse(localStorage.getItem(fileKey) || 'null');
+        const isYouTube = !!(currentVideoUrl && /(youtube\.com|youtu\.be)\//.test(currentVideoUrl));
+        if (isYouTube) {
+            // YouTube videos skip Files API upload; use the URL directly
+            uploadedFile = { uri: currentVideoUrl, mimeType: file?.type };
+        }
         let shouldUpload = !uploadedFile || !uploadedFile.uri || retryCount > 0;
 
         if (uploadedFile && uploadedFile.uri && retryCount === 0) {
@@ -650,8 +665,8 @@ export const callGeminiApi = async (input, inputType, options = {}) => {
                 role: "user",
                 parts: [
                     {
-                        fileData: {
-                            fileUri: input
+                        file_data: {
+                            file_uri: input
                         }
                     },
                     { text: getTranscriptionPrompt('video') }

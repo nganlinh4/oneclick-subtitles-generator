@@ -159,7 +159,7 @@ Choose the right version for your needs:
 | **Subtitle Editor** | ✅ Visual timeline, waveform, real-time preview | ✅ Visual timeline, waveform, real-time preview | ✅ Visual timeline, waveform, real-time preview |
 | **Translation** | ✅ Multi-language with context awareness | ✅ Multi-language with context awareness | ✅ Multi-language with context awareness |
 | **Video Rendering** | ✅ GPU-accelerated with Remotion | ✅ GPU-accelerated with Remotion | ❌ Not available |
-| **Background Generation** | ✅ AI-powered image creation | ✅ AI-powered image creation | ❌ Not available |
+| **Background Generation** | ✅ Gemini Native/Nano Banana | ✅ Gemini Native/Nano Banana | ✅ Gemini Native/Nano Banana |
 | **Basic TTS** | ✅ Gemini Live API, Edge TTS, Google TTS | ✅ Gemini Live API, Edge TTS, Google TTS | ❌ Not available |
 | **Voice Cloning** | ❌ Not included | ✅ F5-TTS, Chatterbox | ❌ Not available |
 | **Project Folder Size** | ~2-3 GB | ~8-12 GB | N/A (hosted) |
