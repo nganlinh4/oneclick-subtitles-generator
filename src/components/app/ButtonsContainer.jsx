@@ -76,10 +76,6 @@ const ButtonsContainer = ({
     downloadProgress: 0
   });
 
-  // Track last file/URL we auto-triggered for to avoid duplicate generates
-  const lastAutoTriggeredFileRef = useRef(null);
-  const lastAutoTriggeredUrlRef = useRef(null);
-  const prevSelectedUrlRef = useRef(null);
 
   // Auto-generate flow implementation
   const startAutoGenerateFlow = async () => {
@@ -357,50 +353,7 @@ const ButtonsContainer = ({
   }, [uploadedFile, uploadedFileData, isDownloading, downloadProgress]);
 
   // If a NEW uploaded file arrives, auto-trigger semi-auto generate once
-  useEffect(() => {
-    if (!uploadedFile) return;
-    const fileId = `${uploadedFile.name || 'unknown'}-${uploadedFile.size || 0}-${uploadedFile.lastModified || 0}`;
-    if (
-      !isSrtOnlyMode &&
-      !isAutoGenerating &&
-      !isGenerating &&
-      !isDownloading &&
-      lastAutoTriggeredFileRef.current !== fileId
-    ) {
-      lastAutoTriggeredFileRef.current = fileId;
-      try {
-        // Defer to next tick so isSrtOnlyMode/state updates from upload fully commit
-        setTimeout(() => {
-          handleGenerateSubtitles();
-          console.log('[ButtonsContainer] Auto-triggered (deferred) semi-auto generate for new uploaded file');
-        }, 0);
-      } catch (e) {
-        console.error('[ButtonsContainer] Error auto-triggering semi-auto generate:', e);
-      }
-    }
-  }, [uploadedFile, isGenerating, isDownloading, isAutoGenerating, isSrtOnlyMode, handleGenerateSubtitles]);
 
-  // If a NEW selected video URL arrives (YouTube/All-sites), auto-trigger once
-  useEffect(() => {
-    const url = selectedVideo?.url || null;
-    const changed = url && prevSelectedUrlRef.current !== url;
-    if (!changed) {
-      prevSelectedUrlRef.current = url;
-      return;
-    }
-    prevSelectedUrlRef.current = url;
-    if (!isSrtOnlyMode && !isAutoGenerating && !isGenerating && !isDownloading && lastAutoTriggeredUrlRef.current !== url) {
-      lastAutoTriggeredUrlRef.current = url;
-      try {
-        setTimeout(() => {
-          handleGenerateSubtitles();
-          console.log('[ButtonsContainer] Auto-triggered (deferred) semi-auto generate for new selected video URL');
-        }, 0);
-      } catch (e) {
-        console.error('[ButtonsContainer] Error auto-triggering on selected video URL:', e);
-      }
-    }
-  }, [selectedVideo, isGenerating, isDownloading, isAutoGenerating, isSrtOnlyMode, handleGenerateSubtitles]);
 
   // Handle entrance/disappear animations for WavyProgressIndicator
   useEffect(() => {
