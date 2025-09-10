@@ -233,9 +233,31 @@ const AppLayout = ({
       // Proceed with video rendering using the selected video - enable auto-scroll for quality modal
       proceedWithVideoRendering(videoFile, true);
     } catch (error) {
-      console.error('Error handling video quality selection:', error);
-      // Show error to user (you might want to add a toast notification here)
-      alert(`Error: ${error.message}`);
+      const context = {
+        option,
+        data,
+        actualVideoUrl,
+        online: typeof navigator !== 'undefined' ? navigator.onLine : undefined,
+        name: error?.name,
+        message: error?.message,
+        cause: error?.cause,
+        stack: error?.stack
+      };
+      console.error('Error handling video quality selection (with context):', context);
+      const isFailedToFetch = error?.message === 'Failed to fetch' || error?.name === 'TypeError';
+      let hint = '';
+      if (isFailedToFetch) {
+        if (String(actualVideoUrl || '').startsWith('blob:')) {
+          hint = 'The temporary video blob may have been revoked or expired. Try re-adding the video.';
+        } else if (typeof window !== 'undefined' && window.location?.protocol === 'https:' && (String(actualVideoUrl || '').startsWith('http:') || (data?.url && String(data.url).startsWith('http:')))) {
+          hint = 'Blocked mixed content: page is HTTPS but the video/API is HTTP. Use HTTPS for the API/video or run the app over HTTP.';
+        } else if (typeof navigator !== 'undefined' && navigator.onLine === false) {
+          hint = 'You appear to be offline.';
+        } else {
+          hint = 'Network/CORS issue. Check the Network tab for the failing request and the server logs.';
+        }
+      }
+      alert(`Error: ${error?.message}${hint ? `\n\nHint: ${hint}` : ''}`);
     }
   };
 

@@ -381,7 +381,20 @@ export const useVideoInfo = (selectedVideo, uploadedFile, actualVideoUrl) => {
         }),
       });
 
-      const data = await response.json();
+      if (!response.ok) {
+        let bodyText = '';
+        try {
+          bodyText = await response.text();
+        } catch (_) {}
+        throw new Error(`[download-video-quality] HTTP ${response.status} ${response.statusText}${bodyText ? ` - ${bodyText.slice(0, 300)}` : ''}`);
+      }
+
+      let data;
+      try {
+        data = await response.json();
+      } catch (e) {
+        throw new Error(`[download-video-quality] Failed to parse JSON response: ${e?.message || e}`);
+      }
       console.log('[useVideoInfo] Redownload response:', data);
 
       if (data.success) {
@@ -403,13 +416,34 @@ export const useVideoInfo = (selectedVideo, uploadedFile, actualVideoUrl) => {
    */
   const getVideoFileForRendering = async (option, data = {}) => {
     if (option === 'current') {
+      // Prefer using the original uploaded file when available (most robust)
+      if (uploadedFile && typeof uploadedFile === 'object' && typeof uploadedFile.arrayBuffer === 'function') {
+        return uploadedFile;
+      }
+
       // Use current video URL
       if (actualVideoUrl) {
         if (actualVideoUrl.startsWith('blob:')) {
-          // Convert blob URL to File object
-          const response = await fetch(actualVideoUrl);
-          const blob = await response.blob();
-          return new File([blob], videoInfo?.title || 'video.mp4', { type: 'video/mp4' });
+          // Try to reuse the blob from the global map (created in VideoPreview) to avoid fetching a revoked blob URL
+          try {
+            if (typeof window !== 'undefined' && window.__videoBlobMap && window.__videoBlobMap[actualVideoUrl]) {
+              const blob = window.__videoBlobMap[actualVideoUrl];
+              return new File([blob], videoInfo?.title || 'video.mp4', { type: blob.type || 'video/mp4' });
+            }
+          } catch {}
+
+          // Fallback: attempt to fetch the blob URL (may fail if revoked)
+          try {
+            const response = await fetch(actualVideoUrl);
+            if (!response.ok) {
+              const txt = await response.text().catch(() => '');
+              throw new Error(`Fetching blob video failed with HTTP ${response.status} ${response.statusText}${txt ? ` - ${txt.slice(0, 300)}` : ''}`);
+            }
+            const blob = await response.blob();
+            return new File([blob], videoInfo?.title || 'video.mp4', { type: 'video/mp4' });
+          } catch (err) {
+            throw new Error(`Failed to fetch current blob video for rendering. The temporary blob URL may have been revoked/expired. Try re-adding the video. Original error: ${err?.message || err}`);
+          }
         } else {
           // Return URL object for server-hosted videos
           return {
