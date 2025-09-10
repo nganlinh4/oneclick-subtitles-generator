@@ -133,6 +133,7 @@ export const analyzeVideoWithGemini = async (videoFile, onStatusUpdate) => {
    - describe-video: Describe video content (for visual content description)
    - diarize-speakers: Identify different speakers (for multi-person conversations)
    - chaptering: Create chapters based on content (for long-form content)
+	Guidance: When in doubt, default to 'general'. Choose 'diarize-speakers' only if there is clear, sustained multi-speaker conversation that will materially benefit from diarization.
 
 2. A detailed rule set for consistent transcription. ${isLongVideo ? 'Since this is a longer video, provide as many detailed rules as possible to ensure consistency across the entire transcription.' : ''} ${isVeryLongVideo ? 'This is a very long video, so an extremely comprehensive rule set is essential - aim for at least 5-10 items in each applicable category.' : ''} Include (only if applicable):
    - Atmosphere: Description of the setting or context
@@ -161,44 +162,44 @@ Provide your analysis in a structured format that can be used to guide the trans
 
     // Limit analysis to max 30 minutes (1800 seconds) centered around video middle
     const MAX_ANALYSIS_DURATION = 1800; // 30 minutes in seconds
-    
+
     if (videoDuration > MAX_ANALYSIS_DURATION) {
       // Calculate center-based offsets for videos longer than 30 minutes
       const centerTime = videoDuration / 2;
       const halfAnalysisDuration = MAX_ANALYSIS_DURATION / 2;
-      
+
       // Calculate start and end times, ensuring they stay within video bounds
       const startOffset = Math.max(0, Math.floor(centerTime - halfAnalysisDuration));
       const endOffset = Math.min(videoDuration, Math.floor(centerTime + halfAnalysisDuration));
-      
+
       // Add video metadata with offsets
       analysisOptions.videoMetadata.start_offset = `${startOffset}s`;
       analysisOptions.videoMetadata.end_offset = `${endOffset}s`;
-      
+
       console.log(`[VideoAnalysis] Limiting analysis to 30 minutes: ${startOffset}s to ${endOffset}s (video duration: ${videoDuration}s)`);
-      
+
       // Update the analysis prompt to mention we're analyzing a sample
       analysisOptions.analysisPrompt = `You are analyzing a 30-minute sample from the middle of this video (from ${Math.floor(startOffset/60)}:${(startOffset%60).toString().padStart(2,'0')} to ${Math.floor(endOffset/60)}:${(endOffset%60).toString().padStart(2,'0')} of a ${Math.round(videoDuration/60)}-minute video). ${analysisPrompt}`;
     }
 
     // Use the Files API with shared caching mechanism
     const result = await callGeminiApiWithFilesApiForAnalysis(videoFile, analysisOptions, signal);
-    
+
     // Extract analysis result from the response
     let analysisResult;
-    
+
     // Check if result is already structured JSON (from schema response)
     if (result && typeof result === 'object' && !Array.isArray(result)) {
       // Result is already parsed structured JSON from the API
       console.log('[VideoAnalysis] Received structured JSON response from API');
       analysisResult = result;
       console.log('[VideoAnalysis] Recommended preset:', analysisResult.recommendedPreset?.id);
-    } 
+    }
     // Check if result is in text format that needs parsing
     else if (result && result.length > 0 && result[0].text) {
       // The result is in text format, needs parsing
       const analysisText = result[0].text;
-      
+
       try {
         // Try to parse as JSON if the model returned structured data
         analysisResult = JSON.parse(analysisText);
