@@ -109,7 +109,7 @@ export const drawTimeline = (
 
   // Draw segment selection overlay
   if (segmentData) {
-    const { selectedSegment, isDraggingSegment, dragStartTime, dragCurrentTime, isProcessing, animationTime, processingRanges } = segmentData;
+    const { selectedSegment, isDraggingSegment, dragStartTime, dragCurrentTime, isProcessing, selectedIsProcessing, animationTime, processingRanges } = segmentData;
 
     // Draw selected segment
     if (selectedSegment && !isDraggingSegment) {
@@ -121,8 +121,8 @@ export const drawTimeline = (
         let opacity = 0.2;
         let borderOpacity = 0.8;
 
-        if (isProcessing && animationTime !== undefined) {
-          // Create a pulsing effect while processing
+        if ((selectedIsProcessing ?? isProcessing) && animationTime !== undefined) {
+          // Create a pulsing effect while processing for the selected band only when flagged
           const pulse = Math.sin(animationTime * 0.003) * 0.5 + 0.5; // 0 to 1 oscillation
           opacity = 0.15 + pulse * 0.25; // Oscillate between 0.15 and 0.4
           borderOpacity = 0.6 + pulse * 0.4; // Oscillate between 0.6 and 1.0
@@ -207,7 +207,7 @@ export const drawTimeline = (
         } else {
           ctx.strokeStyle = `rgba(37, 99, 235, ${Math.min(1, borderOpacity * 1.2)})`; // Stronger blue for light theme
         }
-        ctx.lineWidth = isProcessing ? 2.5 : 2;
+        ctx.lineWidth = (selectedIsProcessing ?? isProcessing) ? 2.5 : 2;
         ctx.beginPath();
         if (startX >= 0 && startX <= displayWidth) {
           ctx.moveTo(startX, 0);
@@ -221,8 +221,8 @@ export const drawTimeline = (
       }
     }
 
-    // Draw parallel processing ranges if available
-    if (Array.isArray(processingRanges) && processingRanges.length > 1) {
+    // Draw processing ranges (single or multiple)
+    if (Array.isArray(processingRanges) && processingRanges.length > 0) {
       // Iterate and draw each processing range
       for (const range of processingRanges) {
         const rangeStart = typeof range.start === 'number' ? range.start : 0;
@@ -235,7 +235,8 @@ export const drawTimeline = (
           let opacity = 0.12;
           let borderOpacity = 0.6;
 
-          if (isProcessing && animationTime !== undefined) {
+          const wantAnimate = (typeof range.animate === 'boolean') ? !!range.animate : true;
+          if (isProcessing && animationTime !== undefined && wantAnimate) {
             const pulse = Math.sin(animationTime * 0.003 + (range.index || 0)) * 0.5 + 0.5;
             opacity = 0.1 + pulse * 0.2;
             borderOpacity = 0.4 + pulse * 0.4;
@@ -268,7 +269,7 @@ export const drawTimeline = (
             }
             ctx.fillStyle = gradient;
           } else {
-            // Static fill when not processing
+            // Static fill when not processing or not marked for animation
             if (isDark) {
               ctx.fillStyle = `rgba(59, 130, 246, ${opacity})`;
             } else {

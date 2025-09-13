@@ -6,6 +6,11 @@
  * the old segment-based processing approach. All functions now redirect to
  * the new simplified processing system for better performance.
  */
+// Debug logging gate (enable by setting localStorage.debug_logs = 'true')
+const DEBUG_LOGS = (typeof window !== 'undefined') && (localStorage.getItem('debug_logs') === 'true');
+const dbg = (...args) => { if (DEBUG_LOGS) console.log(...args); };
+const dbgw = (...args) => { if (DEBUG_LOGS) console.warn(...args); };
+
 /**
  * Process a short video/audio file (shorter than max segment duration)
  * @deprecated Use processVideoWithFilesApi from simplifiedProcessing.js instead
@@ -16,7 +21,7 @@
  * @returns {Promise<Array>} - Array of subtitle objects
  */
 export const processShortMedia = async (mediaFile, onStatusUpdate, t, options = {}) => {
-  console.warn('[LEGACY] processShortMedia is deprecated. Redirecting to simplified processing.');
+  dbgw('[LEGACY] processShortMedia is deprecated. Redirecting to simplified processing.');
 
   // Show a helpful message to the user
   onStatusUpdate({
@@ -39,7 +44,7 @@ export const processShortMedia = async (mediaFile, onStatusUpdate, t, options = 
  * @returns {Promise<Array>} - Array of subtitle objects
  */
 export const processLongVideo = async (mediaFile, onStatusUpdate, t, options = {}) => {
-  console.warn('[LEGACY] processLongVideo is deprecated. Redirecting to simplified processing.');
+  dbgw('[LEGACY] processLongVideo is deprecated. Redirecting to simplified processing.');
 
   // Show a helpful message to the user
   onStatusUpdate({
@@ -134,7 +139,7 @@ export const processSegmentWithStreaming = async (file, segment, options, setSta
     // Check if this is a Gemini 2.0 model (they don't respect video_metadata offsets)
     const isGemini20Model = model && (model.includes('gemini-2.0') || model.includes('gemini-1.5'));
     if (isGemini20Model) {
-      console.warn(`[ProcessingUtils] Model ${model} may not respect video segment offsets - will filter results and use early stopping`);
+      dbgw(`[ProcessingUtils] Model ${model} may not respect video segment offsets - will filter results and use early stopping`);
     }
 
     // Track if we've stopped early due to subtitles going past segment
@@ -162,7 +167,7 @@ export const processSegmentWithStreaming = async (file, segment, options, setSta
             const lastSubtitle = data.subtitles[data.subtitles.length - 1];
 
             if (lastSubtitle && lastSubtitle.start > (segmentEnd + bufferTime)) {
-              console.warn(`[ProcessingUtils] Early stopping: Last subtitle at ${lastSubtitle.start}s exceeds segment end ${segmentEnd}s by more than ${bufferTime}s`);
+              dbgw(`[ProcessingUtils] Early stopping: Last subtitle at ${lastSubtitle.start}s exceeds segment end ${segmentEnd}s by more than ${bufferTime}s`);
               hasStoppedEarly = true;
 
               // Trigger early completion with filtered subtitles
@@ -176,7 +181,7 @@ export const processSegmentWithStreaming = async (file, segment, options, setSta
                 };
               });
 
-              console.log(`[ProcessingUtils] Early stop: Completing with ${filteredForCompletion.length} subtitles (from ${data.subtitles.length} total)`);
+              dbg(`[ProcessingUtils] Early stop: Completing with ${filteredForCompletion.length} subtitles (from ${data.subtitles.length} total)`);
 
               // Cancel the streaming if we have a controller
               if (earlyStopController && typeof earlyStopController.abort === 'function') {
@@ -189,41 +194,33 @@ export const processSegmentWithStreaming = async (file, segment, options, setSta
             }
           }
 
-          // Filter subtitles for Gemini 2.0 models that don't respect segment offsets
+          // Normalize potential relative times to absolute BEFORE filtering/clipping
           let filteredSubtitles = data.subtitles;
           if (isGemini20Model && data.subtitles && data.subtitles.length > 0) {
             const segmentStart = segment.start;
             const segmentEnd = segment.end;
+            const segDuration = segmentEnd - segmentStart;
 
-            filteredSubtitles = data.subtitles.filter(sub => {
-              // Keep subtitles that overlap with the segment
-              return sub.start < segmentEnd && sub.end > segmentStart;
-            }).map(sub => {
-              // Clip subtitles to segment boundaries
-              return {
+            // Detect segment-relative timestamps from the model and offset first
+            const maxEndRaw = Math.max(...data.subtitles.map(s => s.end || 0));
+            const looksRelative = maxEndRaw <= (segDuration + 1);
+            let normalized = looksRelative
+              ? data.subtitles.map(sub => ({
+                  ...sub,
+                  start: (sub.start || 0) + segmentStart,
+                  end: (sub.end || 0) + segmentStart
+                }))
+              : data.subtitles;
+
+            // Then filter and clip
+            filteredSubtitles = normalized.filter(sub => (sub.start < segmentEnd && sub.end > segmentStart))
+              .map(sub => ({
                 ...sub,
                 start: Math.max(sub.start, segmentStart),
                 end: Math.min(sub.end, segmentEnd)
-              };
-            });
-
-            console.log(`[ProcessingUtils] Filtered ${data.subtitles.length} subtitles to ${filteredSubtitles.length} for segment ${segmentStart}-${segmentEnd}`);
-          }
-
-          // If model returned segment-relative times (common in user-provided timing mode), offset to absolute
-          if (filteredSubtitles && filteredSubtitles.length > 0) {
-            const segmentStart = segment.start;
-            const segDuration = segment.end - segment.start;
-            const maxEnd = Math.max(...filteredSubtitles.map(s => s.end || 0));
-            // Heuristic: if the largest end is within the segment duration + slack, treat as relative
-            const looksRelative = maxEnd <= (segDuration + 1);
-            if (looksRelative) {
-              filteredSubtitles = filteredSubtitles.map(sub => ({
-                ...sub,
-                start: sub.start + segmentStart,
-                end: sub.end + segmentStart
               }));
-            }
+
+            dbg(`[ProcessingUtils] Filtered ${data.subtitles.length} subtitles to ${filteredSubtitles.length} for segment ${segmentStart}-${segmentEnd}`);
           }
 
 
@@ -247,38 +244,44 @@ export const processSegmentWithStreaming = async (file, segment, options, setSta
           let finalSubtitles;
           if (result && result.isSegmentResult) {
             // This is from parallel processing - extract subtitles
-            console.log('[ProcessingUtils] Received parallel processing segment result');
+            dbg('[ProcessingUtils] Received parallel processing segment result');
             finalSubtitles = result.subtitles;
           } else if (Array.isArray(result)) {
             // Direct subtitle array from single streaming
             finalSubtitles = result;
           } else {
             // Might be text or other format, try to handle it
-            console.warn('[ProcessingUtils] Unexpected result format:', typeof result);
+            dbgw('[ProcessingUtils] Unexpected result format:', typeof result);
             finalSubtitles = [];
           }
 
-          console.log('[ProcessingUtils] Streaming complete:', finalSubtitles.length, 'subtitles');
+          dbg('[ProcessingUtils] Streaming complete:', finalSubtitles.length, 'subtitles');
 
-          // Filter final subtitles for Gemini 2.0 models
+          // Normalize potential relative times to absolute BEFORE final filtering/clipping
           let filteredFinal = finalSubtitles;
           if (isGemini20Model && finalSubtitles && finalSubtitles.length > 0) {
             const segmentStart = segment.start;
             const segmentEnd = segment.end;
+            const segDuration = segmentEnd - segmentStart;
 
-            filteredFinal = finalSubtitles.filter(sub => {
-              // Keep subtitles that overlap with the segment
-              return sub.start < segmentEnd && sub.end > segmentStart;
-            }).map(sub => {
-              // Clip subtitles to segment boundaries
-              return {
+            const maxEndRaw = Math.max(...finalSubtitles.map(s => s.end || 0));
+            const looksRelative = maxEndRaw <= (segDuration + 1);
+            const normalized = looksRelative
+              ? finalSubtitles.map(sub => ({
+                  ...sub,
+                  start: (sub.start || 0) + segmentStart,
+                  end: (sub.end || 0) + segmentStart
+                }))
+              : finalSubtitles;
+
+            filteredFinal = normalized.filter(sub => (sub.start < segmentEnd && sub.end > segmentStart))
+              .map(sub => ({
                 ...sub,
                 start: Math.max(sub.start, segmentStart),
                 end: Math.min(sub.end, segmentEnd)
-              };
-            });
+              }));
 
-            console.log(`[ProcessingUtils] Final filter: ${finalSubtitles.length} subtitles to ${filteredFinal.length} for segment ${segmentStart}-${segmentEnd}`);
+            dbg(`[ProcessingUtils] Final filter: ${finalSubtitles.length} subtitles to ${filteredFinal.length} for segment ${segmentStart}-${segmentEnd}`);
           }
 
           // Dispatch streaming-complete event for timeline animations
@@ -310,10 +313,9 @@ export const processSegmentWithStreaming = async (file, segment, options, setSta
       const mappedMediaResolution = mapMediaResolution(mediaResolution);
 
       // Prepare options for streaming API call
-      const apiOptions = {
+      const baseApiOptions = {
         userProvidedSubtitles,
         modelId: model,
-        videoMetadata,
         mediaResolution: mappedMediaResolution,
         segmentInfo: {
           start: segment.start,
@@ -324,20 +326,23 @@ export const processSegmentWithStreaming = async (file, segment, options, setSta
         autoSplitSubtitles: autoSplitSubtitles, // Pass auto-split settings to streaming API
         maxWordsPerSubtitle: maxWordsPerSubtitle
       };
-      
-      // Start streaming
-      import('../../services/gemini').then(({ streamGeminiApiWithFilesApi }) => {
-        // Pass the apiOptions which includes auto-split settings
-        streamGeminiApiWithFilesApi(
+
+      const useInline = options.forceInline === true || options.inlineExtraction === true;
+      const apiOptions = useInline ? { ...baseApiOptions, forceInline: true } : { ...baseApiOptions, videoMetadata };
+
+      // Start streaming (Files API vs INLINE)
+      import('../../services/gemini').then(({ streamGeminiApiWithFilesApi, streamGeminiApiInline }) => {
+        const streamFn = useInline ? streamGeminiApiInline : streamGeminiApiWithFilesApi;
+        streamFn(
           file,
-          apiOptions,  // This already includes autoSplitSubtitles and maxWordsPerSubtitle
+          apiOptions,
           (chunk) => processor.processChunk(chunk),
           (finalText) => processor.complete(finalText),
           (error) => processor.error(error),
           (progress) => {
             // Handle parallel processing progress updates
             if (progress && progress.segmentProgress) {
-              console.log('[ProcessingUtils] Parallel processing progress:', progress);
+              dbg('[ProcessingUtils] Parallel processing progress:', progress);
               // Dispatch progress event for UI updates
               window.dispatchEvent(new CustomEvent('parallel-processing-progress', {
                 detail: progress
@@ -348,4 +353,47 @@ export const processSegmentWithStreaming = async (file, segment, options, setSta
       }).catch(reject);
     }).catch(reject);
   });
+};
+
+
+/**
+ * Extract the selected segment locally and send inline to Gemini (no offsets)
+ */
+export const processSegmentWithInlineExtraction = async (file, segment, options, setStatus, t) => {
+  try {
+    const { model, userProvidedSubtitles } = options || {};
+    setStatus({ message: t('processing.extractingSegment', 'Extracting selected segment locally...'), type: 'loading' });
+
+    const { extractVideoSegmentLocally } = await import('../videoSegmenter');
+    const segmentFile = await extractVideoSegmentLocally(file, segment.start, segment.end);
+
+    setStatus({ message: t('processing.sendingToGemini', 'Sending extracted segment to Gemini...'), type: 'loading' });
+    const { callGeminiApi } = await import('../../services/gemini');
+
+    const rawSubtitles = await callGeminiApi(segmentFile, 'file-upload', {
+      userProvidedSubtitles,
+      modelId: model,
+      segmentInfo: { start: segment.start, end: segment.end, duration: segment.end - segment.start },
+      forceInline: true
+    });
+
+    let adjusted = Array.isArray(rawSubtitles) ? rawSubtitles : [];
+    if (adjusted.length > 0) {
+      const segDuration = segment.end - segment.start;
+      const maxEnd = Math.max(...adjusted.map(s => s.end || 0));
+      const looksRelative = maxEnd <= (segDuration + 1);
+      if (looksRelative) {
+        adjusted = adjusted.map(s => ({
+          ...s,
+          start: (s.start || 0) + segment.start,
+          end: (s.end || 0) + segment.start
+        }));
+      }
+    }
+
+    return adjusted;
+  } catch (error) {
+    console.error('Error processing segment with inline extraction:', error);
+    throw error;
+  }
 };

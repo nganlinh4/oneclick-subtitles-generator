@@ -4,7 +4,7 @@
  */
 
 // Export core API functionality
-import { callGeminiApi, callGeminiApiWithFilesApi, callGeminiApiWithFilesApiForAnalysis, streamGeminiApiWithFilesApi } from './core';
+import { callGeminiApi, callGeminiApiWithFilesApi, callGeminiApiWithFilesApiForAnalysis, streamGeminiApiWithFilesApi, streamGeminiApiInline } from './core';
 
 // Export Files API functionality
 import {
@@ -65,6 +65,7 @@ export {
     callGeminiApiWithFilesApi,
     callGeminiApiWithFilesApiForAnalysis,
     streamGeminiApiWithFilesApi,
+    streamGeminiApiInline,
 
     // Files API
     uploadFileToGemini,

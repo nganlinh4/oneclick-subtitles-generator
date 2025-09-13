@@ -6,7 +6,7 @@ import { getNextAvailableKey } from '../services/gemini/keyManager';
 import { PROMPT_PRESETS, getUserPromptPresets, DEFAULT_TRANSCRIPTION_PROMPT } from '../services/gemini';
 import CloseButton from './common/CloseButton';
 import MaterialSwitch from './common/MaterialSwitch';
-import StandardSlider from './common/StandardSlider';
+import SliderWithValue from './common/SliderWithValue';
 import CustomDropdown from './common/CustomDropdown';
 
 /**
@@ -112,7 +112,43 @@ const VideoProcessingOptionsModal = ({
   const [realTokenCount, setRealTokenCount] = useState(null);
   const [tokenCountError, setTokenCountError] = useState(null);
 
+  const [inlineExtraction, setInlineExtraction] = useState(() => {
+    // If opened via retry, force old method immediately to avoid any flash of the new method
+    const reason = sessionStorage.getItem('processing_modal_open_reason');
+    if (reason === 'retry-offline') return true;
+    const saved = localStorage.getItem('video_processing_inline_extraction');
+    return saved === 'true';
+  });
+
   // Compute outside-range subtitles context (limited to nearby lines)
+  // When opened via retry-from-cache, lock certain controls and force old method
+  const [retryLock, setRetryLock] = useState(() => (sessionStorage.getItem('processing_modal_open_reason') === 'retry-offline'));
+  const openedInitRef = useRef(false);
+
+  // Initialize lock/reason exactly once per open, even under React StrictMode
+  useEffect(() => {
+    if (isOpen && !openedInitRef.current) {
+      const reason = sessionStorage.getItem('processing_modal_open_reason') || 'unknown';
+      const lock = (reason === 'retry-offline');
+      setRetryLock(lock);
+      if (lock) setInlineExtraction(true);
+      openedInitRef.current = true;
+    }
+  }, [isOpen]);
+
+  // Only clear flags when the modal closes
+  useEffect(() => {
+    if (!isOpen) {
+      openedInitRef.current = false;
+      try {
+        sessionStorage.removeItem('processing_modal_open_with_retry');
+        sessionStorage.removeItem('processing_modal_cached_url');
+        sessionStorage.removeItem('processing_modal_open_reason');
+      } catch {}
+      setRetryLock(false);
+    }
+  }, [isOpen]);
+
   const outsideContext = useMemo(() => {
     if (!Array.isArray(subtitlesData) || !selectedSegment) return { available: false, before: [], after: [] };
     const { start, end } = selectedSegment;
@@ -242,26 +278,38 @@ const VideoProcessingOptionsModal = ({
       isCustom: true
     }));
 
-    // Disable Gemini 2.0 models when segment start is not near 0 (allow < 5s slack)
+    // Conditions for greying out Gemini 2.0 models
     const startOffsetSec = (typeof selectedSegment?.start === 'number') ? selectedSegment.start : 0;
     const exceedsStartAllowance = startOffsetSec >= 5; // allow small margin under 5s
 
+    // Determine if the segment will be split into multiple requests by the slider
+    const segmentDurationSec = (typeof selectedSegment?.end === 'number' && typeof selectedSegment?.start === 'number')
+      ? (selectedSegment.end - selectedSegment.start)
+      : 0;
+    const requestWindowSec = Math.max(1, Number(maxDurationPerRequest || 0) * 60);
+    const numRequests = requestWindowSec > 0 ? Math.ceil(segmentDurationSec / requestWindowSec) : 1;
+    const hasSplitParts = numRequests > 1;
+
+    // Only grey out 2.0 models when the chosen method is NEW
+    const isNewMethod = !inlineExtraction; // inlineExtraction=true means Old method
+    const shouldDisable20 = isNewMethod && (exceedsStartAllowance || hasSplitParts);
+
     const allModels = [...builtInModels, ...customModels];
 
-    if (exceedsStartAllowance) {
+    if (shouldDisable20) {
       return allModels.map(m => {
         if (m.value === 'gemini-2.0-flash') {
           return {
             ...m,
             disabled: true,
-            label: t('settings.model20FlashDisabled', 'Gemini 2.0 Flash (Điểm bắt đầu phân đoạn phải ở đầu video)')
+            label: t('settings.model20FlashDisabled', 'Gemini 2.0 Flash (Không khả dụng với phương pháp mới khi có offset hoặc chia nhỏ đoạn)')
           };
         }
         if (m.value === 'gemini-2.0-flash-lite') {
           return {
             ...m,
             disabled: true,
-            label: t('settings.model20FlashLiteDisabled', 'Gemini 2.0 Flash Lite (Điểm bắt đầu phân đoạn phải ở đầu video)')
+            label: t('settings.model20FlashLiteDisabled', 'Gemini 2.0 Flash Lite (Không khả dụng với phương pháp mới khi có offset hoặc chia nhỏ đoạn)')
           };
         }
         return m;
@@ -770,8 +818,17 @@ const VideoProcessingOptionsModal = ({
       useTranscriptionRules, // Include the transcription rules setting
       maxDurationPerRequest: maxDurationPerRequest * 60, // Convert to seconds
       autoSplitSubtitles,
-      maxWordsPerSubtitle
+      maxWordsPerSubtitle,
+      inlineExtraction
     };
+
+    // In retry-from-cache mode, force old method and prevent further splitting
+    if (retryLock) {
+      options.inlineExtraction = true;
+      const segLen = Math.max(1, Math.round((selectedSegment?.end || 0) - (selectedSegment?.start || 0)));
+      options.maxDurationPerRequest = segLen; // seconds
+      options.retryFromCache = true;
+    }
 
     onProcess(options);
   };
@@ -808,6 +865,33 @@ const VideoProcessingOptionsModal = ({
                 {' '}({Math.round((selectedSegment?.end || 0) - (selectedSegment?.start || 0))}s)
               </span>
             </h3>
+            <div className={`header-switch-group ${retryLock ? 'disabled' : ''}`} style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+              <label style={{ minWidth: 64 }}>{t('processing.methodLabel', 'Method')}</label>
+              <CustomDropdown
+                value={inlineExtraction ? 'old' : 'new'}
+                onChange={(value) => {
+                  const useOld = value === 'old';
+                  setInlineExtraction(useOld);
+                  localStorage.setItem('video_processing_inline_extraction', useOld ? 'true' : 'false');
+                }}
+                options={[
+                  { value: 'new', label: t('processing.methodNewOption', 'New: Interact with video on Files API') },
+                  { value: 'old', label: t('processing.methodOldOption', 'Old: Cut the video locally, then send to Gemini') }
+                ]}
+                placeholder={t('processing.methodLabel', 'Method')}
+                disabled={retryLock}
+              />
+              <div
+                className="help-icon-container"
+                title={t('processing.inlineExtractionHelp', 'Use the old method when the new method fails; may be slower depending on the situation')}
+              >
+                <svg className="help-icon" viewBox="0 0 24 24" width="16" height="16" stroke="currentColor" strokeWidth="2" fill="none">
+                  <circle cx="12" cy="12" r="10"></circle>
+                  <line x1="12" y1="16" x2="12" y2="12"></line>
+                  <line x1="12" y1="8" x2="12.01" y2="8"></line>
+                </svg>
+              </div>
+            </div>
           </div>
           <CloseButton onClick={onClose} variant="modal" size="medium" />
         </div>
@@ -839,26 +923,22 @@ const VideoProcessingOptionsModal = ({
                       </div>
                     )}
                   </div>
-                  <div className="slider-with-value fps-slider-container">
-                    <StandardSlider
+                  <div>
+                    <SliderWithValue
                       value={fps}
-                      onChange={(value) => setFps(parseFloat(value))}
+                      onChange={(v) => setFps(parseFloat(v))}
                       min={selectedModel === 'gemini-2.5-pro' ? 1 : 0.25}
                       max={5}
                       step={0.25}
                       orientation="Horizontal"
                       size="XSmall"
                       state="Enabled"
-                      showValueIndicator={false}
-                      showIcon={false}
-                      showStops={false}
                       className="fps-slider"
                       id="fps-slider"
                       ariaLabel={t('processing.frameRate', 'Frame Rate')}
+                      defaultValue={selectedModel === 'gemini-2.5-pro' ? 1 : 0.25}
+                      formatValue={(v) => getFpsValue(v)}
                     />
-                    <div className="slider-value-display">
-                      {getFpsValue(fps)}
-                    </div>
                   </div>
                 </div>
 
@@ -922,7 +1002,7 @@ const VideoProcessingOptionsModal = ({
 
                 {/* Right half: Max duration per request */}
                 <div className="combined-option-half">
-                  <div className="label-with-help">
+                  <div className={`label-with-help ${retryLock ? 'disabled' : ''}`} aria-disabled={retryLock ? 'true' : 'false'}>
                     <label>{t('processing.maxDurationPerRequest', 'Max duration per request')}</label>
                     <div
                       className="help-icon-container"
@@ -935,37 +1015,32 @@ const VideoProcessingOptionsModal = ({
                       </svg>
                     </div>
                   </div>
-                  <div className="slider-with-value duration-slider-container">
-                    <StandardSlider
+                  <div>
+                    <SliderWithValue
                       value={maxDurationPerRequest}
-                      onChange={(value) => setMaxDurationPerRequest(parseInt(value))}
+                      onChange={(v) => setMaxDurationPerRequest(parseInt(v))}
                       min={1}
                       max={20}
                       step={1}
                       orientation="Horizontal"
                       size="XSmall"
-                      state="Enabled"
-                      showValueIndicator={false}
-                      showIcon={false}
-                      showStops={false}
+                      state={retryLock ? 'Disabled' : 'Enabled'}
                       id="max-duration-slider"
                       ariaLabel={t('processing.maxDurationPerRequest', 'Max duration per request')}
+                      defaultValue={10}
+                      formatValue={(v) => (
+                        <>
+                          {t('processing.minutesValue', '{{value}} minutes', { value: v })}
+                          {selectedSegment && (() => {
+                            const segmentDuration = (selectedSegment.end - selectedSegment.start) / 60;
+                            const numRequests = Math.ceil(segmentDuration / Number(v || 1));
+                            return numRequests > 1 ? (
+                              <span className="parallel-info">{' '}({t('processing.parallelRequestsInfo', 'Will split into {{count}} parallel requests', { count: numRequests })})</span>
+                            ) : null;
+                          })()}
+                        </>
+                      )}
                     />
-                    <div className="slider-value-display">
-                      {t('processing.minutesValue', '{{value}} minutes', { value: maxDurationPerRequest })}
-                      {selectedSegment && (() => {
-                        const segmentDuration = (selectedSegment.end - selectedSegment.start) / 60; // Convert to minutes
-                        const numRequests = Math.ceil(segmentDuration / maxDurationPerRequest);
-                        if (numRequests > 1) {
-                          return (
-                            <span className="parallel-info">
-                              {' '}({t('processing.parallelRequestsInfo', 'Will split into {{count}} parallel requests', { count: numRequests })})
-                            </span>
-                          );
-                        }
-                        return null;
-                      })()}
-                    </div>
                   </div>
                 </div>
               </div>
@@ -1220,30 +1295,24 @@ const VideoProcessingOptionsModal = ({
                       </svg>
                     </div>
                   </div>
-                  <div className="slider-with-value context-slider-container">
-                    <StandardSlider
+                  <div>
+                    <SliderWithValue
                       value={outsideContextRange}
-                      onChange={(value) => setOutsideContextRange(Number(value))}
+                      onChange={(v) => setOutsideContextRange(Number(v))}
                       min={1}
                       max={21}
                       step={1}
                       orientation="Horizontal"
                       size="XSmall"
                       state={outsideContextAvailable && useOutsideResultsContext ? 'Enabled' : 'Disabled'}
-                      showValueIndicator={false}
-                      showIcon={false}
-                      showStops={false}
                       id="outside-context-range"
                       ariaLabel={t('processing.outsideContextRange', 'Context coverage')}
                       disabled={!outsideContextAvailable || !useOutsideResultsContext}
                       showValueBadge={true}
                       valueBadgeFormatter={(v) => (Math.round(Number(v)) >= 21 ? t('processing.unlimited', 'Unlimited') : Math.round(Number(v)))}
+                      defaultValue={5}
+                      formatValue={(v) => (Number(v) === 21 ? t('processing.unlimited', 'Unlimited') : t('processing.linesCount', '{{count}} lines', { count: Number(v) }))}
                     />
-                    <div className="slider-value-display">
-                      {outsideContextRange === 21
-                        ? t('processing.unlimited', 'Unlimited')
-                        : t('processing.linesCount', '{{count}} lines', { count: outsideContextRange })}
-                    </div>
                   </div>
                 </div>
               </div>
@@ -1296,32 +1365,30 @@ const VideoProcessingOptionsModal = ({
                       </svg>
                     </div>
                   </div>
-                  <div className="slider-with-value words-slider-container">
-                    <StandardSlider
+                  <div>
+                    <SliderWithValue
                       value={maxWordsPerSubtitle}
-                      onChange={(value) => setMaxWordsPerSubtitle(parseInt(value))}
+                      onChange={(v) => setMaxWordsPerSubtitle(parseInt(v))}
                       min={1}
                       max={30}
                       step={1}
                       orientation="Horizontal"
                       size="XSmall"
                       state={autoSplitSubtitles ? 'Enabled' : 'Disabled'}
-                      showValueIndicator={false}
-                      showIcon={false}
-                      showStops={false}
                       className="max-words-slider"
                       id="max-words-slider"
                       ariaLabel={t('processing.maxWordsPerSubtitle', 'Maximum words per subtitle')}
                       disabled={!autoSplitSubtitles}
                       showValueBadge={true}
                       valueBadgeFormatter={(v) => Math.round(Number(v))}
-                    />
-                    <div className="slider-value-display">
-                      {t('processing.wordsLimit', '{{count}} {{unit}}', {
-                        count: maxWordsPerSubtitle,
-                        unit: maxWordsPerSubtitle === 1 ? t('processing.word', 'word') : t('processing.words', 'words')
+                      defaultValue={12}
+                      formatValue={(v) => t('processing.wordsLimit', '{{count}} {{unit}}', {
+                        count: Number(v),
+                        unit: Number(v) === 1 ? t('processing.word', 'word') : t('processing.words', 'words')
+
+
                       })}
-                    </div>
+                    />
                   </div>
                 </div>
               </div>
@@ -1338,6 +1405,8 @@ const VideoProcessingOptionsModal = ({
             </div>
           )}
         </div>
+
+
 
         <div className="modal-footer">
           <div className="footer-content">
@@ -1362,6 +1431,8 @@ const VideoProcessingOptionsModal = ({
                 </div>
               )}
               {tokenCountError && (
+
+
                 <div className="token-error">
                   {t('processing.tokenCountError', 'Error counting tokens')}: {tokenCountError}
                 </div>

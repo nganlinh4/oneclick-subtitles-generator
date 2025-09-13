@@ -6,6 +6,8 @@ import './styles/video-player-dark-theme.css';
 import App from './App';
 import './i18n/i18n';
 import './utils/sliderDragHandler';
+import './utils/sliderResetHandler';
+import './utils/sliderDefaults';
 import { getThemeWithFallback, setupSystemThemeListener } from './utils/systemDetection';
 
 // Suppress harmless ResizeObserver loop error

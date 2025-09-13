@@ -76,6 +76,15 @@ const useNarrationState = (initialReferenceAudio) => {
     return savedLanguage || 'en'; // Default to English
   });
 
+  // Chatterbox-specific: selected language code
+  const [chatterboxLanguage, setChatterboxLanguage] = useState(() => {
+    try {
+      return localStorage.getItem('chatterbox_language') || 'en';
+    } catch {
+      return 'en';
+    }
+  });
+
   const [gttsTld, setGttsTld] = useState(() => {
     // Try to load from localStorage
     const savedTld = localStorage.getItem('gtts_tld');
@@ -218,6 +227,11 @@ const useNarrationState = (initialReferenceAudio) => {
     localStorage.setItem('gtts_language', gttsLanguage);
   }, [gttsLanguage]);
 
+  // Save Chatterbox language to localStorage when it changes
+  useEffect(() => {
+    localStorage.setItem('chatterbox_language', chatterboxLanguage);
+  }, [chatterboxLanguage]);
+
   useEffect(() => {
     localStorage.setItem('gtts_tld', gttsTld);
   }, [gttsTld]);
@@ -256,6 +270,8 @@ const useNarrationState = (initialReferenceAudio) => {
     setExaggeration,
     cfgWeight,
     setCfgWeight,
+    chatterboxLanguage,
+    setChatterboxLanguage,
 
     // Edge TTS-specific settings
     edgeTTSVoice,

@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { useTranslation } from 'react-i18next';
-import StandardSlider from '../../common/StandardSlider';
+import SliderWithValue from '../../common/SliderWithValue';
 import '../../../styles/narration/geminiConcurrentClientsSlider.css';
 
 /**
@@ -59,27 +59,20 @@ const GeminiConcurrentClientsSlider = ({
       <div className="row-content">
         <div className="split-duration-slider-container">
           <div className="slider-control-row">
-            <div className="slider-with-value">
-              <StandardSlider
-                value={localConcurrentClients}
-                onChange={(value) => handleConcurrentClientsChange({ target: { value: parseInt(value) } })}
-                min={1}
-                max={10}
-                step={1}
-                orientation="Horizontal"
-                size="XSmall"
-                state={isGenerating ? "Disabled" : "Enabled"}
-                showValueIndicator={false} // Using custom value display
-                showIcon={false}
-                showStops={false}
-                className="gemini-concurrent-clients-slider"
-                id="gemini-concurrent-clients"
-                ariaLabel={t('narration.concurrentClients', 'Chế độ cực nhanh')}
-              />
-              <div className="slider-value-display">
-                {`${localConcurrentClients}x`}
-              </div>
-            </div>
+            <SliderWithValue
+              value={localConcurrentClients}
+              onChange={(value) => handleConcurrentClientsChange({ target: { value: parseInt(value) } })}
+              min={1}
+              max={10}
+              step={1}
+              orientation="Horizontal"
+              size="XSmall"
+              state={isGenerating ? "Disabled" : "Enabled"}
+              className="gemini-concurrent-clients-slider"
+              id="gemini-concurrent-clients"
+              ariaLabel={t('narration.concurrentClients', 'Chế độ cực nhanh')}
+              formatValue={(v) => `${v}x`}
+            />
           </div>
         </div>
 

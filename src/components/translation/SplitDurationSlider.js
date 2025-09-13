@@ -1,6 +1,6 @@
 import React, { useMemo } from 'react';
 import { useTranslation } from 'react-i18next';
-import StandardSlider from '../common/StandardSlider';
+import SliderWithValue from '../common/SliderWithValue';
 
 /**
  * Split duration slider component
@@ -81,28 +81,20 @@ const SplitDurationSlider = ({ splitDuration, onSplitDurationChange, subtitles, 
       <div className="row-content">
         {/* Slider control row with help icon */}
         <div className="slider-control-row">
-          <div className="slider-with-value">
-            <StandardSlider
-              value={splitDuration}
-              onChange={(value) => onSplitDurationChange(parseInt(value))}
-              min={0}
-              max={20}
-              step={1}
-              orientation="Horizontal"
-              size="XSmall"
-              state={disabled ? "Disabled" : "Enabled"}
-              showValueIndicator={false} // We'll use custom value display
-              showIcon={false}
-              showStops={false}
-              className="split-duration-slider"
-              id="split-duration-slider"
-              ariaLabel={t('translation.splitDuration', 'Split Duration')}
-            />
-            <div className="slider-value-display">
-              {splitDuration === 0
-                ? t('translation.noSplit', 'No Split')
-                : `${splitDuration} ${t('translation.minutes', 'min')}`}
-            </div>
+          <SliderWithValue
+            value={splitDuration}
+            onChange={(value) => onSplitDurationChange(parseInt(value))}
+            min={0}
+            max={20}
+            step={1}
+            orientation="Horizontal"
+            size="XSmall"
+            state={disabled ? "Disabled" : "Enabled"}
+            className="split-duration-slider"
+            id="split-duration-slider"
+            ariaLabel={t('translation.splitDuration', 'Split Duration')}
+            formatValue={(v) => v === 0 ? t('translation.noSplit', 'No Split') : `${v} ${t('translation.minutes', 'min')}`}
+          >
             {/* Help icon next to slider value */}
             <div
               className="help-icon-container"
@@ -114,7 +106,7 @@ const SplitDurationSlider = ({ splitDuration, onSplitDurationChange, subtitles, 
                 <line x1="12" y1="8" x2="12.01" y2="8"></line>
               </svg>
             </div>
-          </div>
+          </SliderWithValue>
         </div>
 
         {/* Compact segment distribution preview - bottom full width */}

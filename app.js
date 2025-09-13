@@ -430,57 +430,67 @@ app.post('/api/switch-branch', express.json(), async (req, res) => {
   }
   
   console.log(`Switching to branch: ${branch}`);
-  
-  // First, check if the branch exists
-  exec(`git branch --list ${branch}`, (error, stdout, stderr) => {
-    if (error || !stdout.trim()) {
-      console.error(`Branch ${branch} does not exist`);
-      return res.status(400).json({
+
+  // First, fetch the latest remote branches
+  exec('git fetch origin', (fetchError, fetchStdout, fetchStderr) => {
+    if (fetchError) {
+      console.error('Error fetching remote branches:', fetchError);
+      return res.status(500).json({
         success: false,
-        error: `Branch '${branch}' does not exist. Please create it first.`
+        error: `Failed to fetch remote branches: ${fetchError.message}`
       });
     }
-    
-    // Stash any uncommitted changes first
-    exec('git stash', (stashError, stashStdout, stashStderr) => {
-      if (stashError) {
-        console.warn('Warning: Could not stash changes:', stashError);
+
+    // Check if the branch exists on remote
+    exec(`git ls-remote --heads origin ${branch}`, (lsError, lsStdout, lsStderr) => {
+      if (lsError || !lsStdout.trim()) {
+        console.error(`Branch ${branch} does not exist on remote`);
+        return res.status(400).json({
+          success: false,
+          error: `Branch '${branch}' does not exist on the remote repository. Please check the branch name.`
+        });
       }
-      
-      // Now checkout the requested branch
-      exec(`git checkout ${branch}`, (checkoutError, checkoutStdout, checkoutStderr) => {
-        if (checkoutError) {
-          console.error('Error switching branch:', checkoutError);
-          
-          // Try to pop the stash if checkout failed
-          exec('git stash pop', () => {});
-          
-          return res.status(500).json({
-            success: false,
-            error: `Failed to switch to branch '${branch}': ${checkoutError.message}`
-          });
+
+      // Stash any uncommitted changes first
+      exec('git stash', (stashError, stashStdout, stashStderr) => {
+        if (stashError) {
+          console.warn('Warning: Could not stash changes:', stashError);
         }
-        
-        console.log(`Successfully switched to branch: ${branch}`);
-        
-        // Try to pop the stash after successful checkout
-        exec('git stash pop', (popError) => {
-          if (popError) {
-            console.log('No stashed changes to restore or merge conflict occurred');
+
+        // Now checkout the requested branch from remote
+        exec(`git checkout -B ${branch} origin/${branch}`, (checkoutError, checkoutStdout, checkoutStderr) => {
+          if (checkoutError) {
+            console.error('Error switching branch:', checkoutError);
+
+            // Try to pop the stash if checkout failed
+            exec('git stash pop', () => {});
+
+            return res.status(500).json({
+              success: false,
+              error: `Failed to switch to branch '${branch}': ${checkoutError.message}`
+            });
           }
-        });
-        
-        // Send success response immediately
-        res.json({
-          success: true,
-          message: `Successfully switched to branch '${branch}'. Restarting application...`,
-          branch: branch,
-          requiresRestart: true
-        });
-        
-        // Run npm install and then npm run dev/dev:cuda in a new detached process
-        setTimeout(() => {
-          const { spawn } = require('child_process');
+
+          console.log(`Successfully switched to branch: ${branch}`);
+
+          // Try to pop the stash after successful checkout
+          exec('git stash pop', (popError) => {
+            if (popError) {
+              console.log('No stashed changes to restore or merge conflict occurred');
+            }
+          });
+
+          // Send success response immediately
+          res.json({
+            success: true,
+            message: `Successfully switched to branch '${branch}'. Restarting application...`,
+            branch: branch,
+            requiresRestart: true
+          });
+
+          // Run npm install and then npm run dev/dev:cuda in a new detached process
+          setTimeout(() => {
+            const { spawn } = require('child_process');
           
           // Check if we're running in Full version (dev:cuda) or Lite version (dev)
           const isFullVersion = process.env.START_PYTHON_SERVER === 'true';
@@ -502,11 +512,12 @@ app.post('/api/switch-branch', express.json(), async (req, res) => {
           
           console.log(`New process started (${isFullVersion ? 'Full' : 'Lite'} version). This process will exit shortly...`);
           
-          // Exit current process after a moment
-          setTimeout(() => {
-            process.exit(0);
-          }, 1000);
-        }, 500);
+            // Exit current process after a moment
+            setTimeout(() => {
+              process.exit(0);
+            }, 1000);
+          }, 500);
+        });
       });
     });
   });

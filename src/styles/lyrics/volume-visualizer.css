@@ -3,7 +3,6 @@
 .volume-visualizer {
   width: 100%;
   position: relative;
-  margin: 2px 0;
   border-radius: 4px;
   overflow: hidden;
   /* Transparent background */

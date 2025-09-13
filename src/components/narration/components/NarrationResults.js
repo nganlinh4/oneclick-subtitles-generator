@@ -1,6 +1,6 @@
 import { useState, useRef, useEffect } from 'react';
 import { useTranslation } from 'react-i18next';
-import StandardSlider from '../../common/StandardSlider';
+import SliderWithValue from '../../common/SliderWithValue';
 import LoadingIndicator from '../../common/LoadingIndicator';
 import { VariableSizeList as List } from 'react-window';
 import { SERVER_URL } from '../../../config';
@@ -549,26 +549,21 @@ const NarrationResults = ({
         {generationResults && generationResults.length > 0 && (
           <div className="speed-control-container">
             <span className="speed-control-label">{t('narration.speed', 'Speed')}:</span>
-            <div className="slider-with-value">
-              <StandardSlider
-                value={speedValue}
-                onChange={(value) => setSpeedValue(parseFloat(value))}
-                min={0.5}
-                max={2.0}
-                step={0.1}
-                orientation="Horizontal"
-                size="XSmall"
-                state={isProcessing ? "Disabled" : "Enabled"}
-                width="compact" // Compact width for speed control
-                showValueIndicator={false} // Using custom value display
-                showIcon={false}
-                showStops={false}
-                className="speed-control-slider"
-                id="narration-speed-control"
-                ariaLabel={t('narration.speed', 'Speed')}
-              />
-              <div className="slider-value-display">{speedValue.toFixed(1)}x</div>
-            </div>
+            <SliderWithValue
+              value={speedValue}
+              onChange={(value) => setSpeedValue(parseFloat(value))}
+              min={0.5}
+              max={2.0}
+              step={0.1}
+              orientation="Horizontal"
+              size="XSmall"
+              state={isProcessing ? "Disabled" : "Enabled"}
+              width="compact"
+              className="speed-control-slider"
+              id="narration-speed-control"
+              ariaLabel={t('narration.speed', 'Speed')}
+              formatValue={(v) => `${Number(v).toFixed(1)}x`}
+            />
             {isProcessing ? (
               <div className="speed-control-progress">
                 <div className="speed-control-spinner"></div>

@@ -7,5 +7,8 @@
   "generateReplace": "Tạo lại phụ đề",
   "clearInRangeWithShortcut": "Xóa phụ đề trong phạm vi (Del)",
   "moveRange": "Kéo để di chuyển phụ đề trong phạm vi",
-  "dragToZoom": "Kéo để thu phóng"
+  "dragToZoom": "Kéo để thu phóng",
+  "clearOfflineSegments": "Dọn các phân đoạn offline",
+  "retryFromCache": "Thử lại đoạn cắt này (tái sử dụng clip đã lưu)",
+  "clearOfflineFirst": "Vui lòng dọn các phân đoạn offline trước để thoát chế độ này"
 }

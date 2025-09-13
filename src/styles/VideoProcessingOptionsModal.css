@@ -41,6 +41,23 @@
   background-color: #00000000;
   box-shadow: var(--md-elevation-level1);
 }
+.header-content {
+  display: contents;
+}
+
+/* Ensure label aligns to the right and sits close to the dropdown in the header group */
+.video-processing-modal .header-switch-group label {
+  display: inline-block;
+  text-align: right;
+  min-width: 80px; /* give room for text to align to the right edge */
+  margin: 0;
+}
+
+
+/* Dim header method group when locked by retry */
+.video-processing-modal .header-switch-group.disabled {
+  opacity: 0.6;
+}
 
 .header-content h3 {
   display: flex;
@@ -283,7 +300,12 @@
   display: flex;
   flex-direction: column;
   gap: 8px;
-  align-items: flex-start;
+  align-items: stretch; /* Allow children to span full width */
+}
+
+/* Ensure inner wrappers expand to full width so sliders can fill */
+.video-processing-modal .combined-option-half > div {
+  width: 100%;
 }
 
 .combined-option-half label {
@@ -445,13 +467,47 @@
   align-items: center;
   gap: 12px;
   width: 100%;
+  max-width: none; /* Allow full width in modal */
 }
 
-/* Ensure the slider component container takes all available width */
-.video-processing-modal .slider-with-value .standard-slider-container {
+/* Ensure the slider fills available space and children can grow */
+.video-processing-modal .slider-with-value {
   flex: 1 1 auto;
-  min-width: 0; /* Allow shrinking */
+  min-width: 0; /* allow flex child to grow/shrink within parent */
 }
+
+.video-processing-modal .slider-with-value .standard-slider-container {
+  flex: 1 1 0%; /* take remaining space alongside value display */
+  width: auto;
+  max-width: none; /* Avoid 354px cap inside modal */
+}
+
+.video-processing-modal .standard-slider-track-container {
+  flex: 1 1 auto;
+  width: 100%;
+}
+
+/* Reinforce track colors in modal to avoid theme bleed */
+.video-processing-modal .standard-slider-active-track .track {
+  background-color: var(--md-secondary, #2979FF);
+}
+.video-processing-modal .standard-slider-inactive-track .track {
+  background-color: var(--md-outline-variant, #CAC4D0);
+}
+/* Force explicit heights and visibility for StandardSlider tracks inside modal */
+.video-processing-modal .standard-slider-track-container {
+  height: 44px !important; /* Ensure handle/tracks area height */
+}
+.video-processing-modal .standard-slider-active-track,
+.video-processing-modal .standard-slider-inactive-track {
+  height: 16px !important;
+  min-height: 16px !important;
+}
+.video-processing-modal .standard-slider-active-track .track,
+.video-processing-modal .standard-slider-inactive-track .track {
+  opacity: 1 !important;
+}
+
 
 /* Value display stays on the right with minimum width only */
 .video-processing-modal .slider-value-display {
@@ -463,32 +519,48 @@
   white-space: nowrap;
 }
 
-/* FPS slider - now simpler, just "0.25 FPS" */
-.video-processing-modal .fps-slider-container .slider-value-display {
-  min-width: 60px;
-}
 
-/* Context coverage slider - "Unlimited" or "20 lines" */
-.video-processing-modal .context-slider-container .slider-value-display {
-  min-width: 45px;
-}
-
-/* Max duration slider - "20 minutes" plus potential parallel info */
-.video-processing-modal .duration-slider-container .slider-value-display {
-  min-width: 90px;
-  white-space: normal; /* Allow wrapping for parallel info */
-  line-height: 1.3;
-}
-
-/* Max words slider - "30 words" */
-.video-processing-modal .words-slider-container .slider-value-display {
-  min-width: 30px;
-}
 
 /* Model dropdown in combined row - limit width */
 .video-processing-modal .combined-option-half:first-child .custom-dropdown {
   max-width: 200px;
 }
+.video-processing-modal .header-content .custom-dropdown {
+  max-width: 200px;
+}
+/* When a slider is disabled, also dim the value display to avoid confusion */
+.video-processing-modal .slider-with-value .standard-slider-container.disabled ~ .slider-value-display,
+.video-processing-modal .slider-with-value .standard-slider-container.state-Disabled ~ .slider-value-display {
+  opacity: 0.55;
+}
+
+/* Dim and gray-out disabled sliders (match chatterbox behavior) */
+.video-processing-modal .slider-with-value .standard-slider-container.disabled,
+.video-processing-modal .slider-with-value .standard-slider-container.state-Disabled {
+  position: relative;
+  overflow: hidden;
+  background: none !important;
+  filter: grayscale(50%);
+  opacity: 0.65; /* subtle global dim */
+}
+.video-processing-modal .slider-with-value .standard-slider-container.disabled::after,
+.video-processing-modal .slider-with-value .standard-slider-container.state-Disabled::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background-color: rgba(var(--md-surface-rgb, 255, 255, 255), 0.05);
+  z-index: 3;
+  pointer-events: none; /* do not block interactions (though disabled anyway) */
+}
+.video-processing-modal .slider-with-value .standard-slider-container.disabled .standard-slider-active-track,
+.video-processing-modal .slider-with-value .standard-slider-container.state-Disabled .standard-slider-active-track {
+  opacity: 0.35 !important;
+}
+.video-processing-modal .slider-with-value .standard-slider-container.disabled .standard-slider-handle,
+.video-processing-modal .slider-with-value .standard-slider-container.state-Disabled .standard-slider-handle {
+  box-shadow: none !important;
+}
+
 
 /* Additional info (like parallel requests) should be on its own line */
 .video-processing-modal .slider-value-display .parallel-info {
@@ -542,6 +614,19 @@
   opacity: 0.8;
   font-weight: normal;
   margin-left: 6px;
+}
+
+/* Gray out label/help when group is disabled */
+.video-processing-modal .label-with-help.disabled {
+  opacity: 0.6;
+  pointer-events: none;
+}
+
+/* Ensure disabled standard slider shows no border/outline */
+.video-processing-modal .slider-with-value .standard-slider-container.disabled,
+.video-processing-modal .slider-with-value .standard-slider-container.state-Disabled {
+  border: none !important;
+  outline: none !important;
 }
 
 /* Modal footer styles */

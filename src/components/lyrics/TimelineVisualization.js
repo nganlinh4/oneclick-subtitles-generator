@@ -16,6 +16,8 @@ import { clearUnusedChunks } from '../../utils/optimizedVideoStreaming';
 // Import LiquidGlass component
 import LiquidGlass from '../common/LiquidGlass';
 
+import { showWarningToast } from '../../utils/toastUtils';
+
 const TimelineVisualization = ({
   lyrics,
   currentTime,
@@ -68,32 +70,7 @@ const TimelineVisualization = ({
   const previousLyricsRef = useRef([]);
   const newSegmentAnimationRef = useRef(null);
 
-  // Handle processing animation
-  useEffect(() => {
-    if (isProcessingSegment) {
-      const startTime = performance.now();
-
-      const animate = () => {
-        const elapsed = performance.now() - startTime;
-        setAnimationTime(elapsed);
-        processingAnimationRef.current = requestAnimationFrame(animate);
-      };
-
-      processingAnimationRef.current = requestAnimationFrame(animate);
-
-      return () => {
-        if (processingAnimationRef.current) {
-          cancelAnimationFrame(processingAnimationRef.current);
-        }
-      };
-    } else {
-      // Reset animation when processing stops
-      setAnimationTime(0);
-      if (processingAnimationRef.current) {
-        cancelAnimationFrame(processingAnimationRef.current);
-      }
-    }
-  }, [isProcessingSegment]);
+  // Processing animation effect moved below (after retryingOfflineKeys is declared) to avoid TDZ
 
   // Handle drag hint animation - show when segment selection is enabled but no dragging has been done
   useEffect(() => {
@@ -339,6 +316,152 @@ const TimelineVisualization = ({
   const [moveDragOffsetPx, setMoveDragOffsetPx] = useState(0);
   const rangePreviewDeltaRef = useRef(0); // seconds delta during move drag
   const [hiddenActionBarRange, setHiddenActionBarRange] = useState(null); // Store range when action bar is hidden
+
+  // Offline segments lingering after processing (for quick retry from cached cuts)
+  const [offlineSegments, setOfflineSegments] = useState([]); // [{ start, end, url, name }]
+  const [hoveredOfflineRange, setHoveredOfflineRange] = useState(null);
+  // Track which offline ranges are currently retrying (keys: "start-end")
+  const [retryingOfflineKeys, setRetryingOfflineKeys] = useState([]);
+  const makeRangeKey = (r) => (r && typeof r.start === 'number' && typeof r.end === 'number') ? `${r.start}-${r.end}` : '';
+
+  // Handle processing animation (streaming or retry) — placed after retryingOfflineKeys to avoid TDZ
+  useEffect(() => {
+    const anyProcessing = isProcessingSegment || (retryingOfflineKeys && retryingOfflineKeys.length > 0) || isStreamingActive;
+    if (anyProcessing) {
+      const startTime = performance.now();
+      const animate = () => {
+        const elapsed = performance.now() - startTime;
+        setAnimationTime(elapsed);
+        processingAnimationRef.current = requestAnimationFrame(animate);
+      };
+      processingAnimationRef.current = requestAnimationFrame(animate);
+      return () => {
+        if (processingAnimationRef.current) {
+          cancelAnimationFrame(processingAnimationRef.current);
+        }
+      };
+    } else {
+      // Reset animation when processing stops
+      setAnimationTime(0);
+      if (processingAnimationRef.current) {
+        cancelAnimationFrame(processingAnimationRef.current);
+      }
+    }
+  }, [isProcessingSegment, retryingOfflineKeys, isStreamingActive]);
+
+  // Load offline segments for current video on mount and when current file changes
+  useEffect(() => {
+    const loadOffline = () => {
+      try {
+        const videoKey = localStorage.getItem('current_file_cache_id')
+          || localStorage.getItem('current_file_url')
+          || localStorage.getItem('current_video_url');
+        const raw = localStorage.getItem('offline_segments_cache');
+        const cache = raw ? JSON.parse(raw) : {};
+        const list = (videoKey && Array.isArray(cache[videoKey])) ? cache[videoKey] : [];
+        setOfflineSegments(list);
+      } catch {}
+    };
+    loadOffline();
+
+    // Update when a new offline segment is cached
+    const onCached = (e) => {
+      const { start, end, url, name } = (e && e.detail) || {};
+      if (typeof start !== 'number' || typeof end !== 'number' || !url) return;
+      setOfflineSegments(prev => {
+        const exists = prev.some(r => Math.abs(r.start - start) < 1e-6 && Math.abs(r.end - end) < 1e-6);
+        if (exists) return prev;
+        return [...prev, { start, end, url, name }];
+      });
+    };
+    window.addEventListener('offline-segment-cached', onCached);
+
+    return () => window.removeEventListener('offline-segment-cached', onCached);
+  }, []);
+
+  // Clear all offline segments: remove cache and delete files on server
+  const handleClearOfflineSegments = useCallback(async () => {
+    try {
+      const urls = (offlineSegments || []).map(r => r.url).filter(Boolean);
+      if (urls.length > 0) {
+        try {
+          await fetch('http://localhost:3031/api/delete-videos', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ urls })
+          });
+        } catch (e) {
+          console.warn('[Timeline] Failed to call delete-videos:', e);
+        }
+      }
+      // Clear local cache for current video
+      try {
+        const videoKey = localStorage.getItem('current_file_cache_id')
+          || localStorage.getItem('current_file_url')
+          || localStorage.getItem('current_video_url');
+        if (videoKey) {
+          const raw = localStorage.getItem('offline_segments_cache');
+          const cache = raw ? JSON.parse(raw) : {};
+          if (cache[videoKey]) {
+            delete cache[videoKey];
+            localStorage.setItem('offline_segments_cache', JSON.stringify(cache));
+          }
+        }
+      } catch {}
+      setOfflineSegments([]);
+      setHoveredOfflineRange(null);
+    } catch (e) {
+      console.error('[Timeline] Error clearing offline segments:', e);
+    }
+  }, [offlineSegments]);
+
+  // Retry an offline range: open processing modal with locked settings
+  const handleRetryOfflineRange = useCallback((range) => {
+    if (!range) return;
+    try {
+      // Mark open reason as retry so the modal locks specific controls
+      sessionStorage.setItem('processing_modal_open_reason', 'retry-offline');
+      if (range.url) {
+        sessionStorage.setItem('processing_modal_cached_url', range.url);
+      }
+      // Open the processing options modal for this range
+      if (onSegmentSelect) {
+        onSegmentSelect({ start: range.start, end: range.end });
+      } else if (range.url) {
+        // Fallback to original behavior if modal cannot be opened
+        window.dispatchEvent(new CustomEvent('retry-segment-from-cache', {
+          detail: { start: range.start, end: range.end, url: range.url }
+        }));
+      }
+    } catch (e) {
+      console.error('[Timeline] Failed to initiate retry from cache:', e);
+    }
+  }, [onSegmentSelect]);
+
+  // Clear loading state when retry completes (success or failure)
+  useEffect(() => {
+    const onStreamingComplete = (e) => {
+      const seg = e && e.detail && e.detail.segment;
+      if (seg && typeof seg.start === 'number' && typeof seg.end === 'number') {
+        const key = `${seg.start}-${seg.end}`;
+        setRetryingOfflineKeys(prev => prev.filter(k => k !== key));
+      }
+    };
+    const onRetryComplete = (e) => {
+      const d = e && e.detail;
+      if (d && typeof d.start === 'number' && typeof d.end === 'number') {
+        const key = `${d.start}-${d.end}`;
+        setRetryingOfflineKeys(prev => prev.filter(k => k !== key));
+      }
+    };
+    window.addEventListener('streaming-complete', onStreamingComplete);
+    window.addEventListener('retry-segment-from-cache-complete', onRetryComplete);
+    return () => {
+      window.removeEventListener('streaming-complete', onStreamingComplete);
+      window.removeEventListener('retry-segment-from-cache-complete', onRetryComplete);
+    };
+  }, []);
+
   const isClickingInsideRef = useRef(false); // Track if we're clicking inside the range
 
   // Notify parent component when selected range changes
@@ -374,15 +497,42 @@ const TimelineVisualization = ({
     const effectiveSelected = activeRange
       ? { start: activeRange.start + (rangePreviewDeltaRef.current || 0), end: activeRange.end + (rangePreviewDeltaRef.current || 0) }
       : selectedSegment;
+    // Reuse streaming parallel highlighting style by feeding offline segments
+    // Build retry key set
+    const retryKeySet = new Set(retryingOfflineKeys || []);
+    const { start: visStart, end: visEnd } = visibleTimeRange;
+
+    // Only consider offline ranges that are visible to reduce draw cost
+    const offlineVisible = (offlineSegments || []).filter(r => (r.end > visStart && r.start < visEnd));
+
+    // Determine if any animation should run (global clock)
+    const isAnimating = !!isProcessingSegment || retryKeySet.size > 0;
+
+    // Include only the retried offline ranges during animation; otherwise include all visible offline ranges as static
+    const offlineRangesForDraw = offlineVisible.map((r, idx) => {
+      const key = `${r.start}-${r.end}`;
+      const animate = retryKeySet.has(key);
+      if (isAnimating && !animate) return null; // skip static ranges during animation frames to avoid lag
+      return { start: r.start, end: r.end, index: (processingRanges?.length || 0) + idx, animate };
+    }).filter(Boolean);
+
+    const combinedProcessingRanges = Array.isArray(processingRanges)
+      ? [...processingRanges, ...offlineRangesForDraw]
+      : offlineRangesForDraw;
+
+    // Selected band should only animate if it is actually the retried range or we are in a real processing run
+    const selectedIsProcessing = !!isProcessingSegment || (effectiveSelected && retryKeySet.has(`${effectiveSelected.start}-${effectiveSelected.end}`));
+
     const segmentData = {
       selectedSegment: effectiveSelected,
       isDraggingSegment,
       dragStartTime,
       dragCurrentTime,
-      isProcessing: isProcessingSegment,
+      isProcessing: isAnimating, // used by processingRanges; selected animation gated separately
+      selectedIsProcessing,
       animationTime,
       newSegments: newSegments, // Pass new segments for animation
-      processingRanges: processingRanges
+      processingRanges: combinedProcessingRanges
     };
 
     // Draw the timeline
@@ -401,7 +551,9 @@ const TimelineVisualization = ({
       timeFormat,
       segmentData
     );
-  }, [lyrics, currentTime, duration, getTimeRange, panOffset, getVisibleRangeWithTempOffset, timeFormat, selectedSegment, isDraggingSegment, dragStartTime, dragCurrentTime, isProcessingSegment, animationTime, newSegments, actionBarRange, hiddenActionBarRange]);
+
+
+  }, [lyrics, currentTime, duration, getTimeRange, panOffset, getVisibleRangeWithTempOffset, timeFormat, selectedSegment, isDraggingSegment, dragStartTime, dragCurrentTime, isProcessingSegment, animationTime, newSegments, actionBarRange, hiddenActionBarRange, offlineSegments, hoveredOfflineRange, retryingOfflineKeys]);
 
   // Animate new segments - must be after renderTimeline definition
   useEffect(() => {
@@ -624,12 +776,15 @@ const TimelineVisualization = ({
           };
 
           // Check if there are subtitles in the range
-          if (checkForSubtitles(startTime, endTime)) {
+          if (offlineSegments.length > 0) {
+            // When offline cuts exist, do not trigger the range action bar or open the modal
+          } else if (checkForSubtitles(startTime, endTime)) {
             // Show action bar instead of opening modal
             setActionBarRange({ start: startTime, end: endTime });
             setHiddenActionBarRange({ start: startTime, end: endTime });
           } else {
             // Open video processing modal for entire range
+            sessionStorage.setItem('processing_modal_open_reason', 'drag-selection');
             onSegmentSelect({ start: startTime, end: endTime });
           }
         }, 500); // 0.5 second delay to show blue highlight
@@ -717,6 +872,8 @@ const TimelineVisualization = ({
       }
 
       // Set the pan offset directly without animation to avoid shaking
+  // Clear all offline segments: remove cache and delete files on server
+
       // This creates a clean jump to the new position without any transition
       setPanOffset(targetOffset);
 
@@ -764,6 +921,7 @@ const TimelineVisualization = ({
       // Check if the click is within the selected segment range
       if (clickTime >= selectedSegment.start && clickTime <= selectedSegment.end) {
         console.log('[Timeline] Right-click on selected segment - opening video processing modal');
+        sessionStorage.setItem('processing_modal_open_reason', 'context-menu');
         // Trigger the segment selection callback to open the modal
         onSegmentSelect(selectedSegment);
       }
@@ -797,7 +955,7 @@ const TimelineVisualization = ({
   // Handle mouse move to detect hovering over the hidden range or selectedSegment
   const handleMouseMoveForRange = useCallback((e) => {
     // Check both hiddenActionBarRange and selectedSegment
-    if (!hiddenActionBarRange && !actionBarRange && !selectedSegment) return;
+    if (!hiddenActionBarRange && !actionBarRange && !selectedSegment && (!offlineSegments || offlineSegments.length === 0)) return;
 
     const canvas = timelineRef.current;
     const effectiveDuration = duration || 60;
@@ -809,11 +967,19 @@ const TimelineVisualization = ({
     const timePerPixel = (timeRange.end - timeRange.start) / canvas.clientWidth;
     const hoverTime = Math.max(0, Math.min(effectiveDuration, timeRange.start + (relativeX * timePerPixel)));
 
+    // Track hovered offline cached range (for refresh UI)
+    if (offlineSegments && offlineSegments.length > 0) {
+      const hovered = offlineSegments.find(r => hoverTime >= r.start && hoverTime <= r.end);
+      setHoveredOfflineRange(hovered || null);
+    } else {
+      if (hoveredOfflineRange) setHoveredOfflineRange(null);
+    }
+
     // Check if hovering within the hidden action bar range
     const range = hiddenActionBarRange || actionBarRange;
     if (range && hoverTime >= range.start && hoverTime <= range.end) {
-      // Show the action bar if it was hidden
-      if (hiddenActionBarRange && !actionBarRange) {
+      // Show the action bar if it was hidden (only when no offline cuts exist)
+      if (hiddenActionBarRange && !actionBarRange && offlineSegments.length === 0) {
         setActionBarRange(hiddenActionBarRange);
       }
     }
@@ -822,7 +988,7 @@ const TimelineVisualization = ({
     if (selectedSegment && !actionBarRange &&
         hoverTime >= selectedSegment.start && hoverTime <= selectedSegment.end) {
       // Check if there are subtitles in this segment
-      if (hasSubtitlesInRange(selectedSegment.start, selectedSegment.end)) {
+      if (hasSubtitlesInRange(selectedSegment.start, selectedSegment.end) && offlineSegments.length === 0) {
         // Show action bar for the selected segment
         setActionBarRange(selectedSegment);
         setHiddenActionBarRange(selectedSegment);
@@ -832,7 +998,7 @@ const TimelineVisualization = ({
 
   // Add mouse move listener for hover detection
   useEffect(() => {
-    if (hiddenActionBarRange || actionBarRange || selectedSegment) {
+    if (hiddenActionBarRange || actionBarRange || selectedSegment || (offlineSegments && offlineSegments.length > 0)) {
       const canvas = timelineRef.current;
       if (canvas) {
         canvas.addEventListener('mousemove', handleMouseMoveForRange);
@@ -857,16 +1023,18 @@ const TimelineVisualization = ({
 
 
   // Common logic for handling pointer down (mouse or touch)
-  const handlePointerDown = (clientX, clientY, isTouch = false) => {
+  const handlePointerDown = (clientX, _clientY, isTouch = false) => {
     const startTime = pixelToTime(clientX);
     const startX = clientX;
     let hasMoved = false;
     let dragThreshold = isTouch ? 10 : 5; // pixels - higher threshold for touch to avoid accidental drags
 
+    let warned = false;
+
     console.log(`[Timeline] ${isTouch ? 'Touch' : 'Mouse'} down at time:`, startTime.toFixed(2), 's');
 
-    // Initialize drag state for segment selection (if enabled)
-    if (onSegmentSelect) {
+    // Initialize drag state for segment selection (if enabled) - disabled when offline segments linger
+    if (onSegmentSelect && offlineSegments.length === 0) {
       setDragStartTime(startTime);
       setDragCurrentTime(startTime);
       dragStartRef.current = startTime;
@@ -877,8 +1045,19 @@ const TimelineVisualization = ({
       setMoveDragOffsetPx(0);
     }
 
+
+
     const handlePointerMove = (moveClientX) => {
       const deltaX = Math.abs(moveClientX - startX);
+
+      // If offline cuts exist, only warn when user starts dragging; allow single-click seeking
+      if (offlineSegments.length > 0) {
+        if (deltaX > dragThreshold && !warned) {
+          showWarningToast(t('timeline.clearOfflineFirst', 'Please clear offline segments to exit this mode first'));
+          warned = true;
+        }
+        return;
+      }
 
       // Check if we've moved enough to consider this a drag
       if (deltaX > dragThreshold) {
@@ -917,11 +1096,14 @@ const TimelineVisualization = ({
           // Only create segment if there's a meaningful duration (at least 1 second)
           if (end - start >= 1) {
             console.log('[Timeline] Selection:', start.toFixed(2), '-', end.toFixed(2), 's');
-            if (hasSubtitlesInRange(start, end)) {
+            if (offlineSegments.length > 0) {
+              // When offline cuts exist, do not trigger the range action bar or open the modal
+            } else if (hasSubtitlesInRange(start, end)) {
               // Show action bar instead of opening modal
               setActionBarRange({ start, end });
               setHiddenActionBarRange({ start, end });
             } else {
+              sessionStorage.setItem('processing_modal_open_reason', 'drag-selection');
               onSegmentSelect({ start, end });
             }
           } else {
@@ -943,9 +1125,9 @@ const TimelineVisualization = ({
           // Tap/click inside range - set flag to prevent hiding
           isClickingInsideRef.current = true;
 
-          // Ensure action bar is shown
+          // Ensure action bar is shown (only when no offline cuts exist)
           if (!actionBarRange && activeRange) {
-            if (hasSubtitlesInRange(activeRange.start, activeRange.end)) {
+            if (hasSubtitlesInRange(activeRange.start, activeRange.end) && offlineSegments.length === 0) {
               setActionBarRange(activeRange);
               setHiddenActionBarRange(activeRange);
             }
@@ -956,6 +1138,7 @@ const TimelineVisualization = ({
             isClickingInsideRef.current = false;
           }, 100);
         } else {
+
           // Tap/click outside - clear everything
           setActionBarRange(null);
           setHiddenActionBarRange(null);
@@ -1048,6 +1231,92 @@ const TimelineVisualization = ({
 
   return (
     <div className="timeline-container" style={{ position: 'relative' }}>
+      {/* Clear offline segments button (portal in timeline-header-overlays-root) */}
+      {offlineSegments.length > 0 && (() => {
+        const canvas = timelineRef.current;
+        const overlayRoot = document.getElementById('timeline-header-overlays-root');
+        const containerRef = { current: null };
+        let rafId;
+        const update = () => {
+          const bounds = canvas?.getBoundingClientRect();
+          if (containerRef.current && bounds) {
+            containerRef.current.style.top = `${(bounds.top || 0) - 36}px`;
+            containerRef.current.style.left = `${(bounds.left || 0) + 8}px`;
+          }
+          rafId = requestAnimationFrame(update);
+        };
+        rafId = requestAnimationFrame(update);
+        const overlay = (
+          <div style={{ position: 'fixed', inset: 0, pointerEvents: 'none' }}>
+            <div
+              ref={(el) => (containerRef.current = el)}
+              style={{ position: 'absolute', top: 0, left: 0, pointerEvents: 'auto', zIndex: 1000 }}
+            >
+              <button
+                className="btn-base btn-tonal btn-small"
+                onClick={(e) => { e.stopPropagation(); handleClearOfflineSegments(); }}
+                style={{ display: 'inline-flex', alignItems: 'center', gap: 6, height: 24, minHeight: 24, padding: '0 8px', borderRadius: 12, backgroundColor: 'var(--md-surface-variant)', color: 'var(--md-on-surface-variant)', border: '1px solid var(--md-outline-variant)' }}
+              >
+                <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 -960 960 960" aria-hidden style={{ color: 'currentColor' }}>
+                  <path fill="currentColor" d="M763-272h94q27 0 45.5 18.5T921-208q0 26-18.5 45T857-144H635l128-128ZM217-144q-14 0-25-5t-20-14L67-268q-38-38-38-89t39-90l426-414q38-38 90-38t91 39l174 174q37 38 38 90t-38 90L501-164q-8 9-19.5 14.5T457-144H217Zm212-128 328-322-174-176-423 414 83 84h186Zm51-208Z"/>
+                </svg>
+                {t('timeline.clearOfflineSegments', 'Clear offline segments')}
+              </button>
+            </div>
+          </div>
+        );
+        setTimeout(() => { const cleanup = () => rafId && cancelAnimationFrame(rafId); cleanup.__keep=true; return cleanup; }, 0);
+        return overlayRoot ? createPortal(overlay, overlayRoot) : null;
+      })() }
+
+      {/* Hover refresh icon (portal) at colorful bits' vertical center */}
+      {hoveredOfflineRange && (() => {
+        const canvas = timelineRef.current;
+        const overlayRoot = document.getElementById('timeline-header-overlays-root');
+        const { start: visStart, end: visEnd } = getTimeRange();
+        const width = canvas?.clientWidth || 1;
+        const height = canvas?.clientHeight || 0;
+        const toPx = (t) => ((t - visStart) / Math.max(0.0001, (visEnd - visStart))) * width;
+        const mid = (hoveredOfflineRange.start + hoveredOfflineRange.end) / 2;
+        const containerRef = { current: null };
+        const rangeKey = `${hoveredOfflineRange.start}-${hoveredOfflineRange.end}`;
+        const isRetrying = retryingOfflineKeys.includes(rangeKey);
+        let rafId;
+        const update = () => {
+          const bounds = canvas?.getBoundingClientRect();
+          if (containerRef.current && bounds) {
+            const timeMarkerSpace = 25;
+            const availableHeight = Math.max(0, height - timeMarkerSpace);
+            const centerY = timeMarkerSpace + (availableHeight / 2);
+            const xPx = Math.max(0, Math.min(width, toPx(mid)));
+            containerRef.current.style.top = `${(bounds.top || 0) + centerY - 18}px`;
+            containerRef.current.style.left = `${(bounds.left || 0) + xPx - 18}px`;
+          }
+          rafId = requestAnimationFrame(update);
+        };
+        rafId = requestAnimationFrame(update);
+        const overlay = (
+          <div style={{ position: 'fixed', inset: 0, pointerEvents: 'none' }}>
+            <div ref={(el) => (containerRef.current = el)} style={{ position: 'absolute', top: 0, left: 0, pointerEvents: 'auto', zIndex: 1000 }}>
+              {!isRetrying && (
+                <button
+                  className="btn-base btn-primary btn-small"
+                  title={t('timeline.retryFromCache', 'Retry this cut (reuse cached clip)')}
+                  onClick={(e) => { e.stopPropagation(); handleRetryOfflineRange(hoveredOfflineRange); }}
+                  style={{ width: 30, height: 30, minWidth: 30, padding: 0, borderRadius: '50%', display: 'flex', alignItems: 'center', justifyContent: 'center' }}
+                >
+                  <svg xmlns="http://www.w3.org/2000/svg" height="16" viewBox="0 -960 960 960" width="16" aria-hidden style={{ color: 'var(--md-on-primary)' }}>
+                    <path fill="currentColor" d="M289-482q0 9 1 17.5t1 16.5q5 24-2 50t-31 39q-23 12-48 4t-33-31q-7-23-11.5-46.5T161-482q0-128 89-221.5T465-799l-3-4q-16-15-15.5-33.5T463-871q15-15 34-15t34 15l91 91q19 19 19 45t-19 46l-92 91q-15 15-33 14.5T464-599q-16-15-15.5-34.5T464-668l2-2h3q-75 1-127.5 56.5T289-482Zm382 3q0-9-1-17t0-16q-5-26 2.5-51t30.5-39q23-13 47-6t32 29q7 24 12 48t5 52q0 126-89 221t-215 96l2 3q17 15 16 34t-16 34q-16 16-34.5 16T428-91l-91-90q-19-20-18.5-45.5T337-271l93-91q15-15 33.5-16t34.5 15q16 15 16 34t-16 35l-4 4h-3q75-1 127.5-57T671-479Z"/>
+                  </svg>
+                </button>
+              )}
+            </div>
+          </div>
+        );
+        setTimeout(() => { const cleanup = () => rafId && cancelAnimationFrame(rafId); cleanup.__keep=true; return cleanup; }, 0);
+        return overlayRoot ? createPortal(overlay, overlayRoot) : null;
+      })()}
+
       {/* Range action header placed vertically above the timeline canvas */}
       {actionBarRange && (() => {
         const canvas = timelineRef.current;
@@ -1192,6 +1461,7 @@ const TimelineVisualization = ({
                 className="btn-base btn-primary btn-small"
                 onClick={(e) => {
                   e.stopPropagation();
+                  sessionStorage.setItem('processing_modal_open_reason', 'action-bar-regenerate');
                   onSegmentSelect && onSegmentSelect(actionBarRange);
                   setActionBarRange(null);
                   setHiddenActionBarRange(null);
@@ -1250,10 +1520,10 @@ const TimelineVisualization = ({
         style={{
           cursor: isDraggingSegment
             ? 'ew-resize'
-            : onSegmentSelect
+            : (onSegmentSelect && offlineSegments.length === 0)
               ? 'crosshair'
               : 'pointer',
-          touchAction: onSegmentSelect ? 'none' : 'auto' // Disable touch gestures when range selection is enabled
+          touchAction: (onSegmentSelect && offlineSegments.length === 0) ? 'none' : 'auto' // Disable touch gestures only when selection is enabled
         }}
       />
 

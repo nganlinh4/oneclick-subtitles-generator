@@ -1,6 +1,6 @@
 {
   "title": "Generate Narration",
-  "description": "Generate spoken audio from your subtitles using the reference voice.",
+  "description": "Generate voice cloning narration (F5-TTS or Chatterbox, please use reference voice in the same language as output), or narration with Gemini (8 voices, 29 languages, clear audio quality), Edge TTS or Google TTS for subtitles.",
   "referenceAudio": "Reference Audio",
   "referenceText": "Reference Text",
   "audioControls": "Audio Controls",
@@ -141,8 +141,6 @@
   "noNarrationsAvailable": "No narrations available. Generate narration first.",
 
   "notGenerated": "Not yet generated",
-  "generate": "Generate",
-  "generating": "Generating...",
   "pending": "Pending generation...",
   "waitingForResults": "Waiting for narration results...",
   "geminiGenerationIncomplete": "Gemini narration generation incomplete. Generated {{generated}} of {{total}} narrations.",
@@ -191,6 +189,7 @@
   "cfgWeight": "Pace Control",
   "cfgWeightTooltip": "Controls generation strength and pace (0.0-1.0)",
   "cfgWeightDesc": "Adjusts generation strength and speaking pace",
+  "chatterboxEnglishOnlyControls": "Currently only English supports these controls",
   "chatterboxWarmingUp": "Warming up narration server for first-time use...",
   "chatterboxStarting": "Starting Chatterbox narration generation...",
   "chatterboxGeneratingProgress": "Generating {{progress}} of {{total}} narrations with Chatterbox...",
@@ -236,7 +235,6 @@
   "searchLanguages": "Search languages...",
   "voicesAvailable": "{{count}} voices available",
   "languagesAvailable": "{{count}} languages available",
-  "cancel": "Cancel",
   "clear": "Clear",
   "recommendedVoices": "Recommended for {{language}}",
   "recommendedLanguage": "Recommended for {{language}}",
@@ -260,5 +258,43 @@
 
   "msVibeVoiceMethod": "MS VibeVoice",
   "geminiNativeDialogMethod": "Gemini Native Dialog",
-  "comingSoon": "coming soon"
+  "comingSoon": "coming soon",
+
+  "selectNarrationModel": "Select narration model",
+  "loadingModels": "Loading models...",
+  "selectModelExplanation": "Choose a narration model that supports your subtitle language for the best results.",
+  "matchingLanguageModels": "Recommended Models",
+  "otherModels": "Other Available Models",
+  "noModelsAvailable": "No other models available",
+
+  "language": "Language",
+  "recommendedLanguages": "Recommended Languages",
+  "otherLanguages": "Other Languages",
+  "selectLanguageExplanation": "Choose the target language for Chatterbox Multilingual TTS.",
+  "chatterboxMultilingual": "Chatterbox Multilingual",
+  "languages": {
+    "ar": "Arabic",
+    "da": "Danish",
+    "de": "German",
+    "el": "Greek",
+    "en": "English",
+    "es": "Spanish",
+    "fi": "Finnish",
+    "fr": "French",
+    "he": "Hebrew",
+    "hi": "Hindi",
+    "it": "Italian",
+    "ja": "Japanese",
+    "ko": "Korean",
+    "ms": "Malay",
+    "nl": "Dutch",
+    "no": "Norwegian",
+    "pl": "Polish",
+    "pt": "Portuguese",
+    "ru": "Russian",
+    "sv": "Swedish",
+    "sw": "Swahili",
+    "tr": "Turkish",
+    "zh": "Chinese"
+  }
 }

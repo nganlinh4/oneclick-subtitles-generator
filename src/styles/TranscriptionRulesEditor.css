@@ -290,7 +290,7 @@
   gap: 12px;
 }
 
-input {
+.rules-editor-modal input {
   padding: 10px 12px;
   border: 1px solid var(--md-outline);
   border-radius: 8px;
@@ -300,7 +300,7 @@ input {
   flex: 1;
 }
 
-input:focus {
+.rules-editor-modal input:focus {
   outline: none;
   border-color: var(--md-primary);
   box-shadow: 0 0 0 1px var(--md-primary);

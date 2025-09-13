@@ -2,6 +2,10 @@
  * Utility functions for parallel video processing
  */
 
+// Debug logging gate (enable by setting localStorage.debug_logs = 'true')
+const DEBUG_LOGS = (typeof window !== 'undefined') && (localStorage.getItem('debug_logs') === 'true');
+const dbg = (...args) => { if (DEBUG_LOGS) console.log(...args); };
+
 /**
  * Split a segment into multiple sub-segments for parallel processing
  * @param {Object} segment - The original segment { start: number, end: number } in seconds
@@ -27,14 +31,14 @@ export const splitSegmentForParallelProcessing = (segment, maxDurationPerRequest
 
   // Calculate the number of sub-segments needed
   const numSegments = Math.ceil(totalDuration / maxDurationPerRequest);
-  
+
   // Calculate the optimal duration per segment (evenly distribute)
   const optimalDuration = totalDuration / numSegments;
 
   const subSegments = [];
   for (let i = 0; i < numSegments; i++) {
     const segmentStart = start + (i * optimalDuration);
-    const segmentEnd = i === numSegments - 1 
+    const segmentEnd = i === numSegments - 1
       ? end // Ensure last segment goes exactly to the end
       : start + ((i + 1) * optimalDuration);
 
@@ -48,7 +52,7 @@ export const splitSegmentForParallelProcessing = (segment, maxDurationPerRequest
     });
   }
 
-  console.log(`[ParallelProcessing] Split segment [${start}s-${end}s] (${totalDuration}s) into ${numSegments} sub-segments:`, subSegments);
+  dbg(`[ParallelProcessing] Split segment [${start}s-${end}s] (${totalDuration}s) into ${numSegments} sub-segments:`, subSegments);
 
   return subSegments;
 };
@@ -66,12 +70,12 @@ export const mergeParallelSubtitles = (segmentResults) => {
   // PERFORMANCE: Reduced logging - only log first merge and final merge
   const isFirstOrFinal = segmentResults.some(r => r.subtitles?.length > 50);
   if (isFirstOrFinal) {
-    console.log(`[MergeParallelSubtitles] Starting merge of ${segmentResults.length} segments`);
+    dbg(`[MergeParallelSubtitles] Starting merge of ${segmentResults.length} segments`);
   }
 
   // Collect all subtitles from all segments
   const allSubtitles = [];
-  
+
   segmentResults.forEach(result => {
     if (result.subtitles && Array.isArray(result.subtitles)) {
       // Ensure each subtitle is within its segment bounds
@@ -84,7 +88,7 @@ export const mergeParallelSubtitles = (segmentResults) => {
           end: Math.min(subtitle.end, segment.end),
           segmentIndex: segment.index // Track which segment this came from
         };
-        
+
         // Only add if the subtitle has valid duration after clipping
         if (clippedSubtitle.start < clippedSubtitle.end) {
           allSubtitles.push(clippedSubtitle);
@@ -97,7 +101,7 @@ export const mergeParallelSubtitles = (segmentResults) => {
   allSubtitles.sort((a, b) => a.start - b.start);
   // PERFORMANCE: Only log for significant merges
   if (allSubtitles.length > 100 || isFirstOrFinal) {
-    console.log(`[MergeParallelSubtitles] Collected ${allSubtitles.length} total subtitles before deduplication`);
+    dbg(`[MergeParallelSubtitles] Collected ${allSubtitles.length} total subtitles before deduplication`);
   }
 
   // Remove duplicates and overlaps
@@ -113,7 +117,7 @@ export const mergeParallelSubtitles = (segmentResults) => {
     } else {
       // Check for overlap or duplicate
       const isOverlapping = subtitle.start < lastSubtitle.end;
-      const isDuplicate = Math.abs(subtitle.start - lastSubtitle.start) < 0.1 && 
+      const isDuplicate = Math.abs(subtitle.start - lastSubtitle.start) < 0.1 &&
                          subtitle.text === lastSubtitle.text;
 
       if (isDuplicate) {
@@ -149,10 +153,10 @@ export const mergeParallelSubtitles = (segmentResults) => {
     overlapsAdjusted,
     subtitlesLost: allSubtitles.length - finalSubtitles.length
   };
-  
+
   // Only log if there were actual changes or it's a large merge
   if (duplicatesRemoved > 0 || overlapsAdjusted > 0 || allSubtitles.length > 100 || isFirstOrFinal) {
-    console.log(`[MergeParallelSubtitles] Merge complete:`, stats);
+    dbg(`[MergeParallelSubtitles] Merge complete:`, stats);
   }
 
   return finalSubtitles;
@@ -204,10 +208,10 @@ export class ParallelProgressTracker {
   updateSegmentProgress(segmentIndex, progress, status = 'processing') {
     this.segmentProgress[segmentIndex] = progress;
     this.segmentStatus[segmentIndex] = status;
-    
+
     const overallProgress = this.calculateOverallProgress();
     const elapsedTime = Date.now() - this.startTime;
-    
+
     if (this.onProgress) {
       this.onProgress({
         overallProgress,
@@ -227,7 +231,7 @@ export class ParallelProgressTracker {
   estimateTimeRemaining() {
     const progress = this.calculateOverallProgress();
     if (progress === 0) return null;
-    
+
     const elapsedTime = Date.now() - this.startTime;
     const estimatedTotal = elapsedTime / progress;
     return estimatedTotal - elapsedTime;
@@ -241,7 +245,7 @@ export class ParallelProgressTracker {
     this.segmentStatus[segmentIndex] = 'failed';
     this.segmentError = this.segmentError || {};
     this.segmentError[segmentIndex] = error;
-    
+
     if (this.onProgress) {
       this.onProgress({
         overallProgress: this.calculateOverallProgress(),
@@ -253,7 +257,7 @@ export class ParallelProgressTracker {
   }
 
   isComplete() {
-    return this.segmentStatus.every(status => 
+    return this.segmentStatus.every(status =>
       status === 'complete' || status === 'failed'
     );
   }

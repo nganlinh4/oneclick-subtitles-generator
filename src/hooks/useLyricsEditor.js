@@ -1,6 +1,10 @@
 import { useState, useRef, useEffect, useCallback } from 'react';
 import { useTranslation } from 'react-i18next';
 
+// Debug logging gate (enable by setting localStorage.debug_logs = 'true')
+const DEBUG_LOGS = (typeof window !== 'undefined') && (localStorage.getItem('debug_logs') === 'true');
+const dbg = (...args) => { if (DEBUG_LOGS) console.log(...args); };
+
 export const useLyricsEditor = (initialLyrics, onUpdateLyrics) => {
   const { t } = useTranslation();
   const [lyrics, setLyrics] = useState([]);
@@ -656,7 +660,7 @@ export const useLyricsEditor = (initialLyrics, onUpdateLyrics) => {
       // Clear the window.translatedSubtitles when translations are reset
       if (window.translatedSubtitles) {
         window.translatedSubtitles = null;
-        console.log('Cleared window.translatedSubtitles due to translation reset');
+        dbg('Cleared window.translatedSubtitles due to translation reset');
       }
     };
 
@@ -672,11 +676,11 @@ export const useLyricsEditor = (initialLyrics, onUpdateLyrics) => {
     const currentState = JSON.parse(JSON.stringify(lyrics));
     setSavedLyrics(currentState);
     setIsAtSavedState(true);
-    
+
     // Also create a checkpoint when saving
     createCheckpoint();
   };
-  
+
   // Function to create a checkpoint (called when save happens)
   const createCheckpoint = () => {
     const currentState = JSON.parse(JSON.stringify(lyrics));
@@ -688,14 +692,14 @@ export const useLyricsEditor = (initialLyrics, onUpdateLyrics) => {
       }
       return newCheckpoints;
     });
-    console.log('[LyricsEditor] Created checkpoint at save');
+    dbg('[LyricsEditor] Created checkpoint at save');
   };
-  
+
   // Function to jump to previous checkpoints (cycles through checkpoint history)
   const handleJumpToCheckpoint = () => {
     if (checkpointHistory.length > 0) {
       const currentState = JSON.parse(JSON.stringify(lyrics));
-      
+
       // Find the most recent checkpoint that differs from current state
       let targetCheckpointIndex = -1;
       for (let i = checkpointHistory.length - 1; i >= 0; i--) {
@@ -705,36 +709,36 @@ export const useLyricsEditor = (initialLyrics, onUpdateLyrics) => {
           break;
         }
       }
-      
+
       // If no different checkpoint found, use the oldest one (index 0)
       if (targetCheckpointIndex === -1) {
         // If we're already at all checkpoints, jump to the oldest
         if (checkpointHistory.length > 1) {
           targetCheckpointIndex = 0;
         } else {
-          console.log('[LyricsEditor] No different checkpoint available');
+          dbg('[LyricsEditor] No different checkpoint available');
           return;
         }
       }
-      
+
       const targetCheckpoint = checkpointHistory[targetCheckpointIndex];
-      
+
       // Save current state to regular history for normal undo
       setHistory(prevHistory => [...prevHistory, currentState]);
-      
+
       // Clear redo stack
       setRedoStack([]);
-      
+
       // Jump to the checkpoint
       setLyrics(targetCheckpoint);
       if (onUpdateLyrics) {
         onUpdateLyrics(targetCheckpoint);
       }
-      
+
       // Remove all checkpoints after the one we jumped to (keep earlier ones)
       setCheckpointHistory(prevCheckpoints => prevCheckpoints.slice(0, targetCheckpointIndex));
-      
-      console.log(`[LyricsEditor] Jumped to checkpoint ${targetCheckpointIndex + 1} of ${checkpointHistory.length}`);
+
+      dbg(`[LyricsEditor] Jumped to checkpoint ${targetCheckpointIndex + 1} of ${checkpointHistory.length}`);
     }
   };
 
@@ -744,7 +748,7 @@ export const useLyricsEditor = (initialLyrics, onUpdateLyrics) => {
     setHistory(prevHistory => [...prevHistory, currentState]);
     // Clear redo stack since we're making a new change
     setRedoStack([]);
-    console.log('[LyricsEditor] Captured state before merge operation for undo/redo');
+    dbg('[LyricsEditor] Captured state before merge operation for undo/redo');
   };
 
   return {

@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { useTranslation } from 'react-i18next';
-import StandardSlider from '../common/StandardSlider';
+import SliderWithValue from '../common/SliderWithValue';
 import '../../styles/components/custom-slider.css';
 
 /**
@@ -51,24 +51,19 @@ const GeminiConcurrentClientsSettings = () => {
           'Number of concurrent WebSocket connections to use for Gemini narration. Higher values may improve performance but use more resources.'
         )}
       </p>
-      <div className="slider-with-value">
-        <StandardSlider
-          value={concurrentClients}
-          onChange={(value) => handleSliderChange({ target: { value } })}
-          min={1}
-          max={10}
-          step={1}
-          orientation="Horizontal"
-          size="XSmall"
-          state="Enabled"
-          showValueIndicator={false} // Using custom value display
-          showIcon={false}
-          showStops={false}
-          className="gemini-concurrent-clients-slider"
-          id="concurrent-clients-slider"
-          ariaLabel={t('settings.concurrentClients', 'Concurrent Clients')}
-        />
-        <div className="slider-value-display">
+      <SliderWithValue
+        value={concurrentClients}
+        onChange={(value) => handleSliderChange({ target: { value } })}
+        min={1}
+        max={10}
+        step={1}
+        orientation="Horizontal"
+        size="XSmall"
+        state="Enabled"
+        className="gemini-concurrent-clients-slider"
+        id="concurrent-clients-slider"
+        ariaLabel={t('settings.concurrentClients', 'Concurrent Clients')}
+        formatValue={() => (
           <input
             type="number"
             min="1"
@@ -77,8 +72,8 @@ const GeminiConcurrentClientsSettings = () => {
             onChange={handleNumberInputChange}
             className="number-input"
           />
-        </div>
-      </div>
+        )}
+      />
     </div>
   );
 };

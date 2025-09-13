@@ -1,6 +1,6 @@
 import React, { useEffect } from 'react';
 import { useTranslation } from 'react-i18next';
-import StandardSlider from '../../common/StandardSlider';
+import SliderWithValue from '../../common/SliderWithValue';
 import MaterialSwitch from '../../common/MaterialSwitch';
 import { DisplayIcon, VideoAnalysisIcon } from '../icons/TabIcons';
 import { FiCpu, FiDownload, FiType } from 'react-icons/fi';
@@ -245,28 +245,21 @@ const VideoProcessingTab = ({
               <p className="setting-description">
                 {t('settings.favoriteMaxSubtitleLengthDescription', 'Set the default maximum number of words per subtitle when auto-split is enabled.')}
               </p>
-              <div className="slider-with-value">
-                <StandardSlider
-                  value={favoriteMaxSubtitleLength}
-                  onChange={(value) => setFavoriteMaxSubtitleLength(parseInt(value))}
-                  min={1}
-                  max={30}
-                  step={1}
-                  orientation="Horizontal"
-                  size="Small"
-                  state={showFavoriteMaxLength ? "Enabled" : "Disabled"}
-                  showValueIndicator={false}
-                  showIcon={false}
-                  showStops={false}
-                  className="max-subtitle-length-slider"
-                  id="favorite-max-subtitle-length"
-                  ariaLabel={t('settings.favoriteMaxSubtitleLength', 'Favorite max length of one subtitle')}
-                  disabled={!showFavoriteMaxLength}
-                />
-                <div className="slider-value-display" style={{ opacity: showFavoriteMaxLength ? 1 : 0.5 }}>
-                  {favoriteMaxSubtitleLength} {t('settings.words', 'words')}
-                </div>
-              </div>
+              <SliderWithValue
+                value={favoriteMaxSubtitleLength}
+                onChange={(value) => setFavoriteMaxSubtitleLength(parseInt(value))}
+                min={1}
+                max={30}
+                step={1}
+                orientation="Horizontal"
+                size="Small"
+                state={showFavoriteMaxLength ? "Enabled" : "Disabled"}
+                className="max-subtitle-length-slider"
+                id="favorite-max-subtitle-length"
+                ariaLabel={t('settings.favoriteMaxSubtitleLength', 'Favorite max length of one subtitle')}
+                disabled={!showFavoriteMaxLength}
+                formatValue={(v) => `${v} ${t('settings.words', 'words')}`}
+              />
             </div>
           </div>
         </div>
@@ -452,27 +445,20 @@ const VideoProcessingTab = ({
 
               {getThinkingMode(thinkingBudgets['gemini-2.5-pro'] || 128) === 'custom' && (
                 <div className="thinking-slider-container">
-                  <div className="slider-with-value">
-                    <StandardSlider
-                      value={getSliderValue(thinkingBudgets['gemini-2.5-pro'], 'gemini-2.5-pro')}
-                      onChange={(value) => handleSliderChange('gemini-2.5-pro', parseInt(value))}
-                      min={0}
-                      max={100}
-                      step={1}
-                      orientation="Horizontal"
-                      size="XSmall"
-                      state="Enabled"
-                      showValueIndicator={false} // Using custom value display
-                      showIcon={false}
-                      showStops={false}
-                      className="thinking-budget-slider"
-                      id="thinking-budget-pro"
-                      ariaLabel={t('settings.thinkingBudget', 'Thinking Budget')}
-                    />
-                    <div className="slider-value-display">
-                      {thinkingBudgets['gemini-2.5-pro']} {t('settings.tokens', 'tokens')}
-                    </div>
-                  </div>
+                  <SliderWithValue
+                    value={getSliderValue(thinkingBudgets['gemini-2.5-pro'], 'gemini-2.5-pro')}
+                    onChange={(value) => handleSliderChange('gemini-2.5-pro', parseInt(value))}
+                    min={0}
+                    max={100}
+                    step={1}
+                    orientation="Horizontal"
+                    size="XSmall"
+                    state="Enabled"
+                    className="thinking-budget-slider"
+                    id="thinking-budget-pro"
+                    ariaLabel={t('settings.thinkingBudget', 'Thinking Budget')}
+                    formatValue={() => `${thinkingBudgets['gemini-2.5-pro']} ${t('settings.tokens', 'tokens')}`}
+                  />
                   <div className="slider-range-info">
                     {t('settings.thinkingRange', 'Range')}: 128 - 32,768 {t('settings.tokens', 'tokens')}
                   </div>
@@ -501,27 +487,20 @@ const VideoProcessingTab = ({
 
               {getThinkingMode(thinkingBudgets['gemini-2.5-flash'] || 0) === 'custom' && (
                 <div className="thinking-slider-container">
-                  <div className="slider-with-value">
-                    <StandardSlider
-                      value={getSliderValue(thinkingBudgets['gemini-2.5-flash'], 'gemini-2.5-flash')}
-                      onChange={(value) => handleSliderChange('gemini-2.5-flash', parseInt(value))}
-                      min={0}
-                      max={100}
-                      step={1}
-                      orientation="Horizontal"
-                      size="XSmall"
-                      state="Enabled"
-                      showValueIndicator={false} // Using custom value display
-                      showIcon={false}
-                      showStops={false}
-                      className="thinking-budget-slider"
-                      id="thinking-budget-flash"
-                      ariaLabel={t('settings.thinkingBudget', 'Thinking Budget')}
-                    />
-                    <div className="slider-value-display">
-                      {thinkingBudgets['gemini-2.5-flash']} {t('settings.tokens', 'tokens')}
-                    </div>
-                  </div>
+                  <SliderWithValue
+                    value={getSliderValue(thinkingBudgets['gemini-2.5-flash'], 'gemini-2.5-flash')}
+                    onChange={(value) => handleSliderChange('gemini-2.5-flash', parseInt(value))}
+                    min={0}
+                    max={100}
+                    step={1}
+                    orientation="Horizontal"
+                    size="XSmall"
+                    state="Enabled"
+                    className="thinking-budget-slider"
+                    id="thinking-budget-flash"
+                    ariaLabel={t('settings.thinkingBudget', 'Thinking Budget')}
+                    formatValue={() => `${thinkingBudgets['gemini-2.5-flash']} ${t('settings.tokens', 'tokens')}`}
+                  />
                   <div className="slider-range-info">
                     {t('settings.thinkingRange', 'Range')}: 1 - 24,576 {t('settings.tokens', 'tokens')}
                   </div>
@@ -550,27 +529,20 @@ const VideoProcessingTab = ({
 
               {getThinkingMode(thinkingBudgets['gemini-2.5-flash-lite'] || 0) === 'custom' && (
                 <div className="thinking-slider-container">
-                  <div className="slider-with-value">
-                    <StandardSlider
-                      value={getSliderValue(thinkingBudgets['gemini-2.5-flash-lite'], 'gemini-2.5-flash-lite')}
-                      onChange={(value) => handleSliderChange('gemini-2.5-flash-lite', parseInt(value))}
-                      min={0}
-                      max={100}
-                      step={1}
-                      orientation="Horizontal"
-                      size="XSmall"
-                      state="Enabled"
-                      showValueIndicator={false} // Using custom value display
-                      showIcon={false}
-                      showStops={false}
-                      className="thinking-budget-slider"
-                      id="thinking-budget-lite"
-                      ariaLabel={t('settings.thinkingBudget', 'Thinking Budget')}
-                    />
-                    <div className="slider-value-display">
-                      {thinkingBudgets['gemini-2.5-flash-lite']} {t('settings.tokens', 'tokens')}
-                    </div>
-                  </div>
+                  <SliderWithValue
+                    value={getSliderValue(thinkingBudgets['gemini-2.5-flash-lite'], 'gemini-2.5-flash-lite')}
+                    onChange={(value) => handleSliderChange('gemini-2.5-flash-lite', parseInt(value))}
+                    min={0}
+                    max={100}
+                    step={1}
+                    orientation="Horizontal"
+                    size="XSmall"
+                    state="Enabled"
+                    className="thinking-budget-slider"
+                    id="thinking-budget-lite"
+                    ariaLabel={t('settings.thinkingBudget', 'Thinking Budget')}
+                    formatValue={() => `${thinkingBudgets['gemini-2.5-flash-lite']} ${t('settings.tokens', 'tokens')}`}
+                  />
                   <div className="slider-range-info">
                     {t('settings.thinkingRange', 'Range')}: 512 - 24,576 {t('settings.tokens', 'tokens')}
                   </div>

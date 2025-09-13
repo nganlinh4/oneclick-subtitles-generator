@@ -1,6 +1,6 @@
 import React from 'react';
 import { useTranslation } from 'react-i18next';
-import StandardSlider from '../../common/StandardSlider';
+import SliderWithValue from '../../common/SliderWithValue';
 import MaterialSwitch from '../../common/MaterialSwitch';
 import CustomDropdown from '../../common/CustomDropdown';
 import '../../../styles/common/material-switch.css';
@@ -32,25 +32,20 @@ const StyleSettings = ({ settings, handleSettingChange, textAlignOptions, textTr
 
       <div className="setting-group">
         <label htmlFor="opacity">{t('subtitleSettings.opacity', 'Opacity')}</label>
-        <div className="slider-with-value">
-          <StandardSlider
-            value={parseFloat(settings.opacity)}
-            onChange={(value) => handleSettingChange('opacity', value.toString())}
-            min={0}
-            max={1}
-            step={0.1}
-            orientation="Horizontal"
-            size="XSmall"
-            state="Enabled"
-            showValueIndicator={false} // Using custom value display
-            showIcon={false}
-            showStops={false}
-            className="opacity-slider"
-            id="opacity"
-            ariaLabel={t('subtitleSettings.opacity', 'Opacity')}
-          />
-          <div className="slider-value-display">{Math.round(settings.opacity * 100)}%</div>
-        </div>
+        <SliderWithValue
+          value={parseFloat(settings.opacity)}
+          onChange={(value) => handleSettingChange('opacity', value.toString())}
+          min={0}
+          max={1}
+          step={0.1}
+          orientation="Horizontal"
+          size="XSmall"
+          state="Enabled"
+          className="opacity-slider"
+          id="opacity"
+          ariaLabel={t('subtitleSettings.opacity', 'Opacity')}
+          formatValue={(v) => `${Math.round(Number(v) * 100)}%`}
+        />
       </div>
 
       <div className="setting-group">

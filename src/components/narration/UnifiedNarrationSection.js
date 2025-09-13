@@ -83,6 +83,7 @@ const UnifiedNarrationSection = ({
     // Chatterbox-specific settings
     exaggeration, setExaggeration,
     cfgWeight, setCfgWeight,
+    chatterboxLanguage, setChatterboxLanguage,
 
     // Edge TTS-specific settings
     edgeTTSVoice, setEdgeTTSVoice,
@@ -190,6 +191,7 @@ const UnifiedNarrationSection = ({
     translatedLanguage,
     exaggeration,
     cfgWeight,
+    chatterboxLanguage,
     referenceAudio,
     useGroupedSubtitles,
     setUseGroupedSubtitles,
@@ -689,6 +691,8 @@ const UnifiedNarrationSection = ({
             setGroupingIntensity={setGroupingIntensity}
             onGroupedSubtitlesGenerated={setGroupedSubtitles}
             narrationMethod={narrationMethod}
+            chatterboxLanguage={chatterboxLanguage}
+            setChatterboxLanguage={setChatterboxLanguage}
             onLanguageDetected={(source, language) => {
               if (source === 'original') {
                 setOriginalLanguage(language);
@@ -705,6 +709,7 @@ const UnifiedNarrationSection = ({
             cfgWeight={cfgWeight}
             setCfgWeight={setCfgWeight}
             isGenerating={isGenerating}
+            chatterboxLanguage={chatterboxLanguage}
           />
 
           {/* Generate Button - reuse from F5-TTS */}

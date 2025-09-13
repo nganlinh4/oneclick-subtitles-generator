@@ -18,6 +18,7 @@ import '../../../styles/narration/narrationModelDropdown.css';
  * @param {Object} props.originalLanguage - Original language object
  * @param {Object} props.translatedLanguage - Translated language object
  * @param {Function} props.renderModelLanguages - Function to render model languages
+ * @param {boolean} props.isChatterboxMode - If true, render Chatterbox-specific modal content
  * @returns {JSX.Element|null} - Rendered component or null if not open
  */
 const ModelSelectionModal = ({
@@ -30,9 +31,10 @@ const ModelSelectionModal = ({
   subtitleSource,
   originalLanguage,
   translatedLanguage,
-  renderModelLanguages
+  renderModelLanguages,
+  isChatterboxMode = false,
 }) => {
-  const { t } = useTranslation();
+  const { t, i18n } = useTranslation();
   const modalRef = useRef(null);
 
   // Handle ESC key to close
@@ -83,11 +85,85 @@ const ModelSelectionModal = ({
         onClick={(e) => e.stopPropagation()}
       >
         <div className="model-selection-modal-header">
-          <h2>{t('narration.selectNarrationModel', 'Select narration model')}</h2>
+          <h2>
+            {isChatterboxMode
+              ? t('narration.selectLanguage', 'Select language')
+              : t('narration.selectNarrationModel', 'Select narration model')}
+          </h2>
           <CloseButton onClick={onClose} variant="modal" size="medium" />
         </div>
         <div className="model-selection-modal-content">
-          {isLoadingModels ? (
+          {isChatterboxMode ? (
+            // Chatterbox: show language selector derived from availableModels languages
+            (() => {
+              const languageSet = new Set();
+              (availableModels || []).forEach(m => {
+                if (Array.isArray(m.languages)) m.languages.forEach(l => languageSet.add(l));
+                if (m.language) languageSet.add(m.language);
+              });
+              const languages = Array.from(languageSet).sort();
+              // Build recommended vs other groups
+              const currentLanguageObj = subtitleSource === 'original' ? originalLanguage : translatedLanguage;
+              const languagesToCheck = currentLanguageObj && (currentLanguageObj.isMultiLanguage && Array.isArray(currentLanguageObj.secondaryLanguages) && currentLanguageObj.secondaryLanguages.length > 0)
+                ? Array.from(new Set([currentLanguageObj.languageCode, ...currentLanguageObj.secondaryLanguages]))
+                : (currentLanguageObj ? [currentLanguageObj.languageCode] : []);
+              const recommended = languages.filter(l => languagesToCheck.includes(l));
+              const others = languages.filter(l => !languagesToCheck.includes(l));
+
+              const tEn = i18n.getFixedT ? i18n.getFixedT('en') : ((k, d) => d || k);
+              const getLanguageEnglish = (code) => tEn(`narration.languages.${code}`, code.toUpperCase());
+              const getLanguageLocalized = (code) => t(`narration.languages.${code}`, code.toUpperCase());
+              const showLocalizedSuffix = !/^en/i.test(i18n?.language || '');
+              const sortByEnglishName = (a, b) => getLanguageEnglish(a).localeCompare(getLanguageEnglish(b), 'en', { sensitivity: 'base' });
+              const flagFor = (code) => ({
+                ar: '🇸🇦', da: '🇩🇰', de: '🇩🇪', el: '🇬🇷', en: '🇺🇸', es: '🇪🇸', fi: '🇫🇮', fr: '🇫🇷',
+                he: '🇮🇱', hi: '🇮🇳', it: '🇮🇹', ja: '🇯🇵', ko: '🇰🇷', ms: '🇲🇾', nl: '🇳🇱', no: '🇳🇴',
+                pl: '🇵🇱', pt: '🇵🇹', ru: '🇷🇺', sv: '🇸🇪', sw: '🇰🇪', tr: '🇹🇷', zh: '🇨🇳'
+              }[code] || '🏳️');
+
+              const Card = ({ lang }) => (
+                <div
+                  key={lang}
+                  className="model-option-card"
+                  onClick={() => handleModelSelect(lang)}
+                >
+                  <div className="model-option-icon" aria-hidden="true"><span className="model-flag">{flagFor(lang)}</span></div>
+                  <div className="model-option-info">
+                    <div className="model-option-name">{showLocalizedSuffix ? `${getLanguageEnglish(lang)} - ${getLanguageLocalized(lang)}` : getLanguageEnglish(lang)}</div>
+                    <div className="model-option-description">{t('narration.chatterboxMultilingual', 'Chatterbox Multilingual')}</div>
+                  </div>
+                </div>
+              );
+
+              return (
+                <>
+                  <div className="model-selection-explanation">
+                    {t('narration.selectLanguageExplanation', 'Choose the target language for Chatterbox Multilingual TTS.')}
+                  </div>
+
+                  {recommended.length > 0 && (
+                    <div className="model-group">
+                      <div className="model-group-label recommended-models-label voice-category-title recommended">
+                        {t('narration.recommendedLanguages', 'Recommended Languages')}
+                      </div>
+                      <div className="model-options-grid">
+                        {[...recommended].sort(sortByEnglishName).map((l) => <Card key={l} lang={l} />)}
+                      </div>
+                    </div>
+                  )}
+
+                  <div className="model-group">
+                    <div className="model-group-label voice-category-title">
+                      {t('narration.otherLanguages', 'Other Languages')}
+                    </div>
+                    <div className="model-options-grid">
+                      {[...others].sort(sortByEnglishName).map((l) => <Card key={l} lang={l} />)}
+                    </div>
+                  </div>
+                </>
+              );
+            })()
+          ) : isLoadingModels ? (
             <div className="loading-animation modal-loading">
               <LoadingIndicator
                 theme="dark"
@@ -102,7 +178,7 @@ const ModelSelectionModal = ({
               <div className="model-selection-explanation">
                 {t('narration.selectModelExplanation', 'Choose a narration model that supports your subtitle language for the best results.')}
               </div>
-              
+
               {/* Group 1: Models matching the detected language */}
               <div className="model-group">
                 <div className="model-group-label recommended-models-label">

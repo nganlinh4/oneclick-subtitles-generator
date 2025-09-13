@@ -4,12 +4,13 @@
  */
 
 import { streamGeminiContent } from './streamingService';
-import { 
-  splitSegmentForParallelProcessing, 
+import {
+  splitSegmentForParallelProcessing,
   mergeParallelSubtitles,
-  ParallelProgressTracker 
+  ParallelProgressTracker
 } from '../../utils/parallelProcessingUtils';
 import { autoSplitSubtitles } from '../../utils/subtitle/splitUtils';
+import { extractVideoSegmentLocally } from '../../utils/videoSegmenter';
 
 /**
  * Coordinate parallel streaming requests for a video segment
@@ -30,8 +31,8 @@ export const coordinateParallelStreaming = async (
   onError,
   onProgress
 ) => {
-  const { 
-    segmentInfo, 
+  const {
+    segmentInfo,
     maxDurationPerRequest,
     userProvidedSubtitles,
     modelId,
@@ -78,7 +79,7 @@ export const coordinateParallelStreaming = async (
   const streamWithRetry = async (subSegment, index, retryCount = 0, maxRetries = 3) => {
     return new Promise((resolve, reject) => {
       const attemptNumber = retryCount + 1;
-      
+
       if (retryCount > 0) {
         console.log(`[ParallelCoordinator] Retrying segment ${index + 1}/${subSegments.length} (attempt ${attemptNumber}/${maxRetries + 1})`);
       } else {
@@ -117,17 +118,17 @@ export const coordinateParallelStreaming = async (
             // 2. Relative timestamps starting from 0
             // We detect relative timestamps when they're too small to be in the segment
             const segmentDuration = subSegment.end - subSegment.start;
-            
+
             // Check the first subtitle to determine if adjustment is needed
             let needsAdjustment = false;
             if (chunk.subtitles.length > 0) {
               const firstSubtitle = chunk.subtitles[0];
               // If the first subtitle starts before half the segment start time, it's likely relative
               needsAdjustment = firstSubtitle.start < subSegment.start / 2;
-              
+
               // Removed debug logging for specific segments
             }
-            
+
             let adjustedSubtitles = chunk.subtitles.map((subtitle, subIdx) => {
               if (needsAdjustment) {
                 // Add segment start to convert relative to absolute
@@ -136,14 +137,14 @@ export const coordinateParallelStreaming = async (
                   start: subtitle.start + subSegment.start,
                   end: subtitle.end + subSegment.start
                 };
-                
+
                 // Removed debug logging
-                
+
                 return adjusted;
               }
               return subtitle;
             });
-            
+
             // Apply auto-split if enabled
             if (autoSplitEnabled && maxWordsPerSubtitle > 0) {
               const beforeSplitCount = adjustedSubtitles.length;
@@ -153,10 +154,10 @@ export const coordinateParallelStreaming = async (
                 console.log(`[ParallelCoordinator] Auto-split applied to segment ${index + 1}: ${beforeSplitCount} -> ${adjustedSubtitles.length} subtitles`);
               }
             }
-            
+
             segmentSubtitles[index] = adjustedSubtitles;
             segmentTexts[index] = chunk.accumulatedText || '';
-            
+
             // PERFORMANCE: Reduced logging frequency for better performance with long videos
             if (chunk.chunkCount % 50 === 0) {
               console.log(`[ParallelCoordinator] Seg ${index + 1}: ${adjustedSubtitles.length} subtitles`);
@@ -170,9 +171,9 @@ export const coordinateParallelStreaming = async (
             const segmentsWithSubtitles = segmentSubtitles
               .map((subs, i) => ({ segment: subSegments[i], subtitles: subs }))
               .filter(result => result.subtitles.length > 0);
-            
+
             // Removed verbose pre-merge logging
-            
+
             const aggregatedSubtitles = mergeParallelSubtitles(segmentsWithSubtitles);
 
             // Send aggregated chunk update
@@ -193,11 +194,11 @@ export const coordinateParallelStreaming = async (
         // onComplete for this segment
         (finalText) => {
           console.log(`[ParallelCoordinator] Seg ${index + 1} done: ${segmentSubtitles[index]?.length || 0} subtitles`);
-          
+
           // Final adjustment check - ensure we haven't already adjusted these
           // The adjustment should have been done during streaming
           const adjustedSubtitles = segmentSubtitles[index] || [];
-          
+
           // Store final results for this segment with adjusted timestamps
           segmentResults[index] = {
             segment: subSegment,
@@ -217,9 +218,9 @@ export const coordinateParallelStreaming = async (
         // onError for this segment
         async (error) => {
           // Check for file permission errors that should be propagated up immediately
-          if (error && error.message && 
-              ((error.message.includes('403') && 
-               (error.message.includes('PERMISSION_DENIED') || 
+          if (error && error.message &&
+              ((error.message.includes('403') &&
+               (error.message.includes('PERMISSION_DENIED') ||
                 error.message.includes('You do not have permission to access the File') ||
                 error.message.includes('it may not exist'))) ||
               error.message.includes('FILE_URI_EXPIRED'))) {
@@ -228,33 +229,33 @@ export const coordinateParallelStreaming = async (
             reject(error);
             return;
           }
-          
+
           // Check if this is a 503 error (overload) or 429 error (rate limit)
           const is503Error = error && error.message && (
             error.message.includes('503') ||
             error.message.includes('overloaded') ||
             error.message.includes('UNAVAILABLE')
           );
-          
+
           const is429Error = error && error.message && (
             error.message.includes('429') ||
             error.message.includes('RESOURCE_EXHAUSTED') ||
             error.message.includes('quota') ||
             error.message.includes('rate limit')
           );
-          
+
           const shouldRetry = (is503Error || is429Error) && retryCount < maxRetries;
-          
+
           if (shouldRetry) {
             const errorType = is429Error ? '429 (rate limit)' : '503 (overload)';
             // Progressive retry delays: 5, 10, 15, 20, 25 seconds
             const retryDelays = [5, 10, 15, 20, 25];
             const retryDelaySeconds = retryDelays[Math.min(retryCount, retryDelays.length - 1)];
             console.warn(`[ParallelCoordinator] Segment ${index + 1}/${subSegments.length} got ${errorType} error, retrying in ${retryDelaySeconds} seconds (attempt ${retryCount + 1}/${maxRetries})...`);
-            
+
             // Wait with progressive delay
             await new Promise(wait => setTimeout(wait, 1000 * retryDelaySeconds));
-            
+
             // Retry the segment
             try {
               const result = await streamWithRetry(subSegment, index, retryCount + 1, maxRetries);
@@ -262,7 +263,7 @@ export const coordinateParallelStreaming = async (
             } catch (retryError) {
               // If retry also fails, handle as final error
               console.error(`[ParallelCoordinator] Error in segment ${index + 1}/${subSegments.length} after ${attemptNumber} attempts:`, retryError);
-              
+
               progressTracker.markSegmentFailed(index, retryError);
               failedSegments.push({ index, error: retryError });
 
@@ -281,7 +282,7 @@ export const coordinateParallelStreaming = async (
           } else {
             // Not a 503 error or max retries reached
             console.error(`[ParallelCoordinator] Error in segment ${index + 1}/${subSegments.length}:`, error);
-            
+
             progressTracker.markSegmentFailed(index, error);
             failedSegments.push({ index, error });
 
@@ -312,19 +313,19 @@ export const coordinateParallelStreaming = async (
   try {
     // Wait for all segments to complete (or fail)
     const results = await Promise.allSettled(segmentPromises);
-    
+
     // Check for file permission errors first - these should trigger immediate re-upload
     const filePermissionError = results.find(r => {
       if (r.status === 'rejected' && r.reason && r.reason.message) {
-        return ((r.reason.message.includes('403') && 
-                (r.reason.message.includes('PERMISSION_DENIED') || 
+        return ((r.reason.message.includes('403') &&
+                (r.reason.message.includes('PERMISSION_DENIED') ||
                  r.reason.message.includes('You do not have permission to access the File') ||
                  r.reason.message.includes('it may not exist'))) ||
                r.reason.message.includes('FILE_URI_EXPIRED'));
       }
       return false;
     });
-    
+
     if (filePermissionError) {
       console.error('[ParallelCoordinator] File permission error detected, propagating to trigger re-upload');
       onError(filePermissionError.reason);
@@ -332,12 +333,12 @@ export const coordinateParallelStreaming = async (
     }
 
     console.log(`[ParallelCoordinator] All segments processed. Success: ${completedSegments}, Failed: ${failedSegments.length}`);
-    
+
     // Log detailed segment results for debugging
     console.log('[ParallelCoordinator] Detailed segment results:');
     segmentResults.forEach((result, idx) => {
       if (result) {
-        console.log(`  Segment ${idx + 1}: [${result.segment.start}-${result.segment.end}s] - `, 
+        console.log(`  Segment ${idx + 1}: [${result.segment.start}-${result.segment.end}s] - `,
           result.error ? `FAILED: ${result.error.message}` : `SUCCESS: ${result.subtitles?.length || 0} subtitles`);
       } else {
         console.log(`  Segment ${idx + 1}: NOT PROCESSED`);
@@ -365,11 +366,11 @@ export const coordinateParallelStreaming = async (
         console.log(`  Segment ${idx + 1}: ${result.subtitles.length} subs, range: ${firstSub.start.toFixed(1)}-${lastSub.end.toFixed(1)}s`);
       }
     });
-    
+
     // Merge all successful subtitles
     let finalSubtitles = mergeParallelSubtitles(successfulResults);
     console.log(`[ParallelCoordinator] After merge: ${finalSubtitles.length} subtitles (was ${totalInputSubtitles})`);
-    
+
     // Apply final auto-split if enabled (in case merging combined any subtitles)
     if (autoSplitEnabled && maxWordsPerSubtitle > 0) {
       const beforeSplitCount = finalSubtitles.length;
@@ -378,7 +379,7 @@ export const coordinateParallelStreaming = async (
         console.log(`[ParallelCoordinator] Final auto-split applied: ${beforeSplitCount} -> ${finalSubtitles.length} subtitles`);
       }
     }
-    
+
     const finalText = successfulResults
       .map(r => r.text)
       .filter(t => t)
@@ -387,7 +388,7 @@ export const coordinateParallelStreaming = async (
     // If some segments failed, notify but still return partial results
     if (failedSegments.length > 0) {
       console.warn(`[ParallelCoordinator] ${failedSegments.length} segments failed, returning partial results`);
-      
+
       // Dispatch warning event
       window.dispatchEvent(new CustomEvent('parallel-processing-partial', {
         detail: {
@@ -428,7 +429,7 @@ export const coordinateParallelStreaming = async (
  */
 export const shouldUseParallelProcessing = (segment, maxDurationPerRequest) => {
   if (!segment || !maxDurationPerRequest) return false;
-  
+
   const duration = segment.end - segment.start;
   return duration > maxDurationPerRequest;
 };
@@ -441,19 +442,19 @@ export const shouldUseParallelProcessing = (segment, maxDurationPerRequest) => {
  * @returns {Object} Time estimation
  */
 export const estimateParallelTimeSavings = (
-  totalDuration, 
-  maxDurationPerRequest, 
+  totalDuration,
+  maxDurationPerRequest,
   avgProcessingTimePerMinute = 10 // Default: 10 seconds per minute of video
 ) => {
   const numSegments = Math.ceil(totalDuration / maxDurationPerRequest);
-  
+
   // Sequential time estimate
   const sequentialTime = (totalDuration / 60) * avgProcessingTimePerMinute;
-  
+
   // Parallel time estimate (assuming perfect parallelization)
   // In reality, there's some overhead, so add 20% overhead
   const parallelTime = ((totalDuration / numSegments) / 60) * avgProcessingTimePerMinute * 1.2;
-  
+
   const timeSaved = Math.max(0, sequentialTime - parallelTime);
   const speedup = sequentialTime / parallelTime;
 
@@ -465,3 +466,138 @@ export const estimateParallelTimeSavings = (
     speedup: speedup.toFixed(2)
   };
 };
+
+/**
+ * Coordinate parallel streaming using INLINE extraction (no video_metadata offsets)
+ * - Cuts sub-segments locally (server-side ffmpeg) and streams each as inline base64
+ * - Starts streaming each sub-segment as soon as its cut is ready (no need to wait for all cuts)
+ */
+export const coordinateParallelInlineStreaming = async (
+  sourceFile,
+  _fileUri,
+  options = {},
+  onChunk,
+  onComplete,
+  onError,
+  onProgress
+) => {
+  try {
+    const { segmentInfo, maxDurationPerRequest, autoSplitSubtitles: autoSplitEnabled, maxWordsPerSubtitle } = options || {};
+
+    if (!segmentInfo || !maxDurationPerRequest) {
+      // Fallback to single inline streaming (no splitting)
+      return streamGeminiContent(sourceFile, null, { ...options, forceInline: true, videoMetadata: undefined }, onChunk, onComplete, onError);
+    }
+
+    const fullSeg = { start: segmentInfo.start, end: segmentInfo.end };
+    const subSegments = splitSegmentForParallelProcessing(fullSeg, maxDurationPerRequest);
+
+    if (subSegments.length === 1) {
+      return streamGeminiContent(sourceFile, null, { ...options, forceInline: true, videoMetadata: undefined }, onChunk, onComplete, onError);
+    }
+
+    console.log(`[ParallelCoordinator INLINE] Starting with ${subSegments.length} sub-segments`);
+
+    const progressTracker = new ParallelProgressTracker(subSegments.length, onProgress);
+
+    const segmentSubtitles = new Array(subSegments.length).fill([]);
+    const segmentTexts = new Array(subSegments.length).fill('');
+
+    // For each sub-segment, kick off extraction, then stream when ready
+    const tasks = subSegments.map((subSeg, index) => (async () => {
+      try {
+        progressTracker.updateSegmentProgress(index, 5, 'cutting');
+        const clipped = await extractVideoSegmentLocally(sourceFile, subSeg.start, subSeg.end);
+        progressTracker.updateSegmentProgress(index, 10, 'streaming');
+
+        // Stream this subclip inline (no offsets); keep segmentInfo for termination/adjustment
+        await streamGeminiContent(
+          clipped,
+          null,
+          {
+            ...options,
+            forceInline: true,
+            videoMetadata: undefined, // ensure no offsets are sent
+            segmentInfo: {
+              start: subSeg.start,
+              end: subSeg.end,
+              duration: subSeg.end - subSeg.start
+            }
+          },
+          // onChunk for this sub-segment
+          (chunk) => {
+            if (chunk.subtitles && chunk.subtitles.length > 0) {
+              // Adjust relative timestamps if needed (shift by subSeg.start)
+              const first = chunk.subtitles[0];
+              const segDur = subSeg.end - subSeg.start;
+              const looksRelative = first && (first.start < subSeg.start / 2);
+
+              let adjusted = looksRelative
+                ? chunk.subtitles.map(s => ({ ...s, start: (s.start || 0) + subSeg.start, end: (s.end || 0) + subSeg.start }))
+                : chunk.subtitles;
+
+              if (autoSplitEnabled && maxWordsPerSubtitle > 0) {
+                adjusted = autoSplitSubtitles(adjusted, maxWordsPerSubtitle);
+              }
+
+              segmentSubtitles[index] = adjusted;
+              segmentTexts[index] = chunk.accumulatedText || '';
+
+              // Aggregate and emit combined progress update
+              const aggregated = mergeParallelSubtitles(
+                subSegments.map((ss, i) => ({ segment: ss, subtitles: segmentSubtitles[i] || [] }))
+              );
+
+              onChunk({
+                text: segmentTexts.join('\n'),
+                accumulatedText: segmentTexts.join('\n'),
+                subtitles: aggregated,
+                chunkCount: chunk.chunkCount,
+                isComplete: false,
+                parallelInfo: {
+                  segmentIndex: index,
+                  totalSegments: subSegments.length,
+                  segmentProgress: progressTracker.segmentProgress
+                }
+              });
+
+              // Rough progress signal for this segment
+              progressTracker.updateSegmentProgress(index, Math.min(90, (chunk.chunkCount || 1) * 10));
+            }
+          },
+          // onComplete for this sub-segment
+          (finalText) => {
+            segmentTexts[index] = finalText || segmentTexts[index];
+            progressTracker.markSegmentComplete(index);
+          },
+          // onError for this sub-segment
+          (err) => {
+            console.error(`[ParallelCoordinator INLINE] Segment ${index + 1} failed:`, err);
+            progressTracker.markSegmentFailed(index, err);
+          }
+        );
+      } catch (e) {
+        console.error(`[ParallelCoordinator INLINE] Error in segment ${index + 1}:`, e);
+        progressTracker.markSegmentFailed(index, e);
+      }
+    })());
+
+    await Promise.allSettled(tasks);
+
+    // Merge final results
+    const finalAgg = mergeParallelSubtitles(
+      subSegments.map((ss, i) => ({ segment: ss, subtitles: segmentSubtitles[i] || [] }))
+    );
+
+    onComplete({
+      subtitles: finalAgg,
+      isSegmentResult: true,
+      segment: segmentInfo,
+      text: segmentTexts.join('\n')
+    });
+  } catch (error) {
+    console.error('[ParallelCoordinator INLINE] Unexpected error:', error);
+    onError(error);
+  }
+};
+

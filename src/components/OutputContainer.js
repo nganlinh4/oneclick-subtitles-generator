@@ -77,9 +77,35 @@ const OutputContainer = ({
     }
   };
 
+  const [preferLiveDuringProcessing, setPreferLiveDuringProcessing] = useState(false);
+
+  useEffect(() => {
+    // Prefer live stream while generating or processing
+    if (isGenerating || isProcessingSegment || (Array.isArray(retryingSegments) && retryingSegments.length > 0)) {
+      setPreferLiveDuringProcessing(true);
+    }
+  }, [isGenerating, isProcessingSegment, retryingSegments]);
+
+  useEffect(() => {
+    const onRetry = () => setPreferLiveDuringProcessing(true);
+    const onStreamUpdate = () => setPreferLiveDuringProcessing(true);
+    const onStreamDone = () => setPreferLiveDuringProcessing(false);
+    const onRetryDone = () => setPreferLiveDuringProcessing(false);
+    window.addEventListener('retry-segment-from-cache', onRetry);
+    window.addEventListener('streaming-update', onStreamUpdate);
+    window.addEventListener('streaming-complete', onStreamDone);
+    window.addEventListener('retry-segment-from-cache-complete', onRetryDone);
+    return () => {
+      window.removeEventListener('retry-segment-from-cache', onRetry);
+      window.removeEventListener('streaming-update', onStreamUpdate);
+      window.removeEventListener('streaming-complete', onStreamDone);
+      window.removeEventListener('retry-segment-from-cache-complete', onRetryDone);
+    };
+  }, []);
+
   const formatSubtitlesForLyricsDisplay = (subtitles) => {
-    // If we have edited lyrics, use those instead of the original subtitles
-    const sourceData = editedLyrics || subtitles;
+    // While processing/retrying, show live subtitles instead of stale edits
+    const sourceData = preferLiveDuringProcessing ? subtitles : (editedLyrics || subtitles);
     return sourceData?.map(sub => ({
       ...sub,
       startTime: sub.start,

@@ -56,7 +56,9 @@ const SubtitleSourceSelection = ({
   groupedSubtitles = null,
   groupingIntensity = 'moderate',
   setGroupingIntensity = () => {},
-  narrationMethod = 'f5tts'
+  narrationMethod = 'f5tts',
+  chatterboxLanguage = 'en',
+  setChatterboxLanguage = () => {}
 }) => {
   const { t } = useTranslation();
   const hasTranslatedSubtitles = translatedSubtitles && translatedSubtitles.length > 0;
@@ -179,6 +181,7 @@ const SubtitleSourceSelection = ({
   const [isLoadingModels, setIsLoadingModels] = useState(false);
   const [isModelModalOpen, setIsModelModalOpen] = useState(false);
   const [userHasManuallySelectedModel, setUserHasManuallySelectedModel] = useState(false);
+  const [userHasManuallySelectedChatterboxLanguage, setUserHasManuallySelectedChatterboxLanguage] = useState(false);
 
   // Load available models
   useEffect(() => {
@@ -311,6 +314,33 @@ const SubtitleSourceSelection = ({
     };
   }, [subtitleSource, onLanguageDetected, translatedSubtitles, t, originalLanguage, setOriginalLanguage, setSubtitleSource, setTranslatedLanguage]);
 
+  // Auto-select Chatterbox language based on detected subtitle language
+  useEffect(() => {
+    if (narrationMethod !== 'chatterbox') return;
+    if (userHasManuallySelectedChatterboxLanguage) return;
+
+    const supported = [
+      'ar','da','de','el','en','es','fi','fr','he','hi','it','ja','ko','ms','nl','no','pl','pt','ru','sv','sw','tr','zh'
+    ];
+
+    const currentLanguageObj = subtitleSource === 'translated' ? translatedLanguage : originalLanguage;
+    if (!currentLanguageObj) return;
+
+    const candidates = (currentLanguageObj.isMultiLanguage && Array.isArray(currentLanguageObj.secondaryLanguages) && currentLanguageObj.secondaryLanguages.length > 0)
+      ? [currentLanguageObj.languageCode, ...currentLanguageObj.secondaryLanguages]
+      : [currentLanguageObj.languageCode];
+
+    const normalized = candidates.map(c => (c || '').toLowerCase());
+    const match = normalized.find(code => supported.includes(code));
+    const next = match || 'en';
+
+    if (next && next !== chatterboxLanguage) {
+      setChatterboxLanguage(next);
+      try { localStorage.setItem('chatterbox_language', next); } catch {}
+    }
+  }, [narrationMethod, subtitleSource, originalLanguage, translatedLanguage, userHasManuallySelectedChatterboxLanguage, chatterboxLanguage, setChatterboxLanguage]);
+
+
   // We're using an inline function for the button click handler
 
   // Handle model selection
@@ -318,7 +348,20 @@ const SubtitleSourceSelection = ({
     // Close the modal immediately
     setIsModelModalOpen(false);
 
-    // Set the selected model
+    if (narrationMethod === 'chatterbox') {
+      // In Chatterbox mode, the modal is for language selection
+      const lang = (modelId || 'en').toLowerCase();
+      setChatterboxLanguage(lang);
+      setUserHasManuallySelectedChatterboxLanguage(true);
+      try {
+        localStorage.setItem('chatterbox_language', lang);
+      } catch (error) {
+        console.error('Error saving chatterbox language:', error);
+      }
+      return;
+    }
+
+    // Otherwise: Set the selected model (F5/Gemini)
     setSelectedModel(modelId);
 
     // Save the selected model to localStorage for future sessions
@@ -530,33 +573,61 @@ const SubtitleSourceSelection = ({
               </div>
             )}
 
-            {/* Only show model dropdown for F5-TTS and Gemini methods */}
-            {narrationMethod !== 'chatterbox' && narrationMethod !== 'edge-tts' && narrationMethod !== 'gtts' && (
-              <div className="model-dropdown-container narration-model-dropdown-container">
-                <button
-                  className="model-dropdown-btn narration-model-dropdown-btn"
+            {/* Show dropdown area: for Chatterbox this is a Language selector, others keep Model selector */}
+            {narrationMethod !== 'edge-tts' && narrationMethod !== 'gtts' && (
+              narrationMethod === 'chatterbox' ? (
+                <div
+                  className="model-dropdown-container narration-model-dropdown-container chatterbox-pill"
                   onClick={(e) => {
                     e.preventDefault();
                     e.stopPropagation();
-                    openModelModal();
+                    if (!isGenerating) openModelModal();
                   }}
-                  title={t('narration.selectNarrationModel', 'Select narration model')}
-                  disabled={isGenerating}
+                  role="button"
+                  tabIndex={0}
+                  aria-disabled={isGenerating}
+                  title={t('narration.selectLanguage', 'Select language')}
                 >
-                  <span className="model-dropdown-label">{t('narration.narrationModel', 'Model')}:</span>
+                  <span className="model-dropdown-label">{t('narration.language', 'Language')}:</span>
                   <span className="model-dropdown-selected">
-                    <span className="model-name">{selectedModel}</span>
+                    <span className="model-name">{(chatterboxLanguage || 'en').toUpperCase()}</span>
                   </span>
                   <FiChevronDown size={14} className="dropdown-icon" />
-                </button>
 
-                {modelError && (
-                  <div className="model-error">
-                    <span className="error-icon">⚠️</span>
-                    <span>{modelError}</span>
-                  </div>
-                )}
-              </div>
+                  {modelError && (
+                    <div className="model-error">
+                      <span className="error-icon">⚠️</span>
+                      <span>{modelError}</span>
+                    </div>
+                  )}
+                </div>
+              ) : (
+                <div className="model-dropdown-container narration-model-dropdown-container">
+                  <button
+                    className="model-dropdown-btn narration-model-dropdown-btn"
+                    onClick={(e) => {
+                      e.preventDefault();
+                      e.stopPropagation();
+                      openModelModal();
+                    }}
+                    title={t('narration.selectNarrationModel', 'Select narration model')}
+                    disabled={isGenerating}
+                  >
+                    <span className="model-dropdown-label">{t('narration.narrationModel', 'Model')}:</span>
+                    <span className="model-dropdown-selected">
+                      <span className="model-name">{selectedModel}</span>
+                    </span>
+                    <FiChevronDown size={14} className="dropdown-icon" />
+                  </button>
+
+                  {modelError && (
+                    <div className="model-error">
+                      <span className="error-icon">⚠️</span>
+                      <span>{modelError}</span>
+                    </div>
+                  )}
+                </div>
+              )
             )}
 
             {modelError && !selectedModel && !isCheckingModel && (
@@ -647,13 +718,28 @@ const SubtitleSourceSelection = ({
             </div>
           </div>
         </div>
+
+      {/* Compute models for modal: override with Chatterbox's multilingual support when in chatterbox mode */}
+      {(() => {
+        // Chatterbox supported languages (must match backend SUPPORTED_LANGUAGES)
+        const chatterboxSupportedLangs = [
+          'ar','da','de','el','en','es','fi','fr','he','hi','it','ja','ko','ms','nl','no','pl','pt','ru','sv','sw','tr','zh'
+        ];
+        const chatterboxModels = [
+          { id: 'chatterbox-multilingual-tts', languages: chatterboxSupportedLangs }
+        ];
+        // Expose computed array on a scoped variable for the JSX below
+        window.__modelsForNarrationModal = (narrationMethod === 'chatterbox') ? chatterboxModels : availableModels;
+        return null;
+      })()}
+
       </div>
 
       {/* Model Selection Modal */}
       <ModelSelectionModal
         isOpen={isModelModalOpen}
         onClose={closeModelModal}
-        availableModels={availableModels}
+        availableModels={window.__modelsForNarrationModal || availableModels}
         isLoadingModels={isLoadingModels}
         selectedModel={selectedModel}
         onModelSelect={handleModelSelect}
@@ -661,6 +747,7 @@ const SubtitleSourceSelection = ({
         originalLanguage={originalLanguage}
         translatedLanguage={translatedLanguage}
         renderModelLanguages={renderModelLanguages}
+        isChatterboxMode={narrationMethod === 'chatterbox'}
       />
 
       {/* Subtitle Grouping Comparison Modal */}

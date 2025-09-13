@@ -1,6 +1,6 @@
 import React from 'react';
 import { useTranslation } from 'react-i18next';
-import StandardSlider from '../common/StandardSlider';
+import SliderWithValue from '../common/SliderWithValue';
 import MaterialSwitch from '../common/MaterialSwitch';
 import '../../styles/common/material-switch.css';
 import '../../styles/narration/narrationAdvancedSettingsRedesign.css';
@@ -54,25 +54,20 @@ const NarrationAdvancedSettings = ({ settings, onSettingsChange, disabled = fals
               <label htmlFor="speechRate">{t('narration.speechRate', 'Speed')}:</label>
             </div>
             <div className="row-content">
-              <div className="slider-with-value">
-                <StandardSlider
-                  value={settings.speechRate || 1.3}
-                  onChange={(value) => handleSliderChange('speechRate', value)}
-                  min={0.5}
-                  max={2.0}
-                  step={0.1}
-                  orientation="Horizontal"
-                  size="XSmall"
-                  state={disabled ? "Disabled" : "Enabled"}
-                  showValueIndicator={false} // Using custom value display
-                  showIcon={false}
-                  showStops={false}
-                  className="speech-rate-slider"
-                  id="speechRate"
-                  ariaLabel={t('narration.speechRate', 'Speed')}
-                />
-                <div className="slider-value-display">{(settings.speechRate || 1.3).toFixed(1)}x</div>
-              </div>
+              <SliderWithValue
+                value={settings.speechRate || 1.3}
+                onChange={(value) => handleSliderChange('speechRate', value)}
+                min={0.5}
+                max={2.0}
+                step={0.1}
+                orientation="Horizontal"
+                size="XSmall"
+                state={disabled ? "Disabled" : "Enabled"}
+                className="speech-rate-slider"
+                id="speechRate"
+                ariaLabel={t('narration.speechRate', 'Speed')}
+                formatValue={(v) => `${Number(v || 1.3).toFixed(1)}x`}
+              />
             </div>
           </div>
 
@@ -81,25 +76,20 @@ const NarrationAdvancedSettings = ({ settings, onSettingsChange, disabled = fals
               <label htmlFor="cfgStrength">{t('narration.cfgStrength', 'Similarity')}:</label>
             </div>
             <div className="row-content">
-              <div className="slider-with-value">
-                <StandardSlider
-                  value={settings.cfgStrength || 2.0}
-                  onChange={(value) => handleSliderChange('cfgStrength', value)}
-                  min={1.0}
-                  max={5.0}
-                  step={0.1}
-                  orientation="Horizontal"
-                  size="XSmall"
-                  state={disabled ? "Disabled" : "Enabled"}
-                  showValueIndicator={false} // Using custom value display
-                  showIcon={false}
-                  showStops={false}
-                  className="cfg-strength-slider"
-                  id="cfgStrength"
-                  ariaLabel={t('narration.cfgStrength', 'Similarity')}
-                />
-                <div className="slider-value-display">{(settings.cfgStrength || 2.0).toFixed(1)}</div>
-              </div>
+              <SliderWithValue
+                value={settings.cfgStrength || 2.0}
+                onChange={(value) => handleSliderChange('cfgStrength', value)}
+                min={1.0}
+                max={5.0}
+                step={0.1}
+                orientation="Horizontal"
+                size="XSmall"
+                state={disabled ? "Disabled" : "Enabled"}
+                className="cfg-strength-slider"
+                id="cfgStrength"
+                ariaLabel={t('narration.cfgStrength', 'Similarity')}
+                formatValue={(v) => `${Number(v || 2.0).toFixed(1)}`}
+              />
               <div className="setting-description">
                 {t('narration.cfgStrengthDesc', 'Higher values increase voice similarity')}
               </div>
@@ -144,25 +134,20 @@ const NarrationAdvancedSettings = ({ settings, onSettingsChange, disabled = fals
               <label htmlFor="swayCoef">{t('narration.swayCoef', 'Sway')}:</label>
             </div>
             <div className="row-content">
-              <div className="slider-with-value">
-                <StandardSlider
-                  value={settings.swayCoef || -1.0}
-                  onChange={(value) => handleSliderChange('swayCoef', value)}
-                  min={-1.1}
-                  max={1.7}
-                  step={0.1}
-                  orientation="Horizontal"
-                  size="XSmall"
-                  state={disabled ? "Disabled" : "Enabled"}
-                  showValueIndicator={false} // Using custom value display
-                  showIcon={false}
-                  showStops={false}
-                  className="sway-coef-slider"
-                  id="swayCoef"
-                  ariaLabel={t('narration.swayCoef', 'Sway')}
-                />
-                <div className="slider-value-display">{(settings.swayCoef || -1.0).toFixed(1)}</div>
-              </div>
+              <SliderWithValue
+                value={settings.swayCoef || -1.0}
+                onChange={(value) => handleSliderChange('swayCoef', value)}
+                min={-1.1}
+                max={1.7}
+                step={0.1}
+                orientation="Horizontal"
+                size="XSmall"
+                state={disabled ? "Disabled" : "Enabled"}
+                className="sway-coef-slider"
+                id="swayCoef"
+                ariaLabel={t('narration.swayCoef', 'Sway')}
+                formatValue={(v) => `${Number(v || -1.0).toFixed(1)}`}
+              />
               <div className="setting-description">
                 {t('narration.swayCoefDesc', 'Lower values improve quality')}
               </div>

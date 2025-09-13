@@ -107,6 +107,9 @@ const StandardSlider = ({
       : value
   };
 
+  // Determine disabled state (case-insensitive)
+  const isDisabled = String(resolvedProps.state).toLowerCase() === 'disabled';
+
   // Calculate percentage from resolved value or drag value for smooth movement
   const currentValue = isDragging && dragValue !== null ? dragValue : resolvedProps.value;
   const percentage = ((currentValue - min) / (max - min)) * 100;
@@ -232,6 +235,11 @@ const StandardSlider = ({
     const trackContainer = container.querySelector('.standard-slider-track-container');
     if (!trackContainer) return;
 
+    // Do not attach interaction handlers when disabled
+    if (isDisabled) {
+      return;
+    }
+
     // Mouse drag handlers
     const handleMouseDown = (e) => {
       e.preventDefault();
@@ -288,7 +296,7 @@ const StandardSlider = ({
       document.removeEventListener('touchmove', handleTouchMove);
       document.removeEventListener('touchend', handleTouchEnd);
     };
-  }, [isDragging, handleDragStart, handleDragEnd, handleSmoothDrag]);
+  }, [isDragging, handleDragStart, handleDragEnd, handleSmoothDrag, isDisabled]);
 
   // Build CSS classes using resolved props (support both lowercase and Figma capitalized)
   const containerClasses = [
@@ -377,7 +385,7 @@ const StandardSlider = ({
           className="standard-slider-input"
           id={id}
           aria-label={ariaLabel || t('common.slider', 'Slider')}
-          disabled={resolvedProps.state === 'disabled'}
+          disabled={isDisabled}
           data-figma-component={getFigmaComponentName()}
           tabIndex={-1}
           style={{ pointerEvents: 'none' }}

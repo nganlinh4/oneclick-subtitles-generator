@@ -1,7 +1,10 @@
-import React from 'react';
+import React, { useEffect, useState } from 'react';
 
 /**
- * Status Message component
+ * Status Message component with smooth enter/exit height animation
+ * Expands from 0 height on enter and collapses to 0 on exit to avoid abrupt layout shifts.
+ * Works with the narration-section flow (no special container height animation required).
+ *
  * @param {Object} props - Component props
  * @param {string} props.message - Message to display
  * @param {string} props.type - Message type (info, warning, error, success)
@@ -17,12 +20,32 @@ const StatusMessage = ({
   showProgress = false,
   isGenerating = false
 }) => {
-  // Only render if there's a message or we're generating (but not for empty error messages)
-  if ((!message && !isGenerating) || (type === 'error' && !message)) return null;
+  // Determine if the status should be shown based on props
+  const shouldShow = ((!!message) || isGenerating) && !(type === 'error' && !message);
+
+  // Keep the element mounted briefly to allow exit animation
+  const [render, setRender] = useState(shouldShow);
+  const [show, setShow] = useState(false);
+
+  useEffect(() => {
+    if (shouldShow) {
+      // Ensure it's mounted and then expand on next frame
+      setRender(true);
+      const id = requestAnimationFrame(() => setShow(true));
+      return () => cancelAnimationFrame(id);
+    } else {
+      // Start collapse, then unmount after transition duration
+      setShow(false);
+      const timeout = setTimeout(() => setRender(false), 320); // keep slightly longer than CSS for safety
+      return () => clearTimeout(timeout);
+    }
+  }, [shouldShow]);
+
+  if (!render) return null;
 
   return (
     <div
-      className={`status-message ${type} ${showProgress ? 'with-progress' : ''} ${isGenerating ? 'generating' : ''}`}
+      className={`status-message status-banner ${type} ${showProgress ? 'with-progress' : ''} ${isGenerating ? 'generating' : ''} ${show ? 'status-show' : 'status-collapsed'}`}
       ref={statusRef}
     >
       {showProgress && (

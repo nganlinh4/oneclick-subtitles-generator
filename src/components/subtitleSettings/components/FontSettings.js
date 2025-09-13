@@ -1,6 +1,6 @@
 import React from 'react';
 import { useTranslation } from 'react-i18next';
-import StandardSlider from '../../common/StandardSlider';
+import SliderWithValue from '../../common/SliderWithValue';
 import { formatDecimal } from '../../../utils/formatUtils';
 import CustomDropdown from '../../common/CustomDropdown';
 
@@ -37,25 +37,20 @@ const FontSettings = ({ settings, handleSettingChange, fontGroups, fontWeightOpt
 
       <div className="setting-group">
         <label htmlFor="font-size">{t('subtitleSettings.fontSize', 'Font Size')}</label>
-        <div className="slider-with-value">
-          <StandardSlider
-            value={parseInt(settings.fontSize)}
-            onChange={(value) => handleSettingChange('fontSize', value.toString())}
-            min={12}
-            max={36}
-            step={1}
-            orientation="Horizontal"
-            size="XSmall"
-            state="Enabled"
-            showValueIndicator={false} // Using custom value display
-            showIcon={false}
-            showStops={false}
-            className="font-size-slider"
-            id="font-size"
-            ariaLabel={t('subtitleSettings.fontSize', 'Font Size')}
-          />
-          <div className="slider-value-display">{settings.fontSize}px</div>
-        </div>
+        <SliderWithValue
+          value={parseInt(settings.fontSize)}
+          onChange={(value) => handleSettingChange('fontSize', value.toString())}
+          min={12}
+          max={36}
+          step={1}
+          orientation="Horizontal"
+          size="XSmall"
+          state="Enabled"
+          className="font-size-slider"
+          id="font-size"
+          ariaLabel={t('subtitleSettings.fontSize', 'Font Size')}
+          formatValue={(v) => `${v}px`}
+        />
       </div>
 
       <div className="setting-group">
@@ -73,48 +68,38 @@ const FontSettings = ({ settings, handleSettingChange, fontGroups, fontWeightOpt
 
       <div className="setting-group">
         <label htmlFor="line-spacing">{t('subtitleSettings.lineSpacing', 'Line Spacing')}</label>
-        <div className="slider-with-value">
-          <StandardSlider
-            value={parseFloat(settings.lineSpacing || '1.4')}
-            onChange={(value) => handleSettingChange('lineSpacing', value.toString())}
-            min={1}
-            max={2}
-            step={0.1}
-            orientation="Horizontal"
-            size="XSmall"
-            state="Enabled"
-            showValueIndicator={false} // Using custom value display
-            showIcon={false}
-            showStops={false}
-            className="line-spacing-slider"
-            id="line-spacing"
-            ariaLabel={t('subtitleSettings.lineSpacing', 'Line Spacing')}
-          />
-          <div className="slider-value-display">{formatDecimal(parseFloat(settings.lineSpacing || '1.4'), 1)}</div>
-        </div>
+        <SliderWithValue
+          value={parseFloat(settings.lineSpacing || '1.4')}
+          onChange={(value) => handleSettingChange('lineSpacing', value.toString())}
+          min={1}
+          max={2}
+          step={0.1}
+          orientation="Horizontal"
+          size="XSmall"
+          state="Enabled"
+          className="line-spacing-slider"
+          id="line-spacing"
+          ariaLabel={t('subtitleSettings.lineSpacing', 'Line Spacing')}
+          formatValue={(v) => `${formatDecimal(Number(v), 1)}`}
+        />
       </div>
 
       <div className="setting-group">
         <label htmlFor="letter-spacing">{t('subtitleSettings.letterSpacing', 'Letter Spacing')}</label>
-        <div className="slider-with-value">
-          <StandardSlider
-            value={parseFloat(settings.letterSpacing || '0')}
-            onChange={(value) => handleSettingChange('letterSpacing', value.toString())}
-            min={-1}
-            max={5}
-            step={0.5}
-            orientation="Horizontal"
-            size="XSmall"
-            state="Enabled"
-            showValueIndicator={false} // Using custom value display
-            showIcon={false}
-            showStops={false}
-            className="letter-spacing-slider"
-            id="letter-spacing"
-            ariaLabel={t('subtitleSettings.letterSpacing', 'Letter Spacing')}
-          />
-          <div className="slider-value-display">{formatDecimal(parseFloat(settings.letterSpacing || '0'), 1)}px</div>
-        </div>
+        <SliderWithValue
+          value={parseFloat(settings.letterSpacing || '0')}
+          onChange={(value) => handleSettingChange('letterSpacing', value.toString())}
+          min={-1}
+          max={5}
+          step={0.5}
+          orientation="Horizontal"
+          size="XSmall"
+          state="Enabled"
+          className="letter-spacing-slider"
+          id="letter-spacing"
+          ariaLabel={t('subtitleSettings.letterSpacing', 'Letter Spacing')}
+          formatValue={(v) => `${formatDecimal(Number(v), 1)}px`}
+        />
       </div>
     </>
   );

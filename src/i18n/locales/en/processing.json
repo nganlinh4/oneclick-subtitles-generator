@@ -58,5 +58,12 @@
   "selectResolution": "Select Resolution",
   "selectModel": "Select Model",
   "selectPreset": "Select Preset",
-  "gemini20Warning": "Gemini 2.0 models do not work well with the new offset mechanism"
+  "gemini20Warning": "Gemini 2.5 models have higher censorship and are prone to \"unsafe content\" errors."
+  ,
+  "inlineExtractionHelp": "Use the old method when the new method fails; may be slower depending on the situation",
+  "inlineExtractionLabel": "Cut the video locally, then send to Gemini",
+  "methodLabel": "Method",
+  "methodNewOption": "New: Interact with video on Files API",
+  "methodOldOption": "Old: Cut the video locally, then send to Gemini"
+
 }

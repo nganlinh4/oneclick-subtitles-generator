@@ -7,5 +7,8 @@
   "generateReplace": "자막 다시 생성",
   "clearInRangeWithShortcut": "범위 내 자막 삭제 (Del)",
   "moveRange": "드래그하여 범위 내 자막 이동",
-  "dragToZoom": "드래그하여 확대/축소"
+  "dragToZoom": "드래그하여 확대/축소",
+  "clearOfflineSegments": "오프라인 구간 지우기",
+  "retryFromCache": "이 클립 재시도(캐시된 클립 재사용)",
+  "clearOfflineFirst": "이 모드에서 나가려면 먼저 오프라인 구간을 지워주세요"
 }

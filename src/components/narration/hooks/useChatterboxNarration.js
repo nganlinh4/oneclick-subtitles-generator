@@ -63,6 +63,7 @@ const useChatterboxNarration = ({
   translatedLanguage,
   exaggeration,
   cfgWeight,
+  chatterboxLanguage,
   referenceAudio,
   useGroupedSubtitles,
   setUseGroupedSubtitles,
@@ -134,6 +135,37 @@ const useChatterboxNarration = ({
 
     return null;
   }, [referenceAudio]);
+  /**
+   * Try to load reference audio from previous Chatterbox run cache (localStorage)
+   */
+  const getCachedReferenceAudioFile = useCallback(async () => {
+    try {
+      const cached = localStorage.getItem('chatterbox_narrations_cache');
+      if (!cached) return null;
+      const parsed = JSON.parse(cached);
+      const filename = parsed?.referenceAudio?.filename;
+      if (!filename) return null;
+
+      const fileUrl = `${SERVER_URL}/api/narration/reference-audio/${filename}`;
+      const response = await fetch(fileUrl);
+      if (!response.ok) return null;
+      const blob = await response.blob();
+      return new File([blob], filename, { type: 'audio/wav' });
+    } catch (e) {
+      console.error('Error loading cached reference audio file:', e);
+      return null;
+    }
+  }, []);
+
+  /**
+   * Get a usable reference audio File, preferring in-memory/state first then cache fallback
+   */
+  const getReferenceAudioFileWithCache = useCallback(async () => {
+    const direct = await getReferenceAudioFile();
+    if (direct) return direct;
+    return await getCachedReferenceAudioFile();
+  }, [getReferenceAudioFile, getCachedReferenceAudioFile]);
+
 
   /**
    * Convert audio blob to base64 and save to server
@@ -199,10 +231,14 @@ const useChatterboxNarration = ({
         total
       }));
 
+      const sendAdvanced = /^en/i.test(chatterboxLanguage || '');
+      const exArg = sendAdvanced ? exaggeration : undefined;
+      const cfgArg = sendAdvanced ? cfgWeight : undefined;
       const audioBlob = await generateChatterboxSpeech(
         subtitle.text,
-        exaggeration,
-        cfgWeight,
+        chatterboxLanguage,
+        exArg,
+        cfgArg,
         voiceFile,
         voiceFilePath
       );
@@ -232,7 +268,7 @@ const useChatterboxNarration = ({
         method: 'chatterbox'
       };
     }
-  }, [exaggeration, cfgWeight, t, setGenerationStatus]);
+  }, [exaggeration, cfgWeight, chatterboxLanguage, t, setGenerationStatus]);
 
   /**
    * Handle Chatterbox narration generation
@@ -293,7 +329,7 @@ const useChatterboxNarration = ({
         const subtitle = selectedSubtitles[i];
         const result = await generateSingleNarration(subtitle, i, selectedSubtitles.length, voiceFile, voiceFilePath);
         results.push(result);
-        
+
         // Update results incrementally
         setGenerationResults([...results]);
 
@@ -418,20 +454,31 @@ const useChatterboxNarration = ({
   const retryChatterboxNarration = useCallback(async (subtitleId) => {
     try {
       setRetryingSubtitleId(subtitleId);
-      
+
+      // Ensure Chatterbox API/model is available (warm-up similar to main generation)
+      let quick = await checkChatterboxAvailability(1, 800, false);
+      if (!quick.available) {
+        setGenerationStatus(t('narration.chatterboxWarmingUp', 'Warming up narration server for first-time use...'));
+        const availability = await checkChatterboxAvailability(3, 2000, true);
+        if (!availability.available) {
+          throw new Error(availability.message || t('narration.chatterboxUnavailableMessage', 'Chatterbox API is not available. Please start the Chatterbox service using "npm run dev:cuda".'));
+        }
+      }
+
       const selectedSubtitles = getSelectedSubtitles();
       const subtitle = selectedSubtitles.find(s => (s.id || selectedSubtitles.indexOf(s)) === subtitleId);
-      
+
       if (!subtitle) {
         throw new Error('Subtitle not found for retry');
       }
 
-      const voiceFile = await getReferenceAudioFile();
-      const result = await generateSingleNarration(subtitle, 0, 1, voiceFile);
+      const voiceFilePath = getReferenceAudioPath();
+      const voiceFile = voiceFilePath ? null : await getReferenceAudioFileWithCache();
+      const result = await generateSingleNarration(subtitle, 0, 1, voiceFile, voiceFilePath);
 
       // Update the specific result in the array
-      setGenerationResults(prevResults => 
-        prevResults.map(r => 
+      setGenerationResults(prevResults =>
+        prevResults.map(r =>
           r.subtitle_id === subtitleId ? result : r
         )
       );
@@ -452,9 +499,19 @@ const useChatterboxNarration = ({
   const retryFailedChatterboxNarrations = useCallback(async () => {
     try {
       setIsGenerating(true);
-      
+
+      // Ensure Chatterbox API/model is available before batch retry
+      let quick = await checkChatterboxAvailability(1, 800, false);
+      if (!quick.available) {
+        setGenerationStatus(t('narration.chatterboxWarmingUp', 'Warming up narration server for first-time use...'));
+        const availability = await checkChatterboxAvailability(3, 2000, true);
+        if (!availability.available) {
+          throw new Error(availability.message || t('narration.chatterboxUnavailableMessage', 'Chatterbox API is not available. Please start the Chatterbox service using "npm run dev:cuda".'));
+        }
+      }
+
       const failedResults = generationResults.filter(r => r.success === false);
-      
+
       if (failedResults.length === 0) {
         return;
       }
@@ -464,13 +521,15 @@ const useChatterboxNarration = ({
 
       for (const failedResult of failedResults) {
         const subtitle = selectedSubtitles.find(s => (s.id || selectedSubtitles.indexOf(s)) === failedResult.subtitle_id);
-        
+
         if (subtitle) {
-          const result = await generateSingleNarration(subtitle, 0, 1, voiceFile);
-          
+          const voiceFilePath = getReferenceAudioPath();
+          const vf = voiceFilePath ? null : voiceFile || await getReferenceAudioFileWithCache();
+          const result = await generateSingleNarration(subtitle, 0, 1, vf, voiceFilePath);
+
           // Update the specific result
-          setGenerationResults(prevResults => 
-            prevResults.map(r => 
+          setGenerationResults(prevResults =>
+            prevResults.map(r =>
               r.subtitle_id === failedResult.subtitle_id ? result : r
             )
           );

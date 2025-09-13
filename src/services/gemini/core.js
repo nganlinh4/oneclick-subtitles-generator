@@ -19,7 +19,7 @@ import { getNextAvailableKey, blacklistKey } from './keyManager';
 import { addThinkingConfig } from '../../utils/thinkingBudgetUtils';
 import { uploadFileToGemini, shouldUseFilesApi } from './filesApi';
 import { streamGeminiContent, isStreamingSupported } from './streamingService';
-import { coordinateParallelStreaming, shouldUseParallelProcessing } from './parallelStreamingCoordinator';
+import { coordinateParallelStreaming, shouldUseParallelProcessing, coordinateParallelInlineStreaming } from './parallelStreamingCoordinator';
 
 /**
  * Clear cached file URI for a specific file
@@ -122,7 +122,7 @@ export const streamGeminiApiWithFilesApi = async (file, options = {}, onChunk, o
                 detail: { fileName: file.name, uri: uploadedFile.uri }
             }));
         }
-        
+
         if (shouldUpload) {
             // Upload file to Gemini Files API
             console.log(retryCount > 0 ? 'Re-uploading expired file to Gemini Files API...' : 'Uploading file to Gemini Files API...');
@@ -152,7 +152,7 @@ export const streamGeminiApiWithFilesApi = async (file, options = {}, onChunk, o
             );
 
             const streamFunction = useParallel ? coordinateParallelStreaming : streamGeminiContent;
-            
+
             console.log(`[GeminiAPI] Using ${useParallel ? 'parallel' : 'single'} streaming`);
 
             await streamFunction(
@@ -172,28 +172,28 @@ export const streamGeminiApiWithFilesApi = async (file, options = {}, onChunk, o
                 onComplete,
                 async (error) => {
                     // Check if this is a file permission error (expired or deleted file)
-                    if (error && error.message && 
-                        ((error.message.includes('403') && 
-                         (error.message.includes('PERMISSION_DENIED') || 
+                    if (error && error.message &&
+                        ((error.message.includes('403') &&
+                         (error.message.includes('PERMISSION_DENIED') ||
                           error.message.includes('You do not have permission to access the File') ||
                           error.message.includes('it may not exist'))) ||
                         error.message.includes('FILE_URI_EXPIRED'))) {
-                        
+
                         console.warn('[GeminiAPI] Cached file URI is no longer valid, clearing cache and retrying...');
-                        
+
                         // Clear the invalid cached URI
                         localStorage.removeItem(fileKey);
-                        
+
                         // Retry only once to avoid infinite loops
                         if (retryCount === 0) {
                             console.log('[GeminiAPI] Retrying with fresh file upload...');
                             // Retry the entire operation with fresh upload
                             await streamGeminiApiWithFilesApi(
-                                file, 
-                                options, 
-                                onChunk, 
-                                onComplete, 
-                                onError, 
+                                file,
+                                options,
+                                onChunk,
+                                onComplete,
+                                onError,
                                 onProgress,
                                 retryCount + 1
                             );
@@ -216,6 +216,71 @@ export const streamGeminiApiWithFilesApi = async (file, options = {}, onChunk, o
         onError(error);
     }
 };
+
+/**
+ * Stream content generation using INLINE data (no Files API, no video_metadata)
+ */
+export const streamGeminiApiInline = async (file, options = {}, onChunk, onComplete, onError, onProgress) => {
+  const { userProvidedSubtitles, modelId, mediaResolution, maxDurationPerRequest } = options;
+  const MODEL = modelId || localStorage.getItem('gemini_model') || "gemini-2.5-flash";
+
+  console.log(`[GeminiAPI] Using streaming INLINE with model: ${MODEL}`);
+
+  // Check if streaming is supported
+  if (!isStreamingSupported(MODEL)) {
+    console.warn('[GeminiAPI] Streaming not supported for model:', MODEL, '- falling back to regular inline API');
+    try {
+      const result = await callGeminiApi(file, 'file-upload', { ...options, forceInline: true });
+      onComplete(result);
+    } catch (error) {
+      onError(error);
+    }
+    return;
+  }
+
+  // Prepare sanitized options: ensure no videoMetadata is sent for inline
+  const inlineOptions = { ...options, videoMetadata: undefined, forceInline: true };
+
+  // Check if we should use parallel processing
+  const useParallel = shouldUseParallelProcessing(
+    inlineOptions.segmentInfo ? { start: inlineOptions.segmentInfo.start, end: inlineOptions.segmentInfo.end } : null,
+    maxDurationPerRequest
+  );
+
+  console.log(`[GeminiAPI] Using ${useParallel ? 'parallel INLINE' : 'single INLINE'} streaming`);
+
+  try {
+    if (useParallel) {
+      await coordinateParallelInlineStreaming(
+        file,
+        null,
+        inlineOptions,
+        onChunk,
+        onComplete,
+        onError,
+        onProgress
+      );
+    } else {
+      // For non-parallel INLINE with a segment, cut locally to reduce payload and avoid limits
+      if (inlineOptions.segmentInfo) {
+        try {
+          const { extractVideoSegmentLocally } = await import('../../utils/videoSegmenter');
+          const { start, end } = inlineOptions.segmentInfo;
+          const clipped = await extractVideoSegmentLocally(file, start, end);
+          await streamGeminiContent(clipped, null, inlineOptions, onChunk, onComplete, onError);
+          return;
+        } catch (e) {
+          console.warn('[GeminiAPI] Inline single-stream: segment clipping failed, streaming full source inline', e);
+        }
+      }
+      await streamGeminiContent(file, null, inlineOptions, onChunk, onComplete, onError);
+    }
+  } catch (err) {
+    console.error('[GeminiAPI] Error in inline streaming:', err);
+    onError(err);
+  }
+};
+
 
 /**
  * Special version of callGeminiApiWithFilesApi for video analysis
@@ -269,7 +334,7 @@ export const callGeminiApiWithFilesApiForAnalysis = async (file, options = {}, a
                 detail: { fileName: file.name, uri: uploadedFile.uri, purpose: 'analysis' }
             }));
         }
-        
+
         if (shouldUpload) {
             // Upload file to Gemini Files API
             console.log('[GeminiAPI Analysis] Uploading file to Gemini Files API for analysis...');
@@ -345,18 +410,18 @@ export const callGeminiApiWithFilesApiForAnalysis = async (file, options = {}, a
         if (!response.ok) {
             const errorData = await response.json();
             const errorMessage = errorData.error?.message || response.statusText;
-            
+
             // Check if this is a file permission error (expired or deleted file)
-            if (response.status === 403 && 
-                (errorMessage.includes('PERMISSION_DENIED') || 
+            if (response.status === 403 &&
+                (errorMessage.includes('PERMISSION_DENIED') ||
                  errorMessage.includes('You do not have permission to access the File') ||
                  errorMessage.includes('it may not exist'))) {
-                
+
                 console.warn('[GeminiAPI Analysis] Cached file URI is no longer valid (403 error), clearing cache...');
-                
+
                 // Clear the invalid cached URI
                 localStorage.removeItem(fileKey);
-                
+
                 // Retry only once to avoid infinite loops
                 if (retryCount === 0) {
                     console.log('[GeminiAPI Analysis] Retrying with fresh file upload...');
@@ -367,7 +432,7 @@ export const callGeminiApiWithFilesApiForAnalysis = async (file, options = {}, a
                     throw new Error(`API error: ${errorMessage}`);
                 }
             }
-            
+
             throw new Error(`Gemini API error: ${errorMessage}`);
         }
 
@@ -391,30 +456,30 @@ export const callGeminiApiWithFilesApiForAnalysis = async (file, options = {}, a
 
     } catch (error) {
         console.error('[GeminiAPI Analysis] Error:', error);
-        
+
         // Check again at the outer level for file permission errors
-        if (error && error.message && 
-            (error.message.includes('403') && 
-             (error.message.includes('PERMISSION_DENIED') || 
+        if (error && error.message &&
+            (error.message.includes('403') &&
+             (error.message.includes('PERMISSION_DENIED') ||
               error.message.includes('You do not have permission to access the File') ||
               error.message.includes('it may not exist'))) &&
             retryCount === 0) {
-            
+
             console.warn('[GeminiAPI Analysis] Detected permission error in outer catch, clearing cache and retrying...');
-            
+
             // Clear the invalid cached URI
             if (fileKey) {
                 localStorage.removeItem(fileKey);
             }
-            
+
             // Retry the entire operation with fresh upload
             return await callGeminiApiWithFilesApiForAnalysis(file, options, abortSignal, retryCount + 1);
         }
-        
+
         if (error.name === 'AbortError') {
             throw new Error('Video analysis was cancelled');
         }
-        
+
         throw error;
     }
 };
@@ -461,7 +526,7 @@ export const callGeminiApiWithFilesApi = async (file, options = {}, retryCount =
                 detail: { fileName: file.name, uri: uploadedFile.uri }
             }));
         }
-        
+
         if (shouldUpload) {
             // Upload file to Gemini Files API
             console.log(retryCount > 0 ? 'Re-uploading expired file to Gemini Files API...' : 'Uploading file to Gemini Files API...');
@@ -558,18 +623,18 @@ export const callGeminiApiWithFilesApi = async (file, options = {}, retryCount =
             if (!response.ok) {
                 const errorData = await response.json();
                 const errorMessage = errorData.error?.message || response.statusText;
-                
+
                 // Check if this is a file permission error (expired or deleted file)
-                if (response.status === 403 && 
-                    (errorMessage.includes('PERMISSION_DENIED') || 
+                if (response.status === 403 &&
+                    (errorMessage.includes('PERMISSION_DENIED') ||
                      errorMessage.includes('You do not have permission to access the File') ||
                      errorMessage.includes('it may not exist'))) {
-                    
+
                     console.warn('[GeminiAPI] Cached file URI is no longer valid (403 error), clearing cache...');
-                    
+
                     // Clear the invalid cached URI
                     localStorage.removeItem(fileKey);
-                    
+
                     // Retry only once to avoid infinite loops
                     if (retryCount === 0) {
                         console.log('[GeminiAPI] Retrying with fresh file upload...');
@@ -581,7 +646,7 @@ export const callGeminiApiWithFilesApi = async (file, options = {}, retryCount =
                         throw new Error(`API error: ${errorMessage}`);
                     }
                 }
-                
+
                 throw new Error(`API error: ${errorMessage}`);
             }
 
@@ -599,26 +664,26 @@ export const callGeminiApiWithFilesApi = async (file, options = {}, retryCount =
 
     } catch (error) {
         console.error('Error with Files API:', error);
-        
+
         // Check again at the outer level for file permission errors
-        if (error && error.message && 
-            (error.message.includes('403') && 
-             (error.message.includes('PERMISSION_DENIED') || 
+        if (error && error.message &&
+            (error.message.includes('403') &&
+             (error.message.includes('PERMISSION_DENIED') ||
               error.message.includes('You do not have permission to access the File') ||
               error.message.includes('it may not exist'))) &&
             retryCount === 0) {
-            
+
             console.warn('[GeminiAPI] Detected permission error in outer catch, clearing cache and retrying...');
-            
+
             // Clear the invalid cached URI
             if (fileKey) { // <-- Now accessible here
                 localStorage.removeItem(fileKey); // <-- And here
             }
-            
+
             // Retry the entire operation with fresh upload
             return await callGeminiApiWithFilesApi(file, options, retryCount + 1);
         }
-        
+
         throw error;
     }
 };
@@ -675,7 +740,7 @@ export const callGeminiApi = async (input, inputType, options = {}) => {
         ];
     } else if (inputType === 'video' || inputType === 'audio' || inputType === 'file-upload') {
         // Check if we should use Files API for better performance and caching
-        if (shouldUseFilesApi(input)) {
+        if (options.forceInline !== true && shouldUseFilesApi(input)) {
             console.log('[GeminiAPI] Using Files API for large file or better caching');
             return await callGeminiApiWithFilesApi(input, options);
         }

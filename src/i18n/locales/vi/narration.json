@@ -1,6 +1,6 @@
 {
   "title": "Tạo thuyết minh",
-  "description": "Tạo âm thanh lồng tiếng nhân bản (F5-TTS, vui lòng dùng giọng tham chiếu cùng ngôn ngữ với đầu ra), hoặc thuyết minh bằng Gemini (8 giọng, 29 ngôn ngữ, chất lượng âm thanh rõ).",
+  "description": "Tạo lồng tiếng nhân bản giọng (F5-TTS hoặc Chatterbox, vui lòng dùng giọng tham chiếu cùng ngôn ngữ với đầu ra), hoặc thuyết minh bằng Gemini (8 giọng, 29 ngôn ngữ, chất lượng âm thanh rõ), Edge TTS hoặc Google TTS cho phụ đề.",
   "referenceAudio": "Văn bản tham chiếu",
   "referenceText": "Văn bản tham chiếu",
   "audioControls": "Âm thanh tham chiếu",
@@ -211,6 +211,7 @@
   "cfgWeight": "Điều khiển nhịp độ",
   "cfgWeightTooltip": "Điều khiển sức mạnh tạo và nhịp độ (0.0-1.0)",
   "cfgWeightDesc": "Điều chỉnh sức mạnh tạo và tốc độ nói",
+  "chatterboxEnglishOnlyControls": "Hiện chỉ tiếng Anh hỗ trợ các điều khiển này",
   "chatterboxWarmingUp": "Đang đánh thức server thuyết minh cho lần đầu chạy...",
   "chatterboxStarting": "Bắt đầu tạo thuyết minh Chatterbox...",
   "chatterboxGeneratingProgress": "Đang tạo {{progress}} trên {{total}} thuyết minh với Chatterbox...",
@@ -256,7 +257,6 @@
   "searchLanguages": "Tìm kiếm ngôn ngữ...",
   "voicesAvailable": "{{count}} giọng nói có sẵn",
   "languagesAvailable": "{{count}} ngôn ngữ có sẵn",
-  "cancel": "Hủy",
   "clear": "Xóa",
   "recommendedVoices": "Được đề xuất cho {{language}}",
   "recommendedLanguage": "Được đề xuất cho {{language}}",
@@ -280,5 +280,43 @@
 
   "msVibeVoiceMethod": "MS VibeVoice",
   "geminiNativeDialogMethod": "Gemini Native Dialog",
-  "comingSoon": "sắp ra mắt"
+  "comingSoon": "sắp ra mắt",
+
+  "selectNarrationModel": "Chọn mô hình thuyết minh",
+  "loadingModels": "Đang tải mô hình...",
+  "selectModelExplanation": "Chọn mô hình thuyết minh hỗ trợ ngôn ngữ phụ đề của bạn để có kết quả tốt nhất.",
+  "matchingLanguageModels": "Mô hình được đề xuất",
+  "otherModels": "Các mô hình khác có sẵn",
+  "noModelsAvailable": "Không có mô hình khác",
+
+  "language": "Ngôn ngữ",
+  "recommendedLanguages": "Ngôn ngữ được đề xuất",
+  "otherLanguages": "Ngôn ngữ khác",
+  "selectLanguageExplanation": "Chọn ngôn ngữ đích cho Chatterbox đa ngôn ngữ (Multilingual) TTS.",
+  "chatterboxMultilingual": "Chatterbox đa ngôn ngữ",
+  "languages": {
+    "ar": "Tiếng Ả Rập",
+    "da": "Tiếng Đan Mạch",
+    "de": "Tiếng Đức",
+    "el": "Tiếng Hy Lạp",
+    "en": "Tiếng Anh",
+    "es": "Tiếng Tây Ban Nha",
+    "fi": "Tiếng Phần Lan",
+    "fr": "Tiếng Pháp",
+    "he": "Tiếng Do Thái",
+    "hi": "Tiếng Hindi",
+    "it": "Tiếng Ý",
+    "ja": "Tiếng Nhật",
+    "ko": "Tiếng Hàn",
+    "ms": "Tiếng Mã Lai",
+    "nl": "Tiếng Hà Lan",
+    "no": "Tiếng Na Uy",
+    "pl": "Tiếng Ba Lan",
+    "pt": "Tiếng Bồ Đào Nha",
+    "ru": "Tiếng Nga",
+    "sv": "Tiếng Thụy Điển",
+    "sw": "Tiếng Swahili",
+    "tr": "Tiếng Thổ Nhĩ Kỳ",
+    "zh": "Tiếng Trung"
+  }
 }

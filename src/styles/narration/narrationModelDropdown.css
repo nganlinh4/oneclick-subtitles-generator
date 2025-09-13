@@ -12,6 +12,42 @@
   z-index: 99999; /* High z-index to ensure it appears above other elements */
 }
 
+
+/* Chatterbox language selector uses the container as the pill (no button) */
+.narration-model-dropdown-container.chatterbox-pill {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 12px;
+  height: 36px; /* Match height with radio pills */
+  border-radius: var(--md-shape-pill);
+  background-color: rgba(var(--md-surface-variant-rgb), 0.5);
+  border: 1px solid var(--md-outline-variant);
+  color: var(--md-on-surface-variant);
+  font-family: var(--font-primary);
+  font-size: 0.9rem;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all var(--md-duration-medium2) var(--md-easing-standard);
+  white-space: nowrap;
+  width: auto;
+  box-sizing: border-box;
+  box-shadow: var(--md-elevation-level1);
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.narration-model-dropdown-container.chatterbox-pill:hover:not([aria-disabled="true"]) {
+  background-color: var(--md-surface-2);
+  box-shadow: var(--md-elevation-level2);
+  transform: translateY(-2px);
+}
+
+.narration-model-dropdown-container.chatterbox-pill[aria-disabled="true"] {
+  opacity: 0.7;
+  cursor: not-allowed;
+}
+
 /* Narration model dropdown button */
 .narration-model-dropdown-btn {
   display: flex;
@@ -262,18 +298,30 @@
 .model-selection-modal .model-option-icon {
   font-size: 1.25rem;
   flex-shrink: 0;
-  display: flex;
-  align-items: center;
-  justify-content: center;
+  display: grid;
+  place-items: center;
   width: 32px;
   height: 32px;
+  line-height: 1; /* Avoid baseline offset issues */
   border-radius: 10px;
   background-color: var(--md-surface-3);
-  margin-top: 2px; /* Slight offset to align with text baseline */
+  margin-top: 0; /* Center perfectly for flags or codes */
 }
 
 .model-selection-modal .model-option-card.selected .model-option-icon {
   background-color: rgba(var(--md-on-primary-container-rgb), 0.2);
+}
+
+
+/* Ensure emoji or regional letters center consistently */
+.model-selection-modal .model-option-icon .model-flag {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-family: 'Apple Color Emoji','Segoe UI Emoji','Noto Color Emoji','Twemoji Mozilla', system-ui, sans-serif;
+  font-size: 20px; /* Visually balanced within 32px box */
+  line-height: 1; /* Prevent baseline offset */
+  transform: translateY(1px); /* Nudge to optical center for Windows letter tiles */
 }
 
 .model-selection-modal .model-option-info {

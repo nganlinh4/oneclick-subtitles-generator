@@ -59,7 +59,7 @@
   background-color: var(--md-surface-1);
   border: 1px solid var(--md-outline-variant);
   box-shadow: var(--md-elevation-level1);
-  height: 88px; /* Increased height for three rows - matches timeline-container */
+  height: 84px; /* Increased height for three rows - matches timeline-container */
   width: auto; /* Allow natural width */
   flex-shrink: 0; /* Prevent shrinking */
   padding: 4px 8px; /* Padding for content */
@@ -130,19 +130,6 @@
   position: relative;
   z-index: 1;
   overflow: hidden;
-}
-
-/* Add subtle highlight to the top edge */
-.lyrics-container-wrapper::before {
-  content: '';
-  position: absolute;
-  top: 0;
-  left: 0;
-  right: 0;
-  height: 4px;
-  background-color: var(--md-primary);
-  opacity: 0.7;
-  z-index: 2;
 }
 
 .lyrics-container {

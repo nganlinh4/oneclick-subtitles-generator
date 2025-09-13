@@ -105,7 +105,6 @@
 
 .result-item:hover {
   background-color: var(--md-surface-3);
-  transform: translateY(-2px);
   box-shadow: var(--md-elevation-level1);
 }
 

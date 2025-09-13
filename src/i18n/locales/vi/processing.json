@@ -58,5 +58,12 @@
   "selectResolution": "Chọn độ phân giải",
   "selectModel": "Chọn mô hình",
   "selectPreset": "Chọn mẫu có sẵn",
-  "gemini20Warning": "Họ model Gemini 2.0 không hoạt động tốt với cơ chế offset mới"
-}
+  "gemini20Warning": "Họ model Gemini 2.5 có bảo mật cao hơn, thường xảy ra lỗi \"nội dung không an toàn\" khi xử lý video nhạy cảm."
+  ,
+  "inlineExtractionHelp": "Hãy dùng cách cũ khi cách mới gặp lỗi, có thể chậm hơn tuỳ trường hợp",
+  "inlineExtractionLabel": "Cắt video trên máy rồi gửi Gemini sau",
+  "methodLabel": "Phương thức",
+  "methodNewOption": "Mới: Tương tác với video qua Files API",
+  "methodOldOption": "Cũ: Cắt video trên máy rồi gửi Gemini sau"}
+
+

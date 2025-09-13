@@ -1,6 +1,6 @@
 import React from 'react';
 import { useTranslation } from 'react-i18next';
-import StandardSlider from '../common/StandardSlider';
+import SliderWithValue from '../common/SliderWithValue';
 
 /**
  * Rest time slider component
@@ -21,28 +21,20 @@ const RestTimeSlider = ({ restTime, onRestTimeChange, disabled = false }) => {
       <div className="row-content">
         {/* Slider control row with help icon */}
         <div className="slider-control-row">
-          <div className="slider-with-value">
-            <StandardSlider
-              value={restTime}
-              onChange={(value) => onRestTimeChange(parseInt(value))}
-              min={0}
-              max={20}
-              step={1}
-              orientation="Horizontal"
-              size="XSmall"
-              state={disabled ? "Disabled" : "Enabled"}
-              showValueIndicator={false} // We'll use custom value display
-              showIcon={false}
-              showStops={false}
-              className="rest-time-slider"
-              id="rest-time-slider"
-              ariaLabel={t('translation.restTime', 'Rest Time')}
-            />
-            <div className="slider-value-display">
-              {restTime === 0
-                ? t('translation.noRest', 'No delay')
-                : `${restTime} ${t('translation.seconds', 'sec')}`}
-            </div>
+          <SliderWithValue
+            value={restTime}
+            onChange={(value) => onRestTimeChange(parseInt(value))}
+            min={0}
+            max={20}
+            step={1}
+            orientation="Horizontal"
+            size="XSmall"
+            state={disabled ? "Disabled" : "Enabled"}
+            className="rest-time-slider"
+            id="rest-time-slider"
+            ariaLabel={t('translation.restTime', 'Rest Time')}
+            formatValue={(v) => v === 0 ? t('translation.noRest', 'No delay') : `${v} ${t('translation.seconds', 'sec')}`}
+          >
             {/* Help icon next to slider value */}
             <div
               className="help-icon-container"
@@ -54,7 +46,7 @@ const RestTimeSlider = ({ restTime, onRestTimeChange, disabled = false }) => {
                 <line x1="12" y1="8" x2="12.01" y2="8"></line>
               </svg>
             </div>
-          </div>
+          </SliderWithValue>
         </div>
       </div>
     </div>

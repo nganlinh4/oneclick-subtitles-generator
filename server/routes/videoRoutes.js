@@ -166,7 +166,7 @@ const streamingUpload = multer({
 function convertAudioToVideo(audioPath, videoPath) {
   return new Promise((resolve, reject) => {
     const ffmpegPath = getFfmpegPath();
-    
+
     // Create a video with a static black background at 256x144 (144p) resolution
     // Using 15 fps for a smoother playback experience while keeping file size reasonable
     const ffmpeg = spawn(ffmpegPath, [
@@ -256,7 +256,7 @@ router.post('/copy-large-file', upload.single('file'), async (req, res) => {
     // Normalize the video if needed (fix codec/stream issues)
     console.log('[UPLOAD] Checking video for compatibility issues...');
     const normalizationResult = await normalizeVideo(filePath);
-    
+
     if (normalizationResult.normalized) {
       console.log(`[UPLOAD] Video normalized using ${normalizationResult.method}`);
     }
@@ -269,8 +269,8 @@ router.post('/copy-large-file', upload.single('file'), async (req, res) => {
       size: req.file.size,
       normalized: normalizationResult.normalized,
       normalizationMethod: normalizationResult.method || null,
-      message: normalizationResult.normalized ? 
-        'File uploaded and normalized successfully' : 
+      message: normalizationResult.normalized ?
+        'File uploaded and normalized successfully' :
         'Large file copied successfully'
     });
   } catch (error) {
@@ -351,7 +351,7 @@ router.post('/download-video', async (req, res) => {
   if (isDownloadActive(videoId)) {
     const downloadInfo = getDownloadInfo(videoId);
     console.log(`[VIDEO-ROUTE] Download blocked: ${videoId} is already being downloaded by ${downloadInfo.route}`);
-    
+
     // If forceRetry is true, clean up the stuck download and proceed
     if (forceRetry) {
       console.log(`[VIDEO-ROUTE] Force retry requested - cleaning up stuck download for ${videoId}`);
@@ -400,7 +400,7 @@ router.post('/download-video', async (req, res) => {
       unlockDownload(videoId, 'video-route');
       lockReleased = true;
       console.log(`[VIDEO-ROUTE] Released download lock for cancelled download: ${videoId}`);
-      
+
       return res.json({
         success: false,
         cancelled: true,
@@ -414,18 +414,18 @@ router.post('/download-video', async (req, res) => {
       // Normalize the downloaded video if needed
       console.log('[DOWNLOAD] Checking downloaded video for compatibility issues...');
       const { setDownloadProgress } = require('../services/shared/progressTracker');
-      
+
       // Update progress to show normalization is happening
       setDownloadProgress(videoId, 99, 'normalizing');
-      
+
       const normalizationResult = await normalizeVideo(videoPath);
-      
+
       if (normalizationResult.normalized) {
         console.log(`[DOWNLOAD] Video normalized using ${normalizationResult.method}`);
-        
+
         // Add a small delay to ensure file is fully written and handles are released
         await new Promise(resolve => setTimeout(resolve, 500));
-        
+
         // Verify the file is accessible and not corrupted
         try {
           const stats = fs.statSync(videoPath);
@@ -438,19 +438,19 @@ router.post('/download-video', async (req, res) => {
           throw new Error('Video file verification failed after normalization');
         }
       }
-      
+
       // NOW set progress to 100% after everything is done
       setDownloadProgress(videoId, 100, 'completed');
-      
+
       // Release the lock AFTER normalization completes and file is verified
       unlockDownload(videoId, 'video-route');
       lockReleased = true;
       console.log(`[VIDEO-ROUTE] Released download lock for ${videoId}`);
-      
+
       return res.json({
         success: true,
-        message: normalizationResult.normalized ? 
-          'Video downloaded and normalized successfully' : 
+        message: normalizationResult.normalized ?
+          'Video downloaded and normalized successfully' :
           (result.message || 'Video downloaded successfully'),
         url: `/videos/${videoId}.mp4`,
         normalized: normalizationResult.normalized,
@@ -479,7 +479,7 @@ router.post('/download-video', async (req, res) => {
     // Provide more user-friendly error message with retry option
     let errorMessage = 'Failed to download video';
     let canRetry = true;
-    
+
     if (error.message.includes('Video unavailable')) {
       errorMessage = 'This video is unavailable or has been removed.';
       canRetry = false;
@@ -496,7 +496,7 @@ router.post('/download-video', async (req, res) => {
       unlockDownload(videoId, 'video-route');
       console.log(`[VIDEO-ROUTE] Released download lock for ${videoId} due to error`);
     }
-    
+
     return res.status(500).json({
       error: errorMessage,
       details: error.message,
@@ -597,7 +597,7 @@ router.get('/video-dimensions/:videoId', async (req, res) => {
     // If exact match doesn't exist, look for files starting with videoId
     if (!fs.existsSync(videoPath)) {
       const files = fs.readdirSync(VIDEOS_DIR);
-      
+
       const matchingFile = files.find(file =>
         file.startsWith(`${videoId}_`) && file.endsWith('.mp4')
       );
@@ -606,10 +606,10 @@ router.get('/video-dimensions/:videoId', async (req, res) => {
         videoPath = path.join(VIDEOS_DIR, matchingFile);
       } else {
         // Try to find files that contain the videoId (more flexible matching)
-        const flexibleMatch = files.find(file => 
+        const flexibleMatch = files.find(file =>
           file.includes(videoId) && file.endsWith('.mp4')
         );
-        
+
         if (flexibleMatch) {
           videoPath = path.join(VIDEOS_DIR, flexibleMatch);
         }
@@ -1473,5 +1473,88 @@ router.post('/convert-audio-to-video', streamingUpload.single('file'), async (re
     });
   }
 });
+
+
+/**
+ * POST /api/extract-video-segment - Extract a segment using ffmpeg with stream copy
+ */
+router.post('/extract-video-segment', streamingUpload.single('file'), async (req, res) => {
+  try {
+    if (!req.file) {
+      return res.status(400).json({ success: false, error: 'No file uploaded' });
+    }
+    const start = parseFloat(req.query.start || req.body.start);
+    const end = parseFloat(req.query.end || req.body.end);
+    if (!Number.isFinite(start) || !Number.isFinite(end) || end <= start) {
+      return res.status(400).json({ success: false, error: 'Invalid start/end range' });
+    }
+
+    const duration = end - start;
+    const ffmpegPath = getFfmpegPath();
+    const timestamp = Date.now();
+    const outName = `extracted_${timestamp}.mp4`;
+    const outPath = path.join(VIDEOS_DIR, outName);
+
+    console.log(`[EXTRACT] Cutting segment ${start}s-${end}s from ${req.file.path} -> ${outPath}`);
+
+    const ff = spawn(ffmpegPath, [
+      '-ss', String(start),
+      '-i', req.file.path,
+      '-t', String(duration),
+      '-c', 'copy',
+      '-movflags', '+faststart',
+      '-y',
+      outPath
+    ]);
+
+    let err = '';
+    ff.stderr.on('data', d => { err += d.toString(); });
+    ff.on('close', (code) => {
+      try { fs.unlinkSync(req.file.path); } catch {}
+      if (code !== 0) {
+        console.error('[EXTRACT] ffmpeg failed:', err);
+        return res.status(500).json({ success: false, error: 'FFmpeg failed to extract segment' });
+      }
+      return res.json({ success: true, url: `/videos/${outName}` });
+    });
+  } catch (e) {
+    console.error('[EXTRACT] Error extracting video segment:', e);
+    res.status(500).json({ success: false, error: e.message || 'Failed to extract video segment' });
+  }
+});
+
+/**
+ * POST /api/delete-videos - Delete cached video files by URL list
+ */
+router.post('/delete-videos', async (req, res) => {
+  try {
+    const urls = (req.body && req.body.urls) || [];
+    if (!Array.isArray(urls)) {
+      return res.status(400).json({ success: false, error: 'urls must be an array' });
+    }
+    let deleted = 0;
+    let errors = [];
+    for (const url of urls) {
+      try {
+        if (!url) continue;
+        // Extract filename (supports absolute or relative)
+        const filename = url.split('?')[0].split('/').pop();
+        if (!filename) continue;
+        const filePath = path.join(VIDEOS_DIR, filename);
+        if (fs.existsSync(filePath)) {
+          fs.unlinkSync(filePath);
+          deleted++;
+        }
+      } catch (e) {
+        errors.push({ url, message: e.message });
+      }
+    }
+    res.json({ success: true, deleted, errors });
+  } catch (e) {
+    console.error('[DELETE-VIDEOS] Error deleting videos:', e);
+    res.status(500).json({ success: false, error: e.message || 'Failed to delete videos' });
+  }
+});
+
 
 module.exports = router;

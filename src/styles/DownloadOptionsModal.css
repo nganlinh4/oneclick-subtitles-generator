@@ -368,7 +368,6 @@
 /* Split duration slider container */
 .split-duration-slider-container {
   width: 100%;
-  max-width: 400px;
   display: flex;
   flex-direction: column;
   gap: 4px;
@@ -386,7 +385,7 @@
 }
 
 .split-duration-slider-container .slider-value-display {
-  min-width: 55px; /* Adequate space for "No Split" text */
+  min-width: 75px; /* Adequate space for "No Split" text */
   font-size: var(--md-body-medium-size);
   color: var(--md-primary);
   font-weight: 500;

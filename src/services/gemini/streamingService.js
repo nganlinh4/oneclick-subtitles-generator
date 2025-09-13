@@ -10,6 +10,7 @@ import { createSubtitleSchema, addResponseSchema } from '../../utils/schemaUtils
 import { addThinkingConfig } from '../../utils/thinkingBudgetUtils';
 import { autoSplitSubtitles } from '../../utils/subtitle/splitUtils';
 import { createRequestController, removeRequestController } from './requestManagement';
+import { fileToBase64 } from '../../utils/fileUtils';
 import i18n from '../../i18n/i18n';
 
 /**
@@ -99,15 +100,37 @@ export const streamGeminiContent = async (file, fileUri, options = {}, onChunk, 
     const segmentInfo = options?.segmentInfo || {};
     const promptText = getTranscriptionPrompt(contentType, userProvidedSubtitles, { segmentInfo });
 
-    // Create request data
-    const isYouTube = /(youtube\.com|youtu\.be)\//.test(fileUri);
-    const fileDataPart = isYouTube
-      ? { file_uri: fileUri }
-      : { file_uri: fileUri, mime_type: file.type };
+    // Create request data (supports Files API via file_uri OR inline base64 when no fileUri/forceInline)
+    const useInline = !fileUri || options.forceInline === true;
 
     let requestData = {
       model: MODEL,
-      contents: [
+      contents: []
+    };
+
+    if (useInline) {
+      const base64 = await fileToBase64(file);
+      requestData.contents = [
+        {
+          role: "user",
+          parts: [
+            {
+              inlineData: {
+                mimeType: file.type,
+                data: base64
+              }
+            },
+            { text: promptText }
+          ]
+        }
+      ];
+    } else {
+      const isYouTube = /(youtube\.com|youtu\.be)\//.test(fileUri);
+      const fileDataPart = isYouTube
+        ? { file_uri: fileUri }
+        : { file_uri: fileUri, mime_type: file.type };
+
+      requestData.contents = [
         {
           role: "user",
           parts: [
@@ -117,12 +140,12 @@ export const streamGeminiContent = async (file, fileUri, options = {}, onChunk, 
             { text: promptText }
           ]
         }
-      ]
-    };
+      ];
 
-    // Add video metadata if provided
-    if (videoMetadata && !isAudio) {
-      requestData.contents[0].parts[0].video_metadata = videoMetadata; // Now at index 0 since video is first
+      // Add video metadata if provided (Files API path only)
+      if (videoMetadata && !isAudio) {
+        requestData.contents[0].parts[0].video_metadata = videoMetadata; // Now at index 0 since video is first
+      }
     }
 
     // Add structured output schema

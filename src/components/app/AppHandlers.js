@@ -640,6 +640,7 @@ export const useAppHandlers = (appState) => {
         maxDurationPerRequest: options.maxDurationPerRequest,
         autoSplitSubtitles: options.autoSplitSubtitles,
         maxWordsPerSubtitle: options.maxWordsPerSubtitle,
+        inlineExtraction: options.inlineExtraction === true,
       };
 
       // Add custom prompt if provided

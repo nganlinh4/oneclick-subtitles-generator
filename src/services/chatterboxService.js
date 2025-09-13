@@ -275,7 +275,15 @@ export const checkChatterboxAvailability = async (maxAttempts = 5, delayMs = 200
  * @param {string|null} voiceFilePath - Optional voice reference file path (more efficient than uploading)
  * @returns {Promise<Blob>} - Audio blob
  */
-export const generateChatterboxSpeech = async (text, exaggeration = 0.5, cfgWeight = 0.5, voiceFile = null, voiceFilePath = null) => {
+export const generateChatterboxSpeech = async (text, languageId = 'en', exaggeration = 0.5, cfgWeight = 0.5, voiceFile = null, voiceFilePath = null) => {
+  // Capability gate: only send advanced controls for English for now
+  const ADVANCED_NON_EN_ENABLED = false;
+  const supportsAdvancedControls = (lang) => {
+    const l = (lang || '').toLowerCase();
+    if (l.startsWith('en')) return true;
+    return ADVANCED_NON_EN_ENABLED;
+  };
+
   try {
     // Reference audio is now required for all Chatterbox generation
     if (!voiceFile && !voiceFilePath) {
@@ -311,8 +319,11 @@ export const generateChatterboxSpeech = async (text, exaggeration = 0.5, cfgWeig
         // Use the converted file
         const formData = new FormData();
         formData.append('text', text);
-        formData.append('exaggeration', exaggeration.toString());
-        formData.append('cfg_weight', cfgWeight.toString());
+        formData.append('language_id', languageId);
+        if (supportsAdvancedControls(languageId) && Number.isFinite(exaggeration) && Number.isFinite(cfgWeight)) {
+          formData.append('exaggeration', exaggeration.toString());
+          formData.append('cfg_weight', cfgWeight.toString());
+        }
         formData.append('voice_file', file);
         body = formData;
 
@@ -325,8 +336,11 @@ export const generateChatterboxSpeech = async (text, exaggeration = 0.5, cfgWeig
       // Use FormData for file upload (the only supported method now)
       const formData = new FormData();
       formData.append('text', text);
-      formData.append('exaggeration', exaggeration.toString());
-      formData.append('cfg_weight', cfgWeight.toString());
+      formData.append('language_id', languageId);
+      if (supportsAdvancedControls(languageId) && Number.isFinite(exaggeration) && Number.isFinite(cfgWeight)) {
+        formData.append('exaggeration', exaggeration.toString());
+        formData.append('cfg_weight', cfgWeight.toString());
+      }
       formData.append('voice_file', voiceFile);
       body = formData;
       // Don't set Content-Type header, let browser set it with boundary
@@ -384,11 +398,11 @@ export const convertChatterboxVoice = async (inputAudio, targetVoice) => {
     return await response.blob();
   } catch (error) {
     console.error('Error converting voice with Chatterbox:', error);
-    
+
     if (error.name === 'TimeoutError') {
       throw new Error('Chatterbox voice conversion timeout');
     }
-    
+
     throw error;
   }
 };

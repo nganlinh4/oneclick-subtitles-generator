@@ -64,6 +64,7 @@ export const useSubtitles = (t) => {
         window.addEventListener('gemini-requests-aborted', handleAbort);
 
         // Clean up
+
         return () => {
             window.removeEventListener('gemini-requests-aborted', handleAbort);
         };
@@ -135,7 +136,8 @@ export const useSubtitles = (t) => {
 
     const generateSubtitles = useCallback(async (input, inputType, apiKeysSet, options = {}) => {
         // Extract options
-        const { userProvidedSubtitles, segment, fps, mediaResolution, model } = options;
+
+        const { userProvidedSubtitles, segment, fps, mediaResolution, model } = options; // inlineExtraction supported via options.inlineExtraction
         if (!apiKeysSet.gemini) {
             setStatus({ message: t('errors.apiKeyRequired'), type: 'error' });
             return false;
@@ -254,6 +256,14 @@ export const useSubtitles = (t) => {
             if (segment) {
                 console.log('[Subtitle Generation] Processing specific segment with streaming:', segment);
 
+                // Inline extraction path now streams identically to Files API.
+                // Fall through to the streaming branch below with forceInline flag.
+                if (options.inlineExtraction === true) {
+                    console.log('[Subtitle Generation] INLINE extraction enabled — using streaming (no offsets)');
+                    // No-op here; the streaming branch below will handle save and processing.
+                }
+
+
                 // CRITICAL: Ensure cache ID is properly set BEFORE triggering save
                 if (inputType === 'file-upload') {
                     // Check if this is a downloaded video (has current_video_url) or a true file upload
@@ -312,7 +322,7 @@ export const useSubtitles = (t) => {
                 // The save operation above should have already persisted any manual edits
                 // Loading from cache can introduce stale data if the save hasn't fully propagated
                 let currentSubtitles = [];
-                
+
                 // Get the current subtitles from React state
                 // This ensures we're using the most up-to-date data that's currently displayed
                 await new Promise((resolve) => {
@@ -323,9 +333,9 @@ export const useSubtitles = (t) => {
                         return current; // Don't modify the state
                     });
                 });
-                
+
                 // Log the subtitles we're about to merge with
-                console.log('[Subtitle Generation] Current subtitles sample:', 
+                console.log('[Subtitle Generation] Current subtitles sample:',
                     currentSubtitles.slice(0, 3).map(s => `${s.start}-${s.end}: ${s.text.substring(0, 20)}...`)
                 );
 
@@ -346,7 +356,8 @@ export const useSubtitles = (t) => {
                         userProvidedSubtitles,
                         maxDurationPerRequest: options.maxDurationPerRequest,
                         autoSplitSubtitles: options.autoSplitSubtitles,
-                        maxWordsPerSubtitle: options.maxWordsPerSubtitle
+                        maxWordsPerSubtitle: options.maxWordsPerSubtitle,
+                        forceInline: options.inlineExtraction === true
                     },
                     setStatus,
                     (() => {
@@ -357,7 +368,7 @@ export const useSubtitles = (t) => {
                         const MERGE_THROTTLE_MS = 500; // Throttle merges to once every 500ms
                         const CAPTURE_THROTTLE_MS = 2000; // Capture undo state less frequently
                         let lastCaptureTime = 0;
-                        
+
                         return (streamingSubtitles, isStreaming, chunkInfo) => {
                             // Real-time subtitle updates during streaming
                             if (streamingSubtitles && streamingSubtitles.length > 0) {
@@ -366,20 +377,20 @@ export const useSubtitles = (t) => {
                                 const now = Date.now();
                                 const timeSinceMerge = now - lastMergeTime;
                                 const timeSinceCapture = now - lastCaptureTime;
-                                
+
                                 // Store the pending update
                                 pendingUpdate = { streamingSubtitles, isStreaming, chunkInfo };
-                                
+
                                 // Clear any existing timer
                                 if (updateTimer) {
                                     clearTimeout(updateTimer);
                                 }
-                                
+
                                 // Throttle the merge operations
                                 if (timeSinceMerge >= MERGE_THROTTLE_MS) {
                                     // Enough time has passed, perform the merge immediately
                                     lastMergeTime = now;
-                                    
+
                                     // Only capture state for undo/redo occasionally, not on every merge
                                     if (timeSinceCapture >= CAPTURE_THROTTLE_MS) {
                                         lastCaptureTime = now;
@@ -396,17 +407,17 @@ export const useSubtitles = (t) => {
                                     // Get current subtitles and filter out those in the segment range
                                     setSubtitlesData(current => {
                                         const existingSubtitles = current || [];
-                                        
+
                                         // Filter out existing subtitles that overlap with this segment
                                         const nonOverlappingSubtitles = existingSubtitles.filter(sub => {
                                             // Keep subtitles that are completely outside the segment boundaries
                                             return sub.end <= segment.start || sub.start >= segment.end;
                                         });
-                                        
+
                                         // Merge: existing non-overlapping + new streaming subtitles
                                         const mergedStreamingSubtitles = [...nonOverlappingSubtitles, ...streamingSubtitles]
                                             .sort((a, b) => a.start - b.start);
-                                        
+
                                         return mergedStreamingSubtitles;
                                     });
 
@@ -424,7 +435,7 @@ export const useSubtitles = (t) => {
                                         if (pendingUpdate) {
                                             const { streamingSubtitles: pending, isStreaming: pendingStreaming } = pendingUpdate;
                                             lastMergeTime = Date.now();
-                                            
+
                                             // Check if we should capture state
                                             if (Date.now() - lastCaptureTime >= CAPTURE_THROTTLE_MS) {
                                                 lastCaptureTime = Date.now();
@@ -436,24 +447,24 @@ export const useSubtitles = (t) => {
                                                     }
                                                 }));
                                             }
-                                            
+
                                             // CRITICAL FIX: Merge streaming subtitles with existing timeline
                                             setSubtitlesData(current => {
                                                 const existingSubtitles = current || [];
-                                                
+
                                                 // Filter out existing subtitles that overlap with this segment
                                                 const nonOverlappingSubtitles = existingSubtitles.filter(sub => {
                                                     // Keep subtitles that are completely outside the segment boundaries
                                                     return sub.end <= segment.start || sub.start >= segment.end;
                                                 });
-                                                
+
                                                 // Merge: existing non-overlapping + new streaming subtitles
                                                 const mergedStreamingSubtitles = [...nonOverlappingSubtitles, ...pending]
                                                     .sort((a, b) => a.start - b.start);
-                                                
+
                                                 return mergedStreamingSubtitles;
                                             });
-                                            
+
                                             // Update status to show streaming progress
                                             if (pendingStreaming) {
                                                 setStatus({
@@ -461,7 +472,7 @@ export const useSubtitles = (t) => {
                                                     type: 'loading'
                                                 });
                                             }
-                                            
+
                                             pendingUpdate = null;
                                         }
                                     }, delay);
@@ -485,7 +496,7 @@ export const useSubtitles = (t) => {
                     await new Promise((resolve) => {
                         setSubtitlesData(current => {
                             const currentSubtitles = current || [];
-                            
+
                             console.log('[DEBUG] Before merge - current subtitles:', {
                                 count: currentSubtitles.length,
                                 beforeSegment: currentSubtitles.filter(s => s.end <= segment.start).length,
@@ -493,17 +504,17 @@ export const useSubtitles = (t) => {
                                 afterSegment: currentSubtitles.filter(s => s.start >= segment.end).length,
                                 segment: `${segment.start}s-${segment.end}s`
                             });
-                            
+
                             // Filter out existing subtitles that overlap with this segment
                             const nonOverlappingSubtitles = currentSubtitles.filter(sub => {
                                 // Keep subtitles that are completely outside the segment boundaries
                                 return sub.end <= segment.start || sub.start >= segment.end;
                             });
-                            
+
                             // Merge: existing non-overlapping + new segment subtitles
                             const mergedSubtitles = [...nonOverlappingSubtitles, ...segmentSubtitles]
                                 .sort((a, b) => a.start - b.start);
-                            
+
                             console.log('[Subtitle Generation] Merging single segment result:', {
                                 existingCount: currentSubtitles.length,
                                 nonOverlappingCount: nonOverlappingSubtitles.length,
@@ -512,11 +523,11 @@ export const useSubtitles = (t) => {
                                 segmentRange: `${segment.start}s-${segment.end}s`,
                                 removedCount: currentSubtitles.length - nonOverlappingSubtitles.length
                             });
-                            
+
                             // Store for use outside the callback
                             subtitles = mergedSubtitles;
                             resolve();
-                            
+
                             // Return the merged result to update state
                             return mergedSubtitles;
                         });
@@ -562,17 +573,107 @@ export const useSubtitles = (t) => {
                             userProvidedSubtitles
                         }, setStatus, t);
                     } else {
-                        // Use the existing smart processing function
-                        subtitles = await processMediaFile(input, setStatus, t, { userProvidedSubtitles });
+                        // Stream full video/audio unconditionally (feature parity with segment streaming)
+                        const fullSegment = { start: 0, end: duration };
+                        const { processSegmentWithStreaming } = await import('../utils/videoProcessing/processingUtils');
+                        subtitles = await processSegmentWithStreaming(
+                            input,
+                            fullSegment,
+                            {
+                                fps,
+                                mediaResolution,
+                                model,
+                                userProvidedSubtitles,
+                                maxDurationPerRequest: options.maxDurationPerRequest,
+                                autoSplitSubtitles: options.autoSplitSubtitles,
+                                maxWordsPerSubtitle: options.maxWordsPerSubtitle,
+                                forceInline: options.inlineExtraction === true
+                            },
+                            setStatus,
+                            (() => {
+                                // Throttled updates: replace entire subtitle list progressively
+                                let lastUpdate = 0;
+                                let timer = null;
+                                const THROTTLE_MS = 400;
+                                return (streamingSubtitles, isStreaming) => {
+                                    if (!streamingSubtitles) return;
+                                    const now = Date.now();
+                                    const doUpdate = () => {
+                                        lastUpdate = Date.now();
+                                        setSubtitlesData(streamingSubtitles);
+                                        if (isStreaming) {
+                                            setStatus({ message: `Streaming... ${streamingSubtitles.length} subtitles`, type: 'loading' });
+                                        }
+                                    };
+                                    if (now - lastUpdate >= THROTTLE_MS) {
+                                        doUpdate();
+                                    } else {
+                                        clearTimeout(timer);
+                                        timer = setTimeout(doUpdate, THROTTLE_MS - (now - lastUpdate));
+                                    }
+                                };
+                            })(),
+                            t
+                        );
                     }
                 } catch (error) {
                     console.error('Error checking media duration:', error);
-                    // Fallback to normal processing
-                    subtitles = await callGeminiApi(input, inputType, { userProvidedSubtitles });
+                    // Fallback to normal processing (respect inlineExtraction for non-YouTube)
+                    const forceInline = options.inlineExtraction === true && inputType !== 'youtube';
+                    subtitles = await callGeminiApi(input, inputType, { userProvidedSubtitles, ...(forceInline ? { forceInline: true } : {}) });
                 }
             } else {
-                // Normal processing for YouTube
-                subtitles = await callGeminiApi(input, inputType, { userProvidedSubtitles });
+                // YouTube flow: video is already downloaded and loaded in the app
+                if (options.inlineExtraction === true) {
+                    // Try to obtain the already-loaded blob without re-downloading
+                    const blobUrl = localStorage.getItem('current_video_url');
+                    let ytFile = null;
+                    try {
+                        if (blobUrl && blobUrl.startsWith('blob:')) {
+                            if (typeof window !== 'undefined' && window.__videoBlobMap && window.__videoBlobMap[blobUrl]) {
+                                const blob = window.__videoBlobMap[blobUrl];
+                                ytFile = new File([blob], 'youtube.mp4', { type: blob.type || 'video/mp4' });
+                            } else {
+                                // Fetching a blob: URL stays in-memory, not a network download
+                                const blob = await fetch(blobUrl).then(r => r.blob());
+                                ytFile = new File([blob], 'youtube.mp4', { type: blob.type || 'video/mp4' });
+                            }
+                        }
+                    } catch (e) {
+                        console.warn('Inline YouTube: failed to access current blob URL, falling back:', e);
+                    }
+
+                    if (ytFile) {
+                        // Stream full video unconditionally
+                        const { getVideoDuration } = await import('../utils/videoProcessing');
+                        const { processSegmentWithStreaming } = await import('../utils/videoProcessing/processingUtils');
+                        const duration = await getVideoDuration(ytFile);
+                        const fullSegment = { start: 0, end: duration || 0 };
+                        subtitles = await processSegmentWithStreaming(
+                            ytFile,
+                            fullSegment,
+                            {
+                                fps,
+                                mediaResolution,
+                                model,
+                                userProvidedSubtitles,
+                                maxDurationPerRequest: options.maxDurationPerRequest,
+                                autoSplitSubtitles: options.autoSplitSubtitles,
+                                maxWordsPerSubtitle: options.maxWordsPerSubtitle,
+                                forceInline: true
+                            },
+                            setStatus,
+                            (streamingSubtitles) => setSubtitlesData(streamingSubtitles),
+                            t
+                        );
+                    } else {
+                        // Fallback: proceed without forcing inline (no re-download)
+                        subtitles = await callGeminiApi(input, inputType, { userProvidedSubtitles });
+                    }
+                } else {
+                    // Default YouTube path
+                    subtitles = await callGeminiApi(input, inputType, { userProvidedSubtitles });
+                }
             }
 
             // For segment processing, the final result is already set during streaming
@@ -747,12 +848,67 @@ export const useSubtitles = (t) => {
                     subtitles = await processMediaFile(input, setStatus, t, { userProvidedSubtitles });
                 } catch (error) {
                     console.error('Error checking media duration:', error);
-                    // Fallback to normal processing
-                    subtitles = await callGeminiApi(input, inputType, { userProvidedSubtitles });
+                    // Fallback to normal processing (respect inlineExtraction for non-YouTube)
+                    const forceInline = options.inlineExtraction === true && inputType !== 'youtube';
+                    subtitles = await callGeminiApi(input, inputType, { userProvidedSubtitles, ...(forceInline ? { forceInline: true } : {}) });
                 }
             } else {
-                // Normal processing for YouTube
-                subtitles = await callGeminiApi(input, inputType, { userProvidedSubtitles });
+                // YouTube flow: video is already downloaded and loaded in the app
+                if (options.inlineExtraction === true) {
+                    // Try to obtain the already-loaded blob without re-downloading
+                    const blobUrl = localStorage.getItem('current_video_url');
+                    let ytFile = null;
+                    try {
+                        if (blobUrl && blobUrl.startsWith('blob:')) {
+                            if (typeof window !== 'undefined' && window.__videoBlobMap && window.__videoBlobMap[blobUrl]) {
+                                const blob = window.__videoBlobMap[blobUrl];
+                                ytFile = new File([blob], 'youtube.mp4', { type: blob.type || 'video/mp4' });
+                            } else {
+                                // Fetching a blob: URL stays in-memory, not a network download
+                                const blob = await fetch(blobUrl).then(r => r.blob());
+                                ytFile = new File([blob], 'youtube.mp4', { type: blob.type || 'video/mp4' });
+                            }
+                        }
+                    } catch (e) {
+                        console.warn('Inline YouTube: failed to access current blob URL, falling back:', e);
+                    }
+
+                    if (ytFile) {
+                        // Stream full video unconditionally
+                        const { getVideoDuration } = await import('../utils/videoProcessing');
+                        const { processSegmentWithStreaming } = await import('../utils/videoProcessing/processingUtils');
+                        const duration = await getVideoDuration(ytFile);
+                        const fullSegment = { start: 0, end: duration || 0 };
+                        // Derive streaming options for YouTube retry
+                        const fps = options.fps ?? parseFloat(localStorage.getItem('video_processing_fps') || '1');
+                        const mediaResolution = options.mediaResolution ?? (localStorage.getItem('media_resolution') || 'medium');
+                        const model = options.model ?? (localStorage.getItem('gemini_model') || 'gemini-2.0-flash');
+
+                        subtitles = await processSegmentWithStreaming(
+                            ytFile,
+                            fullSegment,
+                            {
+                                fps,
+                                mediaResolution,
+                                model,
+                                userProvidedSubtitles,
+                                maxDurationPerRequest: options.maxDurationPerRequest,
+                                autoSplitSubtitles: options.autoSplitSubtitles,
+                                maxWordsPerSubtitle: options.maxWordsPerSubtitle,
+                                forceInline: true
+                            },
+                            setStatus,
+                            (streamingSubtitles) => setSubtitlesData(streamingSubtitles),
+                            t
+                        );
+                    } else {
+                        // Fallback: proceed without forcing inline (no re-download)
+                        subtitles = await callGeminiApi(input, inputType, { userProvidedSubtitles });
+                    }
+                } else {
+                    // Default YouTube path
+                    subtitles = await callGeminiApi(input, inputType, { userProvidedSubtitles });
+                }
             }
 
             setSubtitlesData(subtitles);
@@ -892,6 +1048,118 @@ export const useSubtitles = (t) => {
     }, [subtitlesData, t]);
 
 
+
+    // Retry a specific segment using a previously cached cut (from Timeline)
+    useEffect(() => {
+        const handler = async (e) => {
+            try {
+                const detail = e && e.detail;
+                if (!detail) return;
+                const { start, end, url } = detail;
+                if (typeof start !== 'number' || typeof end !== 'number' || !url) return;
+
+                setIsGenerating(true);
+                setStatus({ message: t('output.processingVideo', 'Processing video...'), type: 'loading' });
+
+                // Fetch cached clip as File
+                const resp = await fetch(url);
+                if (!resp.ok) throw new Error(`Failed to fetch cached clip: ${resp.statusText}`);
+                const blob = await resp.blob();
+                const filename = url.split('?')[0].split('/').pop() || 'segment.mp4';
+                const file = new File([blob], filename, { type: blob.type || 'video/mp4' });
+
+                const segment = { start, end };
+                const fps = parseFloat(localStorage.getItem('video_processing_fps') || '1');
+                const mediaResolution = localStorage.getItem('media_resolution') || 'medium';
+                const model = localStorage.getItem('gemini_model') || 'gemini-2.0-flash';
+
+                const { processSegmentWithStreaming } = await import('../utils/videoProcessing/processingUtils');
+                const { mergeStreamingSubtitlesProgressively } = await import('../utils/subtitle/subtitleMerger');
+
+                let appliedAnyUpdate = false;
+                // Throttle progressive merges similar to normal segment processing
+                let lastMergeTime = 0;
+                let pendingUpdate = null;
+                let updateTimer = null;
+                const THROTTLE_MS = 500;
+
+                const onStreamingUpdate = (streamingSubtitles, isStreaming) => {
+                    if (!streamingSubtitles || streamingSubtitles.length === 0) return;
+                    appliedAnyUpdate = true;
+
+                    const applyMerge = (subs) => {
+                        setSubtitlesData(current => {
+                            const existing = current || [];
+                            return mergeStreamingSubtitlesProgressively(existing, subs, segment);
+                        });
+                    };
+
+                    const now = Date.now();
+                    if (now - lastMergeTime >= THROTTLE_MS) {
+                        lastMergeTime = now;
+                        applyMerge(streamingSubtitles);
+                    } else {
+                        pendingUpdate = streamingSubtitles;
+                        if (!updateTimer) {
+                            updateTimer = setTimeout(() => {
+                                lastMergeTime = Date.now();
+                                if (pendingUpdate) applyMerge(pendingUpdate);
+                                pendingUpdate = null;
+                                updateTimer = null;
+                            }, Math.max(0, THROTTLE_MS - (now - lastMergeTime)));
+                        }
+                    }
+
+                    if (isStreaming) {
+                        setStatus({ message: t('output.streamingProgress', 'Streaming...'), type: 'loading' });
+                    }
+                };
+
+                const finalSubtitles = await processSegmentWithStreaming(
+                    file,
+                    segment,
+                    {
+                        fps,
+                        mediaResolution,
+                        model,
+                        userProvidedSubtitles: null,
+                        forceInline: true
+                    },
+                    setStatus,
+                    onStreamingUpdate,
+                    t
+                );
+
+                // Ensure final result is applied even if no progressive updates arrived
+                if (!appliedAnyUpdate && Array.isArray(finalSubtitles) && finalSubtitles.length > 0) {
+                    setSubtitlesData(current => {
+                        const existingSubtitles = current || [];
+                        const nonOverlappingSubtitles = existingSubtitles.filter(sub => {
+                            return sub.end <= segment.start || sub.start >= segment.end;
+                        });
+                        return [...nonOverlappingSubtitles, ...finalSubtitles].sort((a, b) => a.start - b.start);
+                    });
+                }
+
+                setIsGenerating(false);
+                setStatus({ message: t('output.generationSuccess', 'Subtitles updated successfully!'), type: 'success' });
+
+                // Notify UI that the retry for this specific range completed
+                window.dispatchEvent(new CustomEvent('retry-segment-from-cache-complete', {
+                    detail: { start, end, success: true }
+                }));
+            } catch (err) {
+                console.error('[useSubtitles] Retry from cache failed:', err);
+                setIsGenerating(false);
+                setStatus({ message: err.message || 'Retry failed', type: 'error' });
+                window.dispatchEvent(new CustomEvent('retry-segment-from-cache-complete', {
+                    detail: { start: (e?.detail?.start), end: (e?.detail?.end), success: false, error: err?.message }
+                }));
+            }
+        };
+        window.addEventListener('retry-segment-from-cache', handler);
+        return () => window.removeEventListener('retry-segment-from-cache', handler);
+    }, [t]);
 
     return {
         subtitlesData,

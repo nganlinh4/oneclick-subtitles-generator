@@ -3,7 +3,7 @@
  * This replaces the complex segment-based processing with a single API call
  */
 
-import { callGeminiApiWithFilesApi } from '../../services/geminiService';
+import { callGeminiApiWithFilesApi, callGeminiApi } from '../../services/geminiService';
 import { analyzeVideoAndWaitForUserChoice } from './analysisUtils';
 import { getCacheIdForMedia } from './cacheUtils';
 import { setCurrentCacheId as setRulesCacheId } from '../transcriptionRulesStore';
@@ -89,11 +89,23 @@ export const processVideoWithFilesApi = async (mediaFile, onStatusUpdate, t, opt
       });
     }
 
-    // Process the media file using Files API
-    const subtitles = await callGeminiApiWithFilesApi(mediaFile, {
-      userProvidedSubtitles,
-      videoMetadata: Object.keys(videoMetadata).length > 0 ? videoMetadata : undefined
-    });
+    // Process the media file
+    let subtitles;
+    if (options.forceInline || options.inlineExtraction) {
+      // Inline path (no offsets). Non-streaming here to maintain simplified flow semantics.
+      subtitles = await callGeminiApi(mediaFile, 'file-upload', {
+        userProvidedSubtitles,
+        forceInline: true,
+        // Ensure no offsets are sent in inline mode
+        videoMetadata: undefined
+      });
+    } else {
+      // Files API path (legacy simplified)
+      subtitles = await callGeminiApiWithFilesApi(mediaFile, {
+        userProvidedSubtitles,
+        videoMetadata: Object.keys(videoMetadata).length > 0 ? videoMetadata : undefined
+      });
+    }
 
     onStatusUpdate({
       message: t('output.processingComplete', 'Processing complete!'),

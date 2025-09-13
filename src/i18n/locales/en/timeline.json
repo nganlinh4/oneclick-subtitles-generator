@@ -7,5 +7,8 @@
   "generateReplace": "Regenerate subtitles",
   "clearInRangeWithShortcut": "Clear subtitles in range (Del)",
   "moveRange": "Drag to move subtitles in range",
-  "dragToZoom": "Drag to zoom"
+  "dragToZoom": "Drag to zoom",
+  "clearOfflineSegments": "Clear offline segments",
+  "retryFromCache": "Retry this cut (reuse cached clip)",
+  "clearOfflineFirst": "Please clear offline segments to exit this mode first"
 }

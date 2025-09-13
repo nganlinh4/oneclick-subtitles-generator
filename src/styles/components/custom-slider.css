@@ -421,3 +421,46 @@
   flex-shrink: 0; /* Don't allow shrinking */
   white-space: nowrap; /* Prevent text wrapping */
 }
+
+
+/* Reset icon button inside value display */
+.slider-with-value .slider-value-display {
+  position: relative; /* Anchor for the reset button */
+}
+
+.slider-with-value .slider-value-display .slider-reset-btn {
+  position: absolute;
+  bottom: 100%;
+  left: 50%;
+  transform: translateX(-50%);
+  background-color: var(--md-surface-container-highest, #EBE1F4);
+  color: var(--md-on-surface, #1C1B1F);
+  border: none;
+  border-radius: 12px;
+  padding: 2px 6px;
+  font-size: 12px;
+  line-height: 1;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.15);
+  opacity: 0;
+  /* Keep pointer events enabled so moving from the value into the button doesn't lose hover */
+  pointer-events: auto;
+  transition: opacity 0.15s ease;
+  z-index: 30;
+  cursor: pointer;
+}
+
+.slider-with-value .slider-value-display:hover .slider-reset-btn,
+.slider-with-value .slider-value-display .slider-reset-btn:hover,
+.slider-with-value .slider-value-display .slider-reset-btn:focus-visible {
+  opacity: 1;
+  pointer-events: auto;
+}
+
+.slider-with-value .slider-value-display:hover {
+  cursor: pointer; /* Show pointer when hovering value */
+}
+
+.slider-with-value .slider-value-display .slider-reset-btn:disabled {
+  opacity: 0.5;
+  pointer-events: none;
+}

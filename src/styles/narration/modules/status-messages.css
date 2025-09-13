@@ -1,18 +1,62 @@
 /* Status messages */
-.status-message {
-  padding: 0.75rem 1rem;
+.narration-section .status-banner {
   border-radius: 16px;
-  margin-bottom: 1rem;
   display: flex;
   align-items: center;
   gap: 0.75rem;
   box-shadow: var(--md-elevation-level1);
-  height: 3.5rem; /* Fixed height to prevent layout shifts */
   position: relative;
   overflow: hidden;
   opacity: 1;
-  transition: opacity 0.3s ease, transform 0.3s ease;
   transform: translateY(0);
+  /* Cancel global fadeIn and hint the compositor for smoothness */
+  animation: none;
+  will-change: max-height, padding-top, padding-bottom, margin-bottom, opacity, transform, box-shadow;
+  /* Smooth height-based transition to reduce layout shifts */
+  transition:
+    max-height 260ms cubic-bezier(0.2, 0, 0, 1),
+    padding-top 260ms cubic-bezier(0.2, 0, 0, 1),
+    padding-bottom 260ms cubic-bezier(0.2, 0, 0, 1),
+    margin-bottom 260ms cubic-bezier(0.2, 0, 0, 1),
+    opacity 220ms ease,
+    transform 260ms ease,
+    box-shadow 260ms ease;
+}
+
+/* Expanded (visible) state */
+.narration-section .status-banner.status-show {
+  padding: 0.75rem 1rem;
+  margin-bottom: 1rem;
+  opacity: 1;
+  transform: translateY(0);
+  max-height: 96px; /* Sufficient for content + progress bar */
+}
+
+/* Collapsed (hidden) state */
+.narration-section .status-banner.status-collapsed {
+  padding-top: 0;
+  padding-bottom: 0;
+  margin-bottom: 0;
+  max-height: 0;
+  opacity: 0;
+  transform: translateY(-6px);
+  box-shadow: none;
+  pointer-events: none;
+}
+
+/* Defer text visibility to avoid abrupt pop during height expand */
+.narration-section .status-banner .status-message-text {
+  opacity: 0;
+}
+
+.narration-section .status-banner.status-show .status-message-text {
+  opacity: 1;
+  transition: opacity 180ms ease 100ms; /* fade in slightly after height starts expanding */
+}
+
+.narration-section .status-banner.status-collapsed .status-message-text {
+  opacity: 0;
+  transition: opacity 120ms ease 0ms; /* fade out early on collapse */
 }
 
 /* Status message text with smooth transition */
@@ -26,7 +70,6 @@
 .status-message.generating {
   opacity: 1;
   transform: translateY(0);
-  height: 3.5rem;
 }
 
 /* Progress indicator for batch processing */
