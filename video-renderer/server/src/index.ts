@@ -178,6 +178,29 @@ const outputDir = path.join(__dirname, '../output');
   }
 });
 
+// Startup cleanup: clear video renderer uploads directory to avoid buildup
+try {
+  const entries = fs.readdirSync(uploadsDir);
+  let deleted = 0;
+  for (const name of entries) {
+    const filePath = path.join(uploadsDir, name);
+    try {
+      const stat = fs.statSync(filePath);
+      if (stat.isFile()) {
+        fs.unlinkSync(filePath);
+        deleted++;
+      }
+    } catch (err) {
+      console.warn(`[VIDEO-RENDERER][STARTUP] Failed to delete ${filePath}:`, (err as Error).message);
+    }
+  }
+  if (deleted > 0) {
+    console.log(`[VIDEO-RENDERER][STARTUP] Cleaned up ${deleted} file(s) from uploads directory`);
+  }
+} catch (err) {
+  console.warn('[VIDEO-RENDERER][STARTUP] Could not scan uploads directory for cleanup:', (err as Error).message);
+}
+
 // Ensure Remotion temp directories exist
 const ensureRemotionTempDirs = () => {
   const tempDir = path.join(require('os').tmpdir());
@@ -388,7 +411,7 @@ function verifyServerAssets(
 app.post('/render', async (req, res) => {
   // Store original console.log at the render handler scope
   let originalConsoleLog = console.log;
-  
+
   // Generate unique render ID
   const renderId = `render_${Date.now()}_${Math.random().toString(36).substring(2, 9)}`;
   console.log('=== NEW RENDER STARTED ===');
@@ -595,24 +618,24 @@ app.post('/render', async (req, res) => {
     console.log('Video settings:', `${metadata.videoType}, ${fps}fps, ${resolution}`);
 
     // Note: originalConsoleLog already declared at render handler scope
-    
+
     // IMPORTANT: Intercept console.log BEFORE selectComposition to catch Chrome download progress
     console.log = (...args: any[]) => {
       const message = args.join(' ');
-      
+
       // Check for Chrome download progress messages from Remotion (both Chrome for Testing and Headless Shell)
       const chromeDownloadMatch = message.match(/Downloading Chrome (?:for Testing|Headless Shell) - ([\d.]+) Mb\/([\d.]+) Mb/);
       if (chromeDownloadMatch) {
         const downloaded = parseFloat(chromeDownloadMatch[1]);
         const total = parseFloat(chromeDownloadMatch[2]);
-        
+
         // Send Chrome download progress to client
         const activeRenderForChrome = activeRenders.get(renderId);
         if (activeRenderForChrome && !activeRenderForChrome.response.writableEnded) {
           activeRenderForChrome.response.write(`data: ${JSON.stringify({ chromeDownload: { downloaded, total } })}\n\n`);
         }
       }
-      
+
       // Call original console.log
       originalConsoleLog(...args);
     };

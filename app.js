@@ -37,6 +37,31 @@ const app = express();
 // Ensure directories exist
 ensureDirectories();
 
+// Startup cleanup: remove leftover extracted_* clips from videos folder
+try {
+  const entries = fs.readdirSync(VIDEOS_DIR);
+  let deleted = 0;
+  for (const name of entries) {
+    if (typeof name === 'string' && name.startsWith('extracted_')) {
+      const filePath = path.join(VIDEOS_DIR, name);
+      try {
+        const stat = fs.statSync(filePath);
+        if (stat.isFile()) {
+          fs.unlinkSync(filePath);
+          deleted++;
+        }
+      } catch (err) {
+        console.warn(`[STARTUP] Failed to delete ${filePath}:`, err.message);
+      }
+    }
+  }
+  if (deleted > 0) {
+    console.log(`[STARTUP] Cleaned up ${deleted} extracted_* file(s) from videos directory`);
+  }
+} catch (err) {
+  console.warn('[STARTUP] Could not scan videos directory for extracted_* cleanup:', err.message);
+}
+
 
 
 // Configure CORS with unified configuration
@@ -410,7 +435,7 @@ app.post('/api/scan-models', async (req, res) => {
 // Git branch detection endpoint
 app.get('/api/git-branch', (req, res) => {
   const { exec } = require('child_process');
-  
+
   exec('git branch --show-current', (error, stdout, stderr) => {
     if (error) {
       console.error('Error getting git branch:', error);
@@ -420,10 +445,10 @@ app.get('/api/git-branch', (req, res) => {
         branch: 'old_version' // Default to old_version if detection fails
       });
     }
-    
+
     const branch = stdout.trim();
     console.log('Current git branch:', branch);
-    
+
     res.json({
       success: true,
       branch: branch || 'old_version'
@@ -435,14 +460,14 @@ app.get('/api/git-branch', (req, res) => {
 app.post('/api/switch-branch', express.json(), async (req, res) => {
   const { exec } = require('child_process');
   const { branch } = req.body;
-  
+
   if (!branch) {
     return res.status(400).json({
       success: false,
       error: 'Branch name is required'
     });
   }
-  
+
   console.log(`Switching to branch: ${branch}`);
 
   // First, fetch the latest remote branches
@@ -505,17 +530,17 @@ app.post('/api/switch-branch', express.json(), async (req, res) => {
           // Run npm install and then npm run dev/dev:cuda in a new detached process
           setTimeout(() => {
             const { spawn } = require('child_process');
-          
+
           // Check if we're running in Full version (dev:cuda) or Lite version (dev)
           const isFullVersion = process.env.START_PYTHON_SERVER === 'true';
           const runCommand = isFullVersion ? 'npm run dev:cuda' : 'npm run dev';
-          
+
           console.log(`Starting new process with npm install and ${runCommand}...`);
-          
+
           // Create command to run npm install first, then the appropriate dev command
           // Using && to chain commands so dev only runs if install succeeds
           const fullCommand = `npm install && ${runCommand}`;
-          
+
           // Start in a new command window
           spawn('cmd', ['/c', 'start', 'cmd', '/k', fullCommand], {
             detached: true,
@@ -523,9 +548,9 @@ app.post('/api/switch-branch', express.json(), async (req, res) => {
             cwd: __dirname,
             shell: false
           }).unref();
-          
+
           console.log(`New process started (${isFullVersion ? 'Full' : 'Lite'} version). This process will exit shortly...`);
-          
+
             // Exit current process after a moment
             setTimeout(() => {
               process.exit(0);
