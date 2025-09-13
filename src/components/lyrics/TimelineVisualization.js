@@ -1,4 +1,4 @@
-import React, { useEffect, useCallback, useRef, useState } from 'react';
+import React, { useEffect, useLayoutEffect, useCallback, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { useTranslation } from 'react-i18next';
 
@@ -424,6 +424,11 @@ const TimelineVisualization = ({
       if (range.url) {
         sessionStorage.setItem('processing_modal_cached_url', range.url);
       }
+
+      // Mark this specific offline range as "retrying" so the timeline animates only this segment
+      const key = `${range.start}-${range.end}`;
+      setRetryingOfflineKeys(prev => (prev && prev.includes(key)) ? prev : [...(prev || []), key]);
+
       // Open the processing options modal for this range
       if (onSegmentSelect) {
         onSegmentSelect({ start: range.start, end: range.end });
@@ -516,12 +521,15 @@ const TimelineVisualization = ({
       return { start: r.start, end: r.end, index: (processingRanges?.length || 0) + idx, animate };
     }).filter(Boolean);
 
-    const combinedProcessingRanges = Array.isArray(processingRanges)
-      ? [...processingRanges, ...offlineRangesForDraw]
-      : offlineRangesForDraw;
+    // If a retry is active, show only the retried offline cut(s) as processing; otherwise use normal processingRanges
+    const combinedProcessingRanges = (retryKeySet.size > 0)
+      ? offlineRangesForDraw
+      : (Array.isArray(processingRanges) ? [...processingRanges, ...offlineRangesForDraw] : offlineRangesForDraw);
 
-    // Selected band should only animate if it is actually the retried range or we are in a real processing run
-    const selectedIsProcessing = !!isProcessingSegment || (effectiveSelected && retryKeySet.has(`${effectiveSelected.start}-${effectiveSelected.end}`));
+    // Selected band animates only if: (a) a normal processing run is on, or (b) it exactly matches the retried range
+    const selectedIsProcessing = (retryKeySet.size > 0)
+      ? (effectiveSelected && retryKeySet.has(`${effectiveSelected.start}-${effectiveSelected.end}`))
+      : !!isProcessingSegment;
 
     const segmentData = {
       selectedSegment: effectiveSelected,
@@ -1229,92 +1237,123 @@ const TimelineVisualization = ({
   // Note: Timeline click handling is now integrated into handleMouseDown
   // to support both click-to-seek and drag-to-select functionality
 
+  // Helper overlay component that follows the timeline canvas without leaking rAF
+  const OverlayFollower = ({ canvasRef, deps = [], computeStyle, children }) => {
+    const containerRef = useRef(null);
+    const computeStyleRef = useRef(computeStyle);
+    const scheduleRef = useRef(() => {});
+
+    // Always keep latest computeStyle without tearing down listeners
+    useEffect(() => { computeStyleRef.current = computeStyle; }, [computeStyle]);
+
+    // Do initial measure before paint to avoid 0,0 flash; keep listeners stable
+    useLayoutEffect(() => {
+      const canvas = canvasRef.current;
+      const el = containerRef.current;
+      if (!canvas || !el) return;
+      let rafId = 0;
+      const update = () => {
+        const bounds = canvas.getBoundingClientRect();
+        const style = computeStyleRef.current(bounds);
+        if (style && el) Object.assign(el.style, style);
+        if (el.style.visibility !== 'visible') el.style.visibility = 'visible';
+      };
+      const schedule = () => {
+        if (rafId) cancelAnimationFrame(rafId);
+        rafId = requestAnimationFrame(update);
+      };
+      scheduleRef.current = schedule;
+
+      // Initial sync update to avoid flicker
+      try { update(); } catch {}
+
+      const ro = new ResizeObserver(schedule);
+      ro.observe(canvas);
+      window.addEventListener('scroll', schedule, true);
+      window.addEventListener('resize', schedule);
+
+      return () => {
+        ro.disconnect();
+        window.removeEventListener('scroll', schedule, true);
+        window.removeEventListener('resize', schedule);
+        if (rafId) cancelAnimationFrame(rafId);
+        scheduleRef.current = () => {};
+      };
+    }, [canvasRef]);
+
+    // When deps change (zoom/pan/lyrics/time), just schedule an update; don't teardown
+    useEffect(() => { scheduleRef.current(); }, [computeStyle, ...deps]);
+
+    return (
+      <div style={{ position: 'fixed', inset: 0, pointerEvents: 'none' }}>
+        <div ref={containerRef} style={{ position: 'absolute', top: 0, left: 0, pointerEvents: 'auto', zIndex: 1000, visibility: 'hidden' }}>
+          {children}
+        </div>
+      </div>
+    );
+  };
+
   return (
     <div className="timeline-container" style={{ position: 'relative' }}>
       {/* Clear offline segments button (portal in timeline-header-overlays-root) */}
       {offlineSegments.length > 0 && (() => {
         const canvas = timelineRef.current;
         const overlayRoot = document.getElementById('timeline-header-overlays-root');
-        const containerRef = { current: null };
-        let rafId;
-        const update = () => {
-          const bounds = canvas?.getBoundingClientRect();
-          if (containerRef.current && bounds) {
-            containerRef.current.style.top = `${(bounds.top || 0) - 36}px`;
-            containerRef.current.style.left = `${(bounds.left || 0) + 8}px`;
-          }
-          rafId = requestAnimationFrame(update);
-        };
-        rafId = requestAnimationFrame(update);
+        if (!overlayRoot || !canvas) return null;
+        const computeStyle = (bounds) => ({ top: `${(bounds.top || 0) - 36}px`, left: `${(bounds.left || 0) + 8}px` });
         const overlay = (
-          <div style={{ position: 'fixed', inset: 0, pointerEvents: 'none' }}>
-            <div
-              ref={(el) => (containerRef.current = el)}
-              style={{ position: 'absolute', top: 0, left: 0, pointerEvents: 'auto', zIndex: 1000 }}
+          <OverlayFollower canvasRef={timelineRef} computeStyle={computeStyle}>
+            <button
+              className="btn-base btn-tonal btn-small"
+              onClick={(e) => { e.stopPropagation(); handleClearOfflineSegments(); }}
+              style={{ display: 'inline-flex', alignItems: 'center', gap: 6, height: 24, minHeight: 24, padding: '0 8px', borderRadius: 12, backgroundColor: 'var(--md-surface-variant)', color: 'var(--md-on-surface-variant)', border: '1px solid var(--md-outline-variant)' }}
             >
-              <button
-                className="btn-base btn-tonal btn-small"
-                onClick={(e) => { e.stopPropagation(); handleClearOfflineSegments(); }}
-                style={{ display: 'inline-flex', alignItems: 'center', gap: 6, height: 24, minHeight: 24, padding: '0 8px', borderRadius: 12, backgroundColor: 'var(--md-surface-variant)', color: 'var(--md-on-surface-variant)', border: '1px solid var(--md-outline-variant)' }}
-              >
-                <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 -960 960 960" aria-hidden style={{ color: 'currentColor' }}>
-                  <path fill="currentColor" d="M763-272h94q27 0 45.5 18.5T921-208q0 26-18.5 45T857-144H635l128-128ZM217-144q-14 0-25-5t-20-14L67-268q-38-38-38-89t39-90l426-414q38-38 90-38t91 39l174 174q37 38 38 90t-38 90L501-164q-8 9-19.5 14.5T457-144H217Zm212-128 328-322-174-176-423 414 83 84h186Zm51-208Z"/>
-                </svg>
-                {t('timeline.clearOfflineSegments', 'Clear offline segments')}
-              </button>
-            </div>
-          </div>
+              <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 -960 960 960" aria-hidden style={{ color: 'currentColor' }}>
+                <path fill="currentColor" d="M763-272h94q27 0 45.5 18.5T921-208q0 26-18.5 45T857-144H635l128-128ZM217-144q-14 0-25-5t-20-14L67-268q-38-38-38-89t39-90l426-414q38-38 90-38t91 39l174 174q37 38 38 90t-38 90L501-164q-8 9-19.5 14.5T457-144H217Zm212-128 328-322-174-176-423 414 83 84h186Zm51-208Z"/>
+              </svg>
+              {t('timeline.clearOfflineSegments', 'Clear offline segments')}
+            </button>
+          </OverlayFollower>
         );
-        setTimeout(() => { const cleanup = () => rafId && cancelAnimationFrame(rafId); cleanup.__keep=true; return cleanup; }, 0);
-        return overlayRoot ? createPortal(overlay, overlayRoot) : null;
+        return createPortal(overlay, overlayRoot);
       })() }
 
       {/* Hover refresh icon (portal) at colorful bits' vertical center */}
       {hoveredOfflineRange && (() => {
         const canvas = timelineRef.current;
         const overlayRoot = document.getElementById('timeline-header-overlays-root');
-        const { start: visStart, end: visEnd } = getTimeRange();
-        const width = canvas?.clientWidth || 1;
-        const height = canvas?.clientHeight || 0;
-        const toPx = (t) => ((t - visStart) / Math.max(0.0001, (visEnd - visStart))) * width;
-        const mid = (hoveredOfflineRange.start + hoveredOfflineRange.end) / 2;
-        const containerRef = { current: null };
+        if (!overlayRoot || !canvas) return null;
         const rangeKey = `${hoveredOfflineRange.start}-${hoveredOfflineRange.end}`;
         const isRetrying = retryingOfflineKeys.includes(rangeKey);
-        let rafId;
-        const update = () => {
-          const bounds = canvas?.getBoundingClientRect();
-          if (containerRef.current && bounds) {
-            const timeMarkerSpace = 25;
-            const availableHeight = Math.max(0, height - timeMarkerSpace);
-            const centerY = timeMarkerSpace + (availableHeight / 2);
-            const xPx = Math.max(0, Math.min(width, toPx(mid)));
-            containerRef.current.style.top = `${(bounds.top || 0) + centerY - 18}px`;
-            containerRef.current.style.left = `${(bounds.left || 0) + xPx - 18}px`;
-          }
-          rafId = requestAnimationFrame(update);
+        const computeStyle = (bounds) => {
+          const width = canvas?.clientWidth || 1;
+          const height = canvas?.clientHeight || 0;
+          const { start: visStart, end: visEnd } = getTimeRange();
+          const toPx = (t) => ((t - visStart) / Math.max(0.0001, (visEnd - visStart))) * width;
+          const mid = (hoveredOfflineRange.start + hoveredOfflineRange.end) / 2;
+          const timeMarkerSpace = 25;
+          const availableHeight = Math.max(0, height - timeMarkerSpace);
+          const centerY = timeMarkerSpace + (availableHeight / 2);
+          const xPx = Math.max(0, Math.min(width, toPx(mid)));
+          return { top: `${(bounds.top || 0) + centerY - 18}px`, left: `${(bounds.left || 0) + xPx - 18}px` };
         };
-        rafId = requestAnimationFrame(update);
         const overlay = (
-          <div style={{ position: 'fixed', inset: 0, pointerEvents: 'none' }}>
-            <div ref={(el) => (containerRef.current = el)} style={{ position: 'absolute', top: 0, left: 0, pointerEvents: 'auto', zIndex: 1000 }}>
-              {!isRetrying && (
-                <button
-                  className="btn-base btn-primary btn-small"
-                  title={t('timeline.retryFromCache', 'Retry this cut (reuse cached clip)')}
-                  onClick={(e) => { e.stopPropagation(); handleRetryOfflineRange(hoveredOfflineRange); }}
-                  style={{ width: 30, height: 30, minWidth: 30, padding: 0, borderRadius: '50%', display: 'flex', alignItems: 'center', justifyContent: 'center' }}
-                >
-                  <svg xmlns="http://www.w3.org/2000/svg" height="16" viewBox="0 -960 960 960" width="16" aria-hidden style={{ color: 'var(--md-on-primary)' }}>
-                    <path fill="currentColor" d="M289-482q0 9 1 17.5t1 16.5q5 24-2 50t-31 39q-23 12-48 4t-33-31q-7-23-11.5-46.5T161-482q0-128 89-221.5T465-799l-3-4q-16-15-15.5-33.5T463-871q15-15 34-15t34 15l91 91q19 19 19 45t-19 46l-92 91q-15 15-33 14.5T464-599q-16-15-15.5-34.5T464-668l2-2h3q-75 1-127.5 56.5T289-482Zm382 3q0-9-1-17t0-16q-5-26 2.5-51t30.5-39q23-13 47-6t32 29q7 24 12 48t5 52q0 126-89 221t-215 96l2 3q17 15 16 34t-16 34q-16 16-34.5 16T428-91l-91-90q-19-20-18.5-45.5T337-271l93-91q15-15 33.5-16t34.5 15q16 15 16 34t-16 35l-4 4h-3q75-1 127.5-57T671-479Z"/>
-                  </svg>
-                </button>
-              )}
-            </div>
-          </div>
+          <OverlayFollower canvasRef={timelineRef} computeStyle={computeStyle} deps={[hoveredOfflineRange, retryingOfflineKeys, panOffset, zoom, lyrics]}>
+            {!isRetrying && (
+              <button
+                className="btn-base btn-primary btn-small"
+                title={t('timeline.retryFromCache', 'Retry this cut (reuse cached clip)')}
+                onClick={(e) => { e.stopPropagation(); handleRetryOfflineRange(hoveredOfflineRange); }}
+                style={{ width: 30, height: 30, minWidth: 30, padding: 0, borderRadius: '50%', display: 'flex', alignItems: 'center', justifyContent: 'center' }}
+              >
+                <svg xmlns="http://www.w3.org/2000/svg" height="16" viewBox="0 -960 960 960" width="16" aria-hidden style={{ color: 'var(--md-on-primary)' }}>
+                  <path fill="currentColor" d="M289-482q0 9 1 17.5t1 16.5q5 24-2 50t-31 39q-23 12-48 4t-33-31q-7-23-11.5-46.5T161-482q0-128 89-221.5T465-799l-3-4q-16-15-15.5-33.5T463-871q15-15 34-15t34 15l91 91q19 19 19 45t-19 46l-92 91q-15 15-33 14.5T464-599q-16-15-15.5-34.5T464-668l2-2h3q-75 1-127.5 56.5T289-482Zm382 3q0-9-1-17t0-16q-5-26 2.5-51t30.5-39q23-13 47-6t32 29q7 24 12 48t5 52q0 126-89 221t-215 96l2 3q17 15 16 34t-16 34q-16 16-34.5 16T428-91l-91-90q-19-20-18.5-45.5T337-271l93-91q15-15 33.5-16t34.5 15q16 15 16 34t-16 35l-4 4h-3q75-1 127.5-57T671-479Z"/>
+                </svg>
+              </button>
+            )}
+          </OverlayFollower>
         );
-        setTimeout(() => { const cleanup = () => rafId && cancelAnimationFrame(rafId); cleanup.__keep=true; return cleanup; }, 0);
-        return overlayRoot ? createPortal(overlay, overlayRoot) : null;
+        return createPortal(overlay, overlayRoot);
       })()}
 
       {/* Range action header placed vertically above the timeline canvas */}
@@ -1401,25 +1440,12 @@ const TimelineVisualization = ({
         };
 
         const overlayRoot = document.getElementById('timeline-header-overlays-root');
-        const actionBarRef = { current: null };
-        let rafId;
-
-        const updatePosition = () => {
-          const canvasBounds = canvas?.getBoundingClientRect();
-          if (actionBarRef.current && canvasBounds) {
-            actionBarRef.current.style.top = `${(canvasBounds.top || 0) - 36}px`;
-            actionBarRef.current.style.left = `${(canvasBounds.left || 0) + barLeft}px`;
-            actionBarRef.current.style.width = `${barWidth}px`;
-          }
-          rafId = requestAnimationFrame(updatePosition);
-        };
-        // Start continuous updates while the bar is visible
-        rafId = requestAnimationFrame(updatePosition);
+        if (!overlayRoot || !canvas) return null;
+        const computeStyle = (bounds) => ({ top: `${(bounds.top || 0) - 36}px`, left: `${(bounds.left || 0) + barLeft}px` });
 
         const overlay = (
-          <div style={{ position: 'fixed', inset: 0, pointerEvents: 'none' }}>
+          <OverlayFollower canvasRef={timelineRef} computeStyle={computeStyle} deps={[actionBarRange, moveDragOffsetPx, panOffset, zoom, lyrics]}>
             <div
-              ref={(el) => (actionBarRef.current = el)}
               className="range-action-bar"
               style={{
                 position: 'absolute',
@@ -1496,18 +1522,10 @@ const TimelineVisualization = ({
                 </svg>
               </button>
             </div>
-          </div>
+          </OverlayFollower>
         );
 
-        // Cleanup RAF when unmounting the overlay
-        setTimeout(() => {
-          const cleanup = () => rafId && cancelAnimationFrame(rafId);
-          // Schedule after portal mount; parent hides overlay by setting actionBarRange to null
-          cleanup.__keep = true;
-          return cleanup;
-        }, 0);
-
-        return overlayRoot ? createPortal(overlay, overlayRoot) : null;
+        return createPortal(overlay, overlayRoot);
 
       })()}
 

@@ -172,7 +172,13 @@ export const streamGeminiContent = async (file, fileUri, options = {}, onChunk, 
 
     // Make streaming request
     // Removed verbose request logging
-    
+
+    // Serialize once, then drop large inline payload reference to help GC
+    const bodyPayload = JSON.stringify(requestData);
+    if (useInline) {
+      try { requestData.contents[0].parts[0].inlineData.data = null; } catch {}
+    }
+
     const response = await fetch(
       `https://generativelanguage.googleapis.com/v1beta/models/${MODEL}:streamGenerateContent?alt=sse`,
       {
@@ -181,7 +187,7 @@ export const streamGeminiContent = async (file, fileUri, options = {}, onChunk, 
           'x-goog-api-key': geminiApiKey,
           'Content-Type': 'application/json',
         },
-        body: JSON.stringify(requestData),
+        body: bodyPayload,
         signal: signal // Add abort signal
       }
     );
@@ -329,6 +335,8 @@ const processStreamingResponse = async (response, onChunk, onComplete, onError, 
               if (textPart.text) {
                 chunkCount++;
                 accumulatedText += textPart.text;
+                // Cap accumulated text to last 50k chars to bound memory usage
+                if (accumulatedText.length > 50000) accumulatedText = accumulatedText.slice(-50000);
                 
                 // console.log(`[StreamingService] Chunk ${chunkCount}:`, textPart.text.substring(0, 100) + '...');
                 

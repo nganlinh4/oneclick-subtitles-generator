@@ -267,6 +267,19 @@ export const streamGeminiApiInline = async (file, options = {}, onChunk, onCompl
           const { extractVideoSegmentLocally } = await import('../../utils/videoSegmenter');
           const { start, end } = inlineOptions.segmentInfo;
           const clipped = await extractVideoSegmentLocally(file, start, end);
+          // Route large inline segments through Files API transport to avoid base64 memory spike
+          const INLINE_LARGE_SEGMENT_THRESHOLD_BYTES = 8 * 1024 * 1024; // 8MB
+          if (clipped && clipped.size > INLINE_LARGE_SEGMENT_THRESHOLD_BYTES) {
+            await streamGeminiApiWithFilesApi(
+              clipped,
+              { ...inlineOptions, videoMetadata: undefined },
+              onChunk,
+              onComplete,
+              onError,
+              onProgress
+            );
+            return;
+          }
           await streamGeminiContent(clipped, null, inlineOptions, onChunk, onComplete, onError);
           return;
         } catch (e) {

@@ -203,7 +203,7 @@ const FloatingScrollbar = () => {
     document.addEventListener('mouseup', handleDocumentMouseUp);
 
     // Add wheel event listener to detect mousewheel scrolling
-    window.addEventListener('wheel', () => {
+    const onWheel = () => {
       // Check if scrolling is needed before showing the scrollbar
       const { scrollHeight, clientHeight } = document.documentElement;
       const isScrollNeeded = scrollHeight > clientHeight;
@@ -214,7 +214,8 @@ const FloatingScrollbar = () => {
         containerRef.current.classList.remove('hidden');
         containerRef.current.classList.add('scrolling');
       }
-    }, { passive: true });
+    };
+    window.addEventListener('wheel', onWheel, { passive: true });
 
     // Create a ResizeObserver to detect changes in document height
     const resizeObserver = new ResizeObserver((entries) => {
@@ -248,7 +249,7 @@ const FloatingScrollbar = () => {
     return () => {
       window.removeEventListener('scroll', updateThumbPosition);
       window.removeEventListener('resize', updateThumbPosition);
-      window.removeEventListener('wheel', updateThumbPosition);
+      window.removeEventListener('wheel', onWheel);
       document.removeEventListener('mousemove', combinedMouseMoveHandler);
       document.removeEventListener('mouseup', handleDocumentMouseUp);
 

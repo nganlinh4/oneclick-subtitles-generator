@@ -582,7 +582,11 @@ export const coordinateParallelInlineStreaming = async (
       }
     })());
 
-    await Promise.allSettled(tasks);
+    // Limit concurrency to reduce simultaneous inline base64 memory pressure
+    const MAX_CONCURRENCY = 2;
+    for (let i = 0; i < tasks.length; i += MAX_CONCURRENCY) {
+      await Promise.allSettled(tasks.slice(i, i + MAX_CONCURRENCY));
+    }
 
     // Merge final results
     const finalAgg = mergeParallelSubtitles(
