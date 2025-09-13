@@ -200,12 +200,16 @@ const Header = ({ onSettingsClick }) => {
           setIsFullVersion(!!startupData.isDevCuda);
           const isStart = !!(startupData.isStart || (typeof startupData.command === 'string' && startupData.command.toLowerCase().includes('npm start')));
           setIsVercelMode(isStart);
+        } else {
+          // Server responded but not OK (e.g., 404) => treat as missing backend
+          setIsFullVersion(false);
+          setIsVercelMode(true);
+          return;
         }
       } catch (error) {
-        // If we can't detect, assume lite version
-
+        // If we can't contact the server at all, assume Vercel (npm start) mode
         setIsFullVersion(false);
-
+        setIsVercelMode(true);
       }
     };
 
