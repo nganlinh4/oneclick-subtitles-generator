@@ -16,6 +16,7 @@ const Header = ({ onSettingsClick }) => {
   const [updateAvailable, setUpdateAvailable] = useState(false);
 
   const [isFullVersion, setIsFullVersion] = useState(false); // Track if running in full mode
+  const [isVercelMode, setIsVercelMode] = useState(false); // Track if running via npm start (Vercel)
   const [currentBranch, setCurrentBranch] = useState('main'); // Track current branch
 
   // Define the position update function outside useEffect so it can be reused
@@ -196,7 +197,9 @@ const Header = ({ onSettingsClick }) => {
 
         if (response.ok) {
           const startupData = await response.json();
-          setIsFullVersion(startupData.isDevCuda);
+          setIsFullVersion(!!startupData.isDevCuda);
+          const isStart = !!(startupData.isStart || (typeof startupData.command === 'string' && startupData.command.toLowerCase().includes('npm start')));
+          setIsVercelMode(isStart);
         }
       } catch (error) {
         // If we can't detect, assume lite version
@@ -440,16 +443,20 @@ const Header = ({ onSettingsClick }) => {
         <h1 className="header-title">
           <span className="osg-main">OSG</span>
           <span className="osg-version">
-            {isFullVersion ? ` (${t('header.versionFull')})` : ` (${t('header.versionLite')})`}
+            {isVercelMode
+              ? ` (${t('header.versionVercel')})`
+              : (isFullVersion ? ` (${t('header.versionFull')})` : ` (${t('header.versionLite')})`)
+            }
           </span>
         </h1>
         <button
-          className="branch-switch-button"
+          className={`branch-switch-button ${isVercelMode ? 'vercel-mode' : ''}`}
           onClick={handleBranchSwitch}
-          aria-label={currentBranch === 'old_version' ? t('header.tryNewVersion') : t('header.oldVersion')}
-          title={currentBranch === 'old_version' ? t('header.tryNewVersionTooltip') : t('header.oldVersionTooltip')}
+          disabled={isVercelMode}
+          aria-label={isVercelMode ? t('header.vercelLimited') : (currentBranch === 'old_version' ? t('header.tryNewVersion') : t('header.oldVersion'))}
+          title={isVercelMode ? t('header.vercelLimited') : (currentBranch === 'old_version' ? t('header.tryNewVersionTooltip') : t('header.oldVersionTooltip'))}
         >
-          {currentBranch === 'old_version' ? t('header.tryNewVersion') : t('header.oldVersion')}
+          {isVercelMode ? t('header.vercelLimited') : (currentBranch === 'old_version' ? t('header.tryNewVersion') : t('header.oldVersion'))}
         </button>
       </div>
 

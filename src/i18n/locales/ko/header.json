@@ -4,6 +4,8 @@
   "appTitleLite": "OSG (라이트 버전)",
   "versionFull": "풀 버전",
   "versionLite": "라이트 버전",
+  "versionVercel": "Vercel 버전",
+  "vercelLimited": "많은 기능이 제한됩니다",
   "appLogoAlt": "원클릭 자막 생성기 로고",
   "settings": "설정",
   "settingsAria": "설정 열기",

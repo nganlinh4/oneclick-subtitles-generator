@@ -311,9 +311,23 @@ app.get('/api/health', (req, res) => {
 
 // Startup mode endpoint - tells frontend which command was used to start the server
 app.get('/api/startup-mode', (req, res) => {
+  // Detect how this process was started
+  const lifecycle = process.env.npm_lifecycle_event; // e.g., 'start', 'dev', 'dev:cuda'
+  const isDevCuda = process.env.START_PYTHON_SERVER === 'true';
+  const isStart = lifecycle === 'start' || process.env.VERCEL === '1' || process.env.NODE_ENV === 'production';
+
+  // Build a human-friendly command string
+  let command;
+  if (lifecycle) {
+    command = lifecycle === 'start' ? 'npm start' : `npm run ${lifecycle}`;
+  } else {
+    command = isDevCuda ? 'npm run dev:cuda' : 'npm run dev';
+  }
+
   const startupMode = {
-    isDevCuda: process.env.START_PYTHON_SERVER === 'true',
-    command: process.env.START_PYTHON_SERVER === 'true' ? 'npm run dev:cuda' : 'npm run dev'
+    isDevCuda,
+    isStart,
+    command
   };
 
   res.json(startupMode);

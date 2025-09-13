@@ -500,3 +500,23 @@
     display: none; /* Hide on very small screens to save space */
   }
 }
+
+
+/* Vercel (npm start) mode: branch switch button disabled with distinct color */
+.branch-switch-button.vercel-mode {
+  background: linear-gradient(135deg, #9e9e9e, #bdbdbd);
+  color: #ffffff;
+  cursor: not-allowed;
+  animation: none;
+}
+
+.branch-switch-button.vercel-mode:hover {
+  transform: none;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.2);
+  background: linear-gradient(135deg, #9e9e9e, #bdbdbd);
+}
+
+[data-theme="dark"] .branch-switch-button.vercel-mode {
+  background: linear-gradient(135deg, #455a64, #607d8b);
+  color: #ffffff;
+}

@@ -4,6 +4,8 @@
   "appTitleLite": "OSG (Lite version)",
   "versionFull": "Full version",
   "versionLite": "Lite version",
+  "versionVercel": "Vercel edition",
+  "vercelLimited": "Many features are limited",
   "appLogoAlt": "One-click Subtitles Generator Logo",
   "settings": "Settings",
   "settingsAria": "Open Settings",

@@ -322,25 +322,19 @@ const VideoProcessingOptionsModal = ({
   const modelOptions = getAllAvailableModels();
 
 
-  // Ensure a valid selectable model is chosen when current selection becomes disabled
+  // Ensure a valid selectable model is chosen whenever the current selection becomes disabled
   useEffect(() => {
     if (!isOpen) return;
-    const startOffsetSec = (typeof selectedSegment?.start === 'number') ? selectedSegment.start : 0;
-    const exceedsStartAllowance = startOffsetSec >= 5;
-
-    // If current selection is disabled under the current start offset, switch to a valid fallback
-    if (exceedsStartAllowance) {
-      const currentIsDisabled = modelOptions?.some(o => o.value === selectedModel && o.disabled);
-      if (currentIsDisabled) {
-        // Prefer 2.5 Flash if available, otherwise first non-disabled option
-        const preferred = modelOptions.find(o => o.value === 'gemini-2.5-flash' && !o.disabled) ||
-                          modelOptions.find(o => !o.disabled);
-        if (preferred && preferred.value !== selectedModel) {
-          setSelectedModel(preferred.value);
-        }
+    const currentIsDisabled = modelOptions?.some(o => o.value === selectedModel && o.disabled);
+    if (currentIsDisabled) {
+      // Prefer 2.5 Flash if available, otherwise first non-disabled option
+      const preferred = modelOptions.find(o => o.value === 'gemini-2.5-flash' && !o.disabled) ||
+                        modelOptions.find(o => !o.disabled);
+      if (preferred && preferred.value !== selectedModel) {
+        setSelectedModel(preferred.value);
       }
     }
-  }, [isOpen, selectedSegment?.start, selectedModel, modelOptions]);
+  }, [isOpen, selectedModel, modelOptions]);
 
   // Listen for storage changes to sync auto-split setting
   useEffect(() => {
