@@ -19,7 +19,7 @@
   border-radius: var(--md-shape-large);
   box-shadow: var(--md-elevation-level3);
   width: 90%;
-  max-width: 500px;
+  max-width: 560px;
   height: 600px; /* Fixed height to prevent layout shifts */
   max-height: 90vh;
   display: flex;
@@ -400,4 +400,26 @@
   color: var(--md-on-surface-variant);
   margin-top: 4px;
   line-height: 1.4;
+}
+
+/* Scoped spacing and density for modal radio groups to avoid global bleed */
+.download-options-modal .modal-radio-group {
+  gap: 16px;
+  row-gap: 10px;
+}
+
+.download-options-modal .modal-subtitle-source,
+.download-options-modal .modal-file-format {
+  gap: 10px; /* more breathing room under heading */
+}
+
+.download-options-modal .modal-subtitle-source .radio-option-card,
+.download-options-modal .modal-file-format .radio-option-card {
+  padding: 10px 14px; /* slightly larger than global for clarity in modal */
+}
+
+/* Optional: ensure disabled options still look clearly distinct in modal */
+.download-options-modal .modal-subtitle-source .radio-option-base.disabled,
+.download-options-modal .modal-file-format .radio-option-base.disabled {
+  opacity: 0.55;
 }

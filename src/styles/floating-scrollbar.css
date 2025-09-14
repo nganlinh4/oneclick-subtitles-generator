@@ -59,6 +59,23 @@ body {
   visibility: hidden;
 }
 
+/* Visible scrollbar track (subtle) */
+.floating-scrollbar-track {
+  position: absolute;
+  right: 0; /* Align with page edge */
+  top: 0;
+  bottom: 0;
+  width: 3px; /* Thinner than thumb (even on hover) */
+  border-radius: 16px 0 0 16px;
+  background-color: rgba(0, 0, 0, 0.08); /* Light, unobtrusive */
+  pointer-events: auto; /* Allow clicking/holding on the track */
+}
+
+/* Dark theme track tint */
+[data-theme="dark"] .floating-scrollbar-track {
+  background-color: rgba(255, 255, 255, 0.08);
+}
+
 /* The actual scrollbar thumb */
 .floating-scrollbar-thumb {
   position: absolute;
@@ -78,7 +95,7 @@ body {
 .floating-scrollbar-thumb.dragging {
   width: 7px; /* Slightly wider for easier grabbing, but still thin */
   right: 0; /* Keep at the edge */
-  background-color: var(--md-outline, rgba(0, 0, 0, 0.4));
+  background-color: var(--md-primary);
 }
 
 /* Dark theme adjustments */
@@ -90,7 +107,7 @@ body {
 [data-theme="dark"] .floating-scrollbar-thumb.dragging {
   width: 7px; /* Slightly wider for easier grabbing, but still thin */
   right: 0; /* Keep at the edge */
-  background-color: var(--md-outline, rgba(255, 255, 255, 0.4));
+  background-color: var(--md-primary);
 }
 
 /* Ensure the scrollbar is visible when needed but fades out quickly when not in use */

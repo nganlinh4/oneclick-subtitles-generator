@@ -1017,6 +1017,23 @@ const TimelineVisualization = ({
     wrapper.style.pointerEvents = 'none';
     btn.style.pointerEvents = 'auto';
   }, [hoveredOfflineRange, panOffset, zoom, lyrics, getTimeRange, retryingOfflineKeys]);
+  // Auto-hide retry overlay on any page/ancestor scroll or window resize
+  useEffect(() => {
+    const hideOverlay = () => {
+      const wrapper = retryOverlayWrapperRef.current;
+      if (wrapper) {
+        wrapper.style.visibility = 'hidden';
+        wrapper.style.pointerEvents = 'none';
+      }
+    };
+    window.addEventListener('scroll', hideOverlay, true);
+    window.addEventListener('resize', hideOverlay);
+    return () => {
+      window.removeEventListener('scroll', hideOverlay, true);
+      window.removeEventListener('resize', hideOverlay);
+    };
+  }, []);
+
 
   // Handle timeline updates
   useEffect(() => {

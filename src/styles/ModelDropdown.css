@@ -2,6 +2,7 @@
 .model-dropdown-container {
   position: relative;
   display: inline-block;
+  max-width: 200px;
 }
 
 /* When dropdown is open, ensure container has higher z-index */

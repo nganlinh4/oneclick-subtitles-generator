@@ -7,6 +7,8 @@ import SliderWithValue from './common/SliderWithValue';
 // Import default prompts from geminiService if needed in the future
 // import { getDefaultConsolidatePrompt, getDefaultSummarizePrompt } from '../services/geminiService';
 import '../styles/DownloadOptionsModal.css';
+import '../styles/components/tabs.css';
+import initTabPillAnimation from '../utils/tabPillAnimation';
 
 /**
  * Modal component for download and processing options
@@ -35,6 +37,7 @@ const DownloadOptionsModal = ({
 }) => {
   const { t } = useTranslation();
   const modalRef = useRef(null);
+  const downloadTabsRef = useRef(null);
 
   // State for selected options
   const [subtitleSource, setSubtitleSource] = useState('original');
@@ -53,15 +56,24 @@ const DownloadOptionsModal = ({
     return parseInt(localStorage.getItem('consolidation_split_duration') || '0');
   });
 
-  // Reset state when modal opens
+  // Reset state when modal opens and initialize gooey tabs
   useEffect(() => {
     if (isOpen) {
       // Reset to default state with only Download Files tab active
       setSubtitleSource('original');
       setFileFormat('srt');
       setProcessType(null);
+      // Initialize pill animation after DOM paints
+      setTimeout(() => initTabPillAnimation('.download-tabs'), 30);
     }
   }, [isOpen]);
+
+  // Initialize gooey tabs for process type when visible
+  useEffect(() => {
+    if (isOpen && processType) {
+      setTimeout(() => initTabPillAnimation('.process-tabs'), 10);
+    }
+  }, [isOpen, processType]);
 
   // Close modal when clicking outside
   useEffect(() => {
@@ -142,9 +154,9 @@ const DownloadOptionsModal = ({
 
         <div className="modal-content">
           {/* Subtitle source selection */}
-          <div className="option-group horizontal-layout">
+          <div className="option-group horizontal-layout modal-subtitle-source">
             <h4>{t('download.subtitleSource', 'Subtitle Source')}</h4>
-            <div className="radio-group-base radio-group-horizontal">
+            <div className="radio-group-base radio-group-horizontal modal-radio-group">
               <label className={`radio-option-base ${!hasOriginal ? 'disabled' : ''}`}>
                 <input
                   type="radio"
@@ -174,35 +186,37 @@ const DownloadOptionsModal = ({
             </div>
           </div>
 
-          {/* Action tabs */}
-          <div className="tabs">
-            <div
-              className={`tab ${processType === null ? 'active' : ''}`}
+          {/* Action tabs (new input-tabs with gooey droplet) */}
+          <div className="input-tabs download-tabs" ref={downloadTabsRef}>
+            <button
+              type="button"
+              className={`tab-btn ${processType === null ? 'active' : ''}`}
               onClick={() => {
                 setFileFormat('srt');
                 setProcessType(null);
               }}
             >
               {t('download.downloadFiles', 'Download Files')}
-            </div>
-            <div
-              className={`tab ${processType !== null ? 'active' : ''}`}
+            </button>
+            <button
+              type="button"
+              className={`tab-btn ${processType !== null ? 'active' : ''}`}
               onClick={() => {
                 setFileFormat(null);
                 setProcessType('consolidate');
               }}
             >
               {t('download.processText', 'Process Text')}
-            </div>
+            </button>
           </div>
 
           {/* Tab-specific content area with consistent height */}
           <div className="tab-content-area">
             {/* File format options */}
             {fileFormat && (
-              <div className="option-group horizontal-layout">
+              <div className="option-group horizontal-layout modal-file-format">
                 <h4>{t('download.fileFormat', 'File Format')}</h4>
-                <div className="radio-group-base radio-group-horizontal">
+                <div className="radio-group-base radio-group-horizontal modal-radio-group">
                   <label className="radio-option-base">
                     <input
                       type="radio"
@@ -242,55 +256,46 @@ const DownloadOptionsModal = ({
             {/* Process options */}
             {processType && (
               <>
-              <div className="option-group two-column-layout constrained-height">
+              <div className="option-group">
                 <h4>{t('download.processType', 'Process Type')}</h4>
-                <div className="radio-group-base radio-group-two-columns">
-                  <label className="radio-option-base">
-                    <input
-                      type="radio"
-                      name="process-type"
-                      value="consolidate"
-                      checked={processType === 'consolidate'}
-                      onChange={() => {
-                        setProcessType('consolidate');
-                        // Close prompt editor if open to ensure correct prompt is loaded when reopened
-                        if (isPromptEditorOpen) setIsPromptEditorOpen(false);
-                      }}
-                    />
-                    <span className={`radio-option-card ${processType === 'consolidate' ? 'checked' : ''}`}>
-                      {t('download.consolidate', 'Complete Document (TXT)')}
-                      <div className="info-icon-container" title={t('download.consolidateExplanation', 'Converts subtitles into a coherent document, improving flow and readability while maintaining the original meaning.')}>
-                        <svg className="info-icon" viewBox="0 0 24 24" width="16" height="16" stroke="currentColor" strokeWidth="2" fill="none">
-                          <circle cx="12" cy="12" r="10"></circle>
-                          <line x1="12" y1="16" x2="12" y2="12"></line>
-                          <line x1="12" y1="8" x2="12.01" y2="8"></line>
-                        </svg>
-                      </div>
-                    </span>
-                  </label>
-                  <label className="radio-option-base">
-                    <input
-                      type="radio"
-                      name="process-type"
-                      value="summarize"
-                      checked={processType === 'summarize'}
-                      onChange={() => {
-                        setProcessType('summarize');
-                        // Close prompt editor if open to ensure correct prompt is loaded when reopened
-                        if (isPromptEditorOpen) setIsPromptEditorOpen(false);
-                      }}
-                    />
-                    <span className={`radio-option-card ${processType === 'summarize' ? 'checked' : ''}`}>
-                      {t('download.summarize', 'Summarize (TXT)')}
-                      <div className="info-icon-container" title={t('download.summarizeExplanation', 'Creates a concise summary of the main points and key information, about 1/3 the length of the original text.')}>
-                        <svg className="info-icon" viewBox="0 0 24 24" width="16" height="16" stroke="currentColor" strokeWidth="2" fill="none">
-                          <circle cx="12" cy="12" r="10"></circle>
-                          <line x1="12" y1="16" x2="12" y2="12"></line>
-                          <line x1="12" y1="8" x2="12.01" y2="8"></line>
-                        </svg>
-                      </div>
-                    </span>
-                  </label>
+                {/* Compact gooey tabs for process type */}
+                <div className="input-tabs process-tabs compact">
+                  <button
+                    type="button"
+                    className={`tab-btn ${processType === 'consolidate' ? 'active' : ''}`}
+                    onClick={() => {
+                      setProcessType('consolidate');
+                      if (isPromptEditorOpen) setIsPromptEditorOpen(false);
+                    }}
+                    title={t('download.consolidateExplanation', 'Converts subtitles into a coherent document, improving flow and readability while maintaining the original meaning.')}
+                  >
+                    <span className="tab-label">{t('download.consolidate', 'Complete Document (TXT)')}</span>
+                    <div className="info-icon-container">
+                      <svg className="info-icon" viewBox="0 0 24 24" width="16" height="16" stroke="currentColor" strokeWidth="2" fill="none">
+                        <circle cx="12" cy="12" r="10"></circle>
+                        <line x1="12" y1="16" x2="12" y2="12"></line>
+                        <line x1="12" y1="8" x2="12.01" y2="8"></line>
+                      </svg>
+                    </div>
+                  </button>
+                  <button
+                    type="button"
+                    className={`tab-btn ${processType === 'summarize' ? 'active' : ''}`}
+                    onClick={() => {
+                      setProcessType('summarize');
+                      if (isPromptEditorOpen) setIsPromptEditorOpen(false);
+                    }}
+                    title={t('download.summarizeExplanation', 'Creates a concise summary of the main points and key information, about 1/3 the length of the original text.')}
+                  >
+                    <span className="tab-label">{t('download.summarize', 'Summarize (TXT)')}</span>
+                    <div className="info-icon-container">
+                      <svg className="info-icon" viewBox="0 0 24 24" width="16" height="16" stroke="currentColor" strokeWidth="2" fill="none">
+                        <circle cx="12" cy="12" r="10"></circle>
+                        <line x1="12" y1="16" x2="12" y2="12"></line>
+                        <line x1="12" y1="8" x2="12.01" y2="8"></line>
+                      </svg>
+                    </div>
+                  </button>
                 </div>
               </div>
 

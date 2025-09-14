@@ -49,6 +49,25 @@
   border: 1px solid rgba(var(--md-primary-rgb), 0.1);
 }
 
+/* Gooey overlay (physics-driven) */
+.settings-tabs.goo-ready .pill-background { display: none; }
+.settings-tabs .pill-overlay {
+  position: absolute; inset: 0; pointer-events: none; z-index: 0;
+  filter: url(#goo);
+}
+.settings-tabs .pill-overlay .goo-blob {
+  position: absolute; top: 50%; transform: translateY(-50%);
+  height: 40px; border-radius: 999px;
+  background: radial-gradient(120% 100% at 50% 40%, rgba(var(--md-primary-container-rgb), 0.58) 0%, rgba(var(--md-primary-container-rgb), 0.46) 62%, rgba(var(--md-primary-container-rgb), 0.34) 100%);
+  box-shadow: 0 2px 8px rgba(var(--md-primary-rgb), 0.16), 0 1px 3px rgba(var(--md-primary-rgb), 0.1), inset 0 1px 1px rgba(255,255,255,0.08);
+  border: 1px solid rgba(var(--md-primary-rgb), 0.08);
+  will-change: left, width, transform;
+  transition: none; /* driven by JS */
+  backface-visibility: hidden;
+  contain: layout paint style size;
+}
+
+
 /* When there's an active tab, show the pill */
 .settings-tabs:has(.settings-tab.active) .pill-background {
   opacity: 1;

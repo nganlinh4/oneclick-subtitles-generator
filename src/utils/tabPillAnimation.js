@@ -7,14 +7,124 @@
  * Initialize the pill sliding animation for the given tabs container
  * @param {string} tabsSelector - CSS selector for the tabs container
  */
+// Ensure a reusable SVG goo filter exists in the DOM
+const ensureGooFilter = () => {
+  if (document.getElementById('goo-filter-defs')) return;
+  const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+  svg.setAttribute('id', 'goo-filter-defs');
+  svg.setAttribute('aria-hidden', 'true');
+  svg.setAttribute('focusable', 'false');
+  Object.assign(svg.style, { position: 'absolute', width: '0', height: '0', pointerEvents: 'none', visibility: 'hidden' });
+
+  svg.innerHTML = `
+    <defs>
+      <filter id="goo">
+        <feGaussianBlur in="SourceGraphic" stdDeviation="8" result="blur" />
+        <feColorMatrix in="blur" mode="matrix" values="
+          1 0 0 0 0
+          0 1 0 0 0
+          0 0 1 0 0
+          0 0 0 22 -10" result="goo" />
+        <feBlend in="SourceGraphic" in2="goo" />
+      </filter>
+    </defs>`;
+  document.body.appendChild(svg);
+};
+
+// Simple spring physics animator for goo blob (per-container)
+const gooSims = new WeakMap();
+
+const startGooSim = (tabContainer, targetLeft, targetWidth, dir) => {
+  const overlay = tabContainer.querySelector('.pill-overlay');
+  if (!overlay) return;
+  const blob = overlay.querySelector('.goo-blob');
+  if (!blob) return;
+
+  let sim = gooSims.get(tabContainer);
+  let now = performance.now();
+
+  if (!sim) {
+    const computed = getComputedStyle(blob);
+    const w0 = parseFloat(computed.width) || targetWidth;
+    // Compute current left relative to overlay
+    const bRect = blob.getBoundingClientRect();
+    const oRect = overlay.getBoundingClientRect();
+    let x0 = bRect.left - oRect.left;
+    if (!Number.isFinite(x0)) x0 = targetLeft;
+    sim = { x: x0, v: 0, w: w0, vw: 0, targetX: targetLeft, targetW: targetWidth, raf: 0 };
+    gooSims.set(tabContainer, sim);
+  } else {
+    sim.targetX = targetLeft;
+    sim.targetW = targetWidth;
+  }
+
+  function step(ts) {
+    const dt = Math.min(0.032, (ts - now) / 1000) || 0.016;
+    now = ts;
+
+    // Horizontal spring
+    const k = 120;   // stiffness
+    const c = 20;    // damping
+    const ax = -k * (sim.x - sim.targetX) - c * sim.v;
+    sim.v += ax * dt;
+    sim.x += sim.v * dt;
+
+    // Width spring coupled to distance AND velocity so the blend starts earlier
+    const kW = 220;
+    const cW = 24;
+    const dist = Math.abs(sim.targetX - sim.x);
+    const vel = Math.abs(sim.v);
+    const extra = Math.min(40, 0.35 * dist + 0.12 * vel); // cap extra stretch
+    const dynamicTargetW = sim.targetW + extra;
+    const aw = -kW * (sim.w - dynamicTargetW) - cW * sim.vw;
+    sim.vw += aw * dt;
+    sim.w += sim.vw * dt;
+
+    // Apply
+    blob.style.left = `${sim.x}px`;
+    blob.style.width = `${Math.max(28, sim.w)}px`;
+
+    // Velocity-based squish; faster move = more stretch, but keep it subtle
+    const speed = Math.min(900, Math.abs(sim.v) * 60);
+    const sx = 1 + (speed / 900) * 0.18;       // up to ~1.18x
+    const sy = 1 - (speed / 900) * 0.12;       // down to ~0.88x
+    const syClamped = Math.max(0.86, sy);
+    blob.style.transformOrigin = (dir >= 0 ? '0% 50%' : '100% 50%');
+    blob.style.transform = `translateY(-50%) scaleX(${sx.toFixed(3)}) scaleY(${syClamped.toFixed(3)})`;
+
+    const atRestX = Math.abs(sim.x - sim.targetX) < 0.5 && Math.abs(sim.v) < 5;
+    const atRestW = Math.abs(sim.w - sim.targetW) < 0.5 && Math.abs(sim.vw) < 5;
+    if (atRestX && atRestW) {
+      blob.style.transform = 'translateY(-50%) scaleX(1) scaleY(1)';
+      sim.raf = 0;
+      return;
+    }
+    sim.raf = requestAnimationFrame(step);
+  }
+
+  if (!sim.raf) sim.raf = requestAnimationFrame(step);
+};
+
 export const initTabPillAnimation = (tabsSelector = '.input-tabs') => {
   // Find all tab containers
   const tabContainers = document.querySelectorAll(tabsSelector);
 
   if (!tabContainers.length) return;
 
+  // Prepare SVG goo filter for gooey effect
+  ensureGooFilter();
+
   // For each tab container, set up the animation
   tabContainers.forEach(tabContainer => {
+    // Ensure goo overlay exists
+    if (!tabContainer.querySelector('.pill-overlay')) {
+      const overlay = document.createElement('div');
+      overlay.className = 'pill-overlay';
+      overlay.innerHTML = '<div class="goo-blob"></div>';
+      tabContainer.appendChild(overlay);
+      tabContainer.classList.add('goo-ready');
+    }
+
     // Initial positioning of the pill
     positionPillForActiveTab(tabContainer);
 
@@ -148,9 +258,28 @@ const positionPillForActiveTab = (tabContainer) => {
   const widthDifference = tabRect.width - (naturalWidth);
   left = left + (widthDifference / 2);
 
-  // Set the custom properties for the pill
+  // Determine direction and travel for liquid motion
+  const computed = getComputedStyle(tabContainer);
+  const prevLeftVal = parseFloat(computed.getPropertyValue('--pill-left')) || parseFloat(tabContainer.style.getPropertyValue('--pill-left')) || 0;
+  const newLeftVal = left - (pillPadding / 2);
+  const travel = Math.abs(newLeftVal - prevLeftVal);
+  const dir = (newLeftVal >= prevLeftVal) ? 1 : -1;
+  const delayMs = Math.round(Math.min(140, Math.max(70, travel * 0.25)));
+
+  // Motion tuning variables for CSS
+  tabContainer.style.setProperty('--pill-origin-x', dir >= 0 ? '0%' : '100%');
+  tabContainer.style.setProperty('--pill-left-delay', dir > 0 ? `${delayMs}ms` : '0ms');
+  tabContainer.style.setProperty('--pill-width-delay', dir > 0 ? '0ms' : `${delayMs}ms`);
+  tabContainer.style.setProperty('--pill-travel', `${travel}px`);
+
+  // Set the geometry variables
   tabContainer.style.setProperty('--pill-width', `${pillWidth}px`);
-  tabContainer.style.setProperty('--pill-left', `${left - (pillPadding / 2)}px`);
+  tabContainer.style.setProperty('--pill-left', `${newLeftVal}px`);
+
+
+  // Start physics-based goo animation (spring)
+  startGooSim(tabContainer, newLeftVal - 20, pillWidth + 40, dir);
+
 };
 
 export default initTabPillAnimation;

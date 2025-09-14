@@ -14,6 +14,8 @@ import React, { useEffect, useRef, useState } from 'react';
 const FloatingScrollbar = () => {
   const thumbRef = useRef(null);
   const containerRef = useRef(null);
+  const trackRef = useRef(null);
+  const trackHoldIntervalRef = useRef(null);
   const [isDragging, setIsDragging] = useState(false);
   const [scrollStartPosition, setScrollStartPosition] = useState(null);
   const [initialScrollTop, setInitialScrollTop] = useState(0);
@@ -132,6 +134,47 @@ const FloatingScrollbar = () => {
       setScrollStartPosition(null);
       document.body.style.userSelect = ''; // Restore text selection
     }
+    // Stop track hold scrolling
+    if (trackHoldIntervalRef.current) {
+      clearInterval(trackHoldIntervalRef.current);
+      trackHoldIntervalRef.current = null;
+    }
+  };
+
+  // Page-like scroll by viewport step
+  const pageScrollBy = (direction) => {
+    const { clientHeight } = document.documentElement;
+    const step = Math.max(clientHeight - 40, 40); // keep some overlap like native
+    window.scrollBy({ top: direction === 'down' ? step : -step, behavior: 'auto' });
+  };
+
+  // Handle clicking/holding on track to page scroll like native
+  const handleTrackMouseDown = (e) => {
+    if (!thumbRef.current || !containerRef.current) return;
+    e.preventDefault();
+
+    const thumbRect = thumbRef.current.getBoundingClientRect();
+    const clickedBelow = e.clientY > thumbRect.bottom;
+    const clickedAbove = e.clientY < thumbRect.top;
+
+    // Only act when clicking outside the thumb area
+    if (!clickedAbove && !clickedBelow) return;
+
+    const direction = clickedBelow ? 'down' : 'up';
+
+    // Perform an initial page step
+    pageScrollBy(direction);
+
+    // Ensure the scrollbar stays visible while holding
+    containerRef.current.classList.remove('fade-out');
+    containerRef.current.classList.remove('hidden');
+    containerRef.current.classList.add('scrolling');
+
+    // Start repeating page scroll while mouse is held down
+    if (trackHoldIntervalRef.current) {
+      clearInterval(trackHoldIntervalRef.current);
+    }
+    trackHoldIntervalRef.current = setInterval(() => pageScrollBy(direction), 120);
   };
 
   // Handle document mouse move for edge detection
@@ -295,6 +338,13 @@ const FloatingScrollbar = () => {
       ref={containerRef}
       className={`floating-scrollbar-container ${isScrolling ? 'scrolling' : ''} ${!isScrollNeededState ? 'hidden' : ''}`}
     >
+      {/* Visible track behind the thumb */}
+      <div
+        ref={trackRef}
+        className="floating-scrollbar-track"
+        onMouseDown={handleTrackMouseDown}
+      />
+      {/* Thumb */}
       <div
         ref={thumbRef}
         className={`floating-scrollbar-thumb ${isDragging ? 'dragging' : ''}`}

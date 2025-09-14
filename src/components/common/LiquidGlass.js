@@ -103,13 +103,13 @@ const LiquidGlass = ({
     const distanceToEdge = roundedRectSDF(
       ix,
       iy,
-      0.1,  // Fixed width for stronger edge effect
-      0.1,  // Fixed height for stronger edge effect
-      0.6   // Fixed radius for stronger edge effect
+      0.1, // width (edge band near boundary)
+      0.1, // height
+      0.1  // corner radius
     );
-    const displacement = smoothStep(0.9, 0, distanceToEdge - 0.1); // Fixed offset for stronger edge effect
-    const scaled = smoothStep(0, 0.9, displacement); // Removed effectIntensity multiplier to reduce zoom
-    return texture(ix * scaled + 0.3, iy * scaled + 0.3);
+    const displacement = smoothStep(0.9, -0.5, distanceToEdge - 0.2); // edge-only band
+    const scaled = smoothStep(0.3, 0.7, displacement); // softer center, less overall refraction
+    return texture(ix * scaled + 0.5, iy * scaled + 0.5);
   }, [roundedRectSDF, smoothStep, texture]);
 
   // Constrain position within viewport
