@@ -7,6 +7,9 @@ import QueueManagerPanel from './QueueManagerPanel';
 import LoadingIndicator from './common/LoadingIndicator';
 import CustomDropdown from './common/CustomDropdown';
 import '../styles/VideoRenderingSection.css';
+import Timeline from './timeline/Timeline';
+import '../styles/Timeline.css';
+
 
 const VideoRenderingSection = ({
   selectedVideo,
@@ -35,6 +38,7 @@ const VideoRenderingSection = ({
     return localStorage.getItem('videoRender_selectedNarration') || 'none';
   });
   const [renderSettings, setRenderSettings] = useState(() => {
+
     const saved = localStorage.getItem('videoRender_renderSettings');
     return saved ? JSON.parse(saved) : {
       resolution: '1080p',
@@ -50,6 +54,22 @@ const VideoRenderingSection = ({
     const saved = localStorage.getItem('videoRender_subtitleCustomization');
     return saved ? JSON.parse(saved) : defaultCustomization;
   });
+  // Timeline <-> Preview sync (top-level hooks)
+  const [previewCurrentTime, setPreviewCurrentTime] = useState(0); // seconds
+  const [previewDuration, setPreviewDuration] = useState(0); // seconds
+  const previewControlsRef = useRef(null);
+
+  // Persisted timeline clips
+  const [timelineClips, setTimelineClips] = useState(() => {
+    try {
+      const saved = localStorage.getItem('timeline_clips_v1');
+      return saved ? JSON.parse(saved) : [];
+    } catch { return []; }
+  });
+  useEffect(() => {
+    try { localStorage.setItem('timeline_clips_v1', JSON.stringify(timelineClips)); } catch {}
+  }, [timelineClips]);
+
   const [cropSettings, setCropSettings] = useState(() => {
     const saved = localStorage.getItem('videoRender_cropSettings');
     return saved ? JSON.parse(saved) : {
@@ -249,7 +269,7 @@ const VideoRenderingSection = ({
   useEffect(() => {
     localStorage.setItem('videoRender_subtitleCustomization', JSON.stringify(subtitleCustomization));
   }, [subtitleCustomization]);
-  
+
   useEffect(() => {
     localStorage.setItem('videoRender_cropSettings', JSON.stringify(cropSettings));
   }, [cropSettings]);
@@ -370,12 +390,12 @@ const VideoRenderingSection = ({
           if (line.startsWith('data: ')) {
             try {
               const data = JSON.parse(line.slice(6));
-              
+
               // Debug logging to understand what the server is sending during reconnection
               if (data.message && data.message.includes('Chrome')) {
                 console.log('[Chrome Download Debug - Reconnection] Server message:', data);
               }
-              
+
               // Also log any data with progress-related info during reconnection
               if (data.message && (data.message.includes('Mb/') || data.message.includes('download'))) {
                 console.log('[Progress Debug - Reconnection] Server message with download info:', data);
@@ -388,12 +408,12 @@ const VideoRenderingSection = ({
                 const { downloaded, total } = data.chromeDownload;
                 const downloadProgress = Math.round((downloaded / total) * 100);
                 console.log(`[Chrome Download Progress - Reconnection] ${downloaded}MB / ${total}MB = ${downloadProgress}%`);
-                
+
                 const chromeDownloadStatus = t('videoRendering.downloadingChrome', 'Downloading Chrome for Testing (first time only)');
-                
+
                 setRenderProgress(downloadProgress);
                 setRenderStatus(chromeDownloadStatus);
-                
+
                 setRenderQueue(prev => prev.map(item =>
                   item.id === queueItem.id
                     ? {
@@ -406,12 +426,12 @@ const VideoRenderingSection = ({
                 ));
               }
               // Handle Chrome download from other possible formats (fallback)
-              else if ((data.type === 'browser-download') || 
+              else if ((data.type === 'browser-download') ||
                   (data.message && (data.message.includes('Chrome Headless Shell') || data.message.includes('Chrome for Testing'))) ||
                   (data.message && data.message.includes('Downloading Chrome'))) {
                 let downloadProgress = 0;
                 let chromeDownloadStatus = '';
-                
+
                 if (data.type === 'browser-download' && data.downloaded && data.total) {
                 } else if (data.type === 'browser-download' && data.downloaded && data.total) {
                   // Format 2: { type: 'browser-download', downloaded: X, total: Y }
@@ -431,11 +451,11 @@ const VideoRenderingSection = ({
                     console.log(`[Chrome Download - Reconnection] Could not parse progress from message: "${data.message}"`);
                   }
                 }
-                
+
                 chromeDownloadStatus = t('videoRendering.downloadingChrome', 'Downloading Chrome for Testing (first time only)');
                 setRenderProgress(downloadProgress);
                 setRenderStatus(chromeDownloadStatus);
-                
+
                 setRenderQueue(prev => prev.map(item =>
                   item.id === queueItem.id
                     ? {
@@ -1128,15 +1148,15 @@ const VideoRenderingSection = ({
           if (line.startsWith('data: ')) {
             try {
               const data = JSON.parse(line.slice(6));
-              
+
               // LOG EVERYTHING to understand what server is actually sending
 
-              
+
               // Debug logging to understand what the server is sending
               if (data.message && data.message.includes('Chrome')) {
                 console.log('[Chrome Download Debug] Server message:', data);
               }
-              
+
               // Also log any data with progress-related info
               if (data.message && (data.message.includes('Mb/') || data.message.includes('download'))) {
                 console.log('[Progress Debug] Server message with download info:', data);
@@ -1149,13 +1169,13 @@ const VideoRenderingSection = ({
                 const { downloaded, total } = data.chromeDownload;
                 const downloadProgress = Math.round((downloaded / total) * 100);
                 console.log(`[Chrome Download Progress] ${downloaded}MB / ${total}MB = ${downloadProgress}%`);
-                
+
                 const chromeDownloadStatus = t('videoRendering.downloadingChrome', 'Downloading Chrome for Testing (first time only)');
-                
+
                 // Use real download progress (0-100%)
                 setRenderProgress(downloadProgress);
                 setRenderStatus(chromeDownloadStatus);
-                
+
                 // Update the queue item's progress and phase description
                 const targetQueueItem = queueItem || currentQueueItem;
                 if (targetQueueItem) {
@@ -1172,12 +1192,12 @@ const VideoRenderingSection = ({
                 }
               }
               // Handle Chrome download from other possible formats (fallback)
-              else if ((data.type === 'browser-download') || 
+              else if ((data.type === 'browser-download') ||
                   (data.message && (data.message.includes('Chrome Headless Shell') || data.message.includes('Chrome for Testing'))) ||
                   (data.message && data.message.includes('Downloading Chrome'))) {
                 let downloadProgress = 0;
                 let chromeDownloadStatus = '';
-                
+
                 if (data.type === 'browser-download' && data.downloaded && data.total) {
                 } else if (data.type === 'browser-download' && data.downloaded && data.total) {
                   // Format 2: { type: 'browser-download', downloaded: X, total: Y }
@@ -1197,13 +1217,13 @@ const VideoRenderingSection = ({
                     console.log(`[Chrome Download] Could not parse progress from message: "${data.message}"`);
                   }
                 }
-                
+
                 chromeDownloadStatus = t('videoRendering.downloadingChrome', 'Downloading Chrome for Testing (first time only)');
-                
+
                 // Use real download progress (0-100%) instead of mapping to render progress
                 setRenderProgress(downloadProgress);
                 setRenderStatus(chromeDownloadStatus);
-                
+
                 // Update the queue item's progress and phase description (use passed queueItem or fallback to currentQueueItem)
                 const targetQueueItem = queueItem || currentQueueItem;
                 if (targetQueueItem) {
@@ -1225,7 +1245,7 @@ const VideoRenderingSection = ({
                 // Reset progress to 0 after Chrome download completes and rendering begins
                 setRenderProgress(0);
                 setRenderStatus(bundlingStatus);
-                
+
                 // Update the queue item's progress and phase description (use passed queueItem or fallback to currentQueueItem)
                 const targetQueueItem = queueItem || currentQueueItem;
                 if (targetQueueItem) {
@@ -1247,7 +1267,7 @@ const VideoRenderingSection = ({
                 // Reset to 0% for composition phase after bundling, let server control the progress
                 setRenderProgress(0);
                 setRenderStatus(compositionStatus);
-                
+
                 // Update the queue item's progress and phase description (use passed queueItem or fallback to currentQueueItem)
                 const targetQueueItem = queueItem || currentQueueItem;
                 if (targetQueueItem) {
@@ -1794,6 +1814,11 @@ const VideoRenderingSection = ({
                 narrationVolume={renderSettings.narrationVolume}
                 cropSettings={cropSettings}
                 onCropChange={setCropSettings}
+                timelineClips={timelineClips}
+                onTimeUpdate={(sec)=> setPreviewCurrentTime(sec)}
+                onDurationChange={(sec)=> setPreviewDuration(sec)}
+                onSeek={(sec)=> setPreviewCurrentTime(sec)}
+                exposeControls={(api)=>{ previewControlsRef.current = api; }}
               />
             </div>
 
@@ -1815,7 +1840,16 @@ const VideoRenderingSection = ({
             </div>
           </div>
 
-
+          {/* Timeline (simple v1) */}
+          <div className="timeline-wrapper" style={{ marginTop: '16px' }}>
+            <Timeline
+              currentTimeSec={previewCurrentTime}
+              durationSec={previewDuration}
+              clips={timelineClips}
+              onClipsChange={setTimelineClips}
+              onSeek={(sec)=> previewControlsRef.current?.seekToSeconds?.(sec)}
+            />
+          </div>
 
           {/* Render Settings and Controls - compact single row */}
           <div className="rendering-row">

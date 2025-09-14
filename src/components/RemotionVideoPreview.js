@@ -18,7 +18,9 @@ const RemotionVideoPreview = ({
   onPause,
   onSeek,
   cropSettings,
-  onCropChange
+  onCropChange,
+  exposeControls,
+  timelineClips
 }) => {
   const { t } = useTranslation();
   const [videoUrl, setVideoUrl] = useState(null);
@@ -43,6 +45,22 @@ const RemotionVideoPreview = ({
     aspectRatio: null
   });
   const playerRef = useRef(null);
+
+  // Expose simple playback controls to parent (seek/play/pause)
+  useEffect(() => {
+    if (typeof exposeControls === 'function' && playerRef.current) {
+      const controls = {
+        play: () => playerRef.current?.play?.(),
+        pause: () => playerRef.current?.pause?.(),
+        seekToSeconds: (seconds) => {
+          const frameRate = subtitleCustomization?.frameRate || 30;
+          const frame = Math.max(0, Math.round(seconds * frameRate));
+          playerRef.current?.seekTo?.(frame);
+        },
+      };
+      exposeControls(controls);
+    }
+  }, [exposeControls, subtitleCustomization]);
 
 
   // Create video URL from file
@@ -389,6 +407,7 @@ const RemotionVideoPreview = ({
           originalAudioVolume: originalAudioVolume,
           narrationVolume: narrationVolume,
           cropSettings: (appliedCropSettings.width < 100 || appliedCropSettings.height < 100) ? appliedCropSettings : null,
+          timelineClips: timelineClips || [],
         }}
         onFrame={handlePlayerTimeUpdate}
         onPlay={handlePlay}

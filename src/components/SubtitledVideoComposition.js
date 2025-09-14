@@ -1,5 +1,5 @@
 import React, { useMemo } from 'react';
-import { AbsoluteFill, useCurrentFrame, Audio, Video, useVideoConfig } from 'remotion';
+import { AbsoluteFill, useCurrentFrame, Audio, Video, useVideoConfig, Sequence } from 'remotion';
 
 // Font styles with multilingual support
 const fontStyles = `
@@ -96,7 +96,8 @@ export const SubtitledVideoComposition = ({
   isVideoFile = false,
   originalAudioVolume = 100,
   narrationVolume = 100,
-  cropSettings
+  cropSettings,
+  timelineClips = []
 }) => {
   const frame = useCurrentFrame();
   const { fps, height: compositionHeight } = useVideoConfig();
@@ -351,6 +352,51 @@ export const SubtitledVideoComposition = ({
             }} />
           )
         )}
+        {/* Timeline clips rendering */}
+        {(timelineClips || []).map((clip) => {
+          const startFrame = Math.max(0, Math.round(((clip?.startMs || 0) / 1000) * fps));
+          const durationFrames = Math.max(1, Math.round((((clip?.endMs || clip?.startMs || 0) - (clip?.startMs || 0)) / 1000) * fps));
+          const kind = (clip?.kind || '').toLowerCase();
+          const src = clip?.src || clip?.url || null;
+          const key = clip?.id || `${kind}_${startFrame}_${durationFrames}`;
+          return (
+            <Sequence key={key} from={startFrame} durationInFrames={durationFrames}>
+              {kind === 'music' && src ? (
+                <Audio src={src} />
+              ) : kind === 'video' ? (
+                src ? (
+                  <Video src={src} muted style={{ width: '100%', height: '100%', objectFit: 'contain' }} />
+                ) : (
+                  <AbsoluteFill style={{ alignItems: 'flex-start', justifyContent: 'flex-start', padding: 16 }}>
+                    <div style={{ background: 'rgba(0,0,0,0.45)', color: '#fff', padding: '6px 10px', borderRadius: 6, fontSize: 20 }}>
+                      [Video clip]{clip?.label ? ` ${clip.label}` : ''}
+                    </div>
+                  </AbsoluteFill>
+                )
+              ) : kind === 'image' ? (
+                src ? (
+                  <AbsoluteFill style={{ alignItems: 'center', justifyContent: 'center' }}>
+                    <img src={src} alt={clip?.label || 'image'} style={{ maxWidth: '100%', maxHeight: '100%' }} />
+                  </AbsoluteFill>
+                ) : (
+                  <AbsoluteFill style={{ alignItems: 'flex-start', justifyContent: 'flex-start', padding: 16 }}>
+                    <div style={{ background: 'rgba(255,255,255,0.1)', color: '#fff', padding: '6px 10px', borderRadius: 6, fontSize: 20, border: '1px solid rgba(255,255,255,0.25)' }}>
+                      [Image clip]{clip?.label ? ` ${clip.label}` : ''}
+                    </div>
+                  </AbsoluteFill>
+                )
+              ) : (
+                // default to text overlay
+                <AbsoluteFill style={{ alignItems: 'flex-start', justifyContent: 'flex-start', padding: 16, pointerEvents: 'none' }}>
+                  <div style={{ background: 'rgba(0,0,0,0.45)', color: '#fff', padding: '6px 10px', borderRadius: 6, fontSize: 24 }}>
+                    {clip?.text || clip?.label || 'Text'}
+                  </div>
+                </AbsoluteFill>
+              )}
+            </Sequence>
+          );
+        })}
+
 
         {/* Subtitle container */}
         <div
