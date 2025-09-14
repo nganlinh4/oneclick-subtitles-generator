@@ -495,6 +495,12 @@ const AppLayout = ({
         <VideoProcessingOptionsModal
           isOpen={showProcessingModal}
           onClose={() => {
+            try {
+              const reason = sessionStorage.getItem('processing_modal_open_reason');
+              if (reason === 'retry-offline' && selectedSegment && typeof selectedSegment.start === 'number' && typeof selectedSegment.end === 'number') {
+                window.dispatchEvent(new CustomEvent('retry-offline-modal-closed', { detail: { start: selectedSegment.start, end: selectedSegment.end, confirmed: false } }));
+              }
+            } catch {}
             setShowProcessingModal(false);
             setSelectedSegment(null);
           }}

@@ -72,6 +72,7 @@ const TimelineVisualization = ({
 
   // Processing animation effect moved below (after retryingOfflineKeys is declared) to avoid TDZ
 
+
   // Handle drag hint animation - show when segment selection is enabled but no dragging has been done
   useEffect(() => {
     if (onSegmentSelect && !hasDraggedInSession) {
@@ -478,6 +479,22 @@ const TimelineVisualization = ({
     };
   }, []);
 
+  // Stop retry animation if the processing modal is closed without confirming (cancelled)
+  useEffect(() => {
+    const onRetryModalClosed = (e) => {
+      const d = e && e.detail;
+      if (d && typeof d.start === 'number' && typeof d.end === 'number' && (d.confirmed === false)) {
+        const key = `${d.start}-${d.end}`;
+        setRetryingOfflineKeys(prev => prev.filter(k => k !== key));
+      }
+    };
+    window.addEventListener('retry-offline-modal-closed', onRetryModalClosed);
+    return () => {
+      window.removeEventListener('retry-offline-modal-closed', onRetryModalClosed);
+    };
+  }, []);
+
+
   const isClickingInsideRef = useRef(false); // Track if we're clicking inside the range
 
   // Notify parent component when selected range changes
@@ -564,6 +581,7 @@ const TimelineVisualization = ({
         ...visibleTimeRange,
         // Keep a slight top padding (time markers), do not cover segments
         topPadding: 25
+
       },
       effectivePanOffset,
       tempPanOffset !== null, // isActivePanning
@@ -661,6 +679,7 @@ const TimelineVisualization = ({
       const dragHintAnimation = dragHintAnimationRef2.current;
       if (dragHintAnimation) {
         cancelAnimationFrame(dragHintAnimation);
+
       }
     };
   }, []);
@@ -751,6 +770,100 @@ const TimelineVisualization = ({
         }
       }
 
+  /*
+
+  // Body-level retry overlay layer (imperative, immune to canvas animation re-renders)
+  const retryOverlayContainerRef = useRef(null);
+  const retryOverlayWrapperRef = useRef(null);
+  const retryOverlayButtonRef = useRef(null);
+  const currentHoverRef = useRef(null);
+  const retryingKeysRef = useRef([]);
+  const retryHandlerRef = useRef(null);
+
+  useEffect(() => { retryingKeysRef.current = retryingOfflineKeys || []; }, [retryingOfflineKeys]);
+  useEffect(() => { retryHandlerRef.current = handleRetryOfflineRange; }, [handleRetryOfflineRange]);
+
+  // Create the overlay layer once
+  useEffect(() => {
+    if (retryOverlayContainerRef.current) return;
+    const container = document.createElement('div');
+    Object.assign(container.style, { position: 'fixed', inset: '0px', pointerEvents: 'none', zIndex: '2147483646' });
+
+    const wrapper = document.createElement('div');
+    Object.assign(wrapper.style, { position: 'absolute', top: '0px', left: '0px', visibility: 'hidden', pointerEvents: 'none' });
+
+    const btn = document.createElement('button');
+    btn.className = 'btn-base btn-primary btn-small';
+    btn.title = t('timeline.retryFromCache', 'Retry this cut (reuse cached clip)');
+    Object.assign(btn.style, { width: '30px', height: '30px', minWidth: '30px', padding: '0px', borderRadius: '50%', display: 'flex', alignItems: 'center', justifyContent: 'center', pointerEvents: 'auto' });
+    btn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      const hover = currentHoverRef.current; if (!hover) return;
+      const key = `${hover.start}-${hover.end}`;
+      if (retryingKeysRef.current.includes(key)) return;
+      if (retryHandlerRef.current) retryHandlerRef.current(hover);
+    });
+    btn.innerHTML = '<svg xmlns=\"http://www.w3.org/2000/svg\" height=\"16\" viewBox=\"0 -960 960 960\" width=\"16\" aria-hidden style=\"color: var(--md-on-primary)\"><path fill=\"currentColor\" d=\"M289-482q0 9 1 17.5t1 16.5q5 24-2 50t-31 39q-23 12-48 4t-33-31q-7-23-11.5-46.5T161-482q0-128 89-221.5T465-799l-3-4q-16-15-15.5-33.5T463-871q15-15 34-15t34 15l91 91q19 19 19 45t-19 46l-92 91q-15 15-33 14.5T464-599q-16-15-15.5-34.5T464-668l2-2h3q-75 1-127.5 56.5T289-482Zm382 3q0-9-1-17t0-16q-5-26 2.5-51t30.5-39q23-13 47-6t32 29q7 24 12 48t5 52q0 126-89 221t-215 96l2 3q17 15 16 34t-16 34q-16 16-34.5 16T428-91l-91-90q-19-20-18.5-45.5T337-271l93-91q15-15 33.5-16t34.5 15q16 15 16 34t-16 35l-4 4h-3q75-1 127.5-57T671-479Z\"/></svg>';
+
+    wrapper.appendChild(btn);
+    container.appendChild(wrapper);
+    document.body.appendChild(container);
+
+    retryOverlayContainerRef.current = container;
+    retryOverlayWrapperRef.current = wrapper;
+    retryOverlayButtonRef.current = btn;
+
+    return () => {
+      try { btn.remove(); wrapper.remove(); container.remove(); } catch {}
+      retryOverlayContainerRef.current = null;
+      retryOverlayWrapperRef.current = null;
+      retryOverlayButtonRef.current = null;
+    };
+  }, [t]);
+
+  // Update overlay position/visibility when hover or view changes (ignore animation ticks)
+  useEffect(() => {
+    currentHoverRef.current = hoveredOfflineRange;
+    const wrapper = retryOverlayWrapperRef.current;
+    const btn = retryOverlayButtonRef.current;
+    const canvas = timelineRef.current;
+    if (!wrapper || !btn || !canvas) return;
+
+    const hover = hoveredOfflineRange;
+    if (!hover) {
+      wrapper.style.visibility = 'hidden';
+      wrapper.style.pointerEvents = 'none';
+      return;
+    }
+
+    const key = `${hover.start}-${hover.end}`;
+    if ((retryingOfflineKeys || []).includes(key)) {
+      wrapper.style.visibility = 'hidden';
+      wrapper.style.pointerEvents = 'none';
+      return;
+    }
+
+    const width = canvas.clientWidth || 1;
+    const height = canvas.clientHeight || 0;
+    const bounds = canvas.getBoundingClientRect();
+    const { start: visStart, end: visEnd } = getTimeRange();
+    const toPx = (t) => ((t - visStart) / Math.max(0.0001, (visEnd - visStart))) * width;
+    const mid = (hover.start + hover.end) / 2;
+    const timeMarkerSpace = 25;
+    const availableHeight = Math.max(0, height - timeMarkerSpace);
+    const centerY = timeMarkerSpace + (availableHeight / 2);
+    const xPx = Math.max(0, Math.min(width, toPx(mid)));
+
+    wrapper.style.left = `${bounds.left + xPx - 18}px`;
+    wrapper.style.top = `${bounds.top + centerY - 18}px`;
+    wrapper.style.visibility = 'visible';
+    wrapper.style.pointerEvents = 'none';
+
+
+    btn.style.pointerEvents = 'auto';
+  }, [hoveredOfflineRange, panOffset, zoom, lyrics, getTimeRange, retryingOfflineKeys]);
+  */
+
       // Ctrl+A to select entire video range
       if (e.ctrlKey && e.key === 'a' && onSegmentSelect && duration) {
         e.preventDefault(); // Prevent default browser select all
@@ -809,12 +922,101 @@ const TimelineVisualization = ({
         }, 500); // 0.5 second delay to show blue highlight
       }
     };
-
     window.addEventListener('keydown', handleKeyDown);
     return () => {
       window.removeEventListener('keydown', handleKeyDown);
     };
   }, [renderTimeline, onSegmentSelect, duration, lyrics]);
+
+
+  // Body-level retry overlay layer (imperative, immune to canvas animation re-renders)
+  const retryOverlayContainerRef = useRef(null);
+  const retryOverlayWrapperRef = useRef(null);
+  const retryOverlayButtonRef = useRef(null);
+  const currentHoverRef = useRef(null);
+  const retryingKeysRef = useRef([]);
+  const retryHandlerRef = useRef(null);
+
+  useEffect(() => { retryingKeysRef.current = retryingOfflineKeys || []; }, [retryingOfflineKeys]);
+  useEffect(() => { retryHandlerRef.current = handleRetryOfflineRange; }, [handleRetryOfflineRange]);
+
+  // Create the overlay layer once
+  useEffect(() => {
+    if (retryOverlayContainerRef.current) return;
+    const container = document.createElement('div');
+    Object.assign(container.style, { position: 'fixed', inset: '0px', pointerEvents: 'none', zIndex: '2147483646' });
+
+    const wrapper = document.createElement('div');
+    Object.assign(wrapper.style, { position: 'absolute', top: '0px', left: '0px', visibility: 'hidden', pointerEvents: 'none' });
+
+    const btn = document.createElement('button');
+    btn.className = 'btn-base btn-primary btn-small';
+    btn.title = t('timeline.retryFromCache', 'Retry this cut (reuse cached clip)');
+    Object.assign(btn.style, { width: '30px', height: '30px', minWidth: '30px', padding: '0px', borderRadius: '50%', display: 'flex', alignItems: 'center', justifyContent: 'center', pointerEvents: 'auto' });
+    btn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      const hover = currentHoverRef.current; if (!hover) return;
+      const key = `${hover.start}-${hover.end}`;
+      if (retryingKeysRef.current.includes(key)) return;
+      if (retryHandlerRef.current) retryHandlerRef.current(hover);
+    });
+    btn.innerHTML = '<svg xmlns="http://www.w3.org/2000/svg" height="16" viewBox="0 -960 960 960" width="16" aria-hidden style="color: var(--md-on-primary)"><path fill="currentColor" d="M289-482q0 9 1 17.5t1 16.5q5 24-2 50t-31 39q-23 12-48 4t-33-31q-7-23-11.5-46.5T161-482q0-128 89-221.5T465-799l-3-4q-16-15-15.5-33.5T463-871q15-15 34-15t34 15l91 91q19 19 19 45t-19 46l-92 91q-15 15-33 14.5T464-599q-16-15-15.5-34.5T464-668l2-2h3q-75 1-127.5 56.5T289-482Zm382 3q0-9-1-17t0-16q-5-26 2.5-51t30.5-39q23-13 47-6t32 29q7 24 12 48t5 52q0 126-89 221t-215 96l2 3q17 15 16 34t-16 34q-16 16-34.5 16T428-91l-91-90q-19-20-18.5-45.5T337-271l93-91q15-15 33.5-16t34.5 15q16 15 16 34t-16 35l-4 4h-3q75-1 127.5-57T671-479Z"/></svg>';
+
+    wrapper.appendChild(btn);
+    container.appendChild(wrapper);
+    document.body.appendChild(container);
+
+    retryOverlayContainerRef.current = container;
+    retryOverlayWrapperRef.current = wrapper;
+    retryOverlayButtonRef.current = btn;
+
+    return () => {
+      try { btn.remove(); wrapper.remove(); container.remove(); } catch {}
+      retryOverlayContainerRef.current = null;
+      retryOverlayWrapperRef.current = null;
+      retryOverlayButtonRef.current = null;
+    };
+  }, [t]);
+
+  // Update overlay position/visibility when hover or view changes (ignore animation ticks)
+  useEffect(() => {
+    currentHoverRef.current = hoveredOfflineRange;
+    const wrapper = retryOverlayWrapperRef.current;
+    const btn = retryOverlayButtonRef.current;
+    const canvas = timelineRef.current;
+    if (!wrapper || !btn || !canvas) return;
+
+    const hover = hoveredOfflineRange;
+    if (!hover) {
+      wrapper.style.visibility = 'hidden';
+      wrapper.style.pointerEvents = 'none';
+      return;
+    }
+
+    const key = `${hover.start}-${hover.end}`;
+    if ((retryingOfflineKeys || []).includes(key)) {
+      wrapper.style.visibility = 'hidden';
+      wrapper.style.pointerEvents = 'none';
+      return;
+    }
+
+    const width = canvas.clientWidth || 1;
+    const height = canvas.clientHeight || 0;
+    const bounds = canvas.getBoundingClientRect();
+    const { start: visStart, end: visEnd } = getTimeRange();
+    const toPx = (t) => ((t - visStart) / Math.max(0.0001, (visEnd - visStart))) * width;
+    const mid = (hover.start + hover.end) / 2;
+    const timeMarkerSpace = 25;
+    const availableHeight = Math.max(0, height - timeMarkerSpace);
+    const centerY = timeMarkerSpace + (availableHeight / 2);
+    const xPx = Math.max(0, Math.min(width, toPx(mid)));
+
+    wrapper.style.left = `${bounds.left + xPx - 18}px`;
+    wrapper.style.top = `${bounds.top + centerY - 18}px`;
+    wrapper.style.visibility = 'visible';
+    wrapper.style.pointerEvents = 'none';
+    btn.style.pointerEvents = 'auto';
+  }, [hoveredOfflineRange, panOffset, zoom, lyrics, getTimeRange, retryingOfflineKeys]);
 
   // Handle timeline updates
   useEffect(() => {
@@ -1274,7 +1476,10 @@ const TimelineVisualization = ({
         const bounds = canvas.getBoundingClientRect();
         const style = computeStyleRef.current(bounds);
         if (style && el) Object.assign(el.style, style);
-        if (el.style.visibility !== 'visible') el.style.visibility = 'visible';
+        // Only interactable/visible when there is actual child content (e.g., a button)
+        const hasChild = !!(el && el.firstElementChild);
+        el.style.visibility = hasChild ? 'visible' : 'hidden';
+        el.style.pointerEvents = hasChild ? 'auto' : 'none';
       };
       const schedule = () => {
         if (rafId) cancelAnimationFrame(rafId);
@@ -1313,11 +1518,10 @@ const TimelineVisualization = ({
 
   return (
     <div className="timeline-container" style={{ position: 'relative' }}>
-      {/* Clear offline segments button (portal in timeline-header-overlays-root) */}
-      {offlineSegments.length > 0 && (() => {
+      {/* Clear offline segments button (hidden during processing/retry to avoid blocking) */}
+      {offlineSegments.length > 0 && (retryingOfflineKeys.length === 0) && (() => {
         const canvas = timelineRef.current;
-        const overlayRoot = document.getElementById('timeline-header-overlays-root');
-        if (!overlayRoot || !canvas) return null;
+        if (!canvas) return null;
         const computeStyle = (bounds) => ({ top: `${(bounds.top || 0) - 36}px`, left: `${(bounds.left || 0) + 8}px` });
         const overlay = (
           <OverlayFollower canvasRef={timelineRef} computeStyle={computeStyle}>
@@ -1333,49 +1537,14 @@ const TimelineVisualization = ({
             </button>
           </OverlayFollower>
         );
-        return createPortal(overlay, overlayRoot);
+        return createPortal(overlay, document.body);
       })() }
 
       {/* Hover refresh icon (portal) at colorful bits' vertical center */}
-      {hoveredOfflineRange && (() => {
-        const canvas = timelineRef.current;
-        const overlayRoot = document.getElementById('timeline-header-overlays-root');
-        if (!overlayRoot || !canvas) return null;
-        const rangeKey = `${hoveredOfflineRange.start}-${hoveredOfflineRange.end}`;
-        const isRetrying = retryingOfflineKeys.includes(rangeKey);
-        const computeStyle = (bounds) => {
-          const width = canvas?.clientWidth || 1;
-          const height = canvas?.clientHeight || 0;
-          const { start: visStart, end: visEnd } = getTimeRange();
-          const toPx = (t) => ((t - visStart) / Math.max(0.0001, (visEnd - visStart))) * width;
-          const mid = (hoveredOfflineRange.start + hoveredOfflineRange.end) / 2;
-          const timeMarkerSpace = 25;
-          const availableHeight = Math.max(0, height - timeMarkerSpace);
-          const centerY = timeMarkerSpace + (availableHeight / 2);
-          const xPx = Math.max(0, Math.min(width, toPx(mid)));
-          return { top: `${(bounds.top || 0) + centerY - 18}px`, left: `${(bounds.left || 0) + xPx - 18}px` };
-        };
-        const overlay = (
-          <OverlayFollower canvasRef={timelineRef} computeStyle={computeStyle} deps={[hoveredOfflineRange, retryingOfflineKeys, panOffset, zoom, lyrics]}>
-            {!isRetrying && (
-              <button
-                className="btn-base btn-primary btn-small"
-                title={t('timeline.retryFromCache', 'Retry this cut (reuse cached clip)')}
-                onClick={(e) => { e.stopPropagation(); handleRetryOfflineRange(hoveredOfflineRange); }}
-                style={{ width: 30, height: 30, minWidth: 30, padding: 0, borderRadius: '50%', display: 'flex', alignItems: 'center', justifyContent: 'center' }}
-              >
-                <svg xmlns="http://www.w3.org/2000/svg" height="16" viewBox="0 -960 960 960" width="16" aria-hidden style={{ color: 'var(--md-on-primary)' }}>
-                  <path fill="currentColor" d="M289-482q0 9 1 17.5t1 16.5q5 24-2 50t-31 39q-23 12-48 4t-33-31q-7-23-11.5-46.5T161-482q0-128 89-221.5T465-799l-3-4q-16-15-15.5-33.5T463-871q15-15 34-15t34 15l91 91q19 19 19 45t-19 46l-92 91q-15 15-33 14.5T464-599q-16-15-15.5-34.5T464-668l2-2h3q-75 1-127.5 56.5T289-482Zm382 3q0-9-1-17t0-16q-5-26 2.5-51t30.5-39q23-13 47-6t32 29q7 24 12 48t5 52q0 126-89 221t-215 96l2 3q17 15 16 34t-16 34q-16 16-34.5 16T428-91l-91-90q-19-20-18.5-45.5T337-271l93-91q15-15 33.5-16t34.5 15q16 15 16 34t-16 35l-4 4h-3q75-1 127.5-57T671-479Z"/>
-                </svg>
-              </button>
-            )}
-          </OverlayFollower>
-        );
-        return createPortal(overlay, overlayRoot);
-      })()}
+      {/* Retry button is rendered via a dedicated body-level layer, independent of canvas animation */}
 
       {/* Range action header placed vertically above the timeline canvas */}
-      {actionBarRange && (() => {
+      {actionBarRange && (retryingOfflineKeys.length === 0) && (() => {
         const canvas = timelineRef.current;
         const { start: visStart, end: visEnd } = getTimeRange();
         const width = canvas?.clientWidth || 1;
@@ -1457,8 +1626,7 @@ const TimelineVisualization = ({
           document.addEventListener('touchcancel', onUp);
         };
 
-        const overlayRoot = document.getElementById('timeline-header-overlays-root');
-        if (!overlayRoot || !canvas) return null;
+        if (!canvas) return null;
         const computeStyle = (bounds) => ({ top: `${(bounds.top || 0) - 36}px`, left: `${(bounds.left || 0) + barLeft}px` });
 
         const overlay = (
@@ -1543,7 +1711,7 @@ const TimelineVisualization = ({
           </OverlayFollower>
         );
 
-        return createPortal(overlay, overlayRoot);
+        return createPortal(overlay, document.body);
 
       })()}
 

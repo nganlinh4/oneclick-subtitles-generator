@@ -196,7 +196,7 @@ export const processSegmentWithStreaming = async (file, segment, options, setSta
 
           // Normalize potential relative times to absolute BEFORE filtering/clipping
           let filteredSubtitles = data.subtitles;
-          if (isGemini20Model && data.subtitles && data.subtitles.length > 0) {
+          if (data.subtitles && data.subtitles.length > 0) {
             const segmentStart = segment.start;
             const segmentEnd = segment.end;
             const segDuration = segmentEnd - segmentStart;
@@ -259,7 +259,7 @@ export const processSegmentWithStreaming = async (file, segment, options, setSta
 
           // Normalize potential relative times to absolute BEFORE final filtering/clipping
           let filteredFinal = finalSubtitles;
-          if (isGemini20Model && finalSubtitles && finalSubtitles.length > 0) {
+          if (finalSubtitles && finalSubtitles.length > 0) {
             const segmentStart = segment.start;
             const segmentEnd = segment.end;
             const segDuration = segmentEnd - segmentStart;

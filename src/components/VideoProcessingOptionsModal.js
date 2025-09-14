@@ -819,8 +819,10 @@ const VideoProcessingOptionsModal = ({
     // In retry-from-cache mode, force old method and prevent further splitting
     if (retryLock) {
       options.inlineExtraction = true;
-      const segLen = Math.max(1, Math.round((selectedSegment?.end || 0) - (selectedSegment?.start || 0)));
-      options.maxDurationPerRequest = segLen; // seconds
+      // Ensure no parallel splitting: set window >= exact segment length
+      const segLenExact = Math.max(0, (selectedSegment?.end || 0) - (selectedSegment?.start || 0));
+      const segLenCeil = Math.max(1, Math.ceil(segLenExact + 0.001)); // avoid float rounding to smaller int
+      options.maxDurationPerRequest = segLenCeil; // seconds (>= duration) → single request
       options.retryFromCache = true;
     }
 

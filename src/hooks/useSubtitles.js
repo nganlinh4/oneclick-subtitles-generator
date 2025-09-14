@@ -1153,12 +1153,25 @@ export const useSubtitles = (t) => {
 
                 // Ensure final result is applied even if no progressive updates arrived
                 if (!appliedAnyUpdate && Array.isArray(finalSubtitles) && finalSubtitles.length > 0) {
+                    // Safety: ensure final results are absolute-time. If results look relative to the cut,
+                    // offset them by the segment start before merging.
+                    const segDuration = (segment.end - segment.start);
+                    const maxEndRaw = Math.max(...finalSubtitles.map(s => s.end || 0));
+                    const looksRelative = maxEndRaw <= (segDuration + 1);
+                    const adjustedFinal = looksRelative
+                      ? finalSubtitles.map(s => ({
+                          ...s,
+                          start: (s.start || 0) + segment.start,
+                          end: (s.end || 0) + segment.start
+                        }))
+                      : finalSubtitles;
+
                     setSubtitlesData(current => {
                         const existingSubtitles = current || [];
                         const nonOverlappingSubtitles = existingSubtitles.filter(sub => {
                             return sub.end <= segment.start || sub.start >= segment.end;
                         });
-                        return [...nonOverlappingSubtitles, ...finalSubtitles].sort((a, b) => a.start - b.start);
+                        return [...nonOverlappingSubtitles, ...adjustedFinal].sort((a, b) => a.start - b.start);
                     });
                 }
 
