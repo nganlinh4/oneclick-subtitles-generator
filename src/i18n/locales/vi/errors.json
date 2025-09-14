@@ -4,6 +4,8 @@
   "invalidFile": "Định dạng hoặc kích thước tập tin không hợp lệ. Kiểm tra các định dạng được hỗ trợ.",
   "geminiOverloaded": "Mô hình mạnh có xu hướng bị quá tải, vui lòng cân nhắc sử dụng mô hình khác và thử lại, hoặc thử giảm thời lượng phân đoạn. Cách khác: tạo Google Cloud Project mới và lấy API Key.",
   "tokenLimitExceeded": "Phần video quá lớn để Gemini xử lý. Vui lòng thử với video ngắn hơn hoặc chất lượng video thấp hơn.",
+  "tokenLimitExceededCounts": "Phần video quá lớn để Gemini xử lý (độ dài yêu cầu {{required}} token, độ dài giới hạn {{limit}} token). Vui lòng giảm FPS/chất lượng hoặc rút ngắn độ dài mỗi request rồi thử lại.",
+
   "fileSizeTooLarge": "Kích thước tập tin ({{size}}MB) vượt quá giới hạn đề nghị {{maxSize}}MB. Vui lòng sử dụng tập tin nhỏ hơn hoặc video chất lượng thấp hơn.",
   "youtubeAuthRequired": "Yêu cầu xác thực YouTube. Vui lòng thiết lập OAuth trong cài đặt.",
   "youtubeApiKeyRequired": "Vui lòng cài đặt khóa API YouTube trong cài đặt để sử dụng ứng dụng này.",

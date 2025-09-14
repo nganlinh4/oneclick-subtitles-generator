@@ -50,6 +50,16 @@ const VideoRenderingSection = ({
     const saved = localStorage.getItem('videoRender_subtitleCustomization');
     return saved ? JSON.parse(saved) : defaultCustomization;
   });
+  const [cropSettings, setCropSettings] = useState(() => {
+    const saved = localStorage.getItem('videoRender_cropSettings');
+    return saved ? JSON.parse(saved) : {
+      x: 0,
+      y: 0,
+      width: 100,
+      height: 100,
+      aspectRatio: null
+    };
+  });
   const [renderQueue, setRenderQueue] = useState([]);
   const [currentQueueItem, setCurrentQueueItem] = useState(null);
   const [isDragging, setIsDragging] = useState(false);
@@ -239,6 +249,10 @@ const VideoRenderingSection = ({
   useEffect(() => {
     localStorage.setItem('videoRender_subtitleCustomization', JSON.stringify(subtitleCustomization));
   }, [subtitleCustomization]);
+  
+  useEffect(() => {
+    localStorage.setItem('videoRender_cropSettings', JSON.stringify(cropSettings));
+  }, [cropSettings]);
   useEffect(() => {
     localStorage.setItem('videoRender_leftPanelWidth', leftPanelWidth.toString());
   }, [leftPanelWidth]);
@@ -439,7 +453,7 @@ const VideoRenderingSection = ({
 
                 // Simple debug to see if frame data is received
                 if (data.renderedFrames && data.durationInFrames) {
-                  console.log(`Frames: ${data.renderedFrames}/${data.durationInFrames}`);
+
                 }
 
                 setRenderQueue(prev => prev.map(item =>
@@ -940,6 +954,7 @@ const VideoRenderingSection = ({
       subtitles: selectedSubtitles,
       settings: renderSettings,
       customization: subtitleCustomization,
+      cropSettings: cropSettings,
       status: isRendering ? 'pending' : 'processing',
       progress: 0,
       timestamp: Date.now(), // Store as timestamp number, not formatted string
@@ -1058,7 +1073,8 @@ const VideoRenderingSection = ({
         lyrics: currentSubtitles,
         metadata: {
           ...renderSettings,
-          subtitleCustomization: queueItem.customization // Include subtitle customization in metadata
+          subtitleCustomization: queueItem.customization, // Include subtitle customization in metadata
+          cropSettings: queueItem.cropSettings // Include crop settings in metadata
         },
         narrationUrl: narrationUrl, // Use HTTP URL instead of blob URL
         isVideoFile: true
@@ -1114,7 +1130,7 @@ const VideoRenderingSection = ({
               const data = JSON.parse(line.slice(6));
               
               // LOG EVERYTHING to understand what server is actually sending
-              console.log('[SERVER SSE DATA]', JSON.stringify(data));
+
               
               // Debug logging to understand what the server is sending
               if (data.message && data.message.includes('Chrome')) {
@@ -1253,7 +1269,7 @@ const VideoRenderingSection = ({
 
                 // Simple debug to see if frame data is received
                 if (data.renderedFrames && data.durationInFrames) {
-                  console.log(`Main render frames: ${data.renderedFrames}/${data.durationInFrames}`);
+
                 }
 
                 // Update the queue item's progress (use passed queueItem or fallback to currentQueueItem)
@@ -1776,6 +1792,8 @@ const VideoRenderingSection = ({
                 }}
                 originalAudioVolume={renderSettings.originalAudioVolume}
                 narrationVolume={renderSettings.narrationVolume}
+                cropSettings={cropSettings}
+                onCropChange={setCropSettings}
               />
             </div>
 

@@ -126,7 +126,7 @@ export const animateZoom = (
     return;
   }
 
-  console.log('[Timeline] Zoom centering on time:', currentTime.toFixed(2), 's, zoom:', targetZoom);
+
 
   // Calculate timeline end
   const maxLyricTime = lyrics.length > 0
@@ -144,7 +144,7 @@ export const animateZoom = (
     timelineEnd - newVisibleDuration
   ));
 
-  console.log('[Timeline] Setting pan offset to:', newPanOffset.toFixed(2), 's to center on playhead');
+
 
   // Update zoom first
   currentZoomRef.current = targetZoom;

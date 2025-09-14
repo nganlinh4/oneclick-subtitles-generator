@@ -55,7 +55,7 @@
   display: flex;
   flex-direction: column; /* Stack content vertically */
   justify-content: space-between;
-  border-radius: 32px;
+  border-radius: 28px;
   background-color: var(--md-surface-1);
   border: 1px solid var(--md-outline-variant);
   box-shadow: var(--md-elevation-level1);
@@ -123,7 +123,7 @@
 /* Material Design 3 container for lyrics - enhanced styling */
 .lyrics-container-wrapper {
   border: 1px solid var(--md-outline-variant);
-  border-radius: var(--card-border-radius);
+  border-radius: 28px;
   background-color: var(--md-surface-1);
   transition: border-color var(--transition-speed), background-color var(--transition-speed), box-shadow var(--transition-speed);
   box-shadow: var(--md-elevation-level2);

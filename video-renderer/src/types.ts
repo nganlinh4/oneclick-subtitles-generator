@@ -17,6 +17,16 @@ export interface VideoMetadata {
   originalAudioVolume: number; // Volume for original audio/video (0-100)
   narrationVolume: number; // Volume for narration audio (0-100)
   subtitleCustomization?: SubtitleCustomization; // Subtitle styling options
+  cropSettings?: CropSettings; // Video crop settings
+}
+
+// Crop settings interface
+export interface CropSettings {
+  x: number; // X position as percentage (0-100)
+  y: number; // Y position as percentage (0-100)
+  width: number; // Width as percentage (0-100)
+  height: number; // Height as percentage (0-100)
+  aspectRatio: number | null; // Aspect ratio value or null for custom
 }
 
 // Subtitle customization interface

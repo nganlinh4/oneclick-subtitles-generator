@@ -2,6 +2,7 @@ import React, { useState, useEffect, useRef } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Player } from '@remotion/player';
 import { SubtitledVideoComposition } from './SubtitledVideoComposition';
+import VideoCropControls from './VideoCropControls';
 import '../styles/VideoPreviewPanel.css';
 
 const RemotionVideoPreview = ({
@@ -15,7 +16,9 @@ const RemotionVideoPreview = ({
   onDurationChange,
   onPlay,
   onPause,
-  onSeek
+  onSeek,
+  cropSettings,
+  onCropChange
 }) => {
   const { t } = useTranslation();
   const [videoUrl, setVideoUrl] = useState(null);
@@ -24,113 +27,161 @@ const RemotionVideoPreview = ({
   const [duration, setDuration] = useState(0);
   const [isVideoFile, setIsVideoFile] = useState(false);
   const [videoDimensions, setVideoDimensions] = useState(null);
+  const [isCropEnabled, setIsCropEnabled] = useState(false);
+  const [tempCropSettings, setTempCropSettings] = useState({
+    x: 0,
+    y: 0,
+    width: 100,
+    height: 100,
+    aspectRatio: null
+  });
+  const [appliedCropSettings, setAppliedCropSettings] = useState({
+    x: 0,
+    y: 0,
+    width: 100,
+    height: 100,
+    aspectRatio: null
+  });
   const playerRef = useRef(null);
+
 
   // Create video URL from file
   useEffect(() => {
-    if (videoFile) {
-
-      // Clean up previous URL
-      if (videoUrl) {
-        URL.revokeObjectURL(videoUrl);
-      }
-
-      let url = null;
-
-      try {
-        // Check if videoFile is a proper File/Blob object
-        if (videoFile instanceof File || videoFile instanceof Blob) {
-          // Create new URL from File/Blob
-          url = URL.createObjectURL(videoFile);
-          setVideoUrl(url);
-
-          // Check if it's a video file
-          const videoTypes = ['video/mp4', 'video/mov', 'video/avi', 'video/mkv', 'video/webm', 'video/m4v', 'video/quicktime'];
-          setIsVideoFile(videoTypes.includes(videoFile.type));
-        } else if (typeof videoFile === 'string') {
-          // If it's already a URL string, use it directly
-          setVideoUrl(videoFile);
-          // Assume it's a video if it has video file extensions
-          const videoExtensions = ['.mp4', '.mov', '.avi', '.mkv', '.webm', '.m4v'];
-          setIsVideoFile(videoExtensions.some(ext => videoFile.toLowerCase().includes(ext)));
-        } else if (videoFile && typeof videoFile === 'object' && videoFile.url) {
-          // If it's an object with a url property
-          setVideoUrl(videoFile.url);
-          setIsVideoFile(videoFile.isActualVideo || false);
-        } else {
-          console.warn('Invalid videoFile type:', typeof videoFile, videoFile);
-          setVideoUrl(null);
-          setIsVideoFile(false);
-          return;
-        }
-
-        // Get duration for File/Blob objects or URL strings
-        const urlToUse = url || (typeof videoFile === 'string' ? videoFile : videoFile.url);
-        if (urlToUse) {
-          const tempVideo = document.createElement('video');
-          tempVideo.src = urlToUse;
-          tempVideo.addEventListener('loadedmetadata', () => {
-            const videoDuration = tempVideo.duration;
-            setDuration(videoDuration);
-            if (onDurationChange) {
-              onDurationChange(videoDuration);
-            }
-
-            // Get actual video dimensions for proper aspect ratio
-            // Check if this is a video file by examining the file type or video properties
-            const isActualVideo = (videoFile instanceof File && videoFile.type.startsWith('video/')) ||
-                                 (typeof videoFile === 'string' && videoFile.includes('.mp4')) ||
-                                 (videoFile && videoFile.isActualVideo) ||
-                                 (tempVideo.videoWidth && tempVideo.videoHeight);
-
-            if (isActualVideo) {
-              // Wait a bit for video metadata to fully load
-              setTimeout(() => {
-                if (tempVideo.videoWidth && tempVideo.videoHeight) {
-                  const videoWidth = tempVideo.videoWidth;
-                  const videoHeight = tempVideo.videoHeight;
-                  console.log(`[RemotionVideoPreview] Detected video dimensions: ${videoWidth}x${videoHeight}`);
-                  setVideoDimensions({
-                    width: videoWidth,
-                    height: videoHeight,
-                    aspectRatio: videoWidth / videoHeight
-                  });
-                } else {
-                  console.warn('[RemotionVideoPreview] Could not detect video dimensions, using fallback');
-                }
-              }, 100);
-            }
-          });
-          tempVideo.addEventListener('error', (e) => {
-            console.warn('Error loading video for duration:', e);
-          });
-        }
-      } catch (error) {
-        console.error('Error processing videoFile:', error);
-        setVideoUrl(null);
-        setIsVideoFile(false);
-      }
-
-      // Cleanup function
-      return () => {
-        if (url) {
-          URL.revokeObjectURL(url);
-        }
-      };
-    } else {
+    if (!videoFile) {
       // Reset state when no video file
       setVideoUrl(null);
       setIsVideoFile(false);
       setDuration(0);
       setVideoDimensions(null);
+      return;
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [videoFile]);
 
-  // Debug effect to track videoDimensions changes
+    let objectUrl = null;
+
+    try {
+      if (videoFile instanceof File || videoFile instanceof Blob) {
+        objectUrl = URL.createObjectURL(videoFile);
+        setVideoUrl(objectUrl);
+
+        const videoTypes = ['video/mp4', 'video/mov', 'video/avi', 'video/mkv', 'video/webm', 'video/m4v', 'video/quicktime'];
+        setIsVideoFile(videoTypes.includes(videoFile.type));
+      } else if (typeof videoFile === 'string') {
+        setVideoUrl(videoFile);
+        const videoExtensions = ['.mp4', '.mov', '.avi', '.mkv', '.webm', '.m4v'];
+        setIsVideoFile(videoExtensions.some(ext => videoFile.toLowerCase().includes(ext)));
+      } else if (videoFile && typeof videoFile === 'object' && videoFile.url) {
+        setVideoUrl(videoFile.url);
+        setIsVideoFile(!!videoFile.isActualVideo);
+      } else {
+        setVideoUrl(null);
+        setIsVideoFile(false);
+        return;
+      }
+
+      const urlToUse = objectUrl || (typeof videoFile === 'string' ? videoFile : videoFile.url);
+      if (urlToUse) {
+        const tempVideo = document.createElement('video');
+        tempVideo.src = urlToUse;
+        const onLoadedMetadata = () => {
+          const videoDuration = tempVideo.duration;
+          setDuration(videoDuration);
+          if (onDurationChange) {
+            onDurationChange(videoDuration);
+          }
+
+          const isActualVideo =
+            (videoFile instanceof File && videoFile.type.startsWith('video/')) ||
+            (typeof videoFile === 'string' && videoFile.toLowerCase().includes('.mp4')) ||
+            (videoFile && videoFile.isActualVideo) ||
+            (tempVideo.videoWidth && tempVideo.videoHeight);
+
+          if (isActualVideo && tempVideo.videoWidth && tempVideo.videoHeight) {
+            const vw = tempVideo.videoWidth;
+            const vh = tempVideo.videoHeight;
+            setVideoDimensions({
+              width: vw,
+              height: vh,
+              aspectRatio: vw / vh,
+            });
+          }
+        };
+        tempVideo.addEventListener('loadedmetadata', onLoadedMetadata);
+        // Avoid noisy console warnings on transient load errors
+        tempVideo.addEventListener('error', () => {});
+      }
+    } catch (error) {
+      // Keep critical errors, but avoid noisy logs otherwise
+      console.error('Error processing videoFile:', error);
+      setVideoUrl(null);
+      setIsVideoFile(false);
+    }
+
+    return () => {
+      if (objectUrl) {
+        URL.revokeObjectURL(objectUrl);
+      }
+    };
+  }, [videoFile, onDurationChange]);
+
+
+
+  // Sync crop settings with parent if provided
   useEffect(() => {
-    console.log('[RemotionVideoPreview] videoDimensions changed:', videoDimensions);
-  }, [videoDimensions]);
+    if (cropSettings) {
+      setAppliedCropSettings(cropSettings);
+      setTempCropSettings(cropSettings);
+    }
+  }, [cropSettings]);
+
+  // Handle crop toggle
+  const handleCropToggle = () => {
+    const newEnabled = !isCropEnabled;
+    setIsCropEnabled(newEnabled);
+    if (newEnabled) {
+      // When enabling, start with current applied settings
+      setTempCropSettings(appliedCropSettings);
+    } else {
+      // When disabling without applying, revert to applied settings
+      setTempCropSettings(appliedCropSettings);
+    }
+  };
+
+  // Handle temporary crop change (while adjusting)
+  const handleTempCropChange = (newCrop) => {
+    setTempCropSettings(newCrop);
+  };
+
+  // Handle applying the crop
+  const handleApplyCrop = () => {
+    setAppliedCropSettings(tempCropSettings);
+    if (onCropChange) {
+      onCropChange(tempCropSettings);
+    }
+    setIsCropEnabled(false);
+  };
+
+  // Handle canceling the crop
+  const handleCancelCrop = () => {
+    setTempCropSettings(appliedCropSettings);
+    setIsCropEnabled(false);
+  };
+
+  // Handle clearing the crop entirely
+  const handleClearCrop = () => {
+    const resetCrop = {
+      x: 0,
+      y: 0,
+      width: 100,
+      height: 100,
+      aspectRatio: null
+    };
+    setAppliedCropSettings(resetCrop);
+    setTempCropSettings(resetCrop);
+    if (onCropChange) {
+      onCropChange(resetCrop);
+    }
+    setIsCropEnabled(false);
+  };
 
   // Calculate composition dimensions based on actual video dimensions or resolution fallback
   const getCompositionDimensions = () => {
@@ -164,14 +215,23 @@ const RemotionVideoPreview = ({
           break;
       }
 
-      // Calculate width based on actual aspect ratio
-      const targetWidth = Math.round(targetHeight * videoDimensions.aspectRatio);
+      // Check if crop is applied and adjust aspect ratio accordingly
+      let effectiveAspectRatio = videoDimensions.aspectRatio;
 
-      // Ensure dimensions are even numbers (required for video encoding)
+      if (appliedCropSettings && (appliedCropSettings.width < 100 || appliedCropSettings.height < 100)) {
+        const cropWidthRatio = appliedCropSettings.width / 100;
+        const cropHeightRatio = appliedCropSettings.height / 100;
+        const originalWidth = videoDimensions.width;
+        const originalHeight = videoDimensions.height;
+        const croppedWidth = originalWidth * cropWidthRatio;
+        const croppedHeight = originalHeight * cropHeightRatio;
+        effectiveAspectRatio = croppedWidth / croppedHeight;
+      }
+
+      const targetWidth = Math.round(targetHeight * effectiveAspectRatio);
       const width = targetWidth % 2 === 0 ? targetWidth : targetWidth + 1;
       const height = targetHeight % 2 === 0 ? targetHeight : targetHeight + 1;
 
-      console.log(`[RemotionVideoPreview] Using actual video dimensions: ${width}x${height} (aspect ratio: ${videoDimensions.aspectRatio.toFixed(2)})`);
       return { width, height };
     }
 
@@ -292,14 +352,15 @@ const RemotionVideoPreview = ({
   const frameRate = subtitleCustomization?.frameRate || 30;
 
   // Debug logging
-  console.log('[RemotionVideoPreview] Composition dimensions:', { width, height, videoDimensions, isVideoFile });
+
 
   // Ensure we have valid dimensions
   const safeWidth = width > 0 ? width : 1920;
   const safeHeight = height > 0 ? height : 1080;
 
   return (
-    <>
+    <div style={{ position: 'relative', width: '100%', height: '100%' }}>
+      {/* Video player */}
       <Player
         key={`${safeWidth}x${safeHeight}`} // Force re-render when dimensions change
         ref={playerRef}
@@ -327,15 +388,30 @@ const RemotionVideoPreview = ({
           isVideoFile: isVideoFile,
           originalAudioVolume: originalAudioVolume,
           narrationVolume: narrationVolume,
+          cropSettings: (appliedCropSettings.width < 100 || appliedCropSettings.height < 100) ? appliedCropSettings : null,
         }}
         onFrame={handlePlayerTimeUpdate}
         onPlay={handlePlay}
         onPause={handlePause}
         onSeek={handleSeek}
       />
+      
+      {/* Crop controls overlay - directly on video */}
+      {videoFile && videoDimensions && (
+        <VideoCropControls
+          isEnabled={isCropEnabled}
+          onToggle={handleCropToggle}
+          cropSettings={tempCropSettings}
+          onCropChange={handleTempCropChange}
+          onApply={handleApplyCrop}
+          onCancel={handleCancelCrop}
+          onClear={handleClearCrop}
+          videoDimensions={videoDimensions}
 
-
-    </>
+          hasAppliedCrop={appliedCropSettings.width < 100 || appliedCropSettings.height < 100}
+        />
+      )}
+    </div>
   );
 };
 

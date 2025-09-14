@@ -540,12 +540,34 @@ app.post('/render', async (req, res) => {
         // Calculate width based on aspect ratio
         width = Math.round(targetHeight * aspectRatio);
         height = targetHeight;
+        
+        // Check if crop settings are provided and adjust dimensions
+        if (metadata.cropSettings && (metadata.cropSettings.width < 100 || metadata.cropSettings.height < 100)) {
+          console.log(`[RENDER] Crop settings detected:`, metadata.cropSettings);
+          
+          // Calculate new aspect ratio based on crop
+          const cropWidthRatio = metadata.cropSettings.width / 100;
+          const cropHeightRatio = metadata.cropSettings.height / 100;
+          
+          // Cropped dimensions
+          const croppedWidth = videoWidth * cropWidthRatio;
+          const croppedHeight = videoHeight * cropHeightRatio;
+          
+          // New aspect ratio after crop
+          const croppedAspectRatio = croppedWidth / croppedHeight;
+          
+          // Recalculate dimensions with cropped aspect ratio
+          width = Math.round(targetHeight * croppedAspectRatio);
+          height = targetHeight;
+          
+          console.log(`[RENDER] Adjusted dimensions for crop: ${width}x${height} (cropped aspect ratio: ${croppedAspectRatio.toFixed(2)})`);
+        }
 
         // Ensure dimensions are even numbers (required for video encoding)
         width = width % 2 === 0 ? width : width + 1;
         height = height % 2 === 0 ? height : height + 1;
 
-        console.log(`[RENDER] Calculated composition dimensions: ${width}x${height} (preserving aspect ratio)`);
+        console.log(`[RENDER] Final composition dimensions: ${width}x${height}`);
 
       } catch (error) {
         console.warn(`[RENDER] Could not probe video info, falling back to default 16:9: ${error instanceof Error ? error.message : String(error)}`);

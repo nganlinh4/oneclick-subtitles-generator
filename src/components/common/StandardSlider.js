@@ -261,13 +261,12 @@ const StandardSlider = ({
 
     // Touch drag handlers
     const handleTouchStart = (e) => {
-      e.preventDefault();
+      // With touch-action: none on the track, no need to preventDefault
       handleDragStart(e);
     };
 
     const handleTouchMove = (e) => {
       if (isDragging && e.touches.length > 0) {
-        e.preventDefault();
         handleSmoothDrag(e.touches[0].clientX);
       }
     };
@@ -280,12 +279,12 @@ const StandardSlider = ({
 
     // Add event listeners
     trackContainer.addEventListener('mousedown', handleMouseDown);
-    trackContainer.addEventListener('touchstart', handleTouchStart);
+    trackContainer.addEventListener('touchstart', handleTouchStart, { passive: true });
 
     // Global move and end events
     document.addEventListener('mousemove', handleMouseMove);
     document.addEventListener('mouseup', handleMouseUp);
-    document.addEventListener('touchmove', handleTouchMove, { passive: false });
+    document.addEventListener('touchmove', handleTouchMove, { passive: true });
     document.addEventListener('touchend', handleTouchEnd);
 
     return () => {
@@ -320,7 +319,7 @@ const StandardSlider = ({
       {...props}
     >
       {/* Track container with active track, handle, and inactive track */}
-      <div ref={trackRef} className="standard-slider-track-container">
+      <div ref={trackRef} className="standard-slider-track-container" style={{ touchAction: 'none' }}>
         {/* Active track (left portion) - uses flex-grow based on value */}
         <div
           className="standard-slider-active-track"

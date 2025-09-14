@@ -29,6 +29,7 @@
   min-height: 48px; /* Minimum height for consistency */
   height: auto !important; /* Override fixed height from virtualized list */
   overflow: visible; /* Ensure content is fully visible */
+  border-radius: 8px;
 }
 
 .lyric-item:last-child {
@@ -54,11 +55,11 @@
   font-weight: 500;
   box-shadow: inset 0 0 8px color-mix(in srgb, var(--md-primary), transparent 80%);
   /* Add subtle slide-in effect when becoming current */
-  transform: translateX(2px);
   /* Slightly higher z-index for current item */
   z-index: 2;
   /* Apply smooth focus animation */
-  animation: lyric-focus-slide var(--md-duration-medium3) var(--md-easing-emphasized) forwards;
+  border-radius: 4px;
+
 }
 
 /* Material Design 3 lyric content - improved for multi-line text */
@@ -333,8 +334,6 @@
   backface-visibility: hidden;
   -webkit-transform: translateZ(0);
   transform: translateZ(0);
-  /* Add a subtle glow effect */
-  box-shadow: 0 0 4px rgba(67, 97, 238, 0.5);
   /* Start with opacity 0 for smooth fade-in */
   opacity: 0;
 }

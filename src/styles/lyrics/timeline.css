@@ -6,7 +6,7 @@
   min-height: 80px; /* Increased height to accommodate volume visualizer */
   position: relative;
   border: 1px solid var(--md-outline-variant);
-  border-radius: var(--md-shape-medium);
+  border-radius: 28px;
   overflow: hidden;
   background-color: var(--md-surface-1);
   /* Removed transition to prevent shaking */

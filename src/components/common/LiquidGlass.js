@@ -105,11 +105,11 @@ const LiquidGlass = ({
       iy,
       0.1,  // Fixed width for stronger edge effect
       0.1,  // Fixed height for stronger edge effect
-      1.1   // Fixed radius for stronger edge effect
+      0.6   // Fixed radius for stronger edge effect
     );
     const displacement = smoothStep(0.9, 0, distanceToEdge - 0.1); // Fixed offset for stronger edge effect
     const scaled = smoothStep(0, 0.9, displacement); // Removed effectIntensity multiplier to reduce zoom
-    return texture(ix * scaled + 0.5, iy * scaled + 0.5);
+    return texture(ix * scaled + 0.3, iy * scaled + 0.3);
   }, [roundedRectSDF, smoothStep, texture]);
 
   // Constrain position within viewport

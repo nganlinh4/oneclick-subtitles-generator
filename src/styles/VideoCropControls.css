@@ -1,0 +1,401 @@
+/* Icon button (crop toggle) - align with app's MD3 icon buttons */
+.crop-toggle-btn {
+  width: 40px;
+  height: 40px;
+  border-radius: 50%;
+  background: var(--md-surface);
+  color: var(--md-on-surface);
+  border: 2px solid transparent;
+  box-shadow: var(--md-elevation-level1);
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  position: relative;
+  transition: background-color var(--md-duration-medium2) var(--md-easing-standard),
+              border-color var(--md-duration-medium2) var(--md-easing-standard),
+              box-shadow var(--md-duration-medium2) var(--md-easing-standard),
+              transform 0.2s ease;
+}
+
+.crop-toggle-btn:hover {
+  background: var(--md-surface-1);
+  border-color: var(--md-primary);
+  box-shadow: var(--md-elevation-level2);
+  transform: translateY(-2px);
+}
+
+.crop-toggle-btn.active,
+.crop-toggle-btn.editing {
+  background: var(--md-primary);
+  color: var(--md-on-primary);
+  border-color: var(--md-primary);
+}
+
+.crop-toggle-btn.editing {
+  background: var(--md-primary);
+  color: var(--md-on-primary);
+  border-color: var(--md-primary);
+}
+
+.crop-indicator {
+  position: absolute;
+  top: -4px;
+  right: -4px;
+  background: var(--md-secondary);
+  color: var(--md-on-secondary);
+  width: 16px;
+  height: 16px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 10px;
+  font-weight: bold;
+  pointer-events: none;
+}
+
+/* Clear crop button - outlined error style */
+.crop-clear-btn {
+  width: 40px;
+  height: 40px;
+  border-radius: 50%;
+  background: var(--md-error-container);
+  color: var(--md-on-error-container);
+  border: 1px solid var(--md-error-container);
+  box-shadow: var(--md-elevation-level1);
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  position: relative;
+  transition: background-color var(--md-duration-medium2) var(--md-easing-standard),
+              border-color var(--md-duration-medium2) var(--md-easing-standard),
+              box-shadow var(--md-duration-medium2) var(--md-easing-standard),
+              transform 0.2s ease;
+}
+
+.crop-clear-btn .crop-indicator { display: none; }
+
+.crop-clear-btn:hover {
+  background: var(--md-error);
+  color: var(--md-on-error);
+  border-color: var(--md-error);
+  box-shadow: var(--md-elevation-level2);
+  transform: translateY(-2px);
+}
+
+/* Aspect ratio chip set */
+.crop-aspect-buttons {
+  display: flex;
+  gap: 8px;
+  padding: 0;
+  background: transparent;
+  border: none;
+  border-radius: 0;
+}
+
+.aspect-btn {
+  padding: 6px 12px;
+  background: var(--md-surface-1);
+  border: 1px solid var(--md-outline-variant);
+  border-radius: var(--md-shape-pill);
+  color: var(--md-on-surface);
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 13px;
+  font-weight: 500;
+  transition: background-color var(--md-duration-medium2) var(--md-easing-standard),
+              border-color var(--md-duration-medium2) var(--md-easing-standard),
+              color var(--md-duration-medium2) var(--md-easing-standard);
+}
+
+.aspect-btn:hover {
+  background: var(--md-surface-2);
+  border-color: var(--md-outline);
+}
+
+.aspect-btn.active {
+  background: var(--md-primary-container);
+  border-color: var(--md-primary);
+  color: var(--md-on-primary-container);
+}
+
+.aspect-btn.reset {
+  background: transparent;
+  border-color: var(--md-error);
+  color: var(--md-error);
+  font-size: 13px;
+  padding: 6px 12px;
+}
+
+.aspect-btn.reset:hover {
+  background: color-mix(in srgb, var(--md-error), transparent 92%);
+}
+
+.aspect-icon {
+  font-size: 16px;
+}
+
+.aspect-label {
+  font-size: 12px;
+}
+
+/* Crop overlay styles */
+.crop-overlay-container {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  pointer-events: none;
+  z-index: 10;
+}
+
+.crop-overlay-mask {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: color-mix(in srgb, var(--md-on-surface), transparent 72%);
+  pointer-events: none;
+}
+
+.crop-area {
+  position: absolute;
+  cursor: move;
+  box-sizing: border-box;
+  border: 2px solid color-mix(in srgb, var(--md-on-surface), transparent 20%);
+  border-radius: 0;
+}
+
+.crop-grid {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  pointer-events: none;
+}
+
+.crop-grid-line {
+  position: absolute;
+  background-color: color-mix(in srgb, var(--md-on-surface), transparent 70%);
+  pointer-events: none;
+}
+
+.crop-grid-line.horizontal {
+  left: 0;
+  right: 0;
+  height: 1px;
+}
+
+.crop-grid-line.vertical {
+  top: 0;
+  bottom: 0;
+  width: 1px;
+}
+
+/* Crop handles */
+.crop-handle {
+  position: absolute;
+  pointer-events: auto;
+  z-index: 2;
+  transition: transform 0.2s ease;
+}
+
+/* Corner handles: L-brackets for a cleaner, pro look */
+.crop-handle.corner {
+  width: 18px;
+  height: 18px;
+  background: transparent;
+  border: none;
+  box-shadow: none;
+}
+
+.crop-handle.corner { position: absolute; width: 18px; height: 18px; background: transparent; }
+.crop-handle.corner::before, .crop-handle.corner::after { content: ""; position: absolute; background: var(--md-primary); border-radius: 3px; }
+/* NW corner */
+.crop-handle.corner.nw { top: -1px; left: -1px; cursor: nw-resize; }
+.crop-handle.corner.nw::before { /* horizontal */ top: 0; left: 0; height: 6px; width: 16px; }
+.crop-handle.corner.nw::after { /* vertical */ top: 0; left: 0; width: 6px; height: 16px; }
+/* NE corner */
+.crop-handle.corner.ne { top: -1px; right: -1px; cursor: ne-resize; }
+.crop-handle.corner.ne::before { top: 0; right: 0; height: 6px; width: 16px; }
+.crop-handle.corner.ne::after { top: 0; right: 0; width: 6px; height: 16px; }
+/* SW corner */
+.crop-handle.corner.sw { bottom: -1px; left: -1px; cursor: sw-resize; }
+.crop-handle.corner.sw::before { bottom: 0; left: 0; height: 6px; width: 16px; }
+.crop-handle.corner.sw::after { bottom: 0; left: 0; width: 6px; height: 16px; }
+/* SE corner */
+.crop-handle.corner.se { bottom: -1px; right: -1px; cursor: se-resize; }
+.crop-handle.corner.se::before { bottom: 0; right: 0; height: 6px; width: 16px; }
+.crop-handle.corner.se::after { bottom: 0; right: 0; width: 6px; height: 16px; }
+
+/* Edge handles */
+.crop-handle.edge {
+  background: var(--md-primary);
+  opacity: 0.9;
+  border-radius: 3px;
+}
+
+.crop-handle.edge.n,
+.crop-handle.edge.s {
+  width: 40px;
+  height: 6px;
+  left: 50%;
+  transform: translateX(-50%);
+  border-radius: 3px;
+}
+
+.crop-handle.edge.n {
+  top: -3px;
+  cursor: n-resize;
+}
+
+.crop-handle.edge.s {
+  bottom: -3px;
+  cursor: s-resize;
+}
+
+.crop-handle.edge.e,
+.crop-handle.edge.w {
+  width: 6px;
+  height: 40px;
+  top: 50%;
+  transform: translateY(-50%);
+  border-radius: 3px;
+}
+
+.crop-handle.edge.e {
+  right: -3px;
+  cursor: e-resize;
+}
+
+.crop-handle.edge.w {
+  left: -3px;
+  cursor: w-resize;
+}
+
+/* Hover effects for handles */
+/* Remove generic hover to avoid square shadow on corners */
+.crop-handle.edge.n:hover,
+.crop-handle.edge.s:hover {
+  transform: translateX(-50%) scaleY(1.2);
+}
+
+.crop-handle.edge.e:hover,
+.crop-handle.edge.w:hover {
+  transform: translateY(-50%) scaleX(1.2);
+}
+
+/* Crop size display */
+.crop-size-display {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  background: var(--md-surface-container-high);
+  color: var(--md-on-surface);
+  padding: 4px 12px;
+  border-radius: 12px;
+  font-size: 12px;
+  font-weight: 600;
+  font-family: 'JetBrains Mono', 'Fira Code', monospace;
+  pointer-events: none;
+  border: 1px solid var(--md-outline-variant);
+  box-shadow: var(--md-elevation-level2);
+}
+
+/* Apply and Cancel buttons */
+.crop-action-buttons {
+  display: flex;
+  gap: 12px;
+}
+
+.crop-action-btn {
+  padding: 10px 16px;
+  border-radius: var(--md-shape-medium);
+  border: 1px solid var(--md-outline);
+  background: var(--md-surface);
+  color: var(--md-on-surface);
+  font-size: 14px;
+  font-weight: 600;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  transition: background-color var(--md-duration-medium2) var(--md-easing-standard),
+              border-color var(--md-duration-medium2) var(--md-easing-standard),
+              box-shadow var(--md-duration-medium2) var(--md-easing-standard),
+              transform 0.2s ease;
+  box-shadow: var(--md-elevation-level1);
+}
+
+.crop-action-btn.cancel {
+  background: var(--md-secondary-container);
+  color: var(--md-on-secondary-container);
+  border: 1px solid var(--md-secondary-container);
+}
+
+.crop-action-btn.cancel:hover {
+  background: var(--md-secondary);
+  color: var(--md-on-secondary);
+  transform: translateY(-1px);
+  box-shadow: var(--md-elevation-level2);
+}
+
+.crop-action-btn.apply {
+  background: var(--md-primary);
+  color: var(--md-on-primary);
+  border: 1px solid var(--md-primary);
+}
+
+.crop-action-btn.apply:hover {
+  background: var(--md-primary-container);
+  color: var(--md-on-primary-container);
+  transform: translateY(-1px);
+  box-shadow: var(--md-elevation-level2);
+}
+
+/* Dark mode support */
+@media (prefers-color-scheme: dark) {
+  .video-crop-controls {
+    background-color: var(--md-surface-variant, #49454f);
+  }
+
+  .crop-toggle-button {
+    background-color: var(--md-surface, #1c1b1f);
+    color: var(--md-on-surface, #e6e1e5);
+    border-color: var(--md-outline, #938f99);
+  }
+
+  .crop-toggle-button:hover {
+    background-color: var(--md-surface-container, #211f26);
+  }
+
+  .crop-toggle-button.active {
+    background-color: var(--md-primary, #d0bcff);
+    color: var(--md-on-primary, #381e72);
+  }
+
+  .aspect-ratio-selector select,
+  .reset-crop-button {
+    background-color: var(--md-surface, #1c1b1f);
+    color: var(--md-on-surface, #e6e1e5);
+    border-color: var(--md-outline, #938f99);
+  }
+
+  .crop-info {
+    background-color: var(--md-surface, #1c1b1f);
+    border-color: var(--md-outline-variant, #49454f);
+  }
+
+  .crop-handle {
+    background-color: #fff;
+    border-color: var(--md-primary, #d0bcff);
+  }
+}

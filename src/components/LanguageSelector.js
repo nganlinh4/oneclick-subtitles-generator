@@ -13,10 +13,19 @@ const LanguageSelector = () => {
     { code: 'vi', name: t('language.vi'), flag: '🇻🇳' }
   ];
 
-  // Prepare options for CustomDropdown - using string labels with emojis
-  const dropdownOptions = languages.map(lang => ({
+  // Render label with proper spacing between flag and language
+  const renderLabel = (lang) => (
+    <span className="lang-option">
+      <span className="flag" aria-hidden="true">{lang.flag}</span>
+      <span className="name">{lang.name}</span>
+    </span>
+  );
+
+
+  // Prepare options for CustomDropdown - use JSX to control spacing/styles
+  const dropdownOptions = languages.map((lang) => ({
     value: lang.code,
-    label: `${lang.flag} ${lang.name}`
+    label: renderLabel(lang),
   }));
 
   // Function to change the language
@@ -31,9 +40,9 @@ const LanguageSelector = () => {
     const handleLanguageChanged = () => {
       setSelectedLanguage(i18n.language);
     };
-    
+
     i18n.on('languageChanged', handleLanguageChanged);
-    
+
     return () => {
       i18n.off('languageChanged', handleLanguageChanged);
     };

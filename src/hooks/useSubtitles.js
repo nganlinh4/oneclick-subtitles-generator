@@ -749,8 +749,15 @@ export const useSubtitles = (t) => {
                         ? t('errors.geminiServiceUnavailable', 'Gemini is currently overloaded, please wait and try again later (error code 503)')
                         : t('errors.geminiOverloaded', 'Strong model tends to get overloaded, please consider using other model and try again, or try lower the segment duration. Or create a new Google Cloud Project and get an API Key.');
                     setStatus({ message: errorMessage, type: 'error' });
-                } else if (error.message && error.message.includes('token') && error.message.includes('exceeds the maximum')) {
-                    setStatus({ message: t('errors.tokenLimitExceeded'), type: 'error' });
+                } else if (error.message && error.message.toLowerCase().includes('token') && error.message.toLowerCase().includes('exceeds the maximum')) {
+                    const tokenMatch = error.message.match(/input token count\s*\((\d+)\)\s*exceeds the maximum number of tokens allowed\s*\((\d+)\)/i);
+                    if (tokenMatch) {
+                        const required = tokenMatch[1];
+                        const limit = tokenMatch[2];
+                        setStatus({ message: t('errors.tokenLimitExceededCounts', 'The video segment is too large for Gemini to process (required {{required}} tokens, limit {{limit}} tokens). Please reduce FPS/quality or shorten each request and try again.', { required, limit }), type: 'error' });
+                    } else {
+                        setStatus({ message: t('errors.tokenLimitExceeded'), type: 'error' });
+                    }
                 } else if (error.message && error.message.includes('File size') && error.message.includes('exceeds the recommended maximum')) {
                     // Extract file size and max size from error message
                     const sizeMatch = error.message.match(/(\d+)MB\) exceeds the recommended maximum of (\d+)MB/);
@@ -787,8 +794,15 @@ export const useSubtitles = (t) => {
                         ? t('errors.geminiServiceUnavailable', 'Gemini is currently overloaded, please wait and try again later (error code 503)')
                         : t('errors.geminiOverloaded', 'Strong model tends to get overloaded, please consider using other model and try again, or try lower the segment duration. Or create a new Google Cloud Project and get an API Key.');
                     setStatus({ message: errorMessage, type: 'error' });
-                } else if (error.message && error.message.includes('token') && error.message.includes('exceeds the maximum')) {
-                    setStatus({ message: t('errors.tokenLimitExceeded'), type: 'error' });
+                } else if (error.message && error.message.toLowerCase().includes('token') && error.message.toLowerCase().includes('exceeds the maximum')) {
+                    const tokenMatch = error.message.match(/input token count\s*\((\d+)\)\s*exceeds the maximum number of tokens allowed\s*\((\d+)\)/i);
+                    if (tokenMatch) {
+                        const required = tokenMatch[1];
+                        const limit = tokenMatch[2];
+                        setStatus({ message: t('errors.tokenLimitExceededCounts', 'The video segment is too large for Gemini to process (required {{required}} tokens, limit {{limit}} tokens). Please reduce FPS/quality or shorten each request and try again.', { required, limit }), type: 'error' });
+                    } else {
+                        setStatus({ message: t('errors.tokenLimitExceeded'), type: 'error' });
+                    }
                 } else if (error.message && error.message.includes('File size') && error.message.includes('exceeds the recommended maximum')) {
                     // Extract file size and max size from error message
                     const sizeMatch = error.message.match(/(\d+)MB\) exceeds the recommended maximum of (\d+)MB/);
@@ -971,8 +985,15 @@ export const useSubtitles = (t) => {
                     ? t('errors.geminiServiceUnavailable', 'Gemini is currently overloaded, please wait and try again later (error code 503)')
                     : t('errors.geminiOverloaded', 'Strong model tends to get overloaded, please consider using other model and try again, or try lower the segment duration. Or create a new Google Cloud Project and get an API Key.');
                 setStatus({ message: errorMessage, type: 'error' });
-            } else if (error.message && error.message.includes('token') && error.message.includes('exceeds the maximum')) {
-                setStatus({ message: t('errors.tokenLimitExceeded'), type: 'error' });
+            } else if (error.message && error.message.toLowerCase().includes('token') && error.message.toLowerCase().includes('exceeds the maximum')) {
+                const tokenMatch = error.message.match(/input token count\s*\((\d+)\)\s*exceeds the maximum number of tokens allowed\s*\((\d+)\)/i);
+                if (tokenMatch) {
+                    const required = tokenMatch[1];
+                    const limit = tokenMatch[2];
+                    setStatus({ message: t('errors.tokenLimitExceededCounts', 'The video segment is too large for Gemini to process (required {{required}} tokens, limit {{limit}} tokens). Please reduce FPS/quality or shorten each request and try again.', { required, limit }), type: 'error' });
+                } else {
+                    setStatus({ message: t('errors.tokenLimitExceeded'), type: 'error' });
+                }
             } else if (error.message && error.message.includes('File size') && error.message.includes('exceeds the recommended maximum')) {
                 // Extract file size and max size from error message
                 const sizeMatch = error.message.match(/(\d+)MB\) exceeds the recommended maximum of (\d+)MB/);

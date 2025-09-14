@@ -4,6 +4,8 @@
   "invalidFile": "유효하지 않은 파일 형식 또는 크기입니다. 지원되는 형식을 확인하세요.",
   "geminiOverloaded": "강력한 모델은 과부하 상태가 되는 경향이 있습니다. 다른 모델을 사용하거나 세그먼트 지속 시간을 줄여보세요. 또는 새로운 Google Cloud Project를 만들고 API Key를 받아보세요.",
   "tokenLimitExceeded": "비디오 세그먼트가 Gemini가 처리하기에 너무 큽니다. 더 짧은 비디오나 더 낮은 화질의 비디오를 사용해 보세요.",
+  "tokenLimitExceededCounts": "비디오 세그먼트가 Gemini가 처리하기에 너무 큽니다(필요 토큰 {{required}}, 허용 한도 {{limit}}). FPS/품질을 낮추거나 요청 길이를 줄인 후 다시 시도하세요.",
+
   "fileSizeTooLarge": "파일 크기({{size}}MB)가 권장 최대치 {{maxSize}}MB를 초과합니다. 더 작은 파일이나 더 낮은 화질의 비디오를 사용해 주세요.",
   "youtubeAuthRequired": "YouTube 인증이 필요합니다. 설정에서 OAuth를 설정해 주세요.",
   "youtubeApiKeyRequired": "이 애플리케이션을 사용하려면 설정에서 YouTube API 키를 설정해 주세요.",

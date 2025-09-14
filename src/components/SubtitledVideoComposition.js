@@ -95,7 +95,8 @@ export const SubtitledVideoComposition = ({
   metadata,
   isVideoFile = false,
   originalAudioVolume = 100,
-  narrationVolume = 100
+  narrationVolume = 100,
+  cropSettings
 }) => {
   const frame = useCurrentFrame();
   const { fps, height: compositionHeight } = useVideoConfig();
@@ -308,16 +309,33 @@ export const SubtitledVideoComposition = ({
       >
         {/* Video background if uploaded file is a video */}
         {showVideo ? (
-          <Video
-            src={videoUrl}
-            volume={originalAudioVolume / 100}
-            style={{
-              width: '100%',
-              height: '100%',
-              objectFit: 'contain', // Maintain aspect ratio, don't crop
-              backgroundColor: '#000', // Fill letterbox areas with black
-            }}
-          />
+          <div style={{
+            width: '100%',
+            height: '100%',
+            backgroundColor: '#000',
+            position: 'relative',
+            overflow: 'hidden'
+          }}>
+            <Video
+              src={videoUrl}
+              volume={originalAudioVolume / 100}
+              style={{
+                // When cropping, scale up the video and reposition
+                ...(cropSettings && (cropSettings.width < 100 || cropSettings.height < 100) ? {
+                  position: 'absolute',
+                  width: `${(100 / cropSettings.width) * 100}%`,
+                  height: `${(100 / cropSettings.height) * 100}%`,
+                  left: `${-(cropSettings.x / cropSettings.width) * 100}%`,
+                  top: `${-(cropSettings.y / cropSettings.height) * 100}%`,
+                  objectFit: 'contain'
+                } : {
+                  width: '100%',
+                  height: '100%',
+                  objectFit: 'contain'
+                })
+              }}
+            />
+          </div>
         ) : (
           /* Background image if provided and no video */
           backgroundImageUrl && (

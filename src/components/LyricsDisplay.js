@@ -13,8 +13,8 @@ import { generateUrlBasedCacheId } from '../hooks/useSubtitles';
 import DownloadOptionsModal from './DownloadOptionsModal';
 
 // Debug logging gate (enable by setting localStorage.debug_logs = 'true')
-const DEBUG_LOGS = (typeof window !== 'undefined') && (localStorage.getItem('debug_logs') === 'true');
-const dbg = (...args) => { if (DEBUG_LOGS) console.log(...args); };
+
+
 
 // Helper function to download files
 const downloadFile = (content, filename, type = 'text/plain') => {
@@ -99,6 +99,7 @@ const LyricsDisplay = ({
   const [panOffset, setPanOffset] = useState(0);
   const [centerTimelineAt, setCenterTimelineAt] = useState(null);
   const rowHeights = useRef({});
+
   const [txtContent, setTxtContent] = useState(null);
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [splitDuration, setSplitDuration] = useState(() => {
@@ -409,9 +410,10 @@ const LyricsDisplay = ({
   // Watch for seekTime changes to center the timeline
   useEffect(() => {
     if (seekTime !== null) {
-      // Center the timeline on the seek time
+      // Center the timeline on the seek time (one-shot)
       setCenterTimelineAt(seekTime);
-
+      // Reset in next frame so it doesn't keep re-centering on every render
+      requestAnimationFrame(() => setCenterTimelineAt(null));
     }
   }, [seekTime]);
 
@@ -678,7 +680,7 @@ const LyricsDisplay = ({
   // Listen for save-before-update events triggered before new video processing results
   useEffect(() => {
     const handleSaveBeforeUpdate = (event) => {
-      dbg('[LyricsDisplay] Save-before-update event received:', event.detail);
+
 
       // Handle both segment processing start and video processing complete
       const isSegmentStart = event.detail?.source === 'segment-processing-start';
@@ -686,11 +688,11 @@ const LyricsDisplay = ({
 
       if (isSegmentStart || isProcessingComplete) {
         const action = isSegmentStart ? 'segment processing' : 'video processing completion';
-        dbg(`[LyricsDisplay] Saving current state before ${action}`);
+
 
         // Trigger the save function to checkpoint current edits
         handleSave().then(() => {
-          dbg(`[LyricsDisplay] Checkpoint save completed for ${action}`);
+
           // Update the saved state to gray out the save button
           updateSavedLyrics();
 
@@ -726,15 +728,15 @@ const LyricsDisplay = ({
   // Listen for save-after-streaming events triggered after streaming completion
   useEffect(() => {
     const handleSaveAfterStreaming = (event) => {
-      dbg('[LyricsDisplay] Save-after-streaming event received:', event.detail);
+
 
       // Only trigger save if the event is from streaming completion and we have lyrics
       if (event.detail?.source === 'streaming-complete' && lyrics && lyrics.length > 0) {
-        dbg('[LyricsDisplay] Auto-saving after streaming completion');
+
 
         // Trigger the save function to preserve the new streaming results
         handleSave().then(() => {
-          dbg('[LyricsDisplay] Auto-save after streaming completed successfully');
+
           // Update the saved state to gray out the save button
           updateSavedLyrics();
         }).catch((error) => {
@@ -752,12 +754,12 @@ const LyricsDisplay = ({
 
   // Listen for capture-before-merge events to support undo/redo for merging operations
   useEffect(() => {
-    const handleCaptureBeforeMerge = (event) => {
-      dbg('[LyricsDisplay] Capture-before-merge event received:', event.detail);
+    const handleCaptureBeforeMerge = () => {
+
 
       // Capture the current state before merging happens
       if (lyrics && lyrics.length > 0) {
-        dbg('[LyricsDisplay] Capturing state before merge for undo/redo');
+
         captureStateBeforeMerge();
       }
     };

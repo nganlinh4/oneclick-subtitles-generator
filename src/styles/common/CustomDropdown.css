@@ -471,7 +471,7 @@
   animation: morph-from-button 300ms cubic-bezier(0.4, 0, 0.2, 1);
 }
 
-/* Closing: selected item morphs from dropdown font to button font */  
+/* Closing: selected item morphs from dropdown font to button font */
 .dropdown-option.morphing-to-button {
   animation: morph-to-button 300ms cubic-bezier(0.4, 0, 0.2, 1);
 }
@@ -562,7 +562,7 @@
   .custom-dropdown-menu {
     max-height: 250px;
   }
-  
+
   .dropdown-option {
     padding: 14px 16px;
     font-size: 0.95rem;
@@ -584,9 +584,63 @@
   .custom-dropdown-button {
     border-width: 2px;
   }
-  
+
   .dropdown-option.selected {
     outline: 2px solid var(--md-primary);
     outline-offset: -2px;
   }
 }
+
+
+/* Language option styling: add breathing room between flag and language */
+.custom-dropdown .dropdown-value .lang-option {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0; /* allow inner text to ellipsis */
+}
+.custom-dropdown .dropdown-value .lang-option .name {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* In the menu list, give a bit more gap for readability */
+.custom-dropdown .dropdown-option .lang-option {
+  display: inline-flex;
+  align-items: center;
+  gap: 12px;
+}
+
+/* Normalize emoji flag sizing and alignment */
+.custom-dropdown .lang-option .flag {
+  display: inline-block;
+  width: 1.4em; /* consistent column width */
+  text-align: center;
+  font-size: 1.1em;
+  line-height: 1;
+}
+.custom-dropdown .lang-option .name {
+  letter-spacing: 0.2px;
+}
+
+/* Apply same layout inside the portal-rendered dropdown menu */
+.custom-dropdown-menu .dropdown-option .lang-option {
+  display: inline-flex;
+  align-items: center;
+  gap: 12px;
+}
+.custom-dropdown-menu .lang-option .flag {
+  display: inline-block;
+  width: 1.4em;
+  text-align: center;
+  font-size: 1.1em;
+  line-height: 1;
+}
+.custom-dropdown-menu .lang-option .name {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  letter-spacing: 0.2px;
+}
+

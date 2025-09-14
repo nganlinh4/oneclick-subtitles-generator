@@ -115,7 +115,7 @@ const TimelineVisualization = ({
       const ranges = (e.detail && e.detail.ranges) || [];
       setProcessingRanges(ranges);
       if (ranges.length > 1) {
-        console.log('[Timeline] Parallel processing ranges set:', ranges);
+
       }
     };
 
@@ -264,6 +264,16 @@ const TimelineVisualization = ({
 
   // Debug counter to track state updates
   const debugCounter = useRef(0);
+  // Refs to manage smooth zoom-drag with strict playhead-centering
+  const zoomDragRafRef = useRef(null);
+  const zoomDragActiveRef = useRef(false);
+  const zoomDragLastXRef = useRef(0);
+
+  // Track the last computed pan during zoom drag so we can commit it on release
+  const lastComputedPanRef = useRef(panOffset);
+
+
+
 
   // No longer need to enforce minimum zoom
   // Users can zoom out to see the entire timeline
@@ -299,6 +309,7 @@ const TimelineVisualization = ({
   // Watch for centerOnTime prop changes
   useEffect(() => {
     if (centerOnTime !== undefined && centerOnTime !== null) {
+
       centerTimelineOnTime(centerOnTime);
     }
   }, [centerOnTime, centerTimelineOnTime]);
@@ -322,7 +333,7 @@ const TimelineVisualization = ({
   const [hoveredOfflineRange, setHoveredOfflineRange] = useState(null);
   // Track which offline ranges are currently retrying (keys: "start-end")
   const [retryingOfflineKeys, setRetryingOfflineKeys] = useState([]);
-  const makeRangeKey = (r) => (r && typeof r.start === 'number' && typeof r.end === 'number') ? `${r.start}-${r.end}` : '';
+
 
   // Handle processing animation (streaming or retry) — placed after retryingOfflineKeys to avoid TDZ
   useEffect(() => {
@@ -744,7 +755,7 @@ const TimelineVisualization = ({
       if (e.ctrlKey && e.key === 'a' && onSegmentSelect && duration) {
         e.preventDefault(); // Prevent default browser select all
 
-        console.log('[Timeline] Ctrl+A pressed - selecting entire video range');
+
 
         // Set drag state to simulate range selection from 0 to duration
         const startTime = 0;
@@ -764,7 +775,7 @@ const TimelineVisualization = ({
         // Force re-render to show selection
         renderTimeline();
 
-        console.log('[Timeline] Ctrl+A selection:', startTime.toFixed(2), '-', endTime.toFixed(2), 's');
+
 
         // Show selection for 500ms, then open modal
         setTimeout(() => {
@@ -883,6 +894,14 @@ const TimelineVisualization = ({
   // Clear all offline segments: remove cache and delete files on server
 
       // This creates a clean jump to the new position without any transition
+
+
+
+
+
+
+
+
       setPanOffset(targetOffset);
 
       // Release the scrolling lock immediately
@@ -902,7 +921,6 @@ const TimelineVisualization = ({
       }
     };
   }, [currentTime, duration, getTimeRange, panOffset, setPanOffset]);
-
   // Convert pixel position to time
   const pixelToTime = (pixelX) => {
     const canvas = timelineRef.current;
@@ -928,7 +946,7 @@ const TimelineVisualization = ({
 
       // Check if the click is within the selected segment range
       if (clickTime >= selectedSegment.start && clickTime <= selectedSegment.end) {
-        console.log('[Timeline] Right-click on selected segment - opening video processing modal');
+
         sessionStorage.setItem('processing_modal_open_reason', 'context-menu');
         // Trigger the segment selection callback to open the modal
         onSegmentSelect(selectedSegment);
@@ -1039,7 +1057,7 @@ const TimelineVisualization = ({
 
     let warned = false;
 
-    console.log(`[Timeline] ${isTouch ? 'Touch' : 'Mouse'} down at time:`, startTime.toFixed(2), 's');
+
 
     // Initialize drag state for segment selection (if enabled) - disabled when offline segments linger
     if (onSegmentSelect && offlineSegments.length === 0) {
@@ -1092,7 +1110,7 @@ const TimelineVisualization = ({
     const handlePointerUp = (upClientX) => {
       if (hasMoved && onSegmentSelect && isDraggingRef.current) {
         // This was a drag - handle segment selection
-        console.log(`[Timeline] ${isTouch ? 'Touch' : 'Mouse'} drag detected - creating segment`);
+
 
         // Mark that dragging has been done in this session
         setHasDraggedInSession(true);
@@ -1103,7 +1121,7 @@ const TimelineVisualization = ({
 
           // Only create segment if there's a meaningful duration (at least 1 second)
           if (end - start >= 1) {
-            console.log('[Timeline] Selection:', start.toFixed(2), '-', end.toFixed(2), 's');
+
             if (offlineSegments.length > 0) {
               // When offline cuts exist, do not trigger the range action bar or open the modal
             } else if (hasSubtitlesInRange(start, end)) {
@@ -1115,13 +1133,13 @@ const TimelineVisualization = ({
               onSegmentSelect({ start, end });
             }
           } else {
-            console.log('[Timeline] Segment too short, ignoring');
+
           }
         }
       } else if (!hasMoved) {
         // This was a tap/click - handle timeline seeking
         const clickTime = pixelToTime(upClientX);
-        console.log(`[Timeline] ${isTouch ? 'Tap' : 'Click'} detected - seeking to:`, clickTime.toFixed(2), 's');
+
 
         // Check if tap/click is inside any active range
         const activeRange = actionBarRange || hiddenActionBarRange || selectedSegment;
@@ -1652,17 +1670,23 @@ const TimelineVisualization = ({
             onMouseDown={(e) => {
               const startX = e.clientX;
               const startZoom = zoom;
+              // Hard-disable auto-scroll during zoom drag to avoid any conflicts
+              disableAutoScroll.current = true;
+
 
               // Mark this as a manual interaction to prevent auto-scroll interference
               lastManualPanTime.current = performance.now();
 
-              const handleMouseMove = (moveEvent) => {
-                const deltaX = moveEvent.clientX - startX;
+              // Start RAF-based zoom drag to keep playhead strictly centered
+              zoomDragActiveRef.current = true;
+              zoomDragLastXRef.current = startX;
+
+              const step = () => {
+                if (!zoomDragActiveRef.current) return;
+                const x = zoomDragLastXRef.current;
+                const deltaX = x - startX;
                 const newZoom = Math.max(1, Math.min(200, startZoom + (deltaX * 0.05)));
-                const videoElement = document.querySelector('video');
-                const realTimeCurrentTime = videoElement && !isNaN(videoElement.currentTime)
-                  ? videoElement.currentTime
-                  : currentTime;
+
                 if (duration && setPanOffset) {
                   const maxLyricTime = lyrics.length > 0
                     ? Math.max(...lyrics.map(lyric => lyric.end))
@@ -1670,23 +1694,65 @@ const TimelineVisualization = ({
                   const timelineEnd = Math.max(maxLyricTime, duration) * 1.05;
                   const newVisibleDuration = timelineEnd / newZoom;
                   const halfVisibleDuration = newVisibleDuration / 2;
+
+                  const videoElement = document.querySelector('video');
+                  const liveTime = (videoElement && !isNaN(videoElement.currentTime))
+                    ? videoElement.currentTime
+                    : currentTime;
+
                   const newPanOffset = Math.max(0, Math.min(
-                    realTimeCurrentTime - halfVisibleDuration,
+                    liveTime - halfVisibleDuration,
                     timelineEnd - newVisibleDuration
                   ));
                   currentZoomRef.current = newZoom;
+                  lastComputedPanRef.current = newPanOffset;
+
+                  // Apply zoom first, then pan to avoid parent reactions overriding pan
+                  setZoom(newZoom);
                   setPanOffset(newPanOffset);
+
                 }
-                setZoom(newZoom);
+                lastManualPanTime.current = performance.now();
+                zoomDragRafRef.current = requestAnimationFrame(step);
+              };
+
+              const handleMouseMove = (moveEvent) => {
+                zoomDragLastXRef.current = moveEvent.clientX;
+                lastManualPanTime.current = performance.now();
               };
 
               const handleMouseUp = () => {
                 document.removeEventListener('mousemove', handleMouseMove);
                 document.removeEventListener('mouseup', handleMouseUp);
+                // Stop RAF loop
+                zoomDragActiveRef.current = false;
+                if (zoomDragRafRef.current) cancelAnimationFrame(zoomDragRafRef.current);
+                // Finalize to the dragged result view (do NOT recenter to playhead)
+                const x = zoomDragLastXRef.current;
+                const deltaX = x - startX;
+                const newZoom = Math.max(1, Math.min(200, startZoom + (deltaX * 0.05)));
+                if (duration && setPanOffset) {
+                  // Prefer the latest pan computed during drag
+                  const finalPan = (lastComputedPanRef.current ?? panOffset);
+
+                  currentZoomRef.current = newZoom;
+                  // Apply zoom first, then pan
+                  setZoom(newZoom);
+                  setPanOffset(finalPan);
+                  setPanOffset(finalPan);
+                  disableAutoScroll.current = false;
+                } else {
+                  // Ensure auto-scroll is re-enabled even if early-return path
+                  disableAutoScroll.current = false;
+
+                }
+                lastManualPanTime.current = performance.now();
               };
 
               document.addEventListener('mousemove', handleMouseMove);
               document.addEventListener('mouseup', handleMouseUp);
+              // Kick off the RAF loop
+              zoomDragRafRef.current = requestAnimationFrame(step);
               e.preventDefault();
               e.stopPropagation();
             }}
@@ -1696,16 +1762,20 @@ const TimelineVisualization = ({
               const startX = touch.clientX;
               const startZoom = zoom;
               lastManualPanTime.current = performance.now();
+              // Hard-disable auto-scroll during zoom drag (touch)
+              disableAutoScroll.current = true;
 
-              const handleTouchMove = (te) => {
-                const t = (te.touches && te.touches[0]) || (te.changedTouches && te.changedTouches[0]);
-                if (!t) return;
-                const deltaX = t.clientX - startX;
+
+              // Start RAF-based zoom drag for touch to keep playhead centered
+              zoomDragActiveRef.current = true;
+              zoomDragLastXRef.current = startX;
+
+              const step = () => {
+                if (!zoomDragActiveRef.current) return;
+                const x = zoomDragLastXRef.current;
+                const deltaX = x - startX;
                 const newZoom = Math.max(1, Math.min(200, startZoom + (deltaX * 0.05)));
-                const videoElement = document.querySelector('video');
-                const realTimeCurrentTime = videoElement && !isNaN(videoElement.currentTime)
-                  ? videoElement.currentTime
-                  : currentTime;
+
                 if (duration && setPanOffset) {
                   const maxLyricTime = lyrics.length > 0
                     ? Math.max(...lyrics.map(lyric => lyric.end))
@@ -1713,14 +1783,32 @@ const TimelineVisualization = ({
                   const timelineEnd = Math.max(maxLyricTime, duration) * 1.05;
                   const newVisibleDuration = timelineEnd / newZoom;
                   const halfVisibleDuration = newVisibleDuration / 2;
+
+                  const videoElement = document.querySelector('video');
+                  const liveTime = (videoElement && !isNaN(videoElement.currentTime))
+                    ? videoElement.currentTime
+                    : currentTime;
+
                   const newPanOffset = Math.max(0, Math.min(
-                    realTimeCurrentTime - halfVisibleDuration,
+                    liveTime - halfVisibleDuration,
                     timelineEnd - newVisibleDuration
                   ));
                   currentZoomRef.current = newZoom;
+                  lastComputedPanRef.current = newPanOffset;
+
+                  setZoom(newZoom);
                   setPanOffset(newPanOffset);
+                  requestAnimationFrame(() => { if (zoomDragActiveRef.current) setPanOffset(newPanOffset); });
                 }
-                setZoom(newZoom);
+                lastManualPanTime.current = performance.now();
+                zoomDragRafRef.current = requestAnimationFrame(step);
+              };
+
+              const handleTouchMove = (te) => {
+                const t = (te.touches && te.touches[0]) || (te.changedTouches && te.changedTouches[0]);
+                if (!t) return;
+                zoomDragLastXRef.current = t.clientX;
+                lastManualPanTime.current = performance.now();
                 te.preventDefault();
                 te.stopPropagation();
               };
@@ -1729,11 +1817,33 @@ const TimelineVisualization = ({
                 document.removeEventListener('touchmove', handleTouchMove);
                 document.removeEventListener('touchend', handleTouchEnd);
                 document.removeEventListener('touchcancel', handleTouchEnd);
+                // Stop RAF loop
+                zoomDragActiveRef.current = false;
+                if (zoomDragRafRef.current) cancelAnimationFrame(zoomDragRafRef.current);
+                // Finalize to the dragged result view (do NOT recenter to playhead)
+                const x = zoomDragLastXRef.current;
+                const deltaX = x - startX;
+                const newZoom = Math.max(1, Math.min(200, startZoom + (deltaX * 0.05)));
+                if (duration && setPanOffset) {
+                  const finalPan = (lastComputedPanRef.current ?? panOffset);
+
+                  currentZoomRef.current = newZoom;
+                  setZoom(newZoom);
+                  setPanOffset(finalPan);
+                  setPanOffset(finalPan);
+                  disableAutoScroll.current = false;
+                } else {
+                  disableAutoScroll.current = false;
+
+                }
+                lastManualPanTime.current = performance.now();
               };
 
               document.addEventListener('touchmove', handleTouchMove, { passive: false });
               document.addEventListener('touchend', handleTouchEnd);
               document.addEventListener('touchcancel', handleTouchEnd);
+              // Kick off the RAF loop
+              zoomDragRafRef.current = requestAnimationFrame(step);
               e.preventDefault();
               e.stopPropagation();
             }}

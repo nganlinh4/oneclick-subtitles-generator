@@ -254,18 +254,35 @@ export const SubtitledVideoContent: React.FC<Props> = ({
       >
         {/* Video background if uploaded file is a video */}
         {showVideo ? (
-          <OffthreadVideo
-            src={audioUrl}
-            volume={(metadata.originalAudioVolume ?? 100) / 100}
-            transparent={false} // Use faster BMP extraction instead of PNG
-            toneMapped={false} // Disable tone mapping for faster rendering
-            style={{
-              width: '100%',
-              height: '100%',
-              objectFit: 'contain', // Maintain aspect ratio, don't crop
-              backgroundColor: '#000', // Fill letterbox areas with black
-            }}
-          />
+          <div style={{
+            width: '100%',
+            height: '100%',
+            backgroundColor: '#000',
+            position: 'relative',
+            overflow: 'hidden'
+          }}>
+            <OffthreadVideo
+              src={audioUrl}
+              volume={(metadata.originalAudioVolume ?? 100) / 100}
+              transparent={false} // Use faster BMP extraction instead of PNG
+              toneMapped={false} // Disable tone mapping for faster rendering
+              style={{
+                // When cropping, scale up the video and reposition
+                ...(metadata.cropSettings && (metadata.cropSettings.width < 100 || metadata.cropSettings.height < 100) ? {
+                  position: 'absolute',
+                  width: `${(100 / metadata.cropSettings.width) * 100}%`,
+                  height: `${(100 / metadata.cropSettings.height) * 100}%`,
+                  left: `${-(metadata.cropSettings.x / metadata.cropSettings.width) * 100}%`,
+                  top: `${-(metadata.cropSettings.y / metadata.cropSettings.height) * 100}%`,
+                  objectFit: 'contain'
+                } : {
+                  width: '100%',
+                  height: '100%',
+                  objectFit: 'contain'
+                })
+              }}
+            />
+          </div>
         ) : (
           /* Background image if provided and no video */
           backgroundImageUrl && (

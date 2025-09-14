@@ -28,9 +28,6 @@ video.video-player {
  * Theme-Specific Styles (Light & Dark) - For the video player element itself
  * -----------------------------------------------------------------------------
  */
-[data-theme="light"] video.video-player {
-  border: 1px solid var(--md-outline-variant);
-}
 
 [data-theme="dark"] video.video-player {
   color-scheme: dark; /* Still useful for browser understanding context */

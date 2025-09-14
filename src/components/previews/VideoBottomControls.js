@@ -204,6 +204,7 @@ const VideoBottomControls = ({
 
                     {/* Volume Control with Expanding Pill */}
                     <div
+                      className="volume-pill-wrapper"
                       style={{
                         display: 'flex',
                         alignItems: 'center',
@@ -212,11 +213,12 @@ const VideoBottomControls = ({
                       }}
                       onMouseEnter={() => setIsVolumeSliderVisible(true)}
                       onMouseLeave={() => setIsVolumeSliderVisible(false)}
+                      onTouchStart={() => setIsVolumeSliderVisible(true)}
                     >
                       {/* Expanding Volume Pill */}
                       <LiquidGlass
                         width={50}
-                        height={isVolumeSliderVisible ? 180 : 50}
+                        height={180} // Keep LiquidGlass at full height to maintain effect continuity
                         borderRadius="25px"
                         className="content-center interactive theme-secondary volume-pill-slow video-control"
                         cursor="pointer"
@@ -229,10 +231,14 @@ const VideoBottomControls = ({
                         updateOnMouseMove={true}
 
                         style={{
+                          // Animate only CSS height and transform; keep LiquidGlass filter at full size
+                          height: isVolumeSliderVisible ? '180px' : '50px',
+                          overflow: 'hidden',
+                          willChange: 'height, transform, opacity',
                           transform: isVolumeSliderVisible ? 'translateY(-65px)' : 'translateY(0px)', // Shoot upward
                           transformOrigin: 'bottom center', // Expand from bottom
                           opacity: isFullscreen ? (controlsVisible ? 1 : 0) : (isVideoHovered || controlsVisible) ? 1 : 0,
-                          transition: 'opacity 0.6s ease-in-out, transform 0.6s ease-in-out',
+                          transition: 'height 0.3s ease-in-out, opacity 0.6s ease-in-out, transform 0.6s ease-in-out',
                           pointerEvents: isFullscreen ? (controlsVisible ? 'auto' : 'none') : (isVideoHovered || controlsVisible) ? 'auto' : 'none'
                         }}
                       >
@@ -257,7 +263,8 @@ const VideoBottomControls = ({
                               cursor: 'pointer',
                               opacity: isVolumeSliderVisible ? 1 : 0,
                               transition: 'opacity 0.6s cubic-bezier(0.4, 0, 0.2, 1)',
-                              pointerEvents: isVolumeSliderVisible ? 'auto' : 'none'
+                              pointerEvents: isVolumeSliderVisible ? 'auto' : 'none',
+                              touchAction: 'none'
                             }}
                               onMouseDown={(e) => {
                                 e.preventDefault();
@@ -270,6 +277,22 @@ const VideoBottomControls = ({
                                   videoRef.current.volume = newVolume;
                                   videoRef.current.muted = newVolume === 0;
                                   setIsMuted(newVolume === 0);
+                                }
+                              }}
+                              onTouchStart={(e) => {
+                                e.preventDefault();
+                                e.stopPropagation();
+                                setIsVolumeDragging(true);
+                                const rect = e.currentTarget.getBoundingClientRect();
+                                const touch = e.touches && e.touches[0];
+                                if (touch) {
+                                  const newVolume = Math.max(0, Math.min(1, (rect.bottom - touch.clientY) / rect.height));
+                                  setVolume(newVolume);
+                                  if (videoRef.current) {
+                                    videoRef.current.volume = newVolume;
+                                    videoRef.current.muted = newVolume === 0;
+                                    setIsMuted(newVolume === 0);
+                                  }
                                 }
                               }}
                               onClick={(e) => {
@@ -320,6 +343,11 @@ const VideoBottomControls = ({
                                 zIndex: 10
                               }}
                               onMouseDown={(e) => {
+                                e.preventDefault();
+                                e.stopPropagation();
+                                setIsVolumeDragging(true);
+                              }}
+                              onTouchStart={(e) => {
                                 e.preventDefault();
                                 e.stopPropagation();
                                 setIsVolumeDragging(true);

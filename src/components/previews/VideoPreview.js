@@ -342,12 +342,12 @@ const VideoPreview = ({ currentTime, setCurrentTime, setDuration, videoSource, o
           if (onVideoUrlReady) onVideoUrlReady(urlToUse);
           return;
         }
-        
+
         // Check if this is an external URL that will cause CORS issues
-        const isExternalUrl = (urlToUse.startsWith('http://') || urlToUse.startsWith('https://')) && 
-                            !urlToUse.startsWith('http://localhost') && 
+        const isExternalUrl = (urlToUse.startsWith('http://') || urlToUse.startsWith('https://')) &&
+                            !urlToUse.startsWith('http://localhost') &&
                             !urlToUse.startsWith('http://127.0.0.1');
-        
+
         if (isExternalUrl) {
           // For external URLs, skip blob conversion to avoid CORS errors
           console.log('[VideoPreview] Skipping blob conversion for external URL to avoid CORS');
@@ -356,7 +356,7 @@ const VideoPreview = ({ currentTime, setCurrentTime, setDuration, videoSource, o
           if (onVideoUrlReady) onVideoUrlReady(urlToUse);
           return;
         }
-        
+
         // Convert server URL to blob to avoid CORS/decoding issues (only for local URLs)
         const resp = await fetch(urlToUse, { cache: 'no-cache', mode: 'cors' });
         if (!resp.ok) throw new Error(`Failed to fetch video for blob: ${resp.status}`);
@@ -1485,32 +1485,72 @@ const VideoPreview = ({ currentTime, setCurrentTime, setDuration, videoSource, o
   useEffect(() => {
     if (!isVolumeDragging) return;
 
-    const handleMouseMove = (e) => {
-      const volumeSlider = document.querySelector('.expanding-volume-slider');
-      if (volumeSlider) {
-        const rect = volumeSlider.getBoundingClientRect();
-        const newVolume = Math.max(0, Math.min(1, (rect.bottom - e.clientY) / rect.height));
-        setVolume(newVolume);
-        if (videoRef.current) {
-          videoRef.current.volume = newVolume;
-          videoRef.current.muted = newVolume === 0;
-          setIsMuted(newVolume === 0);
-        }
+    const volumeSlider = document.querySelector('.expanding-volume-slider');
+
+    const updateFromClientY = (clientY) => {
+      if (!volumeSlider) return;
+      const rect = volumeSlider.getBoundingClientRect();
+      const newVolume = Math.max(0, Math.min(1, (rect.bottom - clientY) / rect.height));
+      setVolume(newVolume);
+      if (videoRef.current) {
+        videoRef.current.volume = newVolume;
+        videoRef.current.muted = newVolume === 0;
+        setIsMuted(newVolume === 0);
       }
+    };
+
+    const handleMouseMove = (e) => {
+      updateFromClientY(e.clientY);
     };
 
     const handleMouseUp = () => {
       setIsVolumeDragging(false);
     };
 
+    const handleTouchMove = (e) => {
+      // Prevent scrolling while dragging the volume slider
+      e.preventDefault();
+      const touch = e.touches && e.touches[0];
+      if (touch) {
+        updateFromClientY(touch.clientY);
+      }
+    };
+
+    const handleTouchEnd = () => {
+      setIsVolumeDragging(false);
+    };
+
     document.addEventListener('mousemove', handleMouseMove);
     document.addEventListener('mouseup', handleMouseUp);
+    document.addEventListener('touchmove', handleTouchMove, { passive: false });
+    document.addEventListener('touchend', handleTouchEnd);
 
     return () => {
       document.removeEventListener('mousemove', handleMouseMove);
       document.removeEventListener('mouseup', handleMouseUp);
+      document.removeEventListener('touchmove', handleTouchMove);
+      document.removeEventListener('touchend', handleTouchEnd);
     };
   }, [isVolumeDragging]);
+
+  // Mobile: keep volume slider expanded after touch until user taps outside
+  useEffect(() => {
+    const handleOutside = (e) => {
+      if (!isVolumeSliderVisible) return;
+      const wrapper = document.querySelector('.volume-pill-wrapper');
+      if (wrapper && !wrapper.contains(e.target)) {
+        setIsVolumeSliderVisible(false);
+      }
+    };
+
+    document.addEventListener('mousedown', handleOutside);
+    document.addEventListener('touchstart', handleOutside);
+    return () => {
+      document.removeEventListener('mousedown', handleOutside);
+      document.removeEventListener('touchstart', handleOutside);
+    };
+  }, [isVolumeSliderVisible, setIsVolumeSliderVisible]);
+
 
   // Handle keyboard shortcuts for video control
   useEffect(() => {

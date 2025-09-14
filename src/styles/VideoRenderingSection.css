@@ -264,7 +264,6 @@
   background: var(--md-surface-1);
   overflow: hidden;
   outline: none;
-  border: 2px solid transparent;
   border-radius: 24px;
   transition: border-color 0.2s ease;
 }

@@ -4,6 +4,8 @@
   "invalidFile": "Invalid file format or size. Please check the supported formats.",
   "geminiOverloaded": "Strong model tends to get overloaded, please consider using other model and try again, or try lower the segment duration. Or create a new Google Cloud Project and get an API Key.",
   "tokenLimitExceeded": "The video segment is too large for Gemini to process. Please try with a shorter video or lower video quality.",
+  "tokenLimitExceededCounts": "The video segment is too large for Gemini to process (required {{required}} tokens, limit {{limit}} tokens). Please reduce FPS/quality or shorten each request and try again.",
+
   "fileSizeTooLarge": "File size ({{size}}MB) exceeds the recommended maximum of {{maxSize}}MB. Please use a smaller file or lower quality video.",
   "youtubeAuthRequired": "YouTube authentication required. Please set up OAuth in settings.",
   "youtubeApiKeyRequired": "Please set your YouTube API key in the settings to use this application.",
