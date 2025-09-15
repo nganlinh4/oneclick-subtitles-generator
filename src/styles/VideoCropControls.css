@@ -110,6 +110,7 @@
   transition: background-color var(--md-duration-medium2) var(--md-easing-standard),
               border-color var(--md-duration-medium2) var(--md-easing-standard),
               color var(--md-duration-medium2) var(--md-easing-standard);
+  width: max-content;
 }
 
 .aspect-btn:hover {
@@ -133,6 +134,14 @@
 
 .aspect-btn.reset:hover {
   background: color-mix(in srgb, var(--md-error), transparent 92%);
+}
+
+.aspect-transform-separator {
+  width: 1px;
+  height: 24px;
+  background: color-mix(in srgb, var(--md-outline-variant), transparent 40%);
+  align-self: center;
+  margin: 0 6px;
 }
 
 .aspect-icon {
@@ -398,4 +407,40 @@
     background-color: #fff;
     border-color: var(--md-primary, #d0bcff);
   }
+
+/* Transform controls */
+.crop-transform-buttons {
+  display: flex;
+  gap: 8px;
+}
+
+.transform-btn {
+  width: 36px;
+  height: 36px;
+  border-radius: 50%;
+  background: var(--md-surface);
+  color: var(--md-on-surface);
+  border: 1px solid var(--md-outline-variant);
+  box-shadow: var(--md-elevation-level1);
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: background-color var(--md-duration-medium2) var(--md-easing-standard),
+              border-color var(--md-duration-medium2) var(--md-easing-standard),
+              transform 0.2s ease;
+}
+
+.transform-btn:hover {
+  background: var(--md-surface-1);
+  border-color: var(--md-outline);
+  transform: translateY(-1px);
+}
+
+.transform-btn.active {
+  background: var(--md-primary-container);
+  color: var(--md-on-primary-container);
+  border-color: var(--md-primary);
+}
+
 }

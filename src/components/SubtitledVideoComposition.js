@@ -316,22 +316,71 @@ export const SubtitledVideoComposition = ({
             position: 'relative',
             overflow: 'hidden'
           }}>
+            {/* Canvas background when padding is detected */}
+            {cropSettings && (
+              (cropSettings.width > 100 || cropSettings.height > 100 || cropSettings.x < 0 || cropSettings.y < 0 ||
+               (cropSettings.x + cropSettings.width) > 100 || (cropSettings.y + cropSettings.height) > 100)
+            ) && (
+              <>
+                {cropSettings.canvasBgMode === 'solid' && (
+                  <div style={{ position: 'absolute', inset: 0, backgroundColor: cropSettings.canvasBgColor || '#000' }} />
+                )}
+                {cropSettings.canvasBgMode === 'blur' && showVideo && (
+                  <Video
+                    src={videoUrl}
+                    volume={0}
+                    style={{ position: 'absolute', inset: 0, width: '100%', height: '100%', objectFit: 'cover', filter: `blur(${(cropSettings.canvasBgBlur ?? 24)}px) brightness(0.7)`, transform: 'scale(1.06)' }}
+                  />
+                )}
+              </>
+            )}
             <Video
               src={videoUrl}
               volume={originalAudioVolume / 100}
               style={{
                 // When cropping, scale up the video and reposition
-                ...(cropSettings && (cropSettings.width < 100 || cropSettings.height < 100) ? {
+                ...(cropSettings && (cropSettings.width !== 100 || cropSettings.height !== 100 || cropSettings.x !== 0 || cropSettings.y !== 0) ? {
                   position: 'absolute',
                   width: `${(100 / cropSettings.width) * 100}%`,
                   height: `${(100 / cropSettings.height) * 100}%`,
                   left: `${-(cropSettings.x / cropSettings.width) * 100}%`,
                   top: `${-(cropSettings.y / cropSettings.height) * 100}%`,
-                  objectFit: 'contain'
+                  objectFit: 'contain',
+                  transformOrigin: 'top left',
+                  transform: (() => {
+                    const r = ((cropSettings.rotation ?? 0) % 360 + 360) % 360;
+                    const flipH = cropSettings.flipH ? ' scaleX(-1)' : '';
+                    const flipV = cropSettings.flipV ? ' scaleY(-1)' : '';
+                    let rotate = '';
+                    let translate = '';
+                    if (r === 90) {
+                      rotate = ' rotate(90deg)';
+                      translate = ' translateY(-100%)';
+                    } else if (r === 180) {
+                      rotate = ' rotate(180deg)';
+                      translate = ' translate(-100%, -100%)';
+                    } else if (r === 270) {
+                      rotate = ' rotate(270deg)';
+                      translate = ' translateX(-100%)';
+                    } else if (r !== 0) {
+                      rotate = ` rotate(${r}deg)`;
+                    }
+                    return `${rotate}${translate}${flipH}${flipV}`.trim() || 'none';
+                  })()
                 } : {
                   width: '100%',
                   height: '100%',
-                  objectFit: 'contain'
+                  objectFit: 'contain',
+                  transformOrigin: 'center center',
+                  transform: (() => {
+                    const cs = cropSettings;
+                    if (!cs) return 'none';
+                    const r = ((cs.rotation ?? 0) % 360 + 360) % 360;
+                    const flipH = cs.flipH ? ' scaleX(-1)' : '';
+                    const flipV = cs.flipV ? ' scaleY(-1)' : '';
+                    const rotate = r !== 0 ? ` rotate(${r}deg)` : '';
+                    return `${rotate}${flipH}${flipV}`.trim() || 'none';
+                  })()
                 })
               }}
             />

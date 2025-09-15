@@ -240,5 +240,20 @@
   "fps120": "120 FPS (Tốc độ cao)",
   "upcomingFeatures": "Các tính năng sắp tới: crop, thêm text, logo, ảnh, nhạc nền, ...",
   "networkError": "Xảy ra lỗi mạng",
-  "reconnecting": "Đang kết nối lại với quá trình render..."
+  "reconnecting": "Đang kết nối lại với quá trình render...",
+  "editCrop": "Chỉnh sửa chuyển đổi",
+  "toggleCrop": "Bật chuyển đổi",
+  "clearCrop": "Xóa chuyển đổi",
+  "rotateLeft": "Xoay trái 90°",
+  "rotateRight": "Xoay phải 90°",
+  "flipHorizontal": "Lật ngang",
+  "flipVertical": "Lật dọc",
+  "canvas": "Nền",
+  "blurredVideo": "Video làm mờ",
+  "canvasColor": "Màu nền",
+  "blurIntensity": "Làm mờ",
+  "applyCrop": "Áp dụng"
+,
+  "free": "Tự do",
+  "solidCanvas": "Đơn sắc"
 }

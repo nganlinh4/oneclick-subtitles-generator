@@ -542,24 +542,16 @@ app.post('/render', async (req, res) => {
         height = targetHeight;
         
         // Check if crop settings are provided and adjust dimensions
-        if (metadata.cropSettings && (metadata.cropSettings.width < 100 || metadata.cropSettings.height < 100)) {
-          console.log(`[RENDER] Crop settings detected:`, metadata.cropSettings);
-          
-          // Calculate new aspect ratio based on crop
+        if (metadata.cropSettings && (metadata.cropSettings.width !== 100 || metadata.cropSettings.height !== 100)) {
+          console.log(`[RENDER] Crop settings detected (affecting AR):`, metadata.cropSettings);
+          // New aspect ratio after crop (supports expand-only as well):
+          // croppedAR = originalAR * (cropWidthRatio / cropHeightRatio)
           const cropWidthRatio = metadata.cropSettings.width / 100;
           const cropHeightRatio = metadata.cropSettings.height / 100;
-          
-          // Cropped dimensions
-          const croppedWidth = videoWidth * cropWidthRatio;
-          const croppedHeight = videoHeight * cropHeightRatio;
-          
-          // New aspect ratio after crop
-          const croppedAspectRatio = croppedWidth / croppedHeight;
-          
-          // Recalculate dimensions with cropped aspect ratio
+          const croppedAspectRatio = aspectRatio * (cropWidthRatio / cropHeightRatio);
           width = Math.round(targetHeight * croppedAspectRatio);
           height = targetHeight;
-          
+
           console.log(`[RENDER] Adjusted dimensions for crop: ${width}x${height} (cropped aspect ratio: ${croppedAspectRatio.toFixed(2)})`);
         }
 

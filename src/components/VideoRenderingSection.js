@@ -57,7 +57,10 @@ const VideoRenderingSection = ({
       y: 0,
       width: 100,
       height: 100,
-      aspectRatio: null
+      aspectRatio: null,
+      rotation: 0,
+      flipH: false,
+      flipV: false
     };
   });
   const [renderQueue, setRenderQueue] = useState([]);

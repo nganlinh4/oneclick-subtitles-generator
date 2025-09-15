@@ -27,6 +27,9 @@ export interface CropSettings {
   width: number; // Width as percentage (0-100)
   height: number; // Height as percentage (0-100)
   aspectRatio: number | null; // Aspect ratio value or null for custom
+  rotation?: number; // Rotation in degrees (0, 90, 180, 270)
+  flipH?: boolean; // Horizontal flip
+  flipV?: boolean; // Vertical flip
 }
 
 // Subtitle customization interface
