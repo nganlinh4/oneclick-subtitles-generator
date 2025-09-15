@@ -243,16 +243,11 @@ const SubtitleSplitModal = ({ isOpen, onClose, lyrics, onSplitSubtitles, selecte
       isOpen={isOpen}
       onClose={onClose}
       title={
-        <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
           <span>{t('subtitleSplit.title', 'Chia nhỏ subtitles')}</span>
           {selectedRange && (
-            <span style={{ 
-              fontSize: '0.85em', 
-              color: 'var(--md-on-surface-variant)',
-              fontWeight: 'normal'
-            }}>
-              {formatTime(selectedRange.start)} - {formatTime(selectedRange.end)}
-              {' '}({Math.round(selectedRange.end - selectedRange.start)}s)
+            <span className="segment-time">
+              {formatTime(selectedRange.start)} - {formatTime(selectedRange.end)} ({Math.round(selectedRange.end - selectedRange.start)}s)
             </span>
           )}
         </div>

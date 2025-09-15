@@ -1,7 +1,7 @@
 /* Base container styles */
 .background-generator-container {
   background-color: var(--md-surface-1);
-  border-radius: 24px;
+  border-radius: 38px;
   box-shadow: var(--md-elevation-level2);
   width: 100%;
   max-width: 1200px;

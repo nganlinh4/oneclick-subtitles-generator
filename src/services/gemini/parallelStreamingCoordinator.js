@@ -503,79 +503,134 @@ export const coordinateParallelInlineStreaming = async (
     const segmentSubtitles = new Array(subSegments.length).fill([]);
     const segmentTexts = new Array(subSegments.length).fill('');
 
-    // For each sub-segment, kick off extraction, then stream when ready
+    // Retry helpers (match Files API coordinator semantics)
+    const is503Error = (error) => !!(error && error.message && (
+      error.message.includes('503') ||
+      error.message.includes('overloaded') ||
+      error.message.includes('UNAVAILABLE')
+    ));
+    const is429Error = (error) => !!(error && error.message && (
+      error.message.includes('429') ||
+      error.message.includes('RESOURCE_EXHAUSTED') ||
+      error.message.includes('quota') ||
+      error.message.includes('rate limit')
+    ));
+    const RETRY_DELAYS = [5, 10, 15, 20, 25]; // seconds
+    const INLINE_LARGE_SEGMENT_THRESHOLD_BYTES = 8 * 1024 * 1024; // 8MB
+
+    // Stream a prepared (already-clipped) sub-segment with retries and large-clip Files API fallback
+    const streamSubSegmentWithRetry = async (clipped, subSeg, index, attempt = 0, maxRetries = 5) => {
+      const useFilesApiForThisClip = clipped && clipped.size > INLINE_LARGE_SEGMENT_THRESHOLD_BYTES;
+
+      // Common options for this specific sub-segment
+      const segOptions = {
+        ...options,
+        // Ensure INLINE does not send videoMetadata; Files API path also uses the clipped media without offsets
+        videoMetadata: undefined,
+        forceInline: !useFilesApiForThisClip,
+        segmentInfo: {
+          start: subSeg.start,
+          end: subSeg.end,
+          duration: subSeg.end - subSeg.start
+        }
+      };
+
+      // Chunk handler (shared for INLINE and Files API path) with aggregation
+      const handleChunk = (chunk) => {
+        if (chunk.subtitles && chunk.subtitles.length > 0) {
+          // Adjust relative timestamps if needed (shift by subSeg.start)
+          const first = chunk.subtitles[0];
+          const looksRelative = first && (first.start < subSeg.start / 2);
+
+          let adjusted = looksRelative
+            ? chunk.subtitles.map(s => ({ ...s, start: (s.start || 0) + subSeg.start, end: (s.end || 0) + subSeg.start }))
+            : chunk.subtitles;
+
+          if (autoSplitEnabled && maxWordsPerSubtitle > 0) {
+            adjusted = autoSplitSubtitles(adjusted, maxWordsPerSubtitle);
+          }
+
+          segmentSubtitles[index] = adjusted;
+          segmentTexts[index] = chunk.accumulatedText || '';
+
+          // Aggregate and emit combined progress update
+          const aggregated = mergeParallelSubtitles(
+            subSegments.map((ss, i) => ({ segment: ss, subtitles: segmentSubtitles[i] || [] }))
+          );
+
+          onChunk({
+            text: segmentTexts.join('\n'),
+            accumulatedText: segmentTexts.join('\n'),
+            subtitles: aggregated,
+            chunkCount: chunk.chunkCount,
+            isComplete: false,
+            parallelInfo: {
+              segmentIndex: index,
+              totalSegments: subSegments.length,
+              segmentProgress: progressTracker.segmentProgress
+            }
+          });
+
+          // Rough progress signal for this segment
+          progressTracker.updateSegmentProgress(index, Math.min(90, (chunk.chunkCount || 1) * 10));
+        }
+      };
+
+      // Completion handler for this sub-segment
+      const handleComplete = (finalText) => {
+        segmentTexts[index] = finalText || segmentTexts[index];
+        progressTracker.markSegmentComplete(index);
+      };
+
+      // Error handler that applies retry policy
+      const handleError = async (err) => {
+        const shouldRetry = (is503Error(err) || is429Error(err)) && attempt < maxRetries;
+        if (shouldRetry) {
+          const delaySec = RETRY_DELAYS[Math.min(attempt, RETRY_DELAYS.length - 1)];
+          console.warn(`[ParallelCoordinator INLINE] Segment ${index + 1}/${subSegments.length} retry in ${delaySec}s (attempt ${attempt + 1}/${maxRetries}) due to:`, err?.message || err);
+          await new Promise(r => setTimeout(r, 1000 * delaySec));
+          return streamSubSegmentWithRetry(clipped, subSeg, index, attempt + 1, maxRetries);
+        }
+        console.error(`[ParallelCoordinator INLINE] Segment ${index + 1} failed:`, err);
+        progressTracker.markSegmentFailed(index, err);
+        // Re-throw so caller can mark this task as failed
+        throw err;
+      };
+
+      try {
+        if (useFilesApiForThisClip) {
+          // Route this subclip through Files API streaming (benefits from upload + reuse + stability)
+          await (await import('./core')).streamGeminiApiWithFilesApi(
+            clipped,
+            segOptions,
+            handleChunk,
+            handleComplete,
+            (e) => { throw e; },
+            undefined // onProgress not used here (we aggregate via handleChunk)
+          );
+        } else {
+          // Pure INLINE streaming for smaller subclips
+          await streamGeminiContent(
+            clipped,
+            null,
+            segOptions,
+            handleChunk,
+            handleComplete,
+            (e) => { throw e; }
+          );
+        }
+      } catch (err) {
+        return handleError(err);
+      }
+    };
+
+    // For each sub-segment, cut once, then stream with retries
     const tasks = subSegments.map((subSeg, index) => (async () => {
       try {
         progressTracker.updateSegmentProgress(index, 5, 'cutting');
         const clipped = await extractVideoSegmentLocally(sourceFile, subSeg.start, subSeg.end);
         progressTracker.updateSegmentProgress(index, 10, 'streaming');
-
-        // Stream this subclip inline (no offsets); keep segmentInfo for termination/adjustment
-        await streamGeminiContent(
-          clipped,
-          null,
-          {
-            ...options,
-            forceInline: true,
-            videoMetadata: undefined, // ensure no offsets are sent
-            segmentInfo: {
-              start: subSeg.start,
-              end: subSeg.end,
-              duration: subSeg.end - subSeg.start
-            }
-          },
-          // onChunk for this sub-segment
-          (chunk) => {
-            if (chunk.subtitles && chunk.subtitles.length > 0) {
-              // Adjust relative timestamps if needed (shift by subSeg.start)
-              const first = chunk.subtitles[0];
-              const segDur = subSeg.end - subSeg.start;
-              const looksRelative = first && (first.start < subSeg.start / 2);
-
-              let adjusted = looksRelative
-                ? chunk.subtitles.map(s => ({ ...s, start: (s.start || 0) + subSeg.start, end: (s.end || 0) + subSeg.start }))
-                : chunk.subtitles;
-
-              if (autoSplitEnabled && maxWordsPerSubtitle > 0) {
-                adjusted = autoSplitSubtitles(adjusted, maxWordsPerSubtitle);
-              }
-
-              segmentSubtitles[index] = adjusted;
-              segmentTexts[index] = chunk.accumulatedText || '';
-
-              // Aggregate and emit combined progress update
-              const aggregated = mergeParallelSubtitles(
-                subSegments.map((ss, i) => ({ segment: ss, subtitles: segmentSubtitles[i] || [] }))
-              );
-
-              onChunk({
-                text: segmentTexts.join('\n'),
-                accumulatedText: segmentTexts.join('\n'),
-                subtitles: aggregated,
-                chunkCount: chunk.chunkCount,
-                isComplete: false,
-                parallelInfo: {
-                  segmentIndex: index,
-                  totalSegments: subSegments.length,
-                  segmentProgress: progressTracker.segmentProgress
-                }
-              });
-
-              // Rough progress signal for this segment
-              progressTracker.updateSegmentProgress(index, Math.min(90, (chunk.chunkCount || 1) * 10));
-            }
-          },
-          // onComplete for this sub-segment
-          (finalText) => {
-            segmentTexts[index] = finalText || segmentTexts[index];
-            progressTracker.markSegmentComplete(index);
-          },
-          // onError for this sub-segment
-          (err) => {
-            console.error(`[ParallelCoordinator INLINE] Segment ${index + 1} failed:`, err);
-            progressTracker.markSegmentFailed(index, err);
-          }
-        );
+        await streamSubSegmentWithRetry(clipped, subSeg, index, 0, 5);
       } catch (e) {
         console.error(`[ParallelCoordinator INLINE] Error in segment ${index + 1}:`, e);
         progressTracker.markSegmentFailed(index, e);

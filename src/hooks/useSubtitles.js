@@ -1,4 +1,4 @@
-import { useState, useCallback, useEffect } from 'react';
+import { useState, useCallback, useEffect, useRef } from 'react';
 import { callGeminiApi, setProcessingForceStopped } from '../services/geminiService';
 import { preloadYouTubeVideo } from '../utils/videoPreloader';
 import { generateFileCacheId } from '../utils/cacheUtils';
@@ -48,10 +48,21 @@ export const useSubtitles = (t) => {
     const [status, setStatus] = useState({ message: '', type: '' });
     const [isGenerating, setIsGenerating] = useState(false);
     const [retryingSegments, setRetryingSegments] = useState([]);
+    const currentRetryFromCacheRef = useRef(null);
+
 
     // Listen for abort events
     useEffect(() => {
         const handleAbort = () => {
+            // If a retry-from-cache is in progress, notify completion for that specific segment
+            const active = currentRetryFromCacheRef.current;
+            if (active && typeof active.start === 'number' && typeof active.end === 'number') {
+                window.dispatchEvent(new CustomEvent('retry-segment-from-cache-complete', {
+                    detail: { start: active.start, end: active.end, success: false, error: 'aborted' }
+                }));
+                currentRetryFromCacheRef.current = null;
+            }
+
             // Reset generating state
             setIsGenerating(false);
             // Reset retrying segments
@@ -64,7 +75,6 @@ export const useSubtitles = (t) => {
         window.addEventListener('gemini-requests-aborted', handleAbort);
 
         // Clean up
-
         return () => {
             window.removeEventListener('gemini-requests-aborted', handleAbort);
         };
@@ -1073,123 +1083,168 @@ export const useSubtitles = (t) => {
     // Retry a specific segment using a previously cached cut (from Timeline)
     useEffect(() => {
         const handler = async (e) => {
+            const detail = e && e.detail;
+            if (!detail) return;
+            const { start, end, url } = detail;
+            if (typeof start !== 'number' || typeof end !== 'number' || !url) return;
+
+            // Track active retry segment for proper cleanup on abort
+            currentRetryFromCacheRef.current = { start, end };
+
+            setIsGenerating(true);
+            setStatus({ message: t('output.processingVideo', 'Processing video...'), type: 'loading' });
+
+            // Fetch cached clip as File
+            let file;
             try {
-                const detail = e && e.detail;
-                if (!detail) return;
-                const { start, end, url } = detail;
-                if (typeof start !== 'number' || typeof end !== 'number' || !url) return;
-
-                setIsGenerating(true);
-                setStatus({ message: t('output.processingVideo', 'Processing video...'), type: 'loading' });
-
-                // Fetch cached clip as File
                 const resp = await fetch(url);
                 if (!resp.ok) throw new Error(`Failed to fetch cached clip: ${resp.statusText}`);
                 const blob = await resp.blob();
                 const filename = url.split('?')[0].split('/').pop() || 'segment.mp4';
-                const file = new File([blob], filename, { type: blob.type || 'video/mp4' });
+                file = new File([blob], filename, { type: blob.type || 'video/mp4' });
+            } catch (fetchErr) {
+                console.error('[useSubtitles] Failed to fetch cached clip:', fetchErr);
+                setIsGenerating(false);
+                setStatus({ message: fetchErr.message || 'Retry failed', type: 'error' });
+                window.dispatchEvent(new CustomEvent('retry-segment-from-cache-complete', {
+                    detail: { start, end, success: false, error: fetchErr?.message }
+                }));
+                currentRetryFromCacheRef.current = null;
+                return;
+            }
 
-                const segment = { start, end };
-                const fps = parseFloat(localStorage.getItem('video_processing_fps') || '1');
-                const mediaResolution = localStorage.getItem('media_resolution') || 'medium';
-                const model = localStorage.getItem('gemini_model') || 'gemini-2.0-flash';
+            const segment = { start, end };
+            const fps = parseFloat(localStorage.getItem('video_processing_fps') || '1');
+            const mediaResolution = localStorage.getItem('media_resolution') || 'medium';
+            const model = localStorage.getItem('gemini_model') || 'gemini-2.0-flash';
 
-                const { processSegmentWithStreaming } = await import('../utils/videoProcessing/processingUtils');
-                const { mergeStreamingSubtitlesProgressively } = await import('../utils/subtitle/subtitleMerger');
+            const { processSegmentWithStreaming } = await import('../utils/videoProcessing/processingUtils');
+            const { mergeStreamingSubtitlesProgressively } = await import('../utils/subtitle/subtitleMerger');
 
-                let appliedAnyUpdate = false;
-                // Throttle progressive merges similar to normal segment processing
-                let lastMergeTime = 0;
-                let pendingUpdate = null;
-                let updateTimer = null;
-                const THROTTLE_MS = 500;
+            // Progressive merge throttling
+            let appliedAnyUpdate = false;
+            let lastMergeTime = 0;
+            let pendingUpdate = null;
+            let updateTimer = null;
+            const THROTTLE_MS = 500;
 
-                const onStreamingUpdate = (streamingSubtitles, isStreaming) => {
-                    if (!streamingSubtitles || streamingSubtitles.length === 0) return;
-                    appliedAnyUpdate = true;
+            const onStreamingUpdate = (streamingSubtitles, isStreaming) => {
+                if (!streamingSubtitles || streamingSubtitles.length === 0) return;
+                appliedAnyUpdate = true;
 
-                    const applyMerge = (subs) => {
-                        setSubtitlesData(current => {
-                            const existing = current || [];
-                            return mergeStreamingSubtitlesProgressively(existing, subs, segment);
-                        });
-                    };
-
-                    const now = Date.now();
-                    if (now - lastMergeTime >= THROTTLE_MS) {
-                        lastMergeTime = now;
-                        applyMerge(streamingSubtitles);
-                    } else {
-                        pendingUpdate = streamingSubtitles;
-                        if (!updateTimer) {
-                            updateTimer = setTimeout(() => {
-                                lastMergeTime = Date.now();
-                                if (pendingUpdate) applyMerge(pendingUpdate);
-                                pendingUpdate = null;
-                                updateTimer = null;
-                            }, Math.max(0, THROTTLE_MS - (now - lastMergeTime)));
-                        }
-                    }
-
-                    if (isStreaming) {
-                        setStatus({ message: t('output.streamingProgress', 'Streaming...'), type: 'loading' });
-                    }
+                const applyMerge = (subs) => {
+                    setSubtitlesData(current => {
+                        const existing = current || [];
+                        return mergeStreamingSubtitlesProgressively(existing, subs, segment);
+                    });
                 };
 
-                const finalSubtitles = await processSegmentWithStreaming(
-                    file,
-                    segment,
-                    {
-                        fps,
-                        mediaResolution,
-                        model,
-                        userProvidedSubtitles: null,
-                        forceInline: true
-                    },
-                    setStatus,
-                    onStreamingUpdate,
-                    t
-                );
-
-                // Ensure final result is applied even if no progressive updates arrived
-                if (!appliedAnyUpdate && Array.isArray(finalSubtitles) && finalSubtitles.length > 0) {
-                    // Safety: ensure final results are absolute-time. If results look relative to the cut,
-                    // offset them by the segment start before merging.
-                    const segDuration = (segment.end - segment.start);
-                    const maxEndRaw = Math.max(...finalSubtitles.map(s => s.end || 0));
-                    const looksRelative = maxEndRaw <= (segDuration + 1);
-                    const adjustedFinal = looksRelative
-                      ? finalSubtitles.map(s => ({
-                          ...s,
-                          start: (s.start || 0) + segment.start,
-                          end: (s.end || 0) + segment.start
-                        }))
-                      : finalSubtitles;
-
-                    setSubtitlesData(current => {
-                        const existingSubtitles = current || [];
-                        const nonOverlappingSubtitles = existingSubtitles.filter(sub => {
-                            return sub.end <= segment.start || sub.start >= segment.end;
-                        });
-                        return [...nonOverlappingSubtitles, ...adjustedFinal].sort((a, b) => a.start - b.start);
-                    });
+                const now = Date.now();
+                if (now - lastMergeTime >= THROTTLE_MS) {
+                    lastMergeTime = now;
+                    applyMerge(streamingSubtitles);
+                } else {
+                    pendingUpdate = streamingSubtitles;
+                    if (!updateTimer) {
+                        updateTimer = setTimeout(() => {
+                            lastMergeTime = Date.now();
+                            if (pendingUpdate) applyMerge(pendingUpdate);
+                            pendingUpdate = null;
+                            updateTimer = null;
+                        }, Math.max(0, THROTTLE_MS - (now - lastMergeTime)));
+                    }
                 }
 
-                setIsGenerating(false);
-                setStatus({ message: t('output.generationSuccess', 'Subtitles updated successfully!'), type: 'success' });
+                if (isStreaming) {
+                    setStatus({ message: t('output.streamingProgress', 'Streaming...'), type: 'loading' });
+                }
+            };
 
-                // Notify UI that the retry for this specific range completed
-                window.dispatchEvent(new CustomEvent('retry-segment-from-cache-complete', {
-                    detail: { start, end, success: true }
-                }));
-            } catch (err) {
-                console.error('[useSubtitles] Retry from cache failed:', err);
-                setIsGenerating(false);
-                setStatus({ message: err.message || 'Retry failed', type: 'error' });
-                window.dispatchEvent(new CustomEvent('retry-segment-from-cache-complete', {
-                    detail: { start: (e?.detail?.start), end: (e?.detail?.end), success: false, error: err?.message }
-                }));
-            }
+            // Retry policy (match Files API): 503/429 with progressive delays
+            const is503Error = (error) => !!(error && error.message && (
+                error.message.includes('503') ||
+                error.message.includes('overloaded') ||
+                error.message.includes('UNAVAILABLE')
+            ));
+            const is429Error = (error) => !!(error && error.message && (
+                error.message.includes('429') ||
+                error.message.includes('RESOURCE_EXHAUSTED') ||
+                error.message.includes('quota') ||
+                error.message.includes('rate limit')
+            ));
+            const RETRY_DELAYS = [5, 10, 15, 20, 25]; // seconds
+            const INLINE_LARGE_SEGMENT_THRESHOLD_BYTES = 8 * 1024 * 1024; // 8MB
+
+            // Determine whether to force Files API for large cached clips (no offsets)
+            const isLargeClip = file && file.size > INLINE_LARGE_SEGMENT_THRESHOLD_BYTES;
+
+            const attemptStreaming = async (attempt = 0) => {
+                try {
+                    // Use noOffsets with Files API for large cached clips
+                    const finalSubtitles = await processSegmentWithStreaming(
+                        file,
+                        segment,
+                        {
+                            fps,
+                            mediaResolution,
+                            model,
+                            userProvidedSubtitles: null,
+                            forceInline: !isLargeClip,
+                            noOffsets: isLargeClip
+                        },
+                        setStatus,
+                        onStreamingUpdate,
+                        t
+                    );
+
+                    // Ensure final result is applied even if no progressive updates arrived
+                    if (!appliedAnyUpdate && Array.isArray(finalSubtitles) && finalSubtitles.length > 0) {
+                        const segDuration = (segment.end - segment.start);
+                        const maxEndRaw = Math.max(...finalSubtitles.map(s => s.end || 0));
+                        const looksRelative = maxEndRaw <= (segDuration + 1);
+                        const adjustedFinal = looksRelative
+                          ? finalSubtitles.map(s => ({
+                              ...s,
+                              start: (s.start || 0) + segment.start,
+                              end: (s.end || 0) + segment.start
+                            }))
+                          : finalSubtitles;
+
+                        setSubtitlesData(current => {
+                            const existingSubtitles = current || [];
+                            const nonOverlappingSubtitles = existingSubtitles.filter(sub => {
+                                return sub.end <= segment.start || sub.start >= segment.end;
+                            });
+                            return [...nonOverlappingSubtitles, ...adjustedFinal].sort((a, b) => a.start - b.start);
+                        });
+                    }
+
+                    setIsGenerating(false);
+                    setStatus({ message: t('output.generationSuccess', 'Subtitles updated successfully!'), type: 'success' });
+                    window.dispatchEvent(new CustomEvent('retry-segment-from-cache-complete', {
+                        detail: { start, end, success: true }
+                    }));
+                    currentRetryFromCacheRef.current = null;
+                } catch (err) {
+                    const shouldRetry = (is503Error(err) || is429Error(err)) && attempt < RETRY_DELAYS.length;
+                    if (shouldRetry) {
+                        const delaySec = RETRY_DELAYS[attempt];
+                        setStatus({ message: t('output.retryingInSeconds', 'Retrying in {{n}}s...', { n: delaySec }), type: 'loading' });
+                        await new Promise(r => setTimeout(r, 1000 * delaySec));
+                        return attemptStreaming(attempt + 1);
+                    }
+
+                    console.error('[useSubtitles] Retry from cache failed:', err);
+                    setIsGenerating(false);
+                    setStatus({ message: err.message || 'Retry failed', type: 'error' });
+                    window.dispatchEvent(new CustomEvent('retry-segment-from-cache-complete', {
+                        detail: { start, end, success: false, error: err?.message }
+                    }));
+                    currentRetryFromCacheRef.current = null;
+                }
+            };
+
+            attemptStreaming();
         };
         window.addEventListener('retry-segment-from-cache', handler);
         return () => window.removeEventListener('retry-segment-from-cache', handler);

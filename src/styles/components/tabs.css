@@ -4,6 +4,9 @@
 .input-tabs.compact .pill-overlay .goo-blob { height: var(--pill-height); }
 .input-tabs.compact .tab-btn { padding: 6px 12px; font-size: 0.95em; line-height: 1.1; }
 
+/* Override: make compact pill taller only for process-tabs */
+.process-tabs.compact { --pill-height: 40px; }
+
 
 /* tabs.css - Styles for tab components */
 

@@ -373,6 +373,7 @@
   gap: 4px;
   margin-top: 8px;
   margin-bottom: 8px;
+  align-items: center; /* Center-align contents horizontally */
 }
 
 .split-duration-slider-container .slider-with-value {
@@ -380,6 +381,7 @@
   display: flex;
   align-items: center;
   width: 100%;
+  max-width: 360px; /* Constrain width so centering is visible */
   gap: 12px; /* Slightly larger gap for modal layout */
   height: 44px; /* Match StandardSlider height */
 }

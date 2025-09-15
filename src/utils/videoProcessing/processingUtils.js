@@ -328,7 +328,10 @@ export const processSegmentWithStreaming = async (file, segment, options, setSta
       };
 
       const useInline = options.forceInline === true || options.inlineExtraction === true;
-      const apiOptions = useInline ? { ...baseApiOptions, forceInline: true } : { ...baseApiOptions, videoMetadata };
+      const noOffsets = options.noOffsets === true;
+      const apiOptions = useInline
+        ? { ...baseApiOptions, forceInline: true }
+        : { ...baseApiOptions, ...(noOffsets ? {} : { videoMetadata }) };
 
       // Start streaming (Files API vs INLINE)
       import('../../services/gemini').then(({ streamGeminiApiWithFilesApi, streamGeminiApiInline }) => {

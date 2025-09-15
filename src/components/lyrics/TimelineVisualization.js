@@ -478,6 +478,15 @@ const TimelineVisualization = ({
       window.removeEventListener('retry-segment-from-cache-complete', onRetryComplete);
     };
   }, []);
+  // Clear any segment-specific retry animations if user force-stops all requests
+  useEffect(() => {
+    const onAborted = () => {
+      setRetryingOfflineKeys([]);
+    };
+    window.addEventListener('gemini-requests-aborted', onAborted);
+    return () => window.removeEventListener('gemini-requests-aborted', onAborted);
+  }, []);
+
 
   // Stop retry animation if the processing modal is closed without confirming (cancelled)
   useEffect(() => {
