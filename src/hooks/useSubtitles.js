@@ -4,7 +4,7 @@ import { preloadYouTubeVideo } from '../utils/videoPreloader';
 import { generateFileCacheId } from '../utils/cacheUtils';
 import { extractYoutubeVideoId } from '../utils/videoDownloader';
 import { getVideoDuration, processMediaFile } from '../utils/videoProcessor';
-import { processSegmentWithFilesApi } from '../utils/videoProcessing/processingUtils';
+
 import { setCurrentCacheId as setRulesCacheId } from '../utils/transcriptionRulesStore';
 import { setCurrentCacheId as setSubtitlesCacheId } from '../utils/userSubtitlesStore';
 
@@ -48,6 +48,8 @@ export const useSubtitles = (t) => {
     const [status, setStatus] = useState({ message: '', type: '' });
     const [isGenerating, setIsGenerating] = useState(false);
     const [retryingSegments, setRetryingSegments] = useState([]);
+    const currentSourceFileRef = useRef(null);
+
     const currentRetryFromCacheRef = useRef(null);
 
 
@@ -354,6 +356,9 @@ export const useSubtitles = (t) => {
                     segmentRange: `${segment.start}s - ${segment.end}s`,
                     existingSubtitles: currentSubtitles.map(s => `${s.start}-${s.end}: ${s.text.substring(0, 20)}...`)
                 });
+                // Remember the current source file for future retries (Files API offsets)
+                currentSourceFileRef.current = input;
+
 
                 // Process the specific segment with streaming
                 const segmentSubtitles = await processSegmentWithStreaming(
@@ -575,17 +580,31 @@ export const useSubtitles = (t) => {
 
                     // Check if we have segment-based processing options
                     if (segment && fps && mediaResolution && model) {
-                        // Use new segment-based processing with Files API
-                        subtitles = await processSegmentWithFilesApi(input, segment, {
-                            fps,
-                            mediaResolution,
-                            model,
-                            userProvidedSubtitles
-                        }, setStatus, t);
+                        // Use segment-based processing (Files API by default)
+                        const { processSegmentWithStreaming } = await import('../utils/videoProcessing/processingUtils');
+                        // Remember source file for retries
+                        currentSourceFileRef.current = input;
+                        subtitles = await processSegmentWithStreaming(
+                            input,
+                            segment,
+                            {
+                                fps,
+                                mediaResolution,
+                                model,
+                                userProvidedSubtitles,
+                                maxDurationPerRequest: options.maxDurationPerRequest,
+                                autoSplitSubtitles: options.autoSplitSubtitles,
+                                maxWordsPerSubtitle: options.maxWordsPerSubtitle
+                            },
+                            setStatus,
+                            t
+                        );
                     } else {
                         // Stream full video/audio unconditionally (feature parity with segment streaming)
                         const fullSegment = { start: 0, end: duration };
                         const { processSegmentWithStreaming } = await import('../utils/videoProcessing/processingUtils');
+                        // Remember source file for retries
+                        currentSourceFileRef.current = input;
                         subtitles = await processSegmentWithStreaming(
                             input,
                             fullSegment,
@@ -649,6 +668,9 @@ export const useSubtitles = (t) => {
                                 ytFile = new File([blob], 'youtube.mp4', { type: blob.type || 'video/mp4' });
                             }
                         }
+                        // Remember source file for retries
+                        currentSourceFileRef.current = ytFile;
+
                     } catch (e) {
                         console.warn('Inline YouTube: failed to access current blob URL, falling back:', e);
                     }
@@ -895,6 +917,9 @@ export const useSubtitles = (t) => {
                         }
                     } catch (e) {
                         console.warn('Inline YouTube: failed to access current blob URL, falling back:', e);
+                        // Remember source file for retries
+                        currentSourceFileRef.current = ytFile;
+
                     }
 
                     if (ytFile) {
@@ -1094,23 +1119,26 @@ export const useSubtitles = (t) => {
             setIsGenerating(true);
             setStatus({ message: t('output.processingVideo', 'Processing video...'), type: 'loading' });
 
-            // Fetch cached clip as File
-            let file;
-            try {
-                const resp = await fetch(url);
-                if (!resp.ok) throw new Error(`Failed to fetch cached clip: ${resp.statusText}`);
-                const blob = await resp.blob();
-                const filename = url.split('?')[0].split('/').pop() || 'segment.mp4';
-                file = new File([blob], filename, { type: blob.type || 'video/mp4' });
-            } catch (fetchErr) {
-                console.error('[useSubtitles] Failed to fetch cached clip:', fetchErr);
-                setIsGenerating(false);
-                setStatus({ message: fetchErr.message || 'Retry failed', type: 'error' });
-                window.dispatchEvent(new CustomEvent('retry-segment-from-cache-complete', {
-                    detail: { start, end, success: false, error: fetchErr?.message }
-                }));
-                currentRetryFromCacheRef.current = null;
-                return;
+            // Prefer using Files API with the original source file (no local clips)
+            let sourceFile = currentSourceFileRef.current;
+            if (!sourceFile) {
+                // Fallback: fetch cached clip file only if no source file available
+                try {
+                    const resp = await fetch(url);
+                    if (!resp.ok) throw new Error(`Failed to fetch cached clip: ${resp.statusText}`);
+                    const blob = await resp.blob();
+                    const filename = url.split('?')[0].split('/').pop() || 'segment.mp4';
+                    sourceFile = new File([blob], filename, { type: blob.type || 'video/mp4' });
+                } catch (fetchErr) {
+                    console.error('[useSubtitles] Failed to obtain source for retry:', fetchErr);
+                    setIsGenerating(false);
+                    setStatus({ message: fetchErr.message || 'Retry failed', type: 'error' });
+                    window.dispatchEvent(new CustomEvent('retry-segment-from-cache-complete', {
+                        detail: { start, end, success: false, error: fetchErr?.message }
+                    }));
+                    currentRetryFromCacheRef.current = null;
+                    return;
+                }
             }
 
             const segment = { start, end };
@@ -1173,24 +1201,31 @@ export const useSubtitles = (t) => {
                 error.message.includes('rate limit')
             ));
             const RETRY_DELAYS = [5, 10, 15, 20, 25]; // seconds
-            const INLINE_LARGE_SEGMENT_THRESHOLD_BYTES = 8 * 1024 * 1024; // 8MB
+            const INLINE_LARGE_SEGMENT_THRESHOLD_BYTES = 20 * 1024 * 1024; // 20MB (align with Google recommendation)
 
-            // Determine whether to force Files API for large cached clips (no offsets)
-            const isLargeClip = file && file.size > INLINE_LARGE_SEGMENT_THRESHOLD_BYTES;
+            // Prefer primary Files API with offsets if we have the original source file
+            let usePrimaryFilesApi = !!currentSourceFileRef.current;
+
+            // For fallback (clipped file), determine if it is large
+            const isLargeClip = !usePrimaryFilesApi && sourceFile && sourceFile.size > INLINE_LARGE_SEGMENT_THRESHOLD_BYTES;
+
+            // Track if we already tried falling back to clipped-file path on Files API errors
+            let clipFallbackTried = false;
 
             const attemptStreaming = async (attempt = 0) => {
                 try {
-                    // Use noOffsets with Files API for large cached clips
+                    // Primary path: Files API with offsets when original source is known; otherwise fallback rules
                     const finalSubtitles = await processSegmentWithStreaming(
-                        file,
+                        sourceFile,
                         segment,
                         {
                             fps,
                             mediaResolution,
                             model,
                             userProvidedSubtitles: null,
-                            forceInline: !isLargeClip,
-                            noOffsets: isLargeClip
+                            // If using original source, enforce Files API with offsets; else decide based on size
+                            forceInline: usePrimaryFilesApi ? false : !isLargeClip,
+                            noOffsets: usePrimaryFilesApi ? false : isLargeClip
                         },
                         setStatus,
                         onStreamingUpdate,
@@ -1232,6 +1267,23 @@ export const useSubtitles = (t) => {
                         setStatus({ message: t('output.retryingInSeconds', 'Retrying in {{n}}s...', { n: delaySec }), type: 'loading' });
                         await new Promise(r => setTimeout(r, 1000 * delaySec));
                         return attemptStreaming(attempt + 1);
+                    }
+
+                    // Files API specific fallback: if primary Files API path failed (e.g., quota/size), fallback once to clipped file path
+                    if (usePrimaryFilesApi && !clipFallbackTried) {
+                        try {
+                            const resp = await fetch(url);
+                            if (!resp.ok) throw new Error(`Failed to fetch cached clip for fallback: ${resp.statusText}`);
+                            const blob = await resp.blob();
+                            const filename = url.split('?')[0].split('/').pop() || 'segment.mp4';
+                            sourceFile = new File([blob], filename, { type: blob.type || 'video/mp4' });
+                            clipFallbackTried = true;
+                            usePrimaryFilesApi = false;
+                            setStatus({ message: t('output.fallingBack', 'Falling back to clipped-file path...'), type: 'loading' });
+                            return attemptStreaming(attempt);
+                        } catch (fallbackErr) {
+                            console.warn('[useSubtitles] Fallback fetch failed:', fallbackErr);
+                        }
                     }
 
                     console.error('[useSubtitles] Retry from cache failed:', err);

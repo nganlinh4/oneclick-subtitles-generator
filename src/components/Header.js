@@ -197,19 +197,35 @@ const Header = ({ onSettingsClick }) => {
 
         if (response.ok) {
           const startupData = await response.json();
-          setIsFullVersion(!!startupData.isDevCuda);
+          const isFull = !!startupData.isDevCuda;
+          setIsFullVersion(isFull);
           const isStart = !!(startupData.isStart || (typeof startupData.command === 'string' && startupData.command.toLowerCase().includes('npm start')));
           setIsVercelMode(isStart);
+          try {
+            localStorage.setItem('backend_available', 'true');
+            localStorage.setItem('is_full_version', isFull ? 'true' : 'false');
+            localStorage.setItem('is_vercel_mode', isStart ? 'true' : 'false');
+          } catch {}
         } else {
           // Server responded but not OK (e.g., 404) => treat as missing backend
           setIsFullVersion(false);
           setIsVercelMode(true);
+          try {
+            localStorage.setItem('backend_available', 'false');
+            localStorage.setItem('is_full_version', 'false');
+            localStorage.setItem('is_vercel_mode', 'true');
+          } catch {}
           return;
         }
       } catch (error) {
         // If we can't contact the server at all, assume Vercel (npm start) mode
         setIsFullVersion(false);
         setIsVercelMode(true);
+        try {
+          localStorage.setItem('backend_available', 'false');
+          localStorage.setItem('is_full_version', 'false');
+          localStorage.setItem('is_vercel_mode', 'true');
+        } catch {}
       }
     };
 

@@ -10,7 +10,7 @@ import {
   ParallelProgressTracker
 } from '../../utils/parallelProcessingUtils';
 import { autoSplitSubtitles } from '../../utils/subtitle/splitUtils';
-import { extractVideoSegmentLocally } from '../../utils/videoSegmenter';
+import { uploadFileToGemini } from './filesApi';
 
 /**
  * Coordinate parallel streaming requests for a video segment
@@ -495,6 +495,39 @@ export const coordinateParallelInlineStreaming = async (
     if (subSegments.length === 1) {
       return streamGeminiContent(sourceFile, null, { ...options, forceInline: true, videoMetadata: undefined }, onChunk, onComplete, onError);
     }
+    // Detect FE-only; if so, switch to Files API offsets and return early
+    const { probeServerAvailability } = await import('../../utils/serverEnv');
+    const hasServer = await probeServerAvailability();
+    if (!hasServer) {
+      try {
+        const uploadRes = await uploadFileToGemini(sourceFile);
+        const fileUri = uploadRes?.uri || uploadRes?.file?.uri;
+        const filesApiOptions = {
+          ...options,
+          // Ensure we do not force inline; we want Files API + offsets
+          forceInline: undefined,
+          videoMetadata: {
+            start_offset: `${Math.floor(fullSeg.start)}s`,
+            end_offset: `${Math.ceil(fullSeg.end)}s`
+          }
+        };
+
+        return await coordinateParallelStreaming(
+          sourceFile,
+          fileUri,
+          filesApiOptions,
+          onChunk,
+          onComplete,
+          onError,
+          onProgress
+        );
+      } catch (e) {
+        console.warn('[ParallelCoordinator INLINE] Files API path failed in FE-only mode:', e);
+        onError(e);
+        return;
+      }
+    }
+
 
     console.log(`[ParallelCoordinator INLINE] Starting with ${subSegments.length} sub-segments`);
 
@@ -516,7 +549,7 @@ export const coordinateParallelInlineStreaming = async (
       error.message.includes('rate limit')
     ));
     const RETRY_DELAYS = [5, 10, 15, 20, 25]; // seconds
-    const INLINE_LARGE_SEGMENT_THRESHOLD_BYTES = 8 * 1024 * 1024; // 8MB
+    const INLINE_LARGE_SEGMENT_THRESHOLD_BYTES = 20 * 1024 * 1024; // 20MB (align with Google recommendation)
 
     // Stream a prepared (already-clipped) sub-segment with retries and large-clip Files API fallback
     const streamSubSegmentWithRetry = async (clipped, subSeg, index, attempt = 0, maxRetries = 5) => {
@@ -628,6 +661,7 @@ export const coordinateParallelInlineStreaming = async (
     const tasks = subSegments.map((subSeg, index) => (async () => {
       try {
         progressTracker.updateSegmentProgress(index, 5, 'cutting');
+        const { extractVideoSegmentLocally } = await import('../../utils/videoSegmenter');
         const clipped = await extractVideoSegmentLocally(sourceFile, subSeg.start, subSeg.end);
         progressTracker.updateSegmentProgress(index, 10, 'streaming');
         await streamSubSegmentWithRetry(clipped, subSeg, index, 0, 5);

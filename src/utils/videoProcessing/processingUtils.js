@@ -312,26 +312,36 @@ export const processSegmentWithStreaming = async (file, segment, options, setSta
       // Map media resolution to API enum value
       const mappedMediaResolution = mapMediaResolution(mediaResolution);
 
-      // Prepare options for streaming API call
-      const baseApiOptions = {
+      // Base options common to both API paths
+      const baseApiOptionsBase = {
         userProvidedSubtitles,
         modelId: model,
         mediaResolution: mappedMediaResolution,
-        segmentInfo: {
-          start: segment.start,
-          end: segment.end,
-          duration: segment.end - segment.start
-        },
-        maxDurationPerRequest: options.maxDurationPerRequest, // Pass through the max duration
-        autoSplitSubtitles: autoSplitSubtitles, // Pass auto-split settings to streaming API
+        maxDurationPerRequest: options.maxDurationPerRequest,
+        autoSplitSubtitles: autoSplitSubtitles,
         maxWordsPerSubtitle: maxWordsPerSubtitle
       };
 
-      const useInline = options.forceInline === true || options.inlineExtraction === true;
+      // All-in on Files API by default; only use INLINE when explicitly forced
+      const useInline = options.forceInline === true;
       const noOffsets = options.noOffsets === true;
+
+      // Include segmentInfo except when we are INLINE with noOffsets (already clipped file)
+      const baseApiOptions = (useInline && noOffsets)
+        ? { ...baseApiOptionsBase }
+        : {
+            ...baseApiOptionsBase,
+            segmentInfo: {
+              start: segment.start,
+              end: segment.end,
+              duration: segment.end - segment.start
+            }
+          };
+
       const apiOptions = useInline
         ? { ...baseApiOptions, forceInline: true }
         : { ...baseApiOptions, ...(noOffsets ? {} : { videoMetadata }) };
+
 
       // Start streaming (Files API vs INLINE)
       import('../../services/gemini').then(({ streamGeminiApiWithFilesApi, streamGeminiApiInline }) => {

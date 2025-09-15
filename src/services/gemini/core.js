@@ -261,31 +261,56 @@ export const streamGeminiApiInline = async (file, options = {}, onChunk, onCompl
         onProgress
       );
     } else {
-      // For non-parallel INLINE with a segment, cut locally to reduce payload and avoid limits
+      // For non-parallel INLINE with a segment, prefer server clipping when server is available; otherwise Files API offsets
       if (inlineOptions.segmentInfo) {
+        const { start, end } = inlineOptions.segmentInfo;
         try {
-          const { extractVideoSegmentLocally } = await import('../../utils/videoSegmenter');
-          const { start, end } = inlineOptions.segmentInfo;
-          const clipped = await extractVideoSegmentLocally(file, start, end);
-          // Route large inline segments through Files API transport to avoid base64 memory spike
-          const INLINE_LARGE_SEGMENT_THRESHOLD_BYTES = 8 * 1024 * 1024; // 8MB
-          if (clipped && clipped.size > INLINE_LARGE_SEGMENT_THRESHOLD_BYTES) {
-            await streamGeminiApiWithFilesApi(
-              clipped,
-              { ...inlineOptions, videoMetadata: undefined },
-              onChunk,
-              onComplete,
-              onError,
-              onProgress
-            );
-            return;
+          const { probeServerAvailability } = await import('../../utils/serverEnv');
+          const hasServer = await probeServerAvailability();
+          if (hasServer) {
+            try {
+              const { extractVideoSegmentLocally } = await import('../../utils/videoSegmenter');
+              const clipped = await extractVideoSegmentLocally(file, start, end);
+              const INLINE_LARGE_SEGMENT_THRESHOLD_BYTES = 20 * 1024 * 1024; // 20MB
+              if (clipped && clipped.size > INLINE_LARGE_SEGMENT_THRESHOLD_BYTES) {
+                await streamGeminiApiWithFilesApi(
+                  clipped,
+                  { ...inlineOptions, videoMetadata: undefined },
+                  onChunk,
+                  onComplete,
+                  onError,
+                  onProgress
+                );
+                return;
+              }
+              await streamGeminiContent(clipped, null, inlineOptions, onChunk, onComplete, onError);
+              return;
+            } catch (e) {
+              console.warn('[GeminiAPI] Inline single-stream: server clipping failed, using Files API offsets', e);
+            }
           }
-          await streamGeminiContent(clipped, null, inlineOptions, onChunk, onComplete, onError);
-          return;
-        } catch (e) {
-          console.warn('[GeminiAPI] Inline single-stream: segment clipping failed, streaming full source inline', e);
-        }
+        } catch {}
+
+        // Default: Files API offsets path (frontend-only or server-clip failed)
+        const filesApiOptions = {
+          ...inlineOptions,
+          forceInline: undefined,
+          videoMetadata: {
+            start_offset: `${Math.floor(start)}s`,
+            end_offset: `${Math.ceil(end)}s`
+          }
+        };
+        await streamGeminiApiWithFilesApi(
+          file,
+          filesApiOptions,
+          onChunk,
+          onComplete,
+          onError,
+          onProgress
+        );
+        return;
       }
+      // If no specific segment, fall back to inline full-source streaming (rare)
       await streamGeminiContent(file, null, inlineOptions, onChunk, onComplete, onError);
     }
   } catch (err) {

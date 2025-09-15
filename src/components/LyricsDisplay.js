@@ -619,58 +619,74 @@ const LyricsDisplay = ({
         console.error('Error parsing latest subtitles from localStorage:', e);
       }
 
-      // Save to cache
-      const response = await fetch('http://localhost:3031/api/save-subtitles', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          cacheId,
-          subtitles: subtitlesToSave
-        })
-      });
+      // Save to cache (server when available; local-only in FE-only)
+      const { probeServerAvailability } = await import('../utils/serverEnv');
+      let hasServer = false;
+      try { hasServer = await probeServerAvailability(); } catch {}
 
-      const result = await response.json();
-      if (result.success) {
+      if (hasServer) {
+        const response = await fetch('http://localhost:3031/api/save-subtitles', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({
+            cacheId,
+            subtitles: subtitlesToSave
+          })
+        });
 
-        // Show a temporary success message
+        const result = await response.json();
+        if (result.success) {
+          // Show a temporary success message
+          const saveMessage = document.createElement('div');
+          saveMessage.className = 'save-success-message';
+          saveMessage.textContent = t('output.subtitlesSaved', 'Progress saved successfully');
+          document.body.appendChild(saveMessage);
+
+          // Remove the message after 3 seconds
+          setTimeout(() => {
+            if (document.body.contains(saveMessage)) {
+              document.body.removeChild(saveMessage);
+            }
+          }, 3000);
+
+          // Update the saved lyrics state in the editor
+          updateSavedLyrics();
+
+          // Call the callback if provided to update parent component state
+          if (onSaveSubtitles) {
+            onSaveSubtitles(subtitlesToSave);
+          }
+
+          // Notify listeners
+          window.dispatchEvent(new CustomEvent('subtitles-saved', { detail: { success: true } }));
+          window.dispatchEvent(new CustomEvent('subtitle-timing-changed', {
+            detail: { action: 'save', timestamp: Date.now(), subtitles: subtitlesToSave }
+          }));
+        } else {
+          console.error('Failed to save subtitles:', result.error);
+        }
+      } else {
+        // Frontend-only: simulate success (local state + events only)
         const saveMessage = document.createElement('div');
         saveMessage.className = 'save-success-message';
         saveMessage.textContent = t('output.subtitlesSaved', 'Progress saved successfully');
         document.body.appendChild(saveMessage);
-
-        // Remove the message after 3 seconds
         setTimeout(() => {
           if (document.body.contains(saveMessage)) {
             document.body.removeChild(saveMessage);
           }
         }, 3000);
 
-        // Update the saved lyrics state in the editor
         updateSavedLyrics();
-
-        // Call the callback if provided to update parent component state
         if (onSaveSubtitles) {
           onSaveSubtitles(subtitlesToSave);
         }
-
-        // Dispatch custom events to notify that subtitles have been saved
-        // These are used by various components including segment retry and aligned narration
-        window.dispatchEvent(new CustomEvent('subtitles-saved', {
-          detail: { success: true }
-        }));
-
-        // Also dispatch a subtitle-timing-changed event for the aligned narration component
+        window.dispatchEvent(new CustomEvent('subtitles-saved', { detail: { success: true } }));
         window.dispatchEvent(new CustomEvent('subtitle-timing-changed', {
-          detail: {
-            action: 'save',
-            timestamp: Date.now(),
-            subtitles: subtitlesToSave
-          }
+          detail: { action: 'save', timestamp: Date.now(), subtitles: subtitlesToSave }
         }));
-      } else {
-        console.error('Failed to save subtitles:', result.error);
       }
     } catch (error) {
       console.error('Error saving subtitles:', error);
