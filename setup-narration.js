@@ -648,7 +648,7 @@ try:
         print("This indicates a PyTorch/torchvision version mismatch")
         sys.exit(1)
 
-    // Validate expected versions for Chatterbox compatibility
+    # Validate expected versions for Chatterbox compatibility
     expected_torch = "2.4.1";
     expected_torchvision = "0.19.1";
 

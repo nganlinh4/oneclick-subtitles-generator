@@ -17,8 +17,8 @@ function getFfmpegPath() {
     'C:\\ffmpeg\\bin\\ffmpeg.exe',
     'C:\\Program Files\\ffmpeg\\bin\\ffmpeg.exe',
     'C:\\Program Files (x86)\\ffmpeg\\bin\\ffmpeg.exe',
-    path.join(process.env.USERPROFILE || '', 'ffmpeg', 'bin', 'ffmpeg.exe'),
-    path.join(process.env.LOCALAPPDATA || '', 'Microsoft', 'WinGet', 'Packages', 'Gyan.FFmpeg_Microsoft.Winget.Source_8wekyb3d8bbwe', 'ffmpeg-*', 'bin', 'ffmpeg.exe')
+    path.join(process.env.LOCALAPPDATA || '', 'Microsoft', 'WindowsApps', 'ffmpeg.exe'),
+    path.join(process.env.USERPROFILE || '', 'ffmpeg', 'bin', 'ffmpeg.exe')
   ];
 
   // Check common paths first (Windows)
@@ -51,8 +51,8 @@ function getFfprobePath() {
     'C:\\ffmpeg\\bin\\ffprobe.exe',
     'C:\\Program Files\\ffmpeg\\bin\\ffprobe.exe',
     'C:\\Program Files (x86)\\ffmpeg\\bin\\ffprobe.exe',
-    path.join(process.env.USERPROFILE || '', 'ffmpeg', 'bin', 'ffprobe.exe'),
-    path.join(process.env.LOCALAPPDATA || '', 'Microsoft', 'WinGet', 'Packages', 'Gyan.FFmpeg_Microsoft.Winget.Source_8wekyb3d8bbwe', 'ffmpeg-*', 'bin', 'ffprobe.exe')
+    path.join(process.env.LOCALAPPDATA || '', 'Microsoft', 'WindowsApps', 'ffprobe.exe'),
+    path.join(process.env.USERPROFILE || '', 'ffmpeg', 'bin', 'ffprobe.exe')
   ];
 
   // Check common paths first (Windows)

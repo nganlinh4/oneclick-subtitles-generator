@@ -444,11 +444,7 @@ IF "!FFMPEG_FOUND!"=="0" IF EXIST "C:\ProgramData\chocolatey\bin\ffmpeg.exe" (
     SET "FFMPEG_FOUND=1"
 )
 
-REM 5) As a last resort, query winget to see if the package is registered as installed
-IF "!FFMPEG_FOUND!"=="0" (
-    FOR /F "usebackq tokens=* delims=" %%i IN (`winget list --id Gyan.FFmpeg 2^>nul ^| findstr /I "Gyan.FFmpeg"`) DO SET "FFMPEG_FOUND=1"
-)
-
+REM 5) Skip winget registry check to avoid potential hangs on some systems
 IF "!FFMPEG_FOUND!"=="1" (
     powershell -NoProfile -ExecutionPolicy Bypass -Command "Write-Host '[OK] FFmpeg already installed (FFmpeg da duoc cai dat).' -ForegroundColor Green"
 ) ELSE (

@@ -14,7 +14,7 @@ const { getDownloadProgress, setDownloadProgress } = require('../services/shared
 const { lockDownload, unlockDownload, isDownloadActive, getDownloadInfo } = require('../services/shared/globalDownloadManager');
 const { normalizeVideo } = require('../services/video/universalVideoNormalizer');
 const { cancelYtdlpProcess } = require('../services/youtube/ytdlpDownloader');
-const { getFfmpegPath } = require('../services/shared/ffmpegUtils');
+const { getFfmpegPath, getFfprobePath } = require('../services/shared/ffmpegUtils');
 // Legacy video processing is deprecated
 // const { splitVideoIntoSegments, splitMediaIntoSegments, optimizeVideo, createAnalysisVideo, convertAudioToVideo } = require('../services/videoProcessingService');
 
@@ -25,7 +25,7 @@ const { getFfmpegPath } = require('../services/shared/ffmpegUtils');
  */
 function getVideoDimensions(videoPath) {
   return new Promise((resolve, reject) => {
-    const ffprobePath = getFfmpegPath().replace('ffmpeg', 'ffprobe');
+    const ffprobePath = getFfprobePath();
     const ffprobe = spawn(ffprobePath, [
       '-v', 'error',
       '-select_streams', 'v:0',
@@ -196,7 +196,7 @@ function convertAudioToVideo(audioPath, videoPath) {
       }
 
       // Get the duration of the output video
-      const ffprobePath = getFfmpegPath().replace('ffmpeg', 'ffprobe');
+      const ffprobePath = getFfprobePath();
       const ffprobe = spawn(ffprobePath, [
         '-v', 'error',
         '-show_entries', 'format=duration',
@@ -1182,7 +1182,7 @@ router.post('/extract-audio', async (req, res) => {
 
     // Use ffmpeg to extract audio
     const { spawn } = require('child_process');
-    const ffmpegProcess = spawn('ffmpeg', [
+    const ffmpegProcess = spawn(getFfmpegPath(), [
       '-i', actualVideoPath,
       '-vn',  // No video
       '-acodec', 'libmp3lame',  // MP3 codec
@@ -1255,7 +1255,7 @@ router.post('/extract-audio-from-blob', streamingUpload.single('file'), async (r
 
     // Use ffmpeg to extract audio
     const { spawn } = require('child_process');
-    const ffmpegProcess = spawn('ffmpeg', [
+    const ffmpegProcess = spawn(getFfmpegPath(), [
       '-i', videoPath,
       '-vn',  // No video
       '-acodec', 'libmp3lame',  // MP3 codec

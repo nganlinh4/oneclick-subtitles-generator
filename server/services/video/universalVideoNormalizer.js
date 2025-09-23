@@ -16,7 +16,8 @@ const execPromise = util.promisify(exec);
  * @returns {Promise<Object>} - Analysis results with detected issues
  */
 async function analyzeVideo(videoPath) {
-  const ffprobeCmd = `ffprobe -v quiet -print_format json -show_streams -show_format "${videoPath}"`;
+  const ffprobeExe = require('../shared/ffmpegUtils').getFfprobePath();
+  const ffprobeCmd = `"${ffprobeExe}" -v quiet -print_format json -show_streams -show_format "${videoPath}"`;
   
   try {
     const { stdout } = await execPromise(ffprobeCmd);
@@ -165,8 +166,9 @@ async function quickFixVideo(inputPath) {
   const tempPath = path.join(dir, `${basename}_fixing.mp4`);
   
   // Quick fix command - reorder streams and fix audio codec only
+  const ffmpegExe = require('../shared/ffmpegUtils').getFfmpegPath();
   const ffmpegCmd = [
-    'ffmpeg',
+    `"${ffmpegExe}"`,
     '-i', `"${inputPath}"`,
     '-y',
     
@@ -239,8 +241,9 @@ async function fullConvertVideo(inputPath) {
   const basename = path.basename(inputPath, '.mp4');
   const tempPath = path.join(dir, `${basename}_converting.mp4`);
   
+  const ffmpegExe = require('../shared/ffmpegUtils').getFfmpegPath();
   const ffmpegCmd = [
-    'ffmpeg',
+    `"${ffmpegExe}"`,
     '-i', `"${inputPath}"`,
     '-y',
     
