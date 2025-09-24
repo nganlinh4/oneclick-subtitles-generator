@@ -15,6 +15,8 @@
   "contentBlocked": "비디오 콘텐츠가 안전하지 않아 Gemini에 의해 차단되었습니다",
   "paidTierRequired": "API 할당량이 초과되었습니다. 나중에 다시 시도하거나 API 키 제한을 확인하세요.",
   "apiQuotaExceeded": "현재 API 키가 과부하 상태입니다. 다른 Gmail 계정의 키를 사용하거나, 잠시 기다리거나, <a href='https://aistudio.google.com/usage?tab=billing' target='_blank' rel='noopener noreferrer'>Gemini API Billing</a>에서 결제를 추가하세요",
+  "geminiQuotaExceededWithRetry": "Gemini 할당량을 초과했습니다. 약 {{seconds}}초 후 다시 시도하시거나, 다른 API 키를 사용하거나 결제를 추가하세요.",
+  "geminiQuotaExceeded": "Gemini 할당량을 초과했습니다. 나중에 다시 시도하시거나, 다른 API 키를 사용하거나 결제를 추가하세요.",
   "geminiServiceUnavailable": "Gemini가 현재 과부하 상태입니다. 잠시 기다리거나 다른 모델을 사용해주세요 (오류 코드 503)",
   "invalidSrtFile": "유효한 SRT 파일을 선택해주세요",
   "invalidSubtitleFile": "유효한 SRT 또는 JSON 자막 파일을 선택해주세요",

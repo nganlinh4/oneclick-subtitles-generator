@@ -17,6 +17,8 @@ import TranslationError from './TranslationError';
 import TranslationPreview from './TranslationPreview';
 import BulkTranslationPreview from './BulkTranslationPreview';
 import TranslationComplete from './TranslationComplete';
+import SliderWithValue from '../common/SliderWithValue';
+import { autoSplitSubtitles, countWords } from '../../utils/subtitle/splitUtils';
 // Narration section moved to OutputContainer
 import '../../styles/translation/index.css';
 import '../../styles/translation/languageChain.css';
@@ -96,6 +98,50 @@ const TranslationSection = ({ subtitles, videoTitle, onTranslationComplete }) =>
     handleBulkFilesRemovalAll
   } = useTranslationState(subtitles, onTranslationComplete);
 
+  // Post-split translated subtitles (1–30 and Unlimited=31). Default: Unlimited
+  const [postSplitMaxWords, setPostSplitMaxWords] = useState(() => {
+    const saved = localStorage.getItem('translation_post_split_max_words');
+    let num = saved ? parseInt(saved, 10) : 31; // Default Unlimited (31)
+    if (!Number.isFinite(num)) num = 31;
+    // Migrate legacy 0 (old Unlimited) to 31
+    if (num === 0) num = 31;
+    // Clamp to [1..31]
+    if (num < 1) num = 1;
+    if (num > 31) num = 31;
+    return num;
+  });
+
+  // Persist post-split setting
+  useEffect(() => {
+    try {
+      localStorage.setItem('translation_post_split_max_words', String(postSplitMaxWords));
+    } catch {}
+  }, [postSplitMaxWords]);
+
+  // Apply post-split to translated subtitles when needed
+  useEffect(() => {
+    if (!Array.isArray(translatedSubtitles) || translatedSubtitles.length === 0) return;
+
+    const v = Number(postSplitMaxWords);
+    if (!Number.isFinite(v) || v >= 31) return; // Unlimited
+
+    const limit = Math.max(1, v);
+
+    // Only split when any subtitle exceeds the limit
+    const exceeds = translatedSubtitles.some(s => countWords(s?.text || '') > limit);
+    if (!exceeds) return;
+
+    const split = autoSplitSubtitles(translatedSubtitles, limit);
+    updateTranslatedSubtitles(split);
+
+    try {
+      window.dispatchEvent(new CustomEvent('translation-updated', {
+        detail: { translatedSubtitles: split, source: 'post-split' }
+      }));
+    } catch {}
+  }, [translatedSubtitles, postSplitMaxWords, updateTranslatedSubtitles]);
+
+
   /**
    * Handle retry for a specific segment
    * @param {Object} segment - Segment info object
@@ -142,14 +188,14 @@ const TranslationSection = ({ subtitles, videoTitle, onTranslationComplete }) =>
         // For individual subtitle retry, just retry that single subtitle without extra context
         // This ensures we get exactly one translation back
         const targetIndex = segment.startIndex; // The subtitle we want to retry
-        
+
         // Extract just the target subtitle
         segmentSubtitles = [sourceSubtitles[targetIndex]];
-        
+
         // Set context indices to match single subtitle
         contextStartIndex = targetIndex;
         contextEndIndex = targetIndex;
-        
+
         // Track that we're updating just one subtitle
         targetSubtitleIndices = [0]; // Index 0 in the result array
 
@@ -803,6 +849,50 @@ const TranslationSection = ({ subtitles, videoTitle, onTranslationComplete }) =>
                   hasUserProvidedSubtitles={hasUserProvidedSubtitles}
                   disabled={isTranslating || isBulkTranslating}
                 />
+
+                {/* Max words per subtitle (post-split) - default: Unlimited */}
+                <div className="translation-row rest-time-row">
+                  <div className="row-label">
+                    <label>{t('processing.maxWordsPerSubtitle', 'Max words per subtitle')}:</label>
+                  </div>
+                  <div className="row-content">
+                    <div className="slider-control-row">
+                      <SliderWithValue
+                        value={postSplitMaxWords}
+                        onChange={(v) => setPostSplitMaxWords(parseInt(v))}
+                        min={1}
+                        max={31}
+                        step={1}
+                        orientation="Horizontal"
+                        size="XSmall"
+                        state={isTranslating || isBulkTranslating ? 'Disabled' : 'Enabled'}
+                        className="post-split-max-words-slider"
+                        id="post-split-max-words-slider"
+                        ariaLabel={t('processing.maxWordsPerSubtitle', 'Max words per subtitle')}
+                        defaultValue={31}
+                        formatValue={(v) => (Number(v) >= 31
+                          ? t('processing.unlimited', 'Unlimited')
+                          : t('processing.wordsLimit', '{{count}} {{unit}}', {
+                              count: Number(v),
+                              unit: Number(v) === 1 ? t('processing.word', 'word') : t('processing.words', 'words')
+                            })
+                        )}
+                      >
+                        <div
+                          className="help-icon-container"
+                          title={t('processing.maxWordsHelp', 'Maximum number of words allowed per subtitle. Longer subtitles will be split evenly.')}
+                        >
+                          <svg className="help-icon" viewBox="0 0 24 24" width="18" height="18" stroke="currentColor" strokeWidth="2" fill="none">
+                            <circle cx="12" cy="12" r="10"></circle>
+                            <line x1="12" y1="16" x2="12" y2="12"></line>
+                            <line x1="12" y1="8" x2="12.01" y2="8"></line>
+                          </svg>
+                        </div>
+                      </SliderWithValue>
+                    </div>
+                  </div>
+                </div>
+
               </>
             )}
 

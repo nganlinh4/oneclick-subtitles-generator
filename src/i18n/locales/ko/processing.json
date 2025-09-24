@@ -38,7 +38,7 @@
   "noOutsideContext": "주변 자막이 없어 스위치를 사용할 수 없습니다",
   "outsideContextRange": "컨텍스트 범위",
   "outsideContextRangeDesc": "전/후에 포함할 자막 수. 마지막 값은 무제한입니다.",
-  "unlimited": "무제한",
+  "unlimited": "최대",
   "linesCount": "{{count}}줄",
   "maxDurationPerRequest": "요청당 최대 시간",
   "maxDurationPerRequestDesc": "각 Gemini 요청의 최대 시간. 더 긴 구간은 병렬 요청으로 분할됩니다.",

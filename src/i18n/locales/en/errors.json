@@ -16,6 +16,8 @@
   "contentBlocked": "Video content is not safe and was blocked by Gemini",
   "paidTierRequired": "API quota exceeded. Please try again later or check your API key limits.",
   "apiQuotaExceeded": "Current API key is overloaded, please use a key from another Gmail account, or wait for some time, or add billing at <a href='https://aistudio.google.com/usage?tab=billing' target='_blank' rel='noopener noreferrer'>Gemini API Billing</a>",
+  "geminiQuotaExceededWithRetry": "Gemini quota exceeded. Please wait about {{seconds}}s and try again, or use a different API key/add billing.",
+  "geminiQuotaExceeded": "Gemini quota exceeded. Please try again later or use a different API key/add billing.",
   "geminiServiceUnavailable": "Gemini is currently overloaded, please wait or try other model and try again later (error code 503)",
   "invalidSrtFile": "Please select a valid SRT file",
   "invalidSubtitleFile": "Please select a valid SRT or JSON subtitle file",

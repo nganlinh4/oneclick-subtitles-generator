@@ -38,7 +38,7 @@
   "noOutsideContext": "No outside subtitles available (switch disabled)",
   "outsideContextRange": "Context coverage",
   "outsideContextRangeDesc": "How many subtitles before/after to include as context. The last value is Unlimited.",
-  "unlimited": "Unlimited",
+  "unlimited": "Max",
   "linesCount": "{{count}} lines",
   "maxDurationPerRequest": "Max duration per request",
   "maxDurationPerRequestDesc": "Maximum duration for each Gemini request. Longer segments will be split into parallel requests.",

@@ -291,6 +291,42 @@
   pointer-events: none;
 }
 
+
+/* Global disabled appearance for StandardSlider (consistent across app) */
+.standard-slider-container.disabled,
+.standard-slider-container.state-disabled,
+.standard-slider-container.state-Disabled {
+  position: relative;
+  overflow: hidden;
+  background: none !important;
+  filter: grayscale(50%);
+  opacity: 0.65; /* subtle global dim */
+}
+
+.standard-slider-container.disabled::after,
+.standard-slider-container.state-disabled::after,
+.standard-slider-container.state-Disabled::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background-color: rgba(var(--md-surface-rgb, 255, 255, 255), 0.05);
+  z-index: 3;
+  pointer-events: none; /* do not block interactions (though disabled anyway) */
+}
+
+.standard-slider-container.disabled .standard-slider-active-track,
+.standard-slider-container.state-disabled .standard-slider-active-track,
+.standard-slider-container.state-Disabled .standard-slider-active-track {
+  opacity: 0.35 !important; /* ensure track looks disabled */
+}
+
+.standard-slider-container.disabled .standard-slider-handle,
+.standard-slider-container.state-disabled .standard-slider-handle,
+.standard-slider-container.state-Disabled .standard-slider-handle {
+  box-shadow: none !important;
+  cursor: not-allowed;
+}
+
 .standard-slider-container.hover,
 .standard-slider-container.state-hover,
 .standard-slider-container.state-Hover {

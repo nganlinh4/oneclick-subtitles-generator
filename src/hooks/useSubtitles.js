@@ -770,12 +770,29 @@ export const useSubtitles = (t) => {
         } catch (error) {
             console.error('Error generating subtitles:', error);
             try {
-                // Check for specific Gemini API errors
-                if (error.message && (
+                // Specific handling for Gemini quota/rate limit (429 RESOURCE_EXHAUSTED)
+                if (error?.message && (
+                    error.message.includes('429') ||
+                    /RESOURCE_EXHAUSTED/i.test(error.message) ||
+                    /quota/i.test(error.message)
+                )) {
+                    const retryMatch = error.message.match(/Please retry in\s*([\d\.]+)s/i);
+                    const seconds = retryMatch ? Math.ceil(parseFloat(retryMatch[1])) : null;
+                    const isFreeTier = /free_tier/i.test(error.message) || /generate_content_free_tier_requests/i.test(error.message);
+                    const msg = seconds
+                        ? (isFreeTier
+                            ? t('errors.geminiQuotaExceededWithRetry', 'Gemini free-tier quota exceeded. Please wait about {{seconds}}s and try again, or use a different API key/add billing.', { seconds })
+                            : t('errors.geminiQuotaExceededWithRetry', 'Gemini quota exceeded. Please wait about {{seconds}}s and try again, or use a different API key/add billing.', { seconds }))
+                        : (isFreeTier
+                            ? t('errors.geminiQuotaExceeded', 'Gemini free-tier quota exceeded. Please try again later or use a different API key/add billing.')
+                            : t('errors.geminiQuotaExceeded', 'Gemini quota exceeded. Please try again later or use a different API key/add billing.'));
+                    setStatus({ message: msg, type: 'error' });
+                }
+                // Check for specific Gemini API overload/503 errors
+                else if (error.message && (
                     (error.message.includes('503') && error.message.includes('Service Unavailable')) ||
                     error.message.includes('The model is overloaded')
                 )) {
-                    // Use specific 503 error message if it's a 503 error
                     const is503Error = error.message.includes('503');
                     const errorMessage = is503Error
                         ? t('errors.geminiServiceUnavailable', 'Gemini is currently overloaded, please wait and try again later (error code 503)')
@@ -791,7 +808,6 @@ export const useSubtitles = (t) => {
                         setStatus({ message: t('errors.tokenLimitExceeded'), type: 'error' });
                     }
                 } else if (error.message && error.message.includes('File size') && error.message.includes('exceeds the recommended maximum')) {
-                    // Extract file size and max size from error message
                     const sizeMatch = error.message.match(/(\d+)MB\) exceeds the recommended maximum of (\d+)MB/);
                     if (sizeMatch && sizeMatch.length >= 3) {
                         const size = sizeMatch[1];
@@ -815,12 +831,27 @@ export const useSubtitles = (t) => {
                     }
                 }
             } catch {
-                // Check for specific Gemini API errors in the catch block too
-                if (error.message && (
+                // Fallback handling
+                if (error?.message && (
+                    error.message.includes('429') ||
+                    /RESOURCE_EXHAUSTED/i.test(error.message) ||
+                    /quota/i.test(error.message)
+                )) {
+                    const retryMatch = error.message.match(/Please retry in\s*([\d\.]+)s/i);
+                    const seconds = retryMatch ? Math.ceil(parseFloat(retryMatch[1])) : null;
+                    const isFreeTier = /free_tier/i.test(error.message) || /generate_content_free_tier_requests/i.test(error.message);
+                    const msg = seconds
+                        ? (isFreeTier
+                            ? t('errors.geminiQuotaExceededWithRetry', 'Gemini free-tier quota exceeded. Please wait about {{seconds}}s and try again, or use a different API key/add billing.', { seconds })
+                            : t('errors.geminiQuotaExceededWithRetry', 'Gemini quota exceeded. Please wait about {{seconds}}s and try again, or use a different API key/add billing.', { seconds }))
+                        : (isFreeTier
+                            ? t('errors.geminiQuotaExceeded', 'Gemini free-tier quota exceeded. Please try again later or use a different API key/add billing.')
+                            : t('errors.geminiQuotaExceeded', 'Gemini quota exceeded. Please try again later or use a different API key/add billing.'));
+                    setStatus({ message: msg, type: 'error' });
+                } else if (error.message && (
                     (error.message.includes('503') && error.message.includes('Service Unavailable')) ||
                     error.message.includes('The model is overloaded')
                 )) {
-                    // Use specific 503 error message if it's a 503 error
                     const is503Error = error.message.includes('503');
                     const errorMessage = is503Error
                         ? t('errors.geminiServiceUnavailable', 'Gemini is currently overloaded, please wait and try again later (error code 503)')
@@ -836,7 +867,6 @@ export const useSubtitles = (t) => {
                         setStatus({ message: t('errors.tokenLimitExceeded'), type: 'error' });
                     }
                 } else if (error.message && error.message.includes('File size') && error.message.includes('exceeds the recommended maximum')) {
-                    // Extract file size and max size from error message
                     const sizeMatch = error.message.match(/(\d+)MB\) exceeds the recommended maximum of (\d+)MB/);
                     if (sizeMatch && sizeMatch.length >= 3) {
                         const size = sizeMatch[1];

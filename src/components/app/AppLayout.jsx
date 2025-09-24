@@ -56,9 +56,25 @@ const AppLayout = ({
     setTimeout(() => {
       const backgroundGenerator = document.querySelector('.background-generator-container');
       if (backgroundGenerator) {
-
-
-        backgroundGenerator.scrollIntoView({ behavior: 'smooth', block: 'start' });
+        // JS-driven smooth scroll (same "flying" animation as rendering section)
+        const startY = window.scrollY || window.pageYOffset;
+        const rect = backgroundGenerator.getBoundingClientRect();
+        const targetY = startY + rect.top - 12; // slight offset for aesthetics
+        const distance = targetY - startY;
+        const duration = Math.min(1200, Math.max(500, Math.abs(distance) * 0.9));
+        let startTime = null;
+        const easeOutQuart = (t) => 1 - Math.pow(1 - t, 4);
+        const animate = (ts) => {
+          if (startTime === null) startTime = ts;
+          const elapsed = ts - startTime;
+          const progress = Math.min(elapsed / duration, 1);
+          const eased = easeOutQuart(progress);
+          window.scrollTo(0, startY + distance * eased);
+          if (progress < 1) {
+            requestAnimationFrame(animate);
+          }
+        };
+        requestAnimationFrame(animate);
       } else {
 
       }
@@ -195,8 +211,22 @@ const AppLayout = ({
   };
   // Handler for render video action
   const handleRenderVideo = () => {
-    // Check if we have video info and should show quality modal
+    // If we have video info, decide whether the quality modal would present more than one option
     if (videoInfo) {
+      const infoForModal = getVideoInfoForModal()?.videoInfo || videoInfo;
+      // Mirror VideoQualityModal's option visibility logic
+      const showRedownloadOption = !!(infoForModal?.source &&
+        ['youtube', 'all-sites'].includes(infoForModal.source) &&
+        infoForModal.url);
+      const showVersionOption = Array.isArray(availableVersions) && availableVersions.length > 0;
+
+      // If there would be only the "current" option, skip the modal and auto-scroll to rendering
+      if (!showRedownloadOption && !showVersionOption) {
+        proceedWithVideoRendering(null, true); // will expand + scroll (source set to 'video-quality-modal')
+        return;
+      }
+
+      // Otherwise, show the quality modal
       setShowVideoQualityModal(true);
     } else {
       // Fallback to original behavior if no video info - no auto-scroll for fallback

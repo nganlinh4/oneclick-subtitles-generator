@@ -514,7 +514,6 @@
   font-size: 0.875rem;
   color: var(--md-on-surface-variant);
   font-weight: 500;
-  text-align: right;
   flex: 0 0 auto; /* Don't grow or shrink */
   white-space: nowrap;
 }

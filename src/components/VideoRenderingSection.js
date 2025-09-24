@@ -136,11 +136,20 @@ const VideoRenderingSection = ({
     if (autoFillData) {
       console.log('[VideoRenderingSection] Processing autoFillData:', autoFillData);
 
-      // Expand if expansion is requested - override userHasCollapsed when explicitly requested
+      // Expand/scroll sequencing: when coming from video-quality-modal, scroll first, then expand
+      const shouldSequenceScrollThenExpand =
+        !!(autoFillData.expand && autoFillData.autoScroll && autoFillData.source === 'video-quality-modal');
+
+      // Expand if requested - but defer when sequencing is needed
       if (autoFillData.expand) {
-        setIsCollapsed(false);
-        // Reset userHasCollapsed when auto-expanding via render button
-        setUserHasCollapsed(false);
+        if (shouldSequenceScrollThenExpand) {
+          // Keep collapsed until after scroll completes
+          setUserHasCollapsed(false);
+        } else {
+          setIsCollapsed(false);
+          // Reset userHasCollapsed when auto-expanding via render button
+          setUserHasCollapsed(false);
+        }
       }
 
       // Auto-fill video - prioritize videoFile from quality modal, then actual video URL
@@ -168,12 +177,35 @@ const VideoRenderingSection = ({
         setSelectedNarration('generated');
       }
 
-      // Auto-scroll ONLY if explicitly requested AND from the video-quality-modal
-      if (autoFillData.expand && autoFillData.autoScroll && autoFillData.source === 'video-quality-modal') {
-        console.log('[VideoRenderingSection] Auto-scrolling to rendering section from video quality modal');
+      // Auto-scroll ONLY if explicitly requested
+      if (shouldSequenceScrollThenExpand) {
+        console.log('[VideoRenderingSection] Sequencing: scroll first, then expand');
+        // Use a JS-driven smooth scroll to avoid any CSS/UA interruptions
         setTimeout(() => {
-          sectionRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
-        }, 100);
+          const targetEl = sectionRef.current;
+          if (!targetEl) return;
+          const startY = window.scrollY || window.pageYOffset;
+          const rect = targetEl.getBoundingClientRect();
+          const targetY = startY + rect.top - 12; // slight offset for aesthetics
+          const distance = targetY - startY;
+          const duration = Math.min(1200, Math.max(500, Math.abs(distance) * 0.9));
+          let startTime = null;
+          const easeOutQuart = (t) => 1 - Math.pow(1 - t, 4);
+          const animate = (ts) => {
+            if (startTime === null) startTime = ts;
+            const elapsed = ts - startTime;
+            const progress = Math.min(elapsed / duration, 1);
+            const eased = easeOutQuart(progress);
+            window.scrollTo(0, startY + distance * eased);
+            if (progress < 1) {
+              requestAnimationFrame(animate);
+            } else {
+              // Expand after scroll completes
+              setIsCollapsed(false);
+            }
+          };
+          requestAnimationFrame(animate);
+        }, 50);
       } else if (autoFillData.autoScroll && autoFillData.source !== 'video-quality-modal') {
         console.log('[VideoRenderingSection] Auto-scroll requested but blocked - source:', autoFillData.source);
       }
@@ -1712,7 +1744,7 @@ const VideoRenderingSection = ({
                       type="button"
                       className="refresh-icon-button"
                       onClick={handleRefreshNarration}
-                      disabled={isRefreshingNarration || !hasNarrationSegments()}
+                      disabled={isRefreshingNarration}
                       style={{
                         animation: (hasNarrationSegments() && !isRefreshingNarration)
                           ? 'breathe 2s ease-in-out infinite'
@@ -1784,14 +1816,14 @@ const VideoRenderingSection = ({
               <RemotionVideoPreview
                 videoFile={selectedVideoFile}
                 subtitles={getCurrentSubtitles()}
-                narrationAudioUrl={isAlignedNarrationAvailable() ? window.alignedNarrationCache?.url : null}
+                narrationAudioUrl={(selectedNarration === 'generated' && isAlignedNarrationAvailable()) ? window.alignedNarrationCache?.url : null}
                 subtitleCustomization={{
                   ...subtitleCustomization,
                   resolution: renderSettings.resolution,
                   frameRate: renderSettings.frameRate
                 }}
                 originalAudioVolume={renderSettings.originalAudioVolume}
-                narrationVolume={renderSettings.narrationVolume}
+                narrationVolume={selectedNarration === 'none' ? 0 : renderSettings.narrationVolume}
                 cropSettings={cropSettings}
                 onCropChange={setCropSettings}
               />
