@@ -52,6 +52,46 @@ export const useSubtitles = (t) => {
 
     const currentRetryFromCacheRef = useRef(null);
 
+    // Countdown updater for quota exceeded with retry seconds
+    const quotaCountdownRef = useRef(null);
+
+    const clearQuotaCountdown = useCallback(() => {
+        if (quotaCountdownRef.current) {
+            clearInterval(quotaCountdownRef.current);
+            quotaCountdownRef.current = null;
+        }
+    }, []);
+
+    const startQuotaCountdown = useCallback((initialSeconds, isFreeTier) => {
+        clearQuotaCountdown();
+        let remaining = Math.max(0, Number(initialSeconds) || 0);
+
+        const tick = () => {
+            const msg = isFreeTier
+                ? t('errors.geminiQuotaExceededWithRetry', 'Gemini free-tier quota exceeded. Please wait about {{seconds}}s and try again, or use a different API key/add billing.', { seconds: remaining })
+                : t('errors.geminiQuotaExceededWithRetry', 'Gemini quota exceeded. Please wait about {{seconds}}s and try again, or use a different API key/add billing.', { seconds: remaining });
+            setStatus({ message: msg, type: 'error' });
+
+            if (remaining <= 0) {
+                clearQuotaCountdown();
+                return;
+            }
+            remaining -= 1;
+        };
+
+        // Immediate render, then interval updates
+        tick();
+        quotaCountdownRef.current = setInterval(tick, 1000);
+    }, [clearQuotaCountdown, t]);
+
+    // Clear countdown when we start generating again or on unmount
+    useEffect(() => {
+        if (isGenerating) {
+            clearQuotaCountdown();
+        }
+        return () => clearQuotaCountdown();
+    }, [isGenerating, clearQuotaCountdown]);
+
 
     // Listen for abort events
     useEffect(() => {
@@ -779,14 +819,14 @@ export const useSubtitles = (t) => {
                     const retryMatch = error.message.match(/Please retry in\s*([\d\.]+)s/i);
                     const seconds = retryMatch ? Math.ceil(parseFloat(retryMatch[1])) : null;
                     const isFreeTier = /free_tier/i.test(error.message) || /generate_content_free_tier_requests/i.test(error.message);
-                    const msg = seconds
-                        ? (isFreeTier
-                            ? t('errors.geminiQuotaExceededWithRetry', 'Gemini free-tier quota exceeded. Please wait about {{seconds}}s and try again, or use a different API key/add billing.', { seconds })
-                            : t('errors.geminiQuotaExceededWithRetry', 'Gemini quota exceeded. Please wait about {{seconds}}s and try again, or use a different API key/add billing.', { seconds }))
-                        : (isFreeTier
+                    if (seconds !== null) {
+                        startQuotaCountdown(seconds, isFreeTier);
+                    } else {
+                        const msg = isFreeTier
                             ? t('errors.geminiQuotaExceeded', 'Gemini free-tier quota exceeded. Please try again later or use a different API key/add billing.')
-                            : t('errors.geminiQuotaExceeded', 'Gemini quota exceeded. Please try again later or use a different API key/add billing.'));
-                    setStatus({ message: msg, type: 'error' });
+                            : t('errors.geminiQuotaExceeded', 'Gemini quota exceeded. Please try again later or use a different API key/add billing.');
+                        setStatus({ message: msg, type: 'error' });
+                    }
                 }
                 // Check for specific Gemini API overload/503 errors
                 else if (error.message && (
@@ -840,14 +880,14 @@ export const useSubtitles = (t) => {
                     const retryMatch = error.message.match(/Please retry in\s*([\d\.]+)s/i);
                     const seconds = retryMatch ? Math.ceil(parseFloat(retryMatch[1])) : null;
                     const isFreeTier = /free_tier/i.test(error.message) || /generate_content_free_tier_requests/i.test(error.message);
-                    const msg = seconds
-                        ? (isFreeTier
-                            ? t('errors.geminiQuotaExceededWithRetry', 'Gemini free-tier quota exceeded. Please wait about {{seconds}}s and try again, or use a different API key/add billing.', { seconds })
-                            : t('errors.geminiQuotaExceededWithRetry', 'Gemini quota exceeded. Please wait about {{seconds}}s and try again, or use a different API key/add billing.', { seconds }))
-                        : (isFreeTier
+                    if (seconds !== null) {
+                        startQuotaCountdown(seconds, isFreeTier);
+                    } else {
+                        const msg = isFreeTier
                             ? t('errors.geminiQuotaExceeded', 'Gemini free-tier quota exceeded. Please try again later or use a different API key/add billing.')
-                            : t('errors.geminiQuotaExceeded', 'Gemini quota exceeded. Please try again later or use a different API key/add billing.'));
-                    setStatus({ message: msg, type: 'error' });
+                            : t('errors.geminiQuotaExceeded', 'Gemini quota exceeded. Please try again later or use a different API key/add billing.');
+                        setStatus({ message: msg, type: 'error' });
+                    }
                 } else if (error.message && (
                     (error.message.includes('503') && error.message.includes('Service Unavailable')) ||
                     error.message.includes('The model is overloaded')
