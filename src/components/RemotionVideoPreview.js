@@ -42,6 +42,7 @@ const RemotionVideoPreview = ({
     height: 100,
     aspectRatio: null
   });
+
   const playerRef = useRef(null);
 
 
@@ -183,6 +184,7 @@ const RemotionVideoPreview = ({
     setIsCropEnabled(false);
   };
 
+
   // Calculate composition dimensions based on actual video dimensions or resolution fallback
   const getCompositionDimensions = () => {
     // If we have actual video dimensions, use them with the target resolution height
@@ -215,17 +217,14 @@ const RemotionVideoPreview = ({
           break;
       }
 
-      // Check if crop is applied and adjust aspect ratio accordingly
+      // Adjust composition aspect ratio based on crop width/height, including expand-only
+      const cs = isCropEnabled ? tempCropSettings : appliedCropSettings;
       let effectiveAspectRatio = videoDimensions.aspectRatio;
-
-      if (appliedCropSettings && (appliedCropSettings.width < 100 || appliedCropSettings.height < 100)) {
-        const cropWidthRatio = appliedCropSettings.width / 100;
-        const cropHeightRatio = appliedCropSettings.height / 100;
-        const originalWidth = videoDimensions.width;
-        const originalHeight = videoDimensions.height;
-        const croppedWidth = originalWidth * cropWidthRatio;
-        const croppedHeight = originalHeight * cropHeightRatio;
-        effectiveAspectRatio = croppedWidth / croppedHeight;
+      if (cs && (cs.width !== 100 || cs.height !== 100)) {
+        const cropWidthRatio = cs.width / 100;
+        const cropHeightRatio = cs.height / 100;
+        // New AR = originalAR * (cropWidthRatio / cropHeightRatio)
+        effectiveAspectRatio = videoDimensions.aspectRatio * (cropWidthRatio / cropHeightRatio);
       }
 
       const targetWidth = Math.round(targetHeight * effectiveAspectRatio);
@@ -362,7 +361,6 @@ const RemotionVideoPreview = ({
     <div style={{ position: 'relative', width: '100%', height: '100%' }}>
       {/* Video player */}
       <Player
-        key={`${safeWidth}x${safeHeight}`} // Force re-render when dimensions change
         ref={playerRef}
         component={SubtitledVideoComposition}
         durationInFrames={durationInFrames}
@@ -388,14 +386,17 @@ const RemotionVideoPreview = ({
           isVideoFile: isVideoFile,
           originalAudioVolume: originalAudioVolume,
           narrationVolume: narrationVolume,
-          cropSettings: (appliedCropSettings.width < 100 || appliedCropSettings.height < 100) ? appliedCropSettings : null,
+          cropSettings: (() => {
+            const cs = isCropEnabled ? tempCropSettings : appliedCropSettings;
+            return cs ?? null;
+          })(),
         }}
         onFrame={handlePlayerTimeUpdate}
         onPlay={handlePlay}
         onPause={handlePause}
         onSeek={handleSeek}
       />
-      
+
       {/* Crop controls overlay - directly on video */}
       {videoFile && videoDimensions && (
         <VideoCropControls
@@ -408,7 +409,12 @@ const RemotionVideoPreview = ({
           onClear={handleClearCrop}
           videoDimensions={videoDimensions}
 
-          hasAppliedCrop={appliedCropSettings.width < 100 || appliedCropSettings.height < 100}
+          hasAppliedCrop={
+            (appliedCropSettings.width !== 100 ||
+             appliedCropSettings.height !== 100 ||
+             appliedCropSettings.x !== 0 ||
+             appliedCropSettings.y !== 0)
+          }
         />
       )}
     </div>

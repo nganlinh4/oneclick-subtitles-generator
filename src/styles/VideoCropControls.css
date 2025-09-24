@@ -110,6 +110,7 @@
   transition: background-color var(--md-duration-medium2) var(--md-easing-standard),
               border-color var(--md-duration-medium2) var(--md-easing-standard),
               color var(--md-duration-medium2) var(--md-easing-standard);
+  width: max-content;
 }
 
 .aspect-btn:hover {
@@ -133,6 +134,14 @@
 
 .aspect-btn.reset:hover {
   background: color-mix(in srgb, var(--md-error), transparent 92%);
+}
+
+.aspect-transform-separator {
+  width: 1px;
+  height: 24px;
+  background: color-mix(in srgb, var(--md-outline-variant), transparent 40%);
+  align-self: center;
+  margin: 0 6px;
 }
 
 .aspect-icon {
@@ -398,4 +407,6 @@
     background-color: #fff;
     border-color: var(--md-primary, #d0bcff);
   }
+
+
 }

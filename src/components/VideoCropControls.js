@@ -1,28 +1,29 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { useTranslation } from 'react-i18next';
 import '../styles/VideoCropControls.css';
+import CustomDropdown from './common/CustomDropdown';
+import StandardSlider from './common/StandardSlider';
 
+// Icons use currentColor to adapt to theme
 const IconFree = () => (
-  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-    <path d="M3 12h18M12 3v18" opacity=".6" />
-    <path d="M8 5l-3 3M16 5l3 3M8 19l-3-3M16 19l3-3" />
+  <svg width="18" height="18" viewBox="0 -960 960 960" fill="currentColor" xmlns="http://www.w3.org/2000/svg">
+    <path d="M806-666v-59h-61q-26.37 0-43.19-18.2Q685-761.4 685-786q0-26 17.5-43t43.5-17h45q57.13 0 96.56 39.44Q927-767.13 927-710v45q0 26.37-17.51 43.19Q891.97-605 867-605q-26 0-43.5-17.5T806-666Zm-772 0v-44q0-57.13 39.44-96.56Q112.88-846 170-846h45q26.38 0 43.19 16.81T275-786.5q0 25.5-16.81 43.5T215-725h-60v60q0 26.37-17.51 43.19Q119.98-605 95-605q-26 0-43.5-17.5T34-666Zm757 552h-46q-26.37 0-43.19-17.5Q685-149 685-174.5t17.5-43Q720-235 746-235h60v-60q0-26.38 17.5-43.19t43-16.81q25.5 0 43 16.81T927-295v45q0 57.12-39.44 96.56Q848.13-114 791-114Zm-621 0q-57.12 0-96.56-39.44Q34-192.88 34-250v-45q0-26.38 17.5-43.19t43-16.81q25.5 0 43 16.81T155-295v60h60q26.38 0 43.19 17.51T275-175q0 26-16.81 43.5T215-114h-45Zm75-347v-38q0-58.4 38.8-97.2Q322.6-635 381-635h199q57 0 96.5 38.8T716-499v38q0 58.4-39.5 97.2Q637-325 580-325H381q-58.4 0-97.2-38.8Q245-402.6 245-461Zm121 15h229v-68H366v68Zm0 0v-68 68Z" />
   </svg>
 );
 const Icon169 = () => (
-  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-    <rect x="3" y="7" width="18" height="10" rx="2" /></svg>
+  <svg width="18" height="18" viewBox="0 -960 960 960" fill="currentColor" xmlns="http://www.w3.org/2000/svg">
+    <path d="M210-234q-57.12 0-96.56-40.14Q74-314.27 74-370v-220q0-55.72 39.44-95.86T210-726h540q57.13 0 96.56 40.14Q886-645.72 886-590v220q0 55.73-39.44 95.86Q807.13-234 750-234H210Zm0-136h540v-220H210v220Zm0 0v-220 220Z" />
+  </svg>
 );
 const Icon916 = () => (
-  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-    <rect x="7" y="3" width="10" height="18" rx="2" /></svg>
+  <svg width="18" height="18" viewBox="0 -960 960 960" fill="currentColor" xmlns="http://www.w3.org/2000/svg">
+    <path d="M375-74q-57.12 0-96.56-39.44Q239-152.88 239-210v-540q0-57.13 39.44-96.56Q317.88-886 375-886h210q57.13 0 96.56 39.44Q721-807.13 721-750v540q0 57.12-39.44 96.56Q642.13-74 585-74H375Zm0-676v540h210v-540H375Zm0 0v540-540Z" />
+  </svg>
 );
 const Icon11 = () => (
-  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-    <rect x="5" y="5" width="14" height="14" rx="2" /></svg>
-);
-const Icon45 = () => (
-  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-    <rect x="6" y="4.5" width="12" height="15" rx="2" /></svg>
+  <svg width="18" height="18" viewBox="0 -960 960 960" fill="currentColor" xmlns="http://www.w3.org/2000/svg">
+    <path d="M210-74q-57.12 0-96.56-39.44Q74-152.88 74-210v-540q0-57.13 39.44-96.56Q152.88-886 210-886h540q57.13 0 96.56 39.44Q886-807.13 886-750v540q0 57.12-39.44 96.56Q807.13-74 750-74H210Zm0-136h540v-540H210v540Zm0 0v-540 540Z" />
+  </svg>
 );
 
 const PRESET_ASPECT_RATIOS = [
@@ -30,7 +31,6 @@ const PRESET_ASPECT_RATIOS = [
   { label: '16:9', value: 16/9, renderIcon: () => <Icon169 /> },
   { label: '9:16', value: 9/16, renderIcon: () => <Icon916 /> },
   { label: '1:1', value: 1, renderIcon: () => <Icon11 /> },
-  { label: '4:5', value: 4/5, renderIcon: () => <Icon45 /> },
 ];
 
 const VideoCropControls = ({
@@ -42,7 +42,7 @@ const VideoCropControls = ({
   onCancel,
   onClear,
   videoDimensions,
-  hasAppliedCrop = false
+  hasAppliedCrop = false,
 }) => {
   const { t } = useTranslation();
   const [selectedAspectRatio, setSelectedAspectRatio] = useState(null);
@@ -53,8 +53,36 @@ const VideoCropControls = ({
   const cropAreaRef = useRef(null);
   const [videoRect, setVideoRect] = useState(null);
 
+  const dragBaseRectRef = useRef(null);
+  const dragBaseCropRef = useRef(null);
+
+  // Draggable UI positions (percentages within videoRect)
+  const defaultUiPos = {
+    aspect: { xPct: 50, yPct: 2 },
+    toggle: { xPct: 96, yPct: 2 },
+    actions: { xPct: 50, yPct: 96 }
+  };
+  const [uiPos, setUiPos] = useState(defaultUiPos);
+  const resetUiPositions = useCallback(() => { setUiPos(defaultUiPos); uiInitializedRef.current = false; }, []);
+  const [uiDrag, setUiDrag] = useState(null);
+  const uiInitializedRef = useRef(false);
+  const didDragRef = useRef(false);
+
+
   useEffect(() => {
-    setTempCrop(cropSettings);
+    // Normalize incoming crop settings, preserving any extra fields
+    const normalized = {
+      ...cropSettings,
+      x: cropSettings.x ?? 0,
+      y: cropSettings.y ?? 0,
+      width: cropSettings.width ?? 100,
+      height: cropSettings.height ?? 100,
+      aspectRatio: cropSettings.aspectRatio ?? null,
+      canvasBgMode: cropSettings.canvasBgMode ?? 'solid',
+      canvasBgColor: cropSettings.canvasBgColor ?? '#000000',
+      canvasBgBlur: cropSettings.canvasBgBlur ?? 24,
+    };
+    setTempCrop(normalized);
   }, [cropSettings]);
 
   // Find and track the actual video element position
@@ -270,24 +298,24 @@ const VideoCropControls = ({
     setIsDragging(true);
     setDragType(type);
     setDragStart({ x: e.clientX, y: e.clientY });
+    // Capture base rect and base crop to make deltas stable even if preview resizes during drag
+    if (cropAreaRef.current) {
+      dragBaseRectRef.current = cropAreaRef.current.getBoundingClientRect();
+    }
+    dragBaseCropRef.current = { ...tempCrop };
   };
 
   const handleMouseMove = useCallback((e) => {
     if (!isDragging || !dragType || !cropAreaRef.current) return;
 
-    const rect = cropAreaRef.current.getBoundingClientRect();
-    const deltaX = ((e.clientX - dragStart.x) / rect.width) * 100;
-    const deltaY = ((e.clientY - dragStart.y) / rect.height) * 100;
+    const baseRect = dragBaseRectRef.current || cropAreaRef.current.getBoundingClientRect();
+    const baseCrop = dragBaseCropRef.current || tempCrop;
+    const deltaX = ((e.clientX - dragStart.x) / baseRect.width) * 100;
+    const deltaY = ((e.clientY - dragStart.y) / baseRect.height) * 100;
 
     let newCrop = { ...tempCrop };
 
     switch (dragType) {
-      case 'move':
-        newCrop.x = Math.max(0, Math.min(100 - tempCrop.width, tempCrop.x + deltaX));
-        newCrop.y = Math.max(0, Math.min(100 - tempCrop.height, tempCrop.y + deltaY));
-        newCrop.width = tempCrop.width;
-        newCrop.height = tempCrop.height;
-        break;
 
       case 'nw':
         if (selectedAspectRatio && selectedAspectRatio !== 'custom' && selectedAspectRatio !== null) {
@@ -301,31 +329,27 @@ const VideoCropControls = ({
 
           if (absDeltaX > absDeltaY) {
             // X movement is dominant
-            newCrop.x = Math.max(0, Math.min(tempCrop.x + tempCrop.width - 10, tempCrop.x + deltaX));
-            newCrop.width = tempCrop.x + tempCrop.width - newCrop.x;
+            newCrop.x = baseCrop.x + deltaX;
+            newCrop.width = baseCrop.x + baseCrop.width - newCrop.x;
             // Calculate height based on aspect ratio
             newCrop.height = newCrop.width / aspectRatio * videoAspect;
-            newCrop.y = tempCrop.y + tempCrop.height - newCrop.height;
+            newCrop.y = baseCrop.y + baseCrop.height - newCrop.height;
           } else {
             // Y movement is dominant
-            newCrop.y = Math.max(0, Math.min(tempCrop.y + tempCrop.height - 10, tempCrop.y + deltaY));
-            newCrop.height = tempCrop.y + tempCrop.height - newCrop.y;
+            newCrop.y = baseCrop.y + deltaY;
+            newCrop.height = baseCrop.y + baseCrop.height - newCrop.y;
             // Calculate width based on aspect ratio
             newCrop.width = newCrop.height * aspectRatio / videoAspect;
-            newCrop.x = tempCrop.x + tempCrop.width - newCrop.width;
+            newCrop.x = baseCrop.x + baseCrop.width - newCrop.width;
           }
 
-          // Ensure within bounds
-          newCrop.x = Math.max(0, newCrop.x);
-          newCrop.y = Math.max(0, newCrop.y);
-          newCrop.width = Math.min(100 - newCrop.x, newCrop.width);
-          newCrop.height = Math.min(100 - newCrop.y, newCrop.height);
+
         } else {
           // Free resize
-          newCrop.x = Math.max(0, Math.min(tempCrop.x + tempCrop.width - 10, tempCrop.x + deltaX));
-          newCrop.y = Math.max(0, Math.min(tempCrop.y + tempCrop.height - 10, tempCrop.y + deltaY));
-          newCrop.width = tempCrop.x + tempCrop.width - newCrop.x;
-          newCrop.height = tempCrop.y + tempCrop.height - newCrop.y;
+          newCrop.x = baseCrop.x + deltaX;
+          newCrop.y = baseCrop.y + deltaY;
+          newCrop.width = baseCrop.x + baseCrop.width - newCrop.x;
+          newCrop.height = baseCrop.y + baseCrop.height - newCrop.y;
         }
         break;
 
@@ -339,31 +363,25 @@ const VideoCropControls = ({
 
           if (absDeltaX > absDeltaY) {
             // X movement is dominant
-            newCrop.width = Math.max(10, Math.min(100 - tempCrop.x, tempCrop.width + deltaX));
-            newCrop.x = tempCrop.x;
+            newCrop.width = baseCrop.width + deltaX;
+            newCrop.x = baseCrop.x;
             // Calculate height based on aspect ratio
             newCrop.height = newCrop.width / aspectRatio * videoAspect;
-            newCrop.y = tempCrop.y + tempCrop.height - newCrop.height;
+            newCrop.y = baseCrop.y + baseCrop.height - newCrop.height;
           } else {
             // Y movement is dominant
-            newCrop.y = Math.max(0, Math.min(tempCrop.y + tempCrop.height - 10, tempCrop.y + deltaY));
-            newCrop.height = tempCrop.y + tempCrop.height - newCrop.y;
+            newCrop.y = baseCrop.y + deltaY;
+            newCrop.height = baseCrop.y + baseCrop.height - newCrop.y;
             // Calculate width based on aspect ratio
             newCrop.width = newCrop.height * aspectRatio / videoAspect;
-            newCrop.x = tempCrop.x;
+            newCrop.x = baseCrop.x;
           }
-
-          // Ensure within bounds
-          newCrop.x = Math.max(0, newCrop.x);
-          newCrop.y = Math.max(0, newCrop.y);
-          newCrop.width = Math.min(100 - newCrop.x, newCrop.width);
-          newCrop.height = Math.min(100 - newCrop.y, newCrop.height);
         } else {
           // Free resize
-          newCrop.x = tempCrop.x;
-          newCrop.y = Math.max(0, Math.min(tempCrop.y + tempCrop.height - 10, tempCrop.y + deltaY));
-          newCrop.width = Math.max(10, Math.min(100 - tempCrop.x, tempCrop.width + deltaX));
-          newCrop.height = tempCrop.y + tempCrop.height - newCrop.y;
+          newCrop.x = baseCrop.x;
+          newCrop.y = baseCrop.y + deltaY;
+          newCrop.width = baseCrop.width + deltaX;
+          newCrop.height = baseCrop.y + baseCrop.height - newCrop.y;
         }
         break;
 
@@ -377,31 +395,27 @@ const VideoCropControls = ({
 
           if (absDeltaX > absDeltaY) {
             // X movement is dominant
-            newCrop.x = Math.max(0, Math.min(tempCrop.x + tempCrop.width - 10, tempCrop.x + deltaX));
-            newCrop.width = tempCrop.x + tempCrop.width - newCrop.x;
+            newCrop.x = baseCrop.x + deltaX;
+            newCrop.width = baseCrop.x + baseCrop.width - newCrop.x;
             // Calculate height based on aspect ratio
             newCrop.height = newCrop.width / aspectRatio * videoAspect;
-            newCrop.y = tempCrop.y;
+            newCrop.y = baseCrop.y;
           } else {
             // Y movement is dominant
-            newCrop.height = Math.max(10, Math.min(100 - tempCrop.y, tempCrop.height + deltaY));
-            newCrop.y = tempCrop.y;
+            newCrop.height = baseCrop.height + deltaY;
+            newCrop.y = baseCrop.y;
             // Calculate width based on aspect ratio
             newCrop.width = newCrop.height * aspectRatio / videoAspect;
-            newCrop.x = tempCrop.x + tempCrop.width - newCrop.width;
+            newCrop.x = baseCrop.x + baseCrop.width - newCrop.width;
           }
 
-          // Ensure within bounds
-          newCrop.x = Math.max(0, newCrop.x);
-          newCrop.y = Math.max(0, newCrop.y);
-          newCrop.width = Math.min(100 - newCrop.x, newCrop.width);
-          newCrop.height = Math.min(100 - newCrop.y, newCrop.height);
+
         } else {
           // Free resize
-          newCrop.x = Math.max(0, Math.min(tempCrop.x + tempCrop.width - 10, tempCrop.x + deltaX));
-          newCrop.y = tempCrop.y;
-          newCrop.width = tempCrop.x + tempCrop.width - newCrop.x;
-          newCrop.height = Math.max(10, Math.min(100 - tempCrop.y, tempCrop.height + deltaY));
+          newCrop.x = baseCrop.x + deltaX;
+          newCrop.y = baseCrop.y;
+          newCrop.width = baseCrop.x + baseCrop.width - newCrop.x;
+          newCrop.height = baseCrop.height + deltaY;
         }
         break;
 
@@ -415,58 +429,104 @@ const VideoCropControls = ({
 
           if (absDeltaX > absDeltaY) {
             // X movement is dominant
-            newCrop.width = Math.max(10, Math.min(100 - tempCrop.x, tempCrop.width + deltaX));
+            newCrop.width = baseCrop.width + deltaX;
             // Calculate height based on aspect ratio
             newCrop.height = newCrop.width / aspectRatio * videoAspect;
-            newCrop.x = tempCrop.x;
-            newCrop.y = tempCrop.y;
+            newCrop.x = baseCrop.x;
+            newCrop.y = baseCrop.y;
           } else {
             // Y movement is dominant
-            newCrop.height = Math.max(10, Math.min(100 - tempCrop.y, tempCrop.height + deltaY));
+            newCrop.height = baseCrop.height + deltaY;
             // Calculate width based on aspect ratio
             newCrop.width = newCrop.height * aspectRatio / videoAspect;
-            newCrop.x = tempCrop.x;
-            newCrop.y = tempCrop.y;
+            newCrop.x = baseCrop.x;
+            newCrop.y = baseCrop.y;
           }
 
-          // Ensure within bounds
-          newCrop.width = Math.min(100 - newCrop.x, newCrop.width);
-          newCrop.height = Math.min(100 - newCrop.y, newCrop.height);
+
         } else {
           // Free resize
-          newCrop.x = tempCrop.x;
-          newCrop.y = tempCrop.y;
-          newCrop.width = Math.max(10, Math.min(100 - tempCrop.x, tempCrop.width + deltaX));
-          newCrop.height = Math.max(10, Math.min(100 - tempCrop.y, tempCrop.height + deltaY));
+          newCrop.x = baseCrop.x;
+          newCrop.y = baseCrop.y;
+          newCrop.width = baseCrop.width + deltaX;
+          newCrop.height = baseCrop.height + deltaY;
         }
         break;
 
       case 'n':
-        newCrop.x = tempCrop.x;
-        newCrop.y = Math.max(0, Math.min(tempCrop.y + tempCrop.height - 10, tempCrop.y + deltaY));
-        newCrop.width = tempCrop.width;
-        newCrop.height = tempCrop.y + tempCrop.height - newCrop.y;
+        if (typeof selectedAspectRatio === 'number') {
+          const aspectRatio = selectedAspectRatio;
+          const videoAspect = videoDimensions.width / videoDimensions.height;
+          const centerX = baseCrop.x + baseCrop.width / 2;
+          const newHeight = baseCrop.height - deltaY;
+          const newWidth = newHeight * aspectRatio / videoAspect;
+          newCrop.y = baseCrop.y + deltaY;
+          newCrop.height = newHeight;
+          newCrop.width = newWidth;
+          newCrop.x = centerX - newWidth / 2;
+        } else {
+          newCrop.x = baseCrop.x;
+          newCrop.y = baseCrop.y + deltaY;
+          newCrop.width = baseCrop.width;
+          newCrop.height = baseCrop.y + baseCrop.height - newCrop.y;
+        }
         break;
 
       case 's':
-        newCrop.x = tempCrop.x;
-        newCrop.y = tempCrop.y;
-        newCrop.width = tempCrop.width;
-        newCrop.height = Math.max(10, Math.min(100 - tempCrop.y, tempCrop.height + deltaY));
+        if (typeof selectedAspectRatio === 'number') {
+          const aspectRatio = selectedAspectRatio;
+          const videoAspect = videoDimensions.width / videoDimensions.height;
+          const centerX = baseCrop.x + baseCrop.width / 2;
+          const newHeight = baseCrop.height + deltaY;
+          const newWidth = newHeight * aspectRatio / videoAspect;
+          newCrop.y = baseCrop.y;
+          newCrop.height = newHeight;
+          newCrop.width = newWidth;
+          newCrop.x = centerX - newWidth / 2;
+        } else {
+          newCrop.x = baseCrop.x;
+          newCrop.y = baseCrop.y;
+          newCrop.width = baseCrop.width;
+          newCrop.height = baseCrop.height + deltaY;
+        }
         break;
 
       case 'e':
-        newCrop.x = tempCrop.x;
-        newCrop.y = tempCrop.y;
-        newCrop.width = Math.max(10, Math.min(100 - tempCrop.x, tempCrop.width + deltaX));
-        newCrop.height = tempCrop.height;
+        if (typeof selectedAspectRatio === 'number') {
+          const aspectRatio = selectedAspectRatio;
+          const videoAspect = videoDimensions.width / videoDimensions.height;
+          const centerY = baseCrop.y + baseCrop.height / 2;
+          const newWidth = baseCrop.width + deltaX;
+          const newHeight = newWidth / aspectRatio * videoAspect;
+          newCrop.x = baseCrop.x;
+          newCrop.width = newWidth;
+          newCrop.height = newHeight;
+          newCrop.y = centerY - newHeight / 2;
+        } else {
+          newCrop.x = baseCrop.x;
+          newCrop.y = baseCrop.y;
+          newCrop.width = baseCrop.width + deltaX;
+          newCrop.height = baseCrop.height;
+        }
         break;
 
       case 'w':
-        newCrop.x = Math.max(0, Math.min(tempCrop.x + tempCrop.width - 10, tempCrop.x + deltaX));
-        newCrop.y = tempCrop.y;
-        newCrop.width = tempCrop.x + tempCrop.width - newCrop.x;
-        newCrop.height = tempCrop.height;
+        if (typeof selectedAspectRatio === 'number') {
+          const aspectRatio = selectedAspectRatio;
+          const videoAspect = videoDimensions.width / videoDimensions.height;
+          const centerY = baseCrop.y + baseCrop.height / 2;
+          const newWidth = baseCrop.width - deltaX;
+          const newHeight = newWidth / aspectRatio * videoAspect;
+          newCrop.x = baseCrop.x + deltaX;
+          newCrop.width = newWidth;
+          newCrop.height = newHeight;
+          newCrop.y = centerY - newHeight / 2;
+        } else {
+          newCrop.x = baseCrop.x + deltaX;
+          newCrop.y = baseCrop.y;
+          newCrop.width = baseCrop.x + baseCrop.width - newCrop.x;
+          newCrop.height = baseCrop.height;
+        }
         break;
 
       default:
@@ -478,7 +538,6 @@ const VideoCropControls = ({
     newCrop.height = Math.max(10, newCrop.height);
 
     setTempCrop(newCrop);
-    setDragStart({ x: e.clientX, y: e.clientY });
   }, [isDragging, dragType, dragStart, tempCrop, selectedAspectRatio, videoDimensions]);
 
   const handleMouseUp = useCallback(() => {
@@ -486,17 +545,18 @@ const VideoCropControls = ({
       setIsDragging(false);
       setDragType(null);
       onCropChange(tempCrop);
-      if (selectedAspectRatio !== 'custom' && selectedAspectRatio !== null) {
-        setSelectedAspectRatio('custom');
-      }
     }
-  }, [isDragging, tempCrop, onCropChange, selectedAspectRatio]);
+  }, [isDragging, tempCrop, onCropChange]);
 
   useEffect(() => {
     if (isDragging) {
       document.addEventListener('mousemove', handleMouseMove);
       document.addEventListener('mouseup', handleMouseUp);
-      document.body.style.cursor = dragType === 'move' ? 'move' : 'nwse-resize';
+      document.body.style.cursor = (dragType === 'n' || dragType === 's')
+        ? 'ns-resize'
+        : (dragType === 'e' || dragType === 'w')
+          ? 'ew-resize'
+          : 'nwse-resize';
       document.body.style.userSelect = 'none';
     } else {
       document.removeEventListener('mousemove', handleMouseMove);
@@ -513,96 +573,288 @@ const VideoCropControls = ({
     };
   }, [isDragging, handleMouseMove, handleMouseUp, dragType]);
 
-  const handleReset = () => {
-    const resetCrop = {
-      x: 0,
-      y: 0,
-      width: 100,
-      height: 100,
-      aspectRatio: null
-    };
-    setTempCrop(resetCrop);
-    onCropChange(resetCrop);
-    setSelectedAspectRatio(null);
+  // Dragging for floating UI during crop mode
+  const onUiMouseDown = (e, kind) => {
+    if (!isEnabled) return;
+    if (!cropAreaRef.current) return;
+    didDragRef.current = false;
+    setUiDrag({
+      kind,
+      startX: e.clientX,
+      startY: e.clientY,
+      startPos: { ...(uiPos[kind] || { xPct: 50, yPct: 50 }) }
+    });
   };
+
+  useEffect(() => {
+    if (!uiDrag) return;
+    const onMove = (e) => {
+      if (!cropAreaRef.current) return;
+      const rect = cropAreaRef.current.getBoundingClientRect();
+      const dxPx = (e.clientX - uiDrag.startX);
+      const dyPx = (e.clientY - uiDrag.startY);
+      const moved = Math.abs(dxPx) > 3 || Math.abs(dyPx) > 3;
+      if (moved) didDragRef.current = true;
+      const dxPct = rect.width ? (dxPx / rect.width) * 100 : 0;
+      const dyPct = rect.height ? (dyPx / rect.height) * 100 : 0;
+      setUiPos((prev) => {
+        const start = uiDrag.startPos || prev[uiDrag.kind] || { xPct: 50, yPct: 50 };
+        const next = {
+          ...prev,
+          [uiDrag.kind]: {
+            xPct: Math.max(0, Math.min(100, start.xPct + dxPct)),
+            yPct: Math.max(0, Math.min(100, start.yPct + dyPct)),
+          }
+        };
+        return next;
+      });
+    };
+    const onUp = () => setUiDrag(null);
+    document.addEventListener('mousemove', onMove);
+    document.addEventListener('mouseup', onUp, { once: true });
+    document.body.style.cursor = 'grabbing';
+    document.body.style.userSelect = 'none';
+    return () => {
+      document.removeEventListener('mousemove', onMove);
+      document.body.style.cursor = '';
+      document.body.style.userSelect = '';
+    };
+  }, [uiDrag]);
+  const suppressClickIfDragged = (e) => {
+    if (didDragRef.current) {
+      e.preventDefault();
+      e.stopPropagation();
+      didDragRef.current = false;
+    }
+  };
+  // Initialize default draggable positions to match old fixed positions when overlay opens
+  useEffect(() => {
+    if (isEnabled && videoRect && !uiInitializedRef.current) {
+      const vw = videoRect.width || 1;
+      const vh = videoRect.height || 1;
+      setUiPos({
+        aspect: { xPct: 50, yPct: (14 / vh) * 100 }, // top:14px, centered
+        toggle: { xPct: ((vw - 10) / vw) * 100, yPct: (10 / vh) * 100 }, // right:10px, top:10px
+        actions: { xPct: 50, yPct: ((vh - 20) / vh) * 100 } // bottom:20px, centered
+      });
+      uiInitializedRef.current = true;
+    }
+  }, [isEnabled, videoRect]);
+
+
+  // Reset floating UI positions when leaving crop mode
+  useEffect(() => {
+    if (!isEnabled) {
+      resetUiPositions();
+    }
+  }, [isEnabled, resetUiPositions]);
+
+  const handleApplyAndReset = () => {
+    if (onApply) onApply();
+    resetUiPositions();
+  };
+
+
+
+
 
   return (
     <>
-      {/* Crop control buttons - positioned at top-right of video */}
-      <div style={{
-        position: 'absolute',
-        top: '10px',
-        right: '10px',
-        display: 'flex',
-        gap: '8px',
-        zIndex: 20,
-      }}>
-        <button
-          className={`crop-toggle-btn ${isEnabled ? 'editing' : hasAppliedCrop ? 'active' : ''}`}
-          onClick={onToggle}
-          title={hasAppliedCrop ? t('videoRendering.editCrop', 'Edit crop') : t('videoRendering.toggleCrop', 'Add crop')}
-        >
-          <svg width="20" height="20" viewBox="0 -960 960 960" fill="currentColor" xmlns="http://www.w3.org/2000/svg">
-            <path d="M475 13Q299.99 13 168.49-94 37-201-2-365q-6-21.36 8.5-39.18t37-21.32q21.34-2.5 40.97 9.84T110-382q29 103 108.5 179T405-107l-9-10q-15-15-15-33t15-34q15-16 34.5-16.5T465-186L611.55-39.45q7.45 7.45 4.7 20.18Q613.5-6.53 601.39-2.7 565 5 533 9q-32 4-58 4ZM374-277q-39.89 0-68.44-28.56Q277-334.11 277-374v-212h-49q-19.28 0-33.64-14.29T180-634.79q0-19.78 14.65-34Q209.3-683 229-683h48v-49q0-19.27 14.37-33.64Q305.74-780 326.07-780q19.91 0 33.92 14.36Q374-751.27 374-732v358h348q19.87 0 33.94 13.89Q770-346.23 770-326.61 770-307 755.94-292q-14.07 15-33.94 15h-39v49q0 19.28-14.01 33.64-14 14.36-33.8 14.36-19.79 0-34.49-14.65Q586-209.3 586-229v-48H374Zm212-154v-155H431v-97h155q41.29 0 69.14 27.86Q683-627.29 683-586v155h-97ZM485-973q175.01 0 306.51 108Q923-757 962-594q6 20.98-8.5 38.99t-37.23 20.51q-22.74 2.5-41.56-10.34Q855.9-557.68 850-578q-29-103-108.5-179T555-854l9 11q15 15 15 32.5T564-777q-15 16-34.5 17T495-775L348.45-920.55Q341-929 343.82-941.6q2.82-12.6 15.18-16.4 36-8 68-11.5t58-3.5Z"/>
-          </svg>
-          {hasAppliedCrop && !isEnabled && (
-            <span className="crop-indicator">✓</span>
-          )}
-        </button>
-
-        {/* Clear crop button - only show when crop is applied and not editing */}
-        {hasAppliedCrop && !isEnabled && (
+      {/* Crop control buttons - only show fixed position when NOT editing */}
+      {!isEnabled && (
+        <div style={{
+          position: 'absolute',
+          top: '10px',
+          right: '10px',
+          display: 'flex',
+          gap: '8px',
+          zIndex: 20,
+        }}>
           <button
-            className="crop-clear-btn"
-            onClick={onClear}
-            title={t('videoRendering.clearCrop', 'Clear crop')}
+            className={`crop-toggle-btn ${hasAppliedCrop ? 'active' : ''}`}
+            onClick={onToggle}
+            title={hasAppliedCrop ? t('videoRendering.editCrop', 'Edit crop') : t('videoRendering.toggleCrop', 'Add crop')}
           >
             <svg width="20" height="20" viewBox="0 -960 960 960" fill="currentColor" xmlns="http://www.w3.org/2000/svg">
-              <path d="M480-390 334-244q-20 20-45 19.5T245-245q-20-20-20-45t20-45l145-145-146-147q-20-20-19.5-45t20.5-45q19-20 44.5-20t45.5 20l145 146 146-146q20-20 45.5-20t44.5 20q20 20 20 45t-20 45L570-480l146 146q20 20 20 44.5T716-245q-19 20-44.5 20T626-245L480-390Z"/>
+              <path d="M654-92v-79H306q-55.73 0-95.86-39.44Q170-249.88 170-307v-347H92q-29 0-48.5-20.2T24-722q0-29 19.5-48.5T92-790h78v-78q0-29 20.2-48.5T238-936q29 0 48.5 19.5T306-868v561h562q29 0 48.5 20.2T936-239q0 29-19.5 48.5T868-171h-78v79q0 27.6-20.2 47.8Q749.6-24 722-24q-29 0-48.5-20.2T654-92Zm0-295v-267H386v-136h268q57.13 0 96.56 39.44Q790-711.13 790-654v267H654Z"/>
             </svg>
+            {hasAppliedCrop && <span className="crop-indicator">✓</span>}
           </button>
-        )}
-      </div>
+
+          {hasAppliedCrop && (
+            <button
+              className="crop-clear-btn"
+              onClick={onClear}
+              title={t('videoRendering.clearCrop', 'Clear crop')}
+            >
+              <svg width="20" height="20" viewBox="0 -960 960 960" fill="currentColor" xmlns="http://www.w3.org/2000/svg">
+                <path d="M480-390 334-244q-20 20-45 19.5T245-245q-20-20-20-45t20-45l145-145-146-147q-20-20-19.5-45t20.5-45q19-20 44.5-20t45.5 20l145 146 146-146q20-20 45.5-20t44.5 20q20 20 20 45t-20 45L570-480l146 146q20 20 20 44.5T716-245q-19 20-44.5 20T626-245L480-390Z"/>
+              </svg>
+            </button>
+          )}
+        </div>
+      )}
 
       {/* Crop overlay when enabled */}
       {isEnabled && (
         <>
-          {/* Aspect ratio buttons - positioned at top of video */}
+          {/* Draggable crop toggle inside overlay when editing */}
+          <div
+            className="draggable-crop-toggle"
+            style={{
+              position: 'absolute',
+              left: `${uiPos.toggle.xPct}%`,
+              top: `${uiPos.toggle.yPct}%`,
+              transform: 'translateX(-100%)',
+              zIndex: 21,
+              pointerEvents: 'auto',
+              cursor: uiDrag?.kind === 'toggle' ? 'grabbing' : 'grab'
+            }}
+            onMouseDown={(e) => onUiMouseDown(e, 'toggle')}
+            title={t('videoRendering.exitCrop', 'Exit crop')}
+          >
+            <button
+              className={`crop-toggle-btn editing`}
+              onClick={(e) => { suppressClickIfDragged(e); if (!didDragRef.current) { resetUiPositions(); onToggle && onToggle(); } }}
+              onClickCapture={suppressClickIfDragged}
+              title={t('videoRendering.exitCrop', 'Exit crop')}
+              style={{ cursor: uiDrag?.kind === 'toggle' ? 'grabbing' : 'grab' }}
+            >
+              <svg width="20" height="20" viewBox="0 -960 960 960" fill="currentColor" xmlns="http://www.w3.org/2000/svg">
+                <path d="M654-92v-79H306q-55.73 0-95.86-39.44Q170-249.88 170-307v-347H92q-29 0-48.5-20.2T24-722q0-29 19.5-48.5T92-790h78v-78q0-29 20.2-48.5T238-936q29 0 48.5 19.5T306-868v561h562q29 0 48.5 20.2T936-239q0 29-19.5 48.5T868-171h-78v79q0 27.6-20.2 47.8Q749.6-24 722-24q-29 0-48.5-20.2T654-92Zm0-295v-267H386v-136h268q57.13 0 96.56 39.44Q790-711.13 790-654v267H654Z"/>
+              </svg>
+            </button>
+          </div>
+
+          {/* Aspect ratio buttons - draggable */}
           <div className="crop-aspect-buttons" style={{
             position: 'absolute',
-            top: '10px',
-            left: '50%',
+            left: `${uiPos.aspect.xPct}%`,
+            top: `${uiPos.aspect.yPct}%`,
             transform: 'translateX(-50%)',
             display: 'flex',
             gap: '8px',
             zIndex: 20,
-          }}>
+            pointerEvents: 'auto',
+            cursor: uiDrag?.kind === 'aspect' ? 'grabbing' : 'grab'
+          }}
+            onMouseDown={(e) => onUiMouseDown(e, 'aspect')}
+            title={t('videoRendering.dragToReposition','Drag to reposition')}
+          >
             {PRESET_ASPECT_RATIOS.map((preset) => (
               <button
                 key={preset.label}
                 className={`aspect-btn ${selectedAspectRatio === preset.value ? 'active' : ''}`}
-                onClick={() => handleAspectRatioChange(preset.value)}
-                title={preset.label}
+                onClick={(e) => { suppressClickIfDragged(e); if (!didDragRef.current) handleAspectRatioChange(preset.value); }}
+                onClickCapture={suppressClickIfDragged}
+                title={preset.value == null ? t('videoRendering.free','Free') : preset.label}
+                style={{ cursor: uiDrag?.kind === 'aspect' ? 'grabbing' : 'grab' }}
               >
                 {preset.renderIcon && preset.renderIcon()}
-                <span className="aspect-label">{preset.label}</span>
+                <span className="aspect-label">{preset.value == null ? t('videoRendering.free','Free') : preset.label}</span>
               </button>
             ))}
           </div>
 
-          {/* Apply and Cancel buttons */}
+          {/* Apply and Cancel buttons - draggable */}
           <div className="crop-action-buttons" style={{
             position: 'absolute',
-            bottom: '20px',
-            left: '50%',
-            transform: 'translateX(-50%)',
+            left: `${uiPos.actions.xPct}%`,
+            top: `${uiPos.actions.yPct}%`,
+            transform: 'translate(-50%, -100%)',
             display: 'flex',
             gap: '12px',
             zIndex: 20,
-          }}>
+            pointerEvents: 'auto',
+            cursor: uiDrag?.kind === 'actions' ? 'grabbing' : 'grab'
+          }}
+            onMouseDown={(e) => onUiMouseDown(e, 'actions')}
+            title={t('videoRendering.dragToReposition','Drag to reposition')}
+          >
+            {/* Canvas settings - only when padding is detected */}
+            {(tempCrop && (
+              tempCrop.width > 100 || tempCrop.height > 100 || tempCrop.x < 0 || tempCrop.y < 0 ||
+              (tempCrop.x + tempCrop.width) > 100 || (tempCrop.y + tempCrop.height) > 100
+            )) && (
+              <div className="canvas-settings-pill" style={{
+                position: 'absolute',
+                bottom: '72px',
+                left: '50%',
+                transform: 'translateX(-50%)',
+                display: 'flex',
+                gap: '8px',
+                alignItems: 'center',
+                background: 'var(--md-surface)',
+                color: 'var(--md-on-surface)',
+                border: '1px solid var(--md-outline-variant)',
+                borderRadius: '999px',
+                padding: '6px 18px',
+                whiteSpace: 'nowrap',
+                boxShadow: 'var(--md-elevation-level2)',
+                zIndex: 20
+              }}>
+                <span style={{ fontSize: 12, opacity: 0.8 }}>{t('videoRendering.canvas','Canvas')}:</span>
+                <CustomDropdown
+                  value={tempCrop.canvasBgMode ?? 'solid'}
+                  onChange={(value) => {
+                    const next = { ...tempCrop, canvasBgMode: value };
+                    setTempCrop(next);
+                    onCropChange(next);
+                  }}
+                  options={[
+                    { value: 'solid', label: t('videoRendering.solidCanvas','Solid') },
+                    { value: 'blur', label: t('videoRendering.blurredVideo','Blurred video') },
+                  ]}
+                />
+                {(tempCrop.canvasBgMode ?? 'solid') === 'solid' && (
+                  <input
+                    type="color"
+                    value={tempCrop.canvasBgColor ?? '#000000'}
+                    onChange={(e) => {
+                      const next = { ...tempCrop, canvasBgColor: e.target.value };
+                      setTempCrop(next);
+                      onCropChange(next);
+                    }}
+                    title={t('videoRendering.canvasColor','Canvas color')}
+                    className="color-picker"
+                  />
+                )}
+                {(tempCrop.canvasBgMode ?? 'solid') === 'blur' && (
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                    <span style={{ fontSize: 12, opacity: 0.8 }}>{t('videoRendering.blurIntensity', 'Blur')}</span>
+                    <StandardSlider
+                      value={tempCrop.canvasBgBlur ?? 24}
+                      onChange={(value) => {
+                        const next = { ...tempCrop, canvasBgBlur: parseInt(value) };
+                        setTempCrop(next);
+                        onCropChange(next);
+                      }}
+                      min={0}
+                      max={60}
+                      step={1}
+                      orientation="Horizontal"
+                      size="XSmall"
+                      state="Enabled"
+                      showValueIndicator={false}
+                      showIcon={false}
+                      showStops={false}
+                      style={{ width: 140 }}
+                      ariaLabel={t('videoRendering.blurIntensity', 'Blur')}
+                    />
+                    <span style={{ fontSize: 12, opacity: 0.7, minWidth: 28, textAlign: 'right' }}>
+                      {(tempCrop.canvasBgBlur ?? 24)}px
+                    </span>
+                  </div>
+                )}
+
+              </div>
+            )}
+
             <button
               className="crop-action-btn cancel"
-              onClick={onCancel}
+              onClick={(e) => { suppressClickIfDragged(e); if (!didDragRef.current) onCancel && onCancel(e); }}
+              onClickCapture={suppressClickIfDragged}
+              style={{ cursor: uiDrag?.kind === 'actions' ? 'grabbing' : 'grab' }}
             >
               <svg width="16" height="16" viewBox="0 -960 960 960" fill="currentColor" xmlns="http://www.w3.org/2000/svg">
                 <path d="M480-390 334-244q-20 20-45 19.5T245-245q-20-20-20-45t20-45l145-145-146-147q-20-20-19.5-45t20.5-45q19-20 44.5-20t45.5 20l145 146 146-146q20-20 45.5-20t44.5 20q20 20 20 45t-20 45L570-480l146 146q20 20 20 44.5T716-245q-19 20-44.5 20T626-245L480-390Z"/>
@@ -611,7 +863,9 @@ const VideoCropControls = ({
             </button>
             <button
               className="crop-action-btn apply"
-              onClick={onApply}
+              onClick={(e) => { suppressClickIfDragged(e); if (!didDragRef.current) handleApplyAndReset(); }}
+              onClickCapture={suppressClickIfDragged}
+              style={{ cursor: uiDrag?.kind === 'actions' ? 'grabbing' : 'grab' }}
             >
               <svg width="16" height="16" viewBox="0 -960 960 960" fill="currentColor" xmlns="http://www.w3.org/2000/svg">
                 <path d="m389-408 281-281q19-19 46-19t46 18.79q19 18.79 19 45.58t-18.61 45.4L435-272q-18.73 19-45.36 19Q363-253 344-272L200-415q-19-19.73-19.5-45.87Q180-487 198.79-506q19.79-20 46.17-20 26.37 0 45.04 20l99 98Z"/>
@@ -642,26 +896,37 @@ const VideoCropControls = ({
               zIndex: 15
             }}
           >
-            {/* Dark overlay for areas outside crop */}
-            <div
-              className="crop-overlay-mask"
-              style={{
-                position: 'absolute',
-                top: 0,
-                left: 0,
-                right: 0,
-                bottom: 0,
-                clipPath: `polygon(
-                  0 0, 100% 0, 100% 100%, 0 100%, 0 0,
-                  ${tempCrop.x}% ${tempCrop.y}%,
-                  ${tempCrop.x}% ${tempCrop.y + tempCrop.height}%,
-                  ${tempCrop.x + tempCrop.width}% ${tempCrop.y + tempCrop.height}%,
-                  ${tempCrop.x + tempCrop.width}% ${tempCrop.y}%,
-                  ${tempCrop.x}% ${tempCrop.y}%
-                )`,
-                pointerEvents: 'none'
-              }}
-            />
+            {/* Dark overlay for areas outside crop - supports padding (clamped to video bounds) */}
+            {(() => {
+              const clamp = (v) => Math.max(0, Math.min(100, v));
+              const x0 = clamp(tempCrop.x);
+              const y0 = clamp(tempCrop.y);
+              const x1 = clamp(tempCrop.x + tempCrop.width);
+              const y1 = clamp(tempCrop.y + tempCrop.height);
+              const hasIntersection = x1 > x0 && y1 > y0;
+              if (!hasIntersection) return null;
+              return (
+                <div
+                  className="crop-overlay-mask"
+                  style={{
+                    position: 'absolute',
+                    top: 0,
+                    left: 0,
+                    right: 0,
+                    bottom: 0,
+                    clipPath: `polygon(
+                      0 0, 100% 0, 100% 100%, 0 100%, 0 0,
+                      ${x0}% ${y0}%,
+                      ${x0}% ${y1}%,
+                      ${x1}% ${y1}%,
+                      ${x1}% ${y0}%,
+                      ${x0}% ${y0}%
+                    )`,
+                    pointerEvents: 'none'
+                  }}
+                />
+              );
+            })()}
 
             {/* Crop area with handles */}
             <div
@@ -673,9 +938,8 @@ const VideoCropControls = ({
                 width: `${tempCrop.width}%`,
                 height: `${tempCrop.height}%`,
                 pointerEvents: 'auto',
-                cursor: 'move'
+                cursor: 'default'
               }}
-              onMouseDown={(e) => handleMouseDown(e, 'move')}
             >
               {/* Grid lines */}
               <div className="crop-grid">

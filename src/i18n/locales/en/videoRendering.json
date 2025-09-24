@@ -162,5 +162,19 @@
   "fps120": "120 FPS (High Speed)",
   "upcomingFeatures": "Upcoming features: crop, add text, logo, images, background music, ...",
   "networkError": "Network error occurred",
-  "reconnecting": "Reconnecting to render..."
+  "reconnecting": "Reconnecting to render...",
+  "editCrop": "Edit transformations",
+  "toggleCrop": "Enable transformations",
+  "clearCrop": "Clear transformations",
+  "rotateLeft": "Rotate left 90°",
+  "rotateRight": "Rotate right 90°",
+  "flipHorizontal": "Flip horizontal",
+  "flipVertical": "Flip vertical",
+  "canvas": "Canvas",
+  "blurredVideo": "Blurred video",
+  "canvasColor": "Canvas color",
+  "blurIntensity": "Blur",
+  "applyCrop": "Apply",
+  "free": "Free",
+  "solidCanvas": "Solid"
 }

@@ -463,24 +463,33 @@ const OnboardingStarryBackground = () => {
       });
     };
 
-    // Set canvas dimensions with proper pixel density
+    // Set canvas dimensions with proper pixel density and zoom handling
     const resizeCanvas = () => {
-      const rect = canvas.getBoundingClientRect();
+      const overlayEl = canvas.parentElement || canvas;
+      const rect = overlayEl.getBoundingClientRect();
+
+      // Get effective device pixel ratio (avoid sub-1 values under zoom)
       const dpr = window.devicePixelRatio || 1;
+      const effectiveDpr = Math.max(1, Math.round(dpr * 100) / 100);
 
-      // Set actual canvas size in memory (scaled for high DPI)
-      canvas.width = rect.width * dpr;
-      canvas.height = rect.height * dpr;
+      // Use integer CSS pixel sizes
+      const canvasWidth = Math.max(1, Math.round(rect.width));
+      const canvasHeight = Math.max(1, Math.round(rect.height));
 
-      // Scale the canvas back down using CSS
-      canvas.style.width = rect.width + 'px';
-      canvas.style.height = rect.height + 'px';
+      // Set backing store size
+      canvas.width = canvasWidth * effectiveDpr;
+      canvas.height = canvasHeight * effectiveDpr;
 
-      // Scale the drawing context so everything draws at the correct size
-      ctx.scale(dpr, dpr);
+      // Force CSS size to match CSS pixels
+      canvas.style.width = canvasWidth + 'px';
+      canvas.style.height = canvasHeight + 'px';
+
+      // Reset any previous transforms before scaling
+      ctx.setTransform(1, 0, 0, 1, 0, 0);
+      ctx.scale(effectiveDpr, effectiveDpr);
 
       // Recreate particles when canvas is resized
-      if (rect.width > 0 && rect.height > 0) {
+      if (canvasWidth > 0 && canvasHeight > 0) {
         createParticles();
         updateConnections();
       }
@@ -819,13 +828,12 @@ const OnboardingStarryBackground = () => {
 
       // Animate in both themes but with different behaviors
 
-      const centerX = canvas.width / (window.devicePixelRatio || 1) / 2;
-      const centerY = canvas.height / (window.devicePixelRatio || 1) / 2;
-
-      // Get canvas dimensions for comet management
+      // Get canvas dimensions in CSS pixels and center point
       const rect = canvas.getBoundingClientRect();
       const cssWidth = rect.width;
       const cssHeight = rect.height;
+      const centerX = cssWidth / 2;
+      const centerY = cssHeight / 2;
 
       // Manage environmental effects based on theme
       if (colors.isDark) {
@@ -902,15 +910,25 @@ const OnboardingStarryBackground = () => {
           particle.spiralSpeed = Math.abs(particle.spiralSpeed) * 1.5; // Speed up expansion
         }
 
-        // Cursor interaction - add velocity away from cursor
+        // Cursor interaction - add velocity away from cursor (scaled with canvas size/zoom)
         if (mouse.x !== null && mouse.y !== null) {
           const dx = particle.x - mouse.x;
           const dy = particle.y - mouse.y;
           const distance = Math.sqrt(dx * dx + dy * dy);
 
-          if (distance < mouse.radius && distance > 0) {
-            const force = (mouse.radius - distance) / mouse.radius;
-            const pushStrength = mouse.isClicked ? 0.8 : 0.4;
+          // Scale interaction by canvas CSS size for zoom-invariant behavior
+          const minDim = Math.max(1, Math.min(cssWidth, cssHeight));
+          const radiusPct = mouse.isClicked ? 0.18 : 0.12; // 12% of min dimension (18% when clicked)
+          const effectiveRadius = minDim * radiusPct;
+
+          if (distance < effectiveRadius && distance > 0) {
+            const force = (effectiveRadius - distance) / effectiveRadius;
+
+            // Scale push so displacement feels consistent across sizes
+            const basePush = mouse.isClicked ? 0.8 : 0.4; // original baseline
+            const pushScale = minDim / 1000;              // 1000px min-dim baseline
+            const pushStrength = basePush * pushScale;
+
             const pushX = (dx / distance) * force * pushStrength;
             const pushY = (dy / distance) * force * pushStrength;
 

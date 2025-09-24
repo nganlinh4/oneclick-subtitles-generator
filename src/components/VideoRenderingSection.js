@@ -1074,7 +1074,7 @@ const VideoRenderingSection = ({
         metadata: {
           ...renderSettings,
           subtitleCustomization: queueItem.customization, // Include subtitle customization in metadata
-          cropSettings: queueItem.cropSettings // Include crop settings in metadata
+          cropSettings: queueItem.cropSettings, // Include crop settings in metadata
         },
         narrationUrl: narrationUrl, // Use HTTP URL instead of blob URL
         isVideoFile: true

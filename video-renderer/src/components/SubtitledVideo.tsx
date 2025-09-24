@@ -57,6 +57,7 @@ export const SubtitledVideoContent: React.FC<Props> = ({
   // Determine if we should show video or just audio with background
   const showVideo = isVideoFile;
 
+
   // Memoize customization settings
   const customization = useMemo(() =>
     metadata.subtitleCustomization || defaultCustomization,
@@ -261,6 +262,26 @@ export const SubtitledVideoContent: React.FC<Props> = ({
             position: 'relative',
             overflow: 'hidden'
           }}>
+            {/* Canvas background when padding is detected */}
+            {metadata.cropSettings && (
+              (metadata.cropSettings.width > 100 || metadata.cropSettings.height > 100 || metadata.cropSettings.x < 0 || metadata.cropSettings.y < 0 ||
+               (metadata.cropSettings.x + metadata.cropSettings.width) > 100 || (metadata.cropSettings.y + metadata.cropSettings.height) > 100)
+            ) && (
+              <>
+                {metadata.cropSettings.canvasBgMode === 'solid' && (
+                  <div style={{ position: 'absolute', inset: 0, backgroundColor: metadata.cropSettings.canvasBgColor || '#000' }} />
+                )}
+                {metadata.cropSettings.canvasBgMode === 'blur' && showVideo && (
+                  <OffthreadVideo
+                    src={audioUrl}
+                    volume={0}
+                    transparent={false}
+                    toneMapped={false}
+                    style={{ position: 'absolute', inset: 0, width: '100%', height: '100%', objectFit: 'cover', filter: `blur(${(metadata.cropSettings?.canvasBgBlur ?? 24)}px) brightness(0.7)`, transform: 'scale(1.06)' }}
+                  />
+                )}
+              </>
+            )}
             <OffthreadVideo
               src={audioUrl}
               volume={(metadata.originalAudioVolume ?? 100) / 100}
@@ -268,7 +289,7 @@ export const SubtitledVideoContent: React.FC<Props> = ({
               toneMapped={false} // Disable tone mapping for faster rendering
               style={{
                 // When cropping, scale up the video and reposition
-                ...(metadata.cropSettings && (metadata.cropSettings.width < 100 || metadata.cropSettings.height < 100) ? {
+                ...(metadata.cropSettings && (metadata.cropSettings.width !== 100 || metadata.cropSettings.height !== 100 || metadata.cropSettings.x !== 0 || metadata.cropSettings.y !== 0) ? {
                   position: 'absolute',
                   width: `${(100 / metadata.cropSettings.width) * 100}%`,
                   height: `${(100 / metadata.cropSettings.height) * 100}%`,

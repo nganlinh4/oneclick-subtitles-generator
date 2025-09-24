@@ -316,12 +316,30 @@ export const SubtitledVideoComposition = ({
             position: 'relative',
             overflow: 'hidden'
           }}>
+            {/* Canvas background when padding is detected */}
+            {cropSettings && (
+              (cropSettings.width > 100 || cropSettings.height > 100 || cropSettings.x < 0 || cropSettings.y < 0 ||
+               (cropSettings.x + cropSettings.width) > 100 || (cropSettings.y + cropSettings.height) > 100)
+            ) && (
+              <>
+                {cropSettings.canvasBgMode === 'solid' && (
+                  <div style={{ position: 'absolute', inset: 0, backgroundColor: cropSettings.canvasBgColor || '#000' }} />
+                )}
+                {cropSettings.canvasBgMode === 'blur' && showVideo && (
+                  <Video
+                    src={videoUrl}
+                    volume={0}
+                    style={{ position: 'absolute', inset: 0, width: '100%', height: '100%', objectFit: 'cover', filter: `blur(${(cropSettings.canvasBgBlur ?? 24)}px) brightness(0.7)`, transform: 'scale(1.06)' }}
+                  />
+                )}
+              </>
+            )}
             <Video
               src={videoUrl}
               volume={originalAudioVolume / 100}
               style={{
                 // When cropping, scale up the video and reposition
-                ...(cropSettings && (cropSettings.width < 100 || cropSettings.height < 100) ? {
+                ...(cropSettings && (cropSettings.width !== 100 || cropSettings.height !== 100 || cropSettings.x !== 0 || cropSettings.y !== 0) ? {
                   position: 'absolute',
                   width: `${(100 / cropSettings.width) * 100}%`,
                   height: `${(100 / cropSettings.height) * 100}%`,
