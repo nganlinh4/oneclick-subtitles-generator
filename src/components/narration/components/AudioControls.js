@@ -2,6 +2,8 @@ import React from 'react';
 import { useTranslation } from 'react-i18next';
 import { SERVER_URL } from '../../../config';
 import ExampleAudioDropdown from './ExampleAudioDropdown';
+import HelpIcon from '../../common/HelpIcon';
+
 
 /**
  * Audio Controls component
@@ -38,17 +40,11 @@ const AudioControls = ({
       <div className="row-label">
         <label>
           {narrationMethod === 'f5tts' && (
-            <div
-              className="help-icon-container"
+            <HelpIcon
               title={t('narration.audioControlsHelp', 'Use reference audio <12s and leave proper silence space (e.g. 1s) at the end. Otherwise there is a risk of truncating in the middle of word')}
+              size={16}
               style={{ display: 'inline-flex', marginRight: '8px', verticalAlign: 'middle' }}
-            >
-              <svg className="help-icon" viewBox="0 0 24 24" width="16" height="16" stroke="currentColor" strokeWidth="2" fill="none">
-                <circle cx="12" cy="12" r="10"></circle>
-                <line x1="12" y1="16" x2="12" y2="12"></line>
-                <line x1="12" y1="8" x2="12.01" y2="8"></line>
-              </svg>
-            </div>
+            />
           )}
           {t('narration.audioControls', 'Âm thanh tham chiếu')}:
         </label>

@@ -1,9 +1,11 @@
 import React from 'react';
 import { useTranslation } from 'react-i18next';
 import StandardSlider from '../common/StandardSlider';
+import SliderWithValue from '../common/SliderWithValue';
 import CustomDropdown from '../common/CustomDropdown';
 import { formatDecimal } from '../../utils/formatUtils';
 import { getAnimationTypes, getAnimationEasing } from './fontOptions';
+import { defaultCustomization } from '../SubtitleCustomizationPanel';
 
 const AnimationControls = ({ customization, onChange }) => {
   const { t } = useTranslation();
@@ -60,25 +62,21 @@ const AnimationControls = ({ customization, onChange }) => {
           <label>{t('videoRendering.fadeInDuration', 'Fade In Duration')}</label>
         </div>
         <div className="row-content">
-          <div className="slider-control">
-            <span className="slider-value">{formatDecimal(customization.fadeInDuration, 1)}s</span>
-            <StandardSlider
-              value={customization.fadeInDuration}
-              onChange={(value) => updateCustomization({ fadeInDuration: formatDecimal(value, 1) })}
-              min={0}
-              max={2.0}
-              step={0.1}
-              orientation="Horizontal"
-              size="XSmall"
-              state="Enabled"
-              showValueIndicator={false} // Using custom value display
-              showIcon={false}
-              showStops={false}
-              className="fade-in-duration-slider"
-              id="fade-in-duration-slider"
-              ariaLabel={t('videoRendering.fadeInDuration', 'Fade In Duration')}
-            />
-          </div>
+          <SliderWithValue
+            value={customization.fadeInDuration}
+            onChange={(value) => updateCustomization({ fadeInDuration: formatDecimal(value, 1) })}
+            min={0}
+            max={2.0}
+            step={0.1}
+            orientation="Horizontal"
+            size="XSmall"
+            state="Enabled"
+            className="fade-in-duration-slider"
+            id="fade-in-duration-slider"
+            ariaLabel={t('videoRendering.fadeInDuration', 'Fade In Duration')}
+            formatValue={(v) => `${formatDecimal(v, 1)}s`}
+            defaultValue={defaultCustomization.fadeInDuration}
+          />
         </div>
       </div>
 
@@ -88,25 +86,21 @@ const AnimationControls = ({ customization, onChange }) => {
           <label>{t('videoRendering.fadeOutDuration', 'Fade Out Duration')}</label>
         </div>
         <div className="row-content">
-          <div className="slider-control">
-            <span className="slider-value">{formatDecimal(customization.fadeOutDuration, 1)}s</span>
-            <StandardSlider
-              value={customization.fadeOutDuration}
-              onChange={(value) => updateCustomization({ fadeOutDuration: formatDecimal(value, 1) })}
-              min={0}
-              max={2.0}
-              step={0.1}
-              orientation="Horizontal"
-              size="XSmall"
-              state="Enabled"
-              showValueIndicator={false} // Using custom value display
-              showIcon={false}
-              showStops={false}
-              className="fade-out-duration-slider"
-              id="fade-out-duration-slider"
-              ariaLabel={t('videoRendering.fadeOutDuration', 'Fade Out Duration')}
-            />
-          </div>
+          <SliderWithValue
+            value={customization.fadeOutDuration}
+            onChange={(value) => updateCustomization({ fadeOutDuration: formatDecimal(value, 1) })}
+            min={0}
+            max={2.0}
+            step={0.1}
+            orientation="Horizontal"
+            size="XSmall"
+            state="Enabled"
+            className="fade-out-duration-slider"
+            id="fade-out-duration-slider"
+            ariaLabel={t('videoRendering.fadeOutDuration', 'Fade Out Duration')}
+            formatValue={(v) => `${formatDecimal(v, 1)}s`}
+            defaultValue={defaultCustomization.fadeOutDuration}
+          />
         </div>
       </div>
     </>

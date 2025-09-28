@@ -1,10 +1,12 @@
 import React, { useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import StandardSlider from '../common/StandardSlider';
+import SliderWithValue from '../common/SliderWithValue';
 import { groupFontsByCategory, getFontSupportFlags } from './fontOptions';
 import FontSelectionModal from './FontSelectionModal';
 import { formatDecimal } from '../../utils/formatUtils';
 import CustomDropdown from '../common/CustomDropdown';
+import { defaultCustomization } from '../SubtitleCustomizationPanel';
 
 const TextControls = ({ customization, onChange }) => {
   const { t } = useTranslation();
@@ -57,25 +59,21 @@ const TextControls = ({ customization, onChange }) => {
           <label>{t('videoRendering.fontSize', 'Font Size')}</label>
         </div>
         <div className="row-content">
-          <div className="slider-control">
-            <span className="slider-value">{customization.fontSize}px</span>
-            <StandardSlider
-              value={customization.fontSize}
-              onChange={(value) => updateCustomization({ fontSize: parseInt(value) })}
-              min={8}
-              max={120}
-              step={1}
-              orientation="Horizontal"
-              size="XSmall"
-              state="Enabled"
-              showValueIndicator={false} // Using custom value display
-              showIcon={false}
-              showStops={false}
-              className="font-size-slider"
-              id="font-size-slider"
-              ariaLabel={t('videoRendering.fontSize', 'Font Size')}
-            />
-          </div>
+          <SliderWithValue
+            value={customization.fontSize}
+            onChange={(value) => updateCustomization({ fontSize: parseInt(value) })}
+            min={8}
+            max={120}
+            step={1}
+            orientation="Horizontal"
+            size="XSmall"
+            state="Enabled"
+            className="font-size-slider"
+            id="font-size-slider"
+            ariaLabel={t('videoRendering.fontSize', 'Font Size')}
+            formatValue={(v) => `${v}px`}
+            defaultValue={defaultCustomization.fontSize}
+          />
         </div>
       </div>
 
@@ -85,25 +83,21 @@ const TextControls = ({ customization, onChange }) => {
           <label>{t('videoRendering.fontWeight', 'Font Weight')}</label>
         </div>
         <div className="row-content">
-          <div className="slider-control">
-            <span className="slider-value">{customization.fontWeight}</span>
-            <StandardSlider
-              value={customization.fontWeight}
-              onChange={(value) => updateCustomization({ fontWeight: parseInt(value) })}
-              min={100}
-              max={900}
-              step={100}
-              orientation="Horizontal"
-              size="XSmall"
-              state="Enabled"
-              showValueIndicator={false} // Using custom value display
-              showIcon={false}
-              showStops={false}
-              className="font-weight-slider"
-              id="font-weight-slider"
-              ariaLabel={t('videoRendering.fontWeight', 'Font Weight')}
-            />
-          </div>
+          <SliderWithValue
+            value={customization.fontWeight}
+            onChange={(value) => updateCustomization({ fontWeight: parseInt(value) })}
+            min={100}
+            max={900}
+            step={100}
+            orientation="Horizontal"
+            size="XSmall"
+            state="Enabled"
+            className="font-weight-slider"
+            id="font-weight-slider"
+            ariaLabel={t('videoRendering.fontWeight', 'Font Weight')}
+            formatValue={(v) => v}
+            defaultValue={defaultCustomization.fontWeight}
+          />
         </div>
       </div>
 
@@ -156,25 +150,21 @@ const TextControls = ({ customization, onChange }) => {
           <label>{t('videoRendering.lineHeight', 'Line Height')}</label>
         </div>
         <div className="row-content">
-          <div className="slider-control">
-            <span className="slider-value">{formatDecimal(customization.lineHeight, 1)}</span>
-            <StandardSlider
-              value={customization.lineHeight}
-              onChange={(value) => updateCustomization({ lineHeight: formatDecimal(value, 1) })}
-              min={0.5}
-              max={3.0}
-              step={0.1}
-              orientation="Horizontal"
-              size="XSmall"
-              state="Enabled"
-              showValueIndicator={false} // Using custom value display
-              showIcon={false}
-              showStops={false}
-              className="line-height-slider"
-              id="line-height-slider"
-              ariaLabel={t('videoRendering.lineHeight', 'Line Height')}
-            />
-          </div>
+          <SliderWithValue
+            value={customization.lineHeight}
+            onChange={(value) => updateCustomization({ lineHeight: formatDecimal(value, 1) })}
+            min={0.5}
+            max={3.0}
+            step={0.1}
+            orientation="Horizontal"
+            size="XSmall"
+            state="Enabled"
+            className="line-height-slider"
+            id="line-height-slider"
+            ariaLabel={t('videoRendering.lineHeight', 'Line Height')}
+            formatValue={(v) => formatDecimal(v, 1)}
+            defaultValue={defaultCustomization.lineHeight}
+          />
         </div>
       </div>
 
@@ -184,25 +174,21 @@ const TextControls = ({ customization, onChange }) => {
           <label>{t('videoRendering.letterSpacing', 'Letter Spacing')}</label>
         </div>
         <div className="row-content">
-          <div className="slider-control">
-            <span className="slider-value">{formatDecimal(customization.letterSpacing, 1)}px</span>
-            <StandardSlider
-              value={customization.letterSpacing}
-              onChange={(value) => updateCustomization({ letterSpacing: formatDecimal(value, 1) })}
-              min={-10}
-              max={10}
-              step={0.5}
-              orientation="Horizontal"
-              size="XSmall"
-              state="Enabled"
-              showValueIndicator={false} // Using custom value display
-              showIcon={false}
-              showStops={false}
-              className="letter-spacing-slider"
-              id="letter-spacing-slider"
-              ariaLabel={t('videoRendering.letterSpacing', 'Letter Spacing')}
-            />
-          </div>
+          <SliderWithValue
+            value={customization.letterSpacing}
+            onChange={(value) => updateCustomization({ letterSpacing: formatDecimal(value, 1) })}
+            min={-10}
+            max={10}
+            step={0.5}
+            orientation="Horizontal"
+            size="XSmall"
+            state="Enabled"
+            className="letter-spacing-slider"
+            id="letter-spacing-slider"
+            ariaLabel={t('videoRendering.letterSpacing', 'Letter Spacing')}
+            formatValue={(v) => `${formatDecimal(v, 1)}px`}
+            defaultValue={defaultCustomization.letterSpacing}
+          />
         </div>
       </div>
 

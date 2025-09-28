@@ -1,8 +1,10 @@
 import React from 'react';
 import { useTranslation } from 'react-i18next';
 import StandardSlider from '../common/StandardSlider';
+import SliderWithValue from '../common/SliderWithValue';
 import MaterialSwitch from '../common/MaterialSwitch';
 import CustomDropdown from '../common/CustomDropdown';
+import { defaultCustomization } from '../SubtitleCustomizationPanel';
 import '../../styles/common/material-switch.css';
 
 const EffectsControls = ({ customization, onChange }) => {
@@ -51,25 +53,21 @@ const EffectsControls = ({ customization, onChange }) => {
             <label>{t('videoRendering.shadowBlur', 'Shadow Blur')}</label>
           </div>
           <div className="row-content">
-            <div className="slider-control">
-              <span className="slider-value">{customization.textShadowBlur}px</span>
-              <StandardSlider
-                value={customization.textShadowBlur}
-                onChange={(value) => updateCustomization({ textShadowBlur: parseInt(value) })}
-                min={0}
-                max={50}
-                step={1}
-                orientation="Horizontal"
-                size="XSmall"
-                state="Enabled"
-                showValueIndicator={false} // Using custom value display
-                showIcon={false}
-                showStops={false}
-                className="shadow-blur-slider"
-                id="shadow-blur-slider"
-                ariaLabel={t('videoRendering.shadowBlur', 'Shadow Blur')}
-              />
-            </div>
+            <SliderWithValue
+              value={customization.textShadowBlur}
+              onChange={(value) => updateCustomization({ textShadowBlur: parseInt(value) })}
+              min={0}
+              max={50}
+              step={1}
+              orientation="Horizontal"
+              size="XSmall"
+              state="Enabled"
+              className="shadow-blur-slider"
+              id="shadow-blur-slider"
+              ariaLabel={t('videoRendering.shadowBlur', 'Shadow Blur')}
+              formatValue={(v) => `${v}px`}
+              defaultValue={defaultCustomization.textShadowBlur}
+            />
           </div>
         </div>
       )}
@@ -81,25 +79,21 @@ const EffectsControls = ({ customization, onChange }) => {
             <label>{t('videoRendering.shadowOffset', 'Shadow Offset')}</label>
           </div>
           <div className="row-content">
-            <div className="slider-control">
-              <span className="slider-value">{customization.textShadowOffsetY}px</span>
-              <StandardSlider
-                value={customization.textShadowOffsetY}
-                onChange={(value) => updateCustomization({ textShadowOffsetY: parseInt(value) })}
-                min={-25}
-                max={25}
-                step={1}
-                orientation="Horizontal"
-                size="XSmall"
-                state="Enabled"
-                showValueIndicator={false} // Using custom value display
-                showIcon={false}
-                showStops={false}
-                className="shadow-offset-slider"
-                id="shadow-offset-slider"
-                ariaLabel={t('videoRendering.shadowOffset', 'Shadow Offset')}
-              />
-            </div>
+            <SliderWithValue
+              value={customization.textShadowOffsetY}
+              onChange={(value) => updateCustomization({ textShadowOffsetY: parseInt(value) })}
+              min={-25}
+              max={25}
+              step={1}
+              orientation="Horizontal"
+              size="XSmall"
+              state="Enabled"
+              className="shadow-offset-slider"
+              id="shadow-offset-slider"
+              ariaLabel={t('videoRendering.shadowOffset', 'Shadow Offset')}
+              formatValue={(v) => `${v}px`}
+              defaultValue={defaultCustomization.textShadowOffsetY}
+            />
           </div>
         </div>
       )}
@@ -141,25 +135,21 @@ const EffectsControls = ({ customization, onChange }) => {
             <label>{t('videoRendering.glowIntensity', 'Glow Intensity')}</label>
           </div>
           <div className="row-content">
-            <div className="slider-control">
-              <span className="slider-value">{customization.glowIntensity}px</span>
-              <StandardSlider
-                value={customization.glowIntensity}
-                onChange={(value) => updateCustomization({ glowIntensity: parseInt(value) })}
-                min={0}
-                max={100}
-                step={1}
-                orientation="Horizontal"
-                size="XSmall"
-                state="Enabled"
-                showValueIndicator={false} // Using custom value display
-                showIcon={false}
-                showStops={false}
-                className="glow-intensity-slider"
-                id="glow-intensity-slider"
-                ariaLabel={t('videoRendering.glowIntensity', 'Glow Intensity')}
-              />
-            </div>
+            <SliderWithValue
+              value={customization.glowIntensity}
+              onChange={(value) => updateCustomization({ glowIntensity: parseInt(value) })}
+              min={0}
+              max={100}
+              step={1}
+              orientation="Horizontal"
+              size="XSmall"
+              state="Enabled"
+              className="glow-intensity-slider"
+              id="glow-intensity-slider"
+              ariaLabel={t('videoRendering.glowIntensity', 'Glow Intensity')}
+              formatValue={(v) => `${v}px`}
+              defaultValue={defaultCustomization.glowIntensity}
+            />
           </div>
         </div>
       )}
@@ -293,25 +283,21 @@ const EffectsControls = ({ customization, onChange }) => {
             <label>{t('videoRendering.strokeWidth', 'Stroke Width')}</label>
           </div>
           <div className="row-content">
-            <div className="slider-control">
-              <span className="slider-value">{customization.strokeWidth}px</span>
-              <StandardSlider
-                value={customization.strokeWidth}
-                onChange={(value) => updateCustomization({ strokeWidth: parseInt(value) })}
-                min={0}
-                max={10}
-                step={1}
-                orientation="Horizontal"
-                size="XSmall"
-                state="Enabled"
-                showValueIndicator={false} // Using custom value display
-                showIcon={false}
-                showStops={false}
-                className="stroke-width-slider"
-                id="stroke-width-slider"
-                ariaLabel={t('videoRendering.strokeWidth', 'Stroke Width')}
-              />
-            </div>
+            <SliderWithValue
+              value={customization.strokeWidth}
+              onChange={(value) => updateCustomization({ strokeWidth: parseInt(value) })}
+              min={0}
+              max={10}
+              step={1}
+              orientation="Horizontal"
+              size="XSmall"
+              state="Enabled"
+              className="stroke-width-slider"
+              id="stroke-width-slider"
+              ariaLabel={t('videoRendering.strokeWidth', 'Stroke Width')}
+              formatValue={(v) => `${v}px`}
+              defaultValue={defaultCustomization.strokeWidth}
+            />
           </div>
         </div>
       )}

@@ -577,6 +577,11 @@ const VideoCropControls = ({
   const onUiMouseDown = (e, kind) => {
     if (!isEnabled) return;
     if (!cropAreaRef.current) return;
+    // Do not start group-dragging when interacting with elements marked as no-ui-drag (e.g., blur slider)
+    const tgt = e.target;
+    if (tgt && typeof tgt.closest === 'function' && tgt.closest('.no-ui-drag')) {
+      return;
+    }
     didDragRef.current = false;
     setUiDrag({
       kind,
@@ -820,7 +825,7 @@ const VideoCropControls = ({
                   />
                 )}
                 {(tempCrop.canvasBgMode ?? 'solid') === 'blur' && (
-                  <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                  <div className="canvas-blur-slider no-ui-drag" style={{ display: 'flex', alignItems: 'center', gap: 8, cursor: 'default' }} onMouseDown={(e) => e.stopPropagation()}>
                     <span style={{ fontSize: 12, opacity: 0.8 }}>{t('videoRendering.blurIntensity', 'Blur')}</span>
                     <StandardSlider
                       value={tempCrop.canvasBgBlur ?? 24}

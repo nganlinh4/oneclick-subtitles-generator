@@ -371,6 +371,13 @@ html[data-theme="dark"] .language-chip:not(.en):not(.zh):not(.fr):not(.es):not(.
   background-color: transparent;
   color: var(--text-secondary);
   border: 1px solid var(--border-color);
+  height: 36px; /* match input height */
+  padding: 0 10px; /* horizontal padding only */
+  display: inline-flex; /* center icon vertically */
+  align-items: center;
+  justify-content: center;
+  line-height: 1;
+  box-sizing: border-box;
 }
 
 .delete-model-btn:hover {
@@ -595,24 +602,6 @@ html[data-theme="dark"] .language-chip:not(.en):not(.zh):not(.fr):not(.es):not(.
   background-color: var(--md-surface-2);
 }
 
-.cancel-btn {
-  padding: 0.5rem 1rem;
-  background-color: transparent;
-  color: var(--text-secondary);
-  border: 1px solid var(--border-color);
-  border-radius: 20px;
-  cursor: pointer;
-  font-size: 0.9rem;
-  transition: background-color 0.2s, transform 0.1s;
-  height: 36px; /* Fixed height for consistency */
-  display: flex;
-  align-items: center;
-  justify-content: center;
-}
-
-.cancel-btn:hover {
-  background-color: var(--md-surface-2);
-}
 
 .confirm-btn {
   padding: 0.5rem 1rem;
@@ -728,6 +717,32 @@ html[data-theme="dark"] .language-chip:not(.en):not(.zh):not(.fr):not(.es):not(.
   margin: 0 0 0.5rem 0;
   color: var(--text-primary);
 }
+
+/* Aesthetic, theme-aware input for language codes */
+.language-code-input {
+  width: 90px; /* compact pill */
+  height: 36px;
+  padding: 0 12px;
+  border: 1px solid var(--border-color);
+  border-radius: 100px;
+  background-color: var(--md-surface-2);
+  color: var(--text-primary);
+  box-sizing: border-box;
+  font-size: 0.9rem;
+}
+
+.language-code-input::placeholder {
+  color: var(--text-secondary);
+  opacity: 0.7;
+}
+
+.language-code-input:focus {
+  outline: none;
+  border-color: var(--md-primary);
+  box-shadow: 0 0 0 2px rgba(var(--md-primary-rgb), 0.15);
+  background-color: var(--md-surface-1);
+}
+
 
 .language-code-field {
   display: flex;

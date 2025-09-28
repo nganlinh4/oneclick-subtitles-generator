@@ -37,8 +37,8 @@
     'edge-tts-pitch': 0,
 
     // Concurrent clients
-    'gemini-concurrent-clients': 1,
-    'concurrent-clients-slider': 1,
+    'gemini-concurrent-clients': 5,
+    'concurrent-clients-slider': 5,
 
     // Speed controls
     'gemini-speed-control': 1.0,

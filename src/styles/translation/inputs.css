@@ -81,8 +81,6 @@
   font-size: 0.9rem;
   cursor: pointer;
   transition: all 0.2s ease;
-  margin-top: 0.5rem;
-  align-self: flex-start;
 }
 
 .add-language-btn:hover {

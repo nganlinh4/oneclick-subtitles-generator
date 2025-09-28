@@ -48,6 +48,8 @@ const FIGMA_COMPONENT_PROPERTIES = {
  * @param {boolean} props.showValueIndicator - Show value display (default: true)
  * @param {boolean} props.showIcon - Show icon (default: false)
  * @param {boolean} props.showStops - Show track stops (default: false)
+ * @param {boolean} props.enableWheel - Enable mouse wheel to adjust value (default: true)
+ * @param {number} props.wheelStepMultiplier - Multiplies step per wheel tick (default: 1)
  * @param {string} props.className - Additional CSS classes
  * @param {string} props.id - Input ID for accessibility
  * @param {string} props.ariaLabel - Aria label for accessibility
@@ -71,6 +73,8 @@ const StandardSlider = ({
   showStops = false, // Figma default
   showValueBadge = true, // New: allow hiding the dragging value badge
   valueBadgeFormatter, // New: custom formatter for the dragging value badge
+  enableWheel = true, // New: enable adjusting with mouse wheel
+  wheelStepMultiplier = 1, // New: multiply step per wheel tick
   className = '',
   id,
   ariaLabel,
@@ -227,7 +231,7 @@ const StandardSlider = ({
     }
   }, [dragValue, snapToStep, onChange, onDragEnd, lastStepValue]);
 
-  // Add smooth drag event listeners
+  // Add smooth drag and wheel event listeners
   useEffect(() => {
     const container = containerRef.current;
     if (!container) return;
@@ -277,9 +281,39 @@ const StandardSlider = ({
       }
     };
 
+    // Wheel handler for adjusting value with mouse wheel
+    const handleWheel = (e) => {
+      if (!enableWheel) return;
+      if (isDisabled) return;
+      // Prevent page scroll while interacting with the slider
+      e.preventDefault();
+      e.stopPropagation();
+
+      // Ignore wheel while dragging
+      if (isDragging) return;
+
+      const delta = e.deltaY !== 0 ? e.deltaY : e.deltaX;
+      if (!delta) return;
+
+      const direction = delta < 0 ? 1 : -1; // Up = increase, Down = decrease
+      const increment = step * (wheelStepMultiplier || 1) * direction;
+
+      let next = resolvedProps.value + increment;
+      next = Math.max(min, Math.min(max, next));
+
+      if (onChange) {
+        const cleanValue = step < 1 ? parseFloat(next.toFixed(2)) : Math.round(next);
+        onChange(cleanValue);
+      }
+    };
+
     // Add event listeners
     trackContainer.addEventListener('mousedown', handleMouseDown);
     trackContainer.addEventListener('touchstart', handleTouchStart, { passive: true });
+    if (enableWheel) {
+      // passive: false required to allow preventDefault on wheel
+      trackContainer.addEventListener('wheel', handleWheel, { passive: false });
+    }
 
     // Global move and end events
     document.addEventListener('mousemove', handleMouseMove);
@@ -290,12 +324,28 @@ const StandardSlider = ({
     return () => {
       trackContainer.removeEventListener('mousedown', handleMouseDown);
       trackContainer.removeEventListener('touchstart', handleTouchStart);
+      if (enableWheel) {
+        trackContainer.removeEventListener('wheel', handleWheel);
+      }
       document.removeEventListener('mousemove', handleMouseMove);
       document.removeEventListener('mouseup', handleMouseUp);
       document.removeEventListener('touchmove', handleTouchMove);
       document.removeEventListener('touchend', handleTouchEnd);
     };
-  }, [isDragging, handleDragStart, handleDragEnd, handleSmoothDrag, isDisabled]);
+  }, [
+    isDragging,
+    handleDragStart,
+    handleDragEnd,
+    handleSmoothDrag,
+    isDisabled,
+    enableWheel,
+    step,
+    wheelStepMultiplier,
+    resolvedProps.value,
+    min,
+    max,
+    onChange
+  ]);
 
   // Build CSS classes using resolved props (support both lowercase and Figma capitalized)
   const containerClasses = [

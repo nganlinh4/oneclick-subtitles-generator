@@ -202,6 +202,28 @@ input, select, textarea {
   margin-bottom: 2rem;
 }
 
+
+/* Text balancing utility and global application */
+.text-balance {
+  text-wrap: balance;
+  -webkit-text-wrap: balance;
+}
+
+/* Apply text balancing to all row labels across the app */
+.row-label {
+  text-wrap: balance;
+  -webkit-text-wrap: balance;
+}
+
+/* Fallback for browsers without text-wrap: balance */
+@supports not (text-wrap: balance) {
+  .text-balance,
+  .row-label {
+    word-break: break-word;
+    hyphens: manual;
+  }
+}
+
 /* Animation utility classes - updated to use Material Design 3 tokens */
 .fade-in {
   animation: fadeIn var(--md-duration-medium2) var(--md-easing-standard);

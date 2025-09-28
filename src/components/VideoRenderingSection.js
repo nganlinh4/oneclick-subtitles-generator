@@ -7,6 +7,8 @@ import QueueManagerPanel from './QueueManagerPanel';
 import LoadingIndicator from './common/LoadingIndicator';
 import CustomDropdown from './common/CustomDropdown';
 import '../styles/VideoRenderingSection.css';
+import HelpIcon from './common/HelpIcon';
+
 
 const VideoRenderingSection = ({
   selectedVideo,
@@ -281,7 +283,7 @@ const VideoRenderingSection = ({
   useEffect(() => {
     localStorage.setItem('videoRender_subtitleCustomization', JSON.stringify(subtitleCustomization));
   }, [subtitleCustomization]);
-  
+
   useEffect(() => {
     localStorage.setItem('videoRender_cropSettings', JSON.stringify(cropSettings));
   }, [cropSettings]);
@@ -402,12 +404,12 @@ const VideoRenderingSection = ({
           if (line.startsWith('data: ')) {
             try {
               const data = JSON.parse(line.slice(6));
-              
+
               // Debug logging to understand what the server is sending during reconnection
               if (data.message && data.message.includes('Chrome')) {
                 console.log('[Chrome Download Debug - Reconnection] Server message:', data);
               }
-              
+
               // Also log any data with progress-related info during reconnection
               if (data.message && (data.message.includes('Mb/') || data.message.includes('download'))) {
                 console.log('[Progress Debug - Reconnection] Server message with download info:', data);
@@ -420,12 +422,12 @@ const VideoRenderingSection = ({
                 const { downloaded, total } = data.chromeDownload;
                 const downloadProgress = Math.round((downloaded / total) * 100);
                 console.log(`[Chrome Download Progress - Reconnection] ${downloaded}MB / ${total}MB = ${downloadProgress}%`);
-                
+
                 const chromeDownloadStatus = t('videoRendering.downloadingChrome', 'Downloading Chrome for Testing (first time only)');
-                
+
                 setRenderProgress(downloadProgress);
                 setRenderStatus(chromeDownloadStatus);
-                
+
                 setRenderQueue(prev => prev.map(item =>
                   item.id === queueItem.id
                     ? {
@@ -438,12 +440,12 @@ const VideoRenderingSection = ({
                 ));
               }
               // Handle Chrome download from other possible formats (fallback)
-              else if ((data.type === 'browser-download') || 
+              else if ((data.type === 'browser-download') ||
                   (data.message && (data.message.includes('Chrome Headless Shell') || data.message.includes('Chrome for Testing'))) ||
                   (data.message && data.message.includes('Downloading Chrome'))) {
                 let downloadProgress = 0;
                 let chromeDownloadStatus = '';
-                
+
                 if (data.type === 'browser-download' && data.downloaded && data.total) {
                 } else if (data.type === 'browser-download' && data.downloaded && data.total) {
                   // Format 2: { type: 'browser-download', downloaded: X, total: Y }
@@ -463,11 +465,11 @@ const VideoRenderingSection = ({
                     console.log(`[Chrome Download - Reconnection] Could not parse progress from message: "${data.message}"`);
                   }
                 }
-                
+
                 chromeDownloadStatus = t('videoRendering.downloadingChrome', 'Downloading Chrome for Testing (first time only)');
                 setRenderProgress(downloadProgress);
                 setRenderStatus(chromeDownloadStatus);
-                
+
                 setRenderQueue(prev => prev.map(item =>
                   item.id === queueItem.id
                     ? {
@@ -1160,15 +1162,15 @@ const VideoRenderingSection = ({
           if (line.startsWith('data: ')) {
             try {
               const data = JSON.parse(line.slice(6));
-              
+
               // LOG EVERYTHING to understand what server is actually sending
 
-              
+
               // Debug logging to understand what the server is sending
               if (data.message && data.message.includes('Chrome')) {
                 console.log('[Chrome Download Debug] Server message:', data);
               }
-              
+
               // Also log any data with progress-related info
               if (data.message && (data.message.includes('Mb/') || data.message.includes('download'))) {
                 console.log('[Progress Debug] Server message with download info:', data);
@@ -1181,13 +1183,13 @@ const VideoRenderingSection = ({
                 const { downloaded, total } = data.chromeDownload;
                 const downloadProgress = Math.round((downloaded / total) * 100);
                 console.log(`[Chrome Download Progress] ${downloaded}MB / ${total}MB = ${downloadProgress}%`);
-                
+
                 const chromeDownloadStatus = t('videoRendering.downloadingChrome', 'Downloading Chrome for Testing (first time only)');
-                
+
                 // Use real download progress (0-100%)
                 setRenderProgress(downloadProgress);
                 setRenderStatus(chromeDownloadStatus);
-                
+
                 // Update the queue item's progress and phase description
                 const targetQueueItem = queueItem || currentQueueItem;
                 if (targetQueueItem) {
@@ -1204,12 +1206,12 @@ const VideoRenderingSection = ({
                 }
               }
               // Handle Chrome download from other possible formats (fallback)
-              else if ((data.type === 'browser-download') || 
+              else if ((data.type === 'browser-download') ||
                   (data.message && (data.message.includes('Chrome Headless Shell') || data.message.includes('Chrome for Testing'))) ||
                   (data.message && data.message.includes('Downloading Chrome'))) {
                 let downloadProgress = 0;
                 let chromeDownloadStatus = '';
-                
+
                 if (data.type === 'browser-download' && data.downloaded && data.total) {
                 } else if (data.type === 'browser-download' && data.downloaded && data.total) {
                   // Format 2: { type: 'browser-download', downloaded: X, total: Y }
@@ -1229,13 +1231,13 @@ const VideoRenderingSection = ({
                     console.log(`[Chrome Download] Could not parse progress from message: "${data.message}"`);
                   }
                 }
-                
+
                 chromeDownloadStatus = t('videoRendering.downloadingChrome', 'Downloading Chrome for Testing (first time only)');
-                
+
                 // Use real download progress (0-100%) instead of mapping to render progress
                 setRenderProgress(downloadProgress);
                 setRenderStatus(chromeDownloadStatus);
-                
+
                 // Update the queue item's progress and phase description (use passed queueItem or fallback to currentQueueItem)
                 const targetQueueItem = queueItem || currentQueueItem;
                 if (targetQueueItem) {
@@ -1257,7 +1259,7 @@ const VideoRenderingSection = ({
                 // Reset progress to 0 after Chrome download completes and rendering begins
                 setRenderProgress(0);
                 setRenderStatus(bundlingStatus);
-                
+
                 // Update the queue item's progress and phase description (use passed queueItem or fallback to currentQueueItem)
                 const targetQueueItem = queueItem || currentQueueItem;
                 if (targetQueueItem) {
@@ -1279,7 +1281,7 @@ const VideoRenderingSection = ({
                 // Reset to 0% for composition phase after bundling, let server control the progress
                 setRenderProgress(0);
                 setRenderStatus(compositionStatus);
-                
+
                 // Update the queue item's progress and phase description (use passed queueItem or fallback to currentQueueItem)
                 const targetQueueItem = queueItem || currentQueueItem;
                 if (targetQueueItem) {
@@ -1629,16 +1631,7 @@ const VideoRenderingSection = ({
             <div className="subtitle-selection-compact">
               <h4>
                 {t('videoRendering.subtitleSource', 'Subtitle Source')}
-                <div
-                  className="help-icon-container"
-                  title={t('videoRendering.subtitleSourceHelp', 'You can use the Upload SRT/JSON button to upload your own subtitle files')}
-                >
-                  <svg className="help-icon" viewBox="0 0 24 24" width="18" height="18" stroke="currentColor" strokeWidth="2" fill="none">
-                    <circle cx="12" cy="12" r="10"></circle>
-                    <line x1="12" y1="16" x2="12" y2="12"></line>
-                    <line x1="12" y1="8" x2="12.01" y2="8"></line>
-                  </svg>
-                </div>
+                <HelpIcon title={t('videoRendering.subtitleSourceHelp', 'You can use the Upload SRT/JSON button to upload your own subtitle files')} />
               </h4>
               <div className="radio-group">
                 <div className="radio-option">

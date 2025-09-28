@@ -1,4 +1,4 @@
-import React, { useEffect } from 'react';
+import React, { useEffect, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import AppLayout from './AppLayout';
 import { useAppState } from './AppState';
@@ -8,6 +8,7 @@ import { useAppEffects } from './AppEffects';
 import OnboardingBanner from '../OnboardingBanner';
 import OnboardingFooterReveal from '../OnboardingFooterReveal';
 import AutoDismissErrorToast from '../common/AutoDismissErrorToast';
+
 // Import CSS files
 import '../../styles/App.css';
 import '../../styles/GeminiButtonAnimations.css';
@@ -29,6 +30,7 @@ import '../../styles/OnboardingFooterReveal.css';
  */
 function App() {
   const { t } = useTranslation();
+
 
   // Initialize app state
   const appState = { ...useAppState(), t };
@@ -58,6 +60,7 @@ function App() {
 
       {/* This is rendered on top of the app, behind the onboarding overlay */}
       <OnboardingFooterReveal />
+
 
       <AppLayout
         appState={appState}

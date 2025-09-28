@@ -38,15 +38,9 @@ const LanguageCodeInput = ({ languageCodes = [''], onChange }) => {
         <div key={index} className="language-code-field">
           <input
             type="text"
+            className="language-code-input"
             value={code}
             onChange={(e) => handleLanguageCodeChange(index, e.target.value)}
-            style={{
-              borderRadius: '100px',
-              width: '80px',
-              height: '36px',
-              padding: '0 12px',
-              boxSizing: 'border-box'
-            }}
             placeholder={t('settings.modelManagement.languageCode')}
           />
 
