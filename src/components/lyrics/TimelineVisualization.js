@@ -391,22 +391,31 @@ const TimelineVisualization = ({
     return () => window.removeEventListener('offline-segment-cached', onCached);
   }, []);
 
-  // Clear all offline segments: remove cache and delete files on server
-  const handleClearOfflineSegments = useCallback(async () => {
+  // Clear all offline segments: remove cache and delete files on server (fire-and-forget)
+  const handleClearOfflineSegments = useCallback(() => {
     try {
       const urls = (offlineSegments || []).map(r => r.url).filter(Boolean);
       if (urls.length > 0) {
         try {
-          await fetch('http://localhost:3031/api/delete-videos', {
+          const controller = new AbortController();
+          const timeoutId = setTimeout(() => controller.abort(), 1500); // don't let UI wait on Windows file locks
+          // Fire and forget - do not await
+          fetch('http://localhost:3031/api/delete-videos', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ urls })
-          });
+            body: JSON.stringify({ urls }),
+            signal: controller.signal
+          })
+            .catch((e) => {
+              console.warn('[Timeline] Failed to call delete-videos (non-blocking):', e);
+            })
+            .finally(() => clearTimeout(timeoutId));
         } catch (e) {
-          console.warn('[Timeline] Failed to call delete-videos:', e);
+          console.warn('[Timeline] Failed to initiate delete-videos (non-blocking):', e);
         }
       }
-      // Clear local cache for current video
+
+      // Clear local cache for current video immediately so UI never gets stuck
       try {
         const videoKey = localStorage.getItem('current_file_cache_id')
           || localStorage.getItem('current_file_url')
@@ -420,12 +429,25 @@ const TimelineVisualization = ({
           }
         }
       } catch {}
+
+      // Update UI state regardless of backend outcome
       setOfflineSegments([]);
       setHoveredOfflineRange(null);
+      try { window.dispatchEvent(new CustomEvent('offline-segments-cleared')); } catch {}
+
+      // Let the user know files may remain briefly due to OS locks
+      try {
+        showWarningToast(
+          t('timeline.offlineClearNotice', 'Cleared offline segments from UI. Actual files will be removed in background and may persist briefly due to OS locks.')
+        );
+      } catch {}
     } catch (e) {
-      console.error('[Timeline] Error clearing offline segments:', e);
+      console.error('[Timeline] Error clearing offline segments (UI proceeded):', e);
+      // Even on unexpected errors, keep UI consistent
+      setOfflineSegments([]);
+      setHoveredOfflineRange(null);
     }
-  }, [offlineSegments]);
+  }, [offlineSegments, t]);
 
   // Retry an offline range: open processing modal with locked settings
   const handleRetryOfflineRange = useCallback((range) => {

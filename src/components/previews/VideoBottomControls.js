@@ -1,6 +1,6 @@
 ﻿import React, { useRef } from 'react';
 import LiquidGlass from '../common/LiquidGlass';
-import PlayPauseMorphType2 from '../common/PlayPauseMorphType2';
+import PlayPauseMorphType4 from '../common/PlayPauseMorphType4';
 import WavyProgressIndicator from '../common/WavyProgressIndicator';
 
 const VideoBottomControls = ({
@@ -107,7 +107,7 @@ const VideoBottomControls = ({
                         alignItems: 'center',
                         justifyContent: 'center'
                       }}>
-                        <PlayPauseMorphType2 playing={isPlaying} color="#FFFFFF" size={24} style={{ filter: 'drop-shadow(0 1px 2px rgba(0, 0, 0, 0.8))' }} />
+                        <PlayPauseMorphType4 playing={isPlaying} color="#FFFFFF" size={24} style={{ filter: 'drop-shadow(0 1px 2px rgba(0, 0, 0, 0.8))' }} />
                       </div>
                     </LiquidGlass>
 

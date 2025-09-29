@@ -373,6 +373,7 @@ IF %ERRORLEVEL% NEQ 0 (
 SET "NEEDS_RESTART=0"
 SET "MISSING_TOOLS="
 
+
 powershell -NoProfile -ExecutionPolicy Bypass -Command "Write-Host '[?] Checking for Git (Kiem tra Git)...' -ForegroundColor Yellow"
 REM Primary detection via PATH
 WHERE git >nul 2>nul
@@ -414,43 +415,16 @@ IF %ERRORLEVEL% NEQ 0 (
 )
 
 powershell -NoProfile -ExecutionPolicy Bypass -Command "Write-Host '[?] Checking for FFmpeg (Kiem tra FFmpeg)...' -ForegroundColor Yellow"
-REM Robust FFmpeg detection across PATH, WindowsApps alias, common install dirs, and winget registry
 SET "FFMPEG_FOUND=0"
-
-REM 1) Check via PATH
-WHERE ffmpeg >nul 2>nul
-IF %ERRORLEVEL% EQU 0 SET "FFMPEG_FOUND=1"
-
-REM 2) Check by invoking directly (in case alias works even if WHERE fails)
-IF "!FFMPEG_FOUND!"=="0" (
-    ffmpeg -version >nul 2>nul
-    IF !ERRORLEVEL! EQU 0 SET "FFMPEG_FOUND=1"
-)
-
-REM 3) Check WindowsApps execution alias created by winget
-IF "!FFMPEG_FOUND!"=="0" IF EXIST "%LOCALAPPDATA%\Microsoft\WindowsApps\ffmpeg.exe" (
-    SET "PATH=%PATH%;%LOCALAPPDATA%\Microsoft\WindowsApps"
-    ffmpeg -version >nul 2>nul
-    IF !ERRORLEVEL! EQU 0 SET "FFMPEG_FOUND=1"
-)
-
-REM 4) Check common classic install locations and add to PATH for this session
-IF "!FFMPEG_FOUND!"=="0" IF EXIST "C:\Program Files\ffmpeg\bin\ffmpeg.exe" (
-    SET "PATH=%PATH%;C:\Program Files\ffmpeg\bin"
-    SET "FFMPEG_FOUND=1"
-)
-IF "!FFMPEG_FOUND!"=="0" IF EXIST "C:\ProgramData\chocolatey\bin\ffmpeg.exe" (
-    SET "PATH=%PATH%;C:\ProgramData\chocolatey\bin"
-    SET "FFMPEG_FOUND=1"
-)
-
-REM 5) Skip winget registry check to avoid potential hangs on some systems
-IF "!FFMPEG_FOUND!"=="1" (
-    powershell -NoProfile -ExecutionPolicy Bypass -Command "Write-Host '[OK] FFmpeg already installed (FFmpeg da duoc cai dat).' -ForegroundColor Green"
+SET "FFMPEG_PATH="
+CALL :DetectFFmpeg
+IF DEFINED FFMPEG_PATH SET "PATH=%PATH%;%FFMPEG_PATH%"
+IF "%FFMPEG_FOUND%"=="1" (
+  powershell -NoProfile -ExecutionPolicy Bypass -Command "Write-Host '[OK] FFmpeg already installed (FFmpeg da duoc cai dat).' -ForegroundColor Green"
 ) ELSE (
-    SET "NEEDS_RESTART=1"
-    SET "MISSING_TOOLS=%MISSING_TOOLS% FFmpeg"
-    powershell -NoProfile -ExecutionPolicy Bypass -Command "Write-Host '[MISSING] FFmpeg not found - will be installed (FFmpeg khong tim thay - se duoc cai dat).' -ForegroundColor Yellow"
+  SET "NEEDS_RESTART=1"
+  SET "MISSING_TOOLS=%MISSING_TOOLS% FFmpeg"
+  powershell -NoProfile -ExecutionPolicy Bypass -Command "Write-Host '[MISSING] FFmpeg not found - will be installed (FFmpeg khong tim thay - se duoc cai dat).' -ForegroundColor Yellow"
 )
 
 powershell -NoProfile -ExecutionPolicy Bypass -Command "Write-Host '[?] Checking for uv Python package manager (Kiem tra trinh quan ly goi uv Python)...' -ForegroundColor Yellow"
@@ -561,11 +535,31 @@ IF "%NEEDS_RESTART%"=="1" (
     )
 
     IF "!MISSING_TOOLS!" NEQ "!MISSING_TOOLS: FFmpeg=!" (
-        WHERE ffmpeg >nul 2>nul
-        IF !ERRORLEVEL! EQU 0 (
+        REM Robust verification: require ffmpeg -version to succeed; also try known paths if needed
+        SET "VERIFY_FAIL="
+        SET "_FF_OK=0"
+        FOR /F "usebackq tokens=* delims=" %%i IN (`powershell -NoProfile -ExecutionPolicy Bypass -Command "& { $ErrorActionPreference='SilentlyContinue'; try { & ffmpeg -version | Out-Null; if ($LASTEXITCODE -eq 0) { 'OK' } } catch {} }"`) DO IF "%%i"=="OK" SET "_FF_OK=1"
+        IF NOT "%_FF_OK%"=="1" FOR %%P IN (
+            "C:\\Program Files\\ffmpeg\\bin\\ffmpeg.exe"
+            "C:\\ProgramData\\chocolatey\\bin\\ffmpeg.exe"
+            "%LOCALAPPDATA%\\Microsoft\\WindowsApps\\ffmpeg.exe"
+            "%USERPROFILE%\\scoop\\shims\\ffmpeg.exe"
+            "C:\\ffmpeg\\bin\\ffmpeg.exe"
+        ) DO (
+            IF "%_FF_OK%"=="1" GOTO :_FF_VERIFY_DONE
+            IF EXIST "%%~P" (
+                FOR /F "usebackq tokens=* delims=" %%r IN (`powershell -NoProfile -ExecutionPolicy Bypass -Command "& { $ErrorActionPreference='SilentlyContinue'; try { & '%%~P' -version | Out-Null; if ($LASTEXITCODE -eq 0) { 'OK' } } catch {} }"`) DO IF "%%r"=="OK" (
+                    SET "_FF_OK=1"
+                    SET "PATH=%PATH%;%%~dpP"
+                )
+            )
+        )
+        :_FF_VERIFY_DONE
+        IF "%_FF_OK%"=="1" (
             powershell -NoProfile -ExecutionPolicy Bypass -Command "Write-Host '[VERIFY] FFmpeg installation confirmed (Xac nhan cai dat FFmpeg).' -ForegroundColor Green"
         ) ELSE (
             powershell -NoProfile -ExecutionPolicy Bypass -Command "Write-Host '[WARN] FFmpeg may need environment refresh (FFmpeg co the can cap nhat moi truong).' -ForegroundColor Yellow"
+            SET "VERIFY_FAIL=1"
         )
     )
 
@@ -580,8 +574,14 @@ IF "%NEEDS_RESTART%"=="1" (
 
     ECHO.
     powershell -NoProfile -ExecutionPolicy Bypass -Command "Write-Host '[BATCH COMPLETE] All missing tools installed (Tat ca cong cu thieu da duoc cai dat).' -ForegroundColor Green"
-    powershell -NoProfile -ExecutionPolicy Bypass -Command "Write-Host '[RESTART] Restarting to refresh environment for all installations (Khoi dong lai de cap nhat moi truong cho tat ca cai dat)...' -ForegroundColor Blue"
-    EXIT /B 1
+    IF "%VERIFY_FAIL%"=="1" (
+        powershell -NoProfile -ExecutionPolicy Bypass -Command "Write-Host '[RESTART] Restarting to refresh environment for installations that require it (Khoi dong lai de cap nhat moi truong cho cac cai dat can thiet)...' -ForegroundColor Blue"
+        EXIT /B 1
+    ) ELSE (
+        powershell -NoProfile -ExecutionPolicy Bypass -Command "Write-Host '[NO RESTART] Tools are available in this session (Khong can khoi dong lai: Cong cu da san sang trong phien nay).' -ForegroundColor Green"
+        SET "NEEDS_RESTART=0"
+        EXIT /B 0
+    )
 ) ELSE (
     powershell -NoProfile -ExecutionPolicy Bypass -Command "Write-Host '[OK] All prerequisites already installed (Tat ca tien quyet da duoc cai dat).' -ForegroundColor Green"
 )
@@ -719,4 +719,66 @@ REM ============================================================================
 IF EXIST "%LAST_CHOICE_FILE%" DEL "%LAST_CHOICE_FILE%" >nul 2>&1
 EXIT /B 0
 
+
+
+
+REM ==============================================================================
+:: Subroutine: Detect FFmpeg outside of parenthesis to avoid parser issues
+:DetectFFmpeg
+SETLOCAL DisableDelayedExpansion
+SET "_FOUND=0"
+SET "_PATH="
+
+REM 0) If current user's WindowsApps has ffmpeg.exe, prefer making it visible
+IF EXIST "%LOCALAPPDATA%\Microsoft\WindowsApps\ffmpeg.exe" SET "PATH=%PATH%;%LOCALAPPDATA%\Microsoft\WindowsApps"
+
+REM 1) Try running from PATH
+ffmpeg -version >nul 2>nul
+IF NOT ERRORLEVEL 1 SET "_FOUND=1"
+
+REM 2) Try WHERE
+IF NOT "%_FOUND%"=="1" (
+    WHERE ffmpeg >nul 2>nul
+    IF NOT ERRORLEVEL 1 SET "_FOUND=1"
+)
+
+REM 3) Known locations (verify by executing)
+IF NOT "%_FOUND%"=="1" FOR %%P IN (
+    "C:\Program Files\ffmpeg\bin\ffmpeg.exe"
+    "C:\ProgramData\chocolatey\bin\ffmpeg.exe"
+    "%LOCALAPPDATA%\Microsoft\WindowsApps\ffmpeg.exe"
+    "%LOCALAPPDATA%\Microsoft\WinGet\Links\ffmpeg.exe"
+    "%USERPROFILE%\scoop\shims\ffmpeg.exe"
+    "C:\ffmpeg\bin\ffmpeg.exe"
+) DO (
+    IF EXIST "%%~P" (
+        "%%~P" -version >nul 2>nul
+        IF NOT ERRORLEVEL 1 (
+            SET "_FOUND=1"
+            SET "_PATH=%%~dpP"
+        )
+    )
+)
+
+REM 4) Scan all users' WindowsApps/WinGet Links for a runnable alias
+IF NOT "%_FOUND%"=="1" FOR /D %%U IN ("C:\Users\*") DO (
+    IF EXIST "%%U\AppData\Local\Microsoft\WindowsApps\ffmpeg.exe" (
+        "%%U\AppData\Local\Microsoft\WindowsApps\ffmpeg.exe" -version >nul 2>nul
+        IF NOT ERRORLEVEL 1 (
+            SET "_FOUND=1"
+            SET "_PATH=%%U\AppData\Local\Microsoft\WindowsApps\"
+        )
+    ) ELSE IF EXIST "%%U\AppData\Local\Microsoft\WinGet\Links\ffmpeg.exe" (
+        "%%U\AppData\Local\Microsoft\WinGet\Links\ffmpeg.exe" -version >nul 2>nul
+        IF NOT ERRORLEVEL 1 (
+            SET "_FOUND=1"
+            SET "_PATH=%%U\AppData\Local\Microsoft\WinGet\Links\"
+        )
+    )
+)
+
+
+
+ENDLOCAL & SET "FFMPEG_FOUND=%_FOUND%" & IF NOT "%_PATH%"=="" SET "FFMPEG_PATH=%_PATH%"
+EXIT /B 0
 
