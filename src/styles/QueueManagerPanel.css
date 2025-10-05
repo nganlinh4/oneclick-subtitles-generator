@@ -45,9 +45,10 @@
   font-size: 0.95rem;
 }
 
-/* Panel Content */
-.panel-content {
+/* Panel Content (scoped to queue manager) */
+.queue-manager-panel .panel-content {
   padding: 0.5rem;
+  max-height: 500px;
 }
 
 /* Header Button */
@@ -223,6 +224,16 @@
   color: var(--text-primary);
 }
 
+/* Theme-specific text color for status badge: reverse between light and dark */
+[data-theme="light"] .status-badge {
+  color: #ffffff; /* light theme -> light text on colored badge */
+}
+
+[data-theme="dark"] .status-badge {
+  color: #000000; /* dark theme -> dark text on colored badge */
+}
+
+
 /* Revamped Wavy Progress Section */
 .wavy-progress-section {
   margin: 12px 0;
@@ -356,12 +367,253 @@
 }
 
 /* Download button styles moved to centralized button system in components/buttons.css */
+/* Download success button - prominent */
+.download-btn-success {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  padding: 0.5rem 0.9rem;
+  background: var(--md-success);
+  color: var(--md-on-success);
+  border: none;
+  border-radius: 32px;
+  font-size: 0.8rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.download-btn-success:hover {
+  background: var(--md-success-dark);
+  transform: translateY(-1px);
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.15);
+}
+
+.download-btn-success:active {
+  transform: translateY(0);
+  box-shadow: none;
+}
+
+
+/* Preview button in completed section */
+.preview-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.6rem;
+  padding: 0.4rem 0.7rem;
+  background: var(--md-surface-3);
+  color: var(--text-primary);
+  border: 1px solid var(--md-outline-variant);
+  border-radius: 16px;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.preview-btn:hover {
+  background: var(--md-surface-4);
+  transform: translateY(-1px);
+}
+
+.preview-thumb-wrap {
+  width: 40px;
+  height: 24px;
+  border-radius: 6px;
+  overflow: hidden;
+  background: #000;
+  border: 1px solid var(--md-outline-variant);
+}
+
+.preview-thumb {
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+  background: #000;
+}
+
+/* Preview Modal */
+.preview-modal-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(0,0,0,0.6);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 1000;
+}
+
+.preview-modal {
+  width: min(900px, 92vw);
+  max-height: 90vh; /* Keep within viewport so header stays visible */
+  background: var(--md-surface-1);
+  border: 1px solid var(--md-outline-variant);
+  border-radius: 16px;
+  box-shadow: 0 10px 30px rgba(0,0,0,0.3);
+  display: flex; /* Make header fixed and content scrollable */
+  flex-direction: column;
+  overflow: hidden; /* Clip inner scroll area */
+}
+
+.preview-modal-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 0.75rem 1rem;
+  border-bottom: 1px solid var(--md-outline-variant);
+}
+
+.preview-title {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+  font-weight: 600;
+  color: var(--text-primary);
+}
+
+.preview-close-btn {
+  background: transparent;
+  border: none;
+  color: var(--text-secondary);
+  cursor: pointer;
+  padding: 6px;
+  border-radius: 8px;
+}
+
+.preview-close-btn:hover {
+  background: var(--md-surface-3);
+  color: var(--text-primary);
+}
+
+/* Preview badges styling */
+.preview-badges {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.5rem;
+  margin-left: 0.5rem;
+}
+
+.preview-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  padding: 0.25rem 0.6rem;
+  border-radius: 14px;
+  font-size: 0.72rem;
+  font-weight: 500;
+  letter-spacing: 0.2px;
+  border: 1px solid var(--md-outline-variant);
+  background: var(--md-surface-3);
+  color: var(--text-primary);
+}
+
+.preview-badge .badge-icon {
+  opacity: 0.9;
+}
+
+/* Theme adjustments for better contrast */
+[data-theme="dark"] .preview-badge {
+  background: rgba(255, 255, 255, 0.06);
+  border-color: rgba(255, 255, 255, 0.12);
+  color: var(--text-primary);
+}
+
+[data-theme="light"] .preview-badge {
+  background: rgba(0, 0, 0, 0.04);
+  border-color: rgba(0, 0, 0, 0.12);
+  color: var(--text-primary);
+}
+
+/* Category accents for preview badges - subtle dot instead of border */
+.preview-badge::before {
+  content: '';
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--md-outline-variant);
+  display: inline-block;
+}
+
+.preview-badge.video::before {
+  background: var(--md-primary);
+}
+.preview-badge.audio::before {
+  background: #43a047; /* green */
+}
+.preview-badge.file::before {
+  background: var(--md-outline);
+}
+
+/* Theme-adjusted subtle background tints */
+[data-theme="dark"] .preview-badge.video {
+  background: rgba(var(--md-primary-rgb), 0.08);
+  border-color: rgba(var(--md-primary-rgb), 0.5);
+}
+[data-theme="light"] .preview-badge.video {
+  background: rgba(var(--md-primary-rgb), 0.06);
+  border-color: rgba(var(--md-primary-rgb), 0.4);
+}
+
+[data-theme="dark"] .preview-badge.audio {
+  background: rgba(76, 175, 80, 0.12);
+  border-color: rgba(76, 175, 80, 0.6);
+}
+[data-theme="light"] .preview-badge.audio {
+  background: rgba(76, 175, 80, 0.08);
+  border-color: rgba(76, 175, 80, 0.5);
+}
+
+[data-theme="dark"] .preview-badge.file {
+  background: rgba(255, 255, 255, 0.06);
+  border-color: rgba(255, 255, 255, 0.18);
+}
+[data-theme="light"] .preview-badge.file {
+  background: rgba(0, 0, 0, 0.04);
+  border-color: rgba(0, 0, 0, 0.14);
+}
+
+
+/* Visual separators between groups */
+.preview-sep {
+  display: inline-block;
+  width: 1px;
+  height: 16px;
+  background: var(--md-outline-variant);
+  margin: 0 6px;
+  opacity: 0.7;
+  align-self: center;
+}
+
+.preview-modal-content {
+  padding: 1rem;
+  overflow-y: auto; /* Scroll content vertically like panel-content */
+  overflow-x: hidden; /* Hide horizontal scroll */
+  flex: 1 1 auto; /* Fill remaining space beneath header */
+}
 
 /* Item Actions */
 .item-actions {
   display: flex;
-  justify-content: flex-end;
+  justify-content: space-between; /* render time on the left, actions on the right */
+  align-items: center;
   gap: 0.5rem;
+}
+
+.item-actions-right {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.render-time {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  font-size: 0.75rem;
+  color: var(--text-secondary);
+}
+
+.render-time svg {
+  color: var(--md-secondary);
 }
 
 .remove-btn,
@@ -407,7 +659,7 @@
     padding: 0.875rem 1rem;
   }
 
-  .panel-content {
+  .queue-manager-panel .panel-content {
     padding: 0.875rem;
   }
 

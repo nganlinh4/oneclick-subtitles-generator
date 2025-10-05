@@ -361,11 +361,13 @@ except Exception as e:
       }
     }
 
-    // Clean up old subtitle directories if using grouped subtitles
+    // Clean up old subtitle directories only on explicit full-run request
     const hasGroupedSubtitles = subtitles.some(subtitle => subtitle.original_ids && subtitle.original_ids.length > 0);
-    if (hasGroupedSubtitles) {
+    if (hasGroupedSubtitles && settings?.allowCleanup === true) {
       console.log('Edge TTS: Detected grouped subtitles, cleaning up old directories');
       cleanupOldSubtitleDirectories(subtitles);
+    } else if (hasGroupedSubtitles) {
+      console.log('Edge TTS: Detected grouped subtitles, but skipping cleanup (no allowCleanup flag)');
     }
 
     // Send completion event

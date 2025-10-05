@@ -1016,12 +1016,19 @@ const VideoPreview = ({ currentTime, setCurrentTime, setDuration, videoSource, o
           if (container) {
             const controlElements = container.querySelectorAll('[style*="opacity"]');
             controlElements.forEach((element) => {
-              if (element.className.includes('liquid-glass') && element.className.includes('interactive')) {
+              // className can be an object on SVG elements (SVGAnimatedString), so don't assume it's a string
+              const classAttr = typeof element.className === 'string'
+                ? element.className
+                : (element.getAttribute && element.getAttribute('class')) || '';
+              const hasLiquidGlass = element.classList && element.classList.contains('liquid-glass');
+              const hasInteractive = element.classList && element.classList.contains('interactive');
+
+              if ((hasLiquidGlass && hasInteractive) || (classAttr.includes('liquid-glass') && classAttr.includes('interactive'))) {
                 const rect = element.getBoundingClientRect();
                 const computedStyle = getComputedStyle(element);
 
                 console.log('ðŸŽ¬ INVESTIGATION - Element details:', {
-                  className: element.className,
+                  className: classAttr,
                   opacity: computedStyle.opacity,
                   display: computedStyle.display,
                   visibility: computedStyle.visibility,
@@ -1665,20 +1672,26 @@ const VideoPreview = ({ currentTime, setCurrentTime, setDuration, videoSource, o
 
         case 'KeyF':
         case 'f':
-          // Toggle fullscreen
-          if (isFullscreen) {
-            handleFullscreenExit();
-          } else {
-            const container = document.querySelector('.native-video-container');
-            if (container) {
-              if (container.requestFullscreen) {
-                container.requestFullscreen();
-              } else if (container.webkitRequestFullscreen) {
-                container.webkitRequestFullscreen();
-              } else if (container.mozRequestFullScreen) {
-                container.mozRequestFullScreen();
-              } else if (container.msRequestFullscreen) {
-                container.msRequestFullscreen();
+          // Toggle fullscreen using actual document fullscreen state (avoid stale React state)
+          {
+            const isDocFullscreen = !!(document.fullscreenElement ||
+                                       document.webkitFullscreenElement ||
+                                       document.mozFullScreenElement ||
+                                       document.msFullscreenElement);
+            if (isDocFullscreen) {
+              handleFullscreenExit();
+            } else {
+              const container = document.querySelector('.native-video-container');
+              if (container) {
+                if (container.requestFullscreen) {
+                  container.requestFullscreen();
+                } else if (container.webkitRequestFullscreen) {
+                  container.webkitRequestFullscreen();
+                } else if (container.mozRequestFullScreen) {
+                  container.mozRequestFullScreen();
+                } else if (container.msRequestFullscreen) {
+                  container.msRequestFullscreen();
+                }
               }
             }
           }

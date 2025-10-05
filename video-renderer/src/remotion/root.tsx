@@ -26,7 +26,9 @@ const VideoComponentWrapper: React.FC<Record<string, unknown>> = (props) => {
     lyrics: (props.lyrics as LyricEntry[]) || sampleSubtitles,
     metadata: (props.metadata as VideoMetadata) || defaultMetadata,
     narrationUrl: props.narrationUrl as string | undefined,
-    isVideoFile: (props.isVideoFile as boolean) || false
+    isVideoFile: (props.isVideoFile as boolean) || false,
+    framesPathUrl: (props.framesPathUrl as string) || undefined,
+    extractedAudioUrl: (props.extractedAudioUrl as string) || undefined,
   };
 
   return <SubtitledVideoWrapper {...safeProps} />;

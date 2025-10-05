@@ -71,13 +71,10 @@
   "noSourceSelectedError": "Please select a subtitle source (Original or Translated)",
   "checkingModelAvailability": "Checking model availability...",
   "modelNotAvailableError": "Please download at least one model that supports {{language}} from the Narration Model Management tab in Settings.",
-
   "advancedSettingsToggle": "Advanced Voice & Audio Settings",
   "advancedSettings": "Advanced Settings",
-
   "voiceStyle": "Voice Style",
   "speechRate": "Speech Rate",
-
   "generationQuality": "Generation Quality",
   "nfeStep": "NFE Steps",
   "nfeSteps": {
@@ -91,15 +88,12 @@
   "swayCoefDesc": "Lower values improve quality",
   "cfgStrength": "Voice Similarity",
   "cfgStrengthDesc": "Higher values increase voice similarity",
-
   "seedControl": "Seed Control",
   "useRandomSeed": "Use Random Seed",
   "seed": "Seed Value",
-
   "audioProcessing": "Audio Processing",
   "removeSilence": "Remove Silences",
   "removeSilenceDesc": "Remove silence",
-
   "outputFormat": "Output Format",
   "format": "Format",
   "formats": {
@@ -107,13 +101,11 @@
     "mp3": "MP3"
   },
   "sampleRate": "Sample Rate",
-
   "batchProcessing": "Batch Processing",
   "batchSize": "Batch Size",
   "batchSizeDesc": "Set this smaller if your GPU cannot handle",
   "all": "All",
   "mergeOutput": "Merge All Audio Files",
-
   "geminiResults": "Generated Narration (Gemini)",
   "playbackError": "Error playing audio",
   "processingError": "Error processing audio data",
@@ -125,11 +117,9 @@
   "alreadySaved": "Audio already saved to server",
   "savedSuccess": "Audio saved to server successfully",
   "saveError": "Error saving audio to server",
-
   "narrationMethod": "Narration Method",
   "f5ttsMethod": "F5-TTS",
   "geminiMethod": "Gemini Live API",
-
   "alignedMode": "Use Aligned Narration",
   "enabled": "Enabled",
   "disabled": "Disabled",
@@ -139,19 +129,16 @@
   "narrationVolume": "Narration Volume",
   "playing": "Playing",
   "noNarrationsAvailable": "No narrations available. Generate narration first.",
-
   "notGenerated": "Not yet generated",
   "pending": "Pending generation...",
   "waitingForResults": "Waiting for narration results...",
   "geminiGenerationIncomplete": "Gemini narration generation incomplete. Generated {{generated}} of {{total}} narrations.",
   "geminiConnectionError": "Connection to Gemini was interrupted. You can retry the failed narrations individually.",
-
   "groupSubtitles": "Smartly group subtitles into fuller sentences for narration",
   "groupingSubtitles": "Grouping...",
   "viewGrouping": "View Grouping",
   "groupedSubtitlesCount": "Grouped {{original}} subtitles into {{grouped}} sentences",
   "subtitlesGrouped": "Grouped {{original}} subtitles into {{grouped}} fuller sentences for better narration.",
-
   "id": "ID",
   "time": "Time",
   "groupId": "Group",
@@ -159,7 +146,6 @@
   "groupedSubtitles": "Grouped Subtitles",
   "subtitleGroupingTitle": "Subtitle Grouping Comparison",
   "subtitleGroupingExplanation": "This table shows how the original subtitles have been grouped into fuller sentences for better narration. Each row represents an original subtitle, and the grouped column shows how they've been combined.",
-
   "subtitleGrouping": "Subtitle Grouping",
   "groupingIntensity": "Grouping Intensity",
   "intensityMinimal": "Minimal",
@@ -169,13 +155,11 @@
   "intensityEnhanced": "Enhanced",
   "intensityAggressive": "Aggressive",
   "intensityChangeTooltip": "Changing intensity will require regrouping",
-
   "speed": "Speed",
   "apply": "Apply",
   "processingSpeed": "Processing {{current}} of {{total}}",
   "speedModifySuccess": "Narration speed successfully changed to {{speed}}x",
   "speedModifyError": "Error changing narration speed: {{error}}",
-
   "chatterboxMethod": "Chatterbox",
   "f5ttsUnavailable": "(Unavailable - Please install and run OSG Full)",
   "chatterboxUnavailable": "(Unavailable - Please install and run OSG Full)",
@@ -197,12 +181,10 @@
   "chatterboxGenerationPartial": "Chatterbox generation completed with {{success}} successes and {{errors}} errors",
   "chatterboxGenerationError": "Error generating narration with Chatterbox: {{error}}",
   "chatterboxNoReferenceAudio": "Reference audio is required for Chatterbox TTS generation. Please upload a reference audio file.",
-
   "audioAlignmentWarning": "Despite applying smart narration alignment, the resulting audio is {{duration}} seconds longer than expected. Please use the speed slider above the audio list (set it faster) and regenerate the total narration using the Refresh Narration button on the player or the Download Aligned button",
   "audioAlignmentSegmentWarning": "The segment pushed the farthest is segment {{maxSegment}} (shifted {{maxAdjustment}} seconds), if this seems too far then you should set it faster using the speed slider above the audio list and regenerate the total narration, or adjust the narration timings as long sentences may have been placed in short time intervals",
   "audioAlignmentWarningMerged": "Despite applying smart narration alignment, the resulting audio is {{duration}} seconds longer than expected. Please use the speed slider above the audio list (set it faster) and regenerate the total narration using the Refresh Narration button on the player or the Download Aligned button. The segment pushed the farthest is segment {{maxSegment}} (shifted {{maxAdjustment}} seconds), if this seems too far then you should also set it faster, or adjust the narration timings as long sentences may have been placed in short time intervals",
   "closeNotification": "Close notification",
-
   "edgeTTSVoice": "Edge TTS Voice",
   "edgeTTSRate": "Speech Rate",
   "edgeTTSVolume": "Volume",
@@ -211,7 +193,6 @@
   "voiceLoadError": "Error loading voices: {{error}}",
   "selectVoice": "Select voice",
   "voiceLabel": "Voice",
-
   "gttsLanguage": "gTTS Language",
   "gttsTld": "Accent/Region",
   "gttsSlow": "Slow Speech",
@@ -219,7 +200,6 @@
   "loadingLanguages": "Loading languages...",
   "languageLoadError": "Error loading languages: {{error}}",
   "selectLanguage": "Select language",
-
   "tldCom": "Global (.com)",
   "tldAu": "Australian (.com.au)",
   "tldUk": "British (.co.uk)",
@@ -228,7 +208,6 @@
   "tldIn": "Indian (.co.in)",
   "tldIe": "Irish (.ie)",
   "tldZa": "South African (.co.za)",
-
   "allLanguages": "All Languages",
   "allCategories": "All",
   "searchVoices": "Search voices...",
@@ -238,7 +217,6 @@
   "clear": "Clear",
   "recommendedVoices": "Recommended for {{language}}",
   "recommendedLanguage": "Recommended for {{language}}",
-
   "loadingFromCache": "Loading narrations from previous session...",
   "edgeTTSStarting": "Starting Edge TTS generation...",
   "edgeTTSGeneratingProgress": "Generating {{current}} of {{total}} narrations with Edge TTS...",
@@ -252,21 +230,17 @@
   "retryingFailedNarrationsComplete": "Completed retrying all failed narrations",
   "gttsStarting": "Starting gTTS generation...",
   "gttsGeneratingProgress": "Generating {{current}} of {{total}} narrations with gTTS...",
-
   "concurrentClients": "Ultra Fast Mode",
   "concurrentClientsHelp": "Open multiple parallel conversations with Gemini simultaneously, WARNING: may quickly exhaust quota",
-
   "msVibeVoiceMethod": "MS VibeVoice",
   "geminiNativeDialogMethod": "Gemini Native Dialog",
   "comingSoon": "coming soon",
-
   "selectNarrationModel": "Select narration model",
   "loadingModels": "Loading models...",
   "selectModelExplanation": "Choose a narration model that supports your subtitle language for the best results.",
   "matchingLanguageModels": "Recommended Models",
   "otherModels": "Other Available Models",
   "noModelsAvailable": "No other models available",
-
   "language": "Language",
   "recommendedLanguages": "Recommended Languages",
   "otherLanguages": "Other Languages",
@@ -296,5 +270,16 @@
     "sw": "Swahili",
     "tr": "Turkish",
     "zh": "Chinese"
-  }
+  },
+  "generationInterrupted": "Generation was interrupted",
+  "noResultReturned": "No result returned",
+  "failedToGroupSubtitles": "Failed to group subtitles",
+  "preparingGeminiGeneration": "Preparing to generate narration with Gemini...",
+  "geminiGenerationCancelled": "Gemini narration generation cancelled",
+  "geminiGenerationCancelling": "Cancelling Gemini narration generation...",
+  "geminiGenerationComplete": "Gemini narration generation complete",
+  "geminiGenerationError": "Error generating narration with Gemini",
+  "retryingGeminiGeneration": "Retrying narration generation for subtitle {{id}}...",
+  "subtitleGroupingError": "Error grouping subtitles: {{error}}",
+  "serverError": "Server error: {{status}} {{statusText}}"
 }

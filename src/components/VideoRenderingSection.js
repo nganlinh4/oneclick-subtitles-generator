@@ -524,9 +524,10 @@ const VideoRenderingSection = ({
                 setRenderStatus(t('videoRendering.complete', 'Render complete!'));
                 setRenderProgress(100);
 
+                const completedAt = Date.now();
                 setRenderQueue(prev => prev.map(item =>
                   item.id === queueItem.id
-                    ? { ...item, status: 'completed', progress: 100, outputPath: data.videoUrl }
+                    ? { ...item, status: 'completed', progress: 100, outputPath: data.videoUrl, completedAt }
                     : item
                 ));
 
@@ -992,6 +993,8 @@ const VideoRenderingSection = ({
       status: isRendering ? 'pending' : 'processing',
       progress: 0,
       timestamp: Date.now(), // Store as timestamp number, not formatted string
+      startedAt: isRendering ? null : Date.now(),
+      completedAt: null,
       outputPath: null,
       error: null
     };
@@ -1012,11 +1015,12 @@ const VideoRenderingSection = ({
     const nextItem = renderQueue.find(item => item.status === 'pending');
     if (!nextItem || isRendering) return;
 
-    // Mark as processing and start
+    // Mark as processing and stamp start time
+    const startedAt = Date.now();
     setRenderQueue(prev => prev.map(item =>
-      item.id === nextItem.id ? { ...item, status: 'processing' } : item
+      item.id === nextItem.id ? { ...item, status: 'processing', startedAt } : item
     ));
-    setCurrentQueueItem(nextItem);
+    setCurrentQueueItem({ ...nextItem, startedAt });
     await handleStartRender(nextItem);
   };
 
@@ -1347,9 +1351,10 @@ const VideoRenderingSection = ({
                 // Update the queue item as completed (use passed queueItem or fallback to currentQueueItem)
                 const targetQueueItem = queueItem || currentQueueItem;
                 if (targetQueueItem) {
+                  const completedAt = Date.now();
                   setRenderQueue(prev => prev.map(item =>
                     item.id === targetQueueItem.id
-                      ? { ...item, status: 'completed', progress: 100, outputPath: data.videoUrl }
+                      ? { ...item, status: 'completed', progress: 100, outputPath: data.videoUrl, completedAt }
                       : item
                   ));
                 }

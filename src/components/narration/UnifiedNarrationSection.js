@@ -645,6 +645,13 @@ const UnifiedNarrationSection = ({
             onRetry={retryF5TTSNarration}
             retryingSubtitleId={retryingSubtitleId}
             onRetryFailed={retryFailedNarrations}
+            subtitleSource={subtitleSource}
+            isGenerating={isGenerating}
+            plannedSubtitles={(useGroupedSubtitles && groupedSubtitles && groupedSubtitles.length > 0)
+              ? groupedSubtitles
+              : (subtitleSource === 'translated' && translatedSubtitles && translatedSubtitles.length > 0)
+                ? translatedSubtitles
+                : (originalSubtitles || subtitles || [])}
           />
 
           {/* Hidden audio player for playback */}
@@ -747,6 +754,7 @@ const UnifiedNarrationSection = ({
             playAudio={playAudio}
             getAudioUrl={getAudioUrl}
             subtitleSource={subtitleSource}
+            isGenerating={isGenerating}
           />
 
           {/* Hidden audio player for playback */}
@@ -837,6 +845,7 @@ const UnifiedNarrationSection = ({
             playAudio={playAudio}
             getAudioUrl={getAudioUrl}
             subtitleSource={subtitleSource}
+            isGenerating={isGenerating}
           />
 
           {/* Hidden audio player for playback */}

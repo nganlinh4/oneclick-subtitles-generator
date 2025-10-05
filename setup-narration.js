@@ -685,6 +685,7 @@ try {
         'flask',
         'flask-cors',
         'requests',
+        'python-dateutil', // required by transformers and various utilities
         'huggingface_hub',
 
         // FastAPI/Chatterbox dependencies (for start_api.py and api.py)
@@ -709,6 +710,24 @@ try {
     logger.command(depsCmd);
     const env = { ...process.env, UV_HTTP_TIMEOUT: '300' }; // 5 minutes
     execSync(depsCmd, { stdio: 'inherit', env });
+
+    // Verify critical runtime deps are importable; auto-fix if missing (Windows-friendly)
+    try {
+        logger.progress('Verifying core runtime imports (dateutil)');
+        const verifyCorePyCode = `import sys\nmissing=[]\ntry:\n    import dateutil\nexcept Exception:\n    missing.append('python-dateutil')\nprint('Missing:'+','.join(missing) if missing else 'OK')`;
+        const verifyCoreCmd = `uv run --python ${VENV_DIR} -- python -c "${verifyCorePyCode.replace(/\"/g, '\\\"')}"`;
+        const out = execSync(verifyCoreCmd, { encoding: 'utf8' });
+        if (logger.verboseMode) logger.info(out.trim());
+        if (/^Missing:/.test(out)) {
+            const fixCmd = `uv pip install --python ${VENV_DIR} python-dateutil`;
+            logger.progress('Installing missing python-dateutil');
+            logger.command(fixCmd);
+            execSync(fixCmd, { stdio: 'inherit' });
+        }
+    } catch (verr) {
+        logger.warning('Non-fatal issue during core runtime import verification');
+    }
+
     logger.success('Core AI dependencies installed (including edge-tts and gtts)');
 } catch (error) {
     console.error(`❌ Error installing core dependencies with uv: ${error.message}`);
@@ -849,28 +868,28 @@ const CHATTERBOX_DIR = 'chatterbox-temp'; // Temporary directory for cloning
 try {
     // Clone the official chatterbox repository
     logger.progress('Cloning official chatterbox repository');
-    
+
     // Remove existing chatterbox directory if it exists
     if (fs.existsSync(CHATTERBOX_DIR)) {
         logger.info('Removing existing chatterbox directory...');
         fs.rmSync(CHATTERBOX_DIR, { recursive: true, force: true });
     }
-    
+
     // Clone the repository
     const cloneCmd = `git clone https://github.com/resemble-ai/chatterbox.git ${CHATTERBOX_DIR}`;
     logger.command(cloneCmd);
     execSync(cloneCmd, { stdio: 'inherit' });
     logger.success('Chatterbox repository cloned');
-    
+
     // Apply PyTorch compatibility fix by modifying chatterbox dependencies
     logger.progress('Applying PyTorch compatibility fix for chatterbox');
     const pyprojectPath = path.join(CHATTERBOX_DIR, 'pyproject.toml');
-    
+
     if (fs.existsSync(pyprojectPath)) {
         logger.info('Updating chatterbox dependencies for PyTorch 2.4.1 compatibility...');
-        
+
         let pyprojectContent = fs.readFileSync(pyprojectPath, 'utf8');
-        
+
         // Replace incompatible PyTorch versions with compatible ones
         // Handle both single and double quotes, and various version formats
         pyprojectContent = pyprojectContent
@@ -887,7 +906,20 @@ try {
             .replace('"torchaudio==2.5.0"', '"torchaudio>=2.4.1,<2.5.0"')
             .replace('"transformers==4.46.3"', '"transformers>=4.40.0,<4.47.0"')
             .replace('"diffusers==0.29.0"', '"diffusers>=0.25.0,<0.30.0"');
-        
+
+
+        // Remove russian-text-stresser due to spacy==3.6.* hard pin causing conflict with gradio/typer (pydantic v2)
+        try {
+            const beforeLenRTS = pyprojectContent.length;
+            pyprojectContent = pyprojectContent.replace(/^[\t ]*["']russian-text-stresser\b[^\n]*$/gmi, '');
+            if (pyprojectContent.length !== beforeLenRTS) {
+                logger.info('Removed russian-text-stresser to avoid spacy/typer/pydantic conflict');
+                logger.info('Note: Russian stress features will be disabled.');
+            }
+        } catch (e) {
+            logger.warning('Could not adjust russian-text-stresser dependency automatically');
+        }
+
         // Remove or comment out pkuseg on Windows (requires MSVC compiler)
         if (process.platform === 'win32') {
             logger.info('Removing pkuseg dependency on Windows (requires MSVC compiler)...');
@@ -897,29 +929,66 @@ try {
                 ''  // Remove the line entirely
             );
         }
-        
+
         fs.writeFileSync(pyprojectPath, pyprojectContent, 'utf8');
         logger.success('Chatterbox dependencies updated for compatibility');
     } else {
         logger.warning('pyproject.toml not found in chatterbox directory');
     }
-    
+
     // First ensure numpy is installed (required for pkuseg build dependency)
     logger.progress('Installing numpy (required for chatterbox dependencies)');
     const numpyCmd = `uv pip install --python ${VENV_DIR} numpy`;
     execSync(numpyCmd, { stdio: 'inherit' });
-    
+
+
+    // Ensure Poetry build backend is available for dependencies using poetry.core (e.g., russian-text-stresser)
+    logger.progress('Ensuring Poetry build backend (poetry-core) is available');
+    try {
+        const poetryCoreCmd = `uv pip install --python ${VENV_DIR} poetry-core`;
+        logger.command(poetryCoreCmd);
+        execSync(poetryCoreCmd, { stdio: 'inherit' });
+        logger.success('poetry-core installed into the shared virtual environment');
+    } catch (poetryCoreError) {
+        logger.warning(`Failed to install poetry-core automatically: ${poetryCoreError.message}`);
+        logger.info('Dependencies that use the poetry.core build backend may fail to build without this.');
+    }
+
     // Install chatterbox from the local modified directory
     logger.progress('Installing chatterbox from local modified directory');
     // Don't use -e flag, we want it copied to site-packages
-    const installChatterboxCmd = `uv pip install --python ${VENV_DIR} --no-build-isolation ./${CHATTERBOX_DIR}`;
+    // Root fix: install chatterbox together with python-dateutil in a single resolution to prevent pruning
+    const installChatterboxCmd = `uv pip install --python ${VENV_DIR} --no-build-isolation ./${CHATTERBOX_DIR} python-dateutil==2.9.0.post0`;
     logger.command(installChatterboxCmd);
-    logger.info(`Installing chatterbox (will be installed to site-packages)`);
+    logger.info(`Installing chatterbox with pinned python-dateutil (single resolution, site-packages)`);
 
     const env = { ...process.env, UV_HTTP_TIMEOUT: '600' }; // 10 minutes for installation
-    execSync(installChatterboxCmd, { stdio: 'inherit', env });
-    logger.success('Chatterbox installation completed');
-    
+    try {
+        execSync(installChatterboxCmd, { stdio: 'inherit', env });
+        logger.success('Chatterbox installation completed');
+    } catch (installErr) {
+        const msg = String(installErr?.message || installErr);
+        logger.warning(`Chatterbox install failed: ${msg}`);
+        // If failure is due to Poetry backend missing, install both poetry-core and poetry, then retry once
+        const mayBePoetryBackend = /No module named 'poetry'|poetry\.core|poetry\.masonry|prepare_metadata_for_build_wheel/i.test(msg);
+        if (mayBePoetryBackend) {
+            try {
+                const poetryInstallCmd = `uv pip install --python ${VENV_DIR} poetry`;
+                logger.progress('Installing Poetry (full) for legacy Poetry build backends');
+                logger.command(poetryInstallCmd);
+                execSync(poetryInstallCmd, { stdio: 'inherit' });
+                // Retry install
+                logger.progress('Retrying chatterbox installation after installing Poetry');
+                execSync(installChatterboxCmd, { stdio: 'inherit', env });
+                logger.success('Chatterbox installation completed after installing Poetry');
+            } catch (retryErr) {
+                throw retryErr; // Re-throw to be handled by outer catch
+            }
+        } else {
+            throw installErr;
+        }
+    }
+
     // Clean up the temporary directory after installation
     logger.progress('Cleaning up temporary directory');
     try {
@@ -928,7 +997,7 @@ try {
     } catch (err) {
         logger.warning('Could not remove temporary directory');
     }
-    
+
     // Verify PyTorch versions are correct
     logger.progress('Verifying PyTorch compatibility after chatterbox installation');
     try {
@@ -947,6 +1016,20 @@ try {
 
     logger.success('Chatterbox is ready to use');
 
+    // Final safeguard: ensure python-dateutil is present after chatterbox install
+    try {
+        const ensureDateutilCmd = `uv pip install --python ${VENV_DIR} --force-reinstall --no-cache python-dateutil==2.9.0.post0 six==1.16.0`;
+        logger.progress('Ensuring python-dateutil is present (post-chatterbox)');
+        logger.command(ensureDateutilCmd);
+        execSync(ensureDateutilCmd, { stdio: 'inherit' });
+        // Verify import strictly from the .venv interpreter
+        const verifyDateutilCmd = `uv run --python ${VENV_DIR} -- python -c "import dateutil,sys; print('dateutil OK from', sys.executable)"`;
+        execSync(verifyDateutilCmd, { stdio: 'inherit' });
+    } catch (e) {
+        logger.warning(`Could not verify python-dateutil after chatterbox install: ${e.message}`);
+    }
+
+
     logger.progress('Verifying voice cloning engine');
     const verifyChatterboxPyCode = `
 import sys
@@ -956,6 +1039,8 @@ print("Verifying chatterbox installation...")
 print("Python executable:", sys.executable)
 
 # Test core service dependencies
+
+
 try:
     import flask
     import flask_cors

@@ -1,6 +1,9 @@
 import React, { useState, useRef, useEffect, memo } from 'react';
 import { useTranslation } from 'react-i18next';
 import { formatTime } from '../../utils/timeFormatter';
+import '../../utils/functionalScrollbar';
+
+import CustomScrollbarTextarea from '../common/CustomScrollbarTextarea.jsx';
 
 // Continuous progress indicator component
 const ContinuousProgressIndicator = ({ lyric, isCurrentLyric, currentTime }) => {
@@ -101,6 +104,10 @@ const LyricItem = ({
   const [showMergeArrows, setShowMergeArrows] = useState(false);
   const mergeTimeoutRef = useRef(null);
 
+  // Track when user is interacting with any arrow so we can raise z-index and prevent hover steal
+  const [isArrowHover, setIsArrowHover] = useState(false);
+
+
   // Handle insert container mouse enter
   const handleInsertMouseEnter = () => {
     if (insertTimeoutRef.current) {
@@ -108,6 +115,7 @@ const LyricItem = ({
       insertTimeoutRef.current = null;
     }
     setShowInsertArrows(true);
+    setIsArrowHover(true);
   };
 
   // Handle insert container mouse leave
@@ -125,8 +133,20 @@ const LyricItem = ({
 
       if (!isOverArrow) {
         setShowInsertArrows(false);
+        setIsArrowHover(false);
       }
-    }, 300); // 300ms delay before hiding
+    }, 600); // reasonable delay without causing overlap issues
+  };
+
+  // Hide insert arrows shortly after leaving arrow buttons if not over container
+  const handleInsertArrowMouseLeave = () => {
+    insertTimeoutRef.current = setTimeout(() => {
+      const anyHover = document.querySelector('.insert-lyric-button-container .arrow-button:hover');
+      if (!anyHover) {
+        setShowInsertArrows(false);
+        setIsArrowHover(false);
+      }
+    }, 250);
   };
 
   // Handle merge container mouse enter
@@ -136,6 +156,7 @@ const LyricItem = ({
       mergeTimeoutRef.current = null;
     }
     setShowMergeArrows(true);
+    setIsArrowHover(true);
   };
 
   // Handle merge container mouse leave
@@ -153,8 +174,20 @@ const LyricItem = ({
 
       if (!isOverArrow) {
         setShowMergeArrows(false);
+        setIsArrowHover(false);
       }
-    }, 300); // 300ms delay before hiding
+    }, 600);
+  };
+
+  // Hide merge arrows shortly after leaving arrow buttons if not over container
+  const handleMergeArrowMouseLeave = () => {
+    mergeTimeoutRef.current = setTimeout(() => {
+      const anyHover = document.querySelector('.merge-lyrics-button-container .arrow-button:hover');
+      if (!anyHover) {
+        setShowMergeArrows(false);
+        setIsArrowHover(false);
+      }
+    }, 250);
   };
 
   // Clean up timeouts on unmount
@@ -166,14 +199,19 @@ const LyricItem = ({
       if (mergeTimeoutRef.current) {
         clearTimeout(mergeTimeoutRef.current);
       }
+
     };
   }, []);
 
   const handleEditClick = (e) => {
     e.stopPropagation();
+    // Ensure this lyric becomes the focused/current one before editing
+    onLyricClick(lyric.start);
     setIsEditing(true);
     setEditText(lyric.text);
     setTimeout(() => textInputRef.current?.focus(), 0);
+
+
   };
 
   const handleTextSubmit = () => {
@@ -229,10 +267,10 @@ const LyricItem = ({
   };
 
   return (
-    <div className="lyric-item-container">
+    <div className={`lyric-item-container ${(showInsertArrows || showMergeArrows || isArrowHover) ? 'arrow-hover' : ''}`}>
       <div
         data-lyric-index={index}
-        className={`lyric-item ${isCurrentLyric ? 'current' : ''}`}
+        className={`lyric-item ${isCurrentLyric ? 'current' : ''} ${(showInsertArrows || showMergeArrows || isArrowHover) ? 'arrow-hover' : ''} ${isEditing ? 'editing-active' : ''}`}
         onClick={() => {
           if (Date.now() - getLastDragEnd() < 100) {
             return;
@@ -254,10 +292,7 @@ const LyricItem = ({
                 onClick={handleEditClick}
                 title={t('lyrics.editTooltip', 'Edit lyrics')}
               >
-                <svg viewBox="0 0 24 24" width="16" height="16" stroke="currentColor" strokeWidth="2" fill="none">
-                  <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/>
-                  <path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/>
-                </svg>
+                <svg xmlns="http://www.w3.org/2000/svg" height="16" viewBox="0 -960 960 960" width="16" fill="#e3e3e3"><path d="M182 18q-44.4 0-74.7-31Q77-44 77-88.5t31-74.5q31-30 75-30h595q44.4 0 74.7 29.8Q883-133.4 883-88q0 44-31 75t-75 31H182Zm67-396h47l262-262-23-25-24-23-262 263v47Zm-105 37.2v-99.84q0-14.36 5-26.36t14-22l429-429q14-14 30.98-20.5 16.97-6.5 34.5-6.5 17.52 0 35.02 6.5Q710-932 724-918l64 62q14 14 21 31.75 7 17.74 7 35 0 18.25-7 35.75T789-723L359-292q-9 9-21 14t-26.36 5H211.8q-27.51 0-47.66-20.14Q144-313.29 144-340.8ZM707-788l-48-49 48 49ZM558-640l-23-25-24-23 47 48Z"/></svg>
               </button>
               <button
                 className="delete-lyric-btn"
@@ -267,9 +302,7 @@ const LyricItem = ({
                 }}
                 title={t('lyrics.deleteTooltip', 'Delete lyrics')}
               >
-                <svg viewBox="0 0 24 24" width="16" height="16" stroke="currentColor" strokeWidth="2" fill="none">
-                  <path d="M18 6L6 18M6 6l12 12"/>
-                </svg>
+                <svg xmlns="http://www.w3.org/2000/svg" height="16" viewBox="0 -960 960 960" width="16" fill="#e3e3e3"><path d="M267-74q-57 0-96.5-39.5T131-210v-501q-28 0-47.5-19.5t-19.5-48Q64-807 83.5-827t47.5-20h205q0-27 18.8-46.5T402-913h154q28.4 0 47.88 19.36 19.47 19.36 19.47 46.64h205.61q29.04 0 48.54 20.2T897-779q0 29-19.5 48.5T829-711v501q0 57-39.5 96.5T693-74H267Zm426-637H267v501h426v-501Zm-426 0v501-501Zm213 331 63 62q16 17 39.48 16.5Q605.96-302 623-319q16-16 16-39.48 0-23.48-16-40.52l-63-61 63-62q16-17.04 16-40.52Q639-586 623-602q-17.04-17-40.52-17Q559-619 543-602l-63 62-62-62q-16-17-38.98-17-22.98 0-40.02 17-16 16-16 39.48 0 23.48 16 40.52l61 62-62 62q-16 17.04-15.5 40.02Q323-335 339-319q17.04 17 40.52 17Q403-302 419-319l61-61Z"/></svg>
               </button>
               {/* Always show insert and merge buttons for all lyrics */}
               <div
@@ -281,10 +314,7 @@ const LyricItem = ({
                   className="insert-lyric-button"
                   title={t('lyrics.insertTooltip', 'Add new line')}
                 >
-                  <svg viewBox="0 0 24 24" width="16" height="16" stroke="currentColor" strokeWidth="2" fill="none">
-                    <line x1="12" y1="5" x2="12" y2="19"></line>
-                    <line x1="5" y1="12" x2="19" y2="12"></line>
-                  </svg>
+                  <svg xmlns="http://www.w3.org/2000/svg" height="16" viewBox="0 -960 960 960" width="16" fill="#e3e3e3"><path d="M412-412H222q-29 0-48.5-20.2T154-480q0-29 19.5-48.5T222-548h190v-191q0-27.6 20.2-47.8Q452.4-807 480-807q27.6 0 47.8 20.2Q548-766.6 548-739v191h190q29 0 48.5 19.5t19.5 48q0 28.5-19.5 48.5T738-412H548v190q0 27.6-20.2 47.8Q507.6-154 480-154q-27.6 0-47.8-20.2Q412-194.4 412-222v-190Z"/></svg>
                 </div>
                 {showInsertArrows && (
                   <div className="arrow-buttons">
@@ -297,11 +327,11 @@ const LyricItem = ({
                           clearTimeout(insertTimeoutRef.current);
                           insertTimeoutRef.current = null;
                         }
+                        setIsArrowHover(true);
                       }}
+                      onMouseLeave={handleInsertArrowMouseLeave}
                     >
-                      <svg viewBox="0 0 24 24" width="16" height="16" stroke="currentColor" strokeWidth="2" fill="none">
-                        <polyline points="18 15 12 9 6 15"></polyline>
-                      </svg>
+                      <svg xmlns="http://www.w3.org/2000/svg" height="16" viewBox="0 -960 960 960" width="16" fill="#e3e3e3"><path d="M480-74q-28 0-48-19.5T412-142v-269H142q-29 0-48.5-19.5T74-479q0-28 19.5-48t48.5-20h269v-271q0-29 19.5-48.5T479-886q28 0 48 19.5t20 48.5v270h271q29 0 48.5 20t19.5 48q0 28-19.5 48T818-412H548v270q0 29-20 48.5T480-74Z"/></svg>
                     </button>
                     <button
                       className="arrow-button down"
@@ -312,11 +342,11 @@ const LyricItem = ({
                           clearTimeout(insertTimeoutRef.current);
                           insertTimeoutRef.current = null;
                         }
+                        setIsArrowHover(true);
                       }}
+                      onMouseLeave={handleInsertArrowMouseLeave}
                     >
-                      <svg viewBox="0 0 24 24" width="16" height="16" stroke="currentColor" strokeWidth="2" fill="none">
-                        <polyline points="6 9 12 15 18 9"></polyline>
-                      </svg>
+                      <svg xmlns="http://www.w3.org/2000/svg" height="16" viewBox="0 -960 960 960" width="16" fill="#e3e3e3"><path d="M480-74q-28 0-48-19.5T412-142v-269H142q-29 0-48.5-19.5T74-479q0-28 19.5-48t48.5-20h269v-271q0-29 19.5-48.5T479-886q28 0 48 19.5t20 48.5v270h271q29 0 48.5 20t19.5 48q0 28-19.5 48T818-412H548v270q0 29-20 48.5T480-74Z"/></svg>
                     </button>
                   </div>
                 )}
@@ -330,9 +360,7 @@ const LyricItem = ({
                   className="merge-lyrics-button"
                   title={t('lyrics.mergeTooltip', 'Merge lyrics')}
                 >
-                  <svg viewBox="0 0 24 24" width="16" height="16" stroke="currentColor" strokeWidth="2" fill="none">
-                    <path d="M8 18h8M8 6h8M12 2v20"/>
-                  </svg>
+                  <svg xmlns="http://www.w3.org/2000/svg" height="16" viewBox="0 -960 960 960" width="16" fill="#e3e3e3"><path d="M454-34q-57 0-96.5-39.5T318-170v-151H171q-57 0-96.5-38.8T35-457v-334q0-57 39.5-96.5T171-927h334q57 0 96.5 39.5T641-791v151h147q57 0 96.5 39.5T924-504v334q0 57-39.5 96.5T788-34H454Zm-10-126h354v-354H651q-57 0-96.5-39.5T515-650v-151H161v354h147q57 0 96.5 39.5T444-311v151Zm36-320Z"/></svg>
                 </div>
                 {showMergeArrows && (
                   <div className="arrow-buttons">
@@ -346,11 +374,11 @@ const LyricItem = ({
                           clearTimeout(mergeTimeoutRef.current);
                           mergeTimeoutRef.current = null;
                         }
+                        setIsArrowHover(true);
                       }}
+                      onMouseLeave={handleMergeArrowMouseLeave}
                     >
-                      <svg viewBox="0 0 24 24" width="16" height="16" stroke="currentColor" strokeWidth="2" fill="none">
-                        <polyline points="18 15 12 9 6 15"></polyline>
-                      </svg>
+                      <svg xmlns="http://www.w3.org/2000/svg" height="24px" viewBox="0 -960 960 960" width="24px" fill="#e3e3e3"><path d="m480-244-78 78q-20 19-47.5 19T307-166q-20-20-20-48t20-47l125-125q9-9 22-14.5t26-5.5q13 0 26 5.5t22 14.5l125 125q20 19 20 47t-20 48q-20 19-47.5 19T558-166l-78-78Zm0-472 78-79q20-19 47.5-19t47.5 19q20 20 20 48t-20 47L528-575q-9 10-22 15t-26 5q-13 0-26-5t-22-15L307-700q-20-19-20-47t20-48q20-19 47.5-19t47.5 19l78 79Z"/></svg>
                     </button>
                     <button
                       className="arrow-button down"
@@ -362,11 +390,11 @@ const LyricItem = ({
                           clearTimeout(mergeTimeoutRef.current);
                           mergeTimeoutRef.current = null;
                         }
+                        setIsArrowHover(true);
                       }}
+                      onMouseLeave={handleMergeArrowMouseLeave}
                     >
-                      <svg viewBox="0 0 24 24" width="16" height="16" stroke="currentColor" strokeWidth="2" fill="none">
-                        <polyline points="6 9 12 15 18 9"></polyline>
-                      </svg>
+                      <svg xmlns="http://www.w3.org/2000/svg" height="24px" viewBox="0 -960 960 960" width="24px" fill="#e3e3e3"><path d="m480-244-78 78q-20 19-47.5 19T307-166q-20-20-20-48t20-47l125-125q9-9 22-14.5t26-5.5q13 0 26 5.5t22 14.5l125 125q20 19 20 47t-20 48q-20 19-47.5 19T558-166l-78-78Zm0-472 78-79q20-19 47.5-19t47.5 19q20 20 20 48t-20 47L528-575q-9 10-22 15t-26 5q-13 0-26-5t-22-15L307-700q-20-19-20-47t20-48q20-19 47.5-19t47.5 19l78 79Z"/></svg>
                     </button>
                   </div>
                 )}
@@ -374,17 +402,30 @@ const LyricItem = ({
             </div>
           )}
 
-          <div className="lyric-text">
+          <div
+            className={`lyric-text ${isEditing ? 'editing' : ''}`}
+            onDoubleClick={(e) => {
+              e.stopPropagation();
+              if (allowEditing) {
+                onLyricClick(lyric.start);
+                setIsEditing(true);
+                setEditText(lyric.text);
+                setTimeout(() => textInputRef.current?.focus(), 0);
+              }
+            }}
+          >
             {isEditing ? (
-              <input
+              <CustomScrollbarTextarea
                 ref={textInputRef}
-                type="text"
+                className="lyric-text-input"
+                containerClassName="lyric-text-input-container compact minimal"
                 value={editText}
                 onChange={(e) => setEditText(e.target.value)}
                 onBlur={handleTextSubmit}
                 onKeyDown={handleKeyPress}
-                className="lyric-text-input"
-                onClick={e => e.stopPropagation()}
+                rows={3}
+                onClick={(e) => e.stopPropagation()}
+                placeholder={t('lyrics.editPlaceholder', 'Edit lyric text')}
               />
             ) : (
               <span onClick={(e) => {

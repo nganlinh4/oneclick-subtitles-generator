@@ -97,7 +97,6 @@
   "videoReady": "Video ready for segment selection...",
   "subtitleUploadSuccess": "Subtitle file uploaded successfully!",
   "autoSubtitleNotice": "Below are subtitles provided while the video is downloading. If you don’t like them, press Ctrl+A to select all and delete/regenerate",
-
   "downloadAndViewWithSrt": "Download + View with Uploaded SRT",
   "downloadAndGenerate": "Download video + Generate timed subtitles with AI",
   "preparingProcessing": "Preparing video for processing...",

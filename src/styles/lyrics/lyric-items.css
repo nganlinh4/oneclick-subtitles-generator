@@ -9,10 +9,10 @@
 }
 
 /* Material Design 3 list item for lyrics - improved for multi-line text */
+/* Important: remove vertical padding from the hover target to avoid early hover in virtualized lists. */
 .lyric-item {
   position: relative;
-  padding: 12px 16px;
-  padding-right: 16px; /* Standard padding */
+  padding: 0; /* Vertical padding moved to inner content to prevent early hover */
   border-bottom: 1px solid var(--md-outline-variant);
   cursor: pointer;
   transition: background-color var(--md-duration-medium3) var(--md-easing-emphasized),
@@ -45,6 +45,8 @@
 /* Prevent hover effect when arrow buttons are being interacted with */
 .lyric-item.arrow-hover {
   background-color: transparent;
+  z-index: 1000; /* Ensure this row sits above neighboring rows while interacting with arrows */
+  position: relative;
 }
 
 .lyric-item.current {
@@ -62,7 +64,16 @@
 
 }
 
+/* Ensure editing lyric floats above others even if not current */
+.lyric-item.editing-active {
+  position: relative;
+  z-index: 1002; /* Above current item (z-index:2) and arrows */
+  box-shadow: var(--md-elevation-level2);
+}
+
+
 /* Material Design 3 lyric content - improved for multi-line text */
+/* Use top padding (no bottom) to nudge content down without affecting neighbor hover in virtualized lists. */
 .lyric-content {
   display: flex;
   align-items: flex-start; /* Align to top for multi-line text */
@@ -70,6 +81,8 @@
   position: relative;
   width: 100%;
   flex-wrap: wrap; /* Allow wrapping for very long content */
+  padding: 8px 16px 0 16px; /* Nudge content down; only horizontal + top padding */
+  margin: 0; /* Avoid margin collapse with parent that could shift hover boundary */
 }
 
 /* Lyric numbering */
@@ -100,12 +113,13 @@
   margin-right: 16px; /* Space between text and timing controls */
   line-height: 1.5; /* Increased line height for better readability */
   word-break: break-word; /* Break long words if needed */
-  padding: 4px 0; /* Add some vertical padding */
+  padding: 0; /* No vertical padding to avoid affecting hover boundaries */
   min-height: 24px; /* Minimum height to prevent collapsing */
   display: block; /* Ensure block display for proper wrapping */
   width: 100%; /* Use full width available */
   cursor: pointer;
   user-select: none;
+  position: relative; /* Needed for custom scrollbar track (::before) */
   transition: color var(--md-duration-medium2) var(--md-easing-standard),
               transform var(--md-duration-medium3) var(--md-easing-emphasized),
               font-weight var(--md-duration-medium2) var(--md-easing-standard);
@@ -134,13 +148,16 @@
 .lyric-text-input {
   width: 100%;
   padding: 4px 8px;
-  margin: -4px 0;
+  /* Nudge the input down slightly to align vertically with non-edit state */
+  margin: 2px 0 0 0;
   border: 1px solid var(--border-color);
-  border-radius: 4px;
+  border-radius: 12px;
   background: var(--background-primary);
   color: var(--text-primary);
   font-size: inherit;
   font-family: inherit;
+  line-height: 1.5; /* Match non-edit text line height */
+  box-sizing: border-box;
   transition: all 0.2s ease;
 }
 
@@ -233,6 +250,16 @@
   transition: transform var(--md-duration-medium2) var(--md-easing-emphasized);
 }
 
+/* Ensure icons use button text color for proper contrast in light/dark modes */
+.edit-lyric-btn svg,
+.delete-lyric-btn svg,
+.insert-lyric-button svg,
+.merge-lyrics-button svg,
+.arrow-button svg {
+  fill: currentColor;
+}
+
+
 .edit-lyric-btn:hover svg {
   transform: rotate(15deg);
 }
@@ -264,7 +291,6 @@
   position: relative; /* For positioning */
   min-width: 140px; /* Ensure minimum width for timing controls */
   align-self: flex-start; /* Align to top of container for multi-line text */
-  margin-top: 4px; /* Small top margin for alignment */
 }
 
 /* Material Design 3 time control - larger and more visible */
@@ -293,7 +319,6 @@
   background-color: var(--md-primary-container);
   border-color: var(--md-primary);
   color: var(--md-on-primary-container);
-  transform: translateY(-2px);
 }
 
 /* Material Design 3 time control dragging state */
@@ -341,4 +366,71 @@
 /* Show progress indicator only for current lyric */
 .lyric-item.current .progress-indicator {
   opacity: 1;
+}
+
+/* Add this to your styles/LyricsDisplay.css or related stylesheet */
+
+.lyric-item-container .lyric-text {
+  /* This is the key part for the new behavior */
+  max-height: 3.2em; /* (line-height * 2 lines). Adjust if your line-height is different. */
+  overflow-y: auto;   /* Show vertical scrollbar only when needed */
+
+  /* You might need to ensure these properties are set for consistency */
+  line-height: 1.6em; /* Crucial for calculating max-height correctly */
+  padding-right: 4px; /* Add some padding so the scrollbar doesn't overlap text */
+  white-space: pre-wrap; /* Respects newlines and wraps text */
+  word-break: break-word; /* Prevents long words from overflowing */
+}
+
+/* When editing, allow full height so the CustomScrollbarTextarea is not clipped */
+.lyric-item-container .lyric-text.editing {
+  max-height: none;
+  overflow: visible;
+  padding-right: 0;
+}
+
+
+/* Hide native scrollbar for lyric text (we will use functional custom scrollbar) */
+.lyric-item-container .lyric-text {
+  scrollbar-width: none; /* Firefox */
+  -ms-overflow-style: none; /* IE and Edge */
+}
+
+.lyric-item-container .lyric-text::-webkit-scrollbar {
+  display: none;
+  width: 0;
+  height: 0;
+  background: transparent;
+}
+
+/* Remove the bad scrollbar track - we'll use the functional scrollbar instead */
+
+/* Custom scrollbar thumb element (positioned on right side of lyric-content) */
+.custom-scrollbar-thumb {
+  position: absolute;
+  right: 4px; /* Position on right side of lyric-content */
+  width: 4px;
+  min-height: 20px;
+  background: rgba(var(--md-primary-rgb, 103, 80, 164), 0.6);
+  border-radius: 50px;
+  opacity: 1; /* Always visible, no hover requirement */
+  transition: all 0.2s ease;
+  pointer-events: auto; /* Always enabled */
+  z-index: 10;
+}
+
+/* Dragging state */
+.custom-scrollbar-thumb.dragging {
+  background: var(--md-primary);
+  width: 6px;
+  right: 3px; /* Adjust for wider thumb when dragging */
+  opacity: 1;
+}
+
+/* Dark mode */
+[data-theme="dark"] .custom-scrollbar-thumb {
+  background: rgba(var(--md-primary-rgb, 208, 188, 255), 0.6);
+}
+[data-theme="dark"] .custom-scrollbar-thumb.dragging {
+  background: var(--md-primary);
 }

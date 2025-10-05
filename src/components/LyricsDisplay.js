@@ -1,4 +1,4 @@
-import React, { useState, useRef, useEffect } from 'react';
+import { useState, useRef, useEffect, useCallback } from 'react';
 import { useTranslation } from 'react-i18next';
 import '../styles/LyricsDisplay.css';
 import TimelineVisualization from './lyrics/TimelineVisualization';
@@ -29,7 +29,7 @@ const downloadFile = (content, filename, type = 'text/plain') => {
   URL.revokeObjectURL(url);
 };
 
-// Virtualized row renderer for lyrics
+// Virtualized row renderer for lyrics (simplified for deterministic height)
 const VirtualizedLyricRow = ({ index, style, data }) => {
   const {
     lyrics,
@@ -51,10 +51,12 @@ const VirtualizedLyricRow = ({ index, style, data }) => {
   const lyric = lyrics[index];
   const hasNextLyric = index < lyrics.length - 1;
 
+  // The complex height measurement logic has been removed.
+  // The layout is now controlled by getRowHeight and CSS.
   return (
     <div style={style}>
       <LyricItem
-        key={index}
+        key={index} // key is appropriate here within the mapping context of the parent
         lyric={lyric}
         index={index}
         isCurrentLyric={index === currentIndex}
@@ -99,6 +101,7 @@ const LyricsDisplay = ({
   const [panOffset, setPanOffset] = useState(0);
   const [centerTimelineAt, setCenterTimelineAt] = useState(null);
   const rowHeights = useRef({});
+  const listRef = useRef(null);
 
   const [txtContent, setTxtContent] = useState(null);
   const [isModalOpen, setIsModalOpen] = useState(false);
@@ -175,29 +178,29 @@ const LyricsDisplay = ({
     return localStorage.getItem('lyrics_auto_scroll') !== 'false';
   });
 
-  // Function to calculate row height based on text content
+  // NEW: Simplified and deterministic row height calculation.
+  // We calculate height based on the number of newline characters (\n),
+  // but we cap it at a maximum of 2 lines. CSS will handle the rest.
   const getRowHeight = index => {
-    // If we already calculated this height, return it
     if (rowHeights.current[index] !== undefined) {
       return rowHeights.current[index];
     }
-
     const lyric = matchedLyrics[index];
     if (!lyric) return 50; // Default height
 
-    // Calculate height based on text length
-    const text = lyric.text || '';
-    const lineCount = text.split('\n').length; // Count actual line breaks
-    const estimatedLines = Math.ceil(text.length / 40); // Estimate based on characters per line
-    const lines = Math.max(lineCount, estimatedLines);
+    // Count explicit lines from '\n'
+    const lineCount = (lyric.text || '').split('\n').length;
+    // Cap the line count at 2 for height calculation purposes
+    const cappedLineCount = Math.min(lineCount, 2);
 
-    // Base height + additional height per line
-    const height = 50 + (lines > 1 ? (lines - 1) * 20 : 0);
+    const baseHeight = 50; // Base height for a single-line item
+    const extraLineHeight = 20; // Additional height for the second line
+    const height = baseHeight + (cappedLineCount - 1) * extraLineHeight;
 
-    // Cache the calculated height
     rowHeights.current[index] = height;
     return height;
   };
+
 
   // Reset row heights when lyrics change
   useEffect(() => {
@@ -206,9 +209,6 @@ const LyricsDisplay = ({
       listRef.current.resetAfterIndex(0);
     }
   }, [matchedLyrics]);
-
-  // No longer need to enforce minimum zoom when duration changes
-  // Users can freely zoom to any level
 
   // Listen for changes to the waveform settings in localStorage
   useEffect(() => {
@@ -260,8 +260,6 @@ const LyricsDisplay = ({
     };
   }, []);
 
-  // Gemini effects for the Download Center button have been removed to reduce lag
-
   const {
     lyrics,
     isSticky,
@@ -299,113 +297,16 @@ const LyricsDisplay = ({
   // Find current lyric index based on time
   const currentIndex = lyrics.findIndex((lyric, index) => {
     const nextLyric = lyrics[index + 1];
-    // If there's a next lyric, use the middle point between current lyric's end and next lyric's start
-    // Subtract 1ms from the midpoint to prevent flickering when subtitleA.end == subtitleB.start
-    // Otherwise, use the current lyric's end time
     return currentTime >= lyric.start &&
       (nextLyric ? currentTime < (lyric.end + (nextLyric.start - lyric.end) / 2) - 0.001 : currentTime <= lyric.end);
   });
 
-  // Reference to the virtualized list
-  const listRef = useRef(null);
-  const isScrollingRef = useRef(false);
-  const scrollAnimationRef = useRef(null);
-
-  // Smooth scroll function for virtualized list
-  const smoothScrollToItem = (targetIndex, align = 'center') => {
-    if (!listRef.current || isScrollingRef.current || targetIndex < 0) return;
-
-    const list = listRef.current;
-
-    // Get current scroll position
-    const currentScrollTop = list.state.scrollOffset;
-
-    // Calculate target scroll position manually but more accurately
-    let targetScrollTop = 0;
-
-    // Sum up heights of all items before the target
-    for (let i = 0; i < targetIndex; i++) {
-      targetScrollTop += getRowHeight(i);
-    }
-
-    // Adjust for center alignment
-    if (align === 'center') {
-      const containerHeight = 300;
-      const targetItemHeight = getRowHeight(targetIndex);
-      targetScrollTop -= (containerHeight - targetItemHeight) / 2;
-    }
-
-    // Clamp to valid scroll range
-    const maxScrollTop = Math.max(0,
-      lyrics.reduce((sum, _, i) => sum + getRowHeight(i), 0) - 300
-    );
-    targetScrollTop = Math.max(0, Math.min(targetScrollTop, maxScrollTop));
-
-    const distance = targetScrollTop - currentScrollTop;
-
-    // If the distance is very small, just snap to position
-    if (Math.abs(distance) < 5) {
-      list.scrollTo(targetScrollTop);
-      return;
-    }
-
-    // For large jumps (more than 2 container heights), use instant scroll to avoid virtualization issues
-    const containerHeight = 300;
-    const largeJumpThreshold = containerHeight * 2;
-
-    if (Math.abs(distance) > largeJumpThreshold) {
-      // Use react-window's built-in scrollToItem for large jumps to handle virtualization properly
-      list.scrollToItem(targetIndex, align);
-      return;
-    }
-
-    // Cancel any existing animation
-    if (scrollAnimationRef.current) {
-      cancelAnimationFrame(scrollAnimationRef.current);
-    }
-
-    isScrollingRef.current = true;
-    const startTime = performance.now();
-    // Shorter duration for more responsive feel
-    const duration = Math.min(400, Math.max(150, Math.abs(distance) * 0.8));
-
-    const animate = (currentTime) => {
-      const elapsed = currentTime - startTime;
-      const progress = Math.min(elapsed / duration, 1);
-
-      // Use easeOutQuart for smoother deceleration
-      const easeOutQuart = 1 - Math.pow(1 - progress, 4);
-      const newScrollTop = currentScrollTop + (distance * easeOutQuart);
-
-      list.scrollTo(newScrollTop);
-
-      if (progress < 1) {
-        scrollAnimationRef.current = requestAnimationFrame(animate);
-      } else {
-        isScrollingRef.current = false;
-        scrollAnimationRef.current = null;
-      }
-    };
-
-    scrollAnimationRef.current = requestAnimationFrame(animate);
-  };
-
-  // Auto-scroll to the current lyric with smooth positioning
+  // Auto-scroll to the current lyric using react-window's scrollToItem (stable)
   useEffect(() => {
     if (autoScrollEnabled && currentIndex >= 0 && listRef.current) {
-      // Use smooth scroll instead of abrupt scrollToItem
-      smoothScrollToItem(currentIndex, 'center');
+      listRef.current.scrollToItem(currentIndex, 'center');
     }
   }, [currentIndex, autoScrollEnabled]);
-
-  // Cleanup scroll animation on unmount
-  useEffect(() => {
-    return () => {
-      if (scrollAnimationRef.current) {
-        cancelAnimationFrame(scrollAnimationRef.current);
-      }
-    };
-  }, []);
 
   // Watch for seekTime changes to center the timeline
   useEffect(() => {
@@ -416,8 +317,6 @@ const LyricsDisplay = ({
       requestAnimationFrame(() => setCenterTimelineAt(null));
     }
   }, [seekTime]);
-
-
 
   // Generate comprehensive filename based on priority system
   const generateFilename = (source, namingInfo = {}) => {

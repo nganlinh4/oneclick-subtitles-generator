@@ -276,9 +276,12 @@ except Exception as e:
 
     // Clean up old subtitle directories if using grouped subtitles
     const hasGroupedSubtitles = subtitles.some(subtitle => subtitle.original_ids && subtitle.original_ids.length > 0);
-    if (hasGroupedSubtitles) {
+    const skipCleanup = settings?.skipCleanup === true || settings?.skipClearOutput === true || settings?.retryMode === 'single' || settings?.retryMode === 'failed';
+    if (hasGroupedSubtitles && !skipCleanup) {
       console.log('gTTS: Detected grouped subtitles, cleaning up old directories');
       cleanupOldSubtitleDirectories(subtitles);
+    } else if (hasGroupedSubtitles && skipCleanup) {
+      console.log('gTTS: Detected grouped subtitles, but skipping cleanup due to retry/skip flag');
     }
 
     // Send completion event

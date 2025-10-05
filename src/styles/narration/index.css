@@ -128,3 +128,11 @@
 .example-audio-error {
   color: var(--error-color);
 }
+
+
+/* Override spacing for pending status inside narration results list */
+.results-list .status-message.pending {
+  margin: 0 !important;
+  display: inline-flex; /* keep icon/text alignment without forcing block spacing */
+  align-items: center;
+}

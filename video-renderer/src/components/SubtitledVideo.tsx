@@ -1,5 +1,5 @@
 import React, { useMemo, memo } from 'react';
-import { AbsoluteFill, useCurrentFrame, Audio, Video, OffthreadVideo, useVideoConfig } from 'remotion';
+import { AbsoluteFill, useCurrentFrame, Audio, Video, OffthreadVideo, useVideoConfig, Img } from 'remotion';
 import { LyricEntry, VideoMetadata } from '../types';
 import { ThemeProvider } from 'styled-components';
 import { defaultCustomization } from './SubtitleCustomization';
@@ -23,6 +23,8 @@ export interface Props {
   backgroundImageUrl?: string; // Optional background image
   metadata: VideoMetadata;
   isVideoFile?: boolean; // Flag to indicate if the main file is a video
+  framesPathUrl?: string; // When provided, use server-extracted frames as background
+  extractedAudioUrl?: string; // When using frames, play extracted audio
 }
 
 export const SubtitledVideoContent: React.FC<Props> = ({
@@ -31,7 +33,8 @@ export const SubtitledVideoContent: React.FC<Props> = ({
   lyrics,
   backgroundImageUrl,
   metadata,
-  isVideoFile = false
+  isVideoFile = false,
+  framesPathUrl
 }) => {
   const frame = useCurrentFrame();
   const { fps, height: compositionHeight } = useVideoConfig();
@@ -56,7 +59,7 @@ export const SubtitledVideoContent: React.FC<Props> = ({
 
   // Determine if we should show video or just audio with background
   const showVideo = isVideoFile;
-
+  const useServerFrames = showVideo && Boolean(framesPathUrl);
 
   // Memoize customization settings
   const customization = useMemo(() =>
@@ -262,47 +265,81 @@ export const SubtitledVideoContent: React.FC<Props> = ({
             position: 'relative',
             overflow: 'hidden'
           }}>
-            {/* Canvas background when padding is detected */}
+            {/* Canvas background (solid or blur) to emulate frontend padding visuals */}
             {metadata.cropSettings && (
-              (metadata.cropSettings.width > 100 || metadata.cropSettings.height > 100 || metadata.cropSettings.x < 0 || metadata.cropSettings.y < 0 ||
+              (metadata.cropSettings.canvasBgMode === 'solid' || metadata.cropSettings.canvasBgMode === 'blur' ||
+               metadata.cropSettings.width > 100 || metadata.cropSettings.height > 100 || metadata.cropSettings.x < 0 || metadata.cropSettings.y < 0 ||
                (metadata.cropSettings.x + metadata.cropSettings.width) > 100 || (metadata.cropSettings.y + metadata.cropSettings.height) > 100)
             ) && (
               <>
                 {metadata.cropSettings.canvasBgMode === 'solid' && (
                   <div style={{ position: 'absolute', inset: 0, backgroundColor: metadata.cropSettings.canvasBgColor || '#000' }} />
                 )}
-                {metadata.cropSettings.canvasBgMode === 'blur' && showVideo && (
-                  <OffthreadVideo
-                    src={audioUrl}
-                    volume={0}
-                    transparent={false}
-                    toneMapped={false}
-                    style={{ position: 'absolute', inset: 0, width: '100%', height: '100%', objectFit: 'cover', filter: `blur(${(metadata.cropSettings?.canvasBgBlur ?? 24)}px) brightness(0.7)`, transform: 'scale(1.06)' }}
-                  />
+                {metadata.cropSettings.canvasBgMode === 'blur' && (
+                  useServerFrames ? (
+                    <Img
+                      src={`${framesPathUrl}/${String(frame + 1).padStart(6, '0')}.png`}
+                      style={{ position: 'absolute', inset: 0, width: '100%', height: '100%', objectFit: 'cover', filter: `blur(${(metadata.cropSettings?.canvasBgBlur ?? 24)}px) brightness(0.7)`, transform: 'scale(1.06)' }}
+                    />
+                  ) : (
+                    <OffthreadVideo
+                      src={audioUrl}
+                      volume={0}
+                      transparent={false}
+                      toneMapped={false}
+                      style={{ position: 'absolute', inset: 0, width: '100%', height: '100%', objectFit: 'cover', filter: `blur(${(metadata.cropSettings?.canvasBgBlur ?? 24)}px) brightness(0.7)`, transform: 'scale(1.06)' }}
+                    />
+                  )
                 )}
               </>
             )}
-            <OffthreadVideo
-              src={audioUrl}
-              volume={(metadata.originalAudioVolume ?? 100) / 100}
-              transparent={false} // Use faster BMP extraction instead of PNG
-              toneMapped={false} // Disable tone mapping for faster rendering
-              style={{
-                // When cropping, scale up the video and reposition
-                ...(metadata.cropSettings && (metadata.cropSettings.width !== 100 || metadata.cropSettings.height !== 100 || metadata.cropSettings.x !== 0 || metadata.cropSettings.y !== 0) ? {
+
+            {/* If server provided pre-cropped frames, render them; else render raw video with CSS-crop */}
+            {useServerFrames ? (
+              <Img
+                src={`${framesPathUrl}/${String(frame + 1).padStart(6, '0')}.png`}
+                style={{
                   position: 'absolute',
-                  width: `${(100 / metadata.cropSettings.width) * 100}%`,
-                  height: `${(100 / metadata.cropSettings.height) * 100}%`,
-                  left: `${-(metadata.cropSettings.x / metadata.cropSettings.width) * 100}%`,
-                  top: `${-(metadata.cropSettings.y / metadata.cropSettings.height) * 100}%`,
-                  objectFit: 'contain'
-                } : {
-                  width: '100%',
-                  height: '100%',
-                  objectFit: 'contain'
-                })
-              }}
-            />
+                  ...(metadata.cropSettings && (metadata.cropSettings.width !== 100 || metadata.cropSettings.height !== 100 || metadata.cropSettings.x !== 0 || metadata.cropSettings.y !== 0)
+                    ? {
+                        width: `${(100 / metadata.cropSettings.width) * 100}%`,
+                        height: `${(100 / metadata.cropSettings.height) * 100}%`,
+                        left: `${-(metadata.cropSettings.x / metadata.cropSettings.width) * 100}%`,
+                        top: `${-(metadata.cropSettings.y / metadata.cropSettings.height) * 100}%`,
+                        objectFit: 'cover',
+                      }
+                    : {
+                        inset: 0,
+                        width: '100%',
+                        height: '100%',
+                        objectFit: 'contain',
+                      }
+                  ),
+                  backgroundColor: '#000'
+                }}
+              />
+            ) : (
+              <OffthreadVideo
+                src={audioUrl}
+                volume={(metadata.originalAudioVolume ?? 100) / 100}
+                transparent={false}
+                toneMapped={false}
+                style={{
+                  ...(metadata.cropSettings && (metadata.cropSettings.width !== 100 || metadata.cropSettings.height !== 100 || metadata.cropSettings.x !== 0 || metadata.cropSettings.y !== 0) ? {
+                    position: 'absolute',
+                    width: `${(100 / metadata.cropSettings.width) * 100}%`,
+                    height: `${(100 / metadata.cropSettings.height) * 100}%`,
+                    left: `${-(metadata.cropSettings.x / metadata.cropSettings.width) * 100}%`,
+                    top: `${-(metadata.cropSettings.y / metadata.cropSettings.height) * 100}%`,
+                    objectFit: 'contain'
+                  } : {
+                    width: '100%',
+                    height: '100%',
+                    objectFit: 'contain'
+                  })
+                }}
+              />
+            )}
           </div>
         ) : (
           /* Background image if provided and no video */
@@ -458,8 +495,16 @@ export const SubtitledVideoContent: React.FC<Props> = ({
           })()}
         </div>
 
-        {/* Audio tracks - only add separate audio if not using video (video already includes audio) */}
-        {!showVideo && <Audio src={audioUrl} volume={(metadata.originalAudioVolume ?? 100) / 100} />}
+        {/* Audio tracks */}
+        {/* If using frames (images), add separate audio for the original track */}
+        {useServerFrames && (
+          <Audio src={(typeof extractedAudioUrl === 'string' && extractedAudioUrl) ? extractedAudioUrl : audioUrl} volume={(metadata.originalAudioVolume ?? 100) / 100} />
+        )}
+        {/* If not using frames and also not showing a video (audio-only composition), play the audio URL */}
+        {!useServerFrames && !showVideo && (
+          <Audio src={audioUrl} volume={(metadata.originalAudioVolume ?? 100) / 100} />
+        )}
+        {/* Narration is an independent overlay track */}
         {narrationUrl && <Audio src={narrationUrl} volume={(metadata.narrationVolume ?? 100) / 100} />}
       </AbsoluteFill>
     </ThemeProvider>

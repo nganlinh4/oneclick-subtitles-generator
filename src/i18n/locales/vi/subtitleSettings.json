@@ -39,12 +39,7 @@
   "textTransformLowercase": "chữ thường",
   "textTransformCapitalize": "Viết Hoa Đầu Từ",
   "none": "Không",
-  "lineSpacing": "Khoảng cách dòng",
-  "letterSpacing": "Khoảng cách chữ",
-  "backgroundRadius": "Bo góc nền",
-  "backgroundPadding": "Đệm nền",
   "showBackground": "Hiển thị nền",
   "transparentBackground": "Nền trong suốt",
-  "textShadow": "Bóng chữ",
-  "textAlign": "Căn chỉnh văn bản"
+  "textShadow": "Bóng chữ"
 }

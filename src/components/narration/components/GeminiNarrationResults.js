@@ -3,6 +3,7 @@ import { useTranslation } from 'react-i18next';
 import SliderWithValue from '../../common/SliderWithValue';
 import LoadingIndicator from '../../common/LoadingIndicator';
 import '../../../styles/narration/speedControlSlider.css';
+import '../../../utils/functionalScrollbar';
 import { VariableSizeList as List } from 'react-window';
 
 // Import utility functions and config
@@ -51,8 +52,9 @@ const GeminiResultRow = ({ index, style, data }) => {
         ${currentlyPlaying === subtitle_id ? 'playing' : ''}
         ${retryingSubtitleId === subtitle_id ? 'retrying' : ''}`}
     >
-      <div className="result-text">
-        <span className="result-id">{subtitle_id}.</span>
+      <div className="result-text hide-native-scrollbar">
+        {/* Display 1-based row number for user-friendly sequential numbering */}
+        <span className="result-id">{index + 1}.</span>
         {text}
       </div>
 
@@ -405,24 +407,22 @@ const GeminiNarrationResults = ({
     }
   };
 
-  // Function to calculate row height based on text content
-  const getRowHeight = index => {
-    // If we already calculated this height, return it
+  // Function to calculate row height based on explicit line breaks only (stable like LyricsDisplay)
+  const getRowHeight = (index) => {
+    // Return cached height if available
     if (rowHeights.current[index] !== undefined) {
       return rowHeights.current[index];
     }
 
     const item = generationResults[index];
-    if (!item) return 60; // Default height
+    if (!item) return 60; // Default height for a single-line item with controls
 
-    // Calculate height based on text length
+    // Only count explicit line breaks to avoid jitter from soft-wrap estimation
     const text = item.text || '';
-    const lineCount = text.split('\n').length; // Count actual line breaks
-    const estimatedLines = Math.ceil(text.length / 40); // Estimate based on characters per line
-    const lines = Math.max(lineCount, estimatedLines);
+    const lineCount = Math.max(1, text.split('\n').length);
 
-    // Base height + additional height per line + space for controls
-    const height = 60 + (lines > 1 ? (lines - 1) * 20 : 0);
+    // Base height + additional height per extra line
+    const height = 60 + (lineCount - 1) * 20;
 
     // Cache the calculated height
     rowHeights.current[index] = height;
@@ -862,11 +862,12 @@ const GeminiNarrationResults = ({
           <List
             ref={listRef}
             className="results-virtualized-list"
-            height={350} // Reduced height for the Gemini virtualized container to avoid empty space
+            height={600} // Taller list to show more items and reduce churn while scrolling
             width="100%"
             itemCount={generationResults ? generationResults.length : 0}
             itemSize={getRowHeight} // Dynamic row heights based on content
-            overscanCount={5} // Number of items to render outside of the visible area
+            overscanCount={18} // Increase overscan to reduce blanking during fast scrolls
+            itemKey={(index, data) => (data.generationResults[index] && data.generationResults[index].subtitle_id) ?? index}
             itemData={{
               generationResults: generationResults || [],
               onRetry,

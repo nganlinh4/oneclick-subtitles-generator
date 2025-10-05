@@ -72,6 +72,26 @@
   text-overflow: ellipsis;
 }
 
+/* Allow absolute-positioned badges inside the button */
+.narration-model-dropdown-container .model-dropdown-btn {
+  position: relative;
+}
+
+/* Small circular badge on narration/model/voice pills */
+.narration-model-dropdown-container .model-dropdown-btn .tab-badge,
+.narration-model-dropdown-container.chatterbox-pill .tab-badge {
+  position: absolute;
+  top: 4px;
+  right: 4px;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--md-primary);
+  box-shadow: 0 0 0 4px rgba(var(--md-primary-rgb), 0.15);
+  pointer-events: none;
+}
+
+
 .narration-model-dropdown-btn:hover:not(:disabled) {
   background-color: var(--md-surface-2);
   box-shadow: var(--md-elevation-level2);

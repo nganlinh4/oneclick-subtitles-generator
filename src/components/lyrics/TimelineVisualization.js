@@ -16,7 +16,7 @@ import { clearUnusedChunks } from '../../utils/optimizedVideoStreaming';
 // Import LiquidGlass component
 import LiquidGlass from '../common/LiquidGlass';
 
-import { showWarningToast } from '../../utils/toastUtils';
+// import { showWarningToast } from '../../utils/toastUtils';
 
 const TimelineVisualization = ({
   lyrics,
@@ -329,11 +329,18 @@ const TimelineVisualization = ({
   const rangePreviewDeltaRef = useRef(0); // seconds delta during move drag
   const [hiddenActionBarRange, setHiddenActionBarRange] = useState(null); // Store range when action bar is hidden
 
+  const isRangeMoveDraggingRef = useRef(false);
+  const moveDragOffsetPxRef = useRef(0);
+
   // Offline segments lingering after processing (for quick retry from cached cuts)
   const [offlineSegments, setOfflineSegments] = useState([]); // [{ start, end, url, name }]
   const [hoveredOfflineRange, setHoveredOfflineRange] = useState(null);
   // Track which offline ranges are currently retrying (keys: "start-end")
   const [retryingOfflineKeys, setRetryingOfflineKeys] = useState([]);
+
+  // Subtle, non-intrusive inline notices (no toast)
+  const [clearInfoVisible, setClearInfoVisible] = useState(false);
+  const [warnOfflineDragVisible, setWarnOfflineDragVisible] = useState(false);
 
 
   // Handle processing animation (streaming or retry) — placed after retryingOfflineKeys to avoid TDZ
@@ -361,20 +368,41 @@ const TimelineVisualization = ({
     }
   }, [isProcessingSegment, retryingOfflineKeys, isStreamingActive]);
 
-  // Load offline segments for current video on mount and when current file changes
+  // Load offline segments for current video; on a fresh session, do not restore stale state
   useEffect(() => {
-    const loadOffline = () => {
+    const SESSION_FLAG = 'session_offline_loaded_v1';
+    const isFreshSession = !sessionStorage.getItem(SESSION_FLAG);
+
+    const loadOrResetOffline = () => {
       try {
         const videoKey = localStorage.getItem('current_file_cache_id')
           || localStorage.getItem('current_file_url')
           || localStorage.getItem('current_video_url');
+
+        // On a brand-new session, clear cached offline segments for current video to avoid stuck UI
+        if (isFreshSession && videoKey) {
+          try {
+            const raw0 = localStorage.getItem('offline_segments_cache');
+            const cache0 = raw0 ? JSON.parse(raw0) : {};
+            if (cache0[videoKey]) {
+              delete cache0[videoKey];
+              localStorage.setItem('offline_segments_cache', JSON.stringify(cache0));
+            }
+          } catch {}
+          setOfflineSegments([]);
+          sessionStorage.setItem(SESSION_FLAG, '1');
+          return; // don't load any list on first session restore
+        }
+
+        // Normal path: load existing offline segments for this video (if any)
         const raw = localStorage.getItem('offline_segments_cache');
         const cache = raw ? JSON.parse(raw) : {};
         const list = (videoKey && Array.isArray(cache[videoKey])) ? cache[videoKey] : [];
         setOfflineSegments(list);
       } catch {}
     };
-    loadOffline();
+
+    loadOrResetOffline();
 
     // Update when a new offline segment is cached
     const onCached = (e) => {
@@ -435,12 +463,9 @@ const TimelineVisualization = ({
       setHoveredOfflineRange(null);
       try { window.dispatchEvent(new CustomEvent('offline-segments-cleared')); } catch {}
 
-      // Let the user know files may remain briefly due to OS locks
-      try {
-        showWarningToast(
-          t('timeline.offlineClearNotice', 'Cleared offline segments from UI. Actual files will be removed in background and may persist briefly due to OS locks.')
-        );
-      } catch {}
+      // Show a subtle inline confirmation instead of a toast
+      setClearInfoVisible(true);
+      try { setTimeout(() => setClearInfoVisible(false), 4000); } catch {}
     } catch (e) {
       console.error('[Timeline] Error clearing offline segments (UI proceeded):', e);
       // Even on unexpected errors, keep UI consistent
@@ -801,100 +826,6 @@ const TimelineVisualization = ({
         }
       }
 
-  /*
-
-  // Body-level retry overlay layer (imperative, immune to canvas animation re-renders)
-  const retryOverlayContainerRef = useRef(null);
-  const retryOverlayWrapperRef = useRef(null);
-  const retryOverlayButtonRef = useRef(null);
-  const currentHoverRef = useRef(null);
-  const retryingKeysRef = useRef([]);
-  const retryHandlerRef = useRef(null);
-
-  useEffect(() => { retryingKeysRef.current = retryingOfflineKeys || []; }, [retryingOfflineKeys]);
-  useEffect(() => { retryHandlerRef.current = handleRetryOfflineRange; }, [handleRetryOfflineRange]);
-
-  // Create the overlay layer once
-  useEffect(() => {
-    if (retryOverlayContainerRef.current) return;
-    const container = document.createElement('div');
-    Object.assign(container.style, { position: 'fixed', inset: '0px', pointerEvents: 'none', zIndex: '2147483646' });
-
-    const wrapper = document.createElement('div');
-    Object.assign(wrapper.style, { position: 'absolute', top: '0px', left: '0px', visibility: 'hidden', pointerEvents: 'none' });
-
-    const btn = document.createElement('button');
-    btn.className = 'btn-base btn-primary btn-small';
-    btn.title = t('timeline.retryFromCache', 'Retry this cut (reuse cached clip)');
-    Object.assign(btn.style, { width: '30px', height: '30px', minWidth: '30px', padding: '0px', borderRadius: '50%', display: 'flex', alignItems: 'center', justifyContent: 'center', pointerEvents: 'auto' });
-    btn.addEventListener('click', (e) => {
-      e.stopPropagation();
-      const hover = currentHoverRef.current; if (!hover) return;
-      const key = `${hover.start}-${hover.end}`;
-      if (retryingKeysRef.current.includes(key)) return;
-      if (retryHandlerRef.current) retryHandlerRef.current(hover);
-    });
-    btn.innerHTML = '<svg xmlns=\"http://www.w3.org/2000/svg\" height=\"16\" viewBox=\"0 -960 960 960\" width=\"16\" aria-hidden style=\"color: var(--md-on-primary)\"><path fill=\"currentColor\" d=\"M289-482q0 9 1 17.5t1 16.5q5 24-2 50t-31 39q-23 12-48 4t-33-31q-7-23-11.5-46.5T161-482q0-128 89-221.5T465-799l-3-4q-16-15-15.5-33.5T463-871q15-15 34-15t34 15l91 91q19 19 19 45t-19 46l-92 91q-15 15-33 14.5T464-599q-16-15-15.5-34.5T464-668l2-2h3q-75 1-127.5 56.5T289-482Zm382 3q0-9-1-17t0-16q-5-26 2.5-51t30.5-39q23-13 47-6t32 29q7 24 12 48t5 52q0 126-89 221t-215 96l2 3q17 15 16 34t-16 34q-16 16-34.5 16T428-91l-91-90q-19-20-18.5-45.5T337-271l93-91q15-15 33.5-16t34.5 15q16 15 16 34t-16 35l-4 4h-3q75-1 127.5-57T671-479Z\"/></svg>';
-
-    wrapper.appendChild(btn);
-    container.appendChild(wrapper);
-    document.body.appendChild(container);
-
-    retryOverlayContainerRef.current = container;
-    retryOverlayWrapperRef.current = wrapper;
-    retryOverlayButtonRef.current = btn;
-
-    return () => {
-      try { btn.remove(); wrapper.remove(); container.remove(); } catch {}
-      retryOverlayContainerRef.current = null;
-      retryOverlayWrapperRef.current = null;
-      retryOverlayButtonRef.current = null;
-    };
-  }, [t]);
-
-  // Update overlay position/visibility when hover or view changes (ignore animation ticks)
-  useEffect(() => {
-    currentHoverRef.current = hoveredOfflineRange;
-    const wrapper = retryOverlayWrapperRef.current;
-    const btn = retryOverlayButtonRef.current;
-    const canvas = timelineRef.current;
-    if (!wrapper || !btn || !canvas) return;
-
-    const hover = hoveredOfflineRange;
-    if (!hover) {
-      wrapper.style.visibility = 'hidden';
-      wrapper.style.pointerEvents = 'none';
-      return;
-    }
-
-    const key = `${hover.start}-${hover.end}`;
-    if ((retryingOfflineKeys || []).includes(key)) {
-      wrapper.style.visibility = 'hidden';
-      wrapper.style.pointerEvents = 'none';
-      return;
-    }
-
-    const width = canvas.clientWidth || 1;
-    const height = canvas.clientHeight || 0;
-    const bounds = canvas.getBoundingClientRect();
-    const { start: visStart, end: visEnd } = getTimeRange();
-    const toPx = (t) => ((t - visStart) / Math.max(0.0001, (visEnd - visStart))) * width;
-    const mid = (hover.start + hover.end) / 2;
-    const timeMarkerSpace = 25;
-    const availableHeight = Math.max(0, height - timeMarkerSpace);
-    const centerY = timeMarkerSpace + (availableHeight / 2);
-    const xPx = Math.max(0, Math.min(width, toPx(mid)));
-
-    wrapper.style.left = `${bounds.left + xPx - 18}px`;
-    wrapper.style.top = `${bounds.top + centerY - 18}px`;
-    wrapper.style.visibility = 'visible';
-    wrapper.style.pointerEvents = 'none';
-
-
-    btn.style.pointerEvents = 'auto';
-  }, [hoveredOfflineRange, panOffset, zoom, lyrics, getTimeRange, retryingOfflineKeys]);
-  */
-
       // Ctrl+A to select entire video range
       if (e.ctrlKey && e.key === 'a' && onSegmentSelect && duration) {
         e.preventDefault(); // Prevent default browser select all
@@ -975,7 +906,7 @@ const TimelineVisualization = ({
   useEffect(() => {
     if (retryOverlayContainerRef.current) return;
     const container = document.createElement('div');
-    Object.assign(container.style, { position: 'fixed', inset: '0px', pointerEvents: 'none', zIndex: '2147483646' });
+    Object.assign(container.style, { position: 'fixed', inset: '0px', pointerEvents: 'none', zIndex: '9000' });
 
     const wrapper = document.createElement('div');
     Object.assign(wrapper.style, { position: 'absolute', top: '0px', left: '0px', visibility: 'hidden', pointerEvents: 'none' });
@@ -1230,6 +1161,8 @@ const TimelineVisualization = ({
 
   // Handle mouse move to detect hovering over the hidden range or selectedSegment
   const handleMouseMoveForRange = useCallback((e) => {
+    // During a move-drag of the action bar, ignore canvas hover logic entirely
+    if (isRangeMoveDraggingRef.current) return;
     // Check both hiddenActionBarRange and selectedSegment
     if (!hiddenActionBarRange && !actionBarRange && !selectedSegment && (!offlineSegments || offlineSegments.length === 0)) return;
 
@@ -1329,7 +1262,8 @@ const TimelineVisualization = ({
       // If offline cuts exist, only warn when user starts dragging; allow single-click seeking
       if (offlineSegments.length > 0) {
         if (deltaX > dragThreshold && !warned) {
-          showWarningToast(t('timeline.clearOfflineFirst', 'Please clear offline segments to exit this mode first'));
+          setWarnOfflineDragVisible(true);
+          try { setTimeout(() => setWarnOfflineDragVisible(false), 3500); } catch {}
           warned = true;
         }
         return;
@@ -1573,20 +1507,36 @@ const TimelineVisualization = ({
         const computeStyle = (bounds) => ({ top: `${(bounds.top || 0) - 36}px`, left: `${(bounds.left || 0) + 8}px` });
         const overlay = (
           <OverlayFollower canvasRef={timelineRef} computeStyle={computeStyle}>
-            <button
-              className="btn-base btn-tonal btn-small"
-              onClick={(e) => { e.stopPropagation(); handleClearOfflineSegments(); }}
-              style={{ display: 'inline-flex', alignItems: 'center', gap: 6, height: 24, minHeight: 24, padding: '0 8px', borderRadius: 12, backgroundColor: 'var(--md-surface-variant)', color: 'var(--md-on-surface-variant)', border: '1px solid var(--md-outline-variant)' }}
-            >
-              <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 -960 960 960" aria-hidden style={{ color: 'currentColor' }}>
-                <path fill="currentColor" d="M763-272h94q27 0 45.5 18.5T921-208q0 26-18.5 45T857-144H635l128-128ZM217-144q-14 0-25-5t-20-14L67-268q-38-38-38-89t39-90l426-414q38-38 90-38t91 39l174 174q37 38 38 90t-38 90L501-164q-8 9-19.5 14.5T457-144H217Zm212-128 328-322-174-176-423 414 83 84h186Zm51-208Z"/>
-              </svg>
-              {t('timeline.clearOfflineSegments', 'Clear offline segments')}
-            </button>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+              <button
+                className="btn-base btn-tonal btn-small"
+                onClick={(e) => { e.stopPropagation(); handleClearOfflineSegments(); }}
+                style={{ display: 'inline-flex', alignItems: 'center', gap: 6, height: 24, minHeight: 24, padding: '0 8px', borderRadius: 12, backgroundColor: 'var(--md-surface-variant)', color: 'var(--md-on-surface-variant)', border: '1px solid var(--md-outline-variant)' }}
+              >
+                <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 -960 960 960" aria-hidden style={{ color: 'currentColor' }}>
+                  <path fill="currentColor" d="M763-272h94q27 0 45.5 18.5T921-208q0 26-18.5 45T857-144H635l128-128ZM217-144q-14 0-25-5t-20-14L67-268q-38-38-38-89t39-90l426-414q38-38 90-38t91 39l174 174q37 38 38 90t-38 90L501-164q-8 9-19.5 14.5T457-144H217Zm212-128 328-322-174-176-423 414 83 84h186Zm51-208Z"/>
+                </svg>
+                {t('timeline.clearOfflineSegments', 'Clear offline segments')}
+              </button>
+              {clearInfoVisible && (
+                <span role="status" aria-live="polite" style={{ whiteSpace: 'nowrap', fontSize: 12, padding: '2px 8px', borderRadius: 10, color: 'var(--md-on-surface-variant)', backgroundColor: 'var(--md-surface-variant)', border: '1px solid var(--md-outline-variant)' }}>
+                  {t('timeline.offlineClearNotice', 'Cleared offline segments from UI. Files will be removed in background and may persist briefly due to OS locks.')}
+                </span>
+              )}
+            </div>
           </OverlayFollower>
         );
         return createPortal(overlay, document.body);
       })() }
+
+      {/* Subtle warning when user tries to drag while offline segments exist */}
+      {warnOfflineDragVisible && (
+        <div style={{ position: 'absolute', top: 6, right: 8, zIndex: 5 }}>
+          <span role="status" aria-live="polite" style={{ whiteSpace: 'nowrap', fontSize: 12, padding: '2px 8px', borderRadius: 10, color: 'var(--md-on-surface-variant)', backgroundColor: 'var(--md-surface-variant)', border: '1px solid var(--md-outline-variant)' }}>
+            {t('timeline.clearOfflineFirst', 'Please clear offline segments to exit this mode first')}
+          </span>
+        </div>
+      )}
 
       {/* Hover refresh icon (portal) at colorful bits' vertical center */}
       {/* Retry button is rendered via a dedicated body-level layer, independent of canvas animation */}
@@ -1603,16 +1553,72 @@ const TimelineVisualization = ({
         const barWidth = Math.max(24, Math.abs(rightPx - leftPx));
         const timePerPx = (visEnd - visStart) / Math.max(1, width);
 
+        // Unified Pointer Events handler (robust on mobile): keeps capture during drag
+        const handleMovePointerDown = (e) => {
+          e.preventDefault();
+          e.stopPropagation();
+          const startX = e.clientX;
+          const startOffset = moveDragOffsetPx;
+          const startRange = actionBarRange;
+          isRangeMoveDraggingRef.current = true;
+          if (onBeginMoveRange && startRange) onBeginMoveRange(startRange.start, startRange.end);
+
+          // Try to capture the pointer so move/up keep firing even if finger leaves the button
+          try {
+            const pid = (e.pointerId != null) ? e.pointerId : (e.nativeEvent && e.nativeEvent.pointerId);
+            if (e.currentTarget && e.currentTarget.setPointerCapture && pid != null) {
+              e.currentTarget.setPointerCapture(pid);
+            }
+          } catch {}
+
+          const onMove = (pe) => {
+            const px = startOffset + (pe.clientX - startX);
+            setMoveDragOffsetPx(px);
+            moveDragOffsetPxRef.current = px;
+            const deltaSeconds = px * timePerPx;
+            rangePreviewDeltaRef.current = deltaSeconds;
+            onPreviewMoveRange && onPreviewMoveRange(deltaSeconds);
+            pe.preventDefault();
+          };
+
+          const cleanup = () => {
+            window.removeEventListener('pointermove', onMove, true);
+            window.removeEventListener('pointerup', onUp, true);
+            window.removeEventListener('pointercancel', onUp, true);
+          };
+
+          const onUp = () => {
+            cleanup();
+            const deltaSeconds = (moveDragOffsetPxRef.current || 0) * timePerPx;
+            if (onCommitMoveRange) onCommitMoveRange();
+            else if (onMoveRange && Math.abs(deltaSeconds) > 0.001)
+              onMoveRange(actionBarRange.start, actionBarRange.end, deltaSeconds);
+            setMoveDragOffsetPx(0);
+            moveDragOffsetPxRef.current = 0;
+            rangePreviewDeltaRef.current = 0;
+            setActionBarRange(null);
+            setHiddenActionBarRange(null);
+            isRangeMoveDraggingRef.current = false;
+          };
+
+          window.addEventListener('pointermove', onMove, { capture: true, passive: false });
+          window.addEventListener('pointerup', onUp, { capture: true });
+          window.addEventListener('pointercancel', onUp, { capture: true });
+        };
+
+        // Fallback mouse-only (desktop) and touch-only (legacy) handlers retained
         const handleMoveMouseDown = (e) => {
           e.preventDefault();
           e.stopPropagation();
           const startX = e.clientX;
           const startOffset = moveDragOffsetPx;
           const startRange = actionBarRange;
+          isRangeMoveDraggingRef.current = true;
           if (onBeginMoveRange && startRange) onBeginMoveRange(startRange.start, startRange.end);
           const onMove = (me) => {
             const px = startOffset + (me.clientX - startX);
             setMoveDragOffsetPx(px);
+            moveDragOffsetPxRef.current = px;
             const deltaSeconds = px * timePerPx;
             rangePreviewDeltaRef.current = deltaSeconds;
             onPreviewMoveRange && onPreviewMoveRange(deltaSeconds);
@@ -1620,20 +1626,21 @@ const TimelineVisualization = ({
           const onUp = () => {
             document.removeEventListener('mousemove', onMove);
             document.removeEventListener('mouseup', onUp);
-            const deltaSeconds = moveDragOffsetPx * timePerPx;
+            const deltaSeconds = (moveDragOffsetPxRef.current || 0) * timePerPx;
             if (onCommitMoveRange) onCommitMoveRange();
             else if (onMoveRange && Math.abs(deltaSeconds) > 0.001)
               onMoveRange(actionBarRange.start, actionBarRange.end, deltaSeconds);
             setMoveDragOffsetPx(0);
+            moveDragOffsetPxRef.current = 0;
             rangePreviewDeltaRef.current = 0;
             setActionBarRange(null);
             setHiddenActionBarRange(null);
+            isRangeMoveDraggingRef.current = false;
           };
           document.addEventListener('mousemove', onMove);
           document.addEventListener('mouseup', onUp);
         };
 
-        // Touch equivalent for moving range on mobile
         const handleMoveTouchStart = (e) => {
           e.preventDefault();
           e.stopPropagation();
@@ -1642,6 +1649,7 @@ const TimelineVisualization = ({
           const startX = touch.clientX;
           const startOffset = moveDragOffsetPx;
           const startRange = actionBarRange;
+          isRangeMoveDraggingRef.current = true;
           if (onBeginMoveRange && startRange) onBeginMoveRange(startRange.start, startRange.end);
 
           const onMove = (te) => {
@@ -1649,6 +1657,7 @@ const TimelineVisualization = ({
             if (!t) return;
             const px = startOffset + (t.clientX - startX);
             setMoveDragOffsetPx(px);
+            moveDragOffsetPxRef.current = px;
             const deltaSeconds = px * timePerPx;
             rangePreviewDeltaRef.current = deltaSeconds;
             onPreviewMoveRange && onPreviewMoveRange(deltaSeconds);
@@ -1659,14 +1668,16 @@ const TimelineVisualization = ({
             document.removeEventListener('touchmove', onMove);
             document.removeEventListener('touchend', onUp);
             document.removeEventListener('touchcancel', onUp);
-            const deltaSeconds = moveDragOffsetPx * timePerPx;
+            const deltaSeconds = (moveDragOffsetPxRef.current || 0) * timePerPx;
             if (onCommitMoveRange) onCommitMoveRange();
             else if (onMoveRange && Math.abs(deltaSeconds) > 0.001)
               onMoveRange(actionBarRange.start, actionBarRange.end, deltaSeconds);
             setMoveDragOffsetPx(0);
+            moveDragOffsetPxRef.current = 0;
             rangePreviewDeltaRef.current = 0;
             setActionBarRange(null);
             setHiddenActionBarRange(null);
+            isRangeMoveDraggingRef.current = false;
           };
 
           document.addEventListener('touchmove', onMove, { passive: false });
@@ -1675,7 +1686,7 @@ const TimelineVisualization = ({
         };
 
         if (!canvas) return null;
-        const computeStyle = (bounds) => ({ top: `${(bounds.top || 0) - 36}px`, left: `${(bounds.left || 0) + barLeft}px` });
+        const computeStyle = (bounds) => ({ top: `${(bounds.top || 0) - 36}px`, left: `${(bounds.left || 0) + Math.max(0, Math.min((canvas?.clientWidth || width) - barWidth, barLeft))}px` });
 
         const overlay = (
           <OverlayFollower canvasRef={timelineRef} computeStyle={computeStyle} deps={[actionBarRange, moveDragOffsetPx, panOffset, zoom, lyrics]}>
@@ -1695,11 +1706,12 @@ const TimelineVisualization = ({
                 borderRadius: 12,
                 zIndex: 999,
                 color: 'var(--md-on-surface)',
-                pointerEvents: 'auto'
+                pointerEvents: 'auto',
+                touchAction: 'none'
               }}
               onMouseLeave={() => {
-                // Don't hide if we're clicking inside the range
-                if (isClickingInsideRef.current) {
+                // Don't hide if we're clicking inside the range or currently dragging the move handle
+                if (isClickingInsideRef.current || isRangeMoveDraggingRef.current) {
                   return;
                 }
 
@@ -1712,6 +1724,20 @@ const TimelineVisualization = ({
                   setHiddenActionBarRange(actionBarRange);
                 } else {
                   // For manually selected ranges
+                  setHiddenActionBarRange(actionBarRange);
+                }
+                setActionBarRange(null);
+              }}
+              onPointerLeave={() => {
+                // Same logic as onMouseLeave, but for pointer devices (covers touch pointers too)
+                if (isClickingInsideRef.current || isRangeMoveDraggingRef.current) {
+                  return;
+                }
+                if (selectedSegment &&
+                    actionBarRange.start === selectedSegment.start &&
+                    actionBarRange.end === selectedSegment.end) {
+                  setHiddenActionBarRange(actionBarRange);
+                } else {
                   setHiddenActionBarRange(actionBarRange);
                 }
                 setActionBarRange(null);
@@ -1747,8 +1773,7 @@ const TimelineVisualization = ({
               <button
                 className="btn-base btn-primary btn-small"
                 title={t('timeline.moveRange', 'Drag to move subtitles in range')}
-                onMouseDown={handleMoveMouseDown}
-                onTouchStart={handleMoveTouchStart}
+                onPointerDown={handleMovePointerDown}
                 style={{ width: 36, height: 36, minWidth: 36, padding: 0, borderRadius: '50%', cursor: 'grab', touchAction: 'none' }}
               >
                 <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 -960 960 960" aria-hidden style={{ color: 'var(--md-on-primary)' }}>

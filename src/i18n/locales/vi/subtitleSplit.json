@@ -9,23 +9,13 @@
   "apply": "Áp dụng",
   "exampleTitle": "Ví dụ:",
   "example1": {
-    "title": "6 từ, giới hạn 5:",
     "split": "Chia thành 3-3 (không phải 5-1)",
     "timing": "Thời gian: 50%-50%"
   },
   "example2": {
-    "title": "7 từ, giới hạn 5:",
-    "split": "Chia thành 4-3 (không phải 5-2)",
-    "timing": "Thời gian: 57%-43%"
   },
   "example3": {
-    "title": "12 từ, giới hạn 5:",
-    "split": "Chia thành 4-4-4 (không phải 5-5-2)",
-    "timing": "Thời gian: 33%-33%-33%"
   },
   "example4": {
-    "title": "13 từ, giới hạn 5:",
-    "split": "Chia thành 5-4-4 (không phải 5-5-3)",
-    "timing": "Thời gian: 38%-31%-31%"
   }
 }

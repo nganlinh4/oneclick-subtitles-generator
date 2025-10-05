@@ -108,3 +108,29 @@
   flex-shrink: 0;
   order: 1; /* Ensure it appears before error messages */
 }
+
+
+/* Ensure the auto-recognition switch is vertically centered relative to the reference text */
+.reference-content-row .material-switch-container {
+  align-self: center; /* Center vertically within the row regardless of row alignment */
+  display: flex;
+  align-items: center; /* Keep switch, label, and help icon aligned */
+  gap: 8px;
+}
+
+/* Allow the reference text area to take remaining width to avoid layout shifts */
+.reference-content-row .reference-text-wrapper {
+  flex: 1 1 auto;
+  min-width: 0; /* Prevent overflow */
+}
+
+
+/* In the Reference Audio row, center items vertically so the switch aligns with the text block */
+.reference-audio-row .reference-content-row {
+  align-items: center;
+}
+
+
+/* Stronger centering to win over other rules */
+.reference-audio-row .reference-content-row { align-items: center !important; }
+.reference-audio-row .material-switch-container { align-self: center !important; }

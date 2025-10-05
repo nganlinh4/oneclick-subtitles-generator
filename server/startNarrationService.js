@@ -58,7 +58,7 @@ function startChatterboxService() {
     // Run from the project root to ensure the virtual environment is found
     const projectRoot = path.dirname(chatterboxDir);
     const startApiPath = path.join('chatterbox-fastapi', 'start_api.py');
-    
+
     const chatterboxProcess = spawn(UV_EXECUTABLE, [
       'run',
       '--python', '.venv',  // Explicitly use the .venv virtual environment
@@ -187,6 +187,15 @@ print(f'CUDA device name: {torch.cuda.get_device_name(0) if torch.cuda.is_availa
       console.warn(`Warning: Unable to check CUDA availability: ${error.message}`);
     }
 
+    // Ensure critical Python runtime deps exist in the shared venv before starting services
+    try {
+      const { execSync } = require('child_process');
+      const ensureCmd = `${UV_EXECUTABLE} pip show --python .venv python-dateutil || ${UV_EXECUTABLE} pip install --python .venv python-dateutil==2.9.0.post0`;
+      execSync(ensureCmd, { stdio: 'inherit', cwd: projectRoot });
+    } catch (e) {
+      console.warn(`Warning: Failed to ensure python-dateutil in .venv: ${e.message}`);
+    }
+
     // Spawn the Python process using uv
     const narrationAppPath = path.join(__dirname, 'narrationApp.py');
     const projectRoot = path.dirname(__dirname);
@@ -195,6 +204,7 @@ print(f'CUDA device name: {torch.cuda.get_device_name(0) if torch.cuda.is_availa
       'run',
       '--python', '.venv',  // Explicitly use the .venv virtual environment
       '--',
+      'python',
       narrationAppPath
     ], {
       env,

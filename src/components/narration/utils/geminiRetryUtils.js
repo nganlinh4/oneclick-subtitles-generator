@@ -198,7 +198,8 @@ export const retryFailedGeminiNarrations = async ({
       null, // Use default model
       0, // No sleep time
       selectedVoice, // Use the selected voice
-      concurrentClients // Use the configured concurrent clients
+      concurrentClients, // Use the configured concurrent clients
+      t('narration.preparingGeminiGeneration', 'Preparing to generate narration with Gemini...') // Translated initial progress message
     );
   } catch (error) {
     console.error('Error retrying failed narrations:', error);

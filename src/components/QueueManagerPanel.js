@@ -1,6 +1,8 @@
 import React, { useState, useEffect } from 'react';
 import { useTranslation } from 'react-i18next';
 import WavyProgressIndicator from './common/WavyProgressIndicator';
+
+import { formatTime as formatDuration } from '../utils/timeFormatter';
 import '../styles/QueueManagerPanel.css';
 
 const QueueManagerPanel = ({
@@ -13,10 +15,27 @@ const QueueManagerPanel = ({
 }) => {
   const { t } = useTranslation();
 
+  // Preview modal state
+  const [previewOpen, setPreviewOpen] = useState(false);
+  const [previewUrl, setPreviewUrl] = useState('');
+  const [previewItem, setPreviewItem] = useState(null);
+  const [previewInfo, setPreviewInfo] = useState(null); // from server (ffprobe)
+  const [previewInfoLoading, setPreviewInfoLoading] = useState(false);
+  const [previewClientInfo, setPreviewClientInfo] = useState(null); // from video element
+  const [previewExtra, setPreviewExtra] = useState(null); // size, createdAt from /video-exists
+
   // Theme detection for WavyProgressIndicator colors
   const [theme, setTheme] = useState(() => {
     return document.documentElement.getAttribute('data-theme') || 'dark';
   });
+
+  // Track locally canceled items so Cancel always has immediate effect
+  const [locallyCanceled, setLocallyCanceled] = useState({});
+  const isLocallyCanceled = (id) => !!locallyCanceled[id];
+  const handleLocalCancel = (item) => {
+    setLocallyCanceled((prev) => ({ ...prev, [item.id]: true }));
+    if (onCancelItem) onCancelItem(item.id);
+  };
 
   useEffect(() => {
     const observer = new MutationObserver((mutations) => {
@@ -72,6 +91,12 @@ const QueueManagerPanel = ({
             <line x1="9" y1="9" x2="15" y2="15"></line>
           </svg>
         );
+      case 'canceled':
+        return (
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+            <rect x="6" y="6" width="12" height="12"></rect>
+          </svg>
+        );
       default:
         return (
           <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
@@ -92,10 +117,15 @@ const QueueManagerPanel = ({
         return 'var(--success-color)';
       case 'failed':
         return 'var(--error-color)';
+      case 'canceled':
+        return 'var(--text-secondary)';
       default:
         return 'var(--text-secondary)';
     }
   };
+  // Compute effective status that respects local cancel regardless of server response
+  const getEffectiveStatusForItem = (item) => (isLocallyCanceled(item.id) ? 'canceled' : item.status);
+
 
   const formatTime = (timestamp) => {
     if (!timestamp) return '';
@@ -134,15 +164,13 @@ const QueueManagerPanel = ({
         timestampMap = JSON.parse(stored);
       }
     } catch (e) {
-      console.warn('Failed to parse timestamp map from localStorage');
+      // ignore
     }
 
-    // If this timestamp already has a number assigned, return it
     if (timestampMap[timestamp]) {
       return timestampMap[timestamp];
     }
 
-    // Get current counter value
     let counter = 1;
     try {
       const storedCounter = localStorage.getItem(STORAGE_KEY);
@@ -150,18 +178,16 @@ const QueueManagerPanel = ({
         counter = parseInt(storedCounter) + 1;
       }
     } catch (e) {
-      console.warn('Failed to parse counter from localStorage');
+      // ignore
     }
 
-    // Assign this timestamp the next available number
     timestampMap[timestamp] = counter;
 
-    // Save updated counter and mapping
     try {
       localStorage.setItem(STORAGE_KEY, counter.toString());
       localStorage.setItem(TIMESTAMP_MAP_KEY, JSON.stringify(timestampMap));
     } catch (e) {
-      console.warn('Failed to save to localStorage');
+      // ignore
     }
 
     return counter;
@@ -203,7 +229,161 @@ const QueueManagerPanel = ({
     }
   };
 
+  // Helpers for preview info via server (ffprobe-backed)
+  const extractVideoIdFromUrl = (url) => {
+    try {
+      if (!url) return null;
+      if (!url.includes('/videos/')) return null;
+      let full = url.split('/videos/')[1];
+      if (full.includes('?')) full = full.split('?')[0];
+      if (full.endsWith('.mp4')) full = full.slice(0, -4);
+      const m = full.match(/(.+)_\d{13}$/);
+      return m ? m[1] : full;
+    } catch {
+      return null;
+    }
+  };
+
+  const fetchPreviewInfo = async (url) => {
+    // If it's a server-hosted /videos/ URL, use id-based endpoint
+    if (url && url.includes('/videos/')) {
+      const id = extractVideoIdFromUrl(url);
+      if (!id) return null;
+      const endpoints = [
+        `${window.location.origin}/api/video-dimensions/${id}`,
+        `http://localhost:3031/api/video-dimensions/${id}`
+      ];
+      for (const ep of endpoints) {
+        try {
+          const res = await fetch(ep);
+          if (!res.ok) throw new Error(`HTTP ${res.status}`);
+          const data = await res.json();
+          if (data && data.success) {
+            setPreviewInfo(data);
+            return data;
+          }
+        } catch (e) {
+          // try next endpoint
+          continue;
+        }
+      }
+      return null;
+    }
+
+    // Otherwise, probe the absolute URL via /api/probe-media
+    try {
+      const absolute = url.startsWith('http') ? url : `${window.location.origin}${url}`;
+      const endpoints = [
+        `${window.location.origin}/api/probe-media?url=${encodeURIComponent(absolute)}`,
+        `http://localhost:3031/api/probe-media?url=${encodeURIComponent(absolute)}`
+      ];
+      for (const ep of endpoints) {
+        try {
+          const res = await fetch(ep);
+          if (!res.ok) throw new Error(`HTTP ${res.status}`);
+          const data = await res.json();
+          if (data && data.success) {
+            setPreviewInfo(data);
+            return data;
+          }
+        } catch (e) {
+          // try next endpoint
+          continue;
+        }
+      }
+    } catch (e) {
+      // ignore
+    }
+    return null;
+  };
+
+  const fetchPreviewExtra = async (url) => {
+    const id = extractVideoIdFromUrl(url);
+    if (!id) return null;
+    try {
+      const res = await fetch(`${window.location.origin}/api/video-exists/${id}`);
+      const data = await res.json();
+      if (data && data.exists) {
+        setPreviewExtra({ size: data.size, createdAt: data.createdAt });
+        return data;
+      }
+      setPreviewExtra(null);
+      return null;
+    } catch (e) {
+      setPreviewExtra(null);
+      return null;
+    }
+  };
+
+  const [previewDuration, setPreviewDuration] = useState(null);
+
+  // Helpers
+  const gcd = (a, b) => (b === 0 ? a : gcd(b, a % b));
+  const getAspectRatio = (w, h) => {
+    if (!w || !h) return null;
+    const g = gcd(w, h);
+    return `${Math.round(w / g)}:${Math.round(h / g)}`;
+  };
+  const heightToQuality = (h) => {
+    if (!h) return 'Unknown';
+    if (h >= 2160) return '4K';
+    if (h >= 1440) return '1440p';
+    if (h >= 1080) return '1080p';
+    if (h >= 720) return '720p';
+    if (h >= 480) return '480p';
+    if (h >= 360) return '360p';
+    return `${h}p`;
+  };
+  const formatBytes = (bytes) => {
+    if (!Number.isFinite(bytes)) return null;
+    const units = ['B','KB','MB','GB','TB'];
+    let i = 0; let val = bytes;
+    while (val >= 1024 && i < units.length - 1) { val /= 1024; i++; }
+    return `${val.toFixed(val >= 100 ? 0 : val >= 10 ? 1 : 2)} ${units[i]}`;
+  };
+
+  // Fallback: try a HEAD request to get Content-Length and Last-Modified
+  const fetchHeadInfo = async (url) => {
+    try {
+      const res = await fetch(url, { method: 'HEAD' });
+      const len = res.headers.get('content-length');
+      const lm = res.headers.get('last-modified');
+      const size = len ? parseInt(len) : null;
+      setPreviewExtra({
+        size: Number.isFinite(size) ? size : null,
+        createdAt: lm || null
+      });
+    } catch (_) {
+      // ignore
+    }
+  };
+
+  useEffect(() => {
+    if (previewOpen && previewUrl) {
+      const isServerVideo = previewUrl.includes('/videos/');
+
+      // Fetch detailed info (supports /videos and non-/videos via probe)
+      fetchPreviewInfo(previewUrl);
+
+      // Extra file info from server only for /videos (size/created also comes from HEAD below)
+      if (isServerVideo) {
+        fetchPreviewExtra(previewUrl);
+      }
+
+      // Always try HEAD when it's http(s) (works for both absolute and same-origin URLs)
+      if (/^https?:/.test(previewUrl) || previewUrl.startsWith('/')) {
+        const absolute = previewUrl.startsWith('http') ? previewUrl : `${window.location.origin}${previewUrl}`;
+        fetchHeadInfo(absolute);
+      }
+    } else {
+      setPreviewInfo(null);
+      setPreviewExtra(null);
+      setPreviewDuration(null);
+    }
+  }, [previewOpen, previewUrl]);
+
   return (
+    <>
     <div className={`queue-manager-panel ${gridLayout ? 'grid-layout' : ''}`}>
       <div className="panel-header">
         <div className="header-left">
@@ -252,178 +432,371 @@ const QueueManagerPanel = ({
           </div>
         ) : (
           <div className={`queue-list ${gridLayout ? 'grid-layout' : ''}`}>
-            {queue.map((item, index) => (
-              <div 
-                key={item.id} 
-                className={`queue-item ${item.status} ${item.id === currentQueueItem ? 'current' : ''}`}
-              >
-                <div className="queue-item-header">
-                  <div className="item-info">
-                    <span className="status-icon">{getStatusIcon(item.status)}</span>
-                    <div className="item-details">
-                      <div className="item-title">
-                        {t('videoRendering.subtitledVideo', 'Subtitled Video')} #{getVideoNumber(item)}
+            {queue.map((item) => {
+              const effectiveStatus = isLocallyCanceled(item.id) ? 'canceled' : item.status;
+              return (
+                <div
+                  key={item.id}
+                  className={`queue-item ${effectiveStatus} ${item.id === currentQueueItem ? 'current' : ''}`}
+                >
+                  <div className="queue-item-header">
+                    <div className="item-info">
+                      <span className="status-icon">{getStatusIcon(effectiveStatus)}</span>
+                      <div className="item-details">
+                        <div className="item-title">
+                          {t('videoRendering.subtitledVideo', 'Subtitled Video')} #{getVideoNumber(item)}
+                        </div>
+                        <div className="item-meta">
+                          {item.settings.resolution} • {item.settings.frameRate}fps
+                          {item.timestamp && (
+                            <span className="item-time"> • {formatTime(item.timestamp)}</span>
+                          )}
+                        </div>
                       </div>
-                      <div className="item-meta">
-                        {item.settings.resolution} • {item.settings.frameRate}fps
-                        {item.timestamp && (
-                          <span className="item-time"> • {formatTime(item.timestamp)}</span>
+                    </div>
+                    <div className="item-status">
+                      <span
+                        className="status-badge"
+                        style={{ backgroundColor: getStatusColor(effectiveStatus) }}
+                      >
+                        {t(`videoRendering.${effectiveStatus}`, effectiveStatus)}
+                      </span>
+                    </div>
+                  </div>
+
+                  {/* Revamped WavyProgressIndicator Section */}
+                  {(effectiveStatus === 'processing' || effectiveStatus === 'pending') && (
+                    <div className="wavy-progress-section">
+                      <WavyProgressIndicator
+                        progress={Math.max(0, Math.min(1, (item.progress || 0) / 100))}
+                        animate={effectiveStatus === 'processing'}
+                        showStopIndicator={true}
+                        waveSpeed={1.2}
+                        height={12}
+                        autoAnimateEntrance={true}
+                        color={
+                          // Use special blue color for Chrome download phase
+                          item.phase === 'chrome-download'
+                            ? (theme === 'dark' ? '#2196F3' : '#1976D2')
+                            : (theme === 'dark'
+                                ? (effectiveStatus === 'processing' ? '#4CAF50' : '#FFC107')
+                                : (effectiveStatus === 'processing' ? '#2E7D32' : '#F57C00')
+                              )
+                        }
+                        trackColor={theme === 'dark'
+                          ? 'rgba(255, 255, 255, 0.15)'
+                          : 'rgba(0, 0, 0, 0.15)'
+                        }
+                        stopIndicatorColor={
+                          // Use same special blue color for Chrome download phase
+                          item.phase === 'chrome-download'
+                            ? (theme === 'dark' ? '#2196F3' : '#1976D2')
+                            : (theme === 'dark'
+                                ? (effectiveStatus === 'processing' ? '#4CAF50' : '#FFC107')
+                                : (effectiveStatus === 'processing' ? '#2E7D32' : '#F57C00')
+                              )
+                        }
+                        style={{
+                          width: '100%'
+                        }}
+                      />
+                      <div className="progress-text">
+                        {effectiveStatus === 'processing' ? (
+                          <>
+                            {/* Fixed percentage container */}
+                            <div className="progress-percentage-container">
+                              <div className="progress-percentage">
+                                {Math.round(item.progress || 0)}%
+                              </div>
+                            </div>
+
+                            {/* Separate container for frame details */}
+                            <div className="progress-frames-container">
+                              {item.renderedFrames && item.durationInFrames ? (
+                                <div className="progress-frames">
+                                  {`${item.renderedFrames}/${item.durationInFrames} ${t('videoRendering.frames', 'frames')}`}
+                                </div>
+                              ) : item.phaseDescription ? (
+                                <div className="progress-frames">
+                                  {item.phaseDescription}
+                                </div>
+                              ) : (
+                                <div className="progress-frames">
+                                  {t('videoRendering.renderingFrames', 'Processing video frames...')}
+                                </div>
+                              )}
+                              {item.phase === 'encoding' && (
+                                <div className="progress-phase encoding">
+                                  {t('videoRendering.encodingFrames', 'Encoding and stitching frames...')}
+                                </div>
+                              )}
+                            </div>
+                          </>
+                        ) : (
+                          t('videoRendering.waiting', 'Waiting...')
                         )}
                       </div>
                     </div>
-                  </div>
-                  <div className="item-status">
-                    <span 
-                      className="status-badge"
-                      style={{ backgroundColor: getStatusColor(item.status) }}
-                    >
-                      {t(`videoRendering.${item.status}`, item.status)}
-                    </span>
-                  </div>
-                </div>
+                  )}
 
-                {/* Revamped WavyProgressIndicator Section */}
-                {(item.status === 'processing' || item.status === 'pending') && (
-                  <div className="wavy-progress-section">
-                    <WavyProgressIndicator
-                      progress={Math.max(0, Math.min(1, (item.progress || 0) / 100))}
-                      animate={item.status === 'processing'}
-                      showStopIndicator={true}
-                      waveSpeed={1.2}
-                      height={12}
-                      autoAnimateEntrance={true}
-                      color={
-                        // Use special blue color for Chrome download phase
-                        item.phase === 'chrome-download' 
-                          ? (theme === 'dark' ? '#2196F3' : '#1976D2')
-                          : (theme === 'dark'
-                              ? (item.status === 'processing' ? '#4CAF50' : '#FFC107')
-                              : (item.status === 'processing' ? '#2E7D32' : '#F57C00')
-                            )
-                      }
-                      trackColor={theme === 'dark'
-                        ? 'rgba(255, 255, 255, 0.15)'
-                        : 'rgba(0, 0, 0, 0.15)'
-                      }
-                      stopIndicatorColor={
-                        // Use same special blue color for Chrome download phase
-                        item.phase === 'chrome-download' 
-                          ? (theme === 'dark' ? '#2196F3' : '#1976D2')
-                          : (theme === 'dark'
-                              ? (item.status === 'processing' ? '#4CAF50' : '#FFC107')
-                              : (item.status === 'processing' ? '#2E7D32' : '#F57C00')
-                            )
-                      }
-                      style={{
-                        width: '100%'
-                      }}
-                    />
-                    <div className="progress-text">
-                      {item.status === 'processing' ? (
-                        <>
-                          {/* Fixed percentage container */}
-                          <div className="progress-percentage-container">
-                            <div className="progress-percentage">
-                              {Math.round(item.progress || 0)}%
-                            </div>
-                          </div>
+                  {/* Error Message */}
+                  {item.status === 'failed' && item.error && (
+                    <div className="error-section">
+                      <div className="error-message">
+                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                          <circle cx="12" cy="12" r="10"></circle>
+                          <line x1="15" y1="9" x2="9" y2="15"></line>
+                          <line x1="9" y1="9" x2="15" y2="15"></line>
+                        </svg>
+                        {item.error}
+                      </div>
+                    </div>
+                  )}
 
-                          {/* Separate container for frame details */}
-                          <div className="progress-frames-container">
-                            {item.renderedFrames && item.durationInFrames ? (
-                              <div className="progress-frames">
-                                {`${item.renderedFrames}/${item.durationInFrames} ${t('videoRendering.frames', 'frames')}`}
-                              </div>
-                            ) : item.phaseDescription ? (
-                              <div className="progress-frames">
-                                {item.phaseDescription}
-                              </div>
-                            ) : (
-                              <div className="progress-frames">
-                                {t('videoRendering.renderingFrames', 'Processing video frames...')}
-                              </div>
-                            )}
-                            {item.phase === 'encoding' && (
-                              <div className="progress-phase encoding">
-                                {t('videoRendering.encodingFrames', 'Encoding and stitching frames...')}
-                              </div>
-                            )}
-                          </div>
-                        </>
-                      ) : (
-                        t('videoRendering.waiting', 'Waiting...')
+                  {/* Completed Video Info */}
+                  {item.status === 'completed' && item.outputPath && (
+                    <div className="completed-section">
+                      <button
+                        type="button"
+                        className="preview-btn"
+                        onClick={() => { setPreviewUrl(item.outputPath); setPreviewItem(item); setPreviewOpen(true); }}
+                        title={t('videoRendering.preview', 'Preview')}
+                      >
+                        <div className="preview-thumb-wrap">
+                          <video
+                            className="preview-thumb"
+                            src={item.outputPath + '#t=0.1'}
+                            muted
+                            playsInline
+                            preload="metadata"
+                          />
+                        </div>
+                        <span className="preview-text">
+                          {t('videoRendering.preview', 'Preview')}
+                        </span>
+                      </button>
+
+                      <button
+                        onClick={() => handleDownloadVideo(item.outputPath, item)}
+                        className="download-btn-success"
+                        title={t('videoRendering.downloadVideo', 'Download video')}
+                      >
+                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" style={{ marginRight: '6px' }}>
+                          <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path>
+                          <polyline points="7 10 12 15 17 10"></polyline>
+                          <line x1="12" y1="15" x2="12" y2="3"></line>
+                        </svg>
+                        {t('videoRendering.download', 'Download')}
+                      </button>
+                    </div>
+                  )}
+
+                  {/* Item Actions */}
+                  <div className="item-actions">
+                    {/* Left side: render time when completed */}
+                    {item.status === 'completed' && item.startedAt && item.completedAt && (
+                      <div className="render-time">
+                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                          <circle cx="12" cy="12" r="10"></circle>
+                          <path d="M12 6v6l4 2"></path>
+                        </svg>
+                        <span>
+                          {t('videoRendering.completedIn', 'Completed in {{time}}', { time: formatDuration((item.completedAt - item.startedAt) / 1000, 'hms') })}
+                        </span>
+                      </div>
+                    )}
+
+                    <div className="item-actions-right">
+                      {effectiveStatus === 'processing' && onCancelItem && (
+                        <button
+                          className="cancel-btn"
+                          onClick={() => handleLocalCancel(item)}
+                        >
+                          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                            <rect x="6" y="6" width="12" height="12"></rect>
+                          </svg>
+                          {t('videoRendering.cancel', 'Cancel')}
+                        </button>
+                      )}
+
+                      {effectiveStatus !== 'processing' && (
+                        <button
+                          className="remove-btn"
+                          onClick={() => onRemoveItem(item.id)}
+                        >
+                          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                            <polyline points="3 6 5 6 21 6"></polyline>
+                            <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path>
+                          </svg>
+                          {t('videoRendering.remove', 'Remove')}
+                        </button>
                       )}
                     </div>
                   </div>
-                )}
-
-                {/* Error Message */}
-                {item.status === 'failed' && item.error && (
-                  <div className="error-section">
-                    <div className="error-message">
-                      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                        <circle cx="12" cy="12" r="10"></circle>
-                        <line x1="15" y1="9" x2="9" y2="15"></line>
-                        <line x1="9" y1="9" x2="15" y2="15"></line>
-                      </svg>
-                      {item.error}
-                    </div>
-                  </div>
-                )}
-
-                {/* Completed Video Info */}
-                {item.status === 'completed' && item.outputPath && (
-                  <div className="completed-section">
-                    <div className="output-info">
-                      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                        <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path>
-                        <polyline points="7 10 12 15 17 10"></polyline>
-                        <line x1="12" y1="15" x2="12" y2="3"></line>
-                      </svg>
-                      <span>{t('videoRendering.readyForDownload', 'Ready for download')}</span>
-                    </div>
-                    <button
-                      onClick={() => handleDownloadVideo(item.outputPath, item)}
-                      className="btn-base btn-success btn-compact download-btn-success"
-                    >
-                      {t('videoRendering.download', 'Download')}
-                    </button>
-                  </div>
-                )}
-
-                {/* Item Actions */}
-                <div className="item-actions">
-                  {item.status === 'processing' && onCancelItem && (
-                    <button
-                      className="cancel-btn"
-                      onClick={() => onCancelItem(item.id)}
-                    >
-                      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                        <rect x="6" y="6" width="12" height="12"></rect>
-                      </svg>
-                      {t('videoRendering.cancel', 'Cancel')}
-                    </button>
-                  )}
-
-                  {item.status !== 'processing' && (
-                    <button
-                      className="remove-btn"
-                      onClick={() => onRemoveItem(item.id)}
-                    >
-                      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                        <polyline points="3 6 5 6 21 6"></polyline>
-                        <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path>
-                      </svg>
-                      {t('videoRendering.remove', 'Remove')}
-                    </button>
-                  )}
                 </div>
-              </div>
-            ))}
+              );
+            })}
           </div>
         )}
       </div>
     </div>
+      {previewOpen && (
+        <div className="preview-modal-overlay" onClick={() => setPreviewOpen(false)}>
+          <div className="preview-modal" onClick={(e) => e.stopPropagation()}>
+            <div className="preview-modal-header">
+              <div className="preview-title" style={{ gap: '0.75rem' }}>
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                  <polygon points="23 7 16 12 23 17 23 7"></polygon>
+                  <rect x="1" y="5" width="15" height="14" rx="2" ry="2"></rect>
+                </svg>
+                <span>{t('videoRendering.preview', 'Preview')}</span>
+                {/* Video info badges (always render container; fill when data available) */}
+                <div className="preview-badges">
+                  {(() => {
+                    const info = previewInfo || previewClientInfo;
+
+                    const videoBasics = [];
+                    const videoCodecs = [];
+                    const audioBadges = [];
+                    const fileBadges = [];
+
+                    // VIDEO BASICS (order: res, fps, duration, quality)
+                    if (info?.width && info?.height) {
+                      videoBasics.push(
+                        <span key="res" className="preview-badge video" title={t('videoRendering.resolutionLabel','Resolution')}>
+                          {info.width}×{info.height}
+                          {getAspectRatio(info.width, info.height) ? ` (${getAspectRatio(info.width, info.height)})` : ''}
+                        </span>
+                      );
+                    }
+                    if (info?.fps) {
+                      videoBasics.push(
+                        <span key="fps" className="preview-badge video" title={t('videoRendering.frameRateLabel','Frame rate')}>{info.fps} fps</span>
+                      );
+                    }
+                    if (typeof previewDuration === 'number' && !isNaN(previewDuration)) {
+                      videoBasics.push(
+                        <span key="dur" className="preview-badge video" title={t('videoRendering.durationLabel','Duration')}>{formatDuration(previewDuration, 'hms')}</span>
+                      );
+                    }
+                    if (info?.quality || (info?.height && !info?.quality)) {
+                      videoBasics.push(
+                        <span key="quality" className="preview-badge video" title={t('videoRendering.qualityLabel','Quality')}>{info.quality || heightToQuality(info.height)}</span>
+                      );
+                    }
+
+                    // FILE (then)
+                    if (previewExtra?.size) {
+                      fileBadges.push(
+                        <span key="size" className="preview-badge file" title={t('videoRendering.fileSizeLabel','File size')}>{formatBytes(previewExtra.size)}</span>
+                      );
+                    }
+                    if (previewExtra?.createdAt) {
+                      const d = new Date(previewExtra.createdAt);
+                      if (!isNaN(d.getTime())) {
+                        fileBadges.push(
+                          <span key="created" className="preview-badge file" title={t('videoRendering.createdAtLabel','Created at')}>{d.toLocaleString()}</span>
+                        );
+                      }
+                    }
+
+                    // VIDEO CODECS
+                    if (info?.codec) {
+                      videoCodecs.push(
+                        <span key="vcodec" className="preview-badge video" title={t('videoRendering.videoCodecLabel','Video codec')}>{info.codec}</span>
+                      );
+                    }
+                    if (info?.bit_rate) {
+                      videoCodecs.push(
+                        <span key="vbitrate" className="preview-badge video" title={t('videoRendering.videoBitrateLabel','Video bitrate')}>{Math.round(info.bit_rate / 1000)} kbps</span>
+                      );
+                    } else if (previewExtra?.size && typeof previewDuration === 'number' && previewDuration > 0) {
+                      const kbps = Math.round((previewExtra.size * 8) / previewDuration / 1000);
+                      videoCodecs.push(
+                        <span key="est-bitrate" className="preview-badge video" title={t('videoRendering.estimatedBitrateLabel','Estimated bitrate')}>{kbps} kbps</span>
+                      );
+                    }
+
+                    // AUDIO
+                    if (info?.audio_codec) {
+                      audioBadges.push(
+                        <span key="acodec" className="preview-badge audio" title={t('videoRendering.audioCodecLabel','Audio codec')}>{info.audio_codec}</span>
+                      );
+                    }
+                    if (Number.isFinite(info?.audio_channels)) {
+                      audioBadges.push(
+                        <span key="achannels" className="preview-badge audio" title={t('videoRendering.audioChannelsLabel','Audio channels')}>{info.audio_channels} ch{info.audio_channel_layout ? ` (${info.audio_channel_layout})` : ''}</span>
+                      );
+                    }
+                    if (Number.isFinite(info?.audio_sample_rate)) {
+                      const khz = Math.round((info.audio_sample_rate / 1000) * 10) / 10;
+                      audioBadges.push(
+                        <span key="asamplerate" className="preview-badge audio" title={t('videoRendering.audioSampleRateLabel','Audio sample rate')}>{khz} kHz</span>
+                      );
+                    }
+                    if (Number.isFinite(info?.audio_bit_rate)) {
+                      audioBadges.push(
+                        <span key="abitrate" className="preview-badge audio" title={t('videoRendering.audioBitrateLabel','Audio bitrate')}>{Math.round(info.audio_bit_rate / 1000)} kbps</span>
+                      );
+                    }
+
+                    // FILE container (last)
+                    if (previewUrl) {
+                      const extMatch = previewUrl.toLowerCase().match(/\.([a-z0-9]+)(?:\?|$)/);
+                      if (extMatch && extMatch[1]) {
+                        fileBadges.push(
+                          <span key="container" className="preview-badge file" title={t('videoRendering.containerLabel','Container')}>{extMatch[1].toUpperCase()}</span>
+                        );
+                      }
+                    }
+
+                    const ordered = [];
+                    if (videoBasics.length) ordered.push(...videoBasics);
+                    if (videoCodecs.length) {
+                      if (ordered.length) ordered.push(<span key="sep-vcodec" className="preview-sep" />);
+                      ordered.push(...videoCodecs);
+                    }
+                    if (audioBadges.length) {
+                      if (ordered.length) ordered.push(<span key="sep-audio" className="preview-sep" />);
+                      ordered.push(...audioBadges);
+                    }
+                    if (fileBadges.length) {
+                      if (ordered.length) ordered.push(<span key="sep-file" className="preview-sep" />);
+                      ordered.push(...fileBadges);
+                    }
+                    return ordered;
+                  })()}
+                </div>
+              </div>
+              <button className="preview-close-btn" onClick={() => setPreviewOpen(false)}>
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                  <line x1="18" y1="6" x2="6" y2="18"></line>
+                  <line x1="6" y1="6" x2="18" y2="18"></line>
+                </svg>
+              </button>
+            </div>
+            <div className="preview-modal-content">
+              <video
+                src={previewUrl}
+                onLoadedMetadata={(e) => {
+                  const v = e.currentTarget;
+                  setPreviewDuration(v.duration || null);
+                  const vw = v.videoWidth || null;
+                  const vh = v.videoHeight || null;
+                  const fps = (previewItem && previewItem.settings && previewItem.settings.frameRate) ? previewItem.settings.frameRate : undefined;
+                  if (vw && vh) {
+                    setPreviewClientInfo({ width: vw, height: vh, fps });
+                  }
+                }}
+                controls
+                style={{ width: '100%', height: 'auto', borderRadius: 12, maxHeight: '75vh' }}
+              />
+            </div>
+          </div>
+        </div>
+      )}
+
+    </>
   );
 };
 

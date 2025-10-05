@@ -97,7 +97,6 @@
   "videoReady": "세그먼트 선택을 위한 비디오 준비 완료...",
   "subtitleUploadSuccess": "자막 파일이 성공적으로 업로드되었습니다!",
   "autoSubtitleNotice": "아래 자막은 비디오를 다운로드하는 동안 함께 제공되는 자막입니다. 원하지 않으면 Ctrl+A로 모두 선택하여 삭제/다시 생성하세요",
-
   "downloadAndViewWithSrt": "다운로드 + 업로드된 SRT로 보기",
   "downloadAndGenerate": "비디오 다운로드 + AI로 시간 맞춤 자막 생성",
   "preparingProcessing": "비디오 처리 준비 중...",

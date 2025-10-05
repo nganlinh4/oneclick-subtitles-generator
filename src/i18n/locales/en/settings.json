@@ -5,7 +5,6 @@
   "gemini25ProPaused": "Gemini 2.5 Pro is now available again on the free API tier! You can use it for all features.",
   "udbmIntroduction": "Introducing UDBM, opensource database manager and more, download portable EXE",
   "udbmDownloadHere": "here",
-  "upcomingFeaturesOSG": "Upcoming features for OSG: automatic multi-video subtitling, API for subtitle creation, dubbing alignment with editing interface.",
   "closeMessage": "Close",
   "geminiApiKey": "Gemini API Key",
   "geminiApiKeys": "Gemini API Keys",
@@ -191,7 +190,6 @@
   "favoriteMaxSubtitleLength": "Favorite max length of one subtitle",
   "favoriteMaxSubtitleLengthDescription": "Set the default maximum number of words per subtitle when auto-split is enabled.",
   "words": "words",
-  "processingSettings": "Processing",
   "videoOptimization": "Video Optimization",
   "optimizeVideos": "Optimize videos for processing",
   "optimizeVideosDescription": "Reduces video resolution and frame rate to 1 FPS for smaller file sizes and to fit <a href=\"https://ai.google.dev/gemini-api/docs/video-understanding\" target=\"_blank\" rel=\"noopener noreferrer\">Gemini's input requirements</a> (disabling will skip resize but take longer during upload/retry to Gemini)",
@@ -371,21 +369,18 @@
   "enableYoutubeSearch": "Enable YouTube Search",
   "autoImportSiteSubtitles": "Auto-import site subtitles (when available)",
   "autoImportSiteSubtitlesDescription": "When available, automatically fetch and prefill subtitles from the site while the video is downloading. You can replace them later by uploading your own or regenerating.",
-
   "enableYoutubeSearchDescription": "Show the \"Search YouTube\" tab in input methods and enable YouTube API authentication settings. This is an optional method since Youtube videos can be download via \"Video URL\" method",
   "concurrentClients": "Concurrent Clients",
   "concurrentClientsDescription": "Number of simultaneous API requests to process in parallel. Higher values increase speed but may hit rate limits.",
   "resolution240p": "240p (Fastest, smallest files)",
   "resolution360p": "360p (Recommended for Gemini)",
   "customGeminiModels": {
-    "title": "Custom Gemini Models",
     "description": "Add custom Gemini model IDs to use in dropdowns throughout the application. These models will appear in all model selection menus.",
     "modelId": "Model ID",
     "modelName": "Display Name",
     "modelIdPlaceholder": "e.g., gemini-2.5-pro-preview-03-25",
     "modelNamePlaceholder": "e.g., Gemini 2.5 Pro Preview",
     "add": "Add Model",
-    "update": "Update Model",
     "addNew": "Add Custom Model",
     "edit": "Edit model",
     "delete": "Delete model",
@@ -393,16 +388,5 @@
     "modelExists": "A model with this ID already exists"
   },
   "customModels": {
-    "modelId": "Model ID",
-    "modelName": "Display Name",
-    "modelIdPlaceholder": "e.g., gemini-2.5-pro-preview-03-25",
-    "modelNamePlaceholder": "e.g., Gemini 2.5 Pro Preview",
-    "add": "Add Model",
-    "update": "Update Model",
-    "addNew": "Add Custom Model",
-    "edit": "Edit model",
-    "delete": "Delete model",
-    "confirmDelete": "Are you sure you want to delete this custom model?",
-    "modelExists": "A model with this ID already exists"
   }
 }

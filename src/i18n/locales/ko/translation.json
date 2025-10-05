@@ -105,7 +105,6 @@
     "processing": "파일 처리 중 {{current}}/{{total}}: {{filename}}",
     "complete": "일괄 번역 완료: {{success}}/{{total}} 파일이 성공적으로 처리되었습니다",
     "completeWithMain": "일괄 파일 완료: {{success}}/{{bulkTotal}} 일괄 파일 처리됨, 메인 파일 다음 ({{current}}/{{total}} 전체)",
-    "error": "일괄 번역 중 오류: {{message}}",
     "downloadAll": "모두 다운로드",
     "downloadZip": "ZIP 다운로드"
   },

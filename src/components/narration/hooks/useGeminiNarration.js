@@ -99,7 +99,7 @@ const useGeminiNarration = ({
               ...item,
               pending: false,
               success: false,
-              error: 'Generation was cancelled'
+              error: t('narration.generationCancelled', 'Generation was cancelled')
             };
           }
           return item;
@@ -270,7 +270,7 @@ const useGeminiNarration = ({
                   ...item,
                   pending: false,
                   success: false,
-                  error: 'Generation was interrupted'
+                  error: t('narration.generationInterrupted', 'Generation was interrupted')
                 };
               }
 
@@ -331,7 +331,8 @@ const useGeminiNarration = ({
         },
         null, // Use default model
         0, // No sleep time
-        selectedVoice // Use the selected voice
+        selectedVoice, // Use the selected voice
+        t('narration.preparingGeminiGeneration', 'Preparing to generate narration with Gemini...') // Translated initial progress message
       );
 
       // Handle the pending response from our concurrent implementation
@@ -376,7 +377,7 @@ const useGeminiNarration = ({
             ...item,
             pending: false,
             success: false,
-            error: 'Generation was cancelled'
+            error: t('narration.generationCancelled', 'Generation was cancelled')
           };
         }
         return item;
@@ -500,12 +501,13 @@ const useGeminiNarration = ({
           if (results && results.length > 0) {
             resolvePromise(results[0]);
           } else {
-            resolvePromise({ success: false, error: 'No result returned' });
+            resolvePromise({ success: false, error: t('narration.noResultReturned', 'No result returned') });
           }
         },
         null, // Use default model
         0, // No sleep time for single retries
-        selectedVoice // Use the selected voice
+        selectedVoice, // Use the selected voice
+        t('narration.preparingGeminiGeneration', 'Preparing to generate narration with Gemini...') // Translated initial progress message
       );
 
       // Wait for the narration to complete
@@ -733,7 +735,7 @@ const useGeminiNarration = ({
           t(
             'narration.subtitleGroupingError',
             'Error grouping subtitles: {{error}}',
-            { error: groupingResult.error || 'Failed to group subtitles' }
+            { error: groupingResult.error || t('narration.failedToGroupSubtitles', 'Failed to group subtitles') }
           )
         );
         return false;

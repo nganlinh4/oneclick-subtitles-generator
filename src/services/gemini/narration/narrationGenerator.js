@@ -358,14 +358,15 @@ export const generateGeminiNarrations = async (
   onComplete = () => {},
   modelName = null,
   // sleepTime parameter removed as it's not used with concurrent processing
-  voiceName = null
+  voiceName = null,
+  initialProgressMessage = "Preparing to generate narration..."
 ) => {
   // Reset cancellation flag
   isCancelled = false;
 
   try {
-    // Initial progress message - will be provided by the component with proper translation
-    onProgress("Preparing to generate narration...");
+    // Initial progress message - now provided by the component with proper translation
+    onProgress(initialProgressMessage);
 
     // Get API key from localStorage
     const apiKey = localStorage.getItem('gemini_api_key');

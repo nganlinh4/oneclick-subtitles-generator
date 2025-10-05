@@ -105,7 +105,6 @@
     "processing": "Processing file {{current}}/{{total}}: {{filename}}",
     "complete": "Bulk translation complete: {{success}}/{{total}} files processed successfully",
     "completeWithMain": "Bulk files complete: {{success}}/{{bulkTotal}} bulk files processed, main file next ({{current}}/{{total}} total)",
-    "error": "Error during bulk translation: {{message}}",
     "downloadAll": "Download All",
     "downloadZip": "Download ZIP"
   },
