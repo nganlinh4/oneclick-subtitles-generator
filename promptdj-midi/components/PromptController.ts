@@ -189,6 +189,10 @@ export class PromptController extends LitElement {
     .is-editing #text {
       visibility: visible;
       opacity: 0; /* capture input but keep visual on arc */
+      /* Stabilize caret behavior in production builds */
+      text-align: left;
+      direction: ltr;
+      unicode-bidi: plaintext;
     }
 
     /* Make the arched text visually distinct during editing. */
@@ -295,7 +299,8 @@ export class PromptController extends LitElement {
     if (changedProperties.has('showCC') && !this.showCC) {
       this.learnMode = false;
     }
-    if (changedProperties.has('text') && this.textInput) {
+    // Avoid resetting the contenteditable while the user is typing, which can move the caret
+    if (changedProperties.has('text') && this.textInput && !this.isEditing) {
       this.textInput.textContent = this.text;
     }
     super.update(changedProperties);
