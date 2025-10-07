@@ -5,6 +5,7 @@ import { defineConfig, loadEnv } from 'vite';
 export default defineConfig(({ mode }) => {
     const env = loadEnv(mode, '.', '');
     return {
+      base: './', // ensure assets load relative to /promptdj-midi/
       server: {
         port: 3037,
         host: '0.0.0.0',

@@ -4,9 +4,9 @@
   "outputDirectory": "build",
   "framework": null,
   "rewrites": [
-    {
-      "source": "/(.*)",
-      "destination": "/index.html"
-    }
+    { "source": "/promptdj-midi/assets/(.*)", "destination": "/promptdj-midi/assets/$1" },
+    { "source": "/promptdj-midi/(.*)", "destination": "/promptdj-midi/$1" },
+    { "source": "/promptdj-midi", "destination": "/promptdj-midi/index.html" },
+    { "source": "/(.*)", "destination": "/index.html" }
   ]
 }
