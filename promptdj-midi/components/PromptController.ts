@@ -275,6 +275,7 @@ export class PromptController extends LitElement {
 
   override firstUpdated() {
     this.textInput.setAttribute('contenteditable', 'plaintext-only');
+    this.textInput.setAttribute('dir', 'ltr'); // Ensure LTR direction to avoid RTL heuristics
     this.textInput.textContent = this.text;
     this.lastValidText = this.text;
 
@@ -357,6 +358,7 @@ export class PromptController extends LitElement {
     if (!selection) return;
     const range = document.createRange();
     range.selectNodeContents(this.textInput);
+    range.collapse(false); // place caret at end
     selection.removeAllRanges();
     selection.addRange(range);
   }
