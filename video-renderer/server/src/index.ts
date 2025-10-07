@@ -245,7 +245,11 @@ app.post('/render', async (req, res) => {
         return Number.isFinite(n) ? n : undefined;
       };
       fps = toNumber(metadata.frameRate) ?? info.fps; // Allow override, but default to source FPS
-      durationInFrames = Math.ceil(info.duration * fps);
+      // Calculate trimmed duration for frame count
+      const trimStart = typeof metadata.trimStart === 'number' ? metadata.trimStart : parseFloat(metadata.trimStart || '0');
+      const trimEnd = typeof metadata.trimEnd === 'number' ? metadata.trimEnd : parseFloat(metadata.trimEnd || info.duration);
+      const effectiveDuration = (!isNaN(trimEnd) && trimEnd > 0 ? trimEnd : info.duration) - (!isNaN(trimStart) && trimStart > 0 ? trimStart : 0);
+      durationInFrames = Math.ceil(effectiveDuration * fps);
 
       // Frontend may pass cropping and/or target resolution
       // Supported metadata keys:
@@ -381,20 +385,40 @@ app.post('/render', async (req, res) => {
       const extractedAudioFile = path.join(tempDir, 'audio.aac');
       fs.mkdirSync(framesDir);
 
-      // 1. Extract Frames (apply fps + optional crop). DO NOT SCALE here; let composition handle fit/padding.
+      // 1. Extract Frames (apply fps + optional crop + trimming). DO NOT SCALE here; let composition handle fit/padding.
       updateStatus({ phase: 'Extracting video frames', progress: 0 });
       const vfParts: string[] = [`fps=${fps}`];
       // Only crop if the crop rect is fully inside the source; if it goes out-of-bounds, skip crop and let composition simulate out-crop with padding
       const canCropInFfmpeg = crop && crop.x >= 0 && crop.y >= 0 && (crop.x + crop.w) <= info.width && (crop.y + crop.h) <= info.height;
       if (canCropInFfmpeg && crop) vfParts.push(`crop=${crop.w}:${crop.h}:${crop.x}:${crop.y}`);
-      const frameExtractionArgs = ['-i', sourceVideoPath, '-vf', vfParts.join(','), '-compression_level', '1', path.join(framesDir, '%06d.png')];
+
+      // Trimming: apply start/end time if provided
+      const trimArgs = [];
+      if (!isNaN(trimStart) && trimStart > 0) trimArgs.push('-ss', trimStart.toString());
+      if (!isNaN(trimEnd) && trimEnd > 0) trimArgs.push('-to', trimEnd.toString());
+
+      const frameExtractionArgs = [
+        ...trimArgs,
+        '-i', sourceVideoPath,
+        '-vf', vfParts.join(','),
+        '-compression_level', '1',
+        path.join(framesDir, '%06d.png')
+      ];
       await runFfmpeg(frameExtractionArgs, renderId, 'Frame Extraction', durationInFrames, (p) => {
         updateStatus({ progress: p * 0.08 }); // Map frame extraction to 0%–8%
       });
 
       // 2. Extract Audio
       updateStatus({ phase: 'Extracting audio track', progress: 0.08 });
-      const audioExtractionArgs = ['-i', sourceVideoPath, '-vn', '-c:a', 'aac', '-b:a', '256k', extractedAudioFile];
+      // 2. Extract Audio (apply trimming)
+      const audioTrimArgs = [];
+      if (!isNaN(trimStart) && trimStart > 0) audioTrimArgs.push('-ss', trimStart.toString());
+      if (!isNaN(trimEnd) && trimEnd > 0) audioTrimArgs.push('-to', trimEnd.toString());
+      const audioExtractionArgs = [
+        ...audioTrimArgs,
+        '-i', sourceVideoPath,
+        '-vn', '-c:a', 'aac', '-b:a', '256k', extractedAudioFile
+      ];
       await runFfmpeg(audioExtractionArgs, renderId, 'Audio Extraction', durationInFrames, () => {}); // No frame progress for audio
       finalAudioPath = extractedAudioFile;
 
@@ -469,6 +493,8 @@ app.post('/render', async (req, res) => {
         setTimeout(() => activeRenders.delete(renderId), 300000);
     }
   } finally {
+// DEBUG LOG: Temp directory cleanup triggered. This may cause missing frames if accessed after render.
+console.log(`[${renderId}] DEBUG: Temp directory cleanup may cause missing frames. Frames served from: ${tempDir}`);
     if (tempDir && fs.existsSync(tempDir)) {
       console.log(`[${renderId}] Cleaning up temporary directory: ${tempDir}`);
       fs.rm(tempDir, { recursive: true, force: true }, () => {});

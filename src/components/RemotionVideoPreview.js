@@ -5,7 +5,7 @@ import { SubtitledVideoComposition } from './SubtitledVideoComposition';
 import VideoCropControls from './VideoCropControls';
 import '../styles/VideoPreviewPanel.css';
 
-const RemotionVideoPreview = ({
+const RemotionVideoPreview = React.forwardRef(({
   videoFile,
   subtitles,
   narrationAudioUrl,
@@ -19,7 +19,7 @@ const RemotionVideoPreview = ({
   onSeek,
   cropSettings,
   onCropChange
-}) => {
+}, ref) => {
   const { t } = useTranslation();
   const [videoUrl, setVideoUrl] = useState(null);
   const [isPlaying, setIsPlaying] = useState(false);
@@ -44,6 +44,9 @@ const RemotionVideoPreview = ({
   });
 
   const playerRef = useRef(null);
+
+  // Use the forwarded ref or fallback to internal ref
+  const actualPlayerRef = ref || playerRef;
 
 
   // Create video URL from file
@@ -310,11 +313,11 @@ const RemotionVideoPreview = ({
         event.preventDefault();
         event.stopPropagation();
 
-        if (playerRef.current) {
+        if (actualPlayerRef.current) {
           if (isPlaying) {
-            playerRef.current.pause();
+            actualPlayerRef.current.pause();
           } else {
-            playerRef.current.play();
+            actualPlayerRef.current.play();
           }
         }
       }
@@ -361,7 +364,7 @@ const RemotionVideoPreview = ({
     <div style={{ position: 'relative', width: '100%', height: '100%' }}>
       {/* Video player */}
       <Player
-        ref={playerRef}
+        ref={actualPlayerRef}
         component={SubtitledVideoComposition}
         durationInFrames={durationInFrames}
         compositionWidth={safeWidth}
@@ -419,6 +422,6 @@ const RemotionVideoPreview = ({
       )}
     </div>
   );
-};
+});
 
 export default RemotionVideoPreview;
