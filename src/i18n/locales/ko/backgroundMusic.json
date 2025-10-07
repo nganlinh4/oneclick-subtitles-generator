@@ -1,0 +1,15 @@
+{
+  "title": "배경 음악 생성기",
+  "statusNoApiKey": "Gemini API 키가 설정되지 않았습니다. 설정 > API 키에서 설정해 주세요.",
+  "statusStarting": "녹음을 시작하는 중...",
+  "statusRecording": "녹음 중...",
+  "statusRecordingStopped": "녹음이 중지되었습니다.",
+  "statusRecordingError": "녹음 오류: {{error}}",
+  "sectionMessage": "DJ처럼 실전 음악을 만들고 그 트랙을 녹음하세요.",
+  "helperMessage": "네트워크 끊김이나 Lyria 오류가 걱정되더라도 괜찮아요 — 녹음된 오디오에서 무음 구간은 자동으로 제거됩니다.",
+  "noDevices": "장치를 찾을 수 없습니다",
+  "startRecording": "녹음 시작",
+  "stopRecording": "녹음 중지",
+  "downloadRecording": "녹음 파일 다운로드"
+}
+

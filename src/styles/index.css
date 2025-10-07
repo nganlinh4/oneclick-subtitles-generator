@@ -15,6 +15,8 @@
 @import url('./font-overrides.css');
 @import url('./components/LiquidGlass.css');
 
+@import url('./components/form-controls.css');
+
 /* index.css - Global styles for the application */
 
 :root {

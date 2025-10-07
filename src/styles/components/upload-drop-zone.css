@@ -1,0 +1,32 @@
+/* Upload drop zone styles extracted from VideoRenderingSection.css */
+.upload-drop-zone {
+  background-color: var(--background-primary);
+  border-radius: 48px;
+  padding: 3rem;
+  box-shadow: 0 4px 12px var(--shadow-color);
+  transition: all 0.3s ease;
+  border: 2px dashed var(--border-color);
+  text-align: center;
+  cursor: pointer;
+  position: relative;
+  overflow: hidden;
+  min-height: 150px;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  align-items: center;
+  gap: inherit;
+}
+
+.upload-drop-zone:hover {
+  border-color: var(--primary-color);
+  background-color: rgba(var(--primary-rgb, 0, 123, 255), 0.05);
+  transform: scale(1.01);
+}
+
+.drop-text {
+  color: var(--text-secondary);
+  margin: 0.4rem 0;
+  font-size: 0.95rem;
+}
+

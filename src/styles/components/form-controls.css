@@ -1,0 +1,129 @@
+/* Shared form controls styling for selects and similar UI */
+
+/* Base select styling (Material Design 3) */
+.setting-select {
+  position: relative;
+  background-color: var(--md-surface-1);
+  border: 1px solid var(--md-outline-variant);
+  border-radius: var(--md-shape-pill);
+  padding: 8px 16px;
+  font-size: 0.9rem;
+  color: var(--md-on-surface);
+  cursor: pointer;
+  transition: all var(--md-duration-medium2) var(--md-easing-standard);
+  height: 42px;
+  box-sizing: border-box;
+  display: flex;
+  align-items: center;
+  appearance: none;
+  -webkit-appearance: none;
+  -moz-appearance: none;
+  background-repeat: no-repeat;
+  background-position: right 12px center;
+  background-size: 16px;
+  padding-right: 40px;
+  box-shadow: var(--md-elevation-level1);
+  font-family: var(--font-primary);
+}
+
+/* Light mode arrow */
+[data-theme="light"] .setting-select {
+  background-image: url("data:image/svg+xml;charset=UTF-8,%3csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%23000000' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3e%3cpolyline points='6 9 12 15 18 9'%3e%3c/polyline%3e%3c/svg%3e");
+}
+
+/* Dark mode arrow */
+[data-theme="dark"] .setting-select {
+  background-image: url("data:image/svg+xml;charset=UTF-8,%3csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%23ffffff' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3e%3cpolyline points='6 9 12 15 18 9'%3e%3c/polyline%3e%3c/svg%3e");
+}
+
+/* Default fallback for systems without explicit theme */
+@media (prefers-color-scheme: light) {
+  .setting-select {
+    background-image: url("data:image/svg+xml;charset=UTF-8,%3csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%23000000' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3e%3cpolyline points='6 9 12 15 18 9'%3e%3c/polyline%3e%3c/svg%3e");
+  }
+}
+
+@media (prefers-color-scheme: dark) {
+  .setting-select {
+    background-image: url("data:image/svg+xml;charset=UTF-8,%3csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%23ffffff' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3e%3cpolyline points='6 9 12 15 18 9'%3e%3c/polyline%3e%3c/svg%3e");
+  }
+}
+
+.setting-select:hover:not(:disabled) {
+  background-color: var(--md-surface-2);
+  box-shadow: var(--md-elevation-level2);
+  transform: translateY(-1px);
+}
+
+.setting-select:focus {
+  outline: none;
+  border-color: var(--md-primary);
+  box-shadow: 0 0 0 3px rgba(var(--md-primary-rgb), 0.12);
+}
+
+.setting-select:active {
+  transform: translateY(0);
+  box-shadow: var(--md-elevation-level1);
+}
+
+.setting-select:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+  background-color: var(--md-surface-variant);
+  color: var(--md-on-surface-variant);
+  transform: none !important;
+  box-shadow: none;
+}
+
+/* Enhanced dropdown option styling */
+.setting-select option {
+  background-color: var(--md-surface-1);
+  color: var(--md-on-surface);
+  padding: 12px 16px;
+  border: none;
+  font-size: 0.9rem;
+  font-family: var(--font-primary);
+  line-height: 1.4;
+  transition: background-color var(--md-duration-medium2) var(--md-easing-standard);
+}
+
+.setting-select option:hover { background-color: var(--md-surface-2); }
+.setting-select option:checked,
+.setting-select option:focus {
+  background-color: var(--md-primary-container);
+  color: var(--md-on-primary-container);
+}
+.setting-select option:disabled {
+  opacity: 0.5;
+  color: var(--md-on-surface-variant);
+  background-color: var(--md-surface-variant);
+}
+
+/* Modern browser support for dropdown styling */
+@supports (appearance: none) {
+  .setting-select {
+    background-image:
+      linear-gradient(45deg, transparent 50%, var(--md-on-surface) 50%),
+      linear-gradient(135deg, var(--md-on-surface) 50%, transparent 50%);
+    background-position:
+      calc(100% - 20px) calc(1em + 2px),
+      calc(100% - 15px) calc(1em + 2px);
+    background-size: 5px 5px, 5px 5px;
+    background-repeat: no-repeat;
+  }
+  .setting-select:focus {
+    background-image:
+      linear-gradient(45deg, transparent 50%, var(--md-primary) 50%),
+      linear-gradient(135deg, var(--md-primary) 50%, transparent 50%);
+  }
+}
+
+/* Webkit-specific dropdown styling for better appearance */
+@media screen and (-webkit-min-device-pixel-ratio: 0) {
+  .setting-select {
+    background-image: url("data:image/svg+xml;charset=UTF-8,%3csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='currentColor' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3e%3cpolyline points='6 9 12 15 18 9'%3e%3c/polyline%3e%3c/svg%3e");
+    background-size: 18px;
+    background-position: right 12px center;
+  }
+}
+

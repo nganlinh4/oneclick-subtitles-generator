@@ -627,3 +627,67 @@
 }
 
 
+
+
+/* Legacy pill buttons used across various sections (migrated from VideoRenderingSection.css) */
+.pill-button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.5rem;
+  padding: 0.5rem 1rem;
+  border-radius: 24px;
+  border: none;
+  font-size: 0.9rem;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all var(--md-duration-medium2) var(--md-easing-standard);
+  background-color: rgba(var(--md-surface-variant-rgb), 0.5);
+  color: var(--md-on-surface-variant);
+  border: 1px solid transparent;
+  height: 42px;
+  box-sizing: border-box;
+  box-shadow: var(--md-elevation-level1);
+}
+
+.pill-button.primary {
+  background-color: var(--md-primary);
+  color: var(--md-on-primary);
+}
+
+.pill-button.primary:hover:not(:disabled) {
+  background-color: var(--md-primary-hover, var(--md-primary));
+  transform: translateY(-2px);
+  box-shadow: var(--md-elevation-level2);
+}
+
+.pill-button.secondary {
+  background-color: rgba(var(--md-surface-variant-rgb), 0.5);
+  color: var(--md-on-surface-variant);
+  border: 1px solid var(--md-outline-variant);
+}
+
+.pill-button.secondary:hover:not(:disabled) {
+  background-color: var(--md-surface-variant);
+  transform: translateY(-1px);
+  box-shadow: var(--md-elevation-level2);
+}
+
+.selected-video-info .pill-button { flex-shrink: 0; }
+
+.pill-button.cancel {
+  background-color: rgba(var(--md-error-rgb), 0.1);
+  color: var(--md-error);
+  border: 1px solid rgba(var(--md-error-rgb), 0.2);
+}
+
+.pill-button.cancel:hover:not(:disabled) {
+  background-color: var(--md-error-container);
+  color: var(--md-on-error-container);
+}
+
+.pill-button:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+  transform: none !important;
+}

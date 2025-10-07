@@ -6,6 +6,11 @@
   "audioControls": "Audio Controls",
   "audioControlsHelp": "Use reference audio <12s and leave proper silence space (e.g. 1s) at the end. Otherwise there is a risk of truncating in the middle of word",
   "referenceTextPlaceholder": "Enter text that matches the reference audio...",
+  "recognizing": "Recognizing voice...",
+  "recognitionTimeout": "Voice recognition is taking too long. Please try again or enter text manually.",
+  "autoRecognize": "Auto-recognize voice",
+  "autoRecognizeDescription": "Automatically transcribe audio after recording or uploading",
+
   "clearReference": "Clear reference audio",
   "audioNotSupported": "Your browser does not support the audio element.",
   "upload": "Upload",

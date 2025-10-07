@@ -1,0 +1,47 @@
+/* Material Design 3 Expressive Loading Indicator */
+.loading-indicator {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  position: relative;
+  background: none;
+  border: none;
+  padding: 0;
+  margin: 0;
+  overflow: hidden; /* Ensure canvas doesn't overflow */
+}
+
+.loading-indicator-canvas {
+  display: block;
+  /* Canvas styling is handled in JS like original figma-showcase */
+}
+
+/* Animation performance optimizations */
+.loading-indicator-canvas {
+  will-change: transform;
+  backface-visibility: hidden;
+  -webkit-backface-visibility: hidden;
+  transform-style: preserve-3d;
+  -webkit-transform-style: preserve-3d;
+}
+
+/* Accessibility */
+.loading-indicator {
+  role: progressbar;
+  aria-label: "Loading";
+  aria-live: polite;
+}
+
+/* Responsive behavior */
+@media (prefers-reduced-motion: reduce) {
+  .loading-indicator-canvas {
+    animation-duration: 2s !important;
+  }
+}
+
+/* High contrast mode support */
+@media (prefers-contrast: high) {
+  .loading-indicator {
+    filter: contrast(1.5);
+  }
+}

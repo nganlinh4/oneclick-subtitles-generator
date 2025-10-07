@@ -1,0 +1,51 @@
+@import url('https://fonts.googleapis.com/css2?family=Open+Sans:wght@400;600;700&display=swap');
+@import url('./styles/material-tokens.css');
+
+@font-face {
+  font-family: 'Google Sans';
+  font-style: normal;
+  font-weight: 400;
+  src: url('./assets/fonts/Product Sans Regular.otf') format('opentype');
+  font-display: swap;
+}
+
+@font-face {
+  font-family: 'Google Sans';
+  font-style: italic;
+  font-weight: 400;
+  src: url('./assets/fonts/Product Sans Italic.otf') format('opentype');
+  font-display: swap;
+}
+
+@font-face {
+  font-family: 'Google Sans';
+  font-style: normal;
+  font-weight: 700;
+  src: url('./assets/fonts/Product Sans Bold.otf') format('opentype');
+  font-display: swap;
+}
+
+@font-face {
+  font-family: 'Google Sans';
+  font-style: italic;
+  font-weight: 700;
+  src: url('./assets/fonts/Product Sans Bold Italic.otf') format('opentype');
+  font-display: swap;
+}
+
+html, body {
+  height: 100%;
+  margin: 0;
+}
+body {
+  font-family: 'Google Sans', 'Open Sans', sans-serif;
+  font-size: 14px;
+  overflow: hidden;
+}
+body.dragging {
+  cursor: ns-resize;
+}
+body.dragging * {
+  user-select: none;
+  pointer-events: none;
+}

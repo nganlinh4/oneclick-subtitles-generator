@@ -24,7 +24,7 @@ const updatePrompts = async (req, res) => {
 
     // Optional: validate models if provided
     const allowedPromptModels = ['gemini-2.0-flash-lite', 'gemini-2.5-flash-lite'];
-    const allowedImageModels = ['gemini-2.5-flash-image-preview', 'gemini-2.0-flash-preview-image-generation'];
+    const allowedImageModels = ['gemini-2.5-flash-image', 'gemini-2.0-flash-preview-image-generation'];
 
     if (promptModel && !allowedPromptModels.includes(promptModel)) {
       return res.status(400).json({ error: 'Invalid prompt model' });

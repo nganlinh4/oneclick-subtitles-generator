@@ -36,7 +36,7 @@ audio.audio-player {
 /* Dark theme specific for audio-preview */
 [data-theme="dark"] .audio-preview .audio-player {
   background-color: var(--md-surface-4); /* Slightly darker for contrast */
-  border: 1px solid var(--md-outline);
+  border: 1px solid rgba(var(--md-primary-rgb), 0.2);
 }
 
 /*

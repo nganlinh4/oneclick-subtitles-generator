@@ -100,6 +100,8 @@ const UnifiedNarrationSection = ({
     referenceAudio, setReferenceAudio,
     referenceText, setReferenceText,
     isRecording, setIsRecording,
+    isStartingRecording, setIsStartingRecording,
+    recordingStartTime, setRecordingStartTime,
     /* recordedAudio, */ setRecordedAudio,
     isExtractingSegment, setIsExtractingSegment,
     segmentStartTime, segmentEndTime,
@@ -414,6 +416,8 @@ const UnifiedNarrationSection = ({
     setReferenceText,
     setRecordedAudio,
     setIsRecording,
+    setIsStartingRecording,
+    setRecordingStartTime,
     setIsExtractingSegment,
     setIsRecognizing,
     setError,
@@ -524,6 +528,8 @@ const UnifiedNarrationSection = ({
             handleFileUpload={handleFileUpload}
             fileInputRef={fileInputRef}
             isRecording={isRecording}
+            isStartingRecording={isStartingRecording}
+            recordingStartTime={recordingStartTime}
             startRecording={startRecording}
             stopRecording={stopRecording}
             isAvailable={isAvailable}
@@ -670,6 +676,8 @@ const UnifiedNarrationSection = ({
             handleFileUpload={handleFileUpload}
             fileInputRef={fileInputRef}
             isRecording={isRecording}
+            isStartingRecording={isStartingRecording}
+            recordingStartTime={recordingStartTime}
             startRecording={startRecording}
             stopRecording={stopRecording}
             isAvailable={isChatterboxAvailable}

@@ -3,6 +3,10 @@
   "version": "1.0.0",
   "description": "A subtitle generator application using Gemini AI",
   "homepage": "./",
+  "workspaces": [
+    "promptdj-midi",
+    "video-renderer"
+  ],
   "scripts": {
     "start": "npm run setup:react-env && npm run generate:version && node scripts/start-frontend.js",
     "start-react": "cross-env PORT=3030 react-scripts start",
@@ -27,6 +31,7 @@
     "install:yt-dlp": "node install-yt-dlp.js",
     "install:all": "node utils/npm-quiet.js install && node setup-narration.js && node install-yt-dlp.js",
     "postinstall:local": "node install-yt-dlp.js && node install-playwright-browsers.js && cd video-renderer && npm install --silent && npm run server:build --silent",
+    "postinstall": "node install-yt-dlp.js && node install-playwright-browsers.js && npm run workspace:build",
     "setup:f5tts": "node setup-f5tts.js",
     "python:start:cuda": "uv run --python .venv -- python server/narrationApp.py",
     "dev:cuda": "node scripts/start-all.js",
@@ -47,7 +52,8 @@
     "install:yt-dlp:verbose": "cross-env VERBOSE=true node install-yt-dlp.js",
     "install:all:quiet": "cross-env QUIET=true npm install --silent && cross-env QUIET=true node setup-narration.js && cross-env QUIET=true node install-yt-dlp.js",
     "install:all:verbose": "cross-env VERBOSE=true npm install && cross-env VERBOSE=true node setup-narration.js && cross-env VERBOSE=true node install-yt-dlp.js",
-    "start:original": "node scripts/start-frontend.js"
+    "start:original": "node scripts/start-frontend.js",
+    "workspace:build": "npm run --workspace=video-renderer server:build && npm run --workspace=promptdj-midi build"
   },
   "dependencies": {
     "@emotion/react": "^11.14.0",

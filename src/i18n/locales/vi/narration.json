@@ -19,6 +19,10 @@
   "notAvailable": "Không có sẵn",
   "noNarrationsAvailable": "Không có thuyết minh nào. Hãy tạo thuyết minh trước.",
   "referenceTextPlaceholder": "Nhập văn bản khớp với âm thanh tham chiếu...",
+  "recognizing": "Đang nhận diện giọng nói...",
+  "recognitionTimeout": "Nhận diện giọng nói mất quá nhiều thời gian. Vui lòng thử lại hoặc nhập văn bản thủ công.",
+  "downloading": "Đang tải xuống âm thanh...",
+
   "clearReference": "Xóa âm thanh tham chiếu",
   "audioNotSupported": "Trình duyệt của bạn không hỗ trợ phần tử âm thanh.",
   "upload": "Tải lên",

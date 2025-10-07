@@ -1,24 +1,10 @@
 /* Video Rendering Section Styles - Material Design 3 */
 /* Based on background-generator/container.css */
 
-/* Base container - matching background-generator-container */
-.video-rendering-section {
-  background-color: var(--md-surface-1);
-  border-radius: 38px;
-  box-shadow: var(--md-elevation-level2);
-  width: 100%;
-  max-width: 1200px;
-  margin: 20px auto 40px auto;
-  overflow: hidden;
-  animation: fade-in 0.3s ease-out;
-  position: relative;
-  scroll-margin-top: 20px;
-  transition: max-height var(--md-duration-medium4) var(--md-easing-emphasized);
-  max-height: 2000px; /* Large enough to contain all content when expanded */
-  will-change: max-height;
-}
 
-.video-rendering-section.collapsed {
+
+.video-rendering-section.collapsed,
+.music-generator-section.collapsed {
   max-height: 128px; /* Small enough to show just the header and collapsed content */
   transition: max-height var(--md-duration-medium4) var(--md-easing-emphasized);
 }
@@ -79,6 +65,8 @@
   border-radius: 24px;
 }
 
+
+
 .video-rendering-header .header-left {
   display: flex;
   align-items: center;
@@ -131,12 +119,14 @@
   transform: rotate(180deg);
 }
 
-.video-rendering-section.collapsed .collapse-button svg {
+.video-rendering-section.collapsed .collapse-button svg,
+.music-generator-section.collapsed .collapse-button svg {
   transform: rotate(0deg);
 }
 
 /* Collapsed content */
-.video-rendering-collapsed-content {
+.video-rendering-collapsed-content,
+.music-generator-collapsed-content {
   background-color: var(--md-surface-1);
   border-radius: 0 0 24px 24px;
   animation: slideUp var(--md-duration-medium3) var(--md-easing-emphasized-decelerate);
@@ -154,8 +144,8 @@
 }
 
 /* Content - matching background-generator-content */
-.video-rendering-content {
-  padding: 24px;
+.video-rendering-content,
+.music-generator-content {
   display: grid;
   grid-template-columns: 1fr;
   gap: 20px;
@@ -256,22 +246,6 @@
   flex: none;
 }
 
-/* Video preview panel - matches customization panel height */
-.video-preview-panel {
-  display: flex;
-  flex-direction: column;
-  flex: 2;
-  background: var(--md-surface-1);
-  overflow: hidden;
-  outline: none;
-  border-radius: 24px;
-  transition: border-color 0.2s ease;
-}
-
-.video-preview-panel:focus {
-  border-color: #007bff;
-  box-shadow: 0 0 0 3px rgba(0, 123, 255, 0.25);
-}
 
 /* Resizable divider between panels */
 .panel-resizer {
@@ -420,600 +394,11 @@
   border-radius: 8px;
 }
 
-/* Upload drop zone - based on file-upload.css */
-.upload-drop-zone {
-  background-color: var(--background-primary);
-  border-radius: 48px;
-  padding: 3rem;
-  box-shadow: 0 4px 12px var(--shadow-color);
-  transition: all 0.3s ease;
-  border: 2px dashed var(--border-color);
-  text-align: center;
-  cursor: pointer;
-  position: relative;
-  overflow: hidden;
-  min-height: 150px;
-  display: flex;
-  flex-direction: column;
-  justify-content: center;
-  align-items: center;
-}
 
-.upload-drop-zone:hover {
-  border-color: var(--primary-color);
-  background-color: rgba(var(--primary-rgb, 0, 123, 255), 0.05);
-  transform: scale(1.01);
-}
 
-.drop-text {
-  color: var(--text-secondary);
-  margin: 0.4rem 0;
-  font-size: 0.95rem;
-}
 
-/* Pill buttons - based on narration pill button patterns */
-.pill-button {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  gap: 0.5rem;
-  padding: 0.5rem 1rem;
-  border-radius: 24px;
-  border: none;
-  font-size: 0.9rem;
-  font-weight: 500;
-  cursor: pointer;
-  transition: all var(--md-duration-medium2) var(--md-easing-standard);
-  background-color: rgba(var(--md-surface-variant-rgb), 0.5);
-  color: var(--md-on-surface-variant);
-  border: 1px solid transparent;
-  height: 42px;
-  box-sizing: border-box;
-  box-shadow: var(--md-elevation-level1);
-}
 
-.pill-button.primary {
-  background-color: var(--md-primary);
-  color: var(--md-on-primary);
-}
 
-.pill-button.primary:hover:not(:disabled) {
-  background-color: var(--md-primary-hover, var(--md-primary));
-  transform: translateY(-2px);
-  box-shadow: var(--md-elevation-level2);
-}
-
-.pill-button.secondary {
-  background-color: rgba(var(--md-surface-variant-rgb), 0.5);
-  color: var(--md-on-surface-variant);
-  border: 1px solid var(--md-outline-variant);
-}
-
-.pill-button.secondary:hover:not(:disabled) {
-  background-color: var(--md-surface-variant);
-  transform: translateY(-1px);
-  box-shadow: var(--md-elevation-level2);
-}
-
-/* Button styling in the new two-row layout */
-.selected-video-info .pill-button {
-  flex-shrink: 0; /* Prevent button from shrinking */
-}
-
-.pill-button.cancel {
-  background-color: rgba(var(--md-error-rgb), 0.1);
-  color: var(--md-error);
-  border: 1px solid rgba(var(--md-error-rgb), 0.2);
-}
-
-.pill-button.cancel:hover:not(:disabled) {
-  background-color: var(--md-error-container);
-  color: var(--md-on-error-container);
-}
-
-.pill-button:disabled {
-  opacity: 0.6;
-  cursor: not-allowed;
-  transform: none !important;
-}
-
-/* Radio styles moved to centralized radio system in components/buttons.css */
-
-/* Radio option styles moved to centralized system */
-
-/* Compact section specific radio overrides - Material Design pill style */
-.subtitle-selection-compact .radio-group,
-.narration-selection-compact .radio-group {
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
-}
-
-.subtitle-selection-compact .radio-option,
-.narration-selection-compact .radio-option {
-  position: relative;
-}
-
-.subtitle-selection-compact .radio-option input[type="radio"],
-.narration-selection-compact .radio-option input[type="radio"] {
-  position: absolute;
-  opacity: 0;
-  width: 0;
-  height: 0;
-}
-
-.subtitle-selection-compact .radio-option label,
-.narration-selection-compact .radio-option label {
-  display: inline-flex;
-  align-items: center;
-  padding: 8px 16px;
-  height: 36px;
-  background-color: var(--md-surface-1);
-  border: 1px solid var(--md-outline-variant);
-  border-radius: var(--md-shape-pill);
-  cursor: pointer;
-  font-weight: 500;
-  transition: all 0.2s ease;
-  color: var(--md-on-surface);
-  box-sizing: border-box;
-  box-shadow: var(--md-elevation-level1);
-  font-size: 0.9rem;
-  width: 100%;
-  justify-content: flex-start;
-  min-width: 0; /* Allow flex item to shrink below content size */
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.subtitle-selection-compact .radio-option label:hover,
-.narration-selection-compact .radio-option label:hover {
-  background-color: var(--md-surface-2);
-  box-shadow: var(--md-elevation-level2);
-  transform: translateY(-2px);
-}
-
-.subtitle-selection-compact .radio-option label:active,
-.narration-selection-compact .radio-option label:active {
-  transform: translateY(0);
-  box-shadow: var(--md-elevation-level1);
-}
-
-.subtitle-selection-compact .radio-option input[type="radio"]:checked + label,
-.narration-selection-compact .radio-option input[type="radio"]:checked + label {
-  background-color: var(--md-primary-container);
-  color: var(--md-on-primary-container);
-  border-color: var(--md-primary);
-}
-
-.subtitle-selection-compact .radio-option input[type="radio"]:checked + label:hover,
-.narration-selection-compact .radio-option input[type="radio"]:checked + label:hover {
-  background-color: var(--md-primary-container);
-  opacity: 0.9;
-}
-
-.subtitle-selection-compact .radio-option input[type="radio"]:disabled + label,
-.narration-selection-compact .radio-option input[type="radio"]:disabled + label {
-  opacity: 0.38;
-  cursor: not-allowed;
-  background-color: var(--md-surface-variant);
-  color: var(--md-on-surface-variant);
-  border-color: var(--md-outline-variant);
-  box-shadow: none;
-  transform: none;
-}
-
-.subtitle-selection-compact .radio-option input[type="radio"]:disabled + label:hover,
-.narration-selection-compact .radio-option input[type="radio"]:disabled + label:hover {
-  box-shadow: none;
-  transform: none;
-  background-color: var(--md-surface-variant);
-  color: var(--md-on-surface-variant);
-  border-color: var(--md-outline-variant);
-}
-
-/* Special handling for narration option with refresh button */
-.narration-selection-compact .radio-option[style*="display: flex"] {
-  background-color: var(--md-surface-1);
-  border: 1px solid var(--md-outline-variant);
-  border-radius: var(--md-shape-pill);
-  padding: 8px 16px;
-  box-shadow: var(--md-elevation-level1);
-  transition: all 0.2s ease;
-}
-
-.narration-selection-compact .radio-option[style*="display: flex"]:hover {
-  background-color: var(--md-surface-2);
-  box-shadow: var(--md-elevation-level2);
-  transform: translateY(-2px);
-}
-
-.narration-selection-compact .radio-option[style*="display: flex"] input[type="radio"] {
-  position: relative;
-  opacity: 1;
-  width: 16px;
-  height: 16px;
-  margin: 0;
-  accent-color: var(--md-primary);
-}
-
-.narration-selection-compact .radio-option[style*="display: flex"] label {
-  background: none;
-  border: none;
-  padding: 0;
-  height: auto;
-  box-shadow: none;
-  transform: none;
-  margin: 0;
-  font-size: 0.9rem;
-  color: var(--md-on-surface);
-  font-weight: 500;
-}
-
-.narration-selection-compact .radio-option[style*="display: flex"] label:hover {
-  background: none;
-  transform: none;
-  box-shadow: none;
-}
-
-/* Narration status container - wrapper for pill + button */
-.narration-selection-compact .narration-status-container {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  width: 100%;
-}
-
-.narration-selection-compact .narration-status {
-  display: inline-flex;
-  align-items: center;
-  padding: 8px 16px;
-  background-color: var(--md-surface-1);
-  border: 1px solid var(--md-outline-variant);
-  border-radius: var(--md-shape-pill);
-  box-shadow: var(--md-elevation-level1);
-  font-size: 0.9rem;
-  font-weight: 500;
-  color: var(--md-on-surface);
-  white-space: nowrap;
-  height: 36px;
-  box-sizing: border-box;
-  flex: 1;
-  justify-content: flex-start;
-  min-width: 0; /* Allow flex item to shrink below content size */
-  overflow: hidden;
-  text-overflow: ellipsis;
-}
-
-.narration-selection-compact .narration-status.disabled {
-  color: var(--md-on-surface-variant);
-  opacity: 0.38;
-  cursor: not-allowed;
-}
-
-.narration-selection-compact .narration-status.not-aligned {
-  color: var(--md-on-surface-variant);
-  opacity: 0.6;
-  cursor: not-allowed;
-  background-color: var(--md-surface-variant);
-  border-color: var(--md-outline-variant);
-}
-
-.narration-selection-compact .narration-status.clickable {
-  cursor: pointer;
-  transition: all 0.2s ease;
-}
-
-.narration-selection-compact .narration-status.clickable:hover {
-  background-color: var(--md-surface-2);
-  transform: translateY(-1px);
-  box-shadow: var(--md-elevation-level2);
-}
-
-/* Refresh icon button */
-.narration-selection-compact .refresh-icon-button {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  width: 36px;
-  height: 36px;
-  padding: 0;
-  background-color: var(--md-primary);
-  color: var(--md-on-primary);
-  border: none;
-  border-radius: 50%;
-  cursor: pointer;
-  transition: all 0.2s ease;
-  box-shadow: var(--md-elevation-level1);
-  flex-shrink: 0;
-}
-
-.narration-selection-compact .refresh-icon-button:hover:not(:disabled) {
-  background-color: var(--md-primary-dark);
-  box-shadow: var(--md-elevation-level2);
-  transform: translateY(-1px);
-}
-
-.narration-selection-compact .refresh-icon-button:active {
-  transform: translateY(0);
-  box-shadow: var(--md-elevation-level1);
-}
-
-.narration-selection-compact .refresh-icon-button:disabled {
-  background-color: var(--md-surface-variant);
-  color: var(--md-on-surface-variant);
-  opacity: 0.5;
-  cursor: not-allowed;
-  transform: none;
-  box-shadow: none;
-}
-
-.narration-selection-compact .refresh-icon-button svg {
-  width: 16px;
-  height: 16px;
-}
-
-.item-count {
-  margin-left: 8px;
-  font-size: 0.85rem;
-  color: var(--text-secondary);
-  font-weight: 400;
-}
-
-/* Volume controls - matching translation section pattern */
-.volume-control {
-  display: flex;
-  align-items: center;
-  gap: 1rem;
-  width: 100%;
-}
-
-.volume-value {
-  font-size: 0.9rem;
-  font-weight: 500;
-  color: var(--text-primary);
-  min-width: 40px;
-  text-align: right;
-}
-
-/* Video result content */
-.video-result-content {
-  display: flex;
-  flex-direction: column;
-  gap: 1rem;
-  width: 100%;
-}
-
-/* Custom slider implementation */
-.volume-slider {
-  position: relative;
-  flex: 1;
-  height: 42px;
-  display: flex;
-  align-items: center;
-  /* Add padding to ensure thumb is fully draggable at extremes */
-  padding: 0 8px; /* Half thumb width for proper hitbox coverage */
-}
-
-.volume-slider .custom-slider-track {
-  position: absolute;
-  width: calc(100% - 16px); /* Match split-duration-slider: account for padding */
-  height: 4px;
-  background-color: var(--md-outline-variant);
-  border-radius: 2px;
-  top: 50%;
-  left: 8px; /* Match split-duration-slider: start at padding offset */
-  transform: translateY(-50%);
-}
-
-.volume-slider .custom-slider-fill {
-  position: absolute;
-  height: 100%;
-  background-color: var(--md-primary);
-  border-radius: 2px 0 0 2px;
-  left: 8px; /* Match split-duration-slider: start at track position */
-  /* Width is controlled by inline styles: width: X% */
-}
-
-.volume-slider .custom-slider-thumb {
-  position: absolute;
-  width: 16px;
-  height: 16px;
-  background-color: var(--md-primary);
-  border-radius: 50%;
-  top: 50%;
-  transform: translate(-50%, -50%);
-  box-shadow: var(--md-elevation-level1);
-  transition: all 0.2s ease;
-  cursor: pointer;
-}
-
-.custom-slider-thumb:hover {
-  transform: translate(-50%, -50%) scale(1.1);
-  box-shadow: var(--md-elevation-level2);
-}
-
-.custom-slider-input {
-  position: absolute;
-  top: 0;
-  left: 0;
-  width: 100%;
-  height: 100%;
-  opacity: 0;
-  cursor: pointer;
-  margin: 0;
-  padding: 0;
-}
-
-/* Disabled state */
-.volume-slider.disabled {
-  pointer-events: none;
-  position: relative;
-}
-
-.volume-slider.disabled .custom-slider-track,
-.volume-slider.disabled .custom-slider-fill,
-.volume-slider.disabled .custom-slider-thumb {
-  opacity: 0.5;
-}
-
-.volume-slider.disabled .custom-slider-thumb {
-  cursor: not-allowed;
-}
-
-.volume-slider.disabled .custom-slider-input {
-  cursor: not-allowed;
-  pointer-events: none;
-  opacity: 0;
-}
-
-/* Settings grid - already defined above as .settings-row */
-
-.setting-item {
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
-}
-
-.setting-label {
-  font-size: 0.9rem;
-  font-weight: 500;
-  color: var(--text-primary);
-}
-
-/* Dropdowns - Enhanced Material Design 3 styling */
-.setting-select {
-  position: relative;
-  background-color: var(--md-surface-1);
-  border: 1px solid var(--md-outline-variant);
-  border-radius: var(--md-shape-pill);
-  padding: 8px 16px;
-  font-size: 0.9rem;
-  color: var(--md-on-surface);
-  cursor: pointer;
-  transition: all var(--md-duration-medium2) var(--md-easing-standard);
-  height: 42px;
-  box-sizing: border-box;
-  display: flex;
-  align-items: center;
-  appearance: none;
-  -webkit-appearance: none;
-  -moz-appearance: none;
-  background-repeat: no-repeat;
-  background-position: right 12px center;
-  background-size: 16px;
-  padding-right: 40px;
-  box-shadow: var(--md-elevation-level1);
-  font-family: var(--font-primary);
-}
-
-/* Light mode arrow */
-[data-theme="light"] .setting-select {
-  background-image: url("data:image/svg+xml;charset=UTF-8,%3csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%23000000' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3e%3cpolyline points='6 9 12 15 18 9'%3e%3c/polyline%3e%3c/svg%3e");
-}
-
-/* Dark mode arrow */
-[data-theme="dark"] .setting-select {
-  background-image: url("data:image/svg+xml;charset=UTF-8,%3csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%23ffffff' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3e%3cpolyline points='6 9 12 15 18 9'%3e%3c/polyline%3e%3c/svg%3e");
-}
-
-/* Default fallback for systems without explicit theme */
-@media (prefers-color-scheme: light) {
-  .setting-select {
-    background-image: url("data:image/svg+xml;charset=UTF-8,%3csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%23000000' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3e%3cpolyline points='6 9 12 15 18 9'%3e%3c/polyline%3e%3c/svg%3e");
-  }
-}
-
-@media (prefers-color-scheme: dark) {
-  .setting-select {
-    background-image: url("data:image/svg+xml;charset=UTF-8,%3csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%23ffffff' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3e%3cpolyline points='6 9 12 15 18 9'%3e%3c/polyline%3e%3c/svg%3e");
-  }
-}
-
-.setting-select:hover:not(:disabled) {
-  background-color: var(--md-surface-2);
-  box-shadow: var(--md-elevation-level2);
-  transform: translateY(-1px);
-}
-
-.setting-select:focus {
-  outline: none;
-  border-color: var(--md-primary);
-  box-shadow: 0 0 0 3px rgba(var(--md-primary-rgb), 0.12);
-}
-
-.setting-select:active {
-  transform: translateY(0);
-  box-shadow: var(--md-elevation-level1);
-}
-
-.setting-select:disabled {
-  opacity: 0.6;
-  cursor: not-allowed;
-  background-color: var(--md-surface-variant);
-  color: var(--md-on-surface-variant);
-  transform: none !important;
-  box-shadow: none;
-}
-
-/* Enhanced dropdown option styling - targets the browser's native dropdown */
-.setting-select option {
-  background-color: var(--md-surface-1);
-  color: var(--md-on-surface);
-  padding: 12px 16px;
-  border: none;
-  font-size: 0.9rem;
-  font-family: var(--font-primary);
-  line-height: 1.4;
-  transition: background-color var(--md-duration-medium2) var(--md-easing-standard);
-}
-
-.setting-select option:hover {
-  background-color: var(--md-surface-2);
-}
-
-.setting-select option:checked,
-.setting-select option:focus {
-  background-color: var(--md-primary-container);
-  color: var(--md-on-primary-container);
-}
-
-.setting-select option:disabled {
-  opacity: 0.5;
-  color: var(--md-on-surface-variant);
-  background-color: var(--md-surface-variant);
-}
-
-/* Modern browser support for dropdown styling */
-@supports (appearance: none) {
-  .setting-select {
-    /* Enhanced styling for modern browsers */
-    background-image:
-      linear-gradient(45deg, transparent 50%, var(--md-on-surface) 50%),
-      linear-gradient(135deg, var(--md-on-surface) 50%, transparent 50%);
-    background-position:
-      calc(100% - 20px) calc(1em + 2px),
-      calc(100% - 15px) calc(1em + 2px);
-    background-size: 5px 5px, 5px 5px;
-    background-repeat: no-repeat;
-  }
-
-  .setting-select:focus {
-    background-image:
-      linear-gradient(45deg, transparent 50%, var(--md-primary) 50%),
-      linear-gradient(135deg, var(--md-primary) 50%, transparent 50%);
-  }
-}
-
-/* Webkit-specific dropdown styling for better appearance */
-@media screen and (-webkit-min-device-pixel-ratio: 0) {
-  .setting-select {
-    /* Better dropdown arrow for webkit browsers */
-    background-image: url("data:image/svg+xml;charset=UTF-8,%3csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='currentColor' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3e%3cpolyline points='6 9 12 15 18 9'%3e%3c/polyline%3e%3c/svg%3e");
-    background-size: 18px;
-    background-position: right 12px center;
-  }
-}
 
 /* Render controls */
 .render-controls {
@@ -1162,11 +547,13 @@
 
 /* Responsive design */
 @media (max-width: 768px) {
-  .video-rendering-section {
+  .video-rendering-section,
+  .music-generator-section {
     margin: 20px 16px 40px 16px;
   }
 
-  .video-rendering-content {
+  .video-rendering-content,
+  .music-generator-content {
     padding: 16px;
     gap: 16px;
   }
@@ -1183,7 +570,6 @@
     height: auto;
   }
 
-  .video-preview-panel,
   .customization-panel {
     flex: none !important;
     height: 400px;

@@ -402,6 +402,12 @@ install_with_narration() {
         colored_echo "[OK] Successfully updated package.json for cross-platform compatibility."
     fi
 
+    colored_echo "[SETUP] Configuring npm workspaces for optimal performance..."
+    node setup-workspaces.js
+    if [ $? -ne 0 ]; then
+        colored_echo "[WARN] Workspace setup had issues, continuing with standard install..."
+    fi
+
     colored_echo "[SETUP] Installing all dependencies (this may take several minutes)..."
     npm run install:all
     if [ $? -ne 0 ]; then
@@ -469,6 +475,12 @@ install_without_narration() {
         return
     fi
 
+    colored_echo "[SETUP] Configuring npm workspaces for optimal performance..."
+    node setup-workspaces.js
+    if [ $? -ne 0 ]; then
+        colored_echo "[WARN] Workspace setup had issues, continuing with standard install..."
+    fi
+
     colored_echo "[SETUP] Installing dependencies..."
     npm install
     if [ $? -ne 0 ]; then
@@ -533,6 +545,8 @@ update_app() {
     echo
     read -p "Run 'npm install' now in case dependencies have changed? (y/n): " install_deps
     if [ "$install_deps" = "y" ] || [ "$install_deps" = "Y" ]; then
+        echo "Configuring npm workspaces..."
+        node setup-workspaces.js
         echo "Running 'npm install'..."
         npm install
         if [ $? -ne 0 ]; then

@@ -131,7 +131,7 @@ export const transcribeAudio = async (audioBlob) => {
 
     // Prepare request data for transcription
     const requestData = {
-      model: "gemini-2.0-flash-lite",
+      model: "gemini-flash-lite-latest",
       contents: [
         {
           role: "user",
@@ -183,11 +183,13 @@ export const transcribeAudio = async (audioBlob) => {
 
     const data = await response.json();
 
-    // Extract the transcription text from the response
-    if (data.candidates && data.candidates[0] && data.candidates[0].content) {
-      const transcriptionText = data.candidates[0].content.parts[0].text;
+    // Extract the transcription text from the response safely
+    const candidates = Array.isArray(data?.candidates) ? data.candidates : [];
+    const firstCandidate = candidates[0];
+    const parts = Array.isArray(firstCandidate?.content?.parts) ? firstCandidate.content.parts : [];
+    const transcriptionText = typeof parts[0]?.text === 'string' ? parts[0].text : '';
 
-
+    if (transcriptionText) {
       // Clean up the transcription text (remove extra whitespace, etc.)
       const cleanedText = transcriptionText.trim();
 
@@ -196,15 +198,21 @@ export const transcribeAudio = async (audioBlob) => {
 
       console.timeEnd('transcribeAudio');
 
-
       return {
         text: cleanedText,
         is_english: isEnglish,
         language: isEnglish ? 'English' : 'Unknown'
       };
     } else {
-      console.error('Invalid response format from Gemini API:', data);
-      throw new Error('Invalid response format from Gemini API during transcription');
+      // Gracefully handle cases where Gemini returns no result
+      console.warn('Gemini returned no transcription candidates or empty text:', data);
+      console.timeEnd('transcribeAudio');
+      return {
+        text: '',
+        is_english: false,
+        language: 'Unknown',
+        no_result: true
+      };
     }
   } catch (error) {
     console.error('Error transcribing audio:', error);

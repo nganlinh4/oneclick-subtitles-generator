@@ -12,6 +12,10 @@ const CustomDropdown = ({
   className = '',
   style = {}
 }) => {
+  // Determine if the dropdown should be disabled based on the number of selectable options.
+  const selectableOptionsCount = options.filter(o => !o.disabled).length;
+  const isEffectivelyDisabled = disabled || selectableOptionsCount <= 1;
+
   const [isOpen, setIsOpen] = useState(false);
   const getChevronModeFromIndex = (val, opts) => {
     const idx = Math.max(0, opts.findIndex(o => o.value === val));
@@ -373,7 +377,7 @@ const CustomDropdown = ({
   }, [value, options]);
 
   const handleToggle = () => {
-    if (!disabled) {
+    if (!isEffectivelyDisabled) {
       if (!isOpen) {
         // Initial positioning - will be refined after render
         calculatePosition();
@@ -749,7 +753,7 @@ const CustomDropdown = ({
 
   return (
     <div 
-      className={`custom-dropdown ${className} ${disabled ? 'disabled' : ''} ${isOpen ? 'open' : ''}`}
+      className={`custom-dropdown ${className} ${isEffectivelyDisabled ? 'disabled' : ''} ${isOpen ? 'open' : ''}`}
       ref={dropdownRef}
       style={style}
     >
@@ -758,7 +762,7 @@ const CustomDropdown = ({
         type="button"
         className="custom-dropdown-button"
         onClick={handleToggle}
-        disabled={disabled}
+        disabled={isEffectivelyDisabled}
         aria-haspopup="listbox"
         aria-expanded={isOpen}
         style={isOpen ? { boxShadow: 'none', borderColor: 'transparent' } : undefined}
@@ -772,7 +776,7 @@ const CustomDropdown = ({
       </button>
 
       {/* Dropdown menu - rendered as portal to avoid clipping */}
-      {isOpen && !disabled && createPortal(
+      {isOpen && !isEffectivelyDisabled && createPortal(
         <div
           ref={menuRef}
           className={`custom-dropdown-menu custom-scrollbar-container anchored-expand`}

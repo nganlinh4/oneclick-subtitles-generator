@@ -98,6 +98,8 @@ const useNarrationHandlers = ({
   setReferenceText,
   setRecordedAudio,
   setIsRecording,
+  setIsStartingRecording,
+  setRecordingStartTime,
   setIsExtractingSegment,
   setIsRecognizing,
   setError,
@@ -324,6 +326,7 @@ const useNarrationHandlers = ({
     try {
       setError(''); // Clear any previous errors
       audioChunksRef.current = [];
+      if (typeof setIsStartingRecording === 'function') setIsStartingRecording(true);
 
       const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
 
@@ -355,6 +358,7 @@ const useNarrationHandlers = ({
             triggerErrorToast(errorMessage);
             URL.revokeObjectURL(audioUrl);
             recordingStartTimeRef.current = null; // Reset the timer
+            if (typeof setRecordingStartTime === 'function') setRecordingStartTime(null);
             return;
           } else {
             console.log(`[F5TTS Duration Check] Recording duration OK (${recordingDuration.toFixed(2)}s), proceeding`);
@@ -497,12 +501,16 @@ const useNarrationHandlers = ({
 
         // Reset recording timer after processing
         recordingStartTimeRef.current = null;
+        if (typeof setRecordingStartTime === 'function') setRecordingStartTime(null);
       };
 
       mediaRecorderRef.current.start();
       recordingStartTimeRef.current = Date.now(); // Track recording start time
+      if (typeof setRecordingStartTime === 'function') setRecordingStartTime(recordingStartTimeRef.current);
       setIsRecording(true);
+      if (typeof setIsStartingRecording === 'function') setIsStartingRecording(false);
     } catch (error) {
+      if (typeof setIsStartingRecording === 'function') setIsStartingRecording(false);
       setError(error.message || t('narration.microphoneError', 'Error accessing microphone'));
     }
   };

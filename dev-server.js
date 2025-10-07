@@ -9,14 +9,16 @@ const { setupEnvironmentVariables } = require('./scripts/setup-cors-env');
 const colors = {
   FRONTEND: chalk.cyan,
   SERVER: chalk.green,
-  RENDERER: chalk.magenta
+  RENDERER: chalk.magenta,
+  MIDI: chalk.blue
 };
 
 // Commands to run - cross-platform approach
 const commands = [
   { name: 'FRONTEND', cmd: 'npm', args: ['run', 'start'], cwd: '.' },
   { name: 'SERVER', cmd: 'npm', args: ['run', 'server:start'], cwd: '.' },
-  { name: 'RENDERER', cmd: 'npm', args: ['run', 'video-renderer:start'], cwd: '.' }
+  { name: 'RENDERER', cmd: 'npm', args: ['run', 'video-renderer:start'], cwd: '.' },
+  { name: 'MIDI', cmd: 'npm', args: ['run', 'dev', '--silent'], cwd: './promptdj-midi' }
 ];
 
 // Function to prefix output with colored service name (only the prefix is colored)

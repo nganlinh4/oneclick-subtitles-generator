@@ -35,18 +35,42 @@ const FileUploadInput = ({ uploadedFile, setUploadedFile, onVideoSelect, classNa
   ], []);
 
   const SUPPORTED_AUDIO_FORMATS = useMemo(() => [
-    "audio/wav", "audio/mp3", "audio/aiff", "audio/aac", "audio/ogg", "audio/flac", "audio/mpeg"
+    "audio/wav", "audio/mp3", "audio/aiff", "audio/aac", "audio/ogg", "audio/flac", "audio/mpeg",
+    "audio/m4a", "audio/mp4", "audio/x-ms-wma", "audio/opus", "audio/amr", "audio/3gpp",
+    "audio/basic", "audio/x-caf", "audio/vnd.dts", "audio/ac3", "audio/x-ape",
+    "audio/x-matroska", "audio/vnd.rn-realaudio"
+  ], []);
+
+  const SUPPORTED_AUDIO_EXTENSIONS = useMemo(() => [
+    ".wav", ".mp3", ".aiff", ".aac", ".ogg", ".flac", ".m4a", ".wma", ".opus",
+    ".amr", ".au", ".caf", ".dts", ".ac3", ".ape", ".mka", ".ra"
+  ], []);
+
+  const SUPPORTED_VIDEO_EXTENSIONS = useMemo(() => [
+    ".mp4", ".mpeg", ".mpg", ".mov", ".avi", ".flv", ".webm", ".wmv", ".3gp", ".3gpp"
   ], []);
 
   // Check if file is a video - wrapped in useCallback to avoid dependency issues
-  const isVideoFile = useCallback((mimeType) => {
-    return SUPPORTED_VIDEO_FORMATS.includes(mimeType);
-  }, [SUPPORTED_VIDEO_FORMATS]);
+  const isVideoFile = useCallback((mimeType, fileName = '') => {
+    // First check MIME type
+    if (SUPPORTED_VIDEO_FORMATS.includes(mimeType)) {
+      return true;
+    }
+    // Fallback to file extension check
+    const extension = fileName.toLowerCase().substring(fileName.lastIndexOf('.'));
+    return SUPPORTED_VIDEO_EXTENSIONS.includes(extension);
+  }, [SUPPORTED_VIDEO_FORMATS, SUPPORTED_VIDEO_EXTENSIONS]);
 
   // Check if file is an audio - wrapped in useCallback to avoid dependency issues
-  const isAudioFile = useCallback((mimeType) => {
-    return SUPPORTED_AUDIO_FORMATS.includes(mimeType);
-  }, [SUPPORTED_AUDIO_FORMATS]);
+  const isAudioFile = useCallback((mimeType, fileName = '') => {
+    // First check MIME type
+    if (SUPPORTED_AUDIO_FORMATS.includes(mimeType)) {
+      return true;
+    }
+    // Fallback to file extension check
+    const extension = fileName.toLowerCase().substring(fileName.lastIndexOf('.'));
+    return SUPPORTED_AUDIO_EXTENSIONS.includes(extension);
+  }, [SUPPORTED_AUDIO_FORMATS, SUPPORTED_AUDIO_EXTENSIONS]);
 
   // Display file information - wrapped in useCallback to avoid dependency issues
   const displayFileInfo = useCallback((file, originalFile = null) => {
@@ -64,7 +88,7 @@ const FileUploadInput = ({ uploadedFile, setUploadedFile, onVideoSelect, classNa
         mediaType: 'Audio'
       });
     } else {
-      const mediaType = isVideoFile(file.type) ? 'Video' : 'Audio';
+      const mediaType = isVideoFile(file.type, file.name) ? 'Video' : 'Audio';
       setFileInfo({
         name: file.name,
         type: file.type,
@@ -90,8 +114,8 @@ const FileUploadInput = ({ uploadedFile, setUploadedFile, onVideoSelect, classNa
       return false;
     }
 
-    // Check file type
-    if (!isVideoFile(file.type) && !isAudioFile(file.type)) {
+    // Check file type (with fallback to extension check)
+    if (!isVideoFile(file.type, file.name) && !isAudioFile(file.type, file.name)) {
       setError(t('fileUpload.formatError', 'Unsupported file format. Please upload a supported video or audio file.'));
       return false;
     }
@@ -371,7 +395,7 @@ const FileUploadInput = ({ uploadedFile, setUploadedFile, onVideoSelect, classNa
         type="file"
         ref={fileInputRef}
         onChange={handleFileChange}
-        accept=".mp4,.mpeg,.mpg,.mov,.avi,.flv,.webm,.wmv,.3gp,.3gpp,.mp3,.wav,.aiff,.aac,.ogg,.flac"
+        accept=".mp4,.mpeg,.mpg,.mov,.avi,.flv,.webm,.wmv,.3gp,.3gpp,.mp3,.wav,.aiff,.aac,.ogg,.flac,.m4a,.wma,.opus,.amr,.au,.caf,.dts,.ac3,.ape,.mka,.ra"
         className="hidden-file-input"
       />
 
@@ -399,7 +423,7 @@ const FileUploadInput = ({ uploadedFile, setUploadedFile, onVideoSelect, classNa
         </div>
       ) : (
         <div className="file-info-card">
-          {fileInfo && isVideoFile(fileInfo.type) ? (
+          {fileInfo && isVideoFile(fileInfo.type, fileInfo.name) ? (
             <svg className="file-type-icon video" viewBox="0 0 24 24" width="32" height="32" stroke="currentColor" strokeWidth="1.5" fill="none">
               <rect x="2" y="2" width="20" height="20" rx="2.18" ry="2.18"></rect>
               <line x1="7" y1="2" x2="7" y2="22"></line>

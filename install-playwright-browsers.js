@@ -10,6 +10,9 @@ const path = require('path');
 const { execSync } = require('child_process');
 const { Logger } = require('./utils/logger');
 
+// Set VERBOSE to true for detailed output
+process.env.VERBOSE = "true";
+
 const logger = new Logger({
   verbose: process.env.VERBOSE === 'true',
   quiet: process.env.QUIET === 'true'

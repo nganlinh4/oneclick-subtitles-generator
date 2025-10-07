@@ -55,6 +55,59 @@ const useCurrentTheme = () => {
 const BackgroundImageGenerator = ({ lyrics, albumArt, songName, isExpanded = false, onExpandChange }) => {
   const { t } = useTranslation();
   const currentTheme = useCurrentTheme();
+
+  // Helper: map raw error to friendly, localized message
+  const getFriendlyErrorMessage = (raw = '') => {
+    const msg = String(raw || '').trim();
+    const statusMatch = msg.match(/HTTP\s+(\d{3})/i);
+    if (statusMatch) {
+      const code = parseInt(statusMatch[1], 10);
+      switch (code) {
+        case 429:
+          return t('backgroundGenerator.error.quotaExceeded', 'Quota exceeded. Check your plan and billing.');
+        case 401:
+          return t('backgroundGenerator.error.unauthorized', 'Unauthorized: API key invalid or missing.');
+        case 403:
+          return t('backgroundGenerator.error.forbidden', 'Access forbidden. Check billing/quota or model access.');
+        case 400:
+          return t('backgroundGenerator.error.badRequest', 'Invalid request. Adjust prompt or album art and try again.');
+        case 413:
+          return t('backgroundGenerator.error.payloadTooLarge', 'Request too large. Try a smaller album image.');
+        case 415:
+          return t('backgroundGenerator.error.unsupportedMediaType', 'Unsupported image type. Please upload PNG or JPEG.');
+        case 500:
+        case 502:
+        case 503:
+        case 504:
+          return t('backgroundGenerator.error.serverError', 'Service is temporarily unavailable. Please try again later.');
+        default:
+          return t('backgroundGenerator.error.generic', 'Generation failed');
+      }
+    }
+    if (/exceeded\s+your\s+current\s+quota/i.test(msg) || /quota/i.test(msg)) {
+      return t('backgroundGenerator.error.quotaExceeded', 'Quota exceeded. Check your plan and billing.');
+    }
+    if (/api key not set/i.test(msg) || /api\s*key.*(invalid|missing)/i.test(msg)) {
+      return t('backgroundGenerator.error.apiKeyMissing', 'Gemini API key not set. Please set it in settings.');
+    }
+    if (/billing/i.test(msg)) {
+      return t('backgroundGenerator.error.quotaExceeded', 'Quota exceeded. Check your plan and billing.');
+    }
+    if (/cors|cross-origin/i.test(msg)) {
+      return t('backgroundGenerator.error.cors', 'Could not load album art due to CORS. Upload the image instead.');
+    }
+    if (/no image returned/i.test(msg)) {
+      return t('backgroundGenerator.error.noImageReturned', 'No image was returned. Try again or simplify the prompt.');
+    }
+    if (/no prompt returned/i.test(msg)) {
+      return t('backgroundGenerator.error.noPromptReturned', 'No prompt was returned. Try again later.');
+    }
+    if (/network/i.test(msg)) {
+      return t('backgroundGenerator.error.network', 'Network error. Check your connection and try again.');
+    }
+    return t('backgroundGenerator.error.generic', 'Generation failed');
+  };
+
   const [customLyrics, setCustomLyrics] = useState(lyrics || '');
   const [customAlbumArt, setCustomAlbumArt] = useState(albumArt || '');
   const [generatedPrompt, setGeneratedPrompt] = useState('');
@@ -105,7 +158,7 @@ const BackgroundImageGenerator = ({ lyrics, albumArt, songName, isExpanded = fal
       setGeneratedPrompt(prompt);
       return prompt;
     } catch (err) {
-      setError(`Error generating prompt: ${err.message}`);
+      setError(getFriendlyErrorMessage(err?.message || String(err)));
       console.error('Error generating prompt:', err);
       return null;
     } finally {
@@ -190,7 +243,7 @@ const BackgroundImageGenerator = ({ lyrics, albumArt, songName, isExpanded = fal
 
       return newImages.filter(img => img.url !== null);
     } catch (err) {
-      setError(`Error generating images: ${err.message}`);
+      setError(getFriendlyErrorMessage(err?.message || String(err)));
       console.error('Error in image generation process:', err);
       return null;
     } finally {
@@ -417,7 +470,7 @@ const BackgroundImageGenerator = ({ lyrics, albumArt, songName, isExpanded = fal
         }
       }
     } catch (err) {
-      setError(`Error in multi-prompt generation: ${err.message}`);
+      setError(getFriendlyErrorMessage(err?.message || String(err)));
       console.error('Error in multi-prompt generation process:', err);
     } finally {
       setIsGeneratingPrompt(false);
@@ -474,7 +527,10 @@ const BackgroundImageGenerator = ({ lyrics, albumArt, songName, isExpanded = fal
     <div className={`background-generator-container ${isCollapsed ? 'collapsed' : ''}`}>
       <div className="background-generator-header">
         <div className="header-left">
-          <h2>{t('backgroundGenerator.title', 'Background Image Generator')}</h2>
+          <h2 style={{ display: 'inline-flex', alignItems: 'center', gap: 10 }}>
+            <svg xmlns="http://www.w3.org/2000/svg" height="24" viewBox="0 -960 960 960" width="24" fill="currentColor"><path d="M320-333h320q27.6 0 47.8-19.5Q708-372 708-401v-158q0-29-20.2-48.5T640-627H320q-27.6 0-47.8 19.5Q252-588 252-559v158q0 29 20.2 48.5T320-333ZM172-117q-57.4 0-96.7-39.3Q36-195.6 36-253v-454q0-57.4 39.3-96.7Q114.6-843 172-843h616q57.4 0 96.7 39.3Q924-764.4 924-707v454q0 57.4-39.3 96.7Q845.4-117 788-117H172Zm0-136h616v-454H172v454Zm0 0v-454 454Zm183-132q-22 0-31.5-19t3.5-36l34-46q10.85-13 27.92-13.5Q406-500 417-486l39 53 63-85q10.85-14 27.92-14Q564-532 574-518l59 78q13 17 3.5 36T605-385H355Z"/></svg>
+            {t('backgroundGenerator.title', 'Background Image Generator')}
+          </h2>
           <BackgroundPromptEditorButton />
         </div>
         <button
@@ -759,7 +815,7 @@ const BackgroundImageGenerator = ({ lyrics, albumArt, songName, isExpanded = fal
                         ) : image.error ? (
                           <div className="error-placeholder">
                             <FiAlertTriangle size={36} />
-                            <p>{t('backgroundGenerator.generationFailed', 'Generation failed')}</p>
+                            <p>{getFriendlyErrorMessage(image.error)}</p>
                           </div>
                         ) : (
                           <div className="preview-placeholder">

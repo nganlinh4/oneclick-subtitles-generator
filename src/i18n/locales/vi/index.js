@@ -19,6 +19,7 @@ import models from './models.json';
 import promptEditor from './promptEditor.json';
 import narration from './narration.json';
 import backgroundGenerator from './backgroundGenerator.json';
+import backgroundMusic from './backgroundMusic.json';
 import onboarding from './onboarding.json';
 import qualitySelector from './qualitySelector.json';
 import preview from './preview.json';
@@ -71,6 +72,7 @@ const vi = {
   segmentRetry,
   narration,
   backgroundGenerator,
+  backgroundMusic,
   videoRendering,
   fontModal,
   videoQuality,

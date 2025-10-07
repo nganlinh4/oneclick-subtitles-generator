@@ -31,5 +31,21 @@
   "collapse": "Collapse",
   "clearImages": "Clear",
   "clearImagesTitle": "Clear All Images",
-  "helperMessage": "You can use your custom lyrics and album art here or press \"Thêm phụ đề\" and fetch from Genius"
+  "helperMessage": "You can use your own lyrics and album art here, or press \"Add Subtitles\" to fetch from Genius",
+  "error": {
+    "quotaExceeded": "Quota exceeded. Check your plan and billing.",
+    "rateLimited": "Rate limit exceeded. Please wait and try again.",
+    "unauthorized": "Unauthorized: API key invalid or missing.",
+    "forbidden": "Access forbidden. Check billing/quota or model access.",
+    "badRequest": "Invalid request. Adjust prompt or album art and try again.",
+    "payloadTooLarge": "Request too large. Try a smaller album image.",
+    "unsupportedMediaType": "Unsupported image type. Please upload PNG or JPEG.",
+    "serverError": "Service is temporarily unavailable. Please try again later.",
+    "generic": "Generation failed",
+    "apiKeyMissing": "Gemini API key not set. Please set it in settings.",
+    "cors": "Could not load album art due to CORS. Upload the image instead.",
+    "noImageReturned": "No image was returned. Try again or simplify the prompt.",
+    "noPromptReturned": "No prompt was returned. Try again later.",
+    "network": "Network error. Check your connection and try again."
+  }
 }

@@ -1,0 +1,16 @@
+{
+  "title": "Background Music Generator",
+  "statusNoApiKey": "Gemini API key not set. Please set it in Settings > API Keys.",
+  "statusStarting": "Starting recording...",
+  "statusStopping": "Stopping recording...",
+  "statusRecording": "Recording...",
+  "statusRecordingStopped": "Recording stopped.",
+  "statusRecordingError": "Recording error: {{error}}",
+  "sectionMessage": "Create DJ‑style live music and record it.",
+  "helperMessage": "Don’t worry about network interruptions or Lyria errors — the recorded audio will automatically remove all silence.",
+  "noDevices": "No devices found",
+  "startRecording": "Start Recording",
+  "stopRecording": "Stop Recording",
+  "downloadRecording": "Download Recording"
+}
+

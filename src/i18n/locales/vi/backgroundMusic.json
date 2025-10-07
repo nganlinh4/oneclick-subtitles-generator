@@ -1,0 +1,16 @@
+{
+  "title": "Trình tạo nhạc nền",
+  "statusNoApiKey": "Chưa thiết lập khóa API Gemini. Vui lòng thiết lập tại Cài đặt > API Keys.",
+  "statusStarting": "Đang bắt đầu ghi...",
+  "statusStopping": "Đang dừng ghi...",
+  "statusRecording": "Đang ghi...",
+  "statusRecordingStopped": "Đã dừng ghi.",
+  "statusRecordingError": "Lỗi ghi âm: {{error}}",
+  "sectionMessage": "Tạo nhạc thực chiến như DJ và thu âm lại đoạn nhạc đó",
+  "helperMessage": "Đừng lo về việc gián đoạn mạng hay lỗi từ Lyria, âm thanh thu được sẽ tự động loại bỏ hết khoảng lặng",
+  "noDevices": "Không tìm thấy thiết bị",
+  "startRecording": "Bắt đầu ghi",
+  "stopRecording": "Dừng ghi",
+  "downloadRecording": "Tải xuống bản ghi"
+}
+

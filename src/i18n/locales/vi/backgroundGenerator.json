@@ -31,5 +31,20 @@
   "collapse": "Thu gọn",
   "clearImages": "Xóa",
   "clearImagesTitle": "Xóa tất cả hình ảnh",
-  "helperMessage": "Bạn có thể sử dụng lời bài hát và ảnh bìa album tùy chỉnh ở đây hoặc nhấn \"Thêm phụ đề\" và lấy từ Genius"
+  "helperMessage": "Bạn có thể sử dụng lời bài hát và ảnh bìa album tùy chỉnh ở đây hoặc nhấn \"Thêm phụ đề\" và lấy từ Genius",
+  "error": {
+    "rateLimited": "Vượt quá giới hạn. Vui lòng chờ và thử lại.",
+    "unauthorized": "Không được phép: API key không hợp lệ hoặc thiếu.",
+    "forbidden": "Bị từ chối truy cập. Kiểm tra thanh toán/hạn ngạch hoặc quyền truy cập model.",
+    "badRequest": "Yêu cầu không hợp lệ. Hãy điều chỉnh prompt hoặc ảnh bìa và thử lại.",
+    "payloadTooLarge": "Yêu cầu quá lớn. Hãy dùng ảnh album nhỏ hơn.",
+    "unsupportedMediaType": "Định dạng ảnh không được hỗ trợ. Hãy tải PNG hoặc JPEG.",
+    "serverError": "Dịch vụ tạm thời không khả dụng. Vui lòng thử lại sau.",
+    "generic": "Tạo thất bại",
+    "apiKeyMissing": "Chưa thiết lập API key Gemini. Vào phần cài đặt để thêm.",
+    "cors": "Không thể tải ảnh bìa do CORS. Hãy tải ảnh trực tiếp.",
+    "noImageReturned": "Không có hình ảnh được trả về. Hãy thử lại hoặc đơn giản hóa prompt.",
+    "noPromptReturned": "Không có prompt được trả về. Vui lòng thử lại sau.",
+    "network": "Lỗi mạng. Kiểm tra kết nối và thử lại."
+  }
 }

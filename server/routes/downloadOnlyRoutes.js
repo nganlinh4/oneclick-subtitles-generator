@@ -255,14 +255,30 @@ router.get('/download-only-file/:videoId', (req, res) => {
   const { videoId } = req.params;
 
   try {
-    // Determine file extension based on videoId
-    const isAudio = videoId.includes('download_audio_');
-    const extension = isAudio ? 'mp3' : 'mp4';
-    const filename = `${videoId}.${extension}`;
-    const filePath = path.join(VIDEOS_DIR, filename);
+    // Determine file by existence; support multiple audio/video extensions produced by yt-dlp
+    const candidates = [
+      { ext: 'mp3', mime: 'audio/mpeg' },
+      { ext: 'm4a', mime: 'audio/mp4' },
+      { ext: 'webm', mime: 'audio/webm' },
+      { ext: 'opus', mime: 'audio/ogg' },
+      { ext: 'mp4', mime: 'video/mp4' }
+    ];
 
-    // Check if file exists
-    if (!fs.existsSync(filePath)) {
+    let filePath = null;
+    let filename = null;
+    let mimeType = null;
+
+    for (const c of candidates) {
+      const p = path.join(VIDEOS_DIR, `${videoId}.${c.ext}`);
+      if (fs.existsSync(p)) {
+        filePath = p;
+        filename = `${videoId}.${c.ext}`;
+        mimeType = c.mime;
+        break;
+      }
+    }
+
+    if (!filePath) {
       return res.status(404).json({
         success: false,
         error: 'File not found'
@@ -271,8 +287,6 @@ router.get('/download-only-file/:videoId', (req, res) => {
 
     // Set headers for file download
     const stats = fs.statSync(filePath);
-    const mimeType = isAudio ? 'audio/mpeg' : 'video/mp4';
-
     res.setHeader('Content-Type', mimeType);
     res.setHeader('Content-Length', stats.size);
     res.setHeader('Content-Disposition', `attachment; filename="${filename}"`);

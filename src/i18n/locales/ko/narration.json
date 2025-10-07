@@ -6,6 +6,9 @@
   "audioControls": "오디오 컨트롤",
   "audioControlsHelp": "12초 미만의 레퍼런스 오디오를 사용하고 끝에 적절한 무음 공간(예: 1초)을 남겨두세요. 그렇지 않으면 단어 중간에서 잘릴 위험이 있습니다",
   "referenceTextPlaceholder": "레퍼런스 오디오와 일치하는 텍스트를 입력하세요...",
+  "recognizing": "음성 인식 중...",
+  "recognitionTimeout": "음성 인식에 시간이 너무 오래 걸립니다. 다시 시도하거나 텍스트를 수동으로 입력하세요.",
+
   "clearReference": "레퍼런스 오디오 지우기",
   "audioNotSupported": "브라우저가 오디오 요소를 지원하지 않습니다.",
   "upload": "업로드",
@@ -31,6 +34,8 @@
   "generatingProgressWithId": "{{total}}개 중 {{progress}}개 나레이션 생성됨 (ID: {{id}})...",
   "generationComplete": "나레이션 생성 완료",
   "results": "생성된 나레이션",
+  "downloading": "오디오 파일 다운로드 중...",
+
   "play": "재생",
   "pause": "일시정지",
   "download": "다운로드",
