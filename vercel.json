@@ -1,6 +1,6 @@
 {
-  "installCommand": "npm install --legacy-peer-deps --ignore-scripts",
-  "buildCommand": "CI=false npm run build:vercel",
+  "installCommand": "npm ci --legacy-peer-deps --ignore-scripts && cd promptdj-midi && npm ci --ignore-scripts",
+  "buildCommand": "cd promptdj-midi && npm run build && cd .. && CI=false npm run build:vercel",
   "outputDirectory": "build",
   "framework": null,
   "rewrites": [
