@@ -650,11 +650,6 @@
   box-shadow: var(--md-elevation-level1);
 }
 
-.pill-button.primary {
-  background-color: var(--md-primary);
-  color: var(--md-on-primary);
-}
-
 .pill-button.primary:hover:not(:disabled) {
   background-color: var(--md-primary-hover, var(--md-primary));
   transform: translateY(-2px);
