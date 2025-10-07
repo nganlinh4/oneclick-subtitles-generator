@@ -173,8 +173,13 @@ const BackgroundMusicSection = () => {
   useEffect(() => {
     function onMessage(event) {
       try {
-        const allowedOrigins = ['http://127.0.0.1:3037', 'http://localhost:3037'];
-        if (event.origin && !allowedOrigins.includes(event.origin)) return;
+        // Accept messages from same-origin (production/preview) and local dev servers
+        const allowed = new Set([
+          window.location.origin,
+          'http://127.0.0.1:3037',
+          'http://localhost:3037',
+        ]);
+        if (event.origin && !allowed.has(event.origin)) return;
       } catch {}
 
       const data = event.data;
