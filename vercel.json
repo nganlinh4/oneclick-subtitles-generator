@@ -1,7 +1,7 @@
 {
-  "buildCommand": "CI=false npm run build:vercel",
+  "installCommand": "npm install --legacy-peer-deps --ignore-scripts",
+  "buildCommand": "npm run workspace:build && CI=false npm run build:vercel",
   "outputDirectory": "build",
-  "installCommand": "npm install --legacy-peer-deps",
   "framework": null,
   "rewrites": [
     {
