@@ -1944,7 +1944,11 @@ const VideoRenderingSection = ({
                   className="trimming-slider"
                   id="trimming-slider"
                   ariaLabel={t('videoRendering.trimmingTimeline', 'Trim Video')}
-                  style={{ maxWidth: 'none' }}
+                  style={{
+                    maxWidth: 'none',
+                    '--standard-slider-active-track-height': '12px',
+                    '--standard-slider-inactive-track-height': '8px'
+                  }}
                 />
                 <span style={{ minWidth: 70, maxWidth: 70, display: 'inline-block', textAlign: 'center', fontSize: '1.15em', fontFamily: 'monospace', fontWeight: 500 }}>
                   {formatTime(renderSettings.trimEnd || 0, 'hms_ms')}

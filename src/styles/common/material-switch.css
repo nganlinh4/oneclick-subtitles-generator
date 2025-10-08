@@ -125,20 +125,39 @@ md-switch[icons]:focus-visible:not([selected]) svg[slot="off-icon"] {
 
 /* Dark theme support */
 @media (prefers-color-scheme: dark) {
+  
   md-switch {
+    /* Selected States (On) */
     --md-switch-selected-track-color: var(--md-primary, #d0bcff);
     --md-switch-selected-handle-color: var(--md-on-primary, #381e72);
+    --md-switch-selected-pressed-track-color: var(--md-primary, #d0bcff);
+    --md-switch-selected-pressed-handle-color: var(--md-on-primary, #381e72);
+    --md-switch-selected-hover-track-color: var(--md-primary, #d0bcff);
+    --md-switch-selected-hover-handle-color: var(--md-on-primary, #381e72);
+    --md-switch-selected-focus-track-color: var(--md-primary, #d0bcff);
+    --md-switch-selected-focus-handle-color: var(--md-on-primary, #381e72);
+
+    /* Unselected States (Off) */
     --md-switch-unselected-track-color: var(--md-surface-variant, #49454f);
     --md-switch-unselected-handle-color: var(--md-outline, #938f99);
+    --md-switch-unselected-pressed-track-color: var(--md-surface-variant, #49454f);
+    --md-switch-unselected-pressed-handle-color: var(--md-on-surface-variant, #cac4d0);
+    --md-switch-unselected-hover-track-color: var(--md-surface-variant, #49454f);
+    --md-switch-unselected-hover-handle-color: var(--md-on-surface-variant, #cac4d0);
+    --md-switch-unselected-focus-track-color: var(--md-surface-variant, #49454f);
+    --md-switch-unselected-focus-handle-color: var(--md-on-surface-variant, #cac4d0);
 
+    /* Disabled States */
     --md-switch-disabled-selected-track-color: var(--md-on-surface, #e6e0e9);
     --md-switch-disabled-selected-handle-color: var(--md-surface, #141218);
     --md-switch-disabled-unselected-track-color: var(--md-on-surface, #e6e0e9);
     --md-switch-disabled-unselected-handle-color: var(--md-on-surface, #e6e0e9);
 
-    /* Dark theme icon colors - contrast with dark theme thumb */
-    --md-switch-selected-icon-color: var(--md-primary, #d0bcff);
-    --md-switch-unselected-icon-color: var(--md-on-surface, #e6e0e9);
+    /* --- ICON COLOR CORRECTION --- */
+    /* Light icon on dark handle (for "on" state) */
+    --md-switch-selected-icon-color: var(--md-primary, #d0bcff); 
+    /* Nearly-black icon on light gray handle (for "off" state) for HIGH CONTRAST */
+    --md-switch-unselected-icon-color: var(--md-surface, #141218); 
   }
   
   .material-switch-label {

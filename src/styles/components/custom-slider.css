@@ -466,9 +466,9 @@
 .standard-slider-handle {
   position: relative;
   width: 4px; /* Thin pill width */
-  height: 44px; /* Tall pill height */
+  height: 36px; /* Tall pill height */
   background-color: var(--md-secondary, #2979FF); /* Use your blue secondary color */
-  border-radius: 2px; /* Pill shape */
+  border-radius: 4px; /* Pill shape */
   cursor: pointer;
   transition: all 0.2s cubic-bezier(0.2, 0, 0, 1); /* Material motion */
   z-index: 10;
@@ -484,6 +484,7 @@
 /* Ensure handles in range sliders don't get squeezed */
 .range-slider .standard-slider-handle {
   margin: 0 1px; /* Add small margin to prevent visual overlap with tracks */
+  height: 44px;
 }
 
 /* Make sure the active thumb is visually on top */

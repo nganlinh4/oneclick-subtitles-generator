@@ -268,13 +268,23 @@ const StandardSlider = ({
       >
         {!isRange ? (
           <>
-            <div className="standard-slider-active-track" style={{ flexGrow: activeFlex }}>
+            <div
+              className="standard-slider-active-track"
+              style={{
+                flexGrow: activeFlex
+              }}
+            >
               <div className="track"></div>
             </div>
             <div className="standard-slider-handle" onMouseDown={(e) => handleDragStart(e, 'end')}>
               {showValueBadge && isDragging && renderValueBadge(currentValueEnd)}
             </div>
-            <div className="standard-slider-inactive-track" style={{ flexGrow: inactiveEndFlex }}>
+            <div
+              className="standard-slider-inactive-track"
+              style={{
+                flexGrow: inactiveEndFlex
+              }}
+            >
               <div className="track"></div>
               <div className={`standard-slider-end-stop ${shouldHideEndStop ? 'hidden' : ''}`}></div>
             </div>
@@ -282,20 +292,41 @@ const StandardSlider = ({
           </>
         ) : (
           <>
-            <div className="standard-slider-inactive-track" style={{ flexGrow: inactiveStartFlex, minWidth: 0 }}>
+            <div
+              className="standard-slider-inactive-track"
+              style={{
+                flexGrow: inactiveStartFlex,
+                minWidth: 0,
+                height: isRange ? 'var(--standard-slider-inactive-track-height, 8px)' : undefined
+              }}
+            >
               <div className={`standard-slider-start-stop ${shouldHideStartStop ? 'hidden' : ''}`}></div>
               <div className="track start"></div>
             </div>
             <div className="standard-slider-handle handle-start" onMouseDown={(e) => handleDragStart(e, 'start')}>
               {showValueBadge && isDragging && activeThumb === 'start' && renderValueBadge(currentValueStart)}
             </div>
-            <div className="standard-slider-active-track" style={{ flexGrow: activeFlex, minWidth: 0 }}>
+            <div
+              className="standard-slider-active-track"
+              style={{
+                flexGrow: activeFlex,
+                minWidth: 0,
+                height: isRange ? 'var(--standard-slider-active-track-height, 8px)' : undefined
+              }}
+            >
               <div className="track range"></div>
             </div>
             <div className="standard-slider-handle handle-end" onMouseDown={(e) => handleDragStart(e, 'end')}>
               {showValueBadge && isDragging && activeThumb === 'end' && renderValueBadge(currentValueEnd)}
             </div>
-            <div className="standard-slider-inactive-track" style={{ flexGrow: inactiveEndFlex, minWidth: 0 }}>
+            <div
+              className="standard-slider-inactive-track"
+              style={{
+                flexGrow: inactiveEndFlex,
+                minWidth: 0,
+                height: isRange ? 'var(--standard-slider-inactive-track-height, 8px)' : undefined
+              }}
+            >
               <div className="track end"></div>
               <div className={`standard-slider-end-stop ${shouldHideEndStop ? 'hidden' : ''}`}></div>
             </div>

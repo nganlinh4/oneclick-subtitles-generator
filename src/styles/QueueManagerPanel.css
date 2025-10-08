@@ -150,7 +150,6 @@
 }
 
 .queue-item.completed {
-  border-color: var(--md-success);
   background: var(--md-success-container);
 }
 

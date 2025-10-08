@@ -1,4 +1,4 @@
-﻿import React, { useRef } from 'react';
+﻿import React, { useRef, useEffect } from 'react';
 import LiquidGlass from '../common/LiquidGlass';
 import PlayPauseMorphType4 from '../common/PlayPauseMorphType4';
 import WavyProgressIndicator from '../common/WavyProgressIndicator';
@@ -41,6 +41,101 @@ const VideoBottomControls = ({
 }) => {
   // Ref for WavyProgressIndicator
   const wavyProgressRef = useRef(null);
+
+  // --- FIX STARTS HERE ---
+  // Centralized listener for fullscreen changes to handle both button clicks and keyboard shortcuts (e.g., 'F' key).
+  // This ensures the React state and necessary styles are always in sync with the browser's actual fullscreen state.
+  useEffect(() => {
+    
+    // Function to manually apply styles, acting as a fallback for browsers that don't auto-resize children properly.
+    const applyFullscreenStyles = () => {
+      const videoElement = document.querySelector('.native-video-container video');
+      const videoWrapper = document.querySelector('.native-video-container .video-wrapper');
+      const container = document.querySelector('.native-video-container');
+
+      if (videoElement && videoWrapper && container) {
+        container.style.setProperty('width', '100vw', 'important');
+        container.style.setProperty('height', '100vh', 'important');
+        container.style.setProperty('position', 'fixed', 'important');
+        container.style.setProperty('top', '0', 'important');
+        container.style.setProperty('left', '0', 'important');
+        container.style.setProperty('z-index', '998', 'important');
+        container.style.setProperty('background', 'black', 'important');
+        videoWrapper.style.setProperty('width', '100vw', 'important');
+        videoWrapper.style.setProperty('height', '100vh', 'important');
+        videoWrapper.style.setProperty('position', 'relative', 'important');
+        videoElement.style.setProperty('width', '100vw', 'important');
+        videoElement.style.setProperty('height', '100vh', 'important');
+        videoElement.style.setProperty('object-fit', 'contain', 'important');
+        videoElement.style.setProperty('position', 'fixed', 'important');
+        videoElement.style.setProperty('top', '0', 'important');
+        videoElement.style.setProperty('left', '0', 'important');
+        videoElement.style.setProperty('z-index', '1', 'important');
+        videoElement.style.setProperty('max-width', 'none', 'important');
+        videoElement.style.setProperty('max-height', 'none', 'important');
+        videoElement.style.setProperty('min-width', '100vw', 'important');
+        videoElement.style.setProperty('min-height', '100vh', 'important');
+      }
+    };
+
+    const handleFullscreenChange = () => {
+      const isCurrentlyFullscreen = !!(
+        document.fullscreenElement ||
+        document.webkitFullscreenElement ||
+        document.mozFullScreenElement ||
+        document.msFullscreenElement
+      );
+      
+      // Sync React state with the browser's actual state
+      setIsFullscreen(isCurrentlyFullscreen);
+
+      if (isCurrentlyFullscreen) {
+        // --- Actions on ENTERING fullscreen ---
+        applyFullscreenStyles(); // Apply styles to fix height/width issues
+        setControlsVisible(true);
+        setIsVideoHovered(false); // Reset hover state
+
+        // Start auto-hide timer for controls
+        if (hideControlsTimeoutRef.current) {
+          clearTimeout(hideControlsTimeoutRef.current);
+        }
+        if (isPlaying) {
+          hideControlsTimeoutRef.current = setTimeout(() => {
+            setControlsVisible(false);
+            const container = document.querySelector('.native-video-container');
+            if (container) container.style.cursor = 'none';
+          }, 3000); // 3-second delay in fullscreen
+        }
+      } else {
+        // --- Actions on EXITING fullscreen ---
+        // The parent component's `handleFullscreenExit` prop should handle removing styles and other cleanup.
+        handleFullscreenExit();
+      }
+    };
+
+    // Add event listeners for all browser vendors
+    document.addEventListener('fullscreenchange', handleFullscreenChange);
+    document.addEventListener('webkitfullscreenchange', handleFullscreenChange);
+    document.addEventListener('mozfullscreenchange', handleFullscreenChange);
+    document.addEventListener('msfullscreenchange', handleFullscreenChange);
+
+    // Cleanup listeners on component unmount
+    return () => {
+      document.removeEventListener('fullscreenchange', handleFullscreenChange);
+      document.removeEventListener('webkitfullscreenchange', handleFullscreenChange);
+      document.removeEventListener('mozfullscreenchange', handleFullscreenChange);
+      document.removeEventListener('msfullscreenchange', handleFullscreenChange);
+    };
+  }, [
+    isPlaying,
+    setIsFullscreen,
+    setControlsVisible,
+    setIsVideoHovered,
+    hideControlsTimeoutRef,
+    handleFullscreenExit
+  ]);
+  // --- FIX ENDS HERE ---
+
   return (
     <>
                 {/* Custom Liquid Glass Video Controls */}
@@ -628,92 +723,22 @@ const VideoBottomControls = ({
                       updateOnMouseMove={true}
                       aria-label={isFullscreen ? 'Exit Fullscreen' : 'Fullscreen'}
                       onClick={() => {
+                        // The button's only job is to request or exit fullscreen.
+                        // The useEffect hook will handle the resulting state changes.
                         if (isFullscreen) {
-                          handleFullscreenExit();
+                          handleFullscreenExit(); // Call prop to exit/clean up
                         } else {
-                          console.log('ðŸŽ¬ FULLSCREEN BUTTON CLICKED - Requesting fullscreen');
                           const container = document.querySelector('.native-video-container');
                           if (container) {
-                            console.log('ðŸŽ¬ Container found, requesting fullscreen');
-
-                            // Request fullscreen
-                            let fullscreenPromise;
                             if (container.requestFullscreen) {
-                              fullscreenPromise = container.requestFullscreen();
+                              container.requestFullscreen().catch(err => console.error(`Error attempting to enable full-screen mode: ${err.message} (${err.name})`));
                             } else if (container.webkitRequestFullscreen) {
-                              fullscreenPromise = container.webkitRequestFullscreen();
+                              container.webkitRequestFullscreen();
                             } else if (container.mozRequestFullScreen) {
-                              fullscreenPromise = container.mozRequestFullScreen();
+                              container.mozRequestFullScreen();
                             } else if (container.msRequestFullscreen) {
-                              fullscreenPromise = container.msRequestFullscreen();
+                              container.msRequestFullscreen();
                             }
-
-                            // Fallback: Force fullscreen styles after a short delay
-                            setTimeout(() => {
-                              console.log('ðŸŽ¬ FALLBACK: Checking if fullscreen succeeded');
-                              const isNowFullscreen = !!document.fullscreenElement ||
-                                                    !!document.webkitFullscreenElement ||
-                                                    !!document.mozFullScreenElement ||
-                                                    !!document.msFullscreenElement;
-
-                              if (isNowFullscreen) {
-                                console.log('ðŸŽ¬ FALLBACK: Fullscreen detected, applying styles manually');
-                                const videoElement = document.querySelector('.native-video-container video');
-                                const videoWrapper = document.querySelector('.native-video-container .video-wrapper');
-                                const container = document.querySelector('.native-video-container');
-
-                                if (videoElement && videoWrapper && container) {
-                                  // Apply container styles
-                                  container.style.setProperty('width', '100vw', 'important');
-                                  container.style.setProperty('height', '100vh', 'important');
-                                  container.style.setProperty('position', 'fixed', 'important');
-                                  container.style.setProperty('top', '0', 'important');
-                                  container.style.setProperty('left', '0', 'important');
-                                  container.style.setProperty('z-index', '998', 'important');
-                                  container.style.setProperty('background', 'black', 'important');
-
-                                  // Apply wrapper styles
-                                  videoWrapper.style.setProperty('width', '100vw', 'important');
-                                  videoWrapper.style.setProperty('height', '100vh', 'important');
-                                  videoWrapper.style.setProperty('position', 'relative', 'important');
-
-                                  // Apply video styles - use fixed positioning to ensure full coverage
-                                  videoElement.style.setProperty('width', '100vw', 'important');
-                                  videoElement.style.setProperty('height', '100vh', 'important');
-                                  videoElement.style.setProperty('object-fit', 'contain', 'important');
-                                  videoElement.style.setProperty('position', 'fixed', 'important');
-                                  videoElement.style.setProperty('top', '0', 'important');
-                                  videoElement.style.setProperty('left', '0', 'important');
-                                  videoElement.style.setProperty('z-index', '1', 'important');
-                                  videoElement.style.setProperty('max-width', 'none', 'important');
-                                  videoElement.style.setProperty('max-height', 'none', 'important');
-                                  videoElement.style.setProperty('min-width', '100vw', 'important');
-                                  videoElement.style.setProperty('min-height', '100vh', 'important');
-
-                                  // Set React state to show controls initially
-                                  setIsFullscreen(true);
-                                  setControlsVisible(true);
-                                  setIsVideoHovered(false); // Reset hover state in fullscreen
-
-                                  // Start auto-hide timer for fullscreen
-                                  if (hideControlsTimeoutRef.current) {
-                                    clearTimeout(hideControlsTimeoutRef.current);
-                                  }
-
-                                  if (isPlaying) {
-                                    hideControlsTimeoutRef.current = setTimeout(() => {
-                                      setControlsVisible(false);
-                                      container.style.cursor = 'none';
-                                    }, 1000);
-                                  }
-
-                                  console.log('ðŸŽ¬ FALLBACK: All styles applied successfully');
-                                } else {
-                                  console.log('ðŸŽ¬ FALLBACK: Could not find all required elements');
-                                }
-                              }
-                            }, 100);
-
                           } else {
                             console.log('ðŸŽ¬ ERROR: Container not found!');
                           }
