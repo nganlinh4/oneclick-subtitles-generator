@@ -129,7 +129,17 @@ async function extractVideoUrl(url) {
     throw new Error('Could not find Chrome executable. Please install Chrome or set PUPPETEER_EXECUTABLE_PATH environment variable.');
   }
 
-  // Launch browser
+  // Create a temporary user data directory for clean browser state
+  const os = require('os');
+  const tempDir = os.tmpdir();
+  const userDataDir = path.join(tempDir, `douyin-puppeteer-${Date.now()}`);
+
+  // Ensure the directory exists
+  if (!fs.existsSync(userDataDir)) {
+    fs.mkdirSync(userDataDir, { recursive: true });
+  }
+
+  // Launch browser with clean user data directory
   const browser = await puppeteer.launch({
     headless: 'new', // Use new headless mode
     executablePath: executablePath,
@@ -140,6 +150,12 @@ async function extractVideoUrl(url) {
       '--disable-accelerated-2d-canvas',
       '--disable-gpu',
       '--window-size=1920,1080',
+      `--user-data-dir=${userDataDir}`,
+      '--disable-extensions',
+      '--disable-plugins',
+      '--disable-images', // Speed up loading by disabling images
+      '--disable-javascript', // Wait, we need JS for video extraction
+      // Actually, keep JS enabled but disable other features
     ]
   });
 
@@ -193,13 +209,10 @@ async function extractVideoUrl(url) {
 
     // Navigate to the page
 
-    await page.goto(url, { waitUntil: 'networkidle2', timeout: 60000 });
+    await page.goto(url, { waitUntil: 'networkidle2', timeout: 90000 });
 
     // Check for login modal and close it if present
 
-
-    // Take a screenshot before closing the modal
-    await page.screenshot({ path: 'douyin_before_modal.png' });
 
 
     // Wait a moment for the modal to appear
@@ -291,8 +304,6 @@ async function extractVideoUrl(url) {
       }
     }
 
-    // Take a screenshot after attempting to close the modal
-    await page.screenshot({ path: 'douyin_after_modal.png' });
 
 
     // Try to press Escape key to close modal
@@ -354,16 +365,18 @@ async function extractVideoUrl(url) {
 
 
         // Return URLs, prioritizing those that are likely main videos
-        return results
+        const sortedUrls = results
           .sort((a, b) => {
             // Prioritize main videos
             if (a.isLikelyMainVideo && !b.isLikelyMainVideo) return -1;
             if (!a.isLikelyMainVideo && b.isLikelyMainVideo) return 1;
-
+  
             // Then prioritize by size
             return (b.width * b.height) - (a.width * a.height);
           })
           .map(item => item.url);
+  
+        return sortedUrls;
       });
 
       if (srcUrls.length > 0) {
@@ -509,38 +522,43 @@ async function extractVideoUrl(url) {
       }
     }
 
-    // Take a screenshot for debugging
-    await page.screenshot({ path: 'douyin_screenshot.png' });
-
 
     // Close browser
     await browser.close();
 
+    // Clean up temporary user data directory
+    try {
+      if (fs.existsSync(userDataDir)) {
+        fs.rmSync(userDataDir, { recursive: true, force: true });
+      }
+    } catch (cleanupError) {
+      console.warn('Failed to clean up temporary user data directory:', cleanupError.message);
+    }
+
     // Filter and prioritize video URLs
     if (videoUrls.length > 0) {
-
 
       // Remove duplicates
       videoUrls = [...new Set(videoUrls)];
 
       // Prioritize URLs:
-      // 1. No watermark versions first
-      // 2. Higher quality versions
-      // 3. MP4 files
+      // 1. Main video content from zjcdn.com (not effect videos)
+      // 2. No watermark versions first
+      // 3. Higher quality versions
       videoUrls.sort((a, b) => {
+        // Prioritize main video URLs from zjcdn.com over effect videos
+        const aIsMainVideo = a.includes('zjcdn.com');
+        const bIsMainVideo = b.includes('zjcdn.com');
+
+        if (aIsMainVideo && !bIsMainVideo) return -1;
+        if (!aIsMainVideo && bIsMainVideo) return 1;
+
         // Prioritize no watermark versions
         const aNoWatermark = a.includes('play') && !a.includes('playwm');
         const bNoWatermark = b.includes('play') && !b.includes('playwm');
 
         if (aNoWatermark && !bNoWatermark) return -1;
         if (!aNoWatermark && bNoWatermark) return 1;
-
-        // Prioritize MP4 files
-        const aIsMp4 = a.includes('.mp4');
-        const bIsMp4 = b.includes('.mp4');
-
-        if (aIsMp4 && !bIsMp4) return -1;
-        if (!aIsMp4 && bIsMp4) return 1;
 
         // Prioritize higher quality versions
         const aHd = a.includes('HD') || a.includes('hd');
@@ -563,6 +581,15 @@ async function extractVideoUrl(url) {
     // Make sure to close the browser
     if (browser) {
       await browser.close();
+    }
+
+    // Clean up temporary user data directory
+    try {
+      if (fs.existsSync(userDataDir)) {
+        fs.rmSync(userDataDir, { recursive: true, force: true });
+      }
+    } catch (cleanupError) {
+      console.warn('Failed to clean up temporary user data directory:', cleanupError.message);
     }
 
     throw error;

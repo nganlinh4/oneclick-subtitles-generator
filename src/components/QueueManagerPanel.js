@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { useTranslation } from 'react-i18next';
 import WavyProgressIndicator from './common/WavyProgressIndicator';
+import CloseButton from './common/CloseButton';
 
 import { formatTime as formatDuration } from '../utils/timeFormatter';
 import '../styles/QueueManagerPanel.css';
@@ -768,12 +769,12 @@ const QueueManagerPanel = ({
                   })()}
                 </div>
               </div>
-              <button className="preview-close-btn" onClick={() => setPreviewOpen(false)}>
-                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                  <line x1="18" y1="6" x2="6" y2="18"></line>
-                  <line x1="6" y1="6" x2="18" y2="18"></line>
-                </svg>
-              </button>
+              <CloseButton
+                onClick={() => setPreviewOpen(false)}
+                variant="modal"
+                size="medium"
+                className="preview-close-btn"
+              />
             </div>
             <div className="preview-modal-content">
               <video

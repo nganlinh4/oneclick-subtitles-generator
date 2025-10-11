@@ -77,8 +77,18 @@ const StandardSlider = ({
   const isRange = range && Array.isArray(value) && value.length === 2;
   const [valueStart, valueEnd] = isRange ? value : [min, value];
   
-  const resolvedProps = { /* ... (no changes here) */ };
-  const isDisabled = String(resolvedProps.state).toLowerCase() === 'disabled';
+  // Resolve a minimal set of props used for class names and state.
+  // Previously this was a placeholder which caused `isDisabled` to always be false,
+  // preventing disabled styling from being applied. Map values from the component props.
+  const resolvedProps = {
+    width,
+    orientation,
+    size,
+    state,
+    ...figmaProps
+  };
+  // Determine disabled state from the incoming `state` prop (case-insensitive).
+  const isDisabled = String(state || resolvedProps.state || '').toLowerCase() === 'disabled';
 
   // Calculate percentages from resolved values or drag values for smooth movement
   const getCurrentValue = (thumb) => {

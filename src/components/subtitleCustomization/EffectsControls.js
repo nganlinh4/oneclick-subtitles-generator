@@ -285,17 +285,17 @@ const EffectsControls = ({ customization, onChange }) => {
           <div className="row-content">
             <SliderWithValue
               value={customization.strokeWidth}
-              onChange={(value) => updateCustomization({ strokeWidth: parseInt(value) })}
+              onChange={(value) => updateCustomization({ strokeWidth: parseFloat(value) })}
               min={0}
               max={10}
-              step={1}
+              step={0.1}
               orientation="Horizontal"
               size="XSmall"
               state="Enabled"
               className="stroke-width-slider"
               id="stroke-width-slider"
               ariaLabel={t('videoRendering.strokeWidth', 'Stroke Width')}
-              formatValue={(v) => `${v}px`}
+              formatValue={(v) => `${Number(v).toFixed(1)}px`}
               defaultValue={defaultCustomization.strokeWidth}
             />
           </div>

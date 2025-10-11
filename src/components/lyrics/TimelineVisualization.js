@@ -1135,12 +1135,12 @@ const TimelineVisualization = ({
     }
   };
 
-  // Enable Delete key to trigger clear-in-range when action bar is visible
+  // Enable Delete/Backspace keys to trigger clear-in-range when action bar is visible
   useEffect(() => {
     if (!actionBarRange) return;
     const onKeyDown = (e) => {
       if (isEventFromEditable(e)) return;
-      if (e.key === 'Delete') {
+      if (e.key === 'Delete' || e.key === 'Backspace') {
         e.preventDefault();
         if (onClearRange) {
           onClearRange(actionBarRange.start, actionBarRange.end);
@@ -1757,7 +1757,7 @@ const TimelineVisualization = ({
               </button>
               <button
                 className="btn-base btn-primary btn-small"
-                title={t('timeline.clearInRangeWithShortcut', 'Clear subtitles in range (Del)')}
+                title={t('timeline.clearInRangeWithShortcut', 'Clear subtitles in range (Del/Backspace)')}
                 onClick={(e) => {
                   e.stopPropagation();
                   onClearRange && onClearRange(actionBarRange.start, actionBarRange.end);

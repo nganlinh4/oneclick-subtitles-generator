@@ -153,29 +153,15 @@ app.use('/uploads', express.static(uploadsDir));
 app.use('/output', express.static(outputDir));
 
 // --- API ENDPOINTS ---
-
+// ... (no changes to upload, render-status, cancel-render endpoints) ...
 const upload = multer({ storage: multer.diskStorage({
   destination: (req, file, cb) => cb(null, uploadsDir),
   filename: (req, file, cb) => cb(null, `${Date.now()}-${file.originalname}`),
 }), limits: { fileSize: 5 * 1024 * 1024 * 1024 }});
+app.post('/upload/:type', upload.single('file'), (req, res) => { if (!req.file) return res.status(400).json({ error: 'No file uploaded' }); res.json({ url: `http://localhost:${port}/uploads/${req.file.filename}`, filename: req.file.filename }); });
+app.get('/render-status/:renderId', (req, res) => { const render = activeRenders.get(req.params.renderId); if (!render) return res.status(404).json({ error: 'Render not found' }); res.json({ status: render.status, progress: render.progress, phase: render.phase, outputPath: render.outputPath, error: render.error }); });
+app.post('/cancel-render/:renderId', (req, res) => { const render = activeRenders.get(req.params.renderId); if (!render) return res.status(404).json({ error: 'Render not found' }); render.cancel(); res.json({ success: true, message: 'Render cancellation initiated.' }); });
 
-app.post('/upload/:type', upload.single('file'), (req, res) => {
-  if (!req.file) return res.status(400).json({ error: 'No file uploaded' });
-  res.json({ url: `http://localhost:${port}/uploads/${req.file.filename}`, filename: req.file.filename });
-});
-
-app.get('/render-status/:renderId', (req, res) => {
-  const render = activeRenders.get(req.params.renderId);
-  if (!render) return res.status(404).json({ error: 'Render not found' });
-  res.json({ status: render.status, progress: render.progress, phase: render.phase, outputPath: render.outputPath, error: render.error });
-});
-
-app.post('/cancel-render/:renderId', (req, res) => {
-  const render = activeRenders.get(req.params.renderId);
-  if (!render) return res.status(404).json({ error: 'Render not found' });
-  render.cancel();
-  res.json({ success: true, message: 'Render cancellation initiated.' });
-});
 
 // --- THE NEW HIGH-PERFORMANCE RENDER ENDPOINT ---
 app.post('/render', async (req, res) => {
@@ -221,6 +207,7 @@ app.post('/render', async (req, res) => {
 
     const entryPoint = path.join(__dirname, '../../src/remotion/index.ts');
     updateStatus({ phase: 'Bundling Remotion app' });
+    bundleCache = null;
     const bundleResult = await getOrCreateBundle(entryPoint);
 
     let compositionProps: any = { lyrics, metadata, narrationUrl, isVideoFile, audioUrl: `http://localhost:${port}/uploads/${audioFile}` };
@@ -228,203 +215,95 @@ app.post('/render', async (req, res) => {
     let width: number, height: number, fps: number, durationInFrames: number;
 
     if (isVideoFile) {
-      // --- HIGH-PERFORMANCE VIDEO PIPELINE ---
       const sourceVideoPath = path.join(uploadsDir, audioFile);
       if (!fs.existsSync(sourceVideoPath)) throw new Error(`Source video not found: ${audioFile}`);
 
       updateStatus({ phase: 'Probing video info' });
       const info = await probeVideoInfo(sourceVideoPath);
 
-      // Log incoming metadata for debugging
       try { console.log(`[${renderId}] Incoming metadata:`, JSON.stringify(metadata)); } catch {}
 
-      // FPS: allow override from frontend metadata
       const toNumber = (v: any): number | undefined => {
         if (v === undefined || v === null || v === '') return undefined;
         const n = Number(v);
         return Number.isFinite(n) ? n : undefined;
       };
-      fps = toNumber(metadata.frameRate) ?? info.fps; // Allow override, but default to source FPS
-      // Calculate trimmed duration for frame count
+      fps = toNumber(metadata.frameRate) ?? info.fps;
       const trimStart = typeof metadata.trimStart === 'number' ? metadata.trimStart : parseFloat(metadata.trimStart || '0');
       const trimEnd = typeof metadata.trimEnd === 'number' ? metadata.trimEnd : parseFloat(metadata.trimEnd || info.duration);
       const effectiveDuration = (!isNaN(trimEnd) && trimEnd > 0 ? trimEnd : info.duration) - (!isNaN(trimStart) && trimStart > 0 ? trimStart : 0);
       durationInFrames = Math.ceil(effectiveDuration * fps);
 
-      // Frontend may pass cropping and/or target resolution
-      // Supported metadata keys:
-      // - metadata.outputResolution: { width: number, height: number }
-      // - metadata.width / metadata.height (alias of outputResolution) possibly as strings
-      // - metadata.resolution: string like "1080x1920", "1920:1080" or "360p"
-      // - metadata.crop or metadata.cropSettings: pixel or percentage crop
-      const parseResString = (s?: string): {w?: number; h?: number} => {
-        if (!s || typeof s !== 'string') return {};
-        // WxH or W:H
-        let m = s.match(/(\d+)\s*[x:\-]\s*(\d+)/i);
-        if (m) return { w: Number(m[1]), h: Number(m[2]) };
-        // 360p/480p/720p/1080p/1440p/2160p etc. (assume 16:9)
-        m = s.match(/^(\d+)\s*p$/i);
-        if (m) {
-          // Treat "360p" etc. as HEIGHT ONLY. Width will be derived from aspect later.
-          const p = Number(m[1]);
-          return { h: p };
+      // --- START: CORRECTED Output Resolution Calculation ---
+      const cropMeta = metadata?.cropSettings;
+      const crop = cropMeta && typeof cropMeta === 'object' ? {
+        w: Number(cropMeta.width ?? 100),
+        h: Number(cropMeta.height ?? 100),
+      } : null;
+
+      const preset = (metadata?.subtitleCustomization?.resolution || '1080p').toLowerCase();
+      const presetMap: Record<string, { w?: number; h: number }> = {
+          '360p': { h: 360 }, '480p': { h: 480 }, '720p': { h: 720 }, '1080p': { h: 1080 },
+          '1440p': { h: 1440 }, '4k': { h: 2160 }, '8k': { h: 4320 }
+      };
+      let targetHeight = presetMap[preset]?.h ?? 1080;
+
+      // *** THIS IS THE FIX ***
+      // Calculate the effective aspect ratio based on the original video's aspect ratio
+      // and the crop percentages, exactly like the preview component does.
+      const sourceAspectRatio = info.width / info.height;
+      let effectiveAspectRatio = sourceAspectRatio;
+
+      if (crop && (crop.w !== 100 || crop.h !== 100)) {
+        if (crop.h > 0) { // Avoid division by zero
+          effectiveAspectRatio = sourceAspectRatio * (crop.w / crop.h);
         }
-        return {};
-      };
-
-      // Crop (accept metadata.crop or metadata.cropSettings). Detect percentage vs pixels.
-      const cropMeta = (metadata?.crop ?? metadata?.cropSettings) && typeof (metadata?.crop ?? metadata?.cropSettings) === 'object'
-        ? (metadata?.crop ?? metadata?.cropSettings)
-        : undefined;
-      const hasPctFields = cropMeta && (cropMeta.xPct !== undefined || cropMeta.yPct !== undefined || cropMeta.wPct !== undefined || cropMeta.hPct !== undefined);
-      const likelyPctValues = cropMeta && ['x','y','width','height'].some((k) => {
-        const n = Number(cropMeta[k]);
-        return Number.isFinite(n) && n >= 0 && n <= 100;
-      });
-      const crop = cropMeta
-        ? (hasPctFields || likelyPctValues
-            ? {
-                x: Math.max(0, Math.floor(((Number(cropMeta.xPct ?? cropMeta.x ?? 0)) / (Number(cropMeta.x) <= 1 ? 1 : 100)) * (Number(cropMeta.x) <= 1 ? info.width : info.width))),
-                y: Math.max(0, Math.floor(((Number(cropMeta.yPct ?? cropMeta.y ?? 0)) / (Number(cropMeta.y) <= 1 ? 1 : 100)) * (Number(cropMeta.y) <= 1 ? info.height : info.height))),
-                w: Math.min(info.width, Math.floor(((Number(cropMeta.wPct ?? cropMeta.width ?? cropMeta.w ?? 100)) / (Number(cropMeta.width) <= 1 ? 1 : 100)) * (Number(cropMeta.width) <= 1 ? info.width : info.width))),
-                h: Math.min(info.height, Math.floor(((Number(cropMeta.hPct ?? cropMeta.height ?? cropMeta.h ?? 100)) / (Number(cropMeta.height) <= 1 ? 1 : 100)) * (Number(cropMeta.height) <= 1 ? info.height : info.height))),
-              }
-            : {
-                x: Math.max(0, Math.floor(toNumber(cropMeta.x) ?? 0)),
-                y: Math.max(0, Math.floor(toNumber(cropMeta.y) ?? 0)),
-                w: Math.min(info.width, Math.floor(toNumber(cropMeta.width) ?? toNumber(cropMeta.w) ?? info.width)),
-                h: Math.min(info.height, Math.floor(toNumber(cropMeta.height) ?? toNumber(cropMeta.h) ?? info.height)),
-              })
-        : null;
-
-      // Determine desired output resolution (accept multiple formats)
-      const resFromObj = (obj: any): {w?: number; h?: number} => ({ w: toNumber(obj?.width) ?? toNumber(obj?.w), h: toNumber(obj?.height) ?? toNumber(obj?.h) });
-      const resFromMetaObj = resFromObj(metadata?.outputResolution ?? {});
-      const resFromRoot = resFromObj(metadata ?? {});
-      const resFromString = parseResString(typeof metadata?.resolution === 'string' ? metadata.resolution : undefined);
-
-      // Common presets (strings)
-      const preset = (metadata?.resolutionPreset ?? metadata?.resolutionKey ?? metadata?.quality ?? '').toString().toLowerCase();
-      const presetMap: Record<string, {w: number; h: number}> = {
-        '720p': { w: 1280, h: 720 },
-        '1080p': { w: 1920, h: 1080 },
-        '1440p': { w: 2560, h: 1440 },
-        '2k': { w: 2048, h: 1080 },
-        '4k': { w: 3840, h: 2160 },
-        '2160p': { w: 3840, h: 2160 },
-        'square1080': { w: 1080, h: 1080 },
-        'story': { w: 1080, h: 1920 },
-        'vertical1080x1920': { w: 1080, h: 1920 },
-        'portrait': { w: 1080, h: 1920 },
-        'landscape': { w: 1920, h: 1080 },
-      };
-      const resFromPreset = presetMap[preset] ?? {};
-
-      // Aspect handling: prefer crop aspect if provided, else explicit aspect, else source aspect
-      const aspectStr = (metadata?.aspect ?? metadata?.aspectRatio ?? '').toString();
-      const aspectMatch = aspectStr.match(/^(\d+)\s*:\s*(\d+)$/);
-      const explicitAspect = aspectMatch ? Number(aspectMatch[1]) / Number(aspectMatch[2]) : undefined;
-      const cropAspect = crop ? (crop.w / crop.h) : undefined;
-      const sourceAspect = info.width / info.height;
-      const effectiveAspect = cropAspect ?? explicitAspect ?? sourceAspect;
-
-      let desiredW = resFromMetaObj.w ?? resFromRoot.w ?? resFromString.w ?? resFromPreset.w;
-      let desiredH = resFromMetaObj.h ?? resFromRoot.h ?? resFromString.h ?? resFromPreset.h;
-
-      // If resolution is a single "p" height like 360p and aspect indicates vertical (<1), treat the number as height and compute width
-      const pMatch = typeof metadata?.resolution === 'string' && metadata.resolution.match(/^(\d+)\s*p$/i);
-      if (pMatch && effectiveAspect) {
-        const targetHeight = Number(pMatch[1]);
-        desiredH = desiredH || targetHeight;
-        desiredW = desiredW || Math.max(1, Math.round(desiredH * effectiveAspect));
       }
+      
+      let targetWidth = Math.round(targetHeight * effectiveAspectRatio);
 
-      // If one dimension is missing but we have an aspect, compute the other
-      if (effectiveAspect && (desiredW || desiredH)) {
-        if (desiredW && !desiredH) desiredH = Math.max(1, Math.round(desiredW / effectiveAspect));
-        if (!desiredW && desiredH) desiredW = Math.max(1, Math.round(desiredH * effectiveAspect));
-      }
+      // Ensure dimensions are even numbers for codec compatibility
+      width = targetWidth % 2 === 0 ? targetWidth : targetWidth + 1;
+      height = targetHeight % 2 === 0 ? targetHeight : targetHeight + 1;
+      // --- END: Output Resolution Calculation ---
 
-      // Fallbacks
-      desiredW = Math.floor(desiredW ?? (crop ? crop.w : info.width));
-      desiredH = Math.floor(desiredH ?? (crop ? crop.h : info.height));
+      console.log(`[${renderId}] Video Info: ${info.width}x${info.height} @ ${fps.toFixed(2)}fps`);
+      if (crop) { console.log(`[${renderId}] Crop settings will be applied by Remotion.`); }
+      console.log(`[${renderId}] Final output resolution: ${width}x${height}`);
 
-
-	      // Prevent unintended upscaling unless explicitly allowed
-	      if (!metadata?.allowUpscale) {
-	        const maxW = crop ? crop.w : info.width;
-	        const maxH = crop ? crop.h : info.height;
-	        if (desiredW > maxW || desiredH > maxH) {
-	          const scaleW = desiredW / maxW;
-	          const scaleH = desiredH / maxH;
-	          if (scaleW > 1 || scaleH > 1) {
-	            // Downscale to fit within source/crop bounds while maintaining aspect
-	            const scaleFactor = Math.max(scaleW, scaleH);
-	            desiredW = Math.floor(desiredW / scaleFactor);
-	            desiredH = Math.floor(desiredH / scaleFactor);
-	          }
-	        }
-	      }
-
-      // Set composition dimensions to desired output
-      width = desiredW;
-      height = desiredH;
-
-      console.log(
-        `[${renderId}] Video Info: ${info.width}x${info.height} @ ${fps.toFixed(2)}fps, ${durationInFrames} frames`);
-      if (crop) {
-        console.log(`[${renderId}] Applying crop: x=${crop.x}, y=${crop.y}, w=${crop.w}, h=${crop.h}`);
-      }
-      if (desiredW && desiredH) {
-        console.log(`[${renderId}] Target output resolution: ${desiredW}x${desiredH}`);
-      }
-
-      // Create a dedicated temporary directory for this render
       tempDir = fs.mkdtempSync(path.join(os.tmpdir(), `remotion-render-${renderId}-`));
       const framesDir = path.join(tempDir, 'frames');
       const extractedAudioFile = path.join(tempDir, 'audio.aac');
       fs.mkdirSync(framesDir);
 
-      // 1. Extract Frames (apply fps + optional crop + trimming). DO NOT SCALE here; let composition handle fit/padding.
       updateStatus({ phase: 'Extracting video frames', progress: 0 });
       const vfParts: string[] = [`fps=${fps}`];
-      // Only crop if the crop rect is fully inside the source; if it goes out-of-bounds, skip crop and let composition simulate out-crop with padding
-      const canCropInFfmpeg = crop && crop.x >= 0 && crop.y >= 0 && (crop.x + crop.w) <= info.width && (crop.y + crop.h) <= info.height;
-      if (canCropInFfmpeg && crop) vfParts.push(`crop=${crop.w}:${crop.h}:${crop.x}:${crop.y}`);
-
-      // Trimming: apply start/end time if provided
       const trimArgs = [];
       if (!isNaN(trimStart) && trimStart > 0) trimArgs.push('-ss', trimStart.toString());
       if (!isNaN(trimEnd) && trimEnd > 0) trimArgs.push('-to', trimEnd.toString());
+      const frameExtractionArgs = [ ...trimArgs, '-i', sourceVideoPath, '-vf', vfParts.join(','), '-compression_level', '1', path.join(framesDir, '%06d.png') ];
+      await runFfmpeg(frameExtractionArgs, renderId, 'Frame Extraction', durationInFrames, (p) => { updateStatus({ progress: p * 0.08 }); });
 
-      const frameExtractionArgs = [
-        ...trimArgs,
-        '-i', sourceVideoPath,
-        '-vf', vfParts.join(','),
-        '-compression_level', '1',
-        path.join(framesDir, '%06d.png')
-      ];
-      await runFfmpeg(frameExtractionArgs, renderId, 'Frame Extraction', durationInFrames, (p) => {
-        updateStatus({ progress: p * 0.08 }); // Map frame extraction to 0%–8%
-      });
+      // Count actual extracted frames to match Remotion's expectations
+      const extractedFrames = fs.readdirSync(framesDir).filter(f => f.endsWith('.png')).length;
+      if (extractedFrames !== durationInFrames) {
+        console.log(`[${renderId}] Frame count mismatch: expected ${durationInFrames}, got ${extractedFrames}. Adjusting durationInFrames.`);
+        durationInFrames = extractedFrames;
+      }
 
-      // 2. Extract Audio
       updateStatus({ phase: 'Extracting audio track', progress: 0.08 });
-      // 2. Extract Audio (apply trimming)
-      const audioTrimArgs = [];
-      if (!isNaN(trimStart) && trimStart > 0) audioTrimArgs.push('-ss', trimStart.toString());
-      if (!isNaN(trimEnd) && trimEnd > 0) audioTrimArgs.push('-to', trimEnd.toString());
-      const audioExtractionArgs = [
-        ...audioTrimArgs,
-        '-i', sourceVideoPath,
-        '-vn', '-c:a', 'aac', '-b:a', '256k', extractedAudioFile
-      ];
-      await runFfmpeg(audioExtractionArgs, renderId, 'Audio Extraction', durationInFrames, () => {}); // No frame progress for audio
+      const audioExtractionArgs = [ ...trimArgs, '-i', sourceVideoPath, '-vn', '-c:a', 'aac', '-b:a', '256k', extractedAudioFile ];
+      await runFfmpeg(audioExtractionArgs, renderId, 'Audio Extraction', durationInFrames, () => {});
       finalAudioPath = extractedAudioFile;
 
-      // Update props for Remotion to use the extracted frames
-      compositionProps.framesPathUrl = `http://localhost:${port}/temp/${path.basename(tempDir)}/frames`;
-      app.use(`/temp/${path.basename(tempDir)}`, express.static(tempDir)); // Serve the temp dir
+      // Register static route IMMEDIATELY after frame extraction and BEFORE Remotion render
+      const tempDirBasename = path.basename(tempDir);
+      compositionProps.framesPathUrl = `http://localhost:${port}/temp/${tempDirBasename}/frames`;
+      app.use(`/temp/${tempDirBasename}`, express.static(tempDir));
+
+      // Add a small delay to ensure the static route is fully registered
+      await new Promise(resolve => setTimeout(resolve, 100));
+
       updateStatus({ progress: 0.1, status: 'rendering', phase: 'Preparing Remotion render' });
 
     } else {
@@ -454,7 +333,6 @@ app.post('/render', async (req, res) => {
       crf: 18,
       audioBitrate: '256k',
       onProgress: ({ progress }) => {
-        // This progress is for the Remotion part, which is now the latter 90% of the total job
         updateStatus({ progress: 0.1 + progress * 0.9 });
       },
       cancelSignal,
@@ -475,7 +353,20 @@ app.post('/render', async (req, res) => {
         }
     }
 
-    setTimeout(() => activeRenders.delete(renderId), 300000); // Keep for 5 mins for status checks
+    // Clean up temp directory AFTER successful render completion
+    if (tempDir && fs.existsSync(tempDir)) {
+      console.log(`[${renderId}] Cleaning up temporary directory after successful render: ${tempDir}`);
+      const tempDirToClean = tempDir; // Capture the value to avoid null issues
+      setTimeout(() => {
+        fs.rm(tempDirToClean, { recursive: true, force: true }, (err) => {
+          if (err) console.error(`[${renderId}] Failed to clean up temp directory:`, err);
+          else console.log(`[${renderId}] Temp directory cleaned up successfully`);
+        });
+      }, 5000); // Wait 5 seconds to ensure all file handles are released
+      tempDir = null; // Mark as cleaned to avoid duplicate cleanup
+    }
+
+    setTimeout(() => activeRenders.delete(renderId), 300000);
 
   } catch (err) {
     const error = err as Error;
@@ -493,10 +384,9 @@ app.post('/render', async (req, res) => {
         setTimeout(() => activeRenders.delete(renderId), 300000);
     }
   } finally {
-// DEBUG LOG: Temp directory cleanup triggered. This may cause missing frames if accessed after render.
-console.log(`[${renderId}] DEBUG: Temp directory cleanup may cause missing frames. Frames served from: ${tempDir}`);
+    // Only clean up temp directory if it wasn't already cleaned up after successful render
     if (tempDir && fs.existsSync(tempDir)) {
-      console.log(`[${renderId}] Cleaning up temporary directory: ${tempDir}`);
+      console.log(`[${renderId}] Cleaning up temporary directory (error/cancellation cleanup): ${tempDir}`);
       fs.rm(tempDir, { recursive: true, force: true }, () => {});
     }
   }
@@ -505,5 +395,5 @@ console.log(`[${renderId}] DEBUG: Temp directory cleanup may cause missing frame
 app.listen(port, () => {
   console.log(`🎬 Video Renderer Server running at http://localhost:${port}`);
   console.log('✅ High-performance pipeline is ACTIVE.');
-  console.log('💡 For video renders, source video will be pre-processed into frames for maximum GPU utilization.');
+  console.log('💡 Render dimension logic is now corrected for crop aspect ratio.');
 });

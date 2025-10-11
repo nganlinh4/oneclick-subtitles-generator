@@ -12,7 +12,7 @@ import i18n from '../../i18n/i18n';
  * @param {string} model - Gemini model to use
  * @returns {Promise<Object>} - Language detection result
  */
-export const detectSubtitleLanguage = async (subtitles, source = 'original', model = 'gemini-2.0-flash-lite') => {
+export const detectSubtitleLanguage = async (subtitles, source = 'original', model = 'gemini-flash-lite-latest') => {
     if (!subtitles || subtitles.length === 0) {
 
         return {

@@ -146,7 +146,7 @@ Here are some screenshots showcasing the application's current features:
 
 </details>
 
-A comprehensive web application for auto-subtitling videos and audio, translating SRT files, generating AI narration with voice cloning, creating background images, and rendering professional subtitled videos. Designed for content creators, educators, and general users who need high-quality subtitle generation and video production capabilities.
+A comprehensive web application for auto-subtitling videos and audio, translating SRT files, generating AI narration with voice cloning, creating background images and music, and rendering professional subtitled videos. Designed for content creators, educators, and general users who need high-quality subtitle generation and video production capabilities.
 
 ## Installation Options Comparison
 
@@ -159,7 +159,8 @@ Choose the right version for your needs:
 | **Subtitle Editor** | ✅ Visual timeline, waveform, real-time preview | ✅ Visual timeline, waveform, real-time preview | ✅ Visual timeline, waveform, real-time preview |
 | **Translation** | ✅ Multi-language with context awareness | ✅ Multi-language with context awareness | ✅ Multi-language with context awareness |
 | **Video Rendering** | ✅ GPU-accelerated with Remotion | ✅ GPU-accelerated with Remotion | ❌ Not available |
-| **Background Generation** | ✅ Gemini Native/Nano Banana | ✅ Gemini Native/Nano Banana | ✅ Gemini Native/Nano Banana |
+| **Background Generation** | ✅ Gemini Native Image | ✅ Gemini Native Image | ✅ Gemini Native Image |
+| **Background Music Generation** | ✅ AI music with Lyria | ✅ AI music with Lyria | ✅ AI music with Lyria |
 | **Basic TTS** | ✅ Gemini Live API, Edge TTS, Google TTS | ✅ Gemini Live API, Edge TTS, Google TTS | ❌ Not available |
 | **Voice Cloning** | ❌ Not included | ✅ F5-TTS, Chatterbox | ❌ Not available |
 | **Project Folder Size** | ~2-3 GB | ~8-12 GB | N/A (hosted) |
@@ -246,6 +247,12 @@ Choose the right version for your needs:
 - **Batch generation**: Create multiple variations with unique prompts
 - **Smart prompting**: Automatic prompt generation based on lyrics and content
 
+### 🎹 Background Music Generation
+- AI-generated background music with prompt-based control
+- MIDI playback and control support (promptdj-midi)
+- Simple export for use in video rendering
+
+
 ### 🎥 Professional Video Rendering
 - **Remotion integration**: GPU-accelerated video rendering with hardware optimization
 - **Multi-resolution support**: 360p to 8K output with automatic aspect ratio detection
@@ -295,14 +302,20 @@ Choose the right version for your needs:
    - Create multiple variations with unique prompts
    - Use generated images in video rendering
 
-### 7. **Render Professional Videos**
+
+### 7. **Create Background Music** (Optional)
+   - Open the Background Music panel
+   - Enter a prompt or choose presets, then generate
+   - Preview and adjust via MIDI controls; export for rendering
+
+### 8. **Render Professional Videos**
    - **Open video renderer**: Access the integrated Remotion-based renderer
    - **Customize subtitles**: Extensive styling options (fonts, colors, effects, animations)
    - **Configure audio**: Balance original video audio with AI narration
    - **Set output quality**: Choose resolution from 360p to 8K
    - **Render with GPU acceleration**: Hardware-optimized processing for fast output
 
-### 8. **Export & Download**
+### 9. **Export & Download**
    - **Subtitle files**: SRT, JSON, or custom formats
    - **Audio files**: Generated narration in various formats
    - **Background images**: AI-generated artwork
@@ -327,7 +340,7 @@ Access settings via the gear icon in the top-right corner:
 - **Video Rendering**: Remotion 4 with GPU acceleration (Vulkan/OpenGL)
 - **Backend**: Node.js/Express, Python Flask, FastAPI
 - **AI Integration**: Google Gemini API, F5-TTS, Chatterbox TTS
-- **Audio/Video**: FFmpeg, Web Audio API, yt-dlp, Playwright
+- **Audio/Video**: FFmpeg, Web Audio API, yt-dlp, Puppeteer
 - **Performance**: React Window virtualization, multi-level caching, hardware acceleration
 
 ## Performance Features
@@ -358,7 +371,6 @@ Access settings via the gear icon in the top-right corner:
 ### 🎬 Video & Audio Processing
 - **[FFmpeg](https://ffmpeg.org/)** - Comprehensive multimedia framework
 - **[yt-dlp](https://github.com/yt-dlp/yt-dlp)** - Universal video downloader for 1000+ platforms
-- **[Playwright](https://playwright.dev/)** - Browser automation for complex site interactions
 - **[Puppeteer](https://pptr.dev/)** - Headless Chrome control for web scraping
 
 ### 🎨 UI & Visualization
@@ -397,7 +409,7 @@ Access settings via the gear icon in the top-right corner:
 
 MIT License
 
-Copyright (c) 2024 Subtitles Generator
+Copyright (c) 2025 Oneclick Subtitles Generator
 
 Permission is hereby granted, free of charge, to any person obtaining a copy
 of this software and associated documentation files (the "Software"), to deal

@@ -182,31 +182,28 @@ export const downloadDouyinVideo = async (douyinUrl, onProgress = () => {}, forc
     const checkInterval = setInterval(async () => {
       const status = checkDouyinDownloadStatus(id);
 
-      // If status is 'downloading', get real progress from server
-      if (status.status === 'downloading') {
-        try {
-          const progressResponse = await fetch(`${SERVER_URL}/api/douyin-download-progress/${id}`);
-          if (progressResponse.ok) {
-            const progressData = await progressResponse.json();
-            if (progressData.success) {
-              // Update local progress with server progress
-              downloadQueue[id].progress = progressData.progress;
-              onProgress(progressData.progress);
-            } else {
-              // Fallback to local status progress
-              onProgress(status.progress);
-            }
+      // Always get real progress from server, regardless of local status
+      try {
+        const progressResponse = await fetch(`${SERVER_URL}/api/douyin-download-progress/${id}`);
+        if (progressResponse.ok) {
+          const progressData = await progressResponse.json();
+          if (progressData.success) {
+            // Update local queue with server status
+            downloadQueue[id].progress = progressData.progress;
+            downloadQueue[id].status = progressData.status;
+
+            onProgress(progressData.progress);
           } else {
             // Fallback to local status progress
             onProgress(status.progress);
           }
-        } catch (error) {
-          console.warn('Error fetching Douyin download progress:', error);
+        } else {
           // Fallback to local status progress
           onProgress(status.progress);
         }
-      } else {
-        // Update progress
+      } catch (error) {
+        console.warn('Error fetching Douyin download progress:', error);
+        // Fallback to local status progress
         onProgress(status.progress);
       }
 
@@ -229,25 +226,25 @@ export const downloadDouyinVideo = async (douyinUrl, onProgress = () => {}, forc
             const newCheckInterval = setInterval(async () => {
               const newStatus = checkDouyinDownloadStatus(newVideoId);
 
-              // Get real progress from server if downloading
-              if (newStatus.status === 'downloading') {
-                try {
-                  const progressResponse = await fetch(`${SERVER_URL}/api/douyin-download-progress/${newVideoId}`);
-                  if (progressResponse.ok) {
-                    const progressData = await progressResponse.json();
-                    if (progressData.success) {
-                      onProgress(progressData.progress);
-                    } else {
-                      onProgress(newStatus.progress);
-                    }
+              // Always get real progress from server
+              try {
+                const progressResponse = await fetch(`${SERVER_URL}/api/douyin-download-progress/${newVideoId}`);
+                if (progressResponse.ok) {
+                  const progressData = await progressResponse.json();
+                  if (progressData.success) {
+                    // Update local queue with server status
+                    downloadQueue[newVideoId].progress = progressData.progress;
+                    downloadQueue[newVideoId].status = progressData.status;
+
+                    onProgress(progressData.progress);
                   } else {
                     onProgress(newStatus.progress);
                   }
-                } catch (error) {
-                  console.warn('Error fetching Douyin download progress:', error);
+                } else {
                   onProgress(newStatus.progress);
                 }
-              } else {
+              } catch (error) {
+                console.warn('Error fetching Douyin download progress:', error);
                 onProgress(newStatus.progress);
               }
 

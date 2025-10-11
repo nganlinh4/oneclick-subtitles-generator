@@ -1,43 +1,39 @@
-/* Compact variant for smaller segmented controls (used in DownloadOptionsModal process type) */
-.input-tabs.compact { --pill-height: 34px; }
-.input-tabs.compact::before { height: var(--pill-height); }
-.input-tabs.compact .pill-overlay .goo-blob { height: var(--pill-height); }
-.input-tabs.compact .tab-btn { padding: 6px 12px; font-size: 0.95em; line-height: 1.1; }
-
-/* Override: make compact pill taller only for process-tabs */
-.process-tabs.compact { --pill-height: 40px; }
-
-
 /* tabs.css - Styles for tab components */
+
+/* ========================================================================== */
+/*  Container Styles
+/* ========================================================================== */
 
 .input-tabs {
   display: flex;
-  align-items: center; /* Center tabs vertically */
+  align-items: center;
   margin-bottom: 0;
   flex: 1;
   position: relative;
   overflow-x: auto;
-  scrollbar-width: none; /* For Firefox */
-  -ms-overflow-style: none; /* For Internet Explorer and Edge */
+  scrollbar-width: none;
+  -ms-overflow-style: none;
   padding: 0px 24px;
-  min-height: 55px; /* Ensure consistent height */
-  -webkit-tap-highlight-color: transparent; /* Kill iOS one-time highlight at container level */
-
+  min-height: 55px;
+  -webkit-tap-highlight-color: transparent;
 }
 
 .input-tabs::-webkit-scrollbar {
-  display: none; /* For Chrome, Safari, and Opera */
+  display: none;
 }
 
-/* Sliding pill background for active tab - Material Design 3 style */
+
+/* ========================================================================== */
+/*  CSS Fallback Animation (for ::before element)
+/* ========================================================================== */
+
 .input-tabs {
   --pill-width: 0px;
   --pill-left: 0px;
-  /* Liquid droplet motion variables (set dynamically by JS) */
   --pill-origin-x: 50%;
   --pill-left-delay: 0ms;
   --pill-width-delay: 0ms;
-  --pill-travel: 0px; /* absolute px movement since last change */
+  --pill-travel: 0px;
 }
 
 .input-tabs::before {
@@ -54,7 +50,6 @@
   box-shadow: 0 2px 8px rgba(var(--md-primary-rgb), 0.15),
               0 1px 3px rgba(var(--md-primary-rgb), 0.1),
               inset 0 1px 1px rgba(255, 255, 255, 0.1);
-  /* Property-specific transitions to get a leading-edge effect */
   transition-property: left, width, transform, border-radius, background-color, box-shadow, opacity;
   transition-duration: var(--md-duration-medium4), var(--md-duration-medium4), 600ms, 400ms, 400ms, 400ms, 200ms;
   transition-timing-function: var(--md-easing-emphasized), cubic-bezier(.2,.8,.2,1.15), cubic-bezier(.2,.8,.2,1), var(--md-easing-emphasized), var(--md-easing-emphasized), var(--md-easing-emphasized), linear;
@@ -66,81 +61,63 @@
   will-change: left, width, transform;
 }
 
-/* When there's an active tab, show the pill */
 .input-tabs:has(.tab-btn.active)::before {
   opacity: 1;
 }
 
-/* Liquid droplet bounce/squish on tab change */
 .input-tabs.pill-animate::before {
   animation: pill-bounce 720ms cubic-bezier(.25,.8,.2,1) both;
 }
 
 @keyframes pill-bounce {
-  0% {
-    transform: translateY(-50%) scaleX(1) scaleY(1);
-    border-radius: 48px;
-  }
-  20% {
-    /* Stretch more for longer travel */
-    transform: translateY(-50%) scaleX(clamp(1, calc(1 + (var(--pill-travel) / 320)), 1.28)) scaleY(calc(1 - (clamp(0, calc(var(--pill-travel) / 320), 0.28) * 0.55)));
-    border-radius: 36px;
-  }
-  48% {
-    transform: translateY(-50%) scaleX(0.96) scaleY(1.08);
-    border-radius: 42px;
-  }
-  72% {
-    transform: translateY(-50%) scaleX(1.04) scaleY(0.98);
-    border-radius: 46px;
-  }
-  100% {
-    transform: translateY(-50%) scaleX(1) scaleY(1);
-    border-radius: 48px;
-  }
-
+  0%   { transform: translateY(-50%) scaleX(1) scaleY(1); border-radius: 48px; }
+  20%  { transform: translateY(-50%) scaleX(clamp(1, calc(1 + (var(--pill-travel) / 320)), 1.28)) scaleY(calc(1 - (clamp(0, calc(var(--pill-travel) / 320), 0.28) * 0.55))); border-radius: 36px; }
+  48%  { transform: translateY(-50%) scaleX(0.96) scaleY(1.08); border-radius: 42px; }
+  72%  { transform: translateY(-50%) scaleX(1.04) scaleY(0.98); border-radius: 46px; }
+  100% { transform: translateY(-50%) scaleX(1) scaleY(1); border-radius: 48px; }
 }
 
-/* Gooey overlay blobs (lead + trail) */
+
+/* ========================================================================== */
+/*  ENHANCED GOOEY ANIMATION (100% Physics-driven)
+/* ========================================================================== */
+
 .input-tabs.goo-ready::before { display: none; }
+
 .input-tabs .pill-overlay {
-  position: absolute; inset: 0; pointer-events: none; z-index: 0;
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  z-index: 0;
   filter: url(#goo);
 }
+
 .input-tabs .pill-overlay .goo-blob {
-  position: absolute; top: 50%; transform: translateY(-50%);
-  height: 45px; border-radius: 999px;
+  position: absolute;
+  top: 50%;
+  transform: translateY(-50%);
+  height: 45px;
+  border-radius: 999px;
   background: radial-gradient(120% 100% at 50% 40%, rgba(var(--md-primary-container-rgb), 0.58) 0%, rgba(var(--md-primary-container-rgb), 0.46) 62%, rgba(var(--md-primary-container-rgb), 0.34) 100%);
   box-shadow: 0 2px 8px rgba(var(--md-primary-rgb), 0.16), 0 1px 3px rgba(var(--md-primary-rgb), 0.1), inset 0 1px 1px rgba(255,255,255,0.08);
   border: 1px solid rgba(var(--md-primary-rgb), 0.08);
-  will-change: left, width, transform;
-  transition: none; /* physics-driven via JS */
+  will-change: left, width, transform, border-radius;
+  transition: none;
   backface-visibility: hidden;
   contain: layout paint style size;
 }
-.input-tabs .pill-overlay .goo-blob {
-  transition-delay: 0ms, 0ms, 0ms; /* left, width, transform */
-}
-
-/* Subtle wobble after settle without vertical shift */
-@keyframes goo-wobble {
-  0%   { transform: translateY(-50%) scaleX(1)   scaleY(1); }
-  35%  { transform: translateY(-50%) scaleX(0.96) scaleY(1.05); }
-  70%  { transform: translateY(-50%) scaleX(1.03) scaleY(0.98); }
-  100% { transform: translateY(-50%) scaleX(1)   scaleY(1); }
-}
-.input-tabs .pill-overlay.goo-animate .goo-blob {
-  animation: goo-wobble 600ms cubic-bezier(.25,.8,.2,1) both;
-}
 
 
-/* Material Design 3 tab buttons */
+/* ========================================================================== */
+/*  Tab Button Styles
+/* ========================================================================== */
+
 .tab-btn {
   display: flex;
   align-items: center;
   padding: 8px 16px;
   border: none;
-  border-radius: 20px; /* Pill shape */
+  border-radius: 20px;
   background: transparent;
   -webkit-tap-highlight-color: transparent;
   color: var(--md-on-surface-variant);
@@ -158,31 +135,25 @@
   letter-spacing: 0.1px;
   min-width: 90px;
   opacity: 0.85;
-  z-index: 1; /* Above the pill background */
-  height: 36px; /* Fixed height for consistency */
-  margin: 0 4px; /* Add some spacing between tabs */
+  z-index: 1;
+  height: 36px;
+  margin: 0 4px;
 }
 
-/* Material Design 3 active state for tab buttons */
 .tab-btn.active {
   color: var(--md-on-primary-container);
   font-weight: 1000;
   opacity: 1;
   transform: scale(1.2);
-  letter-spacing: 0.2px; /* Slightly increased letter spacing for emphasis */
-  text-shadow: 0 1px 1px rgba(var(--md-primary-rgb), 0.1); /* Subtle text shadow */
+  letter-spacing: 0.2px;
+  text-shadow: 0 1px 1px rgba(var(--md-primary-rgb), 0.1);
 }
 
-/* State layer for hover effect - Material Design 3 state layer */
 .tab-btn:hover:not(.active) {
   opacity: 1;
   background-color: rgba(var(--md-on-surface-variant-rgb), 0.05);
   transform: translateY(-1px);
 }
-
-
-
-
 
 .tab-btn svg {
   margin-right: 0.5rem;
@@ -200,3 +171,15 @@
   opacity: 1;
   transform: scale(1.1);
 }
+
+
+/* ========================================================================== */
+/*  Compact Variant
+/* ========================================================================== */
+
+.input-tabs.compact { --pill-height: 34px; }
+.input-tabs.compact::before { height: var(--pill-height); }
+.input-tabs.compact .pill-overlay .goo-blob { height: var(--pill-height); }
+.input-tabs.compact .tab-btn { padding: 6px 12px; font-size: 0.95em; line-height: 1.1; }
+
+.process-tabs.compact { --pill-height: 40px; }

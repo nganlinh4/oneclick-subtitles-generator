@@ -106,7 +106,9 @@ export const SubtitledVideoComposition = ({
   const getResponsiveScaledValue = (value) => {
     const baseHeight = 1080; // Reference height (1080p)
     const scale = compositionHeight / baseHeight;
-    return Math.round(value * scale);
+    // Preserve fractional pixel values (up to 2 decimal places) so stroke widths can be non-integer
+    if (typeof value !== 'number') return value;
+    return Number((value * scale).toFixed(2));
   };
 
   // Get consistent relative position as percentage (based on 1080p reference)
@@ -297,6 +299,33 @@ export const SubtitledVideoComposition = ({
     return text.substring(0, targetLength);
   };
 
+  // Compute flip transforms from cropSettings so preview matches final render
+  const flipXScale = cropSettings?.flipX ? -1 : 1;
+  const flipYScale = cropSettings?.flipY ? -1 : 1;
+  const videoFlipTransform = `scaleX(${flipXScale}) scaleY(${flipYScale})`;
+  
+  // Compute adjusted positioning for cropping, taking flips into account.
+  // When flipX is true the visible crop origin mirrored horizontally, so left must be computed from the opposite edge.
+  // NOTE: if frames were pre-cropped server-side, composition should NOT re-apply cropping (double-zoom bug).
+  const computeCropPosition = (cs, metadataFlag) => {
+    if (metadataFlag?.framesPreCropped) {
+      // Frames are already cropped to the requested rectangle; composition should render them as full-frame images.
+      return {};
+    }
+    if (!cs) return {};
+    const isIdentity = cs.width === 100 && cs.height === 100 && cs.x === 0 && cs.y === 0;
+    if (isIdentity) return {};
+    const widthPct = `${(100 / cs.width) * 100}%`;
+    const heightPct = `${(100 / cs.height) * 100}%`;
+    const leftPct = cs.flipX
+      ? `${(-(100 - (cs.x) - cs.width) / cs.width) * 100}%`
+      : `${(-(cs.x / cs.width) * 100)}%`;
+    const topPct = cs.flipY
+      ? `${(-(100 - (cs.y) - cs.height) / cs.height) * 100}%`
+      : `${(-(cs.y / cs.height) * 100)}%`;
+    return { widthPct, heightPct, leftPct, topPct };
+  };
+  const cropPosition = computeCropPosition(cropSettings, metadata);
   return (
     <>
       <style dangerouslySetInnerHTML={{ __html: fontStyles }} />
@@ -329,7 +358,7 @@ export const SubtitledVideoComposition = ({
                   <Video
                     src={videoUrl}
                     volume={0}
-                    style={{ position: 'absolute', inset: 0, width: '100%', height: '100%', objectFit: 'cover', filter: `blur(${(cropSettings.canvasBgBlur ?? 24)}px) brightness(0.7)`, transform: 'scale(1.06)' }}
+                    style={{ position: 'absolute', inset: 0, width: '100%', height: '100%', objectFit: 'cover', filter: `blur(${(cropSettings.canvasBgBlur ?? 24)}px) brightness(0.7)`, transform: `scale(1.06) ${videoFlipTransform}`, transformOrigin: 'center center' }}
                   />
                 )}
               </>
@@ -338,19 +367,28 @@ export const SubtitledVideoComposition = ({
               src={videoUrl}
               volume={originalAudioVolume / 100}
               style={{
-                // When cropping, scale up the video and reposition
-                ...(cropSettings && (cropSettings.width !== 100 || cropSettings.height !== 100 || cropSettings.x !== 0 || cropSettings.y !== 0) ? {
-                  position: 'absolute',
-                  width: `${(100 / cropSettings.width) * 100}%`,
-                  height: `${(100 / cropSettings.height) * 100}%`,
-                  left: `${-(cropSettings.x / cropSettings.width) * 100}%`,
-                  top: `${-(cropSettings.y / cropSettings.height) * 100}%`,
-                  objectFit: 'contain'
-                } : {
-                  width: '100%',
-                  height: '100%',
-                  objectFit: 'contain'
-                })
+                // When cropping, scale up the video and reposition.
+                // Use the same math as the renderer (SubtitledVideo.tsx) so preview matches final output,
+                // including correct handling when flipX/flipY are enabled.
+                ...(cropSettings && (cropSettings.width !== 100 || cropSettings.height !== 100 || cropSettings.x !== 0 || cropSettings.y !== 0)
+                  ? {
+                      position: 'absolute',
+                      width: cropPosition.widthPct,
+                      height: cropPosition.heightPct,
+                      left: cropPosition.leftPct,
+                      top: cropPosition.topPct,
+                      objectFit: 'contain',
+                      transform: videoFlipTransform,
+                      transformOrigin: 'center center'
+                    }
+                  : {
+                      width: '100%',
+                      height: '100%',
+                      objectFit: 'contain',
+                      transform: videoFlipTransform,
+                      transformOrigin: 'center center'
+                    }
+                )
               }}
             />
           </div>

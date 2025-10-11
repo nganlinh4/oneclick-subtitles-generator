@@ -445,7 +445,7 @@
   max-height: 90vh; /* Keep within viewport so header stays visible */
   background: var(--md-surface-1);
   border: 1px solid var(--md-outline-variant);
-  border-radius: 16px;
+  border-radius: 32px;
   box-shadow: 0 10px 30px rgba(0,0,0,0.3);
   display: flex; /* Make header fixed and content scrollable */
   flex-direction: column;
@@ -587,6 +587,38 @@
   overflow-y: auto; /* Scroll content vertically like panel-content */
   overflow-x: hidden; /* Hide horizontal scroll */
   flex: 1 1 auto; /* Fill remaining space beneath header */
+
+  /* Use shared/custom scrollbar styling (matches content-scrollbars.css) */
+  /* Firefox */
+  scrollbar-width: thin;
+  scrollbar-color: var(--md-outline-variant) var(--md-surface-2);
+  /* Ensure the content area respects modal border radius when scrollbars appear */
+  border-radius: calc(var(--modal-border-radius) - 6px);
+}
+
+/* WebKit (Chrome, Safari, Edge) custom scrollbar for preview modal content */
+.preview-modal-content::-webkit-scrollbar {
+  width: 10px;
+  margin-right: 2px;
+}
+
+.preview-modal-content::-webkit-scrollbar-track {
+  background: var(--md-surface-2);
+  border-radius: 6px;
+  margin-right: 2px;
+  margin-bottom: 4px;
+}
+
+.preview-modal-content::-webkit-scrollbar-thumb {
+  background-color: var(--md-outline-variant);
+  border-radius: 6px;
+  border: 2px solid var(--md-surface-2);
+  margin-right: 2px;
+  margin-bottom: 4px;
+}
+
+.preview-modal-content::-webkit-scrollbar-thumb:hover {
+  background-color: var(--text-secondary);
 }
 
 /* Item Actions */

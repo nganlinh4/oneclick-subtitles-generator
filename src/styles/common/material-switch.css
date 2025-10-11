@@ -14,7 +14,7 @@ md-switch {
   --md-switch-selected-hover-handle-color: var(--md-on-primary, #ffffff);
   --md-switch-selected-focus-track-color: var(--md-primary, #6750a4);
   --md-switch-selected-focus-handle-color: var(--md-on-primary, #ffffff);
-  
+
   --md-switch-unselected-track-color: var(--md-surface-variant, #e7e0ec);
   --md-switch-unselected-handle-color: var(--md-outline, #79747e);
   --md-switch-unselected-pressed-track-color: var(--md-surface-variant, #e7e0ec);
@@ -23,26 +23,26 @@ md-switch {
   --md-switch-unselected-hover-handle-color: var(--md-on-surface-variant, #49454f);
   --md-switch-unselected-focus-track-color: var(--md-surface-variant, #e7e0ec);
   --md-switch-unselected-focus-handle-color: var(--md-on-surface-variant, #49454f);
-  
+
   --md-switch-disabled-selected-track-color: var(--md-on-surface, #1d1b20);
   --md-switch-disabled-selected-handle-color: var(--md-surface, #fef7ff);
   --md-switch-disabled-unselected-track-color: var(--md-on-surface, #1d1b20);
   --md-switch-disabled-unselected-handle-color: var(--md-on-surface, #1d1b20);
-  
+
   /* Track and handle shape */
   --md-switch-track-shape: 16px;
   --md-switch-handle-shape: 50%;
-  
+
   /* Track dimensions */
   --md-switch-track-width: 52px;
   --md-switch-track-height: 32px;
-  
+
   /* Handle dimensions */
   --md-switch-handle-width: 24px;
   --md-switch-handle-height: 24px;
   --md-switch-selected-handle-width: 24px;
   --md-switch-selected-handle-height: 24px;
-  
+
   /* Icon styling - Default check/close icons */
   --md-switch-icon-size: 16px;
   --md-switch-selected-icon-color: var(--md-on-primary, #ffffff);
@@ -125,7 +125,7 @@ md-switch[icons]:focus-visible:not([selected]) svg[slot="off-icon"] {
 
 /* Dark theme support */
 @media (prefers-color-scheme: dark) {
-  
+
   md-switch {
     /* Selected States (On) */
     --md-switch-selected-track-color: var(--md-primary, #d0bcff);
@@ -155,15 +155,15 @@ md-switch[icons]:focus-visible:not([selected]) svg[slot="off-icon"] {
 
     /* --- ICON COLOR CORRECTION --- */
     /* Light icon on dark handle (for "on" state) */
-    --md-switch-selected-icon-color: var(--md-primary, #d0bcff); 
+    --md-switch-selected-icon-color: var(--md-primary, #d0bcff);
     /* Nearly-black icon on light gray handle (for "off" state) for HIGH CONTRAST */
-    --md-switch-unselected-icon-color: var(--md-surface, #141218); 
+    --md-switch-unselected-icon-color: var(--md-surface, #141218);
   }
-  
+
   .material-switch-label {
     color: var(--md-on-surface, #e6e0e9);
   }
-  
+
   .material-switch-container:has(md-switch[disabled]) .material-switch-label {
     color: var(--md-on-surface-variant, #938f99);
   }
@@ -250,3 +250,129 @@ md-switch[icons] svg[slot="off-icon"] {
     opacity: 1;
   }
 }
+
+/* Ensure unselected state has no background on the track pseudo element */
+/* Try multiple selectors to cope with Shadow DOM/parts implementations */
+.unselected md-switch .track::before,
+md-switch.unselected .track::before,
+.unselected md-switch::part(track)::before,
+md-switch.unselected::part(track)::before {
+  background: none !important;
+  background-color: transparent !important;
+}
+
+/* Aggressive overrides to neutralize unselected track visuals, even vs constructed stylesheets */
+/* Apply to both light-DOM guesses and exposed parts to cover different md-switch builds */
+.unselected md-switch .track::before,
+.unselected md-switch .track::after,
+md-switch.unselected .track::before,
+md-switch.unselected .track::after {
+  background: none !important;
+  background-color: transparent !important;
+  background-image: none !important;
+}
+
+/* Prefer ::part when available (Shadow DOM safe) */
+.unselected md-switch::part(track),
+md-switch.unselected::part(track),
+.unselected md-switch::part(track)::before,
+md-switch.unselected::part(track)::before,
+.unselected md-switch::part(track)::after,
+md-switch.unselected::part(track)::after {
+  background: none !important;
+  background-color: transparent !important;
+  background-image: none !important;
+}
+
+/* Override component CSS variables that feed track styling (background only) */
+.unselected md-switch,
+md-switch.unselected {
+  --md-switch-unselected-track-color: transparent !important;
+  --md-switch-unselected-pressed-track-color: transparent !important;
+  --md-switch-unselected-hover-track-color: transparent !important;
+  --md-switch-unselected-focus-track-color: transparent !important;
+  /* Some builds read generic track vars; set those too */
+  --md-switch-track-color: transparent !important;
+}
+
+/* Attribute-based fallback: neutralize when md-switch is not selected (no class dependency) */
+md-switch:not([selected])::part(track),
+md-switch:not([selected])::part(track)::before,
+md-switch:not([selected])::part(track)::after,
+md-switch:not([selected]) .track::before,
+md-switch:not([selected]) .track::after {
+  background: none !important;
+  background-color: transparent !important;
+  background-image: none !important;
+}
+
+/* Force variables for unselected state via attribute selector too */
+md-switch:not([selected]) {
+  --md-switch-unselected-track-color: transparent !important;
+  --md-switch-unselected-pressed-track-color: transparent !important;
+  --md-switch-unselected-hover-track-color: transparent !important;
+  --md-switch-unselected-focus-track-color: transparent !important;
+  --md-switch-track-color: transparent !important;
+}
+
+/* Clear background on hover for unselected state (keep border) */
+.unselected:hover md-switch .track::before,
+.unselected:hover md-switch .track::after,
+md-switch.unselected:hover .track::before,
+md-switch.unselected:hover .track::after {
+  background: none !important;
+  background-color: transparent !important;
+  background-image: none !important;
+}
+
+/* Shadow DOM safe hover handling via ::part */
+.unselected:hover md-switch::part(track),
+md-switch.unselected:hover::part(track),
+.unselected:hover md-switch::part(track)::before,
+md-switch.unselected:hover::part(track)::before,
+.unselected:hover md-switch::part(track)::after,
+md-switch.unselected:hover::part(track)::after {
+  background: none !important;
+  background-color: transparent !important;
+  background-image: none !important;
+}
+
+/* Attribute-based fallback: hover while not selected */
+md-switch:not([selected]):hover::part(track),
+md-switch:not([selected]):hover::part(track)::before,
+md-switch:not([selected]):hover::part(track)::after,
+md-switch:not([selected]):hover .track::before,
+md-switch:not([selected]):hover .track::after {
+  background: none !important;
+  background-color: transparent !important;
+  background-image: none !important;
+}
+
+
+/* Ensure hover still uses transparent track color in unselected state via CSS variables */
+md-switch.unselected:hover,
+md-switch:not([selected]):hover {
+  --md-switch-unselected-hover-track-color: transparent !important;
+  --md-switch-hover-track-color: transparent !important;
+  --md-switch-unselected-pressed-track-color: transparent !important;
+  --md-switch-pressed-track-color: transparent !important;
+  --md-switch-track-color: transparent !important;
+}
+
+/* In case external CSS (non-shadow) targets .unselected:hover .track::before directly */
+.unselected:hover .track::before,
+.unselected:hover .track::after {
+  background: none !important;
+  background-color: transparent !important;
+  background-image: none !important;
+}
+
+/* Ensure variables flip to transparent when ancestor .unselected is hovered */
+.unselected:hover md-switch {
+  --md-switch-unselected-hover-track-color: transparent !important;
+  --md-switch-hover-track-color: transparent !important;
+  --md-switch-track-color: transparent !important;
+}
+
+
+

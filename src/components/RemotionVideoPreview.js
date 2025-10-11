@@ -33,14 +33,18 @@ const RemotionVideoPreview = React.forwardRef(({
     y: 0,
     width: 100,
     height: 100,
-    aspectRatio: null
+    aspectRatio: null,
+    flipX: false,
+    flipY: false,
   });
   const [appliedCropSettings, setAppliedCropSettings] = useState({
     x: 0,
     y: 0,
     width: 100,
     height: 100,
-    aspectRatio: null
+    aspectRatio: null,
+    flipX: false,
+    flipY: false,
   });
 
   const playerRef = useRef(null);
@@ -132,8 +136,19 @@ const RemotionVideoPreview = React.forwardRef(({
   // Sync crop settings with parent if provided
   useEffect(() => {
     if (cropSettings) {
-      setAppliedCropSettings(cropSettings);
-      setTempCropSettings(cropSettings);
+      // Normalize incoming crop settings to ensure flip flags exist
+      const normalized = {
+        ...cropSettings,
+        x: cropSettings.x ?? 0,
+        y: cropSettings.y ?? 0,
+        width: cropSettings.width ?? 100,
+        height: cropSettings.height ?? 100,
+        aspectRatio: cropSettings.aspectRatio ?? null,
+        flipX: cropSettings.flipX ?? false,
+        flipY: cropSettings.flipY ?? false,
+      };
+      setAppliedCropSettings(normalized);
+      setTempCropSettings(normalized);
     }
   }, [cropSettings]);
 
@@ -177,7 +192,9 @@ const RemotionVideoPreview = React.forwardRef(({
       y: 0,
       width: 100,
       height: 100,
-      aspectRatio: null
+      aspectRatio: null,
+      flipX: false,
+      flipY: false,
     };
     setAppliedCropSettings(resetCrop);
     setTempCropSettings(resetCrop);

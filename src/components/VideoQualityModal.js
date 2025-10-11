@@ -121,7 +121,7 @@ const VideoQualityModal = ({
   // Scan qualities when redownload option is selected
   useEffect(() => {
     if (selectedOption === 'redownload' && videoInfo && videoInfo.url &&
-        ['youtube', 'douyin', 'douyin-playwright', 'all-sites'].includes(videoInfo.source) &&
+        ['youtube', 'douyin', 'all-sites'].includes(videoInfo.source) &&
         availableQualities.length === 0 && !isScanning) {
       scanVideoQualities();
     }
@@ -360,8 +360,8 @@ const VideoQualityModal = ({
         return t('videoQuality.youtubeVideo', 'YouTube Video');
       case 'douyin':
         return t('videoQuality.douyinVideo', 'Douyin Video');
-      case 'douyin-playwright':
-        return t('videoQuality.douyinPlaywrightVideo', 'Douyin Video (Playwright)');
+      case 'douyin':
+        return t('videoQuality.douyinVideo', 'Douyin Video');
       case 'all-sites':
         return t('videoQuality.webVideo', 'Web Video');
       case 'upload':

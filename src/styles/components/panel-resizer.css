@@ -19,7 +19,7 @@
   width: 5px;
   height: 80px;
   background: var(--md-outline-variant);
-  border-radius: 2px;
+  border-radius: 5px;
   transition: all 0.2s ease;
 }
 

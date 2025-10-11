@@ -149,6 +149,12 @@ export class PromptDjMidi extends LitElement {
   @state() private optimisticPlaying: boolean | null = null; // null = follow real state
   private clickCooldownUntil: number = 0; // epoch ms; during this window, ignore extra toggles
 
+  // Background drift control
+  @state() private driftStrength: number = 0; // 0 = at base, 1 = full drift
+  private driftTarget: number = 0;
+  private driftRaf: number | null = null;
+  private lastDriftTick = 0;
+
   // Left add-column activation state (4 slots)
   @state() private addSlotsActive: boolean[] = [false, false, false, false];
   // Track which base grid slots are removed (to render add buttons in-grid)
@@ -244,7 +250,7 @@ export class PromptDjMidi extends LitElement {
     );
   }
 
-  /** Generates radial gradients for each prompt based on weight and color. */
+  /** Generates radial gradients for each prompt based on weight and color, with gentle drift while playing. */
   private readonly makeBackground = throttle(
     () => {
       const clamp01 = (v: number) => Math.min(Math.max(v, 0), 1);
@@ -252,18 +258,32 @@ export class PromptDjMidi extends LitElement {
       const MAX_WEIGHT = 0.5;
       const MAX_ALPHA = 0.6;
 
+      const t = performance.now() * 0.0006; // time base for gentle drift
+
       const bg: string[] = [];
 
       [...this.prompts.values()].forEach((p, i) => {
+        // Stable alpha and size based on weight (no level-based pulsing)
         const alphaPct = clamp01(p.weight / MAX_WEIGHT) * MAX_ALPHA;
         const alpha = Math.round(alphaPct * 0xff)
           .toString(16)
           .padStart(2, '0');
 
         const stop = p.weight / 2;
-        const x = (i % 4) / 3;
-        const y = Math.floor(i / 4) / 3;
-        const s = `radial-gradient(circle at ${x * 100}% ${y * 100}%, ${p.color}${alpha} 0px, ${p.color}00 ${stop * 100}%)`;
+
+        // Base grid position
+        const gx = (i % 4) / 3;
+        const gy = Math.floor(i / 4) / 3;
+
+        // Gentle, eased drift per prompt scaled by driftStrength
+        const phase = i * 1.37; // unique-ish per index
+        const driftAmp = 4 * (this.driftStrength || 0); // percent units
+        const driftX = Math.sin(t + phase) * driftAmp;
+        const driftY = Math.cos(t * 0.9 + phase) * driftAmp;
+        const xPct = gx * 100 + driftX;
+        const yPct = gy * 100 + driftY;
+
+        const s = `radial-gradient(circle at ${xPct}% ${yPct}%, ${p.color}${alpha} 0px, ${p.color}00 ${Math.max(0, Math.min(100, stop * 100))}%)`;
 
         bg.push(s);
       });
@@ -446,6 +466,11 @@ export class PromptDjMidi extends LitElement {
   protected updated(changedProps: Map<string, any>) {
     if (changedProps.has('playbackState')) {
       const state = this.playbackState;
+
+      // Set drift target based on state and ensure the animation loop is running
+      this.driftTarget = (state === 'playing' || state === 'loading') ? 1 : 0;
+      this.ensureDriftLoop();
+
       if (this.lastUserAction === 'play') {
         if (state === 'playing') {
           this.optimisticLoading = false;
@@ -467,6 +492,34 @@ export class PromptDjMidi extends LitElement {
         this.optimisticPlaying = null;
       }
     }
+  }
+
+  private ensureDriftLoop() {
+    if (this.driftRaf != null) return;
+    this.lastDriftTick = performance.now();
+    const tick = () => {
+      const now = performance.now();
+      const dt = Math.max(0, now - this.lastDriftTick) / 1000; // seconds
+      this.lastDriftTick = now;
+
+      // Approach driftTarget smoothly (exponential smoothing)
+      const speed = 3.0; // higher = faster return/engage
+      const diff = this.driftTarget - this.driftStrength;
+      const step = 1 - Math.exp(-speed * dt);
+      this.driftStrength = this.driftStrength + diff * step;
+
+      // Force a re-render so gradients animate (uses performance.now in makeBackground)
+      this.requestUpdate();
+
+      // If we're returning to base and very close, stop the loop; otherwise keep running
+      if (this.driftTarget === 0 && Math.abs(this.driftStrength) < 0.001) {
+        this.driftStrength = 0;
+        this.driftRaf = null;
+        return;
+      }
+      this.driftRaf = requestAnimationFrame(tick);
+    };
+    this.driftRaf = requestAnimationFrame(tick);
   }
 
   override render() {

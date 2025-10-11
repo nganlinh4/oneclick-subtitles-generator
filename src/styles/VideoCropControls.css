@@ -144,6 +144,85 @@
   margin: 0 6px;
 }
 
+/* Backwards-compatible class name used in JS markup */
+.aspect-separator {
+  width: 1px;
+  border-radius: 2px;
+  height: 22px;
+  background: color-mix(in srgb, var(--md-outline-variant), transparent 48%);
+  align-self: center;
+  margin-right: 8px;
+}
+
+/* Flip group wrapper (placed next to aspect buttons) */
+.crop-aspect-buttons .flip-group,
+.flip-group {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  margin-left: 8px;
+  padding-left: 4px;
+}
+
+/* Flip buttons styled to match aspect-btn visual language */
+.flip-btn {
+  padding: 6px 12px; /* match aspect-btn padding */
+  background: var(--md-surface-1);
+  border: 1px solid var(--md-outline-variant);
+  border-radius: var(--md-shape-pill);
+  color: var(--md-on-surface);
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 13px;
+  font-weight: 500;
+  transition: background-color var(--md-duration-medium2) var(--md-easing-standard),
+              border-color var(--md-duration-medium2) var(--md-easing-standard),
+              color var(--md-duration-medium2) var(--md-easing-standard),
+              transform 140ms ease;
+  min-width: 44px;
+  height: 36px;
+  box-shadow: var(--md-elevation-level1);
+}
+
+/* Hover and active affordances consistent with aspect-btn */
+.flip-btn:hover {
+  background: var(--md-surface-2);
+  border-color: var(--md-outline);
+  transform: translateY(-2px);
+  box-shadow: var(--md-elevation-level2);
+}
+
+.flip-btn.active {
+  background: var(--md-primary-container);
+  border-color: var(--md-primary);
+  color: var(--md-on-primary-container);
+}
+
+/* Icon sizing inside flip buttons */
+.flip-btn svg {
+  width: 18px;
+  height: 18px;
+  display: block;
+  fill: currentColor;
+}
+
+/* Make flip buttons visually grouped with aspect buttons */
+.crop-aspect-buttons > .flip-group {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  margin-left: 6px;
+}
+
+/* Reduce visual noise when dragging / on small screens */
+@media (max-width: 520px) {
+  .aspect-btn { padding: 6px 8px; font-size: 12px; }
+  .flip-btn { min-width: 36px; height: 32px; padding: 6px 8px; border-radius: 12px; font-size: 12px; }
+  .aspect-separator { height: 16px; margin-left: 6px; margin-right: 6px; }
+}
+
 .aspect-icon {
   font-size: 16px;
 }

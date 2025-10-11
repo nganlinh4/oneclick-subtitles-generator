@@ -287,37 +287,6 @@ if (!fs.existsSync(F5_TTS_DIR)) {
 logger.success('Submodule verification completed');
 
 
-    // --- 2.75. Install Playwright browsers for Douyin downloader ---
-    logger.section('Browser automation setup (Playwright)');
-    try {
-        // Prefer local Playwright CLI if present, otherwise fall back to npx
-        const localPlaywrightBin = path.join(__dirname, 'node_modules', '.bin', process.platform === 'win32' ? 'playwright.cmd' : 'playwright');
-        let playwrightCmd = '';
-        if (fs.existsSync(localPlaywrightBin)) {
-            playwrightCmd = `"${localPlaywrightBin}"`;
-            logger.found('Playwright CLI', 'using local node_modules/.bin');
-        } else if (commandExists('npx')) {
-            playwrightCmd = 'npx playwright';
-            logger.found('npx', 'will use npx to run Playwright CLI');
-        } else {
-            logger.warning('Neither local Playwright CLI nor npx is available. Skipping Playwright browser install.');
-            logger.info('To enable Douyin downloads, run later: npx playwright install chromium chromium-headless-shell');
-        }
-
-        if (playwrightCmd) {
-            // Install Chromium and the smaller headless_shell used by newer Playwright versions
-            const installCmd = `${playwrightCmd} install chromium chromium-headless-shell`;
-            logger.command(installCmd);
-            execSync(installCmd, { stdio: logger.verboseMode ? 'inherit' : 'pipe' });
-            logger.success('Playwright browsers installed (chromium + headless_shell)');
-        }
-    } catch (error) {
-        logger.warning(`Playwright browser installation failed: ${error.message}`);
-        logger.info('Douyin downloads via Playwright may fail until browsers are installed.');
-        logger.info('Try manually: npx playwright install chromium chromium-headless-shell');
-    }
-
-
 // --- 3. Check for/Install Python 3.11 ---
 logger.step(3, 6, `Checking for Python ${PYTHON_VERSION_TARGET}`);
 let pythonInterpreterIdentifier = null;

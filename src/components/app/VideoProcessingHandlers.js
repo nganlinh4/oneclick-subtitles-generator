@@ -1,6 +1,5 @@
 import { extractYoutubeVideoId, downloadYoutubeVideo } from '../../utils/videoDownloader';
 import { extractDouyinVideoId, downloadDouyinVideo } from '../../utils/douyinDownloader';
-import { downloadDouyinVideoPlaywright } from '../../utils/douyinPlaywrightDownloader';
 import { downloadGenericVideo } from '../../utils/allSitesDownloader';
 
 // Function to ensure video compatibility
@@ -143,17 +142,6 @@ export const downloadAndPrepareYouTubeVideo = async (
       setCurrentDownloadId(videoId);
 
       videoUrl = await downloadDouyinVideo(
-        selectedVideo.url,
-        (progress) => {
-          setDownloadProgress(progress);
-        }
-      );
-    } else if (selectedVideo.source === 'douyin-playwright') {
-      // Extract Douyin video ID and set it as current download
-      videoId = extractDouyinVideoId(selectedVideo.url);
-      setCurrentDownloadId(videoId);
-
-      videoUrl = await downloadDouyinVideoPlaywright(
         selectedVideo.url,
         (progress) => {
           setDownloadProgress(progress);

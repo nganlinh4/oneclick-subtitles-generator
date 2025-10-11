@@ -183,6 +183,11 @@ const SubtitleSourceSelection = ({
   const [userHasManuallySelectedModel, setUserHasManuallySelectedModel] = useState(false);
   const [userHasManuallySelectedChatterboxLanguage, setUserHasManuallySelectedChatterboxLanguage] = useState(false);
 
+  // Keep a stable reference to the last detected languages so a transient null
+  // in state (during quick UI switches) doesn't show the refresh button briefly.
+  const lastOriginalLanguageRef = React.useRef(null);
+  const lastTranslatedLanguageRef = React.useRef(null);
+
   // Load available models
   useEffect(() => {
     const loadModels = async () => {
@@ -218,16 +223,20 @@ const SubtitleSourceSelection = ({
 
   // Detect changes in translated subtitles
   useEffect(() => {
-    // If we already have translated subtitles and the user has selected translated source,
-    // we should re-detect the language when the subtitles change
+    // If translated subtitles exist and the user has selected the translated source,
+    // only trigger detection when the subtitles themselves change AND we don't already
+    // have a detected translated language. This prevents re-running detection when the
+    // user simply switches the radio pill between original/translated.
     if (translatedSubtitles &&
         translatedSubtitles.length > 0 &&
         subtitleSource === 'translated') {
 
-      setTranslatedLanguage(null); // Reset the language
-      detectSubtitleLanguage(translatedSubtitles, 'translated');
+      if (!translatedLanguage) {
+        // Only detect when we don't already have a language
+        detectSubtitleLanguage(translatedSubtitles, 'translated');
+      }
     }
-  }, [translatedSubtitles, subtitleSource, setTranslatedLanguage]);
+  }, [translatedSubtitles, subtitleSource, translatedLanguage]);
 
   // Handle model modal
   const openModelModal = () => setIsModelModalOpen(true);
@@ -246,11 +255,13 @@ const SubtitleSourceSelection = ({
 
     const handleDetectionComplete = (event) => {
       const { result, source } = event.detail;
-
+  
       if (source === 'original') {
         setIsDetectingOriginal(false);
         setOriginalLanguage(result);
-
+        // keep stable ref so UI doesn't flash when user switches pills
+        lastOriginalLanguageRef.current = result;
+  
         // Always call the callback when language is detected, regardless of current selection
         // This ensures modals update their recommended sections
         if (onLanguageDetected) {
@@ -259,7 +270,9 @@ const SubtitleSourceSelection = ({
       } else if (source === 'translated') {
         setIsDetectingTranslated(false);
         setTranslatedLanguage(result);
-
+        // keep stable ref so UI doesn't flash when user switches pills
+        lastTranslatedLanguageRef.current = result;
+  
         // Always call the callback when language is detected, regardless of current selection
         // This ensures modals update their recommended sections
         if (onLanguageDetected) {
@@ -313,6 +326,29 @@ const SubtitleSourceSelection = ({
       window.removeEventListener('translation-reset', handleTranslationReset);
     };
   }, [subtitleSource, onLanguageDetected, translatedSubtitles, t, originalLanguage, setOriginalLanguage, setSubtitleSource, setTranslatedLanguage]);
+
+  // Ensure detected languages are cleared when subtitles become unavailable
+  useEffect(() => {
+    // If translated subtitles become unavailable, clear any detected translated language
+    if (!hasTranslatedSubtitles && translatedLanguage) {
+      try {
+        setTranslatedLanguage(null);
+        lastTranslatedLanguageRef.current = null;
+      } catch (e) {
+        // swallow errors to avoid breaking UI
+      }
+    }
+  
+    // If original subtitles become unavailable, clear any detected original language
+    if (!hasOriginalSubtitles && originalLanguage) {
+      try {
+        setOriginalLanguage(null);
+        lastOriginalLanguageRef.current = null;
+      } catch (e) {
+        // swallow errors to avoid breaking UI
+      }
+    }
+  }, [hasTranslatedSubtitles, hasOriginalSubtitles, translatedLanguage, originalLanguage, setTranslatedLanguage, setOriginalLanguage]);
 
   // Auto-select Chatterbox language based on detected subtitle language
   useEffect(() => {
@@ -488,7 +524,11 @@ const SubtitleSourceSelection = ({
     // If no language information is available
     return '';
   };
-
+  
+  // Use last-detected refs to avoid transient null flashes when switching sources
+  const displayedOriginalLanguage = originalLanguage || lastOriginalLanguageRef.current;
+  const displayedTranslatedLanguage = translatedLanguage || lastTranslatedLanguageRef.current;
+  
   return (
     <>
       <div className="narration-row subtitle-source-row animated-row">
