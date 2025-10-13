@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 
 /**
  * Custom hook for managing narration state
@@ -101,6 +101,8 @@ const useNarrationState = (initialReferenceAudio) => {
   const [referenceAudio, setReferenceAudio] = useState(initialReferenceAudio);
   const [referenceText, setReferenceText] = useState(initialReferenceAudio?.text || '');
   const [isRecording, setIsRecording] = useState(false);
+  const [isStartingRecording, setIsStartingRecording] = useState(false);
+  const [recordingStartTime, setRecordingStartTime] = useState(null);
   // recordedAudio is used in the handlers but not directly in this component
   const [recordedAudio, setRecordedAudio] = useState(null);
   const [isExtractingSegment, setIsExtractingSegment] = useState(false);
@@ -159,24 +161,24 @@ const useNarrationState = (initialReferenceAudio) => {
     // Default settings
     return {
       // Voice Style Controls - only speechRate is supported
-      speechRate: 1.3,
-
+      speechRate: 1.1,
+  
       // Generation Quality Controls
       nfeStep: '32',  // Number of Function Evaluations (diffusion steps)
       swayCoef: -1.0, // Sway Sampling Coefficient
       cfgStrength: 2.0, // Classifier-Free Guidance Strength
-
+  
       // Seed Control
       useRandomSeed: true,
       seed: 42,
-
+  
       // Audio Processing Options - only removeSilence is supported
       removeSilence: true,
-
+  
       // Output Format Options
       sampleRate: '44100',
       audioFormat: 'wav',
-
+  
       // Batch Processing Options
       batchSize: '8',
       mergeOutput: false
@@ -240,13 +242,13 @@ const useNarrationState = (initialReferenceAudio) => {
     localStorage.setItem('gtts_slow', gttsSlow.toString());
   }, [gttsSlow]);
 
-  // Update local state when initialReferenceAudio changes
-  const updateReferenceAudio = (newReferenceAudio) => {
+  // Update local state when initialReferenceAudio changes - memoized to avoid identity changes across renders
+  const updateReferenceAudio = useCallback((newReferenceAudio) => {
     if (newReferenceAudio) {
       setReferenceAudio(newReferenceAudio);
       setReferenceText(newReferenceAudio.text || '');
     }
-  };
+  }, []);
 
   return {
     // Narration Method state
@@ -298,6 +300,10 @@ const useNarrationState = (initialReferenceAudio) => {
     setReferenceText,
     isRecording,
     setIsRecording,
+    isStartingRecording,
+    setIsStartingRecording,
+    recordingStartTime,
+    setRecordingStartTime,
     recordedAudio,
     setRecordedAudio,
     isExtractingSegment,

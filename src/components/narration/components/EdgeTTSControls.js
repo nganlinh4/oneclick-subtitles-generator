@@ -154,6 +154,18 @@ const EdgeTTSControls = ({
                 onClick={openVoiceModal}
                 disabled={isGenerating}
               >
+                {/* Badge: show when selected voice language differs from detected language */}
+                {(detectedLanguage?.languageCode && selectedVoiceDetails &&
+                  !(selectedVoiceDetails.language === detectedLanguage.languageCode ||
+                    (selectedVoiceDetails.locale || '').startsWith(detectedLanguage.languageCode + '-'))
+                 ) && (
+                  <span
+                    className="tab-badge"
+                    role="status"
+                    aria-label={t('narration.mismatchBadge', 'Selected voice language differs from detected language')}
+                    title={t('narration.mismatchBadge', 'Selected voice language differs from detected language')}
+                  />
+                )}
                 <span className="model-dropdown-label">{t('narration.voiceLabel', 'Giọng thuyết minh')}:</span>
                 <span className="model-dropdown-selected">
                   <span className="model-name">

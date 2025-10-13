@@ -142,6 +142,56 @@ router.post('/cancel-douyin-download/:videoId', (req, res) => {
 });
 
 /**
+ * GET /api/douyin-download-file/:videoId - Download a completed Douyin video file
+ */
+router.get('/douyin-download-file/:videoId', (req, res) => {
+  const { videoId } = req.params;
+
+  if (!videoId) {
+    return res.status(400).json({ error: 'Video ID is required' });
+  }
+
+  const videoPath = path.join(VIDEOS_DIR, `${videoId}.mp4`);
+
+  // Check if video exists
+  if (!fs.existsSync(videoPath)) {
+    return res.status(404).json({
+      success: false,
+      error: 'Video file not found'
+    });
+  }
+
+  try {
+    // Set headers for file download
+    const stats = fs.statSync(videoPath);
+    res.setHeader('Content-Type', 'video/mp4');
+    res.setHeader('Content-Length', stats.size);
+    res.setHeader('Content-Disposition', `attachment; filename="${videoId}.mp4"`);
+    res.setHeader('Cache-Control', 'no-cache');
+
+    // Stream the file
+    const fileStream = fs.createReadStream(videoPath);
+    fileStream.pipe(res);
+
+    fileStream.on('error', (error) => {
+      console.error('[DOUYIN] Error streaming file:', error);
+      if (!res.headersSent) {
+        res.status(500).json({
+          success: false,
+          error: 'Error streaming file'
+        });
+      }
+    });
+  } catch (error) {
+    console.error('[DOUYIN] Error serving download:', error);
+    res.status(500).json({
+      success: false,
+      error: error.message || 'Failed to serve download'
+    });
+  }
+});
+
+/**
  * GET /api/douyin-video-exists/:videoId - Check if a Douyin video exists
  */
 router.get('/douyin-video-exists/:videoId', (req, res) => {

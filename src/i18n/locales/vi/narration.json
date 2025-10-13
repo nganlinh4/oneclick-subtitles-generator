@@ -19,6 +19,10 @@
   "notAvailable": "Không có sẵn",
   "noNarrationsAvailable": "Không có thuyết minh nào. Hãy tạo thuyết minh trước.",
   "referenceTextPlaceholder": "Nhập văn bản khớp với âm thanh tham chiếu...",
+  "recognizing": "Đang nhận diện giọng nói...",
+  "recognitionTimeout": "Nhận diện giọng nói mất quá nhiều thời gian. Vui lòng thử lại hoặc nhập văn bản thủ công.",
+  "downloading": "Đang tải xuống âm thanh...",
+
   "clearReference": "Xóa âm thanh tham chiếu",
   "audioNotSupported": "Trình duyệt của bạn không hỗ trợ phần tử âm thanh.",
   "upload": "Tải lên",
@@ -85,23 +89,18 @@
   "intensityEnhanced": "Nâng cao",
   "intensityAggressive": "Mạnh mẽ",
   "intensityChangeTooltip": "Thay đổi mức độ sẽ yêu cầu nhóm lại",
-
   "speed": "Tốc độ",
   "apply": "Áp dụng",
   "processingSpeed": "Đang xử lý {{current}} trong {{total}}",
   "speedModifySuccess": "Tốc độ thuyết minh đã được thay đổi thành công thành {{speed}}x",
   "speedModifyError": "Lỗi khi thay đổi tốc độ thuyết minh: {{error}}",
-
   "noSourceSelectedError": "Vui lòng chọn nguồn phụ đề (Gốc hoặc Đã dịch)",
   "checkingModelAvailability": "Đang kiểm tra mô hình...",
   "modelNotAvailableError": "Vui lòng tải ít nhất một mô hình hỗ trợ {{language}} từ tab Quản lý Mô hình thuyết minh trong Cài đặt.",
-
   "advancedSettingsToggle": "Cài đặt nâng cao cho giọng nói",
   "advancedSettings": "Cài đặt nâng cao",
-
   "voiceStyle": "Kiểu giọng nói",
   "speechRate": "Tốc độ nói",
-
   "generationQuality": "Chất lượng tạo",
   "nfeStep": "Bước NFE",
   "nfeSteps": {
@@ -116,15 +115,12 @@
   "cfgStrengthDesc": "Giá trị cao hơn tăng độ giống giọng",
   "nfeStepDesc": "Giá trị cao hơn cải thiện chất lượng nhưng mất nhiều thời gian hơn",
   "higherValuesImproveQuality": "Giá trị cao hơn cải thiện chất lượng nhưng mất nhiều thời gian hơn",
-
   "seedControl": "Kiểm soát Seed",
   "useRandomSeed": "Dùng Seed ngẫu nhiên",
   "seed": "Giá trị Seed",
-
   "audioProcessing": "Xử lý âm thanh",
   "removeSilence": "Loại bỏ khoảng lặng",
   "removeSilenceDesc": "Loại bỏ khoảng lặng",
-
   "outputFormat": "Định dạng đầu ra",
   "format": "Định dạng",
   "formats": {
@@ -132,13 +128,11 @@
     "mp3": "MP3"
   },
   "sampleRate": "Tần số lấy mẫu",
-
   "batchProcessing": "Xử lý hàng loạt",
   "batchSize": "Batch Size",
   "batchSizeDesc": "Đặt giá trị nhỏ hơn nếu GPU của bạn không thể xử lý",
   "all": "Tất cả",
   "mergeOutput": "Gộp tất cả các tập tin âm thanh",
-
   "geminiResults": "Thuyết minh đã tạo (Gemini)",
   "playbackError": "Lỗi khi phát âm thanh",
   "processingError": "Lỗi khi xử lý dữ liệu âm thanh",
@@ -150,7 +144,6 @@
   "alreadySaved": "Âm thanh đã được lưu vào máy chủ",
   "savedSuccess": "Âm thanh đã được lưu vào máy chủ thành công",
   "saveError": "Lỗi khi lưu âm thanh vào máy chủ",
-
   "voice": "Giọng nói",
   "femaleVoices": "Giọng nữ",
   "maleVoices": "Giọng nam",
@@ -168,26 +161,22 @@
   "gttsUnavailable": "(Không khả dụng)",
   "downloadAligned": "Tải xuống như đã sắp xếp trên timeline",
   "downloadAlignedTooltip": "Tải xuống một tập tin thuyết minh đã sắp xếp",
-
   "alignedMode": "Sử dụng thuyết minh đã sắp xếp",
   "enabled": "Đã bật",
   "disabled": "Đã tắt",
   "generatingAligned": "Đang tạo thuyết minh đã sắp xếp...",
   "regenerateAligned": "Tạo lại âm thanh đã sắp xếp",
   "videoVolume": "Âm lượng video",
-
   "notGenerated": "Chưa được tạo",
   "pending": "Đang chờ tạo...",
   "waitingForResults": "Đang chờ kết quả thuyết minh...",
   "geminiGenerationIncomplete": "Tạo thuyết minh Gemini không hoàn tất. Đã tạo {{generated}} trên {{total}} thuyết minh.",
   "geminiConnectionError": "Kết nối với Gemini bị gián đoạn. Bạn có thể thử lại các thuyết minh thất bại một cách riêng lẻ.",
-
   "groupSubtitles": "Nhóm phụ đề thông minh thành câu hoàn chỉnh hơn cho thuyết minh",
   "groupingSubtitles": "Đang nhóm...",
   "viewGrouping": "Xem nhóm",
   "groupedSubtitlesCount": "Đã nhóm {{original}} phụ đề thành {{grouped}} câu",
   "subtitlesGrouped": "Đã nhóm {{original}} phụ đề thành {{grouped}} câu hoàn chỉnh hơn để thuyết minh tốt hơn.",
-
   "id": "ID",
   "time": "Thời gian",
   "groupId": "Nhóm",
@@ -201,7 +190,6 @@
   "retryFailedTooltip": "Thử lại tất cả các thuyết minh thất bại",
   "noDelay": "Không có độ trễ",
   "seconds": "giây",
-
   "chatterboxMethod": "Chatterbox",
   "chatterboxUnavailable": "(Không khả dụng - Vui lòng cài và chạy OSG Full)",
   "chatterboxUnavailableMessage": "Dịch vụ Chatterbox chưa được khởi động (sử dụng npm run dev:cuda)",
@@ -219,12 +207,10 @@
   "chatterboxGenerationPartial": "Tạo Chatterbox hoàn tất với {{success}} thành công và {{errors}} lỗi",
   "chatterboxGenerationError": "Lỗi khi tạo thuyết minh với Chatterbox: {{error}}",
   "chatterboxNoReferenceAudio": "Âm thanh tham chiếu là bắt buộc cho việc tạo TTS Chatterbox. Vui lòng tải lên tệp âm thanh tham chiếu.",
-
   "audioAlignmentWarning": "Dù đã áp dụng sắp xếp thuyết minh thông minh, nhưng audio kết quả dài hơn dự tính tận {{duration}} giây, vui lòng dùng thanh chỉnh tốc độ phía trên danh sách audio (chỉnh nhanh hơn) rồi tạo lại thuyết minh tổng bằng nút Làm mới thuyết minh trên trình phát hoặc nút Tải xuống sắp xếp",
   "audioAlignmentSegmentWarning": "Đoạn sub bị đẩy đi xa nhất là đoạn số {{maxSegment}} (lệch {{maxAdjustment}} giây), nếu thấy như vậy là quá xa thì cũng cần chỉnh nhanh hơn bằng thanh chỉnh tốc độ phía trên danh sách audio rồi tạo lại thuyết minh tổng, hoặc căn chỉnh lại timings của thuyết minh vì có lẽ câu dài đã bị đặt trong khoảng thời gian ngắn",
   "audioAlignmentWarningMerged": "Dù đã áp dụng sắp xếp thuyết minh thông minh, nhưng audio kết quả dài hơn dự tính tận {{duration}} giây, vui lòng dùng thanh chỉnh tốc độ phía trên danh sách audio (chỉnh nhanh hơn) rồi tạo lại thuyết minh tổng bằng nút Làm mới thuyết minh trên trình phát hoặc nút Tải xuống sắp xếp. Đoạn sub bị đẩy đi xa nhất là đoạn số {{maxSegment}} (lệch {{maxAdjustment}} giây), nếu thấy như vậy là quá xa thì cũng cần chỉnh nhanh hơn, hoặc căn chỉnh lại timings của thuyết minh vì có lẽ câu dài đã bị đặt trong khoảng thời gian ngắn",
   "closeNotification": "Đóng thông báo",
-
   "edgeTTSVoice": "Giọng Edge TTS",
   "edgeTTSRate": "Tốc độ nói",
   "edgeTTSVolume": "Âm lượng",
@@ -233,7 +219,6 @@
   "voiceLoadError": "Lỗi tải giọng nói: {{error}}",
   "selectVoice": "Chọn giọng nói",
   "voiceLabel": "Giọng nói",
-
   "gttsLanguage": "Ngôn ngữ gTTS",
   "gttsTld": "Giọng địa phương/Vùng miền",
   "gttsSlow": "Nói chậm",
@@ -241,7 +226,6 @@
   "loadingLanguages": "Đang tải ngôn ngữ...",
   "languageLoadError": "Lỗi tải ngôn ngữ: {{error}}",
   "selectLanguage": "Chọn ngôn ngữ",
-
   "tldCom": "Toàn cầu (.com)",
   "tldAu": "Úc (.com.au)",
   "tldUk": "Anh (.co.uk)",
@@ -250,7 +234,6 @@
   "tldIn": "Ấn Độ (.co.in)",
   "tldIe": "Ireland (.ie)",
   "tldZa": "Nam Phi (.co.za)",
-
   "allLanguages": "Tất cả ngôn ngữ",
   "allCategories": "Tất cả",
   "searchVoices": "Tìm kiếm giọng nói...",
@@ -260,7 +243,6 @@
   "clear": "Xóa",
   "recommendedVoices": "Được đề xuất cho {{language}}",
   "recommendedLanguage": "Được đề xuất cho {{language}}",
-
   "loadingFromCache": "Đang tải thuyết minh từ phiên trước...",
   "edgeTTSStarting": "Bắt đầu tạo thuyết minh Edge TTS...",
   "edgeTTSGeneratingProgress": "Đang tạo {{current}} trên {{total}} thuyết minh với Edge TTS...",
@@ -274,21 +256,17 @@
   "retryingFailedNarrationsComplete": "Hoàn tất thử lại tất cả thuyết minh thất bại",
   "gttsStarting": "Bắt đầu tạo thuyết minh gTTS...",
   "gttsGeneratingProgress": "Đang tạo {{current}} trên {{total}} thuyết minh với gTTS...",
-
   "concurrentClients": "Chế độ cực nhanh",
   "concurrentClientsHelp": "Mở nhiều hội thoại song song với Gemini cùng lúc, CHÚ Ý: có thể gây cạn kiệt quota nhanh chóng",
-
   "msVibeVoiceMethod": "MS VibeVoice",
   "geminiNativeDialogMethod": "Gemini Native Dialog",
   "comingSoon": "sắp ra mắt",
-
   "selectNarrationModel": "Chọn mô hình thuyết minh",
   "loadingModels": "Đang tải mô hình...",
   "selectModelExplanation": "Chọn mô hình thuyết minh hỗ trợ ngôn ngữ phụ đề của bạn để có kết quả tốt nhất.",
   "matchingLanguageModels": "Mô hình được đề xuất",
   "otherModels": "Các mô hình khác có sẵn",
   "noModelsAvailable": "Không có mô hình khác",
-
   "language": "Ngôn ngữ",
   "recommendedLanguages": "Ngôn ngữ được đề xuất",
   "otherLanguages": "Ngôn ngữ khác",
@@ -318,5 +296,24 @@
     "sw": "Tiếng Swahili",
     "tr": "Tiếng Thổ Nhĩ Kỳ",
     "zh": "Tiếng Trung"
+  },
+  "generationCancelled": "Quá trình tạo đã bị hủy",
+  "generationInterrupted": "Quá trình tạo đã bị gián đoạn",
+  "noResultReturned": "Không có kết quả trả về",
+  "failedToGroupSubtitles": "Không thể nhóm phụ đề",
+  "preparingGeminiGeneration": "Đang chuẩn bị tạo lời thoại với Gemini...",
+  "geminiGenerationCancelled": "Quá trình tạo lời thoại Gemini đã bị hủy",
+  "geminiGenerationCancelling": "Đang hủy quá trình tạo lời thoại Gemini...",
+  "retryingGeminiGeneration": "Đang thử lại tạo lời thoại cho phụ đề {{id}}...",
+  "subtitleGroupingError": "Lỗi nhóm phụ đề: {{error}}",
+  "serverError": "Lỗi máy chủ: {{status}} {{statusText}}",
+  "exampleAudio": {
+    "basic_ref_en": "Âm thanh tham chiếu tiếng Anh cơ bản",
+    "basic_ref_zh": "Âm thanh tham chiếu tiếng Trung cơ bản",
+    "viet_female_south": "Giọng nữ miền Nam Việt Nam",
+    "korean_male_seoul": "Giọng nam Seoul",
+    "viet_male_saigon": "Giọng nam Sài Gòn",
+    "viet_female_north_1": "Giọng nữ miền Bắc Việt Nam 1",
+    "viet_female_north_2": "Giọng nữ miền Bắc Việt Nam 2"
   }
 }

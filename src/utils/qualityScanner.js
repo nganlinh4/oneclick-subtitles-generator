@@ -22,11 +22,6 @@ const isDouyinUrl = (url) => {
  */
 export const scanVideoQualities = async (videoUrl) => {
   try {
-    // Check if this is a Douyin URL and use Playwright scanner
-    if (isDouyinUrl(videoUrl)) {
-      const { scanDouyinQualitiesPlaywright } = await import('./douyinPlaywrightDownloader');
-      return await scanDouyinQualitiesPlaywright(videoUrl);
-    }
     const startResponse = await fetch(`${SERVER_URL}/api/scan-video-qualities`, {
       method: 'POST',
       headers: {

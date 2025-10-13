@@ -333,21 +333,6 @@ const ApiKeysTab = ({
             </div>
           )}
           
-          {/* Upcoming Features Message */}
-          {showUpcomingFeaturesMessage && (
-            <div className="gemini-paused-message upcoming-features-message">
-              <div className="message-content">
-                <span className="message-icon">🚀</span>
-                <span>{t('settings.upcomingFeaturesOSG')}</span>
-              </div>
-              <CloseButton
-                onClick={handleCloseUpcomingFeaturesMessage}
-                variant="default"
-                size="small"
-                ariaLabel={t('settings.closeMessage')}
-              />
-            </div>
-          )}
         </div>
       )}
 

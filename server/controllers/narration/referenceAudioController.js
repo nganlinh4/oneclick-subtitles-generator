@@ -191,13 +191,43 @@ const getExampleAudioList = async (_req, res) => {
         filename: 'basic_ref_en.wav',
         displayName: 'basic_ref_en.wav',
         language: 'English',
-        description: 'English reference audio'
+        descriptionKey: 'narration.exampleAudio.basic_ref_en'
       },
       {
         filename: 'basic_ref_zh.wav',
         displayName: 'basic_ref_zh.wav',
         language: 'Chinese',
-        description: 'Chinese reference audio'
+        descriptionKey: 'narration.exampleAudio.basic_ref_zh'
+      },
+      {
+        filename: 'korean_male_seoul.mp3',
+        displayName: 'korean_male_seoul.mp3',
+        language: 'Korean',
+        descriptionKey: 'narration.exampleAudio.korean_male_seoul'
+      },
+      {
+        filename: 'viet_female_north_1.mp3',
+        displayName: 'viet_female_north_1.mp3',
+        language: 'Vietnamese',
+        descriptionKey: 'narration.exampleAudio.viet_female_north_1'
+      },
+      {
+        filename: 'viet_female_north_2.mp3',
+        displayName: 'viet_female_north_2.mp3',
+        language: 'Vietnamese',
+        descriptionKey: 'narration.exampleAudio.viet_female_north_2'
+      },
+      {
+        filename: 'viet_female_south.mp3',
+        displayName: 'viet_female_south.mp3',
+        language: 'Vietnamese',
+        descriptionKey: 'narration.exampleAudio.viet_female_south'
+      },
+      {
+        filename: 'viet_male_saigon.mp3',
+        displayName: 'viet_male_saigon.mp3',
+        language: 'Vietnamese',
+        descriptionKey: 'narration.exampleAudio.viet_male_saigon'
       }
     ];
 
@@ -223,19 +253,31 @@ const serveExampleAudio = async (req, res) => {
       return res.status(400).json({ error: 'Invalid filename' });
     }
 
-    // Define the path to F5-TTS examples directory
-    const f5ttsExamplesPath = path.join(__dirname, '../../../F5-TTS/src/f5_tts/infer/examples/basic');
-    const filePath = path.join(f5ttsExamplesPath, filename);
+    // Define the path to example audio directory (main app)
+    const exampleAudioPath = path.join(__dirname, '../../../server/example-audio');
+    let filePath = path.join(exampleAudioPath, filename);
 
-    // Check if file exists
+    // Check if file exists in main app directory
     if (!fs.existsSync(filePath)) {
-      return res.status(404).json({ error: 'Example audio file not found' });
+      // Fallback to F5-TTS directory for existing files
+      const f5ttsExamplesPath = path.join(__dirname, '../../../F5-TTS/src/f5_tts/infer/examples/basic');
+      filePath = path.join(f5ttsExamplesPath, filename);
+
+      if (!fs.existsSync(filePath)) {
+        return res.status(404).json({ error: 'Example audio file not found' });
+      }
+    }
+
+    // Determine content type based on file extension
+    let contentType = 'audio/wav'; // default
+    if (filename.endsWith('.mp3')) {
+      contentType = 'audio/mpeg';
     }
 
     // Serve the file
     res.sendFile(filePath, {
       headers: {
-        'Content-Type': 'audio/wav',
+        'Content-Type': contentType,
         'Cache-Control': 'public, max-age=3600' // Cache for 1 hour
       }
     });
@@ -257,13 +299,19 @@ const uploadExampleAudio = async (req, res) => {
       return res.status(400).json({ error: 'Invalid filename' });
     }
 
-    // Define the path to F5-TTS examples directory
-    const f5ttsExamplesPath = path.join(__dirname, '../../../F5-TTS/src/f5_tts/infer/examples/basic');
-    const sourcePath = path.join(f5ttsExamplesPath, filename);
+    // Define the path to example audio directory (main app)
+    const exampleAudioPath = path.join(__dirname, '../../../server/example-audio');
+    let sourcePath = path.join(exampleAudioPath, filename);
 
-    // Check if source file exists
+    // Check if source file exists in main app directory
     if (!fs.existsSync(sourcePath)) {
-      return res.status(404).json({ error: 'Example audio file not found' });
+      // Fallback to F5-TTS directory for existing files
+      const f5ttsExamplesPath = path.join(__dirname, '../../../F5-TTS/src/f5_tts/infer/examples/basic');
+      sourcePath = path.join(f5ttsExamplesPath, filename);
+
+      if (!fs.existsSync(sourcePath)) {
+        return res.status(404).json({ error: 'Example audio file not found' });
+      }
     }
 
     // Generate a unique filename for the copied file
@@ -276,10 +324,20 @@ const uploadExampleAudio = async (req, res) => {
 
     // Set reference text based on filename
     let reference_text = '';
-    if (filename.includes('_en.')) {
+    if (filename === 'basic_ref_en.wav') {
       reference_text = 'Some call me nature, others call me mother nature.';
-    } else if (filename.includes('_zh.')) {
+    } else if (filename === 'basic_ref_zh.wav') {
       reference_text = '对不起，我不会说中文。';
+    } else if (filename === 'viet_male_saigon.mp3') {
+      reference_text = 'Xin chào, mình là Thế Hào, rất vui vì hôm nay chúng ta lại có dịp ngồi lại với nhau trong không gian nhỏ bé nhưng đầy yêu thương.';
+    } else if (filename === 'viet_female_south.mp3') {
+      reference_text = 'Trời ơi hôm nay thiệt là mệt luôn á, tao đi học mà gặp bà cô khó tính, tao chưa kịp học gì hết mà bị la trước lớp quê ơi là quê muốn xỉu luôn á.';
+    } else if (filename === 'korean_male_seoul.mp3') {
+      reference_text = '안녕하세요. 유익하고 좋은 내용을 알기 쉽고 빠르게 전해 드리겠습니다. 오늘 전해 드릴 소식은요, 여러분들이 가장 필요한 정보들로 준비해 보았는데요. 먼저 구독과 좋아요';
+    } else if (filename === 'viet_female_north_1.mp3') {
+      reference_text = 'Đây là đài tiếng nói Việt Nam, phát thanh từ thủ đô Hà Nội, nước Cộng hòa xã hội chủ nghĩa Việt Nam.';
+    } else if (filename === 'viet_female_north_2.mp3') {
+      reference_text = 'Người ta là hoa đất, học ăn, học nói, học gói, học mở.';
     }
 
     // Return success response (same format as regular upload)

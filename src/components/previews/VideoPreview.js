@@ -22,6 +22,7 @@ import { SERVER_URL } from '../../config';
 const VideoPreview = ({ currentTime, setCurrentTime, setDuration, videoSource, onSeek, translatedSubtitles, subtitlesArray, onVideoUrlReady, onReferenceAudioChange, onRenderVideo, useCookiesForDownload = true }) => {
   const { t } = useTranslation();
   const videoRef = useRef(null);
+  const videoContainerRef = useRef(null); // Ref for the main video container
   const lastBlobUrlRef = useRef(null);
 
   const seekLockRef = useRef(false);
@@ -181,7 +182,7 @@ const VideoPreview = ({ currentTime, setCurrentTime, setDuration, videoSource, o
       // Not a YouTube URL, use directly
       setVideoUrl(url);
     }
-  }, [t, setError, setIsLoaded, setIsDownloading, setDownloadProgress, setVideoId, setVideoUrl]);
+  }, [t, setError, setIsLoaded, setIsDownloading, setDownloadProgress, setVideoId, setVideoUrl, useCookiesForDownload]);
 
   // Initialize video source
   useEffect(() => {
@@ -486,7 +487,7 @@ const VideoPreview = ({ currentTime, setCurrentTime, setDuration, videoSource, o
         videoElement.removeEventListener('error', handleLoadError);
       };
     }
-  }, [useOptimizedPreview, optimizedVideoUrl, videoUrl]);
+  }, [useOptimizedPreview, optimizedVideoUrl, videoUrl, isPlaying]);
 
   // Debug logging removed for production
 
@@ -899,7 +900,12 @@ const VideoPreview = ({ currentTime, setCurrentTime, setDuration, videoSource, o
 
         setIsFullscreen(false);
         setControlsVisible(false); // Reset controls to hidden when exiting fullscreen (normal mode uses hover)
-        setIsVideoHovered(false); // Reset hover state
+        // FIX: Check if mouse is still hovering and set state accordingly
+        if (videoContainerRef.current?.matches(':hover')) {
+          setIsVideoHovered(true);
+        } else {
+          setIsVideoHovered(false);
+        }
         console.log('ðŸŽ¬ MANUAL EXIT: Exit fullscreen styles reset');
       }
     }, 100);
@@ -964,7 +970,7 @@ const VideoPreview = ({ currentTime, setCurrentTime, setDuration, videoSource, o
       console.log('ðŸŽ¬ Document fullscreen state:', isDocFullscreen);
 
       // Check if our video container is the fullscreen element
-      const container = document.querySelector('.native-video-container');
+      const container = videoContainerRef.current;
       const isVideoFullscreen = isDocFullscreen &&
                               (document.fullscreenElement === container ||
                                document.webkitFullscreenElement === container ||
@@ -984,7 +990,12 @@ const VideoPreview = ({ currentTime, setCurrentTime, setDuration, videoSource, o
       // Reset control states when exiting fullscreen
       if (!isVideoFullscreen) {
         setControlsVisible(false); // Reset controls to hidden when exiting fullscreen (normal mode uses hover)
-        setIsVideoHovered(false); // Reset hover state
+        // FIX: Check hover state when exiting
+        if (videoContainerRef.current?.matches(':hover')) {
+          setIsVideoHovered(true);
+        } else {
+          setIsVideoHovered(false);
+        }
         console.log('ðŸŽ¬ FULLSCREEN EXIT: Reset control states');
       }
 
@@ -1012,16 +1023,23 @@ const VideoPreview = ({ currentTime, setCurrentTime, setDuration, videoSource, o
         // Force controls to be visible by directly setting CSS
         setTimeout(() => {
           console.log('ðŸŽ¬ FORCE VISIBLE - Directly setting control styles');
-          const container = document.querySelector('.native-video-container');
+          const container = videoContainerRef.current;
           if (container) {
             const controlElements = container.querySelectorAll('[style*="opacity"]');
             controlElements.forEach((element) => {
-              if (element.className.includes('liquid-glass') && element.className.includes('interactive')) {
+              // className can be an object on SVG elements (SVGAnimatedString), so don't assume it's a string
+              const classAttr = typeof element.className === 'string'
+                ? element.className
+                : (element.getAttribute && element.getAttribute('class')) || '';
+              const hasLiquidGlass = element.classList && element.classList.contains('liquid-glass');
+              const hasInteractive = element.classList && element.classList.contains('interactive');
+
+              if ((hasLiquidGlass && hasInteractive) || (classAttr.includes('liquid-glass') && classAttr.includes('interactive'))) {
                 const rect = element.getBoundingClientRect();
                 const computedStyle = getComputedStyle(element);
 
                 console.log('ðŸŽ¬ INVESTIGATION - Element details:', {
-                  className: element.className,
+                  className: classAttr,
                   opacity: computedStyle.opacity,
                   display: computedStyle.display,
                   visibility: computedStyle.visibility,
@@ -1133,7 +1151,7 @@ const VideoPreview = ({ currentTime, setCurrentTime, setDuration, videoSource, o
           // Reset all styles using the same logic as the button
           const videoElement = document.querySelector('.native-video-container video');
           const videoWrapper = document.querySelector('.native-video-container .video-wrapper');
-          const container = document.querySelector('.native-video-container');
+          const container = videoContainerRef.current;
 
           if (videoElement) {
             videoElement.style.removeProperty('width');
@@ -1242,7 +1260,12 @@ const VideoPreview = ({ currentTime, setCurrentTime, setDuration, videoSource, o
             // Ensure React state is also updated
             setIsFullscreen(false);
             setControlsVisible(false); // Reset controls to hidden when exiting fullscreen (normal mode uses hover)
-            setIsVideoHovered(false); // Reset hover state
+            // FIX: Check hover state when exiting
+            if (videoContainerRef.current?.matches(':hover')) {
+              setIsVideoHovered(true);
+            } else {
+              setIsVideoHovered(false);
+            }
           }, 50);
         }
       }
@@ -1371,7 +1394,7 @@ const VideoPreview = ({ currentTime, setCurrentTime, setDuration, videoSource, o
       videoElement.removeEventListener('waiting', handleWaiting);
       videoElement.removeEventListener('canplaythrough', handleCanPlayThrough);
     };
-  }, [videoUrl, isDragging]);
+  }, [videoUrl, isDragging, setDuration, setCurrentTime, videoDuration]);
 
 
 
@@ -1665,20 +1688,26 @@ const VideoPreview = ({ currentTime, setCurrentTime, setDuration, videoSource, o
 
         case 'KeyF':
         case 'f':
-          // Toggle fullscreen
-          if (isFullscreen) {
-            handleFullscreenExit();
-          } else {
-            const container = document.querySelector('.native-video-container');
-            if (container) {
-              if (container.requestFullscreen) {
-                container.requestFullscreen();
-              } else if (container.webkitRequestFullscreen) {
-                container.webkitRequestFullscreen();
-              } else if (container.mozRequestFullScreen) {
-                container.mozRequestFullScreen();
-              } else if (container.msRequestFullscreen) {
-                container.msRequestFullscreen();
+          // Toggle fullscreen using actual document fullscreen state (avoid stale React state)
+          {
+            const isDocFullscreen = !!(document.fullscreenElement ||
+                                       document.webkitFullscreenElement ||
+                                       document.mozFullScreenElement ||
+                                       document.msFullscreenElement);
+            if (isDocFullscreen) {
+              handleFullscreenExit();
+            } else {
+              const container = videoContainerRef.current;
+              if (container) {
+                if (container.requestFullscreen) {
+                  container.requestFullscreen();
+                } else if (container.webkitRequestFullscreen) {
+                  container.webkitRequestFullscreen();
+                } else if (container.mozRequestFullScreen) {
+                  container.mozRequestFullScreen();
+                } else if (container.msRequestFullscreen) {
+                  container.msRequestFullscreen();
+                }
               }
             }
           }
@@ -1695,7 +1724,7 @@ const VideoPreview = ({ currentTime, setCurrentTime, setDuration, videoSource, o
     return () => {
       document.removeEventListener('keydown', handleKeyDown);
     };
-  }, [isLoaded]); // Re-run when video load state changes
+  }, [isLoaded, videoDuration, handleFullscreenExit]);
 
   // Simplified: No auto-hide logic - controls managed purely by CSS visibility conditions
 
@@ -1707,7 +1736,7 @@ const VideoPreview = ({ currentTime, setCurrentTime, setDuration, videoSource, o
         setControlsVisible(true);
 
         // Always restore cursor when showing controls
-        const videoContainer = document.querySelector('.native-video-container');
+        const videoContainer = videoContainerRef.current;
         if (videoContainer) {
           videoContainer.style.cursor = 'default';
         }
@@ -1721,7 +1750,7 @@ const VideoPreview = ({ currentTime, setCurrentTime, setDuration, videoSource, o
         hideControlsTimeoutRef.current = setTimeout(() => {
           setControlsVisible(false);
           // Hide cursor too
-          const videoContainer = document.querySelector('.native-video-container');
+          const videoContainer = videoContainerRef.current;
           if (videoContainer) {
             videoContainer.style.cursor = 'none';
           }
@@ -1730,7 +1759,7 @@ const VideoPreview = ({ currentTime, setCurrentTime, setDuration, videoSource, o
       // In normal mode, don't touch controlsVisible - let hover handle it
     };
 
-    const videoContainer = document.querySelector('.native-video-container');
+    const videoContainer = videoContainerRef.current;
     if (videoContainer) {
       videoContainer.addEventListener('mousemove', handleMouseMove);
       return () => {
@@ -2119,6 +2148,7 @@ const VideoPreview = ({ currentTime, setCurrentTime, setDuration, videoSource, o
         {/* Always show video player if we have a URL, regardless of download state */}
         {videoUrl ? (
           <div
+            ref={videoContainerRef}
             className="native-video-container"
             onMouseEnter={() => !isFullscreen && setIsVideoHovered(true)}
             onMouseLeave={() => !isFullscreen && setIsVideoHovered(false)}

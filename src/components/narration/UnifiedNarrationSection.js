@@ -100,6 +100,8 @@ const UnifiedNarrationSection = ({
     referenceAudio, setReferenceAudio,
     referenceText, setReferenceText,
     isRecording, setIsRecording,
+    isStartingRecording, setIsStartingRecording,
+    recordingStartTime, setRecordingStartTime,
     /* recordedAudio, */ setRecordedAudio,
     isExtractingSegment, setIsExtractingSegment,
     segmentStartTime, segmentEndTime,
@@ -414,6 +416,8 @@ const UnifiedNarrationSection = ({
     setReferenceText,
     setRecordedAudio,
     setIsRecording,
+    setIsStartingRecording,
+    setRecordingStartTime,
     setIsExtractingSegment,
     setIsRecognizing,
     setError,
@@ -524,6 +528,8 @@ const UnifiedNarrationSection = ({
             handleFileUpload={handleFileUpload}
             fileInputRef={fileInputRef}
             isRecording={isRecording}
+            isStartingRecording={isStartingRecording}
+            recordingStartTime={recordingStartTime}
             startRecording={startRecording}
             stopRecording={stopRecording}
             isAvailable={isAvailable}
@@ -645,6 +651,13 @@ const UnifiedNarrationSection = ({
             onRetry={retryF5TTSNarration}
             retryingSubtitleId={retryingSubtitleId}
             onRetryFailed={retryFailedNarrations}
+            subtitleSource={subtitleSource}
+            isGenerating={isGenerating}
+            plannedSubtitles={(useGroupedSubtitles && groupedSubtitles && groupedSubtitles.length > 0)
+              ? groupedSubtitles
+              : (subtitleSource === 'translated' && translatedSubtitles && translatedSubtitles.length > 0)
+                ? translatedSubtitles
+                : (originalSubtitles || subtitles || [])}
           />
 
           {/* Hidden audio player for playback */}
@@ -663,6 +676,8 @@ const UnifiedNarrationSection = ({
             handleFileUpload={handleFileUpload}
             fileInputRef={fileInputRef}
             isRecording={isRecording}
+            isStartingRecording={isStartingRecording}
+            recordingStartTime={recordingStartTime}
             startRecording={startRecording}
             stopRecording={stopRecording}
             isAvailable={isChatterboxAvailable}
@@ -747,6 +762,7 @@ const UnifiedNarrationSection = ({
             playAudio={playAudio}
             getAudioUrl={getAudioUrl}
             subtitleSource={subtitleSource}
+            isGenerating={isGenerating}
           />
 
           {/* Hidden audio player for playback */}
@@ -837,6 +853,7 @@ const UnifiedNarrationSection = ({
             playAudio={playAudio}
             getAudioUrl={getAudioUrl}
             subtitleSource={subtitleSource}
+            isGenerating={isGenerating}
           />
 
           {/* Hidden audio player for playback */}

@@ -1,0 +1,273 @@
+/* Video Rendering Controls - compact selectors, radio groups, and volume controls */
+
+/* Compact sections for subtitle and narration selection */
+.subtitle-selection-compact,
+.narration-selection-compact {
+  padding: 0 1.5rem 0 1.5rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+  min-width: 0; /* Allow grid items to shrink below their content size */
+  overflow: hidden; /* Prevent content from expanding the container */
+}
+
+/* Headings inside compact sections */
+.subtitle-selection-compact h4,
+.narration-selection-compact h4 {
+  margin: 0 0 0.75rem 0;
+  font-size: 0.9rem;
+  font-weight: 600;
+  color: var(--text-primary);
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+/* Radio groups inside compact sections */
+.subtitle-selection-compact .radio-group,
+.narration-selection-compact .radio-group {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.subtitle-selection-compact .radio-option,
+.narration-selection-compact .radio-option {
+  position: relative;
+}
+
+.subtitle-selection-compact .radio-option input[type="radio"],
+.narration-selection-compact .radio-option input[type="radio"] {
+  position: absolute;
+  opacity: 0;
+  width: 0;
+  height: 0;
+}
+
+.subtitle-selection-compact .radio-option label,
+.narration-selection-compact .radio-option label {
+  display: inline-flex;
+  align-items: center;
+  padding: 8px 16px;
+  height: 36px;
+  background-color: var(--md-surface-1);
+  border: 1px solid var(--md-outline-variant);
+  border-radius: var(--md-shape-pill);
+  cursor: pointer;
+  font-weight: 500;
+  transition: all 0.2s ease;
+  color: var(--md-on-surface);
+  box-sizing: border-box;
+  box-shadow: var(--md-elevation-level1);
+  font-size: 0.9rem;
+  width: 100%;
+  justify-content: flex-start;
+  min-width: 0; /* Allow flex item to shrink below content size */
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.subtitle-selection-compact .radio-option label:hover,
+.narration-selection-compact .radio-option label:hover {
+  background-color: var(--md-surface-2);
+  box-shadow: var(--md-elevation-level2);
+  transform: translateY(-2px);
+}
+
+.subtitle-selection-compact .radio-option label:active,
+.narration-selection-compact .radio-option label:active {
+  transform: translateY(0);
+  box-shadow: var(--md-elevation-level1);
+}
+
+.subtitle-selection-compact .radio-option input[type="radio"]:checked + label,
+.narration-selection-compact .radio-option input[type="radio"]:checked + label {
+  background-color: var(--md-primary-container);
+  color: var(--md-on-primary-container);
+  border-color: var(--md-primary);
+}
+
+.subtitle-selection-compact .radio-option input[type="radio"]:checked + label:hover,
+.narration-selection-compact .radio-option input[type="radio"]:checked + label:hover {
+  background-color: var(--md-primary-container);
+  opacity: 0.9;
+}
+
+.subtitle-selection-compact .radio-option input[type="radio"]:disabled + label,
+.narration-selection-compact .radio-option input[type="radio"]:disabled + label {
+  opacity: 0.38;
+  cursor: not-allowed;
+  background-color: var(--md-surface-variant);
+  color: var(--md-on-surface-variant);
+  border-color: var(--md-outline-variant);
+  box-shadow: none;
+  transform: none;
+}
+
+.subtitle-selection-compact .radio-option input[type="radio"]:disabled + label:hover,
+.narration-selection-compact .radio-option input[type="radio"]:disabled + label:hover {
+  box-shadow: none;
+  transform: none;
+  background-color: var(--md-surface-variant);
+  color: var(--md-on-surface-variant);
+  border-color: var(--md-outline-variant);
+}
+
+/* Narration option with refresh button */
+.narration-selection-compact .radio-option[style*="display: flex"] {
+  background-color: var(--md-surface-1);
+  border: 1px solid var(--md-outline-variant);
+  border-radius: var(--md-shape-pill);
+  padding: 8px 16px;
+  box-shadow: var(--md-elevation-level1);
+  transition: all 0.2s ease;
+}
+
+.narration-selection-compact .radio-option[style*="display: flex"]:hover {
+  background-color: var(--md-surface-2);
+  box-shadow: var(--md-elevation-level2);
+  transform: translateY(-2px);
+}
+
+.narration-selection-compact .radio-option[style*="display: flex"] input[type="radio"] {
+  position: relative;
+  opacity: 1;
+  width: 16px;
+  height: 16px;
+  margin: 0;
+  accent-color: var(--md-primary);
+}
+
+.narration-selection-compact .radio-option[style*="display: flex"] label {
+  background: none;
+  border: none;
+  padding: 0;
+  height: auto;
+  box-shadow: none;
+  transform: none;
+  margin: 0;
+  font-size: 0.9rem;
+  color: var(--md-on-surface);
+  font-weight: 500;
+}
+
+.narration-selection-compact .radio-option[style*="display: flex"] label:hover {
+  background: none;
+  transform: none;
+  box-shadow: none;
+}
+
+/* Narration status container - wrapper for pill + button */
+.narration-selection-compact .narration-status-container {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+}
+
+.narration-selection-compact .narration-status {
+  display: inline-flex;
+  align-items: center;
+  padding: 8px 16px;
+  background-color: var(--md-surface-1);
+  border: 1px solid var(--md-outline-variant);
+  border-radius: var(--md-shape-pill);
+  box-shadow: var(--md-elevation-level1);
+  font-size: 0.9rem;
+  font-weight: 500;
+  color: var(--md-on-surface);
+  white-space: nowrap;
+  height: 36px;
+  box-sizing: border-box;
+  flex: 1;
+  justify-content: flex-start;
+  min-width: 0; /* Allow flex item to shrink below content size */
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.narration-selection-compact .narration-status.disabled {
+  color: var(--md-on-surface-variant);
+  opacity: 0.38;
+  cursor: not-allowed;
+}
+
+.narration-selection-compact .narration-status.not-aligned {
+  color: var(--md-on-surface-variant);
+  opacity: 0.6;
+  cursor: not-allowed;
+  background-color: var(--md-surface-variant);
+  border-color: var(--md-outline-variant);
+}
+
+.narration-selection-compact .narration-status.clickable {
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.narration-selection-compact .narration-status.clickable:hover {
+  background-color: var(--md-surface-2);
+  transform: translateY(-1px);
+  box-shadow: var(--md-elevation-level2);
+}
+
+/* Refresh icon button */
+.narration-selection-compact .refresh-icon-button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 36px;
+  height: 36px;
+  padding: 0;
+  background-color: var(--md-primary);
+  color: var(--md-on-primary);
+  border: none;
+  border-radius: 50%;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  box-shadow: var(--md-elevation-level1);
+  flex-shrink: 0;
+}
+
+.narration-selection-compact .refresh-icon-button:hover:not(:disabled) {
+  background-color: var(--md-primary-dark);
+  box-shadow: var(--md-elevation-level2);
+  transform: translateY(-1px);
+}
+
+.narration-selection-compact .refresh-icon-button:active {
+  transform: translateY(0);
+  box-shadow: var(--md-elevation-level1);
+}
+
+.narration-selection-compact .refresh-icon-button:disabled {
+  background-color: var(--md-surface-variant);
+  color: var(--md-on-surface-variant);
+  opacity: 0.5;
+  cursor: not-allowed;
+  transform: none;
+  box-shadow: none;
+}
+
+.narration-selection-compact .refresh-icon-button svg { width: 16px; height: 16px; }
+
+.item-count { margin-left: 8px; font-size: 0.85rem; color: var(--text-secondary); font-weight: 400; }
+
+/* Volume controls */
+.volume-control { display: flex; align-items: center; gap: 1rem; width: 100%; }
+.volume-value { font-size: 0.9rem; font-weight: 500; color: var(--text-primary); min-width: 40px; text-align: right; }
+
+/* Compact volume control wrapper */
+.compact-volume-control {
+  display: flex;
+  flex-direction: column;
+  gap: 1.75rem;
+  margin: 1rem 0 1rem 0;
+}
+
+.volume-label { font-size: 0.9rem; font-weight: 600; color: var(--text-primary); margin: 0; }
+
+/* StandardSlider in volume controls should match compact layout */
+.compact-volume-control .standard-slider-container { width: 100% !important; max-width: 350px !important; flex: none; }
+

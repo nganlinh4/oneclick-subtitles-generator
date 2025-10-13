@@ -14,6 +14,7 @@ import FloatingScrollbar from '../FloatingScrollbar';
 import OnboardingBanner from '../OnboardingBanner';
 import VideoProcessingOptionsModal from '../VideoProcessingOptionsModal';
 import { useVideoInfo } from '../../hooks/useVideoInfo';
+import BackgroundMusicSection from '../BackgroundMusicSection';
 import { hasValidDownloadedVideo } from '../../utils/videoUtils';
 
 /**
@@ -438,6 +439,9 @@ const AppLayout = ({
             isExpanded={showBackgroundGenerator}
             onExpandChange={(expanded) => setShowBackgroundGenerator(expanded)}
           />
+
+          {/* Background Music Generator */}
+          <BackgroundMusicSection />
         </main>
       )}
 

@@ -1,0 +1,141 @@
+/* Collapsible Section - shared styles for collapsible containers used across the app */
+
+/* Base container */
+.video-rendering-section,
+.music-generator-section {
+  background-color: var(--md-surface-1);
+  border-radius: 38px;
+  box-shadow: var(--md-elevation-level2);
+  width: 100%;
+  max-width: 1200px;
+  margin: 20px auto 40px auto;
+  overflow: hidden;
+  animation: fade-in 0.3s ease-out;
+  position: relative;
+  scroll-margin-top: 20px;
+  transition: max-height var(--md-duration-medium4) var(--md-easing-emphasized);
+  max-height: 2000px; /* Large enough to contain all content when expanded */
+  will-change: max-height;
+}
+
+/* Collapsed state (header + hint only) */
+.video-rendering-section.collapsed,
+.music-generator-section.collapsed {
+  max-height: 128px;
+  transition: max-height var(--md-duration-medium4) var(--md-easing-emphasized);
+}
+
+/* Header rounding when expanded/collapsed */
+.video-rendering-section:not(.collapsed) .video-rendering-header,
+.music-generator-section:not(.collapsed) .music-generator-header {
+  border-radius: 24px 24px 0 0;
+  transition: border-radius var(--md-duration-medium2) var(--md-easing-standard);
+}
+
+.video-rendering-section.collapsed .video-rendering-header,
+.music-generator-section.collapsed .music-generator-header {
+  transition: border-radius var(--md-duration-medium2) var(--md-easing-standard);
+}
+
+/* Collapse button */
+.collapse-button {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 36px;
+  height: 36px;
+  border-radius: 50%;
+  background-color: var(--md-surface-3);
+  color: var(--md-on-surface);
+  border: none;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  box-shadow: var(--md-elevation-level1);
+}
+
+.collapse-button:hover {
+  background-color: var(--md-surface-4);
+  box-shadow: var(--md-elevation-level2);
+  transform: translateY(-1px);
+}
+
+.collapse-button svg {
+  width: 20px;
+  height: 20px;
+  stroke-width: 2;
+  transition: transform var(--md-duration-medium3) var(--md-easing-emphasized);
+  transform: rotate(180deg);
+}
+
+.video-rendering-section.collapsed .collapse-button svg,
+.music-generator-section.collapsed .collapse-button svg {
+  transform: rotate(0deg);
+}
+
+/* Collapsed content wrapper */
+.video-rendering-collapsed-content,
+.music-generator-collapsed-content {
+  background-color: var(--md-surface-1);
+  border-radius: 0 0 24px 24px;
+  animation: slideUp var(--md-duration-medium3) var(--md-easing-emphasized-decelerate);
+  transform-origin: top center;
+}
+
+/* Helper message inside collapsed content */
+.helper-message {
+  padding: 16px;
+  border-radius: 16px;
+  color: var(--md-on-surface);
+  font-size: 0.95rem;
+  margin: 0;
+  text-align: center;
+  animation: slideUp var(--md-duration-medium3) var(--md-easing-emphasized-decelerate);
+}
+
+.video-rendering-content {
+  padding: 24px;
+}
+
+/* Expanded content wrapper */
+.video-rendering-content,
+.music-generator-content {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 20px;
+  background-color: var(--md-surface-1);
+  animation: expandContent var(--md-duration-medium4) var(--md-easing-emphasized);
+  transform-origin: top center;
+  transition: opacity var(--md-duration-medium3) var(--md-easing-emphasized),
+              transform var(--md-duration-medium3) var(--md-easing-emphasized);
+}
+
+/* Animations */
+@keyframes fade-in {
+  from { opacity: 0; transform: translateY(20px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+
+@keyframes expandContent {
+  from { opacity: 0.7; transform: translateY(-10px) scale(0.98); }
+  to   { opacity: 1; transform: translateY(0) scale(1); }
+}
+
+@keyframes slideUp {
+  from { opacity: 0; transform: translateY(10px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+
+/* Responsive adjustments */
+@media (max-width: 768px) {
+  .video-rendering-section,
+  .music-generator-section {
+    margin: 20px 16px 40px 16px;
+  }
+
+  .video-rendering-content,
+  .music-generator-content {
+    padding: 16px;
+    gap: 16px;
+  }
+}
+

@@ -9,6 +9,8 @@ interface Props {
   metadata?: VideoMetadata; // Make metadata optional again to match what might come from the server
   narrationUrl?: string;
   isVideoFile?: boolean;
+  framesPathUrl?: string; // When provided, use server-extracted frames instead of raw video
+  extractedAudioUrl?: string; // When frames are used, play this audio
 }
 
 // Default metadata to use if none is provided
@@ -25,7 +27,9 @@ const SubtitledVideoWrapper: React.FC<Props> = ({
   lyrics,
   metadata = DEFAULT_METADATA,
   narrationUrl,
-  isVideoFile = false
+  isVideoFile = false,
+  framesPathUrl,
+  extractedAudioUrl,
 }) => {
   return (
     <SubtitledVideoContent
@@ -34,6 +38,8 @@ const SubtitledVideoWrapper: React.FC<Props> = ({
       metadata={metadata}
       narrationUrl={narrationUrl}
       isVideoFile={isVideoFile}
+      framesPathUrl={framesPathUrl}
+      extractedAudioUrl={extractedAudioUrl}
     />
   );
 };

@@ -5,7 +5,7 @@ import { SubtitledVideoComposition } from './SubtitledVideoComposition';
 import VideoCropControls from './VideoCropControls';
 import '../styles/VideoPreviewPanel.css';
 
-const RemotionVideoPreview = ({
+const RemotionVideoPreview = React.forwardRef(({
   videoFile,
   subtitles,
   narrationAudioUrl,
@@ -19,7 +19,7 @@ const RemotionVideoPreview = ({
   onSeek,
   cropSettings,
   onCropChange
-}) => {
+}, ref) => {
   const { t } = useTranslation();
   const [videoUrl, setVideoUrl] = useState(null);
   const [isPlaying, setIsPlaying] = useState(false);
@@ -33,17 +33,24 @@ const RemotionVideoPreview = ({
     y: 0,
     width: 100,
     height: 100,
-    aspectRatio: null
+    aspectRatio: null,
+    flipX: false,
+    flipY: false,
   });
   const [appliedCropSettings, setAppliedCropSettings] = useState({
     x: 0,
     y: 0,
     width: 100,
     height: 100,
-    aspectRatio: null
+    aspectRatio: null,
+    flipX: false,
+    flipY: false,
   });
 
   const playerRef = useRef(null);
+
+  // Use the forwarded ref or fallback to internal ref
+  const actualPlayerRef = ref || playerRef;
 
 
   // Create video URL from file
@@ -129,8 +136,19 @@ const RemotionVideoPreview = ({
   // Sync crop settings with parent if provided
   useEffect(() => {
     if (cropSettings) {
-      setAppliedCropSettings(cropSettings);
-      setTempCropSettings(cropSettings);
+      // Normalize incoming crop settings to ensure flip flags exist
+      const normalized = {
+        ...cropSettings,
+        x: cropSettings.x ?? 0,
+        y: cropSettings.y ?? 0,
+        width: cropSettings.width ?? 100,
+        height: cropSettings.height ?? 100,
+        aspectRatio: cropSettings.aspectRatio ?? null,
+        flipX: cropSettings.flipX ?? false,
+        flipY: cropSettings.flipY ?? false,
+      };
+      setAppliedCropSettings(normalized);
+      setTempCropSettings(normalized);
     }
   }, [cropSettings]);
 
@@ -174,7 +192,9 @@ const RemotionVideoPreview = ({
       y: 0,
       width: 100,
       height: 100,
-      aspectRatio: null
+      aspectRatio: null,
+      flipX: false,
+      flipY: false,
     };
     setAppliedCropSettings(resetCrop);
     setTempCropSettings(resetCrop);
@@ -310,11 +330,11 @@ const RemotionVideoPreview = ({
         event.preventDefault();
         event.stopPropagation();
 
-        if (playerRef.current) {
+        if (actualPlayerRef.current) {
           if (isPlaying) {
-            playerRef.current.pause();
+            actualPlayerRef.current.pause();
           } else {
-            playerRef.current.play();
+            actualPlayerRef.current.play();
           }
         }
       }
@@ -361,7 +381,7 @@ const RemotionVideoPreview = ({
     <div style={{ position: 'relative', width: '100%', height: '100%' }}>
       {/* Video player */}
       <Player
-        ref={playerRef}
+        ref={actualPlayerRef}
         component={SubtitledVideoComposition}
         durationInFrames={durationInFrames}
         compositionWidth={safeWidth}
@@ -419,6 +439,6 @@ const RemotionVideoPreview = ({
       )}
     </div>
   );
-};
+});
 
 export default RemotionVideoPreview;

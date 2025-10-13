@@ -190,7 +190,7 @@ const ExampleAudioDropdown = ({ onExampleSelect, disabled = false }) => {
                       {file.displayName}
                     </div>
                     <div className="example-audio-option-description">
-                      {file.description}
+                      {t(file.descriptionKey)}
                     </div>
                   </div>
                 </button>

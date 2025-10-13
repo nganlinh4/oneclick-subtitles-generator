@@ -187,6 +187,24 @@ const AVAILABLE_MODELS = [
       "conv_layers": 4,
       "pe_attn_head": 1
     }
+  },
+  {
+    "id": "hynt-vivoice",
+    "name": "Hynt Vivoice F5 (Vietnamese)",
+    "languages": ["vi"],
+    "author": "hynt",
+    "modelUrl": "https://huggingface.co/hynt/F5-TTS-Vietnamese-ViVoice/resolve/main/model_last.pt",
+    "vocabUrl": "https://huggingface.co/hynt/F5-TTS-Vietnamese-ViVoice/resolve/main/config.json",
+    "config": {
+      "dim": 1024,
+      "depth": 22,
+      "heads": 16,
+      "ff_mult": 2,
+      "text_dim": 512,
+      "text_mask_padding": false,
+      "conv_layers": 4,
+      "pe_attn_head": 1
+    }
   }
 ];
 

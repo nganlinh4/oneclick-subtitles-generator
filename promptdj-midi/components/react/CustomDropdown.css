@@ -1,0 +1,646 @@
+/* Custom Dropdown Component - Material Design 3 */
+
+.custom-dropdown {
+  position: relative;
+  display: inline-block;
+  width: auto;
+  min-width: 120px;
+}
+
+/* Dropdown button */
+.custom-dropdown-button {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  width: 100%;
+  padding: 8px 16px;
+  background-color: var(--md-surface-1);
+  border: 1px solid var(--md-outline-variant);
+  border-radius: var(--md-shape-pill);
+  color: var(--md-on-surface);
+  font-size: 0.9rem;
+  font-family: var(--font-primary);
+  cursor: pointer;
+  transition: all var(--md-duration-medium2) var(--md-easing-standard);
+  height: 42px;
+  box-sizing: border-box;
+  box-shadow: var(--md-elevation-level1);
+  gap: 8px;
+}
+
+/* While open, remove shadow and border for a clean join with the menu */
+.custom-dropdown.open .custom-dropdown-button {
+  box-shadow: none;
+  border-color: transparent;
+}
+
+.custom-dropdown-button:hover:not(:disabled) {
+  background-color: var(--md-surface-2);
+  box-shadow: var(--md-elevation-level2);
+  transform: translateY(-1px);
+}
+
+.custom-dropdown-button:focus {
+  outline: none;
+  border-color: var(--md-primary);
+  box-shadow: 0 0 0 3px rgba(var(--md-primary-rgb), 0.12);
+}
+
+.custom-dropdown-button:active {
+  transform: translateY(0);
+  box-shadow: var(--md-elevation-level1);
+}
+
+.custom-dropdown-button:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+  background-color: var(--md-surface-variant);
+  color: var(--md-on-surface-variant);
+  transform: none !important;
+  box-shadow: none;
+}
+
+/* Dropdown value text */
+.dropdown-value {
+  flex: 1;
+  text-align: left;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  font-weight: 500;
+  transition: font-size 300ms cubic-bezier(0.4, 0, 0.2, 1),
+              font-weight 300ms cubic-bezier(0.4, 0, 0.2, 1),
+              letter-spacing 300ms cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+/* Button text morphing when opening */
+.dropdown-value.morphing-open {
+  /* Match the dropdown option font properties during transition */
+  font-size: 0.95rem;
+  font-weight: 500;
+  letter-spacing: 0;
+}
+
+/* Dropdown arrow */
+.dropdown-arrow {
+  flex-shrink: 0;
+  transition: transform var(--md-duration-medium2) var(--md-easing-standard);
+  color: var(--md-on-surface-variant);
+}
+
+.dropdown-arrow.rotated {
+  transform: rotate(180deg);
+}
+
+/* Dropdown menu with custom scrollbar */
+.custom-dropdown-menu {
+  background-color: var(--md-surface-1);
+  border: 1px solid var(--md-outline-variant);
+  border-radius: var(--dropdown-radius, 18px);
+  /* Clearer elevation in light mode for better separation */
+  box-shadow: 0 12px 28px rgba(0, 0, 0, 0.18),
+              0 8px 12px rgba(0, 0, 0, 0.12),
+              0 1px 2px rgba(0, 0, 0, 0.08);
+  max-height: 400px; /* Smaller to ensure scrollbar appears */
+  overflow: hidden; /* Hide native scrollbar, custom scrollbar will handle scrolling */
+  transform-origin: center center;
+  transition: border-radius 200ms cubic-bezier(0.2, 0, 0, 1), height 200ms cubic-bezier(0.2, 0, 0, 1);
+}
+
+/* Anchored expanding style */
+.custom-dropdown-menu.anchored-expand {
+  height: var(--menu-height, 200px);
+  transform-origin: center center;
+  transition: clip-path 200ms cubic-bezier(0.2, 0, 0, 1),
+              border-radius 200ms cubic-bezier(0.2, 0, 0, 1),
+              opacity 200ms cubic-bezier(0.2, 0, 0, 1),
+              width 200ms cubic-bezier(0.2, 0, 0, 1);
+  clip-path: inset(0 0 0 0);
+  will-change: clip-path, width, transform;
+}
+
+/* When open, apply smaller radius on the menu element itself (portal) */
+.custom-dropdown-menu.anchored-expand.is-open {
+  --dropdown-radius: 18px;
+}
+
+/* Smooth font transition for all dropdown options during open/close */
+.custom-dropdown-menu.is-open .dropdown-option {
+  animation: fade-in-option 200ms cubic-bezier(0.4, 0, 0.2, 1) backwards;
+}
+
+@keyframes fade-in-option {
+  from {
+    opacity: 0;
+    transform: translateY(-2px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+/* Closing state with selection - coordinated animation */
+.custom-dropdown-menu.is-closing-with-selection {
+  transition: clip-path 300ms cubic-bezier(0.4, 0, 0.2, 1),
+              width 300ms cubic-bezier(0.4, 0, 0.2, 1),
+              border-radius 300ms cubic-bezier(0.4, 0, 0.2, 1) !important;
+  overflow: hidden !important;
+}
+
+.custom-dropdown-menu.is-closing-with-selection .dropdown-options-list {
+  overflow: hidden !important; /* Prevent scrolling during animation */
+}
+
+/* Special closing state when scrollbar is present - simpler animation */
+.custom-dropdown-menu.is-closing-with-scrollbar {
+  transition: opacity 200ms cubic-bezier(0.4, 0, 0.2, 1),
+              width 200ms cubic-bezier(0.4, 0, 0.2, 1) !important;
+  /* DO NOT set overflow:hidden to avoid layout shift */
+}
+
+.custom-dropdown-menu.is-closing-with-scrollbar .dropdown-options-list {
+  /* Keep overflow as is to prevent layout changes */
+  overflow-y: auto !important;
+}
+
+.custom-dropdown-menu.is-closing-with-selection .dropdown-option {
+  transition: transform 300ms cubic-bezier(0.4, 0, 0.2, 1),
+              opacity 300ms cubic-bezier(0.4, 0, 0.2, 1),
+              background-color 300ms cubic-bezier(0.4, 0, 0.2, 1) !important;
+  will-change: transform, opacity;
+}
+
+/* Closing without selection - reverse of opening animation */
+.custom-dropdown-menu.is-closing-no-selection {
+  /* Mirror the opening animation but in reverse */
+  transition: clip-path 200ms cubic-bezier(0.4, 0, 0.2, 1),
+              width 200ms cubic-bezier(0.4, 0, 0.2, 1),
+              border-radius 200ms cubic-bezier(0.4, 0, 0.2, 1),
+              opacity 150ms cubic-bezier(0.4, 0, 0.2, 1) 50ms !important;
+  /* Opacity has 50ms delay to fade after shrinking starts */
+}
+
+.custom-dropdown-menu.is-closing-no-selection .dropdown-options-list {
+  overflow: hidden !important;
+}
+
+/* Options fade out in reverse order during non-selection close */
+.custom-dropdown-menu.is-closing-no-selection .dropdown-option {
+  animation: fade-out-option 150ms cubic-bezier(0.4, 0, 0.2, 1) forwards;
+  animation-delay: calc(var(--item-index, 0) * 10ms);
+}
+
+@keyframes fade-out-option {
+  from {
+    opacity: 1;
+    transform: translateY(0);
+  }
+  to {
+    opacity: 0;
+    transform: translateY(2px);
+  }
+}
+
+/* Drop-down animation (default) */
+.custom-dropdown-menu.drop-down {
+  animation: dropdown-slide-in var(--md-duration-medium3) var(--md-easing-emphasized);
+  transform-origin: top center;
+}
+
+/* Drop-up animation */
+.custom-dropdown-menu.drop-up {
+  animation: dropdown-slide-up var(--md-duration-medium3) var(--md-easing-emphasized);
+  transform-origin: bottom center;
+}
+
+/* Dropdown options list - this is the scrollable container */
+.dropdown-options-list {
+  height: 100%; /* Match menu viewport height for proper scrolling */
+  max-height: none; /* Height controlled by parent via --menu-height */
+  overflow-y: auto;
+  overflow-x: hidden;
+  /* Hide native scrollbar completely */
+  scrollbar-width: none !important; /* Firefox */
+  -ms-overflow-style: none !important; /* IE and Edge */
+  /* Small vertical padding for visual breathing room */
+  padding: 2px 0;
+  margin: 0;
+  position: relative;
+  box-sizing: border-box;
+}
+
+/* Remove edge fades for pure Material look */
+.custom-dropdown-menu.anchored-expand::before,
+.custom-dropdown-menu.anchored-expand::after {
+  content: none;
+  display: none;
+}
+
+/* Force hide webkit scrollbar completely */
+.dropdown-options-list::-webkit-scrollbar {
+  display: none !important;
+  width: 0 !important;
+  height: 0 !important;
+  background: transparent !important;
+  -webkit-appearance: none !important;
+}
+
+.dropdown-options-list::-webkit-scrollbar-track {
+  display: none !important;
+  background: transparent !important;
+}
+
+.dropdown-options-list::-webkit-scrollbar-thumb {
+  display: none !important;
+  background: transparent !important;
+}
+
+.dropdown-options-list::-webkit-scrollbar-corner {
+  display: none !important;
+  background: transparent !important;
+}
+
+/* Custom scrollbar track for dropdown */
+.custom-dropdown-menu::before {
+  content: '';
+  position: absolute;
+  top: 8px;
+  right: 5px;
+  bottom: 8px;
+  width: 4px;
+  background: rgba(var(--md-outline-variant-rgb, 121, 116, 126), 0.15);
+  border-radius: 50px; /* Pill shape */
+  opacity: 0;
+  transition: opacity 0.3s ease;
+  pointer-events: none;
+  z-index: 9;
+}
+
+/* Custom scrollbar thumb - positioned dynamically by JavaScript */
+.custom-scrollbar-thumb {
+  position: absolute;
+  right: 5px;
+  width: 4px;
+  background: rgba(var(--md-primary-rgb, 103, 80, 164), 0.6);
+  border-radius: 50px; /* Pill shape */
+  opacity: 0;
+  transition: opacity 0.2s ease, width 0.2s ease, right 0.2s ease; /* Only transition visual properties, not position */
+  pointer-events: auto;
+  z-index: 10;
+  cursor: pointer;
+  min-height: 20px;
+}
+
+/* Show scrollbar track only when dropdown has scrollable content */
+.custom-dropdown-menu.has-scrollable-content:hover::before {
+  opacity: 1;
+}
+
+/* Show scrollbar thumb on hover */
+.custom-dropdown-menu:hover .custom-scrollbar-thumb {
+  opacity: 1;
+}
+
+/* Enhanced hover state for thumb */
+.custom-scrollbar-thumb:hover {
+  width: 6px;
+  right: 4px;
+  background: rgba(var(--md-primary-rgb, 103, 80, 164), 0.8);
+}
+
+/* Active state for thumb */
+.custom-scrollbar-thumb:active {
+  background: var(--md-primary);
+  width: 6px;
+  right: 4px;
+}
+
+/* Dragging state */
+.custom-scrollbar-thumb.dragging {
+  background: var(--md-primary) !important;
+  width: 6px !important;
+  right: 4px !important;
+  opacity: 1 !important;
+  transition: none !important; /* Disable transitions while dragging */
+}
+
+@keyframes dropdown-slide-in {
+  from {
+    opacity: 0;
+    transform: translateY(-8px) scale(0.95);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+
+@keyframes dropdown-slide-up {
+  from {
+    opacity: 0;
+    transform: translateY(8px) scale(0.95);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+
+/* Dropdown options */
+.dropdown-option {
+  display: flex;
+  align-items: center;
+  width: 100%;
+  padding: 12px 16px;
+  background: transparent;
+  border: none;
+  color: var(--md-on-surface);
+  font-size: 0.95rem;
+  line-height: 1.4;
+  font-family: var(--font-primary);
+  font-weight: 500;
+  text-align: left;
+  cursor: pointer;
+  transition: background-color var(--md-duration-medium2) var(--md-easing-standard),
+              transform 180ms cubic-bezier(0.2, 0, 0, 1),
+              opacity 200ms cubic-bezier(0.2, 0, 0, 1);
+  border-radius: 0;
+  will-change: transform;
+  min-height: 44px; /* Minimum height for consistency */
+  box-sizing: border-box; /* Ensure padding is included in height */
+  white-space: nowrap; /* Prevent text wrapping */
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.dropdown-option:first-child {
+  border-radius: 16px 16px 0 0;
+}
+
+.dropdown-option:last-child {
+  border-radius: 0 0 16px 16px;
+}
+
+.dropdown-option:only-child {
+  border-radius: 16px;
+}
+
+.dropdown-option:hover {
+  background-color: var(--md-surface-2);
+}
+
+/* Pressed state when mouse is held down */
+.dropdown-option.pressed {
+  background-color: var(--md-primary-container) !important;
+  transform: scale(0.98);
+  opacity: 0.9;
+}
+
+/* Preview state when dragging over different items */
+.dropdown-option.hover-preview {
+  background-color: var(--md-surface-3);
+  transform: scale(1.02);
+  transition: all 100ms ease-out;
+}
+
+/* Visual feedback for drag operation */
+.dropdown-option.pressed:not(.hover-preview) {
+  opacity: 0.6;
+}
+
+.dropdown-option:focus {
+  outline: none;
+  background-color: var(--md-surface-2);
+}
+
+/* Disabled dropdown options */
+.dropdown-option.disabled {
+  cursor: not-allowed;
+  /* In light mode: more gray (less black) */
+  color: rgba(128, 128, 128, 0.8);
+  background-color: transparent;
+  font-weight: 400;
+  opacity: 1; /* Full opacity to show the gray color clearly */
+}
+
+/* Dark theme specific disabled color */
+[data-theme="dark"] .dropdown-option.disabled {
+  /* In dark mode: darker gray (less white) */
+  color: rgba(100, 100, 100, 0.9);
+}
+
+.dropdown-option.disabled:hover {
+  background-color: transparent;
+  transform: none;
+  color: rgba(128, 128, 128, 0.8);
+}
+
+[data-theme="dark"] .dropdown-option.disabled:hover {
+  color: rgba(100, 100, 100, 0.9);
+}
+
+.dropdown-option.disabled:active {
+  background-color: transparent;
+  transform: none;
+}
+
+/* Remove hover effects for disabled options */
+.dropdown-option.disabled.hover-preview {
+  background-color: transparent;
+  transform: none;
+}
+
+.dropdown-option.selected {
+  background-color: var(--md-primary-container);
+  color: var(--md-on-primary-container);
+  font-weight: 600;
+  position: relative;
+}
+
+/* Font morphing for selected item */
+.dropdown-option.morphing-item {
+  transition: all 300ms cubic-bezier(0.4, 0, 0.2, 1),
+              font-size 300ms cubic-bezier(0.4, 0, 0.2, 1),
+              font-weight 300ms cubic-bezier(0.4, 0, 0.2, 1),
+              letter-spacing 300ms cubic-bezier(0.4, 0, 0.2, 1) !important;
+}
+
+/* Opening: selected item morphs from button font to dropdown font */
+.dropdown-option.morphing-from-button {
+  animation: morph-from-button 300ms cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+/* Closing: selected item morphs from dropdown font to button font */
+.dropdown-option.morphing-to-button {
+  animation: morph-to-button 300ms cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+@keyframes morph-from-button {
+  0% {
+    font-size: 0.9rem;  /* Button font size */
+    font-weight: 500;
+    transform: scale(1.05);
+  }
+  100% {
+    font-size: 0.95rem; /* Dropdown item font size */
+    font-weight: 600;   /* Selected item weight */
+    transform: scale(1);
+  }
+}
+
+@keyframes morph-to-button {
+  0% {
+    font-size: 0.95rem; /* Dropdown item font size */
+    font-weight: 600;
+    transform: scale(1);
+  }
+  100% {
+    font-size: 0.9rem;  /* Button font size */
+    font-weight: 500;
+    transform: scale(1.02);
+  }
+}
+
+/* Selection animation pulse */
+@keyframes selection-pulse {
+  0% {
+    box-shadow: 0 0 0 0 rgba(var(--md-primary-rgb), 0.4);
+  }
+  70% {
+    box-shadow: 0 0 0 10px rgba(var(--md-primary-rgb), 0);
+  }
+  100% {
+    box-shadow: 0 0 0 0 rgba(var(--md-primary-rgb), 0);
+  }
+}
+
+.dropdown-option.selecting {
+  animation: selection-pulse 0.4s ease-out;
+}
+
+.dropdown-option.selected:hover {
+  background-color: var(--md-primary-container);
+  opacity: 0.9;
+}
+
+/* Disabled state */
+.custom-dropdown.disabled .custom-dropdown-button {
+  pointer-events: none;
+}
+
+/* Open state styling */
+.custom-dropdown.open .custom-dropdown-button {
+  border-color: var(--md-primary);
+  box-shadow: 0 0 0 3px rgba(var(--md-primary-rgb), 0.12);
+}
+
+/* Dark mode scrollbar */
+[data-theme="dark"] .custom-dropdown-menu::before {
+  background: rgba(var(--md-outline-variant-rgb, 200, 196, 206), 0.15);
+}
+
+[data-theme="dark"] .custom-scrollbar-thumb {
+  background: rgba(var(--md-primary-rgb, 208, 188, 255), 0.6);
+}
+
+[data-theme="dark"] .custom-scrollbar-thumb:hover {
+  background: rgba(var(--md-primary-rgb, 208, 188, 255), 0.8);
+}
+
+[data-theme="dark"] .custom-scrollbar-thumb:active {
+  background: var(--md-primary);
+}
+
+/* Fast, responsive scrolling for real-time dragging */
+.dropdown-options-list {
+  scroll-behavior: auto; /* Remove smooth scrolling for real-time response */
+}
+
+/* Responsive adjustments */
+@media (max-width: 768px) {
+  .custom-dropdown-menu {
+    max-height: 250px;
+  }
+
+  .dropdown-option {
+    padding: 14px 16px;
+    font-size: 0.95rem;
+  }
+}
+
+/* Dark theme adjustments */
+@media (prefers-color-scheme: dark) {
+  .custom-dropdown-menu {
+    /* Stronger elevation for dark surfaces to improve separation */
+    box-shadow: 0 18px 48px rgba(0, 0, 0, 0.50),
+                0 6px 16px rgba(0, 0, 0, 0.40),
+                0 1px 3px rgba(0, 0, 0, 0.60);
+  }
+}
+
+/* High contrast mode support */
+@media (prefers-contrast: high) {
+  .custom-dropdown-button {
+    border-width: 2px;
+  }
+
+  .dropdown-option.selected {
+    outline: 2px solid var(--md-primary);
+    outline-offset: -2px;
+  }
+}
+
+
+/* Language option styling: add breathing room between flag and language */
+.custom-dropdown .dropdown-value .lang-option {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0; /* allow inner text to ellipsis */
+}
+.custom-dropdown .dropdown-value .lang-option .name {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* In the menu list, give a bit more gap for readability */
+.custom-dropdown .dropdown-option .lang-option {
+  display: inline-flex;
+  align-items: center;
+  gap: 12px;
+}
+
+/* Normalize emoji flag sizing and alignment */
+.custom-dropdown .lang-option .flag {
+  display: inline-block;
+  width: 1.4em; /* consistent column width */
+  text-align: center;
+  font-size: 1.1em;
+  line-height: 1;
+}
+.custom-dropdown .lang-option .name {
+  letter-spacing: 0.2px;
+}
+
+/* Apply same layout inside the portal-rendered dropdown menu */
+.custom-dropdown-menu .dropdown-option .lang-option {
+  display: inline-flex;
+  align-items: center;
+  gap: 12px;
+}
+.custom-dropdown-menu .lang-option .flag {
+  display: inline-block;
+  width: 1.4em;
+  text-align: center;
+  font-size: 1.1em;
+  line-height: 1;
+}
+.custom-dropdown-menu .lang-option .name {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  letter-spacing: 0.2px;
+}
+

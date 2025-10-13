@@ -55,7 +55,7 @@ const NarrationAdvancedSettings = ({ settings, onSettingsChange, disabled = fals
             </div>
             <div className="row-content">
               <SliderWithValue
-                value={settings.speechRate || 1.3}
+                value={settings.speechRate || 1.1}
                 onChange={(value) => handleSliderChange('speechRate', value)}
                 min={0.5}
                 max={2.0}
@@ -66,7 +66,7 @@ const NarrationAdvancedSettings = ({ settings, onSettingsChange, disabled = fals
                 className="speech-rate-slider"
                 id="speechRate"
                 ariaLabel={t('narration.speechRate', 'Speed')}
-                formatValue={(v) => `${Number(v || 1.3).toFixed(1)}x`}
+                formatValue={(v) => `${Number(v || 1.1).toFixed(1)}x`}
               />
             </div>
           </div>

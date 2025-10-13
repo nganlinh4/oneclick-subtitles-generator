@@ -1,0 +1,41 @@
+/* Background Music Section specific header styles */
+
+.music-generator-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 20px 24px;
+  background-color: var(--md-surface-2);
+  color: var(--md-on-surface);
+  box-shadow: var(--md-elevation-level1);
+  position: relative;
+  z-index: 1;
+  border-radius: 24px;
+}
+
+.music-generator-header .header-left {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+}
+
+.music-generator-header h2 {
+  margin: 0;
+  font-size: 1.3rem;
+  color: var(--text-color);
+}
+
+
+
+/* Override error spacing within the music section only to prevent header shifting */
+.music-generator-section .error {
+  margin-bottom: 0 !important;
+}
+
+
+/* Override clear button positioning for audio preview inside music section header */
+.music-generator-section .audio-preview .clear-button {
+  top: 0 !important;        /* Remove offset from narration styles */
+  position: static !important; /* Let it flow inline in header */
+  align-self: center;       /* Keep vertical alignment */
+}

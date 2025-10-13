@@ -56,6 +56,8 @@ const VideoCropControls = ({
   const dragBaseRectRef = useRef(null);
   const dragBaseCropRef = useRef(null);
 
+  const dragBaseDisplayCropRef = useRef(null);
+
   // Draggable UI positions (percentages within videoRect)
   const defaultUiPos = {
     aspect: { xPct: 50, yPct: 2 },
@@ -67,6 +69,25 @@ const VideoCropControls = ({
   const [uiDrag, setUiDrag] = useState(null);
   const uiInitializedRef = useRef(false);
   const didDragRef = useRef(false);
+
+  // Map between logical crop (original video space) and display crop (UI space respecting flips)
+  const toDisplayCrop = useCallback((crop) => {
+    if (!crop) return crop;
+    const flipX = Boolean(crop.flipX);
+    const flipY = Boolean(crop.flipY);
+    const x = flipX ? 100 - (crop.x ?? 0) - (crop.width ?? 0) : (crop.x ?? 0);
+    const y = flipY ? 100 - (crop.y ?? 0) - (crop.height ?? 0) : (crop.y ?? 0);
+    return { ...crop, x, y };
+  }, []);
+  const fromDisplayCrop = useCallback((displayCrop) => {
+    if (!displayCrop) return displayCrop;
+    const flipX = Boolean(displayCrop.flipX);
+    const flipY = Boolean(displayCrop.flipY);
+    const x = flipX ? 100 - (displayCrop.x ?? 0) - (displayCrop.width ?? 0) : (displayCrop.x ?? 0);
+    const y = flipY ? 100 - (displayCrop.y ?? 0) - (displayCrop.height ?? 0) : (displayCrop.y ?? 0);
+    return { ...displayCrop, x, y };
+  }, []);
+
 
 
   useEffect(() => {
@@ -81,9 +102,13 @@ const VideoCropControls = ({
       canvasBgMode: cropSettings.canvasBgMode ?? 'solid',
       canvasBgColor: cropSettings.canvasBgColor ?? '#000000',
       canvasBgBlur: cropSettings.canvasBgBlur ?? 24,
+      // Ensure flip flags are always present on the normalized crop object
+      flipX: cropSettings.flipX ?? false,
+      flipY: cropSettings.flipY ?? false,
     };
-    setTempCrop(normalized);
-  }, [cropSettings]);
+    // Convert to display-space crop so UI manipulates flipped coordinates naturally
+    setTempCrop(toDisplayCrop(normalized));
+  }, [cropSettings, toDisplayCrop]);
 
   // Find and track the actual video element position
   useEffect(() => {
@@ -286,9 +311,13 @@ const VideoCropControls = ({
   const handleAspectRatioChange = (value) => {
     setSelectedAspectRatio(value);
     if (value !== 'custom') {
-      const newCrop = calculateCropDimensions(value);
-      setTempCrop(newCrop);
-      onCropChange(newCrop);
+      const newLogical = calculateCropDimensions(value);
+      // Preserve flip flags from current tempCrop
+      newLogical.flipX = tempCrop?.flipX ?? false;
+      newLogical.flipY = tempCrop?.flipY ?? false;
+      const newDisplay = toDisplayCrop(newLogical);
+      setTempCrop(newDisplay);
+      onCropChange(fromDisplayCrop(newDisplay));
     }
   };
 
@@ -544,9 +573,10 @@ const VideoCropControls = ({
     if (isDragging) {
       setIsDragging(false);
       setDragType(null);
-      onCropChange(tempCrop);
+      // Convert display-space crop back to logical crop for consumers
+      onCropChange(fromDisplayCrop(tempCrop));
     }
-  }, [isDragging, tempCrop, onCropChange]);
+  }, [isDragging, tempCrop, onCropChange, fromDisplayCrop]);
 
   useEffect(() => {
     if (isDragging) {
@@ -577,6 +607,11 @@ const VideoCropControls = ({
   const onUiMouseDown = (e, kind) => {
     if (!isEnabled) return;
     if (!cropAreaRef.current) return;
+    // Do not start group-dragging when interacting with elements marked as no-ui-drag (e.g., blur slider)
+    const tgt = e.target;
+    if (tgt && typeof tgt.closest === 'function' && tgt.closest('.no-ui-drag')) {
+      return;
+    }
     didDragRef.current = false;
     setUiDrag({
       kind,
@@ -676,7 +711,7 @@ const VideoCropControls = ({
             title={hasAppliedCrop ? t('videoRendering.editCrop', 'Edit crop') : t('videoRendering.toggleCrop', 'Add crop')}
           >
             <svg width="20" height="20" viewBox="0 -960 960 960" fill="currentColor" xmlns="http://www.w3.org/2000/svg">
-              <path d="M654-92v-79H306q-55.73 0-95.86-39.44Q170-249.88 170-307v-347H92q-29 0-48.5-20.2T24-722q0-29 19.5-48.5T92-790h78v-78q0-29 20.2-48.5T238-936q29 0 48.5 19.5T306-868v561h562q29 0 48.5 20.2T936-239q0 29-19.5 48.5T868-171h-78v79q0 27.6-20.2 47.8Q749.6-24 722-24q-29 0-48.5-20.2T654-92Zm0-295v-267H386v-136h268q57.13 0 96.56 39.44Q790-711.13 790-654v267H654Z"/>
+              <path d="M282-559H94q-24.97 0-42.49-17.39Q34-593.78 34-618.58q0-24.8 17.51-42.61Q69.03-679 94-679h188v-72l-1 2q-18.4 18-43.2 17.5-24.8-.5-43.41-18.5-17.39-18-16.89-43t18.5-42l98-99q20.82-20 48.41-19.5Q370-953 390-934l100 101q17 17 17.5 41.5T491.22-749q-18.09 18.15-43.65 17.58Q422-732 404-750l-1-1v349h464q24.97 0 42.49 17.39Q927-367.22 927-342.42q0 24.79-17.51 42.61Q891.97-282 867-282H681v73l1-2q17.53-18 42.77-17.5 25.23.5 43.32 19.5 16.91 18 16.41 42.5T767-125l-99 99Q648-5 620-5.5T572-26l-99-100q-17-17-17.5-41t16.41-42q18.09-19 43.59-18.5Q541-227 559-209h1v-73H403q-49.79 0-85.39-35Q282-352 282-402v-157Zm278 77v-77h-77v-120h77q49.79 0 85.39 35Q681-609 681-559v77H560Z"/>
             </svg>
             {hasAppliedCrop && <span className="crop-indicator">✓</span>}
           </button>
@@ -721,7 +756,7 @@ const VideoCropControls = ({
               style={{ cursor: uiDrag?.kind === 'toggle' ? 'grabbing' : 'grab' }}
             >
               <svg width="20" height="20" viewBox="0 -960 960 960" fill="currentColor" xmlns="http://www.w3.org/2000/svg">
-                <path d="M654-92v-79H306q-55.73 0-95.86-39.44Q170-249.88 170-307v-347H92q-29 0-48.5-20.2T24-722q0-29 19.5-48.5T92-790h78v-78q0-29 20.2-48.5T238-936q29 0 48.5 19.5T306-868v561h562q29 0 48.5 20.2T936-239q0 29-19.5 48.5T868-171h-78v79q0 27.6-20.2 47.8Q749.6-24 722-24q-29 0-48.5-20.2T654-92Zm0-295v-267H386v-136h268q57.13 0 96.56 39.44Q790-711.13 790-654v267H654Z"/>
+                <path d="M282-559H94q-24.97 0-42.49-17.39Q34-593.78 34-618.58q0-24.8 17.51-42.61Q69.03-679 94-679h188v-72l-1 2q-18.4 18-43.2 17.5-24.8-.5-43.41-18.5-17.39-18-16.89-43t18.5-42l98-99q20.82-20 48.41-19.5Q370-953 390-934l100 101q17 17 17.5 41.5T491.22-749q-18.09 18.15-43.65 17.58Q422-732 404-750l-1-1v349h464q24.97 0 42.49 17.39Q927-367.22 927-342.42q0 24.79-17.51 42.61Q891.97-282 867-282H681v73l1-2q17.53-18 42.77-17.5 25.23.5 43.32 19.5 16.91 18 16.41 42.5T767-125l-99 99Q648-5 620-5.5T572-26l-99-100q-17-17-17.5-41t16.41-42q18.09-19 43.59-18.5Q541-227 559-209h1v-73H403q-49.79 0-85.39-35Q282-352 282-402v-157Zm278 77v-77h-77v-120h77q49.79 0 85.39 35Q681-609 681-559v77H560Z"/>
               </svg>
             </button>
           </div>
@@ -754,6 +789,34 @@ const VideoCropControls = ({
                 <span className="aspect-label">{preset.value == null ? t('videoRendering.free','Free') : preset.label}</span>
               </button>
             ))}
+            {/* Separator + Flip buttons (moved next to aspect buttons) */}
+            <div className="flip-group" style={{ display: 'flex', alignItems: 'center', gap: 8, marginLeft: 8 }}>
+              <div className="aspect-separator" />
+              <button
+                className={`flip-btn ${tempCrop.flipX ? 'active' : ''}`}
+                onClick={(e) => { suppressClickIfDragged(e); if (!didDragRef.current) { e.stopPropagation(); const next = { ...tempCrop, flipX: !tempCrop.flipX }; setTempCrop(next); onCropChange(fromDisplayCrop(next)); } }}
+                onClickCapture={suppressClickIfDragged}
+                title={t('videoRendering.flipHorizontal','Flip horizontal')}
+                aria-label={t('videoRendering.flipHorizontal','Flip horizontal')}
+                style={{ cursor: uiDrag?.kind === 'aspect' ? 'grabbing' : 'grab' }}
+              >
+                <svg viewBox="0 -960 960 960" xmlns="http://www.w3.org/2000/svg" aria-hidden>
+                  <path d="M696-114q-27.6 0-47.8-19.5-20.2-19.5-20.2-48t20.2-48.5q20.2-20 47.8-20h54v-460h-54q-27.6 0-47.8-20.2Q628-750.4 628-778q0-29 20.2-48.5T696-846h54q57.13 0 96.56 39.44Q886-767.13 886-710v460q0 57.12-39.44 96.56Q807.13-114 750-114h-54ZM480-34q-27.6 0-47.8-19.5Q412-73 412-102v-12H210q-57.12 0-96.56-39.44Q74-192.88 74-250v-460q0-57.13 39.44-96.56Q152.88-846 210-846h202v-12q0-29 20.2-48.5T480-926q27.6 0 47.8 19.5Q548-887 548-858v756q0 29-20.2 48.5T480-34Zm270-676v460-460Z" fill="currentColor"/>
+                </svg>
+              </button>
+              <button
+                className={`flip-btn ${tempCrop.flipY ? 'active' : ''}`}
+                onClick={(e) => { suppressClickIfDragged(e); if (!didDragRef.current) { e.stopPropagation(); const next = { ...tempCrop, flipY: !tempCrop.flipY }; setTempCrop(next); onCropChange(fromDisplayCrop(next)); } }}
+                onClickCapture={suppressClickIfDragged}
+                title={t('videoRendering.flipVertical','Flip vertical')}
+                aria-label={t('videoRendering.flipVertical','Flip vertical')}
+                style={{ cursor: uiDrag?.kind === 'aspect' ? 'grabbing' : 'grab' }}
+              >
+                <svg viewBox="0 -960 960 960" xmlns="http://www.w3.org/2000/svg" aria-hidden>
+                  <path d="M250-74q-57.12 0-96.56-39.44Q114-152.88 114-210v-54q0-27.6 19.5-47.8 19.5-20.2 48-20.2t48.5 20.2q20 20.2 20 47.8v54h460v-54q0-27.6 20.2-47.8Q750.4-332 778-332q29 0 48.5 20.2T846-264v54q0 57.12-39.44 96.56Q767.13-74 710-74H250ZM102-412q-29 0-48.5-20.2T34-480q0-27.6 19.5-47.8Q73-548 102-548h12v-202q0-57.13 39.44-96.56Q192.88-886 250-886h460q57.13 0 96.56 39.44Q846-807.13 846-750v202h12q29 0 48.5 20.2T926-480q0 27.6-19.5 47.8Q887-412 858-412H102Zm608 202H250h460Z" fill="currentColor"/>
+                </svg>
+              </button>
+            </div>
           </div>
 
           {/* Apply and Cancel buttons - draggable */}
@@ -799,7 +862,7 @@ const VideoCropControls = ({
                   onChange={(value) => {
                     const next = { ...tempCrop, canvasBgMode: value };
                     setTempCrop(next);
-                    onCropChange(next);
+                    onCropChange(fromDisplayCrop(next));
                   }}
                   options={[
                     { value: 'solid', label: t('videoRendering.solidCanvas','Solid') },
@@ -813,21 +876,21 @@ const VideoCropControls = ({
                     onChange={(e) => {
                       const next = { ...tempCrop, canvasBgColor: e.target.value };
                       setTempCrop(next);
-                      onCropChange(next);
+                      onCropChange(fromDisplayCrop(next));
                     }}
                     title={t('videoRendering.canvasColor','Canvas color')}
                     className="color-picker"
                   />
                 )}
                 {(tempCrop.canvasBgMode ?? 'solid') === 'blur' && (
-                  <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                  <div className="canvas-blur-slider no-ui-drag" style={{ display: 'flex', alignItems: 'center', gap: 8, cursor: 'default' }} onMouseDown={(e) => e.stopPropagation()}>
                     <span style={{ fontSize: 12, opacity: 0.8 }}>{t('videoRendering.blurIntensity', 'Blur')}</span>
                     <StandardSlider
                       value={tempCrop.canvasBgBlur ?? 24}
                       onChange={(value) => {
                         const next = { ...tempCrop, canvasBgBlur: parseInt(value) };
                         setTempCrop(next);
-                        onCropChange(next);
+                        onCropChange(fromDisplayCrop(next));
                       }}
                       min={0}
                       max={60}
@@ -849,6 +912,7 @@ const VideoCropControls = ({
 
               </div>
             )}
+
 
             <button
               className="crop-action-btn cancel"

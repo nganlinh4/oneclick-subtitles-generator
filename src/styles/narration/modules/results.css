@@ -46,29 +46,22 @@
   margin-bottom: 20px; /* Add margin to ensure it's counted in parent height */
   min-height: 700px; /* Increased minimum height for F5-TTS results */
 
-  /* Firefox scrollbar styling */
-  scrollbar-width: thin;
-  scrollbar-color: var(--md-outline-variant) var(--md-surface-1);
+  /* Hide native scrollbar (we render our own functional scrollbar) */
+  scrollbar-width: none; /* Firefox */
 }
 
-/* Webkit (Chrome, Safari, Edge) scrollbar styling */
+/* Hide WebKit scrollbars (Chrome, Safari, Edge) */
 .results-virtualized-list::-webkit-scrollbar {
-  width: 8px;
+  width: 0;
+  height: 0;
+  display: none;
 }
 
-.results-virtualized-list::-webkit-scrollbar-track {
-  background: var(--md-surface-1);
-  border-radius: 4px;
-}
-
-.results-virtualized-list::-webkit-scrollbar-thumb {
-  background-color: var(--md-outline-variant);
-  border-radius: 4px;
-  border: 2px solid var(--md-surface-1);
-}
-
+.results-virtualized-list::-webkit-scrollbar-track,
+.results-virtualized-list::-webkit-scrollbar-thumb,
 .results-virtualized-list::-webkit-scrollbar-thumb:hover {
-  background-color: var(--md-outline);
+  background: transparent;
+  border: none;
 }
 
 /* Old loading spinner styles removed - now using LoadingIndicator component */
@@ -101,11 +94,11 @@
   margin: 0.375rem 2px 0.375rem 0; /* Add margin to prevent items from touching the scrollbar and provide spacing between items */
   box-sizing: border-box; /* Include padding and border in height calculation */
   height: 60px; /* Fixed height for result items */
+  position: relative; /* Needed for custom scrollbar thumb positioning */
 }
 
 .result-item:hover {
   background-color: var(--md-surface-3);
-  box-shadow: var(--md-elevation-level1);
 }
 
 .result-item.playing {
@@ -143,6 +136,9 @@
 .result-text {
   flex: 1;
   margin-right: 1rem;
+  max-height: 100%;
+  overflow-y: auto; /* Enable vertical scrolling within the result item */
+  overflow-x: hidden;
 }
 
 .result-id {

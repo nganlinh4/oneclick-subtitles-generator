@@ -28,8 +28,6 @@
   "gemini25Warning": "Gemini 2.5 Pro, 2.5 Flash và 2.5 Flash Lite không cho kết quả tốt trong trường hợp này"
 ,
   "autoEraseBlankLines": "Tự động xóa dòng trống"
-
 ,
   "autoEraseBlankLinesHelp": "Tự động xóa các dòng trống trong văn bản dán vào và nội dung hiện có. Không làm ảnh hưởng khi bạn đang gõ."
-
 }

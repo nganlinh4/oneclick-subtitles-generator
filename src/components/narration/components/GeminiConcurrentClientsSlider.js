@@ -1,6 +1,8 @@
 import React, { useState, useEffect } from 'react';
 import { useTranslation } from 'react-i18next';
 import SliderWithValue from '../../common/SliderWithValue';
+import HelpIcon from '../../common/HelpIcon';
+
 import '../../../styles/narration/geminiConcurrentClientsSlider.css';
 
 /**
@@ -57,34 +59,26 @@ const GeminiConcurrentClientsSlider = ({
         <label>{t('narration.concurrentClients', 'Chế độ cực nhanh')}:</label>
       </div>
       <div className="row-content">
-        <div className="split-duration-slider-container">
-          <div className="slider-control-row">
-            <SliderWithValue
-              value={localConcurrentClients}
-              onChange={(value) => handleConcurrentClientsChange({ target: { value: parseInt(value) } })}
-              min={1}
-              max={10}
-              step={1}
-              orientation="Horizontal"
-              size="XSmall"
-              state={isGenerating ? "Disabled" : "Enabled"}
-              className="gemini-concurrent-clients-slider"
-              id="gemini-concurrent-clients"
-              ariaLabel={t('narration.concurrentClients', 'Chế độ cực nhanh')}
-              formatValue={(v) => `${v}x`}
+        <div className="slider-control-row">
+          <SliderWithValue
+            value={localConcurrentClients}
+            onChange={(value) => handleConcurrentClientsChange({ target: { value: parseInt(value) } })}
+            min={1}
+            max={10}
+            step={1}
+            orientation="Horizontal"
+            size="XSmall"
+            state={isGenerating ? "Disabled" : "Enabled"}
+            className="gemini-concurrent-clients-slider"
+            id="gemini-concurrent-clients"
+            ariaLabel={t('narration.concurrentClients', 'Chế độ cực nhanh')}
+            defaultValue={5}
+            formatValue={(v) => `${v}x`}
+          >
+            <HelpIcon
+              title={t('narration.concurrentClientsHelp', 'Mở nhiều hội thoại song song với Gemini cùng lúc, CHÚ Ý: có thể gây cạn kiệt quota nhanh chóng')}
             />
-          </div>
-        </div>
-
-        <div
-          className="help-icon-container"
-          title={t('narration.concurrentClientsHelp', 'Mở nhiều hội thoại song song với Gemini cùng lúc, CHÚ Ý: có thể gây cạn kiệt quota nhanh chóng')}
-        >
-          <svg className="help-icon" viewBox="0 0 24 24" width="18" height="18" stroke="currentColor" strokeWidth="2" fill="none">
-            <circle cx="12" cy="12" r="10"></circle>
-            <line x1="12" y1="16" x2="12" y2="12"></line>
-            <line x1="12" y1="8" x2="12.01" y2="8"></line>
-          </svg>
+          </SliderWithValue>
         </div>
       </div>
     </div>

@@ -118,6 +118,12 @@ IF %ERRORLEVEL% NEQ 0 (
     GOTO ErrorOccurred
 )
 
+powershell -NoProfile -ExecutionPolicy Bypass -Command "Write-Host '[SETUP] Configuring npm workspaces for optimal performance (Cau hinh npm workspaces de hieu suat toi uu)...' -ForegroundColor Cyan"
+CALL node setup-workspaces.js
+IF %ERRORLEVEL% NEQ 0 (
+    powershell -NoProfile -ExecutionPolicy Bypass -Command "Write-Host '[WARN] Workspace setup had issues, continuing with standard install (Cau hinh workspace gap van de, tiep tuc voi cai dat tieu chuan)...' -ForegroundColor Yellow"
+)
+
 powershell -NoProfile -ExecutionPolicy Bypass -Command "Write-Host '[SETUP] Installing dependencies... (takes long time) (Cai dat phu thuoc... mat thoi gian dai)' -ForegroundColor Cyan"
 CALL npm run install:all
 IF %ERRORLEVEL% NEQ 0 (
@@ -171,6 +177,12 @@ IF %ERRORLEVEL% NEQ 0 (
     powershell -NoProfile -ExecutionPolicy Bypass -Command "Write-Host '[RESTART] Restarting to refresh environment (Khoi dong lai de cap nhat moi truong)...' -ForegroundColor Blue"
     POPD
     GOTO ErrorOccurred
+)
+
+powershell -NoProfile -ExecutionPolicy Bypass -Command "Write-Host '[SETUP] Configuring npm workspaces for optimal performance (Cau hinh npm workspaces de hieu suat toi uu)...' -ForegroundColor Cyan"
+CALL node setup-workspaces.js
+IF %ERRORLEVEL% NEQ 0 (
+    powershell -NoProfile -ExecutionPolicy Bypass -Command "Write-Host '[WARN] Workspace setup had issues, continuing with standard install (Cau hinh workspace gap van de, tiep tuc voi cai dat tieu chuan)...' -ForegroundColor Yellow"
 )
 
 powershell -NoProfile -ExecutionPolicy Bypass -Command "Write-Host '[SETUP] Installing dependencies... (takes long time) (Cai dat phu thuoc... mat thoi gian dai)' -ForegroundColor Cyan"
@@ -238,6 +250,8 @@ IF /I "%INSTALL_DEPS%"=="c" (
         PAUSE
         GOTO MainMenuVI
     )
+    ECHO Configuring npm workspaces...
+    CALL node setup-workspaces.js
     ECHO Running 'npm install'...
     CALL npm install
      IF %ERRORLEVEL% NEQ 0 (

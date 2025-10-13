@@ -2,5 +2,7 @@ flask
 flask-cors
 requests
 huggingface_hub
+python-dateutil==2.9.0.post0
+
 torch
 f5-tts

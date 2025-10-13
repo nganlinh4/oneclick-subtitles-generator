@@ -143,7 +143,7 @@
 
 .arrow-button.up {
   position: absolute;
-  top: -32px; /* Positioned above the button */
+  top: -20px; /* Reduced upward overlap into the previous row to avoid hover conflicts */
   left: 0;
   right: 0;
   margin: 0 auto; /* Center horizontally */
@@ -153,7 +153,7 @@
 
 .arrow-button.down {
   position: absolute;
-  bottom: -32px; /* Match the same distance as the top arrow for consistency */
+  bottom: -20px; /* Reduced overlap into the next row to avoid hover conflicts */
   left: 0;
   right: 0;
   margin: 0 auto; /* Center horizontally */
@@ -173,7 +173,7 @@
   z-index: 150; /* Increased z-index to ensure proper stacking */
 }
 
-/* Create a continuous hover area */
+/* Create a continuous hover area that keeps the container hovered while moving to arrows */
 .insert-lyric-button-container::before,
 .merge-lyrics-button-container::before {
   content: '';
@@ -182,18 +182,19 @@
   left: -4px;
   right: -4px;
   bottom: -32px; /* Match the bottom position of the down arrow */
-  background-color: rgba(var(--md-surface-rgb), 0.1); /* Very subtle background */
+  background-color: rgba(var(--md-surface-rgb), 0.08); /* Very subtle background, nearly invisible */
   border-radius: 16px;
-  z-index: -1;
+  z-index: 0; /* Sit behind buttons but above the lyric item background */
   opacity: 0;
-  transition: opacity 0.3s ease;
-  pointer-events: none; /* Prevent the hover area from capturing mouse events */
+  transition: opacity 0.2s ease;
+  pointer-events: none; /* Default to none so non-hovered rows can't intercept pointer */
 }
 
-/* Show the hover area background when hovered */
+/* When the container is hovered, enable the extended hit area to keep hover while moving to arrows */
 .insert-lyric-button-container:hover::before,
 .merge-lyrics-button-container:hover::before {
   opacity: 1;
+  pointer-events: auto; /* Only the actively hovered row gains the extended hover area */
 }
 
 /* Different colors for merge buttons */
@@ -219,3 +220,26 @@
   opacity: 1;
   visibility: visible;
 }
+
+/* Make the active row and its arrows sit above neighbors */
+.lyric-item-container.arrow-hover {
+  z-index: 3000;
+  position: relative;
+}
+.lyric-item-container.arrow-hover .arrow-buttons {
+  z-index: 4000;
+}
+
+/* Give explicit stacking to up/down arrows to favor the current row's down arrow */
+.merge-lyrics-button-container .arrow-button.up {
+  z-index: 1500;
+}
+.merge-lyrics-button-container .arrow-button.down {
+  z-index: 1600;
+}
+
+/* Prevent the next row's merge-above arrow from stealing hover when current row is interacting with arrows */
+.lyric-item-container.arrow-hover + .lyric-item-container .merge-lyrics-button-container .arrow-button.up {
+  pointer-events: none;
+}
+

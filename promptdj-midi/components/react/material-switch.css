@@ -1,0 +1,234 @@
+/* Material Web Switch Styling */
+
+/* Import Material Symbols font for icons */
+@import url('https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:opsz,wght,FILL@20..48,100..700,0..1');
+
+/* Global Material Web Switch theming */
+md-switch {
+  /* Use Material Design 3 color tokens */
+  --md-switch-selected-track-color: var(--md-primary, #6750a4);
+  --md-switch-selected-handle-color: var(--md-on-primary, #ffffff);
+  --md-switch-selected-pressed-track-color: var(--md-primary, #6750a4);
+  --md-switch-selected-pressed-handle-color: var(--md-on-primary, #ffffff);
+  --md-switch-selected-hover-track-color: var(--md-primary, #6750a4);
+  --md-switch-selected-hover-handle-color: var(--md-on-primary, #ffffff);
+  --md-switch-selected-focus-track-color: var(--md-primary, #6750a4);
+  --md-switch-selected-focus-handle-color: var(--md-on-primary, #ffffff);
+  
+  --md-switch-unselected-track-color: var(--md-surface-variant, #e7e0ec);
+  --md-switch-unselected-handle-color: var(--md-outline, #79747e);
+  --md-switch-unselected-pressed-track-color: var(--md-surface-variant, #e7e0ec);
+  --md-switch-unselected-pressed-handle-color: var(--md-on-surface-variant, #49454f);
+  --md-switch-unselected-hover-track-color: var(--md-surface-variant, #e7e0ec);
+  --md-switch-unselected-hover-handle-color: var(--md-on-surface-variant, #49454f);
+  --md-switch-unselected-focus-track-color: var(--md-surface-variant, #e7e0ec);
+  --md-switch-unselected-focus-handle-color: var(--md-on-surface-variant, #49454f);
+  
+  --md-switch-disabled-selected-track-color: var(--md-on-surface, #1d1b20);
+  --md-switch-disabled-selected-handle-color: var(--md-surface, #fef7ff);
+  --md-switch-disabled-unselected-track-color: var(--md-on-surface, #1d1b20);
+  --md-switch-disabled-unselected-handle-color: var(--md-on-surface, #1d1b20);
+  
+  /* Track and handle shape */
+  --md-switch-track-shape: 16px;
+  --md-switch-handle-shape: 50%;
+  
+  /* Track dimensions */
+  --md-switch-track-width: 52px;
+  --md-switch-track-height: 32px;
+  
+  /* Handle dimensions */
+  --md-switch-handle-width: 24px;
+  --md-switch-handle-height: 24px;
+  --md-switch-selected-handle-width: 24px;
+  --md-switch-selected-handle-height: 24px;
+  
+  /* Icon styling - Default check/close icons */
+  --md-switch-icon-size: 16px;
+  --md-switch-selected-icon-color: var(--md-on-primary, #ffffff);
+  --md-switch-unselected-icon-color: var(--md-on-surface-variant, #49454f);
+}
+
+/* Container for switch with label */
+.material-switch-container {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  cursor: pointer;
+}
+
+.material-switch-container:has(md-switch[disabled]) {
+  cursor: not-allowed;
+  opacity: 0.6;
+}
+
+/* Label styling */
+.material-switch-label {
+  font-size: var(--md-sys-typescale-body-medium-size, 0.875rem);
+  font-weight: var(--md-sys-typescale-body-medium-weight, 400);
+  line-height: var(--md-sys-typescale-body-medium-line-height, 1.25rem);
+  color: var(--md-on-surface, #1d1b20);
+  user-select: none;
+}
+
+/* Disabled label styling */
+.material-switch-container:has(md-switch[disabled]) .material-switch-label {
+  color: var(--md-on-surface-variant, #49454f);
+}
+
+/* Focus ring styling with enhanced icon visibility */
+md-switch:focus-visible {
+  outline: 2px solid var(--md-primary, #6750a4);
+  outline-offset: 2px;
+  border-radius: 20px;
+}
+
+/* Enhanced icon colors for focus state - better contrast */
+md-switch[icons]:focus-visible svg[slot="on-icon"] {
+  color: var(--md-primary, #6750a4);
+  opacity: 0.9;
+}
+
+md-switch[icons]:focus-visible svg[slot="off-icon"] {
+  color: var(--md-on-surface, #1d1b20);
+  opacity: 0.9;
+}
+
+/* Focus state for selected switch */
+md-switch[icons]:focus-visible[selected] svg[slot="on-icon"] {
+  color: var(--md-primary, #6750a4);
+  opacity: 1;
+}
+
+/* Focus state for unselected switch */
+md-switch[icons]:focus-visible:not([selected]) svg[slot="off-icon"] {
+  color: var(--md-on-surface, #1d1b20);
+  opacity: 1;
+}
+
+/* High contrast mode support */
+@media (prefers-contrast: high) {
+  md-switch {
+    --md-switch-selected-track-color: var(--md-primary, #0000ff);
+    --md-switch-unselected-track-color: var(--md-outline, #000000);
+    --md-switch-selected-handle-color: var(--md-on-primary, #ffffff);
+    --md-switch-unselected-handle-color: var(--md-on-surface, #000000);
+  }
+}
+
+/* Reduced motion support */
+@media (prefers-reduced-motion: reduce) {
+  md-switch {
+    --md-switch-transition-duration: 0ms;
+  }
+}
+
+/* Dark theme support */
+@media (prefers-color-scheme: dark) {
+  md-switch {
+    --md-switch-selected-track-color: var(--md-primary, #d0bcff);
+    --md-switch-selected-handle-color: var(--md-on-primary, #381e72);
+    --md-switch-unselected-track-color: var(--md-surface-variant, #49454f);
+    --md-switch-unselected-handle-color: var(--md-outline, #938f99);
+
+    --md-switch-disabled-selected-track-color: var(--md-on-surface, #e6e0e9);
+    --md-switch-disabled-selected-handle-color: var(--md-surface, #141218);
+    --md-switch-disabled-unselected-track-color: var(--md-on-surface, #e6e0e9);
+    --md-switch-disabled-unselected-handle-color: var(--md-on-surface, #e6e0e9);
+
+    /* Dark theme icon colors - contrast with dark theme thumb */
+    --md-switch-selected-icon-color: var(--md-primary, #d0bcff);
+    --md-switch-unselected-icon-color: var(--md-on-surface, #e6e0e9);
+  }
+  
+  .material-switch-label {
+    color: var(--md-on-surface, #e6e0e9);
+  }
+  
+  .material-switch-container:has(md-switch[disabled]) .material-switch-label {
+    color: var(--md-on-surface-variant, #938f99);
+  }
+
+  /* Dark theme focus state icon colors - better contrast */
+  md-switch[icons]:focus-visible svg[slot="on-icon"] {
+    color: var(--md-primary, #d0bcff);
+    opacity: 0.9;
+  }
+
+  md-switch[icons]:focus-visible svg[slot="off-icon"] {
+    color: var(--md-on-surface, #e6e0e9);
+    opacity: 0.9;
+  }
+
+  md-switch[icons]:focus-visible[selected] svg[slot="on-icon"] {
+    color: var(--md-primary, #d0bcff);
+    opacity: 1;
+  }
+
+  md-switch[icons]:focus-visible:not([selected]) svg[slot="off-icon"] {
+    color: var(--md-on-surface, #e6e0e9);
+    opacity: 1;
+  }
+}
+
+/* Compact switch variant */
+.material-switch-compact md-switch {
+  --md-switch-track-width: 44px;
+  --md-switch-track-height: 24px;
+  --md-switch-handle-width: 20px;
+  --md-switch-handle-height: 20px;
+  --md-switch-selected-handle-width: 20px;
+  --md-switch-selected-handle-height: 20px;
+  --md-switch-icon-size: 12px;
+}
+
+/* Large switch variant */
+.material-switch-large md-switch {
+  --md-switch-track-width: 60px;
+  --md-switch-track-height: 36px;
+  --md-switch-handle-width: 28px;
+  --md-switch-handle-height: 28px;
+  --md-switch-selected-handle-width: 28px;
+  --md-switch-selected-handle-height: 28px;
+  --md-switch-icon-size: 20px;
+}
+
+/* Ensure slotted icons are properly styled */
+md-switch[icons] svg[slot="on-icon"],
+md-switch[icons] svg[slot="off-icon"] {
+  width: var(--md-switch-icon-size, 16px);
+  height: var(--md-switch-icon-size, 16px);
+  fill: currentColor;
+}
+
+/* Icon colors for different states - contrast with thumb background */
+md-switch[icons] svg[slot="on-icon"] {
+  color: var(--md-switch-selected-icon-color, var(--md-primary, #6750a4));
+}
+
+md-switch[icons] svg[slot="off-icon"] {
+  color: var(--md-switch-unselected-icon-color, var(--md-on-surface, #1d1b20));
+}
+
+/* High contrast mode - ensure maximum contrast with thumb */
+@media (prefers-contrast: high) {
+  md-switch[icons] svg[slot="on-icon"] {
+    color: #000000; /* Black icon on white/light thumb */
+  }
+
+  md-switch[icons] svg[slot="off-icon"] {
+    color: #000000; /* Black icon on white/light thumb */
+  }
+
+  /* High contrast focus states */
+  md-switch[icons]:focus-visible svg[slot="on-icon"] {
+    color: #000000;
+    opacity: 1;
+  }
+
+  md-switch[icons]:focus-visible svg[slot="off-icon"] {
+    color: #000000;
+    opacity: 1;
+  }
+}
+

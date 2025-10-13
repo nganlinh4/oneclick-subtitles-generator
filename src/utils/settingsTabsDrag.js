@@ -8,23 +8,21 @@
  * @param {string} tabsSelector - CSS selector for the settings tabs container
  */
 export const initSettingsTabsDrag = (tabsSelector = '.settings-tabs') => {
-  // Find all settings tab containers
+  // FIX: Import both the main initializer and the specific update function
+  const { default: initSettingsTabPillAnimation, positionPillForActiveTab } = require('./settingsTabPillAnimation');
+  
   const tabContainers = document.querySelectorAll(tabsSelector);
-
   if (!tabContainers.length) return;
 
-  // For each tab container, set up the drag functionality
   tabContainers.forEach(tabContainer => {
-    // Variables to track drag state
+    // FIX: Run the full initialization only ONCE per container
+    initSettingsTabPillAnimation(tabsSelector);
+    
     let isDragging = false;
     let startX = 0;
     let startScrollLeft = 0;
-    let animationFrameId = null;
+    let scrollDebounceTimer = null;
 
-    // Import the pill animation function
-    const initSettingsTabPillAnimation = require('./settingsTabPillAnimation').default;
-
-    // Check if tabs overflow and add indicator class
     const checkOverflow = () => {
       if (tabContainer.scrollWidth > tabContainer.clientWidth) {
         tabContainer.classList.add('has-overflow');
@@ -32,33 +30,24 @@ export const initSettingsTabsDrag = (tabsSelector = '.settings-tabs') => {
         tabContainer.classList.remove('has-overflow');
       }
     };
-
-    // Initial overflow check
     checkOverflow();
+    window.addEventListener('resize', checkOverflow);
 
-    // Function to update pill position when scrolling
+    // FIX: This update function is now lightweight. It calls the exported
+    // `positionPillForActiveTab` directly instead of re-initializing everything.
     const updatePillPosition = () => {
-      // Small delay to ensure DOM is updated
-      setTimeout(() => {
-        initSettingsTabPillAnimation(tabsSelector);
-      }, 10);
+      positionPillForActiveTab(tabContainer);
     };
 
-    // Handle mouse down event
     const handleMouseDown = (e) => {
-      // Only handle primary mouse button (left click)
       if (e.button !== 0) return;
-
       isDragging = true;
       tabContainer.classList.add('dragging');
       startX = e.pageX;
       startScrollLeft = tabContainer.scrollLeft;
-
-      // Prevent default behavior to avoid text selection
       e.preventDefault();
     };
 
-    // Handle touch start event
     const handleTouchStart = (e) => {
       isDragging = true;
       tabContainer.classList.add('dragging');
@@ -66,116 +55,52 @@ export const initSettingsTabsDrag = (tabsSelector = '.settings-tabs') => {
       startScrollLeft = tabContainer.scrollLeft;
     };
 
-    // Handle mouse move event
-    const handleMouseMove = (e) => {
+    const handleMove = (x) => {
       if (!isDragging) return;
-
-      // Calculate how far the mouse has moved
-      const x = e.pageX;
       const deltaX = x - startX;
-
-      // Use requestAnimationFrame for smooth scrolling
-      if (animationFrameId) {
-        cancelAnimationFrame(animationFrameId);
-      }
-
-      animationFrameId = requestAnimationFrame(() => {
-        tabContainer.scrollLeft = startScrollLeft - deltaX;
-      });
+      // No requestAnimationFrame needed here; direct manipulation is more responsive for dragging
+      tabContainer.scrollLeft = startScrollLeft - deltaX;
     };
 
-    // Handle touch move event
+    const handleMouseMove = (e) => handleMove(e.pageX);
     const handleTouchMove = (e) => {
-      if (!isDragging) return;
-
-      // Calculate how far the touch has moved
-      const x = e.touches[0].pageX;
-      const deltaX = x - startX;
-
-      // Use requestAnimationFrame for smooth scrolling
-      if (animationFrameId) {
-        cancelAnimationFrame(animationFrameId);
-      }
-
-      animationFrameId = requestAnimationFrame(() => {
-        tabContainer.scrollLeft = startScrollLeft - deltaX;
-      });
-
-      // Prevent page scrolling
-      e.preventDefault();
+      handleMove(e.touches[0].pageX);
+      e.preventDefault(); // Prevent page scroll while dragging tabs
     };
 
-    // Handle mouse up event
-    const handleMouseUp = () => {
+    const handleRelease = () => {
       isDragging = false;
       tabContainer.classList.remove('dragging');
-
-      if (animationFrameId) {
-        cancelAnimationFrame(animationFrameId);
-        animationFrameId = null;
-      }
-
-      // Update pill position after scrolling stops
-      updatePillPosition();
     };
 
-    // Handle touch end event
-    const handleTouchEnd = () => {
-      isDragging = false;
-      tabContainer.classList.remove('dragging');
-
-      if (animationFrameId) {
-        cancelAnimationFrame(animationFrameId);
-        animationFrameId = null;
-      }
-
-      // Update pill position after scrolling stops
-      updatePillPosition();
-    };
-
-    // Handle window resize event
-    const handleResize = () => {
-      checkOverflow();
-    };
-
-    // Handle scroll event
+    // Use a debounced call on scroll to avoid excessive updates
     const handleScroll = () => {
-      // Use debounce to avoid too many updates
-      if (animationFrameId) {
-        cancelAnimationFrame(animationFrameId);
-      }
-
-      animationFrameId = requestAnimationFrame(() => {
-        updatePillPosition();
-      });
+      clearTimeout(scrollDebounceTimer);
+      scrollDebounceTimer = setTimeout(updatePillPosition, 50); // Debounce for 50ms
     };
 
-    // Add event listeners
     tabContainer.addEventListener('mousedown', handleMouseDown);
-    tabContainer.addEventListener('touchstart', handleTouchStart, { passive: false });
+    tabContainer.addEventListener('touchstart', handleTouchStart, { passive: true }); // passive: true is fine for start
     window.addEventListener('mousemove', handleMouseMove);
     window.addEventListener('touchmove', handleTouchMove, { passive: false });
-    window.addEventListener('mouseup', handleMouseUp);
-    window.addEventListener('touchend', handleTouchEnd);
-    window.addEventListener('resize', handleResize);
+    window.addEventListener('mouseup', handleRelease);
+    window.addEventListener('touchend', handleRelease);
     tabContainer.addEventListener('scroll', handleScroll, { passive: true });
 
-    // Store cleanup function on the element
     tabContainer._cleanupDrag = () => {
+      window.removeEventListener('resize', checkOverflow);
       tabContainer.removeEventListener('mousedown', handleMouseDown);
       tabContainer.removeEventListener('touchstart', handleTouchStart);
       window.removeEventListener('mousemove', handleMouseMove);
       window.removeEventListener('touchmove', handleTouchMove);
-      window.removeEventListener('mouseup', handleMouseUp);
-      window.removeEventListener('touchend', handleTouchEnd);
-      window.removeEventListener('resize', handleResize);
+      window.removeEventListener('mouseup', handleRelease);
+      window.removeEventListener('touchend', handleRelease);
       tabContainer.removeEventListener('scroll', handleScroll);
     };
   });
 
-  // Return a cleanup function
   return () => {
-    tabContainers.forEach(tabContainer => {
+    document.querySelectorAll(tabsSelector).forEach(tabContainer => {
       if (tabContainer._cleanupDrag) {
         tabContainer._cleanupDrag();
         delete tabContainer._cleanupDrag;

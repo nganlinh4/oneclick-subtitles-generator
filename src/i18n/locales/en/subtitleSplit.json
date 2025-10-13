@@ -9,23 +9,13 @@
   "apply": "Apply",
   "exampleTitle": "Examples:",
   "example1": {
-    "title": "6 words, limit 5:",
     "split": "Split into 3-3 (not 5-1)",
     "timing": "Timings: 50%-50%"
   },
   "example2": {
-    "title": "7 words, limit 5:",
-    "split": "Split into 4-3 (not 5-2)",
-    "timing": "Timings: 57%-43%"
   },
   "example3": {
-    "title": "12 words, limit 5:",
-    "split": "Split into 4-4-4 (not 5-5-2)",
-    "timing": "Timings: 33%-33%-33%"
   },
   "example4": {
-    "title": "13 words, limit 5:",
-    "split": "Split into 5-4-4 (not 5-5-3)",
-    "timing": "Timings: 38%-31%-31%"
   }
 }

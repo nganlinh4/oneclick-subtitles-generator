@@ -7,7 +7,6 @@
  * Initialize the pill sliding animation for the given tabs container
  * @param {string} tabsSelector - CSS selector for the tabs container
  */
-// Ensure a reusable SVG goo filter exists in the DOM
 const ensureGooFilter = () => {
   if (document.getElementById('goo-filter-defs')) return;
   const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
@@ -19,19 +18,18 @@ const ensureGooFilter = () => {
   svg.innerHTML = `
     <defs>
       <filter id="goo">
-        <feGaussianBlur in="SourceGraphic" stdDeviation="8" result="blur" />
+        <feGaussianBlur in="SourceGraphic" stdDeviation="10" result="blur" />
         <feColorMatrix in="blur" mode="matrix" values="
           1 0 0 0 0
           0 1 0 0 0
           0 0 1 0 0
-          0 0 0 22 -10" result="goo" />
+          0 0 0 28 -11" result="goo" />
         <feBlend in="SourceGraphic" in2="goo" />
       </filter>
     </defs>`;
   document.body.appendChild(svg);
 };
 
-// Simple spring physics animator for goo blob (per-container)
 const gooSims = new WeakMap();
 
 const startGooSim = (tabContainer, targetLeft, targetWidth, dir) => {
@@ -46,7 +44,6 @@ const startGooSim = (tabContainer, targetLeft, targetWidth, dir) => {
   if (!sim) {
     const computed = getComputedStyle(blob);
     const w0 = parseFloat(computed.width) || targetWidth;
-    // Compute current left relative to overlay
     const bRect = blob.getBoundingClientRect();
     const oRect = overlay.getBoundingClientRect();
     let x0 = bRect.left - oRect.left;
@@ -62,40 +59,47 @@ const startGooSim = (tabContainer, targetLeft, targetWidth, dir) => {
     const dt = Math.min(0.032, (ts - now) / 1000) || 0.016;
     now = ts;
 
-    // Horizontal spring
-    const k = 120;   // stiffness
-    const c = 20;    // damping
+    const k = 250;
+    const c = 30;
     const ax = -k * (sim.x - sim.targetX) - c * sim.v;
     sim.v += ax * dt;
     sim.x += sim.v * dt;
 
-    // Width spring coupled to distance AND velocity so the blend starts earlier
-    const kW = 220;
-    const cW = 24;
+    const kW = 300;
+    const cW = 32;
     const dist = Math.abs(sim.targetX - sim.x);
     const vel = Math.abs(sim.v);
-    const extra = Math.min(40, 0.35 * dist + 0.12 * vel); // cap extra stretch
+    const extra = Math.min(40, 0.2 * dist + 0.08 * vel);
     const dynamicTargetW = sim.targetW + extra;
     const aw = -kW * (sim.w - dynamicTargetW) - cW * sim.vw;
     sim.vw += aw * dt;
     sim.w += sim.vw * dt;
 
-    // Apply
     blob.style.left = `${sim.x}px`;
     blob.style.width = `${Math.max(28, sim.w)}px`;
 
-    // Velocity-based squish; faster move = more stretch, but keep it subtle
-    const speed = Math.min(900, Math.abs(sim.v) * 60);
-    const sx = 1 + (speed / 900) * 0.18;       // up to ~1.18x
-    const sy = 1 - (speed / 900) * 0.12;       // down to ~0.88x
-    const syClamped = Math.max(0.86, sy);
-    blob.style.transformOrigin = (dir >= 0 ? '0% 50%' : '100% 50%');
-    blob.style.transform = `translateY(-50%) scaleX(${sx.toFixed(3)}) scaleY(${syClamped.toFixed(3)})`;
+    const speed = Math.min(1000, Math.abs(sim.v) * 60);
+    const sx = 1 + (speed / 1000) * 0.1;
+    const sy = 1 - (speed / 1000) * 0.08;
+    const skew = Math.min(4, Math.abs(sim.v) * 0.012) * (dir > 0 ? -1 : 1);
 
-    const atRestX = Math.abs(sim.x - sim.targetX) < 0.5 && Math.abs(sim.v) < 5;
-    const atRestW = Math.abs(sim.w - sim.targetW) < 0.5 && Math.abs(sim.vw) < 5;
+    const pillHeight = 45;
+    const maxRadius = pillHeight / 2;
+    const dynamicRadius = (maxRadius / sy).toFixed(1);
+    blob.style.borderRadius = `${dynamicRadius}px`;
+    
+    blob.style.transformOrigin = (dir >= 0 ? '0% 50%' : '100% 50%');
+    blob.style.transform = `translateY(-50%) scaleX(${sx.toFixed(3)}) scaleY(${sy.toFixed(3)}) skewX(${skew.toFixed(2)}deg)`;
+
+    const atRestX = Math.abs(sim.x - sim.targetX) < 0.1 && Math.abs(sim.v) < 0.1;
+    const atRestW = Math.abs(sim.w - sim.targetW) < 0.1 && Math.abs(sim.vw) < 0.1;
+    
     if (atRestX && atRestW) {
-      blob.style.transform = 'translateY(-50%) scaleX(1) scaleY(1)';
+      blob.style.left = `${sim.targetX}px`;
+      blob.style.width = `${sim.targetW}px`;
+      blob.style.transform = 'translateY(-50%)';
+      blob.style.borderRadius = '';
+      
       sim.raf = 0;
       return;
     }
@@ -106,17 +110,11 @@ const startGooSim = (tabContainer, targetLeft, targetWidth, dir) => {
 };
 
 export const initTabPillAnimation = (tabsSelector = '.input-tabs') => {
-  // Find all tab containers
   const tabContainers = document.querySelectorAll(tabsSelector);
-
   if (!tabContainers.length) return;
-
-  // Prepare SVG goo filter for gooey effect
   ensureGooFilter();
 
-  // For each tab container, set up the animation
   tabContainers.forEach(tabContainer => {
-    // Ensure goo overlay exists
     if (!tabContainer.querySelector('.pill-overlay')) {
       const overlay = document.createElement('div');
       overlay.className = 'pill-overlay';
@@ -125,30 +123,21 @@ export const initTabPillAnimation = (tabsSelector = '.input-tabs') => {
       tabContainer.classList.add('goo-ready');
     }
 
-    // Initial positioning of the pill
     positionPillForActiveTab(tabContainer);
 
-
-
-    // Add event listeners to all tab buttons
     const tabButtons = tabContainer.querySelectorAll('.tab-btn');
     tabButtons.forEach(button => {
       button.addEventListener('click', () => {
-        // Reset wasActive and lastActive flags on all tabs when any tab is clicked
         tabButtons.forEach(tab => {
           if (tab !== button) {
             tab.dataset.wasActive = 'false';
             tab.dataset.lastActive = 'false';
           }
         });
-
-        // Small delay to allow the active class to be applied
         setTimeout(() => positionPillForActiveTab(tabContainer), 10);
       });
 
-      // Press overlay geometry for non-active tabs so the hold state matches the tab size
       const setPressVars = (btn) => {
-        // If pressing the active tab, let CSS fall back to --pill-*; no overrides needed
         if (btn.classList.contains('active')) {
           tabContainer.style.removeProperty('--press-pill-left');
           tabContainer.style.removeProperty('--press-pill-width');
@@ -157,8 +146,8 @@ export const initTabPillAnimation = (tabsSelector = '.input-tabs') => {
         const tabRect = btn.getBoundingClientRect();
         const containerRect = tabContainer.getBoundingClientRect();
         const left = tabRect.left - containerRect.left + tabContainer.scrollLeft;
-        const pillPadding = 8; // keep in sync with positionPillForActiveTab
-        const naturalWidth = tabRect.width; // non-active tabs are not scaled
+        const pillPadding = 8;
+        const naturalWidth = tabRect.width;
         const pressWidth = naturalWidth + pillPadding;
         tabContainer.style.setProperty('--press-pill-width', `${pressWidth}px`);
         tabContainer.style.setProperty('--press-pill-left', `${left - (pillPadding / 2)}px`);
@@ -168,19 +157,15 @@ export const initTabPillAnimation = (tabsSelector = '.input-tabs') => {
         tabContainer.style.removeProperty('--press-pill-width');
       };
 
-      // Attach press/hold listeners
       ['pointerdown','mousedown','touchstart'].forEach(evt => {
         button.addEventListener(evt, () => setPressVars(button), { passive: true });
       });
       ['pointerup','mouseup','touchend','touchcancel','pointercancel','mouseleave','pointerout','blur'].forEach(evt => {
         button.addEventListener(evt, clearPressVars, { passive: true });
       });
-
     });
 
-    // Also handle window resize events
     window.addEventListener('resize', () => {
-      // Reset wasActive and lastActive flags on resize to ensure proper recalculation
       tabButtons.forEach(tab => {
         tab.dataset.wasActive = 'false';
         tab.dataset.lastActive = 'false';
@@ -190,96 +175,63 @@ export const initTabPillAnimation = (tabsSelector = '.input-tabs') => {
   });
 };
 
-/**
- * Position the pill background for the active tab
- * @param {HTMLElement} tabContainer - The tabs container element
- */
 const positionPillForActiveTab = (tabContainer) => {
   const activeTab = tabContainer.querySelector('.tab-btn.active');
 
-  // If no active tab, hide the pill
   if (!activeTab) {
     tabContainer.style.setProperty('--pill-width', '0px');
     tabContainer.style.setProperty('--pill-left', '0px');
     return;
   }
 
-  // Check if pill width is already set and this is just a re-click on the same tab
-  // Only skip recalculation if it's the same tab being clicked again
   const currentPillWidth = tabContainer.style.getPropertyValue('--pill-width');
   const isReclick = activeTab.dataset.wasActive === 'true' &&
                     activeTab.dataset.lastActive === 'true';
 
   if (currentPillWidth && currentPillWidth !== '0px' && isReclick) {
-    // This is a re-click on the same tab, no need to recalculate
     return;
   }
 
-  // Mark all tabs as not being the last active tab
   const allTabs = tabContainer.querySelectorAll('.tab-btn');
   allTabs.forEach(tab => {
     tab.dataset.lastActive = 'false';
   });
 
-  // Mark this tab as having been active and as the last active tab
   activeTab.dataset.wasActive = 'true';
   activeTab.dataset.lastActive = 'true';
 
-  // Get the position and dimensions of the active tab
   const tabRect = activeTab.getBoundingClientRect();
   const containerRect = tabContainer.getBoundingClientRect();
-
-  // Calculate the left position relative to the container
   let left = tabRect.left - containerRect.left + tabContainer.scrollLeft;
+  const pillPadding = 8;
 
-  // Add a small padding to make the pill slightly wider than the tab for a more modern look
-  const pillPadding = 8; // 4px on each side
-
-  // Create a clone of the active tab to measure its true width without scaling
   const tabClone = activeTab.cloneNode(true);
-  tabClone.style.transform = 'none'; // Remove any transform
+  tabClone.style.transform = 'none';
   tabClone.style.position = 'absolute';
   tabClone.style.visibility = 'hidden';
-  tabClone.style.display = 'flex'; // Ensure it's displayed the same way
-  tabClone.classList.remove('active'); // Remove active class to avoid scaling
+  tabClone.style.display = 'flex';
+  tabClone.classList.remove('active');
   document.body.appendChild(tabClone);
 
-  // Get the natural width of the tab without scaling
   const naturalWidth = tabClone.getBoundingClientRect().width;
-
-  // Clean up
   document.body.removeChild(tabClone);
 
-  // Calculate pill width based on the natural width plus padding
   const pillWidth = naturalWidth + pillPadding;
-
-  // Adjust the left position to account for the scaling effect
-  // The scaling happens from the center, so we need to adjust the left position
   const widthDifference = tabRect.width - (naturalWidth);
   left = left + (widthDifference / 2);
 
-  // Determine direction and travel for liquid motion
-  const computed = getComputedStyle(tabContainer);
-  const prevLeftVal = parseFloat(computed.getPropertyValue('--pill-left')) || parseFloat(tabContainer.style.getPropertyValue('--pill-left')) || 0;
   const newLeftVal = left - (pillPadding / 2);
-  const travel = Math.abs(newLeftVal - prevLeftVal);
-  const dir = (newLeftVal >= prevLeftVal) ? 1 : -1;
-  const delayMs = Math.round(Math.min(140, Math.max(70, travel * 0.25)));
-
-  // Motion tuning variables for CSS
-  tabContainer.style.setProperty('--pill-origin-x', dir >= 0 ? '0%' : '100%');
-  tabContainer.style.setProperty('--pill-left-delay', dir > 0 ? `${delayMs}ms` : '0ms');
-  tabContainer.style.setProperty('--pill-width-delay', dir > 0 ? '0ms' : `${delayMs}ms`);
-  tabContainer.style.setProperty('--pill-travel', `${travel}px`);
-
-  // Set the geometry variables
+  const dir = (newLeftVal >= (parseFloat(tabContainer.style.getPropertyValue('--pill-left')) || 0)) ? 1 : -1;
+  
+  // These are for the CSS fallback and can be kept
   tabContainer.style.setProperty('--pill-width', `${pillWidth}px`);
   tabContainer.style.setProperty('--pill-left', `${newLeftVal}px`);
-
-
-  // Start physics-based goo animation (spring)
+  
+  // *** THE FIX IS HERE ***
+  // We make the source blob 40px wider and shift it left by 20px.
+  // This compensates for the blur shrinkage from the SVG goo filter,
+  // ensuring the final VISIBLE pill has the correct, comfortable width.
   startGooSim(tabContainer, newLeftVal - 20, pillWidth + 40, dir);
-
 };
 
 export default initTabPillAnimation;

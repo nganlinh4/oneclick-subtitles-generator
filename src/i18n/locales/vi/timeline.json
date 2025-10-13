@@ -10,5 +10,6 @@
   "dragToZoom": "Kéo để thu phóng",
   "clearOfflineSegments": "Dọn các phân đoạn offline",
   "retryFromCache": "Thử lại đoạn cắt này (tái sử dụng clip đã lưu)",
-  "clearOfflineFirst": "Vui lòng dọn các phân đoạn offline trước để thoát chế độ này"
+  "clearOfflineFirst": "Vui lòng dọn các phân đoạn offline trước để thoát chế độ này",
+  "offlineClearNotice": "Đã dọn phân đoạn offline trong giao diện. Tập tin sẽ được xóa nền và có thể còn lại một lúc do khóa hệ điều hành."
 }

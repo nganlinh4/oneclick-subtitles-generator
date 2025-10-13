@@ -28,8 +28,6 @@
   "gemini25Warning": "(Gemini 2.5 Pro, 2.5 Flash, 2.5 Flash Lite) 이 사용 사례에 적합하지 않습니다"
 ,
   "autoEraseBlankLines": "빈 줄 자동 삭제"
-
 ,
   "autoEraseBlankLinesHelp": "붙여넣은 텍스트와 기존 내용에서 빈 줄을 자동으로 제거합니다. 입력 중에는 방해하지 않습니다."
-
 }

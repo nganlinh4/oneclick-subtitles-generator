@@ -508,6 +508,7 @@ export const useLyricsEditor = (initialLyrics, onUpdateLyrics) => {
 
     // Create a new merged lyric
     const mergedLyric = {
+      id: currentLyric.id,
       text: `${currentLyric.text} ${nextLyric.text}`.trim(),
       start: currentLyric.start,
       end: nextLyric.end

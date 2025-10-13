@@ -35,6 +35,9 @@ export const processVideoWithFilesApi = async (mediaFile, onStatusUpdate, t, opt
 
     // Prepare video metadata options
     let videoMetadata = customVideoMetadata || {};
+    // Preserve flip flags from cropSettings so renderer can apply them
+    if (options?.cropSettings?.flipX !== undefined) videoMetadata.flipX = Boolean(options.cropSettings.flipX);
+    if (options?.cropSettings?.flipY !== undefined) videoMetadata.flipY = Boolean(options.cropSettings.flipY);
 
     // Apply default video processing settings if not provided
     if (!customVideoMetadata) {
@@ -211,6 +214,25 @@ export const createVideoMetadata = (options = {}) => {
   // It's controlled by the mediaResolution parameter in the request
   if (resolution) {
     console.log(`Video resolution preference: ${resolution} (will be applied via mediaResolution parameter)`);
+  }
+
+  // Propagate flip flags if provided either in options or nested cropSettings.
+  // This ensures any consumer (Files API, renderer or server) receives explicit flip metadata.
+  if (options) {
+    // Top-level flags
+    if (typeof options.flipX !== 'undefined') {
+      metadata.flipX = Boolean(options.flipX);
+    }
+    if (typeof options.flipY !== 'undefined') {
+      metadata.flipY = Boolean(options.flipY);
+    }
+
+    // Nested crop settings (common UI shape)
+    const cs = options.cropSettings ?? options.crop ?? null;
+    if (cs && typeof cs === 'object') {
+      if (typeof cs.flipX !== 'undefined') metadata.flipX = Boolean(cs.flipX);
+      if (typeof cs.flipY !== 'undefined') metadata.flipY = Boolean(cs.flipY);
+    }
   }
 
   return metadata;

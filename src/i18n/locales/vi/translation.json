@@ -58,7 +58,6 @@
   "noRulesAvailable": "Không có quy tắc phiên âm nào. Tùy chọn này yêu cầu phân tích video với Gemini trước.",
   "customSubtitlesNoRules": "Tùy chọn này bị vô hiệu hóa vì bạn đã cung cấp phụ đề tùy chỉnh. Chế độ phụ đề tùy chỉnh bỏ qua phân tích video và tạo quy tắc.",
   "allSubtitles": "Tất cả {{count}} phụ đề",
-  "segment": "Đoạn",
   "addLanguage": "Thêm ngôn ngữ",
   "removeLanguage": "Xóa",
   "multiLanguageDescription": "Dịch sang nhiều ngôn ngữ cùng lúc",
@@ -106,7 +105,6 @@
     "processing": "Đang xử lý tệp {{current}}/{{total}}: {{filename}}",
     "complete": "Dịch hàng loạt hoàn thành: {{success}}/{{total}} tệp được xử lý thành công",
     "completeWithMain": "Tệp hàng loạt hoàn thành: {{success}}/{{bulkTotal}} tệp hàng loạt đã xử lý, tệp chính tiếp theo ({{current}}/{{total}} tổng)",
-    "error": "Lỗi trong quá trình dịch hàng loạt: {{message}}",
     "downloadAll": "Tải xuống tất cả",
     "downloadZip": "Tải xuống ZIP"
   },

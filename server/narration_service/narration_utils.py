@@ -3,6 +3,9 @@ import logging
 import torch
 from .narration_config import HAS_F5TTS, device
 
+# Import F5-TTS patch to enable custom config support
+from .f5tts_patch import patch_f5tts
+
 logger = logging.getLogger(__name__)
 
 def load_tts_model(model_id=None):
@@ -55,12 +58,33 @@ def load_tts_model(model_id=None):
                   # Depending on F5TTS, None might be acceptable if vocab is bundled or not needed
 
              # Only pass parameters that F5TTS actually accepts
-
-             tts_instance = F5TTS(
-                 device=device,
-                 ckpt_file=model_path,
-                 vocab_file=vocab_path # Pass None if vocab_path is None or empty
-             )
+             config_dict = model_info.get("config", {})
+             if config_dict:
+                 # Structure config to match yaml format
+                 structured_config = {
+                     "backbone": "DiT",
+                     "arch": config_dict,
+                     "mel_spec": {
+                         "mel_spec_type": "vocos",
+                         "target_sample_rate": 24000,
+                         "n_mel_channels": 100,
+                         "hop_length": 256,
+                         "win_length": 1024,
+                         "n_fft": 1024
+                     }
+                 }
+                 tts_instance = F5TTS(
+                     device=device,
+                     ckpt_file=model_path,
+                     vocab_file=vocab_path, # Pass None if vocab_path is None or empty
+                     config_dict=structured_config
+                 )
+             else:
+                 tts_instance = F5TTS(
+                     device=device,
+                     ckpt_file=model_path,
+                     vocab_file=vocab_path # Pass None if vocab_path is None or empty
+                 )
 
 
         return tts_instance, target_model_id

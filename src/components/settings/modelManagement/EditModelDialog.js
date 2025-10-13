@@ -5,6 +5,7 @@ import LanguageIcon from '@mui/icons-material/Language';
 import LinkIcon from '@mui/icons-material/Link';
 import CustomModelDialog from '../CustomModelDialog';
 import LanguageCodeInput from './LanguageCodeInput';
+import CustomScrollbarTextarea from '../../common/CustomScrollbarTextarea';
 
 /**
  * Component for editing a model
@@ -101,7 +102,7 @@ const EditModelDialog = ({
 
       <div className="form-field">
         <label htmlFor="editConfig">{t('settings.modelManagement.modelConfig')}</label>
-        <textarea
+        <CustomScrollbarTextarea
           id="editConfig"
           value={form.config}
           onChange={(e) => onFormChange('config', e.target.value)}

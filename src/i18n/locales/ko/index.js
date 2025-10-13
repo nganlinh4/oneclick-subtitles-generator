@@ -31,6 +31,7 @@ import subtitlesInput from './subtitlesInput.json';
 import segmentRetry from './segmentRetry.json';
 import narration from './narration.json';
 import backgroundGenerator from './backgroundGenerator.json';
+import backgroundMusic from './backgroundMusic.json';
 import videoRendering from './videoRendering.json';
 import fontModal from './fontModal.json';
 import videoQuality from './videoQuality.json';
@@ -73,6 +74,7 @@ const koTranslations = {
   segmentRetry,
   narration,
   backgroundGenerator,
+  backgroundMusic,
   videoRendering,
   fontModal,
   videoQuality,

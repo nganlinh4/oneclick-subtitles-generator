@@ -168,11 +168,14 @@ const generateNarration = async (reference_audio, reference_text, subtitles, set
 
               // Send a final enhanced complete event if we have results
               if (allResults.length > 0) {
-                // Clean up old subtitle directories if using grouped subtitles
+                // Clean up old subtitle directories if using grouped subtitles, unless this is a retry/skip-cleanup mode
                 const hasGroupedSubtitles = subtitles.some(subtitle => subtitle.original_ids && subtitle.original_ids.length > 0);
-                if (hasGroupedSubtitles) {
+                const skipCleanup = (settings && (settings.skipCleanup === true || settings.skipClearOutput === true || settings.retryMode === 'single' || settings.retryMode === 'failed')) || (typeof window !== 'undefined' && window.__narrationRetryMode);
+                if (hasGroupedSubtitles && !skipCleanup) {
                   console.log('F5-TTS: Detected grouped subtitles, cleaning up old directories');
                   cleanupOldSubtitleDirectories(subtitles);
+                } else if (hasGroupedSubtitles && skipCleanup) {
+                  console.log('F5-TTS: Detected grouped subtitles, but skipping cleanup due to retry/skip flag');
                 }
 
                 // Removed enhancement logging

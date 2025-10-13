@@ -15,6 +15,7 @@ const FontSelectionModal = ({ isOpen, onClose, selectedFont, onFontSelect }) => 
   const contentRef = useRef(null);
 
 
+
   // Calculate and set modal height for smooth transitions
   const updateModalHeight = useCallback(() => {
     if (modalRef.current && contentRef.current && isOpen) {
@@ -122,7 +123,13 @@ const FontSelectionModal = ({ isOpen, onClose, selectedFont, onFontSelect }) => 
   }, {});
 
   const handleFontSelect = (font) => {
-    onFontSelect(font.value);
+    if (typeof font === 'string') {
+      // Local font
+      onFontSelect(font);
+    } else {
+      // Google Font
+      onFontSelect(font.value);
+    }
     onClose();
   };
 
@@ -138,7 +145,9 @@ const FontSelectionModal = ({ isOpen, onClose, selectedFont, onFontSelect }) => 
         <div className="font-modal-header">
           <h2>{t('fontModal.selectFont', 'Select Font')}</h2>
           <div className="font-count">
-            {t('fontModal.fontsAvailable', '{{count}} fonts available', { count: Object.values(filteredGroups).flat().length })}
+            {t('fontModal.fontsAvailable', '{{count}} fonts available', {
+              count: Object.values(filteredGroups).flat().length
+            })}
           </div>
           <CloseButton onClick={onClose} variant="modal" size="large" />
         </div>
@@ -207,6 +216,7 @@ const FontSelectionModal = ({ isOpen, onClose, selectedFont, onFontSelect }) => 
               </div>
             </div>
           ))}
+
 
           {Object.keys(filteredGroups).length === 0 && (
             <div className="no-results">

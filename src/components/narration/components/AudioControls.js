@@ -1,7 +1,10 @@
-import React from 'react';
+import React, { useEffect, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { SERVER_URL } from '../../../config';
 import ExampleAudioDropdown from './ExampleAudioDropdown';
+import HelpIcon from '../../common/HelpIcon';
+import LoadingIndicator from '../../common/LoadingIndicator';
+import { formatTime } from '../../../utils/timeFormatter';
 
 /**
  * Audio Controls component
@@ -9,6 +12,8 @@ import ExampleAudioDropdown from './ExampleAudioDropdown';
  * @param {Function} props.handleFileUpload - Function to handle file upload
  * @param {React.RefObject} props.fileInputRef - Reference to file input
  * @param {boolean} props.isRecording - Whether recording is in progress
+ * @param {boolean} props.isStartingRecording - Whether recording is initializing
+ * @param {number|null} props.recordingStartTime - Timestamp when recording started (ms since epoch)
  * @param {Function} props.startRecording - Function to start recording
  * @param {Function} props.stopRecording - Function to stop recording
  * @param {boolean} props.isAvailable - Whether narration service is available
@@ -23,6 +28,8 @@ const AudioControls = ({
   handleFileUpload,
   fileInputRef,
   isRecording,
+  isStartingRecording,
+  recordingStartTime,
   startRecording,
   stopRecording,
   isAvailable,
@@ -32,23 +39,31 @@ const AudioControls = ({
   narrationMethod
 }) => {
   const { t } = useTranslation();
+  const [elapsed, setElapsed] = useState(0);
+
+  // Update elapsed time while recording
+  useEffect(() => {
+    if (isRecording && recordingStartTime) {
+      setElapsed((Date.now() - recordingStartTime) / 1000);
+      const id = setInterval(() => {
+        setElapsed((Date.now() - recordingStartTime) / 1000);
+      }, 100);
+      return () => clearInterval(id);
+    } else {
+      setElapsed(0);
+    }
+  }, [isRecording, recordingStartTime]);
 
   return (
     <div className="narration-row audio-controls-row">
       <div className="row-label">
         <label>
           {narrationMethod === 'f5tts' && (
-            <div
-              className="help-icon-container"
+            <HelpIcon
               title={t('narration.audioControlsHelp', 'Use reference audio <12s and leave proper silence space (e.g. 1s) at the end. Otherwise there is a risk of truncating in the middle of word')}
+              size={16}
               style={{ display: 'inline-flex', marginRight: '8px', verticalAlign: 'middle' }}
-            >
-              <svg className="help-icon" viewBox="0 0 24 24" width="16" height="16" stroke="currentColor" strokeWidth="2" fill="none">
-                <circle cx="12" cy="12" r="10"></circle>
-                <line x1="12" y1="16" x2="12" y2="12"></line>
-                <line x1="12" y1="8" x2="12.01" y2="8"></line>
-              </svg>
-            </div>
+            />
           )}
           {t('narration.audioControls', 'Âm thanh tham chiếu')}:
         </label>
@@ -60,7 +75,7 @@ const AudioControls = ({
             <button
               className="pill-button primary"
               onClick={() => fileInputRef.current.click()}
-              disabled={isRecording || !isAvailable}
+              disabled={isRecording || isStartingRecording || !isAvailable}
             >
               <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
                 <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
@@ -77,27 +92,39 @@ const AudioControls = ({
               style={{ display: 'none' }}
             />
 
-            {/* Record Button */}
-            {!isRecording ? (
+            {/* Record / Starting / Stop Button */}
+            {!isRecording && !isStartingRecording ? (
               <button
                 className="pill-button primary"
                 onClick={startRecording}
                 disabled={!isAvailable}
+                title={t('narration.record', 'Record')}
               >
                 <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
                   <circle cx="12" cy="12" r="6" fill="currentColor" />
                 </svg>
                 {t('narration.record', 'Record')}
               </button>
+            ) : !isRecording && isStartingRecording ? (
+              <button
+                className="pill-button primary"
+                disabled
+                title={t('narration.startingRecording', 'Starting microphone...')}
+                style={{ display: 'inline-flex', alignItems: 'center', gap: 8 }}
+              >
+                <LoadingIndicator theme="light" showContainer={false} size={18} />
+              </button>
             ) : (
               <button
                 className="pill-button error"
                 onClick={stopRecording}
+                title={t('narration.stopRecording', 'Stop')}
+                style={{ display: 'inline-flex', alignItems: 'center', gap: 8 }}
               >
                 <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
                   <rect x="6" y="6" width="12" height="12" fill="currentColor" />
                 </svg>
-                {t('narration.stopRecording', 'Stop')}
+                {t('narration.stopRecording', 'Stop')} {formatTime(elapsed, 'hms_ms')}
               </button>
             )}
 

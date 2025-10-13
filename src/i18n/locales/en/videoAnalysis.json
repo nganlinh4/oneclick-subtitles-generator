@@ -21,7 +21,6 @@
   "seconds": "seconds",
   "back": "Back",
   "addAnalysis": "Add analysis",
-  "editRules": "Edit rules",
   "analyzing": "Analyzing",
   "analyzeTooltip": "Analyze video to generate transcription rules",
   "editTooltip": "Edit transcription rules",

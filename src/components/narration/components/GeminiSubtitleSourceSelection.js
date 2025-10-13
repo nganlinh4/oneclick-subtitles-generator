@@ -156,7 +156,7 @@ const GeminiSubtitleSourceSelection = ({
     window.addEventListener('language-detection-status', handleDetectionStatus);
     window.addEventListener('language-detection-complete', handleDetectionComplete);
     window.addEventListener('language-detection-error', handleDetectionError);
-
+  
     // Clean up event listeners
     return () => {
       window.removeEventListener('language-detection-status', handleDetectionStatus);
@@ -164,6 +164,27 @@ const GeminiSubtitleSourceSelection = ({
       window.removeEventListener('language-detection-error', handleDetectionError);
     };
   }, [subtitleSource, onLanguageDetected, setOriginalLanguage, setTranslatedLanguage]);
+
+  // Ensure detected languages are cleared when subtitles become unavailable
+  useEffect(() => {
+    // If translated subtitles become unavailable, clear any detected translated language
+    if (!hasTranslatedSubtitles && translatedLanguage) {
+      try {
+        setTranslatedLanguage(null);
+      } catch (e) {
+        // swallow errors to avoid breaking UI
+      }
+    }
+
+    // If original subtitles become unavailable, clear any detected original language
+    if (!hasOriginalSubtitles && originalLanguage) {
+      try {
+        setOriginalLanguage(null);
+      } catch (e) {
+        // swallow errors to avoid breaking UI
+      }
+    }
+  }, [hasTranslatedSubtitles, hasOriginalSubtitles, translatedLanguage, originalLanguage, setTranslatedLanguage, setOriginalLanguage]);
 
   // Handle subtitle source change
   const handleSourceChange = async (source) => {

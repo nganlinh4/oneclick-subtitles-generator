@@ -327,39 +327,7 @@
   cursor: not-allowed;
 }
 
-.standard-slider-container.hover,
-.standard-slider-container.state-hover,
-.standard-slider-container.state-Hover {
-  /* Hover state styles */
-}
 
-.standard-slider-container.focus,
-.standard-slider-container.state-focus,
-.standard-slider-container.state-Focus {
-  /* Focus state styles */
-}
-
-/* Size variants - support both lowercase and Figma capitalized */
-/* Note: Width is now controlled by width variants, sizes only affect max-width when width=auto */
-.standard-slider-container.size-xsmall,
-.standard-slider-container.size-XSmall {
-  /* Default size - max-width controlled by width variant */
-}
-
-.standard-slider-container.size-small,
-.standard-slider-container.size-Small {
-  /* Larger size - increase max-width when width=auto */
-}
-
-.standard-slider-container.size-medium,
-.standard-slider-container.size-Medium {
-  /* Medium size - increase max-width when width=auto */
-}
-
-.standard-slider-container.size-large,
-.standard-slider-container.size-Large {
-  /* Large size - increase max-width when width=auto */
-}
 
 /* Size + Width combinations for specific control */
 .standard-slider-container.width-auto.size-small,
@@ -421,11 +389,6 @@
   height: 44px; /* Match Figma height */
 }
 
-/* Legacy support - keep old class names working */
-.custom-slider-container {
-  /* Redirect to new standard slider */
-  @extend .standard-slider-container;
-}
 
 .custom-slider-track {
   /* Legacy support - map to new structure */
@@ -442,10 +405,6 @@
   display: none;
 }
 
-.custom-slider-input {
-  /* Legacy support - map to new structure */
-  @extend .standard-slider-input;
-}
 
 .slider-value-display {
   /* Legacy support - compact value display */
@@ -499,4 +458,88 @@
 .slider-with-value .slider-value-display .slider-reset-btn:disabled {
   opacity: 0.5;
   pointer-events: none;
+}
+
+/* ... (all existing styles up to .standard-slider-handle) ... */
+
+/* Handle - Material 3 slider handle (tall thin pill) */
+.standard-slider-handle {
+  position: relative;
+  width: 4px; /* Thin pill width */
+  height: 36px; /* Tall pill height */
+  background-color: var(--md-secondary, #2979FF); /* Use your blue secondary color */
+  border-radius: 4px; /* Pill shape */
+  cursor: pointer;
+  transition: all 0.2s cubic-bezier(0.2, 0, 0, 1); /* Material motion */
+  z-index: 10;
+  flex-shrink: 0; /* Don't shrink */
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.12), 0 1px 2px rgba(0, 0, 0, 0.24);
+}
+
+/* --- NEW: Range Slider Specific Styles --- */
+
+/* Ensure handles in range sliders don't get squeezed */
+.range-slider .standard-slider-handle {
+  margin: 0 1px; /* Add small margin to prevent visual overlap with tracks */
+  height: 44px;
+}
+
+/* Make sure the active thumb is visually on top */
+.range-slider .standard-slider-handle.handle-start { z-index: 11; }
+.range-slider .standard-slider-handle.handle-end { z-index: 12; }
+.range-slider.dragging .standard-slider-handle.handle-start { z-index: 12; } /* Bring dragging handle to front */
+.range-slider.dragging .standard-slider-handle.handle-end { z-index: 11; }
+.range-slider.dragging .standard-slider-handle.active-thumb { z-index: 15; } /* Ensure active thumb is always on top */
+
+/* Active track for range slider needs rounded corners on both ends */
+.range-slider .standard-slider-active-track .track.range {
+  border-radius: 2px;
+}
+
+/* Inactive track start for range slider */
+.range-slider .standard-slider-inactive-track .track.start {
+  border-radius: 16px 2px 2px 16px;
+}
+
+/* Inactive track end for range slider */
+.range-slider .standard-slider-inactive-track .track.end {
+  border-radius: 2px 16px 16px 2px;
+}
+
+
+/* --- End Range Slider Styles --- */
+
+
+/* Pressed/dragged state - handle becomes even thinner */
+.standard-slider-container.dragging .standard-slider-handle {
+  width: 2px; /* Even thinner when dragging */
+  height: 44px; /* Same height */
+  border-radius: 1px; /* Adjust border radius for thinner width */
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.15);
+}
+
+
+/* Add this to your existing CSS file */
+
+/* Start stop - dot at the beginning of the inactive track (for range sliders) */
+.standard-slider-start-stop {
+  position: absolute;
+  left: 6px; /* 6px from the start of the track */
+  top: 50%;
+  transform: translateY(-50%);
+  width: 4px;
+  height: 4px;
+  background-color: var(--md-outline, #79747E);
+  border-radius: 50%;
+  z-index: 5;
+  opacity: 1;
+  transition: opacity 0.2s cubic-bezier(0.2, 0, 0, 1);
+}
+
+/* Hide start stop when handle is near the start (<15% value) */
+.standard-slider-start-stop.hidden {
+  opacity: 0;
 }

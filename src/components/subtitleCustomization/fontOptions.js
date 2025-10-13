@@ -54,32 +54,32 @@ export const fontOptions = [
 
   // Standard sans-serif fonts
   { value: "'Poppins', sans-serif", label: 'Poppins', group: 'Sans-serif', koreanSupport: false, vietnameseSupport: true },
-  { value: "'Inter', sans-serif", label: 'Inter', group: 'Sans-serif', koreanSupport: false, vietnameseSupport: true },
+  { value: "'Inter', sans-serif", label: 'Inter', group: 'Sans-serif', koreanSupport: false, vietnameseSupport: false },
   { value: "'Roboto', sans-serif", label: 'Roboto', group: 'Sans-serif', koreanSupport: false, vietnameseSupport: true },
   { value: "'Montserrat', sans-serif", label: 'Montserrat', group: 'Sans-serif', koreanSupport: false, vietnameseSupport: true },
-  { value: "'Arial', sans-serif", label: 'Arial', group: 'Sans-serif', koreanSupport: false, vietnameseSupport: true },
-  { value: "'Helvetica', sans-serif", label: 'Helvetica', group: 'Sans-serif', koreanSupport: false, vietnameseSupport: true },
-  { value: "'Tahoma', sans-serif", label: 'Tahoma', group: 'Sans-serif', koreanSupport: false, vietnameseSupport: true },
-  { value: "'Verdana', sans-serif", label: 'Verdana', group: 'Sans-serif', koreanSupport: false, vietnameseSupport: true },
+  { value: "'Arial', sans-serif", label: 'Arial', group: 'Sans-serif', koreanSupport: false, vietnameseSupport: false },
+  { value: "'Helvetica', sans-serif", label: 'Helvetica', group: 'Sans-serif', koreanSupport: false, vietnameseSupport: false },
+  { value: "'Tahoma', sans-serif", label: 'Tahoma', group: 'Sans-serif', koreanSupport: false, vietnameseSupport: false },
+  { value: "'Verdana', sans-serif", label: 'Verdana', group: 'Sans-serif', koreanSupport: false, vietnameseSupport: false },
 
   // Serif fonts
   { value: "'Georgia', serif", label: 'Georgia', group: 'Serif', koreanSupport: false, vietnameseSupport: false },
-  { value: "'Times New Roman', serif", label: 'Times New Roman', group: 'Serif', koreanSupport: false, vietnameseSupport: true },
-  { value: "'Playfair Display', serif", label: 'Playfair Display', group: 'Serif', koreanSupport: false, vietnameseSupport: true },
-  { value: "'Cormorant Garamond', serif", label: 'Cormorant Garamond', group: 'Serif', koreanSupport: false, vietnameseSupport: true },
-  { value: "'Merriweather', serif", label: 'Merriweather', group: 'Serif', koreanSupport: false, vietnameseSupport: true },
-  { value: "'Lora', serif", label: 'Lora', group: 'Serif', koreanSupport: false, vietnameseSupport: true },
+  { value: "'Times New Roman', serif", label: 'Times New Roman', group: 'Serif', koreanSupport: false, vietnameseSupport: false },
+  { value: "'Playfair Display', serif", label: 'Playfair Display', group: 'Serif', koreanSupport: false, vietnameseSupport: false },
+  { value: "'Cormorant Garamond', serif", label: 'Cormorant Garamond', group: 'Serif', koreanSupport: false, vietnameseSupport: false },
+  { value: "'Merriweather', serif", label: 'Merriweather', group: 'Serif', koreanSupport: false, vietnameseSupport: false },
+  { value: "'Lora', serif", label: 'Lora', group: 'Serif', koreanSupport: false, vietnameseSupport: false },
 
   // Monospace fonts
   { value: "'Nanum Gothic Coding', monospace", label: 'Nanum Gothic Coding', group: 'Monospace', koreanSupport: true, vietnameseSupport: false },
-  { value: "'JetBrains Mono', monospace", label: 'JetBrains Mono', group: 'Monospace', koreanSupport: false, vietnameseSupport: true },
+  { value: "'JetBrains Mono', monospace", label: 'JetBrains Mono', group: 'Monospace', koreanSupport: false, vietnameseSupport: false },
   { value: "'Courier New', monospace", label: 'Courier New', group: 'Monospace', koreanSupport: false, vietnameseSupport: false },
-  { value: "'Fira Code', monospace", label: 'Fira Code', group: 'Monospace', koreanSupport: false, vietnameseSupport: true },
+  { value: "'Fira Code', monospace", label: 'Fira Code', group: 'Monospace', koreanSupport: false, vietnameseSupport: false },
 
   // Display fonts
   { value: "'Impact', sans-serif", label: 'Impact', group: 'Display', koreanSupport: false, vietnameseSupport: false },
-  { value: "'Orbitron', sans-serif", label: 'Orbitron', group: 'Display', koreanSupport: false, vietnameseSupport: true },
-  { value: "'Oswald', sans-serif", label: 'Oswald', group: 'Display', koreanSupport: false, vietnameseSupport: true },
+  { value: "'Orbitron', sans-serif", label: 'Orbitron', group: 'Display', koreanSupport: false, vietnameseSupport: false },
+  { value: "'Oswald', sans-serif", label: 'Oswald', group: 'Display', koreanSupport: false, vietnameseSupport: false },
   { value: "'Bebas Neue', sans-serif", label: 'Bebas Neue', group: 'Display', koreanSupport: false, vietnameseSupport: false },
   { value: "'Anton', sans-serif", label: 'Anton', group: 'Display', koreanSupport: false, vietnameseSupport: false },
   { value: "'Audiowide', cursive", label: 'Audiowide', group: 'Display', koreanSupport: false, vietnameseSupport: false },
@@ -105,9 +105,59 @@ export const fontOptions = [
   { value: "'Share Tech Mono', monospace", label: 'Share Tech Mono', group: 'Gaming', koreanSupport: false, vietnameseSupport: false },
 
   // Cute & Kawaii fonts
-  { value: "'Nunito', sans-serif", label: 'Nunito', group: 'Cute', koreanSupport: false, vietnameseSupport: true },
-  { value: "'Quicksand', sans-serif", label: 'Quicksand', group: 'Cute', koreanSupport: false, vietnameseSupport: true },
-  { value: "'Comfortaa', cursive", label: 'Comfortaa', group: 'Cute', koreanSupport: false, vietnameseSupport: false }
+  { value: "'Nunito', sans-serif", label: 'Nunito', group: 'Cute', koreanSupport: false, vietnameseSupport: false },
+  { value: "'Quicksand', sans-serif", label: 'Quicksand', group: 'Cute', koreanSupport: false, vietnameseSupport: false },
+  { value: "'Comfortaa', cursive", label: 'Comfortaa', group: 'Cute', koreanSupport: false, vietnameseSupport: false },
+
+  // Popular Video Editing Fonts (from CapCut, Adobe, DaVinci research)
+  { value: "'Futura', sans-serif", label: 'Futura', group: 'Professional', koreanSupport: false, vietnameseSupport: false },
+  { value: "'Calibri', sans-serif", label: 'Calibri', group: 'Professional', koreanSupport: false, vietnameseSupport: false },
+  { value: "'Lato', sans-serif", label: 'Lato', group: 'Professional', koreanSupport: false, vietnameseSupport: false },
+  { value: "'Ubuntu', sans-serif", label: 'Ubuntu', group: 'Professional', koreanSupport: false, vietnameseSupport: false },
+  { value: "'Raleway', sans-serif", label: 'Raleway', group: 'Professional', koreanSupport: false, vietnameseSupport: true },
+  { value: "'Dosis', sans-serif", label: 'Dosis', group: 'Professional', koreanSupport: false, vietnameseSupport: false },
+  { value: "'Cabin', sans-serif", label: 'Cabin', group: 'Professional', koreanSupport: false, vietnameseSupport: false },
+  { value: "'PT Sans', sans-serif", label: 'PT Sans', group: 'Professional', koreanSupport: false, vietnameseSupport: false },
+  { value: "'Exo', sans-serif", label: 'Exo', group: 'Professional', koreanSupport: false, vietnameseSupport: false },
+  { value: "'Rajdhani', sans-serif", label: 'Rajdhani', group: 'Professional', koreanSupport: false, vietnameseSupport: false },
+  { value: "'Signika', sans-serif", label: 'Signika', group: 'Professional', koreanSupport: false, vietnameseSupport: false },
+  { value: "'Rubik', sans-serif", label: 'Rubik', group: 'Professional', koreanSupport: false, vietnameseSupport: false },
+  { value: "'Work Sans', sans-serif", label: 'Work Sans', group: 'Professional', koreanSupport: false, vietnameseSupport: false },
+  { value: "'Fira Sans', sans-serif", label: 'Fira Sans', group: 'Professional', koreanSupport: false, vietnameseSupport: false },
+  { value: "'Barlow', sans-serif", label: 'Barlow', group: 'Professional', koreanSupport: false, vietnameseSupport: false },
+  { value: "'Karla', sans-serif", label: 'Karla', group: 'Professional', koreanSupport: false, vietnameseSupport: false },
+  { value: "'Mukti', sans-serif", label: 'Mukti', group: 'Professional', koreanSupport: false, vietnameseSupport: false },
+  { value: "'Niramit', sans-serif", label: 'Niramit', group: 'Professional', koreanSupport: false, vietnameseSupport: false },
+  { value: "'Sarala', sans-serif", label: 'Sarala', group: 'Professional', koreanSupport: false, vietnameseSupport: false },
+  { value: "'Teko', sans-serif", label: 'Teko', group: 'Professional', koreanSupport: false, vietnameseSupport: false },
+  { value: "'Viga', sans-serif", label: 'Viga', group: 'Professional', koreanSupport: false, vietnameseSupport: false },
+
+  // Trending & Unique Fonts (2024-2025 popular)
+  { value: "'Gotham', sans-serif", label: 'Gotham', group: 'Trending', koreanSupport: false, vietnameseSupport: false },
+  { value: "'Harriet Display', serif", label: 'Harriet Display', group: 'Trending', koreanSupport: false, vietnameseSupport: false },
+  { value: "'Doctor Glitch', cursive", label: 'Doctor Glitch', group: 'Trending', koreanSupport: false, vietnameseSupport: false },
+  { value: "'Azonix', cursive", label: 'Azonix', group: 'Trending', koreanSupport: false, vietnameseSupport: false },
+  { value: "'Maximum Impact', cursive", label: 'Maximum Impact', group: 'Trending', koreanSupport: false, vietnameseSupport: false },
+  { value: "'Episode 1', cursive", label: 'Episode 1', group: 'Trending', koreanSupport: false, vietnameseSupport: false },
+  { value: "'Dollamin', cursive", label: 'Dollamin', group: 'Trending', koreanSupport: false, vietnameseSupport: false },
+  { value: "'Jomhuria', cursive", label: 'Jomhuria', group: 'Trending', koreanSupport: false, vietnameseSupport: false },
+  { value: "'Shrikhand', cursive", label: 'Shrikhand', group: 'Trending', koreanSupport: false, vietnameseSupport: false },
+  { value: "'Montages Retro', cursive", label: 'Montages Retro', group: 'Trending', koreanSupport: false, vietnameseSupport: false },
+  { value: "'Moenstories', serif", label: 'Moenstories', group: 'Trending', koreanSupport: false, vietnameseSupport: false },
+  { value: "'Peacock Showier', cursive", label: 'Peacock Showier', group: 'Trending', koreanSupport: false, vietnameseSupport: false },
+
+  // Modern & Contemporary Fonts
+  { value: "'Spectral', serif", label: 'Spectral', group: 'Modern', koreanSupport: false, vietnameseSupport: false },
+  { value: "'Crimson Pro', serif", label: 'Crimson Pro', group: 'Modern', koreanSupport: false, vietnameseSupport: false },
+  { value: "'Space Grotesk', sans-serif", label: 'Space Grotesk', group: 'Modern', koreanSupport: false, vietnameseSupport: false },
+  { value: "'DM Sans', sans-serif", label: 'DM Sans', group: 'Modern', koreanSupport: false, vietnameseSupport: false },
+  { value: "'Manrope', sans-serif", label: 'Manrope', group: 'Modern', koreanSupport: false, vietnameseSupport: false },
+  { value: "'Epilogue', sans-serif", label: 'Epilogue', group: 'Modern', koreanSupport: false, vietnameseSupport: false },
+  { value: "'Figtree', sans-serif", label: 'Figtree', group: 'Modern', koreanSupport: false, vietnameseSupport: false },
+  { value: "'Lexend Deca', sans-serif", label: 'Lexend Deca', group: 'Modern', koreanSupport: false, vietnameseSupport: false },
+  { value: "'Readex Pro', sans-serif", label: 'Readex Pro', group: 'Modern', koreanSupport: false, vietnameseSupport: false },
+  { value: "'Outfit', sans-serif", label: 'Outfit', group: 'Modern', koreanSupport: false, vietnameseSupport: false },
+  { value: "'Plus Jakarta Sans', sans-serif", label: 'Plus Jakarta Sans', group: 'Modern', koreanSupport: false, vietnameseSupport: false }
 ];
 
 // Animation types - now using translation keys

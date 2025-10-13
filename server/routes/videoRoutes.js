@@ -19,95 +19,102 @@ const { getFfmpegPath, getFfprobePath } = require('../services/shared/ffmpegUtil
 // const { splitVideoIntoSegments, splitMediaIntoSegments, optimizeVideo, createAnalysisVideo, convertAudioToVideo } = require('../services/videoProcessingService');
 
 /**
- * Get video dimensions and metadata using ffprobe
- * @param {string} videoPath - Path to the video file
- * @returns {Promise<Object>} - Video dimensions and metadata
+ * Get video and audio metadata using ffprobe (JSON parsing for robustness)
  */
 function getVideoDimensions(videoPath) {
   return new Promise((resolve, reject) => {
     const ffprobePath = getFfprobePath();
-    const ffprobe = spawn(ffprobePath, [
+    const ff = spawn(ffprobePath, [
       '-v', 'error',
-      '-select_streams', 'v:0',
-      '-show_entries', 'stream=width,height,duration',
-      '-of', 'csv=p=0',
+      '-show_streams',
+      '-show_format',
+      '-of', 'json',
       videoPath
     ]);
 
-    let output = '';
-    let errorOutput = '';
-
-    ffprobe.stdout.on('data', (data) => {
-      output += data.toString();
-    });
-
-    ffprobe.stderr.on('data', (data) => {
-      errorOutput += data.toString();
-    });
-
-    ffprobe.on('close', (code) => {
+    let out = '';
+    let err = '';
+    ff.stdout.on('data', d => { out += d.toString(); });
+    ff.stderr.on('data', d => { err += d.toString(); });
+    ff.on('close', (code) => {
       if (code !== 0) {
-        console.error(`ffprobe error: ${errorOutput}`);
-        return reject(new Error(`ffprobe failed with code ${code}: ${errorOutput}`));
+        console.error(`ffprobe error: ${err}`);
+        return reject(new Error(`ffprobe failed with code ${code}: ${err}`));
+      }
+      let data;
+      try {
+        data = JSON.parse(out);
+      } catch (e) {
+        return reject(new Error('Failed to parse ffprobe JSON output'));
       }
 
-      const outputLine = output.trim();
-      if (!outputLine) {
-        return reject(new Error('No video stream found'));
-      }
+      const streams = Array.isArray(data.streams) ? data.streams : [];
+      const format = data.format || {};
 
-      const [width, height, duration] = outputLine.split(',').map(val => val.trim());
-
-      if (!width || !height) {
-        return reject(new Error('Could not parse video dimensions'));
-      }
-
-      const widthNum = parseInt(width);
-      const heightNum = parseInt(height);
-
-      if (isNaN(widthNum) || isNaN(heightNum)) {
+      const vStream = streams.find(s => s.codec_type === 'video');
+      if (!vStream || !Number.isFinite(parseInt(vStream.width)) || !Number.isFinite(parseInt(vStream.height))) {
         return reject(new Error('Invalid video dimensions'));
       }
+      const widthNum = parseInt(vStream.width);
+      const heightNum = parseInt(vStream.height);
 
-      // Determine quality based on height
+      // FPS from avg_frame_rate or r_frame_rate
+      let fps = null;
+      const rate = vStream.avg_frame_rate || vStream.r_frame_rate;
+      if (rate && rate.includes('/')) {
+        const [num, den] = rate.split('/').map(n => parseFloat(n));
+        if (Number.isFinite(num) && Number.isFinite(den) && den !== 0) fps = Math.round((num / den) * 100) / 100;
+      } else if (rate && Number.isFinite(parseFloat(rate))) {
+        fps = Math.round(parseFloat(rate) * 100) / 100;
+      }
+
+      // Duration: prefer format.duration, fallback to stream.duration
+      let duration = null;
+      if (format.duration && Number.isFinite(parseFloat(format.duration))) duration = parseFloat(format.duration);
+      else if (vStream.duration && Number.isFinite(parseFloat(vStream.duration))) duration = parseFloat(vStream.duration);
+
+      // Bitrate (video stream)
+      let vBitRate = null;
+      if (vStream.bit_rate && Number.isFinite(parseInt(vStream.bit_rate))) vBitRate = parseInt(vStream.bit_rate);
+
+      // Quality from height
       let quality = 'Unknown';
       let resolution = 'Unknown';
+      if (heightNum >= 2160) { quality = '4K'; resolution = '4K'; }
+      else if (heightNum >= 1440) { quality = '1440p'; resolution = '1440p'; }
+      else if (heightNum >= 1080) { quality = '1080p'; resolution = '1080p'; }
+      else if (heightNum >= 720) { quality = '720p'; resolution = '720p'; }
+      else if (heightNum >= 480) { quality = '480p'; resolution = '480p'; }
+      else if (heightNum >= 360) { quality = '360p'; resolution = '360p'; }
+      else { quality = `${heightNum}p`; resolution = `${heightNum}p`; }
 
-      if (heightNum >= 2160) {
-        quality = '4K';
-        resolution = '4K';
-      } else if (heightNum >= 1440) {
-        quality = '1440p';
-        resolution = '1440p';
-      } else if (heightNum >= 1080) {
-        quality = '1080p';
-        resolution = '1080p';
-      } else if (heightNum >= 720) {
-        quality = '720p';
-        resolution = '720p';
-      } else if (heightNum >= 480) {
-        quality = '480p';
-        resolution = '480p';
-      } else if (heightNum >= 360) {
-        quality = '360p';
-        resolution = '360p';
-      } else {
-        quality = `${heightNum}p`;
-        resolution = `${heightNum}p`;
-      }
+      // Audio stream
+      const aStream = streams.find(s => s.codec_type === 'audio');
+      const aCodec = aStream?.codec_name || null;
+      const aChannels = aStream?.channels;
+      const aSampleRate = aStream?.sample_rate ? parseInt(aStream.sample_rate) : null;
+      const aLayout = aStream?.channel_layout || null;
+      const aBitRate = aStream?.bit_rate ? parseInt(aStream.bit_rate) : null;
 
       resolve({
         width: widthNum,
         height: heightNum,
-        duration: duration ? parseFloat(duration) : null,
+        duration,
+        fps,
+        codec: vStream.codec_name || null,
+        bit_rate: vBitRate,
         quality,
-        resolution
+        resolution,
+        audio_codec: aCodec,
+        audio_channels: Number.isFinite(parseInt(aChannels)) ? parseInt(aChannels) : null,
+        audio_sample_rate: aSampleRate,
+        audio_channel_layout: aLayout,
+        audio_bit_rate: Number.isFinite(aBitRate) ? aBitRate : null
       });
     });
 
-    // Timeout after 10 seconds
     setTimeout(() => {
-      ffprobe.kill();
+      try { ff.kill(); } catch {}
       reject(new Error('ffprobe timeout'));
     }, 10000);
   });
@@ -586,6 +593,7 @@ router.post('/cancel-download/:videoId', (req, res) => {
 router.get('/video-dimensions/:videoId', async (req, res) => {
   const { videoId } = req.params;
 
+
   if (!videoId) {
     return res.status(400).json({ error: 'Video ID is required' });
   }
@@ -616,6 +624,7 @@ router.get('/video-dimensions/:videoId', async (req, res) => {
       }
     }
 
+
     if (!fs.existsSync(videoPath)) {
       return res.status(404).json({
         success: false,
@@ -625,6 +634,7 @@ router.get('/video-dimensions/:videoId', async (req, res) => {
 
     const dimensions = await getVideoDimensions(videoPath);
 
+
     res.json({
       success: true,
       videoId: videoId,
@@ -632,7 +642,15 @@ router.get('/video-dimensions/:videoId', async (req, res) => {
       height: dimensions.height,
       quality: dimensions.quality,
       resolution: dimensions.resolution,
-      dimensions: `${dimensions.width}x${dimensions.height}`
+      dimensions: `${dimensions.width}x${dimensions.height}`,
+      fps: dimensions.fps ?? null,
+      codec: dimensions.codec || null,
+      bit_rate: dimensions.bit_rate ?? null,
+      audio_codec: dimensions.audio_codec || null,
+      audio_channels: dimensions.audio_channels ?? null,
+      audio_sample_rate: dimensions.audio_sample_rate ?? null,
+      audio_channel_layout: dimensions.audio_channel_layout || null,
+      audio_bit_rate: dimensions.audio_bit_rate ?? null
     });
   } catch (error) {
     console.error('Error getting video dimensions:', error);
@@ -641,6 +659,43 @@ router.get('/video-dimensions/:videoId', async (req, res) => {
       error: 'Failed to get video dimensions',
       details: error.message
     });
+  }
+});
+
+/**
+ * GET /api/probe-media?url=... - Probe arbitrary HTTP(S) media with ffprobe
+ */
+router.get('/probe-media', async (req, res) => {
+  try {
+    const url = req.query.url;
+    if (!url || !(typeof url === 'string') || !/^https?:\/\//i.test(url)) {
+      return res.status(400).json({ success: false, error: 'Invalid or missing url parameter' });
+    }
+
+    // no-op log removed
+
+    const meta = await getVideoDimensions(url);
+
+    res.json({
+      success: true,
+      url,
+      width: meta.width,
+      height: meta.height,
+      quality: meta.quality,
+      resolution: meta.resolution,
+      dimensions: `${meta.width}x${meta.height}`,
+      fps: meta.fps ?? null,
+      codec: meta.codec || null,
+      bit_rate: meta.bit_rate ?? null,
+      audio_codec: meta.audio_codec || null,
+      audio_channels: meta.audio_channels ?? null,
+      audio_sample_rate: meta.audio_sample_rate ?? null,
+      audio_channel_layout: meta.audio_channel_layout || null,
+      audio_bit_rate: meta.audio_bit_rate ?? null
+    });
+  } catch (error) {
+    console.error('[PROBE-MEDIA] Error:', error);
+    res.status(500).json({ success: false, error: 'Failed to probe media', details: error.message });
   }
 });
 

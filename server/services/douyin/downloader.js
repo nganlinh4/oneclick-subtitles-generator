@@ -455,6 +455,56 @@ async function downloadDouyinVideoSimpleFallback(videoId, videoURL, quality = '3
 }
 
 /**
+ * Download file with progress tracking
+ * @param {string} url - File URL to download
+ * @param {string} outputPath - Output file path
+ * @param {string} videoId - Video ID for progress tracking
+ * @returns {Promise<void>}
+ */
+async function downloadFileWithProgress(url, outputPath, videoId) {
+  const https = require('https');
+  const http = require('http');
+
+  return new Promise((resolve, reject) => {
+    const protocol = url.startsWith('https:') ? https : http;
+
+    protocol.get(url, (response) => {
+      if (response.statusCode !== 200) {
+        reject(new Error(`Failed to download file: HTTP ${response.statusCode}`));
+        return;
+      }
+
+      const totalSize = parseInt(response.headers['content-length'], 10);
+      let downloadedSize = 0;
+
+      const fileStream = fs.createWriteStream(outputPath);
+
+      response.on('data', (chunk) => {
+        downloadedSize += chunk.length;
+        if (totalSize) {
+          const progress = Math.round((downloadedSize / totalSize) * 70) + 30; // 30-100%
+          setDownloadProgress(videoId, progress, 'downloading');
+        }
+      });
+
+      response.pipe(fileStream);
+
+      fileStream.on('finish', () => {
+        fileStream.close();
+        resolve();
+      });
+
+      fileStream.on('error', (error) => {
+        fs.unlink(outputPath, () => {}); // Delete the file on error
+        reject(error);
+      });
+    }).on('error', (error) => {
+      reject(error);
+    });
+  });
+}
+
+/**
  * Puppeteer-based Douyin video downloader
  * @param {string} videoId - Douyin video ID
  * @param {string} videoURL - Douyin video URL
@@ -466,16 +516,15 @@ async function downloadDouyinVideoPuppeteer(videoId, videoURL) {
   // Normalize the URL
   const normalizedUrl = normalizeDouyinUrl(videoURL);
 
-
-
-
   try {
-    // Use the Puppeteer-based downloader
-    await douyinPuppeteer.downloadDouyinVideo(normalizedUrl, outputPath);
+    // Extract video URL first
+    const videoUrl = await douyinPuppeteer.extractVideoUrl(normalizedUrl);
+
+    // Download the file with progress tracking
+    await downloadFileWithProgress(videoUrl, outputPath, videoId);
 
     // Check if the file was created successfully
     if (fs.existsSync(outputPath)) {
-
       return {
         success: true,
         path: outputPath,
@@ -492,7 +541,7 @@ async function downloadDouyinVideoPuppeteer(videoId, videoURL) {
 }
 
 /**
- * Download Douyin video with retry and fallback
+ * Download Douyin video using Puppeteer method only
  * @param {string} videoId - Douyin video ID
  * @param {string} videoURL - Douyin video URL
  * @param {string} quality - Desired video quality (e.g., '144p', '360p', '720p')
@@ -500,18 +549,27 @@ async function downloadDouyinVideoPuppeteer(videoId, videoURL) {
  * @returns {Promise<Object>} - Result object with success status and path
  */
 async function downloadDouyinVideoWithRetry(videoId, videoURL, quality = '360p', useCookies = false) {
-
-
-  // Use the Puppeteer approach
+  // Initialize progress
+  setDownloadProgress(videoId, 0, 'downloading');
 
   try {
-    return await downloadDouyinVideoPuppeteer(videoId, videoURL);
+    console.log('[douyin] Using Puppeteer method...');
+
+    // Update progress to indicate starting
+    setDownloadProgress(videoId, 10, 'downloading');
+
+    // Use the Puppeteer-based downloader
+    const result = await downloadDouyinVideoPuppeteer(videoId, videoURL);
+
+    // Mark as completed and set final progress
+    setDownloadProgress(videoId, 100, 'completed');
+
+    return result;
   } catch (error) {
     console.error(`Puppeteer download failed: ${error.message}`);
 
-    // If the Puppeteer approach fails, provide a clear error message
-    const errorMessage = `Douyin video download failed using Puppeteer approach: ${error.message}`;
-    console.error(errorMessage);
+    // Mark as error
+    setDownloadProgress(videoId, 0, 'error');
 
     // Provide more specific error messages based on the error
     if (error.message.includes('No video URLs found')) {
@@ -523,7 +581,7 @@ async function downloadDouyinVideoWithRetry(videoId, videoURL, quality = '360p',
       throw new Error('Connection was reset while accessing Douyin. This might be due to regional restrictions.');
     }
 
-    throw new Error(errorMessage);
+    throw new Error(`Douyin video download failed: ${error.message}`);
   }
 }
 

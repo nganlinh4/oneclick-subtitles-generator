@@ -94,38 +94,35 @@ def generate_narration():
 
             try:
                 for i, subtitle in enumerate(subtitles):
-                    subtitle_id = subtitle.get('id', f"index_{i}") # Use index if ID missing
+                    # Keep the original stable ID for UI/logic, but use a per-request sequential index for output directories
+                    original_id = subtitle.get('id', f"index_{i}")  # may be non-sequential across sessions
+                    display_idx = i + 1  # 1-based, contiguous for this generation run
                     text = subtitle.get('text', '').strip()
                     processed_count += 1
 
                     # --- Send Progress Update ---
-                    # Send a more detailed progress update with the subtitle text
                     subtitle_text = text[:50] + "..." if len(text) > 50 else text
                     progress_data = {
                         'type': 'progress',
-                        'message_key': 'processingSubtitle',  # Let frontend handle translation
+                        'message_key': 'processingSubtitle',
                         'current': processed_count,
                         'total': total_subtitles,
-                        'subtitle_id': subtitle_id,
+                        'subtitle_id': original_id,  # keep reporting original id to the client
                         'subtitle_text': subtitle_text,
                         'processing_started': True
                     }
                     yield f"data: {json.dumps(progress_data)}\n\n"
 
                     if not text:
-
-                        result = {'subtitle_id': subtitle_id, 'text': '', 'success': True, 'skipped': True}
+                        result = {'subtitle_id': original_id, 'text': '', 'success': True, 'skipped': True}
                         results.append(result)
-                        # Send skip result immediately
                         skip_data = {'type': 'result', 'result': result, 'progress': processed_count, 'total': total_subtitles}
                         yield f"data: {json.dumps(skip_data)}\n\n"
                         continue
 
-                    # Language mismatch check removed per user request
-
                     # --- Prepare for Generation ---
-                    # Ensure the subtitle directory exists
-                    subtitle_dir = ensure_subtitle_directory(subtitle_id)
+                    # Ensure the per-run sequential subtitle directory exists (subtitle_1..subtitle_N)
+                    subtitle_dir = ensure_subtitle_directory(display_idx)
 
                     # Get the next file number for this subtitle
                     file_number = get_next_file_number(subtitle_dir)
@@ -133,11 +130,11 @@ def generate_narration():
                     # Generate a filename with sequential numbering
                     filename = f"{file_number}.wav"
 
-                    # Full path includes the subtitle directory - use forward slashes for URLs
-                    full_filename = f"subtitle_{subtitle_id}/{filename}"
+                    # Full path includes the display index directory - use forward slashes for URLs
+                    full_filename = f"subtitle_{display_idx}/{filename}"
                     output_path = os.path.join(subtitle_dir, filename)
 
-                    logger.debug(f"Generating narration audio for subtitle {subtitle_id}, output path: {output_path}")
+                    logger.debug(f"Generating narration audio for subtitle {original_id}, output path: {output_path}")
 
                     # Clean text: Remove control characters, ensure UTF-8
                     cleaned_text = re.sub(r'[\x00-\x08\x0B\x0C\x0E-\x1F\x7F]', '', text)
@@ -160,10 +157,10 @@ def generate_narration():
                     # --- Send Generating Update ---
                     generating_data = {
                         'type': 'progress',
-                        'message': f'Generating audio for subtitle {processed_count}/{total_subtitles} (ID: {subtitle_id})',
+                        'message': f'Generating audio for subtitle {processed_count}/{total_subtitles} (ID: {original_id})',
                         'current': processed_count,
                         'total': total_subtitles,
-                        'subtitle_id': subtitle_id,
+                        'subtitle_id': original_id,
                         'generating': True
                     }
                     yield f"data: {json.dumps(generating_data)}\n\n"
@@ -179,7 +176,7 @@ def generate_narration():
 
 
                         result = {
-                            'subtitle_id': subtitle_id,
+                            'subtitle_id': original_id,
                             'text': cleaned_text, # Return the cleaned text used for generation
                             'audio_path': output_path,
                             'filename': full_filename, # Return the path relative to OUTPUT_AUDIO_DIR
@@ -193,10 +190,10 @@ def generate_narration():
 
                     except Exception as infer_error:
                         # Log the specific error and the text that caused it
-                        logger.error(f"Error generating narration for subtitle ID {subtitle_id} with text '{cleaned_text[:100]}...': {infer_error}", exc_info=True) # Log stack trace
+                        logger.error(f"Error generating narration for subtitle ID {original_id} with text '{cleaned_text[:100]}...': {infer_error}", exc_info=True) # Log stack trace
                         error_message = f"{type(infer_error).__name__}: {str(infer_error)}"
                         result = {
-                            'subtitle_id': subtitle_id,
+                            'subtitle_id': original_id,
                             'text': cleaned_text,
                             'error': error_message,
                             'success': False
@@ -220,9 +217,9 @@ def generate_narration():
                              gc.collect() # Force Python garbage collection
                              if device.startswith("cuda") and torch.cuda.is_available():
                                  torch.cuda.empty_cache()
-                                 # logger.debug(f"CUDA cache cleared after subtitle ID {subtitle_id}")
+                                 # logger.debug(f"CUDA cache cleared after subtitle ID {original_id}")
                          except Exception as mem_error:
-                              logger.warning(f"Error during memory cleanup after subtitle ID {subtitle_id}: {mem_error}")
+                              logger.warning(f"Error during memory cleanup after subtitle ID {original_id}: {mem_error}")
 
             except Exception as stream_err:
                  # Catch errors within the generator loop itself

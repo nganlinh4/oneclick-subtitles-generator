@@ -256,10 +256,48 @@ export const downloadGenericVideo = async (url, onProgress = () => {}, forceRefr
         onProgress(progressData.progress || 0);
         console.log(`[WebSocket] ${videoId}: ${progressData.progress}% - ${progressData.phase || 'downloading'}`);
         
-        // If completed, clean up polling
-        if (progressData.status === 'completed' && activeDownloadIntervals[videoId]) {
-          clearInterval(activeDownloadIntervals[videoId]);
-          delete activeDownloadIntervals[videoId];
+        // If completed, clean up polling and resolve any pending promise
+        if (progressData.status === 'completed') {
+          // Clear polling interval if present
+          if (activeDownloadIntervals[videoId]) {
+            clearInterval(activeDownloadIntervals[videoId]);
+            delete activeDownloadIntervals[videoId];
+          }
+    
+          // Update queue state
+          downloadQueue[videoId].status = 'completed';
+          downloadQueue[videoId].progress = 100;
+          onProgress(100);
+    
+          // Ensure we have a URL for the completed file
+          if (!downloadQueue[videoId].url) {
+            downloadQueue[videoId].url = `${SERVER_URL}/videos/${videoId}.mp4`;
+          }
+    
+          // Try to resolve any pending promise by creating a File object
+          if (downloadQueue[videoId].resolve) {
+            fetchVideoAsFile(videoId)
+              .then(file => {
+                try {
+                  downloadQueue[videoId].resolve(file);
+                } catch (err) {
+                  console.error('Error resolving download promise after WebSocket completion:', err);
+                }
+              })
+              .catch(error => {
+                console.error('Error creating File object after WebSocket completion:', error);
+                if (downloadQueue[videoId].reject) {
+                  downloadQueue[videoId].reject(error);
+                }
+              });
+          }
+    
+          // Unsubscribe from further WebSocket updates for this video to avoid leaks
+          try {
+            progressWebSocketClient.unsubscribe(videoId);
+          } catch (err) {
+            // ignore unsubscribe errors
+          }
         }
       }
     }).catch(err => {

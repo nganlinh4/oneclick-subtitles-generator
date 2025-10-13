@@ -3,6 +3,8 @@ import { useTranslation } from 'react-i18next';
 import MaterialSwitch from '../../common/MaterialSwitch';
 import CustomScrollbarTextarea from '../../common/CustomScrollbarTextarea';
 import '../../../styles/common/material-switch.css';
+import HelpIcon from '../../common/HelpIcon';
+
 
 
 
@@ -75,13 +77,7 @@ const ReferenceAudioSection = ({
                 icons={true}
               />
               <span>{t('narration.autoRecognize', 'Auto-recognize voice')}</span>
-              <div className="help-icon-container" title={t('narration.autoRecognizeDescription', 'Automatically transcribe audio after recording or uploading')}>
-                <svg className="help-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                  <circle cx="12" cy="12" r="10" />
-                  <path d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3" />
-                  <line x1="12" y1="17" x2="12.01" y2="17" />
-                </svg>
-              </div>
+              <HelpIcon title={t('narration.autoRecognizeDescription', 'Automatically transcribe audio after recording or uploading')} />
             </div>
           </div>
         </div>

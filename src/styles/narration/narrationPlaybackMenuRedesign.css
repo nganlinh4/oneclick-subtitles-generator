@@ -164,36 +164,6 @@ input:disabled {
   border-radius: 4px;
 }
 
-.range-slider {
-  flex: 1;
-  height: 6px;
-  -webkit-appearance: none;
-  appearance: none;
-  background: var(--md-surface-variant);
-  border-radius: 3px;
-  outline: none;
-}
-
-.range-slider::-webkit-slider-thumb {
-  -webkit-appearance: none;
-  appearance: none;
-  width: 16px;
-  height: 16px;
-  border-radius: 50%;
-  background: var(--md-primary);
-  cursor: pointer;
-  border: none;
-}
-
-.range-slider::-moz-range-thumb {
-  width: 16px;
-  height: 16px;
-  border-radius: 50%;
-  background: var(--md-primary);
-  cursor: pointer;
-  border: none;
-}
-
 .range-value {
   min-width: 48px;
   text-align: center;

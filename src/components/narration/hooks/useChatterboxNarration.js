@@ -454,6 +454,8 @@ const useChatterboxNarration = ({
   const retryChatterboxNarration = useCallback(async (subtitleId) => {
     try {
       setRetryingSubtitleId(subtitleId);
+      // Mark retry mode globally so backend/clients can skip destructive cleanup
+      window.__narrationRetryMode = 'single';
 
       // Ensure Chatterbox API/model is available (warm-up similar to main generation)
       let quick = await checkChatterboxAvailability(1, 800, false);
@@ -489,6 +491,8 @@ const useChatterboxNarration = ({
         error: error.message
       }));
     } finally {
+      // Clear retry marker and UI state
+      delete window.__narrationRetryMode;
       setRetryingSubtitleId(null);
     }
   }, [setRetryingSubtitleId, getSelectedSubtitles, getReferenceAudioFile, generateSingleNarration, setGenerationResults, setError, t]);

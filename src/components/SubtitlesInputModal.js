@@ -7,6 +7,8 @@ import '../styles/SubtitlesInputModal.css';
 import LyricsInputSection from './LyricsInputSection';
 import MaterialSwitch from './common/MaterialSwitch';
 import '../styles/common/material-switch.css';
+import HelpIcon from './common/HelpIcon';
+
 
 /**
  * Modal component for inputting subtitles without timings
@@ -232,16 +234,7 @@ const SubtitlesInputModal = ({ initialText = '', onSave, onClose, onGenerateBack
               <label htmlFor="auto-erase-blank-lines" className="material-switch-label">
                 {t('subtitlesInput.autoEraseBlankLines', 'Auto erase blank lines')}
               </label>
-              <div
-                className="help-icon-container"
-                title={t('subtitlesInput.autoEraseBlankLinesHelp', 'Automatically remove empty lines from pasted text and existing content. Does not interfere while typing.')}
-              >
-                <svg className="help-icon" viewBox="0 0 24 24" width="16" height="16" stroke="currentColor" strokeWidth="2" fill="none">
-                  <circle cx="12" cy="12" r="10"></circle>
-                  <line x1="12" y1="16" x2="12" y2="12"></line>
-                  <line x1="12" y1="8" x2="12.01" y2="8"></line>
-                </svg>
-              </div>
+              <HelpIcon title={t('subtitlesInput.autoEraseBlankLinesHelp', 'Automatically remove empty lines from pasted text and existing content. Does not interfere while typing.')} />
             </div>
           </div>
           <div className="footer-right">

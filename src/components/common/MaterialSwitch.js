@@ -33,6 +33,23 @@ const MaterialSwitch = ({
 }) => {
   const switchRef = useRef(null);
 
+  // Inline var overrides: only neutralize background for unselected state; keep border intact
+  const unselectedInlineVars = !checked
+    ? {
+        // Base + state-specific variables that some builds reference
+        '--md-switch-track-color': 'transparent',
+        '--md-switch-hover-track-color': 'transparent',
+        '--md-switch-pressed-track-color': 'transparent',
+        // Unselected-specific variables used by other builds
+        '--md-switch-unselected-track-color': 'transparent',
+        '--md-switch-unselected-hover-track-color': 'transparent',
+        '--md-switch-unselected-pressed-track-color': 'transparent',
+        '--md-switch-unselected-focus-track-color': 'transparent',
+      }
+    : {};
+
+  const mergedStyle = { ...style, ...unselectedInlineVars };
+
   useEffect(() => {
     const switchElement = switchRef.current;
     if (!switchElement) return;
@@ -74,12 +91,15 @@ const MaterialSwitch = ({
     }
   }, [disabled]);
 
+  // Compute class names to include 'unselected' when not checked
+  const computedClassName = `${className} ${!checked ? 'unselected' : 'selected'}`.trim();
+
   return (
     <md-switch
       ref={switchRef}
       id={id}
-      className={className}
-      style={style}
+      className={computedClassName}
+      style={mergedStyle}
       aria-label={ariaLabel}
       aria-labelledby={ariaLabelledBy}
       icons={icons ? '' : undefined}

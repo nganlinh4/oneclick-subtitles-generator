@@ -6,6 +6,9 @@
   "audioControls": "오디오 컨트롤",
   "audioControlsHelp": "12초 미만의 레퍼런스 오디오를 사용하고 끝에 적절한 무음 공간(예: 1초)을 남겨두세요. 그렇지 않으면 단어 중간에서 잘릴 위험이 있습니다",
   "referenceTextPlaceholder": "레퍼런스 오디오와 일치하는 텍스트를 입력하세요...",
+  "recognizing": "음성 인식 중...",
+  "recognitionTimeout": "음성 인식에 시간이 너무 오래 걸립니다. 다시 시도하거나 텍스트를 수동으로 입력하세요.",
+
   "clearReference": "레퍼런스 오디오 지우기",
   "audioNotSupported": "브라우저가 오디오 요소를 지원하지 않습니다.",
   "upload": "업로드",
@@ -31,6 +34,8 @@
   "generatingProgressWithId": "{{total}}개 중 {{progress}}개 나레이션 생성됨 (ID: {{id}})...",
   "generationComplete": "나레이션 생성 완료",
   "results": "생성된 나레이션",
+  "downloading": "오디오 파일 다운로드 중...",
+
   "play": "재생",
   "pause": "일시정지",
   "download": "다운로드",
@@ -71,23 +76,18 @@
   "intensityEnhanced": "향상",
   "intensityAggressive": "적극적",
   "intensityChangeTooltip": "강도를 변경하면 다시 그룹화해야 합니다",
-
   "speed": "속도",
   "apply": "적용",
   "processingSpeed": "{{current}}/{{total}} 처리 중",
   "speedModifySuccess": "나레이션 속도가 {{speed}}배로 성공적으로 변경되었습니다",
   "speedModifyError": "나레이션 속도 변경 중 오류: {{error}}",
-
   "noSourceSelectedError": "자막 소스를 선택하세요 (원본 또는 번역)",
   "checkingModelAvailability": "모델 가용성 확인 중...",
   "modelNotAvailableError": "설정의 내레이션 모델 관리 탭에서 {{language}}을(를) 지원하는 모델을 하나 이상 다운로드하세요.",
-
   "advancedSettingsToggle": "고급 음성 및 오디오 설정",
   "advancedSettings": "고급 설정",
-
   "voiceStyle": "음성 스타일",
   "speechRate": "말하기 속도",
-
   "generationQuality": "생성 품질",
   "nfeStep": "NFE 단계",
   "nfeSteps": {
@@ -101,15 +101,12 @@
   "swayCoefDesc": "낮은 값이 품질을 향상시킵니다",
   "cfgStrength": "음성 유사도",
   "cfgStrengthDesc": "높은 값이 음성 유사도를 증가시킵니다",
-
   "seedControl": "시드 제어",
   "useRandomSeed": "랜덤 시드 사용",
   "seed": "시드 값",
-
   "audioProcessing": "오디오 처리",
   "removeSilence": "무음 제거",
   "removeSilenceDesc": "무음 제거",
-
   "outputFormat": "출력 형식",
   "format": "형식",
   "formats": {
@@ -117,13 +114,11 @@
     "mp3": "MP3"
   },
   "sampleRate": "샘플 레이트",
-
   "batchProcessing": "일괄 처리",
   "batchSize": "배치 크기",
   "batchSizeDesc": "GPU가 처리할 수 없는 경우 더 작게 설정하세요",
   "all": "모두",
   "mergeOutput": "모든 오디오 파일 병합",
-
   "geminiResults": "생성된 나레이션 (Gemini)",
   "playbackError": "오디오 재생 오류",
   "processingError": "오디오 데이터 처리 오류",
@@ -135,7 +130,6 @@
   "alreadySaved": "오디오가 이미 서버에 저장됨",
   "savedSuccess": "오디오가 서버에 성공적으로 저장됨",
   "saveError": "서버에 오디오 저장 오류",
-
   "voice": "음성",
   "femaleVoices": "여성 음성",
   "maleVoices": "남성 음성",
@@ -150,7 +144,6 @@
   "geminiUnavailable": "(사용 불가 - 설정에서 API 키 확인)",
   "downloadAligned": "타임라인에 정렬된 상태로 다운로드",
   "downloadAlignedTooltip": "단일 정렬된 나레이션 파일 다운로드",
-
   "alignedMode": "정렬된 나레이션 사용",
   "enabled": "활성화됨",
   "disabled": "비활성화됨",
@@ -171,13 +164,11 @@
   "waitingForResults": "나레이션 결과 기다리는 중...",
   "geminiGenerationIncomplete": "Gemini 나레이션 생성이 완료되지 않았습니다. {{total}}개 중 {{generated}}개 나레이션이 생성되었습니다.",
   "geminiConnectionError": "Gemini 연결이 중단되었습니다. 실패한 나레이션을 개별적으로 재시도할 수 있습니다.",
-
   "groupSubtitles": "자막을 더 완전한 문장으로 스마트하게 그룹화",
   "groupingSubtitles": "그룹화 중...",
   "viewGrouping": "그룹화 보기",
   "groupedSubtitlesCount": "{{original}}개 자막을 {{grouped}}개 문장으로 그룹화",
   "subtitlesGrouped": "더 나은 나레이션을 위해 {{original}}개 자막을 {{grouped}}개의 더 완전한 문장으로 그룹화했습니다.",
-
   "id": "ID",
   "time": "시간",
   "groupId": "그룹",
@@ -185,7 +176,6 @@
   "groupedSubtitles": "그룹화된 자막",
   "subtitleGroupingTitle": "자막 그룹화 비교",
   "subtitleGroupingExplanation": "이 표는 원본 자막이 더 나은 나레이션을 위해 어떻게 더 완전한 문장으로 그룹화되었는지 보여줍니다. 각 행은 원본 자막을 나타내며, 그룹화된 열은 이들이 어떻게 결합되었는지 보여줍니다.",
-
   "chatterboxMethod": "Chatterbox",
   "chatterboxUnavailable": "(사용 불가 - npm run dev:cuda로 실행)",
   "chatterboxUnavailableMessage": "Chatterbox 서비스가 시작되지 않았습니다 (npm run dev:cuda 사용)",
@@ -203,12 +193,10 @@
   "chatterboxGenerationPartial": "Chatterbox 생성 완료: {{success}}개 성공, {{errors}}개 오류",
   "chatterboxGenerationError": "Chatterbox로 나레이션 생성 중 오류: {{error}}",
   "chatterboxNoReferenceAudio": "Chatterbox TTS 생성에는 참조 오디오가 필요합니다. 참조 오디오 파일을 업로드해주세요.",
-
   "audioAlignmentWarning": "스마트 나레이션 정렬을 적용했음에도 불구하고 결과 오디오가 예상보다 {{duration}}초 더 깁니다. 오디오 목록 위의 속도 슬라이더를 사용하여 (더 빠르게 설정) 플레이어의 나레이션 새로고침 버튼이나 정렬된 다운로드 버튼으로 전체 나레이션을 다시 생성해주세요",
   "audioAlignmentSegmentWarning": "가장 멀리 밀려난 세그먼트는 {{maxSegment}}번 세그먼트입니다 ({{maxAdjustment}}초 이동), 이것이 너무 멀다고 생각되면 오디오 목록 위의 속도 슬라이더를 사용하여 더 빠르게 설정하고 전체 나레이션을 다시 생성해야 합니다, 또는 긴 문장이 짧은 시간 간격에 배치되었을 수 있으므로 나레이션 타이밍을 조정하세요",
   "audioAlignmentWarningMerged": "스마트 나레이션 정렬을 적용했음에도 불구하고 결과 오디오가 예상보다 {{duration}}초 더 깁니다. 오디오 목록 위의 속도 슬라이더를 사용하여 (더 빠르게 설정) 플레이어의 나레이션 새로고침 버튼이나 정렬된 다운로드 버튼으로 전체 나레이션을 다시 생성해주세요. 가장 멀리 밀려난 세그먼트는 {{maxSegment}}번 세그먼트입니다 ({{maxAdjustment}}초 이동), 이것이 너무 멀다고 생각되면 더 빠르게 설정해야 합니다, 또는 긴 문장이 짧은 시간 간격에 배치되었을 수 있으므로 나레이션 타이밍을 조정하세요",
   "closeNotification": "알림 닫기",
-
   "edgeTTSVoice": "Edge TTS 음성",
   "edgeTTSRate": "말하기 속도",
   "edgeTTSVolume": "음량",
@@ -217,7 +205,6 @@
   "voiceLoadError": "음성 로딩 오류: {{error}}",
   "selectVoice": "음성 선택",
   "voiceLabel": "음성",
-
   "gttsLanguage": "gTTS 언어",
   "gttsTld": "억양/지역",
   "gttsSlow": "느린 말하기",
@@ -225,7 +212,6 @@
   "loadingLanguages": "언어 로딩 중...",
   "languageLoadError": "언어 로딩 오류: {{error}}",
   "selectLanguage": "언어 선택",
-
   "tldCom": "글로벌 (.com)",
   "tldAu": "호주 (.com.au)",
   "tldUk": "영국 (.co.uk)",
@@ -234,7 +220,6 @@
   "tldIn": "인도 (.co.in)",
   "tldIe": "아일랜드 (.ie)",
   "tldZa": "남아프리카 (.co.za)",
-
   "allLanguages": "모든 언어",
   "allCategories": "모두",
   "searchVoices": "음성 검색...",
@@ -244,7 +229,6 @@
   "clear": "지우기",
   "recommendedVoices": "{{language}}에 추천",
   "recommendedLanguage": "{{language}}에 추천",
-
   "loadingFromCache": "이전 세션에서 나레이션 로딩 중...",
   "edgeTTSStarting": "Edge TTS 생성 시작 중...",
   "edgeTTSGeneratingProgress": "Edge TTS로 {{total}}개 중 {{current}}개 나레이션 생성 중...",
@@ -258,27 +242,21 @@
   "retryingFailedNarrationsComplete": "모든 실패한 나레이션 재시도 완료",
   "gttsStarting": "gTTS 생성 시작 중...",
   "gttsGeneratingProgress": "gTTS로 {{total}}개 중 {{current}}개 나레이션 생성 중...",
-
   "concurrentClients": "초고속 모드",
   "concurrentClientsHelp": "Gemini와 여러 대화를 동시에 병렬로 열기, 경고: 할당량을 빠르게 소진할 수 있음",
-
   "autoRecognize": "음성 자동 인식",
   "autoRecognizeDescription": "녹음 또는 업로드 후 자동으로 오디오를 전사합니다",
-
   "settingsTooltip": "나레이션 설정",
   "toggleSettings": "나레이션 설정",
-
   "msVibeVoiceMethod": "MS VibeVoice",
   "geminiNativeDialogMethod": "Gemini Native Dialog",
   "comingSoon": "곧 출시",
-
   "selectNarrationModel": "나레이션 모델 선택",
   "loadingModels": "모델 로딩 중...",
   "selectModelExplanation": "최상의 결과를 위해 자막 언어를 지원하는 나레이션 모델을 선택하세요.",
   "matchingLanguageModels": "추천 모델",
   "otherModels": "기타 사용 가능한 모델",
   "noModelsAvailable": "다른 모델이 없습니다",
-
   "language": "언어",
   "recommendedLanguages": "추천 언어",
   "otherLanguages": "기타 언어",
@@ -308,5 +286,24 @@
     "sw": "스와힐리어",
     "tr": "터키어",
     "zh": "중국어"
+  },
+  "generationCancelled": "생성이 취소되었습니다",
+  "generationInterrupted": "생성이 중단되었습니다",
+  "noResultReturned": "결과가 반환되지 않았습니다",
+  "failedToGroupSubtitles": "자막 그룹화에 실패했습니다",
+  "preparingGeminiGeneration": "Gemini로 내레이션을 준비 중입니다...",
+  "geminiGenerationCancelled": "Gemini 내레이션 생성이 취소되었습니다",
+  "geminiGenerationCancelling": "Gemini 내레이션 생성을 취소하는 중...",
+  "retryingGeminiGeneration": "자막 {{id}}에 대한 내레이션 생성을 재시도하는 중...",
+  "subtitleGroupingError": "자막 그룹화 오류: {{error}}",
+  "serverError": "서버 오류: {{status}} {{statusText}}",
+  "exampleAudio": {
+    "basic_ref_en": "기본 영어 참조 오디오",
+    "basic_ref_zh": "기본 중국어 참조 오디오",
+    "viet_female_south": "베트남 남부 여성 음성",
+    "korean_male_seoul": "서울 남성 음성",
+    "viet_male_saigon": "사이공 남성 음성",
+    "viet_female_north_1": "베트남 북부 여성 음성 1",
+    "viet_female_north_2": "베트남 북부 여성 음성 2"
   }
 }

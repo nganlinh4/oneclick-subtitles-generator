@@ -1,7 +1,9 @@
 import React from 'react';
 import { useTranslation } from 'react-i18next';
 import StandardSlider from '../common/StandardSlider';
+import SliderWithValue from '../common/SliderWithValue';
 import CustomDropdown from '../common/CustomDropdown';
+import { defaultCustomization } from '../SubtitleCustomizationPanel';
 
 const BackgroundControls = ({ customization, onChange }) => {
   const { t } = useTranslation();
@@ -42,25 +44,21 @@ const BackgroundControls = ({ customization, onChange }) => {
           <label>{t('videoRendering.backgroundOpacity', 'Background Opacity')}</label>
         </div>
         <div className="row-content">
-          <div className="slider-control">
-            <span className="slider-value">{customization.backgroundOpacity}%</span>
-            <StandardSlider
-              value={customization.backgroundOpacity}
-              onChange={(value) => updateCustomization({ backgroundOpacity: parseInt(value) })}
-              min={0}
-              max={100}
-              step={1}
-              orientation="Horizontal"
-              size="XSmall"
-              state="Enabled"
-              showValueIndicator={false} // Using custom value display
-              showIcon={false}
-              showStops={false}
-              className="background-opacity-slider"
-              id="background-opacity-slider"
-              ariaLabel={t('videoRendering.backgroundOpacity', 'Background Opacity')}
-            />
-          </div>
+          <SliderWithValue
+            value={customization.backgroundOpacity}
+            onChange={(value) => updateCustomization({ backgroundOpacity: parseInt(value) })}
+            min={0}
+            max={100}
+            step={1}
+            orientation="Horizontal"
+            size="XSmall"
+            state="Enabled"
+            className="background-opacity-slider"
+            id="background-opacity-slider"
+            ariaLabel={t('videoRendering.backgroundOpacity', 'Background Opacity')}
+            formatValue={(v) => `${v}%`}
+            defaultValue={defaultCustomization.backgroundOpacity}
+          />
         </div>
       </div>
 
@@ -70,25 +68,21 @@ const BackgroundControls = ({ customization, onChange }) => {
           <label>{t('videoRendering.borderRadius', 'Border Radius')}</label>
         </div>
         <div className="row-content">
-          <div className="slider-control">
-            <span className="slider-value">{customization.borderRadius}px</span>
-            <StandardSlider
-              value={customization.borderRadius}
-              onChange={(value) => updateCustomization({ borderRadius: parseInt(value) })}
-              min={0}
-              max={100}
-              step={1}
-              orientation="Horizontal"
-              size="XSmall"
-              state="Enabled"
-              showValueIndicator={false} // Using custom value display
-              showIcon={false}
-              showStops={false}
-              className="border-radius-slider"
-              id="border-radius-slider"
-              ariaLabel={t('videoRendering.borderRadius', 'Border Radius')}
-            />
-          </div>
+          <SliderWithValue
+            value={customization.borderRadius}
+            onChange={(value) => updateCustomization({ borderRadius: parseInt(value) })}
+            min={0}
+            max={100}
+            step={1}
+            orientation="Horizontal"
+            size="XSmall"
+            state="Enabled"
+            className="border-radius-slider"
+            id="border-radius-slider"
+            ariaLabel={t('videoRendering.borderRadius', 'Border Radius')}
+            formatValue={(v) => `${v}px`}
+            defaultValue={defaultCustomization.borderRadius}
+          />
         </div>
       </div>
 
@@ -98,25 +92,21 @@ const BackgroundControls = ({ customization, onChange }) => {
           <label>{t('videoRendering.borderWidth', 'Border Width')}</label>
         </div>
         <div className="row-content">
-          <div className="slider-control">
-            <span className="slider-value">{customization.borderWidth}px</span>
-            <StandardSlider
-              value={customization.borderWidth}
-              onChange={(value) => updateCustomization({ borderWidth: parseInt(value) })}
-              min={0}
-              max={20}
-              step={1}
-              orientation="Horizontal"
-              size="XSmall"
-              state="Enabled"
-              showValueIndicator={false} // Using custom value display
-              showIcon={false}
-              showStops={false}
-              className="border-width-slider"
-              id="border-width-slider"
-              ariaLabel={t('videoRendering.borderWidth', 'Border Width')}
-            />
-          </div>
+          <SliderWithValue
+            value={customization.borderWidth}
+            onChange={(value) => updateCustomization({ borderWidth: parseInt(value) })}
+            min={0}
+            max={20}
+            step={1}
+            orientation="Horizontal"
+            size="XSmall"
+            state="Enabled"
+            className="border-width-slider"
+            id="border-width-slider"
+            ariaLabel={t('videoRendering.borderWidth', 'Border Width')}
+            formatValue={(v) => `${v}px`}
+            defaultValue={defaultCustomization.borderWidth}
+          />
         </div>
       </div>
 

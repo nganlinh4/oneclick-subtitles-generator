@@ -20,7 +20,6 @@ const lyricsRoutes = require('./server/routes/lyricsRoutes');
 
 const settingsRoutes = require('./server/routes/settingsRoutes');
 const douyinRoutes = require('./server/routes/douyinRoutes');
-const douyinPlaywrightRoutes = require('./server/routes/douyinPlaywrightRoutes');
 const allSitesRoutes = require('./server/routes/allSitesRoutes');
 const narrationRoutes = require('./server/routes/narrationRoutes');
 const testAudioRoute = require('./server/routes/testAudioRoute');
@@ -396,7 +395,6 @@ app.use('/api', updateRoutes);
 app.use('/api', lyricsRoutes);
 app.use('/api', settingsRoutes);
 app.use('/api', douyinRoutes);
-app.use('/api', douyinPlaywrightRoutes);
 app.use('/api', allSitesRoutes);
 app.use('/api', qualityScanRoutes);
 app.use('/api', downloadOnlyRoutes);

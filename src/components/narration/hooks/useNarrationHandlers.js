@@ -98,6 +98,8 @@ const useNarrationHandlers = ({
   setReferenceText,
   setRecordedAudio,
   setIsRecording,
+  setIsStartingRecording,
+  setRecordingStartTime,
   setIsExtractingSegment,
   setIsRecognizing,
   setError,
@@ -324,6 +326,7 @@ const useNarrationHandlers = ({
     try {
       setError(''); // Clear any previous errors
       audioChunksRef.current = [];
+      if (typeof setIsStartingRecording === 'function') setIsStartingRecording(true);
 
       const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
 
@@ -355,6 +358,7 @@ const useNarrationHandlers = ({
             triggerErrorToast(errorMessage);
             URL.revokeObjectURL(audioUrl);
             recordingStartTimeRef.current = null; // Reset the timer
+            if (typeof setRecordingStartTime === 'function') setRecordingStartTime(null);
             return;
           } else {
             console.log(`[F5TTS Duration Check] Recording duration OK (${recordingDuration.toFixed(2)}s), proceeding`);
@@ -497,12 +501,16 @@ const useNarrationHandlers = ({
 
         // Reset recording timer after processing
         recordingStartTimeRef.current = null;
+        if (typeof setRecordingStartTime === 'function') setRecordingStartTime(null);
       };
 
       mediaRecorderRef.current.start();
       recordingStartTimeRef.current = Date.now(); // Track recording start time
+      if (typeof setRecordingStartTime === 'function') setRecordingStartTime(recordingStartTimeRef.current);
       setIsRecording(true);
+      if (typeof setIsStartingRecording === 'function') setIsStartingRecording(false);
     } catch (error) {
+      if (typeof setIsStartingRecording === 'function') setIsStartingRecording(false);
       setError(error.message || t('narration.microphoneError', 'Error accessing microphone'));
     }
   };
@@ -688,9 +696,9 @@ const useNarrationHandlers = ({
 
   // Generate narration for all subtitles
   const handleGenerateNarration = async () => {
-    // Clear all caches and files for fresh generation
-    const { clearNarrationCachesAndFiles } = await import('../utils/cacheManager');
-    await clearNarrationCachesAndFiles(setGenerationResults);
+    // Clear browser caches quickly (non-blocking) to avoid UI flicker; skip wiping UI
+    const { clearBrowserCaches } = await import('../utils/cacheManager');
+    try { clearBrowserCaches(); } catch (e) { /* ignore */ }
 
     if (!referenceAudio || !referenceAudio.filepath) {
       setError(t('narration.noReferenceError', 'Please set up reference audio using one of the options above'));
@@ -705,8 +713,8 @@ const useNarrationHandlers = ({
 
     // Get the appropriate subtitles based on the selected source
     // If grouped subtitles are available and enabled, use them instead
-    const useGrouped = window.useGroupedSubtitles && window.groupedSubtitles && window.groupedSubtitles.length > 0;
-    const selectedSubtitles = useGrouped ? window.groupedSubtitles : getSelectedSubtitles();
+    const useGrouped = !!(useGroupedSubtitles && groupedSubtitles && groupedSubtitles.length > 0);
+    const selectedSubtitles = useGrouped ? groupedSubtitles : getSelectedSubtitles();
 
     if (!selectedSubtitles || selectedSubtitles.length === 0) {
       // If translated subtitles are selected but not available, show a specific error
@@ -750,7 +758,7 @@ const useNarrationHandlers = ({
     setIsGenerating(true);
     setGenerationStatus(t('narration.preparingGeneration', 'Preparing to generate narration...'));
     setError('');
-    setGenerationResults([]);
+    // Do not clear results here; we will immediately seed full pending list like Gemini
 
     try {
       // Prepare subtitles with IDs for tracking
@@ -781,6 +789,27 @@ const useNarrationHandlers = ({
         })
       );
 
+      // Initialize UI with full pending list like Gemini flow
+      const initialResults = subtitlesWithIds.map(sub => ({
+        subtitle_id: sub.id,
+        text: sub.text,
+        success: false,
+        pending: true,
+        audioData: null,
+        filename: null,
+        // preserve grouping info and timing if present
+        original_ids: sub.original_ids || [sub.id],
+        start: sub.start,
+        end: sub.end
+      }));
+      setGenerationResults(initialResults);
+      // Temporary working copy we update as results stream in
+      let tempResults = [...initialResults];
+      if (useGroupedSubtitles && groupedSubtitles && groupedSubtitles.length > 0) {
+        window.groupedNarrations = [...initialResults];
+        window.useGroupedSubtitles = true;
+      }
+
       // Prepare advanced settings for the API - only include supported parameters
       const apiSettings = {
         // Convert string values to appropriate types
@@ -800,9 +829,6 @@ const useNarrationHandlers = ({
       if (!advancedSettings.useRandomSeed) {
         apiSettings.seed = advancedSettings.seed;
       }
-
-      // Generate narration with streaming response
-      const tempResults = [];
 
       // Define callbacks for the streaming response
       const handleProgress = (progressData) => {
@@ -857,12 +883,16 @@ const useNarrationHandlers = ({
       };
 
       const handleResult = (result, progress, total) => {
-        // Add the result to the temporary results array
-        tempResults.push(result);
+        // Replace the corresponding pending item in-place to keep ordering stable
+        const idx = tempResults.findIndex(item => item.subtitle_id === result.subtitle_id);
+        if (idx !== -1) {
+          tempResults[idx] = { ...result, pending: false };
+        } else {
+          // Fallback: append if not found (shouldn't happen if we seeded correctly)
+          tempResults.push({ ...result, pending: false });
+        }
 
-        // Update the UI with the current results
-        // This ensures each result is shown immediately as it's received
-
+        // Update the UI with the current results (full list stays visible)
         setGenerationResults([...tempResults]);
 
         // Update window.groupedNarrations incrementally if we're generating grouped subtitles

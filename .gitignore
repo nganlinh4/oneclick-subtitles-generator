@@ -145,6 +145,9 @@ lib64/
 *.wav
 !src/assets/*.mp3
 !src/assets/*.wav
+# Keep example audio files in repo
+!server/example-audio/*.mp3
+!server/example-audio/*.wav
 # Keep bundled Gemini voice samples in repo
 !public/audio/voices/*.wav
 !public/audio/voices/*.mp3

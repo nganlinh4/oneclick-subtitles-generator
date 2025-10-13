@@ -470,12 +470,13 @@
 }
 
 .confirm-button {
-  background-color: var(--md-on-surface);
-  color: var(--md-surface);
+  /* Use primary tokens so it looks correct in light and dark */
+  background-color: var(--md-primary);
+  color: var(--md-on-primary);
 }
 
 .confirm-button:hover:not(:disabled) {
-  background-color: rgba(var(--md-on-surface-rgb), 0.9);
+  background-color: color-mix(in srgb, var(--md-primary), rgba(255, 255, 255, var(--md-state-hover-opacity)));
   box-shadow: var(--md-elevation-level3);
 }
 

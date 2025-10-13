@@ -10,5 +10,6 @@
   "dragToZoom": "Drag to zoom",
   "clearOfflineSegments": "Clear offline segments",
   "retryFromCache": "Retry this cut (reuse cached clip)",
-  "clearOfflineFirst": "Please clear offline segments to exit this mode first"
+  "clearOfflineFirst": "Please clear offline segments to exit this mode first",
+  "offlineClearNotice": "Cleared offline segments from UI. Files will be removed in background and may persist briefly due to OS locks."
 }

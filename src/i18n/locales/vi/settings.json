@@ -7,7 +7,6 @@
   "gemini25ProPaused": "Gemini 2.5 Pro hiện đã có sẵn trở lại trên API free tier! Bạn có thể sử dụng nó cho tất cả các tính năng.",
   "udbmIntroduction": "Giới thiệu UDBM, trình quản lý cơ sở dữ liệu mã nguồn mở và nhiều hơn nữa, tải xuống file EXE portable",
   "udbmDownloadHere": "tại đây",
-  "upcomingFeaturesOSG": "Tính năng sắp tới cho OSG: tạo sub nhiều video tự động, API cho tạo sub, căn chỉnh thuyết minh sẽ có giao diện chỉnh sửa.",
   "closeMessage": "Đóng",
   "geminiApiKey": "Khóa API Gemini",
   "geminiApiKeys": "Các Khóa API Gemini",
@@ -377,7 +376,6 @@
   "useCookiesForDownloadDescription": "Bật xác thực cookie trình duyệt để truy cập video chất lượng cao hơn và bỏ qua hạn chế đăng nhập. Tắt tính năng này sẽ làm cho việt tải xuống nhanh hơn nhưng có thể hạn chế chất lượng video có sẵn và gây lỗi trên nội dung bị hạn chế.",
   "autoImportSiteSubtitles": "Tự động nhập phụ đề có sẵn từ trang (nếu có)",
   "autoImportSiteSubtitlesDescription": "Khi có, tự động lấy và điền sẵn phụ đề đi kèm từ trang trong lúc tải video. Bạn có thể thay thế sau bằng cách upload phụ đề của mình hoặc tạo lại.",
-
   "enableYoutubeSearch": "Bật tìm kiếm YouTube",
   "enableYoutubeSearchDescription": "Hiển thị tab \"Tìm kiếm YouTube\" trong phương thức nhập và bật cài đặt xác thực YouTube API. Đây là phương pháp tùy chọn vì video YouTube có thể được tải xuống qua phương pháp \"URL bất kỳ\"",
   "concurrentClients": "Khách hàng Đồng thời",
@@ -385,14 +383,12 @@
   "resolution240p": "240p (Nhanh nhất, tệp nhỏ nhất)",
   "resolution360p": "360p (Khuyến nghị cho Gemini)",
   "customGeminiModels": {
-    "title": "Mô hình Gemini Tùy chỉnh",
     "description": "Thêm ID mô hình Gemini tùy chỉnh để sử dụng trong các menu thả xuống trong toàn bộ ứng dụng. Những mô hình này sẽ xuất hiện trong tất cả các menu chọn mô hình.",
     "modelId": "ID Mô hình",
     "modelName": "Tên Hiển thị",
     "modelIdPlaceholder": "v.d., gemini-2.5-pro-preview-03-25",
     "modelNamePlaceholder": "v.d., Gemini 2.5 Pro Preview",
     "add": "Thêm Mô hình",
-    "update": "Cập nhật Mô hình",
     "addNew": "Thêm Mô hình Tùy chỉnh",
     "edit": "Chỉnh sửa mô hình",
     "delete": "Xóa mô hình",
@@ -400,16 +396,5 @@
     "modelExists": "Một mô hình với ID này đã tồn tại"
   },
   "customModels": {
-    "modelId": "ID Mô hình",
-    "modelName": "Tên Hiển thị",
-    "modelIdPlaceholder": "v.d., gemini-2.5-pro-preview-03-25",
-    "modelNamePlaceholder": "v.d., Gemini 2.5 Pro Preview",
-    "add": "Thêm Mô hình",
-    "update": "Cập nhật Mô hình",
-    "addNew": "Thêm Mô hình Tùy chỉnh",
-    "edit": "Chỉnh sửa mô hình",
-    "delete": "Xóa mô hình",
-    "confirmDelete": "Bạn có chắc chắn muốn xóa mô hình tùy chỉnh này không?",
-    "modelExists": "Một mô hình với ID này đã tồn tại"
   }
 }

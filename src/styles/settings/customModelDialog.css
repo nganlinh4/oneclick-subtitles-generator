@@ -10,7 +10,7 @@
   display: flex;
   align-items: center;
   justify-content: center;
-  z-index: 9999; /* Extremely high z-index to ensure it's above everything */
+  z-index: 11000; /* Above settings-modal-overlay (10000) */
   backdrop-filter: blur(3px);
   /* Ensure it's at the root level */
   isolation: isolate;
@@ -292,29 +292,6 @@
   box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
 }
 
-/* Delete button in language code field */
-.language-code-field .delete-model-btn {
-  padding: 0;
-  border-radius: 50%;
-  background-color: transparent;
-  color: var(--error-color);
-  border: none;
-  cursor: pointer;
-  transition: all 0.2s ease;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  width: 36px;
-  height: 36px;
-  box-sizing: border-box;
-  margin: 0;
-}
-
-.language-code-field .delete-model-btn:hover {
-  background-color: rgba(var(--error-color-rgb), 0.1);
-  transform: scale(1.05);
-  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
-}
 
 /* Advanced options toggle */
 .advanced-options-toggle {
@@ -338,7 +315,7 @@
 }
 
 /* Button styles */
-.cancel-btn, .confirm-btn, .delete-btn {
+.confirm-btn, .delete-btn {
   padding: 8px 24px;
   border-radius: 100px; /* Fully rounded pill shape */
   font-size: 14px;
@@ -353,15 +330,6 @@
   height: 40px;
 }
 
-.cancel-btn {
-  background-color: transparent;
-  color: var(--md-primary);
-  border: none;
-}
-
-.cancel-btn:hover:not(:disabled) {
-  background-color: rgba(var(--md-primary-rgb), 0.1);
-}
 
 .confirm-btn {
   background-color: var(--md-primary);
@@ -384,7 +352,6 @@
 }
 
 /* Disabled button styles */
-.cancel-btn:disabled,
 .confirm-btn:disabled,
 .delete-btn:disabled {
   opacity: 0.6;
@@ -421,4 +388,10 @@
     flex-direction: column;
     gap: 8px;
   }
+}
+
+
+/* Harmonize cancel button typography inside custom modal footer */
+.custom-modal-footer .cancel-btn {
+  font-size: 14px; /* match confirm-btn for consistency */
 }

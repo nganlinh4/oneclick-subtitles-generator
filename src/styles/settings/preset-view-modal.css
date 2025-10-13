@@ -10,7 +10,7 @@
   display: flex;
   align-items: center;
   justify-content: center;
-  z-index: 9999; /* Extremely high z-index to ensure it's above everything */
+  z-index: 10050; /* Above .settings-modal-overlay (10000) */
   animation: fadeIn 0.2s ease;
   backdrop-filter: blur(3px); /* Add blur effect like settings modal */
   /* Ensure it's at the root level */

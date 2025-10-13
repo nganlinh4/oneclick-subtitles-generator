@@ -28,8 +28,6 @@
   "gemini25Warning": "(Gemini 2.5 Pro, 2.5 Flash, 2.5 Flash Lite) do not work well for this use case"
 ,
   "autoEraseBlankLines": "Auto erase blank lines"
-
 ,
   "autoEraseBlankLinesHelp": "Automatically remove empty lines from pasted text and existing content. Does not interfere while typing."
-
 }

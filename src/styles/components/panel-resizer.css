@@ -1,0 +1,95 @@
+/* Resizable divider between panels */
+.panel-resizer {
+  width: 32px;
+  background: transparent;
+  cursor: col-resize;
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: background-color 0.2s ease;
+}
+
+.panel-resizer:hover {
+  background: rgba(var(--md-primary-rgb), 0.08);
+}
+
+.panel-resizer::before {
+  content: '';
+  width: 5px;
+  height: 80px;
+  background: var(--md-outline-variant);
+  border-radius: 5px;
+  transition: all 0.2s ease;
+}
+
+.panel-resizer:hover::before {
+  background: var(--md-primary);
+  width: 10px;
+}
+
+
+
+/* Horizontal variant for resizing heights */
+.panel-resizer--horizontal {
+  height: 8px;
+  width: 100%;
+  cursor: row-resize;
+  background: transparent;
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: background-color 0.2s ease;
+}
+
+.panel-resizer--horizontal:hover {
+  background: rgba(var(--md-primary-rgb), 0.04);
+}
+
+.panel-resizer--horizontal::before {
+  content: '';
+  height: 2px;
+  width: 72px;
+  background: var(--md-outline-variant);
+  border-radius: 2px;
+  transition: all 0.2s ease;
+}
+
+.panel-resizer--horizontal:hover::before {
+  background: var(--md-primary);
+  height: 4px;
+}
+
+/* Floating resizer pill (for overlay on panels) */
+.floating-resizer-pill {
+  position: absolute;
+  left: 50%;
+  transform: translateX(-50%);
+  bottom: 0px;
+  width: 64px;   /* minimal invisible hit area */
+  height: 16px;  /* minimal invisible hit area */
+  border: none;
+  background: transparent; /* no visible container */
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: row-resize;
+  z-index: 11;
+  touch-action: none;
+}
+
+.floating-resizer-pill::before {
+  content: '';
+  height: 6px;   /* thicker grip */
+  width: 56px;   /* visible pill width */
+  background: var(--md-outline-variant);
+  border-radius: 9999px;  /* pill shape */
+  transition: background-color 0.2s ease;
+}
+
+/* Only change the bar color on hover (no container visuals) */
+.floating-resizer-pill:hover::before {
+  background: var(--md-primary);
+}
+

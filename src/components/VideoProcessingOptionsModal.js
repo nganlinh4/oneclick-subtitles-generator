@@ -8,6 +8,8 @@ import CloseButton from './common/CloseButton';
 import MaterialSwitch from './common/MaterialSwitch';
 import SliderWithValue from './common/SliderWithValue';
 import CustomDropdown from './common/CustomDropdown';
+import HelpIcon from './common/HelpIcon';
+
 
 /**
  * Modal for selecting video processing options after timeline segment selection
@@ -877,16 +879,7 @@ const VideoProcessingOptionsModal = ({
                 placeholder={t('processing.methodLabel', 'Method')}
                 disabled={retryLock}
               />
-              <div
-                className="help-icon-container"
-                title={t('processing.inlineExtractionHelp', 'Use the old method when the new method fails; may be slower depending on the situation')}
-              >
-                <svg className="help-icon" viewBox="0 0 24 24" width="16" height="16" stroke="currentColor" strokeWidth="2" fill="none">
-                  <circle cx="12" cy="12" r="10"></circle>
-                  <line x1="12" y1="16" x2="12" y2="12"></line>
-                  <line x1="12" y1="8" x2="12.01" y2="8"></line>
-                </svg>
-              </div>
+              <HelpIcon title={t('processing.inlineExtractionHelp', 'Use the old method when the new method fails; may be slower depending on the situation')} />
             </div>
           </div>
           <CloseButton onClick={onClose} variant="modal" size="medium" />
@@ -907,16 +900,7 @@ const VideoProcessingOptionsModal = ({
                       <span className="label-subtitle">({getFpsInterval(fps)})</span>
                     </label>
                     {selectedModel === 'gemini-2.5-pro' && (
-                      <div
-                        className="help-icon-container"
-                        title={t('processing.gemini25ProFpsNote', 'Note: Gemini 2.5 Pro requires FPS ≥ 1 for compatibility')}
-                      >
-                        <svg className="help-icon" viewBox="0 0 24 24" width="16" height="16" stroke="currentColor" strokeWidth="2" fill="none">
-                          <circle cx="12" cy="12" r="10"></circle>
-                          <line x1="12" y1="16" x2="12" y2="12"></line>
-                          <line x1="12" y1="8" x2="12.01" y2="8"></line>
-                        </svg>
-                      </div>
+                      <HelpIcon title={t('processing.gemini25ProFpsNote', 'Note: Gemini 2.5 Pro requires FPS ≥ 1 for compatibility')} />
                     )}
                   </div>
                   <div>
@@ -942,16 +926,7 @@ const VideoProcessingOptionsModal = ({
                 <div className="combined-option-half">
                   <div className="label-with-help">
                     <label>{t('processing.mediaResolution', 'Media Resolution')}</label>
-                    <div
-                      className="help-icon-container"
-                      title={t('processing.mediaResolutionHelp', "64 or 256 tokens cannot be mapped to an exact resolution; this reflects Gemini's proprietary video information extraction method.")}
-                    >
-                      <svg className="help-icon" viewBox="0 0 24 24" width="16" height="16" stroke="currentColor" strokeWidth="2" fill="none">
-                        <circle cx="12" cy="12" r="10"></circle>
-                        <line x1="12" y1="16" x2="12" y2="12"></line>
-                        <line x1="12" y1="8" x2="12.01" y2="8"></line>
-                      </svg>
-                    </div>
+                    <HelpIcon title={t('processing.mediaResolutionHelp', "64 or 256 tokens cannot be mapped to an exact resolution; this reflects Gemini's proprietary video information extraction method.")} />
                   </div>
                   <CustomDropdown
                     value={mediaResolution}
@@ -973,16 +948,7 @@ const VideoProcessingOptionsModal = ({
                 <div className="combined-option-half">
                   <div className="label-with-help">
                     <label>{t('processing.model', 'Model')}</label>
-                    <div
-                      className="help-icon-container"
-                      title={t('processing.gemini20Warning', 'Gemini 2.0 models do not work well with the new offset mechanism')}
-                    >
-                      <svg className="help-icon" viewBox="0 0 24 24" width="16" height="16" stroke="currentColor" strokeWidth="2" fill="none">
-                        <circle cx="12" cy="12" r="10"></circle>
-                        <line x1="12" y1="16" x2="12" y2="12"></line>
-                        <line x1="12" y1="8" x2="12.01" y2="8"></line>
-                      </svg>
-                    </div>
+                    <HelpIcon title={t('processing.gemini20Warning', 'Gemini 2.0 models do not work well with the new offset mechanism')} />
                   </div>
                   <CustomDropdown
                     value={selectedModel}
@@ -1000,16 +966,7 @@ const VideoProcessingOptionsModal = ({
                 <div className="combined-option-half">
                   <div className={`label-with-help ${retryLock ? 'disabled' : ''}`} aria-disabled={retryLock ? 'true' : 'false'}>
                     <label>{t('processing.maxDurationPerRequest', 'Max duration per request')}</label>
-                    <div
-                      className="help-icon-container"
-                      title={t('processing.maxDurationPerRequestDesc', 'Maximum duration for each Gemini request. Longer segments will be split into parallel requests.')}
-                    >
-                      <svg className="help-icon" viewBox="0 0 24 24" width="16" height="16" stroke="currentColor" strokeWidth="2" fill="none">
-                        <circle cx="12" cy="12" r="10"></circle>
-                        <line x1="12" y1="16" x2="12" y2="12"></line>
-                        <line x1="12" y1="8" x2="12.01" y2="8"></line>
-                      </svg>
-                    </div>
+                    <HelpIcon title={t('processing.maxDurationPerRequestDesc', 'Maximum duration for each Gemini request. Longer segments will be split into parallel requests.')} />
                   </div>
                   <div>
                     <SliderWithValue
@@ -1206,19 +1163,10 @@ const VideoProcessingOptionsModal = ({
                     <div className="setting-item">
                       <div className="label-with-help">
                         <label>{t('processing.analysisRules', 'Analysis Rules')}</label>
-                        <div
-                          className="help-icon-container"
-                          title={transcriptionRulesAvailable
-                            ? t('processing.useTranscriptionRulesDesc', 'Include context, terminology, and formatting rules from video analysis in the prompt')
-                            : t('processing.noAnalysisAvailable', 'Please create analysis by pressing "Add analysis" button')
-                          }
-                        >
-                          <svg className="help-icon" viewBox="0 0 24 24" width="16" height="16" stroke="currentColor" strokeWidth="2" fill="none">
-                            <circle cx="12" cy="12" r="10"></circle>
-                            <line x1="12" y1="16" x2="12" y2="12"></line>
-                            <line x1="12" y1="8" x2="12.01" y2="8"></line>
-                          </svg>
-                        </div>
+                        <HelpIcon title={transcriptionRulesAvailable
+                          ? t('processing.useTranscriptionRulesDesc', 'Include context, terminology, and formatting rules from video analysis in the prompt')
+                          : t('processing.noAnalysisAvailable', 'Please create analysis by pressing "Add analysis" button')
+                        } />
                       </div>
                       <div className="material-switch-container">
                         <MaterialSwitch
@@ -1247,19 +1195,10 @@ const VideoProcessingOptionsModal = ({
                 <div className="combined-option-half">
                   <div className="label-with-help">
                     <label>{t('processing.notifyOutsideResults', 'Surrounding context')}</label>
-                    <div
-                      className="help-icon-container"
-                      title={outsideContextAvailable
+                    <HelpIcon title={outsideContextAvailable
                         ? t('processing.notifyOutsideResultsDesc', 'Include immediately-before/after subtitles outside the selected range to improve consistency')
                         : t('processing.noOutsideContext', 'No outside subtitles available (switch disabled)')
-                      }
-                    >
-                      <svg className="help-icon" viewBox="0 0 24 24" width="16" height="16" stroke="currentColor" strokeWidth="2" fill="none">
-                        <circle cx="12" cy="12" r="10"></circle>
-                        <line x1="12" y1="16" x2="12" y2="12"></line>
-                        <line x1="12" y1="8" x2="12.01" y2="8"></line>
-                      </svg>
-                    </div>
+                      } />
                   </div>
                   <div className="material-switch-container">
                     <MaterialSwitch
@@ -1280,16 +1219,7 @@ const VideoProcessingOptionsModal = ({
                 <div className="combined-option-half">
                   <div className="label-with-help">
                     <label>{t('processing.outsideContextRange', 'Context coverage')}</label>
-                    <div
-                      className="help-icon-container"
-                      title={t('processing.outsideContextRangeDesc', 'How many subtitles before/after to include as context. The last value is Unlimited.')}
-                    >
-                      <svg className="help-icon" viewBox="0 0 24 24" width="16" height="16" stroke="currentColor" strokeWidth="2" fill="none">
-                        <circle cx="12" cy="12" r="10"></circle>
-                        <line x1="12" y1="16" x2="12" y2="12"></line>
-                        <line x1="12" y1="8" x2="12.01" y2="8"></line>
-                      </svg>
-                    </div>
+                    <HelpIcon title={t('processing.outsideContextRangeDesc', 'How many subtitles before/after to include as context. The last value is Unlimited.')} />
                   </div>
                   <div>
                     <SliderWithValue
@@ -1321,16 +1251,7 @@ const VideoProcessingOptionsModal = ({
                 <div className="combined-option-half">
                   <div className="label-with-help">
                     <label>{t('processing.autoSplitSubtitles', 'Auto-split subtitles')}</label>
-                    <div
-                      className="help-icon-container"
-                      title={t('processing.autoSplitHelp', 'Automatically split long subtitles into smaller segments for better readability. The splitting happens in real-time during streaming.')}
-                    >
-                      <svg className="help-icon" viewBox="0 0 24 24" width="16" height="16" stroke="currentColor" strokeWidth="2" fill="none">
-                        <circle cx="12" cy="12" r="10"></circle>
-                        <line x1="12" y1="16" x2="12" y2="12"></line>
-                        <line x1="12" y1="8" x2="12.01" y2="8"></line>
-                      </svg>
-                    </div>
+                    <HelpIcon title={t('processing.autoSplitHelp', 'Automatically split long subtitles into smaller segments for better readability. The splitting happens in real-time during streaming.')} />
                   </div>
                   <div className="material-switch-container">
                     <MaterialSwitch
@@ -1350,16 +1271,7 @@ const VideoProcessingOptionsModal = ({
                 <div className="combined-option-half">
                   <div className="label-with-help">
                     <label>{t('processing.maxWordsPerSubtitle', 'Max words per subtitle')}</label>
-                    <div
-                      className="help-icon-container"
-                      title={t('processing.maxWordsHelp', 'Maximum number of words allowed per subtitle. Longer subtitles will be split evenly.')}
-                    >
-                      <svg className="help-icon" viewBox="0 0 24 24" width="16" height="16" stroke="currentColor" strokeWidth="2" fill="none">
-                        <circle cx="12" cy="12" r="10"></circle>
-                        <line x1="12" y1="16" x2="12" y2="12"></line>
-                        <line x1="12" y1="8" x2="12.01" y2="8"></line>
-                      </svg>
-                    </div>
+                    <HelpIcon title={t('processing.maxWordsHelp', 'Maximum number of words allowed per subtitle. Longer subtitles will be split evenly.')} />
                   </div>
                   <div>
                     <SliderWithValue

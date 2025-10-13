@@ -8,24 +8,24 @@ import '../../../styles/narration/advancedSettingsModal.css';
 // Default advanced settings
 const DEFAULT_ADVANCED_SETTINGS = {
   // Voice Style Controls
-  speechRate: 1.3,
-
+  speechRate: 1.1,
+ 
   // Generation Quality Controls
   nfeStep: '32',  // Number of Function Evaluations (diffusion steps)
   swayCoef: -1.0, // Sway Sampling Coefficient
   cfgStrength: 2.0, // Classifier-Free Guidance Strength
-
+ 
   // Seed Control
   useRandomSeed: true,
   seed: 42,
-
+ 
   // Audio Processing Options
   removeSilence: true,
-
+ 
   // Output Format Options
   sampleRate: '44100',
   audioFormat: 'wav',
-
+ 
   // Batch Processing Options
   batchSize: '8'
 };
