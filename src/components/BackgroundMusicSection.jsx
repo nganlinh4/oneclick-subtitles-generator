@@ -41,7 +41,12 @@ const BackgroundMusicSection = () => {
   const [midiInputs, setMidiInputs] = useState([]); // [{id, name}]
   const [activeMidiId, setActiveMidiId] = useState('');
 
-  const midiAppUrl = useMemo(() => 'http://127.0.0.1:3037/', []);
+  const midiAppUrl = useMemo(() => {
+    const isDev = process.env.NODE_ENV !== 'production';
+    if (isDev) return 'http://127.0.0.1:3037/';
+    const v = process.env.REACT_APP_GIT_VERSION || process.env.REACT_APP_VERSION || '';
+    return `/promptdj-midi/index.html${v ? `?v=${encodeURIComponent(v)}` : ''}`;
+  }, []);
 
   // Resizer refs and handlers for panel height
   const panelRef = useRef(null);

@@ -1,12 +1,12 @@
 {
-  "buildCommand": "CI=false npm run build:vercel",
+  "installCommand": "npm ci --legacy-peer-deps --ignore-scripts",
+  "buildCommand": "cd promptdj-midi && npm run build && cd .. && rm -rf public/promptdj-midi && mkdir -p public/promptdj-midi && cp -R promptdj-midi/dist/* public/promptdj-midi/ && CI=false npm run build:vercel",
   "outputDirectory": "build",
-  "installCommand": "npm install --legacy-peer-deps",
   "framework": null,
   "rewrites": [
-    {
-      "source": "/(.*)",
-      "destination": "/index.html"
-    }
+    { "source": "/promptdj-midi/assets/(.*)", "destination": "/promptdj-midi/assets/$1" },
+    { "source": "/promptdj-midi/(.*)", "destination": "/promptdj-midi/$1" },
+    { "source": "/promptdj-midi", "destination": "/promptdj-midi/index.html" },
+    { "source": "/(.*)", "destination": "/index.html" }
   ]
 }
