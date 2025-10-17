@@ -1,5 +1,5 @@
 {
-  "installCommand": "npm ci --legacy-peer-deps --ignore-scripts ",
+  "installCommand": "npm install --legacy-peer-deps --ignore-scripts",
   "buildCommand": "cd promptdj-midi && npm run build && cd .. && rm -rf public/promptdj-midi && mkdir -p public/promptdj-midi && cp -R promptdj-midi/dist/* public/promptdj-midi/ && CI=false npm run build:vercel",
   "outputDirectory": "build",
   "framework": null,
