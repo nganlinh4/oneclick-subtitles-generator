@@ -170,13 +170,7 @@ const TranslationActions = ({
             onClick={handleBrowseClick}
           >
             <div className="drop-zone-content">
-              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path>
-                <polyline points="14,2 14,8 20,8"></polyline>
-                <line x1="16" y1="13" x2="8" y2="13"></line>
-                <line x1="16" y1="17" x2="8" y2="17"></line>
-                <polyline points="10,9 9,9 8,9"></polyline>
-              </svg>
+              <span className="material-symbols-rounded" style={{ fontSize: '18px' }}>docs_add_on</span>
               <span className="drop-zone-text">
                 {bulkFiles.length === 0
                   ? t('translation.bulk.dropFilesWithSettings', 'Drop SRT/JSON files for bulk translation with above settings')
@@ -230,10 +224,7 @@ const TranslationActions = ({
                 }}
                 title={t('translation.cancelTooltip', 'Cancel translation process')}
               >
-                <svg viewBox="0 0 24 24" width="16" height="16" stroke="currentColor" strokeWidth="2" fill="none">
-                  <line x1="18" y1="6" x2="6" y2="18"></line>
-                  <line x1="6" y1="6" x2="18" y2="18"></line>
-                </svg>
+                <span className="material-symbols-rounded" style={{ fontSize: '16px' }}>close</span>
                 {t('translation.cancel', 'Cancel')}
               </button>
             </>
@@ -252,19 +243,12 @@ const TranslationActions = ({
               >
                 {isFormatMode ? (
                   <>
-                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                      <polyline points="16 18 22 12 16 6"></polyline>
-                      <polyline points="8 6 2 12 8 18"></polyline>
-                    </svg>
+                    <span className="material-symbols-rounded" style={{ fontSize: '20px' }}>format_align_left</span>
                     {t('translation.format', 'Format')}
                   </>
                 ) : (
                   <>
-                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                      <circle cx="12" cy="12" r="10"></circle>
-                      <line x1="2" y1="12" x2="22" y2="12"></line>
-                      <path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"></path>
-                    </svg>
+                    <span className="material-symbols-rounded" style={{ fontSize: '20px' }}>translate</span>
                     {t('translation.translate', 'Translate')}
                   </>
                 )}
@@ -278,11 +262,7 @@ const TranslationActions = ({
                     onClick={onDownloadAll}
                     title={t('translation.bulk.downloadAll', 'Download all translated files')}
                   >
-                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                      <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path>
-                      <polyline points="7,10 12,15 17,10"></polyline>
-                      <line x1="12" y1="15" x2="12" y2="3"></line>
-                    </svg>
+                    <span className="material-symbols-rounded" style={{ fontSize: '16px' }}>download</span>
                     {t('translation.bulk.downloadAll', 'Download All')}
                   </button>
                   <button
@@ -290,10 +270,7 @@ const TranslationActions = ({
                     onClick={onDownloadZip}
                     title={t('translation.bulk.downloadZip', 'Download all as ZIP')}
                   >
-                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                      <polyline points="16,18 22,12 16,6"></polyline>
-                      <polyline points="8,6 2,12 8,18"></polyline>
-                    </svg>
+                    <span className="material-symbols-rounded" style={{ fontSize: '16px' }}>archive</span>
                     {t('translation.bulk.downloadZip', 'Download ZIP')}
                   </button>
                 </div>

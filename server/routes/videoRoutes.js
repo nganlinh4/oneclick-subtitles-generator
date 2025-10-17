@@ -18,6 +18,17 @@ const { getFfmpegPath, getFfprobePath } = require('../services/shared/ffmpegUtil
 // Legacy video processing is deprecated
 // const { splitVideoIntoSegments, splitMediaIntoSegments, optimizeVideo, createAnalysisVideo, convertAudioToVideo } = require('../services/videoProcessingService');
 
+// Stub implementations for deprecated functions
+const optimizeVideo = async (inputPath, outputPath, options) => {
+  console.warn('optimizeVideo is deprecated and not implemented');
+  return { success: true, path: outputPath, optimized: false };
+};
+
+const createAnalysisVideo = async (inputPath, outputPath) => {
+  console.warn('createAnalysisVideo is deprecated and not implemented');
+  return { success: true, path: outputPath, isOriginal: true, frameCount: 0 };
+};
+
 /**
  * Get video and audio metadata using ffprobe (JSON parsing for robustness)
  */

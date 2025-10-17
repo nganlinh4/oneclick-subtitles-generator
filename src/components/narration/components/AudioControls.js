@@ -77,11 +77,7 @@ const AudioControls = ({
               onClick={() => fileInputRef.current.click()}
               disabled={isRecording || isStartingRecording || !isAvailable}
             >
-              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
-                <polyline points="17 8 12 3 7 8" />
-                <line x1="12" y1="3" x2="12" y2="15" />
-              </svg>
+              <span className="material-symbols-rounded" style={{ fontSize: '16px' }}>upload</span>
               {t('narration.upload', 'Upload')}
             </button>
             <input
@@ -100,9 +96,7 @@ const AudioControls = ({
                 disabled={!isAvailable}
                 title={t('narration.record', 'Record')}
               >
-                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                  <circle cx="12" cy="12" r="6" fill="currentColor" />
-                </svg>
+                <span className="material-symbols-rounded" style={{ fontSize: '16px' }}>radio_button_checked</span>
                 {t('narration.record', 'Record')}
               </button>
             ) : !isRecording && isStartingRecording ? (
@@ -121,9 +115,7 @@ const AudioControls = ({
                 title={t('narration.stopRecording', 'Stop')}
                 style={{ display: 'inline-flex', alignItems: 'center', gap: 8 }}
               >
-                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                  <rect x="6" y="6" width="12" height="12" fill="currentColor" />
-                </svg>
+                <span className="material-symbols-rounded" style={{ fontSize: '16px' }}>stop</span>
                 {t('narration.stopRecording', 'Stop')} {formatTime(elapsed, 'hms_ms')}
               </button>
             )}
@@ -171,10 +163,7 @@ const AudioControls = ({
                 onClick={clearReferenceAudio}
                 title={t('narration.clearReference', 'Clear reference audio')}
               >
-                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                  <line x1="18" y1="6" x2="6" y2="18" />
-                  <line x1="6" y1="6" x2="18" y2="18" />
-                </svg>
+                <span className="material-symbols-rounded" style={{ fontSize: '14px' }}>close</span>
               </button>
             </div>
           )}

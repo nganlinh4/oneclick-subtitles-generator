@@ -16,18 +16,20 @@ def load_tts_model(model_id=None):
         raise RuntimeError("F5-TTS is not available.")
 
     try:
-        from f5_tts.api import F5TTS
+        # Lazy import to avoid triggering problematic dependencies at module load
         from model_manager import get_models, get_active_model
 
         # Determine which model to load
         target_model_id = model_id or get_active_model()
         logger.info(f"[DEBUG] load_tts_model called with model_id={model_id}, active_model={get_active_model()}, target_model_id={target_model_id}")
         if not target_model_id:
-             logger.warning("No specific or active model set, attempting to load default F5-TTS model.")
-             # Initialize default F5-TTS
-             tts_instance = F5TTS(device=device)
+            logger.warning("No specific or active model set, attempting to load default F5-TTS model.")
+            # Lazy import F5TTS to avoid triggering problematic dependencies
+            from f5_tts.api import F5TTS
+            # Initialize default F5-TTS
+            tts_instance = F5TTS(device=device)
 
-             return tts_instance, "default" # Return instance and ID used
+            return tts_instance, "default" # Return instance and ID used
 
         # Find the model details from registry
         model_registry = get_models(include_cache=True) # Check both installed and cache
@@ -43,48 +45,53 @@ def load_tts_model(model_id=None):
 
         # Handle the default model marker explicitly
         if model_info.get("source") == "default" or model_info.get("model_path") == "default":
-
-             tts_instance = F5TTS(device=device)
+            # Lazy import F5TTS to avoid triggering problematic dependencies
+            from f5_tts.api import F5TTS
+            tts_instance = F5TTS(device=device)
         else:
-             # Initialize with specific model paths
-             model_path = model_info.get("model_path")
-             vocab_path = model_info.get("vocab_path") # Can be None
+            # Initialize with specific model paths
+            model_path = model_info.get("model_path")
+            vocab_path = model_info.get("vocab_path") # Can be None
 
-             if not model_path or not os.path.exists(model_path):
-                 logger.error(f"Model file path not found or invalid for '{target_model_id}': {model_path}")
-                 raise FileNotFoundError(f"Model file not found for {target_model_id}")
-             if vocab_path and not os.path.exists(vocab_path):
-                  logger.warning(f"Vocabulary file path specified but not found for '{target_model_id}': {vocab_path}. Model might fail.")
-                  # Depending on F5TTS, None might be acceptable if vocab is bundled or not needed
+            if not model_path or not os.path.exists(model_path):
+                logger.error(f"Model file path not found or invalid for '{target_model_id}': {model_path}")
+                raise FileNotFoundError(f"Model file not found for {target_model_id}")
+            if vocab_path and not os.path.exists(vocab_path):
+                logger.warning(f"Vocabulary file path specified but not found for '{target_model_id}': {vocab_path}. Model might fail.")
+                # Depending on F5TTS, None might be acceptable if vocab is bundled or not needed
 
-             # Only pass parameters that F5TTS actually accepts
-             config_dict = model_info.get("config", {})
-             if config_dict:
-                 # Structure config to match yaml format
-                 structured_config = {
-                     "backbone": "DiT",
-                     "arch": config_dict,
-                     "mel_spec": {
-                         "mel_spec_type": "vocos",
-                         "target_sample_rate": 24000,
-                         "n_mel_channels": 100,
-                         "hop_length": 256,
-                         "win_length": 1024,
-                         "n_fft": 1024
-                     }
-                 }
-                 tts_instance = F5TTS(
-                     device=device,
-                     ckpt_file=model_path,
-                     vocab_file=vocab_path, # Pass None if vocab_path is None or empty
-                     config_dict=structured_config
-                 )
-             else:
-                 tts_instance = F5TTS(
-                     device=device,
-                     ckpt_file=model_path,
-                     vocab_file=vocab_path # Pass None if vocab_path is None or empty
-                 )
+            # Only pass parameters that F5TTS actually accepts
+            config_dict = model_info.get("config", {})
+            if config_dict:
+                # Use PatchedF5TTS for custom configs
+                from .f5tts_patch import PatchedF5TTS
+                # Structure config to match yaml format
+                structured_config = {
+                    "backbone": "DiT",
+                    "arch": config_dict,
+                    "mel_spec": {
+                        "mel_spec_type": "vocos",
+                        "target_sample_rate": 24000,
+                        "n_mel_channels": 100,
+                        "hop_length": 256,
+                        "win_length": 1024,
+                        "n_fft": 1024
+                    }
+                }
+                tts_instance = PatchedF5TTS(
+                    device=device,
+                    ckpt_file=model_path,
+                    vocab_file=vocab_path, # Pass None if vocab_path is None or empty
+                    config_dict=structured_config
+                )
+            else:
+                # Lazy import F5TTS to avoid triggering problematic dependencies
+                from f5_tts.api import F5TTS
+                tts_instance = F5TTS(
+                    device=device,
+                    ckpt_file=model_path,
+                    vocab_file=vocab_path # Pass None if vocab_path is None or empty
+                )
 
 
         return tts_instance, target_model_id

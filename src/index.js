@@ -79,6 +79,31 @@ const initializeTheme = () => {
 
 // Initialize theme
 initializeTheme();
+// Mark Material Symbols font ready to avoid showing ligature text
+const markMaterialSymbolsReady = () => {
+  const html = document.documentElement;
+  if (html.classList.contains('ms-font-ready')) return;
+  html.classList.add('ms-font-ready');
+};
+
+const waitForMaterialSymbols = async () => {
+  try {
+    if (document.fonts && document.fonts.load) {
+      // Trigger load for a representative glyph
+      await document.fonts.load('24px "Material Symbols Rounded"');
+      markMaterialSymbolsReady();
+    } else {
+      // Fallback: mark ready after a short delay
+      setTimeout(markMaterialSymbolsReady, 500);
+    }
+  } catch (e) {
+    // Ensure we don't leave icons hidden if something fails
+    setTimeout(markMaterialSymbolsReady, 500);
+  }
+};
+
+waitForMaterialSymbols();
+
 
 const root = ReactDOM.createRoot(document.getElementById('root'));
 root.render(

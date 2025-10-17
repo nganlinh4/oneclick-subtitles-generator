@@ -112,11 +112,28 @@ export class PromptDjMidi extends LitElement {
       z-index: 20;
       pointer-events: auto;
       transition: opacity var(--md-duration-short3) var(--md-easing-standard),
-                  transform var(--md-duration-short3) var(--md-easing-standard);
+                  transform var(--md-duration-short3) var(--md-easing-standard),
+                  box-shadow var(--md-duration-short3) var(--md-easing-standard),
+                  background-color var(--md-duration-short3) var(--md-easing-standard),
+                  border-color var(--md-duration-short3) var(--md-easing-standard);
       transform: scale(0.9);
     }
     .pc-clear svg { width: 100%; height: 100%; display: block; }
     .pc-wrap:hover .pc-clear { opacity: 1; transform: scale(1); }
+    .pc-clear:hover {
+      background: var(--md-surface-variant);
+      border-color: var(--md-outline);
+      box-shadow: var(--md-elevation-level2);
+      transform: scale(1.06);
+    }
+    .pc-clear:active {
+      transform: scale(0.96);
+      box-shadow: var(--md-elevation-level1);
+    }
+    .pc-clear:focus-visible {
+      outline: none;
+      box-shadow: 0 0 0 0.22vmin rgba(0,0,0,0.3), var(--md-elevation-level2);
+    }
 
     #sideControls {
       display: flex;

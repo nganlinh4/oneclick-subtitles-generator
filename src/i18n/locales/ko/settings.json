@@ -280,6 +280,8 @@
   "modelManagement.title": "내레이션 모델 관리",
   "modelManagement.description": "내레이션을 위한 F5-TTS 모델을 관리합니다. Hugging Face 또는 직접 URL에서 새 모델을 추가하고, 사용할 모델을 선택하고, 더 이상 필요하지 않은 모델을 삭제할 수 있습니다.",
   "modelManagement.installedModels": "설치된 모델",
+  "modelManagement.refresh": "새로고침",
+  "modelManagement.refreshModels": "새 모델 검색",
   "modelManagement.noModelsInstalled": "설치된 모델이 없습니다. 시작하려면 모델을 추가하세요.",
   "modelManagement.addModel": "모델 추가",
   "modelManagement.deleteModel": "모델 삭제",

@@ -176,11 +176,7 @@ const InputMethods = ({ onVideoSelect, apiKeysSet, selectedVideo, setSelectedVid
             className={`tab-btn ${activeTab === 'unified-url' ? 'active' : ''}`}
             onClick={() => setActiveTab('unified-url')}
           >
-            <svg viewBox="0 0 24 24" width="18" height="18" stroke="currentColor" strokeWidth="2" fill="none">
-              <circle cx="12" cy="12" r="10"></circle>
-              <line x1="2" y1="12" x2="22" y2="12"></line>
-              <path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"></path>
-            </svg>
+            <span className="material-symbols-rounded" style={{ fontSize: 18, display: 'inline-block' }}>language</span>
             {t('inputMethods.unifiedUrl', 'Video URL')}
           </button>
 
@@ -189,10 +185,7 @@ const InputMethods = ({ onVideoSelect, apiKeysSet, selectedVideo, setSelectedVid
             className={`tab-btn ${activeTab === 'youtube-search' ? 'active' : ''}`}
             onClick={() => setActiveTab('youtube-search')}
           >
-            <svg viewBox="0 0 24 24" width="18" height="18" stroke="currentColor" strokeWidth="2" fill="none">
-              <circle cx="11" cy="11" r="8" />
-              <line x1="21" y1="21" x2="16.65" y2="16.65" />
-            </svg>
+            <span className="material-symbols-rounded" style={{ fontSize: 18, display: 'inline-block' }}>search</span>
             {t('inputMethods.youtubeSearch', 'Search YouTube')}
           </button>
           )}
@@ -201,11 +194,7 @@ const InputMethods = ({ onVideoSelect, apiKeysSet, selectedVideo, setSelectedVid
             className={`tab-btn ${activeTab === 'file-upload' ? 'active' : ''}`}
             onClick={() => setActiveTab('file-upload')}
           >
-            <svg viewBox="0 0 24 24" width="18" height="18" stroke="currentColor" strokeWidth="2" fill="none">
-              <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
-              <polyline points="17 8 12 3 7 8" />
-              <line x1="12" y1="3" x2="12" y2="15" />
-            </svg>
+            <span className="material-symbols-rounded" style={{ fontSize: 18, display: 'inline-block' }}>file_upload</span>
             {t('inputMethods.fileUpload', 'Upload File')}
           </button>
         </div>

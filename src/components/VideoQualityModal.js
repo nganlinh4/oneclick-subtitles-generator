@@ -1,6 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { useTranslation } from 'react-i18next';
-import { FiInfo } from 'react-icons/fi';
 import CloseButton from './common/CloseButton';
 import '../styles/VideoQualityModal.css';
 // import progressWebSocketClient from '../utils/progressWebSocketClient'; // DISABLED - using polling instead
@@ -416,7 +415,7 @@ const VideoQualityModal = ({
                    ? t('videoQuality.cookieSupportTooltip', 'Uses browser cookies for authentication to access higher quality videos and bypass login restrictions')
                    : t('videoQuality.cookieDisabledTooltip', 'Browser cookies are disabled. Downloads will be faster but may have limited quality options and fail on restricted content.')
                  }>
-              <FiInfo className="badge-icon" />
+              <span className="material-symbols-rounded badge-icon">info</span>
               <span className="badge-text">
                 {useCookiesEnabled
                   ? t('videoQuality.cookieSupport', 'Browser Cookie Added')
@@ -621,9 +620,9 @@ const VideoQualityModal = ({
                     alignItems: 'center',
                     gap: 8,
                     width: '100%',
-                    ['--wavy-progress-color']: waveColor,
-                    ['--figma-progress-color']: waveColor,
-                    ['--figma-track-color']: waveTrackColor
+                    '--wavy-progress-color': waveColor,
+                    '--figma-progress-color': waveColor,
+                    '--figma-track-color': waveTrackColor
                   }}
                 >
                   <WavyProgressIndicator

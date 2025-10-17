@@ -90,11 +90,7 @@ const NarrationMenu = ({
         }}
         title={t('narration.settingsTooltip', 'Narration Settings')}
       >
-        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-          <path d="M12 2a3 3 0 0 0-3 3v7a3 3 0 0 0 6 0V5a3 3 0 0 0-3-3z"></path>
-          <path d="M19 10v2a7 7 0 0 1-14 0v-2"></path>
-          <line x1="12" y1="19" x2="12" y2="22"></line>
-        </svg>
+        <span className="material-symbols-rounded" style={{ fontSize: '20px' }}>record_voice_over</span>
         <span>{t('narration.toggleSettings', 'Narration Settings')}</span>
       </button>
 
@@ -112,11 +108,7 @@ const NarrationMenu = ({
             {!hasAnyNarrations && (
               <div className="setting-group">
                 <div className="status-message warning">
-                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                    <path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"></path>
-                    <line x1="12" y1="9" x2="12" y2="13"></line>
-                    <line x1="12" y1="17" x2="12.01" y2="17"></line>
-                  </svg>
+                  <span className="material-symbols-rounded" style={{ fontSize: '16px' }}>hearing_disabled</span>
                   <span>
                     {t('narration.noNarrationsAvailable', 'No narrations available. Generate narration first.')}
                   </span>
@@ -128,10 +120,7 @@ const NarrationMenu = ({
             <div className="setting-group">
               <label className={hasAnyNarrations ? '' : 'disabled'}>
                 <span className="icon-label-container">
-                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                    <path d="M12 2a3 3 0 0 0-3 3v7a3 3 0 0 0 6 0V5a3 3 0 0 0-3-3z"></path>
-                    <path d="M19 10v2a7 7 0 0 1-14 0v-2"></path>
-                  </svg>
+                  <span className="material-symbols-rounded" style={{ fontSize: '16px' }}>voice_selection</span>
                   <span>
                     {t('narration.narrationVolume', 'Narration Volume')}
                     {currentNarration && (
@@ -167,11 +156,7 @@ const NarrationMenu = ({
             {hasAnyNarrations && isGeneratingAligned && (
               <div className="setting-group">
                 <div className="notification-message info">
-                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                    <circle cx="12" cy="12" r="10"></circle>
-                    <line x1="12" y1="16" x2="12" y2="12"></line>
-                    <line x1="12" y1="8" x2="12.01" y2="8"></line>
-                  </svg>
+                  <span className="material-symbols-rounded" style={{ fontSize: '16px' }}>info</span>
                   <span>
                     {alignedStatus?.message || t('narration.generatingAligned', 'Generating aligned narration...')}
                   </span>
@@ -182,11 +167,7 @@ const NarrationMenu = ({
             <div className="setting-group">
               <label>
                 <span className="icon-label-container">
-                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                    <polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"></polygon>
-                    <path d="M15.54 8.46a5 5 0 0 1 0 7.07"></path>
-                    <path d="M19.07 4.93a10 10 0 0 1 0 14.14"></path>
-                  </svg>
+                  <span className="material-symbols-rounded" style={{ fontSize: '16px' }}>volume_up</span>
                   <span>{t('narration.videoVolume', 'Video Audio Volume')}</span>
                 </span>
               </label>

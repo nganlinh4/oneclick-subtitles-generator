@@ -1,7 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 import ReactDOM from 'react-dom';
 import { useTranslation } from 'react-i18next';
-import { FiVideo, FiMusic, FiDownload, FiInfo } from 'react-icons/fi';
 import CloseButton from './common/CloseButton';
 import '../styles/DownloadOnlyModal.css';
 import { scanVideoQualities } from '../utils/qualityScanner';
@@ -327,7 +326,7 @@ const DownloadOnlyModal = ({
                    ? t('download.downloadOnly.cookieSupportTooltip', 'Uses browser cookies for authentication to access higher quality videos and bypass login restrictions')
                    : t('download.downloadOnly.cookieDisabledTooltip', 'Browser cookies are disabled. Downloads will be faster but may have limited quality options and fail on restricted content.')
                  }>
-              <FiInfo className="badge-icon" />
+              <span className="material-symbols-rounded badge-icon">info</span>
               <span className="badge-text">
                 {useCookiesEnabled
                   ? t('download.downloadOnly.cookieSupport', 'Browser Cookie Added')
@@ -362,7 +361,7 @@ const DownloadOnlyModal = ({
                 />
                 <div className="option-content">
                   <div className="option-title">
-                    <FiVideo size={16} />
+                    <span className="material-symbols-rounded" style={{ fontSize: '16px' }}>video_file</span>
                     {t('download.downloadOnly.video', 'Video')}
                   </div>
                   <div className="option-description">
@@ -383,7 +382,7 @@ const DownloadOnlyModal = ({
                 />
                 <div className="option-content">
                   <div className="option-title">
-                    <FiMusic size={16} />
+                    <span className="material-symbols-rounded" style={{ fontSize: '16px' }}>music_note</span>
                     {t('download.downloadOnly.audio', 'Audio')}
                   </div>
                   <div className="option-description">
@@ -484,7 +483,7 @@ const DownloadOnlyModal = ({
               </span>
             ) : (
               <>
-                <FiDownload size={16} />
+                <span className="material-symbols-rounded" style={{ fontSize: '16px' }}>download</span>
                 {t('download.downloadOnly.download', 'Download')}
               </>
             )}

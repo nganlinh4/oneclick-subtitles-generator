@@ -1014,7 +1014,7 @@ export const useAppHandlers = (appState) => {
       setDownloadProgress(0);
       setCurrentDownloadId(null);
       setStatus({
-        message: t("output.downloadCancelled", "Download cancelled"),
+        message: t("download.downloadOnly.cancelled", "Download cancelled"),
         type: "warning",
       });
     }

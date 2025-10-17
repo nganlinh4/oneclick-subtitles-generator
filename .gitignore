@@ -165,4 +165,10 @@ video-renderer/.remotion/
 video-renderer/public/video.mp4
 package.json.bak
 .port_processes.json
+server/example-audio/basic_ref_en.wav
+server/example-audio/basic_ref_zh.wav
+server/example-audio/basic.toml
+server/example-audio/story.toml
+server/example-audio/story.txt
+server/example-audio/vocab.txt
 .vercel

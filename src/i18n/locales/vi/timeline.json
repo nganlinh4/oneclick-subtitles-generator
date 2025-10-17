@@ -5,7 +5,7 @@
   "waveformDisabled": "Hiển thị dạng sóng âm thanh đã tự động bị tắt đối với video dài hơn 30 phút để cải thiện hiệu suất.",
   "srtOnlyMode": "Chế độ chỉ SRT - Hiển thị dòng thời gian dựa trên thời gian phụ đề",
   "generateReplace": "Tạo lại phụ đề",
-  "clearInRangeWithShortcut": "Xóa phụ đề trong phạm vi (Del)",
+  "clearInRangeWithShortcut": "Xóa phụ đề trong phạm vi (Del/Backspace)",
   "moveRange": "Kéo để di chuyển phụ đề trong phạm vi",
   "dragToZoom": "Kéo để thu phóng",
   "clearOfflineSegments": "Dọn các phân đoạn offline",

@@ -280,6 +280,8 @@
   "modelManagement.title": "Quản lý mô hình thuyết minh",
   "modelManagement.description": "Quản lý các mô hình F5-TTS cho thuyết minh. Bạn có thể thêm mô hình mới từ Hugging Face hoặc URL trực tiếp, chọn mô hình để sử dụng và xóa các mô hình không cần thiết.",
   "modelManagement.installedModels": "Mô hình đã cài đặt",
+  "modelManagement.refresh": "Làm mới",
+  "modelManagement.refreshModels": "Quét tìm mô hình mới",
   "modelManagement.noModelsInstalled": "Chưa có mô hình nào được cài đặt. Thêm mô hình để bắt đầu.",
   "modelManagement.addModel": "Thêm mô hình",
   "modelManagement.deleteModel": "Xóa mô hình",

@@ -152,19 +152,15 @@ export class PlayPauseButton extends LitElement {
   }
 
   private renderPause() {
-    return svg`<path
-      d="M75.0037 69V39H83.7537V69H75.0037ZM56.2537 69V39H65.0037V69H56.2537Z"
-      fill="#FEFEFE"
-    />`;
+    return svg`<text x="70" y="54" fill="#FEFEFE" font-size="24" class="material-symbols-rounded">pause</text>`;
   }
 
   private renderPlay() {
-    return svg`<path d="M60 71.5V36.5L87.5 54L60 71.5Z" fill="#FEFEFE" />`;
+    return svg`<text x="70" y="54" fill="#FEFEFE" font-size="24" class="material-symbols-rounded">play_arrow</text>`;
   }
 
   private renderLoading() {
-    return svg`<path shape-rendering="crispEdges" class="loader" d="M70,74.2L70,74.2c-10.7,0-19.5-8.7-19.5-19.5l0,0c0-10.7,8.7-19.5,19.5-19.5
-            l0,0c10.7,0,19.5,8.7,19.5,19.5l0,0"/>`;
+    return svg`<text x="70" y="54" fill="#FEFEFE" font-size="24" class="material-symbols-rounded loader">sync</text>`;
   }
 
   private renderIcon() {

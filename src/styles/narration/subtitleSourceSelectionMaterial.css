@@ -68,6 +68,10 @@
   opacity: 0.9;
 }
 
+.subtitle-selection-container .radio-pill input[type="radio"]:checked + label.has-additional {
+  padding: 5px 5px 5px 18px;
+}
+
 .subtitle-selection-container .radio-pill input[type="radio"]:disabled + label {
   opacity: 0.38; /* Match the opacity of disabled pill buttons */
   cursor: not-allowed;
@@ -131,10 +135,6 @@
   padding-right: 30px; /* Make room for custom dropdown indicator */
   position: relative; /* For positioning the custom dropdown indicator */
   /* Custom dropdown indicator - uses currentColor which will inherit from text color */
-  background-image: url("data:image/svg+xml;charset=UTF-8,%3csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%23000000' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3e%3cpolyline points='6 9 12 15 18 9'%3e%3c/polyline%3e%3c/svg%3e");
-  background-repeat: no-repeat;
-  background-position: right 10px center;
-  background-size: 16px;
 }
 
 .grouping-intensity-select:hover:not(:disabled) {
@@ -158,27 +158,18 @@
   transform: none;
 }
 
-/* Light mode arrow */
-[data-theme="light"] .grouping-intensity-select {
-  background-image: url("data:image/svg+xml;charset=UTF-8,%3csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%23000000' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3e%3cpolyline points='6 9 12 15 18 9'%3e%3c/polyline%3e%3c/svg%3e");
-}
-
-/* Dark mode arrow */
-[data-theme="dark"] .grouping-intensity-select {
-  background-image: url("data:image/svg+xml;charset=UTF-8,%3csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%23ffffff' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3e%3cpolyline points='6 9 12 15 18 9'%3e%3c/polyline%3e%3c/svg%3e");
-}
-
-/* Default fallback for systems without explicit theme */
-@media (prefers-color-scheme: light) {
-  .grouping-intensity-select {
-    background-image: url("data:image/svg+xml;charset=UTF-8,%3csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%23000000' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3e%3cpolyline points='6 9 12 15 18 9'%3e%3c/polyline%3e%3c/svg%3e");
-  }
-}
-
-@media (prefers-color-scheme: dark) {
-  .grouping-intensity-select {
-    background-image: url("data:image/svg+xml;charset=UTF-8,%3csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%23ffffff' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3e%3cpolyline points='6 9 12 15 18 9'%3e%3c/polyline%3e%3c/svg%3e");
-  }
+/* Material Symbols Rounded dropdown arrow for grouping-intensity-select */
+.grouping-intensity-select::after {
+  content: "expand_more";
+  font-family: var(--ms-font-family);
+  font-variation-settings: "wght" var(--ms-wght), "GRAD" var(--ms-grad), "opsz" var(--ms-opsz);
+  position: absolute;
+  right: 10px;
+  top: 50%;
+  transform: translateY(-50%);
+  pointer-events: none;
+  color: var(--md-on-surface);
+  font-size: 1em;
 }
 
 /* Add a tooltip to explain that changing intensity requires regrouping */
@@ -336,8 +327,49 @@
   transform: rotate(180deg) scale(0.95);
 }
 
+/* Manual language selection button */
+.language-manual-button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  margin-left: 4px;
+  padding: 4px 8px;
+  background-color: var(--md-surface-3);
+  color: var(--md-on-surface-variant);
+  border: 1px solid var(--md-outline-variant);
+  border-radius: 12px;
+  font-size: 0.75rem;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.2s var(--md-easing-standard);
+  white-space: nowrap;
+}
+
+.language-manual-button:hover {
+  background-color: var(--md-primary-container);
+  color: var(--md-on-primary-container);
+  border-color: var(--md-primary);
+  transform: translateY(-1px);
+  box-shadow: var(--md-elevation-level2);
+}
+
+.language-manual-button:active {
+  transform: translateY(0);
+  box-shadow: var(--md-elevation-level1);
+}
+
+.language-refresh-button:hover {
+  background-color: var(--md-primary-container);
+  color: var(--md-on-primary-container);
+  border-color: var(--md-primary);
+  transform: rotate(90deg);
+}
+
+.language-refresh-button:active {
+  transform: rotate(180deg) scale(0.95);
+}
+
 .subtitle-selection-container .radio-pill input[type="radio"]:checked + label .language-refresh-button {
-  background-color: rgba(var(--md-on-primary-container-rgb), 0.1);
   color: var(--md-on-primary-container);
   border-color: rgba(var(--md-primary-rgb), 0.3);
 }
@@ -416,4 +448,23 @@
     align-items: flex-start;
     margin-left: 0;
   }
+
+  /* Stack language dropdowns vertically on mobile */
+  .language-dropdowns-container {
+    flex-direction: column;
+  }
+
+  .language-dropdown-wrapper {
+    min-width: unset;
+    width: 100%;
+  }
+
+  .language-input-container {
+    min-width: unset;
+  }
+
+  .suggestions-container {
+    max-height: 150px;
+  }
 }
+

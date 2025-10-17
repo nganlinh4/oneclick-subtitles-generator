@@ -21,6 +21,14 @@ function getDownloadProgress(videoId) {
  * @param {string} status - Download status
  */
 function setDownloadProgress(videoId, progress, status = 'downloading') {
+  // Clear cancelled status when starting a new download
+  const currentProgress = downloadProgress.get(videoId);
+  if (currentProgress && currentProgress.status === 'cancelled' && status === 'downloading' && progress <= 10) {
+    console.log(`[ProgressTracker] Starting new download for previously cancelled: ${videoId}`);
+    // Clear the cancelled status to allow the new download
+    downloadProgress.delete(videoId);
+  }
+
   // Map status to user-friendly phase names
   let phase = status;
   if (status === 'finalizing') phase = 'finalizing';
@@ -31,14 +39,14 @@ function setDownloadProgress(videoId, progress, status = 'downloading') {
   else if (status === 'cancelled') phase = 'cancelled';
   else if (status === 'downloading') phase = 'downloading';
   else if (status === 'merge') phase = 'merging';
-  
-  downloadProgress.set(videoId, { 
-    progress, 
-    status, 
+
+  downloadProgress.set(videoId, {
+    progress,
+    status,
     phase,
-    timestamp: Date.now() 
+    timestamp: Date.now()
   });
-  
+
   // Broadcast to WebSocket clients
   try {
     const { broadcastProgress } = require('./progressWebSocket');
@@ -55,6 +63,14 @@ function setDownloadProgress(videoId, progress, status = 'downloading') {
  */
 function clearDownloadProgress(videoId) {
   downloadProgress.delete(videoId);
+}
+
+/**
+ * Mark a download as cancelled
+ * @param {string} videoId - Video ID
+ */
+function cancelDownloadProgress(videoId) {
+  setDownloadProgress(videoId, 0, 'cancelled');
 }
 
 /**
@@ -172,6 +188,7 @@ module.exports = {
   getDownloadProgress,
   setDownloadProgress,
   clearDownloadProgress,
+  cancelDownloadProgress,
   parseYtdlpProgress,
   updateProgressFromYtdlpOutput
 };

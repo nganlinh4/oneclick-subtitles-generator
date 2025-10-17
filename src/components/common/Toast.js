@@ -1,5 +1,4 @@
 import React, { useEffect } from 'react';
-import { FiCheckCircle, FiAlertCircle, FiInfo, FiAlertTriangle } from 'react-icons/fi';
 import '../../styles/common/toast.css';
 
 /**
@@ -29,14 +28,14 @@ const Toast = ({ open, message, severity = 'info', onClose, autoHideDuration = 2
   const getIcon = () => {
     switch (severity) {
       case 'success':
-        return <FiCheckCircle />;
+        return <span className="material-symbols-rounded">check_circle</span>;
       case 'error':
-        return <FiAlertCircle />;
+        return <span className="material-symbols-rounded">error</span>;
       case 'warning':
-        return <FiAlertTriangle />;
+        return <span className="material-symbols-rounded">warning</span>;
       case 'info':
       default:
-        return <FiInfo />;
+        return <span className="material-symbols-rounded">info</span>;
     }
   };
 

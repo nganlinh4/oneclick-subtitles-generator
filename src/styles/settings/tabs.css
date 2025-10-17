@@ -20,12 +20,22 @@
   scroll-behavior: smooth; /* Smooth scrolling */
   -webkit-overflow-scrolling: touch; /* Smooth scrolling on iOS */
   /* Add visual drag handle indicator */
-  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='24' height='24' viewBox='0 0 24 24' fill='none' stroke='rgba(128, 128, 128, 0.3)' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cline x1='5' y1='12' x2='19' y2='12'%3E%3C/line%3E%3Cpolyline points='12 5 19 12 12 19'%3E%3C/polyline%3E%3C/svg%3E");
-  background-repeat: no-repeat;
-  background-position: right 10px center;
-  background-size: 16px;
   padding-right: 30px; /* Make room for the drag handle icon */
   padding-left: 16px; /* Add padding to prevent pill clipping */
+}
+
+/* Material Symbols Rounded drag handle */
+.settings-tabs::after {
+ content: "chevron_right";
+ font-family: var(--ms-font-family);
+ font-variation-settings: "wght" var(--ms-wght), "GRAD" var(--ms-grad), "opsz" var(--ms-opsz);
+ position: absolute;
+ right: 10px;
+ top: 50%;
+ transform: translateY(-50%);
+ pointer-events: none;
+ color: rgba(128, 128, 128, 0.3);
+ font-size: 16px;
 }
 
 /* Sliding pill background for active tab - Material Design 3 style */
@@ -180,7 +190,10 @@
 .settings-tabs.dragging {
   cursor: grabbing;
   scroll-behavior: auto; /* Disable smooth scrolling during drag for better performance */
-  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='24' height='24' viewBox='0 0 24 24' fill='none' stroke='rgba(128, 128, 128, 0.5)' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cline x1='5' y1='12' x2='19' y2='12'%3E%3C/line%3E%3Cpolyline points='12 5 19 12 12 19'%3E%3C/polyline%3E%3C/svg%3E");
+}
+
+.settings-tabs.dragging::after {
+  color: rgba(128, 128, 128, 0.5);
 }
 
 /* Add fade indicators to show there are more tabs */

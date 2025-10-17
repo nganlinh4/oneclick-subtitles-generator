@@ -6,6 +6,8 @@ import { SERVER_URL } from '../config';
 import React from 'react';
 import { createRoot } from 'react-dom/client';
 import LoadingIndicator from '../components/common/LoadingIndicator';
+import { base64ToArrayBuffer } from './audioConversionUtils';
+import { checkAudioAlignmentFromResponse } from './audioAlignmentNotification';
 
 /**
  * Create a React-based loading overlay with LoadingIndicator component
@@ -77,7 +79,6 @@ const createLoadingOverlay = (message) => {
     }
   };
 };
-import { base64ToArrayBuffer } from './audioConversionUtils';
 
 /**
  * Save audio data to server
@@ -272,8 +273,6 @@ export const downloadAlignedAudio = async (generationResults, t) => {
 
       // Check for audio alignment notification after successful response
       if (response.ok) {
-        // Import and check for duration notification
-        const { checkAudioAlignmentFromResponse } = await import('./audioAlignmentNotification.js');
         checkAudioAlignmentFromResponse(response);
       }
 

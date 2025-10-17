@@ -1,6 +1,5 @@
 import React, { useRef, useState, useEffect } from 'react';
 import { useTranslation } from 'react-i18next';
-import { FiUpload, FiCheck, FiX } from 'react-icons/fi';
 import LoadingIndicator from './common/LoadingIndicator';
 import '../styles/SrtUploadButton.css';
 
@@ -125,7 +124,7 @@ const SrtUploadButton = ({
               </span>
             ) : hasSrtUploaded ? (
               <>
-                <FiCheck className="icon" />
+                <span className="material-symbols-rounded icon">check</span>
                 <span>{uploadedFileName ?
                   (uploadedFileName.length > 20 ? uploadedFileName.substring(0, 20) + '...' : uploadedFileName) :
                   t('srtUpload.srtUploaded', 'SRT uploaded')
@@ -133,7 +132,7 @@ const SrtUploadButton = ({
               </>
             ) : (
               <>
-                <FiUpload size={16} />
+                <span className="material-symbols-rounded">upload_file</span>
                 <span>{t('srtUpload.buttonText', 'Upload SRT/JSON')}</span>
               </>
             )}
@@ -157,7 +156,7 @@ const SrtUploadButton = ({
             aria-label={t('srtUpload.clearSrt', 'Clear uploaded SRT/JSON')}
             disabled={disabled}
           >
-            <FiX size={18} />
+            <span className="material-symbols-rounded">close</span>
           </button>
         )}
       </div>

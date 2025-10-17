@@ -1,4 +1,5 @@
 import React, { useState, useRef, useEffect, useCallback } from 'react';
+import { getName } from 'iso-639-1';
 import CloseButton from '../../common/CloseButton';
 import CustomDropdown from '../../common/CustomDropdown';
 import '../../../styles/narration/VoiceSelectionModal.css';
@@ -99,6 +100,10 @@ const VoiceSelectionModal = ({ isOpen, onClose, voices, selectedVoice, onVoiceSe
     ).sort((a, b) => a.short_name.localeCompare(b.short_name));
   };
 
+  const getLanguageName = (languageCode) => {
+    return getName(languageCode.toLowerCase()) || languageCode;
+  };
+
   // Get other voices (not recommended)
   const getOtherVoices = () => {
     if (!detectedLanguage?.languageCode) return voices;
@@ -176,33 +181,6 @@ const VoiceSelectionModal = ({ isOpen, onClose, voices, selectedVoice, onVoiceSe
     setSelectedCategory('All');
   };
 
-  const getLanguageName = (languageCode) => {
-    const languageNames = {
-      'EN': 'English',
-      'ES': 'Spanish',
-      'FR': 'French',
-      'DE': 'German',
-      'IT': 'Italian',
-      'PT': 'Portuguese',
-      'RU': 'Russian',
-      'JA': 'Japanese',
-      'KO': 'Korean',
-      'ZH': 'Chinese',
-      'AR': 'Arabic',
-      'HI': 'Hindi',
-      'NL': 'Dutch',
-      'SV': 'Swedish',
-      'NO': 'Norwegian',
-      'DA': 'Danish',
-      'FI': 'Finnish',
-      'PL': 'Polish',
-      'TR': 'Turkish',
-      'TH': 'Thai',
-      'VI': 'Vietnamese'
-    };
-    return languageNames[languageCode] || languageCode;
-  };
-
   if (!isOpen) return null;
 
   return (
@@ -247,7 +225,7 @@ const VoiceSelectionModal = ({ isOpen, onClose, voices, selectedVoice, onVoiceSe
                   ? t('narration.allLanguages', 'All Languages')
                   : language === 'Recommended'
                   ? t('narration.recommendedVoices', 'Recommended for {{language}}', {
-                      language: detectedLanguage?.languageName || detectedLanguage?.languageCode
+                      language: getLanguageName(detectedLanguage?.languageCode)
                     })
                   : getLanguageName(language)
               }))}
@@ -263,7 +241,7 @@ const VoiceSelectionModal = ({ isOpen, onClose, voices, selectedVoice, onVoiceSe
             <div className="voice-category-section">
               <h3 className="voice-category-title recommended">
                 {t('narration.recommendedVoices', 'Recommended for {{language}}', {
-                  language: detectedLanguage.languageName || detectedLanguage.languageCode
+                  language: getLanguageName(detectedLanguage.languageCode)
                 })}
               </h3>
               <div className="voice-grid">

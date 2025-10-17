@@ -94,9 +94,10 @@ async function downloadFile(url, outputPath) {
 /**
  * Extract video URL from Douyin page using Puppeteer
  * @param {string} url - Douyin video URL
+ * @param {Object} processRef - Process reference for cancellation (optional)
  * @returns {Promise<string>} - Direct video URL
  */
-async function extractVideoUrl(url) {
+async function extractVideoUrl(url, processRef = {}) {
 
 
   // Find Chrome executable path
@@ -159,6 +160,12 @@ async function extractVideoUrl(url) {
     ]
   });
 
+  // Store browser reference for cancellation
+  if (processRef) {
+    processRef.browser = browser;
+    processRef.cancelled = false;
+  }
+
   try {
     // Open new page
     const page = await browser.newPage();
@@ -207,16 +214,30 @@ async function extractVideoUrl(url) {
       }
     });
 
-    // Navigate to the page
+    // Check if cancelled before navigation
+    if (processRef && processRef.cancelled) {
+      throw new Error('Download was cancelled');
+    }
 
+    // Navigate to the page
     await page.goto(url, { waitUntil: 'networkidle2', timeout: 90000 });
 
     // Check for login modal and close it if present
 
 
 
+    // Check if cancelled before waiting
+    if (processRef && processRef.cancelled) {
+      throw new Error('Download was cancelled');
+    }
+
     // Wait a moment for the modal to appear
     await new Promise(resolve => setTimeout(resolve, 2000));
+
+    // Check if cancelled after waiting
+    if (processRef && processRef.cancelled) {
+      throw new Error('Download was cancelled');
+    }
 
     // Try to find and click the close button on the login modal
     const closeButtonSelectors = [
@@ -523,8 +544,11 @@ async function extractVideoUrl(url) {
     }
 
 
-    // Close browser
+    // Close browser and clean up
     await browser.close();
+    if (processRef) {
+      processRef.browser = null;
+    }
 
     // Clean up temporary user data directory
     try {
@@ -576,11 +600,26 @@ async function extractVideoUrl(url) {
 
     throw new Error('No video URLs found');
   } catch (error) {
-    console.error(`Error extracting video URL: ${error.message}`);
+    // Don't log "Navigating frame was detached" as an error - it's expected during cancellation
+    if (!error.message.includes('Navigating frame was detached') &&
+        !error.message.includes('cancelled')) {
+      console.error(`Error extracting video URL: ${error.message}`);
+    }
 
     // Make sure to close the browser
     if (browser) {
-      await browser.close();
+      try {
+        await browser.close();
+      } catch (closeError) {
+        // Ignore close errors during cancellation
+        if (!closeError.message.includes('Connection closed') &&
+            !closeError.message.includes('Target closed')) {
+          console.error('Error closing browser:', closeError.message);
+        }
+      }
+      if (processRef) {
+        processRef.browser = null;
+      }
     }
 
     // Clean up temporary user data directory

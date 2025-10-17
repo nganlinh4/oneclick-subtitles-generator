@@ -17,7 +17,7 @@ interface Props {
 const DEFAULT_METADATA: VideoMetadata = {
   videoType: 'Subtitled Video',
   resolution: '1080p',
-  frameRate: 60,
+  frameRate: 30,
   originalAudioVolume: 100,
   narrationVolume: 100
 };

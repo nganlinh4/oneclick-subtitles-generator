@@ -1,7 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { useTranslation } from 'react-i18next';
 import '../styles/ParallelProcessingStatus.css';
-import { FiRefreshCw, FiFileText } from 'react-icons/fi';
 import SegmentRetryModal from './SegmentRetryModal';
 
 /**
@@ -112,7 +111,7 @@ const ParallelProcessingStatus = ({
               onClick={onViewRules}
               title={t('output.viewRules', 'View transcription rules')}
             >
-              <FiFileText size={14} />
+              <span className="material-symbols-rounded">description</span>
               <span>{t('output.viewRules', 'View Rules')}</span>
             </button>
           )}
@@ -170,7 +169,7 @@ const ParallelProcessingStatus = ({
                       }
                     }}
                   >
-                    <FiRefreshCw size={14} />
+                    <span className="material-symbols-rounded">refresh</span>
                   </div>
                 </div>
               )}
@@ -178,7 +177,7 @@ const ParallelProcessingStatus = ({
               {/* Show spinning refresh icon for segments that are currently being retried */}
               {(segment.status === 'retrying' || retryingSegments.includes(index)) && (
                 <span className="segment-retrying-indicator" title={t('output.retryingSegment', 'Retrying this segment...')}>
-                  <FiRefreshCw size={14} className="spinning" />
+                  <span className="material-symbols-rounded spinning">refresh</span>
                 </span>
               )}
             </div>

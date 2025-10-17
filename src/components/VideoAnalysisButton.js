@@ -1,6 +1,5 @@
 import React, { useState, useEffect } from 'react';
 import { useTranslation } from 'react-i18next';
-import { FiEdit, FiX } from 'react-icons/fi';
 import TranscriptionRulesEditor from './TranscriptionRulesEditor';
 import { analyzeVideoAndWaitForUserChoice } from '../utils/videoProcessing/analysisUtils';
 import { setTranscriptionRules, getTranscriptionRulesSync, clearTranscriptionRules } from '../utils/transcriptionRulesStore';
@@ -11,28 +10,7 @@ import '../styles/VideoAnalysisButton.css';
 
 // Custom analyze icon: panel with Gemini star inside
 const AnalyzeIcon = ({ size = 16 }) => (
-  <svg
-    width={size}
-    height={size}
-    viewBox="0 0 24 24"
-    fill="none"
-    stroke="currentColor"
-    strokeWidth="2"
-    strokeLinecap="round"
-    strokeLinejoin="round"
-    aria-hidden="true"
-    focusable="false"
-  >
-    {/* Outer panel */}
-    <rect x="3" y="3" width="18" height="18" rx="2" ry="2" />
-    {/* Side ticks (longer) */}
-    <line x1="2.5" y1="8" x2="6.5" y2="8" />
-    <line x1="2.5" y1="16" x2="6.5" y2="16" />
-    <line x1="17.5" y1="8" x2="21.5" y2="8" />
-    <line x1="17.5" y1="16" x2="21.5" y2="16" />
-    {/* Gemini star inside (even bigger) */}
-    <path d="M12 6 l2 4 4 2 -4 2 -2 4 -2 -4 -4 -2 4 -2 2 -4 z" fill="currentColor" stroke="none" />
-  </svg>
+  <span className="material-symbols-rounded" style={{ fontSize: size }}>analytics</span>
 );
 
 /**
@@ -278,7 +256,7 @@ const VideoAnalysisButton = ({ disabled = false, uploadedFile = null, uploadedFi
               </span>
             ) : hasAnalysis ? (
               <>
-                <FiEdit className="icon" />
+                <span className="material-symbols-rounded icon">edit</span>
                 <span>{t('videoAnalysis.editRules', 'Edit rules')}</span>
               </>
             ) : (
@@ -300,7 +278,7 @@ const VideoAnalysisButton = ({ disabled = false, uploadedFile = null, uploadedFi
             aria-label={t('videoAnalysis.clearAnalysis', 'Clear video analysis')}
             disabled={disabled}
           >
-            <FiX size={18} />
+            <span className="material-symbols-rounded">close</span>
           </button>
         )}
       </div>

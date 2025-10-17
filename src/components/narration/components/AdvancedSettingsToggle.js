@@ -55,9 +55,9 @@ const AdvancedSettingsToggle = ({
           <span className="advanced-settings-button-label">
             {t('narration.advancedSettingsToggle', 'Voice & Audio Settings')}
           </span>
-          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-            <path d="M12 5v14M5 12h14" />
-          </svg>
+          <span className="material-symbols-rounded" style={{ fontSize: 16, display: 'inline-block' }}>
+            settings
+          </span>
         </button>
 
         {/* Advanced Settings Modal */}

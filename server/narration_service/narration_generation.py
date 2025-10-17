@@ -6,6 +6,7 @@ import time
 import torch
 import gc
 import re
+import requests
 from flask import Blueprint, request, jsonify, Response
 from .narration_config import HAS_F5TTS, OUTPUT_AUDIO_DIR
 from .narration_utils import load_tts_model
@@ -13,6 +14,72 @@ from .narration_utils import load_tts_model
 from .directory_utils import ensure_subtitle_directory, get_next_file_number
 
 logger = logging.getLogger(__name__)
+
+def normalize_gen_text(text, api_key=None, language='vi'):
+    """Normalize text for F5-TTS generation by removing disruptive punctuation and converting numbers/dates to spoken words."""
+    if not text:
+        return text, {'transformed': False}
+
+    original_text = text
+    transformations = {'transformed': False, 'punctuation_replaced': [], 'numbers_converted': [], 'dates_converted': []}
+
+    # Replace disruptive punctuation with spaces while keeping commas and periods for natural pauses
+    punctuation_pattern = r'[!?;:()\[\]{}]'
+    punctuation_matches = re.findall(punctuation_pattern, text)
+    if punctuation_matches:
+        transformations['transformed'] = True
+        transformations['punctuation_replaced'] = list(set(punctuation_matches))  # unique punctuation replaced with spaces
+        text = re.sub(punctuation_pattern, ' ', text)
+
+    # If API key is provided, use Gemini to convert numbers and dates to spoken words in the specified language
+    if api_key:
+        try:
+            # Check if text contains numbers or dates
+            has_numbers = bool(re.search(r'\d', text))
+            has_dates = bool(re.search(r'\b\d{1,2}/\d{1,2}/\d{4}\b|\b\d{4}-\d{2}-\d{2}\b', text))
+
+            if has_numbers or has_dates:
+                pre_gemini_text = text
+
+                # Use the language name directly (already converted in frontend)
+                prompt = f"""Convert any numbers and dates in the following {language} text to their spoken word equivalents in {language}. Keep the rest of the text unchanged. Only output the converted text, no explanations.
+
+Text: {text}"""
+
+                response = requests.post(
+                    'https://generativelanguage.googleapis.com/v1beta/models/gemini-flash-lite-latest:generateContent',
+                    headers={
+                        'Content-Type': 'application/json',
+                        'x-goog-api-key': api_key
+                    },
+                    json={
+                        'contents': [{
+                            'parts': [{
+                                'text': prompt
+                            }]
+                        }]
+                    },
+                    timeout=10
+                )
+
+                if response.status_code == 200:
+                    result = response.json()
+                    if 'candidates' in result and result['candidates']:
+                        converted_text = result['candidates'][0]['content']['parts'][0]['text'].strip()
+                        if converted_text and converted_text != pre_gemini_text:
+                            transformations['transformed'] = True
+                            # Track what was converted
+                            if has_numbers:
+                                transformations['numbers_converted'] = ['numbers']
+                            if has_dates:
+                                transformations['dates_converted'] = ['dates']
+                            text = converted_text
+
+        except Exception as e:
+            logger.warning(f"Failed to normalize text with Gemini: {e}")
+            # Continue with original text if API call fails
+
+    return text, transformations
 
 # Create blueprint for generation routes
 generation_bp = Blueprint('narration_generation', __name__)
@@ -138,6 +205,13 @@ def generate_narration():
 
                     # Clean text: Remove control characters, ensure UTF-8
                     cleaned_text = re.sub(r'[\x00-\x08\x0B\x0C\x0E-\x1F\x7F]', '', text)
+                    # Store original text before normalization
+                    original_text = cleaned_text
+                    # Normalize text for better TTS pronunciation
+                    gemini_api_key = settings.get('gemini_api_key')
+                    # Get language from settings, default to 'vi' for backward compatibility
+                    language = settings.get('language', 'vi')
+                    cleaned_text, transformations = normalize_gen_text(cleaned_text, gemini_api_key, language)
                     # Ensure string type and UTF-8 encoding (though F5TTS might handle bytes too)
                     # cleaned_text = cleaned_text.encode('utf-8').decode('utf-8')
                     # Ensure reference text is also clean string
@@ -178,9 +252,11 @@ def generate_narration():
                         result = {
                             'subtitle_id': original_id,
                             'text': cleaned_text, # Return the cleaned text used for generation
+                            'original_text': original_text, # Include original text for display
                             'audio_path': output_path,
                             'filename': full_filename, # Return the path relative to OUTPUT_AUDIO_DIR
-                            'success': True
+                            'success': True,
+                            'transformations': transformations
                         }
                         results.append(result)
 
@@ -195,8 +271,10 @@ def generate_narration():
                         result = {
                             'subtitle_id': original_id,
                             'text': cleaned_text,
+                            'original_text': original_text,
                             'error': error_message,
-                            'success': False
+                            'success': False,
+                            'transformations': transformations
                         }
                         results.append(result)
 
@@ -240,17 +318,28 @@ def generate_narration():
 
                 # --- Resource Cleanup ---
                 # Explicitly delete model instance to release resources if loaded per-request
-                if tts_model_instance is not None:
+                logger.debug("Starting resource cleanup")
+                try:
+                    if tts_model_instance is not None:
+                        logger.debug("Deleting TTS model instance")
+                        del tts_model_instance
+                        tts_model_instance = None
+                        logger.debug("TTS model instance deleted successfully")
+                except Exception as del_err:
+                    logger.error(f"Error deleting TTS model instance: {del_err}", exc_info=True)
 
-                    del tts_model_instance
-                    try:
-                         gc.collect()
-                         from .narration_config import device
-                         if device.startswith("cuda") and torch.cuda.is_available():
-                             torch.cuda.empty_cache()
+                try:
+                    logger.debug("Running garbage collection")
+                    gc.collect()
+                    from .narration_config import device
+                    if device.startswith("cuda") and torch.cuda.is_available():
+                        logger.debug("Clearing CUDA cache")
+                        torch.cuda.empty_cache()
+                        logger.debug("CUDA cache cleared")
+                except Exception as final_clean_err:
+                    logger.warning(f"Error during final resource cleanup: {final_clean_err}")
 
-                    except Exception as final_clean_err:
-                        logger.warning(f"Error during final resource cleanup: {final_clean_err}")
+                logger.debug("Resource cleanup completed")
 
 
         # --- Return Streaming Response ---

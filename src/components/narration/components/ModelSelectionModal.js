@@ -213,10 +213,7 @@ const ModelSelectionModal = ({
                         onClick={() => handleModelSelect(model.id)}
                       >
                         <div className="model-option-icon">
-                          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                            <circle cx="12" cy="12" r="10"/>
-                            <path d="m9 12 2 2 4-4"/>
-                          </svg>
+                          <span className="material-symbols-rounded" style={{ fontSize: '16px' }}>check_circle</span>
                         </div>
                         <div className="model-option-info">
                           <div className="model-option-name">{model.id}</div>
@@ -262,9 +259,7 @@ const ModelSelectionModal = ({
                         onClick={() => handleModelSelect(model.id)}
                       >
                         <div className="model-option-icon">
-                          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                            <path d="M14.7 6.3a1 1 0 0 0 0 1.4l1.6 1.6a1 1 0 0 0 1.4 0l3.77-3.77a6 6 0 0 1-7.94 7.94l-6.91 6.91a2.12 2.12 0 0 1-3-3l6.91-6.91a6 6 0 0 1 7.94-7.94l-3.76 3.76z"/>
-                          </svg>
+                          <span className="material-symbols-rounded" style={{ fontSize: '16px' }}>settings</span>
                         </div>
                         <div className="model-option-info">
                           <div className="model-option-name">{model.id}</div>
@@ -280,11 +275,7 @@ const ModelSelectionModal = ({
             <div className="no-models-message">
               <div className="model-option-card">
                 <div className="model-option-icon">
-                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                    <circle cx="12" cy="12" r="10"/>
-                    <path d="m9 9 1.5 1.5L16 6"/>
-                    <path d="M12 16h.01"/>
-                  </svg>
+                  <span className="material-symbols-rounded" style={{ fontSize: '16px' }}>check_circle</span>
                 </div>
                 <div className="model-option-info">
                   <div className="model-option-name">{selectedModel}</div>

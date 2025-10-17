@@ -50,17 +50,14 @@ const GenerateButton = ({
                   : ''
               }
             >
-              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                <line x1="18" y1="6" x2="6" y2="18"></line>
-                <line x1="6" y1="6" x2="18" y2="18"></line>
-              </svg>
+              <span className="material-symbols-rounded" style={{ fontSize: 16, display: 'inline-block' }}>
+                close
+              </span>
               {t('narration.cancel', 'Cancel Generation')}
               {(narrationMethod === 'f5tts' || narrationMethod === 'chatterbox') && (
-                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ marginLeft: '4px', opacity: 0.7 }}>
-                  <circle cx="12" cy="12" r="10"></circle>
-                  <path d="M12 16v-4"></path>
-                  <path d="M12 8h.01"></path>
-                </svg>
+                <span className="material-symbols-rounded" style={{ fontSize: 14, display: 'inline-block', marginLeft: '4px', opacity: 0.7 }}>
+                  info
+                </span>
               )}
             </button>
           ) : (
@@ -74,9 +71,9 @@ const GenerateButton = ({
                 (referenceAudio !== null && !referenceAudio) ? t('narration.noReferenceAudioError', 'Please upload or record reference audio') : ''
               }
             >
-              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                <path d="M8 5.14v14l11-7-11-7z" />
-              </svg>
+              <span className="material-symbols-rounded" style={{ fontSize: 24, display: 'inline-block' }}>
+                motion_play
+              </span>
               {t('narration.generate', 'Generate Narration')}
             </button>
           )}
@@ -91,11 +88,9 @@ const GenerateButton = ({
               title={t('narration.downloadAllTooltip', 'Download all generated audio files')}
               disabled={!generationResults || generationResults.length === 0 || !generationResults.some(r => r.success && (r.audioData || r.filename))}
             >
-              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
-                <polyline points="7 10 12 15 17 10" />
-                <line x1="12" y1="15" x2="12" y2="3" />
-              </svg>
+              <span className="material-symbols-rounded" style={{ fontSize: 18, display: 'inline-block' }}>
+                archive
+              </span>
               {t('narration.downloadAll', 'Tải xuống tất cả')}
             </button>
 
@@ -105,11 +100,9 @@ const GenerateButton = ({
               title={t('narration.downloadAlignedTooltip', 'Tải xuống một tập tin thuyết minh đã sắp xếp')}
               disabled={!generationResults || generationResults.length === 0 || !generationResults.some(r => r.success && (r.audioData || r.filename))}
             >
-              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
-                <polyline points="7 10 12 15 17 10" />
-                <line x1="12" y1="15" x2="12" y2="3" />
-              </svg>
+              <span className="material-symbols-rounded" style={{ fontSize: 18, display: 'inline-block' }}>
+                download
+              </span>
               {t('narration.downloadAligned', 'Tải xuống như đã sắp xếp trên timeline')}
             </button>
           </div>

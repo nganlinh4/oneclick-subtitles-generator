@@ -2,24 +2,18 @@ import React from 'react';
 
 const HelpIcon = ({ title, size = 14, className = '', style, onClick }) => (
   <div className={`help-icon-container ${className}`.trim()} title={title} style={style} onClick={onClick}>
-    <svg
-      className="help-icon"
-      xmlns="http://www.w3.org/2000/svg"
-      width={size}
-      height={size}
-      viewBox="0 0 24 24"
-      fill="none"
-      stroke="currentColor"
-      strokeWidth="2"
-      strokeLinecap="round"
-      strokeLinejoin="round"
+    <span
+      className="material-symbols-rounded help-icon"
       aria-hidden={title ? undefined : true}
+      style={{
+        fontSize: size,
+        lineHeight: 1,
+        display: 'inline-block'
+      }}
       focusable="false"
     >
-      <circle cx="12" cy="12" r="10"></circle>
-      <path d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3"></path>
-      <line x1="12" y1="17" x2="12.01" y2="17"></line>
-    </svg>
+      help
+    </span>
   </div>
 );
 

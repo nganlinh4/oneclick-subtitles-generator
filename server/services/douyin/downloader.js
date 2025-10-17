@@ -14,6 +14,11 @@ const {
   setDownloadProgress,
   updateProgressFromYtdlpOutput
 } = require('../shared/progressTracker');
+const {
+  lockDownload,
+  unlockDownload,
+  updateProcessRef
+} = require('../shared/globalDownloadManager');
 
 
 
@@ -455,20 +460,27 @@ async function downloadDouyinVideoSimpleFallback(videoId, videoURL, quality = '3
 }
 
 /**
- * Download file with progress tracking
+ * Download file with progress tracking and cancellation support
  * @param {string} url - File URL to download
  * @param {string} outputPath - Output file path
  * @param {string} videoId - Video ID for progress tracking
+ * @param {AbortController} abortController - Abort controller for cancellation
  * @returns {Promise<void>}
  */
-async function downloadFileWithProgress(url, outputPath, videoId) {
+async function downloadFileWithProgress(url, outputPath, videoId, abortController = null) {
   const https = require('https');
   const http = require('http');
 
   return new Promise((resolve, reject) => {
     const protocol = url.startsWith('https:') ? https : http;
 
-    protocol.get(url, (response) => {
+    // Check if already aborted
+    if (abortController && abortController.signal.aborted) {
+      reject(new Error('Download was cancelled'));
+      return;
+    }
+
+    const request = protocol.get(url, (response) => {
       if (response.statusCode !== 200) {
         reject(new Error(`Failed to download file: HTTP ${response.statusCode}`));
         return;
@@ -478,6 +490,21 @@ async function downloadFileWithProgress(url, outputPath, videoId) {
       let downloadedSize = 0;
 
       const fileStream = fs.createWriteStream(outputPath);
+
+      // Handle abort signal
+      if (abortController) {
+        abortController.signal.addEventListener('abort', () => {
+          console.log(`[DOUYIN] Download cancelled for ${videoId}`);
+          request.destroy();
+          response.destroy();
+          fileStream.destroy();
+
+          // Clean up partial file
+          fs.unlink(outputPath, () => {});
+
+          reject(new Error('Download was cancelled'));
+        });
+      }
 
       response.on('data', (chunk) => {
         downloadedSize += chunk.length;
@@ -498,30 +525,48 @@ async function downloadFileWithProgress(url, outputPath, videoId) {
         fs.unlink(outputPath, () => {}); // Delete the file on error
         reject(error);
       });
-    }).on('error', (error) => {
+    });
+
+    request.on('error', (error) => {
       reject(error);
     });
   });
 }
 
 /**
- * Puppeteer-based Douyin video downloader
+ * Puppeteer-based Douyin video downloader with cancellation support
  * @param {string} videoId - Douyin video ID
  * @param {string} videoURL - Douyin video URL
+ * @param {Object} processRef - Process reference for cancellation
  * @returns {Promise<Object>} - Result object with success status and path
  */
-async function downloadDouyinVideoPuppeteer(videoId, videoURL) {
+async function downloadDouyinVideoPuppeteer(videoId, videoURL, processRef = {}) {
   const outputPath = path.join(VIDEOS_DIR, `${videoId}.mp4`);
 
   // Normalize the URL
   const normalizedUrl = normalizeDouyinUrl(videoURL);
 
   try {
-    // Extract video URL first
-    const videoUrl = await douyinPuppeteer.extractVideoUrl(normalizedUrl);
+    // Create abort controller for HTTP download cancellation
+    const abortController = new AbortController();
+    processRef.abortController = abortController;
 
-    // Download the file with progress tracking
-    await downloadFileWithProgress(videoUrl, outputPath, videoId);
+    // Extract video URL first (this will set processRef.browser)
+    const videoUrl = await douyinPuppeteer.extractVideoUrl(normalizedUrl, processRef);
+
+    // Check if cancelled after URL extraction
+    if (processRef.cancelled) {
+      throw new Error('Download was cancelled');
+    }
+
+    // Download the file with progress tracking and cancellation support
+    await downloadFileWithProgress(videoUrl, outputPath, videoId, abortController);
+
+    // Close browser after successful download
+    if (processRef.browser) {
+      await processRef.browser.close();
+      processRef.browser = null;
+    }
 
     // Check if the file was created successfully
     if (fs.existsSync(outputPath)) {
@@ -536,12 +581,23 @@ async function downloadDouyinVideoPuppeteer(videoId, videoURL) {
     }
   } catch (error) {
     console.error(`Puppeteer download failed: ${error.message}`);
+
+    // Clean up browser on error
+    if (processRef.browser) {
+      try {
+        await processRef.browser.close();
+      } catch (e) {
+        console.error('Error closing browser on failure:', e);
+      }
+      processRef.browser = null;
+    }
+
     throw error;
   }
 }
 
 /**
- * Download Douyin video using Puppeteer method only
+ * Download Douyin video using Puppeteer method with cancellation support
  * @param {string} videoId - Douyin video ID
  * @param {string} videoURL - Douyin video URL
  * @param {string} quality - Desired video quality (e.g., '144p', '360p', '720p')
@@ -549,26 +605,52 @@ async function downloadDouyinVideoPuppeteer(videoId, videoURL) {
  * @returns {Promise<Object>} - Result object with success status and path
  */
 async function downloadDouyinVideoWithRetry(videoId, videoURL, quality = '360p', useCookies = false) {
+  // Lock the download to prevent duplicates
+  const lockAcquired = lockDownload(videoId, 'douyin-download');
+  if (!lockAcquired) {
+    throw new Error('Another download for this video is already in progress');
+  }
+
   // Initialize progress
   setDownloadProgress(videoId, 0, 'downloading');
+
+  // Create process reference for cancellation
+  const processRef = {};
 
   try {
     console.log('[douyin] Using Puppeteer method...');
 
+    // Update the process reference in the global manager
+    updateProcessRef(videoId, processRef);
+
     // Update progress to indicate starting
     setDownloadProgress(videoId, 10, 'downloading');
 
-    // Use the Puppeteer-based downloader
-    const result = await downloadDouyinVideoPuppeteer(videoId, videoURL);
+    // Use the Puppeteer-based downloader with cancellation support
+    const result = await downloadDouyinVideoPuppeteer(videoId, videoURL, processRef);
 
     // Mark as completed and set final progress
     setDownloadProgress(videoId, 100, 'completed');
+
+    // Unlock the download
+    unlockDownload(videoId, 'douyin-download', { cleanup: false });
 
     return result;
   } catch (error) {
     console.error(`Puppeteer download failed: ${error.message}`);
 
-    // Mark as error
+    // Unlock the download
+    unlockDownload(videoId, 'douyin-download');
+
+    // Handle cancellation gracefully - don't mark as error if cancelled
+    if (error.message.includes('cancelled') ||
+        error.message.includes('aborted') ||
+        error.message.includes('Navigating frame was detached')) {
+      console.log(`[DOUYIN] Download was cancelled for ${videoId}`);
+      throw new Error('Download was cancelled by user');
+    }
+
+    // Mark as error only if not cancelled
     setDownloadProgress(videoId, 0, 'error');
 
     // Provide more specific error messages based on the error

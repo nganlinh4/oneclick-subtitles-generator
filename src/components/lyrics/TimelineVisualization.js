@@ -922,7 +922,7 @@ const TimelineVisualization = ({
       if (retryingKeysRef.current.includes(key)) return;
       if (retryHandlerRef.current) retryHandlerRef.current(hover);
     });
-    btn.innerHTML = '<svg xmlns="http://www.w3.org/2000/svg" height="16" viewBox="0 -960 960 960" width="16" aria-hidden style="color: var(--md-on-primary)"><path fill="currentColor" d="M289-482q0 9 1 17.5t1 16.5q5 24-2 50t-31 39q-23 12-48 4t-33-31q-7-23-11.5-46.5T161-482q0-128 89-221.5T465-799l-3-4q-16-15-15.5-33.5T463-871q15-15 34-15t34 15l91 91q19 19 19 45t-19 46l-92 91q-15 15-33 14.5T464-599q-16-15-15.5-34.5T464-668l2-2h3q-75 1-127.5 56.5T289-482Zm382 3q0-9-1-17t0-16q-5-26 2.5-51t30.5-39q23-13 47-6t32 29q7 24 12 48t5 52q0 126-89 221t-215 96l2 3q17 15 16 34t-16 34q-16 16-34.5 16T428-91l-91-90q-19-20-18.5-45.5T337-271l93-91q15-15 33.5-16t34.5 15q16 15 16 34t-16 35l-4 4h-3q75-1 127.5-57T671-479Z"/></svg>';
+    btn.innerHTML = '<span class="material-symbols-rounded" style="font-size: 16px; color: var(--md-on-primary);">refresh</span>';
 
     wrapper.appendChild(btn);
     container.appendChild(wrapper);
@@ -1513,9 +1513,7 @@ const TimelineVisualization = ({
                 onClick={(e) => { e.stopPropagation(); handleClearOfflineSegments(); }}
                 style={{ display: 'inline-flex', alignItems: 'center', gap: 6, height: 24, minHeight: 24, padding: '0 8px', borderRadius: 12, backgroundColor: 'var(--md-surface-variant)', color: 'var(--md-on-surface-variant)', border: '1px solid var(--md-outline-variant)' }}
               >
-                <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 -960 960 960" aria-hidden style={{ color: 'currentColor' }}>
-                  <path fill="currentColor" d="M763-272h94q27 0 45.5 18.5T921-208q0 26-18.5 45T857-144H635l128-128ZM217-144q-14 0-25-5t-20-14L67-268q-38-38-38-89t39-90l426-414q38-38 90-38t91 39l174 174q37 38 38 90t-38 90L501-164q-8 9-19.5 14.5T457-144H217Zm212-128 328-322-174-176-423 414 83 84h186Zm51-208Z"/>
-                </svg>
+                <span className="material-symbols-rounded" style={{ fontSize: '18px', color: 'currentColor' }}>delete_sweep</span>
                 {t('timeline.clearOfflineSegments', 'Clear offline segments')}
               </button>
               {clearInfoVisible && (
@@ -1766,9 +1764,7 @@ const TimelineVisualization = ({
                 }}
                 style={{ width: 36, height: 36, minWidth: 36, padding: 0, borderRadius: '50%' }}
               >
-                <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 -960 960 960" aria-hidden style={{ color: 'var(--md-on-primary)' }}>
-                  <path fill="currentColor" d="M320-160q-33 0-56.5-23.5T240-240v-520h-80v-80h200v-40h240v40h200v80h-80v520q0 33-23.5 56.5T640-160H320Zm80-160h80v-360h-80v360Zm160 0h80v-360h-80v360Z"/>
-                </svg>
+                <span className="material-symbols-rounded" style={{ fontSize: '18px', color: 'var(--md-on-primary)' }}>delete</span>
               </button>
               <button
                 className="btn-base btn-primary btn-small"
@@ -1776,9 +1772,7 @@ const TimelineVisualization = ({
                 onPointerDown={handleMovePointerDown}
                 style={{ width: 36, height: 36, minWidth: 36, padding: 0, borderRadius: '50%', cursor: 'grab', touchAction: 'none' }}
               >
-                <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 -960 960 960" aria-hidden style={{ color: 'var(--md-on-primary)' }}>
-                  <path fill="currentColor" d="m294-415 33 34q20 19 19 44.5T326-292q-18 18-44.18 18T238-292L96-433q-9-9.4-14.5-21.2-5.5-11.8-5.5-25 0-12.2 5.5-24.5T96-524l140-141q17.64-18 43.82-18T325-665q19 18 19 44.67 0 26.66-19 45.33l-30 31h370l-33-33q-20-18-18.5-44t21.5-44q18-18 44.18-18T723-665l141 141q9 9.4 14.5 21.2 5.5 11.8 5.5 24 0 13.2-5.5 25T864-433L723-292q-17.64 18-43.32 18T635-292q-20-19-20.5-45.17Q614-363.33 633-382l32-33H294Z"/>
-                </svg>
+                <span className="material-symbols-rounded" style={{ fontSize: '18px', color: 'var(--md-on-primary)' }}>drag_indicator</span>
               </button>
             </div>
           </OverlayFollower>
@@ -1826,13 +1820,10 @@ const TimelineVisualization = ({
             })()
           }}
         >
-          <svg
-            xmlns="http://www.w3.org/2000/svg"
-            height="48px"
-            viewBox="0 -960 960 960"
-            width="48px"
-            fill="currentColor"
+          <span
+            className="material-symbols-rounded"
             style={{
+              fontSize: '48px',
               color: 'var(--md-on-surface-variant)',
               transform: `translateX(${(() => {
                 // Smooth continuous left-to-right only motion over full cycle
@@ -1852,8 +1843,8 @@ const TimelineVisualization = ({
               filter: 'drop-shadow(0 2px 4px rgba(0,0,0,0.2))'
             }}
           >
-            <path d="M445-80q-29 0-56-12t-45-35L143-383q-7-9-7-20t8-19l4-4q14-15 34.5-18.5T221-438l99 53v-365q0-12.75 8.68-21.38 8.67-8.62 21.5-8.62 12.82 0 21.32 8.62 8.5 8.63 8.5 21.38v415q0 17-14.5 25.5t-29.5.5l-100-53 156 198q10 12 23.76 18 13.76 6 29.24 6h205q38 0 64-26t26-64v-170q0-25.5-17.25-42.75T680-460H490q-12.75 0-21.37-8.68-8.63-8.67-8.63-21.5 0-12.82 8.63-21.32 8.62-8.5 21.37-8.5h190q50 0 85 35t35 85v170q0 63-43.5 106.5T650-80H445Zm43-250Zm-16.7-320q-13.3 0-21.8-8.63-8.5-8.62-8.5-21.37 0-1.5 4-15 7-12 11-26t4-29.48Q460-796 427.88-828q-32.12-32-78-32T272-827.92q-32 32.09-32 77.92 0 15 4 29t11 26q2 3 3 6.5t1 8.5q0 12.75-8.58 21.37-8.58 8.63-21.84 8.63-8.58 0-15.58-4t-11.17-11.84Q191-685 185.5-706.25q-5.5-21.25-5.5-44.2 0-70.55 49.73-120.05Q279.45-920 350-920t120.27 49.5Q520-821 520-750.31q0 22.99-5.7 44.28-5.71 21.29-16.3 40.03-4 8-11.04 12-7.05 4-15.66 4Z"/>
-          </svg>
+            touch_app
+          </span>
           <span
             style={{
               color: 'var(--md-on-surface-variant)',

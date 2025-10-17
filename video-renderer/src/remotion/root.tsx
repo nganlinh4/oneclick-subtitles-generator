@@ -13,7 +13,7 @@ const sampleSubtitles: LyricEntry[] = [
 const defaultMetadata: VideoMetadata = {
   videoType: 'Subtitled Video',
   resolution: '1080p',
-  frameRate: 60,
+  frameRate: 30,
   originalAudioVolume: 100,
   narrationVolume: 100
 };
@@ -39,7 +39,7 @@ export const RemotionRoot: React.FC = () => {
   // The server will override dimensions, fps, and duration based on the actual video
   const commonProps = {
     component: VideoComponentWrapper,
-    fps: 60, // Default, will be overridden by server
+    fps: 30, // Default, will be overridden by server
     width: 1920, // Default, will be overridden by server based on video aspect ratio
     height: 1080, // Default, will be overridden by server based on video aspect ratio
     durationInFrames: 180 // Default, will be overridden by server based on audio/video duration

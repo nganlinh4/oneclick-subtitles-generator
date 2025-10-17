@@ -48,6 +48,94 @@ const BackgroundMusicSection = () => {
     return `/promptdj-midi/index.html${v ? `?v=${encodeURIComponent(v)}` : ''}`;
   }, []);
 
+  // Build a same-origin wrapper page that embeds the remote promptdj app and
+  // implements mic recording + message relay. This ensures we can permanently
+  // request mic permission and relay blobs even if the inner app doesn't.
+  const wrapperHtml = useMemo(() => {
+    const innerSrc = midiAppUrl;
+    const html = `<!doctype html>
+<html>
+<head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1" /></head>
+<body style="margin:0;padding:0;background:#111;color:#eee;">
+  <iframe id="inner" title="promptdj-inner" src="${innerSrc}" allow="microphone; midi; autoplay" style="border:0;width:100%;height:100vh"></iframe>
+  <script>
+  (function(){
+    const inner = document.getElementById('inner');
+    let recStream = null; let mr = null; let chunks = []; let isRecording = false;
+
+    function postUp(msg){ try { window.parent && window.parent.postMessage(msg, '*'); } catch(e){} }
+    function postDown(msg){ try { inner.contentWindow && inner.contentWindow.postMessage(msg, '*'); } catch(e){} }
+
+    async function requestMicOnce(){
+      // Prompt user for mic permission without keeping the stream active
+      let s;
+      try {
+        s = await navigator.mediaDevices.getUserMedia({ audio: true, video: false });
+      } catch (e) {
+        postUp({ type: 'pm-dj-recording-error', error: { name: e.name, message: e.message } });
+        throw e;
+      } finally {
+        try { s && s.getTracks().forEach(t => t.stop()); } catch {}
+      }
+    }
+
+    async function startRec(){
+      if (isRecording) return;
+      try {
+        recStream = await navigator.mediaDevices.getUserMedia({ audio: true, video: false });
+        chunks = [];
+        let opts = {};
+        if (window.MediaRecorder && MediaRecorder.isTypeSupported){
+          const cand = ['audio/webm;codecs=opus','audio/webm','audio/ogg;codecs=opus','audio/ogg'];
+          const mt = cand.find(c => MediaRecorder.isTypeSupported(c));
+          if (mt) opts.mimeType = mt;
+        }
+        mr = new MediaRecorder(recStream, opts);
+        mr.ondataavailable = (e) => { if (e.data && e.data.size) chunks.push(e.data); };
+        mr.onstart = () => { isRecording = true; postUp({ type: 'pm-dj-recording-started' }); };
+        mr.onerror = (e) => postUp({ type: 'pm-dj-recording-error', error: e && (e.error || { message: String(e) }) });
+        mr.onstop = () => {
+          const type = (chunks[0] && chunks[0].type) || 'audio/webm';
+          const blob = new Blob(chunks, { type });
+          try { recStream && recStream.getTracks().forEach(t => t.stop()); } catch {}
+          recStream = null; isRecording = false; mr = null; chunks = [];
+          postUp({ type: 'pm-dj-recording-stopped', blob });
+        };
+        mr.start(200);
+      } catch(e){}
+    }
+
+    function stopRec(){ try { if (mr && mr.state !== 'inactive') mr.stop(); } catch(e){}
+    }
+
+    // Relay messages from parent to inner and handle mic/recording here
+    window.addEventListener('message', async (ev) => {
+      const d = ev.data; if (!d || typeof d !== 'object') return;
+      switch(d.type){
+        case 'pm-dj-request-mic': await requestMicOnce(); break;
+        case 'pm-dj-start-recording': await startRec(); break;
+        case 'pm-dj-stop-recording': stopRec(); break;
+        default:
+          // Forward all other messages to inner app (theme, midi, etc.)
+          postDown(d);
+      }
+    });
+
+    // Relay all messages from inner up to parent unchanged so existing parent
+    // code continues to work (midi inputs/state, any custom events)
+    window.addEventListener('message', (ev) => {
+      // If the message originated from the inner frame, bubble it up
+      if (ev.source === inner.contentWindow) {
+        postUp(ev.data);
+      }
+    });
+  })();
+  </script>
+</body>
+</html>`;
+    return html;
+  }, [midiAppUrl]);
+
   // Resizer refs and handlers for panel height
   const panelRef = useRef(null);
   const resizingRef = useRef(false);
@@ -306,7 +394,7 @@ const BackgroundMusicSection = () => {
         <div className="header-left" style={{ display: 'flex', flexDirection: 'row', alignItems: 'center', gap: 36, flexWrap: 'wrap' }}>
           {isCollapsed && (
             <h2 style={{ margin: 0, display: 'inline-flex', alignItems: 'center', gap: 10 }}>
-              <svg xmlns="http://www.w3.org/2000/svg" height="24" viewBox="0 -960 960 960" width="24" fill="currentColor"><path d="M388-68q-80.49 0-137.24-56.76Q194-181.51 194-262q0-79.49 56.76-136.74Q307.51-456 388-456q15.95 0 29.48 2 13.52 2 28.52 5v-443h321v221H582v409q0 80.49-57.26 137.24Q467.49-68 388-68Z"/></svg>
+              <span className="material-symbols-rounded" style={{ fontSize: '24px' }}>music_note</span>
               {t('backgroundMusic.title', 'Background Music Generator')}
             </h2>
           )}
@@ -329,7 +417,7 @@ const BackgroundMusicSection = () => {
                   icons={true}
                 />
                 <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6, fontWeight: 600 }}>
-                  <svg xmlns="http://www.w3.org/2000/svg" height="18" viewBox="0 -960 960 960" width="18" fill="currentColor"><path d="M212-76q-57.12 0-96.56-39.44Q76-154.88 76-212v-536q0-57.13 39.44-96.56Q154.88-884 212-884h536q57.13 0 96.56 39.44Q884-805.13 884-748v536q0 57.12-39.44 96.56Q805.13-76 748-76H212Zm0-136h95v-155h2q-22.65 0-37.33-14.67Q257-396.35 257-419v-329h-45v536Zm441 0h95v-536h-45v329q0 22.65-14.67 37.33Q673.65-367 651-367h2v155Zm-245 0h144v-155h2q-22.65 0-37.33-14.67Q502-396.35 502-419v-329h-44v330q0 22.23-14.66 36.61Q428.67-367 407-367h1v155Z"/></svg>
+                  <span className="material-symbols-rounded" style={{ fontSize: '18px' }}>piano</span>
                   MIDI
                 </span>
               </div>
@@ -356,9 +444,7 @@ const BackgroundMusicSection = () => {
                   onClick={startRecording}
                   title={t('narration.record', 'Record')}
                 >
-                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                    <circle cx="12" cy="12" r="6" fill="currentColor" />
-                  </svg>
+                  <span className="material-symbols-rounded" style={{ fontSize: '16px' }}>radio_button_checked</span>
                   {t('narration.record', 'Record')}
                 </button>
               ) : (
@@ -368,9 +454,7 @@ const BackgroundMusicSection = () => {
                   title={t('narration.stopRecording', 'Stop')}
                   style={{ display: 'inline-flex', alignItems: 'center', gap: 8 }}
                 >
-                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                    <rect x="6" y="6" width="12" height="12" fill="currentColor" />
-                  </svg>
+                  <span className="material-symbols-rounded" style={{ fontSize: '16px' }}>stop</span>
                   {t('narration.stopRecording', 'Stop')} {formatTime(elapsed, 'hms_ms')}
                 </button>
               )}
@@ -383,11 +467,7 @@ const BackgroundMusicSection = () => {
                   download={`background-music-${Date.now()}.webm`}
                   title={t('backgroundMusic.downloadRecording', 'Download recording')}
                 >
-                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                    <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
-                    <polyline points="17 8 12 13 7 8" />
-                    <line x1="12" y1="3" x2="12" y2="13" />
-                  </svg>
+                  <span className="material-symbols-rounded" style={{ fontSize: '16px' }}>download</span>
                   {t('narration.download', 'Download')}
                 </a>
               )}
@@ -410,10 +490,7 @@ const BackgroundMusicSection = () => {
                     onClick={clearReferenceAudio}
                     title={t('narration.clearReference', 'Clear reference audio')}
                   >
-                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                      <line x1="18" y1="6" x2="6" y2="18" />
-                      <line x1="6" y1="6" x2="18" y2="18" />
-                    </svg>
+                    <span className="material-symbols-rounded" style={{ fontSize: '14px' }}>close</span>
                   </button>
                 </div>
               )}
@@ -436,9 +513,7 @@ const BackgroundMusicSection = () => {
             localStorage.setItem('bg_music_collapsed', next ? 'true' : 'false');
           }}
         >
-          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-            <polyline points="6 9 12 15 18 9"></polyline>
-          </svg>
+          <span className="material-symbols-rounded">expand_more</span>
         </button>
       </div>
 
@@ -458,9 +533,10 @@ const BackgroundMusicSection = () => {
             <iframe
               ref={iframeRef}
               title="promptdj-midi"
-              src={midiAppUrl}
+              srcDoc={wrapperHtml}
               onLoad={onIframeLoad}
-              allow="midi"
+              allow="microphone; midi; autoplay"
+              scrolling="no"
               style={{ border: 'none', width: '100%', height: '100%' }}
             />
             {isResizing && (
@@ -484,7 +560,7 @@ const BackgroundMusicSection = () => {
                 boxShadow: 'var(--md-elevation-level2)'
               }}
             >
-              <svg xmlns="http://www.w3.org/2000/svg" height="28" viewBox="0 -960 960 960" width="28" fill="currentColor"><path d="M352-96q-106-40-172-132.5T114-438q0-47 12-92t33-86q15-30 48-32.5t60 23.5q14 14 16.5 36t-8.5 42q-12 26-18.5 53.5T250-438q0 70 37.5 127t99.5 84q21 8 34.5 27t13.5 39q0 37-25.5 57T352-96Zm256 0q-32 13-57.5-7.5T525-161q0-19 13.5-38.5T573-227q61-27 99-84t38-127q0-89-58.5-155T506-667h-6l11 11q15 15 13.5 36.5T509-584q-16 15-37.5 15T434-584L324-694q-10-10-15-22.5t-5-25.5q0-13 5-25.5t15-21.5l111-112q15-15 36.5-15t37.5 15q15 16 15.5 37T511-829l-25 25h7q148 0 250.5 107.5T846-438q0 117-66 209.5T608-96Z"/></svg>
+              <span className="material-symbols-rounded" style={{ fontSize: '28px' }}>refresh</span>
             </button>
 
             {/* Floating resizer pill (bottom-right) */}

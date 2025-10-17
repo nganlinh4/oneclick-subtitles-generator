@@ -73,9 +73,9 @@
   overflow: hidden;
 }
 
-/* Ensure all text inside the button uses the title font */
-.add-subtitles-button *,
-.add-subtitles-button span {
+/* Ensure all text inside the button uses the title font, but do not override Material Symbols */
+.add-subtitles-button *:not(.material-symbols-rounded),
+.add-subtitles-button span:not(.material-symbols-rounded) {
   font-family: var(--font-title) !important;
 }
 
@@ -183,6 +183,14 @@
 .add-subtitles-button .icon {
   font-size: 16px;
 }
+/* Ensure Material Symbols render above the star layer and keep correct font */
+.add-subtitles-button .material-symbols-rounded {
+  position: relative;
+  z-index: 2;
+  font-family: var(--ms-font-family) !important;
+  font-variation-settings: "wght" var(--ms-wght), "GRAD" var(--ms-grad), "opsz" var(--ms-opsz);
+}
+
 
 /* Processing state */
 .add-subtitles-button.processing {
@@ -262,7 +270,7 @@
   pointer-events: none;
   overflow: hidden;
   border-radius: inherit;
-  z-index: 1;
+  z-index: 0; /* Ensure star layer stays beneath actual button content */
 }
 
 .add-subtitles-button .gemini-mini-icon {

@@ -1,4 +1,4 @@
-﻿import React, { useEffect, useRef, useImperativeHandle, forwardRef, useState, useCallback } from 'react';
+import React, { useEffect, useRef, useImperativeHandle, forwardRef, useState, useCallback } from 'react';
 
 /**
  * Pure React Wavy Progress Indicator Component

@@ -5,7 +5,7 @@
   "waveformDisabled": "성능 향상을 위해 30분 이상의 동영상에서는 오디오 파형 시각화가 자동으로 비활성화되었습니다.",
   "srtOnlyMode": "SRT 전용 모드 - 자막 타이밍을 기반으로 한 타임라인 시각화",
   "generateReplace": "자막 다시 생성",
-  "clearInRangeWithShortcut": "범위 내 자막 삭제 (Del)",
+  "clearInRangeWithShortcut": "범위 내 자막 삭제 (Del/Backspace)",
   "moveRange": "드래그하여 범위 내 자막 이동",
   "dragToZoom": "드래그하여 확대/축소",
   "clearOfflineSegments": "오프라인 구간 지우기",

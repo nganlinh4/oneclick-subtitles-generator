@@ -1,4 +1,5 @@
 import React, { useState, useRef, useEffect, useCallback } from 'react';
+import { getName } from 'iso-639-1';
 import CloseButton from '../../common/CloseButton';
 import CustomDropdown from '../../common/CustomDropdown';
 import '../../../styles/narration/VoiceSelectionModal.css'; // Reuse the same CSS
@@ -103,21 +104,6 @@ const LanguageSelectionModal = ({ isOpen, onClose, languages, selectedLanguage, 
     return languages.filter(lang => lang.code !== detectedLanguage.languageCode);
   };
 
-  // Group other languages alphabetically by first letter
-  const groupedLanguages = getOtherLanguages().reduce((acc, language) => {
-    const firstLetter = language.name.charAt(0).toUpperCase();
-    if (!acc[firstLetter]) {
-      acc[firstLetter] = [];
-    }
-    acc[firstLetter].push(language);
-    return acc;
-  }, {});
-
-  // Sort languages within each group alphabetically
-  Object.keys(groupedLanguages).forEach(letter => {
-    groupedLanguages[letter].sort((a, b) => a.name.localeCompare(b.name));
-  });
-
   // Get filtered recommended language
   const getFilteredRecommendedLanguage = () => {
     const recommendedLanguage = getRecommendedLanguage();
@@ -125,35 +111,19 @@ const LanguageSelectionModal = ({ isOpen, onClose, languages, selectedLanguage, 
       return null;
     }
 
-    const matchesSearch = recommendedLanguage.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-                         recommendedLanguage.code.toLowerCase().includes(searchTerm.toLowerCase());
+    const matchesSearch = getLanguageName(recommendedLanguage.code).toLowerCase().includes(searchTerm.toLowerCase()) ||
+                          recommendedLanguage.code.toLowerCase().includes(searchTerm.toLowerCase());
 
     return matchesSearch ? recommendedLanguage : null;
   };
 
-  // Get unique first letters for category filter (including Recommended if applicable)
-  const availableCategories = [
-    'All',
-    ...(detectedLanguage?.languageCode ? ['Recommended'] : []),
-    ...Object.keys(groupedLanguages).sort()
-  ];
-
-  // Filter languages based on search term and category
-  const filteredGroups = Object.entries(groupedLanguages).reduce((acc, [letter, languageList]) => {
-    if (selectedCategory !== 'All' && letter !== selectedCategory) {
-      return acc;
-    }
-
-    const filteredLanguages = languageList.filter(language =>
-      language.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
+  // Get filtered other languages
+  const getFilteredOtherLanguages = () => {
+    return getOtherLanguages().filter(language =>
+      getLanguageName(language.code).toLowerCase().includes(searchTerm.toLowerCase()) ||
       language.code.toLowerCase().includes(searchTerm.toLowerCase())
-    );
-
-    if (filteredLanguages.length > 0) {
-      acc[letter] = filteredLanguages;
-    }
-    return acc;
-  }, {});
+    ).sort((a, b) => getLanguageName(a.code).localeCompare(getLanguageName(b.code)));
+  };
 
   const handleLanguageSelect = (language) => {
     onLanguageSelect(language.code);
@@ -165,6 +135,34 @@ const LanguageSelectionModal = ({ isOpen, onClose, languages, selectedLanguage, 
     setSelectedCategory('All');
   };
 
+  // Get language name from ISO code
+  const getLanguageName = (code) => {
+    return getName(code.toLowerCase()) || code;
+  };
+
+  // Group filtered other languages by first letter of full name
+  const groupedLanguages = getFilteredOtherLanguages().reduce((acc, language) => {
+    const firstLetter = getLanguageName(language.code)[0].toUpperCase();
+    if (!acc[firstLetter]) {
+      acc[firstLetter] = [];
+    }
+    acc[firstLetter].push(language);
+    return acc;
+  }, {});
+
+  // Filter groups based on selected category
+  const visibleGroupedLanguages = Object.entries(groupedLanguages).filter(([letter]) => {
+    if (selectedCategory === 'All' || selectedCategory === 'Recommended') return true;
+    return letter === selectedCategory;
+  });
+
+  // Get unique categories (All, Recommended, and alphabet letters)
+  const availableCategories = [
+    'All',
+    ...(detectedLanguage?.languageCode ? ['Recommended'] : []),
+    ...Object.keys(groupedLanguages).sort()
+  ];
+
   if (!isOpen) return null;
 
   return (
@@ -175,7 +173,7 @@ const LanguageSelectionModal = ({ isOpen, onClose, languages, selectedLanguage, 
           <h2>{t('narration.selectLanguage', 'Select Language')}</h2>
           <div className="voice-count">
             {t('narration.languagesAvailable', '{{count}} languages available', {
-              count: (getFilteredRecommendedLanguage() ? 1 : 0) + Object.values(filteredGroups).flat().length
+              count: (getFilteredRecommendedLanguage() ? 1 : 0) + visibleGroupedLanguages.flatMap(([_, list]) => list).length
             })}
           </div>
           <CloseButton onClick={onClose} variant="modal" size="medium" />
@@ -209,7 +207,7 @@ const LanguageSelectionModal = ({ isOpen, onClose, languages, selectedLanguage, 
                   ? t('narration.allCategories', 'All')
                   : category === 'Recommended'
                   ? t('narration.recommendedLanguage', 'Recommended for {{language}}', {
-                      language: detectedLanguage?.languageName || detectedLanguage?.languageCode
+                      language: languages.find(lang => lang.code === detectedLanguage?.languageCode)?.name || detectedLanguage?.languageCode
                     })
                   : category
               }))}
@@ -225,7 +223,7 @@ const LanguageSelectionModal = ({ isOpen, onClose, languages, selectedLanguage, 
             <div className="voice-category-section">
               <h3 className="voice-category-title recommended">
                 {t('narration.recommendedLanguage', 'Recommended for {{language}}', {
-                  language: detectedLanguage.languageName || detectedLanguage.languageCode
+                  language: getLanguageName(detectedLanguage.languageCode.toLowerCase())
                 })}
               </h3>
               <div className="voice-grid">
@@ -234,7 +232,7 @@ const LanguageSelectionModal = ({ isOpen, onClose, languages, selectedLanguage, 
                   onClick={() => handleLanguageSelect(getFilteredRecommendedLanguage())}
                 >
                   <div className="voice-info">
-                    <span className="voice-name">{getFilteredRecommendedLanguage().name}</span>
+                    <span className="voice-name">{getLanguageName(getFilteredRecommendedLanguage().code)}</span>
                     <div className="voice-meta">
                       <span className="voice-locale">{getFilteredRecommendedLanguage().code}</span>
                     </div>
@@ -245,7 +243,7 @@ const LanguageSelectionModal = ({ isOpen, onClose, languages, selectedLanguage, 
           )}
 
           {/* Other Languages Sections */}
-          {Object.entries(filteredGroups).map(([letter, languageList]) => (
+          {visibleGroupedLanguages.map(([letter, languageList]) => (
             <div key={letter} className="voice-category-section">
               <h3 className="voice-category-title">{letter}</h3>
               <div className="voice-grid">
@@ -256,7 +254,7 @@ const LanguageSelectionModal = ({ isOpen, onClose, languages, selectedLanguage, 
                     onClick={() => handleLanguageSelect(language)}
                   >
                     <div className="voice-info">
-                      <span className="voice-name">{language.name}</span>
+                      <span className="voice-name">{getLanguageName(language.code)}</span>
                       <div className="voice-meta">
                         <span className="voice-locale">{language.code}</span>
                       </div>
@@ -268,7 +266,7 @@ const LanguageSelectionModal = ({ isOpen, onClose, languages, selectedLanguage, 
           ))}
 
           {/* No Results */}
-          {!getFilteredRecommendedLanguage() && Object.keys(filteredGroups).length === 0 && (
+          {!getFilteredRecommendedLanguage() && visibleGroupedLanguages.length === 0 && (
             <div className="no-results">
               <div className="no-results-icon">🔍</div>
               <h3>{t('narration.noLanguagesFound', 'No languages found')}</h3>

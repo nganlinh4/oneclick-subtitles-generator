@@ -2,7 +2,6 @@ import React, { useEffect, useRef } from 'react';
 import ReactDOM from 'react-dom';
 import CloseButton from '../common/CloseButton';
 import '../../styles/settings/customModelDialog.css';
-import CloseIcon from '@mui/icons-material/Close';
 
 /**
  * Custom Modal Dialog Component

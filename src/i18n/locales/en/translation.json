@@ -112,5 +112,6 @@
   "warningEdited": "You have edited the text of original subtitles. Translations may be outdated. Please translate again.",
   "warningInserted": "You have inserted a new subtitle. Translations may be outdated. Please translate again.",
   "warningMerged": "You have merged subtitles. Translations may be outdated. Please translate again.",
-  "warningSplit": "You have split subtitles. Translations may be outdated. Please translate again."
+  "warningSplit": "You have split subtitles. Translations may be outdated. Please translate again.",
+  "fromCache": "Loaded from cache"
 }

@@ -1,6 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { useTranslation } from 'react-i18next';
-import { FiMusic, FiImage } from 'react-icons/fi';
 import CloseButton from './common/CloseButton';
 import CustomScrollbarTextarea from './common/CustomScrollbarTextarea';
 import '../styles/SubtitlesInputModal.css';
@@ -163,7 +162,7 @@ const SubtitlesInputModal = ({ initialText = '', onSave, onClose, onGenerateBack
               onClick={() => setShowLyricsInput(!showLyricsInput)}
               title={t('subtitlesInput.lyricsToggle', 'Toggle lyrics search')}
             >
-              <FiMusic /> {t('subtitlesInput.fetchLyrics', 'Fetch Song Lyrics')}
+              <span className="material-symbols-rounded">music_note</span> {t('subtitlesInput.fetchLyrics', 'Fetch Song Lyrics')}
             </button>
           </div>
 
@@ -193,7 +192,7 @@ const SubtitlesInputModal = ({ initialText = '', onSave, onClose, onGenerateBack
                 console.error('onGenerateBackground function is not available');
               }
             }}>
-              <FiImage />
+              <span className="material-symbols-rounded">image</span>
               <span>{t('subtitlesInput.generateBackground', 'Do you want to generate background image inspired from this album art and lyrics?')}</span>
             </div>
           )}

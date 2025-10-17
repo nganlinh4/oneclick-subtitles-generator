@@ -3,7 +3,6 @@ import { useTranslation } from 'react-i18next';
 import { SERVER_URL } from '../../../config';
 import SliderWithValue from '../../common/SliderWithValue';
 import VoiceSelectionModal from './VoiceSelectionModal';
-import { FiChevronDown } from 'react-icons/fi';
 import '../../../styles/narration/narrationAdvancedSettingsRedesign.css';
 import '../../../styles/narration/narrationModelDropdown.css';
 
@@ -175,7 +174,7 @@ const EdgeTTSControls = ({
                     }
                   </span>
                 </span>
-                <FiChevronDown className="dropdown-icon" />
+                <span className="material-symbols-rounded dropdown-icon">expand_more</span>
               </button>
             </div>
           )}

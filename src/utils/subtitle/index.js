@@ -68,7 +68,7 @@ export const parseGeminiResponse = (response) => {
         throw new Error('Invalid response format from Gemini API');
     }
 
-    const text = response.candidates[0].content.parts[0].text;
+    let text = response.candidates[0].content.parts[0].text;
 
     // Ensure text is a string before processing
     if (typeof text !== 'string') {

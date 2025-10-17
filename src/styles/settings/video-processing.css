@@ -63,10 +63,6 @@
   transition: all var(--md-duration-medium2) var(--md-easing-standard);
   box-shadow: var(--md-elevation-level1);
   appearance: none; /* Remove default arrow */
-  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='24' height='24' viewBox='0 0 24 24' fill='none' stroke='%23E6E1E5' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpolyline points='6 9 12 15 18 9'%3E%3C/polyline%3E%3C/svg%3E");
-  background-repeat: no-repeat;
-  background-position: right 0.75rem center;
-  background-size: 1.25rem;
   padding-right: 2.5rem;
 }
 
@@ -183,10 +179,21 @@ input[type="checkbox"]:disabled,
   text-align: center;
 }
 
-/* Dark theme adjustments */
-[data-theme="dark"] .segment-duration-select,
-[data-theme="dark"] .gemini-model-select,
-[data-theme="dark"] .time-format-select,
-[data-theme="dark"] .optimized-resolution-select {
-  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='24' height='24' viewBox='0 0 24 24' fill='none' stroke='%23E6E1E5' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpolyline points='6 9 12 15 18 9'%3E%3C/polyline%3E%3C/svg%3E");
+/* Material Symbols Rounded dropdown arrows for select elements */
+.segment-duration-select::after,
+.gemini-model-select::after,
+.time-format-select::after,
+.optimized-resolution-select::after,
+.video-analysis-model-select::after,
+.video-analysis-timeout-select::after {
+  content: "expand_more";
+  font-family: var(--ms-font-family);
+  font-variation-settings: "wght" var(--ms-wght), "GRAD" var(--ms-grad), "opsz" var(--ms-opsz);
+  position: absolute;
+  right: 0.75rem;
+  top: 50%;
+  transform: translateY(-50%);
+  pointer-events: none;
+  color: var(--md-on-surface);
+  font-size: 1.25rem;
 }

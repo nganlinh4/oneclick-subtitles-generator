@@ -449,9 +449,9 @@ const VideoTopsideButtons = ({
             ) : (
               // Show refresh icon when not refreshing
               <>
-                <svg width="22" height="22" viewBox="0 0 24 24" fill="white" style={{ filter: 'drop-shadow(0 1px 2px rgba(0, 0, 0, 0.8))' }}>
-                  <path d="M17.65 6.35C16.2 4.9 14.21 4 12 4c-4.42 0-7.99 3.58-7.99 8s3.57 8 7.99 8c3.73 0 6.84-2.55 7.73-6h-2.08c-.82 2.33-3.04 4-5.65 4-3.31 0-6-2.69-6-6s2.69-6 6-6c1.66 0 3.14.69 4.22 1.78L13 11h7V4l-2.35 2.35z" />
-                </svg>
+                <span className="material-symbols-rounded" style={{ color: 'white', fontSize: 22, textShadow: '0 1px 2px rgba(0, 0, 0, 0.8)', display: 'inline-block' }}>
+                  refresh
+                </span>
                 <span style={{ color: 'white', fontSize: '13px', fontWeight: '600', textShadow: '0 1px 2px rgba(0, 0, 0, 0.8)' }}>
                   {t('preview.refreshNarration', 'Refresh Narration')}
                 </span>
@@ -500,10 +500,10 @@ const VideoTopsideButtons = ({
               minWidth: 'fit-content'
             }}
           >
-            <svg width="24" height="24" viewBox="0 0 24 24" fill="white" style={{ filter: 'drop-shadow(0 1px 2px rgba(0, 0, 0, 0.8))' }}>
-              <path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm1 15h-2v-6h2v6zm0-8h-2V7h2v2z"/>
-            </svg>
-            </div>
+            <span className="material-symbols-rounded" style={{ color: 'white', fontSize: 24, textShadow: '0 1px 2px rgba(0, 0, 0, 0.8)', display: 'inline-block' }}>
+              info
+            </span>
+          </div>
           </LiquidGlass>
         )}
         </div>
@@ -597,9 +597,9 @@ const VideoTopsideButtons = ({
             minWidth: 'fit-content',
             whiteSpace: 'nowrap'
           }}>
-            <svg width="20" height="20" viewBox="0 0 24 24" fill="white" style={{ filter: 'drop-shadow(0 1px 2px rgba(0, 0, 0, 0.8))' }}>
-              <path d="M21 19V5c0-1.1-.9-2-2-2H5c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h14c1.1 0 2-.9 2-2zM8.5 13.5l2.5 3.01L14.5 12l4.5 6H5l3.5-4.5z"/>
-            </svg>
+            <span className="material-symbols-rounded" style={{ color: 'white', fontSize: 20, textShadow: '0 1px 2px rgba(0, 0, 0, 0.8)', display: 'inline-block' }}>
+              image
+            </span>
             <span style={{ color: 'white', fontSize: '13px', fontWeight: '600', textShadow: '0 1px 2px rgba(0, 0, 0, 0.8)' }}>
               {t('preview.extractFrame', 'Extract Frame')}
             </span>
@@ -689,9 +689,9 @@ const VideoTopsideButtons = ({
             ) : (
               // Material Design download icon
               <>
-                <svg width="20" height="20" viewBox="0 0 24 24" fill="white" style={{ filter: 'drop-shadow(0 1px 2px rgba(0, 0, 0, 0.8))' }}>
-                  <path d="M19 9h-4V3H9v6H5l7 7 7-7zM5 18v2h14v-2H5z" />
-                </svg>
+                <span className="material-symbols-rounded" style={{ color: 'white', fontSize: 20, textShadow: '0 1px 2px rgba(0, 0, 0, 0.8)', display: 'inline-block' }}>
+                  download
+                </span>
                 <span style={{ color: 'white', fontSize: '13px', fontWeight: '600', textShadow: '0 1px 2px rgba(0, 0, 0, 0.8)' }}>
                   {t('preview.downloadAudio', 'Download Audio')}
                 </span>

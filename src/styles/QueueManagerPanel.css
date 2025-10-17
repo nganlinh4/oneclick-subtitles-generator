@@ -102,7 +102,7 @@
 }
 
 .empty-queue h3 {
-  margin: 0 0 0.75rem 0;
+  margin: 0.75rem;
   color: var(--text-primary);
   font-size: 1.1rem;
   font-weight: 600;

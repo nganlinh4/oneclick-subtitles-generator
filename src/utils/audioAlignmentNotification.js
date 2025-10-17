@@ -5,7 +5,6 @@
 
 import React from 'react';
 import ReactDOM from 'react-dom/client';
-import { FiAlertTriangle, FiX } from 'react-icons/fi';
 import i18n from '../i18n/i18n.js';
 import '../styles/common/audio-alignment-notification.css';
 
@@ -75,7 +74,7 @@ export const showAudioAlignmentWarning = (durationDifference, adjustmentInfo = n
     return (
       <div className="audio-alignment-notification visible">
         <div className="notification-icon">
-          <FiAlertTriangle />
+          <span className="material-symbols-rounded">warning</span>
         </div>
         <div className="notification-message">
           {message}
@@ -86,7 +85,7 @@ export const showAudioAlignmentWarning = (durationDifference, adjustmentInfo = n
           aria-label={closeLabel}
           title={closeLabel}
         >
-          <FiX />
+          <span className="material-symbols-rounded">close</span>
         </button>
       </div>
     );

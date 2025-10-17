@@ -1,8 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { useTranslation } from 'react-i18next';
-import DownloadIcon from '@mui/icons-material/Download';
-import CancelIcon from '@mui/icons-material/Cancel';
-import AddIcon from '@mui/icons-material/Add';
 import WavyProgressIndicator from '../../common/WavyProgressIndicator';
 import { addModelFromHuggingFace, cancelModelDownload } from '../../../services/modelService';
 import { invalidateModelsCache } from '../../../services/modelAvailabilityService';
@@ -266,9 +263,7 @@ const AvailableModelsList = ({
                   justifyContent: 'center'
                 }}
               >
-                <svg xmlns="http://www.w3.org/2000/svg" height="12px" viewBox="0 -960 960 960" width="12px" fill="currentColor">
-                  <path d="M480-392 300-212q-18 18-44 18t-44-18q-18-18-18-44t18-44l180-180-180-180q-18-18-18-44t18-44q18-18 44-18t44 18l180 180 180-180q18-18 44-18t44 18q18 18 18 44t-18 44L568-480l180 180q18 18 18 44t-18 44q-18 18-44 18t-44-18L480-392Z"/>
-                </svg>
+                <span className="material-symbols-rounded" style={{ fontSize: 12 }}>close</span>
               </button>
             )}
 
@@ -306,7 +301,7 @@ const AvailableModelsList = ({
                     onClick={() => handleCancelDownload(model.id)}
                     title={t('settings.modelManagement.cancelDownload', 'Cancel Download')}
                   >
-                    <CancelIcon fontSize="small" />
+                    <span className="material-symbols-rounded" style={{ fontSize: 20 }}>close</span>
                   </button>
                 </div>
               </div>
@@ -317,7 +312,7 @@ const AvailableModelsList = ({
                   onClick={() => handleDownload(model)}
                   title={t('settings.modelManagement.downloadModel')}
                 >
-                  <DownloadIcon fontSize="small" />
+                  <span className="material-symbols-rounded" style={{ fontSize: 20 }}>download</span>
                   {t('settings.modelManagement.download')}
                 </button>
               </div>
@@ -328,7 +323,7 @@ const AvailableModelsList = ({
         {/* Add model card */}
         <div className="add-model-card" onClick={onAddModelClick}>
           <div className="add-model-icon">
-            <AddIcon fontSize="large" />
+            <span className="material-symbols-rounded" style={{ fontSize: 35 }}>add</span>
           </div>
           <p>{t('settings.modelManagement.addCustomModel')}</p>
         </div>

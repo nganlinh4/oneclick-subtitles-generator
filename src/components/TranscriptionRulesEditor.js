@@ -395,17 +395,13 @@ const TranscriptionRulesEditor = ({ isOpen, onClose, initialRules, onSave, onCan
                   value: 'custom', 
                   label: (
                     <span style={{ display: 'inline-flex', alignItems: 'center' }}>
-                      <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ display: 'inline-block', verticalAlign: 'middle', marginRight: '6px' }}>
-                        <line x1="4" y1="21" x2="4" y2="14"></line>
-                        <line x1="4" y1="10" x2="4" y2="3"></line>
-                        <line x1="12" y1="21" x2="12" y2="12"></line>
-                        <line x1="12" y1="8" x2="12" y2="3"></line>
-                        <line x1="20" y1="21" x2="20" y2="16"></line>
-                        <line x1="20" y1="12" x2="20" y2="3"></line>
-                        <line x1="1" y1="14" x2="7" y2="14"></line>
-                        <line x1="9" y1="8" x2="15" y2="8"></line>
-                        <line x1="17" y1="16" x2="23" y2="16"></line>
-                      </svg>
+                      <span
+                        className="material-symbols-rounded"
+                        style={{ display: 'inline-block', verticalAlign: 'middle', marginRight: '6px', fontSize: 16 }}
+                        aria-hidden="true"
+                      >
+                        settings
+                      </span>
                       {t('settings.promptFromSettings', 'Prompt from settings')}
                     </span>
                   )
@@ -420,84 +416,101 @@ const TranscriptionRulesEditor = ({ isOpen, onClose, initialRules, onSave, onCan
                     case 'general':
                       // General purpose - grid/dashboard icon
                       IconComponent = () => (
-                        <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ display: 'inline-block', verticalAlign: 'middle', marginRight: '6px' }}>
-                          <rect x="3" y="3" width="7" height="7"></rect>
-                          <rect x="14" y="3" width="7" height="7"></rect>
-                          <rect x="14" y="14" width="7" height="7"></rect>
-                          <rect x="3" y="14" width="7" height="7"></rect>
-                        </svg>
+                        <span
+                          className="material-symbols-rounded"
+                          style={{ display: 'inline-block', verticalAlign: 'middle', marginRight: '6px', fontSize: 16 }}
+                          aria-hidden="true"
+                        >
+                          view_module
+                        </span>
                       );
                       break;
                     case 'extract-text':
                       // Extract text - document with text lines icon
                       IconComponent = () => (
-                        <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ display: 'inline-block', verticalAlign: 'middle', marginRight: '6px' }}>
-                          <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path>
-                          <polyline points="14 2 14 8 20 8"></polyline>
-                          <line x1="16" y1="13" x2="8" y2="13"></line>
-                          <line x1="16" y1="17" x2="8" y2="17"></line>
-                          <polyline points="10 9 9 9 8 9"></polyline>
-                        </svg>
+                        <span
+                          className="material-symbols-rounded"
+                          style={{ display: 'inline-block', verticalAlign: 'middle', marginRight: '6px', fontSize: 16 }}
+                          aria-hidden="true"
+                        >
+                          description
+                        </span>
                       );
                       break;
                     case 'focus-lyrics':
                       // Focus on lyrics - music note icon
                       IconComponent = () => (
-                        <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ display: 'inline-block', verticalAlign: 'middle', marginRight: '6px' }}>
-                          <path d="M9 18V5l12-2v13"></path>
-                          <circle cx="6" cy="18" r="3"></circle>
-                          <circle cx="18" cy="16" r="3"></circle>
-                        </svg>
+                        <span
+                          className="material-symbols-rounded"
+                          style={{ display: 'inline-block', verticalAlign: 'middle', marginRight: '6px', fontSize: 16 }}
+                          aria-hidden="true"
+                        >
+                          music_note
+                        </span>
                       );
                       break;
                     case 'describe-video':
                       // Describe video - camera/video icon
                       IconComponent = () => (
-                        <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ display: 'inline-block', verticalAlign: 'middle', marginRight: '6px' }}>
-                          <rect x="2" y="7" width="14" height="10" rx="2" ry="2"></rect>
-                          <path d="M16 7l5-3v10l-5-3z"></path>
-                        </svg>
+                        <span
+                          className="material-symbols-rounded"
+                          style={{ display: 'inline-block', verticalAlign: 'middle', marginRight: '6px', fontSize: 16 }}
+                          aria-hidden="true"
+                        >
+                          videocam
+                        </span>
                       );
                       break;
                     case 'translate-directly':
                       // Translate directly - globe/language icon
                       IconComponent = () => (
-                        <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ display: 'inline-block', verticalAlign: 'middle', marginRight: '6px' }}>
-                          <circle cx="12" cy="12" r="10"></circle>
-                          <line x1="2" y1="12" x2="22" y2="12"></line>
-                          <path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"></path>
-                        </svg>
+                        <span
+                          className="material-symbols-rounded"
+                          style={{ display: 'inline-block', verticalAlign: 'middle', marginRight: '6px', fontSize: 16 }}
+                          aria-hidden="true"
+                        >
+                          public
+                        </span>
                       );
                       break;
                     case 'chaptering':
                       // Chaptering - list/bookmark icon
                       IconComponent = () => (
-                        <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ display: 'inline-block', verticalAlign: 'middle', marginRight: '6px' }}>
-                          <path d="M19 21l-7-5-7 5V5a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2z"></path>
-                        </svg>
+                        <span
+                          className="material-symbols-rounded"
+                          style={{ display: 'inline-block', verticalAlign: 'middle', marginRight: '6px', fontSize: 16 }}
+                          aria-hidden="true"
+                        >
+                          bookmark
+                        </span>
                       );
                       break;
                     case 'diarize-speakers':
                       // Identify speakers - users/people icon
                       IconComponent = () => (
-                        <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ display: 'inline-block', verticalAlign: 'middle', marginRight: '6px' }}>
-                          <path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"></path>
-                          <circle cx="9" cy="7" r="4"></circle>
-                          <path d="M23 21v-2a4 4 0 0 0-3-3.87"></path>
-                          <path d="M16 3.13a4 4 0 0 1 0 7.75"></path>
-                        </svg>
+                        <span
+                          className="material-symbols-rounded"
+                          style={{ display: 'inline-block', verticalAlign: 'middle', marginRight: '6px', fontSize: 16 }}
+                          aria-hidden="true"
+                        >
+                          people
+                        </span>
                       );
                       break;
                     default:
                       // Default clipboard icon for unknown presets
                       IconComponent = () => (
-                        <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ display: 'inline-block', verticalAlign: 'middle', marginRight: '6px' }}>
-                          <path d="M16 4h2a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h2"></path>
-                          <rect x="8" y="2" width="8" height="4" rx="1" ry="1"></rect>
-                        </svg>
+                        <span
+                          className="material-symbols-rounded"
+                          style={{ display: 'inline-block', verticalAlign: 'middle', marginRight: '6px', fontSize: 16 }}
+                          aria-hidden="true"
+                        >
+                          content_copy
+                        </span>
                       );
-                  }
-                  
+                      break;
+                    }
+                   
                   return {
                     value: preset.id,
                     label: (
@@ -508,16 +521,18 @@ const TranscriptionRulesEditor = ({ isOpen, onClose, initialRules, onSave, onCan
                     )
                   };
                 }),
-
                 // User presets with user icon
                 ...userPromptPresets.map(preset => ({
                   value: preset.id,
                   label: (
                     <span style={{ display: 'inline-flex', alignItems: 'center' }}>
-                      <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ display: 'inline-block', verticalAlign: 'middle', marginRight: '6px' }}>
-                        <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"></path>
-                        <circle cx="12" cy="7" r="4"></circle>
-                      </svg>
+                      <span
+                        className="material-symbols-rounded"
+                        style={{ display: 'inline-block', verticalAlign: 'middle', marginRight: '6px', fontSize: 16 }}
+                        aria-hidden="true"
+                      >
+                        person
+                      </span>
                       {preset.title}
                     </span>
                   )
@@ -571,9 +586,13 @@ const TranscriptionRulesEditor = ({ isOpen, onClose, initialRules, onSave, onCan
                     removeArrayItem('terminology', index);
                   }}
                 >
-                  <svg xmlns="http://www.w3.org/2000/svg" height="16px" viewBox="0 -960 960 960" width="16px" fill="currentColor">
-                    <path d="M480-392 300-212q-18 18-44 18t-44-18q-18-18-18-44t18-44l180-180-180-180q-18-18-18-44t18-44q18-18 44-18t44 18l180 180 180-180q18-18 44-18t44 18q18 18 18 44t-18 44L568-480l180 180q18 18 18 44t-18 44q-18 18-44 18t-44-18L480-392Z"/>
-                  </svg>
+                  <span
+                    className="material-symbols-rounded"
+                    style={{ fontSize: 16, display: 'inline-block' }}
+                    aria-hidden="true"
+                  >
+                    close
+                  </span>
                 </button>
               </div>
             ))}
@@ -612,9 +631,13 @@ const TranscriptionRulesEditor = ({ isOpen, onClose, initialRules, onSave, onCan
                   className="remove-item-button"
                   onClick={() => removeArrayItem('speakerIdentification', index)}
                 >
-                  <svg xmlns="http://www.w3.org/2000/svg" height="16px" viewBox="0 -960 960 960" width="16px" fill="currentColor">
-                    <path d="M480-392 300-212q-18 18-44 18t-44-18q-18-18-18-44t18-44l180-180-180-180q-18-18-18-44t18-44q18-18 44-18t44 18l180 180 180-180q18-18 44-18t44 18q18 18 18 44t-18 44L568-480l180 180q18 18 18 44t-18 44q-18 18-44 18t-44-18L480-392Z"/>
-                  </svg>
+                  <span
+                    className="material-symbols-rounded"
+                    style={{ fontSize: 16, display: 'inline-block' }}
+                    aria-hidden="true"
+                  >
+                    close
+                  </span>
                 </button>
               </div>
             ))}
@@ -643,9 +666,13 @@ const TranscriptionRulesEditor = ({ isOpen, onClose, initialRules, onSave, onCan
                   className="remove-item-button"
                   onClick={() => removeArrayItem('formattingConventions', index)}
                 >
-                  <svg xmlns="http://www.w3.org/2000/svg" height="16px" viewBox="0 -960 960 960" width="16px" fill="currentColor">
-                    <path d="M480-392 300-212q-18 18-44 18t-44-18q-18-18-18-44t18-44l180-180-180-180q-18-18-18-44t18-44q18-18 44-18t44 18l180 180 180-180q18-18 44-18t44 18q18 18 18 44t-18 44L568-480l180 180q18 18 18 44t-18 44q-18 18-44 18t-44-18L480-392Z"/>
-                  </svg>
+                  <span
+                    className="material-symbols-rounded"
+                    style={{ fontSize: 16, display: 'inline-block' }}
+                    aria-hidden="true"
+                  >
+                    close
+                  </span>
                 </button>
               </div>
             ))}
@@ -674,9 +701,13 @@ const TranscriptionRulesEditor = ({ isOpen, onClose, initialRules, onSave, onCan
                   className="remove-item-button"
                   onClick={() => removeArrayItem('spellingAndGrammar', index)}
                 >
-                  <svg xmlns="http://www.w3.org/2000/svg" height="16px" viewBox="0 -960 960 960" width="16px" fill="currentColor">
-                    <path d="M480-392 300-212q-18 18-44 18t-44-18q-18-18-18-44t18-44l180-180-180-180q-18-18-18-44t18-44q18-18 44-18t44 18l180 180 180-180q18-18 44-18t44 18q18 18 18 44t-18 44L568-480l180 180q18 18 18 44t-18 44q-18 18-44 18t-44-18L480-392Z"/>
-                  </svg>
+                  <span
+                    className="material-symbols-rounded"
+                    style={{ fontSize: 16, display: 'inline-block' }}
+                    aria-hidden="true"
+                  >
+                    close
+                  </span>
                 </button>
               </div>
             ))}
@@ -705,9 +736,13 @@ const TranscriptionRulesEditor = ({ isOpen, onClose, initialRules, onSave, onCan
                   className="remove-item-button"
                   onClick={() => removeArrayItem('relationships', index)}
                 >
-                  <svg xmlns="http://www.w3.org/2000/svg" height="16px" viewBox="0 -960 960 960" width="16px" fill="currentColor">
-                    <path d="M480-392 300-212q-18 18-44 18t-44-18q-18-18-18-44t18-44l180-180-180-180q-18-18-18-44t18-44q18-18 44-18t44 18l180 180 180-180q18-18 44-18t44 18q18 18 18 44t-18 44L568-480l180 180q18 18 18 44t-18 44q-18 18-44 18t-44-18L480-392Z"/>
-                  </svg>
+                  <span
+                    className="material-symbols-rounded"
+                    style={{ fontSize: 16, display: 'inline-block' }}
+                    aria-hidden="true"
+                  >
+                    close
+                  </span>
                 </button>
               </div>
             ))}
@@ -736,9 +771,13 @@ const TranscriptionRulesEditor = ({ isOpen, onClose, initialRules, onSave, onCan
                   className="remove-item-button"
                   onClick={() => removeArrayItem('additionalNotes', index)}
                 >
-                  <svg xmlns="http://www.w3.org/2000/svg" height="16px" viewBox="0 -960 960 960" width="16px" fill="currentColor">
-                    <path d="M480-392 300-212q-18 18-44 18t-44-18q-18-18-18-44t18-44l180-180-180-180q-18-18-18-44t18-44q18-18 44-18t44 18l180 180 180-180q18-18 44-18t44 18q18 18 18 44t-18 44L568-480l180 180q18 18 18 44t-18 44q-18 18-44 18t-44-18L480-392Z"/>
-                  </svg>
+                  <span
+                    className="material-symbols-rounded"
+                    style={{ fontSize: 16, display: 'inline-block' }}
+                    aria-hidden="true"
+                  >
+                    close
+                  </span>
                 </button>
               </div>
             ))}

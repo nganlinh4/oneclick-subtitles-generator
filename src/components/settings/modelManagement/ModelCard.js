@@ -1,7 +1,5 @@
 import React from 'react';
 import { useTranslation } from 'react-i18next';
-import DeleteIcon from '@mui/icons-material/Delete';
-import EditIcon from '@mui/icons-material/Edit';
 import { formatBytes } from '../../../utils/formatUtils';
 import DownloadProgress from './DownloadProgress';
 import { LANGUAGE_NAMES } from '../ModelList';
@@ -74,7 +72,7 @@ const ModelCard = ({
           onClick={() => onEdit(model)}
           title={t('settings.modelManagement.editModel', 'Edit model information')}
         >
-          <EditIcon fontSize="small" />
+          <span className="material-symbols-rounded" style={{ fontSize: 20 }}>edit</span>
         </button>
 
         {/* Hide delete button for F5-TTS v1 Base model */}
@@ -84,7 +82,7 @@ const ModelCard = ({
             onClick={() => onDelete(model)}
             title={t('settings.modelManagement.deleteModel', 'Delete model')}
           >
-            <DeleteIcon fontSize="small" />
+            <span className="material-symbols-rounded" style={{ fontSize: 20 }}>delete</span>
           </button>
         )}
       </div>

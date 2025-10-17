@@ -27,7 +27,8 @@
     "korean_male_seoul": "Seoul male voice",
     "viet_male_saigon": "Saigon male voice",
     "viet_female_north_1": "Vietnamese Northern female voice 1",
-    "viet_female_north_2": "Vietnamese Northern female voice 2"
+    "viet_female_north_2": "Vietnamese Northern female voice 2",
+    "viet_loli_south": "Vietnamese Southern loli voice"
   },
   "startTime": "Start",
   "endTime": "End",
@@ -295,5 +296,20 @@
   "geminiGenerationError": "Error generating narration with Gemini",
   "retryingGeminiGeneration": "Retrying narration generation for subtitle {{id}}...",
   "subtitleGroupingError": "Error grouping subtitles: {{error}}",
-  "serverError": "Server error: {{status}} {{statusText}}"
+  "serverError": "Server error: {{status}} {{statusText}}",
+  "transformations": {
+    "punctuationReplaced": "Punctuation replaced with spaces: {{punctuation}}",
+    "numbersConverted": "Numbers converted to spoken words",
+    "datesConverted": "Dates converted to spoken words",
+    "numbersAndDatesConverted": "Numbers and dates converted to spoken words"
+  },
+  "manualLanguageSelection": "Manual Language Selection",
+  "selectLanguagesFor": "Select languages for {{source}} subtitles",
+  "translated": "translated",
+  "original": "original",
+  "typeLanguage": "Type language",
+  "clearLanguage": "Clear this language",
+  "manual": "manual",
+  "detectLanguage": "Detect language",
+  "errorParsingRecentLanguages": "Error parsing recent languages"
 }

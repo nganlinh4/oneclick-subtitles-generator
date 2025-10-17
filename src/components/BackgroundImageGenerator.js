@@ -1,6 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { useTranslation } from 'react-i18next';
-import { FiImage, FiUpload, FiRefreshCw, FiDownload, FiX, FiAlertTriangle, FiChevronDown } from 'react-icons/fi';
 import '../styles/BackgroundImageGenerator.css';
 import BackgroundPromptEditorButton from './background/BackgroundPromptEditorButton';
 import LoadingIndicator from './common/LoadingIndicator';
@@ -528,7 +527,7 @@ const BackgroundImageGenerator = ({ lyrics, albumArt, songName, isExpanded = fal
       <div className="background-generator-header">
         <div className="header-left">
           <h2 style={{ display: 'inline-flex', alignItems: 'center', gap: 10 }}>
-            <svg xmlns="http://www.w3.org/2000/svg" height="24" viewBox="0 -960 960 960" width="24" fill="currentColor"><path d="M320-333h320q27.6 0 47.8-19.5Q708-372 708-401v-158q0-29-20.2-48.5T640-627H320q-27.6 0-47.8 19.5Q252-588 252-559v158q0 29 20.2 48.5T320-333ZM172-117q-57.4 0-96.7-39.3Q36-195.6 36-253v-454q0-57.4 39.3-96.7Q114.6-843 172-843h616q57.4 0 96.7 39.3Q924-764.4 924-707v454q0 57.4-39.3 96.7Q845.4-117 788-117H172Zm0-136h616v-454H172v454Zm0 0v-454 454Zm183-132q-22 0-31.5-19t3.5-36l34-46q10.85-13 27.92-13.5Q406-500 417-486l39 53 63-85q10.85-14 27.92-14Q564-532 574-518l59 78q13 17 3.5 36T605-385H355Z"/></svg>
+            <span className="material-symbols-rounded" style={{ fontSize: '24px' }}>panorama</span>
             {t('backgroundGenerator.title', 'Background Image Generator')}
           </h2>
           <BackgroundPromptEditorButton />
@@ -557,7 +556,7 @@ const BackgroundImageGenerator = ({ lyrics, albumArt, songName, isExpanded = fal
           }}
           title={isCollapsed ? t('backgroundGenerator.expand', 'Expand') : t('backgroundGenerator.collapse', 'Collapse')}
         >
-          <FiChevronDown />
+          <span className="material-symbols-rounded">expand_more</span>
         </button>
       </div>
 
@@ -611,7 +610,7 @@ const BackgroundImageGenerator = ({ lyrics, albumArt, songName, isExpanded = fal
                   {isGeneratingPrompt ? (
                     <LoadingIndicator size={20} theme={currentTheme} showContainer={false} />
                   ) : (
-                    <FiRefreshCw />
+                    <span className="material-symbols-rounded" style={{ fontSize: '20px' }}>wand_stars</span>
                   )}
                   <span>
                     {isGeneratingPrompt
@@ -640,7 +639,7 @@ const BackgroundImageGenerator = ({ lyrics, albumArt, songName, isExpanded = fal
                   <img src={customAlbumArt} alt="Album Art" />
                   {/* Floating upload button */}
                   <label className="floating-upload-button" title={t('backgroundGenerator.uploadAlbumArt', 'Upload Album Art')}>
-                    <FiUpload size={20} />
+                    <span className="material-symbols-rounded" style={{ fontSize: '20px' }}>upload</span>
                     <input
                       type="file"
                       accept="image/*"
@@ -662,19 +661,19 @@ const BackgroundImageGenerator = ({ lyrics, albumArt, songName, isExpanded = fal
                     }}
                     title={t('backgroundGenerator.downloadAlbumArt', 'Download Album Art')}
                   >
-                    <FiDownload size={20} />
+                    <span className="material-symbols-rounded" style={{ fontSize: '20px' }}>download</span>
                   </button>
 
                 </>
               ) : (
                 <>
                   <div className="upload-placeholder">
-                    <FiImage size={36} />
+                    <span className="material-symbols-rounded" style={{ fontSize: '36px' }}>hide_image</span>
                     <p>{t('backgroundGenerator.noAlbumArt', 'No album art')}</p>
                   </div>
                   {/* Floating upload button even when no image */}
                   <label className="floating-upload-button" title={t('backgroundGenerator.uploadAlbumArt', 'Upload Album Art')}>
-                    <FiUpload size={20} />
+                    <span className="material-symbols-rounded" style={{ fontSize: '20px' }}>upload</span>
                     <input
                       type="file"
                       accept="image/*"
@@ -688,7 +687,7 @@ const BackgroundImageGenerator = ({ lyrics, albumArt, songName, isExpanded = fal
             {/* Keep the original actions div for backward compatibility, but it's hidden via CSS */}
             <div className="album-art-actions">
               <label className="upload-button">
-                <FiUpload />
+                <span className="material-symbols-rounded">upload</span>
                 <span>{t('backgroundGenerator.uploadAlbumArt', 'Upload Album Art')}</span>
                 <input
                   type="file"
@@ -712,13 +711,13 @@ const BackgroundImageGenerator = ({ lyrics, albumArt, songName, isExpanded = fal
                 <div className="image-header-buttons">
                   {generatedImages.length > 0 && (
                     <button className="header-action-button" onClick={clearGeneratedImages} title={t('backgroundGenerator.clearImagesTitle', 'Clear All Images')}>
-                      <FiX size={16} />
+                      <span className="material-symbols-rounded" style={{ fontSize: '16px' }}>close</span>
                       <span>{t('backgroundGenerator.clearImages', 'Clear')}</span>
                     </button>
                   )}
                   {generatedImages.length > 1 && (
                     <button className="header-download-button" onClick={downloadAllImages} title={t('backgroundGenerator.downloadAllImages', 'Download All Images')}>
-                      <FiDownload size={16} />
+                      <span className="material-symbols-rounded" style={{ fontSize: '16px' }}>download</span>
                       <span>{t('backgroundGenerator.downloadAllImages', 'Download All')}</span>
                     </button>
                   )}
@@ -735,7 +734,7 @@ const BackgroundImageGenerator = ({ lyrics, albumArt, songName, isExpanded = fal
                     {isGeneratingImage ? (
                       <LoadingIndicator size={20} theme={currentTheme} showContainer={false} />
                     ) : (
-                      <FiRefreshCw />
+                      <span className="material-symbols-rounded" style={{ fontSize: '20px' }}>image</span>
                     )}
                     <span>
                       {isGeneratingImage
@@ -765,7 +764,7 @@ const BackgroundImageGenerator = ({ lyrics, albumArt, songName, isExpanded = fal
                     {isGeneratingPrompt || isGeneratingImage ? (
                       <LoadingIndicator size={20} theme={currentTheme} showContainer={false} />
                     ) : (
-                      <FiRefreshCw />
+                      <span className="material-symbols-rounded" style={{ fontSize: '20px' }}>imagesmode</span>
                     )}
                     <span>
                       {isGeneratingPrompt || isGeneratingImage
@@ -799,7 +798,7 @@ const BackgroundImageGenerator = ({ lyrics, albumArt, songName, isExpanded = fal
                               onClick={() => downloadImage(image.url, index)}
                               title={t('backgroundGenerator.downloadImage', 'Download')}
                             >
-                              <FiDownload size={20} />
+                              <span className="material-symbols-rounded" style={{ fontSize: '20px' }}>download</span>
                             </button>
                           </>
                         ) : image.isLoading ? (
@@ -814,12 +813,12 @@ const BackgroundImageGenerator = ({ lyrics, albumArt, songName, isExpanded = fal
                           </div>
                         ) : image.error ? (
                           <div className="error-placeholder">
-                            <FiAlertTriangle size={36} />
+                            <span className="material-symbols-rounded" style={{ fontSize: '36px' }}>warning</span>
                             <p>{getFriendlyErrorMessage(image.error)}</p>
                           </div>
                         ) : (
                           <div className="preview-placeholder">
-                            <FiImage size={36} />
+                            <span className="material-symbols-rounded" style={{ fontSize: '36px' }}>image</span>
                             <p>{t('backgroundGenerator.noGeneratedImage', 'No image generated yet')}</p>
                           </div>
                         )}
@@ -837,13 +836,13 @@ const BackgroundImageGenerator = ({ lyrics, albumArt, songName, isExpanded = fal
                   onClick={() => downloadImage()}
                   title={t('backgroundGenerator.downloadImage', 'Download')}
                 >
-                  <FiDownload size={20} />
+                  <span className="material-symbols-rounded" style={{ fontSize: '20px' }}>download</span>
                 </button>
               </div>
             ) : (
               <div className="image-preview">
                 <div className="preview-placeholder">
-                  <FiImage size={48} />
+                  <span className="material-symbols-rounded" style={{ fontSize: '48px' }}>gallery_thumbnail</span>
                   <p>{t('backgroundGenerator.noGeneratedImage', 'No image generated yet')}</p>
                 </div>
               </div>
@@ -854,11 +853,7 @@ const BackgroundImageGenerator = ({ lyrics, albumArt, songName, isExpanded = fal
 
         {error && (
           <div className="error-message">
-            <svg viewBox="0 0 24 24" width="16" height="16" stroke="currentColor" strokeWidth="2" fill="none">
-              <circle cx="12" cy="12" r="10"></circle>
-              <line x1="12" y1="8" x2="12" y2="12"></line>
-              <line x1="12" y1="16" x2="12.01" y2="16"></line>
-            </svg>
+            <span className="material-symbols-rounded" style={{ fontSize: '16px' }}>error</span>
             <span>{error}</span>
           </div>
         )}

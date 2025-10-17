@@ -1,6 +1,5 @@
 import React, { useState, useEffect } from 'react';
 import { useTranslation } from 'react-i18next';
-import { FiPlus, FiCheck, FiX } from 'react-icons/fi';
 import LoadingIndicator from './common/LoadingIndicator';
 import '../styles/AddSubtitlesButton.css';
 import SubtitlesInputModal from './SubtitlesInputModal';
@@ -133,12 +132,12 @@ const AddSubtitlesButton = ({
             </span>
           ) : localHasSubtitles ? (
             <>
-              <FiCheck className="icon" />
+              <span className="material-symbols-rounded icon">check</span>
               <span>{t('subtitlesInput.subtitlesAdded', 'Subtitles added')}</span>
             </>
           ) : (
             <>
-              <FiPlus className="icon" />
+              <span className="material-symbols-rounded icon" aria-hidden="true">subject</span>
               <span>{t('subtitlesInput.addSubtitles', 'Add subtitles')}</span>
             </>
           )}
@@ -155,7 +154,7 @@ const AddSubtitlesButton = ({
             aria-label={t('subtitlesInput.clearSubtitles', 'Clear subtitles')}
             disabled={disabled}
           >
-            <FiX size={18} />
+            <span className="material-symbols-rounded" style={{ fontSize: '18px' }}>close</span>
           </button>
         )}
       </div>

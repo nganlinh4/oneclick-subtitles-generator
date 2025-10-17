@@ -132,9 +132,7 @@ const AboutTab = ({ backgroundType }) => {
               <div className="latest-version-check">
                 {isCheckingUpdate ? (
                   <p className="checking-update">
-                    <svg className="loading-spinner" width="16" height="16" viewBox="0 0 24 24" fill="none">
-                      <path d="M12 2V6M12 18V22M4.93 4.93L7.76 7.76M16.24 16.24L19.07 19.07M2 12H6M18 12H22M4.93 19.07L7.76 16.24M16.24 7.76L19.07 4.93" stroke="currentColor" strokeWidth="2" strokeLinecap="round"/>
-                    </svg>
+                    <span className="material-symbols-rounded loading-spinner">sync</span>
                     {t('settings.checkingUpdates', 'Checking for updates...')}
                   </p>
                 ) : latestVersionInfo ? (
@@ -146,11 +144,7 @@ const AboutTab = ({ backgroundType }) => {
                     {updateAvailable ? (
                       <div className="update-notification">
                         <div className="update-message">
-                          <svg className="update-icon" width="20" height="20" viewBox="0 0 24 24" fill="none" aria-hidden="true" focusable="false">
-                            <circle cx="12" cy="12" r="8.5" stroke="currentColor" strokeWidth="2"/>
-                            <path d="M12 7v7" stroke="currentColor" strokeWidth="2" strokeLinecap="round"/>
-                            <path d="M8.5 11.5L12 15l3.5-3.5" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
-                          </svg>
+                          <span className="material-symbols-rounded update-icon" style={{ fontSize: '20px' }}>update</span>
                           <span>{t('settings.updateAvailable', 'A new version is available!')}</span>
                         </div>
                         <p className="update-description">
@@ -167,9 +161,7 @@ const AboutTab = ({ backgroundType }) => {
                       </div>
                     ) : (
                       <p className="up-to-date">
-                        <svg className="check-icon" width="18" height="18" viewBox="0 0 24 24" fill="none">
-                          <path d="M20 6L9 17L4 12" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
-                        </svg>
+                        <span className="material-symbols-rounded check-icon">check</span>
                         {t('settings.upToDate', 'You are using the latest version!')}
                       </p>
                     )}
@@ -194,6 +186,7 @@ const AboutTab = ({ backgroundType }) => {
             title={t('settings.replayOnboardingTooltip', 'Show the welcome animation again')}
             aria-label={t('settings.replayOnboardingTooltip', 'Show the welcome animation again')}
           >
+            <span className="material-symbols-rounded">replay</span>
             {t('settings.replayOnboarding', 'Replay Welcome Animation')}
           </button>
         </div>

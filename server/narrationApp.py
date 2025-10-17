@@ -93,3 +93,6 @@ if __name__ == '__main__':
         logger.error(f"Failed to start server on port {port}: {e}")
         logger.error("Make sure the port is not already in use")
         sys.exit(1)
+    except Exception as e:
+        logger.error(f"Unexpected error in narration service: {e}", exc_info=True)
+        sys.exit(1)

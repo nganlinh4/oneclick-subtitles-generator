@@ -35,23 +35,17 @@ const CustomDropdown = ({
     // mode: 'center' | 'up' | 'down'
     if (mode === 'down') {
       return (
-        <svg className="dropdown-arrow" xmlns="http://www.w3.org/2000/svg" height="16" viewBox="0 -960 960 960" width="16" fill="currentColor" aria-hidden="true" focusable="false">
-          <path d="M480-338q-12 0-24-5t-21-14L252-540q-18-18-18-44t18-44q18-18 44-18t44 18l140 140 140-140q18-18 44-18t44 18q18 18 18 44t-18 44L525-357q-9 9-21 14t-24 5Z"/>
-        </svg>
+        <span className="material-symbols-rounded dropdown-arrow" aria-hidden="true" style={{ fontSize: '16px' }}>expand_more</span>
       );
     }
     if (mode === 'up') {
       return (
-        <svg className="dropdown-arrow" xmlns="http://www.w3.org/2000/svg" height="16" viewBox="0 -960 960 960" width="16" fill="currentColor" aria-hidden="true" focusable="false">
-          <path d="M480-496 340-356q-18 18-44 18t-44-18q-18-18-18-44t18-44l183-183q19-19 45-19t45 19l183 183q18 18 18 44t-18 44q-18 18-44 18t-44-18L480-496Z"/>
-        </svg>
+        <span className="material-symbols-rounded dropdown-arrow" aria-hidden="true" style={{ fontSize: '16px' }}>expand_less</span>
       );
     }
     // two-direction center icon
     return (
-      <svg className="dropdown-arrow" xmlns="http://www.w3.org/2000/svg" height="16" viewBox="0 -960 960 960" width="16" fill="currentColor" aria-hidden="true" focusable="false">
-        <path d="m480-225 140-139q18-18 44-18t44 18q18 18 18 44t-18 44L569-137q-37 37-89 37t-89-37L252-276q-18-18-18-44t18-44q18-18 44-18t44 18l140 139Zm0-510L340-596q-18 18-44 18t-44-18q-18-18-18-44t18-44l139-139q37-37 89-37t89 37l139 139q18 18 18 44t-18 44q-18 18-44 18t-44-18L480-735Z"/>
-      </svg>
+      <span className="material-symbols-rounded dropdown-arrow" aria-hidden="true" style={{ fontSize: '16px' }}>unfold_more</span>
     );
   };
 

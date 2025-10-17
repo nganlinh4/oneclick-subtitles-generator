@@ -5,7 +5,7 @@
   "waveformDisabled": "Audio waveform visualization has been automatically disabled for videos longer than 30 minutes to improve performance.",
   "srtOnlyMode": "SRT-only mode - Timeline visualization based on subtitle timings",
   "generateReplace": "Regenerate subtitles",
-  "clearInRangeWithShortcut": "Clear subtitles in range (Del)",
+  "clearInRangeWithShortcut": "Clear subtitles in range (Del/Backspace)",
   "moveRange": "Drag to move subtitles in range",
   "dragToZoom": "Drag to zoom",
   "clearOfflineSegments": "Clear offline segments",

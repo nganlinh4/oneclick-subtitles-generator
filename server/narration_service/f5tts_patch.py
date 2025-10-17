@@ -14,13 +14,60 @@ from hydra.utils import get_class
 import torch
 import numpy as np
 
-# Add F5-TTS to path if not already there
-f5tts_path = os.path.join(os.path.dirname(__file__), '..', '..', 'F5-TTS', 'src')
-if f5tts_path not in sys.path:
-    sys.path.insert(0, f5tts_path)
+# F5-TTS is now installed as a package, no need to manipulate sys.path
 
-from f5_tts.infer.utils_infer import load_model, load_vocoder
-from f5_tts.model.utils import seed_everything
+# Lazy imports - these will be imported when needed
+_load_model = None
+_load_vocoder = None
+_seed_everything = None
+
+def _lazy_import_f5tts():
+    """Lazy import of F5-TTS components."""
+    global _load_model, _load_vocoder, _seed_everything
+    if _load_model is None:
+        try:
+            from f5_tts.infer.utils_infer import load_model, load_vocoder
+            from f5_tts.model.utils import seed_everything
+            _load_model = load_model
+            _load_vocoder = load_vocoder
+            _seed_everything = seed_everything
+        except ImportError as e:
+            # If F5-TTS is not available, provide dummy functions
+            def dummy_load_model(*args, **kwargs):
+                raise ImportError(f"F5-TTS not available: {e}")
+            def dummy_load_vocoder(*args, **kwargs):
+                raise ImportError(f"F5-TTS not available: {e}")
+            def dummy_seed_everything(*args, **kwargs):
+                pass
+            _load_model = dummy_load_model
+            _load_vocoder = dummy_load_vocoder
+            _seed_everything = dummy_seed_everything
+
+# Provide access to the lazy imports
+def load_model(*args, **kwargs):
+    _lazy_import_f5tts()
+    return _load_model(*args, **kwargs)
+
+def load_vocoder(*args, **kwargs):
+    _lazy_import_f5tts()
+    return _load_vocoder(*args, **kwargs)
+
+def seed_everything(*args, **kwargs):
+    _lazy_import_f5tts()
+    _seed_everything(*args, **kwargs)
+
+def trim_leading_silence(audio, sr, threshold=0.01):
+    """Trim leading silence from audio array using a simple threshold."""
+    # Convert to float if not already
+    if audio.dtype != np.float32:
+        audio = audio.astype(np.float32)
+
+    # Find the first sample above the threshold
+    above_threshold = np.abs(audio) > threshold
+    if np.any(above_threshold):
+        start_idx = np.argmax(above_threshold)
+        return audio[start_idx:]
+    return audio
 
 
 class PatchedF5TTS:
@@ -41,6 +88,10 @@ class PatchedF5TTS:
         hf_cache_dir=None,
         config_dict=None,
     ):
+        # Apply patches if needed before importing
+        _apply_patch_if_needed()
+        _apply_utils_infer_patch_if_needed()
+
         # Import here to avoid circular imports
         from f5_tts.api import F5TTS
 
@@ -197,8 +248,21 @@ def patch_f5tts():
     f5_tts.api.F5TTS.__init__ = patched_init
 
 
-# Apply patch when module is imported
-patch_f5tts()
+# Apply patch when module is imported - but make it lazy
+_patch_applied = False
+
+def _apply_patch_if_needed():
+    """Apply the F5-TTS patch only when needed."""
+    global _patch_applied
+    if not _patch_applied:
+        try:
+            patch_f5tts()
+            _patch_applied = True
+        except ImportError:
+            # If F5-TTS is not available, skip patching
+            pass
+
+# Don't apply patch immediately - wait until F5-TTS is actually used
 
 
 # Patch utils_infer functions for better duration calculation
@@ -328,8 +392,6 @@ def patch_utils_infer():
 
         def process_batch(gen_text):
             local_speed = speed
-            if len(gen_text.encode("utf-8")) < 10:
-                local_speed = 0.3
 
             # Prepare the text
             text_list = [ref_text + gen_text]
@@ -342,7 +404,16 @@ def patch_utils_infer():
                 # Calculate duration using character length instead of byte length
                 ref_text_len = len(ref_text)
                 gen_text_len = len(gen_text)
-                duration = ref_audio_len + int(ref_audio_len / ref_text_len * gen_text_len / local_speed * 1.5)
+                multiplier = 3.0 if gen_text_len < 20 else 1.5
+                if gen_text_len < 5:
+                    multiplier = 5.0  # Increase multiplier for very short texts
+                duration = ref_audio_len + int(ref_audio_len / ref_text_len * gen_text_len / local_speed * multiplier)
+
+                # Ensure minimum generated duration for short texts
+                generated_frames = duration - ref_audio_len
+                min_generated_frames = 150  # ~1 second at typical hop_length
+                if generated_frames < min_generated_frames:
+                    duration = ref_audio_len + min_generated_frames
 
             # inference
             with torch.inference_mode():
@@ -368,6 +439,9 @@ def patch_utils_infer():
 
                 # wav -> numpy
                 generated_wave = generated_wave.squeeze().cpu().numpy()
+
+                # Trim leading silence
+                generated_wave = trim_leading_silence(generated_wave, utils_infer.target_sample_rate)
 
                 if streaming:
                     for j in range(0, len(generated_wave), chunk_size):
@@ -443,5 +517,16 @@ def patch_utils_infer():
     utils_infer.infer_batch_process = patched_infer_batch_process
 
 
-# Apply utils_infer patches
-patch_utils_infer()
+# Utils_infer patches are now applied lazily when needed
+_utils_infer_patched = False
+
+def _apply_utils_infer_patch_if_needed():
+    """Apply the utils_infer patch only when needed."""
+    global _utils_infer_patched
+    if not _utils_infer_patched:
+        try:
+            patch_utils_infer()
+            _utils_infer_patched = True
+        except ImportError:
+            # If F5-TTS is not available, skip patching
+            pass

@@ -19,6 +19,14 @@ const ExampleAudioDropdown = ({ onExampleSelect, disabled = false }) => {
   const dropdownRef = useRef(null);
   const buttonRef = useRef(null);
 
+  // Get flag emoji for language
+  const getFlagForLanguage = (language) => ({
+    'English': '🇺🇸',
+    'Chinese': '🇨🇳',
+    'Korean': '🇰🇷',
+    'Vietnamese': '🇻🇳'
+  }[language] || '🏳️');
+
   // Position the dropdown relative to the button
   const positionDropdown = useCallback(() => {
     if (!buttonRef.current || !dropdownRef.current) return;
@@ -141,13 +149,9 @@ const ExampleAudioDropdown = ({ onExampleSelect, disabled = false }) => {
         aria-haspopup="true"
         aria-expanded={isOpen}
       >
-        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-          <path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z" />
-        </svg>
+        <span className="material-symbols-rounded" style={{ fontSize: '16px' }}>library_music</span>
         {isLoading ? t('narration.loading', 'Loading...') : t('narration.useExample', 'Use example')}
-        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={`dropdown-chevron ${isOpen ? 'open' : ''}`}>
-          <polyline points="6 9 12 15 18 9" />
-        </svg>
+        <span className={`material-symbols-rounded dropdown-chevron ${isOpen ? 'open' : ''}`} style={{ fontSize: '12px' }}>expand_more</span>
       </button>
 
       {isOpen && createPortal(
@@ -178,12 +182,8 @@ const ExampleAudioDropdown = ({ onExampleSelect, disabled = false }) => {
                   disabled={isLoading}
                   role="menuitem"
                 >
-                  <div className="example-audio-option-icon">
-                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                      <path d="M9 18V5l12-2v13" />
-                      <circle cx="6" cy="18" r="3" />
-                      <circle cx="18" cy="16" r="3" />
-                    </svg>
+                  <div className={`example-audio-option-icon ${file.language.toLowerCase()}`}>
+                    <span className="model-flag">{getFlagForLanguage(file.language)}</span>
                   </div>
                   <div className="example-audio-option-text">
                     <div className="example-audio-option-name">

@@ -224,6 +224,12 @@ const getExampleAudioList = async (_req, res) => {
         descriptionKey: 'narration.exampleAudio.viet_female_south'
       },
       {
+        filename: 'viet_loli_south.mp3',
+        displayName: 'viet_loli_south.mp3',
+        language: 'Vietnamese',
+        descriptionKey: 'narration.exampleAudio.viet_loli_south'
+      },
+      {
         filename: 'viet_male_saigon.mp3',
         displayName: 'viet_male_saigon.mp3',
         language: 'Vietnamese',
@@ -259,13 +265,7 @@ const serveExampleAudio = async (req, res) => {
 
     // Check if file exists in main app directory
     if (!fs.existsSync(filePath)) {
-      // Fallback to F5-TTS directory for existing files
-      const f5ttsExamplesPath = path.join(__dirname, '../../../F5-TTS/src/f5_tts/infer/examples/basic');
-      filePath = path.join(f5ttsExamplesPath, filename);
-
-      if (!fs.existsSync(filePath)) {
-        return res.status(404).json({ error: 'Example audio file not found' });
-      }
+      return res.status(404).json({ error: 'Example audio file not found' });
     }
 
     // Determine content type based on file extension
@@ -305,13 +305,7 @@ const uploadExampleAudio = async (req, res) => {
 
     // Check if source file exists in main app directory
     if (!fs.existsSync(sourcePath)) {
-      // Fallback to F5-TTS directory for existing files
-      const f5ttsExamplesPath = path.join(__dirname, '../../../F5-TTS/src/f5_tts/infer/examples/basic');
-      sourcePath = path.join(f5ttsExamplesPath, filename);
-
-      if (!fs.existsSync(sourcePath)) {
-        return res.status(404).json({ error: 'Example audio file not found' });
-      }
+      return res.status(404).json({ error: 'Example audio file not found' });
     }
 
     // Generate a unique filename for the copied file
@@ -338,6 +332,8 @@ const uploadExampleAudio = async (req, res) => {
       reference_text = 'Đây là đài tiếng nói Việt Nam, phát thanh từ thủ đô Hà Nội, nước Cộng hòa xã hội chủ nghĩa Việt Nam.';
     } else if (filename === 'viet_female_north_2.mp3') {
       reference_text = 'Người ta là hoa đất, học ăn, học nói, học gói, học mở.';
+    } else if (filename === 'viet_loli_south.mp3') {
+      reference_text = 'Hãy luôn kiên trì và không ngừng cố gắng, vì thành công sẽ đến với những ai biết nỗ lực không ngừng.';
     }
 
     // Return success response (same format as regular upload)

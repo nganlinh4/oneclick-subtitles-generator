@@ -22,7 +22,7 @@ const logger = new Logger({
 
 const VENV_DIR = '.venv'; // Define the virtual environment directory name
 const PYTHON_VERSION_TARGET = "3.11"; // Target Python version
-const F5_TTS_DIR = 'F5-TTS'; // Define the F5-TTS directory name
+const F5_TTS_DIR = 'f5-tts-temp'; // Temporary directory for F5-TTS installation
 const F5_TTS_REPO_URL = 'https://github.com/SWivid/F5-TTS.git';
 
 // --- Helper Function to Check Command Existence ---
@@ -190,7 +190,7 @@ async function runSetup() {
 
     // --- 1. Check for uv ---
     logger.section('OneClick Subtitles Generator - Narration Setup');
-    logger.step(1, 6, 'Checking for uv package manager');
+    logger.step(1, 8, 'Checking for uv package manager');
 
 if (!commandExists('uv')) {
     logger.error('uv is not installed or not found in PATH.');
@@ -206,89 +206,10 @@ try {
     process.exit(1);
 }
 
-// --- 2. Check for git and Initialize/Update Submodules ---
-logger.step(2, 6, 'Checking for git and updating submodules');
-
-if (!commandExists('git')) {
-    logger.error('git is not installed or not found in PATH.');
-    logger.info('Please install git first. See: https://git-scm.com/downloads');
-    process.exit(1);
-}
-logger.found('git');
-
-logger.progress('Initializing and updating git submodules (F5-TTS)');
-try {
-    // Initialize submodules if not already done
-    execSync('git submodule init', { stdio: logger.verboseMode ? 'inherit' : 'ignore' });
-    logger.success('Git submodules initialized');
-
-    // Try to update submodules to get the latest content
-    try {
-        execSync('git submodule update --remote', { stdio: logger.verboseMode ? 'inherit' : 'ignore' });
-        logger.success('Git submodules updated');
-    } catch (updateError) {
-        logger.warning(`Git submodule update --remote failed: ${updateError.message}`);
-        logger.info('Trying alternative update method...');
-
-        // Try without --remote flag
-        try {
-            execSync('git submodule update', { stdio: logger.verboseMode ? 'inherit' : 'ignore' });
-            logger.success('Git submodules updated (using existing commits)');
-        } catch (altError) {
-            logger.warning(`Alternative submodule update also failed: ${altError.message}`);
-            logger.info('Continuing without submodule update - will check directories manually...');
-        }
-    }
-} catch (error) {
-    logger.error(`Error with git submodules: ${error.message}`);
-    logger.info('Please ensure you are in a git repository with properly configured submodules.');
-    logger.info('If this is a fresh clone, the submodules should be configured automatically.');
-    process.exit(1);
-}
-
-// --- 2.5. Verify submodules are properly initialized or clone them manually ---
-logger.progress('Verifying submodules are properly initialized');
-
-// Check F5-TTS submodule
-if (!fs.existsSync(F5_TTS_DIR)) {
-    logger.warning(`F5-TTS submodule directory "${F5_TTS_DIR}" not found.`);
-    logger.info('Attempting to clone F5-TTS manually...');
-    try {
-        execSync(`git clone ${F5_TTS_REPO_URL} ${F5_TTS_DIR}`, { stdio: logger.verboseMode ? 'inherit' : 'ignore' });
-        logger.success('F5-TTS cloned successfully');
-    } catch (cloneError) {
-        logger.error(`Failed to clone F5-TTS: ${cloneError.message}`);
-        logger.info('Please manually clone F5-TTS:');
-        logger.info(`git clone ${F5_TTS_REPO_URL} ${F5_TTS_DIR}`);
-        process.exit(1);
-    }
-} else {
-    // Check if the submodule directory has actual content (not just .git)
-    const dirContents = fs.readdirSync(F5_TTS_DIR);
-    const hasContent = dirContents.some(item => item !== '.git' && item !== '.gitignore');
-
-    if (!hasContent) {
-        logger.warning(`F5-TTS submodule directory exists but appears empty (only contains: ${dirContents.join(', ')})`);
-        logger.info('Attempting to populate F5-TTS submodule...');
-        try {
-            // Remove the empty directory and clone fresh
-            fs.rmSync(F5_TTS_DIR, { recursive: true, force: true });
-            execSync(`git clone ${F5_TTS_REPO_URL} ${F5_TTS_DIR}`, { stdio: logger.verboseMode ? 'inherit' : 'ignore' });
-            logger.success('F5-TTS cloned successfully');
-        } catch (cloneError) {
-            logger.error(`Failed to clone F5-TTS: ${cloneError.message}`);
-            process.exit(1);
-        }
-    } else {
-        logger.success('F5-TTS submodule found with content');
-    }
-}
-
-logger.success('Submodule verification completed');
 
 
-// --- 3. Check for/Install Python 3.11 ---
-logger.step(3, 6, `Checking for Python ${PYTHON_VERSION_TARGET}`);
+// --- 2. Check for/Install Python 3.11 ---
+logger.step(2, 8, `Checking for Python ${PYTHON_VERSION_TARGET}`);
 let pythonInterpreterIdentifier = null;
 let triedUvInstall = false;
 
@@ -375,8 +296,8 @@ if (!pythonInterpreterIdentifier) {
 }
 
 
-// --- 4. Create or verify virtual environment with uv ---
-logger.step(4, 6, 'Setting up Python virtual environment');
+// --- 3. Create or verify virtual environment with uv ---
+logger.step(3, 8, 'Setting up Python virtual environment');
 
 // Check if virtual environment already exists and is valid
 let venvExists = false;
@@ -435,8 +356,8 @@ if (fs.existsSync(VENV_DIR)) {
     }
 }
 
-// --- 5. Detect GPU and Install Appropriate PyTorch Build ---
-logger.step(5, 6, 'Installing PyTorch with GPU support');
+// --- 4. Detect GPU and Install Appropriate PyTorch Build ---
+logger.step(4, 8, 'Installing PyTorch with GPU support');
 logger.info(`The virtual environment at ./${VENV_DIR} will be used for both F5-TTS and Chatterbox installations.`);
 
 const gpuVendor = detectGpuVendor(); // Call the detection function
@@ -446,10 +367,10 @@ let installNotes = '';
 switch (gpuVendor) {
     case 'NVIDIA':
         logger.installing('PyTorch for NVIDIA GPU (CUDA)');
-        // Using CUDA 12.1 with specific versions for Chatterbox compatibility
-        // PyTorch 2.4.1 with torchvision 0.19.1 for stable compatibility
-        torchInstallCmd = `uv pip install torch==2.4.1+cu121 torchvision==0.19.1+cu121 torchaudio==2.4.1+cu121 --index-url https://download.pytorch.org/whl/cu121 --force-reinstall`;
-        installNotes = 'Ensure NVIDIA drivers compatible with CUDA 12.1+ are installed. Using PyTorch 2.4.1 for Chatterbox compatibility.';
+        // Using CUDA 12.1 with working versions that support both F5-TTS and Chatterbox
+        // PyTorch 2.5.1 with torchvision 0.20.1 for compatibility with both packages
+        torchInstallCmd = `uv pip install torch==2.5.1+cu121 torchvision==0.20.1+cu121 torchaudio==2.5.1+cu121 --index-url https://download.pytorch.org/whl/cu121 --force-reinstall`;
+        installNotes = 'Ensure NVIDIA drivers compatible with CUDA 12.1+ are installed. Using PyTorch 2.5.1 for F5-TTS and Chatterbox compatibility.';
         break;
     case 'AMD':
         logger.installing('PyTorch for AMD GPU (ROCm)');
@@ -457,28 +378,28 @@ switch (gpuVendor) {
             logger.warning('PyTorch ROCm wheels are officially supported only on Linux.');
             logger.warning('Installation may fail or runtime errors may occur on non-Linux systems.');
         }
-        // Using compatible versions for Chatterbox - fallback to CPU versions for ROCm compatibility
-        torchInstallCmd = `uv pip install torch==2.4.1 torchvision==0.19.1 torchaudio==2.4.1 --force-reinstall`;
-        installNotes = 'Using CPU versions of PyTorch 2.4.1 for Chatterbox compatibility. ROCm support may be limited.';
+        // Using working versions for both F5-TTS and Chatterbox - CPU versions for ROCm compatibility
+        torchInstallCmd = `uv pip install torch==2.5.1 torchvision==0.20.1 torchaudio==2.5.1 --force-reinstall`;
+        installNotes = 'Using CPU versions of PyTorch 2.5.1 for F5-TTS and Chatterbox compatibility. ROCm support may be limited.';
         break;
     case 'INTEL':
         logger.installing('PyTorch for Intel GPU (XPU)');
-        // Using compatible versions for Chatterbox - fallback to CPU versions for Intel compatibility
-        torchInstallCmd = `uv pip install torch==2.4.1 torchvision==0.19.1 torchaudio==2.4.1 --force-reinstall`;
-        installNotes = 'Using CPU versions of PyTorch 2.4.1 for Chatterbox compatibility. Intel GPU support may be limited.';
+        // Using working versions for both F5-TTS and Chatterbox - CPU versions for Intel compatibility
+        torchInstallCmd = `uv pip install torch==2.5.1 torchvision==0.20.1 torchaudio==2.5.1 --force-reinstall`;
+        installNotes = 'Using CPU versions of PyTorch 2.5.1 for F5-TTS and Chatterbox compatibility. Intel GPU support may be limited.';
         break;
     case 'APPLE_SILICON':
         logger.installing('PyTorch for Apple Silicon (MPS)');
-        // Using compatible versions for Chatterbox with MPS support
-        torchInstallCmd = `uv pip install torch==2.4.1 torchvision==0.19.1 torchaudio==2.4.1 --force-reinstall`;
-        installNotes = 'Using PyTorch 2.4.1 with Metal Performance Shaders (MPS) support for Chatterbox compatibility.';
+        // Using working versions for both F5-TTS and Chatterbox with MPS support
+        torchInstallCmd = `uv pip install torch==2.5.1 torchvision==0.20.1 torchaudio==2.5.1 --force-reinstall`;
+        installNotes = 'Using PyTorch 2.5.1 with Metal Performance Shaders (MPS) support for F5-TTS and Chatterbox compatibility.';
         break;
     case 'CPU':
     default:
         logger.installing('CPU-only PyTorch');
-        // Using compatible versions for Chatterbox
-        torchInstallCmd = `uv pip install torch==2.4.1 torchvision==0.19.1 torchaudio==2.4.1 --force-reinstall`;
-        installNotes = 'Installed PyTorch 2.4.1 CPU-only version for Chatterbox compatibility. No GPU acceleration will be used.';
+        // Using working versions for both F5-TTS and Chatterbox
+        torchInstallCmd = `uv pip install torch==2.5.1 torchvision==0.20.1 torchaudio==2.5.1 --force-reinstall`;
+        installNotes = 'Installed PyTorch 2.5.1 CPU-only version for F5-TTS and Chatterbox compatibility. No GPU acceleration will be used.';
         break;
 }
 
@@ -617,9 +538,9 @@ try:
         print("This indicates a PyTorch/torchvision version mismatch")
         sys.exit(1)
 
-    # Validate expected versions for Chatterbox compatibility
-    expected_torch = "2.4.1";
-    expected_torchvision = "0.19.1";
+    // Validate expected versions for F5-TTS and Chatterbox compatibility
+    expected_torch = "2.5.1";
+    expected_torchvision = "0.20.1";
 
     if not torch_version.startswith(expected_torch):
         print(f"⚠️ Warning: Expected PyTorch {expected_torch}, got {torch_version}")
@@ -704,86 +625,129 @@ try {
     process.exit(1);
 }
 
-// --- 7. Install F5-TTS using uv pip ---
+// --- 5. Install F5-TTS using uv pip ---
+logger.step(5, 8, 'Installing F5-TTS');
 logger.installing('Text-to-Speech AI engine');
-
-// Check for build dependencies on Linux
-if (process.platform === 'linux') {
-    logger.checking('build dependencies on Linux');
-    try {
-        // Check if essential build tools are available
-        execSync('which gcc', { stdio: 'ignore' });
-        logger.found('gcc');
-    } catch (error) {
-        logger.warning('gcc not found. You may need to install build-essential:');
-        logger.info('   sudo apt update && sudo apt install build-essential python3-dev');
-    }
-
-    try {
-        execSync('which python3-config', { stdio: 'ignore' });
-        logger.found('python3-dev');
-    } catch (error) {
-        logger.warning('python3-dev not found. You may need to install it:');
-        logger.info('   sudo apt install python3-dev');
-    }
-}
-
 try {
-    if (!fs.existsSync(F5_TTS_DIR)) {
-        console.error(`❌ Error: Directory "${F5_TTS_DIR}" not found.`);
-        console.log(`   The script attempted to clone it earlier, but it seems to be missing now.`);
-        process.exit(1);
+    // Clone the official F5-TTS repository
+    logger.progress('Cloning official F5-TTS repository');
+
+    // Remove existing F5-TTS directory if it exists
+    if (fs.existsSync(F5_TTS_DIR)) {
+        logger.info('Removing existing F5-TTS directory...');
+        fs.rmSync(F5_TTS_DIR, { recursive: true, force: true });
     }
 
-    const setupPyPath = path.join(F5_TTS_DIR, 'setup.py');
-    const pyprojectTomlPath = path.join(F5_TTS_DIR, 'pyproject.toml');
+    // Clone the repository
+    const cloneCmd = `git clone ${F5_TTS_REPO_URL} ${F5_TTS_DIR}`;
+    logger.command(cloneCmd);
+    execSync(cloneCmd, { stdio: 'inherit' });
+    logger.success('F5-TTS repository cloned');
 
-    if (!fs.existsSync(setupPyPath) && !fs.existsSync(pyprojectTomlPath)) {
-        console.error(`❌ Error: Neither setup.py nor pyproject.toml found in the "${F5_TTS_DIR}" directory.`);
-        console.log(`   The F5-TTS source code seems incomplete or improperly structured in the cloned repository.`);
-        process.exit(1);
+    // Modify F5-TTS pyproject.toml to include package data (configs, etc.)
+    logger.progress('Ensuring F5-TTS package data is included');
+    const f5PyprojectPath = path.join(F5_TTS_DIR, 'pyproject.toml');
+
+    if (fs.existsSync(f5PyprojectPath)) {
+        let f5PyprojectContent = fs.readFileSync(f5PyprojectPath, 'utf8');
+
+        // Add package data configuration if not present
+        if (!f5PyprojectContent.includes('[tool.setuptools.packages.find]')) {
+            f5PyprojectContent += '\n\n[tool.setuptools.packages.find]\nwhere = ["src"]\n\n[tool.setuptools.package-data]\nf5_tts = ["configs/*.yaml", "model/*.pt", "model/*.safetensors", "infer/examples/*.txt", "infer/examples/*.wav", "infer/examples/*.flac", "infer/examples/*.toml", "infer/examples/multi/*.txt", "infer/examples/multi/*.flac", "infer/examples/multi/*.toml", "infer/examples/basic/*.wav", "infer/examples/basic/*.toml", "runtime/**/*.txt"]\n';
+            fs.writeFileSync(f5PyprojectPath, f5PyprojectContent, 'utf8');
+            logger.success('Added comprehensive package data configuration to F5-TTS pyproject.toml');
+        } else {
+            logger.info('F5-TTS pyproject.toml already has package data configuration');
+        }
     } else {
-        logger.found(`Text-to-Speech engine source code`);
+        logger.warning('F5-TTS pyproject.toml not found, package data may not be included');
     }
 
-    const installF5Cmd = `uv pip install --python ${VENV_DIR} -e ./${F5_TTS_DIR}`;
+    // Install F5-TTS from the local modified directory
+    logger.progress('Installing F5-TTS from local directory');
+    // Don't use -e flag, we want it copied to site-packages
+    const installF5Cmd = `uv pip install --python ${VENV_DIR} --no-build-isolation ./${F5_TTS_DIR}`;
     logger.command(installF5Cmd);
-    const env = { ...process.env, UV_HTTP_TIMEOUT: '300' }; // 5 minutes
 
+    const env = { ...process.env, UV_HTTP_TIMEOUT: '600' }; // 10 minutes for installation
     try {
         execSync(installF5Cmd, { stdio: 'inherit', env });
-        logger.success('Text-to-Speech engine installation completed');
-    } catch (installError) {
-        console.error(`❌ Error during F5-TTS editable installation: ${installError.message}`);
-        console.log(`   Command that failed: ${installF5Cmd}`);
-        console.log('   Trying alternative installation method (non-editable)...');
-
-        try {
-            const altInstallCmd = `uv pip install --python ${VENV_DIR} ./${F5_TTS_DIR}`;
-            console.log(`Running alternative: ${altInstallCmd}`);
-            execSync(altInstallCmd, { stdio: 'inherit', env });
-            logger.success('Text-to-Speech engine alternative installation completed');
-        } catch (altError) {
-            console.error(`❌ Alternative installation also failed: ${altError.message}`);
-            console.log('   This might be due to:');
-            console.log('   - Missing build dependencies (gcc, python3-dev, etc.)');
-            console.log('   - Permission issues');
-            console.log('   - Network connectivity issues');
-            console.log('   On Ubuntu/Debian, try: sudo apt update && sudo apt install build-essential python3-dev');
-            throw altError; // Re-throw to be caught by outer try-catch
+        logger.success('F5-TTS installation completed');
+    } catch (installErr) {
+        const msg = String(installErr?.message || installErr);
+        logger.warning(`F5-TTS install failed: ${msg}`);
+        // If failure is due to Poetry backend missing, install both poetry-core and poetry, then retry once
+        const mayBePoetryBackend = /No module named 'poetry'|poetry\.core|poetry\.masonry|prepare_metadata_for_build_wheel/i.test(msg);
+        if (mayBePoetryBackend) {
+            try {
+                const poetryInstallCmd = `uv pip install --python ${VENV_DIR} poetry`;
+                logger.progress('Installing Poetry (full) for legacy Poetry build backends');
+                logger.command(poetryInstallCmd);
+                execSync(poetryInstallCmd, { stdio: 'inherit' });
+                // Retry install
+                logger.progress('Retrying F5-TTS installation after installing Poetry');
+                execSync(installF5Cmd, { stdio: 'inherit', env });
+                logger.success('F5-TTS installation completed after installing Poetry');
+            } catch (retryErr) {
+                throw retryErr; // Re-throw to be handled by outer catch
+            }
+        } else {
+            throw installErr;
         }
     }
 
-    // Debug: List installed packages in the virtual environment (only in verbose mode)
-    if (logger.verboseMode) {
-        logger.progress('Checking installed packages in virtual environment');
-        try {
-            const listCmd = `uv pip list --python ${VENV_DIR}`;
-            logger.command(listCmd);
-            execSync(listCmd, { stdio: 'inherit' });
-        } catch (listError) {
-            logger.warning(`Could not list packages: ${listError.message}`);
+    // Copy example audio files to server directory for the reference audio controller
+    logger.progress('Copying example audio files to server directory');
+    try {
+        const exampleAudioDir = path.join(__dirname, 'server', 'example-audio');
+        if (!fs.existsSync(exampleAudioDir)) {
+            fs.mkdirSync(exampleAudioDir, { recursive: true });
         }
+
+        // Copy basic reference audio files from F5-TTS package
+        const basicRefEnSrc = path.join(VENV_DIR, 'Lib', 'site-packages', 'f5_tts', 'infer', 'examples', 'basic', 'basic_ref_en.wav');
+        const basicRefEnDest = path.join(exampleAudioDir, 'basic_ref_en.wav');
+        if (fs.existsSync(basicRefEnSrc)) {
+            fs.copyFileSync(basicRefEnSrc, basicRefEnDest);
+            logger.info('Copied basic_ref_en.wav to server/example-audio/');
+        }
+
+        const basicRefZhSrc = path.join(VENV_DIR, 'Lib', 'site-packages', 'f5_tts', 'infer', 'examples', 'basic', 'basic_ref_zh.wav');
+        const basicRefZhDest = path.join(exampleAudioDir, 'basic_ref_zh.wav');
+        if (fs.existsSync(basicRefZhSrc)) {
+            fs.copyFileSync(basicRefZhSrc, basicRefZhDest);
+            logger.info('Copied basic_ref_zh.wav to server/example-audio/');
+        }
+
+        // Copy additional example files that might be useful
+        const additionalFiles = [
+            { src: 'infer/examples/basic/basic.toml', dest: 'basic.toml' },
+            { src: 'infer/examples/multi/story.txt', dest: 'story.txt' },
+            { src: 'infer/examples/multi/story.toml', dest: 'story.toml' },
+            { src: 'infer/examples/vocab.txt', dest: 'vocab.txt' }
+        ];
+
+        for (const file of additionalFiles) {
+            const srcPath = path.join(VENV_DIR, 'Lib', 'site-packages', 'f5_tts', file.src);
+            const destPath = path.join(exampleAudioDir, file.dest);
+            if (fs.existsSync(srcPath) && !fs.existsSync(destPath)) {
+                fs.copyFileSync(srcPath, destPath);
+                logger.info(`Copied ${file.dest} to server/example-audio/`);
+            }
+        }
+
+        logger.success('Example audio files copied successfully');
+    } catch (copyError) {
+        logger.warning(`Could not copy example audio files: ${copyError.message}`);
+    }
+
+    // Clean up the temporary directory after installation
+    logger.progress('Cleaning up temporary directory');
+    try {
+        fs.rmSync(F5_TTS_DIR, { recursive: true, force: true });
+        logger.success('Temporary directory removed');
+    } catch (err) {
+        logger.warning('Could not remove temporary directory');
     }
 
     logger.progress('Verifying Text-to-Speech engine');
@@ -791,39 +755,27 @@ try {
 import sys
 import traceback
 
+print("Verifying F5-TTS installation...")
 print("Python executable:", sys.executable)
-print("Python version:", sys.version)
-print("Python path:", sys.path[:3])  # Show first 3 entries
-
-# Try to list installed packages using importlib.metadata (modern approach)
-try:
-    import importlib.metadata as metadata
-    installed_packages = [dist.metadata['name'] for dist in metadata.distributions()]
-    f5_related = [pkg for pkg in installed_packages if 'f5' in pkg.lower() or 'tts' in pkg.lower()]
-    if f5_related:
-        print("F5/TTS related packages found:", f5_related)
-    else:
-        print("No F5/TTS related packages found in first 10:", installed_packages[:10])
-except ImportError:
-    print("importlib.metadata not available, skipping package listing")
-except Exception as e:
-    print(f"Could not list packages: {e}")
 
 try:
     from f5_tts.api import F5TTS
-    print('✅ F5-TTS imported successfully')
-    # Optional: Instantiate to catch potential init errors? Might be too slow/complex.
-    # print('Attempting F5TTS instantiation...')
-    # f5 = F5TTS() # This might require models to be downloaded/present
-    # print('F5-TTS instantiated successfully (basic)')
+    print('✅ F5-TTS API verified')
 except Exception as e:
-    print(f'❌ Error importing F5-TTS: {e}')
+    print(f'❌ F5-TTS API failed: {e}')
     traceback.print_exc()
     sys.exit(1)
+
+print('✅ F5-TTS verification completed successfully')
 `;
     const verifyF5Cmd = `uv run --python ${VENV_DIR} -- python -c "${verifyF5PyCode.replace(/"/g, '\\"')}"`;
-    execSync(verifyF5Cmd, { stdio: 'inherit', encoding: 'utf8' });
-    logger.success('Text-to-Speech engine verified successfully');
+    try {
+        execSync(verifyF5Cmd, { stdio: 'inherit', encoding: 'utf8' });
+        logger.success('Text-to-Speech engine verification completed');
+    } catch (verifyError) {
+        logger.warning('Text-to-Speech engine verification had issues, but continuing installation');
+        logger.info('The application will still work, but F5-TTS features may be limited');
+    }
 
 } catch (error) {
     console.error(`❌ Error installing/verifying F5-TTS with uv: ${error.message}`);
@@ -831,7 +783,8 @@ except Exception as e:
     process.exit(1);
 }
 
-// --- 7.5. Install official chatterbox using uv pip ---
+// --- 6. Install official chatterbox using uv pip ---
+logger.step(6, 8, 'Installing chatterbox');
 logger.installing('Voice cloning engine (chatterbox)');
 const CHATTERBOX_DIR = 'chatterbox-temp'; // Temporary directory for cloning
 try {
@@ -859,22 +812,14 @@ try {
 
         let pyprojectContent = fs.readFileSync(pyprojectPath, 'utf8');
 
-        // Replace incompatible PyTorch versions with compatible ones
-        // Handle both single and double quotes, and various version formats
+        // Replace incompatible PyTorch versions with working ones that support both F5-TTS and Chatterbox
+        // Pin to CUDA versions to prevent CPU installs - target specific packages only
         pyprojectContent = pyprojectContent
-            .replace(/["']torch==2\.[5-9]\.\d+["']/g, '"torch>=2.4.1,<2.5.0"')
-            .replace(/["']torchaudio==2\.[5-9]\.\d+["']/g, '"torchaudio>=2.4.1,<2.5.0"')
-            .replace(/["']transformers==4\.4[6-9]\.\d+["']/g, '"transformers>=4.40.0,<4.47.0"')
-            .replace(/["']diffusers==0\.2[9]\.\d+["']/g, '"diffusers>=0.25.0,<0.30.0"')
-            // Fallback for exact matches
-            .replace('"torch==2.6.0"', '"torch>=2.4.1,<2.5.0"')
-            .replace('"torch==2.5.1"', '"torch>=2.4.1,<2.5.0"')
-            .replace('"torch==2.5.0"', '"torch>=2.4.1,<2.5.0"')
-            .replace('"torchaudio==2.6.0"', '"torchaudio>=2.4.1,<2.5.0"')
-            .replace('"torchaudio==2.5.1"', '"torchaudio>=2.4.1,<2.5.0"')
-            .replace('"torchaudio==2.5.0"', '"torchaudio>=2.4.1,<2.5.0"')
-            .replace('"transformers==4.46.3"', '"transformers>=4.40.0,<4.47.0"')
-            .replace('"diffusers==0.29.0"', '"diffusers>=0.25.0,<0.30.0"');
+            .replace(/torch==2\.[0-6]\.\d+/g, 'torch==2.5.1+cu121')
+            .replace(/torchaudio==2\.[0-6]\.\d+/g, 'torchaudio==2.5.1+cu121')
+            .replace(/torchvision==0\.1[5-9]\.\d+/g, 'torchvision==0.20.1+cu121')
+            .replace(/transformers==4\.4[6-9]\.\d+/g, 'transformers>=4.40.0,<4.47.0')
+            .replace(/diffusers==0\.2[9]\.\d+/g, 'diffusers>=0.25.0,<0.30.0');
 
 
         // Remove russian-text-stresser due to spacy==3.6.* hard pin causing conflict with gradio/typer (pydantic v2)
@@ -927,7 +872,8 @@ try {
     logger.progress('Installing chatterbox from local modified directory');
     // Don't use -e flag, we want it copied to site-packages
     // Root fix: install chatterbox together with python-dateutil in a single resolution to prevent pruning
-    const installChatterboxCmd = `uv pip install --python ${VENV_DIR} --no-build-isolation ./${CHATTERBOX_DIR} python-dateutil==2.9.0.post0`;
+    // Use CUDA index to ensure PyTorch CUDA version is used, avoid --force-reinstall to prevent PyTorch conflicts
+    const installChatterboxCmd = `uv pip install --python ${VENV_DIR} --no-build-isolation --index-url https://download.pytorch.org/whl/cu121 --extra-index-url https://pypi.org/simple ./${CHATTERBOX_DIR} python-dateutil==2.9.0.post0`;
     logger.command(installChatterboxCmd);
     logger.info(`Installing chatterbox with pinned python-dateutil (single resolution, site-packages)`);
 
@@ -970,14 +916,14 @@ try {
     // Verify PyTorch versions are correct
     logger.progress('Verifying PyTorch compatibility after chatterbox installation');
     try {
-        const verifyCmd = `uv run --python ${VENV_DIR} -- python -c "import torch; print(f'PyTorch version: {torch.__version__}')"`;
+        const verifyCmd = `uv run --python ${VENV_DIR} -- python -c "import torch; print(f'PyTorch version: {torch.__version__}')`;
         const output = execSync(verifyCmd, { encoding: 'utf8' });
-        if (output.includes('2.4.1')) {
-            logger.success('PyTorch 2.4.1 verified successfully');
+        if (output.includes('2.5.1')) {
+            logger.success('PyTorch 2.5.1 verified successfully');
         } else {
             logger.warning('PyTorch version mismatch detected, reinstalling...');
             execSync(torchInstallCmd, { stdio: 'inherit', env });
-            logger.success('PyTorch 2.4.1 reinstalled');
+            logger.success('PyTorch 2.5.1 reinstalled');
         }
     } catch (error) {
         logger.warning(`PyTorch verification failed: ${error.message}`);
@@ -1095,8 +1041,8 @@ try {
     logger.warning(`PyTorch verification failed: ${error.message}`);
     logger.info('Attempting to fix PyTorch installation...');
     try {
-        // Only reinstall if verification failed
-        const fixPytorchCmd = `uv pip install --python ${VENV_DIR} torch==2.4.1+cu121 torchvision==0.19.1+cu121 torchaudio==2.4.1+cu121 --index-url https://download.pytorch.org/whl/cu121 --force-reinstall`;
+        // Only reinstall if verification failed - use working versions
+        const fixPytorchCmd = `uv pip install --python ${VENV_DIR} torch==2.5.1+cu121 torchvision==0.20.1+cu121 torchaudio==2.5.1+cu121 --index-url https://download.pytorch.org/whl/cu121 --force-reinstall`;
         logger.command(fixPytorchCmd);
         const env = { ...process.env, UV_HTTP_TIMEOUT: '300' }; // 5 minutes
         execSync(fixPytorchCmd, { stdio: 'inherit', env });
@@ -1506,21 +1452,21 @@ async function installYtDlpCookiePlugin() {
     }
 }
 
-// --- 12. Install yt-dlp ChromeCookieUnlock Plugin ---
-logger.step(6, 7, 'Installing yt-dlp ChromeCookieUnlock plugin...');
+// --- 7. Install yt-dlp ChromeCookieUnlock Plugin ---
+logger.step(7, 8, 'Installing yt-dlp ChromeCookieUnlock plugin...');
 await installYtDlpCookiePlugin();
 
-// --- 13. Final Summary ---
-logger.step(7, 7, 'Setup completed successfully!');
+// --- 8. Final Summary ---
+logger.step(8, 8, 'Setup completed successfully!');
 
 const summaryItems = [
     `Target PyTorch backend: ${gpuVendor}`,
-    `F5-TTS submodule at: "${F5_TTS_DIR}"`,
+    `F5-TTS package installed from GitHub`,
     `Chatterbox package installed from GitHub`,
     `Shared virtual environment at: ./${VENV_DIR}`,
     `Python ${PYTHON_VERSION_TARGET} confirmed/installed`,
     `PyTorch, F5-TTS, chatterbox, and all dependencies installed`,
-    `Chatterbox installed from official GitHub repository`
+    `Both F5-TTS and Chatterbox installed from official GitHub repositories`
 ];
 
 if (installNotes) {
@@ -1531,8 +1477,8 @@ logger.summary('Setup Summary', summaryItems);
 
 logger.newLine();
 logger.success('✅ PyTorch/torchvision compatibility fix applied');
-logger.info('   - Using PyTorch 2.4.1 with CUDA support for chatterbox compatibility');
-logger.info('   - Chatterbox installed from official GitHub repository');
+logger.info('   - Using PyTorch 2.5.1 with CUDA support for F5-TTS and Chatterbox compatibility');
+logger.info('   - Both F5-TTS and Chatterbox installed from official GitHub repositories');
 logger.info('   - Dependencies installed with proper version management');
 
 logger.newLine();

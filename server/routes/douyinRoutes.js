@@ -8,7 +8,8 @@ const fs = require('fs');
 const path = require('path');
 const { VIDEOS_DIR } = require('../config');
 const { downloadDouyinVideoWithRetry } = require('../services/douyin');
-const { getDownloadProgress } = require('../services/shared/progressTracker');
+const { getDownloadProgress, cancelDownloadProgress } = require('../services/shared/progressTracker');
+const { cancelDownload } = require('../services/shared/globalDownloadManager');
 
 /**
  * POST /api/download-douyin-video - Download a Douyin video
@@ -131,14 +132,45 @@ router.post('/cancel-douyin-download/:videoId', (req, res) => {
     return res.status(400).json({ error: 'Video ID is required' });
   }
 
+  try {
+    // Mark progress as cancelled first to prevent race conditions
+    cancelDownloadProgress(videoId);
 
+    // Attempt to cancel the download using the global download manager
+    const cancelled = cancelDownload(videoId);
 
-  // Currently, we don't have a way to cancel an ongoing yt-dlp process
-  // But we can return success to let the client know we received the request
-  return res.json({
-    success: true,
-    message: 'Cancel request received'
-  });
+    if (cancelled) {
+      console.log(`[DOUYIN] Successfully cancelled download for ${videoId}`);
+
+      // Clean up any partial file
+      const videoPath = path.join(VIDEOS_DIR, `${videoId}.mp4`);
+      if (fs.existsSync(videoPath)) {
+        try {
+          fs.unlinkSync(videoPath);
+          console.log(`[DOUYIN] Cleaned up partial file for ${videoId}`);
+        } catch (cleanupError) {
+          console.error(`[DOUYIN] Error cleaning up partial file for ${videoId}:`, cleanupError);
+        }
+      }
+
+      return res.json({
+        success: true,
+        message: 'Download cancelled successfully'
+      });
+    } else {
+      console.log(`[DOUYIN] No active download found for ${videoId} to cancel`);
+      return res.json({
+        success: true,
+        message: 'Cancel request processed (no active download found)'
+      });
+    }
+  } catch (error) {
+    console.error(`[DOUYIN] Error cancelling download for ${videoId}:`, error);
+    return res.status(500).json({
+      error: 'Failed to cancel download',
+      details: error.message
+    });
+  }
 });
 
 /**

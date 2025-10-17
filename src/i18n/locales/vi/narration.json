@@ -314,6 +314,22 @@
     "korean_male_seoul": "Giọng nam Seoul",
     "viet_male_saigon": "Giọng nam Sài Gòn",
     "viet_female_north_1": "Giọng nữ miền Bắc Việt Nam 1",
-    "viet_female_north_2": "Giọng nữ miền Bắc Việt Nam 2"
-  }
+    "viet_female_north_2": "Giọng nữ miền Bắc Việt Nam 2",
+    "viet_loli_south": "Giọng loli miền Nam Việt Nam"
+  },
+  "transformations": {
+    "punctuationReplaced": "Đã thay thế dấu câu bằng khoảng trắng: {{punctuation}}",
+    "numbersConverted": "Đã chuyển đổi số thành từ nói",
+    "datesConverted": "Đã chuyển đổi ngày tháng thành từ nói",
+    "numbersAndDatesConverted": "Đã chuyển đổi số và ngày tháng thành từ nói"
+  },
+  "manualLanguageSelection": "Chọn ngôn ngữ thủ công",
+  "selectLanguagesFor": "Chọn ngôn ngữ cho phụ đề {{source}}",
+  "translated": "đã dịch",
+  "original": "gốc",
+  "typeLanguage": "Nhập ngôn ngữ",
+  "clearLanguage": "Xóa ngôn ngữ này",
+  "manual": "thủ công",
+  "detectLanguage": "Phát hiện ngôn ngữ",
+  "errorParsingRecentLanguages": "Lỗi phân tích ngôn ngữ gần đây"
 }

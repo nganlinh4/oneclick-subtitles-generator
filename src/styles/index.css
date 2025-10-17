@@ -1,3 +1,29 @@
+/* Material Symbols Rounded - centralized tuning (modifiable in one place) */
+@import url('https://fonts.googleapis.com/css2?family=Material+Symbols+Rounded:opsz,wght,GRAD@24,600,0&display=block');
+
+:root {
+  /* Material Symbols tuning (change these values to retune all icons) */
+  --ms-font-family: 'Material Symbols Rounded', 'Material Symbols', 'Material Icons';
+  --ms-wght: 600; /* weight axis */
+  --ms-grad: 0;   /* grade axis */
+  --ms-opsz: 24;  /* optical size axis */
+
+  /* default icon size (can be overridden per-element) */
+  --ms-size-default: 20px;
+}
+
+/* Use this class for all Material Symbols icons */
+.material-symbols-rounded {
+  font-family: var(--ms-font-family) !important;
+  font-variation-settings: "wght" var(--ms-wght), "GRAD" var(--ms-grad), "opsz" var(--ms-opsz);
+  font-weight: var(--ms-wght);
+  display: inline-block;
+  vertical-align: middle;
+  line-height: 1;
+}
+/* Avoid showing ligature text before Material Symbols font is ready */
+html:not(.ms-font-ready) .material-symbols-rounded { visibility: hidden; }
+
 /* Import local fonts first */
 @import url('./local-fonts.css');
 
@@ -489,6 +515,7 @@ input, select, textarea {
 .status.auto-subtitle::before { background-color: var(--md-tertiary); }
 .status.auto-subtitle .status-particles { display: none !important; }
 .status.auto-subtitle::after { content: none !important; }
+
 
 
 

@@ -280,6 +280,8 @@
   "modelManagement.title": "Narration Model Management",
   "modelManagement.description": "Manage F5-TTS models for narration. You can add new models from Hugging Face or direct URLs, select which model to use, and delete models you no longer need.",
   "modelManagement.installedModels": "Installed Models",
+  "modelManagement.refresh": "Refresh",
+  "modelManagement.refreshModels": "Scan for new models",
   "modelManagement.noModelsInstalled": "No models installed. Add a model to get started.",
   "modelManagement.addModel": "Add Model",
   "modelManagement.deleteModel": "Delete Model",

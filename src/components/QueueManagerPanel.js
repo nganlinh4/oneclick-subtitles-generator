@@ -60,50 +60,27 @@ const QueueManagerPanel = ({
     switch (status) {
       case 'pending':
         return (
-          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-            <circle cx="12" cy="12" r="10"></circle>
-            <polyline points="12 6 12 12 16 14"></polyline>
-          </svg>
+          <span className="material-symbols-rounded" style={{ fontSize: '16px' }}>schedule</span>
         );
       case 'processing':
         return (
-          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-            <path d="M12 2v4"></path>
-            <path d="m16.2 7.8 2.9-2.9"></path>
-            <path d="M18 12h4"></path>
-            <path d="m16.2 16.2 2.9 2.9"></path>
-            <path d="M12 18v4"></path>
-            <path d="m4.9 19.1 2.9-2.9"></path>
-            <path d="M2 12h4"></path>
-            <path d="m4.9 4.9 2.9 2.9"></path>
-          </svg>
+          <span className="material-symbols-rounded" style={{ fontSize: '16px' }}>sync</span>
         );
       case 'completed':
         return (
-          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-            <polyline points="20 6 9 17 4 12"></polyline>
-          </svg>
+          <span className="material-symbols-rounded" style={{ fontSize: '16px' }}>check</span>
         );
       case 'failed':
         return (
-          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-            <circle cx="12" cy="12" r="10"></circle>
-            <line x1="15" y1="9" x2="9" y2="15"></line>
-            <line x1="9" y1="9" x2="15" y2="15"></line>
-          </svg>
+          <span className="material-symbols-rounded" style={{ fontSize: '16px' }}>error</span>
         );
       case 'canceled':
         return (
-          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-            <rect x="6" y="6" width="12" height="12"></rect>
-          </svg>
+          <span className="material-symbols-rounded" style={{ fontSize: '16px' }}>block</span>
         );
       default:
         return (
-          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-            <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path>
-            <polyline points="14 2 14 8 20 8"></polyline>
-          </svg>
+          <span className="material-symbols-rounded" style={{ fontSize: '16px' }}>description</span>
         );
     }
   };
@@ -388,12 +365,7 @@ const QueueManagerPanel = ({
     <div className={`queue-manager-panel ${gridLayout ? 'grid-layout' : ''}`}>
       <div className="panel-header">
         <div className="header-left">
-          <svg className="panel-icon" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-            <rect x="3" y="4" width="18" height="18" rx="2" ry="2"></rect>
-            <line x1="16" y1="2" x2="16" y2="6"></line>
-            <line x1="8" y1="2" x2="8" y2="6"></line>
-            <line x1="3" y1="10" x2="21" y2="10"></line>
-          </svg>
+          <span className="material-symbols-rounded panel-icon" style={{ fontSize: '18px' }}>video_library</span>
           <span className="panel-title">{t('videoRendering.renderQueue', 'Render Queue')}</span>
           <span className="queue-count">{queue.length}</span>
         </div>
@@ -405,10 +377,7 @@ const QueueManagerPanel = ({
             disabled={currentQueueItem !== null}
             title={t('videoRendering.clearQueue', 'Clear Queue')}
           >
-            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-              <polyline points="3 6 5 6 21 6"></polyline>
-              <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path>
-            </svg>
+            <span className="material-symbols-rounded" style={{ fontSize: '16px' }}>delete_sweep</span>
           </button>
         )}
       </div>
@@ -416,18 +385,7 @@ const QueueManagerPanel = ({
       <div className="panel-content">
         {queue.length === 0 ? (
           <div className="empty-queue">
-            <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5">
-              <rect x="3" y="4" width="18" height="18" rx="2" ry="2"></rect>
-              <line x1="16" y1="2" x2="16" y2="6"></line>
-              <line x1="8" y1="2" x2="8" y2="6"></line>
-              <line x1="3" y1="10" x2="21" y2="10"></line>
-              <path d="M8 14h.01"></path>
-              <path d="M12 14h.01"></path>
-              <path d="M16 14h.01"></path>
-              <path d="M8 18h.01"></path>
-              <path d="M12 18h.01"></path>
-              <path d="M16 18h.01"></path>
-            </svg>
+            <span className="material-symbols-rounded" style={{ fontSize: '48px' }}>stack_off</span>
             <h3>{t('videoRendering.emptyQueue', 'Queue is Empty')}</h3>
             <p>{t('videoRendering.addVideosToQueue', 'Add videos to the queue to start batch rendering')}</p>
           </div>
@@ -544,11 +502,7 @@ const QueueManagerPanel = ({
                   {item.status === 'failed' && item.error && (
                     <div className="error-section">
                       <div className="error-message">
-                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                          <circle cx="12" cy="12" r="10"></circle>
-                          <line x1="15" y1="9" x2="9" y2="15"></line>
-                          <line x1="9" y1="9" x2="15" y2="15"></line>
-                        </svg>
+                        <span className="material-symbols-rounded" style={{ fontSize: '16px' }}>error</span>
                         {item.error}
                       </div>
                     </div>
@@ -582,11 +536,7 @@ const QueueManagerPanel = ({
                         className="download-btn-success"
                         title={t('videoRendering.downloadVideo', 'Download video')}
                       >
-                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" style={{ marginRight: '6px' }}>
-                          <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path>
-                          <polyline points="7 10 12 15 17 10"></polyline>
-                          <line x1="12" y1="15" x2="12" y2="3"></line>
-                        </svg>
+                        <span className="material-symbols-rounded" style={{ fontSize: '16px', marginRight: '6px' }}>download</span>
                         {t('videoRendering.download', 'Download')}
                       </button>
                     </div>
@@ -597,10 +547,7 @@ const QueueManagerPanel = ({
                     {/* Left side: render time when completed */}
                     {item.status === 'completed' && item.startedAt && item.completedAt && (
                       <div className="render-time">
-                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                          <circle cx="12" cy="12" r="10"></circle>
-                          <path d="M12 6v6l4 2"></path>
-                        </svg>
+                        <span className="material-symbols-rounded" style={{ fontSize: '14px' }}>schedule</span>
                         <span>
                           {t('videoRendering.completedIn', 'Completed in {{time}}', { time: formatDuration((item.completedAt - item.startedAt) / 1000, 'hms') })}
                         </span>
@@ -613,9 +560,7 @@ const QueueManagerPanel = ({
                           className="cancel-btn"
                           onClick={() => handleLocalCancel(item)}
                         >
-                          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                            <rect x="6" y="6" width="12" height="12"></rect>
-                          </svg>
+                          <span className="material-symbols-rounded" style={{ fontSize: '16px' }}>cancel</span>
                           {t('videoRendering.cancel', 'Cancel')}
                         </button>
                       )}
@@ -625,10 +570,7 @@ const QueueManagerPanel = ({
                           className="remove-btn"
                           onClick={() => onRemoveItem(item.id)}
                         >
-                          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                            <polyline points="3 6 5 6 21 6"></polyline>
-                            <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path>
-                          </svg>
+                          <span className="material-symbols-rounded" style={{ fontSize: '16px' }}>delete</span>
                           {t('videoRendering.remove', 'Remove')}
                         </button>
                       )}
@@ -646,10 +588,7 @@ const QueueManagerPanel = ({
           <div className="preview-modal" onClick={(e) => e.stopPropagation()}>
             <div className="preview-modal-header">
               <div className="preview-title" style={{ gap: '1rem', padding: '0 16px' }}>
-                <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                  <polygon points="23 7 16 12 23 17 23 7"></polygon>
-                  <rect x="1" y="5" width="15" height="14" rx="2" ry="2"></rect>
-                </svg>
+                <span className="material-symbols-rounded" style={{ fontSize: '48px' }}>play_circle</span>
                 <span>{t('videoRendering.preview', 'Preview')}</span>
                 {/* Video info badges (always render container; fill when data available) */}
                 <div className="preview-badges">

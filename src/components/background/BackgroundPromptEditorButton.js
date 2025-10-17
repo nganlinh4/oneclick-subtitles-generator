@@ -17,9 +17,7 @@ const BackgroundPromptEditorButton = () => {
         onClick={() => setIsPromptEditorOpen(true)}
         title={t('promptEditor.editPromptAndModelTooltip', 'Edit prompt and model')}
       >
-        <svg viewBox="0 0 24 24" width="16" height="16" stroke="currentColor" strokeWidth="2" fill="none">
-          <path d="M17 3a2.828 2.828 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5L17 3z"></path>
-        </svg>
+        <span className="material-symbols-rounded" style={{ fontSize: '16px', color: 'currentColor' }}>edit</span>
         <span>{t('promptEditor.editPromptAndModel', 'Edit Prompt & Model')}</span>
       </button>
 

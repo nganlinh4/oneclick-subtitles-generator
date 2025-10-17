@@ -60,7 +60,7 @@ const VideoRenderingSection = ({
     const saved = localStorage.getItem('videoRender_renderSettings');
     const defaultSettings = {
       resolution: '1080p',
-      frameRate: 60,
+      frameRate: 30,
       videoType: 'Subtitled Video',
       originalAudioVolume: 100,
       narrationVolume: 100,
@@ -1596,7 +1596,7 @@ const VideoRenderingSection = ({
       <div className="video-rendering-header">
         <div className="header-left">
           <h2 style={{ display: 'inline-flex', alignItems: 'center', gap: 10 }}>
-            <svg xmlns="http://www.w3.org/2000/svg" height="24" viewBox="0 -960 960 960" width="24" fill="currentColor"><path d="M160-382h641v-276H160v276Zm73 229q-25.6 0-44.3-18.7Q170-190.4 170-216v-40q-57 0-96.5-39.44T34-392v-256q0-57.13 39.44-96.56Q112.88-784 170-784h621q57.13 0 96.56 39.44Q927-705.13 927-648v256q0 57.12-39.44 96.56Q848.13-256 791-256v40q0 25.6-18.7 44.3Q753.6-153 728-153q-25.6 0-44.3-18.7Q665-190.4 665-216v-40H296v40q0 26-18.7 44.5T233-153Zm-73-229v-276 276Zm500.21-30q45.15 0 76.47-31.53T768-520.21q0-45.15-31.53-76.47T659.79-628q-45.15 0-76.47 31.53T552-519.79q0 45.15 31.53 76.47T660.21-412Zm-401.74 0h193.06q29.47 0 48.97-20.2T520-480v-80q0-27.6-19.5-47.8Q481-628 451.53-628H258.47q-29.47 0-48.97 20.2T190-560v80q0 27.6 19.5 47.8Q229-412 258.47-412Z"/></svg>
+            <span className="material-symbols-rounded">movie</span>
             {t('videoRendering.title', 'Video Rendering')}
           </h2>
           <span style={{
@@ -1625,9 +1625,7 @@ const VideoRenderingSection = ({
             }
           }}
         >
-          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-            <polyline points="6 9 12 15 18 9"></polyline>
-          </svg>
+          <span className="material-symbols-rounded">expand_more</span>
         </button>
       </div>
 
@@ -1635,11 +1633,7 @@ const VideoRenderingSection = ({
       {isDragging && (
         <div className="drag-overlay">
           <div className="drag-content">
-            <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-              <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path>
-              <polyline points="17 8 12 3 7 8"></polyline>
-              <line x1="12" y1="3" x2="12" y2="15"></line>
-            </svg>
+            <span className="material-symbols-rounded" style={{ fontSize: '48px' }}>upload_file</span>
             <h3>{t('videoRendering.dropVideo', 'Drop video file here')}</h3>
           </div>
         </div>
@@ -1663,9 +1657,7 @@ const VideoRenderingSection = ({
               {selectedVideoFile ? (
                 <div className="selected-video-info">
                   <div className="selected-video-info-row top-row">
-                    <svg className="video-file-icon" width="20" height="20" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
-                      <path d="M17 10.5V7C17 5.89543 16.1046 5 15 5H5C3.89543 5 3 5.89543 3 7V17C3 18.1046 3.89543 19 5 19H15C16.1046 19 17 18.1046 17 17V13.5L21 17.5V6.5L17 10.5Z" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
-                    </svg>
+                    <span className="material-symbols-rounded video-file-icon">video_file</span>
                     <span className="video-name">
                       {(selectedVideoFile instanceof File ? selectedVideoFile.name :
                         (selectedVideoFile.name || selectedVideoFile.title || 'Current Video'))}
@@ -1837,9 +1829,7 @@ const VideoRenderingSection = ({
                           className="refresh-loading-indicator"
                         />
                       ) : (
-                        <svg viewBox="0 0 24 24" fill="currentColor">
-                          <path d="M17.65 6.35C16.2 4.9 14.21 4 12 4c-4.42 0-7.99 3.58-7.99 8s3.57 8 7.99 8c3.73 0 6.84-2.55 7.73-6h-2.08c-.82 2.33-3.04 4-5.65 4-3.31 0-6-2.69-6-6s2.69-6 6-6c1.66 0 3.14.69 4.22 1.78L13 11h7V4l-2.35 2.35z" />
-                        </svg>
+                        <span className="material-symbols-rounded">refresh</span>
                       )}
                     </button>
                   </div>
@@ -1926,9 +1916,7 @@ const VideoRenderingSection = ({
 
             <div className="trimming-timeline-row" style={{ margin: '0 0 16px 0', width: '100%' }}>
               <div style={{ display: 'flex', alignItems: 'center', gap: 16, padding: '0 16px' }}>
-                <svg xmlns="http://www.w3.org/2000/svg" height="24px" viewBox="0 -960 960 960" width="24px" fill="#e3e3e3" style={{ flexShrink: 0 }}>
-                  <path d="m475-371-75 75q5 14 7 28.17 2 14.16 2 29.83 0 73-50.76 124-50.75 51-124.5 51Q160-63 109.5-113.76 59-164.51 59-238.26 59-312 109.48-363q50.47-51 124.52-51 14.33 0 28.67 2 14.33 2 28.33 7l76-75-76-76q-14 5-28.33 7-14.34 2-28.67 2-74.05 0-124.52-50.76Q59-648.51 59-722.26 59-796 109.5-847t124.24-51q73.75 0 124.5 50.97Q409-796.05 409-722q0 15.33-2 29.17-2 13.83-7 27.83l435 436q36 36 17.21 83.5Q833.41-98 781.03-98q-15.41 0-30.12-6.12-14.7-6.12-24.91-16.88L475-371Zm148-147L513-626l213-214q10.21-10.76 24.91-16.88 14.71-6.12 30.12-6.12 51.73 0 70.85 48Q871-767 835-730L623-518ZM233.75-653q28.77 0 49.51-20.33T304-722.21q0-28.97-20.54-49.38Q262.92-792 234.08-792q-29.25 0-49.67 20.49Q164-751.02 164-722.25q0 28.78 20.49 49.01Q204.98-653 233.75-653Zm241.68 221q20.17 0 34.37-14.3Q524-460.6 524-481q0-20-14.3-34T475-529q-20 0-34 14.13t-14 34.3q0 20.17 14.13 34.37 14.13 14.2 34.3 14.2ZM233.75-169q28.77 0 49.51-20.33T304-238.21q0-28.96-20.54-49.38Q262.92-308 234.08-308q-29.25 0-49.67 20.49Q164-267.02 164-238.25t20.49 49.01Q204.98-169 233.75-169Z"/>
-                </svg>
+                <span className="material-symbols-rounded" style={{ flexShrink: 0, color: '#e3e3e3' }}>content_cut</span>
                 <span style={{ minWidth: 70, maxWidth: 70, display: 'inline-block', textAlign: 'center', fontSize: '1.15em', fontFamily: 'monospace', fontWeight: 500 }}>
                   {formatTime(renderSettings.trimStart || 0, 'hms_ms')}
                 </span>
@@ -2027,11 +2015,7 @@ const VideoRenderingSection = ({
                 onClick={handleRender}
                 disabled={!selectedVideoFile}
               >
-                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                  <rect x="2" y="3" width="20" height="14" rx="2" ry="2"></rect>
-                  <line x1="8" y1="21" x2="16" y2="21"></line>
-                  <line x1="12" y1="17" x2="12" y2="21"></line>
-                </svg>
+                <span className="material-symbols-rounded">desktop_windows</span>
                 {t('videoRendering.render', 'Render')}
               </button>
 
@@ -2042,9 +2026,7 @@ const VideoRenderingSection = ({
                   onClick={handleCancelRender}
                   style={{ marginLeft: '0.5rem' }}
                 >
-                  <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                    <rect x="6" y="6" width="12" height="12"></rect>
-                  </svg>
+                  <span className="material-symbols-rounded">stop</span>
                   {t('videoRendering.cancel', 'Cancel Current')}
                 </button>
               )}

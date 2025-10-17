@@ -1,9 +1,5 @@
 import React from 'react';
 import { useTranslation } from 'react-i18next';
-import LanguageIcon from '@mui/icons-material/Language';
-import TuneIcon from '@mui/icons-material/Tune';
-import KeyboardArrowDownIcon from '@mui/icons-material/KeyboardArrowDown';
-import KeyboardArrowUpIcon from '@mui/icons-material/KeyboardArrowUp';
 import CustomModelDialog from '../CustomModelDialog';
 import LanguageCodeInput from './LanguageCodeInput';
 
@@ -185,7 +181,7 @@ const AddModelDialog = ({
 
       <div className="language-codes-section">
         <div className="section-header">
-          <LanguageIcon />
+          <span className="material-symbols-rounded" style={{ fontSize: 24 }}>language</span>
           <h5>{t('settings.modelManagement.languageCodes', 'Supported Languages')}</h5>
         </div>
         <div className="helper-text">
@@ -202,14 +198,14 @@ const AddModelDialog = ({
         className="advanced-options-toggle"
         onClick={onToggleAdvanced}
       >
-        <TuneIcon fontSize="small" style={{ marginRight: '8px' }} />
+        <span className="material-symbols-rounded" style={{ fontSize: 20, marginRight: '8px' }}>tune</span>
         {form.showAdvanced
           ? t('settings.modelManagement.hideAdvancedOptions')
           : t('settings.modelManagement.showAdvancedOptions')
         }
         {form.showAdvanced
-          ? <KeyboardArrowUpIcon fontSize="small" style={{ marginLeft: '4px' }} />
-          : <KeyboardArrowDownIcon fontSize="small" style={{ marginLeft: '4px' }} />
+          ? <span className="material-symbols-rounded" style={{ fontSize: 20, marginLeft: '4px' }}>keyboard_arrow_up</span>
+          : <span className="material-symbols-rounded" style={{ fontSize: 20, marginLeft: '4px' }}>keyboard_arrow_down</span>
         }
       </button>
 

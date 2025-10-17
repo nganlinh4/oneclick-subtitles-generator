@@ -56,11 +56,7 @@ const TranslationComplete = ({
               onClick={onDownloadAll}
               title={t('translation.bulk.downloadAll', 'Download all translated files')}
             >
-              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path>
-                <polyline points="7,10 12,15 17,10"></polyline>
-                <line x1="12" y1="15" x2="12" y2="3"></line>
-              </svg>
+              <span className="material-symbols-rounded" style={{ fontSize: '16px' }}>download</span>
               {t('translation.bulk.downloadAll', 'Download All')}
             </button>
             <button
@@ -68,10 +64,7 @@ const TranslationComplete = ({
               onClick={onDownloadZip}
               title={t('translation.bulk.downloadZip', 'Download all as ZIP')}
             >
-              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                <polyline points="16,18 22,12 16,6"></polyline>
-                <polyline points="8,6 2,12 8,18"></polyline>
-              </svg>
+              <span className="material-symbols-rounded" style={{ fontSize: '16px' }}>sync</span>
               {t('translation.bulk.downloadZip', 'Download ZIP')}
             </button>
           </div>

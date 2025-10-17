@@ -1,6 +1,5 @@
 import React, { useState, useEffect } from 'react';
 import { useTranslation } from 'react-i18next';
-import { FiAlertCircle } from 'react-icons/fi';
 import '../../styles/common/auto-dismiss-error-toast.css';
 
 /**
@@ -54,7 +53,7 @@ const AutoDismissErrorToast = () => {
   return (
     <div className={`auto-dismiss-error-toast ${visible ? 'visible' : ''}`}>
       <div className="toast-icon">
-        <FiAlertCircle />
+        <span className="material-symbols-rounded">error</span>
       </div>
       <div className="toast-message">
         {error}

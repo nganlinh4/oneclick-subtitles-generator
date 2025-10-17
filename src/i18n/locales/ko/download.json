@@ -42,6 +42,7 @@
     "noQualities": "사용 가능한 품질이 없습니다",
     "cancel": "취소",
     "downloading": "다운로드 중...",
-    "cancelDownload": "다운로드 취소"
+    "cancelDownload": "다운로드 취소",
+    "cancelled": "다운로드 취소됨"
   }
 }

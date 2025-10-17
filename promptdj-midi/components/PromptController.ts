@@ -186,9 +186,15 @@ export class PromptController extends LitElement {
     .is-editing .edit-icon {
       visibility: hidden;
     }
+    .is-editing #text-svg {
+      opacity: 0;
+    }
     .is-editing #text {
       visibility: visible;
-      opacity: 0; /* capture input but keep visual on arc */
+      opacity: 1; /* show input for cursor */
+      border: 1px solid #fff;
+      border-radius: 1vmin;
+      background: rgba(0, 0, 0, 0.7);
       /* Stabilize caret behavior in production builds */
       text-align: left;
       direction: ltr;
@@ -371,6 +377,8 @@ export class PromptController extends LitElement {
   private startEditing() {
     if (this.isEditing) return;
     this.isEditing = true;
+    this.text = '';
+    this.textInput.textContent = '';
     this.updateComplete.then(() => {
       this.textInput.focus();
       this.onFocus();
@@ -399,9 +407,6 @@ export class PromptController extends LitElement {
       'is-hovering': this.isHovering && !this.isEditing,
     });
 
-    const editIconPath = html`<path
-      d="M2.7 14.3l7.9-7.9 3.1 3.1-7.9 7.9-3.1-3.1z M15.5 2.5c-0.4-0.4-1-0.4-1.4 0l-1.4 1.4 3.1 3.1 1.4-1.4c0.4-0.4 0.4-1 0-1.4l-1.7-1.7z M1 17l1.9-5.6 3.1 3.1-5 2.5z"
-    ></path>`;
 
     return html`<div class=${promptClasses}>
       <weight-knob
@@ -427,7 +432,7 @@ export class PromptController extends LitElement {
           </text>
         </svg>
 
-        <svg class="edit-icon" viewBox="0 0 18 18">${editIconPath}</svg>
+        <span class="material-symbols-rounded edit-icon" style="font-size: 18px;">edit</span>
 
         <span
           id="text"

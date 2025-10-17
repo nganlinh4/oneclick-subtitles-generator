@@ -276,10 +276,7 @@ const LanguageChain = ({
                   disabled={disabled}
                   title={t('translation.removeLanguage', 'Remove')}
                 >
-                  <svg viewBox="0 0 24 24" width="12" height="12" stroke="currentColor" strokeWidth="3" fill="none">
-                    <line x1="18" y1="6" x2="6" y2="18"></line>
-                    <line x1="6" y1="6" x2="18" y2="18"></line>
-                  </svg>
+                  <span className="material-symbols-rounded" style={{ fontSize: '12px' }}>close</span>
                 </button>
               </>
             ) : (
@@ -301,10 +298,7 @@ const LanguageChain = ({
                   disabled={disabled}
                   title={t('translation.removeDelimiter', 'Remove delimiter')}
                 >
-                  <svg viewBox="0 0 24 24" width="10" height="10" stroke="currentColor" strokeWidth="3" fill="none">
-                    <line x1="18" y1="6" x2="6" y2="18"></line>
-                    <line x1="6" y1="6" x2="18" y2="18"></line>
-                  </svg>
+                  <span className="material-symbols-rounded" style={{ fontSize: '10px' }}>close</span>
                 </button>
 
                 {/* Render the modal using createPortal to ensure it's at the root level */}
@@ -362,10 +356,7 @@ const LanguageChain = ({
           }}
           disabled={disabled}
         >
-          <svg viewBox="0 0 24 24" width="16" height="16" stroke="currentColor" strokeWidth="2" fill="none">
-            <line x1="12" y1="5" x2="12" y2="19"></line>
-            <line x1="5" y1="12" x2="19" y2="12"></line>
-          </svg>
+          <span className="material-symbols-rounded" style={{ fontSize: '16px' }}>add</span>
           {t('translation.addLanguage', 'Add Language')}
         </button>
 
@@ -384,9 +375,7 @@ const LanguageChain = ({
           }}
           disabled={disabled}
         >
-          <svg viewBox="0 0 24 24" width="16" height="16" stroke="currentColor" strokeWidth="2" fill="none">
-            <line x1="5" y1="12" x2="19" y2="12"></line>
-          </svg>
+          <span className="material-symbols-rounded" style={{ fontSize: '16px' }}>align_justify_space_between</span>
           {t('translation.addDelimiter', 'Add Delimiter')}
         </button>
 

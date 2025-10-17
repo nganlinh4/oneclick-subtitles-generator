@@ -861,10 +861,7 @@ const LyricsDisplay = ({
                 onClick={() => handleInsertLyric(0)}
                 aria-label={t('lyrics.addFirst', 'Add first subtitle')}
               >
-                <svg viewBox="0 0 24 24" width="20" height="20" stroke="currentColor" strokeWidth="2" fill="none">
-                  <line x1="12" y1="5" x2="12" y2="19"></line>
-                  <line x1="5" y1="12" x2="19" y2="12"></line>
-                </svg>
+                <span className="material-symbols-rounded" style={{ fontSize: '20px' }}>add</span>
               </button>
             </div>
           </div>
@@ -898,11 +895,7 @@ const LyricsDisplay = ({
             onClick={() => setIsModalOpen(true)}
             disabled={!lyrics.length}
           >
-            <svg viewBox="0 0 24 24" width="20" height="20" stroke="currentColor" strokeWidth="2" fill="none">
-              <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path>
-              <polyline points="7 10 12 15 17 10"></polyline>
-              <line x1="12" y1="15" x2="12" y2="3"></line>
-            </svg>
+            <span className="material-symbols-rounded" style={{ fontSize: '20px' }}>download</span>
             <span>{t('download.downloadCenter', 'Download Center')}</span>
           </button>
 

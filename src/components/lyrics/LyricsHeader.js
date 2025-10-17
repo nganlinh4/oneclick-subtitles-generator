@@ -115,16 +115,13 @@ const LyricsHeader = ({
           title={autoScrollEnabled ? t('lyrics.autoScrollDisable', 'Disable auto-scroll') : t('lyrics.autoScrollEnable', 'Enable auto-scroll')}
         >
           {autoScrollEnabled ? (
-            <svg className="auto-scroll-icon" viewBox="0 0 24 24" width="16" height="16" stroke="currentColor" strokeWidth="2.5" fill="none">
-              <path d="M12 2v20"/>
-              <path d="m19 15-7 7-7-7"/>
-              <path d="m19 9-7-7-7 7"/>
-            </svg>
+            <span className="material-symbols-rounded auto-scroll-icon" style={{ fontSize: 16, display: 'inline-block' }}>
+              move_selection_down
+            </span>
           ) : (
-            <svg className="auto-scroll-icon" viewBox="0 0 24 24" width="16" height="16" stroke="currentColor" strokeWidth="2.5" fill="none">
-              <path d="M9 9h6v6h-6z"/>
-              <path d="M21 3H3v18h18V3z"/>
-            </svg>
+            <span className="material-symbols-rounded auto-scroll-icon" style={{ fontSize: 16, display: 'inline-block' }}>
+              mobiledata_off
+            </span>
           )}
           <span>{t('lyrics.autoScroll', 'Cuộn')}</span>
         </div>
@@ -136,15 +133,13 @@ const LyricsHeader = ({
             title={t('lyrics.stickyTimingsToggleWithShortcut', isSticky ? 'Disable sticky timings (Ctrl+Shift+T)' : 'Enable sticky timings (Ctrl+Shift+T)')}
           >
             {isSticky ? (
-              <svg className="sticky-icon" viewBox="0 0 24 24" width="16" height="16" stroke="currentColor" strokeWidth="2.5" fill="none">
-                <path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"/>
-                <path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"/>
-              </svg>
+              <span className="material-symbols-rounded sticky-icon" style={{ fontSize: 16, display: 'inline-block' }}>
+                link
+              </span>
             ) : (
-              <svg className="sticky-icon" viewBox="0 0 24 24" width="16" height="16" stroke="currentColor" strokeWidth="2.5" fill="none">
-                <path d="M6 8a4 4 0 0 1 0 8 4 4 0 0 1 0-8"/>
-                <path d="M18 8a4 4 0 0 0 0 8 4 4 0 0 0 0-8"/>
-              </svg>
+              <span className="material-symbols-rounded sticky-icon" style={{ fontSize: 16, display: 'inline-block' }}>
+                link_off
+              </span>
             )}
             <span>{t('lyrics.stickyTimingsToggle', 'Dính')}</span>
           </div>
@@ -170,17 +165,17 @@ const LyricsHeader = ({
             >
               <svg viewBox="0 0 24 24" width="16" height="16" fill="none">
                 {/* Left rectangle (before cut) */}
-                <path d="M2 8L8 8" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
-                <path d="M2 16L8 16" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
-                <path d="M2 8L2 16" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
-                
+                <path d="M2 8L8 8" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round"/>
+                <path d="M2 16L8 16" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round"/>
+                <path d="M2 8L2 16" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round"/>
+
                 {/* Right rectangle (after cut) */}
-                <path d="M16 8L22 8" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
-                <path d="M16 16L22 16" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
-                <path d="M22 8L22 16" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
-                
+                <path d="M16 8L22 8" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round"/>
+                <path d="M16 16L22 16" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round"/>
+                <path d="M22 8L22 16" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round"/>
+
                 {/* Vertical cutting line (knife) */}
-                <path d="M12 4L12 20" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
+                <path d="M12 4L12 20" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round"/>
               </svg>
             </button>
 
@@ -190,11 +185,9 @@ const LyricsHeader = ({
               disabled={isAtSavedState}
               title={isAtSavedState ? t('common.saveDisabled', 'No changes to save') : t('common.saveWithShortcut', 'Save (Ctrl+S)')}
             >
-              <svg viewBox="0 0 24 24" width="16" height="16" stroke="currentColor" strokeWidth="2" fill="none">
-                <path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"/>
-                <polyline points="17 21 17 13 7 13 7 21"/>
-                <polyline points="7 3 7 8 15 8"/>
-              </svg>
+              <span className="material-symbols-rounded" style={{ fontSize: 16, display: 'inline-block' }}>
+                save
+              </span>
             </button>
 
             <button
@@ -203,10 +196,9 @@ const LyricsHeader = ({
               disabled={isAtSavedState}
               title={t('common.resetWithShortcut', 'Reset to saved state')}
             >
-              <svg viewBox="0 0 24 24" width="16" height="16" stroke="currentColor" strokeWidth="2" fill="none" preserveAspectRatio="xMidYMid meet">
-                <path d="M23 4v6h-6"/>
-                <path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"/>
-              </svg>
+              <span className="material-symbols-rounded" style={{ fontSize: 16, display: 'inline-block' }}>
+                refresh
+              </span>
             </button>
           </div>
         )}
@@ -223,19 +215,12 @@ const LyricsHeader = ({
               title={t('common.jumpToCheckpointWithShortcut', 'Jump to last checkpoint (Ctrl+J)')}
             >
               {/* Flag with curved arrow icon - active */}
-              <svg viewBox="0 0 24 24" width="16" height="16" fill="none">
-                <path d="M3 5V19" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
-                <path d="M3 5H14L11 8L14 11H3" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
-                <path d="M21 13C21 15.5 18.5 18 15 18H11" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
-                <path d="M13 20L11 18L13 16" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
-              </svg>
-              
+              {/* Flag with curved arrow icon - active */}
+              <span className="material-symbols-rounded" style={{ fontSize: 16, display: 'inline-block' }}>
+                flag
+              </span>
               {/* Clock with reverse arrow icon - alternative (commented out) */}
-              {/* <svg viewBox="0 0 24 24" width="16" height="16" fill="none">
-                <path d="M10 9V12H12.5" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
-                <path d="M5 12C5 15.866 8.13401 19 12 19C15.866 19 19 15.866 19 12C19 8.13401 15.866 5 12 5" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeDasharray="4 4"/>
-                <path d="M5 12V7L7 8L5 9" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
-              </svg> */}
+              {/* <span className="material-symbols-rounded" style={{ fontSize: '16px' }}>schedule</span> */}
             </button>
             
             <button
@@ -244,9 +229,9 @@ const LyricsHeader = ({
               disabled={!canUndo}
               title={t('common.undoWithShortcut', 'Undo (Ctrl+Z)')}
             >
-              <svg viewBox="0 0 24 24" width="16" height="16" stroke="currentColor" strokeWidth="2" fill="none">
-                <path d="M3 10h10c4.42 0 8 3.58 8 8v2M3 10l6-6M3 10l6 6"/>
-              </svg>
+              <span className="material-symbols-rounded" style={{ fontSize: 16, display: 'inline-block' }}>
+                undo
+              </span>
             </button>
 
             <button
@@ -255,9 +240,9 @@ const LyricsHeader = ({
               disabled={!canRedo}
               title={t('common.redoWithShortcut', 'Redo (Ctrl+Y or Ctrl+Shift+Z)')}
             >
-              <svg viewBox="0 0 24 24" width="16" height="16" stroke="currentColor" strokeWidth="2" fill="none">
-                <path d="M21 10h-10c-4.42 0-8 3.58-8 8v2M21 10l-6-6M21 10l-6 6"/>
-              </svg>
+              <span className="material-symbols-rounded" style={{ fontSize: 16, display: 'inline-block' }}>
+                redo
+              </span>
             </button>
           </div>
         )}

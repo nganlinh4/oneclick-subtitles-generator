@@ -121,6 +121,23 @@
   color: var(--md-primary);
 }
 
+/* Language-specific background colors for example audio icons */
+.example-audio-option-icon.english {
+  background-color: rgba(0, 123, 255, 0.15); /* Blue for English */
+}
+
+.example-audio-option-icon.chinese {
+  background-color: rgba(255, 193, 7, 0.15); /* Yellow for Chinese */
+}
+
+.example-audio-option-icon.korean {
+  background-color: rgba(40, 167, 69, 0.15); /* Green for Korean */
+}
+
+.example-audio-option-icon.vietnamese {
+  background-color: rgba(220, 53, 69, 0.15); /* Red for Vietnamese */
+}
+
 .example-audio-option-text {
   display: flex;
   flex-direction: column;

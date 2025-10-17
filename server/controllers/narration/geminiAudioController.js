@@ -43,6 +43,18 @@ const saveAudioToFile = async (options) => {
   // Log if we're overriding an existing file
   if (fs.existsSync(filepath)) {
     console.log(`Overriding existing narration: ${filepath}`);
+
+    // Clear backup audio file created by speed control to prevent dangerous risks
+    const backupFilename = `backup_${filename}`;
+    const backupPath = path.join(subtitleDir, backupFilename);
+    if (fs.existsSync(backupPath)) {
+      try {
+        fs.unlinkSync(backupPath);
+        console.log(`Cleared backup file: ${backupPath}`);
+      } catch (backupError) {
+        console.warn(`Failed to clear backup file ${backupPath}: ${backupError.message}`);
+      }
+    }
   }
 
   // Decode the base64 audio data

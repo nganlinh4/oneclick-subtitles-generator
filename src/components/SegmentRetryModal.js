@@ -1,6 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { useTranslation } from 'react-i18next';
-import { FiCheck, FiZap, FiStar, FiCpu, FiArrowRight, FiTrendingUp, FiActivity } from 'react-icons/fi';
 import CloseButton from './common/CloseButton';
 import '../styles/SegmentRetryModal.css';
 
@@ -42,7 +41,7 @@ const SegmentRetryModal = ({
       id: 'gemini-2.5-pro',
       name: t('models.gemini25Pro', 'Gemini 2.5 Pro'),
       description: t('models.bestAccuracy', 'Best accuracy'),
-      icon: <FiStar className="model-icon star-icon" />,
+      icon: <span className="material-symbols-rounded model-icon star-icon">star</span>,
       color: 'var(--md-tertiary)',
       bgColor: 'rgba(var(--md-tertiary-rgb), 0.1)'
     },
@@ -50,7 +49,7 @@ const SegmentRetryModal = ({
       id: 'gemini-2.5-flash',
       name: t('models.gemini25Flash', 'Gemini 2.5 Flash'),
       description: t('models.smarterFaster', 'Smarter & faster'),
-      icon: <FiZap className="model-icon zap-icon" style={{ color: 'var(--md-tertiary)' }} />,
+      icon: <span className="material-symbols-rounded model-icon zap-icon" style={{ color: 'var(--md-tertiary)' }}>bolt</span>,
       color: 'var(--md-tertiary)',
       bgColor: 'rgba(var(--md-tertiary-rgb), 0.1)'
     },
@@ -58,7 +57,7 @@ const SegmentRetryModal = ({
       id: 'gemini-2.5-flash-lite',
       name: t('models.gemini25FlashLite', 'Gemini 2.5 Flash Lite'),
       description: t('models.fastestAdvanced', 'Fastest 2.5 model'),
-      icon: <FiTrendingUp className="model-icon trending-icon" style={{ color: 'var(--md-tertiary)' }} />,
+      icon: <span className="material-symbols-rounded model-icon trending-icon" style={{ color: 'var(--md-tertiary)' }}>trending_up</span>,
       color: 'var(--md-tertiary)',
       bgColor: 'rgba(var(--md-tertiary-rgb), 0.1)'
     },
@@ -66,7 +65,7 @@ const SegmentRetryModal = ({
       id: 'gemini-2.0-flash',
       name: t('models.gemini20Flash', 'Gemini 2.0 Flash'),
       description: t('models.balancedModel', 'Balanced'),
-      icon: <FiActivity className="model-icon activity-icon" />,
+      icon: <span className="material-symbols-rounded model-icon activity-icon">activity_zone</span>,
       color: 'var(--md-primary)',
       bgColor: 'rgba(var(--md-primary-rgb), 0.1)'
     },
@@ -74,7 +73,7 @@ const SegmentRetryModal = ({
       id: 'gemini-2.0-flash-lite',
       name: t('models.gemini20FlashLite', 'Gemini 2.0 Flash Lite'),
       description: t('models.fastestModel', 'Fastest'),
-      icon: <FiCpu className="model-icon cpu-icon" />,
+      icon: <span className="material-symbols-rounded model-icon cpu-icon">memory</span>,
       color: 'var(--success-color)',
       bgColor: 'rgba(var(--success-color-rgb), 0.1)'
     }
@@ -291,11 +290,11 @@ const SegmentRetryModal = ({
           {currentStep === 1 ? (
             <button className="next-button" onClick={handleNextStep}>
               {t('segmentRetry.next', 'Next')}
-              <FiArrowRight className="next-icon" />
+              <span className="material-symbols-rounded next-icon">arrow_forward</span>
             </button>
           ) : (
             <button className="retry-button" onClick={handleRetry}>
-              <FiCheck />
+              <span className="material-symbols-rounded">check</span>
               {t('segmentRetry.retry', 'Retry Segment')}
             </button>
           )}

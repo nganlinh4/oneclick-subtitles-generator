@@ -1,7 +1,5 @@
 import React from 'react';
 import { useTranslation } from 'react-i18next';
-import DeleteIcon from '@mui/icons-material/Delete';
-import AddIcon from '@mui/icons-material/Add';
 
 /**
  * Component for language code input fields
@@ -51,7 +49,7 @@ const LanguageCodeInput = ({ languageCodes = [''], onChange }) => {
               onClick={() => handleRemoveLanguageCode(index)}
               title={t('settings.modelManagement.removeLanguageCode', 'Remove language code')}
             >
-              <DeleteIcon fontSize="small" />
+              <span className="material-symbols-rounded" style={{ fontSize: 20 }}>delete</span>
             </button>
           )}
         </div>
@@ -62,7 +60,7 @@ const LanguageCodeInput = ({ languageCodes = [''], onChange }) => {
         className="add-language-btn"
         onClick={handleAddLanguageCode}
       >
-        <AddIcon fontSize="small" />
+        <span className="material-symbols-rounded" style={{ fontSize: 20 }}>add</span>
         {t('settings.modelManagement.addLanguageCode', 'Add language code')}
       </button>
     </div>

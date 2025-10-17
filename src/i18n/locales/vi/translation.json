@@ -112,5 +112,6 @@
   "warningEdited": "Bạn đã chỉnh sửa văn bản của phụ đề gốc. Bản dịch có thể đã lỗi thời. Vui lòng dịch lại.",
   "warningInserted": "Bạn đã chèn một phụ đề mới. Bản dịch có thể đã lỗi thời. Vui lòng dịch lại.",
   "warningMerged": "Bạn đã gộp các phụ đề. Bản dịch có thể đã lỗi thời. Vui lòng dịch lại.",
-  "warningSplit": "Bạn đã tách phụ đề. Bản dịch có thể đã lỗi thời. Vui lòng dịch lại."
+  "warningSplit": "Bạn đã tách phụ đề. Bản dịch có thể đã lỗi thời. Vui lòng dịch lại.",
+  "fromCache": "Đã tải từ bộ nhớ cache"
 }

@@ -244,11 +244,7 @@ const NarrationPlaybackMenu = ({
         title={t('narration.playbackMenu', 'Narration Playback')}
         style={{ backgroundColor: '#2196F3', color: 'white', fontSize: '20px', fontWeight: 'bold' }}
       >
-        <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-          <path d="M12 2a3 3 0 0 0-3 3v7a3 3 0 0 0 6 0V5a3 3 0 0 0-3-3z"></path>
-          <path d="M19 10v2a7 7 0 0 1-14 0v-2"></path>
-          <line x1="12" y1="19" x2="12" y2="22"></line>
-        </svg>
+        <span className="material-symbols-rounded" style={{ fontSize: '20px' }}>mic</span>
         N
       </button>
 
@@ -266,10 +262,7 @@ const NarrationPlaybackMenu = ({
               border: 'none'
             }}
           >
-            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-              <line x1="18" y1="6" x2="6" y2="18"></line>
-              <line x1="6" y1="6" x2="18" y2="18"></line>
-            </svg>
+            <span className="material-symbols-rounded" style={{ fontSize: '16px' }}>close</span>
           </button>
         </div>
 
@@ -283,17 +276,12 @@ const NarrationPlaybackMenu = ({
             >
               {isPlaying ? (
                 <>
-                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                    <rect x="6" y="4" width="4" height="16" fill="currentColor"></rect>
-                    <rect x="14" y="4" width="4" height="16" fill="currentColor"></rect>
-                  </svg>
+                  <span className="material-symbols-rounded" style={{ fontSize: '16px' }}>pause</span>
                   {t('narration.stopPlayback', 'Stop')}
                 </>
               ) : (
                 <>
-                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                    <polygon points="5 3 19 12 5 21 5 3" fill="currentColor"></polygon>
-                  </svg>
+                  <span className="material-symbols-rounded" style={{ fontSize: '16px' }}>play_arrow</span>
                   {t('narration.startPlayback', 'Play')}
                 </>
               )}
@@ -338,10 +326,7 @@ const NarrationPlaybackMenu = ({
             <div className="volume-control">
               <label htmlFor="narration-volume">
                 <span className="icon-label-container">
-                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                    <path d="M12 2a3 3 0 0 0-3 3v7a3 3 0 0 0 6 0V5a3 3 0 0 0-3-3z"></path>
-                    <path d="M19 10v2a7 7 0 0 1-14 0v-2"></path>
-                  </svg>
+                  <span className="material-symbols-rounded" style={{ fontSize: '16px' }}>mic</span>
                   <span>{t('narration.narrationVolume', 'Narration')}:</span>
                 </span>
               </label>
@@ -363,11 +348,7 @@ const NarrationPlaybackMenu = ({
             <div className="volume-control">
               <label htmlFor="video-volume">
                 <span className="icon-label-container">
-                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                    <polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"></polygon>
-                    <path d="M15.54 8.46a5 5 0 0 1 0 7.07"></path>
-                    <path d="M19.07 4.93a10 10 0 0 1 0 14.14"></path>
-                  </svg>
+                  <span className="material-symbols-rounded" style={{ fontSize: '16px' }}>volume_up</span>
                   <span>{t('narration.videoVolume', 'Video Audio')}:</span>
                 </span>
               </label>
@@ -391,22 +372,14 @@ const NarrationPlaybackMenu = ({
           <div className="narration-status">
             {activeNarrations.length === 0 ? (
               <div className="status-message warning">
-                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                  <circle cx="12" cy="12" r="10"></circle>
-                  <line x1="12" y1="8" x2="12" y2="12"></line>
-                  <line x1="12" y1="16" x2="12.01" y2="16"></line>
-                </svg>
+                <span className="material-symbols-rounded" style={{ fontSize: '16px' }}>warning</span>
                 {narrationSource === 'original'
                   ? t('narration.noOriginalNarrations', 'No original narrations available')
                   : t('narration.noTranslatedNarrations', 'No translated narrations available')}
               </div>
             ) : (
               <div className="status-message info">
-                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                  <circle cx="12" cy="12" r="10"></circle>
-                  <line x1="12" y1="16" x2="12" y2="12"></line>
-                  <line x1="12" y1="8" x2="12.01" y2="8"></line>
-                </svg>
+                <span className="material-symbols-rounded" style={{ fontSize: '16px' }}>info</span>
                 {t('narration.narrationReady', 'Narration ready for playback')}
                 <div className="narration-count">
                   {t('narration.narrationCount', '{{count}} narrations available', { count: activeNarrations.length })}

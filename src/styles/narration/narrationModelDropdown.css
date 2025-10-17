@@ -400,16 +400,17 @@
 
 /* Add gold star to recommended models label */
 .recommended-models-label::before {
-  content: "";
+  content: "star";
+  font-family: var(--ms-font-family);
+  font-variation-settings: "wght" var(--ms-wght), "GRAD" var(--ms-grad), "opsz" var(--ms-opsz);
   display: inline-block;
   width: 16px;
   height: 16px;
   margin-right: 0.5rem;
-  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' enable-background='new 0 0 24 24' height='24px' viewBox='0 0 24 24' width='24px' fill='%23FFD700'%3E%3Cg%3E%3Cpath d='M0 0h24v24H0V0z' fill='none'/%3E%3Cpath d='M0 0h24v24H0V0z' fill='none'/%3E%3C/g%3E%3Cg%3E%3Cpath d='m12 17.27 4.15 2.51c.76.46 1.69-.22 1.49-1.08l-1.1-4.72 3.67-3.18c.67-.58.31-1.68-.57-1.75l-4.83-.41-1.89-4.46c-.34-.81-1.5-.81-1.84 0L9.19 8.63l-4.83.41c-.88.07-1.24 1.17-.57 1.75l3.67 3.18-1.1 4.72c-.2.86.73 1.54 1.49 1.08l4.15-2.5z'/%3E%3C/g%3E%3C/svg%3E");
-  background-size: contain;
-  background-repeat: no-repeat;
-  background-position: center;
+  color: #FFD700;
+  font-size: 16px;
   vertical-align: middle;
+  transform: translateY(-4px);
 }
 
 .no-models-message {

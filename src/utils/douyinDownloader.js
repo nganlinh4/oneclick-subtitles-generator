@@ -94,12 +94,14 @@ export const startDouyinVideoDownload = (douyinUrl, forceRefresh = false) => {
 
         console.error(`Douyin download error: ${errorMessage}`, errorDetails);
 
-        // Update queue with error information
-        downloadQueue[videoId].status = 'error';
-        downloadQueue[videoId].error = `${errorMessage}${errorDetails ? ': ' + errorDetails : ''}`;
-        downloadQueue[videoId].progress = 0;
+        // Update queue with error information if it still exists
+        if (downloadQueue[videoId]) {
+          downloadQueue[videoId].status = 'error';
+          downloadQueue[videoId].error = `${errorMessage}${errorDetails ? ': ' + errorDetails : ''}`;
+          downloadQueue[videoId].progress = 0;
+        }
 
-        throw new Error(downloadQueue[videoId].error);
+        throw new Error(`${errorMessage}${errorDetails ? ': ' + errorDetails : ''}`);
       }
 
       // Handle successful response
@@ -112,15 +114,20 @@ export const startDouyinVideoDownload = (douyinUrl, forceRefresh = false) => {
       } else {
         // This should not happen with the current API, but handle it just in case
         const errorMessage = responseData.error || 'Unknown download error';
-        downloadQueue[videoId].status = 'error';
-        downloadQueue[videoId].error = errorMessage;
-        downloadQueue[videoId].progress = 0;
+        if (downloadQueue[videoId]) {
+          downloadQueue[videoId].status = 'error';
+          downloadQueue[videoId].error = errorMessage;
+          downloadQueue[videoId].progress = 0;
+        }
         throw new Error(errorMessage);
       }
     } catch (error) {
       console.error('Error downloading Douyin video:', error);
-      downloadQueue[videoId].status = 'error';
-      downloadQueue[videoId].error = error.message;
+      // Update queue with error information if it still exists
+      if (downloadQueue[videoId]) {
+        downloadQueue[videoId].status = 'error';
+        downloadQueue[videoId].error = error.message;
+      }
     }
   })();
 
@@ -301,10 +308,10 @@ export const downloadDouyinVideo = async (douyinUrl, onProgress = () => {}, forc
 /**
  * Cancels an ongoing Douyin video download
  * @param {string} videoId - The video ID to cancel
- * @returns {boolean} - Success status
+ * @returns {Promise<boolean>} - Success status
  */
-export const cancelDouyinVideoDownload = (videoId) => {
-  if (!videoId || !downloadQueue[videoId]) {
+export const cancelDouyinVideoDownload = async (videoId) => {
+  if (!videoId) {
     return false;
   }
 
@@ -314,21 +321,40 @@ export const cancelDouyinVideoDownload = (videoId) => {
     delete activeDownloadIntervals[videoId];
   }
 
-  // Remove from download queue
-  delete downloadQueue[videoId];
+  // Update status to cancelled if download exists in queue
+  if (downloadQueue[videoId]) {
+    downloadQueue[videoId].status = 'cancelled';
+    downloadQueue[videoId].progress = 0;
+  }
 
-  // Try to cancel on the server side
-  fetch(`${SERVER_URL}/api/cancel-download`, {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-    },
-    body: JSON.stringify({ videoId }),
-  }).catch(error => {
+  // Try to cancel on the server side using the correct endpoint
+  try {
+    const response = await fetch(`${SERVER_URL}/api/cancel-douyin-download/${videoId}`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+    });
+
+    const result = await response.json();
+    console.log('Server cancel response:', result);
+
+    // Remove from download queue after successful server cancellation
+    if (downloadQueue[videoId]) {
+      delete downloadQueue[videoId];
+    }
+
+    return response.ok && result.success;
+  } catch (error) {
     console.warn('Error cancelling download on server:', error);
-  });
 
-  return true;
+    // Still remove from local queue even if server call fails
+    if (downloadQueue[videoId]) {
+      delete downloadQueue[videoId];
+    }
+
+    return false;
+  }
 };
 
 /**

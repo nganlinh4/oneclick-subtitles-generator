@@ -231,7 +231,7 @@ const CacheTab = () => {
             disabled={loadingCacheInfo}
             title={t('settings.refreshCacheTooltip', 'Refresh cache information')}
           >
-            <span className="refresh-icon">↻</span>
+            <span className="material-symbols-rounded refresh-icon">refresh</span>
             {t('settings.refresh', 'Refresh')}
           </button>
         </div>
@@ -287,9 +287,7 @@ const CacheTab = () => {
                       disabled={clearingCache}
                       title={t('settings.clearVideos', 'Clear Videos')}
                     >
-                      <svg xmlns="http://www.w3.org/2000/svg" height="16px" viewBox="0 -960 960 960" width="16px" fill="currentColor">
-                        <path d="M480-392 300-212q-18 18-44 18t-44-18q-18-18-18-44t18-44l180-180-180-180q-18-18-18-44t18-44q18-18 44-18t44 18l180 180 180-180q18-18 44-18t44 18q18 18 18 44t-18 44L568-480l180 180q18 18 18 44t-18 44q-18 18-44 18t-44-18L480-392Z"/>
-                      </svg>
+                      <span className="material-symbols-rounded" style={{ fontSize: 16 }}>close</span>
                     </button>
                   )}
                 </div>
@@ -309,9 +307,7 @@ const CacheTab = () => {
                       disabled={clearingCache}
                       title={t('settings.clearSubtitles', 'Clear Subtitles')}
                     >
-                      <svg xmlns="http://www.w3.org/2000/svg" height="16px" viewBox="0 -960 960 960" width="16px" fill="currentColor">
-                        <path d="M480-392 300-212q-18 18-44 18t-44-18q-18-18-18-44t18-44l180-180-180-180q-18-18-18-44t18-44q18-18 44-18t44 18l180 180 180-180q18-18 44-18t44 18q18 18 18 44t-18 44L568-480l180 180q18 18 18 44t-18 44q-18 18-44 18t-44-18L480-392Z"/>
-                      </svg>
+                      <span className="material-symbols-rounded" style={{ fontSize: 16 }}>close</span>
                     </button>
                   )}
                 </div>
@@ -331,9 +327,7 @@ const CacheTab = () => {
                       disabled={clearingCache}
                       title={t('settings.clearUserSubtitles', 'Clear User Subtitles')}
                     >
-                      <svg xmlns="http://www.w3.org/2000/svg" height="16px" viewBox="0 -960 960 960" width="16px" fill="currentColor">
-                        <path d="M480-392 300-212q-18 18-44 18t-44-18q-18-18-18-44t18-44l180-180-180-180q-18-18-18-44t18-44q18-18 44-18t44 18l180 180 180-180q18-18 44-18t44 18q18 18 18 44t-18 44L568-480l180 180q18 18 18 44t-18 44q-18 18-44 18t-44-18L480-392Z"/>
-                      </svg>
+                      <span className="material-symbols-rounded" style={{ fontSize: 16 }}>close</span>
                     </button>
                   )}
                 </div>
@@ -353,9 +347,7 @@ const CacheTab = () => {
                       disabled={clearingCache}
                       title={t('settings.clearRules', 'Clear Transcription Rules')}
                     >
-                      <svg xmlns="http://www.w3.org/2000/svg" height="16px" viewBox="0 -960 960 960" width="16px" fill="currentColor">
-                        <path d="M480-392 300-212q-18 18-44 18t-44-18q-18-18-18-44t18-44l180-180-180-180q-18-18-18-44t18-44q18-18 44-18t44 18l180 180 180-180q18-18 44-18t44 18q18 18 18 44t-18 44L568-480l180 180q18 18 18 44t-18 44q-18 18-44 18t-44-18L480-392Z"/>
-                      </svg>
+                      <span className="material-symbols-rounded" style={{ fontSize: 16 }}>close</span>
                     </button>
                   )}
                 </div>
@@ -378,9 +370,7 @@ const CacheTab = () => {
                       disabled={clearingCache}
                       title={t('settings.clearLyrics', 'Clear Lyrics')}
                     >
-                      <svg xmlns="http://www.w3.org/2000/svg" height="16px" viewBox="0 -960 960 960" width="16px" fill="currentColor">
-                        <path d="M480-392 300-212q-18 18-44 18t-44-18q-18-18-18-44t18-44l180-180-180-180q-18-18-18-44t18-44q18-18 44-18t44 18l180 180 180-180q18-18 44-18t44 18q18 18 18 44t-18 44L568-480l180 180q18 18 18 44t-18 44q-18 18-44 18t-44-18L480-392Z"/>
-                      </svg>
+                      <span className="material-symbols-rounded" style={{ fontSize: 16 }}>close</span>
                     </button>
                   )}
                 </div>
@@ -400,9 +390,7 @@ const CacheTab = () => {
                       disabled={clearingCache}
                       title={t('settings.clearAlbumArt', 'Clear Album Art')}
                     >
-                      <svg xmlns="http://www.w3.org/2000/svg" height="16px" viewBox="0 -960 960 960" width="16px" fill="currentColor">
-                        <path d="M480-392 300-212q-18 18-44 18t-44-18q-18-18-18-44t18-44l180-180-180-180q-18-18-18-44t18-44q18-18 44-18t44 18l180 180 180-180q18-18 44-18t44 18q18 18 18 44t-18 44L568-480l180 180q18 18 18 44t-18 44q-18 18-44 18t-44-18L480-392Z"/>
-                      </svg>
+                      <span className="material-symbols-rounded" style={{ fontSize: 16 }}>close</span>
                     </button>
                   )}
                 </div>
@@ -422,9 +410,7 @@ const CacheTab = () => {
                       disabled={clearingCache}
                       title={t('settings.clearUploads', 'Clear Uploaded Files')}
                     >
-                      <svg xmlns="http://www.w3.org/2000/svg" height="16px" viewBox="0 -960 960 960" width="16px" fill="currentColor">
-                        <path d="M480-392 300-212q-18 18-44 18t-44-18q-18-18-18-44t18-44l180-180-180-180q-18-18-18-44t18-44q18-18 44-18t44 18l180 180 180-180q18-18 44-18t44 18q18 18 18 44t-18 44L568-480l180 180q18 18 18 44t-18 44q-18 18-44 18t-44-18L480-392Z"/>
-                      </svg>
+                      <span className="material-symbols-rounded" style={{ fontSize: 16 }}>close</span>
                     </button>
                   )}
                 </div>
@@ -444,9 +430,7 @@ const CacheTab = () => {
                       disabled={clearingCache}
                       title={t('settings.clearOutput', 'Clear Generated Videos')}
                     >
-                      <svg xmlns="http://www.w3.org/2000/svg" height="16px" viewBox="0 -960 960 960" width="16px" fill="currentColor">
-                        <path d="M480-392 300-212q-18 18-44 18t-44-18q-18-18-18-44t18-44l180-180-180-180q-18-18-18-44t18-44q18-18 44-18t44 18l180 180 180-180q18-18 44-18t44 18q18 18 18 44t-18 44L568-480l180 180q18 18 18 44t-18 44q-18 18-44 18t-44-18L480-392Z"/>
-                      </svg>
+                      <span className="material-symbols-rounded" style={{ fontSize: 16 }}>close</span>
                     </button>
                   )}
                 </div>
@@ -469,9 +453,7 @@ const CacheTab = () => {
                       disabled={clearingCache}
                       title={t('settings.clearNarrationReference', 'Clear Narration Reference Audio')}
                     >
-                      <svg xmlns="http://www.w3.org/2000/svg" height="16px" viewBox="0 -960 960 960" width="16px" fill="currentColor">
-                        <path d="M480-392 300-212q-18 18-44 18t-44-18q-18-18-18-44t18-44l180-180-180-180q-18-18-18-44t18-44q18-18 44-18t44 18l180 180 180-180q18-18 44-18t44 18q18 18 18 44t-18 44L568-480l180 180q18 18 18 44t-18 44q-18 18-44 18t-44-18L480-392Z"/>
-                      </svg>
+                      <span className="material-symbols-rounded" style={{ fontSize: 16 }}>close</span>
                     </button>
                   )}
                 </div>
@@ -494,9 +476,7 @@ const CacheTab = () => {
                       disabled={clearingCache}
                       title={t('settings.clearNarrationOutput', 'Clear Narration Output Audio')}
                     >
-                      <svg xmlns="http://www.w3.org/2000/svg" height="16px" viewBox="0 -960 960 960" width="16px" fill="currentColor">
-                        <path d="M480-392 300-212q-18 18-44 18t-44-18q-18-18-18-44t18-44l180-180-180-180q-18-18-18-44t18-44q18-18 44-18t44 18l180 180 180-180q18-18 44-18t44 18q18 18 18 44t-18 44L568-480l180 180q18 18 18 44t-18 44q-18 18-44 18t-44-18L480-392Z"/>
-                      </svg>
+                      <span className="material-symbols-rounded" style={{ fontSize: 16 }}>close</span>
                     </button>
                   )}
                 </div>
@@ -516,9 +496,7 @@ const CacheTab = () => {
                       disabled={clearingCache}
                       title={t('settings.clearVideoRendered', 'Clear Rendered Videos')}
                     >
-                      <svg xmlns="http://www.w3.org/2000/svg" height="16px" viewBox="0 -960 960 960" width="16px" fill="currentColor">
-                        <path d="M480-392 300-212q-18 18-44 18t-44-18q-18-18-18-44t18-44l180-180-180-180q-18-18-18-44t18-44q18-18 44-18t44 18l180 180 180-180q18-18 44-18t44 18q18 18 18 44t-18 44L568-480l180 180q18 18 18 44t-18 44q-18 18-44 18t-44-18L480-392Z"/>
-                      </svg>
+                      <span className="material-symbols-rounded" style={{ fontSize: 16 }}>close</span>
                     </button>
                   )}
                 </div>
@@ -538,9 +516,7 @@ const CacheTab = () => {
                       disabled={clearingCache}
                       title={t('settings.clearVideoTemp', 'Clear Temporary Videos')}
                     >
-                      <svg xmlns="http://www.w3.org/2000/svg" height="16px" viewBox="0 -960 960 960" width="16px" fill="currentColor">
-                        <path d="M480-392 300-212q-18 18-44 18t-44-18q-18-18-18-44t18-44l180-180-180-180q-18-18-18-44t18-44q18-18 44-18t44 18l180 180 180-180q18-18 44-18t44 18q18 18 18 44t-18 44L568-480l180 180q18 18 18 44t-18 44q-18 18-44 18t-44-18L480-392Z"/>
-                      </svg>
+                      <span className="material-symbols-rounded" style={{ fontSize: 16 }}>close</span>
                     </button>
                   )}
                 </div>
@@ -563,9 +539,7 @@ const CacheTab = () => {
                       disabled={clearingCache}
                       title={t('settings.clearVideoAlbumArt', 'Clear Video Album Art')}
                     >
-                      <svg xmlns="http://www.w3.org/2000/svg" height="16px" viewBox="0 -960 960 960" width="16px" fill="currentColor">
-                        <path d="M480-392 300-212q-18 18-44 18t-44-18q-18-18-18-44t18-44l180-180-180-180q-18-18-18-44t18-44q18-18 44-18t44 18l180 180 180-180q18-18 44-18t44 18q18 18 18 44t-18 44L568-480l180 180q18 18 18 44t-18 44q-18 18-44 18t-44-18L480-392Z"/>
-                      </svg>
+                      <span className="material-symbols-rounded" style={{ fontSize: 16 }}>close</span>
                     </button>
                   )}
                 </div>
@@ -585,9 +559,7 @@ const CacheTab = () => {
                       disabled={clearingCache}
                       title={t('settings.clearVideoRendererUploads', 'Clear Video Renderer Uploads')}
                     >
-                      <svg xmlns="http://www.w3.org/2000/svg" height="16px" viewBox="0 -960 960 960" width="16px" fill="currentColor">
-                        <path d="M480-392 300-212q-18 18-44 18t-44-18q-18-18-18-44t18-44l180-180-180-180q-18-18-18-44t18-44q18-18 44-18t44 18l180 180 180-180q18-18 44-18t44 18q18 18 18 44t-18 44L568-480l180 180q18 18 18 44t-18 44q-18 18-44 18t-44-18L480-392Z"/>
-                      </svg>
+                      <span className="material-symbols-rounded" style={{ fontSize: 16 }}>close</span>
                     </button>
                   )}
                 </div>
@@ -607,9 +579,7 @@ const CacheTab = () => {
                       disabled={clearingCache}
                       title={t('settings.clearVideoRendererOutput', 'Clear Video Renderer Output')}
                     >
-                      <svg xmlns="http://www.w3.org/2000/svg" height="16px" viewBox="0 -960 960 960" width="16px" fill="currentColor">
-                        <path d="M480-392 300-212q-18 18-44 18t-44-18q-18-18-18-44t18-44l180-180-180-180q-18-18-18-44t18-44q18-18 44-18t44 18l180 180 180-180q18-18 44-18t44 18q18 18 18 44t-18 44L568-480l180 180q18 18 18 44t-18 44q-18 18-44 18t-44-18L480-392Z"/>
-                      </svg>
+                      <span className="material-symbols-rounded" style={{ fontSize: 16 }}>close</span>
                     </button>
                   )}
                 </div>

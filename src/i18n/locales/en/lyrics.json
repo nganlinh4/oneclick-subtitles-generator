@@ -18,5 +18,6 @@
   "mergeAbove": "Merge with above",
   "mergeBelow": "Merge with below",
   "addFirst": "Add first subtitle",
+  "editPlaceholder": "Edit subtitle text",
   "emptyTimingInstructions": "There are {{count}} subtitle lines. Drag across the subtitles editing area (the one with the right-swipe hand animation) to auto-create subtitles with AI. You can drag from start to end for the whole video or just a segment if you prefer."
 }

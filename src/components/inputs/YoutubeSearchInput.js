@@ -1,6 +1,5 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { useTranslation } from 'react-i18next';
-import { FiClock, FiSearch, FiX } from 'react-icons/fi';
 import { searchYouTubeVideos, isOAuthEnabled, hasValidTokens } from '../../services/youtubeApiService';
 import { addSearchQueryToHistory, getSearchQueryHistory, clearSearchQueryHistory, formatTimestamp } from '../../utils/historyUtils';
 
@@ -211,7 +210,7 @@ const YoutubeSearchInput = ({ apiKeysSet = { youtube: false }, selectedVideo, se
     <div className={`youtube-search-input ${className || ''}`}>
       <div className="search-field-container">
         <div className="search-input-wrapper">
-          <FiSearch className="search-icon" size={18} />
+          <span className="material-symbols-rounded search-icon" style={{ fontSize: 18 }}>search</span>
           <input
             type="text"
             id="youtube-search-input"
@@ -231,7 +230,7 @@ const YoutubeSearchInput = ({ apiKeysSet = { youtube: false }, selectedVideo, se
               aria-label={t('common.history', 'History')}
               title={t('common.history', 'History')}
             >
-              <FiClock size={18} />
+              <span className="material-symbols-rounded" style={{ fontSize: 18 }}>schedule</span>
             </button>
           )}
 
@@ -241,7 +240,7 @@ const YoutubeSearchInput = ({ apiKeysSet = { youtube: false }, selectedVideo, se
               onClick={() => setSearchQuery('')}
               aria-label="Clear search"
             >
-              <FiX size={18} />
+              <span className="material-symbols-rounded" style={{ fontSize: 18 }}>close</span>
             </button>
           )}
 
@@ -264,7 +263,7 @@ const YoutubeSearchInput = ({ apiKeysSet = { youtube: false }, selectedVideo, se
                     className="history-query-item"
                     onClick={() => handleSelectFromHistory(item.query)}
                   >
-                    <FiSearch className="history-query-icon" size={16} />
+                    <span className="material-symbols-rounded history-query-icon" style={{ fontSize: 16 }}>search</span>
                     <span className="history-query-text">{item.query}</span>
                     <span className="history-query-time">{formatTimestamp(item.timestamp)}</span>
                   </div>

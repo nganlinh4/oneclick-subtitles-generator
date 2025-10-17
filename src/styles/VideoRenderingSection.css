@@ -143,19 +143,6 @@
   animation: slideUp var(--md-duration-medium3) var(--md-easing-emphasized-decelerate);
 }
 
-/* Content - matching background-generator-content */
-.video-rendering-content,
-.music-generator-content {
-  display: grid;
-  grid-template-columns: 1fr;
-  gap: 20px;
-  background-color: var(--md-surface-1);
-  animation: expandContent var(--md-duration-medium4) var(--md-easing-emphasized);
-  transform-origin: top center;
-  transition: opacity var(--md-duration-medium3) var(--md-easing-emphasized),
-              transform var(--md-duration-medium3) var(--md-easing-emphasized);
-}
-
 /* Layout rows - matching translation section pattern */
 .input-selection-row {
   display: grid;
@@ -519,12 +506,6 @@
   .video-rendering-section,
   .music-generator-section {
     margin: 20px 16px 40px 16px;
-  }
-
-  .video-rendering-content,
-  .music-generator-content {
-    padding: 16px;
-    gap: 16px;
   }
 
   /* Stack input selection row vertically on mobile */

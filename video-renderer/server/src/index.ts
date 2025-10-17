@@ -307,7 +307,7 @@ app.post('/render', async (req, res) => {
     } else {
       // --- STANDARD AUDIO-ONLY PIPELINE ---
       const durationInSeconds = lyrics.length > 0 ? Math.max(...lyrics.map((l: any) => l.end)) + 2 : 8;
-      fps = metadata.frameRate || 60;
+      fps = metadata.frameRate || 30;
       durationInFrames = Math.ceil(durationInSeconds * fps);
       width = 1920;
       height = 1080;

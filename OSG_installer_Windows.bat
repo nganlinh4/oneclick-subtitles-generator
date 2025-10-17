@@ -9,6 +9,7 @@ SET "SCRIPT_DIR=%~dp0"
 SET "PROJECT_PATH=%SCRIPT_DIR%%PROJECT_FOLDER_NAME%"
 IF "%PROJECT_PATH:~-1%"=="\" SET "PROJECT_PATH=%PROJECT_PATH:~0,-1%"
 SET "LAST_CHOICE_FILE=%SCRIPT_DIR%last_choice.tmp"
+SET "PREREQ_FLAG_FILE=%SCRIPT_DIR%prereqs_installed.flag"
 
 :: --- Fixed Settings (Bilingual Menu) ---
 SET "MENU_LABEL=MainMenuVI"
@@ -18,7 +19,7 @@ SET "TITLE_TEXT=OneClick Subtitle Generator Manager (Quan Ly Trinh Tao Phu De On
 TITLE %TITLE_TEXT%
 
 :: --- Check for Administrator Privileges ---
-powershell -NoProfile -ExecutionPolicy Bypass -Command "Write-Host '[?] Checking administrator privileges (Kiem tra quyen quan tri)...' -ForegroundColor Yellow; if (-NOT ([Security.Principal.WindowsPrincipal] [Security.Principal.WindowsIdentity]::GetCurrent()).IsInRole([Security.Principal.WindowsBuiltInRole] 'Administrator')) { Write-Host ''; Write-Host ([char]0x2554 + ([char]0x2550).ToString() * 77 + [char]0x2557) -ForegroundColor Cyan; Write-Host ([char]0x2551 + '                    [ERROR] Administrator privileges required (Can quyen quan tri).               ' + [char]0x2551) -ForegroundColor Red; Write-Host ([char]0x2551 + '                   [INFO] Requesting administrator privileges (Yeu cau quyen quan tri)...             ' + [char]0x2551) -ForegroundColor Blue; Write-Host ([char]0x255A + ([char]0x2550).ToString() * 77 + [char]0x255D) -ForegroundColor Cyan; Start-Process '%~f0' -Verb RunAs; exit 1 } else { Write-Host '[OK] Administrator privileges confirmed (Da xac nhan quyen quan tri).' -ForegroundColor Green; Write-Host '' }"
+powershell -NoProfile -ExecutionPolicy Bypass -Command "Write-Host '[?] Checking administrator privileges (Kiem tra quyen quan tri)...' -ForegroundColor Yellow; if (-NOT ([Security.Principal.WindowsPrincipal] [Security.Principal.WindowsIdentity]::GetCurrent()).IsInRole([Security.Principal.WindowsBuiltInRole] 'Administrator')) { Write-Host ''; Write-Host '[ERROR] Administrator privileges required (Can quyen quan tri).' -ForegroundColor Red; Write-Host '[INFO] Requesting administrator privileges (Yeu cau quyen quan tri)...' -ForegroundColor Blue; Write-Host ''; Start-Process '%~f0' -Verb RunAs; exit 1 } else { Write-Host '[OK] Administrator privileges confirmed (Da xac nhan quyen quan tri).' -ForegroundColor Green; Write-Host '' }"
 IF %ERRORLEVEL% NEQ 0 EXIT /B
 
 :: Check if we have a saved choice from previous error
@@ -241,26 +242,23 @@ ECHO Update check completed.
 POPD
 
 ECHO.
-SET /P "INSTALL_DEPS=Run 'npm install' now? (c/k): "
-IF /I "%INSTALL_DEPS%"=="c" (
-    ECHO Changing directory to "%PROJECT_PATH%"
-    PUSHD "%PROJECT_PATH%"
-    IF %ERRORLEVEL% NEQ 0 (
-        ECHO ERROR: Failed to change directory for npm install.
-        PAUSE
-        GOTO MainMenuVI
-    )
-    ECHO Configuring npm workspaces...
-    CALL node setup-workspaces.js
-    ECHO Running 'npm install'...
-    CALL npm install
-     IF %ERRORLEVEL% NEQ 0 (
-        ECHO WARNING: 'npm install' encountered errors. Check messages above.
-    ) ELSE (
-        ECHO 'npm install' completed.
-    )
-    POPD
+ECHO Changing directory to "%PROJECT_PATH%"
+PUSHD "%PROJECT_PATH%"
+IF %ERRORLEVEL% NEQ 0 (
+    ECHO ERROR: Failed to change directory for npm install.
+    PAUSE
+    GOTO MainMenuVI
 )
+ECHO Configuring npm workspaces...
+CALL node setup-workspaces.js
+ECHO Running 'npm install'...
+CALL npm install
+ IF %ERRORLEVEL% NEQ 0 (
+    ECHO WARNING: 'npm install' encountered errors. Check messages above.
+) ELSE (
+    ECHO 'npm install' completed.
+)
+POPD
 
 PAUSE
 GOTO MainMenuVI
@@ -368,247 +366,66 @@ REM ============================================================================
 ECHO.
 powershell -NoProfile -ExecutionPolicy Bypass -Command "Write-Host '--- Checking System Requirements ---' -ForegroundColor White -BackgroundColor DarkMagenta"
 
-powershell -NoProfile -ExecutionPolicy Bypass -Command "Write-Host '[SETUP] Refreshing environment variables (Cap nhat bien moi truong)...' -ForegroundColor Cyan"
-CALL :RefreshEnvironment
-IF %ERRORLEVEL% NEQ 0 (
-    powershell -NoProfile -ExecutionPolicy Bypass -Command "Write-Host '[ERROR] Failed to refresh environment variables (Loi cap nhat bien moi truong). Continuing anyway...' -ForegroundColor Red"
+:: --- STATE CHECK: The Core of the Fix ---
+IF EXIST "%PREREQ_FLAG_FILE%" (
+    powershell -NoProfile -ExecutionPolicy Bypass -Command "Write-Host '[SKIP] Prerequisites were installed on the previous run. Continuing installation...' -ForegroundColor Blue"
+    DEL "%PREREQ_FLAG_FILE%" >nul 2>&1
+    GOTO PrerequisitesVerified
 )
 
-powershell -NoProfile -ExecutionPolicy Bypass -Command "Write-Host '[SETUP] Configuring PowerShell security settings (Cau hinh cai dat bao mat PowerShell)...' -ForegroundColor Cyan"
-powershell -NoProfile -ExecutionPolicy Bypass -Command "[System.Net.ServicePointManager]::SecurityProtocol = [System.Net.ServicePointManager]::SecurityProtocol -bor 3072;" > nul
-IF %ERRORLEVEL% NEQ 0 (
-    powershell -NoProfile -ExecutionPolicy Bypass -Command "Write-Host '[RESTART] Restarting to refresh environment (Khoi dong lai de cap nhat moi truong)...' -ForegroundColor Blue"
-    EXIT /B 1
-)
-
-
-
-:: Check all prerequisites first and collect missing ones
-SET "NEEDS_RESTART=0"
+:: --- PHASE 1: DETECT MISSING TOOLS ---
 SET "MISSING_TOOLS="
 
-powershell -NoProfile -ExecutionPolicy Bypass -Command "Write-Host '[?] Checking for Git (Kiem tra Git)...' -ForegroundColor Yellow"
-REM Primary detection via PATH
-WHERE git >nul 2>nul
-IF %ERRORLEVEL% EQU 0 (
-    powershell -NoProfile -ExecutionPolicy Bypass -Command "Write-Host '[OK] Git already installed (Git da duoc cai dat).' -ForegroundColor Green"
-) ELSE (
-    REM Fallback: check registry InstallPath and common locations
-    SET "GIT_INSTALL_DIR="
-    FOR /F "usebackq delims=" %%i IN (`powershell -NoProfile -ExecutionPolicy Bypass -Command "try { (Get-ItemProperty -Path 'HKLM:\SOFTWARE\GitForWindows').InstallPath } catch { '' }"`) DO SET "GIT_INSTALL_DIR=%%i"
-    IF DEFINED GIT_INSTALL_DIR (
-        IF EXIST "!GIT_INSTALL_DIR!\cmd\git.exe" (
-            SET "PATH=%PATH%;!GIT_INSTALL_DIR!\cmd"
-            powershell -NoProfile -ExecutionPolicy Bypass -Command "Write-Host '[OK] Git installed (detected via registry) (Git da duoc cai dat (phat hien qua registry)).' -ForegroundColor Green"
-        ) ELSE (
-            SET "NEEDS_RESTART=1"
-            SET "MISSING_TOOLS=%MISSING_TOOLS% Git"
-            powershell -NoProfile -ExecutionPolicy Bypass -Command "Write-Host '[MISSING] Git not found - will be installed (Git khong tim thay - se duoc cai dat).' -ForegroundColor Yellow"
-        )
-    ) ELSE (
-        IF EXIST "%ProgramFiles%\Git\cmd\git.exe" (
-            SET "PATH=%PATH%;%ProgramFiles%\Git\cmd"
-            powershell -NoProfile -ExecutionPolicy Bypass -Command "Write-Host '[OK] Git installed (found in Program Files) (Git da duoc cai dat (tim thay trong Program Files)).' -ForegroundColor Green"
-        ) ELSE (
-            SET "NEEDS_RESTART=1"
-            SET "MISSING_TOOLS=%MISSING_TOOLS% Git"
-            powershell -NoProfile -ExecutionPolicy Bypass -Command "Write-Host '[MISSING] Git not found - will be installed (Git khong tim thay - se duoc cai dat).' -ForegroundColor Yellow"
-        )
-    )
-)
+powershell -NoProfile -ExecutionPolicy Bypass -Command "Write-Host '[?] Checking for Git...' -ForegroundColor Yellow"
+git --version >nul 2>&1
+IF %ERRORLEVEL% NEQ 0 SET "MISSING_TOOLS=%MISSING_TOOLS% Git"
 
-powershell -NoProfile -ExecutionPolicy Bypass -Command "Write-Host '[?] Checking for Node.js (Kiem tra Node.js)...' -ForegroundColor Yellow"
-WHERE node >nul 2>nul
-IF %ERRORLEVEL% NEQ 0 (
-    SET "NEEDS_RESTART=1"
-    SET "MISSING_TOOLS=%MISSING_TOOLS% Node.js"
-    powershell -NoProfile -ExecutionPolicy Bypass -Command "Write-Host '[MISSING] Node.js not found - will be installed (Node.js khong tim thay - se duoc cai dat).' -ForegroundColor Yellow"
-) ELSE (
-    powershell -NoProfile -ExecutionPolicy Bypass -Command "Write-Host '[OK] Node.js already installed (Node.js da duoc cai dat).' -ForegroundColor Green"
-)
+powershell -NoProfile -ExecutionPolicy Bypass -Command "Write-Host '[?] Checking for Node.js...' -ForegroundColor Yellow"
+node --version >nul 2>&1
+IF %ERRORLEVEL% NEQ 0 SET "MISSING_TOOLS=%MISSING_TOOLS% Node.js"
 
-powershell -NoProfile -ExecutionPolicy Bypass -Command "Write-Host '[?] Checking for FFmpeg (Kiem tra FFmpeg)...' -ForegroundColor Yellow"
-REM Robust FFmpeg detection across PATH, WindowsApps alias, common install dirs, and winget registry
-SET "FFMPEG_FOUND=0"
+powershell -NoProfile -ExecutionPolicy Bypass -Command "Write-Host '[?] Checking for FFmpeg...' -ForegroundColor Yellow"
+ffmpeg -version >nul 2>&1
+IF %ERRORLEVEL% NEQ 0 SET "MISSING_TOOLS=%MISSING_TOOLS% FFmpeg"
 
-REM 1) Check via PATH
-WHERE ffmpeg >nul 2>nul
-IF %ERRORLEVEL% EQU 0 SET "FFMPEG_FOUND=1"
+powershell -NoProfile -ExecutionPolicy Bypass -Command "Write-Host '[?] Checking for uv...' -ForegroundColor Yellow"
+uv --version >nul 2>&1
+IF %ERRORLEVEL% NEQ 0 SET "MISSING_TOOLS=%MISSING_TOOLS% uv"
 
-REM 2) Check by invoking directly (in case alias works even if WHERE fails)
-IF "!FFMPEG_FOUND!"=="0" (
-    ffmpeg -version >nul 2>nul
-    IF !ERRORLEVEL! EQU 0 SET "FFMPEG_FOUND=1"
-)
-
-REM 3) Check WindowsApps execution alias created by winget
-IF "!FFMPEG_FOUND!"=="0" IF EXIST "%LOCALAPPDATA%\Microsoft\WindowsApps\ffmpeg.exe" (
-    SET "PATH=%PATH%;%LOCALAPPDATA%\Microsoft\WindowsApps"
-    ffmpeg -version >nul 2>nul
-    IF !ERRORLEVEL! EQU 0 SET "FFMPEG_FOUND=1"
-)
-
-REM 4) Check common classic install locations and add to PATH for this session
-IF "!FFMPEG_FOUND!"=="0" IF EXIST "C:\Program Files\ffmpeg\bin\ffmpeg.exe" (
-    SET "PATH=%PATH%;C:\Program Files\ffmpeg\bin"
-    SET "FFMPEG_FOUND=1"
-)
-IF "!FFMPEG_FOUND!"=="0" IF EXIST "C:\ProgramData\chocolatey\bin\ffmpeg.exe" (
-    SET "PATH=%PATH%;C:\ProgramData\chocolatey\bin"
-    SET "FFMPEG_FOUND=1"
-)
-
-REM 5) Skip winget registry check to avoid potential hangs on some systems
-IF "!FFMPEG_FOUND!"=="1" (
-    powershell -NoProfile -ExecutionPolicy Bypass -Command "Write-Host '[OK] FFmpeg already installed (FFmpeg da duoc cai dat).' -ForegroundColor Green"
-) ELSE (
-    SET "NEEDS_RESTART=1"
-    SET "MISSING_TOOLS=%MISSING_TOOLS% FFmpeg"
-    powershell -NoProfile -ExecutionPolicy Bypass -Command "Write-Host '[MISSING] FFmpeg not found - will be installed (FFmpeg khong tim thay - se duoc cai dat).' -ForegroundColor Yellow"
-)
-
-powershell -NoProfile -ExecutionPolicy Bypass -Command "Write-Host '[?] Checking for uv Python package manager (Kiem tra trinh quan ly goi uv Python)...' -ForegroundColor Yellow"
-WHERE uv >nul 2>nul
-IF %ERRORLEVEL% NEQ 0 (
-    SET "NEEDS_RESTART=1"
-    SET "MISSING_TOOLS=%MISSING_TOOLS% uv"
-    powershell -NoProfile -ExecutionPolicy Bypass -Command "Write-Host '[MISSING] uv not found - will be installed (uv khong tim thay - se duoc cai dat).' -ForegroundColor Yellow"
-) ELSE (
-    powershell -NoProfile -ExecutionPolicy Bypass -Command "Write-Host '[OK] uv already installed (uv da duoc cai dat).' -ForegroundColor Green"
-)
-
-:: Install all missing tools in batch if any are missing
-IF "%NEEDS_RESTART%"=="1" (
+:: --- PHASE 2: INSTALL & RESTART (if needed) ---
+IF NOT "%MISSING_TOOLS%"=="" (
     ECHO.
-    powershell -NoProfile -ExecutionPolicy Bypass -Command "Write-Host '[BATCH INSTALL] Installing missing prerequisites (Cai dat cac tien quyet thieu):%MISSING_TOOLS%' -ForegroundColor Cyan"
+    powershell -NoProfile -ExecutionPolicy Bypass -Command "Write-Host '[INSTALL] The following are missing and will be installed:!MISSING_TOOLS!' -ForegroundColor Cyan"
+    ECHO.
 
-    :: Install Git if it was marked as missing
-    IF "!MISSING_TOOLS!" NEQ "!MISSING_TOOLS: Git=!" (
-        powershell -NoProfile -ExecutionPolicy Bypass -Command "Write-Host '[SETUP] Installing Git version control (Cai dat kiem soat phien ban Git)...' -ForegroundColor Cyan"
-        winget install --id Git.Git -e --source winget
-        SET "GIT_WINGET_EXIT=!ERRORLEVEL!"
-        REM Regardless of winget exit code, verify availability
-        WHERE git >nul 2>nul
-        IF !ERRORLEVEL! EQU 0 (
-            powershell -NoProfile -ExecutionPolicy Bypass -Command "Write-Host '[OK] Git installed and available on PATH (Git da duoc cai dat va san sang tren PATH).' -ForegroundColor Green"
-        ) ELSE (
-            SET "GIT_INSTALL_DIR="
-            FOR /F "usebackq delims=" %%i IN (`powershell -NoProfile -ExecutionPolicy Bypass -Command "try { (Get-ItemProperty -Path 'HKLM:\SOFTWARE\GitForWindows').InstallPath } catch { '' }"`) DO SET "GIT_INSTALL_DIR=%%i"
-            IF DEFINED GIT_INSTALL_DIR IF EXIST "!GIT_INSTALL_DIR!\cmd\git.exe" (
-                SET "PATH=%PATH%;!GIT_INSTALL_DIR!\cmd"
-                powershell -NoProfile -ExecutionPolicy Bypass -Command "Write-Host '[OK] Git installed (accessed via registry path) (Git da duoc cai dat, su dung duong dan tu registry).' -ForegroundColor Green"
-            ) ELSE IF EXIST "%ProgramFiles%\Git\cmd\git.exe" (
-                SET "PATH=%PATH%;%ProgramFiles%\Git\cmd"
-                powershell -NoProfile -ExecutionPolicy Bypass -Command "Write-Host '[OK] Git installed (found in Program Files) (Git da duoc cai dat (tim thay trong Program Files)).' -ForegroundColor Green"
-            ) ELSE (
-                powershell -NoProfile -ExecutionPolicy Bypass -Command "Write-Host '[ERROR] Git installation failed and git not found (Cai dat Git that bai va khong tim thay git).' -ForegroundColor Red"
-            )
-        )
-    )
-
-    :: Install Node.js if it was marked as missing
-    IF "!MISSING_TOOLS!" NEQ "!MISSING_TOOLS: Node.js=!" (
-        powershell -NoProfile -ExecutionPolicy Bypass -Command "Write-Host '[SETUP] Installing Node.js runtime (Cai dat moi truong chay Node.js)...' -ForegroundColor Cyan"
-        winget install --id OpenJS.NodeJS.LTS --exact --accept-package-agreements --accept-source-agreements -s winget
-        IF !ERRORLEVEL! NEQ 0 (
-            powershell -NoProfile -ExecutionPolicy Bypass -Command "Write-Host '[ERROR] Node.js installation failed (Cai dat Node.js that bai).' -ForegroundColor Red"
-        ) ELSE (
-            powershell -NoProfile -ExecutionPolicy Bypass -Command "Write-Host '[OK] Node.js installed successfully (Cai dat Node.js thanh cong).' -ForegroundColor Green"
-        )
-    )
-
-    :: Install FFmpeg if it was marked as missing
-    IF "!MISSING_TOOLS!" NEQ "!MISSING_TOOLS: FFmpeg=!" (
-        powershell -NoProfile -ExecutionPolicy Bypass -Command "Write-Host '[SETUP] Installing FFmpeg media processor (Cai dat bo xu ly da phuong tien FFmpeg)...' -ForegroundColor Cyan"
-        winget install --id Gyan.FFmpeg --accept-package-agreements --accept-source-agreements -s winget
-        IF !ERRORLEVEL! NEQ 0 (
-            powershell -NoProfile -ExecutionPolicy Bypass -Command "Write-Host '[ERROR] FFmpeg installation failed (Cai dat FFmpeg that bai).' -ForegroundColor Red"
-        ) ELSE (
-            powershell -NoProfile -ExecutionPolicy Bypass -Command "Write-Host '[OK] FFmpeg installed successfully (Cai dat FFmpeg thanh cong).' -ForegroundColor Green"
-        )
-    )
-
-    :: Install uv if it was marked as missing
-    IF "!MISSING_TOOLS!" NEQ "!MISSING_TOOLS: uv=!" (
-        powershell -NoProfile -ExecutionPolicy Bypass -Command "Write-Host '[SETUP] Installing uv Python package manager (Cai dat trinh quan ly goi uv Python)...' -ForegroundColor Cyan"
-        powershell -NoProfile -ExecutionPolicy Bypass -Command "irm https://astral.sh/uv/install.ps1 | iex"
-        IF !ERRORLEVEL! NEQ 0 (
-            powershell -NoProfile -ExecutionPolicy Bypass -Command "Write-Host '[ERROR] uv installation failed (Cai dat uv that bai).' -ForegroundColor Red"
-        ) ELSE (
-            powershell -NoProfile -ExecutionPolicy Bypass -Command "Write-Host '[OK] uv installed successfully (Cai dat uv thanh cong).' -ForegroundColor Green"
-        )
-    )
+    :: Call the safe subroutine for each tool
+    CALL :InstallTool "Git"
+    CALL :InstallTool "Node.js"
+    CALL :InstallTool "FFmpeg"
+    CALL :InstallTool "uv"
 
     ECHO.
-    powershell -NoProfile -ExecutionPolicy Bypass -Command "Write-Host '[VERIFY] Checking installation results (Kiem tra ket qua cai dat)...' -ForegroundColor Cyan"
+    powershell -NoProfile -ExecutionPolicy Bypass -Command "Write-Host '[IMPORTANT] Prerequisites installed.' -ForegroundColor Green"
+    
+    powershell -NoProfile -ExecutionPolicy Bypass -Command "Write-Host '[MEMORY] Creating a flag to skip this check on the next run...' -ForegroundColor Blue"
+    ECHO 1 > "%PREREQ_FLAG_FILE%"
 
-    :: Refresh environment and re-check installations
-    CALL :RefreshEnvironment
-
-    :: Re-check each tool that was supposed to be installed
-    IF "!MISSING_TOOLS!" NEQ "!MISSING_TOOLS: Git=!" (
-        WHERE git >nul 2>nul
-        IF !ERRORLEVEL! EQU 0 (
-            powershell -NoProfile -ExecutionPolicy Bypass -Command "Write-Host '[VERIFY] Git installation confirmed (Xac nhan cai dat Git).' -ForegroundColor Green"
-        ) ELSE (
-            SET "GIT_INSTALL_DIR="
-            FOR /F "usebackq delims=" %%i IN (`powershell -NoProfile -ExecutionPolicy Bypass -Command "try { (Get-ItemProperty -Path 'HKLM:\SOFTWARE\GitForWindows').InstallPath } catch { '' }"`) DO SET "GIT_INSTALL_DIR=%%i"
-            IF DEFINED GIT_INSTALL_DIR IF EXIST "!GIT_INSTALL_DIR!\cmd\git.exe" (
-                SET "PATH=%PATH%;!GIT_INSTALL_DIR!\cmd"
-                powershell -NoProfile -ExecutionPolicy Bypass -Command "Write-Host '[VERIFY] Git installation confirmed via registry; PATH updated for this session (Xac nhan cai dat Git qua registry; cap nhat PATH tam thoi).' -ForegroundColor Green"
-            ) ELSE IF EXIST "%ProgramFiles%\Git\cmd\git.exe" (
-                SET "PATH=%PATH%;%ProgramFiles%\Git\cmd"
-                powershell -NoProfile -ExecutionPolicy Bypass -Command "Write-Host '[VERIFY] Git installation confirmed in Program Files; PATH updated for this session (Xac nhan cai dat Git trong Program Files; cap nhat PATH tam thoi).' -ForegroundColor Green"
-            ) ELSE (
-                powershell -NoProfile -ExecutionPolicy Bypass -Command "Write-Host '[WARN] Git may need environment refresh (Git co the can cap nhat moi truong).' -ForegroundColor Yellow"
-            )
-        )
-    )
-
-    IF "!MISSING_TOOLS!" NEQ "!MISSING_TOOLS: Node.js=!" (
-        WHERE node >nul 2>nul
-        IF !ERRORLEVEL! EQU 0 (
-            powershell -NoProfile -ExecutionPolicy Bypass -Command "Write-Host '[VERIFY] Node.js installation confirmed (Xac nhan cai dat Node.js).' -ForegroundColor Green"
-        ) ELSE (
-            powershell -NoProfile -ExecutionPolicy Bypass -Command "Write-Host '[WARN] Node.js may need environment refresh (Node.js co the can cap nhat moi truong).' -ForegroundColor Yellow"
-        )
-    )
-
-    IF "!MISSING_TOOLS!" NEQ "!MISSING_TOOLS: FFmpeg=!" (
-        WHERE ffmpeg >nul 2>nul
-        IF !ERRORLEVEL! EQU 0 (
-            powershell -NoProfile -ExecutionPolicy Bypass -Command "Write-Host '[VERIFY] FFmpeg installation confirmed (Xac nhan cai dat FFmpeg).' -ForegroundColor Green"
-        ) ELSE (
-            powershell -NoProfile -ExecutionPolicy Bypass -Command "Write-Host '[WARN] FFmpeg may need environment refresh (FFmpeg co the can cap nhat moi truong).' -ForegroundColor Yellow"
-        )
-    )
-
-    IF "!MISSING_TOOLS!" NEQ "!MISSING_TOOLS: uv=!" (
-        WHERE uv >nul 2>nul
-        IF !ERRORLEVEL! EQU 0 (
-            powershell -NoProfile -ExecutionPolicy Bypass -Command "Write-Host '[VERIFY] uv installation confirmed (Xac nhan cai dat uv).' -ForegroundColor Green"
-        ) ELSE (
-            powershell -NoProfile -ExecutionPolicy Bypass -Command "Write-Host '[WARN] uv may need environment refresh (uv co the can cap nhat moi truong).' -ForegroundColor Yellow"
-        )
-    )
-
-    ECHO.
-    powershell -NoProfile -ExecutionPolicy Bypass -Command "Write-Host '[BATCH COMPLETE] All missing tools installed (Tat ca cong cu thieu da duoc cai dat).' -ForegroundColor Green"
-    powershell -NoProfile -ExecutionPolicy Bypass -Command "Write-Host '[RESTART] Restarting to refresh environment for all installations (Khoi dong lai de cap nhat moi truong cho tat ca cai dat)...' -ForegroundColor Blue"
+    powershell -NoProfile -ExecutionPolicy Bypass -Command "Write-Host '[RESTART REQUIRED] The script must restart to use the new software. This is normal.' -ForegroundColor Magenta"
+    
     EXIT /B 1
-) ELSE (
-    powershell -NoProfile -ExecutionPolicy Bypass -Command "Write-Host '[OK] All prerequisites already installed (Tat ca tien quyet da duoc cai dat).' -ForegroundColor Green"
 )
-:: *********************************
 
-powershell -NoProfile -ExecutionPolicy Bypass -Command "Write-Host '[SETUP] Finalizing PowerShell configuration (Hoan thien cau hinh PowerShell)...' -ForegroundColor Cyan"
+:PrerequisitesVerified
+powershell -NoProfile -ExecutionPolicy Bypass -Command "Write-Host '[OK] All prerequisites are present.' -ForegroundColor Green"
+
+powershell -NoProfile -ExecutionPolicy Bypass -Command "Write-Host '[SETUP] Finalizing PowerShell configuration...' -ForegroundColor Cyan"
 powershell -NoProfile -Command "Set-ExecutionPolicy -ExecutionPolicy RemoteSigned -Scope CurrentUser -Force" > nul
 
-powershell -NoProfile -ExecutionPolicy Bypass -Command "Write-Host '[SETUP] Optimizing Windows for GPU acceleration (Toi uu hoa Windows cho gia toc GPU)...' -ForegroundColor Cyan"
+powershell -NoProfile -ExecutionPolicy Bypass -Command "Write-Host '[SETUP] Optimizing Windows for GPU acceleration...' -ForegroundColor Cyan"
 CALL :EnableGpuScheduling
 
 ECHO.
-powershell -NoProfile -ExecutionPolicy Bypass -Command "Write-Host '[OK] System requirements check completed (Kiem tra yeu cau he thong hoan tat).' -ForegroundColor Green"
+powershell -NoProfile -ExecutionPolicy Bypass -Command "Write-Host '[OK] System requirements check completed.' -ForegroundColor Green"
 ECHO.
 EXIT /B 0
 :: End of InstallPrerequisites Subroutine
@@ -635,6 +452,10 @@ EXIT /B 0
 
 REM ==============================================================================
 :ErrorOccurred
+ECHO.
+powershell -NoProfile -ExecutionPolicy Bypass -Command "Write-Host '[AUTO-RESTART] An installation step requires an environment refresh.' -ForegroundColor Magenta"
+powershell -NoProfile -ExecutionPolicy Bypass -Command "Write-Host '[INFO] The script will now restart itself to continue the installation...' -ForegroundColor Blue"
+TIMEOUT /T 3 /NOBREAK > NUL
 powershell -NoProfile -ExecutionPolicy Bypass -Command "Start-Process -FilePath '%~f0' -WindowStyle Normal; exit"
 EXIT
 
@@ -728,9 +549,34 @@ EXIT /B 0
 :: End of RefreshEnvironment Subroutine
 
 REM ==============================================================================
+:: Subroutine: Install a single tool if it's in the MISSING_TOOLS list
+:InstallTool
+SET "TOOL_NAME=%~1"
+ECHO "!MISSING_TOOLS!" | FINDSTR /I /C:"%TOOL_NAME%" > NUL
+IF %ERRORLEVEL% NEQ 0 GOTO :EOF
+
+IF /I "%TOOL_NAME%"=="Git" (
+    powershell -NoProfile -ExecutionPolicy Bypass -Command "Write-Host '[SETUP] Installing Git...' -ForegroundColor Cyan"
+    winget install --id Git.Git -e --source winget
+)
+IF /I "%TOOL_NAME%"=="Node.js" (
+    powershell -NoProfile -ExecutionPolicy Bypass -Command "Write-Host '[SETUP] Installing Node.js...' -ForegroundColor Cyan"
+    winget install --id OpenJS.NodeJS.LTS --exact --accept-package-agreements --accept-source-agreements -s winget
+)
+IF /I "%TOOL_NAME%"=="FFmpeg" (
+    powershell -NoProfile -ExecutionPolicy Bypass -Command "Write-Host '[SETUP] Installing FFmpeg...' -ForegroundColor Cyan"
+    winget install --id Gyan.FFmpeg --accept-package-agreements --accept-source-agreements -s winget
+)
+IF /I "%TOOL_NAME%"=="uv" (
+    powershell -NoProfile -ExecutionPolicy Bypass -Command "Write-Host '[SETUP] Installing uv...' -ForegroundColor Cyan"
+    powershell -NoProfile -ExecutionPolicy Bypass -Command "irm https://astral.sh/uv/install.ps1 | iex"
+)
+GOTO :EOF
+REM End of InstallTool Subroutine
+
+REM ==============================================================================
 :ExitScript
-:: Clear saved choice on exit
+:: Clear saved choice and any flags on exit
 IF EXIST "%LAST_CHOICE_FILE%" DEL "%LAST_CHOICE_FILE%" >nul 2>&1
+IF EXIST "%PREREQ_FLAG_FILE%" DEL "%PREREQ_FLAG_FILE%" >nul 2>&1
 EXIT /B 0
-
-

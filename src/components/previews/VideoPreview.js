@@ -1,4 +1,4 @@
-﻿import React, { useRef, useEffect, useState, useCallback } from 'react';
+import React, { useRef, useEffect, useState, useCallback } from 'react';
 import { useTranslation } from 'react-i18next';
 import MaterialSwitch from '../common/MaterialSwitch';
 import LiquidGlass from '../common/LiquidGlass';

@@ -1,8 +1,6 @@
 import React from 'react';
 import { useTranslation } from 'react-i18next';
 import { Alert } from '@mui/material';
-import LanguageIcon from '@mui/icons-material/Language';
-import LinkIcon from '@mui/icons-material/Link';
 import CustomModelDialog from '../CustomModelDialog';
 import LanguageCodeInput from './LanguageCodeInput';
 import CustomScrollbarTextarea from '../../common/CustomScrollbarTextarea';
@@ -87,7 +85,7 @@ const EditModelDialog = ({
 
       <div className="language-codes-section">
         <div className="section-header">
-          <LanguageIcon />
+          <span className="material-symbols-rounded" style={{ fontSize: 24 }}>language</span>
           <h5>{t('settings.modelManagement.languageCodes', 'Supported Languages')}</h5>
         </div>
         <div className="helper-text">
@@ -118,7 +116,7 @@ const EditModelDialog = ({
       {storageInfo && storageInfo.is_symlink && (
         <div className="form-field storage-info">
           <div className="section-header">
-            <LinkIcon />
+            <span className="material-symbols-rounded" style={{ fontSize: 24 }}>link</span>
             <h5>{t('settings.modelManagement.storageInformation')}</h5>
           </div>
 

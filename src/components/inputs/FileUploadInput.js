@@ -412,11 +412,9 @@ const FileUploadInput = ({ uploadedFile, setUploadedFile, onVideoSelect, classNa
         </div>
       ) : !uploadedFile ? (
         <div className="upload-content">
-          <svg className="upload-icon" viewBox="0 0 24 24" width="48" height="48" stroke="currentColor" strokeWidth="1" fill="none">
-            <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path>
-            <polyline points="17 8 12 3 7 8"></polyline>
-            <line x1="12" y1="3" x2="12" y2="15"></line>
-          </svg>
+          <span className="material-symbols-rounded upload-icon" style={{ fontSize: 48, display: 'inline-block' }}>
+            music_video
+          </span>
           <h3>{t('inputMethods.dragDropText')}</h3>
           <p>{t('inputMethods.orText')}</p>
           <p className="browse-text">{t('inputMethods.browse')}</p>
@@ -424,22 +422,13 @@ const FileUploadInput = ({ uploadedFile, setUploadedFile, onVideoSelect, classNa
       ) : (
         <div className="file-info-card">
           {fileInfo && isVideoFile(fileInfo.type, fileInfo.name) ? (
-            <svg className="file-type-icon video" viewBox="0 0 24 24" width="32" height="32" stroke="currentColor" strokeWidth="1.5" fill="none">
-              <rect x="2" y="2" width="20" height="20" rx="2.18" ry="2.18"></rect>
-              <line x1="7" y1="2" x2="7" y2="22"></line>
-              <line x1="17" y1="2" x2="17" y2="22"></line>
-              <line x1="2" y1="12" x2="22" y2="12"></line>
-              <line x1="2" y1="7" x2="7" y2="7"></line>
-              <line x1="2" y1="17" x2="7" y2="17"></line>
-              <line x1="17" y1="17" x2="22" y2="17"></line>
-              <line x1="17" y1="7" x2="22" y2="7"></line>
-            </svg>
+            <span className="material-symbols-rounded file-type-icon video" style={{ fontSize: 32, display: 'inline-block' }}>
+              videocam
+            </span>
           ) : (
-            <svg className="file-type-icon audio" viewBox="0 0 24 24" width="32" height="32" stroke="currentColor" strokeWidth="1.5" fill="none">
-              <path d="M9 18V5l12-2v13"></path>
-              <circle cx="6" cy="18" r="3"></circle>
-              <circle cx="18" cy="16" r="3"></circle>
-            </svg>
+            <span className="material-symbols-rounded file-type-icon audio" style={{ fontSize: 32, display: 'inline-block' }}>
+              audiotrack
+            </span>
           )}
 
           <div className="file-info-content">
@@ -502,10 +491,9 @@ const FileUploadInput = ({ uploadedFile, setUploadedFile, onVideoSelect, classNa
                   }
                 }}
               >
-                <svg viewBox="0 0 24 24" width="16" height="16" stroke="currentColor" strokeWidth="2" fill="none">
-                  <line x1="18" y1="6" x2="6" y2="18"></line>
-                  <line x1="6" y1="6" x2="18" y2="18"></line>
-                </svg>
+                <span className="material-symbols-rounded" style={{ fontSize: 16, display: 'inline-block' }}>
+                  close
+                </span>
                 {t('fileUpload.remove', 'Remove')}
               </button>
             )}
@@ -515,11 +503,9 @@ const FileUploadInput = ({ uploadedFile, setUploadedFile, onVideoSelect, classNa
 
       {error && (
         <div className="error-message">
-          <svg viewBox="0 0 24 24" width="16" height="16" stroke="currentColor" strokeWidth="2" fill="none">
-            <circle cx="12" cy="12" r="10"></circle>
-            <line x1="12" y1="8" x2="12" y2="12"></line>
-            <line x1="12" y1="16" x2="12.01" y2="16"></line>
-          </svg>
+          <span className="material-symbols-rounded" style={{ fontSize: 16, display: 'inline-block' }}>
+            error
+          </span>
           <span>{error}</span>
         </div>
       )}

@@ -1,7 +1,5 @@
 import React from 'react';
 import { useTranslation } from 'react-i18next';
-import CancelIcon from '@mui/icons-material/Cancel';
-import AddIcon from '@mui/icons-material/Add';
 import LoadingIndicator from '../common/LoadingIndicator';
 import { addModelFromHuggingFace, cancelModelDownload } from '../../services/modelService';
 import { invalidateModelsCache } from '../../services/modelAvailabilityService';
@@ -141,43 +139,6 @@ const AVAILABLE_MODELS = [
     "modelUrl": "https://huggingface.co/hotstone228/F5-TTS-Russian/resolve/main/model_last.safetensors",
     "vocabUrl": "https://huggingface.co/hotstone228/F5-TTS-Russian/resolve/main/vocab.txt",
     "config": {
-      "dim": 1024,
-      "depth": 22,
-      "heads": 16,
-      "ff_mult": 2,
-      "text_dim": 512,
-      "text_mask_padding": false,
-      "conv_layers": 4,
-      "pe_attn_head": 1
-    }
-  },
-  {
-    "id": "erax-smile-unixsex-f5",
-    "name": "EraX Smile UnixSex F5 (Vietnamese)",
-    "languages": ["vi"],
-    "author": "erax-ai",
-
-    "modelUrl": "https://huggingface.co/erax-ai/EraX-Smile-UnixSex-F5/resolve/main/models/model_42000.safetensors",
-    "vocabUrl": "https://huggingface.co/erax-ai/EraX-Smile-UnixSex-F5/resolve/main/models/vocab.txt",
-    "config": {
-      "dim": 1024,
-      "depth": 22,
-      "heads": 16,
-      "ff_mult": 2,
-      "text_dim": 512,
-      "text_mask_padding": false,
-      "conv_layers": 4,
-      "pe_attn_head": 1
-    }
-  },
-  {
-    "id": "erax-smile-female-f5-v1",
-    "name": "EraX-Smile-Female-F5-V1.0",
-    "languages": ["vi"],
-    "author": "erax-ai",
-    "modelUrl": "https://huggingface.co/erax-ai/EraX-Smile-Female-F5-V1.0/blob/main/model/model_612000.safetensors",
-    "vocabUrl": "https://huggingface.co/erax-ai/EraX-Smile-Female-F5-V1.0/blob/main/model/vocab.txt",
-    "config": { // Assuming standard 'base' config
       "dim": 1024,
       "depth": 22,
       "heads": 16,
@@ -407,7 +368,7 @@ const ModelList = ({ onModelAdded, downloadingModels = {}, installedModels = [],
                     onClick={() => handleCancelDownload(model.id)}
                     title={t('settings.modelManagement.cancelDownload', 'Cancel Download')}
                   >
-                    <CancelIcon fontSize="small" />
+                    <span className="material-symbols-rounded" style={{ fontSize: 20 }}>close</span>
                   </button>
                 </div>
               </div>
@@ -418,11 +379,7 @@ const ModelList = ({ onModelAdded, downloadingModels = {}, installedModels = [],
                   onClick={() => handleDownload(model)}
                   title={t('settings.modelManagement.downloadModel')}
                 >
-                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                    <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
-                    <polyline points="7 10 12 15 17 10" />
-                    <line x1="12" y1="15" x2="12" y2="3" />
-                  </svg>
+                  <span className="material-symbols-rounded" style={{ fontSize: 16 }}>download</span>
                   {t('settings.modelManagement.download')}
                 </button>
               </div>
@@ -433,7 +390,7 @@ const ModelList = ({ onModelAdded, downloadingModels = {}, installedModels = [],
         {/* Add model card */}
         <div className="add-model-card" onClick={onAddModelClick}>
           <div className="add-model-icon">
-            <AddIcon fontSize="large" />
+            <span className="material-symbols-rounded" style={{ fontSize: 35 }}>add</span>
           </div>
           <p>{t('settings.modelManagement.addCustomModel')}</p>
         </div>

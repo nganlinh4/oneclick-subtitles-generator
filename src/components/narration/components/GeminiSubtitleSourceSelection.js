@@ -4,8 +4,9 @@ import MaterialSwitch from '../../common/MaterialSwitch';
 import CustomDropdown from '../../common/CustomDropdown';
 import '../../../styles/common/material-switch.css';
 import { detectSubtitleLanguage } from '../../../services/gemini/languageDetectionService';
-import { FiRefreshCw } from 'react-icons/fi';
 import '../../../styles/narration/subtitleSourceSelectionMaterial.css';
+import '../../../styles/narration/languageBadges.css';
+import ManualLanguageSelectionModal from './ManualLanguageSelectionModal';
 import SubtitleGroupingModal from './SubtitleGroupingModal';
 
 /**
@@ -53,6 +54,55 @@ const GeminiSubtitleSourceSelection = ({
   // State for language detection and modal
   const [isDetectingOriginal, setIsDetectingOriginal] = useState(false);
   const [isDetectingTranslated, setIsDetectingTranslated] = useState(false);
+  // State for manual language selection modal
+  const [isManualLanguageModalOpen, setIsManualLanguageModalOpen] = useState(false);
+  const [manualLanguageSource, setManualLanguageSource] = useState(null);
+
+  // Hover state for showing manual button
+  const [hoveredPill, setHoveredPill] = useState(null);
+
+  // Open/close manual language modal
+  const openManualLanguageModal = (source) => {
+    setManualLanguageSource(source);
+    setIsManualLanguageModalOpen(true);
+  };
+  const closeManualLanguageModal = () => {
+    setIsManualLanguageModalOpen(false);
+    setManualLanguageSource(null);
+  };
+
+  // Handle manual language save
+  const handleManualLanguageSave = (languages) => {
+    if (!manualLanguageSource) return;
+
+    if (!languages || languages.length === 0) {
+      if (manualLanguageSource === 'original') {
+        setOriginalLanguage(null);
+      } else if (manualLanguageSource === 'translated') {
+        setTranslatedLanguage(null);
+      }
+      return;
+    }
+
+    const manualLanguage = {
+      languageCode: languages[0] || 'unknown',
+      secondaryLanguages: languages.length > 1 ? languages.slice(1) : [],
+      isMultiLanguage: languages.length > 1,
+      isManualSelection: true,
+      confidence: 1.0
+    };
+
+    if (manualLanguageSource === 'original') {
+      setOriginalLanguage(manualLanguage);
+    } else if (manualLanguageSource === 'translated') {
+      setTranslatedLanguage(manualLanguage);
+    }
+
+    if (onLanguageDetected) {
+      onLanguageDetected(manualLanguageSource, manualLanguage);
+    }
+  };
+
   const [isModalOpen, setIsModalOpen] = useState(false);
 
   // Function to handle subtitle grouping toggle
@@ -156,7 +206,7 @@ const GeminiSubtitleSourceSelection = ({
     window.addEventListener('language-detection-status', handleDetectionStatus);
     window.addEventListener('language-detection-complete', handleDetectionComplete);
     window.addEventListener('language-detection-error', handleDetectionError);
-  
+
     // Clean up event listeners
     return () => {
       window.removeEventListener('language-detection-status', handleDetectionStatus);
@@ -216,17 +266,40 @@ const GeminiSubtitleSourceSelection = ({
     }
   };
 
+  // Helper to render manual language selection button
+  const renderManualButton = (source, subtitles, isHovered) => {
+    if (!subtitles || subtitles.length === 0 || !isHovered) return null;
+
+    const handleManualSelect = (e) => {
+      e.preventDefault();
+      e.stopPropagation();
+      openManualLanguageModal(source);
+    };
+
+    return (
+      <button
+        className="language-manual-button"
+        onClick={handleManualSelect}
+        title={t('narration.manualLanguageSelection', 'Manual language selection')}
+        type="button"
+      >
+        {t('narration.manual', 'manual')}
+      </button>
+    );
+  };
+
   // Helper to render language badges
   const renderLanguageBadge = (language) => {
     if (!language) return null;
 
     // If it's a multi-language text, show badges for all detected languages
     if (language.isMultiLanguage && Array.isArray(language.secondaryLanguages) && language.secondaryLanguages.length > 0) {
+      const allLangs = [language.languageCode, ...language.secondaryLanguages].filter(Boolean);
       return (
         <div className="language-badge-container">
-          {language.secondaryLanguages.map((langCode, index) => (
+          {allLangs.map((langCode, index) => (
             <span key={index} className="language-badge multi">
-              {langCode.toUpperCase()}
+              {String(langCode).toUpperCase()}
             </span>
           ))}
         </div>
@@ -266,7 +339,7 @@ const GeminiSubtitleSourceSelection = ({
         title={t('narration.detectLanguage', 'Detect language')}
         type="button"
       >
-        <FiRefreshCw size={12} />
+        <span className="material-symbols-rounded" style={{ fontSize: 12 }}>refresh</span>
       </button>
     );
   };
@@ -290,7 +363,12 @@ const GeminiSubtitleSourceSelection = ({
                   onChange={() => handleSourceChange('original')}
                   disabled={isGenerating}
                 />
-                <label htmlFor="source-original">
+                <label
+                  htmlFor="source-original"
+                  onMouseEnter={() => setHoveredPill('original')}
+                  onMouseLeave={() => setHoveredPill(null)}
+                  className={(originalLanguage || (!originalLanguage && originalSubtitles && originalSubtitles.length > 0 && !isDetectingOriginal) || hoveredPill === 'original') ? 'has-additional' : ''}
+                >
                   {isDetectingOriginal ? (
                     <span className="loading-animation">
                       <span className="spinner-circle"></span>
@@ -301,6 +379,7 @@ const GeminiSubtitleSourceSelection = ({
                       {t('narration.originalSubtitles', 'Original Subtitles')}
                       {originalLanguage && renderLanguageBadge(originalLanguage)}
                       {!originalLanguage && renderRefreshButton('original', originalSubtitles, isDetectingOriginal)}
+                      {renderManualButton('original', originalSubtitles, hoveredPill === 'original')}
                     </>
                   )}
                 </label>
@@ -315,7 +394,12 @@ const GeminiSubtitleSourceSelection = ({
                   onChange={() => handleSourceChange('translated')}
                   disabled={isGenerating || !hasTranslatedSubtitles}
                 />
-                <label htmlFor="source-translated">
+                <label
+                  htmlFor="source-translated"
+                  onMouseEnter={() => setHoveredPill('translated')}
+                  onMouseLeave={() => setHoveredPill(null)}
+                  className={(translatedLanguage || (!translatedLanguage && hasTranslatedSubtitles && !isDetectingTranslated) || hoveredPill === 'translated') ? 'has-additional' : ''}
+                >
                   {isDetectingTranslated ? (
                     <span className="loading-animation">
                       <span className="spinner-circle"></span>
@@ -326,6 +410,7 @@ const GeminiSubtitleSourceSelection = ({
                       {t('narration.translatedSubtitles', 'Translated Subtitles')}
                       {translatedLanguage && renderLanguageBadge(translatedLanguage)}
                       {!translatedLanguage && hasTranslatedSubtitles && renderRefreshButton('translated', translatedSubtitles, isDetectingTranslated)}
+                      {hasTranslatedSubtitles && renderManualButton('translated', translatedSubtitles, hoveredPill === 'translated')}
                       {!hasTranslatedSubtitles && (
                         <span className="unavailable-indicator">
                           {t('narration.unavailable', '(unavailable)')}
@@ -344,6 +429,21 @@ const GeminiSubtitleSourceSelection = ({
       <div className="narration-row subtitle-grouping-row animated-row">
         <div className="row-label">
           <label>{t('narration.subtitleGrouping', 'Subtitle Grouping')}:</label>
+
+      {/* Manual Language Selection Modal */}
+      <ManualLanguageSelectionModal
+        isOpen={isManualLanguageModalOpen}
+        onClose={closeManualLanguageModal}
+        onSave={handleManualLanguageSave}
+        initialLanguages={
+          manualLanguageSource === 'original' && originalLanguage
+            ? [originalLanguage.languageCode, ...(originalLanguage.secondaryLanguages || [])]
+            : manualLanguageSource === 'translated' && translatedLanguage
+            ? [translatedLanguage.languageCode, ...(translatedLanguage.secondaryLanguages || [])]
+            : []
+        }
+        subtitleSource={manualLanguageSource}
+      />
         </div>
         <div className="row-content">
           <div className="subtitle-grouping-container">
@@ -400,11 +500,7 @@ const GeminiSubtitleSourceSelection = ({
                     className="pill-button view-grouping-button"
                     onClick={openModal}
                   >
-                    <svg className="info-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                      <circle cx="12" cy="12" r="10" />
-                      <line x1="12" y1="16" x2="12" y2="12" />
-                      <line x1="12" y1="8" x2="12.01" y2="8" />
-                    </svg>
+                    <span className="material-symbols-rounded info-icon" style={{ fontSize: '16px' }}>info</span>
                     {t('narration.viewGrouping', 'View Grouping')}
                   </button>
                   <span className="grouping-stats">

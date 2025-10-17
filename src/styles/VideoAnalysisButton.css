@@ -36,9 +36,9 @@
   height: 52px; /* Match the height of other buttons */
 }
 
-/* Ensure all text inside the button uses the title font */
-.video-analysis-button *,
-.video-analysis-button span {
+/* Ensure all text inside the button uses the title font, but do not override Material Symbols */
+.video-analysis-button *:not(.material-symbols-rounded),
+.video-analysis-button span:not(.material-symbols-rounded) {
   font-family: var(--font-title) !important;
 }
 
@@ -204,6 +204,19 @@
 
 .video-analysis-button .icon {
   font-size: 16px;
+}
+
+/* Ensure Material Symbols render above the star layer and use Material Symbols font */
+.video-analysis-button .material-symbols-rounded {
+  position: relative;
+  z-index: 2;
+  font-family: var(--ms-font-family) !important;
+  font-variation-settings: "wght" var(--ms-wght), "GRAD" var(--ms-grad), "opsz" var(--ms-opsz);
+}
+
+/* Keep Gemini star layer beneath content for this button */
+.video-analysis-button .gemini-icon-container {
+  z-index: 0 !important;
 }
 
 /* Processing state */

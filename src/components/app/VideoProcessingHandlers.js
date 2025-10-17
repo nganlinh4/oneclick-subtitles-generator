@@ -256,7 +256,7 @@ export const downloadAndPrepareYouTubeVideo = async (
     if (!videoUrl) {
       console.log('[downloadAndPrepareYouTubeVideo] Download was cancelled, stopping processing');
       setIsDownloading(false);
-      setStatus({ message: t('output.downloadCancelled', 'Download cancelled'), type: 'warning' });
+      setStatus({ message: t('download.downloadOnly.cancelled', 'Download cancelled'), type: 'warning' });
       return;
     }
 

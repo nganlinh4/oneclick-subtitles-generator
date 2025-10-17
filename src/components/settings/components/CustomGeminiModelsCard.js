@@ -1,6 +1,5 @@
 import React, { useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import { FiPlus, FiTrash2, FiEdit3, FiCpu } from 'react-icons/fi';
 import '../../../styles/settings/customGeminiModels.css';
 
 /**
@@ -101,7 +100,7 @@ const CustomGeminiModelsCard = ({ customGeminiModels, setCustomGeminiModels }) =
     <div className="settings-card custom-gemini-models-card">
       <div className="settings-card-header">
         <div className="settings-card-icon">
-          <FiCpu />
+          <span className="material-symbols-rounded" style={{ fontSize: 20 }}>memory</span>
         </div>
         <h4>{t('settings.customGeminiModels.title', 'Custom Gemini Models')}</h4>
       </div>
@@ -125,14 +124,14 @@ const CustomGeminiModelsCard = ({ customGeminiModels, setCustomGeminiModels }) =
                     onClick={() => handleEditModel(model.id)}
                     title={t('settings.customModels.edit', 'Edit model')}
                   >
-                    <FiEdit3 size={14} />
+                    <span className="material-symbols-rounded" style={{ fontSize: 14 }}>edit</span>
                   </button>
                   <button
                     className="delete-model-btn"
                     onClick={() => handleDeleteModel(model.id)}
                     title={t('settings.customModels.delete', 'Delete model')}
                   >
-                    <FiTrash2 size={14} />
+                    <span className="material-symbols-rounded" style={{ fontSize: 14 }}>delete</span>
                   </button>
                 </div>
               </div>
@@ -195,7 +194,7 @@ const CustomGeminiModelsCard = ({ customGeminiModels, setCustomGeminiModels }) =
             className="add-model-button"
             onClick={() => setIsAddingModel(true)}
           >
-            <FiPlus size={16} />
+            <span className="material-symbols-rounded" style={{ fontSize: 16 }}>add</span>
             {t('settings.customModels.addNew', 'Add Custom Model')}
           </button>
         )}

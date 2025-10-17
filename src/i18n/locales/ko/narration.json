@@ -304,6 +304,22 @@
     "korean_male_seoul": "서울 남성 음성",
     "viet_male_saigon": "사이공 남성 음성",
     "viet_female_north_1": "베트남 북부 여성 음성 1",
-    "viet_female_north_2": "베트남 북부 여성 음성 2"
-  }
+    "viet_female_north_2": "베트남 북부 여성 음성 2",
+    "viet_loli_south": "베트남 남부 로리 음성"
+  },
+  "transformations": {
+    "punctuationReplaced": "구두점을 공백으로 대체: {{punctuation}}",
+    "numbersConverted": "숫자를 말로 변환",
+    "datesConverted": "날짜를 말로 변환",
+    "numbersAndDatesConverted": "숫자와 날짜를 말로 변환"
+  },
+  "manualLanguageSelection": "수동 언어 선택",
+  "selectLanguagesFor": "{{source}} 자막에 대한 언어 선택",
+  "translated": "번역됨",
+  "original": "원본",
+  "typeLanguage": "언어 입력",
+  "clearLanguage": "이 언어 지우기",
+  "manual": "수동",
+  "detectLanguage": "언어 감지",
+  "errorParsingRecentLanguages": "최근 언어 파싱 오류"
 }

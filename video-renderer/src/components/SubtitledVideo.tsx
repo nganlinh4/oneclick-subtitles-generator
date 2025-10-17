@@ -1,152 +1,153 @@
-import React, { useMemo, memo } from 'react';
+import React, { useMemo, memo, useEffect } from 'react';
 import { AbsoluteFill, useCurrentFrame, Audio, Video, OffthreadVideo, useVideoConfig, Img } from 'remotion';
 import { LyricEntry, VideoMetadata } from '../types';
 import { ThemeProvider } from 'styled-components';
 import { defaultCustomization } from './SubtitleCustomization';
+import { loadFont } from '@remotion/google-fonts/Comfortaa';
 
 // Dynamic font loading - only load fonts that are actually selected
 const fontUrlMap: Record<string, string> = {
   // Korean fonts
-  'Noto Sans KR': 'https://fonts.googleapis.com/css2?family=Noto+Sans+KR:wght@300;400;500;700&display=swap',
-  'Nanum Gothic': 'https://fonts.googleapis.com/css2?family=Nanum+Gothic:wght@400;700;800&display=swap',
-  'Nanum Myeongjo': 'https://fonts.googleapis.com/css2?family=Nanum+Myeongjo:wght@400;700&display=swap',
-  'Nanum Barun Gothic': 'https://fonts.googleapis.com/css2?family=Nanum+Barun+Gothic&display=swap',
-  'Spoqa Han Sans': 'https://fonts.googleapis.com/css2?family=Spoqa+Han+Sans:wght@400;500;700&display=swap',
-  'KoPub Batang': 'https://fonts.googleapis.com/css2?family=KoPub+Batang&display=swap',
-  'Gowun Dodum': 'https://fonts.googleapis.com/css2?family=Gowun+Dodum&display=swap',
-  'Nanum Gothic Coding': 'https://fonts.googleapis.com/css2?family=Nanum+Gothic+Coding&display=swap',
+  'Noto Sans KR': 'https://fonts.googleapis.com/css2?family=Noto+Sans+KR:wght@300;400;500;700&display=block',
+  'Nanum Gothic': 'https://fonts.googleapis.com/css2?family=Nanum+Gothic:wght@400;700;800&display=block',
+  'Nanum Myeongjo': 'https://fonts.googleapis.com/css2?family=Nanum+Myeongjo:wght@400;700&display=block',
+  'Nanum Barun Gothic': 'https://fonts.googleapis.com/css2?family=Nanum+Barun+Gothic&display=block',
+  'Spoqa Han Sans': 'https://fonts.googleapis.com/css2?family=Spoqa+Han+Sans:wght@400;500;700&display=block',
+  'KoPub Batang': 'https://fonts.googleapis.com/css2?family=KoPub+Batang&display=block',
+  'Gowun Dodum': 'https://fonts.googleapis.com/css2?family=Gowun+Dodum&display=block',
+  'Nanum Gothic Coding': 'https://fonts.googleapis.com/css2?family=Nanum+Gothic+Coding&display=block',
 
   // Vietnamese fonts
-  'Google Sans': 'https://fonts.googleapis.com/css2?family=Google+Sans:wght@400;500;700&display=swap',
-  'Noto Sans Vietnamese': 'https://fonts.googleapis.com/css2?family=Noto+Sans:wght@400;500;600&display=swap',
-  'Be Vietnam Pro': 'https://fonts.googleapis.com/css2?family=Be+Vietnam+Pro:wght@400;500;600&display=swap',
-  'Sarabun': 'https://fonts.googleapis.com/css2?family=Sarabun:wght@400;500;600&display=swap',
-  'Montserrat Alternates': 'https://fonts.googleapis.com/css2?family=Montserrat+Alternates:wght@400;500;600&display=swap',
-  'Josefin Sans': 'https://fonts.googleapis.com/css2?family=Josefin+Sans:wght@400;500;600&display=swap',
-  'Lexend': 'https://fonts.googleapis.com/css2?family=Lexend:wght@400;500;600&display=swap',
+  'Google Sans': 'https://fonts.googleapis.com/css2?family=Google+Sans:wght@400;500;700&display=block',
+  'Noto Sans Vietnamese': 'https://fonts.googleapis.com/css2?family=Noto+Sans:wght@400;500;600&display=block',
+  'Be Vietnam Pro': 'https://fonts.googleapis.com/css2?family=Be+Vietnam+Pro:wght@400;500;600&display=block',
+  'Sarabun': 'https://fonts.googleapis.com/css2?family=Sarabun:wght@400;500;600&display=block',
+  'Montserrat Alternates': 'https://fonts.googleapis.com/css2?family=Montserrat+Alternates:wght@400;500;600&display=block',
+  'Josefin Sans': 'https://fonts.googleapis.com/css2?family=Josefin+Sans:wght@400;500;600&display=block',
+  'Lexend': 'https://fonts.googleapis.com/css2?family=Lexend:wght@400;500;600&display=block',
 
   // Multilingual fonts
-  'Open Sans': 'https://fonts.googleapis.com/css2?family=Open+Sans:wght@400;600;700&display=swap',
-  'Noto Sans': 'https://fonts.googleapis.com/css2?family=Noto+Sans:wght@400;500;700&display=swap',
-  'Noto Serif': 'https://fonts.googleapis.com/css2?family=Noto+Serif:wght@400;700&display=swap',
-  'Arial Unicode MS': 'https://fonts.googleapis.com/css2?family=Noto+Sans:wght@400&display=swap',
-  'Source Sans Pro': 'https://fonts.googleapis.com/css2?family=Source+Sans+Pro:wght@400;600&display=swap',
+  'Open Sans': 'https://fonts.googleapis.com/css2?family=Open+Sans:wght@400;600;700&display=block',
+  'Noto Sans': 'https://fonts.googleapis.com/css2?family=Noto+Sans:wght@400;500;700&display=block',
+  'Noto Serif': 'https://fonts.googleapis.com/css2?family=Noto+Serif:wght@400;700&display=block',
+  'Arial Unicode MS': 'https://fonts.googleapis.com/css2?family=Noto+Sans:wght@400&display=block',
+  'Source Sans Pro': 'https://fonts.googleapis.com/css2?family=Source+Sans+Pro:wght@400;600&display=block',
 
   // Standard fonts
-  'Poppins': 'https://fonts.googleapis.com/css2?family=Poppins:wght@400;500;600;700&display=swap',
-  'Inter': 'https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap',
-  'Roboto': 'https://fonts.googleapis.com/css2?family=Roboto:wght@400;500;700&display=swap',
-  'Montserrat': 'https://fonts.googleapis.com/css2?family=Montserrat:wght@400;500;600;700&display=swap',
+  'Poppins': 'https://fonts.googleapis.com/css2?family=Poppins:wght@400;500;600;700&display=block',
+  'Inter': 'https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=block',
+  'Roboto': 'https://fonts.googleapis.com/css2?family=Roboto:wght@400;500;700&display=block',
+  'Montserrat': 'https://fonts.googleapis.com/css2?family=Montserrat:wght@400;500;600;700&display=block',
 
   // Serif fonts
-  'Georgia': 'https://fonts.googleapis.com/css2?family=Georgia&display=swap',
-  'Times New Roman': 'https://fonts.googleapis.com/css2?family=Times+New+Roman&display=swap',
-  'Playfair Display': 'https://fonts.googleapis.com/css2?family=Playfair+Display:wght@400;700&display=swap',
-  'Cormorant Garamond': 'https://fonts.googleapis.com/css2?family=Cormorant+Garamond:wght@400;500;600;700&display=swap',
-  'Merriweather': 'https://fonts.googleapis.com/css2?family=Merriweather:wght@400;700&display=swap',
-  'Lora': 'https://fonts.googleapis.com/css2?family=Lora:wght@400;700&display=swap',
-  'Cinzel': 'https://fonts.googleapis.com/css2?family=Cinzel:wght@400;500;600;700&display=swap',
-  'Crimson Text': 'https://fonts.googleapis.com/css2?family=Crimson+Text:wght@400;600&display=swap',
-  'Libre Baskerville': 'https://fonts.googleapis.com/css2?family=Libre+Baskerville:wght@400;700&display=swap',
+  'Georgia': 'https://fonts.googleapis.com/css2?family=Georgia&display=block',
+  'Times New Roman': 'https://fonts.googleapis.com/css2?family=Times+New+Roman&display=block',
+  'Playfair Display': 'https://fonts.googleapis.com/css2?family=Playfair+Display:wght@400;700&display=block',
+  'Cormorant Garamond': 'https://fonts.googleapis.com/css2?family=Cormorant+Garamond:wght@400;500;600;700&display=block',
+  'Merriweather': 'https://fonts.googleapis.com/css2?family=Merriweather:wght@400;700&display=block',
+  'Lora': 'https://fonts.googleapis.com/css2?family=Lora:wght@400;700&display=block',
+  'Cinzel': 'https://fonts.googleapis.com/css2?family=Cinzel:wght@400;500;600;700&display=block',
+  'Crimson Text': 'https://fonts.googleapis.com/css2?family=Crimson+Text:wght@400;600&display=block',
+  'Libre Baskerville': 'https://fonts.googleapis.com/css2?family=Libre+Baskerville:wght@400;700&display=block',
 
   // Monospace fonts
-  'JetBrains Mono': 'https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500&display=swap',
-  'Courier New': 'https://fonts.googleapis.com/css2?family=Courier+Prime&display=swap',
-  'Fira Code': 'https://fonts.googleapis.com/css2?family=Fira+Code:wght@400;500;600;700&display=swap',
-  'Share Tech Mono': 'https://fonts.googleapis.com/css2?family=Share+Tech+Mono&display=swap',
+  'JetBrains Mono': 'https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500&display=block',
+  'Courier New': 'https://fonts.googleapis.com/css2?family=Courier+Prime&display=block',
+  'Fira Code': 'https://fonts.googleapis.com/css2?family=Fira+Code:wght@400;500;600;700&display=block',
+  'Share Tech Mono': 'https://fonts.googleapis.com/css2?family=Share+Tech+Mono&display=block',
 
   // Display fonts
-  'Impact': 'https://fonts.googleapis.com/css2?family=Impact&display=swap',
-  'Orbitron': 'https://fonts.googleapis.com/css2?family=Orbitron:wght@400;500;600;700&display=swap',
-  'Oswald': 'https://fonts.googleapis.com/css2?family=Oswald:wght@400;500;600;700&display=swap',
-  'Bebas Neue': 'https://fonts.googleapis.com/css2?family=Bebas+Neue&display=swap',
-  'Anton': 'https://fonts.googleapis.com/css2?family=Anton&display=swap',
-  'Audiowide': 'https://fonts.googleapis.com/css2?family=Audiowide&display=swap',
+  'Impact': 'https://fonts.googleapis.com/css2?family=Impact&display=block',
+  'Orbitron': 'https://fonts.googleapis.com/css2?family=Orbitron:wght@400;500;600;700&display=block',
+  'Oswald': 'https://fonts.googleapis.com/css2?family=Oswald:wght@400;500;600;700&display=block',
+  'Bebas Neue': 'https://fonts.googleapis.com/css2?family=Bebas+Neue&display=block',
+  'Anton': 'https://fonts.googleapis.com/css2?family=Anton&display=block',
+  'Audiowide': 'https://fonts.googleapis.com/css2?family=Audiowide&display=block',
 
   // Creative fonts
-  'Creepster': 'https://fonts.googleapis.com/css2?family=Creepster&display=swap',
-  'Nosifer': 'https://fonts.googleapis.com/css2?family=Nosifer&display=swap',
-  'Bungee': 'https://fonts.googleapis.com/css2?family=Bungee&display=swap',
-  'Fredoka One': 'https://fonts.googleapis.com/css2?family=Fredoka+One&display=swap',
-  'Kalam': 'https://fonts.googleapis.com/css2?family=Kalam:wght@400;700&display=swap',
-  'Bangers': 'https://fonts.googleapis.com/css2?family=Bangers&display=swap',
-  'Righteous': 'https://fonts.googleapis.com/css2?family=Righteous&display=swap',
-  'Comic Sans MS': 'https://fonts.googleapis.com/css2?family=Comic+Neue:wght@400;700&display=swap',
+  'Creepster': 'https://fonts.googleapis.com/css2?family=Creepster&display=block',
+  'Nosifer': 'https://fonts.googleapis.com/css2?family=Nosifer&display=block',
+  'Bungee': 'https://fonts.googleapis.com/css2?family=Bungee&display=block',
+  'Fredoka One': 'https://fonts.googleapis.com/css2?family=Fredoka+One&display=block',
+  'Kalam': 'https://fonts.googleapis.com/css2?family=Kalam:wght@400;700&display=block',
+  'Bangers': 'https://fonts.googleapis.com/css2?family=Bangers&display=block',
+  'Righteous': 'https://fonts.googleapis.com/css2?family=Righteous&display=block',
+  'Comic Sans MS': 'https://fonts.googleapis.com/css2?family=Comic+Neue:wght@400;700&display=block',
 
   // Cute fonts
-  'Nunito': 'https://fonts.googleapis.com/css2?family=Nunito:wght@400;600;700&display=swap',
-  'Quicksand': 'https://fonts.googleapis.com/css2?family=Quicksand:wght@400;500;600;700&display=swap',
-  'Comfortaa': 'https://fonts.googleapis.com/css2?family=Comfortaa:wght@400;500;600;700&display=swap',
+  'Nunito': 'https://fonts.googleapis.com/css2?family=Nunito:wght@400;600;700&display=block',
+  'Quicksand': 'https://fonts.googleapis.com/css2?family=Quicksand:wght@400;500;600;700&display=block',
+  'Comfortaa': 'https://fonts.googleapis.com/css2?family=Comfortaa:wght@400;500;600;700&display=block',
 
   // Gaming fonts
-  'Press Start 2P': 'https://fonts.googleapis.com/css2?family=Press+Start+2P&display=swap',
-  'VT323': 'https://fonts.googleapis.com/css2?family=VT323&display=swap',
+  'Press Start 2P': 'https://fonts.googleapis.com/css2?family=Press+Start+2P&display=block',
+  'VT323': 'https://fonts.googleapis.com/css2?family=VT323&display=block',
 
   // Chinese fonts
-  'Noto Sans SC': 'https://fonts.googleapis.com/css2?family=Noto+Sans+SC:wght@400;500;700&display=swap',
-  'Noto Sans TC': 'https://fonts.googleapis.com/css2?family=Noto+Sans+TC:wght@400;500;700&display=swap',
-  'Source Han Sans': 'https://fonts.googleapis.com/css2?family=Source+Han+Sans:wght@400;500;700&display=swap',
-  'PingFang SC': 'https://fonts.googleapis.com/css2?family=Noto+Sans+SC:wght@400&display=swap',
+  'Noto Sans SC': 'https://fonts.googleapis.com/css2?family=Noto+Sans+SC:wght@400;500;700&display=block',
+  'Noto Sans TC': 'https://fonts.googleapis.com/css2?family=Noto+Sans+TC:wght@400;500;700&display=block',
+  'Source Han Sans': 'https://fonts.googleapis.com/css2?family=Source+Han+Sans:wght@400;500;700&display=block',
+  'PingFang SC': 'https://fonts.googleapis.com/css2?family=Noto+Sans+SC:wght@400&display=block',
 
   // Japanese fonts
-  'Noto Sans JP': 'https://fonts.googleapis.com/css2?family=Noto+Sans+JP:wght@400;500;700&display=swap',
-  'Hiragino Sans': 'https://fonts.googleapis.com/css2?family=Noto+Sans+JP:wght@400&display=swap',
-  'Yu Gothic': 'https://fonts.googleapis.com/css2?family=Noto+Sans+JP:wght@400&display=swap',
+  'Noto Sans JP': 'https://fonts.googleapis.com/css2?family=Noto+Sans+JP:wght@400;500;700&display=block',
+  'Hiragino Sans': 'https://fonts.googleapis.com/css2?family=Noto+Sans+JP:wght@400&display=block',
+  'Yu Gothic': 'https://fonts.googleapis.com/css2?family=Noto+Sans+JP:wght@400&display=block',
 
   // Arabic fonts
-  'Noto Sans Arabic': 'https://fonts.googleapis.com/css2?family=Noto+Sans+Arabic:wght@400;500;700&display=swap',
-  'Amiri': 'https://fonts.googleapis.com/css2?family=Amiri:wght@400;700&display=swap',
-  'Cairo': 'https://fonts.googleapis.com/css2?family=Cairo:wght@400;500;600;700&display=swap',
+  'Noto Sans Arabic': 'https://fonts.googleapis.com/css2?family=Noto+Sans+Arabic:wght@400;500;700&display=block',
+  'Amiri': 'https://fonts.googleapis.com/css2?family=Amiri:wght@400;700&display=block',
+  'Cairo': 'https://fonts.googleapis.com/css2?family=Cairo:wght@400;500;600;700&display=block',
 
   // Popular Video Editing Fonts
-  'Futura': 'https://fonts.googleapis.com/css2?family=Futura:wght@400;500;600;700&display=swap',
-  'Calibri': 'https://fonts.googleapis.com/css2?family=Carlito:wght@400;700&display=swap',
-  'Lato': 'https://fonts.googleapis.com/css2?family=Lato:wght@300;400;700;900&display=swap',
-  'Ubuntu': 'https://fonts.googleapis.com/css2?family=Ubuntu:wght@300;400;500;700&display=swap',
-  'Raleway': 'https://fonts.googleapis.com/css2?family=Raleway:wght@400;500;600;700&display=swap',
-  'Dosis': 'https://fonts.googleapis.com/css2?family=Dosis:wght@400;500;600;700&display=swap',
-  'Cabin': 'https://fonts.googleapis.com/css2?family=Cabin:wght@400;500;600;700&display=swap',
-  'PT Sans': 'https://fonts.googleapis.com/css2?family=PT+Sans:wght@400;700&display=swap',
-  'Exo': 'https://fonts.googleapis.com/css2?family=Exo:wght@400;500;600;700&display=swap',
-  'Rajdhani': 'https://fonts.googleapis.com/css2?family=Rajdhani:wght@400;500;600;700&display=swap',
-  'Signika': 'https://fonts.googleapis.com/css2?family=Signika:wght@400;500;600;700&display=swap',
-  'Rubik': 'https://fonts.googleapis.com/css2?family=Rubik:wght@400;500;600;700&display=swap',
-  'Work Sans': 'https://fonts.googleapis.com/css2?family=Work+Sans:wght@400;500;600;700&display=swap',
-  'Fira Sans': 'https://fonts.googleapis.com/css2?family=Fira+Sans:wght@400;500;600;700&display=swap',
-  'Barlow': 'https://fonts.googleapis.com/css2?family=Barlow:wght@400;500;600;700&display=swap',
-  'Karla': 'https://fonts.googleapis.com/css2?family=Karla:wght@400;500;600;700&display=swap',
-  'Mukti': 'https://fonts.googleapis.com/css2?family=Mukti:wght@400;500;600;700&display=swap',
-  'Niramit': 'https://fonts.googleapis.com/css2?family=Niramit:wght@400;500;600;700&display=swap',
-  'Sarala': 'https://fonts.googleapis.com/css2?family=Sarala:wght@400;700&display=swap',
-  'Teko': 'https://fonts.googleapis.com/css2?family=Teko:wght@400;500;600;700&display=swap',
-  'Viga': 'https://fonts.googleapis.com/css2?family=Viga&display=swap',
+  'Futura': 'https://fonts.googleapis.com/css2?family=Futura:wght@400;500;600;700&display=block',
+  'Calibri': 'https://fonts.googleapis.com/css2?family=Carlito:wght@400;700&display=block',
+  'Lato': 'https://fonts.googleapis.com/css2?family=Lato:wght@300;400;700;900&display=block',
+  'Ubuntu': 'https://fonts.googleapis.com/css2?family=Ubuntu:wght@300;400;500;700&display=block',
+  'Raleway': 'https://fonts.googleapis.com/css2?family=Raleway:wght@400;500;600;700&display=block',
+  'Dosis': 'https://fonts.googleapis.com/css2?family=Dosis:wght@400;500;600;700&display=block',
+  'Cabin': 'https://fonts.googleapis.com/css2?family=Cabin:wght@400;500;600;700&display=block',
+  'PT Sans': 'https://fonts.googleapis.com/css2?family=PT+Sans:wght@400;700&display=block',
+  'Exo': 'https://fonts.googleapis.com/css2?family=Exo:wght@400;500;600;700&display=block',
+  'Rajdhani': 'https://fonts.googleapis.com/css2?family=Rajdhani:wght@400;500;600;700&display=block',
+  'Signika': 'https://fonts.googleapis.com/css2?family=Signika:wght@400;500;600;700&display=block',
+  'Rubik': 'https://fonts.googleapis.com/css2?family=Rubik:wght@400;500;600;700&display=block',
+  'Work Sans': 'https://fonts.googleapis.com/css2?family=Work+Sans:wght@400;500;600;700&display=block',
+  'Fira Sans': 'https://fonts.googleapis.com/css2?family=Fira+Sans:wght@400;500;600;700&display=block',
+  'Barlow': 'https://fonts.googleapis.com/css2?family=Barlow:wght@400;500;600;700&display=block',
+  'Karla': 'https://fonts.googleapis.com/css2?family=Karla:wght@400;500;600;700&display=block',
+  'Mukti': 'https://fonts.googleapis.com/css2?family=Mukti:wght@400;500;600;700&display=block',
+  'Niramit': 'https://fonts.googleapis.com/css2?family=Niramit:wght@400;500;600;700&display=block',
+  'Sarala': 'https://fonts.googleapis.com/css2?family=Sarala:wght@400;700&display=block',
+  'Teko': 'https://fonts.googleapis.com/css2?family=Teko:wght@400;500;600;700&display=block',
+  'Viga': 'https://fonts.googleapis.com/css2?family=Viga&display=block',
 
   // Trending & Unique Fonts
-  'Gotham': 'https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap',
-  'Harriet Display': 'https://fonts.googleapis.com/css2?family=Crimson+Text:wght@400;600&display=swap',
-  'Doctor Glitch': 'https://fonts.googleapis.com/css2?family=Righteous&display=swap',
-  'Azonix': 'https://fonts.googleapis.com/css2?family=Audiowide&display=swap',
-  'Maximum Impact': 'https://fonts.googleapis.com/css2?family=Bungee&display=swap',
-  'Episode 1': 'https://fonts.googleapis.com/css2?family=Creepster&display=swap',
-  'Dollamin': 'https://fonts.googleapis.com/css2?family=Fredoka+One&display=swap',
-  'Jomhuria': 'https://fonts.googleapis.com/css2?family=Jomhuria&display=swap',
-  'Shrikhand': 'https://fonts.googleapis.com/css2?family=Shrikhand&display=swap',
-  'Montages Retro': 'https://fonts.googleapis.com/css2?family=Righteous&display=swap',
-  'Moenstories': 'https://fonts.googleapis.com/css2?family=Crimson+Text:wght@400;600&display=swap',
-  'Peacock Showier': 'https://fonts.googleapis.com/css2?family=Dancing+Script:wght@400;700&display=swap',
+  'Gotham': 'https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=block',
+  'Harriet Display': 'https://fonts.googleapis.com/css2?family=Crimson+Text:wght@400;600&display=block',
+  'Doctor Glitch': 'https://fonts.googleapis.com/css2?family=Righteous&display=block',
+  'Azonix': 'https://fonts.googleapis.com/css2?family=Audiowide&display=block',
+  'Maximum Impact': 'https://fonts.googleapis.com/css2?family=Bungee&display=block',
+  'Episode 1': 'https://fonts.googleapis.com/css2?family=Creepster&display=block',
+  'Dollamin': 'https://fonts.googleapis.com/css2?family=Fredoka+One&display=block',
+  'Jomhuria': 'https://fonts.googleapis.com/css2?family=Jomhuria&display=block',
+  'Shrikhand': 'https://fonts.googleapis.com/css2?family=Shrikhand&display=block',
+  'Montages Retro': 'https://fonts.googleapis.com/css2?family=Righteous&display=block',
+  'Moenstories': 'https://fonts.googleapis.com/css2?family=Crimson+Text:wght@400;600&display=block',
+  'Peacock Showier': 'https://fonts.googleapis.com/css2?family=Dancing+Script:wght@400;700&display=block',
 
   // Modern & Contemporary Fonts
-  'Spectral': 'https://fonts.googleapis.com/css2?family=Spectral:wght@400;500;600;700&display=swap',
-  'Crimson Pro': 'https://fonts.googleapis.com/css2?family=Crimson+Pro:wght@400;500;600;700&display=swap',
-  'Space Grotesk': 'https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&display=swap',
-  'DM Sans': 'https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;700&display=swap',
-  'Manrope': 'https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700&display=swap',
-  'Epilogue': 'https://fonts.googleapis.com/css2?family=Epilogue:wght@400;500;600;700&display=swap',
-  'Figtree': 'https://fonts.googleapis.com/css2?family=Figtree:wght@400;500;600;700&display=swap',
-  'Lexend Deca': 'https://fonts.googleapis.com/css2?family=Lexend+Deca:wght@400;500;600;700&display=swap',
-  'Readex Pro': 'https://fonts.googleapis.com/css2?family=Readex+Pro:wght@400;500;600;700&display=swap',
-  'Outfit': 'https://fonts.googleapis.com/css2?family=Outfit:wght@400;500;600;700&display=swap',
-  'Plus Jakarta Sans': 'https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700&display=swap'
+  'Spectral': 'https://fonts.googleapis.com/css2?family=Spectral:wght@400;500;600;700&display=block',
+  'Crimson Pro': 'https://fonts.googleapis.com/css2?family=Crimson+Pro:wght@400;500;600;700&display=block',
+  'Space Grotesk': 'https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&display=block',
+  'DM Sans': 'https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;700&display=block',
+  'Manrope': 'https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700&display=block',
+  'Epilogue': 'https://fonts.googleapis.com/css2?family=Epilogue:wght@400;500;600;700&display=block',
+  'Figtree': 'https://fonts.googleapis.com/css2?family=Figtree:wght@400;500;600;700&display=block',
+  'Lexend Deca': 'https://fonts.googleapis.com/css2?family=Lexend+Deca:wght@400;500;600;700&display=block',
+  'Readex Pro': 'https://fonts.googleapis.com/css2?family=Readex+Pro:wght@400;500;600;700&display=block',
+  'Outfit': 'https://fonts.googleapis.com/css2?family=Outfit:wght@400;500;600;700&display=block',
+  'Plus Jakarta Sans': 'https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700&display=block'
 };
 
 // Function to extract font family name from CSS font-family string
@@ -220,6 +221,14 @@ export const SubtitledVideoContent: React.FC<Props> = ({
     metadata.subtitleCustomization || defaultCustomization,
     [metadata.subtitleCustomization]
   );
+
+  // Load Comfortaa font using Remotion's method if selected
+  useEffect(() => {
+    const fontName = extractFontName(customization.fontFamily);
+    if (fontName === 'Comfortaa') {
+      loadFont('normal', { weights: ['400', '500', '600', '700'], subsets: ['latin'], ignoreTooManyRequestsWarning: true });
+    }
+  }, [customization.fontFamily]);
 
   // Generate dynamic font styles based on selected font
   const dynamicFontStyles = useMemo(() =>

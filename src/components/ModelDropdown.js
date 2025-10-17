@@ -1,6 +1,5 @@
 import React, { useState, useRef, useCallback, useEffect } from 'react';
 import { useTranslation } from 'react-i18next';
-import { FiChevronDown, FiStar, FiZap, FiCpu, FiTrendingUp, FiActivity } from 'react-icons/fi';
 import '../styles/ModelDropdown.css';
 
 /**
@@ -48,7 +47,7 @@ const ModelDropdown = ({
         description: isTranslationSection
           ? t('translation.modelGemini25Pro', 'output length 65536 tokens (usually no splitting needed)')
           : t('models.bestAccuracy', 'Best accuracy'),
-        icon: <FiStar className="model-icon star-icon" />,
+        icon: <span className="material-symbols-rounded model-icon star-icon">star</span>,
         color: 'var(--md-tertiary)',
         bgColor: 'rgba(var(--md-tertiary-rgb), 0.1)'
         },
@@ -58,7 +57,7 @@ const ModelDropdown = ({
         description: isTranslationSection
           ? t('translation.modelGemini25Flash', 'output length 65536 tokens (usually no splitting needed)')
           : t('models.smarterFaster', 'Smarter & faster'),
-        icon: <FiZap className="model-icon zap-icon" style={{ color: 'var(--md-tertiary)' }} />,
+        icon: <span className="material-symbols-rounded model-icon zap-icon" style={{ color: 'var(--md-tertiary)' }}>bolt</span>,
         color: 'var(--md-tertiary)',
         bgColor: 'rgba(var(--md-tertiary-rgb), 0.1)'
       },
@@ -68,7 +67,7 @@ const ModelDropdown = ({
         description: isTranslationSection
           ? t('translation.modelGemini25FlashLite', 'output length 65536 tokens (usually no splitting needed)')
           : t('models.fastestAdvanced', 'Fastest 2.5 model'),
-        icon: <FiTrendingUp className="model-icon trending-icon" style={{ color: 'var(--md-tertiary)' }} />,
+        icon: <span className="material-symbols-rounded model-icon trending-icon" style={{ color: 'var(--md-tertiary)' }}>trending_up</span>,
         color: 'var(--md-tertiary)',
         bgColor: 'rgba(var(--md-tertiary-rgb), 0.1)'
       },
@@ -78,7 +77,7 @@ const ModelDropdown = ({
         description: isTranslationSection
           ? t('translation.modelGemini20Flash', 'output length 8192 tokens (splitting recommended)')
           : t('models.balancedModel', 'Balanced'),
-        icon: <FiActivity className="model-icon activity-icon" />,
+        icon: <span className="material-symbols-rounded model-icon activity-icon">activity_zone</span>,
         color: 'var(--md-primary)',
         bgColor: 'rgba(var(--md-primary-rgb), 0.1)'
       },
@@ -88,7 +87,7 @@ const ModelDropdown = ({
         description: isTranslationSection
           ? t('translation.modelGemini20FlashLite', 'output length 8192 tokens (splitting recommended)')
           : t('models.fastestModel', 'Fastest'),
-        icon: <FiCpu className="model-icon cpu-icon" />,
+        icon: <span className="material-symbols-rounded model-icon cpu-icon">memory</span>,
         color: 'var(--success-color)',
         bgColor: 'rgba(var(--success-color-rgb), 0.1)'
       }
@@ -102,7 +101,7 @@ const ModelDropdown = ({
       description: isTranslationSection
         ? t('translation.customModel', 'Custom model - token limits may vary')
         : t('models.customModel', 'Custom model'),
-      icon: <FiCpu className="model-icon cpu-icon" />,
+      icon: <span className="material-symbols-rounded model-icon cpu-icon">memory</span>,
       color: 'var(--md-secondary)',
       bgColor: 'rgba(var(--md-secondary-rgb), 0.1)',
       isCustom: true
@@ -214,7 +213,7 @@ const ModelDropdown = ({
           {currentModel.icon}
           <span className="model-name">{currentModel.name}</span>
         </span>
-        <FiChevronDown size={14} className="dropdown-icon" />
+        <span className="material-symbols-rounded dropdown-icon" style={{ fontSize: 14 }}>expand_more</span>
       </button>
 
       {isOpen && (

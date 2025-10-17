@@ -1,5 +1,5 @@
 import React from 'react';
-import { render, screen, act } from '@testing-library/react';
+import { render, screen, act, fireEvent } from '@testing-library/react';
 import VideoAnalysisModal from './VideoAnalysisModal';
 
 // Mock react-i18next
@@ -232,12 +232,8 @@ describe('VideoAnalysisModal Component', () => {
     expect(screen.getByText(/Recommended countdown message 20 seconds/i)).toBeInTheDocument();
 
     // Simulate user clicking the modal overlay (which calls handleUserInteraction)
-    const modalOverlay = screen.getByText('videoAnalysis.title').closest('.video-analysis-modal-overlay');
-    if (modalOverlay) {
-       act(() => {
-        fireEvent.click(modalOverlay);
-      });
-    }
+    const modal = screen.getByRole('dialog');
+    fireEvent.click(modal);
 
 
     expect(screen.queryByText(/Recommended countdown message/i)).not.toBeInTheDocument();
@@ -270,9 +266,8 @@ describe('VideoAnalysisModal Component', () => {
       expect(useRecommendedButton).toHaveClass('use-default-button'); // Secondary style
 
       // Check order (right-most is primary)
-      const footer = useDefaultButton.closest('.modal-footer');
-      const buttonsInFooter = Array.from(footer.querySelectorAll('button'));
-      expect(buttonsInFooter.indexOf(useRecommendedButton)).toBeLessThan(buttonsInFooter.indexOf(useDefaultButton));
+      const buttons = screen.getAllByRole('button');
+      expect(buttons.indexOf(useRecommendedButton)).toBeLessThan(buttons.indexOf(useDefaultButton));
     });
 
     test('should render "Use Recommended" as primary when autoSelectDefaultPreset is false', () => {
@@ -293,9 +288,8 @@ describe('VideoAnalysisModal Component', () => {
       expect(useDefaultButton).toHaveClass('use-default-button'); // Secondary style
       
       // Check order (right-most is primary)
-      const footer = useDefaultButton.closest('.modal-footer');
-      const buttonsInFooter = Array.from(footer.querySelectorAll('button'));
-      expect(buttonsInFooter.indexOf(useDefaultButton)).toBeLessThan(buttonsInFooter.indexOf(useRecommendedButton));
+      const buttons = screen.getAllByRole('button');
+      expect(buttons.indexOf(useDefaultButton)).toBeLessThan(buttons.indexOf(useRecommendedButton));
     });
 
     test('should render "Use Recommended" as primary when autoSelectDefaultPreset is not set', () => {
@@ -316,9 +310,8 @@ describe('VideoAnalysisModal Component', () => {
       expect(useDefaultButton).toHaveClass('use-default-button'); // Secondary style
 
       // Check order
-      const footer = useDefaultButton.closest('.modal-footer');
-      const buttonsInFooter = Array.from(footer.querySelectorAll('button'));
-      expect(buttonsInFooter.indexOf(useDefaultButton)).toBeLessThan(buttonsInFooter.indexOf(useRecommendedButton));
+      const buttons = screen.getAllByRole('button');
+      expect(buttons.indexOf(useDefaultButton)).toBeLessThan(buttons.indexOf(useRecommendedButton));
     });
   });
 });

@@ -171,7 +171,7 @@ export class LiveMusicHelper extends EventTarget {
 
     try {
       await this.session.setWeightedPrompts({
-        weightedPrompts: this.activePrompts,
+        weightedPrompts: this.activePrompts.map(p => ({ text: p.text, weight: p.weight })),
       });
     } catch (e: any) {
       this.dispatchEvent(new CustomEvent('error', { detail: e.message }));

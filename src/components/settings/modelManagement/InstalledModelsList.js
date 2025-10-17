@@ -1,7 +1,6 @@
 import React from 'react';
 import { useTranslation } from 'react-i18next';
 import { CircularProgress } from '@mui/material';
-import { FiRefreshCw } from 'react-icons/fi';
 import ModelCard from './ModelCard';
 
 /**
@@ -41,7 +40,7 @@ const InstalledModelsList = ({
           disabled={isScanning}
           title={t('settings.modelManagement.refreshModels', 'Scan for new models')}
         >
-          <FiRefreshCw className={isScanning ? 'spinning' : ''} />
+          <span className={`material-symbols-rounded ${isScanning ? 'spinning' : ''}`}>refresh</span>
           {t('settings.modelManagement.refresh', 'Refresh')}
         </button>
       </div>

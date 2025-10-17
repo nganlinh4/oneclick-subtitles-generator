@@ -16,7 +16,30 @@
   pointer-events: none;
   overflow: hidden;
   border-radius: inherit;
-  z-index: 1; /* Increased from 0 to ensure proper stacking context */
+  z-index: 0; /* Keep star layer beneath actual button content */
+}
+
+/* Ensure visible icons (Material Symbols and SVGs) sit above star layer for all Gemini buttons */
+.generate-btn .material-symbols-rounded,
+.retry-gemini-btn .material-symbols-rounded,
+.force-stop-btn .material-symbols-rounded,
+.srt-upload-button .material-symbols-rounded,
+.add-subtitles-button .material-symbols-rounded,
+.video-analysis-button .material-symbols-rounded,
+.lets-go-btn .material-symbols-rounded {
+  position: relative;
+  z-index: 2;
+}
+
+.generate-btn svg,
+.retry-gemini-btn svg,
+.force-stop-btn svg,
+.srt-upload-button svg,
+.add-subtitles-button svg,
+.video-analysis-button svg,
+.lets-go-btn svg {
+  position: relative;
+  z-index: 2;
 }
 
 /* Gemini mini icons - these will be positioned around the button */

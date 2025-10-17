@@ -1,5 +1,4 @@
 import React, { useState, useEffect } from 'react';
-import { FiSearch } from 'react-icons/fi';
 import { useTranslation } from 'react-i18next';
 import useGeniusLyrics from '../hooks/useGeniusLyrics';
 
@@ -117,7 +116,7 @@ const LyricsInputSection = ({ onLyricsReceived }) => {
         >
           {loading ? t('subtitlesInput.fetching', 'Fetching...') : (
             <>
-              <FiSearch />
+              <span className="material-symbols-rounded">search</span>
               {t('subtitlesInput.fetch', 'Fetch')}
             </>
           )}

@@ -52,6 +52,23 @@ const RemotionVideoPreview = React.forwardRef(({
   // Use the forwarded ref or fallback to internal ref
   const actualPlayerRef = ref || playerRef;
 
+  // Load Google Fonts for preview
+  useEffect(() => {
+    if (subtitleCustomization?.fontFamily) {
+      const fontName = subtitleCustomization.fontFamily.replace(/['"]/g, '').split(',')[0].trim();
+      const fontUrl = `https://fonts.googleapis.com/css2?family=${fontName}:wght@400;500;600;700&display=swap`;
+      const link = document.createElement('link');
+      link.href = fontUrl;
+      link.rel = 'stylesheet';
+      document.head.appendChild(link);
+      return () => {
+        if (document.head.contains(link)) {
+          document.head.removeChild(link);
+        }
+      };
+    }
+  }, [subtitleCustomization?.fontFamily]);
+
 
   // Create video URL from file
   useEffect(() => {
@@ -351,10 +368,7 @@ const RemotionVideoPreview = React.forwardRef(({
       <>
         <div className="placeholder-content">
           <div className="placeholder-icon">
-            <svg width="64" height="64" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-              <polygon points="23 7 16 12 23 17 23 7"></polygon>
-              <rect x="1" y="5" width="15" height="14" rx="2" ry="2"></rect>
-            </svg>
+            <span className="material-symbols-rounded" style={{ fontSize: '64px' }}>movie_off</span>
           </div>
           <p>{t('videoRendering.noVideoSelected', 'No video selected')}</p>
           <small>{t('videoRendering.selectVideoFileToPreview', 'Select a video file to see preview')}</small>

@@ -134,9 +134,6 @@
   color: var(--text-primary);
 }
 
-.voice-category-filter {
-  min-width: 200px; /* Increased for longer text like "Tất cả ngôn ngữ" */
-}
 
 .voice-category-select {
   width: 100%;
@@ -151,16 +148,26 @@
   appearance: none; /* Remove default dropdown styling */
   -webkit-appearance: none;
   -moz-appearance: none;
-  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='16' height='16' viewBox='0 0 24 24' fill='none' stroke='%23666' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpolyline points='6 9 12 15 18 9'%3E%3C/polyline%3E%3C/svg%3E");
-  background-repeat: no-repeat;
-  background-position: right 1rem center; /* Position chevron with proper spacing */
-  background-size: 16px;
 }
 
 .voice-category-select:focus {
   outline: none;
   border-color: var(--md-primary);
   box-shadow: 0 0 0 2px var(--md-primary-container);
+}
+
+/* Material Symbols Rounded dropdown arrow for voice-category-select */
+.voice-category-select::after {
+  content: "expand_more";
+  font-family: var(--ms-font-family);
+  font-variation-settings: "wght" var(--ms-wght), "GRAD" var(--ms-grad), "opsz" var(--ms-opsz);
+  position: absolute;
+  right: 1rem;
+  top: 50%;
+  transform: translateY(-50%);
+  pointer-events: none;
+  color: var(--md-on-surface);
+  font-size: 1em;
 }
 
 .voice-modal-content {
@@ -195,15 +202,17 @@
 }
 
 .voice-category-title.recommended::before {
-  content: "";
+  content: "star";
+  font-family: var(--ms-font-family);
+  font-variation-settings: "wght" var(--ms-wght), "GRAD" var(--ms-grad), "opsz" var(--ms-opsz);
   display: inline-block;
   width: 14px;
   height: 14px;
   margin-right: 0.5rem;
-  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' enable-background='new 0 0 24 24' height='24px' viewBox='0 0 24 24' width='24px' fill='%23FFD700'%3E%3Cg%3E%3Cpath d='M0 0h24v24H0V0z' fill='none'/%3E%3Cpath d='M0 0h24v24H0V0z' fill='none'/%3E%3C/g%3E%3Cg%3E%3Cpath d='m12 17.27 4.15 2.51c.76.46 1.69-.22 1.49-1.08l-1.1-4.72 3.67-3.18c.67-.58.31-1.68-.57-1.75l-4.83-.41-1.89-4.46c-.34-.81-1.5-.81-1.84 0L9.19 8.63l-4.83.41c-.88.07-1.24 1.17-.57 1.75l3.67 3.18-1.1 4.72c-.2.86.73 1.54 1.49 1.08l4.15-2.5z'/%3E%3C/g%3E%3C/svg%3E");
-  background-size: contain;
-  background-repeat: no-repeat;
-  background-position: center;
+  color: #FFD700;
+  font-size: 14px;
+  vertical-align: middle;
+  transform: translateY(-4px);
 }
 
 .voice-grid {

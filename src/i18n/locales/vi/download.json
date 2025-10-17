@@ -32,6 +32,7 @@
     "noQualities": "Không có chất lượng nào có sẵn",
     "cancel": "Hủy",
     "downloading": "Đang tải xuống...",
-    "cancelDownload": "Hủy tải xuống"
+    "cancelDownload": "Hủy tải xuống",
+    "cancelled": "Đã hủy tải xuống"
   }
 }

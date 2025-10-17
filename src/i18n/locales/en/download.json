@@ -31,6 +31,7 @@
     "noQualities": "No qualities available",
     "cancel": "Cancel",
     "downloading": "Downloading...",
-    "cancelDownload": "Cancel Download"
+    "cancelDownload": "Cancel Download",
+    "cancelled": "Download cancelled"
   }
 }

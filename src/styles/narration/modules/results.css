@@ -133,6 +133,25 @@
   border-left-color: var(--md-primary);
 }
 
+.result-item.transformed {
+  border-left-color: var(--md-secondary);
+}
+
+/* Transformation help icon styling */
+.transformation-help-icon {
+  opacity: 0.7;
+  transition: opacity 0.2s ease;
+  cursor: help;
+}
+
+.transformation-help-icon:hover {
+  opacity: 1;
+}
+
+.transformation-help-icon svg {
+  color: var(--md-secondary);
+}
+
 .result-text {
   flex: 1;
   margin-right: 1rem;

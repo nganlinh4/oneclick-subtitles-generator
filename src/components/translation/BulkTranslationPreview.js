@@ -141,11 +141,7 @@ const BulkTranslationPreview = ({
             {selectedTranslation?.loadedFromCache && (
               <span className="cache-indicator" title={t('translation.fromCache', 'Loaded from cache')}>
                 {" "}
-                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                  <path d="M2 12.5A5.5 5.5 0 0 1 7.5 7H18a4 4 0 0 1 0 8h-2.5"></path>
-                  <path d="M12 20v-8"></path>
-                  <path d="M16 16l-4 4-4-4"></path>
-                </svg>
+                <span className="material-symbols-rounded" style={{ fontSize: '16px' }}>download</span>
               </span>
             )}
           </h4>
@@ -166,9 +162,7 @@ const BulkTranslationPreview = ({
                 title={translation.name}
               >
                 {translation.isMain && (
-                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                    <polygon points="12,2 15.09,8.26 22,9 17,14.14 18.18,21.02 12,17.77 5.82,21.02 7,14.14 2,9 8.91,8.26"></polygon>
-                  </svg>
+                  <span className="material-symbols-rounded" style={{ fontSize: '14px' }}>star</span>
                 )}
                 <span className="pill-name">{translation.name}</span>
                 <span className="pill-count">({translation.subtitles.length})</span>

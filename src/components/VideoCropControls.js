@@ -6,24 +6,16 @@ import StandardSlider from './common/StandardSlider';
 
 // Icons use currentColor to adapt to theme
 const IconFree = () => (
-  <svg width="18" height="18" viewBox="0 -960 960 960" fill="currentColor" xmlns="http://www.w3.org/2000/svg">
-    <path d="M806-666v-59h-61q-26.37 0-43.19-18.2Q685-761.4 685-786q0-26 17.5-43t43.5-17h45q57.13 0 96.56 39.44Q927-767.13 927-710v45q0 26.37-17.51 43.19Q891.97-605 867-605q-26 0-43.5-17.5T806-666Zm-772 0v-44q0-57.13 39.44-96.56Q112.88-846 170-846h45q26.38 0 43.19 16.81T275-786.5q0 25.5-16.81 43.5T215-725h-60v60q0 26.37-17.51 43.19Q119.98-605 95-605q-26 0-43.5-17.5T34-666Zm757 552h-46q-26.37 0-43.19-17.5Q685-149 685-174.5t17.5-43Q720-235 746-235h60v-60q0-26.38 17.5-43.19t43-16.81q25.5 0 43 16.81T927-295v45q0 57.12-39.44 96.56Q848.13-114 791-114Zm-621 0q-57.12 0-96.56-39.44Q34-192.88 34-250v-45q0-26.38 17.5-43.19t43-16.81q25.5 0 43 16.81T155-295v60h60q26.38 0 43.19 17.51T275-175q0 26-16.81 43.5T215-114h-45Zm75-347v-38q0-58.4 38.8-97.2Q322.6-635 381-635h199q57 0 96.5 38.8T716-499v38q0 58.4-39.5 97.2Q637-325 580-325H381q-58.4 0-97.2-38.8Q245-402.6 245-461Zm121 15h229v-68H366v68Zm0 0v-68 68Z" />
-  </svg>
+  <span className="material-symbols-rounded" style={{ fontSize: '18px' }}>crop_free</span>
 );
 const Icon169 = () => (
-  <svg width="18" height="18" viewBox="0 -960 960 960" fill="currentColor" xmlns="http://www.w3.org/2000/svg">
-    <path d="M210-234q-57.12 0-96.56-40.14Q74-314.27 74-370v-220q0-55.72 39.44-95.86T210-726h540q57.13 0 96.56 40.14Q886-645.72 886-590v220q0 55.73-39.44 95.86Q807.13-234 750-234H210Zm0-136h540v-220H210v220Zm0 0v-220 220Z" />
-  </svg>
+  <span className="material-symbols-rounded" style={{ fontSize: '18px' }}>crop_16_9</span>
 );
 const Icon916 = () => (
-  <svg width="18" height="18" viewBox="0 -960 960 960" fill="currentColor" xmlns="http://www.w3.org/2000/svg">
-    <path d="M375-74q-57.12 0-96.56-39.44Q239-152.88 239-210v-540q0-57.13 39.44-96.56Q317.88-886 375-886h210q57.13 0 96.56 39.44Q721-807.13 721-750v540q0 57.12-39.44 96.56Q642.13-74 585-74H375Zm0-676v540h210v-540H375Zm0 0v540-540Z" />
-  </svg>
+  <span className="material-symbols-rounded" style={{ fontSize: '18px' }}>crop_9_16</span>
 );
 const Icon11 = () => (
-  <svg width="18" height="18" viewBox="0 -960 960 960" fill="currentColor" xmlns="http://www.w3.org/2000/svg">
-    <path d="M210-74q-57.12 0-96.56-39.44Q74-152.88 74-210v-540q0-57.13 39.44-96.56Q152.88-886 210-886h540q57.13 0 96.56 39.44Q886-807.13 886-750v540q0 57.12-39.44 96.56Q807.13-74 750-74H210Zm0-136h540v-540H210v540Zm0 0v-540 540Z" />
-  </svg>
+  <span className="material-symbols-rounded" style={{ fontSize: '18px' }}>crop_square</span>
 );
 
 const PRESET_ASPECT_RATIOS = [
@@ -98,7 +90,6 @@ const VideoCropControls = ({
       y: cropSettings.y ?? 0,
       width: cropSettings.width ?? 100,
       height: cropSettings.height ?? 100,
-      aspectRatio: cropSettings.aspectRatio ?? null,
       canvasBgMode: cropSettings.canvasBgMode ?? 'solid',
       canvasBgColor: cropSettings.canvasBgColor ?? '#000000',
       canvasBgBlur: cropSettings.canvasBgBlur ?? 24,
@@ -274,8 +265,7 @@ const VideoCropControls = ({
         x: 0,
         y: 0,
         width: 100,
-        height: 100,
-        aspectRatio: videoWidth / videoHeight
+        height: 100
       };
     } else if (aspectRatio === 'custom') {
       // Keep current crop
@@ -302,8 +292,7 @@ const VideoCropControls = ({
         x,
         y,
         width: cropWidth,
-        height: cropHeight,
-        aspectRatio
+        height: cropHeight
       };
     }
   }, [videoDimensions, cropSettings]);
@@ -677,9 +666,11 @@ const VideoCropControls = ({
   }, [isEnabled, videoRect]);
 
 
-  // Reset floating UI positions when leaving crop mode
+  // Reset selected aspect ratio when entering crop mode, reset UI positions when leaving
   useEffect(() => {
-    if (!isEnabled) {
+    if (isEnabled) {
+      setSelectedAspectRatio(null);
+    } else {
       resetUiPositions();
     }
   }, [isEnabled, resetUiPositions]);
@@ -710,9 +701,7 @@ const VideoCropControls = ({
             onClick={onToggle}
             title={hasAppliedCrop ? t('videoRendering.editCrop', 'Edit crop') : t('videoRendering.toggleCrop', 'Add crop')}
           >
-            <svg width="20" height="20" viewBox="0 -960 960 960" fill="currentColor" xmlns="http://www.w3.org/2000/svg">
-              <path d="M282-559H94q-24.97 0-42.49-17.39Q34-593.78 34-618.58q0-24.8 17.51-42.61Q69.03-679 94-679h188v-72l-1 2q-18.4 18-43.2 17.5-24.8-.5-43.41-18.5-17.39-18-16.89-43t18.5-42l98-99q20.82-20 48.41-19.5Q370-953 390-934l100 101q17 17 17.5 41.5T491.22-749q-18.09 18.15-43.65 17.58Q422-732 404-750l-1-1v349h464q24.97 0 42.49 17.39Q927-367.22 927-342.42q0 24.79-17.51 42.61Q891.97-282 867-282H681v73l1-2q17.53-18 42.77-17.5 25.23.5 43.32 19.5 16.91 18 16.41 42.5T767-125l-99 99Q648-5 620-5.5T572-26l-99-100q-17-17-17.5-41t16.41-42q18.09-19 43.59-18.5Q541-227 559-209h1v-73H403q-49.79 0-85.39-35Q282-352 282-402v-157Zm278 77v-77h-77v-120h77q49.79 0 85.39 35Q681-609 681-559v77H560Z"/>
-            </svg>
+            <span className="material-symbols-rounded" style={{ fontSize: '20px' }}>transform</span>
             {hasAppliedCrop && <span className="crop-indicator">✓</span>}
           </button>
 
@@ -722,9 +711,7 @@ const VideoCropControls = ({
               onClick={onClear}
               title={t('videoRendering.clearCrop', 'Clear crop')}
             >
-              <svg width="20" height="20" viewBox="0 -960 960 960" fill="currentColor" xmlns="http://www.w3.org/2000/svg">
-                <path d="M480-390 334-244q-20 20-45 19.5T245-245q-20-20-20-45t20-45l145-145-146-147q-20-20-19.5-45t20.5-45q19-20 44.5-20t45.5 20l145 146 146-146q20-20 45.5-20t44.5 20q20 20 20 45t-20 45L570-480l146 146q20 20 20 44.5T716-245q-19 20-44.5 20T626-245L480-390Z"/>
-              </svg>
+              <span className="material-symbols-rounded" style={{ fontSize: '20px' }}>close</span>
             </button>
           )}
         </div>
@@ -755,9 +742,7 @@ const VideoCropControls = ({
               title={t('videoRendering.exitCrop', 'Exit crop')}
               style={{ cursor: uiDrag?.kind === 'toggle' ? 'grabbing' : 'grab' }}
             >
-              <svg width="20" height="20" viewBox="0 -960 960 960" fill="currentColor" xmlns="http://www.w3.org/2000/svg">
-                <path d="M282-559H94q-24.97 0-42.49-17.39Q34-593.78 34-618.58q0-24.8 17.51-42.61Q69.03-679 94-679h188v-72l-1 2q-18.4 18-43.2 17.5-24.8-.5-43.41-18.5-17.39-18-16.89-43t18.5-42l98-99q20.82-20 48.41-19.5Q370-953 390-934l100 101q17 17 17.5 41.5T491.22-749q-18.09 18.15-43.65 17.58Q422-732 404-750l-1-1v349h464q24.97 0 42.49 17.39Q927-367.22 927-342.42q0 24.79-17.51 42.61Q891.97-282 867-282H681v73l1-2q17.53-18 42.77-17.5 25.23.5 43.32 19.5 16.91 18 16.41 42.5T767-125l-99 99Q648-5 620-5.5T572-26l-99-100q-17-17-17.5-41t16.41-42q18.09-19 43.59-18.5Q541-227 559-209h1v-73H403q-49.79 0-85.39-35Q282-352 282-402v-157Zm278 77v-77h-77v-120h77q49.79 0 85.39 35Q681-609 681-559v77H560Z"/>
-              </svg>
+              <span className="material-symbols-rounded" style={{ fontSize: '20px' }}>transform</span>
             </button>
           </div>
 
@@ -800,9 +785,7 @@ const VideoCropControls = ({
                 aria-label={t('videoRendering.flipHorizontal','Flip horizontal')}
                 style={{ cursor: uiDrag?.kind === 'aspect' ? 'grabbing' : 'grab' }}
               >
-                <svg viewBox="0 -960 960 960" xmlns="http://www.w3.org/2000/svg" aria-hidden>
-                  <path d="M696-114q-27.6 0-47.8-19.5-20.2-19.5-20.2-48t20.2-48.5q20.2-20 47.8-20h54v-460h-54q-27.6 0-47.8-20.2Q628-750.4 628-778q0-29 20.2-48.5T696-846h54q57.13 0 96.56 39.44Q886-767.13 886-710v460q0 57.12-39.44 96.56Q807.13-114 750-114h-54ZM480-34q-27.6 0-47.8-19.5Q412-73 412-102v-12H210q-57.12 0-96.56-39.44Q74-192.88 74-250v-460q0-57.13 39.44-96.56Q152.88-846 210-846h202v-12q0-29 20.2-48.5T480-926q27.6 0 47.8 19.5Q548-887 548-858v756q0 29-20.2 48.5T480-34Zm270-676v460-460Z" fill="currentColor"/>
-                </svg>
+                <span className="material-symbols-rounded" style={{ fontSize: '16px' }}>split_scene_left</span>
               </button>
               <button
                 className={`flip-btn ${tempCrop.flipY ? 'active' : ''}`}
@@ -812,9 +795,7 @@ const VideoCropControls = ({
                 aria-label={t('videoRendering.flipVertical','Flip vertical')}
                 style={{ cursor: uiDrag?.kind === 'aspect' ? 'grabbing' : 'grab' }}
               >
-                <svg viewBox="0 -960 960 960" xmlns="http://www.w3.org/2000/svg" aria-hidden>
-                  <path d="M250-74q-57.12 0-96.56-39.44Q114-152.88 114-210v-54q0-27.6 19.5-47.8 19.5-20.2 48-20.2t48.5 20.2q20 20.2 20 47.8v54h460v-54q0-27.6 20.2-47.8Q750.4-332 778-332q29 0 48.5 20.2T846-264v54q0 57.12-39.44 96.56Q767.13-74 710-74H250ZM102-412q-29 0-48.5-20.2T34-480q0-27.6 19.5-47.8Q73-548 102-548h12v-202q0-57.13 39.44-96.56Q192.88-886 250-886h460q57.13 0 96.56 39.44Q846-807.13 846-750v202h12q29 0 48.5 20.2T926-480q0 27.6-19.5 47.8Q887-412 858-412H102Zm608 202H250h460Z" fill="currentColor"/>
-                </svg>
+                <span className="material-symbols-rounded" style={{ fontSize: '16px' }}>split_scene_up</span>
               </button>
             </div>
           </div>
@@ -920,9 +901,7 @@ const VideoCropControls = ({
               onClickCapture={suppressClickIfDragged}
               style={{ cursor: uiDrag?.kind === 'actions' ? 'grabbing' : 'grab' }}
             >
-              <svg width="16" height="16" viewBox="0 -960 960 960" fill="currentColor" xmlns="http://www.w3.org/2000/svg">
-                <path d="M480-390 334-244q-20 20-45 19.5T245-245q-20-20-20-45t20-45l145-145-146-147q-20-20-19.5-45t20.5-45q19-20 44.5-20t45.5 20l145 146 146-146q20-20 45.5-20t44.5 20q20 20 20 45t-20 45L570-480l146 146q20 20 20 44.5T716-245q-19 20-44.5 20T626-245L480-390Z"/>
-              </svg>
+              <span className="material-symbols-rounded" style={{ fontSize: '16px' }}>close</span>
               {t('videoRendering.cancel', 'Cancel')}
             </button>
             <button
@@ -931,9 +910,7 @@ const VideoCropControls = ({
               onClickCapture={suppressClickIfDragged}
               style={{ cursor: uiDrag?.kind === 'actions' ? 'grabbing' : 'grab' }}
             >
-              <svg width="16" height="16" viewBox="0 -960 960 960" fill="currentColor" xmlns="http://www.w3.org/2000/svg">
-                <path d="m389-408 281-281q19-19 46-19t46 18.79q19 18.79 19 45.58t-18.61 45.4L435-272q-18.73 19-45.36 19Q363-253 344-272L200-415q-19-19.73-19.5-45.87Q180-487 198.79-506q19.79-20 46.17-20 26.37 0 45.04 20l99 98Z"/>
-              </svg>
+              <span className="material-symbols-rounded" style={{ fontSize: '16px' }}>check</span>
               {t('videoRendering.applyCrop', 'Apply Crop')}
             </button>
           </div>

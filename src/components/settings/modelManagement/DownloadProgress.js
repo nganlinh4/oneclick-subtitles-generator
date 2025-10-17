@@ -1,8 +1,5 @@
 import React from 'react';
 import { useTranslation } from 'react-i18next';
-import CloudDownloadIcon from '@mui/icons-material/CloudDownload';
-import CancelIcon from '@mui/icons-material/Cancel';
-import ErrorIcon from '@mui/icons-material/Error';
 
 /**
  * Component for showing download progress
@@ -22,7 +19,7 @@ const DownloadProgress = ({ downloadInfo, modelId, onCancel }) => {
     return (
       <div>
         <div className="download-status">
-          <CloudDownloadIcon fontSize="small" />
+          <span className="material-symbols-rounded" style={{ fontSize: 20 }}>cloud_download</span>
           <span>{t('settings.modelManagement.downloading')}</span>
           <span>
             {/* Always show percentage format only */}
@@ -33,7 +30,7 @@ const DownloadProgress = ({ downloadInfo, modelId, onCancel }) => {
             onClick={() => onCancel(modelId)}
             title={t('settings.modelManagement.cancelDownload', 'Cancel Download')}
           >
-            <CancelIcon fontSize="small" />
+            <span className="material-symbols-rounded" style={{ fontSize: 20 }}>close</span>
           </button>
         </div>
         <div className="download-progress">
@@ -54,7 +51,7 @@ const DownloadProgress = ({ downloadInfo, modelId, onCancel }) => {
   if (downloadInfo.status === 'failed') {
     return (
       <div className="download-status error">
-        <ErrorIcon fontSize="small" />
+        <span className="material-symbols-rounded" style={{ fontSize: 20 }}>error</span>
         <span>{t('settings.modelManagement.downloadFailed')}: {downloadInfo.error}</span>
       </div>
     );

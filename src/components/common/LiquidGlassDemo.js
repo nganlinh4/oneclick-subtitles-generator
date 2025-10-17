@@ -65,7 +65,7 @@ const LiquidGlassDemo = () => {
         >
           <div style={{ textAlign: 'center', color: 'white' }}>
             <div style={{ fontSize: '18px', fontWeight: '600' }}>Draggable</div>
-            <div style={{ fontSize: '14px', opacity: 0.8' }}>Drag me around!</div>
+            <div style={{ fontSize: '14px', opacity: 0.8 }}>Drag me around!</div>
           </div>
         </LiquidGlass>
       </div>
