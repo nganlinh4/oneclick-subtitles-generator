@@ -17,16 +17,16 @@ const subtitleRoutes = require('./server/routes/subtitleRoutes');
 const cacheRoutes = require('./server/routes/cacheRoutes');
 const updateRoutes = require('./server/routes/updateRoutes');
 const lyricsRoutes = require('./server/routes/lyricsRoutes');
-const geminiImageRoutes = require('./server/routes/geminiImageRoutes');
+
 const settingsRoutes = require('./server/routes/settingsRoutes');
 const douyinRoutes = require('./server/routes/douyinRoutes');
-const douyinPlaywrightRoutes = require('./server/routes/douyinPlaywrightRoutes');
 const allSitesRoutes = require('./server/routes/allSitesRoutes');
 const narrationRoutes = require('./server/routes/narrationRoutes');
 const testAudioRoute = require('./server/routes/testAudioRoute');
 const qualityScanRoutes = require('./server/routes/qualityScanRoutes');
 const videoCompatibilityRoutes = require('./server/routes/videoCompatibilityRoutes');
 const downloadOnlyRoutes = require('./server/routes/downloadOnlyRoutes');
+const downloadManagementRoutes = require('./server/routes/downloadManagementRoutes');
 const diagnosticsRoutes = require('./server/routes/diagnostics');
 const { scanModels } = require('./server/utils/scan-models');
 
@@ -35,6 +35,31 @@ const app = express();
 
 // Ensure directories exist
 ensureDirectories();
+
+// Startup cleanup: remove leftover extracted_* clips from videos folder
+try {
+  const entries = fs.readdirSync(VIDEOS_DIR);
+  let deleted = 0;
+  for (const name of entries) {
+    if (typeof name === 'string' && name.startsWith('extracted_')) {
+      const filePath = path.join(VIDEOS_DIR, name);
+      try {
+        const stat = fs.statSync(filePath);
+        if (stat.isFile()) {
+          fs.unlinkSync(filePath);
+          deleted++;
+        }
+      } catch (err) {
+        console.warn(`[STARTUP] Failed to delete ${filePath}:`, err.message);
+      }
+    }
+  }
+  if (deleted > 0) {
+    console.log(`[STARTUP] Cleaned up ${deleted} extracted_* file(s) from videos directory`);
+  }
+} catch (err) {
+  console.warn('[STARTUP] Could not scan videos directory for extracted_* cleanup:', err.message);
+}
 
 
 
@@ -310,9 +335,23 @@ app.get('/api/health', (req, res) => {
 
 // Startup mode endpoint - tells frontend which command was used to start the server
 app.get('/api/startup-mode', (req, res) => {
+  // Detect how this process was started
+  const lifecycle = process.env.npm_lifecycle_event; // e.g., 'start', 'dev', 'dev:cuda'
+  const isDevCuda = process.env.START_PYTHON_SERVER === 'true';
+  const isStart = lifecycle === 'start' || process.env.VERCEL === '1' || process.env.NODE_ENV === 'production';
+
+  // Build a human-friendly command string
+  let command;
+  if (lifecycle) {
+    command = lifecycle === 'start' ? 'npm start' : `npm run ${lifecycle}`;
+  } else {
+    command = isDevCuda ? 'npm run dev:cuda' : 'npm run dev';
+  }
+
   const startupMode = {
-    isDevCuda: process.env.START_PYTHON_SERVER === 'true',
-    command: process.env.START_PYTHON_SERVER === 'true' ? 'npm run dev:cuda' : 'npm run dev'
+    isDevCuda,
+    isStart,
+    command
   };
 
   res.json(startupMode);
@@ -321,13 +360,25 @@ app.get('/api/startup-mode', (req, res) => {
 // Endpoint to save localStorage data for server-side use
 app.post('/api/save-local-storage', express.json(), (req, res) => {
   try {
-    const localStorageData = req.body;
+    const incomingData = req.body || {};
+    const localStoragePath = path.join(process.cwd(), 'localStorage.json');
 
+    // Read existing server-side storage if present
+    let existingData = {};
+    try {
+      if (fs.existsSync(localStoragePath)) {
+        const raw = fs.readFileSync(localStoragePath, 'utf-8');
+        existingData = JSON.parse(raw || '{}');
+      }
+    } catch (_) {
+      existingData = {};
+    }
+
+    // Merge: incoming keys override existing; unspecified keys (like background_* models) are preserved
+    const merged = { ...existingData, ...incomingData };
 
     // Save to a file
-    const localStoragePath = path.join(__dirname, 'localStorage.json');
-    fs.writeFileSync(localStoragePath, JSON.stringify(localStorageData, null, 2));
-
+    fs.writeFileSync(localStoragePath, JSON.stringify(merged, null, 2));
 
     res.json({ success: true, message: 'localStorage data saved successfully' });
   } catch (error) {
@@ -344,12 +395,12 @@ app.use('/api', updateRoutes);
 app.use('/api', lyricsRoutes);
 app.use('/api', settingsRoutes);
 app.use('/api', douyinRoutes);
-app.use('/api', douyinPlaywrightRoutes);
 app.use('/api', allSitesRoutes);
 app.use('/api', qualityScanRoutes);
 app.use('/api', downloadOnlyRoutes);
+app.use('/api/download-management', downloadManagementRoutes);
 app.use('/api/video', videoCompatibilityRoutes);
-app.use('/api/gemini', geminiImageRoutes);
+
 app.use('/api/narration', narrationRoutes);
 app.use('/api/test', testAudioRoute);
 app.use('/api/diagnostics', diagnosticsRoutes);
@@ -382,7 +433,7 @@ app.post('/api/scan-models', async (req, res) => {
 // Git branch detection endpoint
 app.get('/api/git-branch', (req, res) => {
   const { exec } = require('child_process');
-  
+
   exec('git branch --show-current', (error, stdout, stderr) => {
     if (error) {
       console.error('Error getting git branch:', error);
@@ -392,10 +443,10 @@ app.get('/api/git-branch', (req, res) => {
         branch: 'old_version' // Default to old_version if detection fails
       });
     }
-    
+
     const branch = stdout.trim();
     console.log('Current git branch:', branch);
-    
+
     res.json({
       success: true,
       branch: branch || 'old_version'
@@ -405,108 +456,57 @@ app.get('/api/git-branch', (req, res) => {
 
 // Git branch switching endpoint
 app.post('/api/switch-branch', express.json(), async (req, res) => {
-  const { exec } = require('child_process');
   const { branch } = req.body;
-  
+
   if (!branch) {
     return res.status(400).json({
       success: false,
       error: 'Branch name is required'
     });
   }
-  
-  console.log(`Switching to branch: ${branch}`);
 
-  // First, fetch the latest remote branches
-  exec('git fetch origin', (fetchError, fetchStdout, fetchStderr) => {
-    if (fetchError) {
-      console.error('Error fetching remote branches:', fetchError);
-      return res.status(500).json({
-        success: false,
-        error: `Failed to fetch remote branches: ${fetchError.message}`
-      });
-    }
+  console.log(`Request to switch to branch: ${branch}`);
 
-    // Check if the branch exists on remote
-    exec(`git ls-remote --heads origin ${branch}`, (lsError, lsStdout, lsStderr) => {
-      if (lsError || !lsStdout.trim()) {
-        console.error(`Branch ${branch} does not exist on remote`);
-        return res.status(400).json({
-          success: false,
-          error: `Branch '${branch}' does not exist on the remote repository. Please check the branch name.`
-        });
-      }
+  // Spawn a NEW terminal window that will perform the branch switch and restart services.
+  // We do NOT run any git commands in this current process to avoid triggering file watchers
+  // which would kill the running services prematurely.
+  try {
+    const { spawn } = require('child_process');
 
-      // Stash any uncommitted changes first
-      exec('git stash', (stashError, stashStdout, stashStderr) => {
-        if (stashError) {
-          console.warn('Warning: Could not stash changes:', stashError);
-        }
+    // Build command to run the dedicated switch runner script
+    const runnerCmd = `node scripts/switch-branch-runner.js ${branch}`;
 
-        // Now checkout the requested branch from remote
-        exec(`git checkout -B ${branch} origin/${branch}`, (checkoutError, checkoutStdout, checkoutStderr) => {
-          if (checkoutError) {
-            console.error('Error switching branch:', checkoutError);
-
-            // Try to pop the stash if checkout failed
-            exec('git stash pop', () => {});
-
-            return res.status(500).json({
-              success: false,
-              error: `Failed to switch to branch '${branch}': ${checkoutError.message}`
-            });
-          }
-
-          console.log(`Successfully switched to branch: ${branch}`);
-
-          // Try to pop the stash after successful checkout
-          exec('git stash pop', (popError) => {
-            if (popError) {
-              console.log('No stashed changes to restore or merge conflict occurred');
-            }
-          });
-
-          // Send success response immediately
-          res.json({
-            success: true,
-            message: `Successfully switched to branch '${branch}'. Restarting application...`,
-            branch: branch,
-            requiresRestart: true
-          });
-
-          // Run npm install and then npm run dev/dev:cuda in a new detached process
-          setTimeout(() => {
-            const { spawn } = require('child_process');
-          
-          // Check if we're running in Full version (dev:cuda) or Lite version (dev)
-          const isFullVersion = process.env.START_PYTHON_SERVER === 'true';
-          const runCommand = isFullVersion ? 'npm run dev:cuda' : 'npm run dev';
-          
-          console.log(`Starting new process with npm install and ${runCommand}...`);
-          
-          // Create command to run npm install first, then the appropriate dev command
-          // Using && to chain commands so dev only runs if install succeeds
-          const fullCommand = `npm install && ${runCommand}`;
-          
-          // Start in a new command window
-          spawn('cmd', ['/c', 'start', 'cmd', '/k', fullCommand], {
-            detached: true,
-            stdio: 'ignore',
-            cwd: __dirname,
-            shell: false
-          }).unref();
-          
-          console.log(`New process started (${isFullVersion ? 'Full' : 'Lite'} version). This process will exit shortly...`);
-          
-            // Exit current process after a moment
-            setTimeout(() => {
-              process.exit(0);
-            }, 1000);
-          }, 500);
-        });
-      });
+    // Start in a new command window (Windows)
+    const child = spawn('cmd', ['/c', 'start', 'cmd', '/k', runnerCmd], {
+      detached: true,
+      stdio: 'ignore',
+      cwd: process.cwd(),
+      shell: false,
+      env: { ...process.env }
     });
-  });
+
+    child.unref();
+
+    // Respond immediately to the client; the new window handles the rest
+    res.json({
+      success: true,
+      message: `Switching to branch '${branch}' in a new window. This window will shut down shortly...`,
+      branch: branch,
+      requiresRestart: true
+    });
+
+    // Give the new window a moment to launch, then exit this process to let detachment happen cleanly
+    setTimeout(() => {
+      console.log('[SWITCH-API] Exiting current process after launching switch runner...');
+      process.exit(0);
+    }, 800);
+  } catch (error) {
+    console.error('Failed to spawn switch-branch runner:', error);
+    return res.status(500).json({
+      success: false,
+      error: `Failed to initiate branch switch: ${error.message}`
+    });
+  }
 });
 
 module.exports = app;
