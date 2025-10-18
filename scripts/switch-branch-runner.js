@@ -4,7 +4,6 @@
 // It ensures the current running app is not disrupted by file changes during the switch.
 
 const { exec } = require('child_process');
-const path = require('path');
 
 const branch = process.argv[2];
 if (!branch) {
@@ -17,7 +16,7 @@ const runCommand = isFullVersion ? 'npm run dev:cuda' : 'npm run dev';
 
 function run(cmd, opts = {}) {
   return new Promise((resolve, reject) => {
-    const child = exec(cmd, { cwd: process.cwd(), ...opts }, (err, stdout, stderr) => {
+    exec(cmd, { cwd: process.cwd(), ...opts }, (err, stdout, stderr) => {
       if (stdout) process.stdout.write(stdout);
       if (stderr) process.stderr.write(stderr);
       if (err) return reject(err);
@@ -43,14 +42,18 @@ function run(cmd, opts = {}) {
       throw new Error(`Branch '${branch}' does not exist on the remote repository.`);
     });
 
-    console.log('[SWITCHER] Stashing local changes (if any)...');
-    try { await run('git stash'); } catch (_) {}
+    // Save any local changes safely to a stash, but DO NOT auto-apply it later.
+    const stashMessage = `auto-switch-${branch}-${Date.now()}`;
+    console.log('[SWITCHER] Stashing local changes (kept for reference, not re-applied)...');
+    try { await run(`git stash push -u -m "${stashMessage}"`); } catch (_) {}
 
     console.log(`[SWITCHER] Checking out branch '${branch}' from origin...`);
     await run(`git checkout -B ${branch} origin/${branch}`);
 
-    console.log('[SWITCHER] Restoring stashed changes (if any)...');
-    try { await run('git stash pop'); } catch (_) { console.log('[SWITCHER] No stashed changes to restore or conflicts occurred.'); }
+    // Ensure working tree matches the target branch exactly to avoid any merge conflicts
+    console.log('[SWITCHER] Resetting working tree to match remote branch (discarding local differences for this workspace)...');
+    await run(`git reset --hard origin/${branch}`);
+    await run('git clean -fd');
 
     console.log('[SWITCHER] Installing dependencies...');
     await run('npm install');
@@ -61,10 +64,14 @@ function run(cmd, opts = {}) {
     const child = spawn(runCommand, { shell: true, stdio: 'inherit' });
     child.on('exit', (code) => {
       console.log(`[SWITCHER] Child process exited with code ${code}`);
+      if (code === 0) {
+        console.log(`[SWITCHER] Local changes (if any) were saved in stash: "${stashMessage}". You can inspect with 'git stash list'.`);
+      }
       process.exit(code ?? 0);
     });
   } catch (err) {
     console.error(`[SWITCHER] Failed: ${err.message}`);
+    console.error(`[SWITCHER] If you had local changes, they may be stored in 'git stash list'.`);
     process.exit(1);
   }
 })();
