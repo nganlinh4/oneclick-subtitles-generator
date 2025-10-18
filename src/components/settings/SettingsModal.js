@@ -862,7 +862,7 @@ const SettingsModal = ({ onClose, onSave, apiKeysSet, setApiKeysSet }) => {
         <div className="settings-footer">
           <div className="settings-footer-left">
             {/* Theme toggle and language selector */}
-            <SettingsFooterControls isDropup={true} />
+            <SettingsFooterControls isDropup={true} showFontDropdown={true} />
 
             {/* Factory reset button */}
             <button

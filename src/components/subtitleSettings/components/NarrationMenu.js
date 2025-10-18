@@ -98,7 +98,7 @@ const NarrationMenu = ({
       {showNarrationMenu && (
         <div
           className="subtitle-settings-panel narration-panel"
-          style={{ position: 'absolute', top: 'calc(100%)', right: '-10px', height: '320px', width: '320px', zIndex: 9999 }}
+          style={{ position: 'absolute', top: 'calc(100%)', right: '-10px', width: '320px', zIndex: 9999 }}
           onClick={(e) => e.stopPropagation()}
         >
 

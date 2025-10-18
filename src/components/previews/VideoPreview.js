@@ -2116,6 +2116,8 @@ const VideoPreview = ({ currentTime, setCurrentTime, setDuration, videoSource, o
           })()}
           getAudioUrl={(filename) => `${SERVER_URL}/narration/audio/${filename || 'test.wav'}`}
           onRenderVideo={onRenderVideo}
+          volume={volume}
+          setVolume={setVolume}
         />
       </div>
 

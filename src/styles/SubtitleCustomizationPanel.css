@@ -118,15 +118,21 @@
 .preset-buttons .pill-button {
   font-size: 0.625rem;
   padding: 0.25rem 0.5rem;
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
+  white-space: normal;
+  word-wrap: break-word;
+  overflow-wrap: break-word;
+  overflow: visible;
   min-width: 0;
   position: relative;
   transition: all 0.3s ease;
   line-height: 1.1;
   border-radius: 12px;
   z-index: 1;
+  min-height: 2rem;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  text-align: center;
 }
 
 .preset-buttons .pill-button:hover {
@@ -140,6 +146,7 @@
   border: 1px solid #dee2e6;
   font-family: 'Inter', sans-serif;
   font-weight: 500;
+  width: -webkit-fill-available;
 }
 
 .preset-buttons .pill-button:nth-child(1):hover {
@@ -1306,6 +1313,212 @@ input[type="color"].color-picker::-webkit-color-swatch {
   .preset-buttons {
     grid-template-columns: repeat(2, 1fr);
     gap: 0.4rem;
+  }
+}
+
+/* Custom Preset Buttons - now integrated into main grid */
+.custom-preset-button-container {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  grid-column: span 1;
+}
+
+
+/* Custom preset pill buttons - simplified, multi-line, no gradients */
+.custom-preset-button {
+  background: var(--md-surface-2);
+  color: var(--text-primary);
+  border: 1px solid var(--md-outline-variant);
+  white-space: normal; /* allow wrapping */
+  overflow-wrap: anywhere; /* break long words */
+  word-break: break-word;
+  text-align: center;
+}
+
+.custom-preset-button.primary {
+  background: var(--md-primary-container);
+  color: var(--md-on-primary-container);
+  border-color: var(--md-primary);
+}
+
+.custom-preset-delete-button.pc-clear {
+  position: absolute;
+  top: -1.2vmin;
+  right: -1.2vmin;
+  width: 4.2vmin;
+  height: 4.2vmin;
+  border-radius: 9999px;
+  border: 1px solid var(--md-outline-variant);
+  background: var(--md-surface);
+  color: var(--md-on-surface);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
+  line-height: 0;
+  box-sizing: border-box;
+  cursor: pointer;
+  box-shadow: var(--md-elevation-level1);
+  opacity: 0;
+  z-index: 20;
+  pointer-events: auto;
+  transition: opacity var(--md-duration-short3) var(--md-easing-standard),
+              transform var(--md-duration-short3) var(--md-easing-standard),
+              box-shadow var(--md-duration-short3) var(--md-easing-standard),
+              background-color var(--md-duration-short3) var(--md-easing-standard),
+              border-color var(--md-duration-short3) var(--md-easing-standard);
+  transform: scale(0.9);
+}
+
+.custom-preset-delete-button.pc-clear svg {
+  width: 100%;
+  height: 100%;
+  display: block;
+}
+
+.custom-preset-button-container:hover .custom-preset-delete-button.pc-clear {
+  opacity: 1;
+  transform: scale(1);
+}
+
+.custom-preset-delete-button.pc-clear:hover {
+  background: var(--md-surface-variant);
+  border-color: var(--md-outline);
+  box-shadow: var(--md-elevation-level2);
+  transform: scale(1.06);
+}
+
+.custom-preset-delete-button.pc-clear:active {
+  transform: scale(0.96);
+  box-shadow: var(--md-elevation-level1);
+}
+
+.custom-preset-delete-button.pc-clear:focus-visible {
+  outline: none;
+  box-shadow: 0 0 0 0.22vmin rgba(0,0,0,0.3), var(--md-elevation-level2);
+}
+
+/* Save Preset Button */
+.save-preset-button {
+  font-size: 0.625rem;
+  padding: 0.25rem 0.5rem;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  min-width: 0;
+  position: relative;
+  transition: all 0.2s ease;
+  line-height: 1.1;
+  border-radius: 12px;
+  background: var(--md-surface-1);
+  color: var(--text-primary);
+  border: 2px dashed var(--md-outline);
+  font-family: 'Inter', sans-serif;
+  font-weight: 600;
+}
+
+.save-preset-button:hover:not(:disabled) {
+  background: var(--md-surface-2);
+  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.12);
+}
+
+.save-preset-button:disabled {
+  background: var(--md-surface-1);
+  color: var(--text-secondary);
+  border-color: var(--md-outline-variant);
+  cursor: not-allowed;
+  opacity: 0.6;
+}
+
+.save-preset-button.primary {
+  background: var(--md-primary-container);
+  color: var(--md-on-primary-container);
+  border-color: var(--md-primary);
+  border: dashed 2px var(--md-primary);
+}
+
+/* Preset Naming Modal */
+.preset-naming-modal-overlay {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background-color: rgba(0, 0, 0, 0.5);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 1000;
+  backdrop-filter: blur(2px);
+}
+
+/* Container styles moved to body, since header/content wrapper was removed */
+.preset-naming-modal-body {
+  background-color: var(--md-surface-1);
+  border-radius: var(--card-border-radius);
+  border: 1px solid var(--border-color);
+  box-shadow: var(--md-elevation-level4);
+  max-width: 400px;
+  width: 90%;
+  max-height: 90vh;
+  overflow-y: auto;
+  padding: 1rem;
+}
+
+.preset-naming-modal-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 1rem;
+  border-bottom: 1px solid var(--border-color);
+}
+
+.preset-naming-modal-header h3 {
+  margin: 0;
+  font-size: 1.1rem;
+  font-weight: 600;
+  color: var(--text-primary);
+}
+
+.close-preset-naming-modal-btn {
+  background: none;
+  border: none;
+  font-size: 1.5rem;
+  cursor: pointer;
+  color: var(--text-secondary);
+  padding: 0;
+  width: 24px;
+  height: 24px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 50%;
+  transition: background-color 0.2s, color 0.2s;
+}
+
+.close-preset-naming-modal-btn:hover {
+  background-color: var(--md-surface-2);
+  color: var(--text-primary);
+}
+
+.preset-naming-modal-body {
+  padding: 1rem;
+}
+
+/* Responsive adjustments for custom components */
+@media (max-width: 768px) {
+  .custom-preset-button,
+  .save-preset-button {
+    font-size: 0.6rem;
+    padding: 0.25rem 0.45rem;
+  }
+
+  .custom-preset-delete-button.pc-clear {
+    width: 3.5vmin;
+    height: 3.5vmin;
+    top: -1vmin;
+    right: -1vmin;
   }
 }
 

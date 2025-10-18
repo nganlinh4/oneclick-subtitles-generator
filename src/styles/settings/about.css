@@ -46,6 +46,7 @@
   position: relative;
   overflow: hidden; /* For ripple effect */
   min-width: 64px; /* MD3 minimum touch target */
+  gap: 0.75rem;
 }
 
 /* State styles - Material Design 3 states */
@@ -73,14 +74,6 @@
   background-color: transparent;
   border-radius: inherit;
   transition: background-color 0.2s cubic-bezier(0.4, 0, 0.2, 1);
-}
-
-/* Add an icon to the button - using a simple unicode symbol */
-.replay-onboarding-button::before {
-  content: "↻"; /* Unicode refresh symbol */
-  margin-right: 8px;
-  font-size: 16px;
-  line-height: 1;
 }
 
 .about-section::before {

@@ -143,7 +143,7 @@
 
 .tab-btn.active {
   color: var(--md-on-primary-container);
-  font-weight: 1000;
+  font-weight: bold;
   opacity: 1;
   transform: scale(1.2);
   letter-spacing: 0.2px;

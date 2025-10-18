@@ -162,7 +162,7 @@ const SubtitlesInputModal = ({ initialText = '', onSave, onClose, onGenerateBack
               onClick={() => setShowLyricsInput(!showLyricsInput)}
               title={t('subtitlesInput.lyricsToggle', 'Toggle lyrics search')}
             >
-              <span className="material-symbols-rounded">music_note</span> {t('subtitlesInput.fetchLyrics', 'Fetch Song Lyrics')}
+              <span className="material-symbols-rounded">queue_music</span> {t('subtitlesInput.fetchLyrics', 'Fetch Song Lyrics')}
             </button>
           </div>
 
@@ -204,7 +204,7 @@ const SubtitlesInputModal = ({ initialText = '', onSave, onClose, onGenerateBack
             onKeyDown={handleKeyDown}
             onPaste={handlePaste}
             placeholder={t('subtitlesInput.placeholder', 'Enter your subtitles here...')}
-            rows={10}
+            rows={8}
             containerClassName="large"
           />
 

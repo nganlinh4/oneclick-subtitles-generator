@@ -1,9 +1,6 @@
 import React, { useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import { Alert } from '@mui/material';
 import {
-  addModelFromHuggingFace,
-  addModelFromUrl,
   deleteModel,
   updateModelInfo,
   getModelStorageInfo,
@@ -397,9 +394,10 @@ const ModelManagementTab = () => {
         </p>
 
         {error && (
-          <Alert severity="error" sx={{ mb: 2 }}>
-            {error}
-          </Alert>
+          <div className="error-message" style={{ marginBottom: '1rem' }}>
+            <span className="material-symbols-rounded" aria-hidden="true">error</span>
+            <span>{error}</span>
+          </div>
         )}
 
         {/* Available Models List */}

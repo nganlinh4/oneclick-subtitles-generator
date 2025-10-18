@@ -1,12 +1,20 @@
-import React from 'react';
+import React, { useEffect, useState, useMemo } from 'react';
 import { useTranslation } from 'react-i18next';
 import { defaultCustomization } from '../SubtitleCustomizationPanel';
+import { getCustomSubtitlePresets, deleteCustomSubtitlePreset, hasCustomizationChanged, addCustomSubtitlePreset } from '../../utils/subtitlePresetUtils';
+import PresetNamingModal from './PresetNamingModal';
 
 const PresetButtons = ({ customization, onChange }) => {
   const { t } = useTranslation();
+  const [customPresets, setCustomPresets] = useState([]);
+  const [showNamingModal, setShowNamingModal] = useState(false);
+  const [isSaving, setIsSaving] = useState(false);
 
-  const applyPreset = (preset) => {
-    const presets = {
+  useEffect(() => {
+    setCustomPresets(getCustomSubtitlePresets());
+  }, []);
+
+  const presets = {
       default: defaultCustomization,
       modern: {
         // Text properties
@@ -716,14 +724,57 @@ const PresetButtons = ({ customization, onChange }) => {
       }
     };
 
+  const hasChanges = useMemo(() => {
+    return hasCustomizationChanged(customization, presets);
+  }, [customization]);
+
+  const applyPreset = (preset) => {
     const presetConfig = presets[preset] || presets.default;
     // Ensure all properties are reset to prevent bleeding between presets
     onChange({ ...defaultCustomization, ...presetConfig });
   };
 
+  const applyCustomPreset = (customPreset) => {
+    onChange({ ...defaultCustomization, ...customPreset.customization, preset: customPreset.id });
+  };
+
+  const handleDeleteCustomPreset = (presetId) => {
+    const updated = deleteCustomSubtitlePreset(presetId);
+    setCustomPresets(updated);
+  };
+
+  const handleSavePreset = () => {
+    if (!hasChanges || isSaving) return;
+    setShowNamingModal(true);
+  };
+
+  const handleModalSave = async (presetName) => {
+    setIsSaving(true);
+
+    try {
+      const updatedPresets = addCustomSubtitlePreset({
+        name: presetName,
+        customization: { ...customization }
+      });
+
+      // Update the parent component's custom presets state
+      setCustomPresets(updatedPresets);
+
+      // Update the customization to reflect the new preset
+      onChange({ ...customization, preset: updatedPresets[updatedPresets.length - 1].id });
+    } catch (error) {
+      console.error('Error saving custom preset:', error);
+      alert(t('presetButtons.saveError', 'Failed to save custom preset.'));
+    } finally {
+      setIsSaving(false);
+    }
+  };
+
+
   return (
     <div className="customization-row preset-row">
       <div className="preset-buttons">
+        {/* Predefined preset buttons */}
         {['default', 'modern', 'classic', 'neon', 'minimal', 'gaming', 'cinematic', 'gradient', 'retro', 'elegant', 'cyberpunk', 'vintage', 'comic', 'horror', 'luxury', 'kawaii', 'grunge', 'corporate', 'anime', 'vaporwave', 'steampunk', 'noir', 'pastel', 'bold', 'sketch', 'glitch', 'royal', 'sunset', 'ocean', 'forest'].map(preset => (
           <button
             key={preset}
@@ -733,7 +784,49 @@ const PresetButtons = ({ customization, onChange }) => {
             {preset.charAt(0).toUpperCase() + preset.slice(1)}
           </button>
         ))}
+
+        {/* Custom preset buttons */}
+        {customPresets.map(customPreset => (
+          <div key={customPreset.id} className="custom-preset-button-container">
+            <button
+              className={`pill-button custom-preset-button ${customization.preset === customPreset.id ? 'primary' : 'secondary'}`}
+              onClick={() => applyCustomPreset(customPreset)}
+              title={customPreset.name}
+            >
+              {customPreset.name}
+            </button>
+            <button
+              className="custom-preset-delete-button pc-clear"
+              onClick={() => handleDeleteCustomPreset(customPreset.id)}
+              title="Delete preset"
+            >
+              <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 -960 960 960" fill="currentColor">
+                <path d="m480-384-67 66q-20 20-47.5 20.5T318-318q-20-20-20-48t20-47l66-67-67-67q-20-20-20-47.5t21-47.5q20-20 47.5-20t47.5 20l67 66 67-66q20-20 47.5-20t47.5 20q20 19 20 47t-20 48l-66 67 66 67q20 20 20 47.5T642-318q-19 19-47 19t-48-19l-67-66Z"/>
+              </svg>
+            </button>
+          </div>
+        ))}
+
+        {/* Save preset button */}
+        <button
+          className={`pill-button save-preset-button ${hasChanges ? 'primary' : 'secondary'}`}
+          onClick={handleSavePreset}
+          disabled={!hasChanges || isSaving}
+          title={hasChanges ? 'Save current settings as preset' : 'No changes to save'}
+        >
+          <span className="material-symbols-rounded" style={{ fontSize: 16 }}>save</span>
+          Save Preset
+        </button>
+
       </div>
+
+      {/* Preset naming modal */}
+      <PresetNamingModal
+        isOpen={showNamingModal}
+        onClose={() => setShowNamingModal(false)}
+        onSave={handleModalSave}
+      />
+
     </div>
   );
 };

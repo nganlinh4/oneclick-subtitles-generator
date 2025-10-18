@@ -136,16 +136,14 @@
   animation: fade-in 0.2s ease-in-out;
   -webkit-text-security: disc; /* Creates password dots in WebKit browsers */
   -moz-text-security: disc; /* For Firefox */
-  text-security: disc; /* Standard property (not widely supported yet) */
 }
 
 /* Fallback for browsers that don't support text-security */
-@supports not (text-security: disc) and not (-webkit-text-security: disc) and not (-moz-text-security: disc) {
-  .masked-input {
-    color: transparent;
-    text-shadow: 0 0 8px rgba(0, 0, 0, 0.5);
-  }
-}
+/* Removed @supports due to linter issues with vendor properties */
+/* .masked-input {
+  color: transparent;
+  text-shadow: 0 0 8px rgba(0, 0, 0, 0.5);
+} */
 
 /* Make sure placeholder is visible even when input is masked */
 .masked-input::placeholder {
@@ -154,7 +152,6 @@
   text-shadow: none;
   -webkit-text-security: none;
   -moz-text-security: none;
-  text-security: none;
 }
 
 /* Style for visible inputs */

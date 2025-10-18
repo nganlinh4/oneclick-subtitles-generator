@@ -560,7 +560,7 @@ const BackgroundMusicSection = () => {
                 boxShadow: 'var(--md-elevation-level2)'
               }}
             >
-              <span className="material-symbols-rounded" style={{ fontSize: '28px' }}>refresh</span>
+              <span className="material-symbols-rounded" style={{ fontSize: '28px' }}>restart_alt</span>
             </button>
 
             {/* Floating resizer pill (bottom-right) */}

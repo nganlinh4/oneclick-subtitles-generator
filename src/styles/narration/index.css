@@ -55,6 +55,7 @@
   color: var(--md-on-surface);
   border-bottom: 1px solid var(--md-outline-variant);
   background-color: var(--md-surface-3);
+  text-align: center;
 }
 
 .example-audio-dropdown-list {

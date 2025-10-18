@@ -75,6 +75,11 @@ html:not(.ms-font-ready) .material-symbols-rounded { visibility: hidden; }
   --font-title: 'Google Sans', 'Be Vietnam Pro', sans-serif;
   --font-code: 'JetBrains Mono', monospace;
 
+  /* Headline tuning (Google Sans Flex) */
+  --headline-wght: 700; /* maps to wght via font-weight */
+  --headline-grad: 0;   /* non-standard axis, uses font-variation-settings */
+  --headline-rond: 100; /* non-standard axis, uses font-variation-settings */
+
   /* Additional Material Design 3 mappings */
   --button-border-radius: var(--md-shape-small);
   --card-border-radius: var(--md-shape-medium);
@@ -101,6 +106,9 @@ html:not(.ms-font-ready) .material-symbols-rounded { visibility: hidden; }
   --shadow-color: rgba(0, 0, 0, 0.25);
   --theme-lightness: 40%;
 
+  /* Headline tweak for dark mode: slightly higher grade for legibility */
+  --headline-grad: 25;
+
   /* Success and warning colors for dark theme */
   --success-color: #66bb6a; /* Material success color for dark theme */
   --warning-color: #ffa726; /* Material warning color for dark theme */
@@ -116,7 +124,7 @@ html:not(.ms-font-ready) .material-symbols-rounded { visibility: hidden; }
 /* Material Design 3 typography */
 body {
   margin: 0;
-  font-family: 'Google Sans', 'Open Sans', sans-serif;
+  font-family: var(--font-primary);
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
   background-color: var(--background-primary);
@@ -149,6 +157,21 @@ h1, h2, h3, h4, h5, h6 {
   margin-top: 0;
   color: var(--text-primary);
   font-family: var(--font-title);
+  font-weight: var(--headline-wght);
+  font-optical-sizing: auto; /* let browser pick opsz based on size */
+  /* Non-standard axes only (standards-first approach) */
+  font-variation-settings: "GRAD" var(--headline-grad), "ROND" var(--headline-rond);
+}
+
+/* Utility classes to tweak roundness on demand */
+.title-round-0 {
+  font-variation-settings: "GRAD" var(--headline-grad), "ROND" 0;
+}
+.title-round-50 {
+  font-variation-settings: "GRAD" var(--headline-grad), "ROND" 50;
+}
+.title-round-100 {
+  font-variation-settings: "GRAD" var(--headline-grad), "ROND" 100;
 }
 
 a {

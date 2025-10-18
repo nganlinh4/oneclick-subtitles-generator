@@ -1,6 +1,5 @@
 import React from 'react';
 import { useTranslation } from 'react-i18next';
-import { Alert } from '@mui/material';
 import CustomModelDialog from '../CustomModelDialog';
 import LanguageCodeInput from './LanguageCodeInput';
 import CustomScrollbarTextarea from '../../common/CustomScrollbarTextarea';
@@ -19,14 +18,14 @@ import CustomScrollbarTextarea from '../../common/CustomScrollbarTextarea';
  * @param {Object} props.storageInfo - Model storage information
  * @returns {JSX.Element} - Rendered component
  */
-const EditModelDialog = ({ 
-  isOpen, 
-  onClose, 
-  model, 
-  form, 
-  onFormChange, 
-  onLanguageCodesChange, 
-  onEditModel, 
+const EditModelDialog = ({
+  isOpen,
+  onClose,
+  model,
+  form,
+  onFormChange,
+  onLanguageCodesChange,
+  onEditModel,
   isEditing,
   storageInfo
 }) => {
@@ -92,9 +91,9 @@ const EditModelDialog = ({
           {t('settings.modelManagement.languageCodesHelp', 'Enter the language codes this model supports (e.g., en, fr, zh). Add multiple codes for multilingual models.')}
         </div>
 
-        <LanguageCodeInput 
-          languageCodes={form.languageCodes || ['']} 
-          onChange={onLanguageCodesChange} 
+        <LanguageCodeInput
+          languageCodes={form.languageCodes || ['']}
+          onChange={onLanguageCodesChange}
         />
       </div>
 
@@ -120,9 +119,10 @@ const EditModelDialog = ({
             <h5>{t('settings.modelManagement.storageInformation')}</h5>
           </div>
 
-          <Alert severity="info" sx={{ mb: 1 }}>
-            {t('settings.modelManagement.usingSymlinks')}
-          </Alert>
+          <div className="download-status" style={{ marginBottom: '0.75rem' }}>
+            <span className="material-symbols-rounded" aria-hidden="true">info</span>
+            <span>{t('settings.modelManagement.usingSymlinks')}</span>
+          </div>
 
           <p className="model-source">
             {t('settings.modelManagement.originalFiles')}:

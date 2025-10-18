@@ -456,7 +456,6 @@ app.get('/api/git-branch', (req, res) => {
 
 // Git branch switching endpoint
 app.post('/api/switch-branch', express.json(), async (req, res) => {
-  const { exec } = require('child_process');
   const { branch } = req.body;
 
   if (!branch) {
@@ -466,98 +465,48 @@ app.post('/api/switch-branch', express.json(), async (req, res) => {
     });
   }
 
-  console.log(`Switching to branch: ${branch}`);
+  console.log(`Request to switch to branch: ${branch}`);
 
-  // First, fetch the latest remote branches
-  exec('git fetch origin', (fetchError, fetchStdout, fetchStderr) => {
-    if (fetchError) {
-      console.error('Error fetching remote branches:', fetchError);
-      return res.status(500).json({
-        success: false,
-        error: `Failed to fetch remote branches: ${fetchError.message}`
-      });
-    }
+  // Spawn a NEW terminal window that will perform the branch switch and restart services.
+  // We do NOT run any git commands in this current process to avoid triggering file watchers
+  // which would kill the running services prematurely.
+  try {
+    const { spawn } = require('child_process');
 
-    // Check if the branch exists on remote
-    exec(`git ls-remote --heads origin ${branch}`, (lsError, lsStdout, lsStderr) => {
-      if (lsError || !lsStdout.trim()) {
-        console.error(`Branch ${branch} does not exist on remote`);
-        return res.status(400).json({
-          success: false,
-          error: `Branch '${branch}' does not exist on the remote repository. Please check the branch name.`
-        });
-      }
+    // Build command to run the dedicated switch runner script
+    const runnerCmd = `node scripts/switch-branch-runner.js ${branch}`;
 
-      // Stash any uncommitted changes first
-      exec('git stash', (stashError, stashStdout, stashStderr) => {
-        if (stashError) {
-          console.warn('Warning: Could not stash changes:', stashError);
-        }
-
-        // Now checkout the requested branch from remote
-        exec(`git checkout -B ${branch} origin/${branch}`, (checkoutError, checkoutStdout, checkoutStderr) => {
-          if (checkoutError) {
-            console.error('Error switching branch:', checkoutError);
-
-            // Try to pop the stash if checkout failed
-            exec('git stash pop', () => {});
-
-            return res.status(500).json({
-              success: false,
-              error: `Failed to switch to branch '${branch}': ${checkoutError.message}`
-            });
-          }
-
-          console.log(`Successfully switched to branch: ${branch}`);
-
-          // Try to pop the stash after successful checkout
-          exec('git stash pop', (popError) => {
-            if (popError) {
-              console.log('No stashed changes to restore or merge conflict occurred');
-            }
-          });
-
-          // Send success response immediately
-          res.json({
-            success: true,
-            message: `Successfully switched to branch '${branch}'. Restarting application...`,
-            branch: branch,
-            requiresRestart: true
-          });
-
-          // Run npm install and then npm run dev/dev:cuda in a new detached process
-          setTimeout(() => {
-            const { spawn } = require('child_process');
-
-          // Check if we're running in Full version (dev:cuda) or Lite version (dev)
-          const isFullVersion = process.env.START_PYTHON_SERVER === 'true';
-          const runCommand = isFullVersion ? 'npm run dev:cuda' : 'npm run dev';
-
-          console.log(`Starting new process with npm install and ${runCommand}...`);
-
-          // Create command to run npm install first, then the appropriate dev command
-          // Using && to chain commands so dev only runs if install succeeds
-          const fullCommand = `npm install && ${runCommand}`;
-
-          // Start in a new command window
-          spawn('cmd', ['/c', 'start', 'cmd', '/k', fullCommand], {
-            detached: true,
-            stdio: 'ignore',
-            cwd: __dirname,
-            shell: false
-          }).unref();
-
-          console.log(`New process started (${isFullVersion ? 'Full' : 'Lite'} version). This process will exit shortly...`);
-
-            // Exit current process after a moment
-            setTimeout(() => {
-              process.exit(0);
-            }, 1000);
-          }, 500);
-        });
-      });
+    // Start in a new command window (Windows)
+    const child = spawn('cmd', ['/c', 'start', 'cmd', '/k', runnerCmd], {
+      detached: true,
+      stdio: 'ignore',
+      cwd: process.cwd(),
+      shell: false,
+      env: { ...process.env }
     });
-  });
+
+    child.unref();
+
+    // Respond immediately to the client; the new window handles the rest
+    res.json({
+      success: true,
+      message: `Switching to branch '${branch}' in a new window. This window will shut down shortly...`,
+      branch: branch,
+      requiresRestart: true
+    });
+
+    // Give the new window a moment to launch, then exit this process to let detachment happen cleanly
+    setTimeout(() => {
+      console.log('[SWITCH-API] Exiting current process after launching switch runner...');
+      process.exit(0);
+    }, 800);
+  } catch (error) {
+    console.error('Failed to spawn switch-branch runner:', error);
+    return res.status(500).json({
+      success: false,
+      error: `Failed to initiate branch switch: ${error.message}`
+    });
+  }
 });
 
 module.exports = app;

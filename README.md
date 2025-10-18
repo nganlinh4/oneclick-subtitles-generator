@@ -330,13 +330,13 @@ Access settings via the gear icon in the top-right corner:
 - **AI Models**: Choose between Gemini 2.5 Flash, Pro, or experimental models
 - **Languages**: English, Vietnamese, Korean interface support
 - **Video Processing**: Segment duration, quality preferences, cookie management
-- **TTS Engines**: F5-TTS, Chatterbox, Edge TTS, or Google TTS selection
+- **TTS Engines**: F5-TTS, Chatterbox, Gemini Live API, Edge TTS, or Google TTS selection
 - **Interface**: Dark/light themes, time format, waveform visualization
 - **Cache Management**: Clear caches and monitor storage usage
 
 ## Technical Stack
 
-- **Frontend**: React 18, Material-UI, Styled Components, i18next
+- **Frontend**: React 18, Styled Components, i18next
 - **Video Rendering**: Remotion 4 with GPU acceleration (Vulkan/OpenGL)
 - **Backend**: Node.js/Express, Python Flask, FastAPI
 - **AI Integration**: Google Gemini API, F5-TTS, Chatterbox TTS
@@ -356,7 +356,6 @@ Access settings via the gear icon in the top-right corner:
 
 ### 🎯 Core Technologies
 - **[React](https://reactjs.org/)** - Modern UI framework with hooks and context
-- **[Material-UI](https://mui.com/)** - Professional design system and components
 - **[Remotion](https://remotion.dev/)** - Programmatic video creation and rendering
 - **[Node.js](https://nodejs.org/)** - JavaScript runtime for backend services
 - **[Express](https://expressjs.com/)** - Web application framework for Node.js
@@ -383,7 +382,7 @@ Access settings via the gear icon in the top-right corner:
 ### 🌐 Internationalization & Accessibility
 - **[i18next](https://www.i18next.com/)** - Internationalization framework
 - **[React i18next](https://react.i18next.com/)** - React integration for i18next
-- **Material Design 3** - Modern design principles and accessibility standards
+- **Material 3 Expressive** - Modern design principles and accessibility standards
 
 ### 🔧 Development & Build Tools
 - **[TypeScript](https://www.typescriptlang.org/)** - Type-safe JavaScript development

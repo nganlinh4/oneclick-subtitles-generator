@@ -38,12 +38,12 @@ const FileUploadInput = ({ uploadedFile, setUploadedFile, onVideoSelect, classNa
     "audio/wav", "audio/mp3", "audio/aiff", "audio/aac", "audio/ogg", "audio/flac", "audio/mpeg",
     "audio/m4a", "audio/mp4", "audio/x-ms-wma", "audio/opus", "audio/amr", "audio/3gpp",
     "audio/basic", "audio/x-caf", "audio/vnd.dts", "audio/ac3", "audio/x-ape",
-    "audio/x-matroska", "audio/vnd.rn-realaudio"
+    "audio/x-matroska", "audio/vnd.rn-realaudio", "audio/webm"
   ], []);
 
   const SUPPORTED_AUDIO_EXTENSIONS = useMemo(() => [
     ".wav", ".mp3", ".aiff", ".aac", ".ogg", ".flac", ".m4a", ".wma", ".opus",
-    ".amr", ".au", ".caf", ".dts", ".ac3", ".ape", ".mka", ".ra"
+    ".amr", ".au", ".caf", ".dts", ".ac3", ".ape", ".mka", ".ra", ".webm"
   ], []);
 
   const SUPPORTED_VIDEO_EXTENSIONS = useMemo(() => [
@@ -63,14 +63,14 @@ const FileUploadInput = ({ uploadedFile, setUploadedFile, onVideoSelect, classNa
 
   // Check if file is an audio - wrapped in useCallback to avoid dependency issues
   const isAudioFile = useCallback((mimeType, fileName = '') => {
-    // First check MIME type
-    if (SUPPORTED_AUDIO_FORMATS.includes(mimeType)) {
+    // Allow any MIME type that starts with 'audio/'
+    if (mimeType.startsWith('audio/')) {
       return true;
     }
-    // Fallback to file extension check
+    // Fallback to file extension check for known audio extensions
     const extension = fileName.toLowerCase().substring(fileName.lastIndexOf('.'));
     return SUPPORTED_AUDIO_EXTENSIONS.includes(extension);
-  }, [SUPPORTED_AUDIO_FORMATS, SUPPORTED_AUDIO_EXTENSIONS]);
+  }, [SUPPORTED_AUDIO_EXTENSIONS]);
 
   // Display file information - wrapped in useCallback to avoid dependency issues
   const displayFileInfo = useCallback((file, originalFile = null) => {
@@ -153,7 +153,8 @@ const FileUploadInput = ({ uploadedFile, setUploadedFile, onVideoSelect, classNa
         }
 
         // Check if this is an audio file
-        const isAudio = file.type.startsWith('audio/');
+        // Include WebM files as they can be audio-only
+        const isAudio = file.type.startsWith('audio/') || file.name.toLowerCase().endsWith('.webm');
         let processedFile = file;
 
         // If it's an audio file, immediately convert it to video
@@ -407,7 +408,7 @@ const FileUploadInput = ({ uploadedFile, setUploadedFile, onVideoSelect, classNa
             size={48}
             className="file-upload-loading"
           />
-          <h3>{t('fileUpload.processing', 'Processing media...')}</h3>
+          <h3 style={{marginTop: '10px'}}>{t('fileUpload.processing', 'Processing media...')}</h3>
           <p>{t('fileUpload.pleaseWait', 'Please wait while we process your file')}</p>
         </div>
       ) : !uploadedFile ? (
@@ -433,8 +434,10 @@ const FileUploadInput = ({ uploadedFile, setUploadedFile, onVideoSelect, classNa
 
           <div className="file-info-content">
             <h4 className="file-name">{fileInfo ? fileInfo.name : 'File'}</h4>
-            <span className="file-badge">{fileInfo ? fileInfo.mediaType : 'Video'}</span>
-            <span className="file-info-size">{fileInfo ? fileInfo.size : ''}</span>
+            <div className="file-details">
+              <span className="file-badge">{fileInfo ? fileInfo.mediaType : 'Video'}</span>
+              <span className="file-info-size">{fileInfo ? fileInfo.size : ''}</span>
+            </div>
 
             {fileInfo && (fileInfo.converting || fileInfo.copying) ? (
               <div className="converting-indicator">
@@ -452,52 +455,54 @@ const FileUploadInput = ({ uploadedFile, setUploadedFile, onVideoSelect, classNa
                     : t('fileUpload.processing', 'Processing media...')
                 }
               </div>
-            ) : (
-              <button
-                className="remove-file-btn"
-                onClick={(e) => {
-                  e.stopPropagation();
-                  setFileInfo(null);
-                  setUploadedFile(null);
-
-                  // Revoke and clear current file URL
-                  const existingUrl = localStorage.getItem('current_file_url');
-                  if (existingUrl) {
-                    try { URL.revokeObjectURL(existingUrl); } catch {}
-                    localStorage.removeItem('current_file_url');
-                  }
-
-                  // Clear only session pointers; preserve gemini_file_* caches for reuse
-                  try {
-                    localStorage.removeItem('current_file_cache_id');
-                    localStorage.removeItem('current_video_url');
-                  } catch {}
-
-                  // Preserve subtitles_data for SRT-only mode; clear only transient latest segment output
-                  try {
-                    localStorage.removeItem('latest_segment_subtitles');
-                  } catch {}
-
-                  // Also reset any segment UI state if handlers provided
-                  try {
-                    if (setVideoSegments) setVideoSegments([]);
-                    if (setSegmentsStatus) setSegmentsStatus([]);
-                  } catch {}
-
-                  // If there are still subtitles to work with, switch to SRT-only mode
-                  const subtitlesData = localStorage.getItem('subtitles_data');
-                  if (subtitlesData && setIsSrtOnlyMode) {
-                    setIsSrtOnlyMode(true);
-                  }
-                }}
-              >
-                <span className="material-symbols-rounded" style={{ fontSize: 16, display: 'inline-block' }}>
-                  close
-                </span>
-                {t('fileUpload.remove', 'Remove')}
-              </button>
-            )}
+            ) : null}
           </div>
+
+          {fileInfo && !(fileInfo.converting || fileInfo.copying) ? (
+            <button
+              className="remove-file-btn"
+              onClick={(e) => {
+                e.stopPropagation();
+                setFileInfo(null);
+                setUploadedFile(null);
+
+                // Revoke and clear current file URL
+                const existingUrl = localStorage.getItem('current_file_url');
+                if (existingUrl) {
+                  try { URL.revokeObjectURL(existingUrl); } catch {}
+                  localStorage.removeItem('current_file_url');
+                }
+
+                // Clear only session pointers; preserve gemini_file_* caches for reuse
+                try {
+                  localStorage.removeItem('current_file_cache_id');
+                  localStorage.removeItem('current_video_url');
+                } catch {}
+
+                // Preserve subtitles_data for SRT-only mode; clear only transient latest segment output
+                try {
+                  localStorage.removeItem('latest_segment_subtitles');
+                } catch {}
+
+                // Also reset any segment UI state if handlers provided
+                try {
+                  if (setVideoSegments) setVideoSegments([]);
+                  if (setSegmentsStatus) setSegmentsStatus([]);
+                } catch {}
+
+                // If there are still subtitles to work with, switch to SRT-only mode
+                const subtitlesData = localStorage.getItem('subtitles_data');
+                if (subtitlesData && setIsSrtOnlyMode) {
+                  setIsSrtOnlyMode(true);
+                }
+              }}
+            >
+              <span className="material-symbols-rounded" style={{ fontSize: 16, display: 'inline-block' }}>
+                close
+              </span>
+              {t('fileUpload.remove', 'Remove')}
+            </button>
+          ) : null}
         </div>
       )}
 

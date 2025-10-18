@@ -16,7 +16,7 @@ export const ProcessingIcon = () => (
     aria-hidden="true"
     style={{ fontSize: 20, display: 'inline-block' }}
   >
-    autorenew
+    manufacturing
   </span>
 );
 
@@ -66,7 +66,7 @@ export const ModelIcon = () => (
     aria-hidden="true"
     style={{ fontSize: 20, display: 'inline-block' }}
   >
-    apps
+    dashboard_2
   </span>
 );
 

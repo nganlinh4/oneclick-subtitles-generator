@@ -40,7 +40,7 @@ const TextControls = ({ customization, onChange }) => {
                   return currentFont?.label || 'Select Font';
                 })()}
               </span>
-              <span className="font-flags">
+              <span className="font-flags" style={{ fontFamily: customization.fontFamily }}>
                 {(() => {
                   const currentFont = Object.values(groupFontsByCategory())
                     .flat()

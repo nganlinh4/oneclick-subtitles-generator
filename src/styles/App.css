@@ -70,8 +70,8 @@
 }
 
 /* Ensure all text inside buttons-container buttons uses the title font */
-.buttons-container button *,
-.buttons-container button span,
+.buttons-container button *:not(.material-symbols-rounded),
+.buttons-container button span:not(.material-symbols-rounded),
 .buttons-container .processing-text-container,
 .buttons-container .processing-text,
 .buttons-container .processing-dots {

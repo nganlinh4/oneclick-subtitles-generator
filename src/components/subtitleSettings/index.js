@@ -30,7 +30,9 @@ const SubtitleSettings = ({
   videoRef,
   originalNarrations = [],
   translatedNarrations = [],
-  onRenderVideo
+  onRenderVideo,
+  volume,
+  setVolume
 }) => {
   const { t } = useTranslation();
 
@@ -51,8 +53,6 @@ const SubtitleSettings = ({
     setNarrationSource,
     narrationVolume,
     setNarrationVolume,
-    videoVolume,
-    setVideoVolume,
     currentNarration, // Kept for NarrationMenu props
     hasOriginalNarrations,
     hasTranslatedNarrations,
@@ -102,8 +102,8 @@ const SubtitleSettings = ({
           setNarrationSource={setNarrationSource}
           narrationVolume={narrationVolume}
           setNarrationVolume={setNarrationVolume}
-          videoVolume={videoVolume}
-          setVideoVolume={setVideoVolume}
+          videoVolume={volume}
+          setVideoVolume={setVolume}
           currentNarration={currentNarration}
           hasOriginalNarrations={hasOriginalNarrations}
           hasTranslatedNarrations={hasTranslatedNarrations}

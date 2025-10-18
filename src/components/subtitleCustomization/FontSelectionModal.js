@@ -195,7 +195,7 @@ const FontSelectionModal = ({ isOpen, onClose, selectedFont, onFontSelect }) => 
                     className={`font-card ${font.value === selectedFont ? 'selected' : ''}`}
                     onClick={() => handleFontSelect(font)}
                   >
-                    <div className="font-info">
+                    <div className="font-info" style={{ fontFamily: font.value }}>
                       <span className="font-name">{font.label}</span>
                       <div className="font-meta">
                         <span className="font-category">{font.group}</span>

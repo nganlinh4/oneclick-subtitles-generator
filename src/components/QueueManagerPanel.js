@@ -64,7 +64,7 @@ const QueueManagerPanel = ({
         );
       case 'processing':
         return (
-          <span className="material-symbols-rounded" style={{ fontSize: '16px' }}>sync</span>
+          <span className="material-symbols-rounded" style={{ fontSize: '16px' }}>hourglass_top</span>
         );
       case 'completed':
         return (
@@ -377,7 +377,7 @@ const QueueManagerPanel = ({
             disabled={currentQueueItem !== null}
             title={t('videoRendering.clearQueue', 'Clear Queue')}
           >
-            <span className="material-symbols-rounded" style={{ fontSize: '16px' }}>delete_sweep</span>
+            <span className="material-symbols-rounded" style={{ fontSize: '22px' }}>delete_sweep</span>
           </button>
         )}
       </div>
@@ -588,7 +588,7 @@ const QueueManagerPanel = ({
           <div className="preview-modal" onClick={(e) => e.stopPropagation()}>
             <div className="preview-modal-header">
               <div className="preview-title" style={{ gap: '1rem', padding: '0 16px' }}>
-                <span className="material-symbols-rounded" style={{ fontSize: '48px' }}>play_circle</span>
+                <span className="material-symbols-rounded" style={{ fontSize: '48px' }}>live_tv</span>
                 <span>{t('videoRendering.preview', 'Preview')}</span>
                 {/* Video info badges (always render container; fill when data available) */}
                 <div className="preview-badges">

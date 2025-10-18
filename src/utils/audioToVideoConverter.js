@@ -41,7 +41,8 @@ const generateAudioHash = async (audioFile) => {
  */
 export const convertAudioToVideo = async (audioFile, onStatusUpdate = null) => {
     // Check if this is an audio file
-    if (!audioFile.type.startsWith('audio/')) {
+    // Include WebM files as they can be audio-only
+    if (!audioFile.type.startsWith('audio/') && !audioFile.name.toLowerCase().endsWith('.webm')) {
 
         return audioFile;
     }
@@ -76,7 +77,7 @@ export const convertAudioToVideo = async (audioFile, onStatusUpdate = null) => {
             // Create a File object from the blob
             const videoFile = new File(
                 [videoBlob],
-                audioFile.name.replace(/\.(mp3|wav|ogg|aac|aiff|flac|mpeg|m4a|wma|opus|amr|au|caf|dts|ac3|ape|mka|ra)$/i, '.mp4'),
+                audioFile.name.replace(/\.(mp3|wav|ogg|aac|aiff|flac|mpeg|m4a|wma|opus|amr|au|caf|dts|ac3|ape|mka|ra|webm)$/i, '.mp4'),
                 { type: 'video/mp4' }
             );
 
@@ -114,7 +115,7 @@ export const convertAudioToVideo = async (audioFile, onStatusUpdate = null) => {
         // We'll use a video extension internally, but keep the original name for display
         const videoFile = new File(
             [videoBlob],
-            audioFile.name.replace(/\.(mp3|wav|ogg|aac|aiff|flac|mpeg|m4a|wma|opus|amr|au|caf|dts|ac3|ape|mka|ra)$/i, '.mp4'),
+            audioFile.name.replace(/\.(mp3|wav|ogg|aac|aiff|flac|mpeg|m4a|wma|opus|amr|au|caf|dts|ac3|ape|mka|ra|webm)$/i, '.mp4'),
             { type: 'video/mp4' }
         );
 

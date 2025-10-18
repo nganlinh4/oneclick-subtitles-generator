@@ -93,27 +93,12 @@
   border-radius: 2px 16px 16px 2px; /* Figma design: small radius at handle, rounded end */
 }
 
-/* Handle - Material 3 slider handle (tall thin pill) */
-.standard-slider-handle {
-  position: relative;
-  width: 4px; /* Thin pill width */
-  height: 44px; /* Tall pill height */
-  background-color: var(--md-secondary, #2979FF); /* Use your blue secondary color */
-  border-radius: 2px; /* Pill shape */
-  cursor: pointer;
-  transition: all 0.2s cubic-bezier(0.2, 0, 0, 1); /* Material motion */
-  z-index: 10;
-  flex-shrink: 0; /* Don't shrink */
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.12), 0 1px 2px rgba(0, 0, 0, 0.24);
-}
 
-/* Pressed/dragged state - handle becomes even thinner */
-.standard-slider-container.dragging .standard-slider-handle {
-  width: 2px; /* Even thinner when dragging */
-  height: 44px; /* Same height */
+/* Pressed/dragged state - horizontal: handle becomes thinner (width) */
+.standard-slider-container.orientation-horizontal.dragging .standard-slider-handle,
+.standard-slider-container.orientation-Horizontal.dragging .standard-slider-handle {
+  width: 2px; /* Thinner when dragging (horizontal) */
+  height: 36px; /* Same height */
   border-radius: 1px; /* Adjust border radius for thinner width */
   box-shadow: 0 2px 8px rgba(0, 0, 0, 0.15);
 }
@@ -230,8 +215,9 @@
   background: transparent;
 }
 
-/* Hover effects */
-.standard-slider-handle:hover {
+/* Hover effects (horizontal only) */
+.standard-slider-container.orientation-horizontal .standard-slider-handle:hover,
+.standard-slider-container.orientation-Horizontal .standard-slider-handle:hover {
   width: 6px; /* Slightly wider on hover */
   box-shadow: 0 2px 8px rgba(41, 121, 255, 0.3); /* Blue shadow */
 }
@@ -349,23 +335,102 @@
 .standard-slider-container.orientation-vertical,
 .standard-slider-container.orientation-Vertical {
   flex-direction: column;
-  width: 44px;
-  height: 354px;
+  width: 100%; /* Fill the available width of the parent */
+  height: 100%; /* Fill the available height of the parent */
 }
 
 .standard-slider-container.orientation-vertical .standard-slider-track-container,
 .standard-slider-container.orientation-Vertical .standard-slider-track-container {
   flex-direction: column;
-  width: 16px;
+  width: 100%; /* Let parent control width; inner track will size itself */
   height: 100%;
 }
 
 .standard-slider-container.orientation-vertical .standard-slider-handle,
 .standard-slider-container.orientation-Vertical .standard-slider-handle {
-  width: 44px;
-  height: 4px;
-  transform: translate(-50%, -50%) rotate(90deg);
+  width: 36px; /* Match horizontal handle height for visual consistency */
+  height: 4px; /* Thin horizontal bar */
+  transform: none; /* No rotation/translation needed */
 }
+
+/* Vertical-specific layout fixes */
+.standard-slider-container.orientation-vertical .standard-slider-active-track,
+.standard-slider-container.orientation-Vertical .standard-slider-active-track {
+  width: 16px;
+  height: auto; /* Allow flex to control height */
+  margin-right: 0;
+  margin-left: 0;
+  margin-top: 1px; /* Gap from handle above (because of column-reverse) */
+}
+
+.standard-slider-container.orientation-vertical .standard-slider-inactive-track,
+.standard-slider-container.orientation-Vertical .standard-slider-inactive-track {
+  width: 16px;
+  height: auto; /* Allow flex to control height */
+  margin-left: 0;
+  margin-right: 0;
+  margin-bottom: 1px; /* Gap from handle below (because of column-reverse) */
+}
+
+/* Vertical border-radius corrections for tracks */
+.standard-slider-container.orientation-vertical .standard-slider-active-track .track,
+.standard-slider-container.orientation-Vertical .standard-slider-active-track .track {
+  /* Rounded at the bottom (start), small radius near handle (top) */
+  border-radius: 2px 2px 16px 16px;
+}
+
+.standard-slider-container.orientation-vertical .standard-slider-inactive-track .track,
+.standard-slider-container.orientation-Vertical .standard-slider-inactive-track .track {
+  /* Rounded at the top (end), small radius near handle (bottom) */
+  border-radius: 16px 16px 2px 2px;
+}
+
+/* Range-specific vertical radii */
+.standard-slider-container.orientation-vertical.range-slider .standard-slider-inactive-track .track.start,
+.standard-slider-container.orientation-Vertical.range-slider .standard-slider-inactive-track .track.start {
+  /* Start segment is at the bottom in column-reverse */
+  border-radius: 2px 2px 16px 16px;
+}
+
+.standard-slider-container.orientation-vertical.range-slider .standard-slider-inactive-track .track.end,
+.standard-slider-container.orientation-Vertical.range-slider .standard-slider-inactive-track .track.end {
+  border-radius: 16px 16px 2px 2px;
+}
+
+
+/* Vertical handle interaction sizing */
+.standard-slider-container.orientation-vertical .standard-slider-handle,
+.standard-slider-container.orientation-Vertical .standard-slider-handle {
+  /* Keep width as defined earlier (44px or container-constrained); do not override with 100% */
+  height: 4px;
+}
+
+.standard-slider-container.orientation-vertical .standard-slider-handle:hover,
+.standard-slider-container.orientation-Vertical .standard-slider-handle:hover {
+  height: 6px; /* Slightly thicker on hover */
+}
+
+.standard-slider-container.orientation-vertical.dragging .standard-slider-handle,
+.standard-slider-container.orientation-Vertical.dragging .standard-slider-handle {
+  height: 2px; /* Thinner when dragging */
+}
+
+/* Vertical start/end stop positioning */
+.standard-slider-container.orientation-vertical .standard-slider-end-stop,
+.standard-slider-container.orientation-Vertical .standard-slider-end-stop {
+  top: 6px; /* 6px from the top */
+  right: auto;
+  left: 50%;
+  transform: translateX(-50%);
+}
+
+.standard-slider-container.orientation-vertical .standard-slider-start-stop,
+.standard-slider-container.orientation-Vertical .standard-slider-start-stop {
+  bottom: 6px; /* 6px from the bottom */
+  left: 50%;
+  transform: translateX(-50%);
+}
+
 
 /* Value indicator - shown when enabled */
 .standard-slider-value-indicator {
@@ -386,7 +451,7 @@
   width: 100%;
   max-width: 420px; /* Reduced gap: StandardSlider (354px) + gap (8px) + value (50px) */
   gap: 8px; /* Smaller gap for closer spacing */
-  height: 44px; /* Match Figma height */
+  height: 36px; /* Match Figma height */
 }
 
 
@@ -466,7 +531,7 @@
 .standard-slider-handle {
   position: relative;
   width: 4px; /* Thin pill width */
-  height: 36px; /* Tall pill height */
+  height: 36px; /* Tall pill height (canonical) */
   background-color: var(--md-secondary, #2979FF); /* Use your blue secondary color */
   border-radius: 4px; /* Pill shape */
   cursor: pointer;
@@ -484,7 +549,7 @@
 /* Ensure handles in range sliders don't get squeezed */
 .range-slider .standard-slider-handle {
   margin: 0 1px; /* Add small margin to prevent visual overlap with tracks */
-  height: 44px;
+  height: 36px;
 }
 
 /* Make sure the active thumb is visually on top */
@@ -513,10 +578,11 @@
 /* --- End Range Slider Styles --- */
 
 
-/* Pressed/dragged state - handle becomes even thinner */
-.standard-slider-container.dragging .standard-slider-handle {
-  width: 2px; /* Even thinner when dragging */
-  height: 44px; /* Same height */
+/* Pressed/dragged state - horizontal (duplicate scoped fix) */
+.standard-slider-container.orientation-horizontal.dragging .standard-slider-handle,
+.standard-slider-container.orientation-Horizontal.dragging .standard-slider-handle {
+  width: 2px; /* Thinner when dragging (horizontal) */
+  height: 36px; /* Same height */
   border-radius: 1px; /* Adjust border radius for thinner width */
   box-shadow: 0 2px 8px rgba(0, 0, 0, 0.15);
 }
@@ -542,4 +608,30 @@
 /* Hide start stop when handle is near the start (<15% value) */
 .standard-slider-start-stop.hidden {
   opacity: 0;
+}
+
+/* Video volume slider overrides */
+.video-volume-slider.standard-slider-container {
+  /* Softer, consistent shadow similar to other controls */
+  filter: drop-shadow(0 1px 1px rgba(0,0,0,0.05));
+}
+
+.video-volume-slider .standard-slider-active-track .track {
+  background-color: #FFFFFF !important;
+}
+
+.video-volume-slider .standard-slider-handle {
+  background-color: #FFFFFF !important;
+  /* Softer shadow */
+  box-shadow: 0 1px 3px rgba(0,0,0,0.25), 0 0 1px rgba(0,0,0,0.15) !important;
+}
+
+/* Keep vertical hover/drag behavior to adjust height only */
+.video-volume-slider.orientation-vertical .standard-slider-handle:hover,
+.video-volume-slider.orientation-Vertical .standard-slider-handle:hover {
+  height: 6px;
+}
+.video-volume-slider.orientation-vertical.dragging .standard-slider-handle,
+.video-volume-slider.orientation-Vertical.dragging .standard-slider-handle {
+  height: 2px;
 }

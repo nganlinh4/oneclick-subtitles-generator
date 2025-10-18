@@ -19,6 +19,7 @@
   align-items: center;
 }
 
+.file-upload-input:hover,
 .file-upload-input.drag-over {
   border-color: var(--primary-color);
   background-color: rgba(var(--primary-rgb, 0, 123, 255), 0.05);
@@ -140,7 +141,7 @@
   border-radius: 32px;
   padding: 1.2rem;
   width: 100%;
-  max-width: 500px;
+  max-width: 450px;
   position: relative;
   overflow: hidden;
   transition: all 0.3s ease;
@@ -171,14 +172,19 @@
   display: flex;
   flex-direction: column;
   gap: 0.5rem;
+  min-width: 0;
 }
 
 .file-name {
   font-weight: 600;
   color: var(--text-primary);
-  word-break: break-word;
+  overflow-wrap: break-word;
   margin: 0;
   font-size: 1rem;
+  overflow: visible !important;
+  text-overflow: unset !important;
+  white-space: normal !important;
+  min-width: 0;
 }
 
 .file-badge {
@@ -200,6 +206,12 @@
   display: inline-block;
 }
 
+.file-details {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
 .remove-file-btn {
   display: flex;
   align-items: center;
@@ -214,6 +226,7 @@
   transition: all 0.2s ease;
   margin-top: 0.5rem;
   align-self: flex-start;
+  flex-shrink: 0;
 }
 
 .remove-file-btn:hover {

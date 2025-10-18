@@ -76,7 +76,7 @@ const FontDropdown = ({ value, onChange, className }) => {
           >
             {currentFont?.label || t('fontModal.selectFont', 'Select Font')}
           </span>
-          <span className="font-flags">
+          <span className="font-flags" style={{ fontFamily: currentFont?.value || value }}>
             {currentFont && getFontSupportFlags(currentFont)}
           </span>
         </div>
@@ -118,7 +118,7 @@ const FontDropdown = ({ value, onChange, className }) => {
                       >
                         {getFontSampleText(font)}
                       </div>
-                      <div className="font-details">
+                      <div className="font-details" style={{ fontFamily: font.value }}>
                         <span className="font-label">{font.label}</span>
                         <span className="font-flags">
                           {getFontSupportFlags(font)}

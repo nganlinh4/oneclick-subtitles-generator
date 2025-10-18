@@ -81,7 +81,7 @@ body {
   position: absolute;
   right: 0; /* Position at the very edge */
   width: 5px; /* Thinner width */
-  border-radius: 3px 0 0 3px; /* Pill shape with rounded corners on left side only */
+  border-radius: 6px 2px 2px 6px; /* Pill shape with rounded corners on left side only */
   background-color: var(--md-outline-variant, rgba(0, 0, 0, 0.2));
   pointer-events: auto; /* Make the thumb clickable */
   cursor: pointer;

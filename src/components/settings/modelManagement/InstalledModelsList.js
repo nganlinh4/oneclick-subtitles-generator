@@ -1,6 +1,6 @@
 import React from 'react';
 import { useTranslation } from 'react-i18next';
-import { CircularProgress } from '@mui/material';
+import LoadingIndicator from '../../common/LoadingIndicator';
 import ModelCard from './ModelCard';
 
 /**
@@ -17,16 +17,16 @@ import ModelCard from './ModelCard';
  * @param {Function} props.onCancelDownload - Function to call when download is cancelled
  * @returns {JSX.Element} - Rendered component
  */
-const InstalledModelsList = ({ 
-  models, 
-  modelSizes, 
-  downloads, 
-  loading, 
-  isScanning, 
-  onScan, 
-  onEdit, 
-  onDelete, 
-  onCancelDownload 
+const InstalledModelsList = ({
+  models,
+  modelSizes,
+  downloads,
+  loading,
+  isScanning,
+  onScan,
+  onEdit,
+  onDelete,
+  onCancelDownload
 }) => {
   const { t } = useTranslation();
 
@@ -47,7 +47,7 @@ const InstalledModelsList = ({
 
       {loading ? (
         <div style={{ display: 'flex', justifyContent: 'center', padding: '2rem' }}>
-          <CircularProgress size={24} />
+          <LoadingIndicator theme="dark" showContainer={false} size={32} />
         </div>
       ) : models.length === 0 && Object.keys(downloads).length === 0 ? (
         <p className="model-source" style={{ textAlign: 'center', padding: '1rem' }}>

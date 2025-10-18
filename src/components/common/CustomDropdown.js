@@ -82,7 +82,11 @@ const CustomDropdown = ({
   useEffect(() => {
     if (isOpen && menuRef.current) {
       const timer = setTimeout(() => {
-        initializeDropdownScrollbar(menuRef.current);
+        // We pass the inner menu to the scrollbar initializer
+        const innerMenu = menuRef.current.querySelector('.custom-dropdown-menu');
+        if (innerMenu) {
+            initializeDropdownScrollbar(innerMenu);
+        }
       }, 50); // Shorter delay for better responsiveness
 
       return () => clearTimeout(timer);
@@ -197,7 +201,8 @@ const CustomDropdown = ({
         // Re-initialize scrollbar after position change
         setTimeout(() => {
           if (menuRef.current) {
-            initializeDropdownScrollbar(menuRef.current);
+            const innerMenu = menuRef.current.querySelector('.custom-dropdown-menu');
+            if(innerMenu) initializeDropdownScrollbar(innerMenu);
           }
         }, 100);
       }
@@ -216,21 +221,22 @@ const CustomDropdown = ({
   // Use ResizeObserver to detect when menu actually changes size
   useEffect(() => {
     if (!isOpen || !menuRef.current) return;
+    
+    const innerMenu = menuRef.current.querySelector('.custom-dropdown-menu');
+    if (!innerMenu) return;
 
     const resizeObserver = new ResizeObserver((entries) => {
       for (let entry of entries) {
         // Menu size changed, update scrollbar
-        if (entry.target && entry.target === menuRef.current && menuRef.current) {
-          initializeDropdownScrollbar(menuRef.current);
+        if (entry.target === innerMenu) {
+          initializeDropdownScrollbar(innerMenu);
         }
       }
     });
 
     // Small delay to ensure menu is rendered
     const timeoutId = setTimeout(() => {
-      if (menuRef.current) {
-        resizeObserver.observe(menuRef.current);
-      }
+      resizeObserver.observe(innerMenu);
     }, 100);
 
     return () => {
@@ -365,9 +371,6 @@ const CustomDropdown = ({
       revealMode,
       expandedWidth: maxOptionWidth // Store the target expanded width
     });
-
-    // After position update, reinitialize scrollbar if menu is already open
-    // Note: menuRef.current might not exist yet during initial calculation
   };
 
   // Ensure chevron shows correct direction before first open
@@ -422,7 +425,7 @@ const CustomDropdown = ({
       requestAnimationFrame(() => {
         el.classList.add('is-open');
         el.style.width = `${targetW}px`; // Expand to full width
-        el.style.clipPath = `inset(0 0 0 0 round var(--dropdown-radius, 12px))`;
+        el.style.clipPath = `inset(0 0 0 0 round var(--dropdown-radius, 18px))`;
         
         // Check and store scrollbar state for later use
         const list = el.querySelector('.dropdown-options-list');
@@ -486,7 +489,8 @@ const CustomDropdown = ({
             // Initialize scrollbar after position calculation
             setTimeout(() => {
               if (menuRef.current) {
-                initializeDropdownScrollbar(menuRef.current);
+                const innerMenu = menuRef.current.querySelector('.custom-dropdown-menu');
+                if (innerMenu) initializeDropdownScrollbar(innerMenu);
                 
                 // Check if scrollbar appeared and adjust if needed
                 const optionsList = menuRef.current.querySelector('.dropdown-options-list');
@@ -498,7 +502,8 @@ const CustomDropdown = ({
                     // Re-initialize scrollbar after height adjustment
                     setTimeout(() => {
                       if (menuRef.current) {
-                        initializeDropdownScrollbar(menuRef.current);
+                         const innerMenu = menuRef.current.querySelector('.custom-dropdown-menu');
+                         if (innerMenu) initializeDropdownScrollbar(innerMenu);
                       }
                     }, 50);
                   }
@@ -779,114 +784,92 @@ const CustomDropdown = ({
       {isOpen && !isEffectivelyDisabled && createPortal(
         <div
           ref={menuRef}
-          className={`custom-dropdown-menu custom-scrollbar-container anchored-expand`}
+          className="custom-dropdown-clipper anchored-expand"
           style={{
             position: 'fixed',
             top: `${dropdownPosition.top}px`,
             left: `${dropdownPosition.left}px`,
-            // Start with button width, animation will expand it
             width: `${dropdownPosition.width}px`,
             minWidth: `${dropdownPosition.width}px`,
             zIndex: 999999
           }}
-          role="listbox"
           onMouseDown={(e) => {
             // Prevent outside handler from closing before option handler runs
             e.stopPropagation();
           }}
         >
-          <div className="dropdown-options-list">
-            {options.map((option) => {
-              const isSelected = option.value === value;
-              const isDisabled = option.disabled || false;
-              return (
-                <button
-                  key={option.value}
-                  type="button"
-                  className={`dropdown-option ${isSelected ? 'selected morphing-item' : ''} ${isDisabled ? 'disabled' : ''}`}
-                  disabled={isDisabled}
-                  onMouseDown={(e) => {
-                    e.preventDefault();
-                    e.stopPropagation();
-                    
-                    // Don't initiate drag for disabled items
-                    if (isDisabled) {
-                      return;
-                    }
-                    
-                    // Start drag mode - don't select yet
-                    isDraggingRef.current = true;
-                    hoveredIndexRef.current = options.findIndex(o => o.value === option.value);
-                    pendingSelectionRef.current = option.value;
-                    
-                    // Add visual feedback for pressed state
-                    e.currentTarget.classList.add('pressed');
-                    
-                    // Set up global mouse up listener
-                    const handleMouseUp = (upEvent) => {
-                      if (isDraggingRef.current) {
-                        isDraggingRef.current = false;
-                        
-                        // Remove pressed state from all buttons
-                        const allButtons = menuRef.current?.querySelectorAll('.dropdown-option');
-                        allButtons?.forEach(btn => btn.classList.remove('pressed', 'hover-preview'));
-                        
-                        // If mouse is still over the same item, select it (unless it's disabled)
-                        if (pendingSelectionRef.current && hoveredIndexRef.current === options.findIndex(o => o.value === pendingSelectionRef.current)) {
-                          const targetOption = options.find(o => o.value === pendingSelectionRef.current);
-                          handleOptionSelect(pendingSelectionRef.current, targetOption?.disabled);
-                        } else {
-                          // Mouse was dragged away - just cancel
-                          pendingSelectionRef.current = null;
-                          hoveredIndexRef.current = null;
-                        }
-                        
-                        // Clean up listener
-                        document.removeEventListener('mouseup', handleMouseUp);
-                      }
-                    };
-                    
-                    document.addEventListener('mouseup', handleMouseUp);
-                  }}
-                  onMouseEnter={(e) => {
-                    // Track which item the mouse is over during drag
-                    const idx = options.findIndex(o => o.value === option.value);
-                    
-                    if (isDraggingRef.current) {
-                      hoveredIndexRef.current = idx;
-                      // Update visual feedback
-                      const allButtons = menuRef.current?.querySelectorAll('.dropdown-option');
-                      allButtons?.forEach((btn, i) => {
-                        btn.classList.remove('hover-preview');
-                        if (i === idx) {
-                          btn.classList.add('hover-preview');
-                        }
-                      });
+          <div className="custom-dropdown-menu custom-scrollbar-container">
+            <div className="dropdown-options-list" role="listbox">
+              {options.map((option) => {
+                const isSelected = option.value === value;
+                const isDisabled = option.disabled || false;
+                return (
+                  <button
+                    key={option.value}
+                    type="button"
+                    className={`dropdown-option ${isSelected ? 'selected morphing-item' : ''} ${isDisabled ? 'disabled' : ''}`}
+                    disabled={isDisabled}
+                    onMouseDown={(e) => {
+                      e.preventDefault();
+                      e.stopPropagation();
                       
-                      // Update pending selection if hovering over different item
-                      if (idx === options.findIndex(o => o.value === pendingSelectionRef.current)) {
-                        pendingSelectionRef.current = option.value;
-                      } else {
-                        pendingSelectionRef.current = null;
+                      if (isDisabled) return;
+                      
+                      isDraggingRef.current = true;
+                      hoveredIndexRef.current = options.findIndex(o => o.value === option.value);
+                      pendingSelectionRef.current = option.value;
+                      
+                      e.currentTarget.classList.add('pressed');
+                      
+                      const handleMouseUp = () => {
+                        if (isDraggingRef.current) {
+                          isDraggingRef.current = false;
+                          
+                          menuRef.current?.querySelectorAll('.dropdown-option').forEach(btn => btn.classList.remove('pressed', 'hover-preview'));
+                          
+                          if (pendingSelectionRef.current && hoveredIndexRef.current === options.findIndex(o => o.value === pendingSelectionRef.current)) {
+                            const targetOption = options.find(o => o.value === pendingSelectionRef.current);
+                            handleOptionSelect(pendingSelectionRef.current, targetOption?.disabled);
+                          } else {
+                            pendingSelectionRef.current = null;
+                            hoveredIndexRef.current = null;
+                          }
+                          
+                          document.removeEventListener('mouseup', handleMouseUp);
+                        }
+                      };
+                      
+                      document.addEventListener('mouseup', handleMouseUp);
+                    }}
+                    onMouseEnter={(e) => {
+                      const idx = options.findIndex(o => o.value === option.value);
+                      
+                      if (isDraggingRef.current) {
+                        hoveredIndexRef.current = idx;
+                        menuRef.current?.querySelectorAll('.dropdown-option').forEach((btn, i) => {
+                          btn.classList.toggle('hover-preview', i === idx);
+                        });
+                        
+                        pendingSelectionRef.current = (idx === options.findIndex(o => o.value === pendingSelectionRef.current)) ? option.value : null;
                       }
-                    }
-                  }}
-                  onMouseLeave={(e) => {
-                    if (isDraggingRef.current) {
-                      e.currentTarget.classList.remove('hover-preview');
-                    }
-                  }}
-                  role="option"
-                  aria-selected={isSelected}
-                  style={{
-                    opacity: 0.999, // trigger GPU layer
-                    transform: isSelected ? 'translateY(0)' : 'translateY(0)',
-                  }}
-                >
-                  {typeof option.label === 'string' ? option.label : option.label}
-                </button>
-              );
-            })}
+                    }}
+                    onMouseLeave={(e) => {
+                      if (isDraggingRef.current) {
+                        e.currentTarget.classList.remove('hover-preview');
+                      }
+                    }}
+                    role="option"
+                    aria-selected={isSelected}
+                    style={{
+                      opacity: 0.999, // trigger GPU layer
+                      transform: isSelected ? 'translateY(0)' : 'translateY(0)',
+                    }}
+                  >
+                    {typeof option.label === 'string' ? option.label : option.label}
+                  </button>
+                );
+              })}
+            </div>
           </div>
         </div>,
         document.body

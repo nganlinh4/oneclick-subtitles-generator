@@ -55,12 +55,12 @@
     "workspace:build": "npm run --workspace=video-renderer server:build && npm run --workspace=promptdj-midi build"
   },
   "dependencies": {
-    "@emotion/react": "^11.14.0",
+
     "@emotion/styled": "^11.14.0",
     "@ffmpeg-installer/ffmpeg": "^1.1.0",
     "@google/genai": "^1.0.0",
     "@material/web": "^2.3.0",
-    "@mui/material": "^7.0.2",
+
     "@react-oauth/google": "^0.12.1",
     "@remotion/bundler": "4.0.357",
     "@remotion/google-fonts": "4.0.357",

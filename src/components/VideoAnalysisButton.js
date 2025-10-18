@@ -10,7 +10,7 @@ import '../styles/VideoAnalysisButton.css';
 
 // Custom analyze icon: panel with Gemini star inside
 const AnalyzeIcon = ({ size = 16 }) => (
-  <span className="material-symbols-rounded" style={{ fontSize: size }}>analytics</span>
+  <span className="material-symbols-rounded" style={{ fontSize: size }}>auto_awesome</span>
 );
 
 /**

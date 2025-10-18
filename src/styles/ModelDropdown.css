@@ -2,7 +2,7 @@
 .model-dropdown-container {
   position: relative;
   display: inline-block;
-  max-width: 200px;
+  max-width: 215px;
 }
 
 /* When dropdown is open, ensure container has higher z-index */
@@ -76,7 +76,7 @@
 /* Model options dropdown */
 .model-options-dropdown {
   position: fixed; /* Fixed position to avoid layout issues */
-  width: 405px;
+  width: 415px;
   background-color: var(--md-surface-1);
   border-radius: 12px;
   box-shadow: var(--md-elevation-level3);
@@ -93,6 +93,7 @@
   color: var(--md-on-surface);
   border-bottom: 1px solid var(--md-outline-variant);
   background-color: var(--md-surface-3);
+  text-align: center;
 }
 
 /* List of model options */

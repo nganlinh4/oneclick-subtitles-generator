@@ -176,7 +176,7 @@ const InputMethods = ({ onVideoSelect, apiKeysSet, selectedVideo, setSelectedVid
             className={`tab-btn ${activeTab === 'unified-url' ? 'active' : ''}`}
             onClick={() => setActiveTab('unified-url')}
           >
-            <span className="material-symbols-rounded" style={{ fontSize: 18, display: 'inline-block' }}>language</span>
+            <span className="material-symbols-rounded" style={{ fontSize: 18, display: 'inline-block' }}>globe_asia</span>
             {t('inputMethods.unifiedUrl', 'Video URL')}
           </button>
 

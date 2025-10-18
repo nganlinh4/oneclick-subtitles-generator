@@ -125,7 +125,7 @@
 /* Material Design 3 active state for tab buttons */
 .settings-tab.active {
   color: var(--md-on-primary-container);
-  font-weight: 600;
+  font-weight: bold;
   opacity: 1;
   transform: scale(1.2);
   letter-spacing: 0.2px; /* Slightly increased letter spacing for emphasis */

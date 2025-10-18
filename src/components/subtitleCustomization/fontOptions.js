@@ -1,3 +1,5 @@
+import React from 'react';
+
 /**
  * Comprehensive font options with multilingual support
  * Based on video-renderer font options with additional fonts
@@ -317,16 +319,16 @@ export const groupFontsByCategory = (fonts = fontOptions) => {
 /**
  * Get font support flags for display
  * @param {Object} font - Font object
- * @returns {String} - Support flags as emoji string
+ * @returns {Array} - Support flags as array of JSX elements
  */
 export const getFontSupportFlags = (font) => {
-  let flags = '';
-  if (font.koreanSupport) flags += '🇰🇷';
-  if (font.vietnameseSupport) flags += '🇻🇳';
-  if (font.chineseSupport) flags += '🇨🇳';
-  if (font.japaneseSupport) flags += '🇯🇵';
-  if (font.arabicSupport) flags += '🇸🇦';
-  if (font.rtl) flags += '↩️';
+  const flags = [];
+  if (font.koreanSupport) flags.push(<span key="kr">🇰🇷</span>);
+  if (font.vietnameseSupport) flags.push(<span key="vn">🇻🇳</span>);
+  if (font.chineseSupport) flags.push(<span key="cn">🇨🇳</span>);
+  if (font.japaneseSupport) flags.push(<span key="jp">🇯🇵</span>);
+  if (font.arabicSupport) flags.push(<span key="sa">🇸🇦</span>);
+  if (font.rtl) flags.push(<span key="rtl" className="material-symbols-rounded">format_textdirection_r_to_l</span>);
   return flags;
 };
 
