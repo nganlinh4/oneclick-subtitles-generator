@@ -68,7 +68,7 @@
 }
 
 .oauth-authenticate-btn {
-  padding: 8px 16px;
+  padding: 8px 9px;
   background-color: var(--md-primary-container);
   color: var(--md-on-primary-container);
   border: none;

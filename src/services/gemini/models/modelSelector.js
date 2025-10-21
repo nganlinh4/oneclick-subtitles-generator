@@ -2,6 +2,11 @@
  * Functions for selecting appropriate Gemini models
  */
 
+import i18n from '../../../i18n/i18n';
+
+// Translation function shorthand
+const t = (key, fallback) => i18n.t(key, fallback);
+
 /**
  * List available Gemini models
  * @param {string} apiKey - Gemini API key
@@ -12,7 +17,7 @@ export const listGeminiModels = async (apiKey) => {
     if (!apiKey) {
       apiKey = localStorage.getItem('gemini_api_key');
       if (!apiKey) {
-        throw new Error('Gemini API key not found');
+        throw new Error(t('settings.geminiApiKeyRequired', 'Gemini API key not found'));
       }
     }
 

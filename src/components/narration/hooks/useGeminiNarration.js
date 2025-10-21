@@ -128,6 +128,16 @@ const useGeminiNarration = ({
       return;
     }
 
+    // Validate that language has been detected for the selected source (Gemini-specific requirement)
+    const selectedLanguage = subtitleSource === 'original' ? originalLanguage : translatedLanguage;
+    if (!selectedLanguage || !selectedLanguage.languageCode) {
+      const sourceName = subtitleSource === 'original'
+        ? t('narration.originalSubtitles', 'Original Subtitles')
+        : t('narration.translatedSubtitles', 'Translated Subtitles');
+      setError(t('narration.languageNotDetectedError', 'Please select language for {{source}} subtitles in the "Subtitle Source" section', { source: sourceName }));
+      return;
+    }
+
     // Get the appropriate subtitles based on the selected source
     const selectedSubtitles = subtitleSource === 'translated' && translatedSubtitles && translatedSubtitles.length > 0
       ? translatedSubtitles
@@ -407,6 +417,16 @@ const useGeminiNarration = ({
       return;
     }
 
+    // Validate that language has been detected for the selected source (Gemini-specific requirement)
+    const selectedLanguage = subtitleSource === 'original' ? originalLanguage : translatedLanguage;
+    if (!selectedLanguage || !selectedLanguage.languageCode) {
+      const sourceName = subtitleSource === 'original'
+        ? t('narration.originalSubtitles', 'Original Subtitles')
+        : t('narration.translatedSubtitles', 'Translated Subtitles');
+      setError(t('narration.languageNotDetectedError', 'Please select language for {{source}} subtitles in the "Subtitle Source" section', { source: sourceName }));
+      return;
+    }
+
     // Determine which subtitles to use based on whether we're using grouped subtitles
     let selectedSubtitles;
 
@@ -426,8 +446,8 @@ const useGeminiNarration = ({
     }
 
     // Find the subtitle with the given ID
-    const subtitleToRetry = selectedSubtitles.find(subtitle =>
-      (subtitle.id || subtitle.index) === subtitleId
+    const subtitleToRetry = selectedSubtitles.find((subtitle, idx) =>
+      (subtitle.id ?? subtitle.subtitle_id ?? (idx + 1)) === subtitleId
     );
 
     if (!subtitleToRetry) {
@@ -437,6 +457,9 @@ const useGeminiNarration = ({
 
     // Set retrying state using the function passed from the parent component
     setRetryingSubtitleId(subtitleId);
+
+    // Make the main button show Cancel during the retry and ensure status banner style is correct
+    setIsGenerating(true);
 
     // Clear any previous errors
     setError('');
@@ -449,8 +472,6 @@ const useGeminiNarration = ({
     // Convert to Gemini-compatible language code
     const language = getGeminiLanguageCode(detectedLanguageCode);
 
-
-
     // Set status for this specific retry
     setGenerationStatus(t('narration.retryingGeminiGeneration', 'Retrying narration generation for subtitle {{id}}...', { id: subtitleId }));
 
@@ -458,56 +479,46 @@ const useGeminiNarration = ({
       // Prepare subtitle with ID for tracking
       const subtitleWithId = {
         ...subtitleToRetry,
-        id: subtitleToRetry.id || subtitleToRetry.index || subtitleId
+        // Force the ID to the displayed item's subtitleId so UI mapping matches the returned result
+        id: subtitleId
       };
 
-      // Generate narration with Gemini for this single subtitle
-      // We'll use generateGeminiNarrations with a single subtitle to leverage the concurrent implementation
-
-      // Import the necessary functions
-      const {
-        generateGeminiNarrations
-      } = await import('../../../services/gemini/geminiNarrationService');
+      // Generate narration with Gemini for this single subtitle (leverage concurrent implementation)
+      const { generateGeminiNarrations } = await import('../../../services/gemini/geminiNarrationService');
 
       // Create a promise to resolve when the narration is complete
       let resolvePromise;
-      const completionPromise = new Promise(resolve => {
-        resolvePromise = resolve;
-      });
+      const completionPromise = new Promise(resolve => { resolvePromise = resolve; });
 
       let result = null;
 
       // Generate narration for the single subtitle using the concurrent implementation
       generateGeminiNarrations(
-        [subtitleWithId], // Array with just one subtitle
+        [subtitleWithId],
         language,
         (message) => {
-          console.log("Single retry progress update:", message);
-          // No need to update UI here as the parent component is handling it
+          console.log('Single retry progress update:', message);
         },
-        (singleResult, progress, total) => {
+        (singleResult) => {
           console.log(`Single retry result received for subtitle ${singleResult.subtitle_id}`);
-          // Save the result
           result = singleResult;
         },
         (error) => {
           console.error('Error in single retry Gemini narration generation:', error);
-          // Resolve the promise with an error
-          resolvePromise({ success: false, error: error.message });
+          resolvePromise({ success: false, error: error.message, subtitle_id: subtitleWithId.id });
         },
         (results) => {
-          console.log("Single retry complete, results:", results);
-          // Resolve the promise with the result
+          console.log('Single retry complete, results:', results);
           if (results && results.length > 0) {
             resolvePromise(results[0]);
           } else {
-            resolvePromise({ success: false, error: t('narration.noResultReturned', 'No result returned') });
+            resolvePromise({ success: false, error: t('narration.noResultReturned', 'No result returned'), subtitle_id: subtitleWithId.id });
           }
         },
-        null, // Use default model
-        0, // No sleep time for single retries
-        selectedVoice, // Use the selected voice
-        t('narration.preparingGeminiGeneration', 'Preparing to generate narration with Gemini...') // Translated initial progress message
+        null,
+        0,
+        selectedVoice,
+        t('narration.preparingGeminiGeneration', 'Preparing to generate narration with Gemini...')
       );
 
       // Wait for the narration to complete
@@ -516,27 +527,20 @@ const useGeminiNarration = ({
       // If the result has audio data, save it to the server to get a filename
       if (result && result.success && result.audioData) {
         try {
-
-
-          // Send the audio data to the server
           const response = await fetch(`${SERVER_URL}/api/narration/save-gemini-audio`, {
             method: 'POST',
-            headers: {
-              'Content-Type': 'application/json',
-            },
+            headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({
               audioData: result.audioData,
               subtitle_id: result.subtitle_id,
               sampleRate: result.sampleRate || 24000,
-              mimeType: result.mimeType || 'audio/pcm' // Include MIME type
+              mimeType: result.mimeType || 'audio/pcm'
             })
           });
 
           if (response.ok) {
             const data = await response.json();
             if (data.success) {
-
-              // Update the result with the filename
               result.filename = data.filename;
             } else {
               console.error(`Error saving retried audio to server: ${data.error}`);
@@ -544,10 +548,7 @@ const useGeminiNarration = ({
             }
           } else {
             console.error(`Server returned ${response.status}: ${response.statusText}`);
-            setError(t('narration.serverError', 'Server error: {{status}} {{statusText}}', {
-              status: response.status,
-              statusText: response.statusText
-            }));
+            setError(t('narration.serverError', 'Server error: {{status}} {{statusText}}', { status: response.status, statusText: response.statusText }));
           }
         } catch (error) {
           console.error(`Error saving retried audio to server for subtitle ${result.subtitle_id}:`, error);
@@ -555,92 +556,96 @@ const useGeminiNarration = ({
         }
       }
 
+      // Ensure pending flag is cleared and success is inferred if missing
+      const normalizedResult = {
+        ...result,
+        pending: false,
+        success: (result && typeof result.success === 'boolean') ? result.success : (!!result?.audioData || !!result?.filename)
+      };
+
       // Update the results array by replacing the old result with the new one
       setGenerationResults(prevResults => {
-        const updatedResults = prevResults.map(prevResult =>
-          prevResult.subtitle_id === subtitleId ? result : prevResult
-        );
+        const matchId = Number(normalizedResult?.subtitle_id ?? subtitleId);
+
+        // Replace if exists; otherwise insert
+        let found = false;
+        const updatedResults = (prevResults || []).map(prevResult => {
+          const prevId = Number(prevResult.subtitle_id);
+          if (prevId === matchId) {
+            found = true;
+            return { ...prevResult, ...normalizedResult, pending: false };
+          }
+          return prevResult;
+        });
+
+        if (!found) {
+          updatedResults.push({ ...normalizedResult, subtitle_id: matchId, pending: false });
+        }
+
+        // Keep a stable order by subtitle_id
+        updatedResults.sort((a, b) => Number(a.subtitle_id) - Number(b.subtitle_id));
 
         // Update the global narration references to ensure video player uses the latest version
         if (subtitleSource === 'original') {
-          // Update window.originalNarrations
           window.originalNarrations = [...updatedResults];
-
-          // Also update the global narrations array if it exists
           if (window.subtitlesData && window.narrations) {
-            // Find and update the narration in the global narrations array
-            const globalIndex = window.narrations.findIndex(n => n.subtitle_id === result.subtitle_id);
+            const globalIndex = window.narrations.findIndex(n => Number(n.subtitle_id) === matchId);
             if (globalIndex !== -1) {
-              window.narrations[globalIndex] = result;
-
+              window.narrations[globalIndex] = { ...window.narrations[globalIndex], ...normalizedResult, pending: false };
             }
           }
-
-          // Also update localStorage
           try {
-            // Extract only the necessary information to avoid localStorage quota issues
-            const essentialData = updatedResults.map(result => ({
-              subtitle_id: result.subtitle_id,
-              filename: result.filename,
-              success: result.success,
-              text: result.text
+            const essentialData = updatedResults.map(r => ({
+              subtitle_id: r.subtitle_id,
+              filename: r.filename,
+              success: r.success,
+              text: r.text
             }));
             localStorage.setItem('originalNarrations', JSON.stringify(essentialData));
           } catch (e) {
             console.error('Error storing updated originalNarrations in localStorage:', e);
           }
-
         } else {
-          // Update window.translatedNarrations
           window.translatedNarrations = [...updatedResults];
-
-          // Also update the global narrations array if it exists
           if (window.subtitlesData && window.narrations) {
-            // Find and update the narration in the global narrations array
-            const globalIndex = window.narrations.findIndex(n => n.subtitle_id === result.subtitle_id);
+            const globalIndex = window.narrations.findIndex(n => Number(n.subtitle_id) === matchId);
             if (globalIndex !== -1) {
-              window.narrations[globalIndex] = result;
-
+              window.narrations[globalIndex] = { ...window.narrations[globalIndex], ...normalizedResult, pending: false };
             }
           }
-
-          // Also update localStorage
           try {
-            // Extract only the necessary information to avoid localStorage quota issues
-            const essentialData = updatedResults.map(result => ({
-              subtitle_id: result.subtitle_id,
-              filename: result.filename,
-              success: result.success,
-              text: result.text
+            const essentialData = updatedResults.map(r => ({
+              subtitle_id: r.subtitle_id,
+              filename: r.filename,
+              success: r.success,
+              text: r.text
             }));
             localStorage.setItem('translatedNarrations', JSON.stringify(essentialData));
           } catch (e) {
             console.error('Error storing updated translatedNarrations in localStorage:', e);
           }
-
         }
 
-        // Add a timestamp to the result to help identify retried narrations
-        result.retriedAt = Date.now();
+        // Add marker to help identify retried narrations
+        normalizedResult.retriedAt = Date.now();
 
         // Dispatch a custom event to notify other components about the updated narration
         const event = new CustomEvent('narration-retried', {
           detail: {
             source: subtitleSource,
-            narration: result,
+            narration: normalizedResult,
             narrations: updatedResults,
-            timestamp: Date.now() // Add timestamp to ensure the event is treated as new
+            timestamp: Date.now()
           }
         });
         window.dispatchEvent(event);
 
         // Also dispatch a subtitle-timing-changed event to ensure aligned narration is regenerated
-        // This provides a backup mechanism in case the narration-retried event isn't handled
         window.dispatchEvent(new CustomEvent('subtitle-timing-changed', {
           detail: {
             action: 'narration-retry',
             timestamp: Date.now(),
-            subtitleId: result.subtitle_id
+            subtitleId: matchId
           }
         }));
 
@@ -648,9 +653,15 @@ const useGeminiNarration = ({
       });
 
       setGenerationStatus(t('narration.retryComplete', 'Retry complete for subtitle {{id}}', { id: subtitleId }));
+      // End generating state for individual retry so the main button returns to normal
+      setIsGenerating(false);
+
+      // Clear the status message after a short delay
+      setTimeout(() => setGenerationStatus(''), 3000);
     } catch (error) {
       console.error(`Error retrying Gemini narration for subtitle ${subtitleId}:`, error);
       setError(t('narration.retryError', 'Error retrying narration for subtitle {{id}}', { id: subtitleId }));
+      setIsGenerating(false);
     } finally {
       // Clear retrying state regardless of success or failure
       setRetryingSubtitleId(null);
@@ -850,11 +861,248 @@ const useGeminiNarration = ({
     });
   };
 
+  // Function to generate all pending Gemini narrations
+  const generateAllPendingGeminiNarrations = async () => {
+    try {
+      setIsGenerating(true);
+
+      // Validate that a subtitle source is selected
+      if (!subtitleSource) {
+        setError(t('narration.noSourceSelectedError', 'Please select a subtitle source (Original or Translated)'));
+        return;
+      }
+
+      // Validate that language has been detected for the selected source
+      const selectedLanguage = subtitleSource === 'original' ? originalLanguage : translatedLanguage;
+      if (!selectedLanguage || !selectedLanguage.languageCode) {
+        const sourceName = subtitleSource === 'original'
+          ? t('narration.originalSubtitles', 'Original Subtitles')
+          : t('narration.translatedSubtitles', 'Translated Subtitles');
+        setError(t('narration.languageNotDetectedError', 'Please select language for {{source}} subtitles in the "Subtitle Source" section', { source: sourceName }));
+        return;
+      }
+
+      // Get all planned subtitles (same logic as NarrationResults component)
+      const trueSubtitles = (() => {
+        // Prefer grouped subtitles when enabled
+        if (useGroupedSubtitles && groupedSubtitles && groupedSubtitles.length > 0) {
+          return groupedSubtitles;
+        }
+        // Otherwise use selected source
+        if (subtitleSource === 'translated' && translatedSubtitles && translatedSubtitles.length > 0) {
+          return translatedSubtitles;
+        }
+        return originalSubtitles || subtitles || [];
+      })();
+
+      if (trueSubtitles.length === 0) {
+        setError(t('narration.noPendingNarrations', 'No pending narrations to generate'));
+        return;
+      }
+
+      // Find subtitles that don't have results yet (pending)
+      const completedIds = new Set();
+      if (generationResults && generationResults.length > 0) {
+        generationResults.forEach(result => {
+          if (result.success) {
+            completedIds.add(result.subtitle_id);
+          }
+        });
+      }
+
+      // Get pending subtitle IDs
+      const pendingSubtitleIds = trueSubtitles
+        .map(subtitle => subtitle.id ?? subtitle.subtitle_id ?? trueSubtitles.indexOf(subtitle))
+        .filter(id => !completedIds.has(id));
+
+      if (pendingSubtitleIds.length === 0) {
+        setError(t('narration.noPendingNarrations', 'No pending narrations to generate'));
+        return;
+      }
+
+      console.log(`Generating ${pendingSubtitleIds.length} pending Gemini narrations`);
+
+      // Get the language code for the selected subtitles
+      const detectedLanguageCode = selectedLanguage.languageCode;
+
+      // Convert to Gemini-compatible language code
+      const language = getGeminiLanguageCode(detectedLanguageCode);
+
+      // Set generating state
+      setError('');
+      setGenerationStatus(t('narration.generatingPending', 'Generating {{count}} pending narrations...', { count: pendingSubtitleIds.length }));
+
+      // Get pending subtitles data
+      const pendingSubtitles = pendingSubtitleIds.map(id => {
+        const subtitle = trueSubtitles.find(s => (s.id ?? s.subtitle_id ?? trueSubtitles.indexOf(s)) === id);
+        return {
+          id: subtitle.id ?? subtitle.subtitle_id ?? id,
+          text: subtitle.text,
+          start: subtitle.start,
+          end: subtitle.end,
+          original_ids: subtitle.original_ids || [subtitle.id ?? subtitle.subtitle_id ?? id]
+        };
+      });
+
+      try {
+        // Update the client pool size based on the concurrentClients setting
+        localStorage.setItem('gemini_concurrent_clients', concurrentClients.toString());
+
+        const response = await generateGeminiNarrations(
+          pendingSubtitles,
+          language,
+          (message) => {
+            console.log("Pending generation progress update:", message);
+            setGenerationStatus(message);
+          },
+          (result, progress, total) => {
+            console.log(`Pending result received for subtitle ${result.subtitle_id}, progress: ${progress}/${total}`);
+
+            // Update the existing result in the array
+            setGenerationResults(prev => {
+              const updatedResults = prev.map(item =>
+                item.subtitle_id === result.subtitle_id ? { ...result, pending: false } : item
+              );
+
+              // Update window.groupedNarrations incrementally if we're generating grouped subtitles
+              if (useGroupedSubtitles && groupedSubtitles && groupedSubtitles.length > 0) {
+                window.groupedNarrations = [...updatedResults];
+              }
+
+              return updatedResults;
+            });
+
+            // Update the status
+            setGenerationStatus(
+              t(
+                'narration.geminiGeneratingProgress',
+                'Generated {{progress}} of {{total}} pending narrations with Gemini...',
+                {
+                  progress,
+                  total
+                }
+              )
+            );
+          },
+          (error) => {
+            console.error('Error in pending Gemini narration generation:', error);
+            setError(`${t('narration.geminiGenerationError', 'Error generating pending narrations with Gemini')}: ${error.message || error}`);
+            setIsGenerating(false);
+          },
+          (results) => {
+            console.log("Pending generation complete, total results:", results.length);
+
+            // Update the generation results, marking any still pending items as failed
+            setGenerationResults(prev => {
+              const updatedResults = prev.map(item => {
+                // If this item is in the results, use that result
+                const resultItem = results.find(r => r.subtitle_id === item.subtitle_id);
+                if (resultItem) {
+                  return { ...resultItem, pending: false };
+                }
+
+                // If this item was pending and not in results, mark it as failed
+                if (item.pending) {
+                  return {
+                    ...item,
+                    pending: false,
+                    success: false,
+                    error: t('narration.generationInterrupted', 'Generation was interrupted')
+                  };
+                }
+
+                // Otherwise, keep the item as is
+                return item;
+              });
+
+              // Store the results in the window object
+              if (useGroupedSubtitles && groupedSubtitles && groupedSubtitles.length > 0) {
+                // Store as grouped narrations
+                window.groupedNarrations = [...updatedResults];
+                window.useGroupedSubtitles = true;
+                setUseGroupedSubtitles(true);
+
+                // Clean up old subtitle directories for grouped narrations
+                console.log('Gemini: Detected grouped subtitles, cleaning up old directories');
+                cleanupOldSubtitleDirectories(groupedSubtitles);
+              } else {
+                // Store as original narrations
+                if (subtitleSource === 'original') {
+                  window.originalNarrations = [...updatedResults];
+                } else {
+                  window.translatedNarrations = [...updatedResults];
+                }
+                window.useGroupedSubtitles = false;
+              }
+
+              return updatedResults;
+            });
+
+            if (results.length < pendingSubtitleIds.length) {
+              // Generation was incomplete
+              setGenerationStatus(
+                t(
+                  'narration.geminiGenerationIncomplete',
+                  'Gemini pending narration generation incomplete. Generated {{generated}} of {{total}} narrations.',
+                  {
+                    generated: results.length,
+                    total: pendingSubtitleIds.length
+                  }
+                )
+              );
+              setError(
+                t(
+                  'narration.geminiConnectionError',
+                  'Connection to Gemini was interrupted. You can retry the failed narrations individually.'
+                )
+              );
+            } else {
+              setGenerationStatus(t('narration.geminiGenerationComplete', 'Gemini pending narration generation complete'));
+            }
+
+            // Ensure isGenerating is set to false when complete
+            setIsGenerating(false);
+          },
+          null, // Use default model
+          0, // No sleep time
+          selectedVoice, // Use the selected voice
+          t('narration.generatingPending', 'Generating pending narrations...') // Translated initial progress message
+        );
+
+        // Handle the pending response from our concurrent implementation
+        if (response && response.pending) {
+          console.log("Pending narration generation started in background mode");
+          // Keep isGenerating true since the generation is happening in the background
+          // The callbacks will handle setting isGenerating to false when complete
+        } else if (response && response.incomplete) {
+          setError(
+            t(
+              'narration.geminiConnectionError',
+              'Connection to Gemini was interrupted. You can retry the failed narrations individually.'
+            )
+          );
+          setIsGenerating(false);
+        }
+      } catch (error) {
+        console.error('Error generating pending Gemini narrations:', error);
+        setError(t('narration.geminiGenerationError', 'Error generating pending narrations with Gemini'));
+        setIsGenerating(false);
+      }
+    } catch (error) {
+      console.error('Error generating pending Gemini narrations:', error);
+      setError(t('narration.generateAllPendingError', 'Error generating pending narrations: {{error}}', {
+        error: error.message
+      }));
+      setIsGenerating(false);
+    }
+  };
+
   return {
     handleGeminiNarration,
     cancelGeminiGeneration,
     retryGeminiNarration,
     retryFailedGeminiNarrations,
+    generateAllPendingGeminiNarrations,
     groupSubtitles
   };
 };

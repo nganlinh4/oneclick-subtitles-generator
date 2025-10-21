@@ -58,10 +58,7 @@ const FontSettings = ({ settings, handleSettingChange, fontGroups, fontWeightOpt
         <CustomDropdown
           value={settings.fontWeight}
           onChange={(value) => handleSettingChange('fontWeight', value)}
-          options={fontWeightOptions.map(option => ({
-            value: option.value,
-            label: option.label
-          }))}
+          options={fontWeightOptions}
           placeholder={t('subtitleSettings.selectFontWeight', 'Select Font Weight')}
         />
       </div>

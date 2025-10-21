@@ -64,5 +64,7 @@
   "inlineExtractionLabel": "비디오를 로컬에서 자른 후 Gemini로 전송",
   "methodLabel": "방법",
   "methodNewOption": "새로운 방식: Files API에서 비디오와 상호작용",
-  "methodOldOption": "기존 방식: 비디오를 로컬에서 자른 후 Gemini로 전송"
+  "methodOldOption": "기존 방식: 비디오를 로컬에서 자른 후 Gemini로 전송",
+  "methodNvidiaParakeet": "엔비디아 파라키트",
+  "comingSoon": "(곧 출시 예정)"
 }

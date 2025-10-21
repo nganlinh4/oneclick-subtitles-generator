@@ -64,6 +64,8 @@
   "inlineExtractionLabel": "Cắt video trên máy rồi gửi Gemini sau",
   "methodLabel": "Phương thức",
   "methodNewOption": "Mới: Tương tác với video qua Files API",
-  "methodOldOption": "Cũ: Cắt video trên máy rồi gửi Gemini sau"}
-
+  "methodOldOption": "Cũ: Cắt video trên máy rồi gửi Gemini sau",
+  "methodNvidiaParakeet": "Nvidia Parakeet",
+  "comingSoon": "(sắp ra mắt)"
+}
 

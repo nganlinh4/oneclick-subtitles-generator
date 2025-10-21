@@ -1,15 +1,16 @@
 /* Header.css - Simple clean design */
 .app-header {
   display: flex;
+  /* This is the key fix: changed from 'center' to 'space-between'.
+     This pushes the flex items to the edges of the container.
+     The first item (title container) goes left, the second (empty div) goes right. */
   justify-content: space-between;
   align-items: center;
   padding: 1.25rem 1.5rem; /* Increased vertical padding */
   background-color: var(--background-primary);
-  position: relative;
+  position: relative; /* Necessary for positioning absolute children like floating buttons */
   transition: background-color 0.3s ease, box-shadow 0.3s ease;
   min-height: 80px; /* Increased from 60px to 80px */
-  /* Note: Do not set overflow hidden or isolation here, to allow the floating-settings button
-     to layer above other page content as intended. */
 }
 
 .header-title-container {
@@ -135,6 +136,7 @@
   min-width: 120px !important;
 }
 
+
 /* Make the icon larger in floating mode */
 .floating-settings svg {
   width: 20px !important;
@@ -156,6 +158,7 @@
   filter: blur(4px);
 }
 
+
 /* Hover effect for the floating settings button */
 .floating-settings:hover {
   background: rgba(var(--md-surface-rgb), 0.98) !important;
@@ -166,6 +169,7 @@
 .floating-settings.floating-hidden:hover {
   transform: scale(0.8) !important;
 }
+
 
 /* Language selector styles removed - now using CustomDropdown component */
 

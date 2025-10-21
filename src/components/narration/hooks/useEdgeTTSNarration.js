@@ -48,7 +48,8 @@ const useEdgeTTSNarration = ({
   setRetryingSubtitleId,
   useGroupedSubtitles,
   groupedSubtitles,
-  setUseGroupedSubtitles
+  setUseGroupedSubtitles,
+  plannedSubtitles
 }) => {
   const [abortController, setAbortController] = useState(null);
 
@@ -154,7 +155,7 @@ const useEdgeTTSNarration = ({
                   current: data.current,
                   total: data.total
                 }));
-                
+
                 if (data.result) {
                   results.push(data.result);
                   setGenerationResults([...results]);
@@ -281,7 +282,7 @@ const useEdgeTTSNarration = ({
    */
   const retryEdgeTTSNarration = useCallback(async (subtitleId) => {
     const subtitlesToProcess = getSubtitlesForGeneration();
-    const subtitle = subtitlesToProcess.find(sub => sub.id === subtitleId);
+    const subtitle = subtitlesToProcess.find((sub, idx) => (sub.id ?? sub.subtitle_id ?? (idx + 1)) === subtitleId);
     
     if (!subtitle) {
       setError(t('narration.subtitleNotFoundError', 'Subtitle not found for retry.'));
@@ -338,12 +339,18 @@ const useEdgeTTSNarration = ({
               if (data.status === 'completed' && data.results?.length > 0) {
                 const newResult = data.results[0];
                 
-                // Update the specific result in the generation results
-                setGenerationResults(prev => 
-                  prev.map(result => 
-                    result.subtitle_id === subtitleId ? newResult : result
-                  )
-                );
+                // Update the specific result in the generation results (append if missing)
+                setGenerationResults(prev => {
+                  let found = false;
+                  const updated = prev.map(result => {
+                    if (result.subtitle_id === subtitleId) {
+                      found = true;
+                      return newResult;
+                    }
+                    return result;
+                  });
+                  return found ? updated : [...updated, newResult];
+                });
               }
             } catch (parseError) {
               console.warn('Failed to parse SSE data:', parseError);
@@ -374,15 +381,15 @@ const useEdgeTTSNarration = ({
    * Retry all failed Edge TTS narrations
    */
   const retryFailedEdgeTTSNarrations = useCallback(async () => {
-    const failedResults = generationResults.filter(result => !result.success);
+    const failedResults = generationResults.filter(result => !result.success && !result.pending);
     
     if (failedResults.length === 0) {
       return;
     }
 
     const subtitlesToProcess = getSubtitlesForGeneration();
-    const failedSubtitles = failedResults.map(result => 
-      subtitlesToProcess.find(sub => sub.id === result.subtitle_id)
+    const failedSubtitles = failedResults.map(result =>
+      subtitlesToProcess.find(sub => (sub.id ?? subtitlesToProcess.indexOf(sub)) === result.subtitle_id)
     ).filter(Boolean);
 
     if (failedSubtitles.length === 0) {
@@ -498,11 +505,76 @@ const useEdgeTTSNarration = ({
     };
   }, [setGenerationResults, setGenerationStatus, t, setSelectedVoice, setRate, setVolume, setPitch]);
 
+  /**
+   * Generate all pending Edge TTS narrations
+   */
+  const generateAllPendingEdgeTTSNarrations = useCallback(async () => {
+    try {
+      setIsGenerating(true);
+
+      // Get all planned subtitles (passed from parent component)
+      const trueSubtitles = plannedSubtitles || [];
+
+      if (trueSubtitles.length === 0) {
+        return;
+      }
+
+      // Find subtitles that don't have results yet (pending)
+      const completedIds = new Set();
+      if (generationResults && generationResults.length > 0) {
+        generationResults.forEach(result => {
+          if (result.success) {
+            completedIds.add(result.subtitle_id);
+          }
+        });
+      }
+
+      // Get pending subtitle IDs
+      const pendingSubtitleIds = trueSubtitles
+        .map(subtitle => subtitle.id ?? subtitle.subtitle_id ?? trueSubtitles.indexOf(subtitle))
+        .filter(id => !completedIds.has(id));
+
+      if (pendingSubtitleIds.length === 0) {
+        return;
+      }
+
+      setError('');
+      setGenerationStatus(t('narration.generatingPendingNarrations', 'Generating {{count}} pending narrations...', { count: pendingSubtitleIds.length }));
+
+      // Generate each pending narration sequentially using the retry function
+      for (const subtitleId of pendingSubtitleIds) {
+        await retryEdgeTTSNarration(subtitleId);
+
+        // Add a small delay between generations to avoid overwhelming the server
+        await new Promise(resolve => setTimeout(resolve, 500));
+      }
+
+      // Update status
+      setGenerationStatus(t('narration.generatingPendingNarrationsComplete', 'Completed generating all pending narrations'));
+    } catch (error) {
+      console.error('Error generating pending Edge TTS narrations:', error);
+      setError(t('narration.generateAllPendingError', 'Error generating pending narrations: {{error}}', {
+        error: error.message
+      }));
+    } finally {
+      setIsGenerating(false);
+    }
+  }, [
+    setIsGenerating,
+    generationResults,
+    plannedSubtitles,
+    retryEdgeTTSNarration,
+    setError,
+    setGenerationStatus,
+    t
+  ]);
+
   return {
     handleEdgeTTSNarration,
     cancelEdgeTTSGeneration,
     retryEdgeTTSNarration,
-    retryFailedEdgeTTSNarrations
+    retryFailedEdgeTTSNarrations,
+    generateAllPendingEdgeTTSNarrations
   };
 };
 

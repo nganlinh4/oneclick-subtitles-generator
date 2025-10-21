@@ -136,8 +136,15 @@ const generateNarration = async (req, res) => {
 
     // Process each subtitle
     for (let i = 0; i < subtitles.length; i++) {
+      // Check if client has disconnected (cancelled)
+      if (res.destroyed || req.aborted) {
+        console.log('gTTS generation cancelled by client');
+        res.end();
+        return;
+      }
+
       const subtitle = subtitles[i];
-      
+
       try {
         // Create temporary Python script for this subtitle
         const tempScript = path.join(os.tmpdir(), `gtts_generate_${uuidv4()}.py`);
@@ -257,12 +264,18 @@ except Exception as e:
         results.push(subtitleResult);
 
         // Send progress event
-        res.write(`data: ${JSON.stringify({
-          status: 'progress',
-          current: i + 1,
-          total: subtitles.length,
-          result: subtitleResult
-        })}\n\n`);
+        try {
+          res.write(`data: ${JSON.stringify({
+            status: 'progress',
+            current: i + 1,
+            total: subtitles.length,
+            result: subtitleResult
+          })}\n\n`);
+        } catch (writeError) {
+          console.log('Client disconnected during gTTS progress update');
+          res.end();
+          return;
+        }
 
       } catch (error) {
         console.error(`Error generating gTTS for subtitle ${i}:`, error);
@@ -277,12 +290,18 @@ except Exception as e:
 
         results.push(errorResult);
 
-        res.write(`data: ${JSON.stringify({
-          status: 'error',
-          current: i + 1,
-          total: subtitles.length,
-          result: errorResult
-        })}\n\n`);
+        try {
+          res.write(`data: ${JSON.stringify({
+            status: 'error',
+            current: i + 1,
+            total: subtitles.length,
+            result: errorResult
+          })}\n\n`);
+        } catch (writeError) {
+          console.log('Client disconnected during gTTS error update');
+          res.end();
+          return;
+        }
       }
     }
 
@@ -297,10 +316,14 @@ except Exception as e:
     }
 
     // Send completion event
-    res.write(`data: ${JSON.stringify({
-      status: 'completed',
-      results: results
-    })}\n\n`);
+    try {
+      res.write(`data: ${JSON.stringify({
+        status: 'completed',
+        results: results
+      })}\n\n`);
+    } catch (writeError) {
+      console.log('Client disconnected during gTTS completion');
+    }
 
     res.end();
 

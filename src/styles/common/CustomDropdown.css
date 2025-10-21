@@ -38,6 +38,8 @@
 
 .dropdown-value {
   flex: 1;
+  display: flex;
+  align-items: center;
   text-align: left;
   white-space: nowrap;
   overflow: hidden;
@@ -92,13 +94,22 @@
 
 
 /* Smoothly fade in options */
-.custom-dropdown-clipper.is-open .dropdown-option {
+.custom-dropdown-clipper.is-open .dropdown-option:not(.disabled) {
   animation: fade-in-option 200ms cubic-bezier(0.4, 0, 0.2, 1) 50ms backwards;
+}
+
+.custom-dropdown-clipper.is-open .dropdown-option.disabled {
+  animation: fade-in-option-disabled 200ms cubic-bezier(0.4, 0, 0.2, 1) 50ms backwards;
 }
 
 @keyframes fade-in-option {
   from { opacity: 0; transform: translateY(-2px); }
   to { opacity: 1; transform: translateY(0); }
+}
+
+@keyframes fade-in-option-disabled {
+  from { opacity: 0; transform: translateY(-2px); }
+  to { opacity: 0.7; transform: translateY(0); }
 }
 
 /* Closing animations */
@@ -196,7 +207,6 @@
 .dropdown-option.disabled {
   cursor: not-allowed;
   color: var(--md-on-surface-variant);
-  opacity: 0.7;
 }
 
 /* Font morphing animations */

@@ -53,8 +53,12 @@ def generate_edge_tts():
         logger.info(f"Generating Edge TTS with voice: {voice}, rate: {rate}, volume: {volume}, pitch: {pitch}")
         
         def generate():
-            yield f"data: {json.dumps({'status': 'started', 'total': len(subtitles)})}\n\n"
-            
+            try:
+                yield f"data: {json.dumps({'status': 'started', 'total': len(subtitles)})}\n\n"
+            except Exception as e:
+                logger.info("Client disconnected during Edge TTS generation start")
+                return
+
             results = []
             for i, subtitle in enumerate(subtitles):
                 try:
@@ -62,11 +66,11 @@ def generate_edge_tts():
                     audio_data = asyncio.run(generate_edge_tts_audio(
                         subtitle['text'], voice, rate, volume, pitch
                     ))
-                    
+
                     # Save audio file
                     subtitle_id = subtitle.get('id', i)
                     filename = save_audio_file(audio_data, subtitle_id, 'edge-tts')
-                    
+
                     result = {
                         'subtitle_id': subtitle_id,
                         'text': subtitle['text'],
@@ -77,7 +81,7 @@ def generate_edge_tts():
                         'method': 'edge-tts'
                     }
                     results.append(result)
-                    
+
                     # Send progress update
                     progress_data = {
                         'status': 'progress',
@@ -85,8 +89,12 @@ def generate_edge_tts():
                         'total': len(subtitles),
                         'result': result
                     }
-                    yield f"data: {json.dumps(progress_data)}\n\n"
-                    
+                    try:
+                        yield f"data: {json.dumps(progress_data)}\n\n"
+                    except Exception as e:
+                        logger.info(f"Client disconnected during Edge TTS generation at subtitle {i+1}")
+                        return
+
                 except Exception as e:
                     logger.error(f"Error generating Edge TTS for subtitle {i}: {str(e)}")
                     error_result = {
@@ -97,21 +105,29 @@ def generate_edge_tts():
                         'method': 'edge-tts'
                     }
                     results.append(error_result)
-                    
+
                     error_data = {
                         'status': 'error',
                         'current': i + 1,
                         'total': len(subtitles),
                         'result': error_result
                     }
-                    yield f"data: {json.dumps(error_data)}\n\n"
-            
+                    try:
+                        yield f"data: {json.dumps(error_data)}\n\n"
+                    except Exception as e:
+                        logger.info(f"Client disconnected during Edge TTS error reporting at subtitle {i+1}")
+                        return
+
             # Send completion
             completion_data = {
                 'status': 'completed',
                 'results': results
             }
-            yield f"data: {json.dumps(completion_data)}\n\n"
+            try:
+                yield f"data: {json.dumps(completion_data)}\n\n"
+            except Exception as e:
+                logger.info("Client disconnected during Edge TTS completion")
+                return
         
         return Response(generate(), mimetype='text/event-stream')
         
@@ -141,18 +157,22 @@ def generate_gtts():
         logger.info(f"Generating gTTS with lang: {lang}, tld: {tld}, slow: {slow}")
         
         def generate():
-            yield f"data: {json.dumps({'status': 'started', 'total': len(subtitles)})}\n\n"
-            
+            try:
+                yield f"data: {json.dumps({'status': 'started', 'total': len(subtitles)})}\n\n"
+            except Exception as e:
+                logger.info("Client disconnected during gTTS generation start")
+                return
+
             results = []
             for i, subtitle in enumerate(subtitles):
                 try:
                     # Generate audio using gTTS
                     audio_data = generate_gtts_audio(subtitle['text'], lang, tld, slow)
-                    
+
                     # Save audio file
                     subtitle_id = subtitle.get('id', i)
                     filename = save_audio_file(audio_data, subtitle_id, 'gtts')
-                    
+
                     result = {
                         'subtitle_id': subtitle_id,
                         'text': subtitle['text'],
@@ -163,7 +183,7 @@ def generate_gtts():
                         'method': 'gtts'
                     }
                     results.append(result)
-                    
+
                     # Send progress update
                     progress_data = {
                         'status': 'progress',
@@ -171,8 +191,12 @@ def generate_gtts():
                         'total': len(subtitles),
                         'result': result
                     }
-                    yield f"data: {json.dumps(progress_data)}\n\n"
-                    
+                    try:
+                        yield f"data: {json.dumps(progress_data)}\n\n"
+                    except Exception as e:
+                        logger.info(f"Client disconnected during gTTS generation at subtitle {i+1}")
+                        return
+
                 except Exception as e:
                     logger.error(f"Error generating gTTS for subtitle {i}: {str(e)}")
                     error_result = {
@@ -183,21 +207,29 @@ def generate_gtts():
                         'method': 'gtts'
                     }
                     results.append(error_result)
-                    
+
                     error_data = {
                         'status': 'error',
                         'current': i + 1,
                         'total': len(subtitles),
                         'result': error_result
                     }
-                    yield f"data: {json.dumps(error_data)}\n\n"
-            
+                    try:
+                        yield f"data: {json.dumps(error_data)}\n\n"
+                    except Exception as e:
+                        logger.info(f"Client disconnected during gTTS error reporting at subtitle {i+1}")
+                        return
+
             # Send completion
             completion_data = {
                 'status': 'completed',
                 'results': results
             }
-            yield f"data: {json.dumps(completion_data)}\n\n"
+            try:
+                yield f"data: {json.dumps(completion_data)}\n\n"
+            except Exception as e:
+                logger.info("Client disconnected during gTTS completion")
+                return
         
         return Response(generate(), mimetype='text/event-stream')
         

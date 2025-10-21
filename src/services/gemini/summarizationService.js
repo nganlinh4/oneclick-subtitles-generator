@@ -3,12 +3,16 @@
  * Handles document summarization functionality
  */
 
+import i18n from '../../i18n/i18n';
 import { getLanguageCode } from '../../utils/languageUtils';
 import { createSummarizationSchema, addResponseSchema } from '../../utils/schemaUtils';
 import { addThinkingConfig } from '../../utils/thinkingBudgetUtils';
 import { getDefaultSummarizePrompt } from './promptManagement';
 import { createRequestController, removeRequestController } from './requestManagement';
 import { processStructuredJsonResponse, processTextResponse } from './responseProcessingService';
+
+// Translation function shorthand
+const t = (key, fallback) => i18n.t(key, fallback);
 
 /**
  * Summarize document from subtitles text
@@ -29,7 +33,7 @@ export const summarizeDocument = async (subtitlesText, model = 'gemini-2.0-flash
         // Get API key from localStorage
         const apiKey = localStorage.getItem('gemini_api_key');
         if (!apiKey) {
-            throw new Error('Gemini API key not found');
+            throw new Error(t('settings.geminiApiKeyRequired', 'Gemini API key not found'));
         }
 
         const apiUrl = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${apiKey}`;

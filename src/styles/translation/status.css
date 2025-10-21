@@ -5,7 +5,7 @@
   color: var(--error-color);
   background-color: var(--error-background);
   padding: 0.75rem 1rem;
-  border-radius: 8px;
+  border-radius: 16px;
   font-size: 0.9rem;
   border-left: 3px solid var(--error-color);
 }

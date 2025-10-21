@@ -73,7 +73,8 @@ const useChatterboxNarration = ({
   setIsGroupingSubtitles,
   groupingIntensity,
   t,
-  setRetryingSubtitleId
+  setRetryingSubtitleId,
+  plannedSubtitles
 }) => {
   // Track error state locally
   const [localError, setLocalError] = useState('');
@@ -468,7 +469,7 @@ const useChatterboxNarration = ({
       }
 
       const selectedSubtitles = getSelectedSubtitles();
-      const subtitle = selectedSubtitles.find(s => (s.id || selectedSubtitles.indexOf(s)) === subtitleId);
+      const subtitle = selectedSubtitles.find((s, idx) => (s.id ?? s.subtitle_id ?? (idx + 1)) === subtitleId);
 
       if (!subtitle) {
         throw new Error('Subtitle not found for retry');
@@ -478,12 +479,18 @@ const useChatterboxNarration = ({
       const voiceFile = voiceFilePath ? null : await getReferenceAudioFileWithCache();
       const result = await generateSingleNarration(subtitle, 0, 1, voiceFile, voiceFilePath);
 
-      // Update the specific result in the array
-      setGenerationResults(prevResults =>
-        prevResults.map(r =>
-          r.subtitle_id === subtitleId ? result : r
-        )
-      );
+      // Update the specific result in the array (append if missing)
+      setGenerationResults(prevResults => {
+        let found = false;
+        const updated = prevResults.map(r => {
+          if (r.subtitle_id === subtitleId) {
+            found = true;
+            return result;
+          }
+          return r;
+        });
+        return found ? updated : [...updated, result];
+      });
 
     } catch (error) {
       console.error('Error retrying Chatterbox narration:', error);
@@ -514,7 +521,7 @@ const useChatterboxNarration = ({
         }
       }
 
-      const failedResults = generationResults.filter(r => r.success === false);
+      const failedResults = generationResults.filter(r => r.success === false && !r.pending);
 
       if (failedResults.length === 0) {
         return;
@@ -550,11 +557,63 @@ const useChatterboxNarration = ({
     }
   }, [setIsGenerating, generationResults, getReferenceAudioFile, getSelectedSubtitles, generateSingleNarration, setGenerationResults, setError, t]);
 
+  /**
+   * Generate all pending Chatterbox narrations
+   */
+  const generateAllPendingChatterboxNarrations = useCallback(async () => {
+    try {
+      setIsGenerating(true);
+
+      // Get all planned subtitles (passed from parent component)
+      const trueSubtitles = plannedSubtitles || [];
+
+      if (trueSubtitles.length === 0) {
+        return;
+      }
+
+      // Find subtitles that don't have results yet (pending)
+      const completedIds = new Set();
+      if (generationResults && generationResults.length > 0) {
+        generationResults.forEach(result => {
+          if (result.success) {
+            completedIds.add(result.subtitle_id);
+          }
+        });
+      }
+
+      // Get pending subtitle IDs
+      const pendingSubtitleIds = trueSubtitles
+        .map(subtitle => subtitle.id ?? subtitle.subtitle_id ?? trueSubtitles.indexOf(subtitle))
+        .filter(id => !completedIds.has(id));
+
+      if (pendingSubtitleIds.length === 0) {
+        return;
+      }
+
+      // Generate each pending narration sequentially using the retry function
+      for (const subtitleId of pendingSubtitleIds) {
+        await retryChatterboxNarration(subtitleId);
+
+        // Add a small delay between generations to avoid overwhelming the server
+        await new Promise(resolve => setTimeout(resolve, 500));
+      }
+
+    } catch (error) {
+      console.error('Error generating pending Chatterbox narrations:', error);
+      setError(t('narration.generateAllPendingError', 'Error generating pending narrations: {{error}}', {
+        error: error.message
+      }));
+    } finally {
+      setIsGenerating(false);
+    }
+  }, [setIsGenerating, generationResults, plannedSubtitles, retryChatterboxNarration, setError, t]);
+
   return {
     handleChatterboxNarration,
     cancelChatterboxGeneration,
     retryChatterboxNarration,
-    retryFailedChatterboxNarrations
+    retryFailedChatterboxNarrations,
+    generateAllPendingChatterboxNarrations
   };
 };
 

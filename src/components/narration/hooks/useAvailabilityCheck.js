@@ -91,9 +91,20 @@ const useAvailabilityCheck = ({
         // Set error message based on current method
         if (!geminiStatus.available && narrationMethod === 'gemini' && geminiStatus.message) {
           // Translate service unavailable message if needed
-          const errorMessage = geminiStatus.message === 'SERVICE_UNAVAILABLE'
-            ? t('narration.serviceUnavailableMessage', 'Please run the application with npm run dev:cuda (OSG Full) to use the Voice Cloning feature. If already running with npm run dev:cuda (OSG Full), please wait about 1 minute for it to be ready.')
-            : geminiStatus.message;
+          let errorMessage = geminiStatus.message;
+          if (geminiStatus.message === 'SERVICE_UNAVAILABLE') {
+            errorMessage = t('narration.serviceUnavailableMessage', 'Please run the application with npm run dev:cuda (OSG Full) to use the Voice Cloning feature. If already running with npm run dev:cuda (OSG Full), please wait about 1 minute for it to be ready.');
+          } else if (geminiStatus.message === 'geminiApiKeyRequired') {
+            errorMessage = t('settings.geminiApiKeyRequired', 'Please set your Gemini API key in the settings');
+          } else if (geminiStatus.message === 'noGeminiModelsAvailable') {
+            errorMessage = t('settings.noGeminiModelsAvailable', 'No Gemini models available with your API key');
+          } else if (geminiStatus.message === 'noSuitableGeminiModels') {
+            errorMessage = t('settings.noSuitableGeminiModels', 'No suitable Gemini models found for audio generation');
+          } else if (geminiStatus.message === 'invalidGeminiApiKey') {
+            errorMessage = t('settings.invalidGeminiApiKey', 'Invalid Gemini API key or API access issue');
+          } else if (geminiStatus.message === 'errorCheckingGeminiAvailability') {
+            errorMessage = t('settings.errorCheckingGeminiAvailability', 'Error checking Gemini API availability');
+          }
           setError(errorMessage);
         }
         else if (!f5Status.available && narrationMethod === 'f5tts' && f5Status.message) {

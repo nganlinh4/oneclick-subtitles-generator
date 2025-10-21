@@ -21,7 +21,7 @@
   border-radius: 32px;
   box-shadow: var(--md-elevation-level4);
   width: 90%;
-  max-width: 1000px; /* Increased from 500px */
+  max-width: 1100px; /* Increased from 500px */
   max-height: 85vh; /* Increased from 90vh to reduce height slightly */
   display: flex;
   flex-direction: column;
@@ -306,13 +306,14 @@
 /* Ensure inner wrappers expand to full width so sliders can fill */
 .video-processing-modal .combined-option-half > div {
   width: 100%;
+  max-width: 250px;
 }
 
 .combined-option-half label {
   font-size: 0.875rem;
   font-weight: 500;
   color: var(--md-on-surface);
-  margin-bottom: 4px;
+  margin-bottom: 0px;
 }
 
 /* Select dropdown styles with proper chevron spacing */
@@ -510,10 +511,9 @@
 
 /* Model dropdown in combined row - limit width */
 .video-processing-modal .combined-option-half:first-child .custom-dropdown {
-  max-width: 200px;
+  max-width: 250px;
 }
 .video-processing-modal .header-content .custom-dropdown {
-  max-width: 200px;
 }
 /* When a slider is disabled, also dim the value display to avoid confusion */
 .video-processing-modal .slider-with-value .standard-slider-container.disabled ~ .slider-value-display,

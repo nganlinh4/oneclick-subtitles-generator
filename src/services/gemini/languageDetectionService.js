@@ -5,6 +5,9 @@
 import { createLanguageDetectionSchema, addResponseSchema } from '../../utils/schemaUtils';
 import i18n from '../../i18n/i18n';
 
+// Translation function shorthand
+const t = (key, fallback) => i18n.t(key, fallback);
+
 /**
  * Detect language of text using Gemini API
  * @param {Array} subtitles - Array of subtitles to detect language from
@@ -27,7 +30,7 @@ export const detectSubtitleLanguage = async (subtitles, source = 'original', mod
         // Get API key from localStorage
         const apiKey = localStorage.getItem('gemini_api_key');
         if (!apiKey) {
-            throw new Error('Gemini API key not found');
+            throw new Error(t('settings.geminiApiKeyRequired', 'Gemini API key not found'));
         }
 
         // Take the first 3 subtitles for language detection

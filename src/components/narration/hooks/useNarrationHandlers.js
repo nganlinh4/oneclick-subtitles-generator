@@ -1445,9 +1445,15 @@ const useNarrationHandlers = ({
 
         // Update the results array by replacing the old result with the new one
         setGenerationResults(prevResults => {
-          const updatedResults = prevResults.map(prevResult =>
-            prevResult.subtitle_id === subtitleId ? result : prevResult
-          );
+          let found = false;
+          const updatedResults = prevResults.map(prevResult => {
+            if (prevResult.subtitle_id === subtitleId) {
+              found = true;
+              return result;
+            }
+            return prevResult;
+          });
+          const finalResults = found ? updatedResults : [...updatedResults, result];
 
           // Update the global narration references to ensure video player uses the latest version
           if (subtitleSource === 'original') {
@@ -1569,8 +1575,8 @@ const useNarrationHandlers = ({
       return;
     }
 
-    // Find all failed narrations
-    const failedNarrations = generationResults.filter(result => !result.success);
+    // Find all failed narrations (exclude pending items)
+    const failedNarrations = generationResults.filter(result => !result.success && !result.pending);
 
     if (failedNarrations.length === 0) {
       setError(t('narration.noFailedNarrationsError', 'No failed narrations to retry'));
@@ -1765,6 +1771,54 @@ const useNarrationHandlers = ({
     setGenerationStatus(t('narration.retryingFailedNarrationsComplete', 'Completed retrying all failed narrations'));
   };
 
+  // Generate all pending narrations
+  const generateAllPendingF5TTSNarrations = async () => {
+    if (!referenceAudio) {
+      setError(t('narration.noReferenceAudioError', 'Please upload or record reference audio first'));
+      return;
+    }
+
+    // Get the appropriate subtitles based on the selected source
+    const selectedSubtitles = getSelectedSubtitles();
+
+    if (!selectedSubtitles || selectedSubtitles.length === 0) {
+      setError(t('narration.noSubtitlesError', 'No subtitles available for narration'));
+      return;
+    }
+
+    // Find all pending narrations based on selectedSubtitles and generationResults
+    const pendingSubtitles = selectedSubtitles.filter(subtitle => {
+      const subtitleId = subtitle.id || subtitle.index;
+      const existingResult = generationResults.find(result => result.subtitle_id === subtitleId);
+      return !existingResult || (!existingResult.success && existingResult.pending);
+    });
+
+    if (pendingSubtitles.length === 0) {
+      setError(t('narration.noPendingNarrationsError', 'No pending narrations to generate'));
+      return;
+    }
+
+    // Clear any previous errors
+    setError('');
+
+    // Set status for generating pending narrations
+    setGenerationStatus(t('narration.generatingPendingNarrations', 'Generating {{count}} pending narrations...', { count: pendingSubtitles.length }));
+
+    // Process each pending narration one by one
+    for (let i = 0; i < pendingSubtitles.length; i++) {
+      const subtitle = pendingSubtitles[i];
+      const subtitleId = subtitle.id || subtitle.index;
+
+      await retryF5TTSNarration(subtitleId);
+
+      // Add a small delay between generations to avoid overwhelming the server
+      await new Promise(resolve => setTimeout(resolve, 500));
+    }
+
+    // Update status
+    setGenerationStatus(t('narration.generatingPendingNarrationsComplete', 'Completed generating all pending narrations'));
+  };
+
   // Handle example audio selection
   const handleExampleSelect = async (result) => {
     try {
@@ -1813,6 +1867,7 @@ const useNarrationHandlers = ({
     cancelGeneration,
     retryF5TTSNarration,
     retryFailedNarrations,
+    generateAllPendingF5TTSNarrations,
     handleExampleSelect
   };
 };

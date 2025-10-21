@@ -11,6 +11,9 @@ import { getDefaultConsolidatePrompt } from './promptManagement';
 import { createRequestController, removeRequestController } from './requestManagement';
 import { processStructuredJsonResponse, processTextResponse } from './responseProcessingService';
 
+// Translation function shorthand
+const t = (key, fallback) => i18n.t(key, fallback);
+
 /**
  * Consolidate document from subtitles text
  * @param {string} subtitlesText - Plain text content from subtitles
@@ -43,7 +46,7 @@ export const completeDocument = async (subtitlesText, model = 'gemini-2.0-flash'
         // Get API key from localStorage
         const apiKey = localStorage.getItem('gemini_api_key');
         if (!apiKey) {
-            throw new Error('Gemini API key not found');
+            throw new Error(t('settings.geminiApiKeyRequired', 'Gemini API key not found'));
         }
 
         const apiUrl = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${apiKey}`;

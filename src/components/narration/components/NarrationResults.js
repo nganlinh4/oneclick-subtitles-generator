@@ -254,6 +254,7 @@ const NarrationResults = ({
   onRetry,
   retryingSubtitleId,
   onRetryFailed,
+  onGenerateAllPending,
   subtitleSource,
   isGenerating,
   plannedSubtitles
@@ -262,7 +263,6 @@ const NarrationResults = ({
 
   const listRef = useRef(null);
   const rowHeights = useRef({});
-  const [loadedFromCache, setLoadedFromCache] = useState(false);
 
   // Derive a displayed list that immediately shows the full "true" list during generation (like Gemini)
   const trueSubtitles = (() => {
@@ -284,19 +284,53 @@ const NarrationResults = ({
     return [];
   })();
 
-  const displayedResults = (generationResults && generationResults.length > 0)
-    ? generationResults
-    : (isGenerating && trueSubtitles.length > 0
-        ? trueSubtitles.map((s, i) => ({
-            subtitle_id: s.id ?? s.subtitle_id ?? (i + 1),
-            text: s.text || '',
+  const displayedResults = (() => {
+    // Always show all planned subtitles, with status based on generation results
+    if (trueSubtitles.length > 0) {
+      const completedIds = new Set();
+      const failedIds = new Set();
+
+      // Track completed and failed results
+      if (generationResults && generationResults.length > 0) {
+        generationResults.forEach(result => {
+          if (result.success) {
+            completedIds.add(result.subtitle_id);
+          } else if (!result.pending) {
+            failedIds.add(result.subtitle_id);
+          }
+        });
+      }
+
+      // Create results for all subtitles
+      const results = trueSubtitles.map((subtitle, index) => {
+        const subtitleId = subtitle.id ?? subtitle.subtitle_id ?? (index + 1);
+        const existingResult = generationResults?.find(r => r.subtitle_id === subtitleId);
+
+        if (existingResult) {
+          // Use existing result
+          return existingResult;
+        } else {
+          // Create pending result
+          return {
+            subtitle_id: subtitleId,
+            text: subtitle.text || '',
             success: false,
             pending: true,
-            start: s.start,
-            end: s.end,
-            original_ids: s.original_ids || (s.id ? [s.id] : [])
-          }))
-        : []);
+            start: subtitle.start,
+            end: subtitle.end,
+            original_ids: subtitle.original_ids || (subtitle.id ? [subtitle.id] : [])
+          };
+        }
+      });
+
+      // Sort by subtitle_id to maintain order
+      results.sort((a, b) => a.subtitle_id - b.subtitle_id);
+      return results;
+    }
+
+    // Fallback: show generation results if no planned subtitles
+    return generationResults || [];
+  })();
 
   // Speed control state
   const [speedValue, setSpeedValue] = useState(1.0);
@@ -361,7 +395,6 @@ const NarrationResults = ({
   // Speed modification function
   const modifyAudioSpeed = async () => {
     if (!generationResults || generationResults.length === 0) {
-      console.log('No narration results to modify');
       return;
     }
 
@@ -369,7 +402,6 @@ const NarrationResults = ({
     const successfulNarrations = generationResults.filter(result => result.success && result.filename);
 
     if (successfulNarrations.length === 0) {
-      console.log('No successful narrations to modify');
       return;
     }
 
@@ -378,11 +410,8 @@ const NarrationResults = ({
     setCurrentFile('');
 
     try {
-      console.log(`Modifying speed of ${successfulNarrations.length} narration files to ${speedValue}x`);
-
       // Use batch endpoint to process all files at once
       const apiUrl = `${SERVER_URL}/api/narration/batch-modify-audio-speed`;
-      console.log(`Sending request to: ${apiUrl}`);
 
       // Use fetch with streaming response to get real-time progress updates
       const response = await fetch(apiUrl, {
@@ -420,7 +449,6 @@ const NarrationResults = ({
                 setProcessingProgress({ current: data.current, total: data.total });
                 setCurrentFile(data.filename || '');
               } else if (data.status === 'completed') {
-                console.log('Speed modification completed successfully');
                 setProcessingProgress({ current: data.total, total: data.total });
                 setCurrentFile('');
               } else if (data.status === 'error') {
@@ -433,7 +461,6 @@ const NarrationResults = ({
         }
       }
 
-      console.log('All files processed successfully');
     } catch (error) {
       console.error('Error modifying audio speed:', error);
       alert(t('narration.speedModificationError', `Error modifying audio speed: ${error.message}`));
@@ -444,8 +471,11 @@ const NarrationResults = ({
     }
   };
 
-  // Check if there are any failed narrations
-  const hasFailedNarrations = generationResults && generationResults.some(result => !result.success);
+  // Check if there are any failed narrations (exclude pending items)
+  const hasFailedNarrations = generationResults && generationResults.some(result => !result.success && !result.pending);
+
+  // Check if there are any pending narrations
+  const hasPendingNarrations = displayedResults && displayedResults.some(result => result.pending);
 
   // Function to calculate row height based on explicit line breaks only (stable like LyricsDisplay)
   const getRowHeight = (index) => {
@@ -588,40 +618,25 @@ const NarrationResults = ({
     }
   }, [generationResults]);
 
-  // We no longer need to load narrations from localStorage cache
-  // The narrations will be loaded from the file system by the parent component
-  // This useEffect is kept as a placeholder for future enhancements
-  useEffect(() => {
-    // Only try to load if we don't have results yet
-    if (generationResults && generationResults.length > 0) return;
 
-    // No need to do anything here - narrations are loaded from the file system
-    // by the parent component (UnifiedNarrationSection.js)
-  }, [generationResults]);
-
-  // Listen for narrations-updated event to update the component
-  useEffect(() => {
-    const handleNarrationsUpdated = (event) => {
-      if (event.detail && event.detail.narrations && event.detail.fromCache) {
-
-        // Reset loading state since we now have the narrations
-        setLoadedFromCache(false);
-      }
-    };
-
-    // Add event listener
-    window.addEventListener('narrations-updated', handleNarrationsUpdated);
-
-    // Clean up
-    return () => {
-      window.removeEventListener('narrations-updated', handleNarrationsUpdated);
-    };
-  }, []);
 
   return (
     <div className="results-section">
       <div className="results-header">
         <h4>{t('narration.results', 'Generated Narration')}</h4>
+
+        {/* Generate All Pending Narrations button */}
+        {hasPendingNarrations && onGenerateAllPending && (
+          <button
+            className="pill-button secondary generate-all-pending-button"
+            onClick={onGenerateAllPending}
+            disabled={retryingSubtitleId !== null}
+            title={t('narration.generateAllPendingTooltip', 'Generate all pending narrations')}
+          >
+            <span className="material-symbols-rounded" style={{ fontSize: '14px' }}>play_arrow</span>
+            {t('narration.generateAllPending', 'Generate All Pending')}
+          </button>
+        )}
 
         {/* Retry Failed Narrations button */}
         {hasFailedNarrations && onRetryFailed && (
@@ -645,15 +660,16 @@ const NarrationResults = ({
               onChange={(value) => setSpeedValue(parseFloat(value))}
               min={0.5}
               max={2.0}
-              step={0.1}
+              step={0.01}
               orientation="Horizontal"
               size="XSmall"
               state={isProcessing ? "Disabled" : "Enabled"}
               width="compact"
-              className="speed-control-slider"
+              className="standard-slider-container width-compact orientation-horizontal size-XSmall state-Enabled speed-control-slider"
+              style={{ width: '150px' }}
               id="narration-speed-control"
               ariaLabel={t('narration.speed', 'Speed')}
-              formatValue={(v) => `${Number(v).toFixed(1)}x`}
+              formatValue={(v) => `${Number(v).toFixed(2)}x`}
             />
             {isProcessing ? (
               <div className="speed-control-progress">
@@ -681,24 +697,10 @@ const NarrationResults = ({
       </div>
 
       <div className="results-list">
-        {(!generationResults || generationResults.length === 0) ? (
-          loadedFromCache ? (
-            // Show loading indicator when loading from cache
-            <div className="loading-from-cache-message">
-              <LoadingIndicator
-                theme="dark"
-                showContainer={false}
-                size={24}
-                className="cache-loading-indicator"
-              />
-              {t('narration.loadingFromCache', 'Loading narrations from previous session...')}
-            </div>
-          ) : (
-            // Show waiting message when no results and not loading from cache
-            <div className="no-results-message">
-              {t('narration.waitingForResults', 'Waiting for narration results...')}
-            </div>
-          )
+        {displayedResults.length === 0 ? (
+          <div className="no-results-message">
+            {t('narration.waitingForResults', 'Waiting for narration results...')}
+          </div>
         ) : (
           // Use virtualized list for better performance with large datasets
           <List
@@ -706,12 +708,12 @@ const NarrationResults = ({
             className="results-virtualized-list"
             height={700} // Increased height for the F5-TTS virtualized container to show more results
             width="100%"
-            itemCount={generationResults ? generationResults.length : 0}
+            itemCount={displayedResults.length}
             itemSize={getRowHeight} // Dynamic row heights based on content
             overscanCount={18} // Increase overscan to reduce blanking during fast scrolls
             itemKey={(index, data) => (data.generationResults[index] && data.generationResults[index].subtitle_id) ?? index}
             itemData={{
-              generationResults: generationResults || [],
+              generationResults: displayedResults,
               onRetry,
               retryingSubtitleId,
               currentAudio,

@@ -109,7 +109,6 @@
   display: flex;
   align-items: center;
   gap: 12px;
-  margin-bottom: 8px;
 }
 
 .grouping-intensity-label {
@@ -172,35 +171,7 @@
   font-size: 1em;
 }
 
-/* Add a tooltip to explain that changing intensity requires regrouping */
-.grouping-intensity-container {
-  position: relative;
-}
-
-.grouping-intensity-container::after {
-  content: attr(data-tooltip);
-  position: absolute;
-  top: 50%;
-  left: 260px; /* label width + select width + gap */
-  transform: translateY(-50%);
-  background-color: rgba(var(--md-surface-variant-rgb), 0.9);
-  color: var(--md-on-surface-variant);
-  padding: 5px 10px;
-  border-radius: 4px;
-  font-size: 0.75rem;
-  white-space: nowrap;
-  opacity: 0;
-  visibility: hidden;
-  transition: opacity 0.3s, visibility 0.3s;
-  z-index: 10;
-  pointer-events: none;
-  box-shadow: var(--md-elevation-level1);
-}
-
-.grouping-intensity-container:hover::after {
-  opacity: 1;
-  visibility: visible;
-}
+/* Tooltip removed - now using HelpIcon for better UX */
 
 /* Grouping Controls Wrapper - Contains switch and info side by side */
 .grouping-controls-wrapper {
@@ -215,8 +186,8 @@
   display: flex;
   align-items: center;
   gap: 12px;
-  padding: 8px 0;
   flex-shrink: 0;
+  margin-top: 0;
 }
 
 /* Grouping Info Container */
@@ -224,7 +195,6 @@
   display: flex;
   align-items: center;
   gap: 12px;
-  padding: 8px 0;
 }
 
 /* View Grouping Button */

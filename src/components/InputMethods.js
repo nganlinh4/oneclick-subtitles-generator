@@ -94,7 +94,7 @@ const InputMethods = ({ onVideoSelect, apiKeysSet, selectedVideo, setSelectedVid
     }, 50); // Small delay to ensure content is rendered
 
     return () => clearTimeout(animationTimeout);
-  }, [activeTab]);
+  }, [activeTab, uploadedFile]);
 
   const renderInputMethod = () => {
     // Determine the animation class based on direction

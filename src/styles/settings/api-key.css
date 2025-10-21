@@ -226,6 +226,37 @@
   text-decoration: underline;
 }
 
+.api-key-link {
+  margin-bottom: 1rem;
+  grid-column: 1 / -1; /* Span full width */
+}
+
+.api-key-link .usage-link {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  color: var(--primary-color);
+  text-decoration: none;
+  font-size: 0.85rem;
+  font-weight: 500;
+  padding: 6px 12px;
+  border-radius: 20px;
+  background-color: var(--md-surface-1);
+  border: 1px solid var(--md-outline-variant);
+  transition: all var(--md-duration-medium2) var(--md-easing-standard);
+}
+
+.api-key-link .usage-link:hover {
+  background-color: color-mix(in srgb, var(--md-surface-1), var(--md-primary) 5%);
+  border-color: var(--md-primary);
+  text-decoration: none;
+}
+
+.api-key-link .usage-link .material-symbols-rounded {
+  font-size: 16px;
+  color: var(--md-primary);
+}
+
 .api-key-instructions {
   margin-top: 1rem;
   padding: 1rem;

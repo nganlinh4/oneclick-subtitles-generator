@@ -101,7 +101,7 @@ export const analyzeVideoWithGemini = async (videoFile, onStatusUpdate) => {
   try {
     const geminiApiKey = localStorage.getItem('gemini_api_key');
     if (!geminiApiKey) {
-      throw new Error('Gemini API key not found');
+      throw new Error(t('settings.geminiApiKeyRequired', 'Gemini API key not found'));
     }
 
     // Get the selected model from localStorage or use the default

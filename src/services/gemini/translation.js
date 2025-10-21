@@ -10,6 +10,9 @@ import { getDefaultTranslationPrompt } from './promptManagement';
 import { getTranscriptionRules } from '../../utils/transcriptionRulesStore';
 import { createRequestController, removeRequestController, abortAllRequests, getProcessingForceStopped } from './requestManagement';
 
+// Translation function shorthand
+const t = (key, fallback) => i18n.t(key, fallback);
+
 /**
  * Translate subtitles to different language(s) while preserving timing
  * @param {Array} subtitles - Subtitles to translate
@@ -201,7 +204,7 @@ const translateSubtitles = async (subtitles, targetLanguage, model = 'gemini-2.0
         // Get API key from localStorage
         const apiKey = localStorage.getItem('gemini_api_key');
         if (!apiKey) {
-            throw new Error('Gemini API key not found');
+            throw new Error(t('settings.geminiApiKeyRequired', 'Gemini API key not found'));
         }
 
         // Use the model parameter passed to the function

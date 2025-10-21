@@ -10,6 +10,7 @@
   "closeMessage": "Đóng",
   "geminiApiKey": "Khóa API Gemini",
   "geminiApiKeys": "Các Khóa API Gemini",
+  "geminiApiUsage": "Mức dùng API Gemini",
   "youtubeApiKey": "Khóa API YouTube",
   "geniusApiKey": "Khóa API Genius",
   "apiKeyDescription": "Khóa API được lưu trữ cục bộ trong trình duyệt của bạn và không bao giờ được gửi đến máy chủ của chúng tôi.",
@@ -390,7 +391,10 @@
   "resolution240p": "240p (Nhanh nhất, tệp nhỏ nhất)",
   "resolution360p": "360p (Khuyến nghị cho Gemini)",
   "customGeminiModels": {
-    "description": "Thêm ID mô hình Gemini tùy chỉnh để sử dụng trong các menu thả xuống trong toàn bộ ứng dụng. Những mô hình này sẽ xuất hiện trong tất cả các menu chọn mô hình.",
+    "title": "Mô hình Gemini Tùy chỉnh",
+    "description": "Thêm ID mô hình Gemini tùy chỉnh để sử dụng trong các menu thả xuống trong toàn bộ ứng dụng. Những mô hình này sẽ xuất hiện trong tất cả các menu chọn mô hình."
+  },
+  "customModels": {
     "modelId": "ID Mô hình",
     "modelName": "Tên Hiển thị",
     "modelIdPlaceholder": "v.d., gemini-2.5-pro-preview-03-25",
@@ -400,8 +404,12 @@
     "edit": "Chỉnh sửa mô hình",
     "delete": "Xóa mô hình",
     "confirmDelete": "Bạn có chắc chắn muốn xóa mô hình tùy chỉnh này không?",
-    "modelExists": "Một mô hình với ID này đã tồn tại"
+    "modelExists": "Một mô hình với ID này đã tồn tại",
+    "update": "Cập nhật Mô hình"
   },
-  "customModels": {
-  }
+  "geminiApiKeyRequired": "Vui lòng đặt khóa API Gemini của bạn trong cài đặt",
+  "noGeminiModelsAvailable": "Không có mô hình Gemini nào khả dụng với khóa API của bạn",
+  "noSuitableGeminiModels": "Không tìm thấy mô hình Gemini phù hợp nào để tạo âm thanh",
+  "invalidGeminiApiKey": "Khóa API Gemini không hợp lệ hoặc vấn đề truy cập API",
+  "errorCheckingGeminiAvailability": "Lỗi khi kiểm tra tính khả dụng của API Gemini"
 }

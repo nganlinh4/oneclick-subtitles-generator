@@ -1,5 +1,6 @@
 {
   "apiKeyRequired": "Please set your API key in the settings first.",
+  "geminiApiKeyRequired": "Gemini API key not found",
   "invalidInput": "Please provide a valid input (YouTube URL, search result, or file upload).",
   "invalidFile": "Invalid file format or size. Please check the supported formats.",
   "geminiOverloaded": "Strong model tends to get overloaded, please consider using other model and try again, or try lower the segment duration. Or create a new Google Cloud Project and get an API Key.",

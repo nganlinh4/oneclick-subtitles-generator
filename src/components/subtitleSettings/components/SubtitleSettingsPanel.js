@@ -3,7 +3,7 @@ import { useTranslation } from 'react-i18next';
 import FontSettings from './FontSettings';
 import PositionSettings from './PositionSettings';
 import StyleSettings from './StyleSettings';
-import { fontOptions, fontWeightOptions, textAlignOptions, getTextTransformOptions } from '../constants';
+import { fontOptions, getFontWeightOptions, getTextAlignOptions, getTextTransformOptions } from '../constants';
 import { groupFontsByCategory } from '../utils/fontUtils';
 import CustomDropdown from '../../common/CustomDropdown';
 
@@ -100,24 +100,24 @@ const SubtitleSettingsPanel = ({
         <hr className="settings-divider" />
 
         {/* Font Settings */}
-        <FontSettings 
-          settings={settings} 
-          handleSettingChange={handleSettingChange} 
-          fontGroups={fontGroups} 
-          fontWeightOptions={fontWeightOptions} 
+        <FontSettings
+          settings={settings}
+          handleSettingChange={handleSettingChange}
+          fontGroups={fontGroups}
+          fontWeightOptions={getFontWeightOptions(t)}
         />
 
         {/* Position Settings */}
-        <PositionSettings 
-          settings={settings} 
-          handleSettingChange={handleSettingChange} 
+        <PositionSettings
+          settings={settings}
+          handleSettingChange={handleSettingChange}
         />
 
         {/* Style Settings */}
         <StyleSettings
           settings={settings}
           handleSettingChange={handleSettingChange}
-          textAlignOptions={textAlignOptions}
+          textAlignOptions={getTextAlignOptions(t)}
           textTransformOptions={getTextTransformOptions(t)}
         />
 

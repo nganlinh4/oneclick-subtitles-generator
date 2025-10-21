@@ -8,6 +8,7 @@
   "closeMessage": "닫기",
   "geminiApiKey": "Gemini API 키",
   "geminiApiKeys": "Gemini API 키 목록",
+  "geminiApiUsage": "Gemini API 사용량",
   "youtubeApiKey": "YouTube API 키",
   "geniusApiKey": "Genius API 키",
   "apiKeyDescription": "API 키는 브라우저에 로컬로 저장되며 절대 우리 서버로 전송되지 않습니다.",
@@ -390,7 +391,10 @@
   "resolution240p": "240p (가장 빠름, 가장 작은 파일)",
   "resolution360p": "360p (Gemini에 권장)",
   "customGeminiModels": {
-    "description": "애플리케이션 전체의 드롭다운에서 사용할 커스텀 Gemini 모델 ID를 추가하세요. 이러한 모델은 모든 모델 선택 메뉴에 나타납니다.",
+    "title": "커스텀 Gemini 모델",
+    "description": "애플리케이션 전체의 드롭다운에서 사용할 커스텀 Gemini 모델 ID를 추가하세요. 이러한 모델은 모든 모델 선택 메뉴에 나타납니다."
+  },
+  "customModels": {
     "modelId": "모델 ID",
     "modelName": "표시 이름",
     "modelIdPlaceholder": "예: gemini-2.5-pro-preview-03-25",
@@ -400,8 +404,12 @@
     "edit": "모델 편집",
     "delete": "모델 삭제",
     "confirmDelete": "이 커스텀 모델을 삭제하시겠습니까?",
-    "modelExists": "이 ID를 가진 모델이 이미 존재합니다"
+    "modelExists": "이 ID를 가진 모델이 이미 존재합니다",
+    "update": "모델 업데이트"
   },
-  "customModels": {
-  }
+  "geminiApiKeyRequired": "설정에서 Gemini API 키를 설정해주세요",
+  "noGeminiModelsAvailable": "귀하의 API 키로 사용할 수 있는 Gemini 모델이 없습니다",
+  "noSuitableGeminiModels": "오디오 생성에 적합한 Gemini 모델을 찾을 수 없습니다",
+  "invalidGeminiApiKey": "잘못된 Gemini API 키 또는 API 액세스 문제",
+  "errorCheckingGeminiAvailability": "Gemini API 가용성 확인 중 오류"
 }

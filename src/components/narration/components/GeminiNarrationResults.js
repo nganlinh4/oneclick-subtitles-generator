@@ -227,8 +227,10 @@ const GeminiNarrationResults = ({
   onRetry,
   retryingSubtitleId,
   onRetryFailed,
+  onGenerateAllPending,
   hasGenerationError = false,
-  subtitleSource
+  subtitleSource,
+  plannedSubtitles
 }) => {
   const { t } = useTranslation();
   const [currentlyPlaying, setCurrentlyPlaying] = useState(null);
@@ -246,6 +248,58 @@ const GeminiNarrationResults = ({
 
   // Check if there are any failed narrations
   const hasFailedNarrations = generationResults && generationResults.some(result => !result.success);
+
+  // Check if there are any pending narrations
+  const hasPendingNarrations = generationResults && generationResults.some(result => !result.success && result.pending);
+
+  // Derive a displayed list that immediately shows the full "true" list during generation (like other methods)
+  const displayedResults = (() => {
+    // Always show all planned subtitles, with status based on generation results
+    if (plannedSubtitles && plannedSubtitles.length > 0) {
+      const completedIds = new Set();
+      const failedIds = new Set();
+
+      // Track completed and failed results
+      if (generationResults && generationResults.length > 0) {
+        generationResults.forEach(result => {
+          if (result.success) {
+            completedIds.add(result.subtitle_id);
+          } else if (!result.pending) {
+            failedIds.add(result.subtitle_id);
+          }
+        });
+      }
+
+      // Create results for all subtitles
+      const results = plannedSubtitles.map((subtitle, index) => {
+        const subtitleId = Number(subtitle.id ?? subtitle.subtitle_id ?? (index + 1));
+        const existingResult = generationResults?.find(r => Number(r.subtitle_id) === subtitleId);
+
+        if (existingResult) {
+          // Use existing result
+          return existingResult;
+        } else {
+          // Create pending result
+          return {
+            subtitle_id: subtitleId,
+            text: subtitle.text || '',
+            success: false,
+            pending: true,
+            start: subtitle.start,
+            end: subtitle.end,
+            original_ids: subtitle.original_ids || (subtitle.id ? [subtitle.id] : [])
+          };
+        }
+      });
+
+      // Sort by subtitle_id to maintain order
+      results.sort((a, b) => a.subtitle_id - b.subtitle_id);
+      return results;
+    }
+
+    // Fallback: show generation results if no planned subtitles
+    return generationResults || [];
+  })();
 
   // Function to modify audio speed
   const modifyAudioSpeed = async () => {
@@ -397,7 +451,7 @@ const GeminiNarrationResults = ({
       return rowHeights.current[index];
     }
 
-    const item = generationResults[index];
+    const item = displayedResults[index];
     if (!item) return 60; // Default height for a single-line item with controls
 
     // Only count explicit line breaks to avoid jitter from soft-wrap estimation
@@ -759,6 +813,21 @@ const GeminiNarrationResults = ({
       <div className="results-header">
         <h4>{t('narration.results', 'Generated Narration')}</h4>
 
+        {/* Generate All Pending Narrations button */}
+        {hasPendingNarrations && onGenerateAllPending && (
+          <button
+            className="pill-button secondary generate-all-pending-button"
+            onClick={onGenerateAllPending}
+            disabled={retryingSubtitleId !== null || !subtitleSource}
+            title={!subtitleSource
+              ? t('narration.noSourceSelectedError', 'Please select a subtitle source (Original or Translated)')
+              : t('narration.generateAllPendingTooltip', 'Generate all pending narrations')}
+          >
+            <span className="material-symbols-rounded" style={{ fontSize: '14px' }}>play_arrow</span>
+            {t('narration.generateAllPending', 'Generate All Pending')}
+          </button>
+        )}
+
         {/* Retry Failed Narrations button */}
         {hasFailedNarrations && onRetryFailed && (
           <button
@@ -783,15 +852,16 @@ const GeminiNarrationResults = ({
               onChange={(value) => setSpeedValue(parseFloat(value))}
               min={0.5}
               max={2.0}
-              step={0.1}
+              step={0.01}
               orientation="Horizontal"
               size="XSmall"
               state={isProcessing ? "Disabled" : "Enabled"}
               width="compact"
-              className="speed-control-slider"
+              className="standard-slider-container width-compact orientation-horizontal size-XSmall state-Enabled speed-control-slider"
+              style={{ width: '150px' }}
               id="gemini-speed-control"
               ariaLabel={t('narration.speed', 'Speed')}
-              formatValue={(v) => `${Number(v).toFixed(1)}x`}
+              formatValue={(v) => `${Number(v).toFixed(2)}x`}
             />
             {isProcessing ? (
               <div className="speed-control-progress">
@@ -819,7 +889,7 @@ const GeminiNarrationResults = ({
       </div>
 
       <div className="results-list">
-        {(!generationResults || generationResults.length === 0) && !hasGenerationError ? (
+        {(!displayedResults || displayedResults.length === 0) && !hasGenerationError ? (
           loadedFromCache ? (
             // Show loading indicator when loading from cache
             <div className="loading-from-cache-message">
@@ -842,14 +912,14 @@ const GeminiNarrationResults = ({
           <List
             ref={listRef}
             className="results-virtualized-list"
-            height={600} // Taller list to show more items and reduce churn while scrolling
+            height={700} // Taller list to show more items and reduce churn while scrolling
             width="100%"
-            itemCount={generationResults ? generationResults.length : 0}
+            itemCount={displayedResults.length}
             itemSize={getRowHeight} // Dynamic row heights based on content
             overscanCount={18} // Increase overscan to reduce blanking during fast scrolls
             itemKey={(index, data) => (data.generationResults[index] && data.generationResults[index].subtitle_id) ?? index}
             itemData={{
-              generationResults: generationResults || [],
+              generationResults: displayedResults,
               onRetry,
               retryingSubtitleId,
               currentlyPlaying,

@@ -36,5 +36,17 @@
   "textTransformLowercase": "lowercase",
   "textTransformCapitalize": "Capitalize",
   "textAlign": "Text Alignment",
-  "textShadow": "Text Shadow"
+  "textShadow": "Text Shadow",
+  "selectFont": "Select Font",
+  "selectFontWeight": "Select Font Weight",
+  "selectTextTransform": "Select Text Transform",
+  "fontWeightLight": "Light",
+  "fontWeightNormal": "Normal",
+  "fontWeightMedium": "Medium",
+  "fontWeightSemiBold": "Semi Bold",
+  "fontWeightBold": "Bold",
+  "fontWeightExtraBold": "Extra Bold",
+  "textAlignLeft": "Left",
+  "textAlignCenter": "Center",
+  "textAlignRight": "Right"
 }

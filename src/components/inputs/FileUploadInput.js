@@ -180,6 +180,10 @@ const FileUploadInput = ({ uploadedFile, setUploadedFile, onVideoSelect, classNa
             setError(t('fileUpload.conversionError', 'Failed to convert audio to video. Please try again.'));
             setUploadedFile(null);
             setFileInfo(null);
+            // Clear the file input value to allow re-uploading the same file
+            if (fileInputRef.current) {
+              fileInputRef.current.value = '';
+            }
             setIsLoading(false);
             return;
           }
@@ -241,6 +245,10 @@ const FileUploadInput = ({ uploadedFile, setUploadedFile, onVideoSelect, classNa
             );
             setUploadedFile(null);
             setFileInfo(null);
+            // Clear the file input value to allow re-uploading the same file
+            if (fileInputRef.current) {
+              fileInputRef.current.value = '';
+            }
             setIsLoading(false);
             return;
           }
@@ -293,6 +301,10 @@ const FileUploadInput = ({ uploadedFile, setUploadedFile, onVideoSelect, classNa
       } else {
         setUploadedFile(null);
         setFileInfo(null);
+        // Clear the file input value to allow re-uploading the same file
+        if (fileInputRef.current) {
+          fileInputRef.current.value = '';
+        }
         if (localStorage.getItem('current_file_url')) {
           URL.revokeObjectURL(localStorage.getItem('current_file_url'));
           localStorage.removeItem('current_file_url');
@@ -465,6 +477,11 @@ const FileUploadInput = ({ uploadedFile, setUploadedFile, onVideoSelect, classNa
                 e.stopPropagation();
                 setFileInfo(null);
                 setUploadedFile(null);
+
+                // Clear the file input value to allow re-uploading the same file
+                if (fileInputRef.current) {
+                  fileInputRef.current.value = '';
+                }
 
                 // Revoke and clear current file URL
                 const existingUrl = localStorage.getItem('current_file_url');

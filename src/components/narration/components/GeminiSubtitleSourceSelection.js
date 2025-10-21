@@ -8,6 +8,7 @@ import '../../../styles/narration/subtitleSourceSelectionMaterial.css';
 import '../../../styles/narration/languageBadges.css';
 import ManualLanguageSelectionModal from './ManualLanguageSelectionModal';
 import SubtitleGroupingModal from './SubtitleGroupingModal';
+import HelpIcon from '../../common/HelpIcon';
 
 /**
  * Simplified subtitle source selection component for Gemini narration
@@ -446,11 +447,10 @@ const GeminiSubtitleSourceSelection = ({
       />
         </div>
         <div className="row-content">
-          <div className="subtitle-grouping-container">
+          <div className="subtitle-grouping-container" style={{ display: 'flex', flexDirection: 'row', alignItems: 'flex-start', gap: '20px' }}>
             {/* Grouping Intensity Dropdown */}
             <div
               className="grouping-intensity-container"
-              data-tooltip={t('narration.intensityChangeTooltip', 'Changing intensity will require regrouping')}
             >
               <label htmlFor="grouping-intensity" className="grouping-intensity-label">
                 {t('narration.groupingIntensity', 'Grouping Intensity')}:
@@ -472,18 +472,18 @@ const GeminiSubtitleSourceSelection = ({
             </div>
 
             {/* Material Web Switch and Grouping Info */}
-            <div className="grouping-controls-wrapper">
+            <div className="grouping-controls-wrapper" style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
               <div className="material-switch-container">
                 <MaterialSwitch
                   id="subtitle-grouping"
                   checked={useGroupedSubtitles}
                   onChange={(e) => handleGroupingToggle(e.target.checked)}
                   disabled={isGenerating || !subtitleSource || isGroupingSubtitles || !hasSubtitles}
-                  ariaLabel={t('narration.groupSubtitles', 'Smartly group subtitles into fuller sentences for narration')}
+                  ariaLabel={t('narration.groupSubtitlesShort', 'Group subtitles')}
                   icons={true}
                 />
                 <label htmlFor="subtitle-grouping" className="material-switch-label">
-                  {t('narration.groupSubtitles', 'Smartly group subtitles into fuller sentences for narration')}
+                  <HelpIcon title={t('narration.groupSubtitles', 'Smartly group subtitles into fuller sentences for narration')} />
                   {isGroupingSubtitles && (
                     <span className="loading-animation" style={{ marginLeft: '10px', display: 'inline-flex', alignItems: 'center' }}>
                       <span className="spinner-circle" style={{ width: '14px', height: '14px' }}></span>

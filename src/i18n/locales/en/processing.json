@@ -64,5 +64,7 @@
   "inlineExtractionLabel": "Cut the video locally, then send to Gemini",
   "methodLabel": "Method",
   "methodNewOption": "New: Interact with video on Files API",
-  "methodOldOption": "Old: Cut the video locally, then send to Gemini"
+  "methodOldOption": "Old: Cut the video locally, then send to Gemini",
+  "methodNvidiaParakeet": "Nvidia Parakeet",
+  "comingSoon": "(coming soon)"
 }

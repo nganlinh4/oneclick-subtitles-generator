@@ -77,6 +77,11 @@ const initializeTheme = () => {
   });
 };
 
+// Disable browser scroll restoration to prevent unwanted scrolling on page refresh
+if (window.history && window.history.scrollRestoration) {
+  window.history.scrollRestoration = 'manual';
+}
+
 // Initialize theme
 initializeTheme();
 // Mark Material Symbols font ready to avoid showing ligature text
@@ -104,6 +109,9 @@ const waitForMaterialSymbols = async () => {
 
 waitForMaterialSymbols();
 
+
+// Scroll to top on page load to ensure we start at the beginning
+window.scrollTo(0, 0);
 
 const root = ReactDOM.createRoot(document.getElementById('root'));
 root.render(

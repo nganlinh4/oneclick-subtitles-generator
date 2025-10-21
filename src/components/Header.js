@@ -42,6 +42,7 @@ const Header = ({ onSettingsClick }) => {
     }
   };
 
+
   useEffect(() => {
     // Check if user has ever opened settings
     const hasEverOpenedSettings = localStorage.getItem('has_opened_settings') === 'true';
@@ -141,6 +142,7 @@ const Header = ({ onSettingsClick }) => {
           setShowFloatingActions(false);
         }, 300);
       }
+
     };
 
     const handleMouseLeave = () => {
@@ -157,6 +159,7 @@ const Header = ({ onSettingsClick }) => {
       hideTimeoutRef.current = setTimeout(() => {
         setShowFloatingActions(false);
       }, 500);
+
     };
 
     const handleScroll = () => {
@@ -276,6 +279,7 @@ const Header = ({ onSettingsClick }) => {
     // Call the original settings click handler
     onSettingsClick();
   };
+
 
 
   // Check for updates to show badge on floating settings button
@@ -480,6 +484,7 @@ const Header = ({ onSettingsClick }) => {
         </button>
       </div>
 
+
       <button
         className={`settings-button floating-settings ${showFloatingActions ? 'floating-visible' : 'floating-hidden'}`}
         onClick={handleSettingsClick}
@@ -495,6 +500,7 @@ const Header = ({ onSettingsClick }) => {
         <span>{t('header.settings')}</span>
         {updateAvailable && <span className="tab-badge" aria-hidden="true" />}
       </button>
+
     </header>
   );
 };

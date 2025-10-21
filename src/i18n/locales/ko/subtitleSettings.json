@@ -36,5 +36,17 @@
   "textTransformLowercase": "소문자",
   "textTransformCapitalize": "첫글자 대문자",
   "textAlign": "텍스트 정렬",
-  "textShadow": "텍스트 그림자"
+  "textShadow": "텍스트 그림자",
+  "selectFont": "글꼴 선택",
+  "selectFontWeight": "글꼴 두께 선택",
+  "selectTextTransform": "텍스트 변환 선택",
+  "fontWeightLight": "가늘게",
+  "fontWeightNormal": "보통",
+  "fontWeightMedium": "중간",
+  "fontWeightSemiBold": "반 굵게",
+  "fontWeightBold": "굵게",
+  "fontWeightExtraBold": "더 굵게",
+  "textAlignLeft": "왼쪽 정렬",
+  "textAlignCenter": "가운데 정렬",
+  "textAlignRight": "오른쪽 정렬"
 }

@@ -3,6 +3,11 @@
  * Uses Gemini API to intelligently combine subtitle lines
  */
 
+import i18n from '../../i18n/i18n';
+
+// Translation function shorthand
+const t = (key, fallback) => i18n.t(key, fallback);
+
 // import { addResponseSchema } from '../../utils/schemaUtils'; // No longer needed if schema is removed
 
 // createSubtitleGroupingSchema can be removed or commented out if not used.
@@ -28,7 +33,7 @@ export const groupSubtitlesForNarration = async (subtitles, language = 'en', mod
   try {
     const apiKey = localStorage.getItem('gemini_api_key');
     if (!apiKey) {
-      throw new Error('Gemini API key not found');
+      throw new Error(t('settings.geminiApiKeyRequired', 'Gemini API key not found'));
     }
 
     const subtitleText = subtitles.map((sub, index) =>

@@ -2,7 +2,11 @@
  * Functions for checking Gemini API availability
  */
 
+import i18n from '../../../i18n/i18n';
 import { listGeminiModels, findSuitableAudioModel } from '../models/modelSelector';
+
+// Translation function shorthand
+const t = (key, fallback) => i18n.t(key, fallback);
 
 /**
  * Check if Gemini API is available
@@ -15,8 +19,8 @@ export const checkGeminiAvailability = async () => {
     if (!apiKey) {
       return {
         available: false,
-        error: 'Gemini API key not found',
-        message: 'Please set your Gemini API key in the settings'
+        error: t('settings.geminiApiKeyRequired', 'Gemini API key not found'),
+        message: 'geminiApiKeyRequired'
       };
     }
 
@@ -29,7 +33,7 @@ export const checkGeminiAvailability = async () => {
         return {
           available: false,
           error: 'No Gemini models available',
-          message: 'No Gemini models available with your API key'
+          message: 'noGeminiModelsAvailable'
         };
       }
 
@@ -40,7 +44,7 @@ export const checkGeminiAvailability = async () => {
         return {
           available: false,
           error: 'No suitable models for audio generation',
-          message: 'No suitable Gemini models found for audio generation'
+          message: 'noSuitableGeminiModels'
         };
       }
 
@@ -52,7 +56,7 @@ export const checkGeminiAvailability = async () => {
       return {
         available: false,
         error: `Gemini API error: ${error.message}`,
-        message: 'Invalid Gemini API key or API access issue'
+        message: 'invalidGeminiApiKey'
       };
     }
   } catch (error) {
@@ -60,7 +64,7 @@ export const checkGeminiAvailability = async () => {
     return {
       available: false,
       error: error.message,
-      message: 'Error checking Gemini API availability'
+      message: 'errorCheckingGeminiAvailability'
     };
   }
 };

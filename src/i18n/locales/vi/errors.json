@@ -1,5 +1,6 @@
 {
   "apiKeyRequired": "Vui lòng cài đặt khóa API trong phần cài đặt trước.",
+  "geminiApiKeyRequired": "Không tìm thấy khóa API Gemini",
   "invalidInput": "Vui lòng cung cấp đầu vào hợp lệ (URL YouTube, kết quả tìm kiếm, hoặc tập tin tải lên).",
   "invalidFile": "Định dạng hoặc kích thước tập tin không hợp lệ. Kiểm tra các định dạng được hỗ trợ.",
   "geminiOverloaded": "Mô hình mạnh có xu hướng bị quá tải, vui lòng cân nhắc sử dụng mô hình khác và thử lại, hoặc thử giảm thời lượng phân đoạn. Cách khác: tạo Google Cloud Project mới và lấy API Key.",

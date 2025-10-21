@@ -102,7 +102,7 @@ const UnifiedNarrationSection = ({
     isRecording, setIsRecording,
     isStartingRecording, setIsStartingRecording,
     recordingStartTime, setRecordingStartTime,
-    /* recordedAudio, */ setRecordedAudio,
+    setRecordedAudio,
     isExtractingSegment, setIsExtractingSegment,
     segmentStartTime, segmentEndTime,
     autoRecognize, setAutoRecognize,
@@ -147,7 +147,8 @@ const UnifiedNarrationSection = ({
     handleGeminiNarration,
     cancelGeminiGeneration,
     retryGeminiNarration,
-    retryFailedGeminiNarrations
+    retryFailedGeminiNarrations,
+    generateAllPendingGeminiNarrations
   } = useGeminiNarration({
     setIsGenerating,
     setGenerationStatus,
@@ -178,7 +179,8 @@ const UnifiedNarrationSection = ({
     handleChatterboxNarration,
     cancelChatterboxGeneration,
     retryChatterboxNarration,
-    retryFailedChatterboxNarrations
+    retryFailedChatterboxNarrations,
+    generateAllPendingChatterboxNarrations
   } = useChatterboxNarration({
     setIsGenerating,
     setGenerationStatus,
@@ -203,7 +205,12 @@ const UnifiedNarrationSection = ({
     setIsGroupingSubtitles,
     groupingIntensity,
     t,
-    setRetryingSubtitleId
+    setRetryingSubtitleId,
+    plannedSubtitles: (useGroupedSubtitles && groupedSubtitles && groupedSubtitles.length > 0)
+      ? groupedSubtitles
+      : (subtitleSource === 'translated' && translatedSubtitles && translatedSubtitles.length > 0)
+        ? translatedSubtitles
+        : (originalSubtitles || subtitles || [])
   });
 
   // Use Edge TTS narration hook
@@ -211,7 +218,8 @@ const UnifiedNarrationSection = ({
     handleEdgeTTSNarration,
     cancelEdgeTTSGeneration,
     retryEdgeTTSNarration,
-    retryFailedEdgeTTSNarrations
+    retryFailedEdgeTTSNarrations,
+    generateAllPendingEdgeTTSNarrations
   } = useEdgeTTSNarration({
     setIsGenerating,
     setGenerationStatus,
@@ -236,7 +244,12 @@ const UnifiedNarrationSection = ({
     setRetryingSubtitleId,
     useGroupedSubtitles,
     groupedSubtitles,
-    setUseGroupedSubtitles
+    setUseGroupedSubtitles,
+    plannedSubtitles: (useGroupedSubtitles && groupedSubtitles && groupedSubtitles.length > 0)
+      ? groupedSubtitles
+      : (subtitleSource === 'translated' && translatedSubtitles && translatedSubtitles.length > 0)
+        ? translatedSubtitles
+        : (originalSubtitles || subtitles || [])
   });
 
   // Use gTTS narration hook
@@ -244,7 +257,8 @@ const UnifiedNarrationSection = ({
     handleGTTSNarration,
     cancelGTTSGeneration,
     retryGTTSNarration,
-    retryFailedGTTSNarrations
+    retryFailedGTTSNarrations,
+    generateAllPendingGTTSNarrations
   } = useGTTSNarration({
     setIsGenerating,
     setGenerationStatus,
@@ -267,7 +281,12 @@ const UnifiedNarrationSection = ({
     setRetryingSubtitleId,
     useGroupedSubtitles,
     groupedSubtitles,
-    setUseGroupedSubtitles
+    setUseGroupedSubtitles,
+    plannedSubtitles: (useGroupedSubtitles && groupedSubtitles && groupedSubtitles.length > 0)
+      ? groupedSubtitles
+      : (subtitleSource === 'translated' && translatedSubtitles && translatedSubtitles.length > 0)
+        ? translatedSubtitles
+        : (originalSubtitles || subtitles || [])
   });
 
   // Use audio playback hook
@@ -405,6 +424,7 @@ const UnifiedNarrationSection = ({
     cancelGeneration,
     retryF5TTSNarration,
     retryFailedNarrations,
+    generateAllPendingF5TTSNarrations,
     handleExampleSelect
   } = useNarrationHandlers({
     fileInputRef,
@@ -647,6 +667,7 @@ const UnifiedNarrationSection = ({
             onRetry={retryF5TTSNarration}
             retryingSubtitleId={retryingSubtitleId}
             onRetryFailed={retryFailedNarrations}
+            onGenerateAllPending={generateAllPendingF5TTSNarrations}
             subtitleSource={subtitleSource}
             isGenerating={isGenerating}
             plannedSubtitles={(useGroupedSubtitles && groupedSubtitles && groupedSubtitles.length > 0)
@@ -735,6 +756,7 @@ const UnifiedNarrationSection = ({
             generationResults={generationResults}
             isServiceAvailable={isChatterboxAvailable}
             serviceUnavailableMessage={t('narration.chatterboxUnavailableMessage', 'Chatterbox API is not available. Please start the Chatterbox service.')}
+            narrationMethod="chatterbox"
           />
 
           {/* Generation Status */}
@@ -747,19 +769,25 @@ const UnifiedNarrationSection = ({
           />
 
           {/* Chatterbox Results - reuse F5-TTS results component */}
-          <NarrationResults
-            generationResults={generationResults}
-            onRetry={retryChatterboxNarration}
-            retryingSubtitleId={retryingSubtitleId}
-            onRetryFailed={retryFailedChatterboxNarrations}
-            hasGenerationError={!!error && error.includes('Chatterbox')}
-            currentAudio={currentAudio}
-            isPlaying={isPlaying}
-            playAudio={playAudio}
-            getAudioUrl={getAudioUrl}
-            subtitleSource={subtitleSource}
-            isGenerating={isGenerating}
-          />
+           <NarrationResults
+             generationResults={generationResults}
+             onRetry={retryChatterboxNarration}
+             retryingSubtitleId={retryingSubtitleId}
+             onRetryFailed={retryFailedChatterboxNarrations}
+             onGenerateAllPending={generateAllPendingChatterboxNarrations}
+             hasGenerationError={!!error && error.includes('Chatterbox')}
+             currentAudio={currentAudio}
+             isPlaying={isPlaying}
+             playAudio={playAudio}
+             getAudioUrl={getAudioUrl}
+             subtitleSource={subtitleSource}
+             isGenerating={isGenerating}
+             plannedSubtitles={(useGroupedSubtitles && groupedSubtitles && groupedSubtitles.length > 0)
+               ? groupedSubtitles
+               : (subtitleSource === 'translated' && translatedSubtitles && translatedSubtitles.length > 0)
+                 ? translatedSubtitles
+                 : (originalSubtitles || subtitles || [])}
+           />
 
           {/* Hidden audio player for playback */}
           <audio
@@ -838,19 +866,25 @@ const UnifiedNarrationSection = ({
           />
 
           {/* Edge TTS Results */}
-          <NarrationResults
-            generationResults={generationResults}
-            onRetry={retryEdgeTTSNarration}
-            retryingSubtitleId={retryingSubtitleId}
-            onRetryFailed={retryFailedEdgeTTSNarrations}
-            hasGenerationError={!!error && error.includes('Edge TTS')}
-            currentAudio={currentAudio}
-            isPlaying={isPlaying}
-            playAudio={playAudio}
-            getAudioUrl={getAudioUrl}
-            subtitleSource={subtitleSource}
-            isGenerating={isGenerating}
-          />
+           <NarrationResults
+             generationResults={generationResults}
+             onRetry={retryEdgeTTSNarration}
+             retryingSubtitleId={retryingSubtitleId}
+             onRetryFailed={retryFailedEdgeTTSNarrations}
+             onGenerateAllPending={generateAllPendingEdgeTTSNarrations}
+             hasGenerationError={!!error && error.includes('Edge TTS')}
+             currentAudio={currentAudio}
+             isPlaying={isPlaying}
+             playAudio={playAudio}
+             getAudioUrl={getAudioUrl}
+             subtitleSource={subtitleSource}
+             isGenerating={isGenerating}
+             plannedSubtitles={(useGroupedSubtitles && groupedSubtitles && groupedSubtitles.length > 0)
+               ? groupedSubtitles
+               : (subtitleSource === 'translated' && translatedSubtitles && translatedSubtitles.length > 0)
+                 ? translatedSubtitles
+                 : (originalSubtitles || subtitles || [])}
+           />
 
           {/* Hidden audio player for playback */}
           <audio
@@ -927,18 +961,25 @@ const UnifiedNarrationSection = ({
           />
 
           {/* gTTS Results */}
-          <NarrationResults
-            generationResults={generationResults}
-            onRetry={retryGTTSNarration}
-            retryingSubtitleId={retryingSubtitleId}
-            onRetryFailed={retryFailedGTTSNarrations}
-            hasGenerationError={!!error && error.includes('gTTS')}
-            currentAudio={currentAudio}
-            isPlaying={isPlaying}
-            playAudio={playAudio}
-            getAudioUrl={getAudioUrl}
-            subtitleSource={subtitleSource}
-          />
+           <NarrationResults
+             generationResults={generationResults}
+             onRetry={retryGTTSNarration}
+             retryingSubtitleId={retryingSubtitleId}
+             onRetryFailed={retryFailedGTTSNarrations}
+             onGenerateAllPending={generateAllPendingGTTSNarrations}
+             hasGenerationError={!!error && error.includes('gTTS')}
+             currentAudio={currentAudio}
+             isPlaying={isPlaying}
+             playAudio={playAudio}
+             getAudioUrl={getAudioUrl}
+             subtitleSource={subtitleSource}
+             isGenerating={isGenerating}
+             plannedSubtitles={(useGroupedSubtitles && groupedSubtitles && groupedSubtitles.length > 0)
+               ? groupedSubtitles
+               : (subtitleSource === 'translated' && translatedSubtitles && translatedSubtitles.length > 0)
+                 ? translatedSubtitles
+                 : (originalSubtitles || subtitles || [])}
+           />
 
           {/* Hidden audio player for playback */}
           <audio
@@ -1022,8 +1063,14 @@ const UnifiedNarrationSection = ({
             onRetry={retryGeminiNarration}
             retryingSubtitleId={retryingSubtitleId}
             onRetryFailed={retryFailedGeminiNarrations}
+            onGenerateAllPending={generateAllPendingGeminiNarrations}
             hasGenerationError={!!error && error.includes('Gemini')}
             subtitleSource={subtitleSource}
+            plannedSubtitles={(useGroupedSubtitles && groupedSubtitles && groupedSubtitles.length > 0)
+              ? groupedSubtitles
+              : (subtitleSource === 'translated' && translatedSubtitles && translatedSubtitles.length > 0)
+                ? translatedSubtitles
+                : (originalSubtitles || subtitles || [])}
           />
 
           {/* No need for a separate audio element here as it's included in the GeminiNarrationResults component */}

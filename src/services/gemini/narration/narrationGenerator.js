@@ -2,6 +2,7 @@
  * Functions for generating narration using Gemini API
  */
 
+import i18n from '../../../i18n/i18n';
 import { SERVER_URL } from '../../../config';
 import {
   initializeClientPool,
@@ -10,6 +11,9 @@ import {
   getClientPool
 } from '../client/clientManager';
 import { getGeminiLanguageCode } from '../utils/languageUtils';
+
+// Translation function shorthand
+const t = (key, fallback) => i18n.t(key, fallback);
 
 // Flag to track if generation has been cancelled
 let isCancelled = false;
@@ -61,7 +65,7 @@ export const generateGeminiNarration = async (subtitle, language, modelName = nu
     // Get API key from localStorage
     const apiKey = localStorage.getItem('gemini_api_key');
     if (!apiKey) {
-      throw new Error('Gemini API key not found');
+      throw new Error(t('geminiApiKeyRequired', 'Gemini API key not found'));
     }
 
     // Create the prompt for narration - explicitly instruct to speak in the target language
@@ -371,7 +375,7 @@ export const generateGeminiNarrations = async (
     // Get API key from localStorage
     const apiKey = localStorage.getItem('gemini_api_key');
     if (!apiKey) {
-      throw new Error('Gemini API key not found');
+      throw new Error(t('settings.geminiApiKeyRequired', 'Gemini API key not found'));
     }
 
     // Convert the language code to a Gemini-compatible format

@@ -861,7 +861,7 @@ const CustomDropdown = ({
                     role="option"
                     aria-selected={isSelected}
                     style={{
-                      opacity: 0.999, // trigger GPU layer
+                      opacity: isDisabled ? 0.7 : 0.999, // trigger GPU layer, respect disabled state
                       transform: isSelected ? 'translateY(0)' : 'translateY(0)',
                     }}
                   >

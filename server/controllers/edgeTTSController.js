@@ -154,6 +154,12 @@ const generateNarration = async (req, res) => {
     for (let i = 0; i < subtitles.length; i++) {
       const subtitle = subtitles[i];
 
+      // Check if client disconnected
+      if (res.destroyed || req.aborted) {
+        console.log(`[Edge TTS] Client disconnected during processing at subtitle ${i + 1}, stopping generation`);
+        return;
+      }
+
       console.log(`[Edge TTS] Processing subtitle ${i + 1}/${subtitles.length}:`);
       console.log(`[Edge TTS] Text: "${subtitle.text}"`);
       console.log(`[Edge TTS] ID: ${subtitle.id || i}`);
@@ -341,12 +347,17 @@ except Exception as e:
         results.push(subtitleResult);
 
         // Send progress event
-        res.write(`data: ${JSON.stringify({
-          status: 'progress',
-          current: i + 1,
-          total: subtitles.length,
-          result: subtitleResult
-        })}\n\n`);
+        try {
+          res.write(`data: ${JSON.stringify({
+            status: 'progress',
+            current: i + 1,
+            total: subtitles.length,
+            result: subtitleResult
+          })}\n\n`);
+        } catch (writeError) {
+          console.log(`[Edge TTS] Client disconnected during progress write at subtitle ${i + 1}, stopping generation`);
+          return;
+        }
 
       } catch (error) {
         console.error(`[Edge TTS] Error generating Edge TTS for subtitle ${i}:`, error);
@@ -364,12 +375,17 @@ except Exception as e:
 
         results.push(errorResult);
 
-        res.write(`data: ${JSON.stringify({
-          status: 'error',
-          current: i + 1,
-          total: subtitles.length,
-          result: errorResult
-        })}\n\n`);
+        try {
+          res.write(`data: ${JSON.stringify({
+            status: 'error',
+            current: i + 1,
+            total: subtitles.length,
+            result: errorResult
+          })}\n\n`);
+        } catch (writeError) {
+          console.log(`[Edge TTS] Client disconnected during error write at subtitle ${i + 1}, stopping generation`);
+          return;
+        }
       }
     }
 

@@ -556,7 +556,7 @@ const BackgroundImageGenerator = ({ lyrics, albumArt, songName, isExpanded = fal
           }}
           title={isCollapsed ? t('backgroundGenerator.expand', 'Expand') : t('backgroundGenerator.collapse', 'Collapse')}
         >
-          <span className="material-symbols-rounded">expand_more</span>
+          <span className="material-symbols-rounded">{isCollapsed ? 'expand_more' : 'stat_1'}</span>
         </button>
       </div>
 

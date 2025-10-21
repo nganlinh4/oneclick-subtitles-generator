@@ -68,21 +68,21 @@ export const defaultSettings = {
   showTranslatedSubtitles: false
 };
 
-// Font weight options
-export const fontWeightOptions = [
-  { value: '300', label: 'Light' },
-  { value: '400', label: 'Normal' },
-  { value: '500', label: 'Medium' },
-  { value: '600', label: 'Semi Bold' },
-  { value: '700', label: 'Bold' },
-  { value: '800', label: 'Extra Bold' }
+// Font weight options - using translation keys
+export const getFontWeightOptions = (t) => [
+  { value: '300', label: t('subtitleSettings.fontWeightLight', 'Light') },
+  { value: '400', label: t('subtitleSettings.fontWeightNormal', 'Normal') },
+  { value: '500', label: t('subtitleSettings.fontWeightMedium', 'Medium') },
+  { value: '600', label: t('subtitleSettings.fontWeightSemiBold', 'Semi Bold') },
+  { value: '700', label: t('subtitleSettings.fontWeightBold', 'Bold') },
+  { value: '800', label: t('subtitleSettings.fontWeightExtraBold', 'Extra Bold') }
 ];
 
-// Text align options
-export const textAlignOptions = [
-  { value: 'left', label: 'Left' },
-  { value: 'center', label: 'Center' },
-  { value: 'right', label: 'Right' }
+// Text align options - using translation keys
+export const getTextAlignOptions = (t) => [
+  { value: 'left', label: t('subtitleSettings.textAlignLeft', 'Left') },
+  { value: 'center', label: t('subtitleSettings.textAlignCenter', 'Center') },
+  { value: 'right', label: t('subtitleSettings.textAlignRight', 'Right') }
 ];
 
 // Text transform options - using translation keys

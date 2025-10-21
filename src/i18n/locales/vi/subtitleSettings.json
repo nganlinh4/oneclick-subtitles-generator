@@ -41,5 +41,17 @@
   "none": "Không",
   "showBackground": "Hiển thị nền",
   "transparentBackground": "Nền trong suốt",
-  "textShadow": "Bóng chữ"
+  "textShadow": "Bóng chữ",
+  "selectFont": "Chọn phông chữ",
+  "selectFontWeight": "Chọn độ đậm phông chữ",
+  "selectTextTransform": "Chọn biến đổi văn bản",
+  "fontWeightLight": "Nhẹ",
+  "fontWeightNormal": "Bình thường",
+  "fontWeightMedium": "Trung bình",
+  "fontWeightSemiBold": "Nửa đậm",
+  "fontWeightBold": "Đậm",
+  "fontWeightExtraBold": "Siêu đậm",
+  "textAlignLeft": "Căn trái",
+  "textAlignCenter": "Căn giữa",
+  "textAlignRight": "Căn phải"
 }
