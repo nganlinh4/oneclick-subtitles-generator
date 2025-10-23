@@ -65,7 +65,10 @@ export const initSettingsTabsDrag = (tabsSelector = '.settings-tabs') => {
     const handleMouseMove = (e) => handleMove(e.pageX);
     const handleTouchMove = (e) => {
       handleMove(e.touches[0].pageX);
-      e.preventDefault(); // Prevent page scroll while dragging tabs
+      // Only prevent default if we're actually dragging tabs (not just scrolling the page)
+      if (isDragging) {
+        e.preventDefault(); // Prevent page scroll while dragging tabs
+      }
     };
 
     const handleRelease = () => {
@@ -82,7 +85,7 @@ export const initSettingsTabsDrag = (tabsSelector = '.settings-tabs') => {
     tabContainer.addEventListener('mousedown', handleMouseDown);
     tabContainer.addEventListener('touchstart', handleTouchStart, { passive: true }); // passive: true is fine for start
     window.addEventListener('mousemove', handleMouseMove);
-    window.addEventListener('touchmove', handleTouchMove, { passive: false });
+    window.addEventListener('touchmove', handleTouchMove, { passive: true });
     window.addEventListener('mouseup', handleRelease);
     window.addEventListener('touchend', handleRelease);
     tabContainer.addEventListener('scroll', handleScroll, { passive: true });
