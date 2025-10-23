@@ -49,8 +49,7 @@ const BackgroundMusicSection = () => {
   }, []);
 
   // Build a same-origin wrapper page that embeds the remote promptdj app and
-  // implements mic recording + message relay. This ensures we can permanently
-  // request mic permission and relay blobs even if the inner app doesn't.
+  // relays messages between parent and inner iframe.
   const wrapperHtml = useMemo(() => {
     const innerSrc = midiAppUrl;
     const html = `<!doctype html>
@@ -61,64 +60,15 @@ const BackgroundMusicSection = () => {
   <script>
   (function(){
     const inner = document.getElementById('inner');
-    let recStream = null; let mr = null; let chunks = []; let isRecording = false;
 
     function postUp(msg){ try { window.parent && window.parent.postMessage(msg, '*'); } catch(e){} }
     function postDown(msg){ try { inner.contentWindow && inner.contentWindow.postMessage(msg, '*'); } catch(e){} }
 
-    async function requestMicOnce(){
-      // Prompt user for mic permission without keeping the stream active
-      let s;
-      try {
-        s = await navigator.mediaDevices.getUserMedia({ audio: true, video: false });
-      } catch (e) {
-        postUp({ type: 'pm-dj-recording-error', error: { name: e.name, message: e.message } });
-        throw e;
-      } finally {
-        try { s && s.getTracks().forEach(t => t.stop()); } catch {}
-      }
-    }
-
-    async function startRec(){
-      if (isRecording) return;
-      try {
-        recStream = await navigator.mediaDevices.getUserMedia({ audio: true, video: false });
-        chunks = [];
-        let opts = {};
-        if (window.MediaRecorder && MediaRecorder.isTypeSupported){
-          const cand = ['audio/webm;codecs=opus','audio/webm','audio/ogg;codecs=opus','audio/ogg'];
-          const mt = cand.find(c => MediaRecorder.isTypeSupported(c));
-          if (mt) opts.mimeType = mt;
-        }
-        mr = new MediaRecorder(recStream, opts);
-        mr.ondataavailable = (e) => { if (e.data && e.data.size) chunks.push(e.data); };
-        mr.onstart = () => { isRecording = true; postUp({ type: 'pm-dj-recording-started' }); };
-        mr.onerror = (e) => postUp({ type: 'pm-dj-recording-error', error: e && (e.error || { message: String(e) }) });
-        mr.onstop = () => {
-          const type = (chunks[0] && chunks[0].type) || 'audio/webm';
-          const blob = new Blob(chunks, { type });
-          try { recStream && recStream.getTracks().forEach(t => t.stop()); } catch {}
-          recStream = null; isRecording = false; mr = null; chunks = [];
-          postUp({ type: 'pm-dj-recording-stopped', blob });
-        };
-        mr.start(200);
-      } catch(e){}
-    }
-
-    function stopRec(){ try { if (mr && mr.state !== 'inactive') mr.stop(); } catch(e){}
-    }
-
-    // Relay messages from parent to inner and handle mic/recording here
+    // Relay messages from parent to inner
     window.addEventListener('message', async (ev) => {
       const d = ev.data; if (!d || typeof d !== 'object') return;
-      switch(d.type){
-        case 'pm-dj-request-mic': await requestMicOnce(); break;
-        case 'pm-dj-start-recording': await startRec(); break;
-        case 'pm-dj-stop-recording': stopRec(); break;
-        default:
-          // Forward all other messages to inner app (theme, midi, etc.)
-          postDown(d);
-      }
+      // Forward all messages to inner app
+      postDown(d);
     });
 
     // Relay all messages from inner up to parent unchanged so existing parent

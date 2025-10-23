@@ -157,6 +157,7 @@ export class PromptDjMidi extends LitElement {
   @property({ type: Boolean }) private showMidi = false;
   @property({ type: String }) public playbackState: PlaybackState = 'stopped';
   @property({ type: String }) public lang: string = 'en';
+  @property({ type: Boolean }) public apiKeySet = false;
   @state() public audioLevel = 0;
   private lastUserAction: 'play' | 'pause' | null = null;
 
@@ -383,6 +384,10 @@ export class PromptDjMidi extends LitElement {
     }
 
     // If paused/stopped: this click means PLAY
+    if (!this.apiKeySet) {
+      this.dispatchEvent(new CustomEvent('error', { detail: 'Please set your Gemini API key in the main app first.' }));
+      return;
+    }
     this.lastUserAction = 'play';
     this.optimisticLoading = true; // show spinner immediately
     this.optimisticPlaying = null; // follow real state for icon
