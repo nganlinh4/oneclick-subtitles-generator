@@ -52,7 +52,8 @@ const SettingsFooterControls = ({ isDropup = false, size = 'normal', layout = 'g
     root.style.setProperty('--font-title', title);
     localStorage.setItem('app_font', appFont);
     // Trigger reflow updates for components that read CSS vars
-    window.dispatchEvent(new Event('storage'));
+    const storageEvent = new StorageEvent('storage', { key: 'app_font', newValue: appFont });
+    window.dispatchEvent(storageEvent);
   }, [appFont]);
 
   const fontOptions = useMemo(() => ([

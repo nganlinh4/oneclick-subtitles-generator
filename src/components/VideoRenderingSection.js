@@ -1584,14 +1584,23 @@ const VideoRenderingSection = ({
   // No automatic queue processing - simple render history display
 
   return (
-    <div
-      ref={sectionRef}
-      className={`video-rendering-section ${isCollapsed ? 'collapsed' : 'expanded'} ${isDragging ? 'dragging' : ''}`}
-      onDragEnter={handleDragEnter}
-      onDragLeave={handleDragLeave}
-      onDragOver={handleDragOver}
-      onDrop={handleDrop}
-    >
+    <>
+      <style dangerouslySetInnerHTML={{
+        __html: `
+          .trim-slider .standard-slider-active-track .track,
+          .trim-slider .standard-slider-inactive-track .track {
+            height: 10px;
+          }
+        `
+      }} />
+      <div
+        ref={sectionRef}
+        className={`video-rendering-section ${isCollapsed ? 'collapsed' : 'expanded'} ${isDragging ? 'dragging' : ''}`}
+        onDragEnter={handleDragEnter}
+        onDragLeave={handleDragLeave}
+        onDragOver={handleDragOver}
+        onDrop={handleDrop}
+      >
       {/* Header - matching background-generator-header */}
       <div className="video-rendering-header">
         <div className="header-left">
@@ -1934,10 +1943,10 @@ const VideoRenderingSection = ({
                   step={0.01}
                   onChange={([start, end]) => {
                     setRenderSettings(prev => ({ ...prev, trimStart: start, trimEnd: end }));
-    
+
                     const oldStart = renderSettings.trimStart || 0;
                     const oldEnd = renderSettings.trimEnd || 0;
-    
+
                     // Seek the Remotion player to the new position
                     if (videoPlayerRef.current) {
                       const frameRate = renderSettings.frameRate || 30;
@@ -1957,14 +1966,12 @@ const VideoRenderingSection = ({
                   width="full"
                   showValueIndicator={false}
                   showStops={false}
-                  className="trimming-slider"
+                  className="trimming-slider trim-slider"
                   id="trimming-slider"
                   ariaLabel={t('videoRendering.trimmingTimeline', 'Trim Video')}
                   style={{
                     width: '-webkit-fill-available',
-                    maxWidth: 'none',
-                    '--standard-slider-active-track-height': '12px',
-                    '--standard-slider-inactive-track-height': '8px'
+                    maxWidth: 'none'
                   }}
                 />
                 <span style={{ minWidth: 70, maxWidth: 70, display: 'inline-block', textAlign: 'center', fontSize: '1.15em', fontFamily: 'monospace', fontWeight: 500 }}>
@@ -2053,7 +2060,8 @@ const VideoRenderingSection = ({
           </div>
         </div>
       )}
-    </div>
+      </div>
+    </>
   );
 };
 

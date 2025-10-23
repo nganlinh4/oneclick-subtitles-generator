@@ -335,6 +335,11 @@ const BackgroundMusicSection = () => {
         || (window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light');
       iframeRef.current?.contentWindow?.postMessage({ type: 'pm-dj-set-theme', theme }, '*');
     } catch {}
+    // Sync font initially
+    try {
+      const appFont = localStorage.getItem('app_font') || 'google-sans';
+      iframeRef.current?.contentWindow?.postMessage({ type: 'pm-dj-set-font', font: appFont }, '*');
+    } catch {}
     // Request current MIDI inputs/state
     try { iframeRef.current?.contentWindow?.postMessage({ type: 'midi:getInputs' }, '*'); } catch {}
 
@@ -393,6 +398,18 @@ const BackgroundMusicSection = () => {
     window.addEventListener('storage', onStorage);
     return () => window.removeEventListener('storage', onStorage);
   }, [postApiKeyToIframe]);
+
+  // Watch main app font changes and forward to iframe
+  useEffect(() => {
+    const onStorage = (e) => {
+      if (e.key === 'app_font') {
+        const font = e.newValue || 'google-sans';
+        try { iframeRef.current?.contentWindow?.postMessage({ type: 'pm-dj-set-font', font }, '*'); } catch {}
+      }
+    };
+    window.addEventListener('storage', onStorage);
+    return () => window.removeEventListener('storage', onStorage);
+  }, []);
 
   return (
     <div

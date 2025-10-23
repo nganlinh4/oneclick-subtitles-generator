@@ -1,4 +1,11 @@
 /* Custom Dropdown Component - Material Design 3 */
+/* Add this to your CustomDropdown.css file */
+
+.custom-dropdown.is-animating-selection .custom-dropdown-button .dropdown-value {
+  /* Hide the button's original text during the flight animation */
+  opacity: 0;
+  transition: opacity 150ms ease-out;
+}
 
 .custom-dropdown {
   position: relative;
@@ -246,3 +253,4 @@
   text-overflow: ellipsis;
   white-space: nowrap;
 }
+

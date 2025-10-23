@@ -1,12 +1,14 @@
 import { useState, useRef, useEffect } from 'react';
 import { useTranslation } from 'react-i18next';
 import SliderWithValue from '../../common/SliderWithValue';
+import StandardSlider from '../../common/StandardSlider';
 import LoadingIndicator from '../../common/LoadingIndicator';
 import HelpIcon from '../../common/HelpIcon';
 import '../../../utils/functionalScrollbar';
 import { VariableSizeList as List } from 'react-window';
 import { SERVER_URL } from '../../../config';
 import { enhanceF5TTSNarrations } from '../../../utils/narrationEnhancer';
+import { formatTime } from '../../../utils/timeFormatter';
 
 // Constants for localStorage keys
 const CURRENT_VIDEO_ID_KEY = 'current_video_url';
@@ -96,71 +98,136 @@ const ResultRow = ({ index, style, data }) => {
                 disabled={retryingSubtitleId === subtitle_id}
               >
                 {retryingSubtitleId === subtitle_id ? (
-                  <>
-                    <LoadingIndicator
-                      theme="dark"
-                      showContainer={false}
-                      size={14}
-                      className="generate-loading-indicator"
-                    />
-                    {t('narration.generating', 'Generating...')}
-                  </>
+                  <LoadingIndicator
+                    theme="dark"
+                    showContainer={false}
+                    size={14}
+                    className="generate-loading-indicator"
+                  />
                 ) : (
-                  <>
-                    <span className="material-symbols-rounded" style={{ fontSize: '14px' }}>play_arrow</span>
-                    {t('narration.generate', 'Generate')}
-                  </>
+                  <span className="material-symbols-rounded" style={{ fontSize: '14px' }}>refresh</span>
                 )}
               </button>
             )}
           </>
         ) : result.success ? (
           <>
+            {/* Per-item trim range slider */}
+            {result && (
+              <div className="per-item-trim-controls" style={{ display: 'flex', alignItems: 'center', gap: 8, marginRight: 8 }}>
+                {(() => {
+                  const getBackupName = (fn) => {
+                    if (!fn) return null;
+                    const lastSlash = fn.lastIndexOf('/');
+                    const dir = lastSlash >= 0 ? fn.slice(0, lastSlash) : '';
+                    const base = lastSlash >= 0 ? fn.slice(lastSlash + 1) : fn;
+                    return `${dir ? dir + '/' : ''}backup_${base}`;
+                  };
+                  const backupName = getBackupName(result.filename);
+                  const backupDuration = (backupName && data.itemDurations && typeof data.itemDurations[backupName] === 'number')
+                    ? data.itemDurations[backupName]
+                    : null;
+                  const currentDuration = (typeof result.filename === 'string' && data.itemDurations && typeof data.itemDurations[result.filename] === 'number')
+                    ? data.itemDurations[result.filename]
+                    : null;
+                  const totalDuration = (typeof backupDuration === 'number' && backupDuration > 0)
+                    ? backupDuration
+                    : (typeof currentDuration === 'number' && currentDuration > 0)
+                      ? currentDuration
+                      : (typeof result.audioDuration === 'number' && result.audioDuration > 0)
+                        ? result.audioDuration
+                        : (typeof result.start === 'number' && typeof result.end === 'number' && result.end > result.start)
+                          ? (result.end - result.start)
+                          : 0;
+                  const trim = data.itemTrims[subtitle_id] ?? [0, totalDuration];
+                  const [trimStart, trimEnd] = trim;
+                  return (
+                    <>
+                      <span style={{ minWidth: 35, maxWidth: 70, display: 'inline-block', textAlign: 'center', fontSize: '1em', fontWeight: 500 }}>
+                        {formatTime(trimStart, 's_ms')}
+                      </span>
+                      <StandardSlider
+                        range
+                        value={[trimStart, trimEnd]}
+                        min={0}
+                        max={totalDuration}
+                        step={0.01}
+                        minGap={0.25}
+                        onChange={([start, end]) => data.setItemTrim(subtitle_id, [start, end])}
+                        onDragEnd={() => data.modifySingleAudioEditCombined(result)}
+                        orientation="Horizontal"
+                        size="XSmall"
+                        width="compact"
+                        showValueIndicator={false}
+                        showStops={false}
+                        className="per-item-trim-slider trim-slider"
+                        style={{ width: 200 }}
+                      />
+                      <span style={{ minWidth: 35, maxWidth: 70, display: 'inline-block', textAlign: 'center', fontSize: '1em', fontWeight: 500 }}>
+                        {formatTime(trimEnd, 's_ms')}
+                      </span>
+                    </>
+                  );
+                })()}
+              </div>
+            )}
+
+            {/* Per-item speed slider */}
+            {result.filename && (
+              <SliderWithValue
+                value={data.itemSpeeds[subtitle_id] ?? 1.0}
+                onChange={(v) => data.setItemSpeed(subtitle_id, parseFloat(v))}
+                onDragEnd={() => data.modifySingleAudioEditCombined(result)}
+                min={0.5}
+                max={2.0}
+                step={0.01}
+                defaultValue={1.0}
+                orientation="Horizontal"
+                size="XSmall"
+                state={data.itemProcessing[subtitle_id]?.inProgress ? 'Disabled' : 'Enabled'}
+                width="compact"
+                className="standard-slider-container width-compact orientation-horizontal size-XSmall state-Enabled speed-control-slider"
+                style={{ width: '75px', marginRight: 0, gap: 0 }}
+                id={`item-speed-${subtitle_id}`}
+                ariaLabel={t('narration.speed', 'Speed')}
+                formatValue={(val) => `${Number(val).toFixed(2)}x`}
+              />
+            )}
+
             <button
               className="pill-button primary"
               onClick={() => playAudio(result)}
+              disabled={!!data.itemProcessing[subtitle_id]?.inProgress}
             >
               {currentAudio && currentAudio.id === subtitle_id && isPlaying ? (
-                <>
-                  <span className="material-symbols-rounded" style={{ fontSize: '14px' }}>pause</span>
-                  {t('narration.pause', 'Pause')}
-                </>
+                <span className="material-symbols-rounded" style={{ fontSize: '14px' }}>pause</span>
               ) : (
-                <>
-                  <span className="material-symbols-rounded" style={{ fontSize: '14px' }}>play_arrow</span>
-                  {t('narration.play', 'Play')}
-                </>
+                <span className="material-symbols-rounded" style={{ fontSize: '14px' }}>play_arrow</span>
               )}
             </button>
             <button
               className="pill-button secondary"
               onClick={() => downloadAudio(result)}
+              disabled={!!data.itemProcessing[subtitle_id]?.inProgress}
             >
               <span className="material-symbols-rounded" style={{ fontSize: '14px' }}>download</span>
-              {t('narration.download', 'Download')}
             </button>
             {onRetry && (
               <button
-                className={`pill-button secondary retry-button ${retryingSubtitleId === subtitle_id ? 'retrying' : ''}`}
+                className={`pill-button secondary ${retryingSubtitleId === subtitle_id ? 'retrying' : ''}`}
                 onClick={() => onRetry(subtitle_id)}
                 title={t('narration.retry', 'Retry generation')}
-                disabled={retryingSubtitleId === subtitle_id}
+                disabled={retryingSubtitleId === subtitle_id || !!data.itemProcessing[subtitle_id]?.inProgress}
               >
                 {retryingSubtitleId === subtitle_id ? (
-                  <>
-                    <LoadingIndicator
-                      theme="dark"
-                      showContainer={false}
-                      size={14}
-                      className="retry-loading-indicator"
-                    />
-                    {t('narration.retrying', 'Retrying...')}
-                  </>
+                  <LoadingIndicator
+                    theme="dark"
+                    showContainer={false}
+                    size={14}
+                    className="retry-loading-indicator"
+                  />
                 ) : (
-                  <>
-                    <span className="material-symbols-rounded" style={{ fontSize: '14px' }}>refresh</span>
-                    {t('narration.retry', 'Retry')}
-                  </>
+                  <span className="material-symbols-rounded" style={{ fontSize: '14px' }}>refresh</span>
                 )}
               </button>
             )}
@@ -178,20 +245,14 @@ const ResultRow = ({ index, style, data }) => {
                 disabled={retryingSubtitleId === subtitle_id}
               >
                 {retryingSubtitleId === subtitle_id ? (
-                  <>
-                    <LoadingIndicator
-                      theme="dark"
-                      showContainer={false}
-                      size={14}
-                      className="retry-loading-indicator"
-                    />
-                    {t('narration.retrying', 'Retrying...')}
-                  </>
+                  <LoadingIndicator
+                    theme="dark"
+                    showContainer={false}
+                    size={14}
+                    className="retry-loading-indicator"
+                  />
                 ) : (
-                  <>
-                    <span className="material-symbols-rounded" style={{ fontSize: '14px' }}>refresh</span>
-                    {t('narration.retry', 'Retry')}
-                  </>
+                  <span className="material-symbols-rounded" style={{ fontSize: '14px' }}>refresh</span>
                 )}
               </button>
             )}
@@ -333,10 +394,58 @@ const NarrationResults = ({
   })();
 
   // Speed control state
+
+  // Real file durations from server for slider max
+  const [itemDurations, setItemDurations] = useState({}); // { [filename]: seconds }
+
+  const fetchDurationsBatch = async (filenames) => {
+    if (!Array.isArray(filenames) || filenames.length === 0) return;
+    try {
+      const resp = await fetch(`${SERVER_URL}/api/narration/batch-get-audio-durations`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ filenames })
+      });
+      if (!resp.ok) return;
+      const data = await resp.json();
+      if (data?.success && data.durations) {
+        setItemDurations(prev => ({ ...prev, ...data.durations }));
+      }
+    } catch (e) {
+      // ignore
+    }
+  };
+
+  // Load durations for both main files and their trim backups
+  useEffect(() => {
+    const getBackupName = (fn) => {
+      if (!fn) return null;
+      const lastSlash = fn.lastIndexOf('/');
+      const dir = lastSlash >= 0 ? fn.slice(0, lastSlash) : '';
+      const base = lastSlash >= 0 ? fn.slice(lastSlash + 1) : fn;
+      return `${dir ? dir + '/' : ''}backup_${base}`;
+    };
+
+    const filenames = (displayedResults || [])
+      .map(r => r && r.filename)
+      .filter(Boolean);
+
+    const backupFilenames = filenames.map(getBackupName).filter(Boolean);
+
+    const allFilenames = [...new Set([...filenames, ...backupFilenames])];
+
+    if (allFilenames.length > 0) {
+      fetchDurationsBatch(allFilenames);
+    }
+  }, [displayedResults]);
+
   const [speedValue, setSpeedValue] = useState(1.0);
   const [isProcessing, setIsProcessing] = useState(false);
   const [processingProgress, setProcessingProgress] = useState({ current: 0, total: 0 });
   const [currentFile, setCurrentFile] = useState('');
+  // Track processed count robustly during streaming and unique items seen
+  const processedCountRef = useRef(0);
+  const seenItemsRef = useRef(new Set());
 
   // Download audio as WAV file
   const downloadAudio = (result) => {
@@ -350,6 +459,7 @@ const NarrationResults = ({
 
         // Use fetch to get the file as a blob
         fetch(audioUrl)
+
           .then(response => {
             if (!response.ok) {
               throw new Error(`Server responded with ${response.status}: ${response.statusText}`);
@@ -392,84 +502,235 @@ const NarrationResults = ({
     }
   };
 
-  // Speed modification function
+  // Per-item speed state
+  const [itemSpeeds, setItemSpeeds] = useState({}); // { [subtitle_id]: number }
+  const [itemProcessing, setItemProcessing] = useState({}); // { [subtitle_id]: { inProgress: boolean } }
+
+  // Per-item trim state: { [subtitle_id]: [startSec, endSec] }
+  const [itemTrims, setItemTrims] = useState({});
+
+  const setItemSpeed = (id, val) => {
+    setItemSpeeds(prev => ({ ...prev, [id]: val }));
+  };
+  const setItemTrim = (id, range) => {
+    setItemTrims(prev => ({ ...prev, [id]: range }));
+  };
+
+  // Modify speed for all successful items (existing global control)
   const modifyAudioSpeed = async () => {
-    if (!generationResults || generationResults.length === 0) {
-      return;
-    }
+    if (!generationResults || generationResults.length === 0) return;
 
-    // Filter successful narrations
-    const successfulNarrations = generationResults.filter(result => result.success && result.filename);
+    const successfulNarrations = generationResults.filter(r => r.success && r.filename);
+    if (successfulNarrations.length === 0) return;
 
-    if (successfulNarrations.length === 0) {
-      return;
+    // Adjust all individual sliders to match global speed (including 1x)
+    {
+      const newSpeeds = {};
+      successfulNarrations.forEach(r => { newSpeeds[r.subtitle_id] = Number(speedValue); });
+      setItemSpeeds(prev => ({ ...prev, ...newSpeeds }));
     }
 
     setIsProcessing(true);
+    // Use only the actual files we will process for total
     setProcessingProgress({ current: 0, total: successfulNarrations.length });
+    // Do not show current filename in UI (keep state but blank)
     setCurrentFile('');
 
     try {
-      // Use batch endpoint to process all files at once
-      const apiUrl = `${SERVER_URL}/api/narration/batch-modify-audio-speed`;
+      // Build items with normalized trim (if any) relative to backup duration
+      const getBackupName = (fn) => {
+        if (!fn) return null;
+        const lastSlash = fn.lastIndexOf('/');
+        const dir = lastSlash >= 0 ? fn.slice(0, lastSlash) : '';
+        const base = lastSlash >= 0 ? fn.slice(lastSlash + 1) : fn;
+        return `${dir ? dir + '/' : ''}backup_${base}`;
+      };
 
-      // Use fetch with streaming response to get real-time progress updates
-      const response = await fetch(apiUrl, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          filenames: successfulNarrations.map(result => result.filename),
-          speedFactor: speedValue
-        })
+      const items = successfulNarrations.map(r => {
+        const id = r.subtitle_id;
+        const filename = r.filename;
+        const backupName = getBackupName(filename);
+        const total = (backupName && typeof itemDurations[backupName] === 'number')
+          ? itemDurations[backupName]
+          : (typeof itemDurations[filename] === 'number')
+            ? itemDurations[filename]
+            : undefined;
+        const [start, end] = itemTrims[id] || [0, total || 0];
+        let normalizedStart = 0, normalizedEnd = 1;
+        if (typeof total === 'number' && total > 0) {
+          const s = typeof start === 'number' ? start : 0;
+          const e = typeof end === 'number' ? end : total;
+          normalizedStart = s / total;
+          normalizedEnd = e / total;
+        }
+        return { filename, normalizedStart, normalizedEnd, speedFactor: speedValue };
       });
 
-      if (!response.ok) {
-        throw new Error(`Server responded with status: ${response.status}`);
-      }
+      const apiUrl = `${SERVER_URL}/api/narration/batch-modify-audio-trim-speed-combined`;
+      const response = await fetch(apiUrl, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ items })
+      });
+      if (!response.ok) throw new Error(`Server responded with status: ${response.status}`);
 
-      // Read the streaming response
       const reader = response.body.getReader();
       const decoder = new TextDecoder();
+      let buffer = '';
+
 
       while (true) {
         const { done, value } = await reader.read();
-        if (done) break;
-
-        const chunk = decoder.decode(value);
-        const lines = chunk.split('\n');
-
-        for (const line of lines) {
-          if (line.startsWith('data: ')) {
-            try {
-              const data = JSON.parse(line.slice(6));
-
-              if (data.status === 'progress') {
-                setProcessingProgress({ current: data.current, total: data.total });
-                setCurrentFile(data.filename || '');
-              } else if (data.status === 'completed') {
-                setProcessingProgress({ current: data.total, total: data.total });
-                setCurrentFile('');
-              } else if (data.status === 'error') {
-                throw new Error(data.error || 'Unknown error occurred');
+        if (done) {
+          // finalize immediately
+          setIsProcessing(false);
+          setCurrentFile('');
+          break;
+        }
+        buffer += decoder.decode(value, { stream: true });
+        let sep;
+        while ((sep = buffer.indexOf('\n\n')) !== -1) {
+          const chunk = buffer.slice(0, sep);
+          buffer = buffer.slice(sep + 2);
+          if (!chunk.startsWith('data: ')) continue;
+          try {
+            const obj = JSON.parse(chunk.slice(6));
+            if (obj.status === 'progress') {
+              const total = obj.total ?? items.length;
+              // Robust processed computation: prefer 'processed', else numeric 'current', else infer via unique keys
+              let processedNum = 0;
+              if (typeof obj.processed === 'number') {
+                processedNum = obj.processed;
+              } else if (typeof obj.current === 'number') {
+                processedNum = obj.current;
+              } else {
+                if (obj.current) {
+                  const key = String(obj.current);
+                  if (!seenItemsRef.current.has(key)) {
+                    seenItemsRef.current.add(key);
+                    processedCountRef.current += 1;
+                  }
+                }
+                processedNum = processedCountRef.current;
               }
-            } catch (parseError) {
-              console.error('Error parsing progress data:', parseError);
+              setProcessingProgress({ current: processedNum, total });
+              // Do not update currentFile for UI; omit filename display under progress
+            } else if (obj.status === 'completed') {
+              setProcessingProgress({ current: obj.processed ?? items.length, total: obj.total ?? items.length });
+              setCurrentFile('');
+              if (typeof window.resetAlignedNarration === 'function') {
+                window.resetAlignedNarration();
+              }
+              window.dispatchEvent(new CustomEvent('narration-speed-modified', { detail: { speed: speedValue, timestamp: Date.now() } }));
+              setIsProcessing(false);
             }
+          } catch (e) {
+            // ignore malformed chunk
           }
         }
       }
 
+      // Background duration refresh, non-blocking
+      try {
+        const filenames = successfulNarrations.map(r => r.filename).filter(Boolean);
+        const backupFilenames = filenames.map(getBackupName).filter(Boolean);
+        const allFilenames = [...new Set([...filenames, ...backupFilenames])];
+        const resp = await fetch(`${SERVER_URL}/api/narration/batch-get-audio-durations`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ filenames: allFilenames })
+        });
+        if (resp.ok) {
+          const data = await resp.json();
+          const durations = data?.durations || {};
+          setItemDurations(prev => ({ ...prev, ...durations }));
+        }
+      } catch (e) {
+        // ignore
+      }
     } catch (error) {
-      console.error('Error modifying audio speed:', error);
-      alert(t('narration.speedModificationError', `Error modifying audio speed: ${error.message}`));
-    } finally {
-      setIsProcessing(false);
-      setProcessingProgress({ current: 0, total: 0 });
-      setCurrentFile('');
+      console.error('Error applying batch combined edit:', error);
+      alert(t('narration.speedModificationError', `Error applying batch edit: ${error.message}`));
     }
   };
+
+
+  // Combined edit (trim + speed) for a single item; called on slider drop
+  const modifySingleAudioEditCombined = async (result) => {
+    if (!result?.filename) return;
+    const id = result.subtitle_id;
+    const [start, end] = itemTrims[id] || [undefined, undefined];
+    const speed = itemSpeeds[id];
+
+    // Compute normalized range relative to backup duration
+    const getBackupName = (fn) => {
+      if (!fn) return null;
+      const lastSlash = fn.lastIndexOf('/');
+      const dir = lastSlash >= 0 ? fn.slice(0, lastSlash) : '';
+      const base = lastSlash >= 0 ? fn.slice(lastSlash + 1) : fn;
+      return `${dir ? dir + '/' : ''}backup_${base}`;
+    };
+    const backupName = getBackupName(result.filename);
+    const total = (backupName && typeof itemDurations[backupName] === 'number')
+      ? itemDurations[backupName]
+      : (typeof itemDurations[result.filename] === 'number')
+        ? itemDurations[result.filename]
+        : undefined;
+
+    let normalizedStart;
+    let normalizedEnd;
+
+    if (typeof total === 'number' && total > 0) {
+      const s = typeof start === 'number' ? start : 0;
+      const e = typeof end === 'number' ? end : total;
+      normalizedStart = s / total;
+      normalizedEnd = e / total;
+    } else {
+      const isDefaultTrim = typeof start !== 'number' && typeof end !== 'number';
+      if (isDefaultTrim) {
+        normalizedStart = 0; normalizedEnd = 1;
+      } else {
+        alert(t('narration.durationNotReady', 'Audio duration not ready yet. Please wait a moment and try again.'));
+        return;
+      }
+    }
+
+    setItemProcessing(prev => ({ ...prev, [id]: { inProgress: true } }));
+    try {
+      const apiUrl = `${SERVER_URL}/api/narration/modify-audio-trim-speed-combined`;
+      const body = { filename: result.filename, normalizedStart, normalizedEnd };
+      if (typeof speed === 'number') {
+        body.speedFactor = speed;
+      }
+      const response = await fetch(apiUrl, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(body)
+      });
+      if (!response.ok) throw new Error(`Server responded with status: ${response.status}`);
+      // Drain
+      const reader = response.body.getReader();
+      while (true) {
+        const { done } = await reader.read();
+        if (done) break;
+      }
+      if (typeof window !== 'undefined') {
+        if (typeof window.resetAlignedNarration === 'function') {
+          window.resetAlignedNarration();
+        }
+        window.dispatchEvent(new CustomEvent('narration-edit-modified', { detail: { start, end, speed, id, timestamp: Date.now() } }));
+      }
+    } catch (e) {
+      console.error('Error applying combined audio edit:', e);
+      alert(t('narration.trimModificationError', `Error applying edit: ${e.message}`));
+    } finally {
+      setItemProcessing(prev => ({ ...prev, [id]: { inProgress: false } }));
+    }
+  };
+
+
+
+
 
   // Check if there are any failed narrations (exclude pending items)
   const hasFailedNarrations = generationResults && generationResults.some(result => !result.success && !result.pending);
@@ -622,6 +883,7 @@ const NarrationResults = ({
 
   return (
     <div className="results-section">
+      <style dangerouslySetInnerHTML={{ __html: `.trim-slider .standard-slider-active-track .track, .trim-slider .standard-slider-inactive-track .track { height: 10px; } .range-slider .standard-slider-handle { height: 24px; }` }} />
       <div className="results-header">
         <h4>{t('narration.results', 'Generated Narration')}</h4>
 
@@ -633,7 +895,7 @@ const NarrationResults = ({
             disabled={retryingSubtitleId !== null}
             title={t('narration.generateAllPendingTooltip', 'Generate all pending narrations')}
           >
-            <span className="material-symbols-rounded" style={{ fontSize: '14px' }}>play_arrow</span>
+            <span className="material-symbols-rounded" style={{ fontSize: '20px' }}>build</span>
             {t('narration.generateAllPending', 'Generate All Pending')}
           </button>
         )}
@@ -676,11 +938,7 @@ const NarrationResults = ({
                 <div className="speed-control-spinner"></div>
                 <div className="speed-control-progress-info">
                   <span>{processingProgress.current}/{processingProgress.total}</span>
-                  {currentFile && (
-                    <span className="speed-control-filename" title={currentFile}>
-                      {currentFile}
-                    </span>
-                  )}
+
                 </div>
               </div>
             ) : (
@@ -721,6 +979,14 @@ const NarrationResults = ({
               playAudio,
               getAudioUrl,
               downloadAudio,
+              // per-item trim and speed control
+              itemTrims,
+              setItemTrim,
+              itemSpeeds,
+              setItemSpeed,
+              modifySingleAudioEditCombined,
+              itemProcessing,
+              itemDurations,
               t
             }}
           >

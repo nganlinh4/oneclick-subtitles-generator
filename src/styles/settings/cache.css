@@ -273,6 +273,7 @@
   color: var(--text-primary);
   transition: color var(--transition-speed);
   flex: 1;
+  font-stretch: condensed;
 }
 
 .cache-details-item p {

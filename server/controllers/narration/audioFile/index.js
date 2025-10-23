@@ -10,6 +10,8 @@ const batchProcessor = require('./batchProcessor');
 const zipAudio = require('./zipAudio');
 const enhancer = require('./enhancer');
 const speedModifier = require('./speedModifier');
+const trimModifier = require('./trimModifier');
+const durationInfo = require('./durationInfo');
 
 // Export all functions
 module.exports = {
@@ -30,6 +32,15 @@ module.exports = {
   // Audio speed modification
   modifyAudioSpeed: speedModifier.modifyAudioSpeed,
   batchModifyAudioSpeed: speedModifier.batchModifyAudioSpeed,
+
+  // Audio trim modification
+  batchModifyAudioTrim: trimModifier.batchModifyAudioTrim,
+  modifyAudioTrimAndSpeedCombined: trimModifier.modifyAudioTrimAndSpeedCombined,
+  batchModifyAudioTrimAndSpeedCombined: trimModifier.batchModifyAudioTrimAndSpeedCombined,
+
+  // Duration info
+  getAudioDuration: durationInfo.getAudioDuration,
+  batchGetAudioDurations: durationInfo.batchGetAudioDurations,
 
   // Utility functions
   enhanceF5TTSNarrations: enhancer.enhanceF5TTSNarrations

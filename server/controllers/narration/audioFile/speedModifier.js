@@ -7,7 +7,7 @@ const fs = require('fs');
 const { spawn } = require('child_process');
 
 // Import directory paths
-const { OUTPUT_AUDIO_DIR, TEMP_AUDIO_DIR } = require('../directoryManager');
+const { OUTPUT_AUDIO_DIR } = require('../directoryManager');
 
 /**
  * Modify the speed of an audio file
@@ -184,15 +184,15 @@ const batchModifyAudioSpeed = async (req, res) => {
           errors.push({ filename, error: 'File not found' });
           processedCount++;
 
-          // Send progress update
-          res.write(JSON.stringify({
+          // Send progress update (SSE)
+          res.write(`data: ${JSON.stringify({
             success: true,
-            status: 'processing',
+            status: 'progress',
             total: filenames.length,
             processed: processedCount,
             current: filename,
             message: `File not found: ${filename}`
-          }));
+          })}\n\n`);
 
           continue;
         }
@@ -277,33 +277,35 @@ const batchModifyAudioSpeed = async (req, res) => {
 
           ffmpegProcess.on('close', (code) => {
             if (code === 0) {
+              // Success: no longer creating backup_for_trim; single backup_ is sufficient
+
               results.push({ filename, success: true });
               processedCount++;
 
-              // Send progress update
-              res.write(JSON.stringify({
+              // Send progress update (SSE)
+              res.write(`data: ${JSON.stringify({
                 success: true,
-                status: 'processing',
+                status: 'progress',
                 total: filenames.length,
                 processed: processedCount,
                 current: filename,
                 message: `Successfully processed ${filename}`
-              }));
+              })}\n\n`);
 
               resolve();
             } else {
               errors.push({ filename, error: `ffmpeg process exited with code ${code}` });
               processedCount++;
 
-              // Send progress update
-              res.write(JSON.stringify({
+              // Send progress update (SSE)
+              res.write(`data: ${JSON.stringify({
                 success: true,
-                status: 'processing',
+                status: 'progress',
                 total: filenames.length,
                 processed: processedCount,
                 current: filename,
                 message: `Error processing ${filename}: ffmpeg exited with code ${code}`
-              }));
+              })}\n\n`);
 
               resolve(); // Still resolve to continue with other files
             }
@@ -313,15 +315,15 @@ const batchModifyAudioSpeed = async (req, res) => {
             errors.push({ filename, error: err.message });
             processedCount++;
 
-            // Send progress update
-            res.write(JSON.stringify({
+            // Send progress update (SSE)
+            res.write(`data: ${JSON.stringify({
               success: true,
-              status: 'processing',
+              status: 'progress',
               total: filenames.length,
               processed: processedCount,
               current: filename,
               message: `Error processing ${filename}: ${err.message}`
-            }));
+            })}\n\n`);
 
             resolve(); // Still resolve to continue with other files
           });
@@ -330,15 +332,15 @@ const batchModifyAudioSpeed = async (req, res) => {
         errors.push({ filename, error: error.message });
         processedCount++;
 
-        // Send progress update
-        res.write(JSON.stringify({
+        // Send progress update (SSE)
+        res.write(`data: ${JSON.stringify({
           success: true,
-          status: 'processing',
+          status: 'progress',
           total: filenames.length,
           processed: processedCount,
           current: filename,
           message: `Error processing ${filename}: ${error.message}`
-        }));
+        })}\n\n`);
       }
     }
 

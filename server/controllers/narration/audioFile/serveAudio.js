@@ -8,6 +8,70 @@ const fs = require('fs');
 // Import directory paths
 const { REFERENCE_AUDIO_DIR, OUTPUT_AUDIO_DIR, TEMP_AUDIO_DIR } = require('../directoryManager');
 
+// Basic content-type detection (sniff header, fallback to extension)
+const getContentType = (filePath) => {
+  try {
+    const fd = fs.openSync(filePath, 'r');
+    const buf = Buffer.alloc(12);
+    fs.readSync(fd, buf, 0, 12, 0);
+    fs.closeSync(fd);
+    const header = buf.toString('ascii');
+    // WAV starts with RIFF....WAVE
+    if (header.startsWith('RIFF') && header.includes('WAVE')) return 'audio/wav';
+    // MP3 can start with ID3 or 0xFF 0xFB (frame)
+    if (header.startsWith('ID3') || (buf[0] === 0xff && (buf[1] & 0xe0) === 0xe0)) return 'audio/mpeg';
+  } catch {}
+  const ext = String(path.extname(filePath)).toLowerCase();
+  if (ext === '.mp3') return 'audio/mpeg';
+  if (ext === '.wav') return 'audio/wav';
+  if (ext === '.ogg') return 'audio/ogg';
+  return 'application/octet-stream';
+};
+
+// Stream file with Range support for faster playback start
+const sendFileWithRange = (req, res, filePath) => {
+  try {
+    const stat = fs.statSync(filePath);
+    const fileSize = stat.size;
+    const contentType = getContentType(filePath);
+
+    const range = req.headers?.range;
+
+    if (range) {
+      const parts = range.replace(/bytes=/, '').split('-');
+      const start = parseInt(parts[0], 10);
+      const end = parts[1] ? parseInt(parts[1], 10) : fileSize - 1;
+      if (isNaN(start) || isNaN(end) || start > end || end >= fileSize) {
+        res.status(416).set({ 'Content-Range': `bytes */${fileSize}` }).end();
+        return;
+      }
+      const chunkSize = (end - start) + 1;
+      res.writeHead(206, {
+        'Content-Range': `bytes ${start}-${end}/${fileSize}`,
+        'Accept-Ranges': 'bytes',
+        'Content-Length': chunkSize,
+        'Content-Type': contentType,
+        'Cache-Control': 'no-store'
+      });
+      const stream = fs.createReadStream(filePath, { start, end });
+      stream.on('error', () => res.status(500).end());
+      stream.pipe(res);
+    } else {
+      res.writeHead(200, {
+        'Content-Length': fileSize,
+        'Content-Type': contentType,
+        'Accept-Ranges': 'bytes',
+        'Cache-Control': 'no-store'
+      });
+      const stream = fs.createReadStream(filePath);
+      stream.on('error', () => res.status(500).end());
+      stream.pipe(res);
+    }
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
+};
+
 /**
  * Serve audio file from narration directories
  */
@@ -45,9 +109,20 @@ const serveAudioFile = (req, res) => {
 
         if (fs.existsSync(outputPath)) {
           console.log(`[DEBUG] Found file at new structure path: ${outputPath}`);
-          return res.sendFile(outputPath, { headers: { 'Content-Type': 'audio/wav' } });
+          return sendFileWithRange(req, res, outputPath);
         } else {
           console.log(`[DEBUG] File not found at new structure path: ${outputPath}`);
+
+          // Try alternate extension (.wav <-> .mp3)
+          const base = path.parse(audioFile).name;
+          const tryExts = ['.wav', '.mp3'];
+          for (const ext of tryExts) {
+            const alt = path.join(OUTPUT_AUDIO_DIR, subtitleDir, base + ext);
+            if (fs.existsSync(alt)) {
+              console.log(`[DEBUG] Found by alternate ext: ${alt}`);
+              return sendFileWithRange(req, res, alt);
+            }
+          }
 
           // Try with a different case (Windows is case-insensitive but URLs might be case-sensitive)
           const files = fs.readdirSync(path.join(OUTPUT_AUDIO_DIR, subtitleDir));
@@ -58,7 +133,7 @@ const serveAudioFile = (req, res) => {
           if (matchingFile) {
             const caseCorrectedPath = path.join(OUTPUT_AUDIO_DIR, subtitleDir, matchingFile);
             console.log(`[DEBUG] Found case-insensitive match: ${caseCorrectedPath}`);
-            return res.sendFile(caseCorrectedPath, { headers: { 'Content-Type': 'audio/wav' } });
+            return sendFileWithRange(req, res, caseCorrectedPath);
           }
         }
       } else {
@@ -70,7 +145,7 @@ const serveAudioFile = (req, res) => {
 
         if (fs.existsSync(outputPath)) {
           console.log(`[DEBUG] Found file at alternative path: ${outputPath}`);
-          return res.sendFile(outputPath, { headers: { 'Content-Type': 'audio/wav' } });
+          return sendFileWithRange(req, res, outputPath);
         } else {
           console.log(`[DEBUG] File not found at alternative path: ${outputPath}`);
         }
@@ -84,7 +159,7 @@ const serveAudioFile = (req, res) => {
 
       if (fs.existsSync(outputPath)) {
         console.log(`[DEBUG] Found file at legacy output path: ${outputPath}`);
-        return res.sendFile(outputPath, { headers: { 'Content-Type': 'audio/wav' } });
+        return sendFileWithRange(req, res, outputPath);
       }
 
       // Check if the file is in the reference directory
@@ -93,7 +168,7 @@ const serveAudioFile = (req, res) => {
 
       if (fs.existsSync(referencePath)) {
         console.log(`[DEBUG] Found file at reference path: ${referencePath}`);
-        return res.sendFile(referencePath, { headers: { 'Content-Type': 'audio/wav' } });
+        return sendFileWithRange(req, res, referencePath);
       }
 
       // Check if the file is in the temp directory
@@ -102,7 +177,7 @@ const serveAudioFile = (req, res) => {
 
       if (fs.existsSync(tempPath)) {
         console.log(`[DEBUG] Found file at temp path: ${tempPath}`);
-        return res.sendFile(tempPath, { headers: { 'Content-Type': 'audio/wav' } });
+        return sendFileWithRange(req, res, tempPath);
       }
 
       // If we get here, try to find the file in any subtitle directory
@@ -123,7 +198,7 @@ const serveAudioFile = (req, res) => {
             if (files.includes(filename)) {
               const foundPath = path.join(dirPath, filename);
               console.log(`[DEBUG] Found file in subtitle directory: ${foundPath}`);
-              return res.sendFile(foundPath, { headers: { 'Content-Type': 'audio/wav' } });
+              return sendFileWithRange(req, res, foundPath);
             }
           }
         }

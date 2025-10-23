@@ -28,11 +28,14 @@ const upload = multer({
 
 // Serve narration audio files - use * to capture all path segments
 router.get('/audio/*', (req, res) => {
-  // Extract the filename from the URL path
+  // Extract the filename from the URL path (req.path excludes query string)
   const filename = req.path.replace('/audio/', '');
 
-  // Call the controller with the extracted filename
-  narrationController.serveAudioFile({ params: { filename } }, res);
+  // Preserve the original request (headers, range, etc.) and add params
+  req.params = { ...(req.params || {}), filename };
+
+  // Call the controller with the real req so Range and headers are available
+  narrationController.serveAudioFile(req, res);
 });
 
 // Serve reference audio files specifically (for Chatterbox API conversion)
@@ -90,6 +93,21 @@ router.post('/modify-audio-speed', express.json(), narrationController.modifyAud
 // Batch modify audio speed for multiple files
 router.post('/batch-modify-audio-speed', express.json(), narrationController.batchModifyAudioSpeed);
 
+// Combined modify trim + speed (single)
+router.post('/modify-audio-trim-speed-combined', express.json(), narrationController.modifyAudioTrimAndSpeedCombined);
+
+// Batch modify audio trim for multiple files
+router.post('/batch-modify-audio-trim', express.json(), narrationController.batchModifyAudioTrim);
+
+// Batch combined trim + speed for multiple files
+router.post('/batch-modify-audio-trim-speed-combined', express.json(), narrationController.batchModifyAudioTrimAndSpeedCombined);
+
+// Get audio duration (single)
+router.post('/get-audio-duration', express.json(), narrationController.getAudioDuration);
+
+// Batch get audio durations
+router.post('/batch-get-audio-durations', express.json(), narrationController.batchGetAudioDurations);
+
 // Get list of example audio files
 router.get('/example-audio', narrationController.getExampleAudioList);
 
@@ -114,7 +132,7 @@ router.use('/', async (req, res, next) => {
       req.url === '/generate' || req.url === '/record-reference' || req.url === '/upload-reference' ||
       req.url === '/clear-output' || req.url === '/save-gemini-audio' ||
       req.url === '/save-f5tts-audio' || req.url === '/save-chatterbox-audio' || req.url === '/modify-audio-speed' ||
-      req.url === '/batch-modify-audio-speed' || req.url.startsWith('/audio/') ||
+      req.url === '/batch-modify-audio-speed' || req.url === '/modify-audio-trim' || req.url === '/modify-audio-trim-speed-combined' || req.url === '/batch-modify-audio-trim' || req.url === '/batch-modify-audio-trim-speed-combined' || req.url === '/get-audio-duration' || req.url === '/batch-get-audio-durations' || req.url.startsWith('/audio/') ||
       req.url.startsWith('/edge-tts/') || req.url.startsWith('/gtts/')) {
     return next();
   }

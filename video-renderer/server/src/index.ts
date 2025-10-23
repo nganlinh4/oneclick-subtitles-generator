@@ -25,7 +25,7 @@ process.env.CHROME_FLAGS = [
   '--disable-backgrounding-occluded-windows', '--disable-renderer-backgrounding',
   '--max_old_space_size=8192', '--enable-features=VaapiVideoDecoder,VaapiVideoEncoder',
   '--disable-features=TranslateUI', '--disable-ipc-flooding-protection',
-  '--renderer-process-limit=100', '--max-gum-fps=60'
+  '--renderer-process-limit=100', '--max-gum-fps=60', '--force-color-profile=sRGB'
 ].join(' ');
 
 console.log('🚀 GPU Acceleration Configuration Loaded');
@@ -328,6 +328,7 @@ app.post('/render', async (req, res) => {
       ...(narrationUrl && { secondAudioFilePath: path.join(uploadsDir, path.basename(narrationUrl)) }),
       codec: 'h264',
       pixelFormat: 'yuv420p',
+      colorSpace: 'bt709',
       crf: 18,
       audioBitrate: '256k',
       onProgress: ({ progress }) => {

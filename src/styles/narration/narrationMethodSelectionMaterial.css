@@ -27,6 +27,7 @@
   position: relative;
   overflow: hidden; /* Ensure badge doesn't overflow pill boundaries */
   border-radius: 24px;
+  font-stretch: semi-condensed;
 }
 
 .narration-method-selection .radio-pill input[type="radio"] {
@@ -56,12 +57,12 @@
 .voice-clone-badge {
   position: absolute;
   top: 2px;
-  right: -5px;
+  right: -20px;
   background-color: var(--method-color, #4caf50); /* Use method color or fallback to green */
   color: white;
   font-size: 8px;
   font-weight: 600;
-  padding: 1px 4px;
+  padding: 1px 18px;
   border-radius: 2px;
   transform: rotate(15deg);
   transform-origin: center;
@@ -252,6 +253,7 @@
   border-color: var(--method-color);
   color: white;
   box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+  font-stretch: semi-expanded;
 }
 
 .narration-method-selection .radio-pill input[type="radio"]:checked + label[class*="method-"] .method-icon svg {
@@ -293,6 +295,6 @@
     top: -1px;
     right: -6px;
     font-size: 7px;
-    padding: 1px 3px;
+    padding: 1px 4px;
   }
 }

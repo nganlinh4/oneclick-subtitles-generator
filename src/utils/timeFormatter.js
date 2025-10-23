@@ -44,6 +44,11 @@ export const formatTime = (timeInSeconds, format = 'seconds') => {
     } else {
       return `${minutes}:${String(seconds).padStart(2, '0')}.${String(milliseconds).padStart(2, '0')}`;
     }
+  } else if (format === 's_ms') {
+    // Format as seconds.ms without minutes or hours
+    const seconds = Math.floor(timeInSeconds);
+    const milliseconds = Math.floor((timeInSeconds % 1) * 100);
+    return `${seconds}.${String(milliseconds).padStart(2, '0')}`;
   }
 
   // Default fallback

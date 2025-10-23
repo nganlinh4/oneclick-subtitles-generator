@@ -38,7 +38,7 @@ html, body {
   margin: 0;
 }
 body {
-  font-family: 'Google Sans', 'Open Sans', sans-serif;
+  font-family: var(--font-primary, 'Google Sans', 'Open Sans', sans-serif);
   font-size: 14px;
   overflow: hidden;
 }

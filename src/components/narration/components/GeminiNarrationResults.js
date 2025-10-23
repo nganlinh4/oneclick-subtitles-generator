@@ -1,6 +1,7 @@
 import { useState, useRef, useEffect } from 'react';
 import { useTranslation } from 'react-i18next';
 import SliderWithValue from '../../common/SliderWithValue';
+import StandardSlider from '../../common/StandardSlider';
 import LoadingIndicator from '../../common/LoadingIndicator';
 import '../../../styles/narration/speedControlSlider.css';
 import '../../../utils/functionalScrollbar';
@@ -9,6 +10,7 @@ import { VariableSizeList as List } from 'react-window';
 // Import utility functions and config
 import { getAudioUrl } from '../../../services/narrationService';
 import { SERVER_URL } from '../../../config';
+import { formatTime } from '../../../utils/timeFormatter';
 
 // Constants for localStorage keys
 const NARRATION_CACHE_KEY = 'gemini_narration_cache';
@@ -58,56 +60,129 @@ const GeminiResultRow = ({ index, style, data }) => {
         {text}
       </div>
 
-      <div className="audio-controls">
+      <div className="result-controls">
         {item.success && (item.audioData || item.filename) ? (
           // Successful generation with audio data or filename
           <>
+            {/* Per-item trim range slider */}
+            {item && (
+              <div className="per-item-trim-controls" style={{ display: 'flex', alignItems: 'center', gap: 8, marginRight: 8 }}>
+                {(() => {
+                  const getBackupName = (fn) => {
+                    if (!fn) return null;
+                    const lastSlash = fn.lastIndexOf('/');
+                    const dir = lastSlash >= 0 ? fn.slice(0, lastSlash) : '';
+                    const base = lastSlash >= 0 ? fn.slice(lastSlash + 1) : fn;
+                    return `${dir ? dir + '/' : ''}backup_${base}`;
+                  };
+
+                  const backupName = getBackupName(item.filename);
+                  const backupDuration = (backupName && data.itemDurations && typeof data.itemDurations[backupName] === 'number')
+                    ? data.itemDurations[backupName]
+                    : null;
+                  const currentDuration = (typeof item.filename === 'string' && data.itemDurations && typeof data.itemDurations[item.filename] === 'number')
+                    ? data.itemDurations[item.filename]
+                    : null;
+
+                  const totalDuration = (typeof backupDuration === 'number' && backupDuration > 0)
+                    ? backupDuration
+                    : (typeof currentDuration === 'number' && currentDuration > 0)
+                      ? currentDuration
+                      : (typeof item.audioDuration === 'number' && item.audioDuration > 0)
+                        ? item.audioDuration
+                        : (typeof item.start === 'number' && typeof item.end === 'number' && item.end > item.start)
+                          ? (item.end - item.start)
+                          : 10;
+                  const trim = data.itemTrims[subtitle_id] ?? [0, totalDuration];
+                  const [trimStart, trimEnd] = trim;
+                  return (
+                    <>
+                      <span style={{ minWidth: 35, maxWidth: 70, display: 'inline-block', textAlign: 'center', fontSize: '1em', fontWeight: 500 }}>
+                        {formatTime(trimStart, 's_ms')}
+                      </span>
+                      <StandardSlider
+                        range
+                        value={[trimStart, trimEnd]}
+                        min={0}
+                        max={totalDuration}
+                        step={0.01}
+                        minGap={0.25}
+                        onChange={([start, end]) => data.setItemTrim(subtitle_id, [start, end])}
+                        onDragEnd={() => data.modifySingleAudioEditCombined(item)}
+                        orientation="Horizontal"
+                        size="XSmall"
+                        width="compact"
+                        showValueIndicator={false}
+                        showStops={false}
+                        className="per-item-trim-slider trim-slider"
+                        style={{ width: 200 }}
+                      />
+                      <span style={{ minWidth: 35, maxWidth: 70, display: 'inline-block', textAlign: 'center', fontSize: '1em', fontWeight: 500 }}>
+                        {formatTime(trimEnd, 's_ms')}
+                      </span>
+                    </>
+                  );
+                })()}
+              </div>
+            )}
+
+            {/* Per-item speed slider before Play/Pause */}
+            {item.filename && (
+              <SliderWithValue
+                value={data.itemSpeeds[subtitle_id] ?? 1.0}
+                onChange={(v) => data.setItemSpeed(subtitle_id, parseFloat(v))}
+                onDragEnd={() => data.modifySingleAudioEditCombined(item)}
+                min={0.5}
+                max={2.0}
+                step={0.01}
+                defaultValue={1.0}
+                orientation="Horizontal"
+                size="XSmall"
+                state={data.itemProcessing[subtitle_id]?.inProgress ? 'Disabled' : 'Enabled'}
+                width="compact"
+                className="standard-slider-container width-compact orientation-horizontal size-XSmall state-Enabled speed-control-slider"
+                style={{ width: '75px', marginRight: 0, gap: 0 }}
+                id={`gemini-item-speed-${subtitle_id}`}
+                ariaLabel={t('narration.speed', 'Speed')}
+                formatValue={(val) => `${Number(val).toFixed(2)}x`}
+              />
+            )}
+
             <button
               className="pill-button primary"
               onClick={() => playAudio(item)}
+              disabled={!!data.itemProcessing[subtitle_id]?.inProgress}
             >
               {currentlyPlaying === subtitle_id && isPlaying ? (
-                <>
-                  <span className="material-symbols-rounded" style={{ fontSize: '14px' }}>pause</span>
-                  {t('narration.pause', 'Pause')}
-                </>
+                <span className="material-symbols-rounded" style={{ fontSize: '14px' }}>pause</span>
               ) : (
-                <>
-                  <span className="material-symbols-rounded" style={{ fontSize: '14px' }}>play_arrow</span>
-                  {t('narration.play', 'Play')}
-                </>
+                <span className="material-symbols-rounded" style={{ fontSize: '14px' }}>play_arrow</span>
               )}
             </button>
             <button
               className="pill-button secondary"
               onClick={() => downloadAudio(item)}
+              disabled={!!data.itemProcessing[subtitle_id]?.inProgress}
             >
               <span className="material-symbols-rounded" style={{ fontSize: '14px' }}>download</span>
-              {t('narration.download', 'Download')}
             </button>
             <button
-              className={`pill-button secondary retry-button ${retryingSubtitleId === subtitle_id ? 'retrying' : ''}`}
+              className={`pill-button secondary ${retryingSubtitleId === subtitle_id ? 'retrying' : ''}`}
               onClick={() => onRetry(subtitle_id)}
               title={!data.subtitleSource
                 ? t('narration.noSourceSelectedError', 'Please select a subtitle source (Original or Translated)')
                 : t('narration.retry', 'Retry generation')}
-              disabled={retryingSubtitleId === subtitle_id || !data.subtitleSource}
+              disabled={retryingSubtitleId === subtitle_id || !data.subtitleSource || !!data.itemProcessing[subtitle_id]?.inProgress}
             >
               {retryingSubtitleId === subtitle_id ? (
-                <>
-                  <LoadingIndicator
-                    theme="dark"
-                    showContainer={false}
-                    size={14}
-                    className="retry-loading-indicator"
-                  />
-                  {t('narration.retrying', 'Retrying...')}
-                </>
+                <LoadingIndicator
+                  theme="dark"
+                  showContainer={false}
+                  size={14}
+                  className="retry-loading-indicator"
+                />
               ) : (
-                <>
-                  <span className="material-symbols-rounded" style={{ fontSize: '14px' }}>refresh</span>
-                  {t('narration.retry', 'Retry')}
-                </>
+                <span className="material-symbols-rounded" style={{ fontSize: '14px' }}>refresh</span>
               )}
             </button>
           </>
@@ -126,20 +201,14 @@ const GeminiResultRow = ({ index, style, data }) => {
               disabled={retryingSubtitleId === subtitle_id || !data.subtitleSource}
             >
               {retryingSubtitleId === subtitle_id ? (
-                <>
-                  <LoadingIndicator
-                    theme="dark"
-                    showContainer={false}
-                    size={14}
-                    className="generate-loading-indicator"
-                  />
-                  {t('narration.generating', 'Generating...')}
-                </>
+                <LoadingIndicator
+                  theme="dark"
+                  showContainer={false}
+                  size={14}
+                  className="generate-loading-indicator"
+                />
               ) : (
-                <>
-                  <span className="material-symbols-rounded" style={{ fontSize: '14px' }}>play_arrow</span>
-                  {t('narration.generate', 'Generate')}
-                </>
+                <span className="material-symbols-rounded" style={{ fontSize: '14px' }}>refresh</span>
               )}
             </button>
           </>
@@ -160,20 +229,14 @@ const GeminiResultRow = ({ index, style, data }) => {
               disabled={retryingSubtitleId === subtitle_id || !data.subtitleSource}
             >
               {retryingSubtitleId === subtitle_id ? (
-                <>
-                  <LoadingIndicator
-                    theme="dark"
-                    showContainer={false}
-                    size={14}
-                    className="retry-loading-indicator"
-                  />
-                  {t('narration.retrying', 'Retrying...')}
-                </>
+                <LoadingIndicator
+                  theme="dark"
+                  showContainer={false}
+                  size={14}
+                  className="retry-loading-indicator"
+                />
               ) : (
-                <>
-                  <span className="material-symbols-rounded" style={{ fontSize: '14px' }}>refresh</span>
-                  {t('narration.retry', 'Retry')}
-                </>
+                <span className="material-symbols-rounded" style={{ fontSize: '14px' }}>refresh</span>
               )}
             </button>
           </>
@@ -239,12 +302,46 @@ const GeminiNarrationResults = ({
   const listRef = useRef(null);
   const rowHeights = useRef({});
   const [loadedFromCache, setLoadedFromCache] = useState(false);
+  // Track processed count during streaming speed modify to drive progress UI
+  const processedCountRef = useRef(0);
+  // Track unique items seen in progress stream to derive current count when server doesn't send 'processed'
+  const seenItemsRef = useRef(new Set());
 
-  // Speed control state
+  // Speed control state (global)
   const [speedValue, setSpeedValue] = useState(1.0);
   const [isProcessing, setIsProcessing] = useState(false);
   const [processingProgress, setProcessingProgress] = useState({ current: 0, total: 0 });
   const [currentFile, setCurrentFile] = useState('');
+
+  // Per-item speed state
+  const [itemSpeeds, setItemSpeeds] = useState({}); // { [subtitle_id]: number }
+  const [itemProcessing, setItemProcessing] = useState({}); // { [subtitle_id]: { inProgress: boolean } }
+  const setItemSpeed = (id, val) => setItemSpeeds(prev => ({ ...prev, [id]: val }));
+
+  // Per-item trim state: { [subtitle_id]: [startSec, endSec] }
+  const [itemTrims, setItemTrims] = useState({});
+  const setItemTrim = (id, range) => setItemTrims(prev => ({ ...prev, [id]: range }));
+
+  // Real file durations from server for slider max
+  const [itemDurations, setItemDurations] = useState({}); // { [filename]: seconds }
+
+  const fetchDurationsBatch = async (filenames) => {
+    if (!Array.isArray(filenames) || filenames.length === 0) return;
+    try {
+      const resp = await fetch(`${SERVER_URL}/api/narration/batch-get-audio-durations`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ filenames })
+      });
+      if (!resp.ok) return;
+      const data = await resp.json();
+      if (data?.success && data.durations) {
+        setItemDurations(prev => ({ ...prev, ...data.durations }));
+      }
+    } catch (e) {
+      // ignore
+    }
+  };
 
   // Check if there are any failed narrations
   const hasFailedNarrations = generationResults && generationResults.some(result => !result.success);
@@ -301,18 +398,35 @@ const GeminiNarrationResults = ({
     return generationResults || [];
   })();
 
-  // Function to modify audio speed
+  // Load durations for both main files and their trim backups when the displayed list changes
+  useEffect(() => {
+    const getBackupName = (fn) => {
+      if (!fn) return null;
+      const lastSlash = fn.lastIndexOf('/');
+      const dir = lastSlash >= 0 ? fn.slice(0, lastSlash) : '';
+      const base = lastSlash >= 0 ? fn.slice(lastSlash + 1) : fn;
+      return `${dir ? dir + '/' : ''}backup_${base}`;
+    };
+
+    const filenames = (displayedResults || [])
+      .map(r => r && r.filename)
+      .filter(Boolean);
+
+    const backupFilenames = filenames.map(getBackupName).filter(Boolean);
+    const allFilenames = [...new Set([...filenames, ...backupFilenames])];
+
+    if (allFilenames.length > 0) {
+      fetchDurationsBatch(allFilenames);
+    }
+  }, [displayedResults]);
+
+  // Function to modify audio speed (global batch)
   const modifyAudioSpeed = async () => {
     if (!generationResults || generationResults.length === 0) {
       return;
     }
 
     try {
-      // Start processing
-      setIsProcessing(true);
-      setProcessingProgress({ current: 0, total: generationResults.length });
-      setCurrentFile('');
-
       // Get all successful narrations with filenames
       const successfulNarrations = generationResults.filter(
         result => result.success && result.filename
@@ -323,12 +437,64 @@ const GeminiNarrationResults = ({
         return;
       }
 
+      // Adjust all individual sliders to match global speed (including 1x)
+      {
+        const newSpeeds = {};
+        successfulNarrations.forEach(r => { newSpeeds[r.subtitle_id] = Number(speedValue); });
+        setItemSpeeds(prev => ({ ...prev, ...newSpeeds }));
+      }
+
+
+      // Start processing
+      setIsProcessing(true);
+      // Only count files we will actually process
+      setProcessingProgress({ current: 0, total: successfulNarrations.length });
+      // Show first filename as "preparing" hint
+      try {
+        const firstName = successfulNarrations[0]?.filename || '';
+        const base = firstName ? String(firstName).split('/').pop() : '';
+        setCurrentFile(base);
+      } catch (_) {
+        setCurrentFile('');
+      }
+
       console.log(`Modifying speed of ${successfulNarrations.length} narration files to ${speedValue}x`);
 
-      // Use batch endpoint to process all files at once
-      // Make sure to use the correct URL format
-      const apiUrl = `${SERVER_URL}/api/narration/batch-modify-audio-speed`;
-      console.log(`Sending request to: ${apiUrl}`);
+      // Use new batch combined endpoint to process all files at once
+      const apiUrl = `${SERVER_URL}/api/narration/batch-modify-audio-trim-speed-combined`;
+
+      // Build items with normalized trim relative to backup duration
+      const getBackupName = (fn) => {
+        if (!fn) return null;
+        const lastSlash = fn.lastIndexOf('/');
+        const dir = lastSlash >= 0 ? fn.slice(0, lastSlash) : '';
+        const base = lastSlash >= 0 ? fn.slice(lastSlash + 1) : fn;
+        return `${dir ? dir + '/' : ''}backup_${base}`;
+      };
+
+      const items = successfulNarrations.map(r => {
+        const id = r.subtitle_id;
+        const filename = r.filename;
+        const backupName = getBackupName(filename);
+        const total = (backupName && typeof itemDurations[backupName] === 'number')
+          ? itemDurations[backupName]
+          : (typeof itemDurations[filename] === 'number')
+            ? itemDurations[filename]
+            : undefined;
+        const [start, end] = itemTrims[id] || [0, total || 0];
+        let normalizedStart = 0, normalizedEnd = 1;
+        if (typeof total === 'number' && total > 0) {
+          const s = typeof start === 'number' ? start : 0;
+          const e = typeof end === 'number' ? end : total;
+          normalizedStart = s / total;
+          normalizedEnd = e / total;
+        }
+        return { filename, normalizedStart, normalizedEnd, speedFactor: speedValue };
+      });
+
+      // Reset streaming progress trackers
+      processedCountRef.current = 0;
+      seenItemsRef.current = new Set();
 
       // Use fetch with streaming response to get real-time progress updates
       const response = await fetch(apiUrl, {
@@ -336,105 +502,96 @@ const GeminiNarrationResults = ({
         headers: {
           'Content-Type': 'application/json',
         },
-        body: JSON.stringify({
-          filenames: successfulNarrations.map(result => result.filename),
-          speedFactor: speedValue
-        })
+        body: JSON.stringify({ items })
       });
 
       if (!response.ok) {
         throw new Error(`Server responded with status: ${response.status}`);
       }
 
-      // Set up a reader to read the streaming response
+      // Set up a reader to read the streaming response (SSE parsing)
       const reader = response.body.getReader();
       const decoder = new TextDecoder();
       let buffer = '';
 
-      // Process the stream
       while (true) {
         const { done, value } = await reader.read();
-
         if (done) {
-          // Process any remaining data in the buffer
-          if (buffer) {
-            try {
-              const finalData = JSON.parse(buffer);
-              console.log('Final update:', finalData);
-
-              if (finalData.success && finalData.status === 'complete') {
-                // Update progress with the final count
-                setProcessingProgress({
-                  current: finalData.processed,
-                  total: finalData.total
-                });
-
-                // Reset the aligned narration to use the new speed-modified files
-                if (typeof window.resetAlignedNarration === 'function') {
-                  console.log('Resetting aligned narration to use speed-modified files');
-                  window.resetAlignedNarration();
-
-                  // Dispatch an event to notify that narration should be refreshed
-                  window.dispatchEvent(new CustomEvent('narration-speed-modified', {
-                    detail: {
-                      speed: speedValue,
-                      timestamp: Date.now()
-                    }
-                  }));
-                }
-              }
-            } catch (e) {
-              console.error('Error parsing final JSON chunk:', e);
-            }
-          }
+          // Stream ended: immediately mark processing done
+          setIsProcessing(false);
+          setCurrentFile('');
           break;
         }
-
-        // Decode the chunk and add it to our buffer
-        const chunk = decoder.decode(value, { stream: true });
-        buffer += chunk;
-
-        // Process complete JSON objects in the buffer
-        let startIndex = 0;
-        let endIndex;
-
-        // Find each complete JSON object in the buffer
-        while ((endIndex = buffer.indexOf('}', startIndex)) !== -1) {
+        buffer += decoder.decode(value, { stream: true });
+        let sep;
+        while ((sep = buffer.indexOf('\n\n')) !== -1) {
+          const chunk = buffer.slice(0, sep);
+          buffer = buffer.slice(sep + 2);
+          if (!chunk.startsWith('data: ')) continue;
           try {
-            // Extract a complete JSON object
-            const jsonStr = buffer.substring(startIndex, endIndex + 1);
-            const data = JSON.parse(jsonStr);
-
-            // Update progress based on the data
-            if (data.success && data.processed !== undefined) {
-              console.log(`Progress update: ${data.processed}/${data.total}`);
-              setProcessingProgress({
-                current: data.processed,
-                total: data.total
-              });
-
-              // Update current file being processed if available
-              if (data.current) {
-                // Extract just the filename without the path
-                const filename = data.current.split('/').pop();
-                setCurrentFile(filename);
+            const obj = JSON.parse(chunk.slice(6));
+            if (obj.status === 'progress') {
+              const total = obj.total ?? items.length;
+              // Determine processed count robustly
+              let processedNum = 0;
+              if (typeof obj.processed === 'number') {
+                processedNum = obj.processed;
+              } else if (typeof obj.current === 'number') {
+                processedNum = obj.current;
+              } else {
+                // Infer from current filename if provided
+                if (obj.current) {
+                  const key = String(obj.current);
+                  if (!seenItemsRef.current.has(key)) {
+                    seenItemsRef.current.add(key);
+                    processedCountRef.current += 1;
+                  }
+                }
+                processedNum = processedCountRef.current;
               }
-            }
 
-            // Move past this JSON object
-            startIndex = endIndex + 1;
+              setProcessingProgress({ current: processedNum, total });
+
+              if (obj.current) {
+                const filename = String(obj.current).split('/').pop();
+                setCurrentFile(filename || '');
+              }
+            } else if (obj.status === 'completed') {
+              setProcessingProgress({ current: obj.processed ?? items.length, total: obj.total ?? items.length });
+              setCurrentFile('');
+              if (typeof window.resetAlignedNarration === 'function') {
+                window.resetAlignedNarration();
+              }
+              window.dispatchEvent(new CustomEvent('narration-speed-modified', {
+                detail: { speed: speedValue, timestamp: Date.now() }
+              }));
+            }
           } catch (e) {
-            // If we can't parse it yet, it might be incomplete
-            // Just move to the next character and try again
-            startIndex++;
+            // ignore malformed chunks
           }
         }
-
-        // Keep any remaining incomplete data in the buffer
-        buffer = buffer.substring(startIndex);
       }
 
-      console.log(`Successfully modified narration speed to ${speedValue}x`);
+      console.log(`Successfully applied combined trim+speed to ${items.length} files`);
+
+      // Optionally refresh durations in background (non-blocking UI)
+      try {
+        const filenames = successfulNarrations.map(r => r.filename).filter(Boolean);
+        const backupFilenames = filenames.map(getBackupName).filter(Boolean);
+        const allFilenames = [...new Set([...filenames, ...backupFilenames])];
+        const resp = await fetch(`${SERVER_URL}/api/narration/batch-get-audio-durations`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ filenames: allFilenames })
+        });
+        if (resp.ok) {
+          const data = await resp.json();
+          const durations = data?.durations || {};
+          setItemDurations(prev => ({ ...prev, ...durations }));
+        }
+      } catch (e) {
+        // ignore duration refresh errors
+      }
     } catch (error) {
       console.error('Error calling audio speed modification API:', error);
     } finally {
@@ -443,6 +600,80 @@ const GeminiNarrationResults = ({
       setCurrentFile('');
     }
   };
+
+  // Combined edit (trim + speed) for a single item; called on slider drop
+  const modifySingleAudioEditCombined = async (result) => {
+    if (!result?.filename) return;
+    const id = result.subtitle_id;
+    const [start, end] = itemTrims[id] || [undefined, undefined];
+    const speed = itemSpeeds[id];
+
+    // Compute normalized range relative to backup duration to keep UI mapping stable
+    const getBackupName = (fn) => {
+      if (!fn) return null;
+      const lastSlash = fn.lastIndexOf('/');
+      const dir = lastSlash >= 0 ? fn.slice(0, lastSlash) : '';
+      const base = lastSlash >= 0 ? fn.slice(lastSlash + 1) : fn;
+      return `${dir ? dir + '/' : ''}backup_${base}`;
+    };
+    const backupName = getBackupName(result.filename);
+    const total = (backupName && typeof itemDurations[backupName] === 'number')
+      ? itemDurations[backupName]
+      : (typeof itemDurations[result.filename] === 'number')
+        ? itemDurations[result.filename]
+        : undefined;
+
+    let normalizedStart;
+    let normalizedEnd;
+
+    if (typeof total === 'number' && total > 0) {
+      const s = typeof start === 'number' ? start : 0;
+      const e = typeof end === 'number' ? end : total;
+      normalizedStart = s / total;
+      normalizedEnd = e / total;
+    } else {
+      const isDefaultTrim = typeof start !== 'number' && typeof end !== 'number';
+      if (isDefaultTrim) {
+        normalizedStart = 0; normalizedEnd = 1;
+      } else {
+        alert(t('narration.durationNotReady', 'Audio duration not ready yet. Please wait a moment and try again.'));
+        return;
+      }
+    }
+
+    setItemProcessing(prev => ({ ...prev, [id]: { inProgress: true } }));
+    try {
+      const apiUrl = `${SERVER_URL}/api/narration/modify-audio-trim-speed-combined`;
+      const body = { filename: result.filename, normalizedStart, normalizedEnd };
+      if (typeof speed === 'number') {
+        body.speedFactor = speed;
+      }
+      const response = await fetch(apiUrl, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(body)
+      });
+      if (!response.ok) throw new Error(`Server responded with status: ${response.status} - ${await response.text()}`);
+      // Drain
+      const reader = response.body.getReader();
+      while (true) {
+        const { done } = await reader.read();
+        if (done) break;
+      }
+      if (typeof window !== 'undefined') {
+        if (typeof window.resetAlignedNarration === 'function') {
+          window.resetAlignedNarration();
+        }
+        window.dispatchEvent(new CustomEvent('narration-edit-modified', { detail: { start, end, speed, id, timestamp: Date.now() } }));
+      }
+    } catch (e) {
+      console.error('Error applying combined audio edit:', e);
+      alert(t('narration.trimModificationError', `Error applying edit: ${e.message}`));
+    } finally {
+      setItemProcessing(prev => ({ ...prev, [id]: { inProgress: false } }));
+    }
+  };
+
 
   // Function to calculate row height based on explicit line breaks only (stable like LyricsDisplay)
   const getRowHeight = (index) => {
@@ -578,125 +809,95 @@ const GeminiNarrationResults = ({
   }, [loadedFromCache, generationResults]);
 
   // Initialize audio element on component mount
-  // Super simple audio playback function - no initialization needed
-  const playAudio = (result) => {
-    // If already playing this audio, stop it
+  // Play directly from server URL from file system (no cache, no blob)
+  const playAudio = async (result) => {
+    if (!result?.filename) return;
+
+    // Toggle off if the same item is already playing
     if (currentlyPlaying === result.subtitle_id && isPlaying) {
       if (audioRef.current) {
-        audioRef.current.pause();
+        try { audioRef.current.pause(); } catch (_) {}
+        try {
+          if (audioRef.current.src && audioRef.current.src.startsWith('blob:')) {
+            URL.revokeObjectURL(audioRef.current.src);
+          }
+        } catch (_) {}
       }
       setIsPlaying(false);
       setCurrentlyPlaying(null);
       return;
     }
 
-    // Stop any currently playing audio
+    // Stop any currently playing audio and revoke blob URL
     if (audioRef.current) {
-      audioRef.current.pause();
+      try { audioRef.current.pause(); } catch (_) {}
+      try {
+        if (audioRef.current.src && audioRef.current.src.startsWith('blob:')) {
+          URL.revokeObjectURL(audioRef.current.src);
+        }
+      } catch (_) {}
     }
 
-    // Get the audio URL
-    const audioUrl = getAudioUrl(result.filename);
-    console.log(`[DEBUG] Playing audio with filename: ${result.filename}`);
-    console.log(`[DEBUG] Audio URL: ${audioUrl}`);
+    // Build cache-busting URL and fetch fresh file like other methods
+    const baseUrl = getAudioUrl(result.filename);
+    const cacheBustUrl = `${baseUrl}?t=${Date.now()}`;
+    console.log(`[DEBUG] Playing audio via fresh fetch: ${cacheBustUrl}`);
 
-    // Add a cache-busting parameter to the URL
-    const cacheBustUrl = `${audioUrl}?t=${Date.now()}`;
-    console.log(`[DEBUG] Cache-busting URL: ${cacheBustUrl}`);
+    try {
+      const resp = await fetch(cacheBustUrl, {
+        headers: { 'Accept': 'audio/*' },
+        credentials: 'include'
+      });
+      if (!resp.ok) throw new Error(`HTTP ${resp.status} ${resp.statusText}`);
+      const blob = await resp.blob();
+      const blobUrl = URL.createObjectURL(blob);
 
-    // Try to fetch the audio file first to check if it exists
-    fetch(cacheBustUrl)
-      .then(response => {
-        console.log(`[DEBUG] Fetch response status: ${response.status}`);
-        if (!response.ok) {
-          console.error(`[DEBUG] Fetch failed: ${response.status} ${response.statusText}`);
-          throw new Error(`Failed to fetch audio file: ${response.status} ${response.statusText}`);
-        }
-        return response.blob();
-      })
-      .then(blob => {
-        // Create a blob URL for the audio
-        const blobUrl = URL.createObjectURL(blob);
-        console.log(`[DEBUG] Created blob URL: ${blobUrl}`);
-
-        // Create a new audio element with the blob URL
-        const audio = new Audio(blobUrl);
-
-        // Add error handling
-        audio.onerror = (e) => {
-          console.error(`[DEBUG] Audio error for subtitle ${result.subtitle_id}:`, e);
-          console.error(`[DEBUG] Audio error code:`, audio.error?.code);
-          console.error(`[DEBUG] Audio error message:`, audio.error?.message);
-          console.error(`[DEBUG] Audio src:`, audio.src);
-        };
-
-        // Set up only what we need - play and handle ending
-        audio.onended = () => {
-          setIsPlaying(false);
-          setCurrentlyPlaying(null);
-          // Clean up the blob URL
-          URL.revokeObjectURL(blobUrl);
-        };
-
-        // Update state and play
-        setCurrentlyPlaying(result.subtitle_id);
-        setIsPlaying(true);
-
-        // Play it
-        audio.play().catch(error => {
-          console.error(`[DEBUG] Error playing audio:`, error);
-          setIsPlaying(false);
-          setCurrentlyPlaying(null);
-          URL.revokeObjectURL(blobUrl);
-        });
-
-        // Store reference
-        audioRef.current = audio;
-      })
-      .catch(error => {
-        console.error(`[DEBUG] Error fetching or playing audio:`, error);
+      const audio = new Audio(blobUrl);
+      audio.preload = 'none';
+      audio.onerror = (e) => {
+        console.error(`[DEBUG] Audio error for subtitle ${result.subtitle_id}:`, e);
+        console.error(`[DEBUG] Audio src:`, audio.src);
+      };
+      audio.onended = () => {
         setIsPlaying(false);
         setCurrentlyPlaying(null);
+        try {
+          if (audio.src && audio.src.startsWith('blob:')) URL.revokeObjectURL(audio.src);
+        } catch (_) {}
+      };
 
-        // Try to use the legacy filename format as a fallback
-        if (result.filename.includes('/')) {
-          const legacyFilename = `gemini_${result.subtitle_id}_${Date.now()}.wav`;
-          const legacyUrl = getAudioUrl(legacyFilename);
-          console.log(`[DEBUG] Trying legacy URL as fallback: ${legacyUrl}`);
+      setCurrentlyPlaying(result.subtitle_id);
+      setIsPlaying(true);
 
-          // Add a cache-busting parameter to the legacy URL
-          const cacheBustLegacyUrl = `${legacyUrl}?t=${Date.now()}`;
-          console.log(`[DEBUG] Cache-busting legacy URL: ${cacheBustLegacyUrl}`);
-
-          // Create a new audio element with the legacy URL
-          const audio = new Audio(cacheBustLegacyUrl);
-
-          // Add error handling
-          audio.onerror = (e) => {
-            console.error(`[DEBUG] Legacy audio error for subtitle ${result.subtitle_id}:`, e);
-          };
-
-          // Set up only what we need - play and handle ending
-          audio.onended = () => {
-            setIsPlaying(false);
-            setCurrentlyPlaying(null);
-          };
-
-          // Update state and play
-          setCurrentlyPlaying(result.subtitle_id);
-          setIsPlaying(true);
-
-          // Play it
-          audio.play().catch(legacyError => {
-            console.error(`[DEBUG] Error playing legacy audio:`, legacyError);
-            setIsPlaying(false);
-            setCurrentlyPlaying(null);
-          });
-
-          // Store reference
-          audioRef.current = audio;
-        }
+      audio.play().catch((err) => {
+        console.error('[DEBUG] Error playing audio:', err);
+        setIsPlaying(false);
+        setCurrentlyPlaying(null);
+        try {
+          if (audio.src && audio.src.startsWith('blob:')) URL.revokeObjectURL(audio.src);
+        } catch (_) {}
       });
+
+      audioRef.current = audio;
+    } catch (e) {
+      console.error('[DEBUG] Failed to fetch fresh audio, falling back to direct URL:', e);
+      const audio = new Audio(cacheBustUrl);
+      audio.preload = 'none';
+      audio.onerror = (err) => {
+        console.error('[DEBUG] Fallback audio error:', err);
+      };
+      audio.onended = () => {
+        setIsPlaying(false);
+        setCurrentlyPlaying(null);
+      };
+      setCurrentlyPlaying(result.subtitle_id);
+      setIsPlaying(true);
+      audio.play().catch(() => {
+        setIsPlaying(false);
+        setCurrentlyPlaying(null);
+      });
+      audioRef.current = audio;
+    }
   };
 
   // Download audio as WAV file
@@ -810,6 +1011,7 @@ const GeminiNarrationResults = ({
 
   return (
     <div className="results-section">
+      <style dangerouslySetInnerHTML={{ __html: `.trim-slider .standard-slider-active-track .track, .trim-slider .standard-slider-inactive-track .track { height: 10px; } .range-slider .standard-slider-handle { height: 24px; }` }} />
       <div className="results-header">
         <h4>{t('narration.results', 'Generated Narration')}</h4>
 
@@ -868,11 +1070,7 @@ const GeminiNarrationResults = ({
                 <div className="speed-control-spinner"></div>
                 <div className="speed-control-progress-info">
                   <span>{processingProgress.current}/{processingProgress.total}</span>
-                  {currentFile && (
-                    <span className="speed-control-filename" title={currentFile}>
-                      {currentFile}
-                    </span>
-                  )}
+
                 </div>
               </div>
             ) : (
@@ -927,6 +1125,14 @@ const GeminiNarrationResults = ({
               playAudio,
               downloadAudio,
               subtitleSource,
+              // per-item trim and speed control
+              itemTrims,
+              setItemTrim,
+              itemSpeeds,
+              setItemSpeed,
+              modifySingleAudioEditCombined,
+              itemProcessing,
+              itemDurations,
               t
             }}
           >

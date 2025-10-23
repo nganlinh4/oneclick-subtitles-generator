@@ -59,7 +59,7 @@ export default function SliderWithValue({
           aria-label="Reset to default"
           onClick={handleReset}
         >
-          ↺
+          <span className="material-symbols-rounded" style={{ fontSize: '14px', fontVariationSettings: "'FILL' 0, 'wght' 300, 'GRAD' 200, 'opsz' 24" }}>refresh</span>
         </button>
       </div>
       {children}

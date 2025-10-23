@@ -187,6 +187,29 @@ function main() {
     if (data.type === 'pm-dj-set-theme' && typeof data.theme === 'string') {
       try { document.documentElement.setAttribute('data-theme', data.theme === 'dark' ? 'dark' : 'light'); } catch {}
     }
+    if (data.type === 'pm-dj-set-font' && typeof data.font === 'string') {
+      const root = document.documentElement;
+      let primary = `"Google Sans", "Open Sans", sans-serif`;
+      let title = `"Google Sans", "Be Vietnam Pro", sans-serif`;
+
+      if (data.font === 'product-sans') {
+        primary = `"Product Sans", system-ui, -apple-system, Segoe UI, Roboto, sans-serif`;
+        title = `"Product Sans", system-ui, -apple-system, Segoe UI, Roboto, sans-serif`;
+      } else if (data.font === 'system-ui') {
+        primary = `system-ui, -apple-system, Segoe UI, Roboto, Helvetica, Arial, sans-serif`;
+        title = primary;
+      } else if (data.font === 'noto-sans') {
+        primary = `"Noto Sans", "Open Sans", sans-serif`;
+        title = primary;
+      } else {
+        // default: Google Sans Flex
+        primary = `"Google Sans", "Open Sans", sans-serif`;
+        title = `"Google Sans", "Be Vietnam Pro", sans-serif`;
+      }
+
+      root.style.setProperty('--font-primary', primary);
+      root.style.setProperty('--font-title', title);
+    }
 
     // Bridge: control MIDI from parent
     if (data.type === 'midi:getInputs') {

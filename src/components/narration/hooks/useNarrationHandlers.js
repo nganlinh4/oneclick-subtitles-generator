@@ -1036,20 +1036,47 @@ const useNarrationHandlers = ({
     }
   };
 
-  // Play a specific narration audio
-  const playAudio = (result) => {
-    // Stop current audio if playing
-    if (isPlaying && currentAudio && currentAudio.id === result.subtitle_id) {
-      setIsPlaying(false);
-      return;
-    }
+  // Play a specific narration audio (always fetch fresh from filesystem)
+  const playAudio = async (result) => {
+    try {
+      // If already playing this audio, toggle off
+      if (isPlaying && currentAudio && currentAudio.id === result.subtitle_id) {
+        setIsPlaying(false);
+        return;
+      }
 
-    // Play new audio
-    setCurrentAudio({
-      id: result.subtitle_id,
-      url: getAudioUrl(result.filename)
-    });
-    setIsPlaying(true);
+      // Revoke previous blob URL if any
+      try {
+        if (currentAudio && currentAudio.url && currentAudio.url.startsWith('blob:')) {
+          URL.revokeObjectURL(currentAudio.url);
+        }
+      } catch (_) { /* noop */ }
+
+      // Build cache-busting URL to force fresh read from narration/output
+      const baseUrl = getAudioUrl(result.filename);
+      const cacheBustUrl = `${baseUrl}?t=${Date.now()}`;
+
+      // Fetch the file and create a blob URL to guarantee latest content
+      const response = await fetch(cacheBustUrl, {
+        headers: { 'Accept': 'audio/*' },
+        credentials: 'include'
+      });
+      if (!response.ok) {
+        throw new Error(`Failed to fetch audio: ${response.status} ${response.statusText}`);
+      }
+      const blob = await response.blob();
+      const blobUrl = URL.createObjectURL(blob);
+
+      // Set the audio source to the blob URL so it cannot be cached
+      setCurrentAudio({ id: result.subtitle_id, url: blobUrl, ts: Date.now() });
+      setIsPlaying(true);
+    } catch (e) {
+      console.error('Error playing audio from filesystem:', e);
+      // Fallback: try direct URL with cache bust (without blob)
+      const fallbackUrl = `${getAudioUrl(result.filename)}?t=${Date.now()}`;
+      setCurrentAudio({ id: result.subtitle_id, url: fallbackUrl, ts: Date.now() });
+      setIsPlaying(true);
+    }
   };
 
   // Download all narration audio as a zip file
