@@ -115,6 +115,30 @@ export const setupSystemThemeListener = (callback) => {
 };
 
 /**
+ * Detect if the current device is a mobile device
+ * @returns {boolean} True if mobile device, false otherwise
+ */
+export const isMobileDevice = () => {
+  try {
+    // Check for touch capability
+    const hasTouch = 'ontouchstart' in window || navigator.maxTouchPoints > 0;
+
+    // Check screen width (typical mobile breakpoint)
+    const isSmallScreen = window.innerWidth <= 768;
+
+    // Check user agent for mobile keywords
+    const userAgent = navigator.userAgent.toLowerCase();
+    const isMobileUA = /android|webos|iphone|ipad|ipod|blackberry|iemobile|opera mini/i.test(userAgent);
+
+    // Consider it mobile if it has touch capability AND (small screen OR mobile user agent)
+    return hasTouch && (isSmallScreen || isMobileUA);
+  } catch (error) {
+    console.warn('Error detecting mobile device:', error);
+    return false; // Default to desktop if detection fails
+  }
+};
+
+/**
  * Initialize theme and language from system preferences
  * @returns {Object} Object with theme and language
  */

@@ -14,6 +14,21 @@
   gap: 1.5rem;
   margin-bottom: 1.5rem;
 }
+/* Responsive: stack vertically on smaller screens */
+@media (max-width: 850px) {
+  .api-keys-grid {
+    grid-template-columns: 1fr;
+    grid-template-rows: auto auto auto;
+  }
+
+  .api-key-input.gemini-column {
+    grid-row: span 1;
+  }
+
+  .api-key-input.full-width {
+    grid-row: 3;
+  }
+}
 
 .api-key-input {
   margin-bottom: 1.5rem;

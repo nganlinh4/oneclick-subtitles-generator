@@ -91,7 +91,7 @@
 }
 
 /* Responsive styles for smaller screens */
-@media (max-width: 768px) {
+@media (max-width: 850px) {
   .settings-footer {
     flex-direction: column;
     gap: 1rem;

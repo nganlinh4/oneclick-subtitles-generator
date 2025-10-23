@@ -16,6 +16,7 @@ import VideoProcessingOptionsModal from '../VideoProcessingOptionsModal';
 import { useVideoInfo } from '../../hooks/useVideoInfo';
 import BackgroundMusicSection from '../BackgroundMusicSection';
 import { hasValidDownloadedVideo } from '../../utils/videoUtils';
+import { initializeMobileZoom } from '../../utils/mobileZoom';
 
 /**
  * Main application layout component
@@ -156,6 +157,11 @@ const AppLayout = ({
     getVideoInfoForModal,
     getVideoFileForRendering
   } = useVideoInfo(selectedVideo, uploadedFile, actualVideoUrl);
+
+  // Initialize mobile zoom on component mount
+  useEffect(() => {
+    initializeMobileZoom(0.5); // Set zoom to 50% for mobile devices
+  }, []);
 
   // Handler for generating a specific segment
   const handleGenerateSegment = async (segmentIndex, segments) => {

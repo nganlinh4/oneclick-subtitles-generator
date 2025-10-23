@@ -19,6 +19,12 @@
   color: var(--text-primary);
 }
 
+@media (max-width: 850px) {
+  .video-preview-header h3 {
+    display: none;
+  }
+}
+
 .rendering-overlay {
   position: absolute;
   top: 0;

@@ -14,6 +14,8 @@
   backdrop-filter: blur(3px);
   /* i want short duration */
   transition: opacity 0.2s var(--md-easing-emphasized-accelerate);
+  /* Allow touch scrolling through the modal overlay */
+  pointer-events: none;
 }
 
 .settings-modal-overlay.closing {
@@ -39,6 +41,8 @@
   will-change: transform, opacity;
   /* Create a containing block for absolute positioning */
   contain: layout;
+  /* Allow pointer events on the modal content */
+  pointer-events: auto;
 }
 
 .settings-modal.closing {

@@ -640,8 +640,16 @@ const SettingsModal = ({ onClose, onSave, apiKeysSet, setApiKeysSet }) => {
     handleClose();
   };
 
+  // Handler for clicking the overlay to close the modal
+  const handleOverlayClick = (e) => {
+    // Only close if the click was directly on the overlay, not on the modal content
+    if (e.target === e.currentTarget) {
+      handleClose();
+    }
+  };
+
   return (
-    <div className={`settings-modal-overlay ${isClosing ? 'closing' : ''}`}>
+    <div className={`settings-modal-overlay ${isClosing ? 'closing' : ''}`} onClick={handleOverlayClick}>
       <div className={`settings-modal ${isClosing ? 'closing' : ''}`} noValidate data-no-autofill>
         <div className="settings-header">
           <h2>{t('settings.title', 'Settings')}</h2>
