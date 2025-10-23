@@ -447,13 +447,17 @@ const SettingsModal = ({ onClose, onSave, apiKeysSet, setApiKeysSet }) => {
       setIsFactoryResetting(true);
 
       try {
-        // 1. Clear server-side cache
-        const cacheResponse = await fetch(`${API_BASE_URL}/clear-cache`, {
-          method: 'DELETE'
-        });
+        // 1. Try to clear server-side cache (optional - app can run without server)
+        try {
+          const cacheResponse = await fetch(`${API_BASE_URL}/clear-cache`, {
+            method: 'DELETE'
+          });
 
-        if (!cacheResponse.ok) {
-          throw new Error('Failed to clear server cache');
+          if (!cacheResponse.ok) {
+            console.warn('Failed to clear server cache - server may not be running');
+          }
+        } catch (serverError) {
+          console.warn('Server cache clearing skipped - server not available:', serverError.message);
         }
 
         // 2. Clear all localStorage items
@@ -464,7 +468,7 @@ const SettingsModal = ({ onClose, onSave, apiKeysSet, setApiKeysSet }) => {
         databases.forEach(db => {
           window.indexedDB.deleteDatabase(db.name);
         });
-        // 5. Reload the page to apply changes
+        // 4. Reload the page to apply changes
         window.location.reload();
       } catch (error) {
         console.error('Error during factory reset:', error);
