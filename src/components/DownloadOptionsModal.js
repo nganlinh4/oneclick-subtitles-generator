@@ -381,7 +381,7 @@ Here are the subtitles:\n\n{subtitlesText}`)
           {/* Process button */}
           {processType && (
             <button className="action-button process-button" onClick={handleProcess}>
-              <span className="material-symbols-rounded" style={{ fontSize: '18px' }}>settings</span>
+              <span className="material-symbols-rounded" style={{ fontSize: '18px' }}>account_tree</span>
               {t('download.process', 'Process')}
             </button>
           )}

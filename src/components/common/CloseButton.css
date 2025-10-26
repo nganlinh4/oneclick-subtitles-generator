@@ -17,7 +17,8 @@
   opacity: 0.5;
 }
 
-.close-button-component svg {
+.close-button-component svg,
+.close-button-component .close-button-icon {
   transition: transform 0.2s ease;
 }
 
@@ -66,18 +67,43 @@
   transform: scale(0.95);
 }
 
-/* Modal variant - for modal headers */
+/* Modal variant - for modal headers with collapse button styling */
 .close-button-modal {
-  color: var(--md-on-surface-variant, #666);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 36px;
+  height: 36px;
+  border-radius: 50%;
+  background-color: var(--md-surface-3);
+  color: var(--md-on-surface);
+  border: none;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  box-shadow: var(--md-elevation-level1);
+  right: 1rem;
+  top: 1rem;
+  z-index: 10;
 }
 
 .close-button-modal:hover:not(:disabled) {
-  color: var(--md-on-surface, #000);
-  background-color: var(--md-surface-3, rgba(0, 0, 0, 0.05));
+  background-color: var(--md-surface-4);
+  box-shadow: var(--md-elevation-level2);
+  transform: translateY(-1px);
 }
 
 .close-button-modal:active:not(:disabled) {
-  transform: scale(0.95);
+  transform: translateY(-1px) scale(0.95);
+}
+
+.close-button-modal:hover .close-button-icon,
+.close-button-modal:active .close-button-icon {
+  transform: rotate(90deg);
+}
+
+.close-button-modal:focus-visible {
+  outline: 2px solid var(--md-primary, #007bff);
+  outline-offset: 2px;
 }
 
 /* Tab variant - for tab close buttons */
@@ -97,31 +123,56 @@
   transform: scale(0.95);
 }
 
-/* Settings variant - for settings modal with rotation animation */
+/* Settings variant - for settings modal with collapse button styling */
 .close-button-settings {
-  color: var(--text-secondary, #666);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 36px;
+  height: 36px;
+  border-radius: 50%;
+  background-color: var(--md-surface-3);
+  color: var(--md-on-surface);
+  border: none;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  box-shadow: var(--md-elevation-level1);
   position: absolute;
   right: 1rem;
   top: 1rem;
   z-index: 10;
-  background-color: var(--background-primary, #fff);
-  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
 }
 
 .close-button-settings:hover:not(:disabled) {
-  color: var(--text-primary, #000);
-  transform: rotate(90deg);
-  background-color: rgba(var(--md-surface-variant-rgb, 128, 128, 128), 0.3);
+  background-color: var(--md-surface-4);
+  box-shadow: var(--md-elevation-level2);
+  transform: translateY(-1px);
 }
 
 .close-button-settings:active:not(:disabled) {
-  transform: rotate(90deg) scale(0.95);
-  background-color: rgba(var(--md-surface-variant-rgb, 128, 128, 128), 0.5);
+  transform: translateY(-1px) scale(0.95);
+}
+
+.close-button-settings:hover .close-button-icon,
+.close-button-settings:active .close-button-icon {
+  transform: rotate(90deg);
 }
 
 .close-button-settings:focus-visible {
   outline: 2px solid var(--md-primary, #007bff);
   outline-offset: 2px;
+}
+
+/* Light mode adjustments - make buttons whiter */
+[data-theme="light"] .close-button-modal,
+[data-theme="light"] .close-button-settings {
+  background-color: rgba(255, 255, 255, 0.75);
+}
+
+[data-theme="light"] .close-button-modal:hover:not(:disabled),
+[data-theme="light"] .close-button-settings:hover:not(:disabled) {
+  background-color: rgba(255, 255, 255, 0.8);
+  transform: translateY(-1px);
 }
 
 /* Dark theme support */

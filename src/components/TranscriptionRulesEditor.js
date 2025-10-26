@@ -7,6 +7,8 @@ import { PROMPT_PRESETS, getUserPromptPresets } from '../services/geminiService'
 
 const TranscriptionRulesEditor = ({ isOpen, onClose, initialRules, onSave, onCancel, onChangePrompt }) => {
   const { t } = useTranslation();
+  const overlayRef = useRef(null);
+  const [isClosing, setIsClosing] = useState(false);
   const [rules, setRules] = useState(initialRules || {
     atmosphere: '',
     terminology: [],
@@ -16,7 +18,7 @@ const TranscriptionRulesEditor = ({ isOpen, onClose, initialRules, onSave, onCan
     relationships: [],
     additionalNotes: []
   });
-  
+
   // Countdown state for autoflow
   const [countdown, setCountdown] = useState(null);
   const [showCountdown, setShowCountdown] = useState(false);
@@ -188,7 +190,7 @@ const TranscriptionRulesEditor = ({ isOpen, onClose, initialRules, onSave, onCan
     setUserPromptPresets(getUserPromptPresets());
   }, [isOpen, initialRules]); // Re-run when modal opens or initial rules change
 
-  // Handle ESC key to close modal
+  // Handle ESC key to close modal and prevent background scrolling
   useEffect(() => {
     const handleKeyDown = (event) => {
       if (event.key === 'Escape' && isOpen) {
@@ -196,12 +198,33 @@ const TranscriptionRulesEditor = ({ isOpen, onClose, initialRules, onSave, onCan
       }
     };
 
+    const preventScroll = (e) => {
+      // Only prevent scroll if the event target is the overlay itself
+      if (e.target === overlayRef.current) {
+        e.preventDefault();
+      }
+    };
+
     if (isOpen) {
       document.addEventListener('keydown', handleKeyDown);
+      document.body.classList.add('modal-open');
+
+      // Add non-passive scroll event listeners to overlay
+      if (overlayRef.current) {
+        overlayRef.current.addEventListener('wheel', preventScroll, { passive: false });
+        overlayRef.current.addEventListener('touchmove', preventScroll, { passive: false });
+      }
     }
 
     return () => {
       document.removeEventListener('keydown', handleKeyDown);
+      document.body.classList.remove('modal-open');
+
+      // Remove scroll event listeners
+      if (overlayRef.current) {
+        overlayRef.current.removeEventListener('wheel', preventScroll);
+        overlayRef.current.removeEventListener('touchmove', preventScroll);
+      }
     };
   }, [isOpen]);
 
@@ -259,16 +282,24 @@ const TranscriptionRulesEditor = ({ isOpen, onClose, initialRules, onSave, onCan
 
   // Handle save
   const handleSave = () => {
-    onSave(rules);
-    onClose('save');
+    setIsClosing(true);
+    setTimeout(() => {
+      onSave(rules);
+      onClose('save');
+      setIsClosing(false);
+    }, 200); // Match the transition duration
   };
 
   // Handle cancel
   const handleCancel = () => {
-    if (onCancel) {
-      onCancel();
-    }
-    onClose('cancel');
+    setIsClosing(true);
+    setTimeout(() => {
+      if (onCancel) {
+        onCancel();
+      }
+      onClose('cancel');
+      setIsClosing(false);
+    }, 200); // Match the transition duration
   };
 
   // Handle changing the prompt preset
@@ -331,8 +362,12 @@ const TranscriptionRulesEditor = ({ isOpen, onClose, initialRules, onSave, onCan
   if (!isOpen) return null;
 
   return (
-    <div className="rules-editor-overlay" onClick={handleUserInteraction}>
-      <div className={`rules-editor-modal ${showCountdown ? 'with-countdown' : ''}`} onClick={(e) => {
+    <div
+      ref={overlayRef}
+      className={`rules-editor-overlay ${isClosing ? 'closing' : ''}`}
+      onClick={handleUserInteraction}
+    >
+      <div className={`rules-editor-modal ${showCountdown ? 'with-countdown' : ''} ${isClosing ? 'closing' : ''}`} onClick={(e) => {
         e.stopPropagation();
         handleUserInteraction();
       }}>
@@ -377,10 +412,7 @@ const TranscriptionRulesEditor = ({ isOpen, onClose, initialRules, onSave, onCan
         )}
         <div className="modal-header">
           <h2>{t('rulesEditor.title', 'Edit Transcription Rules')}</h2>
-          <CloseButton onClick={handleCancel} variant="modal" size="medium" />
-        </div>
-
-        <div className="prompt-preset-selector">
+          <div className="prompt-preset-selector">
           <div className="prompt-preset-label">
             {t('rulesEditor.currentPrompt', 'Current Prompt Preset')}:
           </div>
@@ -389,6 +421,7 @@ const TranscriptionRulesEditor = ({ isOpen, onClose, initialRules, onSave, onCan
               value={currentPresetId}
               onChange={(value) => handleChangePrompt({ target: { value } })}
               onClick={handleUserInteraction}
+              style={{ maxWidth: '215px' }}
               options={[
                 // Prompt from settings option with sliders/settings icon
                 { 
@@ -541,6 +574,8 @@ const TranscriptionRulesEditor = ({ isOpen, onClose, initialRules, onSave, onCan
               placeholder={t('settings.selectPreset', 'Select Preset')}
             />
           </div>
+          </div>
+          <CloseButton onClick={handleCancel} variant="modal" size="medium" />
         </div>
 
         <div className="modal-content">

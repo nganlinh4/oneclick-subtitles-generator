@@ -107,6 +107,30 @@ const VideoPreview = ({ currentTime, setCurrentTime, setDuration, videoSource, o
     };
   }, []);
 
+  // Listen for video volume changes from narration menu
+  useEffect(() => {
+    const handleVideoVolumeChange = (event) => {
+      if (event.detail && typeof event.detail.volume === 'number') {
+        const newVolume = event.detail.volume;
+        setVolume(newVolume);
+        if (videoRef.current) {
+          videoRef.current.volume = newVolume;
+          const newMuted = newVolume <= 0;
+          if (isMuted !== newMuted) {
+            videoRef.current.muted = newMuted;
+            setIsMuted(newMuted);
+          }
+        }
+      }
+    };
+
+    window.addEventListener('video-volume-change', handleVideoVolumeChange);
+
+    return () => {
+      window.removeEventListener('video-volume-change', handleVideoVolumeChange);
+    };
+  }, [isMuted]);
+
   // State for custom subtitle display
   const [currentSubtitleText, setCurrentSubtitleText] = useState('');
 

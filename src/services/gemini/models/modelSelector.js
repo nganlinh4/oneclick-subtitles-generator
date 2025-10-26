@@ -99,7 +99,9 @@ export const findSuitableAudioModel = async (apiKey) => {
     );
 
     if (potentialModels.length === 0) {
-      throw new Error('No suitable models found for audio generation');
+      // If no models have the required methods, fall back to the known working model
+      console.warn('No models found with required generation methods, using known working model');
+      return knownWorkingModel;
     }
 
     // Look for models with "live" in the name as they're more likely to support WebSocket

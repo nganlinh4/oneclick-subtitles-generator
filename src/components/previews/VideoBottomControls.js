@@ -139,6 +139,16 @@ const VideoBottomControls = ({
 
   return (
     <>
+      <style dangerouslySetInnerHTML={{
+        __html: `
+          .expanding-volume-slider-container .standard-slider-inactive-track .track {
+            background-color: rgba(0, 0, 0, 0.2);
+          }
+          .expanding-volume-slider-container .standard-slider-end-stop {
+            background-color: #FFFFFF;
+          }
+        `
+      }} />
       <div
         className="custom-video-controls"
         style={{

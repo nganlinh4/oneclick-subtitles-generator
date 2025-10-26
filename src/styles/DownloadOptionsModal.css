@@ -16,16 +16,15 @@
 /* Modal container */
 .download-options-modal {
   background-color: var(--md-surface-1);
-  border-radius: var(--md-shape-large);
+  border-radius: 32px;
   box-shadow: var(--md-elevation-level3);
   width: 90%;
-  max-width: 560px;
+  max-width: 580px;
   height: 600px; /* Fixed height to prevent layout shifts */
   max-height: 90vh;
   display: flex;
   flex-direction: column;
   animation: modal-appear 0.3s var(--md-easing-emphasized);
-  border: 1px solid var(--md-outline-variant);
   overflow: hidden; /* Ensure header and footer don't overflow border radius */
 }
 
@@ -111,7 +110,7 @@
 
 .option-group:has(.radio-group-horizontal),
 .option-group.horizontal-layout {
-  min-height: 60px; /* Ensure consistent height for horizontal radio groups */
+  min-height: 90px; /* Ensure consistent height for horizontal radio groups */
   transition: min-height 0.3s var(--md-easing-standard);
 }
 
@@ -150,6 +149,7 @@
   font-size: var(--md-title-small-size);
   font-weight: var(--md-title-small-weight);
   color: var(--md-on-surface);
+  padding: 8px 24px;
 }
 
 /* Radio styles moved to centralized radio system in components/buttons.css */
@@ -252,17 +252,6 @@
   background-color: var(--md-surface-2);
 }
 
-/* Modal footer */
-.modal-footer {
-  display: flex;
-  justify-content: flex-end;
-  gap: 12px;
-  padding: 16px 24px;
-  border-top: 1px solid var(--md-outline-variant);
-  background-color: var(--md-surface-2);
-  font-family: 'Open Sans', sans-serif;
-  border-radius: 0 0 var(--md-shape-large) var(--md-shape-large); /* Round bottom corners only */
-}
 
 /* Buttons */
 .cancel-button {

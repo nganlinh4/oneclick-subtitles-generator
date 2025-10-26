@@ -233,8 +233,7 @@
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding: 1.25rem 1.75rem;
-  background-color: var(--md-surface-1);
+  padding: 16px 16px 16px 24px;
 }
 
 .model-selection-modal-header h2 {
@@ -497,9 +496,6 @@
     margin: 1rem;
   }
 
-  .model-selection-modal-header {
-    padding: 1rem 1.25rem;
-  }
 
   .model-selection-modal-header h2 {
     font-size: 1.125rem;
@@ -515,7 +511,7 @@
   }
 
   .model-selection-modal .model-option-card {
-    min-height: 56px;
+    min-height: 50px;
     padding: 0.75rem;
     gap: 0.5rem;
   }
@@ -536,9 +532,6 @@
     margin: 0;
   }
 
-  .model-selection-modal-header {
-    padding: 0.75rem 1rem;
-  }
 
   .model-selection-modal-content {
     padding: 0.75rem 1rem;

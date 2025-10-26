@@ -803,10 +803,8 @@ const VolumeVisualizer = ({ audioSource, duration, visibleTimeRange, height = 26
             gap: '6px',
             fontSize: '12px',
             color: 'var(--md-on-surface)',
-            backgroundColor: 'var(--md-surface)',
             padding: '4px 8px',
             borderRadius: '4px',
-            boxShadow: '0 2px 4px rgba(0,0,0,0.1)',
             zIndex: 10,
             pointerEvents: 'none'
           }}

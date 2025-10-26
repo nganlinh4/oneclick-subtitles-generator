@@ -68,5 +68,4 @@
   z-index: 1;
   border-bottom-left-radius: var(--modal-border-radius);
   border-bottom-right-radius: var(--modal-border-radius);
-  background-color: var(--background-primary);
 }

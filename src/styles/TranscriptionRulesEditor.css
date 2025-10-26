@@ -9,7 +9,12 @@
   align-items: center;
   justify-content: center;
   z-index: 1200;
-  animation: fadeIn 0.2s ease;
+  backdrop-filter: blur(3px);
+  transition: opacity 0.2s var(--md-easing-emphasized-accelerate);
+}
+
+.rules-editor-overlay.closing {
+  opacity: 0;
 }
 
 .rules-editor-modal {
@@ -21,21 +26,24 @@
   display: flex;
   flex-direction: column;
   box-shadow: var(--md-elevation-level3);
-  animation: slideUp 0.3s ease;
   overflow: hidden;
+  animation: modal-appear var(--md-duration-medium3) var(--md-easing-emphasized-decelerate);
+  transition: background-color var(--transition-speed), transform var(--md-duration-medium3) var(--md-easing-emphasized-accelerate), opacity var(--md-duration-medium3) var(--md-easing-emphasized-accelerate);
+  position: relative;
+  transform: translateZ(0);
+  will-change: transform, opacity;
+  contain: layout;
+}
 
-  /* Firefox scrollbar styling */
-  scrollbar-width: thin;
-  scrollbar-color: var(--md-outline-variant) var(--md-surface-container);
+.rules-editor-modal.closing {
+  transform: scale(0.95) translateY(20px);
+  opacity: 0;
 }
 
 /* Prompt preset selector */
 .prompt-preset-selector {
   display: flex;
   align-items: center;
-  padding: 12px 24px;
-  background-color: var(--md-surface-container-high);
-  border-bottom: 1px solid var(--md-surface-variant);
 }
 
 .prompt-preset-label {
@@ -160,7 +168,6 @@
 /* Dark mode specific scrollbar styling */
 [data-theme="dark"] .rules-editor-modal .modal-content {
   scrollbar-color: var(--md-outline) var(--md-surface-container-highest);
-  background-color: var(--md-surface-container-highest);
 }
 
 [data-theme="dark"] .rules-editor-modal .modal-content::-webkit-scrollbar-track {
@@ -344,16 +351,6 @@
 .add-item-button:hover {
   background-color: var(--md-primary-container);
   border-color: var(--md-primary);
-}
-
-.modal-footer {
-  display: flex;
-  justify-content: flex-end;
-  gap: 12px;
-  padding: 16px 24px;
-  border-top: 1px solid var(--md-surface-variant);
-  background-color: var(--md-surface-container);
-  font-family: 'Open Sans', sans-serif;
 }
 
 .cancel-button {
@@ -772,6 +769,16 @@
     transform: translate(-50%, -50%) scale(2.2);
     opacity: 0;
   }
+}
+
+/* Prevent background scrolling when modal is open */
+body.modal-open {
+  overflow: hidden;
+}
+
+/* Hide floating scrollbar when modal is open */
+body.modal-open .floating-scrollbar-container {
+  display: none !important;
 }
 
 /* Animations */

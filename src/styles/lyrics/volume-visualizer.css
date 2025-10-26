@@ -27,7 +27,6 @@
   display: flex;
   align-items: center;
   justify-content: center;
-  background-color: rgba(var(--md-surface-rgb), 0.7);
   color: var(--md-on-surface);
   font-size: 12px;
   font-weight: 500;

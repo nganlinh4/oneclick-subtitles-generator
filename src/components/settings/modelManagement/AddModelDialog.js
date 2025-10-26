@@ -119,7 +119,7 @@ const AddModelDialog = ({
             boxSizing: 'border-box'
           }}
           placeholder={form.sourceType === 'huggingface'
-            ? "facebook/fastspeech2-en-ljspeech"
+            ? "https://huggingface.co/erax-ai/EraX-Smile-UnixSex-F5/blob/main/models/model_42000.safetensors"
             : "https://example.com/model.bin"}
         />
         <div className="helper-text">
@@ -148,7 +148,7 @@ const AddModelDialog = ({
             boxSizing: 'border-box'
           }}
           placeholder={form.sourceType === 'huggingface'
-            ? "facebook/fastspeech2-en-ljspeech/vocab.json"
+            ? "https://huggingface.co/erax-ai/EraX-Smile-UnixSex-F5/blob/main/models/vocab.txt"
             : "https://example.com/vocab.json"}
         />
         <div className="helper-text">

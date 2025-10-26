@@ -42,15 +42,6 @@
   }
 }
 
-.settings-header {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  padding: 1rem 1.25rem;
-  border-bottom: 1px solid var(--md-outline-variant);
-  background-color: var(--md-surface-1);
-  flex-shrink: 0;
-}
 
 .settings-header-actions {
   display: flex;

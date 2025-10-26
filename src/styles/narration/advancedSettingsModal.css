@@ -35,9 +35,7 @@
   display: flex;
   justify-content: space-between;
   align-items: center;
-  padding: 1.25rem 1.75rem;
-  border-bottom: 1px solid rgba(var(--md-outline-variant-rgb), 0.5);
-  background-color: var(--md-surface-1);
+  padding: 16px 16px 16px 24px;
 }
 
 .advanced-settings-modal-header h3 {
@@ -104,9 +102,7 @@
 .advanced-settings-modal-footer {
   display: flex;
   justify-content: flex-end;
-  padding: 1.25rem 1.75rem;
-  border-top: 1px solid rgba(var(--md-outline-variant-rgb), 0.5);
-  background-color: var(--md-surface-1);
+  padding: 16px 16px 16px 24px;
   gap: 0.75rem;
 }
 
@@ -166,13 +162,5 @@
 
   .advanced-settings-modal-content .advanced-settings {
     padding: 0.5rem;
-  }
-
-  .advanced-settings-modal-header {
-    padding: 0.5rem 0.75rem;
-  }
-
-  .advanced-settings-modal-footer {
-    padding: 0.5rem 0.75rem;
   }
 }

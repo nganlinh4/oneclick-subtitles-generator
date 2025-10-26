@@ -36,10 +36,8 @@
   display: flex;
   justify-content: space-between;
   align-items: center;
-  padding: 1.25rem 1.75rem;
-  border-bottom: 1px solid rgba(var(--md-outline-variant-rgb), 0.5);
+  padding: 16px 16px 16px 24px;
   background-color: #00000000;
-  box-shadow: var(--md-elevation-level1);
 }
 .header-content {
   display: contents;
@@ -616,12 +614,6 @@
   outline: none !important;
 }
 
-/* Modal footer styles */
-.modal-footer {
-  padding: 1rem 1.75rem 1.25rem;
-  border-top: 1px solid rgba(var(--md-outline-variant-rgb), 0.5);
-  background-color: var(--md-surface-1);
-}
 
 .footer-content {
   display: contents;
@@ -773,10 +765,6 @@
     padding: 1rem;
   }
 
-  .modal-footer {
-    padding: 1rem 1.25rem;
-    flex-direction: column;
-  }
 
   .cancel-btn,
   .process-btn {

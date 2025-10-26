@@ -174,7 +174,9 @@ const NarrationMenu = ({
               <SliderWithValue
                 value={videoVolume}
                 onChange={(value) => {
-                  setVideoVolume(parseFloat(value));
+                  const newVolume = parseFloat(value);
+                  setVideoVolume(newVolume);
+                  window.dispatchEvent(new CustomEvent('video-volume-change', { detail: { volume: newVolume } }));
                 }}
                 min={0}
                 max={1}

@@ -125,7 +125,7 @@ const AdvancedSettingsModal = ({
             }}
           >
             <span className="material-symbols-rounded" style={{ fontSize: 16, display: 'inline-block' }}>
-              open_in_new
+              refresh
             </span>
             {t('common.resetToDefaults', 'Reset to Defaults')}
           </button>

@@ -178,14 +178,6 @@
   font-weight: 600;
 }
 
-/* Modal footer */
-.modal-footer {
-  padding: 1.25rem 1.75rem;
-  display: flex;
-  justify-content: flex-end;
-  border-top: 1px solid rgba(var(--md-outline-variant-rgb), 0.5);
-  background-color: var(--md-surface-2);
-}
 
 .close-button-primary {
   padding: 0.75rem 1.5rem;
@@ -244,9 +236,6 @@
     padding: 1rem;
   }
 
-  .modal-footer {
-    padding: 0.75rem 1rem;
-  }
 
   .close-button-primary {
     padding: 0.5rem 1rem;

@@ -89,41 +89,6 @@
   transition: border-radius var(--md-duration-medium2) var(--md-easing-standard);
 }
 
-/* Collapse button - matching background-generator */
-.collapse-button {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  width: 36px;
-  height: 36px;
-  border-radius: 50%;
-  background-color: var(--md-surface-3);
-  color: var(--md-on-surface);
-  border: none;
-  cursor: pointer;
-  transition: all 0.2s ease;
-  box-shadow: var(--md-elevation-level1);
-}
-
-.collapse-button:hover {
-  background-color: var(--md-surface-4);
-  box-shadow: var(--md-elevation-level2);
-  transform: translateY(-1px);
-}
-
-.collapse-button svg {
-  width: 20px;
-  height: 20px;
-  stroke-width: 2;
-  transition: transform var(--md-duration-medium3) var(--md-easing-emphasized);
-  transform: rotate(180deg);
-}
-
-.video-rendering-section.collapsed .collapse-button svg,
-.music-generator-section.collapsed .collapse-button svg {
-  transform: rotate(0deg);
-}
-
 /* Collapsed content */
 .video-rendering-collapsed-content,
 .music-generator-collapsed-content {

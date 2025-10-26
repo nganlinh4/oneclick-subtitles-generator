@@ -1,5 +1,5 @@
 {
-  "title": "Chia nhỏ subtitles",
+  "title": "Chia nhỏ phụ đề",
   "sliderTitle": "Số chữ maximum của mỗi sub",
   "description": "Chia nhỏ sub thông minh (các sub đã nhỏ hơn giới hạn sẽ không bị ảnh hưởng)",
   "descriptionRange": "Chia nhỏ sub thông minh trong vùng đã chọn (các sub đã nhỏ hơn giới hạn sẽ không bị ảnh hưởng)",

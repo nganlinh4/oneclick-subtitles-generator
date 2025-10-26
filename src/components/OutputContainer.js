@@ -47,6 +47,7 @@ const OutputContainer = ({
   const [translatedSubtitles, setTranslatedSubtitles] = useState(null);
   const [seekTime, setSeekTime] = useState(null); // Track when seeking happens
   const [referenceAudio, setReferenceAudio] = useState(null); // Reference audio for narration
+  const [renderedSections, setRenderedSections] = useState({ preview: false, translation: false, narration: false }); // Track staggered rendering
 
   const handleLyricClick = (time) => {
     setCurrentTabIndex(time);
@@ -213,6 +214,24 @@ const OutputContainer = ({
     setEditedLyrics(null);
   }, [subtitlesData]);
 
+  // Staggered rendering to ease resource burden during expansion
+  const [previousCondition, setPreviousCondition] = useState(false);
+  useEffect(() => {
+    const currentCondition = (subtitlesData || uploadedFile || isUploading || status?.message?.includes('select a segment'));
+    if (currentCondition && !previousCondition) {
+      // Condition just became true, wait for container animation (500ms) then start staggered rendering
+      setTimeout(() => {
+        setRenderedSections({ preview: true, translation: false, narration: false });
+        setTimeout(() => setRenderedSections(prev => ({ ...prev, translation: true })), 150);
+        setTimeout(() => setRenderedSections(prev => ({ ...prev, narration: true })), 300);
+      }, 500);
+    } else if (!currentCondition && previousCondition) {
+      // Condition became false, reset
+      setRenderedSections({ preview: false, translation: false, narration: false });
+    }
+    setPreviousCondition(currentCondition);
+  }, [subtitlesData, uploadedFile, isUploading, status?.message, previousCondition]);
+
   // Background Image Generator functionality moved back to AppLayout
 
   // Don't render anything if there's no content to show
@@ -269,7 +288,8 @@ const OutputContainer = ({
 
       {(subtitlesData || uploadedFile || isUploading || status?.message?.includes('select a segment')) && (
         <>
-          <div className="preview-section">
+          {renderedSections.preview && (
+            <div className="preview-section">
             {/* Check if we should hide sections for URL + SRT without downloaded video */}
             {(() => {
               // Show sections if:
@@ -322,24 +342,29 @@ const OutputContainer = ({
             />
 
             {/* Download buttons moved to LyricsDisplay component */}
-          </div>
+            </div>
+          )}
 
           {/* Translation Section */}
-          <TranslationSection
-            subtitles={editedLyrics || subtitlesData}
-            videoTitle={selectedVideo?.title || uploadedFile?.name?.replace(/\.[^/.]+$/, '') || 'subtitles'}
-            onTranslationComplete={setTranslatedSubtitles}
-          />
+          {renderedSections.translation && (
+            <TranslationSection
+              subtitles={editedLyrics || subtitlesData}
+              videoTitle={selectedVideo?.title || uploadedFile?.name?.replace(/\.[^/.]+$/, '') || 'subtitles'}
+              onTranslationComplete={setTranslatedSubtitles}
+            />
+          )}
 
           {/* Unified Narration Section - Now separate from Translation */}
-          <UnifiedNarrationSection
-            subtitles={translatedSubtitles || editedLyrics || subtitlesData}
-            originalSubtitles={editedLyrics || subtitlesData}
-            translatedSubtitles={translatedSubtitles}
-            referenceAudio={referenceAudio}
-            videoPath={actualVideoUrl}
-            onReferenceAudioChange={setReferenceAudio}
-          />
+          {renderedSections.narration && (
+            <UnifiedNarrationSection
+              subtitles={translatedSubtitles || editedLyrics || subtitlesData}
+              originalSubtitles={editedLyrics || subtitlesData}
+              translatedSubtitles={translatedSubtitles}
+              referenceAudio={referenceAudio}
+              videoPath={actualVideoUrl}
+              onReferenceAudioChange={setReferenceAudio}
+            />
+          )}
 
           {/* Background Image Generator moved back to AppLayout */}
         </>

@@ -3,7 +3,7 @@
 .output-container {
   background-color: var(--background-secondary);
   border-radius: 32px;
-  box-shadow: 0 2px 8px var(--shadow-color);
+  box-shadow: var(--md-elevation-level2);
   padding: 1.5rem;
   margin-top: 0; /* No margin-top as spacing is handled by parent container */
   transition: background-color var(--transition-speed), box-shadow var(--transition-speed);

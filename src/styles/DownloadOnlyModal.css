@@ -17,7 +17,7 @@
 
 .download-only-modal {
   background-color: var(--md-surface-1);
-  border-radius: 24px;
+  border-radius: 32px;
   box-shadow: var(--md-elevation-level3);
   max-width: 800px;
   width: 90%;
@@ -39,10 +39,9 @@
   display: flex;
   justify-content: space-between;
   align-items: center;
-  padding: 20px 24px;
+  padding: 16px 16px 16px 24px;
   background-color: var(--md-surface-2);
   color: var(--md-on-surface);
-  box-shadow: var(--md-elevation-level1);
   position: relative;
   z-index: 1;
 }
@@ -69,12 +68,16 @@
   padding: 4px 8px;
   background-color: var(--md-primary-container);
   color: var(--md-on-primary-container);
-  border-radius: 12px;
+  border-radius: 16px;
   font-size: 0.75rem;
   font-weight: 500;
   cursor: help;
   transition: background-color 0.2s ease;
   white-space: nowrap;
+}
+
+.header-badge .badge-icon {
+  font-size: small;
 }
 
 .header-badge:hover {
@@ -104,11 +107,6 @@
   color: white;
 }
 
-.header-badge .badge-icon {
-  width: 12px;
-  height: 12px;
-  flex-shrink: 0;
-}
 
 .header-badge .badge-text {
   font-size: 0.75rem;

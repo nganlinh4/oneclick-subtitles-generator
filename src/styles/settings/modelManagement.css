@@ -667,6 +667,7 @@ html[data-theme="dark"] .language-chip:not(.en):not(.zh):not(.fr):not(.es):not(.
   font-family: var(--font-primary);
   transition: all 0.2s ease;
   box-shadow: var(--md-elevation-level1);
+  font-stretch: condensed;
 }
 
 .form-field input:hover:not(:focus),

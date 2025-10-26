@@ -319,8 +319,14 @@ router.post('/download-best-subtitle', async (req, res) => {
       content: result.content
     });
   } catch (error) {
-    console.error('[download-best-subtitle] Error:', error);
-    res.status(500).json({ success: false, error: error.message });
+    let conciseError = 'Failed to download subtitles';
+    if (error.message.includes('Fresh cookies') || error.message.includes('cookies')) {
+      conciseError = 'Authentication required - please try with cookies enabled';
+      console.error('[download-best-subtitle] Authentication required for subtitle download');
+    } else {
+      console.error('[download-best-subtitle] Error:', error);
+    }
+    res.status(500).json({ success: false, error: conciseError });
   }
 });
 

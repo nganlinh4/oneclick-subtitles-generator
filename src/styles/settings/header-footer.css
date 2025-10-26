@@ -5,7 +5,6 @@
   justify-content: flex-start;
   align-items: center;
   padding: 0.5rem 3.5rem 0.5rem 2.5rem;
-  border-bottom: 1px solid var(--border-color);
   transition: border-color var(--transition-speed);
   position: relative; /* For absolute positioning of close button */
 }
@@ -24,8 +23,7 @@
 .settings-footer {
   display: flex;
   justify-content: space-between;
-  padding: 1rem 1.5rem;
-  border-top: 1px solid var(--border-color);
+  padding: 16px;
   transition: border-color var(--transition-speed);
   /* Make the footer sticky */
   position: sticky;
@@ -123,3 +121,4 @@
     font-size: 14px;
   }
 }
+

@@ -254,9 +254,7 @@
   display: flex;
   justify-content: flex-end;
   gap: 12px;
-  padding: 16px 24px;
-  border-top: 1px solid var(--md-surface-variant);
-  background-color: var(--md-surface-container);
+  padding: 16px 16px 16px 24px;
 }
 
 .use-default-button, .edit-rules-button, .back-button {
