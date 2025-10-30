@@ -105,11 +105,13 @@ export class WeightKnob extends LitElement {
 
   connectedCallback(): void {
     super.connectedCallback();
+    this.addEventListener('wheel', this.handleWheel, { passive: true });
   }
 
   disconnectedCallback(): void {
     // Ensure we always cleanup listeners if the element is removed
     this.teardownDragListeners();
+    this.removeEventListener('wheel', this.handleWheel);
     super.disconnectedCallback();
   }
 
@@ -239,8 +241,7 @@ export class WeightKnob extends LitElement {
       <!-- SVG elements that move, separated to limit redraws -->
       <svg
         viewBox="0 0 80 80"
-        @pointerdown=${this.handlePointerDown}
-        @wheel=${this.handleWheel}>
+        @pointerdown=${this.handlePointerDown}>
         <g style=${dotStyle}>
           <!-- Enhanced 3D indicator with depth -->
           <g filter="url(#indicatorShadow)">

@@ -122,17 +122,6 @@
   background-color: var(--md-surface-1);
 }
 
-.video-info {
-  background-color: var(--md-surface-2);
-  border-radius: 16px;
-  padding: 16px;
-  margin-bottom: 20px;
-  box-shadow: var(--md-elevation-level1);
-  transition: all 0.2s ease;
-  display: grid;
-  grid-template-columns: 1fr 1fr 1fr;
-  gap: 16px;
-}
 
 .info-row {
   display: flex;

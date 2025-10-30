@@ -54,7 +54,7 @@
 
 /* Virtualized container */
 .translation-preview-virtualized {
-  border-radius: 6px;
+  border-radius: 16px;
   overflow: hidden;
   border: 1px solid var(--border-color);
   background-color: var(--md-surface-1);
@@ -431,9 +431,8 @@
   word-wrap: break-word;
   overflow-wrap: break-word;
   white-space: pre-wrap;
-  font-size: 0.95rem;
   opacity: 0.95;
-  font-weight: 400;
+  font-weight: 500;
   margin: 0;
   padding: 0;
   transition: opacity 0.2s ease;

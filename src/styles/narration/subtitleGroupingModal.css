@@ -87,6 +87,7 @@
 /* Modal content */
 .subtitle-grouping-modal .modal-content {
   padding: 1.5rem;
+  padding-top: 0;
   overflow-y: auto;
   flex: 1;
   scrollbar-width: thin;
@@ -121,11 +122,38 @@
 
 /* Table container */
 .table-container {
-  overflow-x: auto;
+  overflow: auto;
   max-height: 60vh;
   border-radius: 12px;
   border: 1px solid var(--md-outline-variant);
   box-shadow: var(--md-elevation-level1);
+  scrollbar-width: thin;
+  scrollbar-color: rgba(var(--md-primary-rgb), 0.4) rgba(var(--md-outline-variant-rgb), 0.2);
+  padding-right: 2px; /* Prevent scrollbar from overlapping content */
+}
+
+.table-container::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+
+.table-container::-webkit-scrollbar-track {
+  background: rgba(var(--md-outline-variant-rgb), 0.2);
+  border-radius: 10px;
+}
+
+.table-container::-webkit-scrollbar-thumb {
+  background: rgba(var(--md-primary-rgb), 0.4);
+  border-radius: 10px;
+  transition: background 0.2s ease;
+}
+
+.table-container::-webkit-scrollbar-thumb:hover {
+  background: rgba(var(--md-primary-rgb), 0.6);
+}
+
+.table-container::-webkit-scrollbar-corner {
+  background: rgba(var(--md-outline-variant-rgb), 0.2);
 }
 
 /* Table styles */
@@ -133,6 +161,7 @@
   width: 100%;
   border-collapse: collapse;
   font-size: 0.9rem;
+  table-layout: fixed;
 }
 
 .subtitle-grouping-table th {
@@ -143,14 +172,14 @@
   border-bottom: 2px solid var(--md-outline-variant);
   position: sticky;
   top: 0;
-  z-index: 1;
+  z-index: 10;
   color: var(--md-on-surface);
 }
 
 .subtitle-grouping-table td {
-  padding: 10px;
+  padding: 5px;
   border-bottom: 1px solid var(--md-outline-variant);
-  vertical-align: top;
+  vertical-align: middle;
   color: var(--md-on-surface);
 }
 
@@ -163,14 +192,16 @@
 }
 
 .subtitle-grouping-table .grouped-subtitle {
-  background-color: rgba(var(--md-primary-rgb), 0.05);
+  background-color: rgba(var(--md-primary-rgb), 0.08);
+  font-weight: 600;
+  border-radius: 4px;
 }
 
-.subtitle-grouping-table .time-cell {
-  white-space: nowrap;
+.subtitle-grouping-table td.time-cell {
   font-family: monospace;
   font-size: 0.85rem;
   color: var(--md-on-surface-variant);
+  line-height: 1.2;
 }
 
 .subtitle-grouping-table .id-cell {

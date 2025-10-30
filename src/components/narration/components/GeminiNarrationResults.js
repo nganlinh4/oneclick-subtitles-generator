@@ -11,6 +11,7 @@ import { VariableSizeList as List } from 'react-window';
 import { getAudioUrl } from '../../../services/narrationService';
 import { SERVER_URL } from '../../../config';
 import { formatTime } from '../../../utils/timeFormatter';
+import PlayPauseMorphType4 from '../../common/PlayPauseMorphType4';
 
 // Constants for localStorage keys
 const NARRATION_CACHE_KEY = 'gemini_narration_cache';
@@ -153,11 +154,7 @@ const GeminiResultRow = ({ index, style, data }) => {
               onClick={() => playAudio(item)}
               disabled={!!data.itemProcessing[subtitle_id]?.inProgress}
             >
-              {currentlyPlaying === subtitle_id && isPlaying ? (
-                <span className="material-symbols-rounded" style={{ fontSize: '14px' }}>pause</span>
-              ) : (
-                <span className="material-symbols-rounded" style={{ fontSize: '14px' }}>play_arrow</span>
-              )}
+              <PlayPauseMorphType4 playing={currentlyPlaying === subtitle_id && isPlaying} size={14} color="currentColor" config={{ rotateDegrees: 0 }} />
             </button>
             <button
               className="pill-button secondary"
@@ -1026,7 +1023,7 @@ const GeminiNarrationResults = ({
               ? t('narration.noSourceSelectedError', 'Please select a subtitle source (Original or Translated)')
               : t('narration.generateAllPendingTooltip', 'Generate all pending narrations')}
           >
-            <span className="material-symbols-rounded" style={{ fontSize: '14px' }}>play_arrow</span>
+            <PlayPauseMorphType4 playing={false} size={14} color="currentColor" config={{ rotateDegrees: 0 }} />
             {t('narration.generateAllPending', 'Generate All Pending')}
           </button>
         )}

@@ -147,7 +147,7 @@
 .unified-url-input .selected-video-preview {
   display: flex;
   background-color: var(--background-tertiary);
-  border-radius: 12px;
+  border-radius: 24px;
   padding: 1rem;
   margin-top: 1rem;
   margin-bottom: 1rem;

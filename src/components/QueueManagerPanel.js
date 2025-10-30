@@ -729,7 +729,7 @@ const QueueManagerPanel = ({
                   }
                 }}
                 controls
-                style={{ width: '100%', height: 'auto', borderRadius: 12, maxHeight: '75vh' }}
+                style={{ width: '100%', height: 'auto', borderRadius: 24, maxHeight: '75vh' }}
               />
             </div>
           </div>

@@ -586,6 +586,8 @@ const UnifiedNarrationSection = ({
             groupingIntensity={groupingIntensity}
             setGroupingIntensity={setGroupingIntensity}
             narrationMethod={narrationMethod}
+            selectedModel={selectedNarrationModel}
+            setSelectedModel={setSelectedNarrationModel}
             onLanguageDetected={(source, language, modelId, modelError) => {
 
 
@@ -725,6 +727,8 @@ const UnifiedNarrationSection = ({
             narrationMethod={narrationMethod}
             chatterboxLanguage={chatterboxLanguage}
             setChatterboxLanguage={setChatterboxLanguage}
+            selectedModel={null}
+            setSelectedModel={() => {}}
             onLanguageDetected={(source, language) => {
               if (source === 'original') {
                 setOriginalLanguage(language);
@@ -819,6 +823,8 @@ const UnifiedNarrationSection = ({
             setGroupingIntensity={setGroupingIntensity}
             onGroupedSubtitlesGenerated={setGroupedSubtitles}
             narrationMethod={narrationMethod}
+            selectedModel={null}
+            setSelectedModel={() => {}}
             onLanguageDetected={(source, language) => {
               if (source === 'original') {
                 setOriginalLanguage(language);
@@ -916,6 +922,8 @@ const UnifiedNarrationSection = ({
             setGroupingIntensity={setGroupingIntensity}
             onGroupedSubtitlesGenerated={setGroupedSubtitles}
             narrationMethod={narrationMethod}
+            selectedModel={null}
+            setSelectedModel={() => {}}
             onLanguageDetected={(source, language) => {
               if (source === 'original') {
                 setOriginalLanguage(language);

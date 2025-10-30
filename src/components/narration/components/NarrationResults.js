@@ -4,6 +4,7 @@ import SliderWithValue from '../../common/SliderWithValue';
 import StandardSlider from '../../common/StandardSlider';
 import LoadingIndicator from '../../common/LoadingIndicator';
 import HelpIcon from '../../common/HelpIcon';
+import PlayPauseMorphType4 from '../../common/PlayPauseMorphType4';
 import '../../../utils/functionalScrollbar';
 import { VariableSizeList as List } from 'react-window';
 import { SERVER_URL } from '../../../config';
@@ -199,11 +200,7 @@ const ResultRow = ({ index, style, data }) => {
               onClick={() => playAudio(result)}
               disabled={!!data.itemProcessing[subtitle_id]?.inProgress}
             >
-              {currentAudio && currentAudio.id === subtitle_id && isPlaying ? (
-                <span className="material-symbols-rounded" style={{ fontSize: '14px' }}>pause</span>
-              ) : (
-                <span className="material-symbols-rounded" style={{ fontSize: '14px' }}>play_arrow</span>
-              )}
+              <PlayPauseMorphType4 playing={currentAudio && currentAudio.id === subtitle_id && isPlaying} size={14} color="currentColor" config={{ rotateDegrees: 0 }} />
             </button>
             <button
               className="pill-button secondary"
@@ -364,7 +361,7 @@ const NarrationResults = ({
 
       // Create results for all subtitles
       const results = trueSubtitles.map((subtitle, index) => {
-        const subtitleId = subtitle.id ?? subtitle.subtitle_id ?? (index + 1);
+        const subtitleId = subtitle.id ?? subtitle.subtitle_id ?? index;
         const existingResult = generationResults?.find(r => r.subtitle_id === subtitleId);
 
         if (existingResult) {

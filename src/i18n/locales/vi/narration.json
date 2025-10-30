@@ -182,7 +182,7 @@
   "id": "ID",
   "time": "Thời gian",
   "groupId": "Nhóm",
-  "groupTime": "Thời gian nhóm",
+  "groupTime": "Th.gian nhóm",
   "groupedSubtitles": "Phụ đề đã nhóm",
   "subtitleGroupingTitle": "So sánh nhóm phụ đề",
   "subtitleGroupingExplanation": "Bảng này hiển thị cách phụ đề gốc đã được nhóm thành các câu hoàn chỉnh hơn để thuyết minh tốt hơn. Mỗi hàng đại diện cho một phụ đề gốc, và cột đã nhóm cho thấy cách chúng được kết hợp.",

@@ -38,6 +38,11 @@ import HelpIcon from '../../common/HelpIcon';
  * @param {Array} props.groupedSubtitles - Grouped subtitles
  * @param {string} props.groupingIntensity - Intensity level for subtitle grouping
  * @param {Function} props.setGroupingIntensity - Function to set grouping intensity
+ * @param {string} props.narrationMethod - Current narration method
+ * @param {string} props.chatterboxLanguage - Selected language for Chatterbox
+ * @param {Function} props.setChatterboxLanguage - Function to set Chatterbox language
+ * @param {string} props.selectedModel - Selected narration model
+ * @param {Function} props.setSelectedModel - Function to set selected model
  * @returns {JSX.Element} - Rendered component
  */
 const SubtitleSourceSelection = ({
@@ -59,7 +64,9 @@ const SubtitleSourceSelection = ({
   setGroupingIntensity = () => {},
   narrationMethod = 'f5tts',
   chatterboxLanguage = 'en',
-  setChatterboxLanguage = () => {}
+  setChatterboxLanguage = () => {},
+  selectedModel = null,
+  setSelectedModel = () => {}
 }) => {
   const { t } = useTranslation();
   const hasTranslatedSubtitles = translatedSubtitles && translatedSubtitles.length > 0;
@@ -221,15 +228,6 @@ const SubtitleSourceSelection = ({
   // State for language detection
   const [isDetectingOriginal, setIsDetectingOriginal] = useState(false);
   const [isDetectingTranslated, setIsDetectingTranslated] = useState(false);
-  const [selectedModel, setSelectedModel] = useState(() => {
-    // Load last used narration model from localStorage
-    try {
-      return localStorage.getItem('last_used_narration_model') || null;
-    } catch (error) {
-      console.error('Error loading last used narration model:', error);
-      return null;
-    }
-  });
   const [modelError, setModelError] = useState(null);
   const [isCheckingModel, setIsCheckingModel] = useState(false);
   const [availableModels, setAvailableModels] = useState([]);
@@ -454,13 +452,6 @@ const SubtitleSourceSelection = ({
 
     // Otherwise: Set the selected model (F5/Gemini)
     setSelectedModel(modelId);
-
-    // Save the selected model to localStorage for future sessions
-    try {
-      localStorage.setItem('last_used_narration_model', modelId);
-    } catch (error) {
-      console.error('Error saving last used narration model:', error);
-    }
 
     // Mark that user has manually selected a model
     setUserHasManuallySelectedModel(true);

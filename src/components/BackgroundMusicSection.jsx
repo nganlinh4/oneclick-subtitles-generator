@@ -8,6 +8,7 @@ import { getCurrentKey } from '../services/gemini/keyManager';
 import CustomDropdown from './common/CustomDropdown';
 import MaterialSwitch from './common/MaterialSwitch';
 import HelpIcon from './common/HelpIcon.jsx';
+import AudioPlayer from './common/AudioPlayer';
 import { formatTime } from '../utils/timeFormatter';
 import { trimSilenceFromBlob } from '../utils/audioTrim';
 
@@ -451,16 +452,7 @@ const BackgroundMusicSection = () => {
               {/* Inline audio preview when available (match narration styles) */}
               {recordingUrl && (
                 <div className="audio-preview" style={{ display: 'inline-flex', alignItems: 'center', gap: 8 }}>
-                  <div className="audio-player-container controls">
-                    <audio
-                      controls
-                      src={recordingUrl}
-                      className="audio-player"
-                      tabIndex="-1"
-                    >
-                      {t('narration.audioNotSupported', 'Your browser does not support the audio element.')}
-                    </audio>
-                  </div>
+                  <AudioPlayer audioSrc={recordingUrl} referenceAudio={{ filename: 'background_music.wav' }} height={18} style={{ width: '-webkit-fill-available' }} />
                   <button
                     className="pill-button error clear-button"
                     onClick={clearReferenceAudio}
@@ -501,10 +493,10 @@ const BackgroundMusicSection = () => {
           </p>
         </div>
       ) : (
-        <div className="music-generator-content" style={{ gap: 0 }}>
+        <div className="music-generator-content">
           <div
             ref={panelRef}
-            style={{ position: 'relative', width: '100%', height: panelHeight, background: '#111', borderRadius: 6, overflow: 'hidden' }}
+            style={{ position: 'relative', width: '100%', height: panelHeight, background: '#111', overflow: 'hidden' }}
          >
             <iframe
               ref={iframeRef}

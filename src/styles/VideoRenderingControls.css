@@ -8,7 +8,7 @@
   flex-direction: column;
   gap: 0.75rem;
   min-width: 0; /* Allow grid items to shrink below their content size */
-  overflow: hidden; /* Prevent content from expanding the container */
+  overflow: visible; /* Allow glow effects to break through */
 }
 
 /* Headings inside compact sections */
@@ -252,6 +252,8 @@
 
 .narration-selection-compact .refresh-icon-button svg { width: 16px; height: 16px; }
 
+
+
 .item-count { margin-left: 8px; font-size: 0.85rem; color: var(--text-secondary); font-weight: 400; }
 
 /* Volume controls */
@@ -270,4 +272,9 @@
 
 /* StandardSlider in volume controls should match compact layout */
 .compact-volume-control .standard-slider-container { width: 100% !important; max-width: 350px !important; flex: none; }
+
+/* Dark theme refresh icon button animation */
+[data-theme="dark"] .narration-selection-compact .refresh-icon-button {
+  animation: breathe-dark 2s ease-in-out infinite !important;
+}
 

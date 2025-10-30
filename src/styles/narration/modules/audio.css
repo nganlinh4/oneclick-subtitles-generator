@@ -85,6 +85,7 @@ audio.audio-player {
   flex-shrink: 0;
   height: 42px; /* Match the height of narration-row */
   position: relative; /* For absolute positioning of the clear button */
+  width: -webkit-fill-available;
 }
 
 .audio-preview .audio-player-container {

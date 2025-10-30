@@ -57,7 +57,7 @@
   transform: translateZ(0);
   will-change: transform;
   /* Ensure the modal has proper border radius */
-  border-radius: 30px;
+  border-radius: 32px;
   /* Add a clip path to ensure content doesn't overflow the border radius */
   clip-path: inset(0 0 0 0 round var(--modal-border-radius));
 }

@@ -414,56 +414,14 @@
   text-align: center;
   display: inline-block;
   position: relative;
-  animation: numberPulse 1s infinite;
-  text-shadow: 
+  text-shadow:
     0 0 5px currentColor,
     0 0 10px currentColor,
     0 0 15px currentColor;
   z-index: 2;
 }
 
-/* Particle system container */
-.countdown-number::before,
-.countdown-number::after {
-  content: '';
-  position: absolute;
-  top: 50%;
-  left: 50%;
-  width: 80px;
-  height: 80px;
-  transform: translate(-50%, -50%);
-  pointer-events: none;
-  z-index: -1;
-  border-radius: 50%;
-}
 
-/* First particle wave - shooting outward */
-.countdown-number::before {
-  background: 
-    radial-gradient(circle at 45% 15%, #ff6b6b 0.5px, transparent 1px),
-    radial-gradient(circle at 85% 30%, #4ecdc4 0.5px, transparent 1px),
-    radial-gradient(circle at 25% 75%, #45b7d1 0.5px, transparent 1px),
-    radial-gradient(circle at 75% 85%, #f9ca24 0.5px, transparent 1px),
-    radial-gradient(circle at 15% 45%, #6c5ce7 0.5px, transparent 1px),
-    radial-gradient(circle at 65% 25%, #fd79a8 0.5px, transparent 1px),
-    radial-gradient(circle at 35% 65%, #00b894 0.5px, transparent 1px),
-    radial-gradient(circle at 55% 85%, #fdcb6e 0.5px, transparent 1px);
-  animation: particleShoot1 3s infinite ease-out;
-}
-
-/* Second particle wave - different timing and positions */
-.countdown-number::after {
-  background: 
-    radial-gradient(circle at 70% 20%, #e17055 0.5px, transparent 1px),
-    radial-gradient(circle at 20% 40%, #00cec9 0.5px, transparent 1px),
-    radial-gradient(circle at 80% 70%, #0984e3 0.5px, transparent 1px),
-    radial-gradient(circle at 40% 90%, #e84393 0.5px, transparent 1px),
-    radial-gradient(circle at 90% 50%, #a29bfe 0.5px, transparent 1px),
-    radial-gradient(circle at 30% 10%, #fd79a8 0.5px, transparent 1px),
-    radial-gradient(circle at 60% 40%, #00b894 0.5px, transparent 1px),
-    radial-gradient(circle at 10% 80%, #fdcb6e 0.5px, transparent 1px);
-  animation: particleShoot2 3.5s infinite ease-out 1.2s;
-}
 
 .countdown-hint {
   margin-left: 8px;
@@ -507,35 +465,7 @@
   color: var(--md-on-surface);
 }
 
-/* Dark theme number pulse animation */
-[data-theme="dark"] .countdown-number {
-  animation: numberPulseDark 1s infinite;
-}
 
-/* Dark theme particles - matching glow colors */
-[data-theme="dark"] .countdown-number::before {
-  background: 
-    radial-gradient(circle at 45% 15%, rgba(96, 125, 255, 0.9) 0.5px, transparent 1px),
-    radial-gradient(circle at 85% 30%, rgba(255, 107, 107, 0.8) 0.5px, transparent 1px),
-    radial-gradient(circle at 25% 75%, rgba(78, 205, 196, 0.9) 0.5px, transparent 1px),
-    radial-gradient(circle at 75% 85%, rgba(69, 183, 209, 0.8) 0.5px, transparent 1px),
-    radial-gradient(circle at 15% 45%, rgba(249, 202, 36, 0.7) 0.5px, transparent 1px),
-    radial-gradient(circle at 65% 25%, rgba(108, 92, 231, 0.8) 0.5px, transparent 1px),
-    radial-gradient(circle at 35% 65%, rgba(253, 121, 168, 0.9) 0.5px, transparent 1px),
-    radial-gradient(circle at 55% 85%, rgba(0, 184, 148, 0.8) 0.5px, transparent 1px);
-}
-
-[data-theme="dark"] .countdown-number::after {
-  background: 
-    radial-gradient(circle at 70% 20%, rgba(253, 203, 110, 0.8) 0.5px, transparent 1px),
-    radial-gradient(circle at 20% 40%, rgba(108, 92, 231, 0.7) 0.5px, transparent 1px),
-    radial-gradient(circle at 80% 70%, rgba(255, 107, 107, 0.9) 0.5px, transparent 1px),
-    radial-gradient(circle at 40% 90%, rgba(78, 205, 196, 0.8) 0.5px, transparent 1px),
-    radial-gradient(circle at 90% 50%, rgba(96, 125, 255, 0.9) 0.5px, transparent 1px),
-    radial-gradient(circle at 30% 10%, rgba(249, 202, 36, 0.8) 0.5px, transparent 1px),
-    radial-gradient(circle at 60% 40%, rgba(253, 121, 168, 0.7) 0.5px, transparent 1px),
-    radial-gradient(circle at 10% 80%, rgba(69, 183, 209, 0.8) 0.5px, transparent 1px);
-}
 
 @keyframes numberPulseDark {
   0%, 100% {
@@ -724,52 +654,7 @@
   }
 }
 
-/* Particle shooting animations */
-@keyframes particleShoot1 {
-  0% {
-    transform: translate(-50%, -50%) scale(0.3);
-    opacity: 0;
-  }
-  15% {
-    transform: translate(-50%, -50%) scale(0.8);
-    opacity: 1;
-  }
-  40% {
-    transform: translate(-50%, -50%) scale(1.2);
-    opacity: 0.8;
-  }
-  70% {
-    transform: translate(-50%, -50%) scale(1.8);
-    opacity: 0.3;
-  }
-  100% {
-    transform: translate(-50%, -50%) scale(2.5);
-    opacity: 0;
-  }
-}
 
-@keyframes particleShoot2 {
-  0% {
-    transform: translate(-50%, -50%) scale(0.2);
-    opacity: 0;
-  }
-  20% {
-    transform: translate(-50%, -50%) scale(0.6);
-    opacity: 1;
-  }
-  45% {
-    transform: translate(-50%, -50%) scale(1);
-    opacity: 0.9;
-  }
-  75% {
-    transform: translate(-50%, -50%) scale(1.6);
-    opacity: 0.2;
-  }
-  100% {
-    transform: translate(-50%, -50%) scale(2.2);
-    opacity: 0;
-  }
-}
 
 /* Prevent background scrolling when modal is open */
 body.modal-open {

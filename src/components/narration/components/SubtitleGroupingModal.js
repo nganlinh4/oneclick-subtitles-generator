@@ -103,54 +103,49 @@ const SubtitleGroupingModal = ({ open, onClose, originalSubtitles, groupedSubtit
             }
           </p>
           <div className="table-container">
-            <table className="subtitle-grouping-table">
-              <thead>
-                <tr>
-                  <th width="5%" className="id-cell">{t('narration.id', 'ID')}</th>
-                  <th width="10%" className="time-cell">{t('narration.time', 'Time')}</th>
-                  <th width="35%">
-                    {subtitleSource === 'translated'
-                      ? t('narration.translatedSubtitles', 'Translated Subtitles')
-                      : t('narration.originalSubtitles', 'Original Subtitles')
-                    }
-                  </th>
-                  <th width="5%" className="id-cell">{t('narration.groupId', 'Group')}</th>
-                  <th width="10%" className="time-cell">{t('narration.groupTime', 'Group Time')}</th>
-                  <th width="35%">{t('narration.groupedSubtitles', 'Grouped Subtitles')}</th>
-                </tr>
-              </thead>
-              <tbody>
-                {tableData.map((row, index) => (
-                  <tr
-                    key={row.original.subtitle_id || row.original.id || index}
-                    className={index % 2 === 0 ? 'original-subtitle' : ''}
-                  >
-                    <td className="id-cell">{row.original.subtitle_id || row.original.id}</td>
-                    <td className="time-cell">{formatTime(row.original.start)} - {formatTime(row.original.end)}</td>
-                    <td>{row.original.text}</td>
-                    {shouldRenderCell(index, row.grouped) ? (
-                      <>
-                        <td className="id-cell grouped-subtitle" rowSpan={getRowSpan(row.grouped)}>
-                          {row.grouped ? (row.grouped.subtitle_id || row.grouped.id) : '-'}
-                        </td>
-                        <td className="time-cell grouped-subtitle" rowSpan={getRowSpan(row.grouped)}>
-                          {row.grouped ? `${formatTime(row.grouped.start)} - ${formatTime(row.grouped.end)}` : '-'}
-                        </td>
-                        <td className="grouped-subtitle" rowSpan={getRowSpan(row.grouped)}>
-                          {row.grouped ? row.grouped.text : '-'}
-                        </td>
-                      </>
-                    ) : null}
-                  </tr>
-                ))}
-              </tbody>
-            </table>
+          <table className="subtitle-grouping-table">
+          <thead>
+          <tr>
+          <th width="5%" className="id-cell">{t('narration.id', 'ID')}</th>
+          <th width="10%" className="time-cell">{t('narration.time', 'Time')}</th>
+          <th width="35%">
+          {subtitleSource === 'translated'
+          ? t('narration.translatedSubtitles', 'Translated Subtitles')
+          : t('narration.originalSubtitles', 'Original Subtitles')
+          }
+          </th>
+          <th width="5%" className="id-cell">{t('narration.groupId', 'Group')}</th>
+          <th width="10%" className="time-cell">{t('narration.groupTime', 'Group Time')}</th>
+          <th width="35%">{t('narration.groupedSubtitles', 'Grouped Subtitles')}</th>
+          </tr>
+          </thead>
+          <tbody>
+            {tableData.map((row, index) => (
+                <tr
+                  key={row.original.subtitle_id || row.original.id || index}
+                className={index % 2 === 0 ? 'original-subtitle' : ''}
+            >
+            <td className="id-cell">{row.original.subtitle_id || row.original.id}</td>
+            <td className="time-cell">{formatTime(row.original.start)}<br />{formatTime(row.original.end)}</td>
+            <td>{row.original.text}</td>
+          {shouldRenderCell(index, row.grouped) ? (
+            <>
+            <td className={`id-cell ${getRowSpan(row.grouped) > 1 ? 'grouped-subtitle' : ''}`} rowSpan={getRowSpan(row.grouped)}>
+            {row.grouped ? (row.grouped.subtitle_id || row.grouped.id) : '-'}
+            </td>
+            <td className={`time-cell ${getRowSpan(row.grouped) > 1 ? 'grouped-subtitle' : ''}`} rowSpan={getRowSpan(row.grouped)}>
+            {row.grouped ? <>{formatTime(row.grouped.start)}<br />{formatTime(row.grouped.end)}</> : '-'}
+            </td>
+            <td className={`${getRowSpan(row.grouped) > 1 ? 'grouped-subtitle' : ''}`} rowSpan={getRowSpan(row.grouped)}>
+            {row.grouped ? row.grouped.text : '-'}
+            </td>
+          </>
+          ) : null}
+          </tr>
+          ))}
+          </tbody>
+          </table>
           </div>
-        </div>
-        <div className="modal-footer">
-          <button className="pill-button close-button-primary" onClick={onClose}>
-            {t('common.close', 'Close')}
-          </button>
         </div>
       </div>
     </div>

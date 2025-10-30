@@ -151,7 +151,7 @@ const ExampleAudioDropdown = ({ onExampleSelect, disabled = false }) => {
       >
         <span className="material-symbols-rounded" style={{ fontSize: '16px' }}>library_music</span>
         {isLoading ? t('narration.loading', 'Loading...') : t('narration.useExample', 'Use example')}
-        <span className={`material-symbols-rounded dropdown-chevron ${isOpen ? 'open' : ''}`} style={{ fontSize: '12px' }}>expand_more</span>
+        <span className={`material-symbols-rounded dropdown-chevron ${!isOpen ? 'open' : ''}`} style={{ fontSize: '12px' }}>expand_more</span>
       </button>
 
       {isOpen && createPortal(

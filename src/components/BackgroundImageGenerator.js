@@ -7,6 +7,7 @@ import CustomScrollbarTextarea from './common/CustomScrollbarTextarea';
 import CustomDropdown from './common/CustomDropdown';
 
 import { generateBackgroundPrompt, generateBackgroundImage } from '../services/gemini/imageGenerationService';
+import { saveBackgroundImages, loadBackgroundImages, clearBackgroundImages } from '../utils/indexedDBUtils';
 
 
 
@@ -111,16 +112,8 @@ const BackgroundImageGenerator = ({ lyrics, albumArt, songName, isExpanded = fal
   const [customAlbumArt, setCustomAlbumArt] = useState(albumArt || '');
   const [generatedPrompt, setGeneratedPrompt] = useState('');
   const [generatedImage, setGeneratedImage] = useState('');
-  // Initialize generatedImages from localStorage if available
-  const [generatedImages, setGeneratedImages] = useState(() => {
-    try {
-      const savedImages = localStorage.getItem('background_generated_images');
-      return savedImages ? JSON.parse(savedImages) : [];
-    } catch (error) {
-      console.error('Error loading generated images from localStorage:', error);
-      return [];
-    }
-  });
+  // Initialize generatedImages from IndexedDB if available
+  const [generatedImages, setGeneratedImages] = useState([]);
   const [regularImageCount, setRegularImageCount] = useState(1);
   const [newPromptImageCount, setNewPromptImageCount] = useState(4); // Default to 4 for new prompt
   const [isGeneratingPrompt, setIsGeneratingPrompt] = useState(false);
@@ -137,6 +130,21 @@ const BackgroundImageGenerator = ({ lyrics, albumArt, songName, isExpanded = fal
   // Use a ref to track if the auto-execution effect has already run
   // This helps prevent double execution in React StrictMode
   const autoExecutionRef = useRef(false);
+
+  // Load generated images from IndexedDB on component mount
+  useEffect(() => {
+    const loadImages = async () => {
+      try {
+        const savedImages = await loadBackgroundImages();
+        setGeneratedImages(savedImages);
+      } catch (error) {
+        console.error('Error loading generated images from IndexedDB:', error);
+        setGeneratedImages([]);
+      }
+    };
+
+    loadImages();
+  }, []);
 
   // Ref for the Generate with Unique Prompts button
   const generateWithUniquePromptsButtonRef = useRef(null);
@@ -268,16 +276,18 @@ const BackgroundImageGenerator = ({ lyrics, albumArt, songName, isExpanded = fal
     }
   }, [isExpanded, userHasCollapsed]);
 
-  // Save generated images to localStorage whenever they change
+  // Save generated images to IndexedDB whenever they change
   useEffect(() => {
-    if (generatedImages.length > 0) {
+    const saveImages = async () => {
       try {
-        localStorage.setItem('background_generated_images', JSON.stringify(generatedImages));
-
+        await saveBackgroundImages(generatedImages);
       } catch (error) {
-        console.error('Error saving generated images to localStorage:', error);
+        console.error('Error saving generated images to IndexedDB:', error);
       }
-    }
+    };
+
+    // Only save if we have images or if we're clearing them (empty array)
+    saveImages();
   }, [generatedImages]);
 
   // Update state when lyrics or albumArt props change, but preserve generated images
@@ -515,11 +525,14 @@ const BackgroundImageGenerator = ({ lyrics, albumArt, songName, isExpanded = fal
   };
 
   // Clear all generated images
-  const clearGeneratedImages = () => {
+  const clearGeneratedImages = async () => {
     setGeneratedImages([]);
     setGeneratedImage('');
-    localStorage.removeItem('background_generated_images');
-
+    try {
+      await clearBackgroundImages();
+    } catch (error) {
+      console.error('Error clearing generated images from IndexedDB:', error);
+    }
   };
 
   return (

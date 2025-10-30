@@ -57,11 +57,8 @@ export const enhanceF5TTSNarrations = (narrationResults, subtitles) => {
       // If the narration has audioData but no filename, it means it's still being saved
       if (result.audioData) {
         // Keep as is, the filename will be set after saving
-      } else {
-        // For narrations that have been saved but don't have a filename property
-        // (this might happen if the narration was loaded from an older version)
-        enhancedResult.filename = `subtitle_${result.subtitle_id}/f5tts_1.wav`;
       }
+      // Do not add default filename for narrations without audioData
     }
 
     return enhancedResult;

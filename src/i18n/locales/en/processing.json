@@ -54,6 +54,7 @@
   "words": "words",
   "autoSplitNote": "Subtitles will be split evenly when they exceed this limit. For example, a 12-word subtitle with a 5-word limit will be split into 4-4-4 words (not 5-5-2).",
   "gemini25ProFpsNote": "Note: Gemini 2.5 Pro requires FPS ≥ 1 for compatibility",
+  "fpsIntervals": "{{interval}}s intervals",
   "timingGenerationDescDisabled": "Add subtitles to enable timing generation",
   "selectResolution": "Select Resolution",
   "selectModel": "Select Model",

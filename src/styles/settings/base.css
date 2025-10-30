@@ -30,7 +30,6 @@
   height: 80%; /* Use viewport height for consistent sizing */
   display: flex;
   flex-direction: column;
-  box-shadow: var(--md-elevation-level3);
   overflow: hidden; /* Hide any content that overflows the container */
   animation: modal-appear var(--md-duration-medium3) var(--md-easing-emphasized-decelerate);
   transition: background-color var(--transition-speed), transform var(--md-duration-medium3) var(--md-easing-emphasized-accelerate), opacity var(--md-duration-medium3) var(--md-easing-emphasized-accelerate);

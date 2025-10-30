@@ -455,16 +455,7 @@
   }
 }
 
-@keyframes breathe {
-  0%, 100% {
-    transform: scale(1);
-    box-shadow: var(--md-elevation-level1);
-  }
-  50% {
-    transform: scale(1.05);
-    box-shadow: var(--md-elevation-level2), 0 0 0 3px rgba(var(--md-primary-rgb), 0.2);
-  }
-}
+
 
 /* Responsive design */
 @media (max-width: 768px) {

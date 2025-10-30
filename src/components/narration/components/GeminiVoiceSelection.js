@@ -3,6 +3,7 @@ import { useTranslation } from 'react-i18next';
 import { GEMINI_VOICES } from '../../../services/gemini/geminiNarrationService';
 import '../../../styles/narration/geminiVoiceSelectionCompact.css';
 import CustomDropdown from '../../common/CustomDropdown';
+import PlayPauseMorphType4 from '../../common/PlayPauseMorphType4';
 
 /**
  * Component for selecting a Gemini voice
@@ -174,11 +175,7 @@ const GeminiVoiceSelection = ({
               title={t('narration.playVoiceSample', 'Play voice sample')}
               disabled={isGenerating}
             >
-              {isPlaying && currentPlayingVoice === selectedVoice ? (
-                <span className="material-symbols-rounded" style={{ fontSize: '16px' }}>pause</span>
-              ) : (
-                <span className="material-symbols-rounded" style={{ fontSize: '16px' }}>play_arrow</span>
-              )}
+              <PlayPauseMorphType4 playing={isPlaying && currentPlayingVoice === selectedVoice} size={16} color="currentColor" config={{ rotateDegrees: 0 }} />
             </button>
           </div>
         </div>

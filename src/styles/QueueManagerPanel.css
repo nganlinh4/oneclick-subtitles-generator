@@ -469,17 +469,7 @@
 }
 
 .preview-close-btn {
-  background: transparent;
-  border: none;
-  color: var(--text-secondary);
-  cursor: pointer;
-  padding: 6px;
-  border-radius: 8px;
-}
-
-.preview-close-btn:hover {
-  background: var(--md-surface-3);
-  color: var(--text-primary);
+  margin-right: 0.75rem;
 }
 
 /* Preview badges styling */

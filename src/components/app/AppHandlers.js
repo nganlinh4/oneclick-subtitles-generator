@@ -294,7 +294,7 @@ export const useAppHandlers = (appState) => {
               headers: { 'Content-Type': 'application/json' },
               body: JSON.stringify({ url: videoUrl, preferredLangs, useCookies })
             });
-            if (resp.ok) {
+            if (resp.ok && resp.status !== 204) {
               const data = await resp.json();
               if (data?.success && data?.content) {
                 // Defer applying subtitles until after video download completes

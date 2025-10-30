@@ -54,6 +54,7 @@
   "words": "단어",
   "autoSplitNote": "자막이 이 제한을 초과하면 균등하게 분할됩니다. 예: 5단어 제한의 12단어 자막은 4-4-4단어로 분할됩니다 (5-5-2가 아님).",
   "gemini25ProFpsNote": "참고: Gemini 2.5 Pro는 호환성을 위해 FPS ≥ 1이 필요합니다",
+  "fpsIntervals": "{{interval}}s 간격",
   "timingGenerationDescDisabled": "타이밍 생성을 활성화하려면 자막을 추가하세요",
   "selectResolution": "해상도 선택",
   "selectModel": "모델 선택",

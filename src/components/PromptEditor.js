@@ -258,15 +258,15 @@ const PromptEditor = ({
             )}
             <p className="prompt-editor-note"><strong>{t('common.note', 'Note')}:</strong> {t('promptEditor.templateNote', 'The system will automatically handle the formatting and structure of the output. You only need to add your custom instructions.')}</p>
           </div>
+        </div>
 
-          <div className="prompt-editor-actions">
-            <button className="secondary-button" onClick={handleReset}>
-              {t('promptEditor.reset', 'Clear')}
-            </button>
-            <button className="primary-button" onClick={handleSave}>
-              {t('common.save', 'Save')}
-            </button>
-          </div>
+        <div className="prompt-editor-actions">
+          <button className="secondary-button" onClick={handleReset}>
+            {t('promptEditor.reset', 'Clear')}
+          </button>
+          <button className="primary-button" onClick={handleSave}>
+            {t('common.save', 'Save')}
+          </button>
         </div>
       </div>
     </div>

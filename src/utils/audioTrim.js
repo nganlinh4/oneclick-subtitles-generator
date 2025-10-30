@@ -113,6 +113,12 @@ export async function trimSilenceFromBlob(
   let totalKeep = 0;
   for (const [s, e] of keepSegments) totalKeep += (e - s);
 
+  // If nothing kept, return original blob
+  if (totalKeep === 0) {
+    try { audioCtx.close(); } catch {}
+    return blob;
+  }
+
   // Create interleaved PCM 16-bit buffer
   const outLength = totalKeep;
   const bytesPerSample = 2; // 16-bit

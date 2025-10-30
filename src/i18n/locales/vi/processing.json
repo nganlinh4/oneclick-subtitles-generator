@@ -54,6 +54,7 @@
   "words": "từ",
   "autoSplitNote": "Phụ đề sẽ được chia đều khi vượt quá giới hạn này. Ví dụ: phụ đề 12 từ với giới hạn 5 từ sẽ được chia thành 4-4-4 từ (không phải 5-5-2).",
   "gemini25ProFpsNote": "Lưu ý: Gemini 2.5 Pro yêu cầu FPS ≥ 1 để tương thích",
+  "fpsIntervals": "{{interval}}s khoảng",
   "timingGenerationDescDisabled": "Thêm phụ đề để bật tạo thời gian",
   "selectResolution": "Chọn độ phân giải",
   "selectModel": "Chọn mô hình",

@@ -257,10 +257,141 @@ audio.audio-player:active {
   transition-duration: 0.1s;
 }
 
+/* Primary audio player styling */
+.primary-audio-player {
+  background-color: rgba(var(--md-primary-rgb), 0.1);
+  border: 1px solid rgba(var(--md-primary-rgb), 0.2);
+  border-radius: 24px;
+}
+
+/* Dark theme primary audio player */
+[data-theme="dark"] .primary-audio-player {
+  background-color: rgba(var(--md-primary-rgb), 0.1);
+  border: 1px solid rgba(var(--md-primary-rgb), 0.2);
+}
+
 /* Add a subtle transition when switching between themes */
 audio.audio-player {
   transition: background-color 0.3s var(--md-easing-standard),
               border-color 0.3s var(--md-easing-standard),
               box-shadow 0.3s var(--md-easing-standard),
               transform 0.2s var(--md-easing-standard);
+}
+
+/* Custom audio progress bar styling - matches Material Design 3 */
+.audio-progress {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 100%;
+  height: 4px;
+  background: transparent;
+  cursor: pointer;
+  border-radius: 2px;
+  outline: none;
+  transition: all 0.2s var(--md-easing-standard);
+}
+
+/* Light theme progress bar */
+[data-theme="light"] .audio-progress {
+  background: var(--md-outline-variant);
+}
+
+/* Dark theme progress bar */
+[data-theme="dark"] .audio-progress {
+  background: var(--md-outline-variant);
+}
+
+/* Track styling for WebKit browsers */
+.audio-progress::-webkit-slider-track {
+  width: 100%;
+  height: 4px;
+  background: var(--md-outline-variant);
+  border-radius: 2px;
+  cursor: pointer;
+}
+
+/* Thumb styling for WebKit browsers */
+.audio-progress::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 12px;
+  height: 12px;
+  background: var(--md-primary);
+  border-radius: 50%;
+  cursor: pointer;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.2);
+  transition: all 0.2s var(--md-easing-standard);
+}
+
+.audio-progress::-webkit-slider-thumb:hover {
+  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.3);
+  transform: scale(1.1);
+}
+
+/* Track and thumb for Firefox */
+.audio-progress::-moz-range-track {
+  width: 100%;
+  height: 4px;
+  background: var(--md-outline-variant);
+  border-radius: 2px;
+  cursor: pointer;
+  border: none;
+}
+
+.audio-progress::-moz-range-thumb {
+  width: 12px;
+  height: 12px;
+  background: var(--md-primary);
+  border-radius: 50%;
+  cursor: pointer;
+  border: none;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.2);
+  transition: all 0.2s var(--md-easing-standard);
+}
+
+.audio-progress::-moz-range-thumb:hover {
+  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.3);
+  transform: scale(1.1);
+}
+
+/* Focus styles for accessibility */
+.audio-progress:focus {
+  outline: 2px solid var(--md-primary);
+  outline-offset: 2px;
+}
+
+/* Custom audio player container styling */
+.custom-audio-player {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 8px 8px 12px;
+  border-radius: 24px;
+  background-color: var(--md-surface-1);
+  border: 1px solid var(--md-outline-variant);
+  box-shadow: var(--md-elevation-level1);
+  transition: all 0.2s var(--md-easing-standard);
+  min-height: 32px;
+}
+
+/* Dark theme custom audio player */
+[data-theme="dark"] .custom-audio-player {
+  background-color: var(--md-surface-3);
+  border: 1px solid rgba(var(--md-primary-rgb), 0.2);
+}
+
+/* Hover effects for custom audio player */
+.custom-audio-player:hover {
+  box-shadow: var(--md-elevation-level2);
+  transform: translateY(-1px);
+}
+
+/* Time display styling */
+.custom-audio-player .time-display {
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--md-on-surface);
+  white-space: nowrap;
+  min-width: 60px;
+  text-align: center;
 }

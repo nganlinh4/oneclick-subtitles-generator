@@ -2,7 +2,7 @@
 
 .oc-tooltip-wrapper {
   position: relative;
-  display: inline-flex;
+  display: inline;
 }
 
 /* Trigger container so wrapper hover works even if child is disabled */
@@ -12,18 +12,14 @@
 
 /* Tooltip box positioning */
 .oc-tooltip {
-  position: absolute;
-  left: 50%;
-  bottom: 100%; /* top placement */
-  transform: translate(-50%, -8px);
   pointer-events: none;
   opacity: 0;
-  transition: opacity 0.15s ease, transform 0.15s ease;
-  z-index: 1000;
+  transition: opacity 0.15s ease;
+  z-index: 1000000 !important;
 }
 
-/* Show on hover */
-.oc-tooltip-wrapper:hover .oc-tooltip {
+/* Show when visible class is present */
+.oc-tooltip.oc-tooltip-visible {
   opacity: 1;
   transform: translate(-50%, -12px);
 }
@@ -90,4 +86,3 @@
   --tooltip-border: color-mix(in srgb, var(--md-outline-variant), transparent 35%);
   --tooltip-shadow: var(--md-elevation-level4);
 }
-

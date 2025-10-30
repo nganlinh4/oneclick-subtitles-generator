@@ -2,6 +2,7 @@ import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { useTranslation } from 'react-i18next';
 import CloseButton from './common/CloseButton';
 import CustomDropdown from './common/CustomDropdown';
+import PulsingElement from './common/PulsingElement';
 import '../styles/TranscriptionRulesEditor.css';
 import { PROMPT_PRESETS, getUserPromptPresets } from '../services/geminiService';
 
@@ -388,7 +389,7 @@ const TranscriptionRulesEditor = ({ isOpen, onClose, initialRules, onSave, onCan
                   <span className="countdown-text">
                     {t('rulesEditor.autoSaveCountdown', 'Auto-saving in')}
                   </span>
-                  <span className="countdown-number" data-content={countdown}>{countdown}</span>
+                  <PulsingElement as="span" className="countdown-number" data-content={countdown}>{countdown}</PulsingElement>
                   <span className="countdown-text">
                     {t('rulesEditor.seconds', 'seconds')}
                   </span>
