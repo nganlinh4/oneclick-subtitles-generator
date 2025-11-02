@@ -12,7 +12,7 @@ const Header = ({ onSettingsClick }) => {
   const hideTimeoutRef = useRef(null);
   const initialShowTimeoutRef = useRef(null);
   const [isInitialShow, setIsInitialShow] = useState(true); // Track if we're in initial show period
-  const [hasOpenedSettings, setHasOpenedSettings] = useState(false); // Track if user has ever opened settings
+  const [settingsOpenCount, setSettingsOpenCount] = useState(0); // Track how many times settings have been opened
   const [updateAvailable, setUpdateAvailable] = useState(false);
 
   const [isFullVersion, setIsFullVersion] = useState(false); // Track if running in full mode
@@ -44,12 +44,12 @@ const Header = ({ onSettingsClick }) => {
 
 
   useEffect(() => {
-    // Check if user has ever opened settings
-    const hasEverOpenedSettings = localStorage.getItem('has_opened_settings') === 'true';
-    setHasOpenedSettings(hasEverOpenedSettings);
+    // Check how many times user has opened settings
+    const count = parseInt(localStorage.getItem('settings_open_count') || '0');
+    setSettingsOpenCount(count);
 
-    // If user has never opened settings, keep button always visible
-    if (!hasEverOpenedSettings) {
+    // If user has opened settings less than 5 times, keep button always visible
+    if (count < 5) {
       setShowFloatingActions(true);
       setIsInitialShow(false); // Skip initial show period, just stay visible
       updateFloatingActionsPosition();
@@ -109,8 +109,8 @@ const Header = ({ onSettingsClick }) => {
       // Don't handle mouse events during initial show period
       if (isInitialShow) return;
 
-      // If user has never opened settings, keep button always visible
-      if (!hasOpenedSettings) return;
+      // If user has opened settings less than 5 times, keep button always visible
+      if (settingsOpenCount < 5) return;
 
       // Show floating actions when cursor is near the top-right area of the current viewport
       const viewportWidth = window.innerWidth;
@@ -149,8 +149,8 @@ const Header = ({ onSettingsClick }) => {
       // Don't handle mouse leave during initial show period
       if (isInitialShow) return;
 
-      // If user has never opened settings, keep button always visible
-      if (!hasOpenedSettings) return;
+      // If user has opened settings less than 5 times, keep button always visible
+      if (settingsOpenCount < 5) return;
 
       // Hide when mouse leaves the window with a slight delay
       if (hideTimeoutRef.current) {
@@ -183,7 +183,7 @@ const Header = ({ onSettingsClick }) => {
         clearTimeout(hideTimeoutRef.current);
       }
     };
-  }, [showFloatingActions, isInitialShow, hasOpenedSettings]);
+  }, [showFloatingActions, isInitialShow, settingsOpenCount]);
 
   // Detect startup mode (lite vs full version)
   useEffect(() => {
@@ -268,13 +268,12 @@ const Header = ({ onSettingsClick }) => {
     detectGitBranch();
   }, []);
 
-  // Handle settings click - mark as opened and call original handler
+  // Handle settings click - increment count and call original handler
   const handleSettingsClick = () => {
-    // Mark that user has opened settings
-    if (!hasOpenedSettings) {
-      localStorage.setItem('has_opened_settings', 'true');
-      setHasOpenedSettings(true);
-    }
+    // Increment the settings open count
+    const newCount = settingsOpenCount + 1;
+    localStorage.setItem('settings_open_count', newCount.toString());
+    setSettingsOpenCount(newCount);
 
     // Call the original settings click handler
     onSettingsClick();
