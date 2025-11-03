@@ -63,6 +63,7 @@
   "processing": "Processing",
   "completed": "Completed",
   "failed": "Failed",
+  "canceled": "Canceled",
   "waiting": "Waiting...",
   "readyForDownload": "Ready for download",
   "retry": "Retry",

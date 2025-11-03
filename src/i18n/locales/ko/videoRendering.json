@@ -44,6 +44,7 @@
   "selectingComposition": "비디오 컴포지션 설정 중...",
   "complete": "렌더링 완료!",
   "failed": "렌더링 실패",
+  "canceled": "취소됨",
   "cancelled": "렌더링 취소됨",
   "cancelling": "렌더링 취소 중...",
   "cancelFailed": "렌더링 취소 실패",

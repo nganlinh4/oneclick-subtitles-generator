@@ -32,9 +32,45 @@ export const mergeSegmentSubtitles = (existingSubtitles, newSegmentSubtitles, se
     new: newSegmentSubtitles.map(s => `${s.start}-${s.end}: ${s.text.substring(0, 15)}...`)
   });
 
-  // Filter out existing subtitles that overlap with the segment time range
-  const subtitlesBeforeSegment = existingSubtitles.filter(sub => sub.end <= segmentStart);
-  const subtitlesAfterSegment = existingSubtitles.filter(sub => sub.start >= segmentEnd);
+  // Filter out existing subtitles that overlap with the segment time range,
+  // but clamp edge-overlapping subtitles instead of deleting them.
+  const preserved = [];
+  for (const sub of existingSubtitles) {
+    // Entirely before segment
+    if (sub.end <= segmentStart) {
+      preserved.push(sub);
+      continue;
+    }
+    // Entirely after segment
+    if (sub.start >= segmentEnd) {
+      preserved.push(sub);
+      continue;
+    }
+    // Overlaps the start boundary (straddles into segment start)
+    if (sub.start < segmentStart && sub.end > segmentStart && sub.end <= segmentEnd) {
+      const clamped = { ...sub, end: segmentStart };
+      if (clamped.end > clamped.start) preserved.push(clamped);
+      continue;
+    }
+    // Overlaps the end boundary (straddles out of segment end)
+    if (sub.start >= segmentStart && sub.start < segmentEnd && sub.end > segmentEnd) {
+      const clamped = { ...sub, start: segmentEnd };
+      if (clamped.end > clamped.start) preserved.push(clamped);
+      continue;
+    }
+    // Spans across the whole segment (covers both sides)
+    if (sub.start < segmentStart && sub.end > segmentEnd) {
+      const left = { ...sub, end: segmentStart };
+      const right = { ...sub, start: segmentEnd };
+      if (left.end > left.start) preserved.push(left);
+      if (right.end > right.start) preserved.push(right);
+      continue;
+    }
+    // Fully inside segment -> drop (will be replaced by new)
+  }
+
+  const subtitlesBeforeSegment = preserved.filter(s => s.end <= segmentStart || (s.end === segmentStart && s.start < s.end));
+  const subtitlesAfterSegment = preserved.filter(s => s.start >= segmentEnd || (s.start === segmentEnd && s.end > s.start));
 
   console.log(`[SubtitleMerger] Filtering results:`, {
     before: subtitlesBeforeSegment.map(s => `${s.start}-${s.end}: ${s.text.substring(0, 15)}...`),
@@ -102,8 +138,16 @@ export const mergeStreamingSubtitlesProgressively = (existingSubtitles, newStrea
   //   newCount: newStreamingSubtitles.length,
   // });
 
-  // Keep subtitles before the segment
-  const subtitlesBeforeSegment = existingSubtitles.filter(sub => sub.end <= segmentStart);
+  // Keep subtitles before the segment, clamping straddlers at the segmentStart
+  const subtitlesBeforeSegment = [];
+  for (const sub of existingSubtitles) {
+    if (sub.end <= segmentStart) {
+      subtitlesBeforeSegment.push(sub);
+    } else if (sub.start < segmentStart && sub.end > segmentStart) {
+      const clamped = { ...sub, end: segmentStart };
+      if (clamped.end > clamped.start) subtitlesBeforeSegment.push(clamped);
+    }
+  }
 
   // Keep subtitles after THIS SEGMENT (not after progressive end)
   // This ensures we don't delete subtitles from other segments
@@ -114,6 +158,12 @@ export const mergeStreamingSubtitlesProgressively = (existingSubtitles, newStrea
   const subtitlesInSegmentAfterProgressive = existingSubtitles.filter(sub => 
     sub.start >= effectiveProgressiveEnd && sub.start < segmentEnd
   );
+
+  // Additionally, clamp any subtitles that straddle the progressive end boundary
+  const clampedAtProgressive = existingSubtitles
+    .filter(sub => sub.start < effectiveProgressiveEnd && sub.end > effectiveProgressiveEnd && sub.start < segmentEnd && sub.end <= segmentEnd)
+    .map(sub => ({ ...sub, start: effectiveProgressiveEnd }))
+    .filter(sub => sub.end > sub.start);
 
   // Filter out subtitles in the progressive range (from segment start to progressive end)
   // These will be replaced by the new streaming subtitles
@@ -129,6 +179,7 @@ export const mergeStreamingSubtitlesProgressively = (existingSubtitles, newStrea
   const mergedSubtitles = [
     ...subtitlesBeforeSegment,
     ...newStreamingSubtitles,
+    ...clampedAtProgressive,
     ...subtitlesInSegmentAfterProgressive,
     ...subtitlesAfterSegment
   ];

@@ -165,8 +165,26 @@ export class RealtimeSubtitleProcessor {
     
     // Check if we received pre-filtered subtitles (early stop scenario)
     let finalSubtitles = null;
+    // Handle structured segment result object from parallel coordinator
+    if (finalText && typeof finalText === 'object' && !Array.isArray(finalText)) {
+      // Shape: { subtitles: Array, isSegmentResult: true, segment: {...}, text?: string }
+      if (Array.isArray(finalText.subtitles)) {
+        finalSubtitles = finalText.subtitles;
+        this.accumulatedText = typeof finalText.text === 'string' ? finalText.text : '';
+      } else if (typeof finalText.text === 'string') {
+        // If only text is provided, use it as accumulated text for parsing
+        this.accumulatedText = finalText.text;
+      } else {
+        // Fallback: stringify for diagnostics but avoid passing object directly to parser
+        try {
+          this.accumulatedText = JSON.stringify(finalText);
+        } catch {
+          this.accumulatedText = '';
+        }
+      }
+    }
     
-    if (typeof finalText === 'string' && finalText.startsWith('[') && finalText.includes('"start"')) {
+  if (!finalSubtitles && typeof finalText === 'string' && finalText.startsWith('[') && finalText.includes('"start"')) {
       // This looks like a JSON array of subtitles (early stop scenario)
       try {
         finalSubtitles = JSON.parse(finalText);
@@ -176,12 +194,12 @@ export class RealtimeSubtitleProcessor {
         // Not JSON, treat as regular text
         this.accumulatedText = finalText;
       }
-    } else if (Array.isArray(finalText)) {
+  } else if (!finalSubtitles && Array.isArray(finalText)) {
       // Direct array of subtitles
       finalSubtitles = finalText;
       console.log('[RealtimeProcessor] Using direct subtitle array:', finalSubtitles.length, 'subtitles');
       this.accumulatedText = 'Early stop - pre-filtered subtitles';
-    } else {
+    } else if (!finalSubtitles && typeof finalText === 'string') {
       // Regular text, need to parse
       this.accumulatedText = finalText;
     }

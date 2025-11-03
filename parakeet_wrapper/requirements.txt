@@ -1,0 +1,7 @@
+onnx-asr
+onnxruntime-directml
+fastapi
+uvicorn[standard]
+pydub
+numpy
+scipy

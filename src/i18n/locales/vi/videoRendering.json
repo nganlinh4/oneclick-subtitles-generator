@@ -44,6 +44,7 @@
   "selectingComposition": "Đang thiết lập cấu hình video...",
   "complete": "Render hoàn thành!",
   "failed": "Render thất bại",
+  "canceled": "Đã hủy",
   "cancelled": "Render đã hủy",
   "cancelling": "Đang hủy render...",
   "cancelFailed": "Không thể hủy render",

@@ -764,7 +764,7 @@ const PresetButtons = ({ customization, onChange }) => {
       onChange({ ...customization, preset: updatedPresets[updatedPresets.length - 1].id });
     } catch (error) {
       console.error('Error saving custom preset:', error);
-      alert(t('presetButtons.saveError', 'Failed to save custom preset.'));
+      alert(t('subtitleSettings.presetButtons.saveError', 'Failed to save custom preset.'));
     } finally {
       setIsSaving(false);
     }
@@ -812,10 +812,10 @@ const PresetButtons = ({ customization, onChange }) => {
           className={`pill-button save-preset-button ${hasChanges ? 'primary' : 'secondary'}`}
           onClick={handleSavePreset}
           disabled={!hasChanges || isSaving}
-          title={hasChanges ? 'Save current settings as preset' : 'No changes to save'}
+          title={hasChanges ? t('subtitleSettings.presetButtons.saveCurrentSettings', 'Save current settings as preset') : t('subtitleSettings.presetButtons.noChangesToSave', 'No changes to save')}
         >
           <span className="material-symbols-rounded" style={{ fontSize: 16 }}>save</span>
-          Save Preset
+          {t('subtitleSettings.presetButtons.savePreset', 'Save Preset')}
         </button>
 
       </div>

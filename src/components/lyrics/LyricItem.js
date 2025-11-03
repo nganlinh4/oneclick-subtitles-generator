@@ -4,6 +4,7 @@ import { formatTime } from '../../utils/timeFormatter';
 import '../../utils/functionalScrollbar';
 
 import CustomScrollbarTextarea from '../common/CustomScrollbarTextarea.jsx';
+import Tooltip from '../common/Tooltip.jsx';
 
 // Continuous progress indicator component
 const ContinuousProgressIndicator = ({ lyric, isCurrentLyric, currentTime }) => {
@@ -287,13 +288,14 @@ const LyricItem = ({
           {/* Controls moved to the left */}
           {allowEditing && (
             <div className="lyric-controls">
-              <button
-                className="edit-lyric-btn"
-                onClick={handleEditClick}
-                title={t('lyrics.editTooltip', 'Edit lyrics')}
-              >
-                <span className="material-symbols-rounded" style={{ fontSize: '16px' }}>edit</span>
-              </button>
+              <Tooltip content={t('lyrics.editTooltip', 'Edit lyrics')}>
+                <button
+                  className="edit-lyric-btn"
+                  onClick={handleEditClick}
+                >
+                  <span className="material-symbols-rounded" style={{ fontSize: '16px' }}>edit</span>
+                </button>
+              </Tooltip>
               <button
                 className="delete-lyric-btn"
                 onClick={(e) => {

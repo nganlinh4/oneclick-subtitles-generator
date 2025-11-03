@@ -1,0 +1,20 @@
+[project]
+name = "parakeet-wrapper"
+version = "0.1.0"
+description = "Wrapper for Parakeet ASR FastAPI"
+dependencies = [
+    "onnx-asr",
+    "onnxruntime-directml",
+    "fastapi",
+    "uvicorn[standard]",
+    "pydub",
+    "numpy",
+    "scipy",
+]
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.uv]
+dev-dependencies = []

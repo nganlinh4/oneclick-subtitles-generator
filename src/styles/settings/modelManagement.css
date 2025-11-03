@@ -71,6 +71,7 @@
   height: 100%;
   min-height: 180px;
   box-shadow: var(--md-elevation-level1);
+  position: relative;
 }
 
 .model-card:hover {
@@ -380,11 +381,30 @@ html[data-theme="dark"] .language-chip:not(.en):not(.zh):not(.fr):not(.es):not(.
   box-sizing: border-box;
 }
 
+/* Custom model delete button styling to match download button */
+.model-card-actions .delete-model-btn {
+  padding: 0.4rem 0.8rem;
+  border-radius: 20px;
+  font-size: 0.85rem;
+  font-family: var(--font-title);
+  cursor: pointer;
+  transition: background-color 0.2s, color 0.2s;
+  border: 1px solid var(--border-color);
+  height: 32px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.5rem;
+  background-color: var(--md-surface-2);
+  color: var(--text-primary);
+}
+
 .delete-model-btn:hover {
   background-color: var(--error-background);
   color: var(--error-color);
   border-color: var(--error-color);
 }
+
 
 .cancel-download-btn {
   background-color: rgba(var(--md-error-rgb), 0.1);

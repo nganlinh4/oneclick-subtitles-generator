@@ -1,4 +1,4 @@
-import React, { useState, useRef, useEffect, useMemo } from 'react';
+import React, { useState, useRef, useEffect, useMemo, useCallback } from 'react';
 import ReactDOM from 'react-dom';
 import { useTranslation } from 'react-i18next';
 import '../styles/VideoProcessingOptionsModal.css';
@@ -9,7 +9,9 @@ import MaterialSwitch from './common/MaterialSwitch';
 import SliderWithValue from './common/SliderWithValue';
 import CustomDropdown from './common/CustomDropdown';
 import HelpIcon from './common/HelpIcon';
+import ParakeetProcessingOptions from './ParakeetProcessingOptions';
 import specialStarIcon from '../assets/specialStar.svg';
+import useParakeetAvailability from '../hooks/useParakeetAvailability';
 
 /**
  * Modal for selecting video processing options after timeline segment selection
@@ -27,6 +29,139 @@ const VideoProcessingOptionsModal = ({
 }) => {
     const { t } = useTranslation();
     const modalRef = useRef(null);
+    const contentRef = useRef(null);
+    const [modalHeight, setModalHeight] = useState('auto');
+
+    // Detect if running in Full (CUDA) mode to enable Parakeet
+    const [isFullVersion, setIsFullVersion] = useState(() => {
+        try {
+            const v = localStorage.getItem('is_full_version');
+            return v === 'true';
+        } catch {
+            return false;
+        }
+    });
+
+    // Processing method: 'new' (Files API), 'old' (inline), 'nvidia-parakeet'
+    const [method, setMethod] = useState(() => {
+        const saved = localStorage.getItem('video_processing_method');
+        return saved || 'new';
+    });
+
+    // Back-compat flag for old/new methods
+    const [inlineExtraction, setInlineExtraction] = useState(() => {
+        // If opened via retry, force old method immediately to avoid any flash of the new method
+        const retryMode = sessionStorage.getItem('processing_modal_open_reason') === 'retry-offline';
+        const saved = localStorage.getItem('video_processing_inline_extraction');
+        return retryMode ? true : (saved === 'true');
+    });
+
+    // Parakeet-specific options
+    const [parakeetStrategy, setParakeetStrategy] = useState(() => localStorage.getItem('parakeet_segment_strategy') || 'sentence');
+    const [parakeetMaxChars, setParakeetMaxChars] = useState(() => {
+        const saved = parseInt(localStorage.getItem('parakeet_max_chars') || '60', 10);
+        return Math.min(100, Math.max(5, isNaN(saved) ? 60 : saved));
+    });
+    const [parakeetMaxWords, setParakeetMaxWords] = useState(() => {
+        const saved = parseInt(localStorage.getItem('parakeet_max_words') || '7', 10);
+        return Math.min(50, Math.max(1, isNaN(saved) ? 7 : saved));
+    });
+    const [parakeetPreserveSentences, setParakeetPreserveSentences] = useState(() => {
+        return localStorage.getItem('parakeet_preserve_sentences') === 'true';
+    });
+
+    // Calculate and set modal height for smooth transitions
+    const updateModalHeight = useCallback(() => {
+        if (modalRef.current && contentRef.current && isOpen) {
+            // Get the natural height of the content
+            const modalElement = modalRef.current;
+            const currentHeight = modalElement.offsetHeight;
+
+            // Temporarily set to auto to measure natural height
+            modalElement.style.height = 'auto';
+            const naturalHeight = modalElement.offsetHeight;
+
+            // Set back to current height immediately (no visual change)
+            modalElement.style.height = `${currentHeight}px`;
+
+            // Force a reflow by reading offsetHeight
+            // eslint-disable-next-line no-unused-expressions
+            void modalElement.offsetHeight;
+
+            // Now transition to the new height
+            modalElement.style.height = `${naturalHeight}px`;
+        }
+    }, [isOpen]);
+
+    // Update height when content changes (method switching between Parakeet/Gemini)
+    useEffect(() => {
+        if (isOpen) {
+            // Small delay to let DOM update
+            const timer = setTimeout(() => {
+                updateModalHeight();
+            }, 10);
+            return () => clearTimeout(timer);
+        }
+    }, [method, isOpen, updateModalHeight]);
+
+    // Set initial height when modal opens
+    useEffect(() => {
+        if (isOpen) {
+            setTimeout(() => {
+                if (modalRef.current) {
+                    modalRef.current.style.height = 'auto';
+                    const height = modalRef.current.offsetHeight;
+                    modalRef.current.style.height = `${height}px`;
+                }
+            }, 50);
+        }
+    }, [isOpen]);
+
+    // Keep track of startup mode changes (from Header or first-load fallback)
+    useEffect(() => {
+        let aborted = false;
+        const onStorage = (e) => {
+            if (e.key === 'is_full_version') {
+                setIsFullVersion(e.newValue === 'true');
+            }
+        };
+        window.addEventListener('storage', onStorage);
+
+        (async () => {
+            try {
+                const exists = localStorage.getItem('is_full_version');
+                if (exists === null) {
+                    const API_BASE_URL = process.env.REACT_APP_API_BASE_URL || 'http://localhost:3031';
+                    const resp = await fetch(`${API_BASE_URL}/api/startup-mode`, {
+                        mode: 'cors',
+                        credentials: 'include',
+                        headers: { 'Accept': 'application/json' }
+                    });
+                    if (!aborted && resp.ok) {
+                        const data = await resp.json();
+                        const isFull = !!data.isDevCuda;
+                        setIsFullVersion(isFull);
+                        try { localStorage.setItem('is_full_version', isFull ? 'true' : 'false'); } catch {}
+                    }
+                }
+            } catch {}
+        })();
+
+        return () => {
+            aborted = true;
+            window.removeEventListener('storage', onStorage);
+        };
+    }, []);
+
+    // Prevent Parakeet selection in Lite mode
+    useEffect(() => {
+        if (!isFullVersion && method === 'nvidia-parakeet') {
+            setMethod('new');
+        }
+    }, [isFullVersion]);
+
+    // Parakeet dynamic availability (health check)
+    const { available: parakeetAvailable, checking: parakeetChecking, isFullMode } = useParakeetAvailability({ retries: 6, intervalMs: 2500 });
 
     // Processing options state with localStorage persistence
     const [fps, setFps] = useState(() => {
@@ -113,14 +248,6 @@ const VideoProcessingOptionsModal = ({
     const [isCountingTokens, setIsCountingTokens] = useState(false);
     const [realTokenCount, setRealTokenCount] = useState(null);
     const [tokenCountError, setTokenCountError] = useState(null);
-
-    const [inlineExtraction, setInlineExtraction] = useState(() => {
-        // If opened via retry, force old method immediately to avoid any flash of the new method
-        const reason = sessionStorage.getItem('processing_modal_open_reason');
-        if (reason === 'retry-offline') return true;
-        const saved = localStorage.getItem('video_processing_inline_extraction');
-        return saved === 'true';
-    });
 
     // Compute outside-range subtitles context (limited to nearby lines)
     // When opened via retry-from-cache, lock certain controls and force old method
@@ -397,6 +524,33 @@ const VideoProcessingOptionsModal = ({
         // This ensures user changes in Rules Editor are maintained
         localStorage.setItem('video_processing_prompt_preset', selectedPromptPreset);
     }, [selectedPromptPreset]);
+
+    // Persist method selection
+    useEffect(() => {
+        localStorage.setItem('video_processing_method', method);
+        // Keep inlineExtraction in sync when user toggles between new/old methods via the dropdown
+        if (method === 'new') {
+            setInlineExtraction(false);
+            localStorage.setItem('video_processing_inline_extraction', 'false');
+        } else if (method === 'old') {
+            setInlineExtraction(true);
+            localStorage.setItem('video_processing_inline_extraction', 'true');
+        }
+    }, [method]);
+
+    // Persist Parakeet options
+    useEffect(() => {
+        localStorage.setItem('parakeet_segment_strategy', parakeetStrategy);
+    }, [parakeetStrategy]);
+    useEffect(() => {
+        localStorage.setItem('parakeet_max_chars', String(parakeetMaxChars));
+    }, [parakeetMaxChars]);
+    useEffect(() => {
+        localStorage.setItem('parakeet_max_words', String(parakeetMaxWords));
+    }, [parakeetMaxWords]);
+    useEffect(() => {
+        localStorage.setItem('parakeet_preserve_sentences', parakeetPreserveSentences ? 'true' : 'false');
+    }, [parakeetPreserveSentences]);
 
     useEffect(() => {
         localStorage.setItem('video_processing_custom_language', customLanguage);
@@ -815,7 +969,11 @@ const VideoProcessingOptionsModal = ({
             maxDurationPerRequest: maxDurationPerRequest * 60, // Convert to seconds
             autoSplitSubtitles,
             maxWordsPerSubtitle,
-            inlineExtraction
+            inlineExtraction,
+            method,
+            parakeetStrategy,
+            parakeetMaxChars,
+            parakeetMaxWords: parakeetStrategy === 'sentence' && parakeetPreserveSentences ? -1 : parakeetMaxWords
         };
 
         // In retry-from-cache mode, force old method and prevent further splitting
@@ -848,6 +1006,29 @@ const VideoProcessingOptionsModal = ({
 
     if (!isOpen) return null;
 
+    // Build method options, disabling Parakeet when not in Full mode
+    const parakeetDisabled = !isFullVersion || !parakeetAvailable;
+    const parakeetLabel = !isFullVersion
+        ? t('processing.methodNvidiaParakeetDisabled', 'Nvidia Parakeet (please run OSG Full)')
+        : (!parakeetAvailable
+            ? t('processing.methodNvidiaParakeetStarting', 'Nvidia Parakeet (starting up...)')
+            : t('processing.methodNvidiaParakeet', 'Nvidia Parakeet (local)'));
+    const methodOptions = [
+        {
+            value: 'new',
+            label: <span style={{ display: 'inline-flex', alignItems: 'center' }}><img src={specialStarIcon} alt="" style={{ width: '16px', height: '16px', marginRight: '6px' }} />{t('processing.methodNewOption', 'New: Interact with video on Files API')}</span>
+        },
+        {
+            value: 'old',
+            label: <span style={{ display: 'inline-flex', alignItems: 'center' }}><div dangerouslySetInnerHTML={{ __html: `<svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 16 16" style="width: 16px; height: 16px; margin-right: 6px; vertical-align: middle;"><path d="M16 8.016A8.522 8.522 0 008.016 16h-.032A8.521 8.521 0 000 8.016v-.032A8.521 8.521 0 007.984 0h.032A8.522 8.522 0 0016 7.984v.032z" fill="url(#prefix__paint0_radial_980_20147)"/><defs><radialGradient id="prefix__paint0_radial_980_20147" cx="0" cy="0" r="1" gradientUnits="userSpaceOnUse" gradientTransform="matrix(16.1326 5.4553 -43.70045 129.2322 1.588 6.503)"><stop offset=".067" stop-color="#9168C0"/><stop offset=".343" stop-color="#5684D1"/><stop offset=".672" stop-color="#1BA1E3"/></radialGradient></defs></svg>` }} />{t('processing.methodOldOption', 'Old: Cut the video locally, then send to Gemini')}</span>
+        },
+        {
+            value: 'nvidia-parakeet',
+            disabled: parakeetDisabled,
+            label: <span style={{ display: 'inline-flex', alignItems: 'center' }}><div dangerouslySetInnerHTML={{ __html: `<svg xmlns=\"http://www.w3.org/2000/svg\" fill=\"currentColor\" class=\"bi bi-nvidia\" viewBox=\"0 0 16 16\" id=\"Nvidia--Streamline-Bootstrap\" height=\"16\" width=\"16\" style=\"width: 16px; height: 16px; margin-right: 6px; vertical-align: middle;\"><path d=\"M1.635 7.146S3.08 5.012 5.97 4.791v-0.774C2.77 4.273 0 6.983 0 6.983s1.57 4.536 5.97 4.952v-0.824c-3.23 -0.406 -4.335 -3.965 -4.335 -3.965M5.97 9.475v0.753c-2.44 -0.435 -3.118 -2.972 -3.118 -2.972S4.023 5.958 5.97 5.747v0.828h-0.004c-1.021 -0.123 -1.82 0.83 -1.82 0.83s0.448 1.607 1.824 2.07M6 2l-0.03 2.017A7 7 0 0 1 6.252 4c3.637 -0.123 6.007 2.983 6.007 2.983s-2.722 3.31 -5.557 3.31q-0.39 -0.002 -0.732 -0.065v0.883q0.292 0.039 0.61 0.04c2.638 0 4.546 -1.348 6.394 -2.943 0.307 0.246 1.561 0.842 1.819 1.104 -1.757 1.47 -5.852 2.657 -8.173 2.657a7 7 0 0 1 -0.65 -0.034V14H16l0.03 -12zm-0.03 3.747v-0.956a6 6 0 0 1 0.282 -0.015c2.616 -0.082 4.332 2.248 4.332 2.248S8.73 9.598 6.743 9.598c-0.286 0 -0.542 -0.046 -0.773 -0.123v-2.9c1.018 0.123 1.223 0.572 1.835 1.593L9.167 7.02s-0.994 -1.304 -2.67 -1.304a5 5 0 0 0 -0.527 0.031\" stroke-width=\"1\"></path></svg>` }} />{parakeetLabel}</span>
+        }
+    ];
+
     return ReactDOM.createPortal(
         <div className="video-processing-modal-overlay">
             <div
@@ -866,17 +1047,9 @@ const VideoProcessingOptionsModal = ({
                         <div className={`header-switch-group ${retryLock ? 'disabled' : ''}`} style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
                             <label style={{ minWidth: 64 }}>{t('processing.methodLabel', 'Method')}</label>
                             <CustomDropdown
-                                value={inlineExtraction ? 'old' : 'new'}
-                                onChange={(value) => {
-                                    const useOld = value === 'old';
-                                    setInlineExtraction(useOld);
-                                    localStorage.setItem('video_processing_inline_extraction', useOld ? 'true' : 'false');
-                                }}
-                                options={[
-                                    { value: 'new', label: <span style={{ display: 'inline-flex', alignItems: 'center' }}><img src={specialStarIcon} alt="" style={{ width: '16px', height: '16px', marginRight: '6px' }} />{t('processing.methodNewOption', 'New: Interact with video on Files API')}</span> },
-                                    { value: 'old', label: <span style={{ display: 'inline-flex', alignItems: 'center' }}><div dangerouslySetInnerHTML={{ __html: `<svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 16 16" style="width: 16px; height: 16px; margin-right: 6px; vertical-align: middle;"><path d="M16 8.016A8.522 8.522 0 008.016 16h-.032A8.521 8.521 0 000 8.016v-.032A8.521 8.521 0 007.984 0h.032A8.522 8.522 0 0016 7.984v.032z" fill="url(#prefix__paint0_radial_980_20147)"/><defs><radialGradient id="prefix__paint0_radial_980_20147" cx="0" cy="0" r="1" gradientUnits="userSpaceOnUse" gradientTransform="matrix(16.1326 5.4553 -43.70045 129.2322 1.588 6.503)"><stop offset=".067" stop-color="#9168C0"/><stop offset=".343" stop-color="#5684D1"/><stop offset=".672" stop-color="#1BA1E3"/></radialGradient></defs></svg>` }} />{t('processing.methodOldOption', 'Old: Cut the video locally, then send to Gemini')}</span> },
-                                    { value: 'nvidia-parakeet', label: <span style={{ display: 'inline-flex', alignItems: 'center' }}><div dangerouslySetInnerHTML={{ __html: `<svg xmlns="http://www.w3.org/2000/svg" fill="currentColor" class="bi bi-nvidia" viewBox="0 0 16 16" id="Nvidia--Streamline-Bootstrap" height="16" width="16" style="width: 16px; height: 16px; margin-right: 6px; vertical-align: middle;"><path d="M1.635 7.146S3.08 5.012 5.97 4.791v-0.774C2.77 4.273 0 6.983 0 6.983s1.57 4.536 5.97 4.952v-0.824c-3.23 -0.406 -4.335 -3.965 -4.335 -3.965M5.97 9.475v0.753c-2.44 -0.435 -3.118 -2.972 -3.118 -2.972S4.023 5.958 5.97 5.747v0.828h-0.004c-1.021 -0.123 -1.82 0.83 -1.82 0.83s0.448 1.607 1.824 2.07M6 2l-0.03 2.017A7 7 0 0 1 6.252 4c3.637 -0.123 6.007 2.983 6.007 2.983s-2.722 3.31 -5.557 3.31q-0.39 -0.002 -0.732 -0.065v0.883q0.292 0.039 0.61 0.04c2.638 0 4.546 -1.348 6.394 -2.943 0.307 0.246 1.561 0.842 1.819 1.104 -1.757 1.47 -5.852 2.657 -8.173 2.657a7 7 0 0 1 -0.65 -0.034V14H16l0.03 -12zm-0.03 3.747v-0.956a6 6 0 0 1 0.282 -0.015c2.616 -0.082 4.332 2.248 4.332 2.248S8.73 9.598 6.743 9.598c-0.286 0 -0.542 -0.046 -0.773 -0.123v-2.9c1.018 0.123 1.223 0.572 1.835 1.593L9.167 7.02s-0.994 -1.304 -2.67 -1.304a5 5 0 0 0 -0.527 0.031" stroke-width="1"></path></svg>` }} />{t('processing.methodNvidiaParakeet', 'Nvidia Parakeet')} {t('processing.comingSoon', '(coming soon)')}</span>, disabled: true }
-                                ]}
+                                value={method}
+                                onChange={(value) => setMethod(value)}
+                                options={methodOptions}
                                 placeholder={t('processing.methodLabel', 'Method')}
                                 disabled={retryLock}
                             />
@@ -886,374 +1059,393 @@ const VideoProcessingOptionsModal = ({
                     <CloseButton onClick={onClose} variant="modal" size="medium" />
                 </div>
 
-                <div className="modal-content">
+                <div className="modal-content" ref={contentRef}>
 
                     {/* Two-column grid for options */}
                     <div className="modal-content-grid">
-                        {/* Frame Rate and Media Resolution Combined */}
-                        <div className="option-group">
-                            <div className="combined-options-row">
-                                {/* Frame Rate Slider */}
-                                <div className="combined-option-half">
-                                    <div className="label-with-help">
-                                        <label>
-                                            {t('processing.frameRate', 'Frame Rate')}
-                                            <span className="label-subtitle">({getFpsInterval(fps, t)})</span>
-                                        </label>
-                                        {selectedModel === 'gemini-2.5-pro' && (
-                                            <HelpIcon title={t('processing.gemini25ProFpsNote', 'Note: Gemini 2.5 Pro requires FPS ≥ 1 for compatibility')} />
-                                        )}
-                                    </div>
-                                    <div>
-                                        <SliderWithValue
-                                            value={fps}
-                                            onChange={(v) => setFps(parseFloat(v))}
-                                            min={selectedModel === 'gemini-2.5-pro' ? 1 : 0.25}
-                                            max={5}
-                                            step={0.25}
-                                            orientation="Horizontal"
-                                            size="XSmall"
-                                            state="Enabled"
-                                            className="fps-slider"
-                                            id="fps-slider"
-                                            ariaLabel={t('processing.frameRate', 'Frame Rate')}
-                                            defaultValue={selectedModel === 'gemini-2.5-pro' ? 1 : 0.25}
-                                            formatValue={(v) => getFpsValue(v)}
-                                        />
-                                    </div>
-                                </div>
-
-                                {/* Media Resolution */}
-                                <div className="combined-option-half">
-                                    <div className="label-with-help">
-                                        <label>{t('processing.mediaResolution', 'Media Resolution')}</label>
-                                        <HelpIcon title={t('processing.mediaResolutionHelp', "64 or 256 tokens cannot be mapped to an exact resolution; this reflects Gemini's proprietary video information extraction method.")} />
-                                    </div>
-                                    <CustomDropdown
-                                        value={mediaResolution}
-                                        onChange={(value) => setMediaResolution(value)}
-                                        options={resolutionOptions.map(option => ({
-                                            value: option.value,
-                                            label: option.label
-                                        }))}
-                                        placeholder={t('processing.selectResolution', 'Select Resolution')}
-                                    />
-                                </div>
-                            </div>
-                        </div>
-
-                        {/* Model and Max Duration Combined Row */}
-                        <div className="option-group">
-                            <div className="combined-options-row">
-                                {/* Left half: Model Selection */}
-                                <div className="combined-option-half">
-                                    <div className="label-with-help">
-                                        <label>{t('processing.model', 'Model')}</label>
-                                        <HelpIcon title={t('processing.gemini20Warning', 'Gemini 2.0 models do not work well with the new offset mechanism')} />
-                                    </div>
-                                    <CustomDropdown
-                                        value={selectedModel}
-                                        onChange={(value) => setSelectedModel(value)}
-                                        options={modelOptions.map(option => ({
-                                            value: option.value,
-                                            label: option.label,
-                                            disabled: option.disabled
-                                        }))}
-                                        placeholder={t('processing.selectModel', 'Select Model')}
-                                    />
-                                </div>
-
-                                {/* Right half: Max duration per request */}
-                                <div className="combined-option-half">
-                                    <div className={`label-with-help ${retryLock ? 'disabled' : ''}`} aria-disabled={retryLock ? 'true' : 'false'}>
-                                        <label>{t('processing.maxDurationPerRequest', 'Max duration per request')}</label>
-                                        <HelpIcon title={t('processing.maxDurationPerRequestDesc', 'Maximum duration for each Gemini request. Longer segments will be split into parallel requests.')} />
-                                    </div>
-                                    <div>
-                                        <SliderWithValue
-                                            value={maxDurationPerRequest}
-                                            onChange={(v) => setMaxDurationPerRequest(parseInt(v))}
-                                            min={1}
-                                            max={20}
-                                            step={1}
-                                            orientation="Horizontal"
-                                            size="XSmall"
-                                            state={retryLock ? 'Disabled' : 'Enabled'}
-                                            id="max-duration-slider"
-                                            ariaLabel={t('processing.maxDurationPerRequest', 'Max duration per request')}
-                                            defaultValue={10}
-                                            formatValue={(v) => (
-                                                <>
-                                                    {t('processing.minutesValue', '{{value}} minutes', { value: v })}
-                                                    {selectedSegment && (() => {
-                                                        const segmentDuration = (selectedSegment.end - selectedSegment.start) / 60;
-                                                        const numRequests = Math.ceil(segmentDuration / Number(v || 1));
-                                                        return numRequests > 1 ? (
-                                                            <span className="parallel-info">{' '}({t('processing.parallelRequestsInfo', 'Will split into {{count}} parallel requests', { count: numRequests })})</span>
-                                                        ) : null;
-                                                    })()}
-                                                </>
-                                            )}
-                                        />
-                                    </div>
-                                </div>
-                            </div>
-                        </div>
-
-                        {/* Prompt Preset and Settings Row */}
-                        <div className="option-group" style={{ gridColumn: '1 / -1' }}>
-                            <div className="prompt-settings-row">
-                                {/* Left: Prompt Preset Selection */}
-                                <div className="prompt-preset-section">
-                                    <label>{t('processing.promptPreset', 'Prompt Preset')}</label>
-                                    <CustomDropdown
-                                        value={selectedPromptPreset}
-                                        onChange={(value) => setSelectedPromptPreset(value)}
-                                        options={getPromptPresetOptions().map(option => {
-                                            // Create SVG icon based on preset type
-                                            let IconComponent = null;
-
-                                            if (option.id === 'settings') {
-                                                // Settings/sliders icon for "Prompt from Settings"
-                                                IconComponent = () => (
-                                                    <span className="material-symbols-rounded" style={{ fontSize: '16px', display: 'inline-block', verticalAlign: 'middle', marginRight: '6px' }}>settings</span>
-                                                );
-                                            } else if (option.id === 'timing-generation') {
-                                                // Clock/timing icon for timing generation
-                                                IconComponent = () => (
-                                                    <span className="material-symbols-rounded" style={{ fontSize: '16px', display: 'inline-block', verticalAlign: 'middle', marginRight: '6px' }}>schedule</span>
-                                                );
-                                            } else if (option.isUserPreset) {
-                                                // User icon for user presets
-                                                IconComponent = () => (
-                                                    <span className="material-symbols-rounded" style={{ fontSize: '16px', display: 'inline-block', verticalAlign: 'middle', marginRight: '6px' }}>person</span>
-                                                );
-                                            } else {
-                                                // Built-in preset icons
-                                                switch (option.id) {
-                                                    case 'general':
-                                                        IconComponent = () => (
-                                                            <span className="material-symbols-rounded" style={{ fontSize: '16px', display: 'inline-block', verticalAlign: 'middle', marginRight: '6px' }}>grid_view</span>
-                                                        );
-                                                        break;
-                                                    case 'extract-text':
-                                                        IconComponent = () => (
-                                                            <span className="material-symbols-rounded" style={{ fontSize: '16px', display: 'inline-block', verticalAlign: 'middle', marginRight: '6px' }}>description</span>
-                                                        );
-                                                        break;
-                                                    case 'focus-lyrics':
-                                                        IconComponent = () => (
-                                                            <span className="material-symbols-rounded" style={{ fontSize: '16px', display: 'inline-block', verticalAlign: 'middle', marginRight: '6px' }}>music_note</span>
-                                                        );
-                                                        break;
-                                                    case 'describe-video':
-                                                        IconComponent = () => (
-                                                            <span className="material-symbols-rounded" style={{ fontSize: '16px', display: 'inline-block', verticalAlign: 'middle', marginRight: '6px' }}>videocam</span>
-                                                        );
-                                                        break;
-                                                    case 'translate-directly':
-                                                        IconComponent = () => (
-                                                            <span className="material-symbols-rounded" style={{ fontSize: '16px', display: 'inline-block', verticalAlign: 'middle', marginRight: '6px' }}>language</span>
-                                                        );
-                                                        break;
-                                                    case 'chaptering':
-                                                        IconComponent = () => (
-                                                            <span className="material-symbols-rounded" style={{ fontSize: '16px', display: 'inline-block', verticalAlign: 'middle', marginRight: '6px' }}>bookmark</span>
-                                                        );
-                                                        break;
-                                                    case 'diarize-speakers':
-                                                        IconComponent = () => (
-                                                            <span className="material-symbols-rounded" style={{ fontSize: '16px', display: 'inline-block', verticalAlign: 'middle', marginRight: '6px' }}>group</span>
-                                                        );
-                                                        break;
-                                                    default:
-                                                        // Default clipboard icon
-                                                        IconComponent = () => (
-                                                            <span className="material-symbols-rounded" style={{ fontSize: '16px', display: 'inline-block', verticalAlign: 'middle', marginRight: '6px' }}>content_copy</span>
-                                                        );
-                                                }
-                                            }
-
-                                            return {
-                                                value: option.id,
-                                                label: IconComponent ? (
-                                                    <span style={{ display: 'inline-flex', alignItems: 'center' }}>
-                                                        <IconComponent />
-                                                        {option.title}
-                                                    </span>
-                                                ) : option.title,
-                                                disabled: option.disabled
-                                            };
-                                        })}
-                                        placeholder={t('processing.selectPreset', 'Select Preset')}
-                                    />
-                                    <p className="option-description">
-                                        {(() => {
-                                            const selectedOption = getPromptPresetOptions().find(opt => opt.id === selectedPromptPreset);
-                                            return selectedOption?.description || '';
-                                        })()}
-                                    </p>
-                                </div>
-
-                                {/* Right: Target Language and Analysis Switch Group */}
-                                <div className="settings-group">
-                                    <div className="settings-row">
-                                        {/* Target Language (only when translate-directly is selected) */}
-                                        {selectedPromptPreset === 'translate-directly' && (
-                                            <div className="setting-item">
-                                                <label>{t('processing.targetLanguage', 'Target Language')}</label>
-                                                <input
-                                                    type="text"
-                                                    value={customLanguage}
-                                                    onChange={(e) => setCustomLanguage(e.target.value)}
-                                                    placeholder={t('processing.targetLanguagePlaceholder', 'Enter target language (e.g., Vietnamese, Spanish)')}
-                                                    className="language-input"
+                        {method === 'nvidia-parakeet' ? (
+                            <ParakeetProcessingOptions
+                                parakeetStrategy={parakeetStrategy}
+                                setParakeetStrategy={setParakeetStrategy}
+                                maxDurationPerRequest={maxDurationPerRequest}
+                                setMaxDurationPerRequest={setMaxDurationPerRequest}
+                                parakeetMaxChars={parakeetMaxChars}
+                                setParakeetMaxChars={setParakeetMaxChars}
+                                parakeetMaxWords={parakeetMaxWords}
+                                setParakeetMaxWords={setParakeetMaxWords}
+                                parakeetPreserveSentences={parakeetPreserveSentences}
+                                setParakeetPreserveSentences={setParakeetPreserveSentences}
+                                selectedSegment={selectedSegment}
+                            />
+                        ) : (
+                            <>
+                                {/* Normal (Gemini) UI */}
+                                {/* Frame Rate and Media Resolution Combined */}
+                                <div className="option-group">
+                                    <div className="combined-options-row">
+                                        {/* Frame Rate Slider */}
+                                        <div className="combined-option-half">
+                                            <div className="label-with-help">
+                                                <label>
+                                                    {t('processing.frameRate', 'Frame Rate')}
+                                                    <span className="label-subtitle">({getFpsInterval(fps, t)})</span>
+                                                </label>
+                                                {selectedModel === 'gemini-2.5-pro' && (
+                                                    <HelpIcon title={t('processing.gemini25ProFpsNote', 'Note: Gemini 2.5 Pro requires FPS ≥ 1 for compatibility')} />
+                                                )}
+                                            </div>
+                                            <div>
+                                                <SliderWithValue
+                                                    value={fps}
+                                                    onChange={(v) => setFps(parseFloat(v))}
+                                                    min={selectedModel === 'gemini-2.5-pro' ? 1 : 0.25}
+                                                    max={5}
+                                                    step={0.25}
+                                                    orientation="Horizontal"
+                                                    size="XSmall"
+                                                    state="Enabled"
+                                                    className="fps-slider"
+                                                    id="fps-slider"
+                                                    ariaLabel={t('processing.frameRate', 'Frame Rate')}
+                                                    defaultValue={selectedModel === 'gemini-2.5-pro' ? 1 : 0.25}
+                                                    formatValue={(v) => getFpsValue(v)}
                                                 />
                                             </div>
-                                        )}
+                                        </div>
 
-                                        {/* Transcription Rules Toggle */}
-                                        <div className="setting-item">
+                                        {/* Media Resolution */}
+                                        <div className="combined-option-half">
                                             <div className="label-with-help">
-                                                <label>{t('processing.analysisRules', 'Analysis Rules')}</label>
-                                                <HelpIcon title={transcriptionRulesAvailable
-                                                    ? t('processing.useTranscriptionRulesDesc', 'Include context, terminology, and formatting rules from video analysis in the prompt')
-                                                    : t('processing.noAnalysisAvailable', 'Please create analysis by pressing "Add analysis" button')
+                                                <label>{t('processing.mediaResolution', 'Media Resolution')}</label>
+                                                <HelpIcon title={t('processing.mediaResolutionHelp', "64 or 256 tokens cannot be mapped to an exact resolution; this reflects Gemini's proprietary video information extraction method.")} />
+                                            </div>
+                                            <CustomDropdown
+                                                value={mediaResolution}
+                                                onChange={(value) => setMediaResolution(value)}
+                                                options={resolutionOptions.map(option => ({
+                                                    value: option.value,
+                                                    label: option.label
+                                                }))}
+                                                placeholder={t('processing.selectResolution', 'Select Resolution')}
+                                            />
+                                        </div>
+                                    </div>
+                                </div>
+
+                                {/* Model and Max Duration Combined Row */}
+                                <div className="option-group">
+                                    <div className="combined-options-row">
+                                        {/* Left half: Model Selection */}
+                                        <div className="combined-option-half">
+                                            <div className="label-with-help">
+                                                <label>{t('processing.model', 'Model')}</label>
+                                                <HelpIcon title={t('processing.gemini20Warning', 'Gemini 2.0 models do not work well with the new offset mechanism')} />
+                                            </div>
+                                            <CustomDropdown
+                                                value={selectedModel}
+                                                onChange={(value) => setSelectedModel(value)}
+                                                options={modelOptions.map(option => ({
+                                                    value: option.value,
+                                                    label: option.label,
+                                                    disabled: option.disabled
+                                                }))}
+                                                placeholder={t('processing.selectModel', 'Select Model')}
+                                            />
+                                        </div>
+
+                                        {/* Right half: Max duration per request */}
+                                        <div className="combined-option-half">
+                                            <div className={`label-with-help ${retryLock ? 'disabled' : ''}`} aria-disabled={retryLock ? 'true' : 'false'}>
+                                                <label>{t('processing.maxDurationPerRequest', 'Max duration per request')}</label>
+                                                <HelpIcon title={t('processing.maxDurationPerRequestDesc', 'Maximum duration for each Gemini request. Longer segments will be split into parallel requests.')} />
+                                            </div>
+                                            <div>
+                                                <SliderWithValue
+                                                    value={maxDurationPerRequest}
+                                                    onChange={(v) => setMaxDurationPerRequest(parseInt(v))}
+                                                    min={1}
+                                                    max={20}
+                                                    step={1}
+                                                    orientation="Horizontal"
+                                                    size="XSmall"
+                                                    state={retryLock ? 'Disabled' : 'Enabled'}
+                                                    id="max-duration-slider"
+                                                    ariaLabel={t('processing.maxDurationPerRequest', 'Max duration per request')}
+                                                    defaultValue={10}
+                                                    formatValue={(v) => (
+                                                        <>
+                                                            {t('processing.minutesValue', '{{value}} minutes', { value: v })}
+                                                            {selectedSegment && (() => {
+                                                                const segmentDuration = (selectedSegment.end - selectedSegment.start) / 60;
+                                                                const numRequests = Math.ceil(segmentDuration / Number(v || 1));
+                                                                return numRequests > 1 ? (
+                                                                    <span className="parallel-info">{' '}({t('processing.parallelRequestsInfo', 'Will split into {{count}} parallel requests', { count: numRequests })})</span>
+                                                                ) : null;
+                                                            })()}
+                                                        </>
+                                                    )}
+                                                />
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+
+                                {/* Prompt Preset and Settings Row */}
+                                <div className="option-group" style={{ gridColumn: '1 / -1' }}>
+                                    <div className="prompt-settings-row">
+                                        {/* Left: Prompt Preset Selection */}
+                                        <div className="prompt-preset-section">
+                                            <label>{t('processing.promptPreset', 'Prompt Preset')}</label>
+                                            <CustomDropdown
+                                                value={selectedPromptPreset}
+                                                onChange={(value) => setSelectedPromptPreset(value)}
+                                                options={getPromptPresetOptions().map(option => {
+                                                    // Create SVG icon based on preset type
+                                                    let IconComponent = null;
+
+                                                    if (option.id === 'settings') {
+                                                        // Settings/sliders icon for "Prompt from Settings"
+                                                        IconComponent = () => (
+                                                            <span className="material-symbols-rounded" style={{ fontSize: '16px', display: 'inline-block', verticalAlign: 'middle', marginRight: '6px' }}>settings</span>
+                                                        );
+                                                    } else if (option.id === 'timing-generation') {
+                                                        // Clock/timing icon for timing generation
+                                                        IconComponent = () => (
+                                                            <span className="material-symbols-rounded" style={{ fontSize: '16px', display: 'inline-block', verticalAlign: 'middle', marginRight: '6px' }}>schedule</span>
+                                                        );
+                                                    } else if (option.isUserPreset) {
+                                                        // User icon for user presets
+                                                        IconComponent = () => (
+                                                            <span className="material-symbols-rounded" style={{ fontSize: '16px', display: 'inline-block', verticalAlign: 'middle', marginRight: '6px' }}>person</span>
+                                                        );
+                                                    } else {
+                                                        // Built-in preset icons
+                                                        switch (option.id) {
+                                                            case 'general':
+                                                                IconComponent = () => (
+                                                                    <span className="material-symbols-rounded" style={{ fontSize: '16px', display: 'inline-block', verticalAlign: 'middle', marginRight: '6px' }}>grid_view</span>
+                                                                );
+                                                                break;
+                                                            case 'extract-text':
+                                                                IconComponent = () => (
+                                                                    <span className="material-symbols-rounded" style={{ fontSize: '16px', display: 'inline-block', verticalAlign: 'middle', marginRight: '6px' }}>description</span>
+                                                                );
+                                                                break;
+                                                            case 'focus-lyrics':
+                                                                IconComponent = () => (
+                                                                    <span className="material-symbols-rounded" style={{ fontSize: '16px', display: 'inline-block', verticalAlign: 'middle', marginRight: '6px' }}>music_note</span>
+                                                                );
+                                                                break;
+                                                            case 'describe-video':
+                                                                IconComponent = () => (
+                                                                    <span className="material-symbols-rounded" style={{ fontSize: '16px', display: 'inline-block', verticalAlign: 'middle', marginRight: '6px' }}>videocam</span>
+                                                                );
+                                                                break;
+                                                            case 'translate-directly':
+                                                                IconComponent = () => (
+                                                                    <span className="material-symbols-rounded" style={{ fontSize: '16px', display: 'inline-block', verticalAlign: 'middle', marginRight: '6px' }}>language</span>
+                                                                );
+                                                                break;
+                                                            case 'chaptering':
+                                                                IconComponent = () => (
+                                                                    <span className="material-symbols-rounded" style={{ fontSize: '16px', display: 'inline-block', verticalAlign: 'middle', marginRight: '6px' }}>bookmark</span>
+                                                                );
+                                                                break;
+                                                            case 'diarize-speakers':
+                                                                IconComponent = () => (
+                                                                    <span className="material-symbols-rounded" style={{ fontSize: '16px', display: 'inline-block', verticalAlign: 'middle', marginRight: '6px' }}>group</span>
+                                                                );
+                                                                break;
+                                                            default:
+                                                                // Default clipboard icon
+                                                                IconComponent = () => (
+                                                                    <span className="material-symbols-rounded" style={{ fontSize: '16px', display: 'inline-block', verticalAlign: 'middle', marginRight: '6px' }}>content_copy</span>
+                                                                );
+                                                        }
+                                                    }
+
+                                                    return {
+                                                        value: option.id,
+                                                        label: IconComponent ? (
+                                                            <span style={{ display: 'inline-flex', alignItems: 'center' }}>
+                                                                <IconComponent />
+                                                                {option.title}
+                                                            </span>
+                                                        ) : option.title,
+                                                        disabled: option.disabled
+                                                    };
+                                                })}
+                                                placeholder={t('processing.selectPreset', 'Select Preset')}
+                                            />
+                                            <p className="option-description">
+                                                {(() => {
+                                                    const selectedOption = getPromptPresetOptions().find(opt => opt.id === selectedPromptPreset);
+                                                    return selectedOption?.description || '';
+                                                })()}
+                                            </p>
+                                        </div>
+
+                                        {/* Right: Target Language and Analysis Switch Group */}
+                                        <div className="settings-group">
+                                            <div className="settings-row">
+                                                {/* Target Language (only when translate-directly is selected) */}
+                                                {selectedPromptPreset === 'translate-directly' && (
+                                                    <div className="setting-item">
+                                                        <label>{t('processing.targetLanguage', 'Target Language')}</label>
+                                                        <input
+                                                            type="text"
+                                                            value={customLanguage}
+                                                            onChange={(e) => setCustomLanguage(e.target.value)}
+                                                            placeholder={t('processing.targetLanguagePlaceholder', 'Enter target language (e.g., Vietnamese, Spanish)')}
+                                                            className="language-input"
+                                                        />
+                                                    </div>
+                                                )}
+
+                                                {/* Transcription Rules Toggle */}
+                                                <div className="setting-item">
+                                                    <div className="label-with-help">
+                                                        <label>{t('processing.analysisRules', 'Analysis Rules')}</label>
+                                                        <HelpIcon title={transcriptionRulesAvailable
+                                                            ? t('processing.useTranscriptionRulesDesc', 'Include context, terminology, and formatting rules from video analysis in the prompt')
+                                                            : t('processing.noAnalysisAvailable', 'Please create analysis by pressing "Add analysis" button')
+                                                        } />
+                                                    </div>
+                                                    <div className="material-switch-container">
+                                                        <MaterialSwitch
+                                                            id="use-transcription-rules"
+                                                            checked={useTranscriptionRules && transcriptionRulesAvailable}
+                                                            onChange={(e) => setUseTranscriptionRules(e.target.checked)}
+                                                            disabled={!transcriptionRulesAvailable}
+                                                            ariaLabel={t('processing.useTranscriptionRules', 'Use transcription rules from analysis')}
+                                                            icons={true}
+                                                        />
+                                                        <label htmlFor="use-transcription-rules" className="material-switch-label">
+                                                            {t('processing.useTranscriptionRules', 'Use transcription rules from analysis')}
+                                                        </label>
+                                                    </div>
+                                                </div>
+
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+
+                                {/* Surrounding context and Context coverage in left column */}
+                                <div className="option-group">
+                                    <div className="combined-options-row">
+                                        {/* Left half: Outside context switch */}
+                                        <div className="combined-option-half">
+                                            <div className="label-with-help">
+                                                <label>{t('processing.notifyOutsideResults', 'Surrounding context')}</label>
+                                                <HelpIcon title={outsideContextAvailable
+                                                    ? t('processing.notifyOutsideResultsDesc', 'Include immediately-before/after subtitles outside the selected range to improve consistency')
+                                                    : t('processing.noOutsideContext', 'No outside subtitles available (switch disabled)')
                                                 } />
                                             </div>
                                             <div className="material-switch-container">
                                                 <MaterialSwitch
-                                                    id="use-transcription-rules"
-                                                    checked={useTranscriptionRules && transcriptionRulesAvailable}
-                                                    onChange={(e) => setUseTranscriptionRules(e.target.checked)}
-                                                    disabled={!transcriptionRulesAvailable}
-                                                    ariaLabel={t('processing.useTranscriptionRules', 'Use transcription rules from analysis')}
+                                                    id="use-outside-context"
+                                                    checked={useOutsideResultsContext && outsideContextAvailable}
+                                                    onChange={(e) => setUseOutsideResultsContext(e.target.checked)}
+                                                    disabled={!outsideContextAvailable}
+                                                    ariaLabel={t('processing.notifyOutsideResults', 'Include surrounding subtitles as context')}
                                                     icons={true}
                                                 />
-                                                <label htmlFor="use-transcription-rules" className="material-switch-label">
-                                                    {t('processing.useTranscriptionRules', 'Use transcription rules from analysis')}
+                                                <label htmlFor="use-outside-context" className="material-switch-label">
+                                                    {t('processing.notifyOutsideResults', 'Include surrounding subtitles as context')}
                                                 </label>
                                             </div>
                                         </div>
 
-                                    </div>
-                                </div>
-                            </div>
-                        </div>
-
-                        {/* Surrounding context and Context coverage in left column */}
-                        <div className="option-group">
-                            <div className="combined-options-row">
-                                {/* Left half: Outside context switch */}
-                                <div className="combined-option-half">
-                                    <div className="label-with-help">
-                                        <label>{t('processing.notifyOutsideResults', 'Surrounding context')}</label>
-                                        <HelpIcon title={outsideContextAvailable
-                                            ? t('processing.notifyOutsideResultsDesc', 'Include immediately-before/after subtitles outside the selected range to improve consistency')
-                                            : t('processing.noOutsideContext', 'No outside subtitles available (switch disabled)')
-                                        } />
-                                    </div>
-                                    <div className="material-switch-container">
-                                        <MaterialSwitch
-                                            id="use-outside-context"
-                                            checked={useOutsideResultsContext && outsideContextAvailable}
-                                            onChange={(e) => setUseOutsideResultsContext(e.target.checked)}
-                                            disabled={!outsideContextAvailable}
-                                            ariaLabel={t('processing.notifyOutsideResults', 'Include surrounding subtitles as context')}
-                                            icons={true}
-                                        />
-                                        <label htmlFor="use-outside-context" className="material-switch-label">
-                                            {t('processing.notifyOutsideResults', 'Include surrounding subtitles as context')}
-                                        </label>
+                                        {/* Right half: Context range slider (1-20, last = Unlimited) */}
+                                        <div className="combined-option-half">
+                                            <div className="label-with-help">
+                                                <label>{t('processing.outsideContextRange', 'Context coverage')}</label>
+                                                <HelpIcon title={t('processing.outsideContextRangeDesc', 'How many subtitles before/after to include as context. The last value is Unlimited.')} />
+                                            </div>
+                                            <div>
+                                                <SliderWithValue
+                                                    value={outsideContextRange}
+                                                    onChange={(v) => setOutsideContextRange(Number(v))}
+                                                    min={1}
+                                                    max={21}
+                                                    step={1}
+                                                    orientation="Horizontal"
+                                                    size="XSmall"
+                                                    state={outsideContextAvailable && useOutsideResultsContext ? 'Enabled' : 'Disabled'}
+                                                    id="outside-context-range"
+                                                    ariaLabel={t('processing.outsideContextRange', 'Context coverage')}
+                                                    disabled={!outsideContextAvailable || !useOutsideResultsContext}
+                                                    showValueBadge={true}
+                                                    valueBadgeFormatter={(v) => (Math.round(Number(v)) >= 21 ? t('processing.unlimited', 'Unlimited') : Math.round(Number(v)))}
+                                                    defaultValue={5}
+                                                    formatValue={(v) => (Number(v) === 21 ? t('processing.unlimited', 'Unlimited') : t('processing.linesCount', '{{count}} lines', { count: Number(v) }))}
+                                                />
+                                            </div>
+                                        </div>
                                     </div>
                                 </div>
 
-                                {/* Right half: Context range slider (1-20, last = Unlimited) */}
-                                <div className="combined-option-half">
-                                    <div className="label-with-help">
-                                        <label>{t('processing.outsideContextRange', 'Context coverage')}</label>
-                                        <HelpIcon title={t('processing.outsideContextRangeDesc', 'How many subtitles before/after to include as context. The last value is Unlimited.')} />
-                                    </div>
-                                    <div>
-                                        <SliderWithValue
-                                            value={outsideContextRange}
-                                            onChange={(v) => setOutsideContextRange(Number(v))}
-                                            min={1}
-                                            max={21}
-                                            step={1}
-                                            orientation="Horizontal"
-                                            size="XSmall"
-                                            state={outsideContextAvailable && useOutsideResultsContext ? 'Enabled' : 'Disabled'}
-                                            id="outside-context-range"
-                                            ariaLabel={t('processing.outsideContextRange', 'Context coverage')}
-                                            disabled={!outsideContextAvailable || !useOutsideResultsContext}
-                                            showValueBadge={true}
-                                            valueBadgeFormatter={(v) => (Math.round(Number(v)) >= 21 ? t('processing.unlimited', 'Unlimited') : Math.round(Number(v)))}
-                                            defaultValue={5}
-                                            formatValue={(v) => (Number(v) === 21 ? t('processing.unlimited', 'Unlimited') : t('processing.linesCount', '{{count}} lines', { count: Number(v) }))}
-                                        />
+                                {/* Auto-split subtitles and Max words per subtitle */}
+                                <div className="option-group">
+                                    <div className="combined-options-row">
+                                        {/* Left half: Auto-split switch */}
+                                        <div className="combined-option-half">
+                                            <div className="label-with-help">
+                                                <label>{t('processing.autoSplitSubtitles', 'Auto-split subtitles')}</label>
+                                                <HelpIcon title={t('processing.autoSplitHelp', 'Automatically split long subtitles into smaller segments for better readability. The splitting happens in real-time during streaming.')} />
+                                            </div>
+                                            <div className="material-switch-container">
+                                                <MaterialSwitch
+                                                    id="auto-split-subtitles"
+                                                    checked={autoSplitSubtitles}
+                                                    onChange={(e) => setAutoSplitSubtitles(e.target.checked)}
+                                                    ariaLabel={t('processing.autoSplitSubtitles', 'Auto-split subtitles')}
+                                                    icons={true}
+                                                />
+                                                <label htmlFor="auto-split-subtitles" className="material-switch-label">
+                                                    {t('processing.enableAutoSplit', 'Enable auto-splitting')}
+                                                </label>
+                                            </div>
+                                        </div>
+
+                                        {/* Right half: Max words slider (always visible, disabled when switch is off) */}
+                                        <div className="combined-option-half">
+                                            <div className="label-with-help">
+                                                <label>{t('processing.maxWordsPerSubtitle', 'Max words per subtitle')}</label>
+                                                <HelpIcon title={t('processing.maxWordsHelp', 'Maximum number of words allowed per subtitle. Longer subtitles will be split evenly.')} />
+                                            </div>
+                                            <div>
+                                                <SliderWithValue
+                                                    value={maxWordsPerSubtitle}
+                                                    onChange={(v) => setMaxWordsPerSubtitle(parseInt(v))}
+                                                    min={1}
+                                                    max={30}
+                                                    step={1}
+                                                    orientation="Horizontal"
+                                                    size="XSmall"
+                                                    state={autoSplitSubtitles ? 'Enabled' : 'Disabled'}
+                                                    className="max-words-slider"
+                                                    id="max-words-slider"
+                                                    ariaLabel={t('processing.maxWordsPerSubtitle', 'Maximum words per subtitle')}
+                                                    disabled={!autoSplitSubtitles}
+                                                    showValueBadge={true}
+                                                    valueBadgeFormatter={(v) => Math.round(Number(v))}
+                                                    defaultValue={12}
+                                                    formatValue={(v) => t('processing.wordsLimit', '{{count}} {{unit}}', {
+                                                        count: Number(v),
+                                                        unit: Number(v) === 1 ? t('processing.word', 'word') : t('processing.words', 'words')
+
+
+                                                    })}
+                                                />
+                                            </div>
+                                        </div>
                                     </div>
                                 </div>
-                            </div>
-                        </div>
-
-                        {/* Auto-split subtitles and Max words per subtitle */}
-                        <div className="option-group">
-                            <div className="combined-options-row">
-                                {/* Left half: Auto-split switch */}
-                                <div className="combined-option-half">
-                                    <div className="label-with-help">
-                                        <label>{t('processing.autoSplitSubtitles', 'Auto-split subtitles')}</label>
-                                        <HelpIcon title={t('processing.autoSplitHelp', 'Automatically split long subtitles into smaller segments for better readability. The splitting happens in real-time during streaming.')} />
-                                    </div>
-                                    <div className="material-switch-container">
-                                        <MaterialSwitch
-                                            id="auto-split-subtitles"
-                                            checked={autoSplitSubtitles}
-                                            onChange={(e) => setAutoSplitSubtitles(e.target.checked)}
-                                            ariaLabel={t('processing.autoSplitSubtitles', 'Auto-split subtitles')}
-                                            icons={true}
-                                        />
-                                        <label htmlFor="auto-split-subtitles" className="material-switch-label">
-                                            {t('processing.enableAutoSplit', 'Enable auto-splitting')}
-                                        </label>
-                                    </div>
-                                </div>
-
-                                {/* Right half: Max words slider (always visible, disabled when switch is off) */}
-                                <div className="combined-option-half">
-                                    <div className="label-with-help">
-                                        <label>{t('processing.maxWordsPerSubtitle', 'Max words per subtitle')}</label>
-                                        <HelpIcon title={t('processing.maxWordsHelp', 'Maximum number of words allowed per subtitle. Longer subtitles will be split evenly.')} />
-                                    </div>
-                                    <div>
-                                        <SliderWithValue
-                                            value={maxWordsPerSubtitle}
-                                            onChange={(v) => setMaxWordsPerSubtitle(parseInt(v))}
-                                            min={1}
-                                            max={30}
-                                            step={1}
-                                            orientation="Horizontal"
-                                            size="XSmall"
-                                            state={autoSplitSubtitles ? 'Enabled' : 'Disabled'}
-                                            className="max-words-slider"
-                                            id="max-words-slider"
-                                            ariaLabel={t('processing.maxWordsPerSubtitle', 'Maximum words per subtitle')}
-                                            disabled={!autoSplitSubtitles}
-                                            showValueBadge={true}
-                                            valueBadgeFormatter={(v) => Math.round(Number(v))}
-                                            defaultValue={12}
-                                            formatValue={(v) => t('processing.wordsLimit', '{{count}} {{unit}}', {
-                                                count: Number(v),
-                                                unit: Number(v) === 1 ? t('processing.word', 'word') : t('processing.words', 'words')
-
-
-                                            })}
-                                        />
-                                    </div>
-                                </div>
-                            </div>
-                        </div>
+                            </>
+                        )}
 
                     </div>
 
@@ -1271,7 +1463,8 @@ const VideoProcessingOptionsModal = ({
 
                 <div className="modal-footer">
                     <div className="footer-content">
-                        {/* Token Usage Info */}
+                        {/* Token Usage Info (hide for Parakeet) */}
+                        {method !== 'nvidia-parakeet' && (
                         <div className="footer-token-info">
                             <div className="token-usage">
                                 <span className="token-label">
@@ -1299,12 +1492,13 @@ const VideoProcessingOptionsModal = ({
                                 </div>
                             )}
                         </div>
+                        )}
 
                         <div className="footer-buttons">
                             <button
                                 className="process-btn"
                                 onClick={handleProcess}
-                                disabled={isUploading || !isWithinLimit}
+                                disabled={isUploading || (method !== 'nvidia-parakeet' && !isWithinLimit)}
                             >
                                 {isUploading
                                     ? t('processing.waitingForUpload', 'Waiting for upload...')

@@ -336,7 +336,16 @@ const ApiKeysTab = ({
                   />
                 </div>
               )}
-  
+
+              {/* Placeholder when no notifications are visible */}
+              {!showGeminiPausedMessage && !showUDBMMessage && (
+                <div className="notification-placeholder">
+                  <div className="placeholder-content">
+                    <span>{t('settings.noNewNotifications')}</span>
+                  </div>
+                </div>
+              )}
+
           </div>
           {/* oauth-authenticate-btn: Added flexShrink: '0' for robust fixed-size positioning */}
           <button

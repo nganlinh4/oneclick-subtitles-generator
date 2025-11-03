@@ -48,5 +48,11 @@
   "fontWeightExtraBold": "Extra Bold",
   "textAlignLeft": "Left",
   "textAlignCenter": "Center",
-  "textAlignRight": "Right"
+  "textAlignRight": "Right",
+  "presetButtons": {
+    "savePreset": "Save Preset",
+    "saveCurrentSettings": "Save current settings as preset",
+    "noChangesToSave": "No changes to save",
+    "saveError": "Failed to save custom preset."
+  }
 }

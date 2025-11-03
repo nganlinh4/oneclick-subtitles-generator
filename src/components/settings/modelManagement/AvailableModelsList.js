@@ -236,37 +236,6 @@ const AvailableModelsList = ({
               </div>
             </div>
 
-            {/* Show delete button for custom models */}
-            {customModels.some(cm => cm.id === model.id) && (
-              <button
-                className="delete-custom-model-btn"
-                onClick={(e) => {
-                  e.stopPropagation();
-                  const updatedCustomModels = customModels.filter(cm => cm.id !== model.id);
-                  setCustomModels(updatedCustomModels);
-                  localStorage.setItem('customModels', JSON.stringify(updatedCustomModels));
-                }}
-                title={t('settings.modelManagement.deleteCustomModel', 'Delete custom model template')}
-                style={{
-                  position: 'absolute',
-                  top: '8px',
-                  right: '8px',
-                  background: 'rgba(255, 59, 48, 0.1)',
-                  border: '1px solid rgba(255, 59, 48, 0.3)',
-                  borderRadius: '4px',
-                  color: '#ff3b30',
-                  padding: '4px',
-                  cursor: 'pointer',
-                  fontSize: '12px',
-                  display: 'flex',
-                  alignItems: 'center',
-                  justifyContent: 'center'
-                }}
-              >
-                <span className="material-symbols-rounded" style={{ fontSize: 12 }}>close</span>
-              </button>
-            )}
-
             {isDownloading(model.id, {}, downloads) ? (
               <div>
 
@@ -296,13 +265,30 @@ const AvailableModelsList = ({
                   <span className="download-percent-label">
                     {getDownloadProgress(model.id, downloads) ? `${getDownloadProgress(model.id, downloads)}%` : ''}
                   </span>
-                  <button
-                    className="cancel-download-btn"
-                    onClick={() => handleCancelDownload(model.id)}
-                    title={t('settings.modelManagement.cancelDownload', 'Cancel Download')}
-                  >
-                    <span className="material-symbols-rounded" style={{ fontSize: 20 }}>close</span>
-                  </button>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                    {/* Show delete button for custom models */}
+                    {customModels.some(cm => cm.id === model.id) && (
+                      <button
+                        className="delete-model-btn"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          const updatedCustomModels = customModels.filter(cm => cm.id !== model.id);
+                          setCustomModels(updatedCustomModels);
+                          localStorage.setItem('customModels', JSON.stringify(updatedCustomModels));
+                        }}
+                        title={t('settings.modelManagement.deleteCustomModel', 'Delete custom model template')}
+                      >
+                        <span className="material-symbols-rounded" style={{ fontSize: 16 }}>close</span>
+                      </button>
+                    )}
+                    <button
+                      className="cancel-download-btn"
+                      onClick={() => handleCancelDownload(model.id)}
+                      title={t('settings.modelManagement.cancelDownload', 'Cancel Download')}
+                    >
+                      <span className="material-symbols-rounded" style={{ fontSize: 20 }}>close</span>
+                    </button>
+                  </div>
                 </div>
               </div>
             ) : (
@@ -315,6 +301,21 @@ const AvailableModelsList = ({
                   <span className="material-symbols-rounded" style={{ fontSize: 20 }}>download</span>
                   {t('settings.modelManagement.download')}
                 </button>
+                {/* Show delete button for custom models */}
+                {customModels.some(cm => cm.id === model.id) && (
+                  <button
+                    className="delete-model-btn"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      const updatedCustomModels = customModels.filter(cm => cm.id !== model.id);
+                      setCustomModels(updatedCustomModels);
+                      localStorage.setItem('customModels', JSON.stringify(updatedCustomModels));
+                    }}
+                    title={t('settings.modelManagement.deleteCustomModel', 'Delete custom model template')}
+                  >
+                    <span className="material-symbols-rounded" style={{ fontSize: 16 }}>close</span>
+                  </button>
+                )}
               </div>
             )}
           </div>

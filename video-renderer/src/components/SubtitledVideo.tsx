@@ -1,5 +1,5 @@
-import React, { useMemo, memo, useEffect } from 'react';
-import { AbsoluteFill, useCurrentFrame, Audio, Video, OffthreadVideo, useVideoConfig, Img } from 'remotion';
+import React, { useMemo, memo, useEffect, useRef, useState } from 'react';
+import { AbsoluteFill, useCurrentFrame, Audio, Video, OffthreadVideo, useVideoConfig, Img, delayRender, continueRender } from 'remotion';
 import { LyricEntry, VideoMetadata } from '../types';
 import { ThemeProvider } from 'styled-components';
 import { defaultCustomization } from './SubtitleCustomization';
@@ -222,13 +222,94 @@ export const SubtitledVideoContent: React.FC<Props> = ({
     [metadata.subtitleCustomization]
   );
 
-  // Load Comfortaa font using Remotion's method if selected
+  // Ensure selected web font is loaded before first frame render.
+  // Uses Remotion's delayRender/continueRender to prevent frame-0 fallback font.
   useEffect(() => {
+    // Synchronously delay render so Remotion waits
+    const renderHandle = delayRender('wait-for-fonts');
     const fontName = extractFontName(customization.fontFamily);
-    if (fontName === 'Comfortaa') {
-      loadFont('normal', { weights: ['400', '500', '600', '700'], subsets: ['latin'], ignoreTooManyRequestsWarning: true });
-    }
-  }, [customization.fontFamily]);
+    const fontUrl = fontUrlMap[fontName];
+    const wantedWeight = String(customization.fontWeight || 400);
+
+    // unique id for injected link element
+    const linkId = `remotion-font-link-${fontName.replace(/\s+/g, '-').toLowerCase()}`;
+
+    const addStylesheetLink = () => {
+      if (!fontUrl) return;
+      if (document.getElementById(linkId)) return;
+      try {
+        const l = document.createElement('link');
+        l.id = linkId;
+        l.rel = 'stylesheet';
+        l.href = fontUrl;
+        l.crossOrigin = 'anonymous';
+        document.head.appendChild(l);
+      } catch (e) {
+        // ignore DOM insertion errors
+        console.warn('Failed to inject font link', e);
+      }
+    };
+
+    const waitForLinkLoad = (href: string, timeoutMs = 10000) =>
+      new Promise<void>((resolve) => {
+        const existing = document.querySelector(`link[href="${href}"]`) as HTMLLinkElement | null;
+        if (!existing) return resolve();
+        if ((existing as any).sheet) return resolve();
+        const onLoad = () => { cleanup(); resolve(); };
+        const onTimeout = () => { cleanup(); resolve(); };
+        const cleanup = () => {
+          existing.removeEventListener('load', onLoad);
+        };
+        existing.addEventListener('load', onLoad);
+        setTimeout(onTimeout, timeoutMs);
+      });
+
+    const loadViaDocumentFonts = async () => {
+      if (!('fonts' in document) || typeof (document as any).fonts.load !== 'function') return;
+      // Try a small set of candidate weights to improve probability the specific glyphs/weights are available
+      const candidateWeights = [wantedWeight, '400', '500', '600', '700'].filter((v, i, a) => a.indexOf(v) === i);
+      const loadPromises = candidateWeights.map((w) => (document as any).fonts.load(`${w} 16px "${fontName}"`));
+      // Race a reasonable timeout so we don't hang render if network is slow
+      await Promise.race([Promise.all(loadPromises), new Promise((res) => setTimeout(res, 10000))]);
+      // Also wait for overall readiness but with small timeout
+      await Promise.race([(document as any).fonts.ready, new Promise((res) => setTimeout(res, 3000))]);
+    };
+
+    (async () => {
+      try {
+        // If fontUrl is known, inject a stylesheet link (faster than @import in many cases)
+        if (fontUrl) {
+          addStylesheetLink();
+          await waitForLinkLoad(fontUrl, 10000);
+        }
+
+        // Special-case Remotion google-font helper (Comfortaa) to ensure its loader runs
+        if (fontName === 'Comfortaa') {
+          try {
+            await loadFont('normal', { weights: ['400', '500', '600', '700'], subsets: ['latin'], ignoreTooManyRequestsWarning: true });
+          } catch (e) {
+            // don't block if this fails
+            console.warn('loadFont for Comfortaa failed', e);
+          }
+        }
+
+        // Attempt to ensure the font is registered in document.fonts
+        await loadViaDocumentFonts();
+      } catch (e) {
+        // Never throw here — we must always continueRender to avoid permanently hanging renders
+        console.warn('Font preflight warning', e);
+      } finally {
+        try {
+          continueRender(renderHandle);
+        } catch (err) {
+          // ignore continueRender errors
+        }
+      }
+    })();
+
+    // Cleanup: no persistent listeners to remove here beyond automatic link element retention
+    return () => { /* noop */ };
+  }, [customization.fontFamily, customization.fontWeight]);
 
   // Generate dynamic font styles based on selected font
   const dynamicFontStyles = useMemo(() =>

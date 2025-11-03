@@ -25,7 +25,7 @@ async function startAllServices() {
     console.log('✅ Cleanup complete, starting services...');
     
     // Start all services including the video renderer (same as dev but with CUDA support)
-    console.log('🚀 Starting all services: FRONTEND, SERVER, RENDERER, MIDI with CUDA support...');
+    console.log('🚀 Starting all services: FRONTEND, SERVER, RENDERER, MIDI, PARAKEET with CUDA support...');
 
     // Use the same cross-platform approach as dev-server.js
     const { spawn } = require('child_process');
@@ -35,7 +35,9 @@ async function startAllServices() {
       { name: 'FRONTEND', cmd: 'npm', args: ['run', 'start'], cwd: '.' },
       { name: 'SERVER', cmd: 'npm', args: ['run', 'server:start'], cwd: '.' },
       { name: 'RENDERER', cmd: 'npm', args: ['run', 'video-renderer:start'], cwd: '.' },
-      { name: 'MIDI', cmd: 'npm', args: ['run', 'dev', '--silent'], cwd: './promptdj-midi' }
+      { name: 'MIDI', cmd: 'npm', args: ['run', 'dev', '--silent'], cwd: './promptdj-midi' },
+      // Run Parakeet from project root so --python .venv resolves; pass absolute .venv for safety
+      { name: 'PARAKEET', cmd: 'uv', args: ['run', '--python', path.join(process.cwd(), '.venv'), 'python', path.join('parakeet_wrapper', 'app.py')], cwd: '.' }
     ];
 
     // Colors for different services (same as dev-server.js)
@@ -43,7 +45,8 @@ async function startAllServices() {
       FRONTEND: '\x1b[36m', // cyan
       SERVER: '\x1b[32m',   // green
       RENDERER: '\x1b[35m', // magenta
-      MIDI: '\x1b[34m'      // blue
+      MIDI: '\x1b[34m',     // blue
+      PARAKEET: '\x1b[33m'   // yellow
     };
 
     // Function to prefix output with colored service name

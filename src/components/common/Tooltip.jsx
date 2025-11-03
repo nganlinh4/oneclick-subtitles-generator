@@ -114,7 +114,10 @@ const Tooltip = ({
 
   const resolvedWidth = typeof maxWidth === 'number'
     ? maxWidth
-    : computeAdaptiveMinWidth(content, preferredLines);
+    : computeAdaptiveMinWidth(typeof content === 'string' ? content.replace(/<[^>]*>/g, '') : content, preferredLines);
+
+  // Check if content is a string with HTML tags
+  const hasHtml = typeof content === 'string' && /<[^>]*>/.test(content);
 
   return (
     <div
@@ -141,7 +144,11 @@ const Tooltip = ({
           onMouseLeave={() => setIsVisible(false)}
         >
           <div className="oc-tooltip-content" style={{ width: 'fit-content', maxWidth: resolvedWidth }}>
-            {content}
+            {hasHtml ? (
+              <span dangerouslySetInnerHTML={{ __html: content }} />
+            ) : (
+              content
+            )}
           </div>
         </div>,
         document.body

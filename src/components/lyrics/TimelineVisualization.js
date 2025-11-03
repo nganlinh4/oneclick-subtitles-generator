@@ -1758,6 +1758,7 @@ const TimelineVisualization = ({
             >
               <button
                 className="btn-base btn-primary btn-small"
+                style={{ fontStretch: 'condensed' }}
                 onClick={(e) => {
                   e.stopPropagation();
                   sessionStorage.setItem('processing_modal_open_reason', 'action-bar-regenerate');

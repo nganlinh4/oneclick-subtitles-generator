@@ -30,6 +30,7 @@
   border: 1px solid rgba(var(--md-outline-variant-rgb), 0.5);
   position: relative;
   z-index: 1;
+  transition: height 0.35s cubic-bezier(0.4, 0, 0.2, 1);
 }
 
 .modal-header {
@@ -190,7 +191,6 @@
 
 .option-group label {
   display: block;
-  margin-bottom: 0.5rem;
   font-weight: 500;
   color: var(--md-on-surface);
   font-size: 0.875rem;
@@ -745,6 +745,7 @@
     max-width: none;
     margin: 1rem;
     max-height: 90vh;
+    transition: none;
   }
 
   .modal-content-grid {

@@ -625,6 +625,70 @@ try {
     process.exit(1);
 }
 
+// --- Install Parakeet service dependencies into the same .venv ---
+logger.subsection('Installing Parakeet dependencies');
+try {
+    const parakeetReqPath = path.join(__dirname, 'parakeet_wrapper', 'requirements.txt');
+    if (fs.existsSync(parakeetReqPath)) {
+        // Use a conservative install that respects existing resolved packages
+        const parakeetCmd = `uv pip install --python ${VENV_DIR} -r "${parakeetReqPath}"`;
+        logger.command(parakeetCmd);
+        const env = { ...process.env, UV_HTTP_TIMEOUT: '600' }; // allow time for wheels
+        execSync(parakeetCmd, { stdio: 'inherit', env });
+
+        // Quick import verification for key deps without modifying versions
+        logger.progress('Verifying Parakeet runtime imports');
+        const verifyParakeetPy = `
+import sys
+print('Python:', sys.executable)
+missing = []
+try:
+    import fastapi
+except Exception:
+    missing.append('fastapi')
+try:
+    import uvicorn
+except Exception:
+    missing.append('uvicorn')
+try:
+    import pydub
+except Exception:
+    missing.append('pydub')
+try:
+    import numpy
+except Exception:
+    missing.append('numpy')
+try:
+    import scipy
+except Exception:
+    missing.append('scipy')
+try:
+    import importlib
+    onnx_asr = importlib.import_module('onnx_asr')
+except Exception:
+    missing.append('onnx-asr')
+print('OK' if not missing else ('Missing:' + ','.join(missing)))
+`;
+    const verifyParakeetCmd = `uv run --python ${VENV_DIR} -- python -c "${verifyParakeetPy.replace(/"/g, '\\"')}"`;
+        // Use try/catch: verification is helpful but non-fatal
+        try {
+            const out = execSync(verifyParakeetCmd, { encoding: 'utf8', stdio: 'pipe' }).trim();
+            if (out && /Missing:/.test(out)) {
+                logger.warning(`Parakeet verification reported missing modules: ${out.replace('Missing:', '')}`);
+            } else {
+                logger.success('Parakeet dependencies verified');
+            }
+        } catch (verr) {
+            logger.warning('Parakeet verification encountered an issue (continuing)');
+        }
+    } else {
+        logger.info('parakeet_wrapper/requirements.txt not found; skipping Parakeet deps');
+    }
+} catch (error) {
+    logger.warning(`Parakeet dependencies installation had issues: ${error.message}`);
+    logger.info('Continuing setup; Parakeet service may not start until dependencies are installed');
+}
+
 // --- 5. Install F5-TTS using uv pip ---
 logger.step(5, 8, 'Installing F5-TTS');
 logger.installing('Text-to-Speech AI engine');

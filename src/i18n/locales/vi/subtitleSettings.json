@@ -53,5 +53,11 @@
   "fontWeightExtraBold": "Siêu đậm",
   "textAlignLeft": "Căn trái",
   "textAlignCenter": "Căn giữa",
-  "textAlignRight": "Căn phải"
+  "textAlignRight": "Căn phải",
+  "presetButtons": {
+    "savePreset": "Lưu Preset",
+    "saveCurrentSettings": "Lưu cài đặt hiện tại làm preset",
+    "noChangesToSave": "Không có thay đổi để lưu",
+    "saveError": "Không thể lưu preset tùy chỉnh."
+  }
 }

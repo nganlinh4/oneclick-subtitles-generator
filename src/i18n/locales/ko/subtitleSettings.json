@@ -48,5 +48,11 @@
   "fontWeightExtraBold": "더 굵게",
   "textAlignLeft": "왼쪽 정렬",
   "textAlignCenter": "가운데 정렬",
-  "textAlignRight": "오른쪽 정렬"
+  "textAlignRight": "오른쪽 정렬",
+  "presetButtons": {
+    "savePreset": "프리셋 저장",
+    "saveCurrentSettings": "현재 설정을 프리셋으로 저장",
+    "noChangesToSave": "저장할 변경사항 없음",
+    "saveError": "사용자 정의 프리셋 저장 실패."
+  }
 }

@@ -449,7 +449,7 @@ const VideoQualityModal = ({
             )}
           </div>
 
-          <div className="quality-options">
+          <div className="quality-options" style={{ paddingTop: '20px' }}>
             <h4>{t('videoQuality.chooseOption', 'Choose an option for rendering:')}</h4>
 
             {/* Current quality option */}

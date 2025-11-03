@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useEffect } from 'react';
 import { Composition } from 'remotion';
 import SubtitledVideoWrapper from './Composition';
 import { Props, VideoMetadata, LyricEntry } from '../types';
@@ -28,13 +28,41 @@ const VideoComponentWrapper: React.FC<Record<string, unknown>> = (props) => {
     narrationUrl: props.narrationUrl as string | undefined,
     isVideoFile: (props.isVideoFile as boolean) || false,
     framesPathUrl: (props.framesPathUrl as string) || undefined,
-    extractedAudioUrl: (props.extractedAudioUrl as string) || undefined,
   };
 
   return <SubtitledVideoWrapper {...safeProps} />;
 };
 
 export const RemotionRoot: React.FC = () => {
+  // Add low-cost preconnects for Google Fonts to reduce initial font fetch latency
+  // This helps the component-level font-loading guard to complete faster.
+  useEffect(() => {
+    try {
+      const addLink = (rel: string, href: string, crossOrigin?: string) => {
+        if (document.querySelector(`link[rel="${rel}"][href="${href}"]`)) return;
+        const l = document.createElement('link');
+        l.rel = rel;
+        l.href = href;
+        if (crossOrigin) l.crossOrigin = crossOrigin;
+        document.head.appendChild(l);
+      };
+      addLink('preconnect', 'https://fonts.googleapis.com');
+      addLink('preconnect', 'https://fonts.gstatic.com', 'anonymous');
+      addLink('dns-prefetch', 'https://fonts.googleapis.com');
+      addLink('dns-prefetch', 'https://fonts.gstatic.com');
+      // small, non-blocking attempt to warm the font provider (no await)
+      const img = document.createElement('img');
+      img.src = 'https://fonts.gstatic.com/s/inter/v12/UcCO3FwrK3iQ.woff2';
+      img.style.display = 'none';
+      img.onload = () => { try { img.remove(); } catch (e) {} };
+      document.body.appendChild(img);
+    } catch (e) {
+      // non-fatal if DOM modifications fail
+      // eslint-disable-next-line no-console
+      console.warn('Failed to add preconnect links for fonts', e);
+    }
+  }, []);
+
   // Create a flexible composition that can handle any aspect ratio
   // The server will override dimensions, fps, and duration based on the actual video
   const commonProps = {

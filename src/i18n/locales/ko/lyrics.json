@@ -9,7 +9,7 @@
   "autoScrollEnable": "자동 스크롤 활성화",
   "autoScrollDisable": "자동 스크롤 비활성화",
   "timingInstructions": "현재 ???개의 자막 라인이 있습니다. 타임스탬프를 드래그하여 각 자막의 타이밍을 조정하세요. \"고정\" 모드는 그 이후의 모든 자막을 조정합니다. \"스크롤\" 모드는 현재 재생 중인 자막으로 자동으로 화면을 이동합니다. 나머지 6개 버튼: 자막 분할, 저장, 재설정, 마지막 체크포인트로 이동, 실행 취소, 다시 실행",
-  "editTooltip": "자막 텍스트 편집",
+  "editTooltip": "또는 자막을 <strong>더블 클릭</strong>하여 편집",
   "deleteTooltip": "자막 삭제",
   "insertTooltip": "새 줄 추가",
   "mergeTooltip": "자막 병합",

@@ -351,7 +351,8 @@
 
 /* Option group */
 .option-group {
-  padding-bottom: 24px;
+  padding-bottom: 12px;
+  padding-top: 12px;
 }
 
 /* Split duration slider container */

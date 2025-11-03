@@ -28,7 +28,7 @@
 
 .unified-url-input .url-field {
   width: 100%;
-  padding: 0.75rem 1rem 0.75rem 60px;
+  padding: 0.75rem 80px 0.75rem 60px;
   border: 1px solid var(--border-color);
   border-radius: 30px;
   font-size: 1rem;

@@ -21,6 +21,14 @@ function runYtDlp(args) {
     let stderr = '';
     proc.stdout.on('data', (d) => { stdout += d.toString(); });
     proc.stderr.on('data', (d) => { stderr += d.toString(); });
+    proc.on('error', (err) => {
+      // Handle ENOENT gracefully with a helpful message instead of crashing the server
+      if (err && err.code === 'ENOENT') {
+        reject(new Error('yt-dlp not found. Please install it with "npm run install:yt-dlp" so it is available in .venv.'));
+      } else {
+        reject(err);
+      }
+    });
     proc.on('close', (code) => {
       if (code === 0) resolve({ stdout, stderr });
       else reject(new Error(`yt-dlp exited with code ${code}: ${stderr}`));

@@ -631,6 +631,110 @@ export const useAppHandlers = (appState) => {
         throw new Error("No uploaded file data available");
       }
 
+      // Branch: Nvidia Parakeet (local ASR)
+      if (options?.method === 'nvidia-parakeet') {
+        try {
+          const seg = options.segment;
+          if (!seg || typeof seg.start !== 'number' || typeof seg.end !== 'number') {
+            throw new Error('Invalid segment selection');
+          }
+
+          // Determine sequential sub-segments based on maxDurationPerRequest (seconds)
+          const windowSec = Math.max(1, Math.floor(options.maxDurationPerRequest || 0));
+          let subSegments = [seg];
+          try {
+            if (windowSec && (seg.end - seg.start) > windowSec) {
+              const { splitSegmentForParallelProcessing } = await import('../../utils/parallelProcessingUtils');
+              subSegments = splitSegmentForParallelProcessing(seg, windowSec);
+            }
+          } catch (e) {
+            // Fallback: simple slicer
+            const total = seg.end - seg.start;
+            const n = Math.ceil(total / windowSec);
+            subSegments = Array.from({ length: n }).map((_, i) => ({
+              start: seg.start + i * (total / n),
+              end: i === n - 1 ? seg.end : seg.start + (i + 1) * (total / n)
+            }));
+          }
+
+          // Show processing ranges overlay
+          try {
+            if (subSegments && subSegments.length > 1) {
+              window.dispatchEvent(new CustomEvent('processing-ranges', { detail: { ranges: subSegments } }));
+            }
+          } catch {}
+
+          const { extractSegmentAsWavBase64 } = await import('../../utils/audioUtils');
+          const { mergeSegmentSubtitles } = await import('../../utils/subtitle/subtitleMerger');
+          const { API_BASE_URL } = await import('../../config');
+
+          // Process each sub-segment sequentially
+          for (let i = 0; i < subSegments.length; i++) {
+            const part = subSegments[i];
+            setStatus({ message: `Transcribing with Parakeet ASR (${i + 1}/${subSegments.length})...`, type: 'loading' });
+
+            // Extract WAV base64 for just this sub-segment
+            const wavBase64 = await extractSegmentAsWavBase64(uploadedFileData, part.start, part.end);
+
+            const resp = await fetch(`${API_BASE_URL}/parakeet/transcribe`, {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({
+                audio_base64: wavBase64,
+                filename: (uploadedFileData && uploadedFileData.name) || 'segment.wav',
+                segment_strategy: options.parakeetStrategy || 'char',
+                max_chars: options.parakeetMaxChars || 60,
+                max_words: options.parakeetMaxWords || 7
+              })
+            });
+
+            if (!resp.ok) {
+              const errText = await resp.text().catch(() => '');
+              throw new Error(`Parakeet API error: ${resp.status} ${errText}`);
+            }
+
+            const data = await resp.json();
+            const segmentSubs = Array.isArray(data?.segments) ? data.segments : [];
+
+            // Offset timestamps by sub-segment start to map back to full timeline
+            const offset = part.start || 0;
+            const newSegmentSubs = segmentSubs.map(s => ({
+              start: (s.start || 0) + offset,
+              end: (s.end || 0) + offset,
+              text: s.segment || s.text || ''
+            }));
+
+            // Merge into existing subtitles, clamping edge overlaps instead of deleting
+            await new Promise((resolve) => {
+              setSubtitlesData(current => {
+                const existing = current || [];
+                const overlaps = existing.filter(s => s.start < part.end && s.end > part.start);
+                const merged = mergeSegmentSubtitles(existing, newSegmentSubs, part);
+                resolve();
+                return merged;
+              });
+            });
+          }
+
+          // Clear overlay and finish
+          try {
+            window.dispatchEvent(new CustomEvent('processing-ranges', { detail: { ranges: [] } }));
+          } catch {}
+
+          setStatus({ message: 'Parakeet transcription complete', type: 'success' });
+          setIsProcessingSegment(false);
+          return; // Exit early (no Gemini flow)
+        } catch (e) {
+          console.error('[Parakeet] Error:', e);
+          setStatus({ message: `Parakeet processing failed: ${e.message}`, type: 'error' });
+          setIsProcessingSegment(false);
+          try {
+            window.dispatchEvent(new CustomEvent('processing-ranges', { detail: { ranges: [] } }));
+          } catch {}
+          return;
+        }
+      }
+
       // Prepare options for subtitle generation
       const subtitleOptions = {
         segment: options.segment,

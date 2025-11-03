@@ -9,7 +9,7 @@
   "autoScrollEnable": "Bật cuộn tự động",
   "autoScrollDisable": "Tắt cuộn tự động",
   "timingInstructions": "Hiện có ??? dòng phụ đề. Kéo dấu thời gian để điều chỉnh thời gian cho mỗi phụ đề. Chế độ \"Dính\" sẽ điều chỉnh tất cả phụ đề theo sau. Chế độ \"Cuộn\" sẽ giúp tự dời tầm nhìn lên dòng sub đang chạy. 6 nút còn lại: Chia nhỏ sub, Lưu, Đặt lại, Lùi checkpoint, Hoàn tác, Làm lại",
-  "editTooltip": "Chỉnh sửa văn bản phụ đề",
+  "editTooltip": "hoặc <strong>nhấp đúp chuột</strong> vào phụ đề để chỉnh sửa",
   "deleteTooltip": "Xóa phụ đề",
   "insertTooltip": "Thêm dòng mới",
   "mergeTooltip": "Gộp phụ đề",

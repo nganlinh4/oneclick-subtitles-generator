@@ -148,6 +148,10 @@
 }
 
 /* Quality Options - flat design with subtle interactions */
+.quality-options {
+  padding-top: 20px;
+}
+
 .quality-options h4 {
   margin: 0 0 16px 0;
   color: var(--md-on-surface);

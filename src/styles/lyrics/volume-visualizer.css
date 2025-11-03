@@ -36,7 +36,6 @@
 
 /* Dark mode specific styles for loading message */
 [data-theme="dark"] .volume-visualizer-loading {
-  background-color: rgba(0, 0, 0, 0.6);
   color: rgba(255, 255, 255, 0.9);
   /* Brighter text shadow for dark mode */
   text-shadow: 0 1px 3px rgba(0, 0, 0, 0.5);
