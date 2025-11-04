@@ -16,14 +16,24 @@ const ParakeetProcessingOptions = ({
     setParakeetMaxWords,
     parakeetPreserveSentences,
     setParakeetPreserveSentences,
-    selectedSegment
+    selectedSegment,
+    parakeetDisabled,
+    isFullVersion
 }) => {
     const { t } = useTranslation();
 
     return (
-        <>
+        <div
+            className={`parakeet-content-wrapper ${parakeetDisabled ? 'disabled' : ''}`}
+            style={{
+                opacity: parakeetDisabled ? 0.5 : 1,
+                pointerEvents: parakeetDisabled ? 'none' : 'auto',
+                userSelect: parakeetDisabled ? 'none' : 'auto',
+                gridColumn: '1 / -1'
+            }}
+        >
             {/* Parakeet-only UI: dedicated layout */}
-            <div className="option-group" style={{ gridColumn: '1 / -1' }}>
+            <div className="option-group">
                 {parakeetStrategy === 'sentence' ? (
                     <div className="combined-options-row">
                         <div className="combined-option-half">
@@ -223,7 +233,17 @@ const ParakeetProcessingOptions = ({
                     </div>
                 )}
             </div>
-        </>
+            {parakeetDisabled && (
+                <div className="parakeet-disabled-overlay">
+                    <div className="parakeet-disabled-message">
+                        {!isFullVersion
+                            ? t('processing.parakeetRequiresFullVersion', 'Parakeet requires OSG Full version')
+                            : t('processing.parakeetServiceUnavailable', 'Parakeet service is not available')
+                        }
+                    </div>
+                </div>
+            )}
+        </div>
     );
 };
 

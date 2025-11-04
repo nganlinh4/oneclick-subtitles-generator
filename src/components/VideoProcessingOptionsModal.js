@@ -1166,6 +1166,8 @@ const VideoProcessingOptionsModal = ({
                                         parakeetPreserveSentences={parakeetPreserveSentences}
                                         setParakeetPreserveSentences={setParakeetPreserveSentences}
                                         selectedSegment={selectedSegment}
+                                        parakeetDisabled={parakeetDisabled}
+                                        isFullVersion={isFullVersion}
                                     />
                                 ) : (
                                     <>
@@ -1601,7 +1603,7 @@ const VideoProcessingOptionsModal = ({
                             <button
                                 className="process-btn"
                                 onClick={handleProcess}
-                                disabled={isUploading || (method !== 'nvidia-parakeet' && !isWithinLimit)}
+                                disabled={isUploading || (method !== 'nvidia-parakeet' && !isWithinLimit) || (method === 'nvidia-parakeet' && parakeetDisabled)}
                             >
                                 {isUploading
                                     ? t('processing.waitingForUpload', 'Waiting for upload...')

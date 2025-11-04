@@ -4,7 +4,7 @@
   "showGeminiEffects": "Hiển thị hiệu ứng sao Gemini",
   "showGeminiEffectsDescription": "Sử dụng hiệu ứng bầu trời sao và hiệu ứng ngôi sao Gemini trên nút. Có thể tắt trên máy cấu hình yếu, không ảnh hưởng chức năng.",
   "apiKeys": "Khóa API",
-  "gemini25ProPaused": "Phương thức tạo phụ đề bằng Parakeet đã có mặt, vui lòng cài mới OSG Full từ file .bat để sử dụng (dùng tính năng cập nhật sẽ không thể cài tình năng này)",
+  "gemini25ProPaused": "Phương thức tạo phụ đề bằng Parakeet đã có mặt, vui lòng cài mới OSG Full từ file .bat để sử dụng (dùng tính năng cập nhật sẽ không thể cài tính năng này)",
   "udbmIntroduction": "Giới thiệu UDBM, trình quản lý cơ sở dữ liệu mã nguồn mở và nhiều hơn nữa, tải xuống file EXE portable",
   "udbmDownloadHere": "tại đây",
   "noNewNotifications": "Không có thông báo mới ~",
