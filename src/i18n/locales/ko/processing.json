@@ -84,11 +84,19 @@
   "parakeetPreserveSentencesHelp": "활성화되면 길이에 관계없이 문장별로 자막이 유지됩니다. 비활성화되면 긴 문장이 단어 수에 따라 균등하게 분할되며, 여기서 타이밍은 \"저장\" 버튼 왼쪽의 \"자막 분할\" 버튼으로 분할하는 것보다 <strong>단어 범위에 따라 더 정확하고 스마트합니다</strong>.",
   "enablePreserveSentences": "전체 문장 유지",
   "parakeetMaxWords": "자막당 최대 단어 수",
-  "parakeetMaxWordsHelp": "문장을 분할할 때 각 자막의 최대 단어 수입니다.",
+  "parakeetMaxWordsHelp": "이 조건에 따라 문장을 만족할 때까지 균등하게 분할합니다.",
   "parakeetMaxWordsWordStrategy": "자막당 단어 수",
   "parakeetMaxWordsHelpWordStrategy": "단어 수로 분할할 때 각 자막의 단어 수입니다. 구두점을 무시합니다",
-  "parakeetMaxDurationHelp": "Parakeet의 경우 분할되면 Gemini처럼 병렬로 처리하는 대신 세그먼트를 하나씩 (순차적으로) 처리합니다.",
+  "parakeetMaxDurationHelp": "Parakeet의 경우 분할되면 Gemini처럼 병렬로 처리하는 대신 세그먼트를 하나씩 (순차적으로) 처리합니다. <strong>긴 시간은 약한 GPU를 가진 컴퓨터에서 지연을 일으킬 수 있습니다</strong>",
   "parakeetMaxChars": "자막당 대략적인 문자 수",
   "parakeetMaxCharsHelp": "시스템이 자동으로 문자 분배와 타이밍을 조정하여 단어 중간에 끊기지 않도록 합니다.",
-  "characters": "문자"
+  "characters": "문자",
+  "supportedLanguages": "지원되는 언어",
+  "transcriptionMethodOverlayTitle": "좋아하는 전사 방법을 선택하세요",
+  "transcriptionMethodNewName": "Gemini: 새로운 방법",
+  "transcriptionMethodOldName": "Gemini: 기존 방법",
+  "transcriptionMethodParakeetName": "엔비디아 파라키트",
+  "transcriptionMethodNewDescription": "Files API에서 비디오와 상호작용",
+  "transcriptionMethodOldDescription": "비디오를 로컬에서 자른 후 Gemini로 전송",
+  "transcriptionMethodParakeetDescription": "Nvidia Parakeet으로 로컬 처리"
 }

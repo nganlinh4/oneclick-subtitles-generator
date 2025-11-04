@@ -84,11 +84,19 @@
   "parakeetPreserveSentencesHelp": "When enabled, subtitles are preserved by sentence, regardless of length. When disabled, long sentences are split evenly by word count, with timings here being <strong>more accurate according to word ranges and smarter</strong> than splitting with the \"Split subtitles\" button to the left of the \"Save\" button.",
   "enablePreserveSentences": "Preserve full sentences",
   "parakeetMaxWords": "Max words per subtitle",
-  "parakeetMaxWordsHelp": "Maximum number of words per subtitle when splitting sentences.",
+  "parakeetMaxWordsHelp": "Based on this condition to evenly split sentences until satisfied.",
   "parakeetMaxWordsWordStrategy": "Words per subtitle",
   "parakeetMaxWordsHelpWordStrategy": "Number of words in each subtitle when splitting by word count. Ignores punctuation",
-  "parakeetMaxDurationHelp": "For Parakeet, if split, segments are processed one by one (sequentially) instead of in parallel like Gemini.",
+  "parakeetMaxDurationHelp": "For Parakeet, if split, segments are processed one by one (sequentially) instead of in parallel like Gemini. <strong>Long durations may cause lag on machines with weak GPUs</strong>",
   "parakeetMaxChars": "Approximate characters per subtitle",
   "parakeetMaxCharsHelp": "System automatically adjusts character distribution and timings to avoid breaking words.",
-  "characters": "characters"
+  "characters": "characters",
+  "supportedLanguages": "Supported languages",
+  "transcriptionMethodOverlayTitle": "Choose your favorite transcription method",
+  "transcriptionMethodNewName": "Gemini: New Method",
+  "transcriptionMethodOldName": "Gemini: Old Method",
+  "transcriptionMethodParakeetName": "Nvidia Parakeet",
+  "transcriptionMethodNewDescription": "Interact with video on Files API",
+  "transcriptionMethodOldDescription": "Cut the video locally, then send to Gemini",
+  "transcriptionMethodParakeetDescription": "Local processing with Nvidia Parakeet"
 }

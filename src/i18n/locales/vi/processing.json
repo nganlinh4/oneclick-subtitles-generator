@@ -84,12 +84,20 @@
   "parakeetPreserveSentencesHelp": "Khi bật sẽ được giữ nguyên sub theo câu, dù ngắn hay dài. Khi tắt, các câu dài sẽ được chia đều theo số từ, timings khi chia tại đây sẽ <strong>chính xác theo phạm vi từ và thông mình hơn</strong> khi chia bằng nút \"Chia nhỏ phụ đề\" phía trái nút \"Lưu\".",
   "enablePreserveSentences": "Giữ nguyên câu đầy đủ",
   "parakeetMaxWords": "Số từ tối đa mỗi phụ đề",
-  "parakeetMaxWordsHelp": "Số từ tối đa trong mỗi phụ đề khi chia câu.",
+  "parakeetMaxWordsHelp": "Dựa vào điều kiện này để chia đều câu đến khi thoả mãn",
   "parakeetMaxWordsWordStrategy": "Số từ cho mỗi phụ đề",
   "parakeetMaxWordsHelpWordStrategy": "Số từ trong mỗi phụ đề khi chia câu. Không quan tâm dấu câu",
-  "parakeetMaxDurationHelp": "Đối với Parakeet, nếu được chia nhỏ sẽ xử lý từng phần một (theo tuần tự) thay vì song song như Gemini",
+  "parakeetMaxDurationHelp": "Đối với Parakeet, nếu được chia nhỏ sẽ xử lý từng phần một (theo tuần tự) thay vì song song như Gemini. <strong>Thời lượng quá dài sẽ gây lag trên máy có GPU yếu</strong>",
   "parakeetMaxChars": "Số ký tự xấp xỉ mỗi phụ đề",
   "parakeetMaxCharsHelp": "Hệ thống tự động điều chỉnh dồn/thả ký tự và timings để không bị ngắt giữa từ",
-  "characters": "ký tự"
+  "characters": "ký tự",
+  "supportedLanguages": "Ngôn ngữ được hỗ trợ",
+  "transcriptionMethodOverlayTitle": "Chọn phương thức phiên âm yêu thích của bạn",
+  "transcriptionMethodNewName": "Gemini: Phương thức mới",
+  "transcriptionMethodOldName": "Gemini: Phương thức cũ",
+  "transcriptionMethodParakeetName": "Nvidia Parakeet",
+  "transcriptionMethodNewDescription": "Tương tác với video qua Files API",
+  "transcriptionMethodOldDescription": "Cắt video trên máy rồi gửi Gemini sau",
+  "transcriptionMethodParakeetDescription": "Xử lý cục bộ với Nvidia Parakeet"
 }
 

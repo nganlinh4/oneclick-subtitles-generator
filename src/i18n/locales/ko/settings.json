@@ -2,7 +2,7 @@
   "title": "설정",
   "appearance": "모양",
   "apiKeys": "API 키",
-  "gemini25ProPaused": "Gemini 2.5 Pro가 무료 API 등급에서 다시 사용 가능합니다! 모든 기능에 사용할 수 있습니다.",
+  "gemini25ProPaused": "Parakeet 자막 생성 방법이 이제 사용할 수 있습니다. 사용하려면 .bat 파일에서 OSG Full을 다시 설치하세요 (업데이트 기능을 사용하면 이 기능을 설치할 수 없습니다)",
   "udbmIntroduction": "UDBM 소개 - 오픈소스 데이터베이스 매니저 및 기타 기능, 포터블 EXE 다운로드",
   "udbmDownloadHere": "여기",
   "noNewNotifications": "새로운 알림 없음 ~",

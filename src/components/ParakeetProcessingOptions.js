@@ -97,7 +97,7 @@ const ParakeetProcessingOptions = ({
                                 state={'Enabled'}
                                 id="parakeet-max-duration-slider"
                                 ariaLabel={t('processing.maxDurationPerRequest', 'Max duration per request')}
-                                defaultValue={5}
+                                defaultValue={3}
                                 formatValue={(v) => (
                                     <>
                                         {t('processing.minutesValue', '{{value}} minutes', { value: v })}
@@ -204,7 +204,7 @@ const ParakeetProcessingOptions = ({
                                     state={'Enabled'}
                                     id="parakeet-max-duration-slider"
                                     ariaLabel={t('processing.maxDurationPerRequest', 'Max duration per request')}
-                                    defaultValue={5}
+                                    defaultValue={3}
                                     formatValue={(v) => (
                                         <>
                                             {t('processing.minutesValue', '{{value}} minutes', { value: v })}
