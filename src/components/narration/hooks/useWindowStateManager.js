@@ -242,6 +242,39 @@ const useWindowStateManager = ({
     };
   }, [useGroupedSubtitles, groupedSubtitles, setGroupedSubtitles, setIsGroupingSubtitles]);
 
+  // Clear grouped subtitles when the original timeline is fully cleared
+  // This ensures the Narration planned list disappears when user deletes all subtitles via the timeline action
+  useEffect(() => {
+    const onTimingChanged = (event) => {
+      try {
+        const detail = event?.detail || {};
+        const updated = detail.updatedLyrics;
+        // Only react when timeline reports a clear-range that results in zero subtitles
+        if (detail.action === 'clear-range' && Array.isArray(updated) && updated.length === 0) {
+          // Only clear grouping when the narration source is the original subtitles
+          if (subtitleSource === 'original') {
+            // Drop any cached grouping so UI doesn't restore stale groups
+            try { localStorage.removeItem('grouped_subtitles_cache'); } catch {}
+            // Reset state
+            setGroupedSubtitles(null);
+            setUseGroupedSubtitles(false);
+            // Reset globals used by some result components
+            window.groupedSubtitles = null;
+            window.useGroupedSubtitles = false;
+            // Also clear global originals that some components use as fallback
+            window.originalSubtitles = [];
+            window.subtitlesData = [];
+          }
+        }
+      } catch (e) {
+        // Non-fatal; ignore
+      }
+    };
+
+    window.addEventListener('subtitle-timing-changed', onTimingChanged);
+    return () => window.removeEventListener('subtitle-timing-changed', onTimingChanged);
+  }, [subtitleSource, setGroupedSubtitles, setUseGroupedSubtitles]);
+
   // Listen for translation reset to clear grouped subtitles cache
   useEffect(() => {
     const handleTranslationReset = () => {

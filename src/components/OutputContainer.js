@@ -7,6 +7,7 @@ import LyricsDisplay from './LyricsDisplay';
 import TranslationSection from './translation';
 import { UnifiedNarrationSection } from './narration';
 import ParallelProcessingStatus from './ParallelProcessingStatus';
+import { EVENTS, subscribe } from '../events/bus';
 import { hasValidDownloadedVideo, isBlobUrlValid } from '../utils/videoUtils';
 // BackgroundImageGenerator moved back to AppLayout
 
@@ -92,16 +93,11 @@ const OutputContainer = ({
     const onStreamUpdate = () => setPreferLiveDuringProcessing(true);
     const onStreamDone = () => setPreferLiveDuringProcessing(false);
     const onRetryDone = () => setPreferLiveDuringProcessing(false);
-    window.addEventListener('retry-segment-from-cache', onRetry);
-    window.addEventListener('streaming-update', onStreamUpdate);
-    window.addEventListener('streaming-complete', onStreamDone);
-    window.addEventListener('retry-segment-from-cache-complete', onRetryDone);
-    return () => {
-      window.removeEventListener('retry-segment-from-cache', onRetry);
-      window.removeEventListener('streaming-update', onStreamUpdate);
-      window.removeEventListener('streaming-complete', onStreamDone);
-      window.removeEventListener('retry-segment-from-cache-complete', onRetryDone);
-    };
+    const un1 = subscribe(EVENTS.RETRY_SEGMENT_FROM_CACHE, onRetry);
+    const un2 = subscribe(EVENTS.STREAMING_UPDATE, onStreamUpdate);
+    const un3 = subscribe(EVENTS.STREAMING_COMPLETE, onStreamDone);
+    const un4 = subscribe(EVENTS.RETRY_SEGMENT_FROM_CACHE_COMPLETE, onRetryDone);
+    return () => { un1(); un2(); un3(); un4(); };
   }, []);
 
   const formatSubtitlesForLyricsDisplay = (subtitles) => {

@@ -500,7 +500,7 @@ export const coordinateParallelInlineStreaming = async (
     const hasServer = await probeServerAvailability();
     if (!hasServer) {
       try {
-        const uploadRes = await uploadFileToGemini(sourceFile);
+  const uploadRes = await uploadFileToGemini(sourceFile, undefined, { runId: options && options.runId ? options.runId : undefined });
         const fileUri = uploadRes?.uri || uploadRes?.file?.uri;
         const filesApiOptions = {
           ...options,
@@ -661,8 +661,8 @@ export const coordinateParallelInlineStreaming = async (
     const tasks = subSegments.map((subSeg, index) => (async () => {
       try {
         progressTracker.updateSegmentProgress(index, 5, 'cutting');
-        const { extractVideoSegmentLocally } = await import('../../utils/videoSegmenter');
-        const clipped = await extractVideoSegmentLocally(sourceFile, subSeg.start, subSeg.end);
+  const { extractVideoSegmentLocally } = await import('../../utils/videoSegmenter');
+  const clipped = await extractVideoSegmentLocally(sourceFile, subSeg.start, subSeg.end, { runId: options && options.runId ? options.runId : undefined });
         progressTracker.updateSegmentProgress(index, 10, 'streaming');
         await streamSubSegmentWithRetry(clipped, subSeg, index, 0, 5);
       } catch (e) {

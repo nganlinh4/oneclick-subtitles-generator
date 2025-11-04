@@ -12,6 +12,7 @@ import VolumeVisualizer from './VolumeVisualizer';
 
 // Import optimized video streaming utilities
 import { clearUnusedChunks } from '../../utils/optimizedVideoStreaming';
+import { EVENTS, subscribe } from '../../events/bus';
 
 // Import LiquidGlass component
 import LiquidGlass from '../common/LiquidGlass';
@@ -221,18 +222,13 @@ const TimelineVisualization = ({
       }, 1000);
     };
 
-    // Listen for custom streaming events
-    window.addEventListener('streaming-update', handleStreamingStart);
-    window.addEventListener('streaming-complete', handleStreamingComplete);
-    window.addEventListener('save-after-streaming', handleStreamingComplete);
-    window.addEventListener('processing-ranges', handleProcessingRanges);
+    // Listen for custom streaming events via EventBus
+    const un1 = subscribe(EVENTS.STREAMING_UPDATE, handleStreamingStart);
+    const un2 = subscribe(EVENTS.STREAMING_COMPLETE, handleStreamingComplete);
+    const un3 = subscribe(EVENTS.SAVE_AFTER_STREAMING, handleStreamingComplete);
+    const un4 = subscribe(EVENTS.PROCESSING_RANGES, handleProcessingRanges);
 
-    return () => {
-      window.removeEventListener('streaming-update', handleStreamingStart);
-      window.removeEventListener('streaming-complete', handleStreamingComplete);
-      window.removeEventListener('save-after-streaming', handleStreamingComplete);
-      window.removeEventListener('processing-ranges', handleProcessingRanges);
-    };
+    return () => { un1(); un2(); un3(); un4(); };
   }, []);
 
   // Track new segments only during streaming
@@ -609,20 +605,17 @@ const TimelineVisualization = ({
         setRetryingOfflineKeys(prev => prev.filter(k => k !== key));
       }
     };
-    window.addEventListener('streaming-complete', onStreamingComplete);
-    window.addEventListener('retry-segment-from-cache-complete', onRetryComplete);
-    return () => {
-      window.removeEventListener('streaming-complete', onStreamingComplete);
-      window.removeEventListener('retry-segment-from-cache-complete', onRetryComplete);
-    };
+  const unsubA = subscribe(EVENTS.STREAMING_COMPLETE, onStreamingComplete);
+    const unsubB = subscribe(EVENTS.RETRY_SEGMENT_FROM_CACHE_COMPLETE, onRetryComplete);
+    return () => { unsubA(); unsubB(); };
   }, []);
   // Clear any segment-specific retry animations if user force-stops all requests
   useEffect(() => {
     const onAborted = () => {
       setRetryingOfflineKeys([]);
     };
-    window.addEventListener('gemini-requests-aborted', onAborted);
-    return () => window.removeEventListener('gemini-requests-aborted', onAborted);
+    const un = subscribe(EVENTS.GEMINI_REQUESTS_ABORTED, onAborted);
+    return () => un();
   }, []);
 
 

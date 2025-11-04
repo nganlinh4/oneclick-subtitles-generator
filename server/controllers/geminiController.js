@@ -55,6 +55,11 @@ ${lyrics}`
           topP: 0.95,
           maxOutputTokens: 8192,
         }
+      },
+      {
+        headers: {
+          ...(req.runId ? { 'X-Run-Id': req.runId } : {})
+        }
       }
     );
 

@@ -9,6 +9,7 @@ import { hasValidDownloadedVideo } from '../../utils/videoUtils';
 import { showInfoToast, showErrorToast } from '../../utils/toastUtils';
 import '../../styles/ButtonTextBalance.css';
 import Tooltip from '../common/Tooltip';
+import { publishProcessingRanges } from '../../events/bus';
 
 
 /**
@@ -672,7 +673,7 @@ const ButtonsContainer = ({
               setIsProcessingSegment(false);
               // Clear processing ranges overlay
               try {
-                window.dispatchEvent(new CustomEvent('processing-ranges', { detail: { ranges: [] } }));
+                publishProcessingRanges({ ranges: [] });
               } catch {}
             }
 

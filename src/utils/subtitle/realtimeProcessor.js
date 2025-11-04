@@ -22,7 +22,12 @@ export class RealtimeSubtitleProcessor {
     this.currentSubtitles = [];
     this.lastValidSubtitles = [];
     this.chunkCount = 0;
-    this.isProcessing = false;
+  this.isProcessing = false;
+  // Throttling to reduce UI churn
+  this.throttleMs = typeof options.throttleMs === 'number' ? options.throttleMs : 120;
+  this._lastEmitTs = 0;
+  this._emitTimer = null;
+  this._pendingPayload = null;
     
     // Parsing options
     this.parseAttemptInterval = 3; // Try to parse every 3 chunks
@@ -32,7 +37,40 @@ export class RealtimeSubtitleProcessor {
     this.autoSplitEnabled = options.autoSplitEnabled || false;
     this.maxWordsPerSubtitle = options.maxWordsPerSubtitle || 8;
     
-    console.log('[RealtimeProcessor] Initialized with auto-split:', this.autoSplitEnabled, 'max words:', this.maxWordsPerSubtitle);
+  console.log('[RealtimeProcessor] Initialized (auto-split:', this.autoSplitEnabled, 'max words:', this.maxWordsPerSubtitle, 'throttle:', this.throttleMs, 'ms)');
+  }
+
+  /**
+   * Throttled emit to UI to cut down re-renders under heavy streaming
+   */
+  _maybeEmitUpdate(payload, force = false) {
+    if (force) {
+      if (this._emitTimer) {
+        clearTimeout(this._emitTimer);
+        this._emitTimer = null;
+      }
+      this._lastEmitTs = Date.now();
+      this.onSubtitleUpdate(payload);
+      return;
+    }
+
+    const now = Date.now();
+    const since = now - this._lastEmitTs;
+    if (since >= this.throttleMs) {
+      this._lastEmitTs = now;
+      this.onSubtitleUpdate(payload);
+    } else {
+      this._pendingPayload = payload;
+      if (!this._emitTimer) {
+        this._emitTimer = setTimeout(() => {
+          this._emitTimer = null;
+          this._lastEmitTs = Date.now();
+          const toSend = this._pendingPayload;
+          this._pendingPayload = null;
+          this.onSubtitleUpdate(toSend);
+        }, this.throttleMs - since);
+      }
+    }
   }
 
   /**
@@ -64,8 +102,8 @@ export class RealtimeSubtitleProcessor {
       this.currentSubtitles = processedSubtitles;
       this.lastValidSubtitles = [...processedSubtitles];
 
-      // Notify UI immediately with provided subtitles (avoids reparsing joined text)
-      this.onSubtitleUpdate({
+      // Notify UI (throttled) with provided subtitles (avoids reparsing joined text)
+      this._maybeEmitUpdate({
         subtitles: processedSubtitles,
         isStreaming: true,
         chunkCount: this.chunkCount,
@@ -80,7 +118,9 @@ export class RealtimeSubtitleProcessor {
       return;
     }
 
-    console.log(`[RealtimeProcessor] Processing chunk ${this.chunkCount}, text length: ${this.accumulatedText.length}`);
+    if (this.chunkCount % 50 === 0) {
+      console.log(`[RealtimeProcessor] Processing chunk ${this.chunkCount}, text length: ${this.accumulatedText.length}`);
+    }
 
     // Try to parse subtitles periodically or if we have enough text
     const shouldAttemptParse = 
@@ -103,7 +143,9 @@ export class RealtimeSubtitleProcessor {
    */
   attemptSubtitleParsing() {
     try {
-      console.log('[RealtimeProcessor] Attempting to parse subtitles...');
+      if (this.chunkCount % (this.parseAttemptInterval * 10) === 0) {
+        console.log('[RealtimeProcessor] Attempting to parse subtitles...');
+      }
 
       // Create a mock response object for the parser
       const mockResponse = {
@@ -137,8 +179,8 @@ export class RealtimeSubtitleProcessor {
         this.currentSubtitles = processedSubtitles;
         this.lastValidSubtitles = [...processedSubtitles]; // Keep a backup
 
-        // Notify about subtitle updates
-        this.onSubtitleUpdate({
+        // Notify about subtitle updates (throttled)
+        this._maybeEmitUpdate({
           subtitles: processedSubtitles,
           isStreaming: true,
           chunkCount: this.chunkCount,
@@ -149,7 +191,7 @@ export class RealtimeSubtitleProcessor {
         console.log('[RealtimeProcessor] No valid subtitles parsed yet');
       }
     } catch (error) {
-      console.warn('[RealtimeProcessor] Parsing attempt failed:', error.message);
+      // console.debug('[RealtimeProcessor] Parsing attempt failed:', error.message);
       // Don't throw - parsing failures are expected during streaming
     }
   }
@@ -239,13 +281,13 @@ export class RealtimeSubtitleProcessor {
 
       console.log(`[RealtimeProcessor] Final result: ${processedSubtitles.length} subtitles`);
 
-      this.onSubtitleUpdate({
+      this._maybeEmitUpdate({
         subtitles: processedSubtitles,
         isStreaming: false,
         isComplete: true,
         chunkCount: this.chunkCount,
         textLength: typeof finalText === 'string' ? finalText.length : 0
-      });
+      }, true);
 
       this.onStatusUpdate({
         message: `Processing complete! Generated ${processedSubtitles.length} subtitles.`,

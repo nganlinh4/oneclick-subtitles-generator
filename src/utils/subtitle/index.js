@@ -109,6 +109,43 @@ export const parseGeminiResponse = (response) => {
         }
     }
 
+    // Helper: detect clearly incomplete JSON (unterminated strings or unbalanced braces)
+    const isLikelyIncompleteJsonArray = (s) => {
+        if (!s || s[0] !== '[') return false;
+        let inString = false;
+        let escapeNext = false;
+        let braceCount = 0;
+        let bracketCount = 0;
+        for (let i = 0; i < s.length; i++) {
+            const ch = s[i];
+            if (escapeNext) { escapeNext = false; continue; }
+            if (ch === '\\') { escapeNext = true; continue; }
+            if (ch === '"') { inString = !inString; continue; }
+            if (inString) continue;
+            if (ch === '{') braceCount++;
+            else if (ch === '}') braceCount--;
+            else if (ch === '[') bracketCount++;
+            else if (ch === ']') bracketCount--;
+        }
+        // Incomplete if inside a string or braces/brackets are not balanced
+        if (inString) return true;
+        if (braceCount < 0 || bracketCount < 0) return true; // malformed
+        if (bracketCount > 0) return true; // missing closing ]
+        // Sometimes last object is cut off: ends with '"' without closing, or trailing comma
+        const trimmed = s.trimEnd();
+        if (trimmed.endsWith(',')) return true;
+        // If last quote is not closed (odd number of quotes ignoring escapes), treat as incomplete
+        let quotes = 0; let esc = false;
+        for (let i = 0; i < s.length; i++) {
+            const ch2 = s[i];
+            if (esc) { esc = false; continue; }
+            if (ch2 === '\\') { esc = true; continue; }
+            if (ch2 === '"') quotes++;
+        }
+        if (quotes % 2 === 1) return true;
+        return false;
+    };
+
     if (jsonText.startsWith('[')) {
         try {
 
@@ -162,6 +199,12 @@ export const parseGeminiResponse = (response) => {
                 }
             }
 
+            // If it still looks incomplete (e.g., unterminated string), don't try to JSON.parse yet in streaming
+            if (isLikelyIncompleteJsonArray(jsonText)) {
+                // Return empty to signal "keep accumulating" rather than throwing
+                return [];
+            }
+
             const jsonData = JSON.parse(jsonText);
 
             if (Array.isArray(jsonData)) {
@@ -200,7 +243,8 @@ export const parseGeminiResponse = (response) => {
                 }
             }
         } catch (e) {
-            console.error('Failed to parse text as JSON:', e);
+            // Downgrade log level for streaming noise; treat as non-fatal and fall back to other parsers
+            console.debug('Failed to parse text as JSON (likely mid-stream, will retry):', e.message);
             // Continue to other parsing methods
         }
     }
@@ -284,8 +328,13 @@ export const parseGeminiResponse = (response) => {
                 }
             } catch (e) {
                 // If JSON parsing fails, continue with the default error
-                console.error('Error parsing JSON in empty subtitle check:', e);
+                console.debug('Error parsing JSON in empty subtitle check (non-fatal):', e.message);
             }
+        }
+
+        // If the text looks like a partial JSON array, suppress error during streaming and let caller continue accumulating
+        if (typeof text === 'string' && text.trim().startsWith('[') && isLikelyIncompleteJsonArray(text.trim())) {
+            return [];
         }
 
         throw new Error(JSON.stringify({

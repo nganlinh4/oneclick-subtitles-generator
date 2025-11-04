@@ -831,7 +831,7 @@ const VideoProcessingOptionsModal = ({
 
             if (currentVideoUrl) {
                 // This is a downloaded video - use URL-based caching for consistency
-                const { generateUrlBasedCacheId } = await import('../hooks/useSubtitles');
+                const { generateUrlBasedCacheId } = await import('../services/subtitleCache');
                 const urlBasedId = await generateUrlBasedCacheId(currentVideoUrl);
                 fileKey = `gemini_file_url_${urlBasedId}`;
                 console.log('[TokenCounting] Using URL-based cache key for downloaded video:', fileKey);

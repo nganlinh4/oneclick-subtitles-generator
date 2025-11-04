@@ -399,7 +399,7 @@ const useNarrationCache = ({
 
           if (currentVideoUrl) {
             // Use unified URL-based caching for all video types
-            const { generateUrlBasedCacheId } = await import('../../../hooks/useSubtitles');
+            const { generateUrlBasedCacheId } = await import('../../../services/subtitleCache');
             return await generateUrlBasedCacheId(currentVideoUrl);
           } else if (currentFileUrl) {
             return localStorage.getItem('current_file_cache_id');

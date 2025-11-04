@@ -786,8 +786,10 @@ const processStreamingResponse = async (response, onChunk, onComplete, onError, 
                   });
                 }
                 } catch (parseError) {
-                  // Parsing failed - log details to understand what we're receiving
-                  console.warn('[StreamingService] Parse error at chunk', chunkCount, ':', parseError.message);
+                  // Parsing failed - expected mid-stream. Log sparsely to reduce noise
+                  if (chunkCount % 50 === 0) {
+                    console.warn('[StreamingService] Parse error at chunk', chunkCount, ':', parseError.message);
+                  }
                   
                   // Log a sample of the accumulated text to see what format we're getting
                   // PERFORMANCE: Reduced logging frequency

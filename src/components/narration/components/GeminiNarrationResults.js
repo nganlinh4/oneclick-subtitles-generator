@@ -10,6 +10,7 @@ import { VariableSizeList as List } from 'react-window';
 // Import utility functions and config
 import { getAudioUrl } from '../../../services/narrationService';
 import { SERVER_URL } from '../../../config';
+import { deriveSubtitleId, idsEqual } from '../../../utils/subtitle/idUtils';
 import { formatTime } from '../../../utils/timeFormatter';
 import PlayPauseMorphType4 from '../../common/PlayPauseMorphType4';
 
@@ -348,8 +349,11 @@ const GeminiNarrationResults = ({
 
   // Derive a displayed list that immediately shows the full "true" list during generation (like other methods)
   const displayedResults = (() => {
-    // Always show all planned subtitles, with status based on generation results
-    if (plannedSubtitles && plannedSubtitles.length > 0) {
+    // If caller provided an explicit plan prop (even empty), treat it as source of truth
+    if (typeof plannedSubtitles !== 'undefined') {
+      const plan = Array.isArray(plannedSubtitles) ? plannedSubtitles : [];
+      if (plan.length === 0) return [];
+
       const completedIds = new Set();
       const failedIds = new Set();
 
@@ -365,10 +369,10 @@ const GeminiNarrationResults = ({
       }
 
       // Create results for all subtitles
-      const results = plannedSubtitles.map((subtitle, index) => {
-        const rawId = subtitle.id ?? subtitle.subtitle_id ?? (index + 1);
-        const subtitleId = isNaN(Number(rawId)) ? (index + 1) : Number(rawId);
-        const existingResult = generationResults?.find(r => Number(r.subtitle_id) === subtitleId);
+      const results = plan.map((subtitle, index) => {
+        // Use shared ID derivation for consistency across all methods
+        const subtitleId = deriveSubtitleId(subtitle, index);
+        const existingResult = generationResults?.find(r => idsEqual(r.subtitle_id, subtitleId));
 
         if (existingResult) {
           // Use existing result
@@ -387,9 +391,8 @@ const GeminiNarrationResults = ({
         }
       });
 
-      // Sort by subtitle_id to maintain order
-      results.sort((a, b) => a.subtitle_id - b.subtitle_id);
-      return results;
+  // Preserve planned order to keep alignment with timeline after edits/deletes
+  return results;
     }
 
     // Fallback: show generation results if no planned subtitles
@@ -1113,7 +1116,12 @@ const GeminiNarrationResults = ({
             itemCount={displayedResults.length}
             itemSize={getRowHeight} // Dynamic row heights based on content
             overscanCount={18} // Increase overscan to reduce blanking during fast scrolls
-            itemKey={(index, data) => (data.generationResults[index] && data.generationResults[index].subtitle_id) ?? index}
+            itemKey={(index, data) => {
+              const item = data.generationResults[index];
+              const id = item && item.subtitle_id;
+              // Unique and stable within a session
+              return (id !== undefined && id !== null) ? `${String(id)}-${index}` : index;
+            }}
             itemData={{
               generationResults: displayedResults,
               onRetry,

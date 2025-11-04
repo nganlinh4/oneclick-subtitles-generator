@@ -1,5 +1,6 @@
 import { useState, useRef, useEffect, useCallback } from 'react';
 import { useTranslation } from 'react-i18next';
+import { EVENTS, publish, subscribe } from '../events/bus';
 import '../styles/LyricsDisplay.css';
 import TimelineVisualization from './lyrics/TimelineVisualization';
 import LyricItem from './lyrics/LyricItem';
@@ -9,7 +10,7 @@ import { VariableSizeList as List } from 'react-window';
 import { extractYoutubeVideoId } from '../utils/videoDownloader';
 import { downloadTXT, downloadSRT, downloadJSON } from '../utils/fileUtils';
 import { completeDocument, summarizeDocument } from '../services/geminiService';
-import { generateUrlBasedCacheId } from '../hooks/useSubtitles';
+import { generateUrlBasedCacheId } from '../services/subtitleCache';
 import DownloadOptionsModal from './DownloadOptionsModal';
 
 // Debug logging gate (enable by setting localStorage.debug_logs = 'true')
@@ -612,31 +613,27 @@ const LyricsDisplay = ({
           updateSavedLyrics();
 
           // Dispatch save-complete event to notify that save is done
-          window.dispatchEvent(new CustomEvent('save-complete', {
-            detail: {
-              source: event.detail?.source,
-              success: true
-            }
-          }));
+          publish(EVENTS.SAVE_COMPLETE, {
+            source: event.detail?.source,
+            success: true
+          });
         }).catch((error) => {
           console.error(`[LyricsDisplay] Error during checkpoint save for ${action}:`, error);
 
           // Dispatch save-complete event even on error to prevent hanging
-          window.dispatchEvent(new CustomEvent('save-complete', {
-            detail: {
-              source: event.detail?.source,
-              success: false,
-              error: error.message
-            }
-          }));
+          publish(EVENTS.SAVE_COMPLETE, {
+            source: event.detail?.source,
+            success: false,
+            error: error.message
+          });
         });
       }
     };
 
-    window.addEventListener('save-before-update', handleSaveBeforeUpdate);
+  const unsubscribe = subscribe(EVENTS.SAVE_BEFORE_UPDATE, handleSaveBeforeUpdate);
 
     return () => {
-      window.removeEventListener('save-before-update', handleSaveBeforeUpdate);
+  unsubscribe();
     };
   }, [lyrics]); // Only include lyrics in dependency array since handleSave is stable
 
@@ -660,10 +657,10 @@ const LyricsDisplay = ({
       }
     };
 
-    window.addEventListener('save-after-streaming', handleSaveAfterStreaming);
+  const unsubscribe2 = subscribe(EVENTS.SAVE_AFTER_STREAMING, handleSaveAfterStreaming);
 
     return () => {
-      window.removeEventListener('save-after-streaming', handleSaveAfterStreaming);
+  unsubscribe2();
     };
   }, [lyrics]); // Only include lyrics in dependency array since handleSave is stable
 
@@ -679,10 +676,10 @@ const LyricsDisplay = ({
       }
     };
 
-    window.addEventListener('capture-before-merge', handleCaptureBeforeMerge);
+    const unsubscribe3 = subscribe(EVENTS.CAPTURE_BEFORE_MERGE, handleCaptureBeforeMerge);
 
     return () => {
-      window.removeEventListener('capture-before-merge', handleCaptureBeforeMerge);
+      unsubscribe3();
     };
   }, [lyrics, captureStateBeforeMerge]); // Include captureStateBeforeMerge in dependencies
 

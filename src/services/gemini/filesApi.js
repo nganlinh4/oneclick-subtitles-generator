@@ -12,11 +12,12 @@ import { fileToBase64 } from './utils';
  * @param {string} displayName - Optional display name for the file
  * @returns {Promise<Object>} - Upload result with file URI and metadata
  */
-export const uploadFileToGemini = async (file, displayName = null) => {
+export const uploadFileToGemini = async (file, displayName = null, options = {}) => {
   const geminiApiKey = getNextAvailableKey();
   if (!geminiApiKey) {
     throw new Error('No valid Gemini API key available. Please add at least one API key in Settings.');
   }
+  // Note: Do NOT send custom headers like X-Run-Id to Google endpoints to avoid CORS issues
 
   try {
     // Step 1: Start resumable upload
@@ -69,7 +70,7 @@ export const uploadFileToGemini = async (file, displayName = null) => {
     // Step 3: Wait for processing if needed
     if (uploadResult.file?.state === 'PROCESSING') {
       console.log('File is processing, waiting for completion...');
-      await waitForFileProcessing(uploadResult.file.name, geminiApiKey);
+      await waitForFileProcessing(uploadResult.file.name, geminiApiKey, 300000);
     }
 
     return {
@@ -139,7 +140,7 @@ const waitForFileProcessing = async (fileName, apiKey, maxWaitTime = 300000) => 
  * @param {string} fileName - The file name
  * @returns {Promise<Object>} - File information
  */
-export const getFileInfo = async (fileName) => {
+export const getFileInfo = async (fileName, options = {}) => {
   const geminiApiKey = getNextAvailableKey();
   if (!geminiApiKey) {
     throw new Error('No valid Gemini API key available');
@@ -169,7 +170,7 @@ export const getFileInfo = async (fileName) => {
  * @param {string} fileName - The file name to delete
  * @returns {Promise<void>}
  */
-export const deleteFile = async (fileName) => {
+export const deleteFile = async (fileName, options = {}) => {
   const geminiApiKey = getNextAvailableKey();
   if (!geminiApiKey) {
     throw new Error('No valid Gemini API key available');
@@ -201,7 +202,7 @@ export const deleteFile = async (fileName) => {
  * @param {string} pageToken - Token for pagination
  * @returns {Promise<Object>} - List of files with pagination info
  */
-export const listFiles = async (pageSize = 10, pageToken = null) => {
+export const listFiles = async (pageSize = 10, pageToken = null, options = {}) => {
   const geminiApiKey = getNextAvailableKey();
   if (!geminiApiKey) {
     throw new Error('No valid Gemini API key available');

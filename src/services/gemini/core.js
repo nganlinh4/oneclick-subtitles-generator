@@ -31,7 +31,7 @@ export const clearCachedFileUri = async (file) => {
 
     if (currentVideoUrl) {
         // Clear URL-based cache for downloaded video
-        const { generateUrlBasedCacheId } = await import('../../hooks/useSubtitles');
+    const { generateUrlBasedCacheId } = await import('../../services/subtitleCache');
         const urlBasedId = await generateUrlBasedCacheId(currentVideoUrl);
         const urlKey = `gemini_file_url_${urlBasedId}`;
         localStorage.removeItem(urlKey);
@@ -96,7 +96,7 @@ export const streamGeminiApiWithFilesApi = async (file, options = {}, onChunk, o
 
         if (currentVideoUrl) {
             // This is a downloaded video - use URL-based caching for consistency
-            const { generateUrlBasedCacheId } = await import('../../hooks/useSubtitles');
+            const { generateUrlBasedCacheId } = await import('../../services/subtitleCache');
             const urlBasedId = await generateUrlBasedCacheId(currentVideoUrl);
             fileKey = `gemini_file_url_${urlBasedId}`;
             console.log('[GeminiAPI] Using URL-based cache key for downloaded video:', fileKey);
@@ -131,7 +131,7 @@ export const streamGeminiApiWithFilesApi = async (file, options = {}, onChunk, o
                 detail: { fileName: file.name, isRetry: retryCount > 0 }
             }));
 
-            uploadedFile = await uploadFileToGemini(file, `${file.name}_${Date.now()}`);
+            uploadedFile = await uploadFileToGemini(file, `${file.name}_${Date.now()}` , { runId: options && options.runId ? options.runId : undefined });
             console.log('File uploaded successfully:', uploadedFile.uri);
 
             // Cache the uploaded file info for reuse
@@ -270,7 +270,7 @@ export const streamGeminiApiInline = async (file, options = {}, onChunk, onCompl
           if (hasServer) {
             try {
               const { extractVideoSegmentLocally } = await import('../../utils/videoSegmenter');
-              const clipped = await extractVideoSegmentLocally(file, start, end);
+              const clipped = await extractVideoSegmentLocally(file, start, end, { runId: inlineOptions && inlineOptions.runId ? inlineOptions.runId : undefined });
               const INLINE_LARGE_SEGMENT_THRESHOLD_BYTES = 20 * 1024 * 1024; // 20MB
               if (clipped && clipped.size > INLINE_LARGE_SEGMENT_THRESHOLD_BYTES) {
                 await streamGeminiApiWithFilesApi(
@@ -347,7 +347,7 @@ export const callGeminiApiWithFilesApiForAnalysis = async (file, options = {}, a
 
         if (currentVideoUrl) {
             // This is a downloaded video - use URL-based caching for consistency
-            const { generateUrlBasedCacheId } = await import('../../hooks/useSubtitles');
+            const { generateUrlBasedCacheId } = await import('../../services/subtitleCache');
             const urlBasedId = await generateUrlBasedCacheId(currentVideoUrl);
             fileKey = `gemini_file_url_${urlBasedId}`;
             console.log('[GeminiAPI Analysis] Using URL-based cache key for downloaded video:', fileKey);
@@ -380,7 +380,7 @@ export const callGeminiApiWithFilesApiForAnalysis = async (file, options = {}, a
                 detail: { fileName: file.name, purpose: 'analysis' }
             }));
 
-            uploadedFile = await uploadFileToGemini(file, `${file.name}_${Date.now()}`);
+            uploadedFile = await uploadFileToGemini(file, `${file.name}_${Date.now()}`, { runId: options && options.runId ? options.runId : undefined });
             console.log('[GeminiAPI Analysis] File uploaded successfully:', uploadedFile.uri);
 
             // Cache the uploaded file info for reuse by both analysis and subtitle generation
@@ -538,7 +538,7 @@ export const callGeminiApiWithFilesApi = async (file, options = {}, retryCount =
 
         if (currentVideoUrl) {
             // This is a downloaded video - use URL-based caching for consistency
-            const { generateUrlBasedCacheId } = await import('../../hooks/useSubtitles');
+            const { generateUrlBasedCacheId } = await import('../../services/subtitleCache');
             const urlBasedId = await generateUrlBasedCacheId(currentVideoUrl);
             fileKey = `gemini_file_url_${urlBasedId}`;
             console.log('[GeminiAPI] Using URL-based cache key for downloaded video:', fileKey);

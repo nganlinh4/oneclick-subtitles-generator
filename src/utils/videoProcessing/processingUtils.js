@@ -229,7 +229,8 @@ export const processSegmentWithStreaming = async (file, segment, options, setSta
             window.dispatchEvent(new CustomEvent('streaming-update', {
               detail: {
                 subtitles: filteredSubtitles,
-                segment: segment
+                segment: segment,
+                runId: options && options.runId ? options.runId : undefined
               }
             }));
           }
@@ -288,7 +289,8 @@ export const processSegmentWithStreaming = async (file, segment, options, setSta
           window.dispatchEvent(new CustomEvent('streaming-complete', {
             detail: {
               subtitles: filteredFinal,
-              segment: segment
+              segment: segment,
+              runId: options && options.runId ? options.runId : undefined
             }
           }));
 
@@ -319,7 +321,9 @@ export const processSegmentWithStreaming = async (file, segment, options, setSta
         mediaResolution: mappedMediaResolution,
         maxDurationPerRequest: options.maxDurationPerRequest,
         autoSplitSubtitles: autoSplitSubtitles,
-        maxWordsPerSubtitle: maxWordsPerSubtitle
+        maxWordsPerSubtitle: maxWordsPerSubtitle,
+        // propagate optional correlation id for downstream services
+        ...(options && options.runId ? { runId: options.runId } : {})
       };
 
       // All-in on Files API by default; only use INLINE when explicitly forced
@@ -387,7 +391,8 @@ export const processSegmentWithInlineExtraction = async (file, segment, options,
       userProvidedSubtitles,
       modelId: model,
       segmentInfo: { start: segment.start, end: segment.end, duration: segment.end - segment.start },
-      forceInline: true
+      forceInline: true,
+      ...(options && options.runId ? { runId: options.runId } : {})
     });
 
     let adjusted = Array.isArray(rawSubtitles) ? rawSubtitles : [];

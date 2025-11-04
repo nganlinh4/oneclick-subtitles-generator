@@ -108,12 +108,16 @@ export const fetchVideoSegment = async (segmentUrl) => {
  * @param {number} endSec - End time in seconds
  * @returns {Promise<File>} - Extracted segment as a File
  */
-export const extractVideoSegmentLocally = async (videoFile, startSec, endSec) => {
+export const extractVideoSegmentLocally = async (videoFile, startSec, endSec, options = {}) => {
   const url = `${SERVER_URL}/api/extract-video-segment?start=${encodeURIComponent(startSec)}&end=${encodeURIComponent(endSec)}`;
   const formData = new FormData();
   formData.append('file', videoFile);
 
-  const res = await fetch(url, { method: 'POST', body: formData });
+  const headers = {};
+  const runId = options && options.runId ? options.runId : undefined;
+  if (runId) headers['X-Run-Id'] = runId;
+
+  const res = await fetch(url, { method: 'POST', body: formData, headers });
   if (!res.ok) {
     let msg = `Failed to extract segment (Status: ${res.status})`;
     try { const data = await res.json(); if (data?.error) msg = data.error; } catch {}
@@ -121,7 +125,7 @@ export const extractVideoSegmentLocally = async (videoFile, startSec, endSec) =>
   }
   const data = await res.json();
   const clipUrl = data.url?.startsWith('http') ? data.url : `${SERVER_URL}${data.url}`;
-  const resp2 = await fetch(clipUrl);
+  const resp2 = await fetch(clipUrl, { headers });
   if (!resp2.ok) throw new Error(`Failed to fetch extracted segment: ${resp2.statusText}`);
   const blob = await resp2.blob();
   const name = (clipUrl.split('/').pop()) || 'segment.mp4';

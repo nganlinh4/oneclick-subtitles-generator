@@ -4,6 +4,7 @@
  */
 
 import { callGeminiApiWithFilesApi, callGeminiApi } from '../../services/geminiService';
+import { getVideoProcessingFps } from '../../services/configService';
 import { analyzeVideoAndWaitForUserChoice } from './analysisUtils';
 import { getCacheIdForMedia } from './cacheUtils';
 import { setCurrentCacheId as setRulesCacheId } from '../transcriptionRulesStore';
@@ -41,11 +42,11 @@ export const processVideoWithFilesApi = async (mediaFile, onStatusUpdate, t, opt
 
     // Apply default video processing settings if not provided
     if (!customVideoMetadata) {
-      // Get FPS setting from localStorage (default to 1 for optimal processing)
-      const customFps = localStorage.getItem('video_processing_fps');
-      if (customFps && !isAudio) {
+      // Get FPS setting via config service (respect presence flag for backwards-compat)
+      const hasCustomFps = !!localStorage.getItem('video_processing_fps');
+      if (hasCustomFps && !isAudio) {
         // FPS compatibility is now handled in the UI (VideoProcessingOptionsModal)
-        videoMetadata.fps = parseFloat(customFps);
+        videoMetadata.fps = getVideoProcessingFps();
       }
 
       // Get video clipping settings if available
@@ -100,13 +101,15 @@ export const processVideoWithFilesApi = async (mediaFile, onStatusUpdate, t, opt
         userProvidedSubtitles,
         forceInline: true,
         // Ensure no offsets are sent in inline mode
-        videoMetadata: undefined
+        videoMetadata: undefined,
+        ...(options && options.runId ? { runId: options.runId } : {})
       });
     } else {
       // Files API path (legacy simplified)
       subtitles = await callGeminiApiWithFilesApi(mediaFile, {
         userProvidedSubtitles,
-        videoMetadata: Object.keys(videoMetadata).length > 0 ? videoMetadata : undefined
+        videoMetadata: Object.keys(videoMetadata).length > 0 ? videoMetadata : undefined,
+        ...(options && options.runId ? { runId: options.runId } : {})
       });
     }
 

@@ -206,7 +206,7 @@ export const useModalHandlers = (appState) => {
     const currentVideoUrl = localStorage.getItem('current_video_url');
     if (currentVideoUrl) {
       // Use unified URL-based caching
-      const { generateUrlBasedCacheId } = await import('../../hooks/useSubtitles');
+  const { generateUrlBasedCacheId } = await import('../../services/subtitleCache');
       return await generateUrlBasedCacheId(currentVideoUrl);
     } else if (uploadedFile) {
       // For uploaded files, use the file name without extension

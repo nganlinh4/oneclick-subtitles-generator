@@ -21,7 +21,7 @@ const SERVER_URL = 'http://localhost:3031'; // Backend server port
  * @param {boolean} useCookies - Whether to use browser cookies for authentication
  * @returns {string} - The video ID that can be used to check download status
  */
-export const startYoutubeVideoDownload = (youtubeUrl, forceRefresh = false, useCookies = true) => {
+export const startYoutubeVideoDownload = (youtubeUrl, forceRefresh = false, useCookies = true, options = {}) => {
   const videoId = extractYoutubeVideoId(youtubeUrl);
   if (!videoId) {
     throw new Error('Invalid YouTube URL');
@@ -53,7 +53,9 @@ export const startYoutubeVideoDownload = (youtubeUrl, forceRefresh = false, useC
 
       // Check if the video already exists on the server (unless forceRefresh is true)
       if (!downloadQueue[videoId].forceRefresh) {
-        const checkResponse = await fetch(`${SERVER_URL}/api/video-exists/${videoId}`);
+        const headers = {};
+        if (options && options.runId) headers['X-Run-Id'] = options.runId;
+        const checkResponse = await fetch(`${SERVER_URL}/api/video-exists/${videoId}`, { headers });
         const checkData = await checkResponse.json();
 
         if (checkData.exists) {
@@ -77,11 +79,11 @@ export const startYoutubeVideoDownload = (youtubeUrl, forceRefresh = false, useC
       const controller = new AbortController();
       const timeoutId = setTimeout(() => controller.abort(), 15 * 60 * 1000); // 15 minute timeout
 
+      const reqHeaders = { 'Content-Type': 'application/json' };
+      if (options && options.runId) reqHeaders['X-Run-Id'] = options.runId;
       const downloadResponse = await fetch(`${SERVER_URL}/api/download-video`, {
         method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
+        headers: reqHeaders,
         body: JSON.stringify({
           videoId,
           forceRefresh: downloadQueue[videoId].forceRefresh, // Pass the forceRefresh flag to the server
@@ -153,7 +155,7 @@ export const checkDownloadStatus = (videoId) => {
  * @param {boolean} useCookies - Whether to use browser cookies for authentication
  * @returns {Promise<string>} - A promise that resolves to a video URL
  */
-export const downloadYoutubeVideo = async (youtubeUrl, onProgress = () => {}, forceRefresh = false, useCookies = true) => {
+export const downloadYoutubeVideo = async (youtubeUrl, onProgress = () => {}, forceRefresh = false, useCookies = true, options = {}) => {
   // If forceRefresh is true, remove any existing download from the queue
   const videoId = extractYoutubeVideoId(youtubeUrl);
 
@@ -163,7 +165,7 @@ export const downloadYoutubeVideo = async (youtubeUrl, onProgress = () => {}, fo
   }
 
   // Start the download process
-  startYoutubeVideoDownload(youtubeUrl, forceRefresh, useCookies);
+  startYoutubeVideoDownload(youtubeUrl, forceRefresh, useCookies, options);
 
   // Store the original URL and cookie setting for potential redownload
   const originalUrl = youtubeUrl;
@@ -241,7 +243,9 @@ export const downloadYoutubeVideo = async (youtubeUrl, onProgress = () => {}, fo
       } else if (status.status === 'completed') {
         // Check if the video URL is valid by making a HEAD request
         try {
-          const checkResponse = await fetch(status.url, { method: 'HEAD' });
+          const headHeaders = {};
+          if (options && options.runId) headHeaders['X-Run-Id'] = options.runId;
+          const checkResponse = await fetch(status.url, { method: 'HEAD', headers: headHeaders });
           if (!checkResponse.ok) {
             // Video file doesn't exist anymore, restart the download silently
 
@@ -251,7 +255,7 @@ export const downloadYoutubeVideo = async (youtubeUrl, onProgress = () => {}, fo
             delete downloadQueue[videoId];
 
             // Restart the download process
-            const newVideoId = startYoutubeVideoDownload(originalUrl, false, originalUseCookies);
+            const newVideoId = startYoutubeVideoDownload(originalUrl, false, originalUseCookies, options);
 
             // Set up a new interval to check the download status
             let newProgressSubscribed = false;
@@ -327,7 +331,9 @@ export const downloadYoutubeVideo = async (youtubeUrl, onProgress = () => {}, fo
       } else if (status.status === 'checking') {
         // Check if the video exists on the server
         try {
-          const checkResponse = await fetch(`${SERVER_URL}/api/video-exists/${videoId}`);
+          const pollHeaders = {};
+          if (options && options.runId) pollHeaders['X-Run-Id'] = options.runId;
+          const checkResponse = await fetch(`${SERVER_URL}/api/video-exists/${videoId}`, { headers: pollHeaders });
           const checkData = await checkResponse.json();
 
           if (checkData.exists) {

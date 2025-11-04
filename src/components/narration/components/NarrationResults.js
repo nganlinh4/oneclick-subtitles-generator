@@ -8,6 +8,7 @@ import PlayPauseMorphType4 from '../../common/PlayPauseMorphType4';
 import '../../../utils/functionalScrollbar';
 import { VariableSizeList as List } from 'react-window';
 import { SERVER_URL } from '../../../config';
+import { deriveSubtitleId, idsEqual } from '../../../utils/subtitle/idUtils';
 import { enhanceF5TTSNarrations } from '../../../utils/narrationEnhancer';
 import { formatTime } from '../../../utils/timeFormatter';
 
@@ -324,9 +325,9 @@ const NarrationResults = ({
 
   // Derive a displayed list that immediately shows the full "true" list during generation (like Gemini)
   const trueSubtitles = (() => {
-    // If caller provided an explicit plan, always prefer it
-    if (Array.isArray(plannedSubtitles) && plannedSubtitles.length > 0) {
-      return plannedSubtitles;
+    // If caller provided an explicit plan prop (even empty), treat it as source of truth
+    if (typeof plannedSubtitles !== 'undefined') {
+      return Array.isArray(plannedSubtitles) ? plannedSubtitles : [];
     }
     // Prefer grouped subtitles when enabled (from global state)
     if (typeof window !== 'undefined' && window.useGroupedSubtitles && Array.isArray(window.groupedSubtitles) && window.groupedSubtitles.length > 0) {
@@ -361,8 +362,8 @@ const NarrationResults = ({
 
       // Create results for all subtitles
       const results = trueSubtitles.map((subtitle, index) => {
-        const subtitleId = subtitle.id ?? subtitle.subtitle_id ?? index;
-        const existingResult = generationResults?.find(r => r.subtitle_id === subtitleId);
+        const subtitleId = deriveSubtitleId(subtitle, index);
+        const existingResult = generationResults?.find(r => idsEqual(r.subtitle_id, subtitleId));
 
         if (existingResult) {
           // Use existing result
@@ -381,9 +382,8 @@ const NarrationResults = ({
         }
       });
 
-      // Sort by subtitle_id to maintain order
-      results.sort((a, b) => a.subtitle_id - b.subtitle_id);
-      return results;
+  // Preserve planned order to keep alignment with timeline after edits/deletes
+  return results;
     }
 
     // Fallback: show generation results if no planned subtitles
@@ -966,7 +966,12 @@ const NarrationResults = ({
             itemCount={displayedResults.length}
             itemSize={getRowHeight} // Dynamic row heights based on content
             overscanCount={18} // Increase overscan to reduce blanking during fast scrolls
-            itemKey={(index, data) => (data.generationResults[index] && data.generationResults[index].subtitle_id) ?? index}
+            itemKey={(index, data) => {
+              const item = data.generationResults[index];
+              const id = item && item.subtitle_id;
+              // Ensure uniqueness even if upstream repeats subtitle_id
+              return (id !== undefined && id !== null) ? `${id}-${index}` : index;
+            }}
             itemData={{
               generationResults: displayedResults,
               onRetry,

@@ -28,7 +28,7 @@ function getAllowedOrigins() {
 const EXPRESS_CORS_CONFIG = {
   origin: getAllowedOrigins(),
   methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
-  allowedHeaders: ['Content-Type', 'Authorization', 'Cache-Control', 'Pragma', 'Expires'],
+  allowedHeaders: ['Content-Type', 'Authorization', 'Cache-Control', 'Pragma', 'Expires', 'X-Run-Id'],
   credentials: true
 };
 
@@ -62,7 +62,7 @@ function getCorsHeaders(requestOrigin) {
     return {
       'Access-Control-Allow-Origin': requestOrigin,
       'Access-Control-Allow-Methods': 'GET, POST, PUT, DELETE, OPTIONS',
-      'Access-Control-Allow-Headers': 'Content-Type, Authorization, Cache-Control, Pragma, Expires',
+      'Access-Control-Allow-Headers': 'Content-Type, Authorization, Cache-Control, Pragma, Expires, X-Run-Id',
       'Access-Control-Allow-Credentials': 'true'
     };
   }
@@ -71,7 +71,7 @@ function getCorsHeaders(requestOrigin) {
   return {
     'Access-Control-Allow-Origin': `http://localhost:${PORTS.FRONTEND}`,
     'Access-Control-Allow-Methods': 'GET, POST, PUT, DELETE, OPTIONS',
-    'Access-Control-Allow-Headers': 'Content-Type, Authorization, Cache-Control, Pragma, Expires',
+    'Access-Control-Allow-Headers': 'Content-Type, Authorization, Cache-Control, Pragma, Expires, X-Run-Id',
     'Access-Control-Allow-Credentials': 'true'
   };
 }

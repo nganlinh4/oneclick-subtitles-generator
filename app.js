@@ -67,6 +67,23 @@ try {
 // Configure CORS with unified configuration
 app.use(cors(EXPRESS_CORS_CONFIG));
 
+// Correlation ID logging middleware (X-Run-Id)
+app.use((req, res, next) => {
+  const runId = req.header('X-Run-Id');
+  if (runId) {
+    const start = Date.now();
+    res.on('finish', () => {
+      const ms = Date.now() - start;
+      console.log(`[Run ${runId}] ${req.method} ${req.originalUrl} -> ${res.statusCode} ${ms}ms`);
+    });
+  }
+  // Expose runId to downstream handlers
+  req.runId = runId || null;
+  // Echo header back for client correlation if present
+  if (runId) res.setHeader('X-Run-Id', runId);
+  next();
+});
+
 // Add CORS headers to all responses for health endpoint
 app.use('/api/health', (req, res, next) => {
   const origin = req.headers.origin;
@@ -83,7 +100,7 @@ app.use('/api/health', (req, res, next) => {
     res.header('Access-Control-Allow-Origin', CORS_ORIGIN);
   }
   res.header('Access-Control-Allow-Methods', 'GET, OPTIONS');
-  res.header('Access-Control-Allow-Headers', 'Content-Type, Authorization, Cache-Control, Pragma, Expires');
+  res.header('Access-Control-Allow-Headers', 'Content-Type, Authorization, Cache-Control, Pragma, Expires, X-Run-Id');
   res.header('Access-Control-Allow-Credentials', 'true');
   next();
 });
@@ -113,7 +130,7 @@ app.all('/api/scan-video-qualities', async (req, res) => {
   // Set CORS headers first
   res.header('Access-Control-Allow-Origin', '*');
   res.header('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS');
-  res.header('Access-Control-Allow-Headers', 'Content-Type, Authorization, Cache-Control, Pragma, Expires');
+  res.header('Access-Control-Allow-Headers', 'Content-Type, Authorization, Cache-Control, Pragma, Expires, X-Run-Id');
   res.header('Access-Control-Allow-Credentials', 'true');
 
   console.log(`[NUCLEAR] CORS headers set, processing ${req.method} request`);
@@ -210,7 +227,7 @@ app.get('/api/scan-video-qualities/:scanId', (req, res) => {
   // Set CORS headers
   res.header('Access-Control-Allow-Origin', '*');
   res.header('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS');
-  res.header('Access-Control-Allow-Headers', 'Content-Type, Authorization, Cache-Control, Pragma, Expires');
+  res.header('Access-Control-Allow-Headers', 'Content-Type, Authorization, Cache-Control, Pragma, Expires, X-Run-Id');
   res.header('Access-Control-Allow-Credentials', 'true');
 
   const { scanId } = req.params;
@@ -269,7 +286,7 @@ const staticOptions = {
     }
 
     res.set('Access-Control-Allow-Methods', 'GET, HEAD, OPTIONS');
-    res.set('Access-Control-Allow-Headers', 'Content-Type, Authorization, Cache-Control, Pragma, Expires');
+  res.set('Access-Control-Allow-Headers', 'Content-Type, Authorization, Cache-Control, Pragma, Expires, X-Run-Id');
     res.set('Access-Control-Allow-Credentials', 'true');
   }
 };
@@ -299,7 +316,7 @@ app.use((req, res, next) => {
   }
 
   res.header('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS');
-  res.header('Access-Control-Allow-Headers', 'Content-Type, Authorization, Cache-Control, Pragma, Expires');
+  res.header('Access-Control-Allow-Headers', 'Content-Type, Authorization, Cache-Control, Pragma, Expires, X-Run-Id');
   res.header('Access-Control-Allow-Credentials', 'true');
   next();
 });
