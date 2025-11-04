@@ -2,7 +2,7 @@
   "title": "Settings",
   "appearance": "Appearance",
   "apiKeys": "API Keys",
-  "gemini25ProPaused": "Gemini 2.5 Pro is now available again on the free API tier! You can use it for all features.",
+  "gemini25ProPaused": "The Parakeet subtitle creation method is now available, please reinstall OSG Full from the .bat file to use it (using the update feature will not install this feature)",
   "udbmIntroduction": "Introducing UDBM, opensource database manager and more, download portable EXE",
   "udbmDownloadHere": "here",
   "noNewNotifications": "No new notifications ~",
