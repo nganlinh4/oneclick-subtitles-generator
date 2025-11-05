@@ -61,7 +61,7 @@
   "selectPreset": "Select Preset",
   "gemini20Warning": "Gemini 2.5 models have higher censorship and are prone to \"unsafe content\" errors."
   ,
-  "inlineExtractionHelp": "Use the old method when the new method fails; may be slower depending on the situation",
+  "inlineExtractionHelp": "Prioritize the old method for full video, but use the new method when you need to <strong>recreate a specific segment</strong>",
   "inlineExtractionLabel": "Cut the video locally, then send to Gemini",
   "methodLabel": "Method",
   "methodNewOption": "New: Interact with video on Files API",
@@ -96,7 +96,7 @@
   "transcriptionMethodNewName": "Gemini: New Method",
   "transcriptionMethodOldName": "Gemini: Old Method",
   "transcriptionMethodParakeetName": "Nvidia Parakeet",
-  "transcriptionMethodNewDescription": "Interact with video on Files API",
-  "transcriptionMethodOldDescription": "Cut the video locally, then send to Gemini",
-  "transcriptionMethodParakeetDescription": "Local processing with Nvidia Parakeet"
+  "transcriptionMethodNewDescription": "Interact with video via Files API. Should be used when creating subs for a specific segment. Works well with Gemini 2.5 Pro.",
+  "transcriptionMethodOldDescription": "Cut the video locally, then send to Gemini, suitable for creating subs for the entire video in the early stages. Works well with all models.",
+  "transcriptionMethodParakeetDescription": "Local processing with Nvidia Parakeet, only supports some languages."
 }

@@ -154,8 +154,8 @@ Choose the right version for your needs:
 
 | Feature | OSG Lite | OSG Full | OSG Vercel |
 |---------|----------|------------|------------|
-| **AI Subtitle Generation** | ✅ Gemini AI transcription | ✅ Gemini AI transcription | ✅ Gemini AI transcription |
-| **Video Sources** | ✅ YouTube, Douyin/TikTok, 1000+ platforms + Upload | ✅ YouTube, Douyin/TikTok, 1000+ platforms + Upload | Upload only |
+| **AI Subtitle Generation** | ✅ Gemini AI transcription | ✅ Gemini + Parakeet AI transcription | ✅ Gemini AI transcription |
+| **Video Sources** | ✅ YouTube, Douyin/TikTok, 1000+ platforms + Upload | ✅ YouTube, Douyin/TikTok, 1000+ platforms + Upload | Video upload only |
 | **Subtitle Editor** | ✅ Visual timeline, waveform, real-time preview | ✅ Visual timeline, waveform, real-time preview | ✅ Visual timeline, waveform, real-time preview |
 | **Translation** | ✅ Multi-language with context awareness | ✅ Multi-language with context awareness | ✅ Multi-language with context awareness |
 | **Video Rendering** | ✅ GPU-accelerated with Remotion | ✅ GPU-accelerated with Remotion | ❌ Not available |
@@ -214,6 +214,7 @@ Choose the right version for your needs:
 
 ### 🤖 AI-Powered Subtitle Generation
 - **Google Gemini AI**: Uses latest Gemini 2.5 models (Flash, Pro) for accurate transcription
+- **NVIDIA Parakeet (local, optional)**: On-device ASR for fast, private transcription when running OSG Full. Choose the "NVIDIA Parakeet" method in the subtitle generation dialog. Unified with the same lifecycle, retries, and progress UI as Gemini.
 - **Multi-language support**: Generate subtitles in multiple languages with high accuracy
 - **Parallel processing**: Handles long videos (15+ minutes) with intelligent segmentation
 - **Custom prompts**: Configurable transcription prompts for specialized content
@@ -272,7 +273,10 @@ Choose the right version for your needs:
    - **Other platforms**: Use any supported video URL
 
 ### 2. **Generate AI Subtitles**
-   - Choose your preferred Gemini model (2.5 Flash/Pro recommended)
+  - Choose your preferred engine:
+    - Gemini (cloud) for convenience and strong accuracy
+    - NVIDIA Parakeet (local) for on-device, privacy-friendly transcription (requires OSG Full)
+  - Pick your Gemini model (2.5 Flash/Pro recommended) or Parakeet strategy (sentence/word/char)
    - Configure custom prompts for specialized content
    - Click "Generate timed subtitles" and monitor progress
    - Long videos are automatically processed in parallel segments
@@ -328,6 +332,7 @@ Choose the right version for your needs:
 Access settings via the gear icon in the top-right corner:
 - **API Keys**: Gemini (required), YouTube (optional for search)
 - **AI Models**: Choose between Gemini 2.5 Flash, Pro, or experimental models
+- **Processing Method**: Switch between Gemini (cloud) and NVIDIA Parakeet (local ASR, OSG Full)
 - **Languages**: English, Vietnamese, Korean interface support
 - **Video Processing**: Segment duration, quality preferences, cookie management
 - **TTS Engines**: F5-TTS, Chatterbox, Gemini Live API, Edge TTS, or Google TTS selection
@@ -340,6 +345,7 @@ Access settings via the gear icon in the top-right corner:
 - **Video Rendering**: Remotion 4 with GPU acceleration (Vulkan/OpenGL)
 - **Backend**: Node.js/Express, Python Flask, FastAPI
 - **AI Integration**: Google Gemini API, F5-TTS, Chatterbox TTS
+  , NVIDIA Parakeet (local ASR)
 - **Audio/Video**: FFmpeg, Web Audio API, yt-dlp, Puppeteer
 - **Performance**: React Window virtualization, multi-level caching, hardware acceleration
 
@@ -366,6 +372,7 @@ Access settings via the gear icon in the top-right corner:
 - **[Chatterbox](https://github.com/resemble-ai/chatterbox)** - High-quality TTS and voice conversion
 - **[Microsoft Edge TTS](https://azure.microsoft.com/en-us/services/cognitive-services/text-to-speech/)** - Neural text-to-speech service
 - **[Google Text-to-Speech](https://cloud.google.com/text-to-speech)** - Cloud-based speech synthesis
+ - NVIDIA Parakeet (local ASR)
 
 ### 🎬 Video & Audio Processing
 - **[FFmpeg](https://ffmpeg.org/)** - Comprehensive multimedia framework

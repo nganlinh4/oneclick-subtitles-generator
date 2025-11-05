@@ -11,6 +11,13 @@
   display: inline-block;
 }
 
+.srt-upload-button-container.drag-over .srt-upload-button {
+  border: 2px dashed var(--md-primary);
+  background-color: rgba(var(--md-primary-rgb, 103, 80, 164), 0.1);
+  transform: scale(1.02);
+  box-shadow: var(--md-elevation-level4);
+}
+
 .srt-upload-button {
   display: flex;
   align-items: center;

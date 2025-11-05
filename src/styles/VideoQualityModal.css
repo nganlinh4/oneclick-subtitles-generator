@@ -117,7 +117,7 @@
 .video-info {
   background-color: var(--md-surface-2);
   border-radius: 16px;
-  padding: 16px;
+  padding: 13px;
   transition: all 0.2s ease;
   display: grid;
   grid-template-columns: 1fr 1fr 1fr;

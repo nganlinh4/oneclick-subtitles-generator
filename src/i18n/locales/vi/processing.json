@@ -61,7 +61,7 @@
   "selectPreset": "Chọn mẫu có sẵn",
   "gemini20Warning": "Họ model Gemini 2.5 có bảo mật cao hơn, thường xảy ra lỗi \"nội dung không an toàn\" khi xử lý video nhạy cảm."
   ,
-  "inlineExtractionHelp": "Hãy dùng cách cũ khi cách mới gặp lỗi, có thể chậm hơn tuỳ trường hợp",
+  "inlineExtractionHelp": "Ưu tiên dùng cách cũ cho toàn video, còn khi cần <strong>tạo lại một đoạn cụ thể<strong> nên dùng cách mới",
   "inlineExtractionLabel": "Cắt video trên máy rồi gửi Gemini sau",
   "methodLabel": "Phương thức",
   "methodNewOption": "Mới: Tương tác với video qua Files API",
@@ -96,8 +96,8 @@
   "transcriptionMethodNewName": "Gemini: Phương thức mới",
   "transcriptionMethodOldName": "Gemini: Phương thức cũ",
   "transcriptionMethodParakeetName": "Nvidia Parakeet",
-  "transcriptionMethodNewDescription": "Tương tác với video qua Files API",
-  "transcriptionMethodOldDescription": "Cắt video trên máy rồi gửi Gemini sau",
-  "transcriptionMethodParakeetDescription": "Xử lý cục bộ với Nvidia Parakeet"
+  "transcriptionMethodNewDescription": "Tương tác với video qua Files API. Nên dùng khi tạo sub cho một đoạn cụ thể. Hoạt động tốt với Gemini 2.5 Pro.",
+  "transcriptionMethodOldDescription": "Cắt video trên máy rồi gửi Gemini sau, thích hợp cho tạo sub cho toàn video giai đoạn đầu. Hoạt động tốt với toàn bộ mô hình.",
+  "transcriptionMethodParakeetDescription": "Xử lý cục bộ với Nvidia Parakeet, chỉ hỗ trợ một số ngôn ngữ."
 }
 

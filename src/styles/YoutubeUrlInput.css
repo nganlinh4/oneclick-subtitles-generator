@@ -50,12 +50,12 @@
   display: flex;
   gap: 1.5rem;
   transition: all var(--transition-speed);
-  animation: slide-up 0.3s ease-out;
+  animation: scale-in 0.3s ease-out;
 }
 
-@keyframes slide-up {
-  from { opacity: 0; transform: translateY(10px); }
-  to { opacity: 1; transform: translateY(0); }
+@keyframes scale-in {
+  from { opacity: 0; transform: scale(0.95); }
+  to { opacity: 1; transform: scale(1); }
 }
 
 .thumbnail {

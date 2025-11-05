@@ -183,7 +183,7 @@
   border-radius: 10px;
   box-shadow: 0 2px 8px var(--shadow-color);
   transition: background-color var(--transition-speed);
-  animation: fade-in 0.5s ease-out;
+  animation: scale-in 0.3s ease-out;
 }
 
 .thumbnail-container {
@@ -231,4 +231,9 @@
   background-color: var(--background-tertiary);
   padding: 0.2rem 0.4rem;
   border-radius: 4px;
+}
+
+@keyframes scale-in {
+  from { opacity: 0; transform: scale(0.95); }
+  to { opacity: 1; transform: scale(1); }
 }

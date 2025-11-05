@@ -23,6 +23,7 @@ const SrtUploadButton = ({
   const { t } = useTranslation();
   const fileInputRef = useRef(null);
   const [isProcessing, setIsProcessing] = useState(false);
+  const [isDragOver, setIsDragOver] = useState(false);
 
   // Add processing animation when file is being read
   useEffect(() => {
@@ -94,10 +95,73 @@ const SrtUploadButton = ({
     }
   };
 
+  const handleDragOver = (e) => {
+    e.preventDefault();
+    setIsDragOver(true);
+  };
+
+  const handleDragLeave = (e) => {
+    e.preventDefault();
+    setIsDragOver(false);
+  };
+
+  const handleDrop = (e) => {
+    e.preventDefault();
+    setIsDragOver(false);
+
+    if (e.dataTransfer.files && e.dataTransfer.files[0]) {
+      const file = e.dataTransfer.files[0];
+      const fileName = file?.name.toLowerCase();
+
+      if (file && (fileName.endsWith('.srt') || fileName.endsWith('.json'))) {
+        setIsProcessing(true); // Start processing animation
+        const reader = new FileReader();
+        reader.onload = (e) => {
+          const content = e.target.result;
+
+          // For JSON files, validate the format
+          if (fileName.endsWith('.json')) {
+            try {
+              const jsonData = JSON.parse(content);
+              if (!Array.isArray(jsonData)) {
+                alert(t('errors.invalidJsonFile', 'JSON file must contain an array of subtitles'));
+                setIsProcessing(false);
+                return;
+              }
+              // Validate that it has the expected subtitle structure
+              if (jsonData.length > 0) {
+                const firstItem = jsonData[0];
+                if (!firstItem.hasOwnProperty('start') || !firstItem.hasOwnProperty('end') || !firstItem.hasOwnProperty('text')) {
+                  alert(t('errors.invalidJsonStructure', 'JSON subtitles must have start, end, and text properties'));
+                  setIsProcessing(false);
+                  return;
+                }
+              }
+            } catch (error) {
+              alert(t('errors.invalidJsonFormat', 'Invalid JSON format'));
+              setIsProcessing(false);
+              return;
+            }
+          }
+
+          onSrtUpload(content, file.name);
+        };
+        reader.readAsText(file);
+      } else if (file) {
+        alert(t('errors.invalidSubtitleFile', 'Please select a valid SRT or JSON subtitle file'));
+      }
+    }
+  };
+
   return (
     <>
       <div className="srt-upload-buttons-group">
-        <div className="srt-upload-button-container">
+        <div
+          className={`srt-upload-button-container ${isDragOver ? 'drag-over' : ''}`}
+          onDragOver={handleDragOver}
+          onDragLeave={handleDragLeave}
+          onDrop={handleDrop}
+        >
           <button
             className={`srt-upload-button ${hasSrtUploaded ? 'has-srt-uploaded' : ''} ${isProcessing ? 'processing' : ''}`}
             onClick={handleButtonClick}
