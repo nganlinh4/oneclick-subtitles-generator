@@ -100,7 +100,6 @@
 
 .modal-content {
   padding: 1.5rem;
-  overflow-y: auto;
   flex: 1;
   /* Custom scrollbar styling */
   scrollbar-width: thin;

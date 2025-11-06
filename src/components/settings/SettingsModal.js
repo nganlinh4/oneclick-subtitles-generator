@@ -772,7 +772,7 @@ const SettingsModal = ({ onClose, onSave, apiKeysSet, setApiKeysSet }) => {
 
         <div className="settings-content">
           {/* API Keys Tab Content */}
-          <div key={`settings-tab-api-keys-${activeTab}`} className={`settings-tab-content ${activeTab === 'api-keys' ? 'active' : ''} settings-tab-content-slide-${animationDirection}`}>
+          <div key="settings-tab-api-keys" className={`settings-tab-content ${activeTab === 'api-keys' ? 'active' : ''} settings-tab-content-slide-${animationDirection}`}>
             <ApiKeysTab
               geminiApiKey={geminiApiKey}
               setGeminiApiKey={setGeminiApiKey}
@@ -805,7 +805,7 @@ const SettingsModal = ({ onClose, onSave, apiKeysSet, setApiKeysSet }) => {
           </div>
 
           {/* Video Processing Tab Content */}
-          <div key={`settings-tab-video-processing-${activeTab}`} className={`settings-tab-content ${activeTab === 'video-processing' ? 'active' : ''} settings-tab-content-slide-${animationDirection}`}>
+          <div key="settings-tab-video-processing" className={`settings-tab-content ${activeTab === 'video-processing' ? 'active' : ''} settings-tab-content-slide-${animationDirection}`}>
             <VideoProcessingTab
               segmentDuration={segmentDuration}
               setSegmentDuration={setSegmentDuration}
@@ -848,7 +848,7 @@ const SettingsModal = ({ onClose, onSave, apiKeysSet, setApiKeysSet }) => {
           </div>
 
           {/* Prompts Tab Content */}
-          <div key={`settings-tab-prompts-${activeTab}`} className={`settings-tab-content ${activeTab === 'prompts' ? 'active' : ''} settings-tab-content-slide-${animationDirection}`}>
+          <div key="settings-tab-prompts" className={`settings-tab-content ${activeTab === 'prompts' ? 'active' : ''} settings-tab-content-slide-${animationDirection}`}>
             <PromptsTab
               transcriptionPrompt={transcriptionPrompt}
               setTranscriptionPrompt={setTranscriptionPrompt}
@@ -856,17 +856,17 @@ const SettingsModal = ({ onClose, onSave, apiKeysSet, setApiKeysSet }) => {
           </div>
 
           {/* Cache Management Tab Content */}
-          <div key={`settings-tab-cache-${activeTab}`} className={`settings-tab-content ${activeTab === 'cache' ? 'active' : ''} settings-tab-content-slide-${animationDirection}`}>
+          <div key="settings-tab-cache" className={`settings-tab-content ${activeTab === 'cache' ? 'active' : ''} settings-tab-content-slide-${animationDirection}`}>
             <CacheTab />
           </div>
 
           {/* Model Management Tab Content */}
-          <div key={`settings-tab-model-management-${activeTab}`} className={`settings-tab-content ${activeTab === 'model-management' ? 'active' : ''} settings-tab-content-slide-${animationDirection}`}>
+          <div key="settings-tab-model-management" className={`settings-tab-content ${activeTab === 'model-management' ? 'active' : ''} settings-tab-content-slide-${animationDirection}`}>
             <ModelManagementTab />
           </div>
 
           {/* About Tab Content */}
-          <div key={`settings-tab-about-${activeTab}`} className={`settings-tab-content ${activeTab === 'about' ? 'active' : ''} settings-tab-content-slide-${animationDirection}`}>
+          <div key="settings-tab-about" className={`settings-tab-content ${activeTab === 'about' ? 'active' : ''} settings-tab-content-slide-${animationDirection}`}>
             <AboutTab backgroundType={backgroundType} />
           </div>
         </div>

@@ -26,15 +26,6 @@
   padding-bottom: 0.25rem;
 }
 
-/* Custom slider styles - Compact */
-.slider-with-value {
-  position: relative;
-  display: flex;
-  align-items: center;
-  width: 100%;
-  gap: 8px;
-  height: 32px;
-}
 
 /* Chatterbox control sliders - constrain width like rest-time-slider */
 .chatterbox-control-row .slider-with-value {

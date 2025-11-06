@@ -1,6 +1,7 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { useTranslation } from 'react-i18next';
 import { createPortal } from 'react-dom';
+import Tooltip from '../common/Tooltip';
 import '../../styles/translation/languageChain.css';
 
 /**
@@ -187,163 +188,172 @@ const LanguageChain = ({
       ref={chainRef}
       onKeyDown={handleFormSubmit}>
       <div className="language-chain">
-        {chainItems.map((item, index) => (
-          <div
-            key={item.id}
-            className={`chain-item ${item.type}-item ${item.isOriginal ? 'original' : ''} ${draggedItem === index ? 'dragging' : ''} ${dropTarget === index ? 'drag-over' : ''}`}
-            draggable={!disabled}
-            onDragStart={(e) => handleDragStart(e, index)}
-            onDragOver={(e) => handleDragOver(e, index)}
-            onDragEnd={handleDragEnd}
-            onDrop={(e) => handleDrop(e, index)}
-            onTouchStart={(e) => {
-              // Simulate drag start for touch devices by tracking start index
-              if (disabled) return;
-              e.preventDefault();
-              e.stopPropagation();
-              setDraggedItem(index);
-              setDropTarget(index);
-              draggedItemRef.current = index;
-              dropTargetRef.current = index;
-              e.currentTarget.classList.add('dragging');
+        {chainItems.map((item, index) => {
+          const placeholderText = item.isOriginal
+            ? t('translation.originalLanguage', 'Original')
+            : t('translation.languagePlaceholder', 'Target language');
+          const tooltipText = item.isOriginal
+            ? t('translation.originalLanguage', 'Original')
+            : t('translation.languagePlaceholderTooltip', 'Enter a target language here (e.g., English, Romanized Korean, or Japanese, ...)');
 
-              const startTarget = e.currentTarget;
-              const handleTouchMove = (te) => {
-                const touch = te.touches && te.touches[0];
-                if (!touch) return;
-                // Determine closest chain-item under finger to show drop target
-                const el = document.elementFromPoint(touch.clientX, touch.clientY);
-                const container = chainRef.current;
-                if (!container) return;
-                const chainItemEl = el && (el.closest && el.closest('.chain-item'));
-                if (chainItemEl && container.contains(chainItemEl)) {
-                  const targetIndex = parseInt(chainItemEl.getAttribute('data-index'), 10);
-                  if (!isNaN(targetIndex) && targetIndex !== dropTargetRef.current) {
-                    setDropTarget(targetIndex);
-                    dropTargetRef.current = targetIndex;
-                  }
-                }
-                te.preventDefault();
-              };
-              const handleTouchEnd = () => {
-                document.removeEventListener('touchmove', handleTouchMove);
-                document.removeEventListener('touchend', handleTouchEnd);
-                document.removeEventListener('touchcancel', handleTouchEnd);
-                // Commit move if indices are valid, using refs to avoid stale closure
-                const fromIndex = draggedItemRef.current;
-                const toIndex = dropTargetRef.current;
-                if (fromIndex !== null && toIndex !== null && fromIndex !== toIndex) {
-                  onMoveItem(fromIndex, toIndex);
-                }
-                // Cleanup classes and state
-                startTarget.classList.remove('dragging');
-                setDraggedItem(null);
-                setDropTarget(null);
-                draggedItemRef.current = null;
-                dropTargetRef.current = null;
-              };
-              document.addEventListener('touchmove', handleTouchMove, { passive: false });
-              document.addEventListener('touchend', handleTouchEnd);
-              document.addEventListener('touchcancel', handleTouchEnd);
-            }}
-            style={{ touchAction: 'none' }}
-            data-index={index}
-          >
-            {item.type === 'language' ? (
-              // Language item
-              <>
-                <input
-                  type="text"
-                  value={item.value}
-                  onChange={(e) => onUpdateLanguage(item.id, e.target.value)}
-                  onKeyDown={(e) => {
-                    if (e.key === 'Enter') {
-                      e.preventDefault();
+          return (
+            <div
+              key={item.id}
+              className={`chain-item ${item.type}-item ${item.isOriginal ? 'original' : ''} ${draggedItem === index ? 'dragging' : ''} ${dropTarget === index ? 'drag-over' : ''}`}
+              draggable={!disabled}
+              onDragStart={(e) => handleDragStart(e, index)}
+              onDragOver={(e) => handleDragOver(e, index)}
+              onDragEnd={handleDragEnd}
+              onDrop={(e) => handleDrop(e, index)}
+              onTouchStart={(e) => {
+                // Simulate drag start for touch devices by tracking start index
+                if (disabled) return;
+                e.preventDefault();
+                e.stopPropagation();
+                setDraggedItem(index);
+                setDropTarget(index);
+                draggedItemRef.current = index;
+                dropTargetRef.current = index;
+                e.currentTarget.classList.add('dragging');
+
+                const startTarget = e.currentTarget;
+                const handleTouchMove = (te) => {
+                  const touch = te.touches && te.touches[0];
+                  if (!touch) return;
+                  // Determine closest chain-item under finger to show drop target
+                  const el = document.elementFromPoint(touch.clientX, touch.clientY);
+                  const container = chainRef.current;
+                  if (!container) return;
+                  const chainItemEl = el && (el.closest && el.closest('.chain-item'));
+                  if (chainItemEl && container.contains(chainItemEl)) {
+                    const targetIndex = parseInt(chainItemEl.getAttribute('data-index'), 10);
+                    if (!isNaN(targetIndex) && targetIndex !== dropTargetRef.current) {
+                      setDropTarget(targetIndex);
+                      dropTargetRef.current = targetIndex;
                     }
-                  }}
-                  placeholder={item.isOriginal
-                    ? t('translation.originalLanguage', 'Original')
-                    : t('translation.languagePlaceholder', 'Enter target language')}
-                  disabled={disabled || item.isOriginal}
-                />
-                <button
-                  type="button"
-                  className="remove-btn"
-                  onClick={(e) => {
-                    e.preventDefault();
-                    onRemoveItem(item.id);
-                  }}
-                  disabled={disabled}
-                  title={t('translation.removeLanguage', 'Remove')}
-                >
-                  <span className="material-symbols-rounded" style={{ fontSize: '12px' }}>close</span>
-                </button>
-              </>
-            ) : (
-              // Delimiter item
-              <>
-                <div
-                  className={`delimiter-display ${activeDelimiter === item.id ? 'active' : ''}`}
-                  onClick={(e) => toggleDelimiterDropdown(item.id, e)}
-                >
-                  {getDelimiterDisplay(item)}
-                </div>
-                <button
-                  type="button"
-                  className="remove-btn remove-delimiter-btn"
-                  onClick={(e) => {
-                    e.preventDefault();
-                    onRemoveItem(item.id);
-                  }}
-                  disabled={disabled}
-                  title={t('translation.removeDelimiter', 'Remove delimiter')}
-                >
-                  <span className="material-symbols-rounded" style={{ fontSize: '10px' }}>close</span>
-                </button>
+                  }
+                  te.preventDefault();
+                };
+                const handleTouchEnd = () => {
+                  document.removeEventListener('touchmove', handleTouchMove);
+                  document.removeEventListener('touchend', handleTouchEnd);
+                  document.removeEventListener('touchcancel', handleTouchEnd);
+                  // Commit move if indices are valid, using refs to avoid stale closure
+                  const fromIndex = draggedItemRef.current;
+                  const toIndex = dropTargetRef.current;
+                  if (fromIndex !== null && toIndex !== null && fromIndex !== toIndex) {
+                    onMoveItem(fromIndex, toIndex);
+                  }
+                  // Cleanup classes and state
+                  startTarget.classList.remove('dragging');
+                  setDraggedItem(null);
+                  setDropTarget(null);
+                  draggedItemRef.current = null;
+                  dropTargetRef.current = null;
+                };
+                document.addEventListener('touchmove', handleTouchMove, { passive: false });
+                document.addEventListener('touchend', handleTouchEnd);
+                document.addEventListener('touchcancel', handleTouchEnd);
+              }}
+              style={{ touchAction: 'none' }}
+              data-index={index}
+            >
+              {item.type === 'language' ? (
+                // Language item
+                <Tooltip content={tooltipText}>
+                  <>
+                    <input
+                      type="text"
+                      value={item.value}
+                      onChange={(e) => onUpdateLanguage(item.id, e.target.value)}
+                      onKeyDown={(e) => {
+                        if (e.key === 'Enter') {
+                          e.preventDefault();
+                        }
+                      }}
+                      placeholder={placeholderText}
+                      disabled={disabled || item.isOriginal}
+                    />
+                    <button
+                      type="button"
+                      className="remove-btn"
+                      onClick={(e) => {
+                        e.preventDefault();
+                        onRemoveItem(item.id);
+                      }}
+                      disabled={disabled}
+                      title={t('translation.removeLanguage', 'Remove')}
+                    >
+                      <span className="material-symbols-rounded" style={{ fontSize: '12px' }}>close</span>
+                    </button>
+                  </>
+                </Tooltip>
+              ) : (
+                // Delimiter item
+                <>
+                  <div
+                    className={`delimiter-display ${activeDelimiter === item.id ? 'active' : ''}`}
+                    onClick={(e) => toggleDelimiterDropdown(item.id, e)}
+                  >
+                    {getDelimiterDisplay(item)}
+                  </div>
+                  <button
+                    type="button"
+                    className="remove-btn remove-delimiter-btn"
+                    onClick={(e) => {
+                      e.preventDefault();
+                      onRemoveItem(item.id);
+                    }}
+                    disabled={disabled}
+                    title={t('translation.removeDelimiter', 'Remove delimiter')}
+                  >
+                    <span className="material-symbols-rounded" style={{ fontSize: '10px' }}>close</span>
+                  </button>
 
-                {/* Render the modal using createPortal to ensure it's at the root level */}
-                {activeDelimiter === item.id && createPortal(
-                  <div className="delimiter-modal-overlay" onClick={() => setActiveDelimiter(null)}>
-                    <div className="delimiter-dropdown" onClick={(e) => e.stopPropagation()}>
-                      {delimiters.map(delimiterOption => (
-                        <button
-                          type="button"
-                          key={delimiterOption.id}
-                          className={`delimiter-option ${item.value === delimiterOption.value ? 'active' : ''}`}
-                          onClick={(e) => {
-                            e.preventDefault();
-                            handleDelimiterSelect(item, delimiterOption);
-                          }}
-                          title={t(`translation.delimiter${delimiterOption.id.charAt(0).toUpperCase() + delimiterOption.id.slice(1)}`, delimiterOption.label)}
-                        >
-                          {delimiterOption.label}
-                        </button>
-                      ))}
-
-                      {/* Custom delimiter input */}
-                      <div className="delimiter-custom-input">
-                        <input
-                          type="text"
-                          value={item.value}
-                          onChange={(e) => handleCustomDelimiterChange(item, e.target.value)}
-                          onKeyDown={(e) => {
-                            if (e.key === 'Enter') {
+                  {/* Render the modal using createPortal to ensure it's at the root level */}
+                  {activeDelimiter === item.id && createPortal(
+                    <div className="delimiter-modal-overlay" onClick={() => setActiveDelimiter(null)}>
+                      <div className="delimiter-dropdown" onClick={(e) => e.stopPropagation()}>
+                        {delimiters.map(delimiterOption => (
+                          <button
+                            type="button"
+                            key={delimiterOption.id}
+                            className={`delimiter-option ${item.value === delimiterOption.value ? 'active' : ''}`}
+                            onClick={(e) => {
                               e.preventDefault();
-                            }
-                          }}
-                          placeholder={t('translation.customDelimiterPlaceholder', 'Enter custom delimiter')}
-                          disabled={disabled}
-                          maxLength={10}
-                        />
+                              handleDelimiterSelect(item, delimiterOption);
+                            }}
+                            title={t(`translation.delimiter${delimiterOption.id.charAt(0).toUpperCase() + delimiterOption.id.slice(1)}`, delimiterOption.label)}
+                          >
+                            {delimiterOption.label}
+                          </button>
+                        ))}
+
+                        {/* Custom delimiter input */}
+                        <div className="delimiter-custom-input">
+                          <input
+                            type="text"
+                            value={item.value}
+                            onChange={(e) => handleCustomDelimiterChange(item, e.target.value)}
+                            onKeyDown={(e) => {
+                              if (e.key === 'Enter') {
+                                e.preventDefault();
+                              }
+                            }}
+                            placeholder={t('translation.customDelimiterPlaceholder', 'Enter custom delimiter')}
+                            disabled={disabled}
+                            maxLength={10}
+                          />
+                        </div>
                       </div>
-                    </div>
-                  </div>,
-                  document.body
-                )}
-              </>
-            )}
-          </div>
-        ))}
+                    </div>,
+                    document.body
+                  )}
+                </>
+              )}
+            </div>
+          );
+        })}
       </div>
 
       <div className="chain-actions">

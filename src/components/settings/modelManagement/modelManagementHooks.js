@@ -130,19 +130,17 @@ export const useModels = () => {
 
   // Set up periodic scanning for models in the f5_tts directory
   useEffect(() => {
-    // Initial scan with a 2-second delay to prevent immediate API calls
+    // Run a single delayed scan when the tab mounts (e.g., when switching to Settings)
     const initialScanTimeout = setTimeout(() => {
-      scanForModels();
+      // Only scan when the document is visible to avoid hidden-tab noise
+      if (typeof document === 'undefined' || !document.hidden) {
+        scanForModels();
+      }
     }, 2000);
 
-    // Set up interval for periodic scanning (every 2 minutes instead of 30 seconds)
-    const intervalId = setInterval(() => {
-      scanForModels();
-    }, 120000); // 2 minutes
+    // No recurring interval: manual refresh and tab switches are sufficient
 
-    // Clean up interval and timeout on component unmount
     return () => {
-      clearInterval(intervalId);
       clearTimeout(initialScanTimeout);
     };
   }, [scanForModels]);
@@ -190,16 +188,12 @@ export const useDownloads = (fetchModels) => {
   // Set up polling for download status
   useEffect(() => {
     const checkDownloadStatus = async () => {
-      // Skip if service is not available
-      const available = await checkServiceAvailability();
-      if (!available) {
-        return;
-      }
-
-      // Check status of all downloads
+      // Check status of all downloads (only if there is something to track)
       const downloadIds = Object.keys(downloads);
-
       if (downloadIds.length === 0) return;
+
+      // Respect current service availability without re-checking every tick
+      if (!isServiceAvailable) return;
 
       for (const modelId of downloadIds) {
         const downloadInfo = downloads[modelId];
@@ -257,7 +251,7 @@ export const useDownloads = (fetchModels) => {
     const interval = setInterval(checkDownloadStatus, 2000);
 
     return () => clearInterval(interval);
-  }, [downloads, fetchModels, checkServiceAvailability]);
+  }, [downloads, fetchModels, isServiceAvailable]);
 
   // Update downloads with server data
   const updateDownloads = (serverDownloads) => {

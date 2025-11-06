@@ -470,17 +470,17 @@ const VideoProcessingOptionsModal = ({
     // Helper function to get all available models (built-in + custom)
     const getAllAvailableModels = () => {
         const builtInModels = [
-            { value: 'gemini-2.5-pro', label: t('settings.modelBestAccuracy', 'Gemini 2.5 Pro (Độ chính xác tốt nhất, dễ bị quá tải)'), maxTokens: 2000000 },
-            { value: 'gemini-2.5-flash', label: t('settings.modelSmartFast', 'Gemini 2.5 Flash (Độ chính xác thứ hai)'), maxTokens: 1048575 },
-            { value: 'gemini-2.5-flash-lite', label: t('settings.modelFlash25Lite', 'Gemini 2.5 Flash Lite (Mô hình 2.5 nhanh nhất, dễ lỗi khi tạo sub)'), maxTokens: 1048575 },
-            { value: 'gemini-2.0-flash', label: t('settings.modelThirdBest', 'Gemini 2.0 Flash (Độ chính xác tốt, tốc độ trung bình)'), maxTokens: 1048575 },
-            { value: 'gemini-2.0-flash-lite', label: t('settings.modelFastest', 'Gemini 2.0 Flash Lite (Nhanh nhất, độ chính xác thấp nhất - chỉ thử nghiệm)'), maxTokens: 1048575 }
+            { value: 'gemini-2.5-pro', label: t('settings.modelBestAccuracy', 'Gemini 2.5 Pro (Độ chính xác tốt nhất, dễ bị quá tải)'), maxTokens: 1048576 },
+            { value: 'gemini-2.5-flash', label: t('settings.modelSmartFast', 'Gemini 2.5 Flash (Độ chính xác thứ hai)'), maxTokens: 1048576 },
+            { value: 'gemini-2.5-flash-lite', label: t('settings.modelFlash25Lite', 'Gemini 2.5 Flash Lite (Mô hình 2.5 nhanh nhất, dễ lỗi khi tạo sub)'), maxTokens: 1048576 },
+            { value: 'gemini-2.0-flash', label: t('settings.modelThirdBest', 'Gemini 2.0 Flash (Độ chính xác tốt, tốc độ trung bình)'), maxTokens: 1048576 },
+            { value: 'gemini-2.0-flash-lite', label: t('settings.modelFastest', 'Gemini 2.0 Flash Lite (Nhanh nhất, độ chính xác thấp nhất - chỉ thử nghiệm)'), maxTokens: 1048576 }
         ];
 
         const customModels = customGeminiModels.map(model => ({
             value: model.id,
             label: `${model.name} (Custom)`,
-            maxTokens: 1048575, // Default token limit for custom models
+            maxTokens: 1048576, // Default token limit for custom models
             isCustom: true
         }));
 
@@ -1006,7 +1006,7 @@ const VideoProcessingOptionsModal = ({
     const estimatedTokens = calculateEstimatedTokens();
     const selectedModelData = modelOptions.find(m => m.value === selectedModel);
     const displayTokens = realTokenCount !== null ? realTokenCount : estimatedTokens;
-    const isWithinLimit = displayTokens <= (selectedModelData?.maxTokens || 1048575);
+    const isWithinLimit = displayTokens <= (selectedModelData?.maxTokens || 1048576);
 
     // Format time for display
     const formatTime = (seconds) => {

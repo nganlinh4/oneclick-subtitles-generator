@@ -1,7 +1,8 @@
 {
   "title": "Translate Subtitles",
   "description": "Translate your edited subtitles to another language while preserving timing information.",
-  "languagePlaceholder": "Enter target language (e.g., Spanish, Romanized Korean, Japanese)",
+  "languagePlaceholder": "Target language",
+  "languagePlaceholderTooltip": "Enter a target language here (e.g., English, Romanized Korean, or Japanese, ...)",
   "languageRequired": "Please enter a target language",
   "noSubtitles": "No subtitles to translate",
   "error": "Error translating subtitles. Please try again.",

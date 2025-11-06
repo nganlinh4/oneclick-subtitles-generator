@@ -96,8 +96,8 @@
   "transcriptionMethodNewName": "Gemini: Phương thức mới",
   "transcriptionMethodOldName": "Gemini: Phương thức cũ",
   "transcriptionMethodParakeetName": "Nvidia Parakeet",
-  "transcriptionMethodNewDescription": "Tương tác với video qua Files API. Nên dùng khi tạo sub cho một đoạn cụ thể. Hoạt động tốt với Gemini 2.5 Pro.",
-  "transcriptionMethodOldDescription": "Cắt video trên máy rồi gửi Gemini sau, thích hợp cho tạo sub cho toàn video giai đoạn đầu. Hoạt động tốt với toàn bộ mô hình.",
-  "transcriptionMethodParakeetDescription": "Xử lý cục bộ với Nvidia Parakeet, chỉ hỗ trợ một số ngôn ngữ."
+  "transcriptionMethodNewDescription": "Tương tác với video qua Files API. Nên dùng khi tạo sub cho một đoạn cụ thể. Hoạt động tốt với Gemini 2.5 Pro. Hiểu được cả âm thanh và hình ảnh.",
+  "transcriptionMethodOldDescription": "Cắt video trên máy rồi gửi Gemini sau, thích hợp cho tạo sub cho toàn video giai đoạn đầu. Hoạt động tốt với toàn bộ mô hình. Hiểu được cả âm thanh và hình ảnh.",
+  "transcriptionMethodParakeetDescription": "Xử lý cục bộ với Nvidia Parakeet, chỉ hỗ trợ một số ngôn ngữ. Chỉ trích xuất từ âm thanh trong video."
 }
 

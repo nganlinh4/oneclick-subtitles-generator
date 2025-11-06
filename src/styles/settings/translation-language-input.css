@@ -32,6 +32,7 @@
 .target-language-input::placeholder {
   color: var(--text-secondary);
   opacity: 0.7;
+  font-stretch: ultra-condensed;
 }
 
 /* Styles for the translation language input in the modal */

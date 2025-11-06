@@ -62,7 +62,7 @@ const OnboardingFooterReveal = () => {
             <button className="lets-go-btn" onClick={handleLetsGo}>
               <div className="gemini-icon-container"></div>
               <span className="lets-go-text">{t('onboarding.letsGo')}</span>
-              <span className="material-symbols-rounded lets-go-arrow" style={{ fontSize: '24px' }}>arrow_forward</span>
+              <span className="material-symbols-rounded lets-go-arrow" style={{ fontSize: '20px' }}>arrow_forward</span>
             </button>
           </div>
         </div>

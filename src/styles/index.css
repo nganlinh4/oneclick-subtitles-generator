@@ -380,13 +380,13 @@ input, select, textarea {
 }
 
 /* Info/Loading status */
-.status-info, .status.loading {
+.status-info, .status.info, .status.loading {
   background-color: color-mix(in srgb, var(--md-primary), transparent 90%);
-  color: var(--md-primary);
+  color: var(--md-on-primary-container);
   border-left-color: var(--md-primary);
 }
 
-.status-info::before, .status.loading::before {
+.status-info::before, .status.info::before, .status.loading::before {
   background-color: var(--md-primary);
 }
 

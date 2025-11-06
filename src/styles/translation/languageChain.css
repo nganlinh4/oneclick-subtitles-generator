@@ -90,6 +90,10 @@
   text-overflow: ellipsis;
 }
 
+.language-item input::placeholder {
+  font-stretch: extra-condensed;
+}
+
 .chain-item .remove-btn {
   position: absolute;
   top: -8px;

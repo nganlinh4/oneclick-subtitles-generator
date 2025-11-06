@@ -73,7 +73,7 @@ const useAvailabilityCheck = ({
         // First, do immediate checks for services that can be determined quickly
 
         // Check F5-TTS availability in the background
-        const f5Status = await checkNarrationStatusWithRetry(20, 10000, true);
+  const f5Status = await checkNarrationStatusWithRetry();
 
         // Set F5-TTS availability based on the actual status
         setIsAvailable(f5Status.available);

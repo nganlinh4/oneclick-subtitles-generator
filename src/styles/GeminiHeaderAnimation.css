@@ -1,4 +1,4 @@
-/* GeminiHeaderAnimation.css - Simple styling */
+/* GeminiHeaderAnimation.css - Optimized styling */
 
 .gemini-header-canvas {
   position: absolute;
@@ -12,19 +12,11 @@
   transition: opacity 0.3s ease;
   cursor: pointer; /* Show pointer cursor to indicate interactivity */
 
-  /* Prevent canvas scaling issues at different zoom levels */
-  image-rendering: auto;
-  image-rendering: crisp-edges;
-  image-rendering: pixelated;
-
-  /* Ensure the canvas doesn't create visual artifacts */
+  /* Ensure the canvas doesn't create visual artifacts and is hardware accelerated */
   transform: translateZ(0); /* Force hardware acceleration */
-  backface-visibility: hidden; /* Prevent flickering */
+  backface-visibility: hidden; /* Prevent flickering on some systems */
 
-  /* Prevent subpixel rendering issues */
-  will-change: transform;
-
-  /* Ensure proper containment */
+  /* Ensure proper containment for rendering performance */
   contain: layout style paint;
 }
 
@@ -33,13 +25,13 @@
   opacity: 0.9;
 }
 
-/* Ensure header content is above the canvas */
+/* Ensure header content is always rendered above the canvas */
 .header-title,
 .header-actions,
 .header-title-container,
 .settings-button {
   position: relative;
-  z-index: 4; /* Above canvas */
+  z-index: 4; /* Higher than canvas's z-index of 1 */
 }
 
 /* Add a subtle glow effect to the header title when header is hovered */
@@ -50,9 +42,11 @@
 /* Add a subtle animation to the header title */
 @keyframes title-pulse {
   0%, 100% { transform: translateY(4px) scale(1); }
-  50% { transform: translateY(4px) scale(1.01); }
+  50%      { transform: translateY(4px) scale(1.01); }
 }
 
 .app-header:hover .header-title {
   animation: title-pulse 3s infinite ease-in-out;
+  /* Hint to the browser to optimize for transform changes, preventing jank */
+  will-change: transform;
 }

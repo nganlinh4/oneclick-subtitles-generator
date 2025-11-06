@@ -1,7 +1,8 @@
 {
   "title": "Dịch phụ đề",
   "description": "Dịch phụ đề đã chỉnh sửa sang ngôn ngữ khác trong khi vẫn giữ nguyên thông tin thời gian. Vui lòng chia phụ đề thành các phần nhỏ hơn nếu bạn gặp lỗi do giới hạn token.",
-  "languagePlaceholder": "Ngôn ngữ đích (ví dụ: English, Romanized Korean, Japanese)",
+  "languagePlaceholder": "Ngôn ngữ đích",
+  "languagePlaceholderTooltip": "Nhập 1 ngôn ngữ đích vào đây (ví dụ: English, Romanized Korean, hoặc Japanese, ...)",
   "languageRequired": "Vui lòng nhập ngôn ngữ đích",
   "noSubtitles": "Không có phụ đề để dịch",
   "error": "Lỗi khi dịch phụ đề. Vui lòng thử lại.",
