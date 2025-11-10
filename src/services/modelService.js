@@ -268,7 +268,7 @@ export const cancelModelDownload = async (modelId) => {
  */
 export const scanModelsDirectory = async () => {
   try {
-    console.log('🔍 Calling simple scan API...');
+    // Initiating model directory scan
 
     const response = await fetch(`${API_BASE_URL}/scan-models`, {
       method: 'POST',
@@ -277,19 +277,16 @@ export const scanModelsDirectory = async () => {
       },
     });
 
-    console.log('📡 Scan API response status:', response.status);
+    // API response received
 
     if (!response.ok) {
       const errorData = await response.json();
-      console.error('❌ Scan API error:', errorData);
       throw new Error(errorData.error || `Server returned ${response.status}`);
     }
 
     const result = await response.json();
-    console.log('✅ Simple scan API success:', result);
     return result;
   } catch (error) {
-    console.error('💥 Error scanning models directory:', error);
     throw error;
   }
 };

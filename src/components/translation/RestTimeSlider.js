@@ -40,7 +40,6 @@ const RestTimeSlider = ({ restTime, onRestTimeChange, disabled = false }) => {
             {/* Help icon next to slider value */}
             <HelpIcon
               title={t('translation.restTimeHelp', 'Adds a delay between translation requests to help avoid exceeding Gemini\'s RPM (requests per minute) limits. Useful when your translations work well at the beginning but fail towards the end due to rate limiting.')}
-              size={18}
             />
           </SliderWithValue>
         </div>

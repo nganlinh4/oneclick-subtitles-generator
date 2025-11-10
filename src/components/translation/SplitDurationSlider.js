@@ -100,7 +100,6 @@ const SplitDurationSlider = ({ splitDuration, onSplitDurationChange, subtitles, 
             {/* Help icon next to slider value */}
             <HelpIcon
               title={t('translation.splitDurationHelp', 'Splitting subtitles into smaller chunks helps prevent translations from being cut off due to token limits. For longer videos, use smaller chunks.')}
-              size={18}
             />
           </SliderWithValue>
         </div>

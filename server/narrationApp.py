@@ -10,8 +10,11 @@ from narration_service import narration_bp
 from config.cors_config import get_flask_cors_config, get_cors_headers, get_ports
 
 # Set up logging
-logging.basicConfig(level=logging.INFO)
+logging.basicConfig(level=logging.WARNING)
 logger = logging.getLogger(__name__)
+
+# Suppress Werkzeug request logging
+logging.getLogger('werkzeug').setLevel(logging.WARNING)
 
 # Create Flask app
 app = Flask(__name__)
@@ -87,7 +90,7 @@ if __name__ == '__main__':
         logger.info(f"Starting F5-TTS Narration Service on port {port}")
 
         # Start the server on the specified port
-        app.run(host='0.0.0.0', port=port, debug=True)
+        app.run(host='0.0.0.0', port=port, debug=False)
 
     except OSError as e:
         logger.error(f"Failed to start server on port {port}: {e}")

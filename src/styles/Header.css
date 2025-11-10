@@ -365,21 +365,21 @@
   }
 }
 
-/* Branch switch button styles */
+/* Branch switch button styles - Professional Material Design */
 .branch-switch-button {
   position: relative;
   margin-left: 1rem;
-  padding: 6px 14px;
-  background: linear-gradient(135deg, var(--primary-color) 0%, var(--accent-color) 100%);
-  color: white;
-  border: none;
-  border-radius: 20px;
+  padding: 8px 16px;
+  background: var(--md-primary);
+  color: var(--md-on-primary);
+  border: 1px solid var(--md-outline-variant);
+  border-radius: var(--md-shape-pill);
   font-size: 0.85rem;
   font-weight: 500;
   font-family: var(--font-body);
   cursor: pointer;
-  transition: all 0.3s ease;
-  box-shadow: 0 2px 8px rgba(var(--primary-color-rgb), 0.3);
+  transition: all 0.3s cubic-bezier(0.25, 0.46, 0.45, 0.94);
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
   white-space: nowrap;
   display: inline-flex;
   align-items: center;
@@ -387,100 +387,86 @@
   min-width: fit-content;
   text-transform: none;
   letter-spacing: 0.2px;
+  /* State layer for hover effect */
+  overflow: hidden;
+}
+
+/* State layer for hover effect */
+.branch-switch-button::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background-color: transparent;
+  transition: background-color var(--md-duration-medium2) var(--md-easing-standard);
+  pointer-events: none;
+  border-radius: var(--md-shape-pill);
+}
+
+.branch-switch-button:hover::before {
+  background-color: color-mix(in srgb, var(--md-on-primary), transparent var(--md-state-hover-opacity));
 }
 
 .branch-switch-button:hover {
-  transform: translateY(-2px);
-  box-shadow: 0 4px 12px rgba(var(--primary-color-rgb), 0.5);
-  background: linear-gradient(135deg, var(--accent-color) 0%, var(--primary-color) 100%);
+  border-color: var(--md-primary);
+  transform: translateY(-1px);
+  box-shadow: 0 4px 8px rgba(0, 0, 0, 0.15);
+  background: color-mix(in srgb, var(--md-primary), var(--md-on-primary) 5%);
 }
 
 .branch-switch-button:active {
   transform: translateY(0);
-  box-shadow: 0 2px 6px rgba(var(--primary-color-rgb), 0.3);
-}
-
-/* Add pulsing animation to draw attention */
-@keyframes pulse-branch-button {
-  0% {
-    box-shadow: 0 2px 8px rgba(var(--primary-color-rgb), 0.3);
-  }
-  50% {
-    box-shadow: 0 2px 16px rgba(var(--primary-color-rgb), 0.6);
-  }
-  100% {
-    box-shadow: 0 2px 8px rgba(var(--primary-color-rgb), 0.3);
-  }
-}
-
-.branch-switch-button {
-  animation: pulse-branch-button 3s ease-in-out infinite;
-}
-
-.branch-switch-button:hover {
-  animation: none;
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+  background: color-mix(in srgb, var(--md-primary), var(--md-on-primary) 10%);
 }
 
 /* Disabled state for branch switch button */
 .branch-switch-button:disabled {
   opacity: 0.6;
   cursor: not-allowed;
-  animation: none;
   transform: none;
+  box-shadow: none;
+  background: var(--md-surface-variant);
+  color: var(--md-on-surface-variant);
+  border-color: var(--md-outline);
 }
 
 .branch-switch-button:disabled:hover {
   transform: none;
-  box-shadow: 0 2px 8px rgba(var(--primary-color-rgb), 0.3);
-  background: linear-gradient(135deg, var(--primary-color) 0%, var(--accent-color) 100%);
+  box-shadow: none;
+  background: var(--md-surface-variant);
+  color: var(--md-on-surface-variant);
+  border-color: var(--md-outline);
 }
 
 /* Dark mode adjustments for branch switch button */
 [data-theme="dark"] .branch-switch-button {
-  /* Use deep, rich colors for dark mode - not faded, just deeper */
-  background: linear-gradient(135deg, #5e35b1, #1976d2);  /* Deep purple to deep blue */
-  color: white;
-  box-shadow: 0 2px 10px rgba(0, 0, 0, 0.4);
+  background: var(--md-primary);
+  color: var(--md-on-primary);
+  border-color: var(--md-outline-variant);
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.3);
 }
 
 [data-theme="dark"] .branch-switch-button:hover {
-  background: linear-gradient(135deg, #1976d2, #5e35b1);  /* Reverse gradient on hover */
-  box-shadow: 0 4px 15px rgba(94, 53, 177, 0.3);
-  transform: translateY(-2px);
+  background: color-mix(in srgb, var(--md-primary), white 5%);
+  border-color: var(--md-primary);
+  box-shadow: 0 4px 8px rgba(0, 0, 0, 0.4);
+  transform: translateY(-1px);
 }
 
 [data-theme="dark"] .branch-switch-button:active {
-  background: linear-gradient(135deg, #512da8, #1565c0);  /* Slightly darker when pressed */
-  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.4);
+  background: color-mix(in srgb, var(--md-primary), white 10%);
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.3);
   transform: translateY(0);
 }
 
-/* Subtle animation in dark mode */
-[data-theme="dark"] .branch-switch-button {
-  animation: pulse-branch-button-dark 3s ease-in-out infinite;
-}
-
-@keyframes pulse-branch-button-dark {
-  0% {
-    box-shadow: 0 2px 10px rgba(0, 0, 0, 0.4);
-  }
-  50% {
-    box-shadow: 0 3px 15px rgba(94, 53, 177, 0.25);
-  }
-  100% {
-    box-shadow: 0 2px 10px rgba(0, 0, 0, 0.4);
-  }
-}
-
 [data-theme="dark"] .branch-switch-button:disabled {
-  background: linear-gradient(135deg, #5e35b1, #1976d2);
-  opacity: 0.5;
-  cursor: not-allowed;
-}
-
-[data-theme="dark"] .branch-switch-button:disabled:hover {
-  transform: none;
-  box-shadow: 0 2px 10px rgba(0, 0, 0, 0.4);
+  background: var(--md-surface-variant);
+  color: var(--md-on-surface-variant);
+  box-shadow: none;
+  border-color: var(--md-outline);
 }
 
 /* Responsive styles for branch switch button */
@@ -506,21 +492,28 @@
 }
 
 
-/* Vercel (npm start) mode: branch switch button disabled with distinct color */
+/* Vercel (npm start) mode: branch switch button disabled with distinct styling */
 .branch-switch-button.vercel-mode {
-  background: linear-gradient(135deg, #9e9e9e, #bdbdbd);
-  color: #ffffff;
+  background: var(--md-surface-variant);
+  color: var(--md-on-surface-variant);
   cursor: not-allowed;
-  animation: none;
+  transform: none;
+  box-shadow: none;
+  border: 1px solid var(--md-outline);
+  opacity: 0.7;
 }
 
 .branch-switch-button.vercel-mode:hover {
   transform: none;
-  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.2);
-  background: linear-gradient(135deg, #9e9e9e, #bdbdbd);
+  box-shadow: none;
+  background: var(--md-surface-variant);
+  color: var(--md-on-surface-variant);
+  border: 1px solid var(--md-outline);
 }
 
 [data-theme="dark"] .branch-switch-button.vercel-mode {
-  background: linear-gradient(135deg, #455a64, #607d8b);
-  color: #ffffff;
+  background: var(--md-surface-variant);
+  color: var(--md-on-surface-variant);
+  box-shadow: none;
+  border-color: var(--md-outline);
 }

@@ -234,8 +234,6 @@ def scan_models_directory():
     """Scan the models/f5_tts directory for existing models and add them to registry."""
     from .constants import MODELS_DIR
 
-    logger.info(f"Starting scan of models directory: {MODELS_DIR}")
-
     if not os.path.exists(MODELS_DIR):
         logger.error(f"Models directory does not exist: {MODELS_DIR}")
         return False, f"Models directory not found: {MODELS_DIR}"
@@ -308,27 +306,23 @@ def scan_models_directory():
                 # Add to registry
                 registry.setdefault("models", []).append(model_info)
                 new_models_found += 1
-                logger.info(f"✅ Found and added model: {item}")
             else:
-                logger.warning(f"⚠️ Skipping {item} - missing files (model: {bool(model_file)}, vocab: {bool(vocab_file)})")
+                pass  # Skipping model - missing files
 
         # Save updated registry
         if new_models_found > 0:
-            logger.info(f"Saving registry with {new_models_found} new models")
             if save_registry(registry):
                 message = f"Found and added {new_models_found} new models"
-                logger.info(f"✅ {message}")
                 return True, message
             else:
                 logger.error("Failed to save registry after scanning")
                 return False, "Failed to save registry after scanning"
         else:
             message = "No new models found"
-            logger.info(f"ℹ️ {message}")
             return True, message
 
     except Exception as e:
-        logger.error(f"💥 Error scanning models directory: {e}")
+        logger.error(f"Error scanning models directory: {e}")
         import traceback
         traceback.print_exc()
         return False, f"Error scanning directory: {str(e)}"

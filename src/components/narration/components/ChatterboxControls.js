@@ -83,7 +83,7 @@ const ChatterboxControls = ({
           <div className="setting-description">
             {t('narration.exaggerationDesc', 'Higher values increase emotional expression')}
             {!supportsAdvanced && (
-              <HelpIcon title={t('narration.chatterboxEnglishOnlyControls', 'Currently only English supports these controls')} size={18} />
+              <HelpIcon title={t('narration.chatterboxEnglishOnlyControls', 'Currently only English supports these controls')}/>
             )}
           </div>
         </div>
@@ -113,7 +113,7 @@ const ChatterboxControls = ({
           <div className="setting-description">
             {t('narration.cfgWeightDesc', 'Adjusts generation strength and speaking pace')}
             {!supportsAdvanced && (
-              <HelpIcon title={t('narration.chatterboxEnglishOnlyControls', 'Currently only English supports these controls')} size={18} />
+              <HelpIcon title={t('narration.chatterboxEnglishOnlyControls', 'Currently only English supports these controls')}/>
             )}
           </div>
         </div>

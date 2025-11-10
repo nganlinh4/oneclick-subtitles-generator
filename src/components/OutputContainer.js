@@ -129,9 +129,11 @@ const OutputContainer = ({
   // Set video source when a video is selected or file is uploaded
   const [videoSource, setVideoSource] = useState('');
   const [actualVideoUrl, setActualVideoUrl] = useState('');
+  const [fileType, setFileType] = useState('');
   useEffect(() => {
     // Reset the actual video URL when the source changes
     setActualVideoUrl('');
+    setFileType('');
 
     // First check for uploaded file
     const uploadedFileUrl = localStorage.getItem('current_file_url');
@@ -141,15 +143,25 @@ const OutputContainer = ({
         // Only use blob URLs if we have an uploadedFile (indicates current session)
         if (uploadedFile) {
           setVideoSource(uploadedFileUrl);
+          setFileType(uploadedFile.type || '');
         } else {
           // No uploadedFile means this is a stale blob URL, clear it
           localStorage.removeItem('current_file_url');
           setVideoSource('');
+          setFileType('');
         }
         return;
       } else {
         // Non-blob URL, use it directly
         setVideoSource(uploadedFileUrl);
+        // For non-blob URLs from localStorage, check if we have a downloaded video file
+        const downloadedFile = window.downloadedVideoFile;
+        if (downloadedFile && downloadedFile.type) {
+          setFileType(downloadedFile.type);
+        } else {
+          // Assume video if no type info available
+          setFileType('video/mp4');
+        }
         return;
       }
     }
@@ -164,12 +176,13 @@ const OutputContainer = ({
       // Special case: If we're in SRT-only mode, don't set videoSource
       if (isSrtOnlyMode) {
         setVideoSource('');
+        setFileType('');
         return;
       }
 
-
-
       setVideoSource(selectedVideo.url);
+      // For YouTube/Douyin URLs, assume video
+      setFileType('video/mp4');
       return;
     }
 
@@ -177,13 +190,15 @@ const OutputContainer = ({
     const videoUrl = localStorage.getItem('current_video_url');
     if (videoUrl && !selectedVideo && !isSrtOnlyMode) {
 
-
       setVideoSource(videoUrl);
+      // For URLs from localStorage, assume video
+      setFileType('video/mp4');
       return;
     }
 
     // Clear video source if nothing is selected
     setVideoSource('');
+    setFileType('');
   }, [selectedVideo, uploadedFile, isSrtOnlyMode]);
 
   // Notify parent when actualVideoUrl changes
@@ -298,6 +313,7 @@ const OutputContainer = ({
                 currentTime={currentTabIndex}
                 setCurrentTime={setCurrentTabIndex}
                 videoSource={videoSource}
+                fileType={fileType}
                 setDuration={setVideoDuration}
                 onSeek={handleVideoSeek}
                 translatedSubtitles={translatedSubtitles}

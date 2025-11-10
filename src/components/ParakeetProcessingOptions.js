@@ -128,7 +128,6 @@ const ParakeetProcessingOptions = ({
                         <div className="combined-option-half" style={{ gap: '8px' }}>
                             <div className="label-with-help">
                                 <label>{t('processing.parakeetSplittingMethod', 'Splitting method')}</label>
-                                <HelpIcon title={t('processing.parakeetStrategyHelp', 'Choose how to split subtitles: by approximate character count or by full sentences.')} />
                             </div>
                             <CustomDropdown
                                 value={parakeetStrategy}

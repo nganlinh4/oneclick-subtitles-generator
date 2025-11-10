@@ -69,28 +69,26 @@ export const useModels = () => {
 
     try {
       setIsScanning(true);
-      console.log('Starting models directory scan...');
+      // Starting model directory scan
 
       // Call the simple Node.js scan API
       try {
-        console.log('🔍 Calling simple scan API...');
         const scanResult = await scanModelsDirectory();
-        console.log('Scan result received:', scanResult);
 
         if (scanResult.success) {
-          console.log('✅ Models scan completed:', scanResult.message);
+          // Models scan completed successfully
 
           // Refresh the models list from the updated registry
           const data = await getModels(false);
           setModels(data.models || []);
           invalidateModelsCache();
 
-          console.log('📋 Refreshed models list from updated registry');
+          // Models list refreshed
         } else {
-          console.error('❌ Model scan failed:', scanResult.error);
+          // Model scan failed
         }
       } catch (scanError) {
-        console.error('💥 Scan API failed:', scanError.message);
+        // Scan API failed
       }
 
       // Update model sizes for all models
@@ -103,17 +101,15 @@ export const useModels = () => {
               sizes[model.id] = storageInfo.size;
             }
           } catch (error) {
-            console.error(`Error getting size for model ${model.id}:`, error);
+            // Error getting model size
           }
         }
       }
 
       setModelSizes(prev => ({...prev, ...sizes}));
     } catch (error) {
-      console.error('💥 Error scanning for models:', error);
-      console.error('Error details:', error.message);
+      // Error scanning for models
     } finally {
-      console.log('🔄 Scan completed, stopping spinner');
       setIsScanning(false);
     }
   }, [isScanning, models, setIsScanning, setModels, setModelSizes, checkServiceAvailability]);

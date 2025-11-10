@@ -52,7 +52,6 @@ const RulesToggle = ({
                 : rulesAvailable
                   ? t('translation.includeRulesDescription', 'Includes video analysis context and rules with each translation request for better consistency across segments.')
                   : t('translation.noRulesAvailable', 'No transcription rules available. This option requires analyzing the video with Gemini first.')}
-              size={18}
             />
           </div>
         </div>

@@ -14,7 +14,7 @@ function scanModels() {
     try {
         // Check if models directory exists
         if (!fs.existsSync(MODELS_DIR)) {
-            console.log('❌ Models directory not found:', MODELS_DIR);
+            console.log('Models directory not found:', MODELS_DIR);
             return false;
         }
 
@@ -25,10 +25,10 @@ function scanModels() {
                 const registryData = fs.readFileSync(REGISTRY_FILE, 'utf8');
                 registry = JSON.parse(registryData);
             } catch (e) {
-                console.log('⚠️ Error reading registry, starting fresh:', e.message);
+                console.log('Error reading registry, starting fresh:', e.message);
             }
         } else {
-            console.log('📋 No existing registry found, creating new one');
+            console.log('No existing registry found, creating new one');
         }
 
         // Get existing model IDs
@@ -49,15 +49,12 @@ function scanModels() {
 
             // Skip if already in registry
             if (existingIds.has(item)) {
-                console.log(`⏭️ Skipping ${item} - already in registry`);
+                // Model already in registry
                 continue;
             }
 
-            console.log(`🔍 Checking directory: ${item}`);
-
             // Look for model and vocab files
             const files = fs.readdirSync(itemPath);
-            console.log(`📋 Files in ${item}:`, files);
 
             let modelFile = null;
             let vocabFile = null;
@@ -67,10 +64,10 @@ function scanModels() {
                 if (fs.statSync(filePath).isFile()) {
                     if (file.endsWith('.safetensors') || file.endsWith('.pt') || file.endsWith('.pth')) {
                         modelFile = filePath;
-                        console.log(`🎯 Found model file: ${file}`);
+                        // Found model file
                     } else if (file === 'vocab.txt') {
                         vocabFile = filePath;
-                        console.log(`📝 Found vocab file: ${file}`);
+                        // Found vocab file
                     }
                 }
             }
@@ -95,9 +92,9 @@ function scanModels() {
                 registry.models = registry.models || [];
                 registry.models.push(modelInfo);
                 newModelsFound++;
-                console.log(`✅ Added model: ${item}`);
+                // Model added successfully
             } else {
-                console.log(`⚠️ Skipping ${item} - missing files (model: ${!!modelFile}, vocab: ${!!vocabFile})`);
+                // Skipping model - missing files
             }
         }
 
@@ -107,16 +104,14 @@ function scanModels() {
             const backupFile = REGISTRY_FILE + '.backup';
             if (fs.existsSync(REGISTRY_FILE)) {
                 fs.copyFileSync(REGISTRY_FILE, backupFile);
-                console.log('📋 Created backup:', backupFile);
+                // Created backup
             }
 
             // Save updated registry
             fs.writeFileSync(REGISTRY_FILE, JSON.stringify(registry, null, 2), 'utf8');
-            console.log(`💾 Saved registry with ${newModelsFound} new models`);
-            console.log(`🎉 Success! Found and added ${newModelsFound} new models`);
+            // Registry saved with new models
             
             // List all models
-            console.log('\n📊 All models in registry:');
             registry.models.forEach((model, index) => {
                 console.log(`   ${index + 1}. ${model.id} - ${model.name}`);
             });
@@ -127,7 +122,7 @@ function scanModels() {
         }
 
     } catch (error) {
-        console.error('💥 Error scanning models:', error.message);
+        console.error('Error scanning models:', error.message);
         return false;
     }
 }

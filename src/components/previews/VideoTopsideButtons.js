@@ -16,11 +16,15 @@ const VideoTopsideButtons = ({
   setError,
   videoRef,
   videoSource,
+  fileType,
   useOptimizedPreview,
   optimizedVideoUrl,
   videoUrl
 }) => {
   const { t } = useTranslation();
+
+  // Check if the current file is audio
+  const isAudioFile = fileType && fileType.startsWith('audio/');
 
   return (
     <>
@@ -514,8 +518,8 @@ const VideoTopsideButtons = ({
           gap: '10px',
           alignItems: 'center'
         }}>
-          {/* Extract frame button - only show when custom controls are available */}
-          {showCustomControls && (
+          {/* Extract frame button - only show when custom controls are available and not audio file */}
+          {showCustomControls && !isAudioFile && (
             <LiquidGlass
               width="auto"
               height={50}
@@ -607,8 +611,8 @@ const VideoTopsideButtons = ({
           </LiquidGlass>
         )}
 
-        {/* Download audio button - only show when custom controls are available */}
-        {showCustomControls && (
+        {/* Download audio button - only show when custom controls are available and not audio file */}
+        {showCustomControls && !isAudioFile && (
           <LiquidGlass
             width="auto"
             height={50}

@@ -20,7 +20,7 @@ import '../../styles/narration/index.css';
 import { SERVER_URL } from '../../config';
 import useVideoSeekControls from '../../hooks/useVideoSeekControls';
 
-const VideoPreview = ({ currentTime, setCurrentTime, setDuration, videoSource, onSeek, translatedSubtitles, subtitlesArray, onVideoUrlReady, onReferenceAudioChange, onRenderVideo, useCookiesForDownload = true }) => {
+const VideoPreview = ({ currentTime, setCurrentTime, setDuration, videoSource, fileType, onSeek, translatedSubtitles, subtitlesArray, onVideoUrlReady, onReferenceAudioChange, onRenderVideo, useCookiesForDownload = true }) => {
   const { t } = useTranslation();
   const videoRef = useRef(null);
   const videoContainerRef = useRef(null); // Ref for the main video container
@@ -2227,6 +2227,7 @@ const VideoPreview = ({ currentTime, setCurrentTime, setDuration, videoSource, o
                   setError={setError}
                   videoRef={videoRef}
                   videoSource={videoSource}
+                  fileType={fileType}
                   useOptimizedPreview={useOptimizedPreview}
                   optimizedVideoUrl={optimizedVideoUrl}
                   videoUrl={videoUrl}
@@ -2400,6 +2401,8 @@ const VideoPreview = ({ currentTime, setCurrentTime, setDuration, videoSource, o
                   setControlsVisible={setControlsVisible}
                   setIsVideoHovered={setIsVideoHovered}
                   hideControlsTimeoutRef={hideControlsTimeoutRef}
+                  videoSource={videoSource}
+                  fileType={fileType}
                 />
 
 
