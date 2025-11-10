@@ -1,7 +1,6 @@
 import React, { useRef, useEffect, useState, useCallback } from 'react';
 import { useTranslation } from 'react-i18next';
 import MaterialSwitch from '../common/MaterialSwitch';
-import LiquidGlass from '../common/LiquidGlass';
 import LoadingIndicator from '../common/LoadingIndicator';
 import '../../styles/common/material-switch.css';
 import {
@@ -14,10 +13,12 @@ import { convertTimeStringToSeconds } from '../../utils/vttUtils';
 import SubtitleSettings from '../SubtitleSettings';
 import VideoTopsideButtons from './VideoTopsideButtons';
 import VideoBottomControls from './VideoBottomControls';
+import SeekIndicator from './SeekIndicator';
 // Narration settings now integrated into the translation section
 import '../../styles/VideoPreview.css';
 import '../../styles/narration/index.css';
 import { SERVER_URL } from '../../config';
+import useVideoSeekControls from '../../hooks/useVideoSeekControls';
 
 const VideoPreview = ({ currentTime, setCurrentTime, setDuration, videoSource, onSeek, translatedSubtitles, subtitlesArray, onVideoUrlReady, onReferenceAudioChange, onRenderVideo, useCookiesForDownload = true }) => {
   const { t } = useTranslation();
@@ -25,9 +26,18 @@ const VideoPreview = ({ currentTime, setCurrentTime, setDuration, videoSource, o
   const videoContainerRef = useRef(null); // Ref for the main video container
   const lastBlobUrlRef = useRef(null);
 
+  const handleSeek = (direction) => {
+    setSeekDirection(direction);
+    setShowSeekIndicator(true);
+    setTimeout(() => setShowSeekIndicator(false), 1000);
+  };
+
+  useVideoSeekControls(videoRef, handleSeek);
+
   const seekLockRef = useRef(false);
   const lastTimeUpdateRef = useRef(0); // Track last time update to throttle updates
   const lastPlayStateRef = useRef(false); // Track last play state to avoid redundant updates
+  const lastTouchTimeRef = useRef(0);
   // isFullscreen state is set but not directly used in rendering - used for event handling
   const [isFullscreen, setIsFullscreen] = useState(false); // Track fullscreen state
   const [videoUrl, setVideoUrl] = useState('');
@@ -67,6 +77,9 @@ const VideoPreview = ({ currentTime, setCurrentTime, setDuration, videoSource, o
   const [useOptimizedPreview, setUseOptimizedPreview] = useState(() => {
     return localStorage.getItem('use_optimized_preview') === 'true';
   });
+  const [showSeekIndicator, setShowSeekIndicator] = useState(false);
+  const [seekDirection, setSeekDirection] = useState('');
+  const [isCompactMode, setIsCompactMode] = useState(false);
 
   // Listen for changes to the optimized preview setting from Settings modal
   useEffect(() => {
@@ -130,6 +143,34 @@ const VideoPreview = ({ currentTime, setCurrentTime, setDuration, videoSource, o
       window.removeEventListener('video-volume-change', handleVideoVolumeChange);
     };
   }, [isMuted]);
+
+  // Detect compact mode based on video height
+  useEffect(() => {
+    const checkCompactMode = () => {
+      if (videoRef.current) {
+        const height = videoRef.current.offsetHeight;
+        setIsCompactMode(height < 400);
+      }
+    };
+
+    // Check on video load
+    const videoElement = videoRef.current;
+    if (videoElement) {
+      videoElement.addEventListener('loadedmetadata', checkCompactMode);
+      videoElement.addEventListener('resize', checkCompactMode);
+    }
+
+    // Also check periodically in case of dynamic resizing
+    const interval = setInterval(checkCompactMode, 1000);
+
+    return () => {
+      if (videoElement) {
+        videoElement.removeEventListener('loadedmetadata', checkCompactMode);
+        videoElement.removeEventListener('resize', checkCompactMode);
+      }
+      clearInterval(interval);
+    };
+  }, []);
 
   // State for custom subtitle display
   const [currentSubtitleText, setCurrentSubtitleText] = useState('');
@@ -1667,18 +1708,6 @@ const VideoPreview = ({ currentTime, setCurrentTime, setDuration, videoSource, o
           }
           break;
 
-        case 'ArrowLeft':
-        case 'j':
-          // Seek backward 10 seconds
-          videoElement.currentTime = Math.max(0, videoElement.currentTime - 10);
-          break;
-
-        case 'ArrowRight':
-        case 'l':
-          // Seek forward 10 seconds
-          videoElement.currentTime = Math.min(videoDuration, videoElement.currentTime + 10);
-          break;
-
         case 'ArrowUp':
           // Volume up
           videoElement.volume = Math.min(1, videoElement.volume + 0.1);
@@ -2226,11 +2255,37 @@ const VideoPreview = ({ currentTime, setCurrentTime, setDuration, videoSource, o
                   onTouchEnd={(e) => {
                     // Prevent double-tap zoom on mobile
                     e.preventDefault();
-                    if (videoRef.current) {
-                      if (isPlaying) {
-                        videoRef.current.pause();
-                      } else {
-                        videoRef.current.play().catch(console.error);
+                    const now = Date.now();
+                    if (now - lastTouchTimeRef.current < 300) { // double tap
+                      const rect = e.target.getBoundingClientRect();
+                      const touch = e.changedTouches[0];
+                      const x = touch.clientX - rect.left;
+                      const isLeft = x < rect.width / 2;
+                      if (videoRef.current) {
+                        if (isLeft) {
+                          videoRef.current.currentTime = Math.max(0, videoRef.current.currentTime - 5);
+                        } else {
+                          if (videoRef.current.duration) {
+                            videoRef.current.currentTime = Math.min(videoRef.current.duration, videoRef.current.currentTime + 5);
+                          }
+                        }
+                      }
+                      handleSeek(isLeft ? 'backward' : 'forward');
+                    } else {
+                      lastTouchTimeRef.current = now;
+                      if (videoRef.current) {
+                        if (isPlaying) {
+                          videoRef.current.pause();
+                        } else {
+                          videoRef.current.play().catch(console.error);
+                        }
+                        // Force sync UI state after a short delay to ensure it matches video state
+                        setTimeout(() => {
+                          const actuallyPlaying = !videoRef.current.paused;
+                          if (actuallyPlaying !== isPlaying) {
+                            setIsPlaying(actuallyPlaying);
+                          }
+                        }, 50);
                       }
                     }
                   }}
@@ -2290,47 +2345,22 @@ const VideoPreview = ({ currentTime, setCurrentTime, setDuration, videoSource, o
                   )}
                 </div>
 
+                <SeekIndicator showSeekIndicator={showSeekIndicator} seekDirection={seekDirection} />
+
                 {/* Loading/Buffering Spinner */}
                 {(isVideoLoading || isBuffering) && (
-                  <div style={{
-                    position: 'absolute',
-                    top: '50%',
-                    left: '50%',
-                    transform: 'translate(-50%, -50%)',
-                    zIndex: 15
-                  }}>
-                    <LiquidGlass
-                      width={60}
-                      height={60}
-                      borderRadius="30px"
-                      className="content-center theme-primary shape-circle"
-                      effectIntensity={0.8}
-                      effectRadius={0.6}
-                      effectWidth={0.4}
-                      effectHeight={0.4}
-                      style={{
-                        background: 'rgba(0,0,0,0.7)',
-                        backdropFilter: 'blur(10px)'
-                      }}
-                    >
-                      <div style={{
-                        width: '100%',
-                        height: '100%',
-                        display: 'flex',
-                        alignItems: 'center',
-                        justifyContent: 'center'
-                      }}>
-                        <div style={{
-                          width: '24px',
-                          height: '24px',
-                          border: '3px solid rgba(255,255,255,0.3)',
-                          borderTop: '3px solid white',
-                          borderRadius: '50%',
-                          animation: 'spin 1s linear infinite'
-                        }} />
-                      </div>
-                    </LiquidGlass>
-                  </div>
+                  <LoadingIndicator
+                    theme="light"
+                    showContainer={true}
+                    size={60}
+                    style={{
+                      position: 'absolute',
+                      top: '50%',
+                      left: '50%',
+                      transform: 'translate(-50%, -50%)',
+                      zIndex: 15
+                    }}
+                  />
                 )}
 
                 {/* Bottom controls component */}
@@ -2364,6 +2394,7 @@ const VideoPreview = ({ currentTime, setCurrentTime, setDuration, videoSource, o
                   setPlaybackSpeed={setPlaybackSpeed}
                   isSpeedMenuVisible={isSpeedMenuVisible}
                   setIsSpeedMenuVisible={setIsSpeedMenuVisible}
+                  isCompactMode={isCompactMode}
                   handleFullscreenExit={handleFullscreenExit}
                   setIsFullscreen={setIsFullscreen}
                   setControlsVisible={setControlsVisible}
@@ -2426,7 +2457,7 @@ const VideoPreview = ({ currentTime, setCurrentTime, setDuration, videoSource, o
                     z-index: 2; /* Above video (z-index: 1) but below UI controls (z-index: 3+) */
                     /* Calculate top position based on percentage (0% = top, 100% = bottom) */
                     bottom: calc(100% - var(--subtitle-position));
-                    transform: translateY(50%);
+                    transform: translateY(16%);
                     pointer-events: none; /* Allow clicks to pass through to video and controls */
                   }
 
@@ -2447,6 +2478,7 @@ const VideoPreview = ({ currentTime, setCurrentTime, setDuration, videoSource, o
                     max-width: 100%;
                     word-wrap: break-word;
                   }
+
                 `}
               </style>
 

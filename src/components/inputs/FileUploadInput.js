@@ -1,6 +1,5 @@
 import React, { useState, useRef, useEffect, useCallback, useMemo } from 'react';
 import { useTranslation } from 'react-i18next';
-import { convertAudioToVideo } from '../../utils/audioToVideoConverter';
 import { SERVER_URL } from '../../config';
 import LoadingIndicator from '../common/LoadingIndicator';
 import '../../styles/FileUploadInput.css';
@@ -152,42 +151,8 @@ const FileUploadInput = ({ uploadedFile, setUploadedFile, onVideoSelect, classNa
           localStorage.removeItem('current_file_url');
         }
 
-        // Check if this is an audio file
-        // Include WebM files as they can be audio-only
-        const isAudio = file.type.startsWith('audio/') || file.name.toLowerCase().endsWith('.webm');
-        let processedFile = file;
-
-        // If it's an audio file, immediately convert it to video
-        if (isAudio) {
-          try {
-            // Show loading state
-            setFileInfo({
-              name: file.name,
-              type: file.type,
-              size: `${(file.size / (1024 * 1024)).toFixed(2)} MB`,
-              mediaType: 'Audio',
-              converting: true
-            });
-
-            // Convert audio to video
-            processedFile = await convertAudioToVideo(file);
-
-            // Update file info but keep the original audio file information for display
-            // This maintains the illusion that we're still working with an audio file
-            displayFileInfo(processedFile, file);
-          } catch (error) {
-            console.error('Error converting audio to video:', error);
-            setError(t('fileUpload.conversionError', 'Failed to convert audio to video. Please try again.'));
-            setUploadedFile(null);
-            setFileInfo(null);
-            // Clear the file input value to allow re-uploading the same file
-            if (fileInputRef.current) {
-              fileInputRef.current.value = '';
-            }
-            setIsLoading(false);
-            return;
-          }
-        }
+        // No longer converting audio files to video - keep original files as-is
+        const processedFile = file;
 
         // For large files (>500MB), copy to videos directory for better handling
         const fileSizeMB = processedFile.size / (1024 * 1024);
@@ -288,11 +253,8 @@ const FileUploadInput = ({ uploadedFile, setUploadedFile, onVideoSelect, classNa
           }
         }
 
-        // For non-audio files, display the file info normally
-        // For audio files, we've already set the file info with the original audio details
-        if (!isAudio) {
-          displayFileInfo(processedFile);
-        }
+        // Display file info for all file types (both audio and video)
+        displayFileInfo(processedFile);
 
         // Clear loading state after processing is complete
         setIsLoading(false);
@@ -451,7 +413,7 @@ const FileUploadInput = ({ uploadedFile, setUploadedFile, onVideoSelect, classNa
               <span className="file-info-size">{fileInfo ? fileInfo.size : ''}</span>
             </div>
 
-            {fileInfo && (fileInfo.converting || fileInfo.copying) ? (
+            {fileInfo && fileInfo.copying ? (
               <div className="converting-indicator">
                 <LoadingIndicator
                   theme="dark"
@@ -460,12 +422,7 @@ const FileUploadInput = ({ uploadedFile, setUploadedFile, onVideoSelect, classNa
                   className="file-converting-loading"
                   style={{ marginRight: '6px' }}
                 />
-                {fileInfo.converting
-                  ? t('fileUpload.processing', 'Processing media...')
-                  : fileInfo.copying
-                    ? `${t('fileUpload.copying', 'Copying large file...')} ${fileInfo.copyProgress || 0}%`
-                    : t('fileUpload.processing', 'Processing media...')
-                }
+                {`${t('fileUpload.copying', 'Copying large file...')} ${fileInfo.copyProgress || 0}%`}
               </div>
             ) : null}
           </div>

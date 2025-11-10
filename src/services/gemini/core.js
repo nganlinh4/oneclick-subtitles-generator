@@ -239,7 +239,8 @@ export const streamGeminiApiInline = async (file, options = {}, onChunk, onCompl
   }
 
   // Prepare sanitized options: ensure no videoMetadata is sent for inline
-  const inlineOptions = { ...options, videoMetadata: undefined, forceInline: true };
+  const { videoMetadata, ...optionsWithoutVideoMetadata } = options;
+  const inlineOptions = { ...optionsWithoutVideoMetadata, forceInline: true };
 
   // Check if we should use parallel processing
   const useParallel = shouldUseParallelProcessing(
@@ -264,42 +265,52 @@ export const streamGeminiApiInline = async (file, options = {}, onChunk, onCompl
       // For non-parallel INLINE with a segment, prefer server clipping when server is available; otherwise Files API offsets
       if (inlineOptions.segmentInfo) {
         const { start, end } = inlineOptions.segmentInfo;
-        try {
-          const { probeServerAvailability } = await import('../../utils/serverEnv');
-          const hasServer = await probeServerAvailability();
-          if (hasServer) {
-            try {
-              const { extractVideoSegmentLocally } = await import('../../utils/videoSegmenter');
-              const clipped = await extractVideoSegmentLocally(file, start, end, { runId: inlineOptions && inlineOptions.runId ? inlineOptions.runId : undefined });
-              const INLINE_LARGE_SEGMENT_THRESHOLD_BYTES = 20 * 1024 * 1024; // 20MB
-              if (clipped && clipped.size > INLINE_LARGE_SEGMENT_THRESHOLD_BYTES) {
-                await streamGeminiApiWithFilesApi(
-                  clipped,
-                  { ...inlineOptions, videoMetadata: undefined },
-                  onChunk,
-                  onComplete,
-                  onError,
-                  onProgress
-                );
+        const isAudio = file.type.startsWith('audio/');
+
+        // For audio files, skip local extraction and use Files API offsets directly
+        if (!isAudio) {
+          try {
+            const { probeServerAvailability } = await import('../../utils/serverEnv');
+            const hasServer = await probeServerAvailability();
+            if (hasServer) {
+              try {
+                const { extractVideoSegmentLocally } = await import('../../utils/videoSegmenter');
+                const clipped = await extractVideoSegmentLocally(file, start, end, { runId: inlineOptions && inlineOptions.runId ? inlineOptions.runId : undefined });
+                const INLINE_LARGE_SEGMENT_THRESHOLD_BYTES = 20 * 1024 * 1024; // 20MB
+                if (clipped && clipped.size > INLINE_LARGE_SEGMENT_THRESHOLD_BYTES) {
+                  await streamGeminiApiWithFilesApi(
+                    clipped,
+                    { ...inlineOptions, videoMetadata: undefined },
+                    onChunk,
+                    onComplete,
+                    onError,
+                    onProgress
+                  );
+                  return;
+                }
+                await streamGeminiContent(clipped, null, inlineOptions, onChunk, onComplete, onError);
                 return;
+              } catch (e) {
+                console.warn('[GeminiAPI] Inline single-stream: server clipping failed, using Files API offsets', e);
               }
-              await streamGeminiContent(clipped, null, inlineOptions, onChunk, onComplete, onError);
-              return;
-            } catch (e) {
-              console.warn('[GeminiAPI] Inline single-stream: server clipping failed, using Files API offsets', e);
             }
-          }
-        } catch {}
+          } catch {}
+        }
 
         // Default: Files API offsets path (frontend-only or server-clip failed)
         const filesApiOptions = {
           ...inlineOptions,
-          forceInline: undefined,
-          videoMetadata: {
+          forceInline: undefined
+        };
+
+        // Only add video metadata for video files, not audio files
+        if (!isAudio) {
+          filesApiOptions.videoMetadata = {
             start_offset: `${Math.floor(start)}s`,
             end_offset: `${Math.ceil(end)}s`
-          }
-        };
+          };
+        }
+
         await streamGeminiApiWithFilesApi(
           file,
           filesApiOptions,
@@ -615,12 +626,14 @@ export const callGeminiApiWithFilesApi = async (file, options = {}, retryCount =
             ]
         };
 
-        // Add video metadata if provided
+        // Add video metadata if provided (ONLY for video files, NOT for audio files)
         if (videoMetadata && !isAudio) {
             console.log('[GeminiAPI] Adding video metadata to request:', JSON.stringify(videoMetadata, null, 2));
             // Add video metadata to the file_data part (now at index 0 since video is first)
             requestData.contents[0].parts[0].video_metadata = videoMetadata;
             console.log('[GeminiAPI] Request structure with video_metadata:', JSON.stringify(requestData.contents[0].parts[0], null, 2));
+        } else if (isAudio && videoMetadata) {
+            console.log('[GeminiAPI] Skipping video metadata for audio file to prevent 500 errors');
         }
 
         // Add response schema

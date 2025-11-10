@@ -34,6 +34,7 @@ const VideoBottomControls = ({
   setPlaybackSpeed,
   isSpeedMenuVisible,
   setIsSpeedMenuVisible,
+  isCompactMode,
   handleFullscreenExit,
   setIsFullscreen,
   setControlsVisible,
@@ -428,20 +429,22 @@ const VideoBottomControls = ({
 
         {/* Combined actions: speed, download, pip */}
         <div style={{ position: 'relative', marginRight: '15px' }}
-          onMouseEnter={() => setIsSpeedMenuVisible(true)}
-          onMouseLeave={() => setIsSpeedMenuVisible(false)}
+          onMouseEnter={() => !isCompactMode && setIsSpeedMenuVisible(true)}
+          onMouseLeave={() => !isCompactMode && setIsSpeedMenuVisible(false)}
         >
-          <div style={{
-            position: 'absolute',
-            bottom: '50px',
-            left: '35px',
-            transform: 'translateX(-50%)',
-            zIndex: 20,
-            display: 'flex',
-            flexDirection: 'column',
-            gap: '6px',
-            padding: '8px'
-          }}>
+          {/* Speed menu dropdown (only for expanded mode) */}
+          {!isCompactMode && (
+            <div style={{
+              position: 'absolute',
+              bottom: '50px',
+              left: '24%',
+              transform: 'translateX(-50%)',
+              zIndex: 20,
+              display: 'flex',
+              flexDirection: 'column',
+              gap: '6px',
+              padding: '8px'
+            }}>
               {[0.25, 0.5, 0.75, 1, 1.25, 1.5, 2].map((speed, index) => (
                 <LiquidGlass
                   key={speed}
@@ -484,9 +487,10 @@ const VideoBottomControls = ({
                 </LiquidGlass>
               ))}
             </div>
+          )}
 
           <LiquidGlass
-            width={150}
+            width={isCompactMode ? 140 : 150}
             height={50}
             borderRadius="25px"
             className="content-center interactive theme-secondary video-control"
@@ -517,14 +521,25 @@ const VideoBottomControls = ({
                   display: 'flex',
                   alignItems: 'center',
                   justifyContent: 'center',
-                  width: '40px',
+                  width: isCompactMode ? '40px' : '40px',
                   height: '30px',
                   borderRadius: '15px',
                   background: 'rgba(33, 150, 243, 0.2)',
                   cursor: 'pointer',
                   transition: 'all 0.2s ease'
                 }}
-                onClick={(e) => { e.stopPropagation(); }}
+                onClick={(e) => {
+                  e.stopPropagation();
+                  if (isCompactMode) {
+                    // Cycle to next speed
+                    const speeds = [0.25, 0.5, 0.75, 1, 1.25, 1.5, 2];
+                    const currentIndex = speeds.indexOf(playbackSpeed);
+                    const nextIndex = (currentIndex + 1) % speeds.length;
+                    const newSpeed = speeds[nextIndex];
+                    setPlaybackSpeed(newSpeed);
+                    if (videoRef.current) videoRef.current.playbackRate = newSpeed;
+                  }
+                }}
               >
                 <span style={{
                   fontSize: '11px',

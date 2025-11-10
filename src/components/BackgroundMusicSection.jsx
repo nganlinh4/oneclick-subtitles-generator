@@ -436,19 +436,6 @@ const BackgroundMusicSection = () => {
                 </button>
               )}
 
-              {/* Download button appears when a recording is available */}
-              {recordingUrl && (
-                <a
-                  className="pill-button secondary"
-                  href={recordingUrl}
-                  download={`background-music-${Date.now()}.webm`}
-                  title={t('backgroundMusic.downloadRecording', 'Download recording')}
-                >
-                  <span className="material-symbols-rounded" style={{ fontSize: '16px' }}>download</span>
-                  {t('narration.download', 'Download')}
-                </a>
-              )}
-
               {/* Inline audio preview when available (match narration styles) */}
               {recordingUrl && (
                 <div className="audio-preview" style={{ display: 'inline-flex', alignItems: 'center', gap: 8 }}>

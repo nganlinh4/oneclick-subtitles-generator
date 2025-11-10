@@ -87,13 +87,22 @@ export const processSegmentWithFilesApi = async (file, segment, options, setStat
       type: 'loading'
     });
 
-    // Prepare video metadata for segment processing
+    // Check if this is an audio file - audio files don't need video metadata
+    const isAudio = file.type.startsWith('audio/');
+    
+    // Prepare video metadata for segment processing (ONLY for video files)
     // Using string format that was working before
-    const videoMetadata = {
-      start_offset: `${Math.floor(segment.start)}s`,
-      end_offset: `${Math.floor(segment.end)}s`,
-      fps: fps
-    };
+    let videoMetadata = null;
+    if (!isAudio) {
+      videoMetadata = {
+        start_offset: `${Math.floor(segment.start)}s`,
+        end_offset: `${Math.floor(segment.end)}s`,
+        fps: fps
+      };
+      console.log('[ProcessingUtils] Added video metadata for video file:', videoMetadata);
+    } else {
+      console.log('[ProcessingUtils] Skipping video metadata for audio file to prevent 500 errors');
+    }
 
     // Map media resolution to API enum value
     const mappedMediaResolution = mapMediaResolution(mediaResolution);
@@ -102,7 +111,7 @@ export const processSegmentWithFilesApi = async (file, segment, options, setStat
     const apiOptions = {
       userProvidedSubtitles,
       modelId: model,
-      videoMetadata,
+      videoMetadata: videoMetadata, // Will be null for audio files
       mediaResolution: mappedMediaResolution,
       segmentInfo: {
         start: segment.start,
@@ -342,9 +351,17 @@ export const processSegmentWithStreaming = async (file, segment, options, setSta
             }
           };
 
-      const apiOptions = useInline
+      let finalApiOptions = useInline
         ? { ...baseApiOptions, forceInline: true }
         : { ...baseApiOptions, ...(noOffsets ? {} : { videoMetadata }) };
+
+      // Fix: For audio files, never include video metadata - it causes 500 errors
+      if (file.type.startsWith('audio/')) {
+        // Remove video metadata for audio files - it causes 500 errors
+        delete finalApiOptions.videoMetadata;
+        // Also ensure we're using the correct options for audio
+        finalApiOptions = { ...finalApiOptions, forceInline: true };
+      }
 
 
       // Start streaming (Files API vs INLINE)
@@ -352,7 +369,7 @@ export const processSegmentWithStreaming = async (file, segment, options, setSta
         const streamFn = useInline ? streamGeminiApiInline : streamGeminiApiWithFilesApi;
         streamFn(
           file,
-          apiOptions,
+          finalApiOptions,
           (chunk) => processor.processChunk(chunk),
           (finalText) => processor.complete(finalText),
           (error) => processor.error(error),

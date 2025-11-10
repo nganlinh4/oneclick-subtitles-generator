@@ -780,6 +780,7 @@ const PresetButtons = ({ customization, onChange }) => {
             key={preset}
             className={`pill-button ${customization.preset === preset ? 'primary' : 'secondary'}`}
             onClick={() => applyPreset(preset)}
+            style={{ fontFamily: presets[preset].fontFamily }}
           >
             {preset.charAt(0).toUpperCase() + preset.slice(1)}
           </button>
@@ -792,6 +793,7 @@ const PresetButtons = ({ customization, onChange }) => {
               className={`pill-button custom-preset-button ${customization.preset === customPreset.id ? 'primary' : 'secondary'}`}
               onClick={() => applyCustomPreset(customPreset)}
               title={customPreset.name}
+              style={{ fontFamily: customPreset.customization.fontFamily }}
             >
               {customPreset.name}
             </button>

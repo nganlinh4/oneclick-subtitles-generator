@@ -1,7 +1,7 @@
 /* Font overrides to ensure Google Sans and Google Sans are used throughout the application */
 
 /* Apply Google Sans to all elements by default */
-*:not(.font-name):not(.font-flags):not(.font-preview-text):not(.font-sample):not(.font-details):not(.font-selector-preview):not(.font-info):not(textarea):not(.preset-full-text):not(.masked-input):not(.required-variable):not(.time-control) {
+*:not(.font-name):not(.font-flags):not(.font-preview-text):not(.font-sample):not(.font-details):not(.font-selector-preview):not(.font-info):not(textarea):not(.preset-full-text):not(.masked-input):not(.required-variable):not(.time-control):not(.pill-button) {
   font-family: var(--font-primary);
 }
 
@@ -52,4 +52,9 @@ code, pre,
 .font-dropdown-menu,
 .font-selector-button {
   font-family: initial !important;
+}
+
+/* Ensure pill buttons use primary font */
+.pill-button {
+  font-family: var(--font-primary);
 }

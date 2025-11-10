@@ -10,15 +10,13 @@ const getDevicePixelRatio = () => window.devicePixelRatio || 1;
 
 const setupHighDPICanvas = (canvas, width, height) => {
   const dpr = getDevicePixelRatio();
-  const rect = canvas.getBoundingClientRect();
-
   // Set actual canvas size in memory (scaled up for high-DPI)
   canvas.width = width * dpr;
   canvas.height = height * dpr;
 
   // Scale the canvas back down using CSS
-  canvas.style.width = width + 'px';
-  canvas.style.height = height + 'px';
+  canvas.style.width = `${width}px`;
+  canvas.style.height = `${height}px`;
 
   // Scale the drawing context so everything draws at the correct size
   const ctx = canvas.getContext('2d');
@@ -73,7 +71,7 @@ class WaveformLOD {
 }
 
 // Decode with timeout to avoid hanging on problematic sources
-function decodeWithTimeout(audioContext, arrayBuffer, timeoutMs = 12000) {
+function decodeWithTimeout(audioContext, arrayBuffer, timeoutMs = 30000) {
   return Promise.race([
     audioContext.decodeAudioData(arrayBuffer),
     new Promise((_, reject) => setTimeout(() => reject(new Error('Audio decode timed out')), timeoutMs))
@@ -94,19 +92,21 @@ const VolumeVisualizer = ({ audioSource, duration, visibleTimeRange, height = 26
   const containerRef = useRef(null);
   const [waveformLOD, setWaveformLOD] = useState(null);
   const [isProcessing, setIsProcessing] = useState(false);
+  const [processingProgress, setProcessingProgress] = useState(0);
   const [isProcessed, setIsProcessed] = useState(false);
   const [hasAudio, setHasAudio] = useState(true);
   const [audioError, setAudioError] = useState(null);
-  const [hasDrawn, setHasDrawn] = useState(false);
   const audioContextRef = useRef(null);
   const lastRenderParamsRef = useRef(null);
   const animationFrameRef = useRef(null);
-  const resizeObserverRef = useRef(null);
   const abortControllerRef = useRef(null);
   const processingSourceRef = useRef(null);
   const debounceTimerRef = useRef(null);
+  
+  // Determine if this is long audio for display purposes
+  const isLongAudio = duration > 300; // Process in chunks if longer than 5 minutes
 
-  // Process audio data once when the component mounts or audioSource changes
+  // Process audio data once when audioSource changes
   useEffect(() => {
     // Clear any existing debounce timer
     if (debounceTimerRef.current) {
@@ -116,7 +116,6 @@ const VolumeVisualizer = ({ audioSource, duration, visibleTimeRange, height = 26
     
     // Skip if no source
     if (!audioSource) {
-      console.log('[WAVEFORM] No audio source provided');
       return;
     }
     
@@ -127,23 +126,19 @@ const VolumeVisualizer = ({ audioSource, duration, visibleTimeRange, height = 26
     debounceTimerRef.current = setTimeout(() => {
       console.log('[WAVEFORM] Processing after debounce:', {
         audioSource: currentSource?.substring(0, 100),
-        isProcessed,
-        isProcessing,
-        hasAudio,
         duration: currentDuration
       });
       
+      // Skip if we don't have a valid duration yet
+      if (!currentDuration || currentDuration <= 0) {
+        console.log('[WAVEFORM] Invalid duration, skipping processing for now');
+        return;
+      }
+      
       // If we already have waveform data loaded, skip processing
-      if (waveformLOD && isProcessed) {
-        // Check if it's for the same video (by ID)
-        const currentVideoId = currentSource.match(/\/([a-zA-Z0-9_-]+)\.mp4/)?.[1];
-        if (currentVideoId) {
-          const cachedData = audioDataCache.get(`video_${currentVideoId}`);
-          if (cachedData && cachedData === waveformLOD) {
-            console.log('[WAVEFORM] Already have waveform data for this video, skipping');
-            return;
-          }
-        }
+      if (waveformLOD && isProcessed && processingSourceRef.current === currentSource) {
+        console.log('[WAVEFORM] Already have waveform data for this source, skipping');
+        return;
       }
       
       // Skip if already processing this exact source
@@ -163,309 +158,452 @@ const VolumeVisualizer = ({ audioSource, duration, visibleTimeRange, height = 26
         processingSourceRef.current = null;
       }
     
-    // Check if this is the same source (handle blob to server URL transition)
-    const isSameVideo = () => {
-      // Extract video ID from URLs
-      const getVideoId = (url) => {
-        const match = url.match(/\/([a-zA-Z0-9_-]+)\.mp4/);
-        return match ? match[1] : null;
-      };
-      
-      const videoId = getVideoId(currentSource);
-      if (videoId) {
-        // First, check if we have cached data specifically for this video ID
-        const videoCache = audioDataCache.get(`video_${videoId}`);
-        if (videoCache && videoCache !== 'NO_AUDIO') {
-          console.log('[WAVEFORM] Found cached data for video ID:', videoId);
-          setWaveformLOD(videoCache);
-          setIsProcessed(true);
-          return true;
-        }
-        
-        // Also check if any other URL has the same video ID
-        for (const [cachedUrl, cachedData] of audioDataCache.entries()) {
-          if (cachedUrl.startsWith('video_')) continue; // Skip video ID entries
-          const cachedVideoId = getVideoId(cachedUrl);
-          if (cachedVideoId === videoId && cachedData !== 'NO_AUDIO') {
-            console.log('[WAVEFORM] Found cached data for same video ID from different URL:', videoId);
-            setWaveformLOD(cachedData);
-            setIsProcessed(true);
-            return true;
-          }
-        }
-      }
-      return false;
-    };
-    
-    // Check if it's the same video with different URL
-    if (isSameVideo()) {
-      return;
-    }
-    
-      // Skip if already processed for this exact URL
-      if (isProcessed && audioDataCache.has(currentSource)) {
-        console.log('[WAVEFORM] Already processed this exact URL');
-        return;
-      }
-
-      let isActive = true;
-      let localAbortController = new AbortController();
-      
-      // Abort any existing request
+      // Abort any existing processing when the source changes
       if (abortControllerRef.current) {
-        abortControllerRef.current.abort();
+          abortControllerRef.current.abort();
       }
+      const localAbortController = new AbortController();
       abortControllerRef.current = localAbortController;
       processingSourceRef.current = currentSource;
 
-      // Reset states when audioSource changes
+      // Reset states for the new audio source
+      setWaveformLOD(null);
+      setIsProcessing(true);
+      setIsProcessed(false);
       setHasAudio(true);
       setAudioError(null);
-      setHasDrawn(false);
+      setProcessingProgress(0);
 
-      // Skip YouTube URLs as they can't be directly processed due to CORS
+      // Skip YouTube URLs
       if (currentSource.includes('youtube.com') || currentSource.includes('youtu.be')) {
         setHasAudio(false);
         setAudioError('YouTube videos cannot be processed due to CORS restrictions');
+        setIsProcessing(false);
+        processingSourceRef.current = null;
         return;
       }
 
-      // Check if we already have this audio data in cache
-      if (audioDataCache.has(currentSource)) {
-        const cachedData = audioDataCache.get(currentSource);
+      // Check cache first
+      const cachedData = audioDataCache.get(currentSource);
+      if (cachedData) {
         if (cachedData === 'NO_AUDIO') {
           setHasAudio(false);
           setAudioError('No audio track found in this video');
-          setIsProcessed(true);
-          return;
+        } else {
+          setWaveformLOD(cachedData);
         }
-        setWaveformLOD(cachedData);
+        setIsProcessing(false);
         setIsProcessed(true);
+        processingSourceRef.current = null;
         return;
       }
 
-      // For long videos, use a more efficient approach with downsampling
-      const isLongVideo = currentDuration > 1800; // 30 minutes
-
     const processAudio = async () => {
-        console.log('[WAVEFORM] Starting audio processing:', {
-          source: currentSource.substring(0, 100),
-          duration: currentDuration,
-          isLongVideo,
-          isBlobUrl: currentSource.startsWith('blob:'),
-          isLocalFile: currentSource.startsWith('/videos/')
-        });
-      
-      try {
-        setIsProcessing(true);
-
-        // Create audio context with proper fallback
-        const AudioContext = window.AudioContext || window.webkitAudioContext;
-        if (!audioContextRef.current) {
-          audioContextRef.current = new AudioContext();
+        // Check if this is a blob URL - blob URLs don't support range requests
+        const isBlobUrl = currentSource.startsWith('blob:');
+        
+        // For long videos (regardless of source), we need to be smarter
+        // If it's extremely long (over 1 hour) and a blob, we should still use segments to avoid memory issues
+        const isExtremelyLong = currentDuration > 3600; // 1 hour
+        const isLongAudioForCurrent = currentDuration > 300; // 5 minutes
+        
+        if (!isLongAudioForCurrent) {
+            // Short audio - process entirely
+            await processEntireAudio(localAbortController.signal);
+        } else if (isExtremelyLong && isBlobUrl) {
+            // Very long blob - we need to chunk it to avoid memory issues
+            await processBlobInChunks(localAbortController.signal);
+        } else if (!isBlobUrl) {
+            // Long non-blob audio - use range requests for efficiency
+            await processAudioInSegments(localAbortController.signal);
+        } else {
+            // Regular long blob (under 1 hour) - process entirely
+            await processEntireAudio(localAbortController.signal);
         }
+    };
 
-        // Use local abort controller instead of ref to avoid conflicts
-        // abortControllerRef.current = localAbortController;
-
-        // Fetch the audio data with abort support
-        console.log('[WAVEFORM] Fetching audio data...');
-        let response;
-        const isBlob = currentSource.startsWith('blob:');
+    const processEntireAudio = async (signal) => {
         try {
-          if (isBlob && window.__videoBlobMap && window.__videoBlobMap[currentSource]) {
-            // Directly use stored blob for faster access
-            console.log('[WAVEFORM] Using cached blob');
-            const blob = window.__videoBlobMap[currentSource];
-            response = new Response(blob);
-          } else {
-            console.log('[WAVEFORM] Fetching from URL:', {
-              isBlob,
-              mode: isBlob ? 'no-cors' : 'cors'
-            });
-            response = await fetch(currentSource, { signal: localAbortController.signal, cache: 'no-cache', mode: isBlob ? 'no-cors' : 'cors' });
-          }
-        } catch (e) {
-          console.log('[WAVEFORM] First fetch failed, retrying:', e.message);
-          // Retry once without mode override
-          response = await fetch(currentSource, { signal: localAbortController.signal, cache: 'no-cache' });
+            console.log('[WAVEFORM] Starting full audio processing for:', currentSource?.substring(0, 100));
+            const AudioContext = window.AudioContext || window.webkitAudioContext;
+            if (!audioContextRef.current) {
+                audioContextRef.current = new AudioContext();
+            }
+            
+            const response = await fetch(currentSource, { signal });
+            console.log('[WAVEFORM] Fetched audio data, size:', response.headers.get('Content-Length'), 'bytes');
+            const arrayBuffer = await response.arrayBuffer();
+            
+            // Use longer timeout for large files (over 50MB)
+            const fileSize = arrayBuffer.byteLength;
+            const timeoutMs = fileSize > 50 * 1024 * 1024 ? 60000 : 30000;
+            console.log('[WAVEFORM] File size:', (fileSize / 1024 / 1024).toFixed(2), 'MB, timeout:', timeoutMs / 1000, 's');
+            
+            const audioBuffer = await decodeWithTimeout(audioContextRef.current, arrayBuffer, timeoutMs);
+            console.log('[WAVEFORM] Audio decoded successfully, duration:', audioBuffer.duration, 's');
+
+            if (!audioBuffer || audioBuffer.numberOfChannels === 0) {
+              throw new Error('No audio channels found in the media file');
+            }
+
+            const channelData = audioBuffer.getChannelData(0);
+            console.log('[WAVEFORM] Analyzing volume data...');
+            const volumeData = await analyzeVolume(channelData);
+            const finalLOD = new WaveformLOD(volumeData);
+            
+            if (!signal.aborted) {
+                setWaveformLOD(finalLOD);
+                audioDataCache.set(currentSource, finalLOD);
+                console.log('[WAVEFORM] Processing complete');
+            }
+        } catch (error) {
+            if (error.name === 'AbortError') {
+                console.log('[WAVEFORM] Processing aborted (expected)');
+                return;
+            }
+            console.error('[WAVEFORM] Full processing failed:', error);
+            handleProcessingError(error);
+        } finally {
+            if (!signal.aborted) {
+                setIsProcessing(false);
+                setIsProcessed(true);
+                if (processingSourceRef.current === currentSource) {
+                    processingSourceRef.current = null;
+                }
+            }
         }
-        console.log('[WAVEFORM] Fetch complete, converting to arrayBuffer...');
-        const arrayBuffer = await response.arrayBuffer();
-        console.log('[WAVEFORM] ArrayBuffer size:', arrayBuffer.byteLength);
+    };
 
-        // Decode the audio data with timeout to avoid hanging
-        console.log('[WAVEFORM] Decoding audio data with timeout:', isLongVideo ? 15000 : 10000, 'ms');
-        const startDecodeTime = Date.now();
-        const audioBuffer = await decodeWithTimeout(audioContextRef.current, arrayBuffer, isLongVideo ? 15000 : 10000);
-        console.log('[WAVEFORM] Audio decoded in', Date.now() - startDecodeTime, 'ms');
-
-        // Check if the audio buffer has any channels (i.e., if there's actually audio)
-        if (!audioBuffer || audioBuffer.numberOfChannels === 0) {
-          throw new Error('No audio channels found in the media file');
+    const processBlobInChunks = async (signal) => {
+        try {
+            console.log('[WAVEFORM] Starting chunked processing for long blob:', currentSource?.substring(0, 100), 'Duration:', duration, 's');
+            setProcessingProgress(0);
+            
+            const AudioContext = window.AudioContext || window.webkitAudioContext;
+            if (!audioContextRef.current) {
+                audioContextRef.current = new AudioContext();
+            }
+            
+            // Load the entire blob once (since we can't use range requests)
+            console.log('[WAVEFORM] Fetching blob...');
+            const response = await fetch(currentSource, { signal });
+            const arrayBuffer = await response.arrayBuffer();
+            console.log('[WAVEFORM] Blob loaded, size:', (arrayBuffer.byteLength / 1024 / 1024).toFixed(2), 'MB');
+            
+            if (signal.aborted) return;
+            setProcessingProgress(0.1); // 10%
+            
+            console.log('[WAVEFORM] Decoding audio...');
+            const audioBuffer = await decodeWithTimeout(audioContextRef.current, arrayBuffer, 60000);
+            console.log('[WAVEFORM] Audio decoded, duration:', audioBuffer.duration, 's');
+            
+            if (signal.aborted) return;
+            if (!audioBuffer || audioBuffer.numberOfChannels === 0) {
+                throw new Error('No audio channels found in the media file');
+            }
+            
+            const channelData = audioBuffer.getChannelData(0);
+            const chunkDuration = 300; // 5 minutes per chunk
+            const numChunks = Math.ceil(duration / chunkDuration);
+            const samplesPerChunk = Math.floor(channelData.length / numChunks);
+            let combinedVolumeData = new Float32Array();
+            
+            console.log('[WAVEFORM] Processing', numChunks, 'chunks,', samplesPerChunk, 'samples per chunk');
+            
+            for (let i = 0; i < numChunks; i++) {
+                if (signal.aborted) {
+                    console.log('[WAVEFORM] Processing aborted in chunk', i + 1);
+                    return;
+                }
+                
+                const startSample = i * samplesPerChunk;
+                const endSample = Math.min(startSample + samplesPerChunk, channelData.length);
+                const chunkData = channelData.subarray(startSample, endSample);
+                
+                console.log('[WAVEFORM] Processing chunk', i + 1, '/', numChunks, 'Progress:', ((i + 1) / numChunks * 90).toFixed(1) + '%');
+                
+                // Force UI update before processing each chunk
+                setProcessingProgress(0.1 + (i / numChunks) * 0.8);
+                await new Promise(resolve => setTimeout(resolve, 0));
+                
+                // Process this chunk immediately with synchronous analysis
+                const chunkVolumeData = analyzeVolumeSync(chunkData, 500);
+                
+                // Update progress immediately after analysis
+                const progress = 0.1 + ((i + 1) / numChunks) * 0.8;
+                console.log('[WAVEFORM] Setting progress to', (progress * 100).toFixed(1) + '%');
+                setProcessingProgress(progress);
+                
+                // Combine results and update UI progressively
+                const newCombinedData = new Float32Array(combinedVolumeData.length + chunkVolumeData.length);
+                newCombinedData.set(combinedVolumeData);
+                newCombinedData.set(chunkVolumeData, combinedVolumeData.length);
+                combinedVolumeData = newCombinedData;
+                
+                if (!signal.aborted) {
+                    const waveformLOD = new WaveformLOD(combinedVolumeData);
+                    console.log('[WAVEFORM] Created LOD with', combinedVolumeData.length, 'samples');
+                    setWaveformLOD(waveformLOD);
+                }
+                
+                // Small delay to ensure UI updates
+                await new Promise(resolve => setTimeout(resolve, 1));
+            }
+            
+            if (!signal.aborted) {
+                console.log('[WAVEFORM] Setting final progress to 100%');
+                setProcessingProgress(1.0);
+                
+                audioDataCache.set(currentSource, new WaveformLOD(combinedVolumeData));
+                console.log('[WAVEFORM] Chunked processing complete, combined data length:', combinedVolumeData.length);
+                
+                // Small delay before finishing
+                setTimeout(() => {
+                    setIsProcessing(false);
+                    setIsProcessed(true);
+                    if (processingSourceRef.current === currentSource) {
+                        processingSourceRef.current = null;
+                    }
+                }, 100);
+            }
+        } catch (error) {
+            if (error.name === 'AbortError') {
+                console.log('[WAVEFORM] Chunked processing aborted (expected)');
+                setIsProcessing(false);
+                return;
+            }
+            console.error('[WAVEFORM] Chunked processing failed:', error);
+            setIsProcessing(false);
+            handleProcessingError(error);
+            if (processingSourceRef.current === currentSource) {
+                processingSourceRef.current = null;
+            }
         }
+    };
 
-        // Get the audio channel data (mono - just use the first channel)
-        const channelData = audioBuffer.getChannelData(0);
+    const processAudioInSegments = async (signal) => {
+        try {
+            console.log('[WAVEFORM] Starting segmented processing for long audio:', currentSource?.substring(0, 100));
+            setProcessingProgress(0);
+            
+            const AudioContext = window.AudioContext || window.webkitAudioContext;
+            if (!audioContextRef.current) {
+                audioContextRef.current = new AudioContext();
+            }
+            
+            // First, get the total file size to estimate byte ranges for segments
+            const headResponse = await fetch(currentSource, { method: 'HEAD', signal });
+            const fileSize = Number(headResponse.headers.get('Content-Length'));
+            const acceptRanges = headResponse.headers.get('Accept-Ranges');
 
-        // Calculate the number of samples to analyze
-        // For long videos, use fewer samples to improve performance
-        const sampleSize = isLongVideo ? 500 : 1000;
+            if (!fileSize || !acceptRanges?.includes('bytes')) {
+                 console.warn('[WAVEFORM] Server does not support range requests or file size is unknown. Falling back to processing the entire file.');
+                 await processEntireAudio(signal);
+                 return;
+            }
+
+            const segmentDuration = 300; // 5 minutes per segment
+            const numSegments = Math.ceil(duration / segmentDuration);
+            const bytesPerSecond = fileSize / duration;
+            let combinedVolumeData = new Float32Array();
+
+            console.log('[WAVEFORM] Processing', numSegments, 'segments, file size:', (fileSize / 1024 / 1024).toFixed(2), 'MB');
+            setProcessingProgress(0.05); // 5%
+
+            for (let i = 0; i < numSegments; i++) {
+                if (signal.aborted) {
+                    console.log('[WAVEFORM] Processing aborted in segment', i + 1);
+                    return;
+                }
+
+                const startTime = i * segmentDuration;
+                const endTime = Math.min((i + 1) * segmentDuration, duration);
+                
+                const startByte = Math.floor(startTime * bytesPerSecond);
+                const endByte = Math.floor(endTime * bytesPerSecond) - 1;
+
+                console.log('[WAVEFORM] Processing segment', i + 1, '/', numSegments, 'Time:', startTime, '-', endTime, 's');
+
+                // Update progress before fetching
+                const progress = 0.05 + (i / numSegments) * 0.9;
+                setProcessingProgress(progress);
+                await new Promise(resolve => setTimeout(resolve, 0));
+
+                const rangeResponse = await fetch(currentSource, {
+                    headers: { 'Range': `bytes=${startByte}-${endByte}` },
+                    signal
+                });
+                
+                if (!rangeResponse.ok) {
+                    console.warn('[WAVEFORM] Range request failed, falling back to processing entire file:', rangeResponse.status);
+                    await processEntireAudio(signal);
+                    return;
+                }
+                
+                const arrayBuffer = await rangeResponse.arrayBuffer();
+                const audioBuffer = await decodeWithTimeout(audioContextRef.current, arrayBuffer.slice(0), 15000);
+
+                if (audioBuffer.numberOfChannels > 0) {
+                    const channelData = audioBuffer.getChannelData(0);
+                    const segmentVolumeData = await analyzeVolume(channelData, 1000);
+                    
+                    // Combine results and update UI progressively
+                    const newCombinedData = new Float32Array(combinedVolumeData.length + segmentVolumeData.length);
+                    newCombinedData.set(combinedVolumeData);
+                    newCombinedData.set(segmentVolumeData, combinedVolumeData.length);
+                    combinedVolumeData = newCombinedData;
+                    
+                    if (!signal.aborted) {
+                       setWaveformLOD(new WaveformLOD(combinedVolumeData));
+                       console.log('[WAVEFORM] Updated with', combinedVolumeData.length, 'samples, progress:', ((i + 1) / numSegments * 100).toFixed(1) + '%');
+                    }
+                }
+                 // Yield to the main thread to allow UI updates
+                 await new Promise(resolve => setTimeout(resolve, 0));
+            }
+
+            if (!signal.aborted) {
+                setProcessingProgress(1.0);
+                audioDataCache.set(currentSource, new WaveformLOD(combinedVolumeData));
+                console.log('[WAVEFORM] Segmented processing complete, data length:', combinedVolumeData.length);
+                
+                setIsProcessing(false);
+                setIsProcessed(true);
+                if (processingSourceRef.current === currentSource) {
+                    processingSourceRef.current = null;
+                }
+            }
+        } catch (error) {
+            if (error.name === 'AbortError') {
+                console.log('[WAVEFORM] Segmented processing aborted (expected)');
+                setIsProcessing(false);
+                return;
+            }
+            console.error('[WAVEFORM] Segmented processing failed:', error);
+            setIsProcessing(false);
+            handleProcessingError(error);
+            if (processingSourceRef.current === currentSource) {
+                processingSourceRef.current = null;
+            }
+        }
+    };
+    
+    const analyzeVolume = async (channelData, sampleSize = 1000) => {
         const samplesPerSegment = Math.floor(channelData.length / sampleSize);
+        const volumeData = new Float32Array(sampleSize);
+        let maxVolume = 0;
 
-        // Calculate volume levels using a more efficient approach
-        const volumeData = new Array(sampleSize);
-
-        // For long videos, use a more efficient processing approach with Web Workers if available
-        if (isLongVideo && window.Worker) {
-          // Process in chunks to avoid blocking the main thread
-          const chunkSize = 100; // Process 100 samples at a time
-
-          for (let chunk = 0; chunk < sampleSize; chunk += chunkSize) {
-            const endChunk = Math.min(chunk + chunkSize, sampleSize);
-
-            // Process this chunk
-            for (let i = chunk; i < endChunk; i++) {
-              const startSample = i * samplesPerSegment;
-              const endSample = Math.min(startSample + samplesPerSegment, channelData.length);
-
-              // Use a more efficient RMS calculation for long videos
-              // Sample every 10th value instead of every value
-              let sum = 0;
-              let count = 0;
-              for (let j = startSample; j < endSample; j += 10) {
+        // First pass: calculate RMS and find max
+        for (let i = 0; i < sampleSize; i++) {
+            const startSample = i * samplesPerSegment;
+            const endSample = Math.min(startSample + samplesPerSegment, channelData.length);
+            let sum = 0;
+            let count = 0;
+            for (let j = startSample; j < endSample; j++) {
                 sum += channelData[j] * channelData[j];
                 count++;
-              }
-              volumeData[i] = Math.sqrt(sum / count);
             }
-
-            // Yield to the main thread to prevent blocking
-            await new Promise(resolve => setTimeout(resolve, 0));
-          }
-        } else {
-          // Standard processing for shorter videos, but chunked to avoid blocking UI
-          const chunkSize = 80; // process 80 segments then yield
-          for (let chunkStart = 0; chunkStart < sampleSize; chunkStart += chunkSize) {
-            const chunkEnd = Math.min(chunkStart + chunkSize, sampleSize);
-            for (let i = chunkStart; i < chunkEnd; i++) {
-              const startSample = i * samplesPerSegment;
-              const endSample = Math.min(startSample + samplesPerSegment, channelData.length);
-
-              // Calculate RMS (root mean square) for this segment
-              let sum = 0;
-              for (let j = startSample; j < endSample; j++) {
-                sum += channelData[j] * channelData[j];
-              }
-              volumeData[i] = Math.sqrt(sum / (endSample - startSample));
+            const rms = count > 0 ? Math.sqrt(sum / count) : 0;
+            volumeData[i] = rms;
+            if (rms > maxVolume) maxVolume = rms;
+            
+            if (i % 50 === 0) { // More frequent yielding for better UI responsiveness
+                await new Promise(resolve => setTimeout(resolve, 0));
             }
-            // Yield to main thread to keep timeline animations smooth
-            await new Promise(resolve => setTimeout(resolve, 0));
-          }
         }
-
-        // Find the maximum volume value
-        const maxVolume = Math.max(...volumeData);
-
-        // Normalize the volume data to ensure the highest point will touch the ceiling
+        
+        // Second pass: normalize and apply curve
         if (maxVolume > 0) {
-          // Apply a minimum scale factor to ensure even quiet audio is visible
-          const minScaleFactor = 0.15;
-
-          // Scale all values
-          for (let i = 0; i < volumeData.length; i++) {
-            // Normalize to 0-1 range
-            volumeData[i] = volumeData[i] / maxVolume;
-
-            // Apply a non-linear scaling to emphasize differences
-            volumeData[i] = Math.pow(volumeData[i], 0.7);
-
-            // Ensure a minimum height for better visualization
-            volumeData[i] = Math.max(volumeData[i], minScaleFactor);
-          }
-        }
-
-        // Create LOD structure for efficient multi-resolution rendering
-        const waveformLOD = new WaveformLOD(volumeData);
-
-        // Store the processed audio data only if component is still active and not aborted
-        if (isActive && !localAbortController.signal.aborted) {
-          console.log('[WAVEFORM] Processing complete, storing data');
-          
-          // Store in cache for this URL
-          audioDataCache.set(currentSource, waveformLOD);
-          
-          // Also store by video ID if it's a server URL to share between blob and server URLs
-          const videoIdMatch = currentSource.match(/\/([a-zA-Z0-9_-]+)\.mp4/);
-          if (videoIdMatch) {
-            const videoId = videoIdMatch[1];
-            audioDataCache.set(`video_${videoId}`, waveformLOD);
-            console.log('[WAVEFORM] Also cached for video ID:', videoId);
-          }
-          
-          setWaveformLOD(waveformLOD);
-          setIsProcessed(true);
-          console.log('[WAVEFORM] ✅ Waveform data ready');
+            for (let i = 0; i < volumeData.length; i++) {
+                // Normalize to 0-1
+                let normalized = volumeData[i] / maxVolume;
+                
+                // Apply gentle curve
+                normalized = Math.pow(normalized, 0.75);
+                
+                // Add small floor to ensure visibility of quiet sections
+                volumeData[i] = Math.max(normalized, 0.01);
+            }
         } else {
-          console.log('[WAVEFORM] Component unmounted or aborted, discarding data');
+            // If no volume detected, set minimum values
+            for (let i = 0; i < volumeData.length; i++) {
+                volumeData[i] = 0.01;
+            }
         }
-      } catch (error) {
-        // Swallow expected AbortError when unmounting or toggling off
-        if (error && (error.name === 'AbortError' || error.message?.includes('aborted'))) {
-          console.log('[WAVEFORM] Processing aborted (expected)');
+        
+        return volumeData;
+    };
+    
+    const analyzeVolumeSync = (channelData, sampleSize = 1000) => {
+        const samplesPerSegment = Math.floor(channelData.length / sampleSize);
+        const volumeData = new Float32Array(sampleSize);
+        let maxVolume = 0;
+
+        // Calculate RMS and find max - synchronous for better performance
+        for (let i = 0; i < sampleSize; i++) {
+            const startSample = i * samplesPerSegment;
+            const endSample = Math.min(startSample + samplesPerSegment, channelData.length);
+            let sum = 0;
+            let count = 0;
+            for (let j = startSample; j < endSample; j++) {
+                sum += channelData[j] * channelData[j];
+                count++;
+            }
+            const rms = count > 0 ? Math.sqrt(sum / count) : 0;
+            volumeData[i] = rms;
+            if (rms > maxVolume) maxVolume = rms;
+        }
+        
+        // Normalize and apply curve
+        if (maxVolume > 0) {
+            for (let i = 0; i < volumeData.length; i++) {
+                // Normalize to 0-1
+                let normalized = volumeData[i] / maxVolume;
+                
+                // Apply gentle curve
+                normalized = Math.pow(normalized, 0.75);
+                
+                // Add small floor to ensure visibility of quiet sections
+                volumeData[i] = Math.max(normalized, 0.01);
+            }
+        } else {
+            // If no volume detected, set minimum values
+            for (let i = 0; i < volumeData.length; i++) {
+                volumeData[i] = 0.01;
+            }
+        }
+        
+        return volumeData;
+    };
+    
+    const handleProcessingError = (error) => {
+        if (error.name === 'AbortError') {
+          console.log('[WAVEFORM] Processing aborted.');
           return;
         }
-
-        console.error('[WAVEFORM] ❌ Error processing audio:', {
-          error: error.message,
-          name: error.name,
-          stack: error.stack?.substring(0, 500)
-        });
-
-        // Check if this is an audio decoding error (no audio track)
-        if (error.name === 'EncodingError' ||
-            error.message.includes('Unable to decode audio data') ||
-            error.message.includes('No audio channels found') ||
-            error.message.includes('could not be decoded')) {
+        console.error('[WAVEFORM] ❌ Error processing audio:', error);
+        if (error.name === 'EncodingError' || error.message.includes('decode')) {
           setHasAudio(false);
-          setAudioError('No audio track found in this video');
-          // Cache the fact that this source has no audio
+          setAudioError('No audio track found or it is corrupted.');
           audioDataCache.set(currentSource, 'NO_AUDIO');
         } else {
           setAudioError(`Audio processing failed: ${error.message}`);
         }
-        if (isActive) {
-          setIsProcessed(true);
-        }
-      } finally {
-        if (isActive) {
-          setIsProcessing(false);
-          // Clear the processing source ref when done
-          if (processingSourceRef.current === currentSource) {
-            processingSourceRef.current = null;
-          }
-        }
-      }
     };
 
     processAudio();
 
       // Cleanup function
       return () => {
-        isActive = false;
-        // Abort any in-flight fetch/processing
         if (localAbortController) {
-          try { 
+          try {
             console.log('[WAVEFORM] Cleanup: aborting fetch');
-            localAbortController.abort(); 
+            localAbortController.abort();
           } catch {}
         }
-        // Clear the ref if it's our controller
-        if (abortControllerRef.current === localAbortController) {
-          abortControllerRef.current = null;
+        if (processingSourceRef.current === currentSource) {
           processingSourceRef.current = null;
         }
-        // Don't close audio context here - keep it for reuse
       };
     }, 100); // End of setTimeout
     
@@ -476,294 +614,139 @@ const VolumeVisualizer = ({ audioSource, duration, visibleTimeRange, height = 26
         debounceTimerRef.current = null;
       }
     };
-  }, [audioSource, duration]); // Remove isProcessed and isProcessing from deps to prevent loops
+  }, [audioSource, duration, isLongAudio, waveformLOD, isProcessed, isProcessing]);
 
-  // Professional waveform rendering function
+  // Waveform rendering function (unchanged)
   const renderWaveform = useCallback((canvas, containerWidth) => {
-    if (!waveformLOD || !visibleTimeRange) return;
+    if (!waveformLOD || !visibleTimeRange || !duration) return;
 
     const ctx = setupHighDPICanvas(canvas, containerWidth, height);
     const { start: visibleStart, end: visibleEnd } = visibleTimeRange;
 
-    // Calculate rendering parameters
     const visibleDuration = visibleEnd - visibleStart;
     const pixelsPerSecond = containerWidth / visibleDuration;
-    const samplesPerSecond = waveformLOD.levels[0].length / duration;
+    
+    // Correctly map time to samples
+    const totalDataLength = waveformLOD.levels[0].length; // Actual data length
+    const samplesPerSecond = totalDataLength / duration; // Real samples per second
     const samplesPerPixel = samplesPerSecond / pixelsPerSecond;
 
-    // Get appropriate LOD level for current zoom
     const lodData = waveformLOD.getLODLevel(samplesPerPixel);
-    const lodSamplesPerSecond = lodData.length / duration;
+    
+    // Map visible time range to sample indices
+    const startSample = Math.max(0, Math.floor(visibleStart * samplesPerSecond));
+    const endSample = Math.min(lodData.length, Math.ceil(visibleEnd * samplesPerSecond));
+    const samplesToDraw = endSample - startSample;
 
-    // Calculate visible sample range in LOD data
-    const startSample = Math.floor(visibleStart * lodSamplesPerSecond);
-    const endSample = Math.ceil(visibleEnd * lodSamplesPerSecond);
-    const visibleSamples = endSample - startSample;
+    console.log('[WAVEFORM] Rendering:', {
+      duration: duration,
+      totalDataLength: totalDataLength,
+      samplesPerSecond: samplesPerSecond,
+      visibleStart: visibleStart,
+      visibleEnd: visibleEnd,
+      startSample: startSample,
+      endSample: endSample,
+      samplesToDraw: samplesToDraw,
+      containerWidth: containerWidth
+    });
 
-    // Clear canvas
     ctx.clearRect(0, 0, containerWidth, height);
-
-    // Get theme colors
+    
     const theme = document.documentElement.getAttribute('data-theme') || 'light';
     const primaryColor = theme === 'dark' ? 'rgb(80, 200, 255)' : 'rgb(93, 95, 239)';
     const gradientColor = theme === 'dark' ? 'rgba(80, 200, 255, 0.3)' : 'rgba(93, 95, 239, 0.3)';
 
-    // Create gradient for professional look
     const gradient = ctx.createLinearGradient(0, 0, 0, height);
     gradient.addColorStop(0, primaryColor);
     gradient.addColorStop(0.85, gradientColor);
     gradient.addColorStop(1, 'transparent');
-
     ctx.fillStyle = gradient;
-    ctx.strokeStyle = primaryColor;
-    ctx.lineWidth = 0.5;
 
-    // Render based on zoom level
-    if (samplesPerPixel < 1) {
-      // High zoom: Draw individual samples with interpolation
-      renderHighZoom(ctx, lodData, startSample, endSample, containerWidth, height);
-    } else if (samplesPerPixel < 10) {
-      // Medium zoom: Draw with peak detection
-      renderMediumZoom(ctx, lodData, startSample, endSample, containerWidth, height);
-    } else {
-      // Low zoom: Draw with efficient batching
-      renderLowZoom(ctx, lodData, startSample, endSample, containerWidth, height);
+    if (samplesToDraw <= 0) return;
+
+    const pixelsPerSample = containerWidth / samplesToDraw;
+
+    ctx.beginPath();
+    ctx.moveTo(0, height);
+
+    for (let i = 0; i < samplesToDraw; i++) {
+        const sampleIndex = startSample + i;
+        if (sampleIndex >= lodData.length) break;
+        
+        const x = i * pixelsPerSample;
+        const amplitude = lodData[sampleIndex] || 0;
+        const barHeight = Math.max(amplitude * height * 0.9, 0.5); // Reduced minimum height
+        const y = height - barHeight;
+        
+        ctx.lineTo(x, y);
     }
+    
+    ctx.lineTo(containerWidth, height);
+    ctx.closePath();
+    ctx.fill();
+
+    console.log('[WAVEFORM] Rendered', samplesToDraw, 'samples, amplitude range:', {
+      min: Math.min(...lodData.slice(startSample, endSample)),
+      max: Math.max(...lodData.slice(startSample, endSample))
+    });
 
   }, [waveformLOD, visibleTimeRange, duration, height]);
-
-  // High zoom rendering with smooth interpolation
-  const renderHighZoom = (ctx, data, startSample, endSample, width, height) => {
-    const samplesCount = endSample - startSample;
-    const pixelsPerSample = width / samplesCount;
-
-    ctx.beginPath();
-
-    for (let i = 0; i < samplesCount; i++) {
-      const sampleIndex = startSample + i;
-      if (sampleIndex >= data.length) break;
-
-      const x = i * pixelsPerSample;
-      const amplitude = data[sampleIndex];
-      const barHeight = amplitude * height * 0.9; // Leave 10% margin
-      const y = height - barHeight;
-
-      if (i === 0) {
-        ctx.moveTo(x, height);
-        ctx.lineTo(x, y);
-      } else {
-        // Smooth curves for professional look
-        const prevX = (i - 1) * pixelsPerSample;
-        const prevAmplitude = data[Math.max(0, startSample + i - 1)];
-        const prevY = height - (prevAmplitude * height * 0.9);
-
-        const cpX = (prevX + x) / 2;
-        ctx.quadraticCurveTo(cpX, prevY, x, y);
-      }
-    }
-
-    ctx.lineTo(width, height);
-    ctx.closePath();
-    ctx.fill();
-  };
-
-  // Medium zoom with peak detection
-  const renderMediumZoom = (ctx, data, startSample, endSample, width, height) => {
-    const pixelCount = Math.min(width, 2000); // Limit for performance
-    const samplesPerPixel = (endSample - startSample) / pixelCount;
-
-    ctx.beginPath();
-    ctx.moveTo(0, height);
-
-    for (let pixel = 0; pixel < pixelCount; pixel++) {
-      const sampleStart = startSample + Math.floor(pixel * samplesPerPixel);
-      const sampleEnd = startSample + Math.floor((pixel + 1) * samplesPerPixel);
-
-      // Find peak in this pixel range
-      let peak = 0;
-      for (let s = sampleStart; s < Math.min(sampleEnd, data.length); s++) {
-        peak = Math.max(peak, data[s]);
-      }
-
-      const x = (pixel / pixelCount) * width;
-      const barHeight = peak * height * 0.9;
-      const y = height - barHeight;
-
-      ctx.lineTo(x, y);
-    }
-
-    ctx.lineTo(width, height);
-    ctx.closePath();
-    ctx.fill();
-  };
-
-  // Low zoom with efficient batching
-  const renderLowZoom = (ctx, data, startSample, endSample, width, height) => {
-    const batchSize = Math.max(1, Math.floor((endSample - startSample) / width));
-    const batches = Math.ceil((endSample - startSample) / batchSize);
-
-    ctx.beginPath();
-    ctx.moveTo(0, height);
-
-    for (let batch = 0; batch < batches; batch++) {
-      const batchStart = startSample + batch * batchSize;
-      const batchEnd = Math.min(batchStart + batchSize, endSample, data.length);
-
-      // RMS calculation for this batch
-      let sum = 0;
-      let count = 0;
-      for (let s = batchStart; s < batchEnd; s++) {
-        sum += data[s] * data[s];
-        count++;
-      }
-
-      const rms = count > 0 ? Math.sqrt(sum / count) : 0;
-      const x = (batch / batches) * width;
-      const barHeight = rms * height * 0.9;
-      const y = height - barHeight;
-
-      ctx.lineTo(x, y);
-    }
-
-    ctx.lineTo(width, height);
-    ctx.closePath();
-    ctx.fill();
-  };
-
-  // Optimized render function with intelligent caching
+  
+  // Update visualization function (unchanged)
   const updateVisualization = useCallback(() => {
     if (!canvasRef.current || !containerRef.current || !waveformLOD) return;
-
     const canvas = canvasRef.current;
     const container = containerRef.current;
     const containerWidth = container.clientWidth;
 
-    // Create render signature for caching
     const renderParams = {
       width: containerWidth,
       height: height,
       start: visibleTimeRange.start,
       end: visibleTimeRange.end,
-      theme: document.documentElement.getAttribute('data-theme') || 'light'
+      theme: document.documentElement.getAttribute('data-theme') || 'light',
+      dataLength: waveformLOD.levels[0].length
     };
-
-    // Skip render if nothing changed (intelligent caching)
-    if (lastRenderParamsRef.current &&
-        JSON.stringify(lastRenderParamsRef.current) === JSON.stringify(renderParams)) {
+    
+    if (lastRenderParamsRef.current && JSON.stringify(lastRenderParamsRef.current) === JSON.stringify(renderParams)) {
       return;
     }
 
     lastRenderParamsRef.current = renderParams;
 
-    // Render with appropriate technique based on container size
     if (containerWidth > 0) {
       renderWaveform(canvas, containerWidth);
-      setHasDrawn(true);
     }
   }, [waveformLOD, visibleTimeRange, height, renderWaveform]);
-
-  // Handle theme changes efficiently
-  useEffect(() => {
-    const handleThemeChange = () => {
-      // Force re-render on theme change
-      lastRenderParamsRef.current = null;
-      updateVisualization();
-    };
-
-    // Listen for storage events (theme changes)
-    window.addEventListener('storage', handleThemeChange);
-
-    // Also listen for direct theme attribute changes
-    const observer = new MutationObserver((mutations) => {
-      mutations.forEach((mutation) => {
-        if (mutation.type === 'attributes' && mutation.attributeName === 'data-theme') {
-          handleThemeChange();
-        }
-      });
-    });
-
-    observer.observe(document.documentElement, {
-      attributes: true,
-      attributeFilter: ['data-theme']
-    });
-
-    return () => {
-      window.removeEventListener('storage', handleThemeChange);
-      observer.disconnect();
-    };
-  }, [updateVisualization]);
-
-  // Main rendering effect with professional optimization
+  
+  // Main rendering and resize observer effects (unchanged)
   useEffect(() => {
     if (!waveformLOD || !containerRef.current) return;
-
-    // Immediate render
     updateVisualization();
-
-    // Set up resize observer for responsive rendering
     const resizeObserver = new ResizeObserver(() => {
-      // Debounce resize events
-      clearTimeout(animationFrameRef.current);
-      animationFrameRef.current = setTimeout(() => {
-        lastRenderParamsRef.current = null; // Force re-render
-        updateVisualization();
-      }, 16); // ~60fps
+      if(animationFrameRef.current) cancelAnimationFrame(animationFrameRef.current);
+      animationFrameRef.current = requestAnimationFrame(updateVisualization);
     });
-
     resizeObserver.observe(containerRef.current);
-
-    return () => {
-      if (animationFrameRef.current) {
-        clearTimeout(animationFrameRef.current);
-      }
-      resizeObserver.disconnect();
-    };
+    return () => resizeObserver.disconnect();
   }, [waveformLOD, updateVisualization]);
 
-  // Handle visible range changes with smart throttling
   useEffect(() => {
-    // Use requestAnimationFrame for smooth updates
-    if (animationFrameRef.current) {
-      cancelAnimationFrame(animationFrameRef.current);
-    }
-
-    animationFrameRef.current = requestAnimationFrame(() => {
-      updateVisualization();
-    });
-
+    if(animationFrameRef.current) cancelAnimationFrame(animationFrameRef.current);
+    animationFrameRef.current = requestAnimationFrame(updateVisualization);
     return () => {
-      if (animationFrameRef.current) {
-        cancelAnimationFrame(animationFrameRef.current);
-      }
+        if(animationFrameRef.current) cancelAnimationFrame(animationFrameRef.current);
     };
   }, [visibleTimeRange, updateVisualization]);
-
-  // Professional canvas setup with high-DPI support
-  const setupCanvas = useCallback((canvas) => {
-    if (!canvas) return;
-
-    canvasRef.current = canvas;
-
-    // Enable high-DPI rendering
-    const ctx = canvas.getContext('2d');
-
-    // Set rendering optimizations
-    ctx.imageSmoothingEnabled = true;
-    ctx.imageSmoothingQuality = 'high';
-
-    // Enable hardware acceleration hints
-    ctx.globalCompositeOperation = 'source-over';
-
-    // Initial render
-    if (waveformLOD && containerRef.current) {
-      updateVisualization();
-    }
-  }, [waveformLOD, updateVisualization]);
-
-  // Don't render anything if there's no audio
+  
+  // Don't render if processed and no audio exists
   if (!hasAudio && isProcessed) {
     return null;
   }
+  
+  const loadingText = isLongAudio 
+    ? t('waveform.processing_long', 'Processing audio ({{progress}}%)...', { progress: Math.round(processingProgress * 100) })
+    : t('waveform.processing', 'Processing audio waveform...');
 
   return (
     <div
@@ -777,20 +760,17 @@ const VolumeVisualizer = ({ audioSource, duration, visibleTimeRange, height = 26
       }}
     >
       <canvas
-        ref={setupCanvas}
+        ref={canvasRef}
         style={{
           position: 'absolute',
           top: 0,
           left: 0,
           width: '100%',
           height: '100%',
-          display: 'block',
-          // Ensure crisp rendering
-          imageRendering: 'pixelated',
-          zIndex: 1
+          display: 'block'
         }}
       />
-      {((!waveformLOD && !hasDrawn) || isProcessing || (!isProcessed && !audioError)) && (
+      {isProcessing && (
         <div
           className="volume-visualizer-loading"
           style={{
@@ -809,11 +789,11 @@ const VolumeVisualizer = ({ audioSource, duration, visibleTimeRange, height = 26
             pointerEvents: 'none'
           }}
         >
-          <span className="material-symbols-rounded" style={{ fontSize: '16px', marginRight: '6px', animation: 'spin 1s linear infinite' }}>refresh</span>
-          {t('waveform.processing', 'Processing audio waveform...')}
+          <span className="material-symbols-rounded" style={{ fontSize: '16px', animation: 'spin 1s linear infinite' }}>refresh</span>
+          {loadingText}
         </div>
       )}
-      {!hasAudio && isProcessed && audioError && (
+      {audioError && !isProcessing &&(
         <div
           className="volume-visualizer-no-audio"
           style={{
@@ -828,7 +808,7 @@ const VolumeVisualizer = ({ audioSource, duration, visibleTimeRange, height = 26
             pointerEvents: 'none'
           }}
         >
-          No audio track
+          {audioError}
         </div>
       )}
     </div>
