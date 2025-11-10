@@ -248,7 +248,8 @@ const VolumeVisualizer = ({ audioSource, duration, visibleTimeRange, height = 26
 
             const channelData = audioBuffer.getChannelData(0);
             console.log('[WAVEFORM] Analyzing volume data...');
-            const volumeData = await analyzeVolume(channelData);
+            // Clamp analysis to video duration to avoid waveform extending beyond video
+            const volumeData = await analyzeVolume(channelData, 1000, audioBuffer.duration, currentDuration);
             const finalLOD = new WaveformLOD(volumeData);
             
             if (!signal.aborted) {
@@ -327,7 +328,8 @@ const VolumeVisualizer = ({ audioSource, duration, visibleTimeRange, height = 26
                 await new Promise(resolve => setTimeout(resolve, 0));
                 
                 // Process this chunk immediately with synchronous analysis
-                const chunkVolumeData = analyzeVolumeSync(chunkData, 500);
+                const chunkDuration = (endSample - startSample) / channelData.length * audioBuffer.duration;
+                const chunkVolumeData = analyzeVolumeSync(chunkData, 500, chunkDuration, chunkDuration);
                 
                 // Update progress immediately after analysis
                 const progress = 0.1 + ((i + 1) / numChunks) * 0.8;
@@ -445,7 +447,7 @@ const VolumeVisualizer = ({ audioSource, duration, visibleTimeRange, height = 26
 
                 if (audioBuffer.numberOfChannels > 0) {
                     const channelData = audioBuffer.getChannelData(0);
-                    const segmentVolumeData = await analyzeVolume(channelData, 1000);
+                    const segmentVolumeData = await analyzeVolume(channelData, 1000, audioBuffer.duration, endTime - startTime);
                     
                     // Combine results and update UI progressively
                     const newCombinedData = new Float32Array(combinedVolumeData.length + segmentVolumeData.length);
@@ -488,15 +490,21 @@ const VolumeVisualizer = ({ audioSource, duration, visibleTimeRange, height = 26
         }
     };
     
-    const analyzeVolume = async (channelData, sampleSize = 1000) => {
-        const samplesPerSegment = Math.floor(channelData.length / sampleSize);
+    const analyzeVolume = async (channelData, sampleSize = 1000, audioDuration = null, videoDuration = null) => {
+        // Calculate how many samples to process based on video duration vs audio buffer duration
+        const effectiveDuration = videoDuration && audioDuration ? 
+            Math.min(videoDuration, audioDuration) : (audioDuration || videoDuration || 1);
+        const durationRatio = audioDuration ? effectiveDuration / audioDuration : 1;
+        const samplesToProcess = Math.floor(channelData.length * durationRatio);
+        
+        const samplesPerSegment = Math.floor(samplesToProcess / sampleSize);
         const volumeData = new Float32Array(sampleSize);
         let maxVolume = 0;
 
         // First pass: calculate RMS and find max
         for (let i = 0; i < sampleSize; i++) {
             const startSample = i * samplesPerSegment;
-            const endSample = Math.min(startSample + samplesPerSegment, channelData.length);
+            const endSample = Math.min(startSample + samplesPerSegment, samplesToProcess);
             let sum = 0;
             let count = 0;
             for (let j = startSample; j < endSample; j++) {
@@ -534,15 +542,21 @@ const VolumeVisualizer = ({ audioSource, duration, visibleTimeRange, height = 26
         return volumeData;
     };
     
-    const analyzeVolumeSync = (channelData, sampleSize = 1000) => {
-        const samplesPerSegment = Math.floor(channelData.length / sampleSize);
+    const analyzeVolumeSync = (channelData, sampleSize = 1000, audioDuration = null, videoDuration = null) => {
+        // Calculate how many samples to process based on video duration vs audio buffer duration
+        const effectiveDuration = videoDuration && audioDuration ? 
+            Math.min(videoDuration, audioDuration) : (audioDuration || videoDuration || 1);
+        const durationRatio = audioDuration ? effectiveDuration / audioDuration : 1;
+        const samplesToProcess = Math.floor(channelData.length * durationRatio);
+        
+        const samplesPerSegment = Math.floor(samplesToProcess / sampleSize);
         const volumeData = new Float32Array(sampleSize);
         let maxVolume = 0;
 
         // Calculate RMS and find max - synchronous for better performance
         for (let i = 0; i < sampleSize; i++) {
             const startSample = i * samplesPerSegment;
-            const endSample = Math.min(startSample + samplesPerSegment, channelData.length);
+            const endSample = Math.min(startSample + samplesPerSegment, samplesToProcess);
             let sum = 0;
             let count = 0;
             for (let j = startSample; j < endSample; j++) {
@@ -616,31 +630,31 @@ const VolumeVisualizer = ({ audioSource, duration, visibleTimeRange, height = 26
     };
   }, [audioSource, duration, isLongAudio, waveformLOD, isProcessed, isProcessing]);
 
-  // Waveform rendering function (unchanged)
+  // Waveform rendering function - using the working approach from old code
   const renderWaveform = useCallback((canvas, containerWidth) => {
     if (!waveformLOD || !visibleTimeRange || !duration) return;
 
     const ctx = setupHighDPICanvas(canvas, containerWidth, height);
     const { start: visibleStart, end: visibleEnd } = visibleTimeRange;
 
+    // Calculate rendering parameters - using the working approach
     const visibleDuration = visibleEnd - visibleStart;
     const pixelsPerSecond = containerWidth / visibleDuration;
-    
-    // Correctly map time to samples
-    const totalDataLength = waveformLOD.levels[0].length; // Actual data length
-    const samplesPerSecond = totalDataLength / duration; // Real samples per second
+    const samplesPerSecond = waveformLOD.levels[0].length / duration;
     const samplesPerPixel = samplesPerSecond / pixelsPerSecond;
 
+    // Get appropriate LOD level for current zoom
     const lodData = waveformLOD.getLODLevel(samplesPerPixel);
-    
-    // Map visible time range to sample indices
-    const startSample = Math.max(0, Math.floor(visibleStart * samplesPerSecond));
-    const endSample = Math.min(lodData.length, Math.ceil(visibleEnd * samplesPerSecond));
+    const lodSamplesPerSecond = lodData.length / duration;
+
+    // Calculate visible sample range in LOD data
+    const startSample = Math.floor(visibleStart * lodSamplesPerSecond);
+    const endSample = Math.ceil(visibleEnd * lodSamplesPerSecond);
     const samplesToDraw = endSample - startSample;
 
     console.log('[WAVEFORM] Rendering:', {
       duration: duration,
-      totalDataLength: totalDataLength,
+      totalDataLength: waveformLOD.levels[0].length,
       samplesPerSecond: samplesPerSecond,
       visibleStart: visibleStart,
       visibleEnd: visibleEnd,
