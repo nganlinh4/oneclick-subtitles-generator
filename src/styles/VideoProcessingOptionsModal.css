@@ -667,11 +667,6 @@
   color: var(--md-error);
 }
 
-.token-note {
-  font-size: 0.8rem;
-  color: var(--md-on-surface-variant);
-  font-style: italic;
-}
 
 .token-error {
   font-size: 0.8rem;

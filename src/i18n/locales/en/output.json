@@ -95,6 +95,7 @@
   "ready": "Ready",
   "segmentReady": "Ready for processing",
   "videoReady": "Video ready for segment selection...",
+  "audioReady": "Audio ready for segment selection...",
   "subtitleUploadSuccess": "Subtitle file uploaded successfully!",
   "autoSubtitleNotice": "Below are subtitles provided while the video is downloading. If you don’t like them, press Ctrl+A to select all and delete/regenerate",
   "downloadAndViewWithSrt": "Download + View with Uploaded SRT",
@@ -104,5 +105,7 @@
   "downloadAndGenerateSemiAuto": "Download +\u00a0Generate\u00a0subtitles (semi-auto)",
   "autoFlow": "Generate subtitles\u00a0(auto)",
   "downloadAndGenerateAuto": "Download +\u00a0Generate\u00a0subtitles (auto)",
-  "semiAutoTooltip": "Save requests and tokens because video analysis is not required"
+  "semiAutoTooltip": "Save requests and tokens because video analysis is not required",
+  "audioFpsDisabled": "FPS settings are not applicable for audio files",
+  "audioResolutionDisabled": "Resolution settings are not applicable for audio files"
 }

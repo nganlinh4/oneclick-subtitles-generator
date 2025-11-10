@@ -524,7 +524,8 @@ export const downloadAndPrepareYouTubeVideo = async (
       // This prevents duplicate splitting when generateSubtitles() is called later
 
       // Update status to show that video is ready
-      setStatus({ message: t('output.videoReady', 'Video is ready for processing!'), type: 'success' });
+      const isAudio = file?.type?.startsWith('audio/');
+      setStatus({ message: isAudio ? t('output.audioReady', 'Audio is ready for processing!') : t('output.videoReady', 'Video is ready for processing!'), type: 'success' });
 
       // Return the file for further processing
       return file;

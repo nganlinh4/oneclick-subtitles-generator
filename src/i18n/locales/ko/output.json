@@ -95,6 +95,7 @@
   "ready": "준비 완료",
   "segmentReady": "처리 준비 완료",
   "videoReady": "세그먼트 선택을 위한 비디오 준비 완료...",
+  "audioReady": "세그먼트 선택을 위한 오디오 준비 완료...",
   "subtitleUploadSuccess": "자막 파일이 성공적으로 업로드되었습니다!",
   "autoSubtitleNotice": "아래 자막은 비디오를 다운로드하는 동안 함께 제공되는 자막입니다. 원하지 않으면 Ctrl+A로 모두 선택하여 삭제/다시 생성하세요",
   "downloadAndViewWithSrt": "다운로드 + 업로드된 SRT로 보기",
@@ -104,5 +105,7 @@
   "downloadAndGenerateSemiAuto": "다운로드 +\u00a0반자동 자막\u00a0생성",
   "autoFlow": "자동\u00a0자막\u00a0생성",
   "downloadAndGenerateAuto": "다운로드 +\u00a0자동 자막\u00a0생성",
-  "semiAutoTooltip": "영상 분석이 필수가 아니므로 요청 수와 토큰을 절약합니다"
+  "semiAutoTooltip": "영상 분석이 필수가 아니므로 요청 수와 토큰을 절약합니다",
+  "audioFpsDisabled": "FPS 설정은 오디오 파일에 적용되지 않습니다",
+  "audioResolutionDisabled": "해상도 설정은 오디오 파일에 적용되지 않습니다"
 }

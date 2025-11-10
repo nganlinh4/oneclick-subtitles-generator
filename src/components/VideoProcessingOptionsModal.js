@@ -1172,7 +1172,7 @@ const VideoProcessingOptionsModal = ({
                                 ) : (
                                     <>
                                         {/* Normal (Gemini) UI */}
-                                        {/* Frame Rate and Media Resolution Combined */}
+                                        {/* Frame Rate and Media Resolution Combined - Disabled for audio files */}
                                         <div className="option-group">
                                             <div className="combined-options-row">
                                                 {/* Frame Rate Slider */}
@@ -1182,9 +1182,12 @@ const VideoProcessingOptionsModal = ({
                                                             {t('processing.frameRate', 'Frame Rate')}
                                                             <span className="label-subtitle">({getFpsInterval(fps, t)})</span>
                                                         </label>
-                                                        {selectedModel === 'gemini-2.5-pro' && (
-                                                            <HelpIcon title={t('processing.gemini25ProFpsNote', 'Note: Gemini 2.5 Pro requires FPS ≥ 1 for compatibility')} />
-                                                        )}
+                                                        {videoFile?.type?.startsWith('audio/')
+                                                            ? <HelpIcon title={t('processing.audioFpsDisabled', 'FPS settings are not applicable for audio files')} />
+                                                            : selectedModel === 'gemini-2.5-pro' && (
+                                                                <HelpIcon title={t('processing.gemini25ProFpsNote', 'Note: Gemini 2.5 Pro requires FPS ≥ 1 for compatibility')} />
+                                                            )
+                                                        }
                                                     </div>
                                                     <div>
                                                         <SliderWithValue
@@ -1195,12 +1198,13 @@ const VideoProcessingOptionsModal = ({
                                                             step={0.25}
                                                             orientation="Horizontal"
                                                             size="XSmall"
-                                                            state="Enabled"
+                                                            state={videoFile?.type?.startsWith('audio/') ? 'Disabled' : 'Enabled'}
                                                             className="fps-slider"
                                                             id="fps-slider"
                                                             ariaLabel={t('processing.frameRate', 'Frame Rate')}
                                                             defaultValue={selectedModel === 'gemini-2.5-pro' ? 1 : 0.25}
                                                             formatValue={(v) => getFpsValue(v)}
+                                                            disabled={videoFile?.type?.startsWith('audio/')}
                                                         />
                                                     </div>
                                                 </div>
@@ -1209,7 +1213,10 @@ const VideoProcessingOptionsModal = ({
                                                 <div className="combined-option-half">
                                                     <div className="label-with-help">
                                                         <label>{t('processing.mediaResolution', 'Media Resolution')}</label>
-                                                        <HelpIcon title={t('processing.mediaResolutionHelp', "64 or 256 tokens cannot be mapped to an exact resolution; this reflects Gemini's proprietary video information extraction method.")} />
+                                                        <HelpIcon title={videoFile?.type?.startsWith('audio/')
+                                                            ? t('processing.audioResolutionDisabled', 'Resolution settings are not applicable for audio files')
+                                                            : t('processing.mediaResolutionHelp', "64 or 256 tokens cannot be mapped to an exact resolution; this reflects Gemini's proprietary video information extraction method.")
+                                                        } />
                                                     </div>
                                                     <CustomDropdown
                                                         value={mediaResolution}
@@ -1219,6 +1226,7 @@ const VideoProcessingOptionsModal = ({
                                                             label: option.label
                                                         }))}
                                                         placeholder={t('processing.selectResolution', 'Select Resolution')}
+                                                        disabled={videoFile?.type?.startsWith('audio/')}
                                                     />
                                                 </div>
                                             </div>
@@ -1571,11 +1579,6 @@ const VideoProcessingOptionsModal = ({
                                     {displayTokens.toLocaleString()} / {selectedModelData?.maxTokens.toLocaleString()} tokens
                                 </span>
                             </div>
-                            {realTokenCount !== null && (
-                                <div className="token-note">
-                                    {t('processing.adjustedNote', 'Real count from Gemini API, adjusted for selected media resolution.')}
-                                </div>
-                            )}
                             {tokenCountError && (
 
 

@@ -95,6 +95,7 @@
   "ready": "Sẵn sàng",
   "segmentReady": "Sẵn sàng để xử lý",
   "videoReady": "Video đã sẵn sàng để chọn phân đoạn...",
+  "audioReady": "Âm thanh đã sẵn sàng để chọn phân đoạn...",
   "subtitleUploadSuccess": "Tập tin phụ đề đã được tải lên thành công!",
   "autoSubtitleNotice": "Phía dưới là phụ đề đi kèm trong lúc tải video, nếu không thích, vui lòng Ctrl+A để xoá/tạo lại",
   "downloadAndViewWithSrt": "Tải xuống + Xem với SRT đã upload",
@@ -104,5 +105,7 @@
   "downloadAndGenerateSemiAuto": "Tải +\u00a0Tạo sub bán tự động",
   "autoFlow": "Tạo sub\u00a0tự động",
   "downloadAndGenerateAuto": "Tải +\u00a0Tạo sub tự động",
-  "semiAutoTooltip": "Tiết kiệm request và token vì không bắt buộc phân tích video"
+  "semiAutoTooltip": "Tiết kiệm request và token vì không bắt buộc phân tích video",
+  "audioFpsDisabled": "Cài đặt FPS không áp dụng cho tệp âm thanh",
+  "audioResolutionDisabled": "Cài đặt độ phân giải không áp dụng cho tệp âm thanh"
 }

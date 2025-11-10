@@ -429,8 +429,12 @@ export const useAppHandlers = (appState) => {
                 console.log(
                   "[AppHandlers] No cached subtitles found for this downloaded video"
                 );
+                const isAudio = processedFile?.type?.startsWith('audio/');
                 setStatus({
-                  message: t(
+                  message: isAudio ? t(
+                    "output.audioReady",
+                    "Audio ready for segment selection..."
+                  ) : t(
                     "output.videoReady",
                     "Video ready for segment selection..."
                   ),
@@ -452,8 +456,12 @@ export const useAppHandlers = (appState) => {
               console.warn(
                 "[AppHandlers] No current video URL found for downloaded video"
               );
+              const isAudio = processedFile?.type?.startsWith('audio/');
               setStatus({
-                message: t(
+                message: isAudio ? t(
+                  "output.audioReady",
+                  "Audio ready for segment selection..."
+                ) : t(
                   "output.videoReady",
                   "Video ready for segment selection..."
                 ),
@@ -465,8 +473,12 @@ export const useAppHandlers = (appState) => {
               "[AppHandlers] Error checking cached subtitles for downloaded video:",
               error
             );
+            const isAudio = processedFile?.type?.startsWith('audio/');
             setStatus({
-              message: t(
+              message: isAudio ? t(
+                "output.audioReady",
+                "Audio ready for segment selection..."
+              ) : t(
                 "output.videoReady",
                 "Video ready for segment selection..."
               ),
@@ -539,8 +551,12 @@ export const useAppHandlers = (appState) => {
             console.log(
               "[AppHandlers] No cached subtitles found for this file"
             );
+            const isAudio = processedFile?.type?.startsWith('audio/');
             setStatus({
-              message: t(
+              message: isAudio ? t(
+                "output.audioReady",
+                "Audio ready for segment selection..."
+              ) : t(
                 "output.videoReady",
                 "Video ready for segment selection..."
               ),
@@ -552,8 +568,12 @@ export const useAppHandlers = (appState) => {
             "[AppHandlers] Error checking cached subtitles:",
             error
           );
+          const isAudio = processedFile?.type?.startsWith('audio/');
           setStatus({
-            message: t(
+            message: isAudio ? t(
+              "output.audioReady",
+              "Audio ready for segment selection..."
+            ) : t(
               "output.videoReady",
               "Video ready for segment selection..."
             ),
