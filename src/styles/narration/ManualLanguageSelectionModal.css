@@ -41,7 +41,6 @@
   align-items: center;
   justify-content: space-between;
   padding: 1rem 1.25rem;
-  border-bottom: 1px solid var(--md-outline-variant);
   gap: 0.5rem;
   flex-shrink: 0;
 }
@@ -247,7 +246,6 @@
   display: flex;
   justify-content: space-between;
   align-items: center;
-  border-top: 1px solid var(--md-outline-variant);
   flex-shrink: 0;
 }
 

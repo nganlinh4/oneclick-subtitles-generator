@@ -328,7 +328,6 @@
   justify-content: space-between;
   padding: 1rem 1.75rem;
   background-color: var(--md-surface-1);
-  border-top: 1px solid var(--md-outline-variant);
 }
 
 .voice-count {

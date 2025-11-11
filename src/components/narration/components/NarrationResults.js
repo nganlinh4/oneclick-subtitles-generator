@@ -4,7 +4,7 @@ import SliderWithValue from '../../common/SliderWithValue';
 import StandardSlider from '../../common/StandardSlider';
 import LoadingIndicator from '../../common/LoadingIndicator';
 import HelpIcon from '../../common/HelpIcon';
-import PlayPauseMorphType4 from '../../common/PlayPauseMorphType4';
+// Removed PlayPauseMorphType4 import - replaced with simple material symbols
 import '../../../utils/functionalScrollbar';
 import { VariableSizeList as List } from 'react-window';
 import { SERVER_URL } from '../../../config';
@@ -201,7 +201,9 @@ const ResultRow = ({ index, style, data }) => {
               onClick={() => playAudio(result)}
               disabled={!!data.itemProcessing[subtitle_id]?.inProgress}
             >
-              <PlayPauseMorphType4 playing={currentAudio && currentAudio.id === subtitle_id && isPlaying} size={14} color="currentColor" config={{ rotateDegrees: 0 }} />
+              <span className="material-symbols-rounded" style={{ fontSize: '14px' }}>
+                {currentAudio && currentAudio.id === subtitle_id && isPlaying ? 'pause' : 'play_arrow'}
+              </span>
             </button>
             <button
               className="pill-button secondary"

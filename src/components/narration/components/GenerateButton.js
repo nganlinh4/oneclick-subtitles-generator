@@ -101,7 +101,7 @@ const GenerateButton = ({
               disabled={!generationResults || generationResults.length === 0 || !generationResults.some(r => r.success && (r.audioData || r.filename))}
             >
               <span className="material-symbols-rounded" style={{ fontSize: 18, display: 'inline-block' }}>
-                download
+                system_update_alt
               </span>
               {t('narration.downloadAligned', 'Tải xuống như đã sắp xếp trên timeline')}
             </button>

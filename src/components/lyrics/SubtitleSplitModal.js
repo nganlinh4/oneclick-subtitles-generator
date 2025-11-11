@@ -271,7 +271,7 @@ const SubtitleSplitModal = ({ isOpen, onClose, lyrics, onSplitSubtitles, selecte
         </button>
       }
     >
-      <div style={{ padding: '16px 0' }}>
+      <div>
         <p style={{
           marginBottom: '16px',
           color: 'var(--md-on-surface-variant)',

@@ -140,14 +140,29 @@ const BulkTranslationPreview = ({
               : targetLanguages[0]?.value?.trim() ? ` (${targetLanguages[0].value})` : ''}
             {selectedTranslation?.loadedFromCache && (
               <span className="cache-indicator" title={t('translation.fromCache', 'Loaded from cache')}>
-                {" "}
-                <span className="material-symbols-rounded" style={{ fontSize: '16px' }}>download</span>
+                {"  "}
+                <span className="material-symbols-rounded eco-icon" style={{ fontSize: '16px', marginLeft: '8px' }}>eco</span>
               </span>
             )}
           </h4>
 
           <div className="translation-preview-stats">
-            {selectedTranslation && t('translation.totalSubtitles', 'Total: {{count}} subtitles', { count: selectedTranslation.subtitles.length })}
+            {selectedTranslation && <span>
+              {(() => {
+                const translationString = t('translation.totalSubtitles', 'Total: {{count}} subtitles', { count: selectedTranslation.subtitles.length });
+                // Split to separate the part before count, the count, and everything after
+                const match = translationString.match(/^(.*?)(\d+)(.*)$/);
+                if (match) {
+                  return (
+                    <>
+                      {match[1]}
+                      <strong>{match[2]}{match[3]}</strong>
+                    </>
+                  );
+                }
+                return translationString; // Fallback if no match
+              })()}
+            </span>}
           </div>
         </div>
 

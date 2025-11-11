@@ -18,6 +18,8 @@ const Header = ({ onSettingsClick }) => {
   const [isFullVersion, setIsFullVersion] = useState(false); // Track if running in full mode
   const [isVercelMode, setIsVercelMode] = useState(false); // Track if running via npm start (Vercel)
   const [currentBranch, setCurrentBranch] = useState('main'); // Track current branch
+  const [startupModeDetected, setStartupModeDetected] = useState(false); // Track if startup mode detection is complete
+  const [gitBranchDetected, setGitBranchDetected] = useState(false); // Track if git branch detection is complete
 
   // Define the position update function outside useEffect so it can be reused
   const updateFloatingActionsPosition = () => {
@@ -218,7 +220,6 @@ const Header = ({ onSettingsClick }) => {
             localStorage.setItem('is_full_version', 'false');
             localStorage.setItem('is_vercel_mode', 'true');
           } catch {}
-          return;
         }
       } catch (error) {
         // If we can't contact the server at all, assume Vercel (npm start) mode
@@ -229,6 +230,9 @@ const Header = ({ onSettingsClick }) => {
           localStorage.setItem('is_full_version', 'false');
           localStorage.setItem('is_vercel_mode', 'true');
         } catch {}
+      } finally {
+        // Mark startup mode detection as complete regardless of success/failure
+        setStartupModeDetected(true);
       }
     };
 
@@ -262,6 +266,9 @@ const Header = ({ onSettingsClick }) => {
         console.error('Failed to detect git branch:', error);
         // Default to old_version if we can't detect
         setCurrentBranch('old_version');
+      } finally {
+        // Mark git branch detection as complete regardless of success/failure
+        setGitBranchDetected(true);
       }
     };
 
@@ -465,22 +472,26 @@ const Header = ({ onSettingsClick }) => {
       <div className="header-title-container">
         <h1 className="header-title">
           <span className="osg-main">OSG</span>
-          <span className="osg-version">
-            {isVercelMode
-              ? ` (${t('header.versionVercel')})`
-              : (isFullVersion ? ` (${t('header.versionFull')})` : ` (${t('header.versionLite')})`)
-            }
-          </span>
+          {startupModeDetected && (
+            <span className="osg-version">
+              {isVercelMode
+                ? ` (${t('header.versionVercel')})`
+                : (isFullVersion ? ` (${t('header.versionFull')})` : ` (${t('header.versionLite')})`)
+              }
+            </span>
+          )}
         </h1>
-        <button
-          className={`branch-switch-button ${isVercelMode ? 'vercel-mode' : ''}`}
-          onClick={handleBranchSwitch}
-          disabled={isVercelMode}
-          aria-label={isVercelMode ? t('header.vercelLimited') : (currentBranch === 'old_version' ? t('header.tryNewVersion') : t('header.oldVersion'))}
-          title={isVercelMode ? t('header.vercelLimited') : (currentBranch === 'old_version' ? t('header.tryNewVersionTooltip') : t('header.oldVersionTooltip'))}
-        >
-          {isVercelMode ? t('header.vercelLimited') : (currentBranch === 'old_version' ? t('header.tryNewVersion') : t('header.oldVersion'))}
-        </button>
+        {startupModeDetected && gitBranchDetected && (
+          <button
+            className={`branch-switch-button ${isVercelMode ? 'vercel-mode' : ''}`}
+            onClick={handleBranchSwitch}
+            disabled={isVercelMode}
+            aria-label={isVercelMode ? t('header.vercelLimited') : (currentBranch === 'old_version' ? t('header.tryNewVersion') : t('header.oldVersion'))}
+            title={isVercelMode ? t('header.vercelLimited') : (currentBranch === 'old_version' ? t('header.tryNewVersionTooltip') : t('header.oldVersionTooltip'))}
+          >
+            {isVercelMode ? t('header.vercelLimited') : (currentBranch === 'old_version' ? t('header.tryNewVersion') : t('header.oldVersion'))}
+          </button>
+        )}
       </div>
 
 

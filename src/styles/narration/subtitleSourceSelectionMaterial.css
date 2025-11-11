@@ -69,7 +69,7 @@
 }
 
 .subtitle-selection-container .radio-pill input[type="radio"]:checked + label.has-additional {
-  padding: 5px 5px 5px 18px;
+  padding: 5px 18px;
 }
 
 .subtitle-selection-container .radio-pill input[type="radio"]:disabled + label {

@@ -1471,7 +1471,6 @@ input[type="color"].color-picker::-webkit-color-swatch {
   justify-content: space-between;
   align-items: center;
   padding: 1rem;
-  border-bottom: 1px solid var(--border-color);
 }
 
 .preset-naming-modal-header h3 {

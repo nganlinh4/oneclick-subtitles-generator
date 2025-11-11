@@ -12,7 +12,7 @@ import { getAudioUrl } from '../../../services/narrationService';
 import { SERVER_URL } from '../../../config';
 import { deriveSubtitleId, idsEqual } from '../../../utils/subtitle/idUtils';
 import { formatTime } from '../../../utils/timeFormatter';
-import PlayPauseMorphType4 from '../../common/PlayPauseMorphType4';
+// Removed PlayPauseMorphType4 import - replaced with simple material symbols
 
 // Constants for localStorage keys
 const NARRATION_CACHE_KEY = 'gemini_narration_cache';
@@ -155,7 +155,9 @@ const GeminiResultRow = ({ index, style, data }) => {
               onClick={() => playAudio(item)}
               disabled={!!data.itemProcessing[subtitle_id]?.inProgress}
             >
-              <PlayPauseMorphType4 playing={currentlyPlaying === subtitle_id && isPlaying} size={14} color="currentColor" config={{ rotateDegrees: 0 }} />
+              <span className="material-symbols-rounded" style={{ fontSize: '14px' }}>
+                {currentlyPlaying === subtitle_id && isPlaying ? 'pause' : 'play_arrow'}
+              </span>
             </button>
             <button
               className="pill-button secondary"
@@ -1026,7 +1028,7 @@ const GeminiNarrationResults = ({
               ? t('narration.noSourceSelectedError', 'Please select a subtitle source (Original or Translated)')
               : t('narration.generateAllPendingTooltip', 'Generate all pending narrations')}
           >
-            <PlayPauseMorphType4 playing={false} size={14} color="currentColor" config={{ rotateDegrees: 0 }} />
+            <span className="material-symbols-rounded" style={{ fontSize: '14px' }}>play_arrow</span>
             {t('narration.generateAllPending', 'Generate All Pending')}
           </button>
         )}

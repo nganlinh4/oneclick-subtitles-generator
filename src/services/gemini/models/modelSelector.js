@@ -49,7 +49,7 @@ export const findSuitableAudioModel = async (apiKey) => {
   try {
     // Known working model for WebSocket API with audio
     // Use the exact same model format as in the live-api-web-console
-    const knownWorkingModel = 'models/gemini-2.0-flash-exp';
+    const knownWorkingModel = 'models/gemini-2.5-flash-native-audio-preview-09-2025';
 
     // If we already have a list of supported models, check if our known working model is in it
     if (supportedModelsCache) {
@@ -136,6 +136,6 @@ export const findSuitableAudioModel = async (apiKey) => {
   } catch (error) {
     console.error('Error finding suitable audio model:', error);
     // Fallback to our known working model with the full path
-    return 'models/gemini-2.0-flash-exp';
+    return 'models/gemini-2.5-flash-native-audio-preview-09-2025';
   }
 };
