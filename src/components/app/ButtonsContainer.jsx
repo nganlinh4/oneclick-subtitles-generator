@@ -204,6 +204,10 @@ const ButtonsContainer = ({
             if (methodColumns.length >= 2) {
               console.log('[AutoFlow] Clicking second method column (old method)');
               methodColumns[1].click(); // Click the second one (old method)
+
+              // Wait for the processing modal to appear after method selection
+              console.log('[AutoFlow] Waiting for processing modal to appear after method selection...');
+              await new Promise(resolve => setTimeout(resolve, 1000));
             }
           } else {
             console.log('[AutoFlow] Method selection overlay not found');
