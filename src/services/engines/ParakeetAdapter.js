@@ -12,11 +12,12 @@ import { API_BASE_URL } from '../../config';
  *  onStatus?: (status:{message:string,type:'loading'|'success'|'error'|'info'})=>void,
  *  onRanges?: (ranges:{start:number,end:number}[])=>void,
  *  onStreamingUpdate?: (subtitles:Array<{start:number,end:number,text:string}>, part:{start:number,end:number})=>void,
- *  onMergeSegment?: (part:{start:number,end:number}, newSegmentSubs:Array<{start:number,end:number,text:string}>)=>Promise<void>|void
+ *  onMergeSegment?: (part:{start:number,end:number}, newSegmentSubs:Array<{start:number,end:number,text:string}>)=>Promise<void>|void,
+ *  t?: (key:string, defaultValue?:string, options?:object)=>string
  * }} hooks
  */
 export const processParakeetSegment = async (inputFile, segment, options = {}, hooks = {}) => {
-  const { onStatus, onRanges, onStreamingUpdate, onMergeSegment } = hooks;
+   const { onStatus, onRanges, onStreamingUpdate, onMergeSegment, t } = hooks;
 
   // Determine sequential sub-segments
   const windowSec = Math.max(1, Math.floor(options.maxDurationPerRequest || 0));
@@ -44,7 +45,7 @@ export const processParakeetSegment = async (inputFile, segment, options = {}, h
 
   for (let i = 0; i < subSegments.length; i++) {
     const part = subSegments[i];
-    onStatus && onStatus({ message: `Transcribing with Parakeet ASR (${i + 1}/${subSegments.length})...`, type: 'loading' });
+    onStatus && onStatus({ message: t ? t('processing.transcribingWithParakeet', 'Transcribing with Parakeet ASR ({{current}}/{{total}})...', { current: i + 1, total: subSegments.length }) : `Transcribing with Parakeet ASR (${i + 1}/${subSegments.length})...`, type: 'loading' });
 
     // Extract audio
     const wavBase64 = await extractSegmentAsWavBase64(inputFile, part.start, part.end);
@@ -64,7 +65,7 @@ export const processParakeetSegment = async (inputFile, segment, options = {}, h
 
     if (!resp.ok) {
       const errText = await resp.text().catch(() => '');
-      throw new Error(`Parakeet API error: ${resp.status} ${errText}`);
+      throw new Error(t ? t('errors.parakeetApiError', 'Parakeet API error: {{status}} {{errorText}}', { status: resp.status, errorText: errText }) : `Parakeet API error: ${resp.status} ${errText}`);
     }
 
     const data = await resp.json();

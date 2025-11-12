@@ -34,7 +34,6 @@ const GTTSControls = ({
   const { t } = useTranslation();
   const [languages, setLanguages] = useState([]);
   const [loading, setLoading] = useState(true);
-  const [error, setError] = useState('');
   const [isLanguageModalOpen, setIsLanguageModalOpen] = useState(false);
 
   // Load available languages on component mount
@@ -70,7 +69,7 @@ const GTTSControls = ({
         }
       } catch (err) {
         console.error('Error loading gTTS languages:', err);
-        setError('Failed to load languages');
+        window.addToast(t('narration.languageLoadError', 'Error loading languages: Failed to load languages'), 'error');
       } finally {
         setLoading(false);
       }
@@ -167,10 +166,6 @@ const GTTSControls = ({
           {loading ? (
             <div className="loading-message">
               {t('narration.loadingLanguages', 'Loading languages...')}
-            </div>
-          ) : error ? (
-            <div className="error-message">
-              {t('narration.languageLoadError', 'Error loading languages: {{error}}', { error })}
             </div>
           ) : (
             <div className="model-dropdown-container narration-model-dropdown-container">

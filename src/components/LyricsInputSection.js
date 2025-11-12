@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { useTranslation } from 'react-i18next';
 import useGeniusLyrics from '../hooks/useGeniusLyrics';
+import { showErrorToast, showInfoToast } from '../utils/toastUtils';
 
 /**
  * Component for lyrics input and fetching
@@ -28,9 +29,21 @@ const LyricsInputSection = ({ onLyricsReceived }) => {
     if (song) localStorage.setItem('cached_lyrics_song', song);
   }, [song]);
 
-
   // Use the Genius lyrics hook
   const { albumArtUrl, loading, cleaning, error, fetchLyrics } = useGeniusLyrics();
+
+  // Dispatch toast notifications for error and cleaning states
+  useEffect(() => {
+    if (error) {
+      showErrorToast(error);
+    }
+  }, [error]);
+
+  useEffect(() => {
+    if (cleaning) {
+      showInfoToast(t('subtitlesInput.cleaning', 'Cleaning lyrics...'));
+    }
+  }, [cleaning]);
 
   // Handle fetching lyrics from Genius
   const handleFetchLyrics = async (e) => {
@@ -122,15 +135,6 @@ const LyricsInputSection = ({ onLyricsReceived }) => {
           )}
         </div>
       </div>
-
-      {error && <div className="lyrics-error">{error}</div>}
-
-      {cleaning && (
-        <div className="lyrics-cleaning-message">
-          <span className="cleaning-spinner"></span>
-          {t('subtitlesInput.cleaning', 'Cleaning lyrics...')}
-        </div>
-      )}
 
       {albumArtUrl && (
         <div className="album-art-container">

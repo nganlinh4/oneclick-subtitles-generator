@@ -1,4 +1,5 @@
-import React from 'react';
+import React, { useEffect } from 'react';
+import { showErrorToast } from '../../utils/toastUtils';
 
 /**
  * Translation error component
@@ -7,18 +8,13 @@ import React from 'react';
  * @returns {JSX.Element|null} - Rendered component or null if no error
  */
 const TranslationError = ({ error }) => {
-  if (!error) return null;
+  useEffect(() => {
+    if (error) {
+      showErrorToast(error.replace(/<[^>]*>/g, '')); // Strip HTML tags for toast
+    }
+  }, [error]);
 
-  return (
-    <div className="translation-row error-row">
-      <div className="row-content">
-        <div
-          className="translation-error"
-          dangerouslySetInnerHTML={{ __html: error }}
-        />
-      </div>
-    </div>
-  );
+  return null; // No longer render inline error
 };
 
 export default TranslationError;

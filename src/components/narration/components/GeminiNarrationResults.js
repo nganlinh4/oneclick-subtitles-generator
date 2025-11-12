@@ -215,11 +215,6 @@ const GeminiResultRow = ({ index, style, data }) => {
         ) : (
           // Failed generation
           <>
-            <span className="error-message">
-              {t('narration.failed', 'Generation failed')}
-              {/* Add a debug message to help diagnose the issue */}
-              {item.error && <div className="error-details">{item.error}</div>}
-            </span>
             <button
               className={`pill-button secondary retry-button ${retryingSubtitleId === subtitle_id ? 'retrying' : ''}`}
               onClick={() => onRetry(subtitle_id)}
@@ -306,6 +301,8 @@ const GeminiNarrationResults = ({
   const processedCountRef = useRef(0);
   // Track unique items seen in progress stream to derive current count when server doesn't send 'processed'
   const seenItemsRef = useRef(new Set());
+  // Track shown error toasts to avoid duplicates
+  const [shownErrorToasts, setShownErrorToasts] = useState(new Set());
 
   // Speed control state (global)
   const [speedValue, setSpeedValue] = useState(1.0);
@@ -639,7 +636,7 @@ const GeminiNarrationResults = ({
       if (isDefaultTrim) {
         normalizedStart = 0; normalizedEnd = 1;
       } else {
-        alert(t('narration.durationNotReady', 'Audio duration not ready yet. Please wait a moment and try again.'));
+        window.addToast(t('narration.durationNotReady', 'Audio duration not ready yet. Please wait a moment and try again.'), 'error');
         return;
       }
     }
@@ -671,7 +668,7 @@ const GeminiNarrationResults = ({
       }
     } catch (e) {
       console.error('Error applying combined audio edit:', e);
-      alert(t('narration.trimModificationError', `Error applying edit: ${e.message}`));
+      window.addToast(t('narration.trimModificationError', `Error applying edit: ${e.message}`), 'error');
     } finally {
       setItemProcessing(prev => ({ ...prev, [id]: { inProgress: false } }));
     }
@@ -803,6 +800,21 @@ const GeminiNarrationResults = ({
     };
   }, []);
 
+  // Show toasts for failed narration items
+  useEffect(() => {
+    if (generationResults && generationResults.length > 0) {
+      generationResults.forEach(result => {
+        if (!result.success && !result.pending && !shownErrorToasts.has(result.subtitle_id)) {
+          const errorMessage = result.error
+            ? t('narration.generationFailedWithError', 'Generation failed: {{error}}', { error: result.error })
+            : t('narration.generationFailed', 'Generation failed');
+          window.addToast(errorMessage, 'error');
+          setShownErrorToasts(prev => new Set([...prev, result.subtitle_id]));
+        }
+      });
+    }
+  }, [generationResults, shownErrorToasts, t]);
+
   // Show a loading message while waiting for narrations to load
   useEffect(() => {
     // If we have loaded from cache but don't have results yet, show a loading message
@@ -923,7 +935,9 @@ const GeminiNarrationResults = ({
             console.log(`[DEBUG] Download fetch response status: ${response.status}`);
             if (!response.ok) {
               console.error(`[DEBUG] Download fetch failed: ${response.status} ${response.statusText}`);
-              throw new Error(`Server responded with ${response.status}: ${response.statusText}`);
+              const errorMsg = `Server responded with ${response.status}: ${response.statusText}`;
+              window.addToast(t('narration.downloadError', `Error downloading audio file: ${errorMsg}`), 'error');
+              throw new Error(errorMsg);
             }
             return response.blob();
           })
@@ -951,54 +965,7 @@ const GeminiNarrationResults = ({
           })
           .catch(error => {
             console.error('[DEBUG] Error downloading audio file:', error);
-
-            // Try to use the legacy filename format as a fallback
-            if (result.filename.includes('/')) {
-              console.log('[DEBUG] Trying legacy filename format as fallback');
-              const legacyFilename = `gemini_${result.subtitle_id}_${Date.now()}.wav`;
-              const legacyUrl = getAudioUrl(legacyFilename);
-
-              console.log(`[DEBUG] Trying legacy URL for download: ${legacyUrl}`);
-
-              // Add a cache-busting parameter to the legacy URL
-              const cacheBustLegacyUrl = `${legacyUrl}?t=${Date.now()}`;
-              console.log(`[DEBUG] Cache-busting legacy URL: ${cacheBustLegacyUrl}`);
-
-              // Try the legacy URL
-              fetch(cacheBustLegacyUrl)
-                .then(response => {
-                  if (!response.ok) {
-                    throw new Error(`Server responded with ${response.status}: ${response.statusText}`);
-                  }
-                  return response.blob();
-                })
-                .then(blob => {
-                  // Create a blob URL
-                  const blobUrl = URL.createObjectURL(blob);
-
-                  // Create a download link
-                  const a = document.createElement('a');
-                  a.href = blobUrl;
-                  a.download = `narration_${result.subtitle_id}.wav`;
-                  a.style.display = 'none';
-                  document.body.appendChild(a);
-
-                  // Trigger the download
-                  a.click();
-
-                  // Clean up
-                  setTimeout(() => {
-                    document.body.removeChild(a);
-                    URL.revokeObjectURL(blobUrl);
-                  }, 100);
-                })
-                .catch(legacyError => {
-                  console.error('[DEBUG] Error downloading with legacy format:', legacyError);
-                  alert(t('narration.downloadError', `Error downloading audio file: ${error.message}`));
-                });
-            } else {
-              alert(t('narration.downloadError', `Error downloading audio file: ${error.message}`));
-            }
+            window.addToast(t('narration.downloadError', `Error downloading audio file: ${error.message}`), 'error');
           });
       } catch (error) {
         console.error('[DEBUG] Error initiating download:', error);
@@ -1006,7 +973,7 @@ const GeminiNarrationResults = ({
       }
     } else {
       console.error('[DEBUG] No filename available for download');
-      alert(t('narration.downloadError', 'No audio file available for download'));
+      window.addToast(t('narration.downloadError', 'No audio file available for download'), 'error');
     }
   };
 

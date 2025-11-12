@@ -7,7 +7,7 @@ import { useModalHandlers } from './ModalHandlers';
 import { useAppEffects } from './AppEffects';
 import OnboardingBanner from '../OnboardingBanner';
 import OnboardingFooterReveal from '../OnboardingFooterReveal';
-import AutoDismissErrorToast from '../common/AutoDismissErrorToast';
+import ToastPanel from '../common/ToastPanel';
 
 // Import CSS files
 import '../../styles/App.css';
@@ -20,8 +20,6 @@ import '../../styles/OnboardingBanner.css';
 import '../../styles/AutoGenerate.css'; // Auto-generate button and flow styles
 // Removed spinner-fix.css - now using LoadingIndicator component
 import '../../styles/lyrics/save-message.css'; // Audio alignment notification styles
-import '../../styles/common/auto-dismiss-error-toast.css'; // Auto-dismiss error toast styles
-import '../../styles/common/toast.css'; // Toast notification styles
 import '../../styles/OnboardingFooterReveal.css';
 
 
@@ -55,12 +53,11 @@ function App() {
       {/* Onboarding banner for first-time visitors - rendered at the top level */}
       <OnboardingBanner />
 
-      {/* Auto-dismiss error toast for global error notifications */}
-      <AutoDismissErrorToast />
-
       {/* This is rendered on top of the app, behind the onboarding overlay */}
       <OnboardingFooterReveal />
 
+      {/* Toast notifications panel - moved early to ensure it's available before other components */}
+      <ToastPanel />
 
       <AppLayout
         appState={appState}

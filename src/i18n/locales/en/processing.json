@@ -99,6 +99,7 @@
   "transcriptionMethodNewDescription": "Interact with video via Files API. Should be used when creating subs for a specific segment. Works well with Gemini 2.5 Pro. Understands both audio and video.",
   "transcriptionMethodOldDescription": "Cut the video locally, then send to Gemini, suitable for creating subs for the entire video in the early stages. Works well with all models. Understands both audio and video.",
   "transcriptionMethodParakeetDescription": "Local processing with Nvidia Parakeet, only supports some languages. Only extracts from audio in video.",
+  "transcribingWithParakeet": "Transcribing with Parakeet ASR ({{current}}/{{total}})...",
   "audioFpsDisabled": "FPS settings are not applicable for audio files",
   "audioResolutionDisabled": "Resolution settings are not applicable for audio files"
 }

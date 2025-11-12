@@ -1,15 +1,13 @@
 /**
  * Audio Alignment Notification Utility
- * Shows popup notifications when aligned audio duration exceeds expected duration significantly
+ * Shows toast notifications when aligned audio duration exceeds expected duration significantly
  */
 
-import React from 'react';
-import ReactDOM from 'react-dom/client';
+import { showWarningToast } from './toastUtils';
 import i18n from '../i18n/i18n.js';
-import '../styles/common/audio-alignment-notification.css';
 
 /**
- * Show audio alignment warning notification with a simple warning style
+ * Show audio alignment warning notification using centralized toast system
  * @param {number} durationDifference - Difference in seconds between actual and expected duration
  * @param {Object|null} adjustmentInfo - Information about the maximum adjustment (segmentId, adjustmentAmount)
  * @param {boolean} showDurationWarning - Whether to show duration warning
@@ -20,19 +18,6 @@ export const showAudioAlignmentWarning = (durationDifference, adjustmentInfo = n
   if (!showDurationWarning && !showSegmentWarning) {
     return;
   }
-
-  // Remove any existing notification
-  const existingNotification = document.querySelector('.audio-alignment-notification-container');
-  if (existingNotification) {
-    existingNotification.remove();
-  }
-
-  console.log(`📦 Creating notification container...`);
-  // Create container element
-  const container = document.createElement('div');
-  container.className = 'audio-alignment-notification-container';
-
-  console.log(`🌐 Getting translated messages...`);
 
   // Determine which notification type to show
   let translationKey;
@@ -56,62 +41,11 @@ export const showAudioAlignmentWarning = (durationDifference, adjustmentInfo = n
   }
 
   const message = i18n.t(translationKey, messageParams);
-  const closeLabel = i18n.t('narration.closeNotification');
-  console.log(`📝 Message: "${message}", Close label: "${closeLabel}"`);
 
-  // Create React component for the notification using clean CSS classes
-  const NotificationComponent = () => {
-    const handleClose = () => {
-      const notification = container.querySelector('.audio-alignment-notification');
-      if (notification) {
-        notification.classList.remove('visible');
-        setTimeout(() => container.remove(), 300);
-      } else {
-        container.remove();
-      }
-    };
+  // Show warning toast with 30 second duration
+  showWarningToast(message, 30000);
 
-    return (
-      <div className="audio-alignment-notification visible">
-        <div className="notification-icon">
-          <span className="material-symbols-rounded">warning</span>
-        </div>
-        <div className="notification-message">
-          {message}
-        </div>
-        <button
-          className="notification-close-btn"
-          onClick={handleClose}
-          aria-label={closeLabel}
-          title={closeLabel}
-        >
-          <span className="material-symbols-rounded">close</span>
-        </button>
-      </div>
-    );
-  };
-
-  console.log(`🔗 Adding container to document body...`);
-  // Add to document
-  document.body.appendChild(container);
-
-  console.log(`⚛️ Creating React root and rendering notification...`);
-  // Render React component
-  const root = ReactDOM.createRoot(container);
-  root.render(<NotificationComponent />);
-
-  console.log(`⏰ Setting up auto-remove timer (30 seconds)...`);
-  // Auto-remove after 30 seconds as a fallback (in case user doesn't close it)
-  setTimeout(() => {
-    if (container.parentNode) {
-      console.log(`🗑️ Auto-removing notification after 30 seconds`);
-      container.remove();
-    }
-  }, 30000);
-
-  console.log(`✅ Audio alignment warning shown: ${durationDifference.toFixed(1)}s difference`);
-  console.log(`📍 Container added to DOM with class: ${container.className}`);
-  console.log(`🎯 Container position: fixed, bottom: 20px, z-index: 9999`);
+  console.log(`✅ Audio alignment warning shown via toast: ${durationDifference.toFixed(1)}s difference`);
 };
 
 /**

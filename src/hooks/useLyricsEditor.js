@@ -318,8 +318,8 @@ export const useLyricsEditor = (initialLyrics, onUpdateLyrics) => {
       // Check if there are actual translations available
       // Use the same logic as the subtitle language selector
       const hasTranslation = window.translatedSubtitles &&
-                             Array.isArray(window.translatedSubtitles) &&
-                             window.translatedSubtitles.length > 0;
+                            Array.isArray(window.translatedSubtitles) &&
+                            window.translatedSubtitles.length > 0;
 
       if (hasTranslation) {
         // Show a warning toast that translations may be outdated

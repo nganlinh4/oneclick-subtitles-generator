@@ -6,7 +6,6 @@ import { getVideoDetails } from '../../services/youtubeApiService';
 const YoutubeUrlInput = ({ setSelectedVideo, selectedVideo, className }) => {
   const { t } = useTranslation();
   const [url, setUrl] = useState('');
-  const [error, setError] = useState('');
   const [videoTitle, setVideoTitle] = useState('');
   const [showHistory, setShowHistory] = useState(false);
   const [history, setHistory] = useState([]);
@@ -70,7 +69,7 @@ const YoutubeUrlInput = ({ setSelectedVideo, selectedVideo, className }) => {
 
       // Check for quota exceeded error
       if (error.message.includes('quota exceeded')) {
-        setError(error.message);
+        window.addToast(error.message, 'error', 8000);
       }
 
       return null;
@@ -138,7 +137,7 @@ const YoutubeUrlInput = ({ setSelectedVideo, selectedVideo, className }) => {
           value={url}
           onChange={handleUrlChange}
           placeholder={t('youtubeUrlInput.placeholder', 'Enter YouTube URL (e.g., youtube.com/watch?v=...)')}
-          className={`youtube-url-field ${error ? 'error-input' : ''}`}
+          className="youtube-url-field"
           ref={inputRef}
         />
 
@@ -162,7 +161,6 @@ const YoutubeUrlInput = ({ setSelectedVideo, selectedVideo, className }) => {
             onClick={() => {
               setUrl('');
               setSelectedVideo(null);
-              setError('');
               // Also clear the video URL from localStorage
               localStorage.removeItem('current_video_url');
             }}
@@ -215,16 +213,6 @@ const YoutubeUrlInput = ({ setSelectedVideo, selectedVideo, className }) => {
         )}
       </div>
 
-      {error && (
-        <div className="error-message">
-          <svg viewBox="0 0 24 24" width="16" height="16" stroke="currentColor" strokeWidth="2" fill="none">
-            <circle cx="12" cy="12" r="10"></circle>
-            <line x1="12" y1="8" x2="12" y2="12"></line>
-            <line x1="12" y1="16" x2="12.01" y2="16"></line>
-          </svg>
-          <span>{error}</span>
-        </div>
-      )}
 
       {!selectedVideo && (
         <div className="youtube-instructions-container">

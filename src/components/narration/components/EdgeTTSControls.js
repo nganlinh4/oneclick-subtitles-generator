@@ -36,7 +36,6 @@ const EdgeTTSControls = ({
   const { t } = useTranslation();
   const [voices, setVoices] = useState([]);
   const [loading, setLoading] = useState(true);
-  const [error, setError] = useState('');
   const [isVoiceModalOpen, setIsVoiceModalOpen] = useState(false);
 
   // Load available voices on component mount
@@ -73,7 +72,7 @@ const EdgeTTSControls = ({
         }
       } catch (err) {
         console.error('Error loading Edge TTS voices:', err);
-        setError('Failed to load voices');
+        window.addToast('Failed to load voices', 'error', 5000);
       } finally {
         setLoading(false);
       }
@@ -140,10 +139,6 @@ const EdgeTTSControls = ({
           {loading ? (
             <div className="loading-message">
               {t('narration.loadingVoices', 'Loading voices...')}
-            </div>
-          ) : error ? (
-            <div className="error-message">
-              {t('narration.voiceLoadError', 'Error loading voices: {{error}}', { error })}
             </div>
           ) : (
             <div className="model-dropdown-container narration-model-dropdown-container">

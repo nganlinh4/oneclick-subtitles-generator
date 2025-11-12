@@ -26,5 +26,7 @@
   "noNarrationResults": "Không có kết quả thuyết minh để tạo âm thanh đồng bộ",
   "requestAborted": "Yêu cầu đã bị hủy",
   "processingCancelled": "Người dùng đã hủy quá trình xử lý",
-  "allRequestsAborted": "Tất cả các yêu cầu đã bị hủy"
+  "allRequestsAborted": "Tất cả các yêu cầu đã bị hủy",
+  "parakeetApiError": "Lỗi API Parakeet: {{status}} {{errorText}}",
+  "invalidSegmentSelection": "Lựa chọn phân đoạn không hợp lệ"
 }

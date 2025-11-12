@@ -401,25 +401,6 @@ input, select, textarea {
 }
 
 
-/* Auto-subtitle notice (different from success/green) */
-.status.auto-subtitle {
-  background-color: color-mix(in srgb, var(--md-secondary), transparent 88%);
-  color: var(--md-secondary);
-  border-left-color: var(--md-secondary);
-  position: relative;
-  overflow: hidden;
-  /* soft glow pulse */
-  animation: autoSubtitleGlow 2.2s ease-in-out infinite;
-}
-
-/* Leading dot color */
-.status.auto-subtitle::before {
-  background-color: var(--md-secondary);
-}
-
-
-/* Foreground text stays crisp */
-.status.auto-subtitle .status-message-text { position: relative; z-index: 1; }
 
 
 /* Material Design 3 status messages */
@@ -465,17 +446,6 @@ input, select, textarea {
 
 
 
-/* Professional toned-down style for auto-subtitle notice (override) */
-.status.auto-subtitle {
-  animation: none; /* disable glow */
-  background-color: var(--md-tertiary-container);
-  color: var(--md-on-tertiary-container);
-  border-left-color: var(--md-tertiary);
-  font-weight: 500;
-}
-.status.auto-subtitle::before { background-color: var(--md-tertiary); }
-.status.auto-subtitle .status-particles { display: none !important; }
-.status.auto-subtitle::after { content: none !important; }
 
 
 

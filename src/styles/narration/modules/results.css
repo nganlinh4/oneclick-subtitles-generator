@@ -172,50 +172,12 @@
   gap: 0.5rem;
 }
 
-/* Error message styling specifically for narration results */
-.result-controls .error-message,
-.results-section .error-message {
-  display: inline-flex !important;
-  align-items: center !important;
-  gap: 0.5rem !important;
-  padding: 0.5rem 1rem !important;
-  background-color: var(--md-error-container) !important;
-  color: var(--md-on-error-container) !important;
-  border-radius: 18px !important;
-  font-size: 0.85rem !important;
-  font-weight: 500 !important;
-  border: 1px solid var(--md-error) !important;
-  box-sizing: border-box !important;
-  margin: 0 !important;
-  height: 36px !important;
-  line-height: 1.2 !important;
-}
-
-/* Error details styling for narration results */
-.results-section .error-details {
-  display: block !important;
-  font-size: 0.75rem !important;
-  margin-top: 0.25rem !important;
-  margin-left: 0 !important;
-  color: var(--md-on-error-container) !important;
-  font-style: italic !important;
-  opacity: 0.8 !important;
-  line-height: 1.2 !important;
-}
-
-/* Style for unprocessed subtitles */
-.result-item.unprocessed .error-message {
-  background-color: var(--md-surface-variant);
-  color: var(--md-on-surface-variant);
-  border-color: var(--md-outline);
-  font-style: italic;
-}
 
 /* No results message styling */
 .no-results-message {
   padding: 1rem;
   background-color: var(--md-surface-2);
-  border-radius: 8px;
+  border-radius: 16px;
   text-align: center;
   color: var(--md-on-surface-variant);
   font-style: italic;

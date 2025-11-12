@@ -2,6 +2,7 @@ import React, { useState, useRef, useEffect, useCallback } from 'react';
 import { createPortal } from 'react-dom';
 import { useTranslation } from 'react-i18next';
 import { getExampleAudioList, uploadExampleAudio } from '../../../services/narrationService';
+import { showErrorToast } from '../../../utils/toastUtils';
 
 /**
  * Example Audio Dropdown component
@@ -69,6 +70,13 @@ const ExampleAudioDropdown = ({ onExampleSelect, disabled = false }) => {
 
     loadExampleFiles();
   }, []);
+
+  // Dispatch toast notifications for errors
+  useEffect(() => {
+    if (error) {
+      showErrorToast(error);
+    }
+  }, [error]);
 
   // Handle clicks outside to close the dropdown
   useEffect(() => {
@@ -164,12 +172,7 @@ const ExampleAudioDropdown = ({ onExampleSelect, disabled = false }) => {
             {t('narration.selectExample', 'Select Example Audio')}
           </div>
           <div className="example-audio-dropdown-list">
-            {error && (
-              <div className="example-audio-error">
-                {error}
-              </div>
-            )}
-            {exampleFiles.length === 0 && !error ? (
+            {exampleFiles.length === 0 ? (
               <div className="example-audio-loading">
                 {t('narration.loadingExamples', 'Loading examples...')}
               </div>

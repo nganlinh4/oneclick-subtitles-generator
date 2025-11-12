@@ -26,8 +26,7 @@
 }
 
 .preview-placeholder,
-.loading-placeholder,
-.error-placeholder {
+.loading-placeholder {
   position: absolute;
   top: 0;
   left: 0;
@@ -51,9 +50,6 @@
   margin-bottom: 12px;
 }
 
-.error-placeholder {
-  color: var(--error-color);
-}
 
 .image-preview.loading {
   border-color: var(--md-primary-container);

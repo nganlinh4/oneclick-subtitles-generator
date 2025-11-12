@@ -19,5 +19,10 @@
   "mergeBelow": "Gộp với phụ đề dưới",
   "addFirst": "Thêm phụ đề đầu tiên",
   "editPlaceholder": "Chỉnh sửa văn bản phụ đề",
-  "emptyTimingInstructions": "Hiện có {{count}} dòng phụ đề. Hãy kéo thả trên vùng chỉnh sửa phụ đề (nơi có hoạt ảnh bàn tay lướt phải) để tạo phụ đề tự động bằng AI. Có thể kéo từ đầu đến cuối để tạo sub toàn video hoặc chỉ 1 đoạn nếu muốn"
+  "emptyTimingInstructions": "Hiện có {{count}} dòng phụ đề. Hãy kéo thả trên vùng chỉnh sửa phụ đề (nơi có hoạt ảnh bàn tay lướt phải) để tạo phụ đề tự động bằng AI. Có thể kéo từ đầu đến cuối để tạo sub toàn video hoặc chỉ 1 đoạn nếu muốn",
+  "genius": {
+    "artistAndSongRequired": "Cần có tên nghệ sĩ và tên bài hát",
+    "lyricsFetchFailed": "Lỗi tải lời bài hát",
+    "apiKeyNotSet": "Chưa đặt khóa API Genius. Vui lòng cung cấp qua cài đặt."
+  }
 }

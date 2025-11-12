@@ -19,5 +19,10 @@
   "mergeBelow": "Merge with below",
   "addFirst": "Add first subtitle",
   "editPlaceholder": "Edit subtitle text",
-  "emptyTimingInstructions": "There are {{count}} subtitle lines. Drag across the subtitles editing area (the one with the right-swipe hand animation) to auto-create subtitles with AI. You can drag from start to end for the whole video or just a segment if you prefer."
+  "emptyTimingInstructions": "There are {{count}} subtitle lines. Drag across the subtitles editing area (the one with the right-swipe hand animation) to auto-create subtitles with AI. You can drag from start to end for the whole video or just a segment if you prefer.",
+  "genius": {
+    "artistAndSongRequired": "Artist and song name are required",
+    "lyricsFetchFailed": "Lyrics fetch failed",
+    "apiKeyNotSet": "Genius API key not set. Please provide it through the settings."
+  }
 }

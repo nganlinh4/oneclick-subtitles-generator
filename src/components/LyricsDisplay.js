@@ -452,20 +452,14 @@ const LyricsDisplay = ({
 
       // Result is ready for download
 
-      // Show a temporary success message
-      const successMessage = document.createElement('div');
-      successMessage.className = 'save-success-message';
-      successMessage.textContent = processType === 'consolidate'
-        ? t('output.documentCompleted', 'Document completed successfully')
-        : t('output.summaryCompleted', 'Summary completed successfully');
-      document.body.appendChild(successMessage);
-
-      // Remove the message after 3 seconds
-      setTimeout(() => {
-        if (document.body.contains(successMessage)) {
-          document.body.removeChild(successMessage);
-        }
-      }, 3000);
+      // Show success toast using centralized system
+      window.addToast(
+        processType === 'consolidate'
+          ? t('output.documentCompleted', 'Document completed successfully')
+          : t('output.summaryCompleted', 'Summary completed successfully'),
+        'success',
+        3000
+      );
 
       // Download the processed document
       const baseFilename = generateFilename(source, namingInfo);
@@ -538,18 +532,8 @@ const LyricsDisplay = ({
 
         const result = await response.json();
         if (result.success) {
-          // Show a temporary success message
-          const saveMessage = document.createElement('div');
-          saveMessage.className = 'save-success-message';
-          saveMessage.textContent = t('output.subtitlesSaved', 'Progress saved successfully');
-          document.body.appendChild(saveMessage);
-
-          // Remove the message after 3 seconds
-          setTimeout(() => {
-            if (document.body.contains(saveMessage)) {
-              document.body.removeChild(saveMessage);
-            }
-          }, 3000);
+          // Show success toast using centralized system
+          window.addToast(t('output.subtitlesSaved', 'Progress saved successfully'), 'success', 3000);
 
           // Update the saved lyrics state in the editor
           updateSavedLyrics();
@@ -569,15 +553,8 @@ const LyricsDisplay = ({
         }
       } else {
         // Frontend-only: simulate success (local state + events only)
-        const saveMessage = document.createElement('div');
-        saveMessage.className = 'save-success-message';
-        saveMessage.textContent = t('output.subtitlesSaved', 'Progress saved successfully');
-        document.body.appendChild(saveMessage);
-        setTimeout(() => {
-          if (document.body.contains(saveMessage)) {
-            document.body.removeChild(saveMessage);
-          }
-        }, 3000);
+        // Show success toast using centralized system
+        window.addToast(t('output.subtitlesSaved', 'Progress saved successfully'), 'success', 3000);
 
         updateSavedLyrics();
         if (onSaveSubtitles) {

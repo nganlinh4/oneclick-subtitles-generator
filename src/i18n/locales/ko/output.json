@@ -107,5 +107,6 @@
   "downloadAndGenerateAuto": "다운로드 +\u00a0자동 자막\u00a0생성",
   "semiAutoTooltip": "영상 분석이 필수가 아니므로 요청 수와 토큰을 절약합니다",
   "audioFpsDisabled": "FPS 설정은 오디오 파일에 적용되지 않습니다",
-  "audioResolutionDisabled": "해상도 설정은 오디오 파일에 적용되지 않습니다"
+  "audioResolutionDisabled": "해상도 설정은 오디오 파일에 적용되지 않습니다",
+  "parakeetTranscriptionComplete": "Parakeet 전사 완료"
 }

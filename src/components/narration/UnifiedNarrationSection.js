@@ -1,6 +1,7 @@
 import { useRef, useEffect } from 'react';
 import { useTranslation } from 'react-i18next';
 import { getAudioUrl } from '../../services/narrationService';
+import { showErrorToast, showInfoToast } from '../../utils/toastUtils';
 import useNarrationHandlers from './hooks/useNarrationHandlers';
 
 // Import custom hooks
@@ -31,7 +32,6 @@ import GenerateButton from './components/GenerateButton';
 
 import NarrationResults from './components/NarrationResults';
 import GeminiNarrationResults from './components/GeminiNarrationResults';
-import StatusMessage from './components/StatusMessage';
 import NarrationMethodSelection from './components/NarrationMethodSelection';
 
 // Import styles
@@ -404,6 +404,34 @@ const UnifiedNarrationSection = ({
     }
   }, [narrationMethod, setGenerationStatus, setError]);
 
+  // Dispatch toast notifications for errors
+  useEffect(() => {
+    if (error) {
+      showErrorToast(error);
+    }
+  }, [error]);
+
+  // Dispatch toast notifications for generation status
+  useEffect(() => {
+    if ((isGenerating || retryingSubtitleId) && generationStatus) {
+      // Set different durations based on status message type
+      let duration = 6000; // Default duration
+
+      // 15 seconds for warming up and initializing messages
+      if (generationStatus.includes('Warming up') || generationStatus.includes('initializingService') ||
+          generationStatus.includes('Waking up')) {
+        duration = 15000;
+      }
+      // 12 seconds for progress messages
+      else if (generationStatus.includes('Generating') || generationStatus.includes('Generated') ||
+               generationStatus.includes('chatterboxGeneratingProgress')) {
+        duration = 12000;
+      }
+
+      showInfoToast(generationStatus, duration);
+    }
+  }, [generationStatus, isGenerating, retryingSubtitleId]);
+
   // No height animation when narration method changes - let content flow naturally
 
   // No overall section height animation - let content flow naturally
@@ -532,9 +560,6 @@ const UnifiedNarrationSection = ({
         isGTTSAvailable={true}
       />
 
-      {/* Error Message - only show when there's an actual error message */}
-      {error && <StatusMessage message={error} type="error" />}
-
       <div className="narration-content-container" ref={contentRef}>
       {narrationMethod === 'f5tts' ? (
         // F5-TTS UI
@@ -650,15 +675,6 @@ const UnifiedNarrationSection = ({
             narrationMethod="f5tts"
           />
 
-          {/* Generation Status */}
-          <StatusMessage
-            message={(isGenerating || retryingSubtitleId) ? generationStatus : ''}
-            type="info"
-            statusRef={statusRef}
-            showProgress={isGenerating && generationStatus && generationStatus.includes('Generating narrations')}
-            isGenerating={isGenerating}
-          />
-
           {/* Results */}
           <NarrationResults
             generationResults={generationResults}
@@ -763,15 +779,6 @@ const UnifiedNarrationSection = ({
             narrationMethod="chatterbox"
           />
 
-          {/* Generation Status */}
-          <StatusMessage
-            message={(isGenerating || retryingSubtitleId) ? generationStatus : ''}
-            type="info"
-            statusRef={statusRef}
-            showProgress={isGenerating && generationStatus && generationStatus.includes('Generating')}
-            isGenerating={isGenerating}
-          />
-
           {/* Chatterbox Results - reuse F5-TTS results component */}
            <NarrationResults
              generationResults={generationResults}
@@ -862,15 +869,6 @@ const UnifiedNarrationSection = ({
             serviceUnavailableMessage=""
           />
 
-          {/* Generation Status */}
-          <StatusMessage
-            message={(isGenerating || retryingSubtitleId) ? generationStatus : ''}
-            type="info"
-            statusRef={statusRef}
-            showProgress={isGenerating && generationStatus && generationStatus.includes('Generating')}
-            isGenerating={isGenerating}
-          />
-
           {/* Edge TTS Results */}
            <NarrationResults
              generationResults={generationResults}
@@ -959,15 +957,6 @@ const UnifiedNarrationSection = ({
             serviceUnavailableMessage=""
           />
 
-          {/* Generation Status */}
-          <StatusMessage
-            message={(isGenerating || retryingSubtitleId) ? generationStatus : ''}
-            type="info"
-            statusRef={statusRef}
-            showProgress={isGenerating && generationStatus && generationStatus.includes('Generating')}
-            isGenerating={isGenerating}
-          />
-
           {/* gTTS Results */}
            <NarrationResults
              generationResults={generationResults}
@@ -1054,15 +1043,6 @@ const UnifiedNarrationSection = ({
             generationResults={generationResults}
             isServiceAvailable={isGeminiAvailable}
             serviceUnavailableMessage={t('narration.geminiUnavailableMessage', 'Gemini API is not available. Please check your API key in settings.')}
-          />
-
-          {/* Generation Status */}
-          <StatusMessage
-            message={(isGenerating || retryingSubtitleId) ? generationStatus : ''}
-            type="info"
-            statusRef={statusRef}
-            showProgress={isGenerating && generationStatus && generationStatus.includes('Generating narrations')}
-            isGenerating={isGenerating}
           />
 
           {/* Gemini Results */}

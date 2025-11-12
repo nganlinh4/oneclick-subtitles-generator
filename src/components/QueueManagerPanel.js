@@ -38,6 +38,9 @@ const QueueManagerPanel = ({
     if (onCancelItem) onCancelItem(item.id);
   };
 
+  // Track shown error toasts to avoid duplicates
+  const [shownErrorToasts, setShownErrorToasts] = useState(new Set());
+
   useEffect(() => {
     const observer = new MutationObserver((mutations) => {
       mutations.forEach((mutation) => {
@@ -55,6 +58,16 @@ const QueueManagerPanel = ({
 
     return () => observer.disconnect();
   }, []);
+
+  // Show toast for newly failed items
+  useEffect(() => {
+    queue.forEach((item) => {
+      if (item.status === 'failed' && item.error && !shownErrorToasts.has(item.id)) {
+        window.addToast(`Video rendering failed: ${item.error}`, 'error', 8000);
+        setShownErrorToasts(prev => new Set([...prev, item.id]));
+      }
+    });
+  }, [queue, shownErrorToasts]);
 
   const getStatusIcon = (status) => {
     switch (status) {
@@ -498,15 +511,6 @@ const QueueManagerPanel = ({
                     </div>
                   )}
 
-                  {/* Error Message */}
-                  {item.status === 'failed' && item.error && (
-                    <div className="error-section">
-                      <div className="error-message">
-                        <span className="material-symbols-rounded" style={{ fontSize: '16px' }}>error</span>
-                        {item.error}
-                      </div>
-                    </div>
-                  )}
 
                   {/* Completed Video Info */}
                   {item.status === 'completed' && item.outputPath && (

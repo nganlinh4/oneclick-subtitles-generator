@@ -225,7 +225,7 @@
   "factoryReset": "공장 초기화",
   "resetting": "초기화 중...",
   "factoryResetTooltip": "애플리케이션을 공장 설정으로 초기화",
-  "confirmFactoryReset": "공장 초기화를 수행하시겠습니까? 이렇게 하면 모든 캐시 파일과 브라우저 데이터가 지워집니다. 이 작업은 취소할 수 없습니다.",
+  "confirmFactoryReset": "공장 초기화를 수행하시겠습니까? 이렇게 하면 모든 캐시 파일과 OSG 애플리케이션의 브라우저 데이터가 지워집니다. 이 작업은 취소할 수 없습니다.",
   "factoryResetSuccess": "공장 초기화가 성공적으로 완료되었습니다. 애플리케이션이 지금 다시 로드됩니다.",
   "factoryResetError": "공장 초기화 중 오류: {{errorMessage}}",
   "cacheInformation": "캐시 정보",

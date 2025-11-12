@@ -12,17 +12,6 @@
 
 /* Old loading spinner styles removed - now using LoadingIndicator component */
 
-.error-message {
-  display: flex;
-  align-items: center;
-  gap: 12px;
-  padding: 16px;
-  background-color: rgba(var(--error-color-rgb), 0.1);
-  border-radius: 16px;
-  color: var(--error-color);
-  margin-top: 16px;
-  box-shadow: var(--md-elevation-level1);
-}
 
 .background-prompt-message {
   display: flex;

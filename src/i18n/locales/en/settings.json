@@ -225,7 +225,7 @@
   "factoryReset": "Factory Reset",
   "resetting": "Resetting...",
   "factoryResetTooltip": "Reset application to factory settings",
-  "confirmFactoryReset": "Are you sure you want to perform a factory reset? This will clear all cache files and browser data. This cannot be undone.",
+  "confirmFactoryReset": "Are you sure you want to perform a factory reset? This will clear all cache files and browser data of the OSG application. This cannot be undone.",
   "factoryResetSuccess": "Factory reset completed successfully. The application will now reload.",
   "factoryResetError": "Error during factory reset: {{errorMessage}}",
   "cacheInformation": "Cache Information",

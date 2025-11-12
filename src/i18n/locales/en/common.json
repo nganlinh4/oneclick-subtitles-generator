@@ -18,5 +18,13 @@
   "clearAll": "Clear All",
   "confirm": "Confirm",
   "jumpToCheckpoint": "Jump to last checkpoint (undo multiple steps)",
-  "jumpToCheckpointWithShortcut": "Jump to last checkpoint (Ctrl+J)"
+  "jumpToCheckpointWithShortcut": "Jump to last checkpoint (Ctrl+J)",
+  "toast": {
+    "error": "Error",
+    "success": "Success",
+    "warning": "Warning",
+    "info": "Info",
+    "loading": "Loading",
+    "confirm": "Confirm"
+  }
 }

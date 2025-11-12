@@ -107,5 +107,6 @@
   "downloadAndGenerateAuto": "Tải +\u00a0Tạo sub tự động",
   "semiAutoTooltip": "Tiết kiệm request và token vì không bắt buộc phân tích video",
   "audioFpsDisabled": "Cài đặt FPS không áp dụng cho tệp âm thanh",
-  "audioResolutionDisabled": "Cài đặt độ phân giải không áp dụng cho tệp âm thanh"
+  "audioResolutionDisabled": "Cài đặt độ phân giải không áp dụng cho tệp âm thanh",
+  "parakeetTranscriptionComplete": "Phiên âm Parakeet hoàn tất"
 }

@@ -266,23 +266,6 @@
   box-shadow: none;
 }
 
-/* Error message */
-.unified-url-input .error-message {
-  color: var(--error-color);
-  font-size: 0.9rem;
-  margin-top: 0.5rem;
-  display: flex;
-  align-items: center;
-  gap: 0.5rem;
-}
-
-.unified-url-input .error-message svg {
-  flex-shrink: 0;
-}
-
-.unified-url-input .error-input {
-  border-color: var(--error-color);
-}
 
 /* History dropdown */
 .unified-url-input .history-dropdown-container {

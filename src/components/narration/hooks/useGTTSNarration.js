@@ -150,14 +150,24 @@ const useGTTSNarration = ({
                   current: data.current,
                   total: data.total
                 }));
-                
+
                 if (data.result) {
-                  results.push(data.result);
+                  // Ensure pending flag is properly set based on success status
+                  const processedResult = {
+                    ...data.result,
+                    pending: false // Completed results are no longer pending
+                  };
+                  results.push(processedResult);
                   setGenerationResults([...results]);
                 }
               } else if (data.status === 'error') {
                 if (data.result) {
-                  results.push(data.result);
+                  // Ensure pending flag is properly set for error results
+                  const processedResult = {
+                    ...data.result,
+                    pending: false // Error results are no longer pending
+                  };
+                  results.push(processedResult);
                   setGenerationResults([...results]);
                 }
               } else if (data.status === 'completed') {
@@ -329,8 +339,11 @@ const useGTTSNarration = ({
               const data = JSON.parse(line.slice(6));
               
               if (data.status === 'completed' && data.results?.length > 0) {
-                const newResult = data.results[0];
-                
+                const newResult = {
+                  ...data.results[0],
+                  pending: false // Completed retry results are no longer pending
+                };
+
                 // Update the specific result in the generation results (append if missing)
                 setGenerationResults(prev => {
                   let found = false;
@@ -434,9 +447,13 @@ const useGTTSNarration = ({
               
               if (data.status === 'progress' && data.result) {
                 // Update the specific result in the generation results
-                setGenerationResults(prev => 
-                  prev.map(result => 
-                    result.subtitle_id === data.result.subtitle_id ? data.result : result
+                const processedResult = {
+                  ...data.result,
+                  pending: false // Completed retry results are no longer pending
+                };
+                setGenerationResults(prev =>
+                  prev.map(result =>
+                    result.subtitle_id === processedResult.subtitle_id ? processedResult : result
                   )
                 );
               } else if (data.status === 'completed') {

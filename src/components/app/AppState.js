@@ -7,6 +7,7 @@ import { getTranscriptionRulesSync } from '../../utils/transcriptionRulesStore';
 import { hasValidTokens } from '../../services/youtubeApiService';
 import { PROMPT_PRESETS } from '../../services/geminiService';
 import { cleanupInvalidBlobUrls } from '../../utils/videoUtils';
+import { getAllKeys } from '../../services/gemini/keyManager';
 
 /**
  * Custom hook for managing application state
@@ -190,14 +191,14 @@ export const useAppState = () => {
 
   // Initialize API keys and OAuth status from localStorage
   useEffect(() => {
-    const geminiApiKey = localStorage.getItem('gemini_api_key');
+    const geminiKeys = getAllKeys();
     const youtubeApiKey = localStorage.getItem('youtube_api_key');
     const geniusApiKey = localStorage.getItem('genius_token');
     const useOAuth = localStorage.getItem('use_youtube_oauth') === 'true';
     const hasOAuthTokens = hasValidTokens();
 
     setApiKeysSet({
-      gemini: !!geminiApiKey,
+      gemini: geminiKeys.length > 0,
       youtube: useOAuth ? hasOAuthTokens : !!youtubeApiKey,
       genius: !!geniusApiKey
     });
@@ -209,7 +210,7 @@ export const useAppState = () => {
       let message;
 
       // eslint-disable-next-line no-mixed-operators
-      if (!geminiApiKey && ((!youtubeApiKey && !useOAuth) || (useOAuth && !hasOAuthTokens))) {
+      if (geminiKeys.length === 0 && ((!youtubeApiKey && !useOAuth) || (useOAuth && !hasOAuthTokens))) {
         message = t('errors.bothKeysRequired', 'Please set your Gemini API key and configure YouTube authentication in the settings to use this application.');
       } else if (useOAuth && !hasOAuthTokens) {
         message = t('errors.youtubeAuthRequired', 'YouTube authentication required. Please set up OAuth in settings.');
@@ -226,7 +227,7 @@ export const useAppState = () => {
   // Reactively update status messages based on API key changes
   useEffect(() => {
     // If we have a Gemini API key and the current status is an API key required message, clear it
-    if (apiKeysSet.gemini && status?.message && status.type === 'info') {
+    if (apiKeysSet.gemini && status?.message) {
       const isApiKeyRequiredMessage =
         status.message.includes('Please set your API key') ||
         status.message.includes('Vui lòng cài đặt khóa API') ||
@@ -237,20 +238,6 @@ export const useAppState = () => {
 
       if (isApiKeyRequiredMessage) {
         setStatus({});
-      }
-    }
-    // If we don't have a Gemini API key, show the required message
-    // This will update the message when language changes or when API key is missing
-    else if (!apiKeysSet.gemini) {
-      const currentMessage = t('errors.apiKeyRequired', 'Please set your API key in the settings first.');
-
-      // Only update if the message is different (to avoid unnecessary re-renders)
-      // or if there's no current status message
-      if (!status?.message || status.message !== currentMessage || status.type !== 'info') {
-        setStatus({
-          message: currentMessage,
-          type: 'info'
-        });
       }
     }
   }, [apiKeysSet.gemini, status, setStatus, t]);

@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useTranslation } from 'react-i18next';
 import {
   deleteModel,
@@ -8,7 +8,7 @@ import {
 } from '../../../services/modelService';
 // invalidateModelsCache is imported but not used in this component
 // import { invalidateModelsCache } from '../../../services/modelAvailabilityService';
-import Toast from '../../common/Toast';
+import { showErrorToast, showSuccessToast, showInfoToast } from '../../../utils/toastUtils';
 import InstalledModelsList from './InstalledModelsList';
 import AvailableModelsList from './AvailableModelsList';
 import AddModelDialog from './AddModelDialog';
@@ -74,12 +74,12 @@ const ModelManagementTab = () => {
   const [addingModel, setAddingModel] = useState(false);
   const [editingModel, setEditingModel] = useState(false);
 
-  // Notification state
-  const [snackbar, setSnackbar] = useState({
-    open: false,
-    message: '',
-    severity: 'info'
-  });
+  // Show error toast when error occurs
+  useEffect(() => {
+    if (error) {
+      showErrorToast(error);
+    }
+  }, [error]);
 
   // Handle opening add model dialog
   const handleOpenAddDialog = () => {
@@ -163,21 +163,13 @@ const ModelManagementTab = () => {
       handleCloseAddDialog();
 
       // Show success message
-      setSnackbar({
-        open: true,
-        message: t('settings.modelManagement.modelTemplateAdded', 'Model template added successfully! It will appear in Available Models.'),
-        severity: 'success'
-      });
+      showSuccessToast(t('settings.modelManagement.modelTemplateAdded', 'Model template added successfully! It will appear in Available Models.'));
 
       // Reset form
       setAddModelForm(getInitialAddModelForm());
 
     } catch (err) {
-      setSnackbar({
-        open: true,
-        message: err.message || t('settings.modelManagement.errorAddingModel'),
-        severity: 'error'
-      });
+      showErrorToast(err.message || t('settings.modelManagement.errorAddingModel'));
     } finally {
       setAddingModel(false);
     }
@@ -211,17 +203,9 @@ const ModelManagementTab = () => {
       await fetchModels();
 
       // Show success message
-      setSnackbar({
-        open: true,
-        message: t('settings.modelManagement.modelDeletedSuccess'),
-        severity: 'success'
-      });
+      showSuccessToast(t('settings.modelManagement.modelDeletedSuccess'));
     } catch (err) {
-      setSnackbar({
-        open: true,
-        message: err.message || t('settings.modelManagement.errorDeletingModel'),
-        severity: 'error'
-      });
+      showErrorToast(err.message || t('settings.modelManagement.errorDeletingModel'));
     } finally {
       setIsDeletingModel(false);
     }
@@ -304,17 +288,9 @@ const ModelManagementTab = () => {
       await fetchModels();
 
       // Show success message
-      setSnackbar({
-        open: true,
-        message: t('settings.modelManagement.modelUpdatedSuccess'),
-        severity: 'success'
-      });
+      showSuccessToast(t('settings.modelManagement.modelUpdatedSuccess'));
     } catch (err) {
-      setSnackbar({
-        open: true,
-        message: err.message || t('settings.modelManagement.errorUpdatingModel'),
-        severity: 'error'
-      });
+      showErrorToast(err.message || t('settings.modelManagement.errorUpdatingModel'));
     } finally {
       setEditingModel(false);
     }
@@ -337,32 +313,17 @@ const ModelManagementTab = () => {
         });
 
         // Show success message
-        setSnackbar({
-          open: true,
-          message: t('settings.modelManagement.downloadCancelled', 'Download cancelled successfully'),
-          severity: 'info'
-        });
+        showInfoToast(t('settings.modelManagement.downloadCancelled', 'Download cancelled successfully'));
 
         // Refresh models to update the UI
         await fetchModels();
       }
     } catch (err) {
       console.error('Error cancelling model download:', err);
-      setSnackbar({
-        open: true,
-        message: err.message || t('settings.modelManagement.errorCancellingDownload', 'Error cancelling download'),
-        severity: 'error'
-      });
+      showErrorToast(err.message || t('settings.modelManagement.errorCancellingDownload', 'Error cancelling download'));
     }
   };
 
-  // Handle closing snackbar
-  const handleCloseSnackbar = () => {
-    setSnackbar(prev => ({
-      ...prev,
-      open: false
-    }));
-  };
 
   // Create a style for the unavailable content (only for actual downloads, not modal access)
   const unavailableContentStyle = !isServiceAvailable ? {
@@ -393,12 +354,6 @@ const ModelManagementTab = () => {
           {t('settings.modelManagement.description')}
         </p>
 
-        {error && (
-          <div className="error-message" style={{ marginBottom: '1rem' }}>
-            <span className="material-symbols-rounded" aria-hidden="true">error</span>
-            <span>{error}</span>
-          </div>
-        )}
 
         {/* Available Models List */}
         <AvailableModelsList
@@ -462,14 +417,6 @@ const ModelManagementTab = () => {
         storageInfo={modelToEdit ? modelStorageInfo[modelToEdit.id] : null}
       />
 
-      {/* Custom Toast notification */}
-      <Toast
-        open={snackbar.open}
-        message={snackbar.message}
-        severity={snackbar.severity}
-        onClose={handleCloseSnackbar}
-        autoHideDuration={2000}
-      />
     </div>
   );
 };

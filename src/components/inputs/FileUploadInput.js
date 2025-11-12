@@ -7,7 +7,6 @@ import '../../styles/FileUploadInput.css';
 const FileUploadInput = ({ uploadedFile, setUploadedFile, onVideoSelect, className, isSrtOnlyMode, setIsSrtOnlyMode, setStatus, subtitlesData, setVideoSegments, setSegmentsStatus }) => {
   const { t } = useTranslation();
   const [fileInfo, setFileInfo] = useState(null);
-  const [error, setError] = useState('');
   const [isDragOver, setIsDragOver] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
   const fileInputRef = useRef(null);
@@ -109,17 +108,16 @@ const FileUploadInput = ({ uploadedFile, setUploadedFile, onVideoSelect, classNa
     // Check file size
     const fileSizeMB = file.size / (1024 * 1024);
     if (fileSizeMB > MAX_FILE_SIZE_MB) {
-      setError(t('fileUpload.sizeError', 'File size exceeds the maximum limit of {{size}} MB.', { size: MAX_FILE_SIZE_MB }));
+      window.addToast(t('fileUpload.sizeError', 'File size exceeds the maximum limit of {{size}} MB.', { size: MAX_FILE_SIZE_MB }), 'error', 5000);
       return false;
     }
 
     // Check file type (with fallback to extension check)
     if (!isVideoFile(file.type, file.name) && !isAudioFile(file.type, file.name)) {
-      setError(t('fileUpload.formatError', 'Unsupported file format. Please upload a supported video or audio file.'));
+      window.addToast(t('fileUpload.formatError', 'Unsupported file format. Please upload a supported video or audio file.'), 'error', 5000);
       return false;
     }
 
-    setError('');
     return true;
   };
 
@@ -185,29 +183,7 @@ const FileUploadInput = ({ uploadedFile, setUploadedFile, onVideoSelect, classNa
             }));
           } catch (error) {
             console.error('Error copying large file:', error);
-            setError(
-              (
-                <>
-                  {t('fileUpload.copyErrorShort', 'Failed to copy large file.')} {' '}
-                  <a
-                    href="#"
-                    onClick={(e) => {
-                      e.preventDefault();
-                      e.stopPropagation();
-                      setError('');
-                      skipLargeFileCopyRef.current = true;
-                      const f = lastSelectedFileRef.current;
-                      if (f) {
-                        // Retry processing but skip Multer-based copy this time
-                        setTimeout(() => processFile(f), 0);
-                      }
-                    }}
-                  >
-                    {t('fileUpload.retrySkipMulter', 'Retry by skipping Multer?')}
-                  </a>
-                </>
-              )
-            );
+            window.addToast(t('fileUpload.copyErrorShort', 'Failed to copy large file. Try uploading a smaller file or contact support.'), 'error', 8000);
             setUploadedFile(null);
             setFileInfo(null);
             // Clear the file input value to allow re-uploading the same file
@@ -480,14 +456,6 @@ const FileUploadInput = ({ uploadedFile, setUploadedFile, onVideoSelect, classNa
         </div>
       )}
 
-      {error && (
-        <div className="error-message">
-          <span className="material-symbols-rounded" style={{ fontSize: 16, display: 'inline-block' }}>
-            error
-          </span>
-          <span>{error}</span>
-        </div>
-      )}
     </div>
   );
 };

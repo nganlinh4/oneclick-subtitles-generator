@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { useTranslation } from 'react-i18next';
 import { API_BASE_URL } from '../config';
 
 /**
@@ -6,6 +7,7 @@ import { API_BASE_URL } from '../config';
  * @returns {Object} - Lyrics fetching state and functions
  */
 const useGeniusLyrics = () => {
+  const { t } = useTranslation();
   const [lyrics, setLyrics] = useState('');
   const [albumArtUrl, setAlbumArtUrl] = useState('');
   const [loading, setLoading] = useState(false);
@@ -100,7 +102,7 @@ const useGeniusLyrics = () => {
    */
   const fetchLyrics = async (artist, song, force = false) => {
     if (!artist || !song) {
-      setError('Artist and song name are required');
+      setError(t('lyrics.genius.artistAndSongRequired'));
       return null;
     }
 
@@ -145,7 +147,14 @@ const useGeniusLyrics = () => {
 
       return null;
     } catch (err) {
-      setError(`Lyrics fetch failed: ${err.message}`);
+      // Check for specific server-side errors and translate them
+      let translatedMessage = err.message;
+      if (err.message.includes('Genius API key not set')) {
+        translatedMessage = t('lyrics.genius.apiKeyNotSet');
+      } else {
+        translatedMessage = `${t('lyrics.genius.lyricsFetchFailed')}: ${err.message}`;
+      }
+      setError(translatedMessage);
       throw err;
     } finally {
       setLoading(false);

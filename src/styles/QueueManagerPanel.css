@@ -332,18 +332,6 @@
   margin-bottom: 0.75rem;
 }
 
-.error-message {
-  display: flex;
-  align-items: center;
-  gap: 0.5rem;
-  padding: 0.75rem 1rem;
-  background: var(--md-error-container);
-  color: var(--md-on-error-container);
-  border-radius: 24px;
-  font-size: 0.8rem;
-  border: 1px solid var(--md-error);
-}
-
 /* Completed Section */
 .completed-section {
   display: flex;

@@ -1,6 +1,5 @@
 import { useEffect } from 'react';
 import { checkNarrationStatusWithRetry } from '../../../services/narrationService';
-import { checkGeminiAvailability } from '../../../services/gemini/geminiNarrationService';
 
 /**
  * Check Chatterbox availability by tracking which command was used to start the server
@@ -82,32 +81,12 @@ const useAvailabilityCheck = ({
         const chatterboxStatus = await checkChatterboxAvailability();
         setIsChatterboxAvailable(chatterboxStatus.available);
 
-        // Check Gemini availability
-        const geminiStatus = await checkGeminiAvailability();
-
-        // Set Gemini availability
-        setIsGeminiAvailable(geminiStatus.available);
+        // Gemini availability is not checked globally - errors will be shown when actually using Gemini features
+        // This allows users to use the app for other purposes without needing a Gemini API key
+        setIsGeminiAvailable(true);
 
         // Set error message based on current method
-        if (!geminiStatus.available && narrationMethod === 'gemini' && geminiStatus.message) {
-          // Translate service unavailable message if needed
-          let errorMessage = geminiStatus.message;
-          if (geminiStatus.message === 'SERVICE_UNAVAILABLE') {
-            errorMessage = t('narration.serviceUnavailableMessage', 'Please run the application with npm run dev:cuda (OSG Full) to use the Voice Cloning feature. If already running with npm run dev:cuda (OSG Full), please wait about 1 minute for it to be ready.');
-          } else if (geminiStatus.message === 'geminiApiKeyRequired') {
-            errorMessage = t('settings.geminiApiKeyRequired', 'Please set your Gemini API key in the settings');
-          } else if (geminiStatus.message === 'noGeminiModelsAvailable') {
-            errorMessage = t('settings.noGeminiModelsAvailable', 'No Gemini models available with your API key');
-          } else if (geminiStatus.message === 'noSuitableGeminiModels') {
-            errorMessage = t('settings.noSuitableGeminiModels', 'No suitable Gemini models found for audio generation');
-          } else if (geminiStatus.message === 'invalidGeminiApiKey') {
-            errorMessage = t('settings.invalidGeminiApiKey', 'Invalid Gemini API key or API access issue');
-          } else if (geminiStatus.message === 'errorCheckingGeminiAvailability') {
-            errorMessage = t('settings.errorCheckingGeminiAvailability', 'Error checking Gemini API availability');
-          }
-          setError(errorMessage);
-        }
-        else if (!f5Status.available && narrationMethod === 'f5tts' && f5Status.message) {
+        if (!f5Status.available && narrationMethod === 'f5tts' && f5Status.message) {
           // Translate service unavailable message if needed
           const errorMessage = f5Status.message === 'SERVICE_UNAVAILABLE'
             ? t('narration.serviceUnavailableMessage', 'Please run the application with npm run dev:cuda (OSG Full) to use the Voice Cloning feature. If already running with npm run dev:cuda (OSG Full), please wait about 1 minute for it to be ready.')
@@ -139,8 +118,8 @@ const useAvailabilityCheck = ({
           setError(t('narration.serviceUnavailableMessage', 'Please run the application with npm run dev:cuda (OSG Full) to use the Voice Cloning feature. If already running with npm run dev:cuda (OSG Full), please wait about 1 minute for it to be ready.'));
         }
         else {
-          setIsGeminiAvailable(false);
-          setError(t('narration.geminiUnavailableMessage', "Gemini API is not available. Please check your API key in settings."));
+          // For Gemini and other methods, don't set global errors - specific errors will be shown when using the features
+          setError('');
         }
       }
     };

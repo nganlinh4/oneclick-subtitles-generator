@@ -26,5 +26,7 @@
   "noNarrationResults": "정렬된 오디오를 생성할 내레이션 결과가 없습니다",
   "requestAborted": "요청이 취소되었습니다",
   "processingCancelled": "사용자가 처리를 취소했습니다",
-  "allRequestsAborted": "모든 요청이 취소되었습니다"
+  "allRequestsAborted": "모든 요청이 취소되었습니다",
+  "parakeetApiError": "Parakeet API 오류: {{status}} {{errorText}}",
+  "invalidSegmentSelection": "잘못된 세그먼트 선택"
 }

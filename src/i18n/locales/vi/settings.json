@@ -225,7 +225,7 @@
   "factoryReset": "Khôi phục cài đặt gốc",
   "resetting": "Đang khôi phục...",
   "factoryResetTooltip": "Khôi phục ứng dụng về cài đặt gốc",
-  "confirmFactoryReset": "Bạn có chắc chắn muốn khôi phục cài đặt gốc? Điều này sẽ xóa tất cả các tệp bộ nhớ đệm và dữ liệu trình duyệt. Hành động này không thể hoàn tác.",
+  "confirmFactoryReset": "Bạn có chắc chắn muốn khôi phục cài đặt gốc? Điều này sẽ xóa tất cả các tệp bộ nhớ đệm và dữ liệu trình duyệt của ứng dụng OSG. Hành động này không thể hoàn tác.",
   "factoryResetSuccess": "Khôi phục cài đặt gốc đã hoàn tất thành công. Ứng dụng sẽ tải lại ngay bây giờ.",
   "factoryResetError": "Lỗi trong quá trình khôi phục cài đặt gốc: {{errorMessage}}",
   "cacheInformation": "Thông tin bộ nhớ đệm",

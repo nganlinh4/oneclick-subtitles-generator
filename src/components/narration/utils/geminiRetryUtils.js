@@ -144,7 +144,11 @@ export const retryFailedGeminiNarrations = async ({
         // Update the existing result in the array
         setGenerationResults(prev => {
           return prev.map(item =>
-            item.subtitle_id === result.subtitle_id ? { ...result, pending: false } : item
+            item.subtitle_id === result.subtitle_id ? {
+              ...result,
+              pending: false,
+              success: result.success !== false && (result.audioData || result.filename || result.success)
+            } : item
           );
         });
 
@@ -174,7 +178,11 @@ export const retryFailedGeminiNarrations = async ({
             // If this item is in the results, use that result
             const resultItem = results.find(r => r.subtitle_id === item.subtitle_id);
             if (resultItem) {
-              return { ...resultItem, pending: false };
+              return {
+                ...resultItem,
+                pending: false,
+                success: resultItem.success !== false && (resultItem.audioData || resultItem.filename || resultItem.success)
+              };
             }
 
             // If this item is still pending and was in the retry list, mark it as failed
@@ -335,7 +343,11 @@ export const generateAllPendingGeminiNarrations = async ({
         // Update the existing result in the array
         setGenerationResults(prev => {
           return prev.map(item =>
-            item.subtitle_id === result.subtitle_id ? { ...result, pending: false } : item
+            item.subtitle_id === result.subtitle_id ? {
+              ...result,
+              pending: false,
+              success: result.success !== false && (result.audioData || result.filename || result.success)
+            } : item
           );
         });
 
@@ -365,7 +377,11 @@ export const generateAllPendingGeminiNarrations = async ({
             // If this item is in the results, use that result
             const resultItem = results.find(r => r.subtitle_id === item.subtitle_id);
             if (resultItem) {
-              return { ...resultItem, pending: false };
+              return {
+                ...resultItem,
+                pending: false,
+                success: resultItem.success !== false && (resultItem.audioData || resultItem.filename || resultItem.success)
+              };
             }
 
             // If this item is still pending and was in the generate list, mark it as failed

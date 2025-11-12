@@ -443,39 +443,53 @@ const SettingsModal = ({ onClose, onSave, apiKeysSet, setApiKeysSet }) => {
 
   // Handle factory reset
   const handleFactoryReset = async () => {
-    if (window.confirm(t('settings.confirmFactoryReset', 'Are you sure you want to perform a factory reset? This will clear all cache files and browser data. This cannot be undone.'))) {
-      setIsFactoryResetting(true);
+    // Show toast with confirmation button instead of browser popup
+    window.addToast(
+      t('settings.confirmFactoryReset', 'Are you sure you want to perform a factory reset? This will clear all cache files and browser data. This cannot be undone.'),
+      'warning',
+      15000,
+      null,
+      {
+        text: t('common.confirm', 'Confirm'),
+        onClick: async () => {
+          setIsFactoryResetting(true);
 
-      try {
-        // 1. Try to clear server-side cache (optional - app can run without server)
-        try {
-          const cacheResponse = await fetch(`${API_BASE_URL}/clear-cache`, {
-            method: 'DELETE'
-          });
+          try {
+            // 1. Try to clear server-side cache (optional - app can run without server)
+            try {
+              const cacheResponse = await fetch(`${API_BASE_URL}/clear-cache`, {
+                method: 'DELETE'
+              });
 
-          if (!cacheResponse.ok) {
-            console.warn('Failed to clear server cache - server may not be running');
+              if (!cacheResponse.ok) {
+                console.warn('Failed to clear server cache - server may not be running');
+              }
+            } catch (serverError) {
+              console.warn('Server cache clearing skipped - server not available:', serverError.message);
+            }
+
+            // 2. Clear all localStorage items
+            localStorage.clear();
+
+            // 3. Clear IndexedDB if used
+            const databases = await window.indexedDB.databases();
+            databases.forEach(db => {
+              window.indexedDB.deleteDatabase(db.name);
+            });
+            // 4. Reload the page to apply changes
+            window.location.reload();
+          } catch (error) {
+            console.error('Error during factory reset:', error);
+            window.addToast(
+              t('settings.factoryResetError', 'Error during factory reset: {{errorMessage}}', { errorMessage: error.message }),
+              'error',
+              8000
+            );
+            setIsFactoryResetting(false);
           }
-        } catch (serverError) {
-          console.warn('Server cache clearing skipped - server not available:', serverError.message);
         }
-
-        // 2. Clear all localStorage items
-        localStorage.clear();
-
-        // 3. Clear IndexedDB if used
-        const databases = await window.indexedDB.databases();
-        databases.forEach(db => {
-          window.indexedDB.deleteDatabase(db.name);
-        });
-        // 4. Reload the page to apply changes
-        window.location.reload();
-      } catch (error) {
-        console.error('Error during factory reset:', error);
-        alert(t('settings.factoryResetError', 'Error during factory reset: {{errorMessage}}', { errorMessage: error.message }));
-        setIsFactoryResetting(false);
       }
-    }
+    );
   };
 
   // Effect to check for changes in settings

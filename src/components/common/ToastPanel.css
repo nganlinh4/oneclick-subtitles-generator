@@ -1,0 +1,152 @@
+:root {
+    --tr: all 0.5s ease 0s;
+    --ch1: #05478a;
+    --ch2: #0070e0;
+    --cs1: #005e38;
+    --cs2: #03a65a;
+    --cw1: #c24914;
+    --cw2: #fc8621;
+    --ce1: #851d41;
+    --ce2: #db3056;
+}
+
+/* --- MODIFICATION HERE: Use Flexbox for stacking --- */
+.toast-panel {
+    position: fixed;
+    bottom: 20px;
+    right: 20px;
+    z-index: 100000; /* Increased to appear above modals */
+    display: flex;
+    flex-direction: column-reverse; /* Stacks items from bottom to top */
+    align-items: flex-end; /* Aligns toasts to the right */
+    gap: 0.5rem; /* Replaces margin for spacing between toasts */
+    pointer-events: none;
+}
+
+/* --- MODIFICATION HERE: Simplify toast item --- */
+.toast-item {
+    pointer-events: auto;
+}
+
+/* The animations now apply directly to the item's content */
+.toast-item.show .toast {
+    animation: show-toast 0.5s ease forwards;
+}
+@keyframes show-toast {
+    0% { opacity: 0; transform: translateX(100%); }
+    100% { opacity: 1; transform: translateX(0); }
+}
+.toast-item.dismissing .toast {
+    animation: hide-toast 0.5s ease forwards;
+}
+@keyframes hide-toast {
+    0% { opacity: 1; transform: translateX(0); }
+    100% { opacity: 0; transform: translateX(100%); }
+}
+
+/* --- MODIFICATION HERE: Set width and handle text --- */
+.toast {
+    background: rgba(240, 240, 240, 0.95);
+    color: #333;
+    padding: 1rem 2.5rem 1rem 2.2rem;
+    border-radius: 1.5rem;
+    position: relative;
+    font-weight: 300;
+    text-align: left;
+    max-width: 280px; /* Adjust this value for desired thinness */
+    opacity: 0; /* Start hidden, animation will show it */
+    box-shadow: 0 0 1.5rem 0 rgba(26, 31, 67, 0.25);
+    overflow: hidden;
+    word-wrap: break-word; /* Ensures long text without spaces wraps */
+}
+
+/* Accent pill bar */
+.toast::before {
+    content: '';
+    position: absolute;
+    top: 1.1rem;
+    left: 0.75rem;
+    bottom: 1.1rem;
+    width: 0.4rem;
+    border-radius: 99px;
+    background-color: var(--clr);
+}
+.toast h3 {
+    font-size: 1.2rem;
+    margin: 0 0 0.25rem 0;
+    line-height: 1.35rem;
+    font-weight: 600;
+    position: relative;
+    color: var(--clr);
+}
+.toast p {
+    position: relative;
+    font-size: 0.95rem;
+    z-index: 1;
+    margin: 0;
+    color: #595959;
+    line-height: 1.3rem;
+}
+.close-icon {
+    position: absolute;
+    right: 1rem;
+    top: 1rem;
+    cursor: pointer;
+    font-size: 20px;
+    color: #595959;
+    opacity: 0;
+    transition: color 0.2s ease, opacity 0.2s ease;
+}
+.close-icon:hover {
+    color: var(--clr);
+}
+.toast-item:hover .close-icon {
+    opacity: 1;
+}
+
+.toast-button {
+    margin-top: 12px;
+    padding: 8px 16px;
+    background-color: var(--clr);
+    color: white;
+    border: none;
+    border-radius: 6px;
+    font-size: 0.9rem;
+    font-weight: 500;
+    cursor: pointer;
+    transition: background-color 0.2s ease;
+}
+
+.toast-button:hover {
+    background-color: color-mix(in srgb, var(--clr), black 15%);
+}
+
+/* Swipe feedback */
+.toast-item.swiping {
+    opacity: 0.8;
+}
+
+.toast.toast-help { --bg: var(--ch1); --clr: var(--ch2); }
+.toast.toast-info { --bg: var(--ch1); --clr: var(--ch2); }
+.toast.toast-loading { --bg: #424242; --clr: #757575; }
+.toast.toast-success { --bg: var(--cs1); --clr: var(--cs2); }
+.toast.toast-warning { --bg: var(--cw1); --clr: var(--cw2); }
+.toast.toast-error { --bg: var(--ce1); --clr: var(--ce2); }
+
+.icon-help, .toast-item.toast-help { --clr: #0070e0; }
+.icon-info, .toast-item.toast-info { --clr: #0070e0; }
+.icon-loading, .toast-item.toast-loading { --clr: #757575; }
+.icon-success, .toast-item.toast-success { --clr: #03a65a; }
+.icon-warning, .toast-item.toast-warning { --clr: #fc8621; }
+.icon-error, .toast-item.toast-error { --clr: #db3056; }
+
+
+/* Dark mode support */
+[data-theme="dark"] .toast {
+    background: rgba(70, 70, 70, 0.95);
+    color: #e0e0e0;
+    box-shadow: 0 0 1.5rem 0 rgba(0, 0, 0, 0.5);
+}
+[data-theme="dark"] .toast p { color: #b0b0b0; }
+[data-theme="dark"] .close-icon { color: #b0b0b0; }
+[data-theme="dark"] .close-icon:hover { color: var(--clr); }

@@ -234,7 +234,11 @@ const useGeminiNarration = ({
           // Update the existing result in the array
           setGenerationResults(prev => {
             const updatedResults = prev.map(item =>
-              item.subtitle_id === result.subtitle_id ? { ...result, pending: false } : item
+              item.subtitle_id === result.subtitle_id ? {
+                ...result,
+                pending: false,
+                success: result.success !== false && (result.audioData || result.filename || result.success)
+              } : item
             );
 
             // Update window.groupedNarrations incrementally if we're generating grouped subtitles
@@ -271,7 +275,11 @@ const useGeminiNarration = ({
               // If this item is in the results, use that result
               const resultItem = results.find(r => r.subtitle_id === item.subtitle_id);
               if (resultItem) {
-                return { ...resultItem, pending: false };
+                return {
+                  ...resultItem,
+                  pending: false,
+                  success: resultItem.success !== false && (resultItem.audioData || resultItem.filename || resultItem.success)
+                };
               }
 
               // If this item is still pending, mark it as failed
@@ -961,7 +969,11 @@ const useGeminiNarration = ({
             // Update the existing result in the array
             setGenerationResults(prev => {
               const updatedResults = prev.map(item =>
-                item.subtitle_id === result.subtitle_id ? { ...result, pending: false } : item
+                item.subtitle_id === result.subtitle_id ? {
+                  ...result,
+                  pending: false,
+                  success: result.success !== false && (result.audioData || result.filename || result.success)
+                } : item
               );
 
               // Update window.groupedNarrations incrementally if we're generating grouped subtitles
@@ -998,7 +1010,11 @@ const useGeminiNarration = ({
                 // If this item is in the results, use that result
                 const resultItem = results.find(r => r.subtitle_id === item.subtitle_id);
                 if (resultItem) {
-                  return { ...resultItem, pending: false };
+                  return {
+                    ...resultItem,
+                    pending: false,
+                    success: resultItem.success !== false && (resultItem.audioData || resultItem.filename || resultItem.success)
+                  };
                 }
 
                 // If this item was pending and not in results, mark it as failed

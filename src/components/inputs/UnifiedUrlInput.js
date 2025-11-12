@@ -57,7 +57,6 @@ const addDouyinUrlToHistory = (video) => {
 const UnifiedUrlInput = ({ setSelectedVideo, selectedVideo, className }) => {
   const { t } = useTranslation();
   const [url, setUrl] = useState('');
-  const [error, setError] = useState('');
   const [videoTitle, setVideoTitle] = useState('');
   const [showHistory, setShowHistory] = useState(false);
   const [history, setHistory] = useState([]);
@@ -236,7 +235,6 @@ const UnifiedUrlInput = ({ setSelectedVideo, selectedVideo, className }) => {
   const handleUrlChange = async (e) => {
     const inputUrl = e.target.value.trim();
     setUrl(inputUrl);
-    setError(''); // Clear any previous errors
 
     // Clear previous video state when URL changes
     const previousVideoUrl = localStorage.getItem('current_video_url');
@@ -318,7 +316,7 @@ const UnifiedUrlInput = ({ setSelectedVideo, selectedVideo, className }) => {
         setVideoTitle(`Video from ${siteName}`);
       } catch (error) {
         console.error('Error setting up video:', error);
-        setError(t('unifiedUrlInput.invalidUrl', 'Invalid URL format. Please enter a valid URL.'));
+        window.addToast(t('unifiedUrlInput.invalidUrl', 'Invalid URL format. Please enter a valid URL.'), 'error', 5000);
         setSelectedVideo(null);
         setUrlType('');
       }
@@ -326,7 +324,7 @@ const UnifiedUrlInput = ({ setSelectedVideo, selectedVideo, className }) => {
     }
 
     // If we get here, the URL is not valid for any of our supported formats
-    setError(t('unifiedUrlInput.invalidUrl', 'Invalid URL format. Please enter a valid URL.'));
+    window.addToast(t('unifiedUrlInput.invalidUrl', 'Invalid URL format. Please enter a valid URL.'), 'error', 5000);
     setSelectedVideo(null);
     setUrlType('');
   };
@@ -596,7 +594,7 @@ const UnifiedUrlInput = ({ setSelectedVideo, selectedVideo, className }) => {
           value={url}
           onChange={handleUrlChange}
           placeholder={getPlaceholderText()}
-          className={`url-field ${error ? 'error-input' : ''}`}
+          className="url-field"
           ref={inputRef}
         />
         {getUrlIcon()}
@@ -621,7 +619,6 @@ const UnifiedUrlInput = ({ setSelectedVideo, selectedVideo, className }) => {
             onClick={() => {
               setUrl('');
               setSelectedVideo(null);
-              setError('');
               setUrlType('');
               // Also clear the video URL from localStorage
               localStorage.removeItem('current_video_url');
@@ -633,7 +630,6 @@ const UnifiedUrlInput = ({ setSelectedVideo, selectedVideo, className }) => {
         )}
       </div>
 
-      {error && <div className="error-message">{error}</div>}
 
       {/* History dropdown */}
       <div className="history-dropdown-container">

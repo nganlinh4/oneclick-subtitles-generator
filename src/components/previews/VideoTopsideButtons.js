@@ -211,13 +211,11 @@ const VideoTopsideButtons = ({
 
               // Check if the response is successful
               if (!response.ok) {
-                // Try to parse error message if it's JSON
-                try {
-                  const errorData = await response.json();
-                  throw new Error(errorData.error || 'Failed to generate aligned audio');
-                } catch (jsonError) {
-                  // If it's not JSON, use the status text
-                  throw new Error(`Failed to generate aligned audio: ${response.statusText}`);
+                // Use localized error message instead of raw server message
+                if (response.status === 400) {
+                  throw new Error(t('errors.noNarrationResults', 'No narration results to generate aligned audio'));
+                } else {
+                  throw new Error(t('errors.apiQuotaExceeded', 'API quota exceeded. Please try again later or check your API key limits.'));
                 }
               }
 

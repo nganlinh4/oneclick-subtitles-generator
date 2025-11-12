@@ -8,7 +8,6 @@ const YoutubeSearchInput = ({ apiKeysSet = { youtube: false }, selectedVideo, se
   const [searchQuery, setSearchQuery] = useState('');
   const [searchResults, setSearchResults] = useState([]);
   const [isSearching, setIsSearching] = useState(false);
-  const [error, setError] = useState('');
   const [showHistory, setShowHistory] = useState(false);
   const [history, setHistory] = useState([]);
   const historyDropdownRef = useRef(null);
@@ -36,7 +35,6 @@ const YoutubeSearchInput = ({ apiKeysSet = { youtube: false }, selectedVideo, se
   // Search YouTube API - using useCallback to allow it in the dependency array
   const searchYouTube = useCallback(async (query) => {
     setIsSearching(true);
-    setError('');
 
     try {
       let results = [];
@@ -48,7 +46,7 @@ const YoutubeSearchInput = ({ apiKeysSet = { youtube: false }, selectedVideo, se
         setSearchResults(results);
       } else {
         setSearchResults([]);
-        setError(t('youtube.noResults', 'No results found.'));
+        window.addToast(t('youtube.noResults', 'No results found.'), 'error', 5000);
       }
     } catch (error) {
       console.error('Error searching YouTube:', error);
@@ -57,57 +55,24 @@ const YoutubeSearchInput = ({ apiKeysSet = { youtube: false }, selectedVideo, se
       if (isOAuthEnabled()) {
         // Only show OAuth-specific errors if OAuth is enabled
         if (error.message.includes('OAuth') || error.message.includes('Not authenticated')) {
-          setError(t('youtube.authError', 'YouTube authentication required. Please set up OAuth in settings.'));
+          window.addToast(t('youtube.authError', 'YouTube authentication required. Please set up OAuth in settings.'), 'error', 8000);
         } else if (error.message.includes('quota exceeded')) {
-          setError(t('errors.quotaExceeded', 'Quota exceeded, please wait tomorrow, or create a new Google Cloud project and update API or OAuth.'));
+          window.addToast(t('errors.quotaExceeded', 'Quota exceeded, please wait tomorrow, or create a new Google Cloud project and update API or OAuth.'), 'error', 8000);
         } else if (error.message.includes('api not enabled')) {
-          setError(t('errors.youtubeApiNotEnabled', 'YouTube Data API v3 is not enabled in your Google Cloud project. Please enable it by visiting the Google Cloud Console and enabling the YouTube Data API v3 service.'));
-          // Add a button to open the Google Cloud Console API Library
-          const apiEnableUrl = 'https://console.developers.google.com/apis/api/youtube.googleapis.com/overview';
-          setError(
-            <>
-              {t('errors.youtubeApiNotEnabled', 'YouTube Data API v3 is not enabled in your Google Cloud project.')}
-              <div className="error-action">
-                <a
-                  href={apiEnableUrl}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="error-action-button"
-                >
-                  {t('settings.enableYouTubeAPI', 'Enable YouTube Data API v3')}
-                </a>
-              </div>
-            </>
-          );
+          window.addToast(t('errors.youtubeApiNotEnabled', 'YouTube Data API v3 is not enabled in your Google Cloud project. Please enable it by visiting the Google Cloud Console and enabling the YouTube Data API v3 service.'), 'error', 8000);
         } else {
-          setError(t('youtube.searchError', 'Error searching YouTube. Please try again or enter a URL directly.'));
+          window.addToast(t('youtube.searchError', 'Error searching YouTube. Please try again or enter a URL directly.'), 'error', 5000);
         }
       } else {
         // API key method is selected
         if (error.message.includes('API key not found') || error.message.includes('API key')) {
-          setError(t('youtube.noApiKey', 'Please set your YouTube API key in the settings first.'));
+          window.addToast(t('youtube.noApiKey', 'Please set your YouTube API key in the settings first.'), 'error', 5000);
         } else if (error.message.includes('quota exceeded')) {
-          setError(t('errors.quotaExceeded', 'Quota exceeded, please wait tomorrow, or create a new Google Cloud project and update API or OAuth.'));
+          window.addToast(t('errors.quotaExceeded', 'Quota exceeded, please wait tomorrow, or create a new Google Cloud project and update API or OAuth.'), 'error', 8000);
         } else if (error.message.includes('api not enabled')) {
-          // Add a button to open the Google Cloud Console API Library
-          const apiEnableUrl = 'https://console.developers.google.com/apis/api/youtube.googleapis.com/overview';
-          setError(
-            <>
-              {t('errors.youtubeApiNotEnabled', 'YouTube Data API v3 is not enabled in your Google Cloud project.')}
-              <div className="error-action">
-                <a
-                  href={apiEnableUrl}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="error-action-button"
-                >
-                  {t('settings.enableYouTubeAPI', 'Enable YouTube Data API v3')}
-                </a>
-              </div>
-            </>
-          );
+          window.addToast(t('errors.youtubeApiNotEnabled', 'YouTube Data API v3 is not enabled in your Google Cloud project. Please enable it by visiting the Google Cloud Console and enabling the YouTube Data API v3 service.'), 'error', 8000);
         } else {
-          setError(t('youtube.searchError', 'Error searching YouTube. Please try again or enter a URL directly.'));
+          window.addToast(t('youtube.searchError', 'Error searching YouTube. Please try again or enter a URL directly.'), 'error', 5000);
         }
       }
     } finally {
@@ -150,11 +115,11 @@ const YoutubeSearchInput = ({ apiKeysSet = { youtube: false }, selectedVideo, se
     // Check authentication method and status
     if (isOAuthEnabled()) {
       if (!hasValidTokens()) {
-        setError(t('youtube.noOAuth', 'Please authenticate with YouTube in the settings first.'));
+        window.addToast(t('youtube.noOAuth', 'Please authenticate with YouTube in the settings first.'), 'error', 5000);
         return;
       }
     } else if (!apiKeysSet.youtube) {
-      setError(t('youtube.noApiKey', 'Please set your YouTube API key in the settings first.'));
+      window.addToast(t('youtube.noApiKey', 'Please set your YouTube API key in the settings first.'), 'error', 5000);
       return;
     }
 
@@ -275,7 +240,6 @@ const YoutubeSearchInput = ({ apiKeysSet = { youtube: false }, selectedVideo, se
       </div>
 
       <div className="search-results">
-        {error && <p className="error-message">{error}</p>}
 
         {isSearching && (
           <div className="searching-indicator">

@@ -18,5 +18,13 @@
   "clearAll": "Xóa tất cả",
   "confirm": "Xác nhận",
   "jumpToCheckpoint": "Nhảy đến mốc lưu gần nhất (hoàn tác nhiều bước)",
-  "jumpToCheckpointWithShortcut": "Nhảy đến mốc lưu gần nhất (Ctrl+J)"
+  "jumpToCheckpointWithShortcut": "Nhảy đến mốc lưu gần nhất (Ctrl+J)",
+  "toast": {
+    "error": "Lỗi",
+    "success": "Thành công",
+    "warning": "Cảnh báo",
+    "info": "Thông tin",
+    "loading": "Đang tải",
+    "confirm": "Tôi xác nhận"
+  }
 }

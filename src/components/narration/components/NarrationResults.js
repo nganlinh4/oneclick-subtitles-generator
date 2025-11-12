@@ -89,9 +89,6 @@ const ResultRow = ({ index, style, data }) => {
       <div className="result-controls">
         {result.pending ? (
           <>
-            <span className="status-message pending">
-              {t('narration.pending', 'Pending generation...')}
-            </span>
             {onRetry && (
               <button
                 className={`pill-button secondary generate-button ${retryingSubtitleId === subtitle_id ? 'retrying' : ''}`}
@@ -234,9 +231,6 @@ const ResultRow = ({ index, style, data }) => {
           </>
         ) : (
           <>
-            <span className="error-message">
-              {t('narration.failed', 'Generation failed')}
-            </span>
             {onRetry && (
               <button
                 className={`pill-button secondary retry-button ${retryingSubtitleId === subtitle_id ? 'retrying' : ''}`}

@@ -723,20 +723,14 @@ const TranslationSection = ({ subtitles, videoTitle, onTranslationComplete }) =>
 
       setProcessedDocument(result);
 
-      // Show a temporary success message
-      const successMessage = document.createElement('div');
-      successMessage.className = 'save-success-message';
-      successMessage.textContent = processType === 'consolidate'
-        ? t('output.documentCompleted', 'Document completed successfully')
-        : t('output.summaryCompleted', 'Summary completed successfully');
-      document.body.appendChild(successMessage);
-
-      // Remove the message after 3 seconds
-      setTimeout(() => {
-        if (document.body.contains(successMessage)) {
-          document.body.removeChild(successMessage);
-        }
-      }, 3000);
+      // Show success toast using centralized system
+      window.addToast(
+        processType === 'consolidate'
+          ? t('output.documentCompleted', 'Document completed successfully')
+          : t('output.summaryCompleted', 'Summary completed successfully'),
+        'success',
+        3000
+      );
 
       // Download the processed document
       // Use provided naming info or get it from local state

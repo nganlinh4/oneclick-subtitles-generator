@@ -18,5 +18,13 @@
   "confirm": "확인",
   "done": "완료",
   "jumpToCheckpoint": "마지막 체크포인트로 이동 (여러 단계 실행 취소)",
-  "jumpToCheckpointWithShortcut": "마지막 체크포인트로 이동 (Ctrl+J)"
+  "jumpToCheckpointWithShortcut": "마지막 체크포인트로 이동 (Ctrl+J)",
+  "toast": {
+    "error": "오류",
+    "success": "성공",
+    "warning": "경고",
+    "info": "정보",
+    "loading": "로딩 중",
+    "confirm": "Confirm"
+  }
 }

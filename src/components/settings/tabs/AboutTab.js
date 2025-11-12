@@ -186,7 +186,7 @@ const AboutTab = ({ backgroundType }) => {
             title={t('settings.replayOnboardingTooltip', 'Show the welcome animation again')}
             aria-label={t('settings.replayOnboardingTooltip', 'Show the welcome animation again')}
           >
-            <span className="material-symbols-rounded">replay</span>
+            <span className="material-symbols-rounded">emoji_people</span>
             {t('settings.replayOnboarding', 'Replay Welcome Animation')}
           </button>
         </div>

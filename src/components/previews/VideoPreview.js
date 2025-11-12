@@ -190,15 +190,18 @@ const VideoPreview = ({ currentTime, setCurrentTime, setDuration, videoSource, f
 
     // Default settings if nothing is saved
     return {
-      fontFamily: 'Arial, sans-serif',
+      fontFamily: 'Google Sans, sans-serif',
       fontSize: '24',
-      fontWeight: '400',
+      fontWeight: '500',
       position: '90', // Now a percentage value from 0 (top) to 100 (bottom)
       boxWidth: '80',
       backgroundColor: '#000000',
-      opacity: '0.7',
+      opacity: '0.4',
       textColor: '#ffffff',
-      showTranslatedSubtitles: false
+      showTranslatedSubtitles: false,
+      backgroundRadius: '16',
+      textShadow: true,
+      fontVariationSettings: '"ROND" 100'
     };
   });
   // We track play state in lastPlayStateRef instead of using state to avoid unnecessary re-renders
@@ -731,6 +734,7 @@ const VideoPreview = ({ currentTime, setCurrentTime, setDuration, videoSource, f
                 subtitle.style.padding = `${subtitleSettings.backgroundPadding || '10'}px`;
                 subtitle.style.borderRadius = `${subtitleSettings.backgroundRadius || '4'}px`;
                 subtitle.style.fontFamily = subtitleSettings.fontFamily || 'Arial, sans-serif';
+                subtitle.style.fontVariationSettings = subtitleSettings.fontVariationSettings || 'normal';
                 subtitle.style.fontSize = `${subtitleSettings.fontSize || '24'}px`;
                 subtitle.style.fontWeight = subtitleSettings.fontWeight || '400';
                 subtitle.style.lineHeight = subtitleSettings.lineSpacing || '1.4';
@@ -2469,6 +2473,7 @@ const VideoPreview = ({ currentTime, setCurrentTime, setDuration, videoSource, f
                     background-color: rgba(${parseInt(subtitleSettings.backgroundColor.slice(1, 3), 16)}, ${parseInt(subtitleSettings.backgroundColor.slice(3, 5), 16)}, ${parseInt(subtitleSettings.backgroundColor.slice(5, 7), 16)}, ${subtitleSettings.opacity});
                     color: ${subtitleSettings.textColor};
                     font-family: ${subtitleSettings.fontFamily};
+                    font-variation-settings: ${subtitleSettings.fontVariationSettings || 'normal'};
                     font-size: ${subtitleSettings.fontSize}px;
                     font-weight: ${subtitleSettings.fontWeight};
                     line-height: ${subtitleSettings.lineSpacing || '1.4'};

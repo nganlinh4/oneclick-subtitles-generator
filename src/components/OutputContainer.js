@@ -225,6 +225,28 @@ const OutputContainer = ({
     setEditedLyrics(null);
   }, [subtitlesData]);
 
+  // Show status messages as toasts instead of inline
+  useEffect(() => {
+    if (status?.message) {
+      const message = typeof status.message === 'string' ? (
+        status.message.includes('cache') ? t('output.subtitlesLoadedFromCache', 'Subtitles loaded from cache!') :
+        status.message.includes('Video segments ready') ? t('output.segmentsReady', 'Video segments are ready for processing!') :
+        status.message
+      ) : 'Processing...';
+
+      // Check if onboarding is active before showing toast
+      const hasVisited = localStorage.getItem('has_visited_site') === 'true';
+      const controlsDismissed = localStorage.getItem('onboarding_controls_dismissed') === 'true';
+      const isOnboardingActive = !(hasVisited && controlsDismissed);
+
+      if (!isOnboardingActive) {
+        window.addToast(message, status.type || 'info', 5000, 'output-status');
+      }
+    } else {
+      window.removeToastByKey && window.removeToastByKey('output-status');
+    }
+  }, [status?.message, status?.type, t]);
+
   // Staggered rendering to ease resource burden during expansion
   const [previousCondition, setPreviousCondition] = useState(false);
   useEffect(() => {
@@ -245,19 +267,21 @@ const OutputContainer = ({
 
   // Background Image Generator functionality moved back to AppLayout
 
+  // Determine if there's any content to show
+  const hasParallelProcessingStatus = segmentsStatus.length > 0 && (subtitlesData || !activeTab.includes('youtube'));
+  const hasMainContent = (subtitlesData || uploadedFile || isUploading || status?.message?.includes('select a segment'));
+
   // Don't render anything if there's no content to show
-  if (!status?.message && !subtitlesData) {
+  if (!hasParallelProcessingStatus && !hasMainContent) {
     return null;
   }
-
-
 
   return (
     <div className="output-container">
       {/* Add Subtitles Button removed - now only in buttons-container */}
 
       {/* Show status message or segments status - Combined logic to avoid duplicate rendering */}
-      {segmentsStatus.length > 0 && (subtitlesData || !activeTab.includes('youtube')) ? (
+      {hasParallelProcessingStatus ? (
         <ParallelProcessingStatus
           segments={segmentsStatus}
           overallStatus={
@@ -282,20 +306,7 @@ const OutputContainer = ({
           retryingSegments={retryingSegments}
           onViewRules={onViewRules}
         />
-      ) : (
-        status?.message && (
-          <div className={`status ${status.type}`}>
-            <div className="status-message-text">
-              {/* Translate common status messages that might be hardcoded */}
-              {typeof status.message === 'string' ? (
-                status.message.includes('cache') ? t('output.subtitlesLoadedFromCache', 'Subtitles loaded from cache!') :
-                status.message.includes('Video segments ready') ? t('output.segmentsReady', 'Video segments are ready for processing!') :
-                status.message
-              ) : 'Processing...'}
-            </div>
-          </div>
-        )
-      )}
+      ) : null}
 
       {(subtitlesData || uploadedFile || isUploading || status?.message?.includes('select a segment')) && (
         <>

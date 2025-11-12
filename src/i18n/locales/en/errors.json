@@ -27,5 +27,7 @@
   "invalidJsonStructure": "JSON subtitles must have start, end, and text properties",
   "requestAborted": "Request was cancelled",
   "processingCancelled": "Processing was cancelled by user",
-  "allRequestsAborted": "All requests have been cancelled"
+  "allRequestsAborted": "All requests have been cancelled",
+  "parakeetApiError": "Parakeet API error: {{status}} {{errorText}}",
+  "invalidSegmentSelection": "Invalid segment selection"
 }

@@ -125,7 +125,7 @@ export const useSubtitles = (t) => {
         if (options.method === 'nvidia-parakeet') {
             const seg = options.segment;
             if (!seg || typeof seg.start !== 'number' || typeof seg.end !== 'number') {
-                setStatus({ message: 'Invalid segment selection', type: 'error' });
+                setStatus({ message: t('errors.invalidSegmentSelection', 'Invalid segment selection'), type: 'error' });
                 setIsGenerating(false);
                 return false;
             }
@@ -160,7 +160,8 @@ export const useSubtitles = (t) => {
                                 return merged;
                             });
                         });
-                    }
+                    },
+                    t
                 }
             );
 
@@ -193,7 +194,7 @@ export const useSubtitles = (t) => {
                 autoSaveAfterStreaming({ subtitles: finalSubs, segment: seg, delayMs: 500 });
             } catch {}
 
-            setStatus({ message: 'Parakeet transcription complete', type: 'success' });
+            setStatus({ message: t('output.parakeetTranscriptionComplete', 'Parakeet transcription complete'), type: 'success' });
             setIsGenerating(false);
             return true;
         }

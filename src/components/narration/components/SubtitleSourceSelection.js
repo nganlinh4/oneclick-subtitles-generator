@@ -18,6 +18,7 @@ import SubtitleGroupingModal from './SubtitleGroupingModal';
 import ModelSelectionModal from './ModelSelectionModal';
 import ManualLanguageSelectionModal from './ManualLanguageSelectionModal';
 import HelpIcon from '../../common/HelpIcon';
+import { showErrorToast } from '../../../utils/toastUtils';
 
 /**
  * Subtitle Source Selection component
@@ -429,6 +430,12 @@ const SubtitleSourceSelection = ({
     }
   }, [narrationMethod, subtitleSource, originalLanguage, translatedLanguage, userHasManuallySelectedChatterboxLanguage, chatterboxLanguage, setChatterboxLanguage]);
 
+  // Dispatch toast notifications for model errors
+  useEffect(() => {
+    if (modelError) {
+      showErrorToast(modelError);
+    }
+  }, [modelError]);
 
   // We're using an inline function for the button click handler
 
@@ -714,13 +721,6 @@ const SubtitleSourceSelection = ({
                     <span className="model-name">{(chatterboxLanguage || 'en').toUpperCase()}</span>
                   </span>
                   <span className="material-symbols-rounded dropdown-icon" style={{ fontSize: '14px' }}>expand_more</span>
-
-                  {modelError && (
-                    <div className="model-error">
-                      <span className="error-icon">⚠️</span>
-                      <span>{modelError}</span>
-                    </div>
-                  )}
                 </div>
               ) : (
                 <div className="model-dropdown-container narration-model-dropdown-container">
@@ -740,22 +740,8 @@ const SubtitleSourceSelection = ({
                     </span>
                     <span className="material-symbols-rounded dropdown-icon" style={{ fontSize: '14px' }}>expand_more</span>
                   </button>
-
-                  {modelError && (
-                    <div className="model-error">
-                      <span className="error-icon">⚠️</span>
-                      <span>{modelError}</span>
-                    </div>
-                  )}
                 </div>
               )
-            )}
-
-            {modelError && !selectedModel && !isCheckingModel && (
-              <div className="model-error-standalone">
-                <span className="error-icon">⚠️</span>
-                <span>{modelError}</span>
-              </div>
             )}
           </div>
         </div>

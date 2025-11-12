@@ -4,7 +4,6 @@ import InputMethods from '../InputMethods';
 import OutputContainer from '../OutputContainer';
 import ButtonsContainer from './ButtonsContainer';
 import SettingsModal from '../settings/SettingsModal';
-import TranslationWarningToast from '../TranslationWarningToast';
 import VideoAnalysisModal from '../VideoAnalysisModal';
 import TranscriptionRulesEditor from '../TranscriptionRulesEditor';
 import BackgroundImageGenerator from '../BackgroundImageGenerator';
@@ -387,6 +386,8 @@ const AppLayout = ({
               onGenerateBackground={handleGenerateBackground}
               isProcessingSegment={isProcessingSegment}
               setIsProcessingSegment={appState.setIsProcessingSegment}
+              apiKeysSet={apiKeysSet}
+              onSegmentSelect={handleSegmentSelect}
             />
 
             <OutputContainer
@@ -555,8 +556,6 @@ const AppLayout = ({
         />
       )}
 
-      {/* Toast for translation warnings */}
-      <TranslationWarningToast />
 
       {/* Floating scrollbar component */}
       <FloatingScrollbar />

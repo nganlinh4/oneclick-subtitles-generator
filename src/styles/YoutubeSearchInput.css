@@ -109,12 +109,3 @@
   padding: 2rem;
   color: var(--text-secondary);
 }
-
-.error-message {
-  color: var(--error-color);
-  padding: 1rem;
-  text-align: center;
-  background-color: var(--error-background);
-  border-radius: 8px;
-  margin: 1rem 0;
-}
