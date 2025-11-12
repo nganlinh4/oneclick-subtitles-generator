@@ -4,6 +4,8 @@
  * --- PERFORMANCE OPTIMIZED VERSION ---
  */
 
+import specialStarIcon from '../../assets/specialStar.svg';
+
 // --- Constants ---
 
 // Physics constants
@@ -165,9 +167,8 @@ const ensureSVGDefs = () => {
  * @returns {string} - HTML markup using img tag
  */
 const createSpecialStarSVG = (isFilled, colorSchemeIndex = 0) => {
-  // Use the original specialStar.svg file directly as an image
-  // This ensures we get the exact same appearance as the floating settings button
-  return `<img src="/static/media/specialStar.b6c33e5e0da02ba2436528574cc26cff.svg" alt="Special Star" style="width: 100%; height: 100%; object-fit: contain;" />`;
+  // Use imported specialStarIcon so bundler rewrites to correct hashed path
+  return `<img src="${specialStarIcon}" alt="Special Star" style="width: 100%; height: 100%; object-fit: contain;" />`;
 };
 
 /**
