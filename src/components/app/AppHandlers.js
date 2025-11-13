@@ -648,8 +648,14 @@ export const useAppHandlers = (appState) => {
         "[ProcessWithOptions] Started processing segment, animation should begin"
       );
 
-      if (!uploadedFileData) {
-        throw new Error("No uploaded file data available");
+      let fileToProcess = uploadedFileData;
+      if (!fileToProcess) {
+        if (options.videoFile) {
+          setUploadedFileData(options.videoFile);
+          fileToProcess = options.videoFile;
+        } else {
+          throw new Error("No uploaded file data available");
+        }
       }
 
       // Parakeet processing will be handled by generateSubtitles with method: 'nvidia-parakeet'
@@ -702,7 +708,7 @@ export const useAppHandlers = (appState) => {
         }
 
         await generateSubtitles(
-          uploadedFileData,
+          fileToProcess,
           "file-upload",
           apiKeysSet,
           subtitleOptions

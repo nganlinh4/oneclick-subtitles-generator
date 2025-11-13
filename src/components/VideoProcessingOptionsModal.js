@@ -1118,7 +1118,8 @@ const VideoProcessingOptionsModal = ({
             method,
             parakeetStrategy,
             parakeetMaxChars,
-            parakeetMaxWords: parakeetStrategy === 'sentence' && parakeetPreserveSentences ? -1 : parakeetMaxWords
+            parakeetMaxWords: parakeetStrategy === 'sentence' && parakeetPreserveSentences ? -1 : parakeetMaxWords,
+            videoFile // Include the video file to ensure it's available
         };
 
         // In retry-from-cache mode, force old method and prevent further splitting
