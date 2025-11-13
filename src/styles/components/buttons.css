@@ -322,7 +322,6 @@
 .btn-small {
   padding: 8px 16px;
   height: 36px;
-  font-size: var(--md-label-small-size);
   line-height: var(--md-label-small-height);
   min-width: 100px;
 }

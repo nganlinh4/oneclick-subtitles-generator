@@ -259,15 +259,6 @@
   border: 1px solid rgba(var(--md-outline-variant-rgb), 0.3);
 }
 
-.loading-spinner {
-  width: 20px;
-  height: 20px;
-  border: 2px solid var(--md-outline-variant);
-  border-top: 2px solid var(--md-primary);
-  border-radius: 50%;
-  animation: spin 1s linear infinite;
-}
-
 .upload-status span {
   color: var(--md-on-surface);
   font-size: 0.875rem;

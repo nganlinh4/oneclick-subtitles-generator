@@ -21,6 +21,7 @@ import ModelManagementTab from './ModelManagementTab';
 // Import icons
 import { ApiKeyIcon, ProcessingIcon, PromptIcon, CacheIcon, AboutIcon, ModelIcon } from './icons/TabIcons';
 import { getGitVersion, getLatestVersion, compareVersions } from '../../utils/gitVersion';
+import LoadingIndicator from '../common/LoadingIndicator';
 
 import initSettingsTabPillAnimation from '../../utils/settingsTabPillAnimation';
 import initSettingsTabsDrag from '../../utils/settingsTabsDrag';
@@ -901,7 +902,7 @@ const SettingsModal = ({ onClose, onSave, apiKeysSet, setApiKeysSet }) => {
             >
               {isFactoryResetting ? (
                 <>
-                  <span className="loading-spinner"></span>
+                  <LoadingIndicator size={16} theme="light" showContainer={false} />
                   {t('settings.resetting', 'Resetting...')}
                 </>
               ) : (

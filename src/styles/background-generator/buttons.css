@@ -49,16 +49,6 @@
   justify-content: center; /* Ensure content is centered */
 }
 
-/* Ensure proper alignment of spinner within buttons */
-.generate-button .loading-spinner,
-.new-prompt-button .loading-spinner,
-.header-download-button .loading-spinner,
-.header-action-button .loading-spinner {
-  margin: 0 auto;
-  position: relative;
-  top: 0; /* Adjust if needed based on visual inspection */
-}
-
 .header-download-button {
   display: flex;
   align-items: center;

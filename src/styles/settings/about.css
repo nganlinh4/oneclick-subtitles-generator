@@ -186,12 +186,6 @@
   border-left: 3px solid var(--md-primary);
 }
 
-.loading-spinner {
-  animation: spin 1.5s linear infinite;
-  color: var(--md-primary);
-  flex-shrink: 0;
-}
-
 @keyframes spin {
   from { transform: rotate(0deg); }
   to { transform: rotate(360deg); }
@@ -366,10 +360,6 @@
 [data-theme="dark"] .checking-update {
   background-color: var(--surface-container-dark, rgba(255, 255, 255, 0.08));
   border-left-color: var(--md-primary-light);
-}
-
-[data-theme="dark"] .loading-spinner {
-  color: var(--md-primary-light);
 }
 
 [data-theme="dark"] .update-notification {

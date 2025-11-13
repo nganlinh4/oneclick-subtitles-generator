@@ -60,16 +60,6 @@
   gap: 1rem;
 }
 
-.loading-placeholder .loading-spinner {
-  display: inline-block;
-  width: 32px;
-  height: 32px;
-  border: 3px solid rgba(var(--md-primary-rgb), 0.3);
-  border-radius: 50%;
-  border-top-color: var(--md-primary);
-  animation: spin 1s linear infinite;
-}
-
 @keyframes spin {
   to { transform: rotate(360deg); }
 }

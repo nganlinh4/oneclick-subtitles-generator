@@ -2,6 +2,7 @@
 import { useTranslation } from 'react-i18next';
 import { useState, useEffect } from 'react';
 import { getGitVersion, getDisplayVersion, getLatestVersion, compareVersions, getInstallerFilename } from '../../../utils/gitVersion';
+import LoadingIndicator from '../../common/LoadingIndicator';
 
 const AboutTab = ({ backgroundType }) => {
   const { t } = useTranslation();
@@ -132,7 +133,7 @@ const AboutTab = ({ backgroundType }) => {
               <div className="latest-version-check">
                 {isCheckingUpdate ? (
                   <p className="checking-update">
-                    <span className="material-symbols-rounded loading-spinner">sync</span>
+                    <LoadingIndicator size={16} theme="dark" showContainer={false} />
                     {t('settings.checkingUpdates', 'Checking for updates...')}
                   </p>
                 ) : latestVersionInfo ? (
