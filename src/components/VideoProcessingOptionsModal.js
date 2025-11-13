@@ -1124,6 +1124,18 @@ const VideoProcessingOptionsModal = ({
             }
         } catch { }
 
+        // Determine if parallel processing should be disabled (infinite duration)
+        const shouldDisableParallelProcessing = (() => {
+            if (retryLock) return true;
+            if (videoFile?.type?.startsWith('audio/')) {
+                // In Vercel mode, disable parallel processing for all audio
+                if (isVercelMode) return true;
+                // In non-Vercel mode, disable parallel processing for audio with new method
+                if (!inlineExtraction) return true;
+            }
+            return false;
+        })();
+
         const options = {
             fps,
             mediaResolution,
@@ -1135,7 +1147,9 @@ const VideoProcessingOptionsModal = ({
             promptPreset: selectedPromptPreset,
             customLanguage: selectedPromptPreset === 'translate-directly' ? customLanguage : undefined,
             useTranscriptionRules, // Include the transcription rules setting
-            maxDurationPerRequest: (method === 'nvidia-parakeet' ? parakeetMaxDurationPerRequest : maxDurationPerRequest) * 60, // Convert to seconds
+            maxDurationPerRequest: shouldDisableParallelProcessing
+                ? 999999999 // Very large value to prevent splitting (infinite duration)
+                : (method === 'nvidia-parakeet' ? parakeetMaxDurationPerRequest : maxDurationPerRequest) * 60, // Convert to seconds
             autoSplitSubtitles,
             maxWordsPerSubtitle,
             inlineExtraction,
