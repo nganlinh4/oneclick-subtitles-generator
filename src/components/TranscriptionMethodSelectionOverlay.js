@@ -17,6 +17,18 @@ const TranscriptionMethodSelectionOverlay = ({ isOpen, onMethodSelect, onClose }
         return document.documentElement.getAttribute('data-theme') === 'dark';
     });
 
+    // Version detection state
+    const [isVercelMode, setIsVercelMode] = useState(() => {
+        return typeof window !== 'undefined' && window.location.hostname.includes('vercel.app');
+    });
+    const [isFullVersion, setIsFullVersion] = useState(() => {
+        try {
+            return localStorage.getItem('is_full_version') === 'true';
+        } catch {
+            return false;
+        }
+    });
+
     // Update theme detection
     useEffect(() => {
         const updateTheme = () => {
@@ -36,29 +48,51 @@ const TranscriptionMethodSelectionOverlay = ({ isOpen, onMethodSelect, onClose }
         return () => observer.disconnect();
     }, []);
 
-    const methods = React.useMemo(() => [
-        {
-            id: 'new',
-            name: t('processing.transcriptionMethodNewName'),
-            desc: t('processing.transcriptionMethodNewDescription'),
-            img: isDarkTheme ? newDarkImg : newLightImg
-        },
-        {
-            id: 'old',
-            name: t('processing.transcriptionMethodOldName'),
-            desc: t('processing.transcriptionMethodOldDescription'),
-            img: isDarkTheme ? oldDarkImg : oldLightImg
-        },
-        {
-            id: 'nvidia-parakeet',
-            name: t('processing.transcriptionMethodParakeetName'),
-            desc: t('processing.transcriptionMethodParakeetDescription'),
-            img: isDarkTheme ? parakeetDarkImg : parakeetLightImg
-        }
-    ], [isDarkTheme, t]);
+    // Listen for version changes
+    useEffect(() => {
+        const handleStorageChange = (e) => {
+            if (e.key === 'is_full_version') {
+                setIsFullVersion(e.newValue === 'true');
+            }
+        };
 
-    const handleMethodClick = (methodId) => {
-        onMethodSelect(methodId);
+        window.addEventListener('storage', handleStorageChange);
+        return () => window.removeEventListener('storage', handleStorageChange);
+    }, []);
+
+    const methods = React.useMemo(() => {
+        // Determine which methods are disabled based on version
+        const isParakeetDisabled = !isFullVersion; // Disabled in Lite and Vercel modes
+        const isOldMethodDisabled = isVercelMode; // Disabled only in Vercel mode
+
+        return [
+            {
+                id: 'new',
+                name: t('processing.transcriptionMethodNewName'),
+                desc: t('processing.transcriptionMethodNewDescription'),
+                img: isDarkTheme ? newDarkImg : newLightImg,
+                disabled: false
+            },
+            {
+                id: 'old',
+                name: t('processing.transcriptionMethodOldName'),
+                desc: t('processing.transcriptionMethodOldDescription'),
+                img: isDarkTheme ? oldDarkImg : oldLightImg,
+                disabled: isOldMethodDisabled
+            },
+            {
+                id: 'nvidia-parakeet',
+                name: t('processing.transcriptionMethodParakeetName'),
+                desc: t('processing.transcriptionMethodParakeetDescription'),
+                img: isDarkTheme ? parakeetDarkImg : parakeetLightImg,
+                disabled: isParakeetDisabled
+            }
+        ];
+    }, [isDarkTheme, t, isFullVersion, isVercelMode]);
+
+    const handleMethodClick = (method) => {
+        if (method.disabled) return; // Prevent clicks on disabled methods
+        onMethodSelect(method.id);
         onClose();
     };
 
@@ -72,8 +106,9 @@ const TranscriptionMethodSelectionOverlay = ({ isOpen, onMethodSelect, onClose }
                     {methods.map(method => (
                         <div
                             key={method.id}
-                            className="method-column"
-                            onClick={() => handleMethodClick(method.id)}
+                            className={`method-column ${method.disabled ? 'disabled' : ''}`}
+                            onClick={() => handleMethodClick(method)}
+                            style={method.disabled ? { opacity: 0.5, cursor: 'not-allowed' } : {}}
                         >
                             <div className="method-name">{method.name}</div>
                             <img src={method.img} alt={method.name} />
