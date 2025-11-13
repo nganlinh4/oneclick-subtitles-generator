@@ -871,7 +871,7 @@ const SettingsModal = ({ onClose, onSave, apiKeysSet, setApiKeysSet }) => {
 
           {/* Cache Management Tab Content */}
           <div key="settings-tab-cache" className={`settings-tab-content ${activeTab === 'cache' ? 'active' : ''} settings-tab-content-slide-${animationDirection}`}>
-            <CacheTab />
+            <CacheTab isActive={activeTab === 'cache'} />
           </div>
 
           {/* Model Management Tab Content */}

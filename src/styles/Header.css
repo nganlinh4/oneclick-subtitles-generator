@@ -32,7 +32,6 @@
   font-family: var(--font-title);
   letter-spacing: -0.25px;
   transition: transform 0.3s ease;
-  cursor: pointer; /* Indicate it's clickable */
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;

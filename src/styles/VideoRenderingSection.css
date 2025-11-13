@@ -381,22 +381,6 @@
   text-align: center;
 }
 
-/* Status messages */
-.status-message {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  padding: 12px 16px;
-  border-radius: 12px;
-  margin-bottom: 16px;
-  font-size: 0.9rem;
-}
-
-.status-message.error {
-  background: var(--md-error-container);
-  color: var(--md-on-error-container);
-  border: 1px solid var(--md-error);
-}
 
 /* Video results */
 .rendered-video-section video {

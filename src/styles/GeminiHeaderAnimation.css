@@ -10,7 +10,6 @@
   z-index: 1; /* Above header background, below header content */
   opacity: 0.7;
   transition: opacity 0.3s ease;
-  cursor: pointer; /* Show pointer cursor to indicate interactivity */
 
   /* Ensure the canvas doesn't create visual artifacts and is hardware accelerated */
   transform: translateZ(0); /* Force hardware acceleration */

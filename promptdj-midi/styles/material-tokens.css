@@ -487,36 +487,3 @@
   margin-top: 4px;
 }
 
-/* Status messages */
-.md-status-message {
-  display: flex;
-  align-items: center;
-  gap: 12px;
-  padding: 16px;
-  border-radius: var(--md-shape-medium);
-  animation: fadeIn var(--md-duration-medium2) var(--md-easing-standard);
-}
-
-.md-status-success {
-  background-color: color-mix(in srgb, var(--md-tertiary-container), transparent 70%);
-  color: var(--md-on-tertiary-container);
-  border-left: 4px solid var(--md-tertiary);
-}
-
-.md-status-error {
-  background-color: color-mix(in srgb, var(--md-error-container), transparent 70%);
-  color: var(--md-on-error-container);
-  border-left: 4px solid var(--md-error);
-}
-
-.md-status-info {
-  background-color: color-mix(in srgb, var(--md-primary-container), transparent 70%);
-  color: var(--md-on-primary-container);
-  border-left: 4px solid var(--md-primary);
-}
-
-.md-status-warning {
-  background-color: color-mix(in srgb, var(--md-secondary-container), transparent 70%);
-  color: var(--md-on-secondary-container);
-  border-left: 4px solid var(--md-secondary);
-}

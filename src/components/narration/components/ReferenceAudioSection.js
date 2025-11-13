@@ -1,9 +1,10 @@
-import React from 'react';
+import React, { useEffect } from 'react';
 import { useTranslation } from 'react-i18next';
 import MaterialSwitch from '../../common/MaterialSwitch';
 import CustomScrollbarTextarea from '../../common/CustomScrollbarTextarea';
 import '../../../styles/common/material-switch.css';
 import HelpIcon from '../../common/HelpIcon';
+import { showInfoToast } from '../../../utils/toastUtils';
 
 
 
@@ -35,7 +36,12 @@ const ReferenceAudioSection = ({
 }) => {
   const { t } = useTranslation();
 
-
+  // Show toast when voice recognition starts
+  useEffect(() => {
+    if (isRecognizing) {
+      showInfoToast(t('narration.recognizing', 'Recognizing voice...'));
+    }
+  }, [isRecognizing, t]);
 
   return (
     <div className="narration-row reference-audio-row">
@@ -55,12 +61,6 @@ const ReferenceAudioSection = ({
                 rows={2}
                 disabled={isRecognizing}
               />
-              {isRecognizing && (
-                <div className="status-message info recognizing-indicator">
-                  <span className="material-symbols-rounded" style={{ fontSize: '16px' }}>schedule</span>
-                  {t('narration.recognizing', 'Recognizing voice...')}
-                </div>
-              )}
             </div>
 
             {/* Auto-Recognition Switch */}

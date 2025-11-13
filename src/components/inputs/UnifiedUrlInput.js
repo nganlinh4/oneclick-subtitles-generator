@@ -633,8 +633,8 @@ const UnifiedUrlInput = ({ setSelectedVideo, selectedVideo, className }) => {
 
       {/* History dropdown */}
       <div className="history-dropdown-container">
-        {showHistory && history.length > 0 && (
-          <div className="history-dropdown" ref={historyDropdownRef}>
+        {history.length > 0 && (
+          <div className="history-dropdown" ref={historyDropdownRef} style={{ opacity: showHistory ? 1 : 0, pointerEvents: showHistory ? 'auto' : 'none' }}>
             <div className="history-header">
               <h4 className="history-title">{t('common.recentVideos', 'Recent Videos')}</h4>
             </div>

@@ -110,7 +110,7 @@
     background-color: var(--clr);
     color: white;
     border: none;
-    border-radius: 6px;
+    border-radius: 32px;
     font-size: 0.9rem;
     font-weight: 500;
     cursor: pointer;

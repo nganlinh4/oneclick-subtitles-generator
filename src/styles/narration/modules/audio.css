@@ -29,17 +29,6 @@ audio.audio-player {
   width: 100%;
 }
 
-.audio-status-container .status-message {
-  position: static;
-  margin: 0;
-  max-width: none;
-  pointer-events: auto;
-  font-size: 0.85rem;
-  padding: 0.25rem 0.5rem;
-  border-radius: 4px;
-  display: inline-flex;
-  align-items: center;
-}
 
 /* Audio controls container */
 .audio-controls-container {
@@ -127,14 +116,6 @@ audio.audio-player {
   display: block; /* Ensure proper centering */
 }
 
-.audio-preview .status-message {
-  margin-bottom: 0;
-  padding: 0.35rem 0.5rem;
-  font-size: 0.8rem;
-  height: 32px;
-  display: flex;
-  align-items: center;
-}
 
 /* Reference audio container */
 .reference-audio-container {

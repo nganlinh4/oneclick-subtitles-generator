@@ -38,19 +38,10 @@
   border-radius: 12px;
   box-shadow: var(--md-elevation-level3);
   z-index: 1000;
-  animation: fadeIn 0.2s ease-out;
+  transition: opacity 0.2s ease-out;
 }
 
-@keyframes fadeIn {
-  from {
-    opacity: 0;
-    transform: translateY(-10px);
-  }
-  to {
-    opacity: 1;
-    transform: translateY(0);
-  }
-}
+
 
 .history-header {
   display: flex;

@@ -2,6 +2,7 @@ import React, { useRef, useEffect } from 'react';
 import { useTranslation } from 'react-i18next';
 import SliderWithValue from '../../common/SliderWithValue';
 import CloseButton from '../../common/CloseButton';
+import { showWarningToast } from '../../../utils/toastUtils';
 
 /**
  * Narration Menu component
@@ -45,6 +46,13 @@ const NarrationMenu = ({
 }) => {
   const { t } = useTranslation();
   const menuRef = useRef(null);
+
+  // Show warning toast when menu opens and no narrations are available
+  useEffect(() => {
+    if (showNarrationMenu && !hasAnyNarrations) {
+      showWarningToast(t('narration.noNarrationsAvailable', 'No narrations available. Generate narration first.'));
+    }
+  }, [showNarrationMenu, hasAnyNarrations, t]);
 
   // Add escape key and click outside handlers to close the menu
   useEffect(() => {
@@ -98,23 +106,11 @@ const NarrationMenu = ({
       {showNarrationMenu && (
         <div
           className="subtitle-settings-panel narration-panel"
-          style={{ position: 'absolute', top: 'calc(100%)', right: '-10px', width: '320px', zIndex: 9999 }}
+          style={{ position: 'absolute', top: 'calc(125%)', right: '-5px', width: '320px', zIndex: 9999 }}
           onClick={(e) => e.stopPropagation()}
         >
 
           <div className="settings-content">
-
-            {/* Status message when no narrations are available */}
-            {!hasAnyNarrations && (
-              <div className="setting-group">
-                <div className="status-message warning">
-                  <span className="material-symbols-rounded" style={{ fontSize: '16px' }}>hearing_disabled</span>
-                  <span>
-                    {t('narration.noNarrationsAvailable', 'No narrations available. Generate narration first.')}
-                  </span>
-                </div>
-              </div>
-            )}
 
             {/* Volume Controls */}
             <div className="setting-group">

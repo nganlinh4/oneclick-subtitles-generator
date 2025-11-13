@@ -192,15 +192,6 @@
   transform-origin: center; /* scale from center during pulse */
 }
 
-/* Status message styling */
-.status-message.pending {
-  display: flex;
-  align-items: center;
-  gap: 0.5rem;
-  color: var(--md-tertiary);
-  font-size: 0.9rem;
-  animation: pulse 2s infinite ease-in-out;
-}
 
 /* Virtualized list container */
 .results-virtualized-list {

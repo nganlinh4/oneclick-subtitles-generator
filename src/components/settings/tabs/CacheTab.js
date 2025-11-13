@@ -1,19 +1,20 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { useTranslation } from 'react-i18next';
 import { API_BASE_URL } from '../../../config';
 import CloseButton from '../../common/CloseButton';
 
-const CacheTab = () => {
+const CacheTab = ({ isActive }) => {
   const { t } = useTranslation();
   const [clearingCache, setClearingCache] = useState(false);
   const [loadingCacheInfo, setLoadingCacheInfo] = useState(false);
   const [cacheDetails, setCacheDetails] = useState(null);
-  const [cacheStatus, setCacheStatus] = useState({ message: '', type: '' });
+
+  // Ref to track if we've shown the cache empty toast for the current active state
+  const hasShownEmptyToastRef = useRef(false);
 
   // Function to fetch cache information
-  const fetchCacheInfo = async () => {
+  const fetchCacheInfo = async (showToast = false) => {
     setLoadingCacheInfo(true);
-    setCacheStatus({ message: '', type: '' }); // Reset status message
 
     try {
       const response = await fetch(`${API_BASE_URL}/cache-info`);
@@ -22,22 +23,17 @@ const CacheTab = () => {
       if (data.success) {
         setCacheDetails(data.details);
 
-        // If cache is empty, show a message
-        if (data.details.totalCount === 0) {
-          setCacheStatus({
-            message: t('settings.cacheEmpty', 'Cache is empty. No files to clear.'),
-            type: 'info'
-          });
+        // If cache is empty, show a message only if showToast is true and we haven't shown it yet
+        if (data.details.totalCount === 0 && showToast && !hasShownEmptyToastRef.current) {
+          window.addToast(t('settings.cacheEmpty', 'Cache is empty. No files to clear.'), 'info', 5000);
+          hasShownEmptyToastRef.current = true;
         }
       } else {
         throw new Error(data.error || 'Failed to fetch cache information');
       }
     } catch (error) {
       console.error('Error fetching cache info:', error);
-      setCacheStatus({
-        message: t('settings.cacheInfoError', 'Error fetching cache information: {{errorMessage}}', { errorMessage: error.message }),
-        type: 'error'
-      });
+      window.addToast(t('settings.cacheInfoError', 'Error fetching cache information: {{errorMessage}}', { errorMessage: error.message }), 'error', 8000);
     } finally {
       setLoadingCacheInfo(false);
     }
@@ -48,7 +44,6 @@ const CacheTab = () => {
     // No confirmation prompt as requested
     setClearingCache(true);
     // Don't reset cacheDetails here to prevent UI flashing
-    setCacheStatus({ message: '', type: '' }); // Reset status message
 
     try {
       const response = await fetch(`${API_BASE_URL}/clear-cache`, {
@@ -69,21 +64,15 @@ const CacheTab = () => {
         if (data.details) {
           // Store the cache details for display
           setCacheDetails(data.details);
-
+          
           // Set success message with details
           const totalFiles = data.details.totalCount || 0;
           const totalSize = data.details.formattedTotalSize || '0 Bytes';
-          setCacheStatus({
-            message: t('settings.cacheClearedDetails', 'Cache cleared: {{totalFiles}} files ({{totalSize}})', { totalFiles, totalSize }),
-            type: 'success'
-          });
+          window.addToast(t('settings.cacheClearedDetails', 'Cache cleared: {{totalFiles}} files ({{totalSize}})', { totalFiles, totalSize }), 'success', 6000);
         } else {
           // Fallback for when details are missing
-          setCacheStatus({
-            message: t('settings.cacheClearedSuccess', 'Cache cleared successfully!'),
-            type: 'success'
-          });
-
+          window.addToast(t('settings.cacheClearedSuccess', 'Cache cleared successfully!'), 'success', 5000);
+    
           // Fetch updated cache info if details weren't returned
           // Use a separate function to avoid state flashing
           await fetchCacheInfoQuietly();
@@ -93,11 +82,8 @@ const CacheTab = () => {
       }
     } catch (error) {
       console.error('Error clearing cache:', error);
-      setCacheStatus({
-        message: t('settings.cacheClearError', 'Error clearing cache: {{errorMessage}}', { errorMessage: error.message }),
-        type: 'error'
-      });
-
+      window.addToast(t('settings.cacheClearError', 'Error clearing cache: {{errorMessage}}', { errorMessage: error.message }), 'error', 8000);
+      
       // Fetch updated cache info even if there was an error
       // Use a separate function to avoid state flashing
       await fetchCacheInfoQuietly();
@@ -109,7 +95,6 @@ const CacheTab = () => {
   // Handle clear individual cache type
   const handleClearIndividualCache = async (cacheType, displayName) => {
     setClearingCache(true);
-    setCacheStatus({ message: '', type: '' }); // Reset status message
 
     try {
       const response = await fetch(`${API_BASE_URL}/clear-cache/${cacheType}`, {
@@ -134,15 +119,12 @@ const CacheTab = () => {
         const clearedFiles = clearedData?.count || 0;
         const clearedSize = clearedData?.formattedSize || '0 Bytes';
 
-        setCacheStatus({
-          message: t('settings.individualCacheCleared', '{{displayName}} cleared: {{count}} files ({{size}})', {
-            displayName,
-            count: clearedFiles,
-            size: clearedSize
-          }),
-          type: 'success'
-        });
-
+        window.addToast(t('settings.individualCacheCleared', '{{displayName}} cleared: {{count}} files ({{size}})', {
+          displayName,
+          count: clearedFiles,
+          size: clearedSize
+        }), 'success', 6000);
+        
         // Refresh cache info to update the display
         console.log(`🔄 Refreshing cache info after successful clear`);
         await fetchCacheInfoQuietly();
@@ -153,13 +135,10 @@ const CacheTab = () => {
       }
     } catch (error) {
       console.error(`❌ Error clearing ${cacheType} cache:`, error);
-      setCacheStatus({
-        message: t('settings.individualCacheClearError', 'Error clearing {{displayName}}: {{errorMessage}}', {
-          displayName,
-          errorMessage: error.message
-        }),
-        type: 'error'
-      });
+      window.addToast(t('settings.individualCacheClearError', 'Error clearing {{displayName}}: {{errorMessage}}', {
+        displayName,
+        errorMessage: error.message
+      }), 'error', 8000);
     } finally {
       setClearingCache(false);
     }
@@ -173,14 +152,6 @@ const CacheTab = () => {
 
       if (data.success) {
         setCacheDetails(data.details);
-
-        // If cache is empty, show a message
-        if (data.details.totalCount === 0) {
-          setCacheStatus({
-            message: t('settings.cacheEmpty', 'Cache is empty. No files to clear.'),
-            type: 'info'
-          });
-        }
       }
     } catch (error) {
       console.error('Error fetching cache info quietly:', error);
@@ -188,11 +159,18 @@ const CacheTab = () => {
     }
   };
 
-  // Fetch cache information when component mounts
+  // Reset the toast flag when switching to cache tab
   useEffect(() => {
-    fetchCacheInfo();
+    if (isActive) {
+      hasShownEmptyToastRef.current = false;
+    }
+  }, [isActive]);
+
+  // Fetch cache information when component mounts or isActive changes
+  useEffect(() => {
+    fetchCacheInfo(isActive);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  }, [isActive]);
 
   return (
     <div className="settings-section cache-section">
@@ -207,12 +185,6 @@ const CacheTab = () => {
 
       {/* Action buttons row */}
       <div className="cache-actions-row">
-        {/* Cache status message */}
-        {cacheStatus.message && (
-          <div className={`cache-status-message status-${cacheStatus.type}`}>
-            {cacheStatus.message}
-          </div>
-        )}
 
         <div className="cache-actions">
           <button
@@ -227,7 +199,7 @@ const CacheTab = () => {
 
           <button
             className="refresh-cache-btn"
-            onClick={fetchCacheInfo}
+            onClick={() => fetchCacheInfo(true)}
             disabled={loadingCacheInfo}
             title={t('settings.refreshCacheTooltip', 'Refresh cache information')}
           >
@@ -245,12 +217,12 @@ const CacheTab = () => {
       )}
 
       {/* Empty cache info when no details are shown */}
-      {!cacheDetails && !cacheStatus.message && !loadingCacheInfo && !clearingCache && (
+      {!cacheDetails && !loadingCacheInfo && !clearingCache && (
         <div className="empty-cache-info">
           <p>{t('settings.cacheEmpty', 'No cache information available.')}</p>
           <button
             className="refresh-cache-btn"
-            onClick={fetchCacheInfo}
+            onClick={() => fetchCacheInfo(true)}
             disabled={loadingCacheInfo}
           >
             {t('settings.refreshCache', 'Refresh Cache Info')}

@@ -33,43 +33,6 @@
 
 /* Active state styling is handled by the buttons.css file */
 
-/* Status message styling */
-.status-message,
-.notification-message {
-  padding: 12px;
-  border-radius: 8px;
-  display: flex;
-  align-items: flex-start;
-  gap: 8px;
-  font-size: 0.9rem;
-}
-
-.status-message.info,
-.notification-message.info {
-  background-color: var(--md-primary-container);
-  color: var(--md-on-primary-container);
-  border-left: 4px solid var(--md-primary);
-}
-
-.status-message.warning,
-.notification-message.warning {
-  background-color: var(--md-tertiary-container);
-  color: var(--md-on-tertiary-container);
-  border-left: 4px solid var(--md-tertiary);
-  font-size: 0.85rem;
-  line-height: 1.4;
-}
-
-/* Hide global status dot in narration panel and enlarge warning icon */
-.subtitle-settings-panel.narration-panel .status-message::before {
-  content: none;
-  display: none;
-}
-
-.subtitle-settings-panel.narration-panel .status-message.warning svg {
-  width: 20px;
-  height: 20px;
-}
 
 
 /* Radio pill group */

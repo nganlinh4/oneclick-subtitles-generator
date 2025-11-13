@@ -6,6 +6,7 @@ import HelpIcon from '../../common/HelpIcon';
 import LoadingIndicator from '../../common/LoadingIndicator';
 import AudioPlayer from '../../common/AudioPlayer';
 import { formatTime } from '../../../utils/timeFormatter';
+import { showSuccessToast } from '../../../utils/toastUtils';
 
 /**
  * Audio Controls component
@@ -30,7 +31,12 @@ const AudioControls = ({
     const { t } = useTranslation();
     const [elapsed, setElapsed] = useState(0);
 
-
+    // Show toast when reference audio is ready (but not when loaded from cache)
+    useEffect(() => {
+        if (referenceAudio && !referenceAudio.fromCache) {
+            showSuccessToast(t('narration.referenceAudioReady', 'Reference audio is ready'));
+        }
+    }, [referenceAudio?.filename, t]);
 
     // Update elapsed time while recording
     useEffect(() => {
@@ -128,15 +134,8 @@ const AudioControls = ({
                     {referenceAudio && (
                         <div className="audio-preview" style={{ height: `32px`, marginTop: '6px' }}>
                             <div className="audio-player-container primary-audio-player">
-                                {audioSrc ? (
+                                {audioSrc && (
                                     <AudioPlayer audioSrc={audioSrc} referenceAudio={referenceAudio} height={height} />
-                                ) : (
-                                    <div className="audio-status-container">
-                                        <div className="status-message success">
-                                            <span className="status-icon">✓</span>
-                                            {t('narration.referenceAudioReady', 'Reference audio is ready')}
-                                        </div>
-                                    </div>
                                 )}
                             </div>
                             <button

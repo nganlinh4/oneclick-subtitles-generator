@@ -156,7 +156,7 @@ const AvailableModelsList = ({
         ...prev,
         [model.id]: {
           status: 'failed',
-          error: error.message || 'Failed to download model'
+          error: error.message || t('settings.modelManagement.downloadFailed')
         }
       }));
     }

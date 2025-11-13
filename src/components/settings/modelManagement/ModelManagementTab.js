@@ -146,9 +146,9 @@ const ModelManagementTab = () => {
       // Create new model template
       const newModelTemplate = {
         id: modelId,
-        name: addModelForm.modelId || 'Custom Model',
+        name: addModelForm.modelId || t('settings.modelManagement.customModel'),
         languages: addModelForm.languageCodes.filter(code => code.trim() !== ''),
-        author: 'Custom',
+        author: t('settings.modelManagement.customAuthor'),
         modelUrl: addModelForm.modelUrl,
         vocabUrl: addModelForm.vocabUrl,
         config: configObj

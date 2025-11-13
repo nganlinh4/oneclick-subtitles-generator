@@ -10,18 +10,6 @@
   animation: slideIn 0.5s ease-out;
 }
 
-/* Status styles now come from global index.css - improved spacing */
-.status {
-  margin-bottom: 0; /* No margin as spacing is handled by parent container */
-  margin-top: 0; /* No top margin */
-}
-
-/* Additional styles specific to error status in output container */
-.status.error {
-  white-space: pre-wrap;
-  max-height: 400px;
-  overflow-y: auto;
-}
 
 .preview-section {
   margin-bottom: 2rem;
@@ -306,8 +294,4 @@
     padding: 1rem;
   }
 
-  .status {
-    padding: 0.75rem 1rem;
-    font-size: 0.9rem;
-  }
 }

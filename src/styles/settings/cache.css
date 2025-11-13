@@ -214,36 +214,9 @@
   gap: 20px;
 }
 
-/* Cache status message */
-.cache-status-message {
-  padding: 12px 16px;
-  margin: 0; /* Reset margin */
-  margin-right: auto; /* Push buttons to the right */
-  border-radius: var(--card-border-radius);
-  font-size: var(--md-body-medium-size);
-  animation: fadeIn var(--md-duration-medium2) var(--md-easing-standard);
-  height: auto; /* Changed from 100% to auto to fit content */
-  flex: 1;
-  min-width: 200px;
-}
-
-.cache-status-message.status-success {
-  background-color: var(--success-background);
-  color: var(--success-color);
-  border-left: 4px solid var(--success-color);
-}
-
-.cache-status-message.status-error {
-  background-color: var(--error-background);
-  color: var(--error-color);
-  border-left: 4px solid var(--error-color);
-}
-
-.cache-status-message.status-info {
-  background-color: var(--info-background, rgba(33, 150, 243, 0.1));
-  color: var(--info-color, #2196f3);
-  border-left: 4px solid var(--info-color, #2196f3);
-}
+/* Deprecated: inline cache status messages removed.
+   Use the global toast system instead (window.addToast).
+   Kept as a placeholder in case a future component requires a local status block. */
 
 .cache-details-item {
   margin-bottom: 0; /* Remove margin since we're using gap in parent */
@@ -343,9 +316,6 @@
     align-items: flex-start;
   }
 
-  .cache-status-message {
-    width: 100%;
-  }
 }
 
 @media (max-width: 480px) {

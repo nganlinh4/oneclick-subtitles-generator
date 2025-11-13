@@ -376,7 +376,12 @@ const useNarrationCache = ({
 
       // Restore the most recent reference audio globally
       if (referenceAudioToRestore && setReferenceAudio && setReferenceText) {
-        setReferenceAudio(referenceAudioToRestore);
+        // Mark the reference audio as restored from cache to avoid showing toast
+        const referenceAudioWithCacheFlag = {
+          ...referenceAudioToRestore,
+          fromCache: true
+        };
+        setReferenceAudio(referenceAudioWithCacheFlag);
         setReferenceText(referenceAudioToRestore.text || '');
         console.log(`Globally restored reference audio from ${cacheSource} cache`);
       }

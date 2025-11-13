@@ -189,9 +189,6 @@ const GeminiResultRow = ({ index, style, data }) => {
         ) : item.pending ? (
           // Pending generation - show generate button
           <>
-            <span className="status-message pending">
-              {t('narration.pending', 'Pending generation...')}
-            </span>
             <button
               className={`pill-button secondary generate-button ${retryingSubtitleId === subtitle_id ? 'retrying' : ''}`}
               onClick={() => onRetry(subtitle_id)}
