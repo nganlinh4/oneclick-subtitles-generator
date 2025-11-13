@@ -128,7 +128,6 @@
   box-shadow: var(--md-elevation-level1);
   outline: none;
   padding-right: 70px; /* Make room for the toggle button */
-  animation: fade-in 0.2s ease-in-out;
 }
 
 .api-key-input-field:hover {
@@ -148,7 +147,6 @@
 .masked-input {
   font-family: 'JetBrains Mono', monospace;
   letter-spacing: 2px;
-  animation: fade-in 0.2s ease-in-out;
   -webkit-text-security: disc; /* Creates password dots in WebKit browsers */
   -moz-text-security: disc; /* For Firefox */
 }

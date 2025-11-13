@@ -876,7 +876,7 @@ const SettingsModal = ({ onClose, onSave, apiKeysSet, setApiKeysSet }) => {
 
           {/* Model Management Tab Content */}
           <div key="settings-tab-model-management" className={`settings-tab-content ${activeTab === 'model-management' ? 'active' : ''} settings-tab-content-slide-${animationDirection}`}>
-            <ModelManagementTab />
+            <ModelManagementTab activeTab={activeTab} />
           </div>
 
           {/* About Tab Content */}

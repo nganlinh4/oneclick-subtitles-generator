@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { useTranslation } from 'react-i18next';
 import {
   deleteModel,
@@ -19,9 +19,10 @@ import { getInitialAddModelForm, getInitialEditModelForm } from './modelManageme
 
 /**
  * Component for managing narration models
+ * @param {string} activeTab - The currently active tab in settings modal
  * @returns {JSX.Element} - Rendered component
  */
-const ModelManagementTab = () => {
+const ModelManagementTab = ({ activeTab }) => {
   const { t } = useTranslation();
 
   // Custom hooks for models and downloads
@@ -80,6 +81,32 @@ const ModelManagementTab = () => {
       showErrorToast(error);
     }
   }, [error]);
+
+  // Show warning toast when service is unavailable (only when on the model-management tab)
+  useEffect(() => {
+    if (activeTab !== 'model-management') {
+      // Remove toast if switching away from the tab
+      if (window.removeToastByKey) {
+        window.removeToastByKey('model-service-unavailable');
+      }
+      return;
+    }
+
+    if (!isServiceAvailable) {
+      if (window.addToast) {
+        window.addToast(
+          t('narration.f5ttsUnavailable', '(Service unavailable - Model downloads require F5-TTS service)'),
+          'warning',
+          999999999, // Very long duration to make it persistent
+          'model-service-unavailable'
+        );
+      }
+    } else {
+      if (window.removeToastByKey) {
+        window.removeToastByKey('model-service-unavailable');
+      }
+    }
+  }, [isServiceAvailable, t, activeTab]);
 
   // Handle opening add model dialog
   const handleOpenAddDialog = () => {
@@ -335,20 +362,6 @@ const ModelManagementTab = () => {
 
   return (
     <div className="model-management-section" id="model-management">
-      {!isServiceAvailable && (
-        <div className="model-management-unavailable-message" style={{ maxWidth: 'fit-content', marginBottom: '1.5rem' }}>
-          <div className="warning-icon">
-            <span className="material-symbols-rounded" style={{ fontSize: '24px' }}>warning</span>
-          </div>
-          <div className="message" style={{ display: 'flex', flexDirection: 'column' }}>
-            <strong>{t('settings.modelManagement.title', 'Narration Models')}</strong>
-            <span style={{ fontSize: '0.85rem', color: 'var(--text-secondary)', marginTop: '0.25rem', fontStyle: 'italic' }}>
-              {t('narration.f5ttsUnavailable', '(Service unavailable - Model downloads require F5-TTS service)')}
-            </span>
-          </div>
-        </div>
-      )}
-
       <div style={unavailableContentStyle}>
         <p className="model-management-description">
           {t('settings.modelManagement.description')}

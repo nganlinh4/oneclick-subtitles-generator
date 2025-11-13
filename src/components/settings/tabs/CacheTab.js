@@ -33,7 +33,9 @@ const CacheTab = ({ isActive }) => {
       }
     } catch (error) {
       console.error('Error fetching cache info:', error);
-      window.addToast(t('settings.cacheInfoError', 'Error fetching cache information: {{errorMessage}}', { errorMessage: error.message }), 'error', 8000);
+      if (showToast) {
+        window.addToast(t('settings.cacheInfoError', 'Error fetching cache information: {{errorMessage}}', { errorMessage: error.message }), 'error', 8000);
+      }
     } finally {
       setLoadingCacheInfo(false);
     }
