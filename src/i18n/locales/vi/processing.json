@@ -101,6 +101,9 @@
   "transcriptionMethodParakeetDescription": "Xử lý cục bộ với Nvidia Parakeet, chỉ hỗ trợ một số ngôn ngữ. Chỉ trích xuất từ âm thanh trong video.",
   "audioFpsDisabled": "Cài đặt FPS không áp dụng cho tệp âm thanh",
   "audioResolutionDisabled": "Cài đặt độ phân giải không áp dụng cho tệp âm thanh",
-  "transcribingWithParakeet": "Đang phiên âm với Parakeet ASR ({{current}}/{{total}})..."
+  "transcribingWithParakeet": "Đang phiên âm với Parakeet ASR ({{current}}/{{total}})...",
+  "methodHelpVercel": "Chỉ có phương thức mới khả dụng trong chế độ frontend-only. Phương thức cũ yêu cầu khả năng xử lý video phía máy chủ.",
+  "maxDurationAudioVercel": "Xử lý song song không khả dụng cho tệp âm thanh trong chế độ frontend-only. Tệp âm thanh phải được xử lý dưới dạng một yêu cầu duy nhất.",
+  "maxDurationAudioNewMethod": "Xử lý song song không khả dụng cho tệp âm thanh với phương thức mới. Sử dụng phương thức cũ để xử lý song song âm thanh."
 }
 

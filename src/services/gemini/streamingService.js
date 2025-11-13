@@ -93,15 +93,14 @@ export const streamGeminiContent = async (file, fileUri, options = {}, onChunk, 
 
   try {
     // Determine content type
-    const isAudio = file.type.startsWith('audio/');
+    const isAudio = file.type.startsWith('audio/') || (file.name && file.name.includes('extracted_') && file.name.endsWith('.mp4'));
     const contentType = isAudio ? 'audio' : 'video';
 
     // Get the transcription prompt
     const segmentInfo = options?.segmentInfo || {};
     const promptText = getTranscriptionPrompt(contentType, userProvidedSubtitles, { segmentInfo });
 
-    // Create request data (supports Files API via file_uri OR inline base64 when no fileUri/forceInline)
-    const useInline = !fileUri || options.forceInline === true;
+    const useInline = !fileUri;
 
     let requestData = {
       model: MODEL,
@@ -109,14 +108,20 @@ export const streamGeminiContent = async (file, fileUri, options = {}, onChunk, 
     };
 
     if (useInline) {
-      const base64 = await fileToBase64(file);
+      // For audio files, convert to a format supported by Gemini
+      let processedFile = file;
+      if (isAudio) {
+        const { convertAudioForGemini } = await import('../../utils/audioConverter');
+        processedFile = await convertAudioForGemini(file);
+      }
+      const base64 = await fileToBase64(processedFile);
       requestData.contents = [
         {
           role: "user",
           parts: [
             {
               inlineData: {
-                mimeType: file.type,
+                mimeType: processedFile.type,
                 data: base64
               }
             },

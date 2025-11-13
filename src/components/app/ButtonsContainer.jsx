@@ -50,6 +50,11 @@ const ButtonsContainer = ({
   const [autoFlowStep, setAutoFlowStep] = useState('');
   const autoFlowTimeoutRef = useRef(null);
   const autoFlowAbortedRef = useRef(false);
+
+  // State for Vercel mode detection
+  const [isVercelMode, setIsVercelMode] = useState(() => {
+    return typeof window !== 'undefined' && window.location.hostname.includes('vercel.app');
+  });
   // State for tracking uploaded SRT files with localStorage persistence
   const [uploadedSrtInfo, setUploadedSrtInfo] = useState(() => {
     try {
@@ -197,13 +202,16 @@ const ButtonsContainer = ({
           const overlay = document.querySelector('.transcription-method-overlay');
           console.log('[AutoFlow] Method selection overlay detected:', !!overlay);
           if (overlay) {
-            console.log('[AutoFlow] Auto-selecting Gemini old method...');
-            // Find the middle method (old) - second .method-column
+            // Choose method based on Vercel mode: new method for Vercel, old method otherwise
+            const methodIndex = isVercelMode ? 0 : 1;
+            const methodName = isVercelMode ? 'new' : 'old';
+            console.log(`[AutoFlow] Auto-selecting Gemini ${methodName} method (Vercel mode: ${isVercelMode})...`);
+            // Find the method columns
             const methodColumns = overlay.querySelectorAll('.method-column');
             console.log('[AutoFlow] Found method columns:', methodColumns.length);
             if (methodColumns.length >= 2) {
-              console.log('[AutoFlow] Clicking second method column (old method)');
-              methodColumns[1].click(); // Click the second one (old method)
+              console.log(`[AutoFlow] Clicking method column ${methodIndex} (${methodName} method)`);
+              methodColumns[methodIndex].click(); // Click the appropriate method based on Vercel mode
 
               // Wait for the processing modal to appear after method selection
               console.log('[AutoFlow] Waiting for processing modal to appear after method selection...');

@@ -44,6 +44,16 @@ const VideoProcessingOptionsModal = ({
         }
     });
 
+    // Detect if running in Vercel mode (frontend-only, no ffmpeg)
+    const [isVercelMode, setIsVercelMode] = useState(() => {
+        try {
+            const v = localStorage.getItem('is_vercel_mode');
+            return v === 'true';
+        } catch {
+            return false;
+        }
+    });
+
     // Processing method: 'new' (Files API), 'old' (inline), 'nvidia-parakeet'
     const [method, setMethod] = useState(() => {
         const saved = localStorage.getItem('video_processing_method');
@@ -190,6 +200,8 @@ const VideoProcessingOptionsModal = ({
         const onStorage = (e) => {
             if (e.key === 'is_full_version') {
                 setIsFullVersion(e.newValue === 'true');
+            } else if (e.key === 'is_vercel_mode') {
+                setIsVercelMode(e.newValue === 'true');
             }
         };
         window.addEventListener('storage', onStorage);
@@ -207,8 +219,13 @@ const VideoProcessingOptionsModal = ({
                     if (!aborted && resp.ok) {
                         const data = await resp.json();
                         const isFull = !!data.isDevCuda;
+                        const isVercel = !!data.isStart && !data.isDevCuda;
                         setIsFullVersion(isFull);
-                        try { localStorage.setItem('is_full_version', isFull ? 'true' : 'false'); } catch {}
+                        setIsVercelMode(isVercel);
+                        try {
+                            localStorage.setItem('is_full_version', isFull ? 'true' : 'false');
+                            localStorage.setItem('is_vercel_mode', isVercel ? 'true' : 'false');
+                        } catch {}
                     }
                 }
             } catch {}
@@ -226,6 +243,13 @@ const VideoProcessingOptionsModal = ({
             setMethod('new');
         }
     }, [isFullVersion]);
+
+    // Prevent old method selection in Vercel mode
+    useEffect(() => {
+        if (isVercelMode && method === 'old') {
+            setMethod('new');
+        }
+    }, [isVercelMode]);
 
     // Parakeet dynamic availability (health check)
     const { available: parakeetAvailable, checking: parakeetChecking, isFullMode } = useParakeetAvailability({ retries: 6, intervalMs: 2500 });
@@ -1152,13 +1176,17 @@ const VideoProcessingOptionsModal = ({
 
     if (!isOpen) return null;
 
-    // Build method options, disabling Parakeet when not in Full mode
+    // Build method options, disabling Parakeet when not in Full mode and old method when in Vercel mode
     const parakeetDisabled = !isFullVersion || !parakeetAvailable;
+    const oldMethodDisabled = isVercelMode;
     const parakeetLabel = !isFullVersion
         ? t('processing.methodNvidiaParakeetDisabled', 'Nvidia Parakeet (please run OSG Full)')
         : (!parakeetAvailable
             ? t('processing.methodNvidiaParakeetStarting', 'Nvidia Parakeet (starting up...)')
             : t('processing.methodNvidiaParakeet', 'Nvidia Parakeet (local)'));
+    const oldMethodLabel = isVercelMode
+        ? `${t('processing.methodOldOption', 'Gemini: Old Method')} (not available in frontend-only mode)`
+        : t('processing.methodOldOption', 'Gemini: Old Method');
     const methodOptions = [
         {
             value: 'new',
@@ -1166,7 +1194,8 @@ const VideoProcessingOptionsModal = ({
         },
         {
             value: 'old',
-            label: <span style={{ display: 'inline-flex', alignItems: 'center' }}><div dangerouslySetInnerHTML={{ __html: `<svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 16 16" style="width: 16px; height: 16px; margin-right: 6px; vertical-align: middle;"><path d="M16 8.016A8.522 8.522 0 008.016 16h-.032A8.521 8.521 0 000 8.016v-.032A8.521 8.521 0 007.984 0h.032A8.522 8.522 0 0016 7.984v.032z" fill="url(#prefix__paint0_radial_980_20147)"/><defs><radialGradient id="prefix__paint0_radial_980_20147" cx="0" cy="0" r="1" gradientUnits="userSpaceOnUse" gradientTransform="matrix(16.1326 5.4553 -43.70045 129.2322 1.588 6.503)"><stop offset=".067" stop-color="#9168C0"/><stop offset=".343" stop-color="#5684D1"/><stop offset=".672" stop-color="#1BA1E3"/></radialGradient></defs></svg>` }} />{t('processing.methodOldOption', 'Gemini: Old Method')}</span>
+            disabled: oldMethodDisabled,
+            label: <span style={{ display: 'inline-flex', alignItems: 'center' }}><div dangerouslySetInnerHTML={{ __html: `<svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 16 16" style="width: 16px; height: 16px; margin-right: 6px; vertical-align: middle;"><path d="M16 8.016A8.522 8.522 0 008.016 16h-.032A8.521 8.521 0 000 8.016v-.032A8.521 8.521 0 007.984 0h.032A8.522 8.522 0 0016 7.984v.032z" fill="url(#prefix__paint0_radial_980_20147)"/><defs><radialGradient id="prefix__paint0_radial_980_20147" cx="0" cy="0" r="1" gradientUnits="userSpaceOnUse" gradientTransform="matrix(16.1326 5.4553 -43.70045 129.2322 1.588 6.503)"><stop offset=".067" stop-color="#9168C0"/><stop offset=".343" stop-color="#5684D1"/><stop offset=".672" stop-color="#1BA1E3"/></radialGradient></defs></svg>` }} />{oldMethodLabel}</span>
         },
         {
             value: 'nvidia-parakeet',
@@ -1211,7 +1240,10 @@ const VideoProcessingOptionsModal = ({
                                 placeholder={t('processing.methodLabel', 'Method')}
                                 disabled={retryLock}
                             />
-                            <HelpIcon title={t('processing.inlineExtractionHelp', 'Use the old method when the new method fails; may be slower depending on the situation')} />
+                            <HelpIcon title={isVercelMode
+                                ? t('processing.methodHelpVercel', 'Only the new method is available in frontend-only mode. The old method requires server-side video processing capabilities.')
+                                : t('processing.inlineExtractionHelp', 'Use the old method when the new method fails; may be slower depending on the situation')
+                            } />
                         </div>
                     </div>
                     <CloseButton onClick={onClose} variant="modal" size="medium" />
@@ -1324,7 +1356,16 @@ const VideoProcessingOptionsModal = ({
                                                 <div className="combined-option-half">
                                                     <div className={`label-with-help ${retryLock ? 'disabled' : ''}`} aria-disabled={retryLock ? 'true' : 'false'}>
                                                         <label>{t('processing.maxDurationPerRequest', 'Max duration per request')}</label>
-                                                        <HelpIcon title={t('processing.maxDurationPerRequestDesc', 'Maximum duration for each Gemini request. Longer segments will be split into parallel requests.')} />
+                                                        <HelpIcon title={(() => {
+                                                            if (videoFile?.type?.startsWith('audio/')) {
+                                                                if (isVercelMode) {
+                                                                    return t('processing.maxDurationAudioVercel', 'Parallel processing is not available for audio files in frontend-only mode. Audio files must be processed as a single request.');
+                                                                } else if (!inlineExtraction) {
+                                                                    return t('processing.maxDurationAudioNewMethod', 'Parallel processing is not available for audio files with the new method. Use the old method for audio parallel processing.');
+                                                                }
+                                                            }
+                                                            return t('processing.maxDurationPerRequestDesc', 'Maximum duration for each Gemini request. Longer segments will be split into parallel requests.');
+                                                        })()} />
                                                     </div>
                                                     <div>
                                                         <SliderWithValue
@@ -1335,7 +1376,16 @@ const VideoProcessingOptionsModal = ({
                                                             step={1}
                                                             orientation="Horizontal"
                                                             size="XSmall"
-                                                            state={retryLock ? 'Disabled' : 'Enabled'}
+                                                            state={(() => {
+                                                                if (retryLock) return 'Disabled';
+                                                                if (videoFile?.type?.startsWith('audio/')) {
+                                                                    // In Vercel mode, disable slider for all audio
+                                                                    if (isVercelMode) return 'Disabled';
+                                                                    // In non-Vercel mode, disable slider for audio with new method
+                                                                    if (!inlineExtraction) return 'Disabled';
+                                                                }
+                                                                return 'Enabled';
+                                                            })()}
                                                             id="max-duration-slider"
                                                             ariaLabel={t('processing.maxDurationPerRequest', 'Max duration per request')}
                                                             defaultValue={10}

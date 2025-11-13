@@ -1558,17 +1558,45 @@ router.post('/extract-video-segment', streamingUpload.single('file'), async (req
     const duration = end - start;
     const ffmpegPath = getFfmpegPath();
     const timestamp = Date.now();
-    const outName = `extracted_${timestamp}.mp4`;
+
+    // Check if input file has video stream to determine output format
+    let hasVideo = false;
+    try {
+      const probeResult = await new Promise((resolve, reject) => {
+        const ffprobe = spawn(getFfprobePath(), [
+          '-v', 'error',
+          '-show_streams',
+          '-of', 'json',
+          req.file.path
+        ]);
+        let out = '';
+        ffprobe.stdout.on('data', d => out += d);
+        ffprobe.on('close', code => {
+          if (code === 0) {
+            const data = JSON.parse(out);
+            hasVideo = data.streams?.some(s => s.codec_type === 'video') || false;
+            resolve(hasVideo);
+          } else {
+            reject(new Error('ffprobe failed'));
+          }
+        });
+      });
+    } catch (error) {
+      console.warn('[EXTRACT] Could not probe file, assuming video:', error.message);
+      hasVideo = true; // Default to video if probe fails
+    }
+
+    const isAudio = !hasVideo;
+    const outName = `extracted_${timestamp}.${isAudio ? 'mp3' : 'mp4'}`;
     const outPath = path.join(VIDEOS_DIR, outName);
 
-    console.log(`[EXTRACT] Cutting segment ${start}s-${end}s from ${req.file.path} -> ${outPath}`);
+    console.log(`[EXTRACT] Cutting ${isAudio ? 'audio' : 'video'} segment ${start}s-${end}s from ${req.file.path} -> ${outPath}`);
 
     const ff = spawn(ffmpegPath, [
       '-ss', String(start),
       '-i', req.file.path,
       '-t', String(duration),
-      '-c', 'copy',
-      '-movflags', '+faststart',
+      ...(isAudio ? ['-vn', '-acodec', 'libmp3lame', '-q:a', '2'] : ['-c', 'copy', '-movflags', '+faststart']),
       '-y',
       outPath
     ]);

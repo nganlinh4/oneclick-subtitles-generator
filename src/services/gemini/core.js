@@ -267,35 +267,33 @@ export const streamGeminiApiInline = async (file, options = {}, onChunk, onCompl
         const { start, end } = inlineOptions.segmentInfo;
         const isAudio = file.type.startsWith('audio/');
 
-        // For audio files, skip local extraction and use Files API offsets directly
-        if (!isAudio) {
-          try {
-            const { probeServerAvailability } = await import('../../utils/serverEnv');
-            const hasServer = await probeServerAvailability();
-            if (hasServer) {
-              try {
-                const { extractVideoSegmentLocally } = await import('../../utils/videoSegmenter');
-                const clipped = await extractVideoSegmentLocally(file, start, end, { runId: inlineOptions && inlineOptions.runId ? inlineOptions.runId : undefined });
-                const INLINE_LARGE_SEGMENT_THRESHOLD_BYTES = 20 * 1024 * 1024; // 20MB
-                if (clipped && clipped.size > INLINE_LARGE_SEGMENT_THRESHOLD_BYTES) {
-                  await streamGeminiApiWithFilesApi(
-                    clipped,
-                    { ...inlineOptions, videoMetadata: undefined },
-                    onChunk,
-                    onComplete,
-                    onError,
-                    onProgress
-                  );
-                  return;
-                }
-                await streamGeminiContent(clipped, null, inlineOptions, onChunk, onComplete, onError);
+        // Try server-side ffmpeg splitting for both audio and video
+        try {
+          const { probeServerAvailability } = await import('../../utils/serverEnv');
+          const hasServer = await probeServerAvailability();
+          if (hasServer) {
+            try {
+              const { extractVideoSegmentLocally } = await import('../../utils/videoSegmenter');
+              const clipped = await extractVideoSegmentLocally(file, start, end, { runId: inlineOptions && inlineOptions.runId ? inlineOptions.runId : undefined });
+              const INLINE_LARGE_SEGMENT_THRESHOLD_BYTES = 20 * 1024 * 1024; // 20MB
+              if (clipped && clipped.size > INLINE_LARGE_SEGMENT_THRESHOLD_BYTES) {
+                await streamGeminiApiWithFilesApi(
+                  clipped,
+                  { ...inlineOptions, videoMetadata: undefined },
+                  onChunk,
+                  onComplete,
+                  onError,
+                  onProgress
+                );
                 return;
-              } catch (e) {
-                console.warn('[GeminiAPI] Inline single-stream: server clipping failed, using Files API offsets', e);
               }
+              await streamGeminiContent(clipped, null, inlineOptions, onChunk, onComplete, onError);
+              return;
+            } catch (e) {
+              console.warn('[GeminiAPI] Inline single-stream: server clipping failed, using Files API offsets', e);
             }
-          } catch {}
-        }
+          }
+        } catch {}
 
         // Default: Files API offsets path (frontend-only or server-clip failed)
         const filesApiOptions = {
