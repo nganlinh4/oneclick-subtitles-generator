@@ -1090,7 +1090,7 @@ export const useAppHandlers = (appState) => {
     segmentDuration = 5,
     geminiModel,
     timeFormat,
-    undefined,
+    _legacyOptimizeVideos,
     optimizedResolutionSetting,
     useOptimizedPreviewSetting,
     useCookiesForDownloadSetting,

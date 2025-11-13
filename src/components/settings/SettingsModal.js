@@ -581,35 +581,37 @@ const SettingsModal = ({ onClose, onSave, apiKeysSet, setApiKeysSet }) => {
 
     localStorage.setItem('youtube_api_key', youtubeApiKey);
 
-    // Save localStorage data to server
-    try {
-      // Collect all localStorage data
-      const localStorageData = {};
-      for (let i = 0; i < localStorage.length; i++) {
-        const key = localStorage.key(i);
-        localStorageData[key] = localStorage.getItem(key);
+    // Save localStorage data to server (only if backend is available)
+    if (localStorage.getItem('backend_available') === 'true') {
+      try {
+        // Collect all localStorage data
+        const localStorageData = {};
+        for (let i = 0; i < localStorage.length; i++) {
+          const key = localStorage.key(i);
+          localStorageData[key] = localStorage.getItem(key);
+        }
+
+        // Add specific keys for the server
+        localStorageData.gemini_token = geminiApiKey;
+        localStorageData.genius_token = geniusApiKey;
+
+        // Send to server - using unified port configuration
+        const response = await fetch('http://127.0.0.1:3031/api/save-local-storage', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify(localStorageData),
+        });
+
+        if (!response.ok) {
+          throw new Error('Failed to save settings to server');
+        }
+
+
+      } catch (error) {
+        console.error('Error saving settings to server:', error);
       }
-
-      // Add specific keys for the server
-      localStorageData.gemini_token = geminiApiKey;
-      localStorageData.genius_token = geniusApiKey;
-
-      // Send to server - using unified port configuration
-      const response = await fetch('http://127.0.0.1:3031/api/save-local-storage', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify(localStorageData),
-      });
-
-      if (!response.ok) {
-        throw new Error('Failed to save settings to server');
-      }
-
-
-    } catch (error) {
-      console.error('Error saving settings to server:', error);
     }
 
     // Notify parent component about API keys, segment duration, model, time format, video optimization settings, and cookie setting
