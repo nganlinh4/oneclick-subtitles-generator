@@ -146,7 +146,6 @@ DO NOT include any explanations, comments, or any other text in your response. R
         }
       ],
       generationConfig: {
-        temperature: 0.2,
         topK: 32,
         topP: 0.95,
         maxOutputTokens: maxOutputTokens,

@@ -132,7 +132,6 @@ export async function generateBackgroundPrompt(lyrics, songName = 'Unknown Song'
       }
     ],
     generationConfig: {
-      temperature: 0.4,
       topK: 32,
       topP: 0.95,
       maxOutputTokens: 8192

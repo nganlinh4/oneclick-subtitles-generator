@@ -56,7 +56,6 @@ ${sampleText}
                 }
             ],
             generationConfig: {
-                temperature: 0.1,
                 topK: 16,
                 topP: 0.8,
                 maxOutputTokens: 1024,

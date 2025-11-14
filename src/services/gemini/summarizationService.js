@@ -88,7 +88,6 @@ export const summarizeDocument = async (subtitlesText, model = 'gemini-2.0-flash
                 }
             ],
             generationConfig: {
-                temperature: 0.2,
                 topK: 32,
                 topP: 0.95,
                 maxOutputTokens: 65536, // Increased to maximum allowed value (65536 per Gemini documentation)

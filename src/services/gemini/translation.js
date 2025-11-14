@@ -222,7 +222,6 @@ const translateSubtitles = async (subtitles, targetLanguage, model = 'gemini-2.0
                 }
             ],
             generationConfig: {
-                temperature: 0.2,
                 topK: 32,
                 topP: 0.95,
                 maxOutputTokens: 65536, // Increased to maximum allowed value (65536 per Gemini documentation)
@@ -610,7 +609,6 @@ Return your response in the same JSON format as requested originally, with exact
                         }
                     ],
                     generationConfig: {
-                        temperature: 0.2,
                         topK: 32,
                         topP: 0.95,
                         maxOutputTokens: 65536,

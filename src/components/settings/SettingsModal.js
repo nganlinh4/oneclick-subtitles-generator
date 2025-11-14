@@ -169,9 +169,9 @@ const SettingsModal = ({ onClose, onSave, apiKeysSet, setApiKeysSet }) => {
 
   // Thinking budget settings for each model
   const [thinkingBudgets, setThinkingBudgets] = useState({
-    'gemini-2.5-pro': 128, // Custom thinking with 128 tokens
-    'gemini-2.5-flash': 0, // Thinking disabled by default
-    'gemini-2.5-flash-lite': 0 // Thinking disabled by default
+    'gemini-2.5-pro': -1, // Dynamic thinking
+    'gemini-2.5-flash': -1, // Dynamic thinking
+    'gemini-2.5-flash-lite': -1 // Dynamic thinking
   });
   const [transcriptionPrompt, setTranscriptionPrompt] = useState(DEFAULT_TRANSCRIPTION_PROMPT); // Custom transcription prompt
   const [useCookiesForDownload, setUseCookiesForDownload] = useState(false); // Default to not using cookies
@@ -257,9 +257,9 @@ const SettingsModal = ({ onClose, onSave, apiKeysSet, setApiKeysSet }) => {
     optimizedResolution: '360p',
     useOptimizedPreview: false,
     thinkingBudgets: {
-      'gemini-2.5-pro': 128,
-      'gemini-2.5-flash': 0,
-      'gemini-2.5-flash-lite': 0
+      'gemini-2.5-pro': -1,
+      'gemini-2.5-flash': -1,
+      'gemini-2.5-flash-lite': -1
     },
     useCookiesForDownload: false,
     enableYoutubeSearch: false,

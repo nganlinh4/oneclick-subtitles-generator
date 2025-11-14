@@ -226,8 +226,6 @@ export const addResponseSchema = (requestData, schema, isUserProvided = false) =
         ...requestData,
         generationConfig: {
             ...(requestData.generationConfig || {}),
-            // Use a lower temperature for user-provided subtitles to make the model more deterministic
-            temperature: isUserProvided ? 0.01 : 0.2,
             topK: isUserProvided ? 1 : 32,
             topP: isUserProvided ? 0.5 : 0.95,
             maxOutputTokens: 65536,
