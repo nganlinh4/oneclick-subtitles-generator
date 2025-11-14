@@ -1082,7 +1082,7 @@ const TimelineVisualization = ({
 
 
   // Handle timeline updates
-  useEffect(() => {
+  useLayoutEffect(() => {
     if (timelineRef.current && (lyrics.length > 0 || onSegmentSelect)) {
       lastTimeRef.current = currentTime;
       renderTimeline();
@@ -1093,7 +1093,7 @@ const TimelineVisualization = ({
         clearUnusedChunks(videoSource, currentTime, duration);
       }
     }
-  }, [lyrics, currentTime, duration, zoom, panOffset, renderTimeline, videoSource, onSegmentSelect]);
+  }, [lyrics, currentTime, duration, zoom, panOffset, renderTimeline, videoSource, onSegmentSelect, selectedSegment]);
 
   // Initial render when component mounts or when segment selection is enabled
   useEffect(() => {
@@ -1302,16 +1302,29 @@ const TimelineVisualization = ({
     }
   }, [handleMouseMoveForRange, hiddenActionBarRange, actionBarRange, selectedSegment]);
 
-  // When selectedSegment changes (e.g., after subtitle generation), prepare for action bar
+  // When selectedSegment changes (e.g., after subtitle generation), ensure the UI selection reflects it.
+  // If a user-created actionBarRange is present, clear it and set hiddenActionBarRange to the programmatic selection
+  // so the blue selection highlight updates immediately.
   useEffect(() => {
-    if (selectedSegment && !actionBarRange && !hiddenActionBarRange) {
-      // Check if the selected segment has subtitles
-      if (hasSubtitlesInRange(selectedSegment.start, selectedSegment.end)) {
-        // Pre-set hiddenActionBarRange so hovering will immediately show the action bar
-        setHiddenActionBarRange(selectedSegment);
-      }
+    if (!selectedSegment) return;
+
+    const segKey = (typeof selectedSegment.start === 'number' && typeof selectedSegment.end === 'number')
+      ? `${selectedSegment.start}-${selectedSegment.end}` : null;
+    const actionKey = actionBarRange ? `${actionBarRange.start}-${actionBarRange.end}` : null;
+    const hiddenKey = hiddenActionBarRange ? `${hiddenActionBarRange.start}-${hiddenActionBarRange.end}` : null;
+
+    // If an interactive action bar is currently visible for a different range, hide it
+    if (actionKey && segKey !== actionKey) {
+      setActionBarRange(null);
     }
-  }, [selectedSegment, actionBarRange, hiddenActionBarRange, hasSubtitlesInRange]);
+
+    // If hiddenActionBarRange is missing or different, set it to the new selectedSegment so the blue band updates
+    if (!hiddenKey || segKey !== hiddenKey) {
+      // If the selected segment actually contains subtitles, keep it as hidden action bar so hover will show action bar.
+      // Otherwise still set hiddenActionBarRange so the visual highlight appears immediately.
+      setHiddenActionBarRange(selectedSegment);
+    }
+  }, [selectedSegment, actionBarRange, hiddenActionBarRange]);
 
 
 

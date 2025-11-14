@@ -27,7 +27,8 @@ const VideoProcessingOptionsModal = ({
     videoFile = null, // Optional video file for real token counting
     userProvidedSubtitles = '', // User-provided subtitles text
     useUserProvidedSubtitles = false, // Whether user-provided subtitles are enabled
-    subtitlesData = null // Current subtitles on the timeline
+    subtitlesData = null, // Current subtitles on the timeline
+    onSelectedSegmentChange = null // Callback to update selectedSegment in parent
 }) => {
     const { t } = useTranslation();
     const modalRef = useRef(null);
@@ -1107,8 +1108,42 @@ const VideoProcessingOptionsModal = ({
 
 
     // Handle form submission
-    const handleProcess = () => {
+    const handleProcess = async () => {
         if (!selectedSegment || isUploading) return;
+
+        let currentSegment = selectedSegment;
+
+        // Check for audio + Gemini New method condition and adjust segment
+        if (videoFile?.type?.startsWith('audio/') && !inlineExtraction) {
+            // Get video duration for full range
+            const getVideoDuration = async () => {
+                if (!videoFile) return 0;
+                try {
+                    const videoDuration = await new Promise((resolve) => {
+                        const video = document.createElement('video');
+                        video.preload = 'metadata';
+                        video.onloadedmetadata = () => resolve(video.duration || 0);
+                        video.onerror = () => resolve(0);
+                        setTimeout(() => resolve(0), 2000); // 2 second timeout
+                        video.src = URL.createObjectURL(videoFile);
+                    });
+                    return videoDuration;
+                } catch (error) {
+                    console.warn('[VideoProcessingModal] Could not get video duration for audio range adjustment');
+                    return 0;
+                }
+            };
+
+            const duration = await getVideoDuration();
+            if (duration > 0) {
+                currentSegment = { start: 0, end: duration };
+                if (onSelectedSegmentChange) {
+                    onSelectedSegmentChange(currentSegment);
+                }
+                // Show toast notification
+                showInfoToast(t('processing.audioRangeAdjusted', 'Audio processing using Gemini new method will auto adjust your range to the whole video'));
+            }
+        }
 
         // Persist outside-context text just before processing (user-provided flow reads it in promptManagement)
         try {
@@ -1139,7 +1174,7 @@ const VideoProcessingOptionsModal = ({
             fps,
             mediaResolution,
             model: selectedModel,
-            segment: selectedSegment,
+            segment: currentSegment,
             estimatedTokens: displayTokens,
             realTokenCount,
             customPrompt: getSelectedPromptText(), // Include the selected prompt

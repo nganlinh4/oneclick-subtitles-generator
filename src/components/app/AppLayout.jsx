@@ -546,6 +546,7 @@ const AppLayout = ({
             setSelectedSegment(null);
           }}
           onProcess={handleProcessWithOptions}
+          onSelectedSegmentChange={setSelectedSegment}
           selectedSegment={selectedSegment}
           videoDuration={uploadedFile?.duration || selectedVideo?.duration || 0}
           isUploading={isUploading}

@@ -104,5 +104,6 @@
   "audioResolutionDisabled": "Resolution settings are not applicable for audio files",
   "methodHelpVercel": "Only the new method is available in Vercel version. The old method requires server-side video processing capabilities.",
   "maxDurationAudioVercel": "Parallel processing is not available for audio files in Vercel version. Audio files must be processed as a single request.",
-  "maxDurationAudioNewMethod": "Parallel processing is not available for audio files with the new method. Use the old method for audio parallel processing."
+  "maxDurationAudioNewMethod": "Parallel processing is not available for audio files with the new method. Use the old method for audio parallel processing.",
+  "audioRangeAdjusted": "Audio processing using Gemini new method will auto adjust your range to the whole video"
 }
