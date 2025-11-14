@@ -81,7 +81,7 @@ export const probeServerAvailability = async () => {
 export const getServerAvailabilityCached = () => _cachedAvailable;
 
 /**
- * Convenience helper: true if running frontend-only (server not available)
+ * Convenience helper: true if running Vercel version (server not available)
  */
 export const isFrontendOnly = async () => !(await probeServerAvailability());
 

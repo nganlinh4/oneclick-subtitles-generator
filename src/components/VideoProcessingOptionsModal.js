@@ -44,7 +44,6 @@ const VideoProcessingOptionsModal = ({
         }
     });
 
-    // Detect if running in Vercel mode (frontend-only, no ffmpeg)
     const [isVercelMode, setIsVercelMode] = useState(() => {
         try {
             const v = localStorage.getItem('is_vercel_mode');
@@ -1199,7 +1198,7 @@ const VideoProcessingOptionsModal = ({
             ? t('processing.methodNvidiaParakeetStarting', 'Nvidia Parakeet (starting up...)')
             : t('processing.methodNvidiaParakeet', 'Nvidia Parakeet (local)'));
     const oldMethodLabel = isVercelMode
-        ? `${t('processing.methodOldOption', 'Gemini: Old Method')} (not available in frontend-only mode)`
+        ? `${t('processing.methodOldOption', 'Gemini: Old Method')} (not available in Vercel version)`
         : t('processing.methodOldOption', 'Gemini: Old Method');
     const methodOptions = [
         {
@@ -1255,7 +1254,7 @@ const VideoProcessingOptionsModal = ({
                                 disabled={retryLock}
                             />
                             <HelpIcon title={isVercelMode
-                                ? t('processing.methodHelpVercel', 'Only the new method is available in frontend-only mode. The old method requires server-side video processing capabilities.')
+                                ? t('processing.methodHelpVercel', 'Only the new method is available in Vercel version. The old method requires server-side video processing capabilities.')
                                 : t('processing.inlineExtractionHelp', 'Use the old method when the new method fails; may be slower depending on the situation')
                             } />
                         </div>
@@ -1373,7 +1372,7 @@ const VideoProcessingOptionsModal = ({
                                                         <HelpIcon title={(() => {
                                                             if (videoFile?.type?.startsWith('audio/')) {
                                                                 if (isVercelMode) {
-                                                                    return t('processing.maxDurationAudioVercel', 'Parallel processing is not available for audio files in frontend-only mode. Audio files must be processed as a single request.');
+                                                                    return t('processing.maxDurationAudioVercel', 'Parallel processing is not available for audio files in Vercel version. Audio files must be processed as a single request.');
                                                                 } else if (!inlineExtraction) {
                                                                     return t('processing.maxDurationAudioNewMethod', 'Parallel processing is not available for audio files with the new method. Use the old method for audio parallel processing.');
                                                                 }

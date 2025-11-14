@@ -295,7 +295,7 @@ export const streamGeminiApiInline = async (file, options = {}, onChunk, onCompl
           }
         } catch {}
 
-        // Default: Files API offsets path (frontend-only or server-clip failed)
+        // Default: Files API offsets path (Vercel version or server-clip failed)
         const filesApiOptions = {
           ...inlineOptions,
           forceInline: undefined
