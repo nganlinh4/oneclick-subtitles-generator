@@ -10,25 +10,33 @@
     --ce2: #db3056;
 }
 
-/* --- MODIFICATION HERE: Use Flexbox for stacking --- */
-.toast-panel {
+/* --- Wrapper & Panel --- */
+.toast-panel-wrapper {
     position: fixed;
-    bottom: 20px;
-    right: 20px;
-    z-index: 100000; /* Increased to appear above modals */
-    display: flex;
-    flex-direction: column-reverse; /* Stacks items from bottom to top */
-    align-items: flex-end; /* Aligns toasts to the right */
-    gap: 0.5rem; /* Replaces margin for spacing between toasts */
+    bottom: 0; /* Changed from 20px to align hover area better */
+    right: 0;  /* Changed from 20px */
+    z-index: 100000;
     pointer-events: none;
+    padding: 20px; /* Use padding to create space around the panel */
 }
 
-/* --- MODIFICATION HERE: Simplify toast item --- */
+.toast-panel {
+    position: relative;
+    z-index: 1; /* Sits inside the wrapper */
+    display: flex;
+    flex-direction: column-reverse;
+    align-items: flex-end;
+    gap: 0.5rem;
+    pointer-events: auto; /* Enable mouse events on the panel itself */
+    width: fit-content;
+    height: fit-content;
+}
+
+/* --- Toast Item & Animations --- */
 .toast-item {
     pointer-events: auto;
 }
 
-/* The animations now apply directly to the item's content */
 .toast-item.show .toast {
     animation: show-toast 0.5s ease forwards;
 }
@@ -36,6 +44,7 @@
     0% { opacity: 0; transform: translateX(100%); }
     100% { opacity: 1; transform: translateX(0); }
 }
+
 .toast-item.dismissing .toast {
     animation: hide-toast 0.5s ease forwards;
 }
@@ -44,20 +53,20 @@
     100% { opacity: 0; transform: translateX(100%); }
 }
 
-/* --- MODIFICATION HERE: Set width and handle text --- */
+/* --- Base Toast Style --- */
 .toast {
     background: rgba(246, 249, 255, 0.9);
     color: #333;
-    padding: 1rem 2.5rem 1rem 2.5rem;
+    padding: 1rem 1.5rem 1rem 2.5rem;
     border-radius: 1.5rem;
     position: relative;
-    font-weight: 300;
     text-align: left;
-    max-width: 280px; /* Adjust this value for desired thinness */
-    opacity: 0; /* Start hidden, animation will show it */
+    max-width: 280px;
+    opacity: 0;
     box-shadow: 0 0 1.5rem 0 rgba(26, 31, 67, 0.25);
     overflow: hidden;
-    word-wrap: break-word; /* Ensures long text without spaces wraps */
+    word-wrap: break-word;
+    transition: box-shadow 0.3s ease, background-color 0.3s ease;
 }
 
 /* Accent pill bar */
@@ -68,7 +77,7 @@
     left: 1.1rem;
     bottom: 1.1rem;
     width: 0.3rem;
-    border-radius: 8px 8px 8px 8px;
+    border-radius: 8px;
     background-color: var(--clr);
 }
 .toast h3 {
@@ -76,17 +85,22 @@
     margin: 0 0 0.25rem 0;
     line-height: 1.35rem;
     font-weight: 600;
-    position: relative;
     color: var(--clr);
 }
 .toast p {
-    position: relative;
     font-size: 0.95rem;
-    z-index: 1;
     margin: 0;
     color: #595959;
     line-height: 1.3rem;
 }
+
+.toast-time {
+    display: block;
+    font-size: 0.8rem;
+    color: #888;
+    margin-top: 4px;
+}
+
 .close-icon {
     position: absolute;
     right: 1rem;
@@ -97,12 +111,8 @@
     opacity: 0;
     transition: color 0.2s ease, opacity 0.2s ease;
 }
-.close-icon:hover {
-    color: var(--clr);
-}
-.toast-item:hover .close-icon {
-    opacity: 1;
-}
+.close-icon:hover { color: var(--clr); }
+.toast-item.live:hover .close-icon { opacity: 1; }
 
 .toast-button {
     margin-top: 12px;
@@ -116,32 +126,41 @@
     cursor: pointer;
     transition: background-color 0.2s ease;
 }
-
-.toast-button:hover {
-    background-color: color-mix(in srgb, var(--clr), black 15%);
-}
+.toast-button:hover { background-color: color-mix(in srgb, var(--clr), black 15%); }
 
 /* Swipe feedback */
-.toast-item.swiping {
-    opacity: 0.8;
+.toast-item.swiping { opacity: 0.8; }
+
+/* --- REVAMPED: Historical Toast Styling --- */
+.toast-item.historical .toast {
+    /* Slightly fade historical toasts to distinguish them from live ones */
+    opacity: 0; /* Start hidden for animation */
+    transition: opacity 0.3s ease, transform 0.3s ease;
 }
 
-.toast.toast-help { --bg: var(--ch1); --clr: var(--ch2); }
-.toast.toast-info { --bg: var(--ch1); --clr: var(--ch2); }
-.toast.toast-loading { --bg: #424242; --clr: #757575; }
-.toast.toast-success { --bg: var(--cs1); --clr: var(--cs2); }
-.toast.toast-warning { --bg: var(--cw1); --clr: var(--cw2); }
-.toast.toast-error { --bg: var(--ce1); --clr: var(--ce2); }
+.toast-panel:hover .toast-item.historical .toast,
+.toast-item.historical.show .toast {
+    /* On hover of the panel, historical toasts become fully visible */
+    opacity: 1;
+}
 
-.icon-help, .toast-item.toast-help { --clr: #0070e0; }
-.icon-info, .toast-item.toast-info { --clr: #0070e0; }
-.icon-loading, .toast-item.toast-loading { --clr: #757575; }
-.icon-success, .toast-item.toast-success { --clr: #03a65a; }
-.icon-warning, .toast-item.toast-warning { --clr: #fc8621; }
-.icon-error, .toast-item.toast-error { --clr: #db3056; }
+/* Make historical toasts feel less "active" */
+.toast-item.historical:not(:hover) .toast {
+    box-shadow: 0 0 1rem 0 rgba(26, 31, 67, 0.1);
+}
+.toast-item.historical:hover .toast {
+    box-shadow: 0 0 1.5rem 0 rgba(26, 31, 67, 0.25);
+    transform: translateX(-5px);
+}
 
+/* --- Toast Types --- */
+.toast.toast-help, .toast.toast-info { --clr: var(--ch2); }
+.toast.toast-loading { --clr: #757575; }
+.toast.toast-success { --clr: var(--cs2); }
+.toast.toast-warning { --clr: var(--cw2); }
+.toast.toast-error { --clr: var(--ce2); }
 
-/* Dark mode support */
+/* --- Dark Mode --- */
 [data-theme="dark"] .toast {
     background: rgba(30, 30, 30, 0.9);
     color: #e0e0e0;
@@ -149,4 +168,145 @@
 }
 [data-theme="dark"] .toast p { color: #b0b0b0; }
 [data-theme="dark"] .close-icon { color: #b0b0b0; }
-[data-theme="dark"] .close-icon:hover { color: var(--clr); }
+[data-theme="dark"] .toast-time { color: #999; }
+[data-theme="dark"] .toast-item.historical:not(:hover) .toast {
+    box-shadow: 0 0 1rem 0 rgba(0, 0, 0, 0.3);
+}
+[data-theme="dark"] .toast-item.historical:hover .toast {
+    box-shadow: 0 0 1.5rem 0 rgba(0, 0, 0, 0.5);
+}
+
+
+/* --- Floating History Button Container --- */
+.toast-history-button-container {
+  position: fixed;
+  bottom: 0;
+  right: 0;
+  pointer-events: none;
+  z-index: 2147483646;
+}
+
+/* --- Floating History Button (matching floating-settings exactly) --- */
+.toast-history-button {
+  position: fixed;
+  bottom: 20px;
+  right: 24px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 48px;
+  height: 48px;
+  border-radius: 50%;
+  background: rgba(var(--md-surface-rgb), 0.95) !important;
+  color: var(--md-on-surface);
+  border: 1px solid rgba(var(--md-outline-variant-rgb), 0.3) !important;
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.15) !important;
+  cursor: pointer;
+  pointer-events: auto;
+  transition: all 0.4s cubic-bezier(0.25, 0.46, 0.45, 0.94) !important;
+  padding: 12px;
+  backdrop-filter: blur(12px);
+  font-size: 16px !important;
+  position: relative;
+  overflow: hidden;
+}
+
+/* State layer for hover effect */
+.toast-history-button::before {
+    content: '';
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    background-color: transparent;
+    transition: background-color var(--md-duration-medium2) var(--md-easing-standard);
+    pointer-events: none;
+    border-radius: 50%;
+}
+
+.toast-history-button:hover::before {
+    background-color: color-mix(in srgb, var(--md-primary), transparent var(--md-state-hover-opacity));
+}
+
+/* Icon sizing */
+.toast-history-button .material-symbols-rounded {
+    font-size: 16px;
+    line-height: 1;
+}
+
+/* Visible / hidden states */
+.toast-history-button.floating-visible,
+.toast-history-button.floating-visible .material-symbols-rounded {
+    opacity: 1;
+    transform: scale(1);
+    pointer-events: auto;
+    filter: none;
+}
+.toast-history-button.floating-hidden {
+    opacity: 0;
+    transform: scale(0.8);
+    pointer-events: none;
+    filter: blur(4px);
+}
+
+/* Hover affordance */
+.toast-history-button:hover {
+    transform: translateY(-4px) scale(1.02);
+    box-shadow: 0 16px 56px rgba(0, 0, 0, 0.22);
+}
+
+/* Active / pinned state */
+.toast-history-button.active {
+    background-color: var(--ch2);
+    box-shadow: 0 20px 64px rgba(3,166,90,0.18);
+}
+
+/* Dark mode */
+[data-theme="dark"] .toast-history-button {
+    background: rgba(var(--md-surface-rgb), 0.95) !important;
+    color: var(--md-on-surface);
+    border: 1px solid rgba(var(--md-outline-variant-rgb), 0.3) !important;
+    box-shadow: 0 8px 32px rgba(0, 0, 0, 0.15) !important;
+    backdrop-filter: blur(12px);
+}
+[data-theme="dark"] .toast-history-button:hover {
+    box-shadow: 0 16px 56px rgba(0, 0, 0, 0.22);
+}
+[data-theme="dark"] .toast-history-button.active {
+    background: linear-gradient(180deg, rgba(3,166,90,0.95), rgba(3,166,90,0.88));
+    color: white;
+    box-shadow: 0 20px 64px rgba(0,0,0,0.7);
+}
+
+/* Toast history container */
+.toast-history-container {
+    max-height: 85vh;
+    overflow-y: auto;
+    overflow-x: hidden;
+    padding: 10px;
+    scrollbar-width: none; /* Firefox */
+    -ms-overflow-style: none; /* IE and Edge */
+}
+.toast-history-container::-webkit-scrollbar {
+    display: none; /* Chrome, Safari, Opera */
+}
+
+/* ADDED: History panel exit animation */
+.toast-history-container.hiding {
+    /* Slide out to the right when closing */
+    animation: history-slide-out 0.5s ease-in-out forwards;
+    /* Prevent interaction while it's animating away */
+    pointer-events: none;
+}
+
+@keyframes history-slide-out {
+    from {
+        opacity: 1;
+        transform: translateX(0);
+    }
+    to {
+        opacity: 0;
+        transform: translateX(100%);
+    }
+}
