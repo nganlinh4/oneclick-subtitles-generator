@@ -99,6 +99,8 @@
   "transcriptionMethodNewDescription": "Tương tác với video qua Files API. Nên dùng khi tạo sub cho một đoạn cụ thể. Hoạt động tốt với Gemini 2.5 Pro. Hiểu được cả âm thanh và hình ảnh.",
   "transcriptionMethodOldDescription": "Cắt video trên máy rồi gửi Gemini sau, thích hợp cho tạo sub cho toàn video giai đoạn đầu. Hoạt động tốt với toàn bộ mô hình. Hiểu được cả âm thanh và hình ảnh.",
   "transcriptionMethodParakeetDescription": "Xử lý cục bộ với Nvidia Parakeet, chỉ hỗ trợ một số ngôn ngữ. Chỉ trích xuất từ âm thanh trong video.",
+  "transcriptionMethodWhisperName": "Groq Whisper",
+  "transcriptionMethodWhisperDescription": "Tạo phụ đề đa ngôn ngữ với OpenAI Whisper dựa trên âm thanh được cung cấp, dùng miễn phí nhờ Groq API. (Phương thức này đang trong quá trình phát triển)",
   "audioFpsDisabled": "Cài đặt FPS không áp dụng cho tệp âm thanh",
   "audioResolutionDisabled": "Cài đặt độ phân giải không áp dụng cho tệp âm thanh",
   "transcribingWithParakeet": "Đang phiên âm với Parakeet ASR ({{current}}/{{total}})...",

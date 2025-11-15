@@ -12,8 +12,7 @@
   display: flex;
   align-items: center;
   justify-content: center;
-  z-index: 10000; /* Higher than modal overlay */
-  animation: modal-appear 0.3s var(--md-easing-emphasized);
+  z-index: 100000; /* Higher than video processing modal */
 }
 
 .video-processing-modal-overlay {
@@ -29,7 +28,6 @@
   justify-content: center;
   z-index: 99999;
   isolation: isolate;
-  animation: modal-appear 0.3s var(--md-easing-emphasized);
 }
 
 .video-processing-modal {
@@ -903,23 +901,43 @@
   padding: 2rem;
   text-align: center;
   min-height: 400px;
+  position: relative;
+}
+
+.method-selection-overlay-header {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 100%;
+  margin-bottom: 2rem;
+}
+
+.method-selection-overlay-header h2 {
+  flex: 1;
+}
+
+.method-selection-overlay-header .close-button-component {
+  position: fixed;
+  right: 1.5rem;
+  top: 1.5rem;
+  z-index: 1300;
 }
 
 .method-selection-overlay h2 {
   font-size: 1.5rem;
   font-weight: 600;
   color: #ffffff;
-  margin-bottom: 2rem;
+  margin-bottom: 0;
   letter-spacing: 0.25px;
   text-shadow: 0 2px 4px rgba(0, 0, 0, 0.5), 0 1px 2px rgba(0, 0, 0, 0.3);
 }
 
 .methods-grid {
   display: grid;
-  grid-template-columns: repeat(3, 1fr);
+  grid-template-columns: repeat(4, 1fr);
   gap: 2rem;
   width: 100%;
-  max-width: 900px;
+  max-width: 1200px;
 }
 
 .method-column {

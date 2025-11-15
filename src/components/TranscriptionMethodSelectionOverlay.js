@@ -1,17 +1,20 @@
 import React, { useState, useEffect } from 'react';
 import ReactDOM from 'react-dom';
 import { useTranslation } from 'react-i18next';
+import CloseButton from './common/CloseButton';
 import newDarkImg from '../assets/transcription-methods/new_dark.png';
 import newLightImg from '../assets/transcription-methods/new_light.png';
 import oldDarkImg from '../assets/transcription-methods/old_dark.png';
 import oldLightImg from '../assets/transcription-methods/old_light.png';
 import parakeetDarkImg from '../assets/transcription-methods/parakeet_dark.png';
 import parakeetLightImg from '../assets/transcription-methods/parakeet_light.png';
+import whisperDarkImg from '../assets/transcription-methods/whisper_dark.png';
+import whisperLightImg from '../assets/transcription-methods/whisper_light.png';
 
 /**
  * Overlay for first-time transcription method selection
  */
-const TranscriptionMethodSelectionOverlay = ({ isOpen, onMethodSelect, onClose }) => {
+const TranscriptionMethodSelectionOverlay = ({ isOpen, onMethodSelect, onClose, onCloseAndHideModal }) => {
     const { t } = useTranslation();
     const [isDarkTheme, setIsDarkTheme] = useState(() => {
         return document.documentElement.getAttribute('data-theme') === 'dark';
@@ -86,6 +89,13 @@ const TranscriptionMethodSelectionOverlay = ({ isOpen, onMethodSelect, onClose }
                 desc: t('processing.transcriptionMethodParakeetDescription'),
                 img: isDarkTheme ? parakeetDarkImg : parakeetLightImg,
                 disabled: isParakeetDisabled
+            },
+            {
+                id: 'groq-whisper',
+                name: t('processing.transcriptionMethodWhisperName'),
+                desc: t('processing.transcriptionMethodWhisperDescription'),
+                img: isDarkTheme ? whisperDarkImg : whisperLightImg,
+                disabled: true
             }
         ];
     }, [isDarkTheme, t, isFullVersion, isVercelMode]);
@@ -98,28 +108,50 @@ const TranscriptionMethodSelectionOverlay = ({ isOpen, onMethodSelect, onClose }
 
     if (!isOpen) return null;
 
+    const handleBackdropClick = (e) => {
+        if (e.target === e.currentTarget) {
+            onCloseAndHideModal();
+        }
+    };
+
+    const handleContentClick = (e) => {
+        e.stopPropagation();
+    };
+
+    const handleCloseClick = (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        e.nativeEvent?.stopImmediatePropagation?.();
+        // Call onClose immediately without setTimeout to ensure proper event handling
+        // This matches the ESC key behavior where the event is handled synchronously
+        onCloseAndHideModal();
+    };
+
     return ReactDOM.createPortal(
-        <div className="transcription-method-overlay">
-            <div className="method-selection-overlay">
-                <h2>{t('processing.transcriptionMethodOverlayTitle')}</h2>
-                <div className="methods-grid">
-                    {methods.map(method => (
-                        <div
-                            key={method.id}
-                            className={`method-column ${method.disabled ? 'disabled' : ''}`}
-                            onClick={() => handleMethodClick(method)}
-                            style={method.disabled ? { opacity: 0.5, cursor: 'not-allowed' } : {}}
-                        >
-                            <div className="method-name">{method.name}</div>
-                            <img src={method.img} alt={method.name} />
-                            <div className="method-desc">{method.desc}</div>
-                        </div>
-                    ))}
-                </div>
-            </div>
-        </div>,
-        document.body
-    );
+         <div className="transcription-method-overlay" onClick={handleBackdropClick}>
+             <div className="method-selection-overlay" onClick={handleContentClick}>
+                 <div className="method-selection-overlay-header">
+                     <h2>{t('processing.transcriptionMethodOverlayTitle')}</h2>
+                     <CloseButton onClick={handleCloseClick} variant="modal" />
+                 </div>
+                 <div className="methods-grid">
+                     {methods.map(method => (
+                         <div
+                             key={method.id}
+                             className={`method-column ${method.disabled ? 'disabled' : ''}`}
+                             onClick={() => handleMethodClick(method)}
+                             style={method.disabled ? { opacity: 0.5, cursor: 'not-allowed' } : {}}
+                         >
+                             <div className="method-name">{method.name}</div>
+                             <img src={method.img} alt={method.name} />
+                             <div className="method-desc">{method.desc}</div>
+                         </div>
+                     ))}
+                 </div>
+             </div>
+         </div>,
+         document.body
+     );
 };
 
 export default TranscriptionMethodSelectionOverlay;
