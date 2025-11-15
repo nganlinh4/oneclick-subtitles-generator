@@ -543,6 +543,15 @@ const BackgroundImageGenerator = ({ lyrics, albumArt, songName, isExpanded = fal
             {t('backgroundGenerator.title', 'Background Image Generator')}
           </h2>
           <BackgroundPromptEditorButton />
+          <span style={{
+            marginLeft: '16px',
+            fontSize: '12px',
+            color: 'var(--md-on-surface-variant)',
+            fontStyle: 'italic',
+            opacity: 0.7
+          }}>
+            {t('backgroundGenerator.upcomingFeatures', 'Currently, Google has completely removed 2 native image models from the free tier!')}
+          </span>
         </div>
         <button
           className="collapse-button"

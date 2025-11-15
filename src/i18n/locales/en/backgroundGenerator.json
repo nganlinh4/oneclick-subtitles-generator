@@ -32,6 +32,7 @@
   "clearImages": "Clear",
   "clearImagesTitle": "Clear All Images",
   "helperMessage": "You can use your own lyrics and album art here, or press \"Add Subtitles\" to fetch from Genius",
+  "upcomingFeatures": "Currently, Google has completely removed 2 native image models from the free tier!",
   "error": {
     "quotaExceeded": "Quota exceeded. Check your plan and billing.",
     "rateLimited": "Rate limit exceeded. Please wait and try again.",

@@ -32,6 +32,7 @@
   "clearImages": "Xóa",
   "clearImagesTitle": "Xóa tất cả hình ảnh",
   "helperMessage": "Bạn có thể sử dụng lời bài hát và ảnh bìa album tùy chỉnh ở đây hoặc nhấn \"Thêm phụ đề\" và lấy từ Genius",
+  "upcomingFeatures": "Hiện tại Google đã xoá hoàn toàn 2 mô hình native image khỏi free tier!",
   "error": {
     "rateLimited": "Vượt quá giới hạn. Vui lòng chờ và thử lại.",
     "unauthorized": "Không được phép: API key không hợp lệ hoặc thiếu.",

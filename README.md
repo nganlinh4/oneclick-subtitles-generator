@@ -159,7 +159,6 @@ Choose the right version for your needs:
 | **Subtitle Editor** | ✅ Visual timeline, waveform, real-time preview | ✅ Visual timeline, waveform, real-time preview | ✅ Visual timeline, waveform, real-time preview |
 | **Translation** | ✅ Multi-language with context awareness | ✅ Multi-language with context awareness | ✅ Multi-language with context awareness |
 | **Video Rendering** | ✅ GPU-accelerated with Remotion | ✅ GPU-accelerated with Remotion | ❌ Not available |
-| **Background Generation** | ✅ Gemini Native Image | ✅ Gemini Native Image | ✅ Gemini Native Image |
 | **Background Music Generation** | ✅ AI music with Lyria | ✅ AI music with Lyria | ✅ AI music with Lyria |
 | **Basic TTS** | ✅ Gemini Live API, Edge TTS, Google TTS | ✅ Gemini Live API, Edge TTS, Google TTS | ❌ Not available |
 | **Voice Cloning** | ❌ Not included | ✅ F5-TTS, Chatterbox | ❌ Not available |
@@ -242,11 +241,12 @@ Choose the right version for your needs:
 - **Batch processing**: Translate multiple subtitle sets simultaneously
 - **Context awareness**: AI-powered translation with video context understanding
 
-### 🎨 Background Image Generation
+<!-- ### 🎨 Background Image Generation
 - **AI-powered creation**: Generate custom backgrounds using Gemini's image generation
 - **Album art integration**: Use existing artwork as reference for style consistency
 - **Batch generation**: Create multiple variations with unique prompts
 - **Smart prompting**: Automatic prompt generation based on lyrics and content
+-->
 
 ### 🎹 Background Music Generation
 - AI-generated background music with prompt-based control
@@ -295,34 +295,26 @@ Choose the right version for your needs:
    - Preserve original timing while adapting text
 
 ### 5. **Generate AI Narration** (Optional)
-   - **Set up reference audio**: Upload, record, or extract from video
-   - **Choose TTS engine**: F5-TTS (voice cloning), Chatterbox, Edge TTS, or Google TTS
-   - **Configure voice settings**: Adjust speed, pitch, and style parameters
-   - **Generate narration**: Create AI voice for original or translated subtitles
+    - **Set up reference audio**: Upload, record, or extract from video
+    - **Choose TTS engine**: F5-TTS (voice cloning), Chatterbox, Edge TTS, or Google TTS
+    - **Configure voice settings**: Adjust speed, pitch, and style parameters
+    - **Generate narration**: Create AI voice for original or translated subtitles
 
-### 6. **Create Background Images** (Optional)
-   - Upload album art or reference images
-   - Generate AI-powered backgrounds based on content
-   - Create multiple variations with unique prompts
-   - Use generated images in video rendering
-
-
-### 7. **Create Background Music** (Optional)
+### 6. **Create Background Music** (Optional)
    - Open the Background Music panel
    - Enter a prompt or choose presets, then generate
    - Preview and adjust via MIDI controls; export for rendering
 
-### 8. **Render Professional Videos**
+### 7. **Render Professional Videos**
    - **Open video renderer**: Access the integrated Remotion-based renderer
    - **Customize subtitles**: Extensive styling options (fonts, colors, effects, animations)
    - **Configure audio**: Balance original video audio with AI narration
    - **Set output quality**: Choose resolution from 360p to 8K
    - **Render with GPU acceleration**: Hardware-optimized processing for fast output
 
-### 9. **Export & Download**
+### 8. **Export & Download**
    - **Subtitle files**: SRT, JSON, or custom formats
    - **Audio files**: Generated narration in various formats
-   - **Background images**: AI-generated artwork
    - **Rendered videos**: Professional subtitled videos with custom styling
 
 

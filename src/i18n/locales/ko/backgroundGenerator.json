@@ -32,6 +32,7 @@
   "clearImages": "지우기",
   "clearImagesTitle": "모든 이미지 지우기",
   "helperMessage": "여기에 직접 가사와 앨범 아트를 사용하거나 \"자막 추가\"를 눌러 Genius에서 가져올 수 있습니다",
+  "upcomingFeatures": "현재 Google은 무료 계정에서 2개의 네이티브 이미지 모델을 완전히 삭제했습니다!",
   "error": {
     "rateLimited": "요청 한도를 초과했습니다. 잠시 후 다시 시도하세요.",
     "unauthorized": "인증 실패: API 키가 없거나 올바르지 않습니다.",
