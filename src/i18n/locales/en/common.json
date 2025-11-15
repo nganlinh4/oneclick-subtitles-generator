@@ -26,5 +26,8 @@
     "info": "Info",
     "loading": "Loading",
     "confirm": "Confirm"
-  }
+  },
+  "toastHistory": "Toast history",
+  "showToastHistory": "Show toast history",
+  "hideToastHistory": "Hide toast history"
 }

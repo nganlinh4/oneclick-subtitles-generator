@@ -26,5 +26,8 @@
     "info": "정보",
     "loading": "로딩 중",
     "confirm": "Confirm"
-  }
+  },
+  "toastHistory": "알림 기록",
+  "showToastHistory": "알림 기록 표시",
+  "hideToastHistory": "알림 기록 숨기기"
 }

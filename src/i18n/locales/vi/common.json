@@ -26,5 +26,8 @@
     "info": "Thông tin",
     "loading": "Đang tải",
     "confirm": "Tôi xác nhận"
-  }
+  },
+  "toastHistory": "Lịch sử thông báo",
+  "showToastHistory": "Hiển thị lịch sử thông báo",
+  "hideToastHistory": "Ẩn lịch sử thông báo"
 }
