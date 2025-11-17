@@ -4,10 +4,14 @@
   "gemini25FlashLite": "Gemini 2.5 Flash Lite",
   "gemini20Flash": "Gemini 2.0 Flash",
   "gemini20FlashLite": "Gemini 2.0 Flash Lite",
+  "learnlm20FlashExperimental": "LearnLM 2.0 Flash Experimental",
+  "geminiRoboticsEr15Preview": "Gemini Robotics ER 1.5 Preview",
   "bestAccuracy": "최고 정확도",
   "smarterFaster": "더 스마트하고 빠름",
   "fastestAdvanced": "가장 빠른 2.5 모델",
   "balancedModel": "균형 잡힌",
   "fastestModel": "가장 빠름",
+  "experimentalLearning": "실험적 학습",
+  "roboticsPreview": "로봇틱스 미리보기",
   "customModel": "커스텀 모델"
 }

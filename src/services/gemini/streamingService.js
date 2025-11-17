@@ -14,6 +14,24 @@ import { fileToBase64 } from '../../utils/fileUtils';
 import i18n from '../../i18n/i18n';
 
 /**
+ * Check if a model supports media resolution parameter
+ * Some experimental models like learnlm-2.0-flash-experimental don't support this
+ * @param {string} model - The model name to check
+ * @returns {boolean} - True if the model supports media resolution
+ */
+const supportsMediaResolution = (model) => {
+    // List of models that don't support media resolution
+    const unsupportedModels = [
+        'learnlm-2.0-flash-experimental',
+        'learnlm-2.0-flash',
+        'learnlm-1.5-flash'
+    ];
+    
+    // Check if the model starts with any unsupported model prefix
+    return !unsupportedModels.some(unsupported => model.includes(unsupported));
+};
+
+/**
  * Validate if a file URI is still accessible
  * @param {string} fileUri - The file URI to validate
  * @param {string} apiKey - The API key to use
@@ -160,12 +178,14 @@ export const streamGeminiContent = async (file, fileUri, options = {}, onChunk, 
     // Add thinking configuration if supported by the model
     requestData = addThinkingConfig(requestData, MODEL);
 
-    // Add generation config with media resolution if provided
-    if (mediaResolution) {
+    // Add generation config with media resolution if provided (only for supported models)
+    if (mediaResolution && supportsMediaResolution(MODEL)) {
       if (!requestData.generationConfig) {
         requestData.generationConfig = {};
       }
       requestData.generationConfig.mediaResolution = mediaResolution;
+    } else if (mediaResolution && !supportsMediaResolution(MODEL)) {
+      console.log('[StreamingService] Skipping media resolution for unsupported model:', MODEL);
     }
 
     console.log('[StreamingService] Starting streaming request with model:', MODEL);
@@ -847,19 +867,14 @@ const processStreamingResponse = async (response, onChunk, onComplete, onError, 
 /**
  * Check if streaming is supported for the current model
  * @param {string} modelId - The model ID to check
- * @returns {boolean} - Whether streaming is supported
+ * @returns {boolean} - Whether streaming is supported (defaults to true for all models)
  */
 export const isStreamingSupported = (modelId) => {
   const model = modelId || localStorage.getItem('gemini_model') || "gemini-2.5-flash";
   
-  // Most Gemini models support streaming
-  const supportedModels = [
-    'gemini-2.5-pro',
-    'gemini-2.5-flash',
-    'gemini-2.5-flash-lite',
-    'gemini-2.0-flash',
-    'gemini-2.0-flash-lite'
-  ];
-  
-  return supportedModels.some(supported => model.includes(supported));
+  // Default to supporting streaming for all models
+  // The API will reject streaming if not supported, so we don't need to maintain a hardcoded list
+  // Only very rare cases would not support streaming
+  console.log(`[StreamingService] Defaulting to streaming support for model: ${model}`);
+  return true;
 };

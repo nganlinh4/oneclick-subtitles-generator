@@ -4,10 +4,14 @@
   "gemini25FlashLite": "Gemini 2.5 Flash Lite",
   "gemini20Flash": "Gemini 2.0 Flash",
   "gemini20FlashLite": "Gemini 2.0 Flash Lite",
+  "learnlm20FlashExperimental": "LearnLM 2.0 Flash Experimental",
+  "geminiRoboticsEr15Preview": "Gemini Robotics ER 1.5 Preview",
   "bestAccuracy": "Best accuracy",
   "smarterFaster": "Smarter & faster",
   "fastestAdvanced": "Fastest 2.5 model",
   "balancedModel": "Balanced",
   "fastestModel": "Fastest",
+  "experimentalLearning": "Experimental Learning",
+  "roboticsPreview": "Robotics Preview",
   "customModel": "Custom model"
 }

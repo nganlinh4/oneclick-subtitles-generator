@@ -551,7 +551,9 @@ const VideoProcessingOptionsModal = ({
             { value: 'gemini-2.5-flash', label: t('settings.modelSmartFast', 'Gemini 2.5 Flash (Độ chính xác thứ hai)'), maxTokens: 1048576 },
             { value: 'gemini-2.5-flash-lite', label: t('settings.modelFlash25Lite', 'Gemini 2.5 Flash Lite (Mô hình 2.5 nhanh nhất, dễ lỗi khi tạo sub)'), maxTokens: 1048576 },
             { value: 'gemini-2.0-flash', label: t('settings.modelThirdBest', 'Gemini 2.0 Flash (Độ chính xác tốt, tốc độ trung bình)'), maxTokens: 1048576 },
-            { value: 'gemini-2.0-flash-lite', label: t('settings.modelFastest', 'Gemini 2.0 Flash Lite (Nhanh nhất, độ chính xác thấp nhất - chỉ thử nghiệm)'), maxTokens: 1048576 }
+            { value: 'gemini-2.0-flash-lite', label: t('settings.modelFastest', 'Gemini 2.0 Flash Lite (Nhanh nhất, độ chính xác thấp nhất - chỉ thử nghiệm)'), maxTokens: 1048576 },
+            { value: 'learnlm-2.0-flash-experimental', label: t('settings.learnlm20FlashExperimental', 'LearnLM 2.0 Flash Experimental (Experimental, advanced learning)'), maxTokens: 1048576 },
+            { value: 'gemini-robotics-er-1.5-preview', label: t('settings.geminiRoboticsEr15Preview', 'Gemini Robotics ER 1.5 Preview (Robotics Preview)'), maxTokens: 1048576 }
         ];
 
         const customModels = customGeminiModels.map(model => ({

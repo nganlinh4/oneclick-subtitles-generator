@@ -534,6 +534,7 @@ const AppLayout = ({
       {/* Video Processing Options Modal */}
       {showProcessingModal && (
         <VideoProcessingOptionsModal
+          key={`${(uploadedFileData || uploadedFile)?.name || 'no-file'}-${(uploadedFileData || uploadedFile)?.size || 0}-${(uploadedFileData || uploadedFile)?.type || 'no-type'}`}
           isOpen={showProcessingModal}
           onClose={() => {
             try {

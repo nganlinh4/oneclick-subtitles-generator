@@ -20,6 +20,23 @@ import { addThinkingConfig } from '../../utils/thinkingBudgetUtils';
 import { uploadFileToGemini, shouldUseFilesApi } from './filesApi';
 import { streamGeminiContent, isStreamingSupported } from './streamingService';
 import { coordinateParallelStreaming, shouldUseParallelProcessing, coordinateParallelInlineStreaming } from './parallelStreamingCoordinator';
+/**
+ * Check if a model supports media resolution parameter
+ * Some experimental models like learnlm-2.0-flash-experimental don't support this
+ * @param {string} model - The model name to check
+ * @returns {boolean} - True if the model supports media resolution
+ */
+const supportsMediaResolution = (model) => {
+    // List of models that don't support media resolution
+    const unsupportedModels = [
+        'learnlm-2.0-flash-experimental',
+        'learnlm-2.0-flash',
+        'learnlm-1.5-flash'
+    ];
+    
+    // Check if the model starts with any unsupported model prefix
+    return !unsupportedModels.some(unsupported => model.includes(unsupported));
+};
 
 /**
  * Clear cached file URI for a specific file
@@ -432,13 +449,15 @@ export const callGeminiApiWithFilesApiForAnalysis = async (file, options = {}, a
         // Add thinking configuration if supported by the model
         requestData = addThinkingConfig(requestData, MODEL, { enableThinking: false });
 
-        // Add generation config with media resolution if provided
-        if (mediaResolution) {
+        // Add generation config with media resolution if provided (only for supported models)
+        if (mediaResolution && supportsMediaResolution(MODEL)) {
             if (!requestData.generationConfig) {
                 requestData.generationConfig = {};
             }
             requestData.generationConfig.mediaResolution = mediaResolution;
             console.log('[GeminiAPI Analysis] Using media resolution:', mediaResolution);
+        } else if (mediaResolution && !supportsMediaResolution(MODEL)) {
+            console.log('[GeminiAPI Analysis] Skipping media resolution for unsupported model:', MODEL);
         }
 
         // Make the API request with optional abort signal
@@ -640,12 +659,14 @@ export const callGeminiApiWithFilesApi = async (file, options = {}, retryCount =
         // Add thinking configuration if supported by the model
         requestData = addThinkingConfig(requestData, MODEL);
 
-        // Add generation config with media resolution if provided
-        if (mediaResolution) {
+        // Add generation config with media resolution if provided (only for supported models)
+        if (mediaResolution && supportsMediaResolution(MODEL)) {
             if (!requestData.generationConfig) {
                 requestData.generationConfig = {};
             }
             requestData.generationConfig.mediaResolution = mediaResolution;
+        } else if (mediaResolution && !supportsMediaResolution(MODEL)) {
+            console.log('[GeminiAPI] Skipping media resolution for unsupported model:', MODEL);
         }
 
         // Store user-provided subtitles if needed
