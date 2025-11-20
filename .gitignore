@@ -172,3 +172,4 @@ server/example-audio/story.toml
 server/example-audio/story.txt
 server/example-audio/vocab.txt
 .vercel
+electron-dist/win-unpacked/resources/app.asar
