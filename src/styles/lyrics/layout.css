@@ -3,12 +3,12 @@
 /* Material Design 3 card for lyrics display - enhanced styling */
 .lyrics-display {
   width: 100%;
-  background-color: var(--md-surface);
+  background-color: var(--md-background-surface);
   border: 1px solid var(--md-outline-variant);
   border-radius: var(--card-border-radius);
   padding: 24px;
   margin-bottom: 32px;
-  box-shadow: var(--md-elevation-level2);
+  box-shadow: var(--md-elevation-level1);
   transition: background-color var(--transition-speed), border-color var(--transition-speed), box-shadow var(--transition-speed);
   animation: slideIn var(--md-duration-medium4) var(--md-easing-emphasized-decelerate);
   position: relative;
@@ -126,7 +126,7 @@
   border-radius: 28px;
   background-color: var(--md-surface-1);
   transition: border-color var(--transition-speed), background-color var(--transition-speed), box-shadow var(--transition-speed);
-  box-shadow: var(--md-elevation-level2);
+  box-shadow: var(--md-elevation-level1);
   position: relative;
   z-index: 1;
   overflow: hidden;

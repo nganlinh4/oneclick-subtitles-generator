@@ -132,10 +132,10 @@ const AboutTab = ({ backgroundType }) => {
               {/* Latest Version Check */}
               <div className="latest-version-check">
                 {isCheckingUpdate ? (
-                  <p className="checking-update">
+                  <div className="checking-update">
                     <LoadingIndicator size={16} theme="dark" showContainer={false} />
                     {t('settings.checkingUpdates', 'Checking for updates...')}
-                  </p>
+                  </div>
                 ) : latestVersionInfo ? (
                   <div className="latest-version-info">
                     <p className="latest-version-display">

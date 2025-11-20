@@ -159,7 +159,7 @@ const VideoBottomControls = ({
         className="custom-video-controls"
         style={{
           position: 'absolute',
-          bottom: '0',
+          bottom: '2px',
           left: '0',
           right: '0',
           height: '70px',

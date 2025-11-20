@@ -171,5 +171,7 @@ server/example-audio/basic.toml
 server/example-audio/story.toml
 server/example-audio/story.txt
 server/example-audio/vocab.txt
-.vercel
+=0.0.6
+=0.24.0
+=0.104.0
 electron-dist/win-unpacked/resources/app.asar

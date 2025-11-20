@@ -380,7 +380,7 @@ const drawTimeMarkers = (
 
   // Draw time labels - only if not actively panning for better performance
   if (!isActivePanning) {
-    ctx.font = '10px Arial';
+    ctx.font = 'ultra-condensed 10px "Google Sans", "Open Sans", sans-serif';
     ctx.textBaseline = 'top';
     ctx.textAlign = 'left';
     ctx.fillStyle = textColor;

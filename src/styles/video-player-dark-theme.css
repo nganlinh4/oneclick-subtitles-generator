@@ -15,7 +15,7 @@
 video.video-player {
   box-shadow: var(--md-elevation-level1);
   color-scheme: auto; /* Respect the system/browser preference by default */
-  background-color: #000; /* Default background, overridden by themes */
+  background-color: #000000a6; /* Default background, overridden by themes */
   transition:
     box-shadow 0.2s var(--md-easing-standard),
     background-color 0.3s var(--md-easing-standard),
@@ -31,7 +31,7 @@ video.video-player {
 
 [data-theme="dark"] video.video-player {
   color-scheme: dark; /* Still useful for browser understanding context */
-  background-color: #121212;
+  background-color: #00000070;
 }
 
 /*

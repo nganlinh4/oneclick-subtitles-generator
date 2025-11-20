@@ -1,7 +1,9 @@
 onnx-asr
-onnxruntime-directml
 fastapi
 uvicorn[standard]
 pydub
 numpy
 scipy
+# onnxruntime-directml is Windows-only, use onnxruntime instead on Linux
+# onnxruntime-directml ; sys_platform == "win32"
+onnxruntime ; sys_platform != "win32"

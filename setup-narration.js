@@ -538,7 +538,6 @@ try:
         print("This indicates a PyTorch/torchvision version mismatch")
         sys.exit(1)
 
-    // Validate expected versions for F5-TTS and Chatterbox compatibility
     expected_torch = "2.5.1";
     expected_torchvision = "0.20.1";
 
@@ -769,14 +768,19 @@ try {
         }
 
         // Copy basic reference audio files from F5-TTS package
-        const basicRefEnSrc = path.join(VENV_DIR, 'Lib', 'site-packages', 'f5_tts', 'infer', 'examples', 'basic', 'basic_ref_en.wav');
+        // Use platform-specific site-packages path
+        const sitePackagesPath = process.platform === 'win32'
+            ? path.join(VENV_DIR, 'Lib', 'site-packages')
+            : path.join(VENV_DIR, 'lib', 'python3.11', 'site-packages');
+
+        const basicRefEnSrc = path.join(sitePackagesPath, 'f5_tts', 'infer', 'examples', 'basic', 'basic_ref_en.wav');
         const basicRefEnDest = path.join(exampleAudioDir, 'basic_ref_en.wav');
         if (fs.existsSync(basicRefEnSrc)) {
             fs.copyFileSync(basicRefEnSrc, basicRefEnDest);
             logger.info('Copied basic_ref_en.wav to server/example-audio/');
         }
 
-        const basicRefZhSrc = path.join(VENV_DIR, 'Lib', 'site-packages', 'f5_tts', 'infer', 'examples', 'basic', 'basic_ref_zh.wav');
+        const basicRefZhSrc = path.join(sitePackagesPath, 'f5_tts', 'infer', 'examples', 'basic', 'basic_ref_zh.wav');
         const basicRefZhDest = path.join(exampleAudioDir, 'basic_ref_zh.wav');
         if (fs.existsSync(basicRefZhSrc)) {
             fs.copyFileSync(basicRefZhSrc, basicRefZhDest);
@@ -792,7 +796,7 @@ try {
         ];
 
         for (const file of additionalFiles) {
-            const srcPath = path.join(VENV_DIR, 'Lib', 'site-packages', 'f5_tts', file.src);
+            const srcPath = path.join(sitePackagesPath, 'f5_tts', file.src);
             const destPath = path.join(exampleAudioDir, file.dest);
             if (fs.existsSync(srcPath) && !fs.existsSync(destPath)) {
                 fs.copyFileSync(srcPath, destPath);
@@ -980,7 +984,7 @@ try {
     // Verify PyTorch versions are correct
     logger.progress('Verifying PyTorch compatibility after chatterbox installation');
     try {
-        const verifyCmd = `uv run --python ${VENV_DIR} -- python -c "import torch; print(f'PyTorch version: {torch.__version__}')`;
+        const verifyCmd = `uv run --python ${VENV_DIR} -- python -c "import torch; print(f'PyTorch version: {torch.__version__}')"`;
         const output = execSync(verifyCmd, { encoding: 'utf8' });
         if (output.includes('2.5.1')) {
             logger.success('PyTorch 2.5.1 verified successfully');
