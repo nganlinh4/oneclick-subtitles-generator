@@ -45,4 +45,31 @@ router.post('/parakeet/transcribe', async (req, res) => {
   }
 });
 
+// --- Camb AI STT passthrough (mounted on the same FastAPI host as Parakeet) ---
+router.get('/camb/health', async (req, res) => {
+  try {
+    const resp = await axios.get(`${PARAKEET_BASE_URL}/camb/`);
+    res.json({ success: true, service: resp.data });
+  } catch (err) {
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+router.post('/camb/transcribe', async (req, res) => {
+  try {
+    const { audio_base64, filename, language = 'en' } = req.body || {};
+    if (!audio_base64) return res.status(400).json({ success: false, error: 'audio_base64 is required' });
+    const resp = await axios.post(
+      `${PARAKEET_BASE_URL}/camb/transcribe_base64`,
+      { audio_base64, filename: filename || 'segment.wav', language },
+      { timeout: 1000 * 60 * 10 },
+    );
+    res.json({ success: true, ...resp.data });
+  } catch (err) {
+    const status = err.response?.status || 500;
+    const detail = err.response?.data || { error: err.message };
+    res.status(status).json({ success: false, ...detail });
+  }
+});
+
 module.exports = router;

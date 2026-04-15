@@ -69,6 +69,21 @@ const useNarrationState = (initialReferenceAudio) => {
     return savedPitch || '+0Hz'; // Default to normal pitch
   });
 
+  // Camb AI-specific settings
+  const [cambVoice, setCambVoice] = useState(() => {
+    try { return localStorage.getItem('camb_voice') || ''; } catch { return ''; }
+  });
+  const [cambLanguage, setCambLanguage] = useState(() => {
+    try { return localStorage.getItem('camb_language') || 'en'; } catch { return 'en'; }
+  });
+  const [cambUseDub, setCambUseDub] = useState(() => {
+    try { return localStorage.getItem('camb_use_dub') === 'true'; } catch { return false; }
+  });
+  const [cambDubTargetLanguage, setCambDubTargetLanguage] = useState(() => {
+    try { return localStorage.getItem('camb_dub_target_language') || ''; } catch { return ''; }
+  });
+  const [isCambAvailable, setIsCambAvailable] = useState(true);
+
   // gTTS-specific settings
   const [gttsLanguage, setGttsLanguage] = useState(() => {
     // Try to load from localStorage
@@ -242,6 +257,12 @@ const useNarrationState = (initialReferenceAudio) => {
     localStorage.setItem('gtts_slow', gttsSlow.toString());
   }, [gttsSlow]);
 
+  // Save Camb AI settings to localStorage when they change
+  useEffect(() => { try { localStorage.setItem('camb_voice', cambVoice || ''); } catch {} }, [cambVoice]);
+  useEffect(() => { try { localStorage.setItem('camb_language', cambLanguage || 'en'); } catch {} }, [cambLanguage]);
+  useEffect(() => { try { localStorage.setItem('camb_use_dub', String(!!cambUseDub)); } catch {} }, [cambUseDub]);
+  useEffect(() => { try { localStorage.setItem('camb_dub_target_language', cambDubTargetLanguage || ''); } catch {} }, [cambDubTargetLanguage]);
+
   // Update local state when initialReferenceAudio changes - memoized to avoid identity changes across renders
   const updateReferenceAudio = useCallback((newReferenceAudio) => {
     if (newReferenceAudio) {
@@ -292,6 +313,18 @@ const useNarrationState = (initialReferenceAudio) => {
     setGttsTld,
     gttsSlow,
     setGttsSlow,
+
+    // Camb AI-specific settings
+    cambVoice,
+    setCambVoice,
+    cambLanguage,
+    setCambLanguage,
+    cambUseDub,
+    setCambUseDub,
+    cambDubTargetLanguage,
+    setCambDubTargetLanguage,
+    isCambAvailable,
+    setIsCambAvailable,
 
     // Narration Settings state (for F5-TTS)
     referenceAudio,

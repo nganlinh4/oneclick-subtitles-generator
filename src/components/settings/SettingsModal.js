@@ -144,6 +144,13 @@ const SettingsModal = ({ onClose, onSave, apiKeysSet, setApiKeysSet }) => {
   const [showGeminiKey, setShowGeminiKey] = useState(false);
   const [showYoutubeKey, setShowYoutubeKey] = useState(false);
   const [showGeniusKey, setShowGeniusKey] = useState(false);
+  const [cambApiKey, setCambApiKey] = useState(() => {
+    try { return localStorage.getItem('camb_api_key') || ''; } catch { return ''; }
+  });
+  const [showCambKey, setShowCambKey] = useState(false);
+  useEffect(() => {
+    try { localStorage.setItem('camb_api_key', cambApiKey || ''); } catch {}
+  }, [cambApiKey]);
   const [useOAuth, setUseOAuth] = useState(false);
   const [youtubeClientId, setYoutubeClientId] = useState('');
   const [youtubeClientSecret, setYoutubeClientSecret] = useState('');
@@ -835,6 +842,10 @@ const SettingsModal = ({ onClose, onSave, apiKeysSet, setApiKeysSet }) => {
               apiKeysSet={apiKeysSet}
               setApiKeysSet={setApiKeysSet}
               enableYoutubeSearch={enableYoutubeSearch}
+              cambApiKey={cambApiKey}
+              setCambApiKey={setCambApiKey}
+              showCambKey={showCambKey}
+              setShowCambKey={setShowCambKey}
             />
           </div>
 

@@ -25,7 +25,8 @@ const NarrationMethodSelection = ({
   isChatterboxAvailable = true,
   isGeminiAvailable = true,
   isEdgeTTSAvailable = true,
-  isGTTSAvailable = true
+  isGTTSAvailable = true,
+  isCambAvailable = true
 }) => {
   const { t } = useTranslation();
 
@@ -157,6 +158,29 @@ const NarrationMethodSelection = ({
                 {t('narration.gttsMethod', 'gTTS')}
                 {!isGTTSAvailable && (
                   <HelpIcon className="method-help-icon" title={t('narration.gttsUnavailable', '(Unavailable)')} />
+                )}
+              </label>
+            </div>
+            <div className="radio-pill">
+              <input
+                type="radio"
+                id="method-camb"
+                name="narration-method"
+                value="camb"
+                checked={narrationMethod === 'camb'}
+                onChange={() => handleMethodChange('camb')}
+                disabled={isGenerating || !isCambAvailable}
+              />
+              <label htmlFor="method-camb" className={`method-camb ${!isCambAvailable ? 'unavailable' : ''}`}>
+                <span className="voice-clone-badge">Voice Clone + Dub</span>
+                <span className="method-icon">
+                  <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="currentColor">
+                    <path d="M12 3a9 9 0 0 0-9 9 9 9 0 0 0 9 9 9 9 0 0 0 9-9 9 9 0 0 0-9-9zm0 3c1.66 0 3 1.34 3 3v3c0 1.66-1.34 3-3 3s-3-1.34-3-3V9c0-1.66 1.34-3 3-3zm-5 7h2a3 3 0 0 0 3 3 3 3 0 0 0 3-3h2a5 5 0 0 1-4 4.9V19h-2v-2.1A5 5 0 0 1 7 12z"/>
+                  </svg>
+                </span>
+                {t('narration.cambMethod', 'Camb AI')}
+                {!isCambAvailable && (
+                  <HelpIcon className="method-help-icon" title={t('narration.cambUnavailable', '(Unavailable - set CAMB_API_KEY)')} />
                 )}
               </label>
             </div>

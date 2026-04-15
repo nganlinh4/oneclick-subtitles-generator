@@ -63,7 +63,11 @@ const ApiKeysTab = ({
   setIsAuthenticated,
   apiKeysSet,
   setApiKeysSet,
-  enableYoutubeSearch
+  enableYoutubeSearch,
+  cambApiKey,
+  setCambApiKey,
+  showCambKey,
+  setShowCambKey,
 }) => {
   const { t } = useTranslation();
 
@@ -610,6 +614,49 @@ const ApiKeysTab = ({
               <li>{t('settings.geniusStep6', 'Paste it into the field above')}</li>
             </ol>
           </div>
+        </div>
+
+        {/* Camb AI API Key */}
+        <div className="api-key-input">
+          <label htmlFor="camb-api-key">
+            {t('settings.cambApiKey', 'Camb AI API Key')}
+            <span className={`api-key-status ${cambApiKey ? 'set' : 'not-set'}`}>
+              {cambApiKey ? t('settings.keySet', 'Set') : t('settings.keyNotSet', 'Not Set')}
+            </span>
+          </label>
+          <div className="custom-api-key-input">
+            <div className="custom-input-field">
+              <input
+                type="text"
+                id="camb-key-input"
+                className={`api-key-input-field ${!showCambKey ? 'masked-input' : ''}`}
+                value={cambApiKey || ''}
+                onChange={(e) => setCambApiKey && setCambApiKey(e.target.value)}
+                onKeyDown={(e) => { if (e.key === 'Enter') e.preventDefault(); }}
+                placeholder={t('settings.cambApiKeyPlaceholder', 'Enter your Camb AI API key')}
+                autoComplete="new-password"
+                data-lpignore="true"
+                data-form-type="other"
+                spellCheck="false"
+              />
+            </div>
+            <button
+              type="button"
+              className="toggle-visibility"
+              onClick={() => animateToggle('camb-key-input', showCambKey, setShowCambKey)}
+              aria-label={showCambKey ? t('settings.hide') : t('settings.show')}
+            >
+              {showCambKey ? t('settings.hide') : t('settings.show')}
+            </button>
+          </div>
+          <p className="api-key-help">
+            {t('settings.cambApiKeyHelp', 'Required for Camb AI TTS, STT, and one-click Dubbing. Get one at')}
+            {' '}
+            <a href="https://studio.camb.ai" target="_blank" rel="noopener noreferrer">
+              Camb AI Studio
+            </a>
+            . {t('settings.cambApiKeyEnvNote', 'Also export CAMB_API_KEY in the server environment.')}
+          </p>
         </div>
 
         {/* YouTube API Key - Right column, second row */}

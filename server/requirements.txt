@@ -7,3 +7,4 @@ protobuf>=4.25.8,<7
 
 torch
 f5-tts
+camb-sdk

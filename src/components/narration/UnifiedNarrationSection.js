@@ -11,6 +11,7 @@ import useGeminiNarration from './hooks/useGeminiNarration';
 import useChatterboxNarration from './hooks/useChatterboxNarration';
 import useEdgeTTSNarration from './hooks/useEdgeTTSNarration';
 import useGTTSNarration from './hooks/useGTTSNarration';
+import useCambNarration from './hooks/useCambNarration';
 import useAudioPlayback from './hooks/useAudioPlayback';
 import useNarrationStorage from './hooks/useNarrationStorage';
 import useUIEffects from './hooks/useUIEffects';
@@ -25,6 +26,7 @@ import GeminiSubtitleSourceSelection from './components/GeminiSubtitleSourceSele
 import ChatterboxControls from './components/ChatterboxControls';
 import EdgeTTSControls from './components/EdgeTTSControls';
 import GTTSControls from './components/GTTSControls';
+import CambControls from './components/CambControls';
 import GeminiVoiceSelection from './components/GeminiVoiceSelection';
 import GeminiConcurrentClientsSlider from './components/GeminiConcurrentClientsSlider';
 import AdvancedSettingsToggle from './components/AdvancedSettingsToggle';
@@ -95,6 +97,13 @@ const UnifiedNarrationSection = ({
     gttsLanguage, setGttsLanguage,
     gttsTld, setGttsTld,
     gttsSlow, setGttsSlow,
+
+    // Camb AI-specific settings
+    cambVoice, setCambVoice,
+    cambLanguage, setCambLanguage,
+    cambUseDub, setCambUseDub,
+    cambDubTargetLanguage, setCambDubTargetLanguage,
+    isCambAvailable,
 
     // Narration Settings state (for F5-TTS)
     referenceAudio, setReferenceAudio,
@@ -287,6 +296,31 @@ const UnifiedNarrationSection = ({
       : (subtitleSource === 'translated' && translatedSubtitles && translatedSubtitles.length > 0)
         ? translatedSubtitles
         : (originalSubtitles || subtitles || [])
+  });
+
+  // Use Camb AI narration hook
+  const {
+    handleCambNarration,
+    cancelCambGeneration,
+    handleCambDub,
+    retryCambNarration
+  } = useCambNarration({
+    setIsGenerating,
+    setGenerationStatus,
+    setError,
+    setGenerationResults,
+    generationResults,
+    subtitleSource,
+    originalSubtitles,
+    translatedSubtitles,
+    subtitles,
+    selectedVoice: cambVoice,
+    cambLanguage,
+    t,
+    setRetryingSubtitleId,
+    useGroupedSubtitles,
+    groupedSubtitles,
+    setUseGroupedSubtitles
   });
 
   // Use audio playback hook
@@ -558,6 +592,7 @@ const UnifiedNarrationSection = ({
         isGeminiAvailable={isGeminiAvailable}
         isEdgeTTSAvailable={true}
         isGTTSAvailable={true}
+        isCambAvailable={isCambAvailable}
       />
 
       <div className="narration-content-container" ref={contentRef}>
@@ -979,6 +1014,98 @@ const UnifiedNarrationSection = ({
            />
 
           {/* Hidden audio player for playback */}
+          <audio
+            ref={audioRef}
+            src={currentAudio?.url}
+            onEnded={handleAudioEnded}
+            style={{ display: 'none' }}
+          />
+        </div>
+      ) : narrationMethod === 'camb' ? (
+        // Camb AI UI
+        <div className="camb-content">
+          <SubtitleSourceSelection
+            subtitleSource={subtitleSource}
+            setSubtitleSource={setSubtitleSource}
+            isGenerating={isGenerating}
+            translatedSubtitles={translatedSubtitles}
+            originalSubtitles={originalSubtitles || subtitles}
+            originalLanguage={originalLanguage}
+            translatedLanguage={translatedLanguage}
+            setOriginalLanguage={setOriginalLanguage}
+            setTranslatedLanguage={setTranslatedLanguage}
+            useGroupedSubtitles={useGroupedSubtitles}
+            setUseGroupedSubtitles={setUseGroupedSubtitles}
+            isGroupingSubtitles={isGroupingSubtitles}
+            groupedSubtitles={groupedSubtitles}
+            groupingIntensity={groupingIntensity}
+            setGroupingIntensity={setGroupingIntensity}
+            onGroupedSubtitlesGenerated={setGroupedSubtitles}
+            narrationMethod={narrationMethod}
+            selectedModel={null}
+            setSelectedModel={() => {}}
+            onLanguageDetected={(source, language) => {
+              if (source === 'original') setOriginalLanguage(language);
+              else if (source === 'translated') setTranslatedLanguage(language);
+            }}
+          />
+
+          <CambControls
+            selectedVoice={cambVoice}
+            setSelectedVoice={setCambVoice}
+            cambLanguage={cambLanguage}
+            setCambLanguage={setCambLanguage}
+            useDub={cambUseDub}
+            setUseDub={setCambUseDub}
+            dubTargetLanguage={cambDubTargetLanguage}
+            setDubTargetLanguage={setCambDubTargetLanguage}
+            isGenerating={isGenerating}
+          />
+
+          <GenerateButton
+            handleGenerateNarration={async () => {
+              if (cambUseDub) {
+                // One-click Camb Dub - run the end-to-end dubbing pipeline
+                await handleCambDub({
+                  sourceUrl: localStorage.getItem('current_video_url') || undefined,
+                  sourcePath: videoPath,
+                  sourceLanguage: (originalLanguage?.languageCode) || 'en',
+                  targetLanguage: cambDubTargetLanguage,
+                });
+              } else {
+                await handleCambNarration();
+              }
+            }}
+            isGenerating={isGenerating}
+            referenceAudio={null}
+            subtitleSource={subtitleSource}
+            cancelGeneration={cancelCambGeneration}
+            downloadAllAudio={downloadAllAudio}
+            downloadAlignedAudio={downloadAlignedAudio}
+            generationResults={generationResults}
+            isServiceAvailable={isCambAvailable}
+            serviceUnavailableMessage={t('narration.cambUnavailableMessage', 'Camb AI is unavailable. Set CAMB_API_KEY and install @camb-ai/sdk / camb-sdk.')}
+            narrationMethod="camb"
+          />
+
+          <NarrationResults
+            generationResults={generationResults}
+            onRetry={retryCambNarration}
+            retryingSubtitleId={retryingSubtitleId}
+            hasGenerationError={!!error && error.toLowerCase().includes('camb')}
+            currentAudio={currentAudio}
+            isPlaying={isPlaying}
+            playAudio={playAudio}
+            getAudioUrl={getAudioUrl}
+            subtitleSource={subtitleSource}
+            isGenerating={isGenerating}
+            plannedSubtitles={(useGroupedSubtitles && groupedSubtitles && groupedSubtitles.length > 0)
+              ? groupedSubtitles
+              : (subtitleSource === 'translated' && translatedSubtitles && translatedSubtitles.length > 0)
+                ? translatedSubtitles
+                : (originalSubtitles || subtitles || [])}
+          />
+
           <audio
             ref={audioRef}
             src={currentAudio?.url}

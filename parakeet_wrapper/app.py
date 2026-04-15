@@ -57,6 +57,15 @@ app = FastAPI(
     lifespan=lifespan
 )
 
+# Camb AI STT adapter (mounted alongside Parakeet's native endpoints).
+# Routes: /camb/, /camb/transcribe, /camb/transcribe_base64
+try:
+    from camb_stt import camb_router  # type: ignore
+    app.include_router(camb_router)
+    logger.info("Mounted Camb AI STT router at /camb")
+except Exception as _camb_import_err:
+    logger.warning(f"Camb STT router not mounted: {_camb_import_err}")
+
 # --- CORS ---
 app.add_middleware(
     CORSMiddleware,

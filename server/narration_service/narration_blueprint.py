@@ -6,6 +6,7 @@ from .narration_models import models_bp
 from .narration_audio import audio_bp
 from .narration_generation import generation_bp
 from .narration_edge_gtts import edge_gtts_bp
+from .narration_camb import camb_bp
 
 logger = logging.getLogger(__name__)
 
@@ -17,6 +18,7 @@ narration_bp.register_blueprint(models_bp, url_prefix='')
 narration_bp.register_blueprint(audio_bp, url_prefix='')
 narration_bp.register_blueprint(generation_bp, url_prefix='')
 narration_bp.register_blueprint(edge_gtts_bp, url_prefix='')
+narration_bp.register_blueprint(camb_bp, url_prefix='')
 
 # Add routes for serving audio files
 @narration_bp.route('/audio/<path:filename>', methods=['GET'])

@@ -10,6 +10,7 @@ const narrationController = require("../controllers/narrationController");
 const narrationServiceClient = require("../services/narrationServiceClient");
 const edgeTTSController = require("../controllers/edgeTTSController");
 const gttsController = require("../controllers/gttsController");
+const cambController = require("../controllers/cambController");
 
 // Ensure narration directories exist
 narrationController.ensureNarrationDirectories();
@@ -212,6 +213,13 @@ router.post("/edge-tts/generate", edgeTTSController.generateNarration);
 router.get("/gtts/languages", gttsController.getLanguages);
 router.post("/gtts/generate", gttsController.generateNarration);
 
+// Camb AI routes (handled directly by Node.js)
+router.get("/camb/status", cambController.getStatus);
+router.get("/camb/voices", cambController.getVoices);
+router.post("/camb/generate", cambController.generateNarration);
+router.post("/camb/transcribe", express.json({ limit: "50mb" }), cambController.transcribe);
+router.post("/camb/dub", express.json({ limit: "50mb" }), cambController.dub);
+
 // Proxy all other narration requests to the Python service
 router.use("/", async (req, res, next) => {
   // Skip endpoints we handle directly
@@ -239,7 +247,8 @@ router.use("/", async (req, res, next) => {
     req.url === "/batch-get-audio-durations" ||
     req.url.startsWith("/audio/") ||
     req.url.startsWith("/edge-tts/") ||
-    req.url.startsWith("/gtts/")
+    req.url.startsWith("/gtts/") ||
+    req.url.startsWith("/camb/")
   ) {
     return next();
   }
