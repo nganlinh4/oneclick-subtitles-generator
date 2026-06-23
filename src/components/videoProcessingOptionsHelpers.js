@@ -25,7 +25,7 @@ export const buildModelOptions = (t, customGeminiModels) => {
             maxTokens: 1048576
         })),
         { value: 'learnlm-2.0-flash-experimental', label: t('settings.learnlm20FlashExperimental', 'LearnLM 2.0 Flash Experimental (Experimental, advanced learning)'), maxTokens: 1048576 },
-        { value: 'gemini-robotics-er-1.5-preview', label: t('settings.geminiRoboticsEr15Preview', 'Gemini Robotics ER 1.5 Preview (Robotics Preview)'), maxTokens: 1048576 }
+        { value: 'gemini-robotics-er-1.6-preview', label: t('settings.geminiRoboticsEr16Preview', 'Gemini Robotics ER 1.6 Preview (Robotics Preview)'), maxTokens: 1048576 }
     ];
 
     const customModels = customGeminiModels.map(model => ({

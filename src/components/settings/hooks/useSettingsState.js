@@ -188,6 +188,7 @@ const useSettingsState = () => {
             'gemini-2.5-pro': 128,
             'gemini-2.5-flash': 0,
             'gemini-2.5-flash-lite': 0,
+            'gemini-3.5-flash': 'high',
             'gemini-3-flash-preview': 'high',
             'gemini-3.1-flash-lite-preview': 'minimal',
             'gemini-3.1-pro-preview': 'high'
@@ -199,6 +200,7 @@ const useSettingsState = () => {
             'gemini-2.5-pro': 128,
             'gemini-2.5-flash': 0,
             'gemini-2.5-flash-lite': 0,
+            'gemini-3.5-flash': 'high',
             'gemini-3-flash-preview': 'high',
             'gemini-3.1-flash-lite-preview': 'minimal',
             'gemini-3.1-pro-preview': 'high'

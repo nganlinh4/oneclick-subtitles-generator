@@ -28,6 +28,7 @@
   "waitingForNextChunk": "다음 청크를 번역하기 전에 {{seconds}}초 대기 중...",
   "modelGemini31Pro": "출력 길이 65536 토큰 (일반적으로 분할 필요 없음)",
   "modelGemini25Pro": "출력 길이 65536 토큰 (일반적으로 분할 필요 없음)",
+  "modelGemini35Flash": "출력 길이 65536 토큰 (일반적으로 분할 필요 없음)",
   "modelGemini3Flash": "출력 길이 65536 토큰 (일반적으로 분할 필요 없음)",
   "modelGemini25Flash": "출력 길이 65536 토큰 (일반적으로 분할 필요 없음)",
   "modelGemini31FlashLite": "출력 길이 65536 토큰 (일반적으로 분할 필요 없음)",
