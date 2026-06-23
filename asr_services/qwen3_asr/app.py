@@ -1,40 +1,29 @@
 """
-Faster-Whisper ASR FastAPI service (OSG on-demand GPU engine).
+Qwen3-ASR FastAPI sidecar (OSG on-demand GPU engine). Serves Qwen3-ASR-1.7B and -0.6B (model dir from
+env), with WORD timestamps from the companion Qwen3-ForcedAligner-0.6B. Same response contract as the
+other sidecars: {transcription, segments:[{start,end,segment}], srt_content, duration_seconds}.
 
-Mirrors parakeet_wrapper/app.py's contract so the frontend adapter/proxy are reused verbatim:
-  GET  /health              -> 503 until the model is loaded, 200 after
-  POST /transcribe          -> multipart audio file
-  POST /transcribe_base64   -> { audio_base64, filename, segment_strategy, max_chars, max_words, pause_threshold }
-Response: { transcription, segments: [{start, end, segment}], srt_content, duration_seconds }
-
-Differences from Parakeet: faster-whisper (CTranslate2) yields REAL per-word start/end timestamps, so the
-segmentation here uses true word ends (no estimation). Model + runtime come from env (set by engineSpawn):
-  ASR_MODEL_DIR  - the CTranslate2 model directory pulled from ModelScope at install time
-  FW_TURBO_PORT  - the port to bind (default 3039)
-GPU is preferred (float16 on CUDA) with a CPU fallback (int8), per the project's GPU-first-but-not-only policy.
+Env (set by engineSpawn): ASR_MODEL_DIR (the Qwen3-ASR model dir), ASR_ALIGNER_DIR (the forced-aligner
+dir), ASR_PORT (bind port). The qwen-asr package auto-chunks long audio on silence and re-bases the
+per-chunk timestamps, so no manual segmentation is needed here — we just map its word stream.
 """
 
 import os
 import gc
-import math
 import base64
 import logging
-import datetime
 import tempfile
+import sys
 from pathlib import Path
 from contextlib import asynccontextmanager
 from typing import Optional, Literal, List
 
 import uvicorn
 
-# --- CUDA DLL bootstrap (must run before CTranslate2/faster-whisper builds a session) ---
-# torch (2.x+cuXXX) bundles the CUDA 12 / cuDNN 9 DLLs that CTranslate2 needs (cublas*, cudnn*) under
-# site-packages/torch/lib, but that dir is not on the Windows DLL search path unless we add it. Import
-# torch first and register its lib dir so CTranslate2 can load the GPU runtime instead of silently
-# falling back to CPU (mirrors the onnxruntime.preload_dlls() trick the Parakeet service uses).
+# --- CUDA DLL bootstrap (torch libs on the Windows search path) ---
 _CUDA_OK = False
 try:
-    import torch  # noqa: F401
+    import torch
     _CUDA_OK = bool(torch.cuda.is_available())
     _torch_lib = os.path.join(os.path.dirname(torch.__file__), "lib")
     if os.path.isdir(_torch_lib):
@@ -44,11 +33,11 @@ try:
             except Exception:
                 pass
         os.environ["PATH"] = _torch_lib + os.pathsep + os.environ.get("PATH", "")
-except Exception as _e:  # torch should be installed, but never crash the service over the bootstrap
+except Exception as _e:
     logging.getLogger(__name__).debug(f"torch CUDA bootstrap skipped: {_e}")
 
 
-# --- Prefer the bundled ffmpeg/ffprobe over any system install (matches the Parakeet service) ---
+# --- Prefer the bundled ffmpeg over any system install ---
 def _prepend_bundled_ffmpeg_to_path():
     import glob
     root = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
@@ -60,44 +49,57 @@ def _prepend_bundled_ffmpeg_to_path():
         for candidate in glob.glob(pattern):
             if os.path.isfile(candidate):
                 os.environ["PATH"] = os.path.dirname(candidate) + os.pathsep + os.environ.get("PATH", "")
-                return os.path.dirname(candidate)
-    return None
+                return
 
 
 _prepend_bundled_ffmpeg_to_path()
 
-# Shared segmentation / SRT helpers (asr_services/asr_common.py).
-import sys
+# Shared segmentation / SRT helpers.
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))  # -> asr_services/
 from asr_common import process_words, generate_srt_content  # noqa: E402
 
-from faster_whisper import WhisperModel
-from fastapi import FastAPI, UploadFile, File, HTTPException, Form
-from fastapi.responses import JSONResponse
-from fastapi.middleware.cors import CORSMiddleware
-from pydantic import BaseModel
+from qwen_asr import Qwen3ASRModel  # noqa: E402
+from fastapi import FastAPI, UploadFile, File, HTTPException, Form  # noqa: E402
+from fastapi.responses import JSONResponse  # noqa: E402
+from fastapi.middleware.cors import CORSMiddleware  # noqa: E402
+from pydantic import BaseModel  # noqa: E402
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(name)s - %(levelname)s - %(message)s")
 logger = logging.getLogger(__name__)
 
 MODEL_DIR = os.getenv("ASR_MODEL_DIR", "")
-PORT = int(os.getenv("ASR_PORT") or os.getenv("FW_TURBO_PORT", "3039"))
+ALIGNER_DIR = os.getenv("ASR_ALIGNER_DIR", "")
+PORT = int(os.getenv("ASR_PORT", "3041"))
 app_state = {}
 
+# ISO 639-1 -> the language NAME qwen-asr expects. The forced aligner supports these; others auto-detect
+# (transcript still returned, but word timestamps may be unavailable -> single-segment fallback).
+QWEN_LANG = {
+    "zh": "Chinese", "en": "English", "fr": "French", "de": "German", "it": "Italian",
+    "ja": "Japanese", "ko": "Korean", "pt": "Portuguese", "ru": "Russian", "es": "Spanish",
+}
+# Languages whose tokens are characters (no inter-token spaces) when building segment text.
+CJK_LANGS = {"Chinese", "Japanese", "Cantonese"}
 
-# --- FastAPI lifespan: load the model once ---
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    device = "cuda" if _CUDA_OK else "cpu"
-    compute_type = "float16" if _CUDA_OK else "int8"
-    model_ref = MODEL_DIR if MODEL_DIR and os.path.isdir(MODEL_DIR) else "large-v3"
-    logger.info(f"Loading faster-whisper model from '{model_ref}' on {device} ({compute_type})...")
+    device = "cuda:0" if _CUDA_OK else "cpu"
+    dtype = torch.bfloat16 if _CUDA_OK else torch.float32
+    logger.info(f"Loading Qwen3-ASR from '{MODEL_DIR}' on {device}...")
     try:
-        app_state["model"] = WhisperModel(model_ref, device=device, compute_type=compute_type)
+        kwargs = dict(dtype=dtype, device_map=device, max_new_tokens=448)
+        if ALIGNER_DIR and os.path.isdir(ALIGNER_DIR):
+            kwargs["forced_aligner"] = ALIGNER_DIR
+            kwargs["forced_aligner_kwargs"] = dict(dtype=dtype, device_map=device)
+        else:
+            logger.warning("No forced aligner dir — transcripts will lack word timestamps.")
+        app_state["model"] = Qwen3ASRModel.from_pretrained(MODEL_DIR, **kwargs)
         app_state["device"] = device
-        logger.info(f"faster-whisper model loaded on {device}.")
+        app_state["has_aligner"] = bool(ALIGNER_DIR and os.path.isdir(ALIGNER_DIR))
+        logger.info(f"Qwen3-ASR loaded on {device}.")
     except Exception as e:
-        logger.error(f"Failed to load faster-whisper model: {e}", exc_info=True)
+        logger.error(f"Failed to load Qwen3-ASR: {e}", exc_info=True)
         app_state["model"] = None
 
     yield
@@ -107,7 +109,7 @@ async def lifespan(app: FastAPI):
     gc.collect()
 
 
-app = FastAPI(title="Faster-Whisper Transcription API", version="1.0.0", lifespan=lifespan)
+app = FastAPI(title="Qwen3-ASR Transcription API", version="1.0.0", lifespan=lifespan)
 app.add_middleware(
     CORSMiddleware, allow_origins=["*"], allow_credentials=True, allow_methods=["*"], allow_headers=["*"]
 )
@@ -119,32 +121,33 @@ def transcribe_audio(audio_path: str, segment_strategy: str, max_chars: int, max
     if not model:
         raise HTTPException(status_code=503, detail="ASR model is not available.")
 
-    # language=None => faster-whisper auto-detects; a 2-letter ISO code forces that language.
-    lang = (language or "").strip().lower() or None
-    segments, info = model.transcribe(audio_path, language=lang, word_timestamps=True, beam_size=5, vad_filter=False)
+    qwen_lang = QWEN_LANG.get((language or "").strip().lower()) if language else None
+    results = model.transcribe(audio=[audio_path], language=qwen_lang, return_time_stamps=True)
+    res = results[0]
 
-    words: List[dict] = []
-    full_text_parts: List[str] = []
-    for seg in segments:
-        full_text_parts.append(seg.text)
-        for w in (seg.words or []):
-            text = (w.word or "").strip()
-            if text:
-                words.append({"text": text, "start": float(w.start), "end": float(w.end)})
+    items = list(res.time_stamps) if getattr(res, "time_stamps", None) else []
+    words = [{"text": it.text, "start": float(it.start_time), "end": float(it.end_time)} for it in items]
 
-    segment_timestamps = process_words(words, segment_strategy, max_chars, max_words, pause_threshold)
+    joiner = "" if (getattr(res, "language", "") in CJK_LANGS) else " "
+    if words:
+        segments = process_words(words, segment_strategy, max_chars, max_words, pause_threshold, joiner)
+        duration = words[-1]["end"]
+    else:
+        # No word timing (aligner doesn't cover this language) — keep the transcript as one segment.
+        duration = 0.0
+        segments = [{"start": 0.0, "end": 0.0, "segment": res.text.strip()}] if res.text.strip() else []
+
     return {
-        "transcription": "".join(full_text_parts).strip(),
-        "segments": segment_timestamps,
-        "srt_content": generate_srt_content(segment_timestamps),
-        "duration_seconds": float(getattr(info, "duration", 0.0) or 0.0),
+        "transcription": res.text.strip(),
+        "segments": segments,
+        "srt_content": generate_srt_content(segments),
+        "duration_seconds": duration,
     }
 
 
-# --- Endpoints ---
 @app.get("/")
 async def root():
-    return {"message": "Faster-Whisper Transcription API", "version": "1.0.0"}
+    return {"message": "Qwen3-ASR Transcription API", "version": "1.0.0"}
 
 
 @app.get("/health")
@@ -154,7 +157,7 @@ async def health():
             status_code=503,
             content={"status": "unavailable", "model_loaded": False, "detail": "ASR model is not available."},
         )
-    return {"status": "ok", "model_loaded": True, "device": app_state.get("device")}
+    return {"status": "ok", "model_loaded": True, "device": app_state.get("device"), "has_aligner": app_state.get("has_aligner")}
 
 
 def _run(temp_path, segment_strategy, max_chars, max_words, pause_threshold, language=None):
@@ -191,9 +194,9 @@ class TranscribeBase64Request(BaseModel):
     filename: Optional[str] = "audio.wav"
     segment_strategy: Literal["char", "sentence", "word"] = "sentence"
     max_chars: int = 42
-    max_words: int = 7  # -1 preserves full sentences
+    max_words: int = 7
     pause_threshold: float = 0.8
-    language: Optional[str] = None  # None/'' => auto-detect; a 2-letter ISO code forces a language
+    language: Optional[str] = None
 
 
 @app.post("/transcribe_base64")
@@ -216,6 +219,5 @@ async def transcribe_base64_endpoint(payload: TranscribeBase64Request):
 
 
 if __name__ == "__main__":
-    logger.info(f"Starting Faster-Whisper ASR server on port {PORT}...")
-    # access_log=False: silence the per-request "GET /health 200 OK" frontend-poll spam.
+    logger.info(f"Starting Qwen3-ASR server on port {PORT}...")
     uvicorn.run(app, host="0.0.0.0", port=PORT, access_log=False)

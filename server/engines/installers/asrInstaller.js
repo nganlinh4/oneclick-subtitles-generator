@@ -20,6 +20,7 @@ const catalog = require('../asrCatalog');
 // One import line per runtime that proves the engine's transcribe stack is importable in the venv.
 const VERIFY_IMPORT = {
   'faster-whisper': 'from faster_whisper import WhisperModel',
+  'qwen-asr': 'from qwen_asr import Qwen3ASRModel',  // Qwen3-ASR (transformers backend)
   transformers: 'import transformers',
   nemo: 'import nemo.collections.asr',  // NeMo (Parakeet-TDT v3 / Nemotron / Canary), wave 2
   onnx: 'import onnxruntime',           // Moonshine, wave 3
@@ -77,6 +78,22 @@ function makeAsrInstaller(row) {
       await executeWithRetry('uv', dlArgs, {
         label: `${row.id} modelscope download`, env: { UV_HTTP_TIMEOUT: '1800' }, logger,
       });
+    }
+
+    // 5b) Forced-aligner companion (qwen-asr needs it for word timestamps) — shared across variants,
+    //     downloaded once into the shared aligner dir.
+    if (row.alignerModelScopeId) {
+      const aDir = catalog.alignerDir();
+      fs.mkdirSync(aDir, { recursive: true });
+      if (fs.readdirSync(aDir).length > 0) {
+        logger.info(`Forced aligner already present at ${aDir} — skipping download`);
+      } else {
+        logger.installing(`Downloading forced aligner from ModelScope: ${row.alignerModelScopeId}`);
+        await executeWithRetry('uv', ['run', '--python', venv, 'modelscope', 'download',
+          '--model', row.alignerModelScopeId, '--local_dir', aDir], {
+          label: `${row.id} aligner download`, env: { UV_HTTP_TIMEOUT: '1800' }, logger,
+        });
+      }
     }
 
     // 6) Verify the venv is usable. GPU is preferred but NOT required — report availability, don't fail.

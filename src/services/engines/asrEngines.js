@@ -22,6 +22,27 @@ export const ASR_ENGINES = [
     defaultStrategy: 'sentence',
     route: 'asr/faster-whisper-turbo',
   },
+  {
+    id: 'faster-whisper-large-v3',
+    name: 'Faster-Whisper Large-v3',
+    supportsLanguage: true,
+    defaultStrategy: 'sentence',
+    route: 'asr/faster-whisper-large-v3',
+  },
+  {
+    id: 'qwen3-asr-1.7b',
+    name: 'Qwen3-ASR 1.7B',
+    supportsLanguage: true,
+    defaultStrategy: 'sentence',
+    route: 'asr/qwen3-asr-1.7b',
+  },
+  {
+    id: 'qwen3-asr-0.6b',
+    name: 'Qwen3-ASR 0.6B',
+    supportsLanguage: true,
+    defaultStrategy: 'sentence',
+    route: 'asr/qwen3-asr-0.6b',
+  },
 ];
 
 export const ASR_METHOD_IDS = ASR_ENGINES.map((e) => e.id);
