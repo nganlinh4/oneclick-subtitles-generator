@@ -125,5 +125,14 @@
   "extractingSegment": "Đang trích xuất đoạn đã chọn trên máy...",
   "parakeetServiceUnavailable": "Dịch vụ Parakeet không khả dụng",
   "processingSegment": "Đang xử lý đoạn đã chọn (dùng lại tệp đã tải lên)...",
-  "sendingToGemini": "Đang gửi đoạn đã trích xuất đến Gemini..."
+  "sendingToGemini": "Đang gửi đoạn đã trích xuất đến Gemini...",
+  "languageAutoDetect": "Tự động phát hiện",
+  "asrLanguage": "Ngôn ngữ",
+  "asrLanguageHelp": "Buộc một ngôn ngữ phiên âm, hoặc để Tự động phát hiện.",
+  "engineServiceUnavailable": "Dịch vụ {{engine}} không khả dụng",
+  "engineGeneric": "Engine ASR",
+  "transcriptionMethodLocalAsrDescription": "Phiên âm bằng GPU cục bộ — cài đặt từ bảng Công cụ, sau đó chạy ngoại tuyến.",
+  "notAvailableVercelVersion": "không khả dụng trong phiên bản Vercel",
+  "engineStartingUp": "đang khởi động…",
+  "transcribingWithEngine": "Đang phiên âm bằng {{engine}} ({{current}}/{{total}})..."
 }

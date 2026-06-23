@@ -125,5 +125,14 @@
   "extractingSegment": "선택한 구간을 로컬에서 추출하는 중...",
   "parakeetServiceUnavailable": "Parakeet 서비스를 사용할 수 없습니다",
   "processingSegment": "선택한 구간을 처리하는 중 (업로드한 파일 재사용)...",
-  "sendingToGemini": "추출한 구간을 Gemini로 보내는 중..."
+  "sendingToGemini": "추출한 구간을 Gemini로 보내는 중...",
+  "languageAutoDetect": "자동 감지",
+  "asrLanguage": "언어",
+  "asrLanguageHelp": "전사 언어를 지정하거나 자동 감지로 두세요.",
+  "engineServiceUnavailable": "{{engine}} 서비스를 사용할 수 없습니다",
+  "engineGeneric": "ASR 엔진",
+  "transcriptionMethodLocalAsrDescription": "로컬 GPU 전사 — 도구 패널에서 설치하면 오프라인으로 실행됩니다.",
+  "notAvailableVercelVersion": "Vercel 버전에서는 사용할 수 없음",
+  "engineStartingUp": "시작하는 중…",
+  "transcribingWithEngine": "{{engine}}(으)로 전사 중 ({{current}}/{{total}})..."
 }

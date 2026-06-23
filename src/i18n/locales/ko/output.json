@@ -121,5 +121,6 @@
   "subtitlesReady": "자막이 준비되었습니다!",
   "summaryCompleted": "요약을 완료했습니다",
   "usingLegacyFallback": "기존 처리 방식을 사용 중입니다. 더 나은 성능을 위해 설정에서 \"간소화 처리\"를 켜세요.",
-  "videoAnalysisAborted": "비디오 분석을 중단했습니다"
+  "videoAnalysisAborted": "비디오 분석을 중단했습니다",
+  "asrTranscriptionComplete": "{{engine}} 전사 완료"
 }

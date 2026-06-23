@@ -11,6 +11,7 @@ import parakeetDarkImg from '../assets/transcription-methods/parakeet_dark.png';
 import parakeetLightImg from '../assets/transcription-methods/parakeet_light.png';
 import whisperDarkImg from '../assets/transcription-methods/whisper_dark.png';
 import whisperLightImg from '../assets/transcription-methods/whisper_light.png';
+import { ASR_ENGINES } from '../services/engines/asrEngines';
 
 /**
  * Overlay for first-time transcription method selection
@@ -74,6 +75,15 @@ const TranscriptionMethodSelectionOverlay = ({ isOpen, onMethodSelect, onClose, 
                 img: isDarkTheme ? parakeetDarkImg : parakeetLightImg,
                 disabled: isParakeetDisabled
             },
+            // On-demand local GPU ASR engines (faster-whisper, …) — install from the Tools panel; each
+            // card is grayed out until its engine is installed and the service reports ready.
+            ...ASR_ENGINES.map((e) => ({
+                id: e.id,
+                name: e.name,
+                desc: t('processing.transcriptionMethodLocalAsrDescription', 'Local GPU transcription — install from the Tools panel, then it runs offline.'),
+                img: isDarkTheme ? whisperDarkImg : whisperLightImg,
+                disabled: !isReady(e.id)
+            })),
             {
                 id: 'groq-whisper',
                 name: t('processing.transcriptionMethodWhisperName'),

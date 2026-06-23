@@ -1,11 +1,12 @@
 import { useState, useRef, useEffect, useMemo, useCallback } from 'react';
 import { useTranslation } from 'react-i18next';
 import { showInfoToast } from '../utils/toastUtils';
-import useParakeetAvailability from '../hooks/useParakeetAvailability';
+import { useEngineStatus } from '../hooks/useEngineStatus';
 import useModalHeight from './useModalHeight';
 import useTokenCounting from './useTokenCounting';
 import useStartupMode from './useStartupMode';
-import useParakeetOptions from './useParakeetOptions';
+import useAsrOptions from './useAsrOptions';
+import { getEngineDescriptor, isAsr } from '../services/engines/transcriptionEngineRegistry';
 import useTranscriptionRulesAvailability from './useTranscriptionRulesAvailability';
 import runVideoProcess from './runVideoProcess';
 import {
@@ -42,8 +43,8 @@ const useVideoProcessingState = ({
     // Vercel vs local startup mode (seeded + synced from localStorage)
     const { isVercelMode } = useStartupMode();
 
-    // Per-engine Parakeet availability — replaces the old global Full-version gate.
-    const { available: parakeetAvailable } = useParakeetAvailability();
+    // Per-engine availability (polled) — drives the registry's availability checks.
+    const engineStatus = useEngineStatus();
 
     // Processing method: 'new' (Files API), 'old' (inline), 'nvidia-parakeet'
     const [method, setMethod] = useState(() => {
@@ -65,30 +66,43 @@ const useVideoProcessingState = ({
         return retryMode ? true : (saved === 'true');
     });
 
-    // Parakeet-specific options + supported-languages drag-scroll
+    // The current method's descriptor + its availability, and the active local-ASR engine (the selected
+    // one, or Parakeet as a stable default while a Gemini method is selected).
+    const descriptor = getEngineDescriptor(method) || getEngineDescriptor('new');
+    const engineAvailable = descriptor.availability({ engineStatus, isVercelMode });
+    const activeAsrEngineId = isAsr(method) ? method : 'nvidia-parakeet';
+    const activeAsrDescriptor = getEngineDescriptor(activeAsrEngineId) || {};
+
+    // Generic per-engine ASR options + supported-languages drag-scroll (shared by all local ASR engines).
     const {
         languagesRef,
-        parakeetStrategy,
-        setParakeetStrategy,
-        parakeetMaxChars,
-        setParakeetMaxChars,
-        parakeetMaxWords,
-        setParakeetMaxWords,
-        parakeetPreserveSentences,
-        setParakeetPreserveSentences,
-        parakeetMaxDurationPerRequest,
-        setParakeetMaxDurationPerRequest,
-    } = useParakeetOptions(method);
+        strategy: asrStrategy,
+        setStrategy: setAsrStrategy,
+        maxChars: asrMaxChars,
+        setMaxChars: setAsrMaxChars,
+        maxWords: asrMaxWords,
+        setMaxWords: setAsrMaxWords,
+        preserveSentences: asrPreserveSentences,
+        setPreserveSentences: setAsrPreserveSentences,
+        maxDurationPerRequest: asrMaxDurationPerRequest,
+        setMaxDurationPerRequest: setAsrMaxDurationPerRequest,
+        language: asrLanguage,
+        setLanguage: setAsrLanguage,
+    } = useAsrOptions(activeAsrEngineId, {
+        hasLanguagesBadges: !!activeAsrDescriptor.supportedLanguagesBadges,
+        defaultStrategy: activeAsrDescriptor.defaultStrategy || 'sentence',
+    });
 
     // Smooth modal height transitions (refs + content-change/open effects)
     const { modalRef, contentRef } = useModalHeight(isOpen, method);
 
-    // Reset to the default method if Parakeet isn't available.
+    // Reset to the default method if the selected ASR engine isn't available (covers Parakeet AND every
+    // catalog engine going offline). Wait for the first status poll so a saved method isn't reset on load.
     useEffect(() => {
-        if (!parakeetAvailable && method === 'nvidia-parakeet') {
+        if (isAsr(method) && !engineStatus.loading && !engineAvailable) {
             setMethod('new');
         }
-    }, [parakeetAvailable]);
+    }, [engineAvailable, engineStatus.loading, method]);
 
     // Prevent old method selection in Vercel mode
     useEffect(() => {
@@ -434,7 +448,6 @@ const useVideoProcessingState = ({
         useTranscriptionRules,
         method,
         maxDurationPerRequest,
-        parakeetMaxDurationPerRequest,
         resolutionOptions,
         buildOutsideContextText: getOutsideContextText,
         getSelectedPromptText,
@@ -463,15 +476,16 @@ const useVideoProcessingState = ({
         customLanguage,
         useTranscriptionRules,
         method,
-        parakeetMaxDurationPerRequest,
+        asrMaxDurationPerRequest,
         maxDurationPerRequest,
         segmentProcessingDelay,
         autoSplitSubtitles,
         maxWordsPerSubtitle,
-        parakeetStrategy,
-        parakeetMaxChars,
-        parakeetMaxWords,
-        parakeetPreserveSentences,
+        asrStrategy,
+        asrMaxChars,
+        asrMaxWords,
+        asrPreserveSentences,
+        asrLanguage,
         t,
         onProcess,
     });
@@ -498,26 +512,29 @@ const useVideoProcessingState = ({
         modalRef,
         contentRef,
         languagesRef,
-        // mode flags
+        // mode flags + current method descriptor/availability
         isVercelMode,
-        parakeetAvailable,
+        descriptor,
+        engineAvailable,
         method,
         setMethod,
         showMethodSelection,
         setShowMethodSelection,
         inlineExtraction,
         retryLock,
-        // parakeet options
-        parakeetStrategy,
-        setParakeetStrategy,
-        parakeetMaxChars,
-        setParakeetMaxChars,
-        parakeetMaxWords,
-        setParakeetMaxWords,
-        parakeetPreserveSentences,
-        setParakeetPreserveSentences,
-        parakeetMaxDurationPerRequest,
-        setParakeetMaxDurationPerRequest,
+        // generic ASR options (shared by all local ASR engines)
+        asrStrategy,
+        setAsrStrategy,
+        asrMaxChars,
+        setAsrMaxChars,
+        asrMaxWords,
+        setAsrMaxWords,
+        asrPreserveSentences,
+        setAsrPreserveSentences,
+        asrMaxDurationPerRequest,
+        setAsrMaxDurationPerRequest,
+        asrLanguage,
+        setAsrLanguage,
         // gemini options
         fps,
         setFps,

@@ -125,7 +125,19 @@ export const getLanguageName = (code) => {
   if (LANGUAGE_NAMES[normalizedCode]) {
     return LANGUAGE_NAMES[normalizedCode];
   }
-  
+
   // If the code is not in our map, return the code itself
   return code;
 };
+
+/**
+ * The common languages offered in selection UIs (e.g. the ASR force-language picker), as
+ * ISO 639-1 code + display name. Reuses getLanguageName so names stay in one place.
+ * @returns {{code:string,name:string}[]}
+ */
+const COMMON_LANGUAGE_CODES = [
+  'en', 'es', 'fr', 'de', 'it', 'pt', 'ru', 'ja', 'ko', 'zh', 'vi', 'th',
+  'ar', 'hi', 'bn', 'tr', 'nl', 'sv', 'pl', 'id', 'ms', 'el', 'he',
+];
+export const getLanguageOptions = () =>
+  COMMON_LANGUAGE_CODES.map((code) => ({ code, name: getLanguageName(code) }));

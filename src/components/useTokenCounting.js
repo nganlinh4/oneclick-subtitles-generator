@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react';
 import { useTranslation } from 'react-i18next';
 import { showErrorToast } from '../utils/toastUtils';
 import { getNextAvailableKey } from '../services/gemini/keyManager';
+import { supportsTokenCounting } from '../services/engines/transcriptionEngineRegistry';
 
 /**
  * Encapsulates real + estimated token counting for the video processing modal.
@@ -31,12 +32,14 @@ const useTokenCounting = ({
     useTranscriptionRules,
     method,
     maxDurationPerRequest,
-    parakeetMaxDurationPerRequest,
     resolutionOptions,
     buildOutsideContextText,
     getSelectedPromptText,
 }) => {
     const { t } = useTranslation();
+    // Token counting is a Gemini-only concern. Local ASR engines have no API token cost, so the whole
+    // hook short-circuits for them (no API calls, displayTokens 0 -> always within limit).
+    const tokenCountingEnabled = supportsTokenCounting(method);
     const [isCountingTokens, setIsCountingTokens] = useState(false);
     const [realTokenCount, setRealTokenCount] = useState(null);
     const [tokenCountError, setTokenCountError] = useState(null);
@@ -136,8 +139,7 @@ const useTokenCounting = ({
             const segmentDuration = selectedSegment.end - selectedSegment.start;
 
             // Account for parallel processing splitting
-            const currentMaxDuration = method === 'nvidia-parakeet' ? parakeetMaxDurationPerRequest : maxDurationPerRequest;
-            const numRequests = Math.ceil(segmentDuration / (currentMaxDuration * 60));
+            const numRequests = Math.ceil(segmentDuration / (maxDurationPerRequest * 60));
 
             // Try to get total duration from video file or use segment duration as fallback
             let totalDuration = segmentDuration; // Conservative fallback
@@ -214,7 +216,7 @@ const useTokenCounting = ({
 
     // Calculate estimated token usage based on official Gemini API documentation
     const calculateEstimatedTokens = () => {
-        if (!selectedSegment) return 0;
+        if (!tokenCountingEnabled || !selectedSegment) return 0;
 
         const segmentDuration = selectedSegment.end - selectedSegment.start;
         const resolution = resolutionOptions.find(r => r.value === mediaResolution);
@@ -225,8 +227,7 @@ const useTokenCounting = ({
         const totalSegmentTokens = Math.round(segmentDuration * (fps * frameTokens + audioTokens));
 
         // Account for parallel processing splitting (same logic as real token counting)
-        const currentMaxDuration = method === 'nvidia-parakeet' ? parakeetMaxDurationPerRequest : maxDurationPerRequest;
-        const numRequests = Math.ceil(segmentDuration / (currentMaxDuration * 60));
+        const numRequests = Math.ceil(segmentDuration / (maxDurationPerRequest * 60));
 
         // Return tokens per request when splitting, otherwise total
         return numRequests > 1
@@ -236,7 +237,7 @@ const useTokenCounting = ({
 
     // Automatic token counting when modal opens or settings change - throttled to prevent excessive API calls
     useEffect(() => {
-        if (isOpen && videoFile && selectedSegment) {
+        if (tokenCountingEnabled && isOpen && videoFile && selectedSegment) {
             // Create a 1 second delay before making the API call
             const timeoutId = setTimeout(() => {
                 console.log('[TokenCounting] Auto-counting tokens after throttle delay');
@@ -256,7 +257,7 @@ const useTokenCounting = ({
             };
         }
         // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [isOpen, videoFile, selectedSegment, fps, mediaResolution, selectedModel, selectedPromptPreset, customLanguage, useTranscriptionRules, maxDurationPerRequest, parakeetMaxDurationPerRequest, method]);
+    }, [tokenCountingEnabled, isOpen, videoFile, selectedSegment, fps, mediaResolution, selectedModel, selectedPromptPreset, customLanguage, useTranscriptionRules, maxDurationPerRequest, method]);
 
     // Dispatch toast notifications for token count errors
     useEffect(() => {

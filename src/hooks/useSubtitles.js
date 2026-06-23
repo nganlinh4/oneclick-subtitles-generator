@@ -15,10 +15,19 @@ import {
 import { useSubtitlesSegmentRetry } from './useSubtitlesSegmentRetry';
 import { useQuotaCountdown } from './useQuotaCountdown';
 import { useSubtitlesRetryGeneration } from './useSubtitlesRetryGeneration';
-import { runParakeetGeneration } from './runParakeetGeneration';
+import { runAsrGeneration } from './runAsrGeneration';
+import { DESCRIPTORS, LOCAL_METHOD_IDS } from '../services/engines/transcriptionEngineRegistry';
 import { createSegmentStreamingHandler, createFullMediaStreamingHandler } from './subtitleStreamingHandlers';
 
 // Cache utilities moved to services/subtitleCache
+
+// Local (non-Gemini) transcription methods -> the generic ASR runner, keyed by the registry. EVERY local
+// ASR engine (Parakeet + catalog) runs through runAsrGeneration with its descriptor (route + capabilities),
+// so adding an engine is one registry row — no scattered method checks.
+const METHOD_RUNNERS = Object.fromEntries(
+    DESCRIPTORS.filter((d) => d.type === 'asr').map((d) => [d.id, (ctx) => runAsrGeneration({ ...ctx, engine: d })])
+);
+const LOCAL_METHODS = new Set(LOCAL_METHOD_IDS);
 
 export const useSubtitles = (t) => {
     // Debug logger gated by localStorage.debug_logs
@@ -76,7 +85,7 @@ export const useSubtitles = (t) => {
     const runId = (typeof crypto !== 'undefined' && crypto.randomUUID) ? crypto.randomUUID() : Math.random().toString(36).slice(2, 10);
 
         const { userProvidedSubtitles, segment, fps, mediaResolution, model } = options; // inlineExtraction supported via options.inlineExtraction
-        if (options.method !== 'nvidia-parakeet' && !apiKeysSet.gemini) {
+        if (!LOCAL_METHODS.has(options.method) && !apiKeysSet.gemini) {
             setStatus({ message: t('errors.apiKeyRequired'), type: 'error' });
             return false;
         }
@@ -87,9 +96,10 @@ export const useSubtitles = (t) => {
         setIsGenerating(true);
         setStatus({ message: t('output.processingVideo'), type: 'loading' });
 
-        // Handle Parakeet processing
-        if (options.method === 'nvidia-parakeet') {
-            return await runParakeetGeneration({
+        // Local ASR engines (Parakeet + the catalog engines) run via their registered runner.
+        const localRunner = METHOD_RUNNERS[options.method];
+        if (localRunner) {
+            return await localRunner({
                 input,
                 options,
                 runId,
