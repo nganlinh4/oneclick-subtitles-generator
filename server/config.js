@@ -18,6 +18,10 @@ const PORTS = {
   PARAKEET: parseInt(process.env.PARAKEET_PORT) || 3038
 };
 
+// On-demand GPU ASR engines (faster-whisper, qwen3-asr, …): ports are derived from the catalog so
+// adding an engine is one row there, not an edit here. (asrCatalog depends only on `path` — no cycle.)
+Object.assign(PORTS, require('./engines/asrCatalog').portsConfig());
+
 // Server configuration using unified ports
 const PORT = PORTS.BACKEND;
 const SERVER_URL = `http://127.0.0.1:${PORTS.BACKEND}`; // Using IPv4 address for better compatibility
@@ -39,7 +43,8 @@ const CORS_ORIGIN = process.env.NODE_ENV === 'production' ? '*' : [
   `http://localhost:${PORTS.PROMPTDJ_MIDI}`,
   `http://127.0.0.1:${PORTS.PROMPTDJ_MIDI}`,
   `http://localhost:${PORTS.PARAKEET}`,
-  `http://127.0.0.1:${PORTS.PARAKEET}`
+  `http://127.0.0.1:${PORTS.PARAKEET}`,
+  ...require('./engines/asrCatalog').corsOrigins()
 ];
 
 // Directory paths

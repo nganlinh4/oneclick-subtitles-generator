@@ -9,7 +9,7 @@ const path = require('path');
 const fs = require('fs');
 
 // Known heavy engines. `base` holds the light always-available bits (flask, edge-tts, gtts, yt-dlp).
-const ENGINE_IDS = ['base', 'f5tts', 'chatterbox', 'parakeet'];
+const ENGINE_IDS = ['base', 'f5tts', 'chatterbox', 'parakeet', ...require('./asrCatalog').ids()];
 
 const projectRoot = path.resolve(__dirname, '..', '..');
 

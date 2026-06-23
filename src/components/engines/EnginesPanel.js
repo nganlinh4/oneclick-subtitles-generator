@@ -13,6 +13,7 @@ const ENGINES = [
   { id: 'f5tts', name: 'F5-TTS', kind: 'voice-cloning' },
   { id: 'chatterbox', name: 'Chatterbox', kind: 'voice-cloning' },
   { id: 'parakeet', name: 'Nvidia Parakeet', kind: 'transcription' },
+  { id: 'faster-whisper-turbo', name: 'Faster-Whisper Turbo', kind: 'transcription' },
 ];
 
 /**
