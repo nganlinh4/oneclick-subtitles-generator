@@ -6,6 +6,22 @@
   gap: 10px;
 }
 
+/* Engine cards in two columns (the panel is wide); collapse to one on narrow windows. `minmax(0, 1fr)`
+   lets columns shrink instead of overflowing on the action column's min-width, and `align-items: start`
+   keeps a card with an error message from stretching its row-neighbor. */
+.engines-panel__grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+  align-items: start;
+}
+
+@media (max-width: 900px) {
+  .engines-panel__grid {
+    grid-template-columns: 1fr;
+  }
+}
+
 /* Intro on the left, "Uninstall all" on the right. */
 .engines-panel__header {
   display: flex;

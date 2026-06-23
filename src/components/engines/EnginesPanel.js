@@ -89,17 +89,19 @@ const EnginesPanel = () => {
         </p>
         {renderUninstallAll()}
       </div>
-      {ENGINES.map((e) => (
-        <EngineCard
-          key={e.id}
-          id={e.id}
-          name={e.name}
-          kind={e.kind}
-          status={engines[e.id]}
-          onChanged={refresh}
-          managedByElectron={managedByElectron}
-        />
-      ))}
+      <div className="engines-panel__grid">
+        {ENGINES.map((e) => (
+          <EngineCard
+            key={e.id}
+            id={e.id}
+            name={e.name}
+            kind={e.kind}
+            status={engines[e.id]}
+            onChanged={refresh}
+            managedByElectron={managedByElectron}
+          />
+        ))}
+      </div>
     </div>
   );
 };
