@@ -8,14 +8,16 @@ SET "GIT_REPO_URL=https://github.com/nganlinh4/oneclick-subtitles-generator.git"
 SET "SCRIPT_DIR=%~dp0"
 SET "PROJECT_PATH=%SCRIPT_DIR%%PROJECT_FOLDER_NAME%"
 IF "%PROJECT_PATH:~-1%"=="\" SET "PROJECT_PATH=%PROJECT_PATH:~0,-1%"
+SET "STAGING_PATH=%PROJECT_PATH%.installing"
+SET "BACKUP_PATH=%PROJECT_PATH%.backup"
 SET "LAST_CHOICE_FILE=%SCRIPT_DIR%last_choice.tmp"
-SET "PREREQ_FLAG_FILE=%SCRIPT_DIR%prereqs_installed.flag"
+SET "LEGACY_PREREQ_FLAG_FILE=%SCRIPT_DIR%prereqs_installed.flag"
 
 :: --- Self-update settings ---
 :: Bump SELF_VERSION to match the release tag whenever you cut a NEW .bat release.
 :: On a fresh launch the installer compares this to the latest GitHub release and, if
 :: newer, offers to download + swap itself in place so users never re-download manually.
-SET "SELF_VERSION=2.5"
+SET "SELF_VERSION=2.6"
 SET "SELFBAT=%~f0"
 SET "OSG_REPO=nganlinh4/oneclick-subtitles-generator"
 SET "NEWBAT=%SCRIPT_DIR%OSG_installer_Windows.new.bat"
@@ -33,8 +35,8 @@ IF %ERRORLEVEL% NEQ 0 EXIT /B
 
 :: --- Self-update: on a fresh launch, offer to update the installer file itself ---
 :: Flat/GOTO style (no nested blocks) so batch paren-parsing stays safe. Any failure or
-:: no-internet falls straight through to the normal menu. Skipped during the error
-:: auto-restart (LAST_CHOICE_FILE present) so a mid-install retry never swaps the script.
+:: no-internet falls straight through to the normal menu. Skipped while a saved install
+:: choice is active so the script is never swapped during setup or recovery.
 IF EXIST "%LAST_CHOICE_FILE%" GOTO SkipSelfUpdate
 DEL "%TEMP%\osg_latest.txt" >nul 2>&1
 powershell -NoProfile -ExecutionPolicy Bypass -Command "try { $r=Invoke-RestMethod -Uri 'https://api.github.com/repos/%OSG_REPO%/releases/latest' -Headers @{'User-Agent'='OSG-Installer'} -TimeoutSec 8; $l=($r.tag_name).TrimStart('v'); if([version]$l -gt [version]'%SELF_VERSION%'){ Out-File -InputObject $r.tag_name -FilePath ($env:TEMP + '\osg_latest.txt') -Encoding ascii } } catch {}"
@@ -51,7 +53,7 @@ IF /I "%DO_UPDATE%"=="n" GOTO SkipSelfUpdate
 GOTO SelfUpdate
 :SkipSelfUpdate
 
-:: Check if we have a saved choice from previous error
+:: Resume an install choice left by an interrupted or relaunched setup.
 IF EXIST "%LAST_CHOICE_FILE%" (
     SET "CHOICE="
     SET /P SAVED_CHOICE=<"%LAST_CHOICE_FILE%"
@@ -63,7 +65,7 @@ IF EXIST "%LAST_CHOICE_FILE%" (
     IF "!SAVED_CHOICE!"=="4" SET "CHOICE=4"
     IF "!SAVED_CHOICE!"=="5" SET "CHOICE=5"
     IF DEFINED CHOICE (
-        powershell -NoProfile -ExecutionPolicy Bypass -Command "Write-Host '[AUTO-RESTART] Using previous choice (Su dung lua chon truoc): !CHOICE!' -ForegroundColor Magenta"
+        powershell -NoProfile -ExecutionPolicy Bypass -Command "Write-Host '[RESUME] Using previous choice (Su dung lua chon truoc): !CHOICE!' -ForegroundColor Magenta"
         ECHO.
         GOTO ProcessChoice
     ) ELSE (
@@ -113,14 +115,18 @@ ECHO.
 powershell -NoProfile -ExecutionPolicy Bypass -Command "Write-Host '  5. Exit (Thoat)' -ForegroundColor Gray; Write-Host (([char]0x2550).ToString() * 77) -ForegroundColor Cyan"
 ECHO.
 powershell -NoProfile -ExecutionPolicy Bypass -Command "Write-Host '%PROMPT_CHOICE%' -ForegroundColor Yellow -NoNewline"
+SET "CHOICE="
 SET /P "CHOICE="
 
 :ProcessChoice
 :: Validate input
 IF NOT "%CHOICE%"=="" SET CHOICE=%CHOICE:~0,1%
 
-:: Save choice before processing (for auto-restart on error - only for installation options)
-IF "%CHOICE%"=="1" (ECHO 1) >"%LAST_CHOICE_FILE%"
+:: Keep the install choice until prerequisite verification completes, allowing a
+:: relaunched or interrupted setup to resume safely.
+IF "%CHOICE%"=="1" (
+    >"%LAST_CHOICE_FILE%" ECHO 1
+)
 
 IF "%CHOICE%"=="1" GOTO InstallNarration
 IF "%CHOICE%"=="2" GOTO UpdateApp
@@ -140,28 +146,35 @@ ECHO.
 powershell -NoProfile -ExecutionPolicy Bypass -Command "Write-Host ([char]0x2554 + ([char]0x2550).ToString() * 77 + [char]0x2557) -ForegroundColor Cyan; Write-Host ([char]0x2551 + '                            [SETUP] Install OSG                              ' + [char]0x2551) -ForegroundColor White -BackgroundColor DarkGreen; Write-Host ([char]0x255A + ([char]0x2550).ToString() * 77 + [char]0x255D) -ForegroundColor Cyan"
 ECHO.
 
+SET "INSTALL_TRANSACTION_ACTIVE="
+SET "INSTALL_ERROR_STEP=checking prerequisites"
 CALL :InstallPrerequisites
 IF %ERRORLEVEL% NEQ 0 GOTO ErrorOccurred
 
 :: Clear saved choice after successful prerequisite installation
 IF EXIST "%LAST_CHOICE_FILE%" DEL "%LAST_CHOICE_FILE%" >nul 2>&1
 
-CALL :CleanInstall "%PROJECT_PATH%"
+SET "INSTALL_ERROR_STEP=preparing a safe installation"
+CALL :PrepareInstallTransaction
 IF %ERRORLEVEL% NEQ 0 GOTO ErrorOccurred
 
 powershell -NoProfile -ExecutionPolicy Bypass -Command "Write-Host '[SETUP] Downloading application (Tai ung dung)...' -ForegroundColor Cyan"
-git clone %GIT_REPO_URL% "%PROJECT_PATH%"
+SET "INSTALL_ERROR_STEP=downloading the application"
+git clone %GIT_REPO_URL% "%STAGING_PATH%"
 IF %ERRORLEVEL% NEQ 0 (
-    powershell -NoProfile -ExecutionPolicy Bypass -Command "Write-Host '[RESTART] Restarting to refresh environment (Khoi dong lai de cap nhat moi truong)...' -ForegroundColor Blue"
+    powershell -NoProfile -ExecutionPolicy Bypass -Command "Write-Host '[ERROR] Application download failed. The current installation was not changed (Tai ung dung that bai. Ban cai dat hien tai khong bi thay doi).' -ForegroundColor Red"
     GOTO ErrorOccurred
 )
 powershell -NoProfile -ExecutionPolicy Bypass -Command "Write-Host '[OK] Application downloaded successfully (Tai ung dung thanh cong).' -ForegroundColor Green"
 
+SET "INSTALL_ERROR_STEP=activating the downloaded application"
+CALL :ActivateStagedInstall
+IF %ERRORLEVEL% NEQ 0 GOTO ErrorOccurred
+
 powershell -NoProfile -ExecutionPolicy Bypass -Command "Write-Host '[SETUP] Changing to project directory (Chuyen den thu muc du an)...' -ForegroundColor Cyan"
 PUSHD "%PROJECT_PATH%"
 IF %ERRORLEVEL% NEQ 0 (
-    powershell -NoProfile -ExecutionPolicy Bypass -Command "Write-Host '[RESTART] Restarting to refresh environment (Khoi dong lai de cap nhat moi truong)...' -ForegroundColor Blue"
-    POPD
+    SET "INSTALL_ERROR_STEP=opening the project directory"
     GOTO ErrorOccurred
 )
 
@@ -172,9 +185,9 @@ IF %ERRORLEVEL% NEQ 0 (
 )
 
 powershell -NoProfile -ExecutionPolicy Bypass -Command "Write-Host '[SETUP] Installing dependencies... (takes long time) (Cai dat phu thuoc... mat thoi gian dai)' -ForegroundColor Cyan"
+SET "INSTALL_ERROR_STEP=installing application dependencies"
 CALL npm run install:all
 IF %ERRORLEVEL% NEQ 0 (
-    powershell -NoProfile -ExecutionPolicy Bypass -Command "Write-Host '[RESTART] Restarting to refresh environment (Khoi dong lai de cap nhat moi truong)...' -ForegroundColor Blue"
     POPD
     GOTO ErrorOccurred
 )
@@ -186,11 +199,20 @@ IF %ERRORLEVEL% NEQ 0 (
     powershell -NoProfile -ExecutionPolicy Bypass -Command "Write-Host '[INFO] You can fix this later with ''npm run install:yt-dlp'' (Ban co the sua loi nay sau bang lenh ''npm run install:yt-dlp'').' -ForegroundColor Blue"
 )
 
+POPD
+SET "INSTALL_ERROR_STEP=finalizing the installation"
+CALL :CommitInstallTransaction
+IF %ERRORLEVEL% NEQ 0 (
+    powershell -NoProfile -ExecutionPolicy Bypass -Command "Write-Host '[WARN] OSG is installed, but the previous-version backup could not be removed (OSG da duoc cai dat, nhung khong the xoa ban sao luu cu).' -ForegroundColor Yellow"
+)
+
 ECHO.
 powershell -NoProfile -ExecutionPolicy Bypass -Command "Write-Host '[OK] Installation completed successfully (Cai dat hoan tat thanh cong)!' -ForegroundColor Green"
 powershell -NoProfile -ExecutionPolicy Bypass -Command "Write-Host '[START] Launching OSG. Voice cloning & transcription engines install on demand in Settings (Khoi chay OSG. Engine cai theo nhu cau trong Cai dat)...' -ForegroundColor Magenta"
 powershell -NoProfile -ExecutionPolicy Bypass -Command "Write-Host '[INFO] Press Ctrl+C to stop the application (Nhan Ctrl+C de dung ung dung).' -ForegroundColor Blue"
 ECHO.
+PUSHD "%PROJECT_PATH%"
+IF %ERRORLEVEL% NEQ 0 GOTO MainMenuVI
 CALL npm run dev
 POPD
 GOTO %MENU_LABEL%
@@ -282,16 +304,19 @@ GOTO MainMenuVI
 REM ==============================================================================
 :UninstallApp
 ECHO *** Option 4: Uninstall Application ***
-IF NOT EXIST "%PROJECT_PATH%" (
+IF NOT EXIST "%PROJECT_PATH%" IF NOT EXIST "%STAGING_PATH%" IF NOT EXIST "%BACKUP_PATH%" (
     ECHO INFO: Project folder not found.
     ECHO Application may not be installed.
     PAUSE
     GOTO MainMenuVI
 )
 
-ECHO WARNING: This will permanently delete the project folder:
+ECHO WARNING: This will permanently delete the application and installer recovery folders:
 ECHO %PROJECT_PATH%
+IF EXIST "%STAGING_PATH%" ECHO %STAGING_PATH%
+IF EXIST "%BACKUP_PATH%" ECHO %BACKUP_PATH%
 ECHO.
+SET "CONFIRM_UNINSTALL="
 SET /P "CONFIRM_UNINSTALL=Continue? (c/k): "
 IF /I NOT "%CONFIRM_UNINSTALL%"=="c" (
     ECHO Uninstall cancelled.
@@ -299,18 +324,23 @@ IF /I NOT "%CONFIRM_UNINSTALL%"=="c" (
     GOTO MainMenuVI
 )
 
-ECHO Deleting project folder: %PROJECT_PATH%...
-RMDIR /S /Q "%PROJECT_PATH%"
-IF %ERRORLEVEL% NEQ 0 (
-    ECHO ERROR: Cannot delete project folder.
+ECHO Deleting application folders...
+CALL :RemoveFolderIfExists "%PROJECT_PATH%"
+IF ERRORLEVEL 1 GOTO UninstallFailed
+CALL :RemoveFolderIfExists "%STAGING_PATH%"
+IF ERRORLEVEL 1 GOTO UninstallFailed
+CALL :RemoveFolderIfExists "%BACKUP_PATH%"
+IF ERRORLEVEL 1 GOTO UninstallFailed
+
+ECHO Uninstall completed. Application folders have been deleted.
+PAUSE
+GOTO MainMenuVI
+
+:UninstallFailed
+    ECHO ERROR: Cannot delete one or more application folders.
     ECHO Check permissions or if files are in use.
     PAUSE
     GOTO MainMenuVI
-)
-
-ECHO Uninstall completed. Project folder has been deleted.
-PAUSE
-GOTO MainMenuVI
 
 REM ==============================================================================
 :: Subroutine: Install Prerequisites (Git, Node, FFmpeg, uv)
@@ -318,54 +348,41 @@ REM ============================================================================
 ECHO.
 powershell -NoProfile -ExecutionPolicy Bypass -Command "Write-Host '--- Checking System Requirements ---' -ForegroundColor White -BackgroundColor DarkMagenta"
 
-:: --- STATE CHECK: The Core of the Fix ---
-IF EXIST "%PREREQ_FLAG_FILE%" (
-    powershell -NoProfile -ExecutionPolicy Bypass -Command "Write-Host '[SKIP] Prerequisites were installed on the previous run. Continuing installation...' -ForegroundColor Blue"
-    DEL "%PREREQ_FLAG_FILE%" >nul 2>&1
-    GOTO PrerequisitesVerified
+:: v2.2-v2.5 used this flag to skip verification after a restart. Never trust it.
+IF EXIST "%LEGACY_PREREQ_FLAG_FILE%" DEL "%LEGACY_PREREQ_FLAG_FILE%" >nul 2>&1
+
+powershell -NoProfile -ExecutionPolicy Bypass -Command "Write-Host '[SETUP] Refreshing environment variables before checking tools (Cap nhat bien moi truong truoc khi kiem tra cong cu)...' -ForegroundColor Cyan"
+CALL :RefreshEnvironment
+IF %ERRORLEVEL% NEQ 0 (
+    powershell -NoProfile -ExecutionPolicy Bypass -Command "Write-Host '[WARN] Environment refresh had issues; direct tool checks will still run (Cap nhat moi truong gap su co; van tiep tuc kiem tra truc tiep).' -ForegroundColor Yellow"
 )
 
-:: --- PHASE 1: DETECT MISSING TOOLS ---
-SET "MISSING_TOOLS="
+CALL :DetectMissingTools
+IF NOT DEFINED MISSING_TOOLS GOTO PrerequisitesVerified
 
-powershell -NoProfile -ExecutionPolicy Bypass -Command "Write-Host '[?] Checking for Git...' -ForegroundColor Yellow"
-git --version >nul 2>&1
-IF %ERRORLEVEL% NEQ 0 SET "MISSING_TOOLS=%MISSING_TOOLS% Git"
+ECHO.
+powershell -NoProfile -ExecutionPolicy Bypass -Command "Write-Host '[INSTALL] The following are missing and will be installed:!MISSING_TOOLS!' -ForegroundColor Cyan"
+ECHO.
 
-powershell -NoProfile -ExecutionPolicy Bypass -Command "Write-Host '[?] Checking for Node.js...' -ForegroundColor Yellow"
-node --version >nul 2>&1
-IF %ERRORLEVEL% NEQ 0 SET "MISSING_TOOLS=%MISSING_TOOLS% Node.js"
+SET "INSTALL_FAILURES="
+CALL :InstallTool "Git"
+CALL :InstallTool "Node.js"
+CALL :InstallTool "FFmpeg"
+CALL :InstallTool "uv"
 
-powershell -NoProfile -ExecutionPolicy Bypass -Command "Write-Host '[?] Checking for FFmpeg...' -ForegroundColor Yellow"
-ffmpeg -version >nul 2>&1
-IF %ERRORLEVEL% NEQ 0 SET "MISSING_TOOLS=%MISSING_TOOLS% FFmpeg"
+ECHO.
+powershell -NoProfile -ExecutionPolicy Bypass -Command "Write-Host '[VERIFY] Refreshing the environment and verifying every prerequisite (Cap nhat moi truong va xac minh tung cong cu)...' -ForegroundColor Cyan"
+CALL :RefreshEnvironment
+CALL :DetectMissingTools
 
-powershell -NoProfile -ExecutionPolicy Bypass -Command "Write-Host '[?] Checking for uv...' -ForegroundColor Yellow"
-uv --version >nul 2>&1
-IF %ERRORLEVEL% NEQ 0 SET "MISSING_TOOLS=%MISSING_TOOLS% uv"
-
-:: --- PHASE 2: INSTALL & RESTART (if needed) ---
-IF NOT "%MISSING_TOOLS%"=="" (
-    ECHO.
-    powershell -NoProfile -ExecutionPolicy Bypass -Command "Write-Host '[INSTALL] The following are missing and will be installed:!MISSING_TOOLS!' -ForegroundColor Cyan"
-    ECHO.
-
-    :: Call the safe subroutine for each tool
-    CALL :InstallTool "Git"
-    CALL :InstallTool "Node.js"
-    CALL :InstallTool "FFmpeg"
-    CALL :InstallTool "uv"
-
-    ECHO.
-    powershell -NoProfile -ExecutionPolicy Bypass -Command "Write-Host '[IMPORTANT] Prerequisites installed.' -ForegroundColor Green"
-    
-    powershell -NoProfile -ExecutionPolicy Bypass -Command "Write-Host '[MEMORY] Creating a flag to skip this check on the next run...' -ForegroundColor Blue"
-    ECHO 1 > "%PREREQ_FLAG_FILE%"
-
-    powershell -NoProfile -ExecutionPolicy Bypass -Command "Write-Host '[RESTART REQUIRED] The script must restart to use the new software. This is normal.' -ForegroundColor Magenta"
-    
+IF DEFINED MISSING_TOOLS (
+    powershell -NoProfile -ExecutionPolicy Bypass -Command "Write-Host '[ERROR] Prerequisite verification failed. Still unavailable:!MISSING_TOOLS!' -ForegroundColor Red"
+    IF DEFINED INSTALL_FAILURES powershell -NoProfile -ExecutionPolicy Bypass -Command "Write-Host '[ERROR] Installer commands also reported failures for:!INSTALL_FAILURES!' -ForegroundColor Red"
+    powershell -NoProfile -ExecutionPolicy Bypass -Command "Write-Host '[INFO] OSG installation has stopped before changing the current project folder (Da dung cai dat OSG truoc khi thay doi thu muc du an hien tai).' -ForegroundColor Blue"
     EXIT /B 1
 )
+
+IF DEFINED INSTALL_FAILURES powershell -NoProfile -ExecutionPolicy Bypass -Command "Write-Host '[WARN] Some installer commands returned errors, but all tools passed final verification:!INSTALL_FAILURES!' -ForegroundColor Yellow"
 
 :PrerequisitesVerified
 powershell -NoProfile -ExecutionPolicy Bypass -Command "Write-Host '[OK] All prerequisites are present.' -ForegroundColor Green"
@@ -383,33 +400,151 @@ EXIT /B 0
 :: End of InstallPrerequisites Subroutine
 
 REM ==============================================================================
-:: Subroutine: Clean Install - Removes existing project folder (Modified: No Confirmation)
-:CleanInstall
-SET "FOLDER_TO_CLEAN=%~1"
-powershell -NoProfile -ExecutionPolicy Bypass -Command "Write-Host '[?] Checking for existing installation (Kiem tra cai dat hien co): %FOLDER_TO_CLEAN%' -ForegroundColor Yellow"
-IF EXIST "%FOLDER_TO_CLEAN%" (
-    powershell -NoProfile -ExecutionPolicy Bypass -Command "Write-Host '[WARN] Found existing installation. Removing for clean install (Tim thay cai dat hien co. Xoa de cai dat sach)...' -ForegroundColor Yellow"
-    powershell -NoProfile -ExecutionPolicy Bypass -Command "Write-Host '[SETUP] Removing existing project folder (Xoa thu muc du an hien co)...' -ForegroundColor Cyan"
-    RMDIR /S /Q "%FOLDER_TO_CLEAN%" >nul 2>&1
-    IF %ERRORLEVEL% NEQ 0 (
-        powershell -NoProfile -ExecutionPolicy Bypass -Command "Write-Host '[RESTART] Restarting to refresh environment (Khoi dong lai de cap nhat moi truong)...' -ForegroundColor Blue"
+:: Detect every command needed by the installer. npm is verified with Node.js because
+:: npm is required even when node.exe itself is available.
+:DetectMissingTools
+SET "MISSING_TOOLS="
+
+powershell -NoProfile -ExecutionPolicy Bypass -Command "Write-Host '[?] Checking for Git...' -ForegroundColor Yellow"
+git --version >nul 2>&1
+IF ERRORLEVEL 1 SET "MISSING_TOOLS=%MISSING_TOOLS% Git"
+
+SET "NODE_TOOL_MISSING="
+powershell -NoProfile -ExecutionPolicy Bypass -Command "Write-Host '[?] Checking for Node.js and npm...' -ForegroundColor Yellow"
+node --version >nul 2>&1
+IF ERRORLEVEL 1 SET "NODE_TOOL_MISSING=1"
+npm --version >nul 2>&1
+IF ERRORLEVEL 1 SET "NODE_TOOL_MISSING=1"
+IF DEFINED NODE_TOOL_MISSING SET "MISSING_TOOLS=%MISSING_TOOLS% Node.js"
+
+powershell -NoProfile -ExecutionPolicy Bypass -Command "Write-Host '[?] Checking for FFmpeg...' -ForegroundColor Yellow"
+ffmpeg -version >nul 2>&1
+IF ERRORLEVEL 1 SET "MISSING_TOOLS=%MISSING_TOOLS% FFmpeg"
+
+powershell -NoProfile -ExecutionPolicy Bypass -Command "Write-Host '[?] Checking for uv...' -ForegroundColor Yellow"
+uv --version >nul 2>&1
+IF ERRORLEVEL 1 SET "MISSING_TOOLS=%MISSING_TOOLS% uv"
+
+EXIT /B 0
+:: End of DetectMissingTools Subroutine
+
+REM ==============================================================================
+:: Prepare a sibling staging folder without touching the current installation.
+:PrepareInstallTransaction
+powershell -NoProfile -ExecutionPolicy Bypass -Command "Write-Host '[SETUP] Preparing a failure-safe installation (Chuan bi cai dat an toan khi co loi)...' -ForegroundColor Cyan"
+
+IF EXIST "%BACKUP_PATH%" (
+    IF EXIST "%PROJECT_PATH%" (
+        powershell -NoProfile -ExecutionPolicy Bypass -Command "Write-Host '[ERROR] Both the project and its recovery backup exist. Refusing to overwrite either folder (Ca thu muc du an va ban sao luu deu ton tai. Khong ghi de).' -ForegroundColor Red"
+        powershell -NoProfile -ExecutionPolicy Bypass -Command "Write-Host '[INFO] Backup folder: %BACKUP_PATH%' -ForegroundColor Blue"
         EXIT /B 1
     )
-    powershell -NoProfile -ExecutionPolicy Bypass -Command "Write-Host '[OK] Existing installation removed successfully (Xoa cai dat hien co thanh cong).' -ForegroundColor Green"
-) ELSE (
-    powershell -NoProfile -ExecutionPolicy Bypass -Command "Write-Host '[OK] No existing installation found. Proceeding with fresh install (Khong tim thay cai dat hien co. Tien hanh cai dat moi).' -ForegroundColor Green"
+    powershell -NoProfile -ExecutionPolicy Bypass -Command "Write-Host '[RECOVERY] Restoring the previous installation before continuing (Khoi phuc ban cai dat truoc khi tiep tuc)...' -ForegroundColor Yellow"
+    MOVE /Y "%BACKUP_PATH%" "%PROJECT_PATH%" >nul
+    IF ERRORLEVEL 1 (
+        powershell -NoProfile -ExecutionPolicy Bypass -Command "Write-Host '[ERROR] Could not restore the previous installation (Khong the khoi phuc ban cai dat truoc).' -ForegroundColor Red"
+        EXIT /B 1
+    )
+)
+
+CALL :RemoveFolderIfExists "%STAGING_PATH%"
+IF ERRORLEVEL 1 EXIT /B 1
+EXIT /B 0
+:: End of PrepareInstallTransaction Subroutine
+
+REM ==============================================================================
+:: Swap the successfully cloned staging tree into place while keeping the old tree.
+:ActivateStagedInstall
+IF NOT EXIST "%STAGING_PATH%\package.json" (
+    powershell -NoProfile -ExecutionPolicy Bypass -Command "Write-Host '[ERROR] Downloaded staging folder is incomplete; package.json is missing (Thu muc tam khong day du; thieu package.json).' -ForegroundColor Red"
+    EXIT /B 1
+)
+
+IF EXIST "%PROJECT_PATH%" (
+    powershell -NoProfile -ExecutionPolicy Bypass -Command "Write-Host '[BACKUP] Preserving the current installation until setup succeeds (Giu lai ban cai dat hien tai den khi cai dat thanh cong)...' -ForegroundColor Yellow"
+    MOVE /Y "%PROJECT_PATH%" "%BACKUP_PATH%" >nul
+    IF ERRORLEVEL 1 (
+        powershell -NoProfile -ExecutionPolicy Bypass -Command "Write-Host '[ERROR] Could not create the rollback backup (Khong the tao ban sao luu de khoi phuc).' -ForegroundColor Red"
+        EXIT /B 1
+    )
+)
+
+:: From this point forward, any failure must remove the new target and restore
+:: the backup (when present), including a failure during the MOVE itself.
+SET "INSTALL_TRANSACTION_ACTIVE=1"
+MOVE /Y "%STAGING_PATH%" "%PROJECT_PATH%" >nul
+IF ERRORLEVEL 1 (
+    powershell -NoProfile -ExecutionPolicy Bypass -Command "Write-Host '[ERROR] Could not activate the downloaded application (Khong the kich hoat ung dung da tai).' -ForegroundColor Red"
+    EXIT /B 1
+)
+
+EXIT /B 0
+:: End of ActivateStagedInstall Subroutine
+
+REM ==============================================================================
+:CommitInstallTransaction
+SET "INSTALL_TRANSACTION_ACTIVE="
+CALL :RemoveFolderIfExists "%STAGING_PATH%"
+IF ERRORLEVEL 1 EXIT /B 1
+CALL :RemoveFolderIfExists "%BACKUP_PATH%"
+IF ERRORLEVEL 1 EXIT /B 1
+EXIT /B 0
+
+REM ==============================================================================
+:RollbackInstallTransaction
+SET "ROLLBACK_FAILED="
+
+IF DEFINED INSTALL_TRANSACTION_ACTIVE (
+    powershell -NoProfile -ExecutionPolicy Bypass -Command "Write-Host '[ROLLBACK] Removing the incomplete installation (Xoa ban cai dat chua hoan tat)...' -ForegroundColor Yellow"
+    CALL :RemoveFolderIfExists "%PROJECT_PATH%"
+    IF ERRORLEVEL 1 SET "ROLLBACK_FAILED=1"
+
+    IF NOT EXIST "%PROJECT_PATH%" IF EXIST "%BACKUP_PATH%" (
+        powershell -NoProfile -ExecutionPolicy Bypass -Command "Write-Host '[ROLLBACK] Restoring the previous installation (Khoi phuc ban cai dat truoc)...' -ForegroundColor Yellow"
+        MOVE /Y "%BACKUP_PATH%" "%PROJECT_PATH%" >nul
+        IF ERRORLEVEL 1 SET "ROLLBACK_FAILED=1"
+    )
+
+    IF EXIST "%PROJECT_PATH%" IF EXIST "%BACKUP_PATH%" (
+        powershell -NoProfile -ExecutionPolicy Bypass -Command "Write-Host '[WARNING] Rollback kept the recovery backup separate because the incomplete target could not be removed (Giu ban sao luu rieng vi khong the xoa thu muc loi).' -ForegroundColor Yellow"
+        SET "ROLLBACK_FAILED=1"
+    )
+)
+
+CALL :RemoveFolderIfExists "%STAGING_PATH%"
+IF ERRORLEVEL 1 SET "ROLLBACK_FAILED=1"
+SET "INSTALL_TRANSACTION_ACTIVE="
+
+IF DEFINED ROLLBACK_FAILED EXIT /B 1
+EXIT /B 0
+
+REM ==============================================================================
+:RemoveFolderIfExists
+SET "FOLDER_TO_REMOVE=%~1"
+IF NOT EXIST "%FOLDER_TO_REMOVE%" EXIT /B 0
+RMDIR /S /Q "%FOLDER_TO_REMOVE%" >nul 2>&1
+IF EXIST "%FOLDER_TO_REMOVE%" (
+    powershell -NoProfile -ExecutionPolicy Bypass -Command "Write-Host '[ERROR] Could not remove folder: %FOLDER_TO_REMOVE%' -ForegroundColor Red"
+    EXIT /B 1
 )
 EXIT /B 0
-:: End of CleanInstall Subroutine
 
 REM ==============================================================================
 :ErrorOccurred
 ECHO.
-powershell -NoProfile -ExecutionPolicy Bypass -Command "Write-Host '[AUTO-RESTART] An installation step requires an environment refresh.' -ForegroundColor Magenta"
-powershell -NoProfile -ExecutionPolicy Bypass -Command "Write-Host '[INFO] The script will now restart itself to continue the installation...' -ForegroundColor Blue"
-TIMEOUT /T 3 /NOBREAK > NUL
-powershell -NoProfile -ExecutionPolicy Bypass -Command "Start-Process -FilePath '%~f0' -WindowStyle Normal; exit"
-EXIT
+powershell -NoProfile -ExecutionPolicy Bypass -Command "Write-Host '[ERROR] Installation stopped while %INSTALL_ERROR_STEP% (Da dung cai dat khi %INSTALL_ERROR_STEP%).' -ForegroundColor Red"
+CALL :RollbackInstallTransaction
+SET "ROLLBACK_RESULT=%ERRORLEVEL%"
+IF EXIST "%LAST_CHOICE_FILE%" DEL "%LAST_CHOICE_FILE%" >nul 2>&1
+IF EXIST "%LEGACY_PREREQ_FLAG_FILE%" DEL "%LEGACY_PREREQ_FLAG_FILE%" >nul 2>&1
+IF NOT "%ROLLBACK_RESULT%"=="0" (
+    powershell -NoProfile -ExecutionPolicy Bypass -Command "Write-Host '[WARNING] Automatic cleanup/rollback was incomplete. Inspect recovery folders: %STAGING_PATH% and %BACKUP_PATH%' -ForegroundColor Yellow"
+) ELSE (
+    powershell -NoProfile -ExecutionPolicy Bypass -Command "Write-Host '[SAFE] No incomplete installation was kept. Any previous working installation was preserved (Khong giu ban cai dat loi. Ban cu dang hoat dong da duoc bao toan).' -ForegroundColor Green"
+)
+powershell -NoProfile -ExecutionPolicy Bypass -Command "Write-Host '[INFO] Review the error above, then choose Install again after correcting it (Xem loi phia tren, sau do chon Cai dat lai khi da sua).' -ForegroundColor Blue"
+PAUSE
+GOTO %MENU_LABEL%
 
 REM ==============================================================================
 :: Subroutine: Enable Windows GPU Scheduling for optimal video rendering performance
@@ -505,30 +640,43 @@ REM ============================================================================
 :InstallTool
 SET "TOOL_NAME=%~1"
 ECHO "!MISSING_TOOLS!" | FINDSTR /I /C:"%TOOL_NAME%" > NUL
-IF %ERRORLEVEL% NEQ 0 GOTO :EOF
+IF ERRORLEVEL 1 EXIT /B 0
+
+SET "TOOL_INSTALL_EXIT=0"
 
 IF /I "%TOOL_NAME%"=="Git" (
     powershell -NoProfile -ExecutionPolicy Bypass -Command "Write-Host '[SETUP] Installing Git...' -ForegroundColor Cyan"
-    winget install --id Git.Git -e --source winget
+    winget install --id Git.Git -e --source winget --accept-package-agreements --accept-source-agreements
+    SET "TOOL_INSTALL_EXIT=!ERRORLEVEL!"
 )
 IF /I "%TOOL_NAME%"=="Node.js" (
     powershell -NoProfile -ExecutionPolicy Bypass -Command "Write-Host '[SETUP] Installing Node.js...' -ForegroundColor Cyan"
     winget install --id OpenJS.NodeJS.LTS --exact --accept-package-agreements --accept-source-agreements -s winget
+    SET "TOOL_INSTALL_EXIT=!ERRORLEVEL!"
 )
 IF /I "%TOOL_NAME%"=="FFmpeg" (
     powershell -NoProfile -ExecutionPolicy Bypass -Command "Write-Host '[SETUP] Installing FFmpeg...' -ForegroundColor Cyan"
     winget install --id Gyan.FFmpeg --accept-package-agreements --accept-source-agreements -s winget
+    SET "TOOL_INSTALL_EXIT=!ERRORLEVEL!"
 )
 IF /I "%TOOL_NAME%"=="uv" (
     powershell -NoProfile -ExecutionPolicy Bypass -Command "Write-Host '[SETUP] Installing uv...' -ForegroundColor Cyan"
     powershell -NoProfile -ExecutionPolicy Bypass -Command "irm https://astral.sh/uv/install.ps1 | iex"
+    SET "TOOL_INSTALL_EXIT=!ERRORLEVEL!"
 )
-GOTO :EOF
+
+IF NOT "!TOOL_INSTALL_EXIT!"=="0" (
+    SET "INSTALL_FAILURES=!INSTALL_FAILURES! %TOOL_NAME%"
+    powershell -NoProfile -ExecutionPolicy Bypass -Command "Write-Host '[ERROR] Installer command failed for %TOOL_NAME% with exit code !TOOL_INSTALL_EXIT!.' -ForegroundColor Red"
+    EXIT /B 1
+)
+
+EXIT /B 0
 REM End of InstallTool Subroutine
 
 REM ==============================================================================
 :ExitScript
-:: Clear saved choice and any flags on exit
+:: Clear saved choice and the unsafe flag left by v2.2-v2.5 installers.
 IF EXIST "%LAST_CHOICE_FILE%" DEL "%LAST_CHOICE_FILE%" >nul 2>&1
-IF EXIST "%PREREQ_FLAG_FILE%" DEL "%PREREQ_FLAG_FILE%" >nul 2>&1
+IF EXIST "%LEGACY_PREREQ_FLAG_FILE%" DEL "%LEGACY_PREREQ_FLAG_FILE%" >nul 2>&1
 EXIT /B 0
