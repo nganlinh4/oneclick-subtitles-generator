@@ -17,7 +17,7 @@ SET "LEGACY_PREREQ_FLAG_FILE=%SCRIPT_DIR%prereqs_installed.flag"
 :: Bump SELF_VERSION to match the release tag whenever you cut a NEW .bat release.
 :: On a fresh launch the installer compares this to the latest GitHub release and, if
 :: newer, offers to download + swap itself in place so users never re-download manually.
-SET "SELF_VERSION=2.6"
+SET "SELF_VERSION=2.6.1"
 SET "SELFBAT=%~f0"
 SET "OSG_REPO=nganlinh4/oneclick-subtitles-generator"
 SET "NEWBAT=%SCRIPT_DIR%OSG_installer_Windows.new.bat"
@@ -413,7 +413,7 @@ SET "NODE_TOOL_MISSING="
 powershell -NoProfile -ExecutionPolicy Bypass -Command "Write-Host '[?] Checking for Node.js and npm...' -ForegroundColor Yellow"
 node --version >nul 2>&1
 IF ERRORLEVEL 1 SET "NODE_TOOL_MISSING=1"
-npm --version >nul 2>&1
+CALL npm --version >nul 2>&1
 IF ERRORLEVEL 1 SET "NODE_TOOL_MISSING=1"
 IF DEFINED NODE_TOOL_MISSING SET "MISSING_TOOLS=%MISSING_TOOLS% Node.js"
 
@@ -600,13 +600,13 @@ powershell -NoProfile -ExecutionPolicy Bypass -Command "try { $userPath = [Micro
 
 :: Read system PATH from temp file
 IF EXIST "%TEMP_SYSTEM_PATH%" (
-    SET /P SystemPATH=<"%TEMP_SYSTEM_PATH%"
+    FOR /F "usebackq delims=" %%A IN ("%TEMP_SYSTEM_PATH%") DO IF NOT DEFINED SystemPATH SET "SystemPATH=%%A"
     DEL "%TEMP_SYSTEM_PATH%" >nul 2>&1
 )
 
 :: Read user PATH from temp file
 IF EXIST "%TEMP_USER_PATH%" (
-    SET /P UserPATH=<"%TEMP_USER_PATH%"
+    FOR /F "usebackq delims=" %%A IN ("%TEMP_USER_PATH%") DO IF NOT DEFINED UserPATH SET "UserPATH=%%A"
     DEL "%TEMP_USER_PATH%" >nul 2>&1
 )
 
