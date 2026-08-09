@@ -1,5 +1,5 @@
 import { PROMPT_PRESETS, getUserPromptPresets } from '../services/gemini';
-import { GEMINI_MODELS } from '../config/geminiModels';
+import { TRANSCRIPTION_MODELS } from '../config/geminiModels';
 import { formatTime } from '../utils/timeFormatter';
 
 /**
@@ -16,27 +16,16 @@ export const buildResolutionOptions = (t) => ([
     { value: 'medium', label: t('processing.mediumRes', 'Medium (256 tokens/frame)'), tokens: 256 },
 ]);
 
-/** All selectable Gemini models (built-in + user custom). */
-export const buildModelOptions = (t, customGeminiModels) => {
-    const builtInModels = [
-        ...GEMINI_MODELS.map(m => ({
+/** Catalog-verified Gemini models that accept audio or video input. */
+export const buildModelOptions = (t) => (
+    [
+        ...TRANSCRIPTION_MODELS.map(m => ({
             value: m.id,
-            label: t(m.settingsLabelKey, m.settingsLabelDefault),
-            maxTokens: 1048576
-        })),
-        { value: 'learnlm-2.0-flash-experimental', label: t('settings.learnlm20FlashExperimental', 'LearnLM 2.0 Flash Experimental (Experimental, advanced learning)'), maxTokens: 1048576 },
-        { value: 'gemini-robotics-er-1.6-preview', label: t('settings.geminiRoboticsEr16Preview', 'Gemini Robotics ER 1.6 Preview (Robotics Preview)'), maxTokens: 1048576 }
-    ];
-
-    const customModels = customGeminiModels.map(model => ({
-        value: model.id,
-        label: `${model.name} (Custom)`,
-        maxTokens: 1048576, // Default token limit for custom models
-        isCustom: true
-    }));
-
-    return [...builtInModels, ...customModels];
-};
+            label: `${t(m.nameKey, m.nameDefault)} (${t('models.dailyQuota', '{{count}} requests/day', { count: m.freeRPD })})`,
+            maxTokens: m.maxTokens
+        }))
+    ]
+);
 
 /** All prompt-preset options (settings, timing-generation, built-ins, user presets). */
 export const buildPromptPresetOptions = (t, hasUserProvidedSubtitles) => {

@@ -8,6 +8,13 @@
 import { toBase64 as blobToBase64 } from '../../utils/fileUtils';
 // Route Gemini calls through the shared key-rotation wrapper (auto switch-on-429).
 import { fetchWithKeyRotation } from './withKeyRotation';
+import { addThinkingConfig } from '../../utils/thinkingBudgetUtils';
+import {
+  DEFAULT_BACKGROUND_PROMPT_MODEL_ID,
+  DEFAULT_IMAGE_GENERATION_MODEL_ID,
+  migrateGeminiModelId,
+  normalizeImageGenerationModelId
+} from '../../config/geminiModels';
 
 // Load an image blob and return a resized JPEG base64 (to keep payloads small and consistent)
 const resizeImageBlobToJpegBase64 = async (blob, maxDim = 1024, quality = 0.92) => {
@@ -76,25 +83,31 @@ const prepareAlbumArt = async (albumArtUrl) => {
   return await resizeImageBlobToJpegBase64(blob);
 };
 
-// Default templates (match BackgroundPromptEditor defaults) using raw strings to preserve ${...}
-const DEFAULT_PROMPT_ONE = 'song title: ${songName || \'Unknown Song\'}\n\n${lyrics}\n\n' +
-  'generate one prompt to put in a image generator to describe the atmosphere/object of this song, ' +
-  'should be simple but abstract because I will use this image as youtube video background for a lyrics video, ' +
-  'return the prompt only, no extra texts';
+const placeholder = (name) => '$' + '{' + name + '}';
+const SONG_NAME_PLACEHOLDER = placeholder("songName || 'Unknown Song'");
+const LYRICS_PLACEHOLDER = placeholder('lyrics');
+const PROMPT_PLACEHOLDER = placeholder('prompt');
 
-const DEFAULT_PROMPT_TWO = 'Expand the image into 16:9 ratio (landscape ratio). Then decorate my given image with ${prompt}';
+// Default templates (match BackgroundPromptEditor defaults).
+const DEFAULT_PROMPT_ONE = `song title: ${SONG_NAME_PLACEHOLDER}
+
+${LYRICS_PLACEHOLDER}
+
+generate one prompt to put in a image generator to describe the atmosphere/object of this song, should be simple but abstract because I will use this image as youtube video background for a lyrics video, return the prompt only, no extra texts`;
+
+const DEFAULT_PROMPT_TWO = `Expand the image into 16:9 ratio (landscape ratio). Then decorate my given image with ${PROMPT_PLACEHOLDER}`;
 
 const renderTemplate = (template, vars = {}) => {
   let out = String(template);
   if (Object.prototype.hasOwnProperty.call(vars, 'songName')) {
     const sn = vars.songName || 'Unknown Song';
-    out = out.split("${songName || 'Unknown Song'}").join(sn);
+    out = out.split(SONG_NAME_PLACEHOLDER).join(sn);
   }
   if (Object.prototype.hasOwnProperty.call(vars, 'lyrics')) {
-    out = out.split('${lyrics}').join(vars.lyrics ?? '');
+    out = out.split(LYRICS_PLACEHOLDER).join(vars.lyrics ?? '');
   }
   if (Object.prototype.hasOwnProperty.call(vars, 'prompt')) {
-    out = out.split('${prompt}').join(vars.prompt ?? '');
+    out = out.split(PROMPT_PLACEHOLDER).join(vars.prompt ?? '');
   }
   return out;
 };
@@ -102,26 +115,25 @@ const renderTemplate = (template, vars = {}) => {
 export async function generateBackgroundPrompt(lyrics, songName = 'Unknown Song') {
   if (!lyrics || !lyrics.trim()) throw new Error('Lyrics are required');
 
-  const model = localStorage.getItem('background_prompt_model') || 'gemini-2.5-flash-lite';
+  const model = migrateGeminiModelId(
+    localStorage.getItem('background_prompt_model'),
+    DEFAULT_BACKGROUND_PROMPT_MODEL_ID
+  );
 
   // Use user-customizable template from the Background Prompt Editor (localStorage),
   // falling back to the default template if not set.
   const template = localStorage.getItem('background_prompt_one') || DEFAULT_PROMPT_ONE;
   const content = renderTemplate(template, { lyrics, songName });
 
-  const body = {
+  let body = {
     contents: [
       {
         role: 'user',
         parts: [{ text: content }]
       }
-    ],
-    generationConfig: {
-      topK: 32,
-      topP: 0.95,
-      maxOutputTokens: 8192
-    }
+    ]
   };
+  body = addThinkingConfig(body, model);
 
   const resp = await fetchWithKeyRotation((apiKey) =>
     fetch(`https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${apiKey}`,
@@ -149,7 +161,9 @@ export async function generateBackgroundImage(prompt, albumArtUrl) {
   if (!prompt || !prompt.trim()) throw new Error('Prompt is required');
   if (!albumArtUrl) throw new Error('Album art URL is required');
 
-  const model = localStorage.getItem('background_image_model') || 'gemini-2.0-flash-preview-image-generation';
+  const model = normalizeImageGenerationModelId(
+    localStorage.getItem('background_image_model') || DEFAULT_IMAGE_GENERATION_MODEL_ID
+  );
 
   // Prepare inline image data from album art (handles data URL, CORS fetch, resize/compress)
   const { base64: base64Image, mimeType } = await prepareAlbumArt(albumArtUrl);

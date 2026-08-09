@@ -9,6 +9,7 @@ import useAsrOptions from './useAsrOptions';
 import { getEngineDescriptor, isAsr } from '../services/engines/transcriptionEngineRegistry';
 import useTranscriptionRulesAvailability from './useTranscriptionRulesAvailability';
 import runVideoProcess from './runVideoProcess';
+import { DEFAULT_TRANSCRIPTION_MODEL_ID, normalizeMediaModelId } from '../config/geminiModels';
 import {
     buildResolutionOptions,
     buildModelOptions,
@@ -122,7 +123,7 @@ const useVideoProcessingState = ({
     });
     const [selectedModel, setSelectedModel] = useState(() => {
         const saved = localStorage.getItem('video_processing_model');
-        return saved || 'gemini-2.5-flash';
+        return normalizeMediaModelId(saved, DEFAULT_TRANSCRIPTION_MODEL_ID);
     });
     const [selectedPromptPreset, setSelectedPromptPreset] = useState(() => {
         // SIMPLE: Just use what's saved in localStorage, always
@@ -250,8 +251,6 @@ const useVideoProcessingState = ({
         return saved ? parseInt(saved, 10) : 12;
     });
 
-    const [customGeminiModels, setCustomGeminiModels] = useState([]);
-
     // Compute outside-range subtitles context (limited to nearby lines)
     // When opened via retry-from-cache, lock certain controls and force old method
     const [retryLock, setRetryLock] = useState(() => (sessionStorage.getItem('processing_modal_open_reason') === 'retry-offline'));
@@ -324,7 +323,7 @@ const useVideoProcessingState = ({
     }, [useOutsideResultsContext]);
 
     const resolutionOptions = buildResolutionOptions(t);
-    const modelOptions = buildModelOptions(t, customGeminiModels);
+    const modelOptions = buildModelOptions(t);
 
 
     // Ensure a valid selectable model is chosen whenever the current selection becomes disabled
@@ -332,8 +331,7 @@ const useVideoProcessingState = ({
         if (!isOpen) return;
         const currentIsDisabled = modelOptions?.some(o => o.value === selectedModel && o.disabled);
         if (currentIsDisabled) {
-            // Prefer 2.5 Flash if available, otherwise first non-disabled option
-            const preferred = modelOptions.find(o => o.value === 'gemini-2.5-flash' && !o.disabled) ||
+            const preferred = modelOptions.find(o => o.value === DEFAULT_TRANSCRIPTION_MODEL_ID && !o.disabled) ||
                 modelOptions.find(o => !o.disabled);
             if (preferred && preferred.value !== selectedModel) {
                 setSelectedModel(preferred.value);
@@ -356,31 +354,6 @@ const useVideoProcessingState = ({
         window.addEventListener('storage', handleStorageChange);
         return () => window.removeEventListener('storage', handleStorageChange);
     }, []);
-
-    // Load custom models on component mount
-    useEffect(() => {
-        const loadCustomModels = () => {
-            try {
-                const savedCustomModels = localStorage.getItem('custom_gemini_models');
-                if (savedCustomModels) {
-                    setCustomGeminiModels(JSON.parse(savedCustomModels));
-                }
-            } catch (error) {
-                console.error('Error loading custom models:', error);
-            }
-        };
-
-        loadCustomModels();
-    }, []);
-
-    // Auto-adjust FPS when Gemini 2.5 Pro is selected
-    useEffect(() => {
-        // Check if Gemini 2.5 Pro is selected and FPS is less than 1
-        if (selectedModel === 'gemini-2.5-pro' && fps < 1) {
-            console.log('[VideoProcessingModal] Gemini 2.5 Pro selected with low FPS, adjusting to 1 FPS for compatibility');
-            setFps(1); // Set to minimum 1 FPS for Gemini 2.5 Pro
-        }
-    }, [selectedModel]); // Only run when model changes
 
     // Persist processing options to localStorage
     useEffect(() => {

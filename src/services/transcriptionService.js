@@ -4,6 +4,8 @@
 
 import { toBase64 } from '../utils/fileUtils';
 import { fetchWithKeyRotation } from './gemini/withKeyRotation';
+import { addThinkingConfig } from '../utils/thinkingBudgetUtils';
+import { DEFAULT_TRANSCRIPTION_MODEL_ID } from '../config/geminiModels';
 
 // blobToBase64 is the shared toBase64 helper; kept as a named export for existing call sites.
 export const blobToBase64 = toBase64;
@@ -71,8 +73,8 @@ export const transcribeAudio = async (audioBlob) => {
     console.timeLog('transcribeAudio', 'Blob to base64 conversion');
 
     // Prepare request data for transcription
-    const requestData = {
-      model: "gemini-flash-lite-latest",
+    const model = DEFAULT_TRANSCRIPTION_MODEL_ID;
+    let requestData = {
       contents: [
         {
           role: "user",
@@ -88,13 +90,14 @@ export const transcribeAudio = async (audioBlob) => {
         }
       ]
     };
+    requestData = addThinkingConfig(requestData, model);
 
 
 
     // Call Gemini API (key rotation handles key selection and auto-switch on 429)
     const response = await fetchWithKeyRotation((apiKey) =>
       fetch(
-        `https://generativelanguage.googleapis.com/v1beta/models/${requestData.model}:generateContent?key=${apiKey}`,
+        `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${apiKey}`,
         {
           method: 'POST',
           headers: {

@@ -84,7 +84,7 @@ const ApiKeysTab = ({
             className="notification-messages-container"
             style={{ flex: '1', display: 'flex', flexDirection: 'column'}}
           >
-              {/* Gemini 2.5 Pro API Pause Message */}
+              {/* Local-transcription availability notice */}
               {showGeminiPausedMessage && (
                 <div className="gemini-paused-message">
                   <div className="message-content">

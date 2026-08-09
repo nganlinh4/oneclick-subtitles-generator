@@ -9,6 +9,7 @@ import { getTranscriptionRules } from '../utils/transcriptionRulesStore';
 import { API_BASE_URL } from '../config';
 import { getMaxSegmentDurationSeconds } from '../utils/durationUtils';
 import { formatTime } from '../utils/timeFormatter';
+import { DEFAULT_TRANSCRIPTION_MODEL_ID, normalizeMediaModelId } from '../config/geminiModels';
 
 /**
  * Process a single media segment (video or audio)
@@ -24,6 +25,10 @@ import { formatTime } from '../utils/timeFormatter';
 export async function processSegment(segment, segmentIndex, startTime, segmentCacheId, onStatusUpdate, t, mediaType = 'video', options = {}) {
     // Extract options
     const { userProvidedSubtitles, modelId } = options;
+    const mediaModel = normalizeMediaModelId(
+        modelId || localStorage.getItem('gemini_model'),
+        DEFAULT_TRANSCRIPTION_MODEL_ID
+    );
     let retryCount = 0;
     const maxRetries = 3;
     let success = false;
@@ -62,11 +67,7 @@ export async function processSegment(segment, segmentIndex, startTime, segmentCa
             }
 
             // Process the segment with Gemini
-            if (modelId) {
-                console.log(`[SegmentRetry] Using custom model for segment ${segmentIndex + 1}: ${modelId}`);
-            } else {
-                console.log(`[SegmentRetry] Using default model for segment ${segmentIndex + 1}: ${localStorage.getItem('gemini_model') || 'gemini-2.5-flash'}`);
-            }
+            console.log(`[SegmentRetry] Using verified media model for segment ${segmentIndex + 1}: ${mediaModel}`);
 
             // Get the total duration from the parent if available
             const totalDuration = options.totalDuration || null;
@@ -84,7 +85,7 @@ export async function processSegment(segment, segmentIndex, startTime, segmentCa
             segmentSubtitles = await callGeminiApi(segmentFile, 'file-upload', {
                 userProvidedSubtitles,
                 segmentInfo,
-                modelId
+                modelId: mediaModel
             });
             success = true;
         } catch (error) {

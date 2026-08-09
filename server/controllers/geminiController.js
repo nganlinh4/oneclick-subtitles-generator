@@ -4,6 +4,7 @@
 const fs = require('fs').promises;
 const path = require('path');
 const axios = require('axios');
+const { catalog, getThinkingConfig } = require('../utils/geminiCatalog');
 
 /**
  * Clean lyrics using Gemini API
@@ -34,8 +35,9 @@ const cleanLyrics = async (req, res) => {
     }
 
     // Call Gemini API to clean the lyrics
+    const model = catalog.defaults.fastText;
     const response = await axios.post(
-      `https://generativelanguage.googleapis.com/v1beta/models/gemini-pro:generateContent?key=${geminiApiKey}`,
+      `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${geminiApiKey}`,
       {
         contents: [
           {
@@ -50,9 +52,7 @@ ${lyrics}`
           }
         ],
         generationConfig: {
-          topK: 40,
-          topP: 0.95,
-          maxOutputTokens: 8192,
+          thinkingConfig: getThinkingConfig(model)
         }
       },
       {

@@ -4,6 +4,8 @@
  */
 
 import { fetchWithKeyRotation } from './withKeyRotation';
+import { addThinkingConfig } from '../../utils/thinkingBudgetUtils';
+import { DEFAULT_FAST_TEXT_MODEL_ID } from '../../config/geminiModels';
 
 // import { addResponseSchema } from '../../utils/schemaUtils'; // No longer needed if schema is removed
 
@@ -17,7 +19,7 @@ import { fetchWithKeyRotation } from './withKeyRotation';
  * @param {string} intensity - Grouping intensity level (minimal, moderate, aggressive)
  * @returns {Promise<Object>} - Object with grouped subtitles and mapping
  */
-export const groupSubtitlesForNarration = async (subtitles, language = 'en', model = 'gemini-2.5-flash-lite', intensity = 'moderate') => {
+export const groupSubtitlesForNarration = async (subtitles, language = 'en', model = DEFAULT_FAST_TEXT_MODEL_ID, intensity = 'moderate') => {
   if (!subtitles || subtitles.length === 0) {
     return {
       success: false,
@@ -31,8 +33,6 @@ export const groupSubtitlesForNarration = async (subtitles, language = 'en', mod
     const subtitleText = subtitles.map((sub, index) =>
       `ID: ${sub.subtitle_id || sub.id || (index + 1)}, Text: "${sub.text}"`
     ).join('\n');
-
-    const maxOutputTokens = 8192; // Adjusted from 65536, which is very high.
 
     // Define grouping intensity guidelines
     let intensityGuidelines = '';
@@ -136,15 +136,9 @@ DO NOT include any explanations, comments, or any other text in your response. R
             { text: groupingPrompt }
           ]
         }
-      ],
-      generationConfig: {
-        topK: 32,
-        topP: 0.95,
-        maxOutputTokens: maxOutputTokens,
-        // REMOVED: responseMimeType: "application/json",
-        // REMOVED: responseSchema: createSubtitleGroupingSchema()
-      },
+      ]
     };
+    requestData = addThinkingConfig(requestData, model);
 
     // REMOVED: requestData = addResponseSchema(requestData, createSubtitleGroupingSchema());
 

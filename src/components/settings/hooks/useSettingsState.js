@@ -6,7 +6,13 @@ import { useState, useEffect } from 'react';
 import { DEFAULT_TRANSCRIPTION_PROMPT } from '../../../services/geminiService';
 import { getClientCredentials, hasValidTokens } from '../../../services/youtubeApiService';
 import { getCurrentKey } from '../../../services/gemini/keyManager';
-import { getDefaultThinkingBudgets } from '../../../config/geminiModels';
+import {
+  DEFAULT_ANALYSIS_MODEL_ID,
+  DEFAULT_GEMINI_MODEL_ID,
+  getDefaultThinkingBudgets,
+  migrateStoredGeminiModels
+} from '../../../config/geminiModels';
+import { validateThinkingBudget } from '../../../utils/thinkingBudgetUtils';
 
 /**
  * Custom hook owning all SettingsModal settings state: initialization,
@@ -29,13 +35,13 @@ const useSettingsState = () => {
   const [showClientSecret, setShowClientSecret] = useState(false);
   const [isAuthenticated, setIsAuthenticated] = useState(false);
   const [segmentDuration, setSegmentDuration] = useState(5); // Default to 5 minutes
-  const [geminiModel, setGeminiModel] = useState('gemini-2.5-flash'); // Default model
+  const [geminiModel, setGeminiModel] = useState(DEFAULT_GEMINI_MODEL_ID);
   const [timeFormat, setTimeFormat] = useState('hms'); // Default to HH:MM:SS format
 
   const [showWaveformLongVideos, setShowWaveformLongVideos] = useState(false); // Default to NOT showing waveform for long videos
   const [segmentOffsetCorrection, setSegmentOffsetCorrection] = useState(-3.0); // Default offset correction for second segment
   const [useVideoAnalysis, setUseVideoAnalysis] = useState(true); // Default to using video analysis
-  const [videoAnalysisModel, setVideoAnalysisModel] = useState('gemini-2.5-flash-lite'); // Default to Gemini 2.5 Flash Lite
+  const [videoAnalysisModel, setVideoAnalysisModel] = useState(DEFAULT_ANALYSIS_MODEL_ID);
   const [videoAnalysisTimeout, setVideoAnalysisTimeout] = useState('10'); // Default to 10 seconds timeout
 
   // New: Show Gemini star effects setting (default ON)
@@ -81,7 +87,7 @@ const useSettingsState = () => {
     youtubeApiKey: '',
     geniusApiKey: '',
     segmentDuration: 5,
-    geminiModel: 'gemini-2.5-flash',
+    geminiModel: DEFAULT_GEMINI_MODEL_ID,
     timeFormat: 'hms',
     showWaveform: true,
     showWaveformLongVideos: false,
@@ -91,18 +97,14 @@ const useSettingsState = () => {
     youtubeClientId: '',
     youtubeClientSecret: '',
     useVideoAnalysis: true,
-    videoAnalysisModel: 'gemini-2.5-flash-lite',
+    videoAnalysisModel: DEFAULT_ANALYSIS_MODEL_ID,
     videoAnalysisTimeout: '10',
     enableGeminiEffects: true,
 
     optimizeVideos: false,
     optimizedResolution: '360p',
     useOptimizedPreview: false,
-    thinkingBudgets: {
-      'gemini-2.5-pro': -1,
-      'gemini-2.5-flash': -1,
-      'gemini-2.5-flash-lite': -1
-    },
+    thinkingBudgets: getDefaultThinkingBudgets(),
     useCookiesForDownload: false,
     enableYoutubeSearch: false,
     favoriteMaxSubtitleLength: 12,
@@ -113,46 +115,22 @@ const useSettingsState = () => {
   // Load saved settings on component mount
   useEffect(() => {
     const loadSettings = () => {
-      // Check for settings migration
-      const settingsVersion = localStorage.getItem('settings_version') || '1.0';
-
-      // Migration for video analysis model default change
-      if (settingsVersion === '1.0') {
-        const currentVideoAnalysisModel = localStorage.getItem('video_analysis_model');
-        // If user has the old default, update it to the new default
-        if (currentVideoAnalysisModel === 'gemini-2.0-flash') {
-          localStorage.setItem('video_analysis_model', 'gemini-2.5-flash-lite');
-        }
-        // Update settings version
-        localStorage.setItem('settings_version', '1.1');
-      }
-
-      // Migration: replace deprecated gemini-2.0-flash with gemini-2.5-flash
-      if (!settingsVersion || settingsVersion === '1.0' || settingsVersion === '1.1') {
-        const currentModel = localStorage.getItem('gemini_model');
-        if (currentModel === 'gemini-2.0-flash' || currentModel === 'gemini-2.0-flash-lite') {
-          localStorage.setItem('gemini_model', 'gemini-2.5-flash');
-        }
-        const currentTranslationModel = localStorage.getItem('translation_model');
-        if (currentTranslationModel === 'gemini-2.0-flash' || currentTranslationModel === 'gemini-2.0-flash-lite') {
-          localStorage.setItem('translation_model', 'gemini-2.5-flash');
-        }
-        localStorage.setItem('settings_version', '1.2');
-      }
+      migrateStoredGeminiModels(localStorage);
+      localStorage.setItem('settings_version', '2.0');
 
       // Get the current active Gemini API key from the key manager
       const savedGeminiKey = getCurrentKey() || '';
       const savedYoutubeKey = localStorage.getItem('youtube_api_key') || '';
       const savedGeniusKey = localStorage.getItem('genius_token') || '';
       const savedSegmentDuration = parseInt(localStorage.getItem('segment_duration') || '5');
-      const savedGeminiModel = localStorage.getItem('gemini_model') || 'gemini-2.5-flash';
+      const savedGeminiModel = localStorage.getItem('gemini_model') || DEFAULT_GEMINI_MODEL_ID;
       const savedTimeFormat = localStorage.getItem('time_format') || 'hms';
 
       const savedShowWaveformLongVideos = localStorage.getItem('show_waveform_long_videos') === 'true'; // Default to false if not set
       const savedOffsetCorrection = parseFloat(localStorage.getItem('segment_offset_correction') || '-3.0');
       const savedEnableGeminiEffects = localStorage.getItem('enable_gemini_effects') !== 'false';
       const savedUseVideoAnalysis = true; // Video analysis is always enabled
-      const savedVideoAnalysisModel = localStorage.getItem('video_analysis_model') || 'gemini-2.5-flash-lite'; // Default to 2.5 Flash Lite
+      const savedVideoAnalysisModel = localStorage.getItem('video_analysis_model') || DEFAULT_ANALYSIS_MODEL_ID;
       const savedVideoAnalysisTimeout = localStorage.getItem('video_analysis_timeout') || '10'; // Default to 10 seconds timeout
       const savedAutoSelectDefaultPreset = localStorage.getItem('auto_select_default_preset') === 'true'; // Default to false
       const savedTranscriptionPrompt = localStorage.getItem('transcription_prompt') || DEFAULT_TRANSCRIPTION_PROMPT;
@@ -184,27 +162,16 @@ const useSettingsState = () => {
       const savedThinkingBudgets = (() => {
         try {
           const stored = localStorage.getItem('thinking_budgets');
-          const defaults = {
-            'gemini-2.5-pro': 128,
-            'gemini-2.5-flash': 0,
-            'gemini-2.5-flash-lite': 0,
-            'gemini-3.5-flash': 'high',
-            'gemini-3-flash-preview': 'high',
-            'gemini-3.1-flash-lite-preview': 'minimal',
-            'gemini-3.1-pro-preview': 'high'
-          };
-          return stored ? { ...defaults, ...JSON.parse(stored) } : defaults;
+          const defaults = getDefaultThinkingBudgets();
+          if (!stored) return defaults;
+          const parsed = JSON.parse(stored);
+          return Object.fromEntries(Object.entries(defaults).map(([modelId, fallback]) => [
+            modelId,
+            validateThinkingBudget(modelId, parsed[modelId]) ? parsed[modelId] : fallback
+          ]));
         } catch (error) {
           console.error('Error parsing thinking budgets from localStorage:', error);
-          return {
-            'gemini-2.5-pro': 128,
-            'gemini-2.5-flash': 0,
-            'gemini-2.5-flash-lite': 0,
-            'gemini-3.5-flash': 'high',
-            'gemini-3-flash-preview': 'high',
-            'gemini-3.1-flash-lite-preview': 'minimal',
-            'gemini-3.1-pro-preview': 'high'
-          };
+          return getDefaultThinkingBudgets();
         }
       })();
       const { clientId, clientSecret } = getClientCredentials();

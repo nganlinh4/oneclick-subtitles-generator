@@ -147,12 +147,6 @@ export const processSegmentWithStreaming = async (file, segment, options, setSta
   return new Promise((resolve, reject) => {
     const { fps, mediaResolution, model, userProvidedSubtitles, autoSplitSubtitles, maxWordsPerSubtitle } = options;
 
-    // Check if this is a Gemini 2.0 model (they don't respect video_metadata offsets)
-    const isGemini20Model = model && (model.includes('gemini-2.0') || model.includes('gemini-1.5'));
-    if (isGemini20Model) {
-      dbgw(`[ProcessingUtils] Model ${model} may not respect video segment offsets - will filter results and use early stopping`);
-    }
-
     // Track if we've stopped early due to subtitles going past segment
     let hasStoppedEarly = false;
     let earlyStopController = null;
@@ -166,8 +160,8 @@ export const processSegmentWithStreaming = async (file, segment, options, setSta
          maxWordsPerSubtitle: parseInt(maxWordsPerSubtitle) || 8,
          t, // Pass translation function for i18n support
          onSubtitleUpdate: (data) => {
-            // For Gemini 2.0 models: implement early stopping when subtitles exceed segment
-          if (isGemini20Model && data.subtitles && data.subtitles.length > 0 && !hasStoppedEarly) {
+            // Stop once a model emits subtitles well beyond the requested segment.
+          if (data.subtitles && data.subtitles.length > 0 && !hasStoppedEarly) {
             const segmentStart = segment.start;
             const segmentEnd = segment.end;
 

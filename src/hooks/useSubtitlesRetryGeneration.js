@@ -3,6 +3,11 @@ import { callGeminiApi, setProcessingForceStopped } from '../services/geminiServ
 import { getVideoDuration, processMediaFile } from '../utils/videoProcessor';
 import { getVideoProcessingFps, getMediaResolution } from '../services/configService';
 import { persistRetryResultToCache } from './useSubtitlesCaching';
+import {
+  DEFAULT_TRANSCRIPTION_MODEL_ID,
+  isHighIntelligenceModel,
+  normalizeMediaModelId
+} from '../config/geminiModels';
 
 /**
  * retryGeneration extracted from useSubtitles.
@@ -93,7 +98,10 @@ export const useSubtitlesRetryGeneration = ({
                         // Derive streaming options for YouTube retry
                         const fps = options.fps ?? getVideoProcessingFps();
                         const mediaResolution = options.mediaResolution ?? getMediaResolution();
-                        const model = options.model ?? (localStorage.getItem('gemini_model') || 'gemini-2.5-flash');
+                        const model = normalizeMediaModelId(
+                            options.model ?? localStorage.getItem('gemini_model'),
+                            DEFAULT_TRANSCRIPTION_MODEL_ID
+                        );
 
                         subtitles = await processGeminiSegment(
                             ytFile,
@@ -126,10 +134,11 @@ export const useSubtitlesRetryGeneration = ({
             // Cache the new results using unified approach (URL-based vs file-based)
             await persistRetryResultToCache({ input, inputType, subtitles });
 
-            // Check if using a strong model (Gemini 2.5 Pro or Gemini 2.0 Flash Thinking)
-            const currentModel = localStorage.getItem('gemini_model') || 'gemini-2.5-flash';
-            const strongModels = ['gemini-2.5-pro', 'gemini-2.0-flash-thinking-exp-01-21'];
-            const isUsingStrongModel = strongModels.includes(currentModel);
+            const currentModel = normalizeMediaModelId(
+                localStorage.getItem('gemini_model'),
+                DEFAULT_TRANSCRIPTION_MODEL_ID
+            );
+            const isUsingStrongModel = isHighIntelligenceModel(currentModel);
 
             // Show different success message based on model
             if (isUsingStrongModel && (!subtitles || subtitles.length === 0)) {

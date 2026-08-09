@@ -12,6 +12,7 @@ import { processTranslationResponse } from './translationResponseParser';
 import { buildTranslationPrompt, buildRetryPrompt } from './translationPromptBuilder';
 import { buildTranslatedSubtitles } from './translationSubtitleBuilder';
 import { fetchWithKeyRotation } from './withKeyRotation';
+import { DEFAULT_TRANSLATION_MODEL_ID } from '../../config/geminiModels';
 
 /**
  * Translate subtitles to different language(s) while preserving timing
@@ -29,7 +30,7 @@ import { fetchWithKeyRotation } from './withKeyRotation';
  * @param {Array} chainItems - Optional chain items for chain-based formatting
  * @returns {Promise<Array>} - Array of translated subtitles
  */
-const translateSubtitles = async (subtitles, targetLanguage, model = 'gemini-2.5-flash', customPrompt = null, splitDuration = 0, includeRules = false, delimiter = ' ', useParentheses = false, bracketStyle = null, chainItems = null, fileContext = null) => {
+const translateSubtitles = async (subtitles, targetLanguage, model = DEFAULT_TRANSLATION_MODEL_ID, customPrompt = null, splitDuration = 0, includeRules = false, delimiter = ' ', useParentheses = false, bracketStyle = null, chainItems = null, fileContext = null) => {
     // Check if we're in format mode (empty target languages array)
     const isFormatMode = Array.isArray(targetLanguage) && targetLanguage.length === 0;
 
@@ -157,12 +158,7 @@ const translateSubtitles = async (subtitles, targetLanguage, model = 'gemini-2.5
                         { text: translationPrompt }
                     ]
                 }
-            ],
-            generationConfig: {
-                topK: 32,
-                topP: 0.95,
-                maxOutputTokens: 65536, // Increased to maximum allowed value (65536 per Gemini documentation)
-            },
+            ]
         };
 
         // Always use structured output
@@ -225,12 +221,7 @@ const translateSubtitles = async (subtitles, targetLanguage, model = 'gemini-2.5
                                 { text: retryPrompt }
                             ]
                         }
-                    ],
-                    generationConfig: {
-                        topK: 32,
-                        topP: 0.95,
-                        maxOutputTokens: 65536,
-                    },
+                    ]
                 };
 
                 // Always use structured output for retries too

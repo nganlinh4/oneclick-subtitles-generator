@@ -9,6 +9,7 @@ import SliderWithValue from './common/SliderWithValue';
 import '../styles/DownloadOptionsModal.css';
 import '../styles/components/tabs.css';
 import initTabPillAnimation from '../utils/tabPillAnimation';
+import { DEFAULT_GEMINI_MODEL_ID, migrateGeminiModelId } from '../config/geminiModels';
 
 /**
  * Modal component for download and processing options
@@ -44,7 +45,7 @@ const DownloadOptionsModal = ({
   const [fileFormat, setFileFormat] = useState('srt');
   const [processType, setProcessType] = useState(null); // Initialize to null so only Download Files tab is active
   const [selectedModel, setSelectedModel] = useState(() => {
-    return localStorage.getItem('gemini_model') || 'gemini-2.5-flash';
+    return migrateGeminiModelId(localStorage.getItem('gemini_model'), DEFAULT_GEMINI_MODEL_ID);
   });
   const [isPromptEditorOpen, setIsPromptEditorOpen] = useState(false);
   const [customPrompts, setCustomPrompts] = useState({

@@ -74,7 +74,6 @@ const VideoProcessingTab = ({
           setVideoAnalysisModel={setVideoAnalysisModel}
           videoAnalysisTimeout={videoAnalysisTimeout}
           setVideoAnalysisTimeout={setVideoAnalysisTimeout}
-          customGeminiModels={customGeminiModels}
         />
 
         {/* Processing Settings Card - SECOND */}

@@ -6,6 +6,14 @@ import CustomScrollbarTextarea from '../common/CustomScrollbarTextarea';
 import CustomDropdown from '../common/CustomDropdown';
 import '../../styles/PromptEditor.css';
 import '../../styles/background/BackgroundPromptEditor.css';
+import {
+  BACKGROUND_PROMPT_MODELS,
+  DEFAULT_BACKGROUND_PROMPT_MODEL_ID,
+  DEFAULT_IMAGE_GENERATION_MODEL_ID,
+  IMAGE_GENERATION_MODELS,
+  migrateGeminiModelId,
+  normalizeImageGenerationModelId
+} from '../../config/geminiModels';
 
 const BackgroundPromptEditor = ({ isOpen, onClose }) => {
   const { t } = useTranslation();
@@ -24,8 +32,8 @@ const BackgroundPromptEditor = ({ isOpen, onClose }) => {
   );
 
   // Model selections
-  const [promptModel, setPromptModel] = useState('gemini-2.5-flash-lite');
-  const [imageModel, setImageModel] = useState('gemini-2.0-flash-preview-image-generation');
+  const [promptModel, setPromptModel] = useState(DEFAULT_BACKGROUND_PROMPT_MODEL_ID);
+  const [imageModel, setImageModel] = useState(DEFAULT_IMAGE_GENERATION_MODEL_ID);
 
 
   // Track initial (loaded) values to detect changes
@@ -46,8 +54,8 @@ const BackgroundPromptEditor = ({ isOpen, onClose }) => {
 
       const nextP1 = p1 ?? promptOne;
       const nextP2 = p2 ?? promptTwo;
-      const nextPM = pm ?? promptModel;
-      const nextIM = im ?? imageModel;
+      const nextPM = migrateGeminiModelId(pm, DEFAULT_BACKGROUND_PROMPT_MODEL_ID);
+      const nextIM = normalizeImageGenerationModelId(im);
 
       setPromptOne(nextP1);
       setPromptTwo(nextP2);
@@ -143,8 +151,8 @@ const BackgroundPromptEditor = ({ isOpen, onClose }) => {
     );
 
     // Reset models to defaults
-    setPromptModel('gemini-2.5-flash-lite');
-    setImageModel('gemini-2.0-flash-preview-image-generation');
+    setPromptModel(DEFAULT_BACKGROUND_PROMPT_MODEL_ID);
+    setImageModel(DEFAULT_IMAGE_GENERATION_MODEL_ID);
   };
 
   // Handle prompt one change with special handling for protected variables
@@ -214,10 +222,10 @@ const BackgroundPromptEditor = ({ isOpen, onClose }) => {
               <CustomDropdown
                 value={promptModel}
                 onChange={(value) => setPromptModel(value)}
-                options={[
-                  { value: 'gemini-3.1-flash-lite-preview', label: 'Gemini 3.1 Flash Lite' },
-                  { value: 'gemini-2.5-flash-lite', label: 'Gemini 2.5 Flash Lite' }
-                ]}
+                options={BACKGROUND_PROMPT_MODELS.map((model) => ({
+                  value: model.id,
+                  label: `${model.displayName} · ${model.profileLabels.en}`
+                }))}
                 placeholder={t('promptEditor.selectModel', 'Select Model')}
               />
             </div>
@@ -254,10 +262,10 @@ const BackgroundPromptEditor = ({ isOpen, onClose }) => {
               <CustomDropdown
                 value={imageModel}
                 onChange={(value) => setImageModel(value)}
-                options={[
-                  { value: 'gemini-2.5-flash-image', label: 'Nano Banana' },
-                  { value: 'gemini-2.0-flash-preview-image-generation', label: 'Gemini 2.0 Flash Preview (Image Generation)' }
-                ]}
+                options={IMAGE_GENERATION_MODELS.map((model) => ({
+                  value: model.id,
+                  label: model.displayName
+                }))}
                 placeholder={t('promptEditor.selectImageModel', 'Select Image Model')}
               />
             </div>

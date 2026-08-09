@@ -8,6 +8,7 @@ import torch
 import gc
 import re
 import requests
+from pathlib import Path
 from flask import Blueprint, request, jsonify, Response
 from .narration_config import HAS_F5TTS, OUTPUT_AUDIO_DIR
 from .narration_utils import load_tts_model
@@ -15,6 +16,27 @@ from .narration_utils import load_tts_model
 from .directory_utils import ensure_subtitle_directory, get_next_file_number
 
 logger = logging.getLogger(__name__)
+
+def _default_fast_text_profile():
+    """Read the same catalog used by the frontend and Node server."""
+    catalog_path = Path(__file__).resolve().parents[2] / 'src' / 'config' / 'geminiModelCatalog.json'
+    try:
+        with catalog_path.open('r', encoding='utf-8') as catalog_file:
+            catalog = json.load(catalog_file)
+            model_id = catalog['defaults']['fastText']
+            model = next(item for item in catalog['models'] if item['id'] == model_id)
+            thinking = model['thinking']
+            thinking_config = (
+                {'thinkingLevel': thinking['default'].upper()}
+                if thinking['type'] == 'level'
+                else {'thinkingBudget': thinking['default']}
+            )
+            return model_id, thinking_config
+    except (OSError, KeyError, TypeError, StopIteration, json.JSONDecodeError) as error:
+        logger.warning("Could not read Gemini model catalog (%s); using packaged fallback", error)
+        return 'gemini-3.5-flash-lite', {'thinkingLevel': 'MINIMAL'}
+
+DEFAULT_FAST_TEXT_MODEL, DEFAULT_FAST_TEXT_THINKING = _default_fast_text_profile()
 
 def normalize_gen_text(text, api_key=None, language='vi'):
     """Normalize text for F5-TTS generation by removing disruptive punctuation and converting numbers/dates to spoken words."""
@@ -48,7 +70,7 @@ def normalize_gen_text(text, api_key=None, language='vi'):
 Text: {text}"""
 
                 response = requests.post(
-                    'https://generativelanguage.googleapis.com/v1beta/models/gemini-flash-lite-latest:generateContent',
+                    f'https://generativelanguage.googleapis.com/v1beta/models/{DEFAULT_FAST_TEXT_MODEL}:generateContent',
                     headers={
                         'Content-Type': 'application/json',
                         'x-goog-api-key': api_key
@@ -58,7 +80,10 @@ Text: {text}"""
                             'parts': [{
                                 'text': prompt
                             }]
-                        }]
+                        }],
+                        'generationConfig': {
+                            'thinkingConfig': DEFAULT_FAST_TEXT_THINKING
+                        }
                     },
                     timeout=10
                 )

@@ -65,18 +65,14 @@ const VideoProcessingModalGeminiPanel = ({
                                 {t('processing.frameRate', 'Frame Rate')}
                                 <span className="label-subtitle">({getFpsInterval(fps, t)})</span>
                             </label>
-                            {videoFile?.type?.startsWith('audio/')
-                                ? <HelpIcon title={t('processing.audioFpsDisabled', 'FPS settings are not applicable for audio files')} />
-                                : selectedModel === 'gemini-2.5-pro' && (
-                                    <HelpIcon title={t('processing.gemini25ProFpsNote', 'Note: Gemini 2.5 Pro requires FPS ≥ 1 for compatibility')} />
-                                )
-                            }
+                            {videoFile?.type?.startsWith('audio/') &&
+                                <HelpIcon title={t('processing.audioFpsDisabled', 'FPS settings are not applicable for audio files')} />}
                         </div>
                         <div>
                             <SliderWithValue
                                 value={fps}
                                 onChange={(v) => setFps(parseFloat(v))}
-                                min={selectedModel === 'gemini-2.5-pro' ? 1 : 0.25}
+                                min={0.25}
                                 max={5}
                                 step={0.25}
                                 orientation="Horizontal"
@@ -85,7 +81,7 @@ const VideoProcessingModalGeminiPanel = ({
                                 className="fps-slider"
                                 id="fps-slider"
                                 ariaLabel={t('processing.frameRate', 'Frame Rate')}
-                                defaultValue={selectedModel === 'gemini-2.5-pro' ? 1 : 0.25}
+                                defaultValue={0.25}
                                 formatValue={(v) => getFpsValue(v)}
                                 disabled={videoFile?.type?.startsWith('audio/')}
                             />
@@ -123,7 +119,7 @@ const VideoProcessingModalGeminiPanel = ({
                     <div className="combined-option-half">
                         <div className="label-with-help">
                             <label>{t('processing.model', 'Model')}</label>
-                            <HelpIcon title={t('processing.gemini20Warning', 'Gemini 2.0 models do not work well with the new offset mechanism')} />
+                            <HelpIcon title={t('processing.modelHelp', 'Choose a catalog-verified model that accepts audio or video input.')} />
                         </div>
                         <CustomDropdown
                             value={selectedModel}

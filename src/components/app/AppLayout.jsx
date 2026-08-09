@@ -16,6 +16,7 @@ import { useVideoInfo } from '../../hooks/useVideoInfo';
 import BackgroundMusicSection from '../BackgroundMusicSection';
 import { hasValidDownloadedVideo } from '../../utils/videoUtils';
 import { initializeMobileZoom } from '../../utils/mobileZoom';
+import { DEFAULT_GEMINI_MODEL_ID, normalizeMediaModelId } from '../../config/geminiModels';
 
 /**
  * Main application layout component
@@ -190,10 +191,16 @@ const AppLayout = ({
     }
 
     // Save the current model
-    const currentModel = localStorage.getItem('gemini_model');
+    const currentModel = normalizeMediaModelId(
+      localStorage.getItem('gemini_model'),
+      DEFAULT_GEMINI_MODEL_ID
+    );
 
     // Temporarily set the selected model
-    localStorage.setItem('gemini_model', modelId);
+    localStorage.setItem(
+      'gemini_model',
+      normalizeMediaModelId(modelId, DEFAULT_GEMINI_MODEL_ID)
+    );
 
     // Prepare options for segment retry
     const segmentOptions = {};

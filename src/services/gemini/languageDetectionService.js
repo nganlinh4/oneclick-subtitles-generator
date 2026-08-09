@@ -5,6 +5,8 @@
 import { createLanguageDetectionSchema, addResponseSchema } from '../../utils/schemaUtils';
 import i18n from '../../i18n/i18n';
 import { fetchWithKeyRotation } from './withKeyRotation';
+import { addThinkingConfig } from '../../utils/thinkingBudgetUtils';
+import { DEFAULT_FAST_TEXT_MODEL_ID } from '../../config/geminiModels';
 
 /**
  * Detect language of text using Gemini API
@@ -13,7 +15,7 @@ import { fetchWithKeyRotation } from './withKeyRotation';
  * @param {string} model - Gemini model to use
  * @returns {Promise<Object>} - Language detection result
  */
-export const detectSubtitleLanguage = async (subtitles, source = 'original', model = 'gemini-flash-lite-latest') => {
+export const detectSubtitleLanguage = async (subtitles, source = 'original', model = DEFAULT_FAST_TEXT_MODEL_ID) => {
     if (!subtitles || subtitles.length === 0) {
 
         return {
@@ -46,16 +48,12 @@ ${sampleText}
                         { text: detectionPrompt }
                     ]
                 }
-            ],
-            generationConfig: {
-                topK: 16,
-                topP: 0.8,
-                maxOutputTokens: 1024,
-            },
+            ]
         };
 
         // Add response schema
         requestData = addResponseSchema(requestData, createLanguageDetectionSchema());
+        requestData = addThinkingConfig(requestData, model);
 
 
         // Dispatch event to update UI with status

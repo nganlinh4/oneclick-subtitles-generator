@@ -2,10 +2,9 @@
  * Service for analyzing videos with Gemini before splitting
  */
 
-import { createVideoAnalysisSchema, addResponseSchema } from '../utils/schemaUtils';
-import { addThinkingConfig } from '../utils/thinkingBudgetUtils';
 import { callGeminiApiWithFilesApiForAnalysis } from './gemini';
 import i18n from '../i18n/i18n';
+import { DEFAULT_ANALYSIS_MODEL_ID, normalizeMediaModelId } from '../config/geminiModels';
 
 // Translation function shorthand
 const t = (key, fallback) => i18n.t(key, fallback);
@@ -105,7 +104,10 @@ export const analyzeVideoWithGemini = async (videoFile, onStatusUpdate) => {
     }
 
     // Get the selected model from localStorage or use the default
-    const MODEL = localStorage.getItem('video_analysis_model') || "gemini-2.5-flash-lite";
+    const MODEL = normalizeMediaModelId(
+        localStorage.getItem('video_analysis_model'),
+        DEFAULT_ANALYSIS_MODEL_ID
+    );
 
     // Get video duration
     onStatusUpdate({ message: t('input.preparingVideoAnalysis', 'Preparing video for analysis...'), type: 'loading' });

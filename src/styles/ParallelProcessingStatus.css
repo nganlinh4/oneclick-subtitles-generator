@@ -352,28 +352,28 @@
   color: var(--md-on-surface-variant);
 }
 
-/* Gemini 2.5 Pro styles */
+/* High-capability model styles */
 .model-pro {
   background-color: rgba(var(--md-tertiary-rgb), 0.1);
   color: var(--md-tertiary);
   border: 1px solid var(--md-tertiary);
 }
 
-/* Gemini 2.0 Flash Thinking styles */
+/* Reasoning model styles */
 .model-thinking {
   background-color: rgba(var(--md-secondary-rgb), 0.1);
   color: var(--md-secondary);
   border: 1px solid var(--md-secondary);
 }
 
-/* Gemini 2.0 Flash styles */
+/* Standard model styles */
 .model-flash {
   background-color: rgba(var(--md-primary-rgb), 0.1);
   color: var(--md-primary);
   border: 1px solid var(--md-primary);
 }
 
-/* Gemini 2.0 Flash Lite styles */
+/* Lightweight model styles */
 .model-lite {
   background-color: rgba(0, 180, 0, 0.1);
   color: rgb(0, 160, 0);

@@ -3,6 +3,11 @@
 // becomes '../../../X' here.
 import { getAllKeys, saveAllKeys } from '../../../services/gemini/keyManager';
 import { initGeminiButtonEffects, disableGeminiButtonEffects } from '../../../utils/geminiEffects';
+import {
+  DEFAULT_ANALYSIS_MODEL_ID,
+  DEFAULT_GEMINI_MODEL_ID,
+  normalizeMediaModelId
+} from '../../../config/geminiModels';
 
 /**
  * Custom hook providing the settings persistence handler. Takes the settings
@@ -50,9 +55,11 @@ const useSettingsPersistence = (params) => {
 
   // Handle save button click
   const handleSave = async () => {
+    const mediaModel = normalizeMediaModelId(geminiModel, DEFAULT_GEMINI_MODEL_ID);
+    const analysisModel = normalizeMediaModelId(videoAnalysisModel, DEFAULT_ANALYSIS_MODEL_ID);
     // Save settings to localStorage
     localStorage.setItem('segment_duration', segmentDuration.toString());
-    localStorage.setItem('gemini_model', geminiModel);
+    localStorage.setItem('gemini_model', mediaModel);
     localStorage.setItem('genius_token', geniusApiKey);
     localStorage.setItem('time_format', timeFormat);
     localStorage.setItem('video_processing_max_words', favoriteMaxSubtitleLength.toString());
@@ -63,7 +70,7 @@ const useSettingsPersistence = (params) => {
     localStorage.setItem('transcription_prompt', transcriptionPrompt);
     localStorage.setItem('use_youtube_oauth', useOAuth.toString());
     localStorage.setItem('use_video_analysis', useVideoAnalysis.toString());
-    localStorage.setItem('video_analysis_model', videoAnalysisModel);
+    localStorage.setItem('video_analysis_model', analysisModel);
     localStorage.setItem('video_analysis_timeout', videoAnalysisTimeout);
     localStorage.setItem('enable_gemini_effects', enableGeminiEffects.toString());
 
@@ -131,7 +138,7 @@ const useSettingsPersistence = (params) => {
 
     // Notify parent component about API keys, segment duration, model, time format, video optimization settings, and cookie setting
     // Note: optimizeVideos parameter removed since it's always enabled now
-    onSave(geminiApiKey, youtubeApiKey, geniusApiKey, segmentDuration, geminiModel, timeFormat, undefined, optimizedResolution, useOptimizedPreview, useCookiesForDownload, enableYoutubeSearch, showWaveformLongVideos);
+    onSave(geminiApiKey, youtubeApiKey, geniusApiKey, segmentDuration, mediaModel, timeFormat, undefined, optimizedResolution, useOptimizedPreview, useCookiesForDownload, enableYoutubeSearch, showWaveformLongVideos);
 
     // Update original settings to match current settings
     setOriginalSettings({
@@ -139,7 +146,7 @@ const useSettingsPersistence = (params) => {
       youtubeApiKey,
       geniusApiKey,
       segmentDuration,
-      geminiModel,
+      geminiModel: mediaModel,
       timeFormat,
       showWaveformLongVideos,
       segmentOffsetCorrection,
@@ -148,7 +155,7 @@ const useSettingsPersistence = (params) => {
       youtubeClientId,
       youtubeClientSecret,
       useVideoAnalysis,
-      videoAnalysisModel,
+      videoAnalysisModel: analysisModel,
       videoAnalysisTimeout,
       enableGeminiEffects,
 

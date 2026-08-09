@@ -18,6 +18,7 @@ import i18n from '../../i18n/i18n';
 import { getNextAvailableKey, blacklistKey } from './keyManager';
 import { addThinkingConfig } from '../../utils/thinkingBudgetUtils';
 import { shouldUseFilesApi } from './filesApi';
+import { DEFAULT_TRANSCRIPTION_MODEL_ID, normalizeMediaModelId } from '../../config/geminiModels';
 // Imported for the inline fallback path below and re-exported so core.js's
 // public export surface is unchanged after extracting it to filesApiHandler.js.
 import { callGeminiApiWithFilesApi } from './filesApiHandler';
@@ -73,10 +74,13 @@ export const callGeminiApi = async (input, inputType, options = {}) => {
     // Extract options
     const { userProvidedSubtitles, modelId } = options;
     // Use the passed modelId if available, otherwise fall back to localStorage
-    const MODEL = modelId || localStorage.getItem('gemini_model') || "gemini-2.5-flash";
+    const MODEL = normalizeMediaModelId(
+        modelId || localStorage.getItem('gemini_model'),
+        DEFAULT_TRANSCRIPTION_MODEL_ID
+    );
 
     if (modelId) {
-        console.log(`[GeminiAPI] Using custom model: ${MODEL}`);
+        console.log(`[GeminiAPI] Using requested media model: ${MODEL}`);
     }
 
     // Get the next available API key

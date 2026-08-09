@@ -5,6 +5,7 @@ import { generateSubtitleHash } from '../utils/subtitle/subtitleHash';
 import { getCurrentMediaId } from '../utils/mediaId';
 import { useTranslationCaching, saveTranslationsToCache, clearTranslationCache } from './useTranslationCaching';
 import { useTranslationBulk } from './useTranslationBulk';
+import { DEFAULT_TRANSLATION_MODEL_ID, migrateGeminiModelId } from '../config/geminiModels';
 
 // Re-export the shared helpers for existing consumers (e.g. translation/index.js).
 export { generateSubtitleHash, getCurrentMediaId };
@@ -27,7 +28,10 @@ export const useTranslationState = (subtitles, onTranslationComplete) => {
   // Use a translation-specific model selection that's independent from settings
   const [selectedModel, setSelectedModel] = useState(() => {
     // Get the model from translation-specific localStorage key or use the global setting as default
-    return localStorage.getItem('translation_model') || localStorage.getItem('gemini_model') || 'gemini-2.5-flash';
+    return migrateGeminiModelId(
+      localStorage.getItem('translation_model') || localStorage.getItem('gemini_model'),
+      DEFAULT_TRANSLATION_MODEL_ID
+    );
   });
   const [customTranslationPrompt, setCustomTranslationPrompt] = useState(
     localStorage.getItem('custom_prompt_translation') || null

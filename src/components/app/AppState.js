@@ -8,6 +8,7 @@ import { hasValidTokens } from '../../services/youtubeApiService';
 import { PROMPT_PRESETS } from '../../services/geminiService';
 import { cleanupInvalidBlobUrls } from '../../utils/videoUtils';
 import { getAllKeys } from '../../services/gemini/keyManager';
+import { DEFAULT_GEMINI_MODEL_ID, migrateStoredGeminiModels } from '../../config/geminiModels';
 
 /**
  * Custom hook for managing application state
@@ -103,6 +104,7 @@ export const useAppState = () => {
 
   // Initialize default values for settings
   useEffect(() => {
+    migrateStoredGeminiModels(localStorage);
     // Migration: If user doesn't have userPreferredTab but has lastActiveTab, migrate it
     // But only if lastActiveTab is not 'file-upload' (which would be from auto-conversion)
     if (!localStorage.getItem('userPreferredTab')) {
@@ -125,7 +127,7 @@ export const useAppState = () => {
 
     // Set default model if not already set
     if (!localStorage.getItem('gemini_model')) {
-      localStorage.setItem('gemini_model', 'gemini-2.5-flash');
+      localStorage.setItem('gemini_model', DEFAULT_GEMINI_MODEL_ID);
     }
 
     // Set default transcription prompt if not already set

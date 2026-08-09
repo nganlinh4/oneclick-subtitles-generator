@@ -8,6 +8,7 @@ import { resolveGeminiFileCache } from './fileCache';
 import { addThinkingConfig } from '../../utils/thinkingBudgetUtils';
 import { uploadFileToGemini } from './filesApi';
 import { supportsMediaResolution } from './modelCapabilities';
+import { DEFAULT_ANALYSIS_MODEL_ID, normalizeMediaModelId } from '../../config/geminiModels';
 
 /**
  * Special version of callGeminiApiWithFilesApi for video analysis
@@ -19,7 +20,10 @@ import { supportsMediaResolution } from './modelCapabilities';
  */
 export const callGeminiApiWithFilesApiForAnalysis = async (file, options = {}, abortSignal = null, retryCount = 0) => {
     const { modelId, videoMetadata, analysisPrompt, mediaResolution } = options;
-    const MODEL = modelId || localStorage.getItem('video_analysis_model') || "gemini-2.5-flash-lite";
+    const MODEL = normalizeMediaModelId(
+        modelId || localStorage.getItem('video_analysis_model'),
+        DEFAULT_ANALYSIS_MODEL_ID
+    );
 
     console.log(`[GeminiAPI] Using Files API for video analysis with model: ${MODEL}`);
     console.log(`[GeminiAPI] Analysis FPS setting: ${videoMetadata?.fps || 'default'}`);

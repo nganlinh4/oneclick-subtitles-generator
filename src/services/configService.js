@@ -1,7 +1,15 @@
 // Light-weight config/localStorage wrapper with typed helpers
+import { DEFAULT_GEMINI_MODEL_ID, normalizeMediaModelId } from '../config/geminiModels';
 
-export const getGeminiModel = () => localStorage.getItem('gemini_model') || 'gemini-2.5-flash';
-export const setGeminiModel = (model) => { try { localStorage.setItem('gemini_model', model); } catch {} };
+export const getGeminiModel = () => normalizeMediaModelId(
+  localStorage.getItem('gemini_model'),
+  DEFAULT_GEMINI_MODEL_ID
+);
+export const setGeminiModel = (model) => {
+  try {
+    localStorage.setItem('gemini_model', normalizeMediaModelId(model, DEFAULT_GEMINI_MODEL_ID));
+  } catch {}
+};
 
 export const getMediaResolution = () => localStorage.getItem('media_resolution') || 'medium';
 export const setMediaResolution = (res) => { try { localStorage.setItem('media_resolution', res); } catch {} };

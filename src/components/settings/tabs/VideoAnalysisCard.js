@@ -8,8 +8,7 @@ const VideoAnalysisCard = ({
   videoAnalysisModel,
   setVideoAnalysisModel,
   videoAnalysisTimeout,
-  setVideoAnalysisTimeout,
-  customGeminiModels = []
+  setVideoAnalysisTimeout
 }) => {
   const { t } = useTranslation();
 
@@ -17,16 +16,13 @@ const VideoAnalysisCard = ({
   const getAnalysisModels = () => {
     const builtInAnalysisModels = ANALYSIS_MODEL_IDS.map(id => {
       const m = getModelById(id);
-      return { id: m.id, name: t(m.analysisLabelKey, m.analysisLabelDefault) };
+      return {
+        id: m.id,
+        name: `${t(m.nameKey, m.nameDefault)} (${t('models.dailyQuota', '{{count}} requests/day', { count: m.freeRPD })})`
+      };
     });
 
-    const customModels = customGeminiModels.map(model => ({
-      id: model.id,
-      name: `${model.name} (Custom)`,
-      isCustom: true
-    }));
-
-    return [...builtInAnalysisModels, ...customModels];
+    return builtInAnalysisModels;
   };
 
   return (
@@ -49,7 +45,7 @@ const VideoAnalysisCard = ({
             {t('settings.videoAnalysisModel', 'Analysis Model')}
           </label>
           <p className="setting-description">
-            {t('settings.videoAnalysisModel.simplified', 'Select the model to use for video analysis. Flash Lite is faster but less accurate.')}
+            {t('settings.videoAnalysisModel.simplified', 'Only catalog-verified models that accept video input are listed.')}
           </p>
           <CustomDropdown
             value={videoAnalysisModel}

@@ -4,6 +4,7 @@
 
 import { GeminiWebSocketClient } from './GeminiWebSocketClient';
 import { findSuitableAudioModel } from '../models/modelSelector';
+import { DEFAULT_LIVE_AUDIO_MODEL_ID, getLiveAudioModelById } from '../../../config/geminiModels';
 import { getNextAvailableKey, blacklistKey } from '../keyManager';
 
 // Default number of concurrent WebSocket clients
@@ -166,12 +167,17 @@ const createClient = async (apiKey, modelName, voiceName, languageCode, index) =
   // Connect to the WebSocket API
   try {
     // Use the same configuration format as in the live-api-web-console
+    const liveModelId = modelName.replace(/^models\//, '');
+    const liveProfile = getLiveAudioModelById(liveModelId)
+      || getLiveAudioModelById(DEFAULT_LIVE_AUDIO_MODEL_ID);
+    const thinkingConfig = liveProfile.thinking.type === 'level'
+      ? { thinkingLevel: liveProfile.thinking.default.toUpperCase() }
+      : { thinkingBudget: liveProfile.thinking.default };
     const config = {
       model: modelName,
       generationConfig: {
-        topK: 32,
-        topP: 0.95,
-        maxOutputTokens: 1024,
+        maxOutputTokens: liveProfile.maxOutputTokens,
+        thinkingConfig,
         responseModalities: "audio",
         speechConfig: {
           voiceConfig: {

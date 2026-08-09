@@ -9,6 +9,7 @@ import { resolveGeminiFileCache } from './fileCache';
 import { uploadFileToGemini } from './filesApi';
 import { streamGeminiContent, isStreamingSupported } from './streamingService';
 import { coordinateParallelStreaming, shouldUseParallelProcessing, coordinateParallelInlineStreaming } from './parallelStreamingCoordinator';
+import { DEFAULT_TRANSCRIPTION_MODEL_ID, normalizeMediaModelId } from '../../config/geminiModels';
 
 /**
  * Stream content generation using Files API
@@ -21,7 +22,10 @@ import { coordinateParallelStreaming, shouldUseParallelProcessing, coordinatePar
  */
 export const streamGeminiApiWithFilesApi = async (file, options = {}, onChunk, onComplete, onError, onProgress, retryCount = 0) => {
     const { userProvidedSubtitles, modelId, videoMetadata, mediaResolution, maxDurationPerRequest } = options;
-    const MODEL = modelId || localStorage.getItem('gemini_model') || "gemini-2.5-flash";
+    const MODEL = normalizeMediaModelId(
+        modelId || localStorage.getItem('gemini_model'),
+        DEFAULT_TRANSCRIPTION_MODEL_ID
+    );
 
     console.log(`[GeminiAPI] Using streaming Files API with model: ${MODEL}`);
 
@@ -155,8 +159,11 @@ export const streamGeminiApiWithFilesApi = async (file, options = {}, onChunk, o
  * Stream content generation using INLINE data (no Files API, no video_metadata)
  */
 export const streamGeminiApiInline = async (file, options = {}, onChunk, onComplete, onError, onProgress) => {
-  const { userProvidedSubtitles, modelId, mediaResolution, maxDurationPerRequest } = options;
-  const MODEL = modelId || localStorage.getItem('gemini_model') || "gemini-2.5-flash";
+  const { modelId, maxDurationPerRequest } = options;
+  const MODEL = normalizeMediaModelId(
+    modelId || localStorage.getItem('gemini_model'),
+    DEFAULT_TRANSCRIPTION_MODEL_ID
+  );
 
   console.log(`[GeminiAPI] Using streaming INLINE with model: ${MODEL}`);
 

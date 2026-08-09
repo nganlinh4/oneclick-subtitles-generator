@@ -13,6 +13,7 @@ import {
   parseAccumulatedSubtitles,
   scanSubtitlesForHallucination
 } from './streamingHelpers';
+import { DEFAULT_TRANSCRIPTION_MODEL_ID, normalizeMediaModelId } from '../../config/geminiModels';
 
 /**
  * Validate if a file URI is still accessible
@@ -62,14 +63,10 @@ const validateFileUri = async (fileUri, apiKey) => {
  */
 export const streamGeminiContent = async (file, fileUri, options = {}, onChunk, onComplete, onError, retryCount = 0) => {
   const { modelId } = options;
-  const MODEL = modelId || localStorage.getItem('gemini_model') || "gemini-2.5-flash";
-  
-  
-  // Check if this is Gemini 2.5 Pro which might have specific requirements
-  const isGemini25Pro = MODEL.includes('gemini-2.5-pro');
-  if (isGemini25Pro) {
-    console.log('[StreamingService] Using Gemini 2.5 Pro - checking for compatibility issues...');
-  }
+  const MODEL = normalizeMediaModelId(
+    modelId || localStorage.getItem('gemini_model'),
+    DEFAULT_TRANSCRIPTION_MODEL_ID
+  );
   
   const geminiApiKey = getNextAvailableKey();
   if (!geminiApiKey) {
@@ -513,11 +510,9 @@ const processStreamingResponse = async (response, onChunk, onComplete, onError, 
  * @returns {boolean} - Whether streaming is supported (defaults to true for all models)
  */
 export const isStreamingSupported = (modelId) => {
-  const model = modelId || localStorage.getItem('gemini_model') || "gemini-2.5-flash";
-  
   // Default to supporting streaming for all models
   // The API will reject streaming if not supported, so we don't need to maintain a hardcoded list
   // Only very rare cases would not support streaming
-  console.log(`[StreamingService] Defaulting to streaming support for model: ${model}`);
+  console.log(`[StreamingService] Defaulting to streaming support for model: ${modelId || DEFAULT_TRANSCRIPTION_MODEL_ID}`);
   return true;
 };

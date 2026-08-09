@@ -1,6 +1,7 @@
 import { useCallback, useEffect } from 'react';
 import { EVENTS, subscribe } from '../events/bus';
 import { getVideoProcessingFps, getMediaResolution } from '../services/configService';
+import { DEFAULT_TRANSCRIPTION_MODEL_ID, normalizeMediaModelId } from '../config/geminiModels';
 
 // Retry policy (match Files API): 503/429 detection + progressive delays
 const RETRY_DELAYS = [5, 10, 15, 20, 25]; // seconds
@@ -131,7 +132,10 @@ export const useSubtitlesSegmentRetry = ({
             const segment = { start, end };
             const fps = getVideoProcessingFps();
             const mediaResolution = getMediaResolution();
-            const model = localStorage.getItem('gemini_model') || 'gemini-2.5-flash';
+            const model = normalizeMediaModelId(
+                localStorage.getItem('gemini_model'),
+                DEFAULT_TRANSCRIPTION_MODEL_ID
+            );
 
             const { processGeminiSegment } = await import('../services/engines/GeminiAdapter');
             const { mergeStreamingSubtitlesProgressively } = await import('../utils/subtitle/subtitleMerger');

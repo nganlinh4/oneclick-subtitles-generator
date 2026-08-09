@@ -1,106 +1,61 @@
-/**
- * Utility functions for managing thinking budgets for Gemini models
- *
- * Gemini 2.5 models → thinkingBudget (integer token count)
- * Gemini 3.x models → thinkingLevel (named string: "minimal" | "low" | "medium" | "high")
- */
-import { GEMINI_MODELS, getModelById } from '../config/geminiModels';
+/** Build exact thinkingConfig payloads from the shared Gemini model contract. */
+import { getModelById, migrateGeminiModelId } from '../config/geminiModels';
 
-// Derived from central config: models that use thinkingLevel instead of thinkingBudget
-const THINKING_LEVEL_MODELS = GEMINI_MODELS
-  .filter(m => m.thinking?.type === 'level')
-  .map(m => m.id);
+const getThinkingProfile = (modelId) => getModelById(migrateGeminiModelId(modelId))?.thinking || null;
 
-/**
- * Check if a model uses the thinkingLevel API (Gemini 3.x)
- */
-export const isThinkingLevelModel = (modelId) => THINKING_LEVEL_MODELS.includes(modelId);
+export const isThinkingLevelModel = (modelId) => getThinkingProfile(modelId)?.type === 'level';
+export const isThinkingSupported = (modelId) => Boolean(getThinkingProfile(modelId));
+export const getDefaultThinkingBudget = (modelId) => getThinkingProfile(modelId)?.default ?? null;
 
-/**
- * Get the thinking budget/level for a specific model
- * @param {string} modelId
- * @returns {number|string|null}
- */
+export const validateThinkingBudget = (modelId, value) => {
+  const thinking = getThinkingProfile(modelId);
+  if (!thinking) return false;
+
+  if (thinking.type === 'level') return thinking.options.includes(value);
+  if (!thinking.configurable) return value === thinking.default;
+  if (value === -1) return thinking.allowDynamic !== false;
+  if (value === 0) return Boolean(thinking.allowDisable);
+  return Number.isInteger(value) && value >= thinking.min && value <= thinking.max;
+};
+
 export const getThinkingBudget = (modelId) => {
+  const fallback = getDefaultThinkingBudget(modelId);
+  if (fallback === null) return null;
+
   try {
-    const thinkingBudgets = JSON.parse(localStorage.getItem('thinking_budgets') || '{}');
-
-    if (!isThinkingSupported(modelId)) return null;
-
-    const budget = thinkingBudgets[modelId];
-    if (budget !== undefined) return budget;
-
-    return getDefaultThinkingBudget(modelId);
+    const saved = JSON.parse(localStorage.getItem('thinking_budgets') || '{}')[migrateGeminiModelId(modelId)];
+    return validateThinkingBudget(modelId, saved) ? saved : fallback;
   } catch (error) {
-    console.error('Error getting thinking budget:', error);
-    return getDefaultThinkingBudget(modelId);
+    console.error('Error reading Gemini thinking settings:', error);
+    return fallback;
   }
 };
 
-/**
- * Check if a model supports thinking configuration
- */
-export const isThinkingSupported = (modelId) =>
-  GEMINI_MODELS.some(m => m.id === modelId && m.thinking !== null);
+const getLowestThinkingValue = (thinking) => {
+  if (thinking.type === 'budget') return thinking.allowDisable === false ? thinking.default : 0;
+  return thinking.options.includes('minimal') ? 'minimal' : thinking.options[0];
+};
 
 /**
- * Get the default thinking budget/level for a model
- * @returns {number|string|null}
- */
-export const getDefaultThinkingBudget = (modelId) =>
-  getModelById(modelId)?.thinking?.default ?? null;
-
-/**
- * Add thinking configuration to a Gemini API request
+ * Add the model's exact thinking shape. Setting enableThinking=false requests
+ * the lowest supported value instead of silently falling back to provider defaults.
  */
 export const addThinkingConfig = (requestData, modelId, options = {}) => {
-  const { enableThinking = true } = options;
+  const thinking = getThinkingProfile(modelId);
+  if (!thinking) return requestData;
 
-  if (!enableThinking) return requestData;
-  if (!isThinkingSupported(modelId)) return requestData;
-
-  // Gemini 3.x models use thinkingLevel (string)
-  if (isThinkingLevelModel(modelId)) {
-    const level = getThinkingBudget(modelId) || getDefaultThinkingBudget(modelId);
-    if (!level) return requestData;
-    return {
-      ...requestData,
-      generationConfig: {
-        ...(requestData.generationConfig || {}),
-        thinkingConfig: { thinkingLevel: level }
-      }
-    };
-  }
-
-  // Gemini 2.5 models use thinkingBudget (integer)
-  const thinkingBudget = getThinkingBudget(modelId);
-  if (thinkingBudget === null) return requestData;
+  const value = options.enableThinking === false
+    ? getLowestThinkingValue(thinking)
+    : getThinkingBudget(modelId);
+  const thinkingConfig = thinking.type === 'level'
+    ? { thinkingLevel: String(value).toUpperCase() }
+    : { thinkingBudget: value };
 
   return {
     ...requestData,
     generationConfig: {
       ...(requestData.generationConfig || {}),
-      thinkingConfig: { thinkingBudget }
+      thinkingConfig
     }
   };
-};
-
-/**
- * Validate a thinking budget value for a model
- */
-export const validateThinkingBudget = (modelId, budget) => {
-  const model = getModelById(modelId);
-  if (!model?.thinking) return false;
-
-  const { thinking } = model;
-
-  // 3.x level models
-  if (thinking.type === 'level') {
-    return thinking.options.includes(budget);
-  }
-
-  // 2.5 token budget models
-  if (budget === -1) return true;
-  if (budget === 0) return thinking.allowDisable;
-  return budget >= thinking.min && budget <= thinking.max;
 };

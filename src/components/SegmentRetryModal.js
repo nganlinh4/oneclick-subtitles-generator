@@ -2,7 +2,11 @@ import React, { useState, useEffect, useRef } from 'react';
 import { useTranslation } from 'react-i18next';
 import CloseButton from './common/CloseButton';
 import '../styles/SegmentRetryModal.css';
-import { GEMINI_MODELS } from '../config/geminiModels';
+import {
+  DEFAULT_TRANSCRIPTION_MODEL_ID,
+  TRANSCRIPTION_MODELS,
+  normalizeMediaModelId
+} from '../config/geminiModels';
 
 /**
  * Modal component for retrying a segment with custom options
@@ -29,7 +33,10 @@ const SegmentRetryModal = ({
   const [currentStep, setCurrentStep] = useState(1);
 
   // Model selection state
-  const [selectedModel, setSelectedModel] = useState(localStorage.getItem('gemini_model') || 'gemini-2.5-flash');
+  const [selectedModel, setSelectedModel] = useState(() => normalizeMediaModelId(
+    localStorage.getItem('gemini_model'),
+    DEFAULT_TRANSCRIPTION_MODEL_ID
+  ));
 
   // Subtitle options state
   const [subtitlesOption, setSubtitlesOption] = useState('none');
@@ -37,7 +44,7 @@ const SegmentRetryModal = ({
   const textareaRef = useRef(null);
 
   // Model options derived from central config
-  const modelOptions = GEMINI_MODELS.map(model => ({
+  const modelOptions = TRANSCRIPTION_MODELS.map(model => ({
     id: model.id,
     name: t(model.nameKey, model.nameDefault),
     description: t(model.descKey, model.descDefault),
@@ -58,7 +65,10 @@ const SegmentRetryModal = ({
       // Reset to first step when modal opens
       setCurrentStep(1);
       // Set default model to current model
-      setSelectedModel(localStorage.getItem('gemini_model') || 'gemini-2.5-flash');
+      setSelectedModel(normalizeMediaModelId(
+        localStorage.getItem('gemini_model'),
+        DEFAULT_TRANSCRIPTION_MODEL_ID
+      ));
       // Reset subtitle options
       setSubtitlesOption('none');
       setCustomSubtitles('');

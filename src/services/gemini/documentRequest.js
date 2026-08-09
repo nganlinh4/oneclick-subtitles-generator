@@ -4,7 +4,6 @@
  * prompt, the response schema, and the log/abort labels).
  */
 
-import { getLanguageCode } from '../../utils/languageUtils';
 import { addResponseSchema } from '../../utils/schemaUtils';
 import { addThinkingConfig } from '../../utils/thinkingBudgetUtils';
 import { createRequestController, removeRequestController } from './requestManagement';
@@ -54,18 +53,8 @@ export const runGeminiDocumentRequest = async ({
       : getDefaultPrompt(subtitlesText, language);
 
     let requestData = {
-      contents: [{ role: 'user', parts: [{ text: documentPrompt }] }],
-      generationConfig: {
-        topK: 32,
-        topP: 0.95,
-        maxOutputTokens: 65536, // maximum allowed value per Gemini documentation
-      },
+      contents: [{ role: 'user', parts: [{ text: documentPrompt }] }]
     };
-
-    // Hint the model to keep the right language (Gemini has no direct language param).
-    if (language && getLanguageCode(language)) {
-      requestData.generationConfig.stopSequences = [];
-    }
 
     requestData = addResponseSchema(requestData, createSchema());
     requestData = addThinkingConfig(requestData, model);

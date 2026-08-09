@@ -221,14 +221,11 @@ export const createSummarizationSchema = () => {
  * @param {Object} schema - The schema to apply
  * @returns {Object} Updated request data with schema
  */
-export const addResponseSchema = (requestData, schema, isUserProvided = false) => {
+export const addResponseSchema = (requestData, schema) => {
     return {
         ...requestData,
         generationConfig: {
             ...(requestData.generationConfig || {}),
-            topK: isUserProvided ? 1 : 32,
-            topP: isUserProvided ? 0.5 : 0.95,
-            maxOutputTokens: 65536,
             responseMimeType: 'application/json',
             responseSchema: schema
         }

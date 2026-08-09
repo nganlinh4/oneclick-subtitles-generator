@@ -7,6 +7,7 @@ import i18n from '../../i18n/i18n';
 import { createConsolidationSchema } from '../../utils/schemaUtils';
 import { getDefaultConsolidatePrompt } from './promptManagement';
 import { runGeminiDocumentRequest } from './documentRequest';
+import { DEFAULT_GEMINI_MODEL_ID } from '../../config/geminiModels';
 
 /**
  * Consolidate document from subtitles text
@@ -16,7 +17,7 @@ import { runGeminiDocumentRequest } from './documentRequest';
  * @param {number} splitDuration - Duration in minutes for each chunk (0 = no split)
  * @returns {Promise<string>} - Completed document text
  */
-export const completeDocument = async (subtitlesText, model = 'gemini-2.5-flash', customPrompt = null, splitDuration = 0) => {
+export const completeDocument = async (subtitlesText, model = DEFAULT_GEMINI_MODEL_ID, customPrompt = null, splitDuration = 0) => {
     if (!subtitlesText || subtitlesText.trim() === '') {
         throw new Error('No text to process');
     }

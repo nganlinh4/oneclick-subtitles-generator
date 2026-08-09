@@ -17,6 +17,7 @@ import { useQuotaCountdown } from './useQuotaCountdown';
 import { useSubtitlesRetryGeneration } from './useSubtitlesRetryGeneration';
 import { runAsrGeneration } from './runAsrGeneration';
 import { DESCRIPTORS, LOCAL_METHOD_IDS } from '../services/engines/transcriptionEngineRegistry';
+import { isHighIntelligenceModel } from '../config/geminiModels';
 import { createSegmentStreamingHandler, createFullMediaStreamingHandler } from './subtitleStreamingHandlers';
 
 // Cache utilities moved to services/subtitleCache
@@ -493,10 +494,8 @@ export const useSubtitles = (t) => {
                 debugLog('[Subtitle Generation] Skipping cache save for segment processing - not overwriting full file cache');
             }
 
-            // Check if using a strong model (Gemini 2.5 Pro or Gemini 2.0 Flash Thinking)
             const currentModel = getGeminiModel();
-            const strongModels = ['gemini-2.5-pro', 'gemini-2.0-flash-thinking-exp-01-21'];
-            const isUsingStrongModel = strongModels.includes(currentModel);
+            const isUsingStrongModel = isHighIntelligenceModel(currentModel);
 
             // Show different success message based on model
             if (isUsingStrongModel && (!subtitles || subtitles.length === 0)) {

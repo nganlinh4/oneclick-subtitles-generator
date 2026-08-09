@@ -6,6 +6,7 @@
 import { createSummarizationSchema } from '../../utils/schemaUtils';
 import { getDefaultSummarizePrompt } from './promptManagement';
 import { runGeminiDocumentRequest } from './documentRequest';
+import { DEFAULT_GEMINI_MODEL_ID } from '../../config/geminiModels';
 
 /**
  * Summarize document from subtitles text
@@ -14,7 +15,7 @@ import { runGeminiDocumentRequest } from './documentRequest';
  * @param {string} customPrompt - Optional custom prompt to use
  * @returns {Promise<string>} - Summarized document text
  */
-export const summarizeDocument = async (subtitlesText, model = 'gemini-2.5-flash', customPrompt = null) => {
+export const summarizeDocument = async (subtitlesText, model = DEFAULT_GEMINI_MODEL_ID, customPrompt = null) => {
     if (!subtitlesText || subtitlesText.trim() === '') {
         throw new Error('No text to process');
     }

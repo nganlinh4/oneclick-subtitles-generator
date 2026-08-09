@@ -1,3 +1,5 @@
+import { DEFAULT_FAST_TEXT_MODEL_ID } from '../../../config/geminiModels';
+
 /**
  * Handle the subtitle grouping toggle.
  *
@@ -71,7 +73,7 @@ export const handleGroupingToggle = async (checked, {
       const result = await groupSubtitlesForNarration(
         subtitlesToGroup,
         languageCode,
-        'gemini-2.5-flash-lite',
+        DEFAULT_FAST_TEXT_MODEL_ID,
         groupingIntensity
       );
 

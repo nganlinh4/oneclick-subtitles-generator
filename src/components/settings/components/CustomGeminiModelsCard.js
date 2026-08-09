@@ -106,7 +106,7 @@ const CustomGeminiModelsCard = ({ customGeminiModels, setCustomGeminiModels }) =
       </div>
       <div className="settings-card-content">
         <p className="setting-description">
-          {t('settings.customGeminiModels.description', 'Add custom Gemini model IDs to use in dropdowns throughout the application. These models will appear in all model selection menus.')}
+          {t('settings.customGeminiModels.description', 'Add custom Gemini model IDs for text-only tools such as translation and document processing. Audio and video workflows use catalog-verified media models only.')}
         </p>
 
         {/* Custom models list */}
@@ -152,7 +152,7 @@ const CustomGeminiModelsCard = ({ customGeminiModels, setCustomGeminiModels }) =
                   type="text"
                   value={newModelId}
                   onChange={(e) => setNewModelId(e.target.value)}
-                  placeholder={t('settings.customModels.modelIdPlaceholder', 'e.g., gemini-2.5-pro-preview-03-25')}
+                  placeholder={t('settings.customModels.modelIdPlaceholder', 'e.g., gemini-3.6-flash')}
                   className="model-input"
                 />
               </div>
@@ -165,7 +165,7 @@ const CustomGeminiModelsCard = ({ customGeminiModels, setCustomGeminiModels }) =
                   type="text"
                   value={newModelName}
                   onChange={(e) => setNewModelName(e.target.value)}
-                  placeholder={t('settings.customModels.modelNamePlaceholder', 'e.g., Gemini 2.5 Pro Preview')}
+                  placeholder={t('settings.customModels.modelNamePlaceholder', 'e.g., My Gemini model')}
                   className="model-input"
                 />
               </div>

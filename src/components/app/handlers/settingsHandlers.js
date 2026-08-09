@@ -2,6 +2,7 @@ import { cancelYoutubeVideoDownload } from "../../../utils/videoDownloader";
 import { cancelDouyinVideoDownload } from "../../../utils/douyinDownloader";
 import { cancelGenericVideoDownload } from "../../../utils/allSitesDownloader";
 import { hasValidTokens } from "../../../services/youtubeApiService";
+import { DEFAULT_GEMINI_MODEL_ID, normalizeMediaModelId } from "../../../config/geminiModels";
 
 // Gated debug logging (enable in the browser console: localStorage.debug_logs = 'true')
 const DEBUG_LOGS = (typeof window !== 'undefined') && (localStorage.getItem('debug_logs') === 'true');
@@ -159,7 +160,10 @@ export const createSettingsHandlers = ({
 
     // Save Gemini model
     if (geminiModel) {
-      localStorage.setItem("gemini_model", geminiModel);
+      localStorage.setItem(
+        "gemini_model",
+        normalizeMediaModelId(geminiModel, DEFAULT_GEMINI_MODEL_ID)
+      );
     }
 
     // Video optimization is now always enabled - no need to save this setting

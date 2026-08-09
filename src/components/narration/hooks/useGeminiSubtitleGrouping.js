@@ -1,5 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { groupSubtitlesForNarration } from '../../../services/gemini/subtitleGroupingService';
+import { DEFAULT_FAST_TEXT_MODEL_ID } from '../../../config/geminiModels';
 
 /**
  * Custom hook for Gemini subtitle grouping behavior.
@@ -78,7 +79,7 @@ const useGeminiSubtitleGrouping = ({
       const groupingResult = await groupSubtitlesForNarration(
         selectedSubtitles,
         detectedLanguageCode,
-        'gemini-2.5-flash-lite',
+        DEFAULT_FAST_TEXT_MODEL_ID,
         groupingIntensity
       );
 

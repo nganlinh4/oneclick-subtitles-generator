@@ -1,7 +1,11 @@
 import React, { useState, useRef, useCallback, useEffect } from 'react';
 import { useTranslation } from 'react-i18next';
 import '../styles/ModelDropdown.css';
-import { GEMINI_MODELS } from '../config/geminiModels';
+import {
+  DEFAULT_GEMINI_MODEL_ID,
+  DOCUMENT_MODELS,
+  TRANSLATION_MODELS
+} from '../config/geminiModels';
 
 /**
  * Reusable component for model selection dropdown
@@ -17,7 +21,7 @@ import { GEMINI_MODELS } from '../config/geminiModels';
  */
 const ModelDropdown = ({
   onModelSelect,
-  selectedModel = 'gemini-2.5-flash',
+  selectedModel = DEFAULT_GEMINI_MODEL_ID,
   buttonClassName = '',
   label = '',
   headerText,
@@ -41,12 +45,11 @@ const ModelDropdown = ({
 
   // Model options with their icons and colors
   const getModelOptions = () => {
-    const builtInModels = GEMINI_MODELS.map(model => ({
+    const availableModels = isTranslationSection ? TRANSLATION_MODELS : DOCUMENT_MODELS;
+    const builtInModels = availableModels.map(model => ({
       id: model.id,
       name: t(model.nameKey, model.nameDefault),
-      description: isTranslationSection
-        ? t(model.translationDescKey, model.translationDescDefault)
-        : t(model.descKey, model.descDefault),
+      description: t(model.descKey, model.descDefault),
       icon: (
         <span
           className={`material-symbols-rounded ${model.icon.className}`}
@@ -63,7 +66,7 @@ const ModelDropdown = ({
     const customModels = getCustomModels();
     const customModelOptions = customModels.map(model => ({
       id: model.id,
-      name: `${model.name} (Custom)`,
+      name: `${model.name} (${t('models.customLabel', 'Custom')})`,
       description: isTranslationSection
         ? t('translation.customModel', 'Custom model - token limits may vary')
         : t('models.customModel', 'Custom model'),
@@ -80,7 +83,7 @@ const ModelDropdown = ({
 
   // Get the currently selected model
   const currentModel = modelOptions.find(model => model.id === selectedModel)
-    || modelOptions.find(model => model.id === 'gemini-2.5-flash')
+    || modelOptions.find(model => model.id === DEFAULT_GEMINI_MODEL_ID)
     || modelOptions[0];
 
   // Position the dropdown relative to the button

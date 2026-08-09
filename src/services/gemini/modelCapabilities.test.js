@@ -1,20 +1,24 @@
+import { GEMINI_MODELS } from '../../config/geminiModels';
 import { supportsMediaResolution } from './modelCapabilities';
 
 describe('supportsMediaResolution', () => {
-  test('returns true for models that support media resolution', () => {
+  test('uses the central request profile for every built-in model', () => {
+    GEMINI_MODELS.forEach((model) => {
+      expect(supportsMediaResolution(model.id)).toBe(model.request.mediaResolution);
+    });
+  });
+
+  test('normalizes models/ prefixes and retired built-ins', () => {
+    expect(supportsMediaResolution('models/gemini-3.5-flash-lite')).toBe(true);
     expect(supportsMediaResolution('gemini-2.5-flash')).toBe(true);
-    expect(supportsMediaResolution('gemini-2.0-flash')).toBe(true);
-    expect(supportsMediaResolution('gemini-1.5-pro')).toBe(true);
   });
 
-  test('returns false for the unsupported learnlm models', () => {
+  test('keeps the known LearnLM exception for custom models', () => {
     expect(supportsMediaResolution('learnlm-2.0-flash-experimental')).toBe(false);
-    expect(supportsMediaResolution('learnlm-2.0-flash')).toBe(false);
-    expect(supportsMediaResolution('learnlm-1.5-flash')).toBe(false);
+    expect(supportsMediaResolution('models/learnlm-2.0-flash')).toBe(false);
   });
 
-  test('matches by substring so provider-prefixed ids are still detected', () => {
-    expect(supportsMediaResolution('models/learnlm-2.0-flash')).toBe(false);
-    expect(supportsMediaResolution('models/gemini-2.5-flash')).toBe(true);
+  test('defaults unknown custom models to supported', () => {
+    expect(supportsMediaResolution('custom-future-model')).toBe(true);
   });
 });

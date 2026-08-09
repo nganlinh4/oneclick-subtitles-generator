@@ -18,6 +18,7 @@ import i18n from '../../i18n/i18n';
 import { addThinkingConfig } from '../../utils/thinkingBudgetUtils';
 import { uploadFileToGemini } from './filesApi';
 import { supportsMediaResolution } from './modelCapabilities';
+import { DEFAULT_TRANSCRIPTION_MODEL_ID, normalizeMediaModelId } from '../../config/geminiModels';
 
 /**
  * Call the Gemini API using Files API for better performance and caching
@@ -27,7 +28,10 @@ import { supportsMediaResolution } from './modelCapabilities';
  */
 export const callGeminiApiWithFilesApi = async (file, options = {}, retryCount = 0) => {
     const { userProvidedSubtitles, modelId, videoMetadata, mediaResolution } = options;
-    const MODEL = modelId || localStorage.getItem('gemini_model') || "gemini-2.5-flash";
+    const MODEL = normalizeMediaModelId(
+        modelId || localStorage.getItem('gemini_model'),
+        DEFAULT_TRANSCRIPTION_MODEL_ID
+    );
 
     console.log(`[GeminiAPI] Using Files API with model: ${MODEL}`);
 
