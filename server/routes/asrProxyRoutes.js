@@ -15,7 +15,7 @@ const catalog = require('../engines/asrCatalog');
 const baseUrlFor = (engineId) => {
   const row = catalog.byId(engineId);
   if (!row) return null;
-  const port = parseInt(process.env[row.portEnv], 10) || row.port;
+  const port = catalog.portFor(row);
   return `http://127.0.0.1:${port}`;
 };
 

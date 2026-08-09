@@ -29,7 +29,8 @@ const ROWS = [
     // CTranslate2 build of Whisper large-v3 turbo; non-gated ModelScope mirror.
     modelScopeId: 'pengzhendong/faster-whisper-large-v3-turbo',
     modelScopeRevision: 'c312f538745ce1237d0b0c8eef0b81d91ea1fce6', // pinned (master HEAD at validated install 2026-06-23)
-    pyDeps: ['faster-whisper>=1.1.0'], // beyond torch + the shared FastAPI service deps
+    minModelBytes: 1_500_000_000,
+    pyDeps: ['faster-whisper==1.2.1'], // beyond torch + the shared FastAPI service deps
     requiredFreeGb: 10, // ~4.3GB CT2 model + ~2.5GB torch wheel (unpacks larger) + deps headroom
   },
   {
@@ -42,7 +43,8 @@ const ROWS = [
     runtime: 'faster-whisper',
     modelScopeId: 'keepitsimple/faster-whisper-large-v3', // CTranslate2 build, non-gated mirror
     modelScopeRevision: '24dad542d3c19528ad5abbfdd27639a4edb46e26', // pinned (validated install 2026-06-23)
-    pyDeps: ['faster-whisper>=1.1.0'],
+    minModelBytes: 3_000_000_000,
+    pyDeps: ['faster-whisper==1.2.1'],
     requiredFreeGb: 10,
   },
   {
@@ -55,9 +57,12 @@ const ROWS = [
     runtime: 'qwen-asr',
     modelScopeId: 'Qwen/Qwen3-ASR-1.7B',
     modelScopeRevision: 'd69410f1c275f2b0fa60cbb9960edfcdb0ae0aec', // pinned (validated install 2026-06-23)
+    minModelBytes: 4_500_000_000,
     // Word timing comes from a shared companion aligner (downloaded once for all Qwen3-ASR variants).
     alignerModelScopeId: 'Qwen/Qwen3-ForcedAligner-0.6B',
-    pyDeps: ['qwen-asr'],
+    alignerModelScopeRevision: '6f4d7c9606feb7adf282c9e4b139f28e8695d867',
+    alignerMinModelBytes: 1_700_000_000,
+    pyDeps: ['qwen-asr==0.0.6'],
     requiredFreeGb: 14, // ~3.5GB ASR + ~1.5GB aligner + torch + transformers deps
   },
   {
@@ -70,8 +75,11 @@ const ROWS = [
     runtime: 'qwen-asr',
     modelScopeId: 'Qwen/Qwen3-ASR-0.6B',
     modelScopeRevision: '3b885f72b1733a6a50dc17a597fb4135c3d656a0', // pinned (validated install 2026-06-23)
+    minModelBytes: 1_700_000_000,
     alignerModelScopeId: 'Qwen/Qwen3-ForcedAligner-0.6B',
-    pyDeps: ['qwen-asr'],
+    alignerModelScopeRevision: '6f4d7c9606feb7adf282c9e4b139f28e8695d867',
+    alignerMinModelBytes: 1_700_000_000,
+    pyDeps: ['qwen-asr==0.0.6'],
     requiredFreeGb: 12, // ~1.8GB ASR + ~1.5GB aligner + torch + deps
   },
 ];
@@ -79,6 +87,14 @@ const ROWS = [
 const byId = (id) => ROWS.find((r) => r.id === String(id)) || null;
 const ids = () => ROWS.map((r) => r.id);
 const isAsrEngine = (id) => ROWS.some((r) => r.id === String(id));
+
+// Resolve lazily so tests and deployments that set an override after requiring the catalog still see it.
+const portFor = (rowOrId) => {
+  const row = typeof rowOrId === 'string' ? byId(rowOrId) : rowOrId;
+  if (!row) return null;
+  const overridden = Number.parseInt(process.env[row.portEnv], 10);
+  return Number.isInteger(overridden) && overridden > 0 && overridden <= 65535 ? overridden : row.port;
+};
 
 // Where an engine's weights live after the install-time ModelScope pull; the service reads the same dir.
 const modelDir = (id) => path.join(projectRoot, 'models', 'asr', String(id));
@@ -92,7 +108,7 @@ const entryRel = (r) => `${r.serviceDir}/app.py`;
 const engineDefs = () => ROWS.map((r) => ({
   id: r.id,
   label: r.label,
-  port: r.port,
+  port: portFor(r),
   entryFile: entryFile(r),
   health: { path: '/health', isReady: (status) => status === 200 },
 }));
@@ -101,14 +117,14 @@ const engineDefs = () => ROWS.map((r) => ({
 // hardcoded paths.
 const spawnEntries = () => Object.fromEntries(ROWS.map((r) => [r.id, {
   entry: entryRel(r),
-  port: r.port,
+  port: portFor(r),
   portEnv: r.portEnv,
   args: [],
   // ASR_PORT is the generic port every sidecar reads (so one shared sidecar serves multiple engines on
   // different ports); ASR_MODEL_DIR/ASR_RUNTIME locate the model; ASR_ALIGNER_DIR for engines that need
   // a separate forced-aligner (qwen-asr).
   extraEnv: {
-    ASR_PORT: String(r.port),
+    ASR_PORT: String(portFor(r)),
     ASR_MODEL_DIR: modelDir(r.id),
     ASR_RUNTIME: r.runtime,
     ...(r.alignerModelScopeId ? { ASR_ALIGNER_DIR: alignerDir() } : {}),
@@ -118,19 +134,19 @@ const spawnEntries = () => Object.fromEntries(ROWS.map((r) => [r.id, {
 // → config.PORTS additions (key = portEnv without the trailing _PORT), honoring env overrides.
 const portsConfig = () => Object.fromEntries(ROWS.map((r) => [
   r.portEnv.replace(/_PORT$/, ''),
-  parseInt(process.env[r.portEnv], 10) || r.port,
+  portFor(r),
 ]));
 
 // → config.CORS_ORIGIN localhost/127.0.0.1 pairs for each engine port.
 const corsOrigins = () => ROWS.flatMap((r) => [
-  `http://localhost:${r.port}`,
-  `http://127.0.0.1:${r.port}`,
+  `http://localhost:${portFor(r)}`,
+  `http://127.0.0.1:${portFor(r)}`,
 ]);
 
 // → engineManager.REQUIRED_FREE_GB additions.
 const requiredFreeGb = () => Object.fromEntries(ROWS.map((r) => [r.id, r.requiredFreeGb || 6]));
 
 module.exports = {
-  ROWS, byId, ids, isAsrEngine, modelDir, alignerDir, entryFile, entryRel,
+  ROWS, byId, ids, isAsrEngine, portFor, modelDir, alignerDir, entryFile, entryRel,
   engineDefs, spawnEntries, portsConfig, corsOrigins, requiredFreeGb, projectRoot,
 };

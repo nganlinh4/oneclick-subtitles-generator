@@ -11,11 +11,29 @@
  */
 
 const fs = require('fs');
+const path = require('path');
 const { getEngineVenvTarget } = require('../venvPaths');
 const { executeWithRetry, runCommand } = require('./execHelpers');
 const { installServiceDeps } = require('./serviceDeps');
 const torch = require('../torchProfile');
 const catalog = require('../asrCatalog');
+
+const modelWeightBytes = (dir) => {
+  if (!fs.existsSync(dir)) return 0;
+  return fs.readdirSync(dir, { withFileTypes: true })
+    .filter((entry) => entry.isFile() && /\.(?:bin|safetensors)$/i.test(entry.name))
+    .reduce((total, entry) => total + fs.statSync(path.join(dir, entry.name)).size, 0);
+};
+
+const modelLooksComplete = (dir, minModelBytes) => (
+  fs.existsSync(path.join(dir, 'config.json'))
+  && modelWeightBytes(dir) >= minModelBytes
+);
+
+const resetIncompleteModelDir = (dir) => {
+  fs.rmSync(dir, { recursive: true, force: true });
+  fs.mkdirSync(dir, { recursive: true });
+};
 
 // One import line per runtime that proves the engine's transcribe stack is importable in the venv.
 const VERIFY_IMPORT = {
@@ -63,10 +81,13 @@ function makeAsrInstaller(row) {
     // 5) Pull weights from ModelScope (non-gated) into models/asr/<id>. Skip if already present so a
     //    re-install / resumed install doesn't re-download multiple GB.
     fs.mkdirSync(modelDir, { recursive: true });
-    const haveWeights = fs.readdirSync(modelDir).length > 0;
+    const haveWeights = modelLooksComplete(modelDir, row.minModelBytes);
     if (haveWeights) {
       logger.info(`Model weights already present at ${modelDir} — skipping download`);
     } else {
+      // A cancelled ModelScope pull can leave config files or truncated weight shards behind. Never
+      // treat a merely nonempty directory as complete; clear it so the retry starts deterministically.
+      resetIncompleteModelDir(modelDir);
       logger.installing(`Downloading model from ModelScope: ${row.modelScopeId}`);
       // Use the `modelscope` console script — `python -m modelscope` is NOT valid (the package has no
       // __main__). `uv run --python <venv> modelscope …` runs the script from the engine venv.
@@ -78,6 +99,9 @@ function makeAsrInstaller(row) {
       await executeWithRetry('uv', dlArgs, {
         label: `${row.id} modelscope download`, env: { UV_HTTP_TIMEOUT: '1800' }, logger,
       });
+      if (!modelLooksComplete(modelDir, row.minModelBytes)) {
+        throw new Error(`Model download for ${row.id} completed without the expected weight files.`);
+      }
     }
 
     // 5b) Forced-aligner companion (qwen-asr needs it for word timestamps) — shared across variants,
@@ -85,14 +109,20 @@ function makeAsrInstaller(row) {
     if (row.alignerModelScopeId) {
       const aDir = catalog.alignerDir();
       fs.mkdirSync(aDir, { recursive: true });
-      if (fs.readdirSync(aDir).length > 0) {
+      if (modelLooksComplete(aDir, row.alignerMinModelBytes)) {
         logger.info(`Forced aligner already present at ${aDir} — skipping download`);
       } else {
+        resetIncompleteModelDir(aDir);
         logger.installing(`Downloading forced aligner from ModelScope: ${row.alignerModelScopeId}`);
-        await executeWithRetry('uv', ['run', '--python', venv, 'modelscope', 'download',
-          '--model', row.alignerModelScopeId, '--local_dir', aDir], {
+        const alignerArgs = ['run', '--python', venv, 'modelscope', 'download',
+          '--model', row.alignerModelScopeId, '--local_dir', aDir];
+        if (row.alignerModelScopeRevision) alignerArgs.push('--revision', row.alignerModelScopeRevision);
+        await executeWithRetry('uv', alignerArgs, {
           label: `${row.id} aligner download`, env: { UV_HTTP_TIMEOUT: '1800' }, logger,
         });
+        if (!modelLooksComplete(aDir, row.alignerMinModelBytes)) {
+          throw new Error('Forced-aligner download completed without the expected weight files.');
+        }
       }
     }
 
@@ -130,4 +160,4 @@ function makeAsrInstaller(row) {
 // installers map for engineManager: { '<id>': { id, install } }
 const asrInstallers = () => Object.fromEntries(catalog.ROWS.map((r) => [r.id, makeAsrInstaller(r)]));
 
-module.exports = { makeAsrInstaller, asrInstallers };
+module.exports = { makeAsrInstaller, asrInstallers, modelWeightBytes, modelLooksComplete };
