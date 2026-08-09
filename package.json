@@ -13,6 +13,7 @@
     "start": "npm run setup:react-env && npm run generate:version && node scripts/start-frontend.js",
     "start-react": "cross-env PORT=3030 react-scripts start",
     "build": "npm run generate:version && npm run workspace:build && react-scripts build",
+    "build:frontend": "npm run generate:version && react-scripts build",
     "electron": "electron .",
     "electron:dev": "npm run build && electron .",
     "electron:start": "concurrently \"npm run start\" \"npm run electron:dev\"",

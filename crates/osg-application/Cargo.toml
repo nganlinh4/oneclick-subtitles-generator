@@ -1,0 +1,14 @@
+[package]
+name = "osg-application"
+version.workspace = true
+authors.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+
+[dependencies]
+osg-domain.workspace = true
+serde.workspace = true
+thiserror.workspace = true
+
+[lints]
+workspace = true

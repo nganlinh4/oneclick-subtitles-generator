@@ -1,0 +1,9 @@
+[[permission]]
+identifier = "read-session"
+description = "Allows the main window to read application health and the current editing session."
+commands.allow = ["app_health", "get_session_snapshot"]
+
+[[permission]]
+identifier = "select-local-files"
+description = "Allows dedicated native pickers to import media and subtitle files into the session."
+commands.allow = ["select_media", "select_subtitle_file"]

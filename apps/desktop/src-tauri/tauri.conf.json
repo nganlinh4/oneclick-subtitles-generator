@@ -1,0 +1,66 @@
+{
+  "$schema": "https://schema.tauri.app/config/2",
+  "productName": "One-Click Subtitles Generator",
+  "version": "2.0.0",
+  "identifier": "com.subtitlesgenerator.app",
+  "build": {
+    "beforeDevCommand": "npm run legacy:dev",
+    "devUrl": "http://localhost:3030",
+    "beforeBuildCommand": "npm run legacy:build",
+    "frontendDist": "../../../build",
+    "removeUnusedCommands": true
+  },
+  "app": {
+    "withGlobalTauri": false,
+    "windows": [
+      {
+        "label": "main",
+        "title": "One-Click Subtitles Generator",
+        "width": 1440,
+        "height": 900,
+        "minWidth": 620,
+        "minHeight": 560,
+        "center": true,
+        "decorations": true,
+        "resizable": true,
+        "backgroundColor": "#fef7ff"
+      }
+    ],
+    "security": {
+      "capabilities": ["main"],
+      "csp": {
+        "default-src": "'self'",
+        "connect-src": "'self' ipc: http://ipc.localhost",
+        "font-src": "'self' data: https://fonts.gstatic.com",
+        "img-src": "'self' data: blob: https:",
+        "media-src": "'self' blob:",
+        "object-src": "'none'",
+        "script-src": "'self'",
+        "style-src": "'self' 'unsafe-inline' https://fonts.googleapis.com"
+      },
+      "devCsp": {
+        "default-src": "'self' http://localhost:3030",
+        "connect-src": "'self' ipc: http://ipc.localhost http://localhost:3030 ws://localhost:3030",
+        "font-src": "'self' data: https://fonts.gstatic.com http://localhost:3030",
+        "img-src": "'self' data: blob: https: http://localhost:3030",
+        "media-src": "'self' blob:",
+        "object-src": "'none'",
+        "script-src": "'self' http://localhost:3030",
+        "style-src": "'self' 'unsafe-inline' https://fonts.googleapis.com http://localhost:3030"
+      }
+    }
+  },
+  "bundle": {
+    "active": true,
+    "targets": "all",
+    "category": "Productivity",
+    "shortDescription": "Create, edit, translate, and render subtitles",
+    "icon": [
+      "icons/32x32.png",
+      "icons/128x128.png",
+      "icons/128x128@2x.png",
+      "icons/icon.icns",
+      "icons/icon.ico"
+    ]
+  }
+}

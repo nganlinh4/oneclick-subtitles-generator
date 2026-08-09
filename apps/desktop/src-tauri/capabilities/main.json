@@ -1,0 +1,7 @@
+{
+  "$schema": "../gen/schemas/desktop-schema.json",
+  "identifier": "main",
+  "description": "Minimum local capabilities for the primary editor window",
+  "windows": ["main"],
+  "permissions": ["read-session", "select-local-files"]
+}

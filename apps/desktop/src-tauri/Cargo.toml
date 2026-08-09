@@ -1,0 +1,25 @@
+[package]
+name = "osg-desktop"
+version.workspace = true
+authors.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+description = "A fast local-first subtitle creation application"
+default-run = "osg-desktop"
+
+[lib]
+name = "osg_desktop_lib"
+crate-type = ["staticlib", "cdylib", "rlib"]
+
+[build-dependencies]
+tauri-build = { version = "2.6.3", features = [] }
+
+[dependencies]
+osg-application.workspace = true
+osg-domain.workspace = true
+serde.workspace = true
+tauri = { version = "2.11.5", features = [] }
+tauri-plugin-dialog = "2.7.2"
+
+[lints]
+workspace = true
