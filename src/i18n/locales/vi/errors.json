@@ -41,5 +41,6 @@
   "unexpectedErrorReload": "Giao diện gặp lỗi không mong muốn. Tải lại thường sẽ khắc phục được.",
   "videoDownloadFailed": "Tải video thất bại",
   "videoPreparationFailed": "Chuẩn bị video thất bại: {{message}}",
-  "videoProcessingFailed": "Xử lý video thất bại: {{message}}"
+  "videoProcessingFailed": "Xử lý video thất bại: {{message}}",
+  "asrApiError": "Lỗi API {{engine}}: {{status}} {{errorText}}"
 }

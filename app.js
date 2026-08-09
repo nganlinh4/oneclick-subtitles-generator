@@ -29,6 +29,7 @@ const downloadOnlyRoutes = require('./server/routes/downloadOnlyRoutes');
 const downloadManagementRoutes = require('./server/routes/downloadManagementRoutes');
 const diagnosticsRoutes = require('./server/routes/diagnostics');
 const parakeetRoutes = require('./server/routes/parakeetRoutes');
+const asrProxyRoutes = require('./server/routes/asrProxyRoutes');
 const engineRoutes = require('./server/routes/engineRoutes');
 const { scanModels } = require('./server/utils/scan-models');
 
@@ -419,6 +420,7 @@ app.use('/api/narration', narrationRoutes);
 app.use('/api/test', testAudioRoute);
 app.use('/api/diagnostics', diagnosticsRoutes);
 app.use('/api', parakeetRoutes);
+app.use('/api', asrProxyRoutes);
 app.use('/api', engineRoutes);
 
 // Simple model scanning endpoint - no Python bullshit!

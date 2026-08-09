@@ -19,6 +19,9 @@ const ENTRIES = {
   f5tts: { entry: 'server/narrationApp.py', port: PORTS.NARRATION, portEnv: 'NARRATION_PORT', args: [] },
   chatterbox: { entry: 'chatterbox-fastapi/start_api.py', port: PORTS.CHATTERBOX, args: ['--host', '0.0.0.0', '--port', String(PORTS.CHATTERBOX)] },
   parakeet: { entry: 'parakeet_wrapper/app.py', port: PORTS.PARAKEET, portEnv: 'PARAKEET_PORT', args: [] },
+  // On-demand GPU ASR engines, derived from the catalog. Each carries `extraEnv` (model dir + runtime)
+  // so the shared FastAPI service needs no hardcoded paths.
+  ...require('./asrCatalog').spawnEntries(),
 };
 
 /**
@@ -39,6 +42,8 @@ function spawnEngine(id) {
     PYTHONUTF8: '1',
     PYTHONIOENCODING: 'utf-8',
     ...(def.portEnv ? { [def.portEnv]: String(def.port) } : {}),
+    // ASR engines pass their model dir + runtime to the service via extraEnv.
+    ...(def.extraEnv || {}),
   };
 
   const stdio = process.env.VERBOSE === 'true' ? 'inherit' : 'ignore';

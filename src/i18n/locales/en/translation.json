@@ -28,6 +28,7 @@
   "waitingForNextChunk": "Waiting {{seconds}} seconds before translating the next chunk...",
   "modelGemini31Pro": "output length 65536 tokens (usually no splitting needed)",
   "modelGemini25Pro": "output length 65536 tokens (usually no splitting needed)",
+  "modelGemini35Flash": "output length 65536 tokens (usually no splitting needed)",
   "modelGemini3Flash": "output length 65536 tokens (usually no splitting needed)",
   "modelGemini25Flash": "output length 65536 tokens (usually no splitting needed)",
   "modelGemini31FlashLite": "output length 65536 tokens (usually no splitting needed)",

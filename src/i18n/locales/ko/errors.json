@@ -41,5 +41,6 @@
   "unexpectedErrorReload": "예기치 않은 오류가 발생했습니다. 새로 고치면 대부분 해결됩니다.",
   "videoDownloadFailed": "영상 다운로드에 실패했습니다",
   "videoPreparationFailed": "영상 준비에 실패했습니다: {{message}}",
-  "videoProcessingFailed": "영상 처리에 실패했습니다: {{message}}"
+  "videoProcessingFailed": "영상 처리에 실패했습니다: {{message}}",
+  "asrApiError": "{{engine}} API 오류: {{status}} {{errorText}}"
 }

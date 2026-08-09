@@ -1,5 +1,6 @@
 import { showInfoToast } from '../utils/toastUtils';
 import { buildOutsideContextText, getSelectedPromptText } from './videoProcessingOptionsHelpers';
+import { getEngineType } from '../services/engines/transcriptionEngineRegistry';
 
 /**
  * Read a video file's duration via a throwaway <video> element, with a 2s cap.
@@ -44,15 +45,16 @@ const runVideoProcess = async ({
     customLanguage,
     useTranscriptionRules,
     method,
-    parakeetMaxDurationPerRequest,
+    asrMaxDurationPerRequest,
     maxDurationPerRequest,
     segmentProcessingDelay,
     autoSplitSubtitles,
     maxWordsPerSubtitle,
-    parakeetStrategy,
-    parakeetMaxChars,
-    parakeetMaxWords,
-    parakeetPreserveSentences,
+    asrStrategy,
+    asrMaxChars,
+    asrMaxWords,
+    asrPreserveSentences,
+    asrLanguage,
     t,
     onProcess,
 }) => {
@@ -111,15 +113,17 @@ const runVideoProcess = async ({
         useTranscriptionRules, // Include the transcription rules setting
         maxDurationPerRequest: shouldDisableParallelProcessing
             ? 999999999 // Very large value to prevent splitting (infinite duration)
-            : (method === 'nvidia-parakeet' ? parakeetMaxDurationPerRequest : maxDurationPerRequest) * 60, // Convert to seconds
+            : (getEngineType(method) === 'asr' ? asrMaxDurationPerRequest : maxDurationPerRequest) * 60, // Convert to seconds
         segmentProcessingDelay, // Delay between segment requests (in seconds)
         autoSplitSubtitles,
         maxWordsPerSubtitle,
         inlineExtraction,
         method,
-        parakeetStrategy,
-        parakeetMaxChars,
-        parakeetMaxWords: parakeetStrategy === 'sentence' && parakeetPreserveSentences ? -1 : parakeetMaxWords,
+        // Local ASR engine options (segmentation + optional forced language)
+        asrStrategy,
+        asrMaxChars,
+        asrMaxWords: asrStrategy === 'sentence' && asrPreserveSentences ? -1 : asrMaxWords,
+        asrLanguage,
         videoFile // Include the video file to ensure it's available
     };
 

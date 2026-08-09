@@ -26,6 +26,8 @@ const installers = {
   f5tts: require('./installers/f5tts'),
   chatterbox: require('./installers/chatterbox'),
   parakeet: require('./installers/parakeet'),
+  // On-demand GPU ASR engines share one generic installer factory, registered per catalog row.
+  ...require('./installers/asrInstaller').asrInstallers(),
 };
 
 // Per-engine runtime state: the spawned child, the most recent install run's progress, and the
@@ -44,15 +46,16 @@ const READY_TIMEOUT_MS = 12000;
 // Conservative free-space needed per engine (torch + wheels + model weights). Heavy engines pull a
 // ~2.5GB torch wheel that unpacks much larger; better to fail fast with a clear message than die
 // deep in the wheel write on a too-small clean PC.
-const REQUIRED_FREE_GB = { base: 2, f5tts: 8, chatterbox: 8, parakeet: 8 };
+const REQUIRED_FREE_GB = { base: 2, f5tts: 8, chatterbox: 8, parakeet: 8, ...require('./asrCatalog').requiredFreeGb() };
 
 // Bump the indeterminate bar to a coarse milestone when a recognizable install step is logged, so a
 // 20-30 min install shows real forward motion instead of sitting at 0% then snapping to 100%.
 const MILESTONES = [
   [/creating .*venv|venv create/i, 8],
   [/pytorch|torch install|provides cuda|cuda\/cudnn/i, 30],
-  [/cloning|onnx-asr|core base dependencies|installing (f5-tts|text-to-speech|parakeet)|asr service dependencies/i, 55],
-  [/installation completed|dependencies installed|installed successfully/i, 78],
+  [/cloning|onnx-asr|core base dependencies|installing (f5-tts|text-to-speech|parakeet|faster-whisper)|asr service dependencies|turbo dependencies/i, 55],
+  [/downloading model from modelscope|modelscope download/i, 68],
+  [/installation completed|dependencies installed|installed successfully|installed and verified/i, 78],
   [/verify|verifying/i, 92],
 ];
 function milestonePercent(line) {

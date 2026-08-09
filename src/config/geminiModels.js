@@ -51,6 +51,27 @@ export const GEMINI_MODELS = [
     }
   },
   {
+    id: 'gemini-3.5-flash',
+    nameKey: 'models.gemini35Flash',
+    nameDefault: 'Gemini 3.5 Flash',
+    descKey: 'models.newestFlash',
+    descDefault: 'Newest Flash model',
+    translationDescKey: 'translation.modelGemini35Flash',
+    translationDescDefault: 'output length 65536 tokens (usually no splitting needed)',
+    settingsLabelKey: 'settings.modelGemini35Flash',
+    settingsLabelDefault: 'Gemini 3.5 Flash (20 calls/day)',
+    analysisLabelKey: null,
+    icon: { symbol: 'auto_awesome', className: 'model-icon activity-icon' },
+    color: 'var(--md-primary)',
+    bgColor: 'rgba(var(--md-primary-rgb), 0.1)',
+    freeRPD: 20,
+    thinking: {
+      type: 'level',
+      options: ['minimal', 'low', 'medium', 'high'],
+      default: 'high'
+    }
+  },
+  {
     id: 'gemini-3-flash-preview',
     nameKey: 'models.gemini3Flash',
     nameDefault: 'Gemini 3 Flash',

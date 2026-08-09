@@ -136,6 +136,48 @@
   gap: 1.5rem;
 }
 
+/* Local ASR options panel — spans the full content width, then lays its own controls out on the same
+   2-column rhythm as the Gemini panel so the spacing/gaps match. */
+.asr-content-wrapper {
+  position: relative;
+}
+
+.asr-options-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 1.5rem;
+}
+
+@media (max-width: 768px) {
+  .asr-options-grid {
+    grid-template-columns: 1fr;
+    gap: 1rem;
+  }
+}
+
+/* "Engine not available" overlay (shown when a local ASR engine isn't installed/running). The grid
+   underneath is dimmed inline; this message stays crisp on top. */
+.asr-disabled-overlay {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  pointer-events: none;
+}
+
+.asr-disabled-message {
+  background-color: var(--md-surface-container-high);
+  color: var(--md-on-surface);
+  border: 1px solid rgba(var(--md-outline-variant-rgb), 0.5);
+  border-radius: var(--md-shape-large);
+  padding: 0.75rem 1.25rem;
+  font-size: 0.875rem;
+  font-weight: 500;
+  text-align: center;
+  box-shadow: var(--md-elevation-level2);
+}
+
 .segment-info {
   background-color: var(--md-surface-container);
   padding: 1rem;
@@ -597,6 +639,19 @@
 
 .video-processing-modal .slider-with-value:has(#outside-context-range) .slider-value-display {
   min-width: 60px !important;
+}
+
+/* Local ASR sliders */
+.video-processing-modal .slider-with-value:has(#asr-max-duration-slider) .slider-value-display {
+  min-width: 95px !important;
+}
+
+.video-processing-modal .slider-with-value:has(#asr-max-words) .slider-value-display {
+  min-width: 40px !important;
+}
+
+.video-processing-modal .slider-with-value:has(#asr-max-chars) .slider-value-display {
+  min-width: 70px !important;
 }
 
 /* Helper icon styles */

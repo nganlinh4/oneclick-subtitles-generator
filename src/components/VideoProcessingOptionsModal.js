@@ -4,7 +4,7 @@ import { useTranslation } from 'react-i18next';
 import '../styles/VideoProcessingOptionsModal.css';
 import { formatTime } from '../utils/timeFormatter';
 import CloseButton from './common/CloseButton';
-import ParakeetProcessingOptions from './ParakeetProcessingOptions';
+import AsrProcessingOptions from './AsrProcessingOptions';
 import TranscriptionMethodSelectionOverlay from './TranscriptionMethodSelectionOverlay';
 import VideoProcessingModalMethodSelector from './VideoProcessingModalMethodSelector';
 import VideoProcessingModalGeminiPanel from './VideoProcessingModalGeminiPanel';
@@ -50,23 +50,26 @@ const VideoProcessingOptionsModal = ({
         contentRef,
         languagesRef,
         isVercelMode,
-        parakeetAvailable,
+        descriptor,
+        engineAvailable,
         method,
         setMethod,
         showMethodSelection,
         setShowMethodSelection,
         inlineExtraction,
         retryLock,
-        parakeetStrategy,
-        setParakeetStrategy,
-        parakeetMaxChars,
-        setParakeetMaxChars,
-        parakeetMaxWords,
-        setParakeetMaxWords,
-        parakeetPreserveSentences,
-        setParakeetPreserveSentences,
-        parakeetMaxDurationPerRequest,
-        setParakeetMaxDurationPerRequest,
+        asrStrategy,
+        setAsrStrategy,
+        asrMaxChars,
+        setAsrMaxChars,
+        asrMaxWords,
+        setAsrMaxWords,
+        asrPreserveSentences,
+        setAsrPreserveSentences,
+        asrMaxDurationPerRequest,
+        setAsrMaxDurationPerRequest,
+        asrLanguage,
+        setAsrLanguage,
         fps,
         setFps,
         mediaResolution,
@@ -117,8 +120,9 @@ const VideoProcessingOptionsModal = ({
 
     if (!isOpen) return null;
 
-    // Parakeet availability gates the Parakeet panel and the Start button.
-    const parakeetDisabled = !parakeetAvailable;
+    // For local ASR methods, engine availability gates the options panel and the Start button.
+    const isAsrPanel = descriptor.optionsPanel === 'asr';
+    const asrPanelDisabled = isAsrPanel && !engineAvailable;
 
     return ReactDOM.createPortal(
         <>
@@ -154,7 +158,6 @@ const VideoProcessingOptionsModal = ({
                                 </h3>
                                 <VideoProcessingModalMethodSelector
                                     isVercelMode={isVercelMode}
-                                    parakeetAvailable={parakeetAvailable}
                                     method={method}
                                     setMethod={setMethod}
                                     retryLock={retryLock}
@@ -167,20 +170,24 @@ const VideoProcessingOptionsModal = ({
                         <div className="modal-content" ref={contentRef}>
                             {/* Two-column grid for options */}
                             <div className="modal-content-grid">
-                                {method === 'nvidia-parakeet' ? (
-                                    <ParakeetProcessingOptions
-                                        parakeetStrategy={parakeetStrategy}
-                                        setParakeetStrategy={setParakeetStrategy}
-                                        maxDurationPerRequest={parakeetMaxDurationPerRequest}
-                                        setMaxDurationPerRequest={setParakeetMaxDurationPerRequest}
-                                        parakeetMaxChars={parakeetMaxChars}
-                                        setParakeetMaxChars={setParakeetMaxChars}
-                                        parakeetMaxWords={parakeetMaxWords}
-                                        setParakeetMaxWords={setParakeetMaxWords}
-                                        parakeetPreserveSentences={parakeetPreserveSentences}
-                                        setParakeetPreserveSentences={setParakeetPreserveSentences}
+                                {isAsrPanel ? (
+                                    <AsrProcessingOptions
+                                        strategy={asrStrategy}
+                                        setStrategy={setAsrStrategy}
+                                        maxDurationPerRequest={asrMaxDurationPerRequest}
+                                        setMaxDurationPerRequest={setAsrMaxDurationPerRequest}
+                                        maxChars={asrMaxChars}
+                                        setMaxChars={setAsrMaxChars}
+                                        maxWords={asrMaxWords}
+                                        setMaxWords={setAsrMaxWords}
+                                        preserveSentences={asrPreserveSentences}
+                                        setPreserveSentences={setAsrPreserveSentences}
+                                        language={asrLanguage}
+                                        setLanguage={setAsrLanguage}
+                                        supportsLanguage={!!descriptor.capabilities?.language}
                                         selectedSegment={selectedSegment}
-                                        parakeetDisabled={parakeetDisabled}
+                                        disabled={asrPanelDisabled}
+                                        engineName={descriptor.labelDefault}
                                     />
                                 ) : (
                                     <VideoProcessingModalGeminiPanel
@@ -228,8 +235,8 @@ const VideoProcessingOptionsModal = ({
 
                         <div className="modal-footer">
                             <div className="footer-content">
-                                {/* Token Usage Info (hide for Parakeet) */}
-                                {method !== 'nvidia-parakeet' && (
+                                {/* Token Usage Info (engines that support token counting — Gemini only) */}
+                                {descriptor.capabilities.tokenCounting && (
                                     <div className="footer-token-info">
                                         <div className="token-usage">
                                             <span className="token-label">
@@ -247,8 +254,8 @@ const VideoProcessingOptionsModal = ({
                                     </div>
                                 )}
 
-                                {/* Supported Languages for Parakeet */}
-                                {method === 'nvidia-parakeet' && (
+                                {/* Supported-languages strip (engines that advertise it, e.g. Parakeet) */}
+                                {descriptor.supportedLanguagesBadges && (
                                     <div className="footer-languages-info">
                                         <div className="supported-languages-label">{t('processing.supportedLanguages', 'Supported languages')}</div>
                                         <div
@@ -264,7 +271,7 @@ const VideoProcessingOptionsModal = ({
                                     <button
                                         className="process-btn"
                                         onClick={handleProcess}
-                                        disabled={isUploading || (method !== 'nvidia-parakeet' && !isWithinLimit) || (method === 'nvidia-parakeet' && parakeetDisabled)}
+                                        disabled={isUploading || (descriptor.capabilities.tokenCounting && !isWithinLimit) || asrPanelDisabled}
                                     >
                                         {isUploading
                                             ? t('processing.waitingForUpload', 'Waiting for upload...')

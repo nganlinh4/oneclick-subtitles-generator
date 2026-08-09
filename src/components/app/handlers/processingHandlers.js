@@ -87,9 +87,12 @@ export const createProcessingHandlers = ({
         maxWordsPerSubtitle: options.maxWordsPerSubtitle,
         inlineExtraction: options.inlineExtraction === true,
         method: options.method,
-        parakeetStrategy: options.parakeetStrategy,
-        parakeetMaxChars: options.parakeetMaxChars,
-        parakeetMaxWords: options.parakeetMaxWords,
+        // Local ASR engine options (segmentation + optional forced language) — must be forwarded here
+        // or runAsrGeneration/AsrAdapter fall back to defaults and the language picker silently no-ops.
+        asrStrategy: options.asrStrategy,
+        asrMaxChars: options.asrMaxChars,
+        asrMaxWords: options.asrMaxWords,
+        asrLanguage: options.asrLanguage,
       };
 
       dbg("[ProcessWithOptions] Passing to generateSubtitles - segmentProcessingDelay:", subtitleOptions.segmentProcessingDelay);

@@ -34,6 +34,8 @@ const ENGINES = [
     // Parakeet returns 503 until its ASR model is loaded; 200 means ready.
     health: { path: '/health', isReady: (status) => status === 200 },
   },
+  // On-demand GPU ASR engines, derived from the catalog (one row per engine).
+  ...require('./asrCatalog').engineDefs(),
 ];
 
 module.exports = { ENGINES };

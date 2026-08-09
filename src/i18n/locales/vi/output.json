@@ -121,5 +121,6 @@
   "subtitlesReady": "Phụ đề đã sẵn sàng!",
   "summaryCompleted": "Hoàn tất tóm tắt",
   "usingLegacyFallback": "Đang dùng xử lý cũ. Bật \"Xử lý đơn giản hóa\" trong cài đặt để tăng hiệu suất.",
-  "videoAnalysisAborted": "Đã hủy phân tích video"
+  "videoAnalysisAborted": "Đã hủy phân tích video",
+  "asrTranscriptionComplete": "Đã phiên âm xong bằng {{engine}}"
 }

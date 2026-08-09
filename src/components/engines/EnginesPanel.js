@@ -5,14 +5,18 @@ import { API_BASE_URL } from '../../config';
 import LoadingIndicator from '../common/LoadingIndicator';
 import { useWaveColors } from '../../utils/waveColors';
 import EngineCard from './EngineCard';
+import { ASR_ENGINES } from '../../services/engines/asrEngines';
 import './engines.css';
 
 // The heavy engines users can install on demand. `base` is always-installed plumbing, not shown.
 // `name` is a proper noun (never translated); `kind` keys into engines.kind.* for the descriptor.
+// The catalog ASR engines (faster-whisper, qwen3-asr, …) are derived from asrEngines so adding an
+// engine there makes it appear here automatically — no second list to keep in sync.
 const ENGINES = [
   { id: 'f5tts', name: 'F5-TTS', kind: 'voice-cloning' },
   { id: 'chatterbox', name: 'Chatterbox', kind: 'voice-cloning' },
   { id: 'parakeet', name: 'Nvidia Parakeet', kind: 'transcription' },
+  ...ASR_ENGINES.map((e) => ({ id: e.id, name: e.name, kind: 'transcription' })),
 ];
 
 /**
@@ -85,17 +89,19 @@ const EnginesPanel = () => {
         </p>
         {renderUninstallAll()}
       </div>
-      {ENGINES.map((e) => (
-        <EngineCard
-          key={e.id}
-          id={e.id}
-          name={e.name}
-          kind={e.kind}
-          status={engines[e.id]}
-          onChanged={refresh}
-          managedByElectron={managedByElectron}
-        />
-      ))}
+      <div className="engines-panel__grid">
+        {ENGINES.map((e) => (
+          <EngineCard
+            key={e.id}
+            id={e.id}
+            name={e.name}
+            kind={e.kind}
+            status={engines[e.id]}
+            onChanged={refresh}
+            managedByElectron={managedByElectron}
+          />
+        ))}
+      </div>
     </div>
   );
 };

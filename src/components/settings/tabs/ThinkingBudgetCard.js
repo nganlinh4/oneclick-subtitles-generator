@@ -152,6 +152,26 @@ const ThinkingBudgetCard = ({
           </div>
         )}
 
+        {/* ── Gemini 3.5 Flash ── thinkingLevel, all 4 levels, default high */}
+        {selectedThinkingModel === 'gemini-3.5-flash' && (
+          <div className="compact-setting">
+            <p className="setting-description">
+              {t('settings.thinkingBudget3FlashDesc', 'Choose thinking depth. High is default. Minimal turns off thinking for most queries.')}
+            </p>
+            <CustomDropdown
+              value={thinkingBudgets['gemini-3.5-flash'] || 'high'}
+              onChange={(value) => handleLevelChange('gemini-3.5-flash', value)}
+              options={[
+                { value: 'minimal', label: t('settings.thinkingMinimal', 'Minimal (Off for most queries)') },
+                { value: 'low',     label: t('settings.thinkingLow', 'Low') },
+                { value: 'medium',  label: t('settings.thinkingMedium', 'Medium') },
+                { value: 'high',    label: `${t('settings.thinkingHigh', 'High')} (${t('settings.default', 'Default')})` },
+              ]}
+              placeholder={t('settings.selectThinkingLevel', 'Select Thinking Level')}
+            />
+          </div>
+        )}
+
         {/* ── Gemini 3.1 Flash Lite ── thinkingLevel, default minimal */}
         {selectedThinkingModel === 'gemini-3.1-flash-lite-preview' && (
           <div className="compact-setting">
