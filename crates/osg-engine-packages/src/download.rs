@@ -8,7 +8,7 @@ use reqwest::header::{CONTENT_LENGTH, CONTENT_RANGE, ETAG, IF_RANGE, RANGE, USER
 use serde::{Deserialize, Serialize};
 use url::Url;
 
-use crate::catalog::PackageDelivery;
+use crate::catalog::{DeliveryAsset, PackageDelivery, valid_delivery_url};
 use crate::path_security::{is_link_or_reparse, require_directory};
 use crate::progress::{OperationPhase, OperationProgress, ProgressSink};
 use crate::receipt::hash_file;
@@ -17,20 +17,29 @@ use crate::{CancellationToken, PackageError, Result};
 const MAX_RESUME_METADATA_BYTES: u64 = 8 * 1024;
 const MAX_ETAG_BYTES: usize = 256;
 const MAX_REDIRECTS: usize = 5;
-const DOWNLOAD_CHUNK_BYTES: u64 = 8 * 1024 * 1024;
+// Large runtime assets otherwise spend most of their time opening hundreds of
+// CDN range requests. Each request remains bounded and exactly range-checked;
+// the read buffer and cancellation granularity stay at 256 KiB.
+const DOWNLOAD_CHUNK_BYTES: u64 = 64 * 1024 * 1024;
 const DOWNLOAD_REQUEST_TIMEOUT: Duration = Duration::from_secs(30);
 const USER_AGENT_VALUE: &str = "OneClickSubtitlesGenerator/2";
 
 pub(crate) trait ArchiveFetcher: Send + Sync {
     fn fetch(
         &self,
-        delivery: &PackageDelivery,
-        target: &Path,
-        resume_from: u64,
-        etag: Option<&str>,
-        cancellation: &CancellationToken,
-        progress: &dyn ProgressSink,
+        asset: &DeliveryAsset,
+        url: &str,
+        request: FetchRequest<'_>,
     ) -> Result<Option<String>>;
+}
+
+#[derive(Clone, Copy)]
+pub(crate) struct FetchRequest<'a> {
+    pub target: &'a Path,
+    pub resume_from: u64,
+    pub etag: Option<&'a str>,
+    pub cancellation: &'a CancellationToken,
+    pub progress: &'a dyn ProgressSink,
 }
 
 #[derive(Debug)]
@@ -64,17 +73,20 @@ impl ArchiveFetcher for HttpArchiveFetcher {
     #[allow(clippy::too_many_lines)]
     fn fetch(
         &self,
-        delivery: &PackageDelivery,
-        target: &Path,
-        resume_from: u64,
-        etag: Option<&str>,
-        cancellation: &CancellationToken,
-        progress: &dyn ProgressSink,
+        asset: &DeliveryAsset,
+        declared_url: &str,
+        request: FetchRequest<'_>,
     ) -> Result<Option<String>> {
+        let FetchRequest {
+            target,
+            resume_from,
+            etag,
+            cancellation,
+            progress,
+        } = request;
         cancellation.check()?;
-        let parsed =
-            Url::parse(delivery.download_url()).map_err(|_| PackageError::InvalidCatalog)?;
-        if !trusted_initial_url(&parsed, delivery.download_url(), &delivery.asset) {
+        let parsed = Url::parse(declared_url).map_err(|_| PackageError::InvalidCatalog)?;
+        if !trusted_initial_url(&parsed, declared_url, &asset.asset) {
             return Err(PackageError::InvalidCatalog);
         }
         let mut options = fs::OpenOptions::new();
@@ -90,11 +102,11 @@ impl ArchiveFetcher for HttpArchiveFetcher {
         let mut total = resume_from;
         let mut response_etag = etag.filter(|value| valid_etag(value)).map(str::to_owned);
         let mut buffer = vec![0_u8; 256 * 1024].into_boxed_slice();
-        while total < delivery.size_bytes {
+        while total < asset.size_bytes {
             cancellation.check()?;
             let end = total
                 .saturating_add(DOWNLOAD_CHUNK_BYTES - 1)
-                .min(delivery.size_bytes - 1);
+                .min(asset.size_bytes - 1);
             let expected_chunk = end - total + 1;
             let mut request = self
                 .client
@@ -114,10 +126,10 @@ impl ArchiveFetcher for HttpArchiveFetcher {
                         .and_then(|value| value.to_str().ok()),
                     total,
                     end,
-                    delivery.size_bytes,
+                    asset.size_bytes,
                 );
             let exact_whole =
-                status == reqwest::StatusCode::OK && total == 0 && end + 1 == delivery.size_bytes;
+                status == reqwest::StatusCode::OK && total == 0 && end + 1 == asset.size_bytes;
             if status == reqwest::StatusCode::RANGE_NOT_SATISFIABLE {
                 return Err(PackageError::InvalidResume);
             }
@@ -171,14 +183,14 @@ impl ArchiveFetcher for HttpArchiveFetcher {
                 progress.on_progress(OperationProgress::new(
                     OperationPhase::Downloading,
                     total,
-                    delivery.size_bytes,
+                    asset.size_bytes,
                 ));
             }
             if total - chunk_start != expected_chunk {
                 return Err(PackageError::IncompleteDownload);
             }
         }
-        if total != delivery.size_bytes {
+        if total != asset.size_bytes {
             return Err(PackageError::IncompleteDownload);
         }
         output.flush().map_err(|_| PackageError::StoreUnavailable)?;
@@ -216,27 +228,27 @@ struct ResumeMetadata {
 }
 
 impl ResumeMetadata {
-    fn new(delivery: &PackageDelivery, etag: Option<String>) -> Self {
+    fn new(delivery: &PackageDelivery, asset: &DeliveryAsset, etag: Option<String>) -> Self {
         Self {
             schema_version: 1,
             component: delivery.component.clone(),
             platform: delivery.platform.clone(),
             version: delivery.version.clone(),
-            asset: delivery.asset.clone(),
-            size_bytes: delivery.size_bytes,
-            sha256: delivery.sha256.clone(),
+            asset: asset.asset.clone(),
+            size_bytes: asset.size_bytes,
+            sha256: asset.sha256.clone(),
             etag,
         }
     }
 
-    fn matches(&self, delivery: &PackageDelivery) -> bool {
+    fn matches(&self, delivery: &PackageDelivery, asset: &DeliveryAsset) -> bool {
         self.schema_version == 1
             && self.component == delivery.component
             && self.platform == delivery.platform
             && self.version == delivery.version
-            && self.asset == delivery.asset
-            && self.size_bytes == delivery.size_bytes
-            && self.sha256 == delivery.sha256
+            && self.asset == asset.asset
+            && self.size_bytes == asset.size_bytes
+            && self.sha256 == asset.sha256
             && self.etag.as_deref().is_none_or(valid_etag)
     }
 }
@@ -248,21 +260,46 @@ pub(crate) fn obtain(
     cancellation: &CancellationToken,
     progress: &dyn ProgressSink,
 ) -> Result<DownloadedArchive> {
+    let asset = DeliveryAsset {
+        asset: delivery.asset.clone(),
+        urls: vec![delivery.download_url().to_string()],
+        size_bytes: delivery.size_bytes,
+        sha256: delivery.sha256.clone(),
+    };
+    obtain_asset(
+        fetcher,
+        download_root,
+        delivery,
+        &asset,
+        cancellation,
+        progress,
+    )
+}
+
+pub(crate) fn obtain_asset(
+    fetcher: &dyn ArchiveFetcher,
+    download_root: &Path,
+    delivery: &PackageDelivery,
+    asset: &DeliveryAsset,
+    cancellation: &CancellationToken,
+    progress: &dyn ProgressSink,
+) -> Result<DownloadedArchive> {
     require_directory(download_root)?;
-    let archive_path = download_root.join(format!("{}.partial", delivery.asset));
-    let metadata_path = download_root.join(format!("{}.resume.json", delivery.asset));
+    let cache_key = format!("{}-{}", &asset.sha256[..16], asset.asset);
+    let archive_path = download_root.join(format!("{cache_key}.partial"));
+    let metadata_path = download_root.join(format!("{cache_key}.resume.json"));
     let mut metadata =
-        read_resume_metadata(&metadata_path).filter(|metadata| metadata.matches(delivery));
+        read_resume_metadata(&metadata_path).filter(|metadata| metadata.matches(delivery, asset));
     let mut resume_from = inspect_partial(&archive_path)?;
-    if metadata.is_none() || resume_from > delivery.size_bytes {
+    if metadata.is_none() || resume_from > asset.size_bytes {
         remove_regular_if_exists(&archive_path)?;
         remove_regular_if_exists(&metadata_path)?;
         resume_from = 0;
         metadata = None;
     }
 
-    if resume_from == delivery.size_bytes && resume_from > 0 {
-        verify_archive(&archive_path, delivery, cancellation, progress)?;
+    if resume_from == asset.size_bytes && resume_from > 0 {
+        verify_asset(&archive_path, asset, cancellation, progress)?;
         return Ok(DownloadedArchive {
             path: archive_path,
             metadata_path,
@@ -273,59 +310,97 @@ pub(crate) fn obtain(
         &metadata_path,
         &ResumeMetadata::new(
             delivery,
+            asset,
             metadata.as_ref().and_then(|value| value.etag.clone()),
         ),
     )?;
-    let fetch_result = fetcher.fetch(
-        delivery,
-        &archive_path,
-        resume_from,
-        metadata.as_ref().and_then(|value| value.etag.as_deref()),
-        cancellation,
-        progress,
-    );
-    let etag = match fetch_result {
-        Err(PackageError::InvalidResume) if resume_from > 0 => {
+    let mut last_network_error = None;
+    let mut etag = None;
+    for (index, url) in asset.urls.iter().enumerate() {
+        if index > 0 {
             remove_regular_if_exists(&archive_path)?;
-            fetcher.fetch(delivery, &archive_path, 0, None, cancellation, progress)?
+            remove_regular_if_exists(&metadata_path)?;
+            resume_from = 0;
+            metadata = None;
         }
-        other => other?,
-    };
-    write_resume_metadata(&metadata_path, &ResumeMetadata::new(delivery, etag))?;
-    verify_archive(&archive_path, delivery, cancellation, progress)?;
+        let fetch_result = fetcher.fetch(
+            asset,
+            url,
+            FetchRequest {
+                target: &archive_path,
+                resume_from,
+                etag: metadata.as_ref().and_then(|value| value.etag.as_deref()),
+                cancellation,
+                progress,
+            },
+        );
+        let result = match fetch_result {
+            Err(PackageError::InvalidResume) if resume_from > 0 => {
+                remove_regular_if_exists(&archive_path)?;
+                fetcher.fetch(
+                    asset,
+                    url,
+                    FetchRequest {
+                        target: &archive_path,
+                        resume_from: 0,
+                        etag: None,
+                        cancellation,
+                        progress,
+                    },
+                )
+            }
+            other => other,
+        };
+        match result {
+            Ok(value) => {
+                etag = value;
+                last_network_error = None;
+                break;
+            }
+            Err(PackageError::Network | PackageError::IncompleteDownload) => {
+                last_network_error = Some(PackageError::Network);
+            }
+            Err(error) => return Err(error),
+        }
+    }
+    if let Some(error) = last_network_error {
+        return Err(error);
+    }
+    write_resume_metadata(&metadata_path, &ResumeMetadata::new(delivery, asset, etag))?;
+    verify_asset(&archive_path, asset, cancellation, progress)?;
     Ok(DownloadedArchive {
         path: archive_path,
         metadata_path,
     })
 }
 
-fn verify_archive(
+fn verify_asset(
     archive_path: &Path,
-    delivery: &PackageDelivery,
+    asset: &DeliveryAsset,
     cancellation: &CancellationToken,
     progress: &dyn ProgressSink,
 ) -> Result<()> {
     let size = inspect_partial(archive_path).map_err(|_| PackageError::ArchiveIntegrity)?;
-    if size != delivery.size_bytes {
+    if size != asset.size_bytes {
         return Err(PackageError::IncompleteDownload);
     }
     progress.on_progress(OperationProgress::new(
         OperationPhase::Verifying,
         0,
-        delivery.size_bytes,
+        asset.size_bytes,
     ));
     let digest = hash_file(archive_path, cancellation).map_err(|error| match error {
         PackageError::Cancelled => PackageError::Cancelled,
         _ => PackageError::ArchiveIntegrity,
     })?;
-    if digest != delivery.sha256 {
+    if digest != asset.sha256 {
         remove_regular_if_exists(archive_path)?;
         return Err(PackageError::ArchiveIntegrity);
     }
     progress.on_progress(OperationProgress::new(
         OperationPhase::Verifying,
-        delivery.size_bytes,
-        delivery.size_bytes,
+        asset.size_bytes,
+        asset.size_bytes,
     ));
     Ok(())
 }
@@ -386,38 +461,39 @@ fn remove_regular_if_exists(path: &Path) -> Result<()> {
 }
 
 fn trusted_initial_url(url: &Url, declared: &str, asset: &str) -> bool {
-    url.scheme() == "https"
-        && url.username().is_empty()
-        && url.password().is_none()
-        && url.host_str() == Some("github.com")
-        && url.port_or_known_default() == Some(443)
-        && url.query().is_none()
-        && url.fragment().is_none()
-        && url.path().ends_with(&format!("/{asset}"))
-        && url.as_str() == declared
-        && matches!(
-            url.path().strip_prefix("/nganlinh4/oneclick-subtitles-generator/releases/download/"),
-            Some(path) if path.starts_with("asr-engine-packs-v1/") || path.starts_with("speech-packs-v1/")
-        )
+    url.as_str() == declared
+        && (valid_delivery_url(declared, asset)
+            || (url.host_str() == Some("github.com")
+                && matches!(
+                    url.path().strip_prefix("/nganlinh4/oneclick-subtitles-generator/releases/download/"),
+                    Some(path) if path.starts_with("asr-engine-packs-v1/") || path.starts_with("speech-packs-v1/")
+                )))
 }
 
 fn trusted_redirect(url: &Url, previous: &[Url]) -> bool {
     let Some(first) = previous.first() else {
         return false;
     };
-    let initial_path = first.path();
     let initial_ok = first.scheme() == "https"
-        && first.host_str() == Some("github.com")
         && matches!(
-            initial_path.strip_prefix(
-                "/nganlinh4/oneclick-subtitles-generator/releases/download/"
-            ),
-            Some(path) if path.starts_with("asr-engine-packs-v1/") || path.starts_with("speech-packs-v1/")
+            first.host_str(),
+            Some(
+                "github.com" | "huggingface.co" | "files.pythonhosted.org" | "download.pytorch.org"
+            )
         );
-    let host_ok = matches!(
-        url.host_str(),
-        Some("github.com" | "release-assets.githubusercontent.com")
-    );
+    let host_ok = url.host_str().is_some_and(|host| {
+        matches!(
+            host,
+            "github.com"
+                | "release-assets.githubusercontent.com"
+                | "huggingface.co"
+                | "cdn-lfs.hf.co"
+                | "cas-bridge.xethub.hf.co"
+                | "cas-server.xethub.hf.co"
+                | "files.pythonhosted.org"
+                | "download.pytorch.org"
+        ) || host.ends_with(".cdn.hf.co")
+    });
     initial_ok
         && url.scheme() == "https"
         && url.username().is_empty()
@@ -488,6 +564,19 @@ mod tests {
         assert!(!trusted_redirect(
             &Url::parse("http://release-assets.githubusercontent.com/asset").unwrap(),
             &[initial]
+        ));
+
+        let hugging_face = Url::parse(
+            "https://huggingface.co/Qwen/Qwen3-ASR-0.6B/resolve/revision/model.safetensors",
+        )
+        .unwrap();
+        assert!(trusted_redirect(
+            &Url::parse("https://us.aws.cdn.hf.co/xet-bridge-us/model?token=x").unwrap(),
+            std::slice::from_ref(&hugging_face)
+        ));
+        assert!(!trusted_redirect(
+            &Url::parse("https://cdn.hf.co.example.com/model").unwrap(),
+            &[hugging_face]
         ));
     }
 }

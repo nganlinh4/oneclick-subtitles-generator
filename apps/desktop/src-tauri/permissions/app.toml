@@ -155,6 +155,15 @@ commands.allow = [
 ]
 
 [[permission]]
+identifier = "manage-render-packages"
+description = "Allows the main editor to inspect, install, and remove the reviewed content-addressed Remotion renderer runtime."
+commands.allow = [
+  "render_package_status",
+  "render_package_install",
+  "render_package_remove",
+]
+
+[[permission]]
 identifier = "use-local-asr"
 description = "Allows the main editor window to inspect installed local ASR engines and start bounded transcription jobs for the active media."
 commands.allow = ["asr_status", "asr_start"]

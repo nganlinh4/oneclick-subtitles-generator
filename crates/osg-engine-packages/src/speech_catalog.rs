@@ -6,9 +6,10 @@ use serde::{Deserialize, Serialize};
 use url::Url;
 
 use crate::catalog::{
-    DeliveryFile, FileRole, MAX_ARCHIVE_BYTES, MAX_FILES, MAX_TOTAL_INSTALLED_BYTES,
-    MAX_UNPACKED_BYTES, PLATFORM_KEYS, PackageCatalog, PackageDelivery, current_platform,
-    is_below_directory, role_matches_path, valid_asset_name, validate_identifier, validate_sha256,
+    DeliveryAsset, DeliveryFile, DeliverySource, DeliverySourceKind, FileRole, MAX_ARCHIVE_BYTES,
+    MAX_FILES, MAX_TOTAL_INSTALLED_BYTES, MAX_UNPACKED_BYTES, PLATFORM_KEYS, PackageCatalog,
+    PackageDelivery, current_platform, is_below_directory, role_matches_path, valid_asset_name,
+    valid_delivery_url, validate_identifier, validate_sha256,
 };
 use crate::path_security::{validate_directory_path, validate_manifest_path};
 use crate::{PackageError, Result};
@@ -183,6 +184,26 @@ struct RawRelease {
     python_relative_path: String,
     model_relative_path: Option<String>,
     files: Vec<RawFile>,
+    #[serde(default)]
+    sources: Vec<RawSource>,
+    manifest: Option<RawAsset>,
+}
+
+#[derive(Clone, Debug, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+struct RawAsset {
+    asset: String,
+    urls: Vec<String>,
+    size_bytes: u64,
+    sha256: String,
+}
+
+#[derive(Clone, Debug, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+struct RawSource {
+    #[serde(flatten)]
+    asset: RawAsset,
+    kind: DeliverySourceKind,
 }
 
 #[derive(Debug, Deserialize)]
@@ -198,7 +219,7 @@ struct RawFile {
 fn parse_catalog(raw: &str, selected_platform: &str) -> Result<SpeechDeliveryCatalog> {
     let raw: RawCatalog = serde_json::from_str(raw)?;
     validate_commands(&raw.commands)?;
-    if raw.schema_version != 1
+    if !matches!(raw.schema_version, 1 | 2)
         || raw.platforms.len() != PLATFORM_KEYS.len()
         || PLATFORM_KEYS
             .iter()
@@ -278,27 +299,31 @@ fn validate_release(
     validate_identifier(&release.version)?;
     validate_manifest_path(&release.version)?;
     validate_sha256(&release.sha256)?;
+    let remote_manifest = release.manifest.is_some();
     if release.size_bytes == 0
         || release.size_bytes > MAX_ARCHIVE_BYTES
         || release.unpacked_size_bytes == 0
         || release.unpacked_size_bytes > MAX_UNPACKED_BYTES
-        || release.files.is_empty()
         || release.files.len() > MAX_FILES
+        || (release.files.is_empty() != remote_manifest)
+        || (remote_manifest && release.sources.is_empty())
     {
         return Err(PackageError::InvalidCatalog);
     }
-    let expected_asset = format!(
-        "{}-{platform}-{}-{}.zip",
-        backend.as_str(),
-        release.version,
-        &release.sha256[..16]
-    );
-    if release.asset != expected_asset
-        || !valid_asset_name(&release.asset)
-        || release.source_url != format!("{RELEASE_BASE}{}", release.asset)
-        || !valid_source_url(&release.source_url, &release.asset)
-    {
-        return Err(PackageError::InvalidCatalog);
+    if !remote_manifest {
+        let expected_asset = format!(
+            "{}-{platform}-{}-{}.zip",
+            backend.as_str(),
+            release.version,
+            &release.sha256[..16]
+        );
+        if release.asset != expected_asset
+            || !valid_asset_name(&release.asset)
+            || release.source_url != format!("{RELEASE_BASE}{}", release.asset)
+            || !valid_source_url(&release.source_url, &release.asset)
+        {
+            return Err(PackageError::InvalidCatalog);
+        }
     }
     validate_manifest_path(&release.python_relative_path)?;
     match &release.model_relative_path {
@@ -348,13 +373,30 @@ fn validate_release(
             role: file.role,
         });
     }
-    if total != release.unpacked_size_bytes
-        || !has_runtime
-        || !has_license
-        || !python_matches
-        || backend.requires_model() != has_model
+    if !remote_manifest
+        && (total != release.unpacked_size_bytes
+            || !has_runtime
+            || !has_license
+            || !python_matches
+            || backend.requires_model() != has_model)
     {
         return Err(PackageError::InvalidCatalog);
+    }
+
+    let sources = release
+        .sources
+        .iter()
+        .map(validate_source)
+        .collect::<Result<Vec<_>>>()?;
+    let manifest = release.manifest.as_ref().map(validate_asset).transpose()?;
+    if remote_manifest {
+        let download_total = sources.iter().try_fold(
+            manifest.as_ref().map_or(0, |value| value.size_bytes),
+            |total, source| total.checked_add(source.asset.size_bytes),
+        );
+        if download_total != Some(release.size_bytes) {
+            return Err(PackageError::InvalidCatalog);
+        }
     }
 
     Ok(PackageDelivery {
@@ -370,6 +412,39 @@ fn validate_release(
         model_relative_path: release.model_relative_path.clone(),
         aligner_relative_path: None,
         files,
+        sources,
+        manifest,
+    })
+}
+
+fn validate_source(source: &RawSource) -> Result<DeliverySource> {
+    Ok(DeliverySource {
+        asset: validate_asset(&source.asset)?,
+        kind: source.kind,
+    })
+}
+
+fn validate_asset(asset: &RawAsset) -> Result<DeliveryAsset> {
+    if !valid_asset_name(&asset.asset)
+        || asset.urls.is_empty()
+        || asset.urls.len() > 3
+        || asset.size_bytes == 0
+        || asset.size_bytes > MAX_ARCHIVE_BYTES
+    {
+        return Err(PackageError::InvalidCatalog);
+    }
+    validate_sha256(&asset.sha256)?;
+    let mut seen = HashSet::new();
+    for url in &asset.urls {
+        if !seen.insert(url) || !valid_delivery_url(url, &asset.asset) {
+            return Err(PackageError::InvalidCatalog);
+        }
+    }
+    Ok(DeliveryAsset {
+        asset: asset.asset.clone(),
+        urls: asset.urls.clone(),
+        size_bytes: asset.size_bytes,
+        sha256: asset.sha256.clone(),
     })
 }
 
@@ -400,11 +475,18 @@ mod tests {
     use super::*;
 
     #[test]
-    fn checked_in_catalog_fails_closed_until_audited_archives_exist() {
+    fn checked_in_catalog_publishes_windows_and_withholds_unbuilt_targets() {
         let catalog = SpeechDeliveryCatalog::builtin().unwrap();
         assert_eq!(catalog.platform(), current_platform());
         for backend in SpeechPackageId::ALL {
-            assert!(catalog.releases(&backend).is_empty());
+            if current_platform() == "windows-x86_64" {
+                let release = catalog.current(&backend).unwrap();
+                assert!(release.manifest.is_some());
+                assert!(!release.sources.is_empty());
+                assert!(release.files.is_empty());
+            } else {
+                assert!(catalog.releases(&backend).is_empty());
+            }
         }
     }
 

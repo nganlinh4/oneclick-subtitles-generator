@@ -37,6 +37,7 @@ QWEN_LANGUAGES = {
     "es": "Spanish",
 }
 CJK_LANGUAGES = {"Chinese", "Japanese", "Cantonese"}
+_DLL_DIRECTORY_HANDLES: list[Any] = []
 
 
 def _read_exact(size: int) -> bytes | None:
@@ -102,7 +103,10 @@ def bootstrap_torch() -> tuple[Any, bool]:
     if torch_lib.is_dir():
         if hasattr(os, "add_dll_directory"):
             try:
-                os.add_dll_directory(str(torch_lib))
+                # The returned handle removes the directory when it is closed
+                # or collected. Retain it for the worker lifetime so delayed
+                # ONNX/CTranslate2 DLL loads cannot silently lose CUDA.
+                _DLL_DIRECTORY_HANDLES.append(os.add_dll_directory(str(torch_lib)))
             except OSError:
                 pass
         os.environ["PATH"] = str(torch_lib) + os.pathsep + os.environ.get("PATH", "")
@@ -186,7 +190,16 @@ class Runtime:
         providers = [provider for provider in preferred if provider in available]
         if "CPUExecutionProvider" not in providers:
             providers.append("CPUExecutionProvider")
-        model = load_model(model_path, providers=providers).with_timestamps()
+        # onnx-asr's first positional argument is the model *kind*, not the
+        # local directory. Passing the directory there makes Windows paths look
+        # like an unknown model name and can also re-enable Hub resolution.
+        # Keep the reviewed model identity fixed and pass the package-relative
+        # directory through the dedicated offline `path` argument.
+        model = load_model(
+            "nemo-parakeet-tdt-0.6b-v3",
+            model_path,
+            providers=providers,
+        ).with_timestamps()
         self.backend = find_ort_backend(model, ort) or "cpu"
         self.model = model
 

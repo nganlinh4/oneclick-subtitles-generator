@@ -24,6 +24,7 @@
   "installedCount": "{{installed}} installed",
   "downloadSize": "{{size}} download",
   "diskSize": "{{size}} disk",
+  "progressBytes": "{{done}} / {{total}}",
   "electronManaged": "The desktop app includes these engines. Downloads are managed by the app package.",
   "groups": {
     "localAi": "Local AI engines",
@@ -31,11 +32,21 @@
     "runtime": "Runtime tools",
     "runtimeDetail": "Downloaded outside the app"
   },
+  "phase": {
+    "queued": "Queued",
+    "preparing": "Preparing",
+    "downloading": "Downloading",
+    "verifying": "Verifying",
+    "extracting": "Extracting",
+    "publishing": "Publishing",
+    "removing": "Removing"
+  },
   "error": {
     "installFailed": "Install failed to start",
     "startFailed": "Engine failed to start",
     "stopFailed": "Engine failed to stop",
     "uninstallFailed": "Uninstall failed",
+    "statusLost": "Install status could not be refreshed. Retry status; the native job was not abandoned.",
     "nativeToolProtocol": "The desktop host returned invalid tool progress.",
     "nativeToolFailed": "The tool operation could not start."
   },
@@ -56,11 +67,13 @@
   "nativeKind": {
     "media": "Media processing",
     "downloader": "Site downloader",
-    "javascript": "JavaScript runtime"
+    "javascript": "JavaScript runtime",
+    "renderer": "Video renderer"
   },
   "nativeSource": {
     "vendor": "Reviewed vendor",
-    "official": "Official release"
+    "official": "Official release",
+    "pool": "Reviewed bundle pool"
   },
   "nativeState": {
     "unavailable": "No reviewed release for this platform",

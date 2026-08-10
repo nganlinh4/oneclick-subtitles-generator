@@ -20,6 +20,7 @@ export const useEngineInstall = (id, { reconnect = true, onStatusChanged } = {})
   const [installing, setInstalling] = useState(false);
   const [percent, setPercent] = useState(0);
   const [log, setLog] = useState([]);
+  const [operation, setOperation] = useState(null);
   const [error, setError] = useState(null);
   const pollRef = useRef(null);
   const mountedRef = useRef(true);
@@ -27,6 +28,7 @@ export const useEngineInstall = (id, { reconnect = true, onStatusChanged } = {})
   const nativeJobIdRef = useRef(null);
   const nativeGenerationRef = useRef(0);
   const observedOperationRef = useRef(false);
+  const pollFailuresRef = useRef(0);
 
   const stopPolling = useCallback(() => {
     if (pollRef.current) { clearInterval(pollRef.current); pollRef.current = null; }
@@ -38,6 +40,7 @@ export const useEngineInstall = (id, { reconnect = true, onStatusChanged } = {})
       const generation = nativeGenerationRef.current;
       const engine = await getManagedEnginePackageStatus(id);
       const operation = engine.operation ?? null;
+      pollFailuresRef.current = 0;
       const packageRunning = operation !== null
         && (operation.action === 'install' || operation.action === 'update');
       if (generation !== nativeGenerationRef.current) return operation !== null;
@@ -50,11 +53,23 @@ export const useEngineInstall = (id, { reconnect = true, onStatusChanged } = {})
       if (mountedRef.current) {
         setPercent(packageRunning ? operation.basisPoints / 100 : 0);
         setLog([]);
+        setOperation(operation);
         setInstalling(packageRunning);
       }
       return operation !== null;
     } catch (e) {
-      return false; // transient — caller decides whether to keep polling
+      pollFailuresRef.current += 1;
+      const operationExpected = observedOperationRef.current || nativeJobIdRef.current !== null;
+      if (operationExpected && pollFailuresRef.current < 20) return true;
+      if (operationExpected && mountedRef.current) {
+        setError(i18n.t(
+          'engines.error.statusLost',
+          'Install status could not be refreshed. Retry status; the native job was not abandoned.'
+        ));
+        setInstalling(false);
+        setOperation(null);
+      }
+      return false;
     }
   }, [id, onStatusChanged]);
 
@@ -77,7 +92,7 @@ export const useEngineInstall = (id, { reconnect = true, onStatusChanged } = {})
   }, [readProgress, ensurePolling, reconnect, stopPolling]);
 
   const install = useCallback(async () => {
-    setError(null); setInstalling(true); setPercent(0); setLog([]);
+    setError(null); setInstalling(true); setPercent(0); setLog([]); setOperation(null);
     nativeGenerationRef.current += 1;
     const controller = new AbortController();
     nativeAbortRef.current = controller;
@@ -88,6 +103,7 @@ export const useEngineInstall = (id, { reconnect = true, onStatusChanged } = {})
       nativeAbortRef.current = null;
       nativeJobIdRef.current = null;
       if (mountedRef.current) setInstalling(false);
+      if (mountedRef.current) setOperation(null);
       onStatusChanged?.();
     };
     try {
@@ -95,6 +111,7 @@ export const useEngineInstall = (id, { reconnect = true, onStatusChanged } = {})
         onProgress: ({ operation }) => {
           if (!mountedRef.current) return;
           setInstalling(true);
+          setOperation(operation);
           setPercent(operation.basisPoints / 100);
         },
         onCompleted: finish,
@@ -170,7 +187,9 @@ export const useEngineInstall = (id, { reconnect = true, onStatusChanged } = {})
     }
   }, [id]);
 
-  return { install, cancel, start, stop, uninstall, installing, percent, log, error };
+  return {
+    install, cancel, start, stop, uninstall, installing, percent, log, operation, error,
+  };
 };
 
 export default useEngineInstall;

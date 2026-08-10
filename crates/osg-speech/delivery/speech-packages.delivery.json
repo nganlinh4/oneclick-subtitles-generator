@@ -1,5 +1,5 @@
 {
-  "schemaVersion": 1,
+  "schemaVersion": 2,
   "commands": {
     "status": "speech_packages_status",
     "install": "speech_package_install",
@@ -8,38 +8,604 @@
   "platforms": {
     "linux-x86_64": {
       "backends": [
-        { "id": "f5-tts", "releases": [] },
-        { "id": "chatterbox", "releases": [] },
-        { "id": "edge-tts", "releases": [] },
-        { "id": "gtts", "releases": [] },
-        { "id": "gemini-tts", "releases": [] }
+        {
+          "id": "f5-tts",
+          "releases": []
+        },
+        {
+          "id": "chatterbox",
+          "releases": []
+        },
+        {
+          "id": "edge-tts",
+          "releases": []
+        },
+        {
+          "id": "gtts",
+          "releases": []
+        },
+        {
+          "id": "gemini-tts",
+          "releases": []
+        }
       ]
     },
     "macos-aarch64": {
       "backends": [
-        { "id": "f5-tts", "releases": [] },
-        { "id": "chatterbox", "releases": [] },
-        { "id": "edge-tts", "releases": [] },
-        { "id": "gtts", "releases": [] },
-        { "id": "gemini-tts", "releases": [] }
+        {
+          "id": "f5-tts",
+          "releases": []
+        },
+        {
+          "id": "chatterbox",
+          "releases": []
+        },
+        {
+          "id": "edge-tts",
+          "releases": []
+        },
+        {
+          "id": "gtts",
+          "releases": []
+        },
+        {
+          "id": "gemini-tts",
+          "releases": []
+        }
       ]
     },
     "macos-x86_64": {
       "backends": [
-        { "id": "f5-tts", "releases": [] },
-        { "id": "chatterbox", "releases": [] },
-        { "id": "edge-tts", "releases": [] },
-        { "id": "gtts", "releases": [] },
-        { "id": "gemini-tts", "releases": [] }
+        {
+          "id": "f5-tts",
+          "releases": []
+        },
+        {
+          "id": "chatterbox",
+          "releases": []
+        },
+        {
+          "id": "edge-tts",
+          "releases": []
+        },
+        {
+          "id": "gtts",
+          "releases": []
+        },
+        {
+          "id": "gemini-tts",
+          "releases": []
+        }
       ]
     },
     "windows-x86_64": {
       "backends": [
-        { "id": "f5-tts", "releases": [] },
-        { "id": "chatterbox", "releases": [] },
-        { "id": "edge-tts", "releases": [] },
-        { "id": "gtts", "releases": [] },
-        { "id": "gemini-tts", "releases": [] }
+        {
+          "id": "f5-tts",
+          "releases": [
+            {
+              "version": "2026.08.10",
+              "asset": "f5-tts-windows-x86_64-2026.08.10-62699c10b9041344.manifest.json",
+              "sizeBytes": 4591914866,
+              "sha256": "62699c10b9041344bf43d49b15a22414144dfadcdda83ce98dd5622a88edba43",
+              "unpackedSizeBytes": 6946445785,
+              "pythonRelativePath": "runtime/python.exe",
+              "modelRelativePath": "model",
+              "files": [],
+              "sources": [
+                {
+                  "kind": "zip",
+                  "asset": "speech-runtime-windows-x64-2026.08.10-part01-7b4867265a642de7.zip",
+                  "sizeBytes": 471630213,
+                  "sha256": "7b4867265a642de7b8042999ee74daeb391727fcd1c3ada671413dd46efcb1b7",
+                  "urls": [
+                    "https://github.com/nganlinh4/screen-goated-toolbox/releases/download/sgt-runtime-bundles/speech-runtime-windows-x64-2026.08.10-part01-7b4867265a642de7.zip"
+                  ]
+                },
+                {
+                  "kind": "zip",
+                  "asset": "asr-runtime-windows-x64-2026.08.10-part02-1b5d091264a046e3.zip",
+                  "sizeBytes": 677777399,
+                  "sha256": "1b5d091264a046e3f26bf37cd4bae46676ec3ab4e7e195dea2f47b36d47b01ac",
+                  "urls": [
+                    "https://github.com/nganlinh4/screen-goated-toolbox/releases/download/sgt-runtime-bundles/asr-runtime-windows-x64-2026.08.10-part02-1b5d091264a046e3.zip"
+                  ]
+                },
+                {
+                  "kind": "zip",
+                  "asset": "asr-runtime-windows-x64-2026.08.10-part03-99289940581c6fcc.zip",
+                  "sizeBytes": 857784415,
+                  "sha256": "99289940581c6fcc555ccc9190f239530989fe0644c2c9a9abfb0e5d23875fe8",
+                  "urls": [
+                    "https://github.com/nganlinh4/screen-goated-toolbox/releases/download/sgt-runtime-bundles/asr-runtime-windows-x64-2026.08.10-part03-99289940581c6fcc.zip"
+                  ]
+                },
+                {
+                  "kind": "zip",
+                  "asset": "asr-runtime-windows-x64-2026.08.10-part04-ebd85d8f99a614e6.zip",
+                  "sizeBytes": 581281367,
+                  "sha256": "ebd85d8f99a614e69619bcd6b73f7c54d6beadc3934cb6c571fe7a52bde13fd8",
+                  "urls": [
+                    "https://github.com/nganlinh4/screen-goated-toolbox/releases/download/sgt-runtime-bundles/asr-runtime-windows-x64-2026.08.10-part04-ebd85d8f99a614e6.zip"
+                  ]
+                },
+                {
+                  "kind": "zip",
+                  "asset": "speech-runtime-windows-x64-2026.08.10-part05-bc27cdc621f95942.zip",
+                  "sizeBytes": 584441763,
+                  "sha256": "bc27cdc621f959421c2d127d0515eb25ddd63c6d824630ecbbf6fb88c2a2de40",
+                  "urls": [
+                    "https://github.com/nganlinh4/screen-goated-toolbox/releases/download/sgt-runtime-bundles/speech-runtime-windows-x64-2026.08.10-part05-bc27cdc621f95942.zip"
+                  ]
+                },
+                {
+                  "kind": "raw",
+                  "asset": "model_1250000.safetensors",
+                  "sizeBytes": 1348435761,
+                  "sha256": "670900fd14e6c458b95da6e9ed317cdb20dbaf7a1c02ac06a05475a9d32b6a38",
+                  "urls": [
+                    "https://huggingface.co/SWivid/F5-TTS/resolve/84e5a410d9cead4de2f847e7c9369a6440bdfaca/F5TTS_v1_Base/model_1250000.safetensors"
+                  ]
+                },
+                {
+                  "kind": "raw",
+                  "asset": "vocab.txt",
+                  "sizeBytes": 13800,
+                  "sha256": "2a05f992e00af9b0bd3800a8d23e78d520dbd705284ed2eedb5f4bd29398fa3c",
+                  "urls": [
+                    "https://huggingface.co/SWivid/F5-TTS/resolve/84e5a410d9cead4de2f847e7c9369a6440bdfaca/F5TTS_v1_Base/vocab.txt"
+                  ]
+                },
+                {
+                  "kind": "raw",
+                  "asset": "config.yaml",
+                  "sizeBytes": 461,
+                  "sha256": "da9033922f969a47f0c160010226919e59f27761fd5066f3828d46de6650b0fc",
+                  "urls": [
+                    "https://huggingface.co/charactr/vocos-mel-24khz/resolve/0feb3fdd929bcd6649e0e7c5a688cf7dd012ef21/config.yaml"
+                  ]
+                },
+                {
+                  "kind": "raw",
+                  "asset": "pytorch_model.bin",
+                  "sizeBytes": 54365991,
+                  "sha256": "97ec976ad1fd67a33ab2682d29c0ac7df85234fae875aefcc5fb215681a91b2a",
+                  "urls": [
+                    "https://huggingface.co/charactr/vocos-mel-24khz/resolve/0feb3fdd929bcd6649e0e7c5a688cf7dd012ef21/pytorch_model.bin"
+                  ]
+                },
+                {
+                  "kind": "raw",
+                  "asset": "windows-managed-runtime-notices.json",
+                  "sizeBytes": 3113,
+                  "sha256": "9bb4adc887fa6d371519cfb4892afca9a7f6d52757a589c73ea4c21df06b732a",
+                  "urls": [
+                    "https://github.com/nganlinh4/screen-goated-toolbox/releases/download/sgt-runtime-bundles/windows-managed-runtime-notices.json"
+                  ]
+                }
+              ],
+              "manifest": {
+                "asset": "f5-tts-windows-x86_64-2026.08.10-62699c10b9041344.manifest.json",
+                "urls": [
+                  "https://github.com/nganlinh4/screen-goated-toolbox/releases/download/sgt-runtime-bundles/f5-tts-windows-x86_64-2026.08.10-62699c10b9041344.manifest.json"
+                ],
+                "sizeBytes": 16180583,
+                "sha256": "62699c10b9041344bf43d49b15a22414144dfadcdda83ce98dd5622a88edba43"
+              },
+              "sourceUrl": "https://github.com/nganlinh4/screen-goated-toolbox/releases/download/sgt-runtime-bundles/f5-tts-windows-x86_64-2026.08.10-62699c10b9041344.manifest.json"
+            }
+          ]
+        },
+        {
+          "id": "chatterbox",
+          "releases": [
+            {
+              "version": "2026.08.10",
+              "asset": "chatterbox-windows-x86_64-2026.08.10-19a74aed8380e64d.manifest.json",
+              "sizeBytes": 9589911396,
+              "sha256": "19a74aed8380e64d3a1857aba737b5bb1f7b8036796c39c60b236b0f916a44d9",
+              "unpackedSizeBytes": 11944441138,
+              "pythonRelativePath": "runtime/python.exe",
+              "modelRelativePath": "model",
+              "files": [],
+              "sources": [
+                {
+                  "kind": "zip",
+                  "asset": "speech-runtime-windows-x64-2026.08.10-part01-7b4867265a642de7.zip",
+                  "sizeBytes": 471630213,
+                  "sha256": "7b4867265a642de7b8042999ee74daeb391727fcd1c3ada671413dd46efcb1b7",
+                  "urls": [
+                    "https://github.com/nganlinh4/screen-goated-toolbox/releases/download/sgt-runtime-bundles/speech-runtime-windows-x64-2026.08.10-part01-7b4867265a642de7.zip"
+                  ]
+                },
+                {
+                  "kind": "zip",
+                  "asset": "asr-runtime-windows-x64-2026.08.10-part02-1b5d091264a046e3.zip",
+                  "sizeBytes": 677777399,
+                  "sha256": "1b5d091264a046e3f26bf37cd4bae46676ec3ab4e7e195dea2f47b36d47b01ac",
+                  "urls": [
+                    "https://github.com/nganlinh4/screen-goated-toolbox/releases/download/sgt-runtime-bundles/asr-runtime-windows-x64-2026.08.10-part02-1b5d091264a046e3.zip"
+                  ]
+                },
+                {
+                  "kind": "zip",
+                  "asset": "asr-runtime-windows-x64-2026.08.10-part03-99289940581c6fcc.zip",
+                  "sizeBytes": 857784415,
+                  "sha256": "99289940581c6fcc555ccc9190f239530989fe0644c2c9a9abfb0e5d23875fe8",
+                  "urls": [
+                    "https://github.com/nganlinh4/screen-goated-toolbox/releases/download/sgt-runtime-bundles/asr-runtime-windows-x64-2026.08.10-part03-99289940581c6fcc.zip"
+                  ]
+                },
+                {
+                  "kind": "zip",
+                  "asset": "asr-runtime-windows-x64-2026.08.10-part04-ebd85d8f99a614e6.zip",
+                  "sizeBytes": 581281367,
+                  "sha256": "ebd85d8f99a614e69619bcd6b73f7c54d6beadc3934cb6c571fe7a52bde13fd8",
+                  "urls": [
+                    "https://github.com/nganlinh4/screen-goated-toolbox/releases/download/sgt-runtime-bundles/asr-runtime-windows-x64-2026.08.10-part04-ebd85d8f99a614e6.zip"
+                  ]
+                },
+                {
+                  "kind": "zip",
+                  "asset": "speech-runtime-windows-x64-2026.08.10-part05-bc27cdc621f95942.zip",
+                  "sizeBytes": 584441763,
+                  "sha256": "bc27cdc621f959421c2d127d0515eb25ddd63c6d824630ecbbf6fb88c2a2de40",
+                  "urls": [
+                    "https://github.com/nganlinh4/screen-goated-toolbox/releases/download/sgt-runtime-bundles/speech-runtime-windows-x64-2026.08.10-part05-bc27cdc621f95942.zip"
+                  ]
+                },
+                {
+                  "kind": "raw",
+                  "asset": "Cangjie5_TC.json",
+                  "sizeBytes": 1920163,
+                  "sha256": "7073fd9de919443ae88e0bd2449917a65fe54898a4413ed1edcc4b67f28bce8c",
+                  "urls": [
+                    "https://huggingface.co/ResembleAI/chatterbox/resolve/5bb1f6ee58e50c3b8d408bc82a6d3740c2db6e18/Cangjie5_TC.json"
+                  ]
+                },
+                {
+                  "kind": "raw",
+                  "asset": "conds.pt",
+                  "sizeBytes": 107374,
+                  "sha256": "6552d70568833628ba019c6b03459e77fe71ca197d5c560cef9411bee9d87f4e",
+                  "urls": [
+                    "https://huggingface.co/ResembleAI/chatterbox/resolve/5bb1f6ee58e50c3b8d408bc82a6d3740c2db6e18/conds.pt"
+                  ]
+                },
+                {
+                  "kind": "raw",
+                  "asset": "grapheme_mtl_merged_expanded_v1.json",
+                  "sizeBytes": 69989,
+                  "sha256": "69632f47220a788a52ce2661d096453c5655e9bf25289d89a8d832c46ee07dbf",
+                  "urls": [
+                    "https://huggingface.co/ResembleAI/chatterbox/resolve/5bb1f6ee58e50c3b8d408bc82a6d3740c2db6e18/grapheme_mtl_merged_expanded_v1.json"
+                  ]
+                },
+                {
+                  "kind": "raw",
+                  "asset": "s3gen.pt",
+                  "sizeBytes": 1057165844,
+                  "sha256": "9b9ff07e60b20c136e2b1b3d7563a24604e8d2c4c267888d1ee929dd0151d2a3",
+                  "urls": [
+                    "https://huggingface.co/ResembleAI/chatterbox/resolve/5bb1f6ee58e50c3b8d408bc82a6d3740c2db6e18/s3gen.pt"
+                  ]
+                },
+                {
+                  "kind": "raw",
+                  "asset": "s3gen.safetensors",
+                  "sizeBytes": 1056484620,
+                  "sha256": "2b78103c654207393955e4900aac14a12de8ef25f4b09424f1ef91941f161d4e",
+                  "urls": [
+                    "https://huggingface.co/ResembleAI/chatterbox/resolve/5bb1f6ee58e50c3b8d408bc82a6d3740c2db6e18/s3gen.safetensors"
+                  ]
+                },
+                {
+                  "kind": "raw",
+                  "asset": "t3_cfg.safetensors",
+                  "sizeBytes": 2129653744,
+                  "sha256": "914cb1696f47527fe8852ca8f1fe1fa63cb34f76f9c715e84e067b744dd0da81",
+                  "urls": [
+                    "https://huggingface.co/ResembleAI/chatterbox/resolve/5bb1f6ee58e50c3b8d408bc82a6d3740c2db6e18/t3_cfg.safetensors"
+                  ]
+                },
+                {
+                  "kind": "raw",
+                  "asset": "t3_mtl23ls_v2.safetensors",
+                  "sizeBytes": 2143989752,
+                  "sha256": "b1237586127ce98e7800a68e49938eb5092846862aabcb6e17b2fda7889a6c75",
+                  "urls": [
+                    "https://huggingface.co/ResembleAI/chatterbox/resolve/5bb1f6ee58e50c3b8d408bc82a6d3740c2db6e18/t3_mtl23ls_v2.safetensors"
+                  ]
+                },
+                {
+                  "kind": "raw",
+                  "asset": "tokenizer.json",
+                  "sizeBytes": 25470,
+                  "sha256": "d71e3a44eabb1784df9a68e9f95b251ecbf1a7af6a9f50835856b2ca9d8c14a5",
+                  "urls": [
+                    "https://huggingface.co/ResembleAI/chatterbox/resolve/5bb1f6ee58e50c3b8d408bc82a6d3740c2db6e18/tokenizer.json"
+                  ]
+                },
+                {
+                  "kind": "raw",
+                  "asset": "ve.pt",
+                  "sizeBytes": 5698626,
+                  "sha256": "4b16d836bc598509860f6fa068165a8bb5e9ac84f05582dfcf278a5a372879f1",
+                  "urls": [
+                    "https://huggingface.co/ResembleAI/chatterbox/resolve/5bb1f6ee58e50c3b8d408bc82a6d3740c2db6e18/ve.pt"
+                  ]
+                },
+                {
+                  "kind": "raw",
+                  "asset": "ve.safetensors",
+                  "sizeBytes": 5695784,
+                  "sha256": "f0921cab452fa278bc25cd23ffd59d36f816d7dc5181dd1bef9751a7fb61f63c",
+                  "urls": [
+                    "https://huggingface.co/ResembleAI/chatterbox/resolve/5bb1f6ee58e50c3b8d408bc82a6d3740c2db6e18/ve.safetensors"
+                  ]
+                },
+                {
+                  "kind": "raw",
+                  "asset": "windows-managed-runtime-notices.json",
+                  "sizeBytes": 3113,
+                  "sha256": "9bb4adc887fa6d371519cfb4892afca9a7f6d52757a589c73ea4c21df06b732a",
+                  "urls": [
+                    "https://github.com/nganlinh4/screen-goated-toolbox/releases/download/sgt-runtime-bundles/windows-managed-runtime-notices.json"
+                  ]
+                }
+              ],
+              "manifest": {
+                "asset": "chatterbox-windows-x86_64-2026.08.10-19a74aed8380e64d.manifest.json",
+                "urls": [
+                  "https://github.com/nganlinh4/screen-goated-toolbox/releases/download/sgt-runtime-bundles/chatterbox-windows-x86_64-2026.08.10-19a74aed8380e64d.manifest.json"
+                ],
+                "sizeBytes": 16181760,
+                "sha256": "19a74aed8380e64d3a1857aba737b5bb1f7b8036796c39c60b236b0f916a44d9"
+              },
+              "sourceUrl": "https://github.com/nganlinh4/screen-goated-toolbox/releases/download/sgt-runtime-bundles/chatterbox-windows-x86_64-2026.08.10-19a74aed8380e64d.manifest.json"
+            }
+          ]
+        },
+        {
+          "id": "edge-tts",
+          "releases": [
+            {
+              "version": "2026.08.10",
+              "asset": "edge-tts-windows-x86_64-2026.08.10-3f8506dc905f97ac.manifest.json",
+              "sizeBytes": 3189098020,
+              "sha256": "3f8506dc905f97ac894ba6750ab7c685fb0ebb6e35a23310d0f6cb48d2829681",
+              "unpackedSizeBytes": 5543629772,
+              "pythonRelativePath": "runtime/python.exe",
+              "modelRelativePath": null,
+              "files": [],
+              "sources": [
+                {
+                  "kind": "zip",
+                  "asset": "speech-runtime-windows-x64-2026.08.10-part01-7b4867265a642de7.zip",
+                  "sizeBytes": 471630213,
+                  "sha256": "7b4867265a642de7b8042999ee74daeb391727fcd1c3ada671413dd46efcb1b7",
+                  "urls": [
+                    "https://github.com/nganlinh4/screen-goated-toolbox/releases/download/sgt-runtime-bundles/speech-runtime-windows-x64-2026.08.10-part01-7b4867265a642de7.zip"
+                  ]
+                },
+                {
+                  "kind": "zip",
+                  "asset": "asr-runtime-windows-x64-2026.08.10-part02-1b5d091264a046e3.zip",
+                  "sizeBytes": 677777399,
+                  "sha256": "1b5d091264a046e3f26bf37cd4bae46676ec3ab4e7e195dea2f47b36d47b01ac",
+                  "urls": [
+                    "https://github.com/nganlinh4/screen-goated-toolbox/releases/download/sgt-runtime-bundles/asr-runtime-windows-x64-2026.08.10-part02-1b5d091264a046e3.zip"
+                  ]
+                },
+                {
+                  "kind": "zip",
+                  "asset": "asr-runtime-windows-x64-2026.08.10-part03-99289940581c6fcc.zip",
+                  "sizeBytes": 857784415,
+                  "sha256": "99289940581c6fcc555ccc9190f239530989fe0644c2c9a9abfb0e5d23875fe8",
+                  "urls": [
+                    "https://github.com/nganlinh4/screen-goated-toolbox/releases/download/sgt-runtime-bundles/asr-runtime-windows-x64-2026.08.10-part03-99289940581c6fcc.zip"
+                  ]
+                },
+                {
+                  "kind": "zip",
+                  "asset": "asr-runtime-windows-x64-2026.08.10-part04-ebd85d8f99a614e6.zip",
+                  "sizeBytes": 581281367,
+                  "sha256": "ebd85d8f99a614e69619bcd6b73f7c54d6beadc3934cb6c571fe7a52bde13fd8",
+                  "urls": [
+                    "https://github.com/nganlinh4/screen-goated-toolbox/releases/download/sgt-runtime-bundles/asr-runtime-windows-x64-2026.08.10-part04-ebd85d8f99a614e6.zip"
+                  ]
+                },
+                {
+                  "kind": "zip",
+                  "asset": "speech-runtime-windows-x64-2026.08.10-part05-bc27cdc621f95942.zip",
+                  "sizeBytes": 584441763,
+                  "sha256": "bc27cdc621f959421c2d127d0515eb25ddd63c6d824630ecbbf6fb88c2a2de40",
+                  "urls": [
+                    "https://github.com/nganlinh4/screen-goated-toolbox/releases/download/sgt-runtime-bundles/speech-runtime-windows-x64-2026.08.10-part05-bc27cdc621f95942.zip"
+                  ]
+                },
+                {
+                  "kind": "raw",
+                  "asset": "windows-managed-runtime-notices.json",
+                  "sizeBytes": 3113,
+                  "sha256": "9bb4adc887fa6d371519cfb4892afca9a7f6d52757a589c73ea4c21df06b732a",
+                  "urls": [
+                    "https://github.com/nganlinh4/screen-goated-toolbox/releases/download/sgt-runtime-bundles/windows-managed-runtime-notices.json"
+                  ]
+                }
+              ],
+              "manifest": {
+                "asset": "edge-tts-windows-x86_64-2026.08.10-3f8506dc905f97ac.manifest.json",
+                "urls": [
+                  "https://github.com/nganlinh4/screen-goated-toolbox/releases/download/sgt-runtime-bundles/edge-tts-windows-x86_64-2026.08.10-3f8506dc905f97ac.manifest.json"
+                ],
+                "sizeBytes": 16179750,
+                "sha256": "3f8506dc905f97ac894ba6750ab7c685fb0ebb6e35a23310d0f6cb48d2829681"
+              },
+              "sourceUrl": "https://github.com/nganlinh4/screen-goated-toolbox/releases/download/sgt-runtime-bundles/edge-tts-windows-x86_64-2026.08.10-3f8506dc905f97ac.manifest.json"
+            }
+          ]
+        },
+        {
+          "id": "gtts",
+          "releases": [
+            {
+              "version": "2026.08.10",
+              "asset": "gtts-windows-x86_64-2026.08.10-9388b5219b8dea80.manifest.json",
+              "sizeBytes": 3189098016,
+              "sha256": "9388b5219b8dea80c55330e2fd95459ec308682fb2075ccc49bf9be880283547",
+              "unpackedSizeBytes": 5543629772,
+              "pythonRelativePath": "runtime/python.exe",
+              "modelRelativePath": null,
+              "files": [],
+              "sources": [
+                {
+                  "kind": "zip",
+                  "asset": "speech-runtime-windows-x64-2026.08.10-part01-7b4867265a642de7.zip",
+                  "sizeBytes": 471630213,
+                  "sha256": "7b4867265a642de7b8042999ee74daeb391727fcd1c3ada671413dd46efcb1b7",
+                  "urls": [
+                    "https://github.com/nganlinh4/screen-goated-toolbox/releases/download/sgt-runtime-bundles/speech-runtime-windows-x64-2026.08.10-part01-7b4867265a642de7.zip"
+                  ]
+                },
+                {
+                  "kind": "zip",
+                  "asset": "asr-runtime-windows-x64-2026.08.10-part02-1b5d091264a046e3.zip",
+                  "sizeBytes": 677777399,
+                  "sha256": "1b5d091264a046e3f26bf37cd4bae46676ec3ab4e7e195dea2f47b36d47b01ac",
+                  "urls": [
+                    "https://github.com/nganlinh4/screen-goated-toolbox/releases/download/sgt-runtime-bundles/asr-runtime-windows-x64-2026.08.10-part02-1b5d091264a046e3.zip"
+                  ]
+                },
+                {
+                  "kind": "zip",
+                  "asset": "asr-runtime-windows-x64-2026.08.10-part03-99289940581c6fcc.zip",
+                  "sizeBytes": 857784415,
+                  "sha256": "99289940581c6fcc555ccc9190f239530989fe0644c2c9a9abfb0e5d23875fe8",
+                  "urls": [
+                    "https://github.com/nganlinh4/screen-goated-toolbox/releases/download/sgt-runtime-bundles/asr-runtime-windows-x64-2026.08.10-part03-99289940581c6fcc.zip"
+                  ]
+                },
+                {
+                  "kind": "zip",
+                  "asset": "asr-runtime-windows-x64-2026.08.10-part04-ebd85d8f99a614e6.zip",
+                  "sizeBytes": 581281367,
+                  "sha256": "ebd85d8f99a614e69619bcd6b73f7c54d6beadc3934cb6c571fe7a52bde13fd8",
+                  "urls": [
+                    "https://github.com/nganlinh4/screen-goated-toolbox/releases/download/sgt-runtime-bundles/asr-runtime-windows-x64-2026.08.10-part04-ebd85d8f99a614e6.zip"
+                  ]
+                },
+                {
+                  "kind": "zip",
+                  "asset": "speech-runtime-windows-x64-2026.08.10-part05-bc27cdc621f95942.zip",
+                  "sizeBytes": 584441763,
+                  "sha256": "bc27cdc621f959421c2d127d0515eb25ddd63c6d824630ecbbf6fb88c2a2de40",
+                  "urls": [
+                    "https://github.com/nganlinh4/screen-goated-toolbox/releases/download/sgt-runtime-bundles/speech-runtime-windows-x64-2026.08.10-part05-bc27cdc621f95942.zip"
+                  ]
+                },
+                {
+                  "kind": "raw",
+                  "asset": "windows-managed-runtime-notices.json",
+                  "sizeBytes": 3113,
+                  "sha256": "9bb4adc887fa6d371519cfb4892afca9a7f6d52757a589c73ea4c21df06b732a",
+                  "urls": [
+                    "https://github.com/nganlinh4/screen-goated-toolbox/releases/download/sgt-runtime-bundles/windows-managed-runtime-notices.json"
+                  ]
+                }
+              ],
+              "manifest": {
+                "asset": "gtts-windows-x86_64-2026.08.10-9388b5219b8dea80.manifest.json",
+                "urls": [
+                  "https://github.com/nganlinh4/screen-goated-toolbox/releases/download/sgt-runtime-bundles/gtts-windows-x86_64-2026.08.10-9388b5219b8dea80.manifest.json"
+                ],
+                "sizeBytes": 16179746,
+                "sha256": "9388b5219b8dea80c55330e2fd95459ec308682fb2075ccc49bf9be880283547"
+              },
+              "sourceUrl": "https://github.com/nganlinh4/screen-goated-toolbox/releases/download/sgt-runtime-bundles/gtts-windows-x86_64-2026.08.10-9388b5219b8dea80.manifest.json"
+            }
+          ]
+        },
+        {
+          "id": "gemini-tts",
+          "releases": [
+            {
+              "version": "2026.08.10",
+              "asset": "gemini-tts-windows-x86_64-2026.08.10-fee00bbd51e25865.manifest.json",
+              "sizeBytes": 3189098022,
+              "sha256": "fee00bbd51e25865159c62a0807cb3c1d231e81222693425fa75d6cd77ca3898",
+              "unpackedSizeBytes": 5543629772,
+              "pythonRelativePath": "runtime/python.exe",
+              "modelRelativePath": null,
+              "files": [],
+              "sources": [
+                {
+                  "kind": "zip",
+                  "asset": "speech-runtime-windows-x64-2026.08.10-part01-7b4867265a642de7.zip",
+                  "sizeBytes": 471630213,
+                  "sha256": "7b4867265a642de7b8042999ee74daeb391727fcd1c3ada671413dd46efcb1b7",
+                  "urls": [
+                    "https://github.com/nganlinh4/screen-goated-toolbox/releases/download/sgt-runtime-bundles/speech-runtime-windows-x64-2026.08.10-part01-7b4867265a642de7.zip"
+                  ]
+                },
+                {
+                  "kind": "zip",
+                  "asset": "asr-runtime-windows-x64-2026.08.10-part02-1b5d091264a046e3.zip",
+                  "sizeBytes": 677777399,
+                  "sha256": "1b5d091264a046e3f26bf37cd4bae46676ec3ab4e7e195dea2f47b36d47b01ac",
+                  "urls": [
+                    "https://github.com/nganlinh4/screen-goated-toolbox/releases/download/sgt-runtime-bundles/asr-runtime-windows-x64-2026.08.10-part02-1b5d091264a046e3.zip"
+                  ]
+                },
+                {
+                  "kind": "zip",
+                  "asset": "asr-runtime-windows-x64-2026.08.10-part03-99289940581c6fcc.zip",
+                  "sizeBytes": 857784415,
+                  "sha256": "99289940581c6fcc555ccc9190f239530989fe0644c2c9a9abfb0e5d23875fe8",
+                  "urls": [
+                    "https://github.com/nganlinh4/screen-goated-toolbox/releases/download/sgt-runtime-bundles/asr-runtime-windows-x64-2026.08.10-part03-99289940581c6fcc.zip"
+                  ]
+                },
+                {
+                  "kind": "zip",
+                  "asset": "asr-runtime-windows-x64-2026.08.10-part04-ebd85d8f99a614e6.zip",
+                  "sizeBytes": 581281367,
+                  "sha256": "ebd85d8f99a614e69619bcd6b73f7c54d6beadc3934cb6c571fe7a52bde13fd8",
+                  "urls": [
+                    "https://github.com/nganlinh4/screen-goated-toolbox/releases/download/sgt-runtime-bundles/asr-runtime-windows-x64-2026.08.10-part04-ebd85d8f99a614e6.zip"
+                  ]
+                },
+                {
+                  "kind": "zip",
+                  "asset": "speech-runtime-windows-x64-2026.08.10-part05-bc27cdc621f95942.zip",
+                  "sizeBytes": 584441763,
+                  "sha256": "bc27cdc621f959421c2d127d0515eb25ddd63c6d824630ecbbf6fb88c2a2de40",
+                  "urls": [
+                    "https://github.com/nganlinh4/screen-goated-toolbox/releases/download/sgt-runtime-bundles/speech-runtime-windows-x64-2026.08.10-part05-bc27cdc621f95942.zip"
+                  ]
+                },
+                {
+                  "kind": "raw",
+                  "asset": "windows-managed-runtime-notices.json",
+                  "sizeBytes": 3113,
+                  "sha256": "9bb4adc887fa6d371519cfb4892afca9a7f6d52757a589c73ea4c21df06b732a",
+                  "urls": [
+                    "https://github.com/nganlinh4/screen-goated-toolbox/releases/download/sgt-runtime-bundles/windows-managed-runtime-notices.json"
+                  ]
+                }
+              ],
+              "manifest": {
+                "asset": "gemini-tts-windows-x86_64-2026.08.10-fee00bbd51e25865.manifest.json",
+                "urls": [
+                  "https://github.com/nganlinh4/screen-goated-toolbox/releases/download/sgt-runtime-bundles/gemini-tts-windows-x86_64-2026.08.10-fee00bbd51e25865.manifest.json"
+                ],
+                "sizeBytes": 16179752,
+                "sha256": "fee00bbd51e25865159c62a0807cb3c1d231e81222693425fa75d6cd77ca3898"
+              },
+              "sourceUrl": "https://github.com/nganlinh4/screen-goated-toolbox/releases/download/sgt-runtime-bundles/gemini-tts-windows-x86_64-2026.08.10-fee00bbd51e25865.manifest.json"
+            }
+          ]
+        }
       ]
     }
   }

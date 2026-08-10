@@ -6,6 +6,7 @@ use std::path::Path;
 use sha2::{Digest as _, Sha256};
 
 use crate::catalog::{MAX_FILES, PackageDelivery};
+use crate::delivery_manifest::ManifestFile;
 use crate::path_security::{prepare_target, require_regular_file, validate_manifest_path};
 use crate::progress::{OperationPhase, OperationProgress, ProgressSink};
 use crate::{CancellationToken, PackageError, Result};
@@ -110,6 +111,112 @@ pub(crate) fn extract(
     Ok(())
 }
 
+pub(crate) fn extract_manifest_source(
+    archive_path: &Path,
+    staging_root: &Path,
+    expected_files: &[&ManifestFile],
+    cancellation: &CancellationToken,
+    progress: &dyn ProgressSink,
+    progress_base: u64,
+    progress_total: u64,
+) -> Result<u64> {
+    let archive_file = fs::File::open(archive_path).map_err(|_| PackageError::UnsafeArchive)?;
+    let mut archive =
+        zip::ZipArchive::new(archive_file).map_err(|_| PackageError::UnsafeArchive)?;
+    if archive.len() != expected_files.len() || archive.len() > MAX_FILES {
+        return Err(PackageError::UnsafeArchive);
+    }
+    let expected_by_archive_path = expected_files
+        .iter()
+        .map(|entry| {
+            entry
+                .archive_path
+                .as_deref()
+                .map(|path| (path, *entry))
+                .ok_or(PackageError::InvalidCatalog)
+        })
+        .collect::<Result<HashMap<_, _>>>()?;
+    if expected_by_archive_path.len() != expected_files.len() {
+        return Err(PackageError::InvalidCatalog);
+    }
+
+    let mut seen = HashSet::with_capacity(expected_files.len());
+    let mut expanded = 0_u64;
+    for index in 0..archive.len() {
+        cancellation.check()?;
+        let mut entry = archive
+            .by_index(index)
+            .map_err(|_| PackageError::UnsafeArchive)?;
+        let name = entry.name().to_string();
+        validate_manifest_path(&name).map_err(|_| PackageError::UnsafeArchive)?;
+        if entry.is_dir() || !safe_unix_mode(entry.unix_mode()) {
+            return Err(PackageError::UnsafeArchive);
+        }
+        let enclosed = entry.enclosed_name().ok_or(PackageError::UnsafeArchive)?;
+        if enclosed.to_string_lossy().replace('\\', "/") != name {
+            return Err(PackageError::UnsafeArchive);
+        }
+        let manifest_file = expected_by_archive_path
+            .get(name.as_str())
+            .copied()
+            .ok_or(PackageError::UnsafeArchive)?;
+        let expected = &manifest_file.file;
+        if !seen.insert(name) || entry.size() != expected.size_bytes {
+            return Err(PackageError::UnsafeArchive);
+        }
+
+        let target = prepare_target(staging_root, &expected.path)?;
+        let mut output = fs::OpenOptions::new()
+            .create_new(true)
+            .write(true)
+            .open(&target)
+            .map_err(|_| PackageError::UnsafeArchive)?;
+        let mut hasher = Sha256::new();
+        let mut file_written = 0_u64;
+        let mut buffer = vec![0_u8; 256 * 1024].into_boxed_slice();
+        loop {
+            cancellation.check()?;
+            let read = entry
+                .read(&mut buffer)
+                .map_err(|_| PackageError::UnsafeArchive)?;
+            if read == 0 {
+                break;
+            }
+            file_written = file_written
+                .checked_add(read as u64)
+                .filter(|written| *written <= expected.size_bytes)
+                .ok_or(PackageError::UnsafeArchive)?;
+            expanded = expanded
+                .checked_add(read as u64)
+                .filter(|written| progress_base.saturating_add(*written) <= progress_total)
+                .ok_or(PackageError::StorageLimit)?;
+            output
+                .write_all(&buffer[..read])
+                .map_err(|_| PackageError::UnsafeArchive)?;
+            hasher.update(&buffer[..read]);
+            progress.on_progress(OperationProgress::new(
+                OperationPhase::Extracting,
+                progress_base.saturating_add(expanded),
+                progress_total,
+            ));
+        }
+        if file_written != expected.size_bytes
+            || format!("{:x}", hasher.finalize()) != expected.sha256
+        {
+            return Err(PackageError::ArchiveIntegrity);
+        }
+        output.flush().map_err(|_| PackageError::StoreUnavailable)?;
+        output
+            .sync_all()
+            .map_err(|_| PackageError::StoreUnavailable)?;
+        set_permissions(&target, expected.executable)?;
+    }
+    if seen.len() != expected_files.len() {
+        return Err(PackageError::UnsafeArchive);
+    }
+    Ok(expanded)
+}
+
 fn safe_unix_mode(mode: Option<u32>) -> bool {
     mode.is_none_or(|mode| {
         let file_type = mode & 0o170_000;
@@ -161,6 +268,8 @@ mod tests {
                 executable: false,
                 role: FileRole::Model,
             }],
+            sources: Vec::new(),
+            manifest: None,
         }
     }
 

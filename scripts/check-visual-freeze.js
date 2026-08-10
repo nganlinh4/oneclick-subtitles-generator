@@ -45,6 +45,60 @@ const NATIVE_PROVIDER_IMAGE_SOURCES = new Set([
 const LEGACY_SELECTED_VIDEO_IMAGE = 'src={`https://img.youtube.com/vi/${selectedVideo.id}/0.jpg`}';
 const NATIVE_SELECTED_VIDEO_IMAGE = 'src={selectedVideo.thumbnail}';
 const SECURITY_COPY_RENDER_CORRECTIONS = Object.freeze({
+  'src/components/engines/EngineCard.js': Object.freeze([
+    Object.freeze([
+      '  kind,\n  status,',
+      '  kind,\n  license,\n  status,',
+      1,
+    ]),
+    Object.freeze([
+      '  const { install, cancel, start, stop, uninstall, installing, percent, log, error } = useEngineInstall(',
+      '  const {\n    install, cancel, start, stop, uninstall, installing, percent, log,\n    operation: liveOperation, error,\n  } = useEngineInstall(',
+      1,
+    ]),
+    Object.freeze([
+      '  const packageOperation = packageStatus?.operation || null;\n  const packageInstalling',
+      '  const packageOperation = packageStatus?.operation || null;\n  const activeOperation = packageOperation || liveOperation;\n  const packageInstalling',
+      1,
+    ]),
+    Object.freeze([
+      "  const lastLog = log.length ? log[log.length - 1] : '';\n  const { isDarkTheme, waveColor, waveTrackColor } = useWaveColors();",
+      "  const lastLog = log.length ? log[log.length - 1] : '';\n  const operationProgress = activeOperation\n    ? [\n      t(`engines.phase.${activeOperation.phase}`, activeOperation.phase),\n      activeOperation.totalBytes > 0\n        ? `${formatBytes(activeOperation.bytesDone) || '0 B'} / ${formatBytes(activeOperation.totalBytes)}`\n        : null,\n    ].filter(Boolean).join(' · ')\n    : '';\n  const { isDarkTheme, waveColor, waveTrackColor } = useWaveColors();",
+      1,
+    ]),
+    Object.freeze([
+      'packageOperation ? packageOperation.basisPoints / 10000',
+      'activeOperation ? activeOperation.basisPoints / 10000',
+      1,
+    ]),
+    Object.freeze([
+      'cancel(packageOperation?.job?.id)',
+      'cancel(activeOperation?.job?.id)',
+      2,
+    ]),
+    Object.freeze([
+      '    t(`engines.state.${state}`, state),\n    packageVersion',
+      '    t(`engines.state.${state}`, state),\n    license || null,\n    packageVersion',
+      1,
+    ]),
+    Object.freeze([
+      "{lastLog || t('engines.installing', 'Installing…')}",
+      "{lastLog || operationProgress || t('engines.installing', 'Installing…')}",
+      1,
+    ]),
+  ]),
+  'src/components/engines/EnginesPanel.js': Object.freeze([
+    Object.freeze([
+      "  { id: 'f5tts', name: 'F5-TTS', kind: 'voice-cloning' },",
+      "  { id: 'f5tts', name: 'F5-TTS', kind: 'voice-cloning', license: 'CC-BY-NC-4.0' },",
+      1,
+    ]),
+    Object.freeze([
+      '                kind={engine.kind}\n                status=',
+      '                kind={engine.kind}\n                license={engine.license}\n                status=',
+      1,
+    ]),
+  ]),
   'src/components/settings/tabs/YoutubeAuthSection.js': Object.freeze([
     Object.freeze(['Create OAuth 2.0 Client ID (Web application)', 'Create OAuth 2.0 Client ID (Desktop app)', 1]),
     Object.freeze(['Add Authorized JavaScript origins:', 'Confirm the application type:', 1]),

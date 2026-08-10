@@ -518,7 +518,7 @@ test('repository release policy requires owner-selected license and application 
   context.after(() => fs.rmSync(root, { force: true, recursive: true }));
   assert.throws(
     () => assertRepositoryReleasePolicy(root),
-    /root LICENSE[\s\S]*third-party notices/i,
+    /root LICENSE[\s\S]*THIRD_PARTY_NOTICES\.md/i,
   );
 });
 
@@ -541,17 +541,19 @@ test('PromptDJ font policy requires per-asset notices for any bundled font', (co
 test('runtime targets report only their honest release blocker groups', () => {
   const repositoryRoot = path.resolve(__dirname, '..');
   for (const { target } of RELEASE_MATRIX) {
+    if (target === 'x86_64-pc-windows-msvc') {
+      assert.doesNotThrow(() => checkRuntimePackageReadiness(repositoryRoot, target));
+      continue;
+    }
     assert.throws(
       () => checkRuntimePackageReadiness(repositoryRoot, target),
       (error) => {
-        const windows = target === 'x86_64-pc-windows-msvc';
-        assert.match(error.message, new RegExp(`Runtime package has ${windows ? 4 : 5} blocking violation\\(s\\)`));
-        if (windows) assert.doesNotMatch(error.message, /FFmpeg\/ffprobe delivery is unavailable/);
-        else assert.match(error.message, /FFmpeg\/ffprobe delivery is unavailable/);
+        assert.match(error.message, /Runtime package has 3 blocking violation\(s\)/);
+        assert.match(error.message, /FFmpeg\/ffprobe delivery is unavailable/);
         assert.match(error.message, /Remotion delivery catalog/);
         assert.match(error.message, /Managed engine delivery/);
-        assert.match(error.message, /updater public key is still a placeholder/i);
-        assert.match(error.message, /Repository licensing\/notice policy is unresolved/);
+        assert.doesNotMatch(error.message, /updater public key is still a placeholder/i);
+        assert.doesNotMatch(error.message, /Repository licensing\/notice policy is unresolved/);
         assert.doesNotMatch(error.message, /bundle pinned|yt-dlp\.exe|deno\.exe/);
         return true;
       },

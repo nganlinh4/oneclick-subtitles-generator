@@ -24,6 +24,7 @@
     "manage-native-tools",
     "run-media-pipeline",
     "render-video",
+    "manage-render-packages",
     "use-local-asr",
     "manage-engine-packages",
     "use-native-speech",

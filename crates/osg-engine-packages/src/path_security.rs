@@ -41,7 +41,8 @@ fn validate_portable_path(value: &str, directory: bool) -> Result<()> {
             || segment.len() > MAX_SEGMENT_BYTES
             || segment.ends_with(['.', ' '])
             || !segment.bytes().all(|byte| {
-                byte.is_ascii_alphanumeric() || matches!(byte, b'.' | b'-' | b'_' | b'+')
+                byte.is_ascii_alphanumeric()
+                    || matches!(byte, b'.' | b'-' | b'_' | b'+' | b'@' | b' ' | b'(' | b')')
             })
             || is_windows_device_name(segment)
         {

@@ -67,7 +67,10 @@ fn validate_policy(input: &Value) -> Result<()> {
     )?;
     if string(policy, "networkDuringBuild")? != "download-only-from-this-lock"
         || string(policy, "networkDuringRuntime")? != "provider-requests-only"
-        || string(policy, "releaseState")? != "blocked"
+        || !matches!(
+            string(policy, "releaseState")?,
+            "blocked" | "windows-x86_64-available"
+        )
         || string(policy, "reason")?.len() < 40
     {
         return Err(PackageError::InvalidCatalog);
@@ -349,7 +352,7 @@ mod tests {
     use super::*;
 
     #[test]
-    fn checked_in_upstream_lock_is_strict_and_deliberately_blocked() {
+    fn checked_in_upstream_lock_is_strict_and_declares_exact_platform_availability() {
         validate_builtin().unwrap();
     }
 

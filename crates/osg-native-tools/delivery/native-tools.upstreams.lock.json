@@ -1,10 +1,7 @@
 {
   "schemaVersion": 1,
   "reviewedAt": "2026-08-10",
-  "repositoryReleaseBlockers": [
-    "The repository has no checked-in root LICENSE file although Rust crates declare MIT.",
-    "The repository has no application-level third-party notices or corresponding-source disclosure surface."
-  ],
+  "repositoryReleaseBlockers": [],
   "ffmpeg": {
     "requiredEncoder": "libx264",
     "effectiveLicenseFloor": "GPL-3.0-or-later",

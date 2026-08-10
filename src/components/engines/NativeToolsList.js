@@ -7,11 +7,24 @@ import {
   installNativeTool,
   removeNativeTool,
 } from '../../platform/nativeToolsService';
+import {
+  cancelRenderPackageJob,
+  getRenderPackageStatus,
+  installRenderPackage,
+  removeRenderPackage,
+} from '../../platform/renderPackageService';
 
 const TOOL_META = Object.freeze({
   'media-tools': Object.freeze({ kind: 'media', source: 'vendor' }),
   'yt-dlp': Object.freeze({ kind: 'downloader', source: 'official' }),
   deno: Object.freeze({ kind: 'javascript', source: 'official' }),
+  'remotion-runtime': Object.freeze({ kind: 'renderer', source: 'pool' }),
+});
+
+const RENDER_CATALOG = Object.freeze({
+  id: 'remotion-runtime',
+  label: 'Remotion video renderer',
+  license: 'Remotion License + bundled third-party notices',
 });
 
 const formatBytes = (bytes) => {
@@ -42,7 +55,10 @@ export const NativeToolRow = ({ catalog, status, onChanged }) => {
   const run = useCallback((action) => {
     setConfirmRemove(false);
     setError(null);
-    const command = action === 'remove' ? removeNativeTool : installNativeTool;
+    const isRenderer = catalog.id === 'remotion-runtime';
+    const command = isRenderer
+      ? action === 'remove' ? removeRenderPackage : installRenderPackage
+      : action === 'remove' ? removeNativeTool : installNativeTool;
     const handlers = {
       onProgress: ({ operation: next }) => setLocalOperation(next),
       onCompleted: refresh,
@@ -56,7 +72,8 @@ export const NativeToolRow = ({ catalog, status, onChanged }) => {
         refresh();
       },
     };
-    command(catalog.id, handlers).catch(() => {
+    const request = isRenderer ? command(handlers) : command(catalog.id, handlers);
+    request.catch(() => {
       setError(t('engines.error.nativeToolFailed', 'The tool operation could not start.'));
       refresh();
     });
@@ -88,9 +105,15 @@ export const NativeToolRow = ({ catalog, status, onChanged }) => {
     version ? `v${version}` : null,
   ].filter(Boolean).join(' · ');
   const stateDetails = [
-    t(`engines.nativeState.${state}`, state),
-    ...capacityMeta,
-  ].join(' · ');
+    operation ? t(`engines.phase.${operation.phase}`, operation.phase) : t(`engines.nativeState.${state}`, state),
+    operation && operation.totalBytes > 0
+      ? t('engines.progressBytes', '{{done}} / {{total}}', {
+        done: formatBytes(operation.bytesDone) || '0 B',
+        total: formatBytes(operation.totalBytes) || '0 B',
+      })
+      : null,
+    ...(!operation ? capacityMeta : []),
+  ].filter(Boolean).join(' · ');
 
   const renderAction = () => {
     if (operation) {
@@ -100,7 +123,11 @@ export const NativeToolRow = ({ catalog, status, onChanged }) => {
           <button
             type="button"
             className="engine-card__cancel"
-            onClick={() => cancelNativeToolJob(operation.job.id).catch(() => {})}
+            onClick={() => (
+              catalog.id === 'remotion-runtime'
+                ? cancelRenderPackageJob(operation.job.id)
+                : cancelNativeToolJob(operation.job.id)
+            ).catch(() => {})}
             title={t('engines.cancel', 'Cancel')}
             aria-label={t('engines.cancel', 'Cancel')}
           >
@@ -170,12 +197,21 @@ const NativeToolsList = () => {
   const refresh = useCallback(async () => {
     setLoadState('checking');
     try {
-      const [catalogResponse, statusResponse] = await Promise.all([
+      const [catalogResponse, statusResponse, renderStatus] = await Promise.all([
         getNativeToolsCatalog(),
         getNativeToolsStatus(),
+        getRenderPackageStatus(),
       ]);
-      setCatalog(catalogResponse.tools);
-      setStatus(new Map(statusResponse.tools.map((tool) => [tool.id, tool])));
+      setCatalog([...catalogResponse.tools, RENDER_CATALOG]);
+      setStatus(new Map([
+        ...statusResponse.tools.map((tool) => [tool.id, tool]),
+        [renderStatus.id, {
+          ...renderStatus,
+          activeRuntime: renderStatus.installed,
+          pendingRemoval: false,
+          restartRequired: false,
+        }],
+      ]));
       setLoadState('ready');
     } catch {
       setLoadState('failed');

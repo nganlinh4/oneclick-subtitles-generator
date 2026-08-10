@@ -18,6 +18,7 @@ mod native_drop;
 mod native_tools;
 mod providers;
 mod render;
+mod render_packages;
 mod speech;
 mod speech_packages;
 mod state;
@@ -69,7 +70,7 @@ use native_tools::{
 };
 use osg_application::JobRegistry;
 use osg_download::{FfmpegDirectory, JsRuntimeSearch, YtDlpSearch};
-use osg_engine_packages::EnginePackageManager;
+use osg_engine_packages::{EnginePackageManager, RenderPackageManager};
 use osg_infrastructure::storage::{Database, is_secret_setting_key};
 use osg_media::{BinarySearch, MediaEngine, ToolchainResolver};
 use osg_media_server::MediaServer;
@@ -80,6 +81,9 @@ use providers::{
 };
 use render::{
     RenderRuntimeHost, render_playback_release, render_result, render_runtime_status, render_start,
+};
+use render_packages::{
+    RenderPackageRuntime, render_package_install, render_package_remove, render_package_status,
 };
 use serde_json::Value;
 use speech::{
@@ -192,6 +196,9 @@ pub fn run() {
             render_start,
             render_result,
             render_playback_release,
+            render_package_status,
+            render_package_install,
+            render_package_remove,
             asr_status,
             asr_start,
             engine_packages_status,
@@ -286,9 +293,26 @@ fn setup_app(app: &mut tauri::App) -> Result<(), Box<dyn std::error::Error>> {
         media_runtimes.ffmpeg.clone(),
         media_server.clone(),
     )?;
+    let render_package_manager = RenderPackageManager::new(
+        local_data_dir.join("render-packages/v1"),
+        Arc::new(render_runtime.package_coordinator()),
+    )?;
+    render_runtime
+        .attach_package_manager(render_package_manager.clone())
+        .map_err(|_| io::Error::other("the managed render runtime could not be initialized"))?;
+    let render_runtime_verifier = render_runtime.clone();
+    tauri::async_runtime::spawn_blocking(move || {
+        let _ = render_runtime_verifier.refresh_managed();
+    });
+    let render_package_runtime = RenderPackageRuntime::new(
+        render_package_manager,
+        render_runtime.clone(),
+        Arc::clone(&jobs),
+    );
     app.manage(media_runtimes.download);
     app.manage(media_runtimes.pipeline);
     app.manage(render_runtime);
+    app.manage(render_package_runtime);
     app.manage(engine_package_runtime);
     app.manage(speech_package_runtime);
     app.manage(native_tool_runtime);

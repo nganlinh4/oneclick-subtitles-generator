@@ -1,0 +1,25 @@
+{
+  "schemaVersion": 1,
+  "reviewedAt": "2026-08-10",
+  "scope": "Windows x86_64 managed ASR and speech runtimes",
+  "policy": "The runtime archives retain each installed distribution's METADATA, LICENSE, COPYING, NOTICE, and dist-info/licenses files. This index records the principal runtime and model terms; those packaged files are authoritative.",
+  "components": [
+    { "name": "CPython", "version": "3.11.15", "license": "Python-2.0", "source": "https://github.com/astral-sh/python-build-standalone/releases/tag/20260807" },
+    { "name": "PyTorch and TorchAudio", "version": "2.11.0+cu128", "license": "BSD-3-Clause", "source": "https://download.pytorch.org/whl/cu128" },
+    { "name": "NVIDIA CUDA runtime libraries distributed by PyTorch", "version": "12.8", "license": "NVIDIA CUDA Toolkit EULA", "source": "https://docs.nvidia.com/cuda/eula/" },
+    { "name": "ONNX Runtime GPU", "version": "1.24.4", "license": "MIT", "source": "https://github.com/microsoft/onnxruntime" },
+    { "name": "faster-whisper", "version": "1.2.1", "license": "MIT", "source": "https://github.com/SYSTRAN/faster-whisper" },
+    { "name": "qwen-asr", "version": "0.0.6", "license": "Apache-2.0", "source": "https://github.com/QwenLM/Qwen3-ASR" },
+    { "name": "onnx-asr", "version": "0.11.0", "license": "MIT", "source": "https://github.com/istupakov/onnx-asr" },
+    { "name": "F5-TTS code", "version": "1.1.22", "license": "MIT", "source": "https://github.com/SWivid/F5-TTS" },
+    { "name": "F5TTS_v1_Base model", "revision": "84e5a410d9cead4de2f847e7c9369a6440bdfaca", "license": "CC-BY-NC-4.0", "commercialUse": false, "source": "https://huggingface.co/SWivid/F5-TTS" },
+    { "name": "Chatterbox code and models", "version": "0.1.7", "revision": "5bb1f6ee58e50c3b8d408bc82a6d3740c2db6e18", "license": "MIT", "source": "https://huggingface.co/ResembleAI/chatterbox" },
+    { "name": "Edge TTS", "version": "7.2.8", "license": "LGPL-3.0-only", "source": "https://github.com/rany2/edge-tts" },
+    { "name": "gTTS", "version": "2.5.4", "license": "MIT", "source": "https://github.com/pndurette/gTTS" },
+    { "name": "Google Gen AI Python SDK", "version": "2.17.0", "license": "Apache-2.0", "source": "https://github.com/googleapis/python-genai" },
+    { "name": "Parakeet TDT 0.6B v3 ONNX", "revision": "8f23f0c03c8761650bdb5b40aaf3e40d2c15f1ce", "license": "CC-BY-4.0", "source": "https://huggingface.co/istupakov/parakeet-tdt-0.6b-v3-onnx" },
+    { "name": "Faster Whisper Large v3 Turbo", "revision": "0a363e9161cbc7ed1431c9597a8ceaf0c4f78fcf", "license": "MIT", "source": "https://huggingface.co/dropbox-dash/faster-whisper-large-v3-turbo" },
+    { "name": "Faster Whisper Large v3", "revision": "edaa852ec7e145841d8ffdb056a99866b5f0a478", "license": "MIT", "source": "https://huggingface.co/Systran/faster-whisper-large-v3" },
+    { "name": "Qwen3-ASR and ForcedAligner", "revisions": ["7278e1e70fe206f11671096ffdd38061171dd6e5", "5eb144179a02acc5e5ba31e748d22b0cf3e303b0", "c7cbfc2048c462b0d63a45797104fc9db3ad62b7"], "license": "Apache-2.0", "source": "https://huggingface.co/collections/Qwen/qwen3-asr" }
+  ]
+}

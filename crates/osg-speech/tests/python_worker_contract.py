@@ -108,6 +108,40 @@ class WorkerContractTests(unittest.TestCase):
             "gemini-3.1-flash-live-preview",
             "gemini-2.5-flash-native-audio-preview-12-2025",
         })
+
+    def test_multilingual_chatterbox_resolves_cangjie_only_from_managed_root(self):
+        worker = load_worker()
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            cangjie = root / "Cangjie5_TC.json"
+            cangjie.write_text("[]", encoding="utf-8")
+            tokenizer_module = SimpleNamespace(hf_hub_download=mock.Mock())
+            original_download = tokenizer_module.hf_hub_download
+            tokenizer_package = ModuleType("chatterbox.models.tokenizers")
+            tokenizer_package.tokenizer = tokenizer_module
+            model_class = SimpleNamespace(from_local=mock.Mock())
+
+            def construct(model_root, device):
+                resolved = tokenizer_module.hf_hub_download(
+                    repo_id="ResembleAI/chatterbox",
+                    filename="Cangjie5_TC.json",
+                    cache_dir="must-not-be-used",
+                )
+                self.assertEqual(Path(resolved), cangjie)
+                return (model_root, device)
+
+            model_class.from_local.side_effect = construct
+            with mock.patch.dict(
+                sys.modules,
+                {
+                    "chatterbox.models.tokenizers": tokenizer_package,
+                },
+            ):
+                result = worker._load_local_chatterbox(
+                    model_class, root, "cuda", multilingual=True,
+                )
+            self.assertEqual(result, (root, "cuda"))
+            self.assertIs(tokenizer_module.hf_hub_download, original_download)
         self.assertEqual(len(worker.GEMINI_VOICES), 30)
         self.assertEqual(len(set(worker.GEMINI_VOICES)), 30)
         self.assertEqual(set(worker.GEMINI_VOICE_GENDERS), set(worker.GEMINI_VOICES))
@@ -319,6 +353,10 @@ class WorkerContractTests(unittest.TestCase):
         package = ModuleType("chatterbox")
         package.ChatterboxTTS = FakeEnglish
         package.ChatterboxMultilingualTTS = FakeMultilingual
+        models = ModuleType("chatterbox.models")
+        tokenizers = ModuleType("chatterbox.models.tokenizers")
+        tokenizer_module = ModuleType("chatterbox.models.tokenizers.tokenizer")
+        tokenizer_module.hf_hub_download = mock.Mock()
         vc = ModuleType("chatterbox.vc")
         safe_loads = []
 
@@ -395,6 +433,7 @@ class ChatterboxVC:
                 payload = b"verified conditionals"
                 (root / "conds.pt").write_bytes(payload)
                 (root / "s3gen.safetensors").write_bytes(b"verified")
+                (root / "Cangjie5_TC.json").write_text("{}", encoding="utf-8")
                 worker._MODEL_ROOT_VALUE = str(root)
                 worker._MODEL_ROOT = None
                 worker._CHATTERBOX_EN = None
@@ -402,6 +441,9 @@ class ChatterboxVC:
                 worker._CHATTERBOX_VC = None
                 with mock.patch.dict(sys.modules, {
                     "chatterbox": package,
+                    "chatterbox.models": models,
+                    "chatterbox.models.tokenizers": tokenizers,
+                    "chatterbox.models.tokenizers.tokenizer": tokenizer_module,
                     "chatterbox.vc": vc,
                 }), mock.patch.object(
                     worker, "_device", return_value="cpu"

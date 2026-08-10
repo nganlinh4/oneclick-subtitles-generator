@@ -1253,7 +1253,10 @@ function assertDeliveryRelease(release, label, { requireModel, requireSourceUrl 
     `${label} must pin an exact version`,
   );
   const asset = assertSafeManifestPath(release.asset, `${label}.asset`);
-  invariant(asset.endsWith('.zip'), `${label}.asset must be a content-addressed zip archive`);
+  invariant(
+    release.manifest === undefined ? asset.endsWith('.zip') : asset.endsWith('.manifest.json'),
+    `${label}.asset must be a content-addressed archive or remote manifest`,
+  );
   invariant(/^[0-9a-f]{64}$/i.test(release.sha256), `${label}.sha256 must be a full SHA-256 digest`);
   invariant(
     asset.includes(release.sha256.slice(0, 16).toLowerCase()),
@@ -1273,6 +1276,65 @@ function assertDeliveryRelease(release, label, { requireModel, requireSourceUrl 
   }
   if (requireSourceUrl) {
     assertImmutableSourceUrl(release.sourceUrl, label);
+  }
+  if (release.manifest !== undefined) {
+    const manifest = release.manifest;
+    invariant(manifest && typeof manifest === 'object' && !Array.isArray(manifest),
+      `${label}.manifest must be an object`);
+    const manifestAsset = assertSafeManifestPath(manifest.asset, `${label}.manifest.asset`);
+    invariant(!manifestAsset.includes('/') && manifestAsset.endsWith('.manifest.json'),
+      `${label}.manifest.asset must be a content-addressed manifest file`);
+    invariant(/^[0-9a-f]{64}$/.test(manifest.sha256),
+      `${label}.manifest.sha256 must be a full lowercase SHA-256 digest`);
+    invariant(manifestAsset.includes(manifest.sha256.slice(0, 16)),
+      `${label}.manifest.asset must include its hash prefix`);
+    invariant(Number.isSafeInteger(manifest.sizeBytes) && manifest.sizeBytes > 0,
+      `${label}.manifest.sizeBytes must be positive`);
+    invariant(Array.isArray(manifest.urls) && manifest.urls.length > 0 && manifest.urls.length <= 3,
+      `${label}.manifest.urls must contain one to three sources`);
+    invariant(Array.isArray(release.files) && release.files.length === 0,
+      `${label}.files must stay empty when inventory is remotely hash-bound`);
+    invariant(Array.isArray(release.sources) && release.sources.length > 0,
+      `${label}.sources must inventory every downloadable payload`);
+    let downloadBytes = manifest.sizeBytes;
+    for (const [index, source] of release.sources.entries()) {
+      const sourceLabel = `${label}.sources[${index}]`;
+      invariant(source && typeof source === 'object' && !Array.isArray(source),
+        `${sourceLabel} must be an object`);
+      invariant(['zip', 'raw'].includes(source.kind), `${sourceLabel}.kind is unsupported`);
+      const sourceAsset = assertSafeManifestPath(source.asset, `${sourceLabel}.asset`);
+      invariant(!sourceAsset.includes('/'), `${sourceLabel}.asset must be one file name`);
+      invariant(/^[0-9a-f]{64}$/.test(source.sha256),
+        `${sourceLabel}.sha256 must be a full lowercase SHA-256 digest`);
+      invariant(Number.isSafeInteger(source.sizeBytes) && source.sizeBytes > 0,
+        `${sourceLabel}.sizeBytes must be positive`);
+      invariant(Array.isArray(source.urls) && source.urls.length > 0 && source.urls.length <= 3,
+        `${sourceLabel}.urls must contain one to three sources`);
+      for (const rawUrl of source.urls) {
+        assertImmutableSourceUrl(rawUrl, sourceLabel);
+        const url = new URL(rawUrl);
+        invariant(decodeURIComponent(url.pathname.split('/').at(-1)) === sourceAsset,
+          `${sourceLabel}.asset must match its source URL`);
+        const pool = url.hostname === 'github.com'
+          && url.pathname.startsWith('/nganlinh4/screen-goated-toolbox/releases/download/sgt-runtime-bundles/');
+        const huggingFace = url.hostname === 'huggingface.co'
+          && /\/resolve\/[0-9a-f]{40}\//.test(url.pathname);
+        invariant(pool || huggingFace,
+          `${sourceLabel} must use the reviewed bundle pool or an immutable Hugging Face revision`);
+      }
+      downloadBytes += source.sizeBytes;
+      invariant(Number.isSafeInteger(downloadBytes), `${label} download size overflows`);
+    }
+    for (const rawUrl of manifest.urls) {
+      assertImmutableSourceUrl(rawUrl, `${label}.manifest`);
+      const url = new URL(rawUrl);
+      invariant(url.hostname === 'github.com'
+        && url.pathname === `/nganlinh4/screen-goated-toolbox/releases/download/sgt-runtime-bundles/${manifestAsset}`,
+      `${label}.manifest must use the reviewed bundle pool`);
+    }
+    invariant(release.sizeBytes === downloadBytes,
+      `${label}.sizeBytes must equal manifest plus source bytes`);
+    return;
   }
   invariant(Array.isArray(release.files) && release.files.length > 0, `${label}.files must not be empty`);
   const roles = new Set();
@@ -1403,10 +1465,16 @@ function assertBundledRenderRuntime(rootDirectory, target, release, mappings) {
 }
 
 function assertRustCommandImplementation(rootDirectory, command) {
-  const rustSources = walkFiles(
-    path.join(rootDirectory, TAURI_DIRECTORY, 'src'),
-    (candidate) => candidate.endsWith('.rs'),
-  );
+  const rustSources = [
+    ...walkFiles(
+      path.join(rootDirectory, TAURI_DIRECTORY, 'src'),
+      (candidate) => candidate.endsWith('.rs'),
+    ),
+    ...walkFiles(
+      path.join(rootDirectory, 'crates/osg-engine-packages/src'),
+      (candidate) => candidate.endsWith('.rs'),
+    ),
+  ];
   const implementation = new RegExp(
     `\\b(?:pub(?:\\([^)]*\\))?\\s+)?(?:async\\s+)?fn\\s+${escapeRegularExpression(command)}\\s*\\(`,
   );
@@ -1428,10 +1496,16 @@ function assertManagedRenderRuntimeInstaller(rootDirectory, catalog) {
     assertCommandWiring(rootDirectory, command);
     assertRustCommandImplementation(rootDirectory, command);
   }
-  const rustSources = walkFiles(
-    path.join(rootDirectory, TAURI_DIRECTORY, 'src'),
-    (candidate) => candidate.endsWith('.rs'),
-  );
+  const rustSources = [
+    ...walkFiles(
+      path.join(rootDirectory, TAURI_DIRECTORY, 'src'),
+      (candidate) => candidate.endsWith('.rs'),
+    ),
+    ...walkFiles(
+      path.join(rootDirectory, 'crates/osg-engine-packages/src'),
+      (candidate) => candidate.endsWith('.rs'),
+    ),
+  ];
   invariant(
     rustSources.some((sourcePath) =>
       /include_(?:str|bytes)!\s*\(\s*["'][^"']*remotion-runtime\.delivery\.json["']\s*\)/
@@ -1441,8 +1515,129 @@ function assertManagedRenderRuntimeInstaller(rootDirectory, catalog) {
   );
 }
 
+function assertManagedRenderRuntimeInstallerV2(rootDirectory, catalog) {
+  const expected = {
+    status: 'render_package_status',
+    install: 'render_package_install',
+    remove: 'render_package_remove',
+  };
+  invariant(catalog.commands && typeof catalog.commands === 'object'
+    && !Array.isArray(catalog.commands),
+  'Remotion delivery catalog must declare managed installer commands');
+  invariant(Object.keys(catalog.commands).length === Object.keys(expected).length,
+    'Remotion delivery catalog has unexpected managed installer commands');
+  for (const [key, command] of Object.entries(expected)) {
+    invariant(catalog.commands[key] === command,
+      `Remotion delivery catalog commands.${key} must be ${command}`);
+    assertCommandWiring(rootDirectory, command);
+    assertRustCommandImplementation(rootDirectory, command);
+  }
+  assertCommandWiring(rootDirectory, 'job_cancel');
+  const rustSources = [
+    ...walkFiles(
+      path.join(rootDirectory, TAURI_DIRECTORY, 'src'),
+      (candidate) => candidate.endsWith('.rs'),
+    ),
+    ...walkFiles(
+      path.join(rootDirectory, 'crates/osg-engine-packages/src'),
+      (candidate) => candidate.endsWith('.rs'),
+    ),
+  ];
+  invariant(
+    rustSources.some((sourcePath) =>
+      /include_(?:str|bytes)!\s*\(\s*["'][^"']*remotion-runtime\.delivery\.json["']\s*\)/
+        .test(fs.readFileSync(sourcePath, 'utf8')),
+    ),
+    'Managed Remotion installer must compile-bind remotion-runtime.delivery.json',
+  );
+}
+
+function assertRenderRuntimeDeliveryV2(rootDirectory, target, catalog) {
+  invariant(catalog.protocolVersion === 1,
+    'Remotion delivery catalog must use stdio protocolVersion 1');
+  invariant(catalog.remotionVersion === REMOTION_VERSION,
+    `Remotion delivery catalog must pin ${REMOTION_VERSION}`);
+  const worker = catalog.worker;
+  invariant(worker && worker.sourcePath === 'video-renderer/worker/osg_render_worker.mjs',
+    'Remotion delivery catalog must bind the reviewed native render worker');
+  const workerPath = path.join(rootDirectory, worker.sourcePath);
+  invariant(fs.existsSync(workerPath), 'The reviewed native render worker is missing');
+  assertPositiveInteger(worker.sizeBytes, 'Remotion delivery worker.sizeBytes');
+  assertSha256(worker.sha256, 'Remotion delivery worker.sha256');
+  invariant(fs.statSync(workerPath).size === worker.sizeBytes,
+    'Native render worker size does not match the delivery catalog');
+  invariant(sha256File(workerPath) === worker.sha256,
+    'Native render worker hash does not match the delivery catalog');
+
+  const platformKey = ENGINE_PLATFORM_BY_TARGET[target];
+  invariant(platformKey, `Unsupported Remotion delivery target ${target}`);
+  invariant(catalog.platforms && Object.keys(catalog.platforms).length === 4,
+    'Remotion delivery catalog must declare exactly four supported platform records');
+  for (const key of ['linux-x86_64', 'macos-aarch64', 'macos-x86_64', 'windows-x86_64']) {
+    invariant(catalog.platforms[key] && Array.isArray(catalog.platforms[key].releases),
+      `Remotion delivery catalog is missing platform ${key}`);
+  }
+  const releases = catalog.platforms[platformKey].releases;
+  invariant(releases.length === 1,
+    `Remotion delivery catalog ${platformKey} must contain exactly one reviewed runtime release`);
+  const [release] = releases;
+  const label = `Remotion delivery ${platformKey}`;
+  invariant(release.version === REMOTION_VERSION,
+    `${label}.version must be ${REMOTION_VERSION}`);
+  invariant(release.sourceUrl === '', `${label}.sourceUrl must be empty for multi-source delivery`);
+  assertPositiveInteger(release.sizeBytes, `${label}.sizeBytes`);
+  assertPositiveInteger(release.unpackedSizeBytes, `${label}.unpackedSizeBytes`);
+  assertSha256(release.sha256, `${label}.sha256`);
+  invariant(release.pythonRelativePath === 'runtime/bin/node.exe',
+    `${label}.pythonRelativePath must identify the managed Node executable`);
+  invariant(release.modelRelativePath === null, `${label}.modelRelativePath must be null`);
+  invariant(Array.isArray(release.files) && release.files.length === 0,
+    `${label}.files must be supplied only by the hashed delivery manifest`);
+  invariant(Array.isArray(release.sources) && release.sources.length > 0,
+    `${label}.sources must not be empty`);
+
+  const validateAsset = (asset, assetLabel, kindRequired = false) => {
+    invariant(asset && typeof asset === 'object' && !Array.isArray(asset),
+      `${assetLabel} must be an object`);
+    const name = assertSafeManifestPath(asset.asset, `${assetLabel}.asset`);
+    invariant(!name.includes('/'), `${assetLabel}.asset must be one file name`);
+    assertPositiveInteger(asset.sizeBytes, `${assetLabel}.sizeBytes`);
+    assertSha256(asset.sha256, `${assetLabel}.sha256`);
+    invariant(name.toLowerCase().includes(asset.sha256.slice(0, 16)),
+      `${assetLabel}.asset must be content-addressed by its SHA-256`);
+    invariant(Array.isArray(asset.urls) && asset.urls.length > 0,
+      `${assetLabel}.urls must not be empty`);
+    for (const [index, url] of asset.urls.entries()) {
+      assertImmutableSourceUrl(url, `${assetLabel}.urls[${index}]`);
+      const parsed = new URL(url);
+      invariant(parsed.hostname === 'github.com'
+        && parsed.pathname.startsWith('/nganlinh4/screen-goated-toolbox/releases/download/sgt-runtime-bundles/'),
+      `${assetLabel} must use the reviewed bundle-pool fallback`);
+      invariant(decodeURIComponent(parsed.pathname.split('/').at(-1)) === name,
+        `${assetLabel}.asset must match its source URL`);
+    }
+    if (kindRequired) invariant(['zip', 'raw'].includes(asset.kind),
+      `${assetLabel}.kind must be zip or raw`);
+    return asset.sizeBytes;
+  };
+  const sourceBytes = release.sources.reduce((total, source, index) => (
+    total + validateAsset(source, `${label}.sources[${index}]`, true)
+  ), 0);
+  const manifestBytes = validateAsset(release.manifest, `${label}.manifest`);
+  invariant(release.asset === release.manifest.asset
+    && release.sha256 === release.manifest.sha256,
+  `${label} must bind its top-level identity to the delivery manifest`);
+  invariant(release.sizeBytes === sourceBytes + manifestBytes,
+    `${label}.sizeBytes must equal all source and manifest bytes`);
+  assertManagedRenderRuntimeInstallerV2(rootDirectory, catalog);
+}
+
 function assertRenderRuntimeDelivery(rootDirectory, target, resourceMappings) {
   const catalog = readJson(rootDirectory, RENDER_DELIVERY_PATH);
+  if (catalog.schemaVersion === 2) {
+    assertRenderRuntimeDeliveryV2(rootDirectory, target, catalog);
+    return;
+  }
   invariant(catalog.schemaVersion === 1, 'Remotion delivery catalog must use schemaVersion 1');
   invariant(catalog.protocolVersion === 1, 'Remotion delivery catalog must use stdio protocolVersion 1');
   invariant(
@@ -1608,7 +1803,7 @@ function assertManagedEngineDelivery(rootDirectory, target) {
 
   try {
     const asrCatalog = readJson(rootDirectory, ASR_DELIVERY_PATH);
-    invariant(asrCatalog.schemaVersion === 1, 'ASR delivery catalog must use schemaVersion 1');
+    invariant([1, 2].includes(asrCatalog.schemaVersion), 'ASR delivery catalog must use schemaVersion 1 or 2');
     assertDeliveryEntries(
       asrCatalog.platforms && asrCatalog.platforms[platformKey],
       'engines',
@@ -1633,7 +1828,7 @@ function assertManagedEngineDelivery(rootDirectory, target) {
       `Speech delivery/install catalog is missing: ${SPEECH_DELIVERY_PATH}`,
     );
     const speechCatalog = readJson(rootDirectory, SPEECH_DELIVERY_PATH);
-    invariant(speechCatalog.schemaVersion === 1, 'Speech delivery catalog must use schemaVersion 1');
+    invariant([1, 2].includes(speechCatalog.schemaVersion), 'Speech delivery catalog must use schemaVersion 1 or 2');
     assertDeliveryEntries(
       speechCatalog.platforms && speechCatalog.platforms[platformKey],
       'backends',

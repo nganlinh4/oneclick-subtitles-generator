@@ -12,6 +12,7 @@ use crate::path_security::{
 use crate::{CancellationToken, PackageError, Result};
 
 pub(crate) const RECEIPT_NAME: &str = "receipt.json";
+pub(crate) const DELIVERY_MANIFEST_NAME: &str = "delivery-manifest.json";
 const MAX_RECEIPT_BYTES: u64 = 64 * 1024 * 1024;
 
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
@@ -58,19 +59,74 @@ pub(crate) fn write(root: &Path, delivery: &PackageDelivery) -> Result<()> {
         .map_err(|_| PackageError::StoreUnavailable)
 }
 
+pub(crate) fn install_delivery_manifest(
+    root: &Path,
+    source: &Path,
+    delivery: &PackageDelivery,
+) -> Result<()> {
+    let expected = delivery
+        .manifest
+        .as_ref()
+        .ok_or(PackageError::InvalidCatalog)?;
+    let metadata = require_regular_file(source).map_err(|_| PackageError::InvalidCatalog)?;
+    if metadata.len() != expected.size_bytes
+        || hash_file(source, &CancellationToken::default())? != expected.sha256
+    {
+        return Err(PackageError::InvalidCatalog);
+    }
+    let target = root.join(DELIVERY_MANIFEST_NAME);
+    let mut input = fs::File::open(source).map_err(|_| PackageError::StoreUnavailable)?;
+    let mut output = fs::OpenOptions::new()
+        .create_new(true)
+        .write(true)
+        .open(target)
+        .map_err(|_| PackageError::StoreUnavailable)?;
+    std::io::copy(&mut input, &mut output).map_err(|_| PackageError::StoreUnavailable)?;
+    output
+        .sync_all()
+        .map_err(|_| PackageError::StoreUnavailable)
+}
+
 pub(crate) fn validate_structure(root: &Path, delivery: &PackageDelivery) -> Result<()> {
     let receipt = read(root)?;
-    if receipt != PackageReceipt::from_delivery(delivery) {
+    if !receipt.matches_delivery(delivery) {
         return Err(PackageError::InvalidInstall);
     }
-    for expected in &delivery.files {
+    let expected_files = receipt.delivery_files();
+    if !delivery.files.is_empty() && expected_files != delivery.files {
+        return Err(PackageError::InvalidInstall);
+    }
+    if delivery.manifest.is_some() {
+        let manifest_path = resolve_owned(root, DELIVERY_MANIFEST_NAME)?;
+        let expected_manifest = delivery
+            .manifest
+            .as_ref()
+            .ok_or(PackageError::InvalidInstall)?;
+        let metadata = require_regular_file(&manifest_path)?;
+        if metadata.len() != expected_manifest.size_bytes
+            || hash_file(&manifest_path, &CancellationToken::default())? != expected_manifest.sha256
+        {
+            return Err(PackageError::InvalidInstall);
+        }
+        let manifest = crate::delivery_manifest::read(&manifest_path, delivery)
+            .map_err(|_| PackageError::InvalidInstall)?;
+        let manifest_files = manifest
+            .files
+            .into_iter()
+            .map(|entry| entry.file)
+            .collect::<Vec<_>>();
+        if manifest_files != expected_files {
+            return Err(PackageError::InvalidInstall);
+        }
+    }
+    for expected in &expected_files {
         let path = resolve_owned(root, &expected.path)?;
         let metadata = require_regular_file(&path)?;
         if metadata.len() != expected.size_bytes || (expected.executable && !is_executable(&path)) {
             return Err(PackageError::InvalidInstall);
         }
     }
-    validate_exact_tree(root, delivery)
+    validate_exact_tree(root, &expected_files, delivery.manifest.is_some())
 }
 
 pub(crate) fn validate_integrity(
@@ -79,10 +135,14 @@ pub(crate) fn validate_integrity(
     cancellation: &CancellationToken,
 ) -> Result<()> {
     validate_structure(root, delivery)?;
-    for expected in &delivery.files {
+    let receipt = read(root)?;
+    if !receipt.matches_delivery(delivery) {
+        return Err(PackageError::InvalidInstall);
+    }
+    for expected in receipt.delivery_files() {
         cancellation.check()?;
         let path = resolve_owned(root, &expected.path)?;
-        if !file_matches(&path, expected, cancellation)? {
+        if !file_matches(&path, &expected, cancellation)? {
             return Err(PackageError::InvalidInstall);
         }
     }
@@ -126,7 +186,35 @@ pub(crate) fn allowed_tree(delivery: &PackageDelivery) -> std::collections::Hash
         .iter()
         .map(|file| file.path.clone())
         .chain([RECEIPT_NAME.to_string()])
+        .chain(
+            delivery
+                .manifest
+                .as_ref()
+                .map(|_| DELIVERY_MANIFEST_NAME.to_string()),
+        )
         .collect()
+}
+
+pub(crate) fn allowed_tree_at(
+    root: &Path,
+    delivery: &PackageDelivery,
+) -> Result<std::collections::HashSet<String>> {
+    let receipt = read(root)?;
+    if !receipt.matches_delivery(delivery) {
+        return Err(PackageError::InvalidInstall);
+    }
+    Ok(receipt
+        .files
+        .into_iter()
+        .map(|file| file.path)
+        .chain([RECEIPT_NAME.to_string()])
+        .chain(
+            delivery
+                .manifest
+                .as_ref()
+                .map(|_| DELIVERY_MANIFEST_NAME.to_string()),
+        )
+        .collect())
 }
 
 fn read(root: &Path) -> Result<PackageReceipt> {
@@ -151,9 +239,14 @@ fn read(root: &Path) -> Result<PackageReceipt> {
     Ok(receipt)
 }
 
-fn validate_exact_tree(root: &Path, delivery: &PackageDelivery) -> Result<()> {
+fn validate_exact_tree(root: &Path, files: &[DeliveryFile], has_manifest: bool) -> Result<()> {
     let actual = collect_regular_files(root)?;
-    let expected = allowed_tree(delivery);
+    let expected = files
+        .iter()
+        .map(|file| file.path.clone())
+        .chain([RECEIPT_NAME.to_string()])
+        .chain(has_manifest.then(|| DELIVERY_MANIFEST_NAME.to_string()))
+        .collect();
     if actual != expected {
         return Err(PackageError::InvalidInstall);
     }
@@ -167,12 +260,27 @@ impl PackageReceipt {
             component: delivery.component.clone(),
             platform: delivery.platform.clone(),
             version: delivery.version.clone(),
-            archive_sha256: delivery.sha256.clone(),
+            archive_sha256: delivery.integrity_sha256().to_string(),
             python_relative_path: delivery.python_relative_path.clone(),
             model_relative_path: delivery.model_relative_path.clone(),
             aligner_relative_path: delivery.aligner_relative_path.clone(),
             files: delivery.files.iter().map(ReceiptFile::from).collect(),
         }
+    }
+
+    fn matches_delivery(&self, delivery: &PackageDelivery) -> bool {
+        self.schema_version == 1
+            && self.component == delivery.component
+            && self.platform == delivery.platform
+            && self.version == delivery.version
+            && self.archive_sha256 == delivery.integrity_sha256()
+            && self.python_relative_path == delivery.python_relative_path
+            && self.model_relative_path == delivery.model_relative_path
+            && self.aligner_relative_path == delivery.aligner_relative_path
+    }
+
+    fn delivery_files(&self) -> Vec<DeliveryFile> {
+        self.files.iter().map(DeliveryFile::from).collect()
     }
 
     fn validate(&self) -> Result<()> {
@@ -192,8 +300,7 @@ impl PackageReceipt {
         let mut paths = std::collections::HashSet::new();
         for file in &self.files {
             validate_manifest_path(&file.path).map_err(|_| PackageError::InvalidInstall)?;
-            if file.size_bytes == 0
-                || file.sha256.len() != 64
+            if file.sha256.len() != 64
                 || !file
                     .sha256
                     .bytes()
@@ -209,6 +316,18 @@ impl PackageReceipt {
 
 impl From<&DeliveryFile> for ReceiptFile {
     fn from(file: &DeliveryFile) -> Self {
+        Self {
+            path: file.path.clone(),
+            size_bytes: file.size_bytes,
+            sha256: file.sha256.clone(),
+            executable: file.executable,
+            role: file.role,
+        }
+    }
+}
+
+impl From<&ReceiptFile> for DeliveryFile {
+    fn from(file: &ReceiptFile) -> Self {
         Self {
             path: file.path.clone(),
             size_bytes: file.size_bytes,

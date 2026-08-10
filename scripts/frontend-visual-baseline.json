@@ -2,7 +2,7 @@
   "schemaVersion": 5,
   "algorithm": "sha256",
   "normalization": "binary exact; UTF-8 BOM ignored, CRLF/CR normalized to LF, terminal newlines ignored",
-  "baselineRevision": "001c89efda402314b3d1730405769d85fe0be896",
+  "baselineRevision": "ae2f9fc83a2f0c08b3f771db83b14e9cef064e5e",
   "retiredExactFiles": {
     "public/oauth2callback.html": "c19855fd5a3f19af1eea1c1fed6e7794a342136223dd60dbead2586d4298fd90"
   },
@@ -7910,7 +7910,7 @@
       ]
     },
     "src/components/engines/EngineCard.js": {
-      "hash": "8d1f38cb4b2fdc8e17d115d8ce8da89a66907b87b1f11183fe1511a54c96708b",
+      "hash": "0ccb41e295e43b492aee71e8db45efc422f556e2b80b230e4c4551f80dd6ad9d",
       "rootCount": 14,
       "roots": [
         "81adfe9b9a0b7365ca7e03789c94d143ced05157fa553c17d5bb4c7adbeeccca",
@@ -7921,7 +7921,7 @@
         "d2cc87b4dd1c4c362436235446ce8ecd152b21e71ea8cd7de97d4dc2e13b8af7",
         "5d13e15706bf06e9265df937cd1cd6ed98cb263f1e4d8fd9fc801aac6eba8a4b",
         "f6298aa8ce41ff392fbb4726a8aa193a8a7ad69b5d928bc2857f7260b6b31a04",
-        "f23ebd387aa17591a9a2866fc465f05eb21facbdad60d80c00baa80b4488971f",
+        "144caece0219cfe0e70e0df5f9a99e67b2dd5f0e16cecac7f302f99c2c894c70",
         "3ac9593db1f3ed3291780ade3a0f26ddcb854c3c77c57338c5e1ca1e04f3f878",
         "6e8467b47c19ab9be121aa4613c00ceb38521e7b96a17e0da922cdf2c3310c1e",
         "5c5d87d76d9218db5df1cc8eeac7021cd144c12ee7f4da058113c87ba41ae312",
@@ -7930,13 +7930,13 @@
       ]
     },
     "src/components/engines/EnginesPanel.js": {
-      "hash": "54324f8b53f894cd6eacd61e586f5891a0a4202155f4333a82be7532bd63ccca",
+      "hash": "e2eb1e02b5bafbbd0c1dffa718015f04fffd6ce1a0dea13ede6e41f2d76d9b30",
       "rootCount": 4,
       "roots": [
         "895916dcc157b1e452c874d7cdbf8c1921e7003ce568cfd6f488ce4836769ad4",
         "aa1a08e55e1b931b0b27f4d90473f96fcb4f5e3df42369d1f042df2673b03304",
         "a9593b2d5fedacd5e3c7033cc7cb471ba0469159c361633ab42983a8d11a211a",
-        "a8a1603a61a0c857419325a21547f3093f3beb3c7d095983aa8a035f55de453d"
+        "b893051009e14dce1d2a47a25e5e417959a106ec47b1f24c32d3ac2d95e169cb"
       ]
     },
     "src/components/engines/NativeToolsList.js": {

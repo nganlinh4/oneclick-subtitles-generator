@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import ast
 import json
 import struct
 import subprocess
@@ -58,6 +59,44 @@ class AsrWorkerContractTests(unittest.TestCase):
     def test_worker_source_compiles_with_the_pinned_python(self) -> None:
         source = WORKER.read_text(encoding="utf-8")
         compile(source, str(WORKER), "exec", dont_inherit=True)
+
+    def test_parakeet_uses_the_fixed_offline_model_kind_and_path_argument(self) -> None:
+        tree = ast.parse(WORKER.read_text(encoding="utf-8"), filename=str(WORKER))
+        calls = [
+            node
+            for node in ast.walk(tree)
+            if isinstance(node, ast.Call)
+            and isinstance(node.func, ast.Name)
+            and node.func.id == "load_model"
+        ]
+        self.assertEqual(len(calls), 1)
+        call = calls[0]
+        self.assertEqual(len(call.args), 2)
+        self.assertIsInstance(call.args[0], ast.Constant)
+        self.assertEqual(call.args[0].value, "nemo-parakeet-tdt-0.6b-v3")
+        self.assertIsInstance(call.args[1], ast.Name)
+        self.assertEqual(call.args[1].id, "model_path")
+
+    def test_cuda_dll_directory_handle_is_retained_for_worker_lifetime(self) -> None:
+        tree = ast.parse(WORKER.read_text(encoding="utf-8"), filename=str(WORKER))
+        assignments = {
+            target.id
+            for node in ast.walk(tree)
+            if isinstance(node, ast.AnnAssign)
+            and isinstance(node.target, ast.Name)
+            for target in [node.target]
+        }
+        self.assertIn("_DLL_DIRECTORY_HANDLES", assignments)
+        retained = [
+            node
+            for node in ast.walk(tree)
+            if isinstance(node, ast.Call)
+            and isinstance(node.func, ast.Attribute)
+            and node.func.attr == "append"
+            and isinstance(node.func.value, ast.Name)
+            and node.func.value.id == "_DLL_DIRECTORY_HANDLES"
+        ]
+        self.assertEqual(len(retained), 1)
 
     def test_invalid_model_capability_is_framed_and_redacted(self) -> None:
         with tempfile.TemporaryDirectory() as directory:

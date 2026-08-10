@@ -112,10 +112,8 @@ status/removal checks.
 
 At the current rewrite checkpoint:
 
-- ASR releases are withheld for all targets.
-- Speech/TTS releases are withheld for all targets.
-- Remotion's Node/Chromium/renderer/native-binary/font/notice runtime releases are withheld for
-  all targets.
+- Windows x64 publishes verified on-demand ASR and speech/TTS packages; other target catalogs are empty.
+- Windows x64 publishes a fully inventoried on-demand Remotion runtime; it is not embedded.
 - Windows x64 downloads the exact reviewed FFmpeg/ffprobe `8.1.2` vendor archive on demand. Linux
   and macOS remain withheld pending equivalent reviewed delivery.
 - Reviewed yt-dlp `2026.07.04` and Deno `2.9.5` releases are catalogued for content-addressed,
@@ -129,34 +127,28 @@ At the current rewrite checkpoint:
   not trigger this path, and the failed media operation is never automatically retried. The native
   host caches checks for 30 minutes, retains two verified rollback generations, and quarantines
   damaged generations before repair.
-- The updater's check-only command is structurally wired but remains disabled until the owner
-  supplies a real signing public key and securely manages the corresponding private key. Update
-  installation is not part of the current command surface.
+- The updater public key is configured and updater artifacts are signed with a private key held
+  outside the repository.
 
-The speech hold also covers complete transitive wheel/native-library inventories, notices,
-offline/per-target validation, and provider-terms review. In particular, the reviewed F5TTS v1
-base weights are `CC-BY-NC-4.0`; a general commercial-capable default needs a different reviewed
-model or an explicit owner-approved product policy and acceptance flow. The frozen custom-model UI
-does not override this boundary: arbitrary model URLs and edits are intentionally not installable
-until a reviewed content-addressed package contract exists.
+The Windows speech catalog includes transitive runtime/model inventories, notices, and offline
+worker proofs. F5TTS v1 weights remain `CC-BY-NC-4.0` and are labeled in the UI. Arbitrary model
+URLs are intentionally not installable; other platforms require their own reproduced packages.
 
-The native-tool ACL contains only `native_tools_catalog`, `native_tools_status`,
-`native_tool_install`, and `native_tool_cancel`. Public catalog/status DTOs
+The native-tool ACL contains `native_tools_catalog`, `native_tools_status`,
+`native_tool_install`, `native_tool_remove`, and `native_tool_cancel`. Public catalog/status DTOs
 do not contain executable paths or upstream URLs. Live consumers hold native leases, so activation
-or a deferred removal may correctly require an application restart. Download runtimes snapshot
+or a deferred removal may correctly require an application restart. The compact Tools tab exposes
+confirmed removal. Download runtimes snapshot
 their executable paths during Tauri startup; therefore the preflight treats a completed install as
 restart-required and never claims immediate activation. The existing media flow reaches
-catalog/status/install/cancel. Native removal remains an internal manager lifecycle used for
-verified cleanup and tests; it is not exposed to the WebView. Download start offers the Windows
+catalog/status/install/cancel, while the compact Tools tab also exposes confirmed removal. Download start offers the Windows
 media-tool package when it is missing and fails closed on targets whose catalog remains empty.
 
-Consequently, source compilation can pass while a distributable runtime package correctly fails
-the stricter release-readiness gate.
+Consequently, source compilation can pass while an unsupported target correctly fails the stricter
+release-readiness gate. Windows x64 currently passes it.
 
-The release-policy portion of that gate also remains blocked until the owner selects the root
-project license, approves the third-party-notice/corresponding-source disclosure policy, and adds
-`THIRD_PARTY_NOTICES.md`. PromptDJ uses the operating-system UI font stack and packages no separate
-font payload.
+The repository carries the selected root MIT license and `THIRD_PARTY_NOTICES.md`. PromptDJ uses
+the operating-system UI font stack and packages no separate font payload.
 
 ## Visual compatibility
 

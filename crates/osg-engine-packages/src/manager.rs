@@ -12,9 +12,13 @@ use uuid::Uuid;
 
 use crate::archive;
 use crate::catalog::{
-    DeliveryCatalog, DeliveryFile, EngineId, PackageCatalog, PackageDelivery, catalog,
+    DeliveryCatalog, DeliveryFile, DeliverySourceKind, EngineId, PackageCatalog, PackageDelivery,
+    catalog,
 };
-use crate::download::{ArchiveFetcher, HttpArchiveFetcher, obtain};
+use crate::delivery_manifest;
+#[cfg(test)]
+use crate::download::FetchRequest;
+use crate::download::{ArchiveFetcher, HttpArchiveFetcher, obtain, obtain_asset};
 use crate::path_security::{
     acquire_store_lock, cleanup_known_tree, collect_regular_files, ensure_direct_child,
     initialize_store, is_link_or_reparse, require_directory, require_regular_file, require_store,
@@ -22,6 +26,7 @@ use crate::path_security::{
 };
 use crate::progress::{OperationPhase, OperationProgress, ProgressSink};
 use crate::receipt;
+use crate::render_catalog::{RenderDeliveryCatalog, RenderPackageId, render_catalog};
 use crate::speech_catalog::{SpeechDeliveryCatalog, SpeechPackageId, speech_catalog};
 use crate::{CancellationToken, PackageError, Result};
 
@@ -39,6 +44,11 @@ pub trait SpeechRuntimeCoordinator: Send + Sync {
     fn quiesce(&self, backend: SpeechPackageId) -> Result<()>;
 }
 
+/// Desktop integration must stop and reap the managed renderer before mutation.
+pub trait RenderRuntimeCoordinator: Send + Sync {
+    fn quiesce(&self, package: RenderPackageId) -> Result<()>;
+}
+
 #[derive(Clone, Debug, Eq, PartialEq, Serialize)]
 #[serde(rename_all = "kebab-case")]
 pub enum PackageState {
@@ -51,6 +61,7 @@ pub enum PackageState {
 
 pub type EnginePackageState = PackageState;
 pub type SpeechPackageState = PackageState;
+pub type RenderPackageState = PackageState;
 
 #[derive(Clone, Debug, Eq, PartialEq, Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -70,6 +81,7 @@ pub struct PackageStatus<K> {
 
 pub type EnginePackageStatus = PackageStatus<EngineId>;
 pub type SpeechPackageStatus = PackageStatus<SpeechPackageId>;
+pub type RenderPackageStatus = PackageStatus<RenderPackageId>;
 
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub enum RemovalOutcome {
@@ -85,6 +97,9 @@ pub struct EnginePackageManager(ManagedPackageManager<EngineId>);
 pub struct SpeechPackageManager(ManagedPackageManager<SpeechPackageId>);
 
 #[derive(Clone)]
+pub struct RenderPackageManager(ManagedPackageManager<RenderPackageId>);
+
+#[derive(Clone)]
 struct ManagedPackageManager<K: 'static>(Arc<ManagerInner<K>>);
 
 struct ManagerInner<K: 'static> {
@@ -96,10 +111,29 @@ struct ManagerInner<K: 'static> {
     activity: Mutex<ActivityState<K>>,
 }
 
+struct PreparedDelivery {
+    effective: PackageDelivery,
+    manifest: delivery_manifest::ValidatedManifest,
+    manifest_path: PathBuf,
+}
+
+#[derive(Clone, Copy)]
+struct InstallStaging<'a, K> {
+    component: K,
+    delivery: &'a PackageDelivery,
+    effective: &'a PackageDelivery,
+    prepared: Option<&'a PreparedDelivery>,
+    staging: &'a Path,
+    target: &'a Path,
+    cancellation: &'a CancellationToken,
+    progress: &'a dyn ProgressSink,
+}
+
 #[derive(Debug)]
 struct ActivityState<K> {
     operations: HashSet<K>,
     leases: HashMap<K, usize>,
+    verified_versions: HashMap<K, String>,
 }
 
 impl<K> Default for ActivityState<K> {
@@ -107,6 +141,7 @@ impl<K> Default for ActivityState<K> {
         Self {
             operations: HashSet::new(),
             leases: HashMap::new(),
+            verified_versions: HashMap::new(),
         }
     }
 }
@@ -124,6 +159,15 @@ impl fmt::Debug for SpeechPackageManager {
     fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
         formatter
             .debug_struct("SpeechPackageManager")
+            .field("inner", &self.0)
+            .finish_non_exhaustive()
+    }
+}
+
+impl fmt::Debug for RenderPackageManager {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        formatter
+            .debug_struct("RenderPackageManager")
             .field("inner", &self.0)
             .finish_non_exhaustive()
     }
@@ -188,6 +232,27 @@ impl ManagedPackageKey for SpeechPackageId {
 
     fn operation_in_progress(self) -> PackageError {
         PackageError::SpeechOperationInProgress(self)
+    }
+}
+
+impl ManagedPackageKey for RenderPackageId {
+    fn as_str(self) -> &'static str {
+        self.as_str()
+    }
+
+    fn label(self) -> &'static str {
+        render_catalog()
+            .iter()
+            .find(|info| info.id == self)
+            .map_or("Unknown render runtime", |info| info.label)
+    }
+
+    fn requires_aligner(self) -> bool {
+        false
+    }
+
+    fn operation_in_progress(self) -> PackageError {
+        PackageError::RenderOperationInProgress(self)
     }
 }
 
@@ -303,6 +368,52 @@ impl SpeechPackageManager {
     }
 }
 
+impl RenderPackageManager {
+    pub fn new(
+        root: impl AsRef<Path>,
+        coordinator: Arc<dyn RenderRuntimeCoordinator>,
+    ) -> Result<Self> {
+        let catalog = RenderDeliveryCatalog::builtin()?;
+        let quiesce = Arc::new(move |package| coordinator.quiesce(package));
+        Ok(Self(ManagedPackageManager::new(
+            root.as_ref(),
+            catalog,
+            quiesce,
+        )?))
+    }
+
+    #[must_use]
+    pub fn status(&self) -> RenderPackageStatus {
+        self.0.status(RenderPackageId::RemotionRuntime)
+    }
+
+    pub fn install(
+        &self,
+        cancellation: &CancellationToken,
+        progress: &dyn ProgressSink,
+    ) -> Result<RenderPackageStatus> {
+        self.0
+            .install(RenderPackageId::RemotionRuntime, cancellation, progress)
+    }
+
+    pub fn remove(
+        &self,
+        cancellation: &CancellationToken,
+        progress: &dyn ProgressSink,
+    ) -> Result<RemovalOutcome> {
+        self.0
+            .remove(RenderPackageId::RemotionRuntime, cancellation, progress)
+    }
+
+    pub fn resolve_for_launch(
+        &self,
+        cancellation: &CancellationToken,
+    ) -> Result<InstalledRenderRuntime> {
+        self.0
+            .resolve_for_launch(RenderPackageId::RemotionRuntime, cancellation)
+    }
+}
+
 impl<K> ManagedPackageManager<K>
 where
     K: ManagedPackageKey,
@@ -352,8 +463,15 @@ where
         for (index, delivery) in releases.iter().enumerate() {
             let root = self.version_root(delivery);
             match fs::symlink_metadata(&root) {
+                Ok(_) if self.is_verified(component, delivery) => {
+                    if first_valid.is_none() {
+                        first_valid = Some((index, delivery));
+                    }
+                    installed_bytes = installed_bytes.saturating_add(delivery.unpacked_size_bytes);
+                }
                 Ok(_) => match receipt::validate_integrity(&root, delivery, &verification) {
                     Ok(()) => {
+                        self.mark_verified(component, delivery);
                         if first_valid.is_none() {
                             first_valid = Some((index, delivery));
                         }
@@ -422,7 +540,10 @@ where
             .ok_or(PackageError::DeliveryUnavailable)?;
         let target = self.version_root(delivery);
         match receipt::validate_integrity(&target, delivery, cancellation) {
-            Ok(()) => return Ok(self.status(component)),
+            Ok(()) => {
+                self.mark_verified(component, delivery);
+                return Ok(self.status(component));
+            }
             Err(PackageError::Cancelled) => return Err(PackageError::Cancelled),
             Err(_) => {}
         }
@@ -430,6 +551,43 @@ where
         self.require_no_leases(component)?;
         cancellation.check()?;
         self.ensure_disk_capacity(delivery)?;
+
+        let effective_delivery = if let Some(manifest_asset) = &delivery.manifest {
+            let manifest_progress = |value| {
+                report_asset_download_progress(
+                    progress,
+                    value,
+                    0,
+                    manifest_asset.size_bytes,
+                    delivery.size_bytes,
+                );
+            };
+            let downloaded = obtain_asset(
+                self.0.fetcher.as_ref(),
+                &self.download_root()?,
+                delivery,
+                manifest_asset,
+                cancellation,
+                &manifest_progress,
+            )?;
+            let manifest = delivery_manifest::read(&downloaded.path, delivery)?;
+            let mut effective = delivery.clone();
+            effective.files = manifest
+                .files
+                .iter()
+                .map(|entry| entry.file.clone())
+                .collect();
+            Some(PreparedDelivery {
+                effective,
+                manifest,
+                manifest_path: downloaded.path,
+            })
+        } else {
+            None
+        };
+        let effective = effective_delivery
+            .as_ref()
+            .map_or(delivery, |prepared| &prepared.effective);
 
         let (_, versions) = self.ensure_component_layout(component)?;
         if target.parent() != Some(versions.as_path()) {
@@ -445,29 +603,166 @@ where
         fs::create_dir(&staging).map_err(|_| PackageError::StoreUnavailable)?;
         require_directory(&staging)?;
 
-        let result: Result<()> = (|| {
-            let archive = obtain(
-                self.0.fetcher.as_ref(),
-                &self.download_root()?,
-                delivery,
-                cancellation,
-                progress,
-            )?;
-            archive::extract(&archive.path, &staging, delivery, cancellation, progress)?;
-            receipt::write(&staging, delivery)?;
-            receipt::validate_integrity(&staging, delivery, cancellation)?;
-            self.publish_staged(&staging, &target, delivery, cancellation, progress)?;
-            let _ = archive.remove_after_success();
-            Ok(())
-        })();
+        let result = self.populate_install_staging(InstallStaging {
+            component,
+            delivery,
+            effective,
+            prepared: effective_delivery.as_ref(),
+            staging: &staging,
+            target: &target,
+            cancellation,
+            progress,
+        });
         if staging.exists() {
-            let _ = cleanup_known_tree(&staging, &receipt::allowed_tree(delivery));
+            let _ = cleanup_known_tree(&staging, &receipt::allowed_tree(effective));
         }
         if result.is_err() {
             let _ = self.remove_empty_component_layout(component);
         }
         result?;
         Ok(self.status(component))
+    }
+
+    fn populate_install_staging(&self, install: InstallStaging<'_, K>) -> Result<()> {
+        if let Some(prepared) = install.prepared {
+            self.populate_manifest_staging(&install, prepared)?;
+        } else {
+            let archive = obtain(
+                self.0.fetcher.as_ref(),
+                &self.download_root()?,
+                install.delivery,
+                install.cancellation,
+                install.progress,
+            )?;
+            archive::extract(
+                &archive.path,
+                install.staging,
+                install.delivery,
+                install.cancellation,
+                install.progress,
+            )?;
+            let _ = archive.remove_after_success();
+        }
+        receipt::write(install.staging, install.effective)?;
+        receipt::validate_structure(install.staging, install.effective)?;
+        self.publish_staged(
+            install.staging,
+            install.target,
+            install.effective,
+            install.cancellation,
+            install.progress,
+        )?;
+        self.mark_verified(install.component, install.effective);
+        Ok(())
+    }
+
+    fn populate_manifest_staging(
+        &self,
+        install: &InstallStaging<'_, K>,
+        prepared: &PreparedDelivery,
+    ) -> Result<()> {
+        receipt::install_delivery_manifest(
+            install.staging,
+            &prepared.manifest_path,
+            install.effective,
+        )?;
+        let mut downloaded_bytes = install
+            .delivery
+            .manifest
+            .as_ref()
+            .map_or(0, |asset| asset.size_bytes);
+        let mut downloaded_sources = Vec::with_capacity(install.delivery.sources.len());
+        for source in &install.delivery.sources {
+            install.cancellation.check()?;
+            let source_progress = |value| {
+                report_asset_download_progress(
+                    install.progress,
+                    value,
+                    downloaded_bytes,
+                    source.asset.size_bytes,
+                    install.delivery.size_bytes,
+                );
+            };
+            let downloaded = obtain_asset(
+                self.0.fetcher.as_ref(),
+                &self.download_root()?,
+                install.delivery,
+                &source.asset,
+                install.cancellation,
+                &source_progress,
+            )?;
+            downloaded_bytes = downloaded_bytes.saturating_add(source.asset.size_bytes);
+            downloaded_sources.push(downloaded);
+        }
+        if downloaded_bytes != install.delivery.size_bytes {
+            return Err(PackageError::InvalidCatalog);
+        }
+        install.progress.on_progress(OperationProgress::new(
+            OperationPhase::Verifying,
+            install.delivery.size_bytes,
+            install.delivery.size_bytes,
+        ));
+        Self::extract_manifest_sources(install, prepared, &downloaded_sources)
+    }
+
+    fn extract_manifest_sources(
+        install: &InstallStaging<'_, K>,
+        prepared: &PreparedDelivery,
+        downloaded_sources: &[crate::download::DownloadedArchive],
+    ) -> Result<()> {
+        let mut expanded = 0_u64;
+        for (source_index, (source, downloaded)) in install
+            .delivery
+            .sources
+            .iter()
+            .zip(downloaded_sources)
+            .enumerate()
+        {
+            let expected = prepared
+                .manifest
+                .files
+                .iter()
+                .filter(|file| file.source_index == source_index)
+                .collect::<Vec<_>>();
+            if expected.is_empty() {
+                return Err(PackageError::InvalidCatalog);
+            }
+            expanded = expanded.saturating_add(match source.kind {
+                DeliverySourceKind::Zip => archive::extract_manifest_source(
+                    &downloaded.path,
+                    install.staging,
+                    &expected,
+                    install.cancellation,
+                    install.progress,
+                    expanded,
+                    install.effective.unpacked_size_bytes,
+                )?,
+                DeliverySourceKind::Raw => {
+                    if expected.len() != 1 {
+                        return Err(PackageError::InvalidCatalog);
+                    }
+                    let expected = &expected[0].file;
+                    let target =
+                        crate::path_security::prepare_target(install.staging, &expected.path)?;
+                    copy_verified_legacy_file(
+                        &downloaded.path,
+                        &target,
+                        expected,
+                        CopyProgress {
+                            cancellation: install.cancellation,
+                            completed_before: expanded,
+                            total: install.effective.unpacked_size_bytes,
+                            progress: install.progress,
+                            phase: OperationPhase::Extracting,
+                        },
+                    )?;
+                    expected.size_bytes
+                }
+            });
+        }
+        (expanded == install.effective.unpacked_size_bytes)
+            .then_some(())
+            .ok_or(PackageError::InvalidCatalog)
     }
 
     fn adopt_legacy(
@@ -485,6 +780,9 @@ where
             .catalog
             .current(&component)
             .ok_or(PackageError::DeliveryUnavailable)?;
+        if delivery.manifest.is_some() {
+            return Err(PackageError::InvalidRequest);
+        }
         if component.requires_aligner() != layout.aligner.is_some() {
             return Err(PackageError::InvalidRequest);
         }
@@ -522,16 +820,20 @@ where
                     &source,
                     &target_file,
                     expected,
-                    cancellation,
-                    copied,
-                    total,
-                    progress,
+                    CopyProgress {
+                        cancellation,
+                        completed_before: copied,
+                        total,
+                        progress,
+                        phase: OperationPhase::Verifying,
+                    },
                 )?;
                 copied = copied.saturating_add(expected.size_bytes);
             }
             receipt::write(&staging, delivery)?;
-            receipt::validate_integrity(&staging, delivery, cancellation)?;
+            receipt::validate_structure(&staging, delivery)?;
             self.publish_staged(&staging, &target, delivery, cancellation, progress)?;
+            self.mark_verified(component, delivery);
             Ok(())
         })();
         if staging.exists() {
@@ -570,6 +872,9 @@ where
             return Ok(RemovalOutcome::Missing);
         }
         for delivery in &existing {
+            if self.is_verified(component, delivery) {
+                continue;
+            }
             match receipt::validate_integrity(&self.version_root(delivery), delivery, cancellation)
             {
                 Ok(()) => {}
@@ -598,7 +903,9 @@ where
             if let Some(parent) = trash.parent() {
                 sync_directory(parent)?;
             }
-            if let Err(error) = receipt::validate_integrity(&trash, delivery, cancellation) {
+            if !self.is_verified(component, delivery)
+                && let Err(error) = receipt::validate_integrity(&trash, delivery, cancellation)
+            {
                 fs::rename(&trash, &source).map_err(|_| PackageError::StoreUnavailable)?;
                 if let Some(parent) = source.parent() {
                     sync_directory(parent)?;
@@ -613,7 +920,8 @@ where
                 removed,
                 total,
             ));
-            cleanup_known_tree(&trash, &receipt::allowed_tree(delivery))?;
+            let allowed = receipt::allowed_tree_at(&trash, delivery)?;
+            cleanup_known_tree(&trash, &allowed)?;
             if let Some(parent) = trash.parent() {
                 sync_directory(parent)?;
             }
@@ -625,6 +933,7 @@ where
             ));
         }
         self.remove_empty_component_layout(component)?;
+        self.clear_verified(component);
         Ok(RemovalOutcome::Removed)
     }
 
@@ -637,9 +946,14 @@ where
         require_store(&self.0.root)?;
         let mut selected = None;
         for delivery in self.0.catalog.releases(&component) {
+            if self.is_verified(component, delivery) {
+                selected = Some(delivery);
+                break;
+            }
             match receipt::validate_integrity(&self.version_root(delivery), delivery, cancellation)
             {
                 Ok(()) => {
+                    self.mark_verified(component, delivery);
                     selected = Some(delivery);
                     break;
                 }
@@ -666,10 +980,34 @@ where
             _lease: lease,
             id: component,
             version: delivery.version.clone(),
+            root,
             python,
             model,
             aligner,
         })
+    }
+
+    fn is_verified(&self, component: K, delivery: &PackageDelivery) -> bool {
+        self.0.activity.lock().is_ok_and(|activity| {
+            activity
+                .verified_versions
+                .get(&component)
+                .is_some_and(|version| version == &delivery.version)
+        })
+    }
+
+    fn mark_verified(&self, component: K, delivery: &PackageDelivery) {
+        if let Ok(mut activity) = self.0.activity.lock() {
+            activity
+                .verified_versions
+                .insert(component, delivery.version.clone());
+        }
+    }
+
+    fn clear_verified(&self, component: K) {
+        if let Ok(mut activity) = self.0.activity.lock() {
+            activity.verified_versions.remove(&component);
+        }
     }
 
     fn begin_operation(&self, component: K) -> Result<OperationGuard<'_, K>> {
@@ -1056,6 +1394,7 @@ pub struct InstalledPackageRuntime<K: Eq + Hash + 'static> {
     _lease: RuntimeLease<K>,
     id: K,
     version: String,
+    root: PathBuf,
     python: PathBuf,
     model: Option<PathBuf>,
     aligner: Option<PathBuf>,
@@ -1063,6 +1402,7 @@ pub struct InstalledPackageRuntime<K: Eq + Hash + 'static> {
 
 pub type InstalledRuntime = InstalledPackageRuntime<EngineId>;
 pub type InstalledSpeechRuntime = InstalledPackageRuntime<SpeechPackageId>;
+pub type InstalledRenderRuntime = InstalledPackageRuntime<RenderPackageId>;
 
 impl<K> fmt::Debug for InstalledPackageRuntime<K>
 where
@@ -1128,6 +1468,23 @@ impl InstalledPackageRuntime<SpeechPackageId> {
     #[must_use]
     pub fn model(&self) -> Option<&Path> {
         self.model.as_deref()
+    }
+}
+
+impl InstalledPackageRuntime<RenderPackageId> {
+    #[must_use]
+    pub fn version(&self) -> &str {
+        &self.version
+    }
+
+    #[must_use]
+    pub fn package_root(&self) -> &Path {
+        &self.root
+    }
+
+    #[must_use]
+    pub fn node(&self) -> &Path {
+        &self.python
     }
 }
 
@@ -1219,14 +1576,20 @@ fn sync_directory(_: &Path) -> Result<()> {
     Ok(())
 }
 
+#[derive(Clone, Copy)]
+struct CopyProgress<'a> {
+    cancellation: &'a CancellationToken,
+    completed_before: u64,
+    total: u64,
+    progress: &'a dyn ProgressSink,
+    phase: OperationPhase,
+}
+
 fn copy_verified_legacy_file(
     source: &Path,
     target: &Path,
     expected: &DeliveryFile,
-    cancellation: &CancellationToken,
-    copied_before: u64,
-    total: u64,
-    progress: &dyn ProgressSink,
+    copy: CopyProgress<'_>,
 ) -> Result<()> {
     let metadata = require_regular_file(source)?;
     if metadata.len() != expected.size_bytes {
@@ -1242,7 +1605,7 @@ fn copy_verified_legacy_file(
     let mut written = 0_u64;
     let mut buffer = vec![0_u8; 256 * 1024].into_boxed_slice();
     loop {
-        cancellation.check()?;
+        copy.cancellation.check()?;
         let read = input
             .read(&mut buffer)
             .map_err(|_| PackageError::InvalidInstall)?;
@@ -1257,10 +1620,10 @@ fn copy_verified_legacy_file(
             .write_all(&buffer[..read])
             .map_err(|_| PackageError::StoreUnavailable)?;
         hasher.update(&buffer[..read]);
-        progress.on_progress(OperationProgress::new(
-            OperationPhase::Verifying,
-            copied_before.saturating_add(written),
-            total,
+        copy.progress.on_progress(OperationProgress::new(
+            copy.phase,
+            copy.completed_before.saturating_add(written),
+            copy.total,
         ));
     }
     if written != expected.size_bytes || format!("{:x}", hasher.finalize()) != expected.sha256 {
@@ -1276,6 +1639,25 @@ fn copy_verified_legacy_file(
         return Err(PackageError::InvalidInstall);
     }
     Ok(())
+}
+
+fn report_asset_download_progress(
+    progress: &dyn ProgressSink,
+    value: OperationProgress,
+    completed_before: u64,
+    asset_size: u64,
+    total: u64,
+) {
+    let local_done = match value.phase {
+        OperationPhase::Downloading => value.bytes_done.min(asset_size),
+        OperationPhase::Verifying if value.basis_points == 10_000 => asset_size,
+        _ => return,
+    };
+    progress.on_progress(OperationProgress::new(
+        OperationPhase::Downloading,
+        completed_before.saturating_add(local_done),
+        total,
+    ));
 }
 
 #[cfg(unix)]
@@ -1348,6 +1730,13 @@ mod tests {
         }
     }
 
+    impl RenderRuntimeCoordinator for TestCoordinator {
+        fn quiesce(&self, _: RenderPackageId) -> Result<()> {
+            self.calls.fetch_add(1, Ordering::Relaxed);
+            Ok(())
+        }
+    }
+
     #[derive(Debug)]
     struct MemoryFetcher {
         archive: Vec<u8>,
@@ -1372,14 +1761,18 @@ mod tests {
     impl ArchiveFetcher for MemoryFetcher {
         fn fetch(
             &self,
-            delivery: &PackageDelivery,
-            target: &Path,
-            resume_from: u64,
-            _: Option<&str>,
-            cancellation: &CancellationToken,
-            progress: &dyn ProgressSink,
+            asset: &crate::catalog::DeliveryAsset,
+            _: &str,
+            request: FetchRequest<'_>,
         ) -> Result<Option<String>> {
-            assert_eq!(delivery.size_bytes, self.archive.len() as u64);
+            let FetchRequest {
+                target,
+                resume_from,
+                cancellation,
+                progress,
+                ..
+            } = request;
+            assert_eq!(asset.size_bytes, self.archive.len() as u64);
             self.offsets.lock().unwrap().push(resume_from);
             let start = usize::try_from(resume_from).unwrap();
             let mut output = fs::OpenOptions::new()
@@ -1401,8 +1794,8 @@ mod tests {
             output.sync_all().unwrap();
             progress.on_progress(OperationProgress::new(
                 OperationPhase::Downloading,
-                delivery.size_bytes,
-                delivery.size_bytes,
+                asset.size_bytes,
+                asset.size_bytes,
             ));
             Ok(Some("\"fixture-v1\"".to_string()))
         }
@@ -1414,12 +1807,9 @@ mod tests {
     impl ArchiveFetcher for PanicFetcher {
         fn fetch(
             &self,
-            _: &PackageDelivery,
-            _: &Path,
-            _: u64,
-            _: Option<&str>,
-            _: &CancellationToken,
-            _: &dyn ProgressSink,
+            _: &crate::catalog::DeliveryAsset,
+            _: &str,
+            _: FetchRequest<'_>,
         ) -> Result<Option<String>> {
             panic!("legacy adoption must not download an archive")
         }
@@ -1735,6 +2125,14 @@ mod tests {
         let model_file = runtime.model().join("config.json");
         drop(runtime);
         fs::write(&model_file, b"other").unwrap();
+        drop(manager);
+        let restarted_fixture = self::fixture();
+        let manager = self::manager(
+            &temp,
+            restarted_fixture.catalog,
+            Arc::new(MemoryFetcher::new(restarted_fixture.archive, false)),
+            Arc::new(TestCoordinator::default()),
+        );
         let corrupt = manager.status(EngineId::Parakeet);
         assert_eq!(corrupt.state, EnginePackageState::Corrupt);
         assert!(!corrupt.installed);
@@ -1959,30 +2357,19 @@ mod tests {
     }
 
     #[test]
-    fn unpublished_speech_catalog_never_quiesces_or_exposes_a_runtime() {
+    fn builtin_speech_catalog_exposes_only_published_platform_deliveries() {
         let temp = tempfile::tempdir().unwrap();
         let coordinator = Arc::new(TestCoordinator::default());
         let manager = SpeechPackageManager::new(temp.path(), coordinator.clone()).unwrap();
         for status in manager.statuses() {
-            assert_eq!(status.state, SpeechPackageState::Unavailable);
-            assert!(!status.delivery_available);
+            if crate::catalog::current_platform() == "windows-x86_64" {
+                assert_eq!(status.state, SpeechPackageState::Missing);
+                assert!(status.delivery_available);
+            } else {
+                assert_eq!(status.state, SpeechPackageState::Unavailable);
+                assert!(!status.delivery_available);
+            }
         }
-        assert_eq!(
-            manager.install(
-                SpeechPackageId::Chatterbox,
-                &CancellationToken::default(),
-                &|_| {},
-            ),
-            Err(PackageError::DeliveryUnavailable)
-        );
-        assert_eq!(
-            manager.remove(
-                SpeechPackageId::Chatterbox,
-                &CancellationToken::default(),
-                &|_| {},
-            ),
-            Err(PackageError::DeliveryUnavailable)
-        );
         assert!(matches!(
             manager.resolve_for_launch(SpeechPackageId::Chatterbox, &CancellationToken::default(),),
             Err(PackageError::InvalidInstall)
@@ -1991,22 +2378,119 @@ mod tests {
     }
 
     #[test]
-    fn unavailable_catalog_never_quiesces_or_invents_an_install() {
+    fn builtin_asr_catalog_exposes_only_published_platform_deliveries() {
         let temp = tempfile::tempdir().unwrap();
         let coordinator = Arc::new(TestCoordinator::default());
         let manager = EnginePackageManager::new(temp.path(), coordinator.clone()).unwrap();
         for status in manager.statuses() {
-            assert_eq!(status.state, EnginePackageState::Unavailable);
+            if crate::catalog::current_platform() == "windows-x86_64" {
+                assert_eq!(status.state, EnginePackageState::Missing);
+                assert!(status.delivery_available);
+            } else {
+                assert_eq!(status.state, EnginePackageState::Unavailable);
+                assert!(!status.delivery_available);
+            }
+        }
+        assert_eq!(coordinator.calls.load(Ordering::Relaxed), 0);
+    }
+
+    #[test]
+    fn builtin_render_catalog_exposes_the_windows_download() {
+        let temp = tempfile::tempdir().unwrap();
+        let coordinator = Arc::new(TestCoordinator::default());
+        let manager = RenderPackageManager::new(temp.path(), coordinator.clone()).unwrap();
+        let status = manager.status();
+        if crate::catalog::current_platform() == "windows-x86_64" {
+            assert_eq!(status.state, RenderPackageState::Missing);
+            assert!(status.delivery_available);
+        } else {
+            assert_eq!(status.state, RenderPackageState::Unavailable);
             assert!(!status.delivery_available);
         }
-        assert_eq!(
-            manager.install(EngineId::Parakeet, &CancellationToken::default(), &|_| {},),
-            Err(PackageError::DeliveryUnavailable)
-        );
-        assert_eq!(
-            manager.remove(EngineId::Parakeet, &CancellationToken::default(), &|_| {},),
-            Err(PackageError::DeliveryUnavailable)
-        );
         assert_eq!(coordinator.calls.load(Ordering::Relaxed), 0);
+    }
+
+    #[test]
+    #[ignore = "downloads and verifies the published Windows Remotion runtime"]
+    fn published_remotion_runtime_installs_launches_and_removes_over_https() {
+        if crate::catalog::current_platform() != "windows-x86_64" {
+            return;
+        }
+        let temp = tempfile::tempdir().unwrap();
+        let coordinator = Arc::new(TestCoordinator::default());
+        let manager = RenderPackageManager::new(temp.path(), coordinator).unwrap();
+        let progress = RecordedProgress::default();
+        let installed = manager
+            .install(&CancellationToken::default(), &progress)
+            .unwrap();
+        assert_eq!(installed.state, RenderPackageState::Installed);
+        let runtime = manager
+            .resolve_for_launch(&CancellationToken::default())
+            .unwrap();
+        assert!(runtime.node().is_file());
+        assert!(
+            runtime
+                .package_root()
+                .join("runtime/remotion-runtime.json")
+                .is_file()
+        );
+        drop(runtime);
+        assert_eq!(
+            manager
+                .remove(&CancellationToken::default(), &progress)
+                .unwrap(),
+            RemovalOutcome::Removed
+        );
+    }
+
+    #[test]
+    #[ignore = "downloads the published Windows runtime and Parakeet model"]
+    fn published_parakeet_installs_launches_and_removes_over_https() {
+        if crate::catalog::current_platform() != "windows-x86_64" {
+            return;
+        }
+        let temp = tempfile::tempdir().unwrap();
+        let coordinator = Arc::new(TestCoordinator::default());
+        let manager = EnginePackageManager::new(temp.path(), coordinator).unwrap();
+        let progress = RecordedProgress::default();
+        let installed = manager
+            .install(EngineId::Parakeet, &CancellationToken::default(), &progress)
+            .unwrap();
+        assert_eq!(installed.state, EnginePackageState::Installed);
+        let runtime = manager
+            .resolve_for_launch(EngineId::Parakeet, &CancellationToken::default())
+            .unwrap();
+        assert!(runtime.python().is_file());
+        assert!(runtime.model().is_dir());
+        drop(runtime);
+        assert_eq!(
+            manager
+                .remove(EngineId::Parakeet, &CancellationToken::default(), &progress)
+                .unwrap(),
+            RemovalOutcome::Removed
+        );
+        let phases = progress
+            .0
+            .lock()
+            .unwrap()
+            .iter()
+            .map(|entry| entry.phase)
+            .collect::<Vec<_>>();
+        assert!(
+            phases
+                .windows(2)
+                .all(|pair| phase_order(pair[0]) <= phase_order(pair[1]))
+        );
+    }
+
+    fn phase_order(phase: OperationPhase) -> u8 {
+        match phase {
+            OperationPhase::Preparing => 0,
+            OperationPhase::Downloading => 1,
+            OperationPhase::Verifying => 2,
+            OperationPhase::Extracting => 3,
+            OperationPhase::Publishing => 4,
+            OperationPhase::Removing => 5,
+        }
     }
 }

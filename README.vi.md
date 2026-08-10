@@ -6,9 +6,9 @@ One-Click Subtitles Generator (OSG) là ứng dụng desktop local-first để t
 đề; tạo thuyết minh và media hỗ trợ; sau đó render video có phụ đề. Bản rewrite hiện tại giữ nguyên
 giao diện cũ, đồng thời thay Electron và hệ thống nhiều server bằng Tauri 2 cùng core Rust.
 
-> **Trạng thái rewrite:** mã nguồn và các contract native đã được triển khai, nhưng chưa có bộ cài
-> đủ điều kiện phát hành. Một số catalog runtime tùy chọn đang cố ý để trống; macOS và Linux chưa
-> được test thực tế. Không dùng các script cài đặt cũ đã xóa và không có bản hosted/Vercel.
+> **Trạng thái rewrite:** Windows x64 có catalog runtime tải theo nhu cầu và cấu hình installer đã
+> ký đủ điều kiện phát hành. Catalog Linux/macOS vẫn để trống cho đến khi có build đúng target và
+> test thiết bị thật. Không dùng script cài cũ đã xóa và không có bản hosted/Vercel.
 
 ## Phần đã chuyển sang native
 
@@ -18,10 +18,10 @@ giao diện cũ, đồng thời thay Electron và hệ thống nhiều server b�
 | Gemini | Rust quản lý transcription, translation, phân tích phụ đề, tạo ảnh, key rotation/cooldown và upload có giới hạn. Mọi model thông thường được công khai đều nhận audio hoặc video. |
 | Provider và âm nhạc | Genius, metadata/OAuth YouTube và phiên Lyria RealTime chạy qua native; secret nằm trong kho credential của hệ điều hành. |
 | Media và download | Pipeline typed cho probe, compatibility, extract, waveform, download và cancel. Bản đóng gói vẫn cần tool đã được review cho từng target. |
-| ASR local | Contract worker cho Parakeet, Faster-Whisper và Qwen3-ASR đã có; package phát hành chưa có. |
-| Thuyết minh | Contract cho F5-TTS, Chatterbox, Edge TTS, gTTS, Gemini Live, reference audio, voice conversion, edit và alignment đã có; package phát hành chưa có. |
-| Render | Điều phối worker Remotion native, bền vững đã có; payload Node/Chromium/Remotion/native binary/font/notice theo target chưa có. |
-| Cập nhật | Lệnh native kiểm tra metadata update sẽ fail-closed cho đến khi chủ repo cung cấp signing public key production; chưa có command cài update. |
+| ASR local | Windows x64 có thể tải và gỡ hoàn toàn Parakeet, Faster-Whisper Turbo/Large-v3 và Qwen3-ASR 0.6B/1.7B đã xác minh. Catalog Linux/macOS vẫn để trống. |
+| Thuyết minh | Windows x64 có thể tải và gỡ hoàn toàn F5-TTS và Chatterbox; Edge TTS, gTTS và Gemini dùng chung worker runtime được quản lý. Trọng số F5 ghi rõ `CC-BY-NC-4.0`. |
+| Render | Windows x64 có thể tải và gỡ hoàn toàn runtime Node/Chrome-for-Testing/Remotion; payload 625 MB không bị nhúng vào installer. |
+| Cập nhật | Public key và cấu hình artifact đã ký đã có; private signing key nằm ngoài repository. |
 
 Có command native không đồng nghĩa runtime tương ứng đã cài được. Khi thiếu tool/model, OSG báo
 không khả dụng; ứng dụng không tự tải binary chưa review và không quay lại các localhost service cũ.
@@ -120,30 +120,25 @@ Ba target còn lại trong matrix là `x86_64-unknown-linux-gnu`, `aarch64-apple
 | yt-dlp | Release direct `2026.07.04` đã review là baseline cho bốn nhóm target. Lần kiểm tra URL đầu tiên sẽ xin xác nhận và cài với tiến trình có thể hủy. Nếu tiến trình yt-dlp đã cài bị lỗi, host chỉ thực hiện một lần kiểm tra release immutable có giới hạn; phiên bản mới được xác minh sẽ được cài song song với binary đang có lease và chỉ kích hoạt sau khi khởi động lại. Ứng dụng không chạy `yt-dlp -U`, không ghi đè binary đang chạy và không tự lặp lại thao tác media đã lỗi. |
 | Deno | Catalog có release direct-upstream `2.9.5`, content-addressed đã review cho bốn nhóm target. Preflight kiểm tra URL dùng cùng bước xác nhận, tiến trình có thể hủy và dừng để yêu cầu khởi động lại trước khi kích hoạt; binary không được bundle hay tải lúc khởi động. |
 | FFmpeg / ffprobe | Windows x64 tải trực tiếp archive vendor `8.1.2` đã khóa hash, chỉ cài hai executable cùng license/build notice và yêu cầu khởi động lại. Linux/macOS vẫn fail-closed cho đến khi có delivery tương đương đã review. |
-| Parakeet / Faster-Whisper / Qwen3-ASR | Catalog chưa có package release được review. |
-| F5-TTS / Chatterbox / Edge TTS / gTTS / Gemini TTS worker | Catalog chưa có package release được review. |
-| Remotion runtime | Catalog chưa có payload Node/Chromium/Remotion/native binary/font/notice được review. |
-| Updater ứng dụng | Chưa cấu hình public key; lệnh chỉ-kiểm-tra trả về unavailable mà không fetch. Command surface hiện chưa cho phép cài update. |
+| Parakeet / Faster-Whisper / Qwen3-ASR | Windows x64 có manifest runtime/model content-addressed, ưu tiên nguồn model chính thức rồi mới dùng bundle pool đã review. Cả năm engine đều cài, chạy với lease và gỡ qua job native typed. |
+| F5-TTS / Chatterbox / Edge TTS / gTTS / Gemini TTS worker | Windows x64 có runtime/model đã xác minh. F5 và Chatterbox tải/gỡ độc lập; các mode provider dùng chung worker runtime. License model F5 là `CC-BY-NC-4.0`. |
+| Remotion runtime | Windows x64 tải archive bundle pool content-addressed 265 MB gồm Node 24.19, Chrome for Testing 149, Remotion 4.0.507, bundle OSG, font Inter đã review và notice; cài khoảng 625 MB và gỡ hoàn toàn được. |
+| Updater ứng dụng | Public key đã cấu hình; artifact updater được ký bằng private key nằm ngoài repository. |
 
-Phần trợ giúp YouTube đang bị đóng băng về mặt hiển thị nên vẫn mô tả callback Web application cũ.
-Với luồng native, hãy tạo Google OAuth client loại **Desktop app**; Rust mở callback loopback
-`127.0.0.1` tạm thời trên cổng do hệ điều hành cấp. Hãy bỏ qua hướng dẫn origin và
-`/oauth2callback.html` đang hiển thị: production bundle cố ý không chứa callback trình duyệt đó.
-Việc sửa nội dung trợ giúp hiển thị cần được phê duyệt visual/content riêng.
+Phần trợ giúp YouTube hiện mô tả đúng OAuth client loại **Desktop app** và callback loopback tạm
+thời; production bundle không chứa callback trình duyệt cũ.
 
-Nội dung trợ giúp API key đang bị đóng băng cũng vẫn nói key được lưu trong trình duyệt. Ở chế độ
-native, giá trị browser cũ chỉ được import một lần rồi xóa; secret đang dùng chỉ nằm trong kho
-credential của hệ điều hành. Việc sửa câu hiển thị này cũng cần phê duyệt nội dung riêng.
+Nội dung trợ giúp API key ghi đúng kho credential của hệ điều hành; giá trị browser cũ chỉ được
+import một lần rồi xóa.
 
-Phân phối speech còn cần inventory đầy đủ cho transitive wheel/native library, notice, kiểm tra
-offline và theo từng nền tảng, cùng review điều khoản provider. Model F5TTS v1 base đã review dùng
-`CC-BY-NC-4.0`, nên không thể làm mặc định chung có khả năng dùng thương mại nếu chưa có model khác
-hoặc policy sản phẩm và acceptance flow được chủ repo phê duyệt rõ ràng.
+Phân phối speech Windows gồm runtime, thư viện bắc cầu, model, notice và kiểm tra worker offline đã
+review. Model F5TTS v1 base vẫn dùng `CC-BY-NC-4.0` và được ghi rõ trong UI.
 
-Capability `manage-native-tools` chỉ công khai command typed cho
-catalog/status/install/cancel; path executable và URL upstream vẫn ở native. OSG sẽ báo khi
+Capability `manage-native-tools` công khai command typed cho
+catalog/status/install/remove/cancel; path executable và URL upstream vẫn ở native. OSG sẽ báo khi
 activation hoặc deferred removal phải chờ restart vì consumer đang giữ tool lease. Flow người dùng
-hiện tại gọi catalog/status/install/cancel từ thao tác media có sẵn; chưa có thao tác gỡ tool. Một
+hiện tại gọi catalog/status/install/cancel từ thao tác media có sẵn; tab Tools compact cho phép gỡ
+đã xác nhận mọi runtime được quản lý. Một
 lần xác nhận duy nhất nêu rõ đúng package cần thiết và license trước khi tải. Tiến trình cài dùng
 toast hiện có với nút hủy rõ ràng; sau khi cài xong, flow không thử lại trên runtime cũ mà yêu cầu
 khởi động lại. FFmpeg/ffprobe chỉ được đề nghị trên Windows x64 từ catalog đã review.

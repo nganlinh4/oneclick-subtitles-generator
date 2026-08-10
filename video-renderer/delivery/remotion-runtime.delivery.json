@@ -1,5 +1,5 @@
 {
-  "schemaVersion": 1,
+  "schemaVersion": 2,
   "protocolVersion": 1,
   "remotionVersion": "4.0.507",
   "worker": {
@@ -7,18 +7,54 @@
     "sizeBytes": 10248,
     "sha256": "3e2c86b00ef2a762f8f83f8306b6523cb020106ea3bd2438129e592a376d97d6"
   },
+  "commands": {
+    "status": "render_package_status",
+    "install": "render_package_install",
+    "remove": "render_package_remove"
+  },
   "platforms": {
-    "x86_64-unknown-linux-gnu": {
+    "linux-x86_64": {
       "releases": []
     },
-    "aarch64-apple-darwin": {
+    "macos-aarch64": {
       "releases": []
     },
-    "x86_64-apple-darwin": {
+    "macos-x86_64": {
       "releases": []
     },
-    "x86_64-pc-windows-msvc": {
-      "releases": []
+    "windows-x86_64": {
+      "releases": [
+        {
+          "version": "4.0.507",
+          "asset": "remotion-runtime-windows-x64-4.0.507-edfdb46a7776760b.manifest.json",
+          "sourceUrl": "",
+          "sizeBytes": 265442457,
+          "sha256": "edfdb46a7776760b5f0cfc6f4e2d8287d10cf183ca236b24d512b49d8faf2540",
+          "unpackedSizeBytes": 624910330,
+          "pythonRelativePath": "runtime/bin/node.exe",
+          "modelRelativePath": null,
+          "files": [],
+          "sources": [
+            {
+              "kind": "zip",
+              "asset": "remotion-runtime-windows-x64-4.0.507-55e34bd249ac7a23.zip",
+              "sizeBytes": 264797695,
+              "sha256": "55e34bd249ac7a23ae7c380914689aec700120dc0b5d06dfa8279dbaf987b904",
+              "urls": [
+                "https://github.com/nganlinh4/screen-goated-toolbox/releases/download/sgt-runtime-bundles/remotion-runtime-windows-x64-4.0.507-55e34bd249ac7a23.zip"
+              ]
+            }
+          ],
+          "manifest": {
+            "asset": "remotion-runtime-windows-x64-4.0.507-edfdb46a7776760b.manifest.json",
+            "sizeBytes": 644762,
+            "sha256": "edfdb46a7776760b5f0cfc6f4e2d8287d10cf183ca236b24d512b49d8faf2540",
+            "urls": [
+              "https://github.com/nganlinh4/screen-goated-toolbox/releases/download/sgt-runtime-bundles/remotion-runtime-windows-x64-4.0.507-edfdb46a7776760b.manifest.json"
+            ]
+          }
+        }
+      ]
     }
   }
 }

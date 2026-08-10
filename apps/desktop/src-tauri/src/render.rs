@@ -3,12 +3,16 @@ use std::fs::{self, File, OpenOptions};
 use std::io::{BufReader, Read, Seek, SeekFrom, Write};
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicUsize, Ordering};
-use std::sync::{Arc, Mutex};
+use std::sync::{Arc, Mutex, RwLock, Weak};
 use std::time::Duration;
 
 use osg_domain::{
     AssetId, JobId, JobKind, JobProgress, JobSnapshot, JobState, JobUpdate, MediaAsset, MediaKind,
     ProjectId,
+};
+use osg_engine_packages::{
+    CancellationToken as PackageCancellationToken, InstalledRenderRuntime, PackageError,
+    RenderPackageId, RenderPackageManager, RenderRuntimeCoordinator,
 };
 use osg_infrastructure::storage::{
     ArtifactDraft, ArtifactFailureCode, ArtifactId, ArtifactKind, ArtifactRegistration,
@@ -49,13 +53,47 @@ pub(crate) struct RenderRuntimeHost {
 }
 
 struct RenderRuntimeInner {
-    engine: Option<RenderEngine>,
-    unavailable_reason: Option<&'static str>,
+    engine: RwLock<Option<LoadedRenderEngine>>,
+    unavailable_reason: RwLock<Option<&'static str>>,
+    package_manager: RwLock<Option<RenderPackageManager>>,
+    worker_candidates: Vec<PathBuf>,
     ffmpeg: Option<PathBuf>,
     staging_root: PathBuf,
     media_server: MediaServer,
     slots: Arc<SlotLimiter>,
     playbacks: Mutex<PlaybackRegistry>,
+}
+
+struct LoadedRenderEngine {
+    engine: RenderEngine,
+    _lease: Option<InstalledRenderRuntime>,
+}
+
+#[derive(Clone)]
+pub(crate) struct RenderPackageCoordinator(Weak<RenderRuntimeInner>);
+
+impl RenderRuntimeCoordinator for RenderPackageCoordinator {
+    fn quiesce(&self, _: RenderPackageId) -> osg_engine_packages::Result<()> {
+        let inner = self.upgrade()?;
+        if inner.slots.active.load(Ordering::Acquire) != 0 {
+            return Err(PackageError::RuntimeBusy);
+        }
+        *inner
+            .engine
+            .write()
+            .map_err(|_| PackageError::StoreUnavailable)? = None;
+        *inner
+            .unavailable_reason
+            .write()
+            .map_err(|_| PackageError::StoreUnavailable)? = Some("runtimePayloadUnavailable");
+        Ok(())
+    }
+}
+
+impl RenderPackageCoordinator {
+    fn upgrade(&self) -> osg_engine_packages::Result<Arc<RenderRuntimeInner>> {
+        self.0.upgrade().ok_or(PackageError::StoreUnavailable)
+    }
 }
 
 impl RenderRuntimeHost {
@@ -68,6 +106,7 @@ impl RenderRuntimeHost {
     ) -> std::io::Result<Self> {
         let staging_root = cache_root.as_ref().join("v1/render");
         fs::create_dir_all(&staging_root)?;
+        let worker_candidates = worker_candidates(resource_root, development_root);
         let runtime = resolve_runtime(resource_root, development_root);
         let unavailable_reason = if runtime.is_none() {
             Some("runtimePayloadUnavailable")
@@ -76,11 +115,18 @@ impl RenderRuntimeHost {
         } else {
             None
         };
-        let engine = runtime.map(RenderEngine::new).filter(|_| ffmpeg.is_some());
+        let engine = runtime
+            .map(|runtime| LoadedRenderEngine {
+                engine: RenderEngine::new(runtime),
+                _lease: None,
+            })
+            .filter(|_| ffmpeg.is_some());
         Ok(Self {
             inner: Arc::new(RenderRuntimeInner {
-                engine,
-                unavailable_reason,
+                engine: RwLock::new(engine),
+                unavailable_reason: RwLock::new(unavailable_reason),
+                package_manager: RwLock::new(None),
+                worker_candidates,
                 ffmpeg,
                 staging_root,
                 media_server,
@@ -94,7 +140,10 @@ impl RenderRuntimeHost {
         let engine = self
             .inner
             .engine
-            .clone()
+            .read()
+            .map_err(|_| CommandError::internal("The render runtime is unavailable."))?
+            .as_ref()
+            .map(|loaded| loaded.engine.clone())
             .ok_or_else(CommandError::render_runtime_unavailable)?;
         let ffmpeg = self
             .inner
@@ -102,6 +151,83 @@ impl RenderRuntimeHost {
             .clone()
             .ok_or_else(CommandError::media_tools_unavailable)?;
         Ok((engine, ffmpeg, self.inner.staging_root.clone()))
+    }
+
+    pub(crate) fn package_coordinator(&self) -> RenderPackageCoordinator {
+        RenderPackageCoordinator(Arc::downgrade(&self.inner))
+    }
+
+    pub(crate) fn attach_package_manager(
+        &self,
+        manager: RenderPackageManager,
+    ) -> CommandResult<()> {
+        let mut slot =
+            self.inner.package_manager.write().map_err(|_| {
+                CommandError::internal("The render package manager is unavailable.")
+            })?;
+        if slot.is_some() {
+            return Err(CommandError::internal(
+                "The render package manager is already attached.",
+            ));
+        }
+        *slot = Some(manager);
+        *self
+            .inner
+            .unavailable_reason
+            .write()
+            .map_err(|_| CommandError::internal("The render runtime is unavailable."))? =
+            Some("runtimePayloadVerifying");
+        Ok(())
+    }
+
+    pub(crate) fn refresh_managed(&self) -> CommandResult<()> {
+        let manager = self
+            .inner
+            .package_manager
+            .read()
+            .map_err(|_| CommandError::internal("The render package manager is unavailable."))?
+            .clone()
+            .ok_or_else(|| CommandError::internal("The render package manager is unavailable."))?;
+        let installed =
+            match manager.resolve_for_launch(&PackageCancellationToken::default()) {
+                Ok(runtime) => runtime,
+                Err(PackageError::InvalidInstall | PackageError::DeliveryUnavailable) => {
+                    *self.inner.engine.write().map_err(|_| {
+                        CommandError::internal("The render runtime is unavailable.")
+                    })? = None;
+                    *self.inner.unavailable_reason.write().map_err(|_| {
+                        CommandError::internal("The render runtime is unavailable.")
+                    })? = Some("runtimePayloadUnavailable");
+                    return Ok(());
+                }
+                Err(error) => return Err(error.into()),
+            };
+        let root = installed.package_root().join("runtime");
+        let runtime = self
+            .inner
+            .worker_candidates
+            .iter()
+            .find_map(|worker| {
+                RenderRuntime::load(&root, worker, WORKER_BYTES, runtime_target()).ok()
+            })
+            .ok_or_else(CommandError::render_runtime_unavailable)?;
+        let available = self.inner.ffmpeg.is_some();
+        *self
+            .inner
+            .engine
+            .write()
+            .map_err(|_| CommandError::internal("The render runtime is unavailable."))? = available
+            .then_some(LoadedRenderEngine {
+                engine: RenderEngine::new(runtime),
+                _lease: Some(installed),
+            });
+        *self
+            .inner
+            .unavailable_reason
+            .write()
+            .map_err(|_| CommandError::internal("The render runtime is unavailable."))? =
+            (!available).then_some("mediaToolsUnavailable");
+        Ok(())
     }
 
     fn register_playback(&self, asset: &MediaAsset, path: &Path) -> CommandResult<RegisteredMedia> {
@@ -156,8 +282,23 @@ impl std::fmt::Debug for RenderRuntimeHost {
     fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         formatter
             .debug_struct("RenderRuntimeHost")
-            .field("available", &self.inner.engine.is_some())
-            .field("reason", &self.inner.unavailable_reason)
+            .field(
+                "available",
+                &self
+                    .inner
+                    .engine
+                    .read()
+                    .is_ok_and(|engine| engine.is_some()),
+            )
+            .field(
+                "reason",
+                &self
+                    .inner
+                    .unavailable_reason
+                    .read()
+                    .ok()
+                    .and_then(|reason| *reason),
+            )
             .field("paths", &"<redacted>")
             .finish_non_exhaustive()
     }
@@ -357,9 +498,18 @@ pub(crate) fn render_runtime_status(
     runtime: State<'_, RenderRuntimeHost>,
 ) -> RenderRuntimeStatusResponse {
     RenderRuntimeStatusResponse {
-        available: runtime.inner.engine.is_some(),
+        available: runtime
+            .inner
+            .engine
+            .read()
+            .is_ok_and(|engine| engine.is_some()),
         remotion_version: REMOTION_VERSION,
-        reason: runtime.inner.unavailable_reason,
+        reason: runtime
+            .inner
+            .unavailable_reason
+            .read()
+            .ok()
+            .and_then(|reason| *reason),
         max_concurrent_renders: MAX_CONCURRENT_RENDERS,
     }
 }
@@ -375,12 +525,12 @@ pub(crate) async fn render_start(
     request: RenderRequest,
     on_event: Channel<RenderEvent>,
 ) -> CommandResult<JobSnapshot> {
-    let (render_engine, ffmpeg, staging_root) = runtime.engine_and_inputs()?;
     let permit = runtime
         .inner
         .slots
         .acquire()
         .ok_or_else(CommandError::render_busy)?;
+    let (render_engine, ffmpeg, staging_root) = runtime.engine_and_inputs()?;
     let media_engine = state
         .media_engine
         .clone()
@@ -1160,14 +1310,12 @@ fn resolve_runtime(
     development_root: Option<&Path>,
 ) -> Option<RenderRuntime> {
     let target = runtime_target();
-    let mut worker_candidates = Vec::new();
+    let worker_candidates = worker_candidates(resource_root, development_root);
     let mut runtime_candidates = Vec::new();
     if let Some(root) = resource_root {
-        worker_candidates.push(root.join("workers/osg_render_worker.mjs"));
         runtime_candidates.push(root.join("render-runtime").join(target));
     }
     if let Some(root) = development_root {
-        worker_candidates.push(root.join("video-renderer/worker/osg_render_worker.mjs"));
         runtime_candidates.push(root.join("local-runtime-bundles/remotion").join(target));
     }
     for runtime_root in runtime_candidates {
@@ -1178,6 +1326,20 @@ fn resolve_runtime(
         }
     }
     None
+}
+
+fn worker_candidates(
+    resource_root: Option<&Path>,
+    development_root: Option<&Path>,
+) -> Vec<PathBuf> {
+    let mut candidates = Vec::new();
+    if let Some(root) = resource_root {
+        candidates.push(root.join("workers/osg_render_worker.mjs"));
+    }
+    if let Some(root) = development_root {
+        candidates.push(root.join("video-renderer/worker/osg_render_worker.mjs"));
+    }
+    candidates
 }
 
 const fn runtime_target() -> &'static str {
@@ -1219,9 +1381,9 @@ mod tests {
         let runtime = RenderRuntimeHost::new(root.path(), None, None, None, media_server)
             .expect("runtime host");
 
-        assert!(runtime.inner.engine.is_none());
+        assert!(runtime.inner.engine.read().unwrap().is_none());
         assert_eq!(
-            runtime.inner.unavailable_reason,
+            *runtime.inner.unavailable_reason.read().unwrap(),
             Some("runtimePayloadUnavailable")
         );
         assert!(format!("{runtime:?}").contains("<redacted>"));

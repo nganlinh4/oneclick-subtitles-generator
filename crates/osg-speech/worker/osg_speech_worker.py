@@ -479,7 +479,9 @@ def _load_chatterbox(multilingual: bool) -> Any:
                 _CHATTERBOX_MULTI = (
                     ChatterboxMultilingualTTS.from_pretrained(_device())
                     if model_root is None
-                    else ChatterboxMultilingualTTS.from_local(model_root, _device())
+                    else _load_local_chatterbox(
+                        ChatterboxMultilingualTTS, model_root, _device(), multilingual=True,
+                    )
                 )
             return _CHATTERBOX_MULTI
         if _CHATTERBOX_EN is None:
@@ -502,6 +504,38 @@ def _load_chatterbox(multilingual: bool) -> Any:
         raise WorkerFailure("model_unavailable") from None
     except Exception:
         raise WorkerFailure("model_unavailable") from None
+
+
+def _load_local_chatterbox(
+    model_class: Any,
+    model_root: Path,
+    device: str,
+    *,
+    multilingual: bool,
+) -> Any:
+    if not multilingual:
+        return model_class.from_local(model_root, device)
+    # chatterbox-tts 0.1.7's multilingual tokenizer calls hf_hub_download
+    # even when from_local() is used. Replace that single lookup while the
+    # constructor runs so Cangjie5_TC.json is resolved from the verified
+    # package and a missing network can never silently disable Chinese text.
+    try:
+        from chatterbox.models.tokenizers import tokenizer as tokenizer_module
+    except ImportError:
+        raise WorkerFailure("model_unavailable") from None
+    expected = _managed_model_file(model_root, "Cangjie5_TC.json")
+    original = tokenizer_module.hf_hub_download
+
+    def local_cangjie(*, repo_id: str, filename: str, **_: Any) -> str:
+        if repo_id != "ResembleAI/chatterbox" or filename != "Cangjie5_TC.json":
+            raise WorkerFailure("model_unavailable")
+        return str(expected)
+
+    tokenizer_module.hf_hub_download = local_cangjie
+    try:
+        return model_class.from_local(model_root, device)
+    finally:
+        tokenizer_module.hf_hub_download = original
 
 
 class _WeightsOnlyTorchProxy:

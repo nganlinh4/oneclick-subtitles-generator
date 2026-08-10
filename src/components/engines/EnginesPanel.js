@@ -16,7 +16,7 @@ import './engines.css';
 // The catalog ASR engines (faster-whisper, qwen3-asr, …) are derived from asrEngines so adding an
 // engine there makes it appear here automatically — no second list to keep in sync.
 const ENGINES = [
-  { id: 'f5tts', name: 'F5-TTS', kind: 'voice-cloning' },
+  { id: 'f5tts', name: 'F5-TTS', kind: 'voice-cloning', license: 'CC-BY-NC-4.0' },
   { id: 'chatterbox', name: 'Chatterbox', kind: 'voice-cloning' },
   { id: 'parakeet', name: 'Nvidia Parakeet', kind: 'transcription' },
   ...ASR_ENGINES.map((e) => ({ id: e.id, name: e.name, kind: 'transcription' })),
@@ -188,6 +188,7 @@ const EnginesPanel = () => {
                 id={engine.id}
                 name={engine.name}
                 kind={engine.kind}
+                license={engine.license}
                 status={{ ...engines[engine.id], package: packages.get(engine.id) }}
                 onChanged={refreshAll}
                 managedByElectron={managedByElectron}

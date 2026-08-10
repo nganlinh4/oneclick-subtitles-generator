@@ -698,7 +698,9 @@ impl From<osg_engine_packages::PackageError> for CommandError {
                 "packageUnavailable",
                 "No verified package is available for this engine and platform.",
             ),
-            PackageError::OperationInProgress(_) | PackageError::SpeechOperationInProgress(_) => (
+            PackageError::OperationInProgress(_)
+            | PackageError::SpeechOperationInProgress(_)
+            | PackageError::RenderOperationInProgress(_) => (
                 "packageOperationInProgress",
                 "Another engine package operation is already active.",
             ),

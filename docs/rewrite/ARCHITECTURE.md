@@ -19,13 +19,11 @@ with trust boundaries in [../../SECURITY.md](../../SECURITY.md).
   release until its target-specific tools, models, notices, updater key, packaging, and runtime
   smoke tests all pass.
 
-At this checkpoint ASR, speech, and Remotion release lists are deliberately empty. yt-dlp and Deno
-have reviewed direct-upstream deliveries on all targets, while Windows x64 also has one reviewed
-direct vendor FFmpeg/ffprobe delivery; none are bundled. The updater
-public key is a placeholder, macOS/Linux still need real-device validation, and the repository
-owner has not yet selected the root project license or approved the third-party-notice and
-corresponding-source policy (`THIRD_PARTY_NOTICES.md` is absent). These are release blockers, not
-reasons to reintroduce a legacy service or bypass a readiness gate.
+Windows x64 now has reviewed on-demand ASR, speech, Remotion, FFmpeg/ffprobe, yt-dlp, and Deno
+deliveries; none are bundled. External immutable sources are preferred and content-addressed
+bundle-pool assets are used only where an official complete artifact is unavailable. The updater
+public key, root MIT license, and third-party notices are present. macOS/Linux still require
+target-built packages and real-device validation and therefore remain fail-closed.
 
 The existing URL-inspection interaction is the only automatic entry into native-tool delivery. It
 checks typed status, asks the user to approve the exact required package-and-license batch,
@@ -43,10 +41,9 @@ operation. Rust caches the lookup for 30 minutes across WebView reloads, retains
 dynamic generations, retires older exact trees only before leases are issued, and quarantines
 modified generations before repair.
 
-Speech packaging also remains blocked on transitive dependency/notices, offline and per-target
-proof, provider-terms review, and a decision about the `CC-BY-NC-4.0` F5TTS v1 base weights. Those
-weights are not a general commercial-capable default without a different model or an explicit
-owner-approved product policy and acceptance flow.
+Windows speech packaging includes transitive dependency/model inventories, notices, and offline
+proof. The F5TTS v1 base weights remain `CC-BY-NC-4.0` and the UI labels that license. Linux and
+macOS remain unpublished until equivalent target-specific proof exists.
 
 ## Compatibility boundary
 

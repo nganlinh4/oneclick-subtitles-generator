@@ -36,6 +36,5 @@ future OSG mirror is accepted only as a byte-identical fallback in an
 append-only immutable release; it must never invent a different component
 identity.
 
-The repository currently has no root `LICENSE` or third-party-notice document.
-That must be resolved before shipping any application release, independently
-of this crate's per-tool notice handling.
+The repository root now carries `LICENSE` and `THIRD_PARTY_NOTICES.md`; the
+release gate checks both independently of this crate's per-tool notice files.

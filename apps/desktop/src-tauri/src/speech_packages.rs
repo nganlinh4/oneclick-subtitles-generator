@@ -763,14 +763,15 @@ mod tests {
     }
 
     #[test]
-    fn empty_reviewed_catalog_fails_closed_for_every_backend() {
+    fn reviewed_catalog_matches_the_current_platform_without_phantom_state() {
         let (_temporary, runtime) = runtime_fixture();
         let status = runtime.status().expect("status");
+        let delivery_expected = cfg!(all(target_os = "windows", target_arch = "x86_64"));
 
         assert_eq!(status.schema_version, SCHEMA_VERSION);
         assert_eq!(status.packages.len(), 5);
         assert!(status.packages.iter().all(|entry| {
-            !entry.package.delivery_available
+            entry.package.delivery_available == delivery_expected
                 && !entry.package.installed
                 && entry.operation.is_none()
         }));

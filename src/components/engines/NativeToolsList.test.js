@@ -5,6 +5,7 @@ import {
   removeNativeTool,
 } from '../../platform/nativeToolsService';
 import NativeToolsList, { NativeToolRow } from './NativeToolsList';
+import { getRenderPackageStatus } from '../../platform/renderPackageService';
 
 vi.mock('react-i18next', () => ({
   useTranslation: () => ({
@@ -12,8 +13,10 @@ vi.mock('react-i18next', () => ({
       const translated = ({
       'engines.nativeKind.media': 'Media processing',
       'engines.nativeKind.downloader': 'Site downloader',
+      'engines.nativeKind.renderer': 'Video renderer',
       'engines.nativeSource.vendor': 'Reviewed vendor',
       'engines.nativeSource.official': 'Official release',
+      'engines.nativeSource.pool': 'Reviewed bundle pool',
       'engines.nativeState.installed': 'Installed and active',
       'engines.nativeState.unavailable': 'No reviewed release for this platform',
       })[key] || fallback || key;
@@ -30,6 +33,12 @@ vi.mock('../../platform/nativeToolsService', () => ({
   getNativeToolsStatus: vi.fn(),
   installNativeTool: vi.fn(),
   removeNativeTool: vi.fn(),
+}));
+vi.mock('../../platform/renderPackageService', () => ({
+  cancelRenderPackageJob: vi.fn(),
+  getRenderPackageStatus: vi.fn(),
+  installRenderPackage: vi.fn(),
+  removeRenderPackage: vi.fn(),
 }));
 
 const catalog = {
@@ -113,4 +122,28 @@ it('surfaces a native schema or IPC failure with a compact retry action', async 
   );
   fireEvent.click(screen.getByRole('button', { name: 'Retry' }));
   await waitFor(() => expect(getNativeToolsStatus).toHaveBeenCalledTimes(2));
+});
+
+it('exposes the downloadable renderer beside the native tools', async () => {
+  getNativeToolsCatalog.mockResolvedValue({ schemaVersion: 1, tools: [catalog] });
+  getNativeToolsStatus.mockResolvedValue({ schemaVersion: 1, tools: [status()] });
+  getRenderPackageStatus.mockResolvedValue({
+    schemaVersion: 1,
+    id: 'remotion-runtime',
+    label: 'Remotion video renderer',
+    deliveryAvailable: true,
+    installed: false,
+    updateAvailable: false,
+    state: 'missing',
+    version: null,
+    availableVersion: '4.0.507',
+    installedBytes: 0,
+    downloadBytes: 265_442_457,
+    availableInstalledBytes: 624_910_330,
+    operation: null,
+  });
+  render(<NativeToolsList />);
+  expect(await screen.findByText('Remotion video renderer')).toBeInTheDocument();
+  expect(screen.getByText(/Reviewed bundle pool/)).toBeInTheDocument();
+  expect(screen.getByRole('button', { name: 'Download' })).toBeInTheDocument();
 });

@@ -24,6 +24,7 @@
   "installedCount": "{{installed}}개 설치됨",
   "downloadSize": "다운로드 {{size}}",
   "diskSize": "디스크 {{size}}",
+  "progressBytes": "{{done}} / {{total}}",
   "electronManaged": "데스크톱 앱에는 이 엔진들이 포함되어 있습니다. 다운로드는 앱 패키지가 관리합니다.",
   "groups": {
     "localAi": "로컬 AI 엔진",
@@ -31,11 +32,21 @@
     "runtime": "런타임 도구",
     "runtimeDetail": "앱에 포함하지 않고 별도로 다운로드"
   },
+  "phase": {
+    "queued": "대기 중",
+    "preparing": "준비 중",
+    "downloading": "다운로드 중",
+    "verifying": "검증 중",
+    "extracting": "압축 해제 중",
+    "publishing": "완료 처리 중",
+    "removing": "제거 중"
+  },
   "error": {
     "installFailed": "설치를 시작할 수 없습니다",
     "startFailed": "엔진을 시작할 수 없습니다",
     "stopFailed": "엔진을 중지할 수 없습니다",
     "uninstallFailed": "제거 실패",
+    "statusLost": "설치 상태를 새로 고칠 수 없습니다. 상태를 다시 확인하세요. 네이티브 작업은 중단되지 않았습니다.",
     "nativeToolProtocol": "데스크톱 호스트가 잘못된 도구 진행 상태를 반환했습니다.",
     "nativeToolFailed": "도구 작업을 시작할 수 없습니다."
   },
@@ -56,11 +67,13 @@
   "nativeKind": {
     "media": "미디어 처리",
     "downloader": "사이트 다운로드",
-    "javascript": "JavaScript 런타임"
+    "javascript": "JavaScript 런타임",
+    "renderer": "비디오 렌더러"
   },
   "nativeSource": {
     "vendor": "검토된 공급업체",
-    "official": "공식 배포본"
+    "official": "공식 배포본",
+    "pool": "검토된 번들 저장소"
   },
   "nativeState": {
     "unavailable": "이 플랫폼에 검토된 배포본 없음",

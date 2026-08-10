@@ -24,6 +24,7 @@
   "installedCount": "{{installed}} đã cài",
   "downloadSize": "Tải xuống {{size}}",
   "diskSize": "{{size}} trên đĩa",
+  "progressBytes": "{{done}} / {{total}}",
   "electronManaged": "Bản desktop đã bao gồm các engine này. Việc tải engine được quản lý bởi gói ứng dụng.",
   "groups": {
     "localAi": "Engine AI cục bộ",
@@ -31,11 +32,21 @@
     "runtime": "Công cụ runtime",
     "runtimeDetail": "Tải riêng, không nhúng trong ứng dụng"
   },
+  "phase": {
+    "queued": "Đang chờ",
+    "preparing": "Đang chuẩn bị",
+    "downloading": "Đang tải xuống",
+    "verifying": "Đang xác minh",
+    "extracting": "Đang giải nén",
+    "publishing": "Đang hoàn tất",
+    "removing": "Đang gỡ"
+  },
   "error": {
     "installFailed": "Không thể bắt đầu cài đặt",
     "startFailed": "Không thể khởi động engine",
     "stopFailed": "Không thể dừng engine",
     "uninstallFailed": "Gỡ cài đặt thất bại",
+    "statusLost": "Không thể làm mới tiến trình cài đặt. Hãy thử lại trạng thái; tác vụ native vẫn được giữ lại.",
     "nativeToolProtocol": "Máy chủ desktop trả về tiến trình công cụ không hợp lệ.",
     "nativeToolFailed": "Không thể bắt đầu thao tác với công cụ."
   },
@@ -56,11 +67,13 @@
   "nativeKind": {
     "media": "Xử lý phương tiện",
     "downloader": "Trình tải từ trang web",
-    "javascript": "Runtime JavaScript"
+    "javascript": "Runtime JavaScript",
+    "renderer": "Trình kết xuất video"
   },
   "nativeSource": {
     "vendor": "Nhà cung cấp đã thẩm định",
-    "official": "Bản phát hành chính thức"
+    "official": "Bản phát hành chính thức",
+    "pool": "Kho gói đã thẩm định"
   },
   "nativeState": {
     "unavailable": "Chưa có bản phát hành đã thẩm định cho nền tảng này",

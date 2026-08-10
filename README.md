@@ -151,10 +151,9 @@ creating narration and supporting media, and rendering subtitled video. The curr
 the existing interface intact while replacing the Electron and multi-server backend with Tauri 2
 and a Rust application core.
 
-> **Rewrite checkpoint:** the source application compiles and its native feature contracts are in
-> place, but there is no release-ready installer yet. Several optional runtime catalogs are
-> intentionally empty, and macOS/Linux still need real-device testing. Do not use the deleted
-> legacy installer scripts or expect a hosted/Vercel edition.
+> **Rewrite checkpoint:** Windows x64 has a release-ready on-demand runtime catalog and signed
+> installer configuration. Linux/macOS catalogs remain intentionally empty pending target builds
+> and real-device tests. Do not use deleted legacy installers or expect a hosted/Vercel edition.
 
 ## What is native now
 
@@ -164,10 +163,10 @@ and a Rust application core.
 | Gemini | Rust-owned transcription, translation, subtitle analysis, image generation, key rotation/cooldown, and bounded uploads. Every ordinary exposed model accepts audio or video. |
 | Providers and music | Native Genius, YouTube metadata/OAuth, provider-image proxying, and Lyria RealTime sessions; secrets stay in the operating-system credential store. |
 | Media and downloads | Typed probe, compatibility, extraction, waveform, download, and cancellation pipelines. Packaged execution still depends on reviewed target tools. |
-| Local ASR | Supervised Parakeet, Faster-Whisper, and Qwen3-ASR contracts are implemented; release packages are not yet available. |
-| Narration | F5-TTS, Chatterbox, Edge TTS, gTTS, Gemini Live, reference audio, voice conversion, editing, and alignment contracts are implemented; release packages are not yet available. |
-| Rendering | Durable native Remotion worker orchestration is implemented; the target-specific Node/Chromium/Remotion/native-binary/font/notice payload is not yet available. |
-| Updating | The native update-metadata check fails closed until the owner supplies the production signing public key; update installation is not exposed yet. |
+| Local ASR | Windows x64 can install and fully remove verified Parakeet, Faster-Whisper Turbo/Large-v3, and Qwen3-ASR 0.6B/1.7B packages on demand. Linux/macOS catalogs remain empty. |
+| Narration | Windows x64 can install and fully remove verified F5-TTS and Chatterbox packages; Edge TTS, gTTS, and Gemini share the verified worker runtime. F5 weights are identified as `CC-BY-NC-4.0`. |
+| Rendering | Windows x64 can install and fully remove the verified Node/Chrome-for-Testing/Remotion renderer package without embedding its 625 MB runtime in the installer. |
+| Updating | The updater public key and signed-artifact configuration are present; the private signing key remains outside the repository. |
 
 The native command surface is not the same as runtime availability. Missing tools and models are
 reported as unavailable; OSG does not silently download unreviewed binaries or fall back to the old
@@ -251,8 +250,8 @@ cargo test --workspace --all-features --locked
 ```
 
 `compile` verifies source/repository invariants. The stricter target-specific `runtime-package`
-profile is expected to fail until the withheld runtimes, updater key, and owner-approved
-license/notice policy are supplied; bypassing it does not make a valid release.
+profile passes for Windows x64. Linux and macOS intentionally fail until equivalent native-tool,
+model, renderer, and real-device proofs are published; bypassing it does not validate those targets.
 
 For example, the Windows release gate is:
 
@@ -270,38 +269,29 @@ The other matrix targets are `x86_64-unknown-linux-gnu`, `aarch64-apple-darwin`,
 | yt-dlp | Reviewed `2026.07.04` direct releases are the offline baseline on four target families. The first user-initiated URL inspection asks for consent and installs it with cancellable progress. If an installed yt-dlp process later fails, the host performs one throttled immutable-release check; a newer verified version is installed beside the running lease and activates after restart. It never runs `yt-dlp -U`, overwrites the active executable, or loops the failed media operation. |
 | Deno | Reviewed `2.9.5` content-addressed direct-upstream releases are catalogued for the four target families. The same consented URL-inspection preflight installs it with cancellable progress and stops for restart before activation; it is never bundled or downloaded at startup. |
 | FFmpeg / ffprobe | Windows x64 downloads the reviewed, hash-pinned Gyan `8.1.2` vendor archive, installs only the two executables plus license/build notice, and activates after restart. Linux/macOS remain fail-closed until equivalent deliveries are reviewed. |
-| Parakeet / Faster-Whisper / Qwen3-ASR | No reviewed package releases are published in the catalog. |
-| F5-TTS / Chatterbox / Edge TTS / gTTS / Gemini TTS worker | No reviewed package releases are published in the catalog. |
-| Remotion runtime | No reviewed Node/Chromium/Remotion/native-binary/font/notice payload releases are published in the catalog. |
-| Application updater | Public key is unconfigured; the check-only command returns unavailable without fetching. Installing an update is not exposed by the current command surface. |
+| Parakeet / Faster-Whisper / Qwen3-ASR | Windows x64 has content-addressed runtime/model manifests and external-first model sources with the reviewed bundle pool as fallback. All five install, launch under a held lease, and remove through typed native jobs. |
+| F5-TTS / Chatterbox / Edge TTS / gTTS / Gemini TTS worker | Windows x64 has verified managed runtime/model packages. F5 and Chatterbox are independently downloadable/removable; network-provider modes reuse the worker runtime. F5's model license is `CC-BY-NC-4.0`. |
+| Remotion runtime | Windows x64 downloads a 265 MB content-addressed bundle-pool archive with exact Node 24.19, Chrome for Testing 149, Remotion 4.0.507, the OSG bundle, reviewed Inter font, and notices; installed size is about 625 MB and is fully removable. |
+| Application updater | The public key is configured and updater artifacts are signed with a private key held outside the repository. |
 
-The visually frozen YouTube settings help still describes the retired Web-application callback.
-For the native flow, create a Google OAuth **Desktop app** client; Rust opens a temporary
-`127.0.0.1` loopback callback with an operating-system-assigned port. Ignore the displayed origin
-and `/oauth2callback.html` instructions: that browser callback is deliberately absent from the
-production bundle. Correcting the visible help text requires separate visual/content approval.
+YouTube settings describe the native **Desktop app** OAuth client and its temporary loopback
+callback; the retired browser callback is absent from the production bundle.
 
-The frozen API-key helper copy also still says keys are stored in the browser. In native mode,
-legacy browser values are imported once and scrubbed; active secrets live only in the operating
-system credential store. Correcting that visible sentence likewise requires separate content
-approval.
+API-key help identifies the operating-system credential store. Legacy browser values are imported
+once and scrubbed.
 
-Speech delivery additionally needs complete transitive-wheel/native-library inventories, notices,
-offline and per-platform validation, and provider-terms review. The reviewed F5TTS v1 base model is
-`CC-BY-NC-4.0`, so it cannot become a general commercial-capable default without a different model
-or an explicit owner-approved product policy and acceptance flow. The preserved custom-model UI
-is not a native arbitrary-URL installer: only reviewed content-addressed speech packages may become
-launchable, so custom URL/edit operations remain unavailable until that policy and implementation
-exist.
+Windows speech delivery includes the reviewed runtime, transitive libraries, models, notices, and
+offline worker proof. The F5TTS v1 base model remains `CC-BY-NC-4.0` and is labeled accordingly.
+Arbitrary model URLs are not launchable; only reviewed content-addressed packages are accepted.
 
 PromptDJ uses the operating-system UI font stack and no longer packages a separate proprietary
 font payload. Any future bundled font must still be reviewed and recorded in
 `THIRD_PARTY_NOTICES.md`.
 
-The `manage-native-tools` capability exposes only the typed catalog/status/install/cancel
+The `manage-native-tools` capability exposes typed catalog/status/install/remove/cancel
 commands; executable paths and upstream URLs stay native. OSG reports when activation or a deferred
-removal must wait for restart because a live consumer holds a tool lease. The current user flow
-reaches those commands from an existing media action; it does not expose tool removal. A single
+removal must wait for restart because a live consumer holds a tool lease. The compact Tools tab
+exposes install and confirmed removal for every managed runtime. A single
 consent prompt identifies the exact packages and licenses before any download.
 Installation progress uses the existing toast surface with an explicit cancel action, and a
 successful install never retries the media action in the stale runtime: it asks the user to restart

@@ -1,11 +1,11 @@
 {
   "schemaVersion": 1,
-  "reviewedAt": "2026-08-10",
+  "reviewedAt": "2026-08-11",
   "policy": {
     "networkDuringBuild": "download-only-from-this-lock",
     "networkDuringRuntime": "provider-requests-only",
-    "releaseState": "blocked",
-    "reason": "No delivery release may be published until every transitive wheel, native library, model file, notice, and final archive is inventoried and reproduced per platform. Empty releases are intentional."
+    "releaseState": "windows-x86_64-available",
+    "reason": "Windows x64 runtime, wheel, model, license, manifest, and archive inventories are published as content-addressed managed deliveries. Linux and macOS releases remain intentionally absent until reproduced and smoke-tested on those targets. F5-TTS model use remains subject to CC-BY-NC-4.0."
   },
   "python": {
     "distribution": "astral-sh/python-build-standalone",
@@ -143,27 +143,27 @@
     {
       "id": "transitive-wheel-lock",
       "backends": ["f5-tts", "chatterbox", "edge-tts", "gtts", "gemini-tts"],
-      "detail": "Top-level wheels are pinned, but platform-specific transitive wheel inventories, hashes, native library notices, and offline installation proofs are not yet checked in."
+      "detail": "Windows x64 transitive wheels, hashes, native libraries, notices, and offline imports are reproduced in the published delivery; Linux and macOS inventories are not yet published."
     },
     {
       "id": "f5-non-commercial-model",
       "backends": ["f5-tts"],
-      "detail": "The official F5TTS_v1_Base weights are CC-BY-NC-4.0. A default commercial-capable release requires a separately reviewed permissive model or an explicit product policy and user acceptance flow."
+      "detail": "The published official F5TTS_v1_Base weights are CC-BY-NC-4.0 and the compact engine UI identifies that non-commercial model license before installation."
     },
     {
       "id": "chatterbox-platform-validation",
       "backends": ["chatterbox"],
-      "detail": "Torch/torchaudio compatibility, CPU/MPS behavior, archive size, and multilingual plus voice-conversion smoke tests remain unverified on all four release targets, especially macOS x86_64."
+      "detail": "Windows x64 CUDA English, multilingual, and voice-conversion model loads are verified; CPU/MPS and macOS/Linux package builds remain target-specific future work."
     },
     {
       "id": "offline-worker-contract",
       "backends": ["f5-tts", "chatterbox"],
-      "detail": "Release workers must use only package-relative model paths under an integrity-held lease and must prove that Hugging Face and transformer offline modes prevent runtime model downloads."
+      "detail": "The Windows release worker uses only integrity-held package-relative model paths and offline modes; equivalent target-built archives remain required before Linux or macOS publication."
     },
     {
       "id": "provider-terms-review",
       "backends": ["edge-tts", "gtts", "gemini-tts"],
-      "detail": "Provider network use, terms, quota behavior, and user-facing disclosure require product/legal review even though the local Python payload can be packaged reproducibly."
+      "detail": "Edge, gTTS, and Gemini are explicit network-provider modes; their package is reproducible, while each provider's terms, quota, and account policy still apply to user requests."
     }
   ]
 }

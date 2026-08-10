@@ -622,4 +622,24 @@ mod tests {
             Err(RenderError::RuntimeUnavailable)
         ));
     }
+
+    #[test]
+    #[ignore = "downloads and verifies the separately published Windows renderer payload"]
+    fn managed_windows_runtime_loads_from_exact_inventory() {
+        let root = std::env::var_os("OSG_REMOTION_RUNTIME_ROOT")
+            .map(PathBuf::from)
+            .expect("OSG_REMOTION_RUNTIME_ROOT must point to the staged managed runtime");
+        let worker = Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join("../../video-renderer/worker/osg_render_worker.mjs");
+        let expected_worker = fs::read(&worker).expect("managed render worker");
+        let runtime =
+            RenderRuntime::load(&root, &worker, &expected_worker, "x86_64-pc-windows-msvc")
+                .expect("managed Windows renderer runtime");
+
+        assert!(runtime.status().available);
+        assert!(runtime.bundle_file_count() >= 70);
+        runtime
+            .verify_execution_payload()
+            .expect("managed execution payload remains exact");
+    }
 }

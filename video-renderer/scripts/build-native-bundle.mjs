@@ -85,19 +85,12 @@ if (fontManifest.schemaVersion !== 1 || !Array.isArray(fontManifest.families)
     || fontManifest.families.length === 0) {
   throw new Error('invalid-native-render-font-manifest');
 }
-const extractFamily = (value) => value.replaceAll(/["']/g, '').split(',')[0].trim();
 const requiredFamilies = new Set(['Inter']);
-for (const relativePath of [
-  'src/components/subtitleCustomization/fontOptions.js',
-  'src/components/subtitleCustomization/presetsPartA.js',
-  'src/components/subtitleCustomization/presetsPartB.js',
-]) {
-  const source = fs.readFileSync(path.join(repositoryRoot, relativePath), 'utf8');
-  const expression = relativePath.endsWith('fontOptions.js')
-    ? /\bvalue:\s*(["'])(.*?)\1/g
-    : /\bfontFamily:\s*(["'])(.*?)\1/g;
-  for (const match of source.matchAll(expression)) requiredFamilies.add(extractFamily(match[2]));
-}
+// The editor intentionally exposes system and user-installed font names too. Requiring every UI
+// choice here previously made an honest redistributable runtime impossible (Arial, Helvetica,
+// Malgun Gothic, and several commercial faces cannot be copied into our payload). The managed
+// pack inventories only fonts that we actually redistribute; unbundled names retain Chromium's
+// normal system-font/fallback behaviour instead of being silently aliased to a fake face.
 const observedFamilies = new Set();
 for (const family of fontManifest.families) {
   if (!family || typeof family.name !== 'string' || family.name !== family.name.trim()

@@ -42,6 +42,7 @@ const EngineCard = ({
   id,
   name,
   kind,
+  license,
   status,
   onChanged,
   managedByElectron = false,
@@ -49,11 +50,15 @@ const EngineCard = ({
 }) => {
   const { t } = useTranslation();
   const packageStatus = status?.package;
-  const { install, cancel, start, stop, uninstall, installing, percent, log, error } = useEngineInstall(
+  const {
+    install, cancel, start, stop, uninstall, installing, percent, log,
+    operation: liveOperation, error,
+  } = useEngineInstall(
     id,
     { reconnect: Boolean(packageStatus?.operation), onStatusChanged: onChanged }
   );
   const packageOperation = packageStatus?.operation || null;
+  const activeOperation = packageOperation || liveOperation;
   const packageInstalling = packageOperation?.action === 'install'
     || packageOperation?.action === 'update';
   const packageRemoving = packageOperation?.action === 'remove';
@@ -72,6 +77,14 @@ const EngineCard = ({
               ? status?.running ? 'ready' : 'installed-stopped'
               : 'not-installed';
   const lastLog = log.length ? log[log.length - 1] : '';
+  const operationProgress = activeOperation
+    ? [
+      t(`engines.phase.${activeOperation.phase}`, activeOperation.phase),
+      activeOperation.totalBytes > 0
+        ? `${formatBytes(activeOperation.bytesDone) || '0 B'} / ${formatBytes(activeOperation.totalBytes)}`
+        : null,
+    ].filter(Boolean).join(' · ')
+    : '';
   const { isDarkTheme, waveColor, waveTrackColor } = useWaveColors();
 
   // Transient transition flags (the underlying status poll catches up a beat later).
@@ -138,7 +151,7 @@ const EngineCard = ({
           <div className="engine-card__wavy">
             <WavyProgressIndicator
               progress={Math.max(0, Math.min(1,
-                packageOperation ? packageOperation.basisPoints / 10000 : (percent || 0) / 100
+                activeOperation ? activeOperation.basisPoints / 10000 : (percent || 0) / 100
               ))}
               animate={true}
               showStopIndicator={true}
@@ -150,7 +163,7 @@ const EngineCard = ({
               stopIndicatorColor={waveColor}
             />
           </div>
-          <button type="button" className="engine-card__cancel" onClick={() => cancel(packageOperation?.job?.id)} title={t('engines.cancel', 'Cancel')} aria-label={t('engines.cancel', 'Cancel')}>
+          <button type="button" className="engine-card__cancel" onClick={() => cancel(activeOperation?.job?.id)} title={t('engines.cancel', 'Cancel')} aria-label={t('engines.cancel', 'Cancel')}>
             <span className="material-symbols-rounded" aria-hidden="true">close</span>
           </button>
         </div>
@@ -160,7 +173,7 @@ const EngineCard = ({
       return (
         <div className="engine-card__installing">
           {loadingRow('engines.uninstalling', 'Uninstalling…')}
-          <button type="button" className="engine-card__cancel" onClick={() => cancel(packageOperation?.job?.id)} title={t('engines.cancel', 'Cancel')} aria-label={t('engines.cancel', 'Cancel')}>
+          <button type="button" className="engine-card__cancel" onClick={() => cancel(activeOperation?.job?.id)} title={t('engines.cancel', 'Cancel')} aria-label={t('engines.cancel', 'Cancel')}>
             <span className="material-symbols-rounded" aria-hidden="true">close</span>
           </button>
         </div>
@@ -259,6 +272,7 @@ const EngineCard = ({
   const stateMeta = [
     t(`engines.kind.${kind}`, kind),
     t(`engines.state.${state}`, state),
+    license || null,
     packageVersion ? `v${packageVersion}` : null,
   ].filter(Boolean).join(' · ');
 
@@ -270,7 +284,7 @@ const EngineCard = ({
           <span className="engine-card__label">{name}</span>
           {isInstalling ? (
             <span className="engine-card__sub engine-card__sub--log" title={lastLog}>
-              {lastLog || t('engines.installing', 'Installing…')}
+              {lastLog || operationProgress || t('engines.installing', 'Installing…')}
             </span>
           ) : (
             <>
