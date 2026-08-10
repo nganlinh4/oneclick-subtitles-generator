@@ -1,7 +1,6 @@
-import React, { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { useTranslation } from 'react-i18next';
-import { API_BASE_URL } from '../../../config';
-import CloseButton from '../../common/CloseButton';
+import { clearCache, getCacheInfo } from '../../../platform/cacheService';
 
 const CacheTab = ({ isActive }) => {
   const { t } = useTranslation();
@@ -17,8 +16,7 @@ const CacheTab = ({ isActive }) => {
     setLoadingCacheInfo(true);
 
     try {
-      const response = await fetch(`${API_BASE_URL}/cache-info`);
-      const data = await response.json();
+      const data = await getCacheInfo();
 
       if (data.success) {
         setCacheDetails(data.details);
@@ -48,11 +46,7 @@ const CacheTab = ({ isActive }) => {
     // Don't reset cacheDetails here to prevent UI flashing
 
     try {
-      const response = await fetch(`${API_BASE_URL}/clear-cache`, {
-        method: 'DELETE'
-      });
-
-      const data = await response.json();
+      const data = await clearCache();
       if (data.success) {
         // Clear localStorage video/subtitle related items
         localStorage.removeItem('current_video_url');
@@ -99,11 +93,7 @@ const CacheTab = ({ isActive }) => {
     setClearingCache(true);
 
     try {
-      const response = await fetch(`${API_BASE_URL}/clear-cache/${cacheType}`, {
-        method: 'DELETE'
-      });
-
-      const data = await response.json();
+      const data = await clearCache(cacheType);
       if (data.success) {
         // Clear localStorage for specific types if needed
         if (cacheType === 'videos' || cacheType === 'subtitles') {
@@ -149,8 +139,7 @@ const CacheTab = ({ isActive }) => {
   // Fetch cache info without showing loading state (to prevent UI flashing)
   const fetchCacheInfoQuietly = async () => {
     try {
-      const response = await fetch(`${API_BASE_URL}/cache-info`);
-      const data = await response.json();
+      const data = await getCacheInfo();
 
       if (data.success) {
         setCacheDetails(data.details);

@@ -1,4 +1,4 @@
-import React, { useState, useRef, useEffect, useCallback } from 'react';
+import { useState, useRef, useEffect, useCallback } from 'react';
 import { getName } from 'iso-639-1';
 import CloseButton from '../../common/CloseButton';
 import CustomDropdown from '../../common/CustomDropdown';
@@ -7,7 +7,7 @@ import '../../../styles/narration/VoiceSelectionModal.css';
 const VoiceSelectionModal = ({ isOpen, onClose, voices, selectedVoice, onVoiceSelect, detectedLanguage, t }) => {
   const [searchTerm, setSearchTerm] = useState('');
   const [selectedCategory, setSelectedCategory] = useState('All');
-  const [modalHeight, setModalHeight] = useState('auto');
+  const [modalHeight] = useState('auto');
   const modalRef = useRef(null);
   const searchInputRef = useRef(null);
   const contentRef = useRef(null);
@@ -27,7 +27,6 @@ const VoiceSelectionModal = ({ isOpen, onClose, voices, selectedVoice, onVoiceSe
       modalElement.style.height = `${currentHeight}px`;
       
       // Force a reflow by reading offsetHeight
-      // eslint-disable-next-line no-unused-expressions
       void modalElement.offsetHeight;
       
       // Now transition to the new height

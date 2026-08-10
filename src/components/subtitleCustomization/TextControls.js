@@ -1,6 +1,5 @@
-import React, { useState } from 'react';
+import { useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import StandardSlider from '../common/StandardSlider';
 import SliderWithValue from '../common/SliderWithValue';
 import { groupFontsByCategory, getFontSupportFlags } from './fontOptions';
 import FontSelectionModal from './FontSelectionModal';

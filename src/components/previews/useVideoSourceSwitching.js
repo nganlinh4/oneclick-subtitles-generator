@@ -1,4 +1,7 @@
 import { useEffect } from 'react';
+import { isLoopbackServiceUrl } from '../../platform/browserOnlyService';
+import { isNativeMediaPlaybackUrl } from '../../platform/mediaService';
+import { fetchBrowserResource } from '../../platform/browserFetch';
 import { dbg } from './videoPreviewDebug';
 
 /**
@@ -43,10 +46,18 @@ const useVideoSourceSwitching = ({
           return;
         }
 
+        // The native media server is already range-capable and guarded by an opaque per-process
+        // capability. Fetching it into a Blob would duplicate the entire file in WebView memory,
+        // disable seeking until the download completes, and persist an immediately stale URL.
+        if (isNativeMediaPlaybackUrl(urlToUse)) {
+          localStorage.setItem('current_file_url', urlToUse);
+          if (onVideoUrlReady) onVideoUrlReady(urlToUse);
+          return;
+        }
+
         // Check if this is an external URL that will cause CORS issues
-        const isExternalUrl = (urlToUse.startsWith('http://') || urlToUse.startsWith('https://')) &&
-                            !urlToUse.startsWith('http://localhost') &&
-                            !urlToUse.startsWith('http://127.0.0.1');
+        const isExternalUrl = (urlToUse.startsWith('http://') || urlToUse.startsWith('https://'))
+          && !isLoopbackServiceUrl(urlToUse);
 
         if (isExternalUrl) {
           // For external URLs, skip blob conversion to avoid CORS errors
@@ -58,7 +69,7 @@ const useVideoSourceSwitching = ({
         }
 
         // Convert server URL to blob to avoid CORS/decoding issues (only for local URLs)
-        const resp = await fetch(urlToUse, { cache: 'no-cache', mode: 'cors' });
+        const resp = await fetchBrowserResource(urlToUse, { cache: 'no-cache', mode: 'cors' });
         if (!resp.ok) throw new Error(`Failed to fetch video for blob: ${resp.status}`);
         const blob = await resp.blob();
         const objectUrl = URL.createObjectURL(blob);
@@ -68,8 +79,8 @@ const useVideoSourceSwitching = ({
         window.__videoBlobMap[objectUrl] = blob;
         // Keep track of last blob to revoke later when replaced
         if (lastBlobUrlRef.current && lastBlobUrlRef.current.startsWith('blob:')) {
-          try { URL.revokeObjectURL(lastBlobUrlRef.current); } catch {}
-          try { if (window.__videoBlobMap) delete window.__videoBlobMap[lastBlobUrlRef.current]; } catch {}
+          try { URL.revokeObjectURL(lastBlobUrlRef.current); } catch { /* URL may already be revoked. */ }
+          try { if (window.__videoBlobMap) delete window.__videoBlobMap[lastBlobUrlRef.current]; } catch { /* Cleanup is best-effort. */ }
         }
         lastBlobUrlRef.current = objectUrl;
         // Notify consumers to switch to blob (acts like uploaded)

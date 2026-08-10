@@ -1,8 +1,26 @@
-import { cancelYoutubeVideoDownload } from "../../../utils/videoDownloader";
-import { cancelDouyinVideoDownload } from "../../../utils/douyinDownloader";
-import { cancelGenericVideoDownload } from "../../../utils/allSitesDownloader";
-import { hasValidTokens } from "../../../services/youtubeApiService";
 import { DEFAULT_GEMINI_MODEL_ID, normalizeMediaModelId } from "../../../config/geminiModels";
+import { cancelDownload as cancelNativeDownload } from "../../../platform/downloadService";
+import {
+  getCredentialAvailability,
+  getCredentialStateSnapshot,
+  initializeCredentialState,
+} from "../../../platform/credentialStateController";
+
+const NATIVE_SECRET_ALIASES = [
+  "gemini_api_key",
+  "gemini_api_keys",
+  "gemini_token",
+  "gemini_blacklisted_keys",
+  "genius_token",
+  "youtube_api_key",
+  "youtube_client_id",
+  "youtube_client_secret",
+  "youtube_oauth_token",
+];
+
+export const getNativeCredentialAvailability = (snapshot, useOAuth = false) => (
+  getCredentialAvailability(snapshot, { useOAuth })
+);
 
 // Gated debug logging (enable in the browser console: localStorage.debug_logs = 'true')
 const DEBUG_LOGS = (typeof window !== 'undefined') && (localStorage.getItem('debug_logs') === 'true');
@@ -13,8 +31,6 @@ const dbg = (...args) => { if (DEBUG_LOGS) console.log(...args); };
  * Closes over the app state setters passed in.
  */
 export const createSettingsHandlers = ({
-  activeTab,
-  selectedVideo,
   currentDownloadId,
   setActiveTab,
   setSelectedVideo,
@@ -39,30 +55,22 @@ export const createSettingsHandlers = ({
    */
   const handleCancelDownload = () => {
     if (currentDownloadId) {
-      // Check the source of the download
-      if (activeTab === "unified-url" && selectedVideo?.source === "douyin") {
-        // Cancel Douyin download
-        cancelDouyinVideoDownload(currentDownloadId);
-      } else if (
-        activeTab === "unified-url" &&
-        selectedVideo?.source === "all-sites"
-      ) {
-        // Cancel generic URL download
-        cancelGenericVideoDownload(currentDownloadId);
-      } else {
-        // Default to YouTube download
-        cancelYoutubeVideoDownload(currentDownloadId);
-      }
+      const resetCancelledState = () => {
+        setIsDownloading(false);
+        setDownloadProgress(0);
+        setCurrentDownloadId(null);
+        setStatus({
+          message: t("download.downloadOnly.cancelled", "Download cancelled"),
+          type: "warning",
+        });
+      };
 
-      // Reset states
-      setIsDownloading(false);
-      setDownloadProgress(0);
-      setCurrentDownloadId(null);
-      setStatus({
-        message: t("download.downloadOnly.cancelled", "Download cancelled"),
-        type: "warning",
-      });
+      return cancelNativeDownload(currentDownloadId).then(
+        resetCancelledState,
+        () => undefined,
+      );
     }
+    return undefined;
   };
 
   /**
@@ -101,10 +109,10 @@ export const createSettingsHandlers = ({
   /**
    * Handle saving API keys and settings
    */
-  const saveApiKeys = (
-    geminiKey,
-    youtubeKey,
-    geniusKey,
+  const saveApiKeys = async (
+    _geminiKey,
+    _youtubeKey,
+    _geniusKey,
     segmentDuration = 5,
     geminiModel,
     timeFormat,
@@ -115,24 +123,9 @@ export const createSettingsHandlers = ({
     enableYoutubeSearchSetting,
     showWaveformLongVideosSetting
   ) => {
-    // Save to localStorage
-    if (geminiKey) {
-      localStorage.setItem("gemini_api_key", geminiKey);
-    } else {
-      localStorage.removeItem("gemini_api_key");
-    }
-
-    if (youtubeKey) {
-      localStorage.setItem("youtube_api_key", youtubeKey);
-    } else {
-      localStorage.removeItem("youtube_api_key");
-    }
-
-    if (geniusKey) {
-      localStorage.setItem("genius_token", geniusKey);
-    } else {
-      localStorage.removeItem("genius_token");
-    }
+    // The desktop settings callback is a compatibility-shaped API. Secret arguments are
+    // intentionally ignored, and legacy aliases are removed before the first async boundary.
+    NATIVE_SECRET_ALIASES.forEach((key) => localStorage.removeItem(key));
 
     // Save segment duration
     if (segmentDuration) {
@@ -211,13 +204,15 @@ export const createSettingsHandlers = ({
 
     // Update state based on the selected authentication method
     const useOAuth = localStorage.getItem("use_youtube_oauth") === "true";
-    const hasOAuthTokens = hasValidTokens();
-
-    setApiKeysSet({
-      gemini: !!geminiKey,
-      youtube: useOAuth ? hasOAuthTokens : !!youtubeKey,
-      genius: !!geniusKey,
-    });
+    try {
+      await initializeCredentialState();
+      setApiKeysSet(getNativeCredentialAvailability(
+        getCredentialStateSnapshot(),
+        useOAuth
+      ));
+    } catch {
+      setApiKeysSet({ gemini: false, youtube: false, genius: false });
+    }
 
     // Show success notification
     setStatus({

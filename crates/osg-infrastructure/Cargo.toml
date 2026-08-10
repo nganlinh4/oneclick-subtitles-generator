@@ -1,0 +1,27 @@
+[package]
+name = "osg-infrastructure"
+version.workspace = true
+authors.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+description = "Private platform adapters for One-Click Subtitles Generator"
+
+[dependencies]
+blake3 = "=1.8.6"
+keyring = { version = "=4.1.6", default-features = false, features = ["v1"] }
+osg-application.workspace = true
+osg-domain.workspace = true
+rusqlite = { version = "0.40.2", default-features = false, features = ["backup", "bundled", "uuid"] }
+rusqlite_migration = "2.6.0"
+secrecy = "=0.10.3"
+serde.workspace = true
+serde_json.workspace = true
+thiserror.workspace = true
+uuid.workspace = true
+zstd = "=0.13.3"
+
+[dev-dependencies]
+tempfile = "3.27.0"
+
+[lints]
+workspace = true

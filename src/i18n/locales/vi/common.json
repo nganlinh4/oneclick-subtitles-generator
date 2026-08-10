@@ -40,5 +40,16 @@
   "slider": "Thanh trượt",
   "sliderEnd": "Điểm cuối thanh trượt",
   "sliderStart": "Điểm đầu thanh trượt",
-  "to": "đến"
+  "to": "đến",
+  "legacyImport": {
+    "selectFolder": "Chọn thư mục dữ liệu OSG trước đây của bạn. Thư mục gốc sẽ được giữ nguyên.",
+    "cancelled": "Đã hủy nhập dữ liệu cũ.",
+    "alreadyImported": "Thư mục dữ liệu cũ này đã được nhập. Các tệp gốc vẫn được giữ nguyên.",
+    "failedItems": "Quá trình nhập dữ liệu cũ đã giữ nguyên các tệp gốc, nhưng có {{count}} mục không thể nhập. Bạn có thể thử lại cùng thư mục một cách an toàn.",
+    "complete": "Đã nhập dữ liệu cũ: nhập {{imported}} mục, bỏ qua {{skipped}} mục. Các tệp gốc vẫn được giữ nguyên; hãy khởi động lại OSG để tải cài đặt đã nhập.",
+    "busy": "Một quá trình nhập dữ liệu cũ khác đang chạy.",
+    "invalid": "Thư mục đó không phải dữ liệu OSG cũ hợp lệ hoặc chứa các mục không an toàn.",
+    "tooLarge": "Thư mục dữ liệu cũ đó vượt quá giới hạn an toàn khi nhập.",
+    "failed": "Không thể hoàn tất việc nhập dữ liệu cũ. Các tệp gốc không bị thay đổi."
+  }
 }

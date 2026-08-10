@@ -1,10 +1,10 @@
-import { getAudioUrl } from '../../../services/narrationService';
-
 import AudioControls from '../components/AudioControls';
 import SubtitleSourceSelection from '../components/SubtitleSourceSelection';
 import ChatterboxControls from '../components/ChatterboxControls';
 import GenerateButton from '../components/GenerateButton';
 import NarrationResults from '../components/NarrationResults';
+
+const getAudioUrl = () => null;
 
 /**
  * Chatterbox narration UI branch. Pure, props-driven component.

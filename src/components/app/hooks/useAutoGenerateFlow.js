@@ -247,7 +247,6 @@ const useAutoGenerateFlow = ({
       let checkCount = 0;
       // Removed timeout - let analysis run as long as needed
       let modalDetected = false;
-      let errorDetected = false;
 
       const checkInterval = setInterval(() => {
         checkCount++;

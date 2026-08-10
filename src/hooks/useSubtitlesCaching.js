@@ -32,7 +32,7 @@ export const resolveCacheIdForGeneration = async ({
     currentVideoUrl,
     t,
     setStatus,
-    debugLog
+    debugLog: _debugLog
 }) => {
     let cacheId = null;
 
@@ -66,7 +66,6 @@ export const resolveCacheIdForGeneration = async ({
         if (input.type.startsWith('video/')) {
             try {
                 const duration = await getVideoDuration(input);
-                // eslint-disable-next-line no-unused-vars
                 const durationMinutes = Math.floor(duration / 60);
 
                 // If video is longer than 30 minutes, show warning and use special processing

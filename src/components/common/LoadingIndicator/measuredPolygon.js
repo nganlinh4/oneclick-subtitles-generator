@@ -14,8 +14,6 @@
  * limitations under the License.
  */
 
-import { Cubic } from "./cubic.js";
-import { RoundedPolygon, Feature } from "./roundedPolygon.js";
 import { ProgressableFeature } from "./featureMapper.js";
 import {
     Point,
@@ -314,20 +312,20 @@ export class MeasuredPolygon {
 export class Measurer {
     /**
      * Returns size of given cubic. It has to be greater or equal to 0.
-     * @param {Cubic} c
+     * @param {Cubic} _c
      * @returns {number}
      */
-    measureCubic(c) {
+    measureCubic(_c) {
         throw new Error("Not implemented");
     }
 
     /**
      * Given a cubic and a measure, finds the parameter t of the cubic at which that measure is reached.
-     * @param {Cubic} c
-     * @param {number} m
+     * @param {Cubic} _c
+     * @param {number} _m
      * @returns {number}
      */
-    findCubicCutPoint(c, m) {
+    findCubicCutPoint(_c, _m) {
         throw new Error("Not implemented");
     }
 }

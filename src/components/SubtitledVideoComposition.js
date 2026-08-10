@@ -1,4 +1,4 @@
-import React, { useMemo } from 'react';
+import { useMemo } from 'react';
 import { AbsoluteFill, useCurrentFrame, Audio, Video, useVideoConfig } from 'remotion';
 
 // Font styles with multilingual support

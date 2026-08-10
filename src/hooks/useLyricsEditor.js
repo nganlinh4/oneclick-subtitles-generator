@@ -3,6 +3,7 @@ import { useTranslation } from 'react-i18next';
 import { useLyricsEditorDrag } from './useLyricsEditorDrag';
 import { useLyricsEditorHistory } from './useLyricsEditorHistory';
 import { useLyricsEditorHelpers } from './useLyricsEditorHelpers';
+import { LYRICS_EDITOR_ACTIONS } from '../platform/durableLyricsHistory';
 
 // Debug logging gate (enable by setting localStorage.debug_logs = 'true')
 const DEBUG_LOGS = (typeof window !== 'undefined') && (localStorage.getItem('debug_logs') === 'true');
@@ -25,16 +26,18 @@ export const useLyricsEditor = (initialLyrics, onUpdateLyrics) => {
   // Undo / redo / checkpoint management (owns history + redo + checkpoint state)
   const {
     history,
-    setHistory,
     redoStack,
-    setRedoStack,
     checkpointHistory,
+    durableCanUndo,
+    durableCanRedo,
     handleUndo,
     handleRedo,
     handleReset,
     createCheckpoint,
     handleJumpToCheckpoint,
-    captureStateBeforeMerge
+    captureStateBeforeMerge,
+    observeExternalLyrics,
+    commitLyricsMutation,
   } = useLyricsEditorHistory({ lyrics, setLyrics, onUpdateLyrics, savedLyrics });
 
   // Drag mechanics (timing drag + sticky cascade)
@@ -44,7 +47,13 @@ export const useLyricsEditor = (initialLyrics, onUpdateLyrics) => {
     endDrag,
     isDragging,
     getLastDragEnd
-  } = useLyricsEditorDrag({ lyrics, setLyrics, onUpdateLyrics, setHistory, isSticky });
+  } = useLyricsEditorDrag({
+    lyrics,
+    setLyrics,
+    onUpdateLyrics,
+    commitLyricsMutation,
+    isSticky,
+  });
 
   // Editing helpers (translation warning + range operations)
   const {
@@ -55,11 +64,17 @@ export const useLyricsEditor = (initialLyrics, onUpdateLyrics) => {
     previewRangeMove,
     commitRangeMove,
     cancelRangeMove
-  } = useLyricsEditorHelpers({ lyrics, setLyrics, onUpdateLyrics, setHistory, setRedoStack });
+  } = useLyricsEditorHelpers({
+    lyrics,
+    setLyrics,
+    onUpdateLyrics,
+    commitLyricsMutation,
+  });
 
   // Sync with incoming lyrics
   useEffect(() => {
     if (initialLyrics && initialLyrics.length > 0) {
+      observeExternalLyrics(initialLyrics);
       setLyrics(initialLyrics);
       if (originalLyrics.length === 0) {
         setOriginalLyrics(JSON.parse(JSON.stringify(initialLyrics)));
@@ -70,7 +85,7 @@ export const useLyricsEditor = (initialLyrics, onUpdateLyrics) => {
       setIsAtOriginalState(JSON.stringify(initialLyrics) === JSON.stringify(originalLyrics));
       setIsAtSavedState(JSON.stringify(initialLyrics) === JSON.stringify(savedLyrics));
     }
-  }, [initialLyrics, originalLyrics, savedLyrics]);
+  }, [initialLyrics, observeExternalLyrics, originalLyrics, savedLyrics]);
 
   // Track whether current lyrics match original lyrics
   useEffect(() => {
@@ -107,42 +122,29 @@ export const useLyricsEditor = (initialLyrics, onUpdateLyrics) => {
   }, [lyrics, savedLyrics]);
 
   const handleDeleteLyric = (index) => {
-    setHistory(prevHistory => [...prevHistory, JSON.parse(JSON.stringify(lyrics))]);
     const updatedLyrics = lyrics.filter((_, i) => i !== index);
-    setLyrics(updatedLyrics);
-    if (onUpdateLyrics) {
-      onUpdateLyrics(updatedLyrics);
-    }
+    commitLyricsMutation(updatedLyrics, LYRICS_EDITOR_ACTIONS.DELETE);
 
     // Show warning about translations
     showTranslationWarning(t('translation.warningDeleted', 'You have deleted a subtitle. Translations may be outdated. Please translate again.'));
   };
 
   const handleTextEdit = (index, newText) => {
-    setHistory(prevHistory => [...prevHistory, JSON.parse(JSON.stringify(lyrics))]);
     const updatedLyrics = lyrics.map((lyric, i) =>
       i === index ? { ...lyric, text: newText } : lyric
     );
-    setLyrics(updatedLyrics);
-    if (onUpdateLyrics) {
-      onUpdateLyrics(updatedLyrics);
-    }
+    commitLyricsMutation(updatedLyrics, LYRICS_EDITOR_ACTIONS.TEXT);
 
     // Show warning about translations
     showTranslationWarning(t('translation.warningEdited', 'You have edited the text of original subtitles. Translations may be outdated. Please translate again.'));
   };
 
   const handleInsertLyric = (index) => {
-    setHistory(prevHistory => [...prevHistory, JSON.parse(JSON.stringify(lyrics))]);
-
     // Handle special case: creating the very first lyric when list is empty
     if (lyrics.length === 0) {
       const newLyric = { text: '', start: 0, end: 2.0 };
       const updatedLyrics = [newLyric];
-      setLyrics(updatedLyrics);
-      if (onUpdateLyrics) {
-        onUpdateLyrics(updatedLyrics);
-      }
+      commitLyricsMutation(updatedLyrics, LYRICS_EDITOR_ACTIONS.INSERT);
       // Show warning about translations
       showTranslationWarning(t('translation.warningInserted', 'You have inserted a new subtitle. Translations may be outdated. Please translate again.'));
       return;
@@ -151,9 +153,15 @@ export const useLyricsEditor = (initialLyrics, onUpdateLyrics) => {
     // Handle special case: inserting at the beginning (before the first lyric)
     if (index < 0 || (index === 0 && lyrics.length > 0)) {
       const firstLyric = lyrics[0];
-      // Create a new lyric before the first one
-      const newStartTime = Math.max(0, firstLyric.start - 2.0); // 2 seconds before first lyric, but not negative
-      const newEndTime = firstLyric.start;
+      const minimumDuration = 0.2;
+      const shift = Math.max(0, minimumDuration - firstLyric.start);
+      const shiftedLyrics = shift === 0 ? lyrics : lyrics.map((lyric) => ({
+        ...lyric,
+        start: lyric.start + shift,
+        end: lyric.end + shift,
+      }));
+      const newEndTime = shiftedLyrics[0].start;
+      const newStartTime = Math.max(0, newEndTime - 2.0);
 
       const newLyric = {
         text: '',
@@ -161,12 +169,9 @@ export const useLyricsEditor = (initialLyrics, onUpdateLyrics) => {
         end: newEndTime
       };
 
-      const updatedLyrics = [newLyric, ...lyrics];
+      const updatedLyrics = [newLyric, ...shiftedLyrics];
 
-      setLyrics(updatedLyrics);
-      if (onUpdateLyrics) {
-        onUpdateLyrics(updatedLyrics);
-      }
+      commitLyricsMutation(updatedLyrics, LYRICS_EDITOR_ACTIONS.INSERT);
 
       // Show warning about translations
       showTranslationWarning(t('translation.warningInserted', 'You have inserted a new subtitle. Translations may be outdated. Please translate again.'));
@@ -190,10 +195,7 @@ export const useLyricsEditor = (initialLyrics, onUpdateLyrics) => {
 
       const updatedLyrics = [...lyrics, newLyric];
 
-      setLyrics(updatedLyrics);
-      if (onUpdateLyrics) {
-        onUpdateLyrics(updatedLyrics);
-      }
+      commitLyricsMutation(updatedLyrics, LYRICS_EDITOR_ACTIONS.INSERT);
 
       // Show warning about translations
       showTranslationWarning(t('translation.warningInserted', 'You have inserted a new subtitle. Translations may be outdated. Please translate again.'));
@@ -210,9 +212,9 @@ export const useLyricsEditor = (initialLyrics, onUpdateLyrics) => {
     let newEndTime = nextLyric.start;
 
     if (gap < minGap) {
-      // Move the next lyric to create minimum gap
-      const lengthToAdd = minGap - gap;
-      newEndTime = nextLyric.start + lengthToAdd;
+      // Reserve one valid minimum-duration cue and move following cues just enough to fit it.
+      newEndTime = newStartTime + minGap;
+      const lengthToAdd = Math.max(0, newEndTime - nextLyric.start);
 
       // Update all following lyrics to maintain gaps
       const updatedLyrics = lyrics.map((lyric, i) => {
@@ -227,7 +229,7 @@ export const useLyricsEditor = (initialLyrics, onUpdateLyrics) => {
       const newLyric = {
         text: '',
         start: newStartTime,
-        end: newEndTime - minGap
+        end: newEndTime
       };
 
       const finalLyrics = [
@@ -236,10 +238,7 @@ export const useLyricsEditor = (initialLyrics, onUpdateLyrics) => {
         ...updatedLyrics.slice(index + 1)
       ];
 
-      setLyrics(finalLyrics);
-      if (onUpdateLyrics) {
-        onUpdateLyrics(finalLyrics);
-      }
+      commitLyricsMutation(finalLyrics, LYRICS_EDITOR_ACTIONS.INSERT);
 
       // Show warning about translations
       showTranslationWarning(t('translation.warningInserted', 'You have inserted a new subtitle. Translations may be outdated. Please translate again.'));
@@ -258,10 +257,7 @@ export const useLyricsEditor = (initialLyrics, onUpdateLyrics) => {
         ...lyrics.slice(index + 1)
       ];
 
-      setLyrics(updatedLyrics);
-      if (onUpdateLyrics) {
-        onUpdateLyrics(updatedLyrics);
-      }
+      commitLyricsMutation(updatedLyrics, LYRICS_EDITOR_ACTIONS.INSERT);
 
       // Show warning about translations
       showTranslationWarning(t('translation.warningInserted', 'You have inserted a new subtitle. Translations may be outdated. Please translate again.'));
@@ -272,9 +268,6 @@ export const useLyricsEditor = (initialLyrics, onUpdateLyrics) => {
   const handleMergeLyrics = (index) => {
     // Make sure there's a next lyric to merge with
     if (index >= lyrics.length - 1) return;
-
-    // Save current state to history
-    setHistory(prevHistory => [...prevHistory, JSON.parse(JSON.stringify(lyrics))]);
 
     const currentLyric = lyrics[index];
     const nextLyric = lyrics[index + 1];
@@ -294,11 +287,7 @@ export const useLyricsEditor = (initialLyrics, onUpdateLyrics) => {
       ...lyrics.slice(index + 2)
     ];
 
-    // Update state
-    setLyrics(updatedLyrics);
-    if (onUpdateLyrics) {
-      onUpdateLyrics(updatedLyrics);
-    }
+    commitLyricsMutation(updatedLyrics, LYRICS_EDITOR_ACTIONS.MERGE);
 
     // Show warning about translations
     showTranslationWarning(t('translation.warningMerged', 'You have merged subtitles. Translations may be outdated. Please translate again.'));
@@ -306,17 +295,7 @@ export const useLyricsEditor = (initialLyrics, onUpdateLyrics) => {
 
   // Handle smart subtitle splitting
   const handleSplitSubtitles = (newLyrics) => {
-    // Save current state to history for undo functionality
-    setHistory(prevHistory => [...prevHistory, JSON.parse(JSON.stringify(lyrics))]);
-
-    // Clear redo stack since we're making a new change
-    setRedoStack([]);
-
-    // Update lyrics with the split subtitles
-    setLyrics(newLyrics);
-    if (onUpdateLyrics) {
-      onUpdateLyrics(newLyrics);
-    }
+    commitLyricsMutation(newLyrics, LYRICS_EDITOR_ACTIONS.SPLIT);
 
     // Show warning about translations
     showTranslationWarning(t('translation.warningSplit', 'You have split subtitles. Translations may be outdated. Please translate again.'));
@@ -365,12 +344,7 @@ export const useLyricsEditor = (initialLyrics, onUpdateLyrics) => {
   // Bulk-apply new subtitle timings (used by the narration-lane smart arrange / drag). Undoable.
   const applyTimings = (newLyrics) => {
     if (!Array.isArray(newLyrics)) return;
-    setHistory(prevHistory => [...prevHistory, JSON.parse(JSON.stringify(lyrics))]);
-    setRedoStack([]);
-    setLyrics(newLyrics);
-    if (onUpdateLyrics) {
-      onUpdateLyrics(newLyrics);
-    }
+    commitLyricsMutation(newLyrics, LYRICS_EDITOR_ACTIONS.APPLY_TIMINGS);
   };
 
   return {
@@ -379,8 +353,8 @@ export const useLyricsEditor = (initialLyrics, onUpdateLyrics) => {
     setIsSticky,
     isAtOriginalState,
     isAtSavedState,
-    canUndo: history.length > 0,
-    canRedo: redoStack.length > 0,
+    canUndo: history.length > 0 || durableCanUndo,
+    canRedo: redoStack.length > 0 || durableCanRedo,
     canJumpToCheckpoint: checkpointHistory.length > 0,
     handleUndo,
     handleRedo,

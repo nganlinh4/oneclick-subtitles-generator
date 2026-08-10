@@ -31,7 +31,7 @@ const ChatterboxControls = ({
     if (!lang) return false;
     if (lang.startsWith('en')) return true;
     return ADVANCED_NON_EN_ENABLED;
-  }, [chatterboxLanguage]);
+  }, [chatterboxLanguage, ADVANCED_NON_EN_ENABLED]);
 
   const slidersDisabledSoft = isGenerating || !supportsAdvanced;
 
@@ -50,11 +50,6 @@ const ChatterboxControls = ({
     setCfgWeight(value);
     // Save to localStorage for persistence
     localStorage.setItem('chatterbox_cfg_weight', value.toString());
-  };
-
-  // Calculate slider fill percentage
-  const calculateFillPercentage = (value, min, max) => {
-    return ((value - min) / (max - min)) * 100;
   };
 
   return (

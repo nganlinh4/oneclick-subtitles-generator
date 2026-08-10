@@ -27,7 +27,7 @@ export const getMaxSegmentDurationSeconds = () => getSegmentDurationMinutes() * 
  * @returns {Promise<number>} - The duration in seconds
  */
 export const getVideoDuration = (mediaFile) => {
-    return new Promise((resolve, reject) => {
+    return new Promise((resolve) => {
         if (!mediaFile) {
             console.error('No media file provided to getVideoDuration');
             // Use a fallback duration instead of failing

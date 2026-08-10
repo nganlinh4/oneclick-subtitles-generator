@@ -1,4 +1,3 @@
-import React from 'react';
 
 /**
  * The native <video> element plus its click/touch (play-pause + double-tap

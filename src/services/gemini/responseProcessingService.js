@@ -12,11 +12,6 @@
 export const processStructuredJsonResponse = (structuredJson, language = null) => {
 
 
-    // Log the language information if available
-    if (language) {
-
-    }
-
     // Convert structured JSON to plain text
     if (typeof structuredJson === 'string') {
         return structuredJson;
@@ -113,7 +108,7 @@ export const processTextResponse = (completedText) => {
                 return jsonArray.join('\n\n');
             }
         } catch (e) {
-
+            // Continue with the original text when it is not a JSON array.
         }
     }
 
@@ -141,7 +136,10 @@ export const processTextResponse = (completedText) => {
 
 
                 // Extract content from the JSON
-                if (jsonData.content) {
+                if (jsonData.title && jsonData.content) {
+
+                    return `${jsonData.title}\n\n${jsonData.content}`;
+                } else if (jsonData.content) {
 
                     return jsonData.content;
                 } else if (jsonData.text) {
@@ -150,9 +148,6 @@ export const processTextResponse = (completedText) => {
                 } else if (jsonData.document) {
 
                     return jsonData.document;
-                } else if (jsonData.title && jsonData.content) {
-
-                    return `${jsonData.title}\n\n${jsonData.content}`;
                 } else {
                     // Extract text fields from the JSON object
                     const textFields = [];
@@ -176,7 +171,7 @@ export const processTextResponse = (completedText) => {
                     }
                 }
             } catch (error) {
-
+                // Continue with selective markdown cleanup when JSON parsing fails.
             }
         }
 

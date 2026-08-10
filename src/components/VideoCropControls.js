@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef, useCallback } from 'react';
+import { useState, useEffect, useRef, useCallback } from 'react';
 import { useTranslation } from 'react-i18next';
 import '../styles/VideoCropControls.css';
 import CanvasSettingsPill from './CanvasSettingsPill';
@@ -64,7 +64,7 @@ const VideoCropControls = ({
   const { videoRect } = useVideoTracking(isEnabled);
 
   // Crop-rectangle drag interaction + working crop state
-  const { tempCrop, setTempCrop, dragType, handlers } = useCropDrag({
+  const { tempCrop, setTempCrop, handlers } = useCropDrag({
     cropAreaRef,
     selectedAspectRatio,
     videoDimensions,

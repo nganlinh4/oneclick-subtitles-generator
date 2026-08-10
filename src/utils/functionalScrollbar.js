@@ -44,7 +44,9 @@ class FunctionalScrollbar {
       if (style.position === 'static') {
         this.container.style.position = 'relative';
       }
-    } catch {}
+    } catch {
+      // Layout inspection can fail for detached elements; defaults still work.
+    }
 
     // Create thumb element
     this.thumb = document.createElement('div');

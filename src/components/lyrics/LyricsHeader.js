@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import { useState, useEffect } from 'react';
 import { useTranslation } from 'react-i18next';
 import SubtitleSplitModal from './SubtitleSplitModal';
 
@@ -9,7 +9,7 @@ const LyricsHeader = ({
   canUndo,
   canRedo,
   canJumpToCheckpoint,
-  isAtOriginalState,
+  isAtOriginalState: _isAtOriginalState,
   isAtSavedState,
   onUndo,
   onRedo,
@@ -39,7 +39,7 @@ const LyricsHeader = ({
 
   // Global keyboard shortcuts for editor actions
   useEffect(() => {
-    const shouldIgnore = (e) => {
+    const shouldIgnore = (_event) => {
       const el = document.activeElement;
       if (!el) return false;
       const tag = el.tagName;

@@ -14,6 +14,10 @@ impl Session {
         self.media = Some(media);
     }
 
+    pub fn clear_media(&mut self) {
+        self.media = None;
+    }
+
     pub fn set_subtitle_track(&mut self, track: SubtitleTrack) {
         self.subtitle_track = Some(track);
     }
@@ -59,8 +63,30 @@ mod tests {
 
         let snapshot = session.snapshot();
         assert_eq!(
-            snapshot.subtitle_track.expect("track").cues[0].text,
+            snapshot.subtitle_track.expect("track").cues()[0].text(),
             "Hello"
         );
+    }
+
+    #[test]
+    fn clearing_media_does_not_discard_the_subtitle_track() {
+        let mut session = Session::default();
+        let directory = tempfile::tempdir().expect("temporary directory");
+        let media_path = directory.path().join("clip.mp4");
+        std::fs::write(&media_path, b"media").expect("media fixture");
+        session.set_media(crate::inspect_media(&media_path).expect("valid media"));
+        session.set_subtitle_track(
+            SubtitleTrack::new(
+                "English".to_owned(),
+                TrackOrigin::Srt,
+                vec![SubtitleCue::new(0, 1_000, "Hello".to_owned()).expect("valid cue")],
+            )
+            .expect("valid track"),
+        );
+
+        session.clear_media();
+        let snapshot = session.snapshot();
+        assert!(snapshot.media.is_none());
+        assert!(snapshot.subtitle_track.is_some());
     }
 }

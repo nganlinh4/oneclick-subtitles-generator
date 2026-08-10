@@ -35,7 +35,7 @@ export const base64ToArrayBuffer = (base64) => {
  * @param {number} bitsPerSample - Bits per sample (default: 16)
  * @returns {Float32Array} - Converted Float32Array
  */
-export const pcmToFloat32 = (pcmData, bitsPerSample = 16) => {
+export const pcmToFloat32 = (pcmData, _bitsPerSample = 16) => {
   try {
 
 

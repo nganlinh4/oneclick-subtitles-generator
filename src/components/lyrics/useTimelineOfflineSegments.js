@@ -1,12 +1,13 @@
 import { useState, useEffect, useCallback } from 'react';
 import { EVENTS, subscribe } from '../../events/bus';
+import { clearCache } from '../../platform/cacheService';
 
 // Hook owning offline-segments loading/management state plus the clear/retry
 // handlers and the retry-completion event listeners (with cleanup).
 // State that the parent also reads (offlineSegments, retryingOfflineKeys,
 // hoveredOfflineRange, clearInfoVisible) is returned so it can render and
 // gate hover logic; setHoveredOfflineRange is threaded back for canvas hover.
-export const useTimelineOfflineSegments = ({ onSegmentSelect, t }) => {
+export const useTimelineOfflineSegments = ({ onSegmentSelect }) => {
     // Offline segments lingering after processing (for quick retry from cached cuts)
     const [offlineSegments, setOfflineSegments] = useState([]); // [{ start, end, url, name }]
     const [hoveredOfflineRange, setHoveredOfflineRange] = useState(null);
@@ -36,7 +37,9 @@ export const useTimelineOfflineSegments = ({ onSegmentSelect, t }) => {
                             delete cache0[videoKey];
                             localStorage.setItem('offline_segments_cache', JSON.stringify(cache0));
                         }
-                    } catch { }
+                    } catch {
+                        // Corrupt legacy cache entries are discarded below.
+                    }
                     setOfflineSegments([]);
                     sessionStorage.setItem(SESSION_FLAG, '1');
                     return; // don't load any list on first session restore
@@ -47,7 +50,9 @@ export const useTimelineOfflineSegments = ({ onSegmentSelect, t }) => {
                 const cache = raw ? JSON.parse(raw) : {};
                 const list = (videoKey && Array.isArray(cache[videoKey])) ? cache[videoKey] : [];
                 setOfflineSegments(list);
-            } catch { }
+            } catch {
+                // Corrupt legacy cache entries behave as an empty cache.
+            }
         };
 
         loadOrResetOffline();
@@ -67,25 +72,15 @@ export const useTimelineOfflineSegments = ({ onSegmentSelect, t }) => {
         return () => window.removeEventListener('offline-segment-cached', onCached);
     }, []);
 
-    // Clear all offline segments: remove cache and delete files on server (fire-and-forget)
+    // Clear all offline segments and their native cache entries (fire-and-forget).
     const handleClearOfflineSegments = useCallback(() => {
         try {
             const urls = (offlineSegments || []).map(r => r.url).filter(Boolean);
             if (urls.length > 0) {
                 try {
-                    const controller = new AbortController();
-                    const timeoutId = setTimeout(() => controller.abort(), 1500); // don't let UI wait on Windows file locks
-                    // Fire and forget - do not await
-                    fetch('http://localhost:3031/api/delete-videos', {
-                        method: 'POST',
-                        headers: { 'Content-Type': 'application/json' },
-                        body: JSON.stringify({ urls }),
-                        signal: controller.signal
-                    })
-                        .catch((e) => {
-                            console.warn('[Timeline] Failed to call delete-videos (non-blocking):', e);
-                        })
-                        .finally(() => clearTimeout(timeoutId));
+                    clearCache('videoTemp').catch((error) => {
+                        console.warn('[Timeline] Failed to clear native video cache (non-blocking):', error);
+                    });
                 } catch (e) {
                     console.warn('[Timeline] Failed to initiate delete-videos (non-blocking):', e);
                 }
@@ -104,23 +99,29 @@ export const useTimelineOfflineSegments = ({ onSegmentSelect, t }) => {
                         localStorage.setItem('offline_segments_cache', JSON.stringify(cache));
                     }
                 }
-            } catch { }
+            } catch {
+                // Local cache cleanup is best-effort; UI state remains authoritative.
+            }
 
             // Update UI state regardless of backend outcome
             setOfflineSegments([]);
             setHoveredOfflineRange(null); // Clear hover state immediately
-            try { window.dispatchEvent(new CustomEvent('offline-segments-cleared')); } catch { }
+            try {
+                window.dispatchEvent(new CustomEvent('offline-segments-cleared'));
+            } catch {
+                // Event dispatch is best-effort during document teardown.
+            }
 
             // Show a subtle inline confirmation instead of a toast
             setClearInfoVisible(true);
-            try { setTimeout(() => setClearInfoVisible(false), 4000); } catch { }
+            setTimeout(() => setClearInfoVisible(false), 4000);
         } catch (e) {
             console.error('[Timeline] Error clearing offline segments (UI proceeded):', e);
             // Even on unexpected errors, keep UI consistent
             setOfflineSegments([]);
             setHoveredOfflineRange(null); // Clear hover state immediately
         }
-    }, [offlineSegments, t]);
+    }, [offlineSegments]);
 
     // Retry an offline range: open processing modal with locked settings
     const handleRetryOfflineRange = useCallback((range) => {

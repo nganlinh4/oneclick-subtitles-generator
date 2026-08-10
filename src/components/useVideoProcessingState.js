@@ -110,7 +110,7 @@ const useVideoProcessingState = ({
         if (isVercelMode && method === 'old') {
             setMethod('new');
         }
-    }, [isVercelMode]);
+    }, [isVercelMode, method]);
 
     // Processing options state with localStorage persistence
     const [fps, setFps] = useState(() => {
@@ -275,7 +275,9 @@ const useVideoProcessingState = ({
                 sessionStorage.removeItem('processing_modal_open_with_retry');
                 sessionStorage.removeItem('processing_modal_cached_url');
                 sessionStorage.removeItem('processing_modal_open_reason');
-            } catch { }
+            } catch {
+                // Session cleanup remains best effort when storage is unavailable.
+            }
             setRetryLock(false);
         }
     }, [isOpen]);
@@ -316,7 +318,7 @@ const useVideoProcessingState = ({
         if (!outsideContext.available && useOutsideResultsContext) {
             setUseOutsideResultsContext(false);
         }
-    }, [outsideContext.available]);
+    }, [outsideContext.available, useOutsideResultsContext]);
 
     useEffect(() => {
         localStorage.setItem('video_processing_use_outside_context', useOutsideResultsContext ? 'true' : 'false');

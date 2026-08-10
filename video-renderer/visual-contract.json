@@ -1,0 +1,39 @@
+{
+  "schemaVersion": 2,
+  "normalization": "utf8-lf",
+  "files": {
+    "src/components/SubtitledVideo.tsx": "14eca2f193e3a31bd394556254cf437347179070a4c2a1f1d08252617d13d4ea",
+    "src/components/SubtitleCustomization.tsx": "338ee0a404805785fd1d31795df8557e7a239e82116d3582e05d228cdcfac9aa",
+    "src/remotion/Composition.tsx": "784953cb0dc36c0a52ccec0de3f294532c0686a2707d94b288850d7c5bbe7a7a",
+    "src/remotion/root.tsx": "8520bd9b5250b8775719e76d58abdb6d53cce979722ca3d99356797e60dfb818",
+    "src/types.ts": "32ffc3fee8e71337b590600fa70c4c08ce7e7dc38242bd81581a864b38fb5145"
+  },
+  "originalVisualBaseline": {
+    "revision": "d600caf22ad91d9835e771883cb81fac577a8824",
+    "fingerprint": "frontend-schema-2-render-surface",
+    "renderSurfaces": {
+      "src/components/SubtitledVideo.tsx": {
+        "hash": "58f7a590c6a700b508d603e348f50ce262204ab6a400f1999c78cd36acefc26c",
+        "rootCount": 1,
+        "roots": [
+          "2d85ba8f6b803443f9745738b9a1c2f57dc6d1088f63cd7c940c9af220385fa5"
+        ]
+      },
+      "src/remotion/Composition.tsx": {
+        "hash": "68f7910d0ebd88305b5374f7f1e22da32ad5c89acfcc9b24b01d98346973a937",
+        "rootCount": 1,
+        "roots": [
+          "a7a1eec87c0b4eb6f13d20bbe38c02a77deac7988a308122dc9d3b2ab29f8baa"
+        ]
+      },
+      "src/remotion/root.tsx": {
+        "hash": "5c197a05f47b08d998efc82da79e12e44a931d932e688580b6bbddc4fce6001b",
+        "rootCount": 2,
+        "roots": [
+          "eab7058f09e2317c30eaf8ae55e116fe249b6a9fa0657b79843ab3960ab21ad7",
+          "7eeee6fac94cb8aef641e3612f8526616fbb251f74b10cc8e8e088fa64d5cb68"
+        ]
+      }
+    }
+  }
+}

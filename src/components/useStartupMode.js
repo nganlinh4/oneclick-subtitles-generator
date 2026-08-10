@@ -1,10 +1,12 @@
 import { useState, useEffect } from 'react';
+import { isDesktopRuntime } from '../platform/desktopRuntime';
+import { detectStartupMode } from '../platform/startupService';
 
 /**
  * Tracks whether the app runs in Vercel/hosted "npm start" mode (no local backend features) vs a
  * normal local run. Heavy-engine availability is no longer a global flag — it's per-engine via
- * useEngineStatus. Seeds from localStorage, mirrors cross-tab `storage` changes, and (only when the
- * mode was never cached) fetches `/api/startup-mode` once to resolve and persist it.
+ * useEngineStatus. Seeds from localStorage, mirrors cross-tab `storage` changes, and resolves an
+ * uncached browser mode or revalidates the deterministic native desktop mode.
  *
  * @returns {{ isVercelMode: boolean }}
  */
@@ -29,23 +31,20 @@ const useStartupMode = () => {
         (async () => {
             try {
                 const exists = localStorage.getItem('is_vercel_mode');
-                if (exists === null) {
-                    const API_BASE_URL = process.env.REACT_APP_API_BASE_URL || 'http://localhost:3031';
-                    const resp = await fetch(`${API_BASE_URL}/api/startup-mode`, {
-                        mode: 'cors',
-                        credentials: 'include',
-                        headers: { 'Accept': 'application/json' }
-                    });
-                    if (!aborted && resp.ok) {
-                        const data = await resp.json();
-                        const isVercel = !!data.isStart || !!data.isVercel;
-                        setIsVercelMode(isVercel);
+                if (isDesktopRuntime() || exists === null) {
+                    const startupMode = await detectStartupMode();
+                    if (!aborted && startupMode.backendAvailable) {
+                        setIsVercelMode(startupMode.isVercelMode);
                         try {
-                            localStorage.setItem('is_vercel_mode', isVercel ? 'true' : 'false');
-                        } catch { }
+                            localStorage.setItem('is_vercel_mode', startupMode.isVercelMode ? 'true' : 'false');
+                        } catch {
+                            // Compatibility metadata is optional in the native runtime.
+                        }
                     }
                 }
-            } catch { }
+            } catch {
+                // Startup detection is retried by the native health path.
+            }
         })();
 
         return () => {

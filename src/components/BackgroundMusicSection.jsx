@@ -4,7 +4,18 @@ import '../styles/BackgroundMusicSection.css';
 import '../styles/components/panel-resizer.css';
 
 import { useTranslation } from 'react-i18next';
-import { getCurrentKey } from '../services/gemini/keyManager';
+import {
+  getActiveGeminiCredentialId,
+  initializeCredentialState,
+  subscribeCredentialState,
+} from '../platform/credentialStateController';
+import { isDesktopRuntime } from '../platform/desktopRuntime';
+import {
+  applyLiveMusicControl,
+  closeLiveMusicSession,
+  startLiveMusicSession,
+  updateLiveMusicPrompts,
+} from '../platform/liveMusicService';
 import CustomDropdown from './common/CustomDropdown';
 import MaterialSwitch from './common/MaterialSwitch';
 import HelpIcon from './common/HelpIcon.jsx';
@@ -42,45 +53,22 @@ const BackgroundMusicSection = () => {
   const [midiInputs, setMidiInputs] = useState([]); // [{id, name}]
   const [activeMidiId, setActiveMidiId] = useState('');
 
-  const midiAppUrl = useMemo(() => 'http://127.0.0.1:3037/', []);
-
-  // Build a same-origin wrapper page that embeds the remote promptdj app and
-  // relays messages between parent and inner iframe.
-  const wrapperHtml = useMemo(() => {
-    const innerSrc = midiAppUrl;
-    const html = `<!doctype html>
+  const nativeRuntime = useMemo(() => isDesktopRuntime(), []);
+  const promptDjOrigin = useMemo(() => window.location.origin, []);
+  const midiAppUrl = useMemo(
+    () => new URL('/promptdj/index.html', window.location.origin).href,
+    []
+  );
+  const wrapperHtml = useMemo(() => `<!doctype html>
 <html>
 <head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1" /></head>
 <body style="margin:0;padding:0;background:#111;color:#eee;">
-  <iframe id="inner" title="promptdj-inner" src="${innerSrc}" allow="microphone; midi; autoplay" style="border:0;width:100%;height:100vh"></iframe>
-  <script>
-  (function(){
-    const inner = document.getElementById('inner');
-
-    function postUp(msg){ try { window.parent && window.parent.postMessage(msg, '*'); } catch(e){} }
-    function postDown(msg){ try { inner.contentWindow && inner.contentWindow.postMessage(msg, '*'); } catch(e){} }
-
-    // Relay messages from parent to inner
-    window.addEventListener('message', async (ev) => {
-      const d = ev.data; if (!d || typeof d !== 'object') return;
-      // Forward all messages to inner app
-      postDown(d);
-    });
-
-    // Relay all messages from inner up to parent unchanged so existing parent
-    // code continues to work (midi inputs/state, any custom events)
-    window.addEventListener('message', (ev) => {
-      // If the message originated from the inner frame, bubble it up
-      if (ev.source === inner.contentWindow) {
-        postUp(ev.data);
-      }
-    });
-  })();
-  </script>
+  <iframe id="promptdj-inner" title="promptdj-inner" src="${midiAppUrl}" allow="microphone; midi; autoplay" style="border:0;width:100%;height:100vh"></iframe>
 </body>
-</html>`;
-    return html;
-  }, [midiAppUrl]);
+</html>`, [midiAppUrl]);
+  const liveSessionRef = useRef(null);
+  const liveStartRef = useRef(null);
+  const closeAfterStartRef = useRef(false);
 
   // Resizer refs and handlers for panel height
   const panelRef = useRef(null);
@@ -106,9 +94,13 @@ const BackgroundMusicSection = () => {
   const endResize = useCallback(() => {
     if (!resizingRef.current) return;
     resizingRef.current = false;
-    try { document.body.style.cursor = ''; document.body.style.userSelect = ''; } catch {}
+    try { document.body.style.cursor = ''; document.body.style.userSelect = ''; } catch {
+      // The panel can unmount while a resize gesture is ending.
+    }
     const finalH = Math.round(panelRef.current?.offsetHeight || latestHeightRef.current || 600);
-    try { localStorage.setItem('bg_music_panel_height', String(finalH)); } catch {}
+    try { localStorage.setItem('bg_music_panel_height', String(finalH)); } catch {
+      // Persisting the optional panel preference is best effort.
+    }
     // Remove all possible listeners
     window.removeEventListener('pointermove', onAnyMove);
     window.removeEventListener('pointerup', endResize);
@@ -128,8 +120,12 @@ const BackgroundMusicSection = () => {
     setIsResizing(true);
     startYRef.current = (e.clientY ?? (e.touches && e.touches[0] && e.touches[0].clientY) ?? 0);
     startHeightRef.current = panelRef.current?.offsetHeight || latestHeightRef.current || panelHeight;
-    try { document.body.style.cursor = 'row-resize'; document.body.style.userSelect = 'none'; } catch {}
-    try { e.currentTarget.setPointerCapture?.(e.pointerId); } catch {}
+    try { document.body.style.cursor = 'row-resize'; document.body.style.userSelect = 'none'; } catch {
+      // Detached documents can reject transient style changes.
+    }
+    try { e.currentTarget.setPointerCapture?.(e.pointerId); } catch {
+      // Pointer capture is optional on compatibility WebViews.
+    }
     window.addEventListener('pointermove', onAnyMove);
     window.addEventListener('pointerup', endResize);
     window.addEventListener('pointercancel', endResize);
@@ -141,39 +137,64 @@ const BackgroundMusicSection = () => {
     window.addEventListener('blur', endResize);
   }
 
-  const postApiKeyToIframe = useCallback(() => {
-    const apiKey = getCurrentKey?.() || localStorage.getItem('gemini_api_key') || '';
-    if (!apiKey) {
-      return;
+  const getPromptDjWindow = useCallback(() => {
+    try {
+      return iframeRef.current?.contentDocument
+        ?.getElementById('promptdj-inner')?.contentWindow || null;
+    } catch {
+      return null;
     }
-    if (!iframeRef.current?.contentWindow) return;
-    const lang = (typeof i18n?.language === 'string' && i18n.language) ? i18n.language : (localStorage.getItem('preferred_language') || 'en');
-    iframeRef.current.contentWindow.postMessage({ type: 'pm-dj-set-api-key', apiKey, lang }, '*');
-  }, [i18n]);
+  }, []);
+
+  const postToPromptDj = useCallback((message, transfer = []) => {
+    const target = getPromptDjWindow();
+    if (!target) return;
+    try { target.postMessage(message, promptDjOrigin, transfer); } catch {
+      // The iframe may be navigating or already destroyed.
+    }
+  }, [getPromptDjWindow, promptDjOrigin]);
+
+  const postNativeAvailability = useCallback(async () => {
+    if (!nativeRuntime) {
+      postToPromptDj({ type: 'pm-dj-native-init', available: false });
+      return false;
+    }
+    try {
+      await initializeCredentialState();
+      const available = getActiveGeminiCredentialId() !== null;
+      postToPromptDj({ type: 'pm-dj-native-init', available });
+      return available;
+    } catch {
+      postToPromptDj({ type: 'pm-dj-native-init', available: false });
+      return false;
+    }
+  }, [nativeRuntime, postToPromptDj]);
 
   const postResetToIframe = useCallback(() => {
-    if (!iframeRef.current?.contentWindow) return;
-    iframeRef.current.contentWindow.postMessage({ type: 'pm-dj-reset' }, '*');
-  }, []);
+    postToPromptDj({ type: 'pm-dj-reset' });
+  }, [postToPromptDj]);
 
   const startRecording = useCallback(() => {
     if (!iframeRef.current?.contentWindow) return;
     if (recordingUrl) {
-      try { URL.revokeObjectURL(recordingUrl); } catch {}
+      try { URL.revokeObjectURL(recordingUrl); } catch {
+        // Revoking an already-released recording URL is harmless.
+      }
     }
     setRecordingUrl('');
     setRecordingStartTime(Date.now());
-    iframeRef.current.contentWindow.postMessage({ type: 'pm-dj-start-recording' }, '*');
-  }, [recordingUrl]);
+    postToPromptDj({ type: 'pm-dj-start-recording' });
+  }, [postToPromptDj, recordingUrl]);
 
   const stopRecording = useCallback(() => {
-    if (!iframeRef.current?.contentWindow) return;
-    iframeRef.current.contentWindow.postMessage({ type: 'pm-dj-stop-recording' }, '*');
-  }, []);
+    postToPromptDj({ type: 'pm-dj-stop-recording' });
+  }, [postToPromptDj]);
 
   const clearReferenceAudio = useCallback(() => {
     if (recordingUrl) {
-      try { URL.revokeObjectURL(recordingUrl); } catch {}
+      try { URL.revokeObjectURL(recordingUrl); } catch {
+        // Revoking an already-released recording URL is harmless.
+      }
     }
     setRecordingUrl('');
   }, [recordingUrl]);
@@ -195,7 +216,9 @@ const BackgroundMusicSection = () => {
 	  useEffect(() => {
 	    return () => {
 	      if (recordingUrl) {
-	        try { URL.revokeObjectURL(recordingUrl); } catch {}
+	        try { URL.revokeObjectURL(recordingUrl); } catch {
+	          // Revoking an already-released recording URL is harmless.
+	        }
 	      }
 	    };
 	  }, [recordingUrl]);
@@ -203,26 +226,98 @@ const BackgroundMusicSection = () => {
 
   // Propagate language changes to iframe
   useEffect(() => {
-    if (!iframeRef.current?.contentWindow) return;
     const lang = (typeof i18n?.language === 'string' && i18n.language) ? i18n.language : (localStorage.getItem('preferred_language') || 'en');
-    iframeRef.current.contentWindow.postMessage({ type: 'pm-dj-set-lang', lang }, '*');
-  }, [i18n?.language]);
+    postToPromptDj({ type: 'pm-dj-set-lang', lang });
+  }, [i18n?.language, postToPromptDj]);
 
   // Receive messages from the iframe
   useEffect(() => {
-    function onMessage(event) {
-      try {
-        // Accept messages from same-origin (production/preview) and local dev servers
-        const allowed = new Set([
-          window.location.origin,
-          'http://127.0.0.1:3037',
-          'http://localhost:3037',
-        ]);
-        if (event.origin && !allowed.has(event.origin)) return;
-      } catch {}
+    const postFailure = (code, message) => {
+      postToPromptDj({
+        type: 'pm-dj-native-event',
+        payload: { event: 'failed', error: { code, message } },
+      });
+    };
 
+    const handleNativeStart = (weightedPrompts) => {
+      if (!nativeRuntime || liveStartRef.current || liveSessionRef.current) {
+        postFailure('liveMusicUnavailable', 'The native live music service is unavailable.');
+        return;
+      }
+      let terminal = false;
+      const start = (async () => {
+        try {
+          await initializeCredentialState();
+          const credentialId = getActiveGeminiCredentialId();
+          if (!credentialId) {
+            postToPromptDj({ type: 'pm-dj-native-init', available: false });
+            postFailure('liveMusicCredentialUnavailable', 'A Gemini credential is required.');
+            return;
+          }
+          const session = await startLiveMusicSession({ credentialId, weightedPrompts }, {
+            onEvent: (payload) => {
+              if (payload.event === 'closed' || payload.event === 'failed') {
+                terminal = true;
+                liveSessionRef.current = null;
+              }
+              postToPromptDj({ type: 'pm-dj-native-event', payload });
+            },
+            onAudio: (pcm) => {
+              postToPromptDj({ type: 'pm-dj-native-audio', pcm }, [pcm]);
+            },
+            onProtocolError: () => {
+              postFailure('liveMusicProtocolFailed', 'The native live music stream is invalid.');
+            },
+          });
+          if (!terminal) liveSessionRef.current = session;
+          if (closeAfterStartRef.current && !terminal) {
+            closeAfterStartRef.current = false;
+            await closeLiveMusicSession(session.id).catch(() => undefined);
+          }
+        } catch {
+          postFailure('liveMusicUnavailable', 'The native live music service is unavailable.');
+        }
+      })();
+      liveStartRef.current = start;
+      start.finally(() => {
+        if (liveStartRef.current === start) liveStartRef.current = null;
+      });
+    };
+
+    const handleNativeUpdate = (weightedPrompts) => {
+      const session = liveSessionRef.current;
+      if (!session) return;
+      updateLiveMusicPrompts(session.id, weightedPrompts).catch(() => {
+        postFailure('liveMusicUpdateFailed', 'The live music prompts could not be updated.');
+      });
+    };
+
+    const handleNativeControl = (control) => {
+      const session = liveSessionRef.current;
+      if (!session || !['play', 'pause', 'stop', 'resetContext'].includes(control)) return;
+      applyLiveMusicControl(session.id, control).catch(() => {
+        postFailure('liveMusicControlFailed', 'The live music control could not be applied.');
+      });
+    };
+
+    const handleNativeClose = () => {
+      const session = liveSessionRef.current;
+      if (!session) {
+        if (liveStartRef.current) closeAfterStartRef.current = true;
+        return;
+      }
+      closeLiveMusicSession(session.id).catch(() => undefined);
+    };
+
+    function onMessage(event) {
+      if (event.source !== getPromptDjWindow() || event.origin !== promptDjOrigin) return;
       const data = event.data;
-      if (!data || typeof data !== 'object') return;
+      if (!data || typeof data !== 'object' || typeof data.type !== 'string') return;
+
+      if (data.type === 'pm-dj-native-start') handleNativeStart(data.weightedPrompts);
+      if (data.type === 'pm-dj-native-update') handleNativeUpdate(data.weightedPrompts);
+      if (data.type === 'pm-dj-native-control') handleNativeControl(data.control);
+      if (data.type === 'pm-dj-native-close') handleNativeClose();
 
       if (data.type === 'pm-dj-recording-started') {
         setIsRecording(true);
@@ -233,7 +328,10 @@ const BackgroundMusicSection = () => {
         // Process: trim silence seamlessly and generate new URL
         (async () => {
           try {
-            if (data.blob) {
+            if (data.blob instanceof Blob
+                && data.blob.size > 0
+                && data.blob.size <= 512 * 1024 * 1024
+                && /^audio\/webm(?:;|$)/i.test(data.blob.type)) {
               const trimmed = await trimSilenceFromBlob(data.blob, {
                 silenceThreshold: 0.004, // ~ -48 dBFS
                 minSilenceMs: 180,
@@ -241,7 +339,9 @@ const BackgroundMusicSection = () => {
               });
               // Revoke previous URL
               if (recordingUrl) {
-                try { URL.revokeObjectURL(recordingUrl); } catch {}
+                try { URL.revokeObjectURL(recordingUrl); } catch {
+                  // Revoking an already-released recording URL is harmless.
+                }
               }
               const finalBlob = trimmed || data.blob;
               const url = URL.createObjectURL(finalBlob);
@@ -255,7 +355,9 @@ const BackgroundMusicSection = () => {
                 const url = URL.createObjectURL(data.blob);
                 setRecordingUrl(url);
               }
-            } catch {}
+            } catch {
+              // A failed raw-blob fallback leaves the prior recording unchanged.
+            }
           }
         })();
       }
@@ -265,9 +367,18 @@ const BackgroundMusicSection = () => {
 
       // MIDI bridge: receive device list/state
       if (data.type === 'midi:inputs') {
-        const arr = Array.isArray(data.inputs) ? data.inputs : [];
+        const arr = Array.isArray(data.inputs)
+          ? data.inputs.slice(0, 64).filter((input) => (
+            input
+            && typeof input === 'object'
+            && typeof input.id === 'string'
+            && input.id.length <= 512
+            && typeof input.name === 'string'
+            && input.name.length <= 512
+          )).map(({ id, name }) => ({ id, name }))
+          : [];
         setMidiInputs(arr);
-        if (typeof data.activeId === 'string') setActiveMidiId(data.activeId);
+        if (typeof data.activeId === 'string' && data.activeId.length <= 512) setActiveMidiId(data.activeId);
         if (typeof data.show === 'boolean') setMidiShow(data.show);
       }
     }
@@ -275,24 +386,27 @@ const BackgroundMusicSection = () => {
 
     window.addEventListener('message', onMessage);
     return () => window.removeEventListener('message', onMessage);
-  }, [recordingUrl, onAnyMove, onAnyTouchMove]);
+  }, [getPromptDjWindow, nativeRuntime, postToPromptDj, promptDjOrigin, recordingUrl]);
 
-  // Send API key on iframe load and when storage changes
   const onIframeLoad = useCallback(() => {
-    postApiKeyToIframe();
+    postNativeAvailability();
     // Sync theme initially
     try {
       const theme = document.documentElement.getAttribute('data-theme')
         || (window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light');
-      iframeRef.current?.contentWindow?.postMessage({ type: 'pm-dj-set-theme', theme }, '*');
-    } catch {}
+      postToPromptDj({ type: 'pm-dj-set-theme', theme });
+    } catch {
+      // Theme synchronization is advisory for the isolated iframe.
+    }
     // Sync font initially
     try {
       const appFont = localStorage.getItem('app_font') || 'google-sans';
-      iframeRef.current?.contentWindow?.postMessage({ type: 'pm-dj-set-font', font: appFont }, '*');
-    } catch {}
+      postToPromptDj({ type: 'pm-dj-set-font', font: appFont });
+    } catch {
+      // Font synchronization is advisory for the isolated iframe.
+    }
     // Request current MIDI inputs/state
-    try { iframeRef.current?.contentWindow?.postMessage({ type: 'midi:getInputs' }, '*'); } catch {}
+    postToPromptDj({ type: 'midi:getInputs' });
 
     // Prevent iframe from stealing focus on load
     setTimeout(() => {
@@ -300,9 +414,11 @@ const BackgroundMusicSection = () => {
         if (iframeRef.current && document.activeElement === iframeRef.current) {
           iframeRef.current.blur();
         }
-      } catch {}
+      } catch {
+        // Focus restoration is best effort after iframe initialization.
+      }
     }, 100);
-  }, [postApiKeyToIframe]);
+  }, [postNativeAvailability, postToPromptDj]);
 
   // Watch main app theme changes and forward to iframe
   useEffect(() => {
@@ -312,8 +428,10 @@ const BackgroundMusicSection = () => {
       try {
         const theme = el.getAttribute('data-theme')
           || (window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light');
-        iframeRef.current?.contentWindow?.postMessage({ type: 'pm-dj-set-theme', theme }, '*');
-      } catch {}
+        postToPromptDj({ type: 'pm-dj-set-theme', theme });
+      } catch {
+        // Theme synchronization is advisory for the isolated iframe.
+      }
     };
 
     // Initial
@@ -333,58 +451,50 @@ const BackgroundMusicSection = () => {
     // Also respond to prefers-color-scheme changes if app relies on system theme
     const mql = window.matchMedia ? window.matchMedia('(prefers-color-scheme: dark)') : null;
     const onMql = () => sendTheme();
-    try { mql?.addEventListener('change', onMql); } catch { try { mql?.addListener(onMql); } catch {} }
+    try { mql?.addEventListener('change', onMql); } catch {
+      try { mql?.addListener(onMql); } catch {
+        // Older WebViews may expose neither media-query listener API.
+      }
+    }
 
     return () => {
-      try { observer.disconnect(); } catch {}
-      try { mql?.removeEventListener('change', onMql); } catch { try { mql?.removeListener(onMql); } catch {} }
-    };
-  }, []);
-
-  // Watch for API key changes in localStorage (cross-window)
-  useEffect(() => {
-    const onStorage = (e) => {
-      if (e && e.key && !e.key.toLowerCase().includes('gemini')) return;
-      postApiKeyToIframe();
-    };
-    window.addEventListener('storage', onStorage);
-    return () => window.removeEventListener('storage', onStorage);
-  }, [postApiKeyToIframe]);
-
-  // Poll for API key changes within the same window (since storage events don't fire for same-window changes)
-  useEffect(() => {
-    let lastApiKey = getCurrentKey?.() || localStorage.getItem('gemini_api_key') || '';
-
-    const pollApiKey = () => {
-      const currentApiKey = getCurrentKey?.() || localStorage.getItem('gemini_api_key') || '';
-      if (currentApiKey !== lastApiKey) {
-        lastApiKey = currentApiKey;
-        if (currentApiKey) {
-          postApiKeyToIframe();
-        } else {
-          // Send reset message when API key is removed
-          postResetToIframe();
+      try { observer.disconnect(); } catch {
+        // Cleanup remains idempotent when the document is already gone.
+      }
+      try { mql?.removeEventListener('change', onMql); } catch {
+        try { mql?.removeListener(onMql); } catch {
+          // Older WebViews may expose neither media-query listener API.
         }
       }
     };
+  }, [postToPromptDj]);
 
-    // Check every 5 seconds for API key changes (reduced frequency to prevent lag)
-    const intervalId = setInterval(pollApiKey, 5000);
+  useEffect(() => {
+    if (!nativeRuntime) return undefined;
+    const unsubscribe = subscribeCredentialState(() => {
+      postNativeAvailability();
+    });
+    postNativeAvailability();
+    return unsubscribe;
+  }, [nativeRuntime, postNativeAvailability]);
 
-    return () => clearInterval(intervalId);
-  }, [postApiKeyToIframe, postResetToIframe]);
+  useEffect(() => () => {
+    closeAfterStartRef.current = true;
+    const session = liveSessionRef.current;
+    if (session) closeLiveMusicSession(session.id).catch(() => undefined);
+  }, []);
 
   // Watch main app font changes and forward to iframe
   useEffect(() => {
     const onStorage = (e) => {
       if (e.key === 'app_font') {
         const font = e.newValue || 'google-sans';
-        try { iframeRef.current?.contentWindow?.postMessage({ type: 'pm-dj-set-font', font }, '*'); } catch {}
+        postToPromptDj({ type: 'pm-dj-set-font', font });
       }
     };
     window.addEventListener('storage', onStorage);
     return () => window.removeEventListener('storage', onStorage);
-  }, []);
+  }, [postToPromptDj]);
 
   return (
     <div
@@ -409,9 +519,9 @@ const BackgroundMusicSection = () => {
                   onChange={(e) => {
                     const show = !!e?.target?.checked;
                     setMidiShow(show);
-                    try { iframeRef.current?.contentWindow?.postMessage({ type: 'midi:setShow', show }, '*'); } catch {}
+                    postToPromptDj({ type: 'midi:setShow', show });
                     if (show) {
-                      try { iframeRef.current?.contentWindow?.postMessage({ type: 'midi:getInputs' }, '*'); } catch {}
+                      postToPromptDj({ type: 'midi:getInputs' });
                     }
                   }}
                   ariaLabel={t('backgroundMusic.midi', 'MIDI')}
@@ -427,7 +537,7 @@ const BackgroundMusicSection = () => {
                 value={activeMidiId || ''}
                 onChange={(nextId) => {
                   setActiveMidiId(nextId);
-                  try { iframeRef.current?.contentWindow?.postMessage({ type: 'midi:setActiveInput', id: nextId }, '*'); } catch {}
+                  postToPromptDj({ type: 'midi:setActiveInput', id: nextId });
                 }}
                 options={(midiInputs || []).map(({ id, name }) => ({ value: id, label: name || id }))}
                 placeholder={t('backgroundMusic.noDevices', 'Không tìm thấy thiết bị')}
@@ -528,7 +638,7 @@ const BackgroundMusicSection = () => {
             )}
             {/* Overlayed reset button (page bottom-left) */}
             <button
-              onClick={() => { try { iframeRef.current?.contentWindow?.postMessage({ type: 'pm-dj-reset' }, '*'); } catch {} }}
+              onClick={postResetToIframe}
               title={t('common.reset', 'Reset')}
               style={{
                 position: 'absolute', left: 16, bottom: 16,
@@ -549,7 +659,9 @@ const BackgroundMusicSection = () => {
               onDoubleClick={() => {
                 const def = 600;
                 setPanelHeight(def);
-                try { localStorage.setItem('bg_music_panel_height', String(def)); } catch {}
+                try { localStorage.setItem('bg_music_panel_height', String(def)); } catch {
+                  // Persisting the optional panel preference is best effort.
+                }
               }}
               title={t('common.resize', 'Resize height')}
               role="separator"

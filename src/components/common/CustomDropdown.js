@@ -1,4 +1,4 @@
-import React, { useState, useRef, useEffect } from 'react';
+import { useState, useRef, useEffect } from 'react';
 import { createPortal } from 'react-dom';
 import { useTranslation } from 'react-i18next';
 
@@ -36,6 +36,12 @@ const CustomDropdown = ({
   const isDraggingRef = useRef(false);
   const hoveredIndexRef = useRef(null);
   const pendingSelectionRef = useRef(null);
+  const calculatePositionRef = useRef(() => {});
+  const handleSmoothCloseRef = useRef(() => {});
+  const optionsRef = useRef(options);
+  const valueRef = useRef(value);
+  optionsRef.current = options;
+  valueRef.current = value;
 
   const DropdownChevron = ({ mode }) => {
     if (mode === 'down') {
@@ -65,7 +71,7 @@ const CustomDropdown = ({
       const target = event.target;
       if (dropdownRef.current && dropdownRef.current.contains(target)) return;
       if (menuRef.current && menuRef.current.contains(target)) return;
-      handleSmoothClose();
+      handleSmoothCloseRef.current();
     };
     document.addEventListener('mousedown', handlePointerDown, true);
     return () => document.removeEventListener('mousedown', handlePointerDown, true);
@@ -126,7 +132,7 @@ const CustomDropdown = ({
   };
 
   useEffect(() => {
-    const handleEscape = (event) => { if (event.key === 'Escape') handleSmoothClose(); };
+    const handleEscape = (event) => { if (event.key === 'Escape') handleSmoothCloseRef.current(); };
     if (isOpen) { document.addEventListener('keydown', handleEscape); }
     return () => document.removeEventListener('keydown', handleEscape);
   }, [isOpen]);
@@ -134,7 +140,7 @@ const CustomDropdown = ({
   useEffect(() => {
     const handleResize = () => {
       if (isOpen) {
-        calculatePosition();
+        calculatePositionRef.current();
         setTimeout(() => {
           if (menuRef.current) {
             const innerMenu = menuRef.current.querySelector('.custom-dropdown-menu');
@@ -216,8 +222,9 @@ const CustomDropdown = ({
       expandedWidth: maxOptionWidth, optionHeight: optionHeight,
     });
   };
+  calculatePositionRef.current = calculatePosition;
 
-  useEffect(() => { calculatePosition(); }, [value, options]);
+  useEffect(() => { calculatePositionRef.current(); }, [value, options]);
 
   const handleToggle = () => { if (!isEffectivelyDisabled) { if (!isOpen) calculatePosition(); setIsOpen(!isOpen); } };
 
@@ -246,7 +253,7 @@ const CustomDropdown = ({
         const list = el.querySelector('.dropdown-options-list');
         if (list) { const hasScrollbar = list.scrollHeight > list.clientHeight; el.dataset.hasScrollbar = hasScrollbar ? 'true' : 'false';
           if (hasScrollbar) el.classList.add('has-scrollbar-content'); }
-        const selectedIdx = options.findIndex(o => o.value === value);
+        const selectedIdx = optionsRef.current.findIndex(o => o.value === valueRef.current);
         const buttons = el.querySelectorAll('.dropdown-option');
         if (buttons[selectedIdx]) { buttons[selectedIdx].classList.add('morphing-from-button');
           setTimeout(() => { if (buttons[selectedIdx]) buttons[selectedIdx].classList.remove('morphing-from-button'); }, 300); }
@@ -267,7 +274,7 @@ const CustomDropdown = ({
         if (menuRef.current) {
           menuRef.current.classList.add('radius-open');
           setTimeout(() => {
-            calculatePosition();
+            calculatePositionRef.current();
             setTimeout(() => {
               if (menuRef.current) {
                 const innerMenu = menuRef.current.querySelector('.custom-dropdown-menu');
@@ -289,7 +296,7 @@ const CustomDropdown = ({
       const optionsList = menuRef.current.querySelector('.dropdown-options-list');
       if (optionsList) {
         const firstOption = optionsList.querySelector('.dropdown-option'); const optionHeight = firstOption ? firstOption.offsetHeight : 52;
-        const selectedIndex = Math.max(0, options.findIndex(o => o.value === value));
+        const selectedIndex = Math.max(0, optionsRef.current.findIndex(o => o.value === value));
         const firstVisibleIndex = Math.max(0, selectedIndex - dropdownPosition.upCount);
         optionsList.scrollTop = firstVisibleIndex * optionHeight;
       }
@@ -327,6 +334,7 @@ const CustomDropdown = ({
       }, 200);
     } else { setIsOpen(false); }
   };
+  handleSmoothCloseRef.current = handleSmoothClose;
 
   const handleOptionSelect = (optionValue, isDisabled) => {
     if (isDisabled) return;
@@ -466,7 +474,7 @@ const CustomDropdown = ({
                       };
                       document.addEventListener('mouseup', handleMouseUp);
                     }}
-                    onMouseEnter={(e) => {
+                    onMouseEnter={(_event) => {
                       if (isDraggingRef.current) {
                         const idx = options.findIndex(o => o.value === option.value);
                         hoveredIndexRef.current = idx;

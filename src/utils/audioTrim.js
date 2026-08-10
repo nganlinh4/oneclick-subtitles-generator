@@ -83,7 +83,9 @@ export async function trimSilenceFromBlob(
 
   // If nothing to remove, return original blob
   if (removableRanges.length === 0) {
-    try { audioCtx.close(); } catch {}
+    try { audioCtx.close(); } catch {
+      // Closing an already-closed decoding context is harmless.
+    }
     return blob;
   }
 
@@ -115,7 +117,9 @@ export async function trimSilenceFromBlob(
 
   // If nothing kept, return original blob
   if (totalKeep === 0) {
-    try { audioCtx.close(); } catch {}
+    try { audioCtx.close(); } catch {
+      // Closing an already-closed decoding context is harmless.
+    }
     return blob;
   }
 
@@ -144,7 +148,9 @@ export async function trimSilenceFromBlob(
     bytesPerSample,
   });
 
-  try { audioCtx.close(); } catch {}
+  try { audioCtx.close(); } catch {
+    // Closing an already-closed decoding context is harmless.
+  }
   return new Blob([wavBuffer], { type: 'audio/wav' });
 }
 

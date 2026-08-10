@@ -1,0 +1,25 @@
+[package]
+name = "osg-engine-packages"
+version.workspace = true
+authors.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+description = "Manifest-gated optional ASR and speech package management for OSG"
+license = "MIT"
+
+[dependencies]
+fs2 = "=0.4.3"
+reqwest = { version = "=0.13.4", default-features = false, features = ["blocking", "rustls"] }
+serde.workspace = true
+serde_json.workspace = true
+sha2 = "=0.10.9"
+thiserror.workspace = true
+url = "=2.5.8"
+uuid.workspace = true
+zip = { version = "=8.6.0", default-features = false, features = ["deflate"] }
+
+[dev-dependencies]
+tempfile = "=3.27.0"
+
+[lints]
+workspace = true

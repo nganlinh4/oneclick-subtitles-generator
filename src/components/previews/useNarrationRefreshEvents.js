@@ -33,7 +33,7 @@ const useNarrationRefreshEvents = ({ isRefreshingNarration, setIsRefreshingNarra
 
         // If isStillGenerating is true, keep the overlay visible
         if (isStillGenerating) {
-
+          // No state transition is needed while generation remains active.
         }
       }
     };

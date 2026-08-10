@@ -1,30 +1,47 @@
-import { useState, useEffect } from 'react';
-import { RENDERER_BASE_URL } from '../../utils/videoRendererClient';
-import { consumeRenderStream } from './renderStreamHandlers';
+import { useEffect, useRef, useState } from 'react';
 
-// Gated debug logging (enable in the browser console: localStorage.debug_logs = 'true')
-const DEBUG_LOGS = (typeof window !== 'undefined') && (localStorage.getItem('debug_logs') === 'true');
-const dbg = (...args) => { if (DEBUG_LOGS) console.log(...args); };
+import {
+  releaseNativeRenderPlayback,
+  waitForNativeRender,
+} from '../../platform/renderService';
+import {
+  claimRecoveredNativeJob,
+  discardRecoveredNativeJob,
+  forgetNativeJobId,
+  listRecoveredNativeJobs,
+  rememberNativeJobId,
+  startNativeJobRecovery,
+} from '../../platform/jobRecoveryCoordinator';
 
-/**
- * Render-queue state + localStorage persistence + SSE reconnection.
- *
- * The complex per-render async (handleStartRender) stays in the parent component;
- * it is threaded in via `startRenderRef` so startNextPendingRender / checkRenderStatus
- * can drive it without a circular import or stale closure.
- *
- * @param {object} ctx parent-owned state and setters this hook closes over
- * @param {boolean} ctx.isRendering
- * @param {Function} ctx.setIsRendering
- * @param {Function} ctx.setRenderProgress
- * @param {Function} ctx.setRenderStatus
- * @param {Function} ctx.setRenderedVideoUrl
- * @param {Function} ctx.setError
- * @param {Function} ctx.setCurrentRenderId
- * @param {Function} ctx.setAbortController
- * @param {Function} ctx.t i18n translate
- * @param {React.MutableRefObject<Function>} ctx.startRenderRef ref to parent handleStartRender
- */
+const isRecord = (value) => value !== null && typeof value === 'object' && !Array.isArray(value);
+
+export const mergeNativeRenderResult = (item, response) => {
+  if (!isRecord(item) || !isRecord(response?.job)) return item;
+  if (response.job.state === 'succeeded' && isRecord(response.result)) {
+    return {
+      ...item,
+      status: 'completed',
+      progress: 100,
+      completedAt: item.completedAt || Date.now(),
+      nativeJobId: response.job.id,
+      outputPath: response.result.playback.playbackUrl,
+      outputPlaybackId: response.result.playback.id,
+      outputAssetId: response.result.asset.id,
+      outputArtifactId: response.result.artifactId,
+      outputSizeBytes: response.result.asset.sizeBytes,
+    };
+  }
+  if (['queued', 'running', 'cancelling'].includes(response.job.state)) {
+    return {
+      ...item,
+      status: 'processing',
+      progress: Math.round(response.job.progress.basisPoints / 100),
+      nativeJobId: response.job.id,
+    };
+  }
+  return item;
+};
+
 export const useRenderQueue = ({
   isRendering,
   setIsRendering,
@@ -40,136 +57,105 @@ export const useRenderQueue = ({
 }) => {
   const [renderQueue, setRenderQueue] = useState([]);
   const [currentQueueItem, setCurrentQueueItem] = useState(null);
+  const renderQueueRef = useRef(renderQueue);
+  const isRenderingRef = useRef(isRendering);
+  const reconnectRef = useRef(null);
+  const applyRecoveredRenderRef = useRef(null);
+  const rememberedRenderIdRef = useRef(null);
+  const recoveredPlaybackIdRef = useRef(null);
+  renderQueueRef.current = renderQueue;
+  isRenderingRef.current = isRendering;
 
-  // Check if a render is still active on the server and reconnect
-  const checkRenderStatus = async (renderId, queueItem) => {
-    try {
-      const response = await fetch(`${RENDERER_BASE_URL}/render-status/${renderId}`);
-
-      if (response.ok) {
-        const data = await response.json();
-
-        if (data.status === 'active') {
-          // Render is still active, reconnect to it
-          dbg('Reconnecting to active render:', renderId);
-          setIsRendering(true);
-
-          // Update queue item status to processing
-          setRenderQueue(prev => prev.map(item =>
-            item.id === queueItem.id ? { ...item, status: 'processing', progress: data.progress || 0 } : item
-          ));
-
-          // Reconnect to the render stream
-          reconnectToRender(renderId, queueItem);
-        } else if (data.status === 'completed') {
-          // Render completed while user was away
-          dbg('Render completed while away:', renderId);
-          setRenderQueue(prev => prev.map(item =>
-            item.id === queueItem.id
-              ? { ...item, status: 'completed', progress: 100, outputPath: data.outputPath }
-              : item
-          ));
-          setCurrentQueueItem(null);
-          setCurrentRenderId(null);
-
-          // Start next pending render if any
-          setTimeout(() => startNextPendingRender(), 1000);
-        } else {
-          // Render failed or was cancelled
-          dbg('Render failed or cancelled while away:', renderId);
-          setRenderQueue(prev => prev.map(item =>
-            item.id === queueItem.id
-              ? { ...item, status: 'failed', error: data.error || t('videoRendering.renderFailedBrowserClosed', 'Render failed while browser was closed') }
-              : item
-          ));
-          setCurrentQueueItem(null);
-          setCurrentRenderId(null);
-
-          // Start next pending render if any
-          setTimeout(() => startNextPendingRender(), 1000);
-        }
-      } else {
-        // Server doesn't know about this render, mark as failed
-        dbg('Server does not know about render:', renderId);
-        setRenderQueue(prev => prev.map(item =>
-          item.id === queueItem.id
-            ? { ...item, status: 'failed', error: 'Render not found on server' }
-            : item
-        ));
-        setCurrentQueueItem(null);
-        setCurrentRenderId(null);
-      }
-    } catch (error) {
-      console.error('Failed to check render status:', error);
-      // Mark as failed if we can't check status
-      setRenderQueue(prev => prev.map(item =>
-        item.id === queueItem.id
-          ? { ...item, status: 'failed', error: 'Could not reconnect to render' }
-          : item
-      ));
-      setCurrentQueueItem(null);
-      setCurrentRenderId(null);
+  const updateQueueItem = (queueItem, response) => {
+    const updated = mergeNativeRenderResult(queueItem, response);
+    setRenderQueue((previous) => previous.map((item) => (
+      item.id === queueItem.id ? mergeNativeRenderResult(item, response) : item
+    )));
+    if (response.job.state === 'succeeded' && response.result !== null) {
+      setRenderedVideoUrl(response.result.playback.playbackUrl);
+      setRenderStatus(t('videoRendering.complete', 'Render complete!'));
+      setRenderProgress(100);
     }
+    return updated;
   };
 
-  // Reconnect to an ongoing render stream
-  const reconnectToRender = async (renderId, queueItem) => {
+  const startNextPendingRender = async () => {
+    const nextItem = renderQueueRef.current.find((item) => item.status === 'pending');
+    if (!nextItem || isRenderingRef.current || typeof startRenderRef.current !== 'function') return;
+    const startedAt = Date.now();
+    setRenderQueue((previous) => previous.map((item) => (
+      item.id === nextItem.id ? { ...item, status: 'processing', startedAt } : item
+    )));
+    setCurrentQueueItem({ ...nextItem, startedAt });
+    await startRenderRef.current(nextItem);
+  };
+
+  const applyRecoveredRender = (queueItem, response) => {
+    setRenderProgress(Math.round(response.job.progress.basisPoints / 100));
+    if (queueItem !== null) updateQueueItem(queueItem, response);
+    if (response.job.state === 'succeeded' && response.result !== null) {
+      if (queueItem === null) recoveredPlaybackIdRef.current = response.result.playback.id;
+      setRenderedVideoUrl(response.result.playback.playbackUrl);
+      setRenderStatus(t('videoRendering.complete', 'Render complete!'));
+      setRenderProgress(100);
+      return true;
+    }
+    return false;
+  };
+  applyRecoveredRenderRef.current = applyRecoveredRender;
+
+  const reconnectToNativeRender = async (renderId, queueItem = null) => {
+    const controller = new AbortController();
+    setAbortController(controller);
+    setCurrentRenderId(renderId);
+    setCurrentQueueItem(queueItem);
+    setIsRendering(true);
+    setRenderStatus(t('videoRendering.reconnecting', 'Reconnecting to render...'));
     try {
-      // Create new abort controller for this reconnection
-      const controller = new AbortController();
-      setAbortController(controller);
-
-      setRenderStatus(t('videoRendering.reconnecting', 'Reconnecting to render...'));
-
-      // Connect to the render stream
-      const response = await fetch(`${RENDERER_BASE_URL}/render-stream/${renderId}`, {
-        method: 'GET',
-        signal: controller.signal
+      const response = await waitForNativeRender(renderId, {
+        signal: controller.signal,
+        onUpdate: (update) => applyRecoveredRender(queueItem, update),
       });
-
-      if (!response.ok) {
-        throw new Error(`Failed to reconnect to render stream: ${response.status}`);
+      if (!applyRecoveredRender(queueItem, response) && queueItem !== null) {
+        setRenderQueue((previous) => previous.map((item) => (
+          item.id === queueItem.id
+            ? {
+                ...item,
+                status: 'failed',
+                progress: 0,
+                error: t(
+                  'videoRendering.renderFailedBrowserClosed',
+                  'Render failed while browser was closed'
+                ),
+              }
+            : item
+        )));
       }
-
-      // Handle Server-Sent Events (shared with handleStartRender)
-      await consumeRenderStream(response, controller, {
-        t,
-        setRenderProgress,
-        setRenderStatus,
-        setRenderedVideoUrl,
-        setRenderQueue,
-        setCurrentQueueItem,
-        startNextPendingRender,
-        resolveTarget: () => queueItem,
-        includePhaseEvents: false,
-        debugTag: ' - Reconnection',
-        parseErrorLabel: 'Failed to parse SSE data during reconnection:',
-      });
-
     } catch (error) {
-      console.error('Reconnection error:', error);
-
-      if (error.name === 'AbortError') {
-        dbg('Reconnection was aborted');
-        setRenderStatus(t('videoRendering.cancelled', 'Render cancelled'));
-        setRenderProgress(0);
-
-        setRenderQueue(prev => prev.map(item =>
+      const cancelled = error?.name === 'AbortError' || error?.code === 'renderCancelled';
+      if (queueItem !== null) {
+        setRenderQueue((previous) => previous.map((item) => (
           item.id === queueItem.id
-            ? { ...item, status: 'failed', progress: 0, error: t('videoRendering.renderCancelled', 'Render was cancelled') }
+            ? {
+                ...item,
+                status: 'failed',
+                progress: 0,
+                error: cancelled
+                  ? t('videoRendering.renderCancelled', 'Render was cancelled')
+                  : t(
+                      'videoRendering.renderFailedBrowserClosed',
+                      'Render failed while browser was closed'
+                    ),
+              }
             : item
-        ));
-      } else {
-        setError(error.message);
-        setRenderStatus(t('videoRendering.failed', 'Render failed'));
-
-        setRenderQueue(prev => prev.map(item =>
-          item.id === queueItem.id
-            ? { ...item, status: 'failed', error: error.message }
-            : item
-        ));
+        )));
       }
+      setError(error.message);
+      setRenderStatus(cancelled
+        ? t('videoRendering.cancelled', 'Render cancelled')
+        : t('videoRendering.failed', 'Render failed'));
     } finally {
+      forgetNativeJobId(renderId);
       setIsRendering(false);
       setCurrentRenderId(null);
       setAbortController(null);
@@ -177,90 +163,69 @@ export const useRenderQueue = ({
       setTimeout(() => startNextPendingRender(), 1000);
     }
   };
+  reconnectRef.current = reconnectToNativeRender;
 
-  // Simple function to start next pending render
-  const startNextPendingRender = async () => {
-    // Find the next pending item
-    const nextItem = renderQueue.find(item => item.status === 'pending');
-    if (!nextItem || isRendering) return;
-
-    // Mark as processing and stamp start time
-    const startedAt = Date.now();
-    setRenderQueue(prev => prev.map(item =>
-      item.id === nextItem.id ? { ...item, status: 'processing', startedAt } : item
-    ));
-    setCurrentQueueItem({ ...nextItem, startedAt });
-    await startRenderRef.current(nextItem);
-  };
-
-  // Simple queue management functions
   const removeFromQueue = (id) => {
-    setRenderQueue(prev => prev.filter(item => item.id !== id));
+    const playbackId = renderQueueRef.current.find((item) => item.id === id)?.outputPlaybackId;
+    if (playbackId) releaseNativeRenderPlayback(playbackId).catch(() => undefined);
+    setRenderQueue((previous) => previous.filter((item) => item.id !== id));
   };
 
   const clearQueue = () => {
-    setRenderQueue(prev => prev.filter(item => item.status === 'processing'));
+    renderQueueRef.current
+      .filter((item) => item.status !== 'processing' && item.outputPlaybackId)
+      .forEach((item) => releaseNativeRenderPlayback(item.outputPlaybackId).catch(() => undefined));
+    setRenderQueue((previous) => previous.filter((item) => item.status === 'processing'));
   };
 
-  // Restore render state from localStorage on component mount
   useEffect(() => {
-    const restoreRenderState = () => {
-      try {
-        const savedQueue = localStorage.getItem('videoRenderQueue');
-        const savedCurrentItem = localStorage.getItem('currentRenderItem');
-        const savedRenderId = localStorage.getItem('currentRenderId');
-
-        if (savedQueue) {
-          const parsedQueue = JSON.parse(savedQueue);
-          setRenderQueue(parsedQueue);
-        }
-
-        if (savedCurrentItem && savedRenderId) {
-          const parsedCurrentItem = JSON.parse(savedCurrentItem);
-          setCurrentQueueItem(parsedCurrentItem);
-          setCurrentRenderId(savedRenderId);
-
-          // Check if the render is still active on the server
-          checkRenderStatus(savedRenderId, parsedCurrentItem);
-        }
-      } catch (error) {
-        console.error('Failed to restore render state:', error);
-        // Clear corrupted data
-        localStorage.removeItem('videoRenderQueue');
-        localStorage.removeItem('currentRenderItem');
-        localStorage.removeItem('currentRenderId');
+    let disposed = false;
+    startNativeJobRecovery().then(() => {
+      const candidates = listRecoveredNativeJobs('renderVideo');
+      if (disposed) return;
+      const [selected, ...stale] = candidates;
+      stale.forEach(({ job }) => discardRecoveredNativeJob(job.id));
+      if (selected === undefined) return;
+      const recovered = claimRecoveredNativeJob(selected.job.id);
+      if (recovered === null) return;
+      const { job, value } = recovered;
+      if (job.state === 'succeeded' && value.result !== null) {
+        applyRecoveredRenderRef.current(null, value);
+        return;
       }
+      if (['queued', 'running', 'cancelling'].includes(job.state)) {
+        rememberNativeJobId(job.id);
+        reconnectRef.current(job.id, null);
+      }
+    }).catch(() => undefined);
+    return () => {
+      disposed = true;
+      const playbackId = recoveredPlaybackIdRef.current;
+      recoveredPlaybackIdRef.current = null;
+      if (playbackId !== null) releaseNativeRenderPlayback(playbackId).catch(() => undefined);
     };
-
-    restoreRenderState();
   }, []);
 
-  // Save render state to localStorage whenever it changes
   useEffect(() => {
-    if (renderQueue.length > 0) {
-      localStorage.setItem('videoRenderQueue', JSON.stringify(renderQueue));
-    } else {
-      localStorage.removeItem('videoRenderQueue');
+    const previous = rememberedRenderIdRef.current;
+    if (currentRenderId !== null && recoveredPlaybackIdRef.current !== null) {
+      releaseNativeRenderPlayback(recoveredPlaybackIdRef.current).catch(() => undefined);
+      recoveredPlaybackIdRef.current = null;
     }
-  }, [renderQueue]);
-
-  useEffect(() => {
-    if (currentQueueItem && currentRenderId) {
-      localStorage.setItem('currentRenderItem', JSON.stringify(currentQueueItem));
-      localStorage.setItem('currentRenderId', currentRenderId);
-    } else {
-      localStorage.removeItem('currentRenderItem');
-      localStorage.removeItem('currentRenderId');
+    if (previous !== null && previous !== currentRenderId) forgetNativeJobId(previous);
+    if (currentRenderId !== null && previous !== currentRenderId) {
+      rememberNativeJobId(currentRenderId);
     }
-  }, [currentQueueItem, currentRenderId]);
+    rememberedRenderIdRef.current = currentRenderId;
+  }, [currentRenderId]);
 
   return {
     renderQueue,
     setRenderQueue,
     currentQueueItem,
     setCurrentQueueItem,
-    checkRenderStatus,
-    reconnectToRender,
+    checkRenderStatus: reconnectToNativeRender,
+    reconnectToRender: reconnectToNativeRender,
     startNextPendingRender,
     removeFromQueue,
     clearQueue,

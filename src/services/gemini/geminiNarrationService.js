@@ -1,60 +1,49 @@
-/**
- * Gemini narration service for generating narration using Gemini API with WebSocket for audio
- * This is the main entry point for Gemini narration functionality
- */
-
-// Import constants
-import { GEMINI_VOICES } from './constants/voiceConstants';
+import {
+  DEFAULT_LIVE_AUDIO_MODEL_ID,
+  LIVE_AUDIO_MODELS,
+} from '../../config/geminiModels';
 import { GEMINI_LANGUAGE_CODES } from './constants/languageConstants';
-
-// Import utilities
+import { GEMINI_VOICES } from './constants/voiceConstants';
 import { getGeminiLanguageCode } from './utils/languageUtils';
 
-// Import model selection functions
-import { listGeminiModels, findSuitableAudioModel } from './models/modelSelector';
+const nativeNarrationRequired = () => {
+  const error = new Error('Gemini narration requires the desktop runtime.');
+  error.code = 'desktopRuntimeUnavailable';
+  return error;
+};
 
-// Import narration generation functions
-import {
-  generateGeminiNarration,
-  generateGeminiNarrations,
-  cancelGeminiNarrations
-} from './narration/narrationGenerator';
+const rejectNativeNarration = () => Promise.reject(nativeNarrationRequired());
 
-// Import client manager functions
-import {
-  initializeClientPool,
-  getNextAvailableClient,
-  markClientAsNotBusy,
-  disconnectAllClients
-} from './client/clientManager';
+/**
+ * Compatibility surface for the pre-rewrite narration hooks.
+ *
+ * The active desktop flow is owned by useNativeNarrationController and speechService. Keeping
+ * fail-closed functions here lets the unchanged legacy hook graph render without bundling a
+ * provider WebSocket client or accepting provider credentials in the WebView.
+ */
+export const generateGeminiNarration = rejectNativeNarration;
+export const generateGeminiNarrations = rejectNativeNarration;
+export const initializeClientPool = rejectNativeNarration;
+export const getNextAvailableClient = rejectNativeNarration;
+export const markClientAsNotBusy = () => false;
+export const disconnectAllClients = async () => undefined;
+export const cancelGeminiNarrations = () => false;
 
-// Import availability checker
-import { checkGeminiAvailability } from './availability/availabilityChecker';
+export const listGeminiModels = async () => LIVE_AUDIO_MODELS.map((model) => ({
+  ...model,
+  name: `models/${model.id}`,
+}));
 
-// Export all the functions and constants
+export const findSuitableAudioModel = async () => `models/${DEFAULT_LIVE_AUDIO_MODEL_ID}`;
+
+export const checkGeminiAvailability = async () => ({
+  available: false,
+  error: nativeNarrationRequired().message,
+  message: 'desktopRuntimeUnavailable',
+});
+
 export {
-  // Constants
-  GEMINI_VOICES,
   GEMINI_LANGUAGE_CODES,
-
-  // Utilities
+  GEMINI_VOICES,
   getGeminiLanguageCode,
-
-  // Model selection
-  listGeminiModels,
-  findSuitableAudioModel,
-
-  // Narration generation
-  generateGeminiNarration,
-  generateGeminiNarrations,
-  cancelGeminiNarrations,
-
-  // Client management
-  initializeClientPool,
-  getNextAvailableClient,
-  markClientAsNotBusy,
-  disconnectAllClients,
-
-  // Availability checking
-  checkGeminiAvailability
 };

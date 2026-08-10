@@ -2,6 +2,13 @@ import { useCallback, useEffect } from 'react';
 import { EVENTS, subscribe } from '../events/bus';
 import { getVideoProcessingFps, getMediaResolution } from '../services/configService';
 import { DEFAULT_TRANSCRIPTION_MODEL_ID, normalizeMediaModelId } from '../config/geminiModels';
+import { isDesktopRuntime } from '../platform/desktopRuntime';
+import {
+    getSelectedMedia,
+    isNativeMediaDescriptor,
+    isNativeMediaPlaybackUrl,
+} from '../platform/mediaService';
+import { fetchBrowserResource } from '../platform/browserFetch';
 
 // Retry policy (match Files API): 503/429 detection + progressive delays
 const RETRY_DELAYS = [5, 10, 15, 20, 25]; // seconds
@@ -18,6 +25,38 @@ const is429Error = (error) => !!(error && error.message && (
     error.message.includes('quota') ||
     error.message.includes('rate limit')
 ));
+
+export const resolveCachedRetrySource = async (currentSource, url, {
+    nativeRuntime = isDesktopRuntime,
+    selectedMedia = getSelectedMedia,
+    fetchMedia = globalThis.fetch,
+} = {}) => {
+    const desktop = nativeRuntime();
+    if (desktop && isNativeMediaDescriptor(currentSource)) {
+        return Object.freeze({ sourceFile: currentSource, usesOriginalMedia: true });
+    }
+    if (desktop) {
+        const media = await selectedMedia();
+        if (!isNativeMediaDescriptor(media)) {
+            throw new Error('Select the media again before retrying this segment.');
+        }
+        return Object.freeze({ sourceFile: media, usesOriginalMedia: true });
+    }
+    if (currentSource) {
+        return Object.freeze({ sourceFile: currentSource, usesOriginalMedia: true });
+    }
+    if (isNativeMediaPlaybackUrl(url)) {
+        throw new Error('Native cached media cannot be fetched by the browser.');
+    }
+    const response = await fetchBrowserResource(url, undefined, { fetchImpl: fetchMedia });
+    if (!response.ok) throw new Error(`Failed to fetch cached clip: ${response.statusText}`);
+    const blob = await response.blob();
+    const filename = url.split('?')[0].split('/').pop() || 'segment.mp4';
+    return Object.freeze({
+        sourceFile: new File([blob], filename, { type: blob.type || 'video/mp4' }),
+        usesOriginalMedia: false,
+    });
+};
 
 /**
  * Segment retry orchestration for useSubtitles.
@@ -108,25 +147,24 @@ export const useSubtitlesSegmentRetry = ({
             setStatus({ message: t('output.processingVideo', 'Processing video...'), type: 'loading' });
 
             // Prefer using Files API with the original source file (no local clips)
-            let sourceFile = currentSourceFileRef.current;
-            if (!sourceFile) {
-                // Fallback: fetch cached clip file only if no source file available
-                try {
-                    const resp = await fetch(url);
-                    if (!resp.ok) throw new Error(`Failed to fetch cached clip: ${resp.statusText}`);
-                    const blob = await resp.blob();
-                    const filename = url.split('?')[0].split('/').pop() || 'segment.mp4';
-                    sourceFile = new File([blob], filename, { type: blob.type || 'video/mp4' });
-                } catch (fetchErr) {
-                    console.error('[useSubtitles] Failed to obtain source for retry:', fetchErr);
-                    setIsGenerating(false);
-                    setStatus({ message: fetchErr.message || 'Retry failed', type: 'error' });
-                    window.dispatchEvent(new CustomEvent('retry-segment-from-cache-complete', {
-                        detail: { start, end, success: false, error: fetchErr?.message }
-                    }));
-                    currentRetryFromCacheRef.current = null;
-                    return;
-                }
+            let sourceFile;
+            let usePrimaryFilesApi;
+            try {
+                const resolvedSource = await resolveCachedRetrySource(
+                    currentSourceFileRef.current,
+                    url
+                );
+                sourceFile = resolvedSource.sourceFile;
+                usePrimaryFilesApi = resolvedSource.usesOriginalMedia;
+            } catch (fetchErr) {
+                console.error('[useSubtitles] Failed to obtain source for retry:', fetchErr);
+                setIsGenerating(false);
+                setStatus({ message: fetchErr.message || 'Retry failed', type: 'error' });
+                window.dispatchEvent(new CustomEvent('retry-segment-from-cache-complete', {
+                    detail: { start, end, success: false, error: fetchErr?.message }
+                }));
+                currentRetryFromCacheRef.current = null;
+                return;
             }
 
             const segment = { start, end };
@@ -178,9 +216,6 @@ export const useSubtitlesSegmentRetry = ({
                     setStatus({ message: t('output.streamingProgress', 'Streaming...'), type: 'loading' });
                 }
             };
-
-            // Prefer primary Files API with offsets if we have the original source file
-            let usePrimaryFilesApi = !!currentSourceFileRef.current;
 
             // For fallback (clipped file), determine if it is large
             const isLargeClip = !usePrimaryFilesApi && sourceFile && sourceFile.size > INLINE_LARGE_SEGMENT_THRESHOLD_BYTES;
@@ -245,13 +280,12 @@ export const useSubtitlesSegmentRetry = ({
                     }
 
                     // Files API specific fallback: if primary Files API path failed (e.g., quota/size), fallback once to clipped file path
-                    if (usePrimaryFilesApi && !clipFallbackTried) {
+                    if (usePrimaryFilesApi && !clipFallbackTried && !isDesktopRuntime()) {
                         try {
-                            const resp = await fetch(url);
-                            if (!resp.ok) throw new Error(`Failed to fetch cached clip for fallback: ${resp.statusText}`);
-                            const blob = await resp.blob();
-                            const filename = url.split('?')[0].split('/').pop() || 'segment.mp4';
-                            sourceFile = new File([blob], filename, { type: blob.type || 'video/mp4' });
+                            const cached = await resolveCachedRetrySource(null, url, {
+                                nativeRuntime: () => false,
+                            });
+                            sourceFile = cached.sourceFile;
                             clipFallbackTried = true;
                             usePrimaryFilesApi = false;
                             setStatus({ message: t('output.fallingBack', 'Falling back to clipped-file path...'), type: 'loading' });

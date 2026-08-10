@@ -146,11 +146,6 @@ export const drawLyricSegments = (
         segmentCount++;
     }
 
-    // If we hit the segment limit, add an indicator
-    if (segmentCount >= maxSegmentsToRender && optimizedLyrics.length > maxSegmentsToRender) {
-
-    }
-
     // Batch render all segments with same fill color
     if (visibleLyrics.length > 0) {
         // Group segments by color for batch rendering
@@ -287,9 +282,6 @@ export const drawLyricSegments = (
         // Draw animated segments with smooth effects
         for (const segment of animatedSegments) {
             const progress = segment.animationProgress;
-
-            // Simple easing function
-            const easeOutQuad = 1 - (1 - progress) * (1 - progress);
 
             // Draw the segment with animation effects
             ctx.save();

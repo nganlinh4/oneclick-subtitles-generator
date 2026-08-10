@@ -3,7 +3,6 @@ import { useTranslation } from 'react-i18next';
 import '../../styles/SubtitleSettings.css';
 import '../../styles/narration/narrationPlaybackMenuRedesign.css';
 import '../../styles/narration/alignedNarration.css';
-import { SERVER_URL } from '../../config';
 import useSubtitleSettings from './hooks/useSubtitleSettings';
 import useNarration from './hooks/useNarration';
 import NarrationMenu from './components/NarrationMenu';
@@ -60,7 +59,7 @@ const SubtitleSettings = ({
     // Only aligned narration props we need
     isGeneratingAligned,
     alignedStatus
-  } = useNarration(videoRef, originalNarrations, translatedNarrations, SERVER_URL);
+  } = useNarration(videoRef, originalNarrations, translatedNarrations);
 
   // Update subtitle language when translation becomes available
   useEffect(() => {

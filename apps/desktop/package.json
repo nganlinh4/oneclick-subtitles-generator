@@ -4,11 +4,12 @@
   "private": true,
   "packageManager": "npm@11.17.0",
   "engines": {
-    "node": ">=22.12.0 <25"
+    "node": ">=24.19.0 <25",
+    "npm": ">=11.17.0 <12"
   },
   "scripts": {
-    "legacy:build": "npm --prefix ../.. run build:frontend",
-    "legacy:dev": "npm --prefix ../.. start",
+    "dev:vite": "npm --prefix ../.. run dev:vite",
+    "build:frontend": "npm --prefix ../.. run build:frontend",
     "tauri": "tauri",
     "tauri:build": "tauri build",
     "tauri:dev": "tauri dev"

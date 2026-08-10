@@ -146,279 +146,208 @@ Here are some screenshots showcasing the application's current features:
 
 </details>
 
-A comprehensive web application for auto-subtitling videos and audio, translating SRT files, generating AI narration with voice cloning, creating background images and music, and rendering professional subtitled videos. Designed for content creators, educators, and general users who need high-quality subtitle generation and video production capabilities.
+OSG is a local-first desktop workspace for transcribing media, editing and translating subtitles,
+creating narration and supporting media, and rendering subtitled video. The current rewrite keeps
+the existing interface intact while replacing the Electron and multi-server backend with Tauri 2
+and a Rust application core.
 
-## What's included
+> **Rewrite checkpoint:** the source application compiles and its native feature contracts are in
+> place, but there is no release-ready installer yet. Several optional runtime catalogs are
+> intentionally empty, and macOS/Linux still need real-device testing. Do not use the deleted
+> legacy installer scripts or expect a hosted/Vercel edition.
 
-There's **one OSG** — no Lite/Full split. The base install is small, and the heavy voice-cloning and local transcription engines (F5-TTS, Chatterbox, NVIDIA Parakeet) install **on demand from inside the app** (Settings → Voice & transcription engines) — a one-time ~3 GB GPU download per engine, so you only download what you use. The only variant is whether you run OSG **locally** or on a **hosted/Vercel** deployment (no local backend → no rendering, downloads, or local engines).
+## What is native now
 
-| Feature | OSG (local) | OSG Vercel (hosted) |
-|---------|-------------|---------------------|
-| **AI Subtitle Generation** | ✅ Gemini, + on-demand NVIDIA Parakeet (local ASR) | ✅ Gemini AI transcription |
-| **Video Sources** | ✅ YouTube, Douyin/TikTok, 1000+ platforms + Upload | Upload only |
-| **Subtitle Editor** | ✅ Visual timeline, waveform, real-time preview | ✅ Visual timeline, waveform, real-time preview |
-| **Translation** | ✅ Multi-language with context awareness | ✅ Multi-language with context awareness |
-| **Video Rendering** | ✅ GPU-accelerated with Remotion | ❌ Not available |
-| **Background Music Generation** | ✅ AI music with Lyria | ✅ AI music with Lyria |
-| **Basic TTS** | ✅ Gemini Live API, Edge TTS, Google TTS | ❌ Not available |
-| **Voice Cloning** | ✅ F5-TTS, Chatterbox (install on demand) | ❌ Not available |
-| **Install size** | ~2-3 GB base (+ ~3 GB per heavy engine you install) | N/A (hosted) |
-| **GPU Requirements** | Any GPU for rendering; GPU recommended for voice/Parakeet (CPU fallback) | None |
+| Area | Current state |
+| --- | --- |
+| Projects and editing | Native media selection/drop, SQLite projects and immutable revisions, durable jobs, settings, cache, subtitle import, and native export. Existing undo/redo controls mirror a bounded, restart-durable track cursor that preserves newer media and unrelated project state. |
+| Gemini | Rust-owned transcription, translation, subtitle analysis, image generation, key rotation/cooldown, and bounded uploads. Every ordinary exposed model accepts audio or video. |
+| Providers and music | Native Genius, YouTube metadata/OAuth, provider-image proxying, and Lyria RealTime sessions; secrets stay in the operating-system credential store. |
+| Media and downloads | Typed probe, compatibility, extraction, waveform, download, and cancellation pipelines. Packaged execution still depends on reviewed target tools. |
+| Local ASR | Supervised Parakeet, Faster-Whisper, and Qwen3-ASR contracts are implemented; release packages are not yet available. |
+| Narration | F5-TTS, Chatterbox, Edge TTS, gTTS, Gemini Live, reference audio, voice conversion, editing, and alignment contracts are implemented; release packages are not yet available. |
+| Rendering | Durable native Remotion worker orchestration is implemented; the target-specific Node/Chromium/Remotion/native-binary/font/notice payload is not yet available. |
+| Updating | The native update-metadata check fails closed until the owner supplies the production signing public key; update installation is not exposed yet. |
 
-## Quick Installation Guide
+The native command surface is not the same as runtime availability. Missing tools and models are
+reported as unavailable; OSG does not silently download unreviewed binaries or fall back to the old
+localhost services.
 
-### Installation on Windows
+### Gemini model policy
 
-- Go to [Releases](https://github.com/nganlinh4/oneclick-subtitles-generator/releases) and download the latest OSG_installer_Windows.bat.
+`src/config/geminiModelCatalog.json` is the single frontend model catalog and records
+`screen-goated-toolbox/catalog/model_catalog.json` as its synchronization source. It exposes
+`gemini-3.5-flash-lite` (the everyday/transcription default), `gemini-3.6-flash`,
+`gemini-3.5-flash`, and `gemini-3.1-flash-lite` for ordinary multimodal work; all four accept audio
+and video. Image generation uses `gemini-3.1-flash-image`, which accepts video, while live audio
+uses `gemini-3.1-flash-live-preview` and `gemini-2.5-flash-native-audio-preview-12-2025`.
+`npm run test:gemini-catalog` rejects any exposed model that accepts neither audio nor video and
+keeps obsolete IDs as migration aliases rather than selectable models.
 
-- Open the downloaded .bat file and follow the instructions (app size will be large if installing with voice cloning feature)
+## Platform status
 
+| Target | Status |
+| --- | --- |
+| Windows x64 | Current development and manual test host; source builds are exercised, but release packaging is still gated. |
+| macOS Apple Silicon / Intel | Build-matrix targets exist; runtime, media, signing, and installer behavior have not yet been manually validated. |
+| Linux x64 | A build-matrix target exists; runtime, media, desktop integration, and package behavior have not yet been manually validated. |
 
-### Installation on macOS and Ubuntu
+The intended product is cross-platform, but macOS and Linux are not yet supported release claims.
 
-- Clone this repo and run the OSG_installer.sh file:
-  ```bash
-  git clone https://github.com/nganlinh4/oneclick-subtitles-generator.git
-  cd oneclick-subtitles-generator
-  chmod +x OSG_installer.sh
-  ./OSG_installer.sh
-  ```
+## Run from source
 
-- Follow the on-screen instructions (app size will be large if installing with voice cloning feature)
+Required toolchains are pinned to Node.js 24.19.0, npm 11.17.0, Python 3.12.10,
+Rust 1.97.1, and Tauri CLI 2.11.4.
+Install the
+[Tauri system prerequisites](https://v2.tauri.app/start/prerequisites/) for your operating system,
+then run from the repository root:
 
-### Update or Run Application
+```powershell
+npm ci
+npm --prefix apps/desktop ci
+npm run tauri:dev
+```
 
-#### Windows
-- Open OSG_installer_Windows.bat and follow the instructions.
+Tauri starts Vite automatically. `npm run dev:vite` is available for frontend-only inspection, but
+browser mode cannot exercise native commands and is not a functional replacement for the desktop
+app.
 
-#### macOS and Ubuntu
-- Open Terminal and run the OSG_installer.sh file again:
-  ```bash
-  ./OSG_installer.sh
-  ```
+To compile without creating an installer:
 
-- Browser will automatically open at http://localhost:3030
+```powershell
+npm run build:frontend
+cargo check --workspace --all-features --locked
+npm run tauri -- build --no-bundle --ci -- --locked
+```
 
-## Features
+## Verification
 
-### 🎬 Video & Audio Processing
-- **Multi-source support**: Upload video/audio files, YouTube URLs, Douyin/TikTok links, or search YouTube by title
-- **Format compatibility**: Supports MP4, AVI, MOV, WebM, WMV, MP3, WAV, AAC, FLAC, and more
-- **Quality scanning**: Intelligent video quality detection with cookie-based authentication for premium content
-- **Video compatibility checking**: Automatic format conversion for Remotion compatibility
+The main local gates are:
 
-### 🤖 AI-Powered Subtitle Generation
-- **Google Gemini AI**: Uses latest Gemini 2.5 models (Flash, Pro) for accurate transcription
-- **NVIDIA Parakeet (local, optional)**: On-device ASR for fast, private transcription once its engine is installed (Settings → Voice & transcription engines). Choose the "NVIDIA Parakeet" method in the subtitle generation dialog. Unified with the same lifecycle, retries, and progress UI as Gemini.
-- **Multi-language support**: Generate subtitles in multiple languages with high accuracy
-- **Parallel processing**: Handles long videos (15+ minutes) with intelligent segmentation
-- **Custom prompts**: Configurable transcription prompts for specialized content
-- **Retry mechanisms**: Smart retry with different models for failed segments
+```powershell
+npm audit --omit=dev --audit-level=high
+npm run check:dependencies
+npm run lint
+npm test
+npm run check:i18n
+npm run test:gemini-catalog
+npm run test:frontend-env
+npm run test:python-workers
+npm run test:frozen-css
+npm run test:production-transport
+npm run check:versions
+npm run test:version-consistency
+npm run check:tauri-contract
+npm run check:visual-freeze
+npm run test:visual-contract
+npm run test:render-worker
+npm run build:frontend
+npm run check:frozen-css-output
+npm run check:production-transport
+node scripts/check-release-readiness.js --profile compile
+cargo fmt --all -- --check
+cargo clippy --workspace --all-targets --all-features --locked -- -D warnings
+cargo test --workspace --all-features --locked
+```
 
-### ✏️ Advanced Subtitle Editing
-- **Visual timeline editor**: Drag-and-drop timing adjustments with waveform visualization
-- **Real-time preview**: Live subtitle synchronization with video playback
-- **Sticky timing**: Batch adjust multiple subtitles simultaneously
-- **Text editing**: Direct text modification with undo/redo functionality
-- **Merge & split**: Combine adjacent subtitles or split long ones
-- **Format support**: Export to SRT, JSON, or custom formats
+`compile` verifies source/repository invariants. The stricter target-specific `runtime-package`
+profile is expected to fail until the withheld runtimes, updater key, and owner-approved
+license/notice policy are supplied; bypassing it does not make a valid release.
 
-### 🗣️ AI Voice Narration
-- **F5-TTS integration**: State-of-the-art voice cloning technology
-- **Chatterbox TTS**: High-quality text-to-speech with voice conversion
-- **Edge TTS & Google TTS**: Multiple TTS engine options
-- **Reference audio**: Upload, record, or extract voice samples from videos
-- **Multi-audio tracks**: Combine original audio with AI-generated narration
-- **Volume controls**: Independent audio level management
+For example, the Windows release gate is:
 
-### 🌍 Translation & Localization
-- **Multi-language translation**: Translate subtitles to any language while preserving timing
-- **Custom formatting**: Configurable output formats with brackets, delimiters, and chains
-- **Batch processing**: Translate multiple subtitle sets simultaneously
-- **Context awareness**: AI-powered translation with video context understanding
+```powershell
+node scripts/check-release-readiness.js --profile runtime-package --target x86_64-pc-windows-msvc
+```
 
-<!-- ### 🎨 Background Image Generation
-- **AI-powered creation**: Generate custom backgrounds using Gemini's image generation
-- **Album art integration**: Use existing artwork as reference for style consistency
-- **Batch generation**: Create multiple variations with unique prompts
-- **Smart prompting**: Automatic prompt generation based on lyrics and content
--->
+The other matrix targets are `x86_64-unknown-linux-gnu`, `aarch64-apple-darwin`, and
+`x86_64-apple-darwin`.
 
-### 🎹 Background Music Generation
-- AI-generated background music with prompt-based control
-- MIDI playback and control support (promptdj-midi)
-- Simple export for use in video rendering
+## Runtime delivery status
 
+| Runtime | Delivery status |
+| --- | --- |
+| yt-dlp | Reviewed `2026.07.04` content-addressed direct-upstream releases are catalogued for the four target families. The first user-initiated URL inspection that needs it asks for consent, reports cancellable install progress, and requires restart before activation; it is never bundled or downloaded at startup. |
+| Deno | Reviewed `2.9.5` content-addressed direct-upstream releases are catalogued for the four target families. The same consented URL-inspection preflight installs it with cancellable progress and stops for restart before activation; it is never bundled or downloaded at startup. |
+| FFmpeg / ffprobe | Withheld pending provenance-complete GPL-capable builds, corresponding source, and notices for every target. |
+| Parakeet / Faster-Whisper / Qwen3-ASR | No reviewed package releases are published in the catalog. |
+| F5-TTS / Chatterbox / Edge TTS / gTTS / Gemini TTS worker | No reviewed package releases are published in the catalog. |
+| Remotion runtime | No reviewed Node/Chromium/Remotion/native-binary/font/notice payload releases are published in the catalog. |
+| Application updater | Public key is unconfigured; the check-only command returns unavailable without fetching. Installing an update is not exposed by the current command surface. |
 
-### 🎥 Professional Video Rendering
-- **Remotion integration**: GPU-accelerated video rendering with hardware optimization
-- **Multi-resolution support**: 360p to 8K output with automatic aspect ratio detection
-- **Subtitle customization**: Extensive styling options including fonts, colors, effects, and animations
-- **Multi-audio support**: Combine original video audio with AI narration tracks
-- **Background integration**: Use generated images or video backgrounds
-- **Render queue**: Batch processing with progress tracking
+The visually frozen YouTube settings help still describes the retired Web-application callback.
+For the native flow, create a Google OAuth **Desktop app** client; Rust opens a temporary
+`127.0.0.1` loopback callback with an operating-system-assigned port. Ignore the displayed origin
+and `/oauth2callback.html` instructions: that browser callback is deliberately absent from the
+production bundle. Correcting the visible help text requires separate visual/content approval.
 
+The frozen API-key helper copy also still says keys are stored in the browser. In native mode,
+legacy browser values are imported once and scrubbed; active secrets live only in the operating
+system credential store. Correcting that visible sentence likewise requires separate content
+approval.
 
+Speech delivery additionally needs complete transitive-wheel/native-library inventories, notices,
+offline and per-platform validation, and provider-terms review. The reviewed F5TTS v1 base model is
+`CC-BY-NC-4.0`, so it cannot become a general commercial-capable default without a different model
+or an explicit owner-approved product policy and acceptance flow. The preserved custom-model UI
+is not a native arbitrary-URL installer: only reviewed content-addressed speech packages may become
+launchable, so custom URL/edit operations remain unavailable until that policy and implementation
+exist.
 
-## How to Use
+PromptDJ currently preserves the frozen interface with bundled Product Sans files. Those files do
+not have an approved redistribution basis, so the release-policy gate rejects them until the owner
+licenses them or separately approves a visually reviewed replacement and records every bundled
+font in `THIRD_PARTY_NOTICES.md`.
 
-### 1. **Select Your Content Source**
-   - **File Upload**: Drag & drop or browse for video/audio files
-   - **YouTube**: Paste URL or search by title with thumbnail preview
-   - **Douyin/TikTok**: Paste URL for automatic extraction
-   - **Other platforms**: Use any supported video URL
+The `manage-native-tools` capability exposes only the typed catalog/status/install/remove/cancel
+commands; executable paths and upstream URLs stay native. OSG reports when activation or a deferred
+removal must wait for restart because a live consumer holds a tool lease. The current user flow
+reaches catalog, status, install, and cancel from an existing media action; it does not expose tool
+removal. A single consent prompt identifies the exact yt-dlp/Deno packages and licenses before any
+download. Installation progress uses the existing toast surface with an explicit cancel action,
+and a successful install never retries the media action in the stale runtime: it asks the user to
+restart first. FFmpeg/ffprobe remain unavailable and are never offered through this preflight.
 
-### 2. **Generate AI Subtitles**
-  - Choose your preferred engine:
-    - Gemini (cloud) for convenience and strong accuracy
-    - NVIDIA Parakeet (local) for on-device, privacy-friendly transcription (install on demand)
-  - Pick your Gemini model (2.5 Flash/Pro recommended) or Parakeet strategy (sentence/word/char)
-   - Configure custom prompts for specialized content
-   - Click "Generate timed subtitles" and monitor progress
-   - Long videos are automatically processed in parallel segments
+Development builds may discover explicitly approved source-tree or system tools in debug mode.
+Release builds do not rely on `PATH` or arbitrary local installations.
 
-### 3. **Edit & Refine Subtitles**
-   - **Visual timeline**: Drag timing handles with waveform visualization
-   - **Real-time preview**: See changes instantly synchronized with video
-   - **Text editing**: Click to edit subtitle content directly
-   - **Batch operations**: Use sticky timing for multiple subtitle adjustments
-   - **Advanced tools**: Merge, split, insert, or delete subtitle segments
+## Data and migration
 
-### 4. **Translate Content** (Optional)
-   - Select target languages for translation
-   - Configure output formatting (brackets, delimiters, chains)
-   - Use context-aware AI translation with video understanding
-   - Preserve original timing while adapting text
+The native app stores projects, revisions, job state, settings, and artifact metadata in SQLite.
+Credentials live in Windows Credential Manager, macOS Keychain, or Linux Secret Service; the UI
+receives opaque references and safe status only.
 
-### 5. **Generate AI Narration** (Optional)
-    - **Set up reference audio**: Upload, record, or extract from video
-    - **Choose TTS engine**: F5-TTS (voice cloning), Chatterbox, Edge TTS, or Google TTS
-    - **Configure voice settings**: Adjust speed, pitch, and style parameters
-    - **Generate narration**: Create AI voice for original or translated subtitles
+Legacy import is an explicit, user-selected operation. It can copy bounded supported artifacts,
+safe preferences, and supported credentials from an old data folder. It rejects links and changed
+sources, is safe to retry, leaves the source directory untouched, and ignores transient caches,
+paths, URLs, and obsolete provider handles.
 
-### 6. **Create Background Music** (Optional)
-   - Open the Background Music panel
-   - Enter a prompt or choose presets, then generate
-   - Preview and adjust via MIDI controls; export for rendering
+In the desktop app, press `Ctrl+Alt+Shift+I` on Windows/Linux or `Command+Option+Shift+I` on macOS,
+then choose the previous OSG data folder in the native picker. The app reports a path-free summary
+through its existing toast panel. Restart OSG afterward to load imported settings.
 
-### 7. **Render Professional Videos**
-   - **Open video renderer**: Access the integrated Remotion-based renderer
-   - **Customize subtitles**: Extensive styling options (fonts, colors, effects, animations)
-   - **Configure audio**: Balance original video audio with AI narration
-   - **Set output quality**: Choose resolution from 360p to 8K
-   - **Render with GPU acceleration**: Hardware-optimized processing for fast output
+## Visual freeze
 
-### 8. **Export & Download**
-   - **Subtitle files**: SRT, JSON, or custom formats
-   - **Audio files**: Generated narration in various formats
-   - **Rendered videos**: Professional subtitled videos with custom styling
+The rewrite preserves the original JSX, CSS, assets, fonts, themes, locales, responsive behavior,
+workflow order, PromptDJ surface, and Remotion composition. Native work is connected behind those
+interactions. Any intentional product-design change needs separate approval and a separately
+reviewed baseline update.
 
+The maintained locale sets are English, Vietnamese, and Korean. `npm run check:i18n` requires every
+statically referenced translation key to be covered by Vietnamese and Korean and rejects reviewed
+user-facing strings that bypass i18n.
 
+## Documentation
 
-## Configuration
-
-Access settings via the gear icon in the top-right corner:
-- **API Keys**: Gemini (required), YouTube (optional for search)
-- **AI Models**: Choose between Gemini 2.5 Flash, Pro, or experimental models
-- **Processing Method**: Switch between Gemini (cloud) and NVIDIA Parakeet (local ASR, install on demand)
-- **Languages**: English, Vietnamese, Korean interface support
-- **Video Processing**: Segment duration, quality preferences, cookie management
-- **TTS Engines**: F5-TTS, Chatterbox, Gemini Live API, Edge TTS, or Google TTS selection
-- **Interface**: Dark/light themes, time format, waveform visualization
-- **Cache Management**: Clear caches and monitor storage usage
-
-## Technical Stack
-
-- **Frontend**: React 18, Styled Components, i18next
-- **Video Rendering**: Remotion 4 with GPU acceleration (Vulkan/OpenGL)
-- **Backend**: Node.js/Express, Python Flask, FastAPI
-- **AI Integration**: Google Gemini API, F5-TTS, Chatterbox TTS
-  , NVIDIA Parakeet (local ASR)
-- **Audio/Video**: FFmpeg, Web Audio API, yt-dlp, Puppeteer
-- **Performance**: React Window virtualization, multi-level caching, hardware acceleration
-
-## Performance Features
-
-- **GPU Acceleration**: Hardware-accelerated video rendering with Vulkan/OpenGL
-- **Virtualized UI**: Only renders visible elements for optimal performance with long videos
-- **Parallel Processing**: Multi-core subtitle generation and video processing
-- **Smart Caching**: Multi-layer cache system for subtitles, videos, and generated content
-- **Optimized Timeline**: Hardware-accelerated canvas visualization with adaptive rendering
-- **Efficient Memory**: Automatic cleanup and smart resource management
-
-## Acknowledgements
-
-### 🎯 Core Technologies
-- **[React](https://reactjs.org/)** - Modern UI framework with hooks and context
-- **[Remotion](https://remotion.dev/)** - Programmatic video creation and rendering
-- **[Node.js](https://nodejs.org/)** - JavaScript runtime for backend services
-- **[Express](https://expressjs.com/)** - Web application framework for Node.js
-
-### 🤖 AI & Machine Learning
-- **[Google Gemini AI](https://deepmind.google/technologies/gemini/)** - Advanced language models for transcription and image generation
-- **[F5-TTS](https://github.com/SWivid/F5-TTS)** - State-of-the-art voice cloning technology
-- **[Chatterbox](https://github.com/resemble-ai/chatterbox)** - High-quality TTS and voice conversion
-- **[Microsoft Edge TTS](https://azure.microsoft.com/en-us/services/cognitive-services/text-to-speech/)** - Neural text-to-speech service
-- **[Google Text-to-Speech](https://cloud.google.com/text-to-speech)** - Cloud-based speech synthesis
- - NVIDIA Parakeet (local ASR)
-
-### 🎬 Video & Audio Processing
-- **[FFmpeg](https://ffmpeg.org/)** - Comprehensive multimedia framework
-- **[yt-dlp](https://github.com/yt-dlp/yt-dlp)** - Universal video downloader for 1000+ platforms
-- **[Puppeteer](https://pptr.dev/)** - Headless Chrome control for web scraping
-
-### 🎨 UI & Visualization
-- **[Styled Components](https://styled-components.com/)** - CSS-in-JS styling solution
-- **[React Router](https://reactrouter.com/)** - Declarative routing for React
-- **[React Window](https://github.com/bvaughn/react-window)** - Efficient virtualization for large lists
-- **[React Icons](https://react-icons.github.io/react-icons/)** - Popular icon libraries for React
-- **HTML5 Canvas** - Hardware-accelerated timeline visualization
-
-### 🌐 Internationalization & Accessibility
-- **[i18next](https://www.i18next.com/)** - Internationalization framework
-- **[React i18next](https://react.i18next.com/)** - React integration for i18next
-- **Material 3 Expressive** - Modern design principles and accessibility standards
-
-### 🔧 Development & Build Tools
-- **[TypeScript](https://www.typescriptlang.org/)** - Type-safe JavaScript development
-- **[Create React App](https://create-react-app.dev/)** - React application scaffolding
-- **[Concurrently](https://github.com/open-cli-tools/concurrently)** - Multi-service development environment
-- **[Cross-env](https://github.com/kentcdodds/cross-env)** - Cross-platform environment variables
-
-### 📦 Package Management & Deployment
-- **[npm](https://www.npmjs.com/)** - Package manager for JavaScript
-- **[uv](https://github.com/astral-sh/uv)** - Fast Python package installer and resolver
-- **[Python](https://www.python.org/)** - Backend services for AI processing
-
-### 🙏 Special Thanks
-- **Open source community** for maintaining these incredible tools
-- **Google DeepMind** for advancing AI accessibility
-- **Remotion team** for revolutionizing programmatic video creation
-- **F5-TTS contributors** for open-source voice cloning technology
-- **All beta testers and contributors** who helped improve this application
-
-
+- [Architecture and crate boundaries](ARCHITECTURE.md)
+- [Security and trust model](SECURITY.md)
+- [Visual-freeze policy](docs/rewrite/DESIGN.md)
+- [Desktop host notes](apps/desktop/README.md)
+- [Native render worker](video-renderer/README.md)
 
 ## License
 
-MIT License
-
-Copyright (c) 2025 Oneclick Subtitles Generator
-
-Permission is hereby granted, free of charge, to any person obtaining a copy
-of this software and associated documentation files (the "Software"), to deal
-in the Software without restriction, including without limitation the rights
-to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
-copies of the Software, and to permit persons to whom the Software is
-furnished to do so, subject to the following conditions:
-
-The above copyright notice and this permission notice shall be included in all
-copies or substantial portions of the Software.
-
-THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
-IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
-FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
-AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
-LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
-OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
-SOFTWARE.
+A root project license has not been selected. The repository owner must choose and add `LICENSE`
+and approve the project-level third-party-notice/corresponding-source policy; the release gate also
+requires `THIRD_PARTY_NOTICES.md`. Licenses declared by dependencies or individual crates do not
+establish a license for the repository as a whole.

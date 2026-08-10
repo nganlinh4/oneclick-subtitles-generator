@@ -6,64 +6,15 @@
 
 // Convert Blob to base64 string (without data: prefix) — shared helper.
 import { toBase64 as blobToBase64 } from '../../utils/fileUtils';
-// Route Gemini calls through the shared key-rotation wrapper (auto switch-on-429).
-import { fetchWithKeyRotation } from './withKeyRotation';
-import { addThinkingConfig } from '../../utils/thinkingBudgetUtils';
+import { getThinkingBudget } from '../../utils/thinkingBudgetUtils';
+import { generateNativeGeminiImage } from '../../platform/nativeGeminiImage';
+import { runNativeGeminiText } from '../../platform/nativeGeminiText';
 import {
   DEFAULT_BACKGROUND_PROMPT_MODEL_ID,
   DEFAULT_IMAGE_GENERATION_MODEL_ID,
   migrateGeminiModelId,
   normalizeImageGenerationModelId
 } from '../../config/geminiModels';
-
-// Load an image blob and return a resized JPEG base64 (to keep payloads small and consistent)
-const resizeImageBlobToJpegBase64 = async (blob, maxDim = 1024, quality = 0.92) => {
-  try {
-    // Prefer createImageBitmap for speed if available
-    const bitmap = await createImageBitmap(blob).catch(() => null);
-
-    const imgElementToCanvas = async () => new Promise((resolve, reject) => {
-      const img = new Image();
-      img.onload = () => resolve(img);
-      img.onerror = (e) => reject(e);
-      // Allow CORS if server permits; otherwise canvas will be tainted and toDataURL will fail
-      img.crossOrigin = 'anonymous';
-      img.src = URL.createObjectURL(blob);
-    });
-
-    const source = bitmap || await imgElementToCanvas();
-    const srcW = source.width;
-    const srcH = source.height;
-    if (!srcW || !srcH) throw new Error('Invalid album art image');
-
-    let targetW = srcW;
-    let targetH = srcH;
-    if (Math.max(srcW, srcH) > maxDim) {
-      if (srcW >= srcH) {
-        targetW = maxDim;
-        targetH = Math.round((srcH / srcW) * maxDim);
-      } else {
-        targetH = maxDim;
-        targetW = Math.round((srcW / srcH) * maxDim);
-      }
-    }
-
-    const canvas = document.createElement('canvas');
-    canvas.width = targetW;
-    canvas.height = targetH;
-    const ctx = canvas.getContext('2d');
-    ctx.drawImage(source, 0, 0, targetW, targetH);
-
-    // Use JPEG to improve compatibility and reduce size
-    const dataUrl = canvas.toDataURL('image/jpeg', quality);
-    const base64 = dataUrl.split(',')[1] || '';
-    return { base64, mimeType: 'image/jpeg' };
-  } catch (e) {
-    // Fallback: return original blob as base64
-    const base64 = await blobToBase64(blob);
-    return { base64, mimeType: blob.type || 'image/png' };
-  }
-};
 
 // Normalize album art input (data URL or remote URL) into { base64, mimeType }
 const prepareAlbumArt = async (albumArtUrl) => {
@@ -73,17 +24,25 @@ const prepareAlbumArt = async (albumArtUrl) => {
     return { base64: data || '', mimeType };
   }
 
-  // Try to fetch the image bytes (will require the source to allow CORS)
-  const resp = await fetch(albumArtUrl, { mode: 'cors', referrerPolicy: 'no-referrer' }).catch(() => null);
-  if (!resp || !resp.ok) {
-    throw new Error('Unable to fetch album art due to CORS or network restrictions. Please upload the image or use a same-origin URL.');
-  }
-  const blob = await resp.blob();
-  // Resize/compress to a sane size to avoid payload limits
-  return await resizeImageBlobToJpegBase64(blob);
+  const image = await new Promise((resolve, reject) => {
+    const element = new Image();
+    element.crossOrigin = 'anonymous';
+    element.onload = () => resolve(element);
+    element.onerror = () => reject(new Error('Unable to load the album art image.'));
+    element.src = albumArtUrl;
+  });
+  const canvas = document.createElement('canvas');
+  const scale = Math.min(1, 1024 / Math.max(image.width, image.height));
+  canvas.width = Math.max(1, Math.round(image.width * scale));
+  canvas.height = Math.max(1, Math.round(image.height * scale));
+  const context = canvas.getContext('2d');
+  if (!context) throw new Error('Unable to prepare the album art image.');
+  context.drawImage(image, 0, 0, canvas.width, canvas.height);
+  const dataUrl = canvas.toDataURL('image/jpeg', 0.92);
+  return { base64: dataUrl.split(',')[1] || '', mimeType: 'image/jpeg' };
 };
 
-const placeholder = (name) => '$' + '{' + name + '}';
+const placeholder = (name) => `\${${name}}`;
 const SONG_NAME_PLACEHOLDER = placeholder("songName || 'Unknown Song'");
 const LYRICS_PLACEHOLDER = placeholder('lyrics');
 const PROMPT_PLACEHOLDER = placeholder('prompt');
@@ -125,34 +84,14 @@ export async function generateBackgroundPrompt(lyrics, songName = 'Unknown Song'
   const template = localStorage.getItem('background_prompt_one') || DEFAULT_PROMPT_ONE;
   const content = renderTemplate(template, { lyrics, songName });
 
-  let body = {
-    contents: [
-      {
-        role: 'user',
-        parts: [{ text: content }]
-      }
-    ]
-  };
-  body = addThinkingConfig(body, model);
-
-  const resp = await fetchWithKeyRotation((apiKey) =>
-    fetch(`https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${apiKey}`,
-      {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(body)
-      }
-    )
-  );
-
-  if (!resp.ok) {
-    let msg = `Failed to generate prompt (HTTP ${resp.status})`;
-    try { const err = await resp.json(); msg = err?.error?.message || msg; } catch {}
-    throw new Error(msg);
-  }
-
-  const data = await resp.json();
-  const text = data?.candidates?.[0]?.content?.parts?.find(p => p.text)?.text?.trim();
+  const thinking = getThinkingBudget(model);
+  const result = await runNativeGeminiText({
+    task: 'analyzeSubtitles',
+    model,
+    prompt: content,
+    ...(typeof thinking === 'string' ? { thinkingLevel: thinking } : {}),
+  });
+  const text = result.text?.trim();
   if (!text) throw new Error('No prompt returned from Gemini');
   return text;
 }
@@ -165,53 +104,31 @@ export async function generateBackgroundImage(prompt, albumArtUrl) {
     localStorage.getItem('background_image_model') || DEFAULT_IMAGE_GENERATION_MODEL_ID
   );
 
-  // Prepare inline image data from album art (handles data URL, CORS fetch, resize/compress)
+  // Prepare image data without any provider request from the WebView.
   const { base64: base64Image, mimeType } = await prepareAlbumArt(albumArtUrl);
 
   // Use Prompt Two template to build the final instruction text that references ${prompt}
   const promptTemplate = localStorage.getItem('background_prompt_two') || DEFAULT_PROMPT_TWO;
   const finalPrompt = renderTemplate(promptTemplate, { prompt });
 
-  const body = {
-    contents: [
-      {
-        role: 'user',
-        parts: [
-          { text: finalPrompt },
-          { inlineData: { mimeType, data: base64Image } }
-        ]
-      }
-    ],
-    generationConfig: {
-      responseModalities: ['TEXT', 'IMAGE']
-    }
-  };
-
-  const resp = await fetchWithKeyRotation((apiKey) =>
-    fetch(`https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${apiKey}`,
-      {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(body)
-      }
-    )
-  );
-
-  if (!resp.ok) {
-    let msg = `Failed to generate image (HTTP ${resp.status})`;
-    try { const err = await resp.json(); msg = err?.error?.message || msg; } catch {}
-    throw new Error(msg);
+  let binary;
+  try {
+    binary = atob(base64Image);
+  } catch {
+    throw new Error('The album art image data is invalid');
   }
-
-  const data = await resp.json();
-  // Find first inlineData part in the response
-  const parts = data?.candidates?.[0]?.content?.parts || [];
-  const imagePart = parts.find(p => p.inlineData && p.inlineData.data);
-  if (!imagePart) throw new Error('No image returned from Gemini');
-
+  const bytes = new Uint8Array(binary.length);
+  for (let index = 0; index < binary.length; index += 1) {
+    bytes[index] = binary.charCodeAt(index);
+  }
+  const generated = await generateNativeGeminiImage({
+    referenceBlob: new Blob([bytes], { type: mimeType }),
+    prompt: finalPrompt,
+    model,
+  });
   return {
-    data: imagePart.inlineData.data,
-    mime_type: imagePart.inlineData.mimeType || 'image/png'
+    data: await blobToBase64(new Blob([generated.bytes], { type: generated.mimeType })),
+    mime_type: generated.mimeType,
   };
 }
 

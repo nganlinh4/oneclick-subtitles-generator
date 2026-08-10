@@ -1,0 +1,26 @@
+[package]
+name = "osg-live-music"
+version.workspace = true
+authors.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+description = "Bounded backend-only Lyria RealTime WebSocket transport"
+
+[dependencies]
+base64 = "=0.22.1"
+futures-util = "=0.3.33"
+rustls = { version = "=0.23.43", default-features = false, features = ["ring", "std"] }
+secrecy = "=0.10.3"
+serde.workspace = true
+serde_json.workspace = true
+thiserror.workspace = true
+tokio = { version = "=1.53.1", features = ["net", "sync", "time"] }
+tokio-tungstenite = { version = "=0.30.0", default-features = false, features = ["connect", "rustls-tls-webpki-roots"] }
+tokio-util = { version = "=0.7.19", features = ["rt"] }
+url = "=2.5.8"
+
+[dev-dependencies]
+tokio = { version = "=1.53.1", features = ["macros", "net", "rt-multi-thread", "sync", "time"] }
+
+[lints]
+workspace = true

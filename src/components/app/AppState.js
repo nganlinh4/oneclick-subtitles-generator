@@ -4,11 +4,14 @@ import { getThemeWithFallback } from '../../utils/systemDetection';
 import { useSubtitles } from '../../hooks/useSubtitles';
 import { getUserProvidedSubtitlesSync } from '../../utils/userSubtitlesStore';
 import { getTranscriptionRulesSync } from '../../utils/transcriptionRulesStore';
-import { hasValidTokens } from '../../services/youtubeApiService';
 import { PROMPT_PRESETS } from '../../services/geminiService';
 import { cleanupInvalidBlobUrls } from '../../utils/videoUtils';
-import { getAllKeys } from '../../services/gemini/keyManager';
 import { DEFAULT_GEMINI_MODEL_ID, migrateStoredGeminiModels } from '../../config/geminiModels';
+import {
+  getCredentialAvailability,
+  initializeCredentialState,
+  subscribeCredentialState,
+} from '../../platform/credentialStateController';
 
 /**
  * Custom hook for managing application state
@@ -88,6 +91,24 @@ export const useAppState = () => {
 
     return savedRules;
   });
+
+  // Native project-backed stores hydrate asynchronously after a media cache alias is resolved.
+  // Keep the existing state contract in sync without changing any rendered structure.
+  useEffect(() => {
+    const handleUserSubtitlesUpdate = (event) => {
+      setUserProvidedSubtitlesState(event.detail?.subtitlesText || '');
+    };
+    const handleRulesUpdate = (event) => {
+      setTranscriptionRulesState(event.detail?.rules ?? null);
+    };
+
+    window.addEventListener('userProvidedSubtitlesUpdated', handleUserSubtitlesUpdate);
+    window.addEventListener('transcriptionRulesUpdated', handleRulesUpdate);
+    return () => {
+      window.removeEventListener('userProvidedSubtitlesUpdated', handleUserSubtitlesUpdate);
+      window.removeEventListener('transcriptionRulesUpdated', handleRulesUpdate);
+    };
+  }, []);
 
   // Get subtitles hook
   const {
@@ -191,39 +212,35 @@ export const useAppState = () => {
     }
   }, [setStatus]);
 
-  // Initialize API keys and OAuth status from localStorage
+  // Initialize credential availability from native, non-secret status metadata.
   useEffect(() => {
-    const geminiKeys = getAllKeys();
-    const youtubeApiKey = localStorage.getItem('youtube_api_key');
-    const geniusApiKey = localStorage.getItem('genius_token');
-    const useOAuth = localStorage.getItem('use_youtube_oauth') === 'true';
-    const hasOAuthTokens = hasValidTokens();
+    let alive = true;
+    const applySnapshot = (snapshot) => {
+      if (!alive || !snapshot.initialized) return;
+      const useOAuth = localStorage.getItem('use_youtube_oauth') === 'true';
+      const availability = getCredentialAvailability(snapshot, { useOAuth });
+      setApiKeysSet(availability);
 
-    setApiKeysSet({
-      gemini: geminiKeys.length > 0,
-      youtube: useOAuth ? hasOAuthTokens : !!youtubeApiKey,
-      genius: !!geniusApiKey
-    });
-
-    // Check API keys status and show message if needed (only for YouTube-specific messages)
-    // The general Gemini API key message is handled by the reactive useEffect below
-    // eslint-disable-next-line no-mixed-operators
-    if (activeTab === 'youtube-search' && ((!youtubeApiKey && !useOAuth) || (useOAuth && !hasOAuthTokens))) {
-      let message;
-
-      // eslint-disable-next-line no-mixed-operators
-      if (geminiKeys.length === 0 && ((!youtubeApiKey && !useOAuth) || (useOAuth && !hasOAuthTokens))) {
-        message = t('errors.bothKeysRequired', 'Please set your Gemini API key and configure YouTube authentication in the settings to use this application.');
-      } else if (useOAuth && !hasOAuthTokens) {
-        message = t('errors.youtubeAuthRequired', 'YouTube authentication required. Please set up OAuth in settings.');
-      } else {
-        message = t('errors.youtubeApiKeyRequired', 'Please set your YouTube API key in the settings to use this application.');
-      }
-
-      if (message) {
+      if (activeTab === 'youtube-search' && !availability.youtube) {
+        let message;
+        if (!availability.gemini) {
+          message = t('errors.bothKeysRequired', 'Please set your Gemini API key and configure YouTube authentication in the settings to use this application.');
+        } else if (useOAuth) {
+          message = t('errors.youtubeAuthRequired', 'YouTube authentication required. Please set up OAuth in settings.');
+        } else {
+          message = t('errors.youtubeApiKeyRequired', 'Please set your YouTube API key in the settings to use this application.');
+        }
         setStatus({ message, type: 'info' });
       }
-    }
+    };
+    const unsubscribe = subscribeCredentialState(applySnapshot);
+    initializeCredentialState().then(applySnapshot).catch(() => {
+      if (alive) setApiKeysSet({ gemini: false, youtube: false, genius: false });
+    });
+    return () => {
+      alive = false;
+      unsubscribe();
+    };
   }, [setStatus, activeTab, t]);
 
   // Reactively update status messages based on API key changes

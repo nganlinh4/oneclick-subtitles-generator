@@ -1,448 +1,344 @@
-/**
- * Service for managing aligned narration preview playback.
- *
- * Preview mode uses a timing plan plus the original clip files for low-latency
- * local playback. File mode is still supported for existing merged-audio flows.
- *
- * The Web-Audio timeline engine and the <audio> file-mode lifecycle live in
- * ./alignedNarration/*; the shared cache state lives in
- * ./alignedNarration/cacheState. This module keeps the public API plus the pure
- * plan/payload helpers.
- */
-import i18n from "../i18n/i18n";
-import { SERVER_URL } from "../config";
-import { hydrateNarrationResultsForAlignment } from "../utils/narrationAlignmentUtils";
+import i18n from '../i18n/i18n';
+import { isDesktopRuntime } from '../platform/desktopRuntime';
 import {
-  emptyAlignedNarrationCache,
-  getCurrentCache,
-  getLocalCache,
-  resolveServerUrl,
-  revokeObjectUrlIfNeeded,
-  setAlignedNarrationCache,
-  syncWindowState,
-} from "./alignedNarration/cacheState";
+  nativeNarrationAlignmentService,
+  normalizeAlignmentRequest,
+} from '../platform/narrationAlignmentService';
+import { getNativeNarrationArtifactId } from '../platform/nativeNarrationCapabilities';
 import {
-  getTimelineCurrentTime,
-  prewarmTimelineWindow,
-  resetTimelinePlayback,
-  startTimelinePlayback,
-  stopTimelinePlayback,
-  timelinePlayback,
-  TIMELINE_RESYNC_THRESHOLD,
-} from "./alignedNarration/timelinePlaybackEngine";
-import {
-  ensureFileAudioElement,
-  playFileModeNarration,
-  resetFileAudioElement,
-} from "./alignedNarration/fileAudioElement";
+  discardRecoveredNativeJob,
+  forgetNativeJobId,
+  listRecoveredNativeJobs,
+  rememberNativeJobId,
+  startNativeJobRecovery,
+} from '../platform/jobRecoveryCoordinator';
+import { hydrateNarrationResultsForAlignment } from '../utils/narrationAlignmentUtils';
 
-const PREVIEW_PLAN_URL = `${SERVER_URL}/api/narration/preview-aligned`;
+const emptyCache = () => ({
+  blob: null,
+  url: null,
+  filename: null,
+  mode: null,
+  previewPlan: null,
+  nativeArtifactId: null,
+  nativePlaybackId: null,
+  nativeJobId: null,
+  timestamp: null,
+  subtitleTimestamps: {},
+});
 
-const createSubtitleTimestampMap = (narrationData) => {
-  const timestamps = {};
+let cache = emptyCache();
+let audioElement = null;
+let playbackRate = 1;
+let volume = 1;
+let recentAlignment = null;
 
-  narrationData.forEach((item) => {
-    timestamps[item.subtitle_id] = {
-      start: item.start,
-      end: item.end,
-    };
-  });
-
-  return timestamps;
+const syncWindowState = () => {
+  if (typeof window === 'undefined') return;
+  window.alignedNarrationCache = cache;
+  window.isAlignedNarrationAvailable = Boolean(cache.url);
+  window.alignedAudioElement = audioElement;
 };
 
-const haveSubtitleTimestampsChanged = (newSubtitleTimestamps, cache) => {
-  const oldSubtitleTimestamps = cache?.subtitleTimestamps || {};
-  const newIds = Object.keys(newSubtitleTimestamps);
-  const oldIds = Object.keys(oldSubtitleTimestamps);
+const setCache = (next) => {
+  cache = next;
+  syncWindowState();
+};
 
-  if (newIds.length !== oldIds.length) {
-    return true;
+const clearRecentAlignment = () => {
+  if (recentAlignment !== null) forgetNativeJobId(recentAlignment.jobId);
+  recentAlignment = null;
+};
+
+const rememberAlignment = (jobId, request) => {
+  recentAlignment = Object.freeze({ jobId, request });
+  rememberNativeJobId(jobId);
+};
+
+const matchingRecentJobId = (request) => (
+  recentAlignment !== null
+  && JSON.stringify(recentAlignment.request) === JSON.stringify(request)
+    ? recentAlignment.jobId
+    : null
+);
+
+const discardUnmatchedRecoveredAlignments = async () => {
+  await startNativeJobRecovery().catch(() => undefined);
+  for (const entry of listRecoveredNativeJobs('alignNarration')) {
+    if (['queued', 'running', 'cancelling'].includes(entry.job.state)) {
+      await nativeNarrationAlignmentService.cancelAlignmentJob(entry.job.id)
+        .catch(() => undefined);
+    }
+    discardRecoveredNativeJob(entry.job.id);
   }
-
-  return newIds.some((id) => {
-    const oldItem = oldSubtitleTimestamps[id];
-    const newItem = newSubtitleTimestamps[id];
-
-    return (
-      !oldItem || oldItem.start !== newItem.start || oldItem.end !== newItem.end
-    );
-  });
 };
 
-const normalizePreviewPlan = (items = []) => {
-  return items
-    .filter((item) => item && typeof item.start === "number" && item.url)
-    .map((item, index) => ({
-      ...item,
-      id: item.id || `${item.subtitle_id || "segment"}_${index}`,
-      url: resolveServerUrl(item.url),
-      actualDuration:
-        typeof item.actualDuration === "number"
-          ? item.actualDuration
-          : Math.max(0, (item.naturalEnd || 0) - item.start),
-      naturalEnd:
-        typeof item.naturalEnd === "number"
-          ? item.naturalEnd
-          : item.start + (item.actualDuration || 0),
-    }))
-    .sort((a, b) => a.start - b.start);
+const releasePlayback = (snapshot = cache) => {
+  if (!snapshot?.nativePlaybackId || !isDesktopRuntime()) return;
+  nativeNarrationAlignmentService
+    .releaseAlignmentPlayback(snapshot.nativePlaybackId)
+    .catch(() => undefined);
 };
 
-const buildNarrationPayload = (generationResults) => {
-  const narrationData = hydrateNarrationResultsForAlignment(generationResults)
-    .filter((result) => result.success && (result.filename || result.audioData))
+const resetAudioElement = (clearSource = true) => {
+  if (!audioElement) return;
+  try {
+    audioElement.pause();
+    if (clearSource) {
+      audioElement.src = '';
+      audioElement.load();
+    }
+  } catch {
+    // Cleanup remains best-effort if WebView audio teardown races navigation.
+  }
+  audioElement = null;
+  syncWindowState();
+};
+
+const ensureAudioElement = () => {
+  if (!cache.url || typeof Audio === 'undefined') return null;
+  if (!audioElement) {
+    audioElement = new Audio();
+    audioElement.preload = 'auto';
+    audioElement.crossOrigin = 'anonymous';
+  }
+  if (audioElement.src !== cache.url) {
+    audioElement.pause();
+    audioElement.src = cache.url;
+    audioElement.load();
+  }
+  audioElement.playbackRate = playbackRate;
+  audioElement.volume = volume;
+  syncWindowState();
+  return audioElement;
+};
+
+const secondsToMicros = (value) => {
+  if (typeof value !== 'number' || !Number.isFinite(value) || value < 0) {
+    throw new Error('Invalid narration timing for native alignment');
+  }
+  const micros = Math.round(value * 1_000_000);
+  if (!Number.isSafeInteger(micros)) {
+    throw new Error('Invalid narration timing for native alignment');
+  }
+  return micros;
+};
+
+const createSubtitleTimestampMap = (items) => Object.fromEntries(items.map((item) => [
+  item.subtitle_id,
+  { start: item.start, end: item.end },
+]));
+
+const buildNativePayload = (generationResults) => {
+  const items = hydrateNarrationResultsForAlignment(generationResults)
+    .filter((result) => result?.success)
     .map((result) => {
-      const start = typeof result.start === "number" ? result.start : 0;
-      const end = typeof result.end === "number" ? result.end : start + 5;
-
-      const narration = {
+      const artifactId = getNativeNarrationArtifactId(result);
+      if (!artifactId) {
+        throw new Error('Native narration alignment requires durable narration artifacts');
+      }
+      const start = typeof result.start === 'number' ? result.start : 0;
+      const end = typeof result.end === 'number' ? result.end : start + 5;
+      return Object.freeze({
         subtitle_id: result.subtitle_id,
+        nativeArtifactId: artifactId,
         start,
         end,
-        text: result.text || "",
-      };
+      });
+    })
+    .sort((left, right) => left.start - right.start);
 
-      if (result.filename) {
-        narration.filename = result.filename;
-      }
-
-      if (result.audioData) {
-        narration.audioData = result.audioData;
-        narration.mimeType = result.mimeType;
-        narration.sampleRate = result.sampleRate;
-      }
-
-      if (typeof result.actualDuration === "number") {
-        narration.actualDuration = result.actualDuration;
-      } else if (typeof result.audioDuration === "number") {
-        narration.audioDuration = result.audioDuration;
-      }
-
-      if (result.original_ids) {
-        narration.original_ids = result.original_ids;
-      }
-
-      if (result.forceRegenerate) {
-        narration.forceRegenerate = true;
-      }
-
-      if (result.retriedAt) {
-        narration.retriedAt = result.retriedAt;
-      }
-
-      return narration;
-    });
-
-  narrationData.sort((a, b) => a.start - b.start);
-
-  return {
-    narrationData,
-    subtitleTimestamps: createSubtitleTimestampMap(narrationData),
-  };
+  return Object.freeze({
+    items: Object.freeze(items),
+    subtitleTimestamps: Object.freeze(createSubtitleTimestampMap(items)),
+  });
 };
 
-const shouldReusePreviewPlan = (narrationData, subtitleTimestamps) => {
-  const cache = getCurrentCache();
-  if (!cache.previewPlan || !cache.previewPlan.length) {
-    return false;
-  }
+const buildNativeRequest = (items) => normalizeAlignmentRequest({
+  clips: items.map((item, index) => ({
+    id: `segment-${index + 1}`,
+    artifactId: item.nativeArtifactId,
+    startMicros: secondsToMicros(item.start),
+    cueEndMicros: secondsToMicros(item.end),
+  })),
+});
 
-  if (haveSubtitleTimestampsChanged(subtitleTimestamps, cache)) {
-    return false;
-  }
-
-  return !narrationData.some(
-    (item) =>
-      item.forceRegenerate === true ||
-      (item.retriedAt &&
-        (!cache.timestamp || item.retriedAt > cache.timestamp)),
+const cacheResolvedAlignment = async (result, jobId, subtitleTimestamps) => {
+  const playable = await nativeNarrationAlignmentService.resolveAlignmentArtifact(
+    result.artifact.artifactId,
   );
-};
-
-const applyPreviewPlanToCache = (previewPlan, subtitleTimestamps) => {
-  revokeObjectUrlIfNeeded(getLocalCache().url);
-  resetFileAudioElement();
-  resetTimelinePlayback();
-
-  timelinePlayback.plan = previewPlan;
-  prewarmTimelineWindow(0);
-
-  setAlignedNarrationCache({
-    blob: null,
-    url: null,
-    filename: null,
-    mode: "timeline",
-    previewPlan,
+  releasePlayback(cache);
+  resetAudioElement();
+  setCache({
+    ...emptyCache(),
+    url: playable.playback.playbackUrl,
+    mode: 'file',
+    nativeArtifactId: result.artifact.artifactId,
+    nativePlaybackId: playable.playback.id,
+    nativeJobId: jobId,
     timestamp: Date.now(),
     subtitleTimestamps,
   });
+  return [Object.freeze({
+    id: 'native-aligned-narration',
+    url: playable.playback.playbackUrl,
+    start: 0,
+    actualDuration: result.renderedDurationMicros / 1_000_000,
+    naturalEnd: result.renderedDurationMicros / 1_000_000,
+  })];
+};
+
+const restoreAlignment = async (request, subtitleTimestamps) => {
+  const jobId = matchingRecentJobId(request);
+  if (!jobId) {
+    await discardUnmatchedRecoveredAlignments();
+    return null;
+  }
+  try {
+    let restored = await nativeNarrationAlignmentService.getAlignmentResult(jobId);
+    if (restored.result === null
+        && ['queued', 'running', 'cancelling'].includes(restored.job.state)) {
+      restored = await nativeNarrationAlignmentService.waitForAlignmentResult(jobId);
+    }
+    if (restored.result === null) {
+      clearRecentAlignment();
+      return null;
+    }
+    forgetNativeJobId(jobId);
+    return cacheResolvedAlignment(restored.result, jobId, subtitleTimestamps);
+  } catch {
+    clearRecentAlignment();
+    return null;
+  }
+};
+
+const startAlignment = async (request, onProgress, subtitleTimestamps) => {
+  const restored = await restoreAlignment(request, subtitleTimestamps);
+  if (restored) {
+    onProgress?.({ status: 'complete', message: 'Using cached aligned narration' });
+    return restored;
+  }
+
+  let resolveTerminal;
+  let rejectTerminal;
+  const terminal = new Promise((resolve, reject) => {
+    resolveTerminal = resolve;
+    rejectTerminal = reject;
+  });
+  const job = await nativeNarrationAlignmentService.startAlignmentJob(request, {
+    onProgress: () => onProgress?.({
+      status: 'generating',
+      message: 'Preparing aligned narration preview...',
+    }),
+    onCompleted: (event) => resolveTerminal(event.result),
+    onCancelled: () => rejectTerminal(new Error('Narration alignment was cancelled')),
+    onFailed: (event) => rejectTerminal(new Error(`Narration alignment failed: ${event.code}`)),
+    onProtocolError: rejectTerminal,
+  });
+  rememberAlignment(job.id, request);
+  try {
+    const result = await terminal;
+    forgetNativeJobId(job.id);
+    return await cacheResolvedAlignment(result, job.id, subtitleTimestamps);
+  } catch (error) {
+    clearRecentAlignment();
+    throw error;
+  }
 };
 
 export const prepareAlignedNarrationPreview = async (
   narrationData,
   onProgress = null,
-  subtitleTimestamps = createSubtitleTimestampMap(narrationData),
+  subtitleTimestamps = createSubtitleTimestampMap(narrationData || []),
 ) => {
   if (!Array.isArray(narrationData) || narrationData.length === 0) {
-    const errorMessage = i18n.t(
-      "errors.noNarrationResults",
-      "No narration results to generate aligned audio",
-    );
-    console.error(errorMessage);
     return null;
   }
-
-  if (shouldReusePreviewPlan(narrationData, subtitleTimestamps)) {
-    if (onProgress) {
-      onProgress({
-        status: "complete",
-        message: "Using cached aligned narration",
-      });
-    }
-    return getCurrentCache().previewPlan;
-  }
-
-  if (onProgress) {
-    onProgress({
-      status: "generating",
-      message: "Preparing aligned narration preview...",
-    });
-  }
-
-  const response = await fetch(PREVIEW_PLAN_URL, {
-    method: "POST",
-    mode: "cors",
-    credentials: "include",
-    headers: {
-      "Content-Type": "application/json",
-      Accept: "application/json",
-    },
-    body: JSON.stringify({ narrations: narrationData }),
-  });
-
-  if (response.ok) {
-    const { checkAudioAlignmentFromResponse } =
-      await import("../utils/audioAlignmentNotification.js");
-    checkAudioAlignmentFromResponse(response);
-  }
-
-  if (!response.ok) {
-    let errorMessage = `Failed to prepare aligned narration preview: ${response.statusText}`;
-    try {
-      const errorJson = await response.json();
-      errorMessage =
-        errorJson.details?.message || errorJson.error || errorMessage;
-    } catch {}
-    throw new Error(errorMessage);
-  }
-
-  const responseJson = await response.json();
-  const previewPlan = normalizePreviewPlan(responseJson.items);
-  if (!previewPlan.length) {
-    throw new Error(
-      "Aligned narration preview plan did not include any playable clips",
-    );
-  }
-
-  applyPreviewPlanToCache(previewPlan, subtitleTimestamps);
-
-  if (onProgress) {
-    onProgress({ status: "complete", message: "Aligned narration ready" });
-  }
-
-  return previewPlan;
+  if (!isDesktopRuntime()) return null;
+  onProgress?.({ status: 'generating', message: 'Preparing aligned narration preview...' });
+  const request = buildNativeRequest(narrationData.map((item) => ({
+    ...item,
+    nativeArtifactId: getNativeNarrationArtifactId(item),
+  })));
+  const preview = await startAlignment(request, onProgress, subtitleTimestamps);
+  onProgress?.({ status: 'complete', message: 'Aligned narration ready' });
+  return preview;
 };
 
-/**
- * Generate aligned narration preview and store it in cache.
- * Returns a symbolic URL-like string for compatibility with existing callers.
- */
-export const generateAlignedNarration = async (
-  generationResults,
-  onProgress = null,
-) => {
-  if (!generationResults || generationResults.length === 0) {
-    const errorMessage = i18n.t(
-      "errors.noNarrationResults",
-      "No narration results to generate aligned audio",
-    );
-    console.error(errorMessage);
+export const generateAlignedNarration = async (generationResults, onProgress = null) => {
+  if (!Array.isArray(generationResults) || generationResults.length === 0) {
     return null;
   }
-
+  if (!isDesktopRuntime()) return null;
   try {
-    if (onProgress) {
-      onProgress({
-        status: "preparing",
-        message: "Preparing aligned narration...",
-      });
+    onProgress?.({ status: 'preparing', message: 'Preparing aligned narration...' });
+    const { items, subtitleTimestamps } = buildNativePayload(generationResults);
+    if (items.length === 0) {
+      throw new Error(i18n.t(
+        'errors.noNarrationResults',
+        'No narration results to generate aligned audio',
+      ));
     }
-
-    const { narrationData, subtitleTimestamps } =
-      buildNarrationPayload(generationResults);
-    if (!narrationData.length) {
-      throw new Error(
-        i18n.t(
-          "errors.noNarrationResults",
-          "No narration results to generate aligned audio",
-        ),
-      );
-    }
-
-    await prepareAlignedNarrationPreview(
-      narrationData,
-      onProgress,
-      subtitleTimestamps,
-    );
-    return "aligned-preview://timeline";
+    await prepareAlignedNarrationPreview(items, onProgress, subtitleTimestamps);
+    return 'aligned-preview://timeline';
   } catch (error) {
-    console.error("Error generating aligned narration:", error);
-    if (onProgress) {
-      onProgress({ status: "error", message: `Error: ${error.message}` });
-    }
+    onProgress?.({ status: 'error', message: `Error: ${error.message}` });
     return null;
   }
 };
 
-/**
- * Get the aligned narration audio element for file-mode playback only.
- */
-export const getAlignedAudioElement = () => {
-  const cache = getCurrentCache();
-  if (cache.previewPlan?.length) {
-    return null;
-  }
-
-  return ensureFileAudioElement();
-};
+export const getAlignedAudioElement = () => ensureAudioElement();
 
 export const playAlignedNarration = (currentTime, isPlaying) => {
-  const cache = getCurrentCache();
-  const previewPlan = cache.previewPlan;
-
-  if (Array.isArray(previewPlan) && previewPlan.length > 0) {
-    timelinePlayback.plan = previewPlan;
-
-    if (!isPlaying) {
-      stopTimelinePlayback(currentTime);
-      return true;
+  const audio = ensureAudioElement();
+  if (!audio) return false;
+  try {
+    if (Math.abs(audio.currentTime - currentTime) > 0.25 || !isPlaying) {
+      audio.currentTime = Math.max(0, currentTime);
     }
-
-    const timelineDrift = Math.abs(currentTime - getTimelineCurrentTime());
-    const playbackRateChanged = false;
-    const shouldResync =
-      !timelinePlayback.isPlaying ||
-      timelineDrift > TIMELINE_RESYNC_THRESHOLD ||
-      playbackRateChanged;
-
-    if (shouldResync) {
-      startTimelinePlayback(currentTime, timelinePlayback.playbackRate).catch(
-        (error) => {
-          console.error(
-            "Error starting aligned narration preview playback:",
-            error,
-          );
-        },
-      );
-    }
-
+    audio.playbackRate = playbackRate;
+    audio.volume = volume;
+    if (isPlaying && audio.paused) audio.play().catch(() => undefined);
+    else if (!isPlaying && !audio.paused) audio.pause();
     return true;
-  }
-
-  return playFileModeNarration(currentTime, isPlaying);
-};
-
-export const setAlignedNarrationPlaybackRate = (
-  playbackRate,
-  currentTime = null,
-) => {
-  const safePlaybackRate = Math.max(0.1, Number(playbackRate) || 1);
-  timelinePlayback.playbackRate = safePlaybackRate;
-
-  const cache = getCurrentCache();
-  if (cache.previewPlan?.length) {
-    if (timelinePlayback.isPlaying) {
-      const resumeTime =
-        typeof currentTime === "number"
-          ? currentTime
-          : getTimelineCurrentTime();
-      startTimelinePlayback(resumeTime, safePlaybackRate).catch((error) => {
-        console.error(
-          "Error resyncing aligned narration preview after rate change:",
-          error,
-        );
-      });
-    }
-    return;
-  }
-
-  const audio = ensureFileAudioElement();
-  if (audio) {
-    audio.playbackRate = safePlaybackRate;
+  } catch {
+    return false;
   }
 };
 
-export const setAlignedNarrationVolume = (volume) => {
-  const safeVolume = Math.max(0, Math.min(1, Number(volume) || 0));
-  timelinePlayback.volume = safeVolume;
-
-  if (timelinePlayback.masterGainNode) {
-    timelinePlayback.masterGainNode.gain.value = safeVolume;
-  }
-
-  const audio = ensureFileAudioElement();
-  if (audio) {
-    audio.volume = safeVolume;
-  }
+export const setAlignedNarrationPlaybackRate = (nextRate) => {
+  playbackRate = Math.max(0.1, Number(nextRate) || 1);
+  if (audioElement) audioElement.playbackRate = playbackRate;
 };
 
-export const resetAlignedAudioElement = () => {
-  stopTimelinePlayback();
-  resetFileAudioElement();
+export const setAlignedNarrationVolume = (nextVolume) => {
+  volume = Math.max(0, Math.min(1, Number(nextVolume) || 0));
+  if (audioElement) audioElement.volume = volume;
 };
+
+export const resetAlignedAudioElement = () => resetAudioElement();
 
 export const resetAlignedNarration = () => {
-  stopTimelinePlayback();
-  resetFileAudioElement();
-  revokeObjectUrlIfNeeded(getLocalCache().url);
-
-  resetTimelinePlayback({ clearBuffers: true });
-  timelinePlayback.plan = null;
-
-  setAlignedNarrationCache(emptyAlignedNarrationCache());
+  releasePlayback(cache);
+  clearRecentAlignment();
+  resetAudioElement();
+  setCache(emptyCache());
 };
-
-window.resetAlignedNarration = resetAlignedNarration;
-
-window.addEventListener("subtitle-timing-changed", () => {
-  resetAlignedNarration();
-});
 
 export const cleanupAlignedNarration = (
   preserveAudioElement = true,
   preserveCache = true,
 ) => {
-  if (!preserveAudioElement) {
-    stopTimelinePlayback();
-    resetFileAudioElement();
-  }
-
-  if (!preserveCache) {
-    revokeObjectUrlIfNeeded(getLocalCache().url);
-    resetTimelinePlayback({ clearBuffers: true });
-    timelinePlayback.plan = null;
-    setAlignedNarrationCache(emptyAlignedNarrationCache());
-  }
+  if (!preserveAudioElement) resetAudioElement();
+  if (!preserveCache) resetAlignedNarration();
 };
 
-export const isAlignedNarrationAvailable = () => {
-  const cache = getCurrentCache();
-  return !!(cache.url || (cache.previewPlan && cache.previewPlan.length > 0));
-};
+export const isAlignedNarrationAvailable = () => Boolean(cache.url);
+export const getAlignedNarrationUrl = () => cache.url;
+export const getAlignedNarrationArtifactId = () => cache.nativeArtifactId;
 
-export const getAlignedNarrationUrl = () => {
-  return getCurrentCache().url;
-};
-
+if (typeof window !== 'undefined') {
+  window.resetAlignedNarration = resetAlignedNarration;
+  window.addEventListener('subtitle-timing-changed', resetAlignedNarration);
+}
 syncWindowState();

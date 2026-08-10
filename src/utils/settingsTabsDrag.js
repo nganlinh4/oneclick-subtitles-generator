@@ -3,14 +3,15 @@
  * This allows users to scroll horizontally through tabs by dragging
  */
 
+import initSettingsTabPillAnimation, {
+  positionPillForActiveTab,
+} from './settingsTabPillAnimation';
+
 /**
  * Initialize the drag functionality for the settings tabs
  * @param {string} tabsSelector - CSS selector for the settings tabs container
  */
 export const initSettingsTabsDrag = (tabsSelector = '.settings-tabs') => {
-  // FIX: Import both the main initializer and the specific update function
-  const { default: initSettingsTabPillAnimation, positionPillForActiveTab } = require('./settingsTabPillAnimation');
-  
   const tabContainers = document.querySelectorAll(tabsSelector);
   if (!tabContainers.length) return;
 

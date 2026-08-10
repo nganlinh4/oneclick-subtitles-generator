@@ -1,0 +1,24 @@
+{
+  "schemaVersion": 1,
+  "protocolVersion": 1,
+  "remotionVersion": "4.0.507",
+  "worker": {
+    "sourcePath": "video-renderer/worker/osg_render_worker.mjs",
+    "sizeBytes": 10248,
+    "sha256": "3e2c86b00ef2a762f8f83f8306b6523cb020106ea3bd2438129e592a376d97d6"
+  },
+  "platforms": {
+    "x86_64-unknown-linux-gnu": {
+      "releases": []
+    },
+    "aarch64-apple-darwin": {
+      "releases": []
+    },
+    "x86_64-apple-darwin": {
+      "releases": []
+    },
+    "x86_64-pc-windows-msvc": {
+      "releases": []
+    }
+  }
+}

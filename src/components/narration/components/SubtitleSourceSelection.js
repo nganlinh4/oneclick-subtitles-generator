@@ -20,6 +20,8 @@ import ManualLanguageSelectionModal from './ManualLanguageSelectionModal';
 import HelpIcon from '../../common/HelpIcon';
 import { showErrorToast } from '../../../utils/toastUtils';
 import useSubtitleLanguageDetection from '../hooks/useSubtitleLanguageDetection';
+import { isDesktopRuntime } from '../../../platform/desktopRuntime';
+import { getSpeechStatus } from '../../../platform/speechService';
 import { handleGroupingToggle as handleGroupingToggleHandler } from '../utils/subtitleGroupingHandlers';
 import {
   handleSourceChange as handleSourceChangeHandler,
@@ -139,11 +141,11 @@ const SubtitleSourceSelection = ({
 
   // State for model selection
   const [modelError, setModelError] = useState(null);
-  const [isCheckingModel, setIsCheckingModel] = useState(false);
+  const [isCheckingModel] = useState(false);
   const [availableModels, setAvailableModels] = useState([]);
   const [isLoadingModels, setIsLoadingModels] = useState(false);
   const [isModelModalOpen, setIsModelModalOpen] = useState(false);
-  const [userHasManuallySelectedModel, setUserHasManuallySelectedModel] = useState(false);
+  const [, setUserHasManuallySelectedModel] = useState(false);
   const [userHasManuallySelectedChatterboxLanguage, setUserHasManuallySelectedChatterboxLanguage] = useState(false);
 
   // Keep a stable reference to the last detected languages so a transient null
@@ -167,6 +169,14 @@ const SubtitleSourceSelection = ({
     const loadModels = async () => {
       setIsLoadingModels(true);
       try {
+        if (isDesktopRuntime()) {
+          const status = await getSpeechStatus();
+          const f5 = status.backends.find((backend) => backend.backend === 'f5Tts');
+          setAvailableModels(f5?.installed
+            ? [{ id: 'f5tts-v1-base', languages: CHATTERBOX_SUPPORTED_LANGS }]
+            : []);
+          return;
+        }
         const { models } = await getAvailableModels();
         setAvailableModels(models || []);
       } catch (error) {
@@ -257,7 +267,7 @@ const SubtitleSourceSelection = ({
 
     if (next && next !== chatterboxLanguage) {
       setChatterboxLanguage(next);
-      try { localStorage.setItem('chatterbox_language', next); } catch {}
+      try { localStorage.setItem('chatterbox_language', next); } catch { /* Storage is best-effort. */ }
     }
   }, [narrationMethod, subtitleSource, originalLanguage, translatedLanguage, userHasManuallySelectedChatterboxLanguage, chatterboxLanguage, setChatterboxLanguage]);
 

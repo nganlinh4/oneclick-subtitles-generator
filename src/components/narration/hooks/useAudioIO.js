@@ -1,21 +1,27 @@
-import React from 'react';
-import { transcribeAudio } from '../../../services/transcriptionService';
-import {
-  uploadReferenceAudio,
-  saveRecordedAudio,
-  extractAudioSegment,
-  getAudioUrl
-} from '../../../services/narrationService';
-import { getCurrentMediaId, cacheReferenceAudio } from './referenceAudioCache';
+import { useRef } from 'react';
 
-/**
- * Reference-audio I/O handlers: upload, record, extract segment, clear, example select.
- * @param {Object} params - Parameters
- * @returns {Object} - Audio I/O handlers
- */
+import { isDesktopRuntime } from '../../../platform/desktopRuntime';
+import { importAudioBlob, releaseAudioBlob } from '../../../platform/mediaService';
+import { nativeNarrationAdapter } from '../../../platform/nativeNarrationAdapter';
+import {
+  createNativeNarrationToken,
+  getNativeNarrationArtifactId,
+} from '../../../platform/nativeNarrationCapabilities';
+import { transcribeAudio } from '../../../services/transcriptionService';
+import { cacheReferenceAudio } from './referenceAudioCache';
+
+const RECORDING_MIME_TYPES = Object.freeze([
+  'audio/webm;codecs=opus',
+  'audio/mp4;codecs=mp4a.40.2',
+  'audio/ogg;codecs=opus',
+  'audio/webm',
+  'audio/mp4',
+]);
+
 const useAudioIO = ({
   mediaRecorderRef,
   audioChunksRef,
+  referenceAudio,
   referenceText,
   setReferenceAudio,
   setReferenceText,
@@ -29,535 +35,261 @@ const useAudioIO = ({
   autoRecognize,
   segmentStartTime,
   segmentEndTime,
-  videoPath,
   onReferenceAudioChange,
   t,
-  narrationMethod
+  narrationMethod,
 }) => {
-  // Recording time tracking
-  const recordingStartTimeRef = React.useRef(null);
+  const nativeRuntime = isDesktopRuntime();
+  const recordingStartTimeRef = useRef(null);
 
-  // Helper function to check audio duration
-  const checkAudioDuration = (file) => {
-    return new Promise((resolve, reject) => {
-      const audio = new Audio();
-      const url = URL.createObjectURL(file);
-
-      audio.addEventListener('loadedmetadata', () => {
-        URL.revokeObjectURL(url);
-        resolve(audio.duration);
-      });
-
-      audio.addEventListener('error', () => {
-        URL.revokeObjectURL(url);
-        reject(new Error('Failed to load audio file'));
-      });
-
-      audio.src = url;
-    });
+  const failClosed = () => {
+    setError(t(
+      'narration.serviceUnavailableMessage',
+      'Narration requires the desktop runtime',
+    ));
+    return null;
   };
 
-  // Helper function to trigger auto-dismiss error toast
-  const triggerErrorToast = (message) => {
-    const event = new CustomEvent('aligned-narration-status', {
-      detail: {
-        status: 'error',
-        message: message
-      }
-    });
-    window.dispatchEvent(event);
+  const releaseReferencePlayback = (reference) => {
+    if (!nativeRuntime || !reference?.nativePlaybackId) return;
+    nativeNarrationAdapter.releasePlayback(reference).catch(() => undefined);
   };
 
-  // Handle file upload
+  const commitReference = (playable, {
+    text = referenceText,
+    language = 'English',
+    source = 'native import',
+  } = {}) => {
+    const artifactId = getNativeNarrationArtifactId(playable);
+    if (!artifactId || !playable?.nativePlaybackId || !playable?.audioUrl) {
+      throw new Error('Native reference audio is unavailable');
+    }
+    if (referenceAudio?.nativePlaybackId !== playable.nativePlaybackId) {
+      releaseReferencePlayback(referenceAudio);
+    }
+    const normalized = {
+      nativeArtifactId: artifactId,
+      nativePlaybackId: playable.nativePlaybackId,
+      filename: createNativeNarrationToken(artifactId),
+      url: playable.audioUrl,
+      audioUrl: playable.audioUrl,
+      mimeType: playable.mimeType,
+      format: playable.format,
+      durationMicros: playable.durationMicros,
+      language,
+      text: text || '',
+    };
+    setReferenceAudio(normalized);
+    cacheReferenceAudio(normalized, source);
+    onReferenceAudioChange?.({
+      nativeArtifactId: artifactId,
+      filename: normalized.filename,
+      text: normalized.text,
+      language,
+    });
+    return normalized;
+  };
+
+  const transcribeReference = async (blob) => {
+    if (!autoRecognize || narrationMethod !== 'f5tts') return null;
+    setIsRecognizing(true);
+    try {
+      return await transcribeAudio(blob);
+    } finally {
+      setIsRecognizing(false);
+    }
+  };
+
+  const importReference = async (blob, source) => {
+    if (!nativeRuntime) return failClosed();
+    let imported = null;
+    let playable = null;
+    let committed = false;
+    try {
+      imported = await importAudioBlob(blob);
+      const [resolved, transcription] = await Promise.all([
+        nativeNarrationAdapter.importReference({
+          method: narrationMethod,
+          assetId: imported.assetId,
+        }),
+        transcribeReference(blob).catch((error) => {
+          setError(error.message || t(
+            'narration.recognitionError',
+            'Error recognizing reference audio',
+          ));
+          return null;
+        }),
+      ]);
+      playable = resolved;
+      if (transcription?.text) setReferenceText(transcription.text);
+      const normalized = commitReference(playable, {
+        text: transcription?.text || referenceText || '',
+        language: transcription?.language || 'English',
+        source,
+      });
+      committed = true;
+      setRecordedAudio({
+        nativeArtifactId: normalized.nativeArtifactId,
+        url: normalized.url,
+      });
+      return normalized;
+    } catch (error) {
+      if (playable && !committed) releaseReferencePlayback(playable);
+      setError(error.message || t(
+        'narration.uploadError',
+        'Error uploading reference audio',
+      ));
+      return null;
+    } finally {
+      if (imported) await releaseAudioBlob(imported.assetId).catch(() => undefined);
+    }
+  };
+
   const handleFileUpload = async (event) => {
-    const file = event.target.files[0];
-    if (!file) {
-      return;
-    }
-
-    // Check audio duration for F5TTS
-    if (narrationMethod === 'f5tts') {
-      try {
-        const duration = await checkAudioDuration(file);
-        if (duration > 12) {
-          const errorMessage = t('narration.f5ttsAudioTooLongError', 'Reference audio for F5TTS cannot be longer than 12s');
-          triggerErrorToast(errorMessage);
-          // Clear the file input
-          event.target.value = '';
-          return;
-        }
-      } catch (error) {
-        console.error('Error checking audio duration:', error);
-        // Continue with upload if duration check fails
-      }
-    }
-
-    try {
-      let result;
-
-      // First upload the file without transcription
-      result = await uploadReferenceAudio(file, referenceText);
-
-      // If auto-recognize is enabled and upload was successful, transcribe the audio
-      // Only do voice recognition for F5-TTS (which needs reference text)
-      if (autoRecognize && result && result.success && narrationMethod === 'f5tts') {
-        setIsRecognizing(true);
-
-        try {
-          // Set a timeout to prevent waiting too long (10 seconds)
-          const recognitionTimeout = setTimeout(() => {
-            setIsRecognizing(false);
-            setError(t('narration.recognitionTimeout', 'Voice recognition is taking too long. Please try again or enter text manually.'));
-          }, 10000); // Reduced from 30s to 10s for faster feedback
-
-          // Create a blob from the file for transcription
-
-          try {
-            const transcriptionResult = await transcribeAudio(file);
-
-
-            // Add transcription data to the result
-            result.reference_text = transcriptionResult.text;
-            result.is_english = transcriptionResult.is_english;
-            result.language = transcriptionResult.language;
-
-            // Log the language detection result
-
-          } catch (transcriptionError) {
-            console.error('Error during file upload transcription:', transcriptionError);
-
-            // If it's an API key error, show a specific message
-            if (transcriptionError.message.includes('API key')) {
-              setError(transcriptionError.message);
-            } else {
-              // For other errors, just log it
-              console.error('Transcription error:', transcriptionError);
-            }
-          }
-
-          // Clear the timeout
-          clearTimeout(recognitionTimeout);
-
-          // Reset recognizing state
-          setIsRecognizing(false);
-        } catch (error) {
-          console.error('Error transcribing uploaded audio:', error);
-          setIsRecognizing(false);
-          // Don't throw the error, just log it and continue with the uploaded audio
-        }
-      }
-
-      if (result && result.success) {
-
-        const audioUrl = getAudioUrl(result.filename);
-
-
-        const newReferenceAudio = {
-          filepath: result.filepath,
-          filename: result.filename,
-          url: audioUrl,
-          language: result.language || (result.is_english === false ? 'a non-English language' : 'English')
-        };
-
-        setReferenceAudio(newReferenceAudio);
-
-        // Update reference text if auto-recognize is enabled or it was empty and we got it from transcription
-        // Only update reference text for F5-TTS (which needs reference text)
-        let finalReferenceText = referenceText;
-        if (narrationMethod === 'f5tts') {
-          finalReferenceText = (autoRecognize || (!referenceText && result.reference_text)) ? result.reference_text : referenceText;
-          if (autoRecognize || (!referenceText && result.reference_text)) {
-            setReferenceText(finalReferenceText);
-          }
-        }
-
-        // Cache reference audio immediately after upload
-        cacheReferenceAudio({
-          filename: newReferenceAudio.filename,
-          text: finalReferenceText || '',
-          url: newReferenceAudio.url,
-          filepath: newReferenceAudio.filepath
-        }, 'upload');
-
-        // Notify parent component
-        if (onReferenceAudioChange) {
-          onReferenceAudioChange({
-            filepath: result.filepath,
-            filename: result.filename,
-            text: result.reference_text || referenceText,
-            language: result.language || (result.is_english === false ? 'a non-English language' : 'English')
-          });
-        }
-      } else if (result) {
-        setError(result.error || t('narration.uploadError', 'Error uploading reference audio'));
-      }
-    } catch (error) {
-      setError(error.message || t('narration.uploadError', 'Error uploading reference audio'));
-    }
+    const file = event?.target?.files?.[0];
+    if (!file) return;
+    await importReference(file, 'native upload');
+    event.target.value = '';
   };
 
-  // Handle recording start
   const startRecording = async () => {
-    try {
-      setError(''); // Clear any previous errors
-      audioChunksRef.current = [];
-      if (typeof setIsStartingRecording === 'function') setIsStartingRecording(true);
-
-      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-
-      mediaRecorderRef.current = new MediaRecorder(stream);
-
-      mediaRecorderRef.current.ondataavailable = (event) => {
-        if (event.data.size > 0) {
-          audioChunksRef.current.push(event.data);
-        }
-      };
-
-      mediaRecorderRef.current.onstop = async () => {
-
-        if (audioChunksRef.current.length === 0) {
-          setError(t('narration.noAudioData', 'No audio data recorded'));
-          return;
-        }
-
-        const audioBlob = new Blob(audioChunksRef.current, { type: 'audio/wav' });
-        const audioUrl = URL.createObjectURL(audioBlob);
-
-        // Check recording duration for F5TTS using recording time tracking
-        if (narrationMethod === 'f5tts' && recordingStartTimeRef.current) {
-          const recordingDuration = (Date.now() - recordingStartTimeRef.current) / 1000; // Convert to seconds
-          console.log(`[F5TTS Duration Check] Recording duration: ${recordingDuration.toFixed(2)}s, narrationMethod: ${narrationMethod}`);
-          if (recordingDuration > 12) {
-            console.log(`[F5TTS Duration Check] Recording too long (${recordingDuration.toFixed(2)}s), rejecting`);
-            const errorMessage = t('narration.f5ttsAudioTooLongError', 'Reference audio for F5TTS cannot be longer than 12s');
-            triggerErrorToast(errorMessage);
-            URL.revokeObjectURL(audioUrl);
-            recordingStartTimeRef.current = null; // Reset the timer
-            if (typeof setRecordingStartTime === 'function') setRecordingStartTime(null);
-            return;
-          } else {
-            console.log(`[F5TTS Duration Check] Recording duration OK (${recordingDuration.toFixed(2)}s), proceeding`);
-          }
-        } else {
-          console.log(`[F5TTS Duration Check] Skipping check - narrationMethod: ${narrationMethod}, hasStartTime: ${!!recordingStartTimeRef.current}`);
-        }
-
-        setRecordedAudio({
-          blob: audioBlob,
-          url: audioUrl
-        });
-
-        // Save the recorded audio
-        try {
-          let result;
-
-          // Set recognizing state if auto-recognize is enabled
-          // Only do voice recognition for F5-TTS (which needs reference text)
-          if (autoRecognize && narrationMethod === 'f5tts') {
-            setIsRecognizing(true);
-
-            // Set a timeout to prevent waiting too long (10 seconds)
-            const recognitionTimeout = setTimeout(() => {
-              setIsRecognizing(false);
-              setError(t('narration.recognitionTimeout', 'Voice recognition is taking too long. Please try again or enter text manually.'));
-            }, 10000); // Reduced from 30s to 10s for faster feedback
-
-            try {
-              // Use direct transcription with Gemini API
-              try {
-                // First transcribe the audio directly
-                const transcriptionResult = await transcribeAudio(audioBlob);
-                // Then save the audio file with the transcription text
-                result = await saveRecordedAudio(audioBlob, transcriptionResult.text);
-
-                // Add transcription data to the result
-                result.reference_text = transcriptionResult.text;
-                result.is_english = transcriptionResult.is_english;
-                result.language = transcriptionResult.language;
-              } catch (transcriptionError) {
-                // If it's an API key error, show a specific message
-                if (transcriptionError.message.includes('API key')) {
-                  setError(transcriptionError.message);
-
-                  // Save the audio without transcription
-                  result = await saveRecordedAudio(audioBlob, '');
-                } else {
-                  // For other errors, just rethrow
-                  throw transcriptionError;
-                }
-              }
-
-              // Clear the timeout since we got a response
-              clearTimeout(recognitionTimeout);
-
-              // Reset recognizing state
-              setIsRecognizing(false);
-            } catch (error) {
-              // Clear the timeout and reset state on error
-              clearTimeout(recognitionTimeout);
-              setIsRecognizing(false);
-              throw error; // Re-throw to be caught by the outer catch block
-            }
-          } else {
-            // If auto-recognize is disabled or not F5-TTS, just save with the existing text
-            result = await saveRecordedAudio(audioBlob, referenceText);
-          }
-
-          if (result && result.success) {
-            const newReferenceAudio = {
-              filepath: result.filepath,
-              filename: result.filename,
-              url: getAudioUrl(result.filename),
-              language: result.language || (result.is_english === false ? 'a non-English language' : 'English')
-            };
-
-            setReferenceAudio(newReferenceAudio);
-
-            // Update reference text if auto-recognize is enabled or it was empty and we got it from transcription
-            // Only update reference text for F5-TTS (which needs reference text)
-            let finalReferenceText = referenceText;
-            if (narrationMethod === 'f5tts') {
-              finalReferenceText = (autoRecognize || (!referenceText && result.reference_text)) ? result.reference_text : referenceText;
-              if (autoRecognize || (!referenceText && result.reference_text)) {
-                setReferenceText(finalReferenceText);
-              }
-            }
-
-            // Cache reference audio immediately after recording
-            cacheReferenceAudio({
-              filename: newReferenceAudio.filename,
-              text: finalReferenceText || '',
-              url: newReferenceAudio.url,
-              filepath: newReferenceAudio.filepath
-            }, 'recording');
-
-            // Notify parent component
-            if (onReferenceAudioChange) {
-              onReferenceAudioChange({
-                filepath: result.filepath,
-                filename: result.filename,
-                text: result.reference_text || referenceText,
-                language: result.language || (result.is_english === false ? 'a non-English language' : 'English')
-              });
-            }
-          } else if (result) {
-            setError(result.error || t('narration.recordingError', 'Error saving recorded audio'));
-          }
-        } catch (error) {
-          setError(error.message || t('narration.recordingError', 'Error saving recorded audio'));
-        }
-
-        // Reset recording timer after processing
-        recordingStartTimeRef.current = null;
-        if (typeof setRecordingStartTime === 'function') setRecordingStartTime(null);
-      };
-
-      mediaRecorderRef.current.start();
-      recordingStartTimeRef.current = Date.now(); // Track recording start time
-      if (typeof setRecordingStartTime === 'function') setRecordingStartTime(recordingStartTimeRef.current);
-      setIsRecording(true);
-      if (typeof setIsStartingRecording === 'function') setIsStartingRecording(false);
-    } catch (error) {
-      if (typeof setIsStartingRecording === 'function') setIsStartingRecording(false);
-      setError(error.message || t('narration.microphoneError', 'Error accessing microphone'));
-    }
-  };
-
-  // Handle recording stop
-  const stopRecording = () => {
-    if (mediaRecorderRef.current && setIsRecording) {
-      mediaRecorderRef.current.stop();
-      setIsRecording(false);
-
-      // Stop all audio tracks
-      if (mediaRecorderRef.current.stream) {
-        mediaRecorderRef.current.stream.getTracks().forEach(track => track.stop());
-      }
-
-      // Note: Don't reset recordingStartTimeRef here as we need it in onstop handler
-    }
-  };
-
-  // Handle segment extraction
-  const extractSegment = async () => {
-    if (!videoPath) {
-      setError(t('narration.noVideoError', 'No video available for segment extraction'));
+    if (!nativeRuntime) {
+      failClosed();
       return;
     }
+    try {
+      setError('');
+      audioChunksRef.current = [];
+      setIsStartingRecording?.(true);
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      const mimeType = typeof MediaRecorder.isTypeSupported === 'function'
+        ? RECORDING_MIME_TYPES.find((candidate) => MediaRecorder.isTypeSupported(candidate))
+        : null;
+      const recorder = mimeType
+        ? new MediaRecorder(stream, { mimeType })
+        : new MediaRecorder(stream);
+      mediaRecorderRef.current = recorder;
+      recorder.ondataavailable = (event) => {
+        if (event.data.size > 0) audioChunksRef.current.push(event.data);
+      };
+      recorder.onstop = async () => {
+        try {
+          if (audioChunksRef.current.length === 0) {
+            setError(t('narration.noAudioData', 'No audio data recorded'));
+            return;
+          }
+          const duration = recordingStartTimeRef.current
+            ? (Date.now() - recordingStartTimeRef.current) / 1_000
+            : 0;
+          if (narrationMethod === 'f5tts' && duration > 12) {
+            window.dispatchEvent(new CustomEvent('aligned-narration-status', {
+              detail: {
+                status: 'error',
+                message: t(
+                  'narration.f5ttsAudioTooLongError',
+                  'Reference audio for F5TTS cannot be longer than 12s',
+                ),
+              },
+            }));
+            return;
+          }
+          const blob = new Blob(audioChunksRef.current, {
+            type: recorder.mimeType || audioChunksRef.current[0]?.type || 'audio/webm',
+          });
+          await importReference(blob, 'native recording');
+        } finally {
+          recordingStartTimeRef.current = null;
+          setRecordingStartTime?.(null);
+        }
+      };
+      recorder.start();
+      recordingStartTimeRef.current = Date.now();
+      setRecordingStartTime?.(recordingStartTimeRef.current);
+      setIsRecording(true);
+      setIsStartingRecording?.(false);
+    } catch (error) {
+      setIsStartingRecording?.(false);
+      setError(error.message || t(
+        'narration.microphoneError',
+        'Error accessing microphone',
+      ));
+    }
+  };
 
-    if (!segmentStartTime || !segmentEndTime) {
+  const stopRecording = () => {
+    const recorder = mediaRecorderRef.current;
+    if (!recorder) return;
+    recorder.stop();
+    setIsRecording(false);
+    recorder.stream?.getTracks().forEach((track) => track.stop());
+  };
+
+  const extractSegment = async () => {
+    if (!nativeRuntime) {
+      failClosed();
+      return;
+    }
+    if (segmentStartTime === '' || segmentEndTime === '') {
       setError(t('narration.timeRangeError', 'Please specify both start and end times'));
       return;
     }
-
     setIsExtractingSegment(true);
     setError('');
-
+    let playable = null;
+    let committed = false;
     try {
-      let result;
-
-      // First extract the segment without transcription
-      result = await extractAudioSegment(videoPath, segmentStartTime, segmentEndTime);
-
-      // If auto-recognize is enabled, transcribe the extracted segment
-      // Only do voice recognition for F5-TTS (which needs reference text)
-      if (autoRecognize && result && result.success && narrationMethod === 'f5tts') {
-        setIsRecognizing(true);
-
-        // Create a blob from the extracted audio URL
-        try {
-          // Set a timeout to prevent waiting too long (10 seconds)
-          const recognitionTimeout = setTimeout(() => {
-            setIsRecognizing(false);
-            setError(t('narration.recognitionTimeout', 'Voice recognition is taking too long. Please try again or enter text manually.'));
-          }, 10000); // Reduced from 30s to 10s for faster feedback
-
-          // Fetch the audio file
-          const audioUrl = getAudioUrl(result.filename);
-          const response = await fetch(audioUrl, {
-            mode: 'cors',
-            credentials: 'include',
-            headers: {
-              'Accept': 'audio/*'
-            }
-          });
-          const audioBlob = await response.blob();
-
-          // Transcribe the audio
-          try {
-            const transcriptionResult = await transcribeAudio(audioBlob);
-            // Add transcription data to the result
-            result.reference_text = transcriptionResult.text;
-            result.is_english = transcriptionResult.is_english;
-            result.language = transcriptionResult.language;
-          } catch (transcriptionError) {
-            // If it's an API key error, show a specific message
-            if (transcriptionError.message.includes('API key')) {
-              setError(transcriptionError.message);
-            }
-          }
-
-          // Clear the timeout
-          clearTimeout(recognitionTimeout);
-
-          // Reset recognizing state
-          setIsRecognizing(false);
-        } catch (error) {
-          setIsRecognizing(false);
-          // Don't throw the error, just continue with the extracted audio
-        }
-      }
-
-      if (result && result.success) {
-        const newReferenceAudio = {
-          filepath: result.filepath,
-          filename: result.filename,
-          url: getAudioUrl(result.filename),
-          language: result.language || (result.is_english === false ? 'a non-English language' : 'English')
-        };
-
-        setReferenceAudio(newReferenceAudio);
-
-        // Update reference text if auto-recognize is enabled or we got it from transcription
-        // Only update reference text for F5-TTS (which needs reference text)
-        let finalReferenceText = referenceText;
-        if (narrationMethod === 'f5tts') {
-          finalReferenceText = (autoRecognize || result.reference_text) ? result.reference_text : referenceText;
-          if (autoRecognize || result.reference_text) {
-            setReferenceText(finalReferenceText);
-          }
-        }
-
-        // Cache reference audio immediately after extraction
-        cacheReferenceAudio({
-          filename: newReferenceAudio.filename,
-          text: finalReferenceText || '',
-          url: newReferenceAudio.url,
-          filepath: newReferenceAudio.filepath
-        }, 'extraction');
-
-        // Notify parent component
-        if (onReferenceAudioChange) {
-          onReferenceAudioChange({
-            filepath: result.filepath,
-            filename: result.filename,
-            text: result.reference_text || referenceText,
-            language: result.language || (result.is_english === false ? 'a non-English language' : 'English')
-          });
-        }
-      } else if (result) {
-        setError(result.error || t('narration.extractionError', 'Error extracting audio segment'));
-      }
+      playable = await nativeNarrationAdapter.extractReference({
+        method: narrationMethod,
+        startMs: Math.round(Number(segmentStartTime) * 1_000),
+        endMs: Math.round(Number(segmentEndTime) * 1_000),
+      });
+      commitReference(playable, { source: 'native extraction' });
+      committed = true;
     } catch (error) {
-      setError(t('narration.extractionError', 'Error extracting audio segment'));
+      if (playable && !committed) releaseReferencePlayback(playable);
+      setError(error.message || t(
+        'narration.extractionError',
+        'Error extracting audio segment',
+      ));
     } finally {
       setIsExtractingSegment(false);
     }
   };
 
-  // Clear reference audio
   const clearReferenceAudio = () => {
+    releaseReferencePlayback(referenceAudio);
     setReferenceAudio(null);
     setRecordedAudio(null);
     setReferenceText('');
-
-    // Clear reference audio cache
     try {
       localStorage.removeItem('reference_audio_cache');
-      console.log('Cleared reference audio cache');
-    } catch (error) {
-      console.error('Error clearing reference audio cache:', error);
+    } catch {
+      // Storage cleanup is best-effort.
     }
-
-    // Notify parent component
-    if (onReferenceAudioChange) {
-      onReferenceAudioChange(null);
-    }
+    onReferenceAudioChange?.(null);
   };
 
-  // Handle example audio selection
   const handleExampleSelect = async (result) => {
+    if (!nativeRuntime) return failClosed();
     try {
-      if (result.success) {
-        const audioUrl = getAudioUrl(result.filename);
-
-        setReferenceAudio({
-          filepath: result.filepath,
-          filename: result.filename,
-          url: audioUrl
-        });
-
-        // Update reference text if provided
-        if (result.reference_text) {
-          setReferenceText(result.reference_text);
-        }
-
-        // Notify parent component
-        if (onReferenceAudioChange) {
-          onReferenceAudioChange({
-            filepath: result.filepath,
-            filename: result.filename,
-            text: result.reference_text || referenceText
-          });
-        }
-
-        // Persist so this example voice is auto-restored on reload (uploads already do this).
-        // Without it, a reload loses the reference voice and Chatterbox narration auto-reload fails.
-        if (getCurrentMediaId()) {
-          cacheReferenceAudio({
-            filename: result.filename,
-            text: result.reference_text || '',
-            url: audioUrl,
-            filepath: result.filepath
-          });
-        }
-      } else {
-        console.error('Example upload failed:', result.error);
-        setError(result.error || t('narration.uploadError', 'Error uploading example audio'));
-      }
+      const artifactId = getNativeNarrationArtifactId(result);
+      const playable = artifactId
+        ? (result?.nativePlaybackId && result?.audioUrl
+          ? result
+          : await nativeNarrationAdapter.resolvePlayback(artifactId))
+        : await nativeNarrationAdapter.selectReference(narrationMethod);
+      if (!playable) return null;
+      return commitReference(playable, {
+        text: result?.reference_text || result?.text || referenceText,
+        language: result?.language || 'English',
+        source: 'native selection',
+      });
     } catch (error) {
-      console.error('Error handling example selection:', error);
-      setError(t('narration.uploadError', 'Error uploading example audio'));
+      setError(error.message || t(
+        'narration.uploadError',
+        'Error uploading reference audio',
+      ));
+      return null;
     }
   };
 
@@ -567,7 +299,7 @@ const useAudioIO = ({
     stopRecording,
     extractSegment,
     clearReferenceAudio,
-    handleExampleSelect
+    handleExampleSelect,
   };
 };
 

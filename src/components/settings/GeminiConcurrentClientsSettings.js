@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import { useState, useEffect } from 'react';
 import { useTranslation } from 'react-i18next';
 import SliderWithValue from '../common/SliderWithValue';
 import '../../styles/components/custom-slider.css';
@@ -36,9 +36,6 @@ const GeminiConcurrentClientsSettings = () => {
       setConcurrentClients(value);
     }
   };
-
-  // Calculate slider percentage for styling
-  const sliderPercentage = ((concurrentClients - 1) / 9) * 100;
 
   return (
     <div className="compact-setting">

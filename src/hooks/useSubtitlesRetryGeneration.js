@@ -2,6 +2,7 @@ import { useCallback } from 'react';
 import { callGeminiApi, setProcessingForceStopped } from '../services/geminiService';
 import { getVideoDuration, processMediaFile } from '../utils/videoProcessor';
 import { getVideoProcessingFps, getMediaResolution } from '../services/configService';
+import { fetchBrowserResource } from '../platform/browserFetch';
 import { persistRetryResultToCache } from './useSubtitlesCaching';
 import {
   DEFAULT_TRANSCRIPTION_MODEL_ID,
@@ -78,7 +79,7 @@ export const useSubtitlesRetryGeneration = ({
                                 ytFile = new File([blob], 'youtube.mp4', { type: blob.type || 'video/mp4' });
                             } else {
                                 // Fetching a blob: URL stays in-memory, not a network download
-                                const blob = await fetch(blobUrl).then(r => r.blob());
+                                const blob = await fetchBrowserResource(blobUrl).then(r => r.blob());
                                 ytFile = new File([blob], 'youtube.mp4', { type: blob.type || 'video/mp4' });
                             }
                         }
@@ -190,7 +191,7 @@ export const useSubtitlesRetryGeneration = ({
         } finally {
             setIsGenerating(false);
         }
-    }, [t]);
+    }, [t, currentSourceFileRef, setIsGenerating, setStatus, setSubtitlesData]);
 
     return { retryGeneration };
 };

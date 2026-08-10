@@ -15,8 +15,7 @@
  */
 
 import {
-    Cubic,
-    MutableCubic
+    Cubic
 } from "./cubic.js";
 import {
     Point,
@@ -26,14 +25,10 @@ import {
     FloatPi,
     radialToCartesian,
     convex,
-    debugLog,
     DistanceEpsilon,
     Zero,
     directionVector
 } from "./utils.js";
-// CornerRounding functionality will be implemented inline
-const CornerRounding = { Unrounded: 0 };
-
 /**
  * A feature represents a segment of the polygon's outline, which can be either a
  * rounded corner or a straight edge connecting two corners.
@@ -51,10 +46,10 @@ export class Feature {
     }
 
     /**
-     * @param {PointTransformer} f
+     * @param {PointTransformer} _f
      * @returns {Feature}
      */
-    transformed(f) {
+    transformed(_f) {
         throw new Error("Not implemented");
     }
 }

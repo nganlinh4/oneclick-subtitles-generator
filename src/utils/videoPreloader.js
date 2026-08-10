@@ -1,4 +1,4 @@
-import { startYoutubeVideoDownload } from './videoDownloader';
+import { downloadNativeVideo } from '../platform/nativeUrlDownloadAdapter';
 
 export const preloadYouTubeVideo = (videoUrl) => {
 
@@ -10,11 +10,7 @@ export const preloadYouTubeVideo = (videoUrl) => {
     // Store the URL in localStorage for the VideoPreview component
     localStorage.setItem('current_video_url', videoUrl);
 
-    // Start the background download process
-    try {
-        const useCookies = localStorage.getItem('use_cookies_for_download') === 'true';
-        startYoutubeVideoDownload(videoUrl, false, useCookies);
-    } catch (error) {
-        console.warn('Failed to start background download:', error);
-    }
+    const useCookies = localStorage.getItem('use_cookies_for_download') === 'true';
+    downloadNativeVideo({ url: videoUrl, useCookies })
+        .catch((error) => console.warn('Failed to start background download:', error));
 };

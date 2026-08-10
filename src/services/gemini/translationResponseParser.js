@@ -281,7 +281,7 @@ const processTranslationResponse = (responseData, ctx) => {
                     return combinedTranslations;
                 }
             } catch (e) {
-
+                // Continue with the array and line-oriented response formats.
             }
         }
 
@@ -305,7 +305,7 @@ const processTranslationResponse = (responseData, ctx) => {
                     });
                 }
             } catch (e) {
-
+                // Continue with the line-oriented response format.
             }
         }
 

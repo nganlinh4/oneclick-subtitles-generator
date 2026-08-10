@@ -1,4 +1,3 @@
-import React from 'react';
 import { detectSubtitleLanguage } from '../../../services/gemini/languageDetectionService';
 
 /**

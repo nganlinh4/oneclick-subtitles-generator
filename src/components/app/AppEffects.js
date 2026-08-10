@@ -1,5 +1,4 @@
 import { useEffect } from 'react';
-import { hasValidTokens } from '../../services/youtubeApiService';
 import { initGeminiButtonEffects, resetAllGeminiButtonEffects, disableGeminiButtonEffects } from '../../utils/geminiEffects';
 import { syncLocalStorageToServer } from '../../services/localStorageService';
 import initTabPillAnimation from '../../utils/tabPillAnimation';
@@ -14,7 +13,6 @@ export const useAppEffects = (props) => {
     setVideoSegments,
     setShowVideoAnalysis,
     setVideoAnalysisResult,
-    setApiKeysSet,
     setStatus,
     setTheme,
     setShowWaveformLongVideos,
@@ -274,71 +272,6 @@ export const useAppEffects = (props) => {
     window.addEventListener('storage', handleStorageChange);
     return () => window.removeEventListener('storage', handleStorageChange);
   }, [setTheme, setShowWaveformLongVideos, setTimeFormat, setOptimizeVideos, setOptimizedResolution, setUseOptimizedPreview, setShowVideoAnalysis, setVideoAnalysisResult]);
-
-  // Check for OAuth authentication success
-  useEffect(() => {
-    const checkOAuthSuccess = () => {
-      const oauthSuccess = localStorage.getItem('oauth_auth_success') === 'true';
-      if (oauthSuccess) {
-        // Clear the flag
-        localStorage.removeItem('oauth_auth_success');
-
-        // Update API keys status
-        const useOAuth = localStorage.getItem('use_youtube_oauth') === 'true';
-        const hasOAuthTokens = hasValidTokens();
-
-        if (useOAuth && hasOAuthTokens) {
-          setApiKeysSet(prevState => ({
-            ...prevState,
-            youtube: true
-          }));
-
-          // Show success message
-          setStatus({
-            message: 'YouTube authentication successful!',
-            type: 'success'
-          });
-
-          // Clear any previous error messages
-          setTimeout(() => {
-            setStatus({});
-          }, 5000);
-        }
-      }
-    };
-
-    // Check immediately
-    checkOAuthSuccess();
-
-    // Set up interval to check periodically
-    const intervalId = setInterval(checkOAuthSuccess, 1000);
-
-    // Set up message listener for OAuth success
-    const handleMessage = (event) => {
-      if (event.origin === window.location.origin &&
-          event.data && event.data.type === 'OAUTH_SUCCESS') {
-        checkOAuthSuccess();
-      }
-    };
-
-    window.addEventListener('message', handleMessage);
-
-    // Set up storage event listener
-    const handleStorageChange = (event) => {
-      if (event.key === 'youtube_oauth_token' || event.key === 'oauth_auth_success') {
-        checkOAuthSuccess();
-      }
-    };
-
-    window.addEventListener('storage', handleStorageChange);
-
-    // Clean up
-    return () => {
-      clearInterval(intervalId);
-      window.removeEventListener('message', handleMessage);
-      window.removeEventListener('storage', handleStorageChange);
-    };
-  }, [setApiKeysSet, setStatus]);
 
   // Effect to detect when subtitles are loaded from cache and prepare video for segments
   useEffect(() => {

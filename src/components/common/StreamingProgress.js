@@ -3,7 +3,7 @@
  * Shows real-time progress during streaming subtitle generation
  */
 
-import React, { useState, useEffect } from 'react';
+import { useState, useEffect } from 'react';
 import { useTranslation } from 'react-i18next';
 
 const StreamingProgress = ({ 

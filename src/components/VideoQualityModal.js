@@ -2,7 +2,6 @@ import React, { useState, useEffect, useRef } from 'react';
 import { useTranslation } from 'react-i18next';
 import CloseButton from './common/CloseButton';
 import '../styles/VideoQualityModal.css';
-// import progressWebSocketClient from '../utils/progressWebSocketClient'; // DISABLED - using polling instead
 import LoadingIndicator from './common/LoadingIndicator';
 import WavyProgressIndicator from './common/WavyProgressIndicator';
 import { detectDarkTheme, getThemeColors } from './qualityModal/themeDetection';
@@ -96,7 +95,6 @@ const VideoQualityModal = ({
 
       // Don't scan qualities automatically - only when redownload is selected
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isOpen, videoInfo]);
 
   // Scan qualities when redownload option is selected
@@ -124,9 +122,8 @@ const VideoQualityModal = ({
 
     setIsScanning(true);
     try {
-      // Import the polling-based quality scanner
-      const { scanVideoQualities: scanQualities } = await import('../utils/qualityScanner');
-      const qualities = await scanQualities(videoInfo.url);
+      const { scanVideoQualities } = await import('../utils/qualityScanner');
+      const qualities = await scanVideoQualities(videoInfo.url);
 
       setAvailableQualities(qualities);
       // Default to highest quality
@@ -234,8 +231,6 @@ const VideoQualityModal = ({
     switch (videoInfo.source) {
       case 'youtube':
         return t('videoQuality.youtubeVideo', 'YouTube Video');
-      case 'douyin':
-        return t('videoQuality.douyinVideo', 'Douyin Video');
       case 'douyin':
         return t('videoQuality.douyinVideo', 'Douyin Video');
       case 'all-sites':

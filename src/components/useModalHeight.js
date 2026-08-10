@@ -30,7 +30,6 @@ const useModalHeight = (isOpen, method) => {
             modalElement.style.height = `${currentHeight}px`;
 
             // Force a reflow by reading offsetHeight
-            // eslint-disable-next-line no-unused-expressions
             void modalElement.offsetHeight;
 
             // Now transition to the new height

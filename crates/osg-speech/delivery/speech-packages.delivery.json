@@ -1,0 +1,46 @@
+{
+  "schemaVersion": 1,
+  "commands": {
+    "status": "speech_packages_status",
+    "install": "speech_package_install",
+    "remove": "speech_package_remove"
+  },
+  "platforms": {
+    "linux-x86_64": {
+      "backends": [
+        { "id": "f5-tts", "releases": [] },
+        { "id": "chatterbox", "releases": [] },
+        { "id": "edge-tts", "releases": [] },
+        { "id": "gtts", "releases": [] },
+        { "id": "gemini-tts", "releases": [] }
+      ]
+    },
+    "macos-aarch64": {
+      "backends": [
+        { "id": "f5-tts", "releases": [] },
+        { "id": "chatterbox", "releases": [] },
+        { "id": "edge-tts", "releases": [] },
+        { "id": "gtts", "releases": [] },
+        { "id": "gemini-tts", "releases": [] }
+      ]
+    },
+    "macos-x86_64": {
+      "backends": [
+        { "id": "f5-tts", "releases": [] },
+        { "id": "chatterbox", "releases": [] },
+        { "id": "edge-tts", "releases": [] },
+        { "id": "gtts", "releases": [] },
+        { "id": "gemini-tts", "releases": [] }
+      ]
+    },
+    "windows-x86_64": {
+      "backends": [
+        { "id": "f5-tts", "releases": [] },
+        { "id": "chatterbox", "releases": [] },
+        { "id": "edge-tts", "releases": [] },
+        { "id": "gtts", "releases": [] },
+        { "id": "gemini-tts", "releases": [] }
+      ]
+    }
+  }
+}

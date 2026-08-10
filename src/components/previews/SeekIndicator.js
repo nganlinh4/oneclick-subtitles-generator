@@ -1,4 +1,3 @@
-import React from 'react';
 
 const SeekIndicator = ({ showSeekIndicator, seekDirection }) => {
   if (!showSeekIndicator) return null;

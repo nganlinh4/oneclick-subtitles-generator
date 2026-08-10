@@ -23,7 +23,9 @@ export async function extractSegmentAsWavBase64(file, startSec, endSec) {
     });
   } finally {
     // Close if supported to free resources
-    try { decodeCtx.close && decodeCtx.close(); } catch {}
+    try { decodeCtx.close && decodeCtx.close(); } catch {
+      // Closing an already-closed decoding context is harmless.
+    }
   }
 
   // Clamp end to buffer duration

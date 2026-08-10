@@ -1,35 +1,28 @@
 import { useEffect } from 'react';
-import { checkNarrationStatusWithRetry } from '../../../services/narrationService';
+import { isDesktopRuntime } from '../../../platform/desktopRuntime';
+import { nativeNarrationAdapter } from '../../../platform/nativeNarrationAdapter';
+const unavailable = () => ({ available: false, message: 'SERVICE_UNAVAILABLE' });
 
-/**
- * Check Chatterbox availability by tracking which command was used to start the server
- * @returns {Promise<{available: boolean, message?: string}>}
- */
-const checkChatterboxAvailability = async () => {
-  try {
-    const API_BASE_URL = process.env.REACT_APP_API_BASE_URL || 'http://localhost:3031';
-
-    // Chatterbox is available when its own engine is running (per-engine status), regardless of how
-    // the app was started.
-    const response = await fetch(`${API_BASE_URL}/api/engines/status`, {
-      mode: 'cors',
-      credentials: 'include',
-      headers: { 'Accept': 'application/json' }
-    });
-
-    if (!response.ok) {
-      return { available: false, message: "SERVICE_UNAVAILABLE" }; // translated by frontend
+export const checkNativeNarrationAvailability = async (
+  adapter = nativeNarrationAdapter
+) => {
+  const status = await adapter.getStatus();
+  const checkBackend = async (backend) => {
+    const snapshot = status.backends.find((candidate) => candidate.backend === backend);
+    if (!snapshot?.installed) return unavailable();
+    try {
+      const probe = await adapter.probe(backend);
+      return probe.status.ready ? { available: true } : unavailable();
+    } catch {
+      return unavailable();
     }
+  };
 
-    const data = await response.json();
-    const chatterbox = data.engines && data.engines.chatterbox;
-    if (chatterbox && chatterbox.state === 'ready') {
-      return { available: true };
-    }
-    return { available: false, message: "SERVICE_UNAVAILABLE" };
-  } catch (error) {
-    return { available: false, message: "SERVICE_UNAVAILABLE" };
-  }
+  const [f5Status, chatterboxStatus] = await Promise.all([
+    checkBackend('f5Tts'),
+    checkBackend('chatterbox'),
+  ]);
+  return { f5Status, chatterboxStatus };
 };
 
 /**
@@ -55,16 +48,19 @@ const useAvailabilityCheck = ({
   useEffect(() => {
     const checkAvailability = async () => {
       try {
-        // First, do immediate checks for services that can be determined quickly
-
-        // Check F5-TTS availability in the background
-  const f5Status = await checkNarrationStatusWithRetry();
+        if (!isDesktopRuntime()) {
+          setIsAvailable(false);
+          setIsChatterboxAvailable(false);
+          setIsGeminiAvailable(false);
+          setError('');
+          return;
+        }
+        const { f5Status, chatterboxStatus } = await checkNativeNarrationAvailability();
 
         // Set F5-TTS availability based on the actual status
         setIsAvailable(f5Status.available);
 
         // Check Chatterbox availability - same logic as F5-TTS
-        const chatterboxStatus = await checkChatterboxAvailability();
         setIsChatterboxAvailable(chatterboxStatus.available);
 
         // Gemini availability is not checked globally - errors will be shown when actually using Gemini features

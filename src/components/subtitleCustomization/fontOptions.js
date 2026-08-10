@@ -1,4 +1,3 @@
-import React from 'react';
 
 /**
  * Comprehensive font options with multilingual support

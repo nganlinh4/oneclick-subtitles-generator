@@ -5,8 +5,8 @@ import {
   addAllSitesUrlToHistory,
   formatTimestamp
 } from '../../utils/historyUtils';
-import { getVideoDetails } from '../../services/youtubeApiService';
-import { downloadDouyinVideo } from '../../utils/douyinDownloader';
+import { getVideoDetails, getVideoThumbnail } from '../../platform/desktopYoutubeService';
+import { downloadUrlToUserDestination } from '../../platform/userMediaExportFlow';
 import DownloadOnlyModal from '../DownloadOnlyModal';
 import {
   isValidYoutubeUrl,
@@ -44,7 +44,7 @@ const UnifiedUrlInput = ({ setSelectedVideo, selectedVideo, className }) => {
   const [douyinDownloadProgress, setDouyinDownloadProgress] = useState(0);
 
   // Load combined history from all sources
-  const loadHistory = () => loadHistoryHelper(setHistory);
+  const loadHistory = () => { void loadHistoryHelper(setHistory); };
 
   useEffect(() => {
     if (selectedVideo) {
@@ -83,7 +83,7 @@ const UnifiedUrlInput = ({ setSelectedVideo, selectedVideo, className }) => {
         loadHistory();
       }
     }
-  }, [selectedVideo]);
+  }, [selectedVideo, setSelectedVideo]);
 
   // Load combined history on component mount
   useEffect(() => {
@@ -109,14 +109,25 @@ const UnifiedUrlInput = ({ setSelectedVideo, selectedVideo, className }) => {
   }, []);
 
   // Fetch YouTube video title
-  const fetchYoutubeVideoTitle = async (videoId) => {
+  const fetchYoutubeVideoPreview = async (videoId) => {
     try {
       // Use the YouTube API service to get video details
       const videoDetails = await getVideoDetails(videoId);
-      return videoDetails ? videoDetails.title : null;
+      if (videoDetails) {
+        return { title: videoDetails.title, thumbnail: videoDetails.thumbnail };
+      }
     } catch (error) {
       console.error('Error fetching video title:', error);
-      return null;
+      try {
+        return { title: null, thumbnail: await getVideoThumbnail(videoId) };
+      } catch {
+        return { title: null, thumbnail: '' };
+      }
+    }
+    try {
+      return { title: null, thumbnail: await getVideoThumbnail(videoId) };
+    } catch {
+      return { title: null, thumbnail: '' };
     }
   };
 
@@ -148,15 +159,15 @@ const UnifiedUrlInput = ({ setSelectedVideo, selectedVideo, className }) => {
       setUrlType('youtube');
       const videoId = extractYoutubeVideoId(inputUrl);
       if (videoId) {
-        const title = await fetchYoutubeVideoTitle(videoId) || 'YouTube Video';
+        const preview = await fetchYoutubeVideoPreview(videoId);
         // Store the video URL in localStorage to maintain state
         localStorage.setItem('current_video_url', inputUrl);
         setSelectedVideo({
           id: videoId,
           url: inputUrl,
           source: 'youtube',
-          title: title,
-          thumbnail: `https://img.youtube.com/vi/${videoId}/0.jpg`
+          title: preview.title || 'YouTube Video',
+          thumbnail: preview.thumbnail
         });
       }
       return;
@@ -234,37 +245,16 @@ const UnifiedUrlInput = ({ setSelectedVideo, selectedVideo, className }) => {
     setDouyinDownloadProgress(0);
 
     try {
-      // Use the same download function as the main generate flow
-      const videoUrl = await downloadDouyinVideo(
-        selectedVideo.url,
-        (progress) => {
-          setDouyinDownloadProgress(progress);
-        }
-      );
-
-      // Download completed successfully
+      await downloadUrlToUserDestination({
+        url: selectedVideo.url,
+        cookieSource: localStorage.getItem('use_cookies_for_download') === 'true'
+          ? 'chrome'
+          : 'none',
+        media: { kind: 'video', quality: { mode: 'best' } },
+        onDownloadProgress: setDouyinDownloadProgress,
+        onExportProgress: setDouyinDownloadProgress,
+      });
       setIsDouyinDownloading(false);
-
-      // Trigger file download
-      try {
-        const videoId = extractDouyinVideoId(selectedVideo.url);
-
-        // Use the dedicated download endpoint that sets proper headers
-        const downloadUrl = `http://localhost:3031/api/douyin-download-file/${videoId}`;
-
-        // Create download link that will trigger proper download
-        const a = document.createElement('a');
-        a.href = downloadUrl;
-        a.download = `${videoId}.mp4`;
-        a.style.display = 'none';
-        document.body.appendChild(a);
-        a.click();
-        document.body.removeChild(a);
-      } catch (downloadError) {
-        console.error('[UnifiedUrlInput] Error downloading file:', downloadError);
-        // Show user a message instead of navigating
-        alert(t('unifiedUrlInput.downloadCompleted', 'Download completed! File saved as: {{file}}', { file: `${extractDouyinVideoId(selectedVideo.url)}.mp4` }));
-      }
     } catch (error) {
       console.error('Error downloading Douyin video:', error);
       setIsDouyinDownloading(false);
@@ -338,8 +328,18 @@ const UnifiedUrlInput = ({ setSelectedVideo, selectedVideo, className }) => {
                         src={item.thumbnail}
                         alt={item.title}
                         className="history-thumbnail"
-                        onError={(e) => {
-                          e.target.src = `https://img.youtube.com/vi/${item.id}/0.jpg`;
+                        onError={async (event) => {
+                          const image = event.currentTarget;
+                          if (image.dataset.nativeThumbnailRetry === 'true') {
+                            image.removeAttribute('src');
+                            return;
+                          }
+                          image.dataset.nativeThumbnailRetry = 'true';
+                          try {
+                            image.src = await getVideoThumbnail(item.id);
+                          } catch {
+                            image.removeAttribute('src');
+                          }
                         }}
                       />
                     )}

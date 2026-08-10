@@ -75,14 +75,11 @@ export class LinearProgressDrawingCache {
             let controlY = (height - stroke.width) * 0.5; // Reduced amplitude for 8px stroke
 
             const widthWithExtraPhase = width + wavelength * 2;
-            let wavesCount = 0;
-
             while (anchorX <= widthWithExtraPhase) {
                 this.fullProgressPath.quadraticCurveTo(controlX, controlY, anchorX, anchorY);
                 anchorX += halfWavelengthPx;
                 controlX += halfWavelengthPx;
                 controlY *= -1;
-                wavesCount++;
             }
         }
 

@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect } from 'react';
 import '../styles/OnboardingBanner.css';
 // Import the animation component from src/assets
 import OnboardingAnimation from '../assets/onboarding-banner';

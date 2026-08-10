@@ -1,6 +1,4 @@
-import React from 'react';
 import { useTranslation } from 'react-i18next';
-import StandardSlider from '../common/StandardSlider';
 import SliderWithValue from '../common/SliderWithValue';
 import MaterialSwitch from '../common/MaterialSwitch';
 import CustomDropdown from '../common/CustomDropdown';

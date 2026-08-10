@@ -1,6 +1,6 @@
-import React, { useEffect, useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import { exchangeCodeForTokens } from '../services/googleAuthService';
+import { getYouTubeOAuthStatusNative } from '../platform/providerService';
 import '../styles/oauth-callback.css';
 
 const OAuth2Callback = () => {
@@ -11,17 +11,14 @@ const OAuth2Callback = () => {
   useEffect(() => {
     const processAuthCode = async () => {
       try {
-        // Get the authorization code from URL
-        const urlParams = new URLSearchParams(window.location.search);
-        const code = urlParams.get('code');
-
-        if (!code) {
+        // The native host owns the loopback callback, PKCE validation, code
+        // exchange, and vault persistence. This legacy render surface may only
+        // observe the resulting non-secret status.
+        const oauthStatus = await getYouTubeOAuthStatusNative();
+        if (!oauthStatus.authenticated) {
           setStatus(t('settings.youtubeOAuth.noCode', 'Error: No authorization code received'));
           return;
         }
-
-        // Exchange code for tokens
-        await exchangeCodeForTokens(code);
 
         setStatus(t('settings.youtubeOAuth.success', 'Authentication successful! Redirecting...'));
 

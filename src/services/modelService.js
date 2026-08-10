@@ -1,292 +1,249 @@
-/**
- * Service for managing F5-TTS models
- */
-import { API_BASE_URL } from '../config';
+import {
+  cancelSpeechPackageJob,
+  getSpeechPackagesStatus,
+  installSpeechPackage,
+  removeSpeechPackage,
+} from '../platform/speechPackageService';
 
-/**
- * Get list of available models
- * @param {boolean} includeCache - Whether to include models from Hugging Face cache
- * @returns {Promise<Object>} - List of models and active model
- */
-export const getModels = async (includeCache = false) => {
-  try {
-    const url = `${API_BASE_URL}/narration/models${includeCache ? '?include_cache=true' : ''}`;
-    const response = await fetch(url, {
-      mode: 'cors',
-      credentials: 'include',
-      headers: {
-        'Accept': 'application/json'
-      }
-    });
-    if (!response.ok) {
-      throw new Error(`Server returned ${response.status}`);
-    }
-    return await response.json();
-  } catch (error) {
-    console.error('Error fetching models:', error);
-    throw error;
+const PACKAGE_BACKEND = 'f5-tts';
+const DEFAULT_MODEL_ID = 'f5tts-v1-base';
+const operationStates = new Map();
+const modelRequestKeys = new Set([
+  'modelId', 'modelUrl', 'vocabUrl', 'languageCodes', 'config',
+]);
+
+const DEFAULT_MODEL = Object.freeze({
+  id: DEFAULT_MODEL_ID,
+  name: 'F5-TTS v1 Base',
+  repo_id: 'SWivid/F5-TTS',
+  config: Object.freeze({
+    dim: 1024,
+    depth: 22,
+    heads: 16,
+    ff_mult: 2,
+    text_dim: 512,
+    conv_layers: 4,
+  }),
+  source: 'default',
+  language: 'en',
+  languages: Object.freeze(['en', 'zh']),
+  is_symlink: false,
+  original_model_file: null,
+  original_vocab_file: null,
+});
+
+export class ModelServiceError extends Error {
+  constructor(code, message) {
+    super(message);
+    this.name = 'ModelServiceError';
+    this.code = code;
+  }
+}
+
+const invalidModelRequest = () => new ModelServiceError(
+  'invalidModelRequest',
+  'The narration model request is invalid',
+);
+const unsupportedModelOperation = () => new ModelServiceError(
+  'unsupportedModelOperation',
+  'Only signed desktop speech packages can be managed',
+);
+const modelPackageUnavailable = () => new ModelServiceError(
+  'modelPackageUnavailable',
+  'The managed F5-TTS package is unavailable',
+);
+
+const isPlainDataRecord = (value) => {
+  if (value === null || typeof value !== 'object' || Array.isArray(value)) return false;
+  const prototype = Object.getPrototypeOf(value);
+  return (prototype === Object.prototype || prototype === null)
+    && Object.getOwnPropertySymbols(value).length === 0
+    && Object.values(Object.getOwnPropertyDescriptors(value))
+      .every((descriptor) => descriptor.enumerable && 'value' in descriptor);
+};
+
+const requireDefaultModel = (modelId) => {
+  if (modelId !== DEFAULT_MODEL_ID) throw unsupportedModelOperation();
+  return modelId;
+};
+
+const getF5Package = async () => {
+  const status = await getSpeechPackagesStatus();
+  const entry = status.packages.find(({ id }) => id === PACKAGE_BACKEND);
+  if (!entry) throw modelPackageUnavailable();
+  return entry;
+};
+
+const modelFromPackage = (entry) => Object.freeze({
+  ...DEFAULT_MODEL,
+  config: DEFAULT_MODEL.config,
+  languages: DEFAULT_MODEL.languages,
+  version: entry.version,
+});
+
+const progressState = (operation) => Object.freeze({
+  status: operation.action === 'remove' ? 'removing' : 'downloading',
+  progress: operation.basisPoints / 100,
+  error: null,
+  jobId: operation.job.id,
+});
+
+const terminalState = (status, jobId = null) => Object.freeze({
+  status,
+  progress: status === 'completed' ? 100 : 0,
+  error: status === 'failed' ? 'The native speech package operation failed' : null,
+  jobId,
+});
+
+const packageHandlers = Object.freeze({
+  onProgress: ({ operation }) => {
+    operationStates.set(DEFAULT_MODEL_ID, progressState(operation));
+  },
+  onCompleted: ({ job }) => {
+    operationStates.set(DEFAULT_MODEL_ID, terminalState('completed', job.id));
+  },
+  onCancelled: ({ job }) => {
+    operationStates.set(DEFAULT_MODEL_ID, terminalState('cancelled', job.id));
+  },
+  onFailed: ({ job }) => {
+    operationStates.set(DEFAULT_MODEL_ID, terminalState('failed', job?.id ?? null));
+  },
+  onProtocolError: () => {
+    operationStates.set(DEFAULT_MODEL_ID, terminalState('failed'));
+  },
+});
+
+const rememberInitialJob = (job, action) => {
+  const current = operationStates.get(DEFAULT_MODEL_ID);
+  if (!current || current.jobId !== job.id
+      || !['completed', 'cancelled', 'failed'].includes(current.status)) {
+    operationStates.set(DEFAULT_MODEL_ID, Object.freeze({
+      status: action === 'remove' ? 'removing' : 'downloading',
+      progress: job.progress.basisPoints / 100,
+      error: null,
+      jobId: job.id,
+    }));
   }
 };
 
-/**
- * Get the currently active model
- * @returns {Promise<Object>} - Active model ID
- */
+export const getModelServiceStatus = async () => {
+  const entry = await getF5Package();
+  return Object.freeze({
+    available: entry.deliveryAvailable,
+    installed: entry.installed,
+    state: entry.state,
+    operation: entry.operation,
+  });
+};
+
+export const getModels = async () => {
+  const entry = await getF5Package();
+  return Object.freeze({
+    models: Object.freeze(entry.installed ? [modelFromPackage(entry)] : []),
+    active_model: entry.installed ? DEFAULT_MODEL_ID : null,
+    package_state: entry.state,
+  });
+};
+
 export const getActiveModel = async () => {
-  try {
-    const response = await fetch(`${API_BASE_URL}/narration/models/active`);
-    if (!response.ok) {
-      throw new Error(`Server returned ${response.status}`);
-    }
-    return await response.json();
-  } catch (error) {
-    console.error('Error fetching active model:', error);
-    throw error;
-  }
+  const entry = await getF5Package();
+  return Object.freeze({ active_model: entry.installed ? DEFAULT_MODEL_ID : null });
 };
 
-/**
- * Set the active model
- * @param {string} modelId - Model ID to set as active
- * @returns {Promise<Object>} - Response from server
- */
 export const setActiveModel = async (modelId) => {
-  try {
-    const response = await fetch(`${API_BASE_URL}/narration/models/active`, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({ model_id: modelId }),
-    });
-
-    if (!response.ok) {
-      const errorData = await response.json();
-      throw new Error(errorData.error || `Server returned ${response.status}`);
-    }
-
-    return await response.json();
-  } catch (error) {
-    console.error('Error setting active model:', error);
-    throw error;
-  }
+  requireDefaultModel(modelId);
+  const entry = await getF5Package();
+  if (!entry.installed) throw modelPackageUnavailable();
+  return Object.freeze({ success: true, active_model: DEFAULT_MODEL_ID });
 };
 
-/**
- * Add a new model from Hugging Face
- * @param {Object} modelData - Model data
- * @returns {Promise<Object>} - Response from server
- */
 export const addModelFromHuggingFace = async (modelData) => {
-  try {
-    const response = await fetch(`${API_BASE_URL}/narration/models`, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({
-        source_type: 'huggingface',
-        model_url: modelData.modelUrl,
-        vocab_url: modelData.vocabUrl,
-        model_id: modelData.modelId,
-        languageCodes: modelData.languageCodes || [],
-        config: modelData.config || {},
-      }),
-    });
-
-    if (!response.ok) {
-      const errorData = await response.json();
-      throw new Error(errorData.error || `Server returned ${response.status}`);
-    }
-
-    return await response.json();
-  } catch (error) {
-    console.error('Error adding model from Hugging Face:', error);
-    throw error;
+  if (!isPlainDataRecord(modelData)
+      || Object.keys(modelData).some((key) => !modelRequestKeys.has(key))) {
+    throw invalidModelRequest();
   }
+  requireDefaultModel(modelData.modelId);
+  const entry = await getF5Package();
+  if (!entry.deliveryAvailable) throw modelPackageUnavailable();
+  if (entry.operation) {
+    if (!['install', 'update'].includes(entry.operation.action)) {
+      throw modelPackageUnavailable();
+    }
+    operationStates.set(DEFAULT_MODEL_ID, progressState(entry.operation));
+    return Object.freeze({
+      success: true,
+      model_id: DEFAULT_MODEL_ID,
+      job_id: entry.operation.job.id,
+    });
+  }
+  if (entry.installed && !entry.updateAvailable) {
+    return Object.freeze({ success: true, model_id: DEFAULT_MODEL_ID });
+  }
+  const job = await installSpeechPackage(PACKAGE_BACKEND, packageHandlers);
+  rememberInitialJob(job, 'install');
+  return Object.freeze({ success: true, model_id: DEFAULT_MODEL_ID, job_id: job.id });
 };
 
-/**
- * Add a new model from direct URL
- * @param {Object} modelData - Model data
- * @returns {Promise<Object>} - Response from server
- */
-export const addModelFromUrl = async (modelData) => {
-  try {
-    const response = await fetch(`${API_BASE_URL}/narration/models`, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({
-        source_type: 'url',
-        model_url: modelData.modelUrl,
-        vocab_url: modelData.vocabUrl,
-        model_id: modelData.modelId,
-        languageCodes: modelData.languageCodes || [],
-        config: modelData.config || {},
-      }),
-    });
-
-    if (!response.ok) {
-      const errorData = await response.json();
-      throw new Error(errorData.error || `Server returned ${response.status}`);
-    }
-
-    return await response.json();
-  } catch (error) {
-    console.error('Error adding model from URL:', error);
-    throw error;
-  }
+export const addModelFromUrl = async () => {
+  throw unsupportedModelOperation();
 };
 
-/**
- * Get the download status of a model
- * @param {string} modelId - Model ID
- * @returns {Promise<Object>} - Download status
- */
 export const getModelDownloadStatus = async (modelId) => {
-  try {
-    const response = await fetch(`${API_BASE_URL}/narration/models/download-status/${modelId}`);
-
-    if (response.status === 404) {
-      return { status: null };
-    }
-
-    if (!response.ok) {
-      throw new Error(`Server returned ${response.status}`);
-    }
-
-    return await response.json();
-  } catch (error) {
-    console.error('Error getting model download status:', error);
-    throw error;
-  }
+  requireDefaultModel(modelId);
+  const entry = await getF5Package();
+  if (entry.operation) return progressState(entry.operation);
+  const tracked = operationStates.get(DEFAULT_MODEL_ID);
+  if (tracked) return tracked;
+  if (entry.installed) return terminalState('completed');
+  return Object.freeze({ status: null, progress: 0, error: null, jobId: null });
 };
 
-/**
- * Delete a model
- * @param {string} modelId - Model ID to delete
- * @param {boolean} deleteCache - Whether to also delete the model from Hugging Face cache
- * @returns {Promise<Object>} - Response from server
- */
-export const deleteModel = async (modelId, deleteCache = false) => {
-  try {
-    const url = `${API_BASE_URL}/narration/models/${modelId}${deleteCache ? '?delete_cache=true' : ''}`;
-    const response = await fetch(url, {
-      method: 'DELETE',
-    });
-
-    if (!response.ok) {
-      const errorData = await response.json();
-      throw new Error(errorData.error || `Server returned ${response.status}`);
-    }
-
-    return await response.json();
-  } catch (error) {
-    console.error('Error deleting model:', error);
-    throw error;
+export const deleteModel = async (modelId) => {
+  requireDefaultModel(modelId);
+  const entry = await getF5Package();
+  if (!entry.deliveryAvailable) throw modelPackageUnavailable();
+  if (entry.operation) {
+    if (entry.operation.action !== 'remove') throw modelPackageUnavailable();
+    operationStates.set(DEFAULT_MODEL_ID, progressState(entry.operation));
+    return Object.freeze({ success: true, job_id: entry.operation.job.id });
   }
+  if (!entry.installed) return Object.freeze({ success: true });
+  const job = await removeSpeechPackage(PACKAGE_BACKEND, packageHandlers);
+  rememberInitialJob(job, 'remove');
+  return Object.freeze({ success: true, job_id: job.id });
 };
 
-/**
- * Update model information
- * @param {string} modelId - Model ID to update
- * @param {Object} modelInfo - New model information
- * @returns {Promise<Object>} - Response from server
- */
-export const updateModelInfo = async (modelId, modelInfo) => {
-  try {
-    const response = await fetch(`${API_BASE_URL}/narration/models/${modelId}`, {
-      method: 'PUT',
-      headers: {
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify(modelInfo),
-    });
-
-    if (!response.ok) {
-      const errorData = await response.json();
-      throw new Error(errorData.error || `Server returned ${response.status}`);
-    }
-
-    return await response.json();
-  } catch (error) {
-    console.error('Error updating model info:', error);
-    throw error;
-  }
+export const updateModelInfo = async (modelId) => {
+  requireDefaultModel(modelId);
+  throw unsupportedModelOperation();
 };
 
-/**
- * Get model storage information (whether it's using symbolic links)
- * @param {string} modelId - Model ID to check
- * @returns {Promise<Object>} - Storage information
- */
 export const getModelStorageInfo = async (modelId) => {
-  try {
-    const response = await fetch(`${API_BASE_URL}/narration/models/${modelId}/storage`);
-
-    if (!response.ok) {
-      const errorData = await response.json();
-      throw new Error(errorData.error || `Server returned ${response.status}`);
-    }
-
-    return await response.json();
-  } catch (error) {
-    console.error('Error getting model storage info:', error);
-    throw error;
-  }
+  requireDefaultModel(modelId);
+  const entry = await getF5Package();
+  return Object.freeze({
+    size: entry.installedBytes,
+    is_symlink: false,
+    source: 'default',
+  });
 };
 
-/**
- * Cancel an ongoing model download
- * @param {string} modelId - Model ID to cancel download for
- * @returns {Promise<Object>} - Response from server
- */
 export const cancelModelDownload = async (modelId) => {
-  try {
-    const response = await fetch(`${API_BASE_URL}/narration/models/cancel-download/${modelId}`, {
-      method: 'POST',
-    });
-
-    if (!response.ok) {
-      const errorData = await response.json();
-      throw new Error(errorData.error || `Server returned ${response.status}`);
-    }
-
-    return await response.json();
-  } catch (error) {
-    console.error('Error cancelling model download:', error);
-    throw error;
+  requireDefaultModel(modelId);
+  const entry = await getF5Package();
+  const tracked = operationStates.get(DEFAULT_MODEL_ID);
+  const jobId = entry.operation?.job.id ?? tracked?.jobId;
+  const active = entry.operation !== null
+    || ['downloading', 'removing'].includes(tracked?.status ?? '');
+  if (!jobId || !active) {
+    return Object.freeze({ success: true });
   }
+  await cancelSpeechPackageJob(jobId);
+  operationStates.set(DEFAULT_MODEL_ID, terminalState('cancelled', jobId));
+  return Object.freeze({ success: true });
 };
 
-/**
- * Scan the models directory for new models and add them to registry
- * Simple Node.js version - no Python bullshit!
- * @returns {Promise<Object>} - Scan results
- */
 export const scanModelsDirectory = async () => {
-  try {
-    // Initiating model directory scan
-
-    const response = await fetch(`${API_BASE_URL}/scan-models`, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-      },
-    });
-
-    // API response received
-
-    if (!response.ok) {
-      const errorData = await response.json();
-      throw new Error(errorData.error || `Server returned ${response.status}`);
-    }
-
-    const result = await response.json();
-    return result;
-  } catch (error) {
-    throw error;
-  }
+  const entry = await getF5Package();
+  return Object.freeze({ success: true, modelsFound: entry.installed ? 1 : 0 });
 };

@@ -3,15 +3,16 @@
  */
 
 import i18n from '../../i18n/i18n';
-import { createTranslationSchema, addResponseSchema } from '../../utils/schemaUtils';
-import { addThinkingConfig } from '../../utils/thinkingBudgetUtils';
+import { createTranslationSchema } from '../../utils/schemaUtils';
+import { getThinkingBudget } from '../../utils/thinkingBudgetUtils';
+import { runNativeGeminiText } from '../../platform/nativeGeminiText';
+import { isDesktopRuntime } from '../../platform/runtimeEnvironment';
 import { createRequestController, removeRequestController, abortAllRequests } from './requestManagement';
 import { formatSubtitles, formatSubtitlesWithChain } from './translationChainFormatter';
 import { translateSubtitlesByChunks } from './translationChunkProcessor';
 import { processTranslationResponse } from './translationResponseParser';
 import { buildTranslationPrompt, buildRetryPrompt } from './translationPromptBuilder';
 import { buildTranslatedSubtitles } from './translationSubtitleBuilder';
-import { fetchWithKeyRotation } from './withKeyRotation';
 import { DEFAULT_TRANSLATION_MODEL_ID } from '../../config/geminiModels';
 
 /**
@@ -30,17 +31,12 @@ import { DEFAULT_TRANSLATION_MODEL_ID } from '../../config/geminiModels';
  * @param {Array} chainItems - Optional chain items for chain-based formatting
  * @returns {Promise<Array>} - Array of translated subtitles
  */
-const translateSubtitles = async (subtitles, targetLanguage, model = DEFAULT_TRANSLATION_MODEL_ID, customPrompt = null, splitDuration = 0, includeRules = false, delimiter = ' ', useParentheses = false, bracketStyle = null, chainItems = null, fileContext = null) => {
+const translateSubtitles = async (subtitles, targetLanguage, model = DEFAULT_TRANSLATION_MODEL_ID, customPrompt = null, splitDuration = 0, includeRules = false, delimiter = ' ', useParentheses = false, bracketStyle = null, chainItems = null, fileContext = null, preserveOriginalSubtitlesMap = false) => {
     // Check if we're in format mode (empty target languages array)
     const isFormatMode = Array.isArray(targetLanguage) && targetLanguage.length === 0;
 
     // Determine if we're doing multi-language translation
     const isMultiLanguage = !isFormatMode && Array.isArray(targetLanguage) && targetLanguage.length > 0;
-
-    // Log chain items if provided
-    if (chainItems) {
-
-    }
 
     // Store the target language(s) for reference (except in format mode)
     if (!isFormatMode) {
@@ -66,27 +62,27 @@ const translateSubtitles = async (subtitles, targetLanguage, model = DEFAULT_TRA
         }
     }
 
-    // Create a map of original subtitles with their IDs for reference
-    // Only create and store the map if we're not in a chunked translation (splitDuration=0)
-    // This prevents overwriting the complete map when processing individual chunks
-    if (splitDuration === 0 && !localStorage.getItem('original_subtitles_map')) {
-        const originalSubtitlesMap = {};
-        subtitles.forEach((sub, index) => {
-            // Ensure each subtitle has a unique ID
-            const id = sub.id || index + 1;
-            // Store the subtitle with its ID and index for reference
-            originalSubtitlesMap[id] = {
-                ...sub,
-                id: id,  // Ensure ID is set
-                index: index  // Store the index for order-based matching
-            };
-        });
+    // Native translation preserves timing from its typed input and must not copy project subtitles
+    // into durable WebView storage. Browser compatibility still uses the legacy parser map. Replace
+    // it for every top-level browser translation; recursive chunk calls keep the complete map.
+    if (!preserveOriginalSubtitlesMap) {
+        if (isDesktopRuntime()) {
+            localStorage.removeItem('original_subtitles_map');
+        } else {
+            const originalSubtitlesMap = {};
+            subtitles.forEach((sub, index) => {
+                // Ensure each subtitle has a unique ID
+                const id = sub.id || index + 1;
+                // Store the subtitle with its ID and index for reference
+                originalSubtitlesMap[id] = {
+                    ...sub,
+                    id: id,  // Ensure ID is set
+                    index: index  // Store the index for order-based matching
+                };
+            });
 
-        // Store the original subtitles map in localStorage for reference
-
-        localStorage.setItem('original_subtitles_map', JSON.stringify(originalSubtitlesMap));
-    } else if (splitDuration === 0) {
-
+            localStorage.setItem('original_subtitles_map', JSON.stringify(originalSubtitlesMap));
+        }
     }
 
     // If in format mode, we don't need to call the API, just format the subtitles
@@ -121,11 +117,32 @@ const translateSubtitles = async (subtitles, targetLanguage, model = DEFAULT_TRA
 
         // Get rest time from localStorage if available
         const restTime = parseInt(localStorage.getItem('translation_rest_time') || '0');
-        if (restTime > 0) {
-
-        }
-
-        return await translateSubtitlesByChunks(subtitles, targetLanguage, model, customPrompt, splitDuration, includeRules, delimiter, useParentheses, bracketStyle, chainItems, restTime, fileContext);
+        const translateChunk = (
+            chunkSubtitles,
+            chunkTargetLanguage,
+            chunkModel,
+            chunkPrompt,
+            chunkSplitDuration,
+            chunkIncludeRules,
+            chunkDelimiter,
+            chunkUseParentheses,
+            chunkBracketStyle,
+            chunkChainItems
+        ) => translateSubtitles(
+            chunkSubtitles,
+            chunkTargetLanguage,
+            chunkModel,
+            chunkPrompt,
+            chunkSplitDuration,
+            chunkIncludeRules,
+            chunkDelimiter,
+            chunkUseParentheses,
+            chunkBracketStyle,
+            chunkChainItems,
+            fileContext,
+            true
+        );
+        return await translateSubtitlesByChunks(subtitles, targetLanguage, model, customPrompt, splitDuration, includeRules, delimiter, useParentheses, bracketStyle, chainItems, restTime, fileContext, translateChunk);
     }
 
     // Format subtitles as text lines for Gemini (text only, no timestamps, no numbering)
@@ -144,47 +161,24 @@ const translateSubtitles = async (subtitles, targetLanguage, model = DEFAULT_TRA
     const { requestId, signal } = createRequestController();
 
     try {
-        // Build the API URL for the given key (key supplied by the rotation wrapper).
-        // Use the model parameter passed to the function
-        // This allows for model selection specific to translation
-        const buildApiUrl = (apiKey) => `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${apiKey}`;
+        const responseSchema = createTranslationSchema(isMultiLanguage);
 
-        // Create request data with structured output
-        let requestData = {
-            contents: [
-                {
-                    role: "user",
-                    parts: [
-                        { text: translationPrompt }
-                    ]
-                }
-            ]
+        const executeTranslationRequest = async (prompt) => {
+            const thinking = getThinkingBudget(model);
+            const result = await runNativeGeminiText({
+                task: 'translate',
+                model,
+                prompt,
+                responseJsonSchema: responseSchema,
+                ...(typeof thinking === 'string' ? { thinkingLevel: thinking } : {}),
+                signal,
+            });
+            return {
+                candidates: [{ content: { parts: [{ text: result.text }] } }],
+            };
         };
 
-        // Always use structured output
-        requestData = addResponseSchema(requestData, createTranslationSchema(isMultiLanguage));
-
-        // Add thinking configuration if supported by the model
-        requestData = addThinkingConfig(requestData, model);
-
-
-        const response = await fetchWithKeyRotation((apiKey) =>
-            fetch(buildApiUrl(apiKey), {
-                method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json',
-                },
-                body: JSON.stringify(requestData),
-                signal: signal
-            })
-        );
-
-        if (!response.ok) {
-            const errorData = await response.json();
-            throw new Error(`Gemini API error: ${errorData.error?.message || response.statusText}`);
-        }
-
-        const data = await response.json();
+        const data = await executeTranslationRequest(translationPrompt);
 
         // Loop-invariant context shared by every response-parsing call
         const parseContext = { isMultiLanguage, useParentheses, delimiter, bracketStyle, chainItems, subtitles };
@@ -212,37 +206,7 @@ const translateSubtitles = async (subtitles, targetLanguage, model = DEFAULT_TRA
                     translatedCount: translatedTexts.length
                 });
 
-                // Use the same request structure as the original request
-                const retryRequestData = {
-                    contents: [
-                        {
-                            role: "user",
-                            parts: [
-                                { text: retryPrompt }
-                            ]
-                        }
-                    ]
-                };
-
-                // Always use structured output for retries too
-                const schemaRequestData = addResponseSchema(retryRequestData, createTranslationSchema(isMultiLanguage));
-
-                const retryResponse = await fetchWithKeyRotation((apiKey) =>
-                    fetch(buildApiUrl(apiKey), {
-                        method: 'POST',
-                        headers: {
-                            'Content-Type': 'application/json',
-                        },
-                        body: JSON.stringify(schemaRequestData),
-                        signal: signal
-                    })
-                );
-
-                if (!retryResponse.ok) {
-                    throw new Error(`Retry failed with status ${retryResponse.status}`);
-                }
-
-                const retryData = await retryResponse.json();
+                const retryData = await executeTranslationRequest(retryPrompt);
                 translatedTexts = processTranslationResponse(retryData, parseContext);
             } catch (retryError) {
                 console.error('Translation retry failed:', retryError);
@@ -265,13 +229,6 @@ const translateSubtitles = async (subtitles, targetLanguage, model = DEFAULT_TRA
         });
 
 
-        if (translatedSubtitles.length > 0) {
-
-
-        }
-
-        // Remove this controller from the map after successful response
-        removeRequestController(requestId);
         return translatedSubtitles;
     } catch (error) {
         // Check if this is an AbortError
@@ -280,12 +237,10 @@ const translateSubtitles = async (subtitles, targetLanguage, model = DEFAULT_TRA
             throw new Error('Translation request was aborted');
         } else {
             console.error('Translation error:', error);
-            // Remove this controller from the map on error
-            if (requestId) {
-                removeRequestController(requestId);
-            }
             throw error;
         }
+    } finally {
+        removeRequestController(requestId);
     }
 };
 

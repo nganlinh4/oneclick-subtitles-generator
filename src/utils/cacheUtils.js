@@ -56,7 +56,7 @@ export const generateFileCacheId = async (file) => {
  * @returns {Promise<string>} - A promise that resolves to the chunk as text
  */
 const readFileChunk = (file, start, end) => {
-  return new Promise((resolve, reject) => {
+  return new Promise((resolve) => {
     if (!file) {
       console.error('Cannot read chunk: file is undefined');
       return resolve(''); // Return empty string instead of failing

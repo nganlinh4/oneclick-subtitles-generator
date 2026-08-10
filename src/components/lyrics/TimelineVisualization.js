@@ -1,4 +1,4 @@
-import React, { useEffect, useCallback, useRef, useState } from 'react';
+import { useEffect, useCallback, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 
 // Import utility modules
@@ -47,7 +47,7 @@ const TimelineVisualization = ({
     onBeginMoveRange = null, // Start live move preview
     onPreviewMoveRange = null, // Update live move preview with delta seconds
     onCommitMoveRange = null, // Commit the live move on mouse up
-    onCancelMoveRange = null, // Cancel live move preview
+    onCancelMoveRange: _onCancelMoveRange = null, // Cancel live move preview
     onSelectedRangeChange = null, // Callback to notify parent of selected range changes
     onApplyTimings = null // Bulk-apply retimed subtitles (narration-lane smart arrange / drag)
 }) => {
@@ -82,8 +82,7 @@ const TimelineVisualization = ({
         isStreamingActive,
         newSegmentAnimationRef,
         segmentProcessingStartTimes,
-        processingRanges,
-        setProcessingRanges
+        processingRanges
     } = useTimelineStreamingState({ lyrics });
 
     // Get current video duration from the video element
@@ -237,7 +236,7 @@ const TimelineVisualization = ({
                 cancelAnimationFrame(processingAnimationRef.current);
             }
         }
-    }, [isProcessingSegment, retryingOfflineKeys, isStreamingActive]);
+    }, [isProcessingSegment, retryingOfflineKeys, isStreamingActive, processingAnimationRef, setAnimationTime]);
 
 
     const isClickingInsideRef = useRef(false); // Track if we're clicking inside the range
@@ -357,7 +356,7 @@ const TimelineVisualization = ({
         );
 
 
-    }, [lyrics, placementStarts, globalSpeed, perLineWeight, currentTime, duration, getTimeRange, panOffset, getVisibleRangeWithTempOffset, timeFormat, selectedSegment, isDraggingSegment, dragStartTime, dragCurrentTime, isProcessingSegment, animationTime, newSegments, actionBarRange, hiddenActionBarRange, offlineSegments, hoveredOfflineRange, retryingOfflineKeys, segmentProcessingStartTimes, getSegmentsFor, videoSource]);
+    }, [lyrics, placementStarts, globalSpeed, perLineWeight, currentTime, duration, getTimeRange, panOffset, getVisibleRangeWithTempOffset, timeFormat, selectedSegment, isDraggingSegment, dragStartTime, dragCurrentTime, isProcessingSegment, animationTime, newSegments, actionBarRange, hiddenActionBarRange, offlineSegments, retryingOfflineKeys, segmentProcessingStartTimes, getSegmentsFor, videoSource, processingRanges]);
 
     // Render-coordination side effects (new-segment animation, resize, zoom,
     // timeline updates, playhead auto-scroll, unmount cleanup)

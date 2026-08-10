@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { useTranslation } from 'react-i18next';
 import LoadingIndicator from './common/LoadingIndicator';
 import '../styles/AddSubtitlesButton.css';
@@ -25,6 +25,7 @@ const AddSubtitlesButton = ({
   const [isProcessing, setIsProcessing] = useState(false);
   const [localHasSubtitles, setLocalHasSubtitles] = useState(hasSubtitles);
   const [localSubtitlesText, setLocalSubtitlesText] = useState(subtitlesText);
+  const initialSubtitlesRef = useRef({ hasSubtitles, subtitlesText });
 
   // Check for existing user-provided subtitles on mount
   useEffect(() => {
@@ -35,8 +36,8 @@ const AddSubtitlesButton = ({
         setLocalSubtitlesText(savedSubtitles);
         console.log('[AddSubtitlesButton] Found existing user-provided subtitles on page load');
       } else {
-        setLocalHasSubtitles(hasSubtitles);
-        setLocalSubtitlesText(subtitlesText);
+        setLocalHasSubtitles(initialSubtitlesRef.current.hasSubtitles);
+        setLocalSubtitlesText(initialSubtitlesRef.current.subtitlesText);
       }
     };
 

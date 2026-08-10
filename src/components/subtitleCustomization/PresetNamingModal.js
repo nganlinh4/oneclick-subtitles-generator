@@ -1,8 +1,8 @@
-import React, { useState } from 'react';
+import { useState } from 'react';
 import { createPortal } from 'react-dom';
 import { useTranslation } from 'react-i18next';
 
-const PresetNamingModal = ({ isOpen, onClose, onSave, currentCustomization }) => {
+const PresetNamingModal = ({ isOpen, onClose, onSave, currentCustomization: _currentCustomization }) => {
   const { t } = useTranslation();
   const [presetName, setPresetName] = useState('');
 

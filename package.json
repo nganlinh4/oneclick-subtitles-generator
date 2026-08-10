@@ -1,276 +1,94 @@
 {
   "name": "subtitles-generator",
-  "version": "1.0.0",
+  "version": "2.0.0",
   "description": "A subtitle generator application using Gemini AI",
-  "homepage": "./",
-  "main": "electron/main.js",
-  "author": "Your Name <your.email@example.com>",
+  "private": true,
+  "packageManager": "npm@11.17.0",
+  "engines": {
+    "node": ">=24.19.0 <25",
+    "npm": ">=11.17.0 <12"
+  },
   "workspaces": [
     "promptdj-midi",
     "video-renderer"
   ],
   "scripts": {
-    "start": "npm run setup:react-env && npm run generate:version && node scripts/start-frontend.js",
-    "start-react": "cross-env PORT=3030 react-scripts start",
-    "build": "npm run generate:version && npm run workspace:build && react-scripts build",
-    "build:frontend": "npm run generate:version && react-scripts build",
-    "electron": "electron .",
-    "electron:dev": "npm run build && electron .",
-    "electron:start": "concurrently \"npm run start\" \"npm run electron:dev\"",
-    "dist": "npm run build && node scripts/prepare-electron-build.js && electron-builder",
-    "dist:win": "cross-env ELECTRON_BUILDER_CACHE=./.builder-cache CSC_LINK=null WIN_CSC_LINK=null CSC_IDENTITY_AUTO_DISCOVERY=false npm run build && node scripts/prepare-electron-build.js && electron-builder --win",
-    "dist:mac": "npm run build && node scripts/prepare-electron-build.js && electron-builder --mac",
-    "dist:linux": "npm run build && node scripts/prepare-electron-build.js && electron-builder --linux",
-    "pack": "cross-env CSC_IDENTITY_AUTO_DISCOVERY=false electron-builder --dir",
+    "start": "npm run tauri:dev",
+    "dev": "npm run tauri:dev",
+    "build:promptdj": "npm run --workspace=promptdj-midi build",
+    "dev:vite": "npm run generate:version && npm run build:promptdj && vite --config vite.config.mjs",
+    "build:vite": "npm run build:promptdj && vite build --config vite.config.mjs",
+    "tauri": "npm --prefix apps/desktop run tauri --",
+    "tauri:dev": "npm --prefix apps/desktop run tauri -- dev",
+    "tauri:build": "npm --prefix apps/desktop run tauri -- build",
+    "build": "npm run tauri:build",
+    "build:frontend": "npm run generate:version && npm run build:vite",
     "generate:version": "node scripts/generate-version.js",
-    "test": "react-scripts test",
-    "test:server": "node --test \"server/**/*.test.js\"",
+    "lint": "eslint src vite.config.mjs vitest.config.mjs --max-warnings=0",
+    "lint:native": "eslint src/platform src/components/lyrics/useNarrationTimelineData.js src/components/lyrics/NarrationLaneControls.js src/components/VideoRenderingSection/useNarration.js vite.config.mjs vitest.config.mjs --max-warnings=0",
+    "test": "vitest run",
     "test:gemini-catalog": "node scripts/verify-gemini-catalog.js",
-    "test:asr-common": "python -m unittest asr_services.test_asr_common",
-    "smoke:asr": "node scripts/smoke-asr-engine.js",
+    "test:frontend-env": "node --test scripts/vite-public-env.test.mjs",
+    "test:frozen-css": "node --test scripts/frozen-css-compatibility.test.mjs scripts/check-frozen-css-output.test.mjs",
+    "test:production-transport": "node --test scripts/check-production-transport.test.js scripts/frontend-bundle-boundary.test.mjs scripts/remotion-desktop-boundary.test.mjs",
+    "test:asr-worker": "python -I -B scripts/test-asr-worker.py -v",
+    "test:speech-worker": "python -I -B crates/osg-speech/tests/python_worker_contract.py -v",
+    "test:python-workers": "npm run test:asr-worker && npm run test:speech-worker",
     "check:i18n": "node scripts/check-i18n.js",
-    "eject": "react-scripts eject",
-    "server": "node server.js",
-    "server:start": "node server.js",
-    "python:start": "uv run --python .venv server/narrationApp.py",
-    "python:test": "uv run --python .venv server/test-narration-service.py",
-    "video-renderer:build": "cd video-renderer && npm run server:build",
-    "video-renderer:start": "cd video-renderer && npm run server:start",
-    "dev": "npm run setup:react-env && npm run generate:version && node dev-server.js",
-    "dev:test": "concurrently --names \"FRONTEND,SERVER,PYTHON\" --prefix-colors \"cyan,green,yellow\" --prefix \"[{name}]\" \"npm run start\" \"npm run server:start\" \"npm run python:test\"",
-    "check:uv": "node check-uv.js",
-    "test:python": "uv run --python .venv test-python.py",
-    "create:venv": "uv venv .venv",
-    "install:f5tts": "uv pip install --python .venv -c narration-constraints.txt -e F5-TTS",
-    "install:deps": "uv pip install --python .venv -c narration-constraints.txt flask flask-cors soundfile \"numpy<1.26\" torch torchaudio vocos \"setuptools<81\"",
-    "install:yt-dlp": "node install-yt-dlp.js",
-    "install:all": "npm install && node install-base.js",
-    "postinstall": "npm run workspace:build",
-    "python:start:cuda": "uv run --python .venv -- python server/narrationApp.py",
-    "python:start:uv": "uv run --python .venv -- python server/narrationApp.py",
-    "chatterbox:start": "uv run --python .venv python chatterbox-fastapi/start_api.py --reload",
-    "test:services": "node test-services.js",
-    "test:setup-fixes": "node test-setup-fixes.js",
-    "test:port-manager": "node scripts/test-port-manager.js",
-    "setup:cors": "node scripts/setup-cors-env.js",
-    "setup:react-env": "node scripts/generate-react-env.js",
-    "test:cors": "node scripts/test-cors-configuration.js",
-    "install:yt-dlp:quiet": "cross-env QUIET=true node install-yt-dlp.js",
-    "install:yt-dlp:verbose": "cross-env VERBOSE=true node install-yt-dlp.js",
-    "start:original": "node scripts/start-frontend.js",
-    "workspace:build": "npm run --workspace=video-renderer server:build && npm run --workspace=promptdj-midi build",
-    "postinstall:electron": "electron-builder install-app-deps"
+    "check:dependencies": "npm ls --all && npm --prefix apps/desktop ls --all",
+    "check:versions": "node scripts/check-version-consistency.js",
+    "check:tauri-contract": "node scripts/check-tauri-command-contract.js",
+    "check:frozen-css-output": "node scripts/check-frozen-css-output.mjs",
+    "check:production-transport": "node scripts/check-production-transport.js",
+    "test:version-consistency": "node --test scripts/check-version-consistency.test.js",
+    "check:visual-freeze": "node scripts/check-visual-freeze.js && npm run --workspace=promptdj-midi check:visual-contract && npm run --workspace=video-renderer check:visual-contract",
+    "test:visual-contract": "node --test scripts/check-visual-freeze.test.js promptdj-midi/scripts/check-visual-contract.test.mjs",
+    "check:render-visual-contract": "npm run --workspace=video-renderer check:visual-contract",
+    "test:render-worker": "npm run --workspace=video-renderer test:worker",
+    "update:visual-freeze": "node scripts/check-visual-freeze.js --update --baseline-ref HEAD && npm run --workspace=promptdj-midi update:visual-contract"
   },
   "dependencies": {
-    "@emotion/styled": "^11.14.0",
-    "@ffmpeg-installer/ffmpeg": "^1.1.0",
-    "@google/genai": "^0.9.0",
-    "@material/web": "^2.3.0",
-    "@react-oauth/google": "^0.12.1",
-    "@remotion/bundler": "4.0.357",
-    "@remotion/google-fonts": "4.0.357",
-    "@remotion/player": "4.0.357",
-    "@remotion/renderer": "4.0.357",
-    "@testing-library/jest-dom": "^6.6.3",
-    "@testing-library/react": "^16.2.0",
-    "@testing-library/user-event": "^13.5.0",
-    "@types/cors": "^2.8.17",
-    "@types/express": "^4.17.21",
-    "@types/multer": "^1.4.12",
-    "@types/react-router-dom": "^5.3.3",
-    "@types/react-tabs": "^5.0.4",
-    "@types/uuid": "^10.0.0",
-    "adm-zip": "^0.5.16",
-    "assert": "^2.1.0",
-    "axios": "^1.8.4",
-    "browserify-zlib": "^0.2.0",
-    "buffer": "^6.0.3",
-    "cheerio": "^1.0.0",
-    "cors": "^2.8.5",
-    "crypto-browserify": "^3.12.1",
+    "@material/web": "2.4.1",
+    "@remotion/player": "4.0.507",
+    "@tauri-apps/api": "2.11.1",
     "events": "^3.3.0",
-    "express": "^4.18.2",
-    "fluent-ffmpeg": "^2.1.3",
-    "genius-lyrics": "^4.4.7",
-    "googleapis": "^148.0.0",
-    "http-proxy-middleware": "^3.0.5",
-    "https-browserify": "^1.0.0",
     "i18next": "^23.8.0",
     "iso-639-1": "^3.1.5",
     "jszip": "^3.10.1",
-    "multer": "^1.4.5-lts.2",
-    "node-cache": "^5.1.2",
-    "os-browserify": "^0.3.0",
-    "path-browserify": "^1.0.1",
-    "process": "^0.11.10",
-    "puppeteer-core": "^24.7.2",
-    "querystring-es3": "^0.2.1",
-    "react": "^18.2.0",
-    "react-dom": "^18.2.0",
+    "lit": "3.3.2",
+    "react": "18.3.1",
+    "react-dom": "18.3.1",
     "react-i18next": "^13.3.0",
-    "react-player": "^2.16.0",
-    "react-router-dom": "^6.22.3",
-    "react-scripts": "5.0.1",
-    "react-tabs": "^6.1.0",
     "react-window": "^1.8.11",
-    "remotion": "4.0.357",
-    "stream-browserify": "^3.0.0",
-    "stream-http": "^3.2.0",
-    "styled-components": "^6.1.15",
-    "url": "^0.11.4",
-    "util": "^0.12.5",
-    "uuid": "^11.1.0",
-    "web-vitals": "^3.5.0",
-    "ws": "^8.18.2"
+    "remotion": "4.0.507",
+    "uuid": "11.1.1"
   },
   "devDependencies": {
-    "@remotion/cli": "4.0.357",
-    "@remotion/eslint-plugin": "4.0.357",
-    "@types/react": "^19.0.10",
-    "@types/react-dom": "^19.0.4",
-    "chalk": "^4.1.2",
-    "concurrently": "^9.2.0",
-    "cross-env": "^7.0.3",
-    "electron": "^33.4.11",
-    "electron-builder": "^26.0.12",
-    "electron-devtools-installer": "^3.2.0",
-    "typescript": "^4.9.5"
-  },
-  "build": {
-    "appId": "com.subtitlesgenerator.app",
-    "productName": "One-Click Subtitles Generator",
-    "extraMetadata": {
-      "main": "electron/main.js"
-    },
-    "directories": {
-      "output": "dist-new",
-      "buildResources": "public"
-    },
-    "asar": false,
-    "files": [
-      "app.js",
-      "server.js",
-      "build/**/*",
-      "server/**/*",
-      "src/config/geminiModelCatalog.json",
-      "asr_services/**/*",
-      "chatterbox-fastapi/**/*",
-      "parakeet_wrapper/**/*",
-      "video-renderer/**/*",
-      "promptdj-midi/**/*",
-      "electron/**/*",
-      "node_modules/**/*",
-      "!node_modules/*/test/**/*",
-      "!node_modules/*/tests/**/*",
-      "!node_modules/*/.bin/**/*",
-      "!manual-dist/**/*",
-      "!manual-dist-v2/**/*",
-      "!electron-dist/**/*",
-      "!promptdj-midi/node_modules/**/*",
-      "!video-renderer/node_modules/**/*"
-    ],
-    "extraResources": [
-      {
-        "from": "bin/",
-        "to": "bin/",
-        "filter": [
-          "**/*"
-        ]
-      },
-      {
-        "from": "bin/python-wheelhouse/",
-        "to": "python-venv/",
-        "filter": [
-          "**/*"
-        ]
-      }
-    ],
-    "mac": {
-      "category": "public.app-category.productivity",
-      "target": [
-        {
-          "target": "dmg",
-          "arch": [
-            "x64",
-            "arm64"
-          ]
-        },
-        {
-          "target": "zip",
-          "arch": [
-            "x64",
-            "arm64"
-          ]
-        }
-      ]
-    },
-    "win": {
-      "forceCodeSigning": false,
-      "verifyUpdateCodeSignature": false,
-      "target": [
-        {
-          "target": "dir",
-          "arch": [
-            "x64"
-          ]
-        }
-      ]
-    },
-    "linux": {
-      "category": "Office",
-      "target": [
-        {
-          "target": "AppImage",
-          "arch": [
-            "x64"
-          ]
-        },
-        {
-          "target": "deb",
-          "arch": [
-            "x64"
-          ]
-        }
-      ]
-    },
-    "nsis": {
-      "oneClick": false,
-      "allowToChangeInstallationDirectory": true,
-      "createDesktopShortcut": true,
-      "createStartMenuShortcut": true,
-      "shortcutName": "One-Click Subtitles"
-    }
-  },
-  "eslintConfig": {
-    "extends": [
-      "react-app",
-      "react-app/jest"
-    ]
-  },
-  "jest": {
-    "moduleNameMapper": {
-      "^@material/web/(.*)$": "<rootDir>/src/test-utils/materialWebMock.js"
-    }
-  },
-  "browserslist": {
-    "production": [
-      ">0.2%",
-      "not dead",
-      "not op_mini all"
-    ],
-    "development": [
-      "last 1 chrome version",
-      "last 1 firefox version",
-      "last 1 safari version"
-    ]
+    "@babel/parser": "7.29.0",
+    "@babel/traverse": "7.29.0",
+    "@babel/types": "7.29.0",
+    "@eslint/js": "9.39.5",
+    "@tauri-apps/cli": "2.11.4",
+    "@testing-library/dom": "10.4.1",
+    "@testing-library/jest-dom": "^6.6.3",
+    "@testing-library/react": "^16.2.0",
+    "7zip-bin-full": "26.2.1",
+    "eslint": "9.39.5",
+    "eslint-plugin-react": "7.37.5",
+    "eslint-plugin-react-hooks": "7.1.1",
+    "globals": "17.9.0",
+    "jsdom": "29.1.1",
+    "vite": "8.0.16",
+    "vitest": "4.1.10"
   },
   "resolutions": {
-    "remotion": "4.0.357",
-    "@remotion/bundler": "4.0.357",
-    "@remotion/google-fonts": "4.0.357",
-    "@remotion/player": "4.0.357",
-    "@remotion/renderer": "4.0.357",
-    "@remotion/cli": "4.0.357",
-    "@remotion/eslint-plugin": "4.0.357"
+    "remotion": "4.0.507",
+    "@remotion/bundler": "4.0.507",
+    "@remotion/google-fonts": "4.0.507",
+    "@remotion/player": "4.0.507",
+    "@remotion/renderer": "4.0.507"
+  },
+  "overrides": {
+    "fast-uri": "3.1.5"
   }
 }

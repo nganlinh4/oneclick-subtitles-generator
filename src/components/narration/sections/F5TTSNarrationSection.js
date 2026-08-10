@@ -1,11 +1,11 @@
-import { getAudioUrl } from '../../../services/narrationService';
-
 import AudioControls from '../components/AudioControls';
 import ReferenceAudioSection from '../components/ReferenceAudioSection';
 import SubtitleSourceSelection from '../components/SubtitleSourceSelection';
 import AdvancedSettingsToggle from '../components/AdvancedSettingsToggle';
 import GenerateButton from '../components/GenerateButton';
 import NarrationResults from '../components/NarrationResults';
+
+const getAudioUrl = () => null;
 
 /**
  * F5-TTS narration UI branch. Pure, props-driven component.

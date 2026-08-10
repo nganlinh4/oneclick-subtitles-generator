@@ -57,7 +57,9 @@ const TimelineRetryOverlay = ({
         retryOverlayButtonRef.current = btn;
 
         return () => {
-            try { btn.remove(); wrapper.remove(); container.remove(); } catch { }
+            try { btn.remove(); wrapper.remove(); container.remove(); } catch {
+                // DOM teardown is best-effort if the document is already unloading.
+            }
             retryOverlayContainerRef.current = null;
             retryOverlayWrapperRef.current = null;
             retryOverlayButtonRef.current = null;

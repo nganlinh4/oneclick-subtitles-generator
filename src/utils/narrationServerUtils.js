@@ -3,7 +3,6 @@
  */
 
 import { SERVER_URL } from '../config';
-import React from 'react';
 import { createRoot } from 'react-dom/client';
 import LoadingIndicator from '../components/common/LoadingIndicator';
 import { base64ToArrayBuffer } from './audioConversionUtils';

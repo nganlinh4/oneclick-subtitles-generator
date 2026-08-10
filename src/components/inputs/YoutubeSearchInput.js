@@ -1,6 +1,6 @@
-import React, { useState, useEffect, useCallback, useRef } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import { useTranslation } from 'react-i18next';
-import { searchYouTubeVideos, isOAuthEnabled, hasValidTokens } from '../../services/youtubeApiService';
+import { searchYouTubeVideos, isOAuthEnabled } from '../../platform/desktopYoutubeService';
 import { addSearchQueryToHistory, getSearchQueryHistory, clearSearchQueryHistory, formatTimestamp } from '../../utils/historyUtils';
 
 const YoutubeSearchInput = ({ apiKeysSet = { youtube: false }, selectedVideo, setSelectedVideo, className }) => {
@@ -113,12 +113,7 @@ const YoutubeSearchInput = ({ apiKeysSet = { youtube: false }, selectedVideo, se
     }
 
     // Check authentication method and status
-    if (isOAuthEnabled()) {
-      if (!hasValidTokens()) {
-        window.addToast(t('youtube.noOAuth', 'Please authenticate with YouTube in the settings first.'), 'error', 5000);
-        return;
-      }
-    } else if (!apiKeysSet.youtube) {
+    if (!isOAuthEnabled() && !apiKeysSet.youtube) {
       window.addToast(t('youtube.noApiKey', 'Please set your YouTube API key in the settings first.'), 'error', 5000);
       return;
     }

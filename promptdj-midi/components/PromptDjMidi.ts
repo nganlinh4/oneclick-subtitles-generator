@@ -157,7 +157,7 @@ export class PromptDjMidi extends LitElement {
   @property({ type: Boolean }) private showMidi = false;
   @property({ type: String }) public playbackState: PlaybackState = 'stopped';
   @property({ type: String }) public lang: string = 'en';
-  @property({ type: Boolean }) public apiKeySet = false;
+  @property({ type: Boolean }) public credentialAvailable = false;
   @state() public audioLevel = 0;
   private lastUserAction: 'play' | 'pause' | null = null;
 
@@ -384,7 +384,7 @@ export class PromptDjMidi extends LitElement {
     }
 
     // If paused/stopped: this click means PLAY
-    if (!this.apiKeySet) {
+    if (!this.credentialAvailable) {
       this.dispatchEvent(new CustomEvent('error', { detail: 'Please set your Gemini API key in the main app first.' }));
       return;
     }
@@ -476,8 +476,7 @@ export class PromptDjMidi extends LitElement {
     this.dispatchEvent(new CustomEvent('prompts-changed', { detail: this.prompts }));
   }
 
-  private resetAll() {
-    // Reset to original base prompts and deactivate extra slots and removed slots
+  public resetAll() {
     this.prompts = new Map(this.basePrompts);
     this.addSlotsActive = [false, false, false, false];
     this.removedSlots = new Set();

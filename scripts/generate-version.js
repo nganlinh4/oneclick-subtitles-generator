@@ -3,7 +3,7 @@
 /**
  * Generate version information from git commit data
  * This script creates a version.js file with current git commit information
- * and also sets environment variables for the build process
+ * for the frozen renderer and About UI.
  */
 
 const { execSync } = require('child_process');
@@ -170,32 +170,6 @@ export default versionInfo;
 }
 
 /**
- * Generate .env file with git version variables
- * @param {Object} gitInfo - Git information object
- */
-function generateEnvFile(gitInfo) {
-  const envFile = path.join(__dirname, '..', '.env.version');
-  const version = formatGitVersion(gitInfo.date, gitInfo.shortHash);
-  
-  const envContent = `# Auto-generated git version environment variables
-# Generated at: ${gitInfo.buildTime}
-# These variables are used during the build process
-
-REACT_APP_GIT_COMMIT_HASH=${gitInfo.hash}
-REACT_APP_GIT_COMMIT_SHORT_HASH=${gitInfo.shortHash}
-REACT_APP_GIT_COMMIT_DATE=${gitInfo.date}
-REACT_APP_GIT_COMMIT_TIMESTAMP=${gitInfo.timestamp}
-REACT_APP_GIT_BRANCH=${gitInfo.branch}
-REACT_APP_GIT_VERSION=${version}
-REACT_APP_BUILD_TIME=${gitInfo.buildTime}
-REACT_APP_GIT_IS_CLEAN=${gitInfo.isClean}
-`;
-
-  fs.writeFileSync(envFile, envContent);
-  console.log(`🌍 Environment file generated: ${envFile}`);
-}
-
-/**
  * Main function
  */
 function main() {
@@ -204,7 +178,6 @@ function main() {
   try {
     const gitInfo = getGitInfo();
     generateVersionFile(gitInfo);
-    generateEnvFile(gitInfo);
     
     console.log('✅ Version generation completed');
 
@@ -223,6 +196,5 @@ module.exports = {
   getGitInfo,
   formatGitVersion,
   generateVersionFile,
-  generateEnvFile,
   main
 };

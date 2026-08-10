@@ -1,0 +1,169 @@
+{
+  "schemaVersion": 1,
+  "reviewedAt": "2026-08-10",
+  "policy": {
+    "networkDuringBuild": "download-only-from-this-lock",
+    "networkDuringRuntime": "provider-requests-only",
+    "releaseState": "blocked",
+    "reason": "No delivery release may be published until every transitive wheel, native library, model file, notice, and final archive is inventoried and reproduced per platform. Empty releases are intentional."
+  },
+  "python": {
+    "distribution": "astral-sh/python-build-standalone",
+    "version": "3.11.15",
+    "release": "20260807",
+    "license": "MPL-2.0",
+    "licenseUrl": "https://github.com/astral-sh/python-build-standalone/blob/20260807/LICENSE",
+    "thirdPartyNoticesRequired": true,
+    "platforms": {
+      "linux-x86_64": {
+        "asset": "cpython-3.11.15+20260807-x86_64-unknown-linux-gnu-install_only_stripped.tar.gz",
+        "sizeBytes": 30939767,
+        "sha256": "69dfac9d0f15a0b9281a38486f212cbf76421609228c184dc0d34a0533d57ba6",
+        "sourceUrl": "https://github.com/astral-sh/python-build-standalone/releases/download/20260807/cpython-3.11.15%2B20260807-x86_64-unknown-linux-gnu-install_only_stripped.tar.gz"
+      },
+      "macos-aarch64": {
+        "asset": "cpython-3.11.15+20260807-aarch64-apple-darwin-install_only_stripped.tar.gz",
+        "sizeBytes": 27121085,
+        "sha256": "76b27e15a5be9539b830fc698e2646d001b84a66500eeb5228cee46909d6f2cf",
+        "sourceUrl": "https://github.com/astral-sh/python-build-standalone/releases/download/20260807/cpython-3.11.15%2B20260807-aarch64-apple-darwin-install_only_stripped.tar.gz"
+      },
+      "macos-x86_64": {
+        "asset": "cpython-3.11.15+20260807-x86_64-apple-darwin-install_only_stripped.tar.gz",
+        "sizeBytes": 27035035,
+        "sha256": "c4c06e1f2ce49eba8159ae43fe3df6a741d93b826a3ba6b114ad34a4e393dac8",
+        "sourceUrl": "https://github.com/astral-sh/python-build-standalone/releases/download/20260807/cpython-3.11.15%2B20260807-x86_64-apple-darwin-install_only_stripped.tar.gz"
+      },
+      "windows-x86_64": {
+        "asset": "cpython-3.11.15+20260807-x86_64-pc-windows-msvc-install_only_stripped.tar.gz",
+        "sizeBytes": 25702896,
+        "sha256": "ebfd13f290b79fc0cd874304e80944d81a368edc2c7cd94994a7d5104cc0c6b3",
+        "sourceUrl": "https://github.com/astral-sh/python-build-standalone/releases/download/20260807/cpython-3.11.15%2B20260807-x86_64-pc-windows-msvc-install_only_stripped.tar.gz"
+      }
+    }
+  },
+  "pythonPackages": {
+    "f5-tts": {
+      "version": "1.1.22",
+      "wheel": "f5_tts-1.1.22-py3-none-any.whl",
+      "sizeBytes": 1321095,
+      "sha256": "f0505dfb5463645caa526bace346ed1c89bcc9acb9ef42fdffd56c2c4c0a09d1",
+      "sourceUrl": "https://files.pythonhosted.org/packages/26/be/5febd38994dd9ea5bfa9167d91f68cba01bdd1b710c62a89c25309c18a6c/f5_tts-1.1.22-py3-none-any.whl",
+      "license": "MIT",
+      "modelLicense": "CC-BY-NC-4.0"
+    },
+    "chatterbox-tts": {
+      "version": "0.1.7",
+      "wheel": "chatterbox_tts-0.1.7-py3-none-any.whl",
+      "sizeBytes": 108543,
+      "sha256": "83782500e3ad4e7c919132e9d7eb8755f29f57c5bde5ec48c655ca23a4eb113c",
+      "sourceUrl": "https://files.pythonhosted.org/packages/54/37/11a7f06983bfd5ebba71eb2caa6660941b17b31f3c49d4a5fe9e1e804d31/chatterbox_tts-0.1.7-py3-none-any.whl",
+      "license": "MIT",
+      "modelLicense": "MIT"
+    },
+    "edge-tts": {
+      "version": "7.2.8",
+      "wheel": "edge_tts-7.2.8-py3-none-any.whl",
+      "sizeBytes": 31026,
+      "sha256": "361fe48ce7ef613adbe30f664e3765dd71029c6cb57427279eff8ad6df2eb211",
+      "sourceUrl": "https://files.pythonhosted.org/packages/8c/2b/a8cb687b92a2690d2ad171f0c2fd1c8f18690363cca7618bab2bbe4cdf2b/edge_tts-7.2.8-py3-none-any.whl",
+      "license": "LGPL-3.0-only"
+    },
+    "gTTS": {
+      "version": "2.5.4",
+      "wheel": "gTTS-2.5.4-py3-none-any.whl",
+      "sizeBytes": 29184,
+      "sha256": "5dd579377f9f5546893bc26315ab1f846933dc27a054764b168f141065ca8436",
+      "sourceUrl": "https://files.pythonhosted.org/packages/e3/6c/8b8b1fdcaee7e268536f1bb00183a5894627726b54a9ddc6fc9909888447/gTTS-2.5.4-py3-none-any.whl",
+      "license": "MIT"
+    },
+    "google-genai": {
+      "version": "2.17.0",
+      "wheel": "google_genai-2.17.0-py3-none-any.whl",
+      "sizeBytes": 1044950,
+      "sha256": "a4835563c60aee646c9c4b261c507aa4a624710d25017012d20dc65abf3d9a54",
+      "sourceUrl": "https://files.pythonhosted.org/packages/b3/37/71e397a5b93d9a3c139e95acdcb00b4169ed59ae20e16616f2875170abb7/google_genai-2.17.0-py3-none-any.whl",
+      "license": "Apache-2.0"
+    }
+  },
+  "models": {
+    "f5-tts-v1-base": {
+      "repository": "SWivid/F5-TTS",
+      "revision": "84e5a410d9cead4de2f847e7c9369a6440bdfaca",
+      "license": "CC-BY-NC-4.0",
+      "commercialDistributionAllowed": false,
+      "files": [
+        {
+          "path": "F5TTS_v1_Base/model_1250000.safetensors",
+          "sizeBytes": 1348435761,
+          "sha256": "670900fd14e6c458b95da6e9ed317cdb20dbaf7a1c02ac06a05475a9d32b6a38"
+        },
+        {
+          "path": "F5TTS_v1_Base/vocab.txt",
+          "sizeBytes": 13800,
+          "sha256": "2a05f992e00af9b0bd3800a8d23e78d520dbd705284ed2eedb5f4bd29398fa3c"
+        }
+      ]
+    },
+    "f5-vocos": {
+      "repository": "charactr/vocos-mel-24khz",
+      "revision": "0feb3fdd929bcd6649e0e7c5a688cf7dd012ef21",
+      "license": "MIT",
+      "files": [
+        {
+          "path": "config.yaml",
+          "sizeBytes": 461,
+          "sha256": "da9033922f969a47f0c160010226919e59f27761fd5066f3828d46de6650b0fc"
+        },
+        {
+          "path": "pytorch_model.bin",
+          "sizeBytes": 54365991,
+          "sha256": "97ec976ad1fd67a33ab2682d29c0ac7df85234fae875aefcc5fb215681a91b2a"
+        }
+      ]
+    },
+    "chatterbox": {
+      "repository": "ResembleAI/chatterbox",
+      "revision": "5bb1f6ee58e50c3b8d408bc82a6d3740c2db6e18",
+      "license": "MIT",
+      "files": [
+        { "path": "ve.safetensors", "sizeBytes": 5695784, "sha256": "f0921cab452fa278bc25cd23ffd59d36f816d7dc5181dd1bef9751a7fb61f63c" },
+        { "path": "t3_cfg.safetensors", "sizeBytes": 2129653744, "sha256": "914cb1696f47527fe8852ca8f1fe1fa63cb34f76f9c715e84e067b744dd0da81" },
+        { "path": "s3gen.safetensors", "sizeBytes": 1056484620, "sha256": "2b78103c654207393955e4900aac14a12de8ef25f4b09424f1ef91941f161d4e" },
+        { "path": "tokenizer.json", "sizeBytes": 25470, "sha256": "d71e3a44eabb1784df9a68e9f95b251ecbf1a7af6a9f50835856b2ca9d8c14a5" },
+        { "path": "ve.pt", "sizeBytes": 5698626, "sha256": "4b16d836bc598509860f6fa068165a8bb5e9ac84f05582dfcf278a5a372879f1" },
+        { "path": "t3_mtl23ls_v2.safetensors", "sizeBytes": 2143989752, "sha256": "b1237586127ce98e7800a68e49938eb5092846862aabcb6e17b2fda7889a6c75" },
+        { "path": "s3gen.pt", "sizeBytes": 1057165844, "sha256": "9b9ff07e60b20c136e2b1b3d7563a24604e8d2c4c267888d1ee929dd0151d2a3" },
+        { "path": "grapheme_mtl_merged_expanded_v1.json", "sizeBytes": 69989, "sha256": "69632f47220a788a52ce2661d096453c5655e9bf25289d89a8d832c46ee07dbf" },
+        { "path": "Cangjie5_TC.json", "sizeBytes": 1920163, "sha256": "7073fd9de919443ae88e0bd2449917a65fe54898a4413ed1edcc4b67f28bce8c" },
+        { "path": "conds.pt", "sizeBytes": 107374, "sha256": "6552d70568833628ba019c6b03459e77fe71ca197d5c560cef9411bee9d87f4e" }
+      ]
+    }
+  },
+  "blockers": [
+    {
+      "id": "transitive-wheel-lock",
+      "backends": ["f5-tts", "chatterbox", "edge-tts", "gtts", "gemini-tts"],
+      "detail": "Top-level wheels are pinned, but platform-specific transitive wheel inventories, hashes, native library notices, and offline installation proofs are not yet checked in."
+    },
+    {
+      "id": "f5-non-commercial-model",
+      "backends": ["f5-tts"],
+      "detail": "The official F5TTS_v1_Base weights are CC-BY-NC-4.0. A default commercial-capable release requires a separately reviewed permissive model or an explicit product policy and user acceptance flow."
+    },
+    {
+      "id": "chatterbox-platform-validation",
+      "backends": ["chatterbox"],
+      "detail": "Torch/torchaudio compatibility, CPU/MPS behavior, archive size, and multilingual plus voice-conversion smoke tests remain unverified on all four release targets, especially macOS x86_64."
+    },
+    {
+      "id": "offline-worker-contract",
+      "backends": ["f5-tts", "chatterbox"],
+      "detail": "Release workers must use only package-relative model paths under an integrity-held lease and must prove that Hugging Face and transformer offline modes prevent runtime model downloads."
+    },
+    {
+      "id": "provider-terms-review",
+      "backends": ["edge-tts", "gtts", "gemini-tts"],
+      "detail": "Provider network use, terms, quota behavior, and user-facing disclosure require product/legal review even though the local Python payload can be packaged reproducibly."
+    }
+  ]
+}

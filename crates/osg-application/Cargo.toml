@@ -9,6 +9,11 @@ rust-version.workspace = true
 osg-domain.workspace = true
 serde.workspace = true
 thiserror.workspace = true
+tokio-util = { version = "0.7.19", features = ["rt"] }
+
+[dev-dependencies]
+serde_json.workspace = true
+tempfile = "3.27.0"
 
 [lints]
 workspace = true

@@ -1,0 +1,276 @@
+{
+  "schemaVersion": 1,
+  "reviewedAt": "2026-08-10",
+  "policy": {
+    "artifactDelivery": "direct-upstream-download-only",
+    "bundledArtifacts": false,
+    "selfUpdateAllowed": false,
+    "releaseState": "partially-available",
+    "reason": "Only exact upstream yt-dlp and Deno releases are installable; FFmpeg remains unavailable until every target has a redistributable, provenance-complete GPL build with accurate notices and corresponding-source delivery."
+  },
+  "tools": [
+    {
+      "id": "media-tools",
+      "label": "FFmpeg and FFprobe",
+      "license": "GPL-2.0-or-later",
+      "sourceRevision": null,
+      "notices": [],
+      "platforms": {
+        "linux-x86_64": {
+          "blocker": "The reviewed GPL builds are content-addressed, but their mutable releases and incomplete corresponding-source sets are not acceptable for OSG redistribution.",
+          "releases": []
+        },
+        "macos-aarch64": {
+          "blocker": "One reviewed project publishes no macOS artifact; the other publishes an --enable-nonfree binary that FFmpeg identifies as unredistributable and has no matching source or notices.",
+          "releases": []
+        },
+        "macos-x86_64": {
+          "blocker": "One reviewed project publishes no macOS artifact; the other attaches an inaccurate FFmpeg 8.0 README to a 6.1.1 binary and has no complete matching corresponding-source package.",
+          "releases": []
+        },
+        "windows-x86_64": {
+          "blocker": "The reviewed GPL builds are content-addressed and include libx264, but their mutable releases and incomplete corresponding-source sets are not acceptable for OSG redistribution.",
+          "releases": []
+        }
+      }
+    },
+    {
+      "id": "yt-dlp",
+      "label": "yt-dlp",
+      "license": "GPL-3.0-or-later",
+      "sourceRevision": "fdec00e0bf530dc6c3cc7b1dd780e95d9ae460e9",
+      "notices": [
+        {
+          "installPath": "licenses/yt-dlp-LICENSE.txt",
+          "sourceUrl": "https://raw.githubusercontent.com/yt-dlp/yt-dlp/fdec00e0bf530dc6c3cc7b1dd780e95d9ae460e9/LICENSE",
+          "sizeBytes": 1211,
+          "sha256": "7e12e5df4bae12cb21581ba157ced20e1986a0508dd10d0e8a4ab9a4cf94e85c"
+        },
+        {
+          "installPath": "licenses/yt-dlp-THIRD-PARTY.txt",
+          "sourceUrl": "https://raw.githubusercontent.com/yt-dlp/yt-dlp/fdec00e0bf530dc6c3cc7b1dd780e95d9ae460e9/THIRD_PARTY_LICENSES.txt",
+          "sizeBytes": 231397,
+          "sha256": "b085c65586a953cdb4b13c6390d63ec984d66912e4b6a19e66ba3582f2ed104b"
+        }
+      ],
+      "platforms": {
+        "linux-x86_64": {
+          "blocker": null,
+          "releases": [
+            {
+              "version": "2026.07.04",
+              "distributionMode": "direct-upstream-download-only",
+              "artifact": {
+                "asset": "yt-dlp_linux",
+                "format": "raw",
+                "sourceUrl": "https://github.com/yt-dlp/yt-dlp/releases/download/2026.07.04/yt-dlp_linux",
+                "sizeBytes": 39924536,
+                "sha256": "6bbb3d314cde4febe36e5fa1d55462e29c974f63444e707871834f6d8cc210ae"
+              },
+              "files": [
+                {
+                  "sourcePath": "yt-dlp_linux",
+                  "installPath": "bin/yt-dlp",
+                  "sizeBytes": 39924536,
+                  "sha256": "6bbb3d314cde4febe36e5fa1d55462e29c974f63444e707871834f6d8cc210ae",
+                  "role": "yt-dlp"
+                }
+              ]
+            }
+          ]
+        },
+        "macos-aarch64": {
+          "blocker": null,
+          "releases": [
+            {
+              "version": "2026.07.04",
+              "distributionMode": "direct-upstream-download-only",
+              "artifact": {
+                "asset": "yt-dlp_macos",
+                "format": "raw",
+                "sourceUrl": "https://github.com/yt-dlp/yt-dlp/releases/download/2026.07.04/yt-dlp_macos",
+                "sizeBytes": 38256544,
+                "sha256": "498bd0dae17855c599d371d68ec5bafc439a9d8640e838be25c765a9792f261b"
+              },
+              "files": [
+                {
+                  "sourcePath": "yt-dlp_macos",
+                  "installPath": "bin/yt-dlp",
+                  "sizeBytes": 38256544,
+                  "sha256": "498bd0dae17855c599d371d68ec5bafc439a9d8640e838be25c765a9792f261b",
+                  "role": "yt-dlp"
+                }
+              ]
+            }
+          ]
+        },
+        "macos-x86_64": {
+          "blocker": null,
+          "releases": [
+            {
+              "version": "2026.07.04",
+              "distributionMode": "direct-upstream-download-only",
+              "artifact": {
+                "asset": "yt-dlp_macos",
+                "format": "raw",
+                "sourceUrl": "https://github.com/yt-dlp/yt-dlp/releases/download/2026.07.04/yt-dlp_macos",
+                "sizeBytes": 38256544,
+                "sha256": "498bd0dae17855c599d371d68ec5bafc439a9d8640e838be25c765a9792f261b"
+              },
+              "files": [
+                {
+                  "sourcePath": "yt-dlp_macos",
+                  "installPath": "bin/yt-dlp",
+                  "sizeBytes": 38256544,
+                  "sha256": "498bd0dae17855c599d371d68ec5bafc439a9d8640e838be25c765a9792f261b",
+                  "role": "yt-dlp"
+                }
+              ]
+            }
+          ]
+        },
+        "windows-x86_64": {
+          "blocker": null,
+          "releases": [
+            {
+              "version": "2026.07.04",
+              "distributionMode": "direct-upstream-download-only",
+              "artifact": {
+                "asset": "yt-dlp.exe",
+                "format": "raw",
+                "sourceUrl": "https://github.com/yt-dlp/yt-dlp/releases/download/2026.07.04/yt-dlp.exe",
+                "sizeBytes": 18226085,
+                "sha256": "52fe3c26dcf71fbdc85b528589020bb0b8e383155cfa81b64dd447bbe35e24b8"
+              },
+              "files": [
+                {
+                  "sourcePath": "yt-dlp.exe",
+                  "installPath": "bin/yt-dlp.exe",
+                  "sizeBytes": 18226085,
+                  "sha256": "52fe3c26dcf71fbdc85b528589020bb0b8e383155cfa81b64dd447bbe35e24b8",
+                  "role": "yt-dlp"
+                }
+              ]
+            }
+          ]
+        }
+      }
+    },
+    {
+      "id": "deno",
+      "label": "Deno",
+      "license": "MIT",
+      "sourceRevision": "17fadf33a8df3af9488b9f42efd1f2290d6dc7a3",
+      "notices": [
+        {
+          "installPath": "licenses/deno-LICENSE.md",
+          "sourceUrl": "https://raw.githubusercontent.com/denoland/deno/17fadf33a8df3af9488b9f42efd1f2290d6dc7a3/LICENSE.md",
+          "sizeBytes": 1074,
+          "sha256": "f62497fffecc0852960c8d3e6934b9db86d16396e9b604072e923892cae3a588"
+        }
+      ],
+      "platforms": {
+        "linux-x86_64": {
+          "blocker": null,
+          "releases": [
+            {
+              "version": "2.9.5",
+              "distributionMode": "direct-upstream-download-only",
+              "artifact": {
+                "asset": "deno-x86_64-unknown-linux-gnu.zip",
+                "format": "zip",
+                "sourceUrl": "https://github.com/denoland/deno/releases/download/v2.9.5/deno-x86_64-unknown-linux-gnu.zip",
+                "sizeBytes": 41638854,
+                "sha256": "8b010a3b1a4a0188a67cdb8a7a27348b2a501af78aec7fc74f2ace167368d530"
+              },
+              "files": [
+                {
+                  "sourcePath": "deno",
+                  "installPath": "bin/deno",
+                  "sizeBytes": 95582008,
+                  "sha256": "dc480c462c8c3582524f3e75c160613d0a975e1f66b5465995d58bae236da7d3",
+                  "role": "deno"
+                }
+              ]
+            }
+          ]
+        },
+        "macos-aarch64": {
+          "blocker": null,
+          "releases": [
+            {
+              "version": "2.9.5",
+              "distributionMode": "direct-upstream-download-only",
+              "artifact": {
+                "asset": "deno-aarch64-apple-darwin.zip",
+                "format": "zip",
+                "sourceUrl": "https://github.com/denoland/deno/releases/download/v2.9.5/deno-aarch64-apple-darwin.zip",
+                "sizeBytes": 38511993,
+                "sha256": "b796aadd131f6930560c1ee040cf0d6f53933fbb987464e9ff46bd7ea4830615"
+              },
+              "files": [
+                {
+                  "sourcePath": "deno",
+                  "installPath": "bin/deno",
+                  "sizeBytes": 80900512,
+                  "sha256": "b5bd08edab254d42d7b05aa5b6cb4c9b8d4dede4975aff76951ce2cce18866fa",
+                  "role": "deno"
+                }
+              ]
+            }
+          ]
+        },
+        "macos-x86_64": {
+          "blocker": null,
+          "releases": [
+            {
+              "version": "2.9.5",
+              "distributionMode": "direct-upstream-download-only",
+              "artifact": {
+                "asset": "deno-x86_64-apple-darwin.zip",
+                "format": "zip",
+                "sourceUrl": "https://github.com/denoland/deno/releases/download/v2.9.5/deno-x86_64-apple-darwin.zip",
+                "sizeBytes": 42346648,
+                "sha256": "c1b8b89a81e91b2a8b3f96def3195d08cfe3a105651da7908d53061f7140510d"
+              },
+              "files": [
+                {
+                  "sourcePath": "deno",
+                  "installPath": "bin/deno",
+                  "sizeBytes": 97740224,
+                  "sha256": "befc4fee79127584c0f5c9f76ca6bb73c8e6ff523c01acd52e9c5db1968a09cb",
+                  "role": "deno"
+                }
+              ]
+            }
+          ]
+        },
+        "windows-x86_64": {
+          "blocker": null,
+          "releases": [
+            {
+              "version": "2.9.5",
+              "distributionMode": "direct-upstream-download-only",
+              "artifact": {
+                "asset": "deno-x86_64-pc-windows-msvc.zip",
+                "format": "zip",
+                "sourceUrl": "https://github.com/denoland/deno/releases/download/v2.9.5/deno-x86_64-pc-windows-msvc.zip",
+                "sizeBytes": 42691248,
+                "sha256": "171efab55ac6b9881fd53ee4c20f8bf3bb1340ffc618483746909014db12216a"
+              },
+              "files": [
+                {
+                  "sourcePath": "deno.exe",
+                  "installPath": "bin/deno.exe",
+                  "sizeBytes": 97408288,
+                  "sha256": "98f8c2a2d470e4ccb04c935c86ff8050817d877762aec5eaeeb9e409ccb3b9fd",
+                  "role": "deno"
+                }
+              ]
+            }
+          ]
+        }
+      }
+    }
+  ]
+}

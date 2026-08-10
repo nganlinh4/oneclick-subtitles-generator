@@ -107,10 +107,11 @@ export const handleDownload = (source, format, namingInfo = {}, ctx) => {
       case 'json':
         downloadJSON(subtitlesToUse, `${baseFilename}.json`);
         break;
-      case 'txt':
+      case 'txt': {
         const content = downloadTXT(subtitlesToUse, `${baseFilename}.txt`);
         setTxtContent(content);
         break;
+      }
       default:
         break;
     }
@@ -172,7 +173,6 @@ export const handleBulkDownloadAll = (ctx) => {
 export const handleBulkDownloadZip = async (ctx) => {
   const { translatedSubtitles, bulkTranslations, videoTitle, targetLanguages } = ctx;
   try {
-    // Dynamic import of JSZip
     const JSZip = (await import('jszip')).default;
     const zip = new JSZip();
 

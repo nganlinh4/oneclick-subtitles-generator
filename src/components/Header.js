@@ -1,11 +1,17 @@
-import { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
+import ReactDOM from 'react-dom';
 import { useTranslation } from 'react-i18next';
 import '../styles/Header.css';
 import GeminiHeaderAnimation from './GeminiHeaderAnimation';
 import specialStarIcon from '../assets/specialStar.svg';
 import LoadingIndicator from './common/LoadingIndicator';
+import { detectStartupMode } from '../platform/startupService';
 
 import { getGitVersion, getLatestVersion, compareVersions } from '../utils/gitVersion';
+import {
+  detectVersionChannel,
+  switchVersionChannel,
+} from '../platform/versionChannelService';
 const Header = ({ onSettingsClick }) => {
   const { t } = useTranslation();
   const [showFloatingActions, setShowFloatingActions] = useState(true); // Start as visible
@@ -188,32 +194,27 @@ const Header = ({ onSettingsClick }) => {
 
   // Detect startup mode (lite vs full version)
   useEffect(() => {
-    const detectStartupMode = async () => {
+    const detectAndApplyStartupMode = async () => {
       try {
-        const API_BASE_URL = process.env.REACT_APP_API_BASE_URL || 'http://localhost:3031';
-        const response = await fetch(`${API_BASE_URL}/api/startup-mode`, {
-          mode: 'cors',
-          credentials: 'include',
-          headers: {
-            'Accept': 'application/json'
-          }
-        });
+        const startupMode = await detectStartupMode();
 
-        if (response.ok) {
-          const startupData = await response.json();
-          const isStart = !!(startupData.isStart || startupData.isVercel);
-          setIsVercelMode(isStart);
+        if (startupMode.backendAvailable) {
+          setIsVercelMode(startupMode.isVercelMode);
           try {
             localStorage.setItem('backend_available', 'true');
-            localStorage.setItem('is_vercel_mode', isStart ? 'true' : 'false');
-          } catch {}
+            localStorage.setItem('is_vercel_mode', startupMode.isVercelMode ? 'true' : 'false');
+          } catch {
+            // Compatibility metadata is optional; native state remains authoritative.
+          }
         } else {
           // Server responded but not OK (e.g., 404) => treat as missing backend
           setIsVercelMode(true);
           try {
             localStorage.setItem('backend_available', 'false');
             localStorage.setItem('is_vercel_mode', 'true');
-          } catch {}
+          } catch {
+            // Compatibility metadata is optional; native state remains authoritative.
+          }
         }
       } catch (error) {
         // If we can't contact the server at all, assume Vercel (npm start) mode
@@ -221,39 +222,23 @@ const Header = ({ onSettingsClick }) => {
         try {
           localStorage.setItem('backend_available', 'false');
           localStorage.setItem('is_vercel_mode', 'true');
-        } catch {}
+        } catch {
+          // Compatibility metadata is optional; native state remains authoritative.
+        }
       } finally {
         // Mark startup mode detection as complete regardless of success/failure
         setStartupModeDetected(true);
       }
     };
 
-    detectStartupMode();
+    detectAndApplyStartupMode();
   }, []);
 
   // Detect current Git branch
   useEffect(() => {
     const detectGitBranch = async () => {
       try {
-        const API_BASE_URL = process.env.REACT_APP_API_BASE_URL || 'http://localhost:3031';
-        const response = await fetch(`${API_BASE_URL}/api/git-branch`, {
-          mode: 'cors',
-          credentials: 'include',
-          headers: {
-            'Accept': 'application/json'
-          }
-        });
-
-        if (response.ok) {
-          const data = await response.json();
-          // Detect if we're on old_version or main branch
-          const branchName = data.branch || 'old_version';
-          if (branchName === 'main') {
-            setCurrentBranch('main'); // New version
-          } else {
-            setCurrentBranch('old_version'); // Old version
-          }
-        }
+        setCurrentBranch(await detectVersionChannel());
       } catch (error) {
         console.error('Failed to detect git branch:', error);
         // Default to old_version if we can't detect
@@ -334,8 +319,6 @@ const Header = ({ onSettingsClick }) => {
     document.body.appendChild(overlay);
     
     // Render LoadingIndicator into the container
-    const React = require('react');
-    const ReactDOM = require('react-dom');
     ReactDOM.render(
       React.createElement('div', { 
         style: { 
@@ -370,21 +353,7 @@ const Header = ({ onSettingsClick }) => {
     );
     
     try {
-      const API_BASE_URL = process.env.REACT_APP_API_BASE_URL || 'http://localhost:3031';
-      const response = await fetch(`${API_BASE_URL}/api/switch-branch`, {
-        method: 'POST',
-        mode: 'cors',
-        credentials: 'include',
-        headers: {
-          'Content-Type': 'application/json',
-          'Accept': 'application/json'
-        },
-        body: JSON.stringify({ branch: targetBranch }),
-        // Increase timeout since branch switching takes time
-        signal: AbortSignal.timeout(30000) // 30 second timeout
-      });
-
-      const data = await response.json().catch(() => null);
+      const { response, data } = await switchVersionChannel(targetBranch);
       
       if (response.ok && data && data.success) {
         // Update loading message

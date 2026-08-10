@@ -1,20 +1,20 @@
 import { useState, useCallback, useRef, useEffect } from 'react';
-import { API_BASE_URL } from '../config';
 import i18n from '../i18n/i18n';
+import {
+  cancelManagedEnginePackageJob,
+  getManagedEnginePackageStatus,
+  installManagedEnginePackage,
+  removeManagedEnginePackage,
+  startManagedEngineRuntime,
+  stopManagedEngineRuntime,
+} from '../platform/managedEngineService';
 
 /**
  * Drives on-demand install + start/stop of a single heavy engine.
  *
- * The install runs ENTIRELY on the server (engineManager) — the frontend's only job is to REPORT
- * progress. So on mount this hook reconnects to whatever install is already running server-side and
- * resumes polling: install progress survives page reloads and navigating away/back. Closing the tab
- * does NOT stop the install; reopening it picks the progress back up.
- *
- * Endpoints (server/routes/engineRoutes.js):
- *   POST /api/engines/:id/install            -> kick off the per-engine venv install (background)
- *   GET  /api/engines/:id/install-progress   -> { running, percent, log[], done, error }
- *   POST /api/engines/:id/install/cancel     -> abort an in-flight / queued install
- *   POST /api/engines/:id/start | /stop      -> spawn / kill the engine's Python service
+ * Installation runs outside the WebView in the native package manager. On mount this hook
+ * reconnects to durable progress and resumes polling, so navigating away or closing the view does
+ * not stop the operation. The typed service fails closed when inspected outside Tauri.
  */
 export const useEngineInstall = (id) => {
   const [installing, setInstalling] = useState(false);
@@ -23,24 +23,30 @@ export const useEngineInstall = (id) => {
   const [error, setError] = useState(null);
   const pollRef = useRef(null);
   const mountedRef = useRef(true);
+  const nativeAbortRef = useRef(null);
+  const nativeJobIdRef = useRef(null);
+  const nativeGenerationRef = useRef(0);
 
   const stopPolling = useCallback(() => {
     if (pollRef.current) { clearInterval(pollRef.current); pollRef.current = null; }
   }, []);
 
-  // Read the server's current progress for this engine. Returns whether an install is running.
+  // Read the native package manager's current progress. Returns whether any operation is running.
   const readProgress = useCallback(async () => {
     try {
-      const r = await fetch(`${API_BASE_URL}/engines/${id}/install-progress`);
-      if (!r.ok) return false;
-      const p = await r.json();
+      const generation = nativeGenerationRef.current;
+      const engine = await getManagedEnginePackageStatus(id);
+      const operation = engine.operation ?? null;
+      const packageRunning = operation !== null
+        && (operation.action === 'install' || operation.action === 'update');
+      if (generation !== nativeGenerationRef.current) return operation !== null;
+      nativeJobIdRef.current = operation?.job.id ?? null;
       if (mountedRef.current) {
-        setPercent(typeof p.percent === 'number' ? p.percent : 0);
-        if (Array.isArray(p.log)) setLog(p.log);
-        setError(p.error || null);
-        setInstalling(!!p.running);
+        setPercent(packageRunning ? operation.basisPoints / 100 : 0);
+        setLog([]);
+        setInstalling(packageRunning);
       }
-      return !!p.running;
+      return operation !== null;
     } catch (e) {
       return false; // transient — caller decides whether to keep polling
     }
@@ -65,58 +71,95 @@ export const useEngineInstall = (id) => {
 
   const install = useCallback(async () => {
     setError(null); setInstalling(true); setPercent(0); setLog([]);
+    nativeGenerationRef.current += 1;
+    const controller = new AbortController();
+    nativeAbortRef.current = controller;
+    let settled = false;
+    const finish = () => {
+      settled = true;
+      nativeGenerationRef.current += 1;
+      nativeAbortRef.current = null;
+      nativeJobIdRef.current = null;
+      if (mountedRef.current) setInstalling(false);
+    };
     try {
-      const r = await fetch(`${API_BASE_URL}/engines/${id}/install`, { method: 'POST' });
-      if (!r.ok && r.status !== 202) {
-        const body = await r.json().catch(() => ({}));
-        throw new Error(body.error || i18n.t('engines.error.installFailed', 'Install failed to start'));
-      }
+      const snapshot = await installManagedEnginePackage(id, {
+        onProgress: ({ operation }) => {
+          if (!mountedRef.current) return;
+          setInstalling(true);
+          setPercent(operation.basisPoints / 100);
+        },
+        onCompleted: finish,
+        onCancelled: finish,
+        onFailed: (event) => {
+          if (mountedRef.current) setError(event.error.message);
+          finish();
+        },
+        onProtocolError: (protocolError) => {
+          if (mountedRef.current) setError(protocolError.message);
+          finish();
+        },
+      }, { signal: controller.signal });
+      if (!settled) nativeJobIdRef.current = snapshot.id;
       ensurePolling();
     } catch (e) {
-      setError(e.message || i18n.t('engines.error.installFailed', 'Install failed to start'));
-      setInstalling(false);
+      nativeAbortRef.current = null;
+      nativeJobIdRef.current = null;
+      if (mountedRef.current) {
+        setError(e.message || i18n.t('engines.error.installFailed', 'Install failed to start'));
+        setInstalling(false);
+      }
     }
   }, [id, ensurePolling]);
 
-  // Cancel an in-flight (or queued) install. The server aborts it; polling reflects the result.
-  const cancel = useCallback(() => fetch(`${API_BASE_URL}/engines/${id}/install/cancel`, { method: 'POST' }).catch(() => {}), [id]);
-
-  const requestAction = useCallback(async (action, fallbackKey, fallbackText) => {
-    setError(null);
-    const r = await fetch(`${API_BASE_URL}/engines/${id}/${action}`, { method: 'POST' });
-    if (!r.ok) {
-      const body = await r.json().catch(() => ({}));
-      throw new Error(body.error || i18n.t(fallbackKey, fallbackText));
+  // Cancel an in-flight (or reconnected) native install.
+  const cancel = useCallback(() => {
+    if (nativeAbortRef.current) {
+      nativeAbortRef.current.abort();
+      return Promise.resolve();
     }
-    return r.json().catch(() => ({}));
+    if (nativeJobIdRef.current) {
+      return cancelManagedEnginePackageJob(id, nativeJobIdRef.current).catch(() => {});
+    }
+    return Promise.resolve();
   }, [id]);
 
   const start = useCallback(async () => {
+    setError(null);
     try {
-      return await requestAction('start', 'engines.error.startFailed', 'Engine failed to start');
+      return await startManagedEngineRuntime(id);
     } catch (e) {
       setError(e.message || i18n.t('engines.error.startFailed', 'Engine failed to start'));
       throw e;
     }
-  }, [requestAction]);
+  }, [id]);
 
   const stop = useCallback(async () => {
+    setError(null);
     try {
-      return await requestAction('stop', 'engines.error.stopFailed', 'Engine failed to stop');
+      return await stopManagedEngineRuntime(id);
     } catch (e) {
       setError(e.message || i18n.t('engines.error.stopFailed', 'Engine failed to stop'));
       throw e;
     }
-  }, [requestAction]);
+  }, [id]);
 
   const uninstall = useCallback(async () => {
+    setError(null);
     try {
-      return await requestAction('uninstall', 'engines.error.uninstallFailed', 'Uninstall failed');
+      return await new Promise((resolve, reject) => {
+        removeManagedEnginePackage(id, {
+          onCompleted: resolve,
+          onCancelled: resolve,
+          onFailed: (event) => reject(new Error(event.error.message)),
+          onProtocolError: reject,
+        }).catch(reject);
+      });
     } catch (e) {
       setError(e.message || i18n.t('engines.error.uninstallFailed', 'Uninstall failed'));
       throw e;
     }
-  }, [requestAction]);
+  }, [id]);
 
   return { install, cancel, start, stop, uninstall, installing, percent, log, error };
 };

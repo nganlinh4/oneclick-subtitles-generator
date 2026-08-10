@@ -33,6 +33,7 @@
  * @property {('segment-processing-start'|'video-processing-complete')} source
  * @property {Segment} [segment]
  * @property {string} [runId]
+ * @property {string} [checkpointId]
  */
 
 /**

@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { useTranslation } from 'react-i18next';
 import { GEMINI_VOICES } from '../../../services/gemini/geminiNarrationService';
 import '../../../styles/narration/geminiVoiceSelectionCompact.css';

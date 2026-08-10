@@ -1,4 +1,4 @@
-import React, { useState, useRef, useEffect } from 'react';
+import { useState, useRef, useEffect } from 'react';
 import { useTranslation } from 'react-i18next';
 import { createPortal } from 'react-dom';
 import Tooltip from '../common/Tooltip';
@@ -130,7 +130,7 @@ const LanguageChain = ({
   };
 
   // Toggle delimiter dropdown
-  const toggleDelimiterDropdown = (id, event) => {
+  const toggleDelimiterDropdown = (id, _event) => {
     if (disabled) return;
 
     // If we're closing the dropdown

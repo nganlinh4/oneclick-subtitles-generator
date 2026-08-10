@@ -1,4 +1,3 @@
-import React from 'react';
 
 function OnboardingAnimation(props) {
   // You might want to forward refs if needed:

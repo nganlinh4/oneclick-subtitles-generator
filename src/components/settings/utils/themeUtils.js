@@ -1,4 +1,3 @@
-import React from 'react';
 import { SunIcon, MoonIcon } from '../icons/TabIcons';
 import { getThemeWithFallback, setupSystemThemeListener } from '../../../utils/systemDetection';
 

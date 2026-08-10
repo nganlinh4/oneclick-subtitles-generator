@@ -1,5 +1,6 @@
 import { useRef, useCallback } from 'react';
 import { useTranslation } from 'react-i18next';
+import { LYRICS_EDITOR_ACTIONS } from '../platform/durableLyricsHistory';
 
 /**
  * Editing helpers for the lyrics editor: the translation-warning emitter and the
@@ -13,10 +14,14 @@ import { useTranslation } from 'react-i18next';
  * @param {Array}    params.lyrics           Current lyrics array.
  * @param {Function} params.setLyrics        Setter for the lyrics array.
  * @param {Function} params.onUpdateLyrics   Callback invoked with updated lyrics.
- * @param {Function} params.setHistory       Setter for the undo history stack.
- * @param {Function} params.setRedoStack     Setter for the redo stack.
+ * @param {Function} params.commitLyricsMutation Commits one logical optimistic edit.
  */
-export const useLyricsEditorHelpers = ({ lyrics, setLyrics, onUpdateLyrics, setHistory, setRedoStack }) => {
+export const useLyricsEditorHelpers = ({
+  lyrics,
+  setLyrics,
+  onUpdateLyrics,
+  commitLyricsMutation,
+}) => {
   const { t } = useTranslation();
 
   // Helper function to show translation warning
@@ -43,12 +48,9 @@ export const useLyricsEditorHelpers = ({ lyrics, setLyrics, onUpdateLyrics, setH
   // Clear all subtitles fully inside a time range [start, end]
   const clearSubtitlesInRange = useCallback((start, end) => {
     if (start == null || end == null || end <= start) return;
-    setHistory(prevHistory => [...prevHistory, JSON.parse(JSON.stringify(lyrics))]);
-    setRedoStack([]);
     // Remove subtitles fully contained within the range
     const updated = lyrics.filter(l => !(l.start >= start && l.end <= end));
-    setLyrics(updated);
-    onUpdateLyrics && onUpdateLyrics(updated);
+    commitLyricsMutation(updated, LYRICS_EDITOR_ACTIONS.CLEAR_RANGE);
 
     // Notify timing change
     window.dispatchEvent(new CustomEvent('subtitle-timing-changed', {
@@ -56,13 +58,11 @@ export const useLyricsEditorHelpers = ({ lyrics, setLyrics, onUpdateLyrics, setH
     }));
     // Translation warning
     showTranslationWarning(t('translation.warningDeleted', 'You have deleted a subtitle. Translations may be outdated. Please translate again.'));
-  }, [lyrics, setLyrics, onUpdateLyrics, setHistory, setRedoStack, showTranslationWarning, t]);
+  }, [lyrics, commitLyricsMutation, showTranslationWarning, t]);
 
   // Move all subtitles fully inside a time range by delta seconds (apply immediately)
   const moveSubtitlesInRange = useCallback((start, end, delta) => {
     if (start == null || end == null || end <= start || !delta) return;
-    setHistory(prevHistory => [...prevHistory, JSON.parse(JSON.stringify(lyrics))]);
-    setRedoStack([]);
     const updated = lyrics.map(l => {
       if (l.start >= start && l.end <= end) {
         const newStart = Math.max(0, l.start + delta);
@@ -71,16 +71,21 @@ export const useLyricsEditorHelpers = ({ lyrics, setLyrics, onUpdateLyrics, setH
       }
       return l;
     });
-    setLyrics(updated);
-    onUpdateLyrics && onUpdateLyrics(updated);
+    commitLyricsMutation(updated, LYRICS_EDITOR_ACTIONS.MOVE_RANGE);
 
     window.dispatchEvent(new CustomEvent('subtitle-timing-changed', {
       detail: { action: 'move-range', start, end, delta, updatedLyrics: updated }
     }));
-  }, [lyrics, setLyrics, onUpdateLyrics, setHistory, setRedoStack]);
+  }, [lyrics, commitLyricsMutation]);
 
   // Live range move preview with baseline
-  const movingRangeRef = useRef({ active: false, start: 0, end: 0, baseline: null });
+  const movingRangeRef = useRef({
+    active: false,
+    start: 0,
+    end: 0,
+    baseline: null,
+    latest: null,
+  });
 
   const beginRangeMove = useCallback((start, end) => {
     if (start == null || end == null || end <= start) return;
@@ -88,7 +93,8 @@ export const useLyricsEditorHelpers = ({ lyrics, setLyrics, onUpdateLyrics, setH
       active: true,
       start,
       end,
-      baseline: JSON.parse(JSON.stringify(lyrics))
+      baseline: JSON.parse(JSON.stringify(lyrics)),
+      latest: JSON.parse(JSON.stringify(lyrics)),
     };
   }, [lyrics]);
 
@@ -104,6 +110,7 @@ export const useLyricsEditorHelpers = ({ lyrics, setLyrics, onUpdateLyrics, setH
       }
       return l;
     });
+    movingRangeRef.current.latest = updated;
     setLyrics(updated);
     onUpdateLyrics && onUpdateLyrics(updated);
   }, [setLyrics, onUpdateLyrics]);
@@ -111,16 +118,24 @@ export const useLyricsEditorHelpers = ({ lyrics, setLyrics, onUpdateLyrics, setH
   const commitRangeMove = useCallback(() => {
     const state = movingRangeRef.current;
     if (!state.active) return;
-    // Push baseline to history to allow undo
-    setHistory(prevHistory => [...prevHistory, state.baseline]);
-    setRedoStack([]);
-    movingRangeRef.current = { active: false, start: 0, end: 0, baseline: null };
+    commitLyricsMutation(
+      state.latest,
+      LYRICS_EDITOR_ACTIONS.MOVE_RANGE,
+      { baseline: state.baseline, alreadyApplied: true }
+    );
+    movingRangeRef.current = {
+      active: false,
+      start: 0,
+      end: 0,
+      baseline: null,
+      latest: null,
+    };
 
     // Notify timing change (generic)
     window.dispatchEvent(new CustomEvent('subtitle-timing-changed', {
       detail: { action: 'move-range-commit', timestamp: Date.now() }
     }));
-  }, [setHistory, setRedoStack]);
+  }, [commitLyricsMutation]);
 
   const cancelRangeMove = useCallback(() => {
     const state = movingRangeRef.current;
@@ -130,7 +145,13 @@ export const useLyricsEditorHelpers = ({ lyrics, setLyrics, onUpdateLyrics, setH
       setLyrics(state.baseline);
       onUpdateLyrics && onUpdateLyrics(state.baseline);
     }
-    movingRangeRef.current = { active: false, start: 0, end: 0, baseline: null };
+    movingRangeRef.current = {
+      active: false,
+      start: 0,
+      end: 0,
+      baseline: null,
+      latest: null,
+    };
   }, [setLyrics, onUpdateLyrics]);
 
   return {

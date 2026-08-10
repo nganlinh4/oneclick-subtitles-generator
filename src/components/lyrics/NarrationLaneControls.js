@@ -1,6 +1,10 @@
-import React, { useCallback, useRef, useState } from 'react';
+import { useCallback, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import { SERVER_URL } from '../../config';
+import { editNativeNarration } from '../../platform/nativeNarrationArtifacts';
+import {
+  getNativeNarrationArtifactId,
+  isNativeNarrationResult,
+} from '../../platform/nativeNarrationCapabilities';
 import LiquidGlass from '../common/LiquidGlass';
 import StandardSlider from '../common/StandardSlider';
 import {
@@ -65,26 +69,36 @@ const NarrationLaneControls = ({
 
   // Atempo every clip from its immutable backup, each to its own factor, then refresh playback.
   const applyAudioSpeeds = useCallback(async (speedForSeg) => {
-    const items = narrationSegments
-      .filter((s) => s.filename)
-      .map((s) => ({ filename: s.filename, normalizedStart: 0, normalizedEnd: 1, speedFactor: speedForSeg(s) }));
-    if (items.length === 0) return;
+    const segments = narrationSegments.filter((segment) => segment.filename);
+    if (segments.length === 0) return;
     setBusy(true);
     try {
-      const resp = await fetch(`${SERVER_URL}/api/narration/batch-modify-audio-trim-speed-combined`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ items }),
-      });
-      if (resp.ok && resp.body) {
-        const reader = resp.body.getReader();
-        while (true) { const { done } = await reader.read(); if (done) break; }
+      const narrationResults = [
+        ...(window.originalNarrations || []),
+        ...(window.translatedNarrations || []),
+        ...(window.groupedNarrations || []),
+      ];
+      const byArtifactId = new Map(narrationResults
+        .filter(isNativeNarrationResult)
+        .map((result) => [getNativeNarrationArtifactId(result), result]));
+      for (const segment of segments) {
+        const artifactId = getNativeNarrationArtifactId(segment);
+        const source = byArtifactId.get(artifactId);
+        if (!source) throw new Error('Native narration audio is unavailable');
+        const replacement = await editNativeNarration(source, {
+          normalizedStart: 0,
+          normalizedEnd: 1,
+          speedFactor: speedForSeg(segment),
+        });
+        window.dispatchEvent(new CustomEvent('native-narration-artifact-edited', {
+          detail: { previousArtifactId: artifactId, result: replacement },
+        }));
       }
       if (typeof window.resetAlignedNarration === 'function') window.resetAlignedNarration();
       window.dispatchEvent(new CustomEvent('narration-speed-modified', { detail: { source: 'timeline-speed', timestamp: Date.now() } }));
       // Regenerate the aligned narration so playback uses the new speeds (same as the refresh button).
       window.dispatchEvent(new CustomEvent('request-narration-refresh', { detail: { source: 'timeline-speed', timestamp: Date.now() } }));
-    } catch (e) {
+    } catch {
       // non-fatal — leave the lane as-is on failure
     } finally {
       setBusy(false);

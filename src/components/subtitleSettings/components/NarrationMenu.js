@@ -1,7 +1,6 @@
-import React, { useRef, useEffect } from 'react';
+import { useRef, useEffect } from 'react';
 import { useTranslation } from 'react-i18next';
 import SliderWithValue from '../../common/SliderWithValue';
-import CloseButton from '../../common/CloseButton';
 import { showWarningToast } from '../../../utils/toastUtils';
 
 /**
@@ -27,15 +26,15 @@ import { showWarningToast } from '../../../utils/toastUtils';
 const NarrationMenu = ({
   showNarrationMenu,
   setShowNarrationMenu,
-  narrationSource,
-  setNarrationSource,
+  narrationSource: _narrationSource,
+  setNarrationSource: _setNarrationSource,
   narrationVolume,
   setNarrationVolume,
   videoVolume,
   setVideoVolume,
   currentNarration,
-  hasOriginalNarrations,
-  hasTranslatedNarrations,
+  hasOriginalNarrations: _hasOriginalNarrations,
+  hasTranslatedNarrations: _hasTranslatedNarrations,
   hasAnyNarrations,
   // Aligned narration props (some are unused now that it's always enabled)
   isGeneratingAligned,

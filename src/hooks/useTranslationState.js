@@ -108,7 +108,7 @@ export const useTranslationState = (subtitles, onTranslationComplete) => {
   useEffect(() => {
     const checkRulesAvailability = async () => {
       try {
-        // Dynamically import to avoid circular dependencies
+        // Dynamically import to preserve the established async feature boundary.
         const { getTranscriptionRulesSync } = await import('../utils/transcriptionRulesStore');
         const rules = getTranscriptionRulesSync();
         const hasRules = !!rules;
@@ -159,7 +159,7 @@ export const useTranslationState = (subtitles, onTranslationComplete) => {
   useEffect(() => {
     const loadUserProvidedSubtitles = async () => {
       try {
-        // Dynamically import to avoid circular dependencies
+        // Dynamically import to preserve the established async feature boundary.
         const { getUserProvidedSubtitlesSync } = await import('../utils/userSubtitlesStore');
         const subtitles = getUserProvidedSubtitlesSync();
         setUserProvidedSubtitles(subtitles || '');

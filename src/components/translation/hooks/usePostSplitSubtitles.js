@@ -30,7 +30,9 @@ const usePostSplitSubtitles = ({ translatedSubtitles, updateTranslatedSubtitles 
   useEffect(() => {
     try {
       localStorage.setItem('translation_post_split_max_words', String(postSplitMaxWords));
-    } catch {}
+    } catch {
+      // Persistence is best-effort in restricted storage contexts.
+    }
   }, [postSplitMaxWords]);
 
   // Apply post-split to translated subtitles when needed
@@ -53,7 +55,9 @@ const usePostSplitSubtitles = ({ translatedSubtitles, updateTranslatedSubtitles 
       window.dispatchEvent(new CustomEvent('translation-updated', {
         detail: { translatedSubtitles: split, source: 'post-split' }
       }));
-    } catch {}
+    } catch {
+      // Custom events are best-effort in non-browser test environments.
+    }
   }, [translatedSubtitles, postSplitMaxWords, updateTranslatedSubtitles]);
 
   return { postSplitMaxWords, setPostSplitMaxWords };

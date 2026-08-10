@@ -86,7 +86,9 @@ const runVideoProcess = async ({
             // keep the toggle key accurate
             localStorage.setItem('video_processing_use_outside_context', 'false');
         }
-    } catch { }
+    } catch {
+        // Compatibility context persistence must not block processing.
+    }
 
     // Determine if parallel processing should be disabled (infinite duration)
     const shouldDisableParallelProcessing = (() => {

@@ -1,9 +1,10 @@
-import React, { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import ReactDOM from 'react-dom';
 import { useTranslation } from 'react-i18next';
 import CloseButton from './common/CloseButton';
 import '../styles/DownloadOnlyModal.css';
 import { scanVideoQualities } from '../utils/qualityScanner';
+import { downloadUrlToUserDestination } from '../platform/userMediaExportFlow';
 
 import { cancelDownloadOnly } from '../utils/downloadOnlyUtils';
 import LoadingIndicator from './common/LoadingIndicator';
@@ -23,10 +24,7 @@ const DownloadOnlyModal = ({
   const [isScanning, setIsScanning] = useState(false);
   const [availableQualities, setAvailableQualities] = useState([]);
   const [isDownloading, setIsDownloading] = useState(false);
-  const pollingIntervalRef = useRef(null);
-
   const [downloadProgress, setDownloadProgress] = useState(0);
-  // eslint-disable-next-line no-unused-vars
   const [downloadVideoId, setDownloadVideoId] = useState(null);
 
   // Get current cookie setting as state
@@ -177,94 +175,33 @@ const DownloadOnlyModal = ({
     setDownloadProgress(0);
 
     try {
-      const downloadData = {
+      const media = selectedType === 'audio'
+        ? { kind: 'audio', quality: { mode: 'best' }, format: 'mp3' }
+        : {
+          kind: 'video',
+          quality: { mode: 'atMost', height: selectedQuality.height },
+        };
+      await downloadUrlToUserDestination({
         url: videoInfo.url,
-        type: selectedType,
-        quality: selectedType === 'video' ? selectedQuality?.quality : null,
-        source: videoInfo.source,
-        useCookies: localStorage.getItem('use_cookies_for_download') === 'true'
-      };
-
-      const response = await fetch('http://localhost:3031/api/download-only', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify(downloadData),
+        cookieSource: localStorage.getItem('use_cookies_for_download') === 'true'
+          ? 'chrome'
+          : 'none',
+        media,
+        onJobStarted: (job) => setDownloadVideoId(job.id),
+        onDownloadProgress: setDownloadProgress,
+        onExportProgress: setDownloadProgress,
       });
-
-      const result = await response.json();
-
-      if (result.success) {
-        const videoId = result.videoId;
-        setDownloadVideoId(videoId);
-
-        // TEMPORARILY DISABLE WEBSOCKET - Use polling instead to prevent duplicates
-        console.log('[DownloadOnlyModal] Using polling instead of WebSocket to prevent duplicates');
-        pollDownloadProgress(videoId);
-      } else {
-        throw new Error(result.error || 'Download failed');
-      }
+      setIsDownloading(false);
+      setDownloadVideoId(null);
+      onClose();
     } catch (error) {
       console.error('Error starting download:', error);
       setIsDownloading(false);
     }
   };
 
-  const pollDownloadProgress = (videoId) => {
-    // Clear any existing polling before starting a new one
-    if (pollingIntervalRef.current) {
-      clearInterval(pollingIntervalRef.current);
-      pollingIntervalRef.current = null;
-    }
-
-    const interval = setInterval(async () => {
-      try {
-        const response = await fetch(`http://localhost:3031/api/download-only-progress/${videoId}`);
-        const data = await response.json();
-
-        if (data.success) {
-          setDownloadProgress(data.progress || 0);
-
-          if (['completed', 'error', 'cancelled'].includes(data.status)) {
-            clearInterval(interval);
-            pollingIntervalRef.current = null;
-            setIsDownloading(false);
-
-            if (data.status === 'completed') {
-              // Add a short delay to prevent race conditions where the file isn't fully written yet
-              setTimeout(() => {
-                const downloadUrl = `http://localhost:3031/api/download-only-file/${videoId}`;
-                const a = document.createElement('a');
-                a.href = downloadUrl;
-                // The server will determine the correct extension, so we can provide a generic name
-                a.download = `download_${videoId}`;
-                document.body.appendChild(a);
-                a.click();
-                document.body.removeChild(a);
-              }, 500); // 500ms delay
-            }
-
-            // Close modal on any terminal state
-            onClose();
-          }
-        }
-      } catch (error) {
-        console.error('Error polling download progress:', error);
-      }
-    }, 1000);
-
-    // Save interval ref so we can clear on cancel/unmount
-    pollingIntervalRef.current = interval;
-  };
-
   const handleClose = () => {
     if (!isDownloading) {
-      // Clear any polling if present
-      if (pollingIntervalRef.current) {
-        clearInterval(pollingIntervalRef.current);
-        pollingIntervalRef.current = null;
-      }
       onClose();
     }
   };
@@ -273,13 +210,6 @@ const DownloadOnlyModal = ({
     if (isDownloading && downloadVideoId) {
       console.log('[DownloadOnlyModal] Cancelling download:', downloadVideoId);
 
-      // Clear polling interval immediately
-      if (pollingIntervalRef.current) {
-        clearInterval(pollingIntervalRef.current);
-        pollingIntervalRef.current = null;
-      }
-
-      // Cancel the download on the server
       const success = await cancelDownloadOnly(downloadVideoId);
 
       if (success) {
@@ -300,16 +230,6 @@ const DownloadOnlyModal = ({
     if (selectedType === 'video') return selectedQuality !== null;
     return false;
   };
-
-  // Clear any interval when component unmounts
-  useEffect(() => {
-    return () => {
-      if (pollingIntervalRef.current) {
-        clearInterval(pollingIntervalRef.current);
-        pollingIntervalRef.current = null;
-      }
-    };
-  }, []);
 
   if (!isOpen) return null;
 

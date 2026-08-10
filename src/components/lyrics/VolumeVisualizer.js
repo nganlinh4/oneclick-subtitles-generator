@@ -1,10 +1,12 @@
-import React, { useEffect, useRef, useState, useCallback } from 'react';
+import { useEffect, useRef, useState, useCallback } from 'react';
 import { useTranslation } from 'react-i18next';
 import {
   processEntireAudio,
   processBlobInChunks,
   processAudioInSegments,
+  processNativeWaveform,
 } from './audioProcessing';
+import { resolveActiveNativeMediaAssetId } from '../../platform/activeNativeMedia';
 import {
   renderWaveform as renderWaveformImpl,
   updateVisualization as updateVisualizationImpl,
@@ -157,6 +159,16 @@ const VolumeVisualizer = ({ audioSource, duration, visibleTimeRange, height = 26
       };
 
       const processAudio = async () => {
+        const nativeAssetId = resolveActiveNativeMediaAssetId(currentSource);
+        if (nativeAssetId !== null) {
+            await processNativeWaveform(
+              processingCtx,
+              nativeAssetId,
+              localAbortController.signal
+            );
+            return;
+        }
+
         // Check if this is a blob URL - blob URLs don't support range requests
         const isBlobUrl = currentSource.startsWith('blob:');
 
@@ -188,7 +200,9 @@ const VolumeVisualizer = ({ audioSource, duration, visibleTimeRange, height = 26
           try {
             dbgWave('[WAVEFORM] Cleanup: aborting fetch');
             localAbortController.abort();
-          } catch {}
+          } catch {
+            // Abort is best-effort during effect cleanup.
+          }
         }
         if (processingSourceRef.current === currentSource) {
           processingSourceRef.current = null;

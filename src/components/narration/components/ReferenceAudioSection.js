@@ -1,4 +1,4 @@
-import React, { useEffect } from 'react';
+import { useEffect } from 'react';
 import { useTranslation } from 'react-i18next';
 import MaterialSwitch from '../../common/MaterialSwitch';
 import CustomScrollbarTextarea from '../../common/CustomScrollbarTextarea';
@@ -24,13 +24,13 @@ import { showInfoToast } from '../../../utils/toastUtils';
  * @returns {JSX.Element} - Rendered component
  */
 const ReferenceAudioSection = ({
-  referenceAudio,
+  referenceAudio: _referenceAudio,
   autoRecognize,
   setAutoRecognize,
   isRecognizing,
   referenceText,
   setReferenceText,
-  clearReferenceAudio,
+  clearReferenceAudio: _clearReferenceAudio,
   isRecording,
   isExtractingSegment
 }) => {

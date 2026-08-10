@@ -143,7 +143,7 @@ export const mergeParallelSubtitles = (segmentResults) => {
   });
 
   // Clean up segment tracking info
-  const finalSubtitles = mergedSubtitles.map(({ segmentIndex, ...subtitle }) => subtitle);
+  const finalSubtitles = mergedSubtitles.map(({ segmentIndex: _segmentIndex, ...subtitle }) => subtitle);
 
   // PERFORMANCE: Only log merge results for significant operations
   const stats = {

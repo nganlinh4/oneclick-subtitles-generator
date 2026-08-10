@@ -10,7 +10,7 @@ import './LoadingIndicator.css';
  * @param {boolean} props.showContainer - Whether to show the background container (default: true)
  * @param {number} props.size - Size in pixels (default: 48)
  * @param {string} props.className - Additional CSS classes
- * @param {Object} props.style - Additional inline styles
+ * @param {Object} [props.style] - Additional inline styles
  * @param {string} [props.color] - Optional override for the shape color (fills). If provided, supersedes theme-based color.
  * @param {string} [props.containerColor] - Optional override for the container color when showContainer is true.
  */

@@ -1,7 +1,7 @@
-import React, { useState } from 'react';
+import { useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useEngineStatus } from '../../hooks/useEngineStatus';
-import { API_BASE_URL } from '../../config';
+import { removeManagedEnginePackage } from '../../platform/managedEngineService';
 import LoadingIndicator from '../common/LoadingIndicator';
 import { useWaveColors } from '../../utils/waveColors';
 import EngineCard from './EngineCard';
@@ -18,6 +18,18 @@ const ENGINES = [
   { id: 'parakeet', name: 'Nvidia Parakeet', kind: 'transcription' },
   ...ASR_ENGINES.map((e) => ({ id: e.id, name: e.name, kind: 'transcription' })),
 ];
+
+export const removeNativeEnginePackage = (engine) => new Promise((resolve) => {
+  const settle = () => resolve();
+  Promise.resolve()
+    .then(() => removeManagedEnginePackage(engine, {
+      onCompleted: settle,
+      onCancelled: settle,
+      onFailed: settle,
+      onProtocolError: settle,
+    }))
+    .catch(settle);
+});
 
 /**
  * Settings panel listing the heavy engines, each with an on-demand Download / Start / Stop / Uninstall
@@ -39,9 +51,7 @@ const EnginesPanel = () => {
     setConfirmAll(false);
     setUninstallingAll(true);
     try {
-      await Promise.all(installedEngines.map((e) =>
-        fetch(`${API_BASE_URL}/engines/${e.id}/uninstall`, { method: 'POST' }).catch(() => {})
-      ));
+      await Promise.all(installedEngines.map((engine) => removeNativeEnginePackage(engine.id)));
       refresh();
     } finally {
       setUninstallingAll(false);

@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { useTranslation } from 'react-i18next';
 import '../styles/BackgroundImageGenerator.css';
 import BackgroundPromptEditorButton from './background/BackgroundPromptEditorButton';
@@ -277,7 +277,6 @@ const BackgroundImageGenerator = ({ lyrics, albumArt, songName, isExpanded = fal
       // We don't reset the ref here because we want to prevent re-execution
       // even if the effect is called multiple times due to StrictMode
     };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [lyrics, albumArt, customLyrics, customAlbumArt, customSongName, autoExecutionComplete]);
 
   // Generate new prompt and then generate image

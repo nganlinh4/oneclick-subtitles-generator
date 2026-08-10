@@ -1,4 +1,4 @@
-import React, { useMemo, useState } from 'react';
+import { useMemo, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { CONFIGURABLE_THINKING_MODELS } from '../../../config/geminiModels';
 import SliderWithValue from '../../common/SliderWithValue';

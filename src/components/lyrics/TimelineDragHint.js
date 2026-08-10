@@ -1,4 +1,4 @@
-import React, { useEffect, useRef, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 
 // Animated "drag to select (or Ctrl+A)" hint shown over the timeline canvas.
 // Appears a couple seconds after segment selection becomes available and stays

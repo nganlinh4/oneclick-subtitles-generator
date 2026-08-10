@@ -20,7 +20,7 @@ const useNarrationEffects = (
   hasOriginalNarrations,
   hasTranslatedNarrations,
   currentNarration,
-  setNarrationSource
+  _setNarrationSource
 ) => {
   // We no longer need to set narration source based on availability
   // since we always use 'original' as the source

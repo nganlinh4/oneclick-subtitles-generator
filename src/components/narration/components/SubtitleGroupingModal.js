@@ -16,7 +16,6 @@ import '../../../styles/narration/subtitleGroupingModal.css';
  */
 const SubtitleGroupingModal = ({ open, onClose, originalSubtitles, groupedSubtitles, subtitleSource = 'original' }) => {
   const { t } = useTranslation();
-  const [groupedSubtitleMap, setGroupedSubtitleMap] = useState({});
   const [tableData, setTableData] = useState([]);
 
   // Process the subtitles to create the table data
@@ -32,8 +31,6 @@ const SubtitleGroupingModal = ({ open, onClose, originalSubtitles, groupedSubtit
         });
       }
     });
-    setGroupedSubtitleMap(groupMap);
-
     // Create the table data
     const data = originalSubtitles.map(subtitle => {
       const id = subtitle.subtitle_id || subtitle.id;

@@ -39,8 +39,7 @@ export const showToast = (message, type = 'info', duration = 6000, className = '
   document.body.appendChild(toast);
 
   // Trigger reflow to enable CSS transition
-  // eslint-disable-next-line no-unused-expressions
-  toast.offsetHeight;
+  void toast.offsetHeight;
 
   // Add visible class for fade-in animation with slight delay
   setTimeout(() => {

@@ -9,5 +9,7 @@
   "copying": "Đang sao chép tập tin lớn...",
   "copyError": "Không thể sao chép tập tin lớn. Vui lòng thử lại.",
   "copyErrorShort": "Không thể sao chép tập tin lớn.",
-  "retrySkipMulter": "Thử lại bằng cách bỏ qua Multer?"
+  "retrySkipMulter": "Thử lại bằng cách bỏ qua Multer?",
+  "nativeSelectionError": "Không thể mở phương tiện đã chọn.",
+  "releaseError": "Không thể giải phóng phương tiện đã chọn."
 }

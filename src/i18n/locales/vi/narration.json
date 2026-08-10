@@ -77,6 +77,7 @@
   "noSubtitlesError": "Không có phụ đề để tạo thuyết minh",
   "noTranslatedSubtitlesError": "Không có phụ đề đã dịch. Vui lòng dịch phụ đề trước hoặc chọn phụ đề gốc.",
   "generationError": "Lỗi khi tạo thuyết minh",
+  "recognitionError": "Lỗi khi nhận diện âm thanh tham chiếu",
   "uploadError": "Lỗi khi tải lên âm thanh tham chiếu",
   "f5ttsAudioTooLongError": "Âm thanh tham chiếu cho F5TTS không thể dài hơn 12 giây",
   "recordingError": "Lỗi khi lưu âm thanh đã ghi",

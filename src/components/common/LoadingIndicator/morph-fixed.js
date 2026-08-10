@@ -14,11 +14,10 @@
  * limitations under the License.
  */
 
-import { RoundedPolygon } from "./roundedPolygon.js";
 import { Cubic, MutableCubic, createCubic } from "./cubic.js";
 import { MeasuredPolygon, LengthMeasurer } from "./measuredPolygon.js";
 import { featureMapper } from "./featureMapper.js";
-import { interpolate, positiveModulo, AngleEpsilon, debugLog, Point } from "./utils.js";
+import { interpolate, positiveModulo, AngleEpsilon, debugLog } from "./utils.js";
 
 const LOG_TAG = "Morph";
 // Set to true to enable debug logging
@@ -40,9 +39,6 @@ const DEBUG = false;
  * the curve placement within the shapes is very different.
  */
 export class Morph {
-    #start;
-    #end;
-
     /**
      * The structure which holds the actual shape being morphed. It contains all cubics necessary to
      * represent the start and end shapes (the original cubics in the shapes may be cut to align the
@@ -56,8 +52,6 @@ export class Morph {
      * @param {RoundedPolygon} end
      */
     constructor(start, end) {
-        this.#start = start;
-        this.#end = end;
         this.#morphMatch = Morph.match(start, end);
     }
 

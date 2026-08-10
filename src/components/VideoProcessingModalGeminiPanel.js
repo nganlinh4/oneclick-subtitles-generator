@@ -1,4 +1,3 @@
-import React from 'react';
 import { useTranslation } from 'react-i18next';
 import MaterialSwitch from './common/MaterialSwitch';
 import SliderWithValue from './common/SliderWithValue';

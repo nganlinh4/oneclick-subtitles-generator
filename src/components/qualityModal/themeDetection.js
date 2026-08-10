@@ -23,7 +23,9 @@ export const detectDarkTheme = () => {
       const L = 0.2126*toLin(r) + 0.7152*toLin(g) + 0.0722*toLin(b);
       if (L < 0.5) return true; // dark surface
     }
-  } catch {}
+  } catch {
+    // Invalid or unavailable theme metadata falls back to light mode.
+  }
   return false;
 };
 

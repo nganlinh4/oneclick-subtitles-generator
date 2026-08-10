@@ -285,7 +285,6 @@ export const createParticles = (buttonElement, container, limit) => {
   const isGenerateButton = buttonElement.classList.contains('generate-btn');
   const isAutoGenerateButton = buttonElement.classList.contains('auto-generate');
   const isForceStopButton = buttonElement.classList.contains('force-stop-btn');
-  const isVideoAnalysisButton = buttonElement.classList.contains('video-analysis-button');
 
   // Set particle count based on button type and limit parameter
   let particleCount;

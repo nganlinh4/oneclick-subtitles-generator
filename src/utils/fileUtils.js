@@ -1,5 +1,6 @@
-// Import SERVER_URL from config
-import { SERVER_URL } from '../config';
+import { resolveActiveNativeMediaAssetId } from '../platform/activeNativeMedia';
+import { exportMediaAsset } from '../platform/mediaExportService';
+import { runMediaPipeline } from '../platform/mediaPipelineService';
 
 /**
  * Parse time string (00:00:00,000 or 00:00:00.000) to seconds
@@ -298,99 +299,21 @@ export const fileToBase64 = toBase64;
  * @param {string} filename - Name of the file to download (without extension)
  * @returns {Promise<boolean>} - Promise resolving to success status
  */
-export const extractAndDownloadAudio = async (videoPath, filename = 'audio') => {
+export const extractAndDownloadAudio = async (videoPath, _filename = 'audio') => {
   try {
-
-
-    // Create a download link element that we'll use later
-    const a = document.createElement('a');
-    document.body.appendChild(a);
-    a.style.display = 'none';
-
-    // Handle blob URLs differently - we need to fetch the blob and send the actual data
-    if (videoPath.startsWith('blob:')) {
-
-
-      try {
-        // Fetch the blob data
-        const videoBlob = await fetch(videoPath).then(r => r.blob());
-
-
-        // Create a form for the file upload
-        const formData = new FormData();
-        formData.append('file', videoBlob, 'video.mp4');
-
-        // Use fetch with FormData for streaming upload
-        const response = await fetch(`${SERVER_URL}/api/extract-audio-from-blob`, {
-          method: 'POST',
-          body: formData,
-        });
-
-        if (!response.ok) {
-          throw new Error(`Server responded with ${response.status}: ${response.statusText}`);
-        }
-
-        // Get the blob from the response
-        const audioBlob = await response.blob();
-
-        // Create a URL for the blob
-        const blobUrl = URL.createObjectURL(audioBlob);
-
-        // Set up the download
-        a.href = blobUrl;
-        a.download = `${filename}.mp3`;
-        a.click();
-
-        // Clean up
-        setTimeout(() => {
-          URL.revokeObjectURL(blobUrl);
-          document.body.removeChild(a);
-        }, 100);
-
-        return true;
-      } catch (blobError) {
-        console.error('Error processing blob:', blobError);
-        throw new Error('Failed to process video data from blob URL');
-      }
-    } else {
-      // For regular URLs, use a direct download approach
-      try {
-        // Fetch the audio data directly
-        const response = await fetch(`${SERVER_URL}/api/extract-audio?videoPath=${encodeURIComponent(videoPath)}&filename=${encodeURIComponent(filename)}`, {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-          },
-          body: JSON.stringify({ videoPath }),
-        });
-
-        if (!response.ok) {
-          throw new Error(`Server responded with ${response.status}: ${response.statusText}`);
-        }
-
-        // Get the blob from the response
-        const audioBlob = await response.blob();
-
-        // Create a URL for the blob
-        const blobUrl = URL.createObjectURL(audioBlob);
-
-        // Set up the download
-        a.href = blobUrl;
-        a.download = `${filename}.mp3`;
-        a.click();
-
-        // Clean up
-        setTimeout(() => {
-          URL.revokeObjectURL(blobUrl);
-          document.body.removeChild(a);
-        }, 100);
-
-        return true;
-      } catch (downloadError) {
-        console.error('Error downloading audio:', downloadError);
-        throw new Error(`Failed to download audio: ${downloadError.message}`);
-      }
+    const nativeAssetId = resolveActiveNativeMediaAssetId(videoPath);
+    if (nativeAssetId === null) {
+      throw new Error('Select the media again before extracting audio.');
     }
+    const result = await runMediaPipeline({
+      operation: 'extractAudio',
+      assetId: nativeAssetId,
+      format: 'mp3',
+      range: null,
+    });
+    if (result?.kind !== 'media') throw new Error('Audio extraction returned no media.');
+    const exported = await exportMediaAsset(result.media.asset.id);
+    return exported.status === 'completed';
   } catch (error) {
     console.error('Error extracting audio:', error);
     return false;

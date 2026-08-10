@@ -1,7 +1,7 @@
-import React, { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback, useMemo } from 'react';
 import { useTranslation } from 'react-i18next';
 import { getName } from 'iso-639-1';
-import { SERVER_URL } from '../../../config';
+import { probeSpeechBackend } from '../../../platform/speechService';
 import MaterialSwitch from '../../common/MaterialSwitch';
 import CustomDropdown from '../../common/CustomDropdown';
 import LanguageSelectionModal from './LanguageSelectionModal';
@@ -41,13 +41,13 @@ const GTTSControls = ({
     const loadLanguages = async () => {
       try {
         setLoading(true);
-        const response = await fetch(`${SERVER_URL}/api/narration/gtts/languages`);
-        
-        if (!response.ok) {
-          throw new Error(`HTTP error! status: ${response.status}`);
-        }
-        
-        const data = await response.json();
+        const probe = await probeSpeechBackend('gtts');
+        const data = {
+          languages: probe.voices.map((voice) => ({
+            code: voice.id,
+            name: voice.displayName,
+          })),
+        };
         setLanguages(data.languages || []);
 
         // Auto-select language based on detected language
@@ -76,23 +76,7 @@ const GTTSControls = ({
     };
 
     loadLanguages();
-  }, [selectedLanguage, setSelectedLanguage, detectedLanguage]);
-
-  // Reset TLD when language changes to ensure it's valid for the new language
-  useEffect(() => {
-    const availableTlds = getTldOptions();
-    const currentTldValid = availableTlds.some(option => option.value === tld);
-
-    if (!currentTldValid && availableTlds.length > 0) {
-      setTld(availableTlds[0].value); // Set to first available TLD for the language
-    }
-  }, [selectedLanguage, tld, setTld]);
-
-  // Handle language selection change
-  const handleLanguageChange = (e) => {
-    const newLanguage = e.target.value;
-    setSelectedLanguage(newLanguage);
-  };
+  }, [selectedLanguage, setSelectedLanguage, detectedLanguage, t]);
 
   // Handle TLD change
   const handleTldChange = (e) => {
@@ -107,7 +91,7 @@ const GTTSControls = ({
   };
 
   // TLD options grouped by language
-  const tldOptionsByLanguage = {
+  const tldOptionsByLanguage = useMemo(() => ({
     'en': [
       { value: 'com', label: t('narration.tldCom', 'Global (.com)') },
       { value: 'com.au', label: t('narration.tldAu', 'Australian (.com.au)') },
@@ -133,14 +117,24 @@ const GTTSControls = ({
       { value: 'fr', label: t('narration.tldFr', 'French (.fr)') },
       { value: 'ca', label: t('narration.tldCa', 'Canadian (.ca)') }
     ]
-  };
+  }), [t]);
 
   // Get TLD options for the selected language, fallback to global options
-  const getTldOptions = () => {
+  const getTldOptions = useCallback(() => {
     return tldOptionsByLanguage[selectedLanguage] || [
       { value: 'com', label: t('narration.tldCom', 'Global (.com)') }
     ];
-  };
+  }, [selectedLanguage, t, tldOptionsByLanguage]);
+
+  // Reset TLD when language changes to ensure it's valid for the new language
+  useEffect(() => {
+    const availableTlds = getTldOptions();
+    const currentTldValid = availableTlds.some(option => option.value === tld);
+
+    if (!currentTldValid && availableTlds.length > 0) {
+      setTld(availableTlds[0].value); // Set to first available TLD for the language
+    }
+  }, [getTldOptions, tld, setTld]);
 
   // Handle language modal
   const openLanguageModal = () => setIsLanguageModalOpen(true);

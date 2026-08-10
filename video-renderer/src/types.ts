@@ -18,6 +18,7 @@ export interface VideoMetadata {
   narrationVolume: number; // Volume for narration audio (0-100)
   subtitleCustomization?: SubtitleCustomization; // Subtitle styling options
   cropSettings?: CropSettings; // Video crop settings
+  fontStylesheetUrl?: string; // Managed native render font pack; browser previews omit this.
 }
 
 // Crop settings interface

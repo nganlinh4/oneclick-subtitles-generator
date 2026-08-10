@@ -1,4 +1,4 @@
-import React, { useEffect, useRef, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import CloseButton from '../../common/CloseButton';
 import { animateToggle } from '../utils/keyVisibilityAnimation';
@@ -6,14 +6,14 @@ import GeminiKeysManager, { useGeminiKeys } from './GeminiKeysManager';
 import YoutubeAuthSection from './YoutubeAuthSection';
 
 const ApiKeysTab = ({
-  geminiApiKey,
+  geminiApiKey: _geminiApiKey,
   setGeminiApiKey,
   youtubeApiKey,
   setYoutubeApiKey,
   geniusApiKey,
   setGeniusApiKey,
-  showGeminiKey,
-  setShowGeminiKey,
+  showGeminiKey: _showGeminiKey,
+  setShowGeminiKey: _setShowGeminiKey,
   showYoutubeKey,
   setShowYoutubeKey,
   showGeniusKey,

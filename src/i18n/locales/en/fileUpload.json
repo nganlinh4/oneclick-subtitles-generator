@@ -9,5 +9,7 @@
   "copying": "Copying large file...",
   "copyError": "Failed to copy large file. Please try again.",
   "copyErrorShort": "Failed to copy large file.",
-  "retrySkipMulter": "Retry by skipping Multer?"
+  "retrySkipMulter": "Retry by skipping Multer?",
+  "nativeSelectionError": "Could not open the selected media.",
+  "releaseError": "Could not release the selected media."
 }

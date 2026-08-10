@@ -15,11 +15,41 @@ crate-type = ["staticlib", "cdylib", "rlib"]
 tauri-build = { version = "2.6.3", features = [] }
 
 [dependencies]
+atomicwrites = "=0.4.4"
+base64 = "=0.22.1"
+blake3 = "=1.8.6"
+minisign-verify = "=0.2.5"
 osg-application.workspace = true
+osg-asr.workspace = true
 osg-domain.workspace = true
+osg-download.workspace = true
+osg-engine-packages.workspace = true
+osg-gemini.workspace = true
+osg-infrastructure = { path = "../../../crates/osg-infrastructure" }
+osg-live-music.workspace = true
+osg-media.workspace = true
+osg-media-pipeline.workspace = true
+osg-media-server = { path = "../../../crates/osg-media-server" }
+osg-native-tools.workspace = true
+osg-providers.workspace = true
+osg-render.workspace = true
+osg-speech.workspace = true
 serde.workspace = true
+serde_json.workspace = true
+futures-util = "0.3.33"
+fs2 = "=0.4.3"
+secrecy = "0.10.3"
+same-file = "=1.0.6"
 tauri = { version = "2.11.5", features = [] }
 tauri-plugin-dialog = "2.7.2"
+tauri-plugin-opener = "=2.5.4"
+tauri-plugin-updater = "=2.10.1"
+tempfile = "3.27.0"
+thiserror.workspace = true
+tokio = { version = "1.53.1", features = ["time"] }
+tokio-util = { version = "=0.7.19", features = ["rt"] }
+uuid.workspace = true
+zip = { version = "=8.6.0", default-features = false, features = ["deflate"] }
 
 [lints]
 workspace = true

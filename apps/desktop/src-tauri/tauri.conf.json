@@ -2,11 +2,11 @@
   "$schema": "https://schema.tauri.app/config/2",
   "productName": "One-Click Subtitles Generator",
   "version": "2.0.0",
-  "identifier": "com.subtitlesgenerator.app",
+  "identifier": "io.github.nganlinh4.oneclicksubtitles",
   "build": {
-    "beforeDevCommand": "npm run legacy:dev",
-    "devUrl": "http://localhost:3030",
-    "beforeBuildCommand": "npm run legacy:build",
+    "beforeDevCommand": "npm run dev:vite",
+    "devUrl": "http://127.0.0.1:3030",
+    "beforeBuildCommand": "npm run build:frontend",
     "frontendDist": "../../../build",
     "removeUnusedCommands": true
   },
@@ -15,15 +15,19 @@
     "windows": [
       {
         "label": "main",
+        "create": false,
         "title": "One-Click Subtitles Generator",
-        "width": 1440,
+        "width": 1400,
         "height": 900,
-        "minWidth": 620,
-        "minHeight": 560,
+        "minWidth": 1200,
+        "minHeight": 800,
         "center": true,
         "decorations": true,
         "resizable": true,
-        "backgroundColor": "#fef7ff"
+        "visible": false,
+        "backgroundColor": "#1a1a1a",
+        "dragDropEnabled": true,
+        "useHttpsScheme": true
       }
     ],
     "security": {
@@ -32,29 +36,35 @@
         "default-src": "'self'",
         "connect-src": "'self' ipc: http://ipc.localhost",
         "font-src": "'self' data: https://fonts.gstatic.com",
-        "img-src": "'self' data: blob: https:",
-        "media-src": "'self' blob:",
+        "img-src": "'self' data: blob: http://127.0.0.1:*",
+        "media-src": "'self' blob: http://127.0.0.1:*",
         "object-src": "'none'",
         "script-src": "'self'",
         "style-src": "'self' 'unsafe-inline' https://fonts.googleapis.com"
       },
       "devCsp": {
-        "default-src": "'self' http://localhost:3030",
-        "connect-src": "'self' ipc: http://ipc.localhost http://localhost:3030 ws://localhost:3030",
-        "font-src": "'self' data: https://fonts.gstatic.com http://localhost:3030",
-        "img-src": "'self' data: blob: https: http://localhost:3030",
-        "media-src": "'self' blob:",
+        "default-src": "'self' http://127.0.0.1:3030",
+        "connect-src": "'self' ipc: http://ipc.localhost http://127.0.0.1:3030 ws://127.0.0.1:3030",
+        "font-src": "'self' data: https://fonts.gstatic.com http://127.0.0.1:3030",
+        "img-src": "'self' data: blob: http://127.0.0.1:*",
+        "media-src": "'self' blob: http://127.0.0.1:*",
         "object-src": "'none'",
-        "script-src": "'self' http://localhost:3030",
-        "style-src": "'self' 'unsafe-inline' https://fonts.googleapis.com http://localhost:3030"
+        "script-src": "'self' http://127.0.0.1:3030",
+        "style-src": "'self' 'unsafe-inline' https://fonts.googleapis.com http://127.0.0.1:3030"
       }
     }
   },
   "bundle": {
     "active": true,
+    "createUpdaterArtifacts": true,
     "targets": "all",
     "category": "Productivity",
     "shortDescription": "Create, edit, translate, and render subtitles",
+    "resources": {
+      "../../../crates/osg-asr/worker/osg_asr_worker.py": "workers/osg_asr_worker.py",
+      "../../../crates/osg-speech/worker/osg_speech_worker.py": "workers/osg_speech_worker.py",
+      "../../../video-renderer/worker/osg_render_worker.mjs": "workers/osg_render_worker.mjs"
+    },
     "icon": [
       "icons/32x32.png",
       "icons/128x128.png",
@@ -62,5 +72,16 @@
       "icons/icon.icns",
       "icons/icon.ico"
     ]
+  },
+  "plugins": {
+    "updater": {
+      "endpoints": [
+        "https://github.com/nganlinh4/oneclick-subtitles-generator/releases/latest/download/latest.json"
+      ],
+      "pubkey": "",
+      "windows": {
+        "installMode": "passive"
+      }
+    }
   }
 }

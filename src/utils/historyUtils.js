@@ -33,7 +33,8 @@ export const addYoutubeUrlToHistory = (videoData) => {
       id: videoData.id,
       url: videoData.url,
       title: videoData.title || 'YouTube Video',
-      thumbnail: videoData.thumbnail || `https://img.youtube.com/vi/${videoData.id}/0.jpg`,
+      // Provider-image capabilities are process-scoped bearer URLs and must never be persisted.
+      thumbnail: '',
       timestamp: Date.now()
     });
 
@@ -56,7 +57,17 @@ export const addYoutubeUrlToHistory = (videoData) => {
 export const getYoutubeUrlHistory = () => {
   try {
     const historyJson = localStorage.getItem(YOUTUBE_URL_HISTORY_KEY);
-    return historyJson ? JSON.parse(historyJson) : [];
+    const parsed = historyJson ? JSON.parse(historyJson) : [];
+    if (!Array.isArray(parsed)) return [];
+    const sanitized = parsed.slice(0, MAX_HISTORY_ITEMS).map((item) => ({
+      ...item,
+      // Migrate both old provider URLs and expired loopback capability URLs out of storage.
+      thumbnail: '',
+    }));
+    if (JSON.stringify(parsed) !== JSON.stringify(sanitized)) {
+      localStorage.setItem(YOUTUBE_URL_HISTORY_KEY, JSON.stringify(sanitized));
+    }
+    return sanitized;
   } catch (error) {
     console.error('Error retrieving YouTube URL history:', error);
     return [];

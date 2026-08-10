@@ -1,4 +1,3 @@
-import React from "react";
 import { useTranslation } from "react-i18next";
 import LiquidGlass from "../common/LiquidGlass";
 import { extractAndDownloadAudio } from "../../utils/fileUtils";
@@ -17,7 +16,7 @@ const VideoTopsideButtons = ({
   setIsRefreshingNarration,
   isAudioDownloading,
   setIsAudioDownloading,
-  setError,
+  setError: _setError,
   videoRef,
   videoSource,
   fileType,

@@ -17,7 +17,7 @@ import { useEffect } from "react";
  */
 const useAlignedNarrationEvents = ({
   videoRef,
-  generationResults,
+  generationResults: _generationResults,
   useAlignedMode,
   state,
   regenerateAlignedNarration,
@@ -38,7 +38,7 @@ const useAlignedNarrationEvents = ({
     }
 
     // Function to handle manual refresh narration button click
-    const handleManualRefreshNarration = (event) => {
+    const handleManualRefreshNarration = (_event) => {
       // Clear any existing timeout
       if (regenerationTimeoutRef.current) {
         clearTimeout(regenerationTimeoutRef.current);

@@ -111,7 +111,7 @@ const useAlignedNarrationGeneration = ({
       // Filter generation results to only include successful ones with audio files
       // This ensures we only process narrations that actually exist
       const availableResults = hydrateNarrationResultsForAlignment(generationResults).filter(result =>
-        result.success && (result.filename || result.audioData)
+        result.success && (result.nativeArtifactId || result.filename || result.audioData)
       );
 
       console.log(`Aligned narration: Processing ${availableResults.length} available narrations out of ${generationResults.length} total results`);
@@ -193,7 +193,7 @@ const useAlignedNarrationGeneration = ({
 
     // Log this only in development mode to avoid console spam
     if (process.env.NODE_ENV === 'development') {
-
+      // Automatic-generation logging is intentionally disabled with the feature.
     }
 
     // No automatic generation code here - the regenerateAlignedNarration function is still available

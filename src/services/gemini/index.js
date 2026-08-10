@@ -1,97 +1,30 @@
 /**
- * Gemini API Service
- * Main export file for all Gemini API functionality
+ * Native-only Gemini facade used by the desktop frontend.
+ *
+ * Provider URLs, provider credentials, uploads, SSE, and WebSockets are deliberately absent from
+ * this graph. Browser-only inspection can render the UI, but invoking a Gemini operation fails at
+ * the native adapter boundary.
  */
-
-// Export core API functionality
-import { callGeminiApi, callGeminiApiWithFilesApi, callGeminiApiWithFilesApiForAnalysis, streamGeminiApiWithFilesApi, streamGeminiApiInline } from './core';
-
-// Export Files API functionality
-import {
-    uploadFileToGemini,
-    shouldUseFilesApi
-} from './filesApi';
-
-// Export request management functionality
-import {
-    abortAllRequests,
-    getProcessingForceStopped,
-    setProcessingForceStopped
-} from './requestManagement';
-
-// Export prompt management functionality
-import {
-    PROMPT_PRESETS,
-    DEFAULT_TRANSCRIPTION_PROMPT,
-    getUserPromptPresets,
-    saveUserPromptPresets,
-    getDefaultTranslationPrompt,
-    getDefaultConsolidatePrompt,
-    getDefaultSummarizePrompt
-} from './promptManagement';
-
-// Export translation functionality
-import { translateSubtitles, cancelTranslation } from './translation';
-
-// Export document processing functionality
-import { completeDocument, summarizeDocument } from './documentProcessingService';
-
-// Export WebSocket client
-import { GeminiWebSocketClient } from './client/GeminiWebSocketClient';
-
-// Export audio utilities
-import {
-    convertPcmBase64ToWavBase64,
-    base64ToArrayBuffer,
-    writeString
-} from './utils/audioUtils';
-
-// Export blob utilities
-import { blobToJSON } from './utils/blobUtils';
-
-// Export all functionality
 export {
-    // Core API
-    callGeminiApi,
-    callGeminiApiWithFilesApi,
-    callGeminiApiWithFilesApiForAnalysis,
-    streamGeminiApiWithFilesApi,
-    streamGeminiApiInline,
-
-    // Files API
-    uploadFileToGemini,
-    shouldUseFilesApi,
-
-    // Request management
-    abortAllRequests,
-    getProcessingForceStopped,
-    setProcessingForceStopped,
-
-    // Prompt management
-    PROMPT_PRESETS,
-    DEFAULT_TRANSCRIPTION_PROMPT,
-    getUserPromptPresets,
-    saveUserPromptPresets,
-    getDefaultTranslationPrompt,
-    getDefaultConsolidatePrompt,
-    getDefaultSummarizePrompt,
-
-    // Translation
-    translateSubtitles,
-    cancelTranslation,
-
-    // Document processing
-    completeDocument,
-    summarizeDocument,
-
-    // WebSocket client
-    GeminiWebSocketClient,
-
-    // Audio utilities
-    convertPcmBase64ToWavBase64,
-    base64ToArrayBuffer,
-    writeString,
-
-    // Blob utilities
-    blobToJSON
-};
+  callGeminiApi,
+  callGeminiApiWithFilesApi,
+  callGeminiApiWithFilesApiForAnalysis,
+  streamGeminiApiInline,
+  streamGeminiApiWithFilesApi,
+} from './core';
+export {
+  abortAllRequests,
+  getProcessingForceStopped,
+  setProcessingForceStopped,
+} from './requestManagement';
+export {
+  DEFAULT_TRANSCRIPTION_PROMPT,
+  PROMPT_PRESETS,
+  getDefaultConsolidatePrompt,
+  getDefaultSummarizePrompt,
+  getDefaultTranslationPrompt,
+  getUserPromptPresets,
+  saveUserPromptPresets,
+} from './promptManagement';
+export { cancelTranslation, translateSubtitles } from './translation';
+export { completeDocument, summarizeDocument } from './documentProcessingService';

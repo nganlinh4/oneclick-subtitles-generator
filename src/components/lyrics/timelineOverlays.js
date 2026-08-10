@@ -1,4 +1,4 @@
-import React, { useRef, useEffect, useLayoutEffect, useCallback } from 'react';
+import { useRef, useEffect, useLayoutEffect, useCallback } from 'react';
 import { createPortal } from 'react-dom';
 
 // Helper overlay component that follows the timeline canvas without leaking rAF
@@ -6,6 +6,7 @@ export const OverlayFollower = ({ canvasRef, deps = [], computeStyle, children }
     const containerRef = useRef(null);
     const computeStyleRef = useRef(computeStyle);
     const scheduleRef = useRef(() => { });
+    const lastScheduleInputsRef = useRef(null);
 
     // Always keep latest computeStyle without tearing down listeners
     useEffect(() => { computeStyleRef.current = computeStyle; }, [computeStyle]);
@@ -32,7 +33,9 @@ export const OverlayFollower = ({ canvasRef, deps = [], computeStyle, children }
         scheduleRef.current = schedule;
 
         // Initial sync update to avoid flicker
-        try { update(); } catch { }
+        try { update(); } catch {
+            // Initial measurement is best-effort while the canvas is mounting.
+        }
 
         const ro = new ResizeObserver(schedule);
         ro.observe(canvas);
@@ -49,7 +52,17 @@ export const OverlayFollower = ({ canvasRef, deps = [], computeStyle, children }
     }, [canvasRef]);
 
     // When deps change (zoom/pan/lyrics/time), just schedule an update; don't teardown
-    useEffect(() => { scheduleRef.current(); }, [computeStyle, ...deps]);
+    useEffect(() => {
+        const inputs = [computeStyle, ...deps];
+        const previous = lastScheduleInputsRef.current;
+        const changed = !previous
+            || previous.length !== inputs.length
+            || inputs.some((input, index) => !Object.is(input, previous[index]));
+        if (changed) {
+            lastScheduleInputsRef.current = inputs;
+            scheduleRef.current();
+        }
+    });
 
     return (
         <div style={{ position: 'fixed', inset: 0, pointerEvents: 'none' }}>

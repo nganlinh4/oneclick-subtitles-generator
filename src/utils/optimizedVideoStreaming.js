@@ -3,6 +3,9 @@
  * This module provides improved chunking and caching for better performance
  */
 
+import { isNativeMediaPlaybackUrl } from '../platform/mediaService';
+import { fetchBrowserResource } from '../platform/browserFetch';
+
 // Cache for video chunks to avoid redundant processing
 // Using LRUCache implementation below instead of this Map
 
@@ -61,6 +64,7 @@ const videoChunkCache = new LRUCache(100); // Cache up to 100 chunks
  */
 export const preloadVideoChunks = async (videoUrl, currentTime, duration, chunkSize = 30, preloadAhead = 2) => {
   if (!videoUrl || !duration) return;
+  if (isNativeMediaPlaybackUrl(videoUrl)) return;
 
   // Calculate current chunk and chunks to preload
   const currentChunk = Math.floor(currentTime / chunkSize);
@@ -91,7 +95,7 @@ export const preloadVideoChunks = async (videoUrl, currentTime, duration, chunkS
 
       // Only preload if not already in browser cache
       // This is a dummy request that will be cached by the browser
-      await fetch(videoUrl, {
+      await fetchBrowserResource(videoUrl, {
         method: 'HEAD',
         headers: {
           'Range': `bytes=${Math.floor(chunkStart * 1000000)}-${Math.floor(chunkEnd * 1000000)}`,

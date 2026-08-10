@@ -19,10 +19,8 @@ export const createSetReferenceTextWithCache = ({ referenceAudio, setReferenceTe
   // Update reference audio cache if we have reference audio
   if (referenceAudio) {
     cacheReferenceAudio({
-      filename: referenceAudio.filename,
+      ...referenceAudio,
       text: newText || '',
-      url: referenceAudio.url,
-      filepath: referenceAudio.filepath
     }, 'reference text change');
   }
 };

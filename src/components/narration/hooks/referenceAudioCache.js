@@ -1,3 +1,8 @@
+import {
+  createNativeNarrationToken,
+  getNativeNarrationArtifactId,
+} from '../../../platform/nativeNarrationCapabilities';
+
 /**
  * Shared reference-audio localStorage caching helpers.
  *
@@ -31,17 +36,24 @@ export const getCurrentMediaId = () => {
 export const cacheReferenceAudio = (referenceAudio, logLabel) => {
   try {
     const mediaId = getCurrentMediaId();
-    if (mediaId) {
+    const artifactId = getNativeNarrationArtifactId(referenceAudio);
+    if (mediaId && artifactId) {
+      const persistedReference = {
+        nativeArtifactId: artifactId,
+        filename: createNativeNarrationToken(artifactId),
+        format: referenceAudio.format,
+        durationMicros: referenceAudio.durationMicros,
+        text: referenceAudio.text || '',
+        language: referenceAudio.language,
+      };
       localStorage.setItem('reference_audio_cache', JSON.stringify({
         mediaId,
         timestamp: Date.now(),
-        referenceAudio
+        referenceAudio: persistedReference
       }));
-      if (logLabel) {
-        console.log(`Cached reference audio immediately after ${logLabel}`);
-      }
+      void logLabel;
     }
-  } catch (error) {
-    console.error('Error caching reference audio:', error);
+  } catch {
+    // Reference caching is best-effort; the native artifact remains authoritative.
   }
 };

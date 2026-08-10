@@ -1,4 +1,4 @@
-import React, { useState, useRef, useEffect, useCallback } from 'react';
+import { useState, useRef, useEffect, useCallback } from 'react';
 import { useTranslation } from 'react-i18next';
 import { groupFontsByCategory, getFontSupportFlags, getFontSampleText } from './fontOptions';
 import CloseButton from '../common/CloseButton';
@@ -9,7 +9,7 @@ const FontSelectionModal = ({ isOpen, onClose, selectedFont, onFontSelect }) => 
   const { t } = useTranslation();
   const [searchTerm, setSearchTerm] = useState('');
   const [selectedCategory, setSelectedCategory] = useState('All');
-  const [modalHeight, setModalHeight] = useState('auto');
+  const [modalHeight] = useState('auto');
   const modalRef = useRef(null);
   const searchInputRef = useRef(null);
   const contentRef = useRef(null);
@@ -31,7 +31,6 @@ const FontSelectionModal = ({ isOpen, onClose, selectedFont, onFontSelect }) => 
       modalElement.style.height = `${currentHeight}px`;
       
       // Force a reflow by reading offsetHeight
-      // eslint-disable-next-line no-unused-expressions
       void modalElement.offsetHeight;
       
       // Now transition to the new height

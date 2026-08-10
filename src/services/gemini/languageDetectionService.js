@@ -2,11 +2,11 @@
  * Language detection functionality for Gemini API
  */
 
-import { createLanguageDetectionSchema, addResponseSchema } from '../../utils/schemaUtils';
+import { createLanguageDetectionSchema } from '../../utils/schemaUtils';
 import i18n from '../../i18n/i18n';
-import { fetchWithKeyRotation } from './withKeyRotation';
-import { addThinkingConfig } from '../../utils/thinkingBudgetUtils';
+import { getThinkingBudget } from '../../utils/thinkingBudgetUtils';
 import { DEFAULT_FAST_TEXT_MODEL_ID } from '../../config/geminiModels';
+import { runNativeGeminiText } from '../../platform/nativeGeminiText';
 
 /**
  * Detect language of text using Gemini API
@@ -39,22 +39,7 @@ Text to analyze:
 ${sampleText}
 """`;
 
-        // Create request data with structured output
-        let requestData = {
-            contents: [
-                {
-                    role: "user",
-                    parts: [
-                        { text: detectionPrompt }
-                    ]
-                }
-            ]
-        };
-
-        // Add response schema
-        requestData = addResponseSchema(requestData, createLanguageDetectionSchema());
-        requestData = addThinkingConfig(requestData, model);
-
+        const responseSchema = createLanguageDetectionSchema();
 
         // Dispatch event to update UI with status
         window.dispatchEvent(new CustomEvent('language-detection-status', {
@@ -64,23 +49,17 @@ ${sampleText}
             }
         }));
 
-        // Call the Gemini API
-        const response = await fetchWithKeyRotation((apiKey) =>
-            fetch(`https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${apiKey}`, {
-                method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json',
-                },
-                body: JSON.stringify(requestData)
-            })
-        );
-
-        if (!response.ok) {
-            const errorData = await response.json();
-            throw new Error(`Gemini API error: ${errorData.error?.message || response.statusText}`);
-        }
-
-        const data = await response.json();
+        const thinking = getThinkingBudget(model);
+        const nativeResult = await runNativeGeminiText({
+            task: 'analyzeSubtitles',
+            model,
+            prompt: detectionPrompt,
+            responseJsonSchema: responseSchema,
+            ...(typeof thinking === 'string' ? { thinkingLevel: thinking } : {}),
+        });
+        const data = {
+            candidates: [{ content: { parts: [{ text: nativeResult.text }] } }],
+        };
 
 
         // Extract the language detection result

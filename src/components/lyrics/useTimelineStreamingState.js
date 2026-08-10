@@ -26,7 +26,7 @@ export const useTimelineStreamingState = ({ lyrics }) => {
 
     // Listen for streaming events and processing ranges
     useEffect(() => {
-        const handleStreamingStart = (e) => {
+        const handleStreamingStart = (_event) => {
             // console.log('[Timeline] Streaming started - enabling segment animations');
             setIsStreamingActive(true);
         };
@@ -56,9 +56,6 @@ export const useTimelineStreamingState = ({ lyrics }) => {
         const handleProcessingRanges = (e) => {
             const ranges = (e.detail && e.detail.ranges) || [];
             setProcessingRanges(ranges);
-            if (ranges.length > 1) {
-
-            }
         };
 
         const handleStreamingComplete = () => {

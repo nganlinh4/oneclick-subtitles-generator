@@ -1,4 +1,4 @@
-import React, { useState, useRef, useEffect, useCallback } from 'react';
+import { useState, useRef, useEffect, useCallback } from 'react';
 import { useTranslation } from 'react-i18next';
 import { completeDocument, summarizeDocument } from '../../services/geminiService';
 import useTranslationState, { getCurrentMediaId, generateSubtitleHash } from '../../hooks/useTranslationState';
@@ -102,7 +102,6 @@ const TranslationSection = ({ subtitles, videoTitle, onTranslationComplete }) =>
     bulkTranslations,
     setBulkTranslations,
     isBulkTranslating,
-    currentBulkFileIndex,
     handleBulkFileRemoval,
     handleBulkFilesRemovalAll
   } = useTranslationState(subtitles, onTranslationComplete);

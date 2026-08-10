@@ -1,23 +1,13 @@
+import useAlignedDownload from './useAlignedDownload';
 import useAudioIO from './useAudioIO';
-import useNarrationGeneration from './useNarrationGeneration';
-import useNarrationRetry from './useNarrationRetry';
+import useNarrationDownloads from './useNarrationDownloads';
 
 /**
- * Custom hook for narration handlers.
- *
- * Thin composer over three focused sub-hooks:
- *   - useAudioIO: reference-audio I/O (upload, record, extract, clear, example select)
- *   - useNarrationGeneration: generation + downloads (generate, play, download-all/aligned, cancel)
- *   - useNarrationRetry: retries (single, all-failed, all-pending)
- *
- * Shared MediaRecorder/audio refs (mediaRecorderRef, audioChunksRef) are owned by the parent and
- * passed down so the recording group can use them.
- *
- * @param {Object} params - Parameters
- * @returns {Object} - Narration handlers
+ * Composes native reference I/O, playback, export, alignment, and generation handlers.
+ * The render layer keeps its established handler surface while transport ownership stays
+ * entirely in typed Tauri adapters.
  */
 const useNarrationHandlers = ({
-  fileInputRef,
   mediaRecorderRef,
   audioChunksRef,
   referenceAudio,
@@ -36,41 +26,19 @@ const useNarrationHandlers = ({
   segmentEndTime,
   videoPath,
   onReferenceAudioChange,
-  getSelectedSubtitles,
-  advancedSettings,
-  setIsGenerating,
-  isGenerating,
-  setGenerationStatus,
-  setGenerationResults,
   generationResults,
   currentAudio,
   setCurrentAudio,
   setIsPlaying,
-  statusRef,
   t,
-  subtitleSource,
-  translatedSubtitles,
   isPlaying,
-  selectedNarrationModel,
-  originalLanguage,
-  translatedLanguage,
-  setRetryingSubtitleId,
-  useGroupedSubtitles,
-  setUseGroupedSubtitles,
-  groupedSubtitles,
-  narrationMethod
+  narrationMethod,
+  nativeNarrationHandlers,
 }) => {
-  // Reference-audio I/O: upload, record, extract segment, clear, example select.
-  const {
-    handleFileUpload,
-    startRecording,
-    stopRecording,
-    extractSegment,
-    clearReferenceAudio,
-    handleExampleSelect
-  } = useAudioIO({
+  const audioHandlers = useAudioIO({
     mediaRecorderRef,
     audioChunksRef,
+    referenceAudio,
     referenceText,
     setReferenceAudio,
     setReferenceText,
@@ -87,79 +55,30 @@ const useNarrationHandlers = ({
     videoPath,
     onReferenceAudioChange,
     t,
-    narrationMethod
+    narrationMethod,
   });
 
-  // Generation + downloads: generate, play, download-all/aligned, cancel.
-  const {
-    handleGenerateNarration,
-    playAudio,
-    downloadAllAudio,
-    downloadAlignedAudio,
-    cancelGeneration
-  } = useNarrationGeneration({
-    referenceAudio,
-    referenceText,
-    setError,
-    getSelectedSubtitles,
-    advancedSettings,
-    setIsGenerating,
-    isGenerating,
-    setGenerationStatus,
-    setGenerationResults,
+  const { playAudio, downloadAllAudio } = useNarrationDownloads({
     generationResults,
     currentAudio,
     setCurrentAudio,
+    isPlaying,
     setIsPlaying,
     t,
-    subtitleSource,
-    translatedSubtitles,
-    isPlaying,
-    selectedNarrationModel,
-    originalLanguage,
-    translatedLanguage,
-    useGroupedSubtitles,
-    setUseGroupedSubtitles,
-    groupedSubtitles
   });
-
-  // Retries: single subtitle, all-failed, all-pending.
-  const {
-    retryF5TTSNarration,
-    retryFailedNarrations,
-    generateAllPendingF5TTSNarrations
-  } = useNarrationRetry({
-    referenceAudio,
-    referenceText,
-    setError,
-    getSelectedSubtitles,
-    advancedSettings,
-    setGenerationStatus,
-    setGenerationResults,
-    generationResults,
-    t,
-    subtitleSource,
-    selectedNarrationModel,
-    originalLanguage,
-    translatedLanguage,
-    setRetryingSubtitleId
-  });
+  const { downloadAlignedAudio } = useAlignedDownload({ generationResults, t });
 
   return {
-    handleFileUpload,
-    startRecording,
-    stopRecording,
-    extractSegment,
-    clearReferenceAudio,
-    handleGenerateNarration,
+    ...audioHandlers,
+    handleGenerateNarration: nativeNarrationHandlers.handleGenerateNarration,
     playAudio,
     downloadAllAudio,
     downloadAlignedAudio,
-    cancelGeneration,
-    retryF5TTSNarration,
-    retryFailedNarrations,
-    generateAllPendingF5TTSNarrations,
-    handleExampleSelect
+    cancelGeneration: nativeNarrationHandlers.cancelGeneration,
+    retryF5TTSNarration: nativeNarrationHandlers.retryF5TTSNarration,
+    retryFailedNarrations: nativeNarrationHandlers.retryFailedNarrations,
+    generateAllPendingF5TTSNarrations:
+      nativeNarrationHandlers.generateAllPendingF5TTSNarrations,
   };
 };
 

@@ -1,0 +1,28 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <meta name="theme-color" content="#5D5FEF" />
+  <link rel="manifest" href="./manifest.json" />
+  <meta name="description" content="Subtitles Generator - Create subtitles with Gemini AI" />
+  <link rel="icon" href="./favicon.png" />
+  <link rel="shortcut icon" href="./favicon.png" />
+  <link rel="apple-touch-icon" href="./favicon.png" />
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <!-- Preload Material Symbols stylesheet to reduce flash of text -->
+  <link rel="preload" as="style" href="https://fonts.googleapis.com/css2?family=Material+Symbols+Rounded:opsz,wght,FILL,GRAD@20..48,100..700,0..1,-50..200">
+  <link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Rounded:opsz,wght,FILL,GRAD@20..48,100..700,0..1,-50..200" rel="stylesheet" />
+  <title>Subtitles Generator</title>
+</head>
+<body>
+  <noscript>You need to enable JavaScript to run this app.</noscript>
+  <div id="root"></div>
+  <div id="timeline-overlays-root" style="position: fixed; inset: 0; pointer-events: none; z-index: 2147483647;"></div>
+  <div id="timeline-header-overlays-root" style="position: fixed; inset: 0; pointer-events: none; z-index: 9998;"></div>
+
+  <script type="module" src="/js/album-art-buttons.js"></script>
+  <script type="module" src="./src/index.js"></script>
+</body>
+</html>

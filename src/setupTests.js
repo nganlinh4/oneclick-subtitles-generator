@@ -1,4 +1,4 @@
-// CRA auto-loads this file before each test suite (jest `setupFilesAfterEnv`).
+// Vitest loads this file before each frontend test suite.
 
 // Adds custom matchers like `toBeInTheDocument` / `toHaveClass`.
 import '@testing-library/jest-dom';
@@ -17,7 +17,6 @@ if (
 
 // jsdom doesn't expose the Encoding API globals; provide them from Node's `util` so code that
 // uses TextEncoder/TextDecoder (e.g. the narration SSE reader) works under test.
-// eslint-disable-next-line global-require
-const { TextEncoder, TextDecoder } = require('util');
+import { TextDecoder, TextEncoder } from 'node:util';
 if (typeof global.TextEncoder === 'undefined') global.TextEncoder = TextEncoder;
 if (typeof global.TextDecoder === 'undefined') global.TextDecoder = TextDecoder;

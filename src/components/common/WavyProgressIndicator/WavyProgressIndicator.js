@@ -128,10 +128,11 @@ class LinearWavyProgressIndicator extends HTMLElement {
 
     attributeChangedCallback(name, _oldValue, newValue) {
         switch (name) {
-            case 'progress':
+            case 'progress': {
                 const progressValue = parseFloat(newValue) || 0;
                 this.setProgress(progressValue);
                 break;
+            }
             case 'color':
                 this._color = newValue || WavyProgressIndicatorDefaults.indicatorColor;
                 break;

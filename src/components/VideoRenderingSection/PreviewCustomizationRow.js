@@ -1,4 +1,3 @@
-import React from 'react';
 import RemotionVideoPreview from '../RemotionVideoPreview';
 import SubtitleCustomizationPanel from '../SubtitleCustomizationPanel';
 

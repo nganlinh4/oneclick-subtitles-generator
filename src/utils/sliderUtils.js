@@ -10,7 +10,7 @@
  * @param {string} orientation - 'horizontal' or 'vertical'
  * @returns {string} - CSS percentage value for position
  */
-export const calculateStandardSliderHandlePosition = (percentage, orientation = 'horizontal') => {
+export const calculateStandardSliderHandlePosition = (percentage, _orientation = 'horizontal') => {
   // Figma design uses direct percentage positioning
   return `${percentage}%`;
 };
@@ -21,7 +21,7 @@ export const calculateStandardSliderHandlePosition = (percentage, orientation = 
  * @param {string} orientation - 'horizontal' or 'vertical'
  * @returns {string} - CSS percentage value for width/height
  */
-export const calculateStandardSliderActiveTrackSize = (percentage, orientation = 'horizontal') => {
+export const calculateStandardSliderActiveTrackSize = (percentage, _orientation = 'horizontal') => {
   // Figma design uses direct percentage for active track size
   return `${percentage}%`;
 };

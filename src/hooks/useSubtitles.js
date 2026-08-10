@@ -2,7 +2,7 @@ import { useState, useCallback, useEffect, useRef } from 'react';
 import { callGeminiApi, setProcessingForceStopped } from '../services/geminiService';
 import { generateFileCacheId } from '../utils/cacheUtils';
 import { getVideoDuration } from '../utils/videoProcessor';
-import { EVENTS, publishSaveBeforeUpdate, subscribe } from '../events/bus';
+import { EVENTS, subscribe } from '../events/bus';
 import { processGeminiSegment } from '../services/engines/GeminiAdapter';
 import { getGeminiModel } from '../services/configService';
 
@@ -19,6 +19,7 @@ import { runAsrGeneration } from './runAsrGeneration';
 import { DESCRIPTORS, LOCAL_METHOD_IDS } from '../services/engines/transcriptionEngineRegistry';
 import { isHighIntelligenceModel } from '../config/geminiModels';
 import { createSegmentStreamingHandler, createFullMediaStreamingHandler } from './subtitleStreamingHandlers';
+import { fetchBrowserResource } from '../platform/browserFetch';
 
 // Cache utilities moved to services/subtitleCache
 
@@ -33,7 +34,11 @@ const LOCAL_METHODS = new Set(LOCAL_METHOD_IDS);
 export const useSubtitles = (t) => {
     // Debug logger gated by localStorage.debug_logs
     const debugLog = (...args) => {
-        try { if (localStorage.getItem('debug_logs') === 'true') console.log(...args); } catch {}
+        try {
+            if (localStorage.getItem('debug_logs') === 'true') console.log(...args);
+        } catch {
+            // Debug logging must never affect subtitle generation.
+        }
     };
     const [subtitlesData, setSubtitlesData] = useState(null);
     const [status, setStatus] = useState({ message: '', type: '' });
@@ -195,26 +200,13 @@ export const useSubtitles = (t) => {
                     }
                 }
 
-                // FIRST: Trigger save to preserve any manual edits before processing starts
-                // Use a Promise to wait for the save to actually complete
-                await new Promise((resolve) => {
-                    const handleSaveComplete = (event) => {
-                        if (event.detail?.source === 'segment-processing-start') {
-                            window.removeEventListener(EVENTS.SAVE_COMPLETE, handleSaveComplete);
-                            resolve();
-                        }
-                    };
-
-                    window.addEventListener(EVENTS.SAVE_COMPLETE, handleSaveComplete);
-
-                    // Trigger the save
-                    publishSaveBeforeUpdate({ source: 'segment-processing-start', segment });
-
-                    // Fallback timeout in case save doesn't complete
-                    setTimeout(() => {
-                        window.removeEventListener(EVENTS.SAVE_COMPLETE, handleSaveComplete);
-                        resolve();
-                    }, 2000);
+                // FIRST: persist manual edits. Failure or timeout must abort before streaming can
+                // replace the segment the user was editing.
+                const { checkpointBeforeUpdate } = await import('../services/lifecycleOrchestrator');
+                await checkpointBeforeUpdate({
+                    source: 'segment-processing-start',
+                    segment,
+                    runId
                 });
 
                 // Process the specific segment with streaming via Gemini adapter
@@ -418,7 +410,7 @@ export const useSubtitles = (t) => {
                                 ytFile = new File([blob], 'youtube.mp4', { type: blob.type || 'video/mp4' });
                             } else {
                                 // Fetching a blob: URL stays in-memory, not a network download
-                                const blob = await fetch(blobUrl).then(r => r.blob());
+                                const blob = await fetchBrowserResource(blobUrl).then(r => r.blob());
                                 ytFile = new File([blob], 'youtube.mp4', { type: blob.type || 'video/mp4' });
                             }
                         }
@@ -479,7 +471,7 @@ export const useSubtitles = (t) => {
                 if (subtitles && subtitles.length > 0) {
                     // First, checkpoint save of current state to preserve any manual edits
                     const { checkpointBeforeUpdate } = await import('../services/lifecycleOrchestrator');
-                    await checkpointBeforeUpdate({ source: 'video-processing-complete' });
+                    await checkpointBeforeUpdate({ source: 'video-processing-complete', runId });
                     setSubtitlesData(subtitles);
                 } else {
                     // If no subtitles, just update normally
@@ -530,7 +522,7 @@ export const useSubtitles = (t) => {
         } finally {
             setIsGenerating(false);
         }
-    }, [t]);
+    }, [t, startQuotaCountdown]);
 
     const { retryGeneration } = useSubtitlesRetryGeneration({
         t,

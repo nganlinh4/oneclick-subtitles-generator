@@ -218,7 +218,7 @@ export default function PlayPauseMorphType4({
     el.setAttribute('data-ppm4', pulseAnim);
     el.textContent = `@keyframes ${pulseAnim}{0%{transform:scale(1)}40%{transform:scale(1.06)}100%{transform:scale(1)}}`;
     document.head.appendChild(el);
-    return () => { try { document.head.removeChild(el); } catch(_){} };
+    return () => { try { document.head.removeChild(el); } catch (_) { /* Already detached. */ } };
   }, [pulseAnim]);
 
   const anim1Ref = useRef(null);
@@ -232,7 +232,7 @@ export default function PlayPauseMorphType4({
     // --- [FIX] START: Rotation animation logic ---
     const containerEl = containerRef.current;
     if (animContainerRef.current) {
-        try { animContainerRef.current.cancel(); } catch {}
+        try { animContainerRef.current.cancel(); } catch { /* Already cancelled. */ }
         animContainerRef.current = null;
     }
     // Define the start and end rotation states
@@ -263,7 +263,7 @@ export default function PlayPauseMorphType4({
     validParts.forEach(({ el, animRef }) => {
       el.getAnimations?.().forEach(a => a.cancel());
       if (animRef.current) {
-        try { animRef.current.cancel(); } catch {}
+        try { animRef.current.cancel(); } catch { /* Already cancelled. */ }
         animRef.current = null;
       }
     });

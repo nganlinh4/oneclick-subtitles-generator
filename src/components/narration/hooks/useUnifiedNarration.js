@@ -5,15 +5,12 @@ import useNarrationEffects, { createSetReferenceTextWithCache } from './useNarra
 // Import custom hooks
 import useNarrationState from './useNarrationState';
 import useAvailabilityCheck from './useAvailabilityCheck';
-import useGeminiNarration from './useGeminiNarration';
-import useChatterboxNarration from './useChatterboxNarration';
-import useEdgeTTSNarration from './useEdgeTTSNarration';
-import useGTTSNarration from './useGTTSNarration';
 import useAudioPlayback from './useAudioPlayback';
 import useNarrationStorage from './useNarrationStorage';
 import useUIEffects from './useUIEffects';
 import useNarrationCache from './useNarrationCache';
 import useWindowStateManager from './useWindowStateManager';
+import useNativeNarrationController from './useNativeNarrationController';
 
 /**
  * Orchestrates all narration state, the per-method generation hooks, side-effects and handlers
@@ -124,158 +121,12 @@ const useUnifiedNarration = ({
     t
   });
 
-  // Use Gemini narration hook
-  const {
-    handleGeminiNarration,
-    cancelGeminiGeneration,
-    retryGeminiNarration,
-    retryFailedGeminiNarrations,
-    generateAllPendingGeminiNarrations
-  } = useGeminiNarration({
-    setIsGenerating,
-    setGenerationStatus,
-    setError,
-    setGenerationResults,
-    generationResults,
-    subtitleSource,
-    originalSubtitles,
-    translatedSubtitles,
-    subtitles,
-    originalLanguage,
-    translatedLanguage,
-    selectedVoice,
-    concurrentClients,
-    useGroupedSubtitles,
-    setUseGroupedSubtitles,
-    groupedSubtitles,
-    setGroupedSubtitles,
-    isGroupingSubtitles,
-    setIsGroupingSubtitles,
-    groupingIntensity,
-    t,
-    setRetryingSubtitleId
-  });
-
-  // Use Chatterbox narration hook
-  const {
-    handleChatterboxNarration,
-    cancelChatterboxGeneration,
-    retryChatterboxNarration,
-    retryFailedChatterboxNarrations,
-    generateAllPendingChatterboxNarrations
-  } = useChatterboxNarration({
-    setIsGenerating,
-    setGenerationStatus,
-    setError,
-    setGenerationResults,
-    generationResults,
-    subtitleSource,
-    originalSubtitles,
-    translatedSubtitles,
-    subtitles,
-    originalLanguage,
-    translatedLanguage,
-    exaggeration,
-    cfgWeight,
-    chatterboxLanguage,
-    referenceAudio,
-    useGroupedSubtitles,
-    setUseGroupedSubtitles,
-    groupedSubtitles,
-    setGroupedSubtitles,
-    isGroupingSubtitles,
-    setIsGroupingSubtitles,
-    groupingIntensity,
-    t,
-    setRetryingSubtitleId,
-    plannedSubtitles: (useGroupedSubtitles && groupedSubtitles && groupedSubtitles.length > 0)
-      ? groupedSubtitles
-      : (subtitleSource === 'translated' && translatedSubtitles && translatedSubtitles.length > 0)
-        ? translatedSubtitles
-        : (originalSubtitles || subtitles || [])
-  });
-
-  // Use Edge TTS narration hook
-  const {
-    handleEdgeTTSNarration,
-    cancelEdgeTTSGeneration,
-    retryEdgeTTSNarration,
-    retryFailedEdgeTTSNarrations,
-    generateAllPendingEdgeTTSNarrations
-  } = useEdgeTTSNarration({
-    setIsGenerating,
-    setGenerationStatus,
-    setError,
-    setGenerationResults,
-    generationResults,
-    subtitleSource,
-    originalSubtitles,
-    translatedSubtitles,
-    subtitles,
-    originalLanguage,
-    translatedLanguage,
-    selectedVoice: edgeTTSVoice,
-    setSelectedVoice: setEdgeTTSVoice,
-    rate: edgeTTSRate,
-    setRate: setEdgeTTSRate,
-    volume: edgeTTSVolume,
-    setVolume: setEdgeTTSVolume,
-    pitch: edgeTTSPitch,
-    setPitch: setEdgeTTSPitch,
-    t,
-    setRetryingSubtitleId,
-    useGroupedSubtitles,
-    groupedSubtitles,
-    setUseGroupedSubtitles,
-    plannedSubtitles: (useGroupedSubtitles && groupedSubtitles && groupedSubtitles.length > 0)
-      ? groupedSubtitles
-      : (subtitleSource === 'translated' && translatedSubtitles && translatedSubtitles.length > 0)
-        ? translatedSubtitles
-        : (originalSubtitles || subtitles || [])
-  });
-
-  // Use gTTS narration hook
-  const {
-    handleGTTSNarration,
-    cancelGTTSGeneration,
-    retryGTTSNarration,
-    retryFailedGTTSNarrations,
-    generateAllPendingGTTSNarrations
-  } = useGTTSNarration({
-    setIsGenerating,
-    setGenerationStatus,
-    setError,
-    setGenerationResults,
-    generationResults,
-    subtitleSource,
-    originalSubtitles,
-    translatedSubtitles,
-    subtitles,
-    originalLanguage,
-    translatedLanguage,
-    selectedLanguage: gttsLanguage,
-    setSelectedLanguage: setGttsLanguage,
-    tld: gttsTld,
-    setTld: setGttsTld,
-    slow: gttsSlow,
-    setSlow: setGttsSlow,
-    t,
-    setRetryingSubtitleId,
-    useGroupedSubtitles,
-    groupedSubtitles,
-    setUseGroupedSubtitles,
-    plannedSubtitles: (useGroupedSubtitles && groupedSubtitles && groupedSubtitles.length > 0)
-      ? groupedSubtitles
-      : (subtitleSource === 'translated' && translatedSubtitles && translatedSubtitles.length > 0)
-        ? translatedSubtitles
-        : (originalSubtitles || subtitles || [])
-  });
-
   // Use audio playback hook
   const { audioRef, handleAudioEnded } = useAudioPlayback({
     isPlaying,
     currentAudio,
-    setIsPlaying
+    setIsPlaying,
+    setCurrentAudio
   });
 
   // Use narration storage hook
@@ -346,6 +197,14 @@ const useUnifiedNarration = ({
     generationStatus
   });
 
+  const nativeNarrationHandlers = useNativeNarrationController({
+    ...narrationState,
+    subtitles,
+    originalSubtitles,
+    translatedSubtitles,
+    t
+  });
+
   // Import the handler functions from separate file to keep this component clean
   const {
     handleFileUpload,
@@ -413,7 +272,8 @@ const useUnifiedNarration = ({
     useGroupedSubtitles,
     setUseGroupedSubtitles,
     groupedSubtitles,
-    narrationMethod
+    narrationMethod,
+    nativeNarrationHandlers
   });
 
   // Check if all narration services are unavailable
@@ -478,32 +338,32 @@ const useUnifiedNarration = ({
     setReferenceTextWithCache,
 
     // Gemini handlers
-    handleGeminiNarration,
-    cancelGeminiGeneration,
-    retryGeminiNarration,
-    retryFailedGeminiNarrations,
-    generateAllPendingGeminiNarrations,
+    handleGeminiNarration: nativeNarrationHandlers.handleGeminiNarration,
+    cancelGeminiGeneration: nativeNarrationHandlers.cancelGeminiGeneration,
+    retryGeminiNarration: nativeNarrationHandlers.retryGeminiNarration,
+    retryFailedGeminiNarrations: nativeNarrationHandlers.retryFailedGeminiNarrations,
+    generateAllPendingGeminiNarrations: nativeNarrationHandlers.generateAllPendingGeminiNarrations,
 
     // Chatterbox handlers
-    handleChatterboxNarration,
-    cancelChatterboxGeneration,
-    retryChatterboxNarration,
-    retryFailedChatterboxNarrations,
-    generateAllPendingChatterboxNarrations,
+    handleChatterboxNarration: nativeNarrationHandlers.handleChatterboxNarration,
+    cancelChatterboxGeneration: nativeNarrationHandlers.cancelChatterboxGeneration,
+    retryChatterboxNarration: nativeNarrationHandlers.retryChatterboxNarration,
+    retryFailedChatterboxNarrations: nativeNarrationHandlers.retryFailedChatterboxNarrations,
+    generateAllPendingChatterboxNarrations: nativeNarrationHandlers.generateAllPendingChatterboxNarrations,
 
     // Edge TTS handlers
-    handleEdgeTTSNarration,
-    cancelEdgeTTSGeneration,
-    retryEdgeTTSNarration,
-    retryFailedEdgeTTSNarrations,
-    generateAllPendingEdgeTTSNarrations,
+    handleEdgeTTSNarration: nativeNarrationHandlers.handleEdgeTTSNarration,
+    cancelEdgeTTSGeneration: nativeNarrationHandlers.cancelEdgeTTSGeneration,
+    retryEdgeTTSNarration: nativeNarrationHandlers.retryEdgeTTSNarration,
+    retryFailedEdgeTTSNarrations: nativeNarrationHandlers.retryFailedEdgeTTSNarrations,
+    generateAllPendingEdgeTTSNarrations: nativeNarrationHandlers.generateAllPendingEdgeTTSNarrations,
 
     // gTTS handlers
-    handleGTTSNarration,
-    cancelGTTSGeneration,
-    retryGTTSNarration,
-    retryFailedGTTSNarrations,
-    generateAllPendingGTTSNarrations,
+    handleGTTSNarration: nativeNarrationHandlers.handleGTTSNarration,
+    cancelGTTSGeneration: nativeNarrationHandlers.cancelGTTSGeneration,
+    retryGTTSNarration: nativeNarrationHandlers.retryGTTSNarration,
+    retryFailedGTTSNarrations: nativeNarrationHandlers.retryFailedGTTSNarrations,
+    generateAllPendingGTTSNarrations: nativeNarrationHandlers.generateAllPendingGTTSNarrations,
 
     // Audio playback
     audioRef, handleAudioEnded,

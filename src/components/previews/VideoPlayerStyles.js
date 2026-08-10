@@ -1,4 +1,3 @@
-import React from 'react';
 
 /**
  * Static <style> block for the video preview: spinner keyframes, hiding the

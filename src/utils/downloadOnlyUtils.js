@@ -1,33 +1,27 @@
-/**
- * Utility functions for download-only functionality
- */
+import { validate as validateUuid, version as uuidVersion } from 'uuid';
 
-const SERVER_URL = 'http://localhost:3031';
+import { invokeDesktop } from '../platform/desktopRuntime';
 
-/**
- * Cancel an active download-only process
- * @param {string} videoId - The video ID to cancel
- * @returns {Promise<boolean>} - Success status
- */
-export const cancelDownloadOnly = async (videoId) => {
+const CANCELLABLE_JOB_KINDS = new Set(['downloadMedia', 'exportMedia']);
+const CANCELLING_STATES = new Set(['cancelling', 'cancelled']);
+
+const isUuidV7 = (value) => {
+  if (typeof value !== 'string' || !validateUuid(value)) return false;
   try {
-    console.log('[DownloadOnly] Cancelling download:', videoId);
+    return uuidVersion(value) === 7;
+  } catch {
+    return false;
+  }
+};
 
-    const response = await fetch(`${SERVER_URL}/api/cancel-download-only/${videoId}`, {
-      method: 'POST',
-    });
-
-    if (!response.ok) {
-      const errorData = await response.json();
-      console.error('[DownloadOnly] Failed to cancel download:', errorData.error);
-      return false;
-    }
-
-    const data = await response.json();
-    console.log('[DownloadOnly] Server cancel response:', data);
-    return true;
-  } catch (error) {
-    console.error('[DownloadOnly] Error cancelling download:', error);
+export const cancelDownloadOnly = async (id) => {
+  if (!isUuidV7(id)) return false;
+  try {
+    const job = await invokeDesktop('job_cancel', { id });
+    return job?.id === id
+      && CANCELLABLE_JOB_KINDS.has(job.kind)
+      && CANCELLING_STATES.has(job.state);
+  } catch {
     return false;
   }
 };

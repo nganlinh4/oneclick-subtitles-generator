@@ -1,5 +1,7 @@
 import { resetGeminiButtonState } from "../../../utils/geminiEffects";
 import { downloadAndPrepareYouTubeVideo } from "../VideoProcessingHandlers";
+import { isDesktopRuntime } from "../../../platform/runtimeEnvironment";
+import { clearProjectSubtitles } from "../../../platform/subtitleProjectStore";
 
 // Gated debug logging (enable in the browser console: localStorage.debug_logs = 'true')
 const DEBUG_LOGS = (typeof window !== 'undefined') && (localStorage.getItem('debug_logs') === 'true');
@@ -146,7 +148,9 @@ export const createProcessingHandlers = ({
         // Clear processing ranges overlay
         try {
           window.dispatchEvent(new CustomEvent('processing-ranges', { detail: { ranges: [] } }));
-        } catch {}
+        } catch {
+          // Overlay cleanup is advisory after processing completes.
+        }
         dbg(
           "[ProcessWithOptions] Processing complete, animation should stop"
         );
@@ -362,27 +366,11 @@ export const createProcessingHandlers = ({
         // First, delete any existing subtitle files to force regeneration
         dbg("FORCE RETRY: Deleting existing subtitle files...");
         try {
-          const response = await fetch("/api/delete-subtitles", {
-            method: "POST",
-            headers: {
-              "Content-Type": "application/json",
-            },
-            body: JSON.stringify({
-              // Send any identifiers that might help locate the files
-              videoUrl:
-                selectedVideo?.url || localStorage.getItem("current_video_url"),
-              fileName:
-                uploadedFile?.name || localStorage.getItem("current_file_name"),
-              cacheId: localStorage.getItem("current_file_cache_id"),
-            }),
-          });
-
-          if (response.ok) {
+          if (isDesktopRuntime()) {
+            await clearProjectSubtitles(localStorage.getItem("current_file_cache_id"));
             dbg("FORCE RETRY: Subtitle files deleted successfully");
           } else {
-            dbg(
-              "FORCE RETRY: Could not delete subtitle files, but continuing..."
-            );
+            dbg("FORCE RETRY: Native subtitle cleanup is unavailable, continuing...");
           }
         } catch (deleteError) {
           dbg(

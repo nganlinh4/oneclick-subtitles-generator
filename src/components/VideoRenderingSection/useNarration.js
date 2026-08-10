@@ -47,61 +47,25 @@ export const useNarration = ({ selectedNarration, narrationResults }) => {
   };
 
   // Get narration audio URL if available - same as refresh narration button
-  const getNarrationAudioUrl = async () => {
-    // First check if aligned narration is already available
-    if (isAlignedNarrationAvailable()) {
-      return window.alignedNarrationCache.url;
-    }
+  const getNarrationAudioUrl = async (narrationSelection = selectedNarration) => {
+    const {
+      generateAlignedNarration,
+      getAlignedNarrationUrl,
+    } = await import('../../services/alignedNarrationService.js');
+    const currentUrl = getAlignedNarrationUrl();
+    if (currentUrl) return currentUrl;
+    if (narrationSelection !== 'generated' || !narrationResults?.length) return null;
+    const generated = await generateAlignedNarration(narrationResults);
+    return generated ? getAlignedNarrationUrl() : null;
+  };
 
-    // If not available and user selected generated narration, try to generate it
-    if (selectedNarration === 'generated' && narrationResults && narrationResults.length > 0) {
-      try {
-        // Use the same logic as the refresh narration button
-        const narrationData = narrationResults.map(result => ({
-          filename: result.filename,
-          start: result.start ?? result.start_time ?? 0,
-          end: result.end ?? result.end_time ?? 5,
-          subtitle_id: result.subtitle_id
-        }));
-
-        // Call the same endpoint as refresh narration button
-        const response = await fetch(`http://localhost:3031/api/narration/generate-aligned`, {
-          method: 'POST',
-          mode: 'cors',
-          credentials: 'include',
-          headers: {
-            'Content-Type': 'application/json',
-            'Accept': 'application/json'
-          },
-          body: JSON.stringify({ narrations: narrationData, format: 'm4a' })
-        });
-
-        if (response.ok) {
-          // Check for audio alignment notification
-          const { checkAudioAlignmentFromResponse } = await import('../../utils/audioAlignmentNotification.js');
-          checkAudioAlignmentFromResponse(response);
-          const responseJson = await response.json();
-          const url = responseJson.filename
-            ? `http://localhost:3031/api/narration/audio/${encodeURIComponent(responseJson.filename)}`
-            : `http://localhost:3031${responseJson.url}`;
-
-          // Update the cache like the refresh button does
-          window.alignedNarrationCache = {
-            blob: null,
-            url: url,
-            filename: responseJson.filename,
-            timestamp: Date.now(),
-            subtitleTimestamps: {}
-          };
-          window.isAlignedNarrationAvailable = true;
-
-          return url;
-        }
-      } catch (error) {
-        console.error('Failed to get aligned narration:', error);
-      }
-    }
-    return null;
+  const getNarrationArtifactId = async (narrationSelection = selectedNarration) => {
+    if (narrationSelection !== 'generated') return null;
+    const { getAlignedNarrationArtifactId } = await import('../../services/alignedNarrationService.js');
+    const currentArtifactId = getAlignedNarrationArtifactId();
+    if (currentArtifactId) return currentArtifactId;
+    await getNarrationAudioUrl(narrationSelection);
+    return getAlignedNarrationArtifactId();
   };
 
   // Refresh narration function - same logic as the main video player
@@ -184,12 +148,13 @@ export const useNarration = ({ selectedNarration, narrationResults }) => {
 
       // Prepare the data for the aligned narration with correct timing
       const narrationData = hydrateNarrationResultsForAlignment(narrations)
-        .filter(result => result.success && result.filename)
+        .filter(result => result.success && (result.nativeArtifactId || result.filename))
         .map(result => {
           const subtitle = subtitleMap[result.subtitle_id];
           if (subtitle && typeof subtitle.start === 'number' && typeof subtitle.end === 'number') {
             return {
               filename: result.filename,
+              nativeArtifactId: result.nativeArtifactId,
               subtitle_id: result.subtitle_id,
               start: subtitle.start,
               end: subtitle.end,
@@ -198,6 +163,7 @@ export const useNarration = ({ selectedNarration, narrationResults }) => {
           }
           return {
             filename: result.filename,
+            nativeArtifactId: result.nativeArtifactId,
             subtitle_id: result.subtitle_id,
             start: 0,
             end: 5,
@@ -212,59 +178,19 @@ export const useNarration = ({ selectedNarration, narrationResults }) => {
         throw new Error('No valid narration files found. Please generate narrations first.');
       }
 
-      // Call the same endpoint as refresh narration button
-      const response = await fetch(`http://localhost:3031/api/narration/generate-aligned`, {
-        method: 'POST',
-        mode: 'cors',
-        credentials: 'include',
-        headers: {
-          'Content-Type': 'application/json',
-          'Accept': 'application/json'
-        },
-        body: JSON.stringify({ narrations: narrationData, format: 'm4a' })
-      });
-
-      // Check for audio alignment notification after successful response
-      if (response.ok) {
-        const { checkAudioAlignmentFromResponse } = await import('../../utils/audioAlignmentNotification.js');
-        checkAudioAlignmentFromResponse(response);
+      const {
+        generateAlignedNarration,
+        getAlignedNarrationUrl,
+      } = await import('../../services/alignedNarrationService.js');
+      const generated = await generateAlignedNarration(narrationData);
+      const url = getAlignedNarrationUrl();
+      if (!generated || !url) {
+        throw new Error('No valid narration files found. Please generate narrations first.');
       }
-
-      if (!response.ok) {
-        const errorText = await response.text();
-        try {
-          const errorJson = JSON.parse(errorText);
-          if (errorJson.error && errorJson.error.includes('Audio file not found')) {
-            throw new Error(`Some narration files are missing. Please regenerate narrations before refreshing.`);
-          } else {
-            throw new Error(`Failed to generate aligned audio: ${errorJson.error || response.statusText}`);
-          }
-        } catch (jsonError) {
-          throw new Error(`Failed to generate aligned audio: ${errorText || response.statusText}`);
-        }
-      }
-
-      const responseJson = await response.json();
-      const url = responseJson.filename
-        ? `http://localhost:3031/api/narration/audio/${encodeURIComponent(responseJson.filename)}`
-        : `http://localhost:3031${responseJson.url}`;
-
-      // Update the aligned narration cache
-      window.alignedNarrationCache = {
-        blob: null,
-        url: url,
-        filename: responseJson.filename,
-        timestamp: Date.now(),
-        subtitleTimestamps: {}
-      };
-
-      // Set a flag to indicate that aligned narration is available
       window.isAlignedNarrationAvailable = true;
-
-      // Notify the system that aligned narration is available
       window.dispatchEvent(new CustomEvent('aligned-narration-ready', {
         detail: {
-          url: url,
+          url,
           timestamp: Date.now()
         }
       }));
@@ -291,6 +217,7 @@ export const useNarration = ({ selectedNarration, narrationResults }) => {
     isAlignedNarrationAvailable,
     hasNarrationSegments,
     getNarrationAudioUrl,
+    getNarrationArtifactId,
     handleRefreshNarration,
   };
 };

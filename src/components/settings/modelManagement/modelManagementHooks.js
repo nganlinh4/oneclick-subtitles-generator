@@ -1,7 +1,12 @@
 import { useState, useEffect, useCallback } from 'react';
-import { getModels, getModelDownloadStatus, getModelStorageInfo, scanModelsDirectory } from '../../../services/modelService';
+import {
+  getModels,
+  getModelDownloadStatus,
+  getModelServiceStatus,
+  getModelStorageInfo,
+  scanModelsDirectory
+} from '../../../services/modelService';
 import { invalidateModelsCache } from '../../../services/modelAvailabilityService';
-import { checkNarrationStatus } from '../../../services/narrationService';
 
 /**
  * Custom hook for managing models
@@ -18,7 +23,7 @@ export const useModels = () => {
   // Check if narration service is available
   const checkServiceAvailability = useCallback(async () => {
     try {
-      const status = await checkNarrationStatus();
+      const status = await getModelServiceStatus();
       setIsServiceAvailable(status.available);
       return status.available;
     } catch (error) {
@@ -166,7 +171,7 @@ export const useDownloads = (fetchModels) => {
   // Check if narration service is available
   const checkServiceAvailability = useCallback(async () => {
     try {
-      const status = await checkNarrationStatus();
+      const status = await getModelServiceStatus();
       setIsServiceAvailable(status.available);
       return status.available;
     } catch (error) {

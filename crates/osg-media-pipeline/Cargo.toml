@@ -1,0 +1,17 @@
+[package]
+name = "osg-media-pipeline"
+version.workspace = true
+authors.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+description = "Native orchestration for OSG media compatibility, extraction, and waveforms"
+license = "MIT"
+
+[dependencies]
+osg-media.workspace = true
+serde.workspace = true
+tempfile = "3.27.0"
+thiserror.workspace = true
+
+[lints]
+workspace = true

@@ -10,6 +10,9 @@ import './utils/sliderDragHandler';
 import './utils/sliderResetHandler';
 import './utils/sliderDefaults';
 import { getThemeWithFallback, setupSystemThemeListener } from './utils/systemDetection';
+import { installDesktopExternalLinkGuard } from './platform/externalLinkService';
+import { startNativeJobRecovery } from './platform/jobRecoveryCoordinator';
+import { installLegacyImportKeyboardAction } from './platform/legacyImportService';
 
 // Suppress harmless ResizeObserver loop error
 const suppressResizeObserverError = () => {
@@ -54,6 +57,9 @@ const suppressResizeObserverError = () => {
 
 // Initialize error suppression
 suppressResizeObserverError();
+installDesktopExternalLinkGuard();
+installLegacyImportKeyboardAction();
+startNativeJobRecovery().catch(() => undefined);
 
 // Theme initialization
 const initializeTheme = () => {

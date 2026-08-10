@@ -1,5 +1,3 @@
-import React from 'react';
-
 export const getStatusIcon = (status) => {
   switch (status) {
     case 'pending':

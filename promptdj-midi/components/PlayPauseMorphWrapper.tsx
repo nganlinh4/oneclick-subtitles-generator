@@ -106,7 +106,6 @@ class PlayPauseMorphElement extends HTMLElement {
               showContainer={false}
               theme={'dark'}
               className={''}
-              style={undefined}
             />
           </div>
         )}

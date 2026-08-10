@@ -1,4 +1,3 @@
-import React from 'react';
 import LiquidGlass from '../../common/LiquidGlass';
 import StandardSlider from '../../common/StandardSlider';
 

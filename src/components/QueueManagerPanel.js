@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import { useState, useEffect } from 'react';
 import { useTranslation } from 'react-i18next';
 
 import '../styles/QueueManagerPanel.css';
@@ -6,6 +6,10 @@ import { getVideoNumber } from './queue/queueHelpers';
 import { fetchPreviewInfo, fetchPreviewExtra, fetchHeadInfo } from './queue/previewDataFetching';
 import QueueItemRow from './queue/QueueItemRow';
 import PreviewModal from './queue/PreviewModal';
+import { isDesktopRuntime } from '../platform/desktopRuntime';
+import { exportMediaAsset } from '../platform/mediaExportService';
+import { isNativeMediaPlaybackUrl } from '../platform/mediaService';
+import { fetchBrowserResource } from '../platform/browserFetch';
 
 const QueueManagerPanel = ({
   queue,
@@ -72,8 +76,16 @@ const QueueManagerPanel = ({
 
   const handleDownloadVideo = async (outputPath, item) => {
     try {
+      if (isDesktopRuntime()) {
+        if (!item?.outputAssetId) throw new Error('Native rendered media is unavailable');
+        await exportMediaAsset(item.outputAssetId);
+        return;
+      }
+      if (isNativeMediaPlaybackUrl(outputPath)) {
+        throw new Error('Native rendered media requires native export');
+      }
       // Fetch the video as a blob
-      const response = await fetch(outputPath);
+      const response = await fetchBrowserResource(outputPath);
       if (!response.ok) {
         throw new Error('Failed to fetch video');
       }
@@ -95,6 +107,7 @@ const QueueManagerPanel = ({
       }, 100);
     } catch (error) {
       console.error('Error downloading video:', error);
+      if (isDesktopRuntime() || isNativeMediaPlaybackUrl(outputPath)) return;
       // Fallback to direct link if fetch fails
       const a = document.createElement('a');
       a.href = outputPath;
@@ -117,13 +130,16 @@ const QueueManagerPanel = ({
       const isServerVideo = previewUrl.includes('/videos/');
 
       // Fetch detailed info (supports /videos and non-/videos via probe)
-      fetchPreviewInfo(previewUrl).then((data) => {
+      fetchPreviewInfo(previewUrl, previewItem?.outputAssetId).then((data) => {
         if (data) setPreviewInfo(data);
       });
 
       // Extra file info from server only for /videos (size/created also comes from HEAD below)
       if (isServerVideo) {
-        fetchPreviewExtra(previewUrl).then((data) => {
+        fetchPreviewExtra(previewUrl, {
+          assetId: previewItem?.outputAssetId,
+          sizeBytes: previewItem?.outputSizeBytes,
+        }).then((data) => {
           setPreviewExtra(data);
         });
       }
@@ -131,7 +147,10 @@ const QueueManagerPanel = ({
       // Always try HEAD when it's http(s) (works for both absolute and same-origin URLs)
       if (/^https?:/.test(previewUrl) || previewUrl.startsWith('/')) {
         const absolute = previewUrl.startsWith('http') ? previewUrl : `${window.location.origin}${previewUrl}`;
-        fetchHeadInfo(absolute).then((data) => {
+        fetchHeadInfo(absolute, {
+          assetId: previewItem?.outputAssetId,
+          sizeBytes: previewItem?.outputSizeBytes,
+        }).then((data) => {
           if (data) setPreviewExtra(data);
         });
       }
@@ -140,7 +159,7 @@ const QueueManagerPanel = ({
       setPreviewExtra(null);
       setPreviewDuration(null);
     }
-  }, [previewOpen, previewUrl]);
+  }, [previewItem, previewOpen, previewUrl]);
 
   return (
     <>

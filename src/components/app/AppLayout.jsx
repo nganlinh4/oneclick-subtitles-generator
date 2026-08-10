@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import { useEffect, useState } from 'react';
 import Header from '../Header';
 import InputMethods from '../InputMethods';
 import OutputContainer from '../OutputContainer';
@@ -10,7 +10,6 @@ import BackgroundImageGenerator from '../BackgroundImageGenerator';
 import VideoRenderingSection from '../VideoRenderingSection';
 import VideoQualityModal from '../VideoQualityModal';
 import FloatingScrollbar from '../FloatingScrollbar';
-import OnboardingBanner from '../OnboardingBanner';
 import VideoProcessingOptionsModal from '../VideoProcessingOptionsModal';
 import { useVideoInfo } from '../../hooks/useVideoInfo';
 import BackgroundMusicSection from '../BackgroundMusicSection';
@@ -77,12 +76,7 @@ const AppLayout = ({
           }
         };
         requestAnimationFrame(animate);
-      } else {
-
       }
-
-      // Check if the container is still collapsed
-      const isStillCollapsed = backgroundGenerator?.classList.contains('collapsed');
 
     }, 500); // Increased timeout to ensure component is rendered
   };
@@ -131,7 +125,6 @@ const AppLayout = ({
     validateInput,
     handleSrtUpload,
     handleGenerateSubtitles,
-    handleRetryGeneration,
     handleCancelDownload,
     handleTabChange,
     saveApiKeys,
@@ -549,7 +542,9 @@ const AppLayout = ({
               if (reason === 'retry-offline' && selectedSegment && typeof selectedSegment.start === 'number' && typeof selectedSegment.end === 'number') {
                 window.dispatchEvent(new CustomEvent('retry-offline-modal-closed', { detail: { start: selectedSegment.start, end: selectedSegment.end, confirmed: false } }));
               }
-            } catch {}
+            } catch {
+              // Session recovery is best effort when storage is unavailable.
+            }
             setShowProcessingModal(false);
             setSelectedSegment(null);
           }}

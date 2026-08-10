@@ -1,6 +1,6 @@
-import React, { useState, useEffect } from 'react';
+import { useState, useEffect } from 'react';
 import { useTranslation } from 'react-i18next';
-import { SERVER_URL } from '../../../config';
+import { probeSpeechBackend } from '../../../platform/speechService';
 import SliderWithValue from '../../common/SliderWithValue';
 import VoiceSelectionModal from './VoiceSelectionModal';
 import '../../../styles/narration/narrationAdvancedSettingsRedesign.css';
@@ -43,13 +43,16 @@ const EdgeTTSControls = ({
     const loadVoices = async () => {
       try {
         setLoading(true);
-        const response = await fetch(`${SERVER_URL}/api/narration/edge-tts/voices`);
-
-        if (!response.ok) {
-          throw new Error(`HTTP error! status: ${response.status}`);
-        }
-
-        const data = await response.json();
+        const probe = await probeSpeechBackend('edgeTts');
+        const data = {
+          voices: probe.voices.map((voice) => ({
+            short_name: voice.id,
+            display_name: voice.displayName,
+            language: voice.language.split('-')[0],
+            locale: voice.language,
+            gender: voice.gender,
+          })),
+        };
         setVoices(data.voices || []);
 
         // Show warning if using cached or fallback voices
@@ -90,40 +93,6 @@ const EdgeTTSControls = ({
 
     loadVoices();
   }, [selectedVoice, setSelectedVoice, detectedLanguage]);
-
-  // Handle voice selection change
-  const handleVoiceChange = (e) => {
-    const newVoice = e.target.value;
-    setSelectedVoice(newVoice);
-  };
-
-  // Handle rate change
-  const handleRateChange = (e) => {
-    const newRate = e.target.value;
-    setRate(newRate);
-  };
-
-  // Handle volume change
-  const handleVolumeChange = (e) => {
-    const newVolume = e.target.value;
-    setVolume(newVolume);
-  };
-
-  // Handle pitch change
-  const handlePitchChange = (e) => {
-    const newPitch = e.target.value;
-    setPitch(newPitch);
-  };
-
-  // Group voices by language for better organization
-  const groupedVoices = voices.reduce((groups, voice) => {
-    const language = voice.language || 'unknown';
-    if (!groups[language]) {
-      groups[language] = [];
-    }
-    groups[language].push(voice);
-    return groups;
-  }, {});
 
   // Handle voice modal
   const openVoiceModal = () => setIsVoiceModalOpen(true);

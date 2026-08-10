@@ -105,14 +105,14 @@ fn parse_timestamp_part(part: &str, original: &str) -> Result<i64, SubtitleForma
 #[must_use]
 pub fn write_srt(track: &SubtitleTrack) -> String {
     let mut output = String::new();
-    for cue in &track.cues {
-        output.push_str(&cue.ordinal.to_string());
+    for cue in track.cues() {
+        output.push_str(&cue.ordinal().to_string());
         output.push('\n');
-        output.push_str(&format_timestamp(cue.start_ms));
+        output.push_str(&format_timestamp(cue.start_ms()));
         output.push_str(" --> ");
-        output.push_str(&format_timestamp(cue.end_ms));
+        output.push_str(&format_timestamp(cue.end_ms()));
         output.push('\n');
-        output.push_str(&cue.text);
+        output.push_str(cue.text());
         output.push_str("\n\n");
     }
     output
@@ -121,9 +121,9 @@ pub fn write_srt(track: &SubtitleTrack) -> String {
 #[must_use]
 pub fn write_text(track: &SubtitleTrack) -> String {
     track
-        .cues
+        .cues()
         .iter()
-        .map(|cue| cue.text.as_str())
+        .map(SubtitleCue::text)
         .collect::<Vec<_>>()
         .join("\n")
 }
@@ -148,9 +148,9 @@ mod tests {
         let cues = parse_srt(input).expect("valid SRT");
 
         assert_eq!(cues.len(), 2);
-        assert_eq!(cues[0].start_ms, 1_500);
-        assert_eq!(cues[0].end_ms, 2_250);
-        assert_eq!(cues[0].text, "First line\nSecond line");
+        assert_eq!(cues[0].start_ms(), 1_500);
+        assert_eq!(cues[0].end_ms(), 2_250);
+        assert_eq!(cues[0].text(), "First line\nSecond line");
     }
 
     #[test]

@@ -1,11 +1,10 @@
-import React from 'react';
 import { render, screen, act, fireEvent } from '@testing-library/react';
 import VideoAnalysisModal from './VideoAnalysisModal';
 
 // Mock react-i18next
-jest.mock('react-i18next', () => ({
+vi.mock('react-i18next', () => ({
   useTranslation: () => ({
-    t: (key, options) => {
+    t: (key, _options) => {
       // The component appends the countdown number and "seconds" separately now.
       // So, the keys here should just return the main message part.
       if (key === 'videoAnalysis.autoSelectDefaultCountdown') {
@@ -27,7 +26,7 @@ jest.mock('react-i18next', () => ({
 }));
 
 // Mock PROMPT_PRESETS used in getPresetTitle
-jest.mock('../services/geminiService', () => ({
+vi.mock('../services/geminiService', () => ({
   PROMPT_PRESETS: [
     { id: 'general', title: 'General purpose' },
     { id: 'recommended-preset-id', title: 'Recommended Preset Title' },
@@ -41,10 +40,10 @@ const countdownText = (expected) => (content, el) =>
   el?.tagName === 'P' && el.textContent.replace(/\s+/g, ' ').trim() === expected;
 
 describe('VideoAnalysisModal Component', () => {
-  const mockOnClose = jest.fn();
-  const mockOnUsePreset = jest.fn();
-  const mockOnUseDefaultPreset = jest.fn();
-  const mockOnEditRules = jest.fn();
+  const mockOnClose = vi.fn();
+  const mockOnUsePreset = vi.fn();
+  const mockOnUseDefaultPreset = vi.fn();
+  const mockOnEditRules = vi.fn();
 
   const analysisResultMock = {
     recommendedPreset: {
@@ -68,14 +67,14 @@ describe('VideoAnalysisModal Component', () => {
   let mockLocalStorageGetItem;
 
   beforeEach(() => {
-    jest.useFakeTimers();
+    vi.useFakeTimers();
     mockOnClose.mockClear();
     mockOnUsePreset.mockClear();
     mockOnUseDefaultPreset.mockClear();
     mockOnEditRules.mockClear();
 
     // Mock localStorage.getItem
-    mockLocalStorageGetItem = jest.spyOn(Storage.prototype, 'getItem');
+    mockLocalStorageGetItem = vi.spyOn(Storage.prototype, 'getItem');
     // Default mock for video_analysis_timeout for the countdown
     mockLocalStorageGetItem.mockImplementation((key) => {
       if (key === 'video_analysis_timeout') {
@@ -89,8 +88,8 @@ describe('VideoAnalysisModal Component', () => {
   });
 
   afterEach(() => {
-    jest.clearAllTimers();
-    jest.useRealTimers();
+    vi.clearAllTimers();
+    vi.useRealTimers();
     mockLocalStorageGetItem.mockRestore();
   });
 
@@ -111,7 +110,7 @@ describe('VideoAnalysisModal Component', () => {
     render(<VideoAnalysisModal {...defaultProps} />);
     
     act(() => {
-      jest.advanceTimersByTime(20000); // Advance by 20 seconds
+      vi.advanceTimersByTime(20000); // Advance by 20 seconds
     });
 
     expect(mockOnUseDefaultPreset).toHaveBeenCalledTimes(1);
@@ -135,7 +134,7 @@ describe('VideoAnalysisModal Component', () => {
     render(<VideoAnalysisModal {...defaultProps} />);
 
     act(() => {
-      jest.advanceTimersByTime(20000);
+      vi.advanceTimersByTime(20000);
     });
 
     expect(mockOnUsePreset).toHaveBeenCalledTimes(1);
@@ -159,7 +158,7 @@ describe('VideoAnalysisModal Component', () => {
     render(<VideoAnalysisModal {...defaultProps} />);
 
     act(() => {
-      jest.advanceTimersByTime(20000);
+      vi.advanceTimersByTime(20000);
     });
 
     expect(mockOnUsePreset).toHaveBeenCalledTimes(1);
@@ -182,7 +181,7 @@ describe('VideoAnalysisModal Component', () => {
     expect(screen.getByText(countdownText('Recommended countdown message 10 seconds'))).toBeInTheDocument();
 
     act(() => {
-      jest.advanceTimersByTime(1000); // Advance 1 second
+      vi.advanceTimersByTime(1000); // Advance 1 second
     });
     expect(screen.getByText(countdownText('Recommended countdown message 9 seconds'))).toBeInTheDocument();
   });
@@ -204,7 +203,7 @@ describe('VideoAnalysisModal Component', () => {
     render(<VideoAnalysisModal {...defaultProps} />);
     expect(screen.getByText(countdownText('Default countdown message 15 seconds'))).toBeInTheDocument();
     act(() => {
-      jest.advanceTimersByTime(1000); // Advance 1 second
+      vi.advanceTimersByTime(1000); // Advance 1 second
     });
     expect(screen.getByText(countdownText('Default countdown message 14 seconds'))).toBeInTheDocument();
   });
@@ -248,7 +247,7 @@ describe('VideoAnalysisModal Component', () => {
 
     // Advance timers to see if the original timeout still fires
     act(() => {
-      jest.advanceTimersByTime(20000);
+      vi.advanceTimersByTime(20000);
     });
     expect(mockOnUseDefaultPreset).not.toHaveBeenCalled();
     expect(mockOnUsePreset).not.toHaveBeenCalled();

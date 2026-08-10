@@ -1,6 +1,7 @@
-import React, { useEffect, useRef, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import PlayPauseMorphType4 from './PlayPauseMorphType4';
 import WavyProgressIndicator from './WavyProgressIndicator';
+import { downloadAudioSource } from './audioDownload';
 
 // Local formatter for time display with one decimal
 const formatTimeOneDecimal = (timeInSeconds) => {
@@ -40,16 +41,15 @@ const AudioPlayer = ({ audioSrc, referenceAudio, height = 18, style = { flex: 1 
     try {
       observer.observe(document.documentElement, { attributes: true, attributeFilter: ['data-theme', 'class'] });
       if (document.body) observer.observe(document.body, { attributes: true, attributeFilter: ['data-theme', 'class'] });
-    } catch (e) {}
+    } catch {
+      // The observer is best-effort when the document is not fully attached.
+    }
     return () => observer.disconnect();
   }, []);
 
   // Define colors based on theme
   const progressIndicatorColor = isDark ? '#FFFFFF' : '#485E92';
   const progressTrackColor = isDark ? 'rgba(255,255,255,0.35)' : '#D9DFF6';
-
-  // Clamp waveform height to a smaller range for a less tall wave
-  const waveformHeight = Math.max(8, Math.min(height, 18));
 
   // Reset audio state when audioSrc changes
   useEffect(() => {
@@ -274,14 +274,8 @@ const AudioPlayer = ({ audioSrc, referenceAudio, height = 18, style = { flex: 1 
         <button
           onClick={async () => {
             try {
-              const response = await fetch(audioSrc);
-              const blob = await response.blob();
-              const url = URL.createObjectURL(blob);
-              const a = document.createElement('a');
-              a.href = url;
-              a.download = referenceAudio?.filename || 'audio.wav';
-              a.click();
-              URL.revokeObjectURL(url);
+              const downloaded = await downloadAudioSource(audioSrc, referenceAudio);
+              if (downloaded === false) return;
               setDownloadSuccess(true);
               setTimeout(() => setDownloadSuccess(false), 500);
             } catch (e) {

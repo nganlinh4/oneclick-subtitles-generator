@@ -212,7 +212,9 @@ export const useTimelinePointerInteraction = ({
             if (offlineSegments.length > 0) {
                 if (deltaX > dragThreshold && !warned) {
                     setWarnOfflineDragVisible(true);
-                    try { setTimeout(() => setWarnOfflineDragVisible(false), 3500); } catch { }
+                    try { setTimeout(() => setWarnOfflineDragVisible(false), 3500); } catch {
+                        // Warning dismissal is best-effort during document teardown.
+                    }
                     warned = true;
                 }
                 return;
@@ -265,8 +267,6 @@ export const useTimelinePointerInteraction = ({
                             sessionStorage.setItem('processing_modal_open_reason', 'drag-selection');
                             onSegmentSelect({ start, end });
                         }
-                    } else {
-
                     }
                 }
             } else if (!hasMoved) {

@@ -1,4 +1,5 @@
 import { useEffect, useRef } from 'react';
+import { releaseNativeNarrationPlayback } from '../../../platform/nativeNarrationArtifacts';
 
 /**
  * Custom hook for audio playback
@@ -11,10 +12,26 @@ import { useEffect, useRef } from 'react';
 const useAudioPlayback = ({
   isPlaying,
   currentAudio,
-  setIsPlaying
+  setIsPlaying,
+  setCurrentAudio,
 }) => {
   // Create audio ref
   const audioRef = useRef(null);
+  const playbackRef = useRef(null);
+
+  useEffect(() => {
+    const previous = playbackRef.current;
+    if (previous?.nativePlaybackId
+        && previous.nativePlaybackId !== currentAudio?.nativePlaybackId) {
+      releaseNativeNarrationPlayback(previous);
+    }
+    playbackRef.current = currentAudio;
+  }, [currentAudio]);
+
+  useEffect(() => () => {
+    releaseNativeNarrationPlayback(playbackRef.current);
+    playbackRef.current = null;
+  }, []);
 
   // Handle audio playback
   useEffect(() => {
@@ -30,6 +47,11 @@ const useAudioPlayback = ({
   // Handle audio ended event
   const handleAudioEnded = () => {
     setIsPlaying(false);
+    if (currentAudio?.nativePlaybackId) {
+      releaseNativeNarrationPlayback(currentAudio);
+      playbackRef.current = null;
+      if (typeof setCurrentAudio === 'function') setCurrentAudio(null);
+    }
   };
 
   return {

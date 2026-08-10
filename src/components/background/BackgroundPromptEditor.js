@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import ReactDOM from 'react-dom';
 import { useTranslation } from 'react-i18next';
 import CloseButton from '../common/CloseButton';
@@ -41,6 +41,10 @@ const BackgroundPromptEditor = ({ isOpen, onClose }) => {
   const [initialPromptTwo, setInitialPromptTwo] = useState(promptTwo);
   const [initialPromptModel, setInitialPromptModel] = useState(promptModel);
   const [initialImageModel, setInitialImageModel] = useState(imageModel);
+  const promptOneRef = useRef(promptOne);
+  const promptTwoRef = useRef(promptTwo);
+  promptOneRef.current = promptOne;
+  promptTwoRef.current = promptTwo;
 
   // Load the current prompts from localStorage (serverless)
   useEffect(() => {
@@ -52,8 +56,8 @@ const BackgroundPromptEditor = ({ isOpen, onClose }) => {
       const pm = localStorage.getItem('background_prompt_model');
       const im = localStorage.getItem('background_image_model');
 
-      const nextP1 = p1 ?? promptOne;
-      const nextP2 = p2 ?? promptTwo;
+      const nextP1 = p1 ?? promptOneRef.current;
+      const nextP2 = p2 ?? promptTwoRef.current;
       const nextPM = migrateGeminiModelId(pm, DEFAULT_BACKGROUND_PROMPT_MODEL_ID);
       const nextIM = normalizeImageGenerationModelId(im);
 

@@ -1,7 +1,5 @@
 import { useRef } from "react";
 import { resetGeminiButtonState } from "../../utils/geminiEffects";
-import { extractYoutubeVideoId } from "../../utils/videoDownloader";
-import { extractDouyinVideoId } from "../../utils/douyinDownloader";
 import { createSubtitleHandlers } from "./handlers/subtitleHandlers";
 import { createDownloadHandlers } from "./handlers/downloadHandlers";
 import { createProcessingHandlers } from "./handlers/processingHandlers";
@@ -174,40 +172,6 @@ export const useAppHandlers = (appState) => {
     });
 
 
-    // Kick off auto subtitle fetch in parallel (do not await)
-    try {
-      if ((activeTab.includes("youtube") || activeTab === "unified-url") && selectedVideo?.url && (typeof localStorage === 'undefined' || localStorage.getItem('auto_import_site_subtitles') !== 'false')) {
-        const videoUrl = selectedVideo.url;
-        const storedPrefs = typeof localStorage !== 'undefined' ? localStorage.getItem('preferred_subtitle_langs') : null;
-        const navLang = (typeof navigator !== 'undefined' && navigator.language) ? navigator.language : 'en-US';
-        const defaultPrefs = [navLang, navLang.split('-')[0], 'en-US', 'en'];
-        const preferredLangs = storedPrefs ? JSON.parse(storedPrefs) : defaultPrefs;
-        const useCookies = typeof localStorage !== 'undefined' && localStorage.getItem('use_cookies_for_download') === 'true';
-
-        (async () => {
-          try {
-            const resp = await fetch('http://localhost:3031/api/download-best-subtitle', {
-              method: 'POST',
-              headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify({ url: videoUrl, preferredLangs, useCookies })
-            });
-            if (resp.ok && resp.status !== 204) {
-              const data = await resp.json();
-              if (data?.success && data?.content) {
-                // Defer applying subtitles until after video download completes
-                pendingAutoSubtitleRef.current = { content: data.content, fileName: data.fileName || 'site-subtitle.srt' };
-              }
-            } else if (resp.status !== 204) {
-              const errText = await resp.text().catch(() => '');
-              console.warn('[AppHandlers] Auto subtitle fetch failed:', resp.status, errText);
-            }
-          } catch (e) {
-            console.warn('[AppHandlers] Auto subtitle fetch error:', e);
-          }
-        })();
-      }
-    } catch {}
-
     // Clear the segments-status before starting the generation process
     setSegmentsStatus([]);
 
@@ -224,19 +188,8 @@ export const useAppHandlers = (appState) => {
         type: "loading",
       });
 
-      // Extract video ID and set it as current download
-      let videoId;
-      if (selectedVideo.source === "douyin") {
-        videoId = extractDouyinVideoId(selectedVideo.url);
-      } else if (
-        selectedVideo.source === "all-sites" ||
-        selectedVideo.source === "all-sites-url"
-      ) {
-        videoId = selectedVideo.id;
-      } else {
-        videoId = extractYoutubeVideoId(selectedVideo.url);
-      }
-      setCurrentDownloadId(videoId);
+      // The native job ID arrives from the typed download channel.
+      setCurrentDownloadId(null);
 
       // Start background download and upload
       startBackgroundVideoProcessing(selectedVideo, "youtube");

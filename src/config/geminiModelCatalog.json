@@ -3,7 +3,7 @@
   "source": {
     "repository": "screen-goated-toolbox",
     "catalog": "catalog/model_catalog.json",
-    "syncedAt": "2026-08-09"
+    "syncedAt": "2026-08-10"
   },
   "defaults": {
     "ordinary": "gemini-3.5-flash-lite",
@@ -12,7 +12,7 @@
     "analysis": "gemini-3.5-flash-lite",
     "backgroundPrompt": "gemini-3.5-flash-lite",
     "fastText": "gemini-3.5-flash-lite",
-    "imageGeneration": "gemini-2.5-flash-image",
+    "imageGeneration": "gemini-3.1-flash-image",
     "liveAudio": "gemini-3.1-flash-live-preview"
   },
   "legacyMigrations": {
@@ -25,7 +25,11 @@
     "gemini-2.5-flash": "gemini-3.5-flash-lite",
     "gemini-2.5-pro": "gemini-3.6-flash",
     "gemini-3.1-pro-preview": "gemini-3.6-flash",
-    "gemini-3.1-flash-lite-preview": "gemini-3.1-flash-lite"
+    "gemini-3.1-flash-lite-preview": "gemini-3.1-flash-lite",
+    "gemini-3-flash-preview": "gemini-3.6-flash",
+    "gemini-2.5-flash-lite": "gemini-3.1-flash-lite",
+    "gemini-robotics-er-1.6-preview": "gemini-3.6-flash",
+    "gemini-robotics-er-2-preview": "gemini-3.6-flash"
   },
   "models": [
     {
@@ -99,85 +103,15 @@
       "limits": { "inputTokens": 1048576, "outputTokens": 65536 },
       "request": { "sampling": "provider-default", "structuredOutput": "strict-json-schema", "mediaResolution": true },
       "thinking": { "type": "level", "options": ["minimal", "low", "medium", "high"], "default": "minimal", "configurable": true }
-    },
-    {
-      "id": "gemini-3-flash-preview",
-      "displayName": "Gemini 3 Flash Preview",
-      "lifecycle": "preview",
-      "verifiedAt": "2026-07-29",
-      "profileLabels": { "en": "GG Versatile", "vi": "GG Toàn diện", "ko": "GG 다재다능" },
-      "dailyUse": "Versatile multimodal work across text, video, images, and audio",
-      "quota": { "requestsPerDay": 20 },
-      "intelligenceTier": 6,
-      "supportsSearch": true,
-      "searchEnabledByDefault": false,
-      "modalities": ["video", "audio", "image", "text"],
-      "latencyMs": { "vision": 1907, "text": 1030, "audio": 20000 },
-      "features": ["transcription", "translation", "analysis", "document", "backgroundPrompt"],
-      "limits": { "inputTokens": 1048576, "outputTokens": 65536 },
-      "request": { "sampling": "provider-default", "structuredOutput": "strict-json-schema", "mediaResolution": true },
-      "thinking": { "type": "level", "options": ["minimal", "low", "medium", "high"], "default": "minimal", "configurable": true }
-    },
-    {
-      "id": "gemini-2.5-flash-lite",
-      "displayName": "Gemini 2.5 Flash Lite",
-      "lifecycle": "stable",
-      "verifiedAt": "2026-07-29",
-      "profileLabels": { "en": "GG Lite", "vi": "GG Nhẹ", "ko": "GG 경량" },
-      "dailyUse": "Lightweight multimodal fallback with thinking disabled",
-      "quota": { "requestsPerDay": 20 },
-      "intelligenceTier": 4,
-      "supportsSearch": true,
-      "searchEnabledByDefault": false,
-      "modalities": ["video", "audio", "image", "text"],
-      "latencyMs": { "vision": 2419, "text": 1238, "audio": 1200 },
-      "features": ["transcription", "translation", "analysis", "document", "backgroundPrompt"],
-      "limits": { "inputTokens": 1048576, "outputTokens": 65536 },
-      "request": { "sampling": "provider-default", "structuredOutput": "strict-json-schema", "mediaResolution": true },
-      "thinking": { "type": "budget", "default": 0, "configurable": false }
-    },
-    {
-      "id": "gemini-robotics-er-1.6-preview",
-      "displayName": "Gemini Robotics ER 1.6 Preview",
-      "lifecycle": "preview",
-      "verifiedAt": "2026-07-29",
-      "profileLabels": { "en": "GG Precise", "vi": "GG Chuẩn", "ko": "GG 정밀" },
-      "dailyUse": "Precise multimodal scene and spatial analysis",
-      "quota": { "requestsPerDay": 20 },
-      "intelligenceTier": 6,
-      "supportsSearch": true,
-      "searchEnabledByDefault": false,
-      "modalities": ["video", "audio", "image", "text"],
-      "latencyMs": { "vision": 1711, "text": 1149, "audio": 7000 },
-      "features": ["transcription", "translation", "analysis", "document", "backgroundPrompt"],
-      "limits": { "inputTokens": 1048576, "outputTokens": 65536 },
-      "request": { "sampling": "provider-default", "structuredOutput": "strict-json-schema", "mediaResolution": true },
-      "thinking": { "type": "budget", "default": 0, "configurable": false }
-    },
-    {
-      "id": "gemini-robotics-er-2-preview",
-      "displayName": "Gemini Robotics ER 2 Preview",
-      "lifecycle": "preview",
-      "verifiedAt": "2026-08-06",
-      "profileLabels": { "en": "GG Precise+", "vi": "GG Chuẩn+", "ko": "GG 정밀+" },
-      "dailyUse": "Most precise toolbox video and image model; use for visual analysis only",
-      "quota": { "requestsPerDay": 20 },
-      "intelligenceTier": 6,
-      "supportsSearch": false,
-      "searchEnabledByDefault": false,
-      "modalities": ["video", "image"],
-      "latencyMs": { "vision": 1428 },
-      "features": ["analysis"],
-      "limits": { "inputTokens": 1048576, "outputTokens": 65536 },
-      "request": { "sampling": "provider-default", "structuredOutput": "strict-json-schema", "mediaResolution": true },
-      "thinking": { "type": "budget", "default": 0, "configurable": false }
     }
   ],
   "imageGenerationModels": [
     {
-      "id": "gemini-2.5-flash-image",
-      "displayName": "Gemini 2.5 Flash Image (Nano Banana)",
-      "lifecycle": "stable"
+      "id": "gemini-3.1-flash-image",
+      "displayName": "Gemini 3.1 Flash Image (Nano Banana 2)",
+      "lifecycle": "stable",
+      "verifiedAt": "2026-07-21",
+      "modalities": ["video", "image", "text"]
     }
   ],
   "liveAudioModels": [

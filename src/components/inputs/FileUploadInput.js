@@ -1,6 +1,17 @@
-import React, { useState, useRef, useEffect, useCallback, useMemo } from 'react';
+import { useState, useRef, useEffect, useCallback, useMemo } from 'react';
 import { useTranslation } from 'react-i18next';
-import { SERVER_URL } from '../../config';
+import { isDesktopRuntime } from '../../platform/desktopRuntime';
+import { nativeMediaDropService } from '../../platform/mediaDropService';
+import { isPhysicalPointInsideElement } from '../../platform/nativeMediaDropTarget';
+import {
+  claimMediaDrop,
+  clearMedia,
+  getSelectedMedia,
+  isNativeMediaPlaybackUrl,
+  selectMedia,
+} from '../../platform/mediaService';
+import { setCurrentCacheId as setRulesCacheId } from '../../utils/transcriptionRulesStore';
+import { setCurrentCacheId as setSubtitlesCacheId } from '../../utils/userSubtitlesStore';
 import LoadingIndicator from '../common/LoadingIndicator';
 import '../../styles/FileUploadInput.css';
 
@@ -12,7 +23,9 @@ const FileUploadInput = ({ uploadedFile, setUploadedFile, onVideoSelect, classNa
   const fileInputRef = useRef(null);
 
   const lastSelectedFileRef = useRef(null);
-  const skipLargeFileCopyRef = useRef(false);
+  const nativeOperationRef = useRef(0);
+  const nativeHydratedRef = useRef(false);
+  const nativeLoadingRef = useRef(false);
 
 
   // Maximum file size in MB (5GB = 5120MB)
@@ -30,13 +43,6 @@ const FileUploadInput = ({ uploadedFile, setUploadedFile, onVideoSelect, classNa
     "video/wmv",
     "video/3gpp",
     "video/quicktime"      // Add this - correct MIME type for .mov files
-  ], []);
-
-  const SUPPORTED_AUDIO_FORMATS = useMemo(() => [
-    "audio/wav", "audio/mp3", "audio/aiff", "audio/aac", "audio/ogg", "audio/flac", "audio/mpeg",
-    "audio/m4a", "audio/mp4", "audio/x-ms-wma", "audio/opus", "audio/amr", "audio/3gpp",
-    "audio/basic", "audio/x-caf", "audio/vnd.dts", "audio/ac3", "audio/x-ape",
-    "audio/x-matroska", "audio/vnd.rn-realaudio", "audio/webm"
   ], []);
 
   const SUPPORTED_AUDIO_EXTENSIONS = useMemo(() => [
@@ -96,6 +102,167 @@ const FileUploadInput = ({ uploadedFile, setUploadedFile, onVideoSelect, classNa
     }
   }, [isVideoFile]);
 
+  const activateNativeMedia = useCallback((media) => {
+    localStorage.removeItem('current_video_url');
+    localStorage.removeItem('split_result');
+
+    const previousUrl = localStorage.getItem('current_file_url');
+    if (previousUrl?.startsWith('blob:')) {
+      try {
+        URL.revokeObjectURL(previousUrl);
+      } catch {
+        // A stale object URL is already inert.
+      }
+    }
+
+    localStorage.setItem('current_file_url', media.playbackUrl);
+    localStorage.setItem('current_file_cache_id', media.assetId);
+    setRulesCacheId(media.assetId);
+    setSubtitlesCacheId(media.assetId);
+
+    if (onVideoSelect) onVideoSelect(null);
+    if (isSrtOnlyMode && setIsSrtOnlyMode) setIsSrtOnlyMode(false);
+    setUploadedFile(media);
+    displayFileInfo(media);
+
+    if (subtitlesData?.length > 0 && setStatus) {
+      setStatus({
+        message: t('output.subtitlesReady', 'Subtitles are ready!'),
+        type: 'success'
+      });
+    }
+  }, [
+    displayFileInfo,
+    isSrtOnlyMode,
+    onVideoSelect,
+    setIsSrtOnlyMode,
+    setStatus,
+    setUploadedFile,
+    subtitlesData,
+    t,
+  ]);
+
+  useEffect(() => {
+    nativeLoadingRef.current = isLoading;
+  }, [isLoading]);
+
+  useEffect(() => {
+    if (!isDesktopRuntime()) return undefined;
+
+    let cancelled = false;
+    let subscription = null;
+    let activeDragId = null;
+    let lastSequence = 0;
+
+    const containsPhysicalPosition = (position) => {
+      const dropZone = fileInputRef.current?.closest('.file-upload-input');
+      return isPhysicalPointInsideElement(position, dropZone);
+    };
+
+    const showNativeDropError = (error) => {
+      const message = error?.message || t('fileUpload.nativeSelectionError', 'Could not open the selected media.');
+      if (setStatus) setStatus({ message, type: 'error' });
+      else if (window.addToast) window.addToast(message, 'error', 8000);
+    };
+
+    const handleNativeDropEvent = (event) => {
+      if (cancelled || event.sequence <= lastSequence) return;
+      lastSequence = event.sequence;
+
+      if (event.type === 'enter') {
+        activeDragId = event.dragId;
+      } else if (activeDragId !== null && event.dragId !== activeDragId) {
+        return;
+      } else if (activeDragId === null && (event.type === 'over' || event.type === 'leave')) {
+        return;
+      }
+
+      if (event.type === 'enter' || event.type === 'over') {
+        setIsDragOver(!nativeLoadingRef.current && containsPhysicalPosition(event.position));
+        return;
+      }
+      setIsDragOver(false);
+
+      if (event.type === 'leave') {
+        activeDragId = null;
+        return;
+      }
+      if (event.type === 'rejected') {
+        activeDragId = null;
+        if (!containsPhysicalPosition(event.position)) return;
+        const message = t('fileUpload.formatError', 'Unsupported file format. Please upload a supported video or audio file.');
+        if (window.addToast) window.addToast(message, 'error', 5000);
+        else if (setStatus) setStatus({ message, type: 'error' });
+        return;
+      }
+      if (event.type !== 'drop') return;
+      activeDragId = null;
+
+      if (nativeLoadingRef.current || !containsPhysicalPosition(event.position)) {
+        nativeMediaDropService.discard(event.offerId).catch(() => {});
+        return;
+      }
+
+      const operation = ++nativeOperationRef.current;
+      nativeLoadingRef.current = true;
+      setIsLoading(true);
+      claimMediaDrop(event.offerId)
+        .then((media) => {
+          if (!cancelled && nativeOperationRef.current === operation) activateNativeMedia(media);
+        })
+        .catch((error) => {
+          if (!cancelled && nativeOperationRef.current === operation) showNativeDropError(error);
+        })
+        .finally(() => {
+          if (!cancelled && nativeOperationRef.current === operation) {
+            nativeLoadingRef.current = false;
+            setIsLoading(false);
+          }
+        });
+    };
+
+    nativeMediaDropService.subscribe(handleNativeDropEvent, () => {
+      if (!cancelled) setIsDragOver(false);
+    }).then((registered) => {
+      if (cancelled) registered.unsubscribe().catch(() => {});
+      else subscription = registered;
+    }).catch(() => {
+      if (!cancelled) setIsDragOver(false);
+    });
+
+    return () => {
+      cancelled = true;
+      if (subscription) subscription.unsubscribe().catch(() => {});
+    };
+  }, [activateNativeMedia, setStatus, t]);
+
+  // Reconcile WebView state with Rust after remounts. Expired loopback capabilities from a prior
+  // process are removed instead of being replayed as if they were still authorized.
+  useEffect(() => {
+    if (!isDesktopRuntime() || nativeHydratedRef.current) return undefined;
+    nativeHydratedRef.current = true;
+    const operation = ++nativeOperationRef.current;
+    let mounted = true;
+
+    getSelectedMedia()
+      .then((media) => {
+        if (!mounted || nativeOperationRef.current !== operation) return;
+        if (media) {
+          activateNativeMedia(media);
+          return;
+        }
+        const staleUrl = localStorage.getItem('current_file_url');
+        if (isNativeMediaPlaybackUrl(staleUrl)) {
+          localStorage.removeItem('current_file_url');
+        }
+      })
+      .catch((error) => {
+        console.error('Could not reconcile the native media session:', error);
+      });
+
+    return () => { mounted = false; };
+  }, [activateNativeMedia]);
+
   // Update fileInfo when uploadedFile changes (for auto-downloaded files)
   useEffect(() => {
     if (uploadedFile && !fileInfo) {
@@ -152,56 +319,15 @@ const FileUploadInput = ({ uploadedFile, setUploadedFile, onVideoSelect, classNa
         // No longer converting audio files to video - keep original files as-is
         const processedFile = file;
 
-        // For large files (>500MB), copy to videos directory for better handling
-        const fileSizeMB = processedFile.size / (1024 * 1024);
-        console.log(`File size: ${fileSizeMB.toFixed(2)} MB`);
-        if (fileSizeMB > 500 && !skipLargeFileCopyRef.current) {
-          try {
-            // Show copying progress for large files
-            setFileInfo(prev => ({
-              ...prev,
-              copying: true,
-              copyProgress: 0
-            }));
-
-            // Copy file to videos directory with progress tracking
-            const copiedFile = await copyFileToVideosDirectory(processedFile, (progress) => {
-              setFileInfo(prev => ({
-                ...prev,
-                copyProgress: progress
-              }));
-            });
-
-            // Use the copied file reference
-            processedFile = copiedFile;
-
-            // Update file info to remove copying state
-            setFileInfo(prev => ({
-              ...prev,
-              copying: false,
-              copyProgress: undefined
-            }));
-          } catch (error) {
-            console.error('Error copying large file:', error);
-            window.addToast(t('fileUpload.copyErrorShort', 'Failed to copy large file. Try uploading a smaller file or contact support.'), 'error', 8000);
-            setUploadedFile(null);
-            setFileInfo(null);
-            // Clear the file input value to allow re-uploading the same file
-            if (fileInputRef.current) {
-              fileInputRef.current.value = '';
-            }
-            setIsLoading(false);
-            return;
-          }
-        }
-
         // Create a new object URL for the processed file
         const objectUrl = URL.createObjectURL(processedFile);
         localStorage.setItem('current_file_url', objectUrl);
         try {
           if (!window.__videoBlobMap) window.__videoBlobMap = {};
           window.__videoBlobMap[objectUrl] = processedFile;
-        } catch {}
+        } catch {
+          // The optional browser-only blob map is not part of native media ownership.
+        }
 
         // Clear any selected YouTube video state via parent callback
         if (onVideoSelect) {
@@ -234,8 +360,6 @@ const FileUploadInput = ({ uploadedFile, setUploadedFile, onVideoSelect, classNa
 
         // Clear loading state after processing is complete
         setIsLoading(false);
-        // Reset skip flag after successful processing
-        skipLargeFileCopyRef.current = false;
       } else {
         setUploadedFile(null);
         setFileInfo(null);
@@ -253,60 +377,83 @@ const FileUploadInput = ({ uploadedFile, setUploadedFile, onVideoSelect, classNa
     }
   };
 
-  // Copy large files to videos directory for better handling
-  const copyFileToVideosDirectory = async (file, onProgress) => {
-    console.log(`Starting copy operation for file: ${file.name}, size: ${(file.size / (1024 * 1024)).toFixed(2)} MB`);
-    return new Promise((resolve, reject) => {
-      const formData = new FormData();
-      formData.append('file', file);
-      formData.append('filename', file.name);
-
-      const xhr = new XMLHttpRequest();
-
-      // Track upload progress
-      xhr.upload.addEventListener('progress', (e) => {
-        if (e.lengthComputable) {
-          const progress = Math.round((e.loaded / e.total) * 100);
-          onProgress(progress);
-        }
-      });
-
-      xhr.addEventListener('load', () => {
-        if (xhr.status === 200) {
-          try {
-            const response = JSON.parse(xhr.responseText);
-            // Create a new File object with the server path reference
-            const copiedFile = new File([file], file.name, {
-              type: file.type,
-              lastModified: file.lastModified
-            });
-            // Add server path reference for later use
-            copiedFile.serverPath = response.filePath;
-            copiedFile.isCopiedToServer = true;
-            resolve(copiedFile);
-          } catch (error) {
-            reject(new Error('Invalid server response'));
-          }
-        } else {
-          reject(new Error(`Upload failed with status ${xhr.status}`));
-        }
-      });
-
-      xhr.addEventListener('error', () => {
-        reject(new Error('Upload failed'));
-      });
-
-      xhr.open('POST', `${SERVER_URL}/api/copy-large-file`);
-      xhr.send(formData);
-    });
-  };
-
   // Trigger file input click
-  const handleBrowseClick = () => {
+  const handleBrowseClick = async () => {
     // Don't allow clicking when loading
     if (isLoading) return;
 
-    fileInputRef.current.click();
+    if (isDesktopRuntime()) {
+      const operation = ++nativeOperationRef.current;
+      setIsLoading(true);
+      try {
+        const media = await selectMedia();
+        if (media && nativeOperationRef.current === operation) activateNativeMedia(media);
+      } catch (error) {
+        if (nativeOperationRef.current === operation) {
+          const message = error?.message || t('fileUpload.nativeSelectionError', 'Could not open the selected media.');
+          if (setStatus) setStatus({ message, type: 'error' });
+          else if (window.addToast) window.addToast(message, 'error', 8000);
+        }
+      } finally {
+        if (nativeOperationRef.current === operation) setIsLoading(false);
+      }
+      return;
+    }
+
+    fileInputRef.current?.click();
+  };
+
+  const handleRemoveFile = async (event) => {
+    event.stopPropagation();
+    const operation = ++nativeOperationRef.current;
+    if (isDesktopRuntime()) {
+      try {
+        await clearMedia();
+      } catch (error) {
+        if (nativeOperationRef.current === operation) {
+          const message = error?.message || t('fileUpload.releaseError', 'Could not release the selected media.');
+          if (setStatus) setStatus({ message, type: 'error' });
+          else if (window.addToast) window.addToast(message, 'error', 8000);
+        }
+        return;
+      }
+    }
+    if (nativeOperationRef.current !== operation) return;
+
+    setFileInfo(null);
+    setUploadedFile(null);
+    setRulesCacheId(null);
+    setSubtitlesCacheId(null);
+
+    if (fileInputRef.current) fileInputRef.current.value = '';
+
+    const existingUrl = localStorage.getItem('current_file_url');
+    if (existingUrl?.startsWith('blob:')) {
+      try {
+        URL.revokeObjectURL(existingUrl);
+      } catch {
+        // A stale object URL is already inert.
+      }
+    }
+    localStorage.removeItem('current_file_url');
+
+    try {
+      localStorage.removeItem('current_file_cache_id');
+      localStorage.removeItem('current_video_url');
+      localStorage.removeItem('latest_segment_subtitles');
+    } catch {
+      // Storage cleanup is best effort when the WebView is shutting down.
+    }
+
+    try {
+      if (setVideoSegments) setVideoSegments([]);
+      if (setSegmentsStatus) setSegmentsStatus([]);
+    } catch {
+      // Parent teardown may make these optional setters unavailable.
+    }
+
+    const savedSubtitles = localStorage.getItem('subtitles_data');
+    if (savedSubtitles && setIsSrtOnlyMode) setIsSrtOnlyMode(true);
   };
 
   // Handle drag events
@@ -406,46 +553,7 @@ const FileUploadInput = ({ uploadedFile, setUploadedFile, onVideoSelect, classNa
           {fileInfo && !(fileInfo.converting || fileInfo.copying) ? (
             <button
               className="remove-file-btn"
-              onClick={(e) => {
-                e.stopPropagation();
-                setFileInfo(null);
-                setUploadedFile(null);
-
-                // Clear the file input value to allow re-uploading the same file
-                if (fileInputRef.current) {
-                  fileInputRef.current.value = '';
-                }
-
-                // Revoke and clear current file URL
-                const existingUrl = localStorage.getItem('current_file_url');
-                if (existingUrl) {
-                  try { URL.revokeObjectURL(existingUrl); } catch {}
-                  localStorage.removeItem('current_file_url');
-                }
-
-                // Clear only session pointers; preserve gemini_file_* caches for reuse
-                try {
-                  localStorage.removeItem('current_file_cache_id');
-                  localStorage.removeItem('current_video_url');
-                } catch {}
-
-                // Preserve subtitles_data for SRT-only mode; clear only transient latest segment output
-                try {
-                  localStorage.removeItem('latest_segment_subtitles');
-                } catch {}
-
-                // Also reset any segment UI state if handlers provided
-                try {
-                  if (setVideoSegments) setVideoSegments([]);
-                  if (setSegmentsStatus) setSegmentsStatus([]);
-                } catch {}
-
-                // If there are still subtitles to work with, switch to SRT-only mode
-                const subtitlesData = localStorage.getItem('subtitles_data');
-                if (subtitlesData && setIsSrtOnlyMode) {
-                  setIsSrtOnlyMode(true);
-                }
-              }}
+              onClick={handleRemoveFile}
             >
               <span className="material-symbols-rounded" style={{ fontSize: 16, display: 'inline-block' }}>
                 close

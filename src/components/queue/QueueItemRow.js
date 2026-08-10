@@ -1,4 +1,3 @@
-import React from 'react';
 import { useTranslation } from 'react-i18next';
 import WavyProgressIndicator from '../common/WavyProgressIndicator';
 import { formatTime as formatDuration } from '../../utils/timeFormatter';

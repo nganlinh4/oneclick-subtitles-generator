@@ -47,7 +47,7 @@ const useVideoSubtitleSync = ({
     const handleMetadataLoaded = () => {
       // Only log in development mode
       if (process.env.NODE_ENV === 'development') {
-
+        // Development logging is intentionally disabled.
       }
       setIsLoaded(true);
       setDuration(videoElement.duration);

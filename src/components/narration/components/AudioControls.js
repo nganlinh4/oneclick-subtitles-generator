@@ -1,6 +1,5 @@
-import React, { useEffect, useRef, useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import { SERVER_URL } from '../../../config';
 import ExampleAudioDropdown from './ExampleAudioDropdown';
 import HelpIcon from '../../common/HelpIcon';
 import LoadingIndicator from '../../common/LoadingIndicator';
@@ -30,10 +29,12 @@ const AudioControls = ({
 }) => {
     const { t } = useTranslation();
     const [elapsed, setElapsed] = useState(0);
+    const referenceAudioRef = React.useRef(referenceAudio);
+    referenceAudioRef.current = referenceAudio;
 
     // Show toast when reference audio is ready (but not when loaded from cache)
     useEffect(() => {
-        if (referenceAudio && !referenceAudio.fromCache) {
+        if (referenceAudioRef.current && !referenceAudioRef.current.fromCache) {
             showSuccessToast(t('narration.referenceAudioReady', 'Reference audio is ready'));
         }
     }, [referenceAudio?.filename, t]);
@@ -55,7 +56,7 @@ const AudioControls = ({
 
 
 
-    const audioSrc = referenceAudio ? (referenceAudio.url || `${SERVER_URL}/api/narration/audio/${referenceAudio.filename}`) : null;
+    const audioSrc = referenceAudio?.url || null;
 
     return (
         <div className="narration-row audio-controls-row">

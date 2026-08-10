@@ -130,10 +130,6 @@ const completeDocumentByChunks = async (subtitlesText, model, customPrompt, spli
 
     // Check if any chunks are empty or very short
     const validChunks = processedChunks.filter(chunk => chunk && chunk.trim().length > 10);
-    if (validChunks.length < processedChunks.length) {
-
-    }
-
     // If we have no valid chunks, return a message
     if (validChunks.length === 0) {
         return 'The consolidation process did not produce any valid output. Please try again with different settings.';

@@ -1,4 +1,3 @@
-import React from 'react';
 import '../styles/SubtitleCustomizationPanel.css';
 import PresetButtons from './subtitleCustomization/PresetButtons';
 import TextControls from './subtitleCustomization/TextControls';

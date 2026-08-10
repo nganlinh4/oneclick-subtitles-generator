@@ -82,7 +82,7 @@ export const createSegmentStreamingHandler = (segment, setSubtitlesData) => {
                 const delay = MERGE_THROTTLE_MS - timeSinceMerge;
                 updateTimer = setTimeout(() => {
                     if (pendingUpdate) {
-                        const { streamingSubtitles: pending, isStreaming: pendingStreaming } = pendingUpdate;
+                        const { streamingSubtitles: pending } = pendingUpdate;
                         lastMergeTime = Date.now();
 
                         // Check if we should capture state

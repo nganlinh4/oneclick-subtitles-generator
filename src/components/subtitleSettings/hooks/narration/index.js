@@ -14,10 +14,9 @@ import * as alignedNarrationUtils from './alignedNarrationUtils';
  * @param {Object} videoRef - Reference to the video element
  * @param {Array} originalNarrations - Original narration audio files
  * @param {Array} translatedNarrations - Translated narration audio files
- * @param {string} serverUrl - Server URL for audio files
  * @returns {Object} - Narration state and handlers
  */
-const useNarration = (videoRef, originalNarrations = [], translatedNarrations = [], serverUrl) => {
+const useNarration = (videoRef, originalNarrations = [], translatedNarrations = []) => {
   // Get basic narration state
   const narrationState = useNarrationState(originalNarrations, translatedNarrations);
 

@@ -1,9 +1,9 @@
 import { reportKnownGeminiSubtitleError } from './geminiSubtitleErrors';
 
 const makeCtx = () => ({
-  t: jest.fn((key) => key),
-  setStatus: jest.fn(),
-  startQuotaCountdown: jest.fn(),
+  t: vi.fn((key) => key),
+  setStatus: vi.fn(),
+  startQuotaCountdown: vi.fn(),
 });
 
 describe('reportKnownGeminiSubtitleError', () => {

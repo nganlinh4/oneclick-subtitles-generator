@@ -1,12 +1,5 @@
-import React, { useRef, useEffect, useState, useCallback } from 'react';
+import { useRef, useEffect, useState, useCallback } from 'react';
 import { useTranslation } from 'react-i18next';
-
-/**
- * Component property mapping system for Figma variants
- */
-const FIGMA_COMPONENT_PROPERTIES = {
-  // ... (no changes here)
-};
 
 /**
  * StandardSlider component based on Figma design
@@ -51,12 +44,12 @@ const StandardSlider = ({
   state = 'Enabled',
   width = 'auto',
   showValueIndicator = true,
-  showIcon = false,
-  showStops = false,
+  showIcon: _showIcon = false,
+  showStops: _showStops = false,
   showValueBadge = true,
   valueBadgeFormatter,
-  enableWheel = true,
-  wheelStepMultiplier = 1,
+  enableWheel: _enableWheel = true,
+  wheelStepMultiplier: _wheelStepMultiplier = 1,
   className = '',
   id,
   ariaLabel,

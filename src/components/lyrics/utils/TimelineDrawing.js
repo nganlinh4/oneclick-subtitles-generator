@@ -2,11 +2,9 @@
  * Utility functions for drawing the timeline visualization
  */
 
-import { getLyricColor, getRandomHeight } from './ColorUtils';
 import { timeToX } from './TimelineCalculations';
 // Legacy segment optimization is no longer needed with simplified processing
 // import { optimizeSegments, clearUnusedSegments } from '../../../utils/colorfulSegmentsOptimizer';
-import { formatTime } from '../../../utils/timeFormatter';
 import { drawTimeMarkers, drawLyricSegments, drawNarrationSegments, drawPlayhead } from './timelineDrawingHelpers';
 import { computeTimelineBands } from './timelineBands';
 
@@ -38,9 +36,6 @@ export const drawTimeline = (
     reserveBottom = 0 // px reserved at the bottom (e.g. for the waveform overlay)
 ) => {
     if (!canvas) return;
-
-    // Use a default duration if none is provided
-    const effectiveDuration = duration || 60;
 
     const ctx = canvas.getContext('2d', { alpha: false }); // Optimize for non-transparent canvas
     const displayWidth = canvas.clientWidth;

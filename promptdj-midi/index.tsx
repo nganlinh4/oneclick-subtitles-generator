@@ -5,203 +5,248 @@
  */
 
 import type { PlaybackState, Prompt } from './types';
-import { GoogleGenAI, LiveMusicFilteredPrompt } from '@google/genai';
 import { PromptDjMidi } from './components/PromptDjMidi';
 import { ToastMessage } from './components/ToastMessage';
-import { LiveMusicHelper } from './utils/LiveMusicHelper';
+import {
+  LiveMusicHelper,
+  type NativeLiveMusicEvent,
+  type NativeLiveMusicTransport,
+} from './utils/LiveMusicHelper';
 import { AudioAnalyser } from './utils/AudioAnalyser';
 
-let ai: GoogleGenAI | null = null;
-const model = 'lyria-realtime-exp';
+const parentOrigin = window.location.origin;
+const MAX_PCM_BYTES = 512 * 1024;
+const MAX_PROMPTS = 16;
 
-// Recorder plumbing shared across message handlers
 let teeNode: GainNode | null = null;
 let mediaDest: MediaStreamAudioDestinationNode | null = null;
 let mediaRecorder: MediaRecorder | null = null;
-let recordedChunks: BlobPart[] = [];
 
-// Lazy-initialized helper and analyser (created after API key is provided by parent)
-let liveMusicHelper: LiveMusicHelper | null = null;
-let audioAnalyser: AudioAnalyser | null = null;
+function postParent(message: object, transfer: Transferable[] = []) {
+  const host = window.top;
+  if (!host || host === window) return;
+  host.postMessage(message, parentOrigin, transfer);
+}
 
-// Track current playback state
-let currentPlaybackState: PlaybackState = 'stopped';
+function validPromptPayload(value: unknown): value is Array<{ text: string; weight: number }> {
+  if (!Array.isArray(value) || value.length === 0 || value.length > MAX_PROMPTS) return false;
+  let totalCharacters = 0;
+  return value.every((prompt) => {
+    if (prompt === null || typeof prompt !== 'object') return false;
+    const record = prompt as Record<string, unknown>;
+    if (Object.keys(record).some((key) => key !== 'text' && key !== 'weight')
+        || typeof record.text !== 'string'
+        || record.text.trim().length === 0
+        || typeof record.weight !== 'number'
+        || !Number.isFinite(record.weight)
+        || record.weight <= 0
+        || record.weight > 2) return false;
+    const characters = Array.from(record.text).length;
+    totalCharacters += characters;
+    return characters <= 512 && totalCharacters <= 4_096;
+  });
+}
 
+const nativeTransport: NativeLiveMusicTransport = {
+  start(weightedPrompts) {
+    if (!validPromptPayload(weightedPrompts)) return;
+    postParent({ type: 'pm-dj-native-start', weightedPrompts });
+  },
+  update(weightedPrompts) {
+    if (!validPromptPayload(weightedPrompts)) return;
+    postParent({ type: 'pm-dj-native-update', weightedPrompts });
+  },
+  control(control) {
+    if (!['play', 'pause', 'stop', 'resetContext'].includes(control)) return;
+    postParent({ type: 'pm-dj-native-control', control });
+  },
+  close() {
+    postParent({ type: 'pm-dj-native-close' });
+  },
+};
+
+function isNativeEvent(value: unknown): value is NativeLiveMusicEvent {
+  if (value === null || typeof value !== 'object' || typeof (value as { event?: unknown }).event !== 'string') {
+    return false;
+  }
+  const event = value as Record<string, unknown>;
+  switch (event.event) {
+    case 'ready':
+    case 'closed':
+      return true;
+    case 'controlApplied':
+      return typeof event.control === 'string'
+        && ['PLAY', 'PAUSE', 'STOP', 'RESET_CONTEXT'].includes(event.control);
+    case 'filteredPrompt':
+      return typeof event.text === 'string' && typeof event.reason === 'string';
+    case 'warning':
+      return typeof event.message === 'string';
+    case 'failed':
+      return event.error !== null
+        && typeof event.error === 'object'
+        && typeof (event.error as { code?: unknown }).code === 'string'
+        && typeof (event.error as { message?: unknown }).message === 'string';
+    default:
+      return false;
+  }
+}
 
 function main() {
   const initialPrompts = buildInitialPrompts();
-
-  // Default to light theme unless parent tells us otherwise
   try { document.documentElement.setAttribute('data-theme', 'light'); } catch {}
 
   const pdjMidi = new PromptDjMidi(initialPrompts);
   document.body.appendChild(pdjMidi);
-
   const toastMessage = new ToastMessage();
   document.body.appendChild(toastMessage);
 
-  // Wire UI events regardless of helper init timing
-  pdjMidi.addEventListener('prompts-changed', ((e: Event) => {
-    const customEvent = e as CustomEvent<Map<string, Prompt>>;
-    const prompts = customEvent.detail;
-    liveMusicHelper?.setWeightedPrompts(prompts);
+  const liveMusicHelper = new LiveMusicHelper(nativeTransport);
+  liveMusicHelper.setWeightedPrompts(initialPrompts);
+  const audioAnalyser = new AudioAnalyser(liveMusicHelper.audioContext);
+  teeNode = liveMusicHelper.audioContext.createGain();
+  teeNode.connect(audioAnalyser.node);
+  liveMusicHelper.extraDestination = teeNode;
+  let nativeAvailable = false;
+
+  pdjMidi.addEventListener('prompts-changed', ((event: Event) => {
+    const prompts = (event as CustomEvent<Map<string, Prompt>>).detail;
+    liveMusicHelper.setWeightedPrompts(prompts);
   }));
 
-  pdjMidi.addEventListener('error', ((e: Event) => {
-    const customEvent = e as CustomEvent<string>;
-    const error = customEvent.detail;
-    toastMessage.show(error);
+  pdjMidi.addEventListener('error', ((event: Event) => {
+    toastMessage.show((event as CustomEvent<string>).detail);
   }));
 
-  // New explicit play/pause events to avoid accidental re-toggles
   pdjMidi.addEventListener('play', () => {
-    if (!liveMusicHelper) {
+    if (!nativeAvailable) {
       toastMessage.show('Please set your Gemini API key in the main app first.');
       pdjMidi.playbackState = 'stopped';
       return;
     }
-    liveMusicHelper.play();
+    liveMusicHelper.play().catch(() => {
+      toastMessage.show('The native live music service is unavailable.');
+      pdjMidi.playbackState = 'stopped';
+    });
   });
   pdjMidi.addEventListener('pause', () => {
-    if (!liveMusicHelper) {
+    if (!nativeAvailable) {
       toastMessage.show('Please set your Gemini API key in the main app first.');
       pdjMidi.playbackState = 'stopped';
       return;
     }
-    // Use stop() to fully stop and prevent stray chunks from re-triggering
     liveMusicHelper.stop();
   });
-  // Back-compat: if any 'play-pause' is emitted, map based on current state
   pdjMidi.addEventListener('play-pause', () => {
-    if (!liveMusicHelper) {
+    if (!nativeAvailable) {
       toastMessage.show('Please set your Gemini API key in the main app first.');
       pdjMidi.playbackState = 'stopped';
       return;
     }
-    const stateMsg = '[PDJ] back-compat play-pause used; mapping to explicit action';
-    try { console.log(stateMsg); } catch {}
-    // Best-effort mapping: if not playing, play; else stop
-    // This minimizes chance of spurious re-plays
-    liveMusicHelper?.play?.();
+    liveMusicHelper.playPause().catch(() => {
+      toastMessage.show('The native live music service is unavailable.');
+    });
   });
 
-  const attachHelperListeners = () => {
-    if (!liveMusicHelper) return;
+  liveMusicHelper.addEventListener('playback-state-changed', ((event: Event) => {
+    const playbackState = (event as CustomEvent<PlaybackState>).detail;
+    pdjMidi.playbackState = playbackState;
+    playbackState === 'playing' ? audioAnalyser.start() : audioAnalyser.stop();
+  }));
+  liveMusicHelper.addEventListener('filtered-prompt', ((event: Event) => {
+    const filtered = (event as CustomEvent<{ text: string; filteredReason: string }>).detail;
+    toastMessage.show(filtered.filteredReason);
+    pdjMidi.addFilteredPrompt(filtered.text);
+  }));
+  liveMusicHelper.addEventListener('error', ((event: Event) => {
+    toastMessage.show((event as CustomEvent<string>).detail);
+  }));
+  audioAnalyser.addEventListener('audio-level-changed', ((event: Event) => {
+    pdjMidi.audioLevel = (event as CustomEvent<number>).detail;
+  }));
 
-    liveMusicHelper.addEventListener('playback-state-changed', ((e: Event) => {
-      const customEvent = e as CustomEvent<PlaybackState>;
-      const playbackState = customEvent.detail;
-      currentPlaybackState = playbackState;
-      pdjMidi.playbackState = playbackState;
-      if (audioAnalyser) {
-        playbackState === 'playing' ? audioAnalyser.start() : audioAnalyser.stop();
-      }
-    }));
-
-    liveMusicHelper.addEventListener('filtered-prompt', ((e: Event) => {
-      const customEvent = e as CustomEvent<LiveMusicFilteredPrompt>;
-      const filteredPrompt = customEvent.detail;
-      toastMessage.show(filteredPrompt.filteredReason!)
-      pdjMidi.addFilteredPrompt(filteredPrompt.text!);
-    }));
-
-    liveMusicHelper.addEventListener('error', ((e: Event) => {
-      const customEvent = e as CustomEvent<string>;
-      const error = customEvent.detail;
-      toastMessage.show(error);
-    }));
-  };
-
-  // Listen for analyser events if/when created
-  const attachAnalyserListener = () => {
-    if (!audioAnalyser) return;
-    audioAnalyser.addEventListener('audio-level-changed', ((e: Event) => {
-      const customEvent = e as CustomEvent<number>;
-      const level = customEvent.detail;
-      pdjMidi.audioLevel = level;
-    }));
-  };
-
-  function initWithApiKey(apiKey: string) {
-    try {
-      ai = new GoogleGenAI({ apiKey, apiVersion: 'v1alpha' });
-      liveMusicHelper = new LiveMusicHelper(ai, model);
-      liveMusicHelper.setWeightedPrompts(initialPrompts);
-      audioAnalyser = new AudioAnalyser(liveMusicHelper.audioContext);
-      // Create a tee node so we can fan out to analyser and (optionally) recorder
-      teeNode = liveMusicHelper.audioContext.createGain();
-      teeNode.connect(audioAnalyser.node);
-      liveMusicHelper.extraDestination = teeNode;
-      pdjMidi.apiKeySet = true;
-      attachHelperListeners();
-      attachAnalyserListener();
-    } catch (e: any) {
-      window.parent?.postMessage({ type: 'pm-dj-recording-error', error: e?.message || String(e) }, '*');
-    }
-  }
-
-  // Expose recording controls via postMessage from parent iframe
   function startRecording() {
     try {
-      if (!teeNode || !liveMusicHelper) return;
+      if (!teeNode) return;
       if (mediaRecorder && mediaRecorder.state !== 'inactive') return;
-      mediaDest = liveMusicHelper.audioContext.createMediaStreamDestination();
-      teeNode.connect(mediaDest);
-      const mime = MediaRecorder.isTypeSupported('audio/webm;codecs=opus') ? 'audio/webm;codecs=opus' : 'audio/webm';
-      mediaRecorder = new MediaRecorder(mediaDest.stream, { mimeType: mime });
-      recordedChunks = [];
-      mediaRecorder.ondataavailable = (e) => {
-        if (e.data && e.data.size > 0) recordedChunks.push(e.data);
+      const destination = liveMusicHelper.audioContext.createMediaStreamDestination();
+      teeNode.connect(destination);
+      const mime = MediaRecorder.isTypeSupported('audio/webm;codecs=opus')
+        ? 'audio/webm;codecs=opus'
+        : 'audio/webm';
+      const recorder = new MediaRecorder(destination.stream, { mimeType: mime });
+      const chunks: BlobPart[] = [];
+      mediaDest = destination;
+      mediaRecorder = recorder;
+      recorder.ondataavailable = (event) => {
+        if (event.data && event.data.size > 0) chunks.push(event.data);
       };
-      mediaRecorder.onstop = async () => {
-        const blob = new Blob(recordedChunks, { type: mediaRecorder?.mimeType || 'audio/webm' });
-        // Send blob back to parent to avoid cross-origin blob URL issues
-        window.parent?.postMessage({ type: 'pm-dj-recording-stopped', blob }, '*');
+      recorder.onstop = () => {
+        try { teeNode?.disconnect(destination); } catch {}
+        if (mediaDest === destination) mediaDest = null;
+        if (mediaRecorder === recorder) mediaRecorder = null;
+        const blob = new Blob(chunks, { type: recorder.mimeType || 'audio/webm' });
+        postParent({ type: 'pm-dj-recording-stopped', blob });
       };
-      mediaRecorder.start(250);
-      window.parent?.postMessage({ type: 'pm-dj-recording-started' }, '*');
-    } catch (e) {
-      window.parent?.postMessage({ type: 'pm-dj-recording-error', error: (e as any)?.message || String(e) }, '*');
+      recorder.onerror = () => {
+        postParent({ type: 'pm-dj-recording-error', error: 'Recording could not be completed.' });
+      };
+      recorder.start(250);
+      postParent({ type: 'pm-dj-recording-started' });
+    } catch {
+      postParent({ type: 'pm-dj-recording-error', error: 'Recording could not be started.' });
     }
   }
 
   function stopRecording() {
     try {
-      if (mediaRecorder && mediaRecorder.state !== 'inactive') {
-        mediaRecorder.stop();
-      }
-    } catch (e) {
-      window.parent?.postMessage({ type: 'pm-dj-recording-error', error: (e as any)?.message || String(e) }, '*');
+      if (mediaRecorder && mediaRecorder.state !== 'inactive') mediaRecorder.stop();
+    } catch {
+      postParent({ type: 'pm-dj-recording-error', error: 'Recording could not be stopped.' });
     }
   }
 
   function normalizeLang(lang: string | undefined): 'en' | 'ko' | 'vi' {
-    const lc = (lang || 'en').toLowerCase();
-    if (lc.startsWith('ko')) return 'ko';
-    if (lc.startsWith('vi')) return 'vi';
+    const normalized = (lang || 'en').toLowerCase();
+    if (normalized.startsWith('ko')) return 'ko';
+    if (normalized.startsWith('vi')) return 'vi';
     return 'en';
   }
 
-  // Forward MIDI input updates to parent
-  pdjMidi.addEventListener('midi-inputs-changed', (e: Event) => {
-    const { inputs, activeId } = (e as CustomEvent).detail || {};
-    // Map to include device names from dispatcher
-    const named = (inputs || []).map((id: string) => ({ id, name: pdjMidi ? (pdjMidi as any).midiDispatcher?.getDeviceName?.(id) : id }));
-    window.parent?.postMessage({ type: 'midi:inputs', inputs: named, activeId, show: (pdjMidi as any).showMidi }, '*');
+  pdjMidi.addEventListener('midi-inputs-changed', (event: Event) => {
+    const { inputs, activeId } = (event as CustomEvent).detail || {};
+    const named = (inputs || []).slice(0, 64).map((id: string) => ({
+      id,
+      name: (pdjMidi as any).midiDispatcher?.getDeviceName?.(id) || id,
+    }));
+    postParent({ type: 'midi:inputs', inputs: named, activeId, show: (pdjMidi as any).showMidi });
   });
 
   window.addEventListener('message', (event: MessageEvent) => {
-    const data = event.data as any;
-    if (!data || typeof data !== 'object') return;
+    if (event.source !== window.parent || event.origin !== parentOrigin) return;
+    const data = event.data as Record<string, unknown>;
+    if (!data || typeof data !== 'object' || typeof data.type !== 'string') return;
+
+    if (data.type === 'pm-dj-native-init' && typeof data.available === 'boolean') {
+      nativeAvailable = data.available;
+      pdjMidi.credentialAvailable = nativeAvailable;
+      if (!nativeAvailable) liveMusicHelper.stop();
+    }
+    if (data.type === 'pm-dj-native-event' && isNativeEvent(data.payload)) {
+      liveMusicHelper.handleNativeEvent(data.payload);
+    }
+    if (data.type === 'pm-dj-native-audio'
+        && data.pcm instanceof ArrayBuffer
+        && data.pcm.byteLength >= 4
+        && data.pcm.byteLength <= MAX_PCM_BYTES
+        && data.pcm.byteLength % 4 === 0) {
+      liveMusicHelper.handlePcm(data.pcm).catch(() => {
+        toastMessage.show('The live music audio stream is invalid.');
+        liveMusicHelper.stop();
+      });
+    }
     if (data.type === 'pm-dj-start-recording') startRecording();
     if (data.type === 'pm-dj-stop-recording') stopRecording();
-    if (data.type === 'pm-dj-set-api-key' && typeof data.apiKey === 'string' && data.apiKey) {
-      if (data.lang && pdjMidi) {
-        pdjMidi.lang = normalizeLang(data.lang);
-      }
-      initWithApiKey(data.apiKey);
-    }
-    if (data.type === 'pm-dj-set-lang' && pdjMidi) {
+    if (data.type === 'pm-dj-set-lang' && typeof data.lang === 'string') {
       pdjMidi.lang = normalizeLang(data.lang);
     }
     if (data.type === 'pm-dj-set-theme' && typeof data.theme === 'string') {
@@ -211,69 +256,53 @@ function main() {
       const root = document.documentElement;
       let primary = `"Google Sans", "Open Sans", sans-serif`;
       let title = `"Google Sans", "Be Vietnam Pro", sans-serif`;
-
       if (data.font === 'product-sans') {
         primary = `"Product Sans", system-ui, -apple-system, Segoe UI, Roboto, sans-serif`;
-        title = `"Product Sans", system-ui, -apple-system, Segoe UI, Roboto, sans-serif`;
+        title = primary;
       } else if (data.font === 'system-ui') {
         primary = `system-ui, -apple-system, Segoe UI, Roboto, Helvetica, Arial, sans-serif`;
         title = primary;
       } else if (data.font === 'noto-sans') {
         primary = `"Noto Sans", "Open Sans", sans-serif`;
         title = primary;
-      } else {
-        // default: Google Sans Flex
-        primary = `"Google Sans", "Open Sans", sans-serif`;
-        title = `"Google Sans", "Be Vietnam Pro", sans-serif`;
       }
-
       root.style.setProperty('--font-primary', primary);
       root.style.setProperty('--font-title', title);
     }
-
-    // Bridge: control MIDI from parent
     if (data.type === 'midi:getInputs') {
       (pdjMidi as any).refreshMidiInputs?.();
-      // Also respond immediately with current snapshot
-      const ids = (pdjMidi as any).getMidiInputs?.() || [];
+      const ids = ((pdjMidi as any).getMidiInputs?.() || []).slice(0, 64);
       const activeId = (pdjMidi as any).getActiveMidiInputId?.() || null;
-      const named = ids.map((id: string) => ({ id, name: (pdjMidi as any).midiDispatcher?.getDeviceName?.(id) || id }));
-      window.parent?.postMessage({ type: 'midi:inputs', inputs: named, activeId, show: (pdjMidi as any).getShowMidi?.() }, '*');
+      const named = ids.map((id: string) => ({
+        id,
+        name: (pdjMidi as any).midiDispatcher?.getDeviceName?.(id) || id,
+      }));
+      postParent({ type: 'midi:inputs', inputs: named, activeId, show: (pdjMidi as any).getShowMidi?.() });
     }
-    if (data.type === 'midi:setShow') {
-      (pdjMidi as any).setShowMidi?.(!!data.show);
+    if (data.type === 'midi:setShow' && typeof data.show === 'boolean') {
+      (pdjMidi as any).setShowMidi?.(data.show);
     }
-    if (data.type === 'midi:setActiveInput' && typeof data.id === 'string') {
+    if (data.type === 'midi:setActiveInput' && typeof data.id === 'string' && data.id.length <= 512) {
       (pdjMidi as any).setActiveMidiInputId?.(data.id);
     }
-    if (data.type === 'pm-dj-reset') {
-      (pdjMidi as any).resetAll?.();
-    }
+    if (data.type === 'pm-dj-reset') pdjMidi.resetAll();
   });
-
 }
 
 function buildInitialPrompts() {
-  // Pick 3 random prompts to start at weight = 1
-  const startOn = [...DEFAULT_PROMPTS]
-    .sort(() => Math.random() - 0.5)
-    .slice(0, 3);
-
+  const startOn = [...DEFAULT_PROMPTS].sort(() => Math.random() - 0.5).slice(0, 3);
   const prompts = new Map<string, Prompt>();
-
-  for (let i = 0; i < DEFAULT_PROMPTS.length; i++) {
-    const promptId = `prompt-${i}`;
-    const prompt = DEFAULT_PROMPTS[i];
-    const { text, color } = prompt;
+  for (let index = 0; index < DEFAULT_PROMPTS.length; index += 1) {
+    const promptId = `prompt-${index}`;
+    const prompt = DEFAULT_PROMPTS[index];
     prompts.set(promptId, {
       promptId,
-      text,
+      text: prompt.text,
       weight: startOn.includes(prompt) ? 1 : 0,
-      cc: i,
-      color,
+      cc: index,
+      color: prompt.color,
     });
   }
-
   return prompts;
 }
 

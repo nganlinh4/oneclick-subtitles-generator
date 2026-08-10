@@ -1,4 +1,3 @@
-import React from 'react';
 import { presets, presetOrder } from './presetDefinitions';
 
 // Pure render of the preset buttons grid: predefined presets, custom presets,

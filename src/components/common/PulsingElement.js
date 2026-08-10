@@ -1,4 +1,3 @@
-import React from 'react';
 import '../../styles/common/PulsingEffect.css';
 
 const PulsingElement = ({ as = 'div', children, className = '', isPulsing = true, ...props }) => {

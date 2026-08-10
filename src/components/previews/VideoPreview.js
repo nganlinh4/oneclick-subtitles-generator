@@ -1,4 +1,4 @@
-import React, { useEffect, useRef, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import LoadingIndicator from '../common/LoadingIndicator';
 import '../../styles/common/material-switch.css';
@@ -28,7 +28,7 @@ import '../../styles/narration/index.css';
 import { SERVER_URL } from '../../config';
 import useVideoSeekControls from '../../hooks/useVideoSeekControls';
 
-const VideoPreview = ({ currentTime, setCurrentTime, setDuration, videoSource, fileType, onSeek, translatedSubtitles, subtitlesArray, onVideoUrlReady, onReferenceAudioChange, onRenderVideo, useCookiesForDownload = true }) => {
+const VideoPreview = ({ currentTime, setCurrentTime, setDuration, videoSource, fileType, onSeek, translatedSubtitles, subtitlesArray, onVideoUrlReady, onReferenceAudioChange: _onReferenceAudioChange, onRenderVideo, useCookiesForDownload = true }) => {
   const { t } = useTranslation();
   const videoRef = useRef(null);
   const videoContainerRef = useRef(null); // Ref for the main video container

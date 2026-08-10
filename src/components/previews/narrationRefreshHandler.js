@@ -92,7 +92,10 @@ export const narrationRefreshHandler = async ({
 
     // EXACT same data preparation as downloadAlignedAudio in useNarrationHandlers.js
     const narrationData = hydrateNarrationResultsForAlignment(generationResults)
-      .filter((result) => result.success && result.filename)
+      .filter(
+        (result) =>
+          result.success && (result.nativeArtifactId || result.filename),
+      )
       .map((result) => {
         // Get the correct subtitle ID from the result
         const subtitleId = result.subtitle_id;
@@ -145,6 +148,7 @@ export const narrationRefreshHandler = async ({
         ) {
           return {
             filename: result.filename,
+            nativeArtifactId: result.nativeArtifactId,
             subtitle_id: result.subtitle_id,
             start: subtitle.start,
             end: subtitle.end,
@@ -157,6 +161,7 @@ export const narrationRefreshHandler = async ({
         // Otherwise, use existing timing or defaults
         return {
           filename: result.filename,
+          nativeArtifactId: result.nativeArtifactId,
           subtitle_id: result.subtitle_id,
           start: result.start || 0,
           end: result.end || (result.start ? result.start + 5 : 5),

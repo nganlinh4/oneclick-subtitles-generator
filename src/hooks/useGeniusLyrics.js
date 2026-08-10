@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import { API_BASE_URL } from '../config';
+import { fetchGeniusLyricsNative } from '../platform/providerService';
 
 /**
  * Custom hook for fetching lyrics from Genius API
@@ -110,22 +110,7 @@ const useGeniusLyrics = () => {
       setError(null);
       setLoading(true);
 
-      const response = await fetch(`${API_BASE_URL}/lyrics`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          artist,
-          song,
-          force
-        })
-      });
-
-      if (!response.ok) {
-        const errorData = await response.json();
-        throw new Error(errorData.error || 'Failed to fetch lyrics');
-      }
-
-      const data = await response.json();
+      const data = await fetchGeniusLyricsNative({ artist, song, force });
 
       if (data.lyrics) {
         // First set the raw lyrics and album art

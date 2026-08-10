@@ -1,7 +1,6 @@
-import React, { useState, useRef, useEffect, useCallback } from 'react';
+import { useState, useRef, useEffect, useCallback } from 'react';
 import { createPortal } from 'react-dom';
 import { useTranslation } from 'react-i18next';
-import { getExampleAudioList, uploadExampleAudio } from '../../../services/narrationService';
 import { showErrorToast } from '../../../utils/toastUtils';
 
 /**
@@ -14,7 +13,7 @@ import { showErrorToast } from '../../../utils/toastUtils';
 const ExampleAudioDropdown = ({ onExampleSelect, disabled = false }) => {
   const { t } = useTranslation();
   const [isOpen, setIsOpen] = useState(false);
-  const [exampleFiles, setExampleFiles] = useState([]);
+  const [exampleFiles] = useState([]);
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState('');
   const dropdownRef = useRef(null);
@@ -52,23 +51,6 @@ const ExampleAudioDropdown = ({ onExampleSelect, disabled = false }) => {
       dropdownEl.style.left = `${buttonRect.left}px`;
       dropdownEl.style.right = 'auto';
     }
-  }, []);
-
-  // Load example files when component mounts
-  useEffect(() => {
-    const loadExampleFiles = async () => {
-      try {
-        const response = await getExampleAudioList();
-        if (response.success) {
-          setExampleFiles(response.files);
-        }
-      } catch (error) {
-        console.error('Error loading example files:', error);
-        setError('Failed to load example files');
-      }
-    };
-
-    loadExampleFiles();
   }, []);
 
   // Dispatch toast notifications for errors
@@ -118,9 +100,18 @@ const ExampleAudioDropdown = ({ onExampleSelect, disabled = false }) => {
     // Don't open if disabled
     if (disabled) return;
 
+    // Example-voice packages are not yet part of the signed native catalog. Use the native
+    // reference picker through the existing parent callback instead of contacting a local API.
+    if (exampleFiles.length === 0) {
+      Promise.resolve(onExampleSelect(null)).catch(() => {
+        setError('Failed to load example files');
+      });
+      return;
+    }
+
     // Toggle dropdown state
     setIsOpen(prev => !prev);
-  }, [disabled]);
+  }, [disabled, exampleFiles.length, onExampleSelect]);
 
   // Handle example selection
   const handleExampleSelect = useCallback(async (filename) => {
@@ -128,16 +119,8 @@ const ExampleAudioDropdown = ({ onExampleSelect, disabled = false }) => {
     setError('');
 
     try {
-      // Upload the example audio as reference
-      const result = await uploadExampleAudio(filename);
-
-      if (result.success) {
-        // Call the parent callback with the result
-        onExampleSelect(result);
-        setIsOpen(false);
-      } else {
-        setError(result.error || 'Failed to upload example audio');
-      }
+      await onExampleSelect(filename);
+      setIsOpen(false);
     } catch (error) {
       console.error('Error uploading example audio:', error);
       setError('Failed to upload example audio');

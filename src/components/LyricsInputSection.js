@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { useTranslation } from 'react-i18next';
 import useGeniusLyrics from '../hooks/useGeniusLyrics';
 import { showErrorToast, showInfoToast } from '../utils/toastUtils';
@@ -10,6 +10,8 @@ const LyricsInputSection = ({ onLyricsReceived }) => {
   const { t } = useTranslation();
   const [artist, setArtist] = useState('');
   const [song, setSong] = useState('');
+  const translationRef = useRef(t);
+  translationRef.current = t;
 
   // Load cached values when component mounts
   useEffect(() => {
@@ -41,7 +43,7 @@ const LyricsInputSection = ({ onLyricsReceived }) => {
 
   useEffect(() => {
     if (cleaning) {
-      showInfoToast(t('subtitlesInput.cleaning', 'Cleaning lyrics...'));
+      showInfoToast(translationRef.current('subtitlesInput.cleaning', 'Cleaning lyrics...'));
     }
   }, [cleaning]);
 

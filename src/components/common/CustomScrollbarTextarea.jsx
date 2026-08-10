@@ -1,5 +1,5 @@
-import React, { useEffect, useRef, forwardRef, useImperativeHandle } from 'react';
-import { initializeFunctionalScrollbars, cleanupFunctionalScrollbars } from '../../utils/functionalScrollbar';
+import { useEffect, useRef, forwardRef, useImperativeHandle } from 'react';
+import { initializeFunctionalScrollbars } from '../../utils/functionalScrollbar';
 import '../../styles/common/custom-scrollbar-textarea.css';
 
 /**

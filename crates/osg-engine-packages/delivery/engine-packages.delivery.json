@@ -1,0 +1,41 @@
+{
+  "schemaVersion": 1,
+  "platforms": {
+    "linux-x86_64": {
+      "engines": [
+        { "id": "parakeet", "releases": [] },
+        { "id": "faster-whisper-turbo", "releases": [] },
+        { "id": "faster-whisper-large-v3", "releases": [] },
+        { "id": "qwen3-asr-1.7b", "releases": [] },
+        { "id": "qwen3-asr-0.6b", "releases": [] }
+      ]
+    },
+    "macos-aarch64": {
+      "engines": [
+        { "id": "parakeet", "releases": [] },
+        { "id": "faster-whisper-turbo", "releases": [] },
+        { "id": "faster-whisper-large-v3", "releases": [] },
+        { "id": "qwen3-asr-1.7b", "releases": [] },
+        { "id": "qwen3-asr-0.6b", "releases": [] }
+      ]
+    },
+    "macos-x86_64": {
+      "engines": [
+        { "id": "parakeet", "releases": [] },
+        { "id": "faster-whisper-turbo", "releases": [] },
+        { "id": "faster-whisper-large-v3", "releases": [] },
+        { "id": "qwen3-asr-1.7b", "releases": [] },
+        { "id": "qwen3-asr-0.6b", "releases": [] }
+      ]
+    },
+    "windows-x86_64": {
+      "engines": [
+        { "id": "parakeet", "releases": [] },
+        { "id": "faster-whisper-turbo", "releases": [] },
+        { "id": "faster-whisper-large-v3", "releases": [] },
+        { "id": "qwen3-asr-1.7b", "releases": [] },
+        { "id": "qwen3-asr-0.6b", "releases": [] }
+      ]
+    }
+  }
+}

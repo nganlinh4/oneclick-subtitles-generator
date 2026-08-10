@@ -9,88 +9,43 @@
   <img src="readme_assets/Screenshot%202025-03-26%20105642.png" width="400" />
 </div>
 
-A React + Remotion application for creating dynamic subtitled videos with multiple audio track support and GPU-accelerated rendering.
+This workspace contains OSG's frozen Remotion composition and native stdio render worker. It is
+not a standalone web application or HTTP server.
 
-## Features
+The Tauri host resolves opaque project/media/speech artifact IDs, prepares a bounded render job,
+and supervises `worker/osg_render_worker.mjs`. The worker receives framed requests over private
+stdin/stdout and writes only to native-selected staging paths. The former Express upload/render
+service is not part of the native architecture.
 
-- Create subtitled videos with synchronized text
-- Support for multiple audio tracks:
-  - Main audio/video
-  - Narration audio (optional)
-- Volume controls for audio tracks
-- Customizable subtitle styles:
-  - Font size
-  - Font family
-  - Font weight
-  - Text color
-  - Text alignment
-  - Line height
-  - Letter spacing
-  - Text transform
-  - Background color
-  - Background opacity
-  - Border radius
-  - Border width
-  - Border color
-  - Border style
-  - Text shadow
-  - Glow effect
+## Visual contract
 
-- Theme switching (light/dark)
-- Multi-language support
-- Tab-based workspace
-- Render queue management
-- GPU-accelerated video rendering (Vulkan)
-- Support for SRT and JSON subtitle formats
+The composition preserves the original subtitle styling, fonts, effects, animation, layout, and
+audio behavior. Changes to `src/` or the render bundle must pass the provenance-backed visual
+contract rather than updating the baseline as part of an unrelated rewrite.
 
-## Technologies
-
-- Frontend:
-  - React 19
-  - Remotion (video rendering)
-  - styled-components
-  - React Router
-- Backend:
-  - Express
-  - Multer (file uploads)
-  - Remotion renderer
-
-## Installation
-
-1. Clone the repository
-2. Install dependencies:
-```bash
-npm install
-```
-3. Build the server:
-```bash
-npm run server:build
+```powershell
+npm run --workspace=video-renderer check:visual-contract
+npm run --workspace=video-renderer check:visual-provenance
 ```
 
-## Running the Application
+## Development commands
 
-Run the application in development mode:
-```bash
-npm run server:dev
+Run these from the repository root after `npm ci`:
+
+```powershell
+npm run --workspace=video-renderer native:typecheck
+npm run --workspace=video-renderer native:bundle
+npm run --workspace=video-renderer test:worker
 ```
 
-## Development Notes
+The generated native bundle is a build artifact; edit the TypeScript source instead.
 
-- The application uses Remotion for video rendering with GPU acceleration
-- Backend provides file upload and video rendering endpoints
-- Frontend manages the workspace and render queue
-- Both light and dark themes are supported
-- Multiple language support is implemented via LanguageContext
+## Packaging status
 
-## Project Structure
+The worker and delivery schema are implemented, but all target-specific Remotion runtime release
+lists are intentionally empty. A distributable renderer still needs reviewed Node, Chromium,
+Remotion, native binaries, and font payloads with exact hashes and notices for Windows x64, Linux
+x64, macOS Intel, and macOS Apple Silicon. Source-level worker tests do not make those runtime
+packages installable.
 
-- `src/` - Frontend React application
-  - `components/` - Reusable components
-  - `contexts/` - Application contexts
-  - `remotion/` - Remotion video compositions
-  - `services/` - API services
-  - `utils/` - Utility functions
-- `server/` - Backend Express server
-  - `src/` - Server source code
-  - `uploads/` - Uploaded files
-  - `output/` - Rendered videos
+See [../ARCHITECTURE.md](../ARCHITECTURE.md#runtime-delivery) for the application boundary.

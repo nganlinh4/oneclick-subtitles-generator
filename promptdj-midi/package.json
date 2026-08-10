@@ -5,20 +5,23 @@
   "type": "module",
   "scripts": {
     "dev": "vite",
-    "build": "vite build",
+    "typecheck": "tsc --noEmit",
+    "build": "npm run typecheck && vite build",
+    "check:visual-contract": "node scripts/check-visual-contract.mjs",
+    "test:visual-contract": "node --test scripts/check-visual-contract.test.mjs",
+    "update:visual-contract": "node scripts/check-visual-contract.mjs --update --baseline-ref HEAD",
     "preview": "vite preview"
   },
   "dependencies": {
-    "@google/genai": "^1.0.0",
-    "lit": "^3.3.0",
-    "react": "^18.3.1",
-    "react-dom": "^18.3.1"
+    "lit": "3.3.2",
+    "react": "18.3.1",
+    "react-dom": "18.3.1"
   },
   "devDependencies": {
-    "@types/node": "^22.14.0",
-    "@types/react": "^18.3.12",
-    "@types/react-dom": "^18.3.1",
-    "typescript": "~5.8.2",
-    "vite": "^5.4.0"
+    "@types/node": "22.19.15",
+    "@types/react": "18.3.28",
+    "@types/react-dom": "18.3.7",
+    "typescript": "5.8.3",
+    "vite": "8.0.16"
   }
 }

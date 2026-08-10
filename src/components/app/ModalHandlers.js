@@ -3,7 +3,6 @@ import { abortVideoAnalysis } from '../../services/videoAnalysisService';
 import { setTranscriptionRules } from '../../utils/transcriptionRulesStore';
 import { setUserProvidedSubtitles, setCurrentCacheId as setSubtitlesCacheId } from '../../utils/userSubtitlesStore';
 import { setCurrentCacheId as setRulesCacheId } from '../../utils/transcriptionRulesStore';
-import { extractYoutubeVideoId } from '../../utils/videoDownloader';
 
 /**
  * Hook for modal-related handlers
@@ -18,7 +17,6 @@ export const useModalHandlers = (appState) => {
     setStatus,
     setUserProvidedSubtitlesState,
     setUseUserProvidedSubtitles,
-    selectedVideo,
     uploadedFile,
     t = (key, defaultValue) => defaultValue // Provide a default implementation if t is not available
   } = appState;
@@ -206,7 +204,7 @@ export const useModalHandlers = (appState) => {
     const currentVideoUrl = localStorage.getItem('current_video_url');
     if (currentVideoUrl) {
       // Use unified URL-based caching
-  const { generateUrlBasedCacheId } = await import('../../services/subtitleCache');
+      const { generateUrlBasedCacheId } = await import('../../services/subtitleCache');
       return await generateUrlBasedCacheId(currentVideoUrl);
     } else if (uploadedFile) {
       // For uploaded files, use the file name without extension

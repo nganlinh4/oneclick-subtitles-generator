@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { useTranslation } from 'react-i18next';
 import '../styles/VideoAnalysisModal.css';
 import { PROMPT_PRESETS } from '../services/geminiService';
@@ -46,6 +46,8 @@ const VideoAnalysisModal = ({
   // Use refs to store timers without triggering re-renders
   const intervalRef = useRef(null);
   const timeoutRef = useRef(null);
+  const onUseDefaultPresetRef = useRef(onUseDefaultPreset);
+  onUseDefaultPresetRef.current = onUseDefaultPreset;
 
   // Initialize countdown on mount only
   useEffect(() => {
@@ -84,7 +86,7 @@ const VideoAnalysisModal = ({
       }
       const autoSelectDefault = localStorage.getItem('auto_select_default_preset') === 'true';
       if (autoSelectDefault) {
-        onUseDefaultPreset();
+        onUseDefaultPresetRef.current();
       } else {
         onUsePreset(analysisResult.recommendedPreset.id);
       }

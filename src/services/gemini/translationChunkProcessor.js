@@ -3,10 +3,8 @@
  * Splits subtitles into duration-based chunks, translates each via the main
  * translateSubtitles function, with per-chunk retries and inter-chunk rest time.
  *
- * NOTE ON THE CYCLE: translation.js imports translateSubtitlesByChunks from here,
- * and this module needs translateSubtitles from translation.js. To avoid a static
- * circular import, translateSubtitles is resolved with a lazy dynamic import at
- * call time (one direction only).
+ * The caller supplies the single-chunk translator. Keeping that dependency
+ * explicit avoids a translation.js <-> translationChunkProcessor.js cycle.
  */
 
 import { getLanguageCode } from '../../utils/languageUtils';
@@ -28,11 +26,14 @@ import { getProcessingForceStopped } from './requestManagement';
  * @param {Object} bracketStyle - Custom bracket style { open, close } for single language mode or dual language mode
  * @param {Array} chainItems - Optional chain items for chain-based formatting
  * @param {number} restTime - Optional rest time in seconds between chunk translations
+ * @param {string|null} fileContext - Optional label for status messages
+ * @param {Function} translateChunk - Single-chunk translation callback
  * @returns {Promise<Array>} - Array of translated subtitles
  */
-const translateSubtitlesByChunks = async (subtitles, targetLanguage, model, customPrompt, splitDuration, includeRules = false, delimiter = ' ', useParentheses = false, bracketStyle = null, chainItems = null, restTime = 0, fileContext = null) => {
-    // Lazily resolve translateSubtitles to break the static circular import with ./translation
-    const { translateSubtitles } = await import('./translation');
+const translateSubtitlesByChunks = async (subtitles, targetLanguage, model, customPrompt, splitDuration, includeRules = false, delimiter = ' ', useParentheses = false, bracketStyle = null, chainItems = null, restTime = 0, fileContext = null, translateChunk) => {
+    if (typeof translateChunk !== 'function') {
+        throw new TypeError('translateSubtitlesByChunks requires a translateChunk callback');
+    }
 
     // Convert splitDuration from minutes to seconds
     const splitDurationSeconds = splitDuration * 60;
@@ -98,7 +99,7 @@ const translateSubtitlesByChunks = async (subtitles, targetLanguage, model, cust
         try {
             // Call translateSubtitles with the current chunk, but with splitDuration=0 to avoid infinite recursion
             // Pass along all parameters to maintain consistency across chunks
-            const translatedChunk = await translateSubtitles(chunk, targetLanguage, model, customPrompt, 0, includeRules, delimiter, useParentheses, bracketStyle, chainItems);
+            const translatedChunk = await translateChunk(chunk, targetLanguage, model, customPrompt, 0, includeRules, delimiter, useParentheses, bracketStyle, chainItems);
             translatedChunks.push(translatedChunk);
 
             // Add rest time between chunks if specified and not the last chunk
@@ -173,7 +174,7 @@ Return your response in JSON format with exactly ${chunk.length} entries.`;
 
                     // Call translateSubtitles with the improved retry prompt
                     // Pass along all parameters to maintain consistency across chunks
-                    const translatedChunk = await translateSubtitles(chunk, targetLanguage, model, chunkRetryPrompt, 0, includeRules, delimiter, useParentheses, bracketStyle);
+                    const translatedChunk = await translateChunk(chunk, targetLanguage, model, chunkRetryPrompt, 0, includeRules, delimiter, useParentheses, bracketStyle);
                     translatedChunks.push(translatedChunk);
                     continue;
                 } catch (retryError) {
@@ -264,11 +265,6 @@ Return your response in JSON format with exactly ${chunk.length} entries.`;
     const result = translatedChunks.flat();
 
     // Log the result
-
-    if (result.length > 0) {
-
-
-    }
 
     return result;
 };

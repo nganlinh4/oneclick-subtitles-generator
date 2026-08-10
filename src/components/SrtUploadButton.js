@@ -1,4 +1,4 @@
-import React, { useRef, useState, useEffect } from 'react';
+import { useRef, useState, useEffect } from 'react';
 import { useTranslation } from 'react-i18next';
 import LoadingIndicator from './common/LoadingIndicator';
 import '../styles/SrtUploadButton.css';
@@ -63,7 +63,7 @@ const SrtUploadButton = ({
             // Validate that it has the expected subtitle structure
             if (jsonData.length > 0) {
               const firstItem = jsonData[0];
-              if (!firstItem.hasOwnProperty('start') || !firstItem.hasOwnProperty('end') || !firstItem.hasOwnProperty('text')) {
+              if (!Object.hasOwn(firstItem, 'start') || !Object.hasOwn(firstItem, 'end') || !Object.hasOwn(firstItem, 'text')) {
                 alert(t('errors.invalidJsonStructure', 'JSON subtitles must have start, end, and text properties'));
                 setIsProcessing(false);
                 return;
@@ -131,7 +131,7 @@ const SrtUploadButton = ({
               // Validate that it has the expected subtitle structure
               if (jsonData.length > 0) {
                 const firstItem = jsonData[0];
-                if (!firstItem.hasOwnProperty('start') || !firstItem.hasOwnProperty('end') || !firstItem.hasOwnProperty('text')) {
+                if (!Object.hasOwn(firstItem, 'start') || !Object.hasOwn(firstItem, 'end') || !Object.hasOwn(firstItem, 'text')) {
                   alert(t('errors.invalidJsonStructure', 'JSON subtitles must have start, end, and text properties'));
                   setIsProcessing(false);
                   return;

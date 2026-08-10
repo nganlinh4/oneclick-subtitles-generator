@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import SrtUploadButton from '../SrtUploadButton';
 import AddSubtitlesButton from '../AddSubtitlesButton';
 import VideoAnalysisButton from '../VideoAnalysisButton';
@@ -47,7 +47,7 @@ const ButtonsContainer = ({
   onSegmentSelect
 }) => {
   // State for Vercel mode detection
-  const [isVercelMode, setIsVercelMode] = useState(() => {
+  const [isVercelMode] = useState(() => {
     return typeof window !== 'undefined' && window.location.hostname.includes('vercel.app');
   });
 
@@ -309,7 +309,9 @@ const ButtonsContainer = ({
               // Clear processing ranges overlay
               try {
                 publishProcessingRanges({ ranges: [] });
-              } catch {}
+              } catch {
+                // Overlay cleanup is advisory after force-stop.
+              }
             }
 
             // The state will be updated by the event listener in useSubtitles hook

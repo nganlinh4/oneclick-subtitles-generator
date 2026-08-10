@@ -1,34 +1,110 @@
-import React, { useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { getAllKeys, addKey, removeKey, getActiveKeyIndex, setActiveKeyIndex } from '../../../services/gemini/keyManager';
+import {
+  addGeminiCredential,
+  formatCredentialReference,
+  getCredentialAvailability,
+  initializeCredentialState,
+  removeGeminiCredential,
+  selectGeminiCredential,
+  subscribeCredentialState,
+} from '../../../platform/credentialStateController';
+import { isDesktopRuntime } from '../../../platform/desktopRuntime';
 import { animateToggle, toggleKeyVisibility } from '../utils/keyVisibilityAnimation';
 
 // Hook owning the multiple Gemini API key state + handlers.
 export const useGeminiKeys = ({ setGeminiApiKey, setApiKeysSet }) => {
+  const nativeCredentialMode = isDesktopRuntime();
   const [geminiApiKeys, setGeminiApiKeys] = useState([]);
   const [newGeminiKey, setNewGeminiKey] = useState('');
   const [showNewGeminiKey, setShowNewGeminiKey] = useState(false);
   const [activeKeyIndex, setActiveKeyIndexState] = useState(0);
   const [visibleKeyIndices, setVisibleKeyIndices] = useState({});
+  const credentialIdByReference = useRef(new Map());
+  const nativeAddPending = useRef(false);
+
+  const applyNativeSnapshot = useCallback((snapshot) => {
+    if (!snapshot.initialized) return;
+    const credentials = snapshot.credentials.filter(({ purpose }) => purpose === 'geminiApiKey');
+    const references = credentials.map(formatCredentialReference);
+    credentialIdByReference.current = new Map(
+      references.map((reference, index) => [reference, credentials[index].id])
+    );
+    setGeminiApiKeys(references);
+    setActiveKeyIndexState(snapshot.gemini.activeIndex < 0 ? 0 : snapshot.gemini.activeIndex);
+    setApiKeysSet((previous) => ({
+      ...previous,
+      gemini: getCredentialAvailability(snapshot).gemini,
+    }));
+  }, [setApiKeysSet]);
 
   // Load all Gemini API keys on mount
   useEffect(() => {
+    if (nativeCredentialMode) {
+      let mounted = true;
+      const unsubscribe = subscribeCredentialState((snapshot) => {
+        if (mounted) applyNativeSnapshot(snapshot);
+      });
+      initializeCredentialState().catch(() => {
+        if (mounted) {
+          setApiKeysSet((previous) => ({ ...previous, gemini: false }));
+        }
+      });
+      return () => {
+        mounted = false;
+        unsubscribe();
+      };
+    }
+
     const keys = getAllKeys();
     setGeminiApiKeys(keys);
     setActiveKeyIndexState(getActiveKeyIndex());
-  }, []);
+    return undefined;
+  }, [applyNativeSnapshot, nativeCredentialMode, setApiKeysSet]);
 
   // Update the active key when it changes
-  const handleSetActiveKey = (index) => {
+  const handleSetActiveKey = async (index) => {
+    if (nativeCredentialMode) {
+      const reference = geminiApiKeys[index];
+      const id = credentialIdByReference.current.get(reference);
+      if (!id) return false;
+      try {
+        await selectGeminiCredential(id);
+        return true;
+      } catch {
+        return false;
+      }
+    }
+
     setActiveKeyIndex(index);
     setActiveKeyIndexState(index);
     // Update the single key for backward compatibility
     setGeminiApiKey(geminiApiKeys[index]);
+    return true;
   };
 
   // Add a new Gemini API key
-  const handleAddGeminiKey = () => {
+  const handleAddGeminiKey = async () => {
     if (newGeminiKey && newGeminiKey.trim()) {
+      if (nativeCredentialMode) {
+        if (nativeAddPending.current) return false;
+        nativeAddPending.current = true;
+        const secret = newGeminiKey;
+        // Clear the write-only field before crossing the IPC boundary. The local variable exists
+        // only for this one submit call and is never copied into durable or shared React state.
+        setNewGeminiKey('');
+        try {
+          await addGeminiCredential(secret);
+          setShowNewGeminiKey(false);
+          return true;
+        } catch {
+          return false;
+        } finally {
+          nativeAddPending.current = false;
+        }
+      }
+
       if (addKey(newGeminiKey)) {
         const updatedKeys = getAllKeys();
         setGeminiApiKeys(updatedKeys);
@@ -40,12 +116,24 @@ export const useGeminiKeys = ({ setGeminiApiKey, setApiKeysSet }) => {
           ...prevState,
           gemini: true
         }));
+        return true;
       }
     }
+    return false;
   };
 
   // Remove a Gemini API key
-  const handleRemoveGeminiKey = (key) => {
+  const handleRemoveGeminiKey = async (key) => {
+    if (nativeCredentialMode) {
+      const id = credentialIdByReference.current.get(key);
+      if (!id) return false;
+      try {
+        return await removeGeminiCredential(id);
+      } catch {
+        return false;
+      }
+    }
+
     if (removeKey(key)) {
       const updatedKeys = getAllKeys();
       setGeminiApiKeys(updatedKeys);
@@ -55,7 +143,9 @@ export const useGeminiKeys = ({ setGeminiApiKey, setApiKeysSet }) => {
         ...prevState,
         gemini: updatedKeys.length > 0
       }));
+      return true;
     }
+    return false;
   };
 
   return {

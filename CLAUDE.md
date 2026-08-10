@@ -1,46 +1,44 @@
-# CLAUDE.md — oneclick-subtitles-generator
+# Contributor guidance
 
-An old, organically-grown subtitles/narration app. The brief is the opposite of "leave it
-alone": **actively improve maintainability, solidity, and performance every time you touch it.**
+One-Click Subtitles Generator is being completed as a local-first Tauri 2/Rust desktop
+application. Read [ARCHITECTURE.md](ARCHITECTURE.md), [SECURITY.md](SECURITY.md), and
+[docs/rewrite/DESIGN.md](docs/rewrite/DESIGN.md) before changing a runtime boundary.
 
-## Who the customer is
-The end user installs by downloading and running `OSG_installer_Windows.bat` from a GitHub
-release onto a **clean Windows PC**. Judge every change by what happens for *them*, not on this
-dev machine. The `.bat` clones `main` and runs the installer, so fixes pushed to `main` reach
-customers on their next install/update — a **new release is only needed when the `.bat` file
-itself changes** (then cut one matching the previous format; see `additional_docs/`).
+## Product boundary
 
-## Refactor aggressively & prune
-- Every change leaves the touched code better than you found it.
-- **No code file over 600 lines.** Many existing files break this (worst are 1000–2500 lines).
-  When you edit one, split it along real seams (extract hooks, helpers, sub-components, route
-  handlers) instead of adding to it. New files start small and stay small.
-- Prune as you go: delete dead code, unused exports/vars, commented-out blocks, and superseded
-  approaches the moment you touch the area.
-- **Centralize dependencies** into one shared helper; prefer a single clear way to do each thing
-  over parallel implementations.
-- Scope cleanup to the files the task touches — no repo-wide rewrite in one pass, and never
-  modify unrelated uncommitted work.
+- The repository-root React frontend is the only visual source of truth. Do not restyle, replace,
+  or approximate it during backend work.
+- The former Electron, Express, Flask, FastAPI, fixed-port, CORS, and browser-owned process stack
+  has been removed. Do not recreate it or add browser fallbacks for native operations.
+- Rust owns projects, jobs, settings, filesystem capabilities, provider traffic, credentials,
+  media operations, downloads, rendering, and optional-worker supervision.
+- The WebView uses typed commands and opaque IDs. Do not expose native paths, secrets, process
+  arguments, provider-private URLs, or unrestricted filesystem/shell access.
 
-## Keep it solid
-- **Write tests for new behavior**; run them before committing; fix failing tests before adding
-  more code.
-- Add `.on('error')` to every spawned process — a missing binary must reject, never crash the
-  server.
-- **Prefer bundled binaries over system installs** so a clean PC works: ffmpeg/ffprobe resolve
-  from `node_modules` via `server/services/shared/ffmpegUtils.js` (and yt-dlp gets
-  `--ffmpeg-location`); Python services resolve the same bundled ffmpeg, never bare `'ffmpeg'`.
-- **Pin** external TTS/model versions (don't fetch latest-from-git on install) for reproducible
-  builds. The one exception is **`yt-dlp`**, which must auto-update to keep up with YouTube.
-- Validate user input; never interpolate it into a shell command or Python source — pass data
-  over stdin/args.
+## Runtime and release rules
 
-## Optimization & quiet output
-- When touching hot paths, take the obvious wins: avoid per-render/per-event work, cache resolved
-  paths, don't repeat expensive lookups.
-- Keep the launch console quiet — noise reads as breakage to customers. Gate debug logging behind
-  a flag (frontend: `localStorage.debug_logs`; suppress non-actionable third-party warnings).
+- Optional tools and model runtimes come only from reviewed, target-specific, content-addressed
+  delivery catalogs with immutable sources, exact hashes/sizes, inventories, and notices.
+- Empty catalogs are deliberate blockers. Never make a feature appear installed by falling back to
+  an arbitrary system executable or an unverified download.
+- Source compilation and runtime-package readiness are separate gates. A `--no-bundle` build is not
+  a distributable release.
+- The updater remains disabled until the owner supplies the production signing public key and
+  secures the corresponding private key.
+- The owner must select a root project license and notice policy before distribution; do not infer
+  one from dependency or crate metadata.
 
-## Commits
-- Conventional commits (`feat:`/`fix:`/`refactor:`/`chore:`…) explaining *why*.
-- **Never commit or push without explicit per-change sign-off.**
+## Engineering expectations
+
+- Refactor aggressively when a boundary is touched, but preserve unrelated work in the shared
+  tree and keep behavior changes covered by focused tests.
+- Prefer small typed modules, bounded inputs/outputs, explicit cancellation, no-clobber writes,
+  path-safe errors, redacted diagnostics, and owned process-tree termination.
+- Never interpolate user input into a shell or generated source. Native workers use fixed programs,
+  closed arguments, allowlisted environments, and private framed stdin/stdout.
+- Keep ordinary output quiet and actionable. Private content and credentials never belong in logs.
+- Run the applicable commands in [README.md](README.md#verification), including visual, command
+  contract, frontend, Rust, and readiness gates.
+
+Use conventional commit messages. Never commit or push without explicit user approval for the
+current change set.

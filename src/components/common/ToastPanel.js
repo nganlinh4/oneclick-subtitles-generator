@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { useTranslation } from 'react-i18next';
 import './ToastPanel.css';
 
@@ -146,7 +146,7 @@ const ToastPanel = () => {
       } catch (e) { return []; }
     });
     
-    const [isHistoryVisible, setIsHistoryVisible] = useState(false);
+    const [isHistoryVisible] = useState(false);
     const [isHistoryPinned, setIsHistoryPinned] = useState(false);
     const [isHistoryHiding, setIsHistoryHiding] = useState(false); // ADDED: State for closing animation
     const [showHistoryButton, setShowHistoryButton] = useState(true);
@@ -173,7 +173,7 @@ const ToastPanel = () => {
       // Add to history only if it's a genuinely new toast
       if (!toastHistory.some(h => h.id === latestToast.id)) {
           // We clone the toast but remove the timerId to prevent it from auto-dismissing from history
-          const { timerId, ...historyToast } = latestToast;
+          const { timerId: _timerId, ...historyToast } = latestToast;
           setToastHistory(prev => [historyToast, ...prev]);
       }
       // eslint-disable-next-line react-hooks/exhaustive-deps

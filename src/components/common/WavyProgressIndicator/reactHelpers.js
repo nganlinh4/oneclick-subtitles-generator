@@ -144,7 +144,7 @@ export class LinearProgressDrawingCache {
         this.updateDrawPaths(progressFractions, amplitude, waveOffset);
     }
 
-    updateFullPaths(size, wavelength, amplitude, stroke, trackStroke) {
+    updateFullPaths(size, wavelength, amplitude, stroke, _trackStroke) {
         const width = size.width;
         const height = size.height;
 

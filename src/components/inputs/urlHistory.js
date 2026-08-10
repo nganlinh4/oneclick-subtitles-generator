@@ -4,6 +4,7 @@ import {
   getAllSitesUrlHistory
 } from '../../utils/historyUtils';
 import { isValidDouyinUrl, extractDouyinVideoId } from './urlValidation';
+import { getVideoThumbnail } from '../../platform/desktopYoutubeService';
 
 // Helper functions for Douyin URL history
 export const getDouyinUrlHistory = () => {
@@ -49,7 +50,7 @@ export const addDouyinUrlToHistory = (video) => {
 };
 
 // Load combined history from all sources
-export const loadHistory = (setHistory) => {
+export const loadHistory = async (setHistory) => {
   const youtubeHistory = getYoutubeUrlHistory().map(item => ({ ...item, source: 'youtube' }));
   const douyinHistory = getDouyinUrlHistory().map(item => ({ ...item, source: 'douyin' }));
   const allSitesHistory = getAllSitesUrlHistory().map(item => ({ ...item, source: 'all-sites' }));
@@ -60,10 +61,19 @@ export const loadHistory = (setHistory) => {
     .slice(0, 20); // Keep only the most recent 20 items
 
   setHistory(combinedHistory);
+  const hydrated = await Promise.all(combinedHistory.map(async (item) => {
+    if (item.source !== 'youtube') return item;
+    try {
+      return { ...item, thumbnail: await getVideoThumbnail(item.id) };
+    } catch {
+      return { ...item, thumbnail: '' };
+    }
+  }));
+  setHistory(hydrated);
 };
 
 // Handle selecting a video from history
-export const handleSelectFromHistory = (historyItem, { setUrl, setSelectedVideo, setUrlType, setShowHistory }) => {
+export const handleSelectFromHistory = async (historyItem, { setUrl, setSelectedVideo, setUrlType, setShowHistory }) => {
   setUrl(historyItem.url);
 
   // Check if this is a Douyin URL that should use unified downloader
@@ -84,12 +94,20 @@ export const handleSelectFromHistory = (historyItem, { setUrl, setSelectedVideo,
   }
 
   // Use original history item for non-Douyin URLs
+  let thumbnail = '';
+  if (historyItem.source === 'youtube') {
+    try {
+      thumbnail = historyItem.thumbnail || await getVideoThumbnail(historyItem.id);
+    } catch {
+      thumbnail = '';
+    }
+  }
   setSelectedVideo({
     id: historyItem.id,
     url: historyItem.url,
     source: historyItem.source,
     title: historyItem.title,
-    thumbnail: historyItem.thumbnail || ''
+    thumbnail
   });
   setUrlType(historyItem.source);
   setShowHistory(false);

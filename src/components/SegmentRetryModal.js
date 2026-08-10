@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { useTranslation } from 'react-i18next';
 import CloseButton from './common/CloseButton';
 import '../styles/SegmentRetryModal.css';
@@ -25,7 +25,7 @@ const SegmentRetryModal = ({
   segmentIndex,
   segments,
   onRetry,
-  userProvidedSubtitles = ''
+  userProvidedSubtitles: _userProvidedSubtitles = ''
 }) => {
   const { t } = useTranslation();
 
@@ -108,7 +108,7 @@ const SegmentRetryModal = ({
       // Create a promise to track when the save is complete
       const savePromise = new Promise((resolve) => {
         // Create a one-time event listener for the save completion
-        const handleSaveComplete = (event) => {
+        const handleSaveComplete = () => {
 
           resolve();
           // Remove the event listener

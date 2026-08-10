@@ -1,4 +1,4 @@
-import React, { useEffect, useRef, useCallback, useState } from 'react';
+import { useEffect, useRef, useCallback, useState } from 'react';
 
 /**
  * LiquidGlass - A highly customizable liquid glass effect component
@@ -31,11 +31,11 @@ const LiquidGlass = ({
   onMouseLeave,
   
   // Glass effect parameters
-  effectIntensity = 1.0, // Multiplier for displacement effect
-  effectRadius = 0.6, // Radius of the glass effect
-  effectWidth = 0.3, // Width of the effect area
-  effectHeight = 0.2, // Height of the effect area
-  effectOffset = 0.15, // Offset for the effect
+  effectIntensity: _effectIntensity = 1.0, // Multiplier for displacement effect
+  effectRadius: _effectRadius = 0.6, // Radius of the glass effect
+  effectWidth: _effectWidth = 0.3, // Width of the effect area
+  effectHeight: _effectHeight = 0.2, // Height of the effect area
+  effectOffset: _effectOffset = 0.15, // Offset for the effect
   
   // Animation
   animateOnHover = false,
@@ -97,7 +97,7 @@ const LiquidGlass = ({
   }, []);
 
   // Fragment shader function - restored original refraction effect
-  const fragmentShader = useCallback((uv, mouse) => {
+  const fragmentShader = useCallback((uv, _mouse) => {
     const ix = uv.x - 0.5;
     const iy = uv.y - 0.5;
     const distanceToEdge = roundedRectSDF(

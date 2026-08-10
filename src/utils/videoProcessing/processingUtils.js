@@ -1,4 +1,6 @@
 import { showSuccessToast } from '../toastUtils';
+import { isDesktopRuntime } from '../../platform/desktopRuntime';
+import { isNativeMediaDescriptor } from '../../platform/mediaService';
 
 /**
  * Legacy processing utilities for video/audio processing
@@ -76,6 +78,26 @@ const mapMediaResolution = (resolution) => {
   return resolutionMap[resolution] || 'MEDIA_RESOLUTION_MEDIUM';
 };
 
+const normalizeNativeSegmentSubtitles = (subtitles, segment) => {
+  if (!Array.isArray(subtitles) || subtitles.length === 0) return [];
+  const duration = segment.end - segment.start;
+  const maximumEnd = Math.max(...subtitles.map((subtitle) => subtitle.end || 0));
+  const normalized = maximumEnd <= duration + 1
+    ? subtitles.map((subtitle) => ({
+        ...subtitle,
+        start: (subtitle.start || 0) + segment.start,
+        end: (subtitle.end || 0) + segment.start,
+      }))
+    : subtitles;
+  return normalized
+    .filter((subtitle) => subtitle.start < segment.end && subtitle.end > segment.start)
+    .map((subtitle) => ({
+      ...subtitle,
+      start: Math.max(subtitle.start, segment.start),
+      end: Math.min(subtitle.end, segment.end),
+    }));
+};
+
 /**
  * Process a specific segment of video using Files API with custom options
  * This is the new segment-based processing function for the improved workflow
@@ -123,8 +145,10 @@ export const processSegmentWithFilesApi = async (file, segment, options, setStat
     };
 
     // Call the Gemini API with Files API
-    const { callGeminiApiWithFilesApi } = await import('../../services/gemini');
-    const result = await callGeminiApiWithFilesApi(file, apiOptions);
+    const gemini = await import('../../services/gemini');
+    const result = isDesktopRuntime()
+      ? await gemini.callGeminiApi(file, 'file-upload', apiOptions)
+      : await gemini.callGeminiApiWithFilesApi(file, apiOptions);
 
     return result;
   } catch (error) {
@@ -144,6 +168,38 @@ export const processSegmentWithFilesApi = async (file, segment, options, setStat
  * @returns {Promise<Array>} - Final subtitle array
  */
 export const processSegmentWithStreaming = async (file, segment, options, setStatus, onSubtitleUpdate, t) => {
+  if (isDesktopRuntime()) {
+    if (!isNativeMediaDescriptor(file)) {
+      throw new Error('Select the media again before starting native Gemini transcription.');
+    }
+    const { callGeminiApi } = await import('../../services/gemini');
+    const subtitles = await callGeminiApi(file, 'file-upload', {
+      userProvidedSubtitles: options.userProvidedSubtitles,
+      modelId: options.model,
+      mediaResolution: mapMediaResolution(options.mediaResolution),
+      segmentInfo: {
+        start: segment.start,
+        end: segment.end,
+        duration: segment.end - segment.start,
+      },
+      ...(options.runId ? { runId: options.runId } : {}),
+    });
+    const normalized = normalizeNativeSegmentSubtitles(subtitles, segment);
+    if (onSubtitleUpdate) onSubtitleUpdate(normalized, false);
+    const toastMessage = t && typeof t === 'function'
+      ? t('processing.subtitlesGenerated', 'Generated {{count}} subtitles', { count: normalized.length })
+      : `Generated ${normalized.length} subtitles`;
+    showSuccessToast(toastMessage, 5000);
+    window.dispatchEvent(new CustomEvent('streaming-complete', {
+      detail: {
+        subtitles: normalized,
+        segment,
+        runId: options.runId,
+      },
+    }));
+    return normalized;
+  }
+
   return new Promise((resolve, reject) => {
     const { fps, mediaResolution, model, userProvidedSubtitles, autoSplitSubtitles, maxWordsPerSubtitle } = options;
 

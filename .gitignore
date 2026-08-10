@@ -17,6 +17,7 @@
 
 # testing
 /coverage
+/.codex-visual/
 
 # production
 /build

@@ -1,86 +1,124 @@
-import { extractSegmentAsWavBase64 } from '../../utils/audioUtils';
-import { API_BASE_URL } from '../../config';
+import { startAsrJob } from '../../platform/asrService';
+import {
+  createRequestController,
+  removeRequestController,
+} from '../gemini/requestManagement';
+
+const createAbortError = () => {
+  const error = new Error('ASR transcription was cancelled');
+  error.name = 'AbortError';
+  error.code = 'asrCancelled';
+  return error;
+};
+
+const createNativeJobError = (payload) => {
+  const error = new Error(payload?.message || 'Native ASR transcription failed');
+  error.name = 'AsrJobError';
+  error.code = payload?.code || 'asrFailed';
+  return error;
+};
+
+const runNativePart = (engineId, part, options, signal) => new Promise((resolve, reject) => {
+  let settled = false;
+  const onAbort = () => settle(reject, createAbortError());
+  const settle = (callback, value) => {
+    if (settled) return;
+    settled = true;
+    signal.removeEventListener('abort', onAbort);
+    callback(value);
+  };
+
+  if (signal.aborted) {
+    settle(reject, createAbortError());
+    return;
+  }
+  signal.addEventListener('abort', onAbort, { once: true });
+
+  const language = options.asrLanguage && options.asrLanguage !== 'auto'
+    ? options.asrLanguage
+    : undefined;
+  const request = {
+    engine: engineId,
+    strategy: options.asrStrategy || 'sentence',
+    maxCharacters: options.asrMaxChars ?? 60,
+    maxWords: options.asrMaxWords ?? 7,
+    pauseThresholdMs: 800,
+    language,
+    range: { start: part.start, end: part.end },
+  };
+
+  startAsrJob(request, {
+    onCompleted: (event) => settle(resolve, event),
+    onCancelled: () => settle(reject, createAbortError()),
+    onFailed: (event) => settle(reject, createNativeJobError(event.error)),
+    onProtocolError: (error) => settle(reject, error),
+    onCancellationError: (error) => settle(reject, error),
+  }, { signal }).catch((error) => settle(reject, error));
+});
 
 /**
- * Generic local-ASR-engine adapter for EVERY local engine (Parakeet + the catalog engines). Same
- * IO/chunking contract, parameterized by the engine descriptor: it POSTs to /api/<route>/transcribe
- * where route is 'parakeet' or 'asr/<id>'. Merging and global state changes stay with the caller via
- * callbacks. A forced language (when the engine supports it) is sent as `language`.
+ * Native local-ASR adapter for every catalog engine. Media stays in the privileged desktop session;
+ * only the engine, bounded options, and timeline range cross IPC. Merging and global state changes
+ * remain with the caller through callbacks.
  *
  * @param {{id:string,name?:string,labelDefault?:string,route?:string}|string} engine
  */
-export const processAsrSegment = async (engine, inputFile, segment, options = {}, hooks = {}) => {
+export const processAsrSegment = async (engine, _inputFile, segment, options = {}, hooks = {}) => {
   const { onStatus, onRanges, onStreamingUpdate, onMergeSegment, t } = hooks;
   const engineId = typeof engine === 'string' ? engine : engine.id;
   const engineName = (typeof engine === 'object' && (engine.name || engine.labelDefault)) || engineId;
-  const route = (typeof engine === 'object' && engine.route) || `asr/${engineId}`;
-  const language = options.asrLanguage && options.asrLanguage !== 'auto' ? options.asrLanguage : undefined;
+  const { requestId, signal } = createRequestController();
 
-  // Split the segment into sequential windows (same slicer as Parakeet).
-  const windowSec = Math.max(1, Math.floor(options.maxDurationPerRequest || 0));
-  let subSegments = [segment];
   try {
-    if (windowSec && (segment.end - segment.start) > windowSec) {
-      const { splitSegmentForParallelProcessing } = await import('../../utils/parallelProcessingUtils');
-      subSegments = splitSegmentForParallelProcessing(segment, windowSec);
-    }
-  } catch (e) {
-    const total = segment.end - segment.start;
-    const n = Math.max(1, Math.ceil(total / Math.max(1, windowSec)));
-    subSegments = Array.from({ length: n }).map((_, i) => ({
-      start: segment.start + i * (total / n),
-      end: i === n - 1 ? segment.end : segment.start + (i + 1) * (total / n),
-    }));
-  }
-
-  if (onRanges && subSegments.length > 1) { try { onRanges(subSegments); } catch {} }
-
-  for (let i = 0; i < subSegments.length; i++) {
-    const part = subSegments[i];
-    onStatus && onStatus({
-      message: t
-        ? t('processing.transcribingWithEngine', 'Transcribing with {{engine}} ({{current}}/{{total}})...', { engine: engineName, current: i + 1, total: subSegments.length })
-        : `Transcribing with ${engineName} (${i + 1}/${subSegments.length})...`,
-      type: 'loading',
-    });
-
-    const wavBase64 = await extractSegmentAsWavBase64(inputFile, part.start, part.end);
-
-    const resp = await fetch(`${API_BASE_URL}/${route}/transcribe`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        audio_base64: wavBase64,
-        filename: (inputFile && inputFile.name) || 'segment.wav',
-        segment_strategy: options.asrStrategy || 'sentence',
-        max_chars: options.asrMaxChars || 60,
-        max_words: options.asrMaxWords || 7,
-        ...(language ? { language } : {}),
-      }),
-    });
-
-    if (!resp.ok) {
-      const errText = await resp.text().catch(() => '');
-      throw new Error(t
-        ? t('errors.asrApiError', '{{engine}} API error: {{status}} {{errorText}}', { engine: engineName, status: resp.status, errorText: errText })
-        : `${engineName} API error: ${resp.status} ${errText}`);
+    // Split the segment into sequential windows (same slicer as Parakeet).
+    const windowSec = Math.max(1, Math.floor(options.maxDurationPerRequest || 0));
+    let subSegments = [segment];
+    try {
+      if (windowSec && (segment.end - segment.start) > windowSec) {
+        const { splitSegmentForParallelProcessing } = await import('../../utils/parallelProcessingUtils');
+        subSegments = splitSegmentForParallelProcessing(segment, windowSec);
+      }
+    } catch (e) {
+      const total = segment.end - segment.start;
+      const n = Math.max(1, Math.ceil(total / Math.max(1, windowSec)));
+      subSegments = Array.from({ length: n }).map((_, i) => ({
+        start: segment.start + i * (total / n),
+        end: i === n - 1 ? segment.end : segment.start + (i + 1) * (total / n),
+      }));
     }
 
-    const data = await resp.json();
-    const segmentSubs = Array.isArray(data?.segments) ? data.segments : [];
+    if (onRanges && subSegments.length > 1) {
+      try { onRanges(subSegments); } catch { /* isolate consumer callbacks */ }
+    }
 
-    // Offset the segment-local times back onto the global timeline.
-    const offset = part.start || 0;
-    const newSegmentSubs = segmentSubs.map((s) => ({
-      start: (s.start || 0) + offset,
-      end: (s.end || 0) + offset,
-      text: s.segment || s.text || '',
-    }));
+    for (let i = 0; i < subSegments.length; i++) {
+      if (signal.aborted) throw createAbortError();
+      const part = subSegments[i];
+      onStatus && onStatus({
+        message: t
+          ? t('processing.transcribingWithEngine', 'Transcribing with {{engine}} ({{current}}/{{total}})...', { engine: engineName, current: i + 1, total: subSegments.length })
+          : `Transcribing with ${engineName} (${i + 1}/${subSegments.length})...`,
+        type: 'loading',
+      });
 
-    if (onStreamingUpdate) { try { onStreamingUpdate(newSegmentSubs, part); } catch {} }
-    if (onMergeSegment) { await onMergeSegment(part, newSegmentSubs); }
+      const event = await runNativePart(engineId, part, options, signal);
+      const offset = event.timelineOffsetMs / 1_000;
+      const newSegmentSubs = event.transcription.segments.map((item) => ({
+        start: item.startMs / 1_000 + offset,
+        end: item.endMs / 1_000 + offset,
+        text: item.text,
+      }));
+
+      if (onStreamingUpdate) {
+        try { onStreamingUpdate(newSegmentSubs, part); } catch { /* isolate consumer callbacks */ }
+      }
+      if (onMergeSegment) { await onMergeSegment(part, newSegmentSubs); }
+    }
+  } finally {
+    removeRequestController(requestId);
+    if (onRanges) {
+      try { onRanges([]); } catch { /* isolate consumer callbacks */ }
+    }
   }
-
-  if (onRanges) { try { onRanges([]); } catch {} }
   return true;
 };

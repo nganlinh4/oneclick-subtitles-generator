@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 
 /**
  * Hook encapsulating uploaded-SRT tracking with localStorage persistence.
@@ -32,6 +32,12 @@ export const useSrtUploadState = ({
       };
     }
   });
+  const initialDetectionRef = useRef({
+    subtitlesData,
+    statusMessage: status?.message,
+    isSrtOnlyMode,
+    hasUploaded: uploadedSrtInfo.hasUploaded
+  });
 
   // Persist uploadedSrtInfo to localStorage whenever it changes
   useEffect(() => {
@@ -45,14 +51,15 @@ export const useSrtUploadState = ({
   // Initialize SRT upload detection on component mount
   useEffect(() => {
     // On initial load, check if we should detect existing SRT data
-    if (subtitlesData && subtitlesData.length > 0 && !uploadedSrtInfo.hasUploaded) {
+    const initial = initialDetectionRef.current;
+    if (initial.subtitlesData && initial.subtitlesData.length > 0 && !initial.hasUploaded) {
       // Check multiple indicators that this might be uploaded SRT data
-      const isLikelySrtData = isSrtOnlyMode ||
-                             status?.message?.includes('SRT') ||
-                             status?.message?.includes('uploaded') ||
-                             status?.message?.includes('Working with SRT only') ||
+      const isLikelySrtData = initial.isSrtOnlyMode ||
+                             initial.statusMessage?.includes('SRT') ||
+                             initial.statusMessage?.includes('uploaded') ||
+                             initial.statusMessage?.includes('Working with SRT only') ||
                              // Check if subtitles have sequential IDs (typical of SRT files)
-                             (subtitlesData.length > 1 && subtitlesData.every((sub, index) => sub.id === index + 1));
+                             (initial.subtitlesData.length > 1 && initial.subtitlesData.every((sub, index) => sub.id === index + 1));
 
       if (isLikelySrtData) {
         setUploadedSrtInfo({
@@ -117,7 +124,7 @@ export const useSrtUploadState = ({
         source: ''
       });
     }
-  }, [subtitlesData, status, isSrtOnlyMode, uploadedSrtInfo.hasUploaded, uploadedSrtInfo.source]);
+  }, [subtitlesData, status, isSrtOnlyMode, isGenerating, uploadedSrtInfo.hasUploaded, uploadedSrtInfo.source]);
 
   // Enhanced SRT upload handler
   const handleSrtUploadWithState = (content, fileName) => {

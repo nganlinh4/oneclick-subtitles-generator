@@ -73,7 +73,7 @@ export const ensureSVGDefs = () => {
  * @param {number} colorSchemeIndex - Index of color scheme to use (ignored)
  * @returns {string} - HTML markup using img tag
  */
-export const createSpecialStarSVG = (isFilled, colorSchemeIndex = 0) => {
+export const createSpecialStarSVG = (_isFilled, _colorSchemeIndex = 0) => {
   // Use imported specialStarIcon so bundler rewrites to correct hashed path
   return `<img src="${specialStarIcon}" alt="Special Star" style="width: 100%; height: 100%; object-fit: contain;" />`;
 };

@@ -44,6 +44,24 @@ export const createDownloadHandlers = ({
           localStorage.setItem("lastActiveTab", tab);
           setActiveTab(tab);
         };
+        let preferredSubtitleLanguages = [];
+        if (localStorage.getItem('auto_import_site_subtitles') !== 'false') {
+          try {
+            const stored = localStorage.getItem('preferred_subtitle_langs');
+            const navigationLanguage = navigator.language || 'en-US';
+            preferredSubtitleLanguages = stored
+              ? JSON.parse(stored)
+              : [navigationLanguage, navigationLanguage.split('-')[0], 'en-US', 'en'];
+            if (!Array.isArray(preferredSubtitleLanguages)) preferredSubtitleLanguages = [];
+            preferredSubtitleLanguages = preferredSubtitleLanguages
+              .filter((language) => (
+                typeof language === 'string' && /^[A-Za-z0-9._-]{1,35}$/.test(language)
+              ))
+              .slice(0, 32);
+          } catch {
+            preferredSubtitleLanguages = [];
+          }
+        }
 
         processedFile = await downloadAndPrepareYouTubeVideo(
           input, // selectedVideo
@@ -54,7 +72,16 @@ export const createDownloadHandlers = ({
           systemTabChange,
           setUploadedFile,
           setIsSrtOnlyMode,
-          t
+          t,
+          {
+            preferredSubtitleLanguages,
+            onSubtitle: (subtitle) => {
+              pendingAutoSubtitleRef.current = {
+                content: subtitle.content,
+                fileName: subtitle.filename || 'site-subtitle.srt',
+              };
+            },
+          }
         );
 
         // IMPORTANT: Check for cached subtitles immediately for downloaded videos
@@ -64,7 +91,7 @@ export const createDownloadHandlers = ({
             // For downloaded videos, use URL-based cache ID to find existing cached subtitles
             const currentVideoUrl = localStorage.getItem("current_video_url");
             if (currentVideoUrl) {
-              const { generateUrlBasedCacheId } = await import(
+              const { generateUrlBasedCacheId, getCachedSubtitles } = await import(
                 "../../../services/subtitleCache"
               );
               const urlBasedCacheId = await generateUrlBasedCacheId(
@@ -76,23 +103,21 @@ export const createDownloadHandlers = ({
                 urlBasedCacheId
               );
 
-              // Check if cached subtitles exist using URL-based cache ID
-              const response = await fetch(
-                `http://localhost:3031/api/subtitle-exists/${urlBasedCacheId}`
+              const cachedSubtitles = await getCachedSubtitles(
+                urlBasedCacheId,
+                currentVideoUrl
               );
-              const result = await response.json();
 
               if (
-                result.exists &&
-                result.subtitles &&
-                result.subtitles.length > 0
+                cachedSubtitles &&
+                cachedSubtitles.length > 0
               ) {
                 dbg(
                   "[AppHandlers] Found cached subtitles for downloaded video, loading immediately:",
-                  result.subtitles.length,
+                  cachedSubtitles.length,
                   "subtitles"
                 );
-                setSubtitlesData(result.subtitles);
+                setSubtitlesData(cachedSubtitles);
                 setStatus({
                   message: t(
                     "output.subtitlesLoadedFromCache",
@@ -166,7 +191,9 @@ export const createDownloadHandlers = ({
         processedFile = input; // uploadedFile
 
         // Clear any stale YouTube URL reference so Files API uses file-based caching for uploads
-        try { localStorage.removeItem("current_video_url"); } catch {}
+        try { localStorage.removeItem("current_video_url"); } catch {
+          // Compatibility storage cleanup is best effort.
+        }
 
         // Check if we already have a blob URL for this file
         let blobUrl = localStorage.getItem("current_file_url");
@@ -177,7 +204,9 @@ export const createDownloadHandlers = ({
           try {
             if (!window.__videoBlobMap) window.__videoBlobMap = {};
             window.__videoBlobMap[blobUrl] = processedFile;
-          } catch {}
+          } catch {
+            // The optional browser-preview blob registry may be unavailable.
+          }
         }
         localStorage.setItem("current_file_name", processedFile.name);
 
@@ -198,23 +227,21 @@ export const createDownloadHandlers = ({
             cacheId
           );
 
-          // Check if cached subtitles exist
-          const response = await fetch(
-            `http://localhost:3031/api/subtitle-exists/${cacheId}`
+          const { getCachedSubtitles } = await import(
+            "../../../services/subtitleCache"
           );
-          const result = await response.json();
+          const cachedSubtitles = await getCachedSubtitles(cacheId);
 
           if (
-            result.exists &&
-            result.subtitles &&
-            result.subtitles.length > 0
+            cachedSubtitles &&
+            cachedSubtitles.length > 0
           ) {
             dbg(
               "[AppHandlers] Found cached subtitles, loading immediately:",
-              result.subtitles.length,
+              cachedSubtitles.length,
               "subtitles"
             );
-            setSubtitlesData(result.subtitles);
+            setSubtitlesData(cachedSubtitles);
             setStatus({
               message: t(
                 "output.subtitlesLoadedFromCache",

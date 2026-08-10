@@ -16,11 +16,7 @@ const EXPECTED_MODELS = [
   'gemini-3.5-flash-lite',
   'gemini-3.6-flash',
   'gemini-3.5-flash',
-  'gemini-3.1-flash-lite',
-  'gemini-3-flash-preview',
-  'gemini-2.5-flash-lite',
-  'gemini-robotics-er-1.6-preview',
-  'gemini-robotics-er-2-preview'
+  'gemini-3.1-flash-lite'
 ];
 
 describe('Gemini model catalog contract', () => {
@@ -40,26 +36,19 @@ describe('Gemini model catalog contract', () => {
       'gemini-3.5-flash-lite': 500,
       'gemini-3.6-flash': 20,
       'gemini-3.5-flash': 20,
-      'gemini-3.1-flash-lite': 500,
-      'gemini-3-flash-preview': 20,
-      'gemini-2.5-flash-lite': 20,
-      'gemini-robotics-er-1.6-preview': 20,
-      'gemini-robotics-er-2-preview': 20
+      'gemini-3.1-flash-lite': 500
     });
     expect(GEMINI_MODELS.map((model) => model.profileLabels.en)).toEqual([
-      'GG Good', 'GG Strong', 'GG Strong, slow', 'GG Fast',
-      'GG Versatile', 'GG Lite', 'GG Precise', 'GG Precise+'
+      'GG Good', 'GG Strong', 'GG Strong, slow', 'GG Fast'
     ]);
   });
 
-  test('keeps every ordinary model media-capable and limits Robotics ER 2 to video analysis', () => {
-    const robotics2 = GEMINI_MODELS.find(({ id }) => id === 'gemini-robotics-er-2-preview');
+  test('keeps every ordinary model stable and audio/video capable', () => {
     GEMINI_MODELS.forEach((model) => expect(modelAcceptsMedia(model.id)).toBe(true));
-    expect(robotics2.modalities).toEqual(['video', 'image']);
-    expect(robotics2.features).toEqual(['analysis']);
-    expect(ANALYSIS_MODEL_IDS).toContain(robotics2.id);
-    expect(TRANSLATION_MODELS.map(({ id }) => id)).not.toContain(robotics2.id);
-    expect(BACKGROUND_PROMPT_MODELS.map(({ id }) => id)).not.toContain(robotics2.id);
+    GEMINI_MODELS.forEach((model) => expect(model.lifecycle).toBe('stable'));
+    expect(ANALYSIS_MODEL_IDS).toEqual(EXPECTED_MODELS);
+    expect(TRANSLATION_MODELS.map(({ id }) => id)).toEqual(EXPECTED_MODELS);
+    expect(BACKGROUND_PROMPT_MODELS.map(({ id }) => id)).toEqual(EXPECTED_MODELS);
   });
 
   test('derives exact default thinking values from the catalog', () => {
@@ -67,16 +56,13 @@ describe('Gemini model catalog contract', () => {
       'gemini-3.5-flash-lite': 'minimal',
       'gemini-3.6-flash': 'minimal',
       'gemini-3.5-flash': 'minimal',
-      'gemini-3.1-flash-lite': 'minimal',
-      'gemini-3-flash-preview': 'minimal',
-      'gemini-2.5-flash-lite': 0,
-      'gemini-robotics-er-1.6-preview': 0,
-      'gemini-robotics-er-2-preview': 0
+      'gemini-3.1-flash-lite': 'minimal'
     });
   });
 
   test('migrates retired built-ins without rejecting unknown custom models', () => {
     expect(migrateGeminiModelId('gemini-3.1-flash-lite-preview')).toBe('gemini-3.1-flash-lite');
+    expect(migrateGeminiModelId('gemini-robotics-er-2-preview')).toBe('gemini-3.6-flash');
     expect(migrateGeminiModelId('models/gemini-2.5-flash')).toBe(DEFAULT_GEMINI_MODEL_ID);
     expect(migrateGeminiModelId('my-private-gemini-endpoint')).toBe('my-private-gemini-endpoint');
     expect(normalizeMediaModelId('my-private-gemini-endpoint')).toBe(DEFAULT_GEMINI_MODEL_ID);

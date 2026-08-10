@@ -1,0 +1,19 @@
+[package]
+name = "osg-speech"
+version.workspace = true
+authors.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+description = "Typed speech synthesis, worker supervision, and narration alignment for OSG"
+license = "MIT"
+
+[dependencies]
+command-group = "=5.0.1"
+serde.workspace = true
+serde_json.workspace = true
+tempfile = "=3.27.0"
+thiserror.workspace = true
+zeroize = "=1.9.0"
+
+[lints]
+workspace = true

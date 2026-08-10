@@ -8,9 +8,17 @@ const argumentsList = process.argv.slice(2);
 const isLive = argumentsList.includes('--live');
 const envFileIndex = argumentsList.indexOf('--env-file');
 const envFile = envFileIndex >= 0 ? argumentsList[envFileIndex + 1] : null;
+const audioFileIndex = argumentsList.indexOf('--audio-file');
+const audioFile = audioFileIndex >= 0 ? argumentsList[audioFileIndex + 1] : null;
 const videoFileIndex = argumentsList.indexOf('--video-file');
 const videoFile = videoFileIndex >= 0 ? argumentsList[videoFileIndex + 1] : null;
 const mediaModalities = new Set(['audio', 'video']);
+const nativeOrdinaryModels = [
+  'gemini-3.5-flash-lite',
+  'gemini-3.6-flash',
+  'gemini-3.5-flash',
+  'gemini-3.1-flash-lite',
+];
 
 const parseEnvFile = (filePath) => Object.fromEntries(
   fs.readFileSync(filePath, 'utf8')
@@ -29,19 +37,30 @@ const parseEnvFile = (filePath) => Object.fromEntries(
 const assertCatalog = () => {
   const ids = catalog.models.map(({ id }) => id);
   if (new Set(ids).size !== ids.length) throw new Error('Duplicate ordinary Gemini model ID');
+  if (JSON.stringify(ids) !== JSON.stringify(nativeOrdinaryModels)) {
+    throw new Error('Frontend ordinary models differ from the native provider allowlist');
+  }
   if (!ids.includes(catalog.defaults.ordinary)) throw new Error('Ordinary default is missing');
   if (!catalog.imageGenerationModels.some(({ id }) => id === catalog.defaults.imageGeneration)) {
     throw new Error('Image-generation default is missing');
   }
+  catalog.imageGenerationModels.forEach((model) => {
+    if (model.lifecycle !== 'stable' || !model.modalities?.includes('video')) {
+      throw new Error(`${model.id} must be stable and accept video input`);
+    }
+  });
   catalog.models.forEach((model) => {
+    if (model.lifecycle !== 'stable') {
+      throw new Error(`${model.id} is not a stable ordinary endpoint`);
+    }
     if (model.request.sampling !== 'provider-default') {
       throw new Error(`${model.id} must use provider-default sampling`);
     }
     if (!model.features.length || !model.modalities.length) {
       throw new Error(`${model.id} is missing capabilities`);
     }
-    if (!model.modalities.some((modality) => mediaModalities.has(modality))) {
-      throw new Error(`${model.id} cannot accept audio or video input`);
+    if (![...mediaModalities].every((modality) => model.modalities.includes(modality))) {
+      throw new Error(`${model.id} must accept both audio and video input`);
     }
   });
   catalog.liveAudioModels.forEach((model) => {
@@ -55,32 +74,30 @@ const thinkingConfigFor = (model) => model.thinking.type === 'level'
   ? { thinkingLevel: model.thinking.default.toUpperCase() }
   : { thinkingBudget: model.thinking.default };
 
-const audioProbe = fs.readFileSync(path.resolve(__dirname, '../server/example-audio/basic_ref_en.wav'));
+const readProbe = (filePath, mimeType) => ({
+  inlineData: {
+    mimeType,
+    data: fs.readFileSync(path.resolve(filePath)).toString('base64')
+  }
+});
 
-const mediaPartFor = (model) => {
-  if (model.modalities.includes('audio')) {
-    return { inlineData: { mimeType: 'audio/wav', data: audioProbe.toString('base64') } };
+const loadLiveProbes = () => {
+  const probes = [];
+  if (audioFile) probes.push({ modality: 'audio', part: readProbe(audioFile, 'audio/wav') });
+  if (videoFile) probes.push({ modality: 'video', part: readProbe(videoFile, 'video/mp4') });
+  if (!probes.length) {
+    throw new Error('Live catalog validation requires --audio-file PATH and/or --video-file PATH');
   }
-  if (model.modalities.includes('video')) {
-    if (!videoFile) {
-      throw new Error(`${model.id} requires --video-file PATH for its live media test`);
-    }
-    return {
-      inlineData: {
-        mimeType: 'video/mp4',
-        data: fs.readFileSync(path.resolve(videoFile)).toString('base64')
-      }
-    };
-  }
-  throw new Error(`${model.id} has no supported media probe modality`);
+  return probes;
 };
 
-const smokeModel = async (model, apiKey) => {
-  const mediaPart = mediaPartFor(model);
-  const testedModality = mediaPart.inlineData.mimeType.startsWith('audio/') ? 'audio' : 'video';
+const smokeModel = async (model, apiKey, probe) => {
+  if (!model.modalities.includes(probe.modality)) {
+    throw new Error(`${model.id} does not declare ${probe.modality} input support`);
+  }
   const parts = [
-    mediaPart,
-    { text: `Inspect this ${testedModality} and return JSON with ok=true.` }
+    probe.part,
+    { text: `Inspect this ${probe.modality} and return JSON with ok=true.` }
   ];
   const body = {
     contents: [{ role: 'user', parts }],
@@ -111,7 +128,7 @@ const smokeModel = async (model, apiKey) => {
   if (!data.candidates?.[0]?.content?.parts?.some((part) => part.text || part.thought)) {
     throw new Error('Response contained no candidate content');
   }
-  return testedModality;
+  return probe.modality;
 };
 
 const main = async () => {
@@ -122,20 +139,23 @@ const main = async () => {
   const fileEnvironment = envFile ? parseEnvFile(path.resolve(envFile)) : {};
   const apiKey = process.env.GEMINI_API_KEY || fileEnvironment.GEMINI_API_KEY;
   if (!apiKey) throw new Error('GEMINI_API_KEY was not found');
+  const probes = loadLiveProbes();
 
   const failures = [];
   for (const model of catalog.models) {
-    process.stdout.write(`Testing ${model.id}... `);
-    try {
-      const testedModality = await smokeModel(model, apiKey);
-      console.log(`${testedModality} OK`);
-    } catch (error) {
-      failures.push({ id: model.id, message: error.message });
-      console.log('FAILED');
+    for (const probe of probes) {
+      process.stdout.write(`Testing ${model.id} (${probe.modality})... `);
+      try {
+        await smokeModel(model, apiKey, probe);
+        console.log('OK');
+      } catch (error) {
+        failures.push({ id: model.id, modality: probe.modality, message: error.message });
+        console.log('FAILED');
+      }
     }
   }
   if (failures.length) {
-    failures.forEach(({ id, message }) => console.error(`${id}: ${message}`));
+    failures.forEach(({ id, modality, message }) => console.error(`${id} (${modality}): ${message}`));
     process.exitCode = 1;
   }
 };

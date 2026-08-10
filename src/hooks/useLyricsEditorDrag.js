@@ -1,4 +1,5 @@
 import { useRef, useCallback } from 'react';
+import { LYRICS_EDITOR_ACTIONS } from '../platform/durableLyricsHistory';
 
 /**
  * Drag mechanics for the lyrics editor.
@@ -14,17 +15,25 @@ import { useRef, useCallback } from 'react';
  * @param {Array}    params.lyrics            Current lyrics array.
  * @param {Function} params.setLyrics         Setter for the lyrics array.
  * @param {Function} params.onUpdateLyrics    Callback invoked with updated lyrics.
- * @param {Function} params.setHistory        Setter for the undo history stack.
+ * @param {Function} params.commitLyricsMutation Commits one logical optimistic edit.
  * @param {boolean}  params.isSticky          Whether sticky (cascade) mode is on.
  */
-export const useLyricsEditorDrag = ({ lyrics, setLyrics, onUpdateLyrics, setHistory, isSticky }) => {
+export const useLyricsEditorDrag = ({
+  lyrics,
+  setLyrics,
+  onUpdateLyrics,
+  commitLyricsMutation,
+  isSticky,
+}) => {
   const dragInfo = useRef({
     dragging: false,
     index: null,
     field: null,
     startX: 0,
     startValue: 0,
-    lastDragEnd: 0
+    lastDragEnd: 0,
+    baseline: null,
+    latest: null,
   });
 
   // Keep track of the last updated value to avoid unnecessary updates
@@ -94,6 +103,7 @@ export const useLyricsEditorDrag = ({ lyrics, setLyrics, onUpdateLyrics, setHist
     }
 
     setLyrics(updatedLyrics);
+    dragInfo.current.latest = updatedLyrics;
     if (onUpdateLyrics) {
       onUpdateLyrics(updatedLyrics);
     }
@@ -111,15 +121,18 @@ export const useLyricsEditorDrag = ({ lyrics, setLyrics, onUpdateLyrics, setHist
   }, [lyrics, setLyrics, onUpdateLyrics, isSticky]);
 
   const startDrag = useCallback((index, field, startX, startValue) => {
-    setHistory(prevHistory => [...prevHistory, JSON.parse(JSON.stringify(lyrics))]);
+    const baseline = JSON.parse(JSON.stringify(lyrics));
     dragInfo.current = {
       dragging: true,
       index,
       field,
       startX,
-      startValue
+      startValue,
+      lastDragEnd: dragInfo.current.lastDragEnd,
+      baseline,
+      latest: baseline,
     };
-  }, [lyrics, setHistory]);
+  }, [lyrics]);
 
   const handleDrag = useCallback((clientX, duration) => {
     const { dragging, index, field, startX, startValue } = dragInfo.current;
@@ -132,8 +145,8 @@ export const useLyricsEditorDrag = ({ lyrics, setLyrics, onUpdateLyrics, setHist
 
     const lyric = lyrics[index];
     if (field === 'start') {
-      // Only restrict start time to be non-negative
       newValue = Math.max(0, newValue);
+      if (!isSticky) newValue = Math.min(lyric.end - 0.1, newValue);
     } else {
       // For end time, ensure it's after the start time and within duration
       newValue = Math.max(lyric.start + 0.1, Math.min(duration || 9999, newValue));
@@ -160,7 +173,7 @@ export const useLyricsEditorDrag = ({ lyrics, setLyrics, onUpdateLyrics, setHist
     // Update immediately if enough time has passed
     lastUpdateTimeRef.current = now;
     updateTimings(index, field, newValue, duration);
-  }, [lyrics, updateTimings]);
+  }, [isSticky, lyrics, updateTimings]);
 
   const endDrag = useCallback(() => {
     // Cancel any pending animation frame
@@ -168,6 +181,9 @@ export const useLyricsEditorDrag = ({ lyrics, setLyrics, onUpdateLyrics, setHist
       cancelAnimationFrame(pendingUpdateRef.current);
       pendingUpdateRef.current = null;
     }
+
+    const baseline = dragInfo.current.baseline;
+    const latest = dragInfo.current.latest;
 
     // Record the time of the drag end
     dragInfo.current.lastDragEnd = Date.now();
@@ -179,8 +195,17 @@ export const useLyricsEditorDrag = ({ lyrics, setLyrics, onUpdateLyrics, setHist
       index: null,
       field: null,
       startX: 0,
-      startValue: 0
+      startValue: 0,
+      baseline: null,
+      latest: null,
     };
+
+    if (baseline !== null && latest !== null) {
+      commitLyricsMutation(latest, LYRICS_EDITOR_ACTIONS.TIMING_DRAG, {
+        baseline,
+        alreadyApplied: true,
+      });
+    }
 
     // Reset the last updated value reference
     lastUpdatedValueRef.current = { index: -1, field: null, value: 0 };
@@ -193,7 +218,7 @@ export const useLyricsEditorDrag = ({ lyrics, setLyrics, onUpdateLyrics, setHist
         timestamp: Date.now()
       }
     }));
-  }, []);
+  }, [commitLyricsMutation]);
 
   const isDragging = useCallback((index, field) =>
     dragInfo.current.dragging &&

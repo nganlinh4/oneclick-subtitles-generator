@@ -1,6 +1,0 @@
-build/
-node_modules/
-video-renderer/node_modules/
-promptdj-midi/node_modules/
-*.min.js
-*.chunk.js

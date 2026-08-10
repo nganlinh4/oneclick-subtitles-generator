@@ -1,4 +1,3 @@
-import React from 'react';
 import { useTranslation } from 'react-i18next';
 import CustomDropdown from '../common/CustomDropdown';
 import { PROMPT_PRESETS } from '../../services/geminiService';

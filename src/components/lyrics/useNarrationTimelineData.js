@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { SERVER_URL } from '../../config';
+import { isNativeNarrationResult } from '../../platform/nativeNarrationCapabilities';
 import { lyricKey, resolvePlacements } from './narrationLaneActions';
 import { getTimingConflictIds } from './utils/timelineConflicts';
 
@@ -93,30 +93,25 @@ export const useNarrationTimelineData = (lyrics) => {
       .filter((n) => n && n.success && n.filename)
       .map((n) => n.filename);
     if (!filenames.length) return undefined;
-    const wanted = [...new Set([...filenames, ...filenames.map(backupName).filter(Boolean)])];
-    let cancelled = false;
-    (async () => {
-      try {
-        const resp = await fetch(`${SERVER_URL}/api/narration/batch-get-audio-durations`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ filenames: wanted }),
-        });
-        if (!cancelled && resp.ok) {
-          const fetched = (await resp.json())?.durations || {};
-          setDurations((prev) => ({ ...prev, ...fetched }));
-        }
-      } catch {
-        /* leave cached durations as-is */
-      }
-    })();
-    return () => { cancelled = true; };
+    const nativeDurations = {};
+    readNarrations().filter(isNativeNarrationResult).forEach((narration) => {
+      const duration = Number(narration.durationMicros) / 1_000_000;
+      if (!narration.filename || !Number.isFinite(duration) || duration <= 0) return;
+      nativeDurations[narration.filename] = duration;
+      const backup = backupName(narration.filename);
+      if (backup) nativeDurations[backup] = duration;
+    });
+    if (Object.keys(nativeDurations).length > 0) {
+      setDurations((previous) => ({ ...previous, ...nativeDurations }));
+    }
+    return undefined;
   }, [tick]);
 
-  const segments = useMemo(
-    () => buildBaseSegments(lyrics, readNarrations(), durations),
-    [lyrics, durations, tick],
-  );
+  const segments = useMemo(() => {
+    // Narration events increment tick specifically to invalidate this derived list.
+    void tick;
+    return buildBaseSegments(lyrics, readNarrations(), durations);
+  }, [lyrics, durations, tick]);
 
   // Stable: build the placed (draw/hit-test) segments for any placement + speed + per-line weight.
   const getSegmentsFor = useCallback(

@@ -2,7 +2,20 @@
 members = [
   "apps/desktop/src-tauri",
   "crates/osg-application",
+  "crates/osg-asr",
   "crates/osg-domain",
+  "crates/osg-download",
+  "crates/osg-engine-packages",
+  "crates/osg-gemini",
+  "crates/osg-infrastructure",
+  "crates/osg-live-music",
+  "crates/osg-media",
+  "crates/osg-media-pipeline",
+  "crates/osg-media-server",
+  "crates/osg-native-tools",
+  "crates/osg-providers",
+  "crates/osg-render",
+  "crates/osg-speech",
 ]
 resolver = "3"
 
@@ -14,11 +27,22 @@ rust-version = "1.97"
 
 [workspace.dependencies]
 osg-application = { path = "crates/osg-application" }
+osg-asr = { path = "crates/osg-asr" }
 osg-domain = { path = "crates/osg-domain" }
+osg-download = { path = "crates/osg-download" }
+osg-engine-packages = { path = "crates/osg-engine-packages" }
+osg-gemini = { path = "crates/osg-gemini" }
+osg-live-music = { path = "crates/osg-live-music" }
+osg-media = { path = "crates/osg-media" }
+osg-media-pipeline = { path = "crates/osg-media-pipeline" }
+osg-native-tools = { path = "crates/osg-native-tools" }
+osg-providers = { path = "crates/osg-providers" }
+osg-render = { path = "crates/osg-render" }
+osg-speech = { path = "crates/osg-speech" }
 serde = { version = "1.0.229", features = ["derive"] }
 serde_json = "1.0"
 thiserror = "2.0.20"
-uuid = { version = "1.24.0", features = ["serde", "v4"] }
+uuid = { version = "1.24.0", features = ["serde", "v4", "v7"] }
 
 [workspace.lints.rust]
 missing_debug_implementations = "warn"

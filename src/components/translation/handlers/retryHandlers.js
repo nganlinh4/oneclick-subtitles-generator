@@ -1,3 +1,6 @@
+import { translateSubtitles } from '../../../services/gemini/translation';
+import { getSimpleTranslationPrompt } from '../../../services/gemini/promptManagement';
+
 /**
  * Handle retry for a specific segment (segment or single-subtitle bulk/main retry).
  *
@@ -59,9 +62,6 @@ export const handleRetrySegment = async (segment, ctx) => {
 
     // Extract the subtitles for this segment from the correct source
     let segmentSubtitles;
-    let contextStartIndex = segment.startIndex;
-    let contextEndIndex = segment.endIndex;
-    let targetSubtitleIndices = [];
 
     // Check if this is a single subtitle retry (indicated by segmentNumber starting with "subtitle-")
     const isSingleSubtitleRetry = typeof segment.segmentNumber === 'string' && segment.segmentNumber.startsWith('subtitle-');
@@ -74,19 +74,10 @@ export const handleRetrySegment = async (segment, ctx) => {
       // Extract just the target subtitle
       segmentSubtitles = [sourceSubtitles[targetIndex]];
 
-      // Set context indices to match single subtitle
-      contextStartIndex = targetIndex;
-      contextEndIndex = targetIndex;
-
-      // Track that we're updating just one subtitle
-      targetSubtitleIndices = [0]; // Index 0 in the result array
-
       console.log(`Retrying subtitle ${targetIndex + 1} (single subtitle)`);
     } else {
       // For segment retry, use the original logic
       segmentSubtitles = sourceSubtitles.slice(segment.startIndex, segment.endIndex + 1);
-      // All subtitles in the segment are targets for update
-      targetSubtitleIndices = Array.from({ length: segmentSubtitles.length }, (_, i) => i);
     }
 
     // Show status
@@ -110,10 +101,6 @@ export const handleRetrySegment = async (segment, ctx) => {
     // Get the target languages
     const languages = getLanguageValues();
     if (languages.length === 0) return;
-
-    // Import the translation function
-    const { translateSubtitles } = await import('../../../services/gemini/translation');
-    const { getSimpleTranslationPrompt } = await import('../../../services/gemini/promptManagement');
 
     // For single subtitle retry, use a much simpler custom prompt to avoid instruction translation
     let retryPrompt = customTranslationPrompt;

@@ -58,7 +58,9 @@ const TimelineRangeActionBar = ({
             if (e.currentTarget && e.currentTarget.setPointerCapture && pid != null) {
                 e.currentTarget.setPointerCapture(pid);
             }
-        } catch { }
+        } catch {
+            // Pointer capture is optional; window listeners still complete the drag.
+        }
 
         const onMove = (pe) => {
             const px = startOffset + (pe.clientX - startX);

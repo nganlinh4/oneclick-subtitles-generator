@@ -9,9 +9,9 @@ describe('Gemini thinking request profiles', () => {
     });
   });
 
-  test('uses numeric zero for disabled-thinking endpoints', () => {
+  test('migrates retired preview endpoints before choosing thinking controls', () => {
     expect(addThinkingConfig({}, 'gemini-robotics-er-1.6-preview')).toEqual({
-      generationConfig: { thinkingConfig: { thinkingBudget: 0 } }
+      generationConfig: { thinkingConfig: { thinkingLevel: 'MINIMAL' } }
     });
   });
 

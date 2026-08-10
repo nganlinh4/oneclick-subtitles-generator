@@ -209,7 +209,7 @@ const useNarrationPlayback = (
 
       audioRefs.current[latestNarration.subtitle_id] = audio;
     } else {
-
+      // Reuse the existing audio element for this narration.
     }
 
     // Play the narration

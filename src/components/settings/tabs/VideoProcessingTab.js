@@ -1,4 +1,4 @@
-import React, { useEffect } from 'react';
+import { useEffect } from 'react';
 import { useTranslation } from 'react-i18next';
 import SliderWithValue from '../../common/SliderWithValue';
 import MaterialSwitch from '../../common/MaterialSwitch';
@@ -12,26 +12,26 @@ import '../../../styles/common/material-switch.css';
 import '../../../styles/settings/customGeminiModels.css';
 
 const VideoProcessingTab = ({
-  segmentDuration,
-  setSegmentDuration,
-  geminiModel,
-  setGeminiModel,
+  segmentDuration: _segmentDuration,
+  setSegmentDuration: _setSegmentDuration,
+  geminiModel: _geminiModel,
+  setGeminiModel: _setGeminiModel,
   timeFormat,
   setTimeFormat,
   showWaveformLongVideos,
   setShowWaveformLongVideos,
-  useVideoAnalysis,
-  setUseVideoAnalysis,
+  useVideoAnalysis: _useVideoAnalysis,
+  setUseVideoAnalysis: _setUseVideoAnalysis,
   videoAnalysisModel,
   setVideoAnalysisModel,
   videoAnalysisTimeout,
   setVideoAnalysisTimeout,
-  optimizeVideos,
-  setOptimizeVideos,
-  optimizedResolution,
-  setOptimizedResolution,
-  useOptimizedPreview,
-  setUseOptimizedPreview,
+  optimizeVideos: _optimizeVideos,
+  setOptimizeVideos: _setOptimizeVideos,
+  optimizedResolution: _optimizedResolution,
+  setOptimizedResolution: _setOptimizedResolution,
+  useOptimizedPreview: _useOptimizedPreview,
+  setUseOptimizedPreview: _setUseOptimizedPreview,
   thinkingBudgets,
   setThinkingBudgets,
   useCookiesForDownload,

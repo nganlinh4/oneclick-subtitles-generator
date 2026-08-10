@@ -2,9 +2,8 @@ use std::collections::HashMap;
 
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
-use uuid::Uuid;
 
-use crate::{SubtitleCue, SubtitleTrack};
+use crate::{CueId, SubtitleCue, SubtitleTrack};
 
 use super::SubtitleFormatError;
 
@@ -38,8 +37,8 @@ pub fn parse_legacy_json(input: &str) -> Result<Vec<SubtitleCue>, SubtitleFormat
         return Err(SubtitleFormatError::EmptyDocument);
     }
 
-    let assigned_ids: Vec<Uuid> = raw.iter().map(|_| Uuid::new_v4()).collect();
-    let legacy_ids: HashMap<String, Uuid> = raw
+    let assigned_ids: Vec<CueId> = raw.iter().map(|_| CueId::new()).collect();
+    let legacy_ids: HashMap<String, CueId> = raw
         .iter()
         .zip(assigned_ids.iter().copied())
         .filter_map(|(cue, id)| cue.id.as_ref().and_then(identity_key).map(|key| (key, id)))
@@ -111,13 +110,13 @@ fn milliseconds_as_seconds(milliseconds: i64) -> serde_json::Number {
 
 pub fn write_legacy_json(track: &SubtitleTrack) -> Result<String, SubtitleFormatError> {
     let cues: Vec<ExportCue<'_>> = track
-        .cues
+        .cues()
         .iter()
         .map(|cue| ExportCue {
-            id: cue.ordinal,
-            start: milliseconds_as_seconds(cue.start_ms),
-            end: milliseconds_as_seconds(cue.end_ms),
-            text: &cue.text,
+            id: cue.ordinal(),
+            start: milliseconds_as_seconds(cue.start_ms()),
+            end: milliseconds_as_seconds(cue.end_ms()),
+            text: cue.text(),
         })
         .collect();
     serde_json::to_string_pretty(&cues).map_err(Into::into)
@@ -137,9 +136,9 @@ mod tests {
         ]"#;
         let cues = parse_legacy_json(input).expect("valid legacy JSON");
 
-        assert_eq!(cues[0].start_ms, 2_745);
-        assert_eq!(cues[1].end_ms, 5_200);
-        assert_eq!(cues[1].source_id, Some(cues[0].id));
+        assert_eq!(cues[0].start_ms(), 2_745);
+        assert_eq!(cues[1].end_ms(), 5_200);
+        assert_eq!(cues[1].source_id(), Some(cues[0].id()));
     }
 
     #[test]

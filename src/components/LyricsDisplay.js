@@ -232,7 +232,6 @@ const LyricsDisplay = ({
     updateSavedLyrics,
     handleSplitSubtitles,
     captureStateBeforeMerge,
-    createCheckpoint,
     clearSubtitlesInRange,
     moveSubtitlesInRange,
     beginRangeMove,
@@ -314,10 +313,11 @@ const LyricsDisplay = ({
         case 'json':
           downloadJSON(subtitlesToUse, `${baseFilename}.json`);
           break;
-        case 'txt':
+        case 'txt': {
           const content = downloadTXT(subtitlesToUse, `${baseFilename}.txt`);
           setTxtContent(content);
           break;
+        }
         default:
           break;
       }

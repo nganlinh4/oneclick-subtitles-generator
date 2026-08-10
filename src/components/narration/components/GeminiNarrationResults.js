@@ -15,6 +15,7 @@ import { deriveSubtitleId, idsEqual } from '../../../utils/subtitle/idUtils';
 import GeminiResultRow from './GeminiResultRow';
 import { playAudio as playAudioImpl, downloadAudio as downloadAudioImpl } from '../utils/geminiAudioControls';
 import useGeminiAudioSpeed from '../hooks/useGeminiAudioSpeed';
+import { releaseNativeNarrationPlayback } from '../../../platform/nativeNarrationArtifacts';
 
 // Constants for localStorage keys
 const NARRATION_CACHE_KEY = 'gemini_narration_cache';
@@ -54,11 +55,22 @@ const GeminiNarrationResults = ({
   // Track shown error toasts to avoid duplicates
   const [shownErrorToasts, setShownErrorToasts] = useState(new Set());
 
+  useEffect(() => () => {
+    const audio = audioRef.current;
+    if (!audio) return;
+    try { audio.pause(); } catch (_) { /* noop */ }
+    if (audio.__nativeNarrationPlayback) {
+      releaseNativeNarrationPlayback(audio.__nativeNarrationPlayback);
+      audio.__nativeNarrationPlayback = null;
+    }
+    audioRef.current = null;
+  }, []);
+
   // Speed control state (global)
   const [speedValue, setSpeedValue] = useState(1.0);
   const [isProcessing, setIsProcessing] = useState(false);
   const [processingProgress, setProcessingProgress] = useState({ current: 0, total: 0 });
-  const [currentFile, setCurrentFile] = useState('');
+  const [, setCurrentFile] = useState('');
 
   // Per-item speed state
   const [itemSpeeds, setItemSpeeds] = useState({}); // { [subtitle_id]: number }
@@ -228,8 +240,17 @@ const GeminiNarrationResults = ({
         const essentialNarrations = generationResults.map(result => ({
           subtitle_id: result.subtitle_id,
           filename: result.filename,
+          nativeArtifactId: result.nativeArtifactId,
+          nativeFormat: result.nativeFormat,
+          durationMicros: result.durationMicros,
           success: result.success,
-          text: result.text
+          pending: result.pending,
+          text: result.text,
+          method: result.method,
+          outputIndex: result.outputIndex,
+          original_ids: result.original_ids,
+          start: result.start,
+          end: result.end,
         }));
 
         const cacheEntry = {
@@ -329,7 +350,7 @@ const GeminiNarrationResults = ({
   useEffect(() => {
     // If we have loaded from cache but don't have results yet, show a loading message
     if (loadedFromCache && (!generationResults || generationResults.length === 0)) {
-
+      // The surrounding results section owns the loading presentation.
     }
   }, [loadedFromCache, generationResults]);
 

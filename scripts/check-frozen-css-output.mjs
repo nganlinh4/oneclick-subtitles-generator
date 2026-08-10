@@ -1,0 +1,123 @@
+#!/usr/bin/env node
+
+import { createHash } from 'node:crypto';
+import { existsSync, lstatSync, readFileSync, readdirSync } from 'node:fs';
+import { dirname, resolve } from 'node:path';
+import { fileURLToPath } from 'node:url';
+
+export const FROZEN_CSS_ARTIFACT = Object.freeze({
+  fileName: 'index-C8MtrQpn.css',
+  sha256: 'd2492265468896f3cb54cd56996abbb432ebd91d9d2d904fa4179504ff010ea6',
+  sizeBytes: 680_990,
+  parity: Object.freeze({
+    albumArtCount: 22,
+    customSliderCount: 45,
+    floatingScrollbarCount: 19,
+    fontFaceCount: 5,
+    googleSansFlexCount: 1,
+    liquidGlassCount: 50,
+    materialDefinitionCount: 151,
+    materialUnresolvedCount: 47,
+    productSansCount: 4,
+  }),
+});
+
+function invariant(condition, message) {
+  if (!condition) {
+    throw new Error(`Frozen CSS output check failed: ${message}`);
+  }
+}
+
+function sha256File(filePath) {
+  return createHash('sha256').update(readFileSync(filePath)).digest('hex');
+}
+
+const countMatches = (source, pattern) => [...source.matchAll(pattern)].length;
+
+export function inspectFrozenCssParity(contents) {
+  const source = Buffer.isBuffer(contents) ? contents.toString('utf8') : contents;
+  const materialDefinitions = new Set(
+    [...source.matchAll(/--md-[A-Za-z0-9-]+\s*:/g)].map((match) => match[0].split(':', 1)[0]),
+  );
+  const materialUses = [...source.matchAll(/var\((--md-[A-Za-z0-9-]+)/g)]
+    .map((match) => match[1]);
+  const materialUnresolved = new Set(
+    materialUses.filter((name) => !materialDefinitions.has(name)),
+  );
+  return Object.freeze({
+    albumArtCount: countMatches(source, /album-art/g),
+    customSliderCount: countMatches(source, /\.custom-slider/g),
+    floatingScrollbarCount: countMatches(source, /\.floating-scrollbar/g),
+    fontFaceCount: countMatches(source, /@font-face/g),
+    googleSansFlexCount: countMatches(source, /GoogleSansFlex/g),
+    liquidGlassCount: countMatches(source, /\.liquid-glass/g),
+    materialDefinitionCount: materialDefinitions.size,
+    materialUnresolvedCount: materialUnresolved.size,
+    productSansCount: countMatches(source, /Product Sans/g),
+  });
+}
+
+function assertFrozenCssParity(contents, expected) {
+  const actual = inspectFrozenCssParity(contents);
+  for (const [surface, count] of Object.entries(expected)) {
+    invariant(
+      actual[surface] === count,
+      `pre-port CSS surface ${surface} drifted; expected ${count}, found ${actual[surface]}`,
+    );
+  }
+}
+
+export function verifyFrozenCssArtifact(assetsDirectory, expected = FROZEN_CSS_ARTIFACT) {
+  invariant(existsSync(assetsDirectory), `asset directory is missing: ${assetsDirectory}`);
+  const directoryMetadata = lstatSync(assetsDirectory);
+  invariant(
+    directoryMetadata.isDirectory() && !directoryMetadata.isSymbolicLink(),
+    `asset path must be a real directory: ${assetsDirectory}`,
+  );
+
+  const candidates = readdirSync(assetsDirectory, { withFileTypes: true })
+    .filter((entry) => entry.isFile() && /^index-[A-Za-z0-9_-]+\.css$/.test(entry.name))
+    .map((entry) => entry.name)
+    .sort();
+  invariant(
+    candidates.length === 1,
+    `expected exactly one index-*.css artifact; found ${candidates.length}${candidates.length > 0 ? ` (${candidates.join(', ')})` : ''}`,
+  );
+
+  const [fileName] = candidates;
+  invariant(
+    fileName === expected.fileName,
+    `artifact name drifted; expected ${expected.fileName}, found ${fileName}`,
+  );
+  const artifactPath = resolve(assetsDirectory, fileName);
+  const metadata = lstatSync(artifactPath);
+  invariant(metadata.isFile() && !metadata.isSymbolicLink(), `${fileName} must be a real file`);
+  invariant(
+    metadata.size === expected.sizeBytes,
+    `${fileName} byte size drifted; expected ${expected.sizeBytes}, found ${metadata.size}`,
+  );
+  const digest = sha256File(artifactPath);
+  invariant(
+    digest === expected.sha256,
+    `${fileName} SHA-256 drifted; expected ${expected.sha256}, found ${digest}`,
+  );
+  if (expected.parity) assertFrozenCssParity(readFileSync(artifactPath), expected.parity);
+  return Object.freeze({ fileName, sha256: digest, sizeBytes: metadata.size });
+}
+
+export function assertFrozenCssBuildOutput(rootDirectory = resolve(dirname(fileURLToPath(import.meta.url)), '..')) {
+  return verifyFrozenCssArtifact(resolve(rootDirectory, 'build/assets'));
+}
+
+const isMain = process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.url);
+if (isMain) {
+  try {
+    const result = assertFrozenCssBuildOutput();
+    console.log(
+      `Frozen CSS output passed: ${result.fileName}, ${result.sizeBytes} bytes, SHA-256 ${result.sha256}.`,
+    );
+  } catch (error) {
+    console.error(error.message);
+    process.exitCode = 1;
+  }
+}

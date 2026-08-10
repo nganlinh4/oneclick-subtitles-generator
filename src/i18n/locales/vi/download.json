@@ -35,5 +35,20 @@
     "cancelDownload": "Hủy tải xuống",
     "cancelled": "Đã hủy tải xuống",
     "download": "Tải xuống"
+  },
+  "nativeTools": {
+    "consent": "Việc kiểm tra phương tiện cần các công cụ gốc đã được xác minh: {{tools}}. Cài đặt ngay từ các bản phát hành thượng nguồn đã được xem xét? Bạn có thể hủy trong khi cài đặt. Phải khởi động lại OSG trước khi sử dụng.",
+    "consentDeclined": "Việc cài đặt công cụ gốc chưa được chấp thuận. Không có tập tin nào được tải xuống.",
+    "installing": "Đang cài đặt {{tool}}... {{percent}}%",
+    "cancel": "Hủy cài đặt",
+    "cancelled": "Đã hủy cài đặt công cụ gốc.",
+    "restartRequired": "Các công cụ gốc bắt buộc đã được cài đặt. Hãy khởi động lại OSG rồi thử lại thao tác phương tiện.",
+    "deliveryUnavailable": "Không có bản phân phối công cụ gốc đã được xem xét cho nền tảng này.",
+    "corrupt": "Một công cụ gốc được quản lý không vượt qua kiểm tra tính toàn vẹn. OSG giữ nguyên để xem xét thủ công và sẽ không ghi đè.",
+    "healthFailed": "Các công cụ tải xuống gốc đã cài đặt không vượt qua kiểm tra trạng thái. Hãy khởi động lại OSG; nếu lỗi vẫn còn, hãy sửa chữa cài đặt.",
+    "mediaToolsUnavailable": "Không thể tải phương tiện vì bản dựng này chưa có bản phân phối FFmpeg/ffprobe được phê duyệt. Không có tệp nhị phân chưa được xem xét nào được tải xuống.",
+    "downloadUnavailable": "Tải phương tiện gốc không khả dụng trong phiên này.",
+    "busy": "Một thao tác công cụ gốc khác đang chạy. Hãy chờ hoàn tất hoặc hủy rồi thử lại.",
+    "failed": "Không thể cài đặt gói công cụ gốc đã được xác minh."
   }
 }

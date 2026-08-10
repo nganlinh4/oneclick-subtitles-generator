@@ -1,6 +1,11 @@
 /**
  * Shared helpers for aligned narration payload preparation.
  */
+import {
+  createNativeNarrationToken,
+  getNativeNarrationArtifactId,
+  hydrateNativeNarrationResult,
+} from '../platform/nativeNarrationCapabilities';
 
 /**
  * Resolve the per-run subtitle directory index used by saved narration files.
@@ -42,6 +47,9 @@ export const resolveNarrationFilename = (result, fallbackIndex = 0) => {
     return result.filename;
   }
 
+  const nativeArtifactId = getNativeNarrationArtifactId(result);
+  if (nativeArtifactId) return createNativeNarrationToken(nativeArtifactId);
+
   if (result.pending || result.skipped || result.success === false) {
     return null;
   }
@@ -65,7 +73,8 @@ export const hydrateNarrationResultsForAlignment = (narrationResults = []) => {
     return [];
   }
 
-  return narrationResults.map((result, index) => {
+  return narrationResults.map((rawResult, index) => {
+    const result = hydrateNativeNarrationResult(rawResult);
     if (!result || typeof result !== 'object') {
       return result;
     }

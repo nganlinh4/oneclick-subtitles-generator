@@ -1,4 +1,4 @@
-import React, { useRef, useEffect } from 'react';
+import { useRef, useEffect } from 'react';
 import LiquidGlass from '../common/LiquidGlass';
 import PlayPauseMorphType4 from '../common/PlayPauseMorphType4';
 import WavyProgressIndicator from '../common/WavyProgressIndicator';
@@ -17,10 +17,10 @@ const VideoBottomControls = ({
   videoDuration,
   isDragging,
   dragTime,
-  setIsDragging,
-  setDragTime,
-  dragTimeRef,
-  bufferedProgress,
+  setIsDragging: _setIsDragging,
+  setDragTime: _setDragTime,
+  dragTimeRef: _dragTimeRef,
+  bufferedProgress: _bufferedProgress,
   handleTimelineMouseDown,
   handleTimelineTouchStart,
   volume,
@@ -41,7 +41,7 @@ const VideoBottomControls = ({
   setControlsVisible,
   setIsVideoHovered,
   hideControlsTimeoutRef,
-  videoSource,
+  videoSource: _videoSource,
   fileType
 }) => {
   const wavyProgressRef = useRef(null);

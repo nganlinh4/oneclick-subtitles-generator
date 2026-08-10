@@ -1,4 +1,3 @@
-import React from 'react';
 
 const iconStyle = { display: 'inline-block', verticalAlign: 'middle', marginRight: '6px', fontSize: 16 };
 

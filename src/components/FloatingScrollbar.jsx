@@ -1,4 +1,4 @@
-import React, { useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 
 /**
  * FloatingScrollbar component
@@ -19,11 +19,10 @@ const FloatingScrollbar = () => {
   const [isDragging, setIsDragging] = useState(false);
   const [scrollStartPosition, setScrollStartPosition] = useState(null);
   const [initialScrollTop, setInitialScrollTop] = useState(0);
-  const [isScrolling, setIsScrolling] = useState(false); // Used in JSX className
+  const [isScrolling] = useState(false); // Used in JSX className
   const scrollingTimeoutRef = useRef(null);
   const lastScrollTop = useRef(0);
   const scrollDirectionRef = useRef(null);
-  const activityTimeoutRef = useRef(null);
   const hideTimeoutRef = useRef(null);
 
   // Calculate the thumb height and position based on scroll position
@@ -113,7 +112,7 @@ const FloatingScrollbar = () => {
   };
 
   // Handle mouse move while dragging
-  const handleDocumentMouseMove = (e) => {
+  const handleDocumentMouseMove = useCallback((e) => {
     if (!isDragging || scrollStartPosition === null) return;
 
     const { scrollHeight, clientHeight } = document.documentElement;
@@ -125,10 +124,10 @@ const FloatingScrollbar = () => {
       top: initialScrollTop + (scrollDelta * scrollFactor),
       behavior: 'auto'
     });
-  };
+  }, [isDragging, scrollStartPosition, initialScrollTop]);
 
   // Handle mouse up to end dragging
-  const handleDocumentMouseUp = () => {
+  const handleDocumentMouseUp = useCallback(() => {
     if (isDragging) {
       setIsDragging(false);
       setScrollStartPosition(null);
@@ -139,7 +138,7 @@ const FloatingScrollbar = () => {
       clearInterval(trackHoldIntervalRef.current);
       trackHoldIntervalRef.current = null;
     }
-  };
+  }, [isDragging]);
 
   // Page-like scroll by viewport step
   const pageScrollBy = (direction) => {
@@ -178,7 +177,7 @@ const FloatingScrollbar = () => {
   };
 
   // Handle document mouse move for edge detection
-  const handleEdgeDetection = (e) => {
+  const handleEdgeDetection = useCallback((e) => {
     // Check if scrolling is needed
     const { scrollHeight, clientHeight } = document.documentElement;
     const isScrollNeeded = scrollHeight > clientHeight;
@@ -221,7 +220,7 @@ const FloatingScrollbar = () => {
         }, 600);
       }
     }
-  };
+  }, [isDragging]);
 
   // Set up event listeners
   useEffect(() => {
@@ -261,7 +260,7 @@ const FloatingScrollbar = () => {
     window.addEventListener('wheel', onWheel, { passive: true });
 
     // Create a ResizeObserver to detect changes in document height
-    const resizeObserver = new ResizeObserver((entries) => {
+    const resizeObserver = new ResizeObserver(() => {
       // Check if scrolling is needed after content size changes
       const { scrollHeight, clientHeight } = document.documentElement;
       const isScrollNeeded = scrollHeight > clientHeight;
@@ -305,11 +304,6 @@ const FloatingScrollbar = () => {
       }
       if (hideTimeoutRef.current) {
         clearTimeout(hideTimeoutRef.current);
-      }
-      // Store ref value in a variable to avoid the cleanup function using a changed ref value
-      const activityTimeout = activityTimeoutRef.current;
-      if (activityTimeout) {
-        clearTimeout(activityTimeout);
       }
     };
   }, [isDragging, scrollStartPosition, initialScrollTop, handleDocumentMouseMove, handleDocumentMouseUp, handleEdgeDetection]);

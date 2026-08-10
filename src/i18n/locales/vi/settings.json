@@ -454,6 +454,7 @@
   "modelManagement.modelNamePlaceholder": "Tên mô hình",
   "modelManagement.removeLanguageCode": "Xóa mã ngôn ngữ",
   "youtubeOAuth.confirmClear": "Bạn có chắc muốn xóa thông tin xác thực YouTube OAuth không? Bạn sẽ cần xác thực lại để dùng tìm kiếm YouTube.",
+  "youtubeOAuth.authFailed": "Xác thực YouTube không thành công. Vui lòng thử lại.",
   "youtubeOAuth.failed": "Xác thực thất bại: {{message}}",
   "youtubeOAuth.missingCredentials": "Vui lòng nhập cả Client ID và Client Secret.",
   "youtubeOAuth.noCode": "Lỗi: Không nhận được mã ủy quyền",

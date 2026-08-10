@@ -4,8 +4,6 @@ import { useState, useEffect } from 'react';
 // SettingsModal.js (src/components/settings/), so '../../X' from the modal
 // becomes '../../../X' here.
 import { DEFAULT_TRANSCRIPTION_PROMPT } from '../../../services/geminiService';
-import { getClientCredentials, hasValidTokens } from '../../../services/youtubeApiService';
-import { getCurrentKey } from '../../../services/gemini/keyManager';
 import {
   DEFAULT_ANALYSIS_MODEL_ID,
   DEFAULT_GEMINI_MODEL_ID,
@@ -13,6 +11,10 @@ import {
   migrateStoredGeminiModels
 } from '../../../config/geminiModels';
 import { validateThinkingBudget } from '../../../utils/thinkingBudgetUtils';
+import {
+  cancelYouTubeOAuthNative,
+  getYouTubeOAuthStatusNative,
+} from '../../../platform/providerService';
 
 /**
  * Custom hook owning all SettingsModal settings state: initialization,
@@ -114,14 +116,17 @@ const useSettingsState = () => {
 
   // Load saved settings on component mount
   useEffect(() => {
+    let active = true;
     const loadSettings = () => {
       migrateStoredGeminiModels(localStorage);
       localStorage.setItem('settings_version', '2.0');
 
       // Get the current active Gemini API key from the key manager
-      const savedGeminiKey = getCurrentKey() || '';
-      const savedYoutubeKey = localStorage.getItem('youtube_api_key') || '';
-      const savedGeniusKey = localStorage.getItem('genius_token') || '';
+      // Native credential fields are write-only form buffers. Existing secrets are represented
+      // exclusively by safe status metadata from the native credential controller.
+      const savedGeminiKey = '';
+      const savedYoutubeKey = '';
+      const savedGeniusKey = '';
       const savedSegmentDuration = parseInt(localStorage.getItem('segment_duration') || '5');
       const savedGeminiModel = localStorage.getItem('gemini_model') || DEFAULT_GEMINI_MODEL_ID;
       const savedTimeFormat = localStorage.getItem('time_format') || 'hms';
@@ -174,8 +179,9 @@ const useSettingsState = () => {
           return getDefaultThinkingBudgets();
         }
       })();
-      const { clientId, clientSecret } = getClientCredentials();
-      const authenticated = hasValidTokens();
+      const clientId = '';
+      const clientSecret = '';
+      const authenticated = false;
 
       // Original settings will be set after all state updates
 
@@ -247,27 +253,19 @@ const useSettingsState = () => {
     // Load settings initially
     loadSettings();
 
-    // Check for OAuth success flag
-    const oauthSuccess = localStorage.getItem('oauth_auth_success') === 'true';
-    if (oauthSuccess) {
-      // Refresh authentication status
-      setIsAuthenticated(hasValidTokens());
-    }
-
-    // Set up event listener for storage changes
-    const handleStorageChange = (event) => {
-      if (event.key === 'youtube_oauth_token' || event.key === 'oauth_auth_success') {
-        setIsAuthenticated(hasValidTokens());
-      }
-    };
-
-    window.addEventListener('storage', handleStorageChange);
+    getYouTubeOAuthStatusNative()
+      .then(({ authenticated }) => {
+        if (active) setIsAuthenticated(authenticated);
+      })
+      .catch(() => {
+        if (active) setIsAuthenticated(false);
+      });
 
     // Clean up
     return () => {
-      window.removeEventListener('storage', handleStorageChange);
+      active = false;
+      cancelYouTubeOAuthNative().catch(() => undefined);
     };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   // Effect to check for changes in settings

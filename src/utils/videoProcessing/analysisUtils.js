@@ -89,7 +89,6 @@ export const analyzeVideoAndWaitForUserChoice = async (analysisFile, onStatusUpd
 
     // Also set the prompt if we have the preset
     if (recommendedPresetId !== 'settings') {
-      // Import PROMPT_PRESETS to get the actual prompt
       const { PROMPT_PRESETS } = await import('../../services/geminiService');
       const recommendedPreset = PROMPT_PRESETS.find(p => p.id === recommendedPresetId);
       if (recommendedPreset) {

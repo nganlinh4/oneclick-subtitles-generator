@@ -9,6 +9,7 @@ import { analyzeVideoAndWaitForUserChoice } from './analysisUtils';
 import { getCacheIdForMedia } from './cacheUtils';
 import { setCurrentCacheId as setRulesCacheId } from '../transcriptionRulesStore';
 import { setCurrentCacheId as setSubtitlesCacheId } from '../userSubtitlesStore';
+import { isDesktopRuntime } from '../../platform/desktopRuntime';
 
 /**
  * Process a video file using the simplified Files API approach
@@ -95,7 +96,15 @@ export const processVideoWithFilesApi = async (mediaFile, onStatusUpdate, t, opt
 
     // Process the media file
     let subtitles;
-    if (options.forceInline || options.inlineExtraction) {
+    if (isDesktopRuntime()) {
+      subtitles = await callGeminiApi(mediaFile, 'file-upload', {
+        userProvidedSubtitles,
+        modelId: options.modelId || options.model,
+        mediaResolution: options.mediaResolution,
+        ...(options.segmentInfo ? { segmentInfo: options.segmentInfo } : {}),
+        ...(options.runId ? { runId: options.runId } : {})
+      });
+    } else if (options.forceInline || options.inlineExtraction) {
       // Inline path (no offsets). Non-streaming here to maintain simplified flow semantics.
       subtitles = await callGeminiApi(mediaFile, 'file-upload', {
         userProvidedSubtitles,
@@ -151,7 +160,7 @@ export const processVideoWithFilesApi = async (mediaFile, onStatusUpdate, t, opt
  * @param {File} mediaFile - The media file
  * @returns {boolean} - True if should use simplified processing
  */
-export const shouldUseSimplifiedProcessing = (mediaFile) => {
+export const shouldUseSimplifiedProcessing = (_mediaFile) => {
   // Check if user has enabled the new processing method
   const useSimplifiedProcessing = localStorage.getItem('use_simplified_processing') === 'true';
   

@@ -1,0 +1,222 @@
+name: Rewrite CI
+
+on:
+  pull_request:
+  push:
+    branches:
+      - main
+      - "rewrite/**"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: rewrite-ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  CARGO_INCREMENTAL: "0"
+  CARGO_TERM_COLOR: always
+  CI: "true"
+  RUST_BACKTRACE: "1"
+
+jobs:
+  invariants:
+    name: Repository invariants
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          persist-credentials: false
+
+      - name: Use pinned Node.js
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version-file: .node-version
+          cache: npm
+          cache-dependency-path: |
+            package-lock.json
+            apps/desktop/package-lock.json
+
+      - name: Use pinned Python
+        uses: actions/setup-python@a309ff8b426b58ec0e2a45f0f869d46889d02405 # v6.2.0
+        with:
+          python-version: "3.12.10"
+
+      - name: Use pinned npm
+        run: npm install --global "$(node -p 'require("./package.json").packageManager')"
+
+      - name: Install locked JavaScript dependencies
+        run: |
+          npm ci --ignore-scripts
+          npm --prefix apps/desktop ci --ignore-scripts
+
+      - name: Verify effective Node, npm, Python, and Rust pins
+        run: node scripts/check-release-readiness.js --profile host-toolchain
+
+      - name: Audit production JavaScript dependencies
+        run: npm audit --omit=dev --audit-level=high
+
+      - name: Verify the installed dependency graph
+        run: npm run check:dependencies
+
+      - name: Check application versions
+        run: node scripts/check-version-consistency.js
+
+      - name: Test the version gate
+        run: node --test scripts/check-version-consistency.test.js
+
+      - name: Check Tauri command and capability contract
+        run: node scripts/check-tauri-command-contract.js
+
+      - name: Lint the complete frontend
+        run: npm run lint
+
+      - name: Test native Python worker contracts
+        run: npm run test:python-workers
+
+      - name: Test the native Remotion worker contract
+        run: npm run test:render-worker
+
+      - name: Check the approved frontend visual baseline
+        run: npm run check:visual-freeze
+
+      - name: Check compile and repository release readiness
+        run: node scripts/check-release-readiness.js --profile compile
+
+      - name: Test release-readiness and artifact gates
+        run: node --test scripts/check-release-readiness.test.js scripts/check-release-artifacts.test.js scripts/check-production-transport.test.js scripts/check-tauri-command-contract.test.js scripts/frontend-bundle-boundary.test.mjs scripts/remotion-desktop-boundary.test.mjs
+
+      - name: Test frozen CSS compatibility gates
+        run: node --test scripts/frozen-css-compatibility.test.mjs scripts/check-frozen-css-output.test.mjs
+
+  native-matrix:
+    name: ${{ matrix.platform }} native build
+    needs: invariants
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 120
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - platform: Linux x64
+            os: ubuntu-24.04
+            rust-target: x86_64-unknown-linux-gnu
+            bundles: appimage,deb
+          - platform: macOS arm64
+            os: macos-15
+            rust-target: aarch64-apple-darwin
+            bundles: app,dmg
+          - platform: macOS x64
+            os: macos-15-intel
+            rust-target: x86_64-apple-darwin
+            bundles: app,dmg
+          - platform: Windows x64
+            os: windows-2022
+            rust-target: x86_64-pc-windows-msvc
+            bundles: nsis
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          persist-credentials: false
+
+      - name: Install Tauri system dependencies
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install --yes \
+            build-essential \
+            curl \
+            file \
+            libayatana-appindicator3-dev \
+            librsvg2-dev \
+            libssl-dev \
+            libwebkit2gtk-4.1-dev \
+            libxdo-dev \
+            wget
+
+      - name: Use pinned Node.js
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version-file: .node-version
+          cache: npm
+          cache-dependency-path: |
+            package-lock.json
+            apps/desktop/package-lock.json
+
+      - name: Use pinned Python
+        uses: actions/setup-python@a309ff8b426b58ec0e2a45f0f869d46889d02405 # v6.2.0
+        with:
+          python-version: "3.12.10"
+
+      - name: Use pinned npm
+        shell: bash
+        run: npm install --global "$(node -p 'require("./apps/desktop/package.json").packageManager')"
+
+      - name: Show JavaScript toolchain
+        run: |
+          node --version
+          npm --version
+
+      - name: Install locked JavaScript dependencies
+        run: |
+          npm ci --ignore-scripts
+          npm --prefix apps/desktop ci --ignore-scripts
+
+      - name: Install pinned Rust toolchain components
+        run: |
+          rustup show active-toolchain
+          rustup component add rustfmt clippy
+          rustup target add "${{ matrix.rust-target }}"
+
+      - name: Verify effective Node, npm, Python, and Rust pins
+        run: node scripts/check-release-readiness.js --profile host-toolchain
+
+      - name: Fetch the locked Rust dependency graph
+        run: cargo fetch --locked --target "${{ matrix.rust-target }}"
+
+      - name: Check Rust formatting
+        run: cargo fmt --all -- --check
+
+      - name: Lint Rust workspace
+        run: cargo clippy --workspace --all-targets --all-features --locked --target "${{ matrix.rust-target }}" -- -D warnings
+
+      - name: Test Rust workspace
+        run: cargo test --workspace --all-features --locked --target "${{ matrix.rust-target }}"
+
+      - name: Check frontend catalogs
+        run: |
+          npm run check:i18n
+          npm run test:gemini-catalog
+
+      - name: Test frontend
+        run: npm test
+
+      - name: Compile frozen frontend
+        run: npm run build:frontend
+
+      - name: Prove frozen CSS output is byte-identical
+        run: node scripts/check-frozen-css-output.mjs
+
+      - name: Prove production frontend uses only native transports
+        run: npm run check:production-transport
+
+      - name: Compile native Tauri application without bundling or signing
+        run: npm --prefix apps/desktop run tauri -- build --no-bundle --ci --target "${{ matrix.rust-target }}" -- --locked
+
+      - name: Require a complete native runtime package for manual package validation
+        if: github.event_name == 'workflow_dispatch'
+        run: node scripts/check-release-readiness.js --profile runtime-package --target "${{ matrix.rust-target }}"
+
+      - name: Smoke-package unsigned native installers for manual validation
+        if: github.event_name == 'workflow_dispatch'
+        run: npm --prefix apps/desktop run tauri -- bundle --ci --no-sign --target "${{ matrix.rust-target }}" --bundles "${{ matrix.bundles }}"
+
+      - name: Validate manually produced installers and packaged resources
+        if: github.event_name == 'workflow_dispatch'
+        run: node scripts/check-release-artifacts.js --target "${{ matrix.rust-target }}" --bundles "${{ matrix.bundles }}"

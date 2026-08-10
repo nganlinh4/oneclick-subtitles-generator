@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef, useCallback } from 'react';
 
 /**
  * Resizable preview/customization split-panel logic with localStorage persistence.
@@ -24,7 +24,7 @@ export const usePanelResize = () => {
     e.preventDefault();
   };
 
-  const handleMouseMove = (e) => {
+  const handleMouseMove = useCallback((e) => {
     if (!isResizing || !containerRef.current) return;
 
     const containerRect = containerRef.current.getBoundingClientRect();
@@ -45,7 +45,7 @@ export const usePanelResize = () => {
     constrainedLeftWidth = Math.max(constrainedLeftWidth, minLeftWidthPercent);
 
     setLeftPanelWidth(constrainedLeftWidth);
-  };
+  }, [isResizing]);
 
   const handleMouseUp = () => {
     setIsResizing(false);
@@ -71,7 +71,7 @@ export const usePanelResize = () => {
       document.body.style.cursor = '';
       document.body.style.userSelect = '';
     };
-  }, [isResizing]);
+  }, [isResizing, handleMouseMove]);
 
   useEffect(() => {
     localStorage.setItem('videoRender_leftPanelWidth', leftPanelWidth.toString());

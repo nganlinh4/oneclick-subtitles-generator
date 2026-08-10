@@ -1,8 +1,9 @@
-import { getAudioUrl } from '../../../services/narrationService';
 import SubtitleSourceSelection from '../components/SubtitleSourceSelection';
 import EdgeTTSControls from '../components/EdgeTTSControls';
 import GenerateButton from '../components/GenerateButton';
 import NarrationResults from '../components/NarrationResults';
+
+const getAudioUrl = () => null;
 
 /**
  * Edge TTS narration UI branch. Pure, props-driven component.

@@ -1,4 +1,3 @@
-import React from 'react';
 import Tooltip from './Tooltip';
 
 const HelpIcon = ({ title, size = 14, className = '', style, onClick }) => {

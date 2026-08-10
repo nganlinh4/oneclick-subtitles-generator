@@ -1,0 +1,132 @@
+{
+  "schemaVersion": 2,
+  "algorithm": "sha256",
+  "normalization": "shared schema-2 AST; exact text ignores UTF-8 BOM, normalizes CRLF/CR to LF, and ignores terminal newlines",
+  "baselineRevision": "d600caf22ad91d9835e771883cb81fac577a8824",
+  "exactFiles": {
+    "assets/fonts/Product Sans Bold Italic.otf": "7740d2f952d9f3e1c53554752235214a271b23e63cdcd5018e62f27efdacc5c0",
+    "assets/fonts/Product Sans Bold.otf": "537bc891e9e4f889314cd26ba2ab0754fd6e240406aeae5f5fb18db19219f6c1",
+    "assets/fonts/Product Sans Italic.otf": "492ad70ac48841d90ed0afbf868fc8c357444dfaea63dcf2d3e785f1123e1f1e",
+    "assets/fonts/Product Sans Regular.otf": "252bcd852d84ff04af89e615e36ece925f15ddc042efa4861176e3f745137017",
+    "components/react/LoadingIndicator.css": "d98e5054e73f09a7421af975192829a102aa108ed0888bb7538da27faf50e3b8",
+    "components/react/LoadingIndicator/all-shapes.txt": "3036dd3e6cea06f90b51a9d123a1a878ce8fc2ec75da4495f59616e7077a2fe7",
+    "components/react/LoadingIndicator/shapes/shape-step1.svg": "4c8bcc44bccbd2759e01ebb1ef11a32352a3dff27d0ecae6015569b57a0c7c5d",
+    "components/react/LoadingIndicator/shapes/shape-step2.svg": "36c9229ebb8673bee40a4b07db127f1743f1ca103ac475734e608e56808648f3",
+    "components/react/LoadingIndicator/shapes/shape-step3.svg": "90eb10d5b6b6d4f306d1a32aa75302259c700b39e4cc02542b1657a00ce093c2",
+    "components/react/LoadingIndicator/shapes/shape-step4.svg": "d6f4b95f6fd98a913f0bd01a263699654a9121d31b58c6af77b1022805de6c85",
+    "components/react/LoadingIndicator/shapes/shape-step5.svg": "ce0064a75fbb7f9470312731369edc5662c7a1f9bef6d15a9ceee2d321d6d278",
+    "components/react/LoadingIndicator/shapes/shape-step6.svg": "4799c943d4cd160e1c29190c8985d41975863d5cf56790e3d90110093367c9db",
+    "components/react/LoadingIndicator/shapes/shape-step7.svg": "591aaa41786e207d7a283eb8626b1ecad8d43ba6eacb1f880f0de6fa336eb41c",
+    "components/react/material-switch.css": "98ab0c88aace57a287a99fe8cfb3734ce0a01bc64af42c62222c6f7d6460d88f",
+    "index.css": "01bca18c9bed9de2022c5ecefcc38d2b9861ead279ffc8416dd4999e38681c14",
+    "styles/material-tokens.css": "440877c03b5d9854e6f179e2bfb504e3507be34feb1d68d3c444acb539815af7"
+  },
+  "reactSurfaces": {
+    "components/PlayPauseMorphWrapper.tsx": {
+      "hash": "3611c24145d4617900fb6999985303c66c8c7efd8a74a4f557e0f64ba1c4cc32",
+      "rootCount": 1,
+      "roots": [
+        "7944ca4c9ffbbc5aa6bec93f0e5ab922cefe51774b7b625e826edcdf43253385"
+      ]
+    },
+    "components/react/LoadingIndicator.jsx": {
+      "hash": "89ada82b0d22d98b3e40fe87ebd0b57ae49c002c12eade70e62a5370394e2a14",
+      "rootCount": 1,
+      "roots": [
+        "afbdc4128c31c27ec222faf241d4b144a3ad78acb0a280dd3294153aded1a4de"
+      ]
+    },
+    "components/react/PlayPauseMorphType4.jsx": {
+      "hash": "efbbda63bb6526b7669bfcf2812a422d663ef29c897db21c6635ed6aeca54595",
+      "rootCount": 2,
+      "roots": [
+        "eb8d22084e1b955ee0187c462f853337a1327e1256991db5469d7e7918827660",
+        "4f19fdadabd5bcc27f9d28e42b687d6613e4a5cdd5b0c9be3cb082305f2e696c"
+      ]
+    }
+  },
+  "litRenderSurfaces": {
+    "components/PlayPauseButton.ts": {
+      "hash": "c41238fdcc19b5361e9e597834418765b149987bf867151b42832a64950e3dab",
+      "rootCount": 5,
+      "roots": [
+        "6f608f946c0cfb13dcb8512bdb9468eabafb92950a551a5fb26b5fafafb1cdd3",
+        "f2b143a1e19ad0d5f9ddd32bf283374028e2529193e92fede5810fe5a47ca4e8",
+        "fd1cb302af7afe44c84fd42b8c45bec5fbf35c954fa7e86d22e8d350c143532e",
+        "538417d1a8320f9ec4977de453063541896584eef96c27b3b64f0a8e5279543f",
+        "9a815298f782265961e7471a2ecacd2e630294b6e725a86a1925f202d7cc64ee"
+      ]
+    },
+    "components/PromptController.ts": {
+      "hash": "1a323646858391c9c07771475484105de8539efa3f65680e85d1e78198c7d12a",
+      "rootCount": 1,
+      "roots": [
+        "9952b94595037b63914f1635af995e3a4bd77ff61320d75eec73f20102861c34"
+      ]
+    },
+    "components/PromptDjMidi.ts": {
+      "hash": "04072b7a1767ba745704d3d820f58fb2a3068e9d969ba91602faa7d0ddf21a24",
+      "rootCount": 5,
+      "roots": [
+        "608353d5381023e070b25430ce049e30184b9e1e56f817370860662ef92138bd",
+        "c795ed559344ed1a948554a717af25f59f39f21f90b35269e8ee6a3951c17e2e",
+        "2d45fb8a5a4ae7cbfa11497e28c6601fba3d6c01a71326947f8866f3855ec5b3",
+        "14eef5335c27fdf8479982b20ed3cf104d3a4b22c5d2bc69c204523523661339",
+        "9b2974fa118daf68a96be3d789ad9fc9394004757197cf759e9d454e42eaf5b0"
+      ]
+    },
+    "components/ToastMessage.ts": {
+      "hash": "4f2f612b1862b73269e11475c98d8ae1bc35f3a425819c771ff00930e297e4b7",
+      "rootCount": 2,
+      "roots": [
+        "044945f8edbe338994c68ac90907df31dba489f7ce0f17c23baa41aa351cb619",
+        "2a6c7a66cb9e41eefe64472c10855701048fff19bdf33375f367781f374a128b"
+      ]
+    },
+    "components/WeightKnob.ts": {
+      "hash": "7d9b6d4afad4a490218f238864e1f8d48a94f2a1cd9498b1d0f4f924eabd84bb",
+      "rootCount": 2,
+      "roots": [
+        "44283d1a1d0ff6d7068e1befc7e619937a0e973e6ed9024eadd9d5d4bc6d397d",
+        "94e2bd1be879418a325fe881441c712d0f54f2dc125ae3cc741191f43a24dc66"
+      ]
+    }
+  },
+  "litStyleSurfaces": {
+    "components/PlayPauseButton.ts": {
+      "hash": "2988f2b3d20127c23ecfded90a278f96ec99b6e96079d9a11ebf1c866accdc65",
+      "rootCount": 1,
+      "roots": [
+        "5ea4e2106741622efa45f8fadfeece914eb12b2ff60fc1bd3dc89992dce177cc"
+      ]
+    },
+    "components/PromptController.ts": {
+      "hash": "2bd35e56f8afd78b9636528f1e8f85d207936f499d26805c26cd672877c11a85",
+      "rootCount": 1,
+      "roots": [
+        "297b782b1fcfa3bdef777179a8c4ebbbc51ee7f3eaa178c8797e983ea5482f36"
+      ]
+    },
+    "components/PromptDjMidi.ts": {
+      "hash": "2aa99d64b95af4072d30c8377eac7f8d9174ee10d69ee4b00494f5f2d85a4fa0",
+      "rootCount": 1,
+      "roots": [
+        "e1dcc06de92b4ff222f80dc5bc382d454618b10ba608c504a2253c499266fcf8"
+      ]
+    },
+    "components/ToastMessage.ts": {
+      "hash": "d993bc042fa22ffe091864d491ea70625c75a87aba78e0152b6515f048d4c373",
+      "rootCount": 1,
+      "roots": [
+        "ccc616c57134e1ef6924ce6507a1f0b76af51d28275772c1eb764ce55cbd6dd0"
+      ]
+    },
+    "components/WeightKnob.ts": {
+      "hash": "aa0bf3a3e585b791125857fbf0c72b8ba02404448f322a63aaafee25906e395a",
+      "rootCount": 1,
+      "roots": [
+        "8047318c079cb36d8ee9ba5be8e86a0881e4106d48000856058ea80caf567dc0"
+      ]
+    }
+  }
+}

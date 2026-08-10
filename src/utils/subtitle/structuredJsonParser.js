@@ -3,6 +3,13 @@
  */
 
 import { convertTimeStringToSeconds } from './timeUtils';
+import {
+    parseBracketSpaceFormat,
+    parseMillisecondsFormat,
+    parseOriginalFormat,
+    parseSingleTimestampFormat,
+} from './formatParsers';
+import { deduplicateAndSortSubtitles } from './subtitleUtils';
 
 /**
  * Detect if text contains excessive character repetition (hallucination pattern)
@@ -138,13 +145,6 @@ export const parseStructuredJsonResponse = (response) => {
         }
         // If it's an array, assume it's a subtitle array
         else if (Array.isArray(structuredJson)) {
-            // Log the first item to help with debugging
-            if (structuredJson.length > 0) {
-
-
-
-            }
-
             const subtitles = [];
 
             // Check if all subtitles are empty with 00m00s000ms timestamps
@@ -198,8 +198,6 @@ export const parseStructuredJsonResponse = (response) => {
 
                     startIndex++;
                 }
-            } else {
-
             }
 
             for (let i = startIndex; i < structuredJson.length; i++) {
@@ -417,10 +415,6 @@ export const parseStructuredJsonResponse = (response) => {
             //         }
             //     }]
             // };
-
-            // Import and use text parsing methods
-            const { parseOriginalFormat, parseMillisecondsFormat, parseSingleTimestampFormat, parseBracketSpaceFormat } = require('./formatParsers');
-            const { deduplicateAndSortSubtitles } = require('./subtitleUtils');
 
             // Parse the text directly to avoid infinite recursion
             const subtitles = [];

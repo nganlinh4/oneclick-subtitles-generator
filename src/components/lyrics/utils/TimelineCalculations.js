@@ -7,7 +7,7 @@
  * @param {number} totalDuration - Total duration of the timeline in seconds
  * @returns {number} - Minimum zoom level (always 1)
  */
-export const calculateMinZoom = (totalDuration) => {
+export const calculateMinZoom = (_totalDuration) => {
   return 1; // Always allow 100% zoom (showing entire timeline)
 };
 
@@ -20,7 +20,7 @@ export const calculateMinZoom = (totalDuration) => {
  * @param {number} currentTime - Current playback time
  * @returns {Object} - Object with start, end, and total properties
  */
-export const getVisibleTimeRange = (lyrics, duration, panOffset, zoom, currentZoom) => {
+export const getVisibleTimeRange = (lyrics, duration, panOffset, zoom, _currentZoom) => {
   const maxLyricTime = lyrics.length > 0
     ? Math.max(...lyrics.map(lyric => lyric.end))
     : duration;

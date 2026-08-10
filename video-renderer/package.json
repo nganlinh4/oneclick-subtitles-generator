@@ -3,11 +3,27 @@
   "version": "0.1.0",
   "private": true,
   "scripts": {
-    "server:build": "tsc --project server/tsconfig.json",
-    "server:start": "cross-env PORT=3033 node server/dist/index.js"
+    "check:visual-contract": "node scripts/check-visual-contract.mjs",
+    "check:visual-provenance": "node scripts/check-visual-contract.mjs --verify-provenance",
+    "native:bundle": "node scripts/build-native-bundle.mjs",
+    "native:typecheck": "tsc --project native.tsconfig.json",
+    "test:worker": "node --test worker/osg_render_worker.test.mjs"
   },
-
   "dependencies": {
-    "form-data": "^4.0.4"
+    "@emotion/is-prop-valid": "1.4.0",
+    "@remotion/bundler": "4.0.507",
+    "@remotion/google-fonts": "4.0.507",
+    "@remotion/renderer": "4.0.507",
+    "css-to-react-native": "3.2.0",
+    "react": "18.3.1",
+    "react-dom": "18.3.1",
+    "remotion": "4.0.507",
+    "styled-components": "6.5.1",
+    "stylis": "4.3.6"
+  },
+  "devDependencies": {
+    "@types/react": "18.3.28",
+    "@types/react-dom": "18.3.7",
+    "typescript": "5.9.3"
   }
 }

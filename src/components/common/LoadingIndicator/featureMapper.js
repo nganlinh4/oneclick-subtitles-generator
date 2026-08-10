@@ -14,7 +14,6 @@
  * limitations under the License.
  */
 
-import { Feature } from './roundedPolygon.js';
 import { Point, DistanceEpsilon, debugLog } from './utils.js';
 import { DoubleMapper } from './floatMapping.js';
 

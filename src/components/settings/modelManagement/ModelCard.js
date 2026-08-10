@@ -1,4 +1,3 @@
-import React from 'react';
 import { useTranslation } from 'react-i18next';
 import { formatBytes } from '../../../utils/formatUtils';
 import DownloadProgress from './DownloadProgress';

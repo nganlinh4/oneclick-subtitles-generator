@@ -4,11 +4,10 @@
  * prompt, the response schema, and the log/abort labels).
  */
 
-import { addResponseSchema } from '../../utils/schemaUtils';
-import { addThinkingConfig } from '../../utils/thinkingBudgetUtils';
+import { getThinkingBudget } from '../../utils/thinkingBudgetUtils';
+import { runNativeGeminiText } from '../../platform/nativeGeminiText';
 import { createRequestController, removeRequestController } from './requestManagement';
 import { processStructuredJsonResponse, processTextResponse } from './responseProcessingService';
-import { fetchWithKeyRotation } from './withKeyRotation';
 
 /**
  * Resolve the processing language from localStorage.
@@ -52,44 +51,34 @@ export const runGeminiDocumentRequest = async ({
       ? customPrompt.replace('{subtitlesText}', subtitlesText)
       : getDefaultPrompt(subtitlesText, language);
 
-    let requestData = {
-      contents: [{ role: 'user', parts: [{ text: documentPrompt }] }]
-    };
-
-    requestData = addResponseSchema(requestData, createSchema());
-    requestData = addThinkingConfig(requestData, model);
-
-    const response = await fetchWithKeyRotation((apiKey) =>
-      fetch(`https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${apiKey}`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(requestData),
-        signal,
-      })
-    );
-
-    if (!response.ok) {
-      const errorData = await response.json();
-      throw new Error(`Gemini API error: ${errorData.error?.message || response.statusText}`);
+    const responseSchema = createSchema();
+    const thinking = getThinkingBudget(model);
+    const result = await runNativeGeminiText({
+      task: 'analyzeSubtitles',
+      model,
+      prompt: documentPrompt,
+      responseJsonSchema: responseSchema,
+      ...(typeof thinking === 'string' ? { thinkingLevel: thinking } : {}),
+      signal,
+    });
+    let structured;
+    try {
+      structured = JSON.parse(result.text);
+    } catch {
+      structured = null;
     }
+    const processed = structured === null
+      ? processTextResponse(result.text)
+      : processStructuredJsonResponse(structured, language);
 
-    const data = await response.json();
-    const part = data.candidates[0]?.content?.parts[0];
-
-    const processed = part?.structuredJson
-      ? processStructuredJsonResponse(part.structuredJson, language)
-      : processTextResponse(part?.text);
-
-    removeRequestController(requestId);
     return processed;
   } catch (error) {
     if (error.name === 'AbortError') {
       throw new Error(abortMessage);
     }
     console.error(errorLabel, error);
-    if (requestId) {
-      removeRequestController(requestId);
-    }
     throw error;
+  } finally {
+    removeRequestController(requestId);
   }
 };

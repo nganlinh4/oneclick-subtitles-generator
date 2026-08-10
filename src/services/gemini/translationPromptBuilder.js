@@ -59,8 +59,6 @@ const appendTranscriptionRules = (prompt) => {
 
             // Append the rules to the translation prompt
             prompt += rulesText;
-        } else {
-
         }
     } catch (error) {
         console.error('Error retrieving transcription rules:', error);

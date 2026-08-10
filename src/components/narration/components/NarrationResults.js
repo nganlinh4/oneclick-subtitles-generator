@@ -36,7 +36,7 @@ const NarrationResults = ({
   onRetryFailed,
   onGenerateAllPending,
   subtitleSource,
-  isGenerating,
+  isGenerating: _isGenerating,
   plannedSubtitles
 }) => {
   const { t } = useTranslation();
@@ -152,7 +152,7 @@ const NarrationResults = ({
     const allFilenames = [...new Set([...filenames, ...backupFilenames])];
 
     fetchDurationsBatch(allFilenames);
-  }, [durationFetchKey]);
+  }, [durationFetchKey, fetchDurationsBatch]);
 
   // Download audio as WAV file
   const downloadAudio = (result) => downloadAudioFile(result, getAudioUrl, t);

@@ -1,4 +1,3 @@
-import React from 'react';
 import { useTranslation } from 'react-i18next';
 import { ANALYSIS_MODEL_IDS, getModelById } from '../../../config/geminiModels';
 import { VideoAnalysisIcon } from '../icons/TabIcons';

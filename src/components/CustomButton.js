@@ -1,4 +1,3 @@
-import React from 'react';
 
 /**
  * A custom button component that doesn't trigger form submission

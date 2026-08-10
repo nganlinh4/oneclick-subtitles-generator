@@ -3,9 +3,9 @@
  * Uses Gemini API to intelligently combine subtitle lines
  */
 
-import { fetchWithKeyRotation } from './withKeyRotation';
-import { addThinkingConfig } from '../../utils/thinkingBudgetUtils';
+import { getThinkingBudget } from '../../utils/thinkingBudgetUtils';
 import { DEFAULT_FAST_TEXT_MODEL_ID } from '../../config/geminiModels';
+import { runNativeGeminiText } from '../../platform/nativeGeminiText';
 
 // import { addResponseSchema } from '../../utils/schemaUtils'; // No longer needed if schema is removed
 
@@ -19,7 +19,7 @@ import { DEFAULT_FAST_TEXT_MODEL_ID } from '../../config/geminiModels';
  * @param {string} intensity - Grouping intensity level (minimal, moderate, aggressive)
  * @returns {Promise<Object>} - Object with grouped subtitles and mapping
  */
-export const groupSubtitlesForNarration = async (subtitles, language = 'en', model = DEFAULT_FAST_TEXT_MODEL_ID, intensity = 'moderate') => {
+export const groupSubtitlesForNarration = async (subtitles, _language = 'en', model = DEFAULT_FAST_TEXT_MODEL_ID, intensity = 'moderate') => {
   if (!subtitles || subtitles.length === 0) {
     return {
       success: false,
@@ -128,44 +128,18 @@ Where:
 DO NOT include any explanations, comments, or any other text in your response. Return ONLY the JSON object.
 `;
 
-    let requestData = {
-      contents: [
-        {
-          role: "user",
-          parts: [
-            { text: groupingPrompt }
-          ]
-        }
-      ]
-    };
-    requestData = addThinkingConfig(requestData, model);
-
-    // REMOVED: requestData = addResponseSchema(requestData, createSubtitleGroupingSchema());
-
-    console.log('Final requestData being sent to Gemini API (no schema):', JSON.stringify(requestData, null, 2));
-    console.log('Calling Gemini API for subtitle grouping (no schema)...');
-
     const responseData = await (async () => {
       try {
-        const response = await fetchWithKeyRotation((apiKey) =>
-          fetch(`https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${apiKey}`, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json', },
-            body: JSON.stringify(requestData)
-          })
-        );
-
-        if (!response.ok) {
-          const errorBodyText = await response.text();
-          let errorData;
-          try { errorData = JSON.parse(errorBodyText); }
-          catch (e) { errorData = { error: { message: `Non-JSON error response (status ${response.status}): ${errorBodyText}` } }; }
-          console.error('Gemini API error response (raw):', errorBodyText);
-          throw new Error(`Gemini API error: ${errorData.error?.message || response.statusText}`);
-        }
-        const data = await response.json();
-        console.log('Received response from Gemini API for subtitle grouping');
-        return data;
+        const thinking = getThinkingBudget(model);
+        const result = await runNativeGeminiText({
+          task: 'analyzeSubtitles',
+          model,
+          prompt: groupingPrompt,
+          ...(typeof thinking === 'string' ? { thinkingLevel: thinking } : {}),
+        });
+        return {
+          candidates: [{ content: { parts: [{ text: result.text }] } }],
+        };
       } catch (error) {
         console.error('Error during Gemini API call:', error);
         throw error;
@@ -174,14 +148,12 @@ DO NOT include any explanations, comments, or any other text in your response. R
 
     let groupMapping = {};
     try {
-      console.log('Parsing response for subtitle grouping');
       // With no responseSchema, we will always rely on parsing text
       if (responseData.candidates && responseData.candidates[0] && responseData.candidates[0].content &&
           responseData.candidates[0].content.parts && responseData.candidates[0].content.parts[0] &&
           responseData.candidates[0].content.parts[0].text) {
 
         const text = responseData.candidates[0].content.parts[0].text;
-        console.log('Using text response. Text content:', text);
         const jsonMatch = text.match(/\{[\s\S]*\}/); // Basic regex to find a JSON object
         if (jsonMatch) {
             const jsonStr = jsonMatch[0];
@@ -189,12 +161,10 @@ DO NOT include any explanations, comments, or any other text in your response. R
                 const parsedJson = JSON.parse(jsonStr);
                 if (parsedJson.groups) {
                     groupMapping = parsedJson.groups;
-                    console.log('Extracted "groups" property from text JSON:', Object.keys(groupMapping).length);
                 } else if (Object.keys(parsedJson).length > 0 && Object.keys(parsedJson).every(key => /^\d+$/.test(key) && Array.isArray(parsedJson[key]))) {
                     // If the parsed JSON is directly the groups object like {"1": [...], "2": [...]}
                     // This case might be less likely if the prompt strictly asks for {"groups": ...}
                     groupMapping = parsedJson;
-                    console.log('Extracted groups directly from text JSON:', Object.keys(groupMapping).length);
                 } else {
                     console.warn('Parsed JSON from text does not have "groups" property or match direct group structure. Parsed:', parsedJson);
                 }
@@ -225,7 +195,6 @@ DO NOT include any explanations, comments, or any other text in your response. R
             }
           }
         });
-        console.log('Created fallback grouping with', Object.keys(groupMapping).length, 'groups:', groupMapping);
       }
     } catch (error) {
       console.error('Error processing API response for subtitle grouping:', error);
@@ -262,8 +231,6 @@ const createGroupedSubtitles = (originalSubtitles, groupMapping) => {
     console.warn('createGroupedSubtitles called with empty/null groupMapping. Returning empty array.');
     return [];
   }
-  console.log('Creating grouped subtitles from mapping with', Object.keys(groupMapping).length, 'groups');
-
   const subtitleMap = originalSubtitles.reduce((map, sub, index) => {
     const id = sub.subtitle_id || sub.id || (index + 1);
     map[id] = {
@@ -322,6 +289,5 @@ const createGroupedSubtitles = (originalSubtitles, groupMapping) => {
     })
     .filter(Boolean)
     .sort((a,b) => a.id - b.id);
-  console.log('Created', groupedSubtitlesResult.length, 'grouped subtitles');
   return groupedSubtitlesResult;
 };

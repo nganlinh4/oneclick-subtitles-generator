@@ -1,7 +1,18 @@
-import React, { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { useTranslation } from 'react-i18next';
 import { addYoutubeUrlToHistory, getYoutubeUrlHistory, clearYoutubeUrlHistory, formatTimestamp } from '../../utils/historyUtils';
-import { getVideoDetails } from '../../services/youtubeApiService';
+import { getVideoDetails, getVideoThumbnail } from '../../platform/desktopYoutubeService';
+
+const loadHistoryWithNativeThumbnails = async () => {
+  const stored = getYoutubeUrlHistory();
+  return Promise.all(stored.map(async (item) => {
+    try {
+      return { ...item, thumbnail: await getVideoThumbnail(item.id) };
+    } catch {
+      return { ...item, thumbnail: '' };
+    }
+  }));
+};
 
 const YoutubeUrlInput = ({ setSelectedVideo, selectedVideo, className }) => {
   const { t } = useTranslation();
@@ -20,14 +31,18 @@ const YoutubeUrlInput = ({ setSelectedVideo, selectedVideo, className }) => {
       if (selectedVideo.source === 'youtube' && selectedVideo.id) {
         addYoutubeUrlToHistory(selectedVideo);
         // Refresh history list
-        setHistory(getYoutubeUrlHistory());
+        void loadHistoryWithNativeThumbnails().then(setHistory);
       }
     }
   }, [selectedVideo]);
 
   // Load history on component mount
   useEffect(() => {
-    setHistory(getYoutubeUrlHistory());
+    let active = true;
+    void loadHistoryWithNativeThumbnails().then((items) => {
+      if (active) setHistory(items);
+    });
+    return () => { active = false; };
   }, []);
 
   // Handle clicks outside the dropdown to close it
@@ -59,11 +74,13 @@ const YoutubeUrlInput = ({ setSelectedVideo, selectedVideo, className }) => {
     return (match && match[7].length === 11) ? match[7] : null;
   };
 
-  const fetchVideoTitle = async (videoId) => {
+  const fetchVideoPreview = async (videoId) => {
     try {
       // Use the YouTube API service to get video details
       const videoDetails = await getVideoDetails(videoId);
-      return videoDetails ? videoDetails.title : null;
+      if (videoDetails) {
+        return { title: videoDetails.title, thumbnail: videoDetails.thumbnail };
+      }
     } catch (error) {
       console.error('Error fetching video title:', error);
 
@@ -72,7 +89,16 @@ const YoutubeUrlInput = ({ setSelectedVideo, selectedVideo, className }) => {
         window.addToast(error.message, 'error', 8000);
       }
 
-      return null;
+      try {
+        return { title: null, thumbnail: await getVideoThumbnail(videoId) };
+      } catch {
+        return { title: null, thumbnail: '' };
+      }
+    }
+    try {
+      return { title: null, thumbnail: await getVideoThumbnail(videoId) };
+    } catch {
+      return { title: null, thumbnail: '' };
     }
   };
 
@@ -85,15 +111,15 @@ const YoutubeUrlInput = ({ setSelectedVideo, selectedVideo, className }) => {
 
       const videoId = extractVideoId(url);
       if (videoId) {
-        const title = await fetchVideoTitle(videoId) || 'YouTube Video';
+        const preview = await fetchVideoPreview(videoId);
         // Store the video URL in localStorage to maintain state
         localStorage.setItem('current_video_url', url);
         setSelectedVideo({
           id: videoId,
           url: url,
           source: 'youtube',
-          title: title,
-          thumbnail: `https://img.youtube.com/vi/${videoId}/0.jpg`
+          title: preview.title || 'YouTube Video',
+          thumbnail: preview.thumbnail
         });
       }
     } else {
@@ -109,14 +135,22 @@ const YoutubeUrlInput = ({ setSelectedVideo, selectedVideo, className }) => {
   };
 
   // Handle selecting a video from history
-  const handleSelectFromHistory = (historyItem) => {
+  const handleSelectFromHistory = async (historyItem) => {
+    let thumbnail = historyItem.thumbnail;
+    if (!thumbnail) {
+      try {
+        thumbnail = await getVideoThumbnail(historyItem.id);
+      } catch {
+        thumbnail = '';
+      }
+    }
     setUrl(historyItem.url);
     setSelectedVideo({
       id: historyItem.id,
       url: historyItem.url,
       source: 'youtube',
       title: historyItem.title,
-      thumbnail: historyItem.thumbnail
+      thumbnail
     });
     setShowHistory(false);
   };

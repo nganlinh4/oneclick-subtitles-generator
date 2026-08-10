@@ -1,4 +1,3 @@
-import React, { useEffect, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import AppLayout from './AppLayout';
 import { useAppState } from './AppState';

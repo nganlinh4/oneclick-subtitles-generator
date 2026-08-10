@@ -6,6 +6,9 @@
 
 import { WaveformLOD, decodeWithTimeout } from './waveformLOD';
 import { analyzeVolume, analyzeVolumeSync } from './audioAnalysis';
+import { runMediaPipeline } from '../../platform/mediaPipelineService';
+import { isNativeMediaPlaybackUrl } from '../../platform/mediaService';
+import { fetchBrowserResource } from '../../platform/browserFetch';
 
 // ctx shape:
 // {
@@ -23,12 +26,101 @@ const handleProcessingError = (ctx, error) => {
       return;
     }
     console.error('[WAVEFORM] ❌ Error processing audio:', error);
-    if (error.name === 'EncodingError' || error.message.includes('decode')) {
+    if (error.code === 'mediaMissingAudio'
+        || error.name === 'EncodingError'
+        || (typeof error.message === 'string' && error.message.includes('decode'))) {
       setHasAudio(false);
       setAudioError('No audio track found or it is corrupted.');
       audioDataCache.set(currentSource, 'NO_AUDIO');
     } else {
       setAudioError(`Audio processing failed: ${error.message}`);
+    }
+};
+
+const rejectNativeCapabilityFetch = (source) => {
+    if (!isNativeMediaPlaybackUrl(source)) return;
+    const error = new Error('Native media must be analyzed through the desktop media pipeline');
+    error.name = 'SecurityError';
+    error.code = 'nativeCapabilityFetchBlocked';
+    throw error;
+};
+
+export const waveformPyramidToLegacySamples = (waveform) => {
+    const points = waveform?.levels?.[0]?.points;
+    if (!Array.isArray(points) || points.length === 0) return new Float32Array();
+
+    let maximum = 0;
+    points.forEach((point) => {
+        maximum = Math.max(maximum, point.rootMeanSquare);
+    });
+    return Float32Array.from(points, (point) => (
+        maximum > 0
+            ? Math.max(Math.pow(point.rootMeanSquare / maximum, 0.75), 0.01)
+            : 0.01
+    ));
+};
+
+const nativeWaveformDensity = (duration) => {
+    const pointsPerSecond = duration > 300
+        ? 4
+        : Math.min(400, Math.max(1, Math.ceil(1000 / duration)));
+    return Object.freeze({
+        pointsPerSecond,
+        maxPoints: Math.min(1_000_000, Math.max(1_000, Math.ceil(duration * pointsPerSecond))),
+    });
+};
+
+export const processNativeWaveform = async (ctx, assetId, signal) => {
+    const {
+        currentSource, currentDuration,
+        processingSourceRef, audioDataCache, dbgWave,
+        setWaveformLOD, setIsProcessing, setIsProcessed, setProcessingProgress,
+    } = ctx;
+    let lastProgress = 0;
+    try {
+        const density = nativeWaveformDensity(currentDuration);
+        dbgWave('[WAVEFORM] Starting native waveform analysis for:', assetId);
+        const result = await runMediaPipeline({
+            operation: 'generateWaveform',
+            assetId,
+            pointsPerSecond: density.pointsPerSecond,
+            maxPoints: density.maxPoints,
+            range: null,
+        }, {
+            signal,
+            onProgress: (event) => {
+                const next = event.fraction ?? event.job.progress.basisPoints / 10_000;
+                lastProgress = Math.max(lastProgress, next);
+                setProcessingProgress(lastProgress);
+            },
+        });
+        const samples = waveformPyramidToLegacySamples(result.waveform);
+        if (samples.length === 0) {
+            const error = new Error('No audio channels found in the media file');
+            error.name = 'EncodingError';
+            throw error;
+        }
+        const finalLOD = new WaveformLOD(samples);
+        if (!signal.aborted) {
+            setProcessingProgress(1);
+            setWaveformLOD(finalLOD);
+            audioDataCache.set(currentSource, finalLOD);
+            dbgWave('[WAVEFORM] Native waveform analysis complete');
+        }
+    } catch (error) {
+        if (error.name === 'AbortError') {
+            dbgWave('[WAVEFORM] Native waveform analysis aborted (expected)');
+            return;
+        }
+        handleProcessingError(ctx, error);
+    } finally {
+        if (!signal.aborted) {
+            setIsProcessing(false);
+            setIsProcessed(true);
+            if (processingSourceRef.current === currentSource) {
+                processingSourceRef.current = null;
+            }
+        }
     }
 };
 
@@ -40,13 +132,14 @@ export const processEntireAudio = async (ctx, signal) => {
         setWaveformLOD, setIsProcessing, setIsProcessed,
     } = ctx;
     try {
+        rejectNativeCapabilityFetch(currentSource);
         dbgWave('[WAVEFORM] Starting full audio processing for:', currentSource?.substring(0, 100));
         const AudioContext = window.AudioContext || window.webkitAudioContext;
         if (!audioContextRef.current) {
             audioContextRef.current = new AudioContext();
         }
 
-        const response = await fetch(currentSource, { signal });
+        const response = await fetchBrowserResource(currentSource, { signal });
         dbgWave('[WAVEFORM] Fetched audio data, size:', response.headers.get('Content-Length'), 'bytes');
         const arrayBuffer = await response.arrayBuffer();
 
@@ -99,6 +192,7 @@ export const processBlobInChunks = async (ctx, signal) => {
         setWaveformLOD, setIsProcessing, setIsProcessed, setProcessingProgress,
     } = ctx;
     try {
+        rejectNativeCapabilityFetch(currentSource);
         dbgWave('[WAVEFORM] Starting chunked processing for long blob:', currentSource?.substring(0, 100), 'Duration:', duration, 's');
         setProcessingProgress(0);
 
@@ -109,7 +203,7 @@ export const processBlobInChunks = async (ctx, signal) => {
 
         // Load the entire blob once (since we can't use range requests)
         dbgWave('[WAVEFORM] Fetching blob...');
-        const response = await fetch(currentSource, { signal });
+        const response = await fetchBrowserResource(currentSource, { signal });
         const arrayBuffer = await response.arrayBuffer();
         dbgWave('[WAVEFORM] Blob loaded, size:', (arrayBuffer.byteLength / 1024 / 1024).toFixed(2), 'MB');
 
@@ -213,6 +307,7 @@ export const processAudioInSegments = async (ctx, signal) => {
         setWaveformLOD, setIsProcessing, setIsProcessed, setProcessingProgress,
     } = ctx;
     try {
+        rejectNativeCapabilityFetch(currentSource);
         dbgWave('[WAVEFORM] Starting segmented processing for long audio:', currentSource?.substring(0, 100));
         setProcessingProgress(0);
 
@@ -222,7 +317,7 @@ export const processAudioInSegments = async (ctx, signal) => {
         }
 
         // First, get the total file size to estimate byte ranges for segments
-        const headResponse = await fetch(currentSource, { method: 'HEAD', signal });
+        const headResponse = await fetchBrowserResource(currentSource, { method: 'HEAD', signal });
         const fileSize = Number(headResponse.headers.get('Content-Length'));
         const acceptRanges = headResponse.headers.get('Accept-Ranges');
 
@@ -259,7 +354,7 @@ export const processAudioInSegments = async (ctx, signal) => {
             setProcessingProgress(progress);
             await new Promise(resolve => setTimeout(resolve, 0));
 
-            const rangeResponse = await fetch(currentSource, {
+            const rangeResponse = await fetchBrowserResource(currentSource, {
                 headers: { 'Range': `bytes=${startByte}-${endByte}` },
                 signal
             });

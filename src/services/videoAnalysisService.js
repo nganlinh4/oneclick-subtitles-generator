@@ -2,9 +2,16 @@
  * Service for analyzing videos with Gemini before splitting
  */
 
-import { callGeminiApiWithFilesApiForAnalysis } from './gemini';
 import i18n from '../i18n/i18n';
 import { DEFAULT_ANALYSIS_MODEL_ID, normalizeMediaModelId } from '../config/geminiModels';
+import { resolveActiveNativeMediaAssetId } from '../platform/activeNativeMedia';
+import { isDesktopRuntime } from '../platform/desktopRuntime';
+import { runNativeGeminiMediaAnalysis } from '../platform/nativeGeminiMediaAnalysis';
+import {
+  inspectMediaPipelineAsset,
+  runMediaPipeline,
+} from '../platform/mediaPipelineService';
+import { createVideoAnalysisSchema } from '../utils/videoAnalysisSchema';
 
 // Translation function shorthand
 const t = (key, fallback) => i18n.t(key, fallback);
@@ -98,10 +105,8 @@ export const analyzeVideoWithGemini = async (videoFile, onStatusUpdate) => {
   activeAnalysisController = new AbortController();
   const signal = activeAnalysisController.signal;
   try {
-    const geminiApiKey = localStorage.getItem('gemini_api_key');
-    if (!geminiApiKey) {
-      throw new Error(t('settings.geminiApiKeyRequired', 'Gemini API key not found'));
-    }
+    const nativeRuntime = isDesktopRuntime();
+    if (!nativeRuntime) throw new Error('Video analysis requires the desktop runtime');
 
     // Get the selected model from localStorage or use the default
     const MODEL = normalizeMediaModelId(
@@ -112,14 +117,18 @@ export const analyzeVideoWithGemini = async (videoFile, onStatusUpdate) => {
     // Get video duration
     onStatusUpdate({ message: t('input.preparingVideoAnalysis', 'Preparing video for analysis...'), type: 'loading' });
     let videoDuration = 0;
-    try {
-      // Import dynamically to avoid circular dependencies
-      const { getVideoDuration } = await import('../utils/durationUtils');
-      videoDuration = await getVideoDuration(videoFile);
-
-    } catch (error) {
-      console.warn('Could not determine video duration:', error);
+    let nativeAssetId = null;
+    nativeAssetId = resolveActiveNativeMediaAssetId(videoFile);
+    if (nativeAssetId === null) {
+      const error = new Error('The selected media is unavailable to the desktop runtime');
+      error.code = 'nativeMediaUnavailable';
+      throw error;
     }
+    const inspection = await inspectMediaPipelineAsset(nativeAssetId);
+    if (inspection.durationUs === null) {
+      throw new Error('The selected media duration is unavailable');
+    }
+    videoDuration = inspection.durationUs / 1_000_000;
 
     // Determine how comprehensive the rule set should be based on video length
     const isLongVideo = videoDuration > 600; // More than 10 minutes
@@ -184,8 +193,31 @@ Provide your analysis in a structured format that can be used to guide the trans
       analysisOptions.analysisPrompt = `You are analyzing a 30-minute sample from the middle of this video (from ${Math.floor(startOffset/60)}:${(startOffset%60).toString().padStart(2,'0')} to ${Math.floor(endOffset/60)}:${(endOffset%60).toString().padStart(2,'0')} of a ${Math.round(videoDuration/60)}-minute video). ${analysisPrompt}`;
     }
 
-    // Use the Files API with shared caching mechanism
-    const result = await callGeminiApiWithFilesApiForAnalysis(videoFile, analysisOptions, signal);
+    let analysisAssetId = nativeAssetId;
+    if (videoDuration > MAX_ANALYSIS_DURATION) {
+      const centerTime = videoDuration / 2;
+      const halfAnalysisDuration = MAX_ANALYSIS_DURATION / 2;
+      const clip = await runMediaPipeline({
+        operation: 'analysisClip',
+        assetId: nativeAssetId,
+        range: {
+          start: Math.max(0, Math.floor(centerTime - halfAnalysisDuration)),
+          end: Math.min(videoDuration, Math.floor(centerTime + halfAnalysisDuration)),
+        },
+      }, { signal });
+      analysisAssetId = clip.media.asset.id;
+    }
+
+    const nativeResult = await runNativeGeminiMediaAnalysis({
+      assetId: analysisAssetId,
+      model: MODEL,
+      prompt: analysisOptions.analysisPrompt,
+      responseJsonSchema: createVideoAnalysisSchema(),
+      thinkingLevel: 'minimal',
+      mediaResolution: 'low',
+      signal,
+    });
+    const result = [{ text: nativeResult.text }];
 
     // Extract analysis result from the response
     let analysisResult;

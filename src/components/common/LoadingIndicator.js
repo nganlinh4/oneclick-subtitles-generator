@@ -1,4 +1,4 @@
-import React, { useEffect, useRef, useState, useCallback } from 'react';
+import { useEffect, useRef, useState, useCallback } from 'react';
 import './LoadingIndicator.css';
 import {
   getShapeColor as resolveShapeColor,
@@ -7,6 +7,16 @@ import {
   startAnimation as runMorphLoop,
   initializeAnimation as loadAndStart
 } from './LoadingIndicator/animationState.js';
+
+// Colors from the frozen Figma design - all 4 variants
+const COLORS = {
+  containerDark: '#2E4578',
+  containerLight: '#ADC3FE',
+  shapeDarkWithContainer: '#D9E2FF',
+  shapeDarkNoContainer: '#485E92',
+  shapeLightWithContainer: '#324574',
+  shapeLightNoContainer: '#B0C6FF'
+};
 
 /**
  * Material Design 3 Expressive Loading Indicator
@@ -34,19 +44,6 @@ const LoadingIndicator = ({
   const animationRef = useRef(null);
   const [isLoaded, setIsLoaded] = useState(false);
 
-  // Colors from Figma design - all 4 variants
-  const COLORS = {
-    // Container colors
-    containerDark: '#2E4578',
-    containerLight: '#ADC3FE',
-
-    // Shape colors
-    shapeDarkWithContainer: '#D9E2FF',
-    shapeDarkNoContainer: '#485E92', // Dark color for dark theme
-    shapeLightWithContainer: '#324574',
-    shapeLightNoContainer: '#B0C6FF' // Light color for light theme
-  };
-
   // Animation state
   const animationState = useRef({
     currentStep: 1,
@@ -66,12 +63,12 @@ const LoadingIndicator = ({
   // Get the appropriate shape color based on theme and container (with override)
   const getShapeColor = useCallback(
     () => resolveShapeColor({ theme, showContainer, color, COLORS }),
-    [theme, showContainer, COLORS, color]
+    [theme, showContainer, color]
   );
 
   const drawMaterial3Container = useCallback(
     (ctx) => drawContainer(ctx, { showContainer, size, containerColor, theme, COLORS }),
-    [showContainer, theme, COLORS, size, containerColor]
+    [showContainer, theme, size, containerColor]
   );
 
   const applyMaterial3ExpressiveEffects = useCallback(
@@ -198,6 +195,13 @@ const LoadingIndicator = ({
     });
   }, [startAnimation]);
 
+  const stopAnimation = useCallback(() => {
+    animationState.current.isAnimating = false;
+    if (animationRef.current) {
+      cancelAnimationFrame(animationRef.current);
+    }
+  }, []);
+
   useEffect(() => {
     const canvas = canvasRef.current;
     if (!canvas) return;
@@ -217,14 +221,8 @@ const LoadingIndicator = ({
     // Initialize the REAL animation
     initializeAnimation(ctx);
 
-    return () => {
-      const state = animationState.current;
-      state.isAnimating = false;
-      if (animationRef.current) {
-        cancelAnimationFrame(animationRef.current);
-      }
-    };
-  }, [size, initializeAnimation]);
+    return stopAnimation;
+  }, [size, initializeAnimation, stopAnimation]);
 
   // Re-render when theme or container changes
   useEffect(() => {
@@ -242,14 +240,8 @@ const LoadingIndicator = ({
 
   // Cleanup on unmount
   useEffect(() => {
-    return () => {
-      const state = animationState.current;
-      state.isAnimating = false;
-      if (animationRef.current) {
-        cancelAnimationFrame(animationRef.current);
-      }
-    };
-  }, []);
+    return stopAnimation;
+  }, [stopAnimation]);
 
   return (
     <div

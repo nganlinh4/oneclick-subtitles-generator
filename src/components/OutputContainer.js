@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import { useState, useEffect } from 'react';
 import { useTranslation } from 'react-i18next';
 import '../styles/OutputContainer.css';
 import '../styles/narration/unifiedNarrationRedesign.css';
@@ -8,7 +8,7 @@ import TranslationSection from './translation';
 import { UnifiedNarrationSection } from './narration';
 import ParallelProcessingStatus from './ParallelProcessingStatus';
 import { EVENTS, subscribe } from '../events/bus';
-import { hasValidDownloadedVideo, isBlobUrlValid } from '../utils/videoUtils';
+import { hasValidDownloadedVideo } from '../utils/videoUtils';
 // BackgroundImageGenerator moved back to AppLayout
 
 const OutputContainer = ({
@@ -31,8 +31,8 @@ const OutputContainer = ({
   isSrtOnlyMode = false,
   onViewRules,
   userProvidedSubtitles = '',
-  onUserSubtitlesAdd,
-  onGenerateBackground,
+  onUserSubtitlesAdd: _onUserSubtitlesAdd,
+  onGenerateBackground: _onGenerateBackground,
   onRenderVideo,
   onActualVideoUrlChange,
   onSegmentSelect = null, // Callback for segment selection

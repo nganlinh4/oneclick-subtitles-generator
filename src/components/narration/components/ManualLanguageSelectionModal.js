@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import { useTranslation } from 'react-i18next';
 import ISO6391 from 'iso-639-1';
 import ReactDOM from 'react-dom';
@@ -17,6 +17,10 @@ const ManualLanguageSelectionModal = ({
   const [selectedLanguages, setSelectedLanguages] = useState(['']);
   const [recentLanguages, setRecentLanguages] = useState([]);
   const [typingValues, setTypingValues] = useState({});
+  const onCloseRef = useRef(onClose);
+  const translationRef = useRef(t);
+  onCloseRef.current = onClose;
+  translationRef.current = t;
 
   // Load recent languages from localStorage and normalize to lowercase valid ISO-639-1 codes
   useEffect(() => {
@@ -30,7 +34,7 @@ const ManualLanguageSelectionModal = ({
           .filter(c => c && allCodes.has(c));
         setRecentLanguages(normalized);
       } catch (error) {
-        console.error(t('narration.errorParsingRecentLanguages', 'Error parsing recent languages:'), error);
+        console.error(translationRef.current('narration.errorParsingRecentLanguages', 'Error parsing recent languages:'), error);
         setRecentLanguages([]);
       }
     }
@@ -140,11 +144,11 @@ const ManualLanguageSelectionModal = ({
   };
 
   // Handle close
-  const handleClose = () => {
+  const handleClose = useCallback(() => {
     setSelectedLanguages(['']);
     setTypingValues({});
-    onClose();
-  };
+    onCloseRef.current();
+  }, []);
 
   // Handle outside clicks and escape key
   useEffect(() => {
@@ -163,7 +167,7 @@ const ManualLanguageSelectionModal = ({
       document.removeEventListener('keydown', handleEscKey);
       document.body.style.overflow = 'unset';
     };
-  }, [isOpen]);
+  }, [isOpen, handleClose]);
 
   // Initialize drag functionality for language suggestions
   useEffect(() => {

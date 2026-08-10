@@ -158,7 +158,8 @@ const extractFontName = (fontFamily: string): string => {
 };
 
 // Generate font styles based on selected font
-const generateFontStyles = (fontFamily: string): string => {
+const generateFontStyles = (fontFamily: string, managedStylesheetUrl?: string): string => {
+  if (managedStylesheetUrl) return `@import url('${managedStylesheetUrl}');`;
   const fontName = extractFontName(fontFamily);
   const fontUrl = fontUrlMap[fontName];
 
@@ -221,6 +222,7 @@ export const SubtitledVideoContent: React.FC<Props> = ({
     metadata.subtitleCustomization || defaultCustomization,
     [metadata.subtitleCustomization]
   );
+  const managedFontStylesheetUrl = metadata.fontStylesheetUrl;
 
   // Ensure selected web font is loaded before first frame render.
   // Uses Remotion's delayRender/continueRender to prevent frame-0 fallback font.
@@ -228,7 +230,7 @@ export const SubtitledVideoContent: React.FC<Props> = ({
     // Synchronously delay render so Remotion waits
     const renderHandle = delayRender('wait-for-fonts');
     const fontName = extractFontName(customization.fontFamily);
-    const fontUrl = fontUrlMap[fontName];
+    const fontUrl = managedFontStylesheetUrl || fontUrlMap[fontName];
     const wantedWeight = String(customization.fontWeight || 400);
 
     // unique id for injected link element
@@ -284,7 +286,7 @@ export const SubtitledVideoContent: React.FC<Props> = ({
         }
 
         // Special-case Remotion google-font helper (Comfortaa) to ensure its loader runs
-        if (fontName === 'Comfortaa') {
+        if (!managedFontStylesheetUrl && fontName === 'Comfortaa') {
           try {
             await loadFont('normal', { weights: ['400', '500', '600', '700'], subsets: ['latin'], ignoreTooManyRequestsWarning: true });
           } catch (e) {
@@ -309,12 +311,12 @@ export const SubtitledVideoContent: React.FC<Props> = ({
 
     // Cleanup: no persistent listeners to remove here beyond automatic link element retention
     return () => { /* noop */ };
-  }, [customization.fontFamily, customization.fontWeight]);
+  }, [customization.fontFamily, customization.fontWeight, managedFontStylesheetUrl]);
 
   // Generate dynamic font styles based on selected font
   const dynamicFontStyles = useMemo(() =>
-    generateFontStyles(customization.fontFamily),
-    [customization.fontFamily]
+    generateFontStyles(customization.fontFamily, managedFontStylesheetUrl),
+    [customization.fontFamily, managedFontStylesheetUrl]
   );
 
   

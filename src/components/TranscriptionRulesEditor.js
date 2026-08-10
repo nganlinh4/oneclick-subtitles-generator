@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useMemo, useRef } from 'react';
+import { useState, useEffect, useMemo, useRef, useCallback } from 'react';
 import { useTranslation } from 'react-i18next';
 import CloseButton from './common/CloseButton';
 import PulsingElement from './common/PulsingElement';
@@ -71,6 +71,18 @@ const TranscriptionRulesEditor = ({ isOpen, onClose, initialRules, onSave, onCan
   // Countdown for autoflow (state, interval/timeout refs and user-interaction guard)
   const { showCountdown, countdown, handleUserInteraction } = useCountdownTimer(isOpen, handleSave);
 
+  // Handle cancel
+  const handleCancel = useCallback(() => {
+    setIsClosing(true);
+    setTimeout(() => {
+      if (onCancel) {
+        onCancel();
+      }
+      onClose('cancel');
+      setIsClosing(false);
+    }, 200); // Match the transition duration
+  }, [onCancel, onClose]);
+
   // Effect to determine the current preset and set initial state - run when modal opens
   useEffect(() => {
     if (!isOpen) return; // Only run when modal is open
@@ -123,6 +135,7 @@ const TranscriptionRulesEditor = ({ isOpen, onClose, initialRules, onSave, onCan
 
   // Handle ESC key to close modal and prevent background scrolling
   useEffect(() => {
+    const overlay = overlayRef.current;
     const handleKeyDown = (event) => {
       if (event.key === 'Escape' && isOpen) {
         handleCancel();
@@ -141,9 +154,9 @@ const TranscriptionRulesEditor = ({ isOpen, onClose, initialRules, onSave, onCan
       document.body.classList.add('modal-open');
 
       // Add non-passive scroll event listeners to overlay
-      if (overlayRef.current) {
-        overlayRef.current.addEventListener('wheel', preventScroll, { passive: false });
-        overlayRef.current.addEventListener('touchmove', preventScroll, { passive: false });
+      if (overlay) {
+        overlay.addEventListener('wheel', preventScroll, { passive: false });
+        overlay.addEventListener('touchmove', preventScroll, { passive: false });
       }
     }
 
@@ -152,12 +165,12 @@ const TranscriptionRulesEditor = ({ isOpen, onClose, initialRules, onSave, onCan
       document.body.classList.remove('modal-open');
 
       // Remove scroll event listeners
-      if (overlayRef.current) {
-        overlayRef.current.removeEventListener('wheel', preventScroll);
-        overlayRef.current.removeEventListener('touchmove', preventScroll);
+      if (overlay) {
+        overlay.removeEventListener('wheel', preventScroll);
+        overlay.removeEventListener('touchmove', preventScroll);
       }
     };
-  }, [isOpen]);
+  }, [isOpen, handleCancel]);
 
   // Handle atmosphere change
   const handleAtmosphereChange = (e) => {
@@ -184,18 +197,6 @@ const TranscriptionRulesEditor = ({ isOpen, onClose, initialRules, onSave, onCan
   const removeArrayItem = (category, index) => {
     handleUserInteraction();
     setRules(deleteArrayItem(rules, category, index));
-  };
-
-  // Handle cancel
-  const handleCancel = () => {
-    setIsClosing(true);
-    setTimeout(() => {
-      if (onCancel) {
-        onCancel();
-      }
-      onClose('cancel');
-      setIsClosing(false);
-    }, 200); // Match the transition duration
   };
 
   if (!isOpen) return null;

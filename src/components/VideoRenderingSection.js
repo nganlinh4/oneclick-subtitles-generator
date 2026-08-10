@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { useTranslation } from 'react-i18next';
 import { defaultCustomization } from './SubtitleCustomizationPanel';
 import QueueManagerPanel from './QueueManagerPanel';
@@ -9,18 +9,22 @@ import '../styles/components/panel-resizer.css';
 import '../styles/components/buttons.css';
 import '../styles/VideoRenderingControls.css';
 import '../styles/components/form-controls.css';
-import { RENDERER_BASE_URL } from '../utils/videoRendererClient';
 import { useRenderQueue } from './VideoRenderingSection/useRenderQueue';
 import { useVideoUpload } from './VideoRenderingSection/useVideoUpload';
 import { useNarration } from './VideoRenderingSection/useNarration';
 import { usePanelResize } from './VideoRenderingSection/usePanelResize';
 import { useAutoFill } from './VideoRenderingSection/useAutoFill';
-import { consumeRenderStream } from './VideoRenderingSection/renderStreamHandlers';
-import { resolveAudioFile, resolveNarrationUrl, buildRenderRequest } from './VideoRenderingSection/renderRequestBuilder';
 import InputSelectionRow from './VideoRenderingSection/InputSelectionRow';
 import RenderSettingsRow from './VideoRenderingSection/RenderSettingsRow';
 import TrimTimelineRow from './VideoRenderingSection/TrimTimelineRow';
 import PreviewCustomizationRow from './VideoRenderingSection/PreviewCustomizationRow';
+import {
+  buildNativeRenderRequest,
+  cancelNativeRender,
+  ensureNativeRenderProject,
+  resolveNativeRenderSource,
+  runNativeRender,
+} from '../platform/renderService';
 
 // Gated debug logging (enable in the browser console: localStorage.debug_logs = 'true')
 const DEBUG_LOGS = (typeof window !== 'undefined') && (localStorage.getItem('debug_logs') === 'true');
@@ -38,12 +42,14 @@ const VideoRenderingSection = ({
 }) => {
   const { t } = useTranslation();
   const [isRendering, setIsRendering] = useState(false);
-  const [renderProgress, setRenderProgress] = useState(0);
-  const [renderStatus, setRenderStatus] = useState('');
-  const [renderedVideoUrl, setRenderedVideoUrl] = useState('');
-  const [error, setError] = useState('');
+  const [, setRenderProgress] = useState(0);
+  const [, setRenderStatus] = useState('');
+  const [, setRenderedVideoUrl] = useState('');
+  const [, setError] = useState('');
   const [currentRenderId, setCurrentRenderId] = useState(null);
   const [abortController, setAbortController] = useState(null);
+  const isRenderingRef = useRef(isRendering);
+  isRenderingRef.current = isRendering;
 
   // Ref for the Remotion video player
   const videoPlayerRef = useRef(null);
@@ -126,7 +132,7 @@ const VideoRenderingSection = ({
       aspectRatio: null
     };
   });
-  const [narrationUpdateTrigger, setNarrationUpdateTrigger] = useState(0);
+  const [, setNarrationUpdateTrigger] = useState(0);
 
   // Narration availability + aligned-audio resolver + refresh action (extracted hook)
   const {
@@ -134,7 +140,7 @@ const VideoRenderingSection = ({
     currentNarrationResults,
     isAlignedNarrationAvailable,
     hasNarrationSegments,
-    getNarrationAudioUrl,
+    getNarrationArtifactId,
     handleRefreshNarration,
   } = useNarration({ selectedNarration, narrationResults });
 
@@ -234,18 +240,43 @@ const VideoRenderingSection = ({
 
   // Simple render function - allows queueing multiple renders
   const handleRender = async () => {
+    let nativeSourceAsset = null;
+    let nativeRenderRequest = null;
+    try {
+      nativeSourceAsset = await resolveNativeRenderSource(selectedVideoFile);
+      const projectId = await ensureNativeRenderProject(nativeSourceAsset);
+      const narrationArtifactId = selectedNarration === 'generated'
+        ? await getNarrationArtifactId(selectedNarration)
+        : null;
+      nativeRenderRequest = buildNativeRenderRequest({
+        sourceAsset: nativeSourceAsset,
+        projectId,
+        narrationArtifactId,
+        lyrics: getCurrentSubtitles(),
+        settings: renderSettings,
+        customization: { ...defaultCustomization, ...subtitleCustomization },
+        crop: cropSettings,
+      });
+    } catch {
+      // The start path reports the existing invalid-video error and keeps the queue contract.
+    }
+    const shouldQueue = isRenderingRef.current;
     // Create queue item for display
     const queueItem = {
       id: `render_${Date.now()}_${Math.random().toString(36).substring(2, 9)}`,
       videoFile: selectedVideoFile,
       subtitles: selectedSubtitles,
       settings: renderSettings,
-      customization: subtitleCustomization,
+      customization: { ...defaultCustomization, ...subtitleCustomization },
       cropSettings: cropSettings,
-      status: isRendering ? 'pending' : 'processing',
+      lyrics: getCurrentSubtitles(),
+      narration: selectedNarration,
+      nativeSourceAsset,
+      nativeRenderRequest,
+      status: shouldQueue ? 'pending' : 'processing',
       progress: 0,
       timestamp: Date.now(), // Store as timestamp number, not formatted string
-      startedAt: isRendering ? null : Date.now(),
+      startedAt: shouldQueue ? null : Date.now(),
       completedAt: null,
       outputPath: null,
       error: null
@@ -255,7 +286,7 @@ const VideoRenderingSection = ({
     setRenderQueue(prev => [queueItem, ...prev]);
 
     // If not currently rendering, start this one immediately
-    if (!isRendering) {
+    if (!shouldQueue) {
       setCurrentQueueItem(queueItem);
       await handleStartRender(queueItem);
     }
@@ -275,70 +306,93 @@ const VideoRenderingSection = ({
       setRenderedVideoUrl('');
 
       // Validate inputs
-      if (!selectedVideoFile) {
+      if (!selectedVideoFile && !queueItem?.videoFile
+          && !queueItem?.nativeSourceAsset && !queueItem?.nativeRenderRequest) {
         throw new Error(t('videoRendering.noVideoSelected', 'Please select a video file'));
       }
 
-      // Upload/convert the video and (optionally) narration audio
-      const audioFile = await resolveAudioFile(selectedVideoFile, setRenderStatus, t);
-      const narrationUrl = await resolveNarrationUrl(selectedNarration, getNarrationAudioUrl, setRenderStatus, t);
-
-      // Prepare render request
-      const renderRequest = buildRenderRequest({
-        audioFile,
-        lyrics: getCurrentSubtitles(),
-        renderSettings,
-        queueItem,
-        narrationUrl,
-      });
-
-      setRenderStatus(t('videoRendering.rendering', 'Rendering video...'));
-
-      // Send the POST request for rendering
-      const response = await fetch(`${RENDERER_BASE_URL}/render`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json'
-        },
-        body: JSON.stringify(renderRequest),
-        signal: controller.signal
-      });
-
-      if (!response.ok) {
-        throw new Error(`Render request failed: ${response.status}`);
-      }
-
-      // Capture the render ID from response headers
-      const renderId = response.headers.get('X-Render-ID');
-      dbg('Response headers:', Array.from(response.headers.entries()));
-      dbg('Extracted render ID:', renderId);
-      if (renderId) {
-        setCurrentRenderId(renderId);
-        dbg('Render started with ID:', renderId);
-      } else {
-        console.warn('No render ID found in response headers');
-      }
-
-      // Handle Server-Sent Events (shared with reconnectToRender)
-      await consumeRenderStream(response, controller, {
-        t,
-        setRenderProgress,
-        setRenderStatus,
-        setRenderedVideoUrl,
-        setRenderQueue,
-        setCurrentQueueItem,
-        startNextPendingRender,
-        resolveTarget: () => queueItem || currentQueueItem,
-        includePhaseEvents: true,
-        debugTag: '',
-        parseErrorLabel: 'Failed to parse SSE data:',
-      });
+      const sourceAsset = queueItem?.nativeSourceAsset || await resolveNativeRenderSource(
+          queueItem?.videoFile || selectedVideoFile
+        );
+        const narrationSelection = queueItem?.narration ?? selectedNarration;
+        const nativeRequest = queueItem?.nativeRenderRequest || buildNativeRenderRequest({
+          sourceAsset,
+          projectId: await ensureNativeRenderProject(sourceAsset),
+          narrationArtifactId: narrationSelection === 'generated'
+            ? await getNarrationArtifactId(narrationSelection)
+            : null,
+          lyrics: queueItem?.lyrics || getCurrentSubtitles(),
+          settings: queueItem?.settings || renderSettings,
+          customization: {
+            ...defaultCustomization,
+            ...(queueItem?.customization || subtitleCustomization),
+          },
+          crop: queueItem?.cropSettings || cropSettings,
+        });
+        setRenderStatus(t('videoRendering.rendering', 'Rendering video...'));
+        const completed = await runNativeRender(nativeRequest, {
+          signal: controller.signal,
+          onStarted: (job) => {
+            setCurrentRenderId(job.id);
+            const targetQueueItem = queueItem || currentQueueItem;
+            if (targetQueueItem) {
+              setRenderQueue(prev => prev.map(item =>
+                item.id === targetQueueItem.id
+                  ? { ...item, nativeJobId: job.id, nativeSourceAsset: sourceAsset }
+                  : item
+              ));
+            }
+          },
+          onProgress: (event) => {
+            const progressPercent = Math.round(event.fractionMillionths / 10_000);
+            setRenderProgress(progressPercent);
+            const targetQueueItem = queueItem || currentQueueItem;
+            if (targetQueueItem) {
+              setRenderQueue(prev => prev.map(item =>
+                item.id === targetQueueItem.id
+                  ? {
+                      ...item,
+                      progress: progressPercent,
+                      renderedFrames: event.renderedFrames,
+                      durationInFrames: event.durationInFrames,
+                      phase: event.phase,
+                    }
+                  : item
+              ));
+            }
+          },
+        });
+        const { result } = completed;
+        const completedAt = Date.now();
+        setRenderedVideoUrl(result.playback.playbackUrl);
+        setRenderStatus(t('videoRendering.complete', 'Render complete!'));
+        setRenderProgress(100);
+        const targetQueueItem = queueItem || currentQueueItem;
+        if (targetQueueItem) {
+          setRenderQueue(prev => prev.map(item =>
+            item.id === targetQueueItem.id
+              ? {
+                  ...item,
+                  status: 'completed',
+                  progress: 100,
+                  completedAt,
+                  nativeJobId: completed.job.id,
+                  outputPath: result.playback.playbackUrl,
+                  outputPlaybackId: result.playback.id,
+                  outputAssetId: result.asset.id,
+                  outputArtifactId: result.artifactId,
+                  outputSizeBytes: result.asset.sizeBytes,
+                }
+              : item
+          ));
+        }
+      return;
 
     } catch (error) {
       console.error('Render error:', error);
 
       // Check if this was an abort (cancellation)
-      if (error.name === 'AbortError') {
+      if (error.name === 'AbortError' || error.code === 'renderCancelled') {
         dbg('Render was aborted');
         setRenderStatus(t('videoRendering.cancelled', 'Render cancelled'));
         setRenderProgress(0);
@@ -400,25 +454,7 @@ const VideoRenderingSection = ({
     }
 
     try {
-      // Call the cancel endpoint on the server
-      const response = await fetch(`${RENDERER_BASE_URL}/cancel-render/${currentRenderId}`, {
-        method: 'POST'
-      });
-
-      if (response.ok) {
-        // Don't set isRendering to false here - let the stream reading loop handle it
-        // when it receives the cancelled status or when the abort happens
-      } else {
-        const errorText = await response.text();
-        console.error('Failed to cancel render:', errorText);
-        setRenderStatus(t('videoRendering.cancelFailed', 'Failed to cancel render'));
-        // Force cleanup on server cancel failure
-        setIsRendering(false);
-        setCurrentRenderId(null);
-        setAbortController(null);
-        setCurrentQueueItem(null);
-        setTimeout(() => startNextPendingRender(), 1000);
-      }
+      await cancelNativeRender(currentRenderId);
     } catch (error) {
       console.error('Error cancelling render:', error);
       setRenderStatus(t('videoRendering.cancelError', 'Error cancelling render'));

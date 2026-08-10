@@ -1,4 +1,4 @@
-import React, { useState, useRef } from 'react';
+import { useState, useRef } from 'react';
 import { useTranslation } from 'react-i18next';
 import BulkTranslationPool from './BulkTranslationPool';
 import LoadingIndicator from '../common/LoadingIndicator';

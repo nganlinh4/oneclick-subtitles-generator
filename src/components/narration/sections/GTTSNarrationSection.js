@@ -1,8 +1,9 @@
-import { getAudioUrl } from '../../../services/narrationService';
 import SubtitleSourceSelection from '../components/SubtitleSourceSelection';
 import GTTSControls from '../components/GTTSControls';
 import GenerateButton from '../components/GenerateButton';
 import NarrationResults from '../components/NarrationResults';
+
+const getAudioUrl = () => null;
 
 /**
  * gTTS narration UI branch. Pure, props-driven component.

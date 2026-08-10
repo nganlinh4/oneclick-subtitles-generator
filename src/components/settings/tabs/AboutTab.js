@@ -35,11 +35,6 @@ const AboutTab = ({ backgroundType }) => {
         const latestVersion = await getLatestVersion();
         setLatestVersionInfo(latestVersion);
 
-        // Compare versions if we have both current and latest
-        if (versionInfo && latestVersion) {
-          const isNewer = compareVersions(latestVersion.version, versionInfo.version);
-          setUpdateAvailable(isNewer > 0);
-        }
       } catch (error) {
         console.warn('Failed to check for updates:', error);
       } finally {
@@ -48,10 +43,7 @@ const AboutTab = ({ backgroundType }) => {
     };
 
     loadVersionInfo();
-    // Only check for updates once, not dependent on versionInfo
-    if (!latestVersionInfo && !isCheckingUpdate) {
-      checkForUpdates();
-    }
+    checkForUpdates();
   }, []); // Run once on mount
 
   // Separate effect to compare versions when both are available

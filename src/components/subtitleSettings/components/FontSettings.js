@@ -1,4 +1,3 @@
-import React from 'react';
 import { useTranslation } from 'react-i18next';
 import SliderWithValue from '../../common/SliderWithValue';
 import { formatDecimal } from '../../../utils/formatUtils';
@@ -24,7 +23,7 @@ const FontSettings = ({ settings, handleSettingChange, fontGroups, fontWeightOpt
         <CustomDropdown
           value={settings.fontFamily}
           onChange={(value) => handleSettingChange('fontFamily', value)}
-          options={Object.entries(fontGroups).flatMap(([group, fonts]) =>
+          options={Object.entries(fontGroups).flatMap(([_group, fonts]) =>
             fonts.map(font => ({
               value: font.value,
               label: `${font.label} ${font.koreanSupport ? '🇰🇷' : ''}${font.vietnameseSupport ? '🇻🇳' : ''}`

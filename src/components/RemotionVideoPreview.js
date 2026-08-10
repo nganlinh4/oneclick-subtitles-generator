@@ -23,7 +23,7 @@ const RemotionVideoPreview = React.forwardRef(({
   const { t } = useTranslation();
   const [videoUrl, setVideoUrl] = useState(null);
   const [isPlaying, setIsPlaying] = useState(false);
-  const [currentTime, setCurrentTime] = useState(0);
+  const [, setCurrentTime] = useState(0);
   const [duration, setDuration] = useState(0);
   const [isVideoFile, setIsVideoFile] = useState(false);
   const [videoDimensions, setVideoDimensions] = useState(null);
@@ -361,7 +361,7 @@ const RemotionVideoPreview = React.forwardRef(({
     return () => {
       document.removeEventListener('keydown', handleSpacebar);
     };
-  }, [isPlaying]);
+  }, [isPlaying, actualPlayerRef]);
 
   if (!videoFile || !videoUrl) {
     return (

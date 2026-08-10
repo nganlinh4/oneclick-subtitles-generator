@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useCallback, useEffect, useState } from 'react';
 import { groupSubtitlesForNarration } from '../../../services/gemini/subtitleGroupingService';
 import { DEFAULT_FAST_TEXT_MODEL_ID } from '../../../config/geminiModels';
 
@@ -43,8 +43,13 @@ const useGeminiSubtitleGrouping = ({
   // Track error state locally
   const [localError, setLocalError] = useState('');
 
+  const updateError = useCallback((message) => {
+    setLocalError(message);
+    setError(message);
+  }, [setError]);
+
   // Function to group subtitles
-  const groupSubtitles = async () => {
+  const groupSubtitles = useCallback(async () => {
     if (!subtitleSource) {
       updateError(t('narration.noSourceSelectedError', 'Please select a subtitle source (Original or Translated)'));
       return false;
@@ -133,7 +138,33 @@ const useGeminiSubtitleGrouping = ({
     } finally {
       setIsGroupingSubtitles(false);
     }
-  };
+  }, [
+    groupingIntensity,
+    originalLanguage,
+    originalSubtitles,
+    setGenerationStatus,
+    setGroupedSubtitles,
+    setIsGroupingSubtitles,
+    setUseGroupedSubtitles,
+    subtitleSource,
+    subtitles,
+    t,
+    translatedLanguage,
+    translatedSubtitles,
+    updateError
+  ]);
+  const groupSubtitlesRef = React.useRef(groupSubtitles);
+  const setIsGroupingSubtitlesRef = React.useRef(setIsGroupingSubtitles);
+  const setUseGroupedSubtitlesRef = React.useRef(setUseGroupedSubtitles);
+  const updateErrorRef = React.useRef(updateError);
+  const useGroupedSubtitlesRef = React.useRef(useGroupedSubtitles);
+  const setGroupedSubtitlesRef = React.useRef(setGroupedSubtitles);
+  groupSubtitlesRef.current = groupSubtitles;
+  setIsGroupingSubtitlesRef.current = setIsGroupingSubtitles;
+  setUseGroupedSubtitlesRef.current = setUseGroupedSubtitles;
+  updateErrorRef.current = updateError;
+  useGroupedSubtitlesRef.current = useGroupedSubtitles;
+  setGroupedSubtitlesRef.current = setGroupedSubtitles;
 
   // Create a ref to track initial render
   const isInitialGroupingRender = React.useRef(true);
@@ -154,20 +185,20 @@ const useGeminiSubtitleGrouping = ({
       if (useGroupedSubtitles && !groupedSubtitles && subtitleSource) {
         // If grouping is enabled but we don't have grouped subtitles yet, group them
         // Set loading state immediately
-        setIsGroupingSubtitles(true);
-        const success = await groupSubtitles();
+        setIsGroupingSubtitlesRef.current(true);
+        const success = await groupSubtitlesRef.current();
 
         // If grouping failed, don't dispatch the event
         if (!success) {
           // Reset the useGroupedSubtitles state without triggering this effect again
           setTimeout(() => {
-            setUseGroupedSubtitles(false);
+            setUseGroupedSubtitlesRef.current(false);
           }, 0);
           return;
         }
       } else if (!useGroupedSubtitles) {
         // If grouping is disabled, make sure loading state is off
-        setIsGroupingSubtitles(false);
+        setIsGroupingSubtitlesRef.current(false);
       }
 
       // Dispatch an event to notify that subtitle grouping has changed
@@ -184,18 +215,12 @@ const useGeminiSubtitleGrouping = ({
     handleGroupingChange();
   }, [useGroupedSubtitles, subtitleSource, groupedSubtitles]);
 
-  // Update local error when we call setError
-  const updateError = (message) => {
-    setLocalError(message);
-    setError(message);
-  };
-
   // Effect to clear error when user toggles the switch off
   useEffect(() => {
     if (!useGroupedSubtitles) {
       // Clear any errors related to subtitle grouping
       if (localError && localError.includes('grouping')) {
-        updateError('');
+        updateErrorRef.current('');
       }
     }
   }, [useGroupedSubtitles, localError]);
@@ -203,14 +228,14 @@ const useGeminiSubtitleGrouping = ({
   // Effect to clear grouped subtitles when subtitle source or grouping intensity changes
   useEffect(() => {
     // Store the current state to avoid race conditions
-    let wasUsingGroupedSubtitles = useGroupedSubtitles;
+    const wasUsingGroupedSubtitles = useGroupedSubtitlesRef.current;
 
     // If subtitle source or grouping intensity changes, clear the grouped subtitles
-    setGroupedSubtitles(null);
+    setGroupedSubtitlesRef.current(null);
 
     // If we were using grouped subtitles, turn off the switch
     if (wasUsingGroupedSubtitles) {
-      setUseGroupedSubtitles(false);
+      setUseGroupedSubtitlesRef.current(false);
     }
   }, [subtitleSource, groupingIntensity]);
 

@@ -253,7 +253,7 @@ const useWindowStateManager = ({
           // Only clear grouping when the narration source is the original subtitles
           if (subtitleSource === 'original') {
             // Drop any cached grouping so UI doesn't restore stale groups
-            try { localStorage.removeItem('grouped_subtitles_cache'); } catch {}
+            try { localStorage.removeItem('grouped_subtitles_cache'); } catch { /* Storage is best-effort. */ }
             // Reset state
             setGroupedSubtitles(null);
             setUseGroupedSubtitles(false);
@@ -292,7 +292,7 @@ const useWindowStateManager = ({
       }
     };
 
-    const handleTranslationUpdated = (event) => {
+    const handleTranslationUpdated = (_event) => {
       console.log('Translation updated detected, clearing grouped subtitles cache for retry');
 
       // Clear the grouped subtitles cache since translations have changed

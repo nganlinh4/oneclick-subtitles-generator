@@ -29,5 +29,16 @@
   },
   "toastHistory": "Toast history",
   "showToastHistory": "Show toast history",
-  "hideToastHistory": "Hide toast history"
+  "hideToastHistory": "Hide toast history",
+  "legacyImport": {
+    "selectFolder": "Choose your previous OSG data folder. The original folder will be kept.",
+    "cancelled": "Legacy data import cancelled.",
+    "alreadyImported": "That legacy data folder was already imported. Original files were kept.",
+    "failedItems": "Legacy import kept the original files but {{count}} item(s) failed. Retrying the same folder is safe.",
+    "complete": "Legacy import complete: {{imported}} imported, {{skipped}} skipped. Original files were kept; restart OSG to load imported settings.",
+    "busy": "A legacy data import is already running.",
+    "invalid": "That folder is not valid legacy OSG data or contains unsafe entries.",
+    "tooLarge": "That legacy data folder exceeds the import safety limits.",
+    "failed": "Legacy data import could not be completed. Original files were not changed."
+  }
 }

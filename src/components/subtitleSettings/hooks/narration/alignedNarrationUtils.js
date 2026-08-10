@@ -70,7 +70,7 @@ export const enhanceNarrationWithTiming = (generationResults, subtitleMap) => {
 
   // If any narration has been retried recently, force regeneration
   if (hasRecentRetry) {
-
+    // The flag is applied to every mapped narration below.
   }
 
   return generationResults.map(result => {
@@ -164,7 +164,7 @@ export const createSubtitleMap = (subtitles) => {
 
       // Log the first few and last few for debugging
       if (index < 3 || index >= subtitles.length - 3) {
-
+        // Verbose per-subtitle logging is intentionally disabled.
       }
     } else {
       console.warn(`Subtitle at index ${index} has no ID or is invalid:`, subtitle);

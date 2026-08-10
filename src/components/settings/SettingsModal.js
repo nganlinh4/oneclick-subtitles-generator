@@ -5,7 +5,10 @@ import '../../styles/settings/checkbox-fix.css';
 import '../../styles/components/tab-content-animations.css';
 import SettingsFooterControls from './SettingsFooterControls';
 import CloseButton from '../common/CloseButton';
-import { API_BASE_URL } from '../../config';
+import { clearCache } from '../../platform/cacheService';
+import { clearCredentials } from '../../platform/credentialStateController';
+import { clearMedia } from '../../platform/mediaService';
+import { clearDesktopSettings } from '../../platform/settingsService';
 
 // Import modularized components
 import ApiKeysTab from './tabs/ApiKeysTab';
@@ -25,6 +28,13 @@ import LoadingIndicator from '../common/LoadingIndicator';
 import useSettingsState from './hooks/useSettingsState';
 import useSettingsPersistence from './hooks/useSettingsPersistence';
 import { useSettingsTabPillInit, useSettingsTabPillUpdate } from './utils/settingsAnimationHelpers';
+
+export const clearNativeApplicationState = () => Promise.all([
+  clearCache(),
+  clearCredentials(),
+  clearMedia(),
+  clearDesktopSettings(),
+]);
 
 const SettingsModal = ({ onClose, onSave, apiKeysSet, setApiKeysSet }) => {
   const { t } = useTranslation();
@@ -171,18 +181,8 @@ const SettingsModal = ({ onClose, onSave, apiKeysSet, setApiKeysSet }) => {
           setIsFactoryResetting(true);
 
           try {
-            // 1. Try to clear server-side cache (optional - app can run without server)
-            try {
-              const cacheResponse = await fetch(`${API_BASE_URL}/clear-cache`, {
-                method: 'DELETE'
-              });
-
-              if (!cacheResponse.ok) {
-                console.warn('Failed to clear server cache - server may not be running');
-              }
-            } catch (serverError) {
-              console.warn('Server cache clearing skipped - server not available:', serverError.message);
-            }
+            // Native artifacts, credentials, media, and settings live outside WebView storage.
+            await clearNativeApplicationState();
 
             // 2. Clear all localStorage items
             localStorage.clear();

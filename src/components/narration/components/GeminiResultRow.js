@@ -1,4 +1,3 @@
-import React from 'react';
 import SliderWithValue from '../../common/SliderWithValue';
 import StandardSlider from '../../common/StandardSlider';
 import LoadingIndicator from '../../common/LoadingIndicator';

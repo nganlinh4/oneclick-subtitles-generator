@@ -2,6 +2,8 @@
  * Git version utilities for displaying app version based on commit information
  */
 
+import { fetchBrowserResource } from '../platform/browserFetch';
+
 /**
  * Get git commit information from the current repository
  * This function attempts to get git info in multiple ways:
@@ -13,6 +15,25 @@
  */
 export const getGitVersion = async () => {
   try {
+    if (typeof window !== 'undefined' && window.isTauri) {
+      const [{ default: generatedVersion }, { getDesktopAppVersion }] = await Promise.all([
+        import('../config/version.js').catch(() => ({ default: null })),
+        import('../platform/updateService'),
+      ]);
+      const appVersion = await getDesktopAppVersion();
+      const buildDate = generatedVersion?.date || new Date(0).toISOString();
+      return {
+        ...(generatedVersion || {}),
+        hash: generatedVersion?.hash || 'release',
+        shortHash: generatedVersion?.shortHash || 'release',
+        date: buildDate,
+        timestamp: generatedVersion?.timestamp || 0,
+        branch: 'main',
+        version: appVersion,
+        source: 'tauri-package'
+      };
+    }
+
     // Try to get from environment variables first (set during build)
     if (process.env.REACT_APP_GIT_COMMIT_HASH && process.env.REACT_APP_GIT_COMMIT_DATE) {
       return {
@@ -144,8 +165,38 @@ export const getDisplayVersion = (versionInfo) => {
  */
 export const getLatestVersion = async () => {
   try {
+    if (typeof window !== 'undefined' && window.isTauri) {
+      const [{ checkDesktopUpdate }, current] = await Promise.all([
+        import('../platform/updateService'),
+        getGitVersion(),
+      ]);
+      const status = await checkDesktopUpdate();
+      if (!status.configured) {
+        throw new Error('Signed updater is not configured');
+      }
+      if (status.update === null) {
+        return {
+          ...current,
+          version: status.currentVersion,
+          source: 'tauri-updater-current'
+        };
+      }
+      return {
+        hash: 'release',
+        shortHash: 'release',
+        date: status.update.publishedAt || current.date,
+        timestamp: status.update.publishedAt
+          ? Math.floor(Date.parse(status.update.publishedAt) / 1000)
+          : current.timestamp,
+        branch: 'main',
+        message: status.update.notes || '',
+        version: status.update.version,
+        source: 'tauri-updater'
+      };
+    }
+
     // Get the latest commit from the main branch
-    const commitsResponse = await fetch('https://api.github.com/repos/nganlinh4/oneclick-subtitles-generator/commits/main', {
+    const commitsResponse = await fetchBrowserResource('https://api.github.com/repos/nganlinh4/oneclick-subtitles-generator/commits/main', {
       headers: {
         'Accept': 'application/vnd.github.v3+json',
         'User-Agent': 'OSG-App'
@@ -180,7 +231,7 @@ export const getLatestVersion = async () => {
       source: 'github-commits'
     };
   } catch (error) {
-    console.warn('Failed to fetch latest version from GitHub:', error);
+    console.warn('Failed to fetch latest version information:', error);
     throw new Error('Unable to fetch latest version information');
   }
 };
