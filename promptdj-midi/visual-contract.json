@@ -4,10 +4,6 @@
   "normalization": "shared schema-2 AST; exact text ignores UTF-8 BOM, normalizes CRLF/CR to LF, and ignores terminal newlines",
   "baselineRevision": "d600caf22ad91d9835e771883cb81fac577a8824",
   "exactFiles": {
-    "assets/fonts/Product Sans Bold Italic.otf": "7740d2f952d9f3e1c53554752235214a271b23e63cdcd5018e62f27efdacc5c0",
-    "assets/fonts/Product Sans Bold.otf": "537bc891e9e4f889314cd26ba2ab0754fd6e240406aeae5f5fb18db19219f6c1",
-    "assets/fonts/Product Sans Italic.otf": "492ad70ac48841d90ed0afbf868fc8c357444dfaea63dcf2d3e785f1123e1f1e",
-    "assets/fonts/Product Sans Regular.otf": "252bcd852d84ff04af89e615e36ece925f15ddc042efa4861176e3f745137017",
     "components/react/LoadingIndicator.css": "d98e5054e73f09a7421af975192829a102aa108ed0888bb7538da27faf50e3b8",
     "components/react/LoadingIndicator/all-shapes.txt": "3036dd3e6cea06f90b51a9d123a1a878ce8fc2ec75da4495f59616e7077a2fe7",
     "components/react/LoadingIndicator/shapes/shape-step1.svg": "4c8bcc44bccbd2759e01ebb1ef11a32352a3dff27d0ecae6015569b57a0c7c5d",
@@ -18,7 +14,7 @@
     "components/react/LoadingIndicator/shapes/shape-step6.svg": "4799c943d4cd160e1c29190c8985d41975863d5cf56790e3d90110093367c9db",
     "components/react/LoadingIndicator/shapes/shape-step7.svg": "591aaa41786e207d7a283eb8626b1ecad8d43ba6eacb1f880f0de6fa336eb41c",
     "components/react/material-switch.css": "98ab0c88aace57a287a99fe8cfb3734ce0a01bc64af42c62222c6f7d6460d88f",
-    "index.css": "01bca18c9bed9de2022c5ecefcc38d2b9861ead279ffc8416dd4999e38681c14",
+    "index.css": "ab829ffd4372c54240371ac9ff69af3af9733e417cbf714ed092c945df0819ef",
     "styles/material-tokens.css": "440877c03b5d9854e6f179e2bfb504e3507be34feb1d68d3c444acb539815af7"
   },
   "reactSurfaces": {
