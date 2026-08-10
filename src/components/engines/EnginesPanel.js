@@ -64,18 +64,34 @@ const EnginesPanel = () => {
   const [confirmAll, setConfirmAll] = useState(false);
   const [uninstallingAll, setUninstallingAll] = useState(false);
   const [packages, setPackages] = useState(() => new Map());
+  const [packageStatusState, setPackageStatusState] = useState('checking');
+  const [failedPackages, setFailedPackages] = useState(() => new Set());
 
   const refreshPackages = useCallback(async () => {
+    setPackageStatusState('checking');
     const [asr, speech] = await Promise.allSettled([
       getEnginePackagesStatus(),
       getSpeechPackagesStatus(),
     ]);
-    if (asr.status === 'rejected' && speech.status === 'rejected') return;
+    const failed = new Set();
+    if (asr.status === 'rejected') {
+      ENGINES.filter((engine) => !(engine.id in PACKAGE_ID_BY_ENGINE))
+        .forEach((engine) => failed.add(engine.id));
+    }
+    if (speech.status === 'rejected') {
+      Object.keys(PACKAGE_ID_BY_ENGINE).forEach((engine) => failed.add(engine));
+    }
+    setFailedPackages(failed);
+    if (asr.status === 'rejected' && speech.status === 'rejected') {
+      setPackageStatusState('failed');
+      return;
+    }
     const next = mapManagedPackageInventory(
       asr.status === 'fulfilled' ? asr.value : undefined,
       speech.status === 'fulfilled' ? speech.value : undefined
     );
     setPackages((current) => new Map([...current, ...next]));
+    setPackageStatusState('ready');
   }, []);
 
   const refreshAll = useCallback(() => {
@@ -175,6 +191,7 @@ const EnginesPanel = () => {
                 status={{ ...engines[engine.id], package: packages.get(engine.id) }}
                 onChanged={refreshAll}
                 managedByElectron={managedByElectron}
+                packageStatusState={failedPackages.has(engine.id) ? 'failed' : packageStatusState}
               />
             ))}
           </div>

@@ -7,6 +7,8 @@
   "stop": "Dừng",
   "included": "Đã bao gồm",
   "checking": "Đang kiểm tra…",
+  "retryStatus": "Thử lại",
+  "statusUnavailable": "Runtime máy tính không trả về trạng thái công cụ.",
   "installing": "Đang cài đặt…",
   "starting": "Đang khởi động…",
   "stopping": "Đang dừng…",

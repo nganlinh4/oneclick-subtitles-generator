@@ -66,6 +66,24 @@ it('does not expose a fake download action for an unpublished package', () => {
   expect(screen.queryByRole('button', { name: 'Download' })).not.toBeInTheDocument();
 });
 
+it('turns a rejected package-status request into a retry action instead of an endless spinner', () => {
+  const onChanged = vi.fn();
+  render(
+    <EngineCard
+      id="f5tts"
+      name="F5-TTS"
+      kind="voice-cloning"
+      status={{}}
+      packageStatusState="failed"
+      onChanged={onChanged}
+    />
+  );
+
+  expect(screen.queryByText('Checking…')).not.toBeInTheDocument();
+  fireEvent.click(screen.getByRole('button', { name: 'Retry' }));
+  expect(onChanged).toHaveBeenCalledTimes(1);
+});
+
 it('keeps an installed engine removable and confirms before invoking native removal', () => {
   const uninstall = vi.fn().mockResolvedValue(undefined);
   useEngineInstall.mockReturnValue(hookState({ uninstall }));

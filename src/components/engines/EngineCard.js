@@ -38,7 +38,15 @@ const formatBytes = (bytes) => {
   return `${value >= 10 || unit === 0 ? value.toFixed(0) : value.toFixed(1)} ${units[unit]}`;
 };
 
-const EngineCard = ({ id, name, kind, status, onChanged, managedByElectron = false }) => {
+const EngineCard = ({
+  id,
+  name,
+  kind,
+  status,
+  onChanged,
+  managedByElectron = false,
+  packageStatusState = 'ready',
+}) => {
   const { t } = useTranslation();
   const packageStatus = status?.package;
   const { install, cancel, start, stop, uninstall, installing, percent, log, error } = useEngineInstall(
@@ -53,7 +61,7 @@ const EngineCard = ({ id, name, kind, status, onChanged, managedByElectron = fal
   const state = managedByElectron
     ? (status?.running ? 'ready' : 'included')
     : !packageStatus
-      ? 'checking'
+      ? packageStatusState === 'failed' ? 'status-error' : 'checking'
       : packageStatus.state === 'unavailable'
         ? 'unavailable'
         : packageStatus.state === 'corrupt'
@@ -160,6 +168,14 @@ const EngineCard = ({ id, name, kind, status, onChanged, managedByElectron = fal
     }
     if (managedByElectron) return <span className="engine-card__managed">{t('engines.included', 'Included')}</span>;
     if (state === 'checking') return loadingRow('engines.checking', 'Checking…');
+    if (state === 'status-error') {
+      return (
+        <button type="button" className="engine-card__btn engine-card__btn--ghost" onClick={onChanged}>
+          <span className="material-symbols-rounded" aria-hidden="true">refresh</span>
+          {t('engines.retryStatus', 'Retry')}
+        </button>
+      );
+    }
     if (state === 'unavailable') {
       return <span className="engine-card__unavailable">{t('engines.notPublished', 'Not published')}</span>;
     }

@@ -7,6 +7,8 @@
   "stop": "중지",
   "included": "포함됨",
   "checking": "확인 중…",
+  "retryStatus": "다시 시도",
+  "statusUnavailable": "데스크톱 런타임이 도구 상태를 반환하지 않았습니다.",
   "installing": "설치 중…",
   "starting": "시작 중…",
   "stopping": "중지 중…",

@@ -160,7 +160,26 @@
 .engine-card--included .engine-card__icon { color: var(--md-primary); }
 .engine-card--corrupt .engine-card__icon { color: var(--md-error, #d9534f); }
 .engine-card--unavailable .engine-card__icon,
-.engine-card--checking .engine-card__icon { opacity: 0.58; }
+.engine-card--checking .engine-card__icon,
+.engine-card--status-error .engine-card__icon { opacity: 0.58; }
+
+.tools-ledger__status {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  min-height: 50px;
+  padding: 7px 4px;
+  border-bottom: 1px solid color-mix(in srgb, var(--md-outline-variant) 72%, transparent);
+  color: var(--md-on-surface-variant);
+  font-size: var(--md-label-small-size, 11px);
+}
+
+.tools-ledger__status--error { color: var(--md-error, #d9534f); }
+
+.tools-ledger__status-icon { animation: tools-ledger-spin 0.9s linear infinite; }
+
+@keyframes tools-ledger-spin { to { transform: rotate(360deg); } }
 
 .engine-card__info {
   display: flex;

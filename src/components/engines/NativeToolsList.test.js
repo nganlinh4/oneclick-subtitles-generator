@@ -1,6 +1,10 @@
 import { fireEvent, render, screen, waitFor } from '@testing-library/react';
-import { removeNativeTool } from '../../platform/nativeToolsService';
-import { NativeToolRow } from './NativeToolsList';
+import {
+  getNativeToolsCatalog,
+  getNativeToolsStatus,
+  removeNativeTool,
+} from '../../platform/nativeToolsService';
+import NativeToolsList, { NativeToolRow } from './NativeToolsList';
 
 vi.mock('react-i18next', () => ({
   useTranslation: () => ({
@@ -96,4 +100,17 @@ it('shows an unavailable tool without any fake download button', () => {
 
   expect(screen.getByText('Not published')).toBeInTheDocument();
   expect(screen.queryByRole('button', { name: 'Download' })).not.toBeInTheDocument();
+});
+
+it('surfaces a native schema or IPC failure with a compact retry action', async () => {
+  getNativeToolsCatalog.mockRejectedValue(new Error('old desktop host'));
+  getNativeToolsStatus.mockRejectedValue(new Error('old desktop host'));
+
+  render(<NativeToolsList />);
+
+  expect(await screen.findByRole('alert')).toHaveTextContent(
+    'The desktop runtime did not return tool status.'
+  );
+  fireEvent.click(screen.getByRole('button', { name: 'Retry' }));
+  await waitFor(() => expect(getNativeToolsStatus).toHaveBeenCalledTimes(2));
 });

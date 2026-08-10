@@ -165,14 +165,21 @@ const NativeToolsList = () => {
   const { t } = useTranslation();
   const [catalog, setCatalog] = useState([]);
   const [status, setStatus] = useState(new Map());
+  const [loadState, setLoadState] = useState('checking');
 
   const refresh = useCallback(async () => {
-    const [catalogResponse, statusResponse] = await Promise.all([
-      getNativeToolsCatalog(),
-      getNativeToolsStatus(),
-    ]);
-    setCatalog(catalogResponse.tools);
-    setStatus(new Map(statusResponse.tools.map((tool) => [tool.id, tool])));
+    setLoadState('checking');
+    try {
+      const [catalogResponse, statusResponse] = await Promise.all([
+        getNativeToolsCatalog(),
+        getNativeToolsStatus(),
+      ]);
+      setCatalog(catalogResponse.tools);
+      setStatus(new Map(statusResponse.tools.map((tool) => [tool.id, tool])));
+      setLoadState('ready');
+    } catch {
+      setLoadState('failed');
+    }
   }, []);
 
   useEffect(() => {
@@ -209,7 +216,22 @@ const NativeToolsList = () => {
         </span>
       </div>
       <div className="engines-panel__grid engines-panel__grid--runtime">
-        {catalog.map((tool) => status.has(tool.id) && (
+        {loadState === 'checking' && catalog.length === 0 && (
+          <div className="tools-ledger__status" role="status">
+            <span className="material-symbols-rounded tools-ledger__status-icon" aria-hidden="true">progress_activity</span>
+            <span>{t('engines.checking', 'Checking…')}</span>
+          </div>
+        )}
+        {loadState === 'failed' && (
+          <div className="tools-ledger__status tools-ledger__status--error" role="alert">
+            <span>{t('engines.statusUnavailable', 'The desktop runtime did not return tool status.')}</span>
+            <button type="button" className="engine-card__btn engine-card__btn--ghost" onClick={() => refresh()}>
+              <span className="material-symbols-rounded" aria-hidden="true">refresh</span>
+              {t('engines.retryStatus', 'Retry')}
+            </button>
+          </div>
+        )}
+        {loadState !== 'failed' && catalog.map((tool) => status.has(tool.id) && (
           <NativeToolRow
             key={tool.id}
             catalog={tool}
