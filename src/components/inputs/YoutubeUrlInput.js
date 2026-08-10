@@ -229,7 +229,16 @@ const YoutubeUrlInput = ({ setSelectedVideo, selectedVideo, className }) => {
                       alt={item.title}
                       className="history-thumbnail"
                       onError={(e) => {
-                        e.target.src = `https://img.youtube.com/vi/${item.id}/0.jpg`;
+                        if (e.target.dataset.nativeThumbnailRetry === 'true') {
+                          e.target.removeAttribute('src');
+                          return;
+                        }
+                        e.target.dataset.nativeThumbnailRetry = 'true';
+                        const image = e.target;
+                        void getVideoThumbnail(item.id).then(
+                          (nativeUrl) => { image.src = nativeUrl; },
+                          () => { image.removeAttribute('src'); },
+                        );
                       }}
                     />
                     <div className="history-item-info">
@@ -267,7 +276,7 @@ const YoutubeUrlInput = ({ setSelectedVideo, selectedVideo, className }) => {
         <>
           <div className="selected-video-preview">
             <img
-              src={`https://img.youtube.com/vi/${selectedVideo.id}/0.jpg`}
+              src={selectedVideo.thumbnail}
               alt={videoTitle}
               className="thumbnail"
             />

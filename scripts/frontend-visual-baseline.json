@@ -1,5 +1,5 @@
 {
-  "schemaVersion": 3,
+  "schemaVersion": 5,
   "algorithm": "sha256",
   "normalization": "binary exact; UTF-8 BOM ignored, CRLF/CR normalized to LF, terminal newlines ignored",
   "baselineRevision": "d600caf22ad91d9835e771883cb81fac577a8824",
@@ -1398,7 +1398,7 @@
       ]
     },
     "src/i18n/locales/en/settings.json": {
-      "hash": "145be5fda54fe1ef1e3728e1d719421a7ea06658531b6738aa7312e688722a21",
+      "hash": "e15235507838d92b99b7097c23368d24f580d28e19eeeddac8e07705c321de3a",
       "keys": [
         "about",
         "accessDeniedDescription",
@@ -3755,7 +3755,7 @@
       ]
     },
     "src/i18n/locales/ko/settings.json": {
-      "hash": "dd3555dbdc8369509bbbe9af49c70424090204e945b9f8daefeba521ded808e2",
+      "hash": "a2a601198b4ae72231d29ce7b07fa8c03f62f7f3f3e3d6bcbab5b1568724b353",
       "keys": [
         "about",
         "accessDeniedDescription",
@@ -6281,7 +6281,7 @@
       ]
     },
     "src/i18n/locales/vi/settings.json": {
-      "hash": "ddd401314d1a0df1b751098673aed734227a9f62d118ed6f7d6d8be95fe39164",
+      "hash": "009f54848c3aac8d3fd0cc75528b85f4a59aa8c9ce7fcc19f577d5a04048e0b2",
       "keys": [
         "about",
         "accessDeniedDescription",
@@ -7815,12 +7815,12 @@
       ]
     },
     "src/components/inputs/VideoPreviewRenderer.js": {
-      "hash": "bb49a1149f02e752b2c6870ce08ff0f50519927aafe21b6103ba393a5b493e11",
+      "hash": "91d6d48e51648c0c65f72d2aae35f70ff798eb00c7ef1159e50a794cdc9cf8eb",
       "rootCount": 8,
       "roots": [
         "43a3b7d1200d03e23e5b5db5ff0b27af945dc808d02160d49d4a392f3e7eed66",
         "51ce249c59c4f30f174eb09e88d30c169407d4973cda4ec91dbfb8740e5ddbd0",
-        "af1751a05d7c2efa0524ecfbd483b1a6476c90f675e1a4d1cba0745f1871ccbf",
+        "9c8a8ae09f810fce7b4461ea522b7f083c0160a2491032216679dc63e90bb00a",
         "81ed042b83b8c0dc360098d4334a716c9d794ba482b089d7dad03d00076042b7",
         "6f29a15abb08eebb76d55a9256914a25a0a655f82f6fd662b9cd17c077d69efd",
         "6d28c348c5debc681bb7c8dea64bf4ec7006366a1b4d4408dff1a1a6d4963e74",
@@ -7836,10 +7836,10 @@
       ]
     },
     "src/components/inputs/YoutubeUrlInput.js": {
-      "hash": "ce2d6f5307912bfd0d43ea8bfe77244e08ba24b06006578198adc9211e3885e3",
+      "hash": "3bece393f7d9980d629ea7010f143fe44cf30c1d86a48157cf0fa1736c48ba86",
       "rootCount": 1,
       "roots": [
-        "5ba4621e2dca8d6f44b0dd73dd2eff8407dee2f8648bc5505928aa3ef7f61ecd"
+        "e843cb4614fd87f6afbd3e7bfc449ad94d1dc230459544cb9b4e4094426f30e6"
       ]
     },
     "src/components/LanguageSelector.js": {
@@ -8573,10 +8573,10 @@
       ]
     },
     "src/components/settings/tabs/YoutubeAuthSection.js": {
-      "hash": "d915a1c90a086c16100cb598c8b254c9e05c434136543319191d4a57a775628e",
+      "hash": "4f5ebb3333c65ff371507a2876679f5034388f519e8c8decd0996cf9d167b257",
       "rootCount": 1,
       "roots": [
-        "b0488811157047f449a2b073ad3550de3b1248a91298a7d276cf6d85cf89dc0e"
+        "2edfb43b1373fd50992b25021c1064b620713d2019313b5ebf0208379b04c365"
       ]
     },
     "src/components/settings/utils/themeUtils.js": {

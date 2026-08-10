@@ -9,7 +9,6 @@ import {
   createFrontendCodeSplitting,
   handleFrontendBuildLog,
 } from './scripts/frontend-bundle-boundary.mjs';
-import { createProviderImageDesktopBoundaryPlugin } from './scripts/provider-image-desktop-boundary.mjs';
 import { createRemotionDesktopBoundaryPlugin } from './scripts/remotion-desktop-boundary.mjs';
 
 const sourceJavaScriptPattern = /[/\\]src[/\\].+\.js$/;
@@ -213,7 +212,6 @@ export default defineConfig(({ mode }) => ({
   },
   plugins: [
     createFrozenCssCompatibilityPlugin(),
-    createProviderImageDesktopBoundaryPlugin(),
     ...(mode === 'production'
       ? [productionDesktopModules(), foldProductionDesktopBranches()]
       : []),

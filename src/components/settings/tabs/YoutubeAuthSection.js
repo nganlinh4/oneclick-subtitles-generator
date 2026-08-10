@@ -3,6 +3,9 @@ import { useTranslation } from 'react-i18next';
 import { animateToggle } from '../utils/keyVisibilityAnimation';
 import { handleOAuthAuthentication, handleClearOAuth } from '../utils/youtubeOAuthHandlers';
 
+const DESKTOP_OAUTH_CLIENT_TYPE = 'Desktop app';
+const LOOPBACK_CALLBACK_PATTERN = 'http://127.0.0.1:<temporary-port>/oauth2callback';
+
 // Full YouTube authentication UI: API key method + OAuth 2.0 method.
 const YoutubeAuthSection = ({
   youtubeApiKey,
@@ -276,12 +279,12 @@ const YoutubeAuthSection = ({
           <ol>
             <li>{t('settings.createProject', 'Create a project in Google Cloud Console')}</li>
             <li>{t('settings.enableYouTubeAPI', 'Enable the YouTube Data API v3')}</li>
-            <li>{t('settings.createOAuthClientId', 'Create OAuth 2.0 Client ID (Web application)')}</li>
-            <li>{t('settings.addAuthorizedOrigins', 'Add Authorized JavaScript origins:')}<br/>
-              <code>{window.location.origin}</code>
+            <li>{t('settings.createOAuthClientId', 'Create OAuth 2.0 Client ID (Desktop app)')}</li>
+            <li>{t('settings.addAuthorizedOrigins', 'Confirm the application type:')}<br/>
+              <code>{DESKTOP_OAUTH_CLIENT_TYPE}</code>
             </li>
-            <li>{t('settings.addAuthorizedRedirect', 'Add Authorized redirect URI:')}<br/>
-              <code>{window.location.origin + '/oauth2callback.html'}</code>
+            <li>{t('settings.addAuthorizedRedirect', 'OSG uses this temporary loopback callback pattern:')}<br/>
+              <code>{LOOPBACK_CALLBACK_PATTERN}</code>
             </li>
             <li>{t('settings.copyClientCredentials', 'Copy your Client ID and Client Secret')}</li>
             <li>{t('settings.pasteAndAuthenticate', 'Paste them into the fields above and click Authenticate')}</li>
@@ -290,15 +293,15 @@ const YoutubeAuthSection = ({
           <h4>{t('settings.troubleshootingOAuth', 'Troubleshooting OAuth Issues')}</h4>
 
           <h5>{t('settings.errorRedirectMismatch', 'Error: redirect_uri_mismatch')}</h5>
-          <p>{t('settings.redirectMismatchDescription', 'This error occurs when the redirect URI in your application doesn\'t match what\'s registered in Google Cloud Console:')}</p>
+          <p>{t('settings.redirectMismatchDescription', 'This usually means the OAuth client is not configured as a desktop application:')}</p>
           <ol>
             <li>{t('settings.goToCredentials', 'Go to Google Cloud Console > APIs & Services > Credentials')}</li>
             <li>{t('settings.findOAuthClient', 'Find your OAuth 2.0 Client ID and click to edit')}</li>
-            <li>{t('settings.inAuthorizedOrigins', 'In "Authorized JavaScript origins", add exactly:')}<br/>
-              <code>{window.location.origin}</code>
+            <li>{t('settings.inAuthorizedOrigins', 'The OAuth client application type must be:')}<br/>
+              <code>{DESKTOP_OAUTH_CLIENT_TYPE}</code>
             </li>
-            <li>{t('settings.inAuthorizedRedirect', 'In "Authorized redirect URIs", add exactly:')}<br/>
-              <code>{window.location.origin + '/oauth2callback.html'}</code>
+            <li>{t('settings.inAuthorizedRedirect', 'Retry authentication; OSG will select a new loopback callback:')}<br/>
+              <code>{LOOPBACK_CALLBACK_PATTERN}</code>
             </li>
             <li>{t('settings.clickSave', 'Click Save')}</li>
           </ol>

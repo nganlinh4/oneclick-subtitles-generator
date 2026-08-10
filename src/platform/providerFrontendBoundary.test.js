@@ -1,8 +1,6 @@
 import { existsSync, readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 
-import { rewriteProviderImageRenderSource } from '../../scripts/provider-image-desktop-boundary.mjs';
-
 const ROOT = resolve(import.meta.dirname, '..', '..');
 const read = (relativePath) => readFileSync(resolve(ROOT, relativePath), 'utf8');
 
@@ -37,7 +35,10 @@ it('keeps production YouTube, Genius, and OAuth sources structurally native-only
     expect(existsSync(resolve(ROOT, removed))).toBe(false);
   }
 
-  expect(read('vite.config.mjs')).not.toMatch(/youtubeApiService|desktopYoutubeService/);
+  expect(read('vite.config.mjs')).not.toMatch(
+    /youtubeApiService|desktopYoutubeService|provider-image-desktop-boundary/,
+  );
+  expect(existsSync(resolve(ROOT, 'scripts/provider-image-desktop-boundary.mjs'))).toBe(false);
 
   const imagePaths = [
     'src/platform/providerService.js',
@@ -49,9 +50,7 @@ it('keeps production YouTube, Genius, and OAuth sources structurally native-only
     'src/components/inputs/urlHistory.js',
     'src/utils/historyUtils.js',
   ];
-  const imageSources = imagePaths.map((relativePath) => (
-    rewriteProviderImageRenderSource(read(relativePath), relativePath) ?? read(relativePath)
-  )).join('\n');
+  const imageSources = imagePaths.map(read).join('\n');
   expect(imageSources).not.toMatch(/img\.youtube\.com|ytimg\.com|ggpht\.com|images\.genius\.com/i);
   expect(imageSources).toMatch(/youtube_thumbnail/);
 });

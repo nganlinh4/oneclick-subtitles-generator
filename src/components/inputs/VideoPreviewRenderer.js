@@ -78,7 +78,7 @@ export const renderVideoPreview = ({
       return (
         <div className="selected-video-preview">
           <img
-            src={`https://img.youtube.com/vi/${selectedVideo.id}/0.jpg`}
+            src={selectedVideo.thumbnail}
             alt={videoTitle}
             className="thumbnail"
           />
