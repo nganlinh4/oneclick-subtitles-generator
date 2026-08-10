@@ -94,8 +94,15 @@ impl CommandError {
     pub(crate) fn media_tools_unavailable() -> Self {
         Self {
             code: "mediaToolsUnavailable",
-            message: "The bundled FFmpeg and FFprobe tools are unavailable.".to_owned(),
+            message: "The verified FFmpeg and FFprobe tools are unavailable.".to_owned(),
         }
+    }
+
+    pub(crate) fn downloader_execution_failed() -> Self {
+        Self::fixed(
+            "downloaderExecutionFailed",
+            "The native downloader could not complete the operation.",
+        )
     }
 
     pub(crate) fn render_runtime_unavailable() -> Self {

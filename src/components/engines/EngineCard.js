@@ -20,14 +20,49 @@ const STATE_ICON = {
   included: 'inventory_2',
   'installed-stopped': 'pause_circle',
   'not-installed': 'download',
+  'update-available': 'system_update_alt',
+  unavailable: 'block',
+  corrupt: 'warning',
+  checking: 'progress_activity',
+};
+
+const formatBytes = (bytes) => {
+  if (!Number.isSafeInteger(bytes) || bytes <= 0) return null;
+  const units = ['B', 'KB', 'MB', 'GB'];
+  let value = bytes;
+  let unit = 0;
+  while (value >= 1024 && unit < units.length - 1) {
+    value /= 1024;
+    unit += 1;
+  }
+  return `${value >= 10 || unit === 0 ? value.toFixed(0) : value.toFixed(1)} ${units[unit]}`;
 };
 
 const EngineCard = ({ id, name, kind, status, onChanged, managedByElectron = false }) => {
   const { t } = useTranslation();
-  const { install, cancel, start, stop, uninstall, installing, percent, log, error } = useEngineInstall(id);
+  const packageStatus = status?.package;
+  const { install, cancel, start, stop, uninstall, installing, percent, log, error } = useEngineInstall(
+    id,
+    { reconnect: Boolean(packageStatus?.operation), onStatusChanged: onChanged }
+  );
+  const packageOperation = packageStatus?.operation || null;
+  const packageInstalling = packageOperation?.action === 'install'
+    || packageOperation?.action === 'update';
+  const packageRemoving = packageOperation?.action === 'remove';
+  const isInstalling = installing || packageInstalling;
   const state = managedByElectron
     ? (status?.running ? 'ready' : 'included')
-    : (status?.state || 'not-installed');
+    : !packageStatus
+      ? 'checking'
+      : packageStatus.state === 'unavailable'
+        ? 'unavailable'
+        : packageStatus.state === 'corrupt'
+          ? 'corrupt'
+          : packageStatus.state === 'update-available'
+            ? 'update-available'
+            : packageStatus.installed
+              ? status?.running ? 'ready' : 'installed-stopped'
+              : 'not-installed';
   const lastLog = log.length ? log[log.length - 1] : '';
   const { isDarkTheme, waveColor, waveTrackColor } = useWaveColors();
 
@@ -88,13 +123,15 @@ const EngineCard = ({ id, name, kind, status, onChanged, managedByElectron = fal
   );
 
   const renderAction = () => {
-    if (installing) {
+    if (isInstalling) {
       return (
         <div className="engine-card__installing">
           <LoadingIndicator theme={isDarkTheme ? 'light' : 'dark'} showContainer={false} size={16} color={waveColor} />
           <div className="engine-card__wavy">
             <WavyProgressIndicator
-              progress={Math.max(0, Math.min(1, (percent || 0) / 100))}
+              progress={Math.max(0, Math.min(1,
+                packageOperation ? packageOperation.basisPoints / 10000 : (percent || 0) / 100
+              ))}
               animate={true}
               showStopIndicator={true}
               waveSpeed={1.2}
@@ -105,14 +142,27 @@ const EngineCard = ({ id, name, kind, status, onChanged, managedByElectron = fal
               stopIndicatorColor={waveColor}
             />
           </div>
-          <button type="button" className="engine-card__cancel" onClick={cancel} title={t('engines.cancel', 'Cancel')} aria-label={t('engines.cancel', 'Cancel')}>
+          <button type="button" className="engine-card__cancel" onClick={() => cancel(packageOperation?.job?.id)} title={t('engines.cancel', 'Cancel')} aria-label={t('engines.cancel', 'Cancel')}>
             <span className="material-symbols-rounded" aria-hidden="true">close</span>
           </button>
         </div>
       );
     }
-    if (uninstalling) return loadingRow('engines.uninstalling', 'Uninstalling…');
+    if (uninstalling || packageRemoving) {
+      return (
+        <div className="engine-card__installing">
+          {loadingRow('engines.uninstalling', 'Uninstalling…')}
+          <button type="button" className="engine-card__cancel" onClick={() => cancel(packageOperation?.job?.id)} title={t('engines.cancel', 'Cancel')} aria-label={t('engines.cancel', 'Cancel')}>
+            <span className="material-symbols-rounded" aria-hidden="true">close</span>
+          </button>
+        </div>
+      );
+    }
     if (managedByElectron) return <span className="engine-card__managed">{t('engines.included', 'Included')}</span>;
+    if (state === 'checking') return loadingRow('engines.checking', 'Checking…');
+    if (state === 'unavailable') {
+      return <span className="engine-card__unavailable">{t('engines.notPublished', 'Not published')}</span>;
+    }
     if (confirmUninstall) {
       return (
         <div className="engine-card__confirm">
@@ -150,6 +200,25 @@ const EngineCard = ({ id, name, kind, status, onChanged, managedByElectron = fal
         </>
       );
     }
+    if (state === 'update-available') {
+      return (
+        <>
+          <button type="button" className="engine-card__btn" onClick={install}>
+            <span className="material-symbols-rounded" aria-hidden="true">system_update_alt</span>
+            {t('engines.update', 'Update')}
+          </button>
+          {trashButton}
+        </>
+      );
+    }
+    if (state === 'corrupt') {
+      return (
+        <button type="button" className="engine-card__btn" onClick={install}>
+          <span className="material-symbols-rounded" aria-hidden="true">build</span>
+          {t('engines.repair', 'Repair')}
+        </button>
+      );
+    }
     return (
       <button type="button" className="engine-card__btn" onClick={install}>
         <span className="material-symbols-rounded" aria-hidden="true">download</span>
@@ -158,7 +227,24 @@ const EngineCard = ({ id, name, kind, status, onChanged, managedByElectron = fal
     );
   };
 
-  const busy = installing || confirmUninstall || uninstalling;
+  const busy = isInstalling || confirmUninstall || uninstalling || packageRemoving;
+  const installedSize = formatBytes(packageStatus?.installedBytes);
+  const downloadSize = formatBytes(packageStatus?.downloadBytes);
+  const availableInstalledSize = formatBytes(packageStatus?.availableInstalledBytes);
+  const packageVersion = packageStatus?.version || packageStatus?.availableVersion;
+  const capacityMeta = packageStatus?.installed
+    ? installedSize ? [t('engines.diskSize', '{{size}} disk', { size: installedSize })] : []
+    : [
+      downloadSize ? t('engines.downloadSize', '{{size}} download', { size: downloadSize }) : null,
+      availableInstalledSize
+        ? t('engines.diskSize', '{{size}} disk', { size: availableInstalledSize })
+        : null,
+    ].filter(Boolean);
+  const stateMeta = [
+    t(`engines.kind.${kind}`, kind),
+    t(`engines.state.${state}`, state),
+    packageVersion ? `v${packageVersion}` : null,
+  ].filter(Boolean).join(' · ');
 
   return (
     <div className={`engine-card engine-card--${state}${busy ? ' engine-card--busy' : ''}`}>
@@ -166,14 +252,17 @@ const EngineCard = ({ id, name, kind, status, onChanged, managedByElectron = fal
         <span className="material-symbols-rounded engine-card__icon" aria-hidden="true">{STATE_ICON[state] || 'download'}</span>
         <div className="engine-card__info">
           <span className="engine-card__label">{name}</span>
-          {installing ? (
+          {isInstalling ? (
             <span className="engine-card__sub engine-card__sub--log" title={lastLog}>
               {lastLog || t('engines.installing', 'Installing…')}
             </span>
           ) : (
-            <span className="engine-card__sub">
-              {t(`engines.kind.${kind}`, kind)} · {t(`engines.state.${state}`, state)}
-            </span>
+            <>
+              <span className="engine-card__sub">{stateMeta}</span>
+              {capacityMeta.length > 0 && (
+                <span className="engine-card__state-line">{capacityMeta.join(' · ')}</span>
+              )}
+            </>
           )}
         </div>
         <div className="engine-card__action">{renderAction()}</div>

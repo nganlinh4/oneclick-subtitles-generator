@@ -64,8 +64,8 @@ use native_drop::{
     media_drop_subscribe, media_drop_unsubscribe,
 };
 use native_tools::{
-    NativeToolRuntime, native_tool_cancel, native_tool_install, native_tools_catalog,
-    native_tools_status,
+    NativeToolRuntime, native_tool_cancel, native_tool_install, native_tool_remove,
+    native_tools_catalog, native_tools_status,
 };
 use osg_application::JobRegistry;
 use osg_download::{FfmpegDirectory, JsRuntimeSearch, YtDlpSearch};
@@ -183,6 +183,7 @@ pub fn run() {
             native_tools_catalog,
             native_tools_status,
             native_tool_install,
+            native_tool_remove,
             native_tool_cancel,
             media_pipeline_inspect,
             media_pipeline_start,

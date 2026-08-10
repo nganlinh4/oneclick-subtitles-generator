@@ -92,7 +92,7 @@ const PUBLIC_CATALOG: [NativeToolInfo; 3] = [
     NativeToolInfo {
         id: NativeToolId::MediaTools,
         label: "FFmpeg and FFprobe",
-        license: "GPL-2.0-or-later",
+        license: "GPL-3.0-or-later",
     },
     NativeToolInfo {
         id: NativeToolId::YtDlp,
@@ -111,23 +111,25 @@ pub const fn catalog() -> &'static [NativeToolInfo] {
     &PUBLIC_CATALOG
 }
 
-#[derive(Clone, Copy, Debug, Deserialize, Eq, PartialEq)]
+#[derive(Clone, Copy, Debug, Deserialize, Eq, PartialEq, Serialize)]
 #[serde(rename_all = "lowercase")]
 pub(crate) enum ArtifactFormat {
     Raw,
     Zip,
 }
 
-#[derive(Clone, Debug, Eq, PartialEq)]
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub(crate) struct DeliveryFile {
     pub source_path: String,
     pub install_path: String,
     pub size_bytes: u64,
     pub sha256: String,
-    pub role: ExecutableRole,
+    pub role: Option<ExecutableRole>,
 }
 
-#[derive(Clone, Debug, Eq, PartialEq)]
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub(crate) struct NoticeFile {
     pub install_path: String,
     pub source_url: String,
@@ -135,7 +137,8 @@ pub(crate) struct NoticeFile {
     pub sha256: String,
 }
 
-#[derive(Clone, Debug, Eq, PartialEq)]
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub(crate) struct ToolDelivery {
     pub tool: NativeToolId,
     pub platform: String,
@@ -144,6 +147,7 @@ pub(crate) struct ToolDelivery {
     pub asset: String,
     pub source_url: String,
     pub format: ArtifactFormat,
+    pub selective_extraction: bool,
     pub size_bytes: u64,
     pub sha256: String,
     pub files: Vec<DeliveryFile>,
@@ -238,6 +242,8 @@ struct RawArtifact {
     asset: String,
     format: ArtifactFormat,
     source_url: String,
+    #[serde(default)]
+    selective_extraction: bool,
     size_bytes: u64,
     sha256: String,
 }
@@ -249,14 +255,14 @@ struct RawFile {
     install_path: String,
     size_bytes: u64,
     sha256: String,
-    role: ExecutableRole,
+    role: Option<ExecutableRole>,
 }
 
 fn parse_catalog(raw: &str, selected_platform: &str) -> Result<DeliveryCatalog> {
     let raw: RawCatalog = serde_json::from_str(raw)?;
     if raw.schema_version != 1
         || !valid_date(&raw.reviewed_at)
-        || raw.policy.artifact_delivery != "direct-upstream-download-only"
+        || raw.policy.artifact_delivery != "direct-reviewed-source-download-only"
         || raw.policy.bundled_artifacts
         || raw.policy.self_update_allowed
         || raw.policy.release_state != "partially-available"
@@ -308,18 +314,16 @@ fn parse_catalog(raw: &str, selected_platform: &str) -> Result<DeliveryCatalog> 
 }
 
 fn validate_source_and_notices(tool: &RawTool) -> Result<()> {
-    if tool.id == NativeToolId::MediaTools {
-        if tool.source_revision.is_some() || !tool.notices.is_empty() {
-            return Err(NativeToolError::InvalidCatalog);
-        }
-        return Ok(());
-    }
     let revision = tool
         .source_revision
         .as_deref()
         .filter(|revision| valid_revision(revision))
         .ok_or(NativeToolError::InvalidCatalog)?;
-    let expected_notice_count = if tool.id == NativeToolId::YtDlp { 2 } else { 1 };
+    let expected_notice_count = match tool.id {
+        NativeToolId::YtDlp => 2,
+        NativeToolId::Deno => 1,
+        NativeToolId::MediaTools => 0,
+    };
     if tool.notices.len() != expected_notice_count {
         return Err(NativeToolError::InvalidCatalog);
     }
@@ -345,6 +349,23 @@ fn validate_platform(tool: &RawTool, platform: &str) -> Result<Vec<ToolDelivery>
         .get(platform)
         .ok_or(NativeToolError::InvalidCatalog)?;
     if tool.id == NativeToolId::MediaTools {
+        if platform == "windows-x86_64" {
+            if delivery.blocker.is_some() || delivery.releases.len() != 1 {
+                return Err(NativeToolError::InvalidCatalog);
+            }
+            let revision = tool
+                .source_revision
+                .as_deref()
+                .ok_or(NativeToolError::InvalidCatalog)?;
+            return validate_release(
+                tool.id,
+                platform,
+                revision,
+                &tool.notices,
+                &delivery.releases[0],
+            )
+            .map(|value| vec![value]);
+        }
         if !delivery.releases.is_empty()
             || delivery
                 .blocker
@@ -373,7 +394,7 @@ fn validate_release(
     notices: &[RawNotice],
     release: &RawRelease,
 ) -> Result<ToolDelivery> {
-    if release.distribution_mode != "direct-upstream-download-only"
+    if release.distribution_mode != "direct-reviewed-source-download-only"
         || !valid_version(&release.version)
         || release.artifact.size_bytes == 0
         || release.artifact.size_bytes > MAX_ARTIFACT_BYTES
@@ -399,13 +420,16 @@ fn validate_release(
     for file in &release.files {
         validate_relative_path(&file.source_path)?;
         validate_relative_path(&file.install_path)?;
-        if !file.install_path.starts_with("bin/")
+        if !(file.install_path.starts_with("bin/") || file.install_path.starts_with("licenses/"))
             || file.size_bytes == 0
             || file.size_bytes > MAX_INSTALLED_BYTES
             || !valid_sha256(&file.sha256)
             || !installed_paths.insert(file.install_path.as_str())
             || !source_paths.insert(file.source_path.as_str())
-            || !role_belongs_to_tool(tool, file.role)
+            || file
+                .role
+                .is_some_and(|role| !role_belongs_to_tool(tool, role))
+            || (file.install_path.starts_with("bin/") != file.role.is_some())
         {
             return Err(NativeToolError::InvalidCatalog);
         }
@@ -423,6 +447,7 @@ fn validate_release(
     }
     if release.artifact.format == ArtifactFormat::Raw
         && (files.len() != 1
+            || release.artifact.selective_extraction
             || files[0].source_path != release.artifact.asset
             || files[0].size_bytes != release.artifact.size_bytes
             || files[0].sha256 != release.artifact.sha256)
@@ -452,6 +477,7 @@ fn validate_release(
         asset: release.artifact.asset.clone(),
         source_url: release.artifact.source_url.clone(),
         format: release.artifact.format,
+        selective_extraction: release.artifact.selective_extraction,
         size_bytes: release.artifact.size_bytes,
         sha256: release.artifact.sha256.clone(),
         files,
@@ -461,6 +487,22 @@ fn validate_release(
 }
 
 fn validate_exact_identity(tool: NativeToolId, platform: &str, release: &RawRelease) -> Result<()> {
+    if tool == NativeToolId::MediaTools && platform == "windows-x86_64" {
+        let roles = release
+            .files
+            .iter()
+            .filter_map(|file| file.role)
+            .collect::<HashSet<_>>();
+        if release.version != "8.1.2"
+            || release.artifact.asset != "ffmpeg-8.1.2-essentials_build.zip"
+            || !release.artifact.selective_extraction
+            || roles != HashSet::from([ExecutableRole::Ffmpeg, ExecutableRole::Ffprobe])
+            || release.files.len() != 4
+        {
+            return Err(NativeToolError::InvalidCatalog);
+        }
+        return Ok(());
+    }
     let (version, asset, install_path, role) = match (tool, platform) {
         (NativeToolId::YtDlp, "windows-x86_64") => (
             "2026.07.04",
@@ -510,7 +552,7 @@ fn validate_exact_identity(tool: NativeToolId, platform: &str, release: &RawRele
         || release.artifact.asset != asset
         || release.files.len() != 1
         || release.files[0].install_path != install_path
-        || release.files[0].role != role
+        || release.files[0].role != Some(role)
     {
         return Err(NativeToolError::InvalidCatalog);
     }
@@ -532,7 +574,12 @@ fn valid_release_url(tool: NativeToolId, version: &str, asset: &str, value: &str
     let repository = match tool {
         NativeToolId::YtDlp => "yt-dlp/yt-dlp",
         NativeToolId::Deno => "denoland/deno",
-        NativeToolId::MediaTools => return false,
+        NativeToolId::MediaTools => {
+            return version == "8.1.2"
+                && asset == "ffmpeg-8.1.2-essentials_build.zip"
+                && value
+                    == "https://www.gyan.dev/ffmpeg/builds/packages/ffmpeg-8.1.2-essentials_build.zip";
+        }
     };
     let tag = if tool == NativeToolId::Deno {
         format!("v{version}")
@@ -604,6 +651,91 @@ fn valid_asset_name(value: &str) -> bool {
             .all(|byte| byte.is_ascii_alphanumeric() || matches!(byte, b'.' | b'-' | b'_' | b'+'))
 }
 
+pub(crate) fn validate_dynamic_ytdlp_delivery(delivery: &ToolDelivery) -> Result<()> {
+    let (asset, install_path) = match delivery.platform.as_str() {
+        "windows-x86_64" => ("yt-dlp.exe", "bin/yt-dlp.exe"),
+        "linux-x86_64" => ("yt-dlp_linux", "bin/yt-dlp"),
+        "macos-aarch64" | "macos-x86_64" => ("yt-dlp_macos", "bin/yt-dlp"),
+        _ => return Err(NativeToolError::InvalidCatalog),
+    };
+    if delivery.tool != NativeToolId::YtDlp
+        || !valid_ytdlp_version(&delivery.version)
+        || !valid_revision(&delivery.source_revision)
+        || delivery.asset != asset
+        || delivery.format != ArtifactFormat::Raw
+        || delivery.selective_extraction
+        || delivery.size_bytes == 0
+        || delivery.size_bytes > MAX_ARTIFACT_BYTES
+        || !valid_sha256(&delivery.sha256)
+        || !valid_release_url(
+            delivery.tool,
+            &delivery.version,
+            &delivery.asset,
+            &delivery.source_url,
+        )
+        || delivery.files.len() != 1
+        || delivery.notices.len() != 2
+    {
+        return Err(NativeToolError::InvalidCatalog);
+    }
+    let file = &delivery.files[0];
+    if file.source_path != asset
+        || file.install_path != install_path
+        || file.size_bytes != delivery.size_bytes
+        || file.sha256 != delivery.sha256
+        || file.role != Some(ExecutableRole::YtDlp)
+    {
+        return Err(NativeToolError::InvalidCatalog);
+    }
+    let expected_notices = [
+        ("licenses/yt-dlp-LICENSE.txt", "LICENSE"),
+        (
+            "licenses/yt-dlp-THIRD-PARTY.txt",
+            "THIRD_PARTY_LICENSES.txt",
+        ),
+    ];
+    let mut installed_bytes = delivery.size_bytes;
+    for (notice, (install_path, source_path)) in delivery.notices.iter().zip(expected_notices) {
+        if notice.install_path != install_path
+            || notice.size_bytes == 0
+            || notice.size_bytes > 4 * 1024 * 1024
+            || !valid_sha256(&notice.sha256)
+            || !valid_notice_url(
+                NativeToolId::YtDlp,
+                &delivery.source_revision,
+                &notice.source_url,
+            )
+            || !notice.source_url.ends_with(&format!("/{source_path}"))
+        {
+            return Err(NativeToolError::InvalidCatalog);
+        }
+        installed_bytes = installed_bytes
+            .checked_add(notice.size_bytes)
+            .filter(|bytes| *bytes <= MAX_INSTALLED_BYTES)
+            .ok_or(NativeToolError::InvalidCatalog)?;
+    }
+    if installed_bytes != delivery.installed_bytes {
+        return Err(NativeToolError::InvalidCatalog);
+    }
+    Ok(())
+}
+
+pub(crate) fn valid_ytdlp_version(value: &str) -> bool {
+    let pieces = value.split('.').collect::<Vec<_>>();
+    let parsed = pieces
+        .iter()
+        .map(|piece| piece.parse::<u16>().ok())
+        .collect::<Vec<_>>();
+    pieces.len() == 3
+        && pieces[0].len() == 4
+        && pieces[1].len() == 2
+        && pieces[2].len() == 2
+        && parsed.iter().all(Option::is_some)
+        && parsed[0].is_some_and(|year| (2020..=2200).contains(&year))
+        && parsed[1].is_some_and(|month| (1..=12).contains(&month))
+        && parsed[2].is_some_and(|day| (1..=31).contains(&day))
+}
+
 fn valid_date(value: &str) -> bool {
     value.len() == 10
         && value.bytes().enumerate().all(|(index, byte)| {
@@ -635,10 +767,13 @@ mod tests {
     use super::*;
 
     #[test]
-    fn checked_in_catalog_has_two_tools_and_an_honest_ffmpeg_blocker() {
+    fn checked_in_catalog_exposes_only_reviewed_platform_deliveries() {
         let catalog = DeliveryCatalog::builtin().unwrap();
         assert_eq!(catalog.platform(), current_platform());
-        assert!(catalog.releases(NativeToolId::MediaTools).is_empty());
+        assert_eq!(
+            catalog.releases(NativeToolId::MediaTools).len(),
+            usize::from(current_platform() == "windows-x86_64")
+        );
         assert_eq!(catalog.releases(NativeToolId::YtDlp).len(), 1);
         assert_eq!(catalog.releases(NativeToolId::Deno).len(), 1);
     }

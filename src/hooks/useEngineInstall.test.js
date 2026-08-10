@@ -38,6 +38,8 @@ const packageStatus = (activeOperation = null) => ({
   version: '1.0.0',
   availableVersion: '1.0.0',
   installedBytes: 1_024,
+  downloadBytes: 2_048,
+  availableInstalledBytes: 4_096,
   operation: activeOperation,
 });
 
@@ -81,6 +83,17 @@ it('reconnects to a durable native install and maps basis points to legacy perce
   expect(result.current.log).toEqual([]);
   expect(global.fetch).not.toHaveBeenCalled();
   expect(getManagedEnginePackageStatus).toHaveBeenCalledTimes(1);
+  unmount();
+});
+
+it('skips redundant package hashing when a parent inventory owns idle status', async () => {
+  const { result, unmount } = renderHook(() => useEngineInstall('parakeet', {
+    reconnect: false,
+  }));
+  await act(async () => { await Promise.resolve(); });
+
+  expect(result.current.installing).toBe(false);
+  expect(getManagedEnginePackageStatus).not.toHaveBeenCalled();
   unmount();
 });
 
@@ -178,6 +191,20 @@ it('cancels a reconnected native operation by durable UUIDv7 job ID', async () =
 
   await act(async () => { await result.current.cancel(); });
   expect(cancelManagedEnginePackageJob).toHaveBeenCalledWith('parakeet', operation.job.id);
+  unmount();
+});
+
+it('cancels a rendered durable operation before the mount-time status query settles', async () => {
+  let resolveStatus;
+  getManagedEnginePackageStatus.mockImplementationOnce(() => new Promise((resolve) => {
+    resolveStatus = resolve;
+  }));
+  const recoveredJobId = uuidv7();
+  const { result, unmount } = renderHook(() => useEngineInstall('parakeet'));
+
+  await act(async () => { await result.current.cancel(recoveredJobId); });
+  expect(cancelManagedEnginePackageJob).toHaveBeenCalledWith('parakeet', recoveredJobId);
+  await act(async () => { resolveStatus(packageStatus()); });
   unmount();
 });
 

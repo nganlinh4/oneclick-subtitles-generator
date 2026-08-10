@@ -36,7 +36,7 @@ const job = (overrides = {}) => ({
 const catalog = () => ({
   schemaVersion: 1,
   tools: [
-    { id: 'media-tools', label: 'FFmpeg and FFprobe', license: 'GPL-2.0-or-later' },
+    { id: 'media-tools', label: 'FFmpeg and FFprobe', license: 'GPL-3.0-or-later' },
     { id: 'yt-dlp', label: 'yt-dlp', license: 'GPL-3.0-or-later' },
     { id: 'deno', label: 'Deno', license: 'MIT' },
   ],
@@ -53,6 +53,8 @@ const status = () => ({
     version: null,
     availableVersion: id === 'yt-dlp' ? '2026.07.04' : id === 'deno' ? '2.9.5' : null,
     installedBytes: 0,
+    downloadBytes: id === 'media-tools' ? 0 : 1_024,
+    availableInstalledBytes: id === 'media-tools' ? 0 : 2_048,
     activeRuntime: false,
     pendingRemoval: false,
     restartRequired: false,
@@ -143,15 +145,20 @@ it('normalizes strict progress and restart-aware terminal events', () => {
   })).toEqual(expect.objectContaining({ restartRequired: true, deferred: true }));
 });
 
-it('invokes the four user-reachable commands and validates cancellation identity', async () => {
+it('invokes every user-reachable command and validates cancellation identity', async () => {
   const initial = job();
   let installChannel;
+  let removeChannel;
   const invokeCommand = vi.fn(async (command, args) => {
     if (command === 'native_tools_catalog') return catalog();
     if (command === 'native_tools_status') return status();
     if (command === 'native_tool_install') {
       installChannel = args.onEvent;
       return initial;
+    }
+    if (command === 'native_tool_remove') {
+      removeChannel = args.onEvent;
+      return job({ id: uuidv7() });
     }
     if (command === 'native_tool_cancel') {
       return job({ id: args.jobId, state: 'cancelling', sequence: 2 });
@@ -163,6 +170,7 @@ it('invokes the four user-reachable commands and validates cancellation identity
   await nativeTools.getNativeToolsCatalog();
   await nativeTools.getNativeToolsStatus();
   await nativeTools.installNativeTool('yt-dlp');
+  await nativeTools.removeNativeTool('yt-dlp');
   await nativeTools.cancelNativeToolJob(initial.id);
 
   expect(invokeCommand).toHaveBeenNthCalledWith(1, 'native_tools_catalog', {});
@@ -170,7 +178,10 @@ it('invokes the four user-reachable commands and validates cancellation identity
   expect(invokeCommand).toHaveBeenNthCalledWith(3, 'native_tool_install', {
     tool: 'yt-dlp', onEvent: installChannel,
   });
-  expect(invokeCommand).toHaveBeenNthCalledWith(4, 'native_tool_cancel', {
+  expect(invokeCommand).toHaveBeenNthCalledWith(4, 'native_tool_remove', {
+    tool: 'yt-dlp', onEvent: removeChannel,
+  });
+  expect(invokeCommand).toHaveBeenNthCalledWith(5, 'native_tool_cancel', {
     jobId: initial.id,
   });
 });

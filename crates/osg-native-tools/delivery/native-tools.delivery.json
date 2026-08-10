@@ -2,18 +2,18 @@
   "schemaVersion": 1,
   "reviewedAt": "2026-08-10",
   "policy": {
-    "artifactDelivery": "direct-upstream-download-only",
+    "artifactDelivery": "direct-reviewed-source-download-only",
     "bundledArtifacts": false,
     "selfUpdateAllowed": false,
     "releaseState": "partially-available",
-    "reason": "Only exact upstream yt-dlp and Deno releases are installable; FFmpeg remains unavailable until every target has a redistributable, provenance-complete GPL build with accurate notices and corresponding-source delivery."
+    "reason": "Exact upstream yt-dlp and Deno releases are installable on every target; Windows also downloads a fixed vendor-hosted FFmpeg archive while Linux and macOS remain blocked pending equally reviewed deliveries."
   },
   "tools": [
     {
       "id": "media-tools",
       "label": "FFmpeg and FFprobe",
-      "license": "GPL-2.0-or-later",
-      "sourceRevision": null,
+      "license": "GPL-3.0-or-later",
+      "sourceRevision": "38b88335f99e76ed89ff3c93f877fdefce736c13",
       "notices": [],
       "platforms": {
         "linux-x86_64": {
@@ -29,8 +29,51 @@
           "releases": []
         },
         "windows-x86_64": {
-          "blocker": "The reviewed GPL builds are content-addressed and include libx264, but their mutable releases and incomplete corresponding-source sets are not acceptable for OSG redistribution.",
-          "releases": []
+          "blocker": null,
+          "releases": [
+            {
+              "version": "8.1.2",
+              "distributionMode": "direct-reviewed-source-download-only",
+              "artifact": {
+                "asset": "ffmpeg-8.1.2-essentials_build.zip",
+                "format": "zip",
+                "sourceUrl": "https://www.gyan.dev/ffmpeg/builds/packages/ffmpeg-8.1.2-essentials_build.zip",
+                "selectiveExtraction": true,
+                "sizeBytes": 109728040,
+                "sha256": "db580001caa24ac104c8cb856cd113a87b0a443f7bdf47d8c12b1d740584a2ec"
+              },
+              "files": [
+                {
+                  "sourcePath": "ffmpeg-8.1.2-essentials_build/bin/ffmpeg.exe",
+                  "installPath": "bin/ffmpeg.exe",
+                  "sizeBytes": 101897728,
+                  "sha256": "1326dde4c84ff1f96fe6b8916c5bed29e163e9b5dccf995f6f3db069d143ec5e",
+                  "role": "ffmpeg"
+                },
+                {
+                  "sourcePath": "ffmpeg-8.1.2-essentials_build/bin/ffprobe.exe",
+                  "installPath": "bin/ffprobe.exe",
+                  "sizeBytes": 101692928,
+                  "sha256": "b49ccc7c6547b141ad5a2f6ec69cc04323d7133d7704d70b331b904c63eecb07",
+                  "role": "ffprobe"
+                },
+                {
+                  "sourcePath": "ffmpeg-8.1.2-essentials_build/LICENSE",
+                  "installPath": "licenses/FFmpeg-LICENSE.txt",
+                  "sizeBytes": 35147,
+                  "sha256": "8ceb4b9ee5adedde47b31e975c1d90c73ad27b6b165a1dcd80c7c545eb65b903",
+                  "role": null
+                },
+                {
+                  "sourcePath": "ffmpeg-8.1.2-essentials_build/README.txt",
+                  "installPath": "licenses/FFmpeg-BUILD-README.txt",
+                  "sizeBytes": 41440,
+                  "sha256": "9172433fb251059a58d2ff11ba8c6132e04819136ed96e809563911ff0d13816",
+                  "role": null
+                }
+              ]
+            }
+          ]
         }
       }
     },
@@ -59,7 +102,7 @@
           "releases": [
             {
               "version": "2026.07.04",
-              "distributionMode": "direct-upstream-download-only",
+              "distributionMode": "direct-reviewed-source-download-only",
               "artifact": {
                 "asset": "yt-dlp_linux",
                 "format": "raw",
@@ -84,7 +127,7 @@
           "releases": [
             {
               "version": "2026.07.04",
-              "distributionMode": "direct-upstream-download-only",
+              "distributionMode": "direct-reviewed-source-download-only",
               "artifact": {
                 "asset": "yt-dlp_macos",
                 "format": "raw",
@@ -109,7 +152,7 @@
           "releases": [
             {
               "version": "2026.07.04",
-              "distributionMode": "direct-upstream-download-only",
+              "distributionMode": "direct-reviewed-source-download-only",
               "artifact": {
                 "asset": "yt-dlp_macos",
                 "format": "raw",
@@ -134,7 +177,7 @@
           "releases": [
             {
               "version": "2026.07.04",
-              "distributionMode": "direct-upstream-download-only",
+              "distributionMode": "direct-reviewed-source-download-only",
               "artifact": {
                 "asset": "yt-dlp.exe",
                 "format": "raw",
@@ -175,7 +218,7 @@
           "releases": [
             {
               "version": "2.9.5",
-              "distributionMode": "direct-upstream-download-only",
+              "distributionMode": "direct-reviewed-source-download-only",
               "artifact": {
                 "asset": "deno-x86_64-unknown-linux-gnu.zip",
                 "format": "zip",
@@ -200,7 +243,7 @@
           "releases": [
             {
               "version": "2.9.5",
-              "distributionMode": "direct-upstream-download-only",
+              "distributionMode": "direct-reviewed-source-download-only",
               "artifact": {
                 "asset": "deno-aarch64-apple-darwin.zip",
                 "format": "zip",
@@ -225,7 +268,7 @@
           "releases": [
             {
               "version": "2.9.5",
-              "distributionMode": "direct-upstream-download-only",
+              "distributionMode": "direct-reviewed-source-download-only",
               "artifact": {
                 "asset": "deno-x86_64-apple-darwin.zip",
                 "format": "zip",
@@ -250,7 +293,7 @@
           "releases": [
             {
               "version": "2.9.5",
-              "distributionMode": "direct-upstream-download-only",
+              "distributionMode": "direct-reviewed-source-download-only",
               "artifact": {
                 "asset": "deno-x86_64-pc-windows-msvc.zip",
                 "format": "zip",

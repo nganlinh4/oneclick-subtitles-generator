@@ -61,6 +61,7 @@ const COMMANDS: &[&str] = &[
     "native_tools_catalog",
     "native_tools_status",
     "native_tool_install",
+    "native_tool_remove",
     "native_tool_cancel",
     "media_pipeline_inspect",
     "media_pipeline_start",

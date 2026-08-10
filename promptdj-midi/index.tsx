@@ -254,12 +254,9 @@ function main() {
     }
     if (data.type === 'pm-dj-set-font' && typeof data.font === 'string') {
       const root = document.documentElement;
-      let primary = `"Google Sans", "Open Sans", sans-serif`;
-      let title = `"Google Sans", "Be Vietnam Pro", sans-serif`;
-      if (data.font === 'product-sans') {
-        primary = `"Product Sans", system-ui, -apple-system, Segoe UI, Roboto, sans-serif`;
-        title = primary;
-      } else if (data.font === 'system-ui') {
+      let primary = `system-ui, -apple-system, Segoe UI, Roboto, Helvetica, Arial, sans-serif`;
+      let title = primary;
+      if (data.font === 'system-ui') {
         primary = `system-ui, -apple-system, Segoe UI, Roboto, Helvetica, Arial, sans-serif`;
         title = primary;
       } else if (data.font === 'noto-sans') {

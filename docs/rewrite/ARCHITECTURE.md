@@ -19,19 +19,29 @@ with trust boundaries in [../../SECURITY.md](../../SECURITY.md).
   release until its target-specific tools, models, notices, updater key, packaging, and runtime
   smoke tests all pass.
 
-At this checkpoint the FFmpeg/ffprobe, ASR, speech, and Remotion release lists are deliberately
-empty. yt-dlp and Deno have reviewed direct-upstream deliveries, but are not bundled. The updater
+At this checkpoint ASR, speech, and Remotion release lists are deliberately empty. yt-dlp and Deno
+have reviewed direct-upstream deliveries on all targets, while Windows x64 also has one reviewed
+direct vendor FFmpeg/ffprobe delivery; none are bundled. The updater
 public key is a placeholder, macOS/Linux still need real-device validation, and the repository
 owner has not yet selected the root project license or approved the third-party-notice and
 corresponding-source policy (`THIRD_PARTY_NOTICES.md` is absent). These are release blockers, not
 reasons to reintroduce a legacy service or bypass a readiness gate.
 
 The existing URL-inspection interaction is the only automatic entry into native-tool delivery. It
-checks typed status, asks the user to approve the exact yt-dlp/Deno package-and-license batch,
+checks typed status, asks the user to approve the exact required package-and-license batch,
 reports bounded progress in the existing toast panel, and exposes cancellation. It never runs at
 startup. Because download runtimes and their executable leases are constructed at Tauri startup,
 a successful install stops with an explicit restart requirement rather than retrying in stale
-state. The same preflight refuses to offer FFmpeg/ffprobe while that delivery catalog is empty.
+state. It offers FFmpeg/ffprobe only on a target with a reviewed catalog release.
+
+An installed yt-dlp process failure is the one post-startup exception: it starts a coalesced,
+throttled check of the official stable release. The release must be marked immutable and its
+GitHub asset digest, exact tag commit, license, and third-party notices must validate. A newer
+version is staged and published beside the leased version, then remains restart-pending. The host
+does not call `yt-dlp -U`, overwrite a running executable, or automatically repeat the failed URL
+operation. Rust caches the lookup for 30 minutes across WebView reloads, retains two verified
+dynamic generations, retires older exact trees only before leases are issued, and quarantines
+modified generations before repair.
 
 Speech packaging also remains blocked on transitive dependency/notices, offline and per-target
 proof, provider-terms review, and a decision about the `CC-BY-NC-4.0` F5TTS v1 base weights. Those

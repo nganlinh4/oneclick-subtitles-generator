@@ -19,7 +19,7 @@ export const NATIVE_TOOL_PHASES = Object.freeze([
 ]);
 
 const EXPECTED_LICENSES = Object.freeze({
-  'media-tools': 'GPL-2.0-or-later',
+  'media-tools': 'GPL-3.0-or-later',
   'yt-dlp': 'GPL-3.0-or-later',
   deno: 'MIT',
 });
@@ -45,6 +45,8 @@ const statusEntryKeys = new Set([
   'version',
   'availableVersion',
   'installedBytes',
+  'downloadBytes',
+  'availableInstalledBytes',
   'activeRuntime',
   'pendingRemoval',
   'restartRequired',
@@ -243,6 +245,8 @@ export const normalizeNativeToolsStatus = (value) => {
         || typeof entry.installed !== 'boolean'
         || !toolStates.has(entry.state)
         || !isSafeInteger(entry.installedBytes)
+        || !isSafeInteger(entry.downloadBytes)
+        || !isSafeInteger(entry.availableInstalledBytes)
         || typeof entry.activeRuntime !== 'boolean'
         || typeof entry.pendingRemoval !== 'boolean'
         || typeof entry.restartRequired !== 'boolean') {
@@ -259,15 +263,16 @@ export const normalizeNativeToolsStatus = (value) => {
           : entry.deliveryAvailable && !entry.installed && availableVersion !== null;
     if (!validState
         || (!entry.installed && (version !== null || entry.installedBytes !== 0))
+        || (entry.deliveryAvailable !== (
+          entry.downloadBytes > 0 && entry.availableInstalledBytes > 0
+        ))
         || (entry.activeRuntime && !entry.installed)
         || (entry.pendingRemoval
           && (!entry.restartRequired
             || (!entry.activeRuntime && entry.state !== 'corrupt')))
         || (entry.restartRequired
           && !entry.installed
-          && !(entry.pendingRemoval && entry.state === 'corrupt'))
-        || (entry.id === 'media-tools'
-          && (entry.activeRuntime || entry.pendingRemoval || entry.restartRequired))) {
+          && !(entry.pendingRemoval && entry.state === 'corrupt'))) {
       throw invalidResponse();
     }
     const operation = entry.operation === null
@@ -282,6 +287,8 @@ export const normalizeNativeToolsStatus = (value) => {
       version,
       availableVersion,
       installedBytes: entry.installedBytes,
+      downloadBytes: entry.downloadBytes,
+      availableInstalledBytes: entry.availableInstalledBytes,
       activeRuntime: entry.activeRuntime,
       pendingRemoval: entry.pendingRemoval,
       restartRequired: entry.restartRequired,
@@ -535,6 +542,9 @@ export const createNativeToolsService = ({
     installNativeTool: (tool, handlers, options) => startOperation(
       'native_tool_install', 'install', tool, handlers, options
     ),
+    removeNativeTool: (tool, handlers, options) => startOperation(
+      'native_tool_remove', 'remove', tool, handlers, options
+    ),
     cancelNativeToolJob,
   });
 };
@@ -544,4 +554,5 @@ const nativeToolsService = createNativeToolsService();
 export const getNativeToolsCatalog = nativeToolsService.getNativeToolsCatalog;
 export const getNativeToolsStatus = nativeToolsService.getNativeToolsStatus;
 export const installNativeTool = nativeToolsService.installNativeTool;
+export const removeNativeTool = nativeToolsService.removeNativeTool;
 export const cancelNativeToolJob = nativeToolsService.cancelNativeToolJob;

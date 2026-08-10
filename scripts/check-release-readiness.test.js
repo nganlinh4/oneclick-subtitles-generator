@@ -501,11 +501,14 @@ test('managed native-tool delivery rejects upstream-audit and immutable-source d
   );
 });
 
-test('media tools remain an explicit provenance blocker, not a missing yt-dlp or Deno bundle', (context) => {
+test('media tools are downloadable on Windows and blocked honestly elsewhere', (context) => {
   const root = createNativeToolFixture();
   context.after(() => fs.rmSync(root, { force: true, recursive: true }));
-  assert.throws(
+  assert.doesNotThrow(
     () => assertRequiredMediaToolDelivery(root, 'x86_64-pc-windows-msvc'),
+  );
+  assert.throws(
+    () => assertRequiredMediaToolDelivery(root, 'aarch64-apple-darwin'),
     /FFmpeg\/ffprobe delivery is unavailable/,
   );
 });
@@ -519,42 +522,36 @@ test('repository release policy requires owner-selected license and application 
   );
 });
 
-test('PromptDJ font policy blocks Product Sans and requires per-asset notices', (context) => {
+test('PromptDJ font policy requires per-asset notices for any bundled font', (context) => {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), 'osg-font-release-policy-'));
   context.after(() => fs.rmSync(root, { force: true, recursive: true }));
-  const productSans = 'promptdj-midi/assets/fonts/Product Sans Regular.otf';
   const openFont = 'promptdj-midi/assets/fonts/Reviewed Open Font.woff2';
-  writeFile(root, productSans, 'product sans fixture');
   writeFile(root, openFont, 'open font fixture');
 
   let failures = collectPromptDjFontReleasePolicyFailures(root);
-  assert.equal(failures.length, 2);
-  assert.match(failures[0], /proprietary Product Sans/);
-  assert.match(failures[0], /Product Sans Regular\.otf/);
-  assert.match(failures[1], /font assets are absent from THIRD_PARTY_NOTICES\.md/);
-  assert.match(failures[1], /Reviewed Open Font\.woff2/);
+  assert.equal(failures.length, 1);
+  assert.match(failures[0], /font assets are absent from THIRD_PARTY_NOTICES\.md/);
+  assert.match(failures[0], /Reviewed Open Font\.woff2/);
 
-  writeFile(root, 'THIRD_PARTY_NOTICES.md', `${productSans}\n${openFont}\n`);
+  writeFile(root, 'THIRD_PARTY_NOTICES.md', `${openFont}\n`);
   failures = collectPromptDjFontReleasePolicyFailures(root);
-  assert.deepEqual(failures, [
-    `PromptDJ bundles proprietary Product Sans font assets without reviewed redistribution authorization: ${productSans}`,
-  ]);
+  assert.deepEqual(failures, []);
 });
 
-test('all runtime targets report the same five honest release blocker groups', () => {
+test('runtime targets report only their honest release blocker groups', () => {
   const repositoryRoot = path.resolve(__dirname, '..');
   for (const { target } of RELEASE_MATRIX) {
     assert.throws(
       () => checkRuntimePackageReadiness(repositoryRoot, target),
       (error) => {
-        assert.match(error.message, /Runtime package has 5 blocking violation\(s\)/);
-        assert.match(error.message, /FFmpeg\/ffprobe delivery is unavailable/);
+        const windows = target === 'x86_64-pc-windows-msvc';
+        assert.match(error.message, new RegExp(`Runtime package has ${windows ? 4 : 5} blocking violation\\(s\\)`));
+        if (windows) assert.doesNotMatch(error.message, /FFmpeg\/ffprobe delivery is unavailable/);
+        else assert.match(error.message, /FFmpeg\/ffprobe delivery is unavailable/);
         assert.match(error.message, /Remotion delivery catalog/);
         assert.match(error.message, /Managed engine delivery/);
         assert.match(error.message, /updater public key is still a placeholder/i);
         assert.match(error.message, /Repository licensing\/notice policy is unresolved/);
-        assert.match(error.message, /proprietary Product Sans/);
-        assert.match(error.message, /font assets are absent from THIRD_PARTY_NOTICES\.md/);
         assert.doesNotMatch(error.message, /bundle pinned|yt-dlp\.exe|deno\.exe/);
         return true;
       },

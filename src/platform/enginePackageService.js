@@ -58,6 +58,8 @@ const engineKeys = new Set([
   'version',
   'availableVersion',
   'installedBytes',
+  'downloadBytes',
+  'availableInstalledBytes',
   'operation',
 ]);
 const operationKeys = new Set([
@@ -279,6 +281,8 @@ export const normalizeEnginePackagesStatus = (value) => {
     const version = normalizeVersion(entry.version);
     const availableVersion = normalizeVersion(entry.availableVersion);
     const installedBytes = requireSafeInteger(entry.installedBytes);
+    const downloadBytes = requireSafeInteger(entry.downloadBytes);
+    const availableInstalledBytes = requireSafeInteger(entry.availableInstalledBytes);
     const stateInvariantHolds = entry.state === 'unavailable'
       ? !entry.deliveryAvailable && !entry.updateAvailable
       : entry.state === 'missing'
@@ -290,6 +294,7 @@ export const normalizeEnginePackagesStatus = (value) => {
             : !entry.updateAvailable;
     if (!stateInvariantHolds
         || (!entry.installed && (version !== null || installedBytes !== 0))
+        || (entry.deliveryAvailable !== (downloadBytes > 0 && availableInstalledBytes > 0))
         || (entry.updateAvailable && availableVersion === null)) {
       throw invalidResponse();
     }
@@ -306,6 +311,8 @@ export const normalizeEnginePackagesStatus = (value) => {
       version,
       availableVersion,
       installedBytes,
+      downloadBytes,
+      availableInstalledBytes,
       operation,
     }));
   });

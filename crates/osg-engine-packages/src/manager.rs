@@ -64,6 +64,8 @@ pub struct PackageStatus<K> {
     pub version: Option<String>,
     pub available_version: Option<String>,
     pub installed_bytes: u64,
+    pub download_bytes: u64,
+    pub available_installed_bytes: u64,
 }
 
 pub type EnginePackageStatus = PackageStatus<EngineId>;
@@ -338,6 +340,8 @@ where
                 version: None,
                 available_version: None,
                 installed_bytes: 0,
+                download_bytes: 0,
+                available_installed_bytes: 0,
             };
         }
 
@@ -397,6 +401,8 @@ where
             version,
             available_version: Some(current.version.clone()),
             installed_bytes,
+            download_bytes: current.size_bytes,
+            available_installed_bytes: current.unpacked_size_bytes,
         }
     }
 

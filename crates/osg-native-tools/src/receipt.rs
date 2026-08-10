@@ -139,8 +139,8 @@ fn expected_files(delivery: &ToolDelivery) -> Vec<ReceiptFile> {
             path: file.install_path.clone(),
             size_bytes: file.size_bytes,
             sha256: file.sha256.clone(),
-            executable: true,
-            role: Some(file.role),
+            executable: file.role.is_some(),
+            role: file.role,
         })
         .chain(delivery.notices.iter().map(|notice| ReceiptFile {
             path: notice.install_path.clone(),

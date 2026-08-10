@@ -7,9 +7,24 @@
   ],
   "ffmpeg": {
     "requiredEncoder": "libx264",
-    "effectiveLicenseFloor": "GPL-2.0-or-later",
-    "deliveryEnabled": false,
-    "reason": "OSG explicitly invokes libx264. No reviewed four-target binary set has immutable, reproducible provenance plus complete corresponding source and accurate notices; one reviewed macOS arm64 binary is explicitly nonfree and unredistributable.",
+    "effectiveLicenseFloor": "GPL-3.0-or-later",
+    "deliveryPolicy": "external-site-first",
+    "deliveryEnabledPlatforms": ["windows-x86_64"],
+    "reason": "OSG invokes libx264. Windows downloads the fixed Gyan vendor archive directly; Linux and macOS remain disabled until equally reviewed external artifacts or provenance-complete mirror bundles exist.",
+    "approvedDirectDownloads": {
+      "windows-x86_64": {
+        "producer": "Gyan FFmpeg Builds",
+        "version": "8.1.2",
+        "sourceRevision": "38b88335f99e76ed89ff3c93f877fdefce736c13",
+        "sourceUrl": "https://www.gyan.dev/ffmpeg/builds/packages/ffmpeg-8.1.2-essentials_build.zip",
+        "sizeBytes": 109728040,
+        "sha256": "db580001caa24ac104c8cb856cd113a87b0a443f7bdf47d8c12b1d740584a2ec",
+        "publishedSha256": "db580001caa24ac104c8cb856cd113a87b0a443f7bdf47d8c12b1d740584a2ec",
+        "license": "GPL-3.0-or-later",
+        "libx264": true,
+        "nonfree": false
+      }
+    },
     "officialSource": {
       "version": "9.0",
       "sourceUrl": "https://ffmpeg.org/releases/ffmpeg-9.0.tar.xz",

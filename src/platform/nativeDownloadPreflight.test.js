@@ -5,6 +5,8 @@ import { v7 as uuidv7 } from 'uuid';
 import {
   NativeDownloadPreflightError,
   createNativeDownloadPreflight,
+  recoverNativeDownloaderAfterFailure,
+  resetNativeDownloaderRecoveryForTest,
 } from './nativeDownloadPreflight';
 
 vi.mock('@tauri-apps/api/core', () => ({
@@ -16,7 +18,7 @@ vi.mock('@tauri-apps/api/core', () => ({
 const catalog = () => ({
   schemaVersion: 1,
   tools: [
-    { id: 'media-tools', label: 'FFmpeg and FFprobe', license: 'GPL-2.0-or-later' },
+    { id: 'media-tools', label: 'FFmpeg and FFprobe', license: 'GPL-3.0-or-later' },
     { id: 'yt-dlp', label: 'yt-dlp', license: 'GPL-3.0-or-later' },
     { id: 'deno', label: 'Deno', license: 'MIT' },
   ],
@@ -41,7 +43,7 @@ const statusEntry = (id, overrides = {}) => ({
 const status = (overrides = {}) => ({
   schemaVersion: 1,
   tools: [
-    statusEntry('media-tools'),
+    statusEntry('media-tools', overrides['media-tools']),
     statusEntry('yt-dlp', overrides['yt-dlp']),
     statusEntry('deno', overrides.deno),
   ],
@@ -89,6 +91,8 @@ const service = (overrides = {}) => createNativeDownloadPreflight({
   t: translate,
   ...overrides,
 });
+
+beforeEach(() => resetNativeDownloaderRecoveryForTest());
 
 it('is production-reachable only through typed download preflights and has no network or storage authority', () => {
   const source = fs.readFileSync(path.join(__dirname, 'nativeDownloadPreflight.js'), 'utf8');
@@ -257,7 +261,7 @@ it('fails closed for inactive, corrupt, busy, unhealthy, and unavailable runtime
   }
 });
 
-it('reports the withheld media-tool delivery without offering or starting an install', async () => {
+it('reports a platform without media-tool delivery without starting an install', async () => {
   const ui = presentation();
   const install = vi.fn();
   const preflight = service({ install, presentation: ui });
@@ -266,10 +270,38 @@ it('reports the withheld media-tool delivery without offering or starting an ins
     available: false,
     inspectAvailable: true,
     reason: 'mediaToolsUnavailable',
-  })).rejects.toMatchObject({ code: 'nativeMediaToolsUnavailable' });
+  })).rejects.toMatchObject({ code: 'nativeToolUnavailable' });
   expect(ui.confirm).not.toHaveBeenCalled();
   expect(install).not.toHaveBeenCalled();
   expect(ui.notify).toHaveBeenCalledWith(expect.objectContaining({ type: 'error' }));
+});
+
+it('offers the reviewed media-tool download only when the current platform catalog provides it', async () => {
+  const ui = presentation();
+  const install = vi.fn(async (tool, handlers) => {
+    const job = runningJob();
+    queueMicrotask(() => handlers.onCompleted(completedEvent(tool, job.id)));
+    return job;
+  });
+  const preflight = service({
+    install,
+    presentation: ui,
+    readStatus: vi.fn(async () => status({
+      'media-tools': {
+        deliveryAvailable: true,
+        state: 'missing',
+        availableVersion: '8.1.2',
+      },
+    })),
+  });
+
+  await expect(preflight.ensureDownloadReady({
+    available: false,
+    inspectAvailable: true,
+    reason: 'mediaToolsUnavailable',
+  })).rejects.toMatchObject({ code: 'nativeToolRestartRequired' });
+  expect(ui.confirm).toHaveBeenCalledOnce();
+  expect(install).toHaveBeenCalledWith('media-tools', expect.any(Object), expect.any(Object));
 });
 
 it('rejects invalid options and a hostile completion that claims immediate activation', async () => {
@@ -287,4 +319,75 @@ it('rejects invalid options and a hostile completion that claims immediate activ
   const hostile = service({ install });
   await expect(hostile.ensureInspectionReady({ inspectAvailable: false }))
     .rejects.toMatchObject({ code: 'nativeToolInstallFailed' });
+});
+
+it('updates an installed yt-dlp after an execution failure without another consent prompt', async () => {
+  const ui = presentation();
+  const install = vi.fn(async (tool, handlers) => {
+    const job = runningJob();
+    queueMicrotask(() => {
+      handlers.onProgress({ operation: { basisPoints: 5_000 } });
+      handlers.onCompleted(completedEvent(tool, job.id));
+    });
+    return job;
+  });
+  const installedStatus = status({
+    'yt-dlp': {
+      installed: true,
+      state: 'installed',
+      version: '2026.07.04',
+      installedBytes: 10,
+      activeRuntime: true,
+    },
+  });
+
+  await expect(recoverNativeDownloaderAfterFailure({
+    readCatalog: vi.fn(async () => catalog()),
+    readStatus: vi.fn(async () => installedStatus),
+    install,
+    presentation: ui,
+    t: translate,
+    now: () => 1_000_000,
+  })).resolves.toEqual({ updated: true, throttled: false });
+
+  expect(ui.confirm).not.toHaveBeenCalled();
+  expect(install).toHaveBeenCalledWith('yt-dlp', expect.any(Object), expect.any(Object));
+  expect(ui.notify).toHaveBeenLastCalledWith(expect.objectContaining({
+    message: 'download.nativeTools.restartRequired',
+    type: 'warning',
+  }));
+});
+
+it('coalesces and throttles repeated automatic recovery checks', async () => {
+  const installedStatus = status({
+    'yt-dlp': {
+      installed: true,
+      state: 'installed',
+      version: '2026.07.04',
+      installedBytes: 10,
+      activeRuntime: true,
+    },
+  });
+  const install = vi.fn(async (tool, handlers) => {
+    const job = runningJob();
+    queueMicrotask(() => handlers.onCompleted(completedEvent(tool, job.id, {
+      restartRequired: false,
+    })));
+    return job;
+  });
+  const options = {
+    readCatalog: vi.fn(async () => catalog()),
+    readStatus: vi.fn(async () => installedStatus),
+    install,
+    presentation: presentation(),
+    t: translate,
+    now: () => 2_000_000,
+  };
+  const first = recoverNativeDownloaderAfterFailure(options);
+  const second = recoverNativeDownloaderAfterFailure(options);
+  await expect(first).resolves.toEqual({ updated: false, throttled: false });
+  await expect(second).resolves.toEqual({ updated: false, throttled: false });
+  await expect(recoverNativeDownloaderAfterFailure(options))
+    .resolves.toEqual({ updated: false, throttled: true });
+  expect(install).toHaveBeenCalledTimes(1);
 });

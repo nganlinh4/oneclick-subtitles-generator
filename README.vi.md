@@ -117,9 +117,9 @@ Ba target còn lại trong matrix là `x86_64-unknown-linux-gnu`, `aarch64-apple
 
 | Runtime | Trạng thái phân phối |
 | --- | --- |
-| yt-dlp | Catalog có release direct-upstream `2026.07.04`, content-addressed đã review cho bốn nhóm target. Lần kiểm tra URL đầu tiên do người dùng chủ động sẽ xin xác nhận, hiển thị tiến trình cài có thể hủy và yêu cầu khởi động lại trước khi kích hoạt; binary không được bundle hay tải lúc khởi động. |
+| yt-dlp | Release direct `2026.07.04` đã review là baseline cho bốn nhóm target. Lần kiểm tra URL đầu tiên sẽ xin xác nhận và cài với tiến trình có thể hủy. Nếu tiến trình yt-dlp đã cài bị lỗi, host chỉ thực hiện một lần kiểm tra release immutable có giới hạn; phiên bản mới được xác minh sẽ được cài song song với binary đang có lease và chỉ kích hoạt sau khi khởi động lại. Ứng dụng không chạy `yt-dlp -U`, không ghi đè binary đang chạy và không tự lặp lại thao tác media đã lỗi. |
 | Deno | Catalog có release direct-upstream `2.9.5`, content-addressed đã review cho bốn nhóm target. Preflight kiểm tra URL dùng cùng bước xác nhận, tiến trình có thể hủy và dừng để yêu cầu khởi động lại trước khi kích hoạt; binary không được bundle hay tải lúc khởi động. |
-| FFmpeg / ffprobe | Chưa phát hành cho đến khi có build GPL đầy đủ provenance, corresponding source và notice cho mọi target. |
+| FFmpeg / ffprobe | Windows x64 tải trực tiếp archive vendor `8.1.2` đã khóa hash, chỉ cài hai executable cùng license/build notice và yêu cầu khởi động lại. Linux/macOS vẫn fail-closed cho đến khi có delivery tương đương đã review. |
 | Parakeet / Faster-Whisper / Qwen3-ASR | Catalog chưa có package release được review. |
 | F5-TTS / Chatterbox / Edge TTS / gTTS / Gemini TTS worker | Catalog chưa có package release được review. |
 | Remotion runtime | Catalog chưa có payload Node/Chromium/Remotion/native binary/font/notice được review. |
@@ -141,12 +141,12 @@ offline và theo từng nền tảng, cùng review điều khoản provider. Mod
 hoặc policy sản phẩm và acceptance flow được chủ repo phê duyệt rõ ràng.
 
 Capability `manage-native-tools` chỉ công khai command typed cho
-catalog/status/install/remove/cancel; path executable và URL upstream vẫn ở native. OSG sẽ báo khi
+catalog/status/install/cancel; path executable và URL upstream vẫn ở native. OSG sẽ báo khi
 activation hoặc deferred removal phải chờ restart vì consumer đang giữ tool lease. Flow người dùng
 hiện tại gọi catalog/status/install/cancel từ thao tác media có sẵn; chưa có thao tác gỡ tool. Một
-lần xác nhận duy nhất nêu rõ đúng package yt-dlp/Deno và license trước khi tải. Tiến trình cài dùng
+lần xác nhận duy nhất nêu rõ đúng package cần thiết và license trước khi tải. Tiến trình cài dùng
 toast hiện có với nút hủy rõ ràng; sau khi cài xong, flow không thử lại trên runtime cũ mà yêu cầu
-khởi động lại. FFmpeg/ffprobe vẫn unavailable và preflight này không bao giờ đề nghị cài chúng.
+khởi động lại. FFmpeg/ffprobe chỉ được đề nghị trên Windows x64 từ catalog đã review.
 
 Build debug có thể tìm tool trong source tree hoặc hệ thống đã được cho phép rõ ràng. Build release
 không phụ thuộc vào `PATH` hay bản cài cục bộ tùy ý.

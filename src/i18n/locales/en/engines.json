@@ -1,9 +1,12 @@
 {
-  "intro": "Voice-cloning and local transcription engines install on demand — a one-time ~3 GB GPU download per engine. Install only what you need.",
+  "intro": "Packages install outside the app. Availability, active version, disk use, and restart state are shown exactly.",
   "download": "Download",
+  "update": "Update",
+  "repair": "Repair",
   "start": "Start",
   "stop": "Stop",
   "included": "Included",
+  "checking": "Checking…",
   "installing": "Installing…",
   "starting": "Starting…",
   "stopping": "Stopping…",
@@ -13,12 +16,26 @@
   "uninstallAll": "Uninstall all",
   "confirmUninstall": "Uninstall?",
   "confirmUninstallAll": "Uninstall all engines?",
+  "notPublished": "Not published",
+  "restartToRemove": "Restart to remove",
+  "availableCount": "{{available}} available · {{installed}} installed",
+  "installedCount": "{{installed}} installed",
+  "downloadSize": "{{size}} download",
+  "diskSize": "{{size}} disk",
   "electronManaged": "The desktop app includes these engines. Downloads are managed by the app package.",
+  "groups": {
+    "localAi": "Local AI engines",
+    "localAiDetail": "Voice cloning and transcription",
+    "runtime": "Runtime tools",
+    "runtimeDetail": "Downloaded outside the app"
+  },
   "error": {
     "installFailed": "Install failed to start",
     "startFailed": "Engine failed to start",
     "stopFailed": "Engine failed to stop",
-    "uninstallFailed": "Uninstall failed"
+    "uninstallFailed": "Uninstall failed",
+    "nativeToolProtocol": "The desktop host returned invalid tool progress.",
+    "nativeToolFailed": "The tool operation could not start."
   },
   "kind": {
     "voice-cloning": "Voice cloning",
@@ -28,6 +45,29 @@
     "not-installed": "Not installed",
     "installed-stopped": "Installed",
     "included": "Included",
-    "ready": "Running"
+    "ready": "Running",
+    "checking": "Checking package",
+    "unavailable": "No reviewed release",
+    "corrupt": "Integrity check failed",
+    "update-available": "Update available"
+  },
+  "nativeKind": {
+    "media": "Media processing",
+    "downloader": "Site downloader",
+    "javascript": "JavaScript runtime"
+  },
+  "nativeSource": {
+    "vendor": "Reviewed vendor",
+    "official": "Official release"
+  },
+  "nativeState": {
+    "unavailable": "No reviewed release for this platform",
+    "missing": "Available to download",
+    "installed": "Installed and active",
+    "corrupt": "Integrity check failed",
+    "installing": "Installing",
+    "removing": "Removing",
+    "pending-removal": "Removal scheduled",
+    "restart-required": "Restart required"
   }
 }

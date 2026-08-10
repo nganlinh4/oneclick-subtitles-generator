@@ -4,6 +4,7 @@ const mocks = vi.hoisted(() => ({
   invoke: vi.fn(),
   ensureInspection: vi.fn(),
   ensureDownload: vi.fn(),
+  recoverDownloader: vi.fn(),
 }));
 
 vi.mock('@tauri-apps/api/core', () => ({
@@ -15,6 +16,7 @@ vi.mock('@tauri-apps/api/core', () => ({
 vi.mock('./nativeDownloadPreflight', () => ({
   ensureNativeDownloadInspectionReady: mocks.ensureInspection,
   ensureNativeDownloadReady: mocks.ensureDownload,
+  recoverNativeDownloaderAfterFailure: mocks.recoverDownloader,
 }));
 
 import {
@@ -61,6 +63,7 @@ beforeEach(() => {
   mocks.invoke.mockReset();
   mocks.ensureInspection.mockReset().mockResolvedValue({ ready: true });
   mocks.ensureDownload.mockReset().mockResolvedValue({ ready: true });
+  mocks.recoverDownloader.mockReset().mockResolvedValue({ updated: false, throttled: false });
 });
 
 afterEach(() => {
@@ -104,4 +107,25 @@ it('does not start a download when the typed readiness preflight rejects', async
   })).rejects.toBe(blocked);
   expect(mocks.invoke).toHaveBeenCalledTimes(1);
   expect(mocks.invoke).toHaveBeenCalledWith('download_status', {});
+});
+
+it('starts the bounded yt-dlp recovery check only for a native execution failure', async () => {
+  mocks.invoke
+    .mockResolvedValueOnce(readiness())
+    .mockRejectedValueOnce({ code: 'downloaderExecutionFailed', message: 'private stderr' });
+
+  await expect(inspectDownloadUrl({
+    url: 'https://youtube.com/watch?v=example',
+    cookieSource: 'none',
+  })).rejects.toMatchObject({ code: 'downloaderExecutionFailed' });
+  await vi.waitFor(() => expect(mocks.recoverDownloader).toHaveBeenCalledOnce());
+
+  mocks.invoke
+    .mockResolvedValueOnce(readiness())
+    .mockRejectedValueOnce({ code: 'invalidInput', message: 'bad URL' });
+  await expect(inspectDownloadUrl({
+    url: 'https://youtube.com/watch?v=another',
+    cookieSource: 'none',
+  })).rejects.toMatchObject({ code: 'invalidInput' });
+  expect(mocks.recoverDownloader).toHaveBeenCalledOnce();
 });

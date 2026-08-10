@@ -56,6 +56,8 @@ const statusPayload = () => ({
     version: index === 0 ? '1.0.0' : null,
     availableVersion: '1.1.0',
     installedBytes: index === 0 ? 1_024 : 0,
+    downloadBytes: 2_048,
+    availableInstalledBytes: 4_096,
     operation: null,
   })),
 });

@@ -6,19 +6,18 @@ import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 export const FROZEN_CSS_ARTIFACT = Object.freeze({
-  fileName: 'index-C8MtrQpn.css',
-  sha256: 'd2492265468896f3cb54cd56996abbb432ebd91d9d2d904fa4179504ff010ea6',
-  sizeBytes: 680_990,
+  fileName: 'index-DL2A0zh3.css',
+  sha256: '3de33f4b2007a0771245eadb9dcbb71165bbbeef7cf1ff7eabb8a6d6fad97381',
+  sizeBytes: 680_364,
   parity: Object.freeze({
     albumArtCount: 22,
     customSliderCount: 45,
     floatingScrollbarCount: 19,
-    fontFaceCount: 5,
+    fontFaceCount: 1,
     googleSansFlexCount: 1,
     liquidGlassCount: 50,
     materialDefinitionCount: 151,
     materialUnresolvedCount: 47,
-    productSansCount: 4,
   }),
 });
 
@@ -53,7 +52,6 @@ export function inspectFrozenCssParity(contents) {
     liquidGlassCount: countMatches(source, /\.liquid-glass/g),
     materialDefinitionCount: materialDefinitions.size,
     materialUnresolvedCount: materialUnresolved.size,
-    productSansCount: countMatches(source, /Product Sans/g),
   });
 }
 

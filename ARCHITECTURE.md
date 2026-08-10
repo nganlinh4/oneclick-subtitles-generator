@@ -116,11 +116,19 @@ At the current rewrite checkpoint:
 - Speech/TTS releases are withheld for all targets.
 - Remotion's Node/Chromium/renderer/native-binary/font/notice runtime releases are withheld for
   all targets.
-- FFmpeg/ffprobe releases are withheld pending provenance-complete, license-compliant delivery.
+- Windows x64 downloads the exact reviewed FFmpeg/ffprobe `8.1.2` vendor archive on demand. Linux
+  and macOS remain withheld pending equivalent reviewed delivery.
 - Reviewed yt-dlp `2026.07.04` and Deno `2.9.5` releases are catalogued for content-addressed,
   direct-upstream, on-demand delivery; they are never bundled in the application. A user-initiated
   URL inspection performs the status check, requests explicit batch consent, and exposes bounded
   progress plus cancellation through the existing toast surface. No startup task downloads tools.
+- A genuine yt-dlp process failure starts one coalesced, throttled official-release check. Only a
+  stable release marked immutable is eligible; GitHub's asset digest and notices from the exact tag
+  commit become the new receipt. The new version is published beside the leased version and becomes
+  active only after restart. Invalid input, cancellation, timeout, and generic network failures do
+  not trigger this path, and the failed media operation is never automatically retried. The native
+  host caches checks for 30 minutes, retains two verified rollback generations, and quarantines
+  damaged generations before repair.
 - The updater's check-only command is structurally wired but remains disabled until the owner
   supplies a real signing public key and securely manages the corresponding private key. Update
   installation is not part of the current command surface.
@@ -139,17 +147,16 @@ or a deferred removal may correctly require an application restart. Download run
 their executable paths during Tauri startup; therefore the preflight treats a completed install as
 restart-required and never claims immediate activation. The existing media flow reaches
 catalog/status/install/cancel. Native removal remains an internal manager lifecycle used for
-verified cleanup and tests; it is not exposed to the WebView. Download start also fails closed when
-the deliberately empty FFmpeg/ffprobe catalog is the remaining dependency.
+verified cleanup and tests; it is not exposed to the WebView. Download start offers the Windows
+media-tool package when it is missing and fails closed on targets whose catalog remains empty.
 
 Consequently, source compilation can pass while a distributable runtime package correctly fails
 the stricter release-readiness gate.
 
 The release-policy portion of that gate also remains blocked until the owner selects the root
 project license, approves the third-party-notice/corresponding-source disclosure policy, and adds
-`THIRD_PARTY_NOTICES.md`. PromptDJ's frozen Product Sans assets have no approved redistribution
-basis and must be licensed or replaced through a separately reviewed visual change before a
-runtime package can pass that policy gate.
+`THIRD_PARTY_NOTICES.md`. PromptDJ uses the operating-system UI font stack and packages no separate
+font payload.
 
 ## Visual compatibility
 

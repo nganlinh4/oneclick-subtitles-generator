@@ -5,6 +5,7 @@ import { invokeDesktop, isDesktopRuntime } from './desktopRuntime';
 import {
   ensureNativeDownloadInspectionReady,
   ensureNativeDownloadReady,
+  recoverNativeDownloaderAfterFailure,
 } from './nativeDownloadPreflight';
 
 export const DOWNLOAD_COOKIE_SOURCES = Object.freeze([
@@ -624,6 +625,9 @@ export const createNativeDownloadService = ({
         terminal = true;
         activeChannels.delete(initial.id);
       }
+      if (event.event === 'failed' && event.error.code === 'downloaderExecutionFailed') {
+        void recoverNativeDownloaderAfterFailure();
+      }
       call(handlers.onEvent, event);
       if (event.event === 'progress') call(handlers.onProgress, event);
       if (event.event === 'completed') call(handlers.onCompleted, event);
@@ -691,7 +695,14 @@ export const inspectDownloadUrl = async (request, preflightOptions) => {
   const normalizedRequest = normalizeInspectRequest(request);
   const readiness = await downloadService.getStatus();
   await ensureNativeDownloadInspectionReady(readiness, preflightOptions);
-  return downloadService.inspectUrl(normalizedRequest);
+  try {
+    return await downloadService.inspectUrl(normalizedRequest);
+  } catch (error) {
+    if (error?.code === 'downloaderExecutionFailed') {
+      void recoverNativeDownloaderAfterFailure();
+    }
+    throw error;
+  }
 };
 export const startDownload = async (request, handlers, preflightOptions) => {
   const normalizedRequest = normalizeStartRequest(request);

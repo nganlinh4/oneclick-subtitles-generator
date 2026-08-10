@@ -9,6 +9,7 @@ const MANAGED_DOWNLOAD_TOOL_IDS = Object.freeze(['yt-dlp', 'deno']);
 const TOOL_PROGRESS_TOAST_KEY = 'native-download-tool-preflight';
 const PROGRESS_STEP_PERCENT = 5;
 const DEFAULT_INSTALL_TIMEOUT_MS = 60 * 60 * 1_000;
+const AUTO_UPDATE_COOLDOWN_MS = 30 * 60 * 1_000;
 
 const isRecord = (value) => value !== null && typeof value === 'object';
 
@@ -179,7 +180,7 @@ export const createNativeDownloadPreflight = ({
     throw error;
   };
 
-  const perform = async (options, controller) => {
+  const perform = async (options, controller, requiredIds) => {
     const abort = () => controller.abort();
     if (options.signal?.aborted) throw localizedFailure('nativeToolCancelled', t);
     options.signal?.addEventListener('abort', abort, { once: true });
@@ -187,7 +188,7 @@ export const createNativeDownloadPreflight = ({
       const [catalog, status] = await Promise.all([readCatalog(), readStatus()]);
       const statuses = statusById(status);
       const catalogEntries = catalogById(catalog);
-      const required = MANAGED_DOWNLOAD_TOOL_IDS.map((id) => ({
+      const required = requiredIds.map((id) => ({
         ...catalogEntries.get(id),
         status: statuses.get(id),
       }));
@@ -273,12 +274,10 @@ export const createNativeDownloadPreflight = ({
     }
   };
 
-  const ensureInspectionReady = async (readiness, rawOptions) => {
-    const options = validateOptions(rawOptions);
-    if (readiness?.inspectAvailable === true) return Object.freeze({ ready: true });
+  const ensureRequiredTools = (requiredIds, options) => {
     if (active === null) {
       const controller = new AbortController();
-      const promise = perform(options, controller).finally(() => {
+      const promise = perform(options, controller, requiredIds).finally(() => {
         if (active?.promise === promise) active = null;
       });
       active = Object.freeze({ controller, promise });
@@ -286,14 +285,20 @@ export const createNativeDownloadPreflight = ({
     return active.promise;
   };
 
+  const ensureInspectionReady = async (readiness, rawOptions) => {
+    const options = validateOptions(rawOptions);
+    if (readiness?.inspectAvailable === true) return Object.freeze({ ready: true });
+    return ensureRequiredTools(MANAGED_DOWNLOAD_TOOL_IDS, options);
+  };
+
   const ensureDownloadReady = async (readiness, rawOptions) => {
-    validateOptions(rawOptions);
+    const options = validateOptions(rawOptions);
     if (readiness?.available === true) return Object.freeze({ ready: true });
     if (readiness?.inspectAvailable !== true) {
       return ensureInspectionReady(readiness, rawOptions);
     }
     if (readiness?.reason === 'mediaToolsUnavailable') {
-      return rejectWithNotice('nativeMediaToolsUnavailable');
+      return ensureRequiredTools(['media-tools'], options);
     }
     return rejectWithNotice('nativeDownloadUnavailable');
   };
@@ -310,6 +315,109 @@ export const createNativeDownloadPreflight = ({
 };
 
 const nativeDownloadPreflight = createNativeDownloadPreflight();
+
+let automaticRecovery = null;
+let lastAutomaticRecovery = Number.NEGATIVE_INFINITY;
+
+export const recoverNativeDownloaderAfterFailure = async ({
+  readCatalog = getNativeToolsCatalog,
+  readStatus = getNativeToolsStatus,
+  install = installNativeTool,
+  presentation = defaultPresentation,
+  t = i18n.t.bind(i18n),
+  now = Date.now,
+  installTimeoutMs = DEFAULT_INSTALL_TIMEOUT_MS,
+} = {}) => {
+  if (automaticRecovery !== null) return automaticRecovery;
+  const startedAt = now();
+  if (!Number.isFinite(startedAt)
+      || startedAt - lastAutomaticRecovery < AUTO_UPDATE_COOLDOWN_MS) {
+    return Object.freeze({ updated: false, throttled: true });
+  }
+  lastAutomaticRecovery = startedAt;
+  const controller = new AbortController();
+  const run = (async () => {
+    const [catalog, status] = await Promise.all([readCatalog(), readStatus()]);
+    const tool = catalog.tools.find((entry) => entry.id === 'yt-dlp');
+    const installed = status.tools.find((entry) => entry.id === 'yt-dlp');
+    if (!tool
+        || installed?.installed !== true
+        || installed.activeRuntime !== true
+        || installed.pendingRemoval
+        || installed.operation !== null) {
+      return Object.freeze({ updated: false, throttled: false });
+    }
+    const notify = (message, type, duration, button) => safeCall(presentation.notify, {
+      message,
+      type,
+      duration,
+      key: TOOL_PROGRESS_TOAST_KEY,
+      button,
+    });
+    const dismiss = () => safeCall(presentation.dismiss, TOOL_PROGRESS_TOAST_KEY);
+    const cancelButton = Object.freeze({
+      text: t('download.nativeTools.cancel'),
+      onClick: () => controller.abort(),
+    });
+    let lastPercent = -PROGRESS_STEP_PERCENT;
+    const event = await new Promise((resolve, reject) => {
+      let settled = false;
+      const watchdog = setTimeout(() => {
+        if (settled) return;
+        settled = true;
+        controller.abort();
+        reject(failure('nativeToolInstallTimedOut', 'The native tool update timed out'));
+      }, installTimeoutMs);
+      const settle = (callback, value) => {
+        if (settled) return;
+        settled = true;
+        clearTimeout(watchdog);
+        callback(value);
+      };
+      const handlers = {
+        onProgress: ({ operation }) => {
+          const percent = Math.floor(operation.basisPoints / 100);
+          if (percent !== 100 && percent < lastPercent + PROGRESS_STEP_PERCENT) return;
+          lastPercent = percent;
+          notify(t('download.nativeTools.installing', {
+            tool: tool.label,
+            percent,
+          }), 'info', 120_000, cancelButton);
+        },
+        onCompleted: (completed) => settle(resolve, completed),
+        onCancelled: () => settle(reject, localizedFailure('nativeToolCancelled', t)),
+        onFailed: (failed) => settle(reject, failure(
+          failed.error.code,
+          t('download.nativeTools.failed')
+        )),
+        onProtocolError: () => settle(reject, failure(
+          'invalidNativeToolResponse',
+          'The desktop host returned invalid native tool data'
+        )),
+      };
+      Promise.resolve(install('yt-dlp', handlers, { signal: controller.signal }))
+        .catch((error) => settle(reject, error));
+    });
+    dismiss();
+    if (event.restartRequired) {
+      notify(t('download.nativeTools.restartRequired'), 'warning', 30_000);
+      return Object.freeze({ updated: true, throttled: false });
+    }
+    return Object.freeze({ updated: false, throttled: false });
+  })().catch((error) => {
+    safeCall(presentation.dismiss, TOOL_PROGRESS_TOAST_KEY);
+    return Object.freeze({ updated: false, throttled: false, error: error?.code ?? 'failed' });
+  }).finally(() => {
+    if (automaticRecovery === run) automaticRecovery = null;
+  });
+  automaticRecovery = run;
+  return run;
+};
+
+export const resetNativeDownloaderRecoveryForTest = () => {
+  automaticRecovery = null;
+  lastAutomaticRecovery = Number.NEGATIVE_INFINITY;
+};
 
 export const ensureNativeDownloadInspectionReady = (
   readiness,

@@ -1,10 +1,13 @@
-import { useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useEngineStatus } from '../../hooks/useEngineStatus';
 import { removeManagedEnginePackage } from '../../platform/managedEngineService';
+import { getEnginePackagesStatus } from '../../platform/enginePackageService';
+import { getSpeechPackagesStatus } from '../../platform/speechPackageService';
 import LoadingIndicator from '../common/LoadingIndicator';
 import { useWaveColors } from '../../utils/waveColors';
 import EngineCard from './EngineCard';
+import NativeToolsList from './NativeToolsList';
 import { ASR_ENGINES } from '../../services/engines/asrEngines';
 import './engines.css';
 
@@ -18,6 +21,25 @@ const ENGINES = [
   { id: 'parakeet', name: 'Nvidia Parakeet', kind: 'transcription' },
   ...ASR_ENGINES.map((e) => ({ id: e.id, name: e.name, kind: 'transcription' })),
 ];
+
+const PACKAGE_ID_BY_ENGINE = Object.freeze({
+  f5tts: 'f5-tts',
+  chatterbox: 'chatterbox',
+});
+
+export const mapManagedPackageInventory = (
+  asrStatus = { engines: [] },
+  speechStatus = { packages: [] }
+) => {
+  const packages = new Map();
+  asrStatus.engines.forEach((entry) => packages.set(entry.id, entry));
+  speechStatus.packages.forEach((entry) => {
+    const engine = Object.entries(PACKAGE_ID_BY_ENGINE)
+      .find(([, packageId]) => packageId === entry.id)?.[0];
+    if (engine) packages.set(engine, entry);
+  });
+  return packages;
+};
 
 export const removeNativeEnginePackage = (engine) => new Promise((resolve) => {
   const settle = () => resolve();
@@ -41,18 +63,48 @@ const EnginesPanel = () => {
   const { isDarkTheme, waveColor } = useWaveColors();
   const [confirmAll, setConfirmAll] = useState(false);
   const [uninstallingAll, setUninstallingAll] = useState(false);
+  const [packages, setPackages] = useState(() => new Map());
+
+  const refreshPackages = useCallback(async () => {
+    const [asr, speech] = await Promise.allSettled([
+      getEnginePackagesStatus(),
+      getSpeechPackagesStatus(),
+    ]);
+    if (asr.status === 'rejected' && speech.status === 'rejected') return;
+    const next = mapManagedPackageInventory(
+      asr.status === 'fulfilled' ? asr.value : undefined,
+      speech.status === 'fulfilled' ? speech.value : undefined
+    );
+    setPackages((current) => new Map([...current, ...next]));
+  }, []);
+
+  const refreshAll = useCallback(() => {
+    refresh();
+    refreshPackages().catch(() => {});
+  }, [refresh, refreshPackages]);
+
+  useEffect(() => {
+    refreshPackages().catch(() => {});
+    const refreshOnFocus = () => refreshPackages().catch(() => {});
+    window.addEventListener('focus', refreshOnFocus);
+    return () => window.removeEventListener('focus', refreshOnFocus);
+  }, [refreshPackages]);
 
   // Single source of truth: the status probe reports managedByElectron (isPackaged) per engine, the
   // same condition the server uses to reject manual installs — no separate startup-mode flag.
   const managedByElectron = ENGINES.some((e) => engines[e.id]?.managedByElectron);
-  const installedEngines = ENGINES.filter((e) => engines[e.id]?.installed);
+  const installedEngines = ENGINES.filter((engine) => packages.get(engine.id)?.installed);
+  const availableEngines = useMemo(
+    () => ENGINES.filter((engine) => packages.get(engine.id)?.deliveryAvailable).length,
+    [packages]
+  );
 
   const handleUninstallAll = async () => {
     setConfirmAll(false);
     setUninstallingAll(true);
     try {
       await Promise.all(installedEngines.map((engine) => removeNativeEnginePackage(engine.id)));
-      refresh();
+      refreshAll();
     } finally {
       setUninstallingAll(false);
     }
@@ -99,18 +151,35 @@ const EnginesPanel = () => {
         </p>
         {renderUninstallAll()}
       </div>
-      <div className="engines-panel__grid">
-        {ENGINES.map((e) => (
-          <EngineCard
-            key={e.id}
-            id={e.id}
-            name={e.name}
-            kind={e.kind}
-            status={engines[e.id]}
-            onChanged={refresh}
-            managedByElectron={managedByElectron}
-          />
-        ))}
+      <div className="tools-ledger">
+        <section className="tools-ledger__group" aria-labelledby="local-ai-tools-heading">
+          <div className="tools-ledger__heading">
+            <div>
+              <h3 id="local-ai-tools-heading">{t('engines.groups.localAi', 'Local AI engines')}</h3>
+              <span>{t('engines.groups.localAiDetail', 'Voice cloning and transcription')}</span>
+            </div>
+            <span className="tools-ledger__count">
+              {t('engines.availableCount', '{{available}} available · {{installed}} installed', {
+                available: availableEngines,
+                installed: installedEngines.length,
+              })}
+            </span>
+          </div>
+          <div className="engines-panel__grid">
+            {ENGINES.map((engine) => (
+              <EngineCard
+                key={engine.id}
+                id={engine.id}
+                name={engine.name}
+                kind={engine.kind}
+                status={{ ...engines[engine.id], package: packages.get(engine.id) }}
+                onChanged={refreshAll}
+                managedByElectron={managedByElectron}
+              />
+            ))}
+          </div>
+        </section>
+        <NativeToolsList />
       </div>
     </div>
   );

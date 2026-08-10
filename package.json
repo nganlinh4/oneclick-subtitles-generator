@@ -39,10 +39,12 @@
     "check:versions": "node scripts/check-version-consistency.js",
     "check:tauri-contract": "node scripts/check-tauri-command-contract.js",
     "check:frozen-css-output": "node scripts/check-frozen-css-output.mjs",
+    "check:desktop-payload-size": "node scripts/check-desktop-payload-size.mjs",
     "check:production-transport": "node scripts/check-production-transport.js",
     "test:version-consistency": "node --test scripts/check-version-consistency.test.js",
     "check:visual-freeze": "node scripts/check-visual-freeze.js && npm run --workspace=promptdj-midi check:visual-contract && npm run --workspace=video-renderer check:visual-contract",
     "test:visual-contract": "node --test scripts/check-visual-freeze.test.js promptdj-midi/scripts/check-visual-contract.test.mjs",
+    "test:desktop-payload-size": "node --test scripts/check-desktop-payload-size.test.mjs",
     "check:render-visual-contract": "npm run --workspace=video-renderer check:visual-contract",
     "test:render-worker": "npm run --workspace=video-renderer test:worker",
     "update:visual-freeze": "node scripts/check-visual-freeze.js --update --baseline-ref HEAD && npm run --workspace=promptdj-midi update:visual-contract"

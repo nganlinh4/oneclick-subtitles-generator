@@ -56,6 +56,8 @@ const unavailableStatus = () => ({
     version: null,
     availableVersion: null,
     installedBytes: 0,
+    downloadBytes: 0,
+    availableInstalledBytes: 0,
     operation: null,
   })),
 });

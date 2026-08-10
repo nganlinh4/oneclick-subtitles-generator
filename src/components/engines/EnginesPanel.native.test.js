@@ -1,5 +1,5 @@
 import { removeManagedEnginePackage } from '../../platform/managedEngineService';
-import { removeNativeEnginePackage } from './EnginesPanel';
+import { mapManagedPackageInventory, removeNativeEnginePackage } from './EnginesPanel';
 
 vi.mock('../../hooks/useEngineStatus', () => ({
   useEngineStatus: vi.fn(),
@@ -7,11 +7,18 @@ vi.mock('../../hooks/useEngineStatus', () => ({
 vi.mock('../../platform/managedEngineService', () => ({
   removeManagedEnginePackage: vi.fn(),
 }));
+vi.mock('../../platform/enginePackageService', () => ({
+  getEnginePackagesStatus: vi.fn(),
+}));
+vi.mock('../../platform/speechPackageService', () => ({
+  getSpeechPackagesStatus: vi.fn(),
+}));
 vi.mock('../../utils/waveColors', () => ({
   useWaveColors: vi.fn(),
 }));
 vi.mock('../common/LoadingIndicator', () => ({ default: () => null }));
 vi.mock('./EngineCard', () => ({ default: () => null }));
+vi.mock('./NativeToolsList', () => ({ default: () => null }));
 
 afterEach(() => {
   vi.clearAllMocks();
@@ -52,4 +59,19 @@ it('settles failed-to-start removals so batch cleanup cannot hang', async () => 
   removeManagedEnginePackage.mockRejectedValue(new Error('native boundary unavailable'));
 
   await expect(removeNativeEnginePackage('parakeet')).resolves.toBeUndefined();
+});
+
+it('merges the ASR and speech package catalogs under the visible engine identifiers', () => {
+  const parakeet = Object.freeze({ id: 'parakeet', deliveryAvailable: false });
+  const f5 = Object.freeze({ id: 'f5-tts', deliveryAvailable: false });
+  const chatterbox = Object.freeze({ id: 'chatterbox', deliveryAvailable: false });
+
+  const inventory = mapManagedPackageInventory(
+    { engines: [parakeet] },
+    { packages: [f5, chatterbox] }
+  );
+
+  expect([...inventory.keys()]).toEqual(['parakeet', 'f5tts', 'chatterbox']);
+  expect(inventory.get('f5tts')).toBe(f5);
+  expect(inventory.get('chatterbox')).toBe(chatterbox);
 });

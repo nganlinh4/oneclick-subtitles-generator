@@ -293,9 +293,12 @@ impl NativeToolRuntime {
                 .statuses()
                 .into_iter()
                 .map(|tool| {
-                    let active_runtime = self.0.startup_leases.contains_key(&tool.id);
+                    let active_version =
+                        self.0.startup_leases.get(&tool.id).map(ToolLease::version);
+                    let active_runtime = active_version.is_some();
                     let pending_removal = pending.contains(&tool.id);
-                    let restart_required = pending_removal || (tool.installed && !active_runtime);
+                    let restart_required = pending_removal
+                        || (tool.installed && active_version != tool.version.as_deref());
                     let entry_operation = operation
                         .as_ref()
                         .filter(|operation| operation.tool == tool.id)
@@ -482,14 +485,16 @@ impl NativeToolRuntime {
             .database
             .delete_setting(PENDING_REMOVAL_SCOPE, tool.as_str())
             .map_err(ExecutionFailure::Database)?;
-        if !self.0.manager.status(tool).installed {
+        if tool == NativeToolId::YtDlp || !self.0.manager.status(tool).installed {
             self.0
                 .manager
                 .install(tool, cancellation, progress)
                 .map_err(ExecutionFailure::Tool)?;
         }
+        let installed_version = self.0.manager.status(tool).version;
+        let active_version = self.0.startup_leases.get(&tool).map(ToolLease::version);
         Ok(OperationOutcome {
-            restart_required: !self.0.startup_leases.contains_key(&tool),
+            restart_required: active_version != installed_version.as_deref(),
             deferred: false,
         })
     }
@@ -871,6 +876,27 @@ pub(crate) async fn native_tool_install(
 #[tauri::command]
 #[allow(
     clippy::needless_pass_by_value,
+    reason = "Tauri injects State and Channel as owned command extractors"
+)]
+pub(crate) async fn native_tool_remove(
+    runtime: State<'_, NativeToolRuntime>,
+    tool: NativeToolId,
+    on_event: Channel<NativeToolEvent>,
+) -> CommandResult<JobSnapshot> {
+    let runtime = runtime.inner().clone();
+    let manager = runtime.0.manager.clone();
+    let status = tauri::async_runtime::spawn_blocking(move || manager.status(tool))
+        .await
+        .map_err(|_| CommandError::internal("the native tool check stopped unexpectedly"))?;
+    if !status.delivery_available {
+        return Err(NativeToolError::DeliveryUnavailable.into());
+    }
+    start_operation(runtime, tool, NativeToolAction::Remove, on_event).await
+}
+
+#[tauri::command]
+#[allow(
+    clippy::needless_pass_by_value,
     reason = "Tauri injects State as an owned command extractor"
 )]
 pub(crate) async fn native_tool_cancel(
@@ -947,7 +973,7 @@ mod tests {
     }
 
     #[test]
-    fn catalog_and_status_are_path_free_and_ffmpeg_is_honestly_unavailable() {
+    fn catalog_and_status_are_path_free_and_platform_accurate() {
         let (_temporary, runtime) = runtime_fixture();
         let catalog = serde_json::to_string(&NativeToolRuntime::catalog()).expect("catalog");
         let status =
@@ -960,7 +986,14 @@ mod tests {
         let decoded: serde_json::Value = serde_json::from_str(&status).expect("valid json");
         assert_eq!(decoded["schemaVersion"], SCHEMA_VERSION);
         assert_eq!(decoded["tools"][0]["id"], "media-tools");
-        assert_eq!(decoded["tools"][0]["state"], "unavailable");
+        assert_eq!(
+            decoded["tools"][0]["state"],
+            if cfg!(all(target_os = "windows", target_arch = "x86_64")) {
+                "missing"
+            } else {
+                "unavailable"
+            }
+        );
         assert_eq!(decoded["tools"][1]["state"], "missing");
         assert_eq!(decoded["tools"][2]["state"], "missing");
     }

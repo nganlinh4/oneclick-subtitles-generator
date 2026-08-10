@@ -150,6 +150,7 @@ fn trusted_initial_url(url: &Url, declared: &str) -> bool {
         && match url.host_str() {
             Some("github.com") => valid_github_release_path(url.path()),
             Some("raw.githubusercontent.com") => valid_raw_path(url.path()),
+            Some("www.gyan.dev") => valid_gyan_release_path(url.path()),
             _ => false,
         }
 }
@@ -161,6 +162,7 @@ fn trusted_redirect(url: &Url, previous: &[Url]) -> bool {
     let first_ok = match first.host_str() {
         Some("github.com") => valid_github_release_path(first.path()),
         Some("raw.githubusercontent.com") => valid_raw_path(first.path()),
+        Some("www.gyan.dev") => valid_gyan_release_path(first.path()),
         _ => false,
     };
     let target_ok = matches!(
@@ -171,7 +173,7 @@ fn trusted_redirect(url: &Url, previous: &[Url]) -> bool {
         ) | (
             Some("raw.githubusercontent.com"),
             Some("raw.githubusercontent.com")
-        )
+        ) | (Some("www.gyan.dev"), Some("www.gyan.dev"))
     );
     first_ok
         && target_ok
@@ -183,9 +185,25 @@ fn trusted_redirect(url: &Url, previous: &[Url]) -> bool {
 }
 
 fn valid_github_release_path(path: &str) -> bool {
-    let known_prefix = path.starts_with("/yt-dlp/yt-dlp/releases/download/2026.07.04/")
-        || path.starts_with("/denoland/deno/releases/download/v2.9.5/");
-    known_prefix && !path.to_ascii_lowercase().contains("/latest/")
+    let segments = path.trim_start_matches('/').split('/').collect::<Vec<_>>();
+    match segments.as_slice() {
+        ["yt-dlp", "yt-dlp", "releases", "download", version, asset] => {
+            crate::catalog::valid_ytdlp_version(version)
+                && matches!(*asset, "yt-dlp.exe" | "yt-dlp_linux" | "yt-dlp_macos")
+        }
+        ["denoland", "deno", "releases", "download", "v2.9.5", asset] => matches!(
+            *asset,
+            "deno-x86_64-pc-windows-msvc.zip"
+                | "deno-x86_64-unknown-linux-gnu.zip"
+                | "deno-aarch64-apple-darwin.zip"
+                | "deno-x86_64-apple-darwin.zip"
+        ),
+        _ => false,
+    }
+}
+
+fn valid_gyan_release_path(path: &str) -> bool {
+    path == "/ffmpeg/builds/packages/ffmpeg-8.1.2-essentials_build.zip"
 }
 
 fn valid_raw_path(path: &str) -> bool {
@@ -216,6 +234,35 @@ mod tests {
         ] {
             let url = Url::parse(invalid).unwrap();
             assert!(!trusted_initial_url(&url, invalid), "{invalid}");
+        }
+    }
+
+    #[test]
+    fn exact_vendor_media_archive_is_accepted_without_widening_the_host() {
+        let exact = "https://www.gyan.dev/ffmpeg/builds/packages/ffmpeg-8.1.2-essentials_build.zip";
+        assert!(trusted_initial_url(&Url::parse(exact).unwrap(), exact));
+        for invalid in [
+            "https://www.gyan.dev/ffmpeg/builds/ffmpeg-release-essentials.zip",
+            "https://www.gyan.dev/ffmpeg/builds/packages/ffmpeg-8.1.2-full_build.zip",
+        ] {
+            assert!(!trusted_initial_url(&Url::parse(invalid).unwrap(), invalid));
+        }
+    }
+
+    #[test]
+    fn immutable_shaped_ytdlp_versions_accept_only_platform_assets() {
+        for valid in [
+            "https://github.com/yt-dlp/yt-dlp/releases/download/2026.08.10/yt-dlp.exe",
+            "https://github.com/yt-dlp/yt-dlp/releases/download/2027.01.02/yt-dlp_linux",
+        ] {
+            assert!(trusted_initial_url(&Url::parse(valid).unwrap(), valid));
+        }
+        for invalid in [
+            "https://github.com/yt-dlp/yt-dlp/releases/download/latest/yt-dlp.exe",
+            "https://github.com/yt-dlp/yt-dlp/releases/download/2026.08.10/source.zip",
+            "https://github.com/yt-dlp/yt-dlp/releases/download/2026.08.10/../yt-dlp.exe",
+        ] {
+            assert!(!trusted_initial_url(&Url::parse(invalid).unwrap(), invalid));
         }
     }
 

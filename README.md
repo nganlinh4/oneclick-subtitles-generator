@@ -267,9 +267,9 @@ The other matrix targets are `x86_64-unknown-linux-gnu`, `aarch64-apple-darwin`,
 
 | Runtime | Delivery status |
 | --- | --- |
-| yt-dlp | Reviewed `2026.07.04` content-addressed direct-upstream releases are catalogued for the four target families. The first user-initiated URL inspection that needs it asks for consent, reports cancellable install progress, and requires restart before activation; it is never bundled or downloaded at startup. |
+| yt-dlp | Reviewed `2026.07.04` direct releases are the offline baseline on four target families. The first user-initiated URL inspection asks for consent and installs it with cancellable progress. If an installed yt-dlp process later fails, the host performs one throttled immutable-release check; a newer verified version is installed beside the running lease and activates after restart. It never runs `yt-dlp -U`, overwrites the active executable, or loops the failed media operation. |
 | Deno | Reviewed `2.9.5` content-addressed direct-upstream releases are catalogued for the four target families. The same consented URL-inspection preflight installs it with cancellable progress and stops for restart before activation; it is never bundled or downloaded at startup. |
-| FFmpeg / ffprobe | Withheld pending provenance-complete GPL-capable builds, corresponding source, and notices for every target. |
+| FFmpeg / ffprobe | Windows x64 downloads the reviewed, hash-pinned Gyan `8.1.2` vendor archive, installs only the two executables plus license/build notice, and activates after restart. Linux/macOS remain fail-closed until equivalent deliveries are reviewed. |
 | Parakeet / Faster-Whisper / Qwen3-ASR | No reviewed package releases are published in the catalog. |
 | F5-TTS / Chatterbox / Edge TTS / gTTS / Gemini TTS worker | No reviewed package releases are published in the catalog. |
 | Remotion runtime | No reviewed Node/Chromium/Remotion/native-binary/font/notice payload releases are published in the catalog. |
@@ -294,19 +294,22 @@ is not a native arbitrary-URL installer: only reviewed content-addressed speech 
 launchable, so custom URL/edit operations remain unavailable until that policy and implementation
 exist.
 
-PromptDJ currently preserves the frozen interface with bundled Product Sans files. Those files do
-not have an approved redistribution basis, so the release-policy gate rejects them until the owner
-licenses them or separately approves a visually reviewed replacement and records every bundled
-font in `THIRD_PARTY_NOTICES.md`.
+PromptDJ uses the operating-system UI font stack and no longer packages a separate proprietary
+font payload. Any future bundled font must still be reviewed and recorded in
+`THIRD_PARTY_NOTICES.md`.
 
-The `manage-native-tools` capability exposes only the typed catalog/status/install/remove/cancel
+The `manage-native-tools` capability exposes only the typed catalog/status/install/cancel
 commands; executable paths and upstream URLs stay native. OSG reports when activation or a deferred
 removal must wait for restart because a live consumer holds a tool lease. The current user flow
-reaches catalog, status, install, and cancel from an existing media action; it does not expose tool
-removal. A single consent prompt identifies the exact yt-dlp/Deno packages and licenses before any
-download. Installation progress uses the existing toast surface with an explicit cancel action,
-and a successful install never retries the media action in the stale runtime: it asks the user to
-restart first. FFmpeg/ffprobe remain unavailable and are never offered through this preflight.
+reaches those commands from an existing media action; it does not expose tool removal. A single
+consent prompt identifies the exact packages and licenses before any download.
+Installation progress uses the existing toast surface with an explicit cancel action, and a
+successful install never retries the media action in the stale runtime: it asks the user to restart
+first. Windows can install FFmpeg/ffprobe from the exact reviewed vendor archive; unsupported
+platforms fail closed without substituting an unreviewed binary.
+
+The executable-size and source-priority rules for every optional runtime are documented in
+[`docs/rewrite/DOWNLOADABLE_PAYLOADS.md`](docs/rewrite/DOWNLOADABLE_PAYLOADS.md).
 
 Development builds may discover explicitly approved source-tree or system tools in debug mode.
 Release builds do not rely on `PATH` or arbitrary local installations.

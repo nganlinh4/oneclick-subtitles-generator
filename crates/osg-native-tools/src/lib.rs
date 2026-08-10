@@ -13,6 +13,7 @@ mod manager;
 mod path_security;
 mod progress;
 mod receipt;
+mod update;
 
 pub use cancellation::CancellationToken;
 pub use catalog::{ExecutableRole, NativeToolId, NativeToolInfo, catalog};

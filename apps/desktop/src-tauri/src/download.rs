@@ -1248,10 +1248,11 @@ fn map_download_error(error: &DownloadError) -> CommandError {
         | DownloadError::InvalidJavaScriptRuntime(_)
         | DownloadError::FfmpegRequired => CommandError::media_tools_unavailable(),
         DownloadError::Cancelled => CommandError::internal("The media download was cancelled."),
+        DownloadError::Spawn(_) | DownloadError::ProcessFailed { .. } => {
+            CommandError::downloader_execution_failed()
+        }
         DownloadError::InvalidDestination(_)
-        | DownloadError::Spawn(_)
         | DownloadError::ProcessIo(_)
-        | DownloadError::ProcessFailed { .. }
         | DownloadError::TimedOut { .. }
         | DownloadError::OutputLimit
         | DownloadError::InventoryJson(_)
@@ -1280,8 +1281,8 @@ mod tests {
 
     use super::{
         DownloadError, DownloadInspectRequest, DownloadRuntime, FinalizationRegistry,
-        MAX_SUBTITLE_IPC_BYTES, SlotLimiter, prepare_durable_download, publish_durable_media,
-        read_downloaded_subtitle, remove_regular_file, status_response,
+        MAX_SUBTITLE_IPC_BYTES, SlotLimiter, map_download_error, prepare_durable_download,
+        publish_durable_media, read_downloaded_subtitle, remove_regular_file, status_response,
     };
 
     #[test]
@@ -1302,6 +1303,27 @@ mod tests {
             r#"{{"inventoryId":"{inventory_id}","media":{{"kind":"video","quality":{{"mode":"best"}},"outputPath":"C:\\private"}},"subtitle":null}}"#
         );
         assert!(serde_json::from_str::<super::DownloadStartRequest>(&path_request).is_err());
+    }
+
+    #[test]
+    fn only_downloader_launch_or_exit_failures_get_the_update_trigger_code() {
+        let spawn = serde_json::to_value(map_download_error(&DownloadError::Spawn(
+            std::io::Error::other("private operating-system detail"),
+        )))
+        .unwrap();
+        let process = serde_json::to_value(map_download_error(&DownloadError::ProcessFailed {
+            code: Some(1),
+        }))
+        .unwrap();
+        let timeout = serde_json::to_value(map_download_error(&DownloadError::TimedOut {
+            timeout: std::time::Duration::from_secs(1),
+        }))
+        .unwrap();
+        assert_eq!(spawn["code"], "downloaderExecutionFailed");
+        assert_eq!(process["code"], "downloaderExecutionFailed");
+        assert_eq!(timeout["code"], "internal");
+        assert!(!spawn.to_string().contains("private"));
+        assert!(!process.to_string().contains('1'));
     }
 
     #[test]

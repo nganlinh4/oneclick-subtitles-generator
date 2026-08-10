@@ -1,9 +1,12 @@
 {
-  "intro": "음성 복제 및 로컬 전사 엔진은 필요할 때 설치됩니다 — 엔진당 한 번 약 3 GB GPU 다운로드. 필요한 것만 설치하세요.",
+  "intro": "패키지는 앱 외부에 설치됩니다. 사용 가능 여부, 활성 버전, 디스크 사용량과 재시작 상태를 정확히 표시합니다.",
   "download": "다운로드",
+  "update": "업데이트",
+  "repair": "복구",
   "start": "시작",
   "stop": "중지",
   "included": "포함됨",
+  "checking": "확인 중…",
   "installing": "설치 중…",
   "starting": "시작 중…",
   "stopping": "중지 중…",
@@ -13,12 +16,26 @@
   "uninstallAll": "모두 제거",
   "confirmUninstall": "제거할까요?",
   "confirmUninstallAll": "모든 엔진을 제거할까요?",
+  "notPublished": "아직 배포되지 않음",
+  "restartToRemove": "재시작하여 제거",
+  "availableCount": "{{available}}개 사용 가능 · {{installed}}개 설치됨",
+  "installedCount": "{{installed}}개 설치됨",
+  "downloadSize": "다운로드 {{size}}",
+  "diskSize": "디스크 {{size}}",
   "electronManaged": "데스크톱 앱에는 이 엔진들이 포함되어 있습니다. 다운로드는 앱 패키지가 관리합니다.",
+  "groups": {
+    "localAi": "로컬 AI 엔진",
+    "localAiDetail": "음성 복제 및 전사",
+    "runtime": "런타임 도구",
+    "runtimeDetail": "앱에 포함하지 않고 별도로 다운로드"
+  },
   "error": {
     "installFailed": "설치를 시작할 수 없습니다",
     "startFailed": "엔진을 시작할 수 없습니다",
     "stopFailed": "엔진을 중지할 수 없습니다",
-    "uninstallFailed": "제거 실패"
+    "uninstallFailed": "제거 실패",
+    "nativeToolProtocol": "데스크톱 호스트가 잘못된 도구 진행 상태를 반환했습니다.",
+    "nativeToolFailed": "도구 작업을 시작할 수 없습니다."
   },
   "kind": {
     "voice-cloning": "음성 복제",
@@ -28,6 +45,29 @@
     "not-installed": "설치 안 됨",
     "installed-stopped": "설치됨",
     "included": "포함됨",
-    "ready": "실행 중"
+    "ready": "실행 중",
+    "checking": "패키지 확인 중",
+    "unavailable": "검토된 배포본 없음",
+    "corrupt": "무결성 검사 실패",
+    "update-available": "업데이트 가능"
+  },
+  "nativeKind": {
+    "media": "미디어 처리",
+    "downloader": "사이트 다운로드",
+    "javascript": "JavaScript 런타임"
+  },
+  "nativeSource": {
+    "vendor": "검토된 공급업체",
+    "official": "공식 배포본"
+  },
+  "nativeState": {
+    "unavailable": "이 플랫폼에 검토된 배포본 없음",
+    "missing": "다운로드 가능",
+    "installed": "설치 및 활성화됨",
+    "corrupt": "무결성 검사 실패",
+    "installing": "설치 중",
+    "removing": "제거 중",
+    "pending-removal": "제거 예약됨",
+    "restart-required": "재시작 필요"
   }
 }

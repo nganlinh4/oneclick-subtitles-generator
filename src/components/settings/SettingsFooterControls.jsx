@@ -15,7 +15,12 @@ const SettingsFooterControls = ({ isDropup = false, size = 'normal', layout = 'g
   const { t } = useTranslation();
 
   const [theme, setTheme] = useState(() => initializeTheme());
-  const [appFont, setAppFont] = useState(() => localStorage.getItem('app_font') || 'google-sans');
+  const [appFont, setAppFont] = useState(() => {
+    const stored = localStorage.getItem('app_font');
+    return ['google-sans', 'system-ui', 'noto-sans'].includes(stored)
+      ? stored
+      : 'google-sans';
+  });
 
   useEffect(() => {
     const cleanup = setupSystemThemeListener(setTheme);
@@ -33,10 +38,7 @@ const SettingsFooterControls = ({ isDropup = false, size = 'normal', layout = 'g
     let primary = `"Google Sans", "Open Sans", sans-serif`;
     let title = `"Google Sans", "Be Vietnam Pro", sans-serif`;
 
-    if (appFont === 'product-sans') {
-      primary = `"Product Sans", system-ui, -apple-system, Segoe UI, Roboto, sans-serif`;
-      title = `"Product Sans", system-ui, -apple-system, Segoe UI, Roboto, sans-serif`;
-    } else if (appFont === 'system-ui') {
+    if (appFont === 'system-ui') {
       primary = `system-ui, -apple-system, Segoe UI, Roboto, Helvetica, Arial, sans-serif`;
       title = primary;
     } else if (appFont === 'noto-sans') {
@@ -58,7 +60,6 @@ const SettingsFooterControls = ({ isDropup = false, size = 'normal', layout = 'g
 
   const fontOptions = useMemo(() => ([
     { value: 'google-sans', label: 'Google Sans Flex' },
-    { value: 'product-sans', label: 'Google Sans (Product Sans)' },
     { value: 'system-ui', label: 'System UI' },
     { value: 'noto-sans', label: 'Noto Sans' },
   ]), []);

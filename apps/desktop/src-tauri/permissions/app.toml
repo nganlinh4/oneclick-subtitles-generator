@@ -126,11 +126,12 @@ commands.allow = ["media_export_start"]
 
 [[permission]]
 identifier = "manage-native-tools"
-description = "Allows the main editor to inspect, install, and cancel only reviewed content-addressed native tool deliveries without exposing paths or upstream URLs."
+description = "Allows the main editor to inspect, install, remove, and cancel only reviewed content-addressed native tool deliveries without exposing paths or upstream URLs."
 commands.allow = [
   "native_tools_catalog",
   "native_tools_status",
   "native_tool_install",
+  "native_tool_remove",
   "native_tool_cancel",
 ]
 

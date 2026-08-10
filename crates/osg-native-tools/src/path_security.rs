@@ -83,7 +83,7 @@ pub(crate) fn initialize_store(root: &Path) -> Result<PathBuf> {
         }
         Err(_) => return Err(NativeToolError::StoreUnavailable),
     }
-    for directory in [".downloads", ".staging", ".trash", "tools"] {
+    for directory in [".downloads", ".staging", ".trash", ".quarantine", "tools"] {
         ensure_direct_child(&canonical, directory)?;
     }
     Ok(canonical)

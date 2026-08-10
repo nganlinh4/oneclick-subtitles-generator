@@ -84,6 +84,12 @@ export const useSettingsTabPillUpdate = ({
       // Small delay to ensure the active class is applied
       setTimeout(() => {
         initSettingsTabPillAnimation('.settings-tabs');
+        const activeButton = tabsRef.current?.querySelector('.settings-tab.active');
+        activeButton?.scrollIntoView({
+          behavior: 'smooth',
+          block: 'nearest',
+          inline: 'center',
+        });
       }, 10);
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps

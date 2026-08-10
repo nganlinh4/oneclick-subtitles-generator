@@ -25,7 +25,8 @@ const jobStateSet = new Set([
 const statusKeys = new Set(['schemaVersion', 'packages']);
 const packageKeys = new Set([
   'id', 'label', 'deliveryAvailable', 'installed', 'updateAvailable', 'state',
-  'version', 'availableVersion', 'installedBytes', 'operation',
+  'version', 'availableVersion', 'installedBytes', 'downloadBytes',
+  'availableInstalledBytes', 'operation',
 ]);
 const operationKeys = new Set([
   'job', 'backend', 'action', 'phase', 'basisPoints', 'bytesDone', 'totalBytes',
@@ -206,7 +207,9 @@ export const normalizeSpeechPackagesStatus = (value) => {
         || typeof entry.installed !== 'boolean'
         || typeof entry.updateAvailable !== 'boolean'
         || !stateSet.has(entry.state)
-        || !safeInteger(entry.installedBytes)) {
+        || !safeInteger(entry.installedBytes)
+        || !safeInteger(entry.downloadBytes)
+        || !safeInteger(entry.availableInstalledBytes)) {
       throw invalidResponse();
     }
     const id = requireResponseBackend(entry.id);
@@ -226,7 +229,10 @@ export const normalizeSpeechPackagesStatus = (value) => {
     if (!stateMatches
         || (entry.installed !== (version !== null))
         || (entry.deliveryAvailable !== (availableVersion !== null))
-        || (!entry.installed && entry.installedBytes !== 0)) {
+        || (!entry.installed && entry.installedBytes !== 0)
+        || (entry.deliveryAvailable !== (
+          entry.downloadBytes > 0 && entry.availableInstalledBytes > 0
+        ))) {
       throw invalidResponse();
     }
     byId.set(id, Object.freeze({
@@ -239,6 +245,8 @@ export const normalizeSpeechPackagesStatus = (value) => {
       version,
       availableVersion,
       installedBytes: entry.installedBytes,
+      downloadBytes: entry.downloadBytes,
+      availableInstalledBytes: entry.availableInstalledBytes,
       operation,
     }));
   });

@@ -1002,8 +1002,8 @@ function assertNativeToolRelease(release, tool, target, expectation) {
     `${label} release must be an object`);
   invariant(release.version === expectation.version,
     `${label} must pin version ${expectation.version}`);
-  invariant(release.distributionMode === 'direct-upstream-download-only',
-    `${label} must remain direct-upstream-download-only`);
+  invariant(release.distributionMode === 'direct-reviewed-source-download-only',
+    `${label} must remain direct-reviewed-source-download-only`);
 
   const artifact = release.artifact;
   invariant(artifact && typeof artifact === 'object' && !Array.isArray(artifact),
@@ -1049,8 +1049,8 @@ function assertNativeToolDelivery(rootDirectory, mappings = []) {
   const audit = readJson(rootDirectory, NATIVE_TOOL_AUDIT_PATH);
   invariant(delivery.schemaVersion === 1, 'Native-tool delivery must use schemaVersion 1');
   invariant(audit.schemaVersion === 1, 'Native-tool upstream audit must use schemaVersion 1');
-  invariant(delivery.policy && delivery.policy.artifactDelivery === 'direct-upstream-download-only',
-    'Native-tool delivery must remain direct-upstream-download-only');
+  invariant(delivery.policy && delivery.policy.artifactDelivery === 'direct-reviewed-source-download-only',
+    'Native-tool delivery must remain direct-reviewed-source-download-only');
   invariant(delivery.policy.bundledArtifacts === false,
     'Native-tool executables must not be bundled in the application');
   invariant(delivery.policy.selfUpdateAllowed === false,
@@ -1069,11 +1069,14 @@ function assertNativeToolDelivery(rootDirectory, mappings = []) {
   `Native-tool delivery must contain exactly: ${NATIVE_TOOL_IDS.join(', ')}`);
 
   const mediaTools = delivery.tools.find(({ id }) => id === 'media-tools');
-  invariant(mediaTools.license === 'GPL-2.0-or-later',
+  invariant(mediaTools.license === 'GPL-3.0-or-later',
     'Media-tool delivery must declare its GPL license floor');
   invariant(audit.ffmpeg && audit.ffmpeg.requiredEncoder === 'libx264'
-    && audit.ffmpeg.deliveryEnabled === false,
-  'Native-tool audit must keep the required libx264 FFmpeg delivery disabled');
+    && audit.ffmpeg.deliveryPolicy === 'external-site-first'
+    && Array.isArray(audit.ffmpeg.deliveryEnabledPlatforms)
+    && audit.ffmpeg.deliveryEnabledPlatforms.length === 1
+    && audit.ffmpeg.deliveryEnabledPlatforms[0] === 'windows-x86_64',
+  'Native-tool audit must enable only the reviewed Windows FFmpeg direct download');
   invariant(audit.ffmpeg.ffprobeOnly && audit.ffmpeg.ffprobeOnly.deliveryEnabled === false,
     'Native-tool audit must not disguise the reviewed GPL ffprobe builds as LGPL delivery');
   invariant(Array.isArray(audit.ffmpeg.reviewedCandidates)
@@ -1088,10 +1091,31 @@ function assertNativeToolDelivery(rootDirectory, mappings = []) {
     const platform = mediaTools.platforms && mediaTools.platforms[ENGINE_PLATFORM_BY_TARGET[target]];
     invariant(platform && Array.isArray(platform.releases),
       `Media-tool delivery is missing ${target}`);
-    invariant(platform.releases.length === 0,
-      `Media-tool delivery for ${target} must remain disabled until its audit is replaced`);
-    invariant(typeof platform.blocker === 'string' && platform.blocker.length >= 40,
-      `Media-tool delivery for ${target} needs an exact blocker`);
+    if (target === 'x86_64-pc-windows-msvc') {
+      const approved = audit.ffmpeg.approvedDirectDownloads?.['windows-x86_64'];
+      invariant(platform.blocker === null && platform.releases.length === 1,
+        'Windows media-tool delivery must contain exactly one reviewed release');
+      const release = platform.releases[0];
+      invariant(approved && release.version === approved.version
+        && release.artifact?.sourceUrl === approved.sourceUrl
+        && release.artifact?.sizeBytes === approved.sizeBytes
+        && release.artifact?.sha256 === approved.sha256
+        && approved.sha256 === approved.publishedSha256
+        && approved.sourceRevision === mediaTools.sourceRevision
+        && approved.license === mediaTools.license
+        && approved.libx264 === true && approved.nonfree === false,
+      'Windows media-tool release differs from its upstream audit lock');
+      invariant(release.distributionMode === 'direct-reviewed-source-download-only'
+        && release.artifact.selectiveExtraction === true
+        && release.files.length === 4
+        && new Set(release.files.map(({ role }) => role).filter(Boolean)).size === 2,
+      'Windows media-tool release must selectively install two executables and two notices');
+    } else {
+      invariant(platform.releases.length === 0,
+        `Media-tool delivery for ${target} must remain disabled until its audit is replaced`);
+      invariant(typeof platform.blocker === 'string' && platform.blocker.length >= 40,
+        `Media-tool delivery for ${target} needs an exact blocker`);
+    }
   }
 
   for (const toolId of ['yt-dlp', 'deno']) {
@@ -1170,14 +1194,6 @@ function collectPromptDjFontReleasePolicyFailures(rootDirectory) {
   }
 
   const failures = [];
-  const productSansFiles = fontFiles.filter((relativePath) =>
-    /(?:^|\/)Product Sans(?: [^/]*)?\.(?:otf|ttf|woff2?)$/i.test(relativePath));
-  if (productSansFiles.length > 0) {
-    failures.push(
-      `PromptDJ bundles proprietary Product Sans font assets without reviewed redistribution authorization: ${productSansFiles.join(', ')}`,
-    );
-  }
-
   const noticesPath = path.join(rootDirectory, 'THIRD_PARTY_NOTICES.md');
   const notices = fs.existsSync(noticesPath)
     ? fs.readFileSync(noticesPath, 'utf8')

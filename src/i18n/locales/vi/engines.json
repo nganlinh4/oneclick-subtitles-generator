@@ -1,9 +1,12 @@
 {
-  "intro": "Các engine nhân bản giọng nói và phiên âm cục bộ được cài theo nhu cầu — mỗi engine tải về một lần khoảng 3 GB cho GPU. Chỉ cài thứ bạn cần.",
+  "intro": "Các gói được cài bên ngoài ứng dụng. Trạng thái khả dụng, phiên bản đang dùng, dung lượng đĩa và yêu cầu khởi động lại đều được hiển thị chính xác.",
   "download": "Tải về",
+  "update": "Cập nhật",
+  "repair": "Sửa chữa",
   "start": "Khởi động",
   "stop": "Dừng",
   "included": "Đã bao gồm",
+  "checking": "Đang kiểm tra…",
   "installing": "Đang cài đặt…",
   "starting": "Đang khởi động…",
   "stopping": "Đang dừng…",
@@ -13,12 +16,26 @@
   "uninstallAll": "Gỡ tất cả",
   "confirmUninstall": "Gỡ cài đặt?",
   "confirmUninstallAll": "Gỡ tất cả engine?",
+  "notPublished": "Chưa phát hành",
+  "restartToRemove": "Khởi động lại để gỡ",
+  "availableCount": "{{available}} khả dụng · {{installed}} đã cài",
+  "installedCount": "{{installed}} đã cài",
+  "downloadSize": "Tải xuống {{size}}",
+  "diskSize": "{{size}} trên đĩa",
   "electronManaged": "Bản desktop đã bao gồm các engine này. Việc tải engine được quản lý bởi gói ứng dụng.",
+  "groups": {
+    "localAi": "Engine AI cục bộ",
+    "localAiDetail": "Nhân bản giọng nói và phiên âm",
+    "runtime": "Công cụ runtime",
+    "runtimeDetail": "Tải riêng, không nhúng trong ứng dụng"
+  },
   "error": {
     "installFailed": "Không thể bắt đầu cài đặt",
     "startFailed": "Không thể khởi động engine",
     "stopFailed": "Không thể dừng engine",
-    "uninstallFailed": "Gỡ cài đặt thất bại"
+    "uninstallFailed": "Gỡ cài đặt thất bại",
+    "nativeToolProtocol": "Máy chủ desktop trả về tiến trình công cụ không hợp lệ.",
+    "nativeToolFailed": "Không thể bắt đầu thao tác với công cụ."
   },
   "kind": {
     "voice-cloning": "Nhân bản giọng nói",
@@ -28,6 +45,29 @@
     "not-installed": "Chưa cài đặt",
     "installed-stopped": "Đã cài đặt",
     "included": "Đã bao gồm",
-    "ready": "Đang chạy"
+    "ready": "Đang chạy",
+    "checking": "Đang kiểm tra gói",
+    "unavailable": "Chưa có bản phát hành đã thẩm định",
+    "corrupt": "Kiểm tra toàn vẹn thất bại",
+    "update-available": "Có bản cập nhật"
+  },
+  "nativeKind": {
+    "media": "Xử lý phương tiện",
+    "downloader": "Trình tải từ trang web",
+    "javascript": "Runtime JavaScript"
+  },
+  "nativeSource": {
+    "vendor": "Nhà cung cấp đã thẩm định",
+    "official": "Bản phát hành chính thức"
+  },
+  "nativeState": {
+    "unavailable": "Chưa có bản phát hành đã thẩm định cho nền tảng này",
+    "missing": "Có thể tải về",
+    "installed": "Đã cài đặt và đang hoạt động",
+    "corrupt": "Kiểm tra toàn vẹn thất bại",
+    "installing": "Đang cài đặt",
+    "removing": "Đang gỡ",
+    "pending-removal": "Đã lên lịch gỡ",
+    "restart-required": "Cần khởi động lại"
   }
 }

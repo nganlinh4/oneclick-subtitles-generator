@@ -16,7 +16,7 @@ import {
  * reconnects to durable progress and resumes polling, so navigating away or closing the view does
  * not stop the operation. The typed service fails closed when inspected outside Tauri.
  */
-export const useEngineInstall = (id) => {
+export const useEngineInstall = (id, { reconnect = true, onStatusChanged } = {}) => {
   const [installing, setInstalling] = useState(false);
   const [percent, setPercent] = useState(0);
   const [log, setLog] = useState([]);
@@ -26,6 +26,7 @@ export const useEngineInstall = (id) => {
   const nativeAbortRef = useRef(null);
   const nativeJobIdRef = useRef(null);
   const nativeGenerationRef = useRef(0);
+  const observedOperationRef = useRef(false);
 
   const stopPolling = useCallback(() => {
     if (pollRef.current) { clearInterval(pollRef.current); pollRef.current = null; }
@@ -40,6 +41,11 @@ export const useEngineInstall = (id) => {
       const packageRunning = operation !== null
         && (operation.action === 'install' || operation.action === 'update');
       if (generation !== nativeGenerationRef.current) return operation !== null;
+      if (operation) observedOperationRef.current = true;
+      else if (observedOperationRef.current) {
+        observedOperationRef.current = false;
+        onStatusChanged?.();
+      }
       nativeJobIdRef.current = operation?.job.id ?? null;
       if (mountedRef.current) {
         setPercent(packageRunning ? operation.basisPoints / 100 : 0);
@@ -50,7 +56,7 @@ export const useEngineInstall = (id) => {
     } catch (e) {
       return false; // transient — caller decides whether to keep polling
     }
-  }, [id]);
+  }, [id, onStatusChanged]);
 
   const ensurePolling = useCallback(() => {
     if (pollRef.current) return;
@@ -63,11 +69,12 @@ export const useEngineInstall = (id) => {
   // On mount, reconnect to any in-flight server-side install (survives reload / navigation).
   useEffect(() => {
     mountedRef.current = true;
+    if (!reconnect) return () => { mountedRef.current = false; stopPolling(); };
     (async () => {
       if (await readProgress()) ensurePolling();
     })();
     return () => { mountedRef.current = false; stopPolling(); };
-  }, [readProgress, ensurePolling, stopPolling]);
+  }, [readProgress, ensurePolling, reconnect, stopPolling]);
 
   const install = useCallback(async () => {
     setError(null); setInstalling(true); setPercent(0); setLog([]);
@@ -81,6 +88,7 @@ export const useEngineInstall = (id) => {
       nativeAbortRef.current = null;
       nativeJobIdRef.current = null;
       if (mountedRef.current) setInstalling(false);
+      onStatusChanged?.();
     };
     try {
       const snapshot = await installManagedEnginePackage(id, {
@@ -110,16 +118,17 @@ export const useEngineInstall = (id) => {
         setInstalling(false);
       }
     }
-  }, [id, ensurePolling]);
+  }, [id, ensurePolling, onStatusChanged]);
 
   // Cancel an in-flight (or reconnected) native install.
-  const cancel = useCallback(() => {
+  const cancel = useCallback((recoveredJobId = null) => {
     if (nativeAbortRef.current) {
       nativeAbortRef.current.abort();
       return Promise.resolve();
     }
-    if (nativeJobIdRef.current) {
-      return cancelManagedEnginePackageJob(id, nativeJobIdRef.current).catch(() => {});
+    const activeJobId = recoveredJobId || nativeJobIdRef.current;
+    if (activeJobId) {
+      return cancelManagedEnginePackageJob(id, activeJobId).catch(() => {});
     }
     return Promise.resolve();
   }, [id]);
