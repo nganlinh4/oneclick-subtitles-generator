@@ -44,7 +44,7 @@ test('rejects artifact name, byte-size, and digest drift', (context) => {
       ...nameFixture.expected,
       fileName: 'index-expected.css',
     }),
-    /artifact name drifted/,
+    new RegExp(`artifact name drifted.*${nameFixture.expected.sizeBytes} bytes, SHA-256 ${nameFixture.expected.sha256}`),
   );
 
   const sizeFixture = createFixture(context);

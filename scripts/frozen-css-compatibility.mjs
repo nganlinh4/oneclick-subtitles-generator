@@ -1,5 +1,5 @@
 import { createHash } from 'node:crypto';
-import { resolve } from 'node:path';
+import { isAbsolute, relative, resolve } from 'node:path';
 
 export const FROZEN_INDEX_CSS_PATH = 'src/styles/index.css';
 export const FROZEN_INDEX_CSS_SOURCE_SHA256 =
@@ -119,20 +119,6 @@ function assertFrozenImportInventory(lines) {
   );
 }
 
-function splitLinesPreservingEndings(source) {
-  const lines = [];
-  const newline = /\r\n|\r|\n/g;
-  let start = 0;
-  for (let match = newline.exec(source); match; match = newline.exec(source)) {
-    lines.push(source.slice(start, newline.lastIndex));
-    start = newline.lastIndex;
-  }
-  if (start < source.length) {
-    lines.push(source.slice(start));
-  }
-  return lines;
-}
-
 export function hoistFrozenLateImports(source) {
   const normalizedSource = normalizeFrozenCssText(source);
   const sourceLines = normalizedSource.split('\n');
@@ -144,15 +130,14 @@ export function hoistFrozenLateImports(source) {
     `source integrity mismatch for ${FROZEN_INDEX_CSS_PATH}; expected ${FROZEN_INDEX_CSS_SOURCE_SHA256}, found ${sourceDigest}`,
   );
 
-  const physicalLines = splitLinesPreservingEndings(source);
-  const hoistedImports = physicalLines.filter((_, index) => LATE_IMPORT_LINES.has(index + 1));
-  const remainingLines = physicalLines.filter((_, index) => !LATE_IMPORT_LINES.has(index + 1));
+  const hoistedImports = sourceLines.filter((_, index) => LATE_IMPORT_LINES.has(index + 1));
+  const remainingLines = sourceLines.filter((_, index) => !LATE_IMPORT_LINES.has(index + 1));
   invariant(
     hoistedImports.length === FROZEN_LATE_IMPORTS.length,
     `expected to hoist exactly ${FROZEN_LATE_IMPORTS.length} physical lines; found ${hoistedImports.length}`,
   );
   remainingLines.splice(FROZEN_EARLY_IMPORT.line, 0, ...hoistedImports);
-  const transformed = remainingLines.join('');
+  const transformed = remainingLines.join('\n');
 
   const normalizedTransformed = normalizeFrozenCssText(transformed);
   const transformedDigest = sha256Text(normalizedTransformed);
@@ -173,7 +158,8 @@ export function hoistFrozenLateImports(source) {
     normalizedTransformed.split('\n')[FROZEN_IMPORTS.length + 2] === ':root {',
     'the first qualified rule must follow the complete frozen import block',
   );
-  return transformed;
+  // Vite's CSS content hash must not depend on Git's host-specific worktree EOL conversion.
+  return `${normalizedTransformed}\n`;
 }
 
 function comparablePath(value) {
@@ -181,14 +167,31 @@ function comparablePath(value) {
   return process.platform === 'win32' ? absolute.toLowerCase() : absolute;
 }
 
+function isRepositoryCss(root, value) {
+  const relativePath = relative(root, value);
+  return relativePath !== '' &&
+    !relativePath.startsWith('..') &&
+    !isAbsolute(relativePath) &&
+    relativePath.split(/[\\/]/).at(-1).endsWith('.css');
+}
+
+function normalizeCssLineEndings(source) {
+  return source.replace(/\r\n?/g, '\n');
+}
+
 export function createFrozenCssCompatibilityPlugin({ root = process.cwd() } = {}) {
-  const target = comparablePath(resolve(root, FROZEN_INDEX_CSS_PATH));
+  const absoluteRoot = resolve(root);
+  const target = comparablePath(resolve(absoluteRoot, FROZEN_INDEX_CSS_PATH));
   return {
     name: 'osg-frozen-css-compatibility',
     enforce: 'pre',
     transform(source, id) {
       const cleanId = id.split(/[?#]/, 1)[0];
-      if (comparablePath(cleanId) !== target) return null;
+      if (!isRepositoryCss(absoluteRoot, cleanId)) return null;
+      if (comparablePath(cleanId) !== target) {
+        const normalized = normalizeCssLineEndings(source);
+        return normalized === source ? null : { code: normalized, map: null };
+      }
       return {
         code: hoistFrozenLateImports(source),
         map: null,

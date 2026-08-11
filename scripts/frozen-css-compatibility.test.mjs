@@ -46,8 +46,10 @@ test('hoists exactly the 12 pinned imports before the first qualified rule', () 
 test('normalizes BOM, line endings, and terminal newlines without changing CSS semantics', () => {
   const portableSource = `\uFEFF${normalizeFrozenCssText(frozenSource).replaceAll('\n', '\r\n')}\r\n\r\n`;
   const transformed = hoistFrozenLateImports(portableSource);
-  assert.equal(transformed.startsWith('\uFEFF'), true);
-  assert.equal(transformed.includes('\r\n'), true);
+  assert.equal(transformed.startsWith('\uFEFF'), false);
+  assert.equal(transformed.includes('\r'), false);
+  assert.equal(transformed.endsWith('\n'), true);
+  assert.equal(transformed, hoistFrozenLateImports(frozenSource));
   assert.equal(
     sha256Text(normalizeFrozenCssText(transformed)),
     FROZEN_INDEX_CSS_TRANSFORMED_SHA256,
@@ -103,7 +105,18 @@ test('Vite pre-transform applies to the frozen entry in development and producti
   assert.equal(plugin.apply, undefined);
   assert.equal(plugin.enforce, 'pre');
   assert.equal(plugin.transform(frozenSource, `${sourcePath}.lookalike`), null);
-  assert.equal(plugin.transform(frozenSource, resolve(repositoryRoot, 'src/styles/other.css')), null);
+  assert.equal(
+    plugin.transform(normalizeFrozenCssText(frozenSource), resolve(repositoryRoot, 'src/styles/other.css')),
+    null,
+  );
+  assert.equal(
+    plugin.transform('a {\r\n  color: red;\r\n}\r\n', resolve(repositoryRoot, 'src/styles/other.css')).code,
+    'a {\n  color: red;\n}\n',
+  );
+  assert.equal(
+    plugin.transform('a {\r\n  color: red;\r\n}\r\n', resolve(repositoryRoot, '..', 'other.css')),
+    null,
+  );
 
   const result = plugin.transform(frozenSource, `${sourcePath}?direct`);
   assert.equal(

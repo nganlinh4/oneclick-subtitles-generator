@@ -9,8 +9,8 @@
 *.md text
 *.txt text
 *.html text
-*.css text
-*.scss text
+*.css text eol=lf
+*.scss text eol=lf
 *.yml text
 *.yaml text
 

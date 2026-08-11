@@ -83,18 +83,18 @@ export function verifyFrozenCssArtifact(assetsDirectory, expected = FROZEN_CSS_A
   );
 
   const [fileName] = candidates;
-  invariant(
-    fileName === expected.fileName,
-    `artifact name drifted; expected ${expected.fileName}, found ${fileName}`,
-  );
   const artifactPath = resolve(assetsDirectory, fileName);
   const metadata = lstatSync(artifactPath);
   invariant(metadata.isFile() && !metadata.isSymbolicLink(), `${fileName} must be a real file`);
+  const digest = sha256File(artifactPath);
+  invariant(
+    fileName === expected.fileName,
+    `artifact name drifted; expected ${expected.fileName}, found ${fileName} (${metadata.size} bytes, SHA-256 ${digest})`,
+  );
   invariant(
     metadata.size === expected.sizeBytes,
     `${fileName} byte size drifted; expected ${expected.sizeBytes}, found ${metadata.size}`,
   );
-  const digest = sha256File(artifactPath);
   invariant(
     digest === expected.sha256,
     `${fileName} SHA-256 drifted; expected ${expected.sha256}, found ${digest}`,
