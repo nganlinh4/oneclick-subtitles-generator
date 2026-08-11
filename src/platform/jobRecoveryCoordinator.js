@@ -20,6 +20,7 @@ const MAX_RECOVERY_CANDIDATES = MAX_JOB_SNAPSHOTS + MAX_REMEMBERED_JOB_IDS;
 const JOB_KINDS = new Set([
   'importMedia',
   'probeMedia',
+  'processMedia',
   'generateWaveform',
   'downloadMedia',
   'exportMedia',

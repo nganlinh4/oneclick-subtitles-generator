@@ -30,7 +30,7 @@ filesystem paths, manifests, or process arguments to the WebView.
 
 The recovery layer copies the toolbox's safe mechanics—bounded staging, exact
 inventories, content receipts, version-directory publication, and runtime
-leases—but not its mutable `sgt-runtime-bundles` tag or compile-time-only
+leases—but not its mutable `osg-runtime-bundles-v1` tag or compile-time-only
 yt-dlp update policy. OSG prefers an official immutable publisher release. A
 future OSG mirror is accepted only as a byte-identical fallback in an
 append-only immutable release; it must never invent a different component

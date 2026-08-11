@@ -7,6 +7,7 @@ import { scanVideoQualities } from '../utils/qualityScanner';
 import { downloadUrlToUserDestination } from '../platform/userMediaExportFlow';
 
 import { cancelDownloadOnly } from '../utils/downloadOnlyUtils';
+import { showErrorToast } from '../utils/toastUtils';
 import LoadingIndicator from './common/LoadingIndicator';
 import WavyProgressIndicator from './common/WavyProgressIndicator';
 
@@ -181,7 +182,7 @@ const DownloadOnlyModal = ({
           kind: 'video',
           quality: { mode: 'atMost', height: selectedQuality.height },
         };
-      await downloadUrlToUserDestination({
+      const outcome = await downloadUrlToUserDestination({
         url: videoInfo.url,
         cookieSource: localStorage.getItem('use_cookies_for_download') === 'true'
           ? 'chrome'
@@ -193,10 +194,19 @@ const DownloadOnlyModal = ({
       });
       setIsDownloading(false);
       setDownloadVideoId(null);
+      if (outcome.status === 'cancelled' || outcome.status === 'dialogCancelled') {
+        setDownloadProgress(0);
+        return;
+      }
       onClose();
     } catch (error) {
       console.error('Error starting download:', error);
       setIsDownloading(false);
+      setDownloadVideoId(null);
+      showErrorToast(t(
+        'download.downloadOnly.failed',
+        'Media download or export failed. Details were written to the application log.'
+      ));
     }
   };
 

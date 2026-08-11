@@ -11,6 +11,7 @@ use sha2::{Digest as _, Sha256};
 use uuid::Uuid;
 
 use crate::archive;
+use crate::asset_catalog::{AssetDeliveryCatalog, AssetPackageId, VOICE_SAMPLE_IDS, asset_catalog};
 use crate::catalog::{
     DeliveryCatalog, DeliveryFile, DeliverySourceKind, EngineId, PackageCatalog, PackageDelivery,
     catalog,
@@ -28,6 +29,9 @@ use crate::progress::{OperationPhase, OperationProgress, ProgressSink};
 use crate::receipt;
 use crate::render_catalog::{RenderDeliveryCatalog, RenderPackageId, render_catalog};
 use crate::speech_catalog::{SpeechDeliveryCatalog, SpeechPackageId, speech_catalog};
+use crate::ui_font_catalog::{
+    UI_FONT_SUBSETS, UiFontDeliveryCatalog, UiFontPackageId, ui_font_catalog,
+};
 use crate::{CancellationToken, PackageError, Result};
 
 const MIN_FREE_RESERVE_BYTES: u64 = 256 * 1024 * 1024;
@@ -62,6 +66,8 @@ pub enum PackageState {
 pub type EnginePackageState = PackageState;
 pub type SpeechPackageState = PackageState;
 pub type RenderPackageState = PackageState;
+pub type AssetPackageState = PackageState;
+pub type UiFontPackageState = PackageState;
 
 #[derive(Clone, Debug, Eq, PartialEq, Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -82,6 +88,8 @@ pub struct PackageStatus<K> {
 pub type EnginePackageStatus = PackageStatus<EngineId>;
 pub type SpeechPackageStatus = PackageStatus<SpeechPackageId>;
 pub type RenderPackageStatus = PackageStatus<RenderPackageId>;
+pub type AssetPackageStatus = PackageStatus<AssetPackageId>;
+pub type UiFontPackageStatus = PackageStatus<UiFontPackageId>;
 
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub enum RemovalOutcome {
@@ -98,6 +106,12 @@ pub struct SpeechPackageManager(ManagedPackageManager<SpeechPackageId>);
 
 #[derive(Clone)]
 pub struct RenderPackageManager(ManagedPackageManager<RenderPackageId>);
+
+#[derive(Clone)]
+pub struct AssetPackageManager(ManagedPackageManager<AssetPackageId>);
+
+#[derive(Clone)]
+pub struct UiFontPackageManager(ManagedPackageManager<UiFontPackageId>);
 
 #[derive(Clone)]
 struct ManagedPackageManager<K: 'static>(Arc<ManagerInner<K>>);
@@ -168,6 +182,24 @@ impl fmt::Debug for RenderPackageManager {
     fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
         formatter
             .debug_struct("RenderPackageManager")
+            .field("inner", &self.0)
+            .finish_non_exhaustive()
+    }
+}
+
+impl fmt::Debug for AssetPackageManager {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        formatter
+            .debug_struct("AssetPackageManager")
+            .field("inner", &self.0)
+            .finish_non_exhaustive()
+    }
+}
+
+impl fmt::Debug for UiFontPackageManager {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        formatter
+            .debug_struct("UiFontPackageManager")
             .field("inner", &self.0)
             .finish_non_exhaustive()
     }
@@ -253,6 +285,48 @@ impl ManagedPackageKey for RenderPackageId {
 
     fn operation_in_progress(self) -> PackageError {
         PackageError::RenderOperationInProgress(self)
+    }
+}
+
+impl ManagedPackageKey for AssetPackageId {
+    fn as_str(self) -> &'static str {
+        self.as_str()
+    }
+
+    fn label(self) -> &'static str {
+        asset_catalog()
+            .iter()
+            .find(|info| info.id == self)
+            .map_or("Unknown asset package", |info| info.label)
+    }
+
+    fn requires_aligner(self) -> bool {
+        false
+    }
+
+    fn operation_in_progress(self) -> PackageError {
+        PackageError::AssetOperationInProgress(self)
+    }
+}
+
+impl ManagedPackageKey for UiFontPackageId {
+    fn as_str(self) -> &'static str {
+        self.as_str()
+    }
+
+    fn label(self) -> &'static str {
+        ui_font_catalog()
+            .iter()
+            .find(|info| info.id == self)
+            .map_or("Unknown UI font package", |info| info.label)
+    }
+
+    fn requires_aligner(self) -> bool {
+        false
+    }
+
+    fn operation_in_progress(self) -> PackageError {
+        PackageError::UiFontOperationInProgress(self)
     }
 }
 
@@ -411,6 +485,92 @@ impl RenderPackageManager {
     ) -> Result<InstalledRenderRuntime> {
         self.0
             .resolve_for_launch(RenderPackageId::RemotionRuntime, cancellation)
+    }
+}
+
+impl AssetPackageManager {
+    pub fn new(
+        root: impl AsRef<Path>,
+        quiesce: Arc<dyn Fn() -> Result<()> + Send + Sync>,
+    ) -> Result<Self> {
+        let catalog = AssetDeliveryCatalog::builtin()?;
+        let quiesce = Arc::new(move |_| quiesce());
+        Ok(Self(ManagedPackageManager::new(
+            root.as_ref(),
+            catalog,
+            quiesce,
+        )?))
+    }
+
+    #[must_use]
+    pub fn status(&self) -> AssetPackageStatus {
+        self.0.status(AssetPackageId::GeminiVoiceSamples)
+    }
+
+    pub fn install(
+        &self,
+        cancellation: &CancellationToken,
+        progress: &dyn ProgressSink,
+    ) -> Result<AssetPackageStatus> {
+        self.0
+            .install(AssetPackageId::GeminiVoiceSamples, cancellation, progress)
+    }
+
+    pub fn remove(
+        &self,
+        cancellation: &CancellationToken,
+        progress: &dyn ProgressSink,
+    ) -> Result<RemovalOutcome> {
+        self.0
+            .remove(AssetPackageId::GeminiVoiceSamples, cancellation, progress)
+    }
+
+    pub fn resolve(&self, cancellation: &CancellationToken) -> Result<InstalledAssetRuntime> {
+        self.0
+            .resolve_for_launch(AssetPackageId::GeminiVoiceSamples, cancellation)
+    }
+}
+
+impl UiFontPackageManager {
+    pub fn new(
+        root: impl AsRef<Path>,
+        quiesce: Arc<dyn Fn() -> Result<()> + Send + Sync>,
+    ) -> Result<Self> {
+        let catalog = UiFontDeliveryCatalog::builtin()?;
+        let quiesce = Arc::new(move |_| quiesce());
+        Ok(Self(ManagedPackageManager::new(
+            root.as_ref(),
+            catalog,
+            quiesce,
+        )?))
+    }
+
+    #[must_use]
+    pub fn status(&self) -> UiFontPackageStatus {
+        self.0.status(UiFontPackageId::GoogleSansFlex)
+    }
+
+    pub fn install(
+        &self,
+        cancellation: &CancellationToken,
+        progress: &dyn ProgressSink,
+    ) -> Result<UiFontPackageStatus> {
+        self.0
+            .install(UiFontPackageId::GoogleSansFlex, cancellation, progress)
+    }
+
+    pub fn remove(
+        &self,
+        cancellation: &CancellationToken,
+        progress: &dyn ProgressSink,
+    ) -> Result<RemovalOutcome> {
+        self.0
+            .remove(UiFontPackageId::GoogleSansFlex, cancellation, progress)
+    }
+
+    pub fn resolve(&self, cancellation: &CancellationToken) -> Result<InstalledUiFontRuntime> {
+        self.0
+            .resolve_for_launch(UiFontPackageId::GoogleSansFlex, cancellation)
     }
 }
 
@@ -1403,6 +1563,8 @@ pub struct InstalledPackageRuntime<K: Eq + Hash + 'static> {
 pub type InstalledRuntime = InstalledPackageRuntime<EngineId>;
 pub type InstalledSpeechRuntime = InstalledPackageRuntime<SpeechPackageId>;
 pub type InstalledRenderRuntime = InstalledPackageRuntime<RenderPackageId>;
+pub type InstalledAssetRuntime = InstalledPackageRuntime<AssetPackageId>;
+pub type InstalledUiFontRuntime = InstalledPackageRuntime<UiFontPackageId>;
 
 impl<K> fmt::Debug for InstalledPackageRuntime<K>
 where
@@ -1485,6 +1647,46 @@ impl InstalledPackageRuntime<RenderPackageId> {
     #[must_use]
     pub fn node(&self) -> &Path {
         &self.python
+    }
+}
+
+impl InstalledPackageRuntime<AssetPackageId> {
+    #[must_use]
+    pub fn version(&self) -> &str {
+        &self.version
+    }
+
+    pub fn voice_sample(&self, voice: &str) -> Result<PathBuf> {
+        if !VOICE_SAMPLE_IDS.contains(&voice) {
+            return Err(PackageError::InvalidRequest);
+        }
+        let path = resolve_owned(&self.root, &format!("samples/chirp3-hd-{voice}.wav"))?;
+        require_regular_file(&path)?;
+        Ok(path)
+    }
+}
+
+impl InstalledPackageRuntime<UiFontPackageId> {
+    #[must_use]
+    pub fn version(&self) -> &str {
+        &self.version
+    }
+
+    #[must_use]
+    pub fn stylesheet(&self) -> &Path {
+        &self.python
+    }
+
+    pub fn font_file(&self, subset: &str) -> Result<PathBuf> {
+        if !UI_FONT_SUBSETS.contains(&subset) {
+            return Err(PackageError::InvalidRequest);
+        }
+        let path = resolve_owned(
+            &self.root,
+            &format!("runtime/google-sans-flex-{subset}.woff2"),
+        )?;
+        require_regular_file(&path)?;
+        Ok(path)
     }
 }
 

@@ -6,15 +6,15 @@ import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 export const FROZEN_CSS_ARTIFACT = Object.freeze({
-  fileName: 'index-DL2A0zh3.css',
-  sha256: '3de33f4b2007a0771245eadb9dcbb71165bbbeef7cf1ff7eabb8a6d6fad97381',
-  sizeBytes: 680_364,
+  fileName: 'index-CwMXmTlz.css',
+  sha256: '207f68d9887276d6df98ce51021ede5689b816e21b4d8e1e87878f811387d0d0',
+  sizeBytes: 682_209,
   parity: Object.freeze({
     albumArtCount: 22,
     customSliderCount: 45,
     floatingScrollbarCount: 19,
-    fontFaceCount: 1,
-    googleSansFlexCount: 1,
+    fontFaceCount: 0,
+    googleSansFlexCount: 0,
     liquidGlassCount: 50,
     materialDefinitionCount: 151,
     materialUnresolvedCount: 47,

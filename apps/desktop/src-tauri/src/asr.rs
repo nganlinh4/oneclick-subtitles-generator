@@ -41,10 +41,8 @@ pub(crate) struct AsrRuntimeManager(Arc<RuntimeManagerInner>);
 pub(crate) struct AsrPackageCoordinator(Weak<RuntimeManagerInner>);
 
 struct RuntimeManagerInner {
-    install_root: PathBuf,
     work_root: PathBuf,
     resource_root: Option<PathBuf>,
-    development_root: Option<PathBuf>,
     package_manager: RwLock<Option<EnginePackageManager>>,
     services: Mutex<HashMap<AsrEngineId, CachedService>>,
 }
@@ -76,22 +74,15 @@ struct RuntimeResolution {
 
 impl AsrRuntimeManager {
     pub(crate) fn new(
-        install_root: impl AsRef<Path>,
         work_root: impl AsRef<Path>,
         resource_root: Option<PathBuf>,
-        development_root: Option<PathBuf>,
     ) -> std::io::Result<Self> {
-        std::fs::create_dir_all(install_root.as_ref())?;
         std::fs::create_dir_all(work_root.as_ref())?;
-        let install_root = std::fs::canonicalize(install_root)?;
         let work_root = std::fs::canonicalize(work_root)?;
         let resource_root = canonical_directory(resource_root);
-        let development_root = canonical_directory(development_root);
         Ok(Self(Arc::new(RuntimeManagerInner {
-            install_root,
             work_root,
             resource_root,
-            development_root,
             package_manager: RwLock::new(None),
             services: Mutex::new(HashMap::new()),
         })))
@@ -237,71 +228,19 @@ impl AsrRuntimeManager {
                         managed_runtime: Some(Arc::new(runtime)),
                     });
                 }
-                Err(PackageError::InvalidInstall | PackageError::DeliveryUnavailable) => {}
+                Err(PackageError::InvalidInstall | PackageError::DeliveryUnavailable) => {
+                    return Err(AsrError::InvalidRuntime);
+                }
                 Err(_) => return Err(AsrError::InvalidRuntime),
             }
         }
-        Ok(RuntimeResolution {
-            paths: self.resolve_legacy_paths(engine)?,
-            managed_runtime: None,
-        })
-    }
-
-    fn resolve_legacy_paths(&self, engine: AsrEngineId) -> Result<RuntimePaths, AsrError> {
-        let worker = self.resolve_worker()?;
-        let engine_name = engine.as_str();
-        let managed_engine = self.0.install_root.join(engine_name);
-        let mut runtime_roots = vec![managed_engine.join("venv"), managed_engine.join("runtime")];
-        let mut model_roots = vec![managed_engine.join("model"), managed_engine.join("models")];
-
-        if let Some(root) = &self.0.development_root {
-            runtime_roots.push(root.join(".venvs").join(engine_name));
-            model_roots.push(root.join("models/asr").join(engine_name));
-        }
-
-        let python = runtime_roots
-            .iter()
-            .find_map(|root| resolve_python(root))
-            .ok_or(AsrError::InvalidRuntime)?;
-        let model = model_roots
-            .iter()
-            .find_map(|root| resolve_populated_directory(root))
-            .ok_or(AsrError::InvalidRuntime)?;
-        let aligner = if engine.needs_aligner() {
-            let mut candidates = vec![
-                self.0.install_root.join("qwen3-forced-aligner/model"),
-                self.0.install_root.join("qwen3-forced-aligner"),
-            ];
-            if let Some(root) = &self.0.development_root {
-                candidates.push(root.join("models/asr/qwen3-forced-aligner"));
-            }
-            Some(
-                candidates
-                    .iter()
-                    .find_map(|root| resolve_populated_directory(root))
-                    .ok_or(AsrError::InvalidRuntime)?,
-            )
-        } else {
-            None
-        };
-        let paths = RuntimePaths {
-            python,
-            worker,
-            model,
-            aligner,
-        };
-        WorkerProgram::python(&paths.python, &paths.worker)?;
-        ModelAssets::new(engine, &paths.model, paths.aligner.as_deref())?;
-        Ok(paths)
+        Err(AsrError::InvalidRuntime)
     }
 
     fn resolve_worker(&self) -> Result<PathBuf, AsrError> {
         let mut candidates = Vec::new();
         if let Some(root) = &self.0.resource_root {
             candidates.push(root.join("workers/osg_asr_worker.py"));
-        }
-        if let Some(root) = &self.0.development_root {
-            candidates.push(root.join("crates/osg-asr/worker/osg_asr_worker.py"));
         }
         candidates
             .iter()
@@ -381,30 +320,6 @@ impl fmt::Debug for RuntimePaths {
 fn canonical_directory(path: Option<PathBuf>) -> Option<PathBuf> {
     path.and_then(|path| std::fs::canonicalize(path).ok())
         .filter(|path| path.is_dir())
-}
-
-fn resolve_python(root: &Path) -> Option<PathBuf> {
-    let candidates: &[&str] = if cfg!(windows) {
-        &["Scripts/python.exe", "python.exe"]
-    } else {
-        &["bin/python3", "bin/python"]
-    };
-    candidates
-        .iter()
-        .map(|relative| root.join(relative))
-        .find_map(|path| {
-            std::fs::canonicalize(path)
-                .ok()
-                .filter(|path| path.is_file())
-        })
-}
-
-fn resolve_populated_directory(path: &Path) -> Option<PathBuf> {
-    let path = std::fs::canonicalize(path).ok()?;
-    if !path.is_dir() || std::fs::read_dir(&path).ok()?.next().is_none() {
-        return None;
-    }
-    Some(path)
 }
 
 fn resolve_verified_worker(path: &Path) -> Option<PathBuf> {
@@ -641,8 +556,7 @@ pub(crate) async fn asr_start(
     let options = request.options()?;
     let requested_range = request.range_us()?;
     let media_engine = state
-        .media_engine
-        .clone()
+        .media_engine()
         .ok_or_else(CommandError::media_tools_unavailable)?;
     let local_media = state
         .editor
@@ -922,7 +836,8 @@ mod tests {
     use serde_json::json;
 
     use super::{
-        AsrEngineId, AsrRuntimeManager, AsrStartRequest, RequestedRange, resolve_media_range,
+        AsrEngineId, AsrRuntimeManager, AsrStartRequest, RequestedRange, WORKER_BYTES,
+        resolve_media_range,
     };
 
     #[test]
@@ -974,10 +889,11 @@ mod tests {
     #[test]
     fn manager_reports_all_engines_without_leaking_private_paths() {
         let directory = tempfile::tempdir().unwrap();
-        let install = directory.path().join("engines");
         let work = directory.path().join("work");
-        let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../..");
-        let manager = AsrRuntimeManager::new(&install, &work, None, Some(root)).unwrap();
+        let resources = directory.path().join("resources");
+        std::fs::create_dir_all(resources.join("workers")).unwrap();
+        std::fs::write(resources.join("workers/osg_asr_worker.py"), WORKER_BYTES).unwrap();
+        let manager = AsrRuntimeManager::new(&work, Some(resources)).unwrap();
         let status = manager.status();
         assert!(status.worker_available);
         assert_eq!(status.engines.len(), 5);
@@ -989,13 +905,7 @@ mod tests {
     #[test]
     fn package_coordinator_is_weak_and_cannot_keep_the_runtime_alive() {
         let directory = tempfile::tempdir().unwrap();
-        let manager = AsrRuntimeManager::new(
-            directory.path().join("engines"),
-            directory.path().join("work"),
-            None,
-            None,
-        )
-        .unwrap();
+        let manager = AsrRuntimeManager::new(directory.path().join("work"), None).unwrap();
         let strong_before = Arc::strong_count(&manager.0);
         let coordinator = manager.package_coordinator();
         assert_eq!(Arc::strong_count(&manager.0), strong_before);

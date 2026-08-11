@@ -39,6 +39,7 @@ const geminiModelIds = new Set(GEMINI_MODEL_IDS);
 const jobKinds = new Set([
   'importMedia',
   'probeMedia',
+  'processMedia',
   'generateWaveform',
   'downloadMedia',
   'transcribe',

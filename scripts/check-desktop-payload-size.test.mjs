@@ -59,6 +59,19 @@ test('rejects Product Sans and unreviewed Tauri resources', () => {
   }
 });
 
+test('rejects a legacy embedded Google Sans Flex font', () => {
+  const root = fixture();
+  try {
+    fs.writeFileSync(path.join(root, 'build', 'GoogleSansFlex.ttf'), 'font');
+    assert.throws(
+      () => auditDesktopPayload({ rootDirectory: root }),
+      /Managed Google Sans Flex remains embedded/,
+    );
+  } finally {
+    fs.rmSync(root, { recursive: true, force: true });
+  }
+});
+
 test('enforces the release executable budget when a binary is supplied', () => {
   const root = fixture();
   try {

@@ -39,7 +39,7 @@ const MAX_SETTINGS_BATCH_BYTES: usize = 8 * 1024 * 1024;
 const MAX_SETTINGS_BATCH_ENTRIES: usize = 4_096;
 const MAX_SETTING_DELETE_KEYS: usize = 256;
 const APPLICATION_ID: i64 = 0x4f53_4732;
-const SCHEMA_VERSION: u32 = 4;
+const SCHEMA_VERSION: u32 = 5;
 const MINIMUM_SQLITE_VERSION: &str = "3.51.3";
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
@@ -1933,7 +1933,7 @@ mod tests {
 
         let health = database.health().expect("database health");
 
-        assert_eq!(health.schema_version, 4);
+        assert_eq!(health.schema_version, 5);
         assert_eq!(health.application_id, APPLICATION_ID);
         assert!(health.sqlite_version.starts_with("3."));
         assert_eq!(health.journal_mode.to_ascii_lowercase(), "wal");
@@ -1978,7 +1978,7 @@ mod tests {
         let database = Database::open(&path).expect("upgrade v1 database");
         assert_eq!(
             database.health().expect("database health").schema_version,
-            4
+            5
         );
         let clients = database
             .credential_list(Some(CredentialPurpose::YouTubeOauthClient))
@@ -2059,7 +2059,7 @@ mod tests {
             Database::open(path),
             Err(DatabaseError::FutureSchema {
                 found: 99,
-                supported: 4
+                supported: 5
             })
         ));
     }

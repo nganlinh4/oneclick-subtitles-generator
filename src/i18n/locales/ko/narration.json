@@ -405,5 +405,7 @@
   "speedModificationError": "일괄 편집 적용 중 오류: ${error.message}",
   "startingRecording": "마이크를 시작하는 중...",
   "subtitleGroupingExplanationTranslated": "이 표는 번역된 자막이 더 나은 내레이션을 위해 어떻게 더 완전한 문장으로 그룹화되었는지 보여줍니다. 각 행은 번역된 자막을 나타내며, 그룹화된 열은 이들이 어떻게 결합되었는지 보여줍니다.",
-  "subtitleNotFoundError": "재시도할 자막을 찾을 수 없습니다."
+  "subtitleNotFoundError": "재시도할 자막을 찾을 수 없습니다.",
+  "installingVoiceSamples": "음성 미리보기 설치 중… {{percent}}%",
+  "voiceSampleUnavailable": "음성 미리보기를 재생할 수 없습니다. 다시 시도하세요."
 }

@@ -3,7 +3,7 @@ use std::fmt;
 use std::fs;
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicUsize, Ordering};
-use std::sync::{Arc, Mutex};
+use std::sync::{Arc, Mutex, RwLock};
 use std::time::Duration;
 
 use osg_application::ImportedMedia;
@@ -27,6 +27,7 @@ use tauri::{AppHandle, Manager, State, ipc::Channel};
 use uuid::Uuid;
 
 use crate::background;
+use crate::diagnostics;
 use crate::error::{CommandError, CommandResult};
 use crate::state::{DesktopSessionSnapshot, DesktopState, LocalMedia};
 
@@ -374,6 +375,10 @@ impl SlotLimiter {
             }
         }
     }
+
+    fn is_idle(&self) -> bool {
+        self.active.load(Ordering::Acquire) == 0
+    }
 }
 
 #[derive(Debug)]
@@ -442,11 +447,44 @@ impl Drop for SlotPermit {
     }
 }
 
-pub(crate) struct DownloadRuntime {
+#[derive(Clone)]
+struct DownloadTools {
     engine: Option<DownloadEngine>,
-    cache_root: Option<DownloadCacheRoot>,
     ffmpeg_available: bool,
     js_runtime_available: bool,
+}
+
+#[derive(Clone)]
+pub(crate) struct DownloadRuntimeHandle {
+    tools: Arc<RwLock<DownloadTools>>,
+    inspection_slots: Arc<SlotLimiter>,
+    download_slots: Arc<SlotLimiter>,
+}
+
+impl DownloadRuntimeHandle {
+    pub(crate) fn refresh(
+        &self,
+        search: YtDlpSearch,
+        js_search: JsRuntimeSearch,
+        ffmpeg: Option<FfmpegDirectory>,
+    ) -> CommandResult<()> {
+        let tools = DownloadRuntime::resolve_tools(search, js_search, ffmpeg);
+        *self
+            .tools
+            .write()
+            .map_err(|_| CommandError::internal("The native download runtime is unavailable."))? =
+            tools;
+        Ok(())
+    }
+
+    pub(crate) fn is_idle(&self) -> bool {
+        self.inspection_slots.is_idle() && self.download_slots.is_idle()
+    }
+}
+
+pub(crate) struct DownloadRuntime {
+    tools: Arc<RwLock<DownloadTools>>,
+    cache_root: Option<DownloadCacheRoot>,
     inventories: InventoryRegistry,
     inspection_slots: Arc<SlotLimiter>,
     download_slots: Arc<SlotLimiter>,
@@ -461,6 +499,22 @@ impl DownloadRuntime {
         js_search: JsRuntimeSearch,
         ffmpeg: Option<FfmpegDirectory>,
     ) -> Self {
+        let tools = Self::resolve_tools(search, js_search, ffmpeg);
+        Self {
+            tools: Arc::new(RwLock::new(tools)),
+            cache_root: DownloadCacheRoot::prepare(cache_directory),
+            inventories: InventoryRegistry::new(),
+            inspection_slots: SlotLimiter::new(MAX_CONCURRENT_INSPECTIONS),
+            download_slots: SlotLimiter::new(MAX_CONCURRENT_DOWNLOADS),
+            finalizing: Arc::new(FinalizationRegistry::default()),
+        }
+    }
+
+    fn resolve_tools(
+        search: YtDlpSearch,
+        js_search: JsRuntimeSearch,
+        ffmpeg: Option<FfmpegDirectory>,
+    ) -> DownloadTools {
         let ffmpeg_available = ffmpeg.is_some();
         let js_runtime = JsRuntimeResolver::new(js_search).resolve().ok();
         let js_runtime_available = js_runtime.is_some();
@@ -475,32 +529,51 @@ impl DownloadRuntime {
                 }
                 engine
             });
-        Self {
+        DownloadTools {
             engine,
-            cache_root: DownloadCacheRoot::prepare(cache_directory),
             ffmpeg_available,
             js_runtime_available,
-            inventories: InventoryRegistry::new(),
-            inspection_slots: SlotLimiter::new(MAX_CONCURRENT_INSPECTIONS),
-            download_slots: SlotLimiter::new(MAX_CONCURRENT_DOWNLOADS),
-            finalizing: Arc::new(FinalizationRegistry::default()),
         }
     }
 
+    #[must_use]
+    pub(crate) fn activation_handle(&self) -> DownloadRuntimeHandle {
+        DownloadRuntimeHandle {
+            tools: Arc::clone(&self.tools),
+            inspection_slots: Arc::clone(&self.inspection_slots),
+            download_slots: Arc::clone(&self.download_slots),
+        }
+    }
+
+    fn tools(&self) -> CommandResult<DownloadTools> {
+        self.tools
+            .read()
+            .map(|tools| tools.clone())
+            .map_err(|_| CommandError::internal("The native download runtime is unavailable."))
+    }
+
     fn engine(&self) -> CommandResult<DownloadEngine> {
-        if !self.js_runtime_available {
+        let tools = self.tools()?;
+        if !tools.js_runtime_available {
             return Err(CommandError::media_tools_unavailable());
         }
-        self.engine
+        tools
+            .engine
             .clone()
             .ok_or_else(CommandError::media_tools_unavailable)
     }
 
     fn download_parts(&self) -> CommandResult<(DownloadEngine, DownloadCacheRoot)> {
-        if !self.ffmpeg_available {
+        let tools = self.tools()?;
+        if !tools.ffmpeg_available {
             return Err(CommandError::media_tools_unavailable());
         }
-        let engine = self.engine()?;
+        if !tools.js_runtime_available {
+            return Err(CommandError::media_tools_unavailable());
+        }
+        let engine = tools
+            .engine
+            .ok_or_else(CommandError::media_tools_unavailable)?;
         let root = self
             .cache_root
             .clone()
@@ -513,10 +586,17 @@ impl fmt::Debug for DownloadRuntime {
     fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
         formatter
             .debug_struct("DownloadRuntime")
-            .field("engine_available", &self.engine.is_some())
+            .field(
+                "tools_available",
+                &self.tools.read().map_or((false, false, false), |tools| {
+                    (
+                        tools.engine.is_some(),
+                        tools.ffmpeg_available,
+                        tools.js_runtime_available,
+                    )
+                }),
+            )
             .field("cache_available", &self.cache_root.is_some())
-            .field("ffmpeg_available", &self.ffmpeg_available)
-            .field("js_runtime_available", &self.js_runtime_available)
             .field("inventories", &self.inventories)
             .finish_non_exhaustive()
     }
@@ -530,7 +610,8 @@ impl fmt::Debug for DownloadRuntime {
 pub(crate) async fn download_status(
     runtime: State<'_, DownloadRuntime>,
 ) -> CommandResult<DownloadStatusResponse> {
-    let Some(engine) = runtime.engine.clone() else {
+    let tools = runtime.tools()?;
+    let Some(engine) = tools.engine else {
         return Ok(status_response(
             false,
             false,
@@ -538,7 +619,7 @@ pub(crate) async fn download_status(
             Some(DownloadUnavailableReason::DownloaderUnavailable),
         ));
     };
-    if !runtime.js_runtime_available {
+    if !tools.js_runtime_available {
         return Ok(status_response(
             false,
             false,
@@ -578,7 +659,7 @@ pub(crate) async fn download_status(
         ));
     };
     let inspect_available = true;
-    let (available, reason) = if !runtime.ffmpeg_available {
+    let (available, reason) = if !tools.ffmpeg_available {
         (
             false,
             Some(DownloadUnavailableReason::MediaToolsUnavailable),
@@ -688,6 +769,7 @@ pub(crate) async fn download_start(
     };
     let initial = ticket.snapshot().clone();
     let job_id = initial.id();
+    diagnostics::record("download.started", &[("job", job_id.to_string())]);
     let job_cancellation = ticket.cancellation().clone();
     let finalizing = Arc::clone(&runtime.finalizing);
 
@@ -1148,6 +1230,10 @@ async fn finish_download(
                         output.cleanup();
                         match background::apply(jobs, job_id, JobUpdate::Succeed).await {
                             Ok(job) => {
+                                diagnostics::record(
+                                    "download.completed",
+                                    &[("job", job_id.to_string())],
+                                );
                                 let _ = channel.send(DownloadJobEvent::Completed {
                                     job,
                                     media: Box::new(media),
@@ -1204,6 +1290,7 @@ async fn cancel_download(
 ) {
     match background::finish_cancellation(jobs, job_id).await {
         Ok(job) => {
+            diagnostics::record("download.cancelled", &[("job", job_id.to_string())]);
             let _ = channel.send(DownloadJobEvent::Cancelled { job });
         }
         Err(error) => {
@@ -1219,6 +1306,13 @@ async fn fail_download(
     error: CommandError,
     channel: &Channel<DownloadJobEvent>,
 ) {
+    diagnostics::record(
+        "download.failed",
+        &[
+            ("job", job_id.to_string()),
+            ("code", error.code().to_owned()),
+        ],
+    );
     let job = background::finish_failure(jobs, job_id).await;
     let _ = channel.send(DownloadJobEvent::Failed { job, error });
 }

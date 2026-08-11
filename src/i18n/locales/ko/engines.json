@@ -68,7 +68,8 @@
     "media": "미디어 처리",
     "downloader": "사이트 다운로드",
     "javascript": "JavaScript 런타임",
-    "renderer": "비디오 렌더러"
+    "renderer": "비디오 렌더러",
+    "voicePreviews": "음성 미리보기"
   },
   "nativeSource": {
     "vendor": "검토된 공급업체",

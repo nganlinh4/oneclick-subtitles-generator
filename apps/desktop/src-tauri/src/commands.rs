@@ -13,7 +13,8 @@ use osg_infrastructure::secrets::{
     CredentialId, CredentialPurpose, CredentialServiceError, CredentialSetRequest,
     CredentialStatus, CredentialStatusReport,
 };
-use osg_infrastructure::storage::DatabaseError;
+use osg_infrastructure::storage::{Database, DatabaseError};
+use osg_media_server::{MediaServer, RegisteredMedia};
 use serde::Serialize;
 use serde_json::Value;
 use tauri::{AppHandle, State};
@@ -573,12 +574,7 @@ pub(crate) async fn open_media_asset(
     let database = state.database.clone();
     let media_server = state.media_server.clone();
     let (media, playback) = tauri::async_runtime::spawn_blocking(move || {
-        let resolved = database
-            .resolve_media(id)?
-            .ok_or_else(CommandError::media_unavailable)?;
-        let media = ImportedMedia::from_native_asset(resolved.asset().clone(), resolved.path())?;
-        let playback = media_server.register(media.canonical_path())?;
-        Ok::<_, CommandError>((media, playback))
+        reopen_media_asset(&database, &media_server, id)
     })
     .await
     .map_err(|_| CommandError::internal("the media reopen task stopped unexpectedly"))??;
@@ -603,11 +599,58 @@ pub(crate) async fn open_media_asset(
     Ok(snapshot)
 }
 
+fn reopen_media_asset(
+    database: &Database,
+    media_server: &MediaServer,
+    id: AssetId,
+) -> CommandResult<(ImportedMedia, RegisteredMedia)> {
+    let resolved = database
+        .resolve_media(id)?
+        .ok_or_else(CommandError::media_unavailable)?;
+    let media = ImportedMedia::from_native_asset(resolved.asset().clone(), resolved.path())?;
+    let playback =
+        media_server.register_with_extension(media.canonical_path(), media.asset().extension())?;
+    Ok((media, playback))
+}
+
 #[cfg(test)]
 mod tests {
-    use osg_domain::{JobKind, JobSnapshot};
+    use std::fs;
 
-    use super::{MAX_EXPOSED_ACTIVE_JOBS, MAX_EXPOSED_TERMINAL_JOBS, bounded_job_list};
+    use osg_domain::{JobKind, JobSnapshot, MediaAsset, MediaKind};
+    use osg_infrastructure::storage::Database;
+    use osg_media_server::MediaServer;
+
+    use super::{
+        MAX_EXPOSED_ACTIVE_JOBS, MAX_EXPOSED_TERMINAL_JOBS, bounded_job_list, reopen_media_asset,
+    };
+
+    #[test]
+    fn reopens_extensionless_durable_media_from_trusted_asset_metadata() {
+        let directory = tempfile::tempdir().expect("temporary directory");
+        let database = Database::open(directory.path().join("database.sqlite3")).expect("database");
+        let extensionless = directory.path().join("durable-media-object");
+        let bytes = vec![0x5a; 32 * 1024];
+        fs::write(&extensionless, &bytes).expect("durable media");
+        let asset = MediaAsset::new(
+            "download.mp4",
+            "mp4",
+            u64::try_from(bytes.len()).expect("fixture size"),
+            MediaKind::Video,
+        )
+        .expect("asset");
+        database
+            .remember_media(&asset, &extensionless)
+            .expect("remember media");
+        let media_server = MediaServer::start(std::iter::empty()).expect("media server");
+
+        let (media, playback) = reopen_media_asset(&database, &media_server, asset.id())
+            .expect("reopen extensionless media");
+
+        assert_eq!(media.asset(), &asset);
+        assert_eq!(playback.mime_type, "video/mp4");
+        assert_eq!(playback.byte_length, asset.size_bytes());
+    }
 
     #[test]
     fn exposed_job_list_keeps_active_work_and_bounds_terminal_history() {

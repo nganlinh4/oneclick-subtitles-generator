@@ -77,7 +77,6 @@ test('rejects a byte-valid artifact when pre-port CSS surfaces are missing', (co
     liquidGlassCount: 0,
     materialDefinitionCount: 0,
     materialUnresolvedCount: 0,
-    productSansCount: 0,
   });
   assert.throws(
     () => verifyFrozenCssArtifact(fixture.assets, {

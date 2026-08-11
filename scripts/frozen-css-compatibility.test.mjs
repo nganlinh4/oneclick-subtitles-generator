@@ -20,8 +20,8 @@ const repositoryRoot = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const sourcePath = resolve(repositoryRoot, FROZEN_INDEX_CSS_PATH);
 const frozenSource = readFileSync(sourcePath, 'utf8');
 
-test('hoists exactly the 13 pinned imports before the first qualified rule', () => {
-  assert.equal(FROZEN_LATE_IMPORTS.length, 13);
+test('hoists exactly the 12 pinned imports before the first qualified rule', () => {
+  assert.equal(FROZEN_LATE_IMPORTS.length, 12);
   assert.equal(Object.isFrozen(FROZEN_LATE_IMPORTS), true);
   assert.equal(FROZEN_LATE_IMPORTS.every(Object.isFrozen), true);
   assert.equal(
@@ -40,7 +40,7 @@ test('hoists exactly the 13 pinned imports before the first qualified rule', () 
     normalized.split('\n').filter((line) => line.startsWith('@import')),
     [FROZEN_EARLY_IMPORT, ...FROZEN_LATE_IMPORTS].map(({ statement }) => statement),
   );
-  assert.equal(normalized.split('\n')[16], ':root {');
+  assert.equal(normalized.split('\n')[15], ':root {');
 });
 
 test('normalizes BOM, line endings, and terminal newlines without changing CSS semantics', () => {
@@ -67,11 +67,11 @@ test('fails closed when a pinned late import is missing or duplicated', () => {
   const [{ statement }] = FROZEN_LATE_IMPORTS;
   assert.throws(
     () => hoistFrozenLateImports(frozenSource.replace(statement, '')),
-    /expected exactly 14 @import statements; found 13/,
+    /expected exactly 13 @import statements; found 12/,
   );
   assert.throws(
     () => hoistFrozenLateImports(frozenSource.replace(statement, `${statement}\r\n${statement}`)),
-    /expected exactly 14 @import statements; found 15/,
+    /expected exactly 13 @import statements; found 14/,
   );
 });
 
@@ -94,7 +94,7 @@ test('fails closed when pinned imports are reordered, altered, moved, or extende
   }
   assert.throws(
     () => hoistFrozenLateImports(extended),
-    /expected exactly 14 @import statements; found 15/,
+    /expected exactly 13 @import statements; found 14/,
   );
 });
 

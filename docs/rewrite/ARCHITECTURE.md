@@ -26,16 +26,16 @@ public key, root MIT license, and third-party notices are present. macOS/Linux s
 target-built packages and real-device validation and therefore remain fail-closed.
 
 The existing URL-inspection interaction is the only automatic entry into native-tool delivery. It
-checks typed status, asks the user to approve the exact required package-and-license batch,
-reports bounded progress in the existing toast panel, and exposes cancellation. It never runs at
-startup. Because download runtimes and their executable leases are constructed at Tauri startup,
-a successful install stops with an explicit restart requirement rather than retrying in stale
-state. It offers FFmpeg/ffprobe only on a target with a reviewed catalog release.
+checks typed status, installs the exact required package batch concurrently, reports bounded
+aggregate progress in the existing toast panel, and exposes cancellation. It never runs at startup.
+Each completed publication acquires a verified lease and refreshes the native consumers in the
+current process, so the pending media action continues without an application restart. It offers
+FFmpeg/ffprobe only on a target with a reviewed catalog release.
 
 An installed yt-dlp process failure is the one post-startup exception: it starts a coalesced,
 throttled check of the official stable release. The release must be marked immutable and its
 GitHub asset digest, exact tag commit, license, and third-party notices must validate. A newer
-version is staged and published beside the leased version, then remains restart-pending. The host
+version is staged and published beside the leased version, then hot-activated. The host
 does not call `yt-dlp -U`, overwrite a running executable, or automatically repeat the failed URL
 operation. Rust caches the lookup for 30 minutes across WebView reloads, retains two verified
 dynamic generations, retires older exact trees only before leases are issued, and quarantines

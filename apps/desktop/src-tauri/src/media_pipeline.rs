@@ -1,8 +1,8 @@
 use std::collections::{HashMap, HashSet, VecDeque};
 use std::fmt;
-use std::path::Path;
+use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicUsize, Ordering};
-use std::sync::{Arc, Mutex};
+use std::sync::{Arc, Mutex, RwLock};
 use std::time::Duration;
 
 use osg_domain::{
@@ -40,7 +40,8 @@ const PUBLISHING_BASIS_POINTS: u16 = 9_700;
 
 #[derive(Clone)]
 pub(crate) struct MediaPipelineRuntime {
-    pipeline: Option<MediaPipeline>,
+    pipeline: Arc<RwLock<Option<MediaPipeline>>>,
+    staging_root: PathBuf,
     media_server: MediaServer,
     slots: Arc<SlotLimiter>,
     jobs: Arc<RuntimeJobs>,
@@ -53,11 +54,13 @@ impl MediaPipelineRuntime {
         staging_root: impl AsRef<Path>,
         media_server: MediaServer,
     ) -> Result<Self, PipelineError> {
+        let staging_root = staging_root.as_ref().to_owned();
         let pipeline = engine
-            .map(|engine| MediaPipeline::with_staging_root(engine, staging_root))
+            .map(|engine| MediaPipeline::with_staging_root(engine, &staging_root))
             .transpose()?;
         Ok(Self {
-            pipeline,
+            pipeline: Arc::new(RwLock::new(pipeline)),
+            staging_root,
             media_server,
             slots: SlotLimiter::new(MAX_CONCURRENT_OPERATIONS),
             jobs: Arc::new(RuntimeJobs::default()),
@@ -67,8 +70,26 @@ impl MediaPipelineRuntime {
 
     fn pipeline(&self) -> CommandResult<MediaPipeline> {
         self.pipeline
+            .read()
+            .map_err(|_| CommandError::internal("The media pipeline runtime is unavailable."))?
             .clone()
             .ok_or_else(CommandError::media_tools_unavailable)
+    }
+
+    pub(crate) fn refresh(&self, engine: Option<osg_media::MediaEngine>) -> CommandResult<()> {
+        let pipeline = engine
+            .map(|engine| MediaPipeline::with_staging_root(engine, &self.staging_root))
+            .transpose()?;
+        *self
+            .pipeline
+            .write()
+            .map_err(|_| CommandError::internal("The media pipeline runtime is unavailable."))? =
+            pipeline;
+        Ok(())
+    }
+
+    pub(crate) fn is_idle(&self) -> bool {
+        self.slots.active.load(Ordering::Acquire) == 0
     }
 
     fn register_playback(&self, asset: &MediaAsset, path: &Path) -> CommandResult<RegisteredMedia> {
@@ -102,7 +123,13 @@ impl fmt::Debug for MediaPipelineRuntime {
     fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
         formatter
             .debug_struct("MediaPipelineRuntime")
-            .field("available", &self.pipeline.is_some())
+            .field(
+                "available",
+                &self
+                    .pipeline
+                    .read()
+                    .is_ok_and(|pipeline| pipeline.is_some()),
+            )
             .field("slots", &self.slots)
             .field("jobs", &self.jobs)
             .field("media_server", &self.media_server)
@@ -402,7 +429,7 @@ impl ValidatedOperation {
         match self {
             Self::GenerateWaveform { .. } => JobKind::GenerateWaveform,
             Self::PreparePlayback | Self::AnalysisClip { .. } | Self::ExtractAudio { .. } => {
-                JobKind::RenderVideo
+                JobKind::ProcessMedia
             }
         }
     }

@@ -1,5 +1,6 @@
 import { useState, useRef } from 'react';
 import { showInfoToast, showErrorToast } from '../../../utils/toastUtils';
+import { EVENTS } from '../../../events/constants';
 
 /**
  * Custom hook encapsulating the auto-generation orchestration flow.
@@ -243,10 +244,22 @@ const useAutoGenerateFlow = ({
 
   // Helper function to wait for analysis to complete
   const waitForAnalysisComplete = () => {
-    return new Promise((resolve) => {
+    return new Promise((resolve, reject) => {
       let checkCount = 0;
-      // Removed timeout - let analysis run as long as needed
+      const maxChecks = 1200; // 10 minutes; never leave the auto button stuck forever.
       let modalDetected = false;
+
+      const finish = (callback) => {
+        clearInterval(checkInterval);
+        window.removeEventListener(EVENTS.VIDEO_ANALYSIS_SETTLED, handleSettled);
+        callback();
+      };
+      const handleSettled = (event) => {
+        if (event?.detail?.success === false) {
+          finish(() => reject(new Error('Video analysis failed')));
+        }
+      };
+      window.addEventListener(EVENTS.VIDEO_ANALYSIS_SETTLED, handleSettled);
 
       const checkInterval = setInterval(() => {
         checkCount++;
@@ -281,7 +294,6 @@ const useAutoGenerateFlow = ({
 
         } else if (modalDetected && !rulesModal) {
           // Modal was open but now closed - analysis/editing is complete
-          clearInterval(checkInterval);
           console.log('[AutoFlow] Rules editor modal closed');
 
           // Clean up the countdown flag
@@ -289,21 +301,20 @@ const useAutoGenerateFlow = ({
 
           // Give a small delay to ensure everything is properly saved
           setTimeout(() => {
-            resolve();
+            finish(resolve);
           }, 500);
 
         } else if (!modalDetected && hasRules && checkCount > 10) {
           // Rules exist but modal never opened (might happen if analysis was very fast)
-          clearInterval(checkInterval);
           console.log('[AutoFlow] Analysis complete (rules saved without modal)');
-          resolve();
+          finish(resolve);
 
         } else if (autoFlowAbortedRef.current) {
-          clearInterval(checkInterval);
           console.log('[AutoFlow] Analysis aborted');
-          resolve();
+          finish(resolve);
+        } else if (checkCount >= maxChecks) {
+          finish(() => reject(new Error('Video analysis timed out')));
         }
-        // Removed timeout check - analysis will run indefinitely until complete or aborted
       }, 500); // Check every 500ms for faster response
     });
   };

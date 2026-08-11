@@ -1,6 +1,9 @@
 import { callGeminiApi } from './core';
 import { runNativeGeminiTranscription } from '../../platform/nativeGeminiTranscription';
-import { runMediaPipeline } from '../../platform/mediaPipelineService';
+import {
+  inspectMediaPipelineAsset,
+  runMediaPipeline,
+} from '../../platform/mediaPipelineService';
 import { getTranscriptionPrompt } from './promptManagement';
 import { createRequestController } from './requestManagement';
 
@@ -12,6 +15,7 @@ vi.mock('../../platform/nativeGeminiTranscription', () => ({
   runNativeGeminiTranscription: vi.fn(),
 }));
 vi.mock('../../platform/mediaPipelineService', () => ({
+  inspectMediaPipelineAsset: vi.fn(),
   runMediaPipeline: vi.fn(),
 }));
 vi.mock('./requestManagement', () => ({
@@ -53,6 +57,7 @@ beforeEach(() => {
       },
     },
   });
+  inspectMediaPipelineAsset.mockResolvedValue({ durationUs: 60_000_000 });
 });
 
 it('routes native transcription through opaque media and credential services', async () => {
@@ -103,6 +108,42 @@ it('clips a native segment first and sends only the derived asset to Gemini', as
   expect(runNativeGeminiTranscription).not.toHaveBeenCalledWith(expect.objectContaining({
     assetId: media.assetId,
   }));
+});
+
+it('sends a whole-source segment directly without a redundant media re-encode', async () => {
+  const media = Object.freeze({
+    assetId: '0198a8d7-dbf7-7ee0-a949-f13427fdd78a',
+    name: 'clip.mp4',
+    type: 'video/mp4',
+  });
+
+  await expect(callGeminiApi(media, 'video', {
+    segmentInfo: { start: 0, end: 60, duration: 60 },
+  })).resolves.toHaveLength(1);
+
+  expect(inspectMediaPipelineAsset).toHaveBeenCalledWith(media.assetId);
+  expect(runMediaPipeline).not.toHaveBeenCalled();
+  expect(runNativeGeminiTranscription).toHaveBeenCalledWith(expect.objectContaining({
+    assetId: media.assetId,
+  }));
+});
+
+it('does not treat a near-full segment with a meaningful leading trim as whole-source', async () => {
+  const media = Object.freeze({
+    assetId: '0198a8d7-dbf7-7ee0-a949-f13427fdd78a',
+    name: 'clip.mp4',
+    type: 'video/mp4',
+  });
+
+  await callGeminiApi(media, 'video', {
+    segmentInfo: { start: 0.5, end: 60, duration: 59.5 },
+  });
+
+  expect(inspectMediaPipelineAsset).not.toHaveBeenCalled();
+  expect(runMediaPipeline).toHaveBeenCalledWith(expect.objectContaining({
+    operation: 'analysisClip',
+    range: { start: 0.5, end: 60 },
+  }), expect.any(Object));
 });
 
 it('rejects an invalid native segment before starting either native job', async () => {

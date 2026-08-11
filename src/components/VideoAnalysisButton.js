@@ -5,6 +5,7 @@ import { analyzeVideoAndWaitForUserChoice } from '../utils/videoProcessing/analy
 import { setTranscriptionRules, getTranscriptionRulesSync, clearTranscriptionRules } from '../utils/transcriptionRulesStore';
 import LoadingIndicator from './common/LoadingIndicator';
 import { showErrorToast, showWarningToast } from '../utils/toastUtils';
+import { EVENTS } from '../events/constants';
 import '../styles/VideoAnalysisButton.css';
 
 // Gated debug logging (enable in the browser console: localStorage.debug_logs = 'true')
@@ -189,8 +190,14 @@ const VideoAnalysisButton = ({ disabled = false, uploadedFile = null, uploadedFi
         setHasAnalysis(true);
         setTranscriptionRulesState(result.analysisResult.transcriptionRules);
       }
+      window.dispatchEvent(new CustomEvent(EVENTS.VIDEO_ANALYSIS_SETTLED, {
+        detail: { success: true },
+      }));
     } catch (error) {
       console.error('Error during video analysis:', error);
+      window.dispatchEvent(new CustomEvent(EVENTS.VIDEO_ANALYSIS_SETTLED, {
+        detail: { success: false },
+      }));
       showErrorToast(t('videoAnalysis.error', 'Video analysis failed: {{message}}', { message: error.message }), 5000);
     } finally {
       setIsAnalyzing(false);

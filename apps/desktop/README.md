@@ -50,17 +50,19 @@ npm run check:tauri-contract
 node scripts/check-release-readiness.js --profile compile
 ```
 
-The target-specific release gate takes a Rust target triple. It intentionally fails at the current
-checkpoint because FFmpeg/ffprobe, ASR, speech, and Remotion deliveries are incomplete and the
-updater public key is still a placeholder:
+The target-specific release gate takes a Rust target triple. Windows passes only while its reviewed
+FFmpeg/ffprobe, ASR, speech, Remotion, font, and voice-sample deliveries remain available and match
+the checked catalogs. Other targets remain gated until their target-specific delivery catalogs are
+complete. The updater public key is checked in; release signing still requires the matching private
+key from the repository owner's external secret store:
 
 ```powershell
 node scripts/check-release-readiness.js --profile runtime-package --target x86_64-pc-windows-msvc
 ```
 
-Do not weaken or skip that gate to produce a distributable. The repository owner must also choose
-a root project license and approve the third-party-notice/corresponding-source policy; the gate
-requires `THIRD_PARTY_NOTICES.md` before distribution.
+Do not weaken or skip that gate to produce a distributable. The MIT root license and reviewed
+`THIRD_PARTY_NOTICES.md` policy are checked in, and every downloadable payload must continue to
+carry its required license, notice, and corresponding-source records.
 
 Architecture and trust boundaries are documented in [../../ARCHITECTURE.md](../../ARCHITECTURE.md)
 and [../../SECURITY.md](../../SECURITY.md).

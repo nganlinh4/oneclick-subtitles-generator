@@ -2,6 +2,7 @@ mod asr;
 mod background;
 mod cache;
 mod commands;
+mod diagnostics;
 mod download;
 mod engine_packages;
 mod error;
@@ -22,10 +23,16 @@ mod render_packages;
 mod speech;
 mod speech_packages;
 mod state;
+mod ui_fonts;
 mod updater;
+mod voice_samples;
 
 use std::collections::BTreeMap;
-use std::{io, sync::Arc};
+use std::{
+    io,
+    sync::{Arc, Mutex, RwLock},
+    time::Duration,
+};
 
 use asr::{AsrRuntimeManager, asr_start, asr_status};
 use cache::{cache_clear, cache_info, cache_prune_expired};
@@ -38,12 +45,14 @@ use commands::{
     settings_set_many,
 };
 use download::{
-    DownloadRuntime, download_cancel, download_inspect, download_start, download_status,
+    DownloadRuntime, DownloadRuntimeHandle, download_cancel, download_inspect, download_start,
+    download_status,
 };
 use engine_packages::{
     EnginePackageRuntime, engine_package_install, engine_package_remove, engine_packages_status,
     engine_runtime_start, engine_runtime_stop,
 };
+use error::{CommandError, CommandResult};
 use external_links::open_external_link;
 use gemini::gemini_start;
 use gemini_image::gemini_image_start;
@@ -65,8 +74,8 @@ use native_drop::{
     media_drop_subscribe, media_drop_unsubscribe,
 };
 use native_tools::{
-    NativeToolRuntime, native_tool_cancel, native_tool_install, native_tool_remove,
-    native_tools_catalog, native_tools_status,
+    NativeToolActivator, NativeToolRuntime, native_tool_cancel, native_tool_install,
+    native_tool_remove, native_tools_catalog, native_tools_status,
 };
 use osg_application::JobRegistry;
 use osg_download::{FfmpegDirectory, JsRuntimeSearch, YtDlpSearch};
@@ -98,7 +107,13 @@ use speech_packages::{
 use state::DesktopState;
 use tauri::webview::PageLoadEvent;
 use tauri::{Manager, WebviewWindowBuilder};
+use tauri_plugin_window_state::StateFlags;
+use ui_fonts::UiFontRuntime;
 use updater::{app_update_check, updater_plugin};
+use voice_samples::{
+    VoiceSampleRuntime, voice_sample_resolve, voice_samples_cancel, voice_samples_install,
+    voice_samples_remove, voice_samples_status,
+};
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 #[allow(
@@ -110,6 +125,11 @@ pub fn run() {
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_opener::init())
         .plugin(updater_plugin())
+        .plugin(
+            tauri_plugin_window_state::Builder::default()
+                .with_state_flags(StateFlags::SIZE | StateFlags::POSITION | StateFlags::MAXIMIZED)
+                .build(),
+        )
         .manage(NativeMediaDropState::default())
         .manage(LiveMusicRuntime::default())
         .manage(ImageBlobStore::default())
@@ -120,11 +140,16 @@ pub fn run() {
                     .state::<NativeMediaDropState>()
                     .clear_webview(webview.label());
             }
-            if webview.label() == "main"
-                && matches!(payload.event(), PageLoadEvent::Finished)
-                && let Err(error) = webview.window().show()
-            {
-                eprintln!("could not show the main window after page load: {error}");
+            if webview.label() == "main" && matches!(payload.event(), PageLoadEvent::Finished) {
+                let window = webview.window().clone();
+                tauri::async_runtime::spawn(async move {
+                    tokio::time::sleep(Duration::from_secs(10)).await;
+                    if !window.is_visible().unwrap_or(true)
+                        && let Err(error) = window.show()
+                    {
+                        eprintln!("could not show the main window after the font timeout: {error}");
+                    }
+                });
             }
         })
         .on_window_event(handle_native_media_drop_event)
@@ -230,6 +255,11 @@ pub fn run() {
             speech_playback_release,
             app_update_check,
             open_external_link,
+            voice_samples_status,
+            voice_samples_install,
+            voice_samples_cancel,
+            voice_sample_resolve,
+            voice_samples_remove,
         ])
         .run(tauri::generate_context!())
         .expect("Tauri runtime failed");
@@ -238,25 +268,25 @@ pub fn run() {
 fn setup_app(app: &mut tauri::App) -> Result<(), Box<dyn std::error::Error>> {
     let local_data_dir = app.path().app_local_data_dir()?;
     let cache_dir = app.path().app_cache_dir()?;
+    diagnostics::initialize(&app.path().app_log_dir()?)?;
+    let ui_font_runtime = prepare_ui_font_runtime(&local_data_dir);
     let database_path = local_data_dir.join("db/osg.sqlite3");
     let database = Database::open(database_path)?;
     let SpeechSetup {
         runtime: speech_runtime,
         resource_dir,
-        development_root,
     } = prepare_speech_runtime(app, &local_data_dir, &cache_dir)?;
-    let asr = AsrRuntimeManager::new(
-        local_data_dir.join("engines/asr"),
-        cache_dir.join("v1/asr"),
-        resource_dir.clone(),
-        development_root.clone(),
-    )?;
+    let asr = AsrRuntimeManager::new(cache_dir.join("v1/asr"), resource_dir.clone())?;
     let engine_package_manager = EnginePackageManager::new(
         local_data_dir.join("engine-packages/v1"),
         Arc::new(asr.package_coordinator()),
     )?;
     asr.attach_package_manager(engine_package_manager.clone())?;
     let media_server = MediaServer::start(media_server_allowed_origins(cfg!(debug_assertions)))?;
+    let voice_sample_runtime = VoiceSampleRuntime::new(
+        &local_data_dir.join("asset-packages/v1"),
+        media_server.clone(),
+    )?;
     let mut settings = database.list_settings("app")?;
     let disallowed_settings = settings
         .keys()
@@ -280,16 +310,10 @@ fn setup_app(app: &mut tauri::App) -> Result<(), Box<dyn std::error::Error>> {
         database.clone(),
         Arc::clone(&jobs),
     )?;
-    let media_runtimes = prepare_media_runtimes(
-        &cache_dir,
-        resource_dir.as_deref(),
-        &media_server,
-        &native_tool_runtime,
-    )?;
+    let media_runtimes = prepare_media_runtimes(&cache_dir, &media_server, &native_tool_runtime)?;
     let render_runtime = RenderRuntimeHost::new(
         &cache_dir,
         resource_dir.as_deref(),
-        development_root.as_deref(),
         media_runtimes.ffmpeg.clone(),
         media_server.clone(),
     )?;
@@ -309,6 +333,7 @@ fn setup_app(app: &mut tauri::App) -> Result<(), Box<dyn std::error::Error>> {
         render_runtime.clone(),
         Arc::clone(&jobs),
     );
+    attach_media_runtime_activator(&native_tool_runtime, &media_runtimes, &render_runtime)?;
     app.manage(media_runtimes.download);
     app.manage(media_runtimes.pipeline);
     app.manage(render_runtime);
@@ -316,6 +341,7 @@ fn setup_app(app: &mut tauri::App) -> Result<(), Box<dyn std::error::Error>> {
     app.manage(engine_package_runtime);
     app.manage(speech_package_runtime);
     app.manage(native_tool_runtime);
+    app.manage(voice_sample_runtime);
     app.manage(speech_runtime);
     app.manage(media_blob_store);
     app.manage(DesktopState::new(
@@ -325,17 +351,96 @@ fn setup_app(app: &mut tauri::App) -> Result<(), Box<dyn std::error::Error>> {
         media_runtimes.engine,
         media_server,
     ));
-    let window_config = app
+    build_main_window(
+        app,
+        &settings,
+        ui_font_runtime.as_ref().map(UiFontRuntime::css),
+    )?;
+    if let Some(runtime) = ui_font_runtime {
+        app.manage(runtime);
+    }
+    diagnostics::record("app.ready", &[]);
+    Ok(())
+}
+
+fn prepare_ui_font_runtime(local_data_dir: &std::path::Path) -> Option<UiFontRuntime> {
+    diagnostics::record("ui-font.prepare", &[]);
+    if let Ok(runtime) = UiFontRuntime::prepare(&local_data_dir.join("ui-fonts/v1")) {
+        diagnostics::record("ui-font.ready", &[]);
+        Some(runtime)
+    } else {
+        diagnostics::record("ui-font.unavailable", &[]);
+        None
+    }
+}
+
+fn build_main_window(
+    app: &mut tauri::App,
+    settings: &BTreeMap<String, Value>,
+    ui_font_css: Option<&str>,
+) -> Result<(), Box<dyn std::error::Error>> {
+    let mut window_config = app
         .config()
         .app
         .windows
         .first()
         .cloned()
         .ok_or_else(|| io::Error::other("the main window configuration is missing"))?;
+    if has_saved_main_window_state(app) {
+        // Start neutral so a saved non-maximized window is not overridden by the
+        // maximized first-launch default. The plugin restores the saved state when
+        // this dynamically-created window becomes ready.
+        window_config.maximized = false;
+    }
     WebviewWindowBuilder::from_config(app, &window_config)?
-        .initialization_script(settings_initialization_script(&settings)?)
+        .initialization_script(window_initialization_script(settings, ui_font_css)?)
         .build()?;
     Ok(())
+}
+
+fn attach_media_runtime_activator(
+    native_tools: &NativeToolRuntime,
+    media: &MediaRuntimes,
+    render: &RenderRuntimeHost,
+) -> io::Result<()> {
+    native_tools
+        .attach_activator(Arc::new(MediaRuntimeActivator {
+            download: media.download.activation_handle(),
+            pipeline: media.pipeline.clone(),
+            media_engine: Arc::clone(&media.engine),
+            render: render.clone(),
+            refresh_gate: Mutex::new(()),
+        }))
+        .map_err(|_| io::Error::other("the native tool activator could not be initialized"))
+}
+
+fn has_saved_main_window_state(app: &tauri::App) -> bool {
+    let Ok(config_dir) = app.path().app_config_dir() else {
+        return false;
+    };
+    let state_path = config_dir.join(tauri_plugin_window_state::DEFAULT_FILENAME);
+    let Ok(bytes) = std::fs::read(state_path) else {
+        return false;
+    };
+    let Ok(saved_states) = serde_json::from_slice::<Value>(&bytes) else {
+        return false;
+    };
+
+    has_valid_main_window_state(&saved_states)
+}
+
+fn has_valid_main_window_state(saved_states: &Value) -> bool {
+    saved_states.get("main").is_some_and(|state| {
+        state
+            .get("width")
+            .and_then(Value::as_u64)
+            .is_some_and(|width| width > 0)
+            && state
+                .get("height")
+                .and_then(Value::as_u64)
+                .is_some_and(|height| height > 0)
+            && state.get("maximized").and_then(Value::as_bool).is_some()
+    })
 }
 
 fn media_server_allowed_origins(include_development_origins: bool) -> Vec<String> {
@@ -354,47 +459,83 @@ fn media_server_allowed_origins(include_development_origins: bool) -> Vec<String
 
 #[derive(Debug)]
 struct MediaRuntimes {
-    engine: Option<MediaEngine>,
+    engine: Arc<RwLock<Option<MediaEngine>>>,
     ffmpeg: Option<std::path::PathBuf>,
     pipeline: MediaPipelineRuntime,
     download: DownloadRuntime,
 }
 
+struct MediaRuntimeActivator {
+    download: DownloadRuntimeHandle,
+    pipeline: MediaPipelineRuntime,
+    media_engine: Arc<RwLock<Option<MediaEngine>>>,
+    render: RenderRuntimeHost,
+    refresh_gate: Mutex<()>,
+}
+
+impl NativeToolActivator for MediaRuntimeActivator {
+    fn refresh(&self, native_tools: &NativeToolRuntime) -> CommandResult<()> {
+        let _refresh = self
+            .refresh_gate
+            .lock()
+            .map_err(|_| CommandError::internal("the native media activator is unavailable"))?;
+        let ffmpeg = native_tools.executable(NativeToolId::MediaTools, ExecutableRole::Ffmpeg);
+        let ffprobe = native_tools.executable(NativeToolId::MediaTools, ExecutableRole::Ffprobe);
+        let yt_dlp = native_tools.executable(NativeToolId::YtDlp, ExecutableRole::YtDlp);
+        let deno = native_tools.executable(NativeToolId::Deno, ExecutableRole::Deno);
+
+        let media_engine = match (ffmpeg.as_ref(), ffprobe.as_ref()) {
+            (Some(ffmpeg), Some(ffprobe)) => ToolchainResolver::new(
+                BinarySearch::default()
+                    .configured_ffmpeg(ffmpeg)
+                    .configured_ffprobe(ffprobe),
+            )
+            .resolve()
+            .ok()
+            .map(MediaEngine::new),
+            _ => None,
+        };
+        let ffmpeg_directory = ffmpeg
+            .as_deref()
+            .and_then(|path| FfmpegDirectory::from_executable(path).ok());
+        let download_search = yt_dlp.map_or_else(YtDlpSearch::default, |path| {
+            YtDlpSearch::default().configured(path)
+        });
+        let js_runtime_search = deno.map_or_else(JsRuntimeSearch::default, |path| {
+            JsRuntimeSearch::default().configured(path)
+        });
+
+        self.download
+            .refresh(download_search, js_runtime_search, ffmpeg_directory)?;
+        self.pipeline.refresh(media_engine.clone())?;
+        *self
+            .media_engine
+            .write()
+            .map_err(|_| CommandError::internal("the native media runtime is unavailable"))? =
+            media_engine;
+        self.render.refresh_media_tool(ffmpeg)?;
+        Ok(())
+    }
+
+    fn consumers_idle(&self, tool: NativeToolId) -> CommandResult<bool> {
+        let download_idle = self.download.is_idle();
+        Ok(match tool {
+            NativeToolId::YtDlp | NativeToolId::Deno => download_idle,
+            NativeToolId::MediaTools => {
+                download_idle && self.pipeline.is_idle() && self.render.is_idle()
+            }
+        })
+    }
+}
+
 fn prepare_media_runtimes(
     cache_dir: &std::path::Path,
-    resource_dir: Option<&std::path::Path>,
     media_server: &MediaServer,
     native_tools: &NativeToolRuntime,
 ) -> Result<MediaRuntimes, osg_media_pipeline::PipelineError> {
-    let executable_dir = std::env::current_exe()
-        .ok()
-        .and_then(|executable| executable.parent().map(std::path::Path::to_owned));
     let mut media_search = BinarySearch::default();
     let mut download_search = YtDlpSearch::default();
     let mut js_runtime_search = JsRuntimeSearch::default();
-    if let Some(resource_dir) = resource_dir {
-        media_search = media_search.bundled_root(resource_dir);
-        download_search = download_search.bundled_root(resource_dir);
-        js_runtime_search = js_runtime_search.bundled_root(resource_dir);
-    }
-    if let Some(executable_dir) = &executable_dir {
-        media_search = media_search.bundled_root(executable_dir);
-        download_search = download_search.bundled_root(executable_dir);
-        js_runtime_search = js_runtime_search.bundled_root(executable_dir);
-    }
-    #[cfg(debug_assertions)]
-    {
-        let development_root = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../..");
-        media_search = media_search
-            .bundled_root(&development_root)
-            .allow_system_path(true);
-        download_search = download_search
-            .bundled_root(&development_root)
-            .allow_system_path(true);
-        js_runtime_search = js_runtime_search
-            .bundled_root(development_root)
-            .allow_system_path(true);
-    }
     if let Some(executable) =
         native_tools.executable(NativeToolId::MediaTools, ExecutableRole::Ffmpeg)
     {
@@ -431,7 +572,7 @@ fn prepare_media_runtimes(
         ffmpeg_directory,
     );
     Ok(MediaRuntimes {
-        engine: media_engine,
+        engine: Arc::new(RwLock::new(media_engine)),
         ffmpeg,
         pipeline: media_pipeline_runtime,
         download: download_runtime,
@@ -441,7 +582,6 @@ fn prepare_media_runtimes(
 struct SpeechSetup {
     runtime: SpeechRuntime,
     resource_dir: Option<std::path::PathBuf>,
-    development_root: Option<std::path::PathBuf>,
 }
 
 fn prepare_speech_runtime(
@@ -450,20 +590,14 @@ fn prepare_speech_runtime(
     cache_dir: &std::path::Path,
 ) -> io::Result<SpeechSetup> {
     let resource_dir = app.path().resource_dir().ok();
-    #[cfg(debug_assertions)]
-    let development_root = Some(std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../.."));
-    #[cfg(not(debug_assertions))]
-    let development_root = None;
     let runtime = SpeechRuntime::new(
         local_data_dir.join("engines/speech"),
         cache_dir.join("v1/speech"),
         resource_dir.clone(),
-        development_root.clone(),
     )?;
     Ok(SpeechSetup {
         runtime,
         resource_dir,
-        development_root,
     })
 }
 
@@ -479,6 +613,22 @@ fn settings_initialization_script(
     let string_literal = serde_json::to_string(&serialized)?;
     Ok(format!(
         "(() => {{ localStorage.removeItem('original_subtitles_map'); const values = JSON.parse({string_literal}); for (const [key, value] of Object.entries(values)) {{ const stored = typeof value === 'string' ? value : JSON.stringify(value); if (stored !== undefined) localStorage.setItem(key, stored); }} }})();"
+    ))
+}
+
+fn window_initialization_script(
+    settings: &BTreeMap<String, Value>,
+    ui_font_css: Option<&str>,
+) -> Result<String, serde_json::Error> {
+    let settings_script = settings_initialization_script(settings)?;
+    let Some(css) = ui_font_css else {
+        return Ok(format!(
+            "Object.defineProperty(window, '__OSG_MANAGED_UI_FONT__', {{ value: false }});Object.defineProperty(window, '__OSG_MANAGED_UI_FONT_READY__', {{ value: Promise.resolve(false) }});{settings_script}"
+        ));
+    };
+    let css_literal = serde_json::to_string(css)?;
+    Ok(format!(
+        "(() => {{ const css = {css_literal}; let finish; const ready = new Promise((resolve) => {{ finish = resolve; }}); const install = () => {{ if (document.getElementById('osg-managed-ui-font')) {{ finish(true); return true; }} const target = document.head || document.documentElement; if (!target) return false; const style = document.createElement('style'); style.id = 'osg-managed-ui-font'; style.textContent = css; target.appendChild(style); finish(true); return true; }}; if (!install()) {{ const retry = () => {{ if (install()) {{ document.removeEventListener('readystatechange', retry); document.removeEventListener('DOMContentLoaded', retry); }} }}; document.addEventListener('readystatechange', retry); document.addEventListener('DOMContentLoaded', retry); }} Object.defineProperty(window, '__OSG_MANAGED_UI_FONT__', {{ value: true }}); Object.defineProperty(window, '__OSG_MANAGED_UI_FONT_READY__', {{ value: ready }}); }})();{settings_script}"
     ))
 }
 
@@ -503,8 +653,40 @@ mod tests {
     use serde_json::json;
 
     use super::{
-        is_safe_setting_key, media_server_allowed_origins, settings_initialization_script,
+        has_valid_main_window_state, is_safe_setting_key, media_server_allowed_origins,
+        settings_initialization_script, window_initialization_script,
     };
+
+    #[test]
+    fn recognizes_a_persisted_main_window_state() {
+        assert!(has_valid_main_window_state(&json!({
+            "main": {
+                "width": 1400,
+                "height": 900,
+                "maximized": false
+            }
+        })));
+        assert!(has_valid_main_window_state(&json!({
+            "main": {
+                "width": 1920,
+                "height": 1080,
+                "maximized": true
+            }
+        })));
+    }
+
+    #[test]
+    fn rejects_missing_or_incomplete_window_state() {
+        for state in [
+            json!({}),
+            json!({ "main": {} }),
+            json!({ "main": { "width": 0, "height": 900, "maximized": false } }),
+            json!({ "main": { "width": 1400, "height": 0, "maximized": false } }),
+            json!({ "main": { "width": 1400, "height": 900 } }),
+        ] {
+            assert!(!has_valid_main_window_state(&state));
+        }
+    }
 
     #[test]
     fn release_media_origins_exclude_development_servers() {
@@ -525,6 +707,35 @@ mod tests {
                 "http://127.0.0.1:3030",
             ]
         );
+    }
+
+    #[test]
+    fn window_initialization_injects_only_in_memory_managed_font_css() {
+        let script = window_initialization_script(
+            &BTreeMap::new(),
+            Some("@font-face{font-family:'Google Sans';src:url(data:font/woff2;base64,AA==)}"),
+        )
+        .expect("valid script");
+        assert!(script.contains("osg-managed-ui-font"));
+        assert!(script.contains("data:font/woff2;base64,AA=="));
+        assert!(script.contains("__OSG_MANAGED_UI_FONT__"));
+        assert!(script.contains("__OSG_MANAGED_UI_FONT_READY__"));
+        assert!(script.contains("value: true"));
+        assert!(script.contains("readystatechange"));
+        assert!(script.contains("DOMContentLoaded"));
+        assert!(!script.contains("(document.head || document.documentElement).appendChild"));
+        assert!(!script.contains("file://"));
+        assert!(!script.contains("C:\\\\"));
+    }
+
+    #[test]
+    fn window_initialization_marks_managed_font_unavailable_without_css() {
+        let script = window_initialization_script(&BTreeMap::new(), None).expect("valid script");
+        assert!(script.contains("__OSG_MANAGED_UI_FONT__"));
+        assert!(script.contains("__OSG_MANAGED_UI_FONT_READY__"));
+        assert!(script.contains("value: false"));
+        assert!(script.contains("Promise.resolve(false)"));
+        assert!(!script.contains("osg-managed-ui-font"));
     }
 
     #[test]

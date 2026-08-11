@@ -258,6 +258,7 @@ mod tests {
             sha256: "0".repeat(64),
             unpacked_size_bytes: 1,
             python_relative_path: "runtime/python.exe".to_string(),
+            primary_executable: true,
             model_relative_path: Some("model".to_string()),
             aligner_relative_path: None,
             files: vec![DeliveryFile {

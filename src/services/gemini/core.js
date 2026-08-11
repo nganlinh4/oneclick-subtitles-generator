@@ -4,7 +4,10 @@ import {
   normalizeMediaModelId,
 } from '../../config/geminiModels';
 import { runNativeGeminiMediaAnalysis } from '../../platform/nativeGeminiMediaAnalysis';
-import { runMediaPipeline } from '../../platform/mediaPipelineService';
+import {
+  inspectMediaPipelineAsset,
+  runMediaPipeline,
+} from '../../platform/mediaPipelineService';
 import { isNativeMediaDescriptor } from '../../platform/mediaService';
 import { runNativeGeminiTranscription } from '../../platform/nativeGeminiTranscription';
 import { createSubtitleSchema } from '../../utils/schemaUtils';
@@ -46,6 +49,16 @@ const normalizeMediaResolution = (value) => {
   return value.startsWith(prefix) ? value.slice(prefix.length).toLowerCase() : value;
 };
 
+const FULL_RANGE_TOLERANCE_SECONDS = 0.25;
+
+const coversWholeAsset = async (assetId, range) => {
+  if (range.start > FULL_RANGE_TOLERANCE_SECONDS) return false;
+  const inspection = await inspectMediaPipelineAsset(assetId);
+  if (!Number.isSafeInteger(inspection.durationUs) || inspection.durationUs <= 0) return false;
+  const durationSeconds = inspection.durationUs / 1_000_000;
+  return range.end >= durationSeconds - FULL_RANGE_TOLERANCE_SECONDS;
+};
+
 const asLegacyGeminiResponse = (result) => ({
   candidates: [{ content: { parts: [{ text: result.text }] } }],
   usageMetadata: result.usage,
@@ -66,7 +79,7 @@ export const callGeminiApi = async (input, _inputType, options = {}) => {
     const segmentRange = normalizeNativeSegmentRange(options.segmentInfo);
     let mediaAssetId = input.assetId;
     let mediaKind = input.type?.startsWith('audio/') ? 'audio' : 'video';
-    if (segmentRange !== null) {
+    if (segmentRange !== null && !(await coversWholeAsset(input.assetId, segmentRange))) {
       const clip = await runMediaPipeline({
         operation: 'analysisClip',
         assetId: input.assetId,

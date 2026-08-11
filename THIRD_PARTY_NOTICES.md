@@ -12,8 +12,10 @@ delivery catalogs below.
   license metadata. Remotion is licensed under its upstream license and is not considered part of
   this repository's MIT grant.
 - Material Symbols are used under Apache-2.0. The application does not bundle Product Sans.
-- `src/assets/fonts/GoogleSansFlex.ttf` is governed by its accompanying upstream font terms and is
-  tracked by the frozen desktop payload audit; it is not relicensed by this document.
+- Google Sans Flex v22 is installed on demand from the official Google Fonts distribution under
+  SIL Open Font License 1.1. Exact source bytes, license text, and the content-addressed OSG fallback
+  are recorded in `crates/osg-engine-packages/delivery/ui-fonts.delivery.json`; the legacy embedded
+  TTF is retired and excluded from the application payload.
 
 ## Downloadable native tools
 
@@ -40,6 +42,13 @@ Important model terms include:
 - Chatterbox code and model files: MIT.
 - F5-TTS code: MIT; the default F5TTS_v1_Base model is CC-BY-NC-4.0 and is not licensed for
   commercial use. It is downloaded directly from the official immutable model revision.
+
+## Downloadable voice-preview media
+
+The Gemini voice-preview pack contains the 30 reviewed WAV samples formerly shipped under
+`public/audio/voices`. It is distributed as the content-addressed archive recorded in
+`crates/osg-engine-packages/delivery/voice-samples.delivery.json`. The samples remain subject to
+their provider terms and are not relicensed by the repository MIT license.
 
 ## No implied relicensing
 

@@ -127,7 +127,7 @@ pub(crate) struct DesktopState {
     pub(crate) database: Database,
     pub(crate) credentials: CredentialService<KeyringCredentialBackend>,
     pub(crate) jobs: Arc<JobRegistry<Database>>,
-    pub(crate) media_engine: Option<MediaEngine>,
+    media_engine: Arc<RwLock<Option<MediaEngine>>>,
     pub(crate) media_server: MediaServer,
     pub(crate) providers: ProviderClient,
     pub(crate) youtube_oauth: OAuthCoordinator,
@@ -138,7 +138,7 @@ impl DesktopState {
         asr: AsrRuntimeManager,
         database: Database,
         jobs: Arc<JobRegistry<Database>>,
-        media_engine: Option<MediaEngine>,
+        media_engine: Arc<RwLock<Option<MediaEngine>>>,
         media_server: MediaServer,
     ) -> Self {
         let credentials = CredentialService::platform(database.clone());
@@ -153,6 +153,11 @@ impl DesktopState {
             providers: ProviderClient::default(),
             youtube_oauth: OAuthCoordinator::default(),
         }
+    }
+
+    #[must_use]
+    pub(crate) fn media_engine(&self) -> Option<MediaEngine> {
+        self.media_engine.read().ok()?.clone()
     }
 }
 

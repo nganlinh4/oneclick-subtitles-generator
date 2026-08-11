@@ -13,6 +13,10 @@ pub(crate) struct CommandError {
 }
 
 impl CommandError {
+    pub(crate) const fn code(&self) -> &'static str {
+        self.code
+    }
+
     fn fixed(code: &'static str, message: &'static str) -> Self {
         Self {
             code,
@@ -538,8 +542,8 @@ impl From<osg_native_tools::NativeToolError> for CommandError {
                 "The native tool operation was cancelled.",
             ),
             NativeToolError::RuntimeBusy => Self::fixed(
-                "nativeToolRestartRequired",
-                "Restart the application before changing a native tool used by this session.",
+                "nativeToolInUse",
+                "Wait for the current media operation to finish, then retry the tool change.",
             ),
             NativeToolError::Network
             | NativeToolError::IncompleteDownload
@@ -700,7 +704,9 @@ impl From<osg_engine_packages::PackageError> for CommandError {
             ),
             PackageError::OperationInProgress(_)
             | PackageError::SpeechOperationInProgress(_)
-            | PackageError::RenderOperationInProgress(_) => (
+            | PackageError::RenderOperationInProgress(_)
+            | PackageError::AssetOperationInProgress(_)
+            | PackageError::UiFontOperationInProgress(_) => (
                 "packageOperationInProgress",
                 "Another engine package operation is already active.",
             ),

@@ -1,4 +1,5 @@
 use std::sync::Arc;
+use std::time::Instant;
 
 use futures_util::StreamExt;
 use osg_domain::{AssetId, JobId, JobKind, JobSnapshot, JobUpdate};
@@ -13,6 +14,7 @@ use serde_json::Value;
 use tauri::{State, ipc::Channel};
 
 use crate::background;
+use crate::diagnostics;
 use crate::error::{CommandError, CommandResult};
 use crate::media_blob::MediaBlobStore;
 use crate::state::{DesktopState, LocalMedia};
@@ -35,6 +37,14 @@ impl GeminiTask {
             Self::Transcribe => JobKind::Transcribe,
             Self::Translate => JobKind::Translate,
             Self::AnalyzeSubtitles => JobKind::AnalyzeSubtitles,
+        }
+    }
+
+    const fn diagnostic_name(self) -> &'static str {
+        match self {
+            Self::Transcribe => "transcribe",
+            Self::Translate => "translate",
+            Self::AnalyzeSubtitles => "analyzeSubtitles",
         }
     }
 }
@@ -147,7 +157,11 @@ impl From<&TokenUsage> for GeminiUsage {
 }
 
 #[derive(Debug, Serialize)]
-#[serde(tag = "event", rename_all = "camelCase")]
+#[serde(
+    tag = "event",
+    rename_all = "camelCase",
+    rename_all_fields = "camelCase"
+)]
 pub(crate) enum GeminiJobEvent {
     Chunk {
         job_id: JobId,
@@ -175,7 +189,8 @@ struct GeminiOutput {
 #[tauri::command]
 #[allow(
     clippy::needless_pass_by_value,
-    reason = "Tauri injects State and Channel as owned command extractors"
+    clippy::too_many_lines,
+    reason = "Tauri injects owned extractors and the job/log/channel terminal transitions must stay ordered"
 )]
 pub(crate) async fn gemini_start(
     state: State<'_, DesktopState>,
@@ -187,9 +202,22 @@ pub(crate) async fn gemini_start(
     let local_media = resolve_media(&state, &media_blobs, request.media_asset_id).await?;
     let jobs = Arc::clone(&state.jobs);
     let kind = request.task.job_kind();
+    let task_name = request.task.diagnostic_name();
+    let model_name = request.model.api_id();
+    let has_media = local_media.is_some();
     let ticket = background::register_running(&jobs, kind).await?;
     let initial = ticket.snapshot().clone();
     let job_id = initial.id();
+    let started = Instant::now();
+    diagnostics::record(
+        "gemini.started",
+        &[
+            ("job", job_id.to_string()),
+            ("task", task_name.to_owned()),
+            ("model", model_name.to_owned()),
+            ("media", if has_media { "yes" } else { "no" }.to_owned()),
+        ],
+    );
     let cancellation = ticket.cancellation().clone();
     let credentials = state.credentials.clone();
 
@@ -202,12 +230,22 @@ pub(crate) async fn gemini_start(
             &cancellation,
             &on_event,
             job_id,
+            started,
         )
         .await;
 
         match result {
             Ok(output) => match background::apply(&jobs, job_id, JobUpdate::Succeed).await {
                 Ok(job) => {
+                    diagnostics::record(
+                        "gemini.completed",
+                        &[
+                            ("job", job_id.to_string()),
+                            ("task", task_name.to_owned()),
+                            ("elapsedMs", elapsed_millis(started)),
+                            ("outputBytes", output.text.len().to_string()),
+                        ],
+                    );
                     let _ = on_event.send(GeminiJobEvent::Completed {
                         job,
                         text: output.text,
@@ -215,6 +253,15 @@ pub(crate) async fn gemini_start(
                     });
                 }
                 Err(error) => {
+                    diagnostics::record(
+                        "gemini.failed",
+                        &[
+                            ("job", job_id.to_string()),
+                            ("task", task_name.to_owned()),
+                            ("elapsedMs", elapsed_millis(started)),
+                            ("code", error.code().to_owned()),
+                        ],
+                    );
                     let job = background::snapshot(&jobs, job_id).await;
                     let _ = on_event.send(GeminiJobEvent::Failed { job, error });
                 }
@@ -222,9 +269,26 @@ pub(crate) async fn gemini_start(
             Err(error) if cancellation.is_cancelled() => {
                 match background::finish_cancellation(&jobs, job_id).await {
                     Ok(job) => {
+                        diagnostics::record(
+                            "gemini.cancelled",
+                            &[
+                                ("job", job_id.to_string()),
+                                ("task", task_name.to_owned()),
+                                ("elapsedMs", elapsed_millis(started)),
+                            ],
+                        );
                         let _ = on_event.send(GeminiJobEvent::Cancelled { job });
                     }
                     Err(job_error) => {
+                        diagnostics::record(
+                            "gemini.failed",
+                            &[
+                                ("job", job_id.to_string()),
+                                ("task", task_name.to_owned()),
+                                ("elapsedMs", elapsed_millis(started)),
+                                ("code", job_error.code().to_owned()),
+                            ],
+                        );
                         let job = background::snapshot(&jobs, job_id).await;
                         let _ = on_event.send(GeminiJobEvent::Failed {
                             job,
@@ -235,6 +299,15 @@ pub(crate) async fn gemini_start(
                 drop(error);
             }
             Err(error) => {
+                diagnostics::record(
+                    "gemini.failed",
+                    &[
+                        ("job", job_id.to_string()),
+                        ("task", task_name.to_owned()),
+                        ("elapsedMs", elapsed_millis(started)),
+                        ("code", error.code().to_owned()),
+                    ],
+                );
                 let job = background::finish_failure(&jobs, job_id).await;
                 let _ = on_event.send(GeminiJobEvent::Failed { job, error });
             }
@@ -275,6 +348,10 @@ async fn resolve_media(
     Ok(Some(media))
 }
 
+#[allow(
+    clippy::too_many_arguments,
+    reason = "the bounded provider run needs the durable job, credential, media, cancellation, channel, and timing boundaries"
+)]
 async fn run_gemini(
     jobs: &background::DesktopJobs,
     credentials: &osg_infrastructure::secrets::CredentialService<
@@ -285,7 +362,9 @@ async fn run_gemini(
     cancellation: &osg_gemini::CancellationToken,
     channel: &Channel<GeminiJobEvent>,
     job_id: JobId,
+    started: Instant,
 ) -> CommandResult<GeminiOutput> {
+    record_gemini_phase(job_id, "credentialResolve", started);
     let credential_id = request.credential_id;
     let credentials = credentials.clone();
     let secret = tauri::async_runtime::spawn_blocking(move || {
@@ -298,26 +377,33 @@ async fn run_gemini(
     }
     let api_key = ApiKey::new(secret.expose_secret().to_owned())?;
     let client = GeminiClient::new(api_key)?;
+    record_gemini_phase(job_id, "credentialReady", started);
 
     let mut provider_file_name = None;
     let operation = async {
         let uploaded = if let Some(media) = local_media {
+            record_gemini_phase(job_id, "uploadStarted", started);
             let mime_type = media
                 .mime_type()
                 .ok_or_else(CommandError::media_conversion_required)?;
             let upload = UploadRequest::new(media.path(), mime_type)?.with_display_name("media")?;
             let file = client.upload_file(upload, cancellation).await?;
             provider_file_name = Some(file.name().to_owned());
-            Some(client.wait_until_active(file, cancellation).await?)
+            let active = client.wait_until_active(file, cancellation).await?;
+            record_gemini_phase(job_id, "uploadReady", started);
+            Some(active)
         } else {
             None
         };
 
+        record_gemini_phase(job_id, "generationStarted", started);
         let mut stream = client
             .generate_stream(request.into_native(uploaded), cancellation)
             .await?;
         let mut text = String::new();
         let mut usage = None;
+        let mut first_chunk = true;
+        let mut next_progress_bytes = 512 * 1024;
         while let Some(response) = stream.next().await {
             let response = response?;
             if let Some(next_usage) = &response.usage_metadata {
@@ -332,6 +418,21 @@ async fn run_gemini(
                 }));
             }
             text.push_str(&chunk);
+            if first_chunk {
+                record_gemini_phase(job_id, "firstChunk", started);
+                first_chunk = false;
+            }
+            if text.len() >= next_progress_bytes {
+                diagnostics::record(
+                    "gemini.progress",
+                    &[
+                        ("job", job_id.to_string()),
+                        ("elapsedMs", elapsed_millis(started)),
+                        ("outputBytes", text.len().to_string()),
+                    ],
+                );
+                next_progress_bytes = next_progress_bytes.saturating_add(512 * 1024);
+            }
             if channel
                 .send(GeminiJobEvent::Chunk {
                     job_id,
@@ -351,17 +452,33 @@ async fn run_gemini(
     .await;
 
     if let Some(name) = provider_file_name {
+        record_gemini_phase(job_id, "providerCleanup", started);
         let cleanup = osg_gemini::CancellationToken::new();
         let _ = client.delete_file(&name, &cleanup).await;
     }
     operation
 }
 
+fn record_gemini_phase(job_id: JobId, phase: &'static str, started: Instant) {
+    diagnostics::record(
+        "gemini.phase",
+        &[
+            ("job", job_id.to_string()),
+            ("phase", phase.to_owned()),
+            ("elapsedMs", elapsed_millis(started)),
+        ],
+    );
+}
+
+fn elapsed_millis(started: Instant) -> String {
+    started.elapsed().as_millis().to_string()
+}
+
 #[cfg(test)]
 mod tests {
     use serde_json::json;
 
-    use super::{GeminiStartRequest, GeminiTask};
+    use super::{GeminiJobEvent, GeminiStartRequest, GeminiTask};
 
     #[test]
     fn tasks_map_to_their_durable_job_kinds() {
@@ -377,6 +494,32 @@ mod tests {
             GeminiTask::AnalyzeSubtitles.job_kind(),
             osg_domain::JobKind::AnalyzeSubtitles
         );
+        assert_eq!(GeminiTask::Transcribe.diagnostic_name(), "transcribe");
+        assert_eq!(GeminiTask::Translate.diagnostic_name(), "translate");
+        assert_eq!(
+            GeminiTask::AnalyzeSubtitles.diagnostic_name(),
+            "analyzeSubtitles"
+        );
+    }
+
+    #[test]
+    fn streamed_chunk_uses_the_frontend_camel_case_contract() {
+        let job_id = osg_domain::JobId::new();
+        let value = serde_json::to_value(GeminiJobEvent::Chunk {
+            job_id,
+            text: "bounded".to_owned(),
+        })
+        .expect("event serializes");
+
+        assert_eq!(
+            value,
+            json!({
+                "event": "chunk",
+                "jobId": job_id,
+                "text": "bounded"
+            })
+        );
+        assert!(value.get("job_id").is_none());
     }
 
     #[test]

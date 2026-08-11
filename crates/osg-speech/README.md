@@ -130,7 +130,7 @@ legacy pattern of generating Python source at runtime.
 
 ## Competing architecture review
 
-The sibling `screen-goated-toolbox` provided useful patterns: persistent
+The managed-runtime design uses persistent
 provider workers, typed per-request profiles, generation-based cancellation,
 warm Gemini transport, and a clear distinction between collected artifacts and
 immediate playback. This crate keeps those principles while tightening the

@@ -174,8 +174,8 @@ localhost services.
 
 ### Gemini model policy
 
-`src/config/geminiModelCatalog.json` is the single frontend model catalog and records
-`screen-goated-toolbox/catalog/model_catalog.json` as its synchronization source. It exposes
+`src/config/geminiModelCatalog.json` is OSG's owned, authoritative frontend model catalog. It is
+reviewed directly against the official Gemini model documentation and exposes
 `gemini-3.5-flash-lite` (the everyday/transcription default), `gemini-3.6-flash`,
 `gemini-3.5-flash`, and `gemini-3.1-flash-lite` for ordinary multimodal work; all four accept audio
 and video. Image generation uses `gemini-3.1-flash-image`, which accepts video, while live audio
@@ -216,8 +216,12 @@ To compile without creating an installer:
 ```powershell
 npm run build:frontend
 cargo check --workspace --all-features --locked
-npm run tauri -- build --no-bundle --ci -- --locked
+npm run tauri:build -- --no-bundle
 ```
+
+Use `npm run tauri:build` to create installers. Do not invoke `cargo build --release` directly:
+Tauri's production command enables the custom protocol that embeds the frontend, while a plain Cargo
+release would retain the Vite development URL. The crate intentionally rejects that unsafe build.
 
 ## Verification
 
@@ -266,11 +270,12 @@ The other matrix targets are `x86_64-unknown-linux-gnu`, `aarch64-apple-darwin`,
 
 | Runtime | Delivery status |
 | --- | --- |
-| yt-dlp | Reviewed `2026.07.04` direct releases are the offline baseline on four target families. The first user-initiated media action installs the complete required tool batch automatically with cancellable progress. If an installed yt-dlp process later fails, the host performs one throttled immutable-release check; a newer verified version is installed beside the running lease and activates after restart. It never runs `yt-dlp -U`, overwrites the active executable, or loops the failed media operation. |
-| Deno | Reviewed `2.9.5` content-addressed direct-upstream releases are catalogued for the four target families. URL inspection installs it automatically on first use with cancellable progress and stops for restart before activation; it is never bundled or downloaded at startup. |
-| FFmpeg / ffprobe | Windows x64 downloads the reviewed, hash-pinned Gyan `8.1.2` vendor archive, installs only the two executables plus license/build notice, and activates after restart. Linux/macOS remain fail-closed until equivalent deliveries are reviewed. |
+| yt-dlp | Reviewed `2026.07.04` direct releases are the offline baseline on four target families. The first user-initiated media action installs the complete required tool batch in parallel with cancellable aggregate progress. If an installed yt-dlp process later fails, the host performs one throttled immutable-release check and hot-activates the newer verified version without `yt-dlp -U` or an application restart. |
+| Deno | Reviewed `2.9.5` content-addressed direct-upstream releases are catalogued for the four target families. URL inspection installs and activates it automatically on first use; it is never bundled or downloaded at startup. |
+| FFmpeg / ffprobe | Windows x64 downloads the reviewed, hash-pinned Gyan `8.1.2` vendor archive, installs only the two executables plus license/build notice, and activates them in the running application. Linux/macOS remain fail-closed until equivalent deliveries are reviewed. |
 | Parakeet / Faster-Whisper / Qwen3-ASR | Windows x64 has content-addressed runtime/model manifests and external-first model sources with the reviewed bundle pool as fallback. All five install, launch under a held lease, and remove through typed native jobs. |
 | F5-TTS / Chatterbox / Edge TTS / gTTS / Gemini TTS worker | Windows x64 has verified managed runtime/model packages. F5 and Chatterbox are independently downloadable/removable; network-provider modes reuse the worker runtime. F5's model license is `CC-BY-NC-4.0`. |
+| Gemini voice previews | The exact 30-sample, 13.5 MB content-addressed pack installs automatically on first preview on all four target families, streams through an opaque native media capability, and removes immediately without restarting. No preview WAV is embedded in the frontend. |
 | Remotion runtime | Windows x64 downloads a 265 MB content-addressed bundle-pool archive with exact Node 24.19, Chrome for Testing 149, Remotion 4.0.507, the OSG bundle, reviewed Inter font, and notices; installed size is about 625 MB and is fully removable. |
 | Application updater | The public key is configured and updater artifacts are signed with a private key held outside the repository. |
 
@@ -288,21 +293,26 @@ PromptDJ uses the operating-system UI font stack and no longer packages a separa
 font payload. Any future bundled font must still be reviewed and recorded in
 `THIRD_PARTY_NOTICES.md`.
 
-The `manage-native-tools` capability exposes typed catalog/status/install/remove/cancel
-commands; executable paths and upstream URLs stay native. OSG reports when activation or a deferred
-removal must wait for restart because a live consumer holds a tool lease. The compact Tools tab
-exposes install and confirmed removal for every managed runtime. A single
-consent prompt identifies the exact packages and licenses before any download.
-Installation progress uses the existing toast surface with an explicit cancel action, and a
-successful install never retries the media action in the stale runtime: it asks the user to restart
-first. Windows can install FFmpeg/ffprobe from the exact reviewed vendor archive; unsupported
-platforms fail closed without substituting an unreviewed binary.
+The `manage-native-tools` capability exposes typed catalog/status/install/remove/cancel commands;
+executable paths and upstream URLs stay native. Required tools install concurrently on first use,
+publish under per-tool operation locks, acquire verified leases, and refresh download/media/render
+consumers immediately. Installation progress uses the existing toast surface with an explicit
+cancel action. Removal detaches the runtime and deletes it in the same session. An active media
+operation makes removal return busy until that operation finishes; restarting is not required.
+Sanitized native diagnostics are bounded to `osg.log` plus one rotated previous file in the Tauri
+application log directory. On Windows the exact location is
+`%LOCALAPPDATA%\io.github.nganlinh4.oneclicksubtitles\logs\osg.log`. Windows can install FFmpeg/ffprobe from the exact reviewed vendor
+archive; unsupported platforms fail closed without substituting an unreviewed binary.
 
 The executable-size and source-priority rules for every optional runtime are documented in
 [`docs/rewrite/DOWNLOADABLE_PAYLOADS.md`](docs/rewrite/DOWNLOADABLE_PAYLOADS.md).
 
-Development builds may discover explicitly approved source-tree or system tools in debug mode.
-Release builds do not rely on `PATH` or arbitrary local installations.
+Development and release builds use the same checked-in remote delivery catalogs and
+receipt-verified package stores. Neither build searches the source tree, adjacent binaries,
+virtual environments, or system `PATH` for optional runtimes. `npm run tauri:dev` verifies the OSG
+bundle-pool release read-back before starting; direct Cargo builds enforce the same local
+source/catalog checkpoint. See the downloadable-payload document for the append-only publication
+sequence.
 
 ## Data and migration
 

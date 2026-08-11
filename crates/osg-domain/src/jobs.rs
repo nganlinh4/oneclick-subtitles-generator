@@ -13,6 +13,7 @@ pub const JOB_PROGRESS_COMPLETE: u16 = 10_000;
 pub enum JobKind {
     ImportMedia,
     ProbeMedia,
+    ProcessMedia,
     GenerateWaveform,
     DownloadMedia,
     ExportMedia,

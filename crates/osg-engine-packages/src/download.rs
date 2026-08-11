@@ -478,7 +478,12 @@ fn trusted_redirect(url: &Url, previous: &[Url]) -> bool {
         && matches!(
             first.host_str(),
             Some(
-                "github.com" | "huggingface.co" | "files.pythonhosted.org" | "download.pytorch.org"
+                "github.com"
+                    | "huggingface.co"
+                    | "files.pythonhosted.org"
+                    | "download.pytorch.org"
+                    | "fonts.gstatic.com"
+                    | "openfontlicense.org"
             )
         );
     let host_ok = url.host_str().is_some_and(|host| {
@@ -492,6 +497,8 @@ fn trusted_redirect(url: &Url, previous: &[Url]) -> bool {
                 | "cas-server.xethub.hf.co"
                 | "files.pythonhosted.org"
                 | "download.pytorch.org"
+                | "fonts.gstatic.com"
+                | "openfontlicense.org"
         ) || host.ends_with(".cdn.hf.co")
     });
     initial_ok

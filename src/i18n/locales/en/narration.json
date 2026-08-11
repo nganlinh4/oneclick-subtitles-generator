@@ -331,5 +331,7 @@
   "clearLanguage": "Clear this language",
   "manual": "manual",
   "detectLanguage": "Detect language",
-  "errorParsingRecentLanguages": "Error parsing recent languages"
+  "errorParsingRecentLanguages": "Error parsing recent languages",
+  "installingVoiceSamples": "Installing voice previews… {{percent}}%",
+  "voiceSampleUnavailable": "Voice preview is unavailable. Please try again."
 }

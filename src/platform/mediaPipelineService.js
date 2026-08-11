@@ -21,7 +21,7 @@ const mediaKinds = new Set(['audio', 'video']);
 const jobStates = new Set([
   'queued', 'running', 'cancelling', 'succeeded', 'failed', 'cancelled', 'interrupted',
 ]);
-const jobKinds = new Set(['renderVideo', 'generateWaveform']);
+const jobKinds = new Set(['processMedia', 'generateWaveform']);
 const compatibilityActions = new Set([
   'direct', 'remux', 'transcodeAudio', 'transcodeVideo', 'transcodeAll', 'reject',
 ]);

@@ -243,6 +243,7 @@ fn validate_release(platform: &str, release: &RawRelease) -> Result<PackageDeliv
         sha256: release.sha256.clone(),
         unpacked_size_bytes: release.unpacked_size_bytes,
         python_relative_path: release.python_relative_path.clone(),
+        primary_executable: true,
         model_relative_path: None,
         aligner_relative_path: None,
         files: Vec::new(),

@@ -6,6 +6,7 @@ import {
 } from '../../platform/nativeToolsService';
 import NativeToolsList, { NativeToolRow } from './NativeToolsList';
 import { getRenderPackageStatus } from '../../platform/renderPackageService';
+import { getVoiceSamplesStatus } from '../../platform/voiceSampleService';
 
 vi.mock('react-i18next', () => ({
   useTranslation: () => ({
@@ -14,6 +15,7 @@ vi.mock('react-i18next', () => ({
       'engines.nativeKind.media': 'Media processing',
       'engines.nativeKind.downloader': 'Site downloader',
       'engines.nativeKind.renderer': 'Video renderer',
+      'engines.nativeKind.voicePreviews': 'Voice previews',
       'engines.nativeSource.vendor': 'Reviewed vendor',
       'engines.nativeSource.official': 'Official release',
       'engines.nativeSource.pool': 'Reviewed bundle pool',
@@ -39,6 +41,12 @@ vi.mock('../../platform/renderPackageService', () => ({
   getRenderPackageStatus: vi.fn(),
   installRenderPackage: vi.fn(),
   removeRenderPackage: vi.fn(),
+}));
+vi.mock('../../platform/voiceSampleService', () => ({
+  cancelVoiceSamples: vi.fn(),
+  getVoiceSamplesStatus: vi.fn(),
+  installVoiceSamples: vi.fn(),
+  removeVoiceSamples: vi.fn(),
 }));
 
 const catalog = {
@@ -67,6 +75,22 @@ const status = (overrides = {}) => ({
 
 afterEach(() => vi.clearAllMocks());
 
+beforeEach(() => {
+  getVoiceSamplesStatus.mockResolvedValue({
+    id: 'gemini-voice-samples',
+    label: 'Gemini voice previews',
+    deliveryAvailable: true,
+    installed: false,
+    updateAvailable: false,
+    state: 'missing',
+    version: null,
+    availableVersion: '2026.08.11',
+    installedBytes: 0,
+    downloadBytes: 13_520_118,
+    availableInstalledBytes: 16_384_680,
+  });
+});
+
 it('shows source, license, version, and a confirmed native removal action', async () => {
   let handlers;
   removeNativeTool.mockImplementation(async (_tool, suppliedHandlers) => {
@@ -84,6 +108,34 @@ it('shows source, license, version, and a confirmed native removal action', asyn
   expect(removeNativeTool).toHaveBeenCalledWith('yt-dlp', expect.any(Object));
   handlers.onCompleted();
   await waitFor(() => expect(onChanged).toHaveBeenCalled());
+});
+
+it('trusts verified terminal status after a late channel protocol error', async () => {
+  let handlers;
+  removeNativeTool.mockImplementation(async (_tool, suppliedHandlers) => {
+    handlers = suppliedHandlers;
+    return { id: 'job' };
+  });
+  getNativeToolsStatus.mockResolvedValue({
+    schemaVersion: 1,
+    tools: [status({
+      installed: false,
+      state: 'missing',
+      version: null,
+      installedBytes: 0,
+      activeRuntime: false,
+    })],
+  });
+  const onChanged = vi.fn();
+  render(<NativeToolRow catalog={catalog} status={status()} onChanged={onChanged} />);
+
+  fireEvent.click(screen.getByRole('button', { name: 'Uninstall' }));
+  fireEvent.click(screen.getByRole('button', { name: 'Uninstall' }));
+  await handlers.onProtocolError();
+
+  expect(screen.queryByText('The desktop host returned invalid tool progress.'))
+    .not.toBeInTheDocument();
+  expect(onChanged).toHaveBeenCalled();
 });
 
 it('shows an unavailable tool without any fake download button', () => {
@@ -144,6 +196,9 @@ it('exposes the downloadable renderer beside the native tools', async () => {
   });
   render(<NativeToolsList />);
   expect(await screen.findByText('Remotion video renderer')).toBeInTheDocument();
-  expect(screen.getByText(/Reviewed bundle pool/)).toBeInTheDocument();
-  expect(screen.getByRole('button', { name: 'Download' })).toBeInTheDocument();
+  expect(screen.getByText(/Video renderer · Reviewed bundle pool/)).toBeInTheDocument();
+  expect(screen.getAllByRole('button', { name: 'Download' })).toHaveLength(2);
+  expect(screen.getByText('Gemini voice previews')).toBeInTheDocument();
+  expect(screen.getByText(/Voice previews · Reviewed bundle pool · Provider terms/))
+    .toBeInTheDocument();
 });

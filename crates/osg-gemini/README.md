@@ -6,9 +6,9 @@ frontend DTOs.
 
 ## Frozen model policy (verified 2026-08-10)
 
-The allowlist mirrors the stable, daily-use REST endpoints in
-`screen-goated-toolbox/catalog/model_catalog.json` and then applies the stricter
-OSG rule that every exposed model must accept audio or video. Each retained
+The OSG-owned allowlist is reviewed against the official stable, daily-use REST
+endpoints and applies the strict rule that every exposed model must accept audio
+or video. Each retained
 model officially supports **both** audio and video input and text output:
 
 | API model | Toolbox role | Official evidence |
@@ -66,3 +66,11 @@ cargo run -p osg-gemini --example live_media_smoke --locked
 
 For a quota-safe retry, set `OSG_GEMINI_SMOKE_MODEL` to one exact allowlisted
 ID and optionally set `OSG_GEMINI_SMOKE_MODALITY` to `audio` or `video`.
+
+For local OSG development, the ignored repository-root `.env` may provide the
+live-test credential pool as `GEMINI_API_KEY`, `GEMINI_API_KEY_2`, through
+`GEMINI_API_KEY_20`. Test tooling may select a non-empty value in-process, but
+must never print values, copy them into logs/artifacts, commit `.env`, or make
+the shipped application read `.env`. Prefer `gemini-3.5-flash-lite` and one
+bounded modality for routine live verification; use additional keys only for
+explicit quota/failure testing through the native credential boundary.

@@ -7,6 +7,7 @@
     "read-session",
     "select-local-files",
     "use-native-media-drop",
+    "core:window:allow-show",
     "core:event:deny-listen",
     "manage-settings",
     "manage-cache",
@@ -30,6 +31,7 @@
     "use-native-speech",
     "manage-speech-packages",
     "check-for-updates",
-    "open-reviewed-external-links"
+    "open-reviewed-external-links",
+    "manage-voice-samples"
   ]
 }

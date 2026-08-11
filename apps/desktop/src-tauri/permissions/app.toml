@@ -218,3 +218,14 @@ commands.allow = ["app_update_check"]
 identifier = "open-reviewed-external-links"
 description = "Allows the main window to open only a closed set of reviewed documentation and account-management links in the system browser."
 commands.allow = ["open_external_link"]
+
+[[permission]]
+identifier = "manage-voice-samples"
+description = "Allows the main editor to install, resolve, and remove the reviewed content-addressed Gemini voice-preview pack."
+commands.allow = [
+  "voice_samples_status",
+  "voice_samples_install",
+  "voice_samples_cancel",
+  "voice_sample_resolve",
+  "voice_samples_remove",
+]

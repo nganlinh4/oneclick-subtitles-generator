@@ -16,7 +16,7 @@ const PLAYBACK_ID = '123e4567-e89b-42d3-a456-426614174000';
 
 const job = (state = 'running', basisPoints = 100) => ({
   id: JOB_ID,
-  kind: 'renderVideo',
+  kind: 'processMedia',
   state,
   progress: { basisPoints },
   sequence: state === 'running' ? 1 : 2,

@@ -3,9 +3,9 @@ import { resolve } from 'node:path';
 
 export const FROZEN_INDEX_CSS_PATH = 'src/styles/index.css';
 export const FROZEN_INDEX_CSS_SOURCE_SHA256 =
-  'be20056b69a960f0ee385f80d4891343f945a2157204970ed927a3acf4a7bd48';
+  '6a44224dbe1b93be272a1369a55fffe2faab833f711a3a9c2f02a5abb3e31767';
 export const FROZEN_INDEX_CSS_TRANSFORMED_SHA256 =
-  'c4935ec4ade176b4dea25a9ca056e0ed6efb360a9507eda232ab0948937bd531';
+  '79bc935010d7bf61b197898cc4b93c219c536cdd7664e5fd668f3abe0dbea28c';
 export const FROZEN_EARLY_IMPORT = Object.freeze({
   line: 2,
   statement:
@@ -14,59 +14,55 @@ export const FROZEN_EARLY_IMPORT = Object.freeze({
 export const FROZEN_LATE_IMPORTS = Object.freeze([
   Object.freeze({
     line: 28,
-    statement: "@import url('./local-fonts.css');",
-  }),
-  Object.freeze({
-    line: 31,
     statement:
       "@import url('https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500&display=swap');",
   }),
   Object.freeze({
-    line: 32,
+    line: 29,
     statement:
       "@import url('https://fonts.googleapis.com/css2?family=Noto+Sans+KR:wght@300;400;500;700&family=Noto+Sans:wght@400;500;700&family=Noto+Serif:wght@400;700&family=Nanum+Gothic:wght@400;700;800&family=Nanum+Gothic+Coding&family=Nanum+Myeongjo:wght@400;700&family=Gowun+Dodum&display=swap');",
   }),
   Object.freeze({
-    line: 33,
+    line: 30,
     statement:
       "@import url('https://fonts.googleapis.com/css2?family=Source+Sans+Pro:wght@400;600&display=swap');",
   }),
   Object.freeze({
-    line: 35,
+    line: 32,
     statement:
       "@import url('https://fonts.googleapis.com/css2?family=Lexend:wght@400;500;600&family=Montserrat+Alternates:wght@400;500;600&family=Sarabun:wght@400;500;600&family=Josefin+Sans:wght@400;500;600&display=swap');",
   }),
   Object.freeze({
-    line: 36,
+    line: 33,
     statement:
       "@import url('https://fonts.googleapis.com/css2?family=Noto+Sans+Vietnamese:wght@400;500;600&display=swap');",
   }),
   Object.freeze({
-    line: 37,
+    line: 34,
     statement: "@import url('./material-tokens.css');",
   }),
   Object.freeze({
-    line: 38,
+    line: 35,
     statement: "@import url('./components/custom-slider.css');",
   }),
   Object.freeze({
-    line: 39,
+    line: 36,
     statement: "@import url('./album-art-fix.css');",
   }),
   Object.freeze({
-    line: 40,
+    line: 37,
     statement: "@import url('./floating-scrollbar.css');",
   }),
   Object.freeze({
-    line: 41,
+    line: 38,
     statement: "@import url('./font-overrides.css');",
   }),
   Object.freeze({
-    line: 42,
+    line: 39,
     statement: "@import url('./components/LiquidGlass.css');",
   }),
   Object.freeze({
-    line: 44,
+    line: 41,
     statement: "@import url('./components/form-controls.css');",
   }),
 ]);

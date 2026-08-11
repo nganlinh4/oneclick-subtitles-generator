@@ -1,0 +1,333 @@
+{
+  "schemaVersion": 1,
+  "family": "Google Sans Flex",
+  "license": "OFL-1.1",
+  "cssApiUrl": "https://fonts.googleapis.com/css2?family=Google+Sans+Flex:opsz,wght,GRAD,ROND@6..144,1..1000,0..100,0..100&display=swap",
+  "cssSha256": "143a2f669a966fdfdcda6f972b49e504c5cf733924f459a86f500f16dff09707",
+  "platforms": {
+    "linux-x86_64": {
+      "releases": [
+        {
+          "version": "v22-ui4",
+          "asset": "google-sans-flex-v22-ui4-9d59f14b9ce636f1.delivery.json",
+          "sourceUrl": "",
+          "sizeBytes": 467481,
+          "sha256": "9d59f14b9ce636f160dc7398046985fca567cd8add6b9f84f79cd2b5a9bb3dcd",
+          "unpackedSizeBytes": 465576,
+          "primaryRelativePath": "runtime/google-sans-flex.css",
+          "sources": [
+            {
+              "asset": "google-sans-flex-v22-ui4-vietnamese-7343aefa9061998b.woff2",
+              "urls": [
+                "https://fonts.gstatic.com/s/googlesansflex/v22/t5tFIQcYNIWbFgDgAAzZ34auoVyXkJCOjsOqNGFbN5hF8Ju1x4d-JwN2l9sIKwkaN7T3Qec.woff2",
+                "https://github.com/nganlinh4/oneclick-subtitles-generator/releases/download/osg-runtime-bundles-v1/google-sans-flex-v22-ui4-vietnamese-7343aefa9061998b.woff2"
+              ],
+              "sizeBytes": 57620,
+              "sha256": "7343aefa9061998bdfea8c1e2aa6943a029218dd78a23e5fde441e832fe66629",
+              "kind": "raw"
+            },
+            {
+              "asset": "google-sans-flex-v22-ui4-latin-ext-0f63b3ae4c60341f.woff2",
+              "urls": [
+                "https://fonts.gstatic.com/s/googlesansflex/v22/t5tFIQcYNIWbFgDgAAzZ34auoVyXkJCOjsOqNGFbN5hF8Ju1x4d-JwN2l9sIKwkaNrT3Qec.woff2",
+                "https://github.com/nganlinh4/oneclick-subtitles-generator/releases/download/osg-runtime-bundles-v1/google-sans-flex-v22-ui4-latin-ext-0f63b3ae4c60341f.woff2"
+              ],
+              "sizeBytes": 131208,
+              "sha256": "0f63b3ae4c60341fc1348749796505e9ab621a3ab690b80f9cdf66dafc1eca19",
+              "kind": "raw"
+            },
+            {
+              "asset": "google-sans-flex-v22-ui4-latin-3215351d7b558739.woff2",
+              "urls": [
+                "https://fonts.gstatic.com/s/googlesansflex/v22/t5tFIQcYNIWbFgDgAAzZ34auoVyXkJCOjsOqNGFbN5hF8Ju1x4d-JwN2l9sIKwkaOLT3.woff2",
+                "https://github.com/nganlinh4/oneclick-subtitles-generator/releases/download/osg-runtime-bundles-v1/google-sans-flex-v22-ui4-latin-3215351d7b558739.woff2"
+              ],
+              "sizeBytes": 270324,
+              "sha256": "3215351d7b5587396710ab80bd31994ebbf3a9ee6f8e67b3c29a30d909cec55f",
+              "kind": "raw"
+            },
+            {
+              "asset": "google-sans-flex-v22-ui4-b7bcc5489391e48d.css",
+              "urls": [
+                "https://github.com/nganlinh4/oneclick-subtitles-generator/releases/download/osg-runtime-bundles-v1/google-sans-flex-v22-ui4-b7bcc5489391e48d.css"
+              ],
+              "sizeBytes": 1239,
+              "sha256": "b7bcc5489391e48d44f4238b5e2eae87ddeb8269073853c904d947a173e33b40",
+              "kind": "raw"
+            },
+            {
+              "asset": "sil-open-font-license-1.1-1d361a8f8e8ce6e6.txt",
+              "urls": [
+                "https://openfontlicense.org/documents/OFL.txt",
+                "https://github.com/nganlinh4/oneclick-subtitles-generator/releases/download/osg-runtime-bundles-v1/sil-open-font-license-1.1-1d361a8f8e8ce6e6.txt"
+              ],
+              "sizeBytes": 4599,
+              "sha256": "1d361a8f8e8ce6e68457dcd93fb56e162e6baa3bbb7e7573a290d44399f6b57e",
+              "kind": "raw"
+            },
+            {
+              "asset": "google-sans-flex-NOTICE-019201394f5f7edd.txt",
+              "urls": [
+                "https://github.com/nganlinh4/oneclick-subtitles-generator/releases/download/osg-runtime-bundles-v1/google-sans-flex-NOTICE-019201394f5f7edd.txt"
+              ],
+              "sizeBytes": 586,
+              "sha256": "019201394f5f7edd355567b138dddb4fd21d414696ff0582058ec11d2d5963c4",
+              "kind": "raw"
+            }
+          ],
+          "manifest": {
+            "asset": "google-sans-flex-v22-ui4-9d59f14b9ce636f1.delivery.json",
+            "urls": [
+              "https://github.com/nganlinh4/oneclick-subtitles-generator/releases/download/osg-runtime-bundles-v1/google-sans-flex-v22-ui4-9d59f14b9ce636f1.delivery.json"
+            ],
+            "sizeBytes": 1905,
+            "sha256": "9d59f14b9ce636f160dc7398046985fca567cd8add6b9f84f79cd2b5a9bb3dcd"
+          }
+        }
+      ]
+    },
+    "macos-aarch64": {
+      "releases": [
+        {
+          "version": "v22-ui4",
+          "asset": "google-sans-flex-v22-ui4-9d59f14b9ce636f1.delivery.json",
+          "sourceUrl": "",
+          "sizeBytes": 467481,
+          "sha256": "9d59f14b9ce636f160dc7398046985fca567cd8add6b9f84f79cd2b5a9bb3dcd",
+          "unpackedSizeBytes": 465576,
+          "primaryRelativePath": "runtime/google-sans-flex.css",
+          "sources": [
+            {
+              "asset": "google-sans-flex-v22-ui4-vietnamese-7343aefa9061998b.woff2",
+              "urls": [
+                "https://fonts.gstatic.com/s/googlesansflex/v22/t5tFIQcYNIWbFgDgAAzZ34auoVyXkJCOjsOqNGFbN5hF8Ju1x4d-JwN2l9sIKwkaN7T3Qec.woff2",
+                "https://github.com/nganlinh4/oneclick-subtitles-generator/releases/download/osg-runtime-bundles-v1/google-sans-flex-v22-ui4-vietnamese-7343aefa9061998b.woff2"
+              ],
+              "sizeBytes": 57620,
+              "sha256": "7343aefa9061998bdfea8c1e2aa6943a029218dd78a23e5fde441e832fe66629",
+              "kind": "raw"
+            },
+            {
+              "asset": "google-sans-flex-v22-ui4-latin-ext-0f63b3ae4c60341f.woff2",
+              "urls": [
+                "https://fonts.gstatic.com/s/googlesansflex/v22/t5tFIQcYNIWbFgDgAAzZ34auoVyXkJCOjsOqNGFbN5hF8Ju1x4d-JwN2l9sIKwkaNrT3Qec.woff2",
+                "https://github.com/nganlinh4/oneclick-subtitles-generator/releases/download/osg-runtime-bundles-v1/google-sans-flex-v22-ui4-latin-ext-0f63b3ae4c60341f.woff2"
+              ],
+              "sizeBytes": 131208,
+              "sha256": "0f63b3ae4c60341fc1348749796505e9ab621a3ab690b80f9cdf66dafc1eca19",
+              "kind": "raw"
+            },
+            {
+              "asset": "google-sans-flex-v22-ui4-latin-3215351d7b558739.woff2",
+              "urls": [
+                "https://fonts.gstatic.com/s/googlesansflex/v22/t5tFIQcYNIWbFgDgAAzZ34auoVyXkJCOjsOqNGFbN5hF8Ju1x4d-JwN2l9sIKwkaOLT3.woff2",
+                "https://github.com/nganlinh4/oneclick-subtitles-generator/releases/download/osg-runtime-bundles-v1/google-sans-flex-v22-ui4-latin-3215351d7b558739.woff2"
+              ],
+              "sizeBytes": 270324,
+              "sha256": "3215351d7b5587396710ab80bd31994ebbf3a9ee6f8e67b3c29a30d909cec55f",
+              "kind": "raw"
+            },
+            {
+              "asset": "google-sans-flex-v22-ui4-b7bcc5489391e48d.css",
+              "urls": [
+                "https://github.com/nganlinh4/oneclick-subtitles-generator/releases/download/osg-runtime-bundles-v1/google-sans-flex-v22-ui4-b7bcc5489391e48d.css"
+              ],
+              "sizeBytes": 1239,
+              "sha256": "b7bcc5489391e48d44f4238b5e2eae87ddeb8269073853c904d947a173e33b40",
+              "kind": "raw"
+            },
+            {
+              "asset": "sil-open-font-license-1.1-1d361a8f8e8ce6e6.txt",
+              "urls": [
+                "https://openfontlicense.org/documents/OFL.txt",
+                "https://github.com/nganlinh4/oneclick-subtitles-generator/releases/download/osg-runtime-bundles-v1/sil-open-font-license-1.1-1d361a8f8e8ce6e6.txt"
+              ],
+              "sizeBytes": 4599,
+              "sha256": "1d361a8f8e8ce6e68457dcd93fb56e162e6baa3bbb7e7573a290d44399f6b57e",
+              "kind": "raw"
+            },
+            {
+              "asset": "google-sans-flex-NOTICE-019201394f5f7edd.txt",
+              "urls": [
+                "https://github.com/nganlinh4/oneclick-subtitles-generator/releases/download/osg-runtime-bundles-v1/google-sans-flex-NOTICE-019201394f5f7edd.txt"
+              ],
+              "sizeBytes": 586,
+              "sha256": "019201394f5f7edd355567b138dddb4fd21d414696ff0582058ec11d2d5963c4",
+              "kind": "raw"
+            }
+          ],
+          "manifest": {
+            "asset": "google-sans-flex-v22-ui4-9d59f14b9ce636f1.delivery.json",
+            "urls": [
+              "https://github.com/nganlinh4/oneclick-subtitles-generator/releases/download/osg-runtime-bundles-v1/google-sans-flex-v22-ui4-9d59f14b9ce636f1.delivery.json"
+            ],
+            "sizeBytes": 1905,
+            "sha256": "9d59f14b9ce636f160dc7398046985fca567cd8add6b9f84f79cd2b5a9bb3dcd"
+          }
+        }
+      ]
+    },
+    "macos-x86_64": {
+      "releases": [
+        {
+          "version": "v22-ui4",
+          "asset": "google-sans-flex-v22-ui4-9d59f14b9ce636f1.delivery.json",
+          "sourceUrl": "",
+          "sizeBytes": 467481,
+          "sha256": "9d59f14b9ce636f160dc7398046985fca567cd8add6b9f84f79cd2b5a9bb3dcd",
+          "unpackedSizeBytes": 465576,
+          "primaryRelativePath": "runtime/google-sans-flex.css",
+          "sources": [
+            {
+              "asset": "google-sans-flex-v22-ui4-vietnamese-7343aefa9061998b.woff2",
+              "urls": [
+                "https://fonts.gstatic.com/s/googlesansflex/v22/t5tFIQcYNIWbFgDgAAzZ34auoVyXkJCOjsOqNGFbN5hF8Ju1x4d-JwN2l9sIKwkaN7T3Qec.woff2",
+                "https://github.com/nganlinh4/oneclick-subtitles-generator/releases/download/osg-runtime-bundles-v1/google-sans-flex-v22-ui4-vietnamese-7343aefa9061998b.woff2"
+              ],
+              "sizeBytes": 57620,
+              "sha256": "7343aefa9061998bdfea8c1e2aa6943a029218dd78a23e5fde441e832fe66629",
+              "kind": "raw"
+            },
+            {
+              "asset": "google-sans-flex-v22-ui4-latin-ext-0f63b3ae4c60341f.woff2",
+              "urls": [
+                "https://fonts.gstatic.com/s/googlesansflex/v22/t5tFIQcYNIWbFgDgAAzZ34auoVyXkJCOjsOqNGFbN5hF8Ju1x4d-JwN2l9sIKwkaNrT3Qec.woff2",
+                "https://github.com/nganlinh4/oneclick-subtitles-generator/releases/download/osg-runtime-bundles-v1/google-sans-flex-v22-ui4-latin-ext-0f63b3ae4c60341f.woff2"
+              ],
+              "sizeBytes": 131208,
+              "sha256": "0f63b3ae4c60341fc1348749796505e9ab621a3ab690b80f9cdf66dafc1eca19",
+              "kind": "raw"
+            },
+            {
+              "asset": "google-sans-flex-v22-ui4-latin-3215351d7b558739.woff2",
+              "urls": [
+                "https://fonts.gstatic.com/s/googlesansflex/v22/t5tFIQcYNIWbFgDgAAzZ34auoVyXkJCOjsOqNGFbN5hF8Ju1x4d-JwN2l9sIKwkaOLT3.woff2",
+                "https://github.com/nganlinh4/oneclick-subtitles-generator/releases/download/osg-runtime-bundles-v1/google-sans-flex-v22-ui4-latin-3215351d7b558739.woff2"
+              ],
+              "sizeBytes": 270324,
+              "sha256": "3215351d7b5587396710ab80bd31994ebbf3a9ee6f8e67b3c29a30d909cec55f",
+              "kind": "raw"
+            },
+            {
+              "asset": "google-sans-flex-v22-ui4-b7bcc5489391e48d.css",
+              "urls": [
+                "https://github.com/nganlinh4/oneclick-subtitles-generator/releases/download/osg-runtime-bundles-v1/google-sans-flex-v22-ui4-b7bcc5489391e48d.css"
+              ],
+              "sizeBytes": 1239,
+              "sha256": "b7bcc5489391e48d44f4238b5e2eae87ddeb8269073853c904d947a173e33b40",
+              "kind": "raw"
+            },
+            {
+              "asset": "sil-open-font-license-1.1-1d361a8f8e8ce6e6.txt",
+              "urls": [
+                "https://openfontlicense.org/documents/OFL.txt",
+                "https://github.com/nganlinh4/oneclick-subtitles-generator/releases/download/osg-runtime-bundles-v1/sil-open-font-license-1.1-1d361a8f8e8ce6e6.txt"
+              ],
+              "sizeBytes": 4599,
+              "sha256": "1d361a8f8e8ce6e68457dcd93fb56e162e6baa3bbb7e7573a290d44399f6b57e",
+              "kind": "raw"
+            },
+            {
+              "asset": "google-sans-flex-NOTICE-019201394f5f7edd.txt",
+              "urls": [
+                "https://github.com/nganlinh4/oneclick-subtitles-generator/releases/download/osg-runtime-bundles-v1/google-sans-flex-NOTICE-019201394f5f7edd.txt"
+              ],
+              "sizeBytes": 586,
+              "sha256": "019201394f5f7edd355567b138dddb4fd21d414696ff0582058ec11d2d5963c4",
+              "kind": "raw"
+            }
+          ],
+          "manifest": {
+            "asset": "google-sans-flex-v22-ui4-9d59f14b9ce636f1.delivery.json",
+            "urls": [
+              "https://github.com/nganlinh4/oneclick-subtitles-generator/releases/download/osg-runtime-bundles-v1/google-sans-flex-v22-ui4-9d59f14b9ce636f1.delivery.json"
+            ],
+            "sizeBytes": 1905,
+            "sha256": "9d59f14b9ce636f160dc7398046985fca567cd8add6b9f84f79cd2b5a9bb3dcd"
+          }
+        }
+      ]
+    },
+    "windows-x86_64": {
+      "releases": [
+        {
+          "version": "v22-ui4",
+          "asset": "google-sans-flex-v22-ui4-9d59f14b9ce636f1.delivery.json",
+          "sourceUrl": "",
+          "sizeBytes": 467481,
+          "sha256": "9d59f14b9ce636f160dc7398046985fca567cd8add6b9f84f79cd2b5a9bb3dcd",
+          "unpackedSizeBytes": 465576,
+          "primaryRelativePath": "runtime/google-sans-flex.css",
+          "sources": [
+            {
+              "asset": "google-sans-flex-v22-ui4-vietnamese-7343aefa9061998b.woff2",
+              "urls": [
+                "https://fonts.gstatic.com/s/googlesansflex/v22/t5tFIQcYNIWbFgDgAAzZ34auoVyXkJCOjsOqNGFbN5hF8Ju1x4d-JwN2l9sIKwkaN7T3Qec.woff2",
+                "https://github.com/nganlinh4/oneclick-subtitles-generator/releases/download/osg-runtime-bundles-v1/google-sans-flex-v22-ui4-vietnamese-7343aefa9061998b.woff2"
+              ],
+              "sizeBytes": 57620,
+              "sha256": "7343aefa9061998bdfea8c1e2aa6943a029218dd78a23e5fde441e832fe66629",
+              "kind": "raw"
+            },
+            {
+              "asset": "google-sans-flex-v22-ui4-latin-ext-0f63b3ae4c60341f.woff2",
+              "urls": [
+                "https://fonts.gstatic.com/s/googlesansflex/v22/t5tFIQcYNIWbFgDgAAzZ34auoVyXkJCOjsOqNGFbN5hF8Ju1x4d-JwN2l9sIKwkaNrT3Qec.woff2",
+                "https://github.com/nganlinh4/oneclick-subtitles-generator/releases/download/osg-runtime-bundles-v1/google-sans-flex-v22-ui4-latin-ext-0f63b3ae4c60341f.woff2"
+              ],
+              "sizeBytes": 131208,
+              "sha256": "0f63b3ae4c60341fc1348749796505e9ab621a3ab690b80f9cdf66dafc1eca19",
+              "kind": "raw"
+            },
+            {
+              "asset": "google-sans-flex-v22-ui4-latin-3215351d7b558739.woff2",
+              "urls": [
+                "https://fonts.gstatic.com/s/googlesansflex/v22/t5tFIQcYNIWbFgDgAAzZ34auoVyXkJCOjsOqNGFbN5hF8Ju1x4d-JwN2l9sIKwkaOLT3.woff2",
+                "https://github.com/nganlinh4/oneclick-subtitles-generator/releases/download/osg-runtime-bundles-v1/google-sans-flex-v22-ui4-latin-3215351d7b558739.woff2"
+              ],
+              "sizeBytes": 270324,
+              "sha256": "3215351d7b5587396710ab80bd31994ebbf3a9ee6f8e67b3c29a30d909cec55f",
+              "kind": "raw"
+            },
+            {
+              "asset": "google-sans-flex-v22-ui4-b7bcc5489391e48d.css",
+              "urls": [
+                "https://github.com/nganlinh4/oneclick-subtitles-generator/releases/download/osg-runtime-bundles-v1/google-sans-flex-v22-ui4-b7bcc5489391e48d.css"
+              ],
+              "sizeBytes": 1239,
+              "sha256": "b7bcc5489391e48d44f4238b5e2eae87ddeb8269073853c904d947a173e33b40",
+              "kind": "raw"
+            },
+            {
+              "asset": "sil-open-font-license-1.1-1d361a8f8e8ce6e6.txt",
+              "urls": [
+                "https://openfontlicense.org/documents/OFL.txt",
+                "https://github.com/nganlinh4/oneclick-subtitles-generator/releases/download/osg-runtime-bundles-v1/sil-open-font-license-1.1-1d361a8f8e8ce6e6.txt"
+              ],
+              "sizeBytes": 4599,
+              "sha256": "1d361a8f8e8ce6e68457dcd93fb56e162e6baa3bbb7e7573a290d44399f6b57e",
+              "kind": "raw"
+            },
+            {
+              "asset": "google-sans-flex-NOTICE-019201394f5f7edd.txt",
+              "urls": [
+                "https://github.com/nganlinh4/oneclick-subtitles-generator/releases/download/osg-runtime-bundles-v1/google-sans-flex-NOTICE-019201394f5f7edd.txt"
+              ],
+              "sizeBytes": 586,
+              "sha256": "019201394f5f7edd355567b138dddb4fd21d414696ff0582058ec11d2d5963c4",
+              "kind": "raw"
+            }
+          ],
+          "manifest": {
+            "asset": "google-sans-flex-v22-ui4-9d59f14b9ce636f1.delivery.json",
+            "urls": [
+              "https://github.com/nganlinh4/oneclick-subtitles-generator/releases/download/osg-runtime-bundles-v1/google-sans-flex-v22-ui4-9d59f14b9ce636f1.delivery.json"
+            ],
+            "sizeBytes": 1905,
+            "sha256": "9d59f14b9ce636f160dc7398046985fca567cd8add6b9f84f79cd2b5a9bb3dcd"
+          }
+        }
+      ]
+    }
+  }
+}

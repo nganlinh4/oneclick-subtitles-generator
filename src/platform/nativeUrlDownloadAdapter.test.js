@@ -7,7 +7,10 @@ vi.mock('./downloadService', () => ({
   inspectDownloadUrl: vi.fn(),
   startDownload: vi.fn(),
 }));
-vi.mock('./mediaService', () => ({ openMediaAsset: vi.fn() }));
+vi.mock('./mediaService', () => ({
+  createNativeMediaDescriptor: vi.fn(),
+  openMediaAsset: vi.fn(),
+}));
 
 const flush = () => new Promise((resolve) => { setTimeout(resolve, 0); });
 
@@ -24,11 +27,19 @@ const createHarness = () => {
   });
   const cancel = vi.fn().mockResolvedValue({ id: jobId });
   const openAsset = vi.fn().mockResolvedValue(descriptor);
-  const adapter = createNativeUrlDownloadAdapter({ inspect, start, cancel, openAsset });
+  const describeMedia = vi.fn().mockReturnValue(descriptor);
+  const adapter = createNativeUrlDownloadAdapter({
+    inspect,
+    start,
+    cancel,
+    openAsset,
+    describeMedia,
+  });
   return {
     adapter,
     assetId,
     cancel,
+    describeMedia,
     descriptor,
     getHandlers: () => handlers,
     inspect,
@@ -79,7 +90,8 @@ it('coalesces matching preview and processing requests and broadcasts monotonic 
   harness.getHandlers().onCompleted({ media: { asset: { id: harness.assetId } } });
   await expect(first).resolves.toBe(harness.descriptor);
   await expect(second).resolves.toBe(harness.descriptor);
-  expect(harness.openAsset).toHaveBeenCalledWith(harness.assetId);
+  expect(harness.describeMedia).toHaveBeenCalledWith({ asset: { id: harness.assetId } });
+  expect(harness.openAsset).not.toHaveBeenCalled();
 });
 
 it('refreshes a completed asset capability without downloading again', async () => {
@@ -95,6 +107,23 @@ it('refreshes a completed asset capability without downloading again', async () 
   await expect(harness.adapter.downloadVideo(request)).resolves.toBe(refreshed);
   expect(harness.inspect).toHaveBeenCalledTimes(1);
   expect(harness.start).toHaveBeenCalledTimes(1);
+});
+
+it('fails closed when the completed playback capability cannot be described', async () => {
+  const harness = createHarness();
+  harness.describeMedia.mockImplementationOnce(() => {
+    throw new Error('hostile media metadata');
+  });
+  const result = harness.adapter.downloadVideo({ url: 'https://example.com/video' });
+  await flush();
+  harness.getHandlers().onCompleted({ media: { asset: { id: harness.assetId } } });
+
+  await expect(result).rejects.toMatchObject({
+    name: 'NativeUrlDownloadError',
+    code: 'mediaOpenFailed',
+    message: 'The native media download could not be completed',
+  });
+  expect(harness.openAsset).not.toHaveBeenCalled();
 });
 
 it('selects the preferred native subtitle track and replays bounded content to subscribers', async () => {

@@ -123,8 +123,8 @@ At the current rewrite checkpoint:
   downloads tools.
 - A genuine yt-dlp process failure starts one coalesced, throttled official-release check. Only a
   stable release marked immutable is eligible; GitHub's asset digest and notices from the exact tag
-  commit become the new receipt. The new version is published beside the leased version and becomes
-  active only after restart. Invalid input, cancellation, timeout, and generic network failures do
+  commit become the new receipt. The new version is published beside the leased version and hot-
+  activated in the current process. Invalid input, cancellation, timeout, and generic network failures do
   not trigger this path, and the failed media operation is never automatically retried. The native
   host caches checks for 30 minutes, retains two verified rollback generations, and quarantines
   damaged generations before repair.
@@ -137,13 +137,16 @@ URLs are intentionally not installable; other platforms require their own reprod
 
 The native-tool ACL contains `native_tools_catalog`, `native_tools_status`,
 `native_tool_install`, `native_tool_remove`, and `native_tool_cancel`. Public catalog/status DTOs
-do not contain executable paths or upstream URLs. Live consumers hold native leases, so activation
-or a deferred removal may correctly require an application restart. The compact Tools tab exposes
-confirmed removal. Download runtimes snapshot
-their executable paths during Tauri startup; therefore the preflight treats a completed install as
-restart-required and never claims immediate activation. The existing media flow reaches
+do not contain executable paths or upstream URLs. Distinct tools install concurrently under
+per-tool durable operation slots. Publication acquires a verified lease and atomically refreshes
+download, media-pipeline, editor, speech/ASR, and render consumers without restarting. Removal
+first detaches future consumers, drops the verified lease, and deletes the exact package in the
+same session. If media work is active, removal fails busy and succeeds when retried after that work
+finishes; it is never converted into a restart requirement. The existing media flow reaches
 catalog/status/install/cancel, while the compact Tools tab also exposes confirmed removal. Download start offers the Windows
 media-tool package when it is missing and fails closed on targets whose catalog remains empty.
+The native host writes only sanitized event codes and opaque identifiers to a bounded current log
+and one rotated previous log in the Tauri application log directory.
 
 Consequently, source compilation can pass while an unsupported target correctly fails the stricter
 release-readiness gate. Windows x64 currently passes it.

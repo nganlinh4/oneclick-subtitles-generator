@@ -3,7 +3,7 @@ import {
   inspectDownloadUrl,
   startDownload,
 } from './downloadService';
-import { openMediaAsset } from './mediaService';
+import { createNativeMediaDescriptor, openMediaAsset } from './mediaService';
 
 const DEFAULT_MEDIA_SELECTION = Object.freeze({
   kind: 'video',
@@ -84,6 +84,7 @@ export const createNativeUrlDownloadAdapter = ({
   start = startDownload,
   cancel = cancelDownload,
   openAsset = openMediaAsset,
+  describeMedia = createNativeMediaDescriptor,
 } = {}) => {
   const active = new Map();
   const completedAssets = new Map();
@@ -143,14 +144,16 @@ export const createNativeUrlDownloadAdapter = ({
                 operation.subtitle
               ));
             }
-            openAsset(event.media.asset.id)
-              .then((media) => settle({
+            try {
+              settle({
                 kind: 'completed',
-                media,
+                media: describeMedia(event.media),
                 assetId: event.media.asset.id,
                 subtitle: operation.subtitle,
-              }))
-              .catch(() => settle({ kind: 'failed', error: fixedFailure('mediaOpenFailed') }));
+              });
+            } catch {
+              settle({ kind: 'failed', error: fixedFailure('mediaOpenFailed') });
+            }
           },
           onCancelled: () => settle({ kind: 'cancelled' }),
           onFailed: (event) => settle({

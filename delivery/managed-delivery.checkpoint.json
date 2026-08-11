@@ -1,0 +1,282 @@
+{
+  "schemaVersion": 1,
+  "pool": {
+    "repository": "nganlinh4/oneclick-subtitles-generator",
+    "tag": "osg-runtime-bundles-v1",
+    "appendOnly": true
+  },
+  "groups": {
+    "managedPython": {
+      "sourceSha256": "00ed09518f25aca8f0a7599728d2deb25ebf13d579cb9fddba6dea6e16ac995d",
+      "deliverySha256": "08154e5c3cede6605fbafa9cd3e64f5d5bf3e32b9247d17843da0890a385f5e5",
+      "sources": [
+        {
+          "path": "crates/osg-engine-packages/delivery/windows-managed-runtime-notices.json",
+          "sizeBytes": 3113,
+          "sha256": "9bb4adc887fa6d371519cfb4892afca9a7f6d52757a589c73ea4c21df06b732a"
+        },
+        {
+          "path": "crates/osg-speech/delivery/speech-upstreams.lock.json",
+          "sizeBytes": 8901,
+          "sha256": "43c499b649f3319262b83681dbd87a4b5d8eb839c8746beec8f04bdabfaf4d2e"
+        },
+        {
+          "path": "scripts/build-managed-runtime-delivery.py",
+          "sizeBytes": 5354,
+          "sha256": "9a1b092315b8fd5826ea5de9900c20e1a8f49aa7120636caa0e45f1a596382c0"
+        },
+        {
+          "path": "scripts/compose-managed-deliveries.py",
+          "sizeBytes": 10105,
+          "sha256": "90f6cee1f3d7e96635e6d86c0b6f4dc0278246e1dbfaa723de94317abdaafeaf"
+        }
+      ]
+    },
+    "nativeTools": {
+      "sourceSha256": "5e9a864e4c7d7b649d5b766b234e937b1c20a388db74acbebbd82d0e514103d3",
+      "deliverySha256": "3faa1f4e09da1e1859b6cb3c3f077904427781e72f253dbc726e870909cf7ce9",
+      "sources": [
+        {
+          "path": "crates/osg-native-tools/delivery/native-tools.upstreams.lock.json",
+          "sizeBytes": 16958,
+          "sha256": "add04eabc8f2736c8b3c35d3f426acaf505e0aa066009c3262b8edc6d4d03cca"
+        }
+      ]
+    },
+    "remotion": {
+      "sourceSha256": "53eaa90ca313f1c165ec416d1bb132f27ac1babf49a9f75c191fb75ba5b7c9da",
+      "deliverySha256": "e025517af04490efdc48b5da3bca5e93fdbe18d0370dfaf8fd2de80ceb69e6cb",
+      "sources": [
+        {
+          "path": "scripts/generate-remotion-delivery-manifest.mjs",
+          "sizeBytes": 2388,
+          "sha256": "5ec76683091d446e6fc5cee6ee3ad13b8298c1013d0f4b20e23e1c83b0c37039"
+        },
+        {
+          "path": "scripts/generate-remotion-runtime-manifest.mjs",
+          "sizeBytes": 2749,
+          "sha256": "5f3b64cf5726181fc0c9f7a47cc962f9e5ac2d1fcc2159fcbc7421d0caef1fd7"
+        },
+        {
+          "path": "video-renderer/native.tsconfig.json",
+          "sizeBytes": 412,
+          "sha256": "bbd87a2fe320138019c7d08696810e747d9412d6f9ec4a509ff0e558e037022f"
+        },
+        {
+          "path": "video-renderer/package.json",
+          "sizeBytes": 918,
+          "sha256": "8aa9205bfc93d000ef3a8346f8938f23b591ecb558f3734ae93119549ce74901"
+        },
+        {
+          "path": "video-renderer/remotion.config.ts",
+          "sizeBytes": 849,
+          "sha256": "e377a0140d38c4a602602ec570f9c19313997dbe65fdb3595c1e335943d0c059"
+        },
+        {
+          "path": "video-renderer/scripts/build-native-bundle.mjs",
+          "sizeBytes": 8615,
+          "sha256": "7b8b01eca5f8ce3c44c67b752b4b683905ec346ad5af3eb3b0b38f16912c8cb7"
+        },
+        {
+          "path": "video-renderer/src/components/SubtitleCustomization.tsx",
+          "sizeBytes": 1509,
+          "sha256": "338ee0a404805785fd1d31795df8557e7a239e82116d3582e05d228cdcfac9aa"
+        },
+        {
+          "path": "video-renderer/src/components/SubtitledVideo.tsx",
+          "sizeBytes": 32874,
+          "sha256": "14eca2f193e3a31bd394556254cf437347179070a4c2a1f1d08252617d13d4ea"
+        },
+        {
+          "path": "video-renderer/src/remotion/Composition.tsx",
+          "sizeBytes": 1338,
+          "sha256": "784953cb0dc36c0a52ccec0de3f294532c0686a2707d94b288850d7c5bbe7a7a"
+        },
+        {
+          "path": "video-renderer/src/remotion/index.ts",
+          "sizeBytes": 374,
+          "sha256": "3894b824c2f47d0def1290d885d53873597c557708f3239043c2c4b3bd03f755"
+        },
+        {
+          "path": "video-renderer/src/remotion/root.tsx",
+          "sizeBytes": 2069,
+          "sha256": "8520bd9b5250b8775719e76d58abdb6d53cce979722ca3d99356797e60dfb818"
+        },
+        {
+          "path": "video-renderer/src/types.ts",
+          "sizeBytes": 4463,
+          "sha256": "32ffc3fee8e71337b590600fa70c4c08ce7e7dc38242bd81581a864b38fb5145"
+        },
+        {
+          "path": "video-renderer/worker/osg_render_worker.mjs",
+          "sizeBytes": 10248,
+          "sha256": "3e2c86b00ef2a762f8f83f8306b6523cb020106ea3bd2438129e592a376d97d6"
+        }
+      ]
+    },
+    "uiFonts": {
+      "sourceSha256": "f7d7f7d4c9b3ee9820ad4542574e2043290bfad76af657910d94b395b8b67d44",
+      "deliverySha256": "3a378a13296fea5970e839e2a88d0cd637c812bcd0f8100165ca19c8827ad7a1",
+      "sources": [
+        {
+          "path": "scripts/build-ui-font-delivery.py",
+          "sizeBytes": 10297,
+          "sha256": "7e3ce42a6fdcc170d00d41f879b01b000a7652c72f4fd9ef2a352e1b01397292"
+        }
+      ]
+    },
+    "voiceSamples": {
+      "sourceSha256": "ef152854de0e70cf052c0abf1774895e7dee9107a65353584a747567f0eb80ef",
+      "deliverySha256": "4e765a4b6cc80ca22681d894bef3ac34723e8bc6d31c17c13e5245dd55010ae2",
+      "sources": [
+        {
+          "path": "scripts/build-voice-samples-delivery.py",
+          "sizeBytes": 4589,
+          "sha256": "7a0aa317bec48c2e0613ad3dde8f6ef0aab640933b1176f7e397dc9fbfdf4501"
+        }
+      ]
+    }
+  },
+  "remotePoolAssets": [
+    {
+      "asset": "asr-runtime-windows-x64-2026.08.10-part01-31a46fc954a24d74.zip",
+      "sizeBytes": 599748283,
+      "sha256": "31a46fc954a24d742e337c19904fa32dedee55a6be6a7f7515f5ed4cf9b45a6a"
+    },
+    {
+      "asset": "asr-runtime-windows-x64-2026.08.10-part02-1b5d091264a046e3.zip",
+      "sizeBytes": 677777399,
+      "sha256": "1b5d091264a046e3f26bf37cd4bae46676ec3ab4e7e195dea2f47b36d47b01ac"
+    },
+    {
+      "asset": "asr-runtime-windows-x64-2026.08.10-part03-99289940581c6fcc.zip",
+      "sizeBytes": 857784415,
+      "sha256": "99289940581c6fcc555ccc9190f239530989fe0644c2c9a9abfb0e5d23875fe8"
+    },
+    {
+      "asset": "asr-runtime-windows-x64-2026.08.10-part04-ebd85d8f99a614e6.zip",
+      "sizeBytes": 581281367,
+      "sha256": "ebd85d8f99a614e69619bcd6b73f7c54d6beadc3934cb6c571fe7a52bde13fd8"
+    },
+    {
+      "asset": "asr-runtime-windows-x64-2026.08.10-part05-3f40cf50f1c6ff44.zip",
+      "sizeBytes": 549799615,
+      "sha256": "3f40cf50f1c6ff4443fc001f4da7805a2a600b97237ff1c43b7ba6fcb7bdf5e7"
+    },
+    {
+      "asset": "chatterbox-windows-x86_64-2026.08.10-19a74aed8380e64d.manifest.json",
+      "sizeBytes": 16181760,
+      "sha256": "19a74aed8380e64d3a1857aba737b5bb1f7b8036796c39c60b236b0f916a44d9"
+    },
+    {
+      "asset": "edge-tts-windows-x86_64-2026.08.10-3f8506dc905f97ac.manifest.json",
+      "sizeBytes": 16179750,
+      "sha256": "3f8506dc905f97ac894ba6750ab7c685fb0ebb6e35a23310d0f6cb48d2829681"
+    },
+    {
+      "asset": "f5-tts-windows-x86_64-2026.08.10-62699c10b9041344.manifest.json",
+      "sizeBytes": 16180583,
+      "sha256": "62699c10b9041344bf43d49b15a22414144dfadcdda83ce98dd5622a88edba43"
+    },
+    {
+      "asset": "faster-whisper-large-v3-windows-x86_64-2026.08.10-f4be32a5dd816f67.manifest.json",
+      "sizeBytes": 13399904,
+      "sha256": "f4be32a5dd816f67f697c1f35ff70f1ecbb3fda011a75c59de5dfe3dd87eaffe"
+    },
+    {
+      "asset": "faster-whisper-turbo-windows-x86_64-2026.08.10-01c96d87195f2df6.manifest.json",
+      "sizeBytes": 13399901,
+      "sha256": "01c96d87195f2df6fe81a4d0bc3001b80f70f200cc104be98b0637cecb3388bf"
+    },
+    {
+      "asset": "gemini-tts-windows-x86_64-2026.08.10-fee00bbd51e25865.manifest.json",
+      "sizeBytes": 16179752,
+      "sha256": "fee00bbd51e25865159c62a0807cb3c1d231e81222693425fa75d6cd77ca3898"
+    },
+    {
+      "asset": "gemini-voice-samples-2026.08.11-3afc850d6dd85ae1.zip",
+      "sizeBytes": 13520118,
+      "sha256": "3afc850d6dd85ae11885fbbe6f271aa0322d5926f287037324a4aa99601ade3d"
+    },
+    {
+      "asset": "google-sans-flex-NOTICE-019201394f5f7edd.txt",
+      "sizeBytes": 586,
+      "sha256": "019201394f5f7edd355567b138dddb4fd21d414696ff0582058ec11d2d5963c4"
+    },
+    {
+      "asset": "google-sans-flex-v22-ui4-9d59f14b9ce636f1.delivery.json",
+      "sizeBytes": 1905,
+      "sha256": "9d59f14b9ce636f160dc7398046985fca567cd8add6b9f84f79cd2b5a9bb3dcd"
+    },
+    {
+      "asset": "google-sans-flex-v22-ui4-b7bcc5489391e48d.css",
+      "sizeBytes": 1239,
+      "sha256": "b7bcc5489391e48d44f4238b5e2eae87ddeb8269073853c904d947a173e33b40"
+    },
+    {
+      "asset": "google-sans-flex-v22-ui4-latin-3215351d7b558739.woff2",
+      "sizeBytes": 270324,
+      "sha256": "3215351d7b5587396710ab80bd31994ebbf3a9ee6f8e67b3c29a30d909cec55f"
+    },
+    {
+      "asset": "google-sans-flex-v22-ui4-latin-ext-0f63b3ae4c60341f.woff2",
+      "sizeBytes": 131208,
+      "sha256": "0f63b3ae4c60341fc1348749796505e9ab621a3ab690b80f9cdf66dafc1eca19"
+    },
+    {
+      "asset": "google-sans-flex-v22-ui4-vietnamese-7343aefa9061998b.woff2",
+      "sizeBytes": 57620,
+      "sha256": "7343aefa9061998bdfea8c1e2aa6943a029218dd78a23e5fde441e832fe66629"
+    },
+    {
+      "asset": "gtts-windows-x86_64-2026.08.10-9388b5219b8dea80.manifest.json",
+      "sizeBytes": 16179746,
+      "sha256": "9388b5219b8dea80c55330e2fd95459ec308682fb2075ccc49bf9be880283547"
+    },
+    {
+      "asset": "parakeet-windows-x86_64-2026.08.10-0f0e48e33edf5ecf.manifest.json",
+      "sizeBytes": 13400098,
+      "sha256": "0f0e48e33edf5ecf1fa3909e768ad43e23a3fc3b4ff809e96f43ea79acf69b15"
+    },
+    {
+      "asset": "qwen3-asr-0.6b-windows-x86_64-2026.08.10-cf4172b0cb803fe3.manifest.json",
+      "sizeBytes": 13402127,
+      "sha256": "cf4172b0cb803fe37498b8cfdbca9af04608b808669284720280f66bf9235e8b"
+    },
+    {
+      "asset": "qwen3-asr-1.7b-windows-x86_64-2026.08.10-26e3de52e4573498.manifest.json",
+      "sizeBytes": 13402571,
+      "sha256": "26e3de52e4573498992285966f0a64e8fd5340cbb557bc05bef3f9df11b6ba2b"
+    },
+    {
+      "asset": "remotion-runtime-windows-x64-4.0.507-55e34bd249ac7a23.zip",
+      "sizeBytes": 264797695,
+      "sha256": "55e34bd249ac7a23ae7c380914689aec700120dc0b5d06dfa8279dbaf987b904"
+    },
+    {
+      "asset": "remotion-runtime-windows-x64-4.0.507-edfdb46a7776760b.manifest.json",
+      "sizeBytes": 644762,
+      "sha256": "edfdb46a7776760b5f0cfc6f4e2d8287d10cf183ca236b24d512b49d8faf2540"
+    },
+    {
+      "asset": "sil-open-font-license-1.1-1d361a8f8e8ce6e6.txt",
+      "sizeBytes": 4599,
+      "sha256": "1d361a8f8e8ce6e68457dcd93fb56e162e6baa3bbb7e7573a290d44399f6b57e"
+    },
+    {
+      "asset": "speech-runtime-windows-x64-2026.08.10-part01-7b4867265a642de7.zip",
+      "sizeBytes": 471630213,
+      "sha256": "7b4867265a642de7b8042999ee74daeb391727fcd1c3ada671413dd46efcb1b7"
+    },
+    {
+      "asset": "speech-runtime-windows-x64-2026.08.10-part05-bc27cdc621f95942.zip",
+      "sizeBytes": 584441763,
+      "sha256": "bc27cdc621f959421c2d127d0515eb25ddd63c6d824630ecbbf6fb88c2a2de40"
+    },
+    {
+      "asset": "windows-managed-runtime-notices.json",
+      "sizeBytes": 3113,
+      "sha256": "9bb4adc887fa6d371519cfb4892afca9a7f6d52757a589c73ea4c21df06b732a"
+    }
+  ]
+}

@@ -11,7 +11,7 @@
     "dev:vite": "npm --prefix ../.. run dev:vite",
     "build:frontend": "npm --prefix ../.. run build:frontend",
     "tauri": "tauri",
-    "tauri:build": "tauri build",
+    "tauri:build": "tauri build --features production",
     "tauri:dev": "tauri dev"
   },
   "devDependencies": {

@@ -57,6 +57,7 @@ export const EVENTS = {
   SAVE_AFTER_STREAMING: 'save-after-streaming',
   PROCESSING_RANGES: 'processing-ranges',
   GEMINI_REQUESTS_ABORTED: 'gemini-requests-aborted',
+  VIDEO_ANALYSIS_SETTLED: 'video-analysis-settled',
   RETRY_SEGMENT_FROM_CACHE: 'retry-segment-from-cache',
   RETRY_SEGMENT_FROM_CACHE_COMPLETE: 'retry-segment-from-cache-complete',
   CAPTURE_BEFORE_MERGE: 'capture-before-merge',

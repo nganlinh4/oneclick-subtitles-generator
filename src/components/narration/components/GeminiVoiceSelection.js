@@ -1,5 +1,6 @@
 import { useState, useEffect, useRef } from 'react';
 import { useTranslation } from 'react-i18next';
+import { resolveVoiceSample } from '../../../platform/voiceSampleService';
 import { GEMINI_VOICES } from '../../../services/gemini/geminiNarrationService';
 import '../../../styles/narration/geminiVoiceSelectionCompact.css';
 import CustomDropdown from '../../common/CustomDropdown';
@@ -22,6 +23,7 @@ const GeminiVoiceSelection = ({
   const audioRef = useRef(null);
   const [isPlaying, setIsPlaying] = useState(false);
   const [currentPlayingVoice, setCurrentPlayingVoice] = useState(null);
+  const resolveGeneration = useRef(0);
 
   // Group voices by gender
   const femaleVoices = GEMINI_VOICES.filter(voice => voice.gender === 'Female');
@@ -38,31 +40,50 @@ const GeminiVoiceSelection = ({
     }
   };
 
-  const playVoiceSample = (voiceId) => {
+  const playVoiceSample = async (voiceId) => {
     // If already playing this voice, stop it
     if (isPlaying && currentPlayingVoice === voiceId) {
       audioRef.current.pause();
       audioRef.current.currentTime = 0;
       setIsPlaying(false);
       setCurrentPlayingVoice(null);
+      resolveGeneration.current += 1;
       return;
     }
 
-    // Play the voice sample
-    const audioPath = `/audio/voices/chirp3-hd-${voiceId.toLowerCase()}.wav`;
+    const generation = resolveGeneration.current + 1;
+    resolveGeneration.current = generation;
 
     if (audioRef.current) {
-      audioRef.current.src = audioPath;
-      audioRef.current.play()
-        .then(() => {
-          setIsPlaying(true);
-          setCurrentPlayingVoice(voiceId);
-        })
-        .catch(error => {
-          console.error('Error playing audio:', error);
-          setIsPlaying(false);
-          setCurrentPlayingVoice(null);
+      try {
+        const playback = await resolveVoiceSample(voiceId, {
+          onProgress: ({ basisPoints }) => window.addToast?.(
+            t('narration.installingVoiceSamples', 'Installing voice previews… {{percent}}%', {
+              percent: Math.floor(basisPoints / 100),
+            }),
+            'info',
+            5000,
+            'voice-samples-install',
+          ),
         });
+        if (generation !== resolveGeneration.current || !audioRef.current) return;
+        window.removeToastByKey?.('voice-samples-install');
+        audioRef.current.src = playback.playbackUrl;
+        await audioRef.current.play();
+        setIsPlaying(true);
+        setCurrentPlayingVoice(voiceId);
+      } catch (_error) {
+        if (generation !== resolveGeneration.current) return;
+        window.removeToastByKey?.('voice-samples-install');
+        window.addToast?.(
+          t('narration.voiceSampleUnavailable', 'Voice preview is unavailable. Please try again.'),
+          'error',
+          6000,
+          'voice-samples-install',
+        );
+        setIsPlaying(false);
+        setCurrentPlayingVoice(null);
+      }
     }
   };
 

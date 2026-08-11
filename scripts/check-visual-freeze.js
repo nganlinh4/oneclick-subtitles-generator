@@ -37,6 +37,38 @@ const EVENT_HANDLER_ATTRIBUTE = /^on[A-Z]/;
 const MAX_GIT_BUFFER = 256 * 1024 * 1024;
 const RETIRED_EXACT_FILES = Object.freeze({
   'public/oauth2callback.html': 'c19855fd5a3f19af1eea1c1fed6e7794a342136223dd60dbead2586d4298fd90',
+  'src/assets/fonts/GoogleSansFlex.ttf': 'eae5ed6ddefbd44ab9693b84454ce46f3f2de0fb4f7cc5b54138c50c5b347d70',
+  'src/styles/local-fonts.css': '2ede8f2a25be55c5bc62320f81c7aa85c6260d19feb73faae9d6fd3fdd421e22',
+  'public/audio/voices/chirp3-hd-achernar.wav': '80793fc2f2eb8943678abba8d916aa7fc89256c43d9b562b0a387b6dd55280d4',
+  'public/audio/voices/chirp3-hd-achird.wav': 'ac001cc513d4c7d219451727a58f314c393efbed7ae9b150238ff38f8cac2ade',
+  'public/audio/voices/chirp3-hd-algenib.wav': '456a9594c66e7cb38c8a964fb73ed27e5c8a6197e5cc28542c9eba11d40ba37c',
+  'public/audio/voices/chirp3-hd-algieba.wav': '05b34e4c7d53bf7f1e59f638c2c493e529c37b7cb02fa574d22a508db73433cf',
+  'public/audio/voices/chirp3-hd-alnilam.wav': 'cb9faea4f3ef95b80c7ec640b1a02d63cde8cf2b9d0f492c8932bc27f95c64d0',
+  'public/audio/voices/chirp3-hd-aoede.wav': 'd70edee197d660d1d93b2c113638268e36568bf425d76c5ace3c13a4186a1459',
+  'public/audio/voices/chirp3-hd-autonoe.wav': '511565ab6dc897359da3f0cdcf7d3d443462fbabea7033fdb8fa188909514d1f',
+  'public/audio/voices/chirp3-hd-callirrhoe.wav': 'ee6a2dc4002fca7eff10b0aa657341f4fa30f212f7a240f538e3c1e34f995108',
+  'public/audio/voices/chirp3-hd-charon.wav': 'e6f9ccf5a09663c2be83a5946a4870a3845c2c8cfed195be5916cb39a4fcaa86',
+  'public/audio/voices/chirp3-hd-despina.wav': '1a2b765b07c9b3b197b35e1995816e0c9029a3f9a921247193c2e68576a37f53',
+  'public/audio/voices/chirp3-hd-enceladus.wav': 'b82dca749536a6b488f9f5ff9509600ba27d621bbec5ce22ac74fb7b940871af',
+  'public/audio/voices/chirp3-hd-erinome.wav': 'e2c14df7fbf1285d2a97cc1f558c55bf6c6e67611710aeb90e5be54bfa378b3c',
+  'public/audio/voices/chirp3-hd-fenrir.wav': 'f9493e5771c85096a7aab901193ac7f848f6827a89f757cc2441d9a2fcc32c17',
+  'public/audio/voices/chirp3-hd-gacrux.wav': '0152787bd2a979f7e133c649be8d2744b7ba58c00c63ff13b98285d96e8b75de',
+  'public/audio/voices/chirp3-hd-iapetus.wav': 'c9e67cc06cb800a4d1d7a9dd670a28c8db488e2854786147febad888727a5473',
+  'public/audio/voices/chirp3-hd-kore.wav': '1f92849f6ed2560cdc8cdf2ea799bcae415abc043ad80c83a115a072ddd55b6c',
+  'public/audio/voices/chirp3-hd-laomedeia.wav': 'fd4402b0b0407d4b47b8933ab4f8246eac6987699121fd8252330ab7d5fee6b1',
+  'public/audio/voices/chirp3-hd-leda.wav': '41610f0d84bb386227a7edecc31d19699f0e2b8b9e1acad3c83920b762bcf3cc',
+  'public/audio/voices/chirp3-hd-orus.wav': 'c94a3311de46c92d63c7de5718e438f1216e83b69f57c762e958bea38bbc3b02',
+  'public/audio/voices/chirp3-hd-puck.wav': '6b01847e6db9c0c15282112102fb0b73610fd0e8b994b9d99fbdb013a6a5816b',
+  'public/audio/voices/chirp3-hd-pulcherrima.wav': 'f6a766f6a0df487ab854d6e4d42645caea294dc7ac224c5019e43525672bbc51',
+  'public/audio/voices/chirp3-hd-rasalgethi.wav': 'ce5f274391c1db929c9332a1552aa0eeadd433cb32d95c595de4e106a2491e45',
+  'public/audio/voices/chirp3-hd-sadachbia.wav': 'e36673260af0ee55f26bd11b399d961c7ffb0edfb549f5bfbe380e26f5826c78',
+  'public/audio/voices/chirp3-hd-sadaltager.wav': 'b2adc047a9b363dbaf0bad6d4c00fc4338bdc54178ef7f786a4680ea1e654a93',
+  'public/audio/voices/chirp3-hd-schedar.wav': '1c07debc52d76046bc24045c32c078afce9da185daa224b6d9da8ceb6a2c5c5f',
+  'public/audio/voices/chirp3-hd-sulafat.wav': '8bf8a875d904c6d6355880f1bbe18f94b6bb4500f2a6c26d3d6bf3a5045fc743',
+  'public/audio/voices/chirp3-hd-umbriel.wav': '05a720d9b41a6ecabf644bbea880317b242617eae619a487f63c508258a6f45c',
+  'public/audio/voices/chirp3-hd-vindemiatrix.wav': 'ae9907406556bdd10a55132422b5213c4513da548138fb3d7ecc26518ec50b5e',
+  'public/audio/voices/chirp3-hd-zephyr.wav': 'aed7ab19a485a24f6b3fe37feb368caae287fa7d42083b6d4c1878061d70580d',
+  'public/audio/voices/chirp3-hd-zubenelgenubi.wav': '09d15cc03e2a8c0140f03f29f0407b3237316d503bd37225d27cc74179520aa1',
 });
 const NATIVE_PROVIDER_IMAGE_SOURCES = new Set([
   'src/components/inputs/VideoPreviewRenderer.js',
@@ -45,6 +77,13 @@ const NATIVE_PROVIDER_IMAGE_SOURCES = new Set([
 const LEGACY_SELECTED_VIDEO_IMAGE = 'src={`https://img.youtube.com/vi/${selectedVideo.id}/0.jpg`}';
 const NATIVE_SELECTED_VIDEO_IMAGE = 'src={selectedVideo.thumbnail}';
 const SECURITY_COPY_RENDER_CORRECTIONS = Object.freeze({
+  'src/components/engines/NativeToolsList.js': Object.freeze([
+    Object.freeze([
+      "              catalog.id === 'remotion-runtime'\n                ? cancelRenderPackageJob(operation.job.id)",
+      "              catalog.id === 'gemini-voice-samples'\n                ? cancelVoiceSamples()\n                : catalog.id === 'remotion-runtime'\n                ? cancelRenderPackageJob(operation.job.id)",
+      1,
+    ]),
+  ]),
   'src/components/engines/EngineCard.js': Object.freeze([
     Object.freeze([
       '  kind,\n  status,',
@@ -119,6 +158,10 @@ const SECURITY_COPY_RENDER_CORRECTIONS = Object.freeze({
   ]),
 });
 const SECURITY_COPY_LOCALE_CORRECTIONS = Object.freeze({
+  'src/i18n/locales/en/download.json': Object.freeze({
+    'nativeTools.healthFailed': Object.freeze(['The installed native download tools failed their health check. Restart OSG; if the problem remains, repair the installation.', 'The native tools did not become ready. Retry the operation; if the problem remains, repair them in Tools. Details were written to the application log.']),
+    'nativeTools.failed': Object.freeze(['The verified native tool package could not be installed.', 'Native tool installation failed. Details were written to the application log.']),
+  }),
   'src/i18n/locales/en/settings.json': Object.freeze({
     apiKeyDescription: Object.freeze(['Your API key is stored locally in your browser and never sent to our servers.', "Your API key is stored in your operating system's credential store and used only by native provider requests."]),
     createOAuthClientId: Object.freeze(['Create OAuth 2.0 client ID (web application)', 'Create OAuth 2.0 client ID (desktop app)']),
@@ -128,6 +171,10 @@ const SECURITY_COPY_LOCALE_CORRECTIONS = Object.freeze({
     inAuthorizedOrigins: Object.freeze(["In 'Authorized JavaScript origins', add exactly:", 'The OAuth client application type must be:']),
     inAuthorizedRedirect: Object.freeze(["In 'Authorized redirect URIs', add exactly:", 'Retry authentication; OSG will select a new loopback callback:']),
   }),
+  'src/i18n/locales/ko/download.json': Object.freeze({
+    'nativeTools.healthFailed': Object.freeze(['설치된 네이티브 다운로드 도구가 상태 검사를 통과하지 못했습니다. OSG를 다시 시작하고 문제가 계속되면 설치를 복구하세요.', '네이티브 도구가 준비되지 않았습니다. 작업을 다시 시도하고, 문제가 계속되면 도구 탭에서 복구하세요. 자세한 내용은 애플리케이션 로그에 기록되었습니다.']),
+    'nativeTools.failed': Object.freeze(['검증된 네이티브 도구 패키지를 설치할 수 없습니다.', '네이티브 도구 설치에 실패했습니다. 자세한 내용은 애플리케이션 로그에 기록되었습니다.']),
+  }),
   'src/i18n/locales/ko/settings.json': Object.freeze({
     apiKeyDescription: Object.freeze(['API 키는 브라우저에 로컬로 저장되며 절대 우리 서버로 전송되지 않습니다.', 'API 키는 운영 체제의 자격 증명 저장소에 보관되며 네이티브 제공자 요청에만 사용됩니다.']),
     createOAuthClientId: Object.freeze(['OAuth 2.0 클라이언트 ID 생성 (웹 애플리케이션)', 'OAuth 2.0 클라이언트 ID 생성 (데스크톱 앱)']),
@@ -136,6 +183,10 @@ const SECURITY_COPY_LOCALE_CORRECTIONS = Object.freeze({
     redirectMismatchDescription: Object.freeze(['이 오류는 애플리케이션의 리디렉션 URI가 Google Cloud Console에 등록된 URI와 일치하지 않을 때 발생합니다:', '이 오류는 일반적으로 OAuth 클라이언트가 데스크톱 애플리케이션으로 설정되지 않았을 때 발생합니다:']),
     inAuthorizedOrigins: Object.freeze(["'승인된 JavaScript 출처'에 정확히 추가:", 'OAuth 클라이언트 애플리케이션 유형:']),
     inAuthorizedRedirect: Object.freeze(["'승인된 리디렉션 URI'에 정확히 추가:", '인증을 다시 시도하면 OSG가 새 루프백 콜백을 선택합니다:']),
+  }),
+  'src/i18n/locales/vi/download.json': Object.freeze({
+    'nativeTools.healthFailed': Object.freeze(['Các công cụ tải xuống gốc đã cài đặt không vượt qua kiểm tra trạng thái. Hãy khởi động lại OSG; nếu lỗi vẫn còn, hãy sửa chữa cài đặt.', 'Các công cụ gốc chưa sẵn sàng. Hãy thử lại; nếu lỗi vẫn còn, sửa chữa chúng trong tab Công cụ. Chi tiết đã được ghi vào nhật ký ứng dụng.']),
+    'nativeTools.failed': Object.freeze(['Không thể cài đặt gói công cụ gốc đã được xác minh.', 'Cài đặt công cụ gốc thất bại. Chi tiết đã được ghi vào nhật ký ứng dụng.']),
   }),
   'src/i18n/locales/vi/settings.json': Object.freeze({
     apiKeyDescription: Object.freeze(['Khóa API được lưu trữ cục bộ trong trình duyệt của bạn và không bao giờ được gửi đến máy chủ của chúng tôi.', 'Khóa API được lưu trong kho thông tin xác thực của hệ điều hành và chỉ được ứng dụng gốc sử dụng cho các yêu cầu đến nhà cung cấp.']),
@@ -188,8 +239,16 @@ function canonicalizeLocaleValue(relativePath, value) {
   const corrections = SECURITY_COPY_LOCALE_CORRECTIONS[relativePath];
   if (!corrections) return value;
   for (const [key, [legacy, current]] of Object.entries(corrections)) {
-    if (value[key] === legacy) value[key] = current;
-    else if (value[key] !== current) {
+    const segments = key.split('.');
+    const leaf = segments.pop();
+    const parent = segments.reduce(
+      (candidate, segment) => candidate && typeof candidate === 'object'
+        ? candidate[segment]
+        : undefined,
+      value,
+    );
+    if (parent?.[leaf] === legacy) parent[leaf] = current;
+    else if (parent?.[leaf] !== current) {
       throw new Error(`reviewed locale security correction drifted for ${relativePath}:${key}`);
     }
   }

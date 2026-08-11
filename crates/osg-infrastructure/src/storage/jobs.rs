@@ -258,6 +258,7 @@ const fn kind_as_str(kind: JobKind) -> &'static str {
     match kind {
         JobKind::ImportMedia => "importMedia",
         JobKind::ProbeMedia => "probeMedia",
+        JobKind::ProcessMedia => "processMedia",
         JobKind::GenerateWaveform => "generateWaveform",
         JobKind::DownloadMedia => "downloadMedia",
         JobKind::ExportMedia => "exportMedia",
@@ -276,6 +277,7 @@ fn parse_kind(value: &str) -> Option<JobKind> {
     match value {
         "importMedia" => Some(JobKind::ImportMedia),
         "probeMedia" => Some(JobKind::ProbeMedia),
+        "processMedia" => Some(JobKind::ProcessMedia),
         "generateWaveform" => Some(JobKind::GenerateWaveform),
         "downloadMedia" => Some(JobKind::DownloadMedia),
         "exportMedia" => Some(JobKind::ExportMedia),
@@ -354,6 +356,7 @@ mod tests {
         let kinds = [
             JobKind::ImportMedia,
             JobKind::ProbeMedia,
+            JobKind::ProcessMedia,
             JobKind::GenerateWaveform,
             JobKind::DownloadMedia,
             JobKind::ExportMedia,

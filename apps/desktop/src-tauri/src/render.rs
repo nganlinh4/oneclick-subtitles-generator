@@ -4,7 +4,7 @@ use std::io::{BufReader, Read, Seek, SeekFrom, Write};
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::{Arc, Mutex, RwLock, Weak};
-use std::time::Duration;
+use std::time::{Duration, Instant};
 
 use osg_domain::{
     AssetId, JobId, JobKind, JobProgress, JobSnapshot, JobState, JobUpdate, MediaAsset, MediaKind,
@@ -31,6 +31,7 @@ use tauri::{State, ipc::Channel};
 use uuid::Uuid;
 
 use crate::background;
+use crate::diagnostics;
 use crate::error::{CommandError, CommandResult};
 use crate::state::DesktopState;
 
@@ -57,7 +58,7 @@ struct RenderRuntimeInner {
     unavailable_reason: RwLock<Option<&'static str>>,
     package_manager: RwLock<Option<RenderPackageManager>>,
     worker_candidates: Vec<PathBuf>,
-    ffmpeg: Option<PathBuf>,
+    ffmpeg: RwLock<Option<PathBuf>>,
     staging_root: PathBuf,
     media_server: MediaServer,
     slots: Arc<SlotLimiter>,
@@ -100,34 +101,19 @@ impl RenderRuntimeHost {
     pub(crate) fn new(
         cache_root: impl AsRef<Path>,
         resource_root: Option<&Path>,
-        development_root: Option<&Path>,
         ffmpeg: Option<PathBuf>,
         media_server: MediaServer,
     ) -> std::io::Result<Self> {
         let staging_root = cache_root.as_ref().join("v1/render");
         fs::create_dir_all(&staging_root)?;
-        let worker_candidates = worker_candidates(resource_root, development_root);
-        let runtime = resolve_runtime(resource_root, development_root);
-        let unavailable_reason = if runtime.is_none() {
-            Some("runtimePayloadUnavailable")
-        } else if ffmpeg.is_none() {
-            Some("mediaToolsUnavailable")
-        } else {
-            None
-        };
-        let engine = runtime
-            .map(|runtime| LoadedRenderEngine {
-                engine: RenderEngine::new(runtime),
-                _lease: None,
-            })
-            .filter(|_| ffmpeg.is_some());
+        let worker_candidates = worker_candidates(resource_root);
         Ok(Self {
             inner: Arc::new(RenderRuntimeInner {
-                engine: RwLock::new(engine),
-                unavailable_reason: RwLock::new(unavailable_reason),
+                engine: RwLock::new(None),
+                unavailable_reason: RwLock::new(Some("runtimePayloadUnavailable")),
                 package_manager: RwLock::new(None),
                 worker_candidates,
-                ffmpeg,
+                ffmpeg: RwLock::new(ffmpeg),
                 staging_root,
                 media_server,
                 slots: SlotLimiter::new(MAX_CONCURRENT_RENDERS),
@@ -148,6 +134,8 @@ impl RenderRuntimeHost {
         let ffmpeg = self
             .inner
             .ffmpeg
+            .read()
+            .map_err(|_| CommandError::internal("The native media tool is unavailable."))?
             .clone()
             .ok_or_else(CommandError::media_tools_unavailable)?;
         Ok((engine, ffmpeg, self.inner.staging_root.clone()))
@@ -155,6 +143,39 @@ impl RenderRuntimeHost {
 
     pub(crate) fn package_coordinator(&self) -> RenderPackageCoordinator {
         RenderPackageCoordinator(Arc::downgrade(&self.inner))
+    }
+
+    pub(crate) fn refresh_media_tool(&self, ffmpeg: Option<PathBuf>) -> CommandResult<()> {
+        let changed = {
+            let mut current = self
+                .inner
+                .ffmpeg
+                .write()
+                .map_err(|_| CommandError::internal("The native media tool is unavailable."))?;
+            if *current == ffmpeg {
+                false
+            } else {
+                *current = ffmpeg;
+                true
+            }
+        };
+        if !changed {
+            return Ok(());
+        }
+        if self
+            .inner
+            .package_manager
+            .read()
+            .map_err(|_| CommandError::internal("The render package manager is unavailable."))?
+            .is_some()
+        {
+            self.refresh_managed()?;
+        }
+        Ok(())
+    }
+
+    pub(crate) fn is_idle(&self) -> bool {
+        self.inner.slots.active.load(Ordering::Acquire) == 0
     }
 
     pub(crate) fn attach_package_manager(
@@ -211,7 +232,12 @@ impl RenderRuntimeHost {
                 RenderRuntime::load(&root, worker, WORKER_BYTES, runtime_target()).ok()
             })
             .ok_or_else(CommandError::render_runtime_unavailable)?;
-        let available = self.inner.ffmpeg.is_some();
+        let available = self
+            .inner
+            .ffmpeg
+            .read()
+            .map_err(|_| CommandError::internal("The native media tool is unavailable."))?
+            .is_some();
         *self
             .inner
             .engine
@@ -380,6 +406,21 @@ pub(crate) enum RenderPhaseResponse {
     Publishing,
 }
 
+impl RenderPhaseResponse {
+    const fn diagnostic_name(self) -> &'static str {
+        match self {
+            Self::Staging => "staging",
+            Self::ExtractingFrames => "extractingFrames",
+            Self::ExtractingAudio => "extractingAudio",
+            Self::LoadingComposition => "loadingComposition",
+            Self::RenderingFrames => "renderingFrames",
+            Self::Encoding => "encoding",
+            Self::Muxing => "muxing",
+            Self::Publishing => "publishing",
+        }
+    }
+}
+
 impl From<RenderPhase> for RenderPhaseResponse {
     fn from(value: RenderPhase) -> Self {
         match value {
@@ -485,8 +526,9 @@ struct ValidatedStart {
 }
 
 struct ProgressState {
-    last_basis_points: u16,
-    last_phase: Option<RenderPhaseResponse>,
+    basis_points: u16,
+    phase: Option<RenderPhaseResponse>,
+    logged_bucket: u16,
 }
 
 #[tauri::command]
@@ -517,7 +559,8 @@ pub(crate) fn render_runtime_status(
 #[tauri::command]
 #[allow(
     clippy::needless_pass_by_value,
-    reason = "Tauri injects State and Channel as owned command extractors"
+    clippy::too_many_lines,
+    reason = "Tauri injects owned extractors and render validation, durable registration, logging, and launch are one ordered boundary"
 )]
 pub(crate) async fn render_start(
     state: State<'_, DesktopState>,
@@ -532,8 +575,7 @@ pub(crate) async fn render_start(
         .ok_or_else(CommandError::render_busy)?;
     let (render_engine, ffmpeg, staging_root) = runtime.engine_and_inputs()?;
     let media_engine = state
-        .media_engine
-        .clone()
+        .media_engine()
         .ok_or_else(CommandError::media_tools_unavailable)?;
     let database = state.database.clone();
     let validated = tauri::async_runtime::spawn_blocking({
@@ -547,7 +589,23 @@ pub(crate) async fn render_start(
     let ticket = background::register_running(&jobs, JobKind::RenderVideo).await?;
     let initial = ticket.snapshot().clone();
     let job_id = initial.id();
+    let started = Instant::now();
+    diagnostics::record(
+        "render.started",
+        &[
+            ("job", job_id.to_string()),
+            ("durationFrames", validated.plan.duration_frames.to_string()),
+        ],
+    );
     if let Err(error) = initialize_manifest(&database, job_id) {
+        diagnostics::record(
+            "render.failed",
+            &[
+                ("job", job_id.to_string()),
+                ("elapsedMs", elapsed_millis(started)),
+                ("code", error.code().to_owned()),
+            ],
+        );
         let _ = background::finish_failure(&jobs, job_id).await;
         return Err(error);
     }
@@ -575,6 +633,7 @@ pub(crate) async fn render_start(
             job_id,
             on_event.clone(),
             render_cancellation.clone(),
+            started,
         );
         let control = match RenderRunControl::new(RENDER_TIMEOUT) {
             Ok(control) => control
@@ -582,7 +641,7 @@ pub(crate) async fn render_start(
                 .with_progress(progress),
             Err(error) => {
                 watcher.abort();
-                fail_render(&jobs, job_id, error.into(), &on_event).await;
+                fail_render(&jobs, job_id, error.into(), &on_event, started).await;
                 return;
             }
         };
@@ -606,6 +665,7 @@ pub(crate) async fn render_start(
             native_result,
             &render_cancellation,
             &on_event,
+            started,
         )
         .await;
     });
@@ -768,13 +828,23 @@ fn render_progress_sink(
     job_id: JobId,
     channel: Channel<RenderEvent>,
     cancellation: RenderCancellationToken,
+    started: Instant,
 ) -> RenderProgressSink {
     let state = Mutex::new(ProgressState {
-        last_basis_points: 0,
-        last_phase: None,
+        basis_points: 0,
+        phase: None,
+        logged_bucket: 0,
     });
     RenderProgressSink::new(move |progress| {
-        report_render_progress(&jobs, job_id, &channel, &cancellation, &state, progress);
+        report_render_progress(
+            &jobs,
+            job_id,
+            &channel,
+            &cancellation,
+            &state,
+            progress,
+            started,
+        );
     })
 }
 
@@ -785,6 +855,7 @@ fn report_render_progress(
     cancellation: &RenderCancellationToken,
     state: &Mutex<ProgressState>,
     progress: RenderProgress,
+    started: Instant,
 ) {
     let phase = RenderPhaseResponse::from(progress.phase);
     let basis_points = u16::try_from(
@@ -797,11 +868,11 @@ fn report_render_progress(
         cancellation.cancel();
         return;
     };
-    let phase_changed = reporter.last_phase != Some(phase);
+    let phase_changed = reporter.phase != Some(phase);
     if !phase_changed
         && basis_points
             < reporter
-                .last_basis_points
+                .basis_points
                 .saturating_add(PROGRESS_STEP_BASIS_POINTS)
     {
         return;
@@ -828,8 +899,24 @@ fn report_render_progress(
     } else {
         current.snapshot().clone()
     };
-    reporter.last_basis_points = reporter.last_basis_points.max(basis_points);
-    reporter.last_phase = Some(phase);
+    reporter.basis_points = reporter.basis_points.max(basis_points);
+    reporter.phase = Some(phase);
+    let log_bucket = basis_points / 500;
+    if phase_changed || log_bucket > reporter.logged_bucket {
+        diagnostics::record(
+            "render.progress",
+            &[
+                ("job", job_id.to_string()),
+                ("phase", phase.diagnostic_name().to_owned()),
+                ("elapsedMs", elapsed_millis(started)),
+                ("progressBasisPoints", basis_points.to_string()),
+                ("renderedFrames", progress.rendered_frames.to_string()),
+                ("encodedFrames", progress.encoded_frames.to_string()),
+                ("durationFrames", progress.duration_in_frames.to_string()),
+            ],
+        );
+        reporter.logged_bucket = reporter.logged_bucket.max(log_bucket);
+    }
     drop(reporter);
     let _ = channel.send(RenderEvent::Progress {
         job,
@@ -856,6 +943,7 @@ async fn finish_render(
     native_result: CommandResult<PreparedRender>,
     cancellation: &RenderCancellationToken,
     channel: &Channel<RenderEvent>,
+    started: Instant,
 ) {
     let prepared = match native_result {
         Ok(prepared) => prepared,
@@ -865,9 +953,9 @@ async fn finish_render(
                     .await
                     .is_some_and(|job| job.state() == JobState::Cancelling)
             {
-                cancel_render(jobs, job_id, channel).await;
+                cancel_render(jobs, job_id, channel, started).await;
             } else {
-                fail_render(jobs, job_id, error, channel).await;
+                fail_render(jobs, job_id, error, channel, started).await;
             }
             return;
         }
@@ -877,7 +965,7 @@ async fn finish_render(
             .await
             .is_some_and(|job| job.state() == JobState::Cancelling)
     {
-        cancel_render(jobs, job_id, channel).await;
+        cancel_render(jobs, job_id, channel, started).await;
         return;
     }
     let publishing = match background::apply(
@@ -892,7 +980,7 @@ async fn finish_render(
     {
         Ok(job) => job,
         Err(error) => {
-            fail_render(jobs, job_id, error, channel).await;
+            fail_render(jobs, job_id, error, channel, started).await;
             return;
         }
     };
@@ -904,6 +992,21 @@ async fn finish_render(
         encoded_frames: prepared.duration_in_frames(),
         duration_in_frames: prepared.duration_in_frames(),
     });
+    diagnostics::record(
+        "render.progress",
+        &[
+            ("job", job_id.to_string()),
+            (
+                "phase",
+                RenderPhaseResponse::Publishing.diagnostic_name().to_owned(),
+            ),
+            ("elapsedMs", elapsed_millis(started)),
+            ("progressBasisPoints", PUBLISHING_BASIS_POINTS.to_string()),
+            ("renderedFrames", prepared.duration_in_frames().to_string()),
+            ("encodedFrames", prepared.duration_in_frames().to_string()),
+            ("durationFrames", prepared.duration_in_frames().to_string()),
+        ],
+    );
     let publication_database = database.clone();
     let publication_cancellation = cancellation.clone();
     let published = tauri::async_runtime::spawn_blocking(move || {
@@ -923,9 +1026,9 @@ async fn finish_render(
         Ok(manifest) => manifest,
         Err(error) => {
             if cancellation.is_cancelled() {
-                cancel_render(jobs, job_id, channel).await;
+                cancel_render(jobs, job_id, channel, started).await;
             } else {
-                fail_render(jobs, job_id, error, channel).await;
+                fail_render(jobs, job_id, error, channel, started).await;
             }
             return;
         }
@@ -935,11 +1038,11 @@ async fn finish_render(
             .await
             .is_some_and(|job| job.state() == JobState::Cancelling)
     {
-        cancel_render(jobs, job_id, channel).await;
+        cancel_render(jobs, job_id, channel, started).await;
         return;
     }
     if let Err(error) = store_manifest_result(database, job_id, manifest.clone()) {
-        fail_render(jobs, job_id, error, channel).await;
+        fail_render(jobs, job_id, error, channel, started).await;
         return;
     }
     let job = match background::apply(jobs, job_id, JobUpdate::Succeed).await {
@@ -950,9 +1053,9 @@ async fn finish_render(
                 .await
                 .is_some_and(|job| job.state() == JobState::Cancelling)
             {
-                cancel_render(jobs, job_id, channel).await;
+                cancel_render(jobs, job_id, channel, started).await;
             } else {
-                fail_render(jobs, job_id, error, channel).await;
+                fail_render(jobs, job_id, error, channel, started).await;
             }
             return;
         }
@@ -969,12 +1072,28 @@ async fn finish_render(
     };
     match runtime.register_playback(&manifest.asset, resolved.path()) {
         Ok(playback) => {
+            diagnostics::record(
+                "render.completed",
+                &[
+                    ("job", job_id.to_string()),
+                    ("elapsedMs", elapsed_millis(started)),
+                    ("durationFrames", manifest.duration_in_frames.to_string()),
+                ],
+            );
             let _ = channel.send(RenderEvent::Completed {
                 job,
                 result: RenderCompletedResult::new(manifest, playback),
             });
         }
         Err(error) => {
+            diagnostics::record(
+                "render.failed",
+                &[
+                    ("job", job_id.to_string()),
+                    ("elapsedMs", elapsed_millis(started)),
+                    ("code", error.code().to_owned()),
+                ],
+            );
             let _ = channel.send(RenderEvent::Failed {
                 job: Some(job),
                 error,
@@ -1283,12 +1402,28 @@ async fn cancel_render(
     jobs: &background::DesktopJobs,
     job_id: JobId,
     channel: &Channel<RenderEvent>,
+    started: Instant,
 ) {
     match background::finish_cancellation(jobs, job_id).await {
         Ok(job) => {
+            diagnostics::record(
+                "render.cancelled",
+                &[
+                    ("job", job_id.to_string()),
+                    ("elapsedMs", elapsed_millis(started)),
+                ],
+            );
             let _ = channel.send(RenderEvent::Cancelled { job });
         }
         Err(error) => {
+            diagnostics::record(
+                "render.failed",
+                &[
+                    ("job", job_id.to_string()),
+                    ("elapsedMs", elapsed_millis(started)),
+                    ("code", error.code().to_owned()),
+                ],
+            );
             let job = background::snapshot(jobs, job_id).await;
             let _ = channel.send(RenderEvent::Failed { job, error });
         }
@@ -1300,44 +1435,28 @@ async fn fail_render(
     job_id: JobId,
     error: CommandError,
     channel: &Channel<RenderEvent>,
+    started: Instant,
 ) {
+    diagnostics::record(
+        "render.failed",
+        &[
+            ("job", job_id.to_string()),
+            ("elapsedMs", elapsed_millis(started)),
+            ("code", error.code().to_owned()),
+        ],
+    );
     let job = background::finish_failure(jobs, job_id).await;
     let _ = channel.send(RenderEvent::Failed { job, error });
 }
 
-fn resolve_runtime(
-    resource_root: Option<&Path>,
-    development_root: Option<&Path>,
-) -> Option<RenderRuntime> {
-    let target = runtime_target();
-    let worker_candidates = worker_candidates(resource_root, development_root);
-    let mut runtime_candidates = Vec::new();
-    if let Some(root) = resource_root {
-        runtime_candidates.push(root.join("render-runtime").join(target));
-    }
-    if let Some(root) = development_root {
-        runtime_candidates.push(root.join("local-runtime-bundles/remotion").join(target));
-    }
-    for runtime_root in runtime_candidates {
-        for worker in &worker_candidates {
-            if let Ok(runtime) = RenderRuntime::load(&runtime_root, worker, WORKER_BYTES, target) {
-                return Some(runtime);
-            }
-        }
-    }
-    None
+fn elapsed_millis(started: Instant) -> String {
+    started.elapsed().as_millis().to_string()
 }
 
-fn worker_candidates(
-    resource_root: Option<&Path>,
-    development_root: Option<&Path>,
-) -> Vec<PathBuf> {
+fn worker_candidates(resource_root: Option<&Path>) -> Vec<PathBuf> {
     let mut candidates = Vec::new();
     if let Some(root) = resource_root {
         candidates.push(root.join("workers/osg_render_worker.mjs"));
-    }
-    if let Some(root) = development_root {
-        candidates.push(root.join("video-renderer/worker/osg_render_worker.mjs"));
     }
     candidates
 }
@@ -1378,8 +1497,8 @@ mod tests {
     fn runtime_status_fails_closed_without_managed_payloads() {
         let root = tempfile::tempdir().expect("root");
         let media_server = MediaServer::start(["tauri://localhost".to_owned()]).expect("server");
-        let runtime = RenderRuntimeHost::new(root.path(), None, None, None, media_server)
-            .expect("runtime host");
+        let runtime =
+            RenderRuntimeHost::new(root.path(), None, None, media_server).expect("runtime host");
 
         assert!(runtime.inner.engine.read().unwrap().is_none());
         assert_eq!(

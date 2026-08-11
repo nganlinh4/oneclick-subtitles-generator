@@ -142,7 +142,8 @@ pub(crate) enum FileRole {
     License,
 }
 
-#[derive(Clone, Debug, Eq, PartialEq)]
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub(crate) struct DeliveryFile {
     pub path: String,
     pub size_bytes: u64,
@@ -162,6 +163,7 @@ pub(crate) struct PackageDelivery {
     pub sha256: String,
     pub unpacked_size_bytes: u64,
     pub python_relative_path: String,
+    pub primary_executable: bool,
     pub model_relative_path: Option<String>,
     pub aligner_relative_path: Option<String>,
     pub files: Vec<DeliveryFile>,
@@ -439,6 +441,7 @@ fn validate_release(
         sha256: release.sha256.clone(),
         unpacked_size_bytes: release.unpacked_size_bytes,
         python_relative_path: release.python_relative_path.clone(),
+        primary_executable: true,
         model_relative_path: Some(release.model_relative_path.clone()),
         aligner_relative_path: release.aligner_relative_path.clone(),
         files: validated_files.files,
@@ -564,12 +567,10 @@ pub(crate) fn valid_delivery_url(value: &str, asset: &str) -> bool {
         return false;
     }
     match url.host_str() {
-        Some("github.com") => {
-            url.path().ends_with(&format!("/{asset}"))
-                && url.path().starts_with(
-                    "/nganlinh4/screen-goated-toolbox/releases/download/sgt-runtime-bundles/",
-                )
-        }
+        Some("github.com") => url.path().ends_with(&format!("/{asset}"))
+            && url.path().starts_with(
+                "/nganlinh4/oneclick-subtitles-generator/releases/download/osg-runtime-bundles-v1/",
+            ),
         Some("huggingface.co") => {
             let segments = url.path().split('/').collect::<Vec<_>>();
             let revision = segments
@@ -587,6 +588,11 @@ pub(crate) fn valid_delivery_url(value: &str, asset: &str) -> bool {
         Some("files.pythonhosted.org" | "download.pytorch.org") => {
             url.path().ends_with(&format!("/{asset}"))
         }
+        Some("fonts.gstatic.com") => {
+            url.path().starts_with("/s/googlesansflex/v22/")
+                && url.path().as_bytes().ends_with(b".woff2")
+        }
+        Some("openfontlicense.org") => url.path() == "/documents/OFL.txt",
         _ => false,
     }
 }

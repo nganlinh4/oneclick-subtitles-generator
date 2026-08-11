@@ -124,7 +124,7 @@ fn validate(raw: RawManifest, delivery: &PackageDelivery) -> Result<ValidatedMan
             .ok_or(PackageError::InvalidCatalog)?;
         python_matches |= raw_file.path == raw.python_relative_path
             && raw_file.role == FileRole::Runtime
-            && raw_file.executable;
+            && raw_file.executable == delivery.primary_executable;
         model_matches |= raw.model_relative_path.as_ref().is_some_and(|directory| {
             raw_file.role == FileRole::Model && is_below_directory(&raw_file.path, directory)
         });

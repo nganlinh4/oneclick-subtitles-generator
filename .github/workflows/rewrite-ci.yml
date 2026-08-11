@@ -87,6 +87,11 @@ jobs:
       - name: Check compile and repository release readiness
         run: node scripts/check-release-readiness.js --profile compile
 
+      - name: Verify managed delivery sources and remote pool read-back
+        run: |
+          npm run test:managed-delivery
+          npm run verify:managed-delivery
+
       - name: Test release-readiness and artifact gates
         run: node --test scripts/check-release-readiness.test.js scripts/check-release-artifacts.test.js scripts/check-desktop-payload-size.test.mjs scripts/check-production-transport.test.js scripts/check-tauri-command-contract.test.js scripts/frontend-bundle-boundary.test.mjs scripts/remotion-desktop-boundary.test.mjs
 

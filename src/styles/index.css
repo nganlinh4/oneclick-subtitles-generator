@@ -24,9 +24,6 @@
 /* Avoid showing ligature text before Material Symbols font is ready */
 html:not(.ms-font-ready) .material-symbols-rounded { visibility: hidden; }
 
-/* Import local fonts first */
-@import url('./local-fonts.css');
-
 /* Keep other Google Fonts that we don't have locally */
 @import url('https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500&display=swap');
 @import url('https://fonts.googleapis.com/css2?family=Noto+Sans+KR:wght@300;400;500;700&family=Noto+Sans:wght@400;500;700&family=Noto+Serif:wght@400;700&family=Nanum+Gothic:wght@400;700;800&family=Nanum+Gothic+Coding&family=Nanum+Myeongjo:wght@400;700&family=Gowun+Dodum&display=swap');

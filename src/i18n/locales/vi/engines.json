@@ -68,7 +68,8 @@
     "media": "Xử lý phương tiện",
     "downloader": "Trình tải từ trang web",
     "javascript": "Runtime JavaScript",
-    "renderer": "Trình kết xuất video"
+    "renderer": "Trình kết xuất video",
+    "voicePreviews": "Bản xem trước giọng nói"
   },
   "nativeSource": {
     "vendor": "Nhà cung cấp đã thẩm định",

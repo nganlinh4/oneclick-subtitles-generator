@@ -32,19 +32,19 @@
     "cancel": "Cancel",
     "downloading": "Downloading...",
     "cancelDownload": "Cancel Download",
-    "cancelled": "Download cancelled"
+    "cancelled": "Download cancelled",
+    "failed": "Media download or export failed. Details were written to the application log."
   },
   "nativeTools": {
     "installing": "Installing {{tool}}... {{percent}}%",
     "cancel": "Cancel installation",
     "cancelled": "Native tool installation was cancelled.",
-    "restartRequired": "The required native tools are installed. Restart OSG, then retry the media action.",
     "deliveryUnavailable": "A reviewed native tool delivery is unavailable for this platform.",
     "corrupt": "A managed native tool failed its integrity check. OSG preserved it for manual review and will not overwrite it.",
-    "healthFailed": "The installed native download tools failed their health check. Restart OSG; if the problem remains, repair the installation.",
+    "healthFailed": "The native tools did not become ready. Retry the operation; if the problem remains, repair them in Tools. Details were written to the application log.",
     "mediaToolsUnavailable": "Media downloading is unavailable because this build has no approved FFmpeg/ffprobe delivery. No unreviewed binary will be downloaded.",
     "downloadUnavailable": "Native media downloading is unavailable in this session.",
     "busy": "Another native tool operation is already running. Wait for it to finish or cancel it, then retry.",
-    "failed": "The verified native tool package could not be installed."
+    "failed": "Native tool installation failed. Details were written to the application log."
   }
 }

@@ -3,7 +3,7 @@
 // with "Pull subtitles to narration". Subtitles only change at the commit step.
 
 // Small overlap (seconds) tolerated between adjacent clips while arranging, so clips can pack
-// tightly without being forced fully gap-separated. Matches screen-goated-toolbox's allowedOverlap.
+// tightly without being forced fully gap-separated. This preserves the reviewed allowed-overlap rule.
 export const ACCEPTABLE_OVERLAP = 0.3;
 // Caps for auto/per-line speed. Research (isochrony / speaking-rate studies): keep speed near 1.0×;
 // past ~1.2× it audibly speeds up, so bias to gentle speed-UP only and clamp.

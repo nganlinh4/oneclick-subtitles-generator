@@ -1,0 +1,912 @@
+{
+  "schemaVersion": 1,
+  "commands": {
+    "status": "voice_samples_status",
+    "install": "voice_samples_install",
+    "cancel": "voice_samples_cancel",
+    "resolve": "voice_sample_resolve",
+    "remove": "voice_samples_remove"
+  },
+  "platforms": {
+    "linux-x86_64": {
+      "releases": [
+        {
+          "version": "2026.08.11",
+          "asset": "gemini-voice-samples-2026.08.11-3afc850d6dd85ae1.zip",
+          "sizeBytes": 13520118,
+          "sha256": "3afc850d6dd85ae11885fbbe6f271aa0322d5926f287037324a4aa99601ade3d",
+          "unpackedSizeBytes": 16384680,
+          "files": [
+            {
+              "path": "samples/chirp3-hd-achernar.wav",
+              "sizeBytes": 499244,
+              "sha256": "80793fc2f2eb8943678abba8d916aa7fc89256c43d9b562b0a387b6dd55280d4",
+              "executable": false,
+              "role": "runtime"
+            },
+            {
+              "path": "samples/chirp3-hd-achird.wav",
+              "sizeBytes": 485804,
+              "sha256": "ac001cc513d4c7d219451727a58f314c393efbed7ae9b150238ff38f8cac2ade",
+              "executable": false,
+              "role": "runtime"
+            },
+            {
+              "path": "samples/chirp3-hd-algenib.wav",
+              "sizeBytes": 551084,
+              "sha256": "456a9594c66e7cb38c8a964fb73ed27e5c8a6197e5cc28542c9eba11d40ba37c",
+              "executable": false,
+              "role": "runtime"
+            },
+            {
+              "path": "samples/chirp3-hd-algieba.wav",
+              "sizeBytes": 545324,
+              "sha256": "05b34e4c7d53bf7f1e59f638c2c493e529c37b7cb02fa574d22a508db73433cf",
+              "executable": false,
+              "role": "runtime"
+            },
+            {
+              "path": "samples/chirp3-hd-alnilam.wav",
+              "sizeBytes": 522284,
+              "sha256": "cb9faea4f3ef95b80c7ec640b1a02d63cde8cf2b9d0f492c8932bc27f95c64d0",
+              "executable": false,
+              "role": "runtime"
+            },
+            {
+              "path": "samples/chirp3-hd-aoede.wav",
+              "sizeBytes": 585644,
+              "sha256": "d70edee197d660d1d93b2c113638268e36568bf425d76c5ace3c13a4186a1459",
+              "executable": false,
+              "role": "runtime"
+            },
+            {
+              "path": "samples/chirp3-hd-autonoe.wav",
+              "sizeBytes": 577964,
+              "sha256": "511565ab6dc897359da3f0cdcf7d3d443462fbabea7033fdb8fa188909514d1f",
+              "executable": false,
+              "role": "runtime"
+            },
+            {
+              "path": "samples/chirp3-hd-callirrhoe.wav",
+              "sizeBytes": 556844,
+              "sha256": "ee6a2dc4002fca7eff10b0aa657341f4fa30f212f7a240f538e3c1e34f995108",
+              "executable": false,
+              "role": "runtime"
+            },
+            {
+              "path": "samples/chirp3-hd-charon.wav",
+              "sizeBytes": 528044,
+              "sha256": "e6f9ccf5a09663c2be83a5946a4870a3845c2c8cfed195be5916cb39a4fcaa86",
+              "executable": false,
+              "role": "runtime"
+            },
+            {
+              "path": "samples/chirp3-hd-despina.wav",
+              "sizeBytes": 551084,
+              "sha256": "1a2b765b07c9b3b197b35e1995816e0c9029a3f9a921247193c2e68576a37f53",
+              "executable": false,
+              "role": "runtime"
+            },
+            {
+              "path": "samples/chirp3-hd-enceladus.wav",
+              "sizeBytes": 547244,
+              "sha256": "b82dca749536a6b488f9f5ff9509600ba27d621bbec5ce22ac74fb7b940871af",
+              "executable": false,
+              "role": "runtime"
+            },
+            {
+              "path": "samples/chirp3-hd-erinome.wav",
+              "sizeBytes": 545324,
+              "sha256": "e2c14df7fbf1285d2a97cc1f558c55bf6c6e67611710aeb90e5be54bfa378b3c",
+              "executable": false,
+              "role": "runtime"
+            },
+            {
+              "path": "samples/chirp3-hd-fenrir.wav",
+              "sizeBytes": 533804,
+              "sha256": "f9493e5771c85096a7aab901193ac7f848f6827a89f757cc2441d9a2fcc32c17",
+              "executable": false,
+              "role": "runtime"
+            },
+            {
+              "path": "samples/chirp3-hd-gacrux.wav",
+              "sizeBytes": 558764,
+              "sha256": "0152787bd2a979f7e133c649be8d2744b7ba58c00c63ff13b98285d96e8b75de",
+              "executable": false,
+              "role": "runtime"
+            },
+            {
+              "path": "samples/chirp3-hd-iapetus.wav",
+              "sizeBytes": 529964,
+              "sha256": "c9e67cc06cb800a4d1d7a9dd670a28c8db488e2854786147febad888727a5473",
+              "executable": false,
+              "role": "runtime"
+            },
+            {
+              "path": "samples/chirp3-hd-kore.wav",
+              "sizeBytes": 564524,
+              "sha256": "1f92849f6ed2560cdc8cdf2ea799bcae415abc043ad80c83a115a072ddd55b6c",
+              "executable": false,
+              "role": "runtime"
+            },
+            {
+              "path": "samples/chirp3-hd-laomedeia.wav",
+              "sizeBytes": 539564,
+              "sha256": "fd4402b0b0407d4b47b8933ab4f8246eac6987699121fd8252330ab7d5fee6b1",
+              "executable": false,
+              "role": "runtime"
+            },
+            {
+              "path": "samples/chirp3-hd-leda.wav",
+              "sizeBytes": 585644,
+              "sha256": "41610f0d84bb386227a7edecc31d19699f0e2b8b9e1acad3c83920b762bcf3cc",
+              "executable": false,
+              "role": "runtime"
+            },
+            {
+              "path": "samples/chirp3-hd-orus.wav",
+              "sizeBytes": 518444,
+              "sha256": "c94a3311de46c92d63c7de5718e438f1216e83b69f57c762e958bea38bbc3b02",
+              "executable": false,
+              "role": "runtime"
+            },
+            {
+              "path": "samples/chirp3-hd-puck.wav",
+              "sizeBytes": 543404,
+              "sha256": "6b01847e6db9c0c15282112102fb0b73610fd0e8b994b9d99fbdb013a6a5816b",
+              "executable": false,
+              "role": "runtime"
+            },
+            {
+              "path": "samples/chirp3-hd-pulcherrima.wav",
+              "sizeBytes": 512684,
+              "sha256": "f6a766f6a0df487ab854d6e4d42645caea294dc7ac224c5019e43525672bbc51",
+              "executable": false,
+              "role": "runtime"
+            },
+            {
+              "path": "samples/chirp3-hd-rasalgethi.wav",
+              "sizeBytes": 556844,
+              "sha256": "ce5f274391c1db929c9332a1552aa0eeadd433cb32d95c595de4e106a2491e45",
+              "executable": false,
+              "role": "runtime"
+            },
+            {
+              "path": "samples/chirp3-hd-sadachbia.wav",
+              "sizeBytes": 516524,
+              "sha256": "e36673260af0ee55f26bd11b399d961c7ffb0edfb549f5bfbe380e26f5826c78",
+              "executable": false,
+              "role": "runtime"
+            },
+            {
+              "path": "samples/chirp3-hd-sadaltager.wav",
+              "sizeBytes": 566444,
+              "sha256": "b2adc047a9b363dbaf0bad6d4c00fc4338bdc54178ef7f786a4680ea1e654a93",
+              "executable": false,
+              "role": "runtime"
+            },
+            {
+              "path": "samples/chirp3-hd-schedar.wav",
+              "sizeBytes": 514604,
+              "sha256": "1c07debc52d76046bc24045c32c078afce9da185daa224b6d9da8ceb6a2c5c5f",
+              "executable": false,
+              "role": "runtime"
+            },
+            {
+              "path": "samples/chirp3-hd-sulafat.wav",
+              "sizeBytes": 635564,
+              "sha256": "8bf8a875d904c6d6355880f1bbe18f94b6bb4500f2a6c26d3d6bf3a5045fc743",
+              "executable": false,
+              "role": "runtime"
+            },
+            {
+              "path": "samples/chirp3-hd-umbriel.wav",
+              "sizeBytes": 541484,
+              "sha256": "05a720d9b41a6ecabf644bbea880317b242617eae619a487f63c508258a6f45c",
+              "executable": false,
+              "role": "runtime"
+            },
+            {
+              "path": "samples/chirp3-hd-vindemiatrix.wav",
+              "sizeBytes": 535724,
+              "sha256": "ae9907406556bdd10a55132422b5213c4513da548138fb3d7ecc26518ec50b5e",
+              "executable": false,
+              "role": "runtime"
+            },
+            {
+              "path": "samples/chirp3-hd-zephyr.wav",
+              "sizeBytes": 528044,
+              "sha256": "aed7ab19a485a24f6b3fe37feb368caae287fa7d42083b6d4c1878061d70580d",
+              "executable": false,
+              "role": "runtime"
+            },
+            {
+              "path": "samples/chirp3-hd-zubenelgenubi.wav",
+              "sizeBytes": 606764,
+              "sha256": "09d15cc03e2a8c0140f03f29f0407b3237316d503bd37225d27cc74179520aa1",
+              "executable": false,
+              "role": "runtime"
+            }
+          ],
+          "sourceUrl": "https://github.com/nganlinh4/oneclick-subtitles-generator/releases/download/osg-runtime-bundles-v1/gemini-voice-samples-2026.08.11-3afc850d6dd85ae1.zip",
+          "sampleRelativePath": "samples/chirp3-hd-achernar.wav"
+        }
+      ]
+    },
+    "macos-aarch64": {
+      "releases": [
+        {
+          "version": "2026.08.11",
+          "asset": "gemini-voice-samples-2026.08.11-3afc850d6dd85ae1.zip",
+          "sizeBytes": 13520118,
+          "sha256": "3afc850d6dd85ae11885fbbe6f271aa0322d5926f287037324a4aa99601ade3d",
+          "unpackedSizeBytes": 16384680,
+          "files": [
+            {
+              "path": "samples/chirp3-hd-achernar.wav",
+              "sizeBytes": 499244,
+              "sha256": "80793fc2f2eb8943678abba8d916aa7fc89256c43d9b562b0a387b6dd55280d4",
+              "executable": false,
+              "role": "runtime"
+            },
+            {
+              "path": "samples/chirp3-hd-achird.wav",
+              "sizeBytes": 485804,
+              "sha256": "ac001cc513d4c7d219451727a58f314c393efbed7ae9b150238ff38f8cac2ade",
+              "executable": false,
+              "role": "runtime"
+            },
+            {
+              "path": "samples/chirp3-hd-algenib.wav",
+              "sizeBytes": 551084,
+              "sha256": "456a9594c66e7cb38c8a964fb73ed27e5c8a6197e5cc28542c9eba11d40ba37c",
+              "executable": false,
+              "role": "runtime"
+            },
+            {
+              "path": "samples/chirp3-hd-algieba.wav",
+              "sizeBytes": 545324,
+              "sha256": "05b34e4c7d53bf7f1e59f638c2c493e529c37b7cb02fa574d22a508db73433cf",
+              "executable": false,
+              "role": "runtime"
+            },
+            {
+              "path": "samples/chirp3-hd-alnilam.wav",
+              "sizeBytes": 522284,
+              "sha256": "cb9faea4f3ef95b80c7ec640b1a02d63cde8cf2b9d0f492c8932bc27f95c64d0",
+              "executable": false,
+              "role": "runtime"
+            },
+            {
+              "path": "samples/chirp3-hd-aoede.wav",
+              "sizeBytes": 585644,
+              "sha256": "d70edee197d660d1d93b2c113638268e36568bf425d76c5ace3c13a4186a1459",
+              "executable": false,
+              "role": "runtime"
+            },
+            {
+              "path": "samples/chirp3-hd-autonoe.wav",
+              "sizeBytes": 577964,
+              "sha256": "511565ab6dc897359da3f0cdcf7d3d443462fbabea7033fdb8fa188909514d1f",
+              "executable": false,
+              "role": "runtime"
+            },
+            {
+              "path": "samples/chirp3-hd-callirrhoe.wav",
+              "sizeBytes": 556844,
+              "sha256": "ee6a2dc4002fca7eff10b0aa657341f4fa30f212f7a240f538e3c1e34f995108",
+              "executable": false,
+              "role": "runtime"
+            },
+            {
+              "path": "samples/chirp3-hd-charon.wav",
+              "sizeBytes": 528044,
+              "sha256": "e6f9ccf5a09663c2be83a5946a4870a3845c2c8cfed195be5916cb39a4fcaa86",
+              "executable": false,
+              "role": "runtime"
+            },
+            {
+              "path": "samples/chirp3-hd-despina.wav",
+              "sizeBytes": 551084,
+              "sha256": "1a2b765b07c9b3b197b35e1995816e0c9029a3f9a921247193c2e68576a37f53",
+              "executable": false,
+              "role": "runtime"
+            },
+            {
+              "path": "samples/chirp3-hd-enceladus.wav",
+              "sizeBytes": 547244,
+              "sha256": "b82dca749536a6b488f9f5ff9509600ba27d621bbec5ce22ac74fb7b940871af",
+              "executable": false,
+              "role": "runtime"
+            },
+            {
+              "path": "samples/chirp3-hd-erinome.wav",
+              "sizeBytes": 545324,
+              "sha256": "e2c14df7fbf1285d2a97cc1f558c55bf6c6e67611710aeb90e5be54bfa378b3c",
+              "executable": false,
+              "role": "runtime"
+            },
+            {
+              "path": "samples/chirp3-hd-fenrir.wav",
+              "sizeBytes": 533804,
+              "sha256": "f9493e5771c85096a7aab901193ac7f848f6827a89f757cc2441d9a2fcc32c17",
+              "executable": false,
+              "role": "runtime"
+            },
+            {
+              "path": "samples/chirp3-hd-gacrux.wav",
+              "sizeBytes": 558764,
+              "sha256": "0152787bd2a979f7e133c649be8d2744b7ba58c00c63ff13b98285d96e8b75de",
+              "executable": false,
+              "role": "runtime"
+            },
+            {
+              "path": "samples/chirp3-hd-iapetus.wav",
+              "sizeBytes": 529964,
+              "sha256": "c9e67cc06cb800a4d1d7a9dd670a28c8db488e2854786147febad888727a5473",
+              "executable": false,
+              "role": "runtime"
+            },
+            {
+              "path": "samples/chirp3-hd-kore.wav",
+              "sizeBytes": 564524,
+              "sha256": "1f92849f6ed2560cdc8cdf2ea799bcae415abc043ad80c83a115a072ddd55b6c",
+              "executable": false,
+              "role": "runtime"
+            },
+            {
+              "path": "samples/chirp3-hd-laomedeia.wav",
+              "sizeBytes": 539564,
+              "sha256": "fd4402b0b0407d4b47b8933ab4f8246eac6987699121fd8252330ab7d5fee6b1",
+              "executable": false,
+              "role": "runtime"
+            },
+            {
+              "path": "samples/chirp3-hd-leda.wav",
+              "sizeBytes": 585644,
+              "sha256": "41610f0d84bb386227a7edecc31d19699f0e2b8b9e1acad3c83920b762bcf3cc",
+              "executable": false,
+              "role": "runtime"
+            },
+            {
+              "path": "samples/chirp3-hd-orus.wav",
+              "sizeBytes": 518444,
+              "sha256": "c94a3311de46c92d63c7de5718e438f1216e83b69f57c762e958bea38bbc3b02",
+              "executable": false,
+              "role": "runtime"
+            },
+            {
+              "path": "samples/chirp3-hd-puck.wav",
+              "sizeBytes": 543404,
+              "sha256": "6b01847e6db9c0c15282112102fb0b73610fd0e8b994b9d99fbdb013a6a5816b",
+              "executable": false,
+              "role": "runtime"
+            },
+            {
+              "path": "samples/chirp3-hd-pulcherrima.wav",
+              "sizeBytes": 512684,
+              "sha256": "f6a766f6a0df487ab854d6e4d42645caea294dc7ac224c5019e43525672bbc51",
+              "executable": false,
+              "role": "runtime"
+            },
+            {
+              "path": "samples/chirp3-hd-rasalgethi.wav",
+              "sizeBytes": 556844,
+              "sha256": "ce5f274391c1db929c9332a1552aa0eeadd433cb32d95c595de4e106a2491e45",
+              "executable": false,
+              "role": "runtime"
+            },
+            {
+              "path": "samples/chirp3-hd-sadachbia.wav",
+              "sizeBytes": 516524,
+              "sha256": "e36673260af0ee55f26bd11b399d961c7ffb0edfb549f5bfbe380e26f5826c78",
+              "executable": false,
+              "role": "runtime"
+            },
+            {
+              "path": "samples/chirp3-hd-sadaltager.wav",
+              "sizeBytes": 566444,
+              "sha256": "b2adc047a9b363dbaf0bad6d4c00fc4338bdc54178ef7f786a4680ea1e654a93",
+              "executable": false,
+              "role": "runtime"
+            },
+            {
+              "path": "samples/chirp3-hd-schedar.wav",
+              "sizeBytes": 514604,
+              "sha256": "1c07debc52d76046bc24045c32c078afce9da185daa224b6d9da8ceb6a2c5c5f",
+              "executable": false,
+              "role": "runtime"
+            },
+            {
+              "path": "samples/chirp3-hd-sulafat.wav",
+              "sizeBytes": 635564,
+              "sha256": "8bf8a875d904c6d6355880f1bbe18f94b6bb4500f2a6c26d3d6bf3a5045fc743",
+              "executable": false,
+              "role": "runtime"
+            },
+            {
+              "path": "samples/chirp3-hd-umbriel.wav",
+              "sizeBytes": 541484,
+              "sha256": "05a720d9b41a6ecabf644bbea880317b242617eae619a487f63c508258a6f45c",
+              "executable": false,
+              "role": "runtime"
+            },
+            {
+              "path": "samples/chirp3-hd-vindemiatrix.wav",
+              "sizeBytes": 535724,
+              "sha256": "ae9907406556bdd10a55132422b5213c4513da548138fb3d7ecc26518ec50b5e",
+              "executable": false,
+              "role": "runtime"
+            },
+            {
+              "path": "samples/chirp3-hd-zephyr.wav",
+              "sizeBytes": 528044,
+              "sha256": "aed7ab19a485a24f6b3fe37feb368caae287fa7d42083b6d4c1878061d70580d",
+              "executable": false,
+              "role": "runtime"
+            },
+            {
+              "path": "samples/chirp3-hd-zubenelgenubi.wav",
+              "sizeBytes": 606764,
+              "sha256": "09d15cc03e2a8c0140f03f29f0407b3237316d503bd37225d27cc74179520aa1",
+              "executable": false,
+              "role": "runtime"
+            }
+          ],
+          "sourceUrl": "https://github.com/nganlinh4/oneclick-subtitles-generator/releases/download/osg-runtime-bundles-v1/gemini-voice-samples-2026.08.11-3afc850d6dd85ae1.zip",
+          "sampleRelativePath": "samples/chirp3-hd-achernar.wav"
+        }
+      ]
+    },
+    "macos-x86_64": {
+      "releases": [
+        {
+          "version": "2026.08.11",
+          "asset": "gemini-voice-samples-2026.08.11-3afc850d6dd85ae1.zip",
+          "sizeBytes": 13520118,
+          "sha256": "3afc850d6dd85ae11885fbbe6f271aa0322d5926f287037324a4aa99601ade3d",
+          "unpackedSizeBytes": 16384680,
+          "files": [
+            {
+              "path": "samples/chirp3-hd-achernar.wav",
+              "sizeBytes": 499244,
+              "sha256": "80793fc2f2eb8943678abba8d916aa7fc89256c43d9b562b0a387b6dd55280d4",
+              "executable": false,
+              "role": "runtime"
+            },
+            {
+              "path": "samples/chirp3-hd-achird.wav",
+              "sizeBytes": 485804,
+              "sha256": "ac001cc513d4c7d219451727a58f314c393efbed7ae9b150238ff38f8cac2ade",
+              "executable": false,
+              "role": "runtime"
+            },
+            {
+              "path": "samples/chirp3-hd-algenib.wav",
+              "sizeBytes": 551084,
+              "sha256": "456a9594c66e7cb38c8a964fb73ed27e5c8a6197e5cc28542c9eba11d40ba37c",
+              "executable": false,
+              "role": "runtime"
+            },
+            {
+              "path": "samples/chirp3-hd-algieba.wav",
+              "sizeBytes": 545324,
+              "sha256": "05b34e4c7d53bf7f1e59f638c2c493e529c37b7cb02fa574d22a508db73433cf",
+              "executable": false,
+              "role": "runtime"
+            },
+            {
+              "path": "samples/chirp3-hd-alnilam.wav",
+              "sizeBytes": 522284,
+              "sha256": "cb9faea4f3ef95b80c7ec640b1a02d63cde8cf2b9d0f492c8932bc27f95c64d0",
+              "executable": false,
+              "role": "runtime"
+            },
+            {
+              "path": "samples/chirp3-hd-aoede.wav",
+              "sizeBytes": 585644,
+              "sha256": "d70edee197d660d1d93b2c113638268e36568bf425d76c5ace3c13a4186a1459",
+              "executable": false,
+              "role": "runtime"
+            },
+            {
+              "path": "samples/chirp3-hd-autonoe.wav",
+              "sizeBytes": 577964,
+              "sha256": "511565ab6dc897359da3f0cdcf7d3d443462fbabea7033fdb8fa188909514d1f",
+              "executable": false,
+              "role": "runtime"
+            },
+            {
+              "path": "samples/chirp3-hd-callirrhoe.wav",
+              "sizeBytes": 556844,
+              "sha256": "ee6a2dc4002fca7eff10b0aa657341f4fa30f212f7a240f538e3c1e34f995108",
+              "executable": false,
+              "role": "runtime"
+            },
+            {
+              "path": "samples/chirp3-hd-charon.wav",
+              "sizeBytes": 528044,
+              "sha256": "e6f9ccf5a09663c2be83a5946a4870a3845c2c8cfed195be5916cb39a4fcaa86",
+              "executable": false,
+              "role": "runtime"
+            },
+            {
+              "path": "samples/chirp3-hd-despina.wav",
+              "sizeBytes": 551084,
+              "sha256": "1a2b765b07c9b3b197b35e1995816e0c9029a3f9a921247193c2e68576a37f53",
+              "executable": false,
+              "role": "runtime"
+            },
+            {
+              "path": "samples/chirp3-hd-enceladus.wav",
+              "sizeBytes": 547244,
+              "sha256": "b82dca749536a6b488f9f5ff9509600ba27d621bbec5ce22ac74fb7b940871af",
+              "executable": false,
+              "role": "runtime"
+            },
+            {
+              "path": "samples/chirp3-hd-erinome.wav",
+              "sizeBytes": 545324,
+              "sha256": "e2c14df7fbf1285d2a97cc1f558c55bf6c6e67611710aeb90e5be54bfa378b3c",
+              "executable": false,
+              "role": "runtime"
+            },
+            {
+              "path": "samples/chirp3-hd-fenrir.wav",
+              "sizeBytes": 533804,
+              "sha256": "f9493e5771c85096a7aab901193ac7f848f6827a89f757cc2441d9a2fcc32c17",
+              "executable": false,
+              "role": "runtime"
+            },
+            {
+              "path": "samples/chirp3-hd-gacrux.wav",
+              "sizeBytes": 558764,
+              "sha256": "0152787bd2a979f7e133c649be8d2744b7ba58c00c63ff13b98285d96e8b75de",
+              "executable": false,
+              "role": "runtime"
+            },
+            {
+              "path": "samples/chirp3-hd-iapetus.wav",
+              "sizeBytes": 529964,
+              "sha256": "c9e67cc06cb800a4d1d7a9dd670a28c8db488e2854786147febad888727a5473",
+              "executable": false,
+              "role": "runtime"
+            },
+            {
+              "path": "samples/chirp3-hd-kore.wav",
+              "sizeBytes": 564524,
+              "sha256": "1f92849f6ed2560cdc8cdf2ea799bcae415abc043ad80c83a115a072ddd55b6c",
+              "executable": false,
+              "role": "runtime"
+            },
+            {
+              "path": "samples/chirp3-hd-laomedeia.wav",
+              "sizeBytes": 539564,
+              "sha256": "fd4402b0b0407d4b47b8933ab4f8246eac6987699121fd8252330ab7d5fee6b1",
+              "executable": false,
+              "role": "runtime"
+            },
+            {
+              "path": "samples/chirp3-hd-leda.wav",
+              "sizeBytes": 585644,
+              "sha256": "41610f0d84bb386227a7edecc31d19699f0e2b8b9e1acad3c83920b762bcf3cc",
+              "executable": false,
+              "role": "runtime"
+            },
+            {
+              "path": "samples/chirp3-hd-orus.wav",
+              "sizeBytes": 518444,
+              "sha256": "c94a3311de46c92d63c7de5718e438f1216e83b69f57c762e958bea38bbc3b02",
+              "executable": false,
+              "role": "runtime"
+            },
+            {
+              "path": "samples/chirp3-hd-puck.wav",
+              "sizeBytes": 543404,
+              "sha256": "6b01847e6db9c0c15282112102fb0b73610fd0e8b994b9d99fbdb013a6a5816b",
+              "executable": false,
+              "role": "runtime"
+            },
+            {
+              "path": "samples/chirp3-hd-pulcherrima.wav",
+              "sizeBytes": 512684,
+              "sha256": "f6a766f6a0df487ab854d6e4d42645caea294dc7ac224c5019e43525672bbc51",
+              "executable": false,
+              "role": "runtime"
+            },
+            {
+              "path": "samples/chirp3-hd-rasalgethi.wav",
+              "sizeBytes": 556844,
+              "sha256": "ce5f274391c1db929c9332a1552aa0eeadd433cb32d95c595de4e106a2491e45",
+              "executable": false,
+              "role": "runtime"
+            },
+            {
+              "path": "samples/chirp3-hd-sadachbia.wav",
+              "sizeBytes": 516524,
+              "sha256": "e36673260af0ee55f26bd11b399d961c7ffb0edfb549f5bfbe380e26f5826c78",
+              "executable": false,
+              "role": "runtime"
+            },
+            {
+              "path": "samples/chirp3-hd-sadaltager.wav",
+              "sizeBytes": 566444,
+              "sha256": "b2adc047a9b363dbaf0bad6d4c00fc4338bdc54178ef7f786a4680ea1e654a93",
+              "executable": false,
+              "role": "runtime"
+            },
+            {
+              "path": "samples/chirp3-hd-schedar.wav",
+              "sizeBytes": 514604,
+              "sha256": "1c07debc52d76046bc24045c32c078afce9da185daa224b6d9da8ceb6a2c5c5f",
+              "executable": false,
+              "role": "runtime"
+            },
+            {
+              "path": "samples/chirp3-hd-sulafat.wav",
+              "sizeBytes": 635564,
+              "sha256": "8bf8a875d904c6d6355880f1bbe18f94b6bb4500f2a6c26d3d6bf3a5045fc743",
+              "executable": false,
+              "role": "runtime"
+            },
+            {
+              "path": "samples/chirp3-hd-umbriel.wav",
+              "sizeBytes": 541484,
+              "sha256": "05a720d9b41a6ecabf644bbea880317b242617eae619a487f63c508258a6f45c",
+              "executable": false,
+              "role": "runtime"
+            },
+            {
+              "path": "samples/chirp3-hd-vindemiatrix.wav",
+              "sizeBytes": 535724,
+              "sha256": "ae9907406556bdd10a55132422b5213c4513da548138fb3d7ecc26518ec50b5e",
+              "executable": false,
+              "role": "runtime"
+            },
+            {
+              "path": "samples/chirp3-hd-zephyr.wav",
+              "sizeBytes": 528044,
+              "sha256": "aed7ab19a485a24f6b3fe37feb368caae287fa7d42083b6d4c1878061d70580d",
+              "executable": false,
+              "role": "runtime"
+            },
+            {
+              "path": "samples/chirp3-hd-zubenelgenubi.wav",
+              "sizeBytes": 606764,
+              "sha256": "09d15cc03e2a8c0140f03f29f0407b3237316d503bd37225d27cc74179520aa1",
+              "executable": false,
+              "role": "runtime"
+            }
+          ],
+          "sourceUrl": "https://github.com/nganlinh4/oneclick-subtitles-generator/releases/download/osg-runtime-bundles-v1/gemini-voice-samples-2026.08.11-3afc850d6dd85ae1.zip",
+          "sampleRelativePath": "samples/chirp3-hd-achernar.wav"
+        }
+      ]
+    },
+    "windows-x86_64": {
+      "releases": [
+        {
+          "version": "2026.08.11",
+          "asset": "gemini-voice-samples-2026.08.11-3afc850d6dd85ae1.zip",
+          "sizeBytes": 13520118,
+          "sha256": "3afc850d6dd85ae11885fbbe6f271aa0322d5926f287037324a4aa99601ade3d",
+          "unpackedSizeBytes": 16384680,
+          "files": [
+            {
+              "path": "samples/chirp3-hd-achernar.wav",
+              "sizeBytes": 499244,
+              "sha256": "80793fc2f2eb8943678abba8d916aa7fc89256c43d9b562b0a387b6dd55280d4",
+              "executable": false,
+              "role": "runtime"
+            },
+            {
+              "path": "samples/chirp3-hd-achird.wav",
+              "sizeBytes": 485804,
+              "sha256": "ac001cc513d4c7d219451727a58f314c393efbed7ae9b150238ff38f8cac2ade",
+              "executable": false,
+              "role": "runtime"
+            },
+            {
+              "path": "samples/chirp3-hd-algenib.wav",
+              "sizeBytes": 551084,
+              "sha256": "456a9594c66e7cb38c8a964fb73ed27e5c8a6197e5cc28542c9eba11d40ba37c",
+              "executable": false,
+              "role": "runtime"
+            },
+            {
+              "path": "samples/chirp3-hd-algieba.wav",
+              "sizeBytes": 545324,
+              "sha256": "05b34e4c7d53bf7f1e59f638c2c493e529c37b7cb02fa574d22a508db73433cf",
+              "executable": false,
+              "role": "runtime"
+            },
+            {
+              "path": "samples/chirp3-hd-alnilam.wav",
+              "sizeBytes": 522284,
+              "sha256": "cb9faea4f3ef95b80c7ec640b1a02d63cde8cf2b9d0f492c8932bc27f95c64d0",
+              "executable": false,
+              "role": "runtime"
+            },
+            {
+              "path": "samples/chirp3-hd-aoede.wav",
+              "sizeBytes": 585644,
+              "sha256": "d70edee197d660d1d93b2c113638268e36568bf425d76c5ace3c13a4186a1459",
+              "executable": false,
+              "role": "runtime"
+            },
+            {
+              "path": "samples/chirp3-hd-autonoe.wav",
+              "sizeBytes": 577964,
+              "sha256": "511565ab6dc897359da3f0cdcf7d3d443462fbabea7033fdb8fa188909514d1f",
+              "executable": false,
+              "role": "runtime"
+            },
+            {
+              "path": "samples/chirp3-hd-callirrhoe.wav",
+              "sizeBytes": 556844,
+              "sha256": "ee6a2dc4002fca7eff10b0aa657341f4fa30f212f7a240f538e3c1e34f995108",
+              "executable": false,
+              "role": "runtime"
+            },
+            {
+              "path": "samples/chirp3-hd-charon.wav",
+              "sizeBytes": 528044,
+              "sha256": "e6f9ccf5a09663c2be83a5946a4870a3845c2c8cfed195be5916cb39a4fcaa86",
+              "executable": false,
+              "role": "runtime"
+            },
+            {
+              "path": "samples/chirp3-hd-despina.wav",
+              "sizeBytes": 551084,
+              "sha256": "1a2b765b07c9b3b197b35e1995816e0c9029a3f9a921247193c2e68576a37f53",
+              "executable": false,
+              "role": "runtime"
+            },
+            {
+              "path": "samples/chirp3-hd-enceladus.wav",
+              "sizeBytes": 547244,
+              "sha256": "b82dca749536a6b488f9f5ff9509600ba27d621bbec5ce22ac74fb7b940871af",
+              "executable": false,
+              "role": "runtime"
+            },
+            {
+              "path": "samples/chirp3-hd-erinome.wav",
+              "sizeBytes": 545324,
+              "sha256": "e2c14df7fbf1285d2a97cc1f558c55bf6c6e67611710aeb90e5be54bfa378b3c",
+              "executable": false,
+              "role": "runtime"
+            },
+            {
+              "path": "samples/chirp3-hd-fenrir.wav",
+              "sizeBytes": 533804,
+              "sha256": "f9493e5771c85096a7aab901193ac7f848f6827a89f757cc2441d9a2fcc32c17",
+              "executable": false,
+              "role": "runtime"
+            },
+            {
+              "path": "samples/chirp3-hd-gacrux.wav",
+              "sizeBytes": 558764,
+              "sha256": "0152787bd2a979f7e133c649be8d2744b7ba58c00c63ff13b98285d96e8b75de",
+              "executable": false,
+              "role": "runtime"
+            },
+            {
+              "path": "samples/chirp3-hd-iapetus.wav",
+              "sizeBytes": 529964,
+              "sha256": "c9e67cc06cb800a4d1d7a9dd670a28c8db488e2854786147febad888727a5473",
+              "executable": false,
+              "role": "runtime"
+            },
+            {
+              "path": "samples/chirp3-hd-kore.wav",
+              "sizeBytes": 564524,
+              "sha256": "1f92849f6ed2560cdc8cdf2ea799bcae415abc043ad80c83a115a072ddd55b6c",
+              "executable": false,
+              "role": "runtime"
+            },
+            {
+              "path": "samples/chirp3-hd-laomedeia.wav",
+              "sizeBytes": 539564,
+              "sha256": "fd4402b0b0407d4b47b8933ab4f8246eac6987699121fd8252330ab7d5fee6b1",
+              "executable": false,
+              "role": "runtime"
+            },
+            {
+              "path": "samples/chirp3-hd-leda.wav",
+              "sizeBytes": 585644,
+              "sha256": "41610f0d84bb386227a7edecc31d19699f0e2b8b9e1acad3c83920b762bcf3cc",
+              "executable": false,
+              "role": "runtime"
+            },
+            {
+              "path": "samples/chirp3-hd-orus.wav",
+              "sizeBytes": 518444,
+              "sha256": "c94a3311de46c92d63c7de5718e438f1216e83b69f57c762e958bea38bbc3b02",
+              "executable": false,
+              "role": "runtime"
+            },
+            {
+              "path": "samples/chirp3-hd-puck.wav",
+              "sizeBytes": 543404,
+              "sha256": "6b01847e6db9c0c15282112102fb0b73610fd0e8b994b9d99fbdb013a6a5816b",
+              "executable": false,
+              "role": "runtime"
+            },
+            {
+              "path": "samples/chirp3-hd-pulcherrima.wav",
+              "sizeBytes": 512684,
+              "sha256": "f6a766f6a0df487ab854d6e4d42645caea294dc7ac224c5019e43525672bbc51",
+              "executable": false,
+              "role": "runtime"
+            },
+            {
+              "path": "samples/chirp3-hd-rasalgethi.wav",
+              "sizeBytes": 556844,
+              "sha256": "ce5f274391c1db929c9332a1552aa0eeadd433cb32d95c595de4e106a2491e45",
+              "executable": false,
+              "role": "runtime"
+            },
+            {
+              "path": "samples/chirp3-hd-sadachbia.wav",
+              "sizeBytes": 516524,
+              "sha256": "e36673260af0ee55f26bd11b399d961c7ffb0edfb549f5bfbe380e26f5826c78",
+              "executable": false,
+              "role": "runtime"
+            },
+            {
+              "path": "samples/chirp3-hd-sadaltager.wav",
+              "sizeBytes": 566444,
+              "sha256": "b2adc047a9b363dbaf0bad6d4c00fc4338bdc54178ef7f786a4680ea1e654a93",
+              "executable": false,
+              "role": "runtime"
+            },
+            {
+              "path": "samples/chirp3-hd-schedar.wav",
+              "sizeBytes": 514604,
+              "sha256": "1c07debc52d76046bc24045c32c078afce9da185daa224b6d9da8ceb6a2c5c5f",
+              "executable": false,
+              "role": "runtime"
+            },
+            {
+              "path": "samples/chirp3-hd-sulafat.wav",
+              "sizeBytes": 635564,
+              "sha256": "8bf8a875d904c6d6355880f1bbe18f94b6bb4500f2a6c26d3d6bf3a5045fc743",
+              "executable": false,
+              "role": "runtime"
+            },
+            {
+              "path": "samples/chirp3-hd-umbriel.wav",
+              "sizeBytes": 541484,
+              "sha256": "05a720d9b41a6ecabf644bbea880317b242617eae619a487f63c508258a6f45c",
+              "executable": false,
+              "role": "runtime"
+            },
+            {
+              "path": "samples/chirp3-hd-vindemiatrix.wav",
+              "sizeBytes": 535724,
+              "sha256": "ae9907406556bdd10a55132422b5213c4513da548138fb3d7ecc26518ec50b5e",
+              "executable": false,
+              "role": "runtime"
+            },
+            {
+              "path": "samples/chirp3-hd-zephyr.wav",
+              "sizeBytes": 528044,
+              "sha256": "aed7ab19a485a24f6b3fe37feb368caae287fa7d42083b6d4c1878061d70580d",
+              "executable": false,
+              "role": "runtime"
+            },
+            {
+              "path": "samples/chirp3-hd-zubenelgenubi.wav",
+              "sizeBytes": 606764,
+              "sha256": "09d15cc03e2a8c0140f03f29f0407b3237316d503bd37225d27cc74179520aa1",
+              "executable": false,
+              "role": "runtime"
+            }
+          ],
+          "sourceUrl": "https://github.com/nganlinh4/oneclick-subtitles-generator/releases/download/osg-runtime-bundles-v1/gemini-voice-samples-2026.08.11-3afc850d6dd85ae1.zip",
+          "sampleRelativePath": "samples/chirp3-hd-achernar.wav"
+        }
+      ]
+    }
+  }
+}

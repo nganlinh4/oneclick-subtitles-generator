@@ -68,7 +68,8 @@
     "media": "Media processing",
     "downloader": "Site downloader",
     "javascript": "JavaScript runtime",
-    "renderer": "Video renderer"
+    "renderer": "Video renderer",
+    "voicePreviews": "Voice previews"
   },
   "nativeSource": {
     "vendor": "Reviewed vendor",

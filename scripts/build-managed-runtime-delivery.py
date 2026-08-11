@@ -130,8 +130,8 @@ def main() -> None:
                 "sizeBytes": final.stat().st_size,
                 "sha256": digest,
                 "urls": [
-                    "https://github.com/nganlinh4/screen-goated-toolbox/"
-                    f"releases/download/sgt-runtime-bundles/{final_name}"
+                    "https://github.com/nganlinh4/oneclick-subtitles-generator/"
+                    f"releases/download/osg-runtime-bundles-v1/{final_name}"
                 ],
             }
         )

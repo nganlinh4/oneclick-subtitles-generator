@@ -4,9 +4,8 @@
   "normalization": "binary exact; UTF-8 BOM ignored, CRLF/CR normalized to LF, terminal newlines ignored",
   "baselineRevision": "ae2f9fc83a2f0c08b3f771db83b14e9cef064e5e",
   "retiredExactFiles": {
-    "public/oauth2callback.html": "c19855fd5a3f19af1eea1c1fed6e7794a342136223dd60dbead2586d4298fd90"
-  },
-  "exactFiles": {
+    "src/assets/fonts/GoogleSansFlex.ttf": "eae5ed6ddefbd44ab9693b84454ce46f3f2de0fb4f7cc5b54138c50c5b347d70",
+    "src/styles/local-fonts.css": "2ede8f2a25be55c5bc62320f81c7aa85c6260d19feb73faae9d6fd3fdd421e22",
     "public/audio/voices/chirp3-hd-achernar.wav": "80793fc2f2eb8943678abba8d916aa7fc89256c43d9b562b0a387b6dd55280d4",
     "public/audio/voices/chirp3-hd-achird.wav": "ac001cc513d4c7d219451727a58f314c393efbed7ae9b150238ff38f8cac2ade",
     "public/audio/voices/chirp3-hd-algenib.wav": "456a9594c66e7cb38c8a964fb73ed27e5c8a6197e5cc28542c9eba11d40ba37c",
@@ -37,6 +36,9 @@
     "public/audio/voices/chirp3-hd-vindemiatrix.wav": "ae9907406556bdd10a55132422b5213c4513da548138fb3d7ecc26518ec50b5e",
     "public/audio/voices/chirp3-hd-zephyr.wav": "aed7ab19a485a24f6b3fe37feb368caae287fa7d42083b6d4c1878061d70580d",
     "public/audio/voices/chirp3-hd-zubenelgenubi.wav": "09d15cc03e2a8c0140f03f29f0407b3237316d503bd37225d27cc74179520aa1",
+    "public/oauth2callback.html": "c19855fd5a3f19af1eea1c1fed6e7794a342136223dd60dbead2586d4298fd90"
+  },
+  "exactFiles": {
     "public/favicon.png": "3f6d2092aa3ff499b1f9581d62c505867ae158c503be0743b7c38d1313727282",
     "public/index.html": "36f43e7c0fdf0cf6bb6b066b10fcb7f593511dbbcb94f36687a9a8dbeab9854e",
     "public/js/album-art-buttons.js": "4966181a4be8969f3798623456aa5578a4d4921dc9fb65ca602e045f50313f35",
@@ -48,7 +50,6 @@
     "src/assets/about-background-alternative4.svg": "09c780a0f8f7a2ddd7eac95eded0988f2b6e8d6cc67ed3d7064139ef80684040",
     "src/assets/about-background-alternative5.svg": "a63a2c0054890256dc305b3bde90bba19e65a544641d4c7bfc12af8d607f6808",
     "src/assets/about-background.svg": "249805688c30042959098df67a67644083ca45dead38f5ad39decb042d43cdaa",
-    "src/assets/fonts/GoogleSansFlex.ttf": "eae5ed6ddefbd44ab9693b84454ce46f3f2de0fb4f7cc5b54138c50c5b347d70",
     "src/assets/onboarding-banner.svg": "1521181acbf5cc8d9a72772833e9af1eb5166c735716989eb3b8781a63d81e34",
     "src/assets/specialStar.svg": "cd7313b7c8b491ccf2cb9e98f0b96b4b3905d63153b0d638b920ea2d03734647",
     "src/assets/transcription-methods/new_dark.png": "8a270774e77d0b92c339f40ff5c5c567c18ea666aeb3922cfa8c566313245f23",
@@ -110,11 +111,10 @@
     "src/styles/GeminiButtonAnimations.css": "a391a033b0d94460826484c3aac50cf3d53de9ef47546bed98bcd43947947f02",
     "src/styles/GeminiHeaderAnimation.css": "a12aa6db9e1d99067b3daa9636302c6d06dc873ccd1daf12d82e29e8437457d7",
     "src/styles/Header.css": "569c825a07a1ba3fd2a6dc93ced503c7029761119d275a2166ed79ca0ce579e8",
-    "src/styles/index.css": "be20056b69a960f0ee385f80d4891343f945a2157204970ed927a3acf4a7bd48",
+    "src/styles/index.css": "6a44224dbe1b93be272a1369a55fffe2faab833f711a3a9c2f02a5abb3e31767",
     "src/styles/InputMethods.css": "1de24ed124fb9c34e80a2e93e78cf103793a00ecb4a7ee1499cda8e5ecd88370",
     "src/styles/InputMethodsBase.css": "6d9bf67a81f3bc943331a90facfe69c677ac45c660efcb3c43b7504004f27ec9",
     "src/styles/LanguageSelector.css": "5607a96e593d2061bee65af3c4abc4d9ae782b275c934a975811ee5eaf947c3b",
-    "src/styles/local-fonts.css": "2ede8f2a25be55c5bc62320f81c7aa85c6260d19feb73faae9d6fd3fdd421e22",
     "src/styles/lyrics/animations.css": "6d9d762a7e2ce2d4f5b63b1ac382ae96c577e043d4f2ee1f7515be748b4f1e10",
     "src/styles/lyrics/base.css": "e026f3c4948571dd26f27e45974a79e6fef4fc154630ec41ce82bbf3b54f69b5",
     "src/styles/lyrics/between-lyrics.css": "82687fe19aac56ce87b906653ae080231e7636438e38a6133c5aa03ab499bc11",
@@ -378,7 +378,7 @@
       ]
     },
     "src/i18n/locales/en/download.json": {
-      "hash": "d48e7afcc32da504b7079cd9e8371c4dec8cab6afed5e3e7f364bfc6d586e4bc",
+      "hash": "783f3379c889fb574cf8b869e9b31716b1a7b66bcdf4fff839c169399c68dc66",
       "keys": [
         "consolidate",
         "consolidateExplanation",
@@ -412,7 +412,6 @@
         "nativeTools.healthFailed",
         "nativeTools.installing",
         "nativeTools.mediaToolsUnavailable",
-        "nativeTools.restartRequired",
         "options",
         "original",
         "process",
@@ -2648,7 +2647,7 @@
       ]
     },
     "src/i18n/locales/ko/download.json": {
-      "hash": "7e8b134fefa8a1be7c88192ae9a09081730eae118099364b45c88b94e9d307c4",
+      "hash": "f01cc50dbc5e30f16e0e19a005a4820adc18fff58990882a4ca312e15aded2d7",
       "keys": [
         "consolidate",
         "consolidateExplanation",
@@ -2694,7 +2693,6 @@
         "nativeTools.healthFailed",
         "nativeTools.installing",
         "nativeTools.mediaToolsUnavailable",
-        "nativeTools.restartRequired",
         "options",
         "original",
         "process",
@@ -5197,7 +5195,7 @@
       ]
     },
     "src/i18n/locales/vi/download.json": {
-      "hash": "6b6d43cffe34fe944c55c83055a438513cc157696f005ae715878574ddf7ba41",
+      "hash": "67ad66fb916f4a342f4034727c95ce80c8f7f9cdf42f0370b6567aeb0599b051",
       "keys": [
         "consolidate",
         "consolidateExplanation",
@@ -5232,7 +5230,6 @@
         "nativeTools.healthFailed",
         "nativeTools.installing",
         "nativeTools.mediaToolsUnavailable",
-        "nativeTools.restartRequired",
         "options",
         "original",
         "process",

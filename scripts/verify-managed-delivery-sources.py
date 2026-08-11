@@ -9,12 +9,12 @@ from urllib.request import Request, urlopen
 
 
 POOL_PREFIX = (
-    "https://github.com/nganlinh4/screen-goated-toolbox/"
-    "releases/download/sgt-runtime-bundles/"
+    "https://github.com/nganlinh4/oneclick-subtitles-generator/"
+    "releases/download/osg-runtime-bundles-v1/"
 )
 RELEASE_API = (
-    "https://api.github.com/repos/nganlinh4/screen-goated-toolbox/"
-    "releases/tags/sgt-runtime-bundles"
+    "https://api.github.com/repos/nganlinh4/oneclick-subtitles-generator/"
+    "releases/tags/osg-runtime-bundles-v1"
 )
 
 

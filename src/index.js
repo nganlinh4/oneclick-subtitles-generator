@@ -13,6 +13,7 @@ import { getThemeWithFallback, setupSystemThemeListener } from './utils/systemDe
 import { installDesktopExternalLinkGuard } from './platform/externalLinkService';
 import { startNativeJobRecovery } from './platform/jobRecoveryCoordinator';
 import { installLegacyImportKeyboardAction } from './platform/legacyImportService';
+import { revealDesktopWindowWhenReady } from './platform/uiFontBootstrap';
 
 // Suppress harmless ResizeObserver loop error
 const suppressResizeObserverError = () => {
@@ -128,3 +129,5 @@ root.render(
     </ErrorBoundary>
   </React.StrictMode>
 );
+
+revealDesktopWindowWhenReady().catch(() => undefined);

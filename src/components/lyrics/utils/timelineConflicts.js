@@ -1,4 +1,4 @@
-// Detect narration timing conflicts the way screen-goated-toolbox does: a clip is flagged (its
+// Detect narration timing conflicts using the reviewed overlap rule: a clip is flagged (its
 // WHOLE block highlighted) when it overlaps a neighbour by a meaningful amount — a large absolute
 // overlap, or a smaller overlap that still eats a big fraction of the shorter clip. Tiny,
 // inaudible overlaps are not flagged.

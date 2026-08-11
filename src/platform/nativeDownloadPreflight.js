@@ -7,6 +7,7 @@ import {
 
 const MANAGED_DOWNLOAD_TOOL_IDS = Object.freeze(['media-tools', 'yt-dlp', 'deno']);
 const TOOL_PROGRESS_TOAST_KEY = 'native-download-tool-preflight';
+const toolProgressToastKey = (toolId) => `${TOOL_PROGRESS_TOAST_KEY}:${toolId}`;
 const PROGRESS_STEP_PERCENT = 5;
 const DEFAULT_INSTALL_TIMEOUT_MS = 60 * 60 * 1_000;
 const AUTO_UPDATE_COOLDOWN_MS = 30 * 60 * 1_000;
@@ -72,7 +73,6 @@ const localizedFailure = (code, t) => {
     nativeToolCancelled: t('download.nativeTools.cancelled'),
     nativeToolCorrupt: t('download.nativeTools.corrupt'),
     nativeToolHealthFailed: t('download.nativeTools.healthFailed'),
-    nativeToolRestartRequired: t('download.nativeTools.restartRequired'),
     nativeToolUnavailable: t('download.nativeTools.deliveryUnavailable'),
     nativeMediaToolsUnavailable: t('download.nativeTools.mediaToolsUnavailable'),
     nativeDownloadUnavailable: t('download.nativeTools.downloadUnavailable'),
@@ -86,8 +86,6 @@ const catalogById = (catalog) => new Map(catalog.tools.map((tool) => [tool.id, t
 
 const terminalInstall = ({
   tool,
-  toolIndex,
-  toolCount,
   controller,
   install,
   report,
@@ -110,20 +108,17 @@ const terminalInstall = ({
   };
   const handlers = {
     onProgress: (event) => {
-      const aggregate = Math.floor(
-        ((toolIndex * 10_000) + event.operation.basisPoints) / toolCount / 100
-      );
-      report(tool, aggregate);
+      report(tool, Math.floor(event.operation.basisPoints / 100));
     },
     onCompleted: (event) => {
-      if (!event.restartRequired || event.deferred || event.action !== 'install') {
+      if (event.restartRequired || event.deferred || event.action !== 'install') {
         settle(reject, failure(
           'invalidNativeToolResponse',
           'The desktop host returned invalid native tool data'
         ));
         return;
       }
-      report(tool, Math.floor(((toolIndex + 1) / toolCount) * 100));
+      report(tool, 100);
       settle(resolve, event);
     },
     onCancelled: () => settle(reject, failure(
@@ -155,14 +150,14 @@ export const createNativeDownloadPreflight = ({
 } = {}) => {
   let active = null;
 
-  const notify = (message, type, duration, button) => safeCall(presentation.notify, {
+  const notify = (message, type, duration, button, key = TOOL_PROGRESS_TOAST_KEY) => safeCall(presentation.notify, {
     message,
     type,
     duration,
-    key: TOOL_PROGRESS_TOAST_KEY,
+    key,
     button,
   });
-  const dismiss = () => safeCall(presentation.dismiss, TOOL_PROGRESS_TOAST_KEY);
+  const dismiss = (key = TOOL_PROGRESS_TOAST_KEY) => safeCall(presentation.dismiss, key);
   const rejectWithNotice = (code, type = 'error') => {
     const error = localizedFailure(code, t);
     dismiss();
@@ -172,6 +167,11 @@ export const createNativeDownloadPreflight = ({
 
   const perform = async (options, controller, requiredIds) => {
     const abort = () => controller.abort();
+    const operationToastKeys = new Set();
+    const dismissOperationToasts = () => {
+      operationToastKeys.forEach((key) => dismiss(key));
+      operationToastKeys.clear();
+    };
     if (options.signal?.aborted) throw localizedFailure('nativeToolCancelled', t);
     options.signal?.addEventListener('abort', abort, { once: true });
     try {
@@ -193,10 +193,16 @@ export const createNativeDownloadPreflight = ({
         return rejectWithNotice('nativeToolUnavailable');
       }
 
-      const missing = required.filter((tool) => tool.status.state === 'missing');
-      if (missing.length === 0) {
-        if (required.some((tool) => !tool.status.activeRuntime || tool.status.restartRequired)) {
-          return rejectWithNotice('nativeToolRestartRequired', 'warning');
+      const installTargets = required.filter((tool) => tool.status.state === 'missing'
+        || (tool.status.state === 'installed'
+          && !tool.status.pendingRemoval
+          && (!tool.status.activeRuntime || tool.status.restartRequired)));
+      if (installTargets.length === 0) {
+        if (required.every((tool) => tool.status.state === 'installed'
+          && tool.status.activeRuntime
+          && !tool.status.restartRequired)) {
+          dismiss();
+          return Object.freeze({ ready: true });
         }
         return rejectWithNotice('nativeToolHealthFailed');
       }
@@ -206,37 +212,58 @@ export const createNativeDownloadPreflight = ({
         onClick: abort,
       });
       let lastReported = -PROGRESS_STEP_PERCENT;
-      let lastTool = null;
+      const lastToolReported = new Map();
+      const toolProgress = new Map(installTargets.map((tool) => [tool.id, 0]));
       const report = (tool, percent) => {
         const bounded = Math.max(0, Math.min(100, percent));
-        if (tool.id === lastTool
-            && bounded !== 100
-            && bounded < lastReported + PROGRESS_STEP_PERCENT) return;
-        lastReported = bounded;
-        lastTool = tool.id;
-        safeCall(options.onProgress, bounded);
-        notify(t('download.nativeTools.installing', {
-          tool: tool.label,
-          percent: bounded,
-        }), 'info', 120_000, cancelButton);
+        toolProgress.set(tool.id, Math.max(toolProgress.get(tool.id) ?? 0, bounded));
+        const toolPercent = Math.floor(toolProgress.get(tool.id));
+        const previousToolPercent = lastToolReported.get(tool.id) ?? -PROGRESS_STEP_PERCENT;
+        if (toolPercent === 100 || toolPercent >= previousToolPercent + PROGRESS_STEP_PERCENT) {
+          lastToolReported.set(tool.id, toolPercent);
+          const key = toolProgressToastKey(tool.id);
+          operationToastKeys.add(key);
+          notify(t('download.nativeTools.installing', {
+            tool: tool.label,
+            percent: toolPercent,
+          }), 'info', 120_000, cancelButton, key);
+        }
+        const aggregate = Math.floor(
+          [...toolProgress.values()].reduce((total, value) => total + value, 0)
+            / toolProgress.size
+        );
+        if (aggregate !== 100 && aggregate < lastReported + PROGRESS_STEP_PERCENT) return;
+        lastReported = aggregate;
+        safeCall(options.onProgress, aggregate);
       };
 
-      report(missing[0], 0);
-      for (let index = 0; index < missing.length; index += 1) {
+      installTargets.forEach((tool) => report(tool, 0));
+      await Promise.all(installTargets.map(async (tool) => {
         if (controller.signal.aborted) throw localizedFailure('nativeToolCancelled', t);
-        report(missing[index], Math.floor((index / missing.length) * 100));
         await terminalInstall({
-          tool: missing[index],
-          toolIndex: index,
-          toolCount: missing.length,
+          tool,
           controller,
           install,
           report,
           onJobStarted: options.onJobStarted,
           timeoutMs: installTimeoutMs,
         });
+        dismiss(toolProgressToastKey(tool.id));
+        operationToastKeys.delete(toolProgressToastKey(tool.id));
+      }));
+      const refreshed = statusById(await readStatus());
+      if (requiredIds.some((id) => {
+        const tool = refreshed.get(id);
+        return tool?.state !== 'installed'
+          || tool.activeRuntime !== true
+          || tool.restartRequired !== false;
+      })) {
+        dismissOperationToasts();
+        return rejectWithNotice('nativeToolHealthFailed');
       }
-      return rejectWithNotice('nativeToolRestartRequired', 'warning');
+      dismissOperationToasts();
+      dismiss();
+      return Object.freeze({ ready: true });
     } catch (error) {
       if (error instanceof NativeDownloadPreflightError
           && error.message === localizedFailure(error.code, t).message) {
@@ -249,6 +276,8 @@ export const createNativeDownloadPreflight = ({
           : error?.code === 'nativeToolBusy'
             ? 'nativeToolBusy'
             : 'nativeToolInstallFailed';
+      controller.abort();
+      dismissOperationToasts();
       dismiss();
       const normalized = localizedFailure(code, t);
       notify(normalized.message, code === 'nativeToolCancelled' ? 'warning' : 'error', 12_000);
@@ -383,11 +412,10 @@ export const recoverNativeDownloaderAfterFailure = async ({
         .catch((error) => settle(reject, error));
     });
     dismiss();
-    if (event.restartRequired) {
-      notify(t('download.nativeTools.restartRequired'), 'warning', 30_000);
-      return Object.freeze({ updated: true, throttled: false });
+    if (event.restartRequired || event.deferred) {
+      throw failure('nativeToolHealthFailed', t('download.nativeTools.healthFailed'));
     }
-    return Object.freeze({ updated: false, throttled: false });
+    return Object.freeze({ updated: true, throttled: false });
   })().catch((error) => {
     safeCall(presentation.dismiss, TOOL_PROGRESS_TOAST_KEY);
     return Object.freeze({ updated: false, throttled: false, error: error?.code ?? 'failed' });

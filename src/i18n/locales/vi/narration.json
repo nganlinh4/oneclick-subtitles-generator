@@ -409,5 +409,7 @@
   "speedModificationError": "Lỗi khi áp dụng chỉnh sửa hàng loạt: ${error.message}",
   "startingRecording": "Đang khởi động micrô...",
   "subtitleGroupingExplanationTranslated": "Bảng này hiển thị cách phụ đề đã dịch được nhóm thành các câu hoàn chỉnh hơn để thuyết minh tốt hơn. Mỗi hàng đại diện cho một phụ đề đã dịch, và cột đã nhóm cho thấy cách chúng được kết hợp.",
-  "subtitleNotFoundError": "Không tìm thấy phụ đề để thử lại."
+  "subtitleNotFoundError": "Không tìm thấy phụ đề để thử lại.",
+  "installingVoiceSamples": "Đang cài đặt bản xem trước giọng nói… {{percent}}%",
+  "voiceSampleUnavailable": "Không thể phát bản xem trước giọng nói. Vui lòng thử lại."
 }

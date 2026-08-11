@@ -99,7 +99,7 @@
                   "sizeBytes": 471630213,
                   "sha256": "7b4867265a642de7b8042999ee74daeb391727fcd1c3ada671413dd46efcb1b7",
                   "urls": [
-                    "https://github.com/nganlinh4/screen-goated-toolbox/releases/download/sgt-runtime-bundles/speech-runtime-windows-x64-2026.08.10-part01-7b4867265a642de7.zip"
+                    "https://github.com/nganlinh4/oneclick-subtitles-generator/releases/download/osg-runtime-bundles-v1/speech-runtime-windows-x64-2026.08.10-part01-7b4867265a642de7.zip"
                   ]
                 },
                 {
@@ -108,7 +108,7 @@
                   "sizeBytes": 677777399,
                   "sha256": "1b5d091264a046e3f26bf37cd4bae46676ec3ab4e7e195dea2f47b36d47b01ac",
                   "urls": [
-                    "https://github.com/nganlinh4/screen-goated-toolbox/releases/download/sgt-runtime-bundles/asr-runtime-windows-x64-2026.08.10-part02-1b5d091264a046e3.zip"
+                    "https://github.com/nganlinh4/oneclick-subtitles-generator/releases/download/osg-runtime-bundles-v1/asr-runtime-windows-x64-2026.08.10-part02-1b5d091264a046e3.zip"
                   ]
                 },
                 {
@@ -117,7 +117,7 @@
                   "sizeBytes": 857784415,
                   "sha256": "99289940581c6fcc555ccc9190f239530989fe0644c2c9a9abfb0e5d23875fe8",
                   "urls": [
-                    "https://github.com/nganlinh4/screen-goated-toolbox/releases/download/sgt-runtime-bundles/asr-runtime-windows-x64-2026.08.10-part03-99289940581c6fcc.zip"
+                    "https://github.com/nganlinh4/oneclick-subtitles-generator/releases/download/osg-runtime-bundles-v1/asr-runtime-windows-x64-2026.08.10-part03-99289940581c6fcc.zip"
                   ]
                 },
                 {
@@ -126,7 +126,7 @@
                   "sizeBytes": 581281367,
                   "sha256": "ebd85d8f99a614e69619bcd6b73f7c54d6beadc3934cb6c571fe7a52bde13fd8",
                   "urls": [
-                    "https://github.com/nganlinh4/screen-goated-toolbox/releases/download/sgt-runtime-bundles/asr-runtime-windows-x64-2026.08.10-part04-ebd85d8f99a614e6.zip"
+                    "https://github.com/nganlinh4/oneclick-subtitles-generator/releases/download/osg-runtime-bundles-v1/asr-runtime-windows-x64-2026.08.10-part04-ebd85d8f99a614e6.zip"
                   ]
                 },
                 {
@@ -135,7 +135,7 @@
                   "sizeBytes": 584441763,
                   "sha256": "bc27cdc621f959421c2d127d0515eb25ddd63c6d824630ecbbf6fb88c2a2de40",
                   "urls": [
-                    "https://github.com/nganlinh4/screen-goated-toolbox/releases/download/sgt-runtime-bundles/speech-runtime-windows-x64-2026.08.10-part05-bc27cdc621f95942.zip"
+                    "https://github.com/nganlinh4/oneclick-subtitles-generator/releases/download/osg-runtime-bundles-v1/speech-runtime-windows-x64-2026.08.10-part05-bc27cdc621f95942.zip"
                   ]
                 },
                 {
@@ -180,19 +180,19 @@
                   "sizeBytes": 3113,
                   "sha256": "9bb4adc887fa6d371519cfb4892afca9a7f6d52757a589c73ea4c21df06b732a",
                   "urls": [
-                    "https://github.com/nganlinh4/screen-goated-toolbox/releases/download/sgt-runtime-bundles/windows-managed-runtime-notices.json"
+                    "https://github.com/nganlinh4/oneclick-subtitles-generator/releases/download/osg-runtime-bundles-v1/windows-managed-runtime-notices.json"
                   ]
                 }
               ],
               "manifest": {
                 "asset": "f5-tts-windows-x86_64-2026.08.10-62699c10b9041344.manifest.json",
                 "urls": [
-                  "https://github.com/nganlinh4/screen-goated-toolbox/releases/download/sgt-runtime-bundles/f5-tts-windows-x86_64-2026.08.10-62699c10b9041344.manifest.json"
+                  "https://github.com/nganlinh4/oneclick-subtitles-generator/releases/download/osg-runtime-bundles-v1/f5-tts-windows-x86_64-2026.08.10-62699c10b9041344.manifest.json"
                 ],
                 "sizeBytes": 16180583,
                 "sha256": "62699c10b9041344bf43d49b15a22414144dfadcdda83ce98dd5622a88edba43"
               },
-              "sourceUrl": "https://github.com/nganlinh4/screen-goated-toolbox/releases/download/sgt-runtime-bundles/f5-tts-windows-x86_64-2026.08.10-62699c10b9041344.manifest.json"
+              "sourceUrl": "https://github.com/nganlinh4/oneclick-subtitles-generator/releases/download/osg-runtime-bundles-v1/f5-tts-windows-x86_64-2026.08.10-62699c10b9041344.manifest.json"
             }
           ]
         },
@@ -215,7 +215,7 @@
                   "sizeBytes": 471630213,
                   "sha256": "7b4867265a642de7b8042999ee74daeb391727fcd1c3ada671413dd46efcb1b7",
                   "urls": [
-                    "https://github.com/nganlinh4/screen-goated-toolbox/releases/download/sgt-runtime-bundles/speech-runtime-windows-x64-2026.08.10-part01-7b4867265a642de7.zip"
+                    "https://github.com/nganlinh4/oneclick-subtitles-generator/releases/download/osg-runtime-bundles-v1/speech-runtime-windows-x64-2026.08.10-part01-7b4867265a642de7.zip"
                   ]
                 },
                 {
@@ -224,7 +224,7 @@
                   "sizeBytes": 677777399,
                   "sha256": "1b5d091264a046e3f26bf37cd4bae46676ec3ab4e7e195dea2f47b36d47b01ac",
                   "urls": [
-                    "https://github.com/nganlinh4/screen-goated-toolbox/releases/download/sgt-runtime-bundles/asr-runtime-windows-x64-2026.08.10-part02-1b5d091264a046e3.zip"
+                    "https://github.com/nganlinh4/oneclick-subtitles-generator/releases/download/osg-runtime-bundles-v1/asr-runtime-windows-x64-2026.08.10-part02-1b5d091264a046e3.zip"
                   ]
                 },
                 {
@@ -233,7 +233,7 @@
                   "sizeBytes": 857784415,
                   "sha256": "99289940581c6fcc555ccc9190f239530989fe0644c2c9a9abfb0e5d23875fe8",
                   "urls": [
-                    "https://github.com/nganlinh4/screen-goated-toolbox/releases/download/sgt-runtime-bundles/asr-runtime-windows-x64-2026.08.10-part03-99289940581c6fcc.zip"
+                    "https://github.com/nganlinh4/oneclick-subtitles-generator/releases/download/osg-runtime-bundles-v1/asr-runtime-windows-x64-2026.08.10-part03-99289940581c6fcc.zip"
                   ]
                 },
                 {
@@ -242,7 +242,7 @@
                   "sizeBytes": 581281367,
                   "sha256": "ebd85d8f99a614e69619bcd6b73f7c54d6beadc3934cb6c571fe7a52bde13fd8",
                   "urls": [
-                    "https://github.com/nganlinh4/screen-goated-toolbox/releases/download/sgt-runtime-bundles/asr-runtime-windows-x64-2026.08.10-part04-ebd85d8f99a614e6.zip"
+                    "https://github.com/nganlinh4/oneclick-subtitles-generator/releases/download/osg-runtime-bundles-v1/asr-runtime-windows-x64-2026.08.10-part04-ebd85d8f99a614e6.zip"
                   ]
                 },
                 {
@@ -251,7 +251,7 @@
                   "sizeBytes": 584441763,
                   "sha256": "bc27cdc621f959421c2d127d0515eb25ddd63c6d824630ecbbf6fb88c2a2de40",
                   "urls": [
-                    "https://github.com/nganlinh4/screen-goated-toolbox/releases/download/sgt-runtime-bundles/speech-runtime-windows-x64-2026.08.10-part05-bc27cdc621f95942.zip"
+                    "https://github.com/nganlinh4/oneclick-subtitles-generator/releases/download/osg-runtime-bundles-v1/speech-runtime-windows-x64-2026.08.10-part05-bc27cdc621f95942.zip"
                   ]
                 },
                 {
@@ -350,19 +350,19 @@
                   "sizeBytes": 3113,
                   "sha256": "9bb4adc887fa6d371519cfb4892afca9a7f6d52757a589c73ea4c21df06b732a",
                   "urls": [
-                    "https://github.com/nganlinh4/screen-goated-toolbox/releases/download/sgt-runtime-bundles/windows-managed-runtime-notices.json"
+                    "https://github.com/nganlinh4/oneclick-subtitles-generator/releases/download/osg-runtime-bundles-v1/windows-managed-runtime-notices.json"
                   ]
                 }
               ],
               "manifest": {
                 "asset": "chatterbox-windows-x86_64-2026.08.10-19a74aed8380e64d.manifest.json",
                 "urls": [
-                  "https://github.com/nganlinh4/screen-goated-toolbox/releases/download/sgt-runtime-bundles/chatterbox-windows-x86_64-2026.08.10-19a74aed8380e64d.manifest.json"
+                  "https://github.com/nganlinh4/oneclick-subtitles-generator/releases/download/osg-runtime-bundles-v1/chatterbox-windows-x86_64-2026.08.10-19a74aed8380e64d.manifest.json"
                 ],
                 "sizeBytes": 16181760,
                 "sha256": "19a74aed8380e64d3a1857aba737b5bb1f7b8036796c39c60b236b0f916a44d9"
               },
-              "sourceUrl": "https://github.com/nganlinh4/screen-goated-toolbox/releases/download/sgt-runtime-bundles/chatterbox-windows-x86_64-2026.08.10-19a74aed8380e64d.manifest.json"
+              "sourceUrl": "https://github.com/nganlinh4/oneclick-subtitles-generator/releases/download/osg-runtime-bundles-v1/chatterbox-windows-x86_64-2026.08.10-19a74aed8380e64d.manifest.json"
             }
           ]
         },
@@ -385,7 +385,7 @@
                   "sizeBytes": 471630213,
                   "sha256": "7b4867265a642de7b8042999ee74daeb391727fcd1c3ada671413dd46efcb1b7",
                   "urls": [
-                    "https://github.com/nganlinh4/screen-goated-toolbox/releases/download/sgt-runtime-bundles/speech-runtime-windows-x64-2026.08.10-part01-7b4867265a642de7.zip"
+                    "https://github.com/nganlinh4/oneclick-subtitles-generator/releases/download/osg-runtime-bundles-v1/speech-runtime-windows-x64-2026.08.10-part01-7b4867265a642de7.zip"
                   ]
                 },
                 {
@@ -394,7 +394,7 @@
                   "sizeBytes": 677777399,
                   "sha256": "1b5d091264a046e3f26bf37cd4bae46676ec3ab4e7e195dea2f47b36d47b01ac",
                   "urls": [
-                    "https://github.com/nganlinh4/screen-goated-toolbox/releases/download/sgt-runtime-bundles/asr-runtime-windows-x64-2026.08.10-part02-1b5d091264a046e3.zip"
+                    "https://github.com/nganlinh4/oneclick-subtitles-generator/releases/download/osg-runtime-bundles-v1/asr-runtime-windows-x64-2026.08.10-part02-1b5d091264a046e3.zip"
                   ]
                 },
                 {
@@ -403,7 +403,7 @@
                   "sizeBytes": 857784415,
                   "sha256": "99289940581c6fcc555ccc9190f239530989fe0644c2c9a9abfb0e5d23875fe8",
                   "urls": [
-                    "https://github.com/nganlinh4/screen-goated-toolbox/releases/download/sgt-runtime-bundles/asr-runtime-windows-x64-2026.08.10-part03-99289940581c6fcc.zip"
+                    "https://github.com/nganlinh4/oneclick-subtitles-generator/releases/download/osg-runtime-bundles-v1/asr-runtime-windows-x64-2026.08.10-part03-99289940581c6fcc.zip"
                   ]
                 },
                 {
@@ -412,7 +412,7 @@
                   "sizeBytes": 581281367,
                   "sha256": "ebd85d8f99a614e69619bcd6b73f7c54d6beadc3934cb6c571fe7a52bde13fd8",
                   "urls": [
-                    "https://github.com/nganlinh4/screen-goated-toolbox/releases/download/sgt-runtime-bundles/asr-runtime-windows-x64-2026.08.10-part04-ebd85d8f99a614e6.zip"
+                    "https://github.com/nganlinh4/oneclick-subtitles-generator/releases/download/osg-runtime-bundles-v1/asr-runtime-windows-x64-2026.08.10-part04-ebd85d8f99a614e6.zip"
                   ]
                 },
                 {
@@ -421,7 +421,7 @@
                   "sizeBytes": 584441763,
                   "sha256": "bc27cdc621f959421c2d127d0515eb25ddd63c6d824630ecbbf6fb88c2a2de40",
                   "urls": [
-                    "https://github.com/nganlinh4/screen-goated-toolbox/releases/download/sgt-runtime-bundles/speech-runtime-windows-x64-2026.08.10-part05-bc27cdc621f95942.zip"
+                    "https://github.com/nganlinh4/oneclick-subtitles-generator/releases/download/osg-runtime-bundles-v1/speech-runtime-windows-x64-2026.08.10-part05-bc27cdc621f95942.zip"
                   ]
                 },
                 {
@@ -430,19 +430,19 @@
                   "sizeBytes": 3113,
                   "sha256": "9bb4adc887fa6d371519cfb4892afca9a7f6d52757a589c73ea4c21df06b732a",
                   "urls": [
-                    "https://github.com/nganlinh4/screen-goated-toolbox/releases/download/sgt-runtime-bundles/windows-managed-runtime-notices.json"
+                    "https://github.com/nganlinh4/oneclick-subtitles-generator/releases/download/osg-runtime-bundles-v1/windows-managed-runtime-notices.json"
                   ]
                 }
               ],
               "manifest": {
                 "asset": "edge-tts-windows-x86_64-2026.08.10-3f8506dc905f97ac.manifest.json",
                 "urls": [
-                  "https://github.com/nganlinh4/screen-goated-toolbox/releases/download/sgt-runtime-bundles/edge-tts-windows-x86_64-2026.08.10-3f8506dc905f97ac.manifest.json"
+                  "https://github.com/nganlinh4/oneclick-subtitles-generator/releases/download/osg-runtime-bundles-v1/edge-tts-windows-x86_64-2026.08.10-3f8506dc905f97ac.manifest.json"
                 ],
                 "sizeBytes": 16179750,
                 "sha256": "3f8506dc905f97ac894ba6750ab7c685fb0ebb6e35a23310d0f6cb48d2829681"
               },
-              "sourceUrl": "https://github.com/nganlinh4/screen-goated-toolbox/releases/download/sgt-runtime-bundles/edge-tts-windows-x86_64-2026.08.10-3f8506dc905f97ac.manifest.json"
+              "sourceUrl": "https://github.com/nganlinh4/oneclick-subtitles-generator/releases/download/osg-runtime-bundles-v1/edge-tts-windows-x86_64-2026.08.10-3f8506dc905f97ac.manifest.json"
             }
           ]
         },
@@ -465,7 +465,7 @@
                   "sizeBytes": 471630213,
                   "sha256": "7b4867265a642de7b8042999ee74daeb391727fcd1c3ada671413dd46efcb1b7",
                   "urls": [
-                    "https://github.com/nganlinh4/screen-goated-toolbox/releases/download/sgt-runtime-bundles/speech-runtime-windows-x64-2026.08.10-part01-7b4867265a642de7.zip"
+                    "https://github.com/nganlinh4/oneclick-subtitles-generator/releases/download/osg-runtime-bundles-v1/speech-runtime-windows-x64-2026.08.10-part01-7b4867265a642de7.zip"
                   ]
                 },
                 {
@@ -474,7 +474,7 @@
                   "sizeBytes": 677777399,
                   "sha256": "1b5d091264a046e3f26bf37cd4bae46676ec3ab4e7e195dea2f47b36d47b01ac",
                   "urls": [
-                    "https://github.com/nganlinh4/screen-goated-toolbox/releases/download/sgt-runtime-bundles/asr-runtime-windows-x64-2026.08.10-part02-1b5d091264a046e3.zip"
+                    "https://github.com/nganlinh4/oneclick-subtitles-generator/releases/download/osg-runtime-bundles-v1/asr-runtime-windows-x64-2026.08.10-part02-1b5d091264a046e3.zip"
                   ]
                 },
                 {
@@ -483,7 +483,7 @@
                   "sizeBytes": 857784415,
                   "sha256": "99289940581c6fcc555ccc9190f239530989fe0644c2c9a9abfb0e5d23875fe8",
                   "urls": [
-                    "https://github.com/nganlinh4/screen-goated-toolbox/releases/download/sgt-runtime-bundles/asr-runtime-windows-x64-2026.08.10-part03-99289940581c6fcc.zip"
+                    "https://github.com/nganlinh4/oneclick-subtitles-generator/releases/download/osg-runtime-bundles-v1/asr-runtime-windows-x64-2026.08.10-part03-99289940581c6fcc.zip"
                   ]
                 },
                 {
@@ -492,7 +492,7 @@
                   "sizeBytes": 581281367,
                   "sha256": "ebd85d8f99a614e69619bcd6b73f7c54d6beadc3934cb6c571fe7a52bde13fd8",
                   "urls": [
-                    "https://github.com/nganlinh4/screen-goated-toolbox/releases/download/sgt-runtime-bundles/asr-runtime-windows-x64-2026.08.10-part04-ebd85d8f99a614e6.zip"
+                    "https://github.com/nganlinh4/oneclick-subtitles-generator/releases/download/osg-runtime-bundles-v1/asr-runtime-windows-x64-2026.08.10-part04-ebd85d8f99a614e6.zip"
                   ]
                 },
                 {
@@ -501,7 +501,7 @@
                   "sizeBytes": 584441763,
                   "sha256": "bc27cdc621f959421c2d127d0515eb25ddd63c6d824630ecbbf6fb88c2a2de40",
                   "urls": [
-                    "https://github.com/nganlinh4/screen-goated-toolbox/releases/download/sgt-runtime-bundles/speech-runtime-windows-x64-2026.08.10-part05-bc27cdc621f95942.zip"
+                    "https://github.com/nganlinh4/oneclick-subtitles-generator/releases/download/osg-runtime-bundles-v1/speech-runtime-windows-x64-2026.08.10-part05-bc27cdc621f95942.zip"
                   ]
                 },
                 {
@@ -510,19 +510,19 @@
                   "sizeBytes": 3113,
                   "sha256": "9bb4adc887fa6d371519cfb4892afca9a7f6d52757a589c73ea4c21df06b732a",
                   "urls": [
-                    "https://github.com/nganlinh4/screen-goated-toolbox/releases/download/sgt-runtime-bundles/windows-managed-runtime-notices.json"
+                    "https://github.com/nganlinh4/oneclick-subtitles-generator/releases/download/osg-runtime-bundles-v1/windows-managed-runtime-notices.json"
                   ]
                 }
               ],
               "manifest": {
                 "asset": "gtts-windows-x86_64-2026.08.10-9388b5219b8dea80.manifest.json",
                 "urls": [
-                  "https://github.com/nganlinh4/screen-goated-toolbox/releases/download/sgt-runtime-bundles/gtts-windows-x86_64-2026.08.10-9388b5219b8dea80.manifest.json"
+                  "https://github.com/nganlinh4/oneclick-subtitles-generator/releases/download/osg-runtime-bundles-v1/gtts-windows-x86_64-2026.08.10-9388b5219b8dea80.manifest.json"
                 ],
                 "sizeBytes": 16179746,
                 "sha256": "9388b5219b8dea80c55330e2fd95459ec308682fb2075ccc49bf9be880283547"
               },
-              "sourceUrl": "https://github.com/nganlinh4/screen-goated-toolbox/releases/download/sgt-runtime-bundles/gtts-windows-x86_64-2026.08.10-9388b5219b8dea80.manifest.json"
+              "sourceUrl": "https://github.com/nganlinh4/oneclick-subtitles-generator/releases/download/osg-runtime-bundles-v1/gtts-windows-x86_64-2026.08.10-9388b5219b8dea80.manifest.json"
             }
           ]
         },
@@ -545,7 +545,7 @@
                   "sizeBytes": 471630213,
                   "sha256": "7b4867265a642de7b8042999ee74daeb391727fcd1c3ada671413dd46efcb1b7",
                   "urls": [
-                    "https://github.com/nganlinh4/screen-goated-toolbox/releases/download/sgt-runtime-bundles/speech-runtime-windows-x64-2026.08.10-part01-7b4867265a642de7.zip"
+                    "https://github.com/nganlinh4/oneclick-subtitles-generator/releases/download/osg-runtime-bundles-v1/speech-runtime-windows-x64-2026.08.10-part01-7b4867265a642de7.zip"
                   ]
                 },
                 {
@@ -554,7 +554,7 @@
                   "sizeBytes": 677777399,
                   "sha256": "1b5d091264a046e3f26bf37cd4bae46676ec3ab4e7e195dea2f47b36d47b01ac",
                   "urls": [
-                    "https://github.com/nganlinh4/screen-goated-toolbox/releases/download/sgt-runtime-bundles/asr-runtime-windows-x64-2026.08.10-part02-1b5d091264a046e3.zip"
+                    "https://github.com/nganlinh4/oneclick-subtitles-generator/releases/download/osg-runtime-bundles-v1/asr-runtime-windows-x64-2026.08.10-part02-1b5d091264a046e3.zip"
                   ]
                 },
                 {
@@ -563,7 +563,7 @@
                   "sizeBytes": 857784415,
                   "sha256": "99289940581c6fcc555ccc9190f239530989fe0644c2c9a9abfb0e5d23875fe8",
                   "urls": [
-                    "https://github.com/nganlinh4/screen-goated-toolbox/releases/download/sgt-runtime-bundles/asr-runtime-windows-x64-2026.08.10-part03-99289940581c6fcc.zip"
+                    "https://github.com/nganlinh4/oneclick-subtitles-generator/releases/download/osg-runtime-bundles-v1/asr-runtime-windows-x64-2026.08.10-part03-99289940581c6fcc.zip"
                   ]
                 },
                 {
@@ -572,7 +572,7 @@
                   "sizeBytes": 581281367,
                   "sha256": "ebd85d8f99a614e69619bcd6b73f7c54d6beadc3934cb6c571fe7a52bde13fd8",
                   "urls": [
-                    "https://github.com/nganlinh4/screen-goated-toolbox/releases/download/sgt-runtime-bundles/asr-runtime-windows-x64-2026.08.10-part04-ebd85d8f99a614e6.zip"
+                    "https://github.com/nganlinh4/oneclick-subtitles-generator/releases/download/osg-runtime-bundles-v1/asr-runtime-windows-x64-2026.08.10-part04-ebd85d8f99a614e6.zip"
                   ]
                 },
                 {
@@ -581,7 +581,7 @@
                   "sizeBytes": 584441763,
                   "sha256": "bc27cdc621f959421c2d127d0515eb25ddd63c6d824630ecbbf6fb88c2a2de40",
                   "urls": [
-                    "https://github.com/nganlinh4/screen-goated-toolbox/releases/download/sgt-runtime-bundles/speech-runtime-windows-x64-2026.08.10-part05-bc27cdc621f95942.zip"
+                    "https://github.com/nganlinh4/oneclick-subtitles-generator/releases/download/osg-runtime-bundles-v1/speech-runtime-windows-x64-2026.08.10-part05-bc27cdc621f95942.zip"
                   ]
                 },
                 {
@@ -590,19 +590,19 @@
                   "sizeBytes": 3113,
                   "sha256": "9bb4adc887fa6d371519cfb4892afca9a7f6d52757a589c73ea4c21df06b732a",
                   "urls": [
-                    "https://github.com/nganlinh4/screen-goated-toolbox/releases/download/sgt-runtime-bundles/windows-managed-runtime-notices.json"
+                    "https://github.com/nganlinh4/oneclick-subtitles-generator/releases/download/osg-runtime-bundles-v1/windows-managed-runtime-notices.json"
                   ]
                 }
               ],
               "manifest": {
                 "asset": "gemini-tts-windows-x86_64-2026.08.10-fee00bbd51e25865.manifest.json",
                 "urls": [
-                  "https://github.com/nganlinh4/screen-goated-toolbox/releases/download/sgt-runtime-bundles/gemini-tts-windows-x86_64-2026.08.10-fee00bbd51e25865.manifest.json"
+                  "https://github.com/nganlinh4/oneclick-subtitles-generator/releases/download/osg-runtime-bundles-v1/gemini-tts-windows-x86_64-2026.08.10-fee00bbd51e25865.manifest.json"
                 ],
                 "sizeBytes": 16179752,
                 "sha256": "fee00bbd51e25865159c62a0807cb3c1d231e81222693425fa75d6cd77ca3898"
               },
-              "sourceUrl": "https://github.com/nganlinh4/screen-goated-toolbox/releases/download/sgt-runtime-bundles/gemini-tts-windows-x86_64-2026.08.10-fee00bbd51e25865.manifest.json"
+              "sourceUrl": "https://github.com/nganlinh4/oneclick-subtitles-generator/releases/download/osg-runtime-bundles-v1/gemini-tts-windows-x86_64-2026.08.10-fee00bbd51e25865.manifest.json"
             }
           ]
         }

@@ -22,6 +22,7 @@ const {
   assertRequiredMediaToolDelivery,
   assertRenderRuntimeDelivery,
   assertUpdaterReleaseConfiguration,
+  assertTauriProductionBuildContract,
   assertWorkerResources,
   assertWorkflowCommands,
   assertWorkflowMatrix,
@@ -31,6 +32,32 @@ const {
   normalizeDestination,
   parseArguments,
 } = require('./check-release-readiness');
+
+function createTauriProductionBuildFixture() {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'osg-tauri-production-build-'));
+  writeFile(root, 'package.json', JSON.stringify({
+    scripts: {
+      build: 'npm run tauri:build',
+      'tauri:build': 'npm --prefix apps/desktop run tauri:build --',
+    },
+  }));
+  writeFile(root, 'apps/desktop/package.json', JSON.stringify({
+    scripts: { 'tauri:build': 'tauri build --features production' },
+  }));
+  writeFile(
+    root,
+    'apps/desktop/src-tauri/Cargo.toml',
+    '[features]\ndefault = []\nproduction = ["tauri/custom-protocol"]\n',
+  );
+  writeFile(
+    root,
+    'apps/desktop/src-tauri/src/main.rs',
+    '#[cfg(all(not(debug_assertions), not(feature = "production")))]\n'
+      + 'compile_error!("release executables must be built with `npm run tauri:build`; '
+      + 'plain `cargo build --release` retains the development URL");\n',
+  );
+  return root;
+}
 
 function writeFile(root, relativePath, contents = 'fixture') {
   const absolutePath = path.join(root, relativePath);
@@ -431,6 +458,57 @@ test('signed updater release gate requires a real key, HTTPS latest.json, and no
   assert.throws(() => assertUpdaterReleaseConfiguration(placeholderRoot), /still a placeholder/);
   assert.throws(() => assertUpdaterReleaseConfiguration(insecureRoot), /must use HTTPS/);
   assert.throws(() => assertUpdaterReleaseConfiguration(guestRoot), /must not grant updater guest permissions/);
+});
+
+test('Tauri production build contract embeds the frontend instead of retaining the dev URL', (context) => {
+  const root = createTauriProductionBuildFixture();
+  context.after(() => fs.rmSync(root, { force: true, recursive: true }));
+
+  assert.doesNotThrow(() => assertTauriProductionBuildContract(root));
+});
+
+test('Tauri production build contract rejects every route back to a dev-server release', (context) => {
+  const fixtures = Array.from({ length: 4 }, createTauriProductionBuildFixture);
+  context.after(() => {
+    for (const root of fixtures) {
+      fs.rmSync(root, { force: true, recursive: true });
+    }
+  });
+
+  const [rootScript, desktopScript, cargoFeature, mainGuard] = fixtures;
+  const rootPackage = JSON.parse(fs.readFileSync(path.join(rootScript, 'package.json'), 'utf8'));
+  rootPackage.scripts['tauri:build'] = 'npm --prefix apps/desktop run tauri -- build';
+  writeFile(rootScript, 'package.json', JSON.stringify(rootPackage));
+  assert.throws(
+    () => assertTauriProductionBuildContract(rootScript),
+    /Root tauri:build must delegate/,
+  );
+
+  const desktopPackage = JSON.parse(
+    fs.readFileSync(path.join(desktopScript, 'apps/desktop/package.json'), 'utf8'),
+  );
+  desktopPackage.scripts['tauri:build'] = 'tauri build';
+  writeFile(desktopScript, 'apps/desktop/package.json', JSON.stringify(desktopPackage));
+  assert.throws(
+    () => assertTauriProductionBuildContract(desktopScript),
+    /must enable the production custom-protocol feature/,
+  );
+
+  writeFile(
+    cargoFeature,
+    'apps/desktop/src-tauri/Cargo.toml',
+    '[features]\ndefault = []\nproduction = []\n',
+  );
+  assert.throws(
+    () => assertTauriProductionBuildContract(cargoFeature),
+    /must enable only tauri\/custom-protocol/,
+  );
+
+  writeFile(mainGuard, 'apps/desktop/src-tauri/src/main.rs', 'fn main() {}\n');
+  assert.throws(
+    () => assertTauriProductionBuildContract(mainGuard),
+    /must reject release builds/,
+  );
 });
 
 test('embedded ASR, speech, and render workers map to exact runtime destinations', (context) => {

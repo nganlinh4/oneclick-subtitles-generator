@@ -8,8 +8,8 @@ from pathlib import Path
 
 
 POOL = (
-    "https://github.com/nganlinh4/screen-goated-toolbox/"
-    "releases/download/sgt-runtime-bundles/"
+    "https://github.com/nganlinh4/oneclick-subtitles-generator/"
+    "releases/download/osg-runtime-bundles-v1/"
 )
 ASR = {
     "parakeet",

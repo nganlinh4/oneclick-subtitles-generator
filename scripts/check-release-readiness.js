@@ -944,6 +944,45 @@ function assertTauriConfiguration(rootDirectory = REPOSITORY_ROOT) {
   return mappings;
 }
 
+function assertTauriProductionBuildContract(rootDirectory = REPOSITORY_ROOT) {
+  const rootPackage = readJson(rootDirectory, 'package.json');
+  const desktopPackage = readJson(rootDirectory, 'apps/desktop/package.json');
+  invariant(
+    rootPackage.scripts?.['tauri:build'] === 'npm --prefix apps/desktop run tauri:build --',
+    'Root tauri:build must delegate to the guarded desktop production build script',
+  );
+  invariant(
+    rootPackage.scripts?.build === 'npm run tauri:build',
+    'Root build must use the guarded Tauri production build script',
+  );
+  invariant(
+    desktopPackage.scripts?.['tauri:build'] === 'tauri build --features production',
+    'Desktop tauri:build must enable the production custom-protocol feature',
+  );
+
+  const cargoToml = readText(rootDirectory, `${TAURI_DIRECTORY}/Cargo.toml`);
+  const features = extractTomlSection(cargoToml, 'features');
+  invariant(
+    /^\s*default\s*=\s*\[\s*]\s*(?:#.*)?$/m.test(features),
+    'Desktop Cargo default features must remain empty so development mode uses the dev URL',
+  );
+  invariant(
+    /^\s*production\s*=\s*\[\s*["']tauri\/custom-protocol["']\s*]\s*(?:#.*)?$/m.test(features),
+    'Desktop Cargo production feature must enable only tauri/custom-protocol',
+  );
+
+  const mainSource = readText(rootDirectory, `${TAURI_DIRECTORY}/src/main.rs`);
+  invariant(
+    /#\[cfg\(all\(not\(debug_assertions\),\s*not\(feature\s*=\s*["']production["']\)\)\)]\s*compile_error!\s*\(/m
+      .test(mainSource),
+    'Desktop main.rs must reject release builds that omit the production feature',
+  );
+  invariant(
+    mainSource.includes('plain `cargo build --release` retains the development URL'),
+    'Desktop release-build diagnostic must explain the retained development URL',
+  );
+}
+
 function sha256File(filePath) {
   const hash = crypto.createHash('sha256');
   const descriptor = fs.openSync(filePath, 'r');
@@ -1325,7 +1364,7 @@ function assertDeliveryRelease(release, label, { requireModel, requireSourceUrl 
         invariant(decodeURIComponent(url.pathname.split('/').at(-1)) === sourceAsset,
           `${sourceLabel}.asset must match its source URL`);
         const pool = url.hostname === 'github.com'
-          && url.pathname.startsWith('/nganlinh4/screen-goated-toolbox/releases/download/sgt-runtime-bundles/');
+          && url.pathname.startsWith('/nganlinh4/oneclick-subtitles-generator/releases/download/osg-runtime-bundles-v1/');
         const huggingFace = url.hostname === 'huggingface.co'
           && /\/resolve\/[0-9a-f]{40}\//.test(url.pathname);
         invariant(pool || huggingFace,
@@ -1338,7 +1377,7 @@ function assertDeliveryRelease(release, label, { requireModel, requireSourceUrl 
       assertImmutableSourceUrl(rawUrl, `${label}.manifest`);
       const url = new URL(rawUrl);
       invariant(url.hostname === 'github.com'
-        && url.pathname === `/nganlinh4/screen-goated-toolbox/releases/download/sgt-runtime-bundles/${manifestAsset}`,
+        && url.pathname === `/nganlinh4/oneclick-subtitles-generator/releases/download/osg-runtime-bundles-v1/${manifestAsset}`,
       `${label}.manifest must use the reviewed bundle pool`);
     }
     invariant(release.sizeBytes === downloadBytes,
@@ -1620,7 +1659,7 @@ function assertRenderRuntimeDeliveryV2(rootDirectory, target, catalog) {
       assertImmutableSourceUrl(url, `${assetLabel}.urls[${index}]`);
       const parsed = new URL(url);
       invariant(parsed.hostname === 'github.com'
-        && parsed.pathname.startsWith('/nganlinh4/screen-goated-toolbox/releases/download/sgt-runtime-bundles/'),
+        && parsed.pathname.startsWith('/nganlinh4/oneclick-subtitles-generator/releases/download/osg-runtime-bundles-v1/'),
       `${assetLabel} must use the reviewed bundle-pool fallback`);
       invariant(decodeURIComponent(parsed.pathname.split('/').at(-1)) === name,
         `${assetLabel}.asset must match its source URL`);
@@ -1983,6 +2022,7 @@ function checkCompileReadiness(rootDirectory = REPOSITORY_ROOT) {
   assertLockfiles(rootDirectory);
   assertWorkflow(rootDirectory);
   const mappings = assertTauriConfiguration(rootDirectory);
+  assertTauriProductionBuildContract(rootDirectory);
   assertNativeToolDelivery(rootDirectory, mappings);
   assertLoopbackAuditManifest(rootDirectory);
   return { ...pins, resourceCount: mappings.length };
@@ -2055,6 +2095,7 @@ function checkRuntimePackageReadiness(rootDirectory, target) {
   const mappings = collectResourceMappings(rootDirectory, target);
   const failures = [];
   for (const check of [
+    () => assertTauriProductionBuildContract(rootDirectory),
     () => assertWorkerResources(rootDirectory, mappings),
     () => assertNativeToolDelivery(rootDirectory, mappings),
     () => assertRequiredMediaToolDelivery(rootDirectory, target),
@@ -2149,6 +2190,7 @@ module.exports = {
   assertRenderRuntimeDelivery,
   assertManagedEngineDelivery,
   assertUpdaterReleaseConfiguration,
+  assertTauriProductionBuildContract,
   assertLoopbackAuditManifest,
   assertNoMissingNativeCapabilities,
   assertNoUnmanagedLocalServices,

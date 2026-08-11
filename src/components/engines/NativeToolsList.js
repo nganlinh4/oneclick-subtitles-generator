@@ -13,18 +13,31 @@ import {
   installRenderPackage,
   removeRenderPackage,
 } from '../../platform/renderPackageService';
+import {
+  cancelVoiceSamples,
+  getVoiceSamplesStatus,
+  installVoiceSamples,
+  removeVoiceSamples,
+} from '../../platform/voiceSampleService';
 
 const TOOL_META = Object.freeze({
   'media-tools': Object.freeze({ kind: 'media', source: 'vendor' }),
   'yt-dlp': Object.freeze({ kind: 'downloader', source: 'official' }),
   deno: Object.freeze({ kind: 'javascript', source: 'official' }),
   'remotion-runtime': Object.freeze({ kind: 'renderer', source: 'pool' }),
+  'gemini-voice-samples': Object.freeze({ kind: 'voicePreviews', source: 'pool' }),
 });
 
 const RENDER_CATALOG = Object.freeze({
   id: 'remotion-runtime',
   label: 'Remotion video renderer',
   license: 'Remotion License + bundled third-party notices',
+});
+
+const VOICE_SAMPLE_CATALOG = Object.freeze({
+  id: 'gemini-voice-samples',
+  label: 'Gemini voice previews',
+  license: 'Provider terms',
 });
 
 const formatBytes = (bytes) => {
@@ -38,6 +51,12 @@ const formatBytes = (bytes) => {
   }
   return `${value >= 10 || unit === 0 ? value.toFixed(0) : value.toFixed(1)} ${units[unit]}`;
 };
+
+const operationReachedExpectedState = (tool, action) => (
+  action === 'remove'
+    ? tool?.state === 'missing' || tool?.pendingRemoval === true
+    : tool?.state === 'installed' && tool?.activeRuntime === true
+);
 
 export const NativeToolRow = ({ catalog, status, onChanged }) => {
   const { t } = useTranslation();
@@ -56,24 +75,53 @@ export const NativeToolRow = ({ catalog, status, onChanged }) => {
     setConfirmRemove(false);
     setError(null);
     const isRenderer = catalog.id === 'remotion-runtime';
-    const command = isRenderer
+    const isVoiceSamples = catalog.id === 'gemini-voice-samples';
+    const command = isVoiceSamples
+      ? action === 'remove' ? removeVoiceSamples : installVoiceSamples
+      : isRenderer
       ? action === 'remove' ? removeRenderPackage : installRenderPackage
       : action === 'remove' ? removeNativeTool : installNativeTool;
     const handlers = {
-      onProgress: ({ operation: next }) => setLocalOperation(next),
+      onProgress: (event) => setLocalOperation(
+        isVoiceSamples ? { ...event, action } : event.operation,
+      ),
       onCompleted: refresh,
       onCancelled: refresh,
       onFailed: (event) => {
         setError(event.error.message);
         refresh();
       },
-      onProtocolError: () => {
+      onProtocolError: async () => {
+        try {
+          const latest = isVoiceSamples
+            ? await getVoiceSamplesStatus()
+            : await getNativeToolsStatus();
+          const tool = isVoiceSamples
+            ? { ...latest, activeRuntime: latest.installed }
+            : latest.tools.find(({ id }) => id === catalog.id);
+          if (operationReachedExpectedState(tool, action)) {
+            refresh();
+            return;
+          }
+        } catch {
+          // The protocol error below remains authoritative when status cannot verify success.
+        }
         setError(t('engines.error.nativeToolProtocol', 'The desktop host returned invalid tool progress.'));
         refresh();
       },
     };
-    const request = isRenderer ? command(handlers) : command(catalog.id, handlers);
-    request.catch(() => {
+    const request = isRenderer || isVoiceSamples
+      ? command(handlers)
+      : command(catalog.id, handlers);
+    if (isVoiceSamples) request.then(refresh).catch((requestError) => {
+      if (requestError?.code === 'voiceSampleCancelled') {
+        refresh();
+        return;
+      }
+      setError(t('engines.error.nativeToolFailed', 'The tool operation could not start.'));
+      refresh();
+    });
+    else request.catch(() => {
       setError(t('engines.error.nativeToolFailed', 'The tool operation could not start.'));
       refresh();
     });
@@ -124,7 +172,9 @@ export const NativeToolRow = ({ catalog, status, onChanged }) => {
             type="button"
             className="engine-card__cancel"
             onClick={() => (
-              catalog.id === 'remotion-runtime'
+              catalog.id === 'gemini-voice-samples'
+                ? cancelVoiceSamples()
+                : catalog.id === 'remotion-runtime'
                 ? cancelRenderPackageJob(operation.job.id)
                 : cancelNativeToolJob(operation.job.id)
             ).catch(() => {})}
@@ -197,12 +247,13 @@ const NativeToolsList = () => {
   const refresh = useCallback(async () => {
     setLoadState('checking');
     try {
-      const [catalogResponse, statusResponse, renderStatus] = await Promise.all([
+      const [catalogResponse, statusResponse, renderStatus, voiceStatus] = await Promise.all([
         getNativeToolsCatalog(),
         getNativeToolsStatus(),
         getRenderPackageStatus(),
+        getVoiceSamplesStatus(),
       ]);
-      setCatalog([...catalogResponse.tools, RENDER_CATALOG]);
+      setCatalog([...catalogResponse.tools, RENDER_CATALOG, VOICE_SAMPLE_CATALOG]);
       setStatus(new Map([
         ...statusResponse.tools.map((tool) => [tool.id, tool]),
         [renderStatus.id, {
@@ -210,6 +261,13 @@ const NativeToolsList = () => {
           activeRuntime: renderStatus.installed,
           pendingRemoval: false,
           restartRequired: false,
+        }],
+        [voiceStatus.id, {
+          ...voiceStatus,
+          activeRuntime: voiceStatus.installed,
+          pendingRemoval: false,
+          restartRequired: false,
+          operation: null,
         }],
       ]));
       setLoadState('ready');

@@ -87,7 +87,6 @@ struct SpeechRuntimeInner {
     install_root: PathBuf,
     work_root: PathBuf,
     resource_root: Option<PathBuf>,
-    development_root: Option<PathBuf>,
     package_manager: RwLock<Option<SpeechPackageManager>>,
     workers: Mutex<HashMap<SpeechBackendRequest, CachedWorker>>,
     transient_workers: Mutex<HashMap<SpeechBackendRequest, Vec<Weak<ManagedSpeechWorker>>>>,
@@ -121,7 +120,6 @@ impl SpeechRuntime {
         install_root: impl AsRef<Path>,
         work_root: impl AsRef<Path>,
         resource_root: Option<PathBuf>,
-        development_root: Option<PathBuf>,
     ) -> io::Result<Self> {
         fs::create_dir_all(install_root.as_ref())?;
         fs::create_dir_all(work_root.as_ref())?;
@@ -129,7 +127,6 @@ impl SpeechRuntime {
             install_root: fs::canonicalize(install_root)?,
             work_root: fs::canonicalize(work_root)?,
             resource_root: canonical_directory(resource_root),
-            development_root: canonical_directory(development_root),
             package_manager: RwLock::new(None),
             workers: Mutex::new(HashMap::new()),
             transient_workers: Mutex::new(HashMap::new()),
@@ -210,57 +207,13 @@ impl SpeechRuntime {
                         managed_runtime: Some(Arc::new(runtime)),
                     });
                 }
-                Err(PackageError::InvalidInstall | PackageError::DeliveryUnavailable) => {}
+                Err(PackageError::InvalidInstall | PackageError::DeliveryUnavailable) => {
+                    return Err(SpeechError::WorkerNotFound);
+                }
                 Err(_) => return Err(SpeechError::WorkerNotFound),
             }
         }
-
-        #[cfg(debug_assertions)]
-        {
-            self.resolve_development_runtime(backend)
-        }
-        #[cfg(not(debug_assertions))]
-        {
-            Err(SpeechError::WorkerNotFound)
-        }
-    }
-
-    #[cfg(debug_assertions)]
-    fn resolve_development_runtime(
-        &self,
-        backend: SpeechBackendRequest,
-    ) -> Result<RuntimeResolution, SpeechError> {
-        let bootstrap = self.resolve_worker()?;
-        let backend_name = backend.runtime_name();
-        let mut roots = vec![
-            self.0.install_root.join(backend_name).join("current"),
-            self.0.install_root.join(backend_name),
-        ];
-        if let Some(root) = &self.0.resource_root {
-            roots.push(root.join("speech").join(backend_name));
-            roots.push(root.join("engines").join("speech").join(backend_name));
-        }
-        if let Some(root) = &self.0.development_root {
-            roots.push(root.join(".venvs").join(backend_name));
-            roots.push(root.join(".venvs").join("narration"));
-            roots.push(root.join(".venv"));
-            roots.push(root.join("python-venv").join("venv"));
-        }
-        let python = roots
-            .iter()
-            .flat_map(|root| python_candidates(root))
-            .find_map(|candidate| canonical_regular_file(&candidate))
-            .ok_or(SpeechError::WorkerNotFound)?;
-        let paths = WorkerPaths {
-            python,
-            bootstrap,
-            model: None,
-        };
-        WorkerProgram::bootstrap(&paths.python, &paths.bootstrap)?;
-        Ok(RuntimeResolution {
-            paths,
-            managed_runtime: None,
-        })
+        Err(SpeechError::WorkerNotFound)
     }
 
     fn resolve_worker(&self) -> Result<PathBuf, SpeechError> {
@@ -268,9 +221,6 @@ impl SpeechRuntime {
         if let Some(root) = &self.0.resource_root {
             candidates.push(root.join("workers/osg_speech_worker.py"));
             candidates.push(root.join("speech_worker.py"));
-        }
-        if let Some(root) = &self.0.development_root {
-            candidates.push(root.join("crates/osg-speech/worker/osg_speech_worker.py"));
         }
         candidates
             .iter()
@@ -486,25 +436,6 @@ fn canonical_regular_file(path: &Path) -> Option<PathBuf> {
     path.is_file().then_some(path)
 }
 
-#[cfg(debug_assertions)]
-fn python_candidates(root: &Path) -> Vec<PathBuf> {
-    if cfg!(windows) {
-        vec![
-            root.join("runtime/python.exe"),
-            root.join("venv/Scripts/python.exe"),
-            root.join("Scripts/python.exe"),
-            root.join("python.exe"),
-        ]
-    } else {
-        vec![
-            root.join("runtime/bin/python3"),
-            root.join("venv/bin/python3"),
-            root.join("bin/python3"),
-            root.join("bin/python"),
-        ]
-    }
-}
-
 fn verified_worker(path: &Path) -> Option<PathBuf> {
     let canonical = canonical_regular_file(path)?;
     let bytes = fs::read(&canonical).ok()?;
@@ -547,17 +478,6 @@ impl SpeechBackendRequest {
             Self::EdgeTts => SpeechPackageId::EdgeTts,
             Self::Gtts => SpeechPackageId::Gtts,
             Self::GeminiTts => SpeechPackageId::GeminiTts,
-        }
-    }
-
-    #[cfg(debug_assertions)]
-    const fn runtime_name(self) -> &'static str {
-        match self {
-            Self::F5Tts => "f5-tts",
-            Self::Chatterbox => "chatterbox",
-            Self::EdgeTts => "edge-tts",
-            Self::Gtts => "gtts",
-            Self::GeminiTts => "gemini-tts",
         }
     }
 
@@ -1514,8 +1434,7 @@ pub(crate) async fn speech_reference_select(
     request: SpeechReferenceSelectRequest,
 ) -> CommandResult<Option<SpeechPlayableArtifact>> {
     let media_engine = state
-        .media_engine
-        .clone()
+        .media_engine()
         .ok_or_else(CommandError::media_tools_unavailable)?;
     let work = runtime
         .work_directory()
@@ -1556,8 +1475,7 @@ pub(crate) async fn speech_reference_import(
     request: SpeechReferenceImportRequest,
 ) -> CommandResult<SpeechPlayableArtifact> {
     let media_engine = state
-        .media_engine
-        .clone()
+        .media_engine()
         .ok_or_else(CommandError::media_tools_unavailable)?;
     let work = runtime
         .work_directory()
@@ -1594,8 +1512,7 @@ pub(crate) async fn speech_reference_extract(
         .filter(|duration| *duration > 0 && *duration <= request.backend.maximum_duration_ms())
         .ok_or_else(|| CommandError::invalid_input("The reference-audio range is invalid."))?;
     let media_engine = state
-        .media_engine
-        .clone()
+        .media_engine()
         .ok_or_else(CommandError::media_tools_unavailable)?;
     let media_path = state
         .editor
@@ -1672,8 +1589,7 @@ pub(crate) async fn speech_artifact_edit(
     request: SpeechArtifactEditRequest,
 ) -> CommandResult<SpeechArtifactDescriptor> {
     let media_engine = state
-        .media_engine
-        .clone()
+        .media_engine()
         .ok_or_else(CommandError::media_tools_unavailable)?;
     let work = runtime
         .work_directory()
@@ -1879,8 +1795,7 @@ pub(crate) async fn speech_alignment_start(
     on_event: Channel<SpeechAlignmentEvent>,
 ) -> CommandResult<JobSnapshot> {
     let engine = state
-        .media_engine
-        .clone()
+        .media_engine()
         .ok_or_else(CommandError::media_tools_unavailable)?;
     let validation_database = state.database.clone();
     let validated = tauri::async_runtime::spawn_blocking(move || {

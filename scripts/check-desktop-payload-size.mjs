@@ -55,6 +55,8 @@ export function auditDesktopPayload({ rootDirectory = REPOSITORY_ROOT, executabl
   for (const file of frontendFiles) {
     invariant(!FORBIDDEN_PAYLOAD.test(file.path), `Forbidden managed payload is embedded in frontend: ${file.path}`);
     invariant(!/product[ _-]?sans/i.test(file.path), `Product Sans remains embedded: ${file.path}`);
+    invariant(!/google[ _-]?sans(?:[ _-]?flex)?\.(?:eot|otf|ttf|woff2?)$/i.test(file.path),
+      `Managed Google Sans Flex remains embedded: ${file.path}`);
   }
 
   const resources = config.bundle?.resources;

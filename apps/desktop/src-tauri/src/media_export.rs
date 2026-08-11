@@ -16,6 +16,7 @@ use tauri_plugin_dialog::DialogExt;
 use tokio_util::sync::CancellationToken;
 
 use crate::background;
+use crate::diagnostics;
 use crate::error::{CommandError, CommandResult};
 use crate::state::DesktopState;
 
@@ -134,6 +135,11 @@ pub(crate) async fn media_export_start(
     .await
     .map_err(|_| CommandError::internal("The media export lookup stopped unexpectedly."))??;
 
+    diagnostics::record(
+        "media-export.dialog-opened",
+        &[("asset", request.asset_id.to_string())],
+    );
+
     let selected = app
         .dialog()
         .file()
@@ -142,6 +148,10 @@ pub(crate) async fn media_export_start(
         .add_filter("Media", &[resolved.asset().extension()])
         .blocking_save_file();
     let Some(selected) = selected else {
+        diagnostics::record(
+            "media-export.dialog-cancelled",
+            &[("asset", request.asset_id.to_string())],
+        );
         return Ok(None);
     };
     let destination = selected
@@ -152,6 +162,7 @@ pub(crate) async fn media_export_start(
     let ticket = background::register_running(&jobs, JobKind::ExportMedia).await?;
     let initial = ticket.snapshot().clone();
     let job_id = initial.id();
+    diagnostics::record("media-export.started", &[("job", job_id.to_string())]);
     let cancellation = ticket.cancellation().clone();
     let source = resolved.path().to_owned();
     let expected_bytes = resolved.asset().size_bytes();
@@ -195,11 +206,19 @@ async fn finish_export(
         match error {
             ExportCopyError::Cancelled => {
                 if let Ok(job) = background::finish_cancellation(jobs, job_id).await {
+                    diagnostics::record("media-export.cancelled", &[("job", job_id.to_string())]);
                     let _ = channel.send(MediaExportEvent::Cancelled { job });
                 }
             }
             error => {
                 let job = background::finish_failure(jobs, job_id).await;
+                diagnostics::record(
+                    "media-export.failed",
+                    &[
+                        ("job", job_id.to_string()),
+                        ("code", command_error(error).code().to_owned()),
+                    ],
+                );
                 if error != ExportCopyError::ChannelClosed {
                     let _ = channel.send(MediaExportEvent::Failed {
                         job,
@@ -212,12 +231,20 @@ async fn finish_export(
     }
 
     if let Ok(job) = background::apply(jobs, job_id, JobUpdate::Succeed).await {
+        diagnostics::record("media-export.completed", &[("job", job_id.to_string())]);
         let _ = channel.send(MediaExportEvent::Completed {
             job,
             bytes_written: expected_bytes,
         });
     } else {
         let job = background::finish_failure(jobs, job_id).await;
+        diagnostics::record(
+            "media-export.failed",
+            &[
+                ("job", job_id.to_string()),
+                ("code", "mediaExportFailed".to_owned()),
+            ],
+        );
         let _ = channel.send(MediaExportEvent::Failed {
             job,
             error: CommandError::media_export_failed(),

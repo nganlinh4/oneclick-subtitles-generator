@@ -28,8 +28,8 @@ không khả dụng; ứng dụng không tự tải binary chưa review và khô
 
 ### Policy model Gemini
 
-`src/config/geminiModelCatalog.json` là catalog model frontend duy nhất và ghi nhận
-`screen-goated-toolbox/catalog/model_catalog.json` là nguồn đồng bộ. Catalog hiện công khai
+`src/config/geminiModelCatalog.json` là catalog model frontend do OSG sở hữu và là nguồn chính thức
+duy nhất. Catalog được đối chiếu trực tiếp với tài liệu model Gemini chính thức và hiện công khai
 `gemini-3.5-flash-lite` (mặc định hằng ngày/transcription), `gemini-3.6-flash`,
 `gemini-3.5-flash` và `gemini-3.1-flash-lite` cho tác vụ multimodal thông thường; cả bốn đều nhận
 audio và video. Tạo ảnh dùng `gemini-3.1-flash-image`, model này nhận video; live audio dùng
@@ -69,8 +69,12 @@ Compile mà không tạo bộ cài:
 ```powershell
 npm run build:frontend
 cargo check --workspace --all-features --locked
-npm run tauri -- build --no-bundle --ci -- --locked
+npm run tauri:build -- --no-bundle
 ```
+
+Dùng `npm run tauri:build` để tạo bộ cài. Không chạy trực tiếp `cargo build --release`: lệnh production
+của Tauri bật custom protocol để nhúng frontend, còn Cargo release thuần sẽ giữ lại URL của Vite dev
+server. Crate chủ động từ chối kiểu build không an toàn đó.
 
 ## Kiểm tra
 
@@ -117,11 +121,12 @@ Ba target còn lại trong matrix là `x86_64-unknown-linux-gnu`, `aarch64-apple
 
 | Runtime | Trạng thái phân phối |
 | --- | --- |
-| yt-dlp | Release direct `2026.07.04` đã review là baseline cho bốn nhóm target. Thao tác media đầu tiên tự động cài toàn bộ batch công cụ bắt buộc với tiến trình có thể hủy. Nếu tiến trình yt-dlp đã cài bị lỗi, host chỉ thực hiện một lần kiểm tra release immutable có giới hạn; phiên bản mới được xác minh sẽ được cài song song với binary đang có lease và chỉ kích hoạt sau khi khởi động lại. Ứng dụng không chạy `yt-dlp -U`, không ghi đè binary đang chạy và không tự lặp lại thao tác media đã lỗi. |
-| Deno | Catalog có release direct-upstream `2.9.5`, content-addressed đã review cho bốn nhóm target. Kiểm tra URL tự động cài ở lần dùng đầu tiên, có tiến trình có thể hủy và dừng để yêu cầu khởi động lại trước khi kích hoạt; binary không được bundle hay tải lúc khởi động. |
-| FFmpeg / ffprobe | Windows x64 tải trực tiếp archive vendor `8.1.2` đã khóa hash, chỉ cài hai executable cùng license/build notice và yêu cầu khởi động lại. Linux/macOS vẫn fail-closed cho đến khi có delivery tương đương đã review. |
+| yt-dlp | Release direct `2026.07.04` đã review là baseline cho bốn nhóm target. Thao tác media đầu tiên tự động cài song song toàn bộ batch bắt buộc với tiến trình tổng hợp có thể hủy. Nếu yt-dlp bị lỗi, host kiểm tra release immutable có giới hạn và kích hoạt nóng phiên bản mới đã xác minh, không chạy `yt-dlp -U` và không cần khởi động lại. |
+| Deno | Catalog có release direct-upstream `2.9.5`, content-addressed đã review cho bốn nhóm target. Kiểm tra URL tự động cài và kích hoạt ở lần dùng đầu tiên; binary không được bundle hay tải lúc khởi động. |
+| FFmpeg / ffprobe | Windows x64 tải archive vendor `8.1.2` đã khóa hash, chỉ cài hai executable cùng license/build notice và kích hoạt ngay trong phiên hiện tại. Linux/macOS vẫn fail-closed cho đến khi có delivery tương đương đã review. |
 | Parakeet / Faster-Whisper / Qwen3-ASR | Windows x64 có manifest runtime/model content-addressed, ưu tiên nguồn model chính thức rồi mới dùng bundle pool đã review. Cả năm engine đều cài, chạy với lease và gỡ qua job native typed. |
 | F5-TTS / Chatterbox / Edge TTS / gTTS / Gemini TTS worker | Windows x64 có runtime/model đã xác minh. F5 và Chatterbox tải/gỡ độc lập; các mode provider dùng chung worker runtime. License model F5 là `CC-BY-NC-4.0`. |
+| Bản xem trước giọng nói Gemini | Gói 30 mẫu chính xác, định địa chỉ theo nội dung (13,5 MB) tự cài ở lần nghe thử đầu tiên trên cả bốn họ nền tảng, phát qua capability media gốc mờ đục và gỡ ngay không cần khởi động lại. Frontend không nhúng WAV xem trước. |
 | Remotion runtime | Windows x64 tải archive bundle pool content-addressed 265 MB gồm Node 24.19, Chrome for Testing 149, Remotion 4.0.507, bundle OSG, font Inter đã review và notice; cài khoảng 625 MB và gỡ hoàn toàn được. |
 | Updater ứng dụng | Public key đã cấu hình; artifact updater được ký bằng private key nằm ngoài repository. |
 
@@ -135,16 +140,21 @@ Phân phối speech Windows gồm runtime, thư viện bắc cầu, model, notic
 review. Model F5TTS v1 base vẫn dùng `CC-BY-NC-4.0` và được ghi rõ trong UI.
 
 Capability `manage-native-tools` công khai command typed cho
-catalog/status/install/remove/cancel; path executable và URL upstream vẫn ở native. OSG sẽ báo khi
-activation hoặc deferred removal phải chờ restart vì consumer đang giữ tool lease. Flow người dùng
-hiện tại gọi catalog/status/install/cancel từ thao tác media có sẵn; tab Tools compact cho phép gỡ
-đã xác nhận mọi runtime được quản lý. Một
-lần xác nhận duy nhất nêu rõ đúng package cần thiết và license trước khi tải. Tiến trình cài dùng
-toast hiện có với nút hủy rõ ràng; sau khi cài xong, flow không thử lại trên runtime cũ mà yêu cầu
-khởi động lại. FFmpeg/ffprobe chỉ được đề nghị trên Windows x64 từ catalog đã review.
+catalog/status/install/remove/cancel; path executable và URL upstream vẫn ở native. Các tool bắt
+buộc được cài song song ở lần dùng đầu tiên, giữ lease đã xác minh và làm mới ngay download/media/
+render runtime trong phiên hiện tại. Tiến trình tổng hợp dùng toast hiện có với nút hủy rõ ràng.
+Việc gỡ sẽ tách runtime rồi xóa ngay trong cùng phiên. Nếu một thao tác phương tiện đang chạy, lệnh
+gỡ trả về trạng thái bận để người dùng thử lại sau khi thao tác kết thúc; không cần khởi động lại.
+Native host chỉ ghi mã sự kiện đã làm sạch và
+ID opaque vào `osg.log` có giới hạn cùng một file log cũ luân phiên trong thư mục log của ứng dụng.
+Trên Windows, đường dẫn chính xác là
+`%LOCALAPPDATA%\io.github.nganlinh4.oneclicksubtitles\logs\osg.log`.
+FFmpeg/ffprobe chỉ được cung cấp trên Windows x64 từ catalog đã review.
 
-Build debug có thể tìm tool trong source tree hoặc hệ thống đã được cho phép rõ ràng. Build release
-không phụ thuộc vào `PATH` hay bản cài cục bộ tùy ý.
+Build development và release dùng cùng catalog phân phối remote đã commit và cùng package store có
+receipt được xác minh. Cả hai đều không tìm runtime tùy chọn trong source tree, cạnh executable,
+virtual environment hay `PATH` hệ thống. `npm run tauri:dev` kiểm tra read-back của bundle pool OSG
+trước khi khởi động; build Cargo trực tiếp cũng bắt buộc checkpoint source/catalog cục bộ tương tự.
 
 ## Dữ liệu và migration
 
