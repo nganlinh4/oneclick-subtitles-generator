@@ -271,7 +271,8 @@ pub(crate) fn copy_export(
     mut report_progress: impl FnMut(u64, u64) -> Result<(), ExportCopyError>,
 ) -> Result<(), ExportCopyError> {
     check_cancellation(&is_cancelled)?;
-    let mut source = open_source(source_path, expected_bytes)?;
+    let source_path = path_with_canonical_parent(source_path, ExportCopyError::SourceChanged)?;
+    let mut source = open_source(&source_path, expected_bytes)?;
     let destination = DestinationPlan::new(destination_path, &source.identity)?;
     let mut staged = tempfile::Builder::new()
         .prefix(".osg-export-")
@@ -317,7 +318,7 @@ pub(crate) fn copy_export(
         .as_file()
         .sync_all()
         .map_err(|_| failure_or_cancelled(&is_cancelled, ExportCopyError::Io))?;
-    verify_source(source_path, &source, expected_bytes)?;
+    verify_source(&source_path, &source, expected_bytes)?;
     source
         .file
         .seek(SeekFrom::Start(0))
@@ -346,7 +347,7 @@ pub(crate) fn copy_export(
     {
         return Err(ExportCopyError::SourceChanged);
     }
-    verify_source(source_path, &source, expected_bytes)?;
+    verify_source(&source_path, &source, expected_bytes)?;
     check_cancellation(&is_cancelled)?;
     let destination_path = destination.into_verified_destination(&source.identity)?;
 
@@ -433,7 +434,6 @@ impl DestinationPlan {
             .filter(|value| !value.is_empty())
             .ok_or(ExportCopyError::UnsafeDestination)?
             .to_owned();
-        validate_path_chain(parent)?;
         let directory = fs::canonicalize(parent).map_err(|_| ExportCopyError::UnsafeDestination)?;
         validate_path_chain(&directory)?;
         let directory_identity =
@@ -478,6 +478,26 @@ impl DestinationPlan {
         drop(existing_identity);
         Ok(destination)
     }
+}
+
+fn path_with_canonical_parent(
+    path: &Path,
+    error: ExportCopyError,
+) -> Result<PathBuf, ExportCopyError> {
+    if !path.is_absolute() {
+        return Err(error);
+    }
+    let parent = path
+        .parent()
+        .filter(|value| !value.as_os_str().is_empty())
+        .ok_or(error)?;
+    let file_name = path
+        .file_name()
+        .filter(|value| !value.is_empty())
+        .ok_or(error)?;
+    let parent = fs::canonicalize(parent).map_err(|_| error)?;
+    validate_path_chain(&parent).map_err(|_| error)?;
+    Ok(parent.join(file_name))
 }
 
 fn existing_destination_identity(
@@ -710,6 +730,29 @@ mod tests {
         assert_eq!(
             copy_export(&real_source, &destination_link, 32, || false, |_, _| Ok(())),
             Err(ExportCopyError::UnsafeDestination)
+        );
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn trusted_symlinked_ancestors_resolve_before_file_identity_checks() {
+        use std::os::unix::fs::symlink;
+
+        let root = tempfile::tempdir().expect("tempdir");
+        let real = root.path().join("real");
+        fs::create_dir_all(&real).expect("real directory");
+        let alias = root.path().join("alias");
+        symlink(&real, &alias).expect("directory alias");
+        let source = alias.join("source.mp4");
+        let destination = alias.join("export.mp4");
+        write_bytes(&source, 7, 32);
+
+        copy_export(&source, &destination, 32, || false, |_, _| Ok(()))
+            .expect("export through canonical parent");
+
+        assert_eq!(
+            fs::read(real.join("export.mp4")).expect("read export"),
+            vec![7; 32]
         );
     }
 

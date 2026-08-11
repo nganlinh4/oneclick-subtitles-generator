@@ -892,7 +892,18 @@ mod tests {
     fn media_tool_availability_matches_the_reviewed_platform_catalog() {
         let temp = tempfile::tempdir().unwrap();
         let coordinator = Arc::new(TestCoordinator::default());
-        let manager = manager(&temp, coordinator.clone());
+        let manager = if crate::catalog::current_platform() == "windows-x86_64" {
+            manager(&temp, coordinator.clone())
+        } else {
+            NativeToolManager::with_parts(
+                temp.path(),
+                coordinator.clone(),
+                DeliveryCatalog::builtin().unwrap(),
+                Arc::new(MemoryFetcher(HashMap::new())),
+                Arc::new(NoUpdateResolver),
+            )
+            .unwrap()
+        };
         let status = manager.status(NativeToolId::MediaTools).state;
         let result = manager.install(
             NativeToolId::MediaTools,
