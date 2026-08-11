@@ -546,10 +546,16 @@ fn lock_with_control<'a>(
     deadline: Instant,
 ) -> Result<MutexGuard<'a, Option<WorkerSession>>> {
     loop {
+        if control.is_cancelled() {
+            return Err(SpeechError::Cancelled);
+        }
+        if Instant::now() >= deadline {
+            return Err(SpeechError::TimedOut {
+                timeout: control.timeout(),
+            });
+        }
         match mutex.try_lock() {
-            Ok(guard) => return Ok(guard),
-            Err(TryLockError::Poisoned(_)) => return Err(SpeechError::StateUnavailable),
-            Err(TryLockError::WouldBlock) => {
+            Ok(guard) => {
                 if control.is_cancelled() {
                     return Err(SpeechError::Cancelled);
                 }
@@ -558,6 +564,10 @@ fn lock_with_control<'a>(
                         timeout: control.timeout(),
                     });
                 }
+                return Ok(guard);
+            }
+            Err(TryLockError::Poisoned(_)) => return Err(SpeechError::StateUnavailable),
+            Err(TryLockError::WouldBlock) => {
                 std::thread::sleep(POLL_INTERVAL);
             }
         }

@@ -238,13 +238,19 @@ fn cancelling_a_waiting_request_does_not_interrupt_the_active_worker() {
     ));
 
     let (active_started_tx, active_started_rx) = mpsc::channel();
+    let (active_done_tx, active_done_rx) = mpsc::channel();
+    let active_cancellation = CancellationToken::default();
     let active_worker = Arc::clone(&worker);
     let active_output = output(directory.path(), "active-slow");
-    let active_control = control().with_progress(move |_progress: &SpeechProgress| {
-        let _ = active_started_tx.send(());
-    });
+    let active_control = control()
+        .with_cancellation(active_cancellation.clone())
+        .with_progress(move |_progress: &SpeechProgress| {
+            let _ = active_started_tx.send(());
+        });
     let active = std::thread::spawn(move || {
-        active_worker.synthesize(&edge_request("MOCK_SLOW"), &active_output, &active_control)
+        let result =
+            active_worker.synthesize(&edge_request("MOCK_HANG"), &active_output, &active_control);
+        let _ = active_done_tx.send(matches!(result, Err(SpeechError::Cancelled)));
     });
     active_started_rx
         .recv_timeout(Duration::from_secs(2))
@@ -262,15 +268,20 @@ fn cancelling_a_waiting_request_does_not_interrupt_the_active_worker() {
     waiting_started_rx
         .recv_timeout(Duration::from_secs(1))
         .unwrap();
-    std::thread::sleep(Duration::from_millis(50));
     waiting_cancellation.cancel();
 
     assert!(matches!(
         waiting.join().unwrap(),
         Err(SpeechError::Cancelled)
     ));
-    assert!(active.join().unwrap().is_ok());
-    assert_eq!(worker.status(), WorkerStatus::Ready);
+    assert!(matches!(
+        active_done_rx.recv_timeout(Duration::from_millis(150)),
+        Err(mpsc::RecvTimeoutError::Timeout)
+    ));
+    active_cancellation.cancel();
+    assert!(active_done_rx.recv_timeout(Duration::from_secs(2)).unwrap());
+    active.join().unwrap();
+    assert_eq!(worker.status(), WorkerStatus::Stopped);
     assert!(
         worker
             .synthesize(
@@ -280,6 +291,7 @@ fn cancelling_a_waiting_request_does_not_interrupt_the_active_worker() {
             )
             .is_ok()
     );
+    assert_eq!(worker.status(), WorkerStatus::Ready);
 }
 
 #[test]
