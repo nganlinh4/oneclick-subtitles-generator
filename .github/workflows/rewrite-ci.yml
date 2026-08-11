@@ -7,6 +7,15 @@ on:
       - main
       - "rewrite/**"
   workflow_dispatch:
+    inputs:
+      job:
+        description: Validation scope
+        required: true
+        default: full
+        type: choice
+        options:
+          - full
+          - installed-smoke
 
 permissions:
   contents: read
@@ -101,6 +110,7 @@ jobs:
   native-matrix:
     name: ${{ matrix.platform }} native build
     needs: invariants
+    if: github.event_name != 'workflow_dispatch' || inputs.job == 'full'
     runs-on: ${{ matrix.os }}
     timeout-minutes: 120
     strategy:
@@ -231,3 +241,53 @@ jobs:
       - name: Validate manually produced installers and packaged resources
         if: github.event_name == 'workflow_dispatch'
         run: node scripts/check-release-artifacts.js --target "${{ matrix.rust-target }}" --bundles "${{ matrix.bundles }}"
+
+  windows-installed-smoke:
+    name: Published Windows installer clean-profile smoke
+    needs: invariants
+    if: github.event_name == 'workflow_dispatch' && inputs.job == 'installed-smoke'
+    runs-on: windows-2022
+    timeout-minutes: 20
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          persist-credentials: false
+
+      - name: Use pinned Node.js
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version-file: .node-version
+          cache: npm
+          cache-dependency-path: package-lock.json
+
+      - name: Use pinned npm
+        shell: bash
+        run: npm install --global "$(node -p 'require("./package.json").packageManager')"
+
+      - name: Install locked artifact-inspection dependencies
+        run: npm ci --ignore-scripts
+
+      - name: Download the immutable published development installer
+        shell: pwsh
+        run: |
+          $version = (Get-Content -LiteralPath "package.json" -Raw | ConvertFrom-Json).version
+          $asset = "OneClickSubtitlesGenerator_${version}_x64-setup.exe"
+          $release = "https://github.com/nganlinh4/oneclick-subtitles-generator/releases/download/v${version}"
+          $bundle = "target\x86_64-pc-windows-msvc\release\bundle\nsis"
+          New-Item -ItemType Directory -Force -Path $bundle | Out-Null
+          Invoke-WebRequest -Uri "$release/$asset" -OutFile (Join-Path $bundle "One-Click Subtitles Generator_${version}_x64-setup.exe")
+          Invoke-WebRequest -Uri "$release/$asset.sig" -OutFile (Join-Path $bundle "One-Click Subtitles Generator_${version}_x64-setup.exe.sig")
+
+      - name: Validate installer architecture, resources, and updater signature
+        run: node scripts/check-release-artifacts.js --target x86_64-pc-windows-msvc --bundles nsis
+
+      - name: Install and launch from the isolated clean runner profile
+        shell: pwsh
+        run: |
+          $installer = Get-ChildItem -LiteralPath "target\x86_64-pc-windows-msvc\release\bundle\nsis" -File -Filter "*.exe"
+          if (@($installer).Count -ne 1) {
+            throw "Expected exactly one NSIS installer, found $(@($installer).Count)"
+          }
+          $expectedVersion = (Get-Content -LiteralPath "package.json" -Raw | ConvertFrom-Json).version
+          ./scripts/test-installed-windows.ps1 -InstallerPath $installer.FullName -ExpectedVersion $expectedVersion

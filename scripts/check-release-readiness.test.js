@@ -66,6 +66,19 @@ function writeFile(root, relativePath, contents = 'fixture') {
   return absolutePath;
 }
 
+function replaceInWorkflowJob(workflow, jobName, search, replacement) {
+  const heading = `  ${jobName}:`;
+  const start = workflow.indexOf(heading);
+  assert.notEqual(start, -1, `Missing workflow job ${jobName}`);
+  const nextJobOffset = workflow.slice(start + heading.length).search(/^  [a-zA-Z0-9_-]+:\s*$/m);
+  const end = nextJobOffset === -1
+    ? workflow.length
+    : start + heading.length + nextJobOffset;
+  const job = workflow.slice(start, end);
+  assert.ok(job.includes(search), `${jobName} does not contain the requested mutation target`);
+  return workflow.slice(0, start) + job.replace(search, replacement) + workflow.slice(end);
+}
+
 function createWorkerFixture({ packageSpeech = true, packageRender = true } = {}) {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), 'osg-release-readiness-'));
   writeFile(root, '.gitattributes', '*.mjs text eol=lf\n*.py text eol=lf\n');
@@ -326,23 +339,23 @@ test('workflow is unsigned, read-only, credentialless, and locked', () => {
     /Unsigned package validation must be manual-only/,
   );
   const nativeSetupPython = `uses: actions/setup-python@${ACTION_PINS['actions/setup-python']}`;
-  const nativeSetupIndex = workflow.lastIndexOf(nativeSetupPython);
-  assert.notEqual(nativeSetupIndex, -1);
-  const nativeWithoutPython =
-    workflow.slice(0, nativeSetupIndex) +
-    '# native setup-python intentionally removed' +
-    workflow.slice(nativeSetupIndex + nativeSetupPython.length);
+  const nativeWithoutPython = replaceInWorkflowJob(
+    workflow,
+    'native-matrix',
+    nativeSetupPython,
+    '# native setup-python intentionally removed',
+  );
   assert.throws(
     () => assertWorkflowCommands(nativeWithoutPython),
     /native-matrix must install Python through the reviewed setup-python action/,
   );
   const nativeSetupNode = `uses: actions/setup-node@${ACTION_PINS['actions/setup-node']}`;
-  const nativeNodeIndex = workflow.lastIndexOf(nativeSetupNode);
-  assert.notEqual(nativeNodeIndex, -1);
-  const nativeWithoutNode =
-    workflow.slice(0, nativeNodeIndex) +
-    '# native setup-node intentionally removed' +
-    workflow.slice(nativeNodeIndex + nativeSetupNode.length);
+  const nativeWithoutNode = replaceInWorkflowJob(
+    workflow,
+    'native-matrix',
+    nativeSetupNode,
+    '# native setup-node intentionally removed',
+  );
   assert.throws(
     () => assertWorkflowCommands(nativeWithoutNode),
     /native-matrix must install Node through the reviewed setup-node action/,
