@@ -744,6 +744,15 @@ function collectEmbeddedWorkers(rootDirectory = REPOSITORY_ROOT) {
 }
 
 function assertWorkerResources(rootDirectory = REPOSITORY_ROOT, mappings = collectResourceMappings(rootDirectory)) {
+  const attributesPath = path.join(rootDirectory, '.gitattributes');
+  invariant(fs.existsSync(attributesPath), 'Packaged worker checkout rules require .gitattributes');
+  const attributes = fs.readFileSync(attributesPath, 'utf8');
+  for (const rule of ['*.mjs text eol=lf', '*.py text eol=lf']) {
+    invariant(
+      attributes.split(/\r?\n/).includes(rule),
+      `Packaged worker checkout rules must include ${rule}`,
+    );
+  }
   const workers = collectEmbeddedWorkers(rootDirectory);
   const expectedWorkers = new Set([
     'osg_asr_worker.py',

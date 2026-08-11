@@ -41,6 +41,7 @@ function writeFile(root, relativePath, contents = 'fixture') {
 
 function createWorkerFixture({ packageSpeech = true, packageRender = true } = {}) {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), 'osg-release-readiness-'));
+  writeFile(root, '.gitattributes', '*.mjs text eol=lf\n*.py text eol=lf\n');
   writeFile(root, 'crates/osg-asr/worker/osg_asr_worker.py', 'asr worker');
   writeFile(root, 'crates/osg-speech/worker/osg_speech_worker.py', 'speech worker');
   writeFile(root, 'video-renderer/worker/osg_render_worker.mjs', 'render worker');
@@ -453,6 +454,17 @@ test('worker resource validation fail-closes when the render worker is omitted',
   assert.throws(
     () => assertWorkerResources(root, mappings),
     /render\.rs embeds osg_render_worker\.mjs/,
+  );
+});
+
+test('worker resource validation fail-closes on platform-dependent checkout bytes', (context) => {
+  const root = createWorkerFixture();
+  context.after(() => fs.rmSync(root, { force: true, recursive: true }));
+  writeFile(root, '.gitattributes', '*.mjs text\n*.py text\n');
+  const mappings = collectResourceMappings(root);
+  assert.throws(
+    () => assertWorkerResources(root, mappings),
+    /must include \*\.mjs text eol=lf/,
   );
 });
 
