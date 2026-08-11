@@ -192,6 +192,9 @@ jobs:
       - name: Verify effective Node, npm, Python, and Rust pins
         run: node scripts/check-release-readiness.js --profile host-toolchain
 
+      - name: Compile frozen frontend
+        run: npm run build:frontend
+
       - name: Fetch the locked Rust dependency graph
         run: cargo fetch --locked --target "${{ matrix.rust-target }}"
 
@@ -211,9 +214,6 @@ jobs:
 
       - name: Test frontend
         run: npm test
-
-      - name: Compile frozen frontend
-        run: npm run build:frontend
 
       - name: Enforce the embedded desktop payload budget
         run: npm run check:desktop-payload-size

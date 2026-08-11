@@ -600,6 +600,15 @@ function assertWorkflowCommands(workflow) {
     invariant(workflow.includes(fragment), `The workflow is missing required locked gate: ${fragment}`);
   }
   assertWorkflowToolchainPins(workflow);
+  const nativeMatrix = workflowJobBlock(workflow, 'native-matrix');
+  const frontendBuildIndex = nativeMatrix.indexOf('run: npm run build:frontend');
+  const rustClippyIndex = nativeMatrix.indexOf(
+    'run: cargo clippy --workspace --all-targets --all-features --locked',
+  );
+  invariant(
+    frontendBuildIndex !== -1 && rustClippyIndex !== -1 && frontendBuildIndex < rustClippyIndex,
+    'native-matrix must build frontendDist before compiling the Tauri Rust workspace',
+  );
 
   for (const manualCommand of [
     'node scripts/check-release-readiness.js --profile runtime-package --target "${{ matrix.rust-target }}"',

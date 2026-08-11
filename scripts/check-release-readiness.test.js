@@ -79,6 +79,17 @@ function replaceInWorkflowJob(workflow, jobName, search, replacement) {
   return workflow.slice(0, start) + job.replace(search, replacement) + workflow.slice(end);
 }
 
+function transformWorkflowJob(workflow, jobName, transform) {
+  const heading = `  ${jobName}:`;
+  const start = workflow.indexOf(heading);
+  assert.notEqual(start, -1, `Missing workflow job ${jobName}`);
+  const nextJobOffset = workflow.slice(start + heading.length).search(/^  [a-zA-Z0-9_-]+:\s*$/m);
+  const end = nextJobOffset === -1
+    ? workflow.length
+    : start + heading.length + nextJobOffset;
+  return workflow.slice(0, start) + transform(workflow.slice(start, end)) + workflow.slice(end);
+}
+
 function createWorkerFixture({ packageSpeech = true, packageRender = true } = {}) {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), 'osg-release-readiness-'));
   writeFile(root, '.gitattributes', '*.mjs text eol=lf\n*.py text eol=lf\n');
@@ -359,6 +370,15 @@ test('workflow is unsigned, read-only, credentialless, and locked', () => {
   assert.throws(
     () => assertWorkflowCommands(nativeWithoutNode),
     /native-matrix must install Node through the reviewed setup-node action/,
+  );
+  const buildLine = '        run: npm run build:frontend\n';
+  const frontendBuiltTooLate = transformWorkflowJob(workflow, 'native-matrix', (job) => {
+    assert.ok(job.includes(buildLine));
+    return job.replace(buildLine, '') + `\n${buildLine}`;
+  });
+  assert.throws(
+    () => assertWorkflowCommands(frontendBuiltTooLate),
+    /native-matrix must build frontendDist before compiling the Tauri Rust workspace/,
   );
   for (const gate of [
     'node --test scripts/frozen-css-compatibility.test.mjs scripts/check-frozen-css-output.test.mjs',
