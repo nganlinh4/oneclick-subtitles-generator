@@ -448,6 +448,13 @@ mod tests {
         symlink(&runtime, &python).unwrap();
 
         let program = WorkerProgram::native(&python).unwrap();
-        assert_eq!(program.executable(), python);
+        let expected = std::fs::canonicalize(&environment).unwrap().join("python3");
+        assert_eq!(program.executable(), expected);
+        assert!(
+            std::fs::symlink_metadata(program.executable())
+                .unwrap()
+                .file_type()
+                .is_symlink()
+        );
     }
 }
