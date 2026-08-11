@@ -6,8 +6,8 @@ import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 export const FROZEN_CSS_ARTIFACT = Object.freeze({
-  fileName: 'index-CwMXmTlz.css',
-  sha256: '207f68d9887276d6df98ce51021ede5689b816e21b4d8e1e87878f811387d0d0',
+  fileName: 'index-DlaLxCt0.css',
+  sha256: '047f70d18c88f633637a39e9ac7103806190f74d544e6de7dfcf9ccf303ad73e',
   sizeBytes: 682_209,
   parity: Object.freeze({
     albumArtCount: 22,
