@@ -79,7 +79,7 @@
       "endpoints": [
         "https://github.com/nganlinh4/oneclick-subtitles-generator/releases/latest/download/latest.json"
       ],
-      "pubkey": "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IDlFQkI5MUFGMTczRTlEM0MKUldROG5UNFhyNUc3bm9EMml5L0FpSG9OcUVadnNuQ0V6V29kaWlQdHpEQ3o2by91S2lFaEIvd20K",
+      "pubkey": "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IDEwRTVDN0IzRTAwNzgzNTgKUldSWWd3ZmdzOGZsRUo1ME1YSXR1eWFXWGg2MzQxdTJ0Z3BtY2lFSW5GOVc3YnlGY0YvTkx2eXUK",
       "windows": {
         "installMode": "passive"
       }
