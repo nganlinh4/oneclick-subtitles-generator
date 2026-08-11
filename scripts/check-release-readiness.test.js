@@ -382,7 +382,7 @@ test('workflow is unsigned, read-only, credentialless, and locked', () => {
   );
   assert.throws(
     () => assertWorkflowCommands(workflow.replace(
-      'run: npm --prefix apps/desktop run tauri:build -- --no-bundle',
+      'run: npm --prefix apps/desktop run tauri:build -- -- --no-bundle',
       'run: npm --prefix apps/desktop run tauri -- build --no-bundle',
     )),
     /(?:required locked gate.*tauri:build|production-feature Tauri wrapper)/,

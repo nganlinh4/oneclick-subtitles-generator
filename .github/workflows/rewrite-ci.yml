@@ -234,7 +234,7 @@ jobs:
         run: npm run check:production-transport
 
       - name: Compile native Tauri application without bundling or signing
-        run: npm --prefix apps/desktop run tauri:build -- --no-bundle --ci --target "${{ matrix.rust-target }}" -- --locked
+        run: npm --prefix apps/desktop run tauri:build -- -- --no-bundle --ci --target "${{ matrix.rust-target }}" -- --locked
 
       - name: Enforce the native executable payload budget
         run: node scripts/check-desktop-payload-size.mjs --target "${{ matrix.rust-target }}"
