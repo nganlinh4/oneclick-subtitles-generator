@@ -3015,7 +3015,7 @@ dependencies = [
 
 [[package]]
 name = "osg-application"
-version = "3.0.0-rc.1"
+version = "3.0.0-rc.2"
 dependencies = [
  "osg-domain",
  "serde",
@@ -3038,7 +3038,7 @@ dependencies = [
 
 [[package]]
 name = "osg-desktop"
-version = "3.0.0-rc.1"
+version = "3.0.0-rc.2"
 dependencies = [
  "atomicwrites",
  "base64 0.22.1",
@@ -3081,7 +3081,7 @@ dependencies = [
 
 [[package]]
 name = "osg-domain"
-version = "3.0.0-rc.1"
+version = "3.0.0-rc.2"
 dependencies = [
  "serde",
  "serde_json",
@@ -3105,7 +3105,7 @@ dependencies = [
 
 [[package]]
 name = "osg-engine-packages"
-version = "3.0.0-rc.1"
+version = "3.0.0-rc.2"
 dependencies = [
  "fs2",
  "reqwest",
@@ -3121,7 +3121,7 @@ dependencies = [
 
 [[package]]
 name = "osg-gemini"
-version = "3.0.0-rc.1"
+version = "3.0.0-rc.2"
 dependencies = [
  "async-stream",
  "base64 0.22.1",
@@ -3142,7 +3142,7 @@ dependencies = [
 
 [[package]]
 name = "osg-infrastructure"
-version = "3.0.0-rc.1"
+version = "3.0.0-rc.2"
 dependencies = [
  "blake3",
  "keyring",
@@ -3161,7 +3161,7 @@ dependencies = [
 
 [[package]]
 name = "osg-live-music"
-version = "3.0.0-rc.1"
+version = "3.0.0-rc.2"
 dependencies = [
  "base64 0.22.1",
  "futures-util",
@@ -3178,7 +3178,7 @@ dependencies = [
 
 [[package]]
 name = "osg-media"
-version = "3.0.0-rc.1"
+version = "3.0.0-rc.2"
 dependencies = [
  "command-group",
  "serde",
@@ -3189,7 +3189,7 @@ dependencies = [
 
 [[package]]
 name = "osg-media-pipeline"
-version = "3.0.0-rc.1"
+version = "3.0.0-rc.2"
 dependencies = [
  "osg-media",
  "serde",
@@ -3199,7 +3199,7 @@ dependencies = [
 
 [[package]]
 name = "osg-media-server"
-version = "3.0.0-rc.1"
+version = "3.0.0-rc.2"
 dependencies = [
  "mime_guess",
  "serde",
@@ -3226,7 +3226,7 @@ dependencies = [
 
 [[package]]
 name = "osg-providers"
-version = "3.0.0-rc.1"
+version = "3.0.0-rc.2"
 dependencies = [
  "base64 0.22.1",
  "dom_query",
@@ -3248,7 +3248,7 @@ dependencies = [
 
 [[package]]
 name = "osg-render"
-version = "3.0.0-rc.1"
+version = "3.0.0-rc.2"
 dependencies = [
  "blake3",
  "command-group",
@@ -3264,7 +3264,7 @@ dependencies = [
 
 [[package]]
 name = "osg-speech"
-version = "3.0.0-rc.1"
+version = "3.0.0-rc.2"
 dependencies = [
  "command-group",
  "serde",
