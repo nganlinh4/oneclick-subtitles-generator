@@ -1,6 +1,6 @@
 {
   "name": "@osg/desktop",
-  "version": "3.0.0-rc.2",
+  "version": "2.6.2-dev.1",
   "private": true,
   "packageManager": "npm@11.17.0",
   "engines": {

@@ -3,6 +3,11 @@ const fs = require('node:fs');
 const os = require('node:os');
 const path = require('node:path');
 const test = require('node:test');
+const {
+  createHash,
+  generateKeyPairSync,
+  sign,
+} = require('node:crypto');
 
 const {
   assertArtifactArchitecture,
@@ -17,7 +22,43 @@ const {
   readMachCpuTypes,
   readPeMachine,
   validateReleaseArtifacts,
+  verifyUpdaterSignature,
 } = require('./check-release-artifacts');
+
+function createUpdaterSignatureFixture(root) {
+  const artifact = writeFile(root, 'installer.exe', 'signed installer bytes');
+  const { privateKey, publicKey } = generateKeyPairSync('ed25519');
+  const publicDer = publicKey.export({ format: 'der', type: 'spki' });
+  const rawPublicKey = publicDer.subarray(-32);
+  const keyId = createHash('sha256').update(rawPublicKey).digest().subarray(0, 8);
+  const publicPayload = Buffer.concat([Buffer.from('Ed'), keyId, rawPublicKey]);
+  const artifactDigest = createHash('blake2b512').update(fs.readFileSync(artifact)).digest();
+  const artifactSignature = sign(null, artifactDigest, privateKey);
+  const trustedComment = 'timestamp:1786451200\tfile:installer.exe';
+  const globalSignature = sign(
+    null,
+    Buffer.concat([artifactSignature, Buffer.from(trustedComment)]),
+    privateKey,
+  );
+  const signatureEnvelope = [
+    'untrusted comment: signature from test key',
+    Buffer.concat([Buffer.from('ED'), keyId, artifactSignature]).toString('base64'),
+    `trusted comment: ${trustedComment}`,
+    globalSignature.toString('base64'),
+    '',
+  ].join('\n');
+  const signaturePath = writeFile(root, 'installer.exe.sig', Buffer.from(signatureEnvelope).toString('base64'));
+  const publicEnvelope = [
+    'untrusted comment: minisign public key test',
+    publicPayload.toString('base64'),
+    '',
+  ].join('\n');
+  return {
+    artifact,
+    encodedPublicKey: Buffer.from(publicEnvelope).toString('base64'),
+    signaturePath,
+  };
+}
 
 function writeFile(root, relativePath, contents = 'fixture') {
   const absolutePath = path.join(root, relativePath);
@@ -113,6 +154,43 @@ test('rejects a packaged resource whose bytes drifted', (context) => {
         },
       ]),
     /differs from its locked source/,
+  );
+});
+
+test('cryptographically verifies the updater artifact, signature, and trusted comment', (context) => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'osg-updater-signature-'));
+  context.after(() => fs.rmSync(root, { force: true, recursive: true }));
+  const fixture = createUpdaterSignatureFixture(root);
+
+  assert.doesNotThrow(() => verifyUpdaterSignature(
+    fixture.artifact,
+    fixture.signaturePath,
+    fixture.encodedPublicKey,
+  ));
+  fs.appendFileSync(fixture.artifact, 'tampered');
+  assert.throws(
+    () => verifyUpdaterSignature(
+      fixture.artifact,
+      fixture.signaturePath,
+      fixture.encodedPublicKey,
+    ),
+    /does not authenticate/,
+  );
+});
+
+test('rejects updater signatures from another key and malformed outer envelopes', (context) => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'osg-updater-key-'));
+  context.after(() => fs.rmSync(root, { force: true, recursive: true }));
+  const first = createUpdaterSignatureFixture(path.join(root, 'first'));
+  const second = createUpdaterSignatureFixture(path.join(root, 'second'));
+
+  assert.throws(
+    () => verifyUpdaterSignature(first.artifact, first.signaturePath, second.encodedPublicKey),
+    /key ID does not match/,
+  );
+  assert.throws(
+    () => verifyUpdaterSignature(first.artifact, first.signaturePath, `${first.encodedPublicKey}\nA`),
+    /canonical base64/,
   );
 });
 
