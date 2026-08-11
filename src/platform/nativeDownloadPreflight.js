@@ -5,7 +5,7 @@ import {
   installNativeTool,
 } from './nativeToolsService';
 
-const MANAGED_DOWNLOAD_TOOL_IDS = Object.freeze(['yt-dlp', 'deno']);
+const MANAGED_DOWNLOAD_TOOL_IDS = Object.freeze(['media-tools', 'yt-dlp', 'deno']);
 const TOOL_PROGRESS_TOAST_KEY = 'native-download-tool-preflight';
 const PROGRESS_STEP_PERCENT = 5;
 const DEFAULT_INSTALL_TIMEOUT_MS = 60 * 60 * 1_000;
@@ -23,11 +23,6 @@ const safeCall = (callback, ...args) => {
 };
 
 const defaultPresentation = Object.freeze({
-  confirm: (message) => (
-    typeof window !== 'undefined'
-    && typeof window.confirm === 'function'
-    && window.confirm(message)
-  ),
   notify: ({ message, type, duration, key, button }) => {
     if (typeof window !== 'undefined' && typeof window.addToast === 'function') {
       window.addToast(message, type, duration, key, button);
@@ -72,13 +67,8 @@ const validateOptions = (options) => {
   return options;
 };
 
-const formatToolList = (tools) => tools
-  .map(({ label, license }) => `${label} (${license})`)
-  .join(', ');
-
 const localizedFailure = (code, t) => {
   const messages = {
-    nativeToolConsentDeclined: t('download.nativeTools.consentDeclined'),
     nativeToolCancelled: t('download.nativeTools.cancelled'),
     nativeToolCorrupt: t('download.nativeTools.corrupt'),
     nativeToolHealthFailed: t('download.nativeTools.healthFailed'),
@@ -210,12 +200,6 @@ export const createNativeDownloadPreflight = ({
         }
         return rejectWithNotice('nativeToolHealthFailed');
       }
-
-      const approved = await Promise.resolve(presentation.confirm(t(
-        'download.nativeTools.consent',
-        { tools: formatToolList(missing) }
-      ))).catch(() => false);
-      if (!approved) return rejectWithNotice('nativeToolConsentDeclined', 'warning');
 
       const cancelButton = Object.freeze({
         text: t('download.nativeTools.cancel'),

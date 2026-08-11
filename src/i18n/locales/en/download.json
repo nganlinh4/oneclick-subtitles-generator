@@ -35,8 +35,6 @@
     "cancelled": "Download cancelled"
   },
   "nativeTools": {
-    "consent": "Media inspection needs verified native tools: {{tools}}. Install them from their reviewed upstream releases now? You can cancel during installation. OSG must be restarted before they can be used.",
-    "consentDeclined": "Native tool installation was not approved. No files were downloaded.",
     "installing": "Installing {{tool}}... {{percent}}%",
     "cancel": "Cancel installation",
     "cancelled": "Native tool installation was cancelled.",

@@ -378,7 +378,7 @@
       ]
     },
     "src/i18n/locales/en/download.json": {
-      "hash": "b5aadbbf14a5e29316d48c5fc269c3cd75f0621c5b990a9e9851203f35ba6042",
+      "hash": "d48e7afcc32da504b7079cd9e8371c4dec8cab6afed5e3e7f364bfc6d586e4bc",
       "keys": [
         "consolidate",
         "consolidateExplanation",
@@ -405,8 +405,6 @@
         "nativeTools.busy",
         "nativeTools.cancel",
         "nativeTools.cancelled",
-        "nativeTools.consent",
-        "nativeTools.consentDeclined",
         "nativeTools.corrupt",
         "nativeTools.deliveryUnavailable",
         "nativeTools.downloadUnavailable",
@@ -2650,7 +2648,7 @@
       ]
     },
     "src/i18n/locales/ko/download.json": {
-      "hash": "4ca58dde8def3ffa76326b4f94be4a0bd55c21a3bea40f93fdde97ef0d52de2d",
+      "hash": "7e8b134fefa8a1be7c88192ae9a09081730eae118099364b45c88b94e9d307c4",
       "keys": [
         "consolidate",
         "consolidateExplanation",
@@ -2689,8 +2687,6 @@
         "nativeTools.busy",
         "nativeTools.cancel",
         "nativeTools.cancelled",
-        "nativeTools.consent",
-        "nativeTools.consentDeclined",
         "nativeTools.corrupt",
         "nativeTools.deliveryUnavailable",
         "nativeTools.downloadUnavailable",
@@ -5201,7 +5197,7 @@
       ]
     },
     "src/i18n/locales/vi/download.json": {
-      "hash": "e4c171c10d0c7aa1dc21d0387cc342d5d8b8c1fcfc439262a26d7e9f42e7536a",
+      "hash": "6b6d43cffe34fe944c55c83055a438513cc157696f005ae715878574ddf7ba41",
       "keys": [
         "consolidate",
         "consolidateExplanation",
@@ -5229,8 +5225,6 @@
         "nativeTools.busy",
         "nativeTools.cancel",
         "nativeTools.cancelled",
-        "nativeTools.consent",
-        "nativeTools.consentDeclined",
         "nativeTools.corrupt",
         "nativeTools.deliveryUnavailable",
         "nativeTools.downloadUnavailable",

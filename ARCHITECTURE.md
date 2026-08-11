@@ -118,8 +118,9 @@ At the current rewrite checkpoint:
   and macOS remain withheld pending equivalent reviewed delivery.
 - Reviewed yt-dlp `2026.07.04` and Deno `2.9.5` releases are catalogued for content-addressed,
   direct-upstream, on-demand delivery; they are never bundled in the application. A user-initiated
-  URL inspection performs the status check, requests explicit batch consent, and exposes bounded
-  progress plus cancellation through the existing toast surface. No startup task downloads tools.
+  URL inspection performs the status check and automatically installs the smallest required batch,
+  exposing bounded progress plus cancellation through the existing toast surface. No startup task
+  downloads tools.
 - A genuine yt-dlp process failure starts one coalesced, throttled official-release check. Only a
   stable release marked immutable is eligible; GitHub's asset digest and notices from the exact tag
   commit become the new receipt. The new version is published beside the leased version and becomes

@@ -37,8 +37,6 @@
     "download": "Tải xuống"
   },
   "nativeTools": {
-    "consent": "Việc kiểm tra phương tiện cần các công cụ gốc đã được xác minh: {{tools}}. Cài đặt ngay từ các bản phát hành thượng nguồn đã được xem xét? Bạn có thể hủy trong khi cài đặt. Phải khởi động lại OSG trước khi sử dụng.",
-    "consentDeclined": "Việc cài đặt công cụ gốc chưa được chấp thuận. Không có tập tin nào được tải xuống.",
     "installing": "Đang cài đặt {{tool}}... {{percent}}%",
     "cancel": "Hủy cài đặt",
     "cancelled": "Đã hủy cài đặt công cụ gốc.",

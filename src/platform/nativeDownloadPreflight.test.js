@@ -27,11 +27,13 @@ const catalog = () => ({
 const statusEntry = (id, overrides = {}) => ({
   id,
   label: id === 'deno' ? 'Deno' : id,
-  deliveryAvailable: id !== 'media-tools',
+  deliveryAvailable: true,
   installed: false,
-  state: id === 'media-tools' ? 'unavailable' : 'missing',
+  state: 'missing',
   version: null,
-  availableVersion: id === 'yt-dlp' ? '2026.07.04' : id === 'deno' ? '2.9.5' : null,
+  availableVersion: id === 'yt-dlp'
+    ? '2026.07.04'
+    : id === 'deno' ? '2.9.5' : '8.1.2',
   installedBytes: 0,
   activeRuntime: false,
   pendingRemoval: false,
@@ -73,8 +75,7 @@ const completedEvent = (tool, id, overrides = {}) => ({
   ...overrides,
 });
 
-const presentation = (approved = true) => ({
-  confirm: vi.fn(() => approved),
+const presentation = () => ({
   notify: vi.fn(),
   dismiss: vi.fn(),
 });
@@ -100,6 +101,7 @@ it('is production-reachable only through typed download preflights and has no ne
   expect(source).not.toMatch(/\bfetch\s*\(/);
   expect(source).not.toMatch(/localStorage\s*\./);
   expect(source).not.toMatch(/https?:\/\//i);
+  expect(source).not.toMatch(/window\.confirm|presentation\.confirm|nativeToolConsentDeclined/);
   expect(downloadSource).toContain('ensureNativeDownloadInspectionReady');
   expect(downloadSource).toContain('ensureNativeDownloadReady');
 });
@@ -117,7 +119,7 @@ it('does nothing when the startup-snapshotted runtime is already ready', async (
   expect(readStatus).not.toHaveBeenCalled();
 });
 
-it('requires explicit informed consent, installs sequentially, reports progress, then requires restart', async () => {
+it('automatically installs the required batch sequentially, reports progress, then requires restart', async () => {
   const ui = presentation();
   const started = [];
   const progress = [];
@@ -139,12 +141,8 @@ it('requires explicit informed consent, installs sequentially, reports progress,
     }
   )).rejects.toMatchObject({ code: 'nativeToolRestartRequired' });
 
-  expect(ui.confirm).toHaveBeenCalledTimes(1);
-  expect(ui.confirm.mock.calls[0][0]).toContain('yt-dlp (GPL-3.0-or-later)');
-  expect(ui.confirm.mock.calls[0][0]).toContain('Deno (MIT)');
-  expect(ui.confirm.mock.invocationCallOrder[0]).toBeLessThan(install.mock.invocationCallOrder[0]);
-  expect(install.mock.calls.map(([tool]) => tool)).toEqual(['yt-dlp', 'deno']);
-  expect(started).toHaveLength(2);
+  expect(install.mock.calls.map(([tool]) => tool)).toEqual(['media-tools', 'yt-dlp', 'deno']);
+  expect(started).toHaveLength(3);
   expect(progress[0]).toBe(0);
   expect(progress.at(-1)).toBe(100);
   expect(progress.every((value, index) => index === 0 || value >= progress[index - 1])).toBe(true);
@@ -158,14 +156,22 @@ it('requires explicit informed consent, installs sequentially, reports progress,
   }));
 });
 
-it('declining consent downloads nothing and reports a typed result', async () => {
-  const ui = presentation(false);
-  const install = vi.fn();
+it('never asks for approval before starting the verified on-demand install', async () => {
+  const confirm = vi.fn(() => {
+    throw new Error('approval must not be consulted');
+  });
+  const ui = { ...presentation(), confirm };
+  const install = vi.fn(async (tool, handlers) => {
+    const job = runningJob();
+    queueMicrotask(() => handlers.onCompleted(completedEvent(tool, job.id)));
+    return job;
+  });
   const preflight = service({ install, presentation: ui });
 
   await expect(preflight.ensureInspectionReady({ inspectAvailable: false }))
-    .rejects.toMatchObject({ code: 'nativeToolConsentDeclined' });
-  expect(install).not.toHaveBeenCalled();
+    .rejects.toMatchObject({ code: 'nativeToolRestartRequired' });
+  expect(confirm).not.toHaveBeenCalled();
+  expect(install).toHaveBeenCalledTimes(3);
   expect(ui.notify).toHaveBeenLastCalledWith(expect.objectContaining({ type: 'warning' }));
 });
 
@@ -217,7 +223,6 @@ it('deduplicates concurrent user actions and exposes programmatic cancellation',
   expect(preflight.cancelActive()).toBe(true);
   await expect(first).rejects.toMatchObject({ code: 'nativeToolCancelled' });
   await expect(second).rejects.toMatchObject({ code: 'nativeToolCancelled' });
-  expect(ui.confirm).toHaveBeenCalledTimes(1);
   expect(preflight.cancelActive()).toBe(false);
 });
 
@@ -225,6 +230,10 @@ it('fails closed for inactive, corrupt, busy, unhealthy, and unavailable runtime
   const cases = [
     {
       overrides: {
+        'media-tools': {
+          state: 'installed', installed: true, version: '8.1.2', installedBytes: 10,
+          activeRuntime: true,
+        },
         'yt-dlp': {
           state: 'installed', installed: true, version: '2026.07.04', installedBytes: 10,
           restartRequired: true,
@@ -241,6 +250,10 @@ it('fails closed for inactive, corrupt, busy, unhealthy, and unavailable runtime
     { overrides: { deno: { deliveryAvailable: false, state: 'unavailable' } }, code: 'nativeToolUnavailable' },
     {
       overrides: {
+        'media-tools': {
+          state: 'installed', installed: true, version: '8.1.2', installedBytes: 10,
+          activeRuntime: true,
+        },
         'yt-dlp': {
           state: 'installed', installed: true, version: '2026.07.04', installedBytes: 10,
           activeRuntime: true,
@@ -264,14 +277,19 @@ it('fails closed for inactive, corrupt, busy, unhealthy, and unavailable runtime
 it('reports a platform without media-tool delivery without starting an install', async () => {
   const ui = presentation();
   const install = vi.fn();
-  const preflight = service({ install, presentation: ui });
+  const preflight = service({
+    install,
+    presentation: ui,
+    readStatus: vi.fn(async () => status({
+      'media-tools': { deliveryAvailable: false, state: 'unavailable' },
+    })),
+  });
 
   await expect(preflight.ensureDownloadReady({
     available: false,
     inspectAvailable: true,
     reason: 'mediaToolsUnavailable',
   })).rejects.toMatchObject({ code: 'nativeToolUnavailable' });
-  expect(ui.confirm).not.toHaveBeenCalled();
   expect(install).not.toHaveBeenCalled();
   expect(ui.notify).toHaveBeenCalledWith(expect.objectContaining({ type: 'error' }));
 });
@@ -300,7 +318,6 @@ it('offers the reviewed media-tool download only when the current platform catal
     inspectAvailable: true,
     reason: 'mediaToolsUnavailable',
   })).rejects.toMatchObject({ code: 'nativeToolRestartRequired' });
-  expect(ui.confirm).toHaveBeenCalledOnce();
   expect(install).toHaveBeenCalledWith('media-tools', expect.any(Object), expect.any(Object));
 });
 
@@ -321,7 +338,7 @@ it('rejects invalid options and a hostile completion that claims immediate activ
     .rejects.toMatchObject({ code: 'nativeToolInstallFailed' });
 });
 
-it('updates an installed yt-dlp after an execution failure without another consent prompt', async () => {
+it('updates an installed yt-dlp after an execution failure without any prompt', async () => {
   const ui = presentation();
   const install = vi.fn(async (tool, handlers) => {
     const job = runningJob();
@@ -350,7 +367,6 @@ it('updates an installed yt-dlp after an execution failure without another conse
     now: () => 1_000_000,
   })).resolves.toEqual({ updated: true, throttled: false });
 
-  expect(ui.confirm).not.toHaveBeenCalled();
   expect(install).toHaveBeenCalledWith('yt-dlp', expect.any(Object), expect.any(Object));
   expect(ui.notify).toHaveBeenLastCalledWith(expect.objectContaining({
     message: 'download.nativeTools.restartRequired',
