@@ -1314,11 +1314,9 @@ fn open_connection(
     path: &Path,
     artifact_root: &Path,
 ) -> Result<(Connection, super::artifacts::ArtifactRoot), DatabaseError> {
-    if let Some(parent) = path.parent() {
-        fs::create_dir_all(parent)?;
-    }
+    let path = canonical_database_path(path)?;
     let mut connection = Connection::open_with_flags(
-        path,
+        &path,
         OpenFlags::SQLITE_OPEN_READ_WRITE
             | OpenFlags::SQLITE_OPEN_CREATE
             | OpenFlags::SQLITE_OPEN_NO_MUTEX
@@ -1376,6 +1374,24 @@ fn open_connection(
     }
     drop(foreign_key_check);
     Ok((connection, artifact_root))
+}
+
+fn canonical_database_path(path: &Path) -> Result<PathBuf, DatabaseError> {
+    let file_name = path
+        .file_name()
+        .filter(|name| !name.is_empty())
+        .ok_or_else(|| {
+            DatabaseError::Io(std::io::Error::new(
+                std::io::ErrorKind::InvalidInput,
+                "database file path is invalid",
+            ))
+        })?;
+    let parent = path
+        .parent()
+        .filter(|parent| !parent.as_os_str().is_empty())
+        .unwrap_or_else(|| Path::new("."));
+    fs::create_dir_all(parent)?;
+    Ok(fs::canonicalize(parent)?.join(file_name))
 }
 
 fn database_health(connection: &Connection) -> Result<DatabaseHealth, DatabaseError> {
@@ -1474,10 +1490,12 @@ fn backup_database(connection: &Connection, destination: &Path) -> Result<(), Da
         .and_then(|value| value.to_str())
         .filter(|value| !value.is_empty())
         .ok_or(DatabaseError::InvalidBackupPath)?;
+    fs::create_dir_all(parent)?;
+    let parent = fs::canonicalize(parent)?;
+    let destination = parent.join(file_name);
     if destination.exists() {
         return Err(DatabaseError::BackupDestinationExists);
     }
-    fs::create_dir_all(parent)?;
     let temporary = parent.join(format!(".{file_name}.{}.part", Uuid::now_v7()));
     let result = (|| {
         let mut backup_connection = Connection::open_with_flags(
@@ -1501,7 +1519,7 @@ fn backup_database(connection: &Connection, destination: &Path) -> Result<(), Da
             return Err(DatabaseError::WrongApplicationId(application_id));
         }
         drop(backup_connection);
-        fs::hard_link(&temporary, destination)?;
+        fs::hard_link(&temporary, &destination)?;
         let _ = fs::remove_file(&temporary);
         Ok(())
     })();
@@ -1939,6 +1957,27 @@ mod tests {
         assert_eq!(health.journal_mode.to_ascii_lowercase(), "wal");
         assert_eq!(health.integrity, "ok");
         assert!(health.previous_shutdown_clean);
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn opens_beneath_a_symlinked_ancestor_without_disabling_sqlite_nofollow() {
+        use std::os::unix::fs::symlink;
+
+        let directory = TempDir::new().expect("temporary directory");
+        let real = directory.path().join("real");
+        fs::create_dir_all(&real).expect("real directory");
+        let alias = directory.path().join("alias");
+        symlink(&real, &alias).expect("directory alias");
+
+        let database = Database::open(alias.join("db/osg.sqlite3"))
+            .expect("open through a trusted symlinked ancestor");
+
+        assert_eq!(
+            database.health().expect("database health").application_id,
+            APPLICATION_ID
+        );
+        assert!(real.join("db/osg.sqlite3").is_file());
     }
 
     #[test]
