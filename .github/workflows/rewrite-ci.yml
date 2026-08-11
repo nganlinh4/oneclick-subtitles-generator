@@ -97,6 +97,8 @@ jobs:
         run: node scripts/check-release-readiness.js --profile compile
 
       - name: Verify managed delivery sources and remote pool read-back
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
         run: |
           npm run test:managed-delivery
           npm run verify:managed-delivery

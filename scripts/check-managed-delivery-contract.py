@@ -11,6 +11,7 @@ from __future__ import annotations
 import argparse
 import hashlib
 import json
+import os
 from pathlib import Path
 from urllib.request import Request, urlopen
 
@@ -216,7 +217,11 @@ def build_checkpoint() -> dict[str, object]:
 
 
 def fetch_release() -> dict:
-    request = Request(RELEASE_API, headers={"User-Agent": "OSG-delivery-checkpoint/1"})
+    headers = {"User-Agent": "OSG-delivery-checkpoint/1"}
+    token = os.environ.get("GITHUB_TOKEN", "").strip()
+    if token:
+        headers["Authorization"] = f"Bearer {token}"
+    request = Request(RELEASE_API, headers=headers)
     with urlopen(request, timeout=30) as response:
         return json.load(response)
 

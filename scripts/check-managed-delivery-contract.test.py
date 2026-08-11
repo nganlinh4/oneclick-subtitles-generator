@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import importlib.util
+import io
 import unittest
 from pathlib import Path
 from unittest import mock
@@ -14,6 +15,22 @@ SPEC.loader.exec_module(MODULE)
 
 
 class ManagedDeliveryContractTests(unittest.TestCase):
+    def test_release_readback_uses_available_github_token(self) -> None:
+        captured = []
+
+        def open_request(request, timeout):
+            captured.append((request, timeout))
+            return io.BytesIO(b"{}")
+
+        with mock.patch.dict(MODULE.os.environ, {"GITHUB_TOKEN": "test-token"}, clear=False):
+            with mock.patch.object(MODULE, "urlopen", side_effect=open_request):
+                MODULE.fetch_release()
+
+        self.assertEqual(len(captured), 1)
+        request, timeout = captured[0]
+        self.assertEqual(timeout, 30)
+        self.assertEqual(request.get_header("Authorization"), "Bearer test-token")
+
     def test_direct_source_readback_requires_exact_content_length(self) -> None:
         catalog = {
             "tools": [{
