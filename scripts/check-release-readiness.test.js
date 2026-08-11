@@ -380,6 +380,13 @@ test('workflow is unsigned, read-only, credentialless, and locked', () => {
     () => assertWorkflowCommands(frontendBuiltTooLate),
     /native-matrix must build frontendDist before compiling the Tauri Rust workspace/,
   );
+  assert.throws(
+    () => assertWorkflowCommands(workflow.replace(
+      'run: npm --prefix apps/desktop run tauri:build -- --no-bundle',
+      'run: npm --prefix apps/desktop run tauri -- build --no-bundle',
+    )),
+    /(?:required locked gate.*tauri:build|production-feature Tauri wrapper)/,
+  );
   for (const gate of [
     'node --test scripts/frozen-css-compatibility.test.mjs scripts/check-frozen-css-output.test.mjs',
     'npm run build:frontend',

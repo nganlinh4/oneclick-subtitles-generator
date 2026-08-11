@@ -594,7 +594,7 @@ function assertWorkflowCommands(workflow) {
     'node --test scripts/frozen-css-compatibility.test.mjs scripts/check-frozen-css-output.test.mjs',
     'npm run build:frontend',
     'node scripts/check-frozen-css-output.mjs',
-    'build --no-bundle --ci --target "${{ matrix.rust-target }}" -- --locked',
+    'tauri:build -- --no-bundle --ci --target "${{ matrix.rust-target }}" -- --locked',
     'bundle --ci --no-sign --target "${{ matrix.rust-target }}" --bundles "${{ matrix.bundles }}"',
   ];
   for (const fragment of requiredFragments) {
@@ -609,6 +609,16 @@ function assertWorkflowCommands(workflow) {
   invariant(
     frontendBuildIndex !== -1 && rustClippyIndex !== -1 && frontendBuildIndex < rustClippyIndex,
     'native-matrix must build frontendDist before compiling the Tauri Rust workspace',
+  );
+  const guardedTauriCompile =
+    'run: npm --prefix apps/desktop run tauri:build -- --no-bundle --ci --target "${{ matrix.rust-target }}" -- --locked';
+  invariant(
+    nativeMatrix.includes(guardedTauriCompile),
+    'native-matrix must compile release executables through the production-feature Tauri wrapper',
+  );
+  invariant(
+    !nativeMatrix.includes('run: npm --prefix apps/desktop run tauri -- build'),
+    'native-matrix must not compile a release executable through the raw Tauri script',
   );
 
   for (const manualCommand of [
