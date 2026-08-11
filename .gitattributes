@@ -11,6 +11,7 @@
 *.html text
 *.css text eol=lf
 *.scss text eol=lf
+*.svg text eol=lf
 *.yml text
 *.yaml text
 
