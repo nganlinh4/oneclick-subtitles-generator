@@ -35,6 +35,7 @@ const ACTION_PINS = Object.freeze({
   'actions/checkout': 'de0fac2e4500dabe0009e67214ff5f5447ce83dd',
   'actions/setup-node': '820762786026740c76f36085b0efc47a31fe5020',
   'actions/setup-python': 'a309ff8b426b58ec0e2a45f0f869d46889d02405',
+  'actions/upload-artifact': 'b7c566a772e6b6bfb58ed0dc250532a479d7789f',
 });
 
 const RELEASE_MATRIX = Object.freeze([

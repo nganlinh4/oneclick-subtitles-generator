@@ -221,6 +221,15 @@ jobs:
       - name: Prove frozen CSS output is byte-identical
         run: node scripts/check-frozen-css-output.mjs
 
+      - name: Preserve failed frontend artifact for deterministic diffing
+        if: failure()
+        uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6.0.0
+        with:
+          name: frontend-build-${{ matrix.rust-target }}
+          path: build/assets/index-*.css
+          if-no-files-found: error
+          retention-days: 1
+
       - name: Prove production frontend uses only native transports
         run: npm run check:production-transport
 
