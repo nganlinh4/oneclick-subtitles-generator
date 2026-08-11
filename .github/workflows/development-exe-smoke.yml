@@ -1,0 +1,74 @@
+name: Development EXE smoke
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: development-exe-smoke-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  windows-installed-smoke:
+    name: Signed Windows installer and clean-profile smoke
+    runs-on: windows-2022
+    timeout-minutes: 90
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          persist-credentials: false
+
+      - name: Use pinned Node.js
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version-file: .node-version
+          cache: npm
+          cache-dependency-path: |
+            package-lock.json
+            apps/desktop/package-lock.json
+
+      - name: Use pinned Python
+        uses: actions/setup-python@a309ff8b426b58ec0e2a45f0f869d46889d02405 # v6.2.0
+        with:
+          python-version: "3.12.10"
+
+      - name: Use pinned npm
+        shell: bash
+        run: npm install --global "$(node -p 'require("./package.json").packageManager')"
+
+      - name: Install locked JavaScript dependencies
+        run: |
+          npm ci --ignore-scripts
+          npm --prefix apps/desktop ci --ignore-scripts
+
+      - name: Install pinned Rust target
+        run: |
+          rustup show active-toolchain
+          rustup target add x86_64-pc-windows-msvc
+
+      - name: Verify host and Windows runtime readiness
+        run: |
+          node scripts/check-release-readiness.js --profile host-toolchain
+          node scripts/check-release-readiness.js --profile runtime-package --target x86_64-pc-windows-msvc
+
+      - name: Build signed Windows NSIS installer
+        env:
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
+        run: npm run tauri:build -- --target x86_64-pc-windows-msvc --bundles nsis --ci -- --locked
+
+      - name: Validate installer architecture, resources, and updater signature
+        run: node scripts/check-release-artifacts.js --target x86_64-pc-windows-msvc --bundles nsis
+
+      - name: Install and launch from a clean runner profile
+        shell: pwsh
+        run: |
+          $installer = Get-ChildItem -LiteralPath "target\x86_64-pc-windows-msvc\release\bundle\nsis" -File -Filter "*.exe"
+          if (@($installer).Count -ne 1) {
+            throw "Expected exactly one NSIS installer, found $(@($installer).Count)"
+          }
+          $expectedVersion = (Get-Content -LiteralPath "package.json" -Raw | ConvertFrom-Json).version
+          ./scripts/test-installed-windows.ps1 -InstallerPath $installer.FullName -ExpectedVersion $expectedVersion
