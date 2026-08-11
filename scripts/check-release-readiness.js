@@ -581,6 +581,7 @@ function assertWorkflowToolchainPins(workflow) {
 
 function assertWorkflowCommands(workflow) {
   const requiredFragments = [
+    "group: rewrite-ci-${{ github.workflow }}-${{ github.ref }}-${{ github.event_name == 'workflow_dispatch' && inputs.job || 'full' }}",
     'npm ci --ignore-scripts',
     'npm --prefix apps/desktop ci --ignore-scripts',
     'rustup target add "${{ matrix.rust-target }}"',
