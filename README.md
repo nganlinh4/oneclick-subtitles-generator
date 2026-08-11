@@ -350,7 +350,7 @@ user-facing strings that bypass i18n.
 
 ## License
 
-A root project license has not been selected. The repository owner must choose and add `LICENSE`
-and approve the project-level third-party-notice/corresponding-source policy; the release gate also
-requires `THIRD_PARTY_NOTICES.md`. Licenses declared by dependencies or individual crates do not
-establish a license for the repository as a whole.
+The project source is licensed under the root [MIT license](LICENSE). Dependencies, downloadable
+runtimes, models, and fonts retain their own terms; their reviewed licenses, notices, and source
+obligations are recorded in [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md) and enforced by the
+release-readiness gate.

@@ -186,7 +186,7 @@ translation key tĩnh phải có bản tiếng Việt và tiếng Hàn, đồng 
 
 ## Giấy phép
 
-Repo chưa chọn giấy phép chung ở thư mục gốc. Chủ repo cần quyết định, thêm `LICENSE` và policy
-notice/corresponding source cho toàn dự án trước khi phân phối; release gate cũng yêu cầu
-`THIRD_PARTY_NOTICES.md`. License của dependency hoặc từng crate không tự động trở thành license
-của toàn bộ repo.
+Mã nguồn dự án được cấp phép theo [MIT](LICENSE) ở thư mục gốc. Các dependency, runtime, model và
+font tải theo nhu cầu vẫn giữ điều khoản riêng; giấy phép, thông báo và nghĩa vụ cung cấp mã nguồn
+đã thẩm định được ghi trong [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md) và được release gate
+kiểm tra bắt buộc.
