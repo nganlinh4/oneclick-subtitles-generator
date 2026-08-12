@@ -58,11 +58,11 @@ const validResult = () => ({
   },
   video: {
     currentSrc: 'http://127.0.0.1:43123/asset/01111111-2222-4333-8444-555555555555?token=' + 'a'.repeat(64),
-    duration: 52.2,
-    height: 480,
+    duration: 4,
+    height: 360,
     paused: true,
     readyState: 4,
-    width: 854,
+    width: 640,
   },
 });
 
@@ -87,7 +87,7 @@ test('parses only bounded CI-owned media-flow files', () => {
 });
 
 test('accepts the complete native media, subtitle, tool, and job result', () => {
-  assert.equal(assertMediaFlowResult(validResult()).video.width, 854);
+  assert.equal(assertMediaFlowResult(validResult()).video.width, 640);
 });
 
 test('rejects subtitle-only, inactive-tool, and accidental render false positives', () => {

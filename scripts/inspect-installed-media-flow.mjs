@@ -8,10 +8,11 @@ import { pathToFileURL } from 'node:url';
 
 import { CdpClient, discoverTarget } from './inspect-installed-webview.mjs';
 
-// This short public Bilibili upload is accepted from GitHub-hosted runners. YouTube blocks those
-// shared runner addresses before download admission, so YouTube remains a separate real-network
-// acceptance item while this fixture exercises the same all-sites yt-dlp/FFmpeg publication path.
-const MEDIA_URL = 'https://www.bilibili.com/video/BV1GBB4BdEq3';
+// Public video sites reject shared GitHub-runner addresses unpredictably. This repository-owned,
+// content-hash-named 4-second MP4 is hosted beside the managed development bundles so the clean
+// installed-EXE smoke exercises the same all-sites yt-dlp/FFmpeg publication path deterministically.
+// YouTube and other site-specific extractors remain separate real-network acceptance items.
+const MEDIA_URL = 'https://github.com/nganlinh4/oneclick-subtitles-generator/releases/download/osg-runtime-bundles-v1/osg-installed-media-smoke-v1-aecf6c8ef3977cd4.mp4';
 const SUBTITLE_MARKER = 'OSG installed media smoke';
 const DEFAULT_TIMEOUT_MS = 30 * 60 * 1_000;
 const UUID_V7 = /^[0-9a-f]{8}-[0-9a-f]{4}-7[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
@@ -77,10 +78,11 @@ export function assertMediaFlowResult(value) {
     'currentSrc', 'duration', 'height', 'paused', 'readyState', 'width',
   ])
     && value.video.currentSrc === value.currentFileUrl
-    && Number.isFinite(value.video.duration) && value.video.duration > 1
+    && Number.isFinite(value.video.duration)
+    && value.video.duration >= 3.9 && value.video.duration <= 4.1
     && Number.isInteger(value.video.readyState) && value.video.readyState >= 1
-    && Number.isInteger(value.video.width) && value.video.width > 0
-    && Number.isInteger(value.video.height) && value.video.height > 0,
+    && value.video.width === 640
+    && value.video.height === 360,
   'Installed media element did not decode the downloaded video metadata');
   invariant(value.subtitleMarkerVisible === true
     && hasExactKeys(value.uploadedSrtInfo, ['fileName', 'hasUploaded', 'source'])
