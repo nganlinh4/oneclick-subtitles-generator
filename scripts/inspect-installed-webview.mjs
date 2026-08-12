@@ -10,6 +10,7 @@ import { URL, pathToFileURL } from 'node:url';
 const LOOPBACK_HOSTS = new Set(['127.0.0.1', 'localhost', '[::1]']);
 const TAURI_ORIGIN = 'https://tauri.localhost';
 const DEFAULT_TIMEOUT_MS = 60_000;
+const VISUAL_SETTLE_TIMEOUT_MS = 3_000;
 const PERSISTENCE_KEY = 'osg.ciInstalledSmoke.v1';
 const PERSISTENCE_PROJECT_INITIAL_NAME = 'OSG installed lifecycle probe';
 const PERSISTENCE_PROJECT_NAME = 'OSG installed lifecycle probe committed';
@@ -90,6 +91,13 @@ export function assertInspection(value, expectedVersion) {
   invariant(value.health?.platform === 'windows' && value.health?.architecture === 'x86_64',
     'Installed IPC health is not the Windows x64 release target');
   return value;
+}
+
+export function assertVisualSettled(evaluation) {
+  invariant(!evaluation?.exceptionDetails,
+    `Installed visual-settle probe threw: ${evaluation?.exceptionDetails?.text ?? 'unknown error'}`);
+  invariant(evaluation?.result?.value === true,
+    'Installed WebView core labels did not finish their bounded entrance animations');
 }
 
 const hasExactKeys = (value, keys) => value && typeof value === 'object'
@@ -320,6 +328,30 @@ const INSPECTION_EXPRESSION = `
   };
 })()`;
 
+const VISUAL_SETTLE_EXPRESSION = `
+(async () => {
+  const deadline = Date.now() + ${VISUAL_SETTLE_TIMEOUT_MS};
+  const coreSelector = '.floating-settings, .input-methods-container';
+  while (Date.now() < deadline) {
+    const active = document.getAnimations().filter((animation) => {
+      const target = animation.effect?.target;
+      const timing = animation.effect?.getTiming();
+      return animation.playState === 'running'
+        && target instanceof Element
+        && target.closest(coreSelector) !== null
+        && Number.isFinite(Number(timing?.iterations));
+    });
+    if (active.length === 0) {
+      await new Promise((resolve) => requestAnimationFrame(
+        () => requestAnimationFrame(resolve),
+      ));
+      return true;
+    }
+    await new Promise((resolve) => setTimeout(resolve, 50));
+  }
+  return false;
+})()`;
+
 const persistenceExpression = ({ phase, expectedVersion, expectedProjectId }) => `
 (async () => {
   const invoke = window.__TAURI_INTERNALS__.invoke;
@@ -395,6 +427,22 @@ async function inspectInstalledWebView(options) {
     invariant(!persistenceEvaluation.exceptionDetails,
       `Installed persistence inspection threw: ${persistenceEvaluation.exceptionDetails?.text ?? 'unknown error'}`);
     const persistence = assertPersistence(persistenceEvaluation.result?.value, options);
+    if (options.phase !== 'first-launch') {
+      const settled = await client.send('Runtime.evaluate', {
+        expression: VISUAL_SETTLE_EXPRESSION,
+        awaitPromise: true,
+        returnByValue: true,
+      });
+      assertVisualSettled(settled);
+      await waitForInspection(
+        () => client.send('Runtime.evaluate', {
+          expression: INSPECTION_EXPRESSION,
+          awaitPromise: true,
+          returnByValue: true,
+        }),
+        options.expectedVersion,
+      );
+    }
     const capture = await client.send('Page.captureScreenshot', {
       format: 'png',
       captureBeyondViewport: false,

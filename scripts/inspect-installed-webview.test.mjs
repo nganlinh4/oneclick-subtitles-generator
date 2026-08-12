@@ -4,6 +4,7 @@ import test from 'node:test';
 import {
   assertInspection,
   assertPersistence,
+  assertVisualSettled,
   parseArguments,
   selectTauriTarget,
   waitForInspection,
@@ -196,6 +197,18 @@ test('inspection waits for the real page instead of trusting native setup timing
     );
     assert.equal(result, validInspection);
   }
+});
+
+test('installed captures fail closed until bounded core entrance animations settle', () => {
+  assert.doesNotThrow(() => assertVisualSettled({ result: { value: true } }));
+  assert.throws(
+    () => assertVisualSettled({ result: { value: false } }),
+    /did not finish/,
+  );
+  assert.throws(
+    () => assertVisualSettled({ exceptionDetails: { text: 'animation probe failed' } }),
+    /probe threw/,
+  );
 });
 
 test('inspection keeps a hard deadline for a permanently blank installed page', async () => {
