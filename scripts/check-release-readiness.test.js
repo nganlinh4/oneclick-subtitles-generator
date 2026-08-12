@@ -13,6 +13,7 @@ const {
   assertPinnedToolchains,
   assertProductionCsp,
   assertEffectiveToolchain,
+  assertInstalledSmokeScript,
   assertLoopbackAuditManifest,
   assertManagedEngineDelivery,
   assertNativeToolDelivery,
@@ -32,6 +33,11 @@ const {
   normalizeDestination,
   parseArguments,
 } = require('./check-release-readiness');
+
+const INSTALLED_SMOKE_SCRIPT = fs.readFileSync(
+  path.join(__dirname, 'test-installed-windows.ps1'),
+  'utf8',
+);
 
 function createTauriProductionBuildFixture() {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), 'osg-tauri-production-build-'));
@@ -78,6 +84,26 @@ function replaceInWorkflowJob(workflow, jobName, search, replacement) {
   assert.ok(job.includes(search), `${jobName} does not contain the requested mutation target`);
   return workflow.slice(0, start) + job.replace(search, replacement) + workflow.slice(end);
 }
+
+test('installed Windows smoke proves relaunch, cached fonts, uninstall, and reinstall', () => {
+  assert.doesNotThrow(() => assertInstalledSmokeScript(INSTALLED_SMOKE_SCRIPT));
+  for (const fragment of [
+    "-Phase 'relaunch'",
+    '$fontAfterRelaunch -cne $fontBeforeRelaunch',
+    'Uninstall-Application -Installation $installed',
+    '$reinstalled = Install-Application',
+    "-Phase 'reinstall-launch'",
+  ]) {
+    assert.throws(
+      () => assertInstalledSmokeScript(INSTALLED_SMOKE_SCRIPT.replace(fragment, 'removed')),
+      /Installed Windows smoke is missing lifecycle proof/,
+    );
+  }
+  assert.throws(
+    () => assertInstalledSmokeScript(`${INSTALLED_SMOKE_SCRIPT}\nInvoke-WebRequest https://example.test/app.exe\n`),
+    /without a second download/,
+  );
+});
 
 function transformWorkflowJob(workflow, jobName, transform) {
   const heading = `  ${jobName}:`;

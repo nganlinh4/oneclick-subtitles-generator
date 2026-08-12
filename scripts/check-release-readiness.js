@@ -685,11 +685,39 @@ function assertWorkflowCommands(workflow) {
   }
 }
 
+function assertInstalledSmokeScript(script) {
+  const requiredFragments = [
+    "$env:CI -ne 'true'",
+    '$installed = Install-Application',
+    "-Phase 'first-launch'",
+    "-Phase 'relaunch'",
+    '$fontBeforeRelaunch = Get-FontSnapshot',
+    '$fontAfterRelaunch = Get-FontSnapshot',
+    '$fontAfterRelaunch -cne $fontBeforeRelaunch',
+    'Uninstall-Application -Installation $installed',
+    '$reinstalled = Install-Application',
+    "-Phase 'reinstall-launch'",
+    'managedFontCacheStable = $true',
+    'uninstallPreservedProfile = $true',
+  ];
+  for (const fragment of requiredFragments) {
+    invariant(
+      script.includes(fragment),
+      `Installed Windows smoke is missing lifecycle proof: ${fragment}`,
+    );
+  }
+  invariant(
+    !/(?:Invoke-WebRequest|Invoke-RestMethod|Start-BitsTransfer)/i.test(script),
+    'Installed Windows smoke must validate the branch-built installer without a second download',
+  );
+}
+
 function assertWorkflow(rootDirectory = REPOSITORY_ROOT) {
   const workflow = readText(rootDirectory, WORKFLOW_PATH);
   assertPinnedActions(workflow);
   assertWorkflowMatrix(workflow);
   assertWorkflowCommands(workflow);
+  assertInstalledSmokeScript(readText(rootDirectory, 'scripts/test-installed-windows.ps1'));
 }
 
 function normalizeDestination(destination) {
@@ -2236,6 +2264,7 @@ module.exports = {
   assertLoopbackAuditManifest,
   assertNoMissingNativeCapabilities,
   assertNoUnmanagedLocalServices,
+  assertInstalledSmokeScript,
   assertWorkerResources,
   assertWorkflowCommands,
   assertWorkflowMatrix,
