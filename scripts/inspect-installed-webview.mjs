@@ -75,6 +75,28 @@ export function assertInspection(value, expectedVersion) {
   return value;
 }
 
+export async function waitForInspection(evaluate, expectedVersion, {
+  now = Date.now,
+  delay = () => new Promise((resolve) => setTimeout(resolve, 250)),
+  timeoutMs = DEFAULT_TIMEOUT_MS,
+} = {}) {
+  invariant(typeof evaluate === 'function', 'Installed WebView evaluator is required');
+  const deadline = now() + timeoutMs;
+  let lastFailure = 'not started';
+  do {
+    try {
+      const evaluation = await evaluate();
+      invariant(!evaluation?.exceptionDetails,
+        `Installed WebView inspection threw: ${evaluation?.exceptionDetails?.text ?? 'unknown error'}`);
+      return assertInspection(evaluation?.result?.value, expectedVersion);
+    } catch (error) {
+      lastFailure = error instanceof Error ? error.message : 'unknown inspection error';
+      await delay();
+    }
+  } while (now() < deadline);
+  throw new Error(`Installed WebView did not become ready within 60 seconds: ${lastFailure}`);
+}
+
 class CdpClient {
   constructor(endpoint, timeoutMs = DEFAULT_TIMEOUT_MS) {
     this.endpoint = endpoint;
@@ -197,14 +219,14 @@ async function inspectInstalledWebView(options) {
   try {
     await client.send('Runtime.enable');
     await client.send('Page.enable');
-    const evaluation = await client.send('Runtime.evaluate', {
-      expression: INSPECTION_EXPRESSION,
-      awaitPromise: true,
-      returnByValue: true,
-    });
-    invariant(!evaluation.exceptionDetails,
-      `Installed WebView inspection threw: ${evaluation.exceptionDetails?.text ?? 'unknown error'}`);
-    const inspection = assertInspection(evaluation.result?.value, options.expectedVersion);
+    const inspection = await waitForInspection(
+      () => client.send('Runtime.evaluate', {
+          expression: INSPECTION_EXPRESSION,
+          awaitPromise: true,
+          returnByValue: true,
+      }),
+      options.expectedVersion,
+    );
     const capture = await client.send('Page.captureScreenshot', {
       format: 'png',
       captureBeyondViewport: false,

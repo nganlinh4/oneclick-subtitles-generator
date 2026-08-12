@@ -5,6 +5,7 @@ import {
   assertInspection,
   parseArguments,
   selectTauriTarget,
+  waitForInspection,
 } from './inspect-installed-webview.mjs';
 
 const validInspection = Object.freeze({
@@ -75,4 +76,45 @@ test('inspection requires rendered UI, managed fonts, and real Windows IPC', () 
   ]) {
     assert.throws(() => assertInspection({ ...validInspection, ...mutation }, '1.0.0-rc.1'));
   }
+});
+
+test('inspection waits for the real page instead of trusting native setup timing', async () => {
+  const responses = [
+    { result: { value: { ...validInspection, readyState: 'loading', rootChildren: 0 } } },
+    { result: { value: validInspection } },
+  ];
+  let attempts = 0;
+  await expectReady();
+  assert.equal(attempts, 2);
+
+  async function expectReady() {
+    const result = await waitForInspection(
+      async () => {
+        attempts += 1;
+        return responses.shift();
+      },
+      '1.0.0-rc.1',
+      { now: () => 0, delay: async () => {}, timeoutMs: 1 },
+    );
+    assert.equal(result, validInspection);
+  }
+});
+
+test('inspection keeps a hard deadline for a permanently blank installed page', async () => {
+  let clock = 0;
+  await assert.rejects(
+    waitForInspection(
+      async () => ({ result: { value: { ...validInspection, rootChildren: 0 } } }),
+      '1.0.0-rc.1',
+      {
+        now: () => {
+          clock += 10;
+          return clock;
+        },
+        delay: async () => {},
+        timeoutMs: 5,
+      },
+    ),
+    /did not become ready within 60 seconds/,
+  );
 });
