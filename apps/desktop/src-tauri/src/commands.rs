@@ -20,6 +20,7 @@ use serde_json::Value;
 use tauri::{AppHandle, Runtime, State, WebviewWindow};
 use tauri_plugin_dialog::DialogExt;
 
+use crate::diagnostics;
 use crate::error::{CommandError, CommandResult};
 use crate::is_safe_setting_key;
 use crate::state::{DesktopSessionSnapshot, DesktopState};
@@ -492,13 +493,21 @@ pub(crate) async fn select_media(
         .chain(AUDIO_EXTENSIONS.iter())
         .copied()
         .collect();
-    let selected = app
+    let dialog = app
         .dialog()
         .file()
         .set_parent(&window)
         .set_title("Choose video or audio")
-        .add_filter("Video and audio", &extensions)
-        .blocking_pick_file();
+        .add_filter("Video and audio", &extensions);
+    diagnostics::record("media-picker.requested", &[]);
+    let selected = dialog.blocking_pick_file();
+    diagnostics::record(
+        "media-picker.returned",
+        &[(
+            "outcome",
+            media_picker_outcome(selected.as_ref()).to_owned(),
+        )],
+    );
     let Some(selected) = selected else {
         return Ok(None);
     };
@@ -506,6 +515,14 @@ pub(crate) async fn select_media(
         .into_path()
         .map_err(|error| CommandError::invalid_path(error.to_string()))?;
     Ok(Some(import_media_path(&state, path).await?))
+}
+
+const fn media_picker_outcome<T>(selection: Option<&T>) -> &'static str {
+    if selection.is_some() {
+        "selected"
+    } else {
+        "none"
+    }
 }
 
 pub(crate) async fn import_media_path(
@@ -656,9 +673,15 @@ mod tests {
 
     use super::{
         MAX_EXPOSED_ACTIVE_JOBS, MAX_EXPOSED_TERMINAL_JOBS, bounded_job_list,
-        commit_reopened_media, reopen_media_asset,
+        commit_reopened_media, media_picker_outcome, reopen_media_asset,
     };
     use crate::state::EditorSession;
+
+    #[test]
+    fn media_picker_diagnostic_outcome_is_categorical_and_path_free() {
+        assert_eq!(media_picker_outcome(Some(&"private-path")), "selected");
+        assert_eq!(media_picker_outcome::<&str>(None), "none");
+    }
 
     #[test]
     fn reopens_extensionless_durable_media_from_trusted_asset_metadata() {

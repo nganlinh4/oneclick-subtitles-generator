@@ -1172,8 +1172,15 @@ function assertNativePickerEvidenceScripts(evidenceScript, regressionScript) {
       && evidenceWriter.includes('[Text.Encoding]::UTF8.GetByteCount($json) -gt 16384')
       && evidenceWriter.includes('(?:path|pid|hwnd|handle|title|url|token)')
       && evidenceWriter.includes('Write-NativePickerEvidenceAtomically -Json $json')
+      && evidenceWriter.includes("'inspectorPhase'")
+      && evidenceWriter.includes("'processWindowMatches'")
+      && evidenceWriter.includes("'processDialogMatches'")
+      && evidenceWriter.includes("'processNamedMatches'")
+      && evidenceWriter.includes("'ownedDialogMatches'")
+      && evidenceWriter.includes("'click-issued'")
       && !/(?:\$MediaPath|\$ProcessId|\$OwnerHandle|\.Exception)/.test(evidenceWriter)
       && /schemaVersion\s*=\s*1/.test(evidenceInitializer)
+      && /inspectorPhase\s*=\s*'not-started'/.test(evidenceInitializer)
       && !/^\s*[A-Za-z0-9_]*(?:path|pid|hwnd|handle|title|url|token)[A-Za-z0-9_]*\s*=/im.test(evidenceInitializer),
     'Native-picker evidence payload must remain bounded and free of paths, process/window identities, titles, URLs, tokens, and exception text',
   );
@@ -1182,6 +1189,7 @@ function assertNativePickerEvidenceScripts(evidenceScript, regressionScript) {
       && (regressionScript.match(/Initialize-NativePickerEvidence/g) || []).length >= 2
       && (regressionScript.match(/Set-NativePickerEvidence/g) || []).length >= 4
       && regressionScript.includes('initialized,waiting-dialog,value-confirmed,dialog-dismissed')
+      && regressionScript.includes("inspectorPhase = 'click-issued'")
       && regressionScript.includes('did not preserve all replacement stages')
       && regressionScript.includes('$hostileBackupPath = "$hostileEvidencePath.bak"')
       && regressionScript.includes('[IO.Directory]::CreateDirectory($hostileBackupPath)')
@@ -1192,9 +1200,97 @@ function assertNativePickerEvidenceScripts(evidenceScript, regressionScript) {
       && regressionScript.includes('New-Item -ItemType Junction')
       && regressionScript.includes('accepted a reparse ancestor')
       && regressionScript.includes('accepted a non-child destination')
+      && regressionScript.includes('accepted a swapped post-verification path')
+      && regressionScript.includes('$script:diagnosticRereadAttempts -ne 0')
+      && regressionScript.includes('diagnosticSnapshotIsolated = $true')
       && regressionScript.includes('[IO.FileAttributes]::ReparsePoint')
       && regressionScript.includes('[IO.Directory]::Delete($cleanupRoot.FullName, $true)'),
     'Native-picker evidence regression must execute multiple real replacements and hostile bounded-path failures',
+  );
+}
+
+function assertInstalledLocalMediaInspector(script) {
+  invariant(typeof script === 'string', 'Installed local-media inspector source is required');
+  const writerStart = script.indexOf('export function writePickerPhase(');
+  const writerEnd = script.indexOf('\n}', writerStart) + 2;
+  const writer = writerStart >= 0 && writerEnd > writerStart ? script.slice(writerStart, writerEnd) : '';
+  const writerPublicationIndices = [
+    "fs.openSync(temporaryPath, 'wx')",
+    'fs.writeFileSync(descriptor',
+    'fs.fsyncSync(descriptor)',
+    'fs.closeSync(descriptor)',
+    'fs.linkSync(temporaryPath, phasePath)',
+    'fs.unlinkSync(temporaryPath)',
+  ].map((fragment) => writer.indexOf(fragment));
+  invariant(
+    writer.includes("['starting', 'connected', 'control-ready', 'click-issued']")
+      && writer.includes('fs.openSync(temporaryPath, \'wx\')')
+      && writer.includes('fs.fsyncSync(descriptor)')
+      && writer.includes('fs.linkSync(temporaryPath, phasePath)')
+      && writer.includes('fs.unlinkSync(temporaryPath)')
+      && writer.includes('JSON.stringify({ schemaVersion: 1, stage })')
+      && writer.includes('The publication failure remains authoritative')
+      && writer.includes('throw error;')
+      && !writer.includes('fs.renameSync(')
+      && !/writeFileSync\(\s*phasePath/.test(writer)
+      && writerPublicationIndices.every((index) => index >= 0)
+      && writerPublicationIndices.every((index, position) => (
+        position === 0 || writerPublicationIndices[position - 1] < index
+      )),
+    'Installed local-media picker phases must publish complete create-once sentinels atomically',
+  );
+  const runStart = script.indexOf('async function runInstalledLocalMediaFlow(options) {');
+  const run = runStart >= 0 ? script.slice(runStart) : '';
+  const startingIndex = run.indexOf("writePickerPhase(options.phaseDirectory, 'starting')");
+  const discoveryIndex = run.indexOf('discoverTarget(options.port)');
+  const connectedIndex = run.indexOf("writePickerPhase(options.phaseDirectory, 'connected')");
+  const controlIndex = run.indexOf("writePickerPhase(options.phaseDirectory, 'control-ready')");
+  const priorStateIndex = run.indexOf('assertPriorMediaState(');
+  const clickIndex = run.indexOf('evaluate(client, CLICK_PICKER_EXPRESSION)');
+  const issuedIndex = run.indexOf("writePickerPhase(options.phaseDirectory, 'click-issued')");
+  const phaseCalls = [
+    "writePickerPhase(options.phaseDirectory, 'starting')",
+    "writePickerPhase(options.phaseDirectory, 'connected')",
+    "writePickerPhase(options.phaseDirectory, 'control-ready')",
+    "writePickerPhase(options.phaseDirectory, 'click-issued')",
+  ];
+  invariant(
+    script.includes("invariant(values.size === 5")
+      && script.includes("const phaseDirectory = fs.realpathSync(values.get('--phase-directory'))")
+      && script.includes('phaseDirectory === runnerTemp')
+      && script.includes("const priorAssetId = values.get('--prior-asset-id')")
+      && script.includes("CANONICAL_UUID_V7.test(priorAssetId ?? '')")
+      && startingIndex >= 0
+      && startingIndex < discoveryIndex
+      && discoveryIndex < connectedIndex
+      && connectedIndex < controlIndex
+      && controlIndex < priorStateIndex
+      && priorStateIndex < clickIndex
+      && clickIndex < issuedIndex
+      && run.includes('await evaluate(client, PRIOR_MEDIA_STATE_EXPRESSION)')
+      && run.includes('assertLocalMediaState(value, options.expectedFileName, options.priorAssetId)')
+      && run.includes('assertLocalMediaResult(result, options.expectedFileName, options.priorAssetId)')
+      && phaseCalls.every((fragment) => run.split(fragment).length === 2)
+      && (run.match(/writePickerPhase\(options\.phaseDirectory,/g) || []).length === 4,
+    'Installed local-media inspector must bind the prior native asset and handshake exact bounded phases around the successful picker click',
+  );
+  const priorGuardStart = script.indexOf('export function assertPriorMediaState(');
+  const priorGuardEnd = script.indexOf('\n}', priorGuardStart) + 2;
+  const priorGuard = priorGuardStart >= 0 && priorGuardEnd > priorGuardStart
+    ? script.slice(priorGuardStart, priorGuardEnd)
+    : '';
+  const resultGuardStart = script.indexOf('export function assertLocalMediaState(');
+  const resultGuardEnd = script.indexOf('\n}', resultGuardStart) + 2;
+  const resultGuard = resultGuardStart >= 0 && resultGuardEnd > resultGuardStart
+    ? script.slice(resultGuardStart, resultGuardEnd)
+    : '';
+  invariant(
+    priorGuard.includes("CANONICAL_UUID_V7.test(priorAssetId ?? '')")
+      && priorGuard.includes('value.assetId === priorAssetId')
+      && priorGuard.includes('value.sessionMediaId === priorAssetId')
+      && resultGuard.includes('value.assetId !== priorAssetId')
+      && resultGuard.includes('value.session.media.id !== priorAssetId'),
+    'Installed local-media inspector must reject the stale prior URL asset before accepting native selection',
   );
 }
 
@@ -1222,6 +1318,7 @@ function assertInstalledSmokeScript(script) {
     "@('--prior-asset-id', $PriorAssetId)",
     '-PriorAssetId $localMediaFlow.assetId',
     '$localMediaFlow = Inspect-InstalledLocalMediaFlow',
+    '-PriorAssetId $initialMediaFlow.assetId',
     '$mediaPipeline = Inspect-InstalledMediaPipeline',
     '$editorFlow = Inspect-InstalledEditorFlow',
     'function Inspect-InstalledMediaPipeline',
@@ -1234,12 +1331,32 @@ function assertInstalledSmokeScript(script) {
     '-AllowedRoot $runnerTempRoot',
     'Initialize-NativePickerEvidence',
     'function Get-NativeMediaPickerDialogs',
+    'function Get-NativePickerInspectorPhase',
+    'function Get-DiagnosticBaselineSnapshot',
+    'function Get-NativePickerDiagnosticOutcome',
+    'function Wait-NativePickerClickIssued',
     'function Dismiss-NativeMediaPicker',
     "$nativePickerEvidencePath = Join-Path $runnerTempRoot 'osg-installed-native-picker-evidence.json'",
     '$nativePickerEvidenceBackupPath = "$nativePickerEvidencePath.bak"',
+    "'--phase-directory', $env:RUNNER_TEMP",
+    "-FailureCode 'inspector-preclick-exited'",
+    "-FailureCode 'inspector-preclick-timeout'",
+    "-FailureCode 'inspector-phase-invalid'",
+    "'media-picker.requested'",
+    "'media-picker.returned'",
+    "$pickerDiagnosticOutcome -cne 'selected'",
     ".Current.Name -ceq 'Choose video or audio'",
     ".Current.ClassName -ceq '#32770'",
     '[OsgNativePickerWindow]::GetWindow($nativeHandle, 4)',
+    'ProcessWindows = $processWindows.Count',
+    'ProcessDialogClasses = $processDialogClasses.Count',
+    'ProcessNamedWindows = $processNamedWindows.Count',
+    '$snapshotAttempt -lt 5',
+    '$snapshotAttempt -eq 4',
+    "throw 'Installed local-media picker phases were not contiguous'",
+    '$phase.schemaVersion -isnot [int]',
+    '$phase.schemaVersion -isnot [long]',
+    '$phase.stage -isnot [string]',
     '-OwnerHandle $ownerHandle',
     '[System.Windows.Automation.ValuePattern]::Pattern',
     '[StringComparison]::Ordinal',
@@ -1286,6 +1403,7 @@ function assertInstalledSmokeScript(script) {
     "'download.inspection_failed'",
     '$failedDownloads.Count -ne 0',
     '$initialMediaFlow.assetId -eq $localMediaFlow.assetId',
+    '$launchInstanceIds[0] -notmatch',
     '$localMediaFlow.assetId -eq $mediaFlow.assetId',
     'installedInitialMediaFlow = $initialMediaFlow',
     'installedMediaFlow = $mediaFlow',
@@ -1370,6 +1488,38 @@ function assertInstalledSmokeScript(script) {
       && /catch\s*\{[\s\S]*?Set-NativePickerEvidence[\s\S]*?\bthrow\s*\r?\n\s*\}/.test(pickerFunction),
     'Installed native-picker automation must retry settled unique controls, invoke without focus, prove dismissal, and preserve its primary exception',
   );
+  const pickerDialogFunctionStart = script.indexOf('function Get-NativeMediaPickerDialogs {');
+  const pickerDialogFunctionEnd = script.indexOf('\nfunction ', pickerDialogFunctionStart + 1);
+  const pickerDialogFunction = pickerDialogFunctionStart >= 0 && pickerDialogFunctionEnd > pickerDialogFunctionStart
+    ? script.slice(pickerDialogFunctionStart, pickerDialogFunctionEnd)
+    : '';
+  invariant(
+    pickerDialogFunction.includes('$processWindows += $window')
+      && pickerDialogFunction.includes('$processDialogClasses += $window')
+      && pickerDialogFunction.includes('$processNamedWindows += $window')
+      && pickerDialogFunction.includes('Exact = $exact')
+      && pickerDialogFunction.includes('Owned = $owned')
+      && pickerFunction.includes('$processWindowMatches = [Math]::Max(')
+      && pickerFunction.includes('$processDialogMatches = [Math]::Max(')
+      && pickerFunction.includes('$processNamedMatches = [Math]::Max(')
+      && pickerFunction.includes('$ownedDialogMatches = [Math]::Max('),
+    'Installed native-picker evidence must retain categorical same-process UIA maxima without weakening exact owned selection',
+  );
+  const pickerPhaseFunctionStart = script.indexOf('function Get-NativePickerInspectorPhase {');
+  const pickerPhaseFunctionEnd = script.indexOf('\nfunction ', pickerPhaseFunctionStart + 1);
+  const pickerPhaseFunction = pickerPhaseFunctionStart >= 0 && pickerPhaseFunctionEnd > pickerPhaseFunctionStart
+    ? script.slice(pickerPhaseFunctionStart, pickerPhaseFunctionEnd)
+    : '';
+  invariant(
+    /^\s{8}\$nonPrefix = \$true\s*$/m.test(pickerPhaseFunction)
+      && /^\s{6}throw 'Installed local-media picker phases were not contiguous'\s*$/m.test(pickerPhaseFunction)
+      && pickerPhaseFunction.includes('$phase.schemaVersion -isnot [int]')
+      && pickerPhaseFunction.includes('$phase.schemaVersion -isnot [long]')
+      && pickerPhaseFunction.includes('$phase.stage -isnot [string]')
+      && pickerPhaseFunction.includes('$phase.schemaVersion -ne 1')
+      && pickerPhaseFunction.includes('$phase.stage -cne $stage'),
+    'Installed native-picker evidence must require one typed contiguous monotonic phase prefix',
+  );
   invariant(
     !/(?:SendKeys|SetFocus|SetForegroundWindow|mouse_event|keybd_event|System\.Windows\.Forms\.Cursor|Clipboard)/i.test(script),
     'Installed native-picker automation must remain non-focus-stealing and clipboard-free',
@@ -1388,14 +1538,56 @@ function assertInstalledSmokeScript(script) {
     : '';
   invariant(
     localMediaFunction.includes('$ownerHandle = $applicationProcess.MainWindowHandle.ToInt64()')
+      && localMediaFunction.includes('[Parameter(Mandatory = $true)][string]$PriorAssetId')
+      && localMediaFunction.includes("$PriorAssetId -notmatch '^[0-9a-f]{8}-[0-9a-f]{4}-7")
+      && localMediaFunction.includes("'--prior-asset-id', $PriorAssetId")
       && localMediaFunction.includes('-OwnerHandle $ownerHandle')
+      && localMediaFunction.indexOf('$diagnosticBaseline = Get-DiagnosticBaselineSnapshot')
+        < localMediaFunction.indexOf('$inspection = Start-Process')
+      && localMediaFunction.indexOf('Wait-NativePickerClickIssued')
+        < localMediaFunction.indexOf('Complete-NativeMediaPicker')
+      && localMediaFunction.includes("$pickerDiagnosticOutcome -cne 'selected'")
+      && localMediaFunction.includes('$phaseScratchPaths')
+      && localMediaFunction.includes('$inspectionSucceeded -and $phaseCleanupFailed')
       && /finally\s*\{\s*try\s*\{[\s\S]*?Stop-Process[\s\S]*?\}\s*catch\s*\{/.test(localMediaFunction),
-    'Installed local-media inspector cleanup must be non-throwing and bind automation to the original native owner',
+    'Installed local-media inspector must bind the prior asset, handshake before UIA, bind exact diagnostics and ownership, and preserve primary failures',
+  );
+  const diagnosticSnapshotStart = script.indexOf('function Get-DiagnosticBaselineSnapshot {');
+  const diagnosticSnapshotEnd = script.indexOf('\nfunction ', diagnosticSnapshotStart + 1);
+  const diagnosticSnapshot = diagnosticSnapshotStart >= 0 && diagnosticSnapshotEnd > diagnosticSnapshotStart
+    ? script.slice(diagnosticSnapshotStart, diagnosticSnapshotEnd)
+    : '';
+  const diagnosticOutcomeStart = script.indexOf('function Get-NativePickerDiagnosticOutcome {');
+  const diagnosticOutcomeEnd = script.indexOf('\nfunction ', diagnosticOutcomeStart + 1);
+  const diagnosticOutcome = diagnosticOutcomeStart >= 0 && diagnosticOutcomeEnd > diagnosticOutcomeStart
+    ? script.slice(diagnosticOutcomeStart, diagnosticOutcomeEnd)
+    : '';
+  invariant(
+    diagnosticSnapshot.includes('while ($offset -lt $bytes.Length)')
+      && diagnosticSnapshot.includes('$hasher.ComputeHash($bytes)')
+      && diagnosticSnapshot.includes('EventCount = $lines.Count')
+      && diagnosticOutcome.includes('while ($offset -lt $snapshotBytes.Length)')
+      && diagnosticOutcome.includes('$snapshotLength = $stream.Length')
+      && diagnosticOutcome.includes('$snapshotLength -gt ($diagnosticLogLimitBytes + $diagnosticEntrySlackBytes)')
+      && diagnosticOutcome.includes('[Text.Encoding]::UTF8.GetString($snapshotBytes)')
+      && !diagnosticOutcome.includes('Read-DiagnosticEvents -LogPath')
+      && diagnosticOutcome.includes("return 'diagnostic-baseline-changed'")
+      && diagnosticOutcome.includes('Select-Object -Skip $baselineEvents.Count')
+      && diagnosticOutcome.includes('$_.appInstanceId -ceq $AppInstanceId')
+      && diagnosticOutcome.includes("@('appInstanceId', 'event', 'timestampMs')")
+      && diagnosticOutcome.includes("@('appInstanceId', 'event', 'outcome', 'timestampMs')")
+      && diagnosticOutcome.includes("$pickerEvents[0].event -ceq 'media-picker.requested'")
+      && diagnosticOutcome.includes("$pickerEvents[1].event -ceq 'media-picker.returned'")
+      && diagnosticOutcome.includes("return 'selected'")
+      && diagnosticOutcome.includes("return 'backend-returned-none'")
+      && diagnosticOutcome.includes("return 'command-dispatch-timeout'"),
+    'Installed native-picker diagnostics must correlate one immutable exact-instance transaction',
   );
   const thirdLaunchStart = script.indexOf('$third = Start-And-WaitForReadiness');
   const thirdLaunchFlow = thirdLaunchStart >= 0 ? script.slice(thirdLaunchStart) : '';
   invariant(
-    thirdLaunchFlow.includes('[void](Dismiss-NativeMediaPicker')
+    thirdLaunchFlow.includes('-PriorAssetId $initialMediaFlow.assetId')
+      && thirdLaunchFlow.includes('[void](Dismiss-NativeMediaPicker')
       && /catch\s*\{[\s\S]*?Dismiss-NativeMediaPicker[\s\S]*?Stop-Application[\s\S]*?\bthrow\s*\r?\n\s*\}/.test(thirdLaunchFlow)
       && !/finally\s*\{\s*Stop-Application\s+-Process\s+\$third\.Process/.test(thirdLaunchFlow),
     'Installed smoke failure cleanup must dismiss the exact picker and preserve the primary exception',
@@ -2051,6 +2243,9 @@ function assertWorkflow(rootDirectory = REPOSITORY_ROOT) {
     && !/\$\{\{\s*secrets\./i.test(workflow.replace(signedUpdaterWrapper, '')),
   'Ordinary rewrite CI jobs must remain unsigned and updater-fixture-free');
   assertInstalledSmokeScript(readText(rootDirectory, 'scripts/test-installed-windows.ps1'));
+  assertInstalledLocalMediaInspector(
+    readText(rootDirectory, 'scripts/inspect-installed-local-media-flow.mjs'),
+  );
   assertNativePickerEvidenceScripts(
     readText(rootDirectory, 'scripts/native-picker-evidence.ps1'),
     readText(rootDirectory, 'scripts/test-native-picker-evidence.ps1'),
@@ -2405,12 +2600,21 @@ function assertTauriProductionBuildContract(rootDirectory = REPOSITORY_ROOT) {
   const fileDialogIndex = selectMedia.indexOf('.file()');
   const parentIndex = selectMedia.indexOf('.set_parent(&window)', fileDialogIndex);
   const titleIndex = selectMedia.indexOf('.set_title("Choose video or audio")', parentIndex);
+  const requestedIndex = selectMedia.indexOf('diagnostics::record("media-picker.requested", &[])');
+  const blockingPickerIndex = selectMedia.indexOf('dialog.blocking_pick_file()');
+  const returnedIndex = selectMedia.indexOf('"media-picker.returned"', blockingPickerIndex);
+  const selectedBranchIndex = selectMedia.indexOf('let Some(selected) = selected', returnedIndex);
   invariant(
     /\bwindow\s*:\s*WebviewWindow\b/.test(selectMedia)
       && fileDialogIndex >= 0
       && parentIndex > fileDialogIndex
-      && titleIndex > parentIndex,
-    'Desktop select_media must parent the native picker to the invoking WebviewWindow',
+      && titleIndex > parentIndex
+      && requestedIndex > titleIndex
+      && blockingPickerIndex > requestedIndex
+      && returnedIndex > blockingPickerIndex
+      && selectedBranchIndex > returnedIndex
+      && selectMedia.includes('media_picker_outcome(selected.as_ref())'),
+    'Desktop select_media must parent the picker and record path-free requested/returned outcomes around its blocking backend',
   );
 }
 
@@ -3628,6 +3832,7 @@ module.exports = {
   assertDesktopCloseLifecycleSource,
   assertNativePickerEvidenceScripts,
   assertInstalledSmokeScript,
+  assertInstalledLocalMediaInspector,
   assertCiUpdaterFixtureHandoffSource,
   assertCiUpdaterFixtureDebugPortSource,
   assertUpdaterFixtureSource,

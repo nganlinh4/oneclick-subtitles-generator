@@ -14,6 +14,7 @@ const {
   assertProductionCsp,
   assertEffectiveToolchain,
   assertInstalledSmokeScript,
+  assertInstalledLocalMediaInspector,
   assertNativePickerEvidenceScripts,
   assertCiUpdaterFixtureDebugPortSource,
   assertCiUpdaterFixtureHandoffSource,
@@ -52,6 +53,10 @@ const NATIVE_PICKER_EVIDENCE_SCRIPT = fs.readFileSync(
 );
 const NATIVE_PICKER_EVIDENCE_REGRESSION = fs.readFileSync(
   path.join(__dirname, 'test-native-picker-evidence.ps1'),
+  'utf8',
+);
+const INSTALLED_LOCAL_MEDIA_INSPECTOR = fs.readFileSync(
+  path.join(__dirname, 'inspect-installed-local-media-flow.mjs'),
   'utf8',
 );
 const UPDATER_SMOKE_WORKFLOW = fs.readFileSync(
@@ -111,7 +116,11 @@ function createTauriProductionBuildFixture() {
     'apps/desktop/src-tauri/src/commands.rs',
     'use tauri::WebviewWindow;\n'
       + 'async fn select_media(window: WebviewWindow) {\n'
-      + '  app.dialog().file().set_parent(&window).set_title("Choose video or audio");\n'
+      + '  let dialog = app.dialog().file().set_parent(&window).set_title("Choose video or audio");\n'
+      + '  diagnostics::record("media-picker.requested", &[]);\n'
+      + '  let selected = dialog.blocking_pick_file();\n'
+      + '  diagnostics::record("media-picker.returned", &[("outcome", media_picker_outcome(selected.as_ref()))]);\n'
+      + '  let Some(selected) = selected else { return; };\n'
       + '}\n',
   );
   return root;
@@ -156,6 +165,7 @@ test('installed Windows smoke proves persistence, media, tools, logs, relaunch, 
     "@('--prior-asset-id', $PriorAssetId)",
     '-PriorAssetId $localMediaFlow.assetId',
     '$localMediaFlow = Inspect-InstalledLocalMediaFlow',
+    '-PriorAssetId $initialMediaFlow.assetId',
     '$mediaPipeline = Inspect-InstalledMediaPipeline',
     '$editorFlow = Inspect-InstalledEditorFlow',
     'function Inspect-InstalledMediaPipeline',
@@ -324,10 +334,37 @@ test('installed Windows smoke proves persistence, media, tools, logs, relaunch, 
       '[OsgNativePickerWindow]::GetWindow($nativeHandle, 4)',
       '$OwnerHandle',
     ),
+    INSTALLED_SMOKE_SCRIPT.replace('$processNamedWindows += $window', '# omitted category'),
+    INSTALLED_SMOKE_SCRIPT.replace('$snapshotAttempt -lt 5', '$snapshotAttempt -lt 1'),
+    INSTALLED_SMOKE_SCRIPT.replace('$nonPrefix = $true', '$nonPrefix = $false'),
+    INSTALLED_SMOKE_SCRIPT.replace('$phase.schemaVersion -isnot [int]', '$false'),
+    INSTALLED_SMOKE_SCRIPT.replace('$phase.stage -isnot [string]', '$false'),
+    INSTALLED_SMOKE_SCRIPT.replace('$phase.schemaVersion -ne 1', '$false'),
+    INSTALLED_SMOKE_SCRIPT.replace('$phase.stage -cne $stage', '$false'),
+    INSTALLED_SMOKE_SCRIPT.replace(
+      '$_.appInstanceId -ceq $AppInstanceId',
+      '$true',
+    ),
+    INSTALLED_SMOKE_SCRIPT.replace(
+      'while ($offset -lt $snapshotBytes.Length)',
+      'if ($offset -lt $snapshotBytes.Length)',
+    ),
+    INSTALLED_SMOKE_SCRIPT.replace(
+      '[Text.Encoding]::UTF8.GetString($snapshotBytes)',
+      '[Text.Encoding]::UTF8.GetString([IO.File]::ReadAllBytes($LogPath))',
+    ),
+    INSTALLED_SMOKE_SCRIPT.replace(
+      "$pickerDiagnosticOutcome -cne 'selected'",
+      '$false',
+    ),
+    INSTALLED_SMOKE_SCRIPT.replace(
+      '-PriorAssetId $initialMediaFlow.assetId',
+      '-PriorAssetId $third.AppInstanceId',
+    ),
   ]) {
     assert.throws(
       () => assertInstalledSmokeScript(weakenedPickerProof),
-      /(?:native-picker automation|missing lifecycle proof)/,
+      /(?:native-picker automation|native-picker evidence|native-picker diagnostics|missing lifecycle proof)/,
     );
   }
   assert.throws(
@@ -478,6 +515,41 @@ test('native-picker evidence uses bounded backups and real multi-stage replaceme
         weakenedRegression,
       ),
       /regression must execute multiple real replacements/,
+    );
+  }
+});
+
+test('installed local-media picker handshake publishes atomic create-once ordered phases', () => {
+  assert.doesNotThrow(() => assertInstalledLocalMediaInspector(INSTALLED_LOCAL_MEDIA_INSPECTOR));
+  const linkLine = '    fs.linkSync(temporaryPath, phasePath);\n';
+  const fsyncLine = '    fs.fsyncSync(descriptor);\n';
+  const linkBeforeFlush = INSTALLED_LOCAL_MEDIA_INSPECTOR
+    .replace(linkLine, '')
+    .replace(fsyncLine, `${linkLine}${fsyncLine}`);
+  const regressiveDuplicate = INSTALLED_LOCAL_MEDIA_INSPECTOR.replace(
+    "    writePickerPhase(options.phaseDirectory, 'control-ready');",
+    "    writePickerPhase(options.phaseDirectory, 'control-ready');\n"
+      + "    writePickerPhase(options.phaseDirectory, 'starting');",
+  );
+  for (const weakened of [
+    INSTALLED_LOCAL_MEDIA_INSPECTOR.replace('fs.linkSync(temporaryPath, phasePath)', 'fs.renameSync(temporaryPath, phasePath)'),
+    INSTALLED_LOCAL_MEDIA_INSPECTOR.replace('fs.fsyncSync(descriptor)', '// omitted durable flush'),
+    INSTALLED_LOCAL_MEDIA_INSPECTOR.replace('throw error;', 'throw new Error("cleanup replaced primary")'),
+    INSTALLED_LOCAL_MEDIA_INSPECTOR.replace(
+      'JSON.stringify({ schemaVersion: 1, stage })',
+      "JSON.stringify({ schemaVersion: 9, stage: 'click-issued' })",
+    ),
+    INSTALLED_LOCAL_MEDIA_INSPECTOR.replace(
+      'value.assetId !== priorAssetId',
+      'value.assetId === priorAssetId',
+    ),
+    linkBeforeFlush,
+    regressiveDuplicate,
+  ]) {
+    assert.notEqual(weakened, INSTALLED_LOCAL_MEDIA_INSPECTOR);
+    assert.throws(
+      () => assertInstalledLocalMediaInspector(weakened),
+      /Installed local-media picker phases|Installed local-media inspector must (?:bind|reject)/,
     );
   }
 });
@@ -1728,15 +1800,15 @@ test('Tauri production build contract embeds the frontend instead of retaining t
   assert.doesNotThrow(() => assertTauriProductionBuildContract(root));
 });
 
-test('Tauri production build contract rejects dev-server releases and unowned native pickers', (context) => {
-  const fixtures = Array.from({ length: 5 }, createTauriProductionBuildFixture);
+test('Tauri production build contract rejects dev-server releases and unowned or unlogged native pickers', (context) => {
+  const fixtures = Array.from({ length: 6 }, createTauriProductionBuildFixture);
   context.after(() => {
     for (const root of fixtures) {
       fs.rmSync(root, { force: true, recursive: true });
     }
   });
 
-  const [rootScript, desktopScript, cargoFeature, mainGuard, unownedPicker] = fixtures;
+  const [rootScript, desktopScript, cargoFeature, mainGuard, unownedPicker, unloggedPicker] = fixtures;
   const rootPackage = JSON.parse(fs.readFileSync(path.join(rootScript, 'package.json'), 'utf8'));
   rootPackage.scripts['tauri:build'] = 'npm --prefix apps/desktop run tauri -- build';
   writeFile(rootScript, 'package.json', JSON.stringify(rootPackage));
@@ -1781,7 +1853,16 @@ test('Tauri production build contract rejects dev-server releases and unowned na
   );
   assert.throws(
     () => assertTauriProductionBuildContract(unownedPicker),
-    /must parent the native picker to the invoking WebviewWindow/,
+    /must parent the picker and record path-free/,
+  );
+
+  const unloggedSource = fs.readFileSync(
+    path.join(unloggedPicker, 'apps/desktop/src-tauri/src/commands.rs'), 'utf8',
+  ).replace('  diagnostics::record("media-picker.requested", &[]);\n', '');
+  writeFile(unloggedPicker, 'apps/desktop/src-tauri/src/commands.rs', unloggedSource);
+  assert.throws(
+    () => assertTauriProductionBuildContract(unloggedPicker),
+    /must parent the picker and record path-free/,
   );
 });
 

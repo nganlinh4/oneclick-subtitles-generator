@@ -15,6 +15,7 @@ import {
 const DEFAULT_TIMEOUT_MS = 2 * 60 * 1_000;
 const EXPECTED_FIXTURE_BYTES = 366_888;
 const UUID_V7 = /^[0-9a-f]{8}-[0-9a-f]{4}-7[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+const CANONICAL_UUID_V7 = /^[0-9a-f]{8}-[0-9a-f]{4}-7[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/;
 const UUID_V4 = /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 const PLAYBACK_URL = /^http:\/\/127\.0\.0\.1:([0-9]{1,5})\/asset\/([0-9a-f-]{36})\?token=([0-9a-f]{64})$/i;
 
@@ -39,11 +40,12 @@ export function parseArguments(argv, environment = process.env) {
     const value = argv[index + 1];
     invariant(/^--[a-z-]+$/.test(key ?? '') && value !== undefined,
       'Usage: inspect-installed-local-media-flow.mjs --port PORT '
-        + '--expected-file-name NAME --screenshot PATH');
+        + '--expected-file-name NAME --screenshot PATH --phase-directory PATH '
+        + '--prior-asset-id UUID');
     invariant(!values.has(key), `Duplicate argument: ${key}`);
     values.set(key, value);
   }
-  invariant(values.size === 3, 'Only reviewed installed local-media arguments are accepted');
+  invariant(values.size === 5, 'Only reviewed installed local-media arguments are accepted');
   const port = Number(values.get('--port'));
   invariant(Number.isInteger(port) && port >= 1_024 && port <= 65_535,
     'DevTools port must be an unprivileged TCP port');
@@ -58,16 +60,63 @@ export function parseArguments(argv, environment = process.env) {
     && /^[A-Za-z0-9][A-Za-z0-9._-]{0,127}\.mp4$/.test(expectedFileName)
     && path.basename(expectedFileName) === expectedFileName,
   'Expected local-media filename is invalid');
-  return Object.freeze({ port, expectedFileName, screenshot });
+  const phaseDirectory = fs.realpathSync(values.get('--phase-directory'));
+  invariant(phaseDirectory === runnerTemp,
+    'Picker phase directory must be the canonical RUNNER_TEMP');
+  const priorAssetId = values.get('--prior-asset-id');
+  invariant(CANONICAL_UUID_V7.test(priorAssetId ?? ''),
+    'Prior installed local-media asset identity is invalid');
+  return Object.freeze({ port, expectedFileName, screenshot, phaseDirectory, priorAssetId });
 }
 
-export function assertLocalMediaResult(value, expectedFileName) {
+export function writePickerPhase(phaseDirectory, stage) {
+  invariant(['starting', 'connected', 'control-ready', 'click-issued'].includes(stage),
+    'Installed local-media picker phase is invalid');
+  const phasePath = path.join(phaseDirectory, `osg-installed-native-picker-${stage}.json`);
+  const temporaryPath = `${phasePath}.tmp`;
+  let descriptor;
+  try {
+    descriptor = fs.openSync(temporaryPath, 'wx');
+    fs.writeFileSync(descriptor, `${JSON.stringify({ schemaVersion: 1, stage })}\n`, 'utf8');
+    fs.fsyncSync(descriptor);
+    fs.closeSync(descriptor);
+    descriptor = undefined;
+    fs.linkSync(temporaryPath, phasePath);
+    fs.unlinkSync(temporaryPath);
+  } catch (error) {
+    if (descriptor !== undefined) {
+      try {
+        fs.closeSync(descriptor);
+      } catch {
+        // The publication failure remains authoritative when descriptor cleanup also fails.
+      }
+    }
+    try {
+      fs.unlinkSync(temporaryPath);
+    } catch {
+      // The publication failure remains authoritative when scratch cleanup also fails.
+    }
+    throw error;
+  }
+}
+
+export function assertPriorMediaState(value, priorAssetId) {
+  invariant(CANONICAL_UUID_V7.test(priorAssetId ?? ''),
+    'Prior installed local-media asset identity is invalid');
+  invariant(hasExactKeys(value, ['assetId', 'sessionMediaId'])
+    && value.assetId === priorAssetId
+    && value.sessionMediaId === priorAssetId,
+  'Installed local-media flow did not begin from the reviewed prior native asset');
+  return value;
+}
+
+export function assertLocalMediaResult(value, expectedFileName, priorAssetId) {
   invariant(hasExactKeys(value, [
     'assetId', 'currentFileUrl', 'displayedFileName', 'errorToastMessages', 'htmlFileInput',
     'inspection', 'playbackBytes', 'session', 'video',
   ]), 'Installed local-media flow returned an invalid result shape');
   const { playbackBytes, ...state } = value;
-  assertLocalMediaState(state, expectedFileName);
+  assertLocalMediaState(state, expectedFileName, priorAssetId);
   invariant(hasExactKeys(playbackBytes, ['byteLength', 'sha256'])
     && playbackBytes.byteLength === EXPECTED_FIXTURE_BYTES
     && playbackBytes.sha256 === 'aecf6c8ef3977cd4525261ccadb4086581bd911cb17cc97128cfd8640c6055db',
@@ -75,13 +124,17 @@ export function assertLocalMediaResult(value, expectedFileName) {
   return value;
 }
 
-export function assertLocalMediaState(value, expectedFileName) {
+export function assertLocalMediaState(value, expectedFileName, priorAssetId) {
+  invariant(CANONICAL_UUID_V7.test(priorAssetId ?? ''),
+    'Prior installed local-media asset identity is invalid');
   invariant(hasExactKeys(value, [
     'assetId', 'currentFileUrl', 'displayedFileName', 'errorToastMessages', 'htmlFileInput',
     'inspection', 'session', 'video',
   ]), 'Installed local-media flow returned an invalid result shape');
   invariant(UUID_V7.test(value.assetId ?? ''),
     'Installed local-media flow did not publish a UUIDv7 asset');
+  invariant(value.assetId !== priorAssetId,
+    'Installed local-media flow retained the prior URL asset after native selection');
   const playback = typeof value.currentFileUrl === 'string'
     ? PLAYBACK_URL.exec(value.currentFileUrl)
     : null;
@@ -102,6 +155,7 @@ export function assertLocalMediaState(value, expectedFileName) {
       'displayName', 'extension', 'id', 'kind', 'sizeBytes',
     ])
     && value.session.media.id === value.assetId
+    && value.session.media.id !== priorAssetId
     && value.session.media.kind === 'video'
     && value.session.media.displayName === expectedFileName
     && value.session.media.extension === 'mp4'
@@ -231,13 +285,27 @@ export const LOCAL_MEDIA_RESULT_EXPRESSION = `
   };
 })()`;
 
+export const PRIOR_MEDIA_STATE_EXPRESSION = `
+(async () => {
+  const assetId = localStorage.getItem('current_file_cache_id');
+  const invoke = window.__TAURI_INTERNALS__?.invoke;
+  let sessionMediaId = null;
+  if (typeof invoke === 'function') {
+    const session = await invoke('get_session_snapshot');
+    sessionMediaId = session?.media?.id ?? null;
+  }
+  return { assetId, sessionMediaId };
+})()`;
+
 async function runInstalledLocalMediaFlow(options) {
+  writePickerPhase(options.phaseDirectory, 'starting');
   const target = await discoverTarget(options.port);
   const client = new CdpClient(target.webSocketDebuggerUrl, DEFAULT_TIMEOUT_MS);
   await client.connect();
   try {
     await client.send('Runtime.enable');
     await client.send('Page.enable');
+    writePickerPhase(options.phaseDirectory, 'connected');
     invariant(await evaluate(client, OPEN_PICKER_EXPRESSION) === true,
       'Installed local-media flow could not activate the Upload File tab');
     await waitForValue(
@@ -245,25 +313,31 @@ async function runInstalledLocalMediaFlow(options) {
       (value) => value === true,
       { timeoutMs: 30_000 },
     );
+    writePickerPhase(options.phaseDirectory, 'control-ready');
+    assertPriorMediaState(
+      await evaluate(client, PRIOR_MEDIA_STATE_EXPRESSION),
+      options.priorAssetId,
+    );
     invariant(await evaluate(client, CLICK_PICKER_EXPRESSION) === true,
       'Installed local-media flow could not open the native picker');
+    writePickerPhase(options.phaseDirectory, 'click-issued');
     const state = await waitForValue(
       () => evaluate(client, LOCAL_MEDIA_RESULT_EXPRESSION),
       (value) => {
         try {
-          assertLocalMediaState(value, options.expectedFileName);
+          assertLocalMediaState(value, options.expectedFileName, options.priorAssetId);
           return true;
         } catch {
           return false;
         }
       },
     );
-    assertLocalMediaState(state, options.expectedFileName);
+    assertLocalMediaState(state, options.expectedFileName, options.priorAssetId);
     const result = {
       ...state,
       playbackBytes: await readPlaybackCapability(state.currentFileUrl),
     };
-    assertLocalMediaResult(result, options.expectedFileName);
+    assertLocalMediaResult(result, options.expectedFileName, options.priorAssetId);
     const capture = await client.send('Page.captureScreenshot', {
       format: 'png',
       captureBeyondViewport: false,

@@ -400,8 +400,26 @@ function Get-NativeMediaPickerDialogs {
     [System.Windows.Automation.TreeScope]::Children,
     $processCondition
   )
+  $processWindows = @()
+  $processDialogClasses = @()
+  $processNamedWindows = @()
+  foreach ($window in $windows) {
+    try {
+      if ($window.Current.ControlType -eq [System.Windows.Automation.ControlType]::Window) {
+        $processWindows += $window
+        if ($window.Current.ClassName -ceq '#32770') {
+          $processDialogClasses += $window
+        }
+        if ($window.Current.Name -ceq 'Choose video or audio') {
+          $processNamedWindows += $window
+        }
+      }
+    } catch {
+      # A top-level window can disappear while its categorical state is sampled.
+    }
+  }
   $exact = @(
-    foreach ($window in $windows) {
+    foreach ($window in $processDialogClasses) {
       try {
         if ($window.Current.ControlType -eq [System.Windows.Automation.ControlType]::Window `
             -and $window.Current.ClassName -ceq '#32770' `
@@ -428,7 +446,320 @@ function Get-NativeMediaPickerDialogs {
   [pscustomobject]@{
     Exact = $exact
     Owned = $owned
+    ProcessWindows = $processWindows.Count
+    ProcessDialogClasses = $processDialogClasses.Count
+    ProcessNamedWindows = $processNamedWindows.Count
   }
+}
+
+function Get-NativePickerInspectorPhase {
+  param([Parameter(Mandatory = $true)][string]$Root)
+
+  $stages = @('starting', 'connected', 'control-ready', 'click-issued')
+  $present = $null
+  for ($snapshotAttempt = 0; $snapshotAttempt -lt 5; $snapshotAttempt += 1) {
+    $present = @(
+      foreach ($stage in $stages) {
+        Test-Path -LiteralPath (Join-Path $Root "osg-installed-native-picker-$stage.json")
+      }
+    )
+    $seenMissing = $false
+    $nonPrefix = $false
+    foreach ($exists in $present) {
+      if (-not $exists) {
+        $seenMissing = $true
+      } elseif ($seenMissing) {
+        $nonPrefix = $true
+      }
+    }
+    if (-not $nonPrefix) {
+      break
+    }
+    if ($snapshotAttempt -eq 4) {
+      throw 'Installed local-media picker phases were not contiguous'
+    }
+    Start-Sleep -Milliseconds 10
+  }
+
+  $highest = 'not-started'
+  for ($index = 0; $index -lt $stages.Count; $index += 1) {
+    if (-not $present[$index]) {
+      break
+    }
+    $stage = $stages[$index]
+    $phasePath = Join-Path $Root "osg-installed-native-picker-$stage.json"
+    $item = Get-Item -LiteralPath $phasePath -Force
+    if ($item.PSIsContainer `
+        -or ($item.Attributes -band [IO.FileAttributes]::ReparsePoint) `
+        -or $item.Length -le 0 `
+        -or $item.Length -gt 128) {
+      throw 'Installed local-media picker phase evidence was not regular and bounded'
+    }
+    $phase = Get-Content -LiteralPath $phasePath -Raw | ConvertFrom-Json
+    $properties = @($phase.PSObject.Properties)
+    if ($properties.Count -ne 2 `
+        -or $null -eq $phase.PSObject.Properties['schemaVersion'] `
+        -or $null -eq $phase.PSObject.Properties['stage'] `
+        -or ($phase.schemaVersion -isnot [int] -and $phase.schemaVersion -isnot [long]) `
+        -or $phase.stage -isnot [string] `
+        -or $phase.schemaVersion -ne 1 `
+        -or $phase.stage -cne $stage) {
+      throw 'Installed local-media picker phase evidence had an invalid schema'
+    }
+    $highest = $stage
+  }
+  $highest
+}
+
+function Get-DiagnosticBaselineSnapshot {
+  param([Parameter(Mandatory = $true)][string]$LogPath)
+
+  $stream = [IO.FileStream]::new(
+    $LogPath,
+    [IO.FileMode]::Open,
+    [IO.FileAccess]::Read,
+    [IO.FileShare]::ReadWrite
+  )
+  try {
+    $length = $stream.Length
+    if ($length -le 0 -or $length -gt ($diagnosticLogLimitBytes + $diagnosticEntrySlackBytes)) {
+      throw 'Native picker diagnostic baseline length was invalid'
+    }
+    $bytes = [byte[]]::new([int]$length)
+    $offset = 0
+    while ($offset -lt $bytes.Length) {
+      $read = $stream.Read($bytes, $offset, $bytes.Length - $offset)
+      if ($read -le 0) {
+        throw 'Native picker diagnostic baseline ended unexpectedly'
+      }
+      $offset += $read
+    }
+    $lastLineBreak = $bytes.Length - 1
+    while ($lastLineBreak -ge 0 -and $bytes[$lastLineBreak] -ne 10) {
+      $lastLineBreak -= 1
+    }
+    if ($lastLineBreak -lt 0) {
+      throw 'Native picker diagnostic baseline omitted a complete event'
+    }
+    $prefixLength = $lastLineBreak + 1
+    if ($prefixLength -ne $bytes.Length) {
+      $completeBytes = [byte[]]::new($prefixLength)
+      [Array]::Copy($bytes, $completeBytes, $prefixLength)
+      $bytes = $completeBytes
+    }
+  } finally {
+    $stream.Dispose()
+  }
+  $hasher = [Security.Cryptography.SHA256]::Create()
+  try {
+    $sha256 = ([BitConverter]::ToString($hasher.ComputeHash($bytes))).Replace('-', '').ToLowerInvariant()
+  } finally {
+    $hasher.Dispose()
+  }
+  $lines = @(
+    [Text.Encoding]::UTF8.GetString($bytes) -split "`r?`n" |
+      Where-Object Length -gt 0
+  )
+  foreach ($line in $lines) {
+    [void]($line | ConvertFrom-Json)
+  }
+  [pscustomobject]@{
+    EventCount = $lines.Count
+    Length = $prefixLength
+    Sha256 = $sha256
+  }
+}
+
+function Get-NativePickerDiagnosticOutcome {
+  param(
+    [Parameter(Mandatory = $true)][string]$LogPath,
+    [Parameter(Mandatory = $true)][string]$BaselineSha256,
+    [Parameter(Mandatory = $true)][long]$BaselineLength,
+    [Parameter(Mandatory = $true)][string]$AppInstanceId
+  )
+
+  if ($BaselineLength -le 0 `
+      -or $BaselineLength -gt ($diagnosticLogLimitBytes + $diagnosticEntrySlackBytes)) {
+    return 'diagnostic-baseline-changed'
+  }
+  $stream = [IO.FileStream]::new(
+    $LogPath,
+    [IO.FileMode]::Open,
+    [IO.FileAccess]::Read,
+    [IO.FileShare]::ReadWrite
+  )
+  try {
+    $snapshotLength = $stream.Length
+    if ($snapshotLength -lt $BaselineLength) {
+      return 'diagnostic-baseline-changed'
+    }
+    if ($snapshotLength -gt ($diagnosticLogLimitBytes + $diagnosticEntrySlackBytes)) {
+      return 'diagnostic-ambiguous'
+    }
+    $snapshotBytes = [byte[]]::new([int]$snapshotLength)
+    $offset = 0
+    while ($offset -lt $snapshotBytes.Length) {
+      $read = $stream.Read($snapshotBytes, $offset, $snapshotBytes.Length - $offset)
+      if ($read -le 0) {
+        return 'diagnostic-baseline-changed'
+      }
+      $offset += $read
+    }
+  } finally {
+    $stream.Dispose()
+  }
+  $lastLineBreak = $snapshotBytes.Length - 1
+  while ($lastLineBreak -ge 0 -and $snapshotBytes[$lastLineBreak] -ne 10) {
+    $lastLineBreak -= 1
+  }
+  $completeLength = $lastLineBreak + 1
+  if ($completeLength -lt $BaselineLength) {
+    return 'diagnostic-baseline-changed'
+  }
+  if ($completeLength -ne $snapshotBytes.Length) {
+    $completeBytes = [byte[]]::new($completeLength)
+    [Array]::Copy($snapshotBytes, $completeBytes, $completeLength)
+    $snapshotBytes = $completeBytes
+  }
+  $baselineBytes = [byte[]]::new([int]$BaselineLength)
+  [Array]::Copy($snapshotBytes, $baselineBytes, [int]$BaselineLength)
+  $hasher = [Security.Cryptography.SHA256]::Create()
+  try {
+    $actualBaselineSha256 = ([BitConverter]::ToString(
+        $hasher.ComputeHash($baselineBytes)
+      )).Replace('-', '').ToLowerInvariant()
+  } finally {
+    $hasher.Dispose()
+  }
+  if ($actualBaselineSha256 -cne $BaselineSha256) {
+    return 'diagnostic-baseline-changed'
+  }
+  $events = @(
+    [Text.Encoding]::UTF8.GetString($snapshotBytes) -split "`r?`n" |
+      Where-Object Length -gt 0 |
+      ForEach-Object { $_ | ConvertFrom-Json }
+  )
+  $baselineEvents = @(
+    [Text.Encoding]::UTF8.GetString($baselineBytes) -split "`r?`n" |
+      Where-Object Length -gt 0
+  )
+  $pickerEvents = @(
+    $events |
+      Select-Object -Skip $baselineEvents.Count |
+      Where-Object {
+        $_.appInstanceId -ceq $AppInstanceId `
+          -and $_.event -in @('media-picker.requested', 'media-picker.returned')
+      }
+  )
+  $requested = @($pickerEvents | Where-Object event -eq 'media-picker.requested')
+  $returned = @($pickerEvents | Where-Object event -eq 'media-picker.returned')
+  foreach ($entry in $pickerEvents) {
+    $expectedNames = if ($entry.event -ceq 'media-picker.requested') {
+      @('appInstanceId', 'event', 'timestampMs')
+    } else {
+      @('appInstanceId', 'event', 'outcome', 'timestampMs')
+    }
+    if ((@($entry.PSObject.Properties.Name | Sort-Object) -join ',') `
+        -cne (($expectedNames | Sort-Object) -join ',') `
+        -or [string]$entry.timestampMs -notmatch '^\d{1,20}$') {
+      return 'diagnostic-ambiguous'
+    }
+  }
+  $returnedNone = @($returned | Where-Object outcome -ceq 'none')
+  $returnedSelected = @($returned | Where-Object outcome -ceq 'selected')
+  if ($returnedSelected.Count -eq 1 -and $requested.Count -eq 1 -and $returned.Count -eq 1 `
+      -and $pickerEvents.Count -eq 2 `
+      -and $pickerEvents[0].event -ceq 'media-picker.requested' `
+      -and $pickerEvents[1].event -ceq 'media-picker.returned') {
+    return 'selected'
+  }
+  if ($returnedNone.Count -eq 1 -and $requested.Count -eq 1 -and $returned.Count -eq 1 `
+      -and $pickerEvents.Count -eq 2 `
+      -and $pickerEvents[0].event -ceq 'media-picker.requested' `
+      -and $pickerEvents[1].event -ceq 'media-picker.returned') {
+    return 'backend-returned-none'
+  }
+  if ($requested.Count -eq 0 -and $returned.Count -eq 0) {
+    return 'command-dispatch-timeout'
+  }
+  if ($requested.Count -eq 1 -and $returned.Count -eq 0) {
+    return 'dialog-timeout'
+  }
+  'diagnostic-ambiguous'
+}
+
+function Get-NativePickerDiagnosticOutcomeSafely {
+  param(
+    [Parameter(Mandatory = $true)][string]$LogPath,
+    [Parameter(Mandatory = $true)][string]$BaselineSha256,
+    [Parameter(Mandatory = $true)][long]$BaselineLength,
+    [Parameter(Mandatory = $true)][string]$AppInstanceId
+  )
+
+  try {
+    Get-NativePickerDiagnosticOutcome @PSBoundParameters
+  } catch {
+    'diagnostic-unavailable'
+  }
+}
+
+function Wait-NativePickerClickIssued {
+  param(
+    [Parameter(Mandatory = $true)]$Inspector,
+    [Parameter(Mandatory = $true)][int]$ApplicationProcessId,
+    [Parameter(Mandatory = $true)][string]$PhaseRoot
+  )
+
+  $deadline = (Get-Date).AddMinutes(2)
+  $lastPhase = 'not-started'
+  do {
+    try {
+      $phase = Get-NativePickerInspectorPhase -Root $PhaseRoot
+    } catch {
+      try {
+        Set-NativePickerEvidence `
+          -Stage 'failed' `
+          -Outcome 'failed' `
+          -FailureCode 'inspector-phase-invalid'
+      } catch {}
+      throw
+    }
+    if ($phase -cne $lastPhase) {
+      Set-NativePickerEvidence `
+        -Stage "inspector-$phase" `
+        -Outcome 'running' `
+        -Metrics @{ inspectorPhase = $phase }
+      $lastPhase = $phase
+    }
+    if ($phase -ceq 'click-issued') {
+      return
+    }
+    if ($null -eq (Get-Process -Id $ApplicationProcessId -ErrorAction SilentlyContinue)) {
+      try {
+        Set-NativePickerEvidence -Stage 'failed' -Outcome 'failed' -FailureCode 'application-exited'
+      } catch {}
+      throw 'Installed application exited before the native picker click was issued'
+    }
+    $Inspector.Refresh()
+    if ($Inspector.HasExited) {
+      try {
+        Set-NativePickerEvidence `
+          -Stage 'failed' `
+          -Outcome 'failed' `
+          -FailureCode 'inspector-preclick-exited'
+      } catch {}
+      throw 'Installed local-media inspector exited before issuing the native picker click'
+    }
+    Start-Sleep -Milliseconds 100
+  } while ((Get-Date) -lt $deadline)
+
+  try {
+    Set-NativePickerEvidence `
+      -Stage 'failed' `
+      -Outcome 'failed' `
+      -FailureCode 'inspector-preclick-timeout'
+  } catch {}
+  throw 'Installed local-media inspector did not issue the native picker click within two minutes'
 }
 
 function Dismiss-NativeMediaPicker {
@@ -503,19 +834,36 @@ function Complete-NativeMediaPicker {
   param(
     [Parameter(Mandatory = $true)][int]$ProcessId,
     [Parameter(Mandatory = $true)][long]$OwnerHandle,
-    [Parameter(Mandatory = $true)][string]$MediaPath
+    [Parameter(Mandatory = $true)][string]$MediaPath,
+    [Parameter(Mandatory = $true)][string]$LogPath,
+    [Parameter(Mandatory = $true)][string]$DiagnosticBaselineSha256,
+    [Parameter(Mandatory = $true)][long]$DiagnosticBaselineLength,
+    [Parameter(Mandatory = $true)][string]$AppInstanceId
   )
 
-  Initialize-NativePickerEvidence
   $failureCode = 'unexpected'
+  $dialogAttempts = 0
+  $dialogMatches = 0
+  $ownerMatched = $false
+  $processWindowMatches = 0
+  $processDialogMatches = 0
+  $processNamedMatches = 0
+  $ownedDialogMatches = 0
+  $editorAttempts = 0
+  $editorMatches = 0
+  $editorWritable = $false
+  $valueRetained = $false
+  $buttonAttempts = 0
+  $buttonMatches = 0
+  $buttonEnabled = $false
+  $buttonInvokable = $false
+  $dismissAttempts = 0
+  $dialogDismissed = $false
   try {
     Initialize-NativePickerInterop
     Set-NativePickerEvidence -Stage 'waiting-dialog' -Outcome 'running'
     $dialogDeadline = (Get-Date).AddSeconds(30)
     $dialog = $null
-    $dialogAttempts = 0
-    $dialogMatches = 0
-    $ownerMatched = $false
     do {
       $dialogAttempts += 1
       Start-Sleep -Milliseconds 100
@@ -528,8 +876,12 @@ function Complete-NativeMediaPicker {
         -OwnerHandle $OwnerHandle
       $dialogs = @($snapshot.Exact)
       $ownedDialogs = @($snapshot.Owned)
-      $dialogMatches = $dialogs.Count
-      $ownerMatched = $ownedDialogs.Count -eq 1
+      $dialogMatches = [Math]::Max($dialogMatches, $dialogs.Count)
+      $processWindowMatches = [Math]::Max($processWindowMatches, [int]$snapshot.ProcessWindows)
+      $processDialogMatches = [Math]::Max($processDialogMatches, [int]$snapshot.ProcessDialogClasses)
+      $processNamedMatches = [Math]::Max($processNamedMatches, [int]$snapshot.ProcessNamedWindows)
+      $ownedDialogMatches = [Math]::Max($ownedDialogMatches, $ownedDialogs.Count)
+      $ownerMatched = $ownerMatched -or $ownedDialogs.Count -eq 1
       if ($dialogs.Count -gt 1 -or $ownedDialogs.Count -gt 1) {
         $failureCode = 'dialog-ambiguous'
         throw 'Installed application opened multiple native media pickers'
@@ -549,13 +901,13 @@ function Complete-NativeMediaPicker {
         dialogAttempts = [Math]::Min($dialogAttempts, 1000)
         dialogMatches = $dialogMatches
         ownerMatched = $ownerMatched
+        processWindowMatches = $processWindowMatches
+        processDialogMatches = $processDialogMatches
+        processNamedMatches = $processNamedMatches
+        ownedDialogMatches = $ownedDialogMatches
       }
 
     $editorDeadline = (Get-Date).AddSeconds(30)
-    $editorAttempts = 0
-    $editorMatches = 0
-    $editorWritable = $false
-    $valueRetained = $false
     do {
       $editorAttempts += 1
       try {
@@ -566,7 +918,7 @@ function Complete-NativeMediaPicker {
             '1148'
           )
         ))
-        $editorMatches = $fileNameControls.Count
+        $editorMatches = [Math]::Max($editorMatches, $fileNameControls.Count)
         $valuePattern = $null
         if ($fileNameControls.Count -eq 1) {
           $patternObject = $null
@@ -595,8 +947,9 @@ function Complete-NativeMediaPicker {
           }
         }
         if ($null -ne $valuePattern) {
-          $editorWritable = -not $valuePattern.Current.IsReadOnly
-          if ($editorWritable) {
+          $currentEditorWritable = -not $valuePattern.Current.IsReadOnly
+          $editorWritable = $editorWritable -or $currentEditorWritable
+          if ($currentEditorWritable) {
             $valuePattern.SetValue($MediaPath)
             $valueRetained = [string]::Equals(
               $valuePattern.Current.Value,
@@ -645,10 +998,6 @@ function Complete-NativeMediaPicker {
       )
     )
     $buttonDeadline = (Get-Date).AddSeconds(30)
-    $buttonAttempts = 0
-    $buttonMatches = 0
-    $buttonEnabled = $false
-    $buttonInvokable = $false
     $invokePattern = $null
     do {
       $buttonAttempts += 1
@@ -657,11 +1006,12 @@ function Complete-NativeMediaPicker {
           [System.Windows.Automation.TreeScope]::Descendants,
           $openButtonCondition
         ))
-        $buttonMatches = $openButtons.Count
+        $buttonMatches = [Math]::Max($buttonMatches, $openButtons.Count)
         if ($openButtons.Count -eq 1) {
-          $buttonEnabled = $openButtons[0].Current.IsEnabled
+          $currentButtonEnabled = $openButtons[0].Current.IsEnabled
+          $buttonEnabled = $buttonEnabled -or $currentButtonEnabled
           $patternObject = $null
-          if ($buttonEnabled -and $openButtons[0].TryGetCurrentPattern(
+          if ($currentButtonEnabled -and $openButtons[0].TryGetCurrentPattern(
               [System.Windows.Automation.InvokePattern]::Pattern,
               [ref]$patternObject
             )) {
@@ -699,8 +1049,6 @@ function Complete-NativeMediaPicker {
     $invokePattern.Invoke()
     Set-NativePickerEvidence -Stage 'button-invoked' -Outcome 'running'
     $dismissDeadline = (Get-Date).AddSeconds(30)
-    $dismissAttempts = 0
-    $dialogDismissed = $false
     do {
       $dismissAttempts += 1
       Start-Sleep -Milliseconds 100
@@ -732,6 +1080,22 @@ function Complete-NativeMediaPicker {
         dialogDismissed = $dialogDismissed
       }
   } catch {
+    if ($failureCode -in @('dialog-timeout', 'owner-mismatch')) {
+      $diagnosticFailure = Get-NativePickerDiagnosticOutcomeSafely `
+        -LogPath $LogPath `
+        -BaselineSha256 $DiagnosticBaselineSha256 `
+        -BaselineLength $DiagnosticBaselineLength `
+        -AppInstanceId $AppInstanceId
+      if ($diagnosticFailure -in @(
+          'command-dispatch-timeout',
+          'backend-returned-none',
+          'diagnostic-baseline-changed',
+          'diagnostic-ambiguous',
+          'diagnostic-unavailable'
+        )) {
+        $failureCode = $diagnosticFailure
+      }
+    }
     $dismissal = $null
     try {
       $dismissal = Dismiss-NativeMediaPicker `
@@ -741,7 +1105,25 @@ function Complete-NativeMediaPicker {
       # The primary picker failure remains authoritative when best-effort cleanup also fails.
     }
     try {
-      $failureMetrics = @{}
+      $failureMetrics = @{
+        dialogAttempts = [Math]::Min($dialogAttempts, 1000)
+        dialogMatches = [Math]::Min($dialogMatches, 1000)
+        ownerMatched = $ownerMatched
+        processWindowMatches = [Math]::Min($processWindowMatches, 1000)
+        processDialogMatches = [Math]::Min($processDialogMatches, 1000)
+        processNamedMatches = [Math]::Min($processNamedMatches, 1000)
+        ownedDialogMatches = [Math]::Min($ownedDialogMatches, 1000)
+        editorAttempts = [Math]::Min($editorAttempts, 1000)
+        editorMatches = [Math]::Min($editorMatches, 1000)
+        editorWritable = $editorWritable
+        valueRetained = $valueRetained
+        buttonAttempts = [Math]::Min($buttonAttempts, 1000)
+        buttonMatches = [Math]::Min($buttonMatches, 1000)
+        buttonEnabled = $buttonEnabled
+        buttonInvokable = $buttonInvokable
+        dismissAttempts = [Math]::Min($dismissAttempts, 1000)
+        dialogDismissed = $dialogDismissed
+      }
       if ($null -ne $dismissal) {
         $failureMetrics.dismissAttempts = [Math]::Min([int]$dismissal.Attempts, 1000)
         $failureMetrics.dialogDismissed = [bool]$dismissal.Dismissed
@@ -762,13 +1144,21 @@ function Inspect-InstalledLocalMediaFlow {
   param(
     [Parameter(Mandatory = $true)][int]$Port,
     [Parameter(Mandatory = $true)][int]$ProcessId,
-    [Parameter(Mandatory = $true)][string]$MediaPath
+    [Parameter(Mandatory = $true)][string]$MediaPath,
+    [Parameter(Mandatory = $true)][string]$LogPath,
+    [Parameter(Mandatory = $true)][string]$AppInstanceId,
+    [Parameter(Mandatory = $true)][string]$PriorAssetId
   )
 
   $screenshot = Join-Path $env:RUNNER_TEMP 'osg-installed-local-media-flow.png'
   $stdout = Join-Path $env:RUNNER_TEMP 'osg-installed-local-media-flow.stdout'
   $stderr = Join-Path $env:RUNNER_TEMP 'osg-installed-local-media-flow.stderr'
-  foreach ($path in @($screenshot, $stdout, $stderr)) {
+  $phasePaths = @(
+    @('starting', 'connected', 'control-ready', 'click-issued') |
+      ForEach-Object { Join-Path $env:RUNNER_TEMP "osg-installed-native-picker-$_.json" }
+  )
+  $phaseScratchPaths = @($phasePaths | ForEach-Object { "$_.tmp" })
+  foreach ($path in @($screenshot, $stdout, $stderr) + $phasePaths + $phaseScratchPaths) {
     if (Test-Path -LiteralPath $path) {
       throw 'Installed local-media flow output path was not clean'
     }
@@ -779,23 +1169,39 @@ function Inspect-InstalledLocalMediaFlow {
   if ($ownerHandle -eq 0 -or -not $applicationProcess.Responding) {
     throw 'Installed application lacked a responsive owner before native selection'
   }
+  if ($PriorAssetId -notmatch '^[0-9a-f]{8}-[0-9a-f]{4}-7[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$') {
+    throw 'Installed local-media prior asset identity is invalid'
+  }
   $arguments = @(
     'scripts/inspect-installed-local-media-flow.mjs',
     '--port', [string]$Port,
     '--expected-file-name', [IO.Path]::GetFileName($MediaPath),
-    '--screenshot', $screenshot
+    '--screenshot', $screenshot,
+    '--phase-directory', $env:RUNNER_TEMP,
+    '--prior-asset-id', $PriorAssetId
   )
+  Initialize-NativePickerEvidence
+  $diagnosticBaseline = Get-DiagnosticBaselineSnapshot -LogPath $LogPath
   $inspection = Start-Process `
     -FilePath 'node' `
     -ArgumentList $arguments `
     -RedirectStandardOutput $stdout `
     -RedirectStandardError $stderr `
     -PassThru
+  $inspectionSucceeded = $false
   try {
+    Wait-NativePickerClickIssued `
+      -Inspector $inspection `
+      -ApplicationProcessId $ProcessId `
+      -PhaseRoot $env:RUNNER_TEMP
     Complete-NativeMediaPicker `
       -ProcessId $ProcessId `
       -OwnerHandle $ownerHandle `
-      -MediaPath $MediaPath
+      -MediaPath $MediaPath `
+      -LogPath $LogPath `
+      -DiagnosticBaselineSha256 $diagnosticBaseline.Sha256 `
+      -DiagnosticBaselineLength $diagnosticBaseline.Length `
+      -AppInstanceId $AppInstanceId
     if (-not $inspection.WaitForExit(120000)) {
       Stop-Process -Id $inspection.Id -ErrorAction SilentlyContinue
       throw 'Installed local-media flow did not finish within two minutes'
@@ -814,9 +1220,18 @@ function Inspect-InstalledLocalMediaFlow {
       throw 'Installed local-media screenshot was not written'
     }
     $result = $output[0] | ConvertFrom-Json
+    $pickerDiagnosticOutcome = Get-NativePickerDiagnosticOutcome `
+      -LogPath $LogPath `
+      -BaselineSha256 $diagnosticBaseline.Sha256 `
+      -BaselineLength $diagnosticBaseline.Length `
+      -AppInstanceId $AppInstanceId
+    if ($pickerDiagnosticOutcome -cne 'selected') {
+      throw 'Installed local-media flow omitted one selected native picker transaction'
+    }
     if ($result.fixtureSha256 -cne $localMediaFixtureSha256) {
       throw 'Installed local-media inspection returned the wrong fixture digest'
     }
+    $inspectionSucceeded = $true
     $result
   } finally {
     try {
@@ -827,6 +1242,25 @@ function Inspect-InstalledLocalMediaFlow {
       }
     } catch {
       # Inspector cleanup is best effort and must not replace the primary flow failure.
+    }
+    $phaseCleanupFailed = $false
+    try {
+      foreach ($phasePath in $phasePaths + $phaseScratchPaths) {
+        if (Test-Path -LiteralPath $phasePath) {
+          $phaseItem = Get-Item -LiteralPath $phasePath -Force
+          if ($phaseItem.PSIsContainer `
+              -or ($phaseItem.Attributes -band [IO.FileAttributes]::ReparsePoint) `
+              -or $phaseItem.Length -gt 128) {
+            throw 'Installed local-media picker phase cleanup rejected hostile state'
+          }
+          [IO.File]::Delete($phasePath)
+        }
+      }
+    } catch {
+      $phaseCleanupFailed = $true
+    }
+    if ($inspectionSucceeded -and $phaseCleanupFailed) {
+      throw 'Installed local-media picker phase cleanup failed'
     }
   }
 }
@@ -976,6 +1410,15 @@ function Start-And-WaitForReadiness {
     if (-not (0 -le $startIndex -and $startIndex -lt $fontIndex -and $fontIndex -lt $readyIndex)) {
       throw "$Phase application readiness events were absent or out of order"
     }
+    $launchInstanceIds = @(
+      [string]$newEvents[$startIndex].appInstanceId,
+      [string]$newEvents[$fontIndex].appInstanceId,
+      [string]$newEvents[$readyIndex].appInstanceId
+    )
+    if (@($launchInstanceIds | Sort-Object -Unique).Count -ne 1 `
+        -or $launchInstanceIds[0] -notmatch '^[0-9a-f]{8}-[0-9a-f]{4}-7[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$') {
+      throw "$Phase application readiness events had an invalid instance identity"
+    }
     if ($newEvents | Where-Object event -eq 'ui-font.unavailable') {
       throw "Managed UI font was unavailable during $Phase launch"
     }
@@ -993,6 +1436,7 @@ function Start-And-WaitForReadiness {
       Process = $app
       DebugPort = $debugPort
       Events = $events
+      AppInstanceId = $launchInstanceIds[0]
       NewEventNames = @($newEvents | ForEach-Object event)
       Responding = $process.Responding
       Inspection = $inspection
@@ -1130,7 +1574,10 @@ OSG installed media smoke
     $localMediaFlow = Inspect-InstalledLocalMediaFlow `
       -Port $third.DebugPort `
       -ProcessId $third.Process.Id `
-      -MediaPath $localMediaFixture
+      -MediaPath $localMediaFixture `
+      -LogPath $logPath `
+      -AppInstanceId $third.AppInstanceId `
+      -PriorAssetId $initialMediaFlow.assetId
     if ((Get-FileHash -LiteralPath $localMediaFixture -Algorithm SHA256).Hash.ToLowerInvariant() `
         -cne $localMediaFixtureSha256) {
       throw 'Native local-media selection changed the reviewed fixture bytes'

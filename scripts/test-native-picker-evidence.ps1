@@ -38,7 +38,23 @@ try {
   Set-NativePickerEvidence `
     -Stage 'waiting-dialog' `
     -Outcome 'running' `
-    -Metrics @{ dialogAttempts = 2 }
+    -Metrics @{
+      inspectorPhase = 'click-issued'
+      dialogAttempts = 2
+      processWindowMatches = 3
+      processDialogMatches = 2
+      processNamedMatches = 1
+      ownedDialogMatches = 1
+    }
+  $invalidInspectorPhaseRejected = $false
+  try {
+    Set-NativePickerEvidence `
+      -Stage 'waiting-dialog' `
+      -Outcome 'running' `
+      -Metrics @{ inspectorPhase = $true }
+  } catch {
+    $invalidInspectorPhaseRejected = $true
+  }
   Set-NativePickerEvidence `
     -Stage 'value-confirmed' `
     -Outcome 'running' `
@@ -65,6 +81,12 @@ try {
       -or $payload.stage -cne 'dialog-dismissed' `
       -or ($payload.stages -join ',') -cne 'initialized,waiting-dialog,value-confirmed,dialog-dismissed' `
       -or $payload.dialogAttempts -ne 2 `
+      -or $payload.inspectorPhase -cne 'click-issued' `
+      -or $payload.processWindowMatches -ne 3 `
+      -or $payload.processDialogMatches -ne 2 `
+      -or $payload.processNamedMatches -ne 1 `
+      -or $payload.ownedDialogMatches -ne 1 `
+      -or -not $invalidInspectorPhaseRejected `
       -or $payload.editorAttempts -ne 3 `
       -or $payload.dismissAttempts -ne 1 `
       -or -not $payload.dialogDismissed) {
@@ -137,6 +159,80 @@ try {
     throw 'Native picker evidence regression accepted a non-child destination'
   }
 
+  $installedSmokePath = Join-Path $PSScriptRoot 'test-installed-windows.ps1'
+  $installedTokens = $null
+  $installedErrors = $null
+  $installedAst = [System.Management.Automation.Language.Parser]::ParseFile(
+    $installedSmokePath,
+    [ref]$installedTokens,
+    [ref]$installedErrors
+  )
+  if ($installedErrors.Count -ne 0) {
+    throw 'Native picker diagnostic regression could not parse the installed smoke'
+  }
+  foreach ($functionName in @(
+      'Get-DiagnosticBaselineSnapshot',
+      'Get-NativePickerDiagnosticOutcome'
+    )) {
+    $definitions = @($installedAst.FindAll({
+          param($node)
+          $node -is [System.Management.Automation.Language.FunctionDefinitionAst] `
+            -and $node.Name -ceq $functionName
+        }, $true))
+    if ($definitions.Count -ne 1) {
+      throw 'Native picker diagnostic regression found an invalid function boundary'
+    }
+    Invoke-Expression $definitions[0].Extent.Text
+  }
+  $diagnosticLogLimitBytes = 4 * 1024 * 1024
+  $diagnosticEntrySlackBytes = 64 * 1024
+  $diagnosticPath = Join-Path $testRoot 'diagnostic-snapshot.log'
+  $diagnosticAppInstanceId = '019ff572-2132-7ba1-9e9c-5a29894963bf'
+  $baselineLine = '{"appInstanceId":"019ff572-2132-7ba1-9e9c-5a29894963bf","event":"app.ready","timestampMs":"1"}'
+  [IO.File]::WriteAllText(
+    $diagnosticPath,
+    $baselineLine + "`n",
+    [Text.UTF8Encoding]::new($false)
+  )
+  $diagnosticBaseline = Get-DiagnosticBaselineSnapshot -LogPath $diagnosticPath
+  $script:diagnosticRereadAttempts = 0
+  function Read-DiagnosticEvents {
+    param([Parameter(Mandatory = $true)][string]$LogPath)
+
+    $script:diagnosticRereadAttempts += 1
+    $swapped = @(
+      '{"appInstanceId":"019ff572-2132-7ba1-9e9c-5a29894963be","event":"swapped","timestampMs":"2"}',
+      '{"appInstanceId":"019ff572-2132-7ba1-9e9c-5a29894963bf","event":"media-picker.requested","timestampMs":"3"}',
+      '{"appInstanceId":"019ff572-2132-7ba1-9e9c-5a29894963bf","event":"media-picker.returned","outcome":"selected","timestampMs":"4"}'
+    ) -join "`n"
+    [IO.File]::WriteAllText($LogPath, $swapped + "`n", [Text.UTF8Encoding]::new($false))
+    @(Get-Content -LiteralPath $LogPath | ForEach-Object { $_ | ConvertFrom-Json })
+  }
+  $emptyOutcome = Get-NativePickerDiagnosticOutcome `
+    -LogPath $diagnosticPath `
+    -BaselineSha256 $diagnosticBaseline.Sha256 `
+    -BaselineLength $diagnosticBaseline.Length `
+    -AppInstanceId $diagnosticAppInstanceId
+  if ($emptyOutcome -cne 'command-dispatch-timeout' `
+      -or $script:diagnosticRereadAttempts -ne 0 `
+      -or [IO.File]::ReadAllText($diagnosticPath) -cne ($baselineLine + "`n")) {
+    throw 'Native picker diagnostic regression accepted a swapped post-verification path'
+  }
+  [IO.File]::AppendAllText(
+    $diagnosticPath,
+    '{"appInstanceId":"019ff572-2132-7ba1-9e9c-5a29894963bf","event":"media-picker.requested","timestampMs":"3"}' + "`n" `
+      + '{"appInstanceId":"019ff572-2132-7ba1-9e9c-5a29894963bf","event":"media-picker.returned","outcome":"selected","timestampMs":"4"}' + "`n",
+    [Text.UTF8Encoding]::new($false)
+  )
+  $selectedOutcome = Get-NativePickerDiagnosticOutcome `
+    -LogPath $diagnosticPath `
+    -BaselineSha256 $diagnosticBaseline.Sha256 `
+    -BaselineLength $diagnosticBaseline.Length `
+    -AppInstanceId $diagnosticAppInstanceId
+  if ($selectedOutcome -cne 'selected' -or $script:diagnosticRereadAttempts -ne 0) {
+    throw 'Native picker diagnostic regression rejected one immutable selected snapshot'
+  }
+
   $junctionTarget = Join-Path $testRoot 'junction-target'
   $junctionChild = Join-Path $junctionTarget 'child'
   [void][IO.Directory]::CreateDirectory($junctionChild)
@@ -168,6 +264,7 @@ try {
     existingDestinationRestored = $recoveryResults['restore-existing-destination']
     missingDestinationRestored = $recoveryResults['restore-missing-destination']
     ancestorReparseRejected = $ancestorReparseRejected
+    diagnosticSnapshotIsolated = $true
     outsidePathRejected = $outsideRejected
     scratchClean = $true
   } | ConvertTo-Json -Compress

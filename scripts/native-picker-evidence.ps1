@@ -260,6 +260,11 @@ function Set-NativePickerEvidence {
     throw 'Native picker evidence used an invalid bounded label'
   }
   $allowedMetrics = @(
+    'inspectorPhase',
+    'processWindowMatches',
+    'processDialogMatches',
+    'processNamedMatches',
+    'ownedDialogMatches',
     'dialogAttempts',
     'dialogMatches',
     'ownerMatched',
@@ -275,8 +280,14 @@ function Set-NativePickerEvidence {
     'dialogDismissed'
   )
   foreach ($metric in $Metrics.GetEnumerator()) {
+    $validInspectorPhase = $metric.Key -ceq 'inspectorPhase' `
+      -and $metric.Value -is [string] `
+      -and $metric.Value -in @('not-started', 'starting', 'connected', 'control-ready', 'click-issued')
     if ($metric.Key -notin $allowedMetrics `
-        -or ($metric.Value -isnot [bool] -and $metric.Value -isnot [int])) {
+        -or ($metric.Key -ceq 'inspectorPhase' -and -not $validInspectorPhase) `
+        -or ($metric.Key -cne 'inspectorPhase' `
+          -and $metric.Value -isnot [bool] `
+          -and $metric.Value -isnot [int])) {
       throw 'Native picker evidence used an invalid bounded metric'
     }
     $script:nativePickerEvidenceState[$metric.Key] = $metric.Value
@@ -314,6 +325,11 @@ function Initialize-NativePickerEvidence {
     failureCode = 'none'
     elapsedMs = 0
     stages = @()
+    inspectorPhase = 'not-started'
+    processWindowMatches = 0
+    processDialogMatches = 0
+    processNamedMatches = 0
+    ownedDialogMatches = 0
     dialogAttempts = 0
     dialogMatches = 0
     ownerMatched = $false
