@@ -16,6 +16,8 @@ $ErrorActionPreference = 'Stop'
 $uninstallKey = 'HKCU:\Software\Microsoft\Windows\CurrentVersion\Uninstall\One-Click Subtitles Generator'
 $server = $null
 $certificate = $null
+$trustedCertificate = $null
+$certificateKey = $null
 $rootStore = $null
 $baseProcess = $null
 $updatedProcess = $null
@@ -123,21 +125,44 @@ try {
   $passwordBytes = [Security.Cryptography.RandomNumberGenerator]::GetBytes(32)
   $pfxPassword = [Convert]::ToBase64String($passwordBytes)
   [Array]::Clear($passwordBytes, 0, $passwordBytes.Length)
-  $securePassword = ConvertTo-SecureString -String $pfxPassword -AsPlainText -Force
-  $certificate = New-SelfSignedCertificate `
-    -Subject 'CN=localhost' `
-    -DnsName 'localhost' `
-    -CertStoreLocation 'Cert:\CurrentUser\My' `
-    -KeyAlgorithm RSA `
-    -KeyLength 2048 `
-    -HashAlgorithm SHA256 `
-    -KeyExportPolicy Exportable `
-    -NotAfter (Get-Date).AddHours(2) `
-    -TextExtension @('2.5.29.37={text}1.3.6.1.5.5.7.3.1')
-  Export-PfxCertificate -Cert $certificate -FilePath $pfxPath -Password $securePassword | Out-Null
+  $certificateKey = [Security.Cryptography.RSA]::Create(2048)
+  $certificateRequest = [Security.Cryptography.X509Certificates.CertificateRequest]::new(
+    'CN=localhost',
+    $certificateKey,
+    [Security.Cryptography.HashAlgorithmName]::SHA256,
+    [Security.Cryptography.RSASignaturePadding]::Pkcs1
+  )
+  $subjectAlternativeNames = [Security.Cryptography.X509Certificates.SubjectAlternativeNameBuilder]::new()
+  $subjectAlternativeNames.AddDnsName('localhost')
+  $certificateRequest.CertificateExtensions.Add($subjectAlternativeNames.Build())
+  $enhancedKeyUsages = [Security.Cryptography.OidCollection]::new()
+  $enhancedKeyUsages.Add([Security.Cryptography.Oid]::new('1.3.6.1.5.5.7.3.1')) | Out-Null
+  $certificateRequest.CertificateExtensions.Add(
+    [Security.Cryptography.X509Certificates.X509EnhancedKeyUsageExtension]::new(
+      $enhancedKeyUsages,
+      $false
+    )
+  )
+  $certificate = $certificateRequest.CreateSelfSigned(
+    [DateTimeOffset]::UtcNow.AddMinutes(-1),
+    [DateTimeOffset]::UtcNow.AddHours(2)
+  )
+  Write-SmokePhase -Name 'fixture-certificate-created'
+  [IO.File]::WriteAllBytes(
+    $pfxPath,
+    $certificate.Export(
+      [Security.Cryptography.X509Certificates.X509ContentType]::Pfx,
+      $pfxPassword
+    )
+  )
+  $trustedCertificate = [Security.Cryptography.X509Certificates.X509Certificate2]::new(
+    $certificate.Export([Security.Cryptography.X509Certificates.X509ContentType]::Cert)
+  )
+  Write-SmokePhase -Name 'fixture-certificate-exported'
   $rootStore = [Security.Cryptography.X509Certificates.X509Store]::new('Root', 'CurrentUser')
   $rootStore.Open([Security.Cryptography.X509Certificates.OpenFlags]::ReadWrite)
-  $rootStore.Add($certificate)
+  $rootStore.Add($trustedCertificate)
+  Write-SmokePhase -Name 'fixture-certificate-trusted'
 
   $env:OSG_UPDATER_FIXTURE_PFX_PASSWORD = $pfxPassword
   $node = (Get-Command node -ErrorAction Stop).Source
@@ -299,12 +324,18 @@ try {
     Stop-Process -Id $server.Id -ErrorAction SilentlyContinue
   }
   if ($null -ne $rootStore) {
-    if ($null -ne $certificate) {
-      $rootStore.Remove($certificate)
+    if ($null -ne $trustedCertificate) {
+      $rootStore.Remove($trustedCertificate)
     }
     $rootStore.Close()
   }
+  if ($null -ne $trustedCertificate) {
+    $trustedCertificate.Dispose()
+  }
   if ($null -ne $certificate) {
-    Remove-Item -LiteralPath "Cert:\CurrentUser\My\$($certificate.Thumbprint)" -ErrorAction SilentlyContinue
+    $certificate.Dispose()
+  }
+  if ($null -ne $certificateKey) {
+    $certificateKey.Dispose()
   }
 }
