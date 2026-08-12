@@ -19,6 +19,7 @@ $certificate = $null
 $certificateKey = $null
 $baseProcess = $null
 $updatedProcess = $null
+$verificationProcess = $null
 $smokeStartedAt = Get-Date
 $diagnosticLog = Join-Path ([IO.Path]::GetFullPath(
   (Join-Path $env:LOCALAPPDATA 'io.github.nganlinh4.oneclicksubtitles')
@@ -286,13 +287,35 @@ try {
   if ($null -eq $updatedProcess) {
     throw 'Signed NSIS updater did not relaunch the application'
   }
-  Write-SmokePhase -Name 'updated-application-launched'
-
-  $verify = Invoke-UpdaterInspection -Port $debugPort -Mode 'verify'
-  Write-SmokePhase -Name 'updated-state-verified'
+  $updatedProcess.Refresh()
+  if ($updatedProcess.HasExited) {
+    throw 'Signed NSIS updater relaunched an application that exited immediately'
+  }
+  $updatedProcessPath = [IO.Path]::GetFullPath($updatedProcess.Path)
+  if (-not $updatedProcessPath.Equals($executable, [StringComparison]::OrdinalIgnoreCase)) {
+    throw 'Signed NSIS updater relaunched an unexpected executable'
+  }
+  Write-SmokePhase -Name 'updated-application-relaunched'
   Stop-Gracefully -Process $updatedProcess
   $updatedProcess = $null
   Write-SmokePhase -Name 'updated-application-closed'
+
+  # The original WebView2 browser process may retain the first debugging port briefly after the
+  # updater-driven relaunch. Inspect the already-updated installation on a fresh port instead of
+  # treating that diagnostic-port lifetime as an application update failure.
+  $verificationPort = Get-FreeLoopbackPort
+  try {
+    $env:WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS = "--remote-debugging-port=$verificationPort"
+    $verificationProcess = Start-Process -FilePath $executable -PassThru
+  } finally {
+    Remove-Item Env:WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS -ErrorAction SilentlyContinue
+  }
+  Write-SmokePhase -Name 'verification-application-launched'
+  $verify = Invoke-UpdaterInspection -Port $verificationPort -Mode 'verify'
+  Write-SmokePhase -Name 'updated-state-verified'
+  Stop-Gracefully -Process $verificationProcess
+  $verificationProcess = $null
+  Write-SmokePhase -Name 'verification-application-closed'
 
   if (-not $server.HasExited) {
     Stop-Process -Id $server.Id
@@ -359,6 +382,9 @@ try {
   Remove-Item Env:OSG_UPDATER_FIXTURE_PFX_PASSWORD -ErrorAction SilentlyContinue
   if ($null -ne $updatedProcess -and -not $updatedProcess.HasExited) {
     Stop-Process -Id $updatedProcess.Id -ErrorAction SilentlyContinue
+  }
+  if ($null -ne $verificationProcess -and -not $verificationProcess.HasExited) {
+    Stop-Process -Id $verificationProcess.Id -ErrorAction SilentlyContinue
   }
   if ($null -ne $baseProcess -and -not $baseProcess.HasExited) {
     Stop-Process -Id $baseProcess.Id -ErrorAction SilentlyContinue

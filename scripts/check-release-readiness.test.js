@@ -163,6 +163,8 @@ test('signed updater runner uses isolated HTTPS, the real toast, NSIS relaunch, 
     "-Mode 'trigger'",
     "-Mode 'verify'",
     '$certificateRequest.CreateSelfSigned(',
+    "'updated-application-relaunched'",
+    '$verificationPort = Get-FreeLoopbackPort',
     'preservedSettingsProjectAndHistory = $true',
   ]) {
     assert.throws(
