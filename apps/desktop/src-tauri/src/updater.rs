@@ -3,7 +3,7 @@ use minisign_verify::PublicKey;
 use std::sync::Mutex;
 use std::time::Duration;
 
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 use tauri::ipc::Channel;
 use tauri::{AppHandle, Runtime, State};
 use tauri_plugin_updater::UpdaterExt;
@@ -61,6 +61,22 @@ pub(crate) enum AppUpdateEvent {
     Installing {
         version: String,
     },
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub(crate) enum AppUpdateCancelReason {
+    User,
+    Protocol,
+}
+
+impl AppUpdateCancelReason {
+    const fn diagnostic(self) -> &'static str {
+        match self {
+            Self::User => "user",
+            Self::Protocol => "protocol",
+        }
+    }
 }
 
 #[tauri::command]
@@ -125,8 +141,16 @@ pub(crate) async fn app_update_install<R: Runtime>(
 pub(crate) fn app_update_cancel(
     runtime: State<'_, AppUpdateRuntime>,
     expected_version: String,
+    reason: AppUpdateCancelReason,
 ) -> CommandResult<bool> {
-    runtime.cancel(&expected_version)
+    let cancelled = runtime.cancel(&expected_version)?;
+    if cancelled {
+        diagnostics::record(
+            "app-update.cancel_requested",
+            &[("reason", reason.diagnostic().to_owned())],
+        );
+    }
+    Ok(cancelled)
 }
 
 async fn install_checked_update<R: Runtime>(

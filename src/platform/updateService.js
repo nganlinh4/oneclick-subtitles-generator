@@ -165,7 +165,10 @@ export const cancelDesktopUpdate = async (expectedVersion, {
     throw new UpdateServiceError('invalidUpdateRequest', 'The update request is invalid');
   }
   try {
-    const cancelled = await invokeCommand('app_update_cancel', { expectedVersion });
+    const cancelled = await invokeCommand('app_update_cancel', {
+      expectedVersion,
+      reason: 'user',
+    });
     if (typeof cancelled !== 'boolean') throw invalidResponse();
     return cancelled;
   } catch (error) {
@@ -215,12 +218,18 @@ export const installDesktopUpdate = async (expectedVersion, handlersInput, {
       if (event.event === 'installing') handlers.onInstalling?.(event);
     } catch {
       protocolError = invalidResponse();
-      Promise.resolve(invokeCommand('app_update_cancel', { expectedVersion })).catch(() => undefined);
+      Promise.resolve(invokeCommand('app_update_cancel', {
+        expectedVersion,
+        reason: 'protocol',
+      })).catch(() => undefined);
     }
   };
 
   const cancel = () => {
-    Promise.resolve(invokeCommand('app_update_cancel', { expectedVersion })).catch(() => undefined);
+    Promise.resolve(invokeCommand('app_update_cancel', {
+      expectedVersion,
+      reason: 'user',
+    })).catch(() => undefined);
   };
   signal?.addEventListener('abort', cancel, { once: true });
   try {

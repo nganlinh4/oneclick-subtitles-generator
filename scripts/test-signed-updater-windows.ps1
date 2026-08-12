@@ -117,14 +117,15 @@ function Get-UpdaterFailurePhase {
     return $null
   }
   $allowed = @{
-    'app-update.download_failed' = 'transport-or-signature'
-    'app-update.install_failed' = 'extract-or-launch'
+    'app-update.download_failed' = @('transport-or-signature')
+    'app-update.install_failed' = @('extract-or-launch')
+    'app-update.cancel_requested' = @('user', 'protocol')
   }
   foreach ($line in @(Get-Content -LiteralPath $diagnosticLog -Tail 256)) {
     try {
       $entry = $line | ConvertFrom-Json
       if ($allowed.ContainsKey([string]$entry.event) `
-          -and [string]$entry.reason -eq $allowed[[string]$entry.event]) {
+          -and [string]$entry.reason -in $allowed[[string]$entry.event]) {
         return "$($entry.event):$($entry.reason)"
       }
     } catch {

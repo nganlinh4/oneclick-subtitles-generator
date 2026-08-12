@@ -167,6 +167,7 @@ describe('updateService', () => {
     })).rejects.toMatchObject({ code: 'invalidUpdateResponse' });
     expect(invokeCommand).toHaveBeenCalledWith('app_update_cancel', {
       expectedVersion: '1.0.1',
+      reason: 'protocol',
     });
   });
 
@@ -178,6 +179,7 @@ describe('updateService', () => {
     })).resolves.toBe(true);
     expect(invokeCommand).toHaveBeenCalledWith('app_update_cancel', {
       expectedVersion: '1.0.1-rc.2',
+      reason: 'user',
     });
     await expect(cancelDesktopUpdate('../../evil.exe', {
       nativeRuntime: () => true,

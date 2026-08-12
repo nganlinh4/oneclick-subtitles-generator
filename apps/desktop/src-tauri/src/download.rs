@@ -702,11 +702,14 @@ pub(crate) async fn download_inspect(
     runtime: State<'_, DownloadRuntime>,
     request: DownloadInspectRequest,
 ) -> CommandResult<DownloadInspectionResponse> {
-    let engine = runtime.engine()?;
-    let _permit = runtime
-        .inspection_slots
-        .acquire()
-        .ok_or_else(|| CommandError::internal("Too many media inspections are already running."))?;
+    diagnostics::record("download.inspection_requested", &[]);
+    let engine = runtime.engine().inspect_err(|error| {
+        record_download_inspection_failure("runtime-unavailable", Some(error.code()));
+    })?;
+    let _permit = runtime.inspection_slots.acquire().ok_or_else(|| {
+        record_download_inspection_failure("inspection-slots-full", Some("internal"));
+        CommandError::internal("Too many media inspections are already running.")
+    })?;
     let cookies = BrowserCookieSource::from(request.cookie_source);
     let (url, inventory) = tauri::async_runtime::spawn_blocking(move || {
         let url = engine.validate_url(&request.url)?;
@@ -715,12 +718,27 @@ pub(crate) async fn download_inspect(
         Ok::<_, DownloadError>((url, inventory))
     })
     .await
-    .map_err(|_| CommandError::internal("The media inspection task stopped unexpectedly."))?
-    .map_err(|error| map_download_error(&error))?;
+    .map_err(|_| {
+        record_download_inspection_failure("task-stopped", Some("internal"));
+        CommandError::internal("The media inspection task stopped unexpectedly.")
+    })?
+    .map_err(|error| {
+        let mapped = map_download_error(&error);
+        record_download_inspection_failure(download_error_diagnostic(&error), Some(mapped.code()));
+        mapped
+    })?;
     let capability = runtime
         .inventories
         .insert(url, inventory.clone(), cookies)
-        .map_err(|error| map_download_error(&error))?;
+        .map_err(|error| {
+            let mapped = map_download_error(&error);
+            record_download_inspection_failure(
+                download_error_diagnostic(&error),
+                Some(mapped.code()),
+            );
+            mapped
+        })?;
+    diagnostics::record("download.inspection_completed", &[]);
     Ok(DownloadInspectionResponse {
         capability,
         inventory,
@@ -1426,6 +1444,16 @@ fn record_download_command_failure(job_id: JobId, error: &CommandError) {
 fn record_download_admission_failure(reason: &'static str, code: Option<&str>) {
     diagnostics::record(
         "download.admission_failed",
+        &[
+            ("reason", reason.to_owned()),
+            ("code", code.unwrap_or("unknown").to_owned()),
+        ],
+    );
+}
+
+fn record_download_inspection_failure(reason: &'static str, code: Option<&str>) {
+    diagnostics::record(
+        "download.inspection_failed",
         &[
             ("reason", reason.to_owned()),
             ("code", code.unwrap_or("unknown").to_owned()),
