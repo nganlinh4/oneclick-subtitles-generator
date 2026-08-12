@@ -114,7 +114,7 @@ jobs:
           npm run verify:managed-delivery
 
       - name: Test release-readiness and artifact gates
-        run: node --test scripts/check-release-readiness.test.js scripts/check-release-artifacts.test.js scripts/check-desktop-payload-size.test.mjs scripts/check-production-transport.test.js scripts/check-tauri-command-contract.test.js scripts/frontend-bundle-boundary.test.mjs scripts/inspect-installed-webview.test.mjs scripts/inspect-installed-updater.test.mjs scripts/serve-updater-fixture.test.mjs scripts/remotion-desktop-boundary.test.mjs
+        run: node --test scripts/check-release-readiness.test.js scripts/check-release-artifacts.test.js scripts/check-desktop-payload-size.test.mjs scripts/check-production-transport.test.js scripts/check-tauri-command-contract.test.js scripts/frontend-bundle-boundary.test.mjs scripts/inspect-installed-webview.test.mjs scripts/inspect-installed-media-flow.test.mjs scripts/inspect-installed-updater.test.mjs scripts/serve-updater-fixture.test.mjs scripts/remotion-desktop-boundary.test.mjs
 
       - name: Test frozen CSS compatibility gates
         run: node --test scripts/frozen-css-compatibility.test.mjs scripts/check-frozen-css-output.test.mjs
@@ -332,7 +332,7 @@ jobs:
             throw "Expected exactly one NSIS installer, found $(@($installer).Count)"
           }
           $expectedVersion = (Get-Content -LiteralPath "package.json" -Raw | ConvertFrom-Json).version
-          ./scripts/test-installed-windows.ps1 -InstallerPath $installer.FullName -ExpectedVersion $expectedVersion
+          ./scripts/test-installed-windows.ps1 -InstallerPath $installer.FullName -ExpectedVersion $expectedVersion -IncludeMediaFlow
 
       - name: Upload installed WebView screenshots
         if: always()
@@ -391,7 +391,7 @@ jobs:
             throw "Expected exactly one NSIS installer, found $(@($installer).Count)"
           }
           $expectedVersion = (Get-Content -LiteralPath "package.json" -Raw | ConvertFrom-Json).version
-          ./scripts/test-installed-windows.ps1 -InstallerPath $installer.FullName -ExpectedVersion $expectedVersion
+          ./scripts/test-installed-windows.ps1 -InstallerPath $installer.FullName -ExpectedVersion $expectedVersion -IncludeMediaFlow
 
       - name: Upload published installed WebView screenshots
         if: always()

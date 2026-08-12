@@ -5,7 +5,9 @@ param(
   [Parameter(Mandatory = $true)]
   [string]$ExpectedVersion,
 
-  [string]$ResultPath
+  [string]$ResultPath,
+
+  [switch]$IncludeMediaFlow
 )
 
 $ErrorActionPreference = 'Stop'
@@ -233,6 +235,34 @@ function Inspect-InstalledWebView {
   $inspection
 }
 
+function Inspect-InstalledMediaFlow {
+  param(
+    [Parameter(Mandatory = $true)][int]$Port,
+    [Parameter(Mandatory = $true)][string]$SrtPath
+  )
+
+  $screenshot = Join-Path $env:RUNNER_TEMP 'osg-installed-media-flow.png'
+  if (Test-Path -LiteralPath $screenshot) {
+    throw 'Installed media-flow screenshot path was not clean'
+  }
+  $output = @(
+    & node 'scripts/inspect-installed-media-flow.mjs' `
+      '--port' $Port `
+      '--srt' $SrtPath `
+      '--screenshot' $screenshot 2>&1
+  )
+  if ($LASTEXITCODE -ne 0) {
+    throw "Installed media-flow inspection failed: $($output -join ' ')"
+  }
+  if ($output.Count -ne 1) {
+    throw 'Installed media-flow inspection returned an unexpected output shape'
+  }
+  if (-not (Test-Path -LiteralPath $screenshot -PathType Leaf)) {
+    throw 'Installed media-flow screenshot was not written'
+  }
+  $output[0] | ConvertFrom-Json
+}
+
 function Start-And-WaitForReadiness {
   param(
     [Parameter(Mandatory = $true)][string]$Executable,
@@ -300,6 +330,7 @@ function Start-And-WaitForReadiness {
       -ExpectedProjectId $ExpectedProjectId
     [pscustomobject]@{
       Process = $app
+      DebugPort = $debugPort
       Events = $events
       NewEventNames = @($newEvents | ForEach-Object event)
       Responding = $process.Responding
@@ -406,6 +437,56 @@ $third = Start-And-WaitForReadiness `
   -Phase 'reinstall-launch' `
   -ExpectedProjectId $first.Inspection.persistence.projectId
 try {
+  $mediaFlow = $null
+  if ($IncludeMediaFlow) {
+    $srtPath = Join-Path $env:RUNNER_TEMP 'osg-installed-media-smoke.srt'
+    if (Test-Path -LiteralPath $srtPath) {
+      throw 'Installed media-flow SRT fixture path was not clean'
+    }
+    $srtFixture = @"
+1
+00:00:00,000 --> 00:00:03,000
+OSG installed media smoke
+"@
+    [IO.File]::WriteAllText($srtPath, $srtFixture, [Text.UTF8Encoding]::new($false))
+    $mediaFlow = Inspect-InstalledMediaFlow -Port $third.DebugPort -SrtPath $srtPath
+    $eventsAfterMediaFlow = @(Read-DiagnosticEvents -LogPath $logPath)
+    Assert-DiagnosticEvents -LogPath $logPath -Events $eventsAfterMediaFlow
+    $mediaEvents = @($eventsAfterMediaFlow | Select-Object -Skip $third.Events.Count)
+    if (-not ($mediaEvents | Where-Object event -eq 'download.started') `
+        -or -not ($mediaEvents | Where-Object event -eq 'download.completed') `
+        -or ($mediaEvents | Where-Object event -eq 'download.failed')) {
+      throw 'Installed media-flow diagnostics did not prove one successful native download'
+    }
+    $completedTools = @(
+      $mediaEvents |
+        Where-Object event -eq 'native-tool.completed' |
+        ForEach-Object tool |
+        Sort-Object -Unique
+    )
+    if (($completedTools -join ',') -cne 'deno,media-tools,yt-dlp') {
+      throw "Installed media-flow did not complete all parallel native tools: $($completedTools -join ',')"
+    }
+    $startedTools = @(
+      $mediaEvents |
+        Where-Object event -eq 'native-tool.started' |
+        ForEach-Object tool |
+        Sort-Object -Unique
+    )
+    $lastStartedIndex = -1
+    $firstCompletedIndex = [int]::MaxValue
+    for ($index = 0; $index -lt $mediaEvents.Count; $index += 1) {
+      if ($mediaEvents[$index].event -eq 'native-tool.started') {
+        $lastStartedIndex = $index
+      } elseif ($mediaEvents[$index].event -eq 'native-tool.completed') {
+        $firstCompletedIndex = [Math]::Min($firstCompletedIndex, $index)
+      }
+    }
+    if (($startedTools -join ',') -cne 'deno,media-tools,yt-dlp' `
+        -or $lastStartedIndex -ge $firstCompletedIndex) {
+      throw 'Installed media-flow did not start all three native tool downloads in parallel'
+    }
+  }
   $result = [pscustomobject]@{
     version = $reinstalled.Registry.DisplayVersion
     executableSha256 = $executableSha256
@@ -418,6 +499,7 @@ try {
     firstLaunchWebView = $first.Inspection
     relaunchWebView = $second.Inspection
     reinstallWebView = $third.Inspection
+    installedMediaFlow = $mediaFlow
     managedFontCacheStable = $true
     diagnosticLogRotation = $true
     uninstallPreservedProfile = $true

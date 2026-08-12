@@ -595,6 +595,7 @@ function assertWorkflowCommands(workflow) {
     'node scripts/check-release-artifacts.js --target "${{ matrix.rust-target }}" --bundles "${{ matrix.bundles }}" --allow-unsigned-branch-build',
     'node --test scripts/frozen-css-compatibility.test.mjs scripts/check-frozen-css-output.test.mjs',
     'scripts/inspect-installed-webview.test.mjs',
+    'scripts/inspect-installed-media-flow.test.mjs',
     'npm run build:frontend',
     'node scripts/check-frozen-css-output.mjs',
     'node apps/desktop/node_modules/@tauri-apps/cli/tauri.js build --features production --no-bundle --ci --target "${{ matrix.rust-target }}" -- --locked',
@@ -618,6 +619,7 @@ function assertWorkflowCommands(workflow) {
       branchInstalledSmoke.includes('bundle --ci --no-sign --target x86_64-pc-windows-msvc --bundles nsis') &&
       branchInstalledSmoke.includes('check-release-artifacts.js --target x86_64-pc-windows-msvc --bundles nsis --allow-unsigned-branch-build') &&
       branchInstalledSmoke.includes('./scripts/test-installed-windows.ps1') &&
+      branchInstalledSmoke.includes('-IncludeMediaFlow') &&
       branchInstalledSmoke.includes('actions/upload-artifact@') &&
       branchInstalledSmoke.includes('${{ runner.temp }}/osg-*.png') &&
       !branchInstalledSmoke.includes('/releases/download/'),
@@ -629,6 +631,7 @@ function assertWorkflowCommands(workflow) {
       publishedInstalledSmoke.includes('$asset.sig') &&
       !publishedInstalledSmoke.includes('--allow-unsigned-branch-build') &&
       publishedInstalledSmoke.includes('./scripts/test-installed-windows.ps1') &&
+      publishedInstalledSmoke.includes('-IncludeMediaFlow') &&
       publishedInstalledSmoke.includes('actions/upload-artifact@') &&
       publishedInstalledSmoke.includes('${{ runner.temp }}/osg-*.png'),
     'published-installed-smoke must validate and launch the signed immutable release artifact',
@@ -719,7 +722,14 @@ function assertInstalledSmokeScript(script) {
     "-Phase 'reinstall-launch'",
     'WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS',
     'scripts/inspect-installed-webview.mjs',
+    'scripts/inspect-installed-media-flow.mjs',
     '$inspection = Inspect-InstalledWebView',
+    '$mediaFlow = Inspect-InstalledMediaFlow',
+    "Where-Object event -eq 'download.completed'",
+    "Where-Object event -eq 'native-tool.completed'",
+    "Where-Object event -eq 'native-tool.started'",
+    '$lastStartedIndex -ge $firstCompletedIndex',
+    'installedMediaFlow = $mediaFlow',
     'firstLaunchWebView = $first.Inspection',
     'managedFontCacheStable = $true',
     '$rotationFixtureSha256 = Prepare-DiagnosticRotationFixture',

@@ -96,7 +96,7 @@ function replaceInWorkflowJob(workflow, jobName, search, replacement) {
   return workflow.slice(0, start) + job.replace(search, replacement) + workflow.slice(end);
 }
 
-test('installed Windows smoke proves persistence, bounded logs, relaunch, cached fonts, uninstall, and reinstall', () => {
+test('installed Windows smoke proves persistence, media, tools, logs, relaunch, uninstall, and reinstall', () => {
   assert.doesNotThrow(() => assertInstalledSmokeScript(INSTALLED_SMOKE_SCRIPT));
   for (const fragment of [
     "-Phase 'relaunch'",
@@ -105,7 +105,13 @@ test('installed Windows smoke proves persistence, bounded logs, relaunch, cached
     '$reinstalled = Install-Application',
     "-Phase 'reinstall-launch'",
     'scripts/inspect-installed-webview.mjs',
+    'scripts/inspect-installed-media-flow.mjs',
     '$inspection = Inspect-InstalledWebView',
+    '$mediaFlow = Inspect-InstalledMediaFlow',
+    "Where-Object event -eq 'download.completed'",
+    "Where-Object event -eq 'native-tool.completed'",
+    "Where-Object event -eq 'native-tool.started'",
+    '$lastStartedIndex -ge $firstCompletedIndex',
     '$rotationFixtureSha256 = Prepare-DiagnosticRotationFixture',
     '-ExpectedPreviousSha256 $rotationFixtureSha256',
     'diagnosticLogRotation = $true',
