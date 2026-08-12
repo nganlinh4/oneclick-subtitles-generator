@@ -1,4 +1,7 @@
-import { createNativeMediaSessionHydrator } from './useNativeMediaSessionHydration';
+import {
+  applyNativeMediaSession,
+  createNativeMediaSessionHydrator,
+} from './useNativeMediaSessionHydration';
 import { createNativeMediaDescriptor } from '../platform/mediaService';
 
 const deferred = () => {
@@ -39,6 +42,49 @@ const MEDIA_B = mediaDescriptor({
   assetId: ASSET_B,
   playbackId: '123e4567-e89b-42d3-a456-426614174001',
   token: 'b'.repeat(64),
+});
+
+beforeEach(() => {
+  localStorage.clear();
+  vi.restoreAllMocks();
+});
+
+it('restores an empty fresh native process and publishes the fresh playback capability', async () => {
+  const apply = vi.fn();
+  const restore = vi.fn().mockResolvedValue(MEDIA_A);
+  const hydrator = createNativeMediaSessionHydrator({
+    read: async () => null,
+    restore,
+    readStoredAssetId: () => ASSET_A,
+    apply,
+  });
+
+  await expect(hydrator.hydrate()).resolves.toBe(true);
+  expect(restore).toHaveBeenCalledExactlyOnceWith(ASSET_A);
+  expect(apply).toHaveBeenCalledExactlyOnceWith(MEDIA_A);
+  expect(MEDIA_A.playbackUrl).toContain(MEDIA_A.playbackId);
+});
+
+it('applies the restored identity to media, subtitle, and transcription-rule caches together', () => {
+  localStorage.setItem('current_file_url', 'blob:obsolete');
+  const revokeObjectUrl = vi.spyOn(URL, 'revokeObjectURL').mockImplementation(() => {});
+  const setUploadedFile = vi.fn();
+  const setRulesCacheIdImpl = vi.fn();
+  const setSubtitlesCacheIdImpl = vi.fn();
+
+  applyNativeMediaSession({
+    media: MEDIA_A,
+    setUploadedFile,
+    setRulesCacheIdImpl,
+    setSubtitlesCacheIdImpl,
+  });
+
+  expect(revokeObjectUrl).toHaveBeenCalledExactlyOnceWith('blob:obsolete');
+  expect(localStorage.getItem('current_file_url')).toBe(MEDIA_A.playbackUrl);
+  expect(localStorage.getItem('current_file_cache_id')).toBe(ASSET_A);
+  expect(setRulesCacheIdImpl).toHaveBeenCalledExactlyOnceWith(ASSET_A);
+  expect(setSubtitlesCacheIdImpl).toHaveBeenCalledExactlyOnceWith(ASSET_A);
+  expect(setUploadedFile).toHaveBeenCalledExactlyOnceWith(MEDIA_A);
 });
 
 it('restores only a session read for the unchanged stored media identity', async () => {
@@ -102,29 +148,222 @@ it('allows only the latest duplicate reconciliation to publish a normalized desc
   expect(apply).toHaveBeenCalledExactlyOnceWith(MEDIA_A);
 });
 
-it('fails closed for an empty, failed, superseded, or disposed session read', async () => {
+it('fails closed for missing or invalid persisted identities without applying media', async () => {
   const apply = vi.fn();
-  const empty = createNativeMediaSessionHydrator({
+  const restore = vi.fn();
+  const missing = createNativeMediaSessionHydrator({
     read: async () => null,
+    restore,
     readStoredAssetId: () => null,
     apply,
   });
-  await expect(empty.hydrate()).resolves.toBe(false);
+  await expect(missing.hydrate()).resolves.toBe(false);
+  expect(restore).not.toHaveBeenCalled();
 
+  restore.mockRejectedValueOnce(new Error('invalid UUID'));
+  const invalid = createNativeMediaSessionHydrator({
+    read: async () => null,
+    restore,
+    readStoredAssetId: () => 'C:\\private\\clip.mp4',
+    apply,
+  });
+  await expect(invalid.hydrate()).resolves.toBe(false);
+  expect(apply).not.toHaveBeenCalled();
+
+  const unreadable = createNativeMediaSessionHydrator({
+    read: async () => MEDIA_A,
+    readStoredAssetId: () => { throw new Error('storage unavailable'); },
+    apply,
+  });
+  await expect(unreadable.hydrate()).resolves.toBe(false);
+  expect(apply).not.toHaveBeenCalled();
+});
+
+it('does not apply a restore after the persisted cache identity changes concurrently', async () => {
+  let storedAssetId = ASSET_A;
+  const pending = deferred();
+  const apply = vi.fn();
+  const hydrator = createNativeMediaSessionHydrator({
+    read: async () => null,
+    restore: () => pending.promise,
+    readStoredAssetId: () => storedAssetId,
+    apply,
+  });
+
+  const request = hydrator.hydrate();
+  await Promise.resolve();
+  storedAssetId = ASSET_B;
+  pending.resolve(MEDIA_A);
+
+  await expect(request).resolves.toBe(false);
+  expect(apply).not.toHaveBeenCalled();
+});
+
+it('reconciles the authoritative native winner when guarded restoration loses its commit race', async () => {
+  const apply = vi.fn();
+  const restore = vi.fn().mockResolvedValue(null);
+  const read = vi.fn()
+    .mockResolvedValueOnce(null)
+    .mockResolvedValueOnce(MEDIA_B);
+  const hydrator = createNativeMediaSessionHydrator({
+    read,
+    restore,
+    readStoredAssetId: () => ASSET_A,
+    apply,
+  });
+
+  await expect(hydrator.hydrate()).resolves.toBe(true);
+  expect(restore).toHaveBeenCalledExactlyOnceWith(ASSET_A);
+  expect(read).toHaveBeenCalledTimes(2);
+  expect(apply).toHaveBeenCalledExactlyOnceWith(MEDIA_B);
+});
+
+it('reconciles a StrictMode-style disposed restore winner through the replacement hydrator', async () => {
+  let nativeMedia = null;
+  const firstRestore = deferred();
+  const secondRestore = deferred();
+  const firstApply = vi.fn();
+  const secondApply = vi.fn();
+  const read = vi.fn(async () => nativeMedia);
+  const restoreFromFirstMount = vi.fn(() => firstRestore.promise);
+  const restoreFromReplacement = vi.fn(() => secondRestore.promise);
+  const first = createNativeMediaSessionHydrator({
+    read,
+    restore: restoreFromFirstMount,
+    readStoredAssetId: () => ASSET_A,
+    apply: firstApply,
+  });
+  const replacement = createNativeMediaSessionHydrator({
+    read,
+    restore: restoreFromReplacement,
+    readStoredAssetId: () => ASSET_A,
+    apply: secondApply,
+  });
+
+  const staleRequest = first.hydrate();
+  await vi.waitFor(() => expect(restoreFromFirstMount).toHaveBeenCalledExactlyOnceWith(ASSET_A));
+  first.dispose();
+  const replacementRequest = replacement.hydrate();
+  await vi.waitFor(() => expect(restoreFromReplacement).toHaveBeenCalledExactlyOnceWith(ASSET_A));
+  nativeMedia = MEDIA_A;
+  firstRestore.resolve(MEDIA_A);
+  await expect(staleRequest).resolves.toBe(false);
+  secondRestore.resolve(null);
+
+  await expect(replacementRequest).resolves.toBe(true);
+  expect(firstApply).not.toHaveBeenCalled();
+  expect(secondApply).toHaveBeenCalledExactlyOnceWith(MEDIA_A);
+});
+
+it.each([
+  ['empty', async () => null],
+  ['malformed', async () => ({ ...MEDIA_A, playbackUrl: 'file:///private/clip.mp4' })],
+  ['failed', async () => { throw new Error('private authoritative read failure'); }],
+])('fails closed when the authoritative post-conflict read is %s', async (_case, secondRead) => {
+  const apply = vi.fn();
+  const read = vi.fn()
+    .mockResolvedValueOnce(null)
+    .mockImplementationOnce(secondRead);
+  const hydrator = createNativeMediaSessionHydrator({
+    read,
+    restore: async () => null,
+    readStoredAssetId: () => ASSET_A,
+    apply,
+  });
+
+  await expect(hydrator.hydrate()).resolves.toBe(false);
+  expect(read).toHaveBeenCalledTimes(2);
+  expect(apply).not.toHaveBeenCalled();
+});
+
+it('discards an authoritative post-conflict read when persisted identity changes in flight', async () => {
+  let storedAssetId = ASSET_A;
+  const authoritative = deferred();
+  const apply = vi.fn();
+  const read = vi.fn()
+    .mockResolvedValueOnce(null)
+    .mockImplementationOnce(() => authoritative.promise);
+  const hydrator = createNativeMediaSessionHydrator({
+    read,
+    restore: async () => null,
+    readStoredAssetId: () => storedAssetId,
+    apply,
+  });
+
+  const request = hydrator.hydrate();
+  await vi.waitFor(() => expect(read).toHaveBeenCalledTimes(2));
+  storedAssetId = ASSET_B;
+  authoritative.resolve(MEDIA_B);
+
+  await expect(request).resolves.toBe(false);
+  expect(apply).not.toHaveBeenCalled();
+});
+
+it('fails closed for malformed session DTOs and reopen failures', async () => {
+  const apply = vi.fn();
+  const malformedRead = createNativeMediaSessionHydrator({
+    read: async () => ({ ...MEDIA_A, playbackUrl: 'file:///private/clip.mp4' }),
+    readStoredAssetId: () => ASSET_A,
+    apply,
+  });
+  await expect(malformedRead.hydrate()).resolves.toBe(false);
+
+  const malformedRestore = createNativeMediaSessionHydrator({
+    read: async () => null,
+    restore: async () => ({ ...MEDIA_A, assetId: ASSET_B }),
+    readStoredAssetId: () => ASSET_A,
+    apply,
+  });
+  await expect(malformedRestore.hydrate()).resolves.toBe(false);
+
+  const failedRestore = createNativeMediaSessionHydrator({
+    read: async () => null,
+    restore: async () => { throw new Error('private reopen failure'); },
+    readStoredAssetId: () => ASSET_A,
+    apply,
+  });
+  await expect(failedRestore.hydrate()).resolves.toBe(false);
+  expect(apply).not.toHaveBeenCalled();
+});
+
+it('fails closed for a failed, superseded, or disposed reconciliation', async () => {
+  const apply = vi.fn();
   const failed = createNativeMediaSessionHydrator({
     read: async () => { throw new Error('private native session detail'); },
-    readStoredAssetId: () => null,
+    readStoredAssetId: () => ASSET_A,
     apply,
   });
   await expect(failed.hydrate()).resolves.toBe(false);
 
+  const firstRestore = deferred();
+  let readCount = 0;
+  const superseded = createNativeMediaSessionHydrator({
+    read: async () => {
+      readCount += 1;
+      return readCount === 1 ? null : MEDIA_B;
+    },
+    restore: () => firstRestore.promise,
+    readStoredAssetId: () => ASSET_A,
+    apply,
+  });
+  const first = superseded.hydrate();
+  await Promise.resolve();
+  const second = superseded.hydrate();
+  await expect(second).resolves.toBe(true);
+  firstRestore.resolve(MEDIA_A);
+  await expect(first).resolves.toBe(false);
+  expect(apply).toHaveBeenCalledExactlyOnceWith(MEDIA_B);
+
+  apply.mockClear();
   const pending = deferred();
   const disposed = createNativeMediaSessionHydrator({
-    read: () => pending.promise,
-    readStoredAssetId: () => null,
+    read: async () => null,
+    restore: () => pending.promise,
+    readStoredAssetId: () => ASSET_A,
     apply,
   });
   const request = disposed.hydrate();
+  await Promise.resolve();
   disposed.dispose();
   pending.resolve(MEDIA_A);
   await expect(request).resolves.toBe(false);

@@ -3152,6 +3152,7 @@ dependencies = [
  "osg-domain",
  "rusqlite",
  "rusqlite_migration",
+ "same-file",
  "secrecy",
  "serde",
  "serde_json",

@@ -13,6 +13,7 @@ osg-application.workspace = true
 osg-domain.workspace = true
 rusqlite = { version = "0.40.2", default-features = false, features = ["backup", "bundled", "uuid"] }
 rusqlite_migration = "2.6.0"
+same-file = "=1.0.6"
 secrecy = "=0.10.3"
 serde.workspace = true
 serde_json.workspace = true

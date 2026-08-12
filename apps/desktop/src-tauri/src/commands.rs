@@ -576,7 +576,8 @@ pub(crate) fn clear_media(state: State<'_, DesktopState>) -> CommandResult<Deskt
 pub(crate) async fn open_media_asset(
     state: State<'_, DesktopState>,
     id: AssetId,
-) -> CommandResult<DesktopSessionSnapshot> {
+    only_if_empty: bool,
+) -> CommandResult<Option<DesktopSessionSnapshot>> {
     let database = state.database.clone();
     let media_server = state.media_server.clone();
     let (media, playback) = tauri::async_runtime::spawn_blocking(move || {
@@ -585,10 +586,35 @@ pub(crate) async fn open_media_asset(
     .await
     .map_err(|_| CommandError::internal("the media reopen task stopped unexpectedly"))??;
 
-    let Ok(mut editor) = state.editor.write() else {
-        let _ = state.media_server.unregister(playback.id);
+    commit_reopened_media(
+        &state.editor,
+        &state.media_server,
+        media,
+        playback,
+        only_if_empty,
+    )
+}
+
+fn commit_reopened_media(
+    editor_state: &std::sync::RwLock<crate::state::EditorSession>,
+    media_server: &MediaServer,
+    media: ImportedMedia,
+    playback: RegisteredMedia,
+    only_if_empty: bool,
+) -> CommandResult<Option<DesktopSessionSnapshot>> {
+    let Ok(mut editor) = editor_state.write() else {
+        let _ = media_server.unregister(playback.id);
         return Err(CommandError::internal("the editing session is unavailable"));
     };
+    if only_if_empty
+        && (editor.session.media_path().is_some()
+            || editor.playback.is_some()
+            || editor.local_media.is_some())
+    {
+        drop(editor);
+        media_server.unregister(playback.id)?;
+        return Ok(None);
+    }
     let previous = editor.playback.replace(playback);
     editor.local_media = Some(crate::state::LocalMedia::new(
         media.asset().id(),
@@ -600,9 +626,9 @@ pub(crate) async fn open_media_asset(
     let snapshot = editor.snapshot();
     drop(editor);
     if let Some(previous) = previous {
-        let _ = state.media_server.unregister(previous.id);
+        let _ = media_server.unregister(previous.id);
     }
-    Ok(snapshot)
+    Ok(Some(snapshot))
 }
 
 fn reopen_media_asset(
@@ -621,15 +647,18 @@ fn reopen_media_asset(
 
 #[cfg(test)]
 mod tests {
-    use std::fs;
+    use std::{fs, sync::RwLock};
 
-    use osg_domain::{JobKind, JobSnapshot, MediaAsset, MediaKind};
+    use osg_application::inspect_media;
+    use osg_domain::{AssetId, JobKind, JobSnapshot, MediaAsset, MediaKind};
     use osg_infrastructure::storage::Database;
     use osg_media_server::MediaServer;
 
     use super::{
-        MAX_EXPOSED_ACTIVE_JOBS, MAX_EXPOSED_TERMINAL_JOBS, bounded_job_list, reopen_media_asset,
+        MAX_EXPOSED_ACTIVE_JOBS, MAX_EXPOSED_TERMINAL_JOBS, bounded_job_list,
+        commit_reopened_media, reopen_media_asset,
     };
+    use crate::state::EditorSession;
 
     #[test]
     fn reopens_extensionless_durable_media_from_trusted_asset_metadata() {
@@ -656,6 +685,79 @@ mod tests {
         assert_eq!(media.asset(), &asset);
         assert_eq!(playback.mime_type, "video/mp4");
         assert_eq!(playback.byte_length, asset.size_bytes());
+    }
+
+    #[test]
+    fn guarded_reopen_restores_empty_state_but_never_replaces_a_native_winner() {
+        let directory = tempfile::tempdir().expect("temporary directory");
+        let first_path = directory.path().join("persisted.mp4");
+        let winner_path = directory.path().join("winner.mp4");
+        fs::write(&first_path, vec![0x41; 1024]).expect("persisted fixture");
+        fs::write(&winner_path, vec![0x42; 2048]).expect("winner fixture");
+        let media_server = MediaServer::start(std::iter::empty()).expect("media server");
+        let editor = RwLock::new(EditorSession::default());
+
+        let persisted = inspect_media(&first_path).expect("persisted media");
+        let persisted_id = persisted.asset().id();
+        let persisted_playback = media_server
+            .register(persisted.canonical_path())
+            .expect("persisted playback");
+        let restored =
+            commit_reopened_media(&editor, &media_server, persisted, persisted_playback, true)
+                .expect("guarded reopen")
+                .expect("empty state accepts restore");
+        assert_eq!(
+            restored.session.media.as_ref().map(MediaAsset::id),
+            Some(persisted_id)
+        );
+        assert!(restored.playback.is_some());
+
+        let winner = inspect_media(&winner_path).expect("winner media");
+        let winner_id = winner.asset().id();
+        let winner_playback = media_server
+            .register(winner.canonical_path())
+            .expect("winner playback");
+        let selected =
+            commit_reopened_media(&editor, &media_server, winner, winner_playback, false)
+                .expect("force open")
+                .expect("force open is always applied");
+        assert_eq!(
+            selected.session.media.as_ref().map(MediaAsset::id),
+            Some(winner_id)
+        );
+
+        let stale = inspect_media(&first_path).expect("stale persisted media");
+        let stale_playback = media_server
+            .register(stale.canonical_path())
+            .expect("stale playback");
+        let stale_playback_id = stale_playback.id;
+        assert!(
+            commit_reopened_media(&editor, &media_server, stale, stale_playback, true)
+                .expect("guarded conflict")
+                .is_none()
+        );
+        let final_snapshot = editor.read().expect("editor read").snapshot();
+        assert_eq!(
+            final_snapshot.session.media.as_ref().map(MediaAsset::id),
+            Some(winner_id)
+        );
+        assert!(
+            !media_server
+                .unregister(stale_playback_id)
+                .expect("inspect stale playback cleanup")
+        );
+    }
+
+    #[test]
+    fn missing_durable_media_identity_fails_closed() {
+        let directory = tempfile::tempdir().expect("temporary directory");
+        let database = Database::open(directory.path().join("database.sqlite3")).expect("database");
+        let media_server = MediaServer::start(std::iter::empty()).expect("media server");
+
+        let error = reopen_media_asset(&database, &media_server, AssetId::new())
+            .expect_err("unknown media must not reopen");
+
+        assert_eq!(error.code(), "mediaUnavailable");
     }
 
     #[test]

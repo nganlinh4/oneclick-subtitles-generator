@@ -287,12 +287,19 @@ fn handle_application_run_event(_app: &tauri::AppHandle, event: &tauri::RunEvent
 
 fn handle_application_window_event(window: &Window, event: &WindowEvent) {
     handle_native_media_drop_event(window, event);
-    if window.label() == "main" && matches!(event, WindowEvent::CloseRequested { .. }) {
-        // OSG has no tray/background mode. Explicitly exit when its sole application window is
-        // closed so WebView teardown cannot leave a headless process behind on Windows.
+    if is_main_window_close_request(
+        window.label(),
+        matches!(event, WindowEvent::CloseRequested { .. }),
+    ) {
+        // OSG has no tray/background mode. Tauri's runtime destroys an unprevented closing window
+        // and requests application exit when its window store becomes empty. Requesting exit here
+        // as well would emit a second ExitRequested event during the same native close.
         diagnostics::record("app.close_requested", &[]);
-        window.app_handle().exit(0);
     }
+}
+
+fn is_main_window_close_request(window_label: &str, close_requested: bool) -> bool {
+    window_label == "main" && close_requested
 }
 
 fn setup_app(app: &mut tauri::App) -> Result<(), Box<dyn std::error::Error>> {
@@ -710,9 +717,17 @@ mod tests {
     use serde_json::json;
 
     use super::{
-        has_valid_main_window_state, is_safe_setting_key, media_server_allowed_origins,
-        settings_initialization_script, window_initialization_script,
+        has_valid_main_window_state, is_main_window_close_request, is_safe_setting_key,
+        media_server_allowed_origins, settings_initialization_script, window_initialization_script,
     };
+
+    #[test]
+    fn records_only_native_close_requests_for_the_main_window() {
+        assert!(is_main_window_close_request("main", true));
+        assert!(!is_main_window_close_request("main", false));
+        assert!(!is_main_window_close_request("secondary", true));
+        assert!(!is_main_window_close_request("", true));
+    }
 
     #[test]
     fn recognizes_a_persisted_main_window_state() {

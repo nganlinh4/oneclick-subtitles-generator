@@ -152,6 +152,16 @@ jobs:
         with:
           persist-credentials: false
 
+      - name: Exercise native-picker evidence replacements in Windows PowerShell and pwsh
+        if: matrix.rust-target == 'x86_64-pc-windows-msvc'
+        shell: pwsh
+        run: |
+          & "$env:SystemRoot\System32\WindowsPowerShell\v1.0\powershell.exe" -NoLogo -NoProfile -NonInteractive -ExecutionPolicy Bypass -File ./scripts/test-native-picker-evidence.ps1
+          if ($LASTEXITCODE -ne 0) {
+            throw "Windows PowerShell native-picker evidence regression failed with code $LASTEXITCODE"
+          }
+          ./scripts/test-native-picker-evidence.ps1
+
       - name: Install Tauri system dependencies
         if: runner.os == 'Linux'
         run: |
@@ -280,6 +290,15 @@ jobs:
         with:
           persist-credentials: false
 
+      - name: Exercise native-picker evidence replacements in Windows PowerShell and pwsh
+        shell: pwsh
+        run: |
+          & "$env:SystemRoot\System32\WindowsPowerShell\v1.0\powershell.exe" -NoLogo -NoProfile -NonInteractive -ExecutionPolicy Bypass -File ./scripts/test-native-picker-evidence.ps1
+          if ($LASTEXITCODE -ne 0) {
+            throw "Windows PowerShell native-picker evidence regression failed with code $LASTEXITCODE"
+          }
+          ./scripts/test-native-picker-evidence.ps1
+
       - name: Use pinned Node.js
         uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
         with:
@@ -401,6 +420,15 @@ jobs:
         uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
         with:
           persist-credentials: false
+
+      - name: Exercise native-picker evidence replacements in Windows PowerShell and pwsh
+        shell: pwsh
+        run: |
+          & "$env:SystemRoot\System32\WindowsPowerShell\v1.0\powershell.exe" -NoLogo -NoProfile -NonInteractive -ExecutionPolicy Bypass -File ./scripts/test-native-picker-evidence.ps1
+          if ($LASTEXITCODE -ne 0) {
+            throw "Windows PowerShell native-picker evidence regression failed with code $LASTEXITCODE"
+          }
+          ./scripts/test-native-picker-evidence.ps1
 
       - name: Use pinned Node.js
         uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0

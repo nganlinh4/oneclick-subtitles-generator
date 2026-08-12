@@ -14,8 +14,10 @@ const {
   assertProductionCsp,
   assertEffectiveToolchain,
   assertInstalledSmokeScript,
+  assertNativePickerEvidenceScripts,
   assertCiUpdaterFixtureDebugPortSource,
   assertCiUpdaterFixtureHandoffSource,
+  assertDesktopCloseLifecycleSource,
   assertLoopbackAuditManifest,
   assertManagedEngineDelivery,
   assertNativeToolDelivery,
@@ -42,6 +44,14 @@ const {
 
 const INSTALLED_SMOKE_SCRIPT = fs.readFileSync(
   path.join(__dirname, 'test-installed-windows.ps1'),
+  'utf8',
+);
+const NATIVE_PICKER_EVIDENCE_SCRIPT = fs.readFileSync(
+  path.join(__dirname, 'native-picker-evidence.ps1'),
+  'utf8',
+);
+const NATIVE_PICKER_EVIDENCE_REGRESSION = fs.readFileSync(
+  path.join(__dirname, 'test-native-picker-evidence.ps1'),
   'utf8',
 );
 const UPDATER_SMOKE_WORKFLOW = fs.readFileSync(
@@ -153,11 +163,14 @@ test('installed Windows smoke proves persistence, media, tools, logs, relaunch, 
     "'--expected-source-name', $ExpectedSourceName",
     "'osg-installed-editor-flow.png'",
     'function Complete-NativeMediaPicker',
-    'function Set-NativePickerEvidence',
+    ". (Join-Path $PSScriptRoot 'native-picker-evidence.ps1')",
+    '-EvidencePath $nativePickerEvidencePath',
+    '-AllowedRoot $runnerTempRoot',
+    'Initialize-NativePickerEvidence',
     'function Get-NativeMediaPickerDialogs',
     'function Dismiss-NativeMediaPicker',
     "$nativePickerEvidencePath = Join-Path $runnerTempRoot 'osg-installed-native-picker-evidence.json'",
-    '[IO.File]::Replace(',
+    '$nativePickerEvidenceBackupPath = "$nativePickerEvidencePath.bak"',
     ".Current.Name -ceq 'Choose video or audio'",
     ".Current.ClassName -ceq '#32770'",
     '[OsgNativePickerWindow]::GetWindow($nativeHandle, 4)',
@@ -326,13 +339,6 @@ test('installed Windows smoke proves persistence, media, tools, logs, relaunch, 
   );
   assert.throws(
     () => assertInstalledSmokeScript(INSTALLED_SMOKE_SCRIPT.replace(
-      '    schemaVersion = 1',
-      '    schemaVersion = 1\n    mediaPath = $MediaPath',
-    )),
-    /atomic, bounded, and free of paths/,
-  );
-  assert.throws(
-    () => assertInstalledSmokeScript(INSTALLED_SMOKE_SCRIPT.replace(
       /    throw\r?\n  \}\r?\n\}\r?\n\r?\nfunction Inspect-InstalledLocalMediaFlow/,
       '    return\n  }\n}\n\nfunction Inspect-InstalledLocalMediaFlow',
     )),
@@ -342,6 +348,138 @@ test('installed Windows smoke proves persistence, media, tools, logs, relaunch, 
     () => assertInstalledSmokeScript(`${INSTALLED_SMOKE_SCRIPT}\nInvoke-WebRequest https://example.test/app.exe\n`),
     /without a second download/,
   );
+});
+
+test('native-picker evidence uses bounded backups and real multi-stage replacement coverage', () => {
+  assert.doesNotThrow(() => assertNativePickerEvidenceScripts(
+    NATIVE_PICKER_EVIDENCE_SCRIPT,
+    NATIVE_PICKER_EVIDENCE_REGRESSION,
+  ));
+
+  for (const [weakenedScript, description] of [
+    [
+      NATIVE_PICKER_EVIDENCE_SCRIPT.replace(
+        /(\[IO\.File\]::Replace\(\s*\$script:nativePickerEvidenceTemporaryPath,\s*\$script:nativePickerEvidencePath,\s*)\$script:nativePickerEvidenceBackupPath/,
+        (_match, prefix) => `${prefix}$null`,
+      ),
+      'null primary replacement backup',
+    ],
+    [
+      NATIVE_PICKER_EVIDENCE_SCRIPT.replace(
+        /(\[IO\.File\]::Replace\(\s*\$script:nativePickerEvidenceTemporaryPath,\s*\$script:nativePickerEvidencePath,\s*)\$script:nativePickerEvidenceBackupPath/,
+        (_match, prefix) => `${prefix}''`,
+      ),
+      'empty primary replacement backup',
+    ],
+    [
+      NATIVE_PICKER_EVIDENCE_SCRIPT.replace(
+        /(\[IO\.File\]::Replace\(\s*\$script:nativePickerEvidenceBackupPath,\s*\$script:nativePickerEvidencePath,\s*)\$script:nativePickerEvidenceTemporaryPath/,
+        (_match, prefix) => `${prefix}''`,
+      ),
+      'empty recovery replacement backup',
+    ],
+    [
+      NATIVE_PICKER_EVIDENCE_SCRIPT.replace(
+        '-not [string]::Equals($parent, $Root, [StringComparison]::OrdinalIgnoreCase)',
+        '$false',
+      ),
+      'removed direct-child comparison',
+    ],
+    [
+      NATIVE_PICKER_EVIDENCE_SCRIPT.replace(
+        '($candidateItem.Attributes -band [IO.FileAttributes]::ReparsePoint) -ne 0',
+        '($candidateItem.Attributes -band [IO.FileAttributes]::ReparsePoint) -eq 0',
+      ),
+      'inverted root reparse rejection',
+    ],
+    [
+      NATIVE_PICKER_EVIDENCE_SCRIPT.replace(
+        '  while (-not [string]::IsNullOrEmpty($candidate)) {',
+        '  while ($false) {',
+      ),
+      'removed root ancestor walk',
+    ],
+    [
+      NATIVE_PICKER_EVIDENCE_SCRIPT.replace(
+        /\[IO\.File\]::Move\(\s*\$script:nativePickerEvidenceBackupPath,\s*\$script:nativePickerEvidencePath\s*\)/,
+        '[IO.File]::Move($script:nativePickerEvidenceBackupPath, $script:nativePickerEvidenceTemporaryPath)',
+      ),
+      'redirected missing-destination restore',
+    ],
+    [
+      NATIVE_PICKER_EVIDENCE_SCRIPT.replace(
+        'Assert-NativePickerEvidenceRegularFile -Item $item',
+        'Write-Output $item | Out-Null',
+      ),
+      'removed bounded scratch-file validation',
+    ],
+    [
+      NATIVE_PICKER_EVIDENCE_SCRIPT.replaceAll(
+        '$preserveTemporary = $true',
+        '$preserveTemporary = $false',
+      ),
+      'weakened fail-closed recovery',
+    ],
+  ]) {
+    assert.notEqual(
+      weakenedScript,
+      NATIVE_PICKER_EVIDENCE_SCRIPT,
+      `Hostile mutation must alter the evidence writer: ${description}`,
+    );
+    assert.throws(
+      () => assertNativePickerEvidenceScripts(
+        weakenedScript,
+        NATIVE_PICKER_EVIDENCE_REGRESSION,
+      ),
+      /Native-picker evidence/,
+      description,
+    );
+  }
+
+  const payloadLeak = NATIVE_PICKER_EVIDENCE_SCRIPT.replace(
+    '    schemaVersion = 1',
+    '    schemaVersion = 1\n    mediaPath = $MediaPath',
+  );
+  assert.notEqual(payloadLeak, NATIVE_PICKER_EVIDENCE_SCRIPT);
+  assert.throws(
+    () => assertNativePickerEvidenceScripts(
+      payloadLeak,
+      NATIVE_PICKER_EVIDENCE_REGRESSION,
+    ),
+    /payload must remain bounded/,
+  );
+
+  for (const weakenedRegression of [
+    NATIVE_PICKER_EVIDENCE_REGRESSION.replaceAll(
+      'Set-NativePickerEvidence',
+      'Write-Output',
+    ),
+    NATIVE_PICKER_EVIDENCE_REGRESSION.replace(
+      '[IO.Directory]::CreateDirectory($hostileBackupPath)',
+      '[IO.File]::WriteAllText($hostileBackupPath, "decoy")',
+    ),
+    NATIVE_PICKER_EVIDENCE_REGRESSION.replace(
+      "    throw 'Native picker evidence regression accepted a non-child destination'",
+      '    Write-Output decoy',
+    ),
+    NATIVE_PICKER_EVIDENCE_REGRESSION.replace(
+      '      throw "Native picker evidence regression did not restore prior bytes for $fault"',
+      '      Write-Output decoy',
+    ),
+    NATIVE_PICKER_EVIDENCE_REGRESSION.replace(
+      "    throw 'Native picker evidence regression accepted a reparse ancestor'",
+      '    Write-Output decoy',
+    ),
+  ]) {
+    assert.notEqual(weakenedRegression, NATIVE_PICKER_EVIDENCE_REGRESSION);
+    assert.throws(
+      () => assertNativePickerEvidenceScripts(
+        NATIVE_PICKER_EVIDENCE_SCRIPT,
+        weakenedRegression,
+      ),
+      /regression must execute multiple real replacements/,
+    );
+  }
 });
 
 test('Tauri NSIS bootstrap is pinned, bounded, verified, and atomically staged', () => {
@@ -555,6 +693,10 @@ test('signed updater smoke is isolated, signed, installed, and persistent', () =
 
 test('updater fixture source remains compile-time isolated from production releases', () => {
   assert.doesNotThrow(() => assertUpdaterFixtureSource(path.join(__dirname, '..')));
+  assert.doesNotThrow(() => assertDesktopCloseLifecycleSource(
+    DESKTOP_SOURCE,
+    CARGO_LOCK_SOURCE,
+  ));
   assert.doesNotThrow(() => assertCiUpdaterFixtureDebugPortSource(
     DESKTOP_SOURCE,
     CI_UPDATER_ARGUMENT_SOURCE,
@@ -627,6 +769,59 @@ test('updater fixture source remains compile-time isolated from production relea
       driftedWryLock,
     ),
     /reviewed Wry 0\.55\.1 registry package/,
+  );
+
+  for (const weakenedDesktop of [
+    DESKTOP_SOURCE.replace(
+      '        diagnostics::record("app.close_requested", &[]);',
+      '        diagnostics::record("app.close_requested", &[]);\n        window.app_handle().exit(0);',
+    ),
+    DESKTOP_SOURCE.replace(
+      'window_label == "main" && close_requested',
+      'close_requested',
+    ),
+    DESKTOP_SOURCE.replace(
+      'diagnostics::record("app.close_requested", &[]);',
+      'diagnostics::record("app.close_requested", &[]);\n        diagnostics::record("app.close_requested", &[]);',
+    ),
+    DESKTOP_SOURCE.replace(
+      '        diagnostics::record("app.close_requested", &[]);',
+      '        diagnostics::record("app.close_requested", &[]);\n        std::process::exit(0);',
+    ),
+    DESKTOP_SOURCE.replace(
+      '        diagnostics::record("app.close_requested", &[]);',
+      '        diagnostics::record("app.close_requested", &[]);\n        std::process::abort();',
+    ),
+    DESKTOP_SOURCE.replace(
+      '        diagnostics::record("app.close_requested", &[]);',
+      '        diagnostics::record("app.close_requested", &[]);\n        window.close().unwrap();',
+    ),
+    DESKTOP_SOURCE.replace(
+      '        diagnostics::record("app.close_requested", &[]);',
+      '        diagnostics::record("app.close_requested", &[]);\n        window.destroy().unwrap();',
+    ),
+    DESKTOP_SOURCE.replace(
+      '        diagnostics::record("app.close_requested", &[]);',
+      '        diagnostics::record("app.close_requested", &[]);\n        if let WindowEvent::CloseRequested { api, .. } = event { api.prevent_close(); }',
+    ),
+  ]) {
+    assert.throws(
+      () => assertDesktopCloseLifecycleSource(weakenedDesktop, CARGO_LOCK_SOURCE),
+      /Desktop close handler/,
+    );
+  }
+  const driftedRuntimeLock = CARGO_LOCK_SOURCE.replace(
+    /(\[\[package]]\r?\nname = "tauri-runtime-wry"\r?\nversion = )"2\.11\.4"/,
+    '$1"2.11.5"',
+  );
+  assert.notEqual(
+    driftedRuntimeLock,
+    CARGO_LOCK_SOURCE,
+    'Tauri runtime lock mutation must alter Cargo.lock',
+  );
+  assert.throws(
+    () => assertDesktopCloseLifecycleSource(DESKTOP_SOURCE, driftedRuntimeLock),
+    /reviewed tauri-runtime-wry 2\.11\.4 registry package/,
   );
 });
 
@@ -778,7 +973,11 @@ test('signed updater runner uses isolated HTTPS, the real toast, NSIS relaunch, 
     'Write-CloseEvidenceDocument',
     'schemaVersion = 1',
     'cleanExit = $CleanExit',
-    '$cleanExit = $Process.ExitCode -eq 0',
+    '$processQueryHandle = $Process.Handle',
+    '$processQueryHandle -eq [IntPtr]::Zero',
+    '$exitCode = $Process.ExitCode',
+    '$cleanExit = $null -ne $exitCode -and $exitCode -eq 0',
+    'if ($null -eq $exitCode)',
     '$closeEventsAfter -ne ($closeEventsBefore + 1)',
     '$exitRequestedEventsAfter -ne ($exitRequestedEventsBefore + 1)',
     '$exitEventsAfter -ne ($exitEventsBefore + 1)',
@@ -801,6 +1000,17 @@ test('signed updater runner uses isolated HTTPS, the real toast, NSIS relaunch, 
       /Signed updater runner/,
     );
   }
+  const delayedQueryHandle = SIGNED_UPDATER_SCRIPT
+    .replace('    $processQueryHandle = $Process.Handle\n', '')
+    .replace(
+      '  $closeAccepted = $Process.CloseMainWindow()\n',
+      '  $closeAccepted = $Process.CloseMainWindow()\n    $processQueryHandle = $Process.Handle\n',
+    );
+  assert.throws(
+    () => assertSignedUpdaterScript(delayedQueryHandle),
+    /Signed updater runner/,
+    'signed updater must open the rediscovered process query handle before requesting close',
+  );
   assert.throws(
     () => assertSignedUpdaterScript(SIGNED_UPDATER_SCRIPT.replace(
       "        -and $pageLoadEvents -ge 1 `\n",
@@ -1108,6 +1318,61 @@ test('workflow is unsigned, read-only, credentialless, and locked', () => {
     'utf8',
   );
   assert.doesNotThrow(() => assertWorkflowCommands(workflow));
+  const nativePickerRegressionOnEveryHost = replaceInWorkflowJob(
+    workflow,
+    'native-matrix',
+    "if: matrix.rust-target == 'x86_64-pc-windows-msvc'",
+    "if: matrix.rust-target != 'x86_64-pc-windows-msvc'",
+  );
+  assert.throws(
+    () => assertWorkflowCommands(nativePickerRegressionOnEveryHost),
+    /evidence regression in both PowerShell engines on Windows only/,
+  );
+  const nativeWithoutWindowsPowerShellRegression = replaceInWorkflowJob(
+    workflow,
+    'native-matrix',
+    '& "$env:SystemRoot\\System32\\WindowsPowerShell\\v1.0\\powershell.exe"',
+    '& pwsh',
+  );
+  assert.throws(
+    () => assertWorkflowCommands(nativeWithoutWindowsPowerShellRegression),
+    /evidence regression in both PowerShell engines on Windows only/,
+  );
+  for (const jobName of ['windows-installed-smoke', 'windows-published-installed-smoke']) {
+    const withoutWindowsPowerShellRegression = replaceInWorkflowJob(
+      workflow,
+      jobName,
+      '& "$env:SystemRoot\\System32\\WindowsPowerShell\\v1.0\\powershell.exe"',
+      '& pwsh',
+    );
+    assert.throws(
+      () => assertWorkflowCommands(withoutWindowsPowerShellRegression),
+      /execute the production evidence writer in Windows PowerShell and pwsh/,
+    );
+    const withoutPickerRegression = replaceInWorkflowJob(
+      workflow,
+      jobName,
+      './scripts/test-native-picker-evidence.ps1',
+      '# native-picker regression removed',
+    );
+    assert.throws(
+      () => assertWorkflowCommands(withoutPickerRegression),
+      /execute the production evidence writer in Windows PowerShell and pwsh/,
+    );
+    const uploadStep = jobName === 'windows-installed-smoke'
+      ? '- name: Upload installed WebView screenshots\n        if: always()'
+      : '- name: Upload published installed WebView screenshots\n        if: always()';
+    const withoutAlwaysUpload = replaceInWorkflowJob(
+      workflow,
+      jobName,
+      uploadStep,
+      uploadStep.replace('if: always()', 'if: success()'),
+    );
+    assert.throws(
+      () => assertWorkflowCommands(withoutAlwaysUpload),
+      /(?:installed-smoke must build|published-installed-smoke must validate)/,
+    );
+  }
   const nativeWithoutNsisBootstrap = replaceInWorkflowJob(
     workflow,
     'native-matrix',

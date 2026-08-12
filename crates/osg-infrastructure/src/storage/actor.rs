@@ -22,7 +22,9 @@ use osg_domain::{
 };
 
 use super::error::DatabaseError;
-use super::media::ResolvedMedia;
+#[cfg(unix)]
+use super::media::MediaFileIdentity;
+use super::media::{MediaResolutionPlan, ResolvedMedia};
 use super::migrations::migrations;
 use super::{
     ArtifactDraft, ArtifactFailureCode, ArtifactId, ArtifactRecord, ArtifactRegistration,
@@ -41,6 +43,9 @@ const MAX_SETTING_DELETE_KEYS: usize = 256;
 const APPLICATION_ID: i64 = 0x4f53_4732;
 const SCHEMA_VERSION: u32 = 5;
 const MINIMUM_SQLITE_VERSION: &str = "3.51.3";
+#[cfg(unix)]
+const MAX_VERIFIED_MEDIA_LOCATIONS: usize = 512;
+const MAX_MEDIA_RESOLUTION_BATCHES: usize = 64;
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -62,6 +67,75 @@ pub struct Database {
 struct ActorInner {
     sender: SyncSender<Request>,
     thread: std::sync::Mutex<Option<JoinHandle<()>>>,
+    #[cfg(unix)]
+    verified_media: std::sync::Mutex<VerifiedMediaCache>,
+}
+
+#[cfg(unix)]
+#[derive(Default)]
+struct VerifiedMediaCache {
+    entries: BTreeMap<(AssetId, Uuid), VerifiedMediaCacheEntry>,
+}
+
+#[cfg(unix)]
+struct VerifiedMediaCacheEntry {
+    identity: MediaFileIdentity,
+    content_hash: ContentHash,
+}
+
+#[cfg(unix)]
+impl std::fmt::Debug for VerifiedMediaCache {
+    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        let entry_count = self.entries.len();
+        formatter
+            .debug_struct("VerifiedMediaCache")
+            .field("entry_count", &entry_count)
+            .finish()
+    }
+}
+
+#[cfg(unix)]
+impl VerifiedMediaCache {
+    fn matches(
+        &self,
+        media_id: AssetId,
+        location_id: Uuid,
+        identity: MediaFileIdentity,
+        content_hash: ContentHash,
+    ) -> bool {
+        self.entries
+            .get(&(media_id, location_id))
+            .is_some_and(|entry| entry.identity == identity && entry.content_hash == content_hash)
+    }
+
+    fn insert(
+        &mut self,
+        media_id: AssetId,
+        location_id: Uuid,
+        identity: MediaFileIdentity,
+        content_hash: ContentHash,
+    ) {
+        if !super::media::media_file_identity_cacheable(identity) {
+            self.entries.remove(&(media_id, location_id));
+            return;
+        }
+        if self.entries.len() >= MAX_VERIFIED_MEDIA_LOCATIONS
+            && !self.entries.contains_key(&(media_id, location_id))
+        {
+            self.entries.pop_first();
+        }
+        self.entries.insert(
+            (media_id, location_id),
+            VerifiedMediaCacheEntry {
+                identity,
+                content_hash,
+            },
+        );
+    }
+
+    fn remove(&mut self, media_id: AssetId, location_id: Uuid) {
+        self.entries.remove(&(media_id, location_id));
+    }
 }
 
 enum Request {
@@ -131,11 +205,18 @@ enum Request {
     RememberMedia {
         asset: MediaAsset,
         canonical_path: PathBuf,
-        reply: SyncSender<Result<(), DatabaseError>>,
+        content_hash: ContentHash,
+        reply: SyncSender<Result<Uuid, DatabaseError>>,
     },
     ResolveMedia {
         id: AssetId,
-        reply: SyncSender<Result<Option<ResolvedMedia>, DatabaseError>>,
+        reply: SyncSender<Result<Option<MediaResolutionPlan>, DatabaseError>>,
+    },
+    MarkMediaLocation {
+        media_id: AssetId,
+        location_id: Uuid,
+        available: bool,
+        reply: SyncSender<Result<(), DatabaseError>>,
     },
     RegisterArtifact {
         draft: ArtifactDraft,
@@ -317,6 +398,7 @@ impl std::fmt::Debug for Request {
             Self::CredentialDelete { .. } => "CredentialDelete",
             Self::RememberMedia { .. } => "RememberMedia",
             Self::ResolveMedia { .. } => "ResolveMedia",
+            Self::MarkMediaLocation { .. } => "MarkMediaLocation",
             Self::RegisterArtifact { .. } => "RegisterArtifact",
             Self::GetArtifact { .. } => "GetArtifact",
             Self::MarkArtifactReady { .. } => "MarkArtifactReady",
@@ -393,6 +475,8 @@ impl Database {
             inner: Arc::new(ActorInner {
                 sender,
                 thread: std::sync::Mutex::new(Some(thread)),
+                #[cfg(unix)]
+                verified_media: std::sync::Mutex::new(VerifiedMediaCache::default()),
             }),
         })
     }
@@ -548,15 +632,150 @@ impl Database {
     ) -> Result<(), DatabaseError> {
         let canonical_path =
             fs::canonicalize(path).map_err(|_| DatabaseError::InvalidMediaLocation)?;
-        self.request(|reply| Request::RememberMedia {
+        let verified = super::media::digest_media_file(&canonical_path, asset.size_bytes())?;
+        let location_id = self.request(|reply| Request::RememberMedia {
             asset: asset.clone(),
             canonical_path,
+            content_hash: verified.content_hash,
             reply,
-        })
+        })?;
+        #[cfg(unix)]
+        self.cache_verified_media(
+            asset.id(),
+            location_id,
+            verified.identity,
+            verified.content_hash,
+        )?;
+        #[cfg(not(unix))]
+        let _ = location_id;
+        Ok(())
     }
 
     pub fn resolve_media(&self, id: AssetId) -> Result<Option<ResolvedMedia>, DatabaseError> {
-        self.request(|reply| Request::ResolveMedia { id, reply })
+        for _ in 0..MAX_MEDIA_RESOLUTION_BATCHES {
+            let Some(plan) = self.request(|reply| Request::ResolveMedia { id, reply })? else {
+                return Ok(None);
+            };
+            let Some(expected_hash) = plan.content_hash else {
+                return Ok(None);
+            };
+            for candidate in plan.candidates {
+                let verified = if let Some(path) = candidate.path.as_ref() {
+                    #[cfg(unix)]
+                    {
+                        self.verify_media_candidate(
+                            id,
+                            candidate.id,
+                            path,
+                            plan.asset.size_bytes(),
+                            expected_hash,
+                        )?
+                    }
+                    #[cfg(not(unix))]
+                    {
+                        verify_media_candidate(path, plan.asset.size_bytes(), expected_hash)
+                    }
+                } else {
+                    false
+                };
+                self.request(|reply| Request::MarkMediaLocation {
+                    media_id: id,
+                    location_id: candidate.id,
+                    available: verified,
+                    reply,
+                })?;
+                if verified {
+                    // `ResolvedMedia` intentionally remains a private native path for existing
+                    // media consumers. Verification proves the opened file at this instant; a
+                    // mutation after the handle closes and before a consumer reopens the path is
+                    // an inherent TOCTOU window. The same-file check closes the path-replacement
+                    // window during hashing, and observable Unix identity changes invalidate the
+                    // cache. Windows rehashes because stable std by-handle IDs remain unstable.
+                    return Ok(candidate
+                        .path
+                        .map(|path| ResolvedMedia::new(plan.asset.clone(), path)));
+                }
+                #[cfg(unix)]
+                self.remove_verified_media(id, candidate.id)?;
+            }
+            if !plan.has_more_candidates {
+                return Ok(None);
+            }
+        }
+        Err(DatabaseError::InvalidMediaLocation)
+    }
+
+    #[cfg(unix)]
+    fn verify_media_candidate(
+        &self,
+        media_id: AssetId,
+        location_id: Uuid,
+        path: &Path,
+        expected_size: u64,
+        expected_hash: ContentHash,
+    ) -> Result<bool, DatabaseError> {
+        if let Ok(identity) = super::media::inspect_media_file(path, expected_size)
+            && self.matches_verified_media(media_id, location_id, identity, expected_hash)?
+        {
+            return Ok(true);
+        }
+
+        let Ok(file) = super::media::digest_media_file(path, expected_size) else {
+            return Ok(false);
+        };
+        if file.content_hash != expected_hash {
+            return Ok(false);
+        }
+        self.cache_verified_media(media_id, location_id, file.identity, file.content_hash)?;
+        Ok(true)
+    }
+
+    #[cfg(unix)]
+    fn matches_verified_media(
+        &self,
+        media_id: AssetId,
+        location_id: Uuid,
+        identity: MediaFileIdentity,
+        content_hash: ContentHash,
+    ) -> Result<bool, DatabaseError> {
+        let cache = self
+            .inner
+            .verified_media
+            .lock()
+            .map_err(|_| DatabaseError::InvalidMediaLocation)?;
+        Ok(cache.matches(media_id, location_id, identity, content_hash))
+    }
+
+    #[cfg(unix)]
+    fn cache_verified_media(
+        &self,
+        media_id: AssetId,
+        location_id: Uuid,
+        identity: MediaFileIdentity,
+        content_hash: ContentHash,
+    ) -> Result<(), DatabaseError> {
+        let mut cache = self
+            .inner
+            .verified_media
+            .lock()
+            .map_err(|_| DatabaseError::InvalidMediaLocation)?;
+        cache.insert(media_id, location_id, identity, content_hash);
+        Ok(())
+    }
+
+    #[cfg(unix)]
+    fn remove_verified_media(
+        &self,
+        media_id: AssetId,
+        location_id: Uuid,
+    ) -> Result<(), DatabaseError> {
+        let mut cache = self
+            .inner
+            .verified_media
+            .lock()
+            .map_err(|_| DatabaseError::InvalidMediaLocation)?;
+        cache.remove(media_id, location_id);
+        Ok(())
     }
 
     pub fn register_artifact(
@@ -918,6 +1137,12 @@ impl Database {
     }
 }
 
+#[cfg(not(unix))]
+fn verify_media_candidate(path: &Path, expected_size: u64, expected_hash: ContentHash) -> bool {
+    super::media::digest_media_file(path, expected_size)
+        .is_ok_and(|file| file.content_hash == expected_hash)
+}
+
 impl ProjectRepository for Database {
     type Error = DatabaseError;
 
@@ -1047,16 +1272,31 @@ fn run_actor(
             Request::RememberMedia {
                 asset,
                 canonical_path,
+                content_hash,
                 reply,
             } => {
                 let _ = reply.send(super::media::remember(
                     &mut connection,
                     &asset,
                     &canonical_path,
+                    content_hash,
                 ));
             }
             Request::ResolveMedia { id, reply } => {
-                let _ = reply.send(super::media::resolve(&mut connection, id));
+                let _ = reply.send(super::media::resolution_plan(&connection, id));
+            }
+            Request::MarkMediaLocation {
+                media_id,
+                location_id,
+                available,
+                reply,
+            } => {
+                let _ = reply.send(super::media::mark_location(
+                    &mut connection,
+                    media_id,
+                    location_id,
+                    available,
+                ));
             }
             Request::RegisterArtifact { draft, reply } => {
                 let _ = reply.send(super::artifacts::register(
@@ -1911,6 +2151,8 @@ mod tests {
     use tempfile::TempDir;
     use uuid::Uuid;
 
+    #[cfg(unix)]
+    use super::VerifiedMediaCache;
     use super::{APPLICATION_ID, Database, Request};
     use crate::secrets::{CredentialId, CredentialPurpose, CredentialState};
     use crate::storage::{
@@ -1923,6 +2165,38 @@ mod tests {
         let database = Database::open(directory.path().join("db/osg.sqlite3"))
             .expect("open migrated database");
         (directory, database)
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn verified_media_cache_is_bounded_and_evicts_the_smallest_key_deterministically() {
+        let directory = TempDir::new().expect("temporary directory");
+        let path = directory.path().join("fixture.mp4");
+        fs::write(&path, b"media").expect("media fixture");
+        let canonical = fs::canonicalize(path).expect("canonical media");
+        let identity =
+            super::super::media::inspect_media_file(&canonical, 5).expect("inspect media identity");
+        assert!(super::super::media::media_file_identity_cacheable(identity));
+        let media_id = osg_domain::AssetId::new();
+        let mut cache = VerifiedMediaCache::default();
+        let expected_hash = ContentHash::digest(b"media");
+
+        for value in 1..=super::MAX_VERIFIED_MEDIA_LOCATIONS as u128 {
+            cache.insert(media_id, Uuid::from_u128(value), identity, expected_hash);
+        }
+        let first = Uuid::from_u128(1);
+        let newest = Uuid::from_u128(super::MAX_VERIFIED_MEDIA_LOCATIONS as u128 + 1);
+        cache.insert(media_id, newest, identity, expected_hash);
+
+        assert_eq!(cache.entries.len(), super::MAX_VERIFIED_MEDIA_LOCATIONS);
+        assert!(!cache.matches(media_id, first, identity, expected_hash));
+        assert!(cache.matches(media_id, newest, identity, expected_hash));
+        assert!(!cache.matches(
+            media_id,
+            newest,
+            identity,
+            ContentHash::digest(b"different")
+        ));
     }
 
     fn publish_durable_artifact(database: &Database, bytes: &[u8]) -> ArtifactId {

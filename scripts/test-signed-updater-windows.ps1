@@ -299,6 +299,16 @@ function Stop-Gracefully {
   if ($Process.HasExited) {
     throw 'Application exited before the graceful close request'
   }
+  try {
+    # Get-Process does not retain a query handle unless a handle-backed property is read while the
+    # process is alive. Open it before requesting close so ExitCode remains available afterwards.
+    $processQueryHandle = $Process.Handle
+  } catch {
+    throw 'Application query handle could not be opened before the graceful close request'
+  }
+  if ($processQueryHandle -eq [IntPtr]::Zero) {
+    throw 'Application query handle was invalid before the graceful close request'
+  }
   if ($Process.MainWindowHandle -eq [IntPtr]::Zero -or -not $Process.Responding) {
     throw 'Application was not ready for a graceful close'
   }
@@ -364,7 +374,8 @@ function Stop-Gracefully {
   $closeEventsAfter = Get-DiagnosticEventCount -AppInstanceId $AppInstanceId -Name 'app.close_requested'
   $exitRequestedEventsAfter = Get-DiagnosticEventCount -AppInstanceId $AppInstanceId -Name 'app.exit_requested'
   $exitEventsAfter = Get-DiagnosticEventCount -AppInstanceId $AppInstanceId -Name 'app.exit'
-  $cleanExit = $Process.ExitCode -eq 0
+  $exitCode = $Process.ExitCode
+  $cleanExit = $null -ne $exitCode -and $exitCode -eq 0
   $closeRecord = Write-CloseEvidence `
     -Phase $Phase `
     -AppInstanceId $AppInstanceId `
@@ -376,8 +387,11 @@ function Stop-Gracefully {
     -CleanExit $cleanExit `
     -MainWindowStable $null `
     -ProcessTree $null
+  if ($null -eq $exitCode) {
+    throw 'Application exit code was unavailable after the retained query handle observed exit'
+  }
   if (-not $cleanExit) {
-    throw "Application exited with code $($Process.ExitCode) after the graceful close request"
+    throw "Application exited with code $exitCode after the graceful close request"
   }
   if ($closeEventsAfter -ne ($closeEventsBefore + 1)) {
     throw 'Application did not flush exactly one graceful-close diagnostic'

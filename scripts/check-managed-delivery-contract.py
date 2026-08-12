@@ -10,12 +10,17 @@ from __future__ import annotations
 
 import argparse
 import hashlib
+import http.client
 import json
 import os
+import re
+import ssl
 import time
 from pathlib import Path
+from typing import Callable, NamedTuple, TypeVar
 from urllib.error import HTTPError, URLError
-from urllib.request import Request, urlopen
+from urllib.parse import urlsplit
+from urllib.request import HTTPRedirectHandler, Request, build_opener
 
 
 ROOT = Path(__file__).resolve().parent.parent
@@ -77,33 +82,301 @@ HOST_FORBIDDEN = (
     ".bundled_root(",
 )
 
-REMOTE_RETRY_DELAYS_SECONDS = (1, 2, 4)
-TRANSIENT_HTTP_STATUSES = frozenset({429, 500, 502, 503, 504})
+REMOTE_RETRY_DELAYS_SECONDS = (1, 2, 4, 8)
+REMOTE_ATTEMPT_TIMEOUT_SECONDS = 20
+REMOTE_VERIFICATION_BUDGET_SECONDS = 300
+RELEASE_METADATA_LIMIT_BYTES = 2 * 1024 * 1024
+RELEASE_METADATA_READ_CHUNK_BYTES = 64 * 1024
+TRANSIENT_HTTP_STATUSES = frozenset({408, 425, 429, 500, 502, 503, 504})
+REMOTE_SOURCES = frozenset({"release-api", "native-tool-source"})
+SAFE_REMOTE_HOST = re.compile(
+    r"^(?=.{1,253}$)(?:[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?\.)*"
+    r"[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?$"
+)
+SAFE_TOOL_ID = re.compile(r"^[a-z0-9](?:[a-z0-9-]{0,62}[a-z0-9])?$")
+SAFE_ERROR_CLASS = re.compile(r"^[a-z][a-z0-9-]{0,63}$")
+T = TypeVar("T")
+
+
+class RemoteAttribution(NamedTuple):
+    source: str
+    host: str
+    tool_id: str
+
+
+class RemoteResponseFailure(Exception):
+    def __init__(self, *, status: int | None, error_class: str, retryable: bool) -> None:
+        super().__init__(error_class)
+        self.status = status
+        self.error_class = error_class
+        self.retryable = retryable
+
+
+class ReviewedRedirectHandler(HTTPRedirectHandler):
+    """Keep metadata probes body-free and credentials on their original HTTPS origin."""
+
+    def redirect_request(self, request, response, code, message, headers, new_url):
+        redirected = super().redirect_request(
+            request,
+            response,
+            code,
+            message,
+            headers,
+            new_url,
+        )
+        if redirected is None:
+            return None
+        try:
+            original_url = urlsplit(request.full_url)
+            redirected_url = urlsplit(redirected.full_url)
+            original_host = (original_url.hostname or "").encode("idna").decode("ascii").lower()
+            redirected_host = (
+                (redirected_url.hostname or "").encode("idna").decode("ascii").lower()
+            )
+            original_port = original_url.port if original_url.port is not None else 443
+            redirected_port = redirected_url.port if redirected_url.port is not None else 443
+        except (UnicodeError, ValueError):
+            if response is not None:
+                response.close()
+            raise RemoteResponseFailure(
+                status=code,
+                error_class="invalid-redirect",
+                retryable=False,
+            ) from None
+        if redirected_url.username is not None or redirected_url.password is not None:
+            if response is not None:
+                response.close()
+            raise RemoteResponseFailure(
+                status=code,
+                error_class="credentialed-redirect",
+                retryable=False,
+            )
+        if redirected_url.scheme != "https":
+            if response is not None:
+                response.close()
+            raise RemoteResponseFailure(
+                status=code,
+                error_class="insecure-redirect",
+                retryable=False,
+            )
+        same_origin = (
+            original_url.scheme.lower() == "https"
+            and redirected_url.scheme.lower() == "https"
+            and original_host == redirected_host
+            and original_port == redirected_port
+        )
+        if same_origin:
+            redirected_headers = dict(redirected.header_items())
+        else:
+            sensitive_headers = frozenset({"authorization", "cookie", "proxy-authorization"})
+            redirected_headers = {
+                name: value
+                for name, value in redirected.header_items()
+                if name.lower() not in sensitive_headers and name.lower() == "user-agent"
+            }
+        return Request(
+            redirected.full_url,
+            headers=redirected_headers,
+            origin_req_host=request.origin_req_host,
+            unverifiable=True,
+            method="HEAD" if request.get_method() == "HEAD" else redirected.get_method(),
+        )
+
+
+REMOTE_OPENER = build_opener(ReviewedRedirectHandler())
+
+
+def urlopen(request: Request, *, timeout: float):
+    return REMOTE_OPENER.open(request, timeout=timeout)
 
 
 def sha256_bytes(value: bytes) -> str:
     return hashlib.sha256(value).hexdigest()
 
 
-def open_remote(request: Request, *, timeout: int):
-    """Open one reviewed remote with bounded retries for transport-only failures."""
+def remote_attribution(
+    request: Request,
+    *,
+    source: str,
+    tool_id: str | None = None,
+) -> RemoteAttribution:
+    """Reduce a reviewed request to fields that are safe for CI diagnostics."""
+    if source not in REMOTE_SOURCES:
+        raise SystemExit("managed-delivery remote attribution has an invalid source class")
+    try:
+        parsed = urlsplit(request.full_url)
+        host = (parsed.hostname or "").encode("idna").decode("ascii").lower()
+    except (UnicodeError, ValueError):
+        raise SystemExit("managed-delivery remote attribution has an invalid HTTPS host") from None
+    if (
+        parsed.scheme != "https"
+        or parsed.username is not None
+        or parsed.password is not None
+        or not SAFE_REMOTE_HOST.fullmatch(host)
+    ):
+        raise SystemExit("managed-delivery remote attribution has an invalid HTTPS host")
+    safe_tool_id = tool_id if tool_id is not None else "none"
+    if safe_tool_id != "none" and not SAFE_TOOL_ID.fullmatch(safe_tool_id):
+        raise SystemExit("managed-delivery remote attribution has an invalid tool ID")
+    return RemoteAttribution(source=source, host=host, tool_id=safe_tool_id)
+
+
+def remote_status(response) -> int | None:
+    status = getattr(response, "status", None)
+    if status is None and hasattr(response, "getcode"):
+        status = response.getcode()
+    return status if isinstance(status, int) and 100 <= status <= 599 else None
+
+
+def raise_remote_failure(
+    attribution: RemoteAttribution,
+    *,
+    status: int | None,
+    error_class: str,
+) -> None:
+    if not SAFE_ERROR_CLASS.fullmatch(error_class):
+        error_class = "internal-classification"
+    safe_status = str(status) if isinstance(status, int) and 100 <= status <= 599 else "none"
+    raise SystemExit(
+        "managed-delivery remote verification failed: "
+        f"source={attribution.source} host={attribution.host} "
+        f"tool={attribution.tool_id} status={safe_status} errorClass={error_class}"
+    ) from None
+
+
+def classify_transport_failure(error: BaseException) -> str:
+    if isinstance(error, http.client.IncompleteRead):
+        return "incomplete-read"
+    reason = error.reason if isinstance(error, URLError) else error
+    if isinstance(reason, ssl.SSLError):
+        return "tls"
+    if isinstance(reason, TimeoutError):
+        return "timeout"
+    if isinstance(reason, ConnectionError):
+        return "connection"
+    if isinstance(reason, http.client.HTTPException):
+        return "http-protocol"
+    if isinstance(reason, OSError):
+        return "io"
+    return "transport"
+
+
+def read_bounded_remote_body(
+    response,
+    *,
+    status: int | None,
+    byte_limit: int,
+    deadline: float,
+) -> bytes:
+    """Read bounded release metadata in chunks while enforcing the shared deadline."""
+    chunks: list[bytes] = []
+    total = 0
+    while True:
+        if time.monotonic() >= deadline:
+            raise RemoteResponseFailure(
+                status=status,
+                error_class="budget-exhausted",
+                retryable=False,
+            )
+        read_size = min(RELEASE_METADATA_READ_CHUNK_BYTES, byte_limit + 1 - total)
+        chunk = response.read(read_size)
+        if not isinstance(chunk, bytes):
+            raise RemoteResponseFailure(
+                status=status,
+                error_class="invalid-response-body",
+                retryable=False,
+            )
+        if not chunk:
+            break
+        chunks.append(chunk)
+        total += len(chunk)
+        if total > byte_limit:
+            raise RemoteResponseFailure(
+                status=status,
+                error_class="response-too-large",
+                retryable=False,
+            )
+    return b"".join(chunks)
+
+
+def perform_remote_request(
+    request: Request,
+    *,
+    timeout: int,
+    source: str,
+    consume: Callable[[object], T],
+    tool_id: str | None = None,
+    deadline: float | None = None,
+) -> T:
+    """Perform and consume one reviewed request with a shared, bounded retry budget."""
+    attribution = remote_attribution(request, source=source, tool_id=tool_id)
+    if timeout <= 0:
+        raise SystemExit("managed-delivery remote timeout must be positive")
+    effective_deadline = (
+        deadline
+        if deadline is not None
+        else time.monotonic() + REMOTE_VERIFICATION_BUDGET_SECONDS
+    )
     attempts = len(REMOTE_RETRY_DELAYS_SECONDS) + 1
     for attempt in range(attempts):
+        remaining = effective_deadline - time.monotonic()
+        if remaining <= 0:
+            raise_remote_failure(
+                attribution,
+                status=None,
+                error_class="budget-exhausted",
+            )
+        attempt_timeout = min(float(timeout), REMOTE_ATTEMPT_TIMEOUT_SECONDS, remaining)
+        failure_status = None
+        failure_class = "transport"
+        retryable = True
         try:
-            return urlopen(request, timeout=timeout)
+            with urlopen(request, timeout=attempt_timeout) as response:
+                result = consume(response)
+                if time.monotonic() >= effective_deadline:
+                    raise RemoteResponseFailure(
+                        status=remote_status(response),
+                        error_class="budget-exhausted",
+                        retryable=False,
+                    )
+                return result
         except HTTPError as error:
-            error.close()
+            failure_status = error.code
+            failure_class = (
+                "http-transient"
+                if error.code in TRANSIENT_HTTP_STATUSES
+                else "http-permanent"
+            )
             retryable = error.code in TRANSIENT_HTTP_STATUSES
-            if not retryable or attempt + 1 == attempts:
-                raise SystemExit(
-                    "managed-delivery remote verification failed after bounded retries"
-                ) from error
-        except (URLError, TimeoutError, ConnectionError) as error:
-            if attempt + 1 == attempts:
-                raise SystemExit(
-                    "managed-delivery remote verification failed after bounded retries"
-                ) from error
-        time.sleep(REMOTE_RETRY_DELAYS_SECONDS[attempt])
+            error.close()
+        except RemoteResponseFailure as error:
+            failure_status = error.status
+            failure_class = error.error_class
+            retryable = error.retryable
+        except (
+            URLError,
+            TimeoutError,
+            ConnectionError,
+            http.client.HTTPException,
+            ssl.SSLError,
+            OSError,
+        ) as error:
+            failure_class = classify_transport_failure(error)
+
+        if not retryable or attempt + 1 == attempts:
+            raise_remote_failure(
+                attribution,
+                status=failure_status,
+                error_class=failure_class,
+            )
+        delay = REMOTE_RETRY_DELAYS_SECONDS[attempt]
+        if time.monotonic() + delay >= effective_deadline:
+            raise_remote_failure(
+                attribution,
+                status=failure_status,
+                error_class="budget-exhausted",
+            )
+        time.sleep(delay)
 
     raise AssertionError("bounded remote retry loop exhausted without returning or raising")
 
@@ -247,58 +520,208 @@ def build_checkpoint() -> dict[str, object]:
     }
 
 
-def fetch_release() -> dict:
+def fetch_release(*, deadline: float | None = None) -> dict:
     headers = {"User-Agent": "OSG-delivery-checkpoint/1"}
     token = os.environ.get("GITHUB_TOKEN", "").strip()
     if token:
         headers["Authorization"] = f"Bearer {token}"
     request = Request(RELEASE_API, headers=headers)
-    with open_remote(request, timeout=30) as response:
-        return json.load(response)
+    effective_deadline = (
+        deadline
+        if deadline is not None
+        else time.monotonic() + REMOTE_VERIFICATION_BUDGET_SECONDS
+    )
+
+    def consume(response) -> dict:
+        status = remote_status(response)
+        if status != 200:
+            raise RemoteResponseFailure(
+                status=status,
+                error_class="unexpected-status",
+                retryable=status in TRANSIENT_HTTP_STATUSES,
+            )
+        content_length = response.headers.get("Content-Length")
+        if content_length is not None:
+            try:
+                declared_length = int(content_length)
+            except (TypeError, ValueError):
+                raise RemoteResponseFailure(
+                    status=status,
+                    error_class="invalid-content-length",
+                    retryable=True,
+                ) from None
+            if declared_length < 0 or declared_length > RELEASE_METADATA_LIMIT_BYTES:
+                raise RemoteResponseFailure(
+                    status=status,
+                    error_class="response-too-large",
+                    retryable=False,
+                )
+        body = read_bounded_remote_body(
+            response,
+            status=status,
+            byte_limit=RELEASE_METADATA_LIMIT_BYTES,
+            deadline=effective_deadline,
+        )
+        if content_length is not None and len(body) != declared_length:
+            raise RemoteResponseFailure(
+                status=status,
+                error_class="incomplete-read",
+                retryable=True,
+            )
+        try:
+            release = json.loads(body)
+        except (UnicodeDecodeError, json.JSONDecodeError):
+            raise RemoteResponseFailure(
+                status=status,
+                error_class="invalid-json",
+                retryable=True,
+            ) from None
+        if not isinstance(release, dict):
+            raise RemoteResponseFailure(
+                status=status,
+                error_class="invalid-schema",
+                retryable=False,
+            )
+        return release
+
+    return perform_remote_request(
+        request,
+        timeout=30,
+        source="release-api",
+        consume=consume,
+        deadline=effective_deadline,
+    )
 
 
 def verify_remote(expected: dict[str, object]) -> None:
-    release = fetch_release()
+    deadline = time.monotonic() + REMOTE_VERIFICATION_BUDGET_SECONDS
+    release_attribution = remote_attribution(Request(RELEASE_API), source="release-api")
+    release = fetch_release(deadline=deadline)
     if release.get("tag_name") != expected["pool"]["tag"]:
-        raise SystemExit("GitHub returned the wrong managed-delivery release")
+        raise_remote_failure(
+            release_attribution,
+            status=200,
+            error_class="tag-mismatch",
+        )
     if release.get("draft") is not False or release.get("prerelease") is not False:
-        raise SystemExit("managed-delivery pool must be a published non-prerelease release")
-    remote = {asset["name"]: asset for asset in release.get("assets", [])}
+        raise_remote_failure(
+            release_attribution,
+            status=200,
+            error_class="release-policy",
+        )
+    release_assets = release.get("assets")
+    if not isinstance(release_assets, list) or any(
+        not isinstance(asset, dict) or not isinstance(asset.get("name"), str)
+        for asset in release_assets
+    ):
+        raise_remote_failure(
+            release_attribution,
+            status=200,
+            error_class="invalid-schema",
+        )
+    remote = {}
+    for asset in release_assets:
+        if asset["name"] in remote:
+            raise_remote_failure(
+                release_attribution,
+                status=200,
+                error_class="duplicate-asset",
+            )
+        remote[asset["name"]] = asset
     for asset in expected["remotePoolAssets"]:
         actual = remote.get(asset["asset"])
         if actual is None:
-            raise SystemExit(f"remote pool asset is missing: {asset['asset']}")
+            raise_remote_failure(
+                release_attribution,
+                status=200,
+                error_class="asset-missing",
+            )
         if actual.get("size") != asset["sizeBytes"]:
-            raise SystemExit(f"remote pool size mismatch: {asset['asset']}")
+            raise_remote_failure(
+                release_attribution,
+                status=200,
+                error_class="asset-size-mismatch",
+            )
         if actual.get("digest") != f"sha256:{asset['sha256']}":
-            raise SystemExit(f"remote pool digest mismatch: {asset['asset']}")
-    verify_native_tool_sources(read_catalogs()["nativeTools"])
+            raise_remote_failure(
+                release_attribution,
+                status=200,
+                error_class="asset-digest-mismatch",
+            )
+    verify_native_tool_sources(read_catalogs()["nativeTools"], deadline=deadline)
 
 
-def verify_native_tool_sources(catalog: dict) -> None:
-    """Prove direct-first native sources are reachable without downloading their large bodies."""
-    sources: dict[str, int] = {}
+def verify_native_tool_sources(catalog: dict, *, deadline: float | None = None) -> None:
+    """Probe direct-first native-source metadata without downloading their large bodies."""
+    sources: dict[str, tuple[int, str]] = {}
     for tool in catalog.get("tools", []):
+        tool_id = tool.get("id")
+        if not isinstance(tool_id, str) or not SAFE_TOOL_ID.fullmatch(tool_id):
+            raise SystemExit("native-tool catalog contains an invalid tool ID")
         for notice in tool.get("notices", []):
-            sources[notice["sourceUrl"]] = notice["sizeBytes"]
+            source = (notice["sizeBytes"], tool_id)
+            previous = sources.setdefault(notice["sourceUrl"], source)
+            if previous != source:
+                raise SystemExit(f"native-tool catalog has a conflicting source for: {tool_id}")
         for platform in tool.get("platforms", {}).values():
             for release in platform.get("releases", []):
                 artifact = release["artifact"]
-                sources[artifact["sourceUrl"]] = artifact["sizeBytes"]
+                source = (artifact["sizeBytes"], tool_id)
+                previous = sources.setdefault(artifact["sourceUrl"], source)
+                if previous != source:
+                    raise SystemExit(f"native-tool catalog has a conflicting source for: {tool_id}")
     if not sources:
         raise SystemExit("native-tool catalog contains no direct sources")
-    for url, size_bytes in sorted(sources.items()):
+    effective_deadline = (
+        deadline
+        if deadline is not None
+        else time.monotonic() + REMOTE_VERIFICATION_BUDGET_SECONDS
+    )
+    for url, (size_bytes, tool_id) in sorted(sources.items()):
         request = Request(
             url,
             method="HEAD",
             headers={"User-Agent": "OSG-delivery-checkpoint/1"},
         )
-        with open_remote(request, timeout=60) as response:
-            if response.status != 200:
-                raise SystemExit(f"native-tool source is unavailable: {url}")
+
+        def consume(response) -> None:
+            status = remote_status(response)
+            if status != 200:
+                raise RemoteResponseFailure(
+                    status=status,
+                    error_class="unexpected-status",
+                    retryable=status in TRANSIENT_HTTP_STATUSES,
+                )
             content_length = response.headers.get("Content-Length")
-            if content_length is None or int(content_length) != size_bytes:
-                raise SystemExit(f"native-tool source size mismatch: {url}")
+            if content_length is None:
+                raise RemoteResponseFailure(
+                    status=status,
+                    error_class="content-length-missing",
+                    retryable=False,
+                )
+            try:
+                actual_size = int(content_length)
+            except (TypeError, ValueError):
+                raise RemoteResponseFailure(
+                    status=status,
+                    error_class="invalid-content-length",
+                    retryable=False,
+                ) from None
+            if actual_size != size_bytes:
+                raise RemoteResponseFailure(
+                    status=status,
+                    error_class="size-mismatch",
+                    retryable=False,
+                )
+
+        perform_remote_request(
+            request,
+            timeout=60,
+            source="native-tool-source",
+            tool_id=tool_id,
+            consume=consume,
+            deadline=effective_deadline,
+        )
 
 
 def read_checkpoint() -> dict:

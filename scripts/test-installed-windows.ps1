@@ -26,11 +26,19 @@ if ([string]::IsNullOrWhiteSpace($env:RUNNER_TEMP)) {
 $runnerTempRoot = [IO.Path]::GetFullPath($env:RUNNER_TEMP).TrimEnd('\') + '\'
 $nativePickerEvidencePath = Join-Path $runnerTempRoot 'osg-installed-native-picker-evidence.json'
 $nativePickerEvidenceTemporaryPath = "$nativePickerEvidencePath.tmp"
-foreach ($evidencePath in @($nativePickerEvidencePath, $nativePickerEvidenceTemporaryPath)) {
+$nativePickerEvidenceBackupPath = "$nativePickerEvidencePath.bak"
+foreach ($evidencePath in @(
+    $nativePickerEvidencePath,
+    $nativePickerEvidenceTemporaryPath,
+    $nativePickerEvidenceBackupPath
+  )) {
   if (Test-Path -LiteralPath $evidencePath) {
     throw 'Native picker evidence path must be clean'
   }
 }
+. (Join-Path $PSScriptRoot 'native-picker-evidence.ps1') `
+  -EvidencePath $nativePickerEvidencePath `
+  -AllowedRoot $runnerTempRoot
 
 $resultFile = $null
 if (-not [string]::IsNullOrEmpty($ResultPath)) {
@@ -375,103 +383,6 @@ public static class OsgNativePickerWindow {
 }
 '@
   }
-}
-
-function Set-NativePickerEvidence {
-  param(
-    [Parameter(Mandatory = $true)][string]$Stage,
-    [Parameter(Mandatory = $true)][ValidateSet('running', 'succeeded', 'failed')][string]$Outcome,
-    [string]$FailureCode = 'none',
-    [hashtable]$Metrics = @{}
-  )
-
-  if ($Stage -notmatch '^[a-z][a-z0-9-]{0,47}$' `
-      -or $FailureCode -notmatch '^[a-z][a-z0-9-]{0,47}$') {
-    throw 'Native picker evidence used an invalid bounded label'
-  }
-  $allowedMetrics = @(
-    'dialogAttempts',
-    'dialogMatches',
-    'ownerMatched',
-    'editorAttempts',
-    'editorMatches',
-    'editorWritable',
-    'valueRetained',
-    'buttonAttempts',
-    'buttonMatches',
-    'buttonEnabled',
-    'buttonInvokable',
-    'dismissAttempts',
-    'dialogDismissed'
-  )
-  foreach ($metric in $Metrics.GetEnumerator()) {
-    if ($metric.Key -notin $allowedMetrics `
-        -or ($metric.Value -isnot [bool] -and $metric.Value -isnot [int])) {
-      throw 'Native picker evidence used an invalid bounded metric'
-    }
-    $script:nativePickerEvidenceState[$metric.Key] = $metric.Value
-  }
-  if ($script:nativePickerEvidenceStages.Count -eq 0 `
-      -or $script:nativePickerEvidenceStages[$script:nativePickerEvidenceStages.Count - 1] -cne $Stage) {
-    if ($script:nativePickerEvidenceStages.Count -ge 16) {
-      throw 'Native picker evidence exceeded its bounded stage count'
-    }
-    [void]$script:nativePickerEvidenceStages.Add($Stage)
-  }
-  $script:nativePickerEvidenceState.outcome = $Outcome
-  $script:nativePickerEvidenceState.stage = $Stage
-  $script:nativePickerEvidenceState.failureCode = $FailureCode
-  $script:nativePickerEvidenceState.elapsedMs = [Math]::Min(
-    [int]$script:nativePickerEvidenceWatch.ElapsedMilliseconds,
-    300000
-  )
-  $script:nativePickerEvidenceState.stages = @($script:nativePickerEvidenceStages)
-  $json = $script:nativePickerEvidenceState | ConvertTo-Json -Depth 3 -Compress
-  if ([Text.Encoding]::UTF8.GetByteCount($json) -gt 16384 `
-      -or $json -match '(?i)(?:https?://|file://|localhost|127\.0\.0\.1|[A-Za-z]:[\\/]|\\\\|"[^"\r\n]*(?:path|pid|hwnd|handle|title|url|token)[^"\r\n]*"\s*:)') {
-    throw 'Native picker evidence escaped its bounded redacted contract'
-  }
-  [IO.File]::WriteAllText(
-    $nativePickerEvidenceTemporaryPath,
-    $json,
-    [Text.UTF8Encoding]::new($false)
-  )
-  if (Test-Path -LiteralPath $nativePickerEvidencePath -PathType Leaf) {
-    [IO.File]::Replace(
-      $nativePickerEvidenceTemporaryPath,
-      $nativePickerEvidencePath,
-      $null
-    )
-  } else {
-    [IO.File]::Move($nativePickerEvidenceTemporaryPath, $nativePickerEvidencePath)
-  }
-}
-
-function Initialize-NativePickerEvidence {
-  $script:nativePickerEvidenceWatch = [Diagnostics.Stopwatch]::StartNew()
-  $script:nativePickerEvidenceStages = [Collections.Generic.List[string]]::new()
-  $script:nativePickerEvidenceState = [ordered]@{
-    schemaVersion = 1
-    outcome = 'running'
-    stage = 'initialized'
-    failureCode = 'none'
-    elapsedMs = 0
-    stages = @()
-    dialogAttempts = 0
-    dialogMatches = 0
-    ownerMatched = $false
-    editorAttempts = 0
-    editorMatches = 0
-    editorWritable = $false
-    valueRetained = $false
-    buttonAttempts = 0
-    buttonMatches = 0
-    buttonEnabled = $false
-    buttonInvokable = $false
-    dismissAttempts = 0
-    dialogDismissed = $false
-  }
-  Set-NativePickerEvidence -Stage 'initialized' -Outcome 'running'
 }
 
 function Get-NativeMediaPickerDialogs {

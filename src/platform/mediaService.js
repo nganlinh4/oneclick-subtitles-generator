@@ -346,10 +346,22 @@ export const getSelectedMedia = async () => normalizeSnapshot(
   await invokeDesktop('get_session_snapshot', {})
 );
 
-export const openMediaAsset = async (assetId) => normalizeSnapshot(
-  await invokeDesktop('open_media_asset', { id: validateAssetId(assetId) }),
-  { requireMedia: true }
-);
+const openMediaAssetWithMode = async (assetId, onlyIfEmpty) => {
+  const requestedAssetId = validateAssetId(assetId);
+  const snapshot = await invokeDesktop('open_media_asset', {
+    id: requestedAssetId,
+    onlyIfEmpty,
+  });
+  if (snapshot === null && onlyIfEmpty) return null;
+
+  const descriptor = normalizeSnapshot(snapshot, { requireMedia: true });
+  if (descriptor.assetId !== requestedAssetId) throw invalidMediaResponse();
+  return descriptor;
+};
+
+export const openMediaAsset = async (assetId) => openMediaAssetWithMode(assetId, false);
+
+export const restoreMediaAsset = async (assetId) => openMediaAssetWithMode(assetId, true);
 
 export const clearMedia = async () => normalizeSnapshot(
   await invokeDesktop('clear_media', {}),

@@ -10,6 +10,7 @@ import {
   isNativeMediaPlaybackUrl,
   openMediaAsset,
   releaseAudioBlob,
+  restoreMediaAsset,
   selectMedia,
 } from './mediaService';
 
@@ -145,11 +146,43 @@ it('opens an opaque asset and rejects invalid IDs before invoking native code', 
   await expect(openMediaAsset(ASSET_ID)).resolves.toEqual(
     expect.objectContaining({ assetId: ASSET_ID })
   );
-  expect(invokeDesktop).toHaveBeenCalledWith('open_media_asset', { id: ASSET_ID });
+  expect(invokeDesktop).toHaveBeenCalledWith('open_media_asset', {
+    id: ASSET_ID,
+    onlyIfEmpty: false,
+  });
 
   invokeDesktop.mockClear();
   await expect(openMediaAsset(PLAYBACK_ID)).rejects.toMatchObject({
     name: 'MediaServiceError',
+    code: 'invalidMediaRequest',
+  });
+  expect(invokeDesktop).not.toHaveBeenCalled();
+});
+
+it('restores an exact opaque asset only while native state is empty', async () => {
+  invokeDesktop
+    .mockResolvedValueOnce(validSnapshot())
+    .mockResolvedValueOnce(null)
+    .mockResolvedValueOnce({
+      ...validSnapshot(),
+      media: { ...validSnapshot().media, id: '01890f39-7b62-7c4e-8c9a-000000000102' },
+    });
+
+  await expect(restoreMediaAsset(ASSET_ID)).resolves.toEqual(
+    expect.objectContaining({ assetId: ASSET_ID })
+  );
+  await expect(restoreMediaAsset(ASSET_ID)).resolves.toBeNull();
+  await expect(restoreMediaAsset(ASSET_ID)).rejects.toMatchObject({
+    code: 'invalidMediaResponse',
+  });
+  expect(invokeDesktop.mock.calls).toEqual([
+    ['open_media_asset', { id: ASSET_ID, onlyIfEmpty: true }],
+    ['open_media_asset', { id: ASSET_ID, onlyIfEmpty: true }],
+    ['open_media_asset', { id: ASSET_ID, onlyIfEmpty: true }],
+  ]);
+
+  invokeDesktop.mockClear();
+  await expect(restoreMediaAsset(PLAYBACK_ID)).rejects.toMatchObject({
     code: 'invalidMediaRequest',
   });
   expect(invokeDesktop).not.toHaveBeenCalled();
