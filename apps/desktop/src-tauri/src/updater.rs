@@ -48,7 +48,11 @@ pub(crate) struct AppUpdateStatus {
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize)]
-#[serde(tag = "event", rename_all = "camelCase")]
+#[serde(
+    tag = "event",
+    rename_all = "camelCase",
+    rename_all_fields = "camelCase"
+)]
 pub(crate) enum AppUpdateEvent {
     Checking {
         version: String,
@@ -390,8 +394,8 @@ mod tests {
     use base64::{Engine as _, engine::general_purpose::STANDARD};
 
     use super::{
-        AppUpdateRuntime, MAX_RELEASE_NOTES_UTF16_UNITS, bounded_text, format_published_at,
-        is_bounded_version, is_valid_signing_key,
+        AppUpdateEvent, AppUpdateRuntime, MAX_RELEASE_NOTES_UTF16_UNITS, bounded_text,
+        format_published_at, is_bounded_version, is_valid_signing_key,
     };
     use time::macros::datetime;
 
@@ -434,6 +438,24 @@ mod tests {
         assert_eq!(
             format_published_at(datetime!(2026-08-12 12:36:11.123456789 UTC)).unwrap(),
             "2026-08-12T12:36:11.123456789Z"
+        );
+    }
+
+    #[test]
+    fn progress_events_use_the_exact_camel_case_webview_contract() {
+        assert_eq!(
+            serde_json::to_value(AppUpdateEvent::Progress {
+                downloaded_bytes: 25,
+                total_bytes: Some(100),
+                basis_points: Some(2_500),
+            })
+            .unwrap(),
+            serde_json::json!({
+                "event": "progress",
+                "downloadedBytes": 25,
+                "totalBytes": 100,
+                "basisPoints": 2_500,
+            })
         );
     }
 

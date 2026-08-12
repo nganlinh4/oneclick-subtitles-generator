@@ -171,6 +171,31 @@ describe('updateService', () => {
     });
   });
 
+  test('isolates synchronous and asynchronous presentation failures from a valid update stream', async () => {
+    class FakeChannel {
+      constructor() { this.onmessage = null; }
+    }
+    const invokeCommand = vi.fn(async (command, payload) => {
+      if (command !== 'app_update_install') throw new Error('unexpected command');
+      payload.onEvent.onmessage({ event: 'checking', version: '1.0.1' });
+      payload.onEvent.onmessage({
+        event: 'progress', downloadedBytes: 25, totalBytes: 100, basisPoints: 2500,
+      });
+      payload.onEvent.onmessage({ event: 'installing', version: '1.0.1' });
+    });
+
+    await expect(installDesktopUpdate('1.0.1', {
+      onChecking: () => { throw new Error('detached toast'); },
+      onProgress: () => Promise.reject(new Error('detached progress toast')),
+      onInstalling: () => { throw new Error('detached install toast'); },
+    }, {
+      nativeRuntime: () => true,
+      invokeCommand,
+      ChannelConstructor: FakeChannel,
+    })).resolves.toBeUndefined();
+    expect(invokeCommand).not.toHaveBeenCalledWith('app_update_cancel', expect.anything());
+  });
+
   test('exposes cancellation only through the exact active version contract', async () => {
     const invokeCommand = vi.fn().mockResolvedValue(true);
     await expect(cancelDesktopUpdate('1.0.1-rc.2', {

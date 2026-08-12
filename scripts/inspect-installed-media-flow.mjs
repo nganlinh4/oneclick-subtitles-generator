@@ -8,10 +8,10 @@ import { pathToFileURL } from 'node:url';
 
 import { CdpClient, discoverTarget } from './inspect-installed-webview.mjs';
 
-// The first public YouTube upload is a short, stable, non-live fixture. Using a reviewed media
-// site here exercises the same native URL policy and yt-dlp path as the production button.
-const MEDIA_URL = 'https://www.youtube.com/watch?v=jNQXAC9IVRw';
-const MEDIA_VIDEO_ID = 'jNQXAC9IVRw';
+// This short public Bilibili upload is accepted from GitHub-hosted runners. YouTube blocks those
+// shared runner addresses before download admission, so YouTube remains a separate real-network
+// acceptance item while this fixture exercises the same all-sites yt-dlp/FFmpeg publication path.
+const MEDIA_URL = 'https://www.bilibili.com/video/BV1GBB4BdEq3';
 const SUBTITLE_MARKER = 'OSG installed media smoke';
 const DEFAULT_TIMEOUT_MS = 30 * 60 * 1_000;
 const UUID_V7 = /^[0-9a-f]{8}-[0-9a-f]{4}-7[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
@@ -173,7 +173,7 @@ const READY_TO_START_EXPRESSION = `
   url: document.querySelector('.url-field')?.value ?? null,
   srtReady: document.querySelector('.srt-upload-button.has-srt-uploaded') !== null,
   startReady: document.querySelector('.generate-btn.semi-auto:not([disabled])') !== null,
-  videoId: document.querySelector('.selected-video-preview .video-id-value')?.textContent?.trim()
+  mediaUrl: document.querySelector('.selected-video-preview .video-url-value')?.textContent?.trim()
     ?? null,
 }))()`;
 
@@ -257,7 +257,7 @@ async function runInstalledMediaFlow(options) {
       (value) => value?.url === MEDIA_URL
         && value.srtReady === true
         && value.startReady === true
-        && value.videoId === MEDIA_VIDEO_ID,
+        && value.mediaUrl === MEDIA_URL,
       { timeoutMs: 60_000 },
     );
     invariant(await evaluate(client, START_EXPRESSION) === true,

@@ -77,6 +77,15 @@ const normalizeHandlers = (handlers) => {
   return handlers;
 };
 
+const safelyCall = (handler, event) => {
+  if (typeof handler !== 'function') return;
+  try {
+    Promise.resolve(handler(event)).catch(() => undefined);
+  } catch {
+    // Presentation failures cannot invalidate an authenticated native update stream.
+  }
+};
+
 const normalizeUpdateEvent = (value, expectedVersion) => {
   if (!isPlainRecord(value) || typeof value.event !== 'string') throw invalidResponse();
   if (value.event === 'checking' || value.event === 'installing') {
@@ -213,9 +222,9 @@ export const installDesktopUpdate = async (expectedVersion, handlersInput, {
       }
       if (event.event === 'progress') lastDownloaded = event.downloadedBytes;
       if (event.event === 'installing') terminalPhase = true;
-      if (event.event === 'checking') handlers.onChecking?.(event);
-      if (event.event === 'progress') handlers.onProgress?.(event);
-      if (event.event === 'installing') handlers.onInstalling?.(event);
+      if (event.event === 'checking') safelyCall(handlers.onChecking, event);
+      if (event.event === 'progress') safelyCall(handlers.onProgress, event);
+      if (event.event === 'installing') safelyCall(handlers.onInstalling, event);
     } catch {
       protocolError = invalidResponse();
       Promise.resolve(invokeCommand('app_update_cancel', {
