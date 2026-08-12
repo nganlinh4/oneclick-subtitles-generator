@@ -83,6 +83,45 @@ function Stop-Application {
   }
 }
 
+function Get-FreeLoopbackPort {
+  $listener = [Net.Sockets.TcpListener]::new([Net.IPAddress]::Loopback, 0)
+  try {
+    $listener.Start()
+    $listener.LocalEndpoint.Port
+  } finally {
+    $listener.Stop()
+  }
+}
+
+function Inspect-InstalledWebView {
+  param(
+    [Parameter(Mandatory = $true)][int]$Port,
+    [Parameter(Mandatory = $true)][string]$Phase
+  )
+
+  $screenshot = Join-Path $env:RUNNER_TEMP "osg-$Phase.png"
+  if (Test-Path -LiteralPath $screenshot) {
+    throw "$Phase screenshot path was not clean"
+  }
+  $output = @(
+    & node scripts/inspect-installed-webview.mjs `
+      --port $Port `
+      --expected-version $ExpectedVersion `
+      --screenshot $screenshot 2>&1
+  )
+  if ($LASTEXITCODE -ne 0) {
+    throw "$Phase installed WebView inspection failed: $($output -join ' ')"
+  }
+  if ($output.Count -ne 1) {
+    throw "$Phase installed WebView inspection returned an unexpected output shape"
+  }
+  $inspection = $output[0] | ConvertFrom-Json
+  if (-not (Test-Path -LiteralPath $screenshot -PathType Leaf)) {
+    throw "$Phase installed WebView screenshot was not written"
+  }
+  $inspection
+}
+
 function Start-And-WaitForReadiness {
   param(
     [Parameter(Mandatory = $true)][string]$Executable,
@@ -91,7 +130,16 @@ function Start-And-WaitForReadiness {
     [Parameter(Mandatory = $true)][string]$Phase
   )
 
-  $app = Start-Process -FilePath $Executable -PassThru
+  if (-not [string]::IsNullOrEmpty($env:WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS)) {
+    throw 'The isolated runner already has unreviewed WebView2 browser arguments'
+  }
+  $debugPort = Get-FreeLoopbackPort
+  try {
+    $env:WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS = "--remote-debugging-port=$debugPort"
+    $app = Start-Process -FilePath $Executable -PassThru
+  } finally {
+    Remove-Item Env:WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS -ErrorAction SilentlyContinue
+  }
   $deadline = (Get-Date).AddMinutes(2)
   $events = @()
   try {
@@ -133,11 +181,13 @@ function Start-And-WaitForReadiness {
     if (-not $process.Responding) {
       throw "$Phase application window is not responding"
     }
+    $inspection = Inspect-InstalledWebView -Port $debugPort -Phase $Phase
     [pscustomobject]@{
       Process = $app
       Events = $events
       NewEventNames = @($newEvents | ForEach-Object event)
       Responding = $process.Responding
+      Inspection = $inspection
     }
   } catch {
     if (-not $app.HasExited) {
@@ -243,6 +293,9 @@ try {
     firstLaunchResponding = $first.Responding
     relaunchResponding = $second.Responding
     reinstallResponding = $third.Responding
+    firstLaunchWebView = $first.Inspection
+    relaunchWebView = $second.Inspection
+    reinstallWebView = $third.Inspection
     managedFontCacheStable = $true
     uninstallPreservedProfile = $true
   } | ConvertTo-Json -Depth 4

@@ -106,7 +106,7 @@ use speech_packages::{
 };
 use state::DesktopState;
 use tauri::webview::PageLoadEvent;
-use tauri::{Manager, WebviewWindowBuilder};
+use tauri::{Manager, WebviewWindowBuilder, Window, WindowEvent};
 use tauri_plugin_window_state::StateFlags;
 use ui_fonts::UiFontRuntime;
 use updater::{
@@ -155,7 +155,7 @@ pub fn run() {
                 });
             }
         })
-        .on_window_event(handle_native_media_drop_event)
+        .on_window_event(handle_application_window_event)
         .invoke_handler(tauri::generate_handler![
             app_health,
             get_session_snapshot,
@@ -268,6 +268,16 @@ pub fn run() {
         ])
         .run(tauri::generate_context!())
         .expect("Tauri runtime failed");
+}
+
+fn handle_application_window_event(window: &Window, event: &WindowEvent) {
+    handle_native_media_drop_event(window, event);
+    if window.label() == "main" && matches!(event, WindowEvent::CloseRequested { .. }) {
+        // OSG has no tray/background mode. Explicitly exit when its sole application window is
+        // closed so WebView teardown cannot leave a headless process behind on Windows.
+        diagnostics::record("app.close_requested", &[]);
+        window.app_handle().exit(0);
+    }
 }
 
 fn setup_app(app: &mut tauri::App) -> Result<(), Box<dyn std::error::Error>> {

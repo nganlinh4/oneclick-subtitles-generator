@@ -314,7 +314,7 @@ fn validate_asset(asset: &RawAsset, expected: &ExpectedSource) -> Result<Deliver
 
 #[cfg(test)]
 mod tests {
-    use std::sync::Arc;
+    use std::sync::{Arc, Mutex};
 
     use super::*;
     use crate::{CancellationToken, PackageState, RemovalOutcome, UiFontPackageManager};
@@ -333,14 +333,22 @@ mod tests {
 
     #[test]
     #[ignore = "downloads the reviewed Google Fonts sources"]
-    fn live_ui_font_installs_resolves_and_removes() {
+    fn live_ui_font_installs_reuses_repairs_and_removes() {
         let temporary = tempfile::tempdir().unwrap();
         let manager = UiFontPackageManager::new(temporary.path(), Arc::new(|| Ok(()))).unwrap();
         let cancellation = CancellationToken::default();
+        let progress = Arc::new(Mutex::new(Vec::new()));
+        let observed = Arc::clone(&progress);
         assert_eq!(
-            manager.install(&cancellation, &|_| {}).unwrap().state,
+            manager
+                .install(&cancellation, &move |value| {
+                    observed.lock().unwrap().push(value);
+                })
+                .unwrap()
+                .state,
             PackageState::Installed
         );
+        assert!(!progress.lock().unwrap().is_empty());
         let runtime = manager.resolve(&cancellation).unwrap();
         assert_eq!(
             std::fs::metadata(runtime.stylesheet()).unwrap().len(),
@@ -352,10 +360,55 @@ mod tests {
                 .len(),
             270_324
         );
+        let latin = runtime.font_file("latin").unwrap();
+        let original = std::fs::read(&latin).unwrap();
         drop(runtime);
+
+        progress.lock().unwrap().clear();
+        let observed = Arc::clone(&progress);
+        assert_eq!(
+            manager
+                .install(&cancellation, &move |value| {
+                    observed.lock().unwrap().push(value);
+                })
+                .unwrap()
+                .state,
+            PackageState::Installed
+        );
+        assert!(
+            progress.lock().unwrap().is_empty(),
+            "a verified cached font must not start another network operation"
+        );
+
+        let mut corrupted = original.clone();
+        let corruption_offset = corrupted.len() / 2;
+        corrupted[corruption_offset] ^= 0x01;
+        std::fs::write(&latin, &corrupted).unwrap();
+        drop(manager);
+        let manager = UiFontPackageManager::new(temporary.path(), Arc::new(|| Ok(()))).unwrap();
+        assert_eq!(manager.status().state, PackageState::Corrupt);
+        progress.lock().unwrap().clear();
+        let observed = Arc::clone(&progress);
+        assert_eq!(
+            manager
+                .install(&cancellation, &move |value| {
+                    observed.lock().unwrap().push(value);
+                })
+                .unwrap()
+                .state,
+            PackageState::Installed
+        );
+        assert!(!progress.lock().unwrap().is_empty());
+        let repaired = manager.resolve(&cancellation).unwrap();
+        assert_eq!(
+            std::fs::read(repaired.font_file("latin").unwrap()).unwrap(),
+            original
+        );
+        drop(repaired);
         assert_eq!(
             manager.remove(&cancellation, &|_| {}).unwrap(),
             RemovalOutcome::Removed
         );
+        assert_eq!(manager.status().state, PackageState::Missing);
     }
 }

@@ -593,6 +593,7 @@ function assertWorkflowCommands(workflow) {
     'node scripts/check-release-readiness.js --profile runtime-package --target "${{ matrix.rust-target }}"',
     'node scripts/check-release-artifacts.js --target "${{ matrix.rust-target }}" --bundles "${{ matrix.bundles }}" --allow-unsigned-branch-build',
     'node --test scripts/frozen-css-compatibility.test.mjs scripts/check-frozen-css-output.test.mjs',
+    'scripts/inspect-installed-webview.test.mjs',
     'npm run build:frontend',
     'node scripts/check-frozen-css-output.mjs',
     'node apps/desktop/node_modules/@tauri-apps/cli/tauri.js build --features production --no-bundle --ci --target "${{ matrix.rust-target }}" -- --locked',
@@ -699,6 +700,10 @@ function assertInstalledSmokeScript(script) {
     'Uninstall-Application -Installation $installed',
     '$reinstalled = Install-Application',
     "-Phase 'reinstall-launch'",
+    'WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS',
+    'scripts/inspect-installed-webview.mjs',
+    '$inspection = Inspect-InstalledWebView',
+    'firstLaunchWebView = $first.Inspection',
     'managedFontCacheStable = $true',
     'uninstallPreservedProfile = $true',
   ];

@@ -93,6 +93,8 @@ test('installed Windows smoke proves relaunch, cached fonts, uninstall, and rein
     'Uninstall-Application -Installation $installed',
     '$reinstalled = Install-Application',
     "-Phase 'reinstall-launch'",
+    'scripts/inspect-installed-webview.mjs',
+    '$inspection = Inspect-InstalledWebView',
   ]) {
     assert.throws(
       () => assertInstalledSmokeScript(INSTALLED_SMOKE_SCRIPT.replace(fragment, 'removed')),
