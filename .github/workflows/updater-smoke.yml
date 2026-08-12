@@ -1,0 +1,178 @@
+name: Signed updater smoke
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: signed-updater-smoke-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  CARGO_INCREMENTAL: "0"
+  CARGO_TERM_COLOR: always
+  CI: "true"
+  OSG_ENABLE_SIGNED_UPDATER_FIXTURE: "1"
+  RUST_BACKTRACE: "1"
+
+jobs:
+  signed-updater-windows:
+    name: Signed Windows NSIS update and persistence
+    runs-on: windows-2022
+    timeout-minutes: 120
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          persist-credentials: false
+
+      - name: Use pinned Node.js
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version-file: .node-version
+          cache: npm
+          cache-dependency-path: |
+            package-lock.json
+            apps/desktop/package-lock.json
+
+      - name: Use pinned Python
+        uses: actions/setup-python@a309ff8b426b58ec0e2a45f0f869d46889d02405 # v6.2.0
+        with:
+          python-version: "3.12.10"
+
+      - name: Use pinned npm
+        shell: bash
+        run: npm install --global "$(node -p 'require("./package.json").packageManager')"
+
+      - name: Install locked JavaScript dependencies
+        run: |
+          npm ci --ignore-scripts
+          npm --prefix apps/desktop ci --ignore-scripts
+
+      - name: Install pinned Rust target
+        run: |
+          rustup show active-toolchain
+          rustup target add x86_64-pc-windows-msvc
+
+      - name: Verify toolchain, fixture contracts, and Windows package readiness
+        run: |
+          node scripts/check-release-readiness.js --profile host-toolchain
+          npm run test:updater-fixture
+          node scripts/check-release-readiness.js --profile runtime-package --target x86_64-pc-windows-msvc
+
+      - name: Build the frozen frontend once
+        run: npm run build:frontend
+
+      - name: Fetch the locked Windows Rust dependency graph
+        run: cargo fetch --locked --target x86_64-pc-windows-msvc
+
+      - name: Compile updater-enabled base executable
+        run: node apps/desktop/node_modules/@tauri-apps/cli/tauri.js build --features production,ci-updater-fixture --no-bundle --ci --target x86_64-pc-windows-msvc -- --locked
+
+      - name: Bundle unsigned base installer
+        run: npm --prefix apps/desktop run tauri -- bundle --features production,ci-updater-fixture --ci --no-sign --target x86_64-pc-windows-msvc --bundles nsis
+
+      - name: Validate and preserve the base installer
+        shell: pwsh
+        run: |
+          node scripts/check-release-artifacts.js --target x86_64-pc-windows-msvc --bundles nsis --allow-unsigned-branch-build
+          $bundle = "target\x86_64-pc-windows-msvc\release\bundle\nsis"
+          $installer = @(Get-ChildItem -LiteralPath $bundle -File -Filter "*.exe")
+          if ($installer.Count -ne 1) {
+            throw "Expected exactly one base NSIS installer, found $($installer.Count)"
+          }
+          Copy-Item -LiteralPath $installer[0].FullName -Destination (Join-Path $env:RUNNER_TEMP 'osg-base-installer.exe')
+          Remove-Item -LiteralPath $installer[0].FullName
+
+      - name: Install base and create durable lifecycle state
+        shell: pwsh
+        run: |
+          $baseVersion = (Get-Content -LiteralPath 'package.json' -Raw | ConvertFrom-Json).version
+          ./scripts/test-installed-windows.ps1 `
+            -InstallerPath (Join-Path $env:RUNNER_TEMP 'osg-base-installer.exe') `
+            -ExpectedVersion $baseVersion `
+            -ResultPath (Join-Path $env:RUNNER_TEMP 'osg-installed-base.json')
+
+      - name: Build signed fixture update
+        shell: pwsh
+        env:
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
+        run: |
+          if ([string]::IsNullOrWhiteSpace($env:TAURI_SIGNING_PRIVATE_KEY)) {
+            throw 'TAURI_SIGNING_PRIVATE_KEY is unavailable'
+          }
+          $overridePath = Join-Path $env:RUNNER_TEMP 'osg-updater-override.json'
+          [IO.File]::WriteAllText(
+            $overridePath,
+            (@{
+              version = '1.0.0-rc.2'
+              build = @{ beforeBuildCommand = '' }
+            } | ConvertTo-Json -Depth 3 -Compress),
+            [Text.UTF8Encoding]::new($false)
+          )
+          node apps/desktop/node_modules/@tauri-apps/cli/tauri.js build `
+            --features production,ci-updater-fixture `
+            --bundles nsis `
+            --config $overridePath `
+            --ci `
+            --target x86_64-pc-windows-msvc `
+            -- --locked
+
+      - name: Validate signed updater and create strict HTTPS fixture
+        shell: pwsh
+        run: |
+          node scripts/check-release-artifacts.js --target x86_64-pc-windows-msvc --bundles nsis
+          $bundle = "target\x86_64-pc-windows-msvc\release\bundle\nsis"
+          $installer = @(Get-ChildItem -LiteralPath $bundle -File -Filter "*.exe")
+          if ($installer.Count -ne 1 -or -not (Test-Path -LiteralPath "$($installer[0].FullName).sig" -PathType Leaf)) {
+            throw 'Signed updater artifact pair is incomplete or ambiguous'
+          }
+          $fixture = Join-Path $env:RUNNER_TEMP 'osg-signed-updater-fixture'
+          New-Item -ItemType Directory -Path $fixture | Out-Null
+          Copy-Item -LiteralPath $installer[0].FullName -Destination (Join-Path $fixture 'update.exe')
+          $signature = (Get-Content -LiteralPath "$($installer[0].FullName).sig" -Raw).Trim()
+          $manifest = [ordered]@{
+            version = '1.0.0-rc.2'
+            notes = 'Isolated signed updater lifecycle verification'
+            pub_date = [DateTime]::UtcNow.ToString('o')
+            platforms = [ordered]@{
+              'windows-x86_64-nsis' = [ordered]@{
+                signature = $signature
+                url = 'https://localhost:38443/update.exe'
+              }
+            }
+          } | ConvertTo-Json -Depth 5 -Compress
+          [IO.File]::WriteAllText(
+            (Join-Path $fixture 'latest.json'),
+            $manifest,
+            [Text.UTF8Encoding]::new($false)
+          )
+
+      - name: Install through the real startup updater and verify relaunch persistence
+        shell: pwsh
+        run: |
+          $baseVersion = (Get-Content -LiteralPath 'package.json' -Raw | ConvertFrom-Json).version
+          ./scripts/test-signed-updater-windows.ps1 `
+            -InstalledResultPath (Join-Path $env:RUNNER_TEMP 'osg-installed-base.json') `
+            -FixtureRoot (Join-Path $env:RUNNER_TEMP 'osg-signed-updater-fixture') `
+            -BaseVersion $baseVersion `
+            -UpdatedVersion '1.0.0-rc.2'
+
+      - name: Upload bounded updater evidence
+        if: always()
+        uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6.0.0
+        with:
+          name: signed-updater-${{ github.run_id }}-${{ github.run_attempt }}
+          path: |
+            ${{ runner.temp }}/osg-first-launch.png
+            ${{ runner.temp }}/osg-relaunch.png
+            ${{ runner.temp }}/osg-reinstall-launch.png
+            ${{ runner.temp }}/osg-updater-trigger.png
+            ${{ runner.temp }}/osg-updater-verify.png
+            ${{ runner.temp }}/osg-updater-fixture.stdout.log
+            ${{ runner.temp }}/osg-updater-fixture.stderr.log
+          if-no-files-found: warn
+          retention-days: 7

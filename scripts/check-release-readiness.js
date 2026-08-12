@@ -7,6 +7,7 @@ const path = require('node:path');
 
 const REPOSITORY_ROOT = path.resolve(__dirname, '..');
 const WORKFLOW_PATH = '.github/workflows/rewrite-ci.yml';
+const UPDATER_SMOKE_WORKFLOW_PATH = '.github/workflows/updater-smoke.yml';
 const TAURI_DIRECTORY = 'apps/desktop/src-tauri';
 const TAURI_CONFIG_PATH = `${TAURI_DIRECTORY}/tauri.conf.json`;
 const NATIVE_TOOL_DELIVERY_PATH =
@@ -726,12 +727,117 @@ function assertInstalledSmokeScript(script) {
   );
 }
 
+function assertUpdaterSmokeWorkflow(workflow) {
+  assertPinnedActions(workflow);
+  invariant(/^on:\s*\r?\n\s{2}workflow_dispatch:\s*$/m.test(workflow)
+    && !/^\s{2}(?:push|pull_request|pull_request_target|schedule):/m.test(workflow),
+  'Signed updater smoke must be explicit workflow_dispatch only');
+  invariant(/^permissions:\s*\r?\n\s{2}contents:\s*read\s*$/m.test(workflow)
+    && !/^\s{2,}[a-z-]+:\s*write\s*$/m.test(workflow),
+  'Signed updater smoke must keep read-only repository permissions');
+  const secrets = [...workflow.matchAll(/\$\{\{\s*secrets\.([A-Z0-9_]+)\s*}}/g)]
+    .map((match) => match[1]).sort();
+  invariant(JSON.stringify(secrets) === JSON.stringify([
+    'TAURI_SIGNING_PRIVATE_KEY',
+    'TAURI_SIGNING_PRIVATE_KEY_PASSWORD',
+  ]), 'Signed updater smoke may consume only the two reviewed updater signing secrets');
+  const requiredFragments = [
+    'runs-on: windows-2022',
+    'OSG_ENABLE_SIGNED_UPDATER_FIXTURE: "1"',
+    'node scripts/check-release-readiness.js --profile runtime-package --target x86_64-pc-windows-msvc',
+    'npm run test:updater-fixture',
+    'build --features production,ci-updater-fixture --no-bundle --ci --target x86_64-pc-windows-msvc -- --locked',
+    'bundle --features production,ci-updater-fixture --ci --no-sign --target x86_64-pc-windows-msvc --bundles nsis',
+    "version = '1.0.0-rc.2'",
+    "build = @{ beforeBuildCommand = '' }",
+    '--features production,ci-updater-fixture',
+    'node scripts/check-release-artifacts.js --target x86_64-pc-windows-msvc --bundles nsis',
+    './scripts/test-installed-windows.ps1',
+    '-ResultPath (Join-Path $env:RUNNER_TEMP \'osg-installed-base.json\')',
+    './scripts/test-signed-updater-windows.ps1',
+    "url = 'https://localhost:38443/update.exe'",
+    '${{ runner.temp }}/osg-updater-trigger.png',
+    '${{ runner.temp }}/osg-updater-verify.png',
+  ];
+  for (const fragment of requiredFragments) {
+    invariant(workflow.includes(fragment),
+      `Signed updater smoke is missing required boundary: ${fragment}`);
+  }
+  invariant(!/github\.com\/[^\s]+\/releases\/download/i.test(workflow),
+    'Signed updater smoke must not publish or consume a public application prerelease');
+  invariant(!/(?:osg-updater-fixture\.pfx|TAURI_SIGNING_PRIVATE_KEY)[^\r\n]*runner\.temp.*upload/i.test(workflow),
+    'Signed updater smoke must not upload its signing material or ephemeral certificate');
+}
+
+function assertUpdaterFixtureSource(rootDirectory) {
+  const cargo = readText(rootDirectory, `${TAURI_DIRECTORY}/Cargo.toml`);
+  const build = readText(rootDirectory, `${TAURI_DIRECTORY}/build.rs`);
+  const updater = readText(rootDirectory, `${TAURI_DIRECTORY}/src/updater.rs`);
+  const config = readJson(rootDirectory, TAURI_CONFIG_PATH);
+  invariant(/^ci-updater-fixture\s*=\s*\[\]\s*$/m.test(cargo),
+    'Desktop Cargo features must declare the isolated updater fixture');
+  for (const fragment of [
+    'CARGO_FEATURE_CI_UPDATER_FIXTURE',
+    'GITHUB_ACTIONS',
+    'OSG_ENABLE_SIGNED_UPDATER_FIXTURE',
+    'PROFILE',
+    'release',
+  ]) {
+    invariant(build.includes(fragment),
+      `Updater fixture build scope is missing ${fragment}`);
+  }
+  invariant(updater.includes('#[cfg(feature = "ci-updater-fixture")]')
+    && updater.includes('https://localhost:38443/latest.json')
+    && updater.includes('.endpoints(vec!['),
+  'Updater fixture endpoint must remain compile-time isolated and exact');
+  invariant(JSON.stringify(config.plugins?.updater?.endpoints) === JSON.stringify([
+    'https://github.com/nganlinh4/oneclick-subtitles-generator/releases/latest/download/latest.json',
+  ]), 'Production updater endpoint must remain the official GitHub latest release');
+}
+
+function assertSignedUpdaterScript(script) {
+  const requiredFragments = [
+    "$env:GITHUB_ACTIONS -ne 'true'",
+    "$env:OSG_ENABLE_SIGNED_UPDATER_FIXTURE -ne '1'",
+    "-CertStoreLocation 'Cert:\\CurrentUser\\My'",
+    "X509Store]::new('Root', 'CurrentUser')",
+    '$rootStore.Add($certificate)',
+    '$rootStore.Remove($certificate)',
+    'scripts/serve-updater-fixture.mjs',
+    '-WindowStyle Hidden',
+    'WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS',
+    "-Mode 'trigger'",
+    "-Mode 'verify'",
+    '$baseProcess.WaitForExit(300000)',
+    '$updatedRegistry.DisplayVersion -ne $UpdatedVersion',
+    "'app-update.checking'",
+    "'app-update.installing'",
+    '$updateRequests.Count -ne 1',
+    'preservedSettingsProjectAndHistory = $true',
+    'signedNsisRelaunch = $true',
+  ];
+  for (const fragment of requiredFragments) {
+    invariant(script.includes(fragment),
+      `Signed updater runner is missing lifecycle proof: ${fragment}`);
+  }
+  invariant(!/Cert:\\LocalMachine/i.test(script),
+    'Signed updater runner must not modify the machine certificate store');
+  invariant(!/(?:dangerous_accept_invalid|Invoke-WebRequest|Invoke-RestMethod)/i.test(script),
+    'Signed updater runner must use platform TLS verification and the real updater client');
+}
+
 function assertWorkflow(rootDirectory = REPOSITORY_ROOT) {
   const workflow = readText(rootDirectory, WORKFLOW_PATH);
   assertPinnedActions(workflow);
   assertWorkflowMatrix(workflow);
   assertWorkflowCommands(workflow);
+  invariant(!workflow.includes('ci-updater-fixture')
+    && !/\$\{\{\s*secrets\./i.test(workflow),
+  'Ordinary rewrite CI must remain unsigned and updater-fixture-free');
   assertInstalledSmokeScript(readText(rootDirectory, 'scripts/test-installed-windows.ps1'));
+  assertUpdaterSmokeWorkflow(readText(rootDirectory, UPDATER_SMOKE_WORKFLOW_PATH));
+  assertUpdaterFixtureSource(rootDirectory);
+  assertSignedUpdaterScript(readText(rootDirectory, 'scripts/test-signed-updater-windows.ps1'));
 }
 
 function normalizeDestination(destination) {
@@ -2279,6 +2385,9 @@ module.exports = {
   assertNoMissingNativeCapabilities,
   assertNoUnmanagedLocalServices,
   assertInstalledSmokeScript,
+  assertUpdaterFixtureSource,
+  assertUpdaterSmokeWorkflow,
+  assertSignedUpdaterScript,
   assertWorkerResources,
   assertWorkflowCommands,
   assertWorkflowMatrix,

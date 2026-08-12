@@ -110,12 +110,31 @@ const COMMANDS: &[&str] = &[
 ];
 
 fn main() {
+    verify_ci_updater_fixture_scope();
     verify_managed_delivery_contract();
     tauri_build::try_build(
         tauri_build::Attributes::new()
             .app_manifest(tauri_build::AppManifest::new().commands(COMMANDS)),
     )
     .expect("failed to generate the Tauri application manifest");
+}
+
+fn verify_ci_updater_fixture_scope() {
+    if std::env::var_os("CARGO_FEATURE_CI_UPDATER_FIXTURE").is_none()
+        || std::env::var("PROFILE").as_deref() != Ok("release")
+    {
+        return;
+    }
+    assert_eq!(
+        std::env::var("GITHUB_ACTIONS").as_deref(),
+        Ok("true"),
+        "the signed updater fixture may be compiled only on GitHub Actions"
+    );
+    assert_eq!(
+        std::env::var("OSG_ENABLE_SIGNED_UPDATER_FIXTURE").as_deref(),
+        Ok("1"),
+        "the signed updater fixture requires an explicit isolated-workflow opt-in"
+    );
 }
 
 fn verify_managed_delivery_contract() {

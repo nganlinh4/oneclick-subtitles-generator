@@ -50,6 +50,7 @@
     "test:visual-contract": "node --test scripts/check-visual-freeze.test.js promptdj-midi/scripts/check-visual-contract.test.mjs",
     "test:desktop-payload-size": "node --test scripts/check-desktop-payload-size.test.mjs",
     "test:installed-webview": "node --test scripts/inspect-installed-webview.test.mjs",
+    "test:updater-fixture": "node --test scripts/serve-updater-fixture.test.mjs scripts/inspect-installed-updater.test.mjs",
     "check:render-visual-contract": "npm run --workspace=video-renderer check:visual-contract",
     "test:render-worker": "npm run --workspace=video-renderer test:worker",
     "update:visual-freeze": "node scripts/check-visual-freeze.js --update --baseline-ref HEAD && npm run --workspace=promptdj-midi update:visual-contract"

@@ -41,7 +41,12 @@ const history = Object.freeze({
   redoReason: null,
 });
 const persistence = Object.freeze({
-  setting: { schemaVersion: 1, version: '1.0.0-rc.1', purpose: 'installed-lifecycle' },
+  setting: JSON.stringify({
+    schemaVersion: 1,
+    version: '1.0.0-rc.1',
+    purpose: 'installed-lifecycle',
+    projectId,
+  }),
   project,
   loaded: project,
   history,
@@ -128,8 +133,8 @@ test('persistence requires exact settings and project snapshots across every pha
     phase: 'relaunch', expectedVersion: '1.0.0-rc.1', expectedProjectId: projectId,
   }), { projectId });
   for (const mutation of [
-    { setting: { ...persistence.setting, secret: 'forbidden' } },
-    { setting: { ...persistence.setting, version: '1.0.0' } },
+    { setting: `${persistence.setting}forbidden` },
+    { setting: persistence.setting.replace('1.0.0-rc.1', '1.0.0') },
     { project: { ...project, stateVersion: 1 } },
     { loaded: null },
   ]) {

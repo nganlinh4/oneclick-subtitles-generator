@@ -17,7 +17,7 @@ use osg_infrastructure::storage::{Database, DatabaseError};
 use osg_media_server::{MediaServer, RegisteredMedia};
 use serde::Serialize;
 use serde_json::Value;
-use tauri::{AppHandle, State};
+use tauri::{AppHandle, Runtime, State};
 use tauri_plugin_dialog::DialogExt;
 
 use crate::error::{CommandError, CommandResult};
@@ -33,15 +33,19 @@ const APP_SETTINGS_SCOPE: &str = "app";
 #[derive(Debug, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub(crate) struct AppHealth {
-    app_version: &'static str,
+    app_version: String,
     architecture: &'static str,
     platform: &'static str,
 }
 
 #[tauri::command]
-pub(crate) const fn app_health() -> AppHealth {
+#[allow(
+    clippy::needless_pass_by_value,
+    reason = "Tauri injects AppHandle as an owned command extractor"
+)]
+pub(crate) fn app_health<R: Runtime>(app: AppHandle<R>) -> AppHealth {
     AppHealth {
-        app_version: env!("CARGO_PKG_VERSION"),
+        app_version: app.package_info().version.to_string(),
         architecture: std::env::consts::ARCH,
         platform: std::env::consts::OS,
     }

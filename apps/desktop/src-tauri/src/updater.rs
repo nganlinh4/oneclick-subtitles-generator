@@ -17,6 +17,8 @@ const MAX_RELEASE_NOTES_UTF16_UNITS: usize = 32 * 1024;
 const MAX_VERSION_LENGTH: usize = 64;
 const UPDATE_CHECK_TIMEOUT: Duration = Duration::from_secs(20);
 const UPDATE_DOWNLOAD_TIMEOUT: Duration = Duration::from_mins(30);
+#[cfg(feature = "ci-updater-fixture")]
+const CI_UPDATE_ENDPOINT: &str = "https://localhost:38443/latest.json";
 
 #[derive(Default)]
 pub(crate) struct AppUpdateRuntime {
@@ -73,11 +75,7 @@ pub(crate) async fn app_update_check<R: Runtime>(
         });
     }
 
-    let update = app
-        .updater_builder()
-        .timeout(UPDATE_CHECK_TIMEOUT)
-        .build()
-        .map_err(|_| CommandError::updater_unavailable())?
+    let update = build_updater(&app, UPDATE_CHECK_TIMEOUT)?
         .check()
         .await
         .map_err(|_| CommandError::updater_unavailable())?
@@ -147,11 +145,7 @@ async fn install_checked_update<R: Runtime>(
         },
         cancellation,
     )?;
-    let mut update = app
-        .updater_builder()
-        .timeout(UPDATE_CHECK_TIMEOUT)
-        .build()
-        .map_err(|_| CommandError::updater_unavailable())?
+    let mut update = build_updater(app, UPDATE_CHECK_TIMEOUT)?
         .check()
         .await
         .map_err(|_| CommandError::updater_unavailable())?
@@ -207,6 +201,24 @@ async fn install_checked_update<R: Runtime>(
         .install(bytes)
         .map_err(|_| CommandError::updater_unavailable())?;
     Ok(())
+}
+
+fn build_updater<R: Runtime>(
+    app: &AppHandle<R>,
+    timeout: Duration,
+) -> CommandResult<tauri_plugin_updater::Updater> {
+    let builder = app.updater_builder().timeout(timeout);
+    #[cfg(feature = "ci-updater-fixture")]
+    let builder = builder
+        .endpoints(vec![
+            CI_UPDATE_ENDPOINT
+                .parse()
+                .map_err(|_| CommandError::updater_unavailable())?,
+        ])
+        .map_err(|_| CommandError::updater_unavailable())?;
+    builder
+        .build()
+        .map_err(|_| CommandError::updater_unavailable())
 }
 
 fn send_event(

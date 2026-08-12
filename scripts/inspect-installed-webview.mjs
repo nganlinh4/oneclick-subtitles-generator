@@ -124,13 +124,15 @@ const assertHistoryStatus = (
 export function assertPersistence(value, { phase, expectedVersion, expectedProjectId }) {
   invariant(hasExactKeys(value, ['setting', 'project', 'loaded', 'history', 'lifecycle']),
     'Installed persistence inspection returned an invalid payload');
-  invariant(hasExactKeys(value.setting, ['schemaVersion', 'version', 'purpose'])
-    && value.setting.schemaVersion === 1
-    && value.setting.version === expectedVersion
-    && value.setting.purpose === 'installed-lifecycle',
-  'Installed settings did not survive the expected lifecycle');
   const projectId = phase === 'first-launch' ? value.project?.metadata?.id : expectedProjectId;
   invariant(UUID_V7.test(projectId ?? ''), 'Installed project did not return a UUIDv7 ID');
+  invariant(value.setting === JSON.stringify({
+    schemaVersion: 1,
+    version: expectedVersion,
+    purpose: 'installed-lifecycle',
+    projectId,
+  }),
+  'Installed settings did not survive the expected lifecycle');
   assertProjectSnapshot(value.project, projectId, PERSISTENCE_PROJECT_NAME, 3, 'project');
   assertProjectSnapshot(value.loaded, projectId, PERSISTENCE_PROJECT_NAME, 3, 'loaded project');
   invariant(JSON.stringify(value.project) === JSON.stringify(value.loaded),
@@ -203,7 +205,7 @@ export async function waitForInspection(evaluate, expectedVersion, {
   throw new Error(`Installed WebView did not become ready within 60 seconds: ${lastFailure}`);
 }
 
-class CdpClient {
+export class CdpClient {
   constructor(endpoint, timeoutMs = DEFAULT_TIMEOUT_MS) {
     this.endpoint = endpoint;
     this.timeoutMs = timeoutMs;
@@ -279,7 +281,7 @@ class CdpClient {
   }
 }
 
-async function discoverTarget(port, timeoutMs = DEFAULT_TIMEOUT_MS) {
+export async function discoverTarget(port, timeoutMs = DEFAULT_TIMEOUT_MS) {
   const deadline = Date.now() + timeoutMs;
   let lastFailure = 'not started';
   do {
@@ -322,17 +324,12 @@ const persistenceExpression = ({ phase, expectedVersion, expectedProjectId }) =>
 (async () => {
   const invoke = window.__TAURI_INTERNALS__.invoke;
   const key = ${JSON.stringify(PERSISTENCE_KEY)};
-  const setting = ${JSON.stringify({
-    schemaVersion: 1,
-    version: expectedVersion,
-    purpose: 'installed-lifecycle',
-  })};
   const firstLaunch = ${JSON.stringify(phase === 'first-launch')};
-  if (firstLaunch) await invoke('setting_set', { key, value: setting });
-  const stored = await invoke('setting_get', { key });
   let project;
   let lifecycle = null;
   if (firstLaunch) {
+    localStorage.setItem('has_visited_site', 'true');
+    localStorage.setItem('onboarding_controls_dismissed', 'true');
     const created = await invoke('project_create', {
       name: ${JSON.stringify(PERSISTENCE_PROJECT_INITIAL_NAME)},
     });
@@ -357,9 +354,19 @@ const persistenceExpression = ({ phase, expectedVersion, expectedProjectId }) =>
     });
     project = redo;
     lifecycle = { commit, afterCommit, statusAfterCommit, undo, statusAfterUndo, redo };
+    await invoke('setting_set', {
+      key,
+      value: JSON.stringify({
+        schemaVersion: 1,
+        version: ${JSON.stringify(expectedVersion)},
+        purpose: 'installed-lifecycle',
+        projectId: project.metadata.id,
+      }),
+    });
   } else {
     project = await invoke('project_load', { id: ${JSON.stringify(expectedProjectId ?? null)} });
   }
+  const stored = await invoke('setting_get', { key });
   const loaded = await invoke('project_load', { id: project?.metadata?.id ?? null });
   const history = await invoke('project_history_status', { id: project?.metadata?.id ?? null });
   return { setting: stored, project, loaded, history, lifecycle };

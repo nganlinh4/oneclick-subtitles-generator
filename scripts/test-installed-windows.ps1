@@ -3,7 +3,9 @@ param(
   [string]$InstallerPath,
 
   [Parameter(Mandatory = $true)]
-  [string]$ExpectedVersion
+  [string]$ExpectedVersion,
+
+  [string]$ResultPath
 )
 
 $ErrorActionPreference = 'Stop'
@@ -12,6 +14,18 @@ $diagnosticEntrySlackBytes = 64 * 1024
 
 if ($env:CI -ne 'true') {
   throw 'The installed Windows smoke test may run only on an isolated CI runner.'
+}
+
+$resultFile = $null
+if (-not [string]::IsNullOrEmpty($ResultPath)) {
+  $resultFile = [IO.Path]::GetFullPath($ResultPath)
+  $runnerTempRoot = [IO.Path]::GetFullPath($env:RUNNER_TEMP).TrimEnd('\') + '\'
+  if (-not $resultFile.StartsWith($runnerTempRoot, [StringComparison]::OrdinalIgnoreCase)) {
+    throw 'Installed smoke result path must stay inside RUNNER_TEMP'
+  }
+  if (Test-Path -LiteralPath $resultFile) {
+    throw 'Installed smoke result path must be clean'
+  }
 }
 
 $installer = [IO.Path]::GetFullPath($InstallerPath)
@@ -392,7 +406,7 @@ $third = Start-And-WaitForReadiness `
   -Phase 'reinstall-launch' `
   -ExpectedProjectId $first.Inspection.persistence.projectId
 try {
-  [pscustomobject]@{
+  $result = [pscustomobject]@{
     version = $reinstalled.Registry.DisplayVersion
     executableSha256 = $executableSha256
     firstLaunchEvents = $first.NewEventNames
@@ -407,7 +421,12 @@ try {
     managedFontCacheStable = $true
     diagnosticLogRotation = $true
     uninstallPreservedProfile = $true
-  } | ConvertTo-Json -Depth 4
+  }
+  $resultJson = $result | ConvertTo-Json -Depth 4
+  if ($null -ne $resultFile) {
+    [IO.File]::WriteAllText($resultFile, $resultJson, [Text.UTF8Encoding]::new($false))
+  }
+  $resultJson
 } finally {
   Stop-Application -Process $third.Process
 }

@@ -23,6 +23,9 @@ const {
   assertRequiredMediaToolDelivery,
   assertRenderRuntimeDelivery,
   assertUpdaterReleaseConfiguration,
+  assertUpdaterFixtureSource,
+  assertUpdaterSmokeWorkflow,
+  assertSignedUpdaterScript,
   assertTauriProductionBuildContract,
   assertWorkerResources,
   assertWorkflowCommands,
@@ -36,6 +39,14 @@ const {
 
 const INSTALLED_SMOKE_SCRIPT = fs.readFileSync(
   path.join(__dirname, 'test-installed-windows.ps1'),
+  'utf8',
+);
+const UPDATER_SMOKE_WORKFLOW = fs.readFileSync(
+  path.join(__dirname, '..', '.github', 'workflows', 'updater-smoke.yml'),
+  'utf8',
+);
+const SIGNED_UPDATER_SCRIPT = fs.readFileSync(
+  path.join(__dirname, 'test-signed-updater-windows.ps1'),
   'utf8',
 );
 
@@ -107,6 +118,53 @@ test('installed Windows smoke proves persistence, bounded logs, relaunch, cached
   assert.throws(
     () => assertInstalledSmokeScript(`${INSTALLED_SMOKE_SCRIPT}\nInvoke-WebRequest https://example.test/app.exe\n`),
     /without a second download/,
+  );
+});
+
+test('signed updater smoke is isolated, signed, installed, and persistent', () => {
+  assert.doesNotThrow(() => assertUpdaterSmokeWorkflow(UPDATER_SMOKE_WORKFLOW));
+  for (const fragment of [
+    'workflow_dispatch:',
+    'OSG_ENABLE_SIGNED_UPDATER_FIXTURE: "1"',
+    'production,ci-updater-fixture',
+    './scripts/test-signed-updater-windows.ps1',
+    "url = 'https://localhost:38443/update.exe'",
+  ]) {
+    assert.throws(
+      () => assertUpdaterSmokeWorkflow(UPDATER_SMOKE_WORKFLOW.replace(fragment, 'removed')),
+      /Signed updater smoke/,
+    );
+  }
+  assert.throws(() => assertUpdaterSmokeWorkflow(
+    UPDATER_SMOKE_WORKFLOW.replace('workflow_dispatch:', 'pull_request_target:'),
+  ), /workflow_dispatch/);
+  assert.throws(() => assertUpdaterSmokeWorkflow(
+    `${UPDATER_SMOKE_WORKFLOW}\n# \${{ secrets.UNREVIEWED_SECRET }}\n`,
+  ), /two reviewed updater signing secrets/);
+});
+
+test('updater fixture source remains compile-time isolated from production releases', () => {
+  assert.doesNotThrow(() => assertUpdaterFixtureSource(path.join(__dirname, '..')));
+});
+
+test('signed updater runner uses platform TLS, the real toast, NSIS relaunch, and durable state', () => {
+  assert.doesNotThrow(() => assertSignedUpdaterScript(SIGNED_UPDATER_SCRIPT));
+  for (const fragment of [
+    "$env:GITHUB_ACTIONS -ne 'true'",
+    '-WindowStyle Hidden',
+    "-Mode 'trigger'",
+    "-Mode 'verify'",
+    '$rootStore.Remove($certificate)',
+    'preservedSettingsProjectAndHistory = $true',
+  ]) {
+    assert.throws(
+      () => assertSignedUpdaterScript(SIGNED_UPDATER_SCRIPT.replace(fragment, 'removed')),
+      /Signed updater runner/,
+    );
+  }
+  assert.throws(
+    () => assertSignedUpdaterScript(`${SIGNED_UPDATER_SCRIPT}\n# Cert:\\LocalMachine\\Root\n`),
+    /machine certificate store/,
   );
 });
 
