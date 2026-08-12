@@ -829,6 +829,7 @@ function assertSignedUpdaterScript(script) {
     "@($resultPath, ($fixture.TrimEnd('\\') + '\\'))",
     'scripts/serve-updater-fixture.mjs',
     '-WindowStyle Hidden',
+    "signed-updater.phase name=$Name elapsedMs=$elapsedMilliseconds",
     'WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS',
     "-Mode 'trigger'",
     "-Mode 'verify'",

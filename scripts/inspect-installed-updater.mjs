@@ -262,9 +262,11 @@ async function inspectUpdater(options) {
 
 if (process.argv[1] && import.meta.url === pathToFileURL(path.resolve(process.argv[1])).href) {
   inspectUpdater(parseArguments(process.argv.slice(2)))
-    .then((result) => process.stdout.write(`${JSON.stringify(result)}\n`))
+    .then((result) => process.stdout.write(`${JSON.stringify(result)}\n`, () => process.exit(0)))
     .catch((error) => {
-      process.stderr.write(`${error instanceof Error ? error.message : 'Updater inspection failed'}\n`);
-      process.exitCode = 1;
+      process.stderr.write(
+        `${error instanceof Error ? error.message : 'Updater inspection failed'}\n`,
+        () => process.exit(1),
+      );
     });
 }

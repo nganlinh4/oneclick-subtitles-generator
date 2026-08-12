@@ -19,6 +19,14 @@ $certificate = $null
 $rootStore = $null
 $baseProcess = $null
 $updatedProcess = $null
+$smokeStartedAt = Get-Date
+
+function Write-SmokePhase {
+  param([Parameter(Mandatory = $true)][string]$Name)
+
+  $elapsedMilliseconds = [Math]::Round(((Get-Date) - $script:smokeStartedAt).TotalMilliseconds)
+  Write-Host "signed-updater.phase name=$Name elapsedMs=$elapsedMilliseconds"
+}
 
 if ($env:CI -ne 'true' -or $env:GITHUB_ACTIONS -ne 'true' `
     -or $env:OSG_ENABLE_SIGNED_UPDATER_FIXTURE -ne '1') {
@@ -111,6 +119,7 @@ foreach ($path in @($pfxPath, $readyPath, $serverOutput, $serverError)) {
 }
 
 try {
+  Write-SmokePhase -Name 'fixture-certificate-started'
   $passwordBytes = [Security.Cryptography.RandomNumberGenerator]::GetBytes(32)
   $pfxPassword = [Convert]::ToBase64String($passwordBytes)
   [Array]::Clear($passwordBytes, 0, $passwordBytes.Length)
@@ -160,6 +169,7 @@ try {
     }
     throw "Signed updater fixture server did not become ready: $detail"
   }
+  Write-SmokePhase -Name 'fixture-server-ready'
 
   $installed = Get-ItemProperty -LiteralPath $uninstallKey
   if ($installed.DisplayVersion -ne $BaseVersion) {
@@ -185,7 +195,9 @@ try {
   } finally {
     Remove-Item Env:WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS -ErrorAction SilentlyContinue
   }
+  Write-SmokePhase -Name 'base-application-launched'
   $trigger = Invoke-UpdaterInspection -Port $debugPort -Mode 'trigger'
+  Write-SmokePhase -Name 'update-accepted'
   if (-not $baseProcess.WaitForExit(300000)) {
     Stop-Process -Id $baseProcess.Id -ErrorAction SilentlyContinue
     throw 'Base application did not exit after the signed update was accepted'
@@ -193,6 +205,7 @@ try {
   if ($baseProcess.ExitCode -ne 0) {
     throw "Base application exited with code $($baseProcess.ExitCode) during update"
   }
+  Write-SmokePhase -Name 'base-application-exited'
 
   $updateDeadline = (Get-Date).AddMinutes(3)
   $updatedRegistry = $null
@@ -203,6 +216,7 @@ try {
   if ($updatedRegistry.DisplayVersion -ne $UpdatedVersion) {
     throw 'Signed NSIS updater did not replace the installed application version'
   }
+  Write-SmokePhase -Name 'updated-version-registered'
 
   do {
     $updatedCandidates = @(Get-Process -Name 'osg-desktop' -ErrorAction SilentlyContinue |
@@ -219,10 +233,13 @@ try {
   if ($null -eq $updatedProcess) {
     throw 'Signed NSIS updater did not relaunch the application'
   }
+  Write-SmokePhase -Name 'updated-application-launched'
 
   $verify = Invoke-UpdaterInspection -Port $debugPort -Mode 'verify'
+  Write-SmokePhase -Name 'updated-state-verified'
   Stop-Gracefully -Process $updatedProcess
   $updatedProcess = $null
+  Write-SmokePhase -Name 'updated-application-closed'
 
   if (-not $server.HasExited) {
     Stop-Process -Id $server.Id
@@ -243,6 +260,7 @@ try {
       -or $invalidRequests.Count -ne 0) {
     throw 'Signed updater fixture observed an invalid bounded request sequence'
   }
+  Write-SmokePhase -Name 'fixture-requests-verified'
 
   $logPath = Join-Path ([IO.Path]::GetFullPath(
     (Join-Path $env:LOCALAPPDATA 'io.github.nganlinh4.oneclicksubtitles')
@@ -256,6 +274,7 @@ try {
     })) {
     throw 'Signed updater diagnostics omitted the checked and installed version'
   }
+  Write-SmokePhase -Name 'diagnostics-verified'
 
   [pscustomobject]@{
     baseVersion = $BaseVersion
