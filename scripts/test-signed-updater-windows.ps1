@@ -33,7 +33,7 @@ if ($BaseVersion -notmatch '^\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?$' `
 $runnerTemp = [IO.Path]::GetFullPath($env:RUNNER_TEMP).TrimEnd('\') + '\'
 $resultPath = [IO.Path]::GetFullPath($InstalledResultPath)
 $fixture = [IO.Path]::GetFullPath($FixtureRoot)
-foreach ($candidate in @($resultPath, $fixture.TrimEnd('\') + '\')) {
+foreach ($candidate in @($resultPath, ($fixture.TrimEnd('\') + '\'))) {
   if (-not $candidate.StartsWith($runnerTemp, [StringComparison]::OrdinalIgnoreCase)) {
     throw 'Signed updater smoke inputs must stay inside RUNNER_TEMP'
   }

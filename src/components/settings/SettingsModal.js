@@ -21,8 +21,12 @@ import EnginesPanel from '../engines/EnginesPanel';
 
 // Import icons
 import { ApiKeyIcon, ProcessingIcon, PromptIcon, CacheIcon, AboutIcon, ModelIcon } from './icons/TabIcons';
-import { getGitVersion, getLatestVersion, compareVersions } from '../../utils/gitVersion';
 import LoadingIndicator from '../common/LoadingIndicator';
+import {
+  refreshDesktopUpdateCheck,
+  startStartupUpdateCheck,
+  subscribeDesktopUpdateStatus,
+} from '../../platform/startupUpdateCoordinator';
 
 // Extracted hooks + helpers
 import useSettingsState from './hooks/useSettingsState';
@@ -67,21 +71,12 @@ const SettingsModal = ({ onClose, onSave, apiKeysSet, setApiKeysSet }) => {
 
   useEffect(() => {
     let mounted = true;
-    const check = async () => {
-      try {
-        const current = await getGitVersion();
-        const latest = await getLatestVersion();
-        if (!mounted) return;
-        if (current && latest) {
-          const isNewer = compareVersions(latest.version, current.version);
-          setUpdateAvailable(isNewer > 0);
-        }
-      } catch (e) {
-        // Silent fail for badge; About tab shows detailed error state
-      }
+    const applyStatus = (status) => {
+      if (mounted) setUpdateAvailable(Boolean(status?.configured && status.update));
     };
-    check();
-    return () => { mounted = false; };
+    const unsubscribe = subscribeDesktopUpdateStatus(applyStatus);
+    startStartupUpdateCheck().then(applyStatus);
+    return () => { mounted = false; unsubscribe(); };
   }, []);
 
   // Initialize pill position and drag functionality on component mount
@@ -277,6 +272,9 @@ const SettingsModal = ({ onClose, onSave, apiKeysSet, setApiKeysSet }) => {
             <button
               className={`settings-tab ${activeTab === 'about' ? 'active' : ''}`}
               onClick={() => {
+                if (activeTab === 'about') {
+                  refreshDesktopUpdateCheck().catch(() => undefined);
+                }
                 // Select a random background when clicking on the About tab
                 if (activeTab !== 'about') {
                   // Possible background types: default, alternative, 1, 2, 3, 4, 5

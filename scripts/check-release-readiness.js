@@ -816,6 +816,7 @@ function assertSignedUpdaterScript(script) {
     "X509Store]::new('Root', 'CurrentUser')",
     '$rootStore.Add($certificate)',
     '$rootStore.Remove($certificate)',
+    "@($resultPath, ($fixture.TrimEnd('\\') + '\\'))",
     'scripts/serve-updater-fixture.mjs',
     '-WindowStyle Hidden',
     'WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS',

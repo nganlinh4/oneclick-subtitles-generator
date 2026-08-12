@@ -6,6 +6,7 @@ import {
   checkDesktopUpdate,
   getDesktopAppVersion,
 } from '../platform/updateService';
+import { resetStartupUpdateCheckForTests } from '../platform/startupUpdateCoordinator';
 
 vi.mock('../platform/updateService', () => ({
   checkDesktopUpdate: vi.fn(),
@@ -16,6 +17,7 @@ const originalTauri = window.isTauri;
 const originalFetch = global.fetch;
 
 beforeEach(() => {
+  resetStartupUpdateCheckForTests();
   window.isTauri = true;
   global.fetch = vi.fn();
   getDesktopAppVersion.mockReset().mockResolvedValue('2.0.0');

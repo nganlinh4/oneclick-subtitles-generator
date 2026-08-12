@@ -2,6 +2,7 @@
 import { useTranslation } from 'react-i18next';
 import { useState, useEffect } from 'react';
 import { getGitVersion, getDisplayVersion, getLatestVersion, compareVersions, getInstallerFilename } from '../../../utils/gitVersion';
+import { subscribeDesktopUpdateStatus } from '../../../platform/startupUpdateCoordinator';
 import LoadingIndicator from '../../common/LoadingIndicator';
 
 const AboutTab = ({ backgroundType }) => {
@@ -37,6 +38,7 @@ const AboutTab = ({ backgroundType }) => {
 
       } catch (error) {
         console.warn('Failed to check for updates:', error);
+        setLatestVersionInfo(null);
       } finally {
         setIsCheckingUpdate(false);
       }
@@ -44,7 +46,9 @@ const AboutTab = ({ backgroundType }) => {
 
     loadVersionInfo();
     checkForUpdates();
-  }, []); // Run once on mount
+    const unsubscribe = subscribeDesktopUpdateStatus(() => checkForUpdates());
+    return unsubscribe;
+  }, []); // Run once on mount and whenever the shared native status is refreshed
 
   // Separate effect to compare versions when both are available
   useEffect(() => {

@@ -7,7 +7,11 @@ import specialStarIcon from '../assets/specialStar.svg';
 import LoadingIndicator from './common/LoadingIndicator';
 import { detectStartupMode } from '../platform/startupService';
 
-import { getGitVersion, getLatestVersion, compareVersions } from '../utils/gitVersion';
+import {
+  refreshDesktopUpdateCheck,
+  startStartupUpdateCheck,
+  subscribeDesktopUpdateStatus,
+} from '../platform/startupUpdateCoordinator';
 import {
   detectVersionChannel,
   switchVersionChannel,
@@ -268,21 +272,15 @@ const Header = ({ onSettingsClick }) => {
   // Check for updates to show badge on floating settings button
   useEffect(() => {
     let mounted = true;
-    const check = async () => {
-      try {
-        const current = await getGitVersion();
-        const latest = await getLatestVersion();
-        if (!mounted) return;
-        if (current && latest) {
-          setUpdateAvailable(compareVersions(latest.version, current.version) > 0);
-        }
-      } catch (e) {
-        // ignore
-      }
+    const applyStatus = (status) => {
+      if (mounted) setUpdateAvailable(Boolean(status?.configured && status.update));
     };
-    check();
-    const id = setInterval(check, 30 * 60 * 1000);
-    return () => { mounted = false; clearInterval(id); };
+    const unsubscribe = subscribeDesktopUpdateStatus(applyStatus);
+    startStartupUpdateCheck().then(applyStatus);
+    const id = setInterval(() => {
+      refreshDesktopUpdateCheck().then(applyStatus);
+    }, 30 * 60 * 1000);
+    return () => { mounted = false; clearInterval(id); unsubscribe(); };
   }, []);
   // Handle branch switching
   const handleBranchSwitch = async () => {

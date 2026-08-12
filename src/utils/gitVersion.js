@@ -3,7 +3,8 @@
  */
 
 import { fetchBrowserResource } from '../platform/browserFetch';
-import { checkDesktopUpdate, getDesktopAppVersion } from '../platform/updateService';
+import { getDesktopAppVersion } from '../platform/updateService';
+import { startStartupUpdateCheck } from '../platform/startupUpdateCoordinator';
 
 /**
  * Get git commit information from the current repository
@@ -166,8 +167,8 @@ export const getLatestVersion = async () => {
   try {
     if (typeof window !== 'undefined' && window.isTauri) {
       const current = await getGitVersion();
-      const status = await checkDesktopUpdate();
-      if (!status.configured) {
+      const status = await startStartupUpdateCheck();
+      if (status === null || !status.configured) {
         throw new Error('Signed updater is not configured');
       }
       if (status.update === null) {

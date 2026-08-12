@@ -1,7 +1,10 @@
 import {
+  getCachedDesktopUpdateStatus,
   offerDesktopUpdate,
+  refreshDesktopUpdateCheck,
   resetStartupUpdateCheckForTests,
   startStartupUpdateCheck,
+  subscribeDesktopUpdateStatus,
 } from './startupUpdateCoordinator';
 
 beforeEach(() => resetStartupUpdateCheckForTests());
@@ -21,6 +24,83 @@ test('checks once per startup and offers only a configured newer signed release'
   ]);
   expect(check).toHaveBeenCalledTimes(1);
   expect(offer).toHaveBeenCalledWith(status.update);
+  expect(getCachedDesktopUpdateStatus()).toBe(status);
+});
+
+test('an explicit refresh replaces the shared result without parallel stale checks', async () => {
+  const firstStatus = {
+    configured: true,
+    currentVersion: '1.0.0',
+    update: null,
+  };
+  const secondStatus = {
+    configured: true,
+    currentVersion: '1.0.0',
+    update: { version: '1.0.1', publishedAt: null, notes: null },
+  };
+  const check = vi.fn()
+    .mockResolvedValueOnce(firstStatus)
+    .mockResolvedValueOnce(secondStatus);
+  const offer = vi.fn();
+  const options = { nativeRuntime: () => true, check, offer };
+
+  await startStartupUpdateCheck(options);
+  await startStartupUpdateCheck(options);
+  expect(check).toHaveBeenCalledTimes(1);
+  expect(getCachedDesktopUpdateStatus()).toBe(firstStatus);
+
+  await refreshDesktopUpdateCheck(options);
+  expect(check).toHaveBeenCalledTimes(2);
+  expect(getCachedDesktopUpdateStatus()).toBe(secondStatus);
+  expect(offer).toHaveBeenCalledTimes(1);
+  expect(offer).toHaveBeenCalledWith(secondStatus.update);
+});
+
+test('a refresh requested during the startup check joins that check', async () => {
+  let resolveCheck;
+  const status = {
+    configured: true,
+    currentVersion: '1.0.0',
+    update: null,
+  };
+  const check = vi.fn(() => new Promise((resolve) => {
+    resolveCheck = resolve;
+  }));
+  const options = { nativeRuntime: () => true, check, offer: vi.fn() };
+  const startup = startStartupUpdateCheck(options);
+  const refresh = refreshDesktopUpdateCheck(options);
+  expect(check).toHaveBeenCalledTimes(1);
+  resolveCheck(status);
+  await expect(Promise.all([startup, refresh])).resolves.toEqual([status, status]);
+});
+
+test('all update surfaces observe the same refresh and listener failures stay isolated', async () => {
+  const statuses = [];
+  const firstStatus = { configured: true, currentVersion: '1.0.0', update: null };
+  const secondStatus = {
+    configured: true,
+    currentVersion: '1.0.0',
+    update: { version: '1.0.1', publishedAt: null, notes: null },
+  };
+  const check = vi.fn()
+    .mockResolvedValueOnce(firstStatus)
+    .mockResolvedValueOnce(secondStatus);
+  const unsubscribeBroken = subscribeDesktopUpdateStatus(() => {
+    throw new Error('detached component');
+  });
+  const unsubscribe = subscribeDesktopUpdateStatus((status) => statuses.push(status));
+  const options = { nativeRuntime: () => true, check, offer: vi.fn() };
+
+  await startStartupUpdateCheck(options);
+  const lateStatuses = [];
+  const unsubscribeLate = subscribeDesktopUpdateStatus((status) => lateStatuses.push(status));
+  expect(lateStatuses).toEqual([firstStatus]);
+  await refreshDesktopUpdateCheck(options);
+  expect(statuses).toEqual([firstStatus, secondStatus]);
+  expect(lateStatuses).toEqual([firstStatus, secondStatus]);
+  unsubscribe();
+  unsubscribeLate();
+  unsubscribeBroken();
 });
 
 test('startup update failures stay silent and browser mode never checks GitHub', async () => {
@@ -36,6 +116,20 @@ test('startup update failures stay silent and browser mode never checks GitHub',
     check,
   })).resolves.toBeNull();
   expect(check).toHaveBeenCalledTimes(1);
+});
+
+test('a missing or broken toast surface cannot discard a valid signed status', async () => {
+  const status = {
+    configured: true,
+    currentVersion: '1.0.0',
+    update: { version: '1.0.1', publishedAt: null, notes: null },
+  };
+  await expect(startStartupUpdateCheck({
+    nativeRuntime: () => true,
+    check: vi.fn().mockResolvedValue(status),
+    offer: vi.fn(() => { throw new Error('toast unavailable'); }),
+  })).resolves.toBe(status);
+  expect(getCachedDesktopUpdateStatus()).toBe(status);
 });
 
 test('the explicit toast action streams progress and offers cancellation', async () => {

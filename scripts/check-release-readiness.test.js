@@ -152,6 +152,7 @@ test('signed updater runner uses platform TLS, the real toast, NSIS relaunch, an
   for (const fragment of [
     "$env:GITHUB_ACTIONS -ne 'true'",
     '-WindowStyle Hidden',
+    "@($resultPath, ($fixture.TrimEnd('\\') + '\\'))",
     "-Mode 'trigger'",
     "-Mode 'verify'",
     '$rootStore.Remove($certificate)',
