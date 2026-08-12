@@ -8,7 +8,9 @@ import { pathToFileURL } from 'node:url';
 
 import { CdpClient, discoverTarget } from './inspect-installed-webview.mjs';
 
-const MEDIA_URL = 'https://media.w3.org/2010/05/sintel/trailer.mp4';
+// The first public YouTube upload is a short, stable, non-live fixture. Using a reviewed media
+// site here exercises the same native URL policy and yt-dlp path as the production button.
+const MEDIA_URL = 'https://www.youtube.com/watch?v=jNQXAC9IVRw';
 const SUBTITLE_MARKER = 'OSG installed media smoke';
 const DEFAULT_TIMEOUT_MS = 30 * 60 * 1_000;
 const UUID_V7 = /^[0-9a-f]{8}-[0-9a-f]{4}-7[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
@@ -59,7 +61,7 @@ const hasExactKeys = (value, keys) => value && typeof value === 'object'
 
 export function assertMediaFlowResult(value) {
   invariant(hasExactKeys(value, [
-    'assetId', 'currentFileName', 'currentFileUrl', 'errorToastCount', 'jobs', 'session',
+    'assetId', 'currentFileName', 'currentFileUrl', 'errorToastMessages', 'jobs', 'session',
     'subtitleMarkerVisible', 'tools', 'uploadedSrtInfo', 'video',
   ]), 'Installed media flow returned an invalid result shape');
   invariant(UUID_V7.test(value.assetId ?? ''), 'Installed media flow did not publish a UUIDv7 asset');
@@ -85,7 +87,8 @@ export function assertMediaFlowResult(value) {
     && value.uploadedSrtInfo.fileName === 'osg-installed-media-smoke.srt'
     && value.uploadedSrtInfo.source === 'srt',
   'Installed media flow lost the uploaded SRT state or rendered marker');
-  invariant(value.errorToastCount === 0, 'Installed media flow displayed an error toast');
+  invariant(Array.isArray(value.errorToastMessages) && value.errorToastMessages.length === 0,
+    'Installed media flow displayed an error toast');
   invariant(value.session?.media?.id === value.assetId
     && value.session?.media?.kind === 'video'
     && value.session?.playback?.playbackUrl === value.currentFileUrl,
@@ -182,7 +185,9 @@ const RESULT_EXPRESSION = `
     assetId,
     currentFileName,
     currentFileUrl,
-    errorToastCount: document.querySelectorAll('.toast-error').length,
+    errorToastMessages: [...document.querySelectorAll('.toast-error p')]
+      .slice(0, 4)
+      .map((element) => (element.textContent ?? '').trim().slice(0, 1024)),
     jobs,
     session,
     subtitleMarkerVisible: document.body.innerText.includes(${JSON.stringify(SUBTITLE_MARKER)}),
@@ -234,6 +239,11 @@ async function runInstalledMediaFlow(options) {
     const result = await waitForValue(
       () => evaluate(client, RESULT_EXPRESSION),
       (value) => {
+        if (Array.isArray(value?.errorToastMessages) && value.errorToastMessages.length > 0) {
+          throw new Error(
+            `Installed media flow failed in the application: ${value.errorToastMessages.join(' | ')}`,
+          );
+        }
         try {
           assertMediaFlowResult(value);
           return true;

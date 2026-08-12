@@ -25,7 +25,7 @@ const validResult = () => ({
   assetId: '019ff572-2132-7ba1-9e9c-5a29894963bf',
   currentFileName: 'trailer.mp4',
   currentFileUrl: 'http://127.0.0.1:43123/asset/01111111-2222-4333-8444-555555555555?token=' + 'a'.repeat(64),
-  errorToastCount: 0,
+  errorToastMessages: [],
   jobs: [
     {
       kind: 'downloadMedia',
@@ -101,6 +101,10 @@ test('rejects subtitle-only, inactive-tool, and accidental render false positive
   const render = validResult();
   render.jobs.push({ kind: 'renderVideo', state: 'succeeded', progress: { basisPoints: 10_000 } });
   assert.throws(() => assertMediaFlowResult(render), /download-only job/);
+
+  const applicationFailure = validResult();
+  applicationFailure.errorToastMessages = ['Sanitized download failure'];
+  assert.throws(() => assertMediaFlowResult(applicationFailure), /error toast/);
 });
 
 test('waits for a terminal accepted state and rejects a bounded timeout', async () => {

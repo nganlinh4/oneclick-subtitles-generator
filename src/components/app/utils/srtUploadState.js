@@ -75,6 +75,11 @@ export const useSrtUploadState = ({
   useEffect(() => {
     // Check if we have subtitles and determine their source
     if (subtitlesData && subtitlesData.length > 0) {
+      // `handleSrtUploadWithState` is the authoritative provenance boundary. Status text changes
+      // while a video or native tool is downloading must never relabel an explicitly uploaded
+      // subtitle track as generated.
+      if (uploadedSrtInfo.hasUploaded && uploadedSrtInfo.source === 'srt') return;
+
       // Multiple ways to detect SRT upload:
       // 1. Recent status message contains upload keywords
       const isFromRecentSrtUpload = status?.message?.includes('uploaded') ||
@@ -108,21 +113,17 @@ export const useSrtUploadState = ({
           hasUploaded: true,
           source: 'srt'
         }));
-      } else if (!isFromSrtUpload && !isInSrtOnlyMode && uploadedSrtInfo.source === 'srt') {
-        // Subtitles were regenerated and we're not in SRT-only mode, clear SRT upload state
+      }
+    } else {
+      // An explicit upload handler may run one React turn before its parsed rows arrive. Preserve
+      // that provenance; the explicit clear handler owns clearing an uploaded track.
+      if (!(uploadedSrtInfo.hasUploaded && uploadedSrtInfo.source === 'srt')) {
         setUploadedSrtInfo({
           hasUploaded: false,
           fileName: '',
-          source: 'generated'
+          source: ''
         });
       }
-    } else {
-      // No subtitles, clear upload state
-      setUploadedSrtInfo({
-        hasUploaded: false,
-        fileName: '',
-        source: ''
-      });
     }
   }, [subtitlesData, status, isSrtOnlyMode, isGenerating, uploadedSrtInfo.hasUploaded, uploadedSrtInfo.source]);
 
