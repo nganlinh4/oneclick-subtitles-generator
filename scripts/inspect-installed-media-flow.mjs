@@ -11,6 +11,7 @@ import { CdpClient, discoverTarget } from './inspect-installed-webview.mjs';
 // The first public YouTube upload is a short, stable, non-live fixture. Using a reviewed media
 // site here exercises the same native URL policy and yt-dlp path as the production button.
 const MEDIA_URL = 'https://www.youtube.com/watch?v=jNQXAC9IVRw';
+const MEDIA_VIDEO_ID = 'jNQXAC9IVRw';
 const SUBTITLE_MARKER = 'OSG installed media smoke';
 const DEFAULT_TIMEOUT_MS = 30 * 60 * 1_000;
 const UUID_V7 = /^[0-9a-f]{8}-[0-9a-f]{4}-7[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
@@ -109,6 +110,18 @@ export function assertMediaFlowResult(value) {
   return value;
 }
 
+export function hasMediaFlowStarted(value) {
+  if (Array.isArray(value?.errorToastMessages) && value.errorToastMessages.length > 0) {
+    throw new Error(
+      `Installed media flow failed in the application: ${value.errorToastMessages.join(' | ')}`,
+    );
+  }
+  return (Array.isArray(value?.jobs) && value.jobs.length > 0)
+    || (Array.isArray(value?.tools?.tools) && value.tools.tools.some((tool) => (
+      tool.installed === true || tool.operation !== null || tool.state !== 'missing'
+    )));
+}
+
 const evaluate = async (client, expression) => {
   const evaluation = await client.send('Runtime.evaluate', {
     expression,
@@ -152,6 +165,8 @@ const READY_TO_START_EXPRESSION = `
   url: document.querySelector('.url-field')?.value ?? null,
   srtReady: document.querySelector('.srt-upload-button.has-srt-uploaded') !== null,
   startReady: document.querySelector('.generate-btn.semi-auto:not([disabled])') !== null,
+  videoId: document.querySelector('.selected-video-preview .video-id-value')?.textContent?.trim()
+    ?? null,
 }))()`;
 
 const START_EXPRESSION = `
@@ -231,19 +246,23 @@ async function runInstalledMediaFlow(options) {
       })()`);
     await waitForValue(
       () => evaluate(client, READY_TO_START_EXPRESSION),
-      (value) => value?.url === MEDIA_URL && value.srtReady === true && value.startReady === true,
+      (value) => value?.url === MEDIA_URL
+        && value.srtReady === true
+        && value.startReady === true
+        && value.videoId === MEDIA_VIDEO_ID,
       { timeoutMs: 60_000 },
     );
     invariant(await evaluate(client, START_EXPRESSION) === true,
       'Installed media flow could not click the real semi-automatic action');
+    await waitForValue(
+      () => evaluate(client, RESULT_EXPRESSION),
+      hasMediaFlowStarted,
+      { timeoutMs: 30_000 },
+    );
     const result = await waitForValue(
       () => evaluate(client, RESULT_EXPRESSION),
       (value) => {
-        if (Array.isArray(value?.errorToastMessages) && value.errorToastMessages.length > 0) {
-          throw new Error(
-            `Installed media flow failed in the application: ${value.errorToastMessages.join(' | ')}`,
-          );
-        }
+        hasMediaFlowStarted(value);
         try {
           assertMediaFlowResult(value);
           return true;

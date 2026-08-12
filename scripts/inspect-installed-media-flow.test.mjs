@@ -6,6 +6,7 @@ import test from 'node:test';
 
 import {
   assertMediaFlowResult,
+  hasMediaFlowStarted,
   parseArguments,
   waitForValue,
 } from './inspect-installed-media-flow.mjs';
@@ -121,4 +122,19 @@ test('waits for a terminal accepted state and rejects a bounded timeout', async 
     (value) => value.ready,
     { now: () => ++ticks * 10, timeoutMs: 15, delay: async () => {} },
   ), /timed out/);
+});
+
+test('requires immediate native activity after the real media action', () => {
+  assert.equal(hasMediaFlowStarted(validResult()), true);
+  const inactive = validResult();
+  inactive.jobs = [];
+  inactive.tools.tools = inactive.tools.tools.map((tool) => ({
+    ...tool,
+    installed: false,
+    operation: null,
+    state: 'missing',
+  }));
+  assert.equal(hasMediaFlowStarted(inactive), false);
+  inactive.errorToastMessages = ['Sanitized failure'];
+  assert.throws(() => hasMediaFlowStarted(inactive), /Sanitized failure/);
 });
