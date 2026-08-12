@@ -20,11 +20,21 @@ $certificateKey = $null
 $baseProcess = $null
 $updatedProcess = $null
 $verificationProcess = $null
+$baseInstanceId = $null
+$updatedInstanceId = $null
+$verificationInstanceId = $null
 $smokeStartedAt = Get-Date
 $diagnosticLog = Join-Path ([IO.Path]::GetFullPath(
   (Join-Path $env:LOCALAPPDATA 'io.github.nganlinh4.oneclicksubtitles')
 )) 'logs\osg.log'
 $diagnosticEvidence = Join-Path $env:RUNNER_TEMP 'osg-updater-diagnostics.log'
+$closeEvidencePath = Join-Path $env:RUNNER_TEMP 'osg-updater-close-evidence.json'
+$closeEvidenceTemporaryPath = Join-Path $env:RUNNER_TEMP 'osg-updater-close-evidence.tmp'
+$closeEvidence = [ordered]@{
+  schemaVersion = 1
+  updaterRelaunch = $null
+  verification = $null
+}
 
 function Write-SmokePhase {
   param([Parameter(Mandatory = $true)][string]$Name)
@@ -75,10 +85,16 @@ function Get-FreeLoopbackPort {
 function Invoke-UpdaterInspection {
   param(
     [Parameter(Mandatory = $true)][int]$Port,
-    [Parameter(Mandatory = $true)][string]$Mode
+    [Parameter(Mandatory = $true)][string]$Mode,
+    [string]$EvidenceName = $Mode
   )
 
-  $screenshot = Join-Path $env:RUNNER_TEMP "osg-updater-$Mode.png"
+  $validEvidenceName = ($Mode -eq 'trigger' -and $EvidenceName -eq 'trigger') `
+    -or ($Mode -eq 'verify' -and $EvidenceName -in @('relaunch-verify', 'verify'))
+  if (-not $validEvidenceName) {
+    throw 'Updater inspection evidence name is invalid for its mode'
+  }
+  $screenshot = Join-Path $env:RUNNER_TEMP "osg-updater-$EvidenceName.png"
   if (Test-Path -LiteralPath $screenshot) {
     throw "Updater $Mode screenshot path was not clean"
   }
@@ -101,8 +117,171 @@ function Invoke-UpdaterInspection {
   $output[0] | ConvertFrom-Json
 }
 
-function Stop-Gracefully {
+function Get-BoundedProcessTreeSnapshot {
   param([Parameter(Mandatory = $true)]$Process)
+
+  $snapshot = [ordered]@{
+    available = $false
+    processAlive = $false
+    responding = $false
+    mainWindowPresent = $false
+    parentAlive = $false
+    descendantCount = 0
+    webViewDescendantCount = 0
+  }
+  try {
+    $Process.Refresh()
+    $snapshot.processAlive = -not $Process.HasExited
+    if (-not $Process.HasExited) {
+      $snapshot.responding = $Process.Responding
+      $snapshot.mainWindowPresent = $Process.MainWindowHandle -ne [IntPtr]::Zero
+    }
+    $processes = @(Get-CimInstance Win32_Process -OperationTimeoutSec 3 -ErrorAction Stop |
+      Select-Object ProcessId, ParentProcessId, Name)
+    $root = $processes | Where-Object ProcessId -eq $Process.Id | Select-Object -First 1
+    if ($null -eq $root) {
+      return [pscustomobject]$snapshot
+    }
+    $snapshot.available = $true
+    $snapshot.parentAlive = @(
+      $processes | Where-Object ProcessId -eq $root.ParentProcessId
+    ).Count -eq 1
+    $descendantIds = [Collections.Generic.HashSet[int]]::new()
+    $frontier = @([int]$Process.Id)
+    while ($frontier.Count -gt 0) {
+      $next = @()
+      foreach ($parentId in $frontier) {
+        foreach ($child in @($processes | Where-Object ParentProcessId -eq $parentId)) {
+          $childId = [int]$child.ProcessId
+          if ($descendantIds.Add($childId)) {
+            $next += $childId
+          }
+        }
+      }
+      $frontier = $next
+    }
+    $descendants = @($processes | Where-Object { $descendantIds.Contains([int]$_.ProcessId) })
+    $snapshot.descendantCount = $descendants.Count
+    $snapshot.webViewDescendantCount = @(
+      $descendants | Where-Object Name -ieq 'msedgewebview2.exe'
+    ).Count
+  } catch {
+    # Process-tree evidence is supplemental. The native window and diagnostic gates remain fatal.
+  }
+  [pscustomobject]$snapshot
+}
+
+function Test-MainWindowStable {
+  param(
+    [Parameter(Mandatory = $true)]$Process,
+    [Parameter(Mandatory = $true)][IntPtr]$ExpectedHandle
+  )
+
+  try {
+    $Process.Refresh()
+    -not $Process.HasExited `
+      -and $Process.MainWindowHandle -eq $ExpectedHandle `
+      -and $Process.MainWindowHandle -ne [IntPtr]::Zero
+  } catch {
+    $false
+  }
+}
+
+function Get-BoundedEvidenceDelta {
+  param([Parameter(Mandatory = $true)][int]$Delta)
+
+  [Math]::Max(-512, [Math]::Min(512, $Delta))
+}
+
+function Write-CloseEvidenceDocument {
+  $encoded = $script:closeEvidence | ConvertTo-Json -Depth 6 -Compress
+  if ([Text.Encoding]::UTF8.GetByteCount($encoded) -gt 4096) {
+    throw 'Signed updater close evidence exceeded its 4096-byte bound'
+  }
+  [IO.File]::WriteAllText(
+    $script:closeEvidenceTemporaryPath,
+    $encoded,
+    [Text.UTF8Encoding]::new($false)
+  )
+  [IO.File]::Move(
+    $script:closeEvidenceTemporaryPath,
+    $script:closeEvidencePath,
+    $true
+  )
+}
+
+function Write-CloseEvidence {
+  param(
+    [Parameter(Mandatory = $true)][string]$Phase,
+    [Parameter(Mandatory = $true)][string]$AppInstanceId,
+    [Parameter(Mandatory = $true)][string]$Outcome,
+    [Parameter(Mandatory = $true)][bool]$CloseAccepted,
+    [Parameter(Mandatory = $true)][int]$CloseEventDelta,
+    [Parameter(Mandatory = $true)][int]$ExitRequestedEventDelta,
+    [Parameter(Mandatory = $true)][int]$ExitEventDelta,
+    [Parameter(Mandatory = $true)][bool]$CleanExit,
+    [AllowNull()]$MainWindowStable,
+    [AllowNull()]$ProcessTree
+  )
+
+  if ($Phase -notin @('updater-relaunched', 'verification') `
+      -or $AppInstanceId -notmatch '^[0-9a-f]{8}-[0-9a-f]{4}-7[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$' `
+      -or $Outcome -notin @('request-rejected', 'exit-timeout', 'exited')) {
+    throw 'Signed updater close evidence escaped its bounded schema'
+  }
+  $diagnosticDeltasUnclamped = $CloseEventDelta -in -512..512 `
+    -and $ExitRequestedEventDelta -in -512..512 `
+    -and $ExitEventDelta -in -512..512
+  $diagnosticLifecycleExact = $CloseEventDelta -eq 1 `
+    -and $ExitRequestedEventDelta -eq 1 `
+    -and $ExitEventDelta -eq 1
+  $record = [ordered]@{
+    phase = $Phase
+    appInstanceId = $AppInstanceId
+    outcome = $Outcome
+    closeAccepted = $CloseAccepted
+    closeEventDelta = Get-BoundedEvidenceDelta -Delta $CloseEventDelta
+    exitRequestedEventDelta = Get-BoundedEvidenceDelta -Delta $ExitRequestedEventDelta
+    exitEventDelta = Get-BoundedEvidenceDelta -Delta $ExitEventDelta
+    diagnosticDeltasUnclamped = $diagnosticDeltasUnclamped
+    diagnosticLifecycleExact = $diagnosticLifecycleExact
+    cleanExit = $CleanExit
+    mainWindowStable = $MainWindowStable
+    processTree = $ProcessTree
+  }
+  $slot = if ($Phase -eq 'updater-relaunched') { 'updaterRelaunch' } else { 'verification' }
+  if ($null -ne $script:closeEvidence[$slot]) {
+    throw 'Signed updater close evidence already contains this phase'
+  }
+  $script:closeEvidence[$slot] = $record
+  Write-CloseEvidenceDocument
+  Write-Host "signed-updater.close $($record | ConvertTo-Json -Depth 4 -Compress)"
+  [pscustomobject]$record
+}
+
+function Add-CloseEvidenceProcessTree {
+  param(
+    [Parameter(Mandatory = $true)][string]$Phase,
+    [Parameter(Mandatory = $true)]$ProcessTree
+  )
+
+  $slot = if ($Phase -eq 'updater-relaunched') { 'updaterRelaunch' } else { 'verification' }
+  $record = $script:closeEvidence[$slot]
+  if ($Phase -notin @('updater-relaunched', 'verification') `
+      -or $null -eq $record `
+      -or $null -ne $record.processTree) {
+    throw 'Signed updater close evidence cannot accept process-tree enrichment'
+  }
+  $record.processTree = $ProcessTree
+  Write-CloseEvidenceDocument
+}
+
+function Stop-Gracefully {
+  param(
+    [Parameter(Mandatory = $true)]$Process,
+    [Parameter(Mandatory = $true)][string]$AppInstanceId,
+    [Parameter(Mandatory = $true)][string]$Phase
+  )
 
   $Process.Refresh()
   if ($Process.HasExited) {
@@ -111,43 +290,232 @@ function Stop-Gracefully {
   if ($Process.MainWindowHandle -eq [IntPtr]::Zero -or -not $Process.Responding) {
     throw 'Application was not ready for a graceful close'
   }
-  $closeEventsBefore = Get-DiagnosticEventCount -Name 'app.close_requested'
-  if (-not $Process.CloseMainWindow() -or -not $Process.WaitForExit(30000)) {
+  $closeEventsBefore = Get-DiagnosticEventCount -AppInstanceId $AppInstanceId -Name 'app.close_requested'
+  $exitRequestedEventsBefore = Get-DiagnosticEventCount -AppInstanceId $AppInstanceId -Name 'app.exit_requested'
+  $exitEventsBefore = Get-DiagnosticEventCount -AppInstanceId $AppInstanceId -Name 'app.exit'
+  $mainWindowBefore = $Process.MainWindowHandle
+  $closeAccepted = $Process.CloseMainWindow()
+  if (-not $closeAccepted) {
+    $closeEventsAfter = Get-DiagnosticEventCount -AppInstanceId $AppInstanceId -Name 'app.close_requested'
+    $exitRequestedEventsAfter = Get-DiagnosticEventCount -AppInstanceId $AppInstanceId -Name 'app.exit_requested'
+    $exitEventsAfter = Get-DiagnosticEventCount -AppInstanceId $AppInstanceId -Name 'app.exit'
+    $mainWindowStable = Test-MainWindowStable `
+      -Process $Process `
+      -ExpectedHandle $mainWindowBefore
+    Write-CloseEvidence `
+      -Phase $Phase `
+      -AppInstanceId $AppInstanceId `
+      -Outcome 'request-rejected' `
+      -CloseAccepted $false `
+      -CloseEventDelta ($closeEventsAfter - $closeEventsBefore) `
+      -ExitRequestedEventDelta ($exitRequestedEventsAfter - $exitRequestedEventsBefore) `
+      -ExitEventDelta ($exitEventsAfter - $exitEventsBefore) `
+      -CleanExit $false `
+      -MainWindowStable $mainWindowStable `
+      -ProcessTree $null | Out-Null
+    try {
+      $processTree = Get-BoundedProcessTreeSnapshot -Process $Process
+      Add-CloseEvidenceProcessTree -Phase $Phase -ProcessTree $processTree
+    } catch {
+      # The core native close evidence is already durable; enrichment is strictly best-effort.
+    }
     Stop-Process -Id $Process.Id -ErrorAction SilentlyContinue
-    throw 'Application did not accept a graceful close'
+    throw "$Phase application rejected a graceful close request"
   }
-  if ($Process.ExitCode -ne 0) {
+  if (-not $Process.WaitForExit(30000)) {
+    $closeEventsAfter = Get-DiagnosticEventCount -AppInstanceId $AppInstanceId -Name 'app.close_requested'
+    $exitRequestedEventsAfter = Get-DiagnosticEventCount -AppInstanceId $AppInstanceId -Name 'app.exit_requested'
+    $exitEventsAfter = Get-DiagnosticEventCount -AppInstanceId $AppInstanceId -Name 'app.exit'
+    $mainWindowStable = Test-MainWindowStable `
+      -Process $Process `
+      -ExpectedHandle $mainWindowBefore
+    Write-CloseEvidence `
+      -Phase $Phase `
+      -AppInstanceId $AppInstanceId `
+      -Outcome 'exit-timeout' `
+      -CloseAccepted $true `
+      -CloseEventDelta ($closeEventsAfter - $closeEventsBefore) `
+      -ExitRequestedEventDelta ($exitRequestedEventsAfter - $exitRequestedEventsBefore) `
+      -ExitEventDelta ($exitEventsAfter - $exitEventsBefore) `
+      -CleanExit $false `
+      -MainWindowStable $mainWindowStable `
+      -ProcessTree $null | Out-Null
+    try {
+      $processTree = Get-BoundedProcessTreeSnapshot -Process $Process
+      Add-CloseEvidenceProcessTree -Phase $Phase -ProcessTree $processTree
+    } catch {
+      # The core native close evidence is already durable; enrichment is strictly best-effort.
+    }
+    Stop-Process -Id $Process.Id -ErrorAction SilentlyContinue
+    throw "$Phase application did not exit within 30 seconds of an accepted graceful close request"
+  }
+  $closeEventsAfter = Get-DiagnosticEventCount -AppInstanceId $AppInstanceId -Name 'app.close_requested'
+  $exitRequestedEventsAfter = Get-DiagnosticEventCount -AppInstanceId $AppInstanceId -Name 'app.exit_requested'
+  $exitEventsAfter = Get-DiagnosticEventCount -AppInstanceId $AppInstanceId -Name 'app.exit'
+  $cleanExit = $Process.ExitCode -eq 0
+  $closeRecord = Write-CloseEvidence `
+    -Phase $Phase `
+    -AppInstanceId $AppInstanceId `
+    -Outcome 'exited' `
+    -CloseAccepted $true `
+    -CloseEventDelta ($closeEventsAfter - $closeEventsBefore) `
+    -ExitRequestedEventDelta ($exitRequestedEventsAfter - $exitRequestedEventsBefore) `
+    -ExitEventDelta ($exitEventsAfter - $exitEventsBefore) `
+    -CleanExit $cleanExit `
+    -MainWindowStable $null `
+    -ProcessTree $null
+  if (-not $cleanExit) {
     throw "Application exited with code $($Process.ExitCode) after the graceful close request"
   }
-  $closeEventsAfter = Get-DiagnosticEventCount -Name 'app.close_requested'
   if ($closeEventsAfter -ne ($closeEventsBefore + 1)) {
     throw 'Application did not flush exactly one graceful-close diagnostic'
   }
+  if ($exitRequestedEventsAfter -ne ($exitRequestedEventsBefore + 1) `
+      -or $exitEventsAfter -ne ($exitEventsBefore + 1)) {
+    throw 'Application did not traverse exactly one requested-exit and exit diagnostic'
+  }
+  $closeRecord
+}
+
+function Read-DiagnosticEvents {
+  param([switch]$IncludePrevious)
+
+  $directory = Split-Path -Parent $diagnosticLog
+  $paths = @($diagnosticLog)
+  if ($IncludePrevious) {
+    $paths = @((Join-Path $directory 'osg.previous.log')) + $paths
+  }
+  $events = @()
+  foreach ($path in $paths) {
+    if (-not (Test-Path -LiteralPath $path -PathType Leaf)) {
+      continue
+    }
+    $length = (Get-Item -LiteralPath $path).Length
+    if ($length -gt (8 * 1024 * 1024)) {
+      throw 'Signed updater diagnostic input exceeded its 8 MiB per-file bound'
+    }
+    foreach ($line in @(Get-Content -LiteralPath $path | Where-Object { $_.Length -gt 0 })) {
+      try {
+        $entry = $line | ConvertFrom-Json
+        if ([string]$entry.timestampMs -match '^\d{1,20}$' `
+            -and [string]$entry.event -match '^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$') {
+          $events += $entry
+        }
+      } catch {
+        # The active process may be flushing one final bounded JSON line.
+      }
+    }
+  }
+  @($events)
+}
+
+function Get-DiagnosticEvents {
+  param(
+    [Parameter(Mandatory = $true)][string]$AppInstanceId,
+    [string]$Name
+  )
+
+  if ($AppInstanceId -notmatch '^[0-9a-f]{8}-[0-9a-f]{4}-7[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$') {
+    throw 'Signed updater application instance ID is invalid'
+  }
+  $events = @(Read-DiagnosticEvents | Where-Object appInstanceId -eq $AppInstanceId)
+  if (-not [string]::IsNullOrEmpty($Name)) {
+    $events = @($events | Where-Object event -eq $Name)
+  }
+  @($events)
 }
 
 function Get-DiagnosticEventCount {
-  param([Parameter(Mandatory = $true)][string]$Name)
+  param(
+    [Parameter(Mandatory = $true)][string]$AppInstanceId,
+    [Parameter(Mandatory = $true)][string]$Name
+  )
 
-  if (-not (Test-Path -LiteralPath $diagnosticLog -PathType Leaf)) {
-    return 0
-  }
+  @(Get-DiagnosticEvents -AppInstanceId $AppInstanceId -Name $Name).Count
+}
+
+function Get-KnownApplicationInstanceIds {
   @(
-    Get-Content -LiteralPath $diagnosticLog -Tail 512 |
-      ForEach-Object {
-        try {
-          $_ | ConvertFrom-Json
-        } catch {
-          # The process may be flushing one final bounded JSON line.
-        }
-      } |
-      Where-Object event -eq $Name
-  ).Count
+    Read-DiagnosticEvents -IncludePrevious |
+      Where-Object appInstanceId -match '^[0-9a-f]{8}-[0-9a-f]{4}-7[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$' |
+      ForEach-Object { [string]$_.appInstanceId } |
+      Sort-Object -Unique
+  )
+}
+
+function Wait-ForApplicationInstance {
+  param(
+    [Parameter(Mandatory = $true)]$Process,
+    [Parameter(Mandatory = $true)][string]$ExpectedVersion,
+    [Parameter(Mandatory = $true)][array]$ExcludedInstanceIds,
+    [Parameter(Mandatory = $true)][string]$Phase
+  )
+
+  $deadline = (Get-Date).AddMinutes(2)
+  do {
+    Start-Sleep -Milliseconds 200
+    $Process.Refresh()
+    if ($Process.HasExited) {
+      throw "$Phase application exited before publishing its diagnostic identity"
+    }
+    $candidates = @(
+      Read-DiagnosticEvents |
+        Where-Object {
+          $_.event -eq 'app.environment' `
+            -and $_.version -eq $ExpectedVersion `
+            -and $_.webviewDebug -eq 'present' `
+            -and [string]$_.appInstanceId -match '^[0-9a-f]{8}-[0-9a-f]{4}-7[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$' `
+            -and [string]$_.appInstanceId -notin $ExcludedInstanceIds
+        } |
+        ForEach-Object { [string]$_.appInstanceId } |
+        Sort-Object -Unique
+    )
+    if ($candidates.Count -gt 1) {
+      throw "$Phase application published more than one new diagnostic identity"
+    }
+    if ($candidates.Count -eq 1) {
+      return $candidates[0]
+    }
+  } while ((Get-Date) -lt $deadline)
+  throw "$Phase application did not publish one new diagnostic identity within two minutes"
+}
+
+function Wait-ForSettledUpdaterChecks {
+  param(
+    [Parameter(Mandatory = $true)]$Process,
+    [Parameter(Mandatory = $true)][string]$AppInstanceId,
+    [Parameter(Mandatory = $true)][string]$ExpectedVersion,
+    [Parameter(Mandatory = $true)][int]$MinimumChecks,
+    [Parameter(Mandatory = $true)][string]$Phase
+  )
+
+  $deadline = (Get-Date).AddMinutes(2)
+  do {
+    Start-Sleep -Milliseconds 200
+    $Process.Refresh()
+    if ($Process.HasExited) {
+      throw "$Phase application exited before its updater checks settled"
+    }
+    $started = @(Get-DiagnosticEvents -AppInstanceId $AppInstanceId -Name 'app-update.check_started')
+    $completed = @(Get-DiagnosticEvents -AppInstanceId $AppInstanceId -Name 'app-update.check_completed')
+    $invalid = @($started | Where-Object version -ne $ExpectedVersion)
+    $invalid += @($completed | Where-Object {
+      $_.version -ne $ExpectedVersion -or $_.outcome -ne 'current'
+    })
+    if ($invalid.Count -ne 0) {
+      throw "$Phase application reported an invalid updater-check lifecycle"
+    }
+    if ($started.Count -ge $MinimumChecks -and $completed.Count -eq $started.Count) {
+      return
+    }
+  } while ((Get-Date) -lt $deadline)
+  throw "$Phase application updater checks did not settle within two minutes"
 }
 
 function Wait-ForReadyApplicationWindow {
   param(
     [Parameter(Mandatory = $true)]$Process,
-    [Parameter(Mandatory = $true)][int]$MinimumReadyEventCount,
+    [Parameter(Mandatory = $true)][string]$AppInstanceId,
     [Parameter(Mandatory = $true)][string]$Phase
   )
 
@@ -158,7 +526,8 @@ function Wait-ForReadyApplicationWindow {
     if ($Process.HasExited) {
       throw "$Phase application exited before its window became ready"
     }
-    $readyEvents = Get-DiagnosticEventCount -Name 'app.ready'
+    $readyEvents = Get-DiagnosticEventCount -AppInstanceId $AppInstanceId -Name 'app.ready'
+    $pageLoadEvents = Get-DiagnosticEventCount -AppInstanceId $AppInstanceId -Name 'app.page_load_finished'
     $inputIdle = $false
     if ($Process.MainWindowHandle -ne [IntPtr]::Zero -and $Process.Responding) {
       try {
@@ -167,7 +536,9 @@ function Wait-ForReadyApplicationWindow {
         $inputIdle = $false
       }
     }
-    if ($readyEvents -ge $MinimumReadyEventCount -and $inputIdle) {
+    if ($readyEvents -eq 1 `
+        -and $pageLoadEvents -ge 1 `
+        -and $inputIdle) {
       return
     }
   } while ((Get-Date) -lt $deadline)
@@ -175,23 +546,17 @@ function Wait-ForReadyApplicationWindow {
 }
 
 function Get-UpdaterFailurePhase {
-  if (-not (Test-Path -LiteralPath $diagnosticLog -PathType Leaf)) {
-    return $null
-  }
+  param([Parameter(Mandatory = $true)][string]$AppInstanceId)
+
   $allowed = @{
     'app-update.download_failed' = @('transport-or-signature')
     'app-update.install_failed' = @('extract-or-launch')
     'app-update.cancel_requested' = @('user', 'protocol')
   }
-  foreach ($line in @(Get-Content -LiteralPath $diagnosticLog -Tail 256)) {
-    try {
-      $entry = $line | ConvertFrom-Json
-      if ($allowed.ContainsKey([string]$entry.event) `
-          -and [string]$entry.reason -in $allowed[[string]$entry.event]) {
-        return "$($entry.event):$($entry.reason)"
-      }
-    } catch {
-      # A partial last line may be observed while the process is flushing its bounded JSON log.
+  foreach ($entry in @(Get-DiagnosticEvents -AppInstanceId $AppInstanceId)) {
+    if ($allowed.ContainsKey([string]$entry.event) `
+        -and [string]$entry.reason -in $allowed[[string]$entry.event]) {
+      return "$($entry.event):$($entry.reason)"
     }
   }
   $null
@@ -201,11 +566,19 @@ $pfxPath = Join-Path $env:RUNNER_TEMP 'osg-updater-fixture.pfx'
 $readyPath = Join-Path $env:RUNNER_TEMP 'osg-updater-fixture.ready.json'
 $serverOutput = Join-Path $env:RUNNER_TEMP 'osg-updater-fixture.stdout.log'
 $serverError = Join-Path $env:RUNNER_TEMP 'osg-updater-fixture.stderr.log'
-foreach ($path in @($pfxPath, $readyPath, $serverOutput, $serverError)) {
+foreach ($path in @(
+  $pfxPath,
+  $readyPath,
+  $serverOutput,
+  $serverError,
+  $closeEvidencePath,
+  $closeEvidenceTemporaryPath
+)) {
   if (Test-Path -LiteralPath $path) {
     throw "Signed updater temporary path was not clean: $path"
   }
 }
+Write-CloseEvidenceDocument
 
 try {
   Write-SmokePhase -Name 'fixture-certificate-started'
@@ -293,7 +666,7 @@ try {
   if (-not [string]::IsNullOrEmpty($env:WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS)) {
     throw 'Signed updater runner already has unreviewed WebView2 arguments'
   }
-  $readyEventsBeforeBase = Get-DiagnosticEventCount -Name 'app.ready'
+  $knownAppInstanceIds = @(Get-KnownApplicationInstanceIds)
   $debugPort = Get-FreeLoopbackPort
   try {
     $env:WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS = "--remote-debugging-port=$debugPort"
@@ -302,11 +675,17 @@ try {
     Remove-Item Env:WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS -ErrorAction SilentlyContinue
   }
   Write-SmokePhase -Name 'base-application-launched'
+  $baseInstanceId = Wait-ForApplicationInstance `
+    -Process $baseProcess `
+    -ExpectedVersion $BaseVersion `
+    -ExcludedInstanceIds $knownAppInstanceIds `
+    -Phase 'base'
+  $knownAppInstanceIds += $baseInstanceId
   $trigger = Invoke-UpdaterInspection -Port $debugPort -Mode 'trigger'
   Write-SmokePhase -Name 'update-accepted'
   $exitDeadline = (Get-Date).AddMinutes(5)
   while (-not $baseProcess.HasExited -and (Get-Date) -lt $exitDeadline) {
-    $failurePhase = Get-UpdaterFailurePhase
+    $failurePhase = Get-UpdaterFailurePhase -AppInstanceId $baseInstanceId
     if ($null -ne $failurePhase) {
       Stop-Process -Id $baseProcess.Id -ErrorAction SilentlyContinue
       throw "Base application reported a bounded updater failure: $failurePhase"
@@ -358,12 +737,32 @@ try {
     throw 'Signed NSIS updater relaunched an unexpected executable'
   }
   Write-SmokePhase -Name 'updated-application-relaunched'
+  $updatedInstanceId = Wait-ForApplicationInstance `
+    -Process $updatedProcess `
+    -ExpectedVersion $UpdatedVersion `
+    -ExcludedInstanceIds $knownAppInstanceIds `
+    -Phase 'updater-relaunched'
+  $knownAppInstanceIds += $updatedInstanceId
   Wait-ForReadyApplicationWindow `
     -Process $updatedProcess `
-    -MinimumReadyEventCount ($readyEventsBeforeBase + 2) `
+    -AppInstanceId $updatedInstanceId `
     -Phase 'updater-relaunched'
   Write-SmokePhase -Name 'updated-application-ready'
-  Stop-Gracefully -Process $updatedProcess
+  $relaunchFrontend = Invoke-UpdaterInspection `
+    -Port $debugPort `
+    -Mode 'verify' `
+    -EvidenceName 'relaunch-verify'
+  Wait-ForSettledUpdaterChecks `
+    -Process $updatedProcess `
+    -AppInstanceId $updatedInstanceId `
+    -ExpectedVersion $UpdatedVersion `
+    -MinimumChecks 2 `
+    -Phase 'updater-relaunched'
+  Write-SmokePhase -Name 'updated-frontend-ready'
+  $updatedClose = Stop-Gracefully `
+    -Process $updatedProcess `
+    -AppInstanceId $updatedInstanceId `
+    -Phase 'updater-relaunched'
   $updatedProcess = $null
   Write-SmokePhase -Name 'updated-application-closed'
 
@@ -378,9 +777,24 @@ try {
     Remove-Item Env:WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS -ErrorAction SilentlyContinue
   }
   Write-SmokePhase -Name 'verification-application-launched'
+  $verificationInstanceId = Wait-ForApplicationInstance `
+    -Process $verificationProcess `
+    -ExpectedVersion $UpdatedVersion `
+    -ExcludedInstanceIds $knownAppInstanceIds `
+    -Phase 'verification'
+  $knownAppInstanceIds += $verificationInstanceId
   $verify = Invoke-UpdaterInspection -Port $verificationPort -Mode 'verify'
+  Wait-ForSettledUpdaterChecks `
+    -Process $verificationProcess `
+    -AppInstanceId $verificationInstanceId `
+    -ExpectedVersion $UpdatedVersion `
+    -MinimumChecks 2 `
+    -Phase 'verification'
   Write-SmokePhase -Name 'updated-state-verified'
-  Stop-Gracefully -Process $verificationProcess
+  $verificationClose = Stop-Gracefully `
+    -Process $verificationProcess `
+    -AppInstanceId $verificationInstanceId `
+    -Phase 'verification'
   $verificationProcess = $null
   Write-SmokePhase -Name 'verification-application-closed'
 
@@ -405,8 +819,7 @@ try {
   }
   Write-SmokePhase -Name 'fixture-requests-verified'
 
-  $events = @(Get-Content -LiteralPath $diagnosticLog | Where-Object { $_.Length -gt 0 } |
-    ForEach-Object { $_ | ConvertFrom-Json })
+  $events = @(Get-DiagnosticEvents -AppInstanceId $baseInstanceId)
   if (-not ($events | Where-Object {
       $_.event -eq 'app-update.checking' -and $_.version -eq $UpdatedVersion
     }) -or -not ($events | Where-Object {
@@ -423,23 +836,40 @@ try {
     manifestRequests = $manifestRequests.Count
     updateRequests = $updateRequests.Count
     trigger = $trigger
+    relaunchFrontend = $relaunchFrontend
     verify = $verify
+    closeProof = [ordered]@{
+      updaterRelaunch = $updatedClose
+      verification = $verificationClose
+    }
     preservedSettingsProjectAndHistory = $true
     signedNsisRelaunch = $true
   } | ConvertTo-Json -Depth 5
 } finally {
   if (Test-Path -LiteralPath $diagnosticLog -PathType Leaf) {
-    $boundedUpdateEvents = @(Get-Content -LiteralPath $diagnosticLog -Tail 256 |
-      ForEach-Object {
-        try {
-          $entry = $_ | ConvertFrom-Json
-          if ([string]$entry.event -like 'app-update.*') {
-            $entry | ConvertTo-Json -Compress
-          }
-        } catch {
-          # Ignore a partial last line; only complete path-free diagnostic records are evidence.
-        }
-      })
+    $evidenceInstanceIds = @(
+      @($baseInstanceId, $updatedInstanceId, $verificationInstanceId) |
+        Where-Object { $_ -match '^[0-9a-f]{8}-[0-9a-f]{4}-7[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$' }
+    )
+    $boundedUpdateEvents = @(
+      Read-DiagnosticEvents -IncludePrevious |
+        Where-Object {
+          [string]$_.appInstanceId -in $evidenceInstanceIds `
+            -and (
+              [string]$_.event -like 'app-update.*' `
+                -or [string]$_.event -in @(
+                  'app.environment',
+                  'app.ready',
+                  'app.page_load_finished',
+                  'app.close_requested',
+                  'app.exit_requested',
+                  'app.exit'
+                )
+            )
+        } |
+        Select-Object -Last 256 |
+        ForEach-Object { $_ | ConvertTo-Json -Compress }
+    )
     [IO.File]::WriteAllLines(
       $diagnosticEvidence,
       $boundedUpdateEvents,

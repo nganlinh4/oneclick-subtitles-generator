@@ -906,7 +906,9 @@ function assertUpdaterSmokeWorkflow(workflow) {
     './scripts/test-signed-updater-windows.ps1',
     "url = 'https://localhost:38443/update.exe'",
     '${{ runner.temp }}/osg-updater-trigger.png',
+    '${{ runner.temp }}/osg-updater-relaunch-verify.png',
     '${{ runner.temp }}/osg-updater-verify.png',
+    '${{ runner.temp }}/osg-updater-close-evidence.json',
   ];
   for (const fragment of requiredFragments) {
     invariant(workflow.includes(fragment),
@@ -921,6 +923,8 @@ function assertUpdaterSmokeWorkflow(workflow) {
 function assertUpdaterFixtureSource(rootDirectory) {
   const cargo = readText(rootDirectory, `${TAURI_DIRECTORY}/Cargo.toml`);
   const build = readText(rootDirectory, `${TAURI_DIRECTORY}/build.rs`);
+  const desktop = readText(rootDirectory, `${TAURI_DIRECTORY}/src/lib.rs`);
+  const diagnostics = readText(rootDirectory, `${TAURI_DIRECTORY}/src/diagnostics.rs`);
   const updater = readText(rootDirectory, `${TAURI_DIRECTORY}/src/updater.rs`);
   const config = readJson(rootDirectory, TAURI_CONFIG_PATH);
   invariant(/^ci-updater-fixture\s*=\s*\[\]\s*$/m.test(cargo),
@@ -938,8 +942,23 @@ function assertUpdaterFixtureSource(rootDirectory) {
   invariant(updater.includes('#[cfg(feature = "ci-updater-fixture")]')
     && updater.includes('https://localhost:38443/latest.json')
     && updater.includes('.endpoints(vec![')
-    && updater.includes('.configure_client(|client| client.danger_accept_invalid_certs(true))'),
+    && updater.includes('.configure_client(|client| client.danger_accept_invalid_certs(true))')
+    && updater.includes('"app-update.check_started"')
+    && updater.includes('"app-update.check_completed"')
+    && updater.includes('"app-update.handoff"')
+    && updater.includes('"WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS"'),
   'Updater fixture endpoint must remain compile-time isolated and exact');
+  invariant(desktop.includes('app.run(|app, event| handle_application_run_event(app, &event))')
+    && desktop.includes('"app.environment"')
+    && desktop.includes('"app.page_load_finished"')
+    && desktop.includes('"app.exit_requested"')
+    && desktop.includes('"app.exit"')
+    && desktop.includes('"WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS"'),
+  'Desktop updater lifecycle diagnostics must distinguish inherited WebView debugging and native exit phases');
+  invariant(diagnostics.includes('static APP_INSTANCE_ID: OnceLock<String>')
+    && diagnostics.includes('Uuid::now_v7().to_string()')
+    && diagnostics.includes('"appInstanceId"'),
+  'Every desktop diagnostic record must carry one process-scoped UUIDv7 application identity');
   invariant(JSON.stringify(config.plugins?.updater?.endpoints) === JSON.stringify([
     'https://github.com/nganlinh4/oneclick-subtitles-generator/releases/latest/download/latest.json',
   ]), 'Production updater endpoint must remain the official GitHub latest release');
@@ -967,15 +986,42 @@ function assertSignedUpdaterScript(script) {
     '$diagnosticEvidence',
     '$updatedRegistry.DisplayVersion -ne $UpdatedVersion',
     "'updated-application-relaunched'",
+    'Wait-ForApplicationInstance',
     'Wait-ForReadyApplicationWindow',
-    '-MinimumReadyEventCount ($readyEventsBeforeBase + 2)',
+    '-AppInstanceId $updatedInstanceId',
     "'updated-application-ready'",
-    'Stop-Gracefully -Process $updatedProcess',
+    "-EvidenceName 'relaunch-verify'",
+    'Wait-ForSettledUpdaterChecks',
+    '-MinimumChecks 2',
+    "'updated-frontend-ready'",
+    '$updatedClose = Stop-Gracefully',
+    "-Phase 'updater-relaunched'",
+    'Get-BoundedProcessTreeSnapshot',
+    'Get-BoundedEvidenceDelta',
+    'Write-CloseEvidence',
+    '$closeEvidencePath',
+    '$closeEvidenceTemporaryPath',
+    'Write-CloseEvidenceDocument',
+    'schemaVersion = 1',
+    'appInstanceId = $AppInstanceId',
+    'mainWindowStable = $MainWindowStable',
+    'diagnosticDeltasUnclamped = $diagnosticDeltasUnclamped',
+    'diagnosticLifecycleExact = $diagnosticLifecycleExact',
+    'cleanExit = $CleanExit',
+    'Signed updater temporary path was not clean',
+    '[IO.File]::Move(',
+    "'app.environment'",
+    "'app.exit_requested'",
+    "'app.exit'",
+    "'osg.previous.log'",
+    "Get-CimInstance Win32_Process -OperationTimeoutSec 3",
     '$verificationPort = Get-FreeLoopbackPort',
     "'verification-application-launched'",
     "'app-update.checking'",
     "'app-update.installing'",
     '$updateRequests.Count -ne 1',
+    'closeProof = [ordered]@{',
+    'relaunchFrontend = $relaunchFrontend',
     'preservedSettingsProjectAndHistory = $true',
     'signedNsisRelaunch = $true',
   ];
@@ -983,6 +1029,50 @@ function assertSignedUpdaterScript(script) {
     invariant(script.includes(fragment),
       `Signed updater runner is missing lifecycle proof: ${fragment}`);
   }
+  invariant(/foreach\s*\(\$path\s+in\s+@\([\s\S]*?\$closeEvidencePath,[\s\S]*?\$closeEvidenceTemporaryPath[\s\S]*?\)\)\s*\{\s*if\s*\(Test-Path\s+-LiteralPath\s+\$path\)\s*\{\s*throw/.test(script),
+    'Signed updater runner must require clean close-evidence paths before writing bounded diagnostics');
+  invariant(/\$closeEvidence\s*=\s*\[ordered\]@\{\s*schemaVersion\s*=\s*1\s*updaterRelaunch\s*=\s*\$null\s*verification\s*=\s*\$null\s*\}/.test(script),
+    'Signed updater runner must retain exactly two close-evidence phase slots');
+  const diagnosticReaderStart = script.indexOf('function Read-DiagnosticEvents {');
+  const diagnosticReaderEnd = script.indexOf('\nfunction ', diagnosticReaderStart + 1);
+  const diagnosticReader = diagnosticReaderStart >= 0 && diagnosticReaderEnd > diagnosticReaderStart
+    ? script.slice(diagnosticReaderStart, diagnosticReaderEnd)
+    : '';
+  invariant(
+    diagnosticReader.includes("'osg.previous.log'")
+      && diagnosticReader.includes('$diagnosticLog')
+      && diagnosticReader.includes('(8 * 1024 * 1024)')
+      && !diagnosticReader.includes('-Tail'),
+    'Signed updater runner must read both bounded rotating diagnostic files without tail-count baselines',
+  );
+  const instanceFunctionStart = script.indexOf('function Wait-ForApplicationInstance {');
+  const instanceFunctionEnd = script.indexOf('\nfunction ', instanceFunctionStart + 1);
+  const instanceFunction = instanceFunctionStart >= 0 && instanceFunctionEnd > instanceFunctionStart
+    ? script.slice(instanceFunctionStart, instanceFunctionEnd)
+    : '';
+  invariant(
+    instanceFunction.includes("$_.event -eq 'app.environment'")
+      && instanceFunction.includes('$_.version -eq $ExpectedVersion')
+      && instanceFunction.includes("$_.webviewDebug -eq 'present'")
+      && instanceFunction.includes('[string]$_.appInstanceId -notin $ExcludedInstanceIds')
+      && instanceFunction.includes('$candidates.Count -gt 1')
+      && instanceFunction.includes('$candidates.Count -eq 1'),
+    'Signed updater runner must bind each native process to one new versioned diagnostic UUIDv7 identity',
+  );
+  const settledFunctionStart = script.indexOf('function Wait-ForSettledUpdaterChecks {');
+  const settledFunctionEnd = script.indexOf('\nfunction ', settledFunctionStart + 1);
+  const settledFunction = settledFunctionStart >= 0 && settledFunctionEnd > settledFunctionStart
+    ? script.slice(settledFunctionStart, settledFunctionEnd)
+    : '';
+  invariant(
+    settledFunction.includes("-Name 'app-update.check_started'")
+      && settledFunction.includes("-Name 'app-update.check_completed'")
+      && settledFunction.includes('$_.version -ne $ExpectedVersion')
+      && settledFunction.includes("$_.outcome -ne 'current'")
+      && settledFunction.includes('$started.Count -ge $MinimumChecks')
+      && settledFunction.includes('$completed.Count -eq $started.Count'),
+    'Signed updater runner must prove startup and inspection update checks both completed on the exact app instance',
+  );
   const readyFunctionStart = script.indexOf('function Wait-ForReadyApplicationWindow {');
   const readyFunctionEnd = script.indexOf('\nfunction ', readyFunctionStart + 1);
   const readyFunction = readyFunctionStart >= 0 && readyFunctionEnd > readyFunctionStart
@@ -993,7 +1083,8 @@ function assertSignedUpdaterScript(script) {
       && /\$Process\.Refresh\(\)[\s\S]*?if\s*\(\$Process\.HasExited\)/.test(readyFunction)
       && /\$Process\.MainWindowHandle\s+-ne\s+\[IntPtr\]::Zero\s+-and\s+\$Process\.Responding/.test(readyFunction)
       && /\$inputIdle\s*=\s*\$Process\.WaitForInputIdle\(1000\)/.test(readyFunction)
-      && /if\s*\(\$readyEvents\s+-ge\s+\$MinimumReadyEventCount\s+-and\s+\$inputIdle\)\s*\{\s*return\s*\}/.test(readyFunction)
+      && /\$pageLoadEvents\s*=\s*Get-DiagnosticEventCount\s+-AppInstanceId\s+\$AppInstanceId\s+-Name\s+'app\.page_load_finished'/.test(readyFunction)
+      && /if\s*\(\$readyEvents\s+-eq\s+1\s+`\s*-and\s+\$pageLoadEvents\s+-ge\s+1\s+`\s*-and\s+\$inputIdle\)\s*\{\s*return\s*\}/.test(readyFunction)
       && /while\s*\(\(Get-Date\)\s+-lt\s+\$deadline\)/.test(readyFunction),
     'Signed updater runner must wait for the selected process, diagnostic readiness, and a responsive idle window',
   );
@@ -1006,30 +1097,84 @@ function assertSignedUpdaterScript(script) {
     /\$Process\.Refresh\(\)/.test(gracefulFunction)
       && /if\s*\(\$Process\.HasExited\)\s*\{\s*throw/.test(gracefulFunction)
       && /\$Process\.MainWindowHandle\s+-eq\s+\[IntPtr\]::Zero\s+-or\s+-not\s+\$Process\.Responding/.test(gracefulFunction)
-      && /\$closeEventsBefore\s*=\s*Get-DiagnosticEventCount\s+-Name\s+'app\.close_requested'/.test(gracefulFunction)
-      && /\$Process\.CloseMainWindow\(\)/.test(gracefulFunction)
-      && /\$Process\.WaitForExit\(30000\)/.test(gracefulFunction)
-      && /if\s*\(\$Process\.ExitCode\s+-ne\s+0\)\s*\{\s*throw/.test(gracefulFunction)
-      && /\$closeEventsAfter\s+-ne\s+\(\$closeEventsBefore\s+\+\s+1\)/.test(gracefulFunction),
-    'Signed updater runner must close only a ready native window and prove a clean, flushed application exit',
+      && /\$closeEventsBefore\s*=\s*Get-DiagnosticEventCount\s+-AppInstanceId\s+\$AppInstanceId\s+-Name\s+'app\.close_requested'/.test(gracefulFunction)
+      && /\$exitRequestedEventsBefore\s*=\s*Get-DiagnosticEventCount\s+-AppInstanceId\s+\$AppInstanceId\s+-Name\s+'app\.exit_requested'/.test(gracefulFunction)
+      && /\$exitEventsBefore\s*=\s*Get-DiagnosticEventCount\s+-AppInstanceId\s+\$AppInstanceId\s+-Name\s+'app\.exit'/.test(gracefulFunction)
+      && /\$closeAccepted\s*=\s*\$Process\.CloseMainWindow\(\)/.test(gracefulFunction)
+      && /if\s*\(-not\s+\$closeAccepted\)\s*\{/.test(gracefulFunction)
+      && /-Outcome\s+'request-rejected'/.test(gracefulFunction)
+      && /if\s*\(-not\s+\$Process\.WaitForExit\(30000\)\)\s*\{/.test(gracefulFunction)
+      && /-Outcome\s+'exit-timeout'/.test(gracefulFunction)
+      && /\$cleanExit\s*=\s*\$Process\.ExitCode\s+-eq\s+0/.test(gracefulFunction)
+      && /if\s*\(-not\s+\$cleanExit\)\s*\{\s*throw/.test(gracefulFunction)
+      && /\$closeEventsAfter\s+-ne\s+\(\$closeEventsBefore\s+\+\s+1\)/.test(gracefulFunction)
+      && /\$exitRequestedEventsAfter\s+-ne\s+\(\$exitRequestedEventsBefore\s+\+\s+1\)/.test(gracefulFunction)
+      && /\$exitEventsAfter\s+-ne\s+\(\$exitEventsBefore\s+\+\s+1\)/.test(gracefulFunction)
+      && /\$closeRecord\s*=\s*Write-CloseEvidence[\s\S]*?-Outcome\s+'exited'[\s\S]*?-CleanExit\s+\$cleanExit/.test(gracefulFunction)
+      && /-AppInstanceId\s+\$AppInstanceId/.test(gracefulFunction)
+      && /-Outcome\s+'exited'/.test(gracefulFunction)
+      && !/-not\s+\$Process\.CloseMainWindow\(\)\s+-or\s+-not\s+\$Process\.WaitForExit\(30000\)/.test(script),
+    'Signed updater runner must separate native close acceptance from the 30-second exit and diagnostic lifecycle proof',
+  );
+  const closeRequestIndex = gracefulFunction.indexOf('$closeAccepted = $Process.CloseMainWindow()');
+  const closeRejectedIndex = gracefulFunction.indexOf('if (-not $closeAccepted)', closeRequestIndex);
+  const closeTimeoutIndex = gracefulFunction.indexOf('if (-not $Process.WaitForExit(30000))', closeRejectedIndex);
+  const firstProcessTreeIndex = gracefulFunction.indexOf(
+    '$processTree = Get-BoundedProcessTreeSnapshot -Process $Process',
+  );
+  const firstFailureEvidenceIndex = gracefulFunction.indexOf('Write-CloseEvidence `', closeRejectedIndex);
+  invariant(
+    closeRequestIndex >= 0
+      && closeRequestIndex < closeRejectedIndex
+      && closeRejectedIndex < closeTimeoutIndex
+      && firstFailureEvidenceIndex > closeRejectedIndex
+      && firstFailureEvidenceIndex < firstProcessTreeIndex,
+    'Signed updater runner must persist core close rejection before waiting for exit or scanning descendants',
+  );
+  const exitedRecordIndex = gracefulFunction.indexOf('$closeRecord = Write-CloseEvidence');
+  const cleanExitAssertionIndex = gracefulFunction.indexOf('if (-not $cleanExit)', exitedRecordIndex);
+  const closeDeltaAssertionIndex = gracefulFunction.indexOf(
+    'if ($closeEventsAfter -ne ($closeEventsBefore + 1))',
+    exitedRecordIndex,
+  );
+  const exitDeltaAssertionIndex = gracefulFunction.indexOf(
+    'if ($exitRequestedEventsAfter -ne ($exitRequestedEventsBefore + 1)',
+    exitedRecordIndex,
+  );
+  invariant(
+    exitedRecordIndex >= 0
+      && exitedRecordIndex < cleanExitAssertionIndex
+      && exitedRecordIndex < closeDeltaAssertionIndex
+      && exitedRecordIndex < exitDeltaAssertionIndex,
+    'Signed updater runner must persist bounded exited evidence before enforcing exit-code and diagnostic deltas',
   );
   const relaunchedIndex = script.indexOf("Write-SmokePhase -Name 'updated-application-relaunched'");
-  const readyWaitIndex = script.indexOf('Wait-ForReadyApplicationWindow `', relaunchedIndex);
+  const instanceWaitIndex = script.indexOf('$updatedInstanceId = Wait-ForApplicationInstance', relaunchedIndex);
+  const readyWaitIndex = script.indexOf('Wait-ForReadyApplicationWindow `', instanceWaitIndex);
   const readyPhaseIndex = script.indexOf("Write-SmokePhase -Name 'updated-application-ready'", readyWaitIndex);
-  const gracefulCloseIndex = script.indexOf('Stop-Gracefully -Process $updatedProcess', readyPhaseIndex);
+  const frontendInspectionIndex = script.indexOf('$relaunchFrontend = Invoke-UpdaterInspection', readyPhaseIndex);
+  const settledCheckIndex = script.indexOf('Wait-ForSettledUpdaterChecks `', frontendInspectionIndex);
+  const frontendReadyIndex = script.indexOf("Write-SmokePhase -Name 'updated-frontend-ready'", settledCheckIndex);
+  const gracefulCloseIndex = script.indexOf('$updatedClose = Stop-Gracefully', frontendReadyIndex);
   const verificationLaunchIndex = script.indexOf('$verificationPort = Get-FreeLoopbackPort', gracefulCloseIndex);
   const readyInvocation = readyWaitIndex >= 0 && readyPhaseIndex > readyWaitIndex
     ? script.slice(readyWaitIndex, readyPhaseIndex)
     : '';
   invariant(
     relaunchedIndex >= 0
-      && relaunchedIndex < readyWaitIndex
+      && relaunchedIndex < instanceWaitIndex
+      && instanceWaitIndex < readyWaitIndex
       && readyWaitIndex < readyPhaseIndex
-      && readyPhaseIndex < gracefulCloseIndex
+      && readyPhaseIndex < frontendInspectionIndex
+      && frontendInspectionIndex < settledCheckIndex
+      && settledCheckIndex < frontendReadyIndex
+      && frontendReadyIndex < gracefulCloseIndex
       && gracefulCloseIndex < verificationLaunchIndex
       && readyInvocation.includes('-Process $updatedProcess')
-      && readyInvocation.includes('-MinimumReadyEventCount ($readyEventsBeforeBase + 2)'),
-    'Signed updater runner must await the updater-relaunched process before closing it or starting verification',
+      && readyInvocation.includes('-AppInstanceId $updatedInstanceId')
+      && script.slice(settledCheckIndex, frontendReadyIndex).includes('-MinimumChecks 2')
+      && script.slice(settledCheckIndex, frontendReadyIndex).includes('-AppInstanceId $updatedInstanceId'),
+    'Signed updater runner must await the updater-relaunched native window and exact frontend before closing it or starting verification',
   );
   invariant(!/Cert:\\LocalMachine/i.test(script),
     'Signed updater runner must not modify the machine certificate store');

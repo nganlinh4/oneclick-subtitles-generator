@@ -292,15 +292,45 @@ test('signed updater runner uses isolated HTTPS, the real toast, NSIS relaunch, 
     "-Mode 'verify'",
     '$certificateRequest.CreateSelfSigned(',
     "'updated-application-relaunched'",
+    'Wait-ForApplicationInstance',
     'Wait-ForReadyApplicationWindow',
     '$Process.MainWindowHandle -ne [IntPtr]::Zero',
     '$Process.WaitForInputIdle(1000)',
-    "$closeEventsBefore = Get-DiagnosticEventCount -Name 'app.close_requested'",
-    '$Process.ExitCode -ne 0',
+    "$pageLoadEvents = Get-DiagnosticEventCount -AppInstanceId $AppInstanceId -Name 'app.page_load_finished'",
+    "$closeEventsBefore = Get-DiagnosticEventCount -AppInstanceId $AppInstanceId -Name 'app.close_requested'",
+    "$exitRequestedEventsBefore = Get-DiagnosticEventCount -AppInstanceId $AppInstanceId -Name 'app.exit_requested'",
+    "$exitEventsBefore = Get-DiagnosticEventCount -AppInstanceId $AppInstanceId -Name 'app.exit'",
+    '$closeAccepted = $Process.CloseMainWindow()',
+    "-Outcome 'request-rejected'",
+    "-Outcome 'exit-timeout'",
+    'Get-BoundedProcessTreeSnapshot',
+    'Get-CimInstance Win32_Process -OperationTimeoutSec 3',
+    'Get-BoundedEvidenceDelta',
+    'appInstanceId = $AppInstanceId',
+    'mainWindowStable = $MainWindowStable',
+    'diagnosticDeltasUnclamped = $diagnosticDeltasUnclamped',
+    'diagnosticLifecycleExact = $diagnosticLifecycleExact',
+    '$closeEvidencePath',
+    '$closeEvidenceTemporaryPath',
+    'Write-CloseEvidenceDocument',
+    'schemaVersion = 1',
+    'cleanExit = $CleanExit',
+    '$cleanExit = $Process.ExitCode -eq 0',
     '$closeEventsAfter -ne ($closeEventsBefore + 1)',
-    '-MinimumReadyEventCount ($readyEventsBeforeBase + 2)',
+    '$exitRequestedEventsAfter -ne ($exitRequestedEventsBefore + 1)',
+    '$exitEventsAfter -ne ($exitEventsBefore + 1)',
+    '$closeRecord = Write-CloseEvidence',
+    '-AppInstanceId $updatedInstanceId',
     "'updated-application-ready'",
+    "-EvidenceName 'relaunch-verify'",
+    'Wait-ForSettledUpdaterChecks',
+    '-MinimumChecks 2',
+    "'updated-frontend-ready'",
+    '$updatedClose = Stop-Gracefully',
+    "-Phase 'updater-relaunched'",
     '$verificationPort = Get-FreeLoopbackPort',
+    'closeProof = [ordered]@{',
+    'relaunchFrontend = $relaunchFrontend',
     'preservedSettingsProjectAndHistory = $true',
   ]) {
     assert.throws(
@@ -310,20 +340,46 @@ test('signed updater runner uses isolated HTTPS, the real toast, NSIS relaunch, 
   }
   assert.throws(
     () => assertSignedUpdaterScript(SIGNED_UPDATER_SCRIPT.replace(
-      'if ($readyEvents -ge $MinimumReadyEventCount -and $inputIdle)',
-      'if ($readyEvents -ge $MinimumReadyEventCount)',
+      "        -and $pageLoadEvents -ge 1 `\n",
+      '',
     )),
     /diagnostic readiness, and a responsive idle window/,
   );
   const readyPhase = "Write-SmokePhase -Name 'updated-application-ready'";
-  const gracefulClose = 'Stop-Gracefully -Process $updatedProcess';
+  const frontendReady = "Write-SmokePhase -Name 'updated-frontend-ready'";
+  const gracefulClose = '$updatedClose = Stop-Gracefully';
   const reorderedClose = SIGNED_UPDATER_SCRIPT
-    .replace(readyPhase, '__OSG_READY_PHASE__')
-    .replace(gracefulClose, readyPhase)
-    .replace('__OSG_READY_PHASE__', gracefulClose);
+    .replace(frontendReady, '__OSG_FRONTEND_READY__')
+    .replace(gracefulClose, frontendReady)
+    .replace('__OSG_FRONTEND_READY__', gracefulClose);
   assert.throws(
     () => assertSignedUpdaterScript(reorderedClose),
-    /await the updater-relaunched process/,
+    /exact frontend/,
+  );
+  assert.throws(
+    () => assertSignedUpdaterScript(SIGNED_UPDATER_SCRIPT.replace(
+      'if (-not $closeAccepted) {',
+      'if ($false) {',
+    )),
+    /separate native close acceptance/,
+  );
+  assert.throws(
+    () => assertSignedUpdaterScript(SIGNED_UPDATER_SCRIPT.replace(
+      'if (-not $Process.WaitForExit(30000)) {',
+      'if ($false) {',
+    )),
+    /separate native close acceptance/,
+  );
+  assert.throws(
+    () => assertSignedUpdaterScript(`${SIGNED_UPDATER_SCRIPT}\nif (-not $Process.CloseMainWindow() -or -not $Process.WaitForExit(30000)) {}\n`),
+    /separate native close acceptance/,
+  );
+  assert.throws(
+    () => assertSignedUpdaterScript(SIGNED_UPDATER_SCRIPT.replace(
+      '$closeAccepted = $Process.CloseMainWindow()',
+      '$processTree = Get-BoundedProcessTreeSnapshot -Process $Process\n  $closeAccepted = $Process.CloseMainWindow()',
+    )),
+    /before waiting for exit or scanning descendants/,
   );
   assert.throws(
     () => assertSignedUpdaterScript(`${SIGNED_UPDATER_SCRIPT}\n# Cert:\\LocalMachine\\Root\n`),

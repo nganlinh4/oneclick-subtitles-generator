@@ -123,7 +123,7 @@ use voice_samples::{
     reason = "the complete Tauri command allowlist is intentionally visible in one audited handler"
 )]
 pub fn run() {
-    tauri::Builder::default()
+    let app = tauri::Builder::default()
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_opener::init())
         .plugin(updater_plugin())
@@ -144,6 +144,7 @@ pub fn run() {
                     .clear_webview(webview.label());
             }
             if webview.label() == "main" && matches!(payload.event(), PageLoadEvent::Finished) {
+                diagnostics::record("app.page_load_finished", &[]);
                 let window = webview.window().clone();
                 tauri::async_runtime::spawn(async move {
                     tokio::time::sleep(Duration::from_secs(10)).await;
@@ -266,8 +267,17 @@ pub fn run() {
             voice_sample_resolve,
             voice_samples_remove,
         ])
-        .run(tauri::generate_context!())
+        .build(tauri::generate_context!())
         .expect("Tauri runtime failed");
+    app.run(|app, event| handle_application_run_event(app, &event));
+}
+
+fn handle_application_run_event(_app: &tauri::AppHandle, event: &tauri::RunEvent) {
+    match event {
+        tauri::RunEvent::ExitRequested { .. } => diagnostics::record("app.exit_requested", &[]),
+        tauri::RunEvent::Exit => diagnostics::record("app.exit", &[]),
+        _ => {}
+    }
 }
 
 fn handle_application_window_event(window: &Window, event: &WindowEvent) {
@@ -284,6 +294,7 @@ fn setup_app(app: &mut tauri::App) -> Result<(), Box<dyn std::error::Error>> {
     let local_data_dir = app.path().app_local_data_dir()?;
     let cache_dir = app.path().app_cache_dir()?;
     diagnostics::initialize(&app.path().app_log_dir()?)?;
+    record_application_environment(app);
     let ui_font_runtime = prepare_ui_font_runtime(&local_data_dir);
     let database_path = local_data_dir.join("db/osg.sqlite3");
     let database = Database::open(database_path)?;
@@ -376,6 +387,21 @@ fn setup_app(app: &mut tauri::App) -> Result<(), Box<dyn std::error::Error>> {
     }
     diagnostics::record("app.ready", &[]);
     Ok(())
+}
+
+fn record_application_environment(app: &tauri::App) {
+    let webview_debug = std::env::var_os("WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS")
+        .is_some_and(|value| !value.is_empty());
+    diagnostics::record(
+        "app.environment",
+        &[
+            ("version", app.package_info().version.to_string()),
+            (
+                "webviewDebug",
+                if webview_debug { "present" } else { "absent" }.to_owned(),
+            ),
+        ],
+    );
 }
 
 fn prepare_ui_font_runtime(local_data_dir: &std::path::Path) -> Option<UiFontRuntime> {

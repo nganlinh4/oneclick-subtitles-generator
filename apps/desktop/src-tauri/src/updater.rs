@@ -88,7 +88,18 @@ pub(crate) async fn app_update_check<R: Runtime>(
     app: AppHandle<R>,
 ) -> CommandResult<AppUpdateStatus> {
     let current_version = app.package_info().version.to_string();
+    diagnostics::record(
+        "app-update.check_started",
+        &[("version", current_version.clone())],
+    );
     if !has_configured_signing_key() {
+        diagnostics::record(
+            "app-update.check_completed",
+            &[
+                ("version", current_version.clone()),
+                ("outcome", "unconfigured".to_owned()),
+            ],
+        );
         return Ok(AppUpdateStatus {
             configured: false,
             current_version,
@@ -96,23 +107,54 @@ pub(crate) async fn app_update_check<R: Runtime>(
         });
     }
 
-    let update = build_updater(&app, UPDATE_CHECK_TIMEOUT)?
-        .check()
-        .await
-        .map_err(|_| CommandError::updater_unavailable())?
-        .map(|release| {
-            if release.version.is_empty() || release.version.len() > MAX_VERSION_LENGTH {
-                return Err(CommandError::updater_unavailable());
-            }
-            Ok(AppUpdateInfo {
-                version: release.version,
-                published_at: release.date.map(format_published_at).transpose()?,
-                notes: release
-                    .body
-                    .map(|notes| bounded_text(&notes, MAX_RELEASE_NOTES_UTF16_UNITS)),
+    let update_result: CommandResult<Option<AppUpdateInfo>> = async {
+        build_updater(&app, UPDATE_CHECK_TIMEOUT)?
+            .check()
+            .await
+            .map_err(|_| CommandError::updater_unavailable())?
+            .map(|release| {
+                if release.version.is_empty() || release.version.len() > MAX_VERSION_LENGTH {
+                    return Err(CommandError::updater_unavailable());
+                }
+                Ok(AppUpdateInfo {
+                    version: release.version,
+                    published_at: release.date.map(format_published_at).transpose()?,
+                    notes: release
+                        .body
+                        .map(|notes| bounded_text(&notes, MAX_RELEASE_NOTES_UTF16_UNITS)),
+                })
             })
-        })
-        .transpose()?;
+            .transpose()
+    }
+    .await;
+    let update = match update_result {
+        Ok(update) => update,
+        Err(error) => {
+            diagnostics::record(
+                "app-update.check_completed",
+                &[
+                    ("version", current_version.clone()),
+                    ("outcome", "error".to_owned()),
+                ],
+            );
+            return Err(error);
+        }
+    };
+    diagnostics::record(
+        "app-update.check_completed",
+        &[
+            ("version", current_version.clone()),
+            (
+                "outcome",
+                if update.is_some() {
+                    "available"
+                } else {
+                    "current"
+                }
+                .to_owned(),
+            ),
+        ],
+    );
 
     Ok(AppUpdateStatus {
         configured: true,
@@ -237,6 +279,18 @@ async fn install_checked_update<R: Runtime>(
         },
         cancellation,
     )?;
+    let webview_debug = std::env::var_os("WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS")
+        .is_some_and(|value| !value.is_empty());
+    diagnostics::record(
+        "app-update.handoff",
+        &[
+            ("version", expected_version.to_owned()),
+            (
+                "webviewDebug",
+                if webview_debug { "present" } else { "absent" }.to_owned(),
+            ),
+        ],
+    );
     if update.install(bytes).is_err() {
         record_update_failure("app-update.install_failed", "extract-or-launch");
         return Err(CommandError::updater_unavailable());
