@@ -739,31 +739,20 @@ pub(crate) async fn download_start(
     request: DownloadStartRequest,
     on_event: Channel<DownloadJobEvent>,
 ) -> CommandResult<JobSnapshot> {
-    let (engine, cache_root) = runtime.download_parts()?;
-    let capability = runtime
-        .inventories
-        .resolve(request.inventory_id)
-        .map_err(|error| map_download_error(&error))?;
-    let output_id = Uuid::now_v7();
-    let (destination, output_directory) = cache_root
-        .destination(output_id, capability.inventory().title.as_str())
-        .map_err(|error| map_download_error(&error))?;
-    let plan = match create_plan(&capability, destination, request) {
-        Ok(plan) => plan,
-        Err(error) => {
-            output_directory.remove_if_empty();
-            return Err(map_download_error(&error));
-        }
-    };
-    let permit = runtime.download_slots.acquire().ok_or_else(|| {
+    let (engine, output_directory, plan) = prepare_download_start(&runtime, request)?;
+    let Some(permit) = runtime.download_slots.acquire() else {
         output_directory.remove_if_empty();
-        CommandError::internal("Too many media downloads are already running.")
-    })?;
+        record_download_admission_failure("download-slots-full", Some("internal"));
+        return Err(CommandError::internal(
+            "Too many media downloads are already running.",
+        ));
+    };
     let jobs = Arc::clone(&state.jobs);
     let ticket = match background::register_running(&jobs, JobKind::DownloadMedia).await {
         Ok(ticket) => ticket,
         Err(error) => {
             output_directory.remove_if_empty();
+            record_download_admission_failure("job-registration", Some(error.code()));
             return Err(error);
         }
     };
@@ -826,6 +815,56 @@ pub(crate) async fn download_start(
     });
 
     Ok(initial)
+}
+
+fn prepare_download_start(
+    runtime: &DownloadRuntime,
+    request: DownloadStartRequest,
+) -> CommandResult<(DownloadEngine, OutputDirectory, DownloadPlan)> {
+    let (engine, cache_root) = match runtime.download_parts() {
+        Ok(parts) => parts,
+        Err(error) => {
+            record_download_admission_failure("runtime-unavailable", Some(error.code()));
+            return Err(error);
+        }
+    };
+    let capability = match runtime.inventories.resolve(request.inventory_id) {
+        Ok(capability) => capability,
+        Err(error) => {
+            let mapped = map_download_error(&error);
+            record_download_admission_failure(
+                download_error_diagnostic(&error),
+                Some(mapped.code()),
+            );
+            return Err(mapped);
+        }
+    };
+    let output_id = Uuid::now_v7();
+    let (destination, output_directory) =
+        match cache_root.destination(output_id, capability.inventory().title.as_str()) {
+            Ok(destination) => destination,
+            Err(error) => {
+                let mapped = map_download_error(&error);
+                record_download_admission_failure(
+                    download_error_diagnostic(&error),
+                    Some(mapped.code()),
+                );
+                return Err(mapped);
+            }
+        };
+    let plan = match create_plan(&capability, destination, request) {
+        Ok(plan) => plan,
+        Err(error) => {
+            output_directory.remove_if_empty();
+            let mapped = map_download_error(&error);
+            record_download_admission_failure(
+                download_error_diagnostic(&error),
+                Some(mapped.code()),
+            );
+            return Err(mapped);
+        }
+    };
+    Ok((engine, output_directory, plan))
 }
 
 #[tauri::command]
@@ -1380,6 +1419,16 @@ fn record_download_command_failure(job_id: JobId, error: &CommandError) {
         &[
             ("job", job_id.to_string()),
             ("code", error.code().to_owned()),
+        ],
+    );
+}
+
+fn record_download_admission_failure(reason: &'static str, code: Option<&str>) {
+    diagnostics::record(
+        "download.admission_failed",
+        &[
+            ("reason", reason.to_owned()),
+            ("code", code.unwrap_or("unknown").to_owned()),
         ],
     );
 }
