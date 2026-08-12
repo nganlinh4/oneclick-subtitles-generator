@@ -51,11 +51,11 @@ migration. Automatic signed updates begin with the OSG Windows 1.x release line.
 - [ ] Managed-delivery checkpoint and remote read-back for every referenced pool asset.
 - [ ] Windows runtime-package readiness and installer extraction/architecture/resource/signature
   checks.
-- [ ] Four-target compile matrix remains green, without claiming runtime support for untested
+- [x] Four-target compile matrix remains green, without claiming runtime support for untested
   targets.
-- [ ] Installed Windows EXE reaches `app.start`, managed UI-font readiness, and `app.ready` in order
+- [x] Installed Windows EXE reaches `app.start`, managed UI-font readiness, and `app.ready` in order
   on a clean CI profile and remains responsive.
-- [ ] Manual `installed-smoke` builds the current branch, validates its unsigned NSIS package, and
+- [x] Manual `installed-smoke` builds the current branch, validates its unsigned NSIS package, and
   installs/launches it on an isolated runner; `published-installed-smoke` separately downloads and
   verifies the signed immutable GitHub release artifact. A published tag is never used as evidence
   that the branch currently under review can be installed.
@@ -67,6 +67,8 @@ feature-matrix checkbox or approve the release.
 
 | Date | Scope | Result | Evidence and follow-up |
 | --- | --- | --- | --- |
+| 2026-08-12 | Four-target compile matrix | Pass | The full [rewrite CI run](https://github.com/nganlinh4/oneclick-subtitles-generator/actions/runs/31580705778) passed repository invariants and native builds for Windows x64, Linux x64, macOS arm64, and macOS x64 at commit `33753bea`. This is compile evidence only; Linux and macOS remain unsupported until maintained real-device validation exists. |
+| 2026-08-12 | Installed Windows lifecycle | Pass | The isolated [installed-smoke run](https://github.com/nganlinh4/oneclick-subtitles-generator/actions/runs/31580705222) built commit `33753bea`, validated and silently installed the unsigned NSIS package, rendered a responsive 1024×1848 WebView with the managed Google Sans face and real Windows x64 `app_health` IPC, accepted graceful window close, relaunched with byte-stable font cache, uninstalled while preserving the user profile, reinstalled an identical executable (`a745c274…dc12`), and launched a third time. Three bounded PNG captures were produced with SHA-256 `2b90e206…1e95`, `7fb22997…61a1`, and `ca495aa9…94bf`. This successful rerun verifies fixes for both the original close hang and the cached-launch document-readiness race. |
 | 2026-08-12 | Managed Remotion delivery | Pass | The published Windows package installed, resolved, launched, and removed over HTTPS. |
 | 2026-08-12 | Real Remotion render | Pass | The managed Node/Chromium worker rendered 24 frames of a one-second 640×360 composition and produced a validated MP4. The test found and fixed Node's rejection of canonical `\\?\` Windows worker paths. |
 | 2026-08-12 | Parakeet local ASR | Pass | A clean managed install launched the real worker, transcribed bounded 16 kHz WAV audio, shut down, and removed immediately in 1,169.83 seconds. The first run exposed 993 generated `.pyc` files; managed Python now uses `-B` and a narrow migration removes only legacy `runtime/**/__pycache__/*.pyc`. |
@@ -91,7 +93,7 @@ feature-matrix checkbox or approve the release.
 
 ### First launch, migration, persistence
 
-- [ ] Clean install, launch, close, relaunch, uninstall, and reinstall.
+- [x] Clean install, launch, close, relaunch, uninstall, and reinstall.
 - [ ] Google Sans Flex first-use download, offline reuse, corruption repair, and immediate removal.
 - [ ] Legacy folder import through the documented keyboard action: preferences, credentials,
   projects, subtitles, and supported media; repeated import is idempotent.

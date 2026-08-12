@@ -10,6 +10,12 @@ import { URL, pathToFileURL } from 'node:url';
 const LOOPBACK_HOSTS = new Set(['127.0.0.1', 'localhost', '[::1]']);
 const TAURI_ORIGIN = 'https://tauri.localhost';
 const DEFAULT_TIMEOUT_MS = 60_000;
+const PERSISTENCE_KEY = 'osg.ciInstalledSmoke.v1';
+const PERSISTENCE_PROJECT_INITIAL_NAME = 'OSG installed lifecycle probe';
+const PERSISTENCE_PROJECT_NAME = 'OSG installed lifecycle probe committed';
+const PERSISTENCE_REVISION_REASON = 'OSG installed lifecycle revision';
+const PHASES = new Set(['first-launch', 'relaunch', 'reinstall-launch']);
+const UUID_V7 = /^[0-9a-f]{8}-[0-9a-f]{4}-7[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 
 const invariant = (condition, message) => {
   if (!condition) throw new Error(message);
@@ -21,21 +27,32 @@ export function parseArguments(argv) {
     const key = argv[index];
     const value = argv[index + 1];
     invariant(/^--[a-z-]+$/.test(key ?? '') && value !== undefined,
-      'Usage: inspect-installed-webview.mjs --port PORT --expected-version VERSION --screenshot PATH');
+      'Usage: inspect-installed-webview.mjs --port PORT --expected-version VERSION --screenshot PATH --phase PHASE [--expected-project-id UUID]');
     invariant(!values.has(key), `Duplicate argument: ${key}`);
     values.set(key, value);
   }
   const port = Number(values.get('--port'));
   const expectedVersion = values.get('--expected-version');
   const screenshot = values.get('--screenshot');
+  const phase = values.get('--phase');
+  const expectedProjectId = values.get('--expected-project-id');
   invariant(Number.isInteger(port) && port >= 1024 && port <= 65_535,
     'DevTools port must be an unprivileged TCP port');
   invariant(typeof expectedVersion === 'string' && /^\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?$/.test(expectedVersion),
     'Expected version must be semantic');
   invariant(typeof screenshot === 'string' && screenshot.length > 0,
     'Screenshot output path is required');
-  invariant(values.size === 3, 'Only --port, --expected-version, and --screenshot are accepted');
-  return { port, expectedVersion, screenshot };
+  invariant(PHASES.has(phase), 'Installed WebView phase is invalid');
+  if (phase === 'first-launch') {
+    invariant(expectedProjectId === undefined,
+      'First launch must create rather than trust an existing project ID');
+  } else {
+    invariant(UUID_V7.test(expectedProjectId ?? ''),
+      'Relaunch inspection requires the first-launch UUIDv7 project ID');
+  }
+  invariant(values.size === (expectedProjectId === undefined ? 4 : 5),
+    'Only reviewed installed-WebView arguments are accepted');
+  return { port, expectedVersion, screenshot, phase, expectedProjectId };
 }
 
 export function selectTauriTarget(targets, port) {
@@ -73,6 +90,95 @@ export function assertInspection(value, expectedVersion) {
   invariant(value.health?.platform === 'windows' && value.health?.architecture === 'x86_64',
     'Installed IPC health is not the Windows x64 release target');
   return value;
+}
+
+const hasExactKeys = (value, keys) => value && typeof value === 'object'
+  && !Array.isArray(value)
+  && Object.keys(value).sort().join('\0') === [...keys].sort().join('\0');
+
+const assertProjectSnapshot = (snapshot, projectId, name, stateVersion, label) => {
+  invariant(hasExactKeys(snapshot, ['metadata', 'stateVersion', 'media', 'tracks'])
+    && hasExactKeys(snapshot.metadata, ['id', 'name'])
+    && snapshot.metadata.id === projectId
+    && snapshot.metadata.name === name
+    && snapshot.stateVersion === stateVersion
+    && Array.isArray(snapshot.media) && snapshot.media.length === 0
+    && Array.isArray(snapshot.tracks) && snapshot.tracks.length === 0,
+  `Installed ${label} did not survive the expected lifecycle`);
+};
+
+const assertHistoryStatus = (
+  status,
+  { stateVersion, canUndo, canRedo, undoReason, redoReason },
+  label,
+) => {
+  invariant(hasExactKeys(status, ['stateVersion', 'canUndo', 'canRedo', 'undoReason', 'redoReason'])
+    && status.stateVersion === stateVersion
+    && status.canUndo === canUndo
+    && status.canRedo === canRedo
+    && status.undoReason === undoReason
+    && status.redoReason === redoReason,
+  `Installed ${label} returned an invalid durable history cursor`);
+};
+
+export function assertPersistence(value, { phase, expectedVersion, expectedProjectId }) {
+  invariant(hasExactKeys(value, ['setting', 'project', 'loaded', 'history', 'lifecycle']),
+    'Installed persistence inspection returned an invalid payload');
+  invariant(hasExactKeys(value.setting, ['schemaVersion', 'version', 'purpose'])
+    && value.setting.schemaVersion === 1
+    && value.setting.version === expectedVersion
+    && value.setting.purpose === 'installed-lifecycle',
+  'Installed settings did not survive the expected lifecycle');
+  const projectId = phase === 'first-launch' ? value.project?.metadata?.id : expectedProjectId;
+  invariant(UUID_V7.test(projectId ?? ''), 'Installed project did not return a UUIDv7 ID');
+  assertProjectSnapshot(value.project, projectId, PERSISTENCE_PROJECT_NAME, 3, 'project');
+  assertProjectSnapshot(value.loaded, projectId, PERSISTENCE_PROJECT_NAME, 3, 'loaded project');
+  invariant(JSON.stringify(value.project) === JSON.stringify(value.loaded),
+    'Installed project reload changed the persisted snapshot');
+  assertHistoryStatus(value.history, {
+    stateVersion: 3,
+    canUndo: true,
+    canRedo: false,
+    undoReason: PERSISTENCE_REVISION_REASON,
+    redoReason: null,
+  }, 'project history');
+
+  if (phase === 'first-launch') {
+    invariant(hasExactKeys(value.lifecycle, [
+      'commit', 'afterCommit', 'statusAfterCommit', 'undo', 'statusAfterUndo', 'redo',
+    ]), 'Installed project revision lifecycle returned an invalid payload');
+    invariant(hasExactKeys(value.lifecycle.commit, ['revisionId', 'stateVersion'])
+      && UUID_V7.test(value.lifecycle.commit.revisionId ?? '')
+      && value.lifecycle.commit.stateVersion === 1,
+    'Installed project commit returned an invalid durable revision');
+    assertProjectSnapshot(
+      value.lifecycle.afterCommit, projectId, PERSISTENCE_PROJECT_NAME, 1, 'committed project',
+    );
+    assertHistoryStatus(value.lifecycle.statusAfterCommit, {
+      stateVersion: 1,
+      canUndo: true,
+      canRedo: false,
+      undoReason: PERSISTENCE_REVISION_REASON,
+      redoReason: null,
+    }, 'post-commit history');
+    assertProjectSnapshot(
+      value.lifecycle.undo, projectId, PERSISTENCE_PROJECT_INITIAL_NAME, 2, 'undone project',
+    );
+    assertHistoryStatus(value.lifecycle.statusAfterUndo, {
+      stateVersion: 2,
+      canUndo: false,
+      canRedo: true,
+      undoReason: null,
+      redoReason: PERSISTENCE_REVISION_REASON,
+    }, 'post-undo history');
+    assertProjectSnapshot(
+      value.lifecycle.redo, projectId, PERSISTENCE_PROJECT_NAME, 3, 'redone project',
+    );
+  } else {
+    invariant(value.lifecycle === null,
+      'Relaunch persistence inspection unexpectedly repeated the revision lifecycle');
+  }
+  return Object.freeze({ projectId });
 }
 
 export async function waitForInspection(evaluate, expectedVersion, {
@@ -212,6 +318,53 @@ const INSPECTION_EXPRESSION = `
   };
 })()`;
 
+const persistenceExpression = ({ phase, expectedVersion, expectedProjectId }) => `
+(async () => {
+  const invoke = window.__TAURI_INTERNALS__.invoke;
+  const key = ${JSON.stringify(PERSISTENCE_KEY)};
+  const setting = ${JSON.stringify({
+    schemaVersion: 1,
+    version: expectedVersion,
+    purpose: 'installed-lifecycle',
+  })};
+  const firstLaunch = ${JSON.stringify(phase === 'first-launch')};
+  if (firstLaunch) await invoke('setting_set', { key, value: setting });
+  const stored = await invoke('setting_get', { key });
+  let project;
+  let lifecycle = null;
+  if (firstLaunch) {
+    const created = await invoke('project_create', {
+      name: ${JSON.stringify(PERSISTENCE_PROJECT_INITIAL_NAME)},
+    });
+    const candidate = {
+      ...created,
+      metadata: { ...created.metadata, name: ${JSON.stringify(PERSISTENCE_PROJECT_NAME)} },
+    };
+    const reason = ${JSON.stringify(PERSISTENCE_REVISION_REASON)};
+    const commit = await invoke('project_commit', { snapshot: candidate, reason });
+    const afterCommit = await invoke('project_load', { id: created.metadata.id });
+    const statusAfterCommit = await invoke('project_history_status', { id: created.metadata.id });
+    const undo = await invoke('project_undo', {
+      id: created.metadata.id,
+      expectedVersion: afterCommit.stateVersion,
+      expectedReason: reason,
+    });
+    const statusAfterUndo = await invoke('project_history_status', { id: created.metadata.id });
+    const redo = await invoke('project_redo', {
+      id: created.metadata.id,
+      expectedVersion: undo.stateVersion,
+      expectedReason: reason,
+    });
+    project = redo;
+    lifecycle = { commit, afterCommit, statusAfterCommit, undo, statusAfterUndo, redo };
+  } else {
+    project = await invoke('project_load', { id: ${JSON.stringify(expectedProjectId ?? null)} });
+  }
+  const loaded = await invoke('project_load', { id: project?.metadata?.id ?? null });
+  const history = await invoke('project_history_status', { id: project?.metadata?.id ?? null });
+  return { setting: stored, project, loaded, history, lifecycle };
+})()`;
+
 async function inspectInstalledWebView(options) {
   const target = await discoverTarget(options.port);
   const client = new CdpClient(target.webSocketDebuggerUrl);
@@ -227,6 +380,14 @@ async function inspectInstalledWebView(options) {
       }),
       options.expectedVersion,
     );
+    const persistenceEvaluation = await client.send('Runtime.evaluate', {
+      expression: persistenceExpression(options),
+      awaitPromise: true,
+      returnByValue: true,
+    });
+    invariant(!persistenceEvaluation.exceptionDetails,
+      `Installed persistence inspection threw: ${persistenceEvaluation.exceptionDetails?.text ?? 'unknown error'}`);
+    const persistence = assertPersistence(persistenceEvaluation.result?.value, options);
     const capture = await client.send('Page.captureScreenshot', {
       format: 'png',
       captureBeyondViewport: false,
@@ -241,6 +402,7 @@ async function inspectInstalledWebView(options) {
     fs.writeFileSync(options.screenshot, bytes, { flag: 'wx' });
     return {
       ...inspection,
+      persistence,
       screenshotBytes: bytes.length,
       screenshotSha256: crypto.createHash('sha256').update(bytes).digest('hex'),
     };

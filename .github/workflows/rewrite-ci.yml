@@ -325,6 +325,15 @@ jobs:
           $expectedVersion = (Get-Content -LiteralPath "package.json" -Raw | ConvertFrom-Json).version
           ./scripts/test-installed-windows.ps1 -InstallerPath $installer.FullName -ExpectedVersion $expectedVersion
 
+      - name: Upload installed WebView screenshots
+        if: always()
+        uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6.0.0
+        with:
+          name: installed-webview-${{ github.run_id }}-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/osg-*.png
+          if-no-files-found: warn
+          retention-days: 7
+
   windows-published-installed-smoke:
     name: Published Windows installer clean-profile smoke
     needs: invariants
@@ -374,3 +383,12 @@ jobs:
           }
           $expectedVersion = (Get-Content -LiteralPath "package.json" -Raw | ConvertFrom-Json).version
           ./scripts/test-installed-windows.ps1 -InstallerPath $installer.FullName -ExpectedVersion $expectedVersion
+
+      - name: Upload published installed WebView screenshots
+        if: always()
+        uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6.0.0
+        with:
+          name: published-installed-webview-${{ github.run_id }}-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/osg-*.png
+          if-no-files-found: warn
+          retention-days: 7

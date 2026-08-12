@@ -85,7 +85,7 @@ function replaceInWorkflowJob(workflow, jobName, search, replacement) {
   return workflow.slice(0, start) + job.replace(search, replacement) + workflow.slice(end);
 }
 
-test('installed Windows smoke proves relaunch, cached fonts, uninstall, and reinstall', () => {
+test('installed Windows smoke proves persistence, bounded logs, relaunch, cached fonts, uninstall, and reinstall', () => {
   assert.doesNotThrow(() => assertInstalledSmokeScript(INSTALLED_SMOKE_SCRIPT));
   for (const fragment of [
     "-Phase 'relaunch'",
@@ -95,6 +95,9 @@ test('installed Windows smoke proves relaunch, cached fonts, uninstall, and rein
     "-Phase 'reinstall-launch'",
     'scripts/inspect-installed-webview.mjs',
     '$inspection = Inspect-InstalledWebView',
+    '$rotationFixtureSha256 = Prepare-DiagnosticRotationFixture',
+    '-ExpectedPreviousSha256 $rotationFixtureSha256',
+    'diagnosticLogRotation = $true',
   ]) {
     assert.throws(
       () => assertInstalledSmokeScript(INSTALLED_SMOKE_SCRIPT.replace(fragment, 'removed')),

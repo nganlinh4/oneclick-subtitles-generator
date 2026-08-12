@@ -616,6 +616,8 @@ function assertWorkflowCommands(workflow) {
       branchInstalledSmoke.includes('bundle --ci --no-sign --target x86_64-pc-windows-msvc --bundles nsis') &&
       branchInstalledSmoke.includes('check-release-artifacts.js --target x86_64-pc-windows-msvc --bundles nsis --allow-unsigned-branch-build') &&
       branchInstalledSmoke.includes('./scripts/test-installed-windows.ps1') &&
+      branchInstalledSmoke.includes('actions/upload-artifact@') &&
+      branchInstalledSmoke.includes('${{ runner.temp }}/osg-*.png') &&
       !branchInstalledSmoke.includes('/releases/download/'),
     'installed-smoke must build, validate, install, and launch the current branch without downloading a published release',
   );
@@ -624,7 +626,9 @@ function assertWorkflowCommands(workflow) {
       publishedInstalledSmoke.includes('/releases/download/v${version}') &&
       publishedInstalledSmoke.includes('$asset.sig') &&
       !publishedInstalledSmoke.includes('--allow-unsigned-branch-build') &&
-      publishedInstalledSmoke.includes('./scripts/test-installed-windows.ps1'),
+      publishedInstalledSmoke.includes('./scripts/test-installed-windows.ps1') &&
+      publishedInstalledSmoke.includes('actions/upload-artifact@') &&
+      publishedInstalledSmoke.includes('${{ runner.temp }}/osg-*.png'),
     'published-installed-smoke must validate and launch the signed immutable release artifact',
   );
   const frontendBuildIndex = nativeMatrix.indexOf('run: npm run build:frontend');
@@ -705,6 +709,9 @@ function assertInstalledSmokeScript(script) {
     '$inspection = Inspect-InstalledWebView',
     'firstLaunchWebView = $first.Inspection',
     'managedFontCacheStable = $true',
+    '$rotationFixtureSha256 = Prepare-DiagnosticRotationFixture',
+    '-ExpectedPreviousSha256 $rotationFixtureSha256',
+    'diagnosticLogRotation = $true',
     'uninstallPreservedProfile = $true',
   ];
   for (const fragment of requiredFragments) {

@@ -7,6 +7,8 @@ param(
 )
 
 $ErrorActionPreference = 'Stop'
+$diagnosticLogLimitBytes = 4 * 1024 * 1024
+$diagnosticEntrySlackBytes = 64 * 1024
 
 if ($env:CI -ne 'true') {
   throw 'The installed Windows smoke test may run only on an isolated CI runner.'
@@ -67,6 +69,95 @@ function Read-DiagnosticEvents {
   )
 }
 
+function Assert-DiagnosticEvents {
+  param(
+    [Parameter(Mandatory = $true)][string]$LogPath,
+    [Parameter(Mandatory = $true)][array]$Events
+  )
+
+  $length = (Get-Item -LiteralPath $LogPath).Length
+  if ($length -gt ($diagnosticLogLimitBytes + $diagnosticEntrySlackBytes)) {
+    throw "Diagnostic log exceeded its bounded rotation threshold: $length bytes"
+  }
+  foreach ($entry in $Events) {
+    $properties = @($entry.PSObject.Properties)
+    if ($properties.Count -lt 2) {
+      throw 'Diagnostic log entry omitted required fields'
+    }
+    if ([string]$entry.timestampMs -notmatch '^\d{1,20}$') {
+      throw 'Diagnostic log entry has an invalid timestamp'
+    }
+    if ([string]$entry.event -notmatch '^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$') {
+      throw 'Diagnostic log entry has an invalid event name'
+    }
+    foreach ($property in $properties) {
+      if ($property.Name -in @('timestampMs', 'event')) {
+        continue
+      }
+      if ($property.Name -notmatch '^[A-Za-z][A-Za-z0-9_]{0,63}$' `
+          -or $property.Value -isnot [string] `
+          -or $property.Value -notmatch '^[A-Za-z0-9._:-]{1,128}$') {
+        throw 'Diagnostic log field escaped the bounded redacted contract'
+      }
+    }
+  }
+}
+
+function Prepare-DiagnosticRotationFixture {
+  param([Parameter(Mandatory = $true)][string]$LogPath)
+
+  $previous = Join-Path (Split-Path -Parent $LogPath) 'osg.previous.log'
+  if (Test-Path -LiteralPath $previous) {
+    throw 'Diagnostic rotation fixture did not start without a previous log'
+  }
+  $padding = [string]::new('a', 4096)
+  $line = "{`"timestampMs`":`"0`",`"event`":`"ci.rotation-padding`",`"padding`":`"$padding`"}"
+  $encoding = [Text.UTF8Encoding]::new($false)
+  $stream = [IO.FileStream]::new(
+    $LogPath,
+    [IO.FileMode]::Append,
+    [IO.FileAccess]::Write,
+    [IO.FileShare]::None
+  )
+  try {
+    $writer = [IO.StreamWriter]::new($stream, $encoding, 4096, $true)
+    try {
+      while ($stream.Length -lt $diagnosticLogLimitBytes) {
+        $writer.WriteLine($line)
+        $writer.Flush()
+      }
+    } finally {
+      $writer.Dispose()
+    }
+  } finally {
+    $stream.Dispose()
+  }
+  (Get-FileHash -LiteralPath $LogPath -Algorithm SHA256).Hash.ToLowerInvariant()
+}
+
+function Assert-DiagnosticRotation {
+  param(
+    [Parameter(Mandatory = $true)][string]$LogPath,
+    [Parameter(Mandatory = $true)][string]$ExpectedPreviousSha256
+  )
+
+  $previous = Join-Path (Split-Path -Parent $LogPath) 'osg.previous.log'
+  if (-not (Test-Path -LiteralPath $previous -PathType Leaf)) {
+    throw 'Diagnostic log did not rotate on relaunch'
+  }
+  $previousLength = (Get-Item -LiteralPath $previous).Length
+  if ($previousLength -lt $diagnosticLogLimitBytes) {
+    throw 'Rotated diagnostic log is smaller than the rollover threshold'
+  }
+  $previousSha256 = (Get-FileHash -LiteralPath $previous -Algorithm SHA256).Hash.ToLowerInvariant()
+  if ($previousSha256 -cne $ExpectedPreviousSha256) {
+    throw 'Diagnostic log rotation changed the previous log bytes'
+  }
+  if ((Get-Item -LiteralPath $LogPath).Length -gt $diagnosticEntrySlackBytes) {
+    throw 'Fresh diagnostic log remained oversized after rotation'
+  }
+}
+
 function Stop-Application {
   param([Parameter(Mandatory = $true)]$Process)
 
@@ -96,19 +187,25 @@ function Get-FreeLoopbackPort {
 function Inspect-InstalledWebView {
   param(
     [Parameter(Mandatory = $true)][int]$Port,
-    [Parameter(Mandatory = $true)][string]$Phase
+    [Parameter(Mandatory = $true)][string]$Phase,
+    [string]$ExpectedProjectId
   )
 
   $screenshot = Join-Path $env:RUNNER_TEMP "osg-$Phase.png"
   if (Test-Path -LiteralPath $screenshot) {
     throw "$Phase screenshot path was not clean"
   }
-  $output = @(
-    & node scripts/inspect-installed-webview.mjs `
-      --port $Port `
-      --expected-version $ExpectedVersion `
-      --screenshot $screenshot 2>&1
+  $arguments = @(
+    'scripts/inspect-installed-webview.mjs',
+    '--port', $Port,
+    '--expected-version', $ExpectedVersion,
+    '--screenshot', $screenshot,
+    '--phase', $Phase
   )
+  if (-not [string]::IsNullOrEmpty($ExpectedProjectId)) {
+    $arguments += @('--expected-project-id', $ExpectedProjectId)
+  }
+  $output = @(& node @arguments 2>&1)
   if ($LASTEXITCODE -ne 0) {
     throw "$Phase installed WebView inspection failed: $($output -join ' ')"
   }
@@ -127,7 +224,8 @@ function Start-And-WaitForReadiness {
     [Parameter(Mandatory = $true)][string]$Executable,
     [Parameter(Mandatory = $true)][string]$LogPath,
     [Parameter(Mandatory = $true)][int]$InitialEventCount,
-    [Parameter(Mandatory = $true)][string]$Phase
+    [Parameter(Mandatory = $true)][string]$Phase,
+    [string]$ExpectedProjectId
   )
 
   if (-not [string]::IsNullOrEmpty($env:WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS)) {
@@ -176,12 +274,16 @@ function Start-And-WaitForReadiness {
     if ($newEvents | Where-Object event -eq 'ui-font.unavailable') {
       throw "Managed UI font was unavailable during $Phase launch"
     }
+    Assert-DiagnosticEvents -LogPath $LogPath -Events $events
 
     $process = Get-Process -Id $app.Id
     if (-not $process.Responding) {
       throw "$Phase application window is not responding"
     }
-    $inspection = Inspect-InstalledWebView -Port $debugPort -Phase $Phase
+    $inspection = Inspect-InstalledWebView `
+      -Port $debugPort `
+      -Phase $Phase `
+      -ExpectedProjectId $ExpectedProjectId
     [pscustomobject]@{
       Process = $app
       Events = $events
@@ -259,12 +361,17 @@ $first = Start-And-WaitForReadiness `
   -Phase 'first-launch'
 Stop-Application -Process $first.Process
 $fontBeforeRelaunch = Get-FontSnapshot -FontRoot $fontRoot
+$rotationFixtureSha256 = Prepare-DiagnosticRotationFixture -LogPath $logPath
 
 $second = Start-And-WaitForReadiness `
   -Executable $installed.Executable `
   -LogPath $logPath `
-  -InitialEventCount $first.Events.Count `
-  -Phase 'relaunch'
+  -InitialEventCount 0 `
+  -Phase 'relaunch' `
+  -ExpectedProjectId $first.Inspection.persistence.projectId
+Assert-DiagnosticRotation `
+  -LogPath $logPath `
+  -ExpectedPreviousSha256 $rotationFixtureSha256
 Stop-Application -Process $second.Process
 $fontAfterRelaunch = Get-FontSnapshot -FontRoot $fontRoot
 if ($fontAfterRelaunch -cne $fontBeforeRelaunch) {
@@ -282,7 +389,8 @@ $third = Start-And-WaitForReadiness `
   -Executable $reinstalled.Executable `
   -LogPath $logPath `
   -InitialEventCount $second.Events.Count `
-  -Phase 'reinstall-launch'
+  -Phase 'reinstall-launch' `
+  -ExpectedProjectId $first.Inspection.persistence.projectId
 try {
   [pscustomobject]@{
     version = $reinstalled.Registry.DisplayVersion
@@ -297,6 +405,7 @@ try {
     relaunchWebView = $second.Inspection
     reinstallWebView = $third.Inspection
     managedFontCacheStable = $true
+    diagnosticLogRotation = $true
     uninstallPreservedProfile = $true
   } | ConvertTo-Json -Depth 4
 } finally {
