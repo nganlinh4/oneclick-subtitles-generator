@@ -238,7 +238,8 @@ function Inspect-InstalledWebView {
 function Inspect-InstalledMediaFlow {
   param(
     [Parameter(Mandatory = $true)][int]$Port,
-    [Parameter(Mandatory = $true)][string]$SrtPath
+    [Parameter(Mandatory = $true)][string]$SrtPath,
+    [Parameter(Mandatory = $true)][string]$LogPath
   )
 
   $screenshot = Join-Path $env:RUNNER_TEMP 'osg-installed-media-flow.png'
@@ -252,7 +253,21 @@ function Inspect-InstalledMediaFlow {
       '--screenshot' $screenshot 2>&1
   )
   if ($LASTEXITCODE -ne 0) {
-    throw "Installed media-flow inspection failed: $($output -join ' ')"
+    $relevantEvents = @(
+      Read-DiagnosticEvents -LogPath $LogPath |
+        Where-Object event -in @(
+          'native-tool.started',
+          'native-tool.completed',
+          'native-tool.failed',
+          'download.started',
+          'download.completed',
+          'download.cancelled',
+          'download.failed'
+        ) |
+        Select-Object -Last 64
+    )
+    $diagnostic = $relevantEvents | ConvertTo-Json -Depth 4 -Compress
+    throw "Installed media-flow inspection failed: $($output -join ' ') diagnostics=$diagnostic"
   }
   if ($output.Count -ne 1) {
     throw 'Installed media-flow inspection returned an unexpected output shape'
@@ -449,7 +464,10 @@ try {
 OSG installed media smoke
 "@
     [IO.File]::WriteAllText($srtPath, $srtFixture, [Text.UTF8Encoding]::new($false))
-    $mediaFlow = Inspect-InstalledMediaFlow -Port $third.DebugPort -SrtPath $srtPath
+    $mediaFlow = Inspect-InstalledMediaFlow `
+      -Port $third.DebugPort `
+      -SrtPath $srtPath `
+      -LogPath $logPath
     $eventsAfterMediaFlow = @(Read-DiagnosticEvents -LogPath $logPath)
     Assert-DiagnosticEvents -LogPath $logPath -Events $eventsAfterMediaFlow
     $mediaEvents = @($eventsAfterMediaFlow | Select-Object -Skip $third.Events.Count)

@@ -112,8 +112,16 @@ export function assertMediaFlowResult(value) {
 
 export function hasMediaFlowStarted(value) {
   if (Array.isArray(value?.errorToastMessages) && value.errorToastMessages.length > 0) {
+    const snapshot = {
+      assetId: value.assetId ?? null,
+      currentFileName: value.currentFileName ?? null,
+      errorToastMessages: value.errorToastMessages.slice(0, 4),
+      jobs: Array.isArray(value.jobs) ? value.jobs.slice(-16) : null,
+      session: value.session ?? null,
+      tools: value.tools ?? null,
+    };
     throw new Error(
-      `Installed media flow failed in the application: ${value.errorToastMessages.join(' | ')}`,
+      `Installed media flow failed in the application: ${JSON.stringify(snapshot)}`,
     );
   }
   return (Array.isArray(value?.jobs) && value.jobs.length > 0)
