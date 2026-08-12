@@ -181,8 +181,19 @@ async fn install_checked_update<R: Runtime>(
     );
     tokio::pin!(download);
     let bytes = tokio::select! {
-        result = &mut download => result.map_err(|_| CommandError::updater_unavailable())?,
-        () = cancellation.cancelled() => return Err(CommandError::updater_cancelled()),
+        result = &mut download => if let Ok(bytes) = result {
+            bytes
+        } else {
+            record_update_failure("app-update.download_failed", "transport-or-signature");
+            return Err(CommandError::updater_unavailable());
+        },
+        () = cancellation.cancelled() => {
+            diagnostics::record(
+                "app-update.cancelled",
+                &[("phase", "download".to_owned())],
+            );
+            return Err(CommandError::updater_cancelled());
+        },
     };
     if cancellation.is_cancelled() {
         return Err(CommandError::updater_cancelled());
@@ -198,10 +209,15 @@ async fn install_checked_update<R: Runtime>(
         },
         cancellation,
     )?;
-    update
-        .install(bytes)
-        .map_err(|_| CommandError::updater_unavailable())?;
+    if update.install(bytes).is_err() {
+        record_update_failure("app-update.install_failed", "extract-or-launch");
+        return Err(CommandError::updater_unavailable());
+    }
     Ok(())
+}
+
+fn record_update_failure(event: &'static str, reason: &'static str) {
+    diagnostics::record(event, &[("reason", reason.to_owned())]);
 }
 
 fn build_updater<R: Runtime>(

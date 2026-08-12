@@ -178,6 +178,7 @@ jobs:
             ${{ runner.temp }}/osg-reinstall-launch.png
             ${{ runner.temp }}/osg-updater-trigger.png
             ${{ runner.temp }}/osg-updater-verify.png
+            ${{ runner.temp }}/osg-updater-diagnostics.log
             ${{ runner.temp }}/osg-updater-fixture.stdout.log
             ${{ runner.temp }}/osg-updater-fixture.stderr.log
           if-no-files-found: warn

@@ -20,6 +20,10 @@ $certificateKey = $null
 $baseProcess = $null
 $updatedProcess = $null
 $smokeStartedAt = Get-Date
+$diagnosticLog = Join-Path ([IO.Path]::GetFullPath(
+  (Join-Path $env:LOCALAPPDATA 'io.github.nganlinh4.oneclicksubtitles')
+)) 'logs\osg.log'
+$diagnosticEvidence = Join-Path $env:RUNNER_TEMP 'osg-updater-diagnostics.log'
 
 function Write-SmokePhase {
   param([Parameter(Mandatory = $true)][string]$Name)
@@ -106,6 +110,28 @@ function Stop-Gracefully {
     Stop-Process -Id $Process.Id -ErrorAction SilentlyContinue
     throw 'Updated application did not accept a graceful close'
   }
+}
+
+function Get-UpdaterFailurePhase {
+  if (-not (Test-Path -LiteralPath $diagnosticLog -PathType Leaf)) {
+    return $null
+  }
+  $allowed = @{
+    'app-update.download_failed' = 'transport-or-signature'
+    'app-update.install_failed' = 'extract-or-launch'
+  }
+  foreach ($line in @(Get-Content -LiteralPath $diagnosticLog -Tail 256)) {
+    try {
+      $entry = $line | ConvertFrom-Json
+      if ($allowed.ContainsKey([string]$entry.event) `
+          -and [string]$entry.reason -eq $allowed[[string]$entry.event]) {
+        return "$($entry.event):$($entry.reason)"
+      }
+    } catch {
+      # A partial last line may be observed while the process is flushing its bounded JSON log.
+    }
+  }
+  $null
 }
 
 $pfxPath = Join-Path $env:RUNNER_TEMP 'osg-updater-fixture.pfx'
@@ -214,7 +240,17 @@ try {
   Write-SmokePhase -Name 'base-application-launched'
   $trigger = Invoke-UpdaterInspection -Port $debugPort -Mode 'trigger'
   Write-SmokePhase -Name 'update-accepted'
-  if (-not $baseProcess.WaitForExit(300000)) {
+  $exitDeadline = (Get-Date).AddMinutes(5)
+  while (-not $baseProcess.HasExited -and (Get-Date) -lt $exitDeadline) {
+    $failurePhase = Get-UpdaterFailurePhase
+    if ($null -ne $failurePhase) {
+      Stop-Process -Id $baseProcess.Id -ErrorAction SilentlyContinue
+      throw "Base application reported a bounded updater failure: $failurePhase"
+    }
+    Start-Sleep -Milliseconds 500
+    $baseProcess.Refresh()
+  }
+  if (-not $baseProcess.HasExited) {
     Stop-Process -Id $baseProcess.Id -ErrorAction SilentlyContinue
     throw 'Base application did not exit after the signed update was accepted'
   }
@@ -278,10 +314,7 @@ try {
   }
   Write-SmokePhase -Name 'fixture-requests-verified'
 
-  $logPath = Join-Path ([IO.Path]::GetFullPath(
-    (Join-Path $env:LOCALAPPDATA 'io.github.nganlinh4.oneclicksubtitles')
-  )) 'logs\osg.log'
-  $events = @(Get-Content -LiteralPath $logPath | Where-Object { $_.Length -gt 0 } |
+  $events = @(Get-Content -LiteralPath $diagnosticLog | Where-Object { $_.Length -gt 0 } |
     ForEach-Object { $_ | ConvertFrom-Json })
   if (-not ($events | Where-Object {
       $_.event -eq 'app-update.checking' -and $_.version -eq $UpdatedVersion
@@ -304,6 +337,24 @@ try {
     signedNsisRelaunch = $true
   } | ConvertTo-Json -Depth 5
 } finally {
+  if (Test-Path -LiteralPath $diagnosticLog -PathType Leaf) {
+    $boundedUpdateEvents = @(Get-Content -LiteralPath $diagnosticLog -Tail 256 |
+      ForEach-Object {
+        try {
+          $entry = $_ | ConvertFrom-Json
+          if ([string]$entry.event -like 'app-update.*') {
+            $entry | ConvertTo-Json -Compress
+          }
+        } catch {
+          # Ignore a partial last line; only complete path-free diagnostic records are evidence.
+        }
+      })
+    [IO.File]::WriteAllLines(
+      $diagnosticEvidence,
+      $boundedUpdateEvents,
+      [Text.UTF8Encoding]::new($false)
+    )
+  }
   Remove-Item Env:OSG_UPDATER_FIXTURE_PFX_PASSWORD -ErrorAction SilentlyContinue
   if ($null -ne $updatedProcess -and -not $updatedProcess.HasExited) {
     Stop-Process -Id $updatedProcess.Id -ErrorAction SilentlyContinue
