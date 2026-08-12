@@ -153,7 +153,7 @@ test('updater fixture source remains compile-time isolated from production relea
   assert.doesNotThrow(() => assertUpdaterFixtureSource(path.join(__dirname, '..')));
 });
 
-test('signed updater runner uses platform TLS, the real toast, NSIS relaunch, and durable state', () => {
+test('signed updater runner uses isolated HTTPS, the real toast, NSIS relaunch, and durable state', () => {
   assert.doesNotThrow(() => assertSignedUpdaterScript(SIGNED_UPDATER_SCRIPT));
   for (const fragment of [
     "$env:GITHUB_ACTIONS -ne 'true'",
@@ -162,7 +162,7 @@ test('signed updater runner uses platform TLS, the real toast, NSIS relaunch, an
     "@($resultPath, ($fixture.TrimEnd('\\') + '\\'))",
     "-Mode 'trigger'",
     "-Mode 'verify'",
-    '$rootStore.Remove($trustedCertificate)',
+    '$certificateRequest.CreateSelfSigned(',
     'preservedSettingsProjectAndHistory = $true',
   ]) {
     assert.throws(
@@ -172,7 +172,7 @@ test('signed updater runner uses platform TLS, the real toast, NSIS relaunch, an
   }
   assert.throws(
     () => assertSignedUpdaterScript(`${SIGNED_UPDATER_SCRIPT}\n# Cert:\\LocalMachine\\Root\n`),
-    /machine certificate store/,
+    /certificate store|trust stores/,
   );
 });
 

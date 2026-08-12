@@ -811,7 +811,8 @@ function assertUpdaterFixtureSource(rootDirectory) {
   }
   invariant(updater.includes('#[cfg(feature = "ci-updater-fixture")]')
     && updater.includes('https://localhost:38443/latest.json')
-    && updater.includes('.endpoints(vec!['),
+    && updater.includes('.endpoints(vec![')
+    && updater.includes('.configure_client(|client| client.danger_accept_invalid_certs(true))'),
   'Updater fixture endpoint must remain compile-time isolated and exact');
   invariant(JSON.stringify(config.plugins?.updater?.endpoints) === JSON.stringify([
     'https://github.com/nganlinh4/oneclick-subtitles-generator/releases/latest/download/latest.json',
@@ -825,9 +826,6 @@ function assertSignedUpdaterScript(script) {
     'CertificateRequest]::new(',
     '$certificateRequest.CreateSelfSigned(',
     'X509ContentType]::Pfx',
-    "X509Store]::new('Root', 'CurrentUser')",
-    '$rootStore.Add($trustedCertificate)',
-    '$rootStore.Remove($trustedCertificate)',
     "@($resultPath, ($fixture.TrimEnd('\\') + '\\'))",
     'scripts/serve-updater-fixture.mjs',
     '-WindowStyle Hidden',
@@ -849,8 +847,8 @@ function assertSignedUpdaterScript(script) {
   }
   invariant(!/Cert:\\LocalMachine/i.test(script),
     'Signed updater runner must not modify the machine certificate store');
-  invariant(!/(?:dangerous_accept_invalid|Invoke-WebRequest|Invoke-RestMethod)/i.test(script),
-    'Signed updater runner must use platform TLS verification and the real updater client');
+  invariant(!/(?:X509Store|Cert:\\|Invoke-WebRequest|Invoke-RestMethod)/i.test(script),
+    'Signed updater runner must not mutate trust stores or bypass the real updater client');
 }
 
 function assertWorkflow(rootDirectory = REPOSITORY_ROOT) {

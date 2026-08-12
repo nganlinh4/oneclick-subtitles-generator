@@ -215,7 +215,13 @@ fn build_updater<R: Runtime>(
                 .parse()
                 .map_err(|_| CommandError::updater_unavailable())?,
         ])
-        .map_err(|_| CommandError::updater_unavailable())?;
+        .map_err(|_| CommandError::updater_unavailable())?
+        // GitHub-hosted Windows runners can block indefinitely while adding an ephemeral
+        // certificate to CurrentUser\Root. The fixture still uses HTTPS and the production
+        // updater's signature verification; only this compile-time localhost client accepts the
+        // fixture's self-signed transport certificate. Ordinary/release builds do not compile
+        // this branch or its endpoint.
+        .configure_client(|client| client.danger_accept_invalid_certs(true));
     builder
         .build()
         .map_err(|_| CommandError::updater_unavailable())

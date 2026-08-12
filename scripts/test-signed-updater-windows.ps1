@@ -16,9 +16,7 @@ $ErrorActionPreference = 'Stop'
 $uninstallKey = 'HKCU:\Software\Microsoft\Windows\CurrentVersion\Uninstall\One-Click Subtitles Generator'
 $server = $null
 $certificate = $null
-$trustedCertificate = $null
 $certificateKey = $null
-$rootStore = $null
 $baseProcess = $null
 $updatedProcess = $null
 $smokeStartedAt = Get-Date
@@ -155,14 +153,7 @@ try {
       $pfxPassword
     )
   )
-  $trustedCertificate = [Security.Cryptography.X509Certificates.X509Certificate2]::new(
-    $certificate.Export([Security.Cryptography.X509Certificates.X509ContentType]::Cert)
-  )
   Write-SmokePhase -Name 'fixture-certificate-exported'
-  $rootStore = [Security.Cryptography.X509Certificates.X509Store]::new('Root', 'CurrentUser')
-  $rootStore.Open([Security.Cryptography.X509Certificates.OpenFlags]::ReadWrite)
-  $rootStore.Add($trustedCertificate)
-  Write-SmokePhase -Name 'fixture-certificate-trusted'
 
   $env:OSG_UPDATER_FIXTURE_PFX_PASSWORD = $pfxPassword
   $node = (Get-Command node -ErrorAction Stop).Source
@@ -322,15 +313,6 @@ try {
   }
   if ($null -ne $server -and -not $server.HasExited) {
     Stop-Process -Id $server.Id -ErrorAction SilentlyContinue
-  }
-  if ($null -ne $rootStore) {
-    if ($null -ne $trustedCertificate) {
-      $rootStore.Remove($trustedCertificate)
-    }
-    $rootStore.Close()
-  }
-  if ($null -ne $trustedCertificate) {
-    $trustedCertificate.Dispose()
   }
   if ($null -ne $certificate) {
     $certificate.Dispose()
