@@ -435,7 +435,11 @@ test('workflow is unsigned, read-only, credentialless, and locked', () => {
     /Every checkout step must disable persisted Git credentials/,
   );
   assert.throws(
-    () => assertWorkflowCommands(workflow.replace("if: github.event_name == 'workflow_dispatch'", 'if: always()')),
+    () => assertWorkflowCommands(transformWorkflowJob(
+      workflow,
+      'native-matrix',
+      (job) => job.replace("if: github.event_name == 'workflow_dispatch'", 'if: always()'),
+    )),
     /Unsigned package validation must be manual-only/,
   );
   const nativeSetupPython = `uses: actions/setup-python@${ACTION_PINS['actions/setup-python']}`;

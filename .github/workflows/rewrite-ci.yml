@@ -17,6 +17,7 @@ on:
           - full
           - installed-smoke
           - published-installed-smoke
+          - signed-updater-smoke
 
 permissions:
   contents: read
@@ -32,6 +33,14 @@ env:
   RUST_BACKTRACE: "1"
 
 jobs:
+  signed-updater-smoke:
+    name: Signed Windows updater smoke
+    if: github.event_name == 'workflow_dispatch' && inputs.job == 'signed-updater-smoke'
+    uses: ./.github/workflows/updater-smoke.yml
+    secrets:
+      TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+      TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
+
   invariants:
     name: Repository invariants
     runs-on: ubuntu-24.04

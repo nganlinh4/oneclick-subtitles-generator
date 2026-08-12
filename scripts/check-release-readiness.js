@@ -608,8 +608,9 @@ function assertWorkflowCommands(workflow) {
   const branchInstalledSmoke = workflowJobBlock(workflow, 'windows-installed-smoke');
   const publishedInstalledSmoke = workflowJobBlock(workflow, 'windows-published-installed-smoke');
   invariant(
-    workflow.includes('- published-installed-smoke'),
-    'Workflow dispatch must keep branch-built and published-installer smoke tests distinct',
+    workflow.includes('- published-installed-smoke')
+      && workflow.includes('- signed-updater-smoke'),
+    'Workflow dispatch must keep branch-built, published, and signed-updater smoke tests distinct',
   );
   invariant(
     branchInstalledSmoke.includes("inputs.job == 'installed-smoke'") &&
@@ -672,10 +673,21 @@ function assertWorkflowCommands(workflow) {
       !/^\s{2,}[a-z-]+:\s*write\s*$/m.test(workflow),
     'Build workflow permissions must remain contents: read only',
   );
-  invariant(!/\$\{\{\s*secrets\./i.test(workflow), 'Unsigned CI must not depend on repository secrets');
+  const signedUpdaterWrapper = workflowJobBlock(workflow, 'signed-updater-smoke');
+  const unsignedWorkflow = workflow.replace(signedUpdaterWrapper, '');
   invariant(
-    !/(?:TAURI_SIGNING_PRIVATE_KEY|APPLE_CERTIFICATE|APPLE_SIGNING_IDENTITY|CSC_LINK|WIN_CSC_LINK|WINDOWS_CERTIFICATE)/i.test(workflow),
-    'Unsigned CI must not configure code-signing credentials',
+    /^\s{4}if: github\.event_name == 'workflow_dispatch' && inputs\.job == 'signed-updater-smoke'\s*$/m
+      .test(signedUpdaterWrapper)
+      && signedUpdaterWrapper.includes('uses: ./.github/workflows/updater-smoke.yml')
+      && signedUpdaterWrapper.includes('TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}')
+      && signedUpdaterWrapper.includes('TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}'),
+    'Only the manual signed-updater wrapper may forward the two reviewed signing secrets',
+  );
+  invariant(!/\$\{\{\s*secrets\./i.test(unsignedWorkflow),
+    'Unsigned CI jobs must not depend on repository secrets');
+  invariant(
+    !/(?:TAURI_SIGNING_PRIVATE_KEY|APPLE_CERTIFICATE|APPLE_SIGNING_IDENTITY|CSC_LINK|WIN_CSC_LINK|WINDOWS_CERTIFICATE)/i.test(unsignedWorkflow),
+    'Unsigned CI jobs must not configure code-signing credentials',
   );
   const checkoutCount = (workflow.match(/uses:\s*actions\/checkout@/g) || []).length;
   const nonPersistingCheckoutCount = (workflow.match(/persist-credentials:\s*false/g) || []).length;
@@ -730,8 +742,9 @@ function assertInstalledSmokeScript(script) {
 function assertUpdaterSmokeWorkflow(workflow) {
   assertPinnedActions(workflow);
   invariant(/^on:\s*\r?\n\s{2}workflow_dispatch:\s*$/m.test(workflow)
+    && /^\s{2}workflow_call:\s*$/m.test(workflow)
     && !/^\s{2}(?:push|pull_request|pull_request_target|schedule):/m.test(workflow),
-  'Signed updater smoke must be explicit workflow_dispatch only');
+  'Signed updater smoke must be explicit workflow_dispatch/workflow_call only');
   invariant(/^permissions:\s*\r?\n\s{2}contents:\s*read\s*$/m.test(workflow)
     && !/^\s{2,}[a-z-]+:\s*write\s*$/m.test(workflow),
   'Signed updater smoke must keep read-only repository permissions');
@@ -831,9 +844,10 @@ function assertWorkflow(rootDirectory = REPOSITORY_ROOT) {
   assertPinnedActions(workflow);
   assertWorkflowMatrix(workflow);
   assertWorkflowCommands(workflow);
-  invariant(!workflow.includes('ci-updater-fixture')
-    && !/\$\{\{\s*secrets\./i.test(workflow),
-  'Ordinary rewrite CI must remain unsigned and updater-fixture-free');
+  const signedUpdaterWrapper = workflowJobBlock(workflow, 'signed-updater-smoke');
+  invariant(!workflow.replace(signedUpdaterWrapper, '').includes('ci-updater-fixture')
+    && !/\$\{\{\s*secrets\./i.test(workflow.replace(signedUpdaterWrapper, '')),
+  'Ordinary rewrite CI jobs must remain unsigned and updater-fixture-free');
   assertInstalledSmokeScript(readText(rootDirectory, 'scripts/test-installed-windows.ps1'));
   assertUpdaterSmokeWorkflow(readText(rootDirectory, UPDATER_SMOKE_WORKFLOW_PATH));
   assertUpdaterFixtureSource(rootDirectory);
