@@ -23,11 +23,14 @@ $verificationProcess = $null
 $baseInstanceId = $null
 $updatedInstanceId = $null
 $verificationInstanceId = $null
+$primaryFailure = $null
+$finalizationFailure = $null
 $smokeStartedAt = Get-Date
 $diagnosticLog = Join-Path ([IO.Path]::GetFullPath(
   (Join-Path $env:LOCALAPPDATA 'io.github.nganlinh4.oneclicksubtitles')
 )) 'logs\osg.log'
 $diagnosticEvidence = Join-Path $env:RUNNER_TEMP 'osg-updater-diagnostics.log'
+$diagnosticEvidenceByteLimit = 128 * 1024
 $closeEvidencePath = Join-Path $env:RUNNER_TEMP 'osg-updater-close-evidence.json'
 $closeEvidenceTemporaryPath = Join-Path $env:RUNNER_TEMP 'osg-updater-close-evidence.tmp'
 $closeEvidence = [ordered]@{
@@ -409,6 +412,116 @@ function Read-DiagnosticEvents {
   @($events)
 }
 
+function ConvertTo-BoundedDiagnosticEvidenceRecord {
+  param([Parameter(Mandatory = $true)]$Entry)
+
+  $version = [string]$Entry.version
+  $webviewDebug = [string]$Entry.webviewDebug
+  $outcome = [string]$Entry.outcome
+  $reason = [string]$Entry.reason
+  $phase = [string]$Entry.phase
+  [pscustomobject][ordered]@{
+    timestampMs = if ([string]$Entry.timestampMs -match '^\d{1,20}$') {
+      [string]$Entry.timestampMs
+    } else {
+      'invalid'
+    }
+    event = [string]$Entry.event
+    appInstanceId = if ([string]$Entry.appInstanceId -match '^[0-9a-f]{8}-[0-9a-f]{4}-7[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$') {
+      [string]$Entry.appInstanceId
+    } else {
+      'invalid'
+    }
+    version = if ([string]::IsNullOrEmpty($version)) {
+      $null
+    } elseif ($version.Length -le 64 `
+        -and $version -match '^\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?$') {
+      $version
+    } else {
+      'invalid'
+    }
+    webviewDebug = if ([string]$Entry.event -notin @('app.environment', 'app-update.handoff')) {
+      $null
+    } elseif ($webviewDebug -in @('present', 'absent')) {
+      $webviewDebug
+    } else {
+      'unknown'
+    }
+    outcome = if ([string]::IsNullOrEmpty($outcome)) {
+      $null
+    } elseif ($outcome -in @('available', 'current', 'error', 'unconfigured')) {
+      $outcome
+    } else {
+      'unknown'
+    }
+    reason = if ([string]::IsNullOrEmpty($reason)) {
+      $null
+    } elseif ($reason -in @('transport-or-signature', 'extract-or-launch', 'user', 'protocol')) {
+      $reason
+    } else {
+      'unknown'
+    }
+    phase = if ([string]::IsNullOrEmpty($phase)) {
+      $null
+    } elseif ($phase -eq 'download') {
+      $phase
+    } else {
+      'unknown'
+    }
+  }
+}
+
+function Write-BoundedDiagnosticEvidence {
+  $evidenceLines = @(
+    Read-DiagnosticEvents -IncludePrevious |
+      Where-Object {
+        [string]$_.event -like 'app-update.*' `
+          -or [string]$_.event -in @(
+            'app.environment',
+            'app.ready',
+            'app.page_load_finished',
+            'app.close_requested',
+            'app.exit_requested',
+            'app.exit'
+          )
+      } |
+      Select-Object -Last 256 |
+      ForEach-Object {
+        $boundedRecord = ConvertTo-BoundedDiagnosticEvidenceRecord -Entry $_
+        $boundedRecord | ConvertTo-Json -Compress
+      }
+  )
+  $encoded = if ($evidenceLines.Count -eq 0) {
+    ''
+  } else {
+    [string]::Join([Environment]::NewLine, $evidenceLines) + [Environment]::NewLine
+  }
+  if ([Text.Encoding]::UTF8.GetByteCount($encoded) -gt $script:diagnosticEvidenceByteLimit) {
+    throw 'Signed updater diagnostic evidence exceeded its 128 KiB output bound'
+  }
+  [IO.File]::WriteAllText(
+    $script:diagnosticEvidence,
+    $encoded,
+    [Text.UTF8Encoding]::new($false)
+  )
+}
+
+function Invoke-UpdaterFinalizationStep {
+  param(
+    [Parameter(Mandatory = $true)][string]$Name,
+    [Parameter(Mandatory = $true)][scriptblock]$Action
+  )
+
+  try {
+    & $Action
+  } catch {
+    if ($null -eq $script:finalizationFailure) {
+      $script:finalizationFailure = $_
+    }
+    Write-Host "signed-updater.finalization-warning step=$Name" -ErrorAction SilentlyContinue
+  }
+}
+
 function Get-DiagnosticEvents {
   param(
     [Parameter(Mandatory = $true)][string]$AppInstanceId,
@@ -458,23 +571,33 @@ function Wait-ForApplicationInstance {
     if ($Process.HasExited) {
       throw "$Phase application exited before publishing its diagnostic identity"
     }
-    $candidates = @(
+    $candidateEvents = @(
       Read-DiagnosticEvents |
         Where-Object {
           $_.event -eq 'app.environment' `
-            -and $_.version -eq $ExpectedVersion `
-            -and $_.webviewDebug -eq 'present' `
+            -and $_.version -ceq $ExpectedVersion `
+            -and [string]$_.webviewDebug -in @('present', 'absent') `
             -and [string]$_.appInstanceId -match '^[0-9a-f]{8}-[0-9a-f]{4}-7[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$' `
             -and [string]$_.appInstanceId -notin $ExcludedInstanceIds
-        } |
+        }
+    )
+    $candidateInstanceIds = @(
+      $candidateEvents |
         ForEach-Object { [string]$_.appInstanceId } |
         Sort-Object -Unique
     )
-    if ($candidates.Count -gt 1) {
+    if ($candidateInstanceIds.Count -gt 1) {
       throw "$Phase application published more than one new diagnostic identity"
     }
-    if ($candidates.Count -eq 1) {
-      return $candidates[0]
+    if ($candidateInstanceIds.Count -eq 1) {
+      $candidate = $candidateEvents | Select-Object -First 1
+      $webviewDebugEvidence = switch ([string]$candidate.webviewDebug) {
+        'present' { 'present' }
+        'absent' { 'absent' }
+        default { 'unknown' }
+      }
+      Write-Host "signed-updater.identity phase=$Phase webviewDebug=$webviewDebugEvidence"
+      return $candidateInstanceIds[0]
     }
   } while ((Get-Date) -lt $deadline)
   throw "$Phase application did not publish one new diagnostic identity within two minutes"
@@ -845,54 +968,51 @@ try {
     preservedSettingsProjectAndHistory = $true
     signedNsisRelaunch = $true
   } | ConvertTo-Json -Depth 5
+} catch {
+  $primaryFailure = $_
 } finally {
-  if (Test-Path -LiteralPath $diagnosticLog -PathType Leaf) {
-    $evidenceInstanceIds = @(
-      @($baseInstanceId, $updatedInstanceId, $verificationInstanceId) |
-        Where-Object { $_ -match '^[0-9a-f]{8}-[0-9a-f]{4}-7[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$' }
-    )
-    $boundedUpdateEvents = @(
-      Read-DiagnosticEvents -IncludePrevious |
-        Where-Object {
-          [string]$_.appInstanceId -in $evidenceInstanceIds `
-            -and (
-              [string]$_.event -like 'app-update.*' `
-                -or [string]$_.event -in @(
-                  'app.environment',
-                  'app.ready',
-                  'app.page_load_finished',
-                  'app.close_requested',
-                  'app.exit_requested',
-                  'app.exit'
-                )
-            )
-        } |
-        Select-Object -Last 256 |
-        ForEach-Object { $_ | ConvertTo-Json -Compress }
-    )
-    [IO.File]::WriteAllLines(
-      $diagnosticEvidence,
-      $boundedUpdateEvents,
-      [Text.UTF8Encoding]::new($false)
-    )
+  Invoke-UpdaterFinalizationStep -Name 'diagnostic-evidence' -Action {
+    if (Test-Path -LiteralPath $diagnosticLog -PathType Leaf) {
+      Write-BoundedDiagnosticEvidence
+    }
   }
-  Remove-Item Env:OSG_UPDATER_FIXTURE_PFX_PASSWORD -ErrorAction SilentlyContinue
-  if ($null -ne $updatedProcess -and -not $updatedProcess.HasExited) {
-    Stop-Process -Id $updatedProcess.Id -ErrorAction SilentlyContinue
+  Invoke-UpdaterFinalizationStep -Name 'fixture-password' -Action {
+    Remove-Item Env:OSG_UPDATER_FIXTURE_PFX_PASSWORD -ErrorAction SilentlyContinue
   }
-  if ($null -ne $verificationProcess -and -not $verificationProcess.HasExited) {
-    Stop-Process -Id $verificationProcess.Id -ErrorAction SilentlyContinue
+  Invoke-UpdaterFinalizationStep -Name 'updated-process' -Action {
+    if ($null -ne $updatedProcess -and -not $updatedProcess.HasExited) {
+      Stop-Process -Id $updatedProcess.Id -ErrorAction SilentlyContinue
+    }
   }
-  if ($null -ne $baseProcess -and -not $baseProcess.HasExited) {
-    Stop-Process -Id $baseProcess.Id -ErrorAction SilentlyContinue
+  Invoke-UpdaterFinalizationStep -Name 'verification-process' -Action {
+    if ($null -ne $verificationProcess -and -not $verificationProcess.HasExited) {
+      Stop-Process -Id $verificationProcess.Id -ErrorAction SilentlyContinue
+    }
   }
-  if ($null -ne $server -and -not $server.HasExited) {
-    Stop-Process -Id $server.Id -ErrorAction SilentlyContinue
+  Invoke-UpdaterFinalizationStep -Name 'base-process' -Action {
+    if ($null -ne $baseProcess -and -not $baseProcess.HasExited) {
+      Stop-Process -Id $baseProcess.Id -ErrorAction SilentlyContinue
+    }
   }
-  if ($null -ne $certificate) {
-    $certificate.Dispose()
+  Invoke-UpdaterFinalizationStep -Name 'fixture-server' -Action {
+    if ($null -ne $server -and -not $server.HasExited) {
+      Stop-Process -Id $server.Id -ErrorAction SilentlyContinue
+    }
   }
-  if ($null -ne $certificateKey) {
-    $certificateKey.Dispose()
+  Invoke-UpdaterFinalizationStep -Name 'certificate' -Action {
+    if ($null -ne $certificate) {
+      $certificate.Dispose()
+    }
   }
+  Invoke-UpdaterFinalizationStep -Name 'certificate-key' -Action {
+    if ($null -ne $certificateKey) {
+      $certificateKey.Dispose()
+    }
+  }
+}
+if ($null -ne $primaryFailure) {
+  throw $primaryFailure
+}
+if ($null -ne $finalizationFailure) {
+  throw $finalizationFailure
 }

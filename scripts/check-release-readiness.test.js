@@ -73,6 +73,14 @@ function createTauriProductionBuildFixture() {
       + 'compile_error!("release executables must be built with `npm run tauri:build`; '
       + 'plain `cargo build --release` retains the development URL");\n',
   );
+  writeFile(
+    root,
+    'apps/desktop/src-tauri/src/commands.rs',
+    'use tauri::WebviewWindow;\n'
+      + 'async fn select_media(window: WebviewWindow) {\n'
+      + '  app.dialog().file().set_parent(&window).set_title("Choose video or audio");\n'
+      + '}\n',
+  );
   return root;
 }
 
@@ -122,7 +130,20 @@ test('installed Windows smoke proves persistence, media, tools, logs, relaunch, 
     "'--expected-source-name', $ExpectedSourceName",
     "'osg-installed-editor-flow.png'",
     'function Complete-NativeMediaPicker',
+    'function Set-NativePickerEvidence',
+    'function Get-NativeMediaPickerDialogs',
+    'function Dismiss-NativeMediaPicker',
+    "$nativePickerEvidencePath = Join-Path $runnerTempRoot 'osg-installed-native-picker-evidence.json'",
+    '[IO.File]::Replace(',
     ".Current.Name -ceq 'Choose video or audio'",
+    ".Current.ClassName -ceq '#32770'",
+    '[OsgNativePickerWindow]::GetWindow($nativeHandle, 4)',
+    '-OwnerHandle $ownerHandle',
+    '[StringComparison]::Ordinal',
+    '$invokePattern.Invoke()',
+    '$remainingDialogs.Count -eq 0',
+    "-Stage 'dialog-dismissed'",
+    "-Outcome 'succeeded'",
     'osg-installed-media-flow-initial.png',
     "Where-Object event -eq 'download.completed'",
     "Where-Object event -eq 'native-tool.completed'",
@@ -249,6 +270,51 @@ test('installed Windows smoke proves persistence, media, tools, logs, relaunch, 
       /(?:live responsive app|missing lifecycle proof)/,
     );
   }
+  for (const weakenedPickerProof of [
+    INSTALLED_SMOKE_SCRIPT.replace('$dialog.FindAll(', '$dialog.FindFirst('),
+    INSTALLED_SMOKE_SCRIPT.replace(
+      '$fileNameControls.Count -eq 1',
+      '$fileNameControls.Count -ge 1',
+    ),
+    INSTALLED_SMOKE_SCRIPT.replace(
+      '$openButtons.Count -eq 1',
+      '$openButtons.Count -ge 1',
+    ),
+    INSTALLED_SMOKE_SCRIPT.replace(
+      '$remainingDialogs.Count -eq 0',
+      '$remainingDialogs.Count -le 1',
+    ),
+    INSTALLED_SMOKE_SCRIPT.replace(
+      '[OsgNativePickerWindow]::GetWindow($nativeHandle, 4)',
+      '$OwnerHandle',
+    ),
+  ]) {
+    assert.throws(
+      () => assertInstalledSmokeScript(weakenedPickerProof),
+      /(?:native-picker automation|missing lifecycle proof)/,
+    );
+  }
+  assert.throws(
+    () => assertInstalledSmokeScript(INSTALLED_SMOKE_SCRIPT.replace(
+      '$invokePattern.Invoke()',
+      '$openButtons[0].SetFocus()',
+    )),
+    /(?:non-focus-stealing|native-picker automation|missing lifecycle proof)/,
+  );
+  assert.throws(
+    () => assertInstalledSmokeScript(INSTALLED_SMOKE_SCRIPT.replace(
+      '    schemaVersion = 1',
+      '    schemaVersion = 1\n    mediaPath = $MediaPath',
+    )),
+    /atomic, bounded, and free of paths/,
+  );
+  assert.throws(
+    () => assertInstalledSmokeScript(INSTALLED_SMOKE_SCRIPT.replace(
+      /    throw\r?\n  \}\r?\n\}\r?\n\r?\nfunction Inspect-InstalledLocalMediaFlow/,
+      '    return\n  }\n}\n\nfunction Inspect-InstalledLocalMediaFlow',
+    )),
+    /preserve its primary exception/,
+  );
   assert.throws(
     () => assertInstalledSmokeScript(`${INSTALLED_SMOKE_SCRIPT}\nInvoke-WebRequest https://example.test/app.exe\n`),
     /without a second download/,
@@ -263,6 +329,7 @@ test('signed updater smoke is isolated, signed, installed, and persistent', () =
     'production,ci-updater-fixture',
     './scripts/test-signed-updater-windows.ps1',
     "url = 'https://localhost:38443/update.exe'",
+    '${{ runner.temp }}/osg-updater-diagnostics.log',
   ]) {
     assert.throws(
       () => assertUpdaterSmokeWorkflow(UPDATER_SMOKE_WORKFLOW.replace(fragment, 'removed')),
@@ -283,6 +350,100 @@ test('updater fixture source remains compile-time isolated from production relea
 
 test('signed updater runner uses isolated HTTPS, the real toast, NSIS relaunch, and durable state', () => {
   assert.doesNotThrow(() => assertSignedUpdaterScript(SIGNED_UPDATER_SCRIPT));
+  assert.doesNotThrow(() => assertSignedUpdaterScript(
+    SIGNED_UPDATER_SCRIPT.replace(/\r?\n/g, '\r\n'),
+  ));
+  assert.throws(
+    () => assertSignedUpdaterScript(SIGNED_UPDATER_SCRIPT.replace(
+      "            -and [string]$_.webviewDebug -in @('present', 'absent') `",
+      "            -and $_.webviewDebug -eq 'present' `",
+    )),
+    /without requiring either enum value/,
+  );
+  assert.throws(
+    () => assertSignedUpdaterScript(SIGNED_UPDATER_SCRIPT.replace(
+      "            -and [string]$_.webviewDebug -in @('present', 'absent') `\n",
+      '',
+    )),
+    /valid debug-presence enum/,
+  );
+  assert.throws(
+    () => assertSignedUpdaterScript(SIGNED_UPDATER_SCRIPT.replace(
+      "            -and [string]$_.webviewDebug -in @('present', 'absent') `",
+      "            -and [string]$_.webviewDebug -in @('present', 'absent', 'garbage') `",
+    )),
+    /valid debug-presence enum/,
+  );
+  assert.throws(
+    () => assertSignedUpdaterScript(SIGNED_UPDATER_SCRIPT.replace(
+      '            -and $_.version -ceq $ExpectedVersion `',
+      '            -and $true `',
+    )),
+    /one new versioned UUIDv7 identity/,
+  );
+  assert.throws(
+    () => assertSignedUpdaterScript(SIGNED_UPDATER_SCRIPT.replace(
+      '        $boundedRecord = ConvertTo-BoundedDiagnosticEvidenceRecord -Entry $_',
+      '        $boundedRecord = $_',
+    )),
+    /bounded sanitized lifecycle evidence/,
+  );
+  assert.throws(
+    () => assertSignedUpdaterScript(SIGNED_UPDATER_SCRIPT.replace(
+      "        [string]$_.event -like 'app-update.*' `",
+      "        ($_.version -eq $UpdatedVersion) -and [string]$_.event -like 'app-update.*' `",
+    )),
+    /including unknown relaunch candidates/,
+  );
+  assert.throws(
+    () => assertSignedUpdaterScript(SIGNED_UPDATER_SCRIPT.replace(
+      'if ([Text.Encoding]::UTF8.GetByteCount($encoded) -gt $script:diagnosticEvidenceByteLimit) {',
+      'if ($false) {',
+    )),
+    /bounded sanitized lifecycle evidence/,
+  );
+  assert.throws(
+    () => assertSignedUpdaterScript(SIGNED_UPDATER_SCRIPT.replace(
+      '$updatedProcessPath.Equals($executable, [StringComparison]::OrdinalIgnoreCase)',
+      '$true',
+    )),
+    /exact installed executable path/,
+  );
+  assert.throws(
+    () => assertSignedUpdaterScript(SIGNED_UPDATER_SCRIPT.replace(
+      "Invoke-UpdaterFinalizationStep -Name 'diagnostic-evidence' -Action {",
+      '& {',
+    )),
+    /guarded cleanup step/,
+  );
+  assert.throws(
+    () => assertSignedUpdaterScript(SIGNED_UPDATER_SCRIPT.replace(
+      "Invoke-UpdaterFinalizationStep -Name 'fixture-server' -Action {",
+      '& {',
+    )),
+    /every guarded cleanup step/,
+  );
+  assert.throws(
+    () => assertSignedUpdaterScript(SIGNED_UPDATER_SCRIPT.replace(
+      '    $script:finalizationFailure = $_',
+      '    throw $_',
+    )),
+    /without throwing from cleanup/,
+  );
+  const primaryRethrow = SIGNED_UPDATER_SCRIPT.match(
+    /if\s*\(\$null\s+-ne\s+\$primaryFailure\)\s*\{\s*throw\s+\$primaryFailure\s*}/,
+  )[0];
+  const finalizationRethrow = SIGNED_UPDATER_SCRIPT.match(
+    /if\s*\(\$null\s+-ne\s+\$finalizationFailure\)\s*\{\s*throw\s+\$finalizationFailure\s*}/,
+  )[0];
+  const reversedFailures = SIGNED_UPDATER_SCRIPT
+    .replace(primaryRethrow, '__OSG_PRIMARY_RETHROW__')
+    .replace(finalizationRethrow, primaryRethrow)
+    .replace('__OSG_PRIMARY_RETHROW__', finalizationRethrow);
+  assert.throws(
+    () => assertSignedUpdaterScript(reversedFailures),
+    /rethrow the primary failure before any finalization failure/,
+  );
   for (const fragment of [
     "$env:GITHUB_ACTIONS -ne 'true'",
     '-WindowStyle Hidden',
@@ -743,6 +904,36 @@ test('workflow is unsigned, read-only, credentialless, and locked', () => {
       () => assertWorkflowCommands(fixtureAssignmentWithCommentDecoy),
       /(?:installed-smoke must build|published-installed-smoke must validate)/,
     );
+    const pickerEvidenceAssignmentCommented = replaceInWorkflowJob(
+      workflow,
+      jobName,
+      "$pickerEvidencePath = Join-Path $env:RUNNER_TEMP 'osg-installed-native-picker-evidence.json'",
+      "# $pickerEvidencePath = Join-Path $env:RUNNER_TEMP 'osg-installed-native-picker-evidence.json'",
+    );
+    assert.throws(
+      () => assertWorkflowCommands(pickerEvidenceAssignmentCommented),
+      /(?:installed-smoke must build|published-installed-smoke must validate)/,
+    );
+    const pickerEvidenceSuccessRemoved = replaceInWorkflowJob(
+      workflow,
+      jobName,
+      "if ($pickerEvidence.outcome -cne 'succeeded' -or $pickerEvidence.stage -cne 'dialog-dismissed') {",
+      'if ($false) {',
+    );
+    assert.throws(
+      () => assertWorkflowCommands(pickerEvidenceSuccessRemoved),
+      /(?:installed-smoke must build|published-installed-smoke must validate)/,
+    );
+    const pickerEvidenceUploadCommented = replaceInWorkflowJob(
+      workflow,
+      jobName,
+      '${{ runner.temp }}/osg-installed-native-picker-evidence.json',
+      '# ${{ runner.temp }}/osg-installed-native-picker-evidence.json',
+    );
+    assert.throws(
+      () => assertWorkflowCommands(pickerEvidenceUploadCommented),
+      /(?:installed-smoke must build|published-installed-smoke must validate)/,
+    );
   }
   const branchWithoutStructuredEvidenceCheck = replaceInWorkflowJob(
     workflow,
@@ -908,15 +1099,15 @@ test('Tauri production build contract embeds the frontend instead of retaining t
   assert.doesNotThrow(() => assertTauriProductionBuildContract(root));
 });
 
-test('Tauri production build contract rejects every route back to a dev-server release', (context) => {
-  const fixtures = Array.from({ length: 4 }, createTauriProductionBuildFixture);
+test('Tauri production build contract rejects dev-server releases and unowned native pickers', (context) => {
+  const fixtures = Array.from({ length: 5 }, createTauriProductionBuildFixture);
   context.after(() => {
     for (const root of fixtures) {
       fs.rmSync(root, { force: true, recursive: true });
     }
   });
 
-  const [rootScript, desktopScript, cargoFeature, mainGuard] = fixtures;
+  const [rootScript, desktopScript, cargoFeature, mainGuard, unownedPicker] = fixtures;
   const rootPackage = JSON.parse(fs.readFileSync(path.join(rootScript, 'package.json'), 'utf8'));
   rootPackage.scripts['tauri:build'] = 'npm --prefix apps/desktop run tauri -- build';
   writeFile(rootScript, 'package.json', JSON.stringify(rootPackage));
@@ -949,6 +1140,19 @@ test('Tauri production build contract rejects every route back to a dev-server r
   assert.throws(
     () => assertTauriProductionBuildContract(mainGuard),
     /must reject release builds/,
+  );
+
+  writeFile(
+    unownedPicker,
+    'apps/desktop/src-tauri/src/commands.rs',
+    'use tauri::WebviewWindow;\n'
+      + 'async fn select_media(window: WebviewWindow) {\n'
+      + '  app.dialog().file().set_title("Choose video or audio");\n'
+      + '}\n',
+  );
+  assert.throws(
+    () => assertTauriProductionBuildContract(unownedPicker),
+    /must parent the native picker to the invoking WebviewWindow/,
   );
 });
 

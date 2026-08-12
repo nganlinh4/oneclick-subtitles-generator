@@ -19,11 +19,22 @@ $diagnosticEntrySlackBytes = 64 * 1024
 if ($env:CI -ne 'true') {
   throw 'The installed Windows smoke test may run only on an isolated CI runner.'
 }
+if ([string]::IsNullOrWhiteSpace($env:RUNNER_TEMP)) {
+  throw 'The installed Windows smoke test requires RUNNER_TEMP.'
+}
+
+$runnerTempRoot = [IO.Path]::GetFullPath($env:RUNNER_TEMP).TrimEnd('\') + '\'
+$nativePickerEvidencePath = Join-Path $runnerTempRoot 'osg-installed-native-picker-evidence.json'
+$nativePickerEvidenceTemporaryPath = "$nativePickerEvidencePath.tmp"
+foreach ($evidencePath in @($nativePickerEvidencePath, $nativePickerEvidenceTemporaryPath)) {
+  if (Test-Path -LiteralPath $evidencePath) {
+    throw 'Native picker evidence path must be clean'
+  }
+}
 
 $resultFile = $null
 if (-not [string]::IsNullOrEmpty($ResultPath)) {
   $resultFile = [IO.Path]::GetFullPath($ResultPath)
-  $runnerTempRoot = [IO.Path]::GetFullPath($env:RUNNER_TEMP).TrimEnd('\') + '\'
   if (-not $resultFile.StartsWith($runnerTempRoot, [StringComparison]::OrdinalIgnoreCase)) {
     throw 'Installed smoke result path must stay inside RUNNER_TEMP'
   }
@@ -44,7 +55,6 @@ if ($IncludeMediaFlow) {
     throw 'Installed media flow requires a reviewed local-media fixture'
   }
   $localMediaFixture = [IO.Path]::GetFullPath($LocalMediaPath)
-  $runnerTempRoot = [IO.Path]::GetFullPath($env:RUNNER_TEMP).TrimEnd('\') + '\'
   if (-not $localMediaFixture.StartsWith($runnerTempRoot, [StringComparison]::OrdinalIgnoreCase)) {
     throw 'Installed local-media fixture must stay inside RUNNER_TEMP'
   }
@@ -348,127 +358,493 @@ function Inspect-InstalledMediaFlow {
   $output[0] | ConvertFrom-Json
 }
 
-function Complete-NativeMediaPicker {
-  param(
-    [Parameter(Mandatory = $true)][int]$ProcessId,
-    [Parameter(Mandatory = $true)][string]$MediaPath
-  )
-
+function Initialize-NativePickerInterop {
   Add-Type -AssemblyName UIAutomationClient
   Add-Type -AssemblyName UIAutomationTypes
+  if ($null -eq ('OsgNativePickerWindow' -as [type])) {
+    Add-Type -TypeDefinition @'
+using System;
+using System.Runtime.InteropServices;
+
+public static class OsgNativePickerWindow {
+  [DllImport("user32.dll", SetLastError = true)]
+  public static extern IntPtr GetWindow(IntPtr window, uint command);
+
+  [DllImport("user32.dll", SetLastError = true)]
+  public static extern bool PostMessage(IntPtr window, uint message, IntPtr wParam, IntPtr lParam);
+}
+'@
+  }
+}
+
+function Set-NativePickerEvidence {
+  param(
+    [Parameter(Mandatory = $true)][string]$Stage,
+    [Parameter(Mandatory = $true)][ValidateSet('running', 'succeeded', 'failed')][string]$Outcome,
+    [string]$FailureCode = 'none',
+    [hashtable]$Metrics = @{}
+  )
+
+  if ($Stage -notmatch '^[a-z][a-z0-9-]{0,47}$' `
+      -or $FailureCode -notmatch '^[a-z][a-z0-9-]{0,47}$') {
+    throw 'Native picker evidence used an invalid bounded label'
+  }
+  $allowedMetrics = @(
+    'dialogAttempts',
+    'dialogMatches',
+    'ownerMatched',
+    'editorAttempts',
+    'editorMatches',
+    'editorWritable',
+    'valueRetained',
+    'buttonAttempts',
+    'buttonMatches',
+    'buttonEnabled',
+    'buttonInvokable',
+    'dismissAttempts',
+    'dialogDismissed'
+  )
+  foreach ($metric in $Metrics.GetEnumerator()) {
+    if ($metric.Key -notin $allowedMetrics `
+        -or ($metric.Value -isnot [bool] -and $metric.Value -isnot [int])) {
+      throw 'Native picker evidence used an invalid bounded metric'
+    }
+    $script:nativePickerEvidenceState[$metric.Key] = $metric.Value
+  }
+  if ($script:nativePickerEvidenceStages.Count -eq 0 `
+      -or $script:nativePickerEvidenceStages[$script:nativePickerEvidenceStages.Count - 1] -cne $Stage) {
+    if ($script:nativePickerEvidenceStages.Count -ge 16) {
+      throw 'Native picker evidence exceeded its bounded stage count'
+    }
+    [void]$script:nativePickerEvidenceStages.Add($Stage)
+  }
+  $script:nativePickerEvidenceState.outcome = $Outcome
+  $script:nativePickerEvidenceState.stage = $Stage
+  $script:nativePickerEvidenceState.failureCode = $FailureCode
+  $script:nativePickerEvidenceState.elapsedMs = [Math]::Min(
+    [int]$script:nativePickerEvidenceWatch.ElapsedMilliseconds,
+    300000
+  )
+  $script:nativePickerEvidenceState.stages = @($script:nativePickerEvidenceStages)
+  $json = $script:nativePickerEvidenceState | ConvertTo-Json -Depth 3 -Compress
+  if ([Text.Encoding]::UTF8.GetByteCount($json) -gt 16384 `
+      -or $json -match '(?i)(?:https?://|file://|localhost|127\.0\.0\.1|[A-Za-z]:[\\/]|\\\\|"[^"\r\n]*(?:path|pid|hwnd|handle|title|url|token)[^"\r\n]*"\s*:)') {
+    throw 'Native picker evidence escaped its bounded redacted contract'
+  }
+  [IO.File]::WriteAllText(
+    $nativePickerEvidenceTemporaryPath,
+    $json,
+    [Text.UTF8Encoding]::new($false)
+  )
+  if (Test-Path -LiteralPath $nativePickerEvidencePath -PathType Leaf) {
+    [IO.File]::Replace(
+      $nativePickerEvidenceTemporaryPath,
+      $nativePickerEvidencePath,
+      $null
+    )
+  } else {
+    [IO.File]::Move($nativePickerEvidenceTemporaryPath, $nativePickerEvidencePath)
+  }
+}
+
+function Initialize-NativePickerEvidence {
+  $script:nativePickerEvidenceWatch = [Diagnostics.Stopwatch]::StartNew()
+  $script:nativePickerEvidenceStages = [Collections.Generic.List[string]]::new()
+  $script:nativePickerEvidenceState = [ordered]@{
+    schemaVersion = 1
+    outcome = 'running'
+    stage = 'initialized'
+    failureCode = 'none'
+    elapsedMs = 0
+    stages = @()
+    dialogAttempts = 0
+    dialogMatches = 0
+    ownerMatched = $false
+    editorAttempts = 0
+    editorMatches = 0
+    editorWritable = $false
+    valueRetained = $false
+    buttonAttempts = 0
+    buttonMatches = 0
+    buttonEnabled = $false
+    buttonInvokable = $false
+    dismissAttempts = 0
+    dialogDismissed = $false
+  }
+  Set-NativePickerEvidence -Stage 'initialized' -Outcome 'running'
+}
+
+function Get-NativeMediaPickerDialogs {
+  param(
+    [Parameter(Mandatory = $true)][int]$ProcessId,
+    [Parameter(Mandatory = $true)][long]$OwnerHandle
+  )
+
   $root = [System.Windows.Automation.AutomationElement]::RootElement
   $processCondition = [System.Windows.Automation.PropertyCondition]::new(
     [System.Windows.Automation.AutomationElement]::ProcessIdProperty,
     $ProcessId
   )
-  $deadline = (Get-Date).AddSeconds(30)
-  $dialog = $null
-  do {
-    Start-Sleep -Milliseconds 100
-    if ($null -eq (Get-Process -Id $ProcessId -ErrorAction SilentlyContinue)) {
-      throw 'Installed application exited while opening the native media picker'
-    }
-    $windows = $root.FindAll(
-      [System.Windows.Automation.TreeScope]::Children,
-      $processCondition
-    )
-    $dialogs = @(
-      foreach ($window in $windows) {
-        try {
-          if ($window.Current.ControlType -eq [System.Windows.Automation.ControlType]::Window `
-              -and $window.Current.ClassName -eq '#32770' `
-              -and $window.Current.Name -ceq 'Choose video or audio') {
-            $window
-          }
-        } catch {
-          # A window can disappear while UI Automation enumerates the desktop tree.
-        }
-      }
-    )
-    if ($dialogs.Count -gt 1) {
-      throw 'Installed application opened multiple native media pickers'
-    }
-    $dialog = $dialogs | Select-Object -First 1
-  } until ($null -ne $dialog -or (Get-Date) -ge $deadline)
-  if ($null -eq $dialog) {
-    throw 'Native media picker did not open within 30 seconds'
-  }
-
-  $fileNameControl = $dialog.FindFirst(
-    [System.Windows.Automation.TreeScope]::Descendants,
-    [System.Windows.Automation.PropertyCondition]::new(
-      [System.Windows.Automation.AutomationElement]::AutomationIdProperty,
-      '1148'
-    )
+  $windows = $root.FindAll(
+    [System.Windows.Automation.TreeScope]::Children,
+    $processCondition
   )
-  if ($null -eq $fileNameControl) {
-    throw 'Native media picker omitted its filename control'
+  $exact = @(
+    foreach ($window in $windows) {
+      try {
+        if ($window.Current.ControlType -eq [System.Windows.Automation.ControlType]::Window `
+            -and $window.Current.ClassName -ceq '#32770' `
+            -and $window.Current.Name -ceq 'Choose video or audio') {
+          $window
+        }
+      } catch {
+        # A window can disappear while UI Automation enumerates the desktop tree.
+      }
+    }
+  )
+  $owned = @(
+    foreach ($dialog in $exact) {
+      try {
+        $nativeHandle = [IntPtr]::new([long]$dialog.Current.NativeWindowHandle)
+        if ([OsgNativePickerWindow]::GetWindow($nativeHandle, 4).ToInt64() -eq $OwnerHandle) {
+          $dialog
+        }
+      } catch {
+        # A matching dialog can disappear before its native owner is inspected.
+      }
+    }
+  )
+  [pscustomobject]@{
+    Exact = $exact
+    Owned = $owned
   }
-  $valuePattern = $null
-  $patternObject = $null
-  if ($fileNameControl.TryGetCurrentPattern(
-      [System.Windows.Automation.ValuePattern]::Pattern,
-      [ref]$patternObject
-    )) {
-    $valuePattern = [System.Windows.Automation.ValuePattern]$patternObject
-  } else {
-    $editable = $fileNameControl.FindFirst(
-      [System.Windows.Automation.TreeScope]::Descendants,
-      [System.Windows.Automation.PropertyCondition]::new(
-        [System.Windows.Automation.AutomationElement]::ControlTypeProperty,
-        [System.Windows.Automation.ControlType]::Edit
+}
+
+function Dismiss-NativeMediaPicker {
+  param(
+    [Parameter(Mandatory = $true)][int]$ProcessId,
+    [Parameter(Mandatory = $true)][long]$OwnerHandle
+  )
+
+  Initialize-NativePickerInterop
+  $attempts = 0
+  $dismissed = $false
+  $deadline = (Get-Date).AddSeconds(5)
+  do {
+    $attempts += 1
+    $snapshot = Get-NativeMediaPickerDialogs `
+      -ProcessId $ProcessId `
+      -OwnerHandle $OwnerHandle
+    $exact = @($snapshot.Exact)
+    $owned = @($snapshot.Owned)
+    if ($exact.Count -eq 0) {
+      $dismissed = $true
+      break
+    }
+    if ($exact.Count -ne 1 -or $owned.Count -ne 1) {
+      break
+    }
+    $cancelCondition = [System.Windows.Automation.AndCondition]::new(
+      [System.Windows.Automation.Condition[]]@(
+        [System.Windows.Automation.PropertyCondition]::new(
+          [System.Windows.Automation.AutomationElement]::AutomationIdProperty,
+          '2'
+        ),
+        [System.Windows.Automation.PropertyCondition]::new(
+          [System.Windows.Automation.AutomationElement]::ControlTypeProperty,
+          [System.Windows.Automation.ControlType]::Button
+        )
       )
     )
-    if ($null -ne $editable) {
+    $cancelButtons = @($owned[0].FindAll(
+      [System.Windows.Automation.TreeScope]::Descendants,
+      $cancelCondition
+    ))
+    $invoked = $false
+    if ($cancelButtons.Count -eq 1 -and $cancelButtons[0].Current.IsEnabled) {
       $patternObject = $null
-      if ($editable.TryGetCurrentPattern(
-          [System.Windows.Automation.ValuePattern]::Pattern,
+      if ($cancelButtons[0].TryGetCurrentPattern(
+          [System.Windows.Automation.InvokePattern]::Pattern,
           [ref]$patternObject
         )) {
-        $valuePattern = [System.Windows.Automation.ValuePattern]$patternObject
+        ([System.Windows.Automation.InvokePattern]$patternObject).Invoke()
+        $invoked = $true
       }
     }
+    if (-not $invoked) {
+      $nativeHandle = [IntPtr]::new([long]$owned[0].Current.NativeWindowHandle)
+      [void][OsgNativePickerWindow]::PostMessage(
+        $nativeHandle,
+        0x0010,
+        [IntPtr]::Zero,
+        [IntPtr]::Zero
+      )
+    }
+    Start-Sleep -Milliseconds 100
+  } while ((Get-Date) -lt $deadline)
+  [pscustomobject]@{
+    Attempts = $attempts
+    Dismissed = $dismissed
   }
-  if ($null -eq $valuePattern -or $valuePattern.Current.IsReadOnly) {
-    throw 'Native media picker filename control is not writable'
-  }
-  $valuePattern.SetValue($MediaPath)
-  if (-not [string]::Equals(
-      $valuePattern.Current.Value,
-      $MediaPath,
-      [StringComparison]::OrdinalIgnoreCase
-    )) {
-    throw 'Native media picker did not retain the reviewed fixture path'
-  }
+}
 
-  $openButtonCondition = [System.Windows.Automation.AndCondition]::new(
-    [System.Windows.Automation.Condition[]]@(
-      [System.Windows.Automation.PropertyCondition]::new(
-        [System.Windows.Automation.AutomationElement]::AutomationIdProperty,
-        '1'
-      ),
-      [System.Windows.Automation.PropertyCondition]::new(
-        [System.Windows.Automation.AutomationElement]::ControlTypeProperty,
-        [System.Windows.Automation.ControlType]::Button
+function Complete-NativeMediaPicker {
+  param(
+    [Parameter(Mandatory = $true)][int]$ProcessId,
+    [Parameter(Mandatory = $true)][long]$OwnerHandle,
+    [Parameter(Mandatory = $true)][string]$MediaPath
+  )
+
+  Initialize-NativePickerEvidence
+  $failureCode = 'unexpected'
+  try {
+    Initialize-NativePickerInterop
+    Set-NativePickerEvidence -Stage 'waiting-dialog' -Outcome 'running'
+    $dialogDeadline = (Get-Date).AddSeconds(30)
+    $dialog = $null
+    $dialogAttempts = 0
+    $dialogMatches = 0
+    $ownerMatched = $false
+    do {
+      $dialogAttempts += 1
+      Start-Sleep -Milliseconds 100
+      if ($null -eq (Get-Process -Id $ProcessId -ErrorAction SilentlyContinue)) {
+        $failureCode = 'application-exited'
+        throw 'Installed application exited while opening the native media picker'
+      }
+      $snapshot = Get-NativeMediaPickerDialogs `
+        -ProcessId $ProcessId `
+        -OwnerHandle $OwnerHandle
+      $dialogs = @($snapshot.Exact)
+      $ownedDialogs = @($snapshot.Owned)
+      $dialogMatches = $dialogs.Count
+      $ownerMatched = $ownedDialogs.Count -eq 1
+      if ($dialogs.Count -gt 1 -or $ownedDialogs.Count -gt 1) {
+        $failureCode = 'dialog-ambiguous'
+        throw 'Installed application opened multiple native media pickers'
+      }
+      if ($dialogs.Count -eq 1 -and $ownedDialogs.Count -eq 1) {
+        $dialog = $ownedDialogs[0]
+      }
+    } until ($null -ne $dialog -or (Get-Date) -ge $dialogDeadline)
+    if ($null -eq $dialog) {
+      $failureCode = if ($dialogMatches -eq 1) { 'owner-mismatch' } else { 'dialog-timeout' }
+      throw 'Native media picker did not open as an owned dialog within 30 seconds'
+    }
+    Set-NativePickerEvidence `
+      -Stage 'dialog-discovered' `
+      -Outcome 'running' `
+      -Metrics @{
+        dialogAttempts = [Math]::Min($dialogAttempts, 1000)
+        dialogMatches = $dialogMatches
+        ownerMatched = $ownerMatched
+      }
+
+    $editorDeadline = (Get-Date).AddSeconds(30)
+    $editorAttempts = 0
+    $editorMatches = 0
+    $editorWritable = $false
+    $valueRetained = $false
+    do {
+      $editorAttempts += 1
+      try {
+        $fileNameControls = @($dialog.FindAll(
+          [System.Windows.Automation.TreeScope]::Descendants,
+          [System.Windows.Automation.PropertyCondition]::new(
+            [System.Windows.Automation.AutomationElement]::AutomationIdProperty,
+            '1148'
+          )
+        ))
+        $editorMatches = $fileNameControls.Count
+        $valuePattern = $null
+        if ($fileNameControls.Count -eq 1) {
+          $patternObject = $null
+          if ($fileNameControls[0].TryGetCurrentPattern(
+              [System.Windows.Automation.ValuePattern]::Pattern,
+              [ref]$patternObject
+            )) {
+            $valuePattern = [System.Windows.Automation.ValuePattern]$patternObject
+          } else {
+            $editableControls = @($fileNameControls[0].FindAll(
+              [System.Windows.Automation.TreeScope]::Descendants,
+              [System.Windows.Automation.PropertyCondition]::new(
+                [System.Windows.Automation.AutomationElement]::ControlTypeProperty,
+                [System.Windows.Automation.ControlType]::Edit
+              )
+            ))
+            if ($editableControls.Count -eq 1) {
+              $patternObject = $null
+              if ($editableControls[0].TryGetCurrentPattern(
+                  [System.Windows.Automation.ValuePattern]::Pattern,
+                  [ref]$patternObject
+                )) {
+                $valuePattern = [System.Windows.Automation.ValuePattern]$patternObject
+              }
+            }
+          }
+        }
+        if ($null -ne $valuePattern) {
+          $editorWritable = -not $valuePattern.Current.IsReadOnly
+          if ($editorWritable) {
+            $valuePattern.SetValue($MediaPath)
+            $valueRetained = [string]::Equals(
+              $valuePattern.Current.Value,
+              $MediaPath,
+              [StringComparison]::Ordinal
+            )
+          }
+        }
+      } catch {
+        # Common-dialog descendants can be replaced while their shell view initializes.
+      }
+      if (-not $valueRetained) {
+        Start-Sleep -Milliseconds 100
+      }
+    } until ($valueRetained -or (Get-Date) -ge $editorDeadline)
+    if (-not $valueRetained) {
+      $failureCode = if ($editorMatches -gt 1) {
+        'editor-ambiguous'
+      } elseif (-not $editorWritable) {
+        'editor-not-writable'
+      } else {
+        'value-not-retained'
+      }
+      throw 'Native media picker did not expose one writable filename control with the retained fixture value'
+    }
+    Set-NativePickerEvidence `
+      -Stage 'value-confirmed' `
+      -Outcome 'running' `
+      -Metrics @{
+        editorAttempts = [Math]::Min($editorAttempts, 1000)
+        editorMatches = $editorMatches
+        editorWritable = $editorWritable
+        valueRetained = $valueRetained
+      }
+
+    $openButtonCondition = [System.Windows.Automation.AndCondition]::new(
+      [System.Windows.Automation.Condition[]]@(
+        [System.Windows.Automation.PropertyCondition]::new(
+          [System.Windows.Automation.AutomationElement]::AutomationIdProperty,
+          '1'
+        ),
+        [System.Windows.Automation.PropertyCondition]::new(
+          [System.Windows.Automation.AutomationElement]::ControlTypeProperty,
+          [System.Windows.Automation.ControlType]::Button
+        )
       )
     )
-  )
-  $openButton = $dialog.FindFirst(
-    [System.Windows.Automation.TreeScope]::Descendants,
-    $openButtonCondition
-  )
-  if ($null -eq $openButton -or -not $openButton.Current.IsEnabled) {
-    throw 'Native media picker omitted its confirmation button'
+    $buttonDeadline = (Get-Date).AddSeconds(30)
+    $buttonAttempts = 0
+    $buttonMatches = 0
+    $buttonEnabled = $false
+    $buttonInvokable = $false
+    $invokePattern = $null
+    do {
+      $buttonAttempts += 1
+      try {
+        $openButtons = @($dialog.FindAll(
+          [System.Windows.Automation.TreeScope]::Descendants,
+          $openButtonCondition
+        ))
+        $buttonMatches = $openButtons.Count
+        if ($openButtons.Count -eq 1) {
+          $buttonEnabled = $openButtons[0].Current.IsEnabled
+          $patternObject = $null
+          if ($buttonEnabled -and $openButtons[0].TryGetCurrentPattern(
+              [System.Windows.Automation.InvokePattern]::Pattern,
+              [ref]$patternObject
+            )) {
+            $invokePattern = [System.Windows.Automation.InvokePattern]$patternObject
+            $buttonInvokable = $true
+          }
+        }
+      } catch {
+        # Retry when the shell refreshes the common-dialog button tree.
+      }
+      if (-not $buttonInvokable) {
+        Start-Sleep -Milliseconds 100
+      }
+    } until ($buttonInvokable -or (Get-Date) -ge $buttonDeadline)
+    if (-not $buttonInvokable) {
+      $failureCode = if ($buttonMatches -gt 1) {
+        'button-ambiguous'
+      } elseif (-not $buttonEnabled) {
+        'button-disabled'
+      } else {
+        'button-not-invokable'
+      }
+      throw 'Native media picker did not expose one enabled invokable confirmation button'
+    }
+    Set-NativePickerEvidence `
+      -Stage 'button-discovered' `
+      -Outcome 'running' `
+      -Metrics @{
+        buttonAttempts = [Math]::Min($buttonAttempts, 1000)
+        buttonMatches = $buttonMatches
+        buttonEnabled = $buttonEnabled
+        buttonInvokable = $buttonInvokable
+      }
+
+    $invokePattern.Invoke()
+    Set-NativePickerEvidence -Stage 'button-invoked' -Outcome 'running'
+    $dismissDeadline = (Get-Date).AddSeconds(30)
+    $dismissAttempts = 0
+    $dialogDismissed = $false
+    do {
+      $dismissAttempts += 1
+      Start-Sleep -Milliseconds 100
+      $snapshot = Get-NativeMediaPickerDialogs `
+        -ProcessId $ProcessId `
+        -OwnerHandle $OwnerHandle
+      $remainingDialogs = @($snapshot.Exact)
+      $remainingOwnedDialogs = @($snapshot.Owned)
+      if ($remainingDialogs.Count -gt 1 -or $remainingOwnedDialogs.Count -gt 1) {
+        $failureCode = 'dismissal-ambiguous'
+        throw 'Native media picker multiplied after confirmation'
+      }
+      if ($remainingDialogs.Count -eq 0) {
+        $dialogDismissed = $true
+      } elseif ($remainingOwnedDialogs.Count -ne 1) {
+        $failureCode = 'owner-changed'
+        throw 'Native media picker owner changed after confirmation'
+      }
+    } until ($dialogDismissed -or (Get-Date) -ge $dismissDeadline)
+    if (-not $dialogDismissed) {
+      $failureCode = 'dismissal-timeout'
+      throw 'Native media picker did not disappear after confirmation'
+    }
+    Set-NativePickerEvidence `
+      -Stage 'dialog-dismissed' `
+      -Outcome 'succeeded' `
+      -Metrics @{
+        dismissAttempts = [Math]::Min($dismissAttempts, 1000)
+        dialogDismissed = $dialogDismissed
+      }
+  } catch {
+    $dismissal = $null
+    try {
+      $dismissal = Dismiss-NativeMediaPicker `
+        -ProcessId $ProcessId `
+        -OwnerHandle $OwnerHandle
+    } catch {
+      # The primary picker failure remains authoritative when best-effort cleanup also fails.
+    }
+    try {
+      $failureMetrics = @{}
+      if ($null -ne $dismissal) {
+        $failureMetrics.dismissAttempts = [Math]::Min([int]$dismissal.Attempts, 1000)
+        $failureMetrics.dialogDismissed = [bool]$dismissal.Dismissed
+      }
+      Set-NativePickerEvidence `
+        -Stage 'failed' `
+        -Outcome 'failed' `
+        -FailureCode $failureCode `
+        -Metrics $failureMetrics
+    } catch {
+      # Evidence persistence must never replace the original picker exception.
+    }
+    throw
   }
-  $patternObject = $null
-  if (-not $openButton.TryGetCurrentPattern(
-      [System.Windows.Automation.InvokePattern]::Pattern,
-      [ref]$patternObject
-    )) {
-    throw 'Native media picker confirmation button is not invokable'
-  }
-  $invokePattern = [System.Windows.Automation.InvokePattern]$patternObject
-  $invokePattern.Invoke()
 }
 
 function Inspect-InstalledLocalMediaFlow {
@@ -486,6 +862,12 @@ function Inspect-InstalledLocalMediaFlow {
       throw 'Installed local-media flow output path was not clean'
     }
   }
+  $applicationProcess = Get-Process -Id $ProcessId -ErrorAction Stop
+  $applicationProcess.Refresh()
+  $ownerHandle = $applicationProcess.MainWindowHandle.ToInt64()
+  if ($ownerHandle -eq 0 -or -not $applicationProcess.Responding) {
+    throw 'Installed application lacked a responsive owner before native selection'
+  }
   $arguments = @(
     'scripts/inspect-installed-local-media-flow.mjs',
     '--port', [string]$Port,
@@ -499,9 +881,12 @@ function Inspect-InstalledLocalMediaFlow {
     -RedirectStandardError $stderr `
     -PassThru
   try {
-    Complete-NativeMediaPicker -ProcessId $ProcessId -MediaPath $MediaPath
+    Complete-NativeMediaPicker `
+      -ProcessId $ProcessId `
+      -OwnerHandle $ownerHandle `
+      -MediaPath $MediaPath
     if (-not $inspection.WaitForExit(120000)) {
-      Stop-Process -Id $inspection.Id
+      Stop-Process -Id $inspection.Id -ErrorAction SilentlyContinue
       throw 'Installed local-media flow did not finish within two minutes'
     }
     # Flush redirected stdout/stderr after the bounded wait observes process termination.
@@ -523,8 +908,14 @@ function Inspect-InstalledLocalMediaFlow {
     }
     $result
   } finally {
-    if (-not $inspection.HasExited) {
-      Stop-Process -Id $inspection.Id
+    try {
+      $inspection.Refresh()
+      if (-not $inspection.HasExited) {
+        Stop-Process -Id $inspection.Id -ErrorAction SilentlyContinue
+        [void]$inspection.WaitForExit(5000)
+      }
+    } catch {
+      # Inspector cleanup is best effort and must not replace the primary flow failure.
     }
   }
 }
@@ -795,6 +1186,11 @@ $third = Start-And-WaitForReadiness `
   -InitialEventCount $second.Events.Count `
   -Phase 'reinstall-launch' `
   -ExpectedProjectId $first.Inspection.persistence.projectId
+$third.Process.Refresh()
+$thirdOwnerHandle = $third.Process.MainWindowHandle.ToInt64()
+if ($thirdOwnerHandle -eq 0) {
+  throw 'Reinstalled application omitted its main window owner'
+}
 try {
   $initialMediaFlow = $null
   $mediaFlow = $null
@@ -964,6 +1360,19 @@ OSG installed media smoke
     [IO.File]::WriteAllText($resultFile, $resultJson, [Text.UTF8Encoding]::new($false))
   }
   $resultJson
-} finally {
-  Stop-Application -Process $third.Process -LogPath $logPath
+} catch {
+  try {
+    [void](Dismiss-NativeMediaPicker `
+      -ProcessId $third.Process.Id `
+      -OwnerHandle $thirdOwnerHandle)
+  } catch {
+    # Picker dismissal is best effort; the original test failure remains authoritative.
+  }
+  try {
+    Stop-Application -Process $third.Process -LogPath $logPath
+  } catch {
+    Stop-Process -Id $third.Process.Id -ErrorAction SilentlyContinue
+  }
+  throw
 }
+Stop-Application -Process $third.Process -LogPath $logPath

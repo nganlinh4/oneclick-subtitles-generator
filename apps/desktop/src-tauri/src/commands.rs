@@ -17,7 +17,7 @@ use osg_infrastructure::storage::{Database, DatabaseError};
 use osg_media_server::{MediaServer, RegisteredMedia};
 use serde::Serialize;
 use serde_json::Value;
-use tauri::{AppHandle, Runtime, State};
+use tauri::{AppHandle, Runtime, State, WebviewWindow};
 use tauri_plugin_dialog::DialogExt;
 
 use crate::error::{CommandError, CommandResult};
@@ -484,6 +484,7 @@ pub(crate) fn get_session_snapshot(
 #[tauri::command]
 pub(crate) async fn select_media(
     app: AppHandle,
+    window: WebviewWindow,
     state: State<'_, DesktopState>,
 ) -> CommandResult<Option<DesktopSessionSnapshot>> {
     let extensions: Vec<&str> = VIDEO_EXTENSIONS
@@ -494,6 +495,7 @@ pub(crate) async fn select_media(
     let selected = app
         .dialog()
         .file()
+        .set_parent(&window)
         .set_title("Choose video or audio")
         .add_filter("Video and audio", &extensions)
         .blocking_pick_file();

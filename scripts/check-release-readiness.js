@@ -613,6 +613,9 @@ function assertWorkflowCommands(workflow) {
   const publishedInstalledSmoke = workflowJobBlock(workflow, 'windows-published-installed-smoke');
   const installedMediaFixtureDownload = 'https://github.com/nganlinh4/oneclick-subtitles-generator/releases/download/osg-runtime-bundles-v1/osg-installed-media-smoke-v1-aecf6c8ef3977cd4.mp4';
   const installedMediaFixtureAssignment = /^ {10}\$url = 'https:\/\/github\.com\/nganlinh4\/oneclick-subtitles-generator\/releases\/download\/osg-runtime-bundles-v1\/osg-installed-media-smoke-v1-aecf6c8ef3977cd4\.mp4'\r?$/m;
+  const pickerEvidenceAssignment = /^ {10}\$pickerEvidencePath = Join-Path \$env:RUNNER_TEMP 'osg-installed-native-picker-evidence\.json'\r?$/m;
+  const pickerEvidenceSuccessGate = /^ {10}if \(\$pickerEvidence\.outcome -cne 'succeeded' -or \$pickerEvidence\.stage -cne 'dialog-dismissed'\) \{\r?$/m;
+  const pickerEvidenceUpload = /^ {12}\$\{\{ runner\.temp \}\}\/osg-installed-native-picker-evidence\.json\r?$/m;
   const branchWithoutInstalledMediaFixture = branchInstalledSmoke
     .replaceAll(installedMediaFixtureDownload, '');
   invariant(
@@ -629,6 +632,9 @@ function assertWorkflowCommands(workflow) {
       branchInstalledSmoke.includes('-IncludeMediaFlow') &&
       branchInstalledSmoke.includes('-LocalMediaPath $env:OSG_INSTALLED_LOCAL_MEDIA') &&
       branchInstalledSmoke.includes("$resultPath = Join-Path $env:RUNNER_TEMP 'osg-installed-branch-result.json'") &&
+      pickerEvidenceAssignment.test(branchInstalledSmoke) &&
+      branchInstalledSmoke.includes("throw 'Installed branch native-picker evidence path was not clean'") &&
+      pickerEvidenceSuccessGate.test(branchInstalledSmoke) &&
       branchInstalledSmoke.includes('-ResultPath $resultPath') &&
       branchInstalledSmoke.includes("throw 'Installed branch smoke omitted its structured result evidence'") &&
       branchInstalledSmoke.includes('Get-Content -LiteralPath $resultPath -Raw | ConvertFrom-Json | Out-Null') &&
@@ -638,6 +644,7 @@ function assertWorkflowCommands(workflow) {
       branchInstalledSmoke.includes('actions/upload-artifact@') &&
       branchInstalledSmoke.includes('${{ runner.temp }}/osg-*.png') &&
       branchInstalledSmoke.includes('${{ runner.temp }}/osg-installed-branch-result.json') &&
+      pickerEvidenceUpload.test(branchInstalledSmoke) &&
       !branchWithoutInstalledMediaFixture.includes('/releases/download/'),
     'installed-smoke must build, validate, install, and launch the current branch without downloading a published release',
   );
@@ -651,6 +658,9 @@ function assertWorkflowCommands(workflow) {
       publishedInstalledSmoke.includes('-IncludeMediaFlow') &&
       publishedInstalledSmoke.includes('-LocalMediaPath $env:OSG_INSTALLED_LOCAL_MEDIA') &&
       publishedInstalledSmoke.includes("$resultPath = Join-Path $env:RUNNER_TEMP 'osg-installed-published-result.json'") &&
+      pickerEvidenceAssignment.test(publishedInstalledSmoke) &&
+      publishedInstalledSmoke.includes("throw 'Installed published native-picker evidence path was not clean'") &&
+      pickerEvidenceSuccessGate.test(publishedInstalledSmoke) &&
       publishedInstalledSmoke.includes('-ResultPath $resultPath') &&
       publishedInstalledSmoke.includes("throw 'Installed published smoke omitted its structured result evidence'") &&
       publishedInstalledSmoke.includes('Get-Content -LiteralPath $resultPath -Raw | ConvertFrom-Json | Out-Null') &&
@@ -659,7 +669,8 @@ function assertWorkflowCommands(workflow) {
       publishedInstalledSmoke.includes('aecf6c8ef3977cd4525261ccadb4086581bd911cb17cc97128cfd8640c6055db') &&
       publishedInstalledSmoke.includes('actions/upload-artifact@') &&
       publishedInstalledSmoke.includes('${{ runner.temp }}/osg-*.png') &&
-      publishedInstalledSmoke.includes('${{ runner.temp }}/osg-installed-published-result.json'),
+      publishedInstalledSmoke.includes('${{ runner.temp }}/osg-installed-published-result.json') &&
+      pickerEvidenceUpload.test(publishedInstalledSmoke),
     'published-installed-smoke must validate and launch the signed immutable release artifact',
   );
   const frontendBuildIndex = nativeMatrix.indexOf('run: npm run build:frontend');
@@ -765,8 +776,21 @@ function assertInstalledSmokeScript(script) {
     "'--expected-source-name', $ExpectedSourceName",
     "'osg-installed-editor-flow.png'",
     'function Complete-NativeMediaPicker',
+    'function Set-NativePickerEvidence',
+    'function Get-NativeMediaPickerDialogs',
+    'function Dismiss-NativeMediaPicker',
+    "$nativePickerEvidencePath = Join-Path $runnerTempRoot 'osg-installed-native-picker-evidence.json'",
+    '[IO.File]::Replace(',
     ".Current.Name -ceq 'Choose video or audio'",
+    ".Current.ClassName -ceq '#32770'",
+    '[OsgNativePickerWindow]::GetWindow($nativeHandle, 4)',
+    '-OwnerHandle $ownerHandle',
     '[System.Windows.Automation.ValuePattern]::Pattern',
+    '[StringComparison]::Ordinal',
+    '$invokePattern.Invoke()',
+    '$remainingDialogs.Count -eq 0',
+    "-Stage 'dialog-dismissed'",
+    "-Outcome 'succeeded'",
     'osg-installed-media-flow-initial.png',
     "Where-Object event -eq 'download.completed'",
     "Where-Object event -eq 'native-tool.completed'",
@@ -869,6 +893,74 @@ function assertInstalledSmokeScript(script) {
       position === 0 || orderedInstalledMediaIndices[position - 1] < index
     )),
   'Installed Windows smoke is missing lifecycle proof: ordered installed media flow');
+  const pickerFunctionStart = script.indexOf('function Complete-NativeMediaPicker {');
+  const pickerFunctionEnd = script.indexOf('\nfunction ', pickerFunctionStart + 1);
+  const pickerFunction = pickerFunctionStart >= 0 && pickerFunctionEnd > pickerFunctionStart
+    ? script.slice(pickerFunctionStart, pickerFunctionEnd)
+    : '';
+  invariant(
+    (pickerFunction.match(/\.AddSeconds\(30\)/g) || []).length >= 4
+      && pickerFunction.includes('$fileNameControls = @($dialog.FindAll(')
+      && pickerFunction.includes('$openButtons = @($dialog.FindAll(')
+      && pickerFunction.includes('$fileNameControls.Count -eq 1')
+      && pickerFunction.includes('$openButtons.Count -eq 1')
+      && pickerFunction.includes('$valuePattern.SetValue($MediaPath)')
+      && pickerFunction.includes('[StringComparison]::Ordinal')
+      && pickerFunction.includes('$invokePattern.Invoke()')
+      && pickerFunction.includes('$remainingDialogs.Count -eq 0')
+      && pickerFunction.includes("-Stage 'dialog-dismissed'")
+      && pickerFunction.includes("-Outcome 'succeeded'")
+      && pickerFunction.includes("-Stage 'failed'")
+      && /catch\s*\{[\s\S]*?Set-NativePickerEvidence[\s\S]*?\bthrow\s*\r?\n\s*\}/.test(pickerFunction),
+    'Installed native-picker automation must retry settled unique controls, invoke without focus, prove dismissal, and preserve its primary exception',
+  );
+  invariant(
+    !/(?:SendKeys|SetFocus|SetForegroundWindow|mouse_event|keybd_event|System\.Windows\.Forms\.Cursor|Clipboard)/i.test(script),
+    'Installed native-picker automation must remain non-focus-stealing and clipboard-free',
+  );
+  const evidenceWriterStart = script.indexOf('function Set-NativePickerEvidence {');
+  const evidenceWriterEnd = script.indexOf('\nfunction ', evidenceWriterStart + 1);
+  const evidenceWriter = evidenceWriterStart >= 0 && evidenceWriterEnd > evidenceWriterStart
+    ? script.slice(evidenceWriterStart, evidenceWriterEnd)
+    : '';
+  const evidenceInitializerStart = script.indexOf('function Initialize-NativePickerEvidence {');
+  const evidenceInitializerEnd = script.indexOf('\nfunction ', evidenceInitializerStart + 1);
+  const evidenceInitializer = evidenceInitializerStart >= 0
+    && evidenceInitializerEnd > evidenceInitializerStart
+    ? script.slice(evidenceInitializerStart, evidenceInitializerEnd)
+    : '';
+  invariant(
+    evidenceWriter.includes('$script:nativePickerEvidenceStages.Count -ge 16')
+      && evidenceWriter.includes('[Text.Encoding]::UTF8.GetByteCount($json) -gt 16384')
+      && evidenceWriter.includes('$nativePickerEvidenceTemporaryPath')
+      && evidenceWriter.includes('[IO.File]::Replace(')
+      && evidenceWriter.includes('[IO.File]::Move(')
+      && evidenceWriter.includes('(?:path|pid|hwnd|handle|title|url|token)')
+      && !/(?:\$MediaPath|\$ProcessId|\$OwnerHandle|\.Exception)/.test(evidenceWriter)
+      && /schemaVersion\s*=\s*1/.test(evidenceInitializer)
+      && !/^\s*[A-Za-z0-9_]*(?:path|pid|hwnd|handle|title|url|token)[A-Za-z0-9_]*\s*=/im.test(evidenceInitializer),
+    'Installed native-picker evidence must remain atomic, bounded, and free of paths, process/window identities, titles, URLs, tokens, and exception text',
+  );
+  const localMediaFunctionStart = script.indexOf('function Inspect-InstalledLocalMediaFlow {');
+  const localMediaFunctionEnd = script.indexOf('\nfunction ', localMediaFunctionStart + 1);
+  const localMediaFunction = localMediaFunctionStart >= 0
+    && localMediaFunctionEnd > localMediaFunctionStart
+    ? script.slice(localMediaFunctionStart, localMediaFunctionEnd)
+    : '';
+  invariant(
+    localMediaFunction.includes('$ownerHandle = $applicationProcess.MainWindowHandle.ToInt64()')
+      && localMediaFunction.includes('-OwnerHandle $ownerHandle')
+      && /finally\s*\{\s*try\s*\{[\s\S]*?Stop-Process[\s\S]*?\}\s*catch\s*\{/.test(localMediaFunction),
+    'Installed local-media inspector cleanup must be non-throwing and bind automation to the original native owner',
+  );
+  const thirdLaunchStart = script.indexOf('$third = Start-And-WaitForReadiness');
+  const thirdLaunchFlow = thirdLaunchStart >= 0 ? script.slice(thirdLaunchStart) : '';
+  invariant(
+    thirdLaunchFlow.includes('[void](Dismiss-NativeMediaPicker')
+      && /catch\s*\{[\s\S]*?Dismiss-NativeMediaPicker[\s\S]*?Stop-Application[\s\S]*?\bthrow\s*\r?\n\s*\}/.test(thirdLaunchFlow)
+      && !/finally\s*\{\s*Stop-Application\s+-Process\s+\$third\.Process/.test(thirdLaunchFlow),
+    'Installed smoke failure cleanup must dismiss the exact picker and preserve the primary exception',
+  );
   invariant(
     !/(?:Invoke-WebRequest|Invoke-RestMethod|Start-BitsTransfer)/i.test(script),
     'Installed Windows smoke must validate the branch-built installer without a second download',
@@ -909,6 +1001,7 @@ function assertUpdaterSmokeWorkflow(workflow) {
     '${{ runner.temp }}/osg-updater-relaunch-verify.png',
     '${{ runner.temp }}/osg-updater-verify.png',
     '${{ runner.temp }}/osg-updater-close-evidence.json',
+    '${{ runner.temp }}/osg-updater-diagnostics.log',
   ];
   for (const fragment of requiredFragments) {
     invariant(workflow.includes(fragment),
@@ -984,6 +1077,14 @@ function assertSignedUpdaterScript(script) {
     "'app-update.install_failed' = @('extract-or-launch')",
     "'app-update.cancel_requested' = @('user', 'protocol')",
     '$diagnosticEvidence',
+    '$diagnosticEvidenceByteLimit = 128 * 1024',
+    'ConvertTo-BoundedDiagnosticEvidenceRecord',
+    'Write-BoundedDiagnosticEvidence',
+    'Invoke-UpdaterFinalizationStep',
+    '$primaryFailure = $null',
+    '$finalizationFailure = $null',
+    'signed-updater.finalization-warning step=$Name',
+    'signed-updater.identity phase=$Phase webviewDebug=$webviewDebugEvidence',
     '$updatedRegistry.DisplayVersion -ne $UpdatedVersion',
     "'updated-application-relaunched'",
     'Wait-ForApplicationInstance',
@@ -1052,12 +1153,114 @@ function assertSignedUpdaterScript(script) {
     : '';
   invariant(
     instanceFunction.includes("$_.event -eq 'app.environment'")
-      && instanceFunction.includes('$_.version -eq $ExpectedVersion')
-      && instanceFunction.includes("$_.webviewDebug -eq 'present'")
+      && instanceFunction.includes('$_.version -ceq $ExpectedVersion')
+      && instanceFunction.includes("[string]$_.webviewDebug -in @('present', 'absent')")
       && instanceFunction.includes('[string]$_.appInstanceId -notin $ExcludedInstanceIds')
-      && instanceFunction.includes('$candidates.Count -gt 1')
-      && instanceFunction.includes('$candidates.Count -eq 1'),
-    'Signed updater runner must bind each native process to one new versioned diagnostic UUIDv7 identity',
+      && instanceFunction.includes('$candidateInstanceIds.Count -gt 1')
+      && instanceFunction.includes('$candidateInstanceIds.Count -eq 1')
+      && instanceFunction.includes('Sort-Object -Unique')
+      && instanceFunction.includes('switch ([string]$candidate.webviewDebug)')
+      && instanceFunction.includes("'present' { 'present' }")
+      && instanceFunction.includes("'absent' { 'absent' }")
+      && instanceFunction.includes("default { 'unknown' }")
+      && !instanceFunction.includes("$_.webviewDebug -eq 'present'")
+      && !instanceFunction.includes("$_.webviewDebug -eq 'absent'"),
+    'Signed updater runner must bind one new versioned UUIDv7 identity with a valid debug-presence enum without requiring either enum value',
+  );
+  const evidenceRecordStart = script.indexOf('function ConvertTo-BoundedDiagnosticEvidenceRecord {');
+  const evidenceRecordEnd = script.indexOf('\nfunction ', evidenceRecordStart + 1);
+  const evidenceRecordFunction = evidenceRecordStart >= 0 && evidenceRecordEnd > evidenceRecordStart
+    ? script.slice(evidenceRecordStart, evidenceRecordEnd)
+    : '';
+  const evidenceWriterStart = script.indexOf('function Write-BoundedDiagnosticEvidence {');
+  const evidenceWriterEnd = script.indexOf('\nfunction ', evidenceWriterStart + 1);
+  const evidenceWriterFunction = evidenceWriterStart >= 0 && evidenceWriterEnd > evidenceWriterStart
+    ? script.slice(evidenceWriterStart, evidenceWriterEnd)
+    : '';
+  invariant(
+    evidenceRecordFunction.includes("webviewDebug = if ([string]$Entry.event -notin @('app.environment', 'app-update.handoff'))")
+      && evidenceRecordFunction.includes("$webviewDebug -in @('present', 'absent')")
+      && evidenceRecordFunction.includes("'unknown'")
+      && evidenceRecordFunction.includes("$version -match '^\\d+\\.\\d+\\.\\d+(?:-[0-9A-Za-z.-]+)?$'")
+      && evidenceRecordFunction.includes("appInstanceId = if ([string]$Entry.appInstanceId -match")
+      && evidenceRecordFunction.includes('[pscustomobject][ordered]@{')
+      && !evidenceRecordFunction.includes('$Entry | ConvertTo-Json'),
+    'Signed updater runner must redact unknown diagnostic fields into a fixed evidence schema',
+  );
+  invariant(
+    evidenceWriterFunction.includes('Read-DiagnosticEvents -IncludePrevious')
+      && evidenceWriterFunction.includes("'app.environment'")
+      && evidenceWriterFunction.includes('Select-Object -Last 256')
+      && evidenceWriterFunction.includes('ConvertTo-BoundedDiagnosticEvidenceRecord -Entry $_')
+      && evidenceWriterFunction.includes('[Text.Encoding]::UTF8.GetByteCount($encoded)')
+      && evidenceWriterFunction.includes('$script:diagnosticEvidenceByteLimit')
+      && evidenceWriterFunction.includes('[IO.File]::WriteAllText(')
+      && !evidenceWriterFunction.includes('$ExpectedVersion')
+      && !evidenceWriterFunction.includes('$evidenceInstanceIds')
+      && !evidenceWriterFunction.includes('$_.version')
+      && !evidenceWriterFunction.includes('$_.appInstanceId')
+      && !evidenceWriterFunction.includes('$_ | ConvertTo-Json'),
+    'Signed updater runner must retain bounded sanitized lifecycle evidence, including unknown relaunch candidates',
+  );
+  const finalizerStart = script.lastIndexOf('} finally {');
+  const finalizer = finalizerStart >= 0 ? script.slice(finalizerStart) : '';
+  const finalizationStepStart = script.indexOf('function Invoke-UpdaterFinalizationStep {');
+  const finalizationStepEnd = script.indexOf('\nfunction ', finalizationStepStart + 1);
+  const finalizationStep = finalizationStepStart >= 0 && finalizationStepEnd > finalizationStepStart
+    ? script.slice(finalizationStepStart, finalizationStepEnd)
+    : '';
+  invariant(
+    finalizer.includes('if (Test-Path -LiteralPath $diagnosticLog -PathType Leaf)')
+      && finalizer.includes('Write-BoundedDiagnosticEvidence')
+      && !finalizer.includes('$_ | ConvertTo-Json'),
+    'Signed updater runner must write sanitized diagnostic evidence on success and failure',
+  );
+  invariant(
+    finalizationStep.includes('try {')
+      && finalizationStep.includes('& $Action')
+      && finalizationStep.includes('} catch {')
+      && finalizationStep.includes('if ($null -eq $script:finalizationFailure)')
+      && finalizationStep.includes('$script:finalizationFailure = $_')
+      && finalizationStep.includes('signed-updater.finalization-warning step=$Name')
+      && finalizationStep.includes('-ErrorAction SilentlyContinue')
+      && !finalizationStep.includes('throw'),
+    'Signed updater runner must capture every finalization error without throwing from cleanup',
+  );
+  const outerCatchIndex = script.lastIndexOf('} catch {', finalizerStart);
+  const outerCatch = outerCatchIndex >= 0
+    ? script.slice(outerCatchIndex, finalizerStart + '} finally {'.length)
+    : '';
+  const primaryRethrowIndex = script.indexOf('if ($null -ne $primaryFailure)', finalizerStart);
+  const finalizationRethrowIndex = script.indexOf(
+    'if ($null -ne $finalizationFailure)',
+    primaryRethrowIndex,
+  );
+  const requiredFinalizationSteps = [
+    'diagnostic-evidence',
+    'fixture-password',
+    'updated-process',
+    'verification-process',
+    'base-process',
+    'fixture-server',
+    'certificate',
+    'certificate-key',
+  ];
+  invariant(
+    /}\s*catch\s*\{\s*\$primaryFailure\s*=\s*\$_\s*}\s*finally\s*\{/.test(outerCatch)
+      && requiredFinalizationSteps.every((name) => (
+        finalizer.includes(`Invoke-UpdaterFinalizationStep -Name '${name}' -Action {`)
+      ))
+      && primaryRethrowIndex > finalizerStart
+      && finalizationRethrowIndex > primaryRethrowIndex
+      && /if\s*\(\$null\s+-ne\s+\$primaryFailure\)\s*\{\s*throw\s+\$primaryFailure\s*}/
+        .test(script.slice(primaryRethrowIndex, finalizationRethrowIndex))
+      && /if\s*\(\$null\s+-ne\s+\$finalizationFailure\)\s*\{\s*throw\s+\$finalizationFailure\s*}/
+        .test(script.slice(finalizationRethrowIndex))
+      && finalizer.slice(0, primaryRethrowIndex - finalizerStart)
+        .includes("Invoke-UpdaterFinalizationStep -Name 'diagnostic-evidence' -Action {")
+      && !finalizer.slice(0, primaryRethrowIndex - finalizerStart)
+        .includes('\n    throw '),
+    'Signed updater runner must finish every guarded cleanup step and rethrow the primary failure before any finalization failure',
   );
   const settledFunctionStart = script.indexOf('function Wait-ForSettledUpdaterChecks {');
   const settledFunctionEnd = script.indexOf('\nfunction ', settledFunctionStart + 1);
@@ -1148,7 +1351,15 @@ function assertSignedUpdaterScript(script) {
       && exitedRecordIndex < exitDeltaAssertionIndex,
     'Signed updater runner must persist bounded exited evidence before enforcing exit-code and diagnostic deltas',
   );
-  const relaunchedIndex = script.indexOf("Write-SmokePhase -Name 'updated-application-relaunched'");
+  const updatedCandidateIndex = script.indexOf('$updatedCandidates = @(Get-Process');
+  const updatedExactProcessIndex = script.indexOf(
+    '$updatedProcessPath = [IO.Path]::GetFullPath($updatedProcess.Path)',
+    updatedCandidateIndex,
+  );
+  const relaunchedIndex = script.indexOf(
+    "Write-SmokePhase -Name 'updated-application-relaunched'",
+    updatedExactProcessIndex,
+  );
   const instanceWaitIndex = script.indexOf('$updatedInstanceId = Wait-ForApplicationInstance', relaunchedIndex);
   const readyWaitIndex = script.indexOf('Wait-ForReadyApplicationWindow `', instanceWaitIndex);
   const readyPhaseIndex = script.indexOf("Write-SmokePhase -Name 'updated-application-ready'", readyWaitIndex);
@@ -1160,8 +1371,17 @@ function assertSignedUpdaterScript(script) {
   const readyInvocation = readyWaitIndex >= 0 && readyPhaseIndex > readyWaitIndex
     ? script.slice(readyWaitIndex, readyPhaseIndex)
     : '';
+  const exactProcessInvocation = updatedExactProcessIndex >= 0 && relaunchedIndex > updatedExactProcessIndex
+    ? script.slice(updatedExactProcessIndex, relaunchedIndex)
+    : '';
   invariant(
-    relaunchedIndex >= 0
+    updatedCandidateIndex >= 0
+      && script.slice(updatedCandidateIndex, updatedExactProcessIndex).includes('$updatedCandidates.Count -eq 1')
+      && script.slice(updatedCandidateIndex, updatedExactProcessIndex).includes('$updatedCandidates.Count -gt 1')
+      && updatedExactProcessIndex > updatedCandidateIndex
+      && exactProcessInvocation.includes('$updatedProcessPath.Equals($executable, [StringComparison]::OrdinalIgnoreCase)')
+      && exactProcessInvocation.includes("throw 'Signed NSIS updater relaunched an unexpected executable'")
+      && relaunchedIndex > updatedExactProcessIndex
       && relaunchedIndex < instanceWaitIndex
       && instanceWaitIndex < readyWaitIndex
       && readyWaitIndex < readyPhaseIndex
@@ -1174,7 +1394,7 @@ function assertSignedUpdaterScript(script) {
       && readyInvocation.includes('-AppInstanceId $updatedInstanceId')
       && script.slice(settledCheckIndex, frontendReadyIndex).includes('-MinimumChecks 2')
       && script.slice(settledCheckIndex, frontendReadyIndex).includes('-AppInstanceId $updatedInstanceId'),
-    'Signed updater runner must await the updater-relaunched native window and exact frontend before closing it or starting verification',
+    'Signed updater runner must bind the exact installed executable path, native window, and exact frontend before closing the relaunch or starting verification',
   );
   invariant(!/Cert:\\LocalMachine/i.test(script),
     'Signed updater runner must not modify the machine certificate store');
@@ -1527,6 +1747,23 @@ function assertTauriProductionBuildContract(rootDirectory = REPOSITORY_ROOT) {
   invariant(
     mainSource.includes('plain `cargo build --release` retains the development URL'),
     'Desktop release-build diagnostic must explain the retained development URL',
+  );
+
+  const commandsSource = readText(rootDirectory, `${TAURI_DIRECTORY}/src/commands.rs`);
+  const selectMediaStart = commandsSource.indexOf('async fn select_media(');
+  const selectMediaEnd = commandsSource.indexOf('\n}', selectMediaStart);
+  const selectMedia = selectMediaStart >= 0 && selectMediaEnd > selectMediaStart
+    ? commandsSource.slice(selectMediaStart, selectMediaEnd)
+    : '';
+  const fileDialogIndex = selectMedia.indexOf('.file()');
+  const parentIndex = selectMedia.indexOf('.set_parent(&window)', fileDialogIndex);
+  const titleIndex = selectMedia.indexOf('.set_title("Choose video or audio")', parentIndex);
+  invariant(
+    /\bwindow\s*:\s*WebviewWindow\b/.test(selectMedia)
+      && fileDialogIndex >= 0
+      && parentIndex > fileDialogIndex
+      && titleIndex > parentIndex,
+    'Desktop select_media must parent the native picker to the invoking WebviewWindow',
   );
 }
 

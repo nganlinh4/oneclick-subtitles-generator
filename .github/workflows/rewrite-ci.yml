@@ -355,11 +355,19 @@ jobs:
           }
           $expectedVersion = (Get-Content -LiteralPath "package.json" -Raw | ConvertFrom-Json).version
           $resultPath = Join-Path $env:RUNNER_TEMP 'osg-installed-branch-result.json'
+          $pickerEvidencePath = Join-Path $env:RUNNER_TEMP 'osg-installed-native-picker-evidence.json'
+          if (Test-Path -LiteralPath $pickerEvidencePath) {
+            throw 'Installed branch native-picker evidence path was not clean'
+          }
           ./scripts/test-installed-windows.ps1 -InstallerPath $installer.FullName -ExpectedVersion $expectedVersion -IncludeMediaFlow -LocalMediaPath $env:OSG_INSTALLED_LOCAL_MEDIA -ResultPath $resultPath
           if (-not (Test-Path -LiteralPath $resultPath -PathType Leaf)) {
             throw 'Installed branch smoke omitted its structured result evidence'
           }
           Get-Content -LiteralPath $resultPath -Raw | ConvertFrom-Json | Out-Null
+          $pickerEvidence = Get-Content -LiteralPath $pickerEvidencePath -Raw | ConvertFrom-Json
+          if ($pickerEvidence.outcome -cne 'succeeded' -or $pickerEvidence.stage -cne 'dialog-dismissed') {
+            throw 'Installed branch smoke omitted successful native-picker evidence'
+          }
 
       - name: Upload installed WebView screenshots
         if: always()
@@ -369,6 +377,7 @@ jobs:
           path: |
             ${{ runner.temp }}/osg-*.png
             ${{ runner.temp }}/osg-installed-branch-result.json
+            ${{ runner.temp }}/osg-installed-native-picker-evidence.json
           if-no-files-found: warn
           retention-days: 7
 
@@ -443,11 +452,19 @@ jobs:
           }
           $expectedVersion = (Get-Content -LiteralPath "package.json" -Raw | ConvertFrom-Json).version
           $resultPath = Join-Path $env:RUNNER_TEMP 'osg-installed-published-result.json'
+          $pickerEvidencePath = Join-Path $env:RUNNER_TEMP 'osg-installed-native-picker-evidence.json'
+          if (Test-Path -LiteralPath $pickerEvidencePath) {
+            throw 'Installed published native-picker evidence path was not clean'
+          }
           ./scripts/test-installed-windows.ps1 -InstallerPath $installer.FullName -ExpectedVersion $expectedVersion -IncludeMediaFlow -LocalMediaPath $env:OSG_INSTALLED_LOCAL_MEDIA -ResultPath $resultPath
           if (-not (Test-Path -LiteralPath $resultPath -PathType Leaf)) {
             throw 'Installed published smoke omitted its structured result evidence'
           }
           Get-Content -LiteralPath $resultPath -Raw | ConvertFrom-Json | Out-Null
+          $pickerEvidence = Get-Content -LiteralPath $pickerEvidencePath -Raw | ConvertFrom-Json
+          if ($pickerEvidence.outcome -cne 'succeeded' -or $pickerEvidence.stage -cne 'dialog-dismissed') {
+            throw 'Installed published smoke omitted successful native-picker evidence'
+          }
 
       - name: Upload published installed WebView screenshots
         if: always()
@@ -457,5 +474,6 @@ jobs:
           path: |
             ${{ runner.temp }}/osg-*.png
             ${{ runner.temp }}/osg-installed-published-result.json
+            ${{ runner.temp }}/osg-installed-native-picker-evidence.json
           if-no-files-found: warn
           retention-days: 7
