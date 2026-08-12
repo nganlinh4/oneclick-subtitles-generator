@@ -180,6 +180,10 @@ impl ValidatedMediaUrl {
     pub(crate) fn as_str(&self) -> &str {
         self.url.as_str()
     }
+
+    pub(crate) fn allows_direct_mp4_passthrough(&self) -> bool {
+        is_exact_installed_media_smoke_url(self.url.as_str(), &self.url)
+    }
 }
 
 impl fmt::Debug for ValidatedMediaUrl {

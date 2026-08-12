@@ -125,6 +125,7 @@ pub struct DownloadPlan {
     media: MediaSelection,
     subtitle: SubtitleSelection,
     cookies: BrowserCookieSource,
+    direct_mp4_format_id: Option<String>,
 }
 
 impl DownloadPlan {
@@ -161,6 +162,33 @@ impl DownloadPlan {
         {
             return Err(DownloadError::SubtitleMismatch);
         }
+        let direct_mp4_format_id = inventory.direct_mp4_format_id();
+        if direct_mp4_format_id.is_some()
+            && matches!(
+                &media,
+                MediaSelection::Video {
+                    quality: VideoQuality::AtMost(_)
+                }
+            )
+        {
+            return Err(DownloadError::InvalidOption(
+                "direct media has no bounded video height",
+            ));
+        }
+        if let Some(direct_format_id) = direct_mp4_format_id {
+            match &media {
+                MediaSelection::Video {
+                    quality: VideoQuality::Exact(selected),
+                } if selected.format_id() != direct_format_id => {
+                    return Err(DownloadError::FormatMismatch);
+                }
+                MediaSelection::Audio {
+                    quality: AudioQuality::Exact(_),
+                    ..
+                } => return Err(DownloadError::FormatMismatch),
+                _ => {}
+            }
+        }
 
         Ok(Self {
             url,
@@ -171,6 +199,7 @@ impl DownloadPlan {
             media,
             subtitle,
             cookies,
+            direct_mp4_format_id: direct_mp4_format_id.map(str::to_owned),
         })
     }
 
@@ -214,18 +243,29 @@ impl DownloadPlan {
         }
         let ffmpeg = ffmpeg.ok_or(DownloadError::FfmpegRequired)?;
         let mut arguments = base_arguments(self.cookies);
+        let preserve_direct_mp4 = self.direct_mp4_format_id.is_some()
+            && matches!(self.media, MediaSelection::Video { .. });
+        let output = if preserve_direct_mp4 {
+            staging_directory.join("media.mp4")
+        } else {
+            staging_directory.join("media.%(ext)s")
+        };
         arguments.extend([
             OsString::from("--no-simulate"),
             OsString::from("--ffmpeg-location"),
             ffmpeg.path().as_os_str().to_owned(),
             OsString::from("--output"),
-            staging_directory.join("media.%(ext)s").into_os_string(),
+            output.into_os_string(),
             OsString::from("--format"),
             OsString::from(self.format_selector()?),
         ]);
 
+        if preserve_direct_mp4 {
+            arguments.extend([OsString::from("--fixup"), OsString::from("never")]);
+        }
+
         match self.media {
-            MediaSelection::Video { .. } => {
+            MediaSelection::Video { .. } if !preserve_direct_mp4 => {
                 arguments.extend([
                     OsString::from("--merge-output-format"),
                     OsString::from("mp4"),
@@ -233,6 +273,7 @@ impl DownloadPlan {
                     OsString::from("mp4"),
                 ]);
             }
+            MediaSelection::Video { .. } => {}
             MediaSelection::Audio { format, .. } => {
                 arguments.extend([
                     OsString::from("--extract-audio"),
@@ -266,6 +307,24 @@ impl DownloadPlan {
     }
 
     fn format_selector(&self) -> Result<String> {
+        if let Some(format_id) = &self.direct_mp4_format_id {
+            return match &self.media {
+                MediaSelection::Video {
+                    quality: VideoQuality::Best | VideoQuality::Exact(_),
+                }
+                | MediaSelection::Audio {
+                    quality: AudioQuality::Best,
+                    ..
+                } => Ok(format_id.clone()),
+                MediaSelection::Video {
+                    quality: VideoQuality::AtMost(_),
+                }
+                | MediaSelection::Audio {
+                    quality: AudioQuality::Exact(_),
+                    ..
+                } => Err(DownloadError::FormatMismatch),
+            };
+        }
         match &self.media {
             MediaSelection::Video {
                 quality: VideoQuality::Best,
@@ -318,6 +377,7 @@ impl fmt::Debug for DownloadPlan {
             .field("media", &self.media)
             .field("subtitle", &self.subtitle)
             .field("cookies", &self.cookies)
+            .field("direct_mp4_format_id", &self.direct_mp4_format_id)
             .field("binding", &"<redacted>")
             .finish()
     }
@@ -410,6 +470,21 @@ mod tests {
         (url, inventory)
     }
 
+    fn direct_mp4() -> (ValidatedMediaUrl, MediaInventory) {
+        let url = UrlValidator::new(PublicDns, UrlPolicy::SupportedSitesOnly)
+            .validate(
+                "https://github.com/nganlinh4/oneclick-subtitles-generator/releases/download/\
+                 osg-runtime-bundles-v1/osg-installed-media-smoke-v1-aecf6c8ef3977cd4.mp4",
+            )
+            .unwrap();
+        let inventory = MediaInventory::from_json(
+            &url,
+            br#"{"title":"direct","direct":true,"_type":"video","format_id":"0","ext":"unknown_video"}"#,
+        )
+        .unwrap();
+        (url, inventory)
+    }
+
     #[test]
     fn hostile_url_is_one_final_argument_after_separator() {
         let (url, _) = inspected();
@@ -475,6 +550,139 @@ mod tests {
         )
         .unwrap_err();
         assert!(matches!(error, DownloadError::FormatMismatch));
+    }
+
+    #[test]
+    fn direct_mp4_plan_forces_exact_output_and_omits_byte_mutating_remux() {
+        let (url, inventory) = direct_mp4();
+        let output = tempfile::tempdir().unwrap();
+        let staging = tempfile::tempdir().unwrap();
+        let plan = DownloadPlan::new(
+            url,
+            &inventory,
+            DownloadDestination::from_native_directory(output.path(), "direct").unwrap(),
+            MediaSelection::Video {
+                quality: VideoQuality::Best,
+            },
+            SubtitleSelection::None,
+            BrowserCookieSource::None,
+        )
+        .unwrap();
+        let ffmpeg = FfmpegDirectory::from_executable(&std::env::current_exe().unwrap()).unwrap();
+        let arguments = plan.arguments(staging.path(), Some(&ffmpeg)).unwrap();
+        let output_index = arguments
+            .iter()
+            .position(|argument| argument == "--output")
+            .unwrap();
+        assert_eq!(
+            arguments[output_index + 1],
+            staging.path().join("media.mp4")
+        );
+        let format_index = arguments
+            .iter()
+            .position(|argument| argument == "--format")
+            .unwrap();
+        assert_eq!(arguments[format_index + 1], "0");
+        assert!(!arguments.iter().any(|argument| argument == "--remux-video"));
+        let fixup_index = arguments
+            .iter()
+            .position(|argument| argument == "--fixup")
+            .unwrap();
+        assert_eq!(arguments[fixup_index + 1], "never");
+        assert!(
+            !arguments
+                .iter()
+                .any(|argument| argument == "--merge-output-format")
+        );
+        assert!(
+            !arguments
+                .iter()
+                .any(|argument| argument.to_string_lossy().contains("%(ext)s"))
+        );
+    }
+
+    #[test]
+    fn direct_mp4_exact_selection_must_match_and_uses_the_inspected_id() {
+        let (url, inventory) = direct_mp4();
+        let selected = inventory.select_format("0").unwrap();
+        let output = tempfile::tempdir().unwrap();
+        let staging = tempfile::tempdir().unwrap();
+        let plan = DownloadPlan::new(
+            url,
+            &inventory,
+            DownloadDestination::from_native_directory(output.path(), "direct").unwrap(),
+            MediaSelection::Video {
+                quality: VideoQuality::Exact(selected),
+            },
+            SubtitleSelection::None,
+            BrowserCookieSource::None,
+        )
+        .unwrap();
+        let ffmpeg = FfmpegDirectory::from_executable(&std::env::current_exe().unwrap()).unwrap();
+        let arguments = plan.arguments(staging.path(), Some(&ffmpeg)).unwrap();
+        let format_index = arguments
+            .iter()
+            .position(|argument| argument == "--format")
+            .unwrap();
+        assert_eq!(arguments[format_index + 1], "0");
+
+        let (url, direct_inventory) = direct_mp4();
+        let other_inventory = MediaInventory::from_json(
+            &url,
+            br#"{"formats":[{"format_id":"other","vcodec":"h264","acodec":"aac"}]}"#,
+        )
+        .unwrap();
+        let destination = tempfile::tempdir().unwrap();
+        let mismatch = DownloadPlan::new(
+            url.clone(),
+            &direct_inventory,
+            DownloadDestination::from_native_directory(destination.path(), "direct").unwrap(),
+            MediaSelection::Video {
+                quality: VideoQuality::Exact(other_inventory.select_format("other").unwrap()),
+            },
+            SubtitleSelection::None,
+            BrowserCookieSource::None,
+        )
+        .unwrap_err();
+        assert!(matches!(mismatch, DownloadError::FormatMismatch));
+
+        let audio_inventory = MediaInventory::from_json(
+            &url,
+            br#"{"formats":[{"format_id":"audio","vcodec":"none","acodec":"aac"}]}"#,
+        )
+        .unwrap();
+        let destination = tempfile::tempdir().unwrap();
+        let mismatch = DownloadPlan::new(
+            url,
+            &direct_inventory,
+            DownloadDestination::from_native_directory(destination.path(), "direct").unwrap(),
+            MediaSelection::Audio {
+                quality: AudioQuality::Exact(audio_inventory.select_format("audio").unwrap()),
+                format: AudioDownloadFormat::Mp3,
+            },
+            SubtitleSelection::None,
+            BrowserCookieSource::None,
+        )
+        .unwrap_err();
+        assert!(matches!(mismatch, DownloadError::FormatMismatch));
+    }
+
+    #[test]
+    fn direct_mp4_rejects_height_selection_that_inventory_cannot_prove() {
+        let (url, inventory) = direct_mp4();
+        let output = tempfile::tempdir().unwrap();
+        let error = DownloadPlan::new(
+            url,
+            &inventory,
+            DownloadDestination::from_native_directory(output.path(), "direct").unwrap(),
+            MediaSelection::Video {
+                quality: VideoQuality::AtMost(VideoHeight::new(360).unwrap()),
+            },
+            SubtitleSelection::None,
+            BrowserCookieSource::None,
+        )
+        .unwrap_err();
+        assert!(matches!(error, DownloadError::InvalidOption(_)));
     }
 
     #[test]

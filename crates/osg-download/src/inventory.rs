@@ -100,6 +100,8 @@ pub struct MediaInventory {
     pub subtitles: Vec<SubtitleTrackOption>,
     #[serde(skip)]
     binding: [u8; 32],
+    #[serde(skip)]
+    direct_mp4_format_id: Option<String>,
 }
 
 impl std::fmt::Debug for MediaInventory {
@@ -111,6 +113,7 @@ impl std::fmt::Debug for MediaInventory {
             .field("formats", &self.formats)
             .field("subtitles", &self.subtitles)
             .field("binding", &"<redacted>")
+            .field("direct_mp4_format_id", &self.direct_mp4_format_id)
             .finish()
     }
 }
@@ -127,7 +130,7 @@ impl MediaInventory {
             .and_then(Value::as_str)
             .map_or_else(|| SafeFileStem::new("download"), SafeFileStem::new);
         let duration_seconds = finite_nonnegative(object.get("duration")).map(round_u64);
-        let formats = parse_formats(object)?;
+        let (formats, direct_mp4_format_id) = parse_formats(url, object)?;
         let subtitles = parse_subtitles(object)?;
         Ok(Self {
             title,
@@ -135,6 +138,7 @@ impl MediaInventory {
             formats,
             subtitles,
             binding: source_binding(url),
+            direct_mp4_format_id,
         })
     }
 
@@ -188,6 +192,10 @@ impl MediaInventory {
 
     pub(crate) fn binding(&self) -> [u8; 32] {
         self.binding
+    }
+
+    pub(crate) fn direct_mp4_format_id(&self) -> Option<&str> {
+        self.direct_mp4_format_id.as_deref()
     }
 }
 
@@ -277,11 +285,17 @@ pub(crate) fn source_binding(url: &ValidatedMediaUrl) -> [u8; 32] {
     Sha256::digest(url.as_str().as_bytes()).into()
 }
 
-fn parse_formats(object: &serde_json::Map<String, Value>) -> Result<FormatInventory> {
-    let values = object
-        .get("formats")
-        .and_then(Value::as_array)
-        .ok_or(DownloadError::InvalidInventory("formats are missing"))?;
+fn parse_formats(
+    url: &ValidatedMediaUrl,
+    object: &serde_json::Map<String, Value>,
+) -> Result<(FormatInventory, Option<String>)> {
+    let Some(raw_formats) = object.get("formats") else {
+        return parse_direct_mp4(url, object)
+            .map(|(formats, format_id)| (formats, Some(format_id)));
+    };
+    let values = raw_formats
+        .as_array()
+        .ok_or(DownloadError::InvalidInventory("formats are invalid"))?;
     if values.len() > MAX_FORMATS {
         return Err(DownloadError::InvalidInventory("too many formats"));
     }
@@ -353,19 +367,73 @@ fn parse_formats(object: &serde_json::Map<String, Value>) -> Result<FormatInvent
     if video.is_empty() && audio.is_empty() {
         return Err(DownloadError::InvalidInventory("no usable formats"));
     }
-    Ok(FormatInventory {
-        video,
-        audio,
-        qualities: quality_map
-            .into_iter()
-            .rev()
-            .map(|(height, (has_combined, has_video_only))| QualityOption {
-                height,
-                has_combined,
-                has_video_only,
-            })
-            .collect(),
-    })
+    Ok((
+        FormatInventory {
+            video,
+            audio,
+            qualities: quality_map
+                .into_iter()
+                .rev()
+                .map(|(height, (has_combined, has_video_only))| QualityOption {
+                    height,
+                    has_combined,
+                    has_video_only,
+                })
+                .collect(),
+        },
+        None,
+    ))
+}
+
+fn parse_direct_mp4(
+    url: &ValidatedMediaUrl,
+    object: &serde_json::Map<String, Value>,
+) -> Result<(FormatInventory, String)> {
+    if object.get("direct").and_then(Value::as_bool) != Some(true) {
+        return Err(DownloadError::InvalidInventory("formats are missing"));
+    }
+    if object.get("_type").and_then(Value::as_str) != Some("video") {
+        return Err(DownloadError::InvalidInventory(
+            "direct media type is invalid",
+        ));
+    }
+    if !url.allows_direct_mp4_passthrough() {
+        return Err(DownloadError::InvalidInventory(
+            "direct media passthrough is not approved",
+        ));
+    }
+    let format_id = object
+        .get("format_id")
+        .and_then(Value::as_str)
+        .filter(|id| valid_token(id, 64))
+        .ok_or(DownloadError::InvalidInventory(
+            "direct format ID is invalid",
+        ))?;
+    let container = object
+        .get("ext")
+        .and_then(Value::as_str)
+        .map_or(FormatContainer::Other, parse_container);
+    let format_id = format_id.to_owned();
+    Ok((
+        FormatInventory {
+            video: vec![VideoFormatOption {
+                format_id: format_id.clone(),
+                container,
+                width: None,
+                height: None,
+                fps_milli: None,
+                codec: None,
+                // The generic direct result does not expose stream metadata. Treat it as combined so
+                // an exact selection never asks yt-dlp to locate a separate audio capability.
+                includes_audio: true,
+                size_bytes: None,
+                bitrate_kbps: None,
+            }],
+            audio: Vec::new(),
+            qualities: Vec::new(),
+        },
+        format_id,
+    ))
 }
 
 fn parse_subtitles(object: &serde_json::Map<String, Value>) -> Result<Vec<SubtitleTrackOption>> {
@@ -543,6 +611,88 @@ mod tests {
         let debug = format!("{inventory:?}");
         assert!(!debug.contains("secret"));
         assert!(debug.contains("<redacted>"));
+    }
+
+    #[test]
+    fn accepts_only_bounded_direct_mp4_inventory_without_serializing_source_fields() {
+        let source = url(
+            "https://github.com/nganlinh4/oneclick-subtitles-generator/releases/download/\
+             osg-runtime-bundles-v1/osg-installed-media-smoke-v1-aecf6c8ef3977cd4.mp4",
+        );
+        let inventory = MediaInventory::from_json(
+            &source,
+            br#"{
+              "title":"fixture", "direct":true, "_type":"video",
+              "format_id":"0", "ext":"unknown_video",
+              "url":"https://redirected.invalid/private", "_filename":"C:/private/media.mp4"
+            }"#,
+        )
+        .unwrap();
+        assert_eq!(inventory.direct_mp4_format_id(), Some("0"));
+        assert_eq!(inventory.formats.video.len(), 1);
+        assert!(inventory.formats.audio.is_empty());
+        assert!(inventory.formats.qualities.is_empty());
+        let format = &inventory.formats.video[0];
+        assert_eq!(format.format_id, "0");
+        assert_eq!(format.container, FormatContainer::Other);
+        assert!(format.includes_audio);
+        assert_eq!(format.width, None);
+        assert_eq!(format.height, None);
+        assert_eq!(format.codec, None);
+
+        let serialized_value = serde_json::to_value(&inventory).unwrap();
+        assert_eq!(
+            serialized_value
+                .as_object()
+                .unwrap()
+                .keys()
+                .map(String::as_str)
+                .collect::<BTreeSet<_>>(),
+            BTreeSet::from(["durationSeconds", "formats", "subtitles", "title"])
+        );
+        let serialized = serialized_value.to_string();
+        assert!(!serialized.contains("redirected"));
+        assert!(!serialized.contains("private"));
+        assert!(!serialized.contains("filename"));
+        assert!(!serialized.contains("http"));
+        assert!(serialized.contains(r#""formatId":"0""#));
+    }
+
+    #[test]
+    fn rejects_unbounded_or_masquerading_direct_inventory() {
+        let mp4 = url(
+            "https://github.com/nganlinh4/oneclick-subtitles-generator/releases/download/\
+             osg-runtime-bundles-v1/osg-installed-media-smoke-v1-aecf6c8ef3977cd4.mp4",
+        );
+        let invalid = [
+            br#"{"direct":false,"_type":"video","format_id":"0"}"#.as_slice(),
+            br#"{"direct":true,"_type":"audio","format_id":"0"}"#.as_slice(),
+            br#"{"direct":true,"_type":"video","format_id":"bad/id"}"#.as_slice(),
+            br#"{"direct":true,"_type":"video"}"#.as_slice(),
+            br#"{"direct":true,"_type":"video","format_id":"0","formats":null}"#.as_slice(),
+            br#"{"direct":true,"_type":"video","format_id":"0","formats":[]}"#.as_slice(),
+        ];
+        for json in invalid {
+            assert!(MediaInventory::from_json(&mp4, json).is_err());
+        }
+        let oversized = format!(
+            r#"{{"direct":true,"_type":"video","format_id":"{}"}}"#,
+            "a".repeat(65)
+        );
+        assert!(MediaInventory::from_json(&mp4, oversized.as_bytes()).is_err());
+
+        for unapproved in [
+            url("https://youtube.com/watch?v=direct"),
+            url("https://youtube.com/media.MP4"),
+        ] {
+            assert!(
+                MediaInventory::from_json(
+                    &unapproved,
+                    br#"{"direct":true,"_type":"video","format_id":"0"}"#,
+                )
+                .is_err()
+            );
+        }
     }
 
     #[test]

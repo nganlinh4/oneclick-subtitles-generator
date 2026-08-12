@@ -53,11 +53,34 @@ fn main() {
         return;
     }
     if arguments.iter().any(|argument| argument == "--dump-single-json") {
+        if arguments.last().is_some_and(|argument| argument.ends_with(".mp4")) {
+            println!(
+                r#"{{"title":"Mock direct","direct":true,"_type":"video","format_id":"0","ext":"unknown_video"}}"#
+            );
+            return;
+        }
         println!(r#"{{"title":"Mock / title","duration":42.5,"formats":[{{"format_id":"137","ext":"mp4","height":1080,"vcodec":"h264","acodec":"none"}},{{"format_id":"140","ext":"m4a","vcodec":"none","acodec":"aac"}}],"subtitles":{{"en":[{{"ext":"vtt"}}]}}}}"#);
         return;
     }
 
     let template = option_value(&arguments, "--output").expect("mock requires --output");
+    if arguments.last().is_some_and(|argument| argument.ends_with(".mp4")) {
+        assert_eq!(option_value(&arguments, "--format"), Some("0"));
+        if let Some(extension) = option_value(&arguments, "--audio-format") {
+            assert!(template.contains("%(ext)s"));
+            fs::write(template.replace("%(ext)s", extension), b"mock-direct-audio").unwrap();
+        } else {
+            assert!(template.ends_with("media.mp4"));
+            assert!(!template.contains("%(ext)s"));
+            assert!(!arguments.iter().any(|argument| argument == "--remux-video"));
+            assert!(!arguments
+                .iter()
+                .any(|argument| argument == "--merge-output-format"));
+            fs::write(template, b"mock-direct-media").unwrap();
+        }
+        println!("OSG_PROGRESS\tfinished\t17\t17\tNA\t17\t0");
+        return;
+    }
     let extension = option_value(&arguments, "--audio-format").unwrap_or("mp4");
     let media_path = PathBuf::from(template.replace("%(ext)s", extension));
     fs::write(&media_path, b"mock-media").unwrap();

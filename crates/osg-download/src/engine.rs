@@ -563,6 +563,70 @@ mod tests {
     }
 
     #[test]
+    fn direct_mp4_process_preserves_source_bytes_without_remux() {
+        let ffmpeg = tempfile::tempdir().unwrap();
+        let engine = engine(&ffmpeg);
+        let control = RunControl::new(Duration::from_secs(5)).unwrap();
+        let url = engine
+            .validate_url(
+                "https://github.com/nganlinh4/oneclick-subtitles-generator/releases/download/\
+                 osg-runtime-bundles-v1/osg-installed-media-smoke-v1-aecf6c8ef3977cd4.mp4",
+            )
+            .unwrap();
+        let inventory = engine
+            .inspect(&url, BrowserCookieSource::None, &control)
+            .unwrap();
+        assert_eq!(inventory.direct_mp4_format_id(), Some("0"));
+        let output = tempfile::tempdir().unwrap();
+        let plan = DownloadPlan::new(
+            url,
+            &inventory,
+            DownloadDestination::from_native_directory(output.path(), "direct").unwrap(),
+            MediaSelection::Video {
+                quality: VideoQuality::Best,
+            },
+            SubtitleSelection::None,
+            BrowserCookieSource::None,
+        )
+        .unwrap();
+        let result = engine.download(&plan, &control).unwrap();
+        assert_eq!(fs::read(result.media_path()).unwrap(), b"mock-direct-media");
+        assert_eq!(result.summary().media_filename, "direct.mp4");
+    }
+
+    #[test]
+    fn direct_mp4_audio_uses_the_inspected_format_before_native_extraction() {
+        let ffmpeg = tempfile::tempdir().unwrap();
+        let engine = engine(&ffmpeg);
+        let control = RunControl::new(Duration::from_secs(5)).unwrap();
+        let url = engine
+            .validate_url(
+                "https://github.com/nganlinh4/oneclick-subtitles-generator/releases/download/\
+                 osg-runtime-bundles-v1/osg-installed-media-smoke-v1-aecf6c8ef3977cd4.mp4",
+            )
+            .unwrap();
+        let inventory = engine
+            .inspect(&url, BrowserCookieSource::None, &control)
+            .unwrap();
+        let output = tempfile::tempdir().unwrap();
+        let plan = DownloadPlan::new(
+            url,
+            &inventory,
+            DownloadDestination::from_native_directory(output.path(), "direct-audio").unwrap(),
+            MediaSelection::Audio {
+                quality: AudioQuality::Best,
+                format: AudioDownloadFormat::Mp3,
+            },
+            SubtitleSelection::None,
+            BrowserCookieSource::None,
+        )
+        .unwrap();
+        let result = engine.download(&plan, &control).unwrap();
+        assert_eq!(fs::read(result.media_path()).unwrap(), b"mock-direct-audio");
+        assert_eq!(result.summary().media_filename, "direct-audio.mp3");
+    }
+
+    #[test]
     fn publishes_typed_audio_selection() {
         let ffmpeg = tempfile::tempdir().unwrap();
         let engine = engine(&ffmpeg);
