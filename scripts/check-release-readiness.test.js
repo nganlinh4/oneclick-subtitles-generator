@@ -14,6 +14,8 @@ const {
   assertProductionCsp,
   assertEffectiveToolchain,
   assertInstalledSmokeScript,
+  assertCiUpdaterFixtureDebugPortSource,
+  assertCiUpdaterFixtureHandoffSource,
   assertLoopbackAuditManifest,
   assertManagedEngineDelivery,
   assertNativeToolDelivery,
@@ -26,6 +28,7 @@ const {
   assertUpdaterFixtureSource,
   assertUpdaterSmokeWorkflow,
   assertSignedUpdaterScript,
+  assertTauriNsisBootstrapScript,
   assertTauriProductionBuildContract,
   assertWorkerResources,
   assertWorkflowCommands,
@@ -47,6 +50,26 @@ const UPDATER_SMOKE_WORKFLOW = fs.readFileSync(
 );
 const SIGNED_UPDATER_SCRIPT = fs.readFileSync(
   path.join(__dirname, 'test-signed-updater-windows.ps1'),
+  'utf8',
+);
+const TAURI_NSIS_BOOTSTRAP_SCRIPT = fs.readFileSync(
+  path.join(__dirname, 'prepare-tauri-nsis.ps1'),
+  'utf8',
+);
+const DESKTOP_SOURCE = fs.readFileSync(
+  path.join(__dirname, '..', 'apps', 'desktop', 'src-tauri', 'src', 'lib.rs'),
+  'utf8',
+);
+const CI_UPDATER_ARGUMENT_SOURCE = fs.readFileSync(
+  path.join(__dirname, '..', 'apps', 'desktop', 'src-tauri', 'src', 'ci_updater_fixture.rs'),
+  'utf8',
+);
+const UPDATER_SOURCE = fs.readFileSync(
+  path.join(__dirname, '..', 'apps', 'desktop', 'src-tauri', 'src', 'updater.rs'),
+  'utf8',
+);
+const CARGO_LOCK_SOURCE = fs.readFileSync(
+  path.join(__dirname, '..', 'Cargo.lock'),
   'utf8',
 );
 
@@ -321,12 +344,127 @@ test('installed Windows smoke proves persistence, media, tools, logs, relaunch, 
   );
 });
 
+test('Tauri NSIS bootstrap is pinned, bounded, verified, and atomically staged', () => {
+  assert.doesNotThrow(() => assertTauriNsisBootstrapScript(TAURI_NSIS_BOOTSTRAP_SCRIPT));
+  assert.doesNotThrow(() => assertTauriNsisBootstrapScript(
+    TAURI_NSIS_BOOTSTRAP_SCRIPT.replace(/\r?\n/g, '\r\n'),
+  ));
+  for (const [label, bootstrap, newline] of [
+    ['LF', TAURI_NSIS_BOOTSTRAP_SCRIPT.replace(/\r\n/g, '\n'), '\n'],
+    ['CRLF', TAURI_NSIS_BOOTSTRAP_SCRIPT.replace(/\r?\n/g, '\r\n'), '\r\n'],
+  ]) {
+    const preferenceBoundary = `$ErrorActionPreference = 'Stop'${newline}`;
+    for (const earlyTermination of ['return', 'exit 0']) {
+      const weakened = bootstrap.replace(
+        preferenceBoundary,
+        `${preferenceBoundary}${earlyTermination}${newline}`,
+      );
+      assert.notEqual(weakened, bootstrap, `${label} mutation must alter the bootstrap`);
+      assert.throws(
+        () => assertTauriNsisBootstrapScript(weakened),
+        /exact executable prologue and top-level success boundary/,
+        `${label} bootstrap must reject standalone ${earlyTermination}`,
+      );
+    }
+    assert.throws(
+      () => assertTauriNsisBootstrapScript(
+        `if ($false) {${newline}${bootstrap}${newline}}${newline}`,
+      ),
+      /exact executable prologue and top-level success boundary/,
+      `${label} bootstrap must reject a dead top-level wrapper`,
+    );
+    const bodyBoundary = `$repositoryRoot = [IO.Path]::GetFullPath((Join-Path $PSScriptRoot '..'))`;
+    const successBoundary =
+      "Write-Host 'Prepared the verified Tauri NSIS 3.11 toolchain in the exact Windows user cache.'";
+    const deadMiddleWrapper = bootstrap
+      .replace(bodyBoundary, `function Invoke-DeadBootstrap {${newline}${bodyBoundary}`)
+      .replace(successBoundary, `}${newline}${successBoundary}`);
+    assert.notEqual(deadMiddleWrapper, bootstrap, `${label} dead-wrapper mutation must alter the bootstrap`);
+    assert.throws(
+      () => assertTauriNsisBootstrapScript(deadMiddleWrapper),
+      /exact reviewed executable source/,
+      `${label} bootstrap must reject reviewed operations hidden in a dead function`,
+    );
+  }
+  const weakenedVariants = [
+    TAURI_NSIS_BOOTSTRAP_SCRIPT.replace(
+      "if ($desktopPackage.devDependencies.'@tauri-apps/cli' -cne '2.11.4') {",
+      'if ($false) {',
+    ),
+    TAURI_NSIS_BOOTSTRAP_SCRIPT.replace(
+      'https://github.com/tauri-apps/binary-releases/releases/download/nsis-3.11/nsis-3.11.zip',
+      'https://evil.example/nsis-3.11.zip',
+    ),
+    TAURI_NSIS_BOOTSTRAP_SCRIPT.replace(
+      "    Url = 'https://github.com/tauri-apps/binary-releases/releases/download/nsis-3.11/nsis-3.11.zip'",
+      "    Url = 'https://evil.example/nsis-3.11.zip'",
+    ) + "\n#    Url = 'https://github.com/tauri-apps/binary-releases/releases/download/nsis-3.11/nsis-3.11.zip'\n",
+    TAURI_NSIS_BOOTSTRAP_SCRIPT.replace(
+      'c7d27f780ddb6cffb4730138cd1591e841f4b7edb155856901cdf5f214394fa1',
+      '0'.repeat(64),
+    ),
+    TAURI_NSIS_BOOTSTRAP_SCRIPT.replace('Size = 2361546L', 'Size = 1L'),
+    TAURI_NSIS_BOOTSTRAP_SCRIPT.replace("--proto-redir '=https'", "--proto-redir '=all'"),
+    TAURI_NSIS_BOOTSTRAP_SCRIPT.replace(
+      "    --proto-redir '=https' `",
+      "    --proto-redir '=all' `",
+    ) + "\n#    --proto-redir '=https' `\n",
+    TAURI_NSIS_BOOTSTRAP_SCRIPT.replace('--retry 4', '--retry 0'),
+    TAURI_NSIS_BOOTSTRAP_SCRIPT.replace('--retry-all-errors', '--retry-connrefused'),
+    TAURI_NSIS_BOOTSTRAP_SCRIPT.replace('--retry-max-time 120', '--retry-max-time 1200'),
+    TAURI_NSIS_BOOTSTRAP_SCRIPT.replace('--max-time 180', '--max-time 1800'),
+    TAURI_NSIS_BOOTSTRAP_SCRIPT.replace(
+      'Assert-PinnedFile -Path $Destination -Artifact $Artifact',
+      '# response verification removed',
+    ),
+    TAURI_NSIS_BOOTSTRAP_SCRIPT.replace(
+      '  Assert-PinnedFile -Path $Destination -Artifact $Artifact',
+      '  return',
+    ) + '\n#  Assert-PinnedFile -Path $Destination -Artifact $Artifact\n',
+    TAURI_NSIS_BOOTSTRAP_SCRIPT.replace(
+      '  Assert-PinnedFile -Path $Destination -Artifact $Artifact',
+      '  return\n<#\n  Assert-PinnedFile -Path $Destination -Artifact $Artifact\n#>',
+    ),
+    TAURI_NSIS_BOOTSTRAP_SCRIPT.replace(
+      "$nsisRoot = Join-Path $CacheRoot 'NSIS'",
+      "$nsisRoot = Join-Path $CacheRoot 'unreviewed'",
+    ),
+    TAURI_NSIS_BOOTSTRAP_SCRIPT.replace(
+      "$nsisRoot = Join-Path $CacheRoot 'NSIS'",
+      "$nsisRoot = Join-Path $CacheRoot 'unreviewed'",
+    ) + "\n# $nsisRoot = Join-Path $CacheRoot 'NSIS'\n",
+    TAURI_NSIS_BOOTSTRAP_SCRIPT.replace(
+      "throw 'Refusing to use a non-directory or reparse-point NSIS bootstrap root'",
+      'return',
+    ),
+    TAURI_NSIS_BOOTSTRAP_SCRIPT.replace(
+      "Copy-Item -LiteralPath $tauriPlugin -Destination (Join-Path $pluginDirectory 'nsis_tauri_utils.dll')",
+      '# plugin injection removed',
+    ),
+    TAURI_NSIS_BOOTSTRAP_SCRIPT.replace(
+      "  Copy-Item -LiteralPath $tauriPlugin -Destination (Join-Path $pluginDirectory 'nsis_tauri_utils.dll')",
+      '  return',
+    ) + "\n#  Copy-Item -LiteralPath $tauriPlugin -Destination (Join-Path $pluginDirectory 'nsis_tauri_utils.dll')\n",
+    TAURI_NSIS_BOOTSTRAP_SCRIPT.replace("'Include\\Win\\RestartManager.nsh'", "'Include\\unreviewed.nsh'"),
+    `${TAURI_NSIS_BOOTSTRAP_SCRIPT}\nInvoke-WebRequest https://example.test/fallback.zip\n`,
+    `${TAURI_NSIS_BOOTSTRAP_SCRIPT}\n# http://example.test/fallback.zip\n`,
+  ];
+  for (const [index, weakened] of weakenedVariants.entries()) {
+    assert.throws(
+      () => assertTauriNsisBootstrapScript(weakened),
+      /Tauri NSIS bootstrap/,
+      `Tauri NSIS hostile mutation ${index} must fail closed`,
+    );
+  }
+});
+
 test('signed updater smoke is isolated, signed, installed, and persistent', () => {
   assert.doesNotThrow(() => assertUpdaterSmokeWorkflow(UPDATER_SMOKE_WORKFLOW));
   for (const fragment of [
     'workflow_dispatch:',
     'OSG_ENABLE_SIGNED_UPDATER_FIXTURE: "1"',
     'production,ci-updater-fixture',
+    './scripts/prepare-tauri-nsis.ps1',
     './scripts/test-signed-updater-windows.ps1',
     "url = 'https://localhost:38443/update.exe'",
     '${{ runner.temp }}/osg-updater-diagnostics.log',
@@ -342,10 +480,104 @@ test('signed updater smoke is isolated, signed, installed, and persistent', () =
   assert.throws(() => assertUpdaterSmokeWorkflow(
     `${UPDATER_SMOKE_WORKFLOW}\n# \${{ secrets.UNREVIEWED_SECRET }}\n`,
   ), /two reviewed updater signing secrets/);
+  for (const argument of [
+    '-CacheRoot C:\\unreviewed',
+    '-ScratchRoot C:\\unreviewed',
+  ]) {
+    assert.throws(
+      () => assertUpdaterSmokeWorkflow(UPDATER_SMOKE_WORKFLOW.replace(
+        'run: ./scripts/prepare-tauri-nsis.ps1',
+        `run: ./scripts/prepare-tauri-nsis.ps1 ${argument}`,
+      )),
+      /Signed updater smoke/,
+      `signed updater must reject NSIS bootstrap argument ${argument}`,
+    );
+  }
+  assert.throws(
+    () => assertUpdaterSmokeWorkflow(UPDATER_SMOKE_WORKFLOW.replace(
+      'run: ./scripts/prepare-tauri-nsis.ps1',
+      'run: |\n          Write-Host decoy\n          run: ./scripts/prepare-tauri-nsis.ps1',
+    )),
+    /Signed updater smoke/,
+    'signed updater must reject an NSIS bootstrap command hidden in a YAML scalar',
+  );
 });
 
 test('updater fixture source remains compile-time isolated from production releases', () => {
   assert.doesNotThrow(() => assertUpdaterFixtureSource(path.join(__dirname, '..')));
+  assert.doesNotThrow(() => assertCiUpdaterFixtureDebugPortSource(
+    DESKTOP_SOURCE,
+    CI_UPDATER_ARGUMENT_SOURCE,
+    CARGO_LOCK_SOURCE,
+  ));
+  assert.doesNotThrow(() => assertCiUpdaterFixtureHandoffSource(UPDATER_SOURCE));
+  for (const weakened of [
+    UPDATER_SOURCE.replace(
+      '#[cfg(feature = "ci-updater-fixture")]\n    let webview_debug =',
+      '    let webview_debug =',
+    ),
+    UPDATER_SOURCE.replace(
+      'webview_debug || crate::ci_updater_fixture::configuration().enables_webview_debugging()',
+      'webview_debug && crate::ci_updater_fixture::configuration().enables_webview_debugging()',
+    ),
+    UPDATER_SOURCE.replace(
+      'crate::ci_updater_fixture::configuration().enables_webview_debugging()',
+      'false',
+    ),
+  ]) {
+    assert.throws(
+      () => assertCiUpdaterFixtureHandoffSource(weakened),
+      /Updater fixture handoff/,
+    );
+  }
+  for (const [desktop, fixture] of [
+    [DESKTOP_SOURCE.replace(
+      '#[cfg(feature = "ci-updater-fixture")]\nmod ci_updater_fixture;',
+      'mod ci_updater_fixture;',
+    ), CI_UPDATER_ARGUMENT_SOURCE],
+    [DESKTOP_SOURCE, CI_UPDATER_ARGUMENT_SOURCE.replace(
+      '--osg-ci-updater-debug-port=',
+      '--remote-debugging-port=',
+    )],
+    [DESKTOP_SOURCE, CI_UPDATER_ARGUMENT_SOURCE.replace(
+      'if arguments.len() != 1',
+      'if arguments.len() > 2',
+    )],
+    [DESKTOP_SOURCE, CI_UPDATER_ARGUMENT_SOURCE.replace(
+      'if debug_port < 1024',
+      'if debug_port < 1',
+    )],
+    [DESKTOP_SOURCE, CI_UPDATER_ARGUMENT_SOURCE.replace(
+      '--disable-features=msWebOOUI,msPdfOOUI,msSmartScreenProtection --autoplay-policy=no-user-gesture-required',
+      '--disable-features=msWebOOUI,msPdfOOUI,msSmartScreenProtection --enable-features=RemoveRedirectionBitmap --autoplay-policy=no-user-gesture-required',
+    )],
+    [DESKTOP_SOURCE, CI_UPDATER_ARGUMENT_SOURCE.replace(
+      'format!("{WEBVIEW2_DEFAULT_BROWSER_ARGUMENTS} --remote-debugging-port={port}")',
+      'format!("{WEBVIEW2_DEFAULT_BROWSER_ARGUMENTS} --unreviewed --remote-debugging-port={port}")',
+    )],
+    [DESKTOP_SOURCE.replace(
+      'window_builder.additional_browser_args(&arguments)',
+      'window_builder',
+    ), CI_UPDATER_ARGUMENT_SOURCE],
+  ]) {
+    assert.throws(
+      () => assertCiUpdaterFixtureDebugPortSource(desktop, fixture, CARGO_LOCK_SOURCE),
+      /Updater fixture debug-port/,
+    );
+  }
+  const driftedWryLock = CARGO_LOCK_SOURCE.replace(
+    /(\[\[package]]\r?\nname = "wry"\r?\nversion = )"0\.55\.1"/,
+    '$1"0.56.0"',
+  );
+  assert.notEqual(driftedWryLock, CARGO_LOCK_SOURCE, 'Wry lock mutation must alter Cargo.lock');
+  assert.throws(
+    () => assertCiUpdaterFixtureDebugPortSource(
+      DESKTOP_SOURCE,
+      CI_UPDATER_ARGUMENT_SOURCE,
+      driftedWryLock,
+    ),
+    /reviewed Wry 0\.55\.1 registry package/,
+  );
 });
 
 test('signed updater runner uses isolated HTTPS, the real toast, NSIS relaunch, and durable state', () => {
@@ -355,25 +587,45 @@ test('signed updater runner uses isolated HTTPS, the real toast, NSIS relaunch, 
   ));
   assert.throws(
     () => assertSignedUpdaterScript(SIGNED_UPDATER_SCRIPT.replace(
+      "            -and [string]$_.webviewDebug -ceq 'present' `",
       "            -and [string]$_.webviewDebug -in @('present', 'absent') `",
-      "            -and $_.webviewDebug -eq 'present' `",
     )),
-    /without requiring either enum value/,
+    /confirms the preserved CI debug-port hook/,
   );
   assert.throws(
     () => assertSignedUpdaterScript(SIGNED_UPDATER_SCRIPT.replace(
-      "            -and [string]$_.webviewDebug -in @('present', 'absent') `\n",
+      "            -and [string]$_.webviewDebug -ceq 'present' `\n",
       '',
     )),
-    /valid debug-presence enum/,
+    /confirms the preserved CI debug-port hook/,
   );
   assert.throws(
     () => assertSignedUpdaterScript(SIGNED_UPDATER_SCRIPT.replace(
-      "            -and [string]$_.webviewDebug -in @('present', 'absent') `",
-      "            -and [string]$_.webviewDebug -in @('present', 'absent', 'garbage') `",
+      "            -and [string]$_.webviewDebug -ceq 'present' `",
+      "            -and [string]$_.webviewDebug -ceq 'absent' `",
     )),
-    /valid debug-presence enum/,
+    /confirms the preserved CI debug-port hook/,
   );
+  for (const weakened of [
+    SIGNED_UPDATER_SCRIPT.replace(
+      '$Port -lt 1024 -or $Port -gt 65535',
+      '$Port -lt 1 -or $Port -gt 65535',
+    ),
+    SIGNED_UPDATER_SCRIPT.replace(
+      '"--osg-ci-updater-debug-port=$Port"',
+      '"--remote-debugging-port=$Port"',
+    ),
+    SIGNED_UPDATER_SCRIPT.replace(
+      '-ArgumentList @($debugArgument)',
+      '-ArgumentList @("--unreviewed=$debugPort")',
+    ),
+    `${SIGNED_UPDATER_SCRIPT}\n$env:WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS = '--unreviewed'\n`,
+  ]) {
+    assert.throws(
+      () => assertSignedUpdaterScript(weakened),
+      /(?:bounded CI debug-port argument|only the preserved CI debug-port argument|missing lifecycle proof)/,
+    );
+  }
   assert.throws(
     () => assertSignedUpdaterScript(SIGNED_UPDATER_SCRIPT.replace(
       '            -and $_.version -ceq $ExpectedVersion `',
@@ -806,6 +1058,68 @@ test('workflow is unsigned, read-only, credentialless, and locked', () => {
     'utf8',
   );
   assert.doesNotThrow(() => assertWorkflowCommands(workflow));
+  const nativeWithoutNsisBootstrap = replaceInWorkflowJob(
+    workflow,
+    'native-matrix',
+    './scripts/prepare-tauri-nsis.ps1',
+    '# verified NSIS bootstrap removed',
+  );
+  assert.throws(
+    () => assertWorkflowCommands(nativeWithoutNsisBootstrap),
+    /native-matrix must prepare verified NSIS/,
+  );
+  const branchWithoutNsisBootstrap = replaceInWorkflowJob(
+    workflow,
+    'windows-installed-smoke',
+    './scripts/prepare-tauri-nsis.ps1',
+    '# verified NSIS bootstrap removed',
+  );
+  assert.throws(
+    () => assertWorkflowCommands(branchWithoutNsisBootstrap),
+    /installed-smoke must prepare the verified Tauri NSIS cache/,
+  );
+  for (const [jobName, failurePattern] of [
+    ['native-matrix', /native-matrix must prepare verified NSIS/],
+    ['windows-installed-smoke', /installed-smoke must prepare the verified Tauri NSIS cache/],
+  ]) {
+    for (const argument of [
+      '-CacheRoot C:\\unreviewed',
+      '-ScratchRoot C:\\unreviewed',
+    ]) {
+      const workflowWithBootstrapOverride = replaceInWorkflowJob(
+        workflow,
+        jobName,
+        'run: ./scripts/prepare-tauri-nsis.ps1',
+        `run: ./scripts/prepare-tauri-nsis.ps1 ${argument}`,
+      );
+      assert.throws(
+        () => assertWorkflowCommands(workflowWithBootstrapOverride),
+        failurePattern,
+        `${jobName} must reject NSIS bootstrap argument ${argument}`,
+      );
+    }
+    const workflowWithScalarDecoy = replaceInWorkflowJob(
+      workflow,
+      jobName,
+      'run: ./scripts/prepare-tauri-nsis.ps1',
+      'run: |\n          Write-Host decoy\n          run: ./scripts/prepare-tauri-nsis.ps1',
+    );
+    assert.throws(
+      () => assertWorkflowCommands(workflowWithScalarDecoy),
+      failurePattern,
+      `${jobName} must reject an NSIS bootstrap command hidden in a YAML scalar`,
+    );
+  }
+  const nativeNsisBootstrapOnEveryHost = replaceInWorkflowJob(
+    workflow,
+    'native-matrix',
+    "if: github.event_name == 'workflow_dispatch' && matrix.rust-target == 'x86_64-pc-windows-msvc'",
+    "if: github.event_name == 'workflow_dispatch'",
+  );
+  assert.throws(
+    () => assertWorkflowCommands(nativeNsisBootstrapOnEveryHost),
+    /native-matrix must prepare verified NSIS only for manual Windows packaging/,
+  );
   assert.throws(
     () => assertWorkflowCommands(workflow.replace('contents: read', 'contents: write')),
     /permissions must remain contents: read only/,

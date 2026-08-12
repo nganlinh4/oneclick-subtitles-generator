@@ -1,6 +1,8 @@
 mod asr;
 mod background;
 mod cache;
+#[cfg(feature = "ci-updater-fixture")]
+mod ci_updater_fixture;
 mod commands;
 mod diagnostics;
 mod download;
@@ -123,6 +125,9 @@ use voice_samples::{
     reason = "the complete Tauri command allowlist is intentionally visible in one audited handler"
 )]
 pub fn run() {
+    #[cfg(feature = "ci-updater-fixture")]
+    ci_updater_fixture::initialize_from_process_arguments()
+        .unwrap_or_else(|error| panic!("invalid CI updater fixture arguments: {error}"));
     let app = tauri::Builder::default()
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_opener::init())
@@ -392,6 +397,9 @@ fn setup_app(app: &mut tauri::App) -> Result<(), Box<dyn std::error::Error>> {
 fn record_application_environment(app: &tauri::App) {
     let webview_debug = std::env::var_os("WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS")
         .is_some_and(|value| !value.is_empty());
+    #[cfg(feature = "ci-updater-fixture")]
+    let webview_debug =
+        webview_debug || ci_updater_fixture::configuration().enables_webview_debugging();
     diagnostics::record(
         "app.environment",
         &[
@@ -433,7 +441,15 @@ fn build_main_window(
         // this dynamically-created window becomes ready.
         window_config.maximized = false;
     }
-    WebviewWindowBuilder::from_config(app, &window_config)?
+    let window_builder = WebviewWindowBuilder::from_config(app, &window_config)?;
+    #[cfg(feature = "ci-updater-fixture")]
+    let window_builder =
+        if let Some(arguments) = ci_updater_fixture::configuration().browser_arguments() {
+            window_builder.additional_browser_args(&arguments)
+        } else {
+            window_builder
+        };
+    window_builder
         .initialization_script(window_initialization_script(settings, ui_font_css)?)
         .build()?;
     Ok(())

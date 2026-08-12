@@ -8,6 +8,7 @@ const path = require('node:path');
 const REPOSITORY_ROOT = path.resolve(__dirname, '..');
 const WORKFLOW_PATH = '.github/workflows/rewrite-ci.yml';
 const UPDATER_SMOKE_WORKFLOW_PATH = '.github/workflows/updater-smoke.yml';
+const TAURI_NSIS_BOOTSTRAP_PATH = 'scripts/prepare-tauri-nsis.ps1';
 const TAURI_DIRECTORY = 'apps/desktop/src-tauri';
 const TAURI_CONFIG_PATH = `${TAURI_DIRECTORY}/tauri.conf.json`;
 const NATIVE_TOOL_DELIVERY_PATH =
@@ -30,6 +31,13 @@ const SEVEN_ZIP_RESOLVED =
   'https://registry.npmjs.org/7zip-bin-full/-/7zip-bin-full-26.2.1.tgz';
 const SEVEN_ZIP_INTEGRITY =
   'sha512-h1DE4G8WEJ3/LI4HTcuOpouP7cy9JGqYfZm5fzLhdzw8jI3wFyA9RFu5MP+ICzelKEYmWweRWApEvVWKmJIdVQ==';
+const CI_UPDATER_WRY_VERSION = '0.55.1';
+const CI_UPDATER_WRY_CHECKSUM =
+  '186f9871daa55fd9c016578b810d149de58367113db7fb72b462d2323ce19514';
+const CI_UPDATER_WRY_DEFAULT_BROWSER_ARGUMENTS =
+  '--disable-features=msWebOOUI,msPdfOOUI,msSmartScreenProtection --autoplay-policy=no-user-gesture-required';
+const TAURI_NSIS_BOOTSTRAP_SHA256 =
+  'f16ea99d07f0c9f34bd0e8b183e554d72b7b9b1dc630513f692ba087c417f3ea';
 const DISTRIBUTABLE_FONT_EXTENSION = /\.(?:eot|otf|ttf|woff2?)$/i;
 
 const ACTION_PINS = Object.freeze({
@@ -514,6 +522,237 @@ function assertPinnedActions(workflow) {
   }
 }
 
+function assertTauriNsisBootstrapScript(script) {
+  const normalizedScript = script.replace(/\r\n/g, '\n');
+  const executablePrologue = [
+    '[CmdletBinding()]',
+    'param(',
+    '  [string]$CacheRoot,',
+    '  [string]$ScratchRoot',
+    ')',
+    '',
+    'Set-StrictMode -Version Latest',
+    "$ErrorActionPreference = 'Stop'",
+    '',
+    'if ([Environment]::OSVersion.Platform -ne [PlatformID]::Win32NT) {',
+    "  throw 'The verified Tauri NSIS bootstrap is Windows-only'",
+    '}',
+    '',
+  ].join('\n');
+  const successBoundary =
+    "Write-Host 'Prepared the verified Tauri NSIS 3.11 toolchain in the exact Windows user cache.'";
+  invariant(
+    normalizedScript.startsWith(executablePrologue)
+      && normalizedScript.trimEnd().endsWith(successBoundary)
+      && !/^[ \t]*(?:return|exit)(?:[ \t]+[^#\r\n]+)?[ \t]*(?:#.*)?$/im.test(normalizedScript)
+      && !/^[ \t]*(?:if|while)[ \t]*\([ \t]*(?:\$false|0)[ \t]*\)[ \t]*\{[ \t]*(?:#.*)?$/im
+        .test(normalizedScript),
+    'Tauri NSIS bootstrap must keep its exact executable prologue and top-level success boundary without early termination or dead wrappers',
+  );
+  invariant(
+    crypto.createHash('sha256').update(normalizedScript, 'utf8').digest('hex')
+      === TAURI_NSIS_BOOTSTRAP_SHA256,
+    'Tauri NSIS bootstrap must match the exact reviewed executable source',
+  );
+  invariant(
+    !/<#|#>/.test(script),
+    'Tauri NSIS bootstrap must not contain PowerShell block comments that can hide reviewed controls',
+  );
+  const exactLinePattern = (line) => new RegExp(
+    `^[ \\t]*${escapeRegularExpression(line)}[ \\t]*$`,
+    'm',
+  );
+  const exactLineIndex = (line) => {
+    const match = exactLinePattern(line).exec(script);
+    return match ? match.index : -1;
+  };
+  for (const cliBoundary of [
+    "$desktopPackagePath = Join-Path $repositoryRoot 'apps\\desktop\\package.json'",
+    "if ($desktopPackage.devDependencies.'@tauri-apps/cli' -cne '2.11.4') {",
+    "throw 'The verified NSIS cache contract supports only Tauri CLI 2.11.4'",
+  ]) {
+    invariant(
+      exactLinePattern(cliBoundary).test(script),
+      `Tauri NSIS bootstrap is missing CLI-version boundary: ${cliBoundary}`,
+    );
+  }
+  const pinnedArtifacts = [
+    {
+      name: 'nsis-3.11.zip',
+      url: 'https://github.com/tauri-apps/binary-releases/releases/download/nsis-3.11/nsis-3.11.zip',
+      size: '2361546L',
+      sha256: 'c7d27f780ddb6cffb4730138cd1591e841f4b7edb155856901cdf5f214394fa1',
+      sha1: 'ef7ff767e5cbd9edd22add3a32c9b8f4500bb10d',
+    },
+    {
+      name: 'nsis_tauri_utils.dll',
+      url: 'https://github.com/tauri-apps/nsis-tauri-utils/releases/download/nsis_tauri_utils-v0.5.3/nsis_tauri_utils.dll',
+      size: '34304L',
+      sha256: '5ba143b5db4a87d32d6e7802e033330aae56cbceabe0d1e3ba41948385ad4709',
+      sha1: '75197fee3c6a814fe035788d1c34ead39349b860',
+    },
+  ];
+  for (const artifact of pinnedArtifacts) {
+    const artifactRecord = new RegExp(
+      `^[ \\t]+Name = '${escapeRegularExpression(artifact.name)}'[ \\t]*\\r?\\n`
+        + `[ \\t]+Url = '${escapeRegularExpression(artifact.url)}'[ \\t]*\\r?\\n`
+        + `[ \\t]+Size = ${artifact.size}[ \\t]*\\r?\\n`
+        + `[ \\t]+Sha256 = '${artifact.sha256}'[ \\t]*\\r?\\n`
+        + `[ \\t]+TauriSha1 = '${artifact.sha1}'[ \\t]*$`,
+      'm',
+    );
+    invariant(
+      artifactRecord.test(script),
+      `Tauri NSIS bootstrap is missing the exact ordered metadata for ${artifact.name}`,
+    );
+  }
+  invariant(
+    (script.match(/^[ \t]+Url = 'https:\/\/[^']+'[ \t]*$/gm) || []).length === pinnedArtifacts.length,
+    'Tauri NSIS bootstrap must define exactly two reviewed HTTPS artifact sources',
+  );
+
+  invariant(
+    !/http:\/\//i.test(script)
+      && !/(?:Invoke-WebRequest|Invoke-RestMethod|Start-BitsTransfer|System\.Net\.WebClient)/i.test(script)
+      && !/TAURI_BUNDLER_TOOLS_GITHUB_MIRROR/i.test(script),
+    'Tauri NSIS bootstrap must use only its exact reviewed HTTPS sources',
+  );
+  for (const fragment of [
+    "$curl = Get-Command 'curl.exe' -CommandType Application -ErrorAction Stop",
+    '& $curl.Source `',
+    '--fail `',
+    '--location `',
+    "--proto '=https' `",
+    "--proto-redir '=https' `",
+    '--retry-all-errors `',
+    '--remove-on-error `',
+    '--silent `',
+    '--show-error `',
+    '--output $Destination `',
+    '$Artifact.Url',
+  ]) {
+    invariant(
+      exactLinePattern(fragment).test(script),
+      `Tauri NSIS bootstrap is missing bounded HTTPS download control: ${fragment}`,
+    );
+  }
+  for (const [flag, value] of [
+    ['--max-redirs', '5'],
+    ['--retry', '4'],
+    ['--retry-delay', '2'],
+    ['--retry-max-time', '120'],
+    ['--connect-timeout', '20'],
+    ['--max-time', '180'],
+  ]) {
+    const exactOption = new RegExp(
+      `^[ \\t]*${escapeRegularExpression(flag)}[ \\t]+${value}[ \\t]+\\x60[ \\t]*$`,
+      'm',
+    );
+    invariant(
+      exactOption.test(script),
+      `Tauri NSIS bootstrap must pin bounded curl option ${flag} ${value}`,
+    );
+  }
+  invariant(
+    (script.match(/\bcurl\.exe\b/gi) || []).length === 1,
+    'Tauri NSIS bootstrap must have one fail-closed curl implementation',
+  );
+
+  const fileVerifierStart = exactLineIndex('function Assert-PinnedFile {');
+  const downloaderStart = exactLineIndex('function Receive-PinnedArtifact {');
+  const layoutVerifierStart = exactLineIndex('function Assert-NsisLayout {');
+  invariant(
+    fileVerifierStart >= 0 && downloaderStart > fileVerifierStart
+      && layoutVerifierStart > downloaderStart,
+    'Tauri NSIS bootstrap must define file, download, and layout verification boundaries',
+  );
+  const fileVerifier = script.slice(fileVerifierStart, downloaderStart);
+  const downloader = script.slice(downloaderStart, layoutVerifierStart);
+  invariant(
+    exactLinePattern('if ((Get-Item -LiteralPath $Path).Length -ne $Artifact.Size) {').test(fileVerifier)
+      && exactLinePattern('$sha256 = (Get-FileHash -LiteralPath $Path -Algorithm SHA256).Hash.ToLowerInvariant()').test(fileVerifier)
+      && exactLinePattern('if ($sha256 -cne $Artifact.Sha256) {').test(fileVerifier)
+      && exactLinePattern('$sha1 = (Get-FileHash -LiteralPath $Path -Algorithm SHA1).Hash.ToLowerInvariant()').test(fileVerifier)
+      && exactLinePattern('if ($sha1 -cne $Artifact.TauriSha1) {').test(fileVerifier),
+    'Tauri NSIS bootstrap must verify size, strong SHA-256, and Tauri compatibility SHA-1',
+  );
+  invariant(
+    exactLinePattern('if ($LASTEXITCODE -ne 0) {').test(downloader)
+      && exactLinePattern('Assert-PinnedFile -Path $Destination -Artifact $Artifact').test(downloader),
+    'Tauri NSIS bootstrap must reject curl failures and unverified response bytes',
+  );
+
+  const requiredFiles = [
+    'makensis.exe',
+    'Bin\\makensis.exe',
+    'Stubs\\lzma-x86-unicode',
+    'Stubs\\lzma_solid-x86-unicode',
+    'Plugins\\x86-unicode\\additional\\nsis_tauri_utils.dll',
+    'Include\\MUI2.nsh',
+    'Include\\FileFunc.nsh',
+    'Include\\x64.nsh',
+    'Include\\nsDialogs.nsh',
+    'Include\\WinMessages.nsh',
+    'Include\\Win\\COM.nsh',
+    'Include\\Win\\Propkey.nsh',
+    'Include\\Win\\RestartManager.nsh',
+  ];
+  for (const [index, requiredFile] of requiredFiles.entries()) {
+    const suffix = index === requiredFiles.length - 1 ? '' : ',';
+    invariant(
+      exactLinePattern(`'${requiredFile}'${suffix}`).test(script),
+      `Tauri NSIS bootstrap is missing Tauri-required layout proof: ${requiredFile}`,
+    );
+  }
+  for (const cacheBoundary of [
+    "$CacheRoot = Join-Path $localAppData 'tauri'",
+    "$nsisRoot = Join-Path $CacheRoot 'NSIS'",
+    "Assert-DirectChildPath -Parent $ScratchRoot -Child $workRoot -Label 'NSIS download workspace'",
+    "Assert-DirectChildPath -Parent $CacheRoot -Child $candidateRoot -Label 'NSIS candidate cache'",
+    "Assert-DirectChildPath -Parent $CacheRoot -Child $backupRoot -Label 'NSIS backup cache'",
+    "Assert-DirectChildPath -Parent $CacheRoot -Child $nsisRoot -Label 'Tauri NSIS cache'",
+    "foreach ($trustedRoot in @($CacheRoot, $ScratchRoot)) {",
+    '($rootItem.Attributes -band [IO.FileAttributes]::ReparsePoint) -ne 0) {',
+    "throw 'Refusing to use a non-directory or reparse-point NSIS bootstrap root'",
+    "throw 'Refusing to replace a reparse-point Tauri NSIS cache'",
+  ]) {
+    invariant(
+      exactLinePattern(cacheBoundary).test(script),
+      `Tauri NSIS bootstrap is missing exact-cache safety boundary: ${cacheBoundary}`,
+    );
+  }
+
+  const archiveDownload = exactLineIndex(
+    'Receive-PinnedArtifact -Artifact $artifacts[0] -Destination $nsisArchive',
+  );
+  const pluginDownload = exactLineIndex(
+    'Receive-PinnedArtifact -Artifact $artifacts[1] -Destination $tauriPlugin',
+  );
+  const extraction = exactLineIndex(
+    'Expand-Archive -LiteralPath $nsisArchive -DestinationPath $candidateRoot',
+  );
+  const pluginCopy = exactLineIndex(
+    "Copy-Item -LiteralPath $tauriPlugin -Destination (Join-Path $pluginDirectory 'nsis_tauri_utils.dll')",
+  );
+  const candidateVerification = exactLineIndex('Assert-NsisLayout -Root $expandedRoot');
+  const publication = exactLineIndex('Move-Item -LiteralPath $expandedRoot -Destination $nsisRoot');
+  const finalVerification = exactLineIndex('Assert-NsisLayout -Root $nsisRoot');
+  invariant(
+    archiveDownload >= 0 && pluginDownload > archiveDownload
+      && extraction > pluginDownload && pluginCopy > extraction
+      && candidateVerification > pluginCopy && publication > candidateVerification
+      && finalVerification > publication,
+    'Tauri NSIS bootstrap must verify both downloads and the staged layout before atomic publication',
+  );
+  invariant(
+    exactLinePattern('Move-Item -LiteralPath $nsisRoot -Destination $backupRoot').test(script)
+      && exactLinePattern('Move-Item -LiteralPath $backupRoot -Destination $nsisRoot').test(script)
+      && exactLinePattern('Remove-Item -LiteralPath $candidateRoot -Recurse -Force').test(script)
+      && exactLinePattern('Remove-Item -LiteralPath $workRoot -Recurse -Force').test(script),
+    'Tauri NSIS bootstrap must replace the exact cache recoverably and clean bounded staging roots',
+  );
+}
+
 function assertWorkflowMatrix(workflow) {
   invariant(!/\b(?:ubuntu|macos|windows)-latest\b/i.test(workflow), 'Runner labels must not use mutable *-latest aliases');
 
@@ -547,6 +786,13 @@ function workflowJobBlock(workflow, jobName) {
   const tail = workflow.slice(heading.index + heading[0].length);
   const nextJob = /^  [a-zA-Z0-9_-]+:\s*$/m.exec(tail);
   return nextJob ? tail.slice(0, nextJob.index) : tail;
+}
+
+function exactWorkflowRunMatches(workflow, command) {
+  return [...workflow.matchAll(new RegExp(
+    `^ {8}run:[ \\t]+${escapeRegularExpression(command)}[ \\t]*$`,
+    'gm',
+  ))];
 }
 
 function assertWorkflowToolchainPins(workflow) {
@@ -611,6 +857,7 @@ function assertWorkflowCommands(workflow) {
   const nativeMatrix = workflowJobBlock(workflow, 'native-matrix');
   const branchInstalledSmoke = workflowJobBlock(workflow, 'windows-installed-smoke');
   const publishedInstalledSmoke = workflowJobBlock(workflow, 'windows-published-installed-smoke');
+  const nsisBootstrapCommand = './scripts/prepare-tauri-nsis.ps1';
   const installedMediaFixtureDownload = 'https://github.com/nganlinh4/oneclick-subtitles-generator/releases/download/osg-runtime-bundles-v1/osg-installed-media-smoke-v1-aecf6c8ef3977cd4.mp4';
   const installedMediaFixtureAssignment = /^ {10}\$url = 'https:\/\/github\.com\/nganlinh4\/oneclick-subtitles-generator\/releases\/download\/osg-runtime-bundles-v1\/osg-installed-media-smoke-v1-aecf6c8ef3977cd4\.mp4'\r?$/m;
   const pickerEvidenceAssignment = /^ {10}\$pickerEvidencePath = Join-Path \$env:RUNNER_TEMP 'osg-installed-native-picker-evidence\.json'\r?$/m;
@@ -647,6 +894,31 @@ function assertWorkflowCommands(workflow) {
       pickerEvidenceUpload.test(branchInstalledSmoke) &&
       !branchWithoutInstalledMediaFixture.includes('/releases/download/'),
     'installed-smoke must build, validate, install, and launch the current branch without downloading a published release',
+  );
+  const branchBootstrapRuns = exactWorkflowRunMatches(
+    branchInstalledSmoke,
+    nsisBootstrapCommand,
+  );
+  const branchBootstrapStep = new RegExp(
+    `^ {6}- name: Prepare verified Tauri NSIS toolchain[ \\t]*\\r?\\n`
+      + `^ {8}shell: pwsh[ \\t]*\\r?\\n`
+      + `^ {8}run: ${escapeRegularExpression(nsisBootstrapCommand)}[ \\t]*$`,
+    'm',
+  );
+  const branchBootstrapIndex = branchBootstrapRuns[0]?.index ?? -1;
+  const branchCompileIndex = branchInstalledSmoke.indexOf(
+    'build --features production --no-bundle --ci --target x86_64-pc-windows-msvc -- --locked',
+  );
+  const branchBundleIndex = branchInstalledSmoke.indexOf(
+    'bundle --ci --no-sign --target x86_64-pc-windows-msvc --bundles nsis',
+  );
+  invariant(
+    branchBootstrapStep.test(branchInstalledSmoke)
+      && branchBootstrapIndex >= 0 && branchCompileIndex > branchBootstrapIndex
+      && branchBundleIndex > branchCompileIndex
+      && branchBootstrapRuns.length === 1
+      && (branchInstalledSmoke.match(/\.\/scripts\/prepare-tauri-nsis\.ps1/g) || []).length === 1,
+    'installed-smoke must prepare the verified Tauri NSIS cache exactly once before bundling',
   );
   invariant(
     publishedInstalledSmoke.includes("inputs.job == 'published-installed-smoke'") &&
@@ -690,6 +962,25 @@ function assertWorkflowCommands(workflow) {
   invariant(
     !nativeMatrix.includes('run: npm --prefix apps/desktop run tauri -- build'),
     'native-matrix must not compile a release executable through the raw Tauri script',
+  );
+  const nativeBootstrapStep = new RegExp(
+    `^ {6}- name: Prepare verified Tauri NSIS toolchain[ \\t]*\\r?\\n`
+      + `^ {8}if: github\\.event_name == 'workflow_dispatch' && matrix\\.rust-target == 'x86_64-pc-windows-msvc'[ \\t]*\\r?\\n`
+      + `^ {8}shell: pwsh[ \\t]*\\r?\\n`
+      + `^ {8}run: ${escapeRegularExpression(nsisBootstrapCommand)}[ \\t]*$`,
+    'm',
+  );
+  const nativeBootstrapRuns = exactWorkflowRunMatches(nativeMatrix, nsisBootstrapCommand);
+  const nativeBootstrapIndex = nativeBootstrapRuns[0]?.index ?? -1;
+  const nativeBundleIndex = nativeMatrix.indexOf(
+    'npm --prefix apps/desktop run tauri -- bundle --ci --no-sign --target "${{ matrix.rust-target }}" --bundles "${{ matrix.bundles }}"',
+  );
+  invariant(
+    nativeBootstrapStep.test(nativeMatrix)
+      && nativeBootstrapIndex >= 0 && nativeBundleIndex > nativeBootstrapIndex
+      && nativeBootstrapRuns.length === 1
+      && (nativeMatrix.match(/\.\/scripts\/prepare-tauri-nsis\.ps1/g) || []).length === 1,
+    'native-matrix must prepare verified NSIS only for manual Windows packaging and before bundling',
   );
 
   for (const manualCommand of [
@@ -988,6 +1279,7 @@ function assertUpdaterSmokeWorkflow(workflow) {
     'node scripts/check-release-readiness.js --profile runtime-package --target x86_64-pc-windows-msvc',
     'npm run test:updater-fixture',
     'build --features production,ci-updater-fixture --no-bundle --ci --target x86_64-pc-windows-msvc -- --locked',
+    './scripts/prepare-tauri-nsis.ps1',
     'bundle --features production,ci-updater-fixture --ci --no-sign --target x86_64-pc-windows-msvc --bundles nsis',
     "version = '1.0.0-rc.2'",
     "build = @{ beforeBuildCommand = '' }",
@@ -1007,6 +1299,34 @@ function assertUpdaterSmokeWorkflow(workflow) {
     invariant(workflow.includes(fragment),
       `Signed updater smoke is missing required boundary: ${fragment}`);
   }
+  const nsisBootstrapCommand = './scripts/prepare-tauri-nsis.ps1';
+  const nsisBootstrapRuns = exactWorkflowRunMatches(workflow, nsisBootstrapCommand);
+  const nsisBootstrapStep = new RegExp(
+    `^ {6}- name: Prepare verified Tauri NSIS toolchain[ \\t]*\\r?\\n`
+      + `^ {8}shell: pwsh[ \\t]*\\r?\\n`
+      + `^ {8}run: ${escapeRegularExpression(nsisBootstrapCommand)}[ \\t]*$`,
+    'm',
+  );
+  const nsisBootstrapIndex = nsisBootstrapRuns[0]?.index ?? -1;
+  const baseCompileIndex = workflow.indexOf(
+    'build --features production,ci-updater-fixture --no-bundle --ci --target x86_64-pc-windows-msvc -- --locked',
+  );
+  const baseBundleIndex = workflow.indexOf(
+    'bundle --features production,ci-updater-fixture --ci --no-sign --target x86_64-pc-windows-msvc --bundles nsis',
+  );
+  const signedBundleIndex = workflow.indexOf(
+    'node apps/desktop/node_modules/@tauri-apps/cli/tauri.js build `',
+    baseBundleIndex,
+  );
+  invariant(
+    nsisBootstrapStep.test(workflow)
+      && nsisBootstrapIndex >= 0 && baseCompileIndex > nsisBootstrapIndex
+      && baseBundleIndex > baseCompileIndex
+      && signedBundleIndex > baseBundleIndex
+      && nsisBootstrapRuns.length === 1
+      && (workflow.match(/\.\/scripts\/prepare-tauri-nsis\.ps1/g) || []).length === 1,
+    'Signed updater smoke must prepare the verified NSIS cache once before both bundle operations',
+  );
   invariant(!/github\.com\/[^\s]+\/releases\/download/i.test(workflow),
     'Signed updater smoke must not publish or consume a public application prerelease');
   invariant(!/(?:osg-updater-fixture\.pfx|TAURI_SIGNING_PRIVATE_KEY)[^\r\n]*runner\.temp.*upload/i.test(workflow),
@@ -1015,8 +1335,13 @@ function assertUpdaterSmokeWorkflow(workflow) {
 
 function assertUpdaterFixtureSource(rootDirectory) {
   const cargo = readText(rootDirectory, `${TAURI_DIRECTORY}/Cargo.toml`);
+  const cargoLock = readText(rootDirectory, 'Cargo.lock');
   const build = readText(rootDirectory, `${TAURI_DIRECTORY}/build.rs`);
   const desktop = readText(rootDirectory, `${TAURI_DIRECTORY}/src/lib.rs`);
+  const fixtureArguments = readText(
+    rootDirectory,
+    `${TAURI_DIRECTORY}/src/ci_updater_fixture.rs`,
+  );
   const diagnostics = readText(rootDirectory, `${TAURI_DIRECTORY}/src/diagnostics.rs`);
   const updater = readText(rootDirectory, `${TAURI_DIRECTORY}/src/updater.rs`);
   const config = readJson(rootDirectory, TAURI_CONFIG_PATH);
@@ -1041,6 +1366,8 @@ function assertUpdaterFixtureSource(rootDirectory) {
     && updater.includes('"app-update.handoff"')
     && updater.includes('"WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS"'),
   'Updater fixture endpoint must remain compile-time isolated and exact');
+  assertCiUpdaterFixtureDebugPortSource(desktop, fixtureArguments, cargoLock);
+  assertCiUpdaterFixtureHandoffSource(updater);
   invariant(desktop.includes('app.run(|app, event| handle_application_run_event(app, &event))')
     && desktop.includes('"app.environment"')
     && desktop.includes('"app.page_load_finished"')
@@ -1057,6 +1384,81 @@ function assertUpdaterFixtureSource(rootDirectory) {
   ]), 'Production updater endpoint must remain the official GitHub latest release');
 }
 
+function assertCiUpdaterFixtureHandoffSource(updater) {
+  const handoffDebugState = /let webview_debug = std::env::var_os\("WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS"\)\r?\n\s*\.is_some_and\(\|value\| !value\.is_empty\(\)\);\r?\n\s*#\[cfg\(feature = "ci-updater-fixture"\)\]\r?\n\s*let webview_debug =\r?\n\s*webview_debug \|\| crate::ci_updater_fixture::configuration\(\)\.enables_webview_debugging\(\);/;
+  const debugStateIndex = updater.search(handoffDebugState);
+  const handoffIndex = updater.indexOf('"app-update.handoff"');
+  invariant(
+    debugStateIndex >= 0
+      && handoffIndex > debugStateIndex
+      && (updater.match(/crate::ci_updater_fixture::configuration\(\)\.enables_webview_debugging\(\)/g) || []).length === 1,
+    'Updater fixture handoff must report the feature-gated configured debug state without changing ordinary production semantics',
+  );
+}
+
+function assertCiUpdaterFixtureDebugPortSource(desktop, fixtureArguments, cargoLock) {
+  invariant(
+    typeof cargoLock === 'string',
+    'Updater fixture debug-port defaults must be coupled to the locked Wry package',
+  );
+  const lockedWryPackages = cargoLock
+    .split(/^\s*\[\[package]]\s*$/m)
+    .slice(1)
+    .filter((packageBlock) => /^\s*name\s*=\s*"wry"\s*$/m.test(packageBlock));
+  const lockedWryPackage = lockedWryPackages[0] || '';
+  invariant(
+    lockedWryPackages.length === 1
+      && new RegExp(`^\\s*version\\s*=\\s*"${escapeRegularExpression(CI_UPDATER_WRY_VERSION)}"\\s*$`, 'm')
+        .test(lockedWryPackage)
+      && /^\s*source\s*=\s*"registry\+https:\/\/github\.com\/rust-lang\/crates\.io-index"\s*$/m
+        .test(lockedWryPackage)
+      && new RegExp(`^\\s*checksum\\s*=\\s*"${CI_UPDATER_WRY_CHECKSUM}"\\s*$`, 'm')
+        .test(lockedWryPackage),
+    `Updater fixture debug-port defaults require the reviewed Wry ${CI_UPDATER_WRY_VERSION} registry package`,
+  );
+  const wryDefaultDeclaration =
+    `const WEBVIEW2_DEFAULT_BROWSER_ARGUMENTS: &str = "${CI_UPDATER_WRY_DEFAULT_BROWSER_ARGUMENTS}";`;
+  invariant(
+    /#\[cfg\(feature = "ci-updater-fixture"\)\]\r?\nmod ci_updater_fixture;/.test(desktop)
+      && fixtureArguments.includes('#![cfg(feature = "ci-updater-fixture")]')
+      && !desktop.includes('--osg-ci-updater-debug-port='),
+    'Updater fixture debug-port parser must remain outside ordinary production compilation',
+  );
+  for (const fragment of [
+    'const DEBUG_PORT_ARGUMENT_PREFIX: &str = "--osg-ci-updater-debug-port=";',
+    'static CONFIGURATION: OnceLock<Configuration> = OnceLock::new();',
+    'std::env::args_os().skip(1)',
+    'if arguments.len() != 1',
+    '.strip_prefix(DEBUG_PORT_ARGUMENT_PREFIX)',
+    '!value.bytes().all(|byte| byte.is_ascii_digit())',
+    "value.starts_with('0')",
+    '.parse::<u16>()',
+    'if debug_port < 1024',
+    wryDefaultDeclaration,
+    'format!("{WEBVIEW2_DEFAULT_BROWSER_ARGUMENTS} --remote-debugging-port={port}")',
+    'rejects_duplicate_unknown_malformed_privileged_and_out_of_range_arguments',
+    'initialize_from_process_arguments()',
+    'the CI updater fixture was initialized more than once',
+  ]) {
+    invariant(fixtureArguments.includes(fragment),
+      `Updater fixture debug-port parser is missing fail-closed proof: ${fragment}`);
+  }
+  invariant(
+    desktop.includes('ci_updater_fixture::initialize_from_process_arguments()')
+      && desktop.indexOf('ci_updater_fixture::initialize_from_process_arguments()')
+        < desktop.indexOf('let app = tauri::Builder::default()')
+      && desktop.includes('ci_updater_fixture::configuration().enables_webview_debugging()')
+      && /ci_updater_fixture::configuration\(\)\.browser_arguments\(\)/.test(desktop)
+      && desktop.includes('window_builder.additional_browser_args(&arguments)'),
+    'Updater fixture debug-port must be parsed before Tauri setup and applied before WebView creation',
+  );
+  invariant(
+    !fixtureArguments.includes('RemoveRedirectionBitmap')
+      && fixtureArguments.split(wryDefaultDeclaration).length === 2,
+    'Updater fixture debug-port arguments must match the locked Wry defaults exactly',
+  );
+}
+
 function assertSignedUpdaterScript(script) {
   const requiredFragments = [
     "$env:GITHUB_ACTIONS -ne 'true'",
@@ -1069,6 +1471,10 @@ function assertSignedUpdaterScript(script) {
     '-WindowStyle Hidden',
     "signed-updater.phase name=$Name elapsedMs=$elapsedMilliseconds",
     'WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS',
+    'Get-CiUpdaterDebugArgument',
+    '"--osg-ci-updater-debug-port=$Port"',
+    '-ArgumentList @($debugArgument)',
+    '-ArgumentList @($verificationDebugArgument)',
     "-Mode 'trigger'",
     "-Mode 'verify'",
     '$exitDeadline = (Get-Date).AddMinutes(5)',
@@ -1084,7 +1490,7 @@ function assertSignedUpdaterScript(script) {
     '$primaryFailure = $null',
     '$finalizationFailure = $null',
     'signed-updater.finalization-warning step=$Name',
-    'signed-updater.identity phase=$Phase webviewDebug=$webviewDebugEvidence',
+    'signed-updater.identity phase=$Phase webviewDebug=present',
     '$updatedRegistry.DisplayVersion -ne $UpdatedVersion',
     "'updated-application-relaunched'",
     'Wait-ForApplicationInstance',
@@ -1134,6 +1540,24 @@ function assertSignedUpdaterScript(script) {
     'Signed updater runner must require clean close-evidence paths before writing bounded diagnostics');
   invariant(/\$closeEvidence\s*=\s*\[ordered\]@\{\s*schemaVersion\s*=\s*1\s*updaterRelaunch\s*=\s*\$null\s*verification\s*=\s*\$null\s*\}/.test(script),
     'Signed updater runner must retain exactly two close-evidence phase slots');
+  const debugArgumentFunctionStart = script.indexOf('function Get-CiUpdaterDebugArgument {');
+  const debugArgumentFunctionEnd = script.indexOf('\nfunction ', debugArgumentFunctionStart + 1);
+  const debugArgumentFunction = debugArgumentFunctionStart >= 0
+    && debugArgumentFunctionEnd > debugArgumentFunctionStart
+    ? script.slice(debugArgumentFunctionStart, debugArgumentFunctionEnd)
+    : '';
+  invariant(
+    debugArgumentFunction.includes('$Port -lt 1024 -or $Port -gt 65535')
+      && debugArgumentFunction.includes('"--osg-ci-updater-debug-port=$Port"')
+      && !/(?:Invoke-|Start-|&\s)/.test(debugArgumentFunction),
+    'Signed updater runner must construct only one bounded CI debug-port argument',
+  );
+  invariant(
+    /\$debugArgument\s*=\s*Get-CiUpdaterDebugArgument\s+-Port\s+\$debugPort[\s\S]*?Start-Process\s+`[\s\S]*?-ArgumentList\s+@\(\$debugArgument\)/.test(script)
+      && /\$verificationDebugArgument\s*=\s*Get-CiUpdaterDebugArgument\s+-Port\s+\$verificationPort[\s\S]*?Start-Process\s+`[\s\S]*?-ArgumentList\s+@\(\$verificationDebugArgument\)/.test(script)
+      && !/\$env:WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS\s*=/.test(script),
+    'Signed updater runner must launch base and verification apps with only the preserved CI debug-port argument',
+  );
   const diagnosticReaderStart = script.indexOf('function Read-DiagnosticEvents {');
   const diagnosticReaderEnd = script.indexOf('\nfunction ', diagnosticReaderStart + 1);
   const diagnosticReader = diagnosticReaderStart >= 0 && diagnosticReaderEnd > diagnosticReaderStart
@@ -1154,18 +1578,14 @@ function assertSignedUpdaterScript(script) {
   invariant(
     instanceFunction.includes("$_.event -eq 'app.environment'")
       && instanceFunction.includes('$_.version -ceq $ExpectedVersion')
-      && instanceFunction.includes("[string]$_.webviewDebug -in @('present', 'absent')")
+      && instanceFunction.includes("[string]$_.webviewDebug -ceq 'present'")
       && instanceFunction.includes('[string]$_.appInstanceId -notin $ExcludedInstanceIds')
       && instanceFunction.includes('$candidateInstanceIds.Count -gt 1')
       && instanceFunction.includes('$candidateInstanceIds.Count -eq 1')
       && instanceFunction.includes('Sort-Object -Unique')
-      && instanceFunction.includes('switch ([string]$candidate.webviewDebug)')
-      && instanceFunction.includes("'present' { 'present' }")
-      && instanceFunction.includes("'absent' { 'absent' }")
-      && instanceFunction.includes("default { 'unknown' }")
-      && !instanceFunction.includes("$_.webviewDebug -eq 'present'")
-      && !instanceFunction.includes("$_.webviewDebug -eq 'absent'"),
-    'Signed updater runner must bind one new versioned UUIDv7 identity with a valid debug-presence enum without requiring either enum value',
+      && instanceFunction.includes('webviewDebug=present')
+      && !instanceFunction.includes("[string]$_.webviewDebug -in @('present', 'absent')"),
+    'Signed updater runner must bind one new versioned UUIDv7 identity that confirms the preserved CI debug-port hook',
   );
   const evidenceRecordStart = script.indexOf('function ConvertTo-BoundedDiagnosticEvidenceRecord {');
   const evidenceRecordEnd = script.indexOf('\nfunction ', evidenceRecordStart + 1);
@@ -1407,6 +1827,7 @@ function assertWorkflow(rootDirectory = REPOSITORY_ROOT) {
   assertPinnedActions(workflow);
   assertWorkflowMatrix(workflow);
   assertWorkflowCommands(workflow);
+  assertTauriNsisBootstrapScript(readText(rootDirectory, TAURI_NSIS_BOOTSTRAP_PATH));
   const signedUpdaterWrapper = workflowJobBlock(workflow, 'signed-updater-smoke');
   invariant(!workflow.replace(signedUpdaterWrapper, '').includes('ci-updater-fixture')
     && !/\$\{\{\s*secrets\./i.test(workflow.replace(signedUpdaterWrapper, '')),
@@ -1692,6 +2113,10 @@ function assertTauriConfiguration(rootDirectory = REPOSITORY_ROOT) {
   const config = readJson(rootDirectory, TAURI_CONFIG_PATH);
   invariant(config.bundle && config.bundle.active === true, 'Tauri bundle.active must remain true');
   invariant(config.bundle.targets === 'all', 'Tauri bundle.targets must remain all; CI supplies the host-specific subset');
+  invariant(
+    config.bundle.useLocalToolsDir === undefined || config.bundle.useLocalToolsDir === false,
+    'Tauri bundle.useLocalToolsDir must remain false so verified Windows tools use the reviewed user-cache path',
+  );
   invariant(
     typeof config.identifier === 'string' && /^[a-z0-9]+(?:[.-][a-z0-9]+)+$/i.test(config.identifier),
     'Tauri identifier must be a stable reverse-domain identifier',
@@ -2979,9 +3404,12 @@ module.exports = {
   assertNoMissingNativeCapabilities,
   assertNoUnmanagedLocalServices,
   assertInstalledSmokeScript,
+  assertCiUpdaterFixtureHandoffSource,
+  assertCiUpdaterFixtureDebugPortSource,
   assertUpdaterFixtureSource,
   assertUpdaterSmokeWorkflow,
   assertSignedUpdaterScript,
+  assertTauriNsisBootstrapScript,
   assertWorkerResources,
   assertWorkflowCommands,
   assertWorkflowMatrix,

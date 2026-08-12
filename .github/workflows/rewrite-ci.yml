@@ -255,6 +255,11 @@ jobs:
         if: github.event_name == 'workflow_dispatch'
         run: node scripts/check-release-readiness.js --profile runtime-package --target "${{ matrix.rust-target }}"
 
+      - name: Prepare verified Tauri NSIS toolchain
+        if: github.event_name == 'workflow_dispatch' && matrix.rust-target == 'x86_64-pc-windows-msvc'
+        shell: pwsh
+        run: ./scripts/prepare-tauri-nsis.ps1
+
       - name: Smoke-package unsigned native installers for manual validation
         if: github.event_name == 'workflow_dispatch'
         run: npm --prefix apps/desktop run tauri -- bundle --ci --no-sign --target "${{ matrix.rust-target }}" --bundles "${{ matrix.bundles }}"
@@ -314,6 +319,10 @@ jobs:
 
       - name: Require a complete Windows runtime package
         run: node scripts/check-release-readiness.js --profile runtime-package --target x86_64-pc-windows-msvc
+
+      - name: Prepare verified Tauri NSIS toolchain
+        shell: pwsh
+        run: ./scripts/prepare-tauri-nsis.ps1
 
       - name: Compile current branch Windows executable
         run: node apps/desktop/node_modules/@tauri-apps/cli/tauri.js build --features production --no-bundle --ci --target x86_64-pc-windows-msvc -- --locked

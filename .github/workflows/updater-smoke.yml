@@ -74,6 +74,10 @@ jobs:
       - name: Fetch the locked Windows Rust dependency graph
         run: cargo fetch --locked --target x86_64-pc-windows-msvc
 
+      - name: Prepare verified Tauri NSIS toolchain
+        shell: pwsh
+        run: ./scripts/prepare-tauri-nsis.ps1
+
       - name: Compile updater-enabled base executable
         run: node apps/desktop/node_modules/@tauri-apps/cli/tauri.js build --features production,ci-updater-fixture --no-bundle --ci --target x86_64-pc-windows-msvc -- --locked
 

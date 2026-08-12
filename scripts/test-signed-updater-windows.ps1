@@ -85,6 +85,15 @@ function Get-FreeLoopbackPort {
   }
 }
 
+function Get-CiUpdaterDebugArgument {
+  param([Parameter(Mandatory = $true)][int]$Port)
+
+  if ($Port -lt 1024 -or $Port -gt 65535) {
+    throw 'Signed updater DevTools port escaped the unprivileged range'
+  }
+  "--osg-ci-updater-debug-port=$Port"
+}
+
 function Invoke-UpdaterInspection {
   param(
     [Parameter(Mandatory = $true)][int]$Port,
@@ -576,7 +585,7 @@ function Wait-ForApplicationInstance {
         Where-Object {
           $_.event -eq 'app.environment' `
             -and $_.version -ceq $ExpectedVersion `
-            -and [string]$_.webviewDebug -in @('present', 'absent') `
+            -and [string]$_.webviewDebug -ceq 'present' `
             -and [string]$_.appInstanceId -match '^[0-9a-f]{8}-[0-9a-f]{4}-7[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$' `
             -and [string]$_.appInstanceId -notin $ExcludedInstanceIds
         }
@@ -591,12 +600,7 @@ function Wait-ForApplicationInstance {
     }
     if ($candidateInstanceIds.Count -eq 1) {
       $candidate = $candidateEvents | Select-Object -First 1
-      $webviewDebugEvidence = switch ([string]$candidate.webviewDebug) {
-        'present' { 'present' }
-        'absent' { 'absent' }
-        default { 'unknown' }
-      }
-      Write-Host "signed-updater.identity phase=$Phase webviewDebug=$webviewDebugEvidence"
+      Write-Host "signed-updater.identity phase=$Phase webviewDebug=present"
       return $candidateInstanceIds[0]
     }
   } while ((Get-Date) -lt $deadline)
@@ -791,12 +795,11 @@ try {
   }
   $knownAppInstanceIds = @(Get-KnownApplicationInstanceIds)
   $debugPort = Get-FreeLoopbackPort
-  try {
-    $env:WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS = "--remote-debugging-port=$debugPort"
-    $baseProcess = Start-Process -FilePath $executable -PassThru
-  } finally {
-    Remove-Item Env:WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS -ErrorAction SilentlyContinue
-  }
+  $debugArgument = Get-CiUpdaterDebugArgument -Port $debugPort
+  $baseProcess = Start-Process `
+    -FilePath $executable `
+    -ArgumentList @($debugArgument) `
+    -PassThru
   Write-SmokePhase -Name 'base-application-launched'
   $baseInstanceId = Wait-ForApplicationInstance `
     -Process $baseProcess `
@@ -893,12 +896,11 @@ try {
   # updater-driven relaunch. Inspect the already-updated installation on a fresh port instead of
   # treating that diagnostic-port lifetime as an application update failure.
   $verificationPort = Get-FreeLoopbackPort
-  try {
-    $env:WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS = "--remote-debugging-port=$verificationPort"
-    $verificationProcess = Start-Process -FilePath $executable -PassThru
-  } finally {
-    Remove-Item Env:WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS -ErrorAction SilentlyContinue
-  }
+  $verificationDebugArgument = Get-CiUpdaterDebugArgument -Port $verificationPort
+  $verificationProcess = Start-Process `
+    -FilePath $executable `
+    -ArgumentList @($verificationDebugArgument) `
+    -PassThru
   Write-SmokePhase -Name 'verification-application-launched'
   $verificationInstanceId = Wait-ForApplicationInstance `
     -Process $verificationProcess `

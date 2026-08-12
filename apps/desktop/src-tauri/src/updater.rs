@@ -281,6 +281,9 @@ async fn install_checked_update<R: Runtime>(
     )?;
     let webview_debug = std::env::var_os("WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS")
         .is_some_and(|value| !value.is_empty());
+    #[cfg(feature = "ci-updater-fixture")]
+    let webview_debug =
+        webview_debug || crate::ci_updater_fixture::configuration().enables_webview_debugging();
     diagnostics::record(
         "app-update.handoff",
         &[
