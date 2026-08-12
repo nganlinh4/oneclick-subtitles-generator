@@ -5,6 +5,7 @@ import io
 import unittest
 from pathlib import Path
 from unittest import mock
+from urllib.error import HTTPError, URLError
 
 
 MODULE_PATH = Path(__file__).with_name("check-managed-delivery-contract.py")
@@ -30,6 +31,49 @@ class ManagedDeliveryContractTests(unittest.TestCase):
         request, timeout = captured[0]
         self.assertEqual(timeout, 30)
         self.assertEqual(request.get_header("Authorization"), "Bearer test-token")
+
+    def test_remote_readback_retries_only_bounded_transient_failures(self) -> None:
+        response = io.BytesIO(b"{}")
+        transient = HTTPError(
+            "https://example.test/tool.zip",
+            503,
+            "temporary",
+            hdrs=None,
+            fp=None,
+        )
+        with mock.patch.object(
+            MODULE,
+            "urlopen",
+            side_effect=[transient, URLError("reset"), response],
+        ) as opened:
+            with mock.patch.object(MODULE.time, "sleep") as slept:
+                actual = MODULE.open_remote(
+                    MODULE.Request("https://example.test/tool.zip"),
+                    timeout=60,
+                )
+
+        self.assertIs(actual, response)
+        self.assertEqual(opened.call_count, 3)
+        self.assertEqual([call.args[0] for call in slept.call_args_list], [1, 2])
+
+    def test_remote_readback_does_not_retry_permanent_http_failures(self) -> None:
+        permanent = HTTPError(
+            "https://example.test/missing.zip",
+            404,
+            "missing",
+            hdrs=None,
+            fp=None,
+        )
+        with mock.patch.object(MODULE, "urlopen", side_effect=permanent) as opened:
+            with mock.patch.object(MODULE.time, "sleep") as slept:
+                with self.assertRaises(SystemExit):
+                    MODULE.open_remote(
+                        MODULE.Request("https://example.test/missing.zip"),
+                        timeout=60,
+                    )
+
+        opened.assert_called_once()
+        slept.assert_not_called()
 
     def test_direct_source_readback_requires_exact_content_length(self) -> None:
         catalog = {

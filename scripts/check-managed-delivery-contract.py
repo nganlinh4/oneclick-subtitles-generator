@@ -12,7 +12,9 @@ import argparse
 import hashlib
 import json
 import os
+import time
 from pathlib import Path
+from urllib.error import HTTPError, URLError
 from urllib.request import Request, urlopen
 
 
@@ -75,9 +77,35 @@ HOST_FORBIDDEN = (
     ".bundled_root(",
 )
 
+REMOTE_RETRY_DELAYS_SECONDS = (1, 2, 4)
+TRANSIENT_HTTP_STATUSES = frozenset({429, 500, 502, 503, 504})
+
 
 def sha256_bytes(value: bytes) -> str:
     return hashlib.sha256(value).hexdigest()
+
+
+def open_remote(request: Request, *, timeout: int):
+    """Open one reviewed remote with bounded retries for transport-only failures."""
+    attempts = len(REMOTE_RETRY_DELAYS_SECONDS) + 1
+    for attempt in range(attempts):
+        try:
+            return urlopen(request, timeout=timeout)
+        except HTTPError as error:
+            error.close()
+            retryable = error.code in TRANSIENT_HTTP_STATUSES
+            if not retryable or attempt + 1 == attempts:
+                raise SystemExit(
+                    "managed-delivery remote verification failed after bounded retries"
+                ) from error
+        except (URLError, TimeoutError, ConnectionError) as error:
+            if attempt + 1 == attempts:
+                raise SystemExit(
+                    "managed-delivery remote verification failed after bounded retries"
+                ) from error
+        time.sleep(REMOTE_RETRY_DELAYS_SECONDS[attempt])
+
+    raise AssertionError("bounded remote retry loop exhausted without returning or raising")
 
 
 def canonical_json(value: object) -> bytes:
@@ -225,7 +253,7 @@ def fetch_release() -> dict:
     if token:
         headers["Authorization"] = f"Bearer {token}"
     request = Request(RELEASE_API, headers=headers)
-    with urlopen(request, timeout=30) as response:
+    with open_remote(request, timeout=30) as response:
         return json.load(response)
 
 
@@ -265,7 +293,7 @@ def verify_native_tool_sources(catalog: dict) -> None:
             method="HEAD",
             headers={"User-Agent": "OSG-delivery-checkpoint/1"},
         )
-        with urlopen(request, timeout=60) as response:
+        with open_remote(request, timeout=60) as response:
             if response.status != 200:
                 raise SystemExit(f"native-tool source is unavailable: {url}")
             content_length = response.headers.get("Content-Length")
