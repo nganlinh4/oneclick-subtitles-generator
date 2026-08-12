@@ -263,6 +263,7 @@ function Inspect-InstalledMediaFlow {
           'download.completed',
           'download.cancelled',
           'download.failed',
+          'download.admission_failed',
           'download.engine_failed',
           'download.command_failed'
         ) |
