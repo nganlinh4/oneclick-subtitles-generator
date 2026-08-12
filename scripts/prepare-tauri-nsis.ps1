@@ -11,6 +11,24 @@ if ([Environment]::OSVersion.Platform -ne [PlatformID]::Win32NT) {
   throw 'The verified Tauri NSIS bootstrap is Windows-only'
 }
 
+$windowsSystemDirectory = [Environment]::GetFolderPath(
+  [Environment+SpecialFolder]::System
+)
+if ([string]::IsNullOrWhiteSpace($windowsSystemDirectory)) {
+  throw 'Could not resolve the Windows system directory'
+}
+$windowsSystemDirectory = [IO.Path]::GetFullPath($windowsSystemDirectory)
+$curlPath = [IO.Path]::GetFullPath((Join-Path $windowsSystemDirectory 'curl.exe'))
+if (-not (Test-Path -LiteralPath $curlPath -PathType Leaf)) {
+  throw 'The reviewed Windows system curl executable is missing or not a leaf file'
+}
+$curlItem = Get-Item -LiteralPath $curlPath -Force
+if ($curlItem -isnot [IO.FileInfo] -or
+    $curlItem.PSIsContainer -or
+    ($curlItem.Attributes -band [IO.FileAttributes]::ReparsePoint) -ne 0) {
+  throw 'Refusing to use a non-file or reparse-point Windows system curl executable'
+}
+
 $repositoryRoot = [IO.Path]::GetFullPath((Join-Path $PSScriptRoot '..'))
 $desktopPackagePath = Join-Path $repositoryRoot 'apps\desktop\package.json'
 $desktopPackage = Get-Content -LiteralPath $desktopPackagePath -Raw | ConvertFrom-Json
@@ -141,8 +159,7 @@ function Receive-PinnedArtifact {
     [Parameter(Mandatory = $true)][string]$Destination
   )
 
-  $curl = Get-Command 'curl.exe' -CommandType Application -ErrorAction Stop
-  & $curl.Source `
+  & $curlPath `
     --fail `
     --location `
     --proto '=https' `

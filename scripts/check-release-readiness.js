@@ -37,7 +37,7 @@ const CI_UPDATER_WRY_CHECKSUM =
 const CI_UPDATER_WRY_DEFAULT_BROWSER_ARGUMENTS =
   '--disable-features=msWebOOUI,msPdfOOUI,msSmartScreenProtection --autoplay-policy=no-user-gesture-required';
 const TAURI_NSIS_BOOTSTRAP_SHA256 =
-  'f16ea99d07f0c9f34bd0e8b183e554d72b7b9b1dc630513f692ba087c417f3ea';
+  '930bef57b7bccd22ba36ce8a045eabdcb92b74eaeeaa0273cbb45e2a7471d41b';
 const DISTRIBUTABLE_FONT_EXTENSION = /\.(?:eot|otf|ttf|woff2?)$/i;
 
 const ACTION_PINS = Object.freeze({
@@ -618,8 +618,33 @@ function assertTauriNsisBootstrapScript(script) {
     'Tauri NSIS bootstrap must use only its exact reviewed HTTPS sources',
   );
   for (const fragment of [
-    "$curl = Get-Command 'curl.exe' -CommandType Application -ErrorAction Stop",
-    '& $curl.Source `',
+    '$windowsSystemDirectory = [Environment]::GetFolderPath(',
+    '[Environment+SpecialFolder]::System',
+    'if ([string]::IsNullOrWhiteSpace($windowsSystemDirectory)) {',
+    "throw 'Could not resolve the Windows system directory'",
+    '$windowsSystemDirectory = [IO.Path]::GetFullPath($windowsSystemDirectory)',
+    "$curlPath = [IO.Path]::GetFullPath((Join-Path $windowsSystemDirectory 'curl.exe'))",
+    'if (-not (Test-Path -LiteralPath $curlPath -PathType Leaf)) {',
+    "throw 'The reviewed Windows system curl executable is missing or not a leaf file'",
+    '$curlItem = Get-Item -LiteralPath $curlPath -Force',
+    'if ($curlItem -isnot [IO.FileInfo] -or',
+    '$curlItem.PSIsContainer -or',
+    '($curlItem.Attributes -band [IO.FileAttributes]::ReparsePoint) -ne 0) {',
+    "throw 'Refusing to use a non-file or reparse-point Windows system curl executable'",
+  ]) {
+    invariant(
+      exactLinePattern(fragment).test(script),
+      `Tauri NSIS bootstrap is missing reviewed Windows system curl resolution: ${fragment}`,
+    );
+  }
+  invariant(
+    !/\bGet-Command\b/i.test(script)
+      && !/^[ \t]*where(?:\.exe)?[ \t]/im.test(script)
+      && !/\$env:(?:Path|PATHEXT)\b/i.test(script),
+    'Tauri NSIS bootstrap must not use PATH or fallback command discovery for curl',
+  );
+  for (const fragment of [
+    '& $curlPath `',
     '--fail `',
     '--location `',
     "--proto '=https' `",

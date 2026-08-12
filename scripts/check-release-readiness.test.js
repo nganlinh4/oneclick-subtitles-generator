@@ -386,6 +386,56 @@ test('Tauri NSIS bootstrap is pinned, bounded, verified, and atomically staged',
       `${label} bootstrap must reject reviewed operations hidden in a dead function`,
     );
   }
+  const curlResolutionVariants = [
+    [
+      'PATH-selected first of multiple curl commands',
+      TAURI_NSIS_BOOTSTRAP_SCRIPT.replace(
+        "$curlPath = [IO.Path]::GetFullPath((Join-Path $windowsSystemDirectory 'curl.exe'))",
+        "$curlPath = @(Get-Command 'curl.exe' -CommandType Application -All)[0].Source",
+      ),
+    ],
+    [
+      'fallback command discovery after a missing system curl',
+      TAURI_NSIS_BOOTSTRAP_SCRIPT.replace(
+        "  throw 'The reviewed Windows system curl executable is missing or not a leaf file'",
+        "  $curlPath = (Get-Command 'curl.exe' -CommandType Application).Source",
+      ),
+    ],
+    [
+      'non-leaf system curl',
+      TAURI_NSIS_BOOTSTRAP_SCRIPT.replace('-PathType Leaf', '-PathType Any'),
+    ],
+    [
+      'unreviewed curl filesystem type',
+      TAURI_NSIS_BOOTSTRAP_SCRIPT.replace('$curlItem -isnot [IO.FileInfo]', '$false'),
+    ],
+    [
+      'reparse-point system curl',
+      TAURI_NSIS_BOOTSTRAP_SCRIPT.replace(
+        '($curlItem.Attributes -band [IO.FileAttributes]::ReparsePoint) -ne 0',
+        '$false',
+      ),
+    ],
+    [
+      'PATH-order invocation',
+      TAURI_NSIS_BOOTSTRAP_SCRIPT.replace('& $curlPath `', '& curl.exe `'),
+    ],
+    [
+      'non-system special folder',
+      TAURI_NSIS_BOOTSTRAP_SCRIPT.replace(
+        '[Environment+SpecialFolder]::System',
+        '[Environment+SpecialFolder]::LocalApplicationData',
+      ),
+    ],
+  ];
+  for (const [label, weakened] of curlResolutionVariants) {
+    assert.notEqual(weakened, TAURI_NSIS_BOOTSTRAP_SCRIPT, `${label} mutation must alter the bootstrap`);
+    assert.throws(
+      () => assertTauriNsisBootstrapScript(weakened),
+      /Tauri NSIS bootstrap/,
+      `Tauri NSIS bootstrap must reject ${label}`,
+    );
+  }
   const weakenedVariants = [
     TAURI_NSIS_BOOTSTRAP_SCRIPT.replace(
       "if ($desktopPackage.devDependencies.'@tauri-apps/cli' -cne '2.11.4') {",
