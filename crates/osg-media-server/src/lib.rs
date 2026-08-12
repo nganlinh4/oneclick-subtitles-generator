@@ -1785,23 +1785,52 @@ mod tests {
         let server = MediaServer::start(std::iter::empty()).expect("start media server");
         let client_count = WORKER_COUNT + REQUEST_QUEUE_CAPACITY + 8;
         let mut clients = Vec::with_capacity(client_count);
-        for _ in 0..client_count {
+        for index in 0..client_count {
             let stream = TcpStream::connect(("127.0.0.1", server.port())).expect("connect client");
             stream
-                .set_read_timeout(Some(Duration::from_secs(2)))
-                .expect("read timeout");
+                .set_nonblocking(true)
+                .expect("nonblocking overload client");
             clients.push(stream);
+            if index + 1 == WORKER_COUNT {
+                thread::sleep(Duration::from_millis(50));
+            }
         }
 
-        let mut response = Vec::new();
-        let last = clients.last_mut().expect("excess client");
-        if let Err(error) = last.read_to_end(&mut response) {
-            assert!(
-                error.kind() == std::io::ErrorKind::ConnectionReset && !response.is_empty(),
-                "read overload response: {error}"
-            );
+        let mut responses = vec![Vec::new(); client_count];
+        let deadline = Instant::now() + Duration::from_secs(2);
+        let mut overloaded = false;
+        while Instant::now() < deadline && !overloaded {
+            for (stream, response) in clients.iter_mut().zip(&mut responses) {
+                let mut buffer = [0_u8; 512];
+                loop {
+                    match stream.read(&mut buffer) {
+                        Ok(0) => break,
+                        Ok(length) => response.extend_from_slice(&buffer[..length]),
+                        Err(error)
+                            if matches!(
+                                error.kind(),
+                                std::io::ErrorKind::WouldBlock
+                                    | std::io::ErrorKind::ConnectionReset
+                            ) =>
+                        {
+                            break;
+                        }
+                        Err(error) => panic!("read overload response: {error}"),
+                    }
+                }
+                if response.starts_with(b"HTTP/1.1 503") {
+                    overloaded = true;
+                    break;
+                }
+            }
+            if !overloaded {
+                thread::sleep(Duration::from_millis(5));
+            }
         }
-        assert!(String::from_utf8_lossy(&response).starts_with("HTTP/1.1 503"));
+        assert!(
+            overloaded,
+            "excess clients did not receive bounded backpressure"
+        );
         drop(clients);
         drop(server);
     }
