@@ -225,6 +225,53 @@ class WorkerContractTests(unittest.TestCase):
         with self.assertRaisesRegex(worker.WorkerFailure, "reference_rejected"):
             worker._reference_frame_range(rate, rate * 60, (61_000_000, 62_000_000))
 
+    def test_reference_metadata_uses_soundfile_without_torchaudio_info(self):
+        worker = load_worker()
+        soundfile = ModuleType("soundfile")
+        soundfile.info = mock.Mock(return_value=SimpleNamespace(
+            samplerate=16_000,
+            frames=80_000,
+        ))
+        with mock.patch.dict(sys.modules, {"soundfile": soundfile}):
+            self.assertEqual(worker._audio_info(Path("reference.wav"), 5), (16_000, 80_000))
+            with self.assertRaisesRegex(worker.WorkerFailure, "reference_rejected"):
+                worker._audio_info(Path("reference.wav"), 4)
+
+    def test_f5_restores_torchaudio_decoder_after_inference_failure(self):
+        worker = load_worker()
+        torchaudio = ModuleType("torchaudio")
+        original_load = mock.Mock(return_value=("unmanaged", 1))
+        torchaudio.load = original_load
+        observed = []
+
+        class FakeF5:
+            def infer(self, **arguments):
+                del arguments
+                observed.append(torchaudio.load("managed-reference.wav"))
+                raise RuntimeError("redacted upstream failure")
+
+        settings = {
+            "reference_text": "Managed reference.",
+            "model": None,
+            "speech_rate_milli": 1_000,
+            "nfe_steps": 8,
+            "sway_milli": -1_000,
+            "guidance_milli": 2_000,
+            "seed": None,
+            "remove_silence": False,
+        }
+        managed_result = ("managed", 16_000)
+        with mock.patch.dict(sys.modules, {"torchaudio": torchaudio}), \
+                mock.patch.object(worker, "_require_audio_duration"), \
+                mock.patch.object(worker, "_load_f5", return_value=FakeF5()), \
+                mock.patch.object(worker, "_managed_torchaudio_load", return_value=managed_result):
+            with self.assertRaisesRegex(worker.WorkerFailure, "synthesis_failed"):
+                worker._synthesize_f5(
+                    "Generated text.", settings, Path("reference.wav"), Path("output.wav"),
+                )
+        self.assertEqual(observed, [managed_result])
+        self.assertIs(torchaudio.load, original_load)
+
     def test_managed_model_capability_is_absolute_bounded_and_fail_closed(self):
         worker = load_worker()
         old_value = worker._MODEL_ROOT_VALUE

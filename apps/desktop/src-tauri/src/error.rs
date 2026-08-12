@@ -165,6 +165,24 @@ impl CommandError {
         )
     }
 
+    pub(crate) fn updater_busy() -> Self {
+        Self::fixed(
+            "updaterBusy",
+            "Another signed application update is already running.",
+        )
+    }
+
+    pub(crate) fn updater_stale() -> Self {
+        Self::fixed(
+            "updaterStale",
+            "The selected application update is no longer current.",
+        )
+    }
+
+    pub(crate) fn updater_cancelled() -> Self {
+        Self::fixed("updaterCancelled", "The application update was cancelled.")
+    }
+
     pub(crate) fn external_link_failed() -> Self {
         Self::fixed(
             "externalLinkUnavailable",

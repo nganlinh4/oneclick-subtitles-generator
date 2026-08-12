@@ -28,6 +28,7 @@ pub(crate) fn spawn_group(command: &mut Command) -> Result<GroupChild> {
 
 pub(crate) struct WorkerSession {
     child: GroupChild,
+    _cache_directory: tempfile::TempDir,
     pub(crate) stdin: ChildStdin,
     responses: Receiver<Result<WorkerResponse>>,
     reader: Option<JoinHandle<()>>,
@@ -38,7 +39,7 @@ pub(crate) struct WorkerSession {
 }
 
 impl WorkerSession {
-    pub(crate) fn new(mut child: GroupChild) -> Result<Self> {
+    pub(crate) fn new(mut child: GroupChild, cache_directory: tempfile::TempDir) -> Result<Self> {
         let stdin = child
             .inner()
             .stdin
@@ -87,6 +88,7 @@ impl WorkerSession {
         });
         Ok(Self {
             child,
+            _cache_directory: cache_directory,
             stdin,
             responses,
             reader: Some(reader),

@@ -1,7 +1,9 @@
 import {
   UpdateServiceError,
+  cancelDesktopUpdate,
   checkDesktopUpdate,
   getDesktopAppVersion,
+  installDesktopUpdate,
   normalizeUpdateStatus,
 } from './updateService';
 
@@ -111,5 +113,75 @@ describe('updateService', () => {
         path: 'C:\\private\\app.exe',
       }),
     })).rejects.toMatchObject({ code: 'invalidUpdateResponse' });
+  });
+
+  test('installs only the revalidated version over a strict bounded progress channel', async () => {
+    class FakeChannel {
+      constructor() { this.onmessage = null; }
+    }
+    const events = [];
+    const invokeCommand = vi.fn(async (command, payload) => {
+      if (command !== 'app_update_install') throw new Error('unexpected command');
+      payload.onEvent.onmessage({ event: 'checking', version: '1.0.1' });
+      payload.onEvent.onmessage({
+        event: 'progress', downloadedBytes: 25, totalBytes: 100, basisPoints: 2500,
+      });
+      payload.onEvent.onmessage({ event: 'installing', version: '1.0.1' });
+    });
+    await installDesktopUpdate('1.0.1', {
+      onChecking: (event) => events.push(event.event),
+      onProgress: (event) => events.push(`${event.event}:${event.downloadedBytes}`),
+      onInstalling: (event) => events.push(event.event),
+    }, {
+      nativeRuntime: () => true,
+      invokeCommand,
+      ChannelConstructor: FakeChannel,
+    });
+    expect(events).toEqual(['checking', 'progress:25', 'installing']);
+    expect(invokeCommand).toHaveBeenCalledWith('app_update_install', {
+      expectedVersion: '1.0.1', onEvent: expect.any(FakeChannel),
+    });
+  });
+
+  test('fails closed and cancels on injected or non-monotonic installer events', async () => {
+    class FakeChannel {
+      constructor() { this.onmessage = null; }
+    }
+    const invokeCommand = vi.fn(async (command, payload) => {
+      if (command === 'app_update_install') {
+        payload.onEvent.onmessage({
+          event: 'progress', downloadedBytes: 50, totalBytes: 100, basisPoints: 5000,
+        });
+        payload.onEvent.onmessage({
+          event: 'progress', downloadedBytes: 40, totalBytes: 100, basisPoints: 4000,
+        });
+        return;
+      }
+      if (command === 'app_update_cancel') return true;
+      throw new Error('unexpected command');
+    });
+    await expect(installDesktopUpdate('1.0.1', {}, {
+      nativeRuntime: () => true,
+      invokeCommand,
+      ChannelConstructor: FakeChannel,
+    })).rejects.toMatchObject({ code: 'invalidUpdateResponse' });
+    expect(invokeCommand).toHaveBeenCalledWith('app_update_cancel', {
+      expectedVersion: '1.0.1',
+    });
+  });
+
+  test('exposes cancellation only through the exact active version contract', async () => {
+    const invokeCommand = vi.fn().mockResolvedValue(true);
+    await expect(cancelDesktopUpdate('1.0.1-rc.2', {
+      nativeRuntime: () => true,
+      invokeCommand,
+    })).resolves.toBe(true);
+    expect(invokeCommand).toHaveBeenCalledWith('app_update_cancel', {
+      expectedVersion: '1.0.1-rc.2',
+    });
+    await expect(cancelDesktopUpdate('../../evil.exe', {
+      nativeRuntime: () => true,
+      invokeCommand,
+    })).rejects.toMatchObject({ code: 'invalidUpdateRequest' });
   });
 });

@@ -52,6 +52,7 @@ const ToastPanel = () => {
           if (existingToast.timerId) clearTimeout(existingToast.timerId);
           updatedToasts[existingIndex] = {
             ...existingToast, message, type, duration,
+            button,
             timerId: setTimeout(() => removeToast(existingToast.id), duration),
           };
           return updatedToasts;

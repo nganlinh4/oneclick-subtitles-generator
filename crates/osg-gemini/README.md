@@ -13,7 +13,7 @@ model officially supports **both** audio and video input and text output:
 
 | API model | Toolbox role | Official evidence |
 | --- | --- | --- |
-| `gemini-3.5-flash-lite` | default/fast vision, direct audio translation, high-volume extraction | <https://ai.google.dev/gemini-api/docs/models/gemini-3.5-flash-lite> |
+| `gemini-3.5-flash-lite` | high-volume text extraction and opt-in media compatibility testing | <https://ai.google.dev/gemini-api/docs/models/gemini-3.5-flash-lite> |
 | `gemini-3.6-flash` | strongest current multimodal analysis | <https://ai.google.dev/gemini-api/docs/models/gemini-3.6-flash> |
 | `gemini-3.5-flash` | stable strong fallback | <https://ai.google.dev/gemini-api/docs/models/gemini-3.5-flash> |
 | `gemini-3.1-flash-lite` | stable low-cost compatibility fallback | <https://ai.google.dev/gemini-api/docs/models/gemini-3.1-flash-lite> |
@@ -71,6 +71,6 @@ For local OSG development, the ignored repository-root `.env` may provide the
 live-test credential pool as `GEMINI_API_KEY`, `GEMINI_API_KEY_2`, through
 `GEMINI_API_KEY_20`. Test tooling may select a non-empty value in-process, but
 must never print values, copy them into logs/artifacts, commit `.env`, or make
-the shipped application read `.env`. Prefer `gemini-3.5-flash-lite` and one
+the shipped application read `.env`. Prefer the currently verified `gemini-3.1-flash-lite` media default and one
 bounded modality for routine live verification; use additional keys only for
 explicit quota/failure testing through the native credential boundary.

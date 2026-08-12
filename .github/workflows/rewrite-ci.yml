@@ -16,6 +16,7 @@ on:
         options:
           - full
           - installed-smoke
+          - published-installed-smoke
 
 permissions:
   contents: read
@@ -254,9 +255,80 @@ jobs:
         run: node scripts/check-release-artifacts.js --target "${{ matrix.rust-target }}" --bundles "${{ matrix.bundles }}"
 
   windows-installed-smoke:
-    name: Published Windows installer clean-profile smoke
+    name: Current branch Windows installer clean-profile smoke
     needs: invariants
     if: github.event_name == 'workflow_dispatch' && inputs.job == 'installed-smoke'
+    runs-on: windows-2022
+    timeout-minutes: 120
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          persist-credentials: false
+
+      - name: Use pinned Node.js
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version-file: .node-version
+          cache: npm
+          cache-dependency-path: |
+            package-lock.json
+            apps/desktop/package-lock.json
+
+      - name: Use pinned Python
+        uses: actions/setup-python@a309ff8b426b58ec0e2a45f0f869d46889d02405 # v6.2.0
+        with:
+          python-version: "3.12.10"
+
+      - name: Use pinned npm
+        shell: bash
+        run: npm install --global "$(node -p 'require("./package.json").packageManager')"
+
+      - name: Install locked JavaScript dependencies
+        run: |
+          npm ci --ignore-scripts
+          npm --prefix apps/desktop ci --ignore-scripts
+
+      - name: Install pinned Rust toolchain components
+        run: |
+          rustup show active-toolchain
+          rustup target add x86_64-pc-windows-msvc
+
+      - name: Verify effective Node, npm, Python, and Rust pins
+        run: node scripts/check-release-readiness.js --profile host-toolchain
+
+      - name: Compile frozen frontend
+        run: npm run build:frontend
+
+      - name: Fetch the locked Windows Rust dependency graph
+        run: cargo fetch --locked --target x86_64-pc-windows-msvc
+
+      - name: Require a complete Windows runtime package
+        run: node scripts/check-release-readiness.js --profile runtime-package --target x86_64-pc-windows-msvc
+
+      - name: Compile current branch Windows executable
+        run: node apps/desktop/node_modules/@tauri-apps/cli/tauri.js build --features production --no-bundle --ci --target x86_64-pc-windows-msvc -- --locked
+
+      - name: Bundle current branch unsigned Windows installer
+        run: npm --prefix apps/desktop run tauri -- bundle --ci --no-sign --target x86_64-pc-windows-msvc --bundles nsis
+
+      - name: Validate installer architecture and packaged resources
+        run: node scripts/check-release-artifacts.js --target x86_64-pc-windows-msvc --bundles nsis
+
+      - name: Install and launch from the isolated clean runner profile
+        shell: pwsh
+        run: |
+          $installer = Get-ChildItem -LiteralPath "target\x86_64-pc-windows-msvc\release\bundle\nsis" -File -Filter "*.exe"
+          if (@($installer).Count -ne 1) {
+            throw "Expected exactly one NSIS installer, found $(@($installer).Count)"
+          }
+          $expectedVersion = (Get-Content -LiteralPath "package.json" -Raw | ConvertFrom-Json).version
+          ./scripts/test-installed-windows.ps1 -InstallerPath $installer.FullName -ExpectedVersion $expectedVersion
+
+  windows-published-installed-smoke:
+    name: Published Windows installer clean-profile smoke
+    needs: invariants
+    if: github.event_name == 'workflow_dispatch' && inputs.job == 'published-installed-smoke'
     runs-on: windows-2022
     timeout-minutes: 20
     steps:

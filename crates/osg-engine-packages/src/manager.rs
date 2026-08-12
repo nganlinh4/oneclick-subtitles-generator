@@ -14,7 +14,7 @@ use crate::archive;
 use crate::asset_catalog::{AssetDeliveryCatalog, AssetPackageId, VOICE_SAMPLE_IDS, asset_catalog};
 use crate::catalog::{
     DeliveryCatalog, DeliveryFile, DeliverySourceKind, EngineId, PackageCatalog, PackageDelivery,
-    catalog,
+    catalog, valid_asset_name,
 };
 use crate::delivery_manifest;
 #[cfg(test)]
@@ -23,7 +23,7 @@ use crate::download::{ArchiveFetcher, HttpArchiveFetcher, obtain, obtain_asset};
 use crate::path_security::{
     acquire_store_lock, cleanup_known_tree, collect_regular_files, ensure_direct_child,
     initialize_store, is_link_or_reparse, require_directory, require_regular_file, require_store,
-    resolve_owned,
+    resolve_owned, scrub_generated_python_cache,
 };
 use crate::progress::{OperationPhase, OperationProgress, ProgressSink};
 use crate::receipt;
@@ -128,7 +128,7 @@ struct ManagerInner<K: 'static> {
 struct PreparedDelivery {
     effective: PackageDelivery,
     manifest: delivery_manifest::ValidatedManifest,
-    manifest_path: PathBuf,
+    manifest_download: crate::download::DownloadedArchive,
 }
 
 #[derive(Clone, Copy)]
@@ -740,7 +740,7 @@ where
             Some(PreparedDelivery {
                 effective,
                 manifest,
-                manifest_path: downloaded.path,
+                manifest_download: downloaded,
             })
         } else {
             None
@@ -773,6 +773,11 @@ where
             cancellation,
             progress,
         });
+        if result.is_ok()
+            && let Some(prepared) = &effective_delivery
+        {
+            let _ = prepared.manifest_download.remove_after_success();
+        }
         if staging.exists() {
             let _ = cleanup_known_tree(&staging, &receipt::allowed_tree(effective));
         }
@@ -823,7 +828,7 @@ where
     ) -> Result<()> {
         receipt::install_delivery_manifest(
             install.staging,
-            &prepared.manifest_path,
+            &prepared.manifest_download.path,
             install.effective,
         )?;
         let mut downloaded_bytes = install
@@ -862,7 +867,11 @@ where
             install.delivery.size_bytes,
             install.delivery.size_bytes,
         ));
-        Self::extract_manifest_sources(install, prepared, &downloaded_sources)
+        Self::extract_manifest_sources(install, prepared, &downloaded_sources)?;
+        for downloaded in &downloaded_sources {
+            let _ = downloaded.remove_after_success();
+        }
+        Ok(())
     }
 
     fn extract_manifest_sources(
@@ -1032,11 +1041,18 @@ where
             return Ok(RemovalOutcome::Missing);
         }
         for delivery in &existing {
+            let root = self.version_root(delivery);
+            let Ok(allowed) = receipt::allowed_tree_at(&root, delivery) else {
+                return Ok(RemovalOutcome::PreservedModified);
+            };
+            scrub_generated_python_cache(&root, &allowed, &delivery.python_relative_path)?;
             if self.is_verified(component, delivery) {
+                if receipt::validate_structure(&root, delivery).is_err() {
+                    return Ok(RemovalOutcome::PreservedModified);
+                }
                 continue;
             }
-            match receipt::validate_integrity(&self.version_root(delivery), delivery, cancellation)
-            {
+            match receipt::validate_integrity(&root, delivery, cancellation) {
                 Ok(()) => {}
                 Err(PackageError::Cancelled) => return Err(PackageError::Cancelled),
                 Err(_) => return Ok(RemovalOutcome::PreservedModified),
@@ -1416,7 +1432,100 @@ where
     K: ManagedPackageKey,
 {
     recover_staging(root, catalog)?;
+    recover_downloads(root, catalog)?;
+    recover_installed_python_cache(root, catalog);
     recover_trash(root, catalog)
+}
+
+fn recover_downloads<K>(root: &Path, catalog: &PackageCatalog<K>) -> Result<()>
+where
+    K: ManagedPackageKey,
+{
+    let downloads = ensure_direct_child(root, ".downloads")?;
+    let mut allowed = HashSet::new();
+    for delivery in catalog
+        .releases
+        .values()
+        .filter_map(|releases| releases.first())
+    {
+        if let Some(manifest) = &delivery.manifest {
+            allowed.insert(crate::download::cache_key(
+                &manifest.sha256,
+                &manifest.asset,
+            ));
+            for source in &delivery.sources {
+                allowed.insert(crate::download::cache_key(
+                    &source.asset.sha256,
+                    &source.asset.asset,
+                ));
+            }
+        } else {
+            allowed.insert(crate::download::cache_key(
+                &delivery.sha256,
+                &delivery.asset,
+            ));
+        }
+    }
+    let mut obsolete = Vec::new();
+    for entry in fs::read_dir(&downloads).map_err(|_| PackageError::StoreUnavailable)? {
+        let entry = entry.map_err(|_| PackageError::StoreUnavailable)?;
+        let metadata =
+            fs::symlink_metadata(entry.path()).map_err(|_| PackageError::StoreUnavailable)?;
+        let name = entry
+            .file_name()
+            .to_str()
+            .map(str::to_owned)
+            .ok_or(PackageError::StoreUnavailable)?;
+        if !metadata.is_file() || is_link_or_reparse(&metadata) {
+            return Err(PackageError::StoreUnavailable);
+        }
+        let cache_key = name
+            .strip_suffix(".partial")
+            .or_else(|| name.strip_suffix(".resume.json"))
+            .ok_or(PackageError::StoreUnavailable)?;
+        let (digest, asset) = cache_key
+            .split_once('-')
+            .ok_or(PackageError::StoreUnavailable)?;
+        if digest.len() != 16
+            || !digest
+                .bytes()
+                .all(|byte| byte.is_ascii_digit() || (b'a'..=b'f').contains(&byte))
+            || !valid_asset_name(asset)
+        {
+            return Err(PackageError::StoreUnavailable);
+        }
+        if !allowed.contains(cache_key) {
+            obsolete.push(entry.path());
+        }
+    }
+    for path in obsolete {
+        fs::remove_file(path).map_err(|_| PackageError::StoreUnavailable)?;
+    }
+    sync_directory(&downloads)
+}
+
+fn recover_installed_python_cache<K>(root: &Path, catalog: &PackageCatalog<K>)
+where
+    K: ManagedPackageKey,
+{
+    for (component, releases) in &catalog.releases {
+        for delivery in releases {
+            let installed = root
+                .join(component.as_str())
+                .join("versions")
+                .join(&delivery.version);
+            if !installed.exists() {
+                continue;
+            }
+            let Ok(allowed) = receipt::allowed_tree_at(&installed, delivery) else {
+                continue;
+            };
+            // A corrupt or user-modified package remains preserved and will report `Corrupt`.
+            // Only the complete, narrowly recognized legacy cache set is ever removed here.
+            let _ =
+                scrub_generated_python_cache(&installed, &allowed, &delivery.python_relative_path);
+        }
+    }
 }
 
 fn recover_staging<K>(root: &Path, catalog: &PackageCatalog<K>) -> Result<()>
@@ -1477,8 +1586,10 @@ where
                 .then_some(delivery)
             })
             .ok_or(PackageError::StoreUnavailable)?;
+        let allowed = receipt::allowed_tree_at(&entry.path(), delivery)?;
+        scrub_generated_python_cache(&entry.path(), &allowed, &delivery.python_relative_path)?;
         receipt::validate_integrity(&entry.path(), delivery, &cancellation)?;
-        cleanup_known_tree(&entry.path(), &receipt::allowed_tree(delivery))?;
+        cleanup_known_tree(&entry.path(), &allowed)?;
     }
     sync_directory(&trash)
 }
@@ -2360,6 +2471,89 @@ mod tests {
     }
 
     #[test]
+    fn restart_repairs_only_legacy_runtime_cache_and_removal_stays_exact() {
+        let temp = tempfile::tempdir().unwrap();
+        let first_fixture = fixture();
+        let first_manager = manager(
+            &temp,
+            first_fixture.catalog,
+            Arc::new(MemoryFetcher::new(first_fixture.archive, false)),
+            Arc::new(TestCoordinator::default()),
+        );
+        first_manager
+            .install(EngineId::Parakeet, &CancellationToken::default(), &|_| {})
+            .unwrap();
+        let installed = first_manager.0.0.root.join("parakeet/versions/1.0.0");
+        let cache = installed.join("runtime/lib/pkg/__pycache__");
+        fs::create_dir_all(&cache).unwrap();
+        let bytecode = cache.join("module.cpython-311.pyc");
+        fs::write(&bytecode, b"legacy bytecode").unwrap();
+        drop(first_manager);
+
+        let second_fixture = fixture();
+        let restarted = manager(
+            &temp,
+            second_fixture.catalog,
+            Arc::new(MemoryFetcher::new(second_fixture.archive, false)),
+            Arc::new(TestCoordinator::default()),
+        );
+        assert!(!bytecode.exists());
+        assert_eq!(
+            restarted.status(EngineId::Parakeet).state,
+            EnginePackageState::Installed
+        );
+        assert_eq!(
+            restarted
+                .remove(EngineId::Parakeet, &CancellationToken::default(), &|_| {})
+                .unwrap(),
+            RemovalOutcome::Removed
+        );
+    }
+
+    #[test]
+    fn restart_preserves_python_cache_when_any_unknown_file_is_present() {
+        let temp = tempfile::tempdir().unwrap();
+        let first_fixture = fixture();
+        let first_manager = manager(
+            &temp,
+            first_fixture.catalog,
+            Arc::new(MemoryFetcher::new(first_fixture.archive, false)),
+            Arc::new(TestCoordinator::default()),
+        );
+        first_manager
+            .install(EngineId::Parakeet, &CancellationToken::default(), &|_| {})
+            .unwrap();
+        let installed = first_manager.0.0.root.join("parakeet/versions/1.0.0");
+        let cache = installed.join("runtime/lib/pkg/__pycache__");
+        fs::create_dir_all(&cache).unwrap();
+        let bytecode = cache.join("module.cpython-311.pyc");
+        let unknown = installed.join("runtime/user-data.bin");
+        fs::write(&bytecode, b"legacy bytecode").unwrap();
+        fs::write(&unknown, b"preserve").unwrap();
+        drop(first_manager);
+
+        let second_fixture = fixture();
+        let restarted = manager(
+            &temp,
+            second_fixture.catalog,
+            Arc::new(MemoryFetcher::new(second_fixture.archive, false)),
+            Arc::new(TestCoordinator::default()),
+        );
+        assert!(bytecode.exists());
+        assert_eq!(fs::read(&unknown).unwrap(), b"preserve");
+        assert_eq!(
+            restarted.status(EngineId::Parakeet).state,
+            EnginePackageState::Corrupt
+        );
+        assert_eq!(
+            restarted
+                .remove(EngineId::Parakeet, &CancellationToken::default(), &|_| {})
+                .unwrap(),
+            RemovalOutcome::PreservedModified
+        );
+    }
+
+    #[test]
     fn verified_legacy_install_is_adopted_without_network_access() {
         let temp = tempfile::tempdir().unwrap();
         let runtime = temp.path().join("legacy-runtime");
@@ -2556,6 +2750,52 @@ mod tests {
             restarted.status(SpeechPackageId::EdgeTts).state,
             SpeechPackageState::Installed
         );
+    }
+
+    #[test]
+    fn restart_removes_only_well_formed_downloads_from_superseded_catalogs() {
+        let temp = tempfile::tempdir().unwrap();
+        let fixture = speech_fixture();
+        let delivery = fixture.catalog.current(&SpeechPackageId::EdgeTts).unwrap();
+        let current_key = crate::download::cache_key(&delivery.sha256, &delivery.asset);
+        let stale_key = "0000000000000000-obsolete.zip";
+        let root = initialize_store(&temp.path().join("speech-packages")).unwrap();
+        let downloads = root.join(".downloads");
+        for suffix in ["partial", "resume.json"] {
+            fs::write(
+                downloads.join(format!("{current_key}.{suffix}")),
+                b"current",
+            )
+            .unwrap();
+            fs::write(downloads.join(format!("{stale_key}.{suffix}")), b"stale").unwrap();
+        }
+
+        let manager = speech_manager(
+            &temp,
+            fixture.catalog,
+            Arc::new(MemoryFetcher::new(fixture.archive, false)),
+            Arc::new(TestCoordinator::default()),
+        );
+
+        for suffix in ["partial", "resume.json"] {
+            assert!(downloads.join(format!("{current_key}.{suffix}")).is_file());
+            assert!(!downloads.join(format!("{stale_key}.{suffix}")).exists());
+        }
+        drop(manager);
+    }
+
+    #[test]
+    fn restart_refuses_unknown_or_reparse_entries_in_private_download_storage() {
+        let temp = tempfile::tempdir().unwrap();
+        let fixture = speech_fixture();
+        let root = initialize_store(&temp.path().join("speech-packages")).unwrap();
+        fs::write(root.join(".downloads/not-owned.txt"), b"preserve").unwrap();
+
+        assert_eq!(
+            recover_interrupted_mutations(&root, &fixture.catalog),
+            Err(PackageError::StoreUnavailable)
+        );
+        assert!(root.join(".downloads/not-owned.txt").is_file());
     }
 
     #[test]

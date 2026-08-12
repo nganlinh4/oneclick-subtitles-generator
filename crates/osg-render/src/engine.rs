@@ -839,7 +839,7 @@ fn run_worker(
     }
     let mut command = Command::new(runtime.node());
     command
-        .arg(runtime.worker())
+        .arg(native_process_path(runtime.worker())?)
         .arg("--stdio-v1")
         .current_dir(working_directory)
         .stdin(Stdio::piped())
@@ -1202,10 +1202,34 @@ fn validate_executable(path: &Path) -> Result<()> {
 }
 
 fn native_path_string(path: &Path) -> Result<String> {
-    path.to_str()
+    native_process_path(path)?
+        .into_string()
+        .ok()
         .filter(|value| !value.is_empty() && value.len() <= 32 * 1024)
-        .map(ToOwned::to_owned)
         .ok_or(RenderError::StagingUnavailable)
+}
+
+fn native_process_path(path: &Path) -> Result<OsString> {
+    if path.as_os_str().is_empty() || !path.is_absolute() {
+        return Err(RenderError::StagingUnavailable);
+    }
+    #[cfg(windows)]
+    {
+        use std::os::windows::ffi::{OsStrExt as _, OsStringExt as _};
+
+        let encoded = path.as_os_str().encode_wide().collect::<Vec<_>>();
+        let unc_prefix = r"\\?\UNC\".encode_utf16().collect::<Vec<_>>();
+        if let Some(relative) = encoded.strip_prefix(unc_prefix.as_slice()) {
+            let mut normalized = r"\\".encode_utf16().collect::<Vec<_>>();
+            normalized.extend_from_slice(relative);
+            return Ok(OsString::from_wide(&normalized));
+        }
+        let extended_prefix = r"\\?\".encode_utf16().collect::<Vec<_>>();
+        if let Some(relative) = encoded.strip_prefix(extended_prefix.as_slice()) {
+            return Ok(OsString::from_wide(relative));
+        }
+    }
+    Ok(path.as_os_str().to_owned())
 }
 
 fn micros_to_seconds(value: u64) -> String {
@@ -1512,5 +1536,23 @@ mod tests {
         valid[4..8].copy_from_slice(b"ftyp");
         fs::write(&output, valid).expect("output");
         assert!(validate_render_output(&output, 64).is_ok());
+    }
+
+    #[cfg(windows)]
+    #[test]
+    fn node_process_paths_drop_only_the_windows_extended_length_prefix() {
+        assert_eq!(
+            native_process_path(Path::new(r"\\?\C:\managed\worker.mjs")).expect("drive path"),
+            OsString::from(r"C:\managed\worker.mjs")
+        );
+        assert_eq!(
+            native_process_path(Path::new(r"\\?\UNC\server\share\worker.mjs")).expect("UNC path"),
+            OsString::from(r"\\server\share\worker.mjs")
+        );
+        assert_eq!(
+            native_process_path(Path::new(r"C:\managed\worker.mjs")).expect("ordinary path"),
+            OsString::from(r"C:\managed\worker.mjs")
+        );
+        assert!(native_process_path(Path::new("worker.mjs")).is_err());
     }
 }

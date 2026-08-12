@@ -47,6 +47,8 @@ def update_catalog(path: Path, releases: dict[str, dict], collection: str) -> No
     catalog["schemaVersion"] = 2
     entries = catalog["platforms"]["windows-x86_64"][collection]
     for entry in entries:
+        if entry["id"] not in releases:
+            continue
         summary = releases[entry["id"]]
         entry["releases"] = [release_record(summary, collection == "backends")]
     path.write_text(
@@ -58,17 +60,26 @@ def update_catalog(path: Path, releases: dict[str, dict], collection: str) -> No
 
 def main() -> None:
     parser = argparse.ArgumentParser()
-    parser.add_argument("--summary", type=Path, required=True)
-    parser.add_argument("--asr-catalog", type=Path, required=True)
+    summaries = parser.add_mutually_exclusive_group(required=True)
+    summaries.add_argument("--summary", type=Path)
+    summaries.add_argument("--provider-summary", type=Path)
+    parser.add_argument("--asr-catalog", type=Path)
     parser.add_argument("--speech-catalog", type=Path, required=True)
     args = parser.parse_args()
+    summary_path = args.summary or args.provider_summary
     summaries = {
         item["component"]: item
-        for item in json.loads(args.summary.read_text(encoding="utf-8"))
+        for item in json.loads(summary_path.read_text(encoding="utf-8"))
     }
-    if set(summaries) != ASR | {"f5-tts", "chatterbox", "edge-tts", "gtts", "gemini-tts"}:
-        raise SystemExit("delivery summary does not contain the exact managed component set")
-    update_catalog(args.asr_catalog, summaries, "engines")
+    providers = {"edge-tts", "gtts", "gemini-tts"}
+    if args.provider_summary:
+        if set(summaries) != providers or args.asr_catalog is not None:
+            raise SystemExit("provider summary must contain the exact provider runtime set")
+    else:
+        if (set(summaries) != ASR | {"f5-tts", "chatterbox", *providers}
+                or args.asr_catalog is None):
+            raise SystemExit("delivery summary does not contain the exact managed component set")
+        update_catalog(args.asr_catalog, summaries, "engines")
     update_catalog(args.speech_catalog, summaries, "backends")
 
 

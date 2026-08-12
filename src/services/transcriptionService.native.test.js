@@ -38,7 +38,7 @@ it('imports ephemeral audio and transcribes only its opaque native asset', async
   expect(importAudioBlob).toHaveBeenCalledWith(blob);
   expect(runNativeGeminiTranscription).toHaveBeenCalledWith({
     assetId: ASSET_ID,
-    model: 'gemini-3.5-flash-lite',
+    model: 'gemini-3.1-flash-lite',
     prompt: 'Transcribe this audio. Return ONLY the transcription, no other text.',
   });
   expect(releaseAudioBlob).toHaveBeenCalledWith(ASSET_ID);

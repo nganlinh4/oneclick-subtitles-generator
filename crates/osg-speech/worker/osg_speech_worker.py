@@ -222,17 +222,63 @@ def _require_path(value: Any, suffixes: set[str], *, must_exist: bool) -> Path:
 
 def _audio_info(path: Path, maximum_seconds: int | None = None) -> tuple[int, int]:
     try:
-        import torchaudio as ta
-        information = ta.info(str(path))
-        sample_rate = int(information.sample_rate)
-        frames = int(information.num_frames)
-    except (AttributeError, ImportError, OSError, RuntimeError, ValueError):
+        import soundfile as sf
+        information = sf.info(str(path))
+        sample_rate = int(information.samplerate)
+        frames = int(information.frames)
+    except (AttributeError, ImportError, OSError, RuntimeError, TypeError, ValueError):
         raise WorkerFailure("reference_rejected") from None
     if sample_rate <= 0 or frames <= 0:
         raise WorkerFailure("reference_rejected")
     if maximum_seconds is not None and frames > maximum_seconds * sample_rate:
         raise WorkerFailure("reference_rejected")
     return sample_rate, frames
+
+
+def _load_audio_tensor(
+    path: Path | str,
+    *,
+    frame_offset: int = 0,
+    num_frames: int = -1,
+) -> tuple[Any, int]:
+    """Decode bounded audio without TorchCodec or a process-global FFmpeg install."""
+    if (not isinstance(frame_offset, int) or isinstance(frame_offset, bool)
+            or not isinstance(num_frames, int) or isinstance(num_frames, bool)
+            or frame_offset < 0 or num_frames < -1):
+        raise WorkerFailure("reference_rejected")
+    try:
+        import soundfile as sf
+        import torch
+        samples, sample_rate = sf.read(
+            str(path),
+            start=frame_offset,
+            frames=num_frames,
+            dtype="float32",
+            always_2d=True,
+        )
+        waveform = torch.from_numpy(samples.T.copy())
+    except (AttributeError, ImportError, OSError, RuntimeError, TypeError, ValueError):
+        raise WorkerFailure("reference_rejected") from None
+    if int(sample_rate) <= 0 or waveform.ndim != 2 or waveform.numel() == 0:
+        raise WorkerFailure("reference_rejected")
+    return waveform, int(sample_rate)
+
+
+def _managed_torchaudio_load(
+    path: Path | str,
+    frame_offset: int = 0,
+    num_frames: int = -1,
+    normalize: bool = True,
+    channels_first: bool = True,
+    format: str | None = None,
+    buffer_size: int = 4096,
+    backend: str | None = None,
+) -> tuple[Any, int]:
+    """The closed subset of the legacy TorchAudio load contract used by F5."""
+    if (normalize is not True or channels_first is not True or format is not None
+            or buffer_size != 4096 or backend is not None):
+        raise WorkerFailure("reference_rejected")
+    return _load_audio_tensor(path, frame_offset=frame_offset, num_frames=num_frames)
 
 
 def _require_audio_duration(path: Path, maximum_seconds: int) -> None:
@@ -701,10 +747,17 @@ def _load_chatterbox_vc() -> Any:
 
 def _save_tensor_wav(path: Path, waveform: Any, sample_rate: int) -> None:
     try:
-        import torchaudio as ta
-        ta.save(str(path), waveform, sample_rate, format="wav")
+        import soundfile as sf
+        samples = waveform.detach().cpu().float()
+        if samples.ndim == 1:
+            samples = samples.unsqueeze(0)
+        if samples.ndim != 2 or samples.numel() == 0:
+            raise WorkerFailure("encoding_failed")
+        sf.write(str(path), samples.transpose(0, 1).numpy(), sample_rate, format="WAV")
     except ImportError:
         raise WorkerFailure("model_unavailable") from None
+    except WorkerFailure:
+        raise
     except Exception:
         raise WorkerFailure("encoding_failed") from None
 
@@ -748,8 +801,8 @@ def _prepare_reference(request_id: int, request: dict[str, Any], backend: str) -
     try:
         sample_rate, total_frames = _audio_info(source)
         frame_offset, num_frames = _reference_frame_range(sample_rate, total_frames, segment)
-        waveform, loaded_rate = ta.load(
-            str(source),
+        waveform, loaded_rate = _load_audio_tensor(
+            source,
             frame_offset=frame_offset,
             num_frames=num_frames,
         )
@@ -765,7 +818,7 @@ def _prepare_reference(request_id: int, request: dict[str, Any], backend: str) -
             waveform = waveform[:2, :]
         silence = torch.zeros((2, 44_100), dtype=waveform.dtype, device=waveform.device)
         waveform = torch.cat((waveform, silence), dim=1)
-        ta.save(str(output), waveform.cpu(), 44_100, format="wav")
+        _save_tensor_wav(output, waveform, 44_100)
     except WorkerFailure:
         raise
     except Exception:
@@ -801,18 +854,24 @@ def _synthesize_f5(text: str, settings: dict[str, Any], reference: Path, output:
     _require_audio_duration(reference, 13)
     instance = _load_f5()
     try:
-        instance.infer(
-            ref_file=str(reference),
-            ref_text=reference_text or "",
-            gen_text=text,
-            file_wave=str(output),
-            remove_silence=settings["remove_silence"],
-            speed=rate,
-            nfe_step=steps,
-            sway_sampling_coef=sway,
-            cfg_strength=guidance,
-            seed=seed,
-        )
+        import torchaudio
+        original_load = torchaudio.load
+        torchaudio.load = _managed_torchaudio_load
+        try:
+            instance.infer(
+                ref_file=str(reference),
+                ref_text=reference_text or "",
+                gen_text=text,
+                file_wave=str(output),
+                remove_silence=settings["remove_silence"],
+                speed=rate,
+                nfe_step=steps,
+                sway_sampling_coef=sway,
+                cfg_strength=guidance,
+                seed=seed,
+            )
+        finally:
+            torchaudio.load = original_load
     except Exception:
         raise WorkerFailure("synthesis_failed") from None
 

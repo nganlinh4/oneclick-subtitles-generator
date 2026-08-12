@@ -1,6 +1,6 @@
 {
   "name": "subtitles-generator",
-  "version": "2.6.2-dev.2",
+  "version": "1.0.0-rc.1",
   "description": "A subtitle generator application using Gemini AI",
   "private": true,
   "packageManager": "npm@11.17.0",
@@ -39,7 +39,7 @@
     "check:dependencies": "npm ls --all && npm --prefix apps/desktop ls --all",
     "check:managed-delivery": "python -I -B scripts/check-managed-delivery-contract.py",
     "verify:managed-delivery": "python -I -B scripts/check-managed-delivery-contract.py --remote",
-    "test:managed-delivery": "python -I -B scripts/check-managed-delivery-contract.test.py -v",
+    "test:managed-delivery": "python -I -B scripts/check-managed-delivery-contract.test.py -v && python -I -B scripts/build-provider-speech-runtime.test.py -v",
     "check:versions": "node scripts/check-version-consistency.js",
     "check:tauri-contract": "node scripts/check-tauri-command-contract.js",
     "check:frozen-css-output": "node scripts/check-frozen-css-output.mjs",

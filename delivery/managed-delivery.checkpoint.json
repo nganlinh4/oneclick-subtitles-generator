@@ -7,8 +7,8 @@
   },
   "groups": {
     "managedPython": {
-      "sourceSha256": "00ed09518f25aca8f0a7599728d2deb25ebf13d579cb9fddba6dea6e16ac995d",
-      "deliverySha256": "08154e5c3cede6605fbafa9cd3e64f5d5bf3e32b9247d17843da0890a385f5e5",
+      "sourceSha256": "5103cfebd5237782c40065dd3ec3913876eaecd6b27798df3b988c86c9e29fda",
+      "deliverySha256": "c743cc80afeba0d38aa33718ec121edc708dd1a0cf55aa566b4622ae55c95dac",
       "sources": [
         {
           "path": "crates/osg-engine-packages/delivery/windows-managed-runtime-notices.json",
@@ -16,9 +16,19 @@
           "sha256": "9bb4adc887fa6d371519cfb4892afca9a7f6d52757a589c73ea4c21df06b732a"
         },
         {
+          "path": "crates/osg-speech/delivery/provider-runtime-windows.lock.json",
+          "sizeBytes": 18177,
+          "sha256": "778dc30f33a33266f5fca12b01b96fb94ce3ffeab07218f7a3fd11fe7bc7447f"
+        },
+        {
           "path": "crates/osg-speech/delivery/speech-upstreams.lock.json",
           "sizeBytes": 8901,
           "sha256": "43c499b649f3319262b83681dbd87a4b5d8eb839c8746beec8f04bdabfaf4d2e"
+        },
+        {
+          "path": "scripts/apply-managed-delivery-catalog.py",
+          "sizeBytes": 3008,
+          "sha256": "1335bdc01d9481f53700ec2a375e0ded92b79bc963710aef583b69b79b9a945e"
         },
         {
           "path": "scripts/build-managed-runtime-delivery.py",
@@ -26,9 +36,14 @@
           "sha256": "9a1b092315b8fd5826ea5de9900c20e1a8f49aa7120636caa0e45f1a596382c0"
         },
         {
+          "path": "scripts/build-provider-speech-runtime.py",
+          "sizeBytes": 16255,
+          "sha256": "f02559d67ff53fd3bb6295ccafe6854e8a1a7f57f7558051e7e761c9e6d07e3e"
+        },
+        {
           "path": "scripts/compose-managed-deliveries.py",
-          "sizeBytes": 10105,
-          "sha256": "90f6cee1f3d7e96635e6d86c0b6f4dc0278246e1dbfaa723de94317abdaafeaf"
+          "sizeBytes": 10578,
+          "sha256": "e813f1bff61e413e9d5313e8995bf73e25934e27e79bd6a33f742b6e594603a5"
         }
       ]
     },
@@ -169,9 +184,14 @@
       "sha256": "19a74aed8380e64d3a1857aba737b5bb1f7b8036796c39c60b236b0f916a44d9"
     },
     {
-      "asset": "edge-tts-windows-x86_64-2026.08.10-3f8506dc905f97ac.manifest.json",
-      "sizeBytes": 16179750,
-      "sha256": "3f8506dc905f97ac894ba6750ab7c685fb0ebb6e35a23310d0f6cb48d2829681"
+      "asset": "edge-tts-provider-runtime-2026.08.12-9178459ea116995e.zip",
+      "sizeBytes": 11481316,
+      "sha256": "9178459ea116995e89fce2139b2f199e53e338910a9eba56db51f7380667a1a1"
+    },
+    {
+      "asset": "edge-tts-windows-x86_64-2026.08.12-3ec418be614ae9c3.manifest.json",
+      "sizeBytes": 236790,
+      "sha256": "3ec418be614ae9c3d2c4d22116742480c0a838161f8ad6ebbfd8afe9818606f0"
     },
     {
       "asset": "f5-tts-windows-x86_64-2026.08.10-62699c10b9041344.manifest.json",
@@ -189,9 +209,14 @@
       "sha256": "01c96d87195f2df6fe81a4d0bc3001b80f70f200cc104be98b0637cecb3388bf"
     },
     {
-      "asset": "gemini-tts-windows-x86_64-2026.08.10-fee00bbd51e25865.manifest.json",
-      "sizeBytes": 16179752,
-      "sha256": "fee00bbd51e25865159c62a0807cb3c1d231e81222693425fa75d6cd77ca3898"
+      "asset": "gemini-tts-provider-runtime-2026.08.12-8bfbb151593b9ebf.zip",
+      "sizeBytes": 19628781,
+      "sha256": "8bfbb151593b9ebf39786a66d9f32ce22df48c39826ddda9259fc78f1346e386"
+    },
+    {
+      "asset": "gemini-tts-windows-x86_64-2026.08.12-e851eb293dca9fc6.manifest.json",
+      "sizeBytes": 600254,
+      "sha256": "e851eb293dca9fc6ff7f2be5882740a85599c651072b6d16e8ac55476fb8df02"
     },
     {
       "asset": "gemini-voice-samples-2026.08.11-3afc850d6dd85ae1.zip",
@@ -229,9 +254,14 @@
       "sha256": "7343aefa9061998bdfea8c1e2aa6943a029218dd78a23e5fde441e832fe66629"
     },
     {
-      "asset": "gtts-windows-x86_64-2026.08.10-9388b5219b8dea80.manifest.json",
-      "sizeBytes": 16179746,
-      "sha256": "9388b5219b8dea80c55330e2fd95459ec308682fb2075ccc49bf9be880283547"
+      "asset": "gtts-provider-runtime-2026.08.12-927a5fa89e2cc8f9.zip",
+      "sizeBytes": 11077708,
+      "sha256": "927a5fa89e2cc8f91d8f83104eb98971e7e4fddde9b9c33d2e15ae30675a05fb"
+    },
+    {
+      "asset": "gtts-windows-x86_64-2026.08.12-90f3aedd2410a84e.manifest.json",
+      "sizeBytes": 221146,
+      "sha256": "90f3aedd2410a84e6623a4849e9d504d26410c0fb8f53d0466664a52f6e9076e"
     },
     {
       "asset": "parakeet-windows-x86_64-2026.08.10-0f0e48e33edf5ecf.manifest.json",

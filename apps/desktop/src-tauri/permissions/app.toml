@@ -211,8 +211,8 @@ commands.allow = [
 
 [[permission]]
 identifier = "check-for-updates"
-description = "Allows the main window to check signed release metadata without exposing update URLs, signatures, or installer controls."
-commands.allow = ["app_update_check"]
+description = "Allows the main window to check, download, cancel, and install only signed application updates without exposing update URLs or signatures."
+commands.allow = ["app_update_check", "app_update_install", "app_update_cancel"]
 
 [[permission]]
 identifier = "open-reviewed-external-links"

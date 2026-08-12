@@ -39,9 +39,12 @@ CATALOGS = {
 SOURCE_GROUPS = {
     "managedPython": [
         Path("scripts/build-managed-runtime-delivery.py"),
+        Path("scripts/build-provider-speech-runtime.py"),
+        Path("scripts/apply-managed-delivery-catalog.py"),
         Path("scripts/compose-managed-deliveries.py"),
         Path("crates/osg-engine-packages/delivery/windows-managed-runtime-notices.json"),
         Path("crates/osg-speech/delivery/speech-upstreams.lock.json"),
+        Path("crates/osg-speech/delivery/provider-runtime-windows.lock.json"),
     ],
     "nativeTools": [
         Path("crates/osg-native-tools/delivery/native-tools.upstreams.lock.json"),

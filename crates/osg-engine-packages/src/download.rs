@@ -208,7 +208,7 @@ pub(crate) struct DownloadedArchive {
 }
 
 impl DownloadedArchive {
-    pub(crate) fn remove_after_success(self) -> Result<()> {
+    pub(crate) fn remove_after_success(&self) -> Result<()> {
         remove_regular_if_exists(&self.path)?;
         remove_regular_if_exists(&self.metadata_path)
     }
@@ -285,7 +285,7 @@ pub(crate) fn obtain_asset(
     progress: &dyn ProgressSink,
 ) -> Result<DownloadedArchive> {
     require_directory(download_root)?;
-    let cache_key = format!("{}-{}", &asset.sha256[..16], asset.asset);
+    let cache_key = cache_key(&asset.sha256, &asset.asset);
     let archive_path = download_root.join(format!("{cache_key}.partial"));
     let metadata_path = download_root.join(format!("{cache_key}.resume.json"));
     let mut metadata =
@@ -372,6 +372,10 @@ pub(crate) fn obtain_asset(
         path: archive_path,
         metadata_path,
     })
+}
+
+pub(crate) fn cache_key(sha256: &str, asset: &str) -> String {
+    format!("{}-{asset}", &sha256[..16])
 }
 
 fn verify_asset(
@@ -546,6 +550,23 @@ fn valid_etag(value: &str) -> bool {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn successful_download_cleanup_removes_payload_and_resume_metadata() {
+        let root = tempfile::tempdir().unwrap();
+        let path = root.path().join("asset.partial");
+        let metadata_path = root.path().join("asset.resume.json");
+        fs::write(&path, b"payload").unwrap();
+        fs::write(&metadata_path, b"metadata").unwrap();
+        let downloaded = DownloadedArchive {
+            path: path.clone(),
+            metadata_path: metadata_path.clone(),
+        };
+        downloaded.remove_after_success().unwrap();
+        assert!(!path.exists());
+        assert!(!metadata_path.exists());
+        downloaded.remove_after_success().unwrap();
+    }
 
     #[test]
     fn content_range_requires_the_exact_remaining_archive() {

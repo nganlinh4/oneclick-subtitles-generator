@@ -42,8 +42,9 @@ impl WorkerProgram {
         let mut command = Command::new(&self.executable);
         if let Some(script) = &self.script {
             // Isolated mode ignores ambient PYTHONPATH/user site-packages; the selected
-            // virtual environment's installed packages remain available.
-            command.args(["-I", "-u"]).arg(script);
+            // virtual environment's installed packages remain available. Bytecode writes are
+            // disabled because managed runtimes are integrity-checked, immutable package trees.
+            command.args(["-I", "-B", "-u"]).arg(script);
         }
         command
             .stdin(Stdio::piped())
@@ -155,6 +156,31 @@ fn resolve_executable(path: &Path) -> Result<PathBuf> {
     Ok(canonical)
 }
 
+pub(crate) fn native_process_path(path: &Path) -> Result<PathBuf> {
+    if path.as_os_str().is_empty() || !path.is_absolute() {
+        return Err(AsrError::InvalidRuntime);
+    }
+    #[cfg(windows)]
+    {
+        use std::os::windows::ffi::{OsStrExt, OsStringExt};
+
+        const DEVICE_PREFIX: &[u16] = &[b'\\' as u16, b'\\' as u16, b'?' as u16, b'\\' as u16];
+        const UNC_PREFIX: &[u16] = &[b'U' as u16, b'N' as u16, b'C' as u16, b'\\' as u16];
+        let encoded = path.as_os_str().encode_wide().collect::<Vec<_>>();
+        if let Some(remainder) = encoded.strip_prefix(DEVICE_PREFIX) {
+            let normalized = if let Some(unc) = remainder.strip_prefix(UNC_PREFIX) {
+                let mut value = vec![u16::from(b'\\'), u16::from(b'\\')];
+                value.extend_from_slice(unc);
+                value
+            } else {
+                remainder.to_vec()
+            };
+            return Ok(PathBuf::from(std::ffi::OsString::from_wide(&normalized)));
+        }
+    }
+    Ok(path.to_path_buf())
+}
+
 #[cfg(unix)]
 fn is_executable(path: &Path) -> bool {
     use std::os::unix::fs::PermissionsExt;
@@ -191,6 +217,7 @@ fn apply_sanitized_environment(command: &mut Command) {
         ("PYTHONUTF8", "1"),
         ("PYTHONIOENCODING", "utf-8"),
         ("PYTHONNOUSERSITE", "1"),
+        ("PYTHONDONTWRITEBYTECODE", "1"),
         ("HF_HUB_OFFLINE", "1"),
         ("TRANSFORMERS_OFFLINE", "1"),
         ("TOKENIZERS_PARALLELISM", "false"),
@@ -200,6 +227,46 @@ fn apply_sanitized_environment(command: &mut Command) {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[cfg(windows)]
+    #[test]
+    fn python_workers_cannot_mutate_managed_packages_with_bytecode() {
+        use std::ffi::OsStr;
+
+        let runtime = tempfile::tempdir().unwrap();
+        let python = runtime.path().join("python.exe");
+        let worker = runtime.path().join("worker.py");
+        std::fs::write(&python, b"managed python").unwrap();
+        std::fs::write(&worker, b"# managed worker\n").unwrap();
+        let program = WorkerProgram::python(&python, &worker).unwrap();
+        let command = program.command();
+        let args = command.get_args().collect::<Vec<_>>();
+        assert!(
+            args.windows(3)
+                .any(|args| { args == [OsStr::new("-I"), OsStr::new("-B"), OsStr::new("-u")] })
+        );
+        assert!(command.get_envs().any(|(key, value)| {
+            key == OsStr::new("PYTHONDONTWRITEBYTECODE") && value == Some(OsStr::new("1"))
+        }));
+    }
+
+    #[cfg(windows)]
+    #[test]
+    fn python_library_paths_drop_only_the_windows_extended_length_prefix() {
+        assert_eq!(
+            native_process_path(Path::new(r"\\?\C:\managed\model")).unwrap(),
+            PathBuf::from(r"C:\managed\model")
+        );
+        assert_eq!(
+            native_process_path(Path::new(r"\\?\UNC\server\share\model")).unwrap(),
+            PathBuf::from(r"\\server\share\model")
+        );
+        assert_eq!(
+            native_process_path(Path::new(r"C:\managed\model")).unwrap(),
+            PathBuf::from(r"C:\managed\model")
+        );
+        assert!(native_process_path(Path::new("relative")).is_err());
+    }
 
     #[test]
     fn model_assets_require_the_qwen_aligner_and_redact_paths() {

@@ -1,6 +1,8 @@
+use crate::program::native_process_path;
 use crate::{AsrEngineId, AsrError, LanguageCode, ModelAssets, NormalizedAudio, Result};
 use serde::{Deserialize, Serialize};
 use std::io::{Read, Write};
+use std::path::PathBuf;
 
 pub(crate) const PROTOCOL_VERSION: u16 = 1;
 const MAX_REQUEST_BYTES: usize = 64 * 1024;
@@ -12,10 +14,10 @@ pub(crate) struct WireRequest<'a> {
     protocol_version: u16,
     request_id: u64,
     engine: AsrEngineId,
-    input_path: &'a std::path::Path,
+    input_path: PathBuf,
     input_duration_ms: u64,
-    model_path: &'a std::path::Path,
-    aligner_path: Option<&'a std::path::Path>,
+    model_path: PathBuf,
+    aligner_path: Option<PathBuf>,
     language: Option<&'a str>,
 }
 
@@ -25,17 +27,20 @@ impl<'a> WireRequest<'a> {
         assets: &'a ModelAssets,
         audio: &'a NormalizedAudio,
         language: Option<&'a LanguageCode>,
-    ) -> Self {
-        Self {
+    ) -> Result<Self> {
+        Ok(Self {
             protocol_version: PROTOCOL_VERSION,
             request_id,
             engine: assets.engine(),
-            input_path: audio.path(),
+            input_path: native_process_path(audio.path())?,
             input_duration_ms: audio.duration_ms(),
-            model_path: assets.model_directory(),
-            aligner_path: assets.aligner_directory(),
+            model_path: native_process_path(assets.model_directory())?,
+            aligner_path: assets
+                .aligner_directory()
+                .map(native_process_path)
+                .transpose()?,
             language: language.map(LanguageCode::as_str),
-        }
+        })
     }
 }
 

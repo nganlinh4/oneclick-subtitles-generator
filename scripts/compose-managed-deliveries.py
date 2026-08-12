@@ -236,6 +236,7 @@ def main() -> None:
     parser = argparse.ArgumentParser()
     parser.add_argument("--asr-runtime-manifest", type=Path, required=True)
     parser.add_argument("--speech-runtime-manifest", type=Path, required=True)
+    parser.add_argument("--provider-runtime-summary", type=Path, required=True)
     parser.add_argument("--model-root", type=Path, required=True)
     parser.add_argument("--notice", type=Path, required=True)
     parser.add_argument("--output", type=Path, required=True)
@@ -254,12 +255,9 @@ def main() -> None:
         "qwen3-asr-1.7b": ([('qwen3-asr-1.7b', 'model')], 'qwen-aligner'),
         "qwen3-asr-0.6b": ([('qwen3-asr-0.6b', 'model')], 'qwen-aligner'),
     }
-    speech = {
+    local_speech = {
         "f5-tts": [('f5-main', 'model'), ('f5-vocos', 'model/vocos')],
         "chatterbox": [('chatterbox', 'model')],
-        "edge-tts": [],
-        "gtts": [],
-        "gemini-tts": [],
     }
     outputs = []
     releases = []
@@ -268,12 +266,20 @@ def main() -> None:
                                   args.notice, component, args.version, models, aligner)
         outputs.append(output)
         releases.append(release)
-    for component, models in speech.items():
+    for component, models in local_speech.items():
         output, release = compose(args.speech_runtime_manifest, args.output, args.model_root,
                                   args.notice, component, args.version, models,
                                   canonical_sources=canonical_runtime_sources)
         outputs.append(output)
         releases.append(release)
+    provider_releases = json.loads(
+        args.provider_runtime_summary.read_text(encoding="utf-8")
+    )
+    if ({release.get("component") for release in provider_releases}
+            != {"edge-tts", "gtts", "gemini-tts"}
+            or any(release.get("version") != args.version for release in provider_releases)):
+        raise SystemExit("provider runtime summary does not contain the exact release set")
+    releases.extend(provider_releases)
     summary = args.output / "managed-delivery-releases.json"
     summary.write_text(json.dumps(releases, ensure_ascii=False, indent=2) + "\n",
                        encoding="utf-8", newline="\n")

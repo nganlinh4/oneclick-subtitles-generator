@@ -109,7 +109,9 @@ use tauri::webview::PageLoadEvent;
 use tauri::{Manager, WebviewWindowBuilder};
 use tauri_plugin_window_state::StateFlags;
 use ui_fonts::UiFontRuntime;
-use updater::{app_update_check, updater_plugin};
+use updater::{
+    AppUpdateRuntime, app_update_cancel, app_update_check, app_update_install, updater_plugin,
+};
 use voice_samples::{
     VoiceSampleRuntime, voice_sample_resolve, voice_samples_cancel, voice_samples_install,
     voice_samples_remove, voice_samples_status,
@@ -133,6 +135,7 @@ pub fn run() {
         .manage(NativeMediaDropState::default())
         .manage(LiveMusicRuntime::default())
         .manage(ImageBlobStore::default())
+        .manage(AppUpdateRuntime::default())
         .setup(setup_app)
         .on_page_load(|webview, payload| {
             if webview.label() == "main" && matches!(payload.event(), PageLoadEvent::Started) {
@@ -254,6 +257,8 @@ pub fn run() {
             speech_artifact_resolve,
             speech_playback_release,
             app_update_check,
+            app_update_install,
+            app_update_cancel,
             open_external_link,
             voice_samples_status,
             voice_samples_install,

@@ -22,7 +22,7 @@ const EXPECTED_MODELS = [
 describe('Gemini model catalog contract', () => {
   test('matches the toolbox ordinary model lineup exactly', () => {
     expect(GEMINI_MODELS.map(({ id }) => id)).toEqual(EXPECTED_MODELS);
-    expect(DEFAULT_GEMINI_MODEL_ID).toBe('gemini-3.5-flash-lite');
+    expect(DEFAULT_GEMINI_MODEL_ID).toBe('gemini-3.1-flash-lite');
     expect(DEFAULT_ANALYSIS_MODEL_ID).toBe(DEFAULT_GEMINI_MODEL_ID);
   });
 
@@ -85,9 +85,9 @@ describe('Gemini model catalog contract', () => {
     };
 
     expect(migrateStoredGeminiModels(storage)).toEqual({
-      gemini_model: 'gemini-3.5-flash-lite',
+      gemini_model: 'gemini-3.1-flash-lite',
       video_analysis_model: 'gemini-3.1-flash-lite',
-      video_processing_model: 'gemini-3.5-flash-lite'
+      video_processing_model: 'gemini-3.1-flash-lite'
     });
     expect(values.get('translation_model')).toBe('custom-model');
     expect(JSON.parse(values.get('thinking_budgets'))).toEqual({

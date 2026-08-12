@@ -302,6 +302,64 @@ pub(crate) fn cleanup_known_tree(root: &Path, allowed_files: &HashSet<String>) -
     fs::remove_dir(root).map_err(|_| PackageError::StoreUnavailable)
 }
 
+/// Removes only generated Python/Numba caches from an otherwise receipt-bounded managed runtime.
+///
+/// OSG versions before the immutable-runtime launch fix did not pass `-B` to managed ASR Python.
+/// Those workers could add `runtime/**/__pycache__/*.{pyc,nbc,nbi}`, making an authentic package
+/// fail exact tree validation and become impossible to remove. This migration first inventories
+/// the complete tree, refuses to touch it if any other undeclared file is present, and resolves
+/// every deletion through the same link/reparse-safe path boundary used by package cleanup.
+pub(crate) fn scrub_generated_python_cache(
+    root: &Path,
+    allowed_files: &HashSet<String>,
+    python_relative_path: &str,
+) -> Result<bool> {
+    validate_manifest_path(python_relative_path).map_err(|_| PackageError::InvalidInstall)?;
+    let Some((runtime_root, _)) = python_relative_path.rsplit_once('/') else {
+        return Ok(false);
+    };
+    let runtime_prefix = format!("{runtime_root}/");
+    let actual = collect_regular_files(root)?;
+    let mut generated = actual
+        .iter()
+        .filter(|path| !allowed_files.contains(*path))
+        .cloned()
+        .collect::<Vec<_>>();
+    if generated.is_empty() {
+        return Ok(false);
+    }
+    if generated
+        .iter()
+        .any(|path| !is_generated_python_cache(path, &runtime_prefix))
+    {
+        return Ok(false);
+    }
+    generated.sort_by_key(|path| std::cmp::Reverse(path.matches('/').count()));
+    for relative in generated {
+        let path = resolve_owned(root, &relative)?;
+        require_regular_file(&path)?;
+        fs::remove_file(path).map_err(|_| PackageError::StoreUnavailable)?;
+    }
+    Ok(true)
+}
+
+fn is_generated_python_cache(path: &str, runtime_prefix: &str) -> bool {
+    let Some(relative) = path.strip_prefix(runtime_prefix) else {
+        return false;
+    };
+    let segments = relative.split('/').collect::<Vec<_>>();
+    segments.len() >= 2
+        && segments[segments.len() - 2] == "__pycache__"
+        && segments.last().is_some_and(|name| {
+            name.len() > 4
+                && Path::new(name).extension().is_some_and(|extension| {
+                    extension.eq_ignore_ascii_case("pyc")
+                        || extension.eq_ignore_ascii_case("nbc")
+                        || extension.eq_ignore_ascii_case("nbi")
+                })
+        })
+}
+
 fn remove_empty_directories(root: &Path) -> Result<()> {
     let mut directories = Vec::new();
     let mut pending = vec![root.to_path_buf()];
@@ -357,6 +415,43 @@ mod tests {
             assert!(validate_manifest_path(invalid).is_err(), "{invalid}");
         }
         assert!(validate_manifest_path("model/weights/model-00001.safetensors").is_ok());
+    }
+
+    #[test]
+    fn legacy_python_cache_scrub_is_exact_and_refuses_mixed_extras() {
+        let root = tempfile::tempdir().unwrap();
+        fs::create_dir_all(root.path().join("runtime/lib/pkg/__pycache__")).unwrap();
+        fs::write(root.path().join("runtime/python.exe"), b"python").unwrap();
+        fs::write(root.path().join("runtime/lib/pkg/module.py"), b"source").unwrap();
+        let generated = root
+            .path()
+            .join("runtime/lib/pkg/__pycache__/module.cpython-311.pyc");
+        let numba_data = root
+            .path()
+            .join("runtime/lib/pkg/__pycache__/module.function-1.py311.1.nbc");
+        let numba_index = root
+            .path()
+            .join("runtime/lib/pkg/__pycache__/module.function-1.py311.nbi");
+        fs::write(&generated, b"bytecode").unwrap();
+        fs::write(&numba_data, b"compiled").unwrap();
+        fs::write(&numba_index, b"index").unwrap();
+        let allowed = HashSet::from([
+            "runtime/python.exe".to_owned(),
+            "runtime/lib/pkg/module.py".to_owned(),
+        ]);
+        assert!(scrub_generated_python_cache(root.path(), &allowed, "runtime/python.exe").unwrap());
+        assert!(!generated.exists());
+        assert!(!numba_data.exists());
+        assert!(!numba_index.exists());
+
+        fs::write(&generated, b"bytecode").unwrap();
+        let unknown = root.path().join("runtime/lib/pkg/user-data.bin");
+        fs::write(&unknown, b"preserve").unwrap();
+        assert!(
+            !scrub_generated_python_cache(root.path(), &allowed, "runtime/python.exe").unwrap()
+        );
+        assert!(generated.exists());
+        assert_eq!(fs::read(unknown).unwrap(), b"preserve");
     }
 
     #[test]

@@ -1,3 +1,4 @@
+import { useEffect } from 'react';
 import { useTranslation } from 'react-i18next';
 import AppLayout from './AppLayout';
 import { useAppState } from './AppState';
@@ -7,6 +8,7 @@ import { useAppEffects } from './AppEffects';
 import OnboardingBanner from '../OnboardingBanner';
 import OnboardingFooterReveal from '../OnboardingFooterReveal';
 import ToastPanel from '../common/ToastPanel';
+import { startStartupUpdateCheck } from '../../platform/startupUpdateCoordinator';
 
 // Import CSS files
 import '../../styles/App.css';
@@ -44,6 +46,10 @@ function App() {
     handleDownloadAndPrepareYouTubeVideo: appHandlers.handleDownloadAndPrepareYouTubeVideo,
     t
   });
+
+  useEffect(() => {
+    startStartupUpdateCheck().catch(() => undefined);
+  }, []);
 
   // State change effects removed to reduce console logs
 

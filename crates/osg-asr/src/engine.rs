@@ -233,7 +233,7 @@ impl AsrService {
             &self.0.assets,
             &request.audio,
             request.options.language(),
-        );
+        )?;
         if let Err(error) = state.session.as_mut().unwrap().send(&wire_request) {
             invalidate_session(&mut state);
             return Err(error);

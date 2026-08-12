@@ -15,6 +15,7 @@ const CREATE_NO_WINDOW: u32 = 0x0800_0000;
 
 pub(crate) struct WorkerSession {
     child: GroupChild,
+    _cache_directory: tempfile::TempDir,
     stdin: ChildStdin,
     receiver: Receiver<ReaderMessage>,
     _stderr_tail: Arc<Mutex<VecDeque<u8>>>,
@@ -30,7 +31,21 @@ pub(crate) enum SessionPoll {
 
 impl WorkerSession {
     pub(crate) fn spawn(program: &WorkerProgram) -> Result<Self> {
+        let cache_directory = tempfile::Builder::new()
+            .prefix("osg-asr-worker-")
+            .tempdir()
+            .map_err(AsrError::Spawn)?;
         let mut command = program.command();
+        command.envs([
+            (
+                "TORCHINDUCTOR_CACHE_DIR",
+                cache_directory.path().as_os_str(),
+            ),
+            ("NUMBA_CACHE_DIR", cache_directory.path().as_os_str()),
+            ("USERNAME", std::ffi::OsStr::new("osg-worker")),
+            ("USER", std::ffi::OsStr::new("osg-worker")),
+            ("LOGNAME", std::ffi::OsStr::new("osg-worker")),
+        ]);
         #[cfg(windows)]
         let child = command
             .group()
@@ -64,6 +79,7 @@ impl WorkerSession {
 
         Ok(Self {
             child,
+            _cache_directory: cache_directory,
             stdin,
             receiver,
             _stderr_tail: stderr_tail,

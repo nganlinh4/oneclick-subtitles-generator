@@ -3,6 +3,7 @@
  */
 
 import { fetchBrowserResource } from '../platform/browserFetch';
+import { checkDesktopUpdate, getDesktopAppVersion } from '../platform/updateService';
 
 /**
  * Get git commit information from the current repository
@@ -16,10 +17,8 @@ import { fetchBrowserResource } from '../platform/browserFetch';
 export const getGitVersion = async () => {
   try {
     if (typeof window !== 'undefined' && window.isTauri) {
-      const [{ default: generatedVersion }, { getDesktopAppVersion }] = await Promise.all([
-        import('../config/version.js').catch(() => ({ default: null })),
-        import('../platform/updateService'),
-      ]);
+      const { default: generatedVersion } = await import('../config/version.js')
+        .catch(() => ({ default: null }));
       const appVersion = await getDesktopAppVersion();
       const buildDate = generatedVersion?.date || new Date(0).toISOString();
       return {
@@ -166,10 +165,7 @@ export const getDisplayVersion = (versionInfo) => {
 export const getLatestVersion = async () => {
   try {
     if (typeof window !== 'undefined' && window.isTauri) {
-      const [{ checkDesktopUpdate }, current] = await Promise.all([
-        import('../platform/updateService'),
-        getGitVersion(),
-      ]);
+      const current = await getGitVersion();
       const status = await checkDesktopUpdate();
       if (!status.configured) {
         throw new Error('Signed updater is not configured');

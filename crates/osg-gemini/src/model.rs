@@ -85,7 +85,7 @@ const MODELS: &[ModelSpec] = &[
         input_token_limit: 1_048_576,
         output_token_limit: 65_536,
         toolbox_thinking: ThinkingLevel::Minimal,
-        toolbox_role: "default vision, direct audio translation, and high-volume extraction",
+        toolbox_role: "high-volume text extraction and opt-in media compatibility testing",
         verified_at: "2026-08-10",
         evidence_url: "https://ai.google.dev/gemini-api/docs/models/gemini-3.5-flash-lite",
     },
@@ -130,21 +130,21 @@ const MODELS: &[ModelSpec] = &[
         input_token_limit: 1_048_576,
         output_token_limit: 65_536,
         toolbox_thinking: ThinkingLevel::Minimal,
-        toolbox_role: "low-cost compatibility fallback",
-        verified_at: "2026-08-10",
+        toolbox_role: "default low-cost transcription, media analysis, and compatibility path",
+        verified_at: "2026-08-12",
         evidence_url: "https://ai.google.dev/gemini-api/docs/models/gemini-3.1-flash-lite",
     },
 ];
 
-pub const DEFAULT_MODEL: Model = Model::Gemini35FlashLite;
+pub const DEFAULT_MODEL: Model = Model::Gemini31FlashLite;
 pub const ACCURATE_MODEL: Model = Model::Gemini36Flash;
 
 /// Stable daily-use order. Automatic fallback is left to the application so a
 /// retry cannot silently change cost or behavior.
 pub const DAILY_USE_CHAIN: &[Model] = &[
-    Model::Gemini35FlashLite,
-    Model::Gemini36Flash,
     Model::Gemini31FlashLite,
+    Model::Gemini36Flash,
+    Model::Gemini35FlashLite,
     Model::Gemini35Flash,
 ];
 
@@ -215,7 +215,7 @@ mod tests {
 
     #[test]
     fn toolbox_daily_defaults_are_locked() {
-        assert_eq!(DEFAULT_MODEL.api_id(), "gemini-3.5-flash-lite");
+        assert_eq!(DEFAULT_MODEL.api_id(), "gemini-3.1-flash-lite");
         assert_eq!(ACCURATE_MODEL.api_id(), "gemini-3.6-flash");
         assert_eq!(DailyUse::DirectTranslation.model(), DEFAULT_MODEL);
         assert_eq!(DailyUse::VideoUnderstanding.model(), ACCURATE_MODEL);

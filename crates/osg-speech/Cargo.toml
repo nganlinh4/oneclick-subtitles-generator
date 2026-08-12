@@ -15,5 +15,8 @@ tempfile = "=3.27.0"
 thiserror.workspace = true
 zeroize = "=1.9.0"
 
+[dev-dependencies]
+osg-engine-packages.workspace = true
+
 [lints]
 workspace = true

@@ -151,9 +151,10 @@ creating narration and supporting media, and rendering subtitled video. The curr
 the existing interface intact while replacing the Electron and multi-server backend with Tauri 2
 and a Rust application core.
 
-> **Rewrite checkpoint:** Windows x64 has a release-ready on-demand runtime catalog and signed
-> installer configuration. Linux/macOS catalogs remain intentionally empty pending target builds
-> and real-device tests. Do not use deleted legacy installers or expect a hosted/Vercel edition.
+> **OSG Windows release candidate:** this Tauri/Rust rewrite is intended to replace the legacy
+> Node/Electron application as the repository's primary product. Windows x64 is the only planned
+> supported 1.0 release target. Publication waits on the complete installed-EXE validation matrix;
+> do not treat a successful source build as release approval or expect a hosted/Vercel edition.
 
 ## What is native now
 
@@ -164,7 +165,7 @@ and a Rust application core.
 | Providers and music | Native Genius, YouTube metadata/OAuth, provider-image proxying, and Lyria RealTime sessions; secrets stay in the operating-system credential store. |
 | Media and downloads | Typed probe, compatibility, extraction, waveform, download, and cancellation pipelines. Packaged execution still depends on reviewed target tools. |
 | Local ASR | Windows x64 can install and fully remove verified Parakeet, Faster-Whisper Turbo/Large-v3, and Qwen3-ASR 0.6B/1.7B packages on demand. Linux/macOS catalogs remain empty. |
-| Narration | Windows x64 can install and fully remove verified F5-TTS and Chatterbox packages; Edge TTS, gTTS, and Gemini share the verified worker runtime. F5 weights are identified as `CC-BY-NC-4.0`. |
+| Narration | Windows x64 can install and fully remove verified F5-TTS and Chatterbox packages; Edge TTS, gTTS, and Gemini each use a small independently removable provider runtime. F5 weights are identified as `CC-BY-NC-4.0`. |
 | Rendering | Windows x64 can install and fully remove the verified Node/Chrome-for-Testing/Remotion renderer package without embedding its 625 MB runtime in the installer. |
 | Updating | The updater public key and signed-artifact configuration are present; the private signing key remains outside the repository. |
 
@@ -176,9 +177,11 @@ localhost services.
 
 `src/config/geminiModelCatalog.json` is OSG's owned, authoritative frontend model catalog. It is
 reviewed directly against the official Gemini model documentation and exposes
-`gemini-3.5-flash-lite` (the everyday/transcription default), `gemini-3.6-flash`,
-`gemini-3.5-flash`, and `gemini-3.1-flash-lite` for ordinary multimodal work; all four accept audio
-and video. Image generation uses `gemini-3.1-flash-image`, which accepts video, while live audio
+`gemini-3.1-flash-lite` (the release-candidate everyday/transcription default),
+`gemini-3.5-flash-lite`, `gemini-3.6-flash`, and `gemini-3.5-flash` for ordinary work. Google
+advertises audio and video input for all four, but OSG keeps 3.1 as the media default until the
+3.5 Lite audio endpoint passes the installed-EXE validation matrix. Image generation uses
+`gemini-3.1-flash-image`, which accepts video, while live audio
 uses `gemini-3.1-flash-live-preview` and `gemini-2.5-flash-native-audio-preview-12-2025`.
 `npm run test:gemini-catalog` rejects any exposed model that accepts neither audio nor video and
 keeps obsolete IDs as migration aliases rather than selectable models.
@@ -187,11 +190,15 @@ keeps obsolete IDs as migration aliases rather than selectable models.
 
 | Target | Status |
 | --- | --- |
-| Windows x64 | Current development and manual test host; source builds are exercised, but release packaging is still gated. |
-| macOS Apple Silicon / Intel | Build-matrix targets exist; runtime, media, signing, and installer behavior have not yet been manually validated. |
-| Linux x64 | A build-matrix target exists; runtime, media, desktop integration, and package behavior have not yet been manually validated. |
+| Windows x64 | The only supported target planned for OSG Windows 1.0; final publication waits on the complete installed-EXE feature matrix. |
+| macOS Apple Silicon / Intel | Not supported: build checks exist, but there is no maintained real-device environment for runtime, media, packaging, signing, or installer validation. Contributions are welcome through pull requests. |
+| Linux x64 | Not supported: build checks exist, but there is no maintained real-device environment for runtime, media, packaging, or desktop-integration validation. Contributions are welcome through pull requests. |
 
-The intended product is cross-platform, but macOS and Linux are not yet supported release claims.
+OSG Windows is currently a Windows-first product. Developers who can reproduce and validate Linux
+or macOS delivery are welcome to contribute support through pull requests; those targets will not
+be advertised as supported until their runtime packages and real-device installer tests pass.
+
+The release sign-off checklist is [docs/release/WINDOWS-1.0-VALIDATION.md](docs/release/WINDOWS-1.0-VALIDATION.md).
 
 ## Run from source
 
@@ -274,7 +281,7 @@ The other matrix targets are `x86_64-unknown-linux-gnu`, `aarch64-apple-darwin`,
 | Deno | Reviewed `2.9.5` content-addressed direct-upstream releases are catalogued for the four target families. URL inspection installs and activates it automatically on first use; it is never bundled or downloaded at startup. |
 | FFmpeg / ffprobe | Windows x64 downloads the reviewed, hash-pinned Gyan `8.1.2` vendor archive, installs only the two executables plus license/build notice, and activates them in the running application. Linux/macOS remain fail-closed until equivalent deliveries are reviewed. |
 | Parakeet / Faster-Whisper / Qwen3-ASR | Windows x64 has content-addressed runtime/model manifests and external-first model sources with the reviewed bundle pool as fallback. All five install, launch under a held lease, and remove through typed native jobs. |
-| F5-TTS / Chatterbox / Edge TTS / gTTS / Gemini TTS worker | Windows x64 has verified managed runtime/model packages. F5 and Chatterbox are independently downloadable/removable; network-provider modes reuse the worker runtime. F5's model license is `CC-BY-NC-4.0`. |
+| F5-TTS / Chatterbox / Edge TTS / gTTS / Gemini TTS worker | Windows x64 has verified managed runtime/model packages. Every backend is independently downloadable/removable; the three network providers use minimal 11–20 MB downloads rather than the GPU runtime. F5's model license is `CC-BY-NC-4.0`. |
 | Gemini voice previews | The exact 30-sample, 13.5 MB content-addressed pack installs automatically on first preview on all four target families, streams through an opaque native media capability, and removes immediately without restarting. No preview WAV is embedded in the frontend. |
 | Remotion runtime | Windows x64 downloads a 265 MB content-addressed bundle-pool archive with exact Node 24.19, Chrome for Testing 149, Remotion 4.0.507, the OSG bundle, reviewed Inter font, and notices; installed size is about 625 MB and is fully removable. |
 | Application updater | The public key is configured and updater artifacts are signed with a private key held outside the repository. |

@@ -33,6 +33,9 @@ The Windows managed runtime notice index is
 `crates/osg-engine-packages/delivery/windows-managed-runtime-notices.json`. Package archives retain
 the exact `METADATA`, `LICENSE`, `COPYING`, `NOTICE`, and `dist-info/licenses` files installed by
 each Python distribution. Model downloads are bound to immutable Hugging Face commit revisions.
+The minimal Edge TTS, gTTS, and Gemini provider closures are separately bound by
+`crates/osg-speech/delivery/provider-runtime-windows.lock.json`; their generated archives also
+carry a package-specific `PROVIDER_RUNTIME_NOTICES.json` and do not contain the local GPU stack.
 
 Important model terms include:
 

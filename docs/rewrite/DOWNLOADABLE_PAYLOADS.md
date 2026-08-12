@@ -34,7 +34,8 @@ hash mismatch never becomes an implicit update.
 | FFmpeg/ffprobe 8.1.2, Windows x64 | Direct fixed Gyan vendor ZIP; selective extraction of two executables plus license/build notice | Verified install activates in the running app under a held media-tool lease | Catalog metadata only |
 | FFmpeg/ffprobe, Linux/macOS | Disabled until reviewed direct artifacts exist; otherwise build a provenance-complete OSG mirror bundle | Not available | None |
 | ASR engines | Split future packages into a shared per-platform runtime bundle plus direct, revision-pinned model files where publishers provide them | Package lease retained by worker | Worker bootstrap only |
-| Speech engines | Shared per-platform Python/wheel runtime bundle; direct pinned model files where licensing permits; backend-specific overlays | Package lease retained by worker | Worker bootstrap only |
+| Local speech engines | Independently removable F5-TTS and Chatterbox packages; direct pinned model files where licensing permits and a checked GPU dependency closure | Package lease retained by worker | Worker bootstrap only |
+| Network speech providers | Separate minimal Edge TTS, gTTS, and Gemini Python runtimes assembled from official CPython and hash-locked PyPI wheels; only the deterministic composite ZIP uses the OSG pool | Package lease retained by worker | Worker bootstrap only |
 | Remotion renderer | Direct official Node and Chrome-for-Testing components, exact npm renderer/binary closure, offline font pack, and an OSG composition bundle | Managed render-runtime lease | Worker bootstrap only |
 | Gemini voice samples | One platform-neutral, content-addressed OSG pool archive containing the exact 30 reviewed WAVs | Installed automatically on first preview; resolved through a tokenized native media capability; immediately removable | Catalog metadata only |
 | Google Sans Flex | Current official Google Fonts webfont in a dedicated managed UI-font package; Google/SIL sources first and the OSG pool only as a byte-identical reviewed fallback | Automatic during desktop bootstrap with bounded system-font fallback | The retired 4.6 MiB TTF is absent; the three WOFF2 subsets total 459 KiB on demand |
@@ -86,8 +87,8 @@ development more permissive than the shipped app.
 
 `npm run tauri:dev` runs the remote checkpoint preflight before Tauri starts. Rust's desktop build
 script independently runs the local checkpoint, so invoking Cargo directly cannot bypass it. The
-checkpoint binds package-producing source files to the exact delivery catalogs and to the 28
-server-reported assets in `osg-runtime-bundles-v1`.
+checkpoint binds package-producing source files to the exact delivery catalogs and to every
+referenced server-reported asset in `osg-runtime-bundles-v1`.
 
 When a bound source changes, use this order in the same commit:
 

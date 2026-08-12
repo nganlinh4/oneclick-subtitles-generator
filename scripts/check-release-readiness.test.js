@@ -371,6 +371,25 @@ test('workflow is unsigned, read-only, credentialless, and locked', () => {
     () => assertWorkflowCommands(nativeWithoutNode),
     /native-matrix must install Node through the reviewed setup-node action/,
   );
+  const branchSmokeWithoutPython = replaceInWorkflowJob(
+    workflow,
+    'windows-installed-smoke',
+    nativeSetupPython,
+    '# branch smoke setup-python intentionally removed',
+  );
+  assert.throws(
+    () => assertWorkflowCommands(branchSmokeWithoutPython),
+    /windows-installed-smoke must install Python through the reviewed setup-python action/,
+  );
+  const branchSmokeDownloadingPublished = transformWorkflowJob(
+    workflow,
+    'windows-installed-smoke',
+    (job) => `${job}\n      # https://example.invalid/releases/download/v1.0.0/app.exe\n`,
+  );
+  assert.throws(
+    () => assertWorkflowCommands(branchSmokeDownloadingPublished),
+    /installed-smoke must build, validate, install, and launch the current branch/,
+  );
   const buildLine = '        run: npm run build:frontend\n';
   const frontendBuiltTooLate = transformWorkflowJob(workflow, 'native-matrix', (job) => {
     assert.ok(job.includes(buildLine));
@@ -389,7 +408,6 @@ test('workflow is unsigned, read-only, credentialless, and locked', () => {
   );
   for (const gate of [
     'node --test scripts/frozen-css-compatibility.test.mjs scripts/check-frozen-css-output.test.mjs',
-    'npm run build:frontend',
     'node scripts/check-frozen-css-output.mjs',
   ]) {
     assert.throws(
@@ -397,6 +415,15 @@ test('workflow is unsigned, read-only, credentialless, and locked', () => {
       /workflow is missing required locked gate/,
     );
   }
+  const nativeWithoutFrontendBuild = transformWorkflowJob(
+    workflow,
+    'native-matrix',
+    (job) => job.replace('npm run build:frontend', 'frontend build intentionally removed'),
+  );
+  assert.throws(
+    () => assertWorkflowCommands(nativeWithoutFrontendBuild),
+    /native-matrix must build frontendDist before compiling the Tauri Rust workspace/,
+  );
 });
 
 test('production CSP rejects provider and development network endpoints', () => {

@@ -48,7 +48,7 @@ test('analyzes the opaque native media asset without browser Gemini transport or
   expect(inspectMediaPipelineAsset).toHaveBeenCalledWith(ASSET_ID);
   expect(runNativeGeminiMediaAnalysis).toHaveBeenCalledWith(expect.objectContaining({
     assetId: ASSET_ID,
-    model: 'gemini-3.5-flash-lite',
+    model: 'gemini-3.1-flash-lite',
     responseJsonSchema: expect.objectContaining({ type: 'object' }),
     thinkingLevel: 'minimal',
     mediaResolution: 'low',

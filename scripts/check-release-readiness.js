@@ -552,7 +552,7 @@ function assertWorkflowToolchainPins(workflow) {
   const checkout = `actions/checkout@${ACTION_PINS['actions/checkout']}`;
   const setupNode = `actions/setup-node@${ACTION_PINS['actions/setup-node']}`;
   const setupPython = `actions/setup-python@${ACTION_PINS['actions/setup-python']}`;
-  for (const jobName of ['invariants', 'native-matrix']) {
+  for (const jobName of ['invariants', 'native-matrix', 'windows-installed-smoke']) {
     const job = workflowJobBlock(workflow, jobName);
     invariant(job.includes(`uses: ${checkout}`), `${jobName} must use the reviewed checkout action`);
     invariant(
@@ -603,6 +603,27 @@ function assertWorkflowCommands(workflow) {
   }
   assertWorkflowToolchainPins(workflow);
   const nativeMatrix = workflowJobBlock(workflow, 'native-matrix');
+  const branchInstalledSmoke = workflowJobBlock(workflow, 'windows-installed-smoke');
+  const publishedInstalledSmoke = workflowJobBlock(workflow, 'windows-published-installed-smoke');
+  invariant(
+    workflow.includes('- published-installed-smoke'),
+    'Workflow dispatch must keep branch-built and published-installer smoke tests distinct',
+  );
+  invariant(
+    branchInstalledSmoke.includes("inputs.job == 'installed-smoke'") &&
+      branchInstalledSmoke.includes('build --features production --no-bundle --ci --target x86_64-pc-windows-msvc -- --locked') &&
+      branchInstalledSmoke.includes('bundle --ci --no-sign --target x86_64-pc-windows-msvc --bundles nsis') &&
+      branchInstalledSmoke.includes('./scripts/test-installed-windows.ps1') &&
+      !branchInstalledSmoke.includes('/releases/download/'),
+    'installed-smoke must build, validate, install, and launch the current branch without downloading a published release',
+  );
+  invariant(
+    publishedInstalledSmoke.includes("inputs.job == 'published-installed-smoke'") &&
+      publishedInstalledSmoke.includes('/releases/download/v${version}') &&
+      publishedInstalledSmoke.includes('$asset.sig') &&
+      publishedInstalledSmoke.includes('./scripts/test-installed-windows.ps1'),
+    'published-installed-smoke must validate and launch the signed immutable release artifact',
+  );
   const frontendBuildIndex = nativeMatrix.indexOf('run: npm run build:frontend');
   const rustClippyIndex = nativeMatrix.indexOf(
     'run: cargo clippy --workspace --all-targets --all-features --locked',

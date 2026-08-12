@@ -19,5 +19,9 @@ tempfile = "=3.27.0"
 thiserror = "=2.0.20"
 uuid.workspace = true
 
+[dev-dependencies]
+osg-engine-packages.workspace = true
+osg-native-tools.workspace = true
+
 [lints]
 workspace = true

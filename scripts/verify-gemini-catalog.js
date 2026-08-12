@@ -8,6 +8,8 @@ const argumentsList = process.argv.slice(2);
 const isLive = argumentsList.includes('--live');
 const envFileIndex = argumentsList.indexOf('--env-file');
 const envFile = envFileIndex >= 0 ? argumentsList[envFileIndex + 1] : null;
+const modelIndex = argumentsList.indexOf('--model');
+const requestedModel = modelIndex >= 0 ? argumentsList[modelIndex + 1] : null;
 const audioFileIndex = argumentsList.indexOf('--audio-file');
 const audioFile = audioFileIndex >= 0 ? argumentsList[audioFileIndex + 1] : null;
 const videoFileIndex = argumentsList.indexOf('--video-file');
@@ -103,7 +105,7 @@ const smokeModel = async (model, apiKey, probe) => {
     contents: [{ role: 'user', parts }],
     generationConfig: {
       responseMimeType: 'application/json',
-      responseSchema: {
+      responseJsonSchema: {
         type: 'object',
         properties: { ok: { type: 'boolean' } },
         required: ['ok']
@@ -140,9 +142,15 @@ const main = async () => {
   const apiKey = process.env.GEMINI_API_KEY || fileEnvironment.GEMINI_API_KEY;
   if (!apiKey) throw new Error('GEMINI_API_KEY was not found');
   const probes = loadLiveProbes();
+  const selectedModels = requestedModel === null
+    ? catalog.models
+    : catalog.models.filter(({ id }) => id === requestedModel);
+  if (selectedModels.length !== 1 && requestedModel !== null) {
+    throw new Error('The requested live-smoke model is not in the reviewed catalog');
+  }
 
   const failures = [];
-  for (const model of catalog.models) {
+  for (const model of selectedModels) {
     for (const probe of probes) {
       process.stdout.write(`Testing ${model.id} (${probe.modality})... `);
       try {

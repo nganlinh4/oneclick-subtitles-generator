@@ -19,7 +19,7 @@ giao diện cũ, đồng thời thay Electron và hệ thống nhiều server b�
 | Provider và âm nhạc | Genius, metadata/OAuth YouTube và phiên Lyria RealTime chạy qua native; secret nằm trong kho credential của hệ điều hành. |
 | Media và download | Pipeline typed cho probe, compatibility, extract, waveform, download và cancel. Bản đóng gói vẫn cần tool đã được review cho từng target. |
 | ASR local | Windows x64 có thể tải và gỡ hoàn toàn Parakeet, Faster-Whisper Turbo/Large-v3 và Qwen3-ASR 0.6B/1.7B đã xác minh. Catalog Linux/macOS vẫn để trống. |
-| Thuyết minh | Windows x64 có thể tải và gỡ hoàn toàn F5-TTS và Chatterbox; Edge TTS, gTTS và Gemini dùng chung worker runtime được quản lý. Trọng số F5 ghi rõ `CC-BY-NC-4.0`. |
+| Thuyết minh | Windows x64 có thể tải và gỡ hoàn toàn F5-TTS và Chatterbox; Edge TTS, gTTS và Gemini có runtime nhỏ, độc lập và gỡ được riêng. Trọng số F5 ghi rõ `CC-BY-NC-4.0`. |
 | Render | Windows x64 có thể tải và gỡ hoàn toàn runtime Node/Chrome-for-Testing/Remotion; payload 625 MB không bị nhúng vào installer. |
 | Cập nhật | Public key và cấu hình artifact đã ký đã có; private signing key nằm ngoài repository. |
 
@@ -125,7 +125,7 @@ Ba target còn lại trong matrix là `x86_64-unknown-linux-gnu`, `aarch64-apple
 | Deno | Catalog có release direct-upstream `2.9.5`, content-addressed đã review cho bốn nhóm target. Kiểm tra URL tự động cài và kích hoạt ở lần dùng đầu tiên; binary không được bundle hay tải lúc khởi động. |
 | FFmpeg / ffprobe | Windows x64 tải archive vendor `8.1.2` đã khóa hash, chỉ cài hai executable cùng license/build notice và kích hoạt ngay trong phiên hiện tại. Linux/macOS vẫn fail-closed cho đến khi có delivery tương đương đã review. |
 | Parakeet / Faster-Whisper / Qwen3-ASR | Windows x64 có manifest runtime/model content-addressed, ưu tiên nguồn model chính thức rồi mới dùng bundle pool đã review. Cả năm engine đều cài, chạy với lease và gỡ qua job native typed. |
-| F5-TTS / Chatterbox / Edge TTS / gTTS / Gemini TTS worker | Windows x64 có runtime/model đã xác minh. F5 và Chatterbox tải/gỡ độc lập; các mode provider dùng chung worker runtime. License model F5 là `CC-BY-NC-4.0`. |
+| F5-TTS / Chatterbox / Edge TTS / gTTS / Gemini TTS worker | Windows x64 có runtime/model đã xác minh. Mỗi backend tải/gỡ độc lập; ba provider mạng chỉ tải runtime tối giản 11–20 MB thay vì runtime GPU. License model F5 là `CC-BY-NC-4.0`. |
 | Bản xem trước giọng nói Gemini | Gói 30 mẫu chính xác, định địa chỉ theo nội dung (13,5 MB) tự cài ở lần nghe thử đầu tiên trên cả bốn họ nền tảng, phát qua capability media gốc mờ đục và gỡ ngay không cần khởi động lại. Frontend không nhúng WAV xem trước. |
 | Remotion runtime | Windows x64 tải archive bundle pool content-addressed 265 MB gồm Node 24.19, Chrome for Testing 149, Remotion 4.0.507, bundle OSG, font Inter đã review và notice; cài khoảng 625 MB và gỡ hoàn toàn được. |
 | Updater ứng dụng | Public key đã cấu hình; artifact updater được ký bằng private key nằm ngoài repository. |
