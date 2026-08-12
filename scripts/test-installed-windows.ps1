@@ -262,7 +262,9 @@ function Inspect-InstalledMediaFlow {
           'download.started',
           'download.completed',
           'download.cancelled',
-          'download.failed'
+          'download.failed',
+          'download.engine_failed',
+          'download.command_failed'
         ) |
         Select-Object -Last 64
     )

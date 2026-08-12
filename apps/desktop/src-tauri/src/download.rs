@@ -1268,10 +1268,12 @@ async fn finish_download(
             if cancelled {
                 cancel_download(jobs, job_id, channel).await;
             } else {
+                record_download_engine_failure(job_id, &error);
                 fail_download(jobs, job_id, map_download_error(&error), channel).await;
             }
         }
         Err(DownloadTaskError::Command(error)) => {
+            record_download_command_failure(job_id, &error);
             fail_download(jobs, job_id, error, channel).await;
         }
     }
@@ -1362,6 +1364,61 @@ fn map_download_error(error: &DownloadError) -> CommandError {
     }
 }
 
+fn record_download_engine_failure(job_id: JobId, error: &DownloadError) {
+    diagnostics::record(
+        "download.engine_failed",
+        &[
+            ("job", job_id.to_string()),
+            ("reason", download_error_diagnostic(error).to_owned()),
+        ],
+    );
+}
+
+fn record_download_command_failure(job_id: JobId, error: &CommandError) {
+    diagnostics::record(
+        "download.command_failed",
+        &[
+            ("job", job_id.to_string()),
+            ("code", error.code().to_owned()),
+        ],
+    );
+}
+
+const fn download_error_diagnostic(error: &DownloadError) -> &'static str {
+    match error {
+        DownloadError::InvalidUrl(_) => "invalid-url",
+        DownloadError::UnsupportedSite => "unsupported-site",
+        DownloadError::NonPublicAddress => "non-public-address",
+        DownloadError::ResolutionFailed => "resolution-failed",
+        DownloadError::InvalidOption(_) => "invalid-option",
+        DownloadError::FormatMismatch => "format-mismatch",
+        DownloadError::SubtitleMismatch => "subtitle-mismatch",
+        DownloadError::InventoryNotFound => "inventory-not-found",
+        DownloadError::InventoryExpired => "inventory-expired",
+        DownloadError::InventoryRegistryFull => "inventory-registry-full",
+        DownloadError::BinaryNotFound => "binary-not-found",
+        DownloadError::InvalidBinary(_) => "invalid-binary",
+        DownloadError::JavaScriptRuntimeNotFound => "javascript-runtime-not-found",
+        DownloadError::InvalidJavaScriptRuntime(_) => "invalid-javascript-runtime",
+        DownloadError::FfmpegRequired => "ffmpeg-required",
+        DownloadError::Cancelled => "cancelled",
+        DownloadError::Spawn(_) => "spawn-failed",
+        DownloadError::ProcessFailed { .. } => "process-failed",
+        DownloadError::InvalidDestination(_) => "invalid-destination",
+        DownloadError::ProcessIo(_) => "process-io",
+        DownloadError::TimedOut { .. } => "timed-out",
+        DownloadError::OutputLimit => "output-limit",
+        DownloadError::InventoryJson(_) => "inventory-json",
+        DownloadError::InvalidInventory(_) => "invalid-inventory",
+        DownloadError::InventoryRegistryUnavailable => "inventory-registry-unavailable",
+        DownloadError::OutputExists => "output-exists",
+        DownloadError::MissingArtifact => "missing-artifact",
+        DownloadError::InvalidSubtitleArtifact => "invalid-subtitle-artifact",
+        DownloadError::SubtitleArtifactTooLarge => "subtitle-artifact-too-large",
+        DownloadError::Publish(_) => "publish-failed",
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use std::fs;
@@ -1375,8 +1432,9 @@ mod tests {
 
     use super::{
         DownloadError, DownloadInspectRequest, DownloadRuntime, FinalizationRegistry,
-        MAX_SUBTITLE_IPC_BYTES, SlotLimiter, map_download_error, prepare_durable_download,
-        publish_durable_media, read_downloaded_subtitle, remove_regular_file, status_response,
+        MAX_SUBTITLE_IPC_BYTES, SlotLimiter, download_error_diagnostic, map_download_error,
+        prepare_durable_download, publish_durable_media, read_downloaded_subtitle,
+        remove_regular_file, status_response,
     };
 
     #[test]
@@ -1416,6 +1474,16 @@ mod tests {
         assert_eq!(spawn["code"], "downloaderExecutionFailed");
         assert_eq!(process["code"], "downloaderExecutionFailed");
         assert_eq!(timeout["code"], "internal");
+        assert_eq!(
+            download_error_diagnostic(&DownloadError::ProcessFailed { code: Some(1) }),
+            "process-failed"
+        );
+        assert_eq!(
+            download_error_diagnostic(&DownloadError::TimedOut {
+                timeout: std::time::Duration::from_secs(1),
+            }),
+            "timed-out"
+        );
         assert!(!spawn.to_string().contains("private"));
         assert!(!process.to_string().contains('1'));
     }
