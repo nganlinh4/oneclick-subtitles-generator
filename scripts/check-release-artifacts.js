@@ -139,10 +139,25 @@ function assertUpdaterSignature(artifact, rootDirectory = REPOSITORY_ROOT) {
   verifyUpdaterSignature(artifact, `${artifact}.sig`, encodedPublicKey);
 }
 
+function assertUpdaterSignatureMode(
+  artifact,
+  { allowUnsigned = false, rootDirectory = REPOSITORY_ROOT } = {},
+) {
+  if (!allowUnsigned) {
+    assertUpdaterSignature(artifact, rootDirectory);
+    return;
+  }
+  invariant(
+    !fs.existsSync(`${artifact}.sig`),
+    'Unsigned branch validation must not accept or ignore a signature sidecar',
+  );
+}
+
 function parseArguments(arguments_) {
   let target;
   let bundles;
   let targetDirectory = 'target';
+  let allowUnsigned = false;
   for (let index = 0; index < arguments_.length; index += 1) {
     const argument = arguments_[index];
     if (argument === '--target') {
@@ -154,6 +169,8 @@ function parseArguments(arguments_) {
     } else if (argument === '--target-dir') {
       targetDirectory = arguments_[index + 1];
       index += 1;
+    } else if (argument === '--allow-unsigned-branch-build') {
+      allowUnsigned = true;
     } else {
       throw new Error(`Unknown argument ${JSON.stringify(argument)}`);
     }
@@ -173,7 +190,7 @@ function parseArguments(arguments_) {
     invariant(BUNDLE_LAYOUTS[bundle], `Unsupported bundle type ${JSON.stringify(bundle)}`);
     invariant(supportedBundles.has(bundle), `${bundle} is not a native bundle for ${target}`);
   }
-  return { bundleNames, target, targetDirectory };
+  return { allowUnsigned, bundleNames, target, targetDirectory };
 }
 
 function listMatchingArtifacts(bundleRoot, bundleName) {
@@ -674,6 +691,7 @@ function inspectDebianPackage(debianPackage, mappings, target, rootDirectory = R
 }
 
 function validateReleaseArtifacts({
+  allowUnsigned = false,
   rootDirectory = REPOSITORY_ROOT,
   target,
   bundleNames,
@@ -705,7 +723,7 @@ function validateReleaseArtifacts({
         inspectDmgPackage(artifact, mappings, target, rootDirectory);
       } else if (bundleName === 'nsis') {
         inspectNsisPackage(artifact, mappings, target, rootDirectory);
-        assertUpdaterSignature(artifact, rootDirectory);
+        assertUpdaterSignatureMode(artifact, { allowUnsigned, rootDirectory });
       }
     }
   }
@@ -736,6 +754,7 @@ module.exports = {
   assertLinuxMainExecutableArchitecture,
   assertArtifactMagic,
   assertArtifactArchitecture,
+  assertUpdaterSignatureMode,
   assertUpdaterSignature,
   assertExactResourceCopies,
   assertResourceCopiesBySuffix,

@@ -252,7 +252,7 @@ jobs:
 
       - name: Validate manually produced installers and packaged resources
         if: github.event_name == 'workflow_dispatch'
-        run: node scripts/check-release-artifacts.js --target "${{ matrix.rust-target }}" --bundles "${{ matrix.bundles }}"
+        run: node scripts/check-release-artifacts.js --target "${{ matrix.rust-target }}" --bundles "${{ matrix.bundles }}" --allow-unsigned-branch-build
 
   windows-installed-smoke:
     name: Current branch Windows installer clean-profile smoke
@@ -313,7 +313,7 @@ jobs:
         run: npm --prefix apps/desktop run tauri -- bundle --ci --no-sign --target x86_64-pc-windows-msvc --bundles nsis
 
       - name: Validate installer architecture and packaged resources
-        run: node scripts/check-release-artifacts.js --target x86_64-pc-windows-msvc --bundles nsis
+        run: node scripts/check-release-artifacts.js --target x86_64-pc-windows-msvc --bundles nsis --allow-unsigned-branch-build
 
       - name: Install and launch from the isolated clean runner profile
         shell: pwsh

@@ -591,7 +591,7 @@ function assertWorkflowCommands(workflow) {
     'node scripts/check-release-readiness.js --profile compile',
     'node scripts/check-release-readiness.js --profile host-toolchain',
     'node scripts/check-release-readiness.js --profile runtime-package --target "${{ matrix.rust-target }}"',
-    'node scripts/check-release-artifacts.js --target "${{ matrix.rust-target }}" --bundles "${{ matrix.bundles }}"',
+    'node scripts/check-release-artifacts.js --target "${{ matrix.rust-target }}" --bundles "${{ matrix.bundles }}" --allow-unsigned-branch-build',
     'node --test scripts/frozen-css-compatibility.test.mjs scripts/check-frozen-css-output.test.mjs',
     'npm run build:frontend',
     'node scripts/check-frozen-css-output.mjs',
@@ -613,6 +613,7 @@ function assertWorkflowCommands(workflow) {
     branchInstalledSmoke.includes("inputs.job == 'installed-smoke'") &&
       branchInstalledSmoke.includes('build --features production --no-bundle --ci --target x86_64-pc-windows-msvc -- --locked') &&
       branchInstalledSmoke.includes('bundle --ci --no-sign --target x86_64-pc-windows-msvc --bundles nsis') &&
+      branchInstalledSmoke.includes('check-release-artifacts.js --target x86_64-pc-windows-msvc --bundles nsis --allow-unsigned-branch-build') &&
       branchInstalledSmoke.includes('./scripts/test-installed-windows.ps1') &&
       !branchInstalledSmoke.includes('/releases/download/'),
     'installed-smoke must build, validate, install, and launch the current branch without downloading a published release',
@@ -621,6 +622,7 @@ function assertWorkflowCommands(workflow) {
     publishedInstalledSmoke.includes("inputs.job == 'published-installed-smoke'") &&
       publishedInstalledSmoke.includes('/releases/download/v${version}') &&
       publishedInstalledSmoke.includes('$asset.sig') &&
+      !publishedInstalledSmoke.includes('--allow-unsigned-branch-build') &&
       publishedInstalledSmoke.includes('./scripts/test-installed-windows.ps1'),
     'published-installed-smoke must validate and launch the signed immutable release artifact',
   );
@@ -646,7 +648,7 @@ function assertWorkflowCommands(workflow) {
   for (const manualCommand of [
     'node scripts/check-release-readiness.js --profile runtime-package --target "${{ matrix.rust-target }}"',
     'npm --prefix apps/desktop run tauri -- bundle --ci --no-sign --target "${{ matrix.rust-target }}" --bundles "${{ matrix.bundles }}"',
-    'node scripts/check-release-artifacts.js --target "${{ matrix.rust-target }}" --bundles "${{ matrix.bundles }}"',
+    'node scripts/check-release-artifacts.js --target "${{ matrix.rust-target }}" --bundles "${{ matrix.bundles }}" --allow-unsigned-branch-build',
   ]) {
     const guardedStep = new RegExp(
       `- name:[^\\r\\n]+\\r?\\n\\s+if: github\\.event_name == 'workflow_dispatch'\\r?\\n\\s+run: ${escapeRegularExpression(manualCommand)}`,

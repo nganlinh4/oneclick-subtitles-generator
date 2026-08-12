@@ -15,6 +15,7 @@ const {
   assertResourceCopiesBySuffix,
   assertSafeArtifact,
   assertSevenZipFormatSupport,
+  assertUpdaterSignatureMode,
   assertWindowsMainExecutableArchitecture,
   parseArguments,
   pathEndsWith,
@@ -111,8 +112,24 @@ test('parses only native bundle types for the selected target', () => {
       'appimage,deb',
     ]),
     {
+      allowUnsigned: false,
       bundleNames: ['appimage', 'deb'],
       target: 'x86_64-unknown-linux-gnu',
+      targetDirectory: 'target',
+    },
+  );
+  assert.deepEqual(
+    parseArguments([
+      '--target',
+      'x86_64-pc-windows-msvc',
+      '--bundles',
+      'nsis',
+      '--allow-unsigned-branch-build',
+    ]),
+    {
+      allowUnsigned: true,
+      bundleNames: ['nsis'],
+      target: 'x86_64-pc-windows-msvc',
       targetDirectory: 'target',
     },
   );
@@ -175,6 +192,18 @@ test('cryptographically verifies the updater artifact, signature, and trusted co
       fixture.encodedPublicKey,
     ),
     /does not authenticate/,
+  );
+});
+
+test('unsigned branch validation is explicit and rejects a stale signature sidecar', (context) => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'osg-unsigned-branch-artifact-'));
+  context.after(() => fs.rmSync(root, { force: true, recursive: true }));
+  const artifact = writeFile(root, 'installer.exe', Buffer.from('unsigned branch artifact'));
+  assert.doesNotThrow(() => assertUpdaterSignatureMode(artifact, { allowUnsigned: true, rootDirectory: root }));
+  writeFile(root, 'installer.exe.sig', 'stale-signature');
+  assert.throws(
+    () => assertUpdaterSignatureMode(artifact, { allowUnsigned: true, rootDirectory: root }),
+    /must not accept or ignore a signature sidecar/,
   );
 });
 
