@@ -1,10 +1,12 @@
 import { patchProjectAuxiliary, readProjectAuxiliary } from '../platform/projectAuxiliaryStore';
 import {
   clearUserProvidedSubtitles,
+  getCurrentCacheId,
   getUserProvidedSubtitles,
   getUserProvidedSubtitlesSync,
   setCurrentCacheId,
   setUserProvidedSubtitles,
+  subscribeCurrentCacheId,
 } from './userSubtitlesStore';
 
 vi.mock('../platform/projectAuxiliaryStore', () => ({
@@ -37,4 +39,71 @@ it('hydrates and persists user subtitle text natively without localhost or local
 
   storageGet.mockRestore();
   storageSet.mockRestore();
+});
+
+it('publishes cache identity changes exactly once and supports disposal', () => {
+  const listener = vi.fn();
+  const unsubscribe = subscribeCurrentCacheId(listener);
+  const previousCacheId = getCurrentCacheId();
+  setCurrentCacheId('next-cache-id');
+  setCurrentCacheId('next-cache-id');
+  expect(listener).toHaveBeenCalledExactlyOnceWith('next-cache-id', previousCacheId);
+
+  unsubscribe();
+  setCurrentCacheId(null);
+  expect(listener).toHaveBeenCalledTimes(1);
+});
+
+it('clears media A auxiliary text synchronously while media B hydrates', async () => {
+  readProjectAuxiliary.mockReset();
+  readProjectAuxiliary.mockResolvedValueOnce({ userSubtitles: null });
+  setCurrentCacheId('asset-a');
+  await Promise.resolve();
+  await setUserProvidedSubtitles('Media A reference');
+
+  const pending = {};
+  pending.promise = new Promise((resolve) => { pending.resolve = resolve; });
+  readProjectAuxiliary.mockReturnValueOnce(pending.promise);
+  const updates = [];
+  const onUpdate = (event) => updates.push(event.detail.subtitlesText);
+  window.addEventListener('userProvidedSubtitlesUpdated', onUpdate);
+
+  setCurrentCacheId('asset-b');
+  expect(updates.at(-1)).toBe('');
+  expect(getUserProvidedSubtitlesSync()).toBe('');
+
+  pending.resolve({ userSubtitles: 'Media B reference' });
+  await pending.promise;
+  await Promise.resolve();
+  expect(updates.at(-1)).toBe('Media B reference');
+  expect(getUserProvidedSubtitlesSync()).toBe('Media B reference');
+
+  window.removeEventListener('userProvidedSubtitlesUpdated', onUpdate);
+  setCurrentCacheId(null);
+});
+
+it('does not cache an old direct read after the cache identity changes', async () => {
+  readProjectAuxiliary.mockReset();
+  readProjectAuxiliary.mockResolvedValueOnce({ userSubtitles: null });
+  setCurrentCacheId('asset-a');
+  await Promise.resolve();
+
+  const pending = {};
+  pending.promise = new Promise((resolve) => { pending.resolve = resolve; });
+  const newHydration = {};
+  newHydration.promise = new Promise((resolve) => { newHydration.resolve = resolve; });
+  readProjectAuxiliary
+    .mockReturnValueOnce(pending.promise)
+    .mockReturnValueOnce(newHydration.promise);
+  const stale = getUserProvidedSubtitles();
+  setCurrentCacheId('asset-b');
+  pending.resolve({ userSubtitles: 'Stale media A reference' });
+
+  await expect(stale).resolves.toBe('');
+  expect(getUserProvidedSubtitlesSync()).toBe('');
+  newHydration.resolve({ userSubtitles: 'Media B reference' });
+  await newHydration.promise;
+  await Promise.resolve();
+  expect(getUserProvidedSubtitlesSync()).toBe('Media B reference');
+  setCurrentCacheId(null);
 });

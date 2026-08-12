@@ -10,6 +10,25 @@ let globalUserSubtitles = null;
 
 // Current cache ID for the video being processed
 let currentCacheId = null;
+const currentCacheIdListeners = new Set();
+
+export const subscribeCurrentCacheId = (listener) => {
+  if (typeof listener !== 'function') {
+    throw new TypeError('A current subtitle cache listener is required');
+  }
+  currentCacheIdListeners.add(listener);
+  return () => currentCacheIdListeners.delete(listener);
+};
+
+const publishCurrentCacheId = (cacheId, previousCacheId) => {
+  currentCacheIdListeners.forEach((listener) => {
+    try {
+      listener(cacheId, previousCacheId);
+    } catch (error) {
+      console.error('Current subtitle cache listener failed:', error);
+    }
+  });
+};
 
 const publishUserSubtitles = (subtitlesText) => {
   if (typeof window !== 'undefined') {
@@ -48,6 +67,7 @@ export const setCurrentCacheId = (cacheId) => {
   const pendingSubtitles = globalUserSubtitles;
   currentCacheId = cacheId;
   if (previousCacheId === cacheId) return;
+  publishCurrentCacheId(cacheId, previousCacheId);
 
   if (cacheId && previousCacheId === null && pendingSubtitles !== null) {
     void persistPendingProjectSubtitles(cacheId, pendingSubtitles);
@@ -55,6 +75,7 @@ export const setCurrentCacheId = (cacheId) => {
   }
 
   globalUserSubtitles = null;
+  publishUserSubtitles('');
   if (cacheId) void hydrateProjectSubtitles(cacheId);
 };
 
@@ -71,14 +92,15 @@ export const getCurrentCacheId = () => {
  * @param {string} subtitlesText - User-provided subtitles text
  */
 export const setUserProvidedSubtitles = async (subtitlesText) => {
+  const requestedCacheId = currentCacheId;
   globalUserSubtitles = subtitlesText;
 
-  if (currentCacheId) {
-    await patchProjectAuxiliary(currentCacheId, {
+  if (requestedCacheId) {
+    await patchProjectAuxiliary(requestedCacheId, {
       userSubtitles: subtitlesText || null,
     });
   }
-  publishUserSubtitles(subtitlesText);
+  if (currentCacheId === requestedCacheId) publishUserSubtitles(subtitlesText);
 };
 
 /**
@@ -91,8 +113,10 @@ export const getUserProvidedSubtitles = async () => {
     return globalUserSubtitles;
   }
 
-  if (!currentCacheId) return '';
-  const auxiliary = await readProjectAuxiliary(currentCacheId);
+  const requestedCacheId = currentCacheId;
+  if (!requestedCacheId) return '';
+  const auxiliary = await readProjectAuxiliary(requestedCacheId);
+  if (currentCacheId !== requestedCacheId) return globalUserSubtitles || '';
   globalUserSubtitles = auxiliary?.userSubtitles ?? null;
   return globalUserSubtitles || '';
 };
@@ -111,10 +135,11 @@ export const getUserProvidedSubtitlesSync = () => {
  * Clear user-provided subtitles from memory and the active native project
  */
 export const clearUserProvidedSubtitles = async () => {
+  const requestedCacheId = currentCacheId;
   globalUserSubtitles = null;
 
-  if (currentCacheId) {
-    await patchProjectAuxiliary(currentCacheId, { userSubtitles: null });
+  if (requestedCacheId) {
+    await patchProjectAuxiliary(requestedCacheId, { userSubtitles: null });
   }
-  publishUserSubtitles('');
+  if (currentCacheId === requestedCacheId) publishUserSubtitles('');
 };

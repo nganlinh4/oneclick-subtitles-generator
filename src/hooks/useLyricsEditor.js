@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useLyricsEditorDrag } from './useLyricsEditorDrag';
 import { useLyricsEditorHistory } from './useLyricsEditorHistory';
@@ -22,6 +22,22 @@ export const useLyricsEditor = (initialLyrics, onUpdateLyrics) => {
   const [isAtOriginalState, setIsAtOriginalState] = useState(true);
   const [isAtSavedState, setIsAtSavedState] = useState(true);
   const [isSticky, setIsSticky] = useState(true);
+  const initialLyricsRef = useRef(initialLyrics);
+  const cacheBoundaryRowsRef = useRef(null);
+  const awaitingCacheRowsRef = useRef(false);
+  initialLyricsRef.current = initialLyrics;
+
+  const handleCacheIdChange = useCallback(() => {
+    // The parent subtitle hydration is asynchronous. Remember the old prop identity so the child
+    // cannot repopulate media A's rows during the intervening reset render.
+    cacheBoundaryRowsRef.current = initialLyricsRef.current;
+    awaitingCacheRowsRef.current = true;
+    setLyrics([]);
+    setOriginalLyrics([]);
+    setSavedLyrics([]);
+    setIsAtOriginalState(true);
+    setIsAtSavedState(true);
+  }, []);
 
   // Undo / redo / checkpoint management (owns history + redo + checkpoint state)
   const {
@@ -38,7 +54,13 @@ export const useLyricsEditor = (initialLyrics, onUpdateLyrics) => {
     captureStateBeforeMerge,
     observeExternalLyrics,
     commitLyricsMutation,
-  } = useLyricsEditorHistory({ lyrics, setLyrics, onUpdateLyrics, savedLyrics });
+  } = useLyricsEditorHistory({
+    lyrics,
+    setLyrics,
+    onUpdateLyrics,
+    savedLyrics,
+    onCacheIdChange: handleCacheIdChange,
+  });
 
   // Drag mechanics (timing drag + sticky cascade)
   const {
@@ -73,6 +95,20 @@ export const useLyricsEditor = (initialLyrics, onUpdateLyrics) => {
 
   // Sync with incoming lyrics
   useEffect(() => {
+    if (awaitingCacheRowsRef.current) {
+      if (initialLyrics === cacheBoundaryRowsRef.current) return;
+      awaitingCacheRowsRef.current = false;
+      cacheBoundaryRowsRef.current = null;
+      const nextRows = Array.isArray(initialLyrics)
+        ? JSON.parse(JSON.stringify(initialLyrics))
+        : [];
+      setLyrics(nextRows);
+      setOriginalLyrics(JSON.parse(JSON.stringify(nextRows)));
+      setSavedLyrics(JSON.parse(JSON.stringify(nextRows)));
+      setIsAtOriginalState(true);
+      setIsAtSavedState(true);
+      return;
+    }
     if (initialLyrics && initialLyrics.length > 0) {
       observeExternalLyrics(initialLyrics);
       setLyrics(initialLyrics);

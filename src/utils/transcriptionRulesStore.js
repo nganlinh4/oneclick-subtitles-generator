@@ -56,6 +56,7 @@ export const setCurrentCacheId = (cacheId) => {
   }
 
   globalTranscriptionRules = null;
+  publishRules(null);
   if (cacheId) void hydrateProjectRules(cacheId);
 };
 
@@ -72,14 +73,15 @@ export const getCurrentCacheId = () => {
  * @param {Object} rules - Transcription rules
  */
 export const setTranscriptionRules = async (rules) => {
+  const requestedCacheId = currentCacheId;
   globalTranscriptionRules = rules;
 
-  if (currentCacheId) {
-    await patchProjectAuxiliary(currentCacheId, {
+  if (requestedCacheId) {
+    await patchProjectAuxiliary(requestedCacheId, {
       transcriptionRules: rules ?? null,
     });
   }
-  publishRules(rules);
+  if (currentCacheId === requestedCacheId) publishRules(rules);
 };
 
 /**
@@ -92,8 +94,10 @@ export const getTranscriptionRules = async () => {
     return globalTranscriptionRules;
   }
 
-  if (!currentCacheId) return null;
-  const auxiliary = await readProjectAuxiliary(currentCacheId);
+  const requestedCacheId = currentCacheId;
+  if (!requestedCacheId) return null;
+  const auxiliary = await readProjectAuxiliary(requestedCacheId);
+  if (currentCacheId !== requestedCacheId) return globalTranscriptionRules;
   globalTranscriptionRules = auxiliary?.transcriptionRules ?? null;
   return globalTranscriptionRules;
 };
@@ -111,10 +115,11 @@ export const getTranscriptionRulesSync = () => {
  * Clear transcription rules from memory and the active native project
  */
 export const clearTranscriptionRules = async () => {
+  const requestedCacheId = currentCacheId;
   globalTranscriptionRules = null;
 
-  if (currentCacheId) {
-    await patchProjectAuxiliary(currentCacheId, { transcriptionRules: null });
+  if (requestedCacheId) {
+    await patchProjectAuxiliary(requestedCacheId, { transcriptionRules: null });
   }
 
   // Clear ephemeral analysis state tied to the rules.
@@ -123,5 +128,5 @@ export const clearTranscriptionRules = async () => {
   sessionStorage.removeItem('current_session_video_fingerprint');
   sessionStorage.removeItem('current_session_prompt');
   localStorage.removeItem('video_analysis_result');
-  publishRules(null);
+  if (currentCacheId === requestedCacheId) publishRules(null);
 };

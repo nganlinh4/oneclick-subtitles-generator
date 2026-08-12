@@ -41,3 +41,40 @@ it('hydrates and persists transcription rules through native project auxiliary s
   storageGet.mockRestore();
   storageSet.mockRestore();
 });
+
+it('clears media A rules synchronously and ignores its stale direct read after switching to B', async () => {
+  setCurrentCacheId(null);
+  readProjectAuxiliary.mockReset();
+  readProjectAuxiliary.mockResolvedValueOnce({ transcriptionRules: null });
+  setCurrentCacheId('asset-a');
+  await Promise.resolve();
+
+  const oldRead = {};
+  oldRead.promise = new Promise((resolve) => { oldRead.resolve = resolve; });
+  const newHydration = {};
+  newHydration.promise = new Promise((resolve) => { newHydration.resolve = resolve; });
+  readProjectAuxiliary
+    .mockReturnValueOnce(oldRead.promise)
+    .mockReturnValueOnce(newHydration.promise);
+  const stale = getTranscriptionRules();
+  const updates = [];
+  const onUpdate = (event) => updates.push(event.detail.rules);
+  window.addEventListener('transcriptionRulesUpdated', onUpdate);
+
+  setCurrentCacheId('asset-b');
+  expect(updates.at(-1)).toBeNull();
+  expect(getTranscriptionRulesSync()).toBeNull();
+
+  oldRead.resolve({ transcriptionRules: { media: 'A' } });
+  await expect(stale).resolves.toBeNull();
+  expect(getTranscriptionRulesSync()).toBeNull();
+
+  newHydration.resolve({ transcriptionRules: { media: 'B' } });
+  await newHydration.promise;
+  await Promise.resolve();
+  expect(updates.at(-1)).toEqual({ media: 'B' });
+  expect(getTranscriptionRulesSync()).toEqual({ media: 'B' });
+
+  window.removeEventListener('transcriptionRulesUpdated', onUpdate);
+  setCurrentCacheId(null);
+});

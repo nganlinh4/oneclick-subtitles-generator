@@ -7,6 +7,23 @@ import {
 } from './useLyricsEditorHistory';
 import { LYRICS_EDITOR_ACTIONS } from '../platform/durableLyricsHistory';
 
+let currentCacheIdListener = null;
+
+vi.mock('../utils/userSubtitlesStore', () => ({
+  getCurrentCacheId: () => 'cache-id',
+  subscribeCurrentCacheId: vi.fn((listener) => {
+    currentCacheIdListener = listener;
+    return () => {
+      if (currentCacheIdListener === listener) currentCacheIdListener = null;
+    };
+  }),
+}));
+
+vi.mock('../platform/desktopRuntime', async (importOriginal) => ({
+  ...(await importOriginal()),
+  isDesktopRuntime: () => true,
+}));
+
 const controller = {
   refresh: vi.fn(async () => undefined),
   record: vi.fn(async () => ({ ok: true })),
@@ -71,6 +88,50 @@ beforeEach(() => {
   controller.record.mockResolvedValue({ ok: true });
   controller.undo.mockResolvedValue({ ok: true, navigated: true, rows: rows('A') });
   controller.redo.mockResolvedValue({ ok: true, navigated: true, rows: rows('B') });
+});
+
+it('drops volatile work and refreshes the durable cursor when the media cache changes', () => {
+  vi.useFakeTimers();
+  const { result } = renderHook(() => useHarness(rows('A')));
+  act(() => {
+    result.current.commitLyricsMutation(rows('B'), LYRICS_EDITOR_ACTIONS.TEXT);
+    result.current.createCheckpoint();
+  });
+  expect(result.current.history).toEqual([rows('A')]);
+  expect(result.current.checkpointHistory).toEqual([rows('B')]);
+  expect(controller.record).not.toHaveBeenCalled();
+
+  act(() => currentCacheIdListener('new-cache-id', 'cache-id'));
+  expect(result.current.history).toEqual([]);
+  expect(result.current.redoStack).toEqual([]);
+  expect(result.current.checkpointHistory).toEqual([]);
+  expect(controller.refresh).toHaveBeenCalledTimes(2);
+
+  act(() => vi.advanceTimersByTime(500));
+  expect(controller.record).not.toHaveBeenCalled();
+  vi.useRealTimers();
+});
+
+it('ignores an old-project navigation that resolves after the media cache changes', async () => {
+  const pendingUndo = deferred();
+  controller.undo.mockReturnValue(pendingUndo.promise);
+  const { result } = renderHook(() => useHarness(rows('Current project')));
+  act(() => controllerCallbacks.onStatus({ canUndo: true, canRedo: false }));
+  act(() => result.current.handleUndo());
+  expect(controller.undo).toHaveBeenCalledTimes(1);
+
+  act(() => currentCacheIdListener('next-cache-id', 'cache-id'));
+  await act(async () => {
+    pendingUndo.resolve({
+      ok: true,
+      navigated: true,
+      rows: rows('Wrong old project'),
+    });
+    await pendingUndo.promise;
+  });
+  expect(result.current.lyrics).toEqual(rows('Current project'));
+  expect(result.current.history).toEqual([]);
+  expect(result.current.redoStack).toEqual([]);
 });
 
 it('renders text immediately and flushes its pending durable revision before undo', async () => {

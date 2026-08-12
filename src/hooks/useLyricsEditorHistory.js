@@ -4,6 +4,8 @@ import {
   LYRICS_EDITOR_ACTIONS,
   registerDurableLyricsHistoryFlusher,
 } from '../platform/durableLyricsHistory';
+import { isDesktopRuntime } from '../platform/desktopRuntime';
+import { subscribeCurrentCacheId } from '../utils/userSubtitlesStore';
 
 const DEBUG_LOGS = (typeof window !== 'undefined')
   && (localStorage.getItem('debug_logs') === 'true');
@@ -130,7 +132,13 @@ const pushBounded = (stack, value) => [...stack, value];
  * controls responsive; the native cursor is authoritative across restarts. Checkpoint membership
  * remains session-local, although a checkpoint jump itself is persisted as a normal revision.
  */
-export const useLyricsEditorHistory = ({ lyrics, setLyrics, onUpdateLyrics, savedLyrics }) => {
+export const useLyricsEditorHistory = ({
+  lyrics,
+  setLyrics,
+  onUpdateLyrics,
+  savedLyrics,
+  onCacheIdChange,
+}) => {
   const [history, setHistoryState] = useState([]);
   const [redoStack, setRedoStackState] = useState([]);
   const [checkpointHistory, setCheckpointHistoryState] = useState([]);
@@ -259,6 +267,18 @@ export const useLyricsEditorHistory = ({ lyrics, setLyrics, onUpdateLyrics, save
       onReconcile: resetToAuthoritativeRows,
     });
     durableRef.current = durable;
+    const unregisterCacheId = isDesktopRuntime()
+      ? subscribeCurrentCacheId((cacheId, previousCacheId) => {
+          cancelPendingText();
+          cancelExternalMerge();
+          navigationPendingRef.current = false;
+          viewGenerationRef.current += 1;
+          applyStacks([], []);
+          setCheckpointHistory([]);
+          onCacheIdChange?.(cacheId, previousCacheId);
+          void durable.refresh();
+        })
+      : () => undefined;
     const unregisterFlusher = registerDurableLyricsHistoryFlusher(async () => {
       await finishPendingText();
       await finishExternalMerge();
@@ -266,6 +286,7 @@ export const useLyricsEditorHistory = ({ lyrics, setLyrics, onUpdateLyrics, save
     });
     void durable.refresh();
     return () => {
+      unregisterCacheId();
       unregisterFlusher();
       finishPendingText();
       finishExternalMerge();
@@ -273,10 +294,15 @@ export const useLyricsEditorHistory = ({ lyrics, setLyrics, onUpdateLyrics, save
       if (durableRef.current === durable) durableRef.current = null;
     };
   }, [
+    applyStacks,
+    cancelExternalMerge,
+    cancelPendingText,
     finishExternalMerge,
     finishPendingText,
+    onCacheIdChange,
     publishDurableStatus,
     resetToAuthoritativeRows,
+    setCheckpointHistory,
   ]);
 
   const commitLyricsMutation = useCallback((nextRows, action, options = {}) => {

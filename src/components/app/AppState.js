@@ -12,6 +12,7 @@ import {
   initializeCredentialState,
   subscribeCredentialState,
 } from '../../platform/credentialStateController';
+import { useNativeMediaSessionHydration } from '../../hooks/useNativeMediaSessionHydration';
 
 /**
  * Custom hook for managing application state
@@ -122,6 +123,8 @@ export const useAppState = () => {
     retrySegment,
     retryingSegments
   } = useSubtitles(t);
+
+  useNativeMediaSessionHydration({ setUploadedFile });
 
   // Initialize default values for settings
   useEffect(() => {

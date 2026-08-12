@@ -20,6 +20,7 @@ import { DESCRIPTORS, LOCAL_METHOD_IDS } from '../services/engines/transcription
 import { isHighIntelligenceModel } from '../config/geminiModels';
 import { createSegmentStreamingHandler, createFullMediaStreamingHandler } from './subtitleStreamingHandlers';
 import { fetchBrowserResource } from '../platform/browserFetch';
+import { useNativeSubtitleHydration } from './useNativeSubtitleHydration';
 
 // Cache utilities moved to services/subtitleCache
 
@@ -40,13 +41,20 @@ export const useSubtitles = (t) => {
             // Debug logging must never affect subtitle generation.
         }
     };
-    const [subtitlesData, setSubtitlesData] = useState(null);
+    const [subtitlesData, setSubtitlesDataState] = useState(null);
+    const subtitlesRevisionRef = useRef(0);
+    const setSubtitlesData = useCallback((value) => {
+        subtitlesRevisionRef.current += 1;
+        setSubtitlesDataState(value);
+    }, []);
     const [status, setStatus] = useState({ message: '', type: '' });
     const [isGenerating, setIsGenerating] = useState(false);
     const [retryingSegments, setRetryingSegments] = useState([]);
     const currentSourceFileRef = useRef(null);
 
     const currentRetryFromCacheRef = useRef(null);
+
+    useNativeSubtitleHydration({ setSubtitlesData, revisionRef: subtitlesRevisionRef });
 
     // Countdown updater for quota exceeded with retry seconds
     const startQuotaCountdown = useQuotaCountdown({ t, setStatus, isGenerating });
@@ -522,7 +530,7 @@ export const useSubtitles = (t) => {
         } finally {
             setIsGenerating(false);
         }
-    }, [t, startQuotaCountdown]);
+    }, [t, startQuotaCountdown, setSubtitlesData]);
 
     const { retryGeneration } = useSubtitlesRetryGeneration({
         t,
