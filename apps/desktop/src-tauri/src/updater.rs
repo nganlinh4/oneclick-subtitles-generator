@@ -7,6 +7,7 @@ use serde::Serialize;
 use tauri::ipc::Channel;
 use tauri::{AppHandle, Runtime, State};
 use tauri_plugin_updater::UpdaterExt;
+use time::{OffsetDateTime, format_description::well_known::Rfc3339};
 use tokio_util::sync::CancellationToken;
 
 use crate::diagnostics;
@@ -85,7 +86,7 @@ pub(crate) async fn app_update_check<R: Runtime>(
             }
             Ok(AppUpdateInfo {
                 version: release.version,
-                published_at: release.date.map(|date| date.to_string()),
+                published_at: release.date.map(format_published_at).transpose()?,
                 notes: release
                     .body
                     .map(|notes| bounded_text(&notes, MAX_RELEASE_NOTES_UTF16_UNITS)),
@@ -338,14 +339,21 @@ fn bounded_text(value: &str, maximum_utf16_units: usize) -> String {
         .collect()
 }
 
+fn format_published_at(value: OffsetDateTime) -> CommandResult<String> {
+    value
+        .format(&Rfc3339)
+        .map_err(|_| CommandError::updater_unavailable())
+}
+
 #[cfg(test)]
 mod tests {
     use base64::{Engine as _, engine::general_purpose::STANDARD};
 
     use super::{
-        AppUpdateRuntime, MAX_RELEASE_NOTES_UTF16_UNITS, bounded_text, is_bounded_version,
-        is_valid_signing_key,
+        AppUpdateRuntime, MAX_RELEASE_NOTES_UTF16_UNITS, bounded_text, format_published_at,
+        is_bounded_version, is_valid_signing_key,
     };
+    use time::macros::datetime;
 
     #[test]
     fn signing_key_validation_is_strict_and_never_accepts_the_placeholder() {
@@ -379,6 +387,14 @@ mod tests {
         );
         assert!(bounded.ends_with('🦀'));
         assert!(!bounded.contains("overflow"));
+    }
+
+    #[test]
+    fn published_dates_are_emitted_as_frontend_compatible_rfc3339() {
+        assert_eq!(
+            format_published_at(datetime!(2026-08-12 12:36:11.123456789 UTC)).unwrap(),
+            "2026-08-12T12:36:11.123456789Z"
+        );
     }
 
     #[test]
