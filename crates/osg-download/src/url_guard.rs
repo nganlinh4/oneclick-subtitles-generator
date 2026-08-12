@@ -6,6 +6,9 @@ use std::net::{IpAddr, Ipv4Addr, Ipv6Addr, ToSocketAddrs};
 use url::{Host, Url};
 
 const MAX_URL_LENGTH: usize = 8_192;
+const INSTALLED_MEDIA_SMOKE_HOST: &str = "github.com";
+const INSTALLED_MEDIA_SMOKE_PATH: &str = "/nganlinh4/oneclick-subtitles-generator/releases/download/osg-runtime-bundles-v1/osg-installed-media-smoke-v1-aecf6c8ef3977cd4.mp4";
+const INSTALLED_MEDIA_SMOKE_URL: &str = "https://github.com/nganlinh4/oneclick-subtitles-generator/releases/download/osg-runtime-bundles-v1/osg-installed-media-smoke-v1-aecf6c8ef3977cd4.mp4";
 
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize)]
 #[serde(rename_all = "snake_case")]
@@ -76,6 +79,7 @@ impl<R: AddressResolver> UrlValidator<R> {
                 "non-default ports are not allowed",
             ));
         }
+        let is_installed_media_smoke_url = is_exact_installed_media_smoke_url(value, &url);
         url.set_fragment(None);
 
         let host = url
@@ -84,7 +88,9 @@ impl<R: AddressResolver> UrlValidator<R> {
         match host {
             Host::Ipv4(address) => ensure_public(IpAddr::V4(address))?,
             Host::Ipv6(address) => ensure_public(IpAddr::V6(address))?,
-            Host::Domain(domain) => self.validate_domain(domain, expected_port)?,
+            Host::Domain(domain) => {
+                self.validate_domain(domain, expected_port, is_installed_media_smoke_url)?;
+            }
         }
         Ok(ValidatedMediaUrl { url })
     }
@@ -101,14 +107,23 @@ impl<R: AddressResolver> UrlValidator<R> {
         } else {
             80
         };
+        let is_installed_media_smoke_url =
+            is_exact_installed_media_smoke_url(value.url.as_str(), &value.url);
         match host {
             Host::Ipv4(address) => ensure_public(IpAddr::V4(address)),
             Host::Ipv6(address) => ensure_public(IpAddr::V6(address)),
-            Host::Domain(domain) => self.validate_domain(domain, port),
+            Host::Domain(domain) => {
+                self.validate_domain(domain, port, is_installed_media_smoke_url)
+            }
         }
     }
 
-    fn validate_domain(&self, domain: &str, port: u16) -> Result<()> {
+    fn validate_domain(
+        &self,
+        domain: &str,
+        port: u16,
+        is_installed_media_smoke_url: bool,
+    ) -> Result<()> {
         let domain = domain.trim_end_matches('.').to_ascii_lowercase();
         if domain.is_empty()
             || !domain.contains('.')
@@ -119,7 +134,10 @@ impl<R: AddressResolver> UrlValidator<R> {
         {
             return Err(DownloadError::NonPublicAddress);
         }
-        if self.policy == UrlPolicy::SupportedSitesOnly && !is_supported_site(&domain) {
+        if self.policy == UrlPolicy::SupportedSitesOnly
+            && !is_supported_site(&domain)
+            && !is_installed_media_smoke_url
+        {
             return Err(DownloadError::UnsupportedSite);
         }
         let addresses = self
@@ -134,6 +152,18 @@ impl<R: AddressResolver> UrlValidator<R> {
         }
         Ok(())
     }
+}
+
+fn is_exact_installed_media_smoke_url(value: &str, url: &Url) -> bool {
+    value == INSTALLED_MEDIA_SMOKE_URL
+        && url.scheme() == "https"
+        && url.host_str() == Some(INSTALLED_MEDIA_SMOKE_HOST)
+        && url.port().is_none()
+        && url.username().is_empty()
+        && url.password().is_none()
+        && url.path() == INSTALLED_MEDIA_SMOKE_PATH
+        && url.query().is_none()
+        && url.fragment().is_none()
 }
 
 #[derive(Clone)]
@@ -261,6 +291,13 @@ mod tests {
         )
     }
 
+    fn installed_media_smoke(addresses: Vec<IpAddr>) -> UrlValidator<MockResolver> {
+        UrlValidator::new(
+            MockResolver::with(INSTALLED_MEDIA_SMOKE_HOST, addresses),
+            UrlPolicy::SupportedSitesOnly,
+        )
+    }
+
     #[test]
     fn accepts_supported_public_https_url_and_redacts_debug() {
         let url = youtube(vec![IpAddr::V4(Ipv4Addr::new(142, 250, 1, 1))])
@@ -269,6 +306,51 @@ mod tests {
         let debug = format!("{url:?}");
         assert!(debug.contains("youtube.com"));
         assert!(!debug.contains("secret-token"));
+    }
+
+    #[test]
+    fn accepts_exact_installed_media_smoke_url_and_revalidates_dns() {
+        let validator = installed_media_smoke(vec![IpAddr::V4(Ipv4Addr::new(140, 82, 112, 4))]);
+        let url = validator.validate(INSTALLED_MEDIA_SMOKE_URL).unwrap();
+
+        assert_eq!(url.host(), INSTALLED_MEDIA_SMOKE_HOST);
+        validator.revalidate(&url).unwrap();
+    }
+
+    #[test]
+    fn rejects_installed_media_smoke_url_near_misses() {
+        let validator = installed_media_smoke(vec![IpAddr::V4(Ipv4Addr::new(140, 82, 112, 4))]);
+        for hostile in [
+            "http://github.com/nganlinh4/oneclick-subtitles-generator/releases/download/osg-runtime-bundles-v1/osg-installed-media-smoke-v1-aecf6c8ef3977cd4.mp4",
+            "https://GitHub.com/nganlinh4/oneclick-subtitles-generator/releases/download/osg-runtime-bundles-v1/osg-installed-media-smoke-v1-aecf6c8ef3977cd4.mp4",
+            "https://github.com./nganlinh4/oneclick-subtitles-generator/releases/download/osg-runtime-bundles-v1/osg-installed-media-smoke-v1-aecf6c8ef3977cd4.mp4",
+            "https://www.github.com/nganlinh4/oneclick-subtitles-generator/releases/download/osg-runtime-bundles-v1/osg-installed-media-smoke-v1-aecf6c8ef3977cd4.mp4",
+            "https://user@github.com/nganlinh4/oneclick-subtitles-generator/releases/download/osg-runtime-bundles-v1/osg-installed-media-smoke-v1-aecf6c8ef3977cd4.mp4",
+            "https://github.com:443/nganlinh4/oneclick-subtitles-generator/releases/download/osg-runtime-bundles-v1/osg-installed-media-smoke-v1-aecf6c8ef3977cd4.mp4",
+            "https://github.com/nganlinh4/other-repository/releases/download/osg-runtime-bundles-v1/osg-installed-media-smoke-v1-aecf6c8ef3977cd4.mp4",
+            "https://github.com/nganlinh4/oneclick-subtitles-generator/releases/download/other-tag/osg-installed-media-smoke-v1-aecf6c8ef3977cd4.mp4",
+            "https://github.com/nganlinh4/oneclick-subtitles-generator/releases/download/osg-runtime-bundles-v1/other-asset.mp4",
+            "https://github.com/Nganlinh4/oneclick-subtitles-generator/releases/download/osg-runtime-bundles-v1/osg-installed-media-smoke-v1-aecf6c8ef3977cd4.mp4",
+            "https://github.com/nganlinh4/oneclick-subtitles-generator/releases/download/osg-runtime-bundles-v1/OSG-installed-media-smoke-v1-aecf6c8ef3977cd4.mp4",
+            "https://github.com/nganlinh4/oneclick-subtitles-generator/releases/download/osg-runtime-bundles-v1/osg-installed-media-smoke-v1-aecf6c8ef3977cd4.mp4?download=1",
+            "https://github.com/nganlinh4/oneclick-subtitles-generator/releases/download/osg-runtime-bundles-v1/osg-installed-media-smoke-v1-aecf6c8ef3977cd4.mp4#fragment",
+            "https://github.com/nganlinh4/oneclick-subtitles-generator/releases/download/osg-runtime-bundles-v1/osg-installed-media-smoke-v1-aecf6c8ef3977cd4.mp4/",
+        ] {
+            assert!(validator.validate(hostile).is_err(), "accepted {hostile}");
+        }
+    }
+
+    #[test]
+    fn exact_installed_media_smoke_url_still_rejects_non_public_dns() {
+        let validator = installed_media_smoke(vec![
+            IpAddr::V4(Ipv4Addr::new(140, 82, 112, 4)),
+            IpAddr::V4(Ipv4Addr::LOCALHOST),
+        ]);
+
+        assert!(matches!(
+            validator.validate(INSTALLED_MEDIA_SMOKE_URL),
+            Err(DownloadError::NonPublicAddress)
+        ));
     }
 
     #[test]

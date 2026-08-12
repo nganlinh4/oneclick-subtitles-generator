@@ -596,6 +596,9 @@ function assertWorkflowCommands(workflow) {
     'node --test scripts/frozen-css-compatibility.test.mjs scripts/check-frozen-css-output.test.mjs',
     'scripts/inspect-installed-webview.test.mjs',
     'scripts/inspect-installed-media-flow.test.mjs',
+    'scripts/inspect-installed-local-media-flow.test.mjs',
+    'scripts/inspect-installed-media-pipeline.test.mjs',
+    'scripts/inspect-installed-editor-flow.test.mjs',
     'npm run build:frontend',
     'node scripts/check-frozen-css-output.mjs',
     'node apps/desktop/node_modules/@tauri-apps/cli/tauri.js build --features production --no-bundle --ci --target "${{ matrix.rust-target }}" -- --locked',
@@ -608,6 +611,10 @@ function assertWorkflowCommands(workflow) {
   const nativeMatrix = workflowJobBlock(workflow, 'native-matrix');
   const branchInstalledSmoke = workflowJobBlock(workflow, 'windows-installed-smoke');
   const publishedInstalledSmoke = workflowJobBlock(workflow, 'windows-published-installed-smoke');
+  const installedMediaFixtureDownload = 'https://github.com/nganlinh4/oneclick-subtitles-generator/releases/download/osg-runtime-bundles-v1/osg-installed-media-smoke-v1-aecf6c8ef3977cd4.mp4';
+  const installedMediaFixtureAssignment = /^ {10}\$url = 'https:\/\/github\.com\/nganlinh4\/oneclick-subtitles-generator\/releases\/download\/osg-runtime-bundles-v1\/osg-installed-media-smoke-v1-aecf6c8ef3977cd4\.mp4'\r?$/m;
+  const branchWithoutInstalledMediaFixture = branchInstalledSmoke
+    .replaceAll(installedMediaFixtureDownload, '');
   invariant(
     workflow.includes('- published-installed-smoke')
       && workflow.includes('- signed-updater-smoke'),
@@ -620,20 +627,39 @@ function assertWorkflowCommands(workflow) {
       branchInstalledSmoke.includes('check-release-artifacts.js --target x86_64-pc-windows-msvc --bundles nsis --allow-unsigned-branch-build') &&
       branchInstalledSmoke.includes('./scripts/test-installed-windows.ps1') &&
       branchInstalledSmoke.includes('-IncludeMediaFlow') &&
+      branchInstalledSmoke.includes('-LocalMediaPath $env:OSG_INSTALLED_LOCAL_MEDIA') &&
+      branchInstalledSmoke.includes("$resultPath = Join-Path $env:RUNNER_TEMP 'osg-installed-branch-result.json'") &&
+      branchInstalledSmoke.includes('-ResultPath $resultPath') &&
+      branchInstalledSmoke.includes("throw 'Installed branch smoke omitted its structured result evidence'") &&
+      branchInstalledSmoke.includes('Get-Content -LiteralPath $resultPath -Raw | ConvertFrom-Json | Out-Null') &&
+      branchInstalledSmoke.includes("curl.exe --fail --location --proto '=https' --proto-redir '=https'") &&
+      installedMediaFixtureAssignment.test(branchInstalledSmoke) &&
+      branchInstalledSmoke.includes('aecf6c8ef3977cd4525261ccadb4086581bd911cb17cc97128cfd8640c6055db') &&
       branchInstalledSmoke.includes('actions/upload-artifact@') &&
       branchInstalledSmoke.includes('${{ runner.temp }}/osg-*.png') &&
-      !branchInstalledSmoke.includes('/releases/download/'),
+      branchInstalledSmoke.includes('${{ runner.temp }}/osg-installed-branch-result.json') &&
+      !branchWithoutInstalledMediaFixture.includes('/releases/download/'),
     'installed-smoke must build, validate, install, and launch the current branch without downloading a published release',
   );
   invariant(
     publishedInstalledSmoke.includes("inputs.job == 'published-installed-smoke'") &&
+      publishedInstalledSmoke.includes('timeout-minutes: 90') &&
       publishedInstalledSmoke.includes('/releases/download/v${version}') &&
       publishedInstalledSmoke.includes('$asset.sig') &&
       !publishedInstalledSmoke.includes('--allow-unsigned-branch-build') &&
       publishedInstalledSmoke.includes('./scripts/test-installed-windows.ps1') &&
       publishedInstalledSmoke.includes('-IncludeMediaFlow') &&
+      publishedInstalledSmoke.includes('-LocalMediaPath $env:OSG_INSTALLED_LOCAL_MEDIA') &&
+      publishedInstalledSmoke.includes("$resultPath = Join-Path $env:RUNNER_TEMP 'osg-installed-published-result.json'") &&
+      publishedInstalledSmoke.includes('-ResultPath $resultPath') &&
+      publishedInstalledSmoke.includes("throw 'Installed published smoke omitted its structured result evidence'") &&
+      publishedInstalledSmoke.includes('Get-Content -LiteralPath $resultPath -Raw | ConvertFrom-Json | Out-Null') &&
+      publishedInstalledSmoke.includes("curl.exe --fail --location --proto '=https' --proto-redir '=https'") &&
+      installedMediaFixtureAssignment.test(publishedInstalledSmoke) &&
+      publishedInstalledSmoke.includes('aecf6c8ef3977cd4525261ccadb4086581bd911cb17cc97128cfd8640c6055db') &&
       publishedInstalledSmoke.includes('actions/upload-artifact@') &&
-      publishedInstalledSmoke.includes('${{ runner.temp }}/osg-*.png'),
+      publishedInstalledSmoke.includes('${{ runner.temp }}/osg-*.png') &&
+      publishedInstalledSmoke.includes('${{ runner.temp }}/osg-installed-published-result.json'),
     'published-installed-smoke must validate and launch the signed immutable release artifact',
   );
   const frontendBuildIndex = nativeMatrix.indexOf('run: npm run build:frontend');
@@ -723,13 +749,70 @@ function assertInstalledSmokeScript(script) {
     'WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS',
     'scripts/inspect-installed-webview.mjs',
     'scripts/inspect-installed-media-flow.mjs',
+    'scripts/inspect-installed-local-media-flow.mjs',
+    'scripts/inspect-installed-media-pipeline.mjs',
+    'scripts/inspect-installed-editor-flow.mjs',
     '$inspection = Inspect-InstalledWebView',
+    '$initialMediaFlow = Inspect-InstalledMediaFlow',
     '$mediaFlow = Inspect-InstalledMediaFlow',
+    "@('--prior-asset-id', $PriorAssetId)",
+    '-PriorAssetId $localMediaFlow.assetId',
+    '$localMediaFlow = Inspect-InstalledLocalMediaFlow',
+    '$mediaPipeline = Inspect-InstalledMediaPipeline',
+    '$editorFlow = Inspect-InstalledEditorFlow',
+    'function Inspect-InstalledMediaPipeline',
+    'function Inspect-InstalledEditorFlow',
+    "'--expected-source-name', $ExpectedSourceName",
+    "'osg-installed-editor-flow.png'",
+    'function Complete-NativeMediaPicker',
+    ".Current.Name -ceq 'Choose video or audio'",
+    '[System.Windows.Automation.ValuePattern]::Pattern',
+    'osg-installed-media-flow-initial.png',
     "Where-Object event -eq 'download.completed'",
     "Where-Object event -eq 'native-tool.completed'",
     "Where-Object event -eq 'native-tool.started'",
+    "'native-tool.failed'",
+    "'native-tool.cancelled'",
+    "'native-tool.invalid-terminal'",
+    '$failedTools.Count -ne 0',
     '$lastStartedIndex -ge $firstCompletedIndex',
+    '$startedToolEvents.Count -ne 3',
+    '$completedToolEvents.Count -ne 3',
+    '$startedToolJobs.Count -ne 3',
+    '$completedToolJobs.Count -ne 3',
+    "($startedToolJobs -join ',') -cne ($completedToolJobs -join ',')",
+    "($startedToolPairs -join ',') -cne ($completedToolPairs -join ',')",
+    '$invalidToolJobIds.Count -ne 0',
+    'function Get-DiagnosticEventCount',
+    "Get-DiagnosticEventCount -LogPath $LogPath -Name 'app.close_requested'",
+    '$Process.MainWindowHandle -eq [IntPtr]::Zero -or -not $Process.Responding',
+    '$Process.ExitCode -ne 0',
+    '$closeEventsAfter -ne ($closeEventsBefore + 1)',
+    'Stop-Application -Process $first.Process -LogPath $logPath',
+    'Stop-Application -Process $second.Process -LogPath $logPath',
+    'Stop-Application -Process $third.Process -LogPath $logPath',
+    '$startedDownloads.Count -ne 2',
+    '$completedDownloads.Count -ne 2',
+    '$startedDownloadJobs.Count -ne 2',
+    '$completedDownloadJobs.Count -ne 2',
+    "($startedDownloadJobs -join ',') -cne ($completedDownloadJobs -join ',')",
+    '$invalidDownloadJobIds.Count -ne 0',
+    "-notmatch '^[0-9a-f]{8}-[0-9a-f]{4}-7[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$'",
+    "'download.cancelled'",
+    "'download.failed'",
+    "'download.admission_failed'",
+    "'download.engine_failed'",
+    "'download.command_failed'",
+    "'download.inspection_failed'",
+    '$failedDownloads.Count -ne 0',
+    '$initialMediaFlow.assetId -eq $localMediaFlow.assetId',
+    '$localMediaFlow.assetId -eq $mediaFlow.assetId',
+    'installedInitialMediaFlow = $initialMediaFlow',
     'installedMediaFlow = $mediaFlow',
+    'installedLocalMediaFlow = $localMediaFlow',
+    'installedMediaPipeline = $mediaPipeline',
+    'installedEditorFlow = $editorFlow',
+    'Installed smoke result evidence exposed a URL, capability, token, or filesystem path',
     'firstLaunchWebView = $first.Inspection',
     'managedFontCacheStable = $true',
     '$rotationFixtureSha256 = Prepare-DiagnosticRotationFixture',
@@ -743,6 +826,49 @@ function assertInstalledSmokeScript(script) {
       `Installed Windows smoke is missing lifecycle proof: ${fragment}`,
     );
   }
+  const stopFunctionStart = script.indexOf('function Stop-Application {');
+  const stopFunctionEnd = script.indexOf('\nfunction ', stopFunctionStart + 1);
+  const stopFunction = stopFunctionStart >= 0 && stopFunctionEnd > stopFunctionStart
+    ? script.slice(stopFunctionStart, stopFunctionEnd)
+    : '';
+  invariant(
+    /\$Process\.Refresh\(\)/.test(stopFunction)
+      && /if\s*\(\$Process\.HasExited\)\s*\{\s*throw/.test(stopFunction)
+      && /\$Process\.MainWindowHandle\s+-eq\s+\[IntPtr\]::Zero\s+-or\s+-not\s+\$Process\.Responding/.test(stopFunction)
+      && /\$closeEventsBefore\s*=\s*Get-DiagnosticEventCount\s+-LogPath\s+\$LogPath\s+-Name\s+'app\.close_requested'/.test(stopFunction)
+      && /\$Process\.CloseMainWindow\(\)/.test(stopFunction)
+      && /\$Process\.WaitForExit\(30000\)/.test(stopFunction)
+      && /if\s*\(\$Process\.ExitCode\s+-ne\s+0\)\s*\{\s*throw/.test(stopFunction)
+      && /\$closeEventsAfter\s+-ne\s+\(\$closeEventsBefore\s+\+\s+1\)/.test(stopFunction),
+    'Installed Windows smoke must close only a live responsive app and prove one clean flushed close',
+  );
+  const mediaFlowFunctionStart = script.indexOf('function Inspect-InstalledMediaFlow {');
+  const mediaFlowFunctionEnd = script.indexOf('\nfunction ', mediaFlowFunctionStart + 1);
+  const mediaFlowFunction = mediaFlowFunctionStart >= 0
+    && mediaFlowFunctionEnd > mediaFlowFunctionStart
+    ? script.slice(mediaFlowFunctionStart, mediaFlowFunctionEnd)
+    : '';
+  invariant(
+    /^\s{4}\$arguments \+= @\('--prior-asset-id', \$PriorAssetId\)\s*$/m
+      .test(mediaFlowFunction)
+      && /^\s{6}-PriorAssetId \$localMediaFlow\.assetId\s*$/m.test(script),
+    'Installed Windows smoke must bind the second URL pass to the prior local-media identity',
+  );
+  const orderedInstalledMediaFragments = [
+    '$initialMediaFlow = Inspect-InstalledMediaFlow',
+    '$localMediaFlow = Inspect-InstalledLocalMediaFlow',
+    '$mediaPipeline = Inspect-InstalledMediaPipeline',
+    '$mediaFlow = Inspect-InstalledMediaFlow',
+    "throw 'Installed media-flow did not start all three native tool downloads in parallel'",
+    '$editorFlow = Inspect-InstalledEditorFlow',
+  ];
+  const orderedInstalledMediaIndices = orderedInstalledMediaFragments
+    .map((fragment) => script.indexOf(fragment));
+  invariant(orderedInstalledMediaIndices.every((index) => index >= 0)
+    && orderedInstalledMediaIndices.every((index, position) => (
+      position === 0 || orderedInstalledMediaIndices[position - 1] < index
+    )),
+  'Installed Windows smoke is missing lifecycle proof: ordered installed media flow');
   invariant(
     !/(?:Invoke-WebRequest|Invoke-RestMethod|Start-BitsTransfer)/i.test(script),
     'Installed Windows smoke must validate the branch-built installer without a second download',
@@ -841,6 +967,9 @@ function assertSignedUpdaterScript(script) {
     '$diagnosticEvidence',
     '$updatedRegistry.DisplayVersion -ne $UpdatedVersion',
     "'updated-application-relaunched'",
+    'Wait-ForReadyApplicationWindow',
+    '-MinimumReadyEventCount ($readyEventsBeforeBase + 2)',
+    "'updated-application-ready'",
     'Stop-Gracefully -Process $updatedProcess',
     '$verificationPort = Get-FreeLoopbackPort',
     "'verification-application-launched'",
@@ -854,6 +983,54 @@ function assertSignedUpdaterScript(script) {
     invariant(script.includes(fragment),
       `Signed updater runner is missing lifecycle proof: ${fragment}`);
   }
+  const readyFunctionStart = script.indexOf('function Wait-ForReadyApplicationWindow {');
+  const readyFunctionEnd = script.indexOf('\nfunction ', readyFunctionStart + 1);
+  const readyFunction = readyFunctionStart >= 0 && readyFunctionEnd > readyFunctionStart
+    ? script.slice(readyFunctionStart, readyFunctionEnd)
+    : '';
+  invariant(
+    /\$deadline\s*=\s*\(Get-Date\)\.AddMinutes\(2\)/.test(readyFunction)
+      && /\$Process\.Refresh\(\)[\s\S]*?if\s*\(\$Process\.HasExited\)/.test(readyFunction)
+      && /\$Process\.MainWindowHandle\s+-ne\s+\[IntPtr\]::Zero\s+-and\s+\$Process\.Responding/.test(readyFunction)
+      && /\$inputIdle\s*=\s*\$Process\.WaitForInputIdle\(1000\)/.test(readyFunction)
+      && /if\s*\(\$readyEvents\s+-ge\s+\$MinimumReadyEventCount\s+-and\s+\$inputIdle\)\s*\{\s*return\s*\}/.test(readyFunction)
+      && /while\s*\(\(Get-Date\)\s+-lt\s+\$deadline\)/.test(readyFunction),
+    'Signed updater runner must wait for the selected process, diagnostic readiness, and a responsive idle window',
+  );
+  const gracefulFunctionStart = script.indexOf('function Stop-Gracefully {');
+  const gracefulFunctionEnd = script.indexOf('\nfunction ', gracefulFunctionStart + 1);
+  const gracefulFunction = gracefulFunctionStart >= 0 && gracefulFunctionEnd > gracefulFunctionStart
+    ? script.slice(gracefulFunctionStart, gracefulFunctionEnd)
+    : '';
+  invariant(
+    /\$Process\.Refresh\(\)/.test(gracefulFunction)
+      && /if\s*\(\$Process\.HasExited\)\s*\{\s*throw/.test(gracefulFunction)
+      && /\$Process\.MainWindowHandle\s+-eq\s+\[IntPtr\]::Zero\s+-or\s+-not\s+\$Process\.Responding/.test(gracefulFunction)
+      && /\$closeEventsBefore\s*=\s*Get-DiagnosticEventCount\s+-Name\s+'app\.close_requested'/.test(gracefulFunction)
+      && /\$Process\.CloseMainWindow\(\)/.test(gracefulFunction)
+      && /\$Process\.WaitForExit\(30000\)/.test(gracefulFunction)
+      && /if\s*\(\$Process\.ExitCode\s+-ne\s+0\)\s*\{\s*throw/.test(gracefulFunction)
+      && /\$closeEventsAfter\s+-ne\s+\(\$closeEventsBefore\s+\+\s+1\)/.test(gracefulFunction),
+    'Signed updater runner must close only a ready native window and prove a clean, flushed application exit',
+  );
+  const relaunchedIndex = script.indexOf("Write-SmokePhase -Name 'updated-application-relaunched'");
+  const readyWaitIndex = script.indexOf('Wait-ForReadyApplicationWindow `', relaunchedIndex);
+  const readyPhaseIndex = script.indexOf("Write-SmokePhase -Name 'updated-application-ready'", readyWaitIndex);
+  const gracefulCloseIndex = script.indexOf('Stop-Gracefully -Process $updatedProcess', readyPhaseIndex);
+  const verificationLaunchIndex = script.indexOf('$verificationPort = Get-FreeLoopbackPort', gracefulCloseIndex);
+  const readyInvocation = readyWaitIndex >= 0 && readyPhaseIndex > readyWaitIndex
+    ? script.slice(readyWaitIndex, readyPhaseIndex)
+    : '';
+  invariant(
+    relaunchedIndex >= 0
+      && relaunchedIndex < readyWaitIndex
+      && readyWaitIndex < readyPhaseIndex
+      && readyPhaseIndex < gracefulCloseIndex
+      && gracefulCloseIndex < verificationLaunchIndex
+      && readyInvocation.includes('-Process $updatedProcess')
+      && readyInvocation.includes('-MinimumReadyEventCount ($readyEventsBeforeBase + 2)'),
+    'Signed updater runner must await the updater-relaunched process before closing it or starting verification',
+  );
   invariant(!/Cert:\\LocalMachine/i.test(script),
     'Signed updater runner must not modify the machine certificate store');
   invariant(!/(?:X509Store|Cert:\\|Invoke-WebRequest|Invoke-RestMethod)/i.test(script),

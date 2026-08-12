@@ -104,13 +104,74 @@ function Invoke-UpdaterInspection {
 function Stop-Gracefully {
   param([Parameter(Mandatory = $true)]$Process)
 
+  $Process.Refresh()
   if ($Process.HasExited) {
-    return
+    throw 'Application exited before the graceful close request'
   }
-  if (-not $Process.CloseMainWindow() -or -not $Process.WaitForExit(15000)) {
+  if ($Process.MainWindowHandle -eq [IntPtr]::Zero -or -not $Process.Responding) {
+    throw 'Application was not ready for a graceful close'
+  }
+  $closeEventsBefore = Get-DiagnosticEventCount -Name 'app.close_requested'
+  if (-not $Process.CloseMainWindow() -or -not $Process.WaitForExit(30000)) {
     Stop-Process -Id $Process.Id -ErrorAction SilentlyContinue
-    throw 'Updated application did not accept a graceful close'
+    throw 'Application did not accept a graceful close'
   }
+  if ($Process.ExitCode -ne 0) {
+    throw "Application exited with code $($Process.ExitCode) after the graceful close request"
+  }
+  $closeEventsAfter = Get-DiagnosticEventCount -Name 'app.close_requested'
+  if ($closeEventsAfter -ne ($closeEventsBefore + 1)) {
+    throw 'Application did not flush exactly one graceful-close diagnostic'
+  }
+}
+
+function Get-DiagnosticEventCount {
+  param([Parameter(Mandatory = $true)][string]$Name)
+
+  if (-not (Test-Path -LiteralPath $diagnosticLog -PathType Leaf)) {
+    return 0
+  }
+  @(
+    Get-Content -LiteralPath $diagnosticLog -Tail 512 |
+      ForEach-Object {
+        try {
+          $_ | ConvertFrom-Json
+        } catch {
+          # The process may be flushing one final bounded JSON line.
+        }
+      } |
+      Where-Object event -eq $Name
+  ).Count
+}
+
+function Wait-ForReadyApplicationWindow {
+  param(
+    [Parameter(Mandatory = $true)]$Process,
+    [Parameter(Mandatory = $true)][int]$MinimumReadyEventCount,
+    [Parameter(Mandatory = $true)][string]$Phase
+  )
+
+  $deadline = (Get-Date).AddMinutes(2)
+  do {
+    Start-Sleep -Milliseconds 200
+    $Process.Refresh()
+    if ($Process.HasExited) {
+      throw "$Phase application exited before its window became ready"
+    }
+    $readyEvents = Get-DiagnosticEventCount -Name 'app.ready'
+    $inputIdle = $false
+    if ($Process.MainWindowHandle -ne [IntPtr]::Zero -and $Process.Responding) {
+      try {
+        $inputIdle = $Process.WaitForInputIdle(1000)
+      } catch {
+        $inputIdle = $false
+      }
+    }
+    if ($readyEvents -ge $MinimumReadyEventCount -and $inputIdle) {
+      return
+    }
+  } while ((Get-Date) -lt $deadline)
+  throw "$Phase application did not expose a ready, responsive window within two minutes"
 }
 
 function Get-UpdaterFailurePhase {
@@ -232,6 +293,7 @@ try {
   if (-not [string]::IsNullOrEmpty($env:WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS)) {
     throw 'Signed updater runner already has unreviewed WebView2 arguments'
   }
+  $readyEventsBeforeBase = Get-DiagnosticEventCount -Name 'app.ready'
   $debugPort = Get-FreeLoopbackPort
   try {
     $env:WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS = "--remote-debugging-port=$debugPort"
@@ -296,6 +358,11 @@ try {
     throw 'Signed NSIS updater relaunched an unexpected executable'
   }
   Write-SmokePhase -Name 'updated-application-relaunched'
+  Wait-ForReadyApplicationWindow `
+    -Process $updatedProcess `
+    -MinimumReadyEventCount ($readyEventsBeforeBase + 2) `
+    -Phase 'updater-relaunched'
+  Write-SmokePhase -Name 'updated-application-ready'
   Stop-Gracefully -Process $updatedProcess
   $updatedProcess = $null
   Write-SmokePhase -Name 'updated-application-closed'

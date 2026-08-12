@@ -1,0 +1,303 @@
+import { Buffer } from 'node:buffer';
+import crypto from 'node:crypto';
+import fs from 'node:fs';
+import path from 'node:path';
+import process from 'node:process';
+import { setTimeout } from 'node:timers';
+import { pathToFileURL } from 'node:url';
+
+import { CdpClient, discoverTarget } from './inspect-installed-webview.mjs';
+import {
+  readPlaybackCapability,
+  sanitizeInspectorError,
+} from './inspect-installed-media-flow.mjs';
+
+const DEFAULT_TIMEOUT_MS = 2 * 60 * 1_000;
+const EXPECTED_FIXTURE_BYTES = 366_888;
+const UUID_V7 = /^[0-9a-f]{8}-[0-9a-f]{4}-7[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+const UUID_V4 = /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+const PLAYBACK_URL = /^http:\/\/127\.0\.0\.1:([0-9]{1,5})\/asset\/([0-9a-f-]{36})\?token=([0-9a-f]{64})$/i;
+
+const invariant = (condition, message) => {
+  if (!condition) throw new Error(message);
+};
+
+const isInside = (candidate, root) => {
+  const relative = path.relative(root, candidate);
+  return relative !== '' && !relative.startsWith(`..${path.sep}`) && relative !== '..'
+    && !path.isAbsolute(relative);
+};
+
+const hasExactKeys = (value, keys) => value && typeof value === 'object'
+  && !Array.isArray(value)
+  && Object.keys(value).sort().join('\0') === [...keys].sort().join('\0');
+
+export function parseArguments(argv, environment = process.env) {
+  const values = new Map();
+  for (let index = 0; index < argv.length; index += 2) {
+    const key = argv[index];
+    const value = argv[index + 1];
+    invariant(/^--[a-z-]+$/.test(key ?? '') && value !== undefined,
+      'Usage: inspect-installed-local-media-flow.mjs --port PORT '
+        + '--expected-file-name NAME --screenshot PATH');
+    invariant(!values.has(key), `Duplicate argument: ${key}`);
+    values.set(key, value);
+  }
+  invariant(values.size === 3, 'Only reviewed installed local-media arguments are accepted');
+  const port = Number(values.get('--port'));
+  invariant(Number.isInteger(port) && port >= 1_024 && port <= 65_535,
+    'DevTools port must be an unprivileged TCP port');
+  invariant(typeof environment.RUNNER_TEMP === 'string' && environment.RUNNER_TEMP.length > 0,
+    'RUNNER_TEMP is required for the installed local-media smoke');
+  const runnerTemp = fs.realpathSync(environment.RUNNER_TEMP);
+  const screenshot = path.resolve(values.get('--screenshot'));
+  invariant(isInside(screenshot, runnerTemp), 'Screenshot must stay inside RUNNER_TEMP');
+  invariant(!fs.existsSync(screenshot), 'Installed local-media screenshot path must be clean');
+  const expectedFileName = values.get('--expected-file-name');
+  invariant(typeof expectedFileName === 'string'
+    && /^[A-Za-z0-9][A-Za-z0-9._-]{0,127}\.mp4$/.test(expectedFileName)
+    && path.basename(expectedFileName) === expectedFileName,
+  'Expected local-media filename is invalid');
+  return Object.freeze({ port, expectedFileName, screenshot });
+}
+
+export function assertLocalMediaResult(value, expectedFileName) {
+  invariant(hasExactKeys(value, [
+    'assetId', 'currentFileUrl', 'displayedFileName', 'errorToastMessages', 'htmlFileInput',
+    'inspection', 'playbackBytes', 'session', 'video',
+  ]), 'Installed local-media flow returned an invalid result shape');
+  const { playbackBytes, ...state } = value;
+  assertLocalMediaState(state, expectedFileName);
+  invariant(hasExactKeys(playbackBytes, ['byteLength', 'sha256'])
+    && playbackBytes.byteLength === EXPECTED_FIXTURE_BYTES
+    && playbackBytes.sha256 === 'aecf6c8ef3977cd4525261ccadb4086581bd911cb17cc97128cfd8640c6055db',
+  'Installed local-media playback bytes did not match the reviewed fixture');
+  return value;
+}
+
+export function assertLocalMediaState(value, expectedFileName) {
+  invariant(hasExactKeys(value, [
+    'assetId', 'currentFileUrl', 'displayedFileName', 'errorToastMessages', 'htmlFileInput',
+    'inspection', 'session', 'video',
+  ]), 'Installed local-media flow returned an invalid result shape');
+  invariant(UUID_V7.test(value.assetId ?? ''),
+    'Installed local-media flow did not publish a UUIDv7 asset');
+  const playback = typeof value.currentFileUrl === 'string'
+    ? PLAYBACK_URL.exec(value.currentFileUrl)
+    : null;
+  invariant(playback !== null && Number(playback[1]) >= 1 && Number(playback[1]) <= 65_535,
+    'Installed local-media flow did not publish an opaque loopback capability');
+  invariant(UUID_V4.test(playback?.[2] ?? ''),
+    'Installed local-media flow published an invalid playback identity');
+  invariant(value.displayedFileName === expectedFileName,
+    'Installed local-media flow did not render the selected display name');
+  invariant(Array.isArray(value.errorToastMessages) && value.errorToastMessages.length === 0,
+    'Installed local-media flow displayed an error toast');
+  invariant(hasExactKeys(value.htmlFileInput, ['fileCount', 'value'])
+    && value.htmlFileInput.fileCount === 0
+    && value.htmlFileInput.value === '',
+  'Installed local-media flow injected a path into the WebView file input');
+  invariant(hasExactKeys(value.session, ['media', 'playback', 'subtitleTrack'])
+    && hasExactKeys(value.session.media, [
+      'displayName', 'extension', 'id', 'kind', 'sizeBytes',
+    ])
+    && value.session.media.id === value.assetId
+    && value.session.media.kind === 'video'
+    && value.session.media.displayName === expectedFileName
+    && value.session.media.extension === 'mp4'
+    && value.session.media.sizeBytes === EXPECTED_FIXTURE_BYTES
+    && hasExactKeys(value.session.playback, ['byteLength', 'id', 'mimeType', 'playbackUrl'])
+    && value.session.playback.id === playback[2]
+    && value.session.playback.byteLength === EXPECTED_FIXTURE_BYTES
+    && value.session.playback.mimeType === 'video/mp4'
+    && value.session.playback.playbackUrl === value.currentFileUrl,
+  'Installed local-media session and visible capability diverged');
+  invariant(hasExactKeys(value.inspection, [
+    'assetId', 'audioCodec', 'compatibilityAction', 'durationUs', 'frameRate', 'hasAudio',
+    'hasVideo', 'height', 'issues', 'videoCodec', 'width',
+  ])
+    && value.inspection.assetId === value.assetId
+    && value.inspection?.hasVideo === true
+    && value.inspection?.hasAudio === true
+    && value.inspection?.width === 640
+    && value.inspection?.height === 360
+    && value.inspection?.durationUs >= 3_900_000
+    && value.inspection?.durationUs <= 4_100_000
+    && value.inspection?.videoCodec === 'h264'
+    && value.inspection?.audioCodec === 'aac'
+    && Number.isFinite(value.inspection?.frameRate)
+    && value.inspection.frameRate >= 23.9
+    && value.inspection.frameRate <= 24.1
+    && value.inspection?.compatibilityAction === 'direct'
+    && Array.isArray(value.inspection?.issues)
+    && value.inspection.issues.length === 0,
+  'Installed local-media native inspection did not match the reviewed fixture');
+  invariant(hasExactKeys(value.video, [
+    'currentSrc', 'duration', 'height', 'paused', 'readyState', 'width',
+  ])
+    && value.video.currentSrc === value.currentFileUrl
+    && Number.isFinite(value.video.duration)
+    && value.video.duration >= 3.9 && value.video.duration <= 4.1
+    && Number.isInteger(value.video.readyState) && value.video.readyState >= 1
+    && value.video.width === 640
+    && value.video.height === 360,
+  'Installed local-media element did not decode the selected fixture');
+  return value;
+}
+
+export async function waitForValue(read, accept, {
+  timeoutMs = DEFAULT_TIMEOUT_MS,
+  delay = () => new Promise((resolve) => setTimeout(resolve, 250)),
+  now = Date.now,
+} = {}) {
+  const deadline = now() + timeoutMs;
+  do {
+    try {
+      const value = await read();
+      if (accept(value)) return value;
+    } catch (error) {
+      throw new Error(sanitizeInspectorError(error, 'Installed local-media probe failed'));
+    }
+    await delay();
+  } while (now() < deadline);
+  throw new Error('Installed local-media flow timed out before reaching the reviewed state');
+}
+
+const evaluate = async (client, expression) => {
+  const evaluation = await client.send('Runtime.evaluate', {
+    expression,
+    awaitPromise: true,
+    returnByValue: true,
+  });
+  invariant(!evaluation.exceptionDetails, 'Installed local-media evaluation failed');
+  return evaluation.result?.value;
+};
+
+const OPEN_PICKER_EXPRESSION = `
+(() => {
+  const tabs = [...document.querySelectorAll('.input-tabs .tab-btn')];
+  const uploadTab = tabs.at(-1);
+  if (!(uploadTab instanceof HTMLButtonElement)) return false;
+  uploadTab.click();
+  return true;
+})()`;
+
+const CLICK_PICKER_EXPRESSION = `
+(() => {
+  const picker = document.querySelector('.file-upload-input:not(.loading)');
+  if (!(picker instanceof HTMLElement)) return false;
+  picker.click();
+  return true;
+})()`;
+
+export const LOCAL_MEDIA_RESULT_EXPRESSION = `
+(async () => {
+  const assetId = localStorage.getItem('current_file_cache_id');
+  const currentFileUrl = localStorage.getItem('current_file_url');
+  const videoElement = document.querySelector('video.video-player');
+  const invoke = window.__TAURI_INTERNALS__?.invoke;
+  let session = null;
+  let inspection = null;
+  if (typeof invoke === 'function') {
+    session = await invoke('get_session_snapshot');
+    if (${UUID_V7.toString()}.test(assetId ?? '')) {
+      inspection = await invoke('media_pipeline_inspect', { assetId });
+    }
+  }
+  return {
+    assetId,
+    currentFileUrl,
+    displayedFileName: document.querySelector('.file-info-card .file-name')?.textContent?.trim()
+      ?? null,
+    errorToastMessages: [...document.querySelectorAll('.toast-error p')]
+      .slice(0, 4)
+      .map((element) => (element.textContent ?? '').trim().slice(0, 1024)),
+    htmlFileInput: (() => {
+      const input = document.querySelector('.hidden-file-input[type="file"]');
+      return input instanceof HTMLInputElement
+        ? { fileCount: input.files?.length ?? null, value: input.value }
+        : null;
+    })(),
+    inspection,
+    session,
+    video: videoElement ? {
+      currentSrc: videoElement.currentSrc,
+      duration: videoElement.duration,
+      height: videoElement.videoHeight,
+      paused: videoElement.paused,
+      readyState: videoElement.readyState,
+      width: videoElement.videoWidth,
+    } : null,
+  };
+})()`;
+
+async function runInstalledLocalMediaFlow(options) {
+  const target = await discoverTarget(options.port);
+  const client = new CdpClient(target.webSocketDebuggerUrl, DEFAULT_TIMEOUT_MS);
+  await client.connect();
+  try {
+    await client.send('Runtime.enable');
+    await client.send('Page.enable');
+    invariant(await evaluate(client, OPEN_PICKER_EXPRESSION) === true,
+      'Installed local-media flow could not activate the Upload File tab');
+    await waitForValue(
+      () => evaluate(client, "document.querySelector('.file-upload-input:not(.loading)') !== null"),
+      (value) => value === true,
+      { timeoutMs: 30_000 },
+    );
+    invariant(await evaluate(client, CLICK_PICKER_EXPRESSION) === true,
+      'Installed local-media flow could not open the native picker');
+    const state = await waitForValue(
+      () => evaluate(client, LOCAL_MEDIA_RESULT_EXPRESSION),
+      (value) => {
+        try {
+          assertLocalMediaState(value, options.expectedFileName);
+          return true;
+        } catch {
+          return false;
+        }
+      },
+    );
+    assertLocalMediaState(state, options.expectedFileName);
+    const result = {
+      ...state,
+      playbackBytes: await readPlaybackCapability(state.currentFileUrl),
+    };
+    assertLocalMediaResult(result, options.expectedFileName);
+    const capture = await client.send('Page.captureScreenshot', {
+      format: 'png',
+      captureBeyondViewport: false,
+      fromSurface: true,
+    });
+    invariant(typeof capture.data === 'string', 'Installed local-media screenshot was empty');
+    const bytes = Buffer.from(capture.data, 'base64');
+    invariant(bytes.length > 10_000 && bytes.subarray(0, 8).equals(
+      Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a])),
+    'Installed local-media screenshot is not a PNG');
+    fs.writeFileSync(options.screenshot, bytes, { flag: 'wx' });
+    return {
+      assetId: result.assetId,
+      displayedFileName: result.displayedFileName,
+      fixtureBytes: result.session.media.sizeBytes,
+      fixtureSha256: result.playbackBytes.sha256,
+      nativeCompatibilityAction: result.inspection.compatibilityAction,
+      screenshotBytes: bytes.length,
+      screenshotSha256: crypto.createHash('sha256').update(bytes).digest('hex'),
+      videoDuration: result.video.duration,
+      videoHeight: result.video.height,
+      videoWidth: result.video.width,
+    };
+  } finally {
+    client.close();
+  }
+}
+
+if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {
+  Promise.resolve()
+    .then(() => runInstalledLocalMediaFlow(parseArguments(process.argv.slice(2))))
+    .then((result) => process.stdout.write(`${JSON.stringify(result)}\n`))
+    .catch((error) => {
+      process.stderr.write(`${sanitizeInspectorError(error, 'Installed local-media flow failed')}\n`);
+      process.exitCode = 1;
+    });
+}

@@ -106,19 +106,147 @@ test('installed Windows smoke proves persistence, media, tools, logs, relaunch, 
     "-Phase 'reinstall-launch'",
     'scripts/inspect-installed-webview.mjs',
     'scripts/inspect-installed-media-flow.mjs',
+    'scripts/inspect-installed-local-media-flow.mjs',
+    'scripts/inspect-installed-media-pipeline.mjs',
+    'scripts/inspect-installed-editor-flow.mjs',
     '$inspection = Inspect-InstalledWebView',
+    '$initialMediaFlow = Inspect-InstalledMediaFlow',
     '$mediaFlow = Inspect-InstalledMediaFlow',
+    "@('--prior-asset-id', $PriorAssetId)",
+    '-PriorAssetId $localMediaFlow.assetId',
+    '$localMediaFlow = Inspect-InstalledLocalMediaFlow',
+    '$mediaPipeline = Inspect-InstalledMediaPipeline',
+    '$editorFlow = Inspect-InstalledEditorFlow',
+    'function Inspect-InstalledMediaPipeline',
+    'function Inspect-InstalledEditorFlow',
+    "'--expected-source-name', $ExpectedSourceName",
+    "'osg-installed-editor-flow.png'",
+    'function Complete-NativeMediaPicker',
+    ".Current.Name -ceq 'Choose video or audio'",
+    'osg-installed-media-flow-initial.png',
     "Where-Object event -eq 'download.completed'",
     "Where-Object event -eq 'native-tool.completed'",
     "Where-Object event -eq 'native-tool.started'",
+    "'native-tool.failed'",
+    "'native-tool.cancelled'",
+    "'native-tool.invalid-terminal'",
+    '$failedTools.Count -ne 0',
     '$lastStartedIndex -ge $firstCompletedIndex',
+    '$startedToolEvents.Count -ne 3',
+    '$completedToolEvents.Count -ne 3',
+    '$startedToolJobs.Count -ne 3',
+    '$completedToolJobs.Count -ne 3',
+    "($startedToolJobs -join ',') -cne ($completedToolJobs -join ',')",
+    "($startedToolPairs -join ',') -cne ($completedToolPairs -join ',')",
+    '$invalidToolJobIds.Count -ne 0',
+    'function Get-DiagnosticEventCount',
+    "Get-DiagnosticEventCount -LogPath $LogPath -Name 'app.close_requested'",
+    '$Process.MainWindowHandle -eq [IntPtr]::Zero -or -not $Process.Responding',
+    '$Process.ExitCode -ne 0',
+    '$closeEventsAfter -ne ($closeEventsBefore + 1)',
+    'Stop-Application -Process $first.Process -LogPath $logPath',
+    'Stop-Application -Process $second.Process -LogPath $logPath',
+    'Stop-Application -Process $third.Process -LogPath $logPath',
+    '$startedDownloads.Count -ne 2',
+    '$completedDownloads.Count -ne 2',
+    '$startedDownloadJobs.Count -ne 2',
+    '$completedDownloadJobs.Count -ne 2',
+    "($startedDownloadJobs -join ',') -cne ($completedDownloadJobs -join ',')",
+    '$invalidDownloadJobIds.Count -ne 0',
+    "-notmatch '^[0-9a-f]{8}-[0-9a-f]{4}-7[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$'",
+    "'download.cancelled'",
+    "'download.failed'",
+    "'download.admission_failed'",
+    "'download.engine_failed'",
+    "'download.command_failed'",
+    "'download.inspection_failed'",
+    '$failedDownloads.Count -ne 0',
+    '$initialMediaFlow.assetId -eq $localMediaFlow.assetId',
+    '$localMediaFlow.assetId -eq $mediaFlow.assetId',
+    'installedInitialMediaFlow = $initialMediaFlow',
+    'installedMediaPipeline = $mediaPipeline',
+    'installedEditorFlow = $editorFlow',
+    'Installed smoke result evidence exposed a URL, capability, token, or filesystem path',
     '$rotationFixtureSha256 = Prepare-DiagnosticRotationFixture',
     '-ExpectedPreviousSha256 $rotationFixtureSha256',
     'diagnosticLogRotation = $true',
   ]) {
     assert.throws(
-      () => assertInstalledSmokeScript(INSTALLED_SMOKE_SCRIPT.replace(fragment, 'removed')),
+      () => assertInstalledSmokeScript(INSTALLED_SMOKE_SCRIPT.replaceAll(fragment, 'removed')),
       /Installed Windows smoke is missing lifecycle proof/,
+    );
+  }
+  const reorderedInstalledMedia = INSTALLED_SMOKE_SCRIPT
+    .replace(
+      '$localMediaFlow = Inspect-InstalledLocalMediaFlow',
+      '$temporaryInstalledMedia = Inspect-InstalledLocalMediaFlow',
+    )
+    .replace(
+      '$mediaPipeline = Inspect-InstalledMediaPipeline',
+      '$localMediaFlow = Inspect-InstalledLocalMediaFlow',
+    )
+    .replace(
+      '$temporaryInstalledMedia = Inspect-InstalledLocalMediaFlow',
+      '$mediaPipeline = Inspect-InstalledMediaPipeline',
+    );
+  assert.throws(
+    () => assertInstalledSmokeScript(reorderedInstalledMedia),
+    /ordered installed media flow/,
+  );
+  assert.throws(
+    () => assertInstalledSmokeScript(INSTALLED_SMOKE_SCRIPT.replace(
+      /\$initialMediaFlow\.assetId -eq \$localMediaFlow\.assetId `\r?\n\s*-or /,
+      '',
+    )),
+    /Installed Windows smoke is missing lifecycle proof/,
+  );
+  for (const commentedPriorIdentityGate of [
+    INSTALLED_SMOKE_SCRIPT.replace(
+      "    $arguments += @('--prior-asset-id', $PriorAssetId)",
+      "    # $arguments += @('--prior-asset-id', $PriorAssetId)",
+    ),
+    INSTALLED_SMOKE_SCRIPT.replace(
+      '      -PriorAssetId $localMediaFlow.assetId',
+      '      # -PriorAssetId $localMediaFlow.assetId',
+    ),
+  ]) {
+    assert.throws(
+      () => assertInstalledSmokeScript(commentedPriorIdentityGate),
+      /bind the second URL pass to the prior local-media identity/,
+    );
+  }
+  for (const weakenedToolProof of [
+    INSTALLED_SMOKE_SCRIPT.replace(
+      '$startedToolEvents.Count -ne 3',
+      '$startedToolEvents.Count -lt 3',
+    ),
+    INSTALLED_SMOKE_SCRIPT.replace(
+      "($startedToolJobs -join ',') -cne ($completedToolJobs -join ',')",
+      '$false',
+    ),
+    INSTALLED_SMOKE_SCRIPT.replace(
+      "($startedToolPairs -join ',') -cne ($completedToolPairs -join ',')",
+      '$false',
+    ),
+  ]) {
+    assert.throws(
+      () => assertInstalledSmokeScript(weakenedToolProof),
+      /Installed Windows smoke is missing lifecycle proof/,
+    );
+  }
+  for (const weakenedCloseProof of [
+    INSTALLED_SMOKE_SCRIPT.replace(
+      "throw 'Installed application exited before the graceful close request'",
+      'return',
+    ),
+    INSTALLED_SMOKE_SCRIPT.replace(
+      '$closeEventsAfter -ne ($closeEventsBefore + 1)',
+      '$false',
+    ),
+  ]) {
+    assert.throws(
+      () => assertInstalledSmokeScript(weakenedCloseProof),
+      /(?:live responsive app|missing lifecycle proof)/,
     );
   }
   assert.throws(
@@ -164,14 +292,39 @@ test('signed updater runner uses isolated HTTPS, the real toast, NSIS relaunch, 
     "-Mode 'verify'",
     '$certificateRequest.CreateSelfSigned(',
     "'updated-application-relaunched'",
+    'Wait-ForReadyApplicationWindow',
+    '$Process.MainWindowHandle -ne [IntPtr]::Zero',
+    '$Process.WaitForInputIdle(1000)',
+    "$closeEventsBefore = Get-DiagnosticEventCount -Name 'app.close_requested'",
+    '$Process.ExitCode -ne 0',
+    '$closeEventsAfter -ne ($closeEventsBefore + 1)',
+    '-MinimumReadyEventCount ($readyEventsBeforeBase + 2)',
+    "'updated-application-ready'",
     '$verificationPort = Get-FreeLoopbackPort',
     'preservedSettingsProjectAndHistory = $true',
   ]) {
     assert.throws(
-      () => assertSignedUpdaterScript(SIGNED_UPDATER_SCRIPT.replace(fragment, 'removed')),
+      () => assertSignedUpdaterScript(SIGNED_UPDATER_SCRIPT.replaceAll(fragment, 'removed')),
       /Signed updater runner/,
     );
   }
+  assert.throws(
+    () => assertSignedUpdaterScript(SIGNED_UPDATER_SCRIPT.replace(
+      'if ($readyEvents -ge $MinimumReadyEventCount -and $inputIdle)',
+      'if ($readyEvents -ge $MinimumReadyEventCount)',
+    )),
+    /diagnostic readiness, and a responsive idle window/,
+  );
+  const readyPhase = "Write-SmokePhase -Name 'updated-application-ready'";
+  const gracefulClose = 'Stop-Gracefully -Process $updatedProcess';
+  const reorderedClose = SIGNED_UPDATER_SCRIPT
+    .replace(readyPhase, '__OSG_READY_PHASE__')
+    .replace(gracefulClose, readyPhase)
+    .replace('__OSG_READY_PHASE__', gracefulClose);
+  assert.throws(
+    () => assertSignedUpdaterScript(reorderedClose),
+    /await the updater-relaunched process/,
+  );
   assert.throws(
     () => assertSignedUpdaterScript(`${SIGNED_UPDATER_SCRIPT}\n# Cert:\\LocalMachine\\Root\n`),
     /certificate store|trust stores/,
@@ -492,6 +645,68 @@ test('workflow is unsigned, read-only, credentialless, and locked', () => {
   assert.throws(
     () => assertWorkflowCommands(branchSmokeDownloadingPublished),
     /installed-smoke must build, validate, install, and launch the current branch/,
+  );
+  const publishedSmokeWithShortTimeout = replaceInWorkflowJob(
+    workflow,
+    'windows-published-installed-smoke',
+    'timeout-minutes: 90',
+    'timeout-minutes: 20',
+  );
+  assert.throws(
+    () => assertWorkflowCommands(publishedSmokeWithShortTimeout),
+    /published-installed-smoke must validate and launch the signed immutable release artifact/,
+  );
+  for (const jobName of ['windows-installed-smoke', 'windows-published-installed-smoke']) {
+    const fixtureWithUnsafeRedirects = replaceInWorkflowJob(
+      workflow,
+      jobName,
+      "--proto '=https' --proto-redir '=https'",
+      '--proto-default http',
+    );
+    assert.throws(
+      () => assertWorkflowCommands(fixtureWithUnsafeRedirects),
+      /(?:installed-smoke must build|published-installed-smoke must validate)/,
+    );
+    const fixtureFromUnreviewedHost = replaceInWorkflowJob(
+      workflow,
+      jobName,
+      'https://github.com/nganlinh4/oneclick-subtitles-generator/releases/download/osg-runtime-bundles-v1/osg-installed-media-smoke-v1-aecf6c8ef3977cd4.mp4',
+      'https://evil.example/releases/download/osg-runtime-bundles-v1/osg-installed-media-smoke-v1-aecf6c8ef3977cd4.mp4',
+    );
+    assert.throws(
+      () => assertWorkflowCommands(fixtureFromUnreviewedHost),
+      /(?:installed-smoke must build|published-installed-smoke must validate)/,
+    );
+    const fixtureAssignmentWithCommentDecoy = replaceInWorkflowJob(
+      workflow,
+      jobName,
+      `$url = 'https://github.com/nganlinh4/oneclick-subtitles-generator/releases/download/osg-runtime-bundles-v1/osg-installed-media-smoke-v1-aecf6c8ef3977cd4.mp4'`,
+      `$url = 'https://evil.example/releases/download/osg-runtime-bundles-v1/osg-installed-media-smoke-v1-aecf6c8ef3977cd4.mp4'\n          # $url = 'https://github.com/nganlinh4/oneclick-subtitles-generator/releases/download/osg-runtime-bundles-v1/osg-installed-media-smoke-v1-aecf6c8ef3977cd4.mp4'`,
+    );
+    assert.throws(
+      () => assertWorkflowCommands(fixtureAssignmentWithCommentDecoy),
+      /(?:installed-smoke must build|published-installed-smoke must validate)/,
+    );
+  }
+  const branchWithoutStructuredEvidenceCheck = replaceInWorkflowJob(
+    workflow,
+    'windows-installed-smoke',
+    'Get-Content -LiteralPath $resultPath -Raw | ConvertFrom-Json | Out-Null',
+    '# structured result validation removed',
+  );
+  assert.throws(
+    () => assertWorkflowCommands(branchWithoutStructuredEvidenceCheck),
+    /installed-smoke must build, validate, install, and launch the current branch/,
+  );
+  const publishedWithoutStructuredEvidenceCheck = replaceInWorkflowJob(
+    workflow,
+    'windows-published-installed-smoke',
+    'Get-Content -LiteralPath $resultPath -Raw | ConvertFrom-Json | Out-Null',
+    '# structured result validation removed',
+  );
+  assert.throws(
+    () => assertWorkflowCommands(publishedWithoutStructuredEvidenceCheck),
+    /published-installed-smoke must validate and launch the signed immutable release artifact/,
   );
   const buildLine = '        run: npm run build:frontend\n';
   const frontendBuiltTooLate = transformWorkflowJob(workflow, 'native-matrix', (job) => {

@@ -114,7 +114,7 @@ jobs:
           npm run verify:managed-delivery
 
       - name: Test release-readiness and artifact gates
-        run: node --test scripts/check-release-readiness.test.js scripts/check-release-artifacts.test.js scripts/check-desktop-payload-size.test.mjs scripts/check-production-transport.test.js scripts/check-tauri-command-contract.test.js scripts/frontend-bundle-boundary.test.mjs scripts/inspect-installed-webview.test.mjs scripts/inspect-installed-media-flow.test.mjs scripts/inspect-installed-updater.test.mjs scripts/serve-updater-fixture.test.mjs scripts/remotion-desktop-boundary.test.mjs
+        run: node --test scripts/check-release-readiness.test.js scripts/check-release-artifacts.test.js scripts/check-desktop-payload-size.test.mjs scripts/check-production-transport.test.js scripts/check-tauri-command-contract.test.js scripts/frontend-bundle-boundary.test.mjs scripts/inspect-installed-webview.test.mjs scripts/inspect-installed-media-flow.test.mjs scripts/inspect-installed-local-media-flow.test.mjs scripts/inspect-installed-media-pipeline.test.mjs scripts/inspect-installed-editor-flow.test.mjs scripts/inspect-installed-updater.test.mjs scripts/serve-updater-fixture.test.mjs scripts/remotion-desktop-boundary.test.mjs
 
       - name: Test frozen CSS compatibility gates
         run: node --test scripts/frozen-css-compatibility.test.mjs scripts/check-frozen-css-output.test.mjs
@@ -324,6 +324,28 @@ jobs:
       - name: Validate installer architecture and packaged resources
         run: node scripts/check-release-artifacts.js --target x86_64-pc-windows-msvc --bundles nsis --allow-unsigned-branch-build
 
+      - name: Fetch the reviewed installed local-media fixture
+        shell: pwsh
+        run: |
+          $name = 'osg-installed-media-smoke-v1-aecf6c8ef3977cd4.mp4'
+          $path = Join-Path $env:RUNNER_TEMP $name
+          if (Test-Path -LiteralPath $path) {
+            throw 'Installed local-media fixture path was not clean'
+          }
+          $url = 'https://github.com/nganlinh4/oneclick-subtitles-generator/releases/download/osg-runtime-bundles-v1/osg-installed-media-smoke-v1-aecf6c8ef3977cd4.mp4'
+          curl.exe --fail --location --proto '=https' --proto-redir '=https' --silent --show-error --output $path $url
+          if ($LASTEXITCODE -ne 0) {
+            throw "Installed local-media fixture download failed with code $LASTEXITCODE"
+          }
+          if ((Get-Item -LiteralPath $path).Length -ne 366888) {
+            throw 'Installed local-media fixture has the wrong byte length'
+          }
+          $sha256 = (Get-FileHash -LiteralPath $path -Algorithm SHA256).Hash.ToLowerInvariant()
+          if ($sha256 -cne 'aecf6c8ef3977cd4525261ccadb4086581bd911cb17cc97128cfd8640c6055db') {
+            throw 'Installed local-media fixture has the wrong SHA-256 digest'
+          }
+          "OSG_INSTALLED_LOCAL_MEDIA=$path" >> $env:GITHUB_ENV
+
       - name: Install and launch from the isolated clean runner profile
         shell: pwsh
         run: |
@@ -332,14 +354,21 @@ jobs:
             throw "Expected exactly one NSIS installer, found $(@($installer).Count)"
           }
           $expectedVersion = (Get-Content -LiteralPath "package.json" -Raw | ConvertFrom-Json).version
-          ./scripts/test-installed-windows.ps1 -InstallerPath $installer.FullName -ExpectedVersion $expectedVersion -IncludeMediaFlow
+          $resultPath = Join-Path $env:RUNNER_TEMP 'osg-installed-branch-result.json'
+          ./scripts/test-installed-windows.ps1 -InstallerPath $installer.FullName -ExpectedVersion $expectedVersion -IncludeMediaFlow -LocalMediaPath $env:OSG_INSTALLED_LOCAL_MEDIA -ResultPath $resultPath
+          if (-not (Test-Path -LiteralPath $resultPath -PathType Leaf)) {
+            throw 'Installed branch smoke omitted its structured result evidence'
+          }
+          Get-Content -LiteralPath $resultPath -Raw | ConvertFrom-Json | Out-Null
 
       - name: Upload installed WebView screenshots
         if: always()
         uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6.0.0
         with:
           name: installed-webview-${{ github.run_id }}-${{ github.run_attempt }}
-          path: ${{ runner.temp }}/osg-*.png
+          path: |
+            ${{ runner.temp }}/osg-*.png
+            ${{ runner.temp }}/osg-installed-branch-result.json
           if-no-files-found: warn
           retention-days: 7
 
@@ -348,7 +377,7 @@ jobs:
     needs: invariants
     if: github.event_name == 'workflow_dispatch' && inputs.job == 'published-installed-smoke'
     runs-on: windows-2022
-    timeout-minutes: 20
+    timeout-minutes: 90
     steps:
       - name: Check out repository
         uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
@@ -383,6 +412,28 @@ jobs:
       - name: Validate installer architecture, resources, and updater signature
         run: node scripts/check-release-artifacts.js --target x86_64-pc-windows-msvc --bundles nsis
 
+      - name: Fetch the reviewed installed local-media fixture
+        shell: pwsh
+        run: |
+          $name = 'osg-installed-media-smoke-v1-aecf6c8ef3977cd4.mp4'
+          $path = Join-Path $env:RUNNER_TEMP $name
+          if (Test-Path -LiteralPath $path) {
+            throw 'Installed local-media fixture path was not clean'
+          }
+          $url = 'https://github.com/nganlinh4/oneclick-subtitles-generator/releases/download/osg-runtime-bundles-v1/osg-installed-media-smoke-v1-aecf6c8ef3977cd4.mp4'
+          curl.exe --fail --location --proto '=https' --proto-redir '=https' --silent --show-error --output $path $url
+          if ($LASTEXITCODE -ne 0) {
+            throw "Installed local-media fixture download failed with code $LASTEXITCODE"
+          }
+          if ((Get-Item -LiteralPath $path).Length -ne 366888) {
+            throw 'Installed local-media fixture has the wrong byte length'
+          }
+          $sha256 = (Get-FileHash -LiteralPath $path -Algorithm SHA256).Hash.ToLowerInvariant()
+          if ($sha256 -cne 'aecf6c8ef3977cd4525261ccadb4086581bd911cb17cc97128cfd8640c6055db') {
+            throw 'Installed local-media fixture has the wrong SHA-256 digest'
+          }
+          "OSG_INSTALLED_LOCAL_MEDIA=$path" >> $env:GITHUB_ENV
+
       - name: Install and launch from the isolated clean runner profile
         shell: pwsh
         run: |
@@ -391,13 +442,20 @@ jobs:
             throw "Expected exactly one NSIS installer, found $(@($installer).Count)"
           }
           $expectedVersion = (Get-Content -LiteralPath "package.json" -Raw | ConvertFrom-Json).version
-          ./scripts/test-installed-windows.ps1 -InstallerPath $installer.FullName -ExpectedVersion $expectedVersion -IncludeMediaFlow
+          $resultPath = Join-Path $env:RUNNER_TEMP 'osg-installed-published-result.json'
+          ./scripts/test-installed-windows.ps1 -InstallerPath $installer.FullName -ExpectedVersion $expectedVersion -IncludeMediaFlow -LocalMediaPath $env:OSG_INSTALLED_LOCAL_MEDIA -ResultPath $resultPath
+          if (-not (Test-Path -LiteralPath $resultPath -PathType Leaf)) {
+            throw 'Installed published smoke omitted its structured result evidence'
+          }
+          Get-Content -LiteralPath $resultPath -Raw | ConvertFrom-Json | Out-Null
 
       - name: Upload published installed WebView screenshots
         if: always()
         uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6.0.0
         with:
           name: published-installed-webview-${{ github.run_id }}-${{ github.run_attempt }}
-          path: ${{ runner.temp }}/osg-*.png
+          path: |
+            ${{ runner.temp }}/osg-*.png
+            ${{ runner.temp }}/osg-installed-published-result.json
           if-no-files-found: warn
           retention-days: 7
