@@ -273,7 +273,10 @@ test('records a security-retired static file without allowing it back into the w
   const working = createManifest(
     memoryProvider({'public/oauth2callback.html': '<main>retired</main>'}),
   );
-  assert.equal(Object.keys(retired.retiredExactFiles).length, 1);
+  assert.equal(
+    retired.retiredExactFiles['public/oauth2callback.html'],
+    'c19855fd5a3f19af1eea1c1fed6e7794a342136223dd60dbead2586d4298fd90',
+  );
   assert.equal(Object.keys(retired.exactFiles).length, 0);
   validateManifest(retired);
   assert.deepEqual(compareManifests(retired, working).exact.added, [

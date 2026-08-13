@@ -2,8 +2,9 @@
   "schemaVersion": 5,
   "algorithm": "sha256",
   "normalization": "binary exact; UTF-8 BOM ignored, CRLF/CR normalized to LF, terminal newlines ignored",
-  "baselineRevision": "ae2f9fc83a2f0c08b3f771db83b14e9cef064e5e",
+  "baselineRevision": "1cd6f20fcaee04c7d5be98966e0dcaa273f68ce4",
   "retiredExactFiles": {
+    "public/oauth2callback.html": "c19855fd5a3f19af1eea1c1fed6e7794a342136223dd60dbead2586d4298fd90",
     "src/assets/fonts/GoogleSansFlex.ttf": "eae5ed6ddefbd44ab9693b84454ce46f3f2de0fb4f7cc5b54138c50c5b347d70",
     "src/styles/local-fonts.css": "2ede8f2a25be55c5bc62320f81c7aa85c6260d19feb73faae9d6fd3fdd421e22",
     "public/audio/voices/chirp3-hd-achernar.wav": "80793fc2f2eb8943678abba8d916aa7fc89256c43d9b562b0a387b6dd55280d4",
@@ -35,8 +36,7 @@
     "public/audio/voices/chirp3-hd-umbriel.wav": "05a720d9b41a6ecabf644bbea880317b242617eae619a487f63c508258a6f45c",
     "public/audio/voices/chirp3-hd-vindemiatrix.wav": "ae9907406556bdd10a55132422b5213c4513da548138fb3d7ecc26518ec50b5e",
     "public/audio/voices/chirp3-hd-zephyr.wav": "aed7ab19a485a24f6b3fe37feb368caae287fa7d42083b6d4c1878061d70580d",
-    "public/audio/voices/chirp3-hd-zubenelgenubi.wav": "09d15cc03e2a8c0140f03f29f0407b3237316d503bd37225d27cc74179520aa1",
-    "public/oauth2callback.html": "c19855fd5a3f19af1eea1c1fed6e7794a342136223dd60dbead2586d4298fd90"
+    "public/audio/voices/chirp3-hd-zubenelgenubi.wav": "09d15cc03e2a8c0140f03f29f0407b3237316d503bd37225d27cc74179520aa1"
   },
   "exactFiles": {
     "public/favicon.png": "3f6d2092aa3ff499b1f9581d62c505867ae158c503be0743b7c38d1313727282",
@@ -378,7 +378,7 @@
       ]
     },
     "src/i18n/locales/en/download.json": {
-      "hash": "783f3379c889fb574cf8b869e9b31716b1a7b66bcdf4fff839c169399c68dc66",
+      "hash": "88469f5436462be86c5577461af0db1c1f10df6eb75110e8504ffdb0b69958dc",
       "keys": [
         "consolidate",
         "consolidateExplanation",
@@ -395,6 +395,7 @@
         "downloadOnly.cookieSupport",
         "downloadOnly.cookieSupportTooltip",
         "downloadOnly.downloading",
+        "downloadOnly.failed",
         "downloadOnly.noQualities",
         "downloadOnly.scanningQualities",
         "downloadOnly.selectQuality",
@@ -426,7 +427,7 @@
       ]
     },
     "src/i18n/locales/en/engines.json": {
-      "hash": "7c6cfbe1af81c9a4a9d90997ed6de820c712c3af7f7fddc03b43ad52474cad6e",
+      "hash": "1de7f51b8398049b176c5ec37dcb218ab63685d9cd63851dcee06411a017d8bf",
       "keys": [
         "availableCount",
         "cancel",
@@ -441,6 +442,7 @@
         "error.nativeToolFailed",
         "error.nativeToolProtocol",
         "error.startFailed",
+        "error.statusLost",
         "error.stopFailed",
         "error.uninstallFailed",
         "groups.localAi",
@@ -456,7 +458,10 @@
         "nativeKind.downloader",
         "nativeKind.javascript",
         "nativeKind.media",
+        "nativeKind.renderer",
+        "nativeKind.voicePreviews",
         "nativeSource.official",
+        "nativeSource.pool",
         "nativeSource.vendor",
         "nativeState.corrupt",
         "nativeState.installed",
@@ -467,6 +472,14 @@
         "nativeState.restart-required",
         "nativeState.unavailable",
         "notPublished",
+        "phase.downloading",
+        "phase.extracting",
+        "phase.preparing",
+        "phase.publishing",
+        "phase.queued",
+        "phase.removing",
+        "phase.verifying",
+        "progressBytes",
         "repair",
         "restartToRemove",
         "retryStatus",
@@ -729,7 +742,7 @@
       ]
     },
     "src/i18n/locales/en/narration.json": {
-      "hash": "7cb329c16e641c02aea775d82f02d07b7c1fe001ad2b1c151563465492a608b1",
+      "hash": "2d1bedf12608945de96a2c66ca00121f7917ad02d80e3639ac9a649dc5bdf7be",
       "keys": [
         "advancedSettings",
         "advancedSettingsToggle",
@@ -880,6 +893,7 @@
         "gttsUnavailable",
         "id",
         "initializingService",
+        "installingVoiceSamples",
         "intensityAggressive",
         "intensityBalanced",
         "intensityChangeTooltip",
@@ -1050,6 +1064,7 @@
         "viewGrouping",
         "voiceLabel",
         "voiceLoadError",
+        "voiceSampleUnavailable",
         "voicesAvailable",
         "voiceStyle",
         "waitingForResults"
@@ -1449,7 +1464,7 @@
       ]
     },
     "src/i18n/locales/en/settings.json": {
-      "hash": "e15235507838d92b99b7097c23368d24f580d28e19eeeddac8e07705c321de3a",
+      "hash": "d2416b3fde22bbe2a81d7784e86e542f6ad638ae2a299e0ea61aa978b432eca6",
       "keys": [
         "about",
         "accessDeniedDescription",
@@ -1586,6 +1601,7 @@
         "important",
         "inAuthorizedOrigins",
         "inAuthorizedRedirect",
+        "installUpdate",
         "invalidGeminiApiKey",
         "keyNotSet",
         "keySet",
@@ -1798,9 +1814,16 @@
         "udbmIntroduction",
         "update",
         "updateAvailable",
+        "updateCancelled",
         "updateCheckFailed",
         "updateDescription",
+        "updateDownloading",
+        "updateDownloadingPercent",
         "updateError",
+        "updateInstallFailed",
+        "updateInstalling",
+        "updatePreparing",
+        "updateReady",
         "updateSuccess",
         "updateTooltip",
         "updating",
@@ -2647,7 +2670,7 @@
       ]
     },
     "src/i18n/locales/ko/download.json": {
-      "hash": "f01cc50dbc5e30f16e0e19a005a4820adc18fff58990882a4ca312e15aded2d7",
+      "hash": "09ba06485d5ada95a638e27bb06cebd4e75962be4b08ec7f98a928775a258bd0",
       "keys": [
         "consolidate",
         "consolidateExplanation",
@@ -2670,6 +2693,7 @@
         "downloadOnly.cookieSupportTooltip",
         "downloadOnly.download",
         "downloadOnly.downloading",
+        "downloadOnly.failed",
         "downloadOnly.noQualities",
         "downloadOnly.scanningQualities",
         "downloadOnly.selectQuality",
@@ -2708,7 +2732,7 @@
       ]
     },
     "src/i18n/locales/ko/engines.json": {
-      "hash": "50808773497dad737579a6ff38c444eb1dbd287887d468766699f69af22ae848",
+      "hash": "00acdb94d67310a95703751807e282f68673532d9a8d1a8751ff76b402e411fb",
       "keys": [
         "availableCount",
         "cancel",
@@ -2723,6 +2747,7 @@
         "error.nativeToolFailed",
         "error.nativeToolProtocol",
         "error.startFailed",
+        "error.statusLost",
         "error.stopFailed",
         "error.uninstallFailed",
         "groups.localAi",
@@ -2738,7 +2763,10 @@
         "nativeKind.downloader",
         "nativeKind.javascript",
         "nativeKind.media",
+        "nativeKind.renderer",
+        "nativeKind.voicePreviews",
         "nativeSource.official",
+        "nativeSource.pool",
         "nativeSource.vendor",
         "nativeState.corrupt",
         "nativeState.installed",
@@ -2749,6 +2777,14 @@
         "nativeState.restart-required",
         "nativeState.unavailable",
         "notPublished",
+        "phase.downloading",
+        "phase.extracting",
+        "phase.preparing",
+        "phase.publishing",
+        "phase.queued",
+        "phase.removing",
+        "phase.verifying",
+        "progressBytes",
         "repair",
         "restartToRemove",
         "retryStatus",
@@ -3029,7 +3065,7 @@
       ]
     },
     "src/i18n/locales/ko/narration.json": {
-      "hash": "2463cf4812e9e49fa66e95f81b3759348abb3b1c48400ff8baa12afbd3e6223e",
+      "hash": "fa07cd44a9676dfd1bb7deb80b469d52c5f4bb189a41432b9246558fdb855eb1",
       "keys": [
         "adjustSearch",
         "advancedSettings",
@@ -3212,6 +3248,7 @@
         "gttsUnavailable",
         "id",
         "initializingService",
+        "installingVoiceSamples",
         "intensityAggressive",
         "intensityBalanced",
         "intensityChangeTooltip",
@@ -3425,6 +3462,7 @@
         "voice",
         "voiceLabel",
         "voiceLoadError",
+        "voiceSampleUnavailable",
         "voicesAvailable",
         "voiceStyle",
         "waitingForResults"
@@ -3862,7 +3900,7 @@
       ]
     },
     "src/i18n/locales/ko/settings.json": {
-      "hash": "fbdac8a3398730aaf5f22163798f30742a0666793532a964132c427958d59acb",
+      "hash": "e0a060c1a6fe1e4fdbff9910b320ad85adf6ed6b52e2311c8759b0a8f6b138c7",
       "keys": [
         "about",
         "accessDeniedDescription",
@@ -4021,6 +4059,7 @@
         "inAuthorizedRedirect",
         "individualCacheCleared",
         "individualCacheClearError",
+        "installUpdate",
         "invalidGeminiApiKey",
         "keyNotSet",
         "keySet",
@@ -4254,9 +4293,16 @@
         "udbmIntroduction",
         "update",
         "updateAvailable",
+        "updateCancelled",
         "updateCheckFailed",
         "updateDescription",
+        "updateDownloading",
+        "updateDownloadingPercent",
         "updateError",
+        "updateInstallFailed",
+        "updateInstalling",
+        "updatePreparing",
+        "updateReady",
         "updateSuccess",
         "updateTooltip",
         "updating",
@@ -5195,7 +5241,7 @@
       ]
     },
     "src/i18n/locales/vi/download.json": {
-      "hash": "67ad66fb916f4a342f4034727c95ce80c8f7f9cdf42f0370b6567aeb0599b051",
+      "hash": "39f7b940c0e2e6a8710dee8779e7e95b1219ef794760478f2969bf28ff74117b",
       "keys": [
         "consolidate",
         "consolidateExplanation",
@@ -5213,6 +5259,7 @@
         "downloadOnly.cookieSupportTooltip",
         "downloadOnly.download",
         "downloadOnly.downloading",
+        "downloadOnly.failed",
         "downloadOnly.noQualities",
         "downloadOnly.scanningQualities",
         "downloadOnly.selectQuality",
@@ -5245,7 +5292,7 @@
       ]
     },
     "src/i18n/locales/vi/engines.json": {
-      "hash": "7ef77141a5b8ab51c5fb126ca8b88864d436b6c4d83f37555b07fd17ff4f34ee",
+      "hash": "de096b347c3389c35332ab75210eda1ffcde2e0856da4e33e34e765c99a8a374",
       "keys": [
         "availableCount",
         "cancel",
@@ -5260,6 +5307,7 @@
         "error.nativeToolFailed",
         "error.nativeToolProtocol",
         "error.startFailed",
+        "error.statusLost",
         "error.stopFailed",
         "error.uninstallFailed",
         "groups.localAi",
@@ -5275,7 +5323,10 @@
         "nativeKind.downloader",
         "nativeKind.javascript",
         "nativeKind.media",
+        "nativeKind.renderer",
+        "nativeKind.voicePreviews",
         "nativeSource.official",
+        "nativeSource.pool",
         "nativeSource.vendor",
         "nativeState.corrupt",
         "nativeState.installed",
@@ -5286,6 +5337,14 @@
         "nativeState.restart-required",
         "nativeState.unavailable",
         "notPublished",
+        "phase.downloading",
+        "phase.extracting",
+        "phase.preparing",
+        "phase.publishing",
+        "phase.queued",
+        "phase.removing",
+        "phase.verifying",
+        "progressBytes",
         "repair",
         "restartToRemove",
         "retryStatus",
@@ -5608,7 +5667,7 @@
       ]
     },
     "src/i18n/locales/vi/narration.json": {
-      "hash": "438e28c1c895bc8a7b5a7bd007c74db5e24fa0a33034222229bee21e5378535f",
+      "hash": "285fa75ab0efd509a240a614237605fe4b4b4a9de238bfb2809fc5414beaed57",
       "keys": [
         "adjustSearch",
         "advancedSettings",
@@ -5792,6 +5851,7 @@
         "higherValuesImproveQuality",
         "id",
         "initializingService",
+        "installingVoiceSamples",
         "intensityAggressive",
         "intensityBalanced",
         "intensityChangeTooltip",
@@ -6008,6 +6068,7 @@
         "voice",
         "voiceLabel",
         "voiceLoadError",
+        "voiceSampleUnavailable",
         "voicesAvailable",
         "voiceStyle",
         "waitingForResults"
@@ -6445,7 +6506,7 @@
       ]
     },
     "src/i18n/locales/vi/settings.json": {
-      "hash": "c2850c3197c8cc1e12669483df1b97aba35ebe6708b813c8724ad9420ee697dc",
+      "hash": "bffc1f678ee7758b1a84824bc0f81cfc7123ae5b03e349f08bfe2089d8f79cbb",
       "keys": [
         "about",
         "accessDeniedDescription",
@@ -6604,6 +6665,7 @@
         "inAuthorizedRedirect",
         "individualCacheCleared",
         "individualCacheClearError",
+        "installUpdate",
         "invalidGeminiApiKey",
         "keyNotSet",
         "keySet",
@@ -6837,9 +6899,16 @@
         "udbmIntroduction",
         "update",
         "updateAvailable",
+        "updateCancelled",
         "updateCheckFailed",
         "updateDescription",
+        "updateDownloading",
+        "updateDownloadingPercent",
         "updateError",
+        "updateInstallFailed",
+        "updateInstalling",
+        "updatePreparing",
+        "updateReady",
         "updateSuccess",
         "updateTooltip",
         "updating",
@@ -7931,14 +8000,14 @@
       ]
     },
     "src/components/engines/NativeToolsList.js": {
-      "hash": "df52ba3d507c4408bc7df5ce4ca8b0967deee5da922956794463d98154cdf272",
+      "hash": "d2bcc76486550b79c0a5a838ffefe3b9fc5613acfe9313a077d99a429ec541c7",
       "rootCount": 8,
       "roots": [
-        "81adfe9b9a0b7365ca7e03789c94d143ced05157fa553c17d5bb4c7adbeeccca",
-        "72c14434331ae88217784fcb42f5acb54daaad5ef5dd2d6dfa541d03f382884e",
-        "965da4b9fa98a15310b0405a7c93fdb04f30745f4ae8b74f4d1554403b50fd78",
-        "f1faf8ae126f4408e2c08424d0e86d052f827f9da63d9a22b1b6e60461b8a49d",
-        "de0245d72b359aab80a00b68daac852b3fc207e3d76d4017719049761e9e8d25",
+        "26554e31400efddf49c2243c672319c474e3fcbed8fcec6ae79d54bc02de7c26",
+        "8863573d7f876893020c99f9c86d957ab37d1acf6acb869e0c8e51a442a26405",
+        "3b1864b16fb310f2f71f82b72012d6d43b1290ad632d029ef54024d8708aa588",
+        "cd580afd57fdee9bd4fc90dc6dfeac10c65fca55a1fde12cac895fba66946bf1",
+        "bc243aca02975c769683a617369f58c26b268b1549ed04f2a2719253905ab77f",
         "1ff7612961fbdc7e457bb559e8c53b143305af923d974d95d63c733438adc9c2",
         "6e8467b47c19ab9be121aa4613c00ceb38521e7b96a17e0da922cdf2c3310c1e",
         "7eb459ea903eeef1d639d4700637083a55356f27fc6df1c7226914e56d8c3e71"
@@ -7966,17 +8035,17 @@
       ]
     },
     "src/components/Header.js": {
-      "hash": "e21c97fa76f0048be24c75838cf5d51891df75daf68326911c68a58a96a40379",
+      "hash": "08abd8e1447fcc02acf78928f76d9e4904bd9b4eaa3f47a03e0b2f9ef172d1c5",
       "rootCount": 1,
       "roots": [
-        "28816b1d28da393dfc519ced8f7e821a00fa983df9ee62394220479793945bad"
+        "0a5a396ce40e2c4ba36881b29b0d2db7c42ae8ad15dcc0a6a7ca494b162060dc"
       ]
     },
     "src/components/InputMethods.js": {
-      "hash": "159d2ecbfd46dcce4648e38d1ebe104010486a2ab3db49b3333ce1e29e1d655a",
+      "hash": "fd56ec6afa0b572214d29dffd8fa169105e6f733932ec27626a3abbd473452dc",
       "rootCount": 6,
       "roots": [
-        "938df1c3b83d3edc964168eafde4f5285db591c1fbc3d33ce0d8f1d73ce87fc4",
+        "2d093af507a0562a093207d4db040602029535001ed26171dcb312127d32d65c",
         "9754c3da2cab97df8cc35746b8662de83c438451e11eb5fde7c81d339e72c723",
         "d938134ab3dc54a0e27783cd1a3c826f805f28b34dec3e989453a5d542748824",
         "d938134ab3dc54a0e27783cd1a3c826f805f28b34dec3e989453a5d542748824",
@@ -8694,10 +8763,10 @@
       ]
     },
     "src/components/settings/SettingsModal.js": {
-      "hash": "4da7b9474cdbb35cde4d1b54712d18f829bf0e5e122d4f6c57c2e43f006f2a30",
+      "hash": "47e1524f79e61eeb215f7f89d6ea4aa97828a179cefbac91bb4b86196651e7c8",
       "rootCount": 1,
       "roots": [
-        "7bfc03ee23794f1264271f2926c88e513e8a4fa5dc72e8455ee25b3e9d998ab6"
+        "a2487cf095ed5e7fb54f413a72ff13eb35c5cc8032822b7eeb51e2317a16d039"
       ]
     },
     "src/components/settings/tabs/AboutTab.js": {
