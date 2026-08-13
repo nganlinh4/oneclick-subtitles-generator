@@ -261,10 +261,8 @@ function Set-NativePickerEvidence {
   }
   $allowedMetrics = @(
     'inspectorPhase',
-    'processWindowMatches',
-    'processDialogMatches',
-    'processNamedMatches',
-    'ownedDialogMatches',
+    'nativeCandidateMatches',
+    'nativeCandidateScanIncomplete',
     'rawProcessWindowMatches',
     'rawProcessVisibleMatches',
     'rawProcessClassMatches',
@@ -320,10 +318,18 @@ function Set-NativePickerEvidence {
         -and $metric.Value -le 1000)
     $validRawIncomplete = $metric.Key -cne 'rawCensusIncomplete' `
       -or $metric.Value -is [bool]
+    $validNativeCandidateCount = $metric.Key -cne 'nativeCandidateMatches' `
+      -or ($metric.Value -is [int] `
+        -and $metric.Value -ge 0 `
+        -and $metric.Value -le 1000)
+    $validNativeCandidateIncomplete = $metric.Key -cne 'nativeCandidateScanIncomplete' `
+      -or $metric.Value -is [bool]
     if ($metric.Key -notin $allowedMetrics `
         -or ($metric.Key -ceq 'inspectorPhase' -and -not $validInspectorPhase) `
         -or -not $validRawCount `
         -or -not $validRawIncomplete `
+        -or -not $validNativeCandidateCount `
+        -or -not $validNativeCandidateIncomplete `
         -or ($metric.Key -cne 'inspectorPhase' `
           -and $metric.Value -isnot [bool] `
           -and $metric.Value -isnot [int])) {
@@ -365,10 +371,8 @@ function Initialize-NativePickerEvidence {
     elapsedMs = 0
     stages = @()
     inspectorPhase = 'not-started'
-    processWindowMatches = 0
-    processDialogMatches = 0
-    processNamedMatches = 0
-    ownedDialogMatches = 0
+    nativeCandidateMatches = 0
+    nativeCandidateScanIncomplete = $false
     rawProcessWindowMatches = 0
     rawProcessVisibleMatches = 0
     rawProcessClassMatches = 0

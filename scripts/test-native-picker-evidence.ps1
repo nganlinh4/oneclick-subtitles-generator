@@ -52,10 +52,8 @@ try {
     -Metrics @{
       inspectorPhase = 'click-issued'
       dialogAttempts = 2
-      processWindowMatches = 3
-      processDialogMatches = 2
-      processNamedMatches = 1
-      ownedDialogMatches = 1
+      nativeCandidateMatches = 1
+      nativeCandidateScanIncomplete = $false
       rawProcessWindowMatches = 4
       rawProcessVisibleMatches = 3
       rawProcessClassMatches = 2
@@ -94,6 +92,24 @@ try {
       -Metrics @{ rawCensusIncomplete = 1 }
   } catch {
     $invalidRawIncompleteRejected = $true
+  }
+  $invalidNativeCandidateCountRejected = $false
+  try {
+    Set-NativePickerEvidence `
+      -Stage 'waiting-dialog' `
+      -Outcome 'running' `
+      -Metrics @{ nativeCandidateMatches = 1001 }
+  } catch {
+    $invalidNativeCandidateCountRejected = $true
+  }
+  $invalidNativeCandidateIncompleteRejected = $false
+  try {
+    Set-NativePickerEvidence `
+      -Stage 'waiting-dialog' `
+      -Outcome 'running' `
+      -Metrics @{ nativeCandidateScanIncomplete = 1 }
+  } catch {
+    $invalidNativeCandidateIncompleteRejected = $true
   }
   $forbiddenRawMetricRejected = $false
   try {
@@ -138,10 +154,8 @@ try {
       -or ($payload.stages -join ',') -cne 'initialized,waiting-dialog,value-confirmed,dialog-dismissed' `
       -or $payload.dialogAttempts -ne 2 `
       -or $payload.inspectorPhase -cne 'click-issued' `
-      -or $payload.processWindowMatches -ne 3 `
-      -or $payload.processDialogMatches -ne 2 `
-      -or $payload.processNamedMatches -ne 1 `
-      -or $payload.ownedDialogMatches -ne 1 `
+      -or $payload.nativeCandidateMatches -ne 1 `
+      -or $payload.nativeCandidateScanIncomplete `
       -or -not $invalidInspectorPhaseRejected `
       -or $payload.rawProcessWindowMatches -ne 4 `
       -or $payload.rawProcessVisibleMatches -ne 3 `
@@ -156,6 +170,8 @@ try {
       -or -not $payload.rawCensusIncomplete `
       -or -not $invalidRawCountRejected `
       -or -not $invalidRawIncompleteRejected `
+      -or -not $invalidNativeCandidateCountRejected `
+      -or -not $invalidNativeCandidateIncompleteRejected `
       -or -not $forbiddenRawMetricRejected `
       -or $payload.editorAttempts -ne 3 `
       -or $payload.dismissAttempts -ne 1 `
@@ -246,6 +262,10 @@ try {
       'New-NativePickerRawCensusMaxima',
       'Update-NativePickerRawCensusMaxima',
       'Add-NativePickerRawCensusMetrics',
+      'Test-NativePickerCandidate',
+      'Test-NativePickerElementCandidate',
+      'Get-NativePickerCandidateSnapshot',
+      'Get-NativePickerPinnedCandidateState',
       'Get-NativeMediaPickerDialogs',
       'Get-DiagnosticBaselineSnapshot',
       'Get-NativePickerDiagnosticOutcome',
@@ -269,6 +289,82 @@ try {
     Invoke-Expression $definitions[0].Extent.Text
   }
   Initialize-NativePickerInterop
+  $candidateScan = [OsgNativePickerWindow]::GetNativeCandidates($PID, [long]1)
+  if ((@($candidateScan.PSObject.Properties.Name | Sort-Object) -join ',') `
+      -cne 'Candidates,ExactMatchCount,Incomplete' `
+      -or $candidateScan.ExactMatchCount -isnot [int] `
+      -or $candidateScan.ExactMatchCount -lt 0 `
+      -or $candidateScan.ExactMatchCount -gt 512 `
+      -or $candidateScan.Incomplete -isnot [bool] `
+      -or @($candidateScan.Candidates).Count -gt 2 `
+      -or (Test-NativePickerCandidate `
+        -CandidateHandle 0 `
+        -ProcessId $PID `
+        -OwnerHandle 1) `
+      -or [OsgNativePickerWindow]::IsNormalizedWindow(0)) {
+    throw 'Native picker candidate regression exposed an invalid bounded ephemeral schema'
+  }
+  foreach ($signedHandle in @([int]-2147483647, [int]-1)) {
+    $expectedNormalized = [long]$signedHandle -band 0xffffffffL
+    $positiveHandle = [long]$expectedNormalized
+    if ([OsgNativePickerWindow]::NormalizeAutomationWindowHandle($signedHandle) -ne $expectedNormalized `
+        -or [OsgNativePickerWindow]::NormalizeNativeWindowHandle(
+          [IntPtr]::new([long]$signedHandle)
+        ) -ne $expectedNormalized) {
+      throw 'Native picker candidate regression did not normalize signed and unsigned high-bit HWND representations identically'
+    }
+    if ([IntPtr]::Size -eq 8 `
+        -and [OsgNativePickerWindow]::NormalizeNativeWindowHandle(
+          [IntPtr]::new($positiveHandle)
+        ) -ne $expectedNormalized) {
+      throw 'Native picker candidate regression did not normalize the zero-extended high-bit HWND representation'
+    }
+  }
+  $exactPredicate = [OsgNativePickerWindow].GetMethod(
+    'IsExactOwnedVisibleFacts',
+    ([Reflection.BindingFlags]::NonPublic -bor [Reflection.BindingFlags]::Static)
+  )
+  if ($null -eq $exactPredicate `
+      -or -not [bool]$exactPredicate.Invoke(
+        $null,
+        @($true, $true, $true, $true, $true)
+      )) {
+    throw 'Native picker candidate regression rejected the exact authority tuple'
+  }
+  for ($falseIndex = 0; $falseIndex -lt 5; $falseIndex += 1) {
+    $tuple = @($true, $true, $true, $true, $true)
+    $tuple[$falseIndex] = $false
+    if ([bool]$exactPredicate.Invoke($null, $tuple)) {
+      throw 'Native picker candidate regression accepted a partial authority tuple'
+    }
+  }
+  $probeIncomplete = [OsgNativePickerWindow].GetMethod(
+    'IsCandidateProbeIncomplete',
+    ([Reflection.BindingFlags]::NonPublic -bor [Reflection.BindingFlags]::Static)
+  )
+  if ($null -eq $probeIncomplete `
+      -or [bool]$probeIncomplete.Invoke(
+        $null,
+        @($true, $true, $true, 21, 0, $false, 0, $true)
+      ) `
+      -or -not [bool]$probeIncomplete.Invoke(
+        $null,
+        @($true, $true, $true, 0, 5, $false, 0, $true)
+      ) `
+      -or -not [bool]$probeIncomplete.Invoke(
+        $null,
+        @($true, $true, $true, 21, 0, $true, 5, $true)
+      ) `
+      -or -not [bool]$probeIncomplete.Invoke(
+        $null,
+        @($true, $true, $true, 21, 0, $false, 0, $false)
+      ) `
+      -or [bool]$probeIncomplete.Invoke(
+        $null,
+        @($false, $true, $true, 0, 5, $true, 5, $false)
+      )) {
+    throw 'Native picker candidate regression did not fail closed on an uncertain relevant title, owner, or destroyed-window probe'
+  }
   $rawCensusType = [OsgNativePickerWindow+RawCensus]
   $rawCensusPropertyNames = @(
     'RawCensusIncomplete',
@@ -283,7 +379,7 @@ try {
     'RawProcessVisibleMatches',
     'RawProcessWindowMatches'
   )
-  $liveRawCensus = [OsgNativePickerWindow]::GetRawCensus($PID, [IntPtr]::new(1))
+  $liveRawCensus = [OsgNativePickerWindow]::GetRawCensus($PID, [long]1)
   if ((@($liveRawCensus.PSObject.Properties.Name | Sort-Object) -join ',') `
       -cne (($rawCensusPropertyNames | Sort-Object) -join ',') `
       -or $liveRawCensus.RawCensusIncomplete -isnot [bool]) {
@@ -357,19 +453,94 @@ try {
     throw 'Native picker raw census regression lost bounded maximum aggregation'
   }
 
+  $savedCandidateSnapshotSource = $installedFunctionSources['Get-NativePickerCandidateSnapshot']
+  $savedElementCandidateSource = $installedFunctionSources['Test-NativePickerElementCandidate']
+  $script:syntheticPinnedElement = [pscustomobject]@{ identity = 'pinned' }
+  function Test-NativePickerElementCandidate {
+    param($Element, [long]$CandidateHandle, [int]$ProcessId, [long]$OwnerHandle)
+    $Element.identity -ceq 'pinned' `
+      -and $CandidateHandle -eq 2147483649L `
+      -and $ProcessId -eq 7 `
+      -and $OwnerHandle -eq 9
+  }
+  function Get-NativePickerCandidateSnapshot {
+    param([int]$ProcessId, [long]$OwnerHandle)
+    $script:syntheticCandidateSnapshot
+  }
+  foreach ($fixture in @(
+      @{ exact = 1; scanIncomplete = $false; bridgeIncomplete = $false; count = 1; valid = $true },
+      @{ exact = 2; scanIncomplete = $false; bridgeIncomplete = $false; count = 1; valid = $false },
+      @{ exact = 1; scanIncomplete = $true; bridgeIncomplete = $false; count = 1; valid = $false },
+      @{ exact = 1; scanIncomplete = $false; bridgeIncomplete = $true; count = 0; valid = $false },
+      @{ exact = 0; scanIncomplete = $false; bridgeIncomplete = $false; count = 0; valid = $false }
+    )) {
+    $candidateElements = if ($fixture.count -eq 1) {
+      @($script:syntheticPinnedElement)
+    } else {
+      @()
+    }
+    $script:syntheticCandidateSnapshot = [pscustomobject]@{
+      CandidateElements = $candidateElements
+      ExactMatchCount = [int]$fixture.exact
+      ScanIncomplete = [bool]$fixture.scanIncomplete
+      BridgeIncomplete = [bool]$fixture.bridgeIncomplete
+      Incomplete = [bool]$fixture.scanIncomplete -or [bool]$fixture.bridgeIncomplete
+    }
+    $freshState = Get-NativePickerPinnedCandidateState `
+      -Element $script:syntheticPinnedElement `
+      -CandidateHandle 2147483649L `
+      -ProcessId 7 `
+      -OwnerHandle 9
+    if ([bool]$freshState.Valid -ne [bool]$fixture.valid `
+        -or [int]$freshState.ExactMatchCount -ne [int]$fixture.exact) {
+      throw 'Native picker candidate regression accepted an ambiguous, incomplete, missing, or replacement fresh-scan tuple'
+    }
+  }
+  Invoke-Expression $savedElementCandidateSource
+  Invoke-Expression $savedCandidateSnapshotSource
+
   $completePickerSource = $installedFunctionSources['Complete-NativeMediaPicker']
   $dismissPickerSource = $installedFunctionSources['Dismiss-NativeMediaPicker']
+  $candidateSnapshotSource = $installedFunctionSources['Get-NativePickerCandidateSnapshot']
+  $dialogDiscoverySource = $installedFunctionSources['Get-NativeMediaPickerDialogs']
   if ($completePickerSource -match '(?i)(?:if|elseif|until|while)\s*\([^\r\n]*(?:rawCensus|rawProcess|rawDesktop)' `
       -or $dismissPickerSource -match '(?i)(?:if|elseif|until|while)\s*\([^\r\n]*(?:rawCensus|rawProcess|rawDesktop)' `
-      -or $completePickerSource -notmatch '\$dialogs\.Count -eq 1 -and \$ownedDialogs\.Count -eq 1' `
-      -or $dismissPickerSource -notmatch '\$exact\.Count -ne 1 -or \$owned\.Count -ne 1') {
+      -or $completePickerSource -match '\$snapshot\.(?:Exact|Owned)' `
+      -or $dismissPickerSource -match '\$snapshot\.(?:Exact|Owned)' `
+      -or $completePickerSource -notmatch '\$snapshot\.NativeExactMatchCount -eq 1 -and \$nativeCandidates\.Count -eq 1' `
+      -or $dismissPickerSource -notmatch '\$snapshot\.NativeExactMatchCount -eq 0' `
+      -or $dismissPickerSource -notmatch '\$snapshot\.NativeExactMatchCount -gt 1' `
+      -or $dismissPickerSource -notmatch 'IsNormalizedWindow\(\$pinnedCandidateHandle\)' `
+      -or $completePickerSource -notmatch 'IsNormalizedWindow\(\$dialogHandle\)[\s\S]*?''dismissal-changed''') {
     throw 'Native picker raw census regression allowed diagnostics to control UIA authority'
+  }
+  if ($completePickerSource -notmatch '\$snapshot\.NativeCandidateScanIncomplete' `
+      -or $dismissPickerSource -notmatch '\$snapshot\.NativeCandidateScanIncomplete' `
+      -or $completePickerSource -notmatch "'dialog-automation-timeout'" `
+      -or $completePickerSource -notmatch '\$failureCode -ceq ''dialog-timeout''' `
+      -or $completePickerSource -notmatch 'Get-NativePickerPinnedCandidateState[\s\S]*?\$valuePattern\.SetValue\(\$MediaPath\)' `
+      -or $completePickerSource -notmatch 'Get-NativePickerPinnedCandidateState[\s\S]*?\$invokePattern\.Invoke\(\)' `
+      -or $completePickerSource -notmatch '-ExpectedCandidateHandle \$dialogHandle' `
+      -or $dismissPickerSource -notmatch 'Get-NativePickerPinnedCandidateState[\s\S]*?PostCloseMessage' `
+      -or $dismissPickerSource -notmatch 'Get-NativePickerPinnedCandidateState[\s\S]*?Invoke\(\)') {
+    throw 'Native picker candidate regression lost pinned complete-scan revalidation authority'
+  }
+  if ($candidateSnapshotSource -notmatch 'AutomationElement\]::FromHandle\(\$candidate\)[\s\S]*?Test-NativePickerElementCandidate' `
+      -or $candidateSnapshotSource -notmatch '-not \$scan\.Incomplete[\s\S]*?\$scan\.ExactMatchCount -eq 1[\s\S]*?@\(\$scan\.Candidates\)\.Count -eq 1[\s\S]*?AutomationElement\]::FromHandle' `
+      -or $candidateSnapshotSource -notmatch 'CandidateElements = \$candidateElements\s*ExactMatchCount = \[int\]\$scan\.ExactMatchCount\s*ScanIncomplete = ' `
+      -or $dialogDiscoverySource -notmatch 'try\s*\{\s*\$nativeCandidates = Get-NativePickerCandidateSnapshot[\s\S]*?catch\s*\{\s*\$nativeCandidates = \[pscustomobject\]@\{[\s\S]*?Incomplete = \$true\s*\}\s*\}\s*try\s*\{\s*\$candidate = \[OsgNativePickerWindow\]::GetRawCensus' `
+      -or $dialogDiscoverySource -match 'GetRawCensus[\s\S]*?catch\s*\{[\s\S]*?\$nativeCandidates\s*=') {
+    throw 'Native picker candidate regression coupled authoritative discovery to diagnostic census failure or skipped its post-conversion identity check'
+  }
+  if ($installedFunctionSources['Initialize-NativePickerInterop'] -notmatch 'ReadRootAncestor\(window, out ancestorError\)' `
+      -or $installedFunctionSources['Initialize-NativePickerInterop'] -notmatch 'NormalizeNativeWindowHandle\(ancestor\) != normalizedWindow') {
+    throw 'Native picker candidate regression compared a root ancestor without canonical HWND normalization'
   }
   if (([regex]::Matches(
         $completePickerSource,
         'catch\s*\{\s*\$rawCensusMaxima\.rawCensusIncomplete = \$true\s*throw\s*\}'
       )).Count -ne 2 `
-      -or $completePickerSource -notmatch '\}\s*else\s*\{\s*\$rawCensusMaxima\.rawCensusIncomplete = \$true\s*\}\s*Add-NativePickerRawCensusMetrics -Metrics \$failureMetrics') {
+      -or $completePickerSource -notmatch '\}\s*else\s*\{\s*\$rawCensusMaxima\.rawCensusIncomplete = \$true\s*\$failureMetrics\.nativeCandidateScanIncomplete = \$true\s*\}\s*Add-NativePickerRawCensusMetrics -Metrics \$failureMetrics') {
     throw 'Native picker raw census regression misreported a dropped or missing snapshot as complete'
   }
   $phaseRoot = Join-Path $testRoot 'ordered-phases'
@@ -780,6 +951,13 @@ try {
     rawCensusBucketsIndependent = $true
     rawCensusMaximaBounded = $true
     rawCensusDiagnosticOnly = $true
+    nativeCandidatePredicateExact = $true
+    nativeCandidateAuthorityPinned = $true
+    nativeCandidateSchemaEphemeral = $true
+    nativeCandidateBridgeRevalidated = $true
+    nativeCandidateDiagnosticsDecoupled = $true
+    nativeCandidateProbeFailuresClosed = $true
+    nativeCandidateHandlesNormalized = $true
     orderedActivationPhases = $true
     fixedPreclickCategories = $true
     hostileStderrRedacted = $true

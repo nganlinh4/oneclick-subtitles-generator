@@ -46,7 +46,7 @@ const INSTALLED_NATIVE_TOOLS_INSPECTOR_SHA256 =
 const INSTALLED_LOCAL_MEDIA_INSPECTOR_SHA256 =
   'e53207922c58e449705282a11da2975bdeaf2754d1f204a504fcca424d16df61';
 const INSTALLED_WINDOWS_SMOKE_SHA256 =
-  '527a8ad31ca6cb01660741be8b0c21aa9b95e766ea8f5d32744ceb674fb51003';
+  '7e610e4782dfd2ab0846e0263b55f2047a71c7cc764c3c2a1503cb40cbd719bd';
 const DISTRIBUTABLE_FONT_EXTENSION = /\.(?:eot|otf|ttf|woff2?)$/i;
 
 const ACTION_PINS = Object.freeze({
@@ -1136,6 +1136,10 @@ function assertNativePickerEvidenceScripts(evidenceScript, regressionScript) {
     'rawDesktopOwnerMatches',
     'rawDesktopOwnedVisibleMatches',
   ];
+  const nativeCandidateMetricNames = [
+    'nativeCandidateMatches',
+    'nativeCandidateScanIncomplete',
+  ];
   const allowedMetricBlock = (evidenceWriter.match(/\$allowedMetrics = @\(([\s\S]*?)\n  \)/) || [])[1] || '';
   const rawCountMetricBlock = (evidenceWriter.match(/\$rawCountMetrics = @\(([\s\S]*?)\n  \)/) || [])[1] || '';
   const quotedMetricNames = (block) => Array.from(block.matchAll(/'([^']+)'/g), (match) => match[1]);
@@ -1197,10 +1201,10 @@ function assertNativePickerEvidenceScripts(evidenceScript, regressionScript) {
       && evidenceWriter.includes('(?:path|pid|hwnd|handle|title|url|token)')
       && evidenceWriter.includes('Write-NativePickerEvidenceAtomically -Json $json')
       && evidenceWriter.includes("'inspectorPhase'")
-      && evidenceWriter.includes("'processWindowMatches'")
-      && evidenceWriter.includes("'processDialogMatches'")
-      && evidenceWriter.includes("'processNamedMatches'")
-      && evidenceWriter.includes("'ownedDialogMatches'")
+      && !evidenceWriter.includes("'processWindowMatches'")
+      && !evidenceWriter.includes("'processDialogMatches'")
+      && !evidenceWriter.includes("'processNamedMatches'")
+      && !evidenceWriter.includes("'ownedDialogMatches'")
       && evidenceWriter.includes("'tab-activated'")
       && evidenceWriter.includes("'prior-state-validated'")
       && evidenceWriter.includes("'click-issued'")
@@ -1216,11 +1220,24 @@ function assertNativePickerEvidenceScripts(evidenceScript, regressionScript) {
       && quotedMetricNames(rawCountMetricBlock).join(',') === rawMetricNames.join(',')
       && quotedMetricNames(allowedMetricBlock).filter((entry) => entry === 'rawCensusIncomplete').length === 1
       && /rawCensusIncomplete\s*=\s*\$false/.test(evidenceInitializer)
-      && /\$metric\.Value -le 1000\)/.test(evidenceWriter)
+      && (evidenceWriter.match(/\$metric\.Value -le 1000\)/g) || []).length === 2
       && evidenceWriter.includes("$metric.Key -cne 'rawCensusIncomplete'")
       && evidenceWriter.includes('$metric.Value -is [bool]')
       && !quotedMetricNames(allowedMetricBlock).some((name) => /(?:path|pid|hwnd|handle|title|url|token)/i.test(name)),
     'Native-picker evidence raw census schema must retain typed bounded aggregate-only metrics',
+  );
+  invariant(
+    nativeCandidateMetricNames.every((name) => (
+      quotedMetricNames(allowedMetricBlock).filter((entry) => entry === name).length === 1
+    ))
+      && /nativeCandidateMatches\s*=\s*0/.test(evidenceInitializer)
+      && /nativeCandidateScanIncomplete\s*=\s*\$false/.test(evidenceInitializer)
+      && evidenceWriter.includes("$metric.Key -cne 'nativeCandidateMatches'")
+      && (evidenceWriter.match(/\$metric\.Value -le 1000\)/g) || []).length === 2
+      && evidenceWriter.includes("$metric.Key -cne 'nativeCandidateScanIncomplete'")
+      && evidenceWriter.includes('$metric.Value -is [bool]')
+      && !nativeCandidateMetricNames.some((name) => /(?:path|pid|hwnd|handle|title|url|token)/i.test(name)),
+    'Native-picker evidence native-candidate schema must retain typed bounded identity-free metrics',
   );
   invariant(
     (regressionScript.match(/\. \(Join-Path \$PSScriptRoot 'native-picker-evidence\.ps1'\)/g) || []).length >= 2
@@ -1259,10 +1276,18 @@ function assertNativePickerEvidenceScripts(evidenceScript, regressionScript) {
       && regressionScript.includes('rawCensusBucketsIndependent = $true')
       && regressionScript.includes('rawCensusMaximaBounded = $true')
       && regressionScript.includes('rawCensusDiagnosticOnly = $true')
+      && regressionScript.includes('nativeCandidatePredicateExact = $true')
+      && regressionScript.includes('nativeCandidateAuthorityPinned = $true')
+      && regressionScript.includes('nativeCandidateSchemaEphemeral = $true')
+      && regressionScript.includes('nativeCandidateBridgeRevalidated = $true')
+      && regressionScript.includes('nativeCandidateDiagnosticsDecoupled = $true')
+      && regressionScript.includes('nativeCandidateProbeFailuresClosed = $true')
+      && regressionScript.includes('nativeCandidateHandlesNormalized = $true')
       && regressionScript.includes('exceeded its per-poll count cap')
       && regressionScript.includes('merged independent process, identity, owner, or visibility buckets')
       && regressionScript.includes('lost bounded maximum aggregation')
       && regressionScript.includes('allowed diagnostics to control UIA authority')
+      && regressionScript.includes('coupled authoritative discovery to diagnostic census failure or skipped its post-conversion identity check')
       && regressionScript.includes('misreported a dropped or missing snapshot as complete')
       && regressionScript.includes('[IO.FileAttributes]::ReparsePoint')
       && regressionScript.includes('[IO.Directory]::Delete($cleanupRoot.FullName, $true)'),
@@ -1629,6 +1654,9 @@ function assertInstalledSmokeScript(script) {
     'function New-NativePickerRawCensusMaxima',
     'function Update-NativePickerRawCensusMaxima',
     'function Add-NativePickerRawCensusMetrics',
+    'function Test-NativePickerCandidate',
+    'function Test-NativePickerElementCandidate',
+    'function Get-NativePickerCandidateSnapshot',
     ". (Join-Path $PSScriptRoot 'native-picker-evidence.ps1')",
     '-EvidencePath $nativePickerEvidencePath',
     '-AllowedRoot $runnerTempRoot',
@@ -1657,14 +1685,18 @@ function assertInstalledSmokeScript(script) {
     "'media-picker.worker-failed'",
     "'media-picker.returned'",
     "$pickerDiagnosticOutcome -cne 'selected'",
-    ".Current.Name -ceq 'Choose video or audio'",
-    ".Current.ClassName -ceq '#32770'",
-    '[OsgNativePickerWindow]::GetWindow($nativeHandle, 4)',
-    'ProcessWindows = $processWindows.Count',
-    'ProcessDialogClasses = $processDialogClasses.Count',
-    'ProcessNamedWindows = $processNamedWindows.Count',
+    'string.Equals(name.ToString(), "Choose video or audio", StringComparison.Ordinal)',
+    'string.Equals(className.ToString(), "#32770", StringComparison.Ordinal)',
+    'var owner = ReadOwnerWindow(window, out ownerError);',
     '[OsgNativePickerWindow]::GetRawCensus(',
     'private const int MaximumEnumeratedWindows = 512',
+    'private const int MaximumRetainedCandidates = 2',
+    'public sealed class NativeCandidateScan',
+    'public static NativeCandidateScan GetNativeCandidates(',
+    'public static bool IsExactOwnedVisibleCandidate(',
+    'NormalizeAutomationWindowHandle(',
+    'NormalizeNativeWindowHandle(',
+    'function Get-NativePickerPinnedCandidateState',
     'AccumulateRawCensusWindow(',
     'RawProcessWindowMatches',
     'RawProcessVisibleMatches',
@@ -1687,7 +1719,8 @@ function assertInstalledSmokeScript(script) {
     '[System.Windows.Automation.ValuePattern]::Pattern',
     '[StringComparison]::Ordinal',
     '$invokePattern.Invoke()',
-    '$remainingDialogs.Count -eq 0',
+    '$snapshot.NativeExactMatchCount -eq 0 -and $remainingCandidates.Count -eq 0',
+    "'dialog-automation-timeout'",
     "-Stage 'dialog-dismissed'",
     "-Outcome 'succeeded'",
     'osg-installed-media-flow-initial.png',
@@ -1939,7 +1972,7 @@ function assertInstalledSmokeScript(script) {
       && pickerFunction.includes('$valuePattern.SetValue($MediaPath)')
       && pickerFunction.includes('[StringComparison]::Ordinal')
       && pickerFunction.includes('$invokePattern.Invoke()')
-      && pickerFunction.includes('$remainingDialogs.Count -eq 0')
+      && pickerFunction.includes('$snapshot.NativeExactMatchCount -eq 0 -and $remainingCandidates.Count -eq 0')
       && pickerFunction.includes("-Stage 'dialog-dismissed'")
       && pickerFunction.includes("-Outcome 'running'")
       && !pickerFunction.includes("-Outcome 'succeeded'")
@@ -1951,9 +1984,12 @@ function assertInstalledSmokeScript(script) {
   );
   invariant(
     pickerInterop.includes('private const int MaximumEnumeratedWindows = 512')
+      && pickerInterop.includes('private const int MaximumRetainedCandidates = 2')
       && pickerInterop.includes('private static extern bool EnumWindows(')
       && pickerInterop.includes('private static extern uint GetWindowThreadProcessId(')
       && pickerInterop.includes('private static extern bool IsWindowVisible(')
+      && pickerInterop.includes('private static extern bool IsWindow(')
+      && pickerInterop.includes('private static extern IntPtr GetAncestor(')
       && pickerInterop.includes('private static extern int GetClassNameW(')
       && pickerInterop.includes('private static extern int GetWindowTextW(')
       && pickerInterop.includes('if (enumerated >= MaximumEnumeratedWindows)')
@@ -1968,6 +2004,33 @@ function assertInstalledSmokeScript(script) {
     'Installed native-picker raw census must enumerate bounded aggregate-only independent categories',
   );
   invariant(
+    pickerInterop.includes('public sealed class NativeCandidateScan')
+      && pickerInterop.includes('public IntPtr[] Candidates { get; internal set; }')
+      && pickerInterop.includes('public int ExactMatchCount { get; internal set; }')
+      && pickerInterop.includes('public bool Incomplete { get; internal set; }')
+      && pickerInterop.includes('public static NativeCandidateScan GetNativeCandidates(')
+      && pickerInterop.includes('public static bool IsExactOwnedVisibleCandidate(')
+      && pickerInterop.includes('return sameProcess && visible && classMatches && nameMatches && ownerMatches;')
+      && pickerInterop.includes('var ancestor = window == IntPtr.Zero')
+      && pickerInterop.includes('ReadRootAncestor(window, out ancestorError)')
+      && pickerInterop.includes('NormalizeNativeWindowHandle(ancestor) != normalizedWindow')
+      && pickerInterop.includes('NormalizeNativeWindowHandle(owner) == normalizedExpectedOwner')
+      && pickerInterop.includes('if (candidates.Count < MaximumRetainedCandidates)')
+      && pickerInterop.includes('scan.ExactMatchCount += 1;')
+      && pickerInterop.includes('scan.Candidates = candidates.ToArray();')
+      && pickerInterop.includes('return unchecked((long)(uint)window);')
+      && pickerInterop.includes('return new IntPtr(unchecked((int)(uint)window));')
+      && pickerInterop.includes('public static long NormalizeAutomationWindowHandle(int window)')
+      && pickerInterop.includes('public static bool IsNormalizedWindow(long normalizedWindow)')
+      && pickerInterop.includes('private static bool IsCandidateProbeIncomplete(')
+      && pickerInterop.includes('SetLastError(0);')
+      && pickerInterop.includes('titleLength == 0 && titleError != 0')
+      && pickerInterop.includes('ownerMissing && ownerError != 0')
+      && pickerInterop.includes('!stillWindow')
+      && (pickerInterop.match(/EnumWindows\(callback, IntPtr\.Zero\)/g) || []).length === 2,
+    'Installed native-picker candidate authority must retain only two bounded exact owned visible same-process HWNDs',
+  );
+  invariant(
     rawMaxima.includes('[Math]::Min(')
       && rawMaxima.includes('1000,')
       && rawMaxima.includes('[Math]::Max([int]$Maxima[$name], [int]$value)')
@@ -1976,7 +2039,7 @@ function assertInstalledSmokeScript(script) {
       && (pickerFunction.match(/Update-NativePickerRawCensusMaxima -Maxima \$rawCensusMaxima -Snapshot \$snapshot/g) || []).length === 2
       && dismissPicker.includes('Update-NativePickerRawCensusMaxima -Maxima $rawCensusMaxima -Snapshot $snapshot')
       && pickerFunction.includes('-Snapshot $dismissal.RawCensusMaxima')
-      && /\}\s*else\s*\{\s*\$rawCensusMaxima\.rawCensusIncomplete = \$true\s*\}\s*Add-NativePickerRawCensusMetrics -Metrics \$failureMetrics -Maxima \$rawCensusMaxima/.test(pickerFunction)
+      && /\}\s*else\s*\{\s*\$rawCensusMaxima\.rawCensusIncomplete = \$true\s*\$failureMetrics\.nativeCandidateScanIncomplete = \$true\s*\}\s*Add-NativePickerRawCensusMetrics -Metrics \$failureMetrics -Maxima \$rawCensusMaxima/.test(pickerFunction)
       && (pickerFunction.match(/catch\s*\{\s*\$rawCensusMaxima\.rawCensusIncomplete = \$true\s*throw\s*\}/g) || []).length === 2
       && pickerFunction.includes('Add-NativePickerRawCensusMetrics -Metrics $dialogMetrics -Maxima $rawCensusMaxima')
       && pickerFunction.includes('Add-NativePickerRawCensusMetrics -Metrics $dismissedMetrics -Maxima $rawCensusMaxima')
@@ -1990,17 +2053,71 @@ function assertInstalledSmokeScript(script) {
   const pickerDialogFunction = pickerDialogFunctionStart >= 0 && pickerDialogFunctionEnd > pickerDialogFunctionStart
     ? script.slice(pickerDialogFunctionStart, pickerDialogFunctionEnd)
     : '';
+  const candidateSnapshotStart = script.indexOf('function Get-NativePickerCandidateSnapshot {');
+  const candidateSnapshotEnd = script.indexOf('\nfunction ', candidateSnapshotStart + 1);
+  const candidateSnapshot = candidateSnapshotStart >= 0 && candidateSnapshotEnd > candidateSnapshotStart
+    ? script.slice(candidateSnapshotStart, candidateSnapshotEnd)
+    : '';
   invariant(
-    pickerDialogFunction.includes('$processWindows += $window')
-      && pickerDialogFunction.includes('$processDialogClasses += $window')
-      && pickerDialogFunction.includes('$processNamedWindows += $window')
-      && pickerDialogFunction.includes('Exact = $exact')
-      && pickerDialogFunction.includes('Owned = $owned')
-      && pickerFunction.includes('$processWindowMatches = [Math]::Max(')
-      && pickerFunction.includes('$processDialogMatches = [Math]::Max(')
-      && pickerFunction.includes('$processNamedMatches = [Math]::Max(')
-      && pickerFunction.includes('$ownedDialogMatches = [Math]::Max('),
-    'Installed native-picker evidence must retain categorical same-process UIA maxima without weakening exact owned selection',
+    !pickerDialogFunction.includes('AutomationElement]::RootElement')
+      && !pickerDialogFunction.includes('TreeScope]::Children')
+      && !pickerDialogFunction.includes('$processWindows')
+      && !pickerDialogFunction.includes('Exact = $exact')
+      && !pickerFunction.includes('$processWindowMatches'),
+    'Installed native-picker polling must not synchronously traverse the desktop UIA root for diagnostics',
+  );
+  invariant(
+    candidateSnapshot.includes("-cne 'Candidates,ExactMatchCount,Incomplete'")
+      && candidateSnapshot.includes('@($scan.Candidates).Count -gt 2')
+      && candidateSnapshot.includes('@($scan.Candidates).Count -gt $scan.ExactMatchCount')
+      && /if \(-not \$scan\.Incomplete[\s\S]*?\$scan\.ExactMatchCount -eq 1[\s\S]*?@\(\$scan\.Candidates\)\.Count -eq 1\) \{[\s\S]*?AutomationElement\]::FromHandle/.test(candidateSnapshot)
+      && candidateSnapshot.includes('Test-NativePickerCandidate')
+      && /AutomationElement\]::FromHandle\(\$candidate\)[\s\S]*?Test-NativePickerElementCandidate/.test(candidateSnapshot)
+      && /\[pscustomobject\]@\{\s*CandidateElements = \$candidateElements\s*ExactMatchCount = \[int\]\$scan\.ExactMatchCount\s*ScanIncomplete = /.test(candidateSnapshot)
+      && !/\b(?:CandidateHandle|CandidateHandles|Hwnd|Pid|ProcessId|Title|Path)\s*=/.test(candidateSnapshot),
+    'Installed native-picker bridge must revalidate exact native identity around FromHandle and expose only ephemeral AutomationElements',
+  );
+  invariant(
+    /try\s*\{\s*\$nativeCandidates = Get-NativePickerCandidateSnapshot[\s\S]*?catch\s*\{\s*\$nativeCandidates = \[pscustomobject\]@\{[\s\S]*?Incomplete = \$true\s*\}\s*\}\s*try\s*\{\s*\$candidate = \[OsgNativePickerWindow\]::GetRawCensus/.test(pickerDialogFunction)
+      && !/GetRawCensus[\s\S]*?catch\s*\{[^}]*\$nativeCandidates\s*=/.test(pickerDialogFunction)
+      && pickerDialogFunction.includes('NativeCandidates = @($nativeCandidates.CandidateElements)')
+      && pickerDialogFunction.includes('NativeExactMatchCount = [int]$nativeCandidates.ExactMatchCount')
+      && pickerDialogFunction.includes('NativeCandidateScanIncomplete = [bool]$nativeCandidates.Incomplete')
+      && pickerDialogFunction.includes('NativeCandidateEnumerationIncomplete = [bool]$nativeCandidates.ScanIncomplete')
+      && pickerDialogFunction.includes('NativeCandidateBridgeIncomplete = [bool]$nativeCandidates.BridgeIncomplete'),
+    'Installed native-picker authoritative candidate scan must fail independently from diagnostic raw census sampling',
+  );
+  invariant(
+    !/\$snapshot\.(?:Exact|Owned)\b/.test(pickerFunction)
+      && !/\$snapshot\.(?:Exact|Owned)\b/.test(dismissPicker)
+      && pickerFunction.includes('$snapshot.NativeCandidateScanIncomplete')
+      && dismissPicker.includes('$snapshot.NativeCandidateScanIncomplete')
+      && pickerFunction.includes('$snapshot.NativeExactMatchCount -eq 1 -and $nativeCandidates.Count -eq 1')
+      && dismissPicker.includes('$snapshot.NativeExactMatchCount -gt 1')
+      && dismissPicker.includes('$snapshot.NativeExactMatchCount -eq 0')
+      && dismissPicker.includes('IsNormalizedWindow($pinnedCandidateHandle)')
+      && pickerFunction.includes('$dialogMatches = [Math]::Max($dialogMatches, [int]$snapshot.NativeExactMatchCount)')
+      && /\$failureCode = if \(-not \$nativeCandidateCompleteScanObserved\) \{\s*'dialog-discovery-incomplete'\s*\} elseif \(\$nativeCandidateBridgeFailureObserved\) \{\s*'dialog-automation-timeout'\s*\} else \{\s*'dialog-timeout'/.test(pickerFunction)
+      && pickerFunction.includes('$dialogHandle = $candidateHandle')
+      && pickerFunction.includes("'dialog-automation-timeout'")
+      && pickerFunction.includes("if ($failureCode -ceq 'dialog-timeout')")
+      && /Get-NativePickerPinnedCandidateState[\s\S]*?\$valuePattern\.SetValue\(\$MediaPath\)/.test(pickerFunction)
+      && /Get-NativePickerPinnedCandidateState[\s\S]*?\$invokePattern\.Invoke\(\)/.test(pickerFunction)
+      && pickerFunction.includes('-ExpectedCandidateHandle $dialogHandle')
+      && dismissPicker.includes('$pinnedCandidateHandle = $ExpectedCandidateHandle')
+      && /Get-NativePickerPinnedCandidateState[\s\S]*?\)\.Invoke\(\)/.test(dismissPicker)
+      && /Get-NativePickerPinnedCandidateState[\s\S]*?PostCloseMessage\(/.test(dismissPicker)
+      && pickerFunction.includes('$editorCandidateCompleteScanObserved')
+      && pickerFunction.includes('$editorMutationCompleteScanObserved')
+      && pickerFunction.includes('$editorWritable -and -not $editorMutationCompleteScanObserved')
+      && pickerFunction.includes('$buttonCandidateCompleteScanObserved')
+      && pickerFunction.includes('$dismissalCandidateCompleteScanObserved')
+      && /IsNormalizedWindow\(\$dialogHandle\)[\s\S]*?'dismissal-changed'/.test(pickerFunction)
+      && (pickerFunction.match(/nativeCandidateMatches\s*=/g) || []).length >= 4
+      && (pickerFunction.match(/nativeCandidateScanIncomplete\s*=/g) || []).length >= 4
+      && dismissPicker.includes('NativeCandidateMatches = [Math]::Min($nativeCandidateMatches, 1000)')
+      && dismissPicker.includes('NativeCandidateScanIncomplete = $nativeCandidateScanIncomplete'),
+    'Installed native-picker authority must fail closed on incomplete or ambiguous scans and revalidate one pinned native dialog before every UIA action',
   );
   const pickerPhaseFunctionStart = script.indexOf('function Get-NativePickerInspectorPhase {');
   const pickerPhaseFunctionEnd = script.indexOf('\nfunction ', pickerPhaseFunctionStart + 1);

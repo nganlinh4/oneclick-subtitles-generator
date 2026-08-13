@@ -272,13 +272,13 @@ test('installed Windows smoke proves persistence, media, tools, logs, relaunch, 
     'function Dismiss-NativeMediaPicker',
     "$nativePickerEvidencePath = Join-Path $runnerTempRoot 'osg-installed-native-picker-evidence.json'",
     '$nativePickerEvidenceBackupPath = "$nativePickerEvidencePath.bak"',
-    ".Current.Name -ceq 'Choose video or audio'",
-    ".Current.ClassName -ceq '#32770'",
-    '[OsgNativePickerWindow]::GetWindow($nativeHandle, 4)',
+    'string.Equals(name.ToString(), "Choose video or audio", StringComparison.Ordinal)',
+    'string.Equals(className.ToString(), "#32770", StringComparison.Ordinal)',
+    'var owner = ReadOwnerWindow(window, out ownerError);',
     '-OwnerHandle $ownerHandle',
     '[StringComparison]::Ordinal',
     '$invokePattern.Invoke()',
-    '$remainingDialogs.Count -eq 0',
+    '$snapshot.NativeExactMatchCount -eq 0 -and $remainingCandidates.Count -eq 0',
     "-Stage 'dialog-dismissed'",
     "-Outcome 'succeeded'",
     'osg-installed-media-flow-initial.png',
@@ -515,7 +515,7 @@ test('installed Windows smoke proves persistence, media, tools, logs, relaunch, 
       /(?:live responsive app|missing lifecycle proof)/,
     );
   }
-  for (const weakenedPickerProof of [
+  for (const [weakenedIndex, weakenedPickerProof] of [
     INSTALLED_SMOKE_SCRIPT.replace('$dialog.FindAll(', '$dialog.FindFirst('),
     INSTALLED_SMOKE_SCRIPT.replace(
       '$fileNameControls.Count -eq 1',
@@ -526,14 +526,66 @@ test('installed Windows smoke proves persistence, media, tools, logs, relaunch, 
       '$openButtons.Count -ge 1',
     ),
     INSTALLED_SMOKE_SCRIPT.replace(
-      '$remainingDialogs.Count -eq 0',
-      '$remainingDialogs.Count -le 1',
+      '$snapshot.NativeExactMatchCount -eq 0 -and $remainingCandidates.Count -eq 0',
+      '$remainingCandidates.Count -le 1',
+    ),
+    INSTALLED_SMOKE_SCRIPT.replaceAll(
+      '[OsgNativePickerWindow]::IsNormalizedWindow(',
+      '$false -and [OsgNativePickerWindow]::IsNormalizedWindow(',
     ),
     INSTALLED_SMOKE_SCRIPT.replace(
-      '[OsgNativePickerWindow]::GetWindow($nativeHandle, 4)',
-      '$OwnerHandle',
+      'private const int MaximumRetainedCandidates = 2',
+      'private const int MaximumRetainedCandidates = 3',
     ),
-    INSTALLED_SMOKE_SCRIPT.replace('$processNamedWindows += $window', '# omitted category'),
+    INSTALLED_SMOKE_SCRIPT.replace(
+      'return sameProcess && visible && classMatches && nameMatches && ownerMatches;',
+      'return sameProcess && visible && classMatches && nameMatches;',
+    ),
+    INSTALLED_SMOKE_SCRIPT.replace(
+      'return unchecked((long)(uint)window);',
+      'return window;',
+    ),
+    INSTALLED_SMOKE_SCRIPT.replace(
+      'NormalizeNativeWindowHandle(ancestor) != normalizedWindow',
+      'ancestor != window',
+    ),
+    INSTALLED_SMOKE_SCRIPT.replaceAll('SetLastError(0);', ''),
+    INSTALLED_SMOKE_SCRIPT.replace(
+      'titleLength == 0 && titleError != 0',
+      'false',
+    ),
+    INSTALLED_SMOKE_SCRIPT.replace(
+      'ownerMissing && ownerError != 0',
+      'false',
+    ),
+    INSTALLED_SMOKE_SCRIPT.replace(
+      '  if (-not $scan.Incomplete `\n'
+        + '      -and $scan.ExactMatchCount -eq 1 `\n'
+        + '      -and @($scan.Candidates).Count -eq 1) {',
+      '  if ($scan.ExactMatchCount -ge 1) {',
+    ),
+    INSTALLED_SMOKE_SCRIPT.replace(
+      '  $rawCensus = $null\n',
+      '  $rawCensus = $null\n'
+        + '  $root = [System.Windows.Automation.AutomationElement]::RootElement\n'
+        + '  [void]$root.FindAll([System.Windows.Automation.TreeScope]::Children, [System.Windows.Automation.Condition]::TrueCondition)\n',
+    ),
+    INSTALLED_SMOKE_SCRIPT.replaceAll(
+      'Get-NativePickerPinnedCandidateState',
+      'Test-NativePickerElementCandidate',
+    ),
+    INSTALLED_SMOKE_SCRIPT.replaceAll(
+      '$editorMutationCompleteScanObserved',
+      '$editorCandidateCompleteScanObserved',
+    ),
+    INSTALLED_SMOKE_SCRIPT.replace(
+      '$rawCensus = [pscustomobject]$fallback',
+      '$rawCensus = [pscustomobject]$fallback\n    $nativeCandidates = $fallback',
+    ),
+    INSTALLED_SMOKE_SCRIPT.replace(
+      '    CandidateElements = $candidateElements',
+      '    CandidateElements = $candidateElements\n    candidateHandle = 1',
+    ),
     INSTALLED_SMOKE_SCRIPT.replace('EnumWindows(callback, IntPtr.Zero)', 'true'),
     INSTALLED_SMOKE_SCRIPT.replace(
       'private const int MaximumEnumeratedWindows = 512',
@@ -552,7 +604,7 @@ test('installed Windows smoke proves persistence, media, tools, logs, relaunch, 
       'if (classMatches) {',
     ),
     INSTALLED_SMOKE_SCRIPT.replace(
-      '$dialogs.Count -eq 1 -and $ownedDialogs.Count -eq 1',
+      '$snapshot.NativeExactMatchCount -eq 1 -and $nativeCandidates.Count -eq 1',
       '$snapshot.RawProcessExactMatches -eq 1',
     ),
     INSTALLED_SMOKE_SCRIPT.replace(
@@ -566,6 +618,7 @@ test('installed Windows smoke proves persistence, media, tools, logs, relaunch, 
     INSTALLED_SMOKE_SCRIPT.replace(
       '      } else {\n'
         + '        $rawCensusMaxima.rawCensusIncomplete = $true\n'
+        + '        $failureMetrics.nativeCandidateScanIncomplete = $true\n'
         + '      }\n'
         + '      Add-NativePickerRawCensusMetrics -Metrics $failureMetrics',
       '      } else {\n'
@@ -586,13 +639,13 @@ test('installed Windows smoke proves persistence, media, tools, logs, relaunch, 
     ),
     INSTALLED_SMOKE_SCRIPT.replace(
       '    Update-NativePickerRawCensusMaxima -Maxima $rawCensusMaxima -Snapshot $snapshot\n'
-        + '    $exact = @($snapshot.Exact)',
+        + '    $nativeCandidates = @($snapshot.NativeCandidates)',
       '    # omitted cleanup raw census update\n'
-        + '    $exact = @($snapshot.Exact)',
+        + '    $nativeCandidates = @($snapshot.NativeCandidates)',
     ),
     INSTALLED_SMOKE_SCRIPT.replace(
-      '    if ($exact.Count -ne 1 -or $owned.Count -ne 1) {',
-      '    if ($snapshot.RawProcessOwnerMatches -ne 1) {',
+      '    if ($snapshot.NativeExactMatchCount -gt 1) {',
+      '    if ($snapshot.RawProcessOwnerMatches -gt 1) {',
     ),
     INSTALLED_SMOKE_SCRIPT.replaceAll('RawDesktopExactMatches', 'RawProcessExactMatches'),
     INSTALLED_SMOKE_SCRIPT.replaceAll('RawCensusIncomplete', 'RawCensusComplete'),
@@ -641,10 +694,11 @@ test('installed Windows smoke proves persistence, media, tools, logs, relaunch, 
       '-PriorAssetId $initialMediaFlow.assetId',
       '-PriorAssetId $third.AppInstanceId',
     ),
-  ]) {
+  ].entries()) {
+    assert.notEqual(weakenedPickerProof, INSTALLED_SMOKE_SCRIPT, `picker hostile mutation ${weakenedIndex}`);
     assert.throws(
       () => assertInstalledSmokeScript(weakenedPickerProof),
-      /(?:native-picker automation|native-picker evidence|native-picker diagnostics|native-picker raw census|native-tool events|local-media pre-click failures|reviewed executable source|missing lifecycle proof)/,
+      /(?:native-picker automation|native-picker evidence|native-picker diagnostics|native-picker raw census|native-picker (?:authoritative )?candidate|native-picker authority|native-picker bridge|native-picker polling|native-tool events|local-media pre-click failures|reviewed executable source|missing lifecycle proof)/,
     );
   }
   for (const prematureOrUncorrectedSuccess of [
