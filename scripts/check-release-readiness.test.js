@@ -515,11 +515,84 @@ test('installed Windows smoke proves persistence, media, tools, logs, relaunch, 
       /(?:live responsive app|missing lifecycle proof)/,
     );
   }
+  const omittedEditorMutationRescan = INSTALLED_SMOKE_SCRIPT.replace(
+    '          $mutationCandidate = Get-NativePickerPinnedCandidateState `\n'
+      + '              -Element $dialog `\n'
+      + '              -CandidateHandle $dialogHandle `\n'
+      + '              -ProcessId $ProcessId `\n'
+      + '              -OwnerHandle $OwnerHandle',
+    '          $mutationCandidate = $freshCandidate',
+  );
+  assert.notEqual(omittedEditorMutationRescan, INSTALLED_SMOKE_SCRIPT);
+  assert.throws(
+    () => assertInstalledSmokeScript(omittedEditorMutationRescan),
+    /native-picker authority/,
+  );
   for (const [weakenedIndex, weakenedPickerProof] of [
     INSTALLED_SMOKE_SCRIPT.replace('$dialog.FindAll(', '$dialog.FindFirst('),
     INSTALLED_SMOKE_SCRIPT.replace(
-      '$fileNameControls.Count -eq 1',
-      '$fileNameControls.Count -ge 1',
+      '$controls.Count -eq 1',
+      '$controls.Count -ge 1',
+    ),
+    INSTALLED_SMOKE_SCRIPT.replace(
+      'Add-Type -AssemblyName UIAutomationClientSideProviders -ErrorAction Stop',
+      '# omitted client-side provider load',
+    ),
+    INSTALLED_SMOKE_SCRIPT.replace(
+      '[void][System.Windows.Automation.AutomationElement]::RootElement',
+      '# omitted UI Automation bootstrap',
+    ),
+    INSTALLED_SMOKE_SCRIPT.replace(
+      '[void][System.Windows.Automation.AutomationElement]::RootElement',
+      '[void][System.Windows.Automation.AutomationElement]::RootElement.Current.Name',
+    ),
+    INSTALLED_SMOKE_SCRIPT.replace(
+      "@('button', 'combobox', 'edit')",
+      "@('button', 'combobox')",
+    ),
+    INSTALLED_SMOKE_SCRIPT.replace(
+      '$_.ClassName -ceq $providerClassName',
+      '$_.ClassName -ieq $providerClassName',
+    ),
+    INSTALLED_SMOKE_SCRIPT.replace(
+      '$providerEntries.Count -ne 1 `\n        -or $null -eq $providerEntries[0].ClientSideProviderFactoryCallback',
+      '$providerEntries.Count -lt 1',
+    ),
+    INSTALLED_SMOKE_SCRIPT.replace(
+      '[System.Windows.Automation.ClientSideProviderDescription[]]@($providerEntries[0])',
+      '[System.Windows.Automation.ClientSideProviderDescription[]]@($providerTable)',
+    ),
+    INSTALLED_SMOKE_SCRIPT.replace(
+      '[System.Windows.Automation.AndCondition]::new(',
+      '[System.Windows.Automation.OrCondition]::new(',
+    ),
+    INSTALLED_SMOKE_SCRIPT.replace(
+      '[System.Windows.Automation.ControlType]::Edit',
+      '[System.Windows.Automation.ControlType]::ComboBox',
+    ),
+    INSTALLED_SMOKE_SCRIPT.replace(
+      '-IsEnabled $isEnabled',
+      '-IsEnabled $true',
+    ),
+    INSTALLED_SMOKE_SCRIPT.replace(
+      '-IsOffscreen $isOffscreen',
+      '-IsOffscreen $false',
+    ),
+    INSTALLED_SMOKE_SCRIPT.replace(
+      '-HasValuePattern $hasValuePattern',
+      '-HasValuePattern $true',
+    ),
+    INSTALLED_SMOKE_SCRIPT.replace(
+      '-IsReadOnly $isReadOnly',
+      '-IsReadOnly $false',
+    ),
+    INSTALLED_SMOKE_SCRIPT.replace(
+      '            $mutationEditor = $null\n\n            $readbackCandidate = Get-NativePickerPinnedCandidateState',
+      '            $readbackCandidate = Get-NativePickerPinnedCandidateState',
+    ),
+    INSTALLED_SMOKE_SCRIPT.replace(
+      '$readbackEditor = Get-NativePickerWritableEditor -Dialog $dialog',
+      '$readbackEditor = $mutationEditor',
     ),
     INSTALLED_SMOKE_SCRIPT.replace(
       '$openButtons.Count -eq 1',
@@ -698,7 +771,7 @@ test('installed Windows smoke proves persistence, media, tools, logs, relaunch, 
     assert.notEqual(weakenedPickerProof, INSTALLED_SMOKE_SCRIPT, `picker hostile mutation ${weakenedIndex}`);
     assert.throws(
       () => assertInstalledSmokeScript(weakenedPickerProof),
-      /(?:native-picker automation|native-picker evidence|native-picker diagnostics|native-picker raw census|native-picker (?:authoritative )?candidate|native-picker authority|native-picker bridge|native-picker polling|native-tool events|local-media pre-click failures|reviewed executable source|missing lifecycle proof)/,
+      /(?:native-picker automation|native-picker editor selection|native-picker evidence|native-picker diagnostics|native-picker raw census|native-picker (?:authoritative )?candidate|native-picker authority|native-picker bridge|native-picker polling|native-tool events|local-media pre-click failures|reviewed executable source|missing lifecycle proof)/,
     );
   }
   for (const prematureOrUncorrectedSuccess of [
@@ -895,6 +968,22 @@ test('native-picker evidence uses bounded backups and real multi-stage replaceme
     NATIVE_PICKER_EVIDENCE_REGRESSION.replace(
       '    rawCensusBucketsIndependent = $true',
       '    rawCensusBucketsIndependent = $false',
+    ),
+    NATIVE_PICKER_EVIDENCE_REGRESSION.replace(
+      '    clientSideProvidersRegistered = $true',
+      '    clientSideProvidersRegistered = $false',
+    ),
+    NATIVE_PICKER_EVIDENCE_REGRESSION.replace(
+      '    filenameEditorSelectorExact = $true',
+      '    filenameEditorSelectorExact = $false',
+    ),
+    NATIVE_PICKER_EVIDENCE_REGRESSION.replace(
+      '    filenameEditorReadbackReacquired = $true',
+      '    filenameEditorReadbackReacquired = $false',
+    ),
+    NATIVE_PICKER_EVIDENCE_REGRESSION.replace(
+      "      throw 'Native picker regression selected an ambiguous, disabled, offscreen, patternless, or read-only filename editor'",
+      '      Write-Output decoy',
     ),
     NATIVE_PICKER_EVIDENCE_REGRESSION.replace(
       "    throw 'Native picker raw census regression lost bounded maximum aggregation'",

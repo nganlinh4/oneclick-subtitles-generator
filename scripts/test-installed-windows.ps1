@@ -494,8 +494,27 @@ function Inspect-InstalledNativeTools {
 }
 
 function Initialize-NativePickerInterop {
-  Add-Type -AssemblyName UIAutomationClient
-  Add-Type -AssemblyName UIAutomationTypes
+  Add-Type -AssemblyName UIAutomationClient -ErrorAction Stop
+  Add-Type -AssemblyName UIAutomationTypes -ErrorAction Stop
+  [void][System.Windows.Automation.AutomationElement]::RootElement
+  Add-Type -AssemblyName UIAutomationClientSideProviders -ErrorAction Stop
+  $providerTable = @(
+    [UIAutomationClientsideProviders.UIAutomationClientSideProviders]::ClientSideProviderDescriptionTable
+  )
+  foreach ($providerClassName in @('button', 'combobox', 'edit')) {
+    $providerEntries = @(
+      $providerTable | Where-Object {
+        $_.ClassName -ceq $providerClassName
+      }
+    )
+    if ($providerEntries.Count -ne 1 `
+        -or $null -eq $providerEntries[0].ClientSideProviderFactoryCallback) {
+      throw 'Native-picker required one exact client-side provider entry'
+    }
+    [System.Windows.Automation.ClientSettings]::RegisterClientSideProviders(
+      [System.Windows.Automation.ClientSideProviderDescription[]]@($providerEntries[0])
+    )
+  }
   if ($null -eq ('OsgNativePickerWindow' -as [type])) {
     Add-Type -TypeDefinition @'
 using System;
@@ -998,6 +1017,73 @@ function Test-NativePickerElementCandidate {
         -OwnerHandle $OwnerHandle)
   } catch {
     $false
+  }
+}
+
+function Test-NativePickerWritableEditorSelection {
+  param(
+    [Parameter(Mandatory = $true)][int]$MatchCount,
+    [Parameter(Mandatory = $true)][bool]$IsEnabled,
+    [Parameter(Mandatory = $true)][bool]$IsOffscreen,
+    [Parameter(Mandatory = $true)][bool]$HasValuePattern,
+    [Parameter(Mandatory = $true)][bool]$IsReadOnly
+  )
+
+  $MatchCount -eq 1 `
+    -and $IsEnabled `
+    -and -not $IsOffscreen `
+    -and $HasValuePattern `
+    -and -not $IsReadOnly
+}
+
+function Get-NativePickerWritableEditor {
+  param(
+    [Parameter(Mandatory = $true)]$Dialog
+  )
+
+  $controls = @($Dialog.FindAll(
+    [System.Windows.Automation.TreeScope]::Descendants,
+    [System.Windows.Automation.AndCondition]::new(
+      [System.Windows.Automation.Condition[]]@(
+        [System.Windows.Automation.PropertyCondition]::new(
+          [System.Windows.Automation.AutomationElement]::AutomationIdProperty,
+          '1148'
+        ),
+        [System.Windows.Automation.PropertyCondition]::new(
+          [System.Windows.Automation.AutomationElement]::ControlTypeProperty,
+          [System.Windows.Automation.ControlType]::Edit
+        )
+      )
+    )
+  ))
+  $pattern = $null
+  if ($controls.Count -eq 1) {
+    $control = $controls[0]
+    $patternObject = $null
+    $isEnabled = [bool]$control.Current.IsEnabled
+    $isOffscreen = [bool]$control.Current.IsOffscreen
+    $hasValuePattern = $control.TryGetCurrentPattern(
+      [System.Windows.Automation.ValuePattern]::Pattern,
+      [ref]$patternObject
+    )
+    $candidatePattern = $null
+    $isReadOnly = $true
+    if ($hasValuePattern) {
+      $candidatePattern = [System.Windows.Automation.ValuePattern]$patternObject
+      $isReadOnly = [bool]$candidatePattern.Current.IsReadOnly
+    }
+    if (Test-NativePickerWritableEditorSelection `
+        -MatchCount $controls.Count `
+        -IsEnabled $isEnabled `
+        -IsOffscreen $isOffscreen `
+        -HasValuePattern $hasValuePattern `
+        -IsReadOnly $isReadOnly) {
+      $pattern = $candidatePattern
+    }
+  }
+  [pscustomobject]@{
+    MatchCount = $controls.Count
+    ValuePattern = $pattern
   }
 }
 
@@ -2102,6 +2188,7 @@ function Complete-NativeMediaPicker {
 
     $editorCandidateCompleteScanObserved = $false
     $editorMutationCompleteScanObserved = $false
+    $editorReadbackCompleteScanObserved = $false
     $editorDeadline = (Get-Date).AddSeconds(30)
     do {
       $editorAttempts += 1
@@ -2135,74 +2222,68 @@ function Complete-NativeMediaPicker {
       $candidateRetry = $false
       $candidateAmbiguous = $false
       try {
-        $fileNameControls = @($dialog.FindAll(
-          [System.Windows.Automation.TreeScope]::Descendants,
-          [System.Windows.Automation.PropertyCondition]::new(
-            [System.Windows.Automation.AutomationElement]::AutomationIdProperty,
-            '1148'
+        $mutationEditor = Get-NativePickerWritableEditor -Dialog $dialog
+        $editorMatches = [Math]::Max($editorMatches, [int]$mutationEditor.MatchCount)
+        if ($null -ne $mutationEditor.ValuePattern) {
+          $editorWritable = $true
+          $mutationCandidate = Get-NativePickerPinnedCandidateState `
+              -Element $dialog `
+              -CandidateHandle $dialogHandle `
+              -ProcessId $ProcessId `
+              -OwnerHandle $OwnerHandle
+          $nativeCandidateMatches = [Math]::Max(
+            $nativeCandidateMatches,
+            [int]$mutationCandidate.ExactMatchCount
           )
-        ))
-        $editorMatches = [Math]::Max($editorMatches, $fileNameControls.Count)
-        $valuePattern = $null
-        if ($fileNameControls.Count -eq 1) {
-          $patternObject = $null
-          if ($fileNameControls[0].TryGetCurrentPattern(
-              [System.Windows.Automation.ValuePattern]::Pattern,
-              [ref]$patternObject
-            )) {
-            $valuePattern = [System.Windows.Automation.ValuePattern]$patternObject
+          $nativeCandidateScanIncomplete = $nativeCandidateScanIncomplete `
+            -or [bool]$mutationCandidate.EnumerationIncomplete `
+            -or [bool]$mutationCandidate.BridgeIncomplete
+          if ($mutationCandidate.ExactMatchCount -gt 1) {
+            $candidateAmbiguous = $true
+          } elseif ($mutationCandidate.EnumerationIncomplete `
+              -or $mutationCandidate.BridgeIncomplete) {
+            $candidateRetry = $true
+          } elseif (-not $mutationCandidate.Valid) {
+            $candidateChanged = $true
           } else {
-            $editableControls = @($fileNameControls[0].FindAll(
-              [System.Windows.Automation.TreeScope]::Descendants,
-              [System.Windows.Automation.PropertyCondition]::new(
-                [System.Windows.Automation.AutomationElement]::ControlTypeProperty,
-                [System.Windows.Automation.ControlType]::Edit
-              )
-            ))
-            if ($editableControls.Count -eq 1) {
-              $patternObject = $null
-              if ($editableControls[0].TryGetCurrentPattern(
-                  [System.Windows.Automation.ValuePattern]::Pattern,
-                  [ref]$patternObject
-                )) {
-                $valuePattern = [System.Windows.Automation.ValuePattern]$patternObject
-              }
-            }
-          }
-        }
-        if ($null -ne $valuePattern) {
-          $currentEditorWritable = -not $valuePattern.Current.IsReadOnly
-          $editorWritable = $editorWritable -or $currentEditorWritable
-          if ($currentEditorWritable) {
-            $freshCandidate = Get-NativePickerPinnedCandidateState `
+            $editorMutationCompleteScanObserved = $true
+            $mutationEditor.ValuePattern.SetValue($MediaPath)
+            $mutationEditor = $null
+
+            $readbackCandidate = Get-NativePickerPinnedCandidateState `
                 -Element $dialog `
                 -CandidateHandle $dialogHandle `
                 -ProcessId $ProcessId `
                 -OwnerHandle $OwnerHandle
             $nativeCandidateMatches = [Math]::Max(
               $nativeCandidateMatches,
-              [int]$freshCandidate.ExactMatchCount
+              [int]$readbackCandidate.ExactMatchCount
             )
             $nativeCandidateScanIncomplete = $nativeCandidateScanIncomplete `
-              -or [bool]$freshCandidate.EnumerationIncomplete `
-              -or [bool]$freshCandidate.BridgeIncomplete
-            if ($freshCandidate.ExactMatchCount -gt 1) {
+              -or [bool]$readbackCandidate.EnumerationIncomplete `
+              -or [bool]$readbackCandidate.BridgeIncomplete
+            if ($readbackCandidate.ExactMatchCount -gt 1) {
               $candidateAmbiguous = $true
-            } elseif ($freshCandidate.EnumerationIncomplete `
-                -or $freshCandidate.BridgeIncomplete) {
+            } elseif ($readbackCandidate.EnumerationIncomplete `
+                -or $readbackCandidate.BridgeIncomplete) {
               $candidateRetry = $true
-            } elseif (-not $freshCandidate.Valid) {
+            } elseif (-not $readbackCandidate.Valid) {
               $candidateChanged = $true
             } else {
-              $editorMutationCompleteScanObserved = $true
-              $valuePattern.SetValue($MediaPath)
-              $valueRetained = [string]::Equals(
-                $valuePattern.Current.Value,
-                $MediaPath,
-                [StringComparison]::Ordinal
-              )
+              $editorReadbackCompleteScanObserved = $true
+              $readbackEditor = Get-NativePickerWritableEditor -Dialog $dialog
+              $editorMatches = [Math]::Max($editorMatches, [int]$readbackEditor.MatchCount)
+              if ($null -ne $readbackEditor.ValuePattern) {
+                $valueRetained = [string]::Equals(
+                  $readbackEditor.ValuePattern.Current.Value,
+                  $MediaPath,
+                  [StringComparison]::Ordinal
+                )
+              }
+              $readbackEditor = $null
             }
           }
+          $mutationEditor = $null
         }
       } catch {
         # Common-dialog descendants can be replaced while their shell view initializes.
@@ -2232,7 +2313,9 @@ function Complete-NativeMediaPicker {
     } until ($valueRetained -or (Get-Date) -ge $editorDeadline)
     if (-not $valueRetained) {
       $failureCode = if (-not $editorCandidateCompleteScanObserved `
-          -or ($editorWritable -and -not $editorMutationCompleteScanObserved)) {
+          -or ($editorWritable `
+            -and (-not $editorMutationCompleteScanObserved `
+              -or -not $editorReadbackCompleteScanObserved))) {
         'dialog-action-incomplete'
       } elseif ($editorMatches -gt 1) {
         'editor-ambiguous'

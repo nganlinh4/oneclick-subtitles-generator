@@ -264,6 +264,8 @@ try {
       'Add-NativePickerRawCensusMetrics',
       'Test-NativePickerCandidate',
       'Test-NativePickerElementCandidate',
+      'Test-NativePickerWritableEditorSelection',
+      'Get-NativePickerWritableEditor',
       'Get-NativePickerCandidateSnapshot',
       'Get-NativePickerPinnedCandidateState',
       'Get-NativeMediaPickerDialogs',
@@ -288,7 +290,69 @@ try {
     $installedFunctionSources[$functionName] = $definitions[0].Extent.Text
     Invoke-Expression $definitions[0].Extent.Text
   }
+  $interopSource = $installedFunctionSources['Initialize-NativePickerInterop']
+  $clientLoadIndex = $interopSource.IndexOf(
+    'Add-Type -AssemblyName UIAutomationClient'
+  )
+  $typesLoadIndex = $interopSource.IndexOf(
+    'Add-Type -AssemblyName UIAutomationTypes'
+  )
+  $rootBootstrapIndex = $interopSource.IndexOf(
+    '[void][System.Windows.Automation.AutomationElement]::RootElement'
+  )
+  $providerLoadIndex = $interopSource.IndexOf(
+    'Add-Type -AssemblyName UIAutomationClientSideProviders'
+  )
+  $providerRegistrationIndex = $interopSource.IndexOf(
+    '[System.Windows.Automation.ClientSettings]::RegisterClientSideProviders('
+  )
+  if ($clientLoadIndex -lt 0 `
+      -or $typesLoadIndex -le $clientLoadIndex `
+      -or $rootBootstrapIndex -le $typesLoadIndex `
+      -or $providerLoadIndex -le $rootBootstrapIndex `
+      -or $providerRegistrationIndex -le $providerLoadIndex `
+      -or $interopSource -match 'AutomationElement\]::RootElement\.Current' `
+      -or $interopSource -match 'AutomationElement\]::RootElement[\s\S]*?FindAll' `
+      -or $interopSource -notmatch 'foreach \(\$providerClassName in @\(''button'', ''combobox'', ''edit''\)\)' `
+      -or $interopSource -notmatch '\$_\.ClassName -ceq \$providerClassName' `
+      -or $interopSource -notmatch '\$providerEntries\.Count -ne 1[\s\S]*?\$null -eq \$providerEntries\[0\]\.ClientSideProviderFactoryCallback' `
+      -or $interopSource -match 'RegisterClientSideProviders\(\s*\$providerTable') {
+    throw 'Native picker regression did not selectively register exact client-side providers after the UI Automation bootstrap'
+  }
   Initialize-NativePickerInterop
+  $loadedProviderAssemblies = @(
+    [AppDomain]::CurrentDomain.GetAssemblies() | Where-Object {
+      $_.GetName().Name -ieq 'UIAutomationClientSideProviders'
+    }
+  )
+  if ($loadedProviderAssemblies.Count -ne 1 `
+      -or $null -eq $loadedProviderAssemblies[0].GetType(
+        'UIAutomationClientsideProviders.UIAutomationClientSideProviders',
+        $false,
+        $false
+      )) {
+    throw 'Native picker regression could not observe one loaded client-side provider assembly'
+  }
+  Initialize-NativePickerInterop
+  foreach ($editorFixture in @(
+      @{ count = 1; enabled = $true; offscreen = $false; pattern = $true; readOnly = $false; expected = $true },
+      @{ count = 0; enabled = $true; offscreen = $false; pattern = $true; readOnly = $false; expected = $false },
+      @{ count = 2; enabled = $true; offscreen = $false; pattern = $true; readOnly = $false; expected = $false },
+      @{ count = 1; enabled = $false; offscreen = $false; pattern = $true; readOnly = $false; expected = $false },
+      @{ count = 1; enabled = $true; offscreen = $true; pattern = $true; readOnly = $false; expected = $false },
+      @{ count = 1; enabled = $true; offscreen = $false; pattern = $false; readOnly = $false; expected = $false },
+      @{ count = 1; enabled = $true; offscreen = $false; pattern = $true; readOnly = $true; expected = $false }
+    )) {
+    $selected = Test-NativePickerWritableEditorSelection `
+      -MatchCount $editorFixture.count `
+      -IsEnabled $editorFixture.enabled `
+      -IsOffscreen $editorFixture.offscreen `
+      -HasValuePattern $editorFixture.pattern `
+      -IsReadOnly $editorFixture.readOnly
+    if ([bool]$selected -ne [bool]$editorFixture.expected) {
+      throw 'Native picker regression selected an ambiguous, disabled, offscreen, patternless, or read-only filename editor'
+    }
+  }
   $candidateScan = [OsgNativePickerWindow]::GetNativeCandidates($PID, [long]1)
   if ((@($candidateScan.PSObject.Properties.Name | Sort-Object) -join ',') `
       -cne 'Candidates,ExactMatchCount,Incomplete' `
@@ -503,6 +567,7 @@ try {
   $dismissPickerSource = $installedFunctionSources['Dismiss-NativeMediaPicker']
   $candidateSnapshotSource = $installedFunctionSources['Get-NativePickerCandidateSnapshot']
   $dialogDiscoverySource = $installedFunctionSources['Get-NativeMediaPickerDialogs']
+  $writableEditorSource = $installedFunctionSources['Get-NativePickerWritableEditor']
   if ($completePickerSource -match '(?i)(?:if|elseif|until|while)\s*\([^\r\n]*(?:rawCensus|rawProcess|rawDesktop)' `
       -or $dismissPickerSource -match '(?i)(?:if|elseif|until|while)\s*\([^\r\n]*(?:rawCensus|rawProcess|rawDesktop)' `
       -or $completePickerSource -match '\$snapshot\.(?:Exact|Owned)' `
@@ -518,12 +583,28 @@ try {
       -or $dismissPickerSource -notmatch '\$snapshot\.NativeCandidateScanIncomplete' `
       -or $completePickerSource -notmatch "'dialog-automation-timeout'" `
       -or $completePickerSource -notmatch '\$failureCode -ceq ''dialog-timeout''' `
-      -or $completePickerSource -notmatch 'Get-NativePickerPinnedCandidateState[\s\S]*?\$valuePattern\.SetValue\(\$MediaPath\)' `
+      -or $completePickerSource -notmatch '\$mutationEditor = Get-NativePickerWritableEditor[\s\S]*?\$mutationCandidate = Get-NativePickerPinnedCandidateState[\s\S]*?if \(\$mutationCandidate\.ExactMatchCount -gt 1\)[\s\S]*?elseif \(\$mutationCandidate\.EnumerationIncomplete[\s\S]*?elseif \(-not \$mutationCandidate\.Valid\)[\s\S]*?else \{\s*\$editorMutationCompleteScanObserved = \$true\s*\$mutationEditor\.ValuePattern\.SetValue\(\$MediaPath\)' `
+      -or $completePickerSource -notmatch '\.ValuePattern\.SetValue\(\$MediaPath\)[\s\S]*?\$mutationEditor = \$null[\s\S]*?\$readbackCandidate = Get-NativePickerPinnedCandidateState[\s\S]*?\$readbackEditor = Get-NativePickerWritableEditor[\s\S]*?\.ValuePattern\.Current\.Value' `
       -or $completePickerSource -notmatch 'Get-NativePickerPinnedCandidateState[\s\S]*?\$invokePattern\.Invoke\(\)' `
       -or $completePickerSource -notmatch '-ExpectedCandidateHandle \$dialogHandle' `
       -or $dismissPickerSource -notmatch 'Get-NativePickerPinnedCandidateState[\s\S]*?PostCloseMessage' `
       -or $dismissPickerSource -notmatch 'Get-NativePickerPinnedCandidateState[\s\S]*?Invoke\(\)') {
     throw 'Native picker candidate regression lost pinned complete-scan revalidation authority'
+  }
+  if ($writableEditorSource -notmatch 'AndCondition\]::new\([\s\S]*?AutomationIdProperty[\s\S]*?''1148''[\s\S]*?ControlTypeProperty[\s\S]*?ControlType\]::Edit' `
+      -or $writableEditorSource -notmatch '\$controls\.Count -eq 1' `
+      -or $writableEditorSource -notmatch 'Test-NativePickerWritableEditorSelection[\s\S]*?-MatchCount \$controls\.Count' `
+      -or $writableEditorSource -notmatch '-IsEnabled \$isEnabled' `
+      -or $writableEditorSource -notmatch '-IsOffscreen \$isOffscreen' `
+      -or $writableEditorSource -notmatch '-HasValuePattern \$hasValuePattern' `
+      -or $writableEditorSource -notmatch '-IsReadOnly \$isReadOnly' `
+      -or ([regex]::Matches(
+          $completePickerSource,
+          'Get-NativePickerWritableEditor -Dialog \$dialog'
+        )).Count -ne 2 `
+      -or $completePickerSource -notmatch '\$editorReadbackCompleteScanObserved = \$true' `
+      -or $completePickerSource -notmatch '-or -not \$editorReadbackCompleteScanObserved') {
+    throw 'Native picker regression lost its exact unique writable filename Edit boundary'
   }
   if ($candidateSnapshotSource -notmatch 'AutomationElement\]::FromHandle\(\$candidate\)[\s\S]*?Test-NativePickerElementCandidate' `
       -or $candidateSnapshotSource -notmatch '-not \$scan\.Incomplete[\s\S]*?\$scan\.ExactMatchCount -eq 1[\s\S]*?@\(\$scan\.Candidates\)\.Count -eq 1[\s\S]*?AutomationElement\]::FromHandle' `
@@ -958,6 +1039,9 @@ try {
     nativeCandidateDiagnosticsDecoupled = $true
     nativeCandidateProbeFailuresClosed = $true
     nativeCandidateHandlesNormalized = $true
+    clientSideProvidersRegistered = $true
+    filenameEditorSelectorExact = $true
+    filenameEditorReadbackReacquired = $true
     orderedActivationPhases = $true
     fixedPreclickCategories = $true
     hostileStderrRedacted = $true

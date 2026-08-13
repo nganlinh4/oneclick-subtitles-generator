@@ -46,7 +46,7 @@ const INSTALLED_NATIVE_TOOLS_INSPECTOR_SHA256 =
 const INSTALLED_LOCAL_MEDIA_INSPECTOR_SHA256 =
   'e53207922c58e449705282a11da2975bdeaf2754d1f204a504fcca424d16df61';
 const INSTALLED_WINDOWS_SMOKE_SHA256 =
-  '7e610e4782dfd2ab0846e0263b55f2047a71c7cc764c3c2a1503cb40cbd719bd';
+  '271f25c131910eac2d5c067b045291ebcb2e88d974fedc252920dcd7f3d7c284';
 const DISTRIBUTABLE_FONT_EXTENSION = /\.(?:eot|otf|ttf|woff2?)$/i;
 
 const ACTION_PINS = Object.freeze({
@@ -1283,6 +1283,12 @@ function assertNativePickerEvidenceScripts(evidenceScript, regressionScript) {
       && regressionScript.includes('nativeCandidateDiagnosticsDecoupled = $true')
       && regressionScript.includes('nativeCandidateProbeFailuresClosed = $true')
       && regressionScript.includes('nativeCandidateHandlesNormalized = $true')
+      && regressionScript.includes('clientSideProvidersRegistered = $true')
+      && regressionScript.includes('filenameEditorSelectorExact = $true')
+      && regressionScript.includes('filenameEditorReadbackReacquired = $true')
+      && regressionScript.includes('did not selectively register exact client-side providers after the UI Automation bootstrap')
+      && regressionScript.includes('selected an ambiguous, disabled, offscreen, patternless, or read-only filename editor')
+      && regressionScript.includes('lost its exact unique writable filename Edit boundary')
       && regressionScript.includes('exceeded its per-poll count cap')
       && regressionScript.includes('merged independent process, identity, owner, or visibility buckets')
       && regressionScript.includes('lost bounded maximum aggregation')
@@ -1656,6 +1662,8 @@ function assertInstalledSmokeScript(script) {
     'function Add-NativePickerRawCensusMetrics',
     'function Test-NativePickerCandidate',
     'function Test-NativePickerElementCandidate',
+    'function Test-NativePickerWritableEditorSelection',
+    'function Get-NativePickerWritableEditor',
     'function Get-NativePickerCandidateSnapshot',
     ". (Join-Path $PSScriptRoot 'native-picker-evidence.ps1')",
     '-EvidencePath $nativePickerEvidencePath',
@@ -1719,6 +1727,8 @@ function assertInstalledSmokeScript(script) {
     '[System.Windows.Automation.ValuePattern]::Pattern',
     '[StringComparison]::Ordinal',
     '$invokePattern.Invoke()',
+    'Add-Type -AssemblyName UIAutomationClientSideProviders -ErrorAction Stop',
+    '[System.Windows.Automation.ClientSettings]::RegisterClientSideProviders(',
     '$snapshot.NativeExactMatchCount -eq 0 -and $remainingCandidates.Count -eq 0',
     "'dialog-automation-timeout'",
     "-Stage 'dialog-dismissed'",
@@ -1963,13 +1973,18 @@ function assertInstalledSmokeScript(script) {
   const dismissPicker = dismissPickerStart >= 0 && dismissPickerEnd > dismissPickerStart
     ? script.slice(dismissPickerStart, dismissPickerEnd)
     : '';
+  const writableEditorStart = script.indexOf('function Get-NativePickerWritableEditor {');
+  const writableEditorEnd = script.indexOf('\nfunction ', writableEditorStart + 1);
+  const writableEditor = writableEditorStart >= 0 && writableEditorEnd > writableEditorStart
+    ? script.slice(writableEditorStart, writableEditorEnd)
+    : '';
   invariant(
     (pickerFunction.match(/\.AddSeconds\(30\)/g) || []).length >= 4
-      && pickerFunction.includes('$fileNameControls = @($dialog.FindAll(')
+      && (pickerFunction.match(/Get-NativePickerWritableEditor -Dialog \$dialog/g) || []).length === 2
       && pickerFunction.includes('$openButtons = @($dialog.FindAll(')
-      && pickerFunction.includes('$fileNameControls.Count -eq 1')
       && pickerFunction.includes('$openButtons.Count -eq 1')
-      && pickerFunction.includes('$valuePattern.SetValue($MediaPath)')
+      && pickerFunction.includes('$mutationEditor.ValuePattern.SetValue($MediaPath)')
+      && pickerFunction.includes('$readbackEditor.ValuePattern.Current.Value')
       && pickerFunction.includes('[StringComparison]::Ordinal')
       && pickerFunction.includes('$invokePattern.Invoke()')
       && pickerFunction.includes('$snapshot.NativeExactMatchCount -eq 0 -and $remainingCandidates.Count -eq 0')
@@ -1983,7 +1998,25 @@ function assertInstalledSmokeScript(script) {
     'Installed native-picker automation must retry settled unique controls, invoke without focus, prove dismissal, and preserve its primary exception',
   );
   invariant(
-    pickerInterop.includes('private const int MaximumEnumeratedWindows = 512')
+    pickerInterop.indexOf('Add-Type -AssemblyName UIAutomationClient -ErrorAction Stop') >= 0
+      && pickerInterop.indexOf('Add-Type -AssemblyName UIAutomationTypes -ErrorAction Stop')
+        > pickerInterop.indexOf('Add-Type -AssemblyName UIAutomationClient -ErrorAction Stop')
+      && pickerInterop.indexOf('[void][System.Windows.Automation.AutomationElement]::RootElement')
+        > pickerInterop.indexOf('Add-Type -AssemblyName UIAutomationTypes -ErrorAction Stop')
+      && pickerInterop.indexOf('Add-Type -AssemblyName UIAutomationClientSideProviders -ErrorAction Stop')
+        > pickerInterop.indexOf('[void][System.Windows.Automation.AutomationElement]::RootElement')
+      && pickerInterop.indexOf('[System.Windows.Automation.ClientSettings]::RegisterClientSideProviders(')
+        > pickerInterop.indexOf('Add-Type -AssemblyName UIAutomationClientSideProviders -ErrorAction Stop')
+      && pickerInterop.includes("foreach ($providerClassName in @('button', 'combobox', 'edit'))")
+      && pickerInterop.includes('$_.ClassName -ceq $providerClassName')
+      && /\$providerEntries\.Count -ne 1\s*`?\s*-or \$null -eq \$providerEntries\[0\]\.ClientSideProviderFactoryCallback/.test(pickerInterop)
+      && !/RegisterClientSideProviders\(\s*\$providerTable/.test(pickerInterop)
+      && !/AutomationElement\]::RootElement\.Current/.test(pickerInterop)
+      && !/AutomationElement\]::RootElement[\s\S]*?FindAll/.test(pickerInterop.slice(
+        0,
+        pickerInterop.indexOf('Add-Type -AssemblyName UIAutomationClientSideProviders -ErrorAction Stop'),
+      ))
+      && pickerInterop.includes('private const int MaximumEnumeratedWindows = 512')
       && pickerInterop.includes('private const int MaximumRetainedCandidates = 2')
       && pickerInterop.includes('private static extern bool EnumWindows(')
       && pickerInterop.includes('private static extern uint GetWindowThreadProcessId(')
@@ -2002,6 +2035,19 @@ function assertInstalledSmokeScript(script) {
       && /\n    if \(classMatches && nameMatches\) \{[\s\S]*?\n    if \(ownerMatches\) \{/.test(pickerInterop)
       && !/public\s+(?:string|IntPtr|u?int|long)\s+(?:.*(?:Hwnd|Handle|Pid|ProcessId|Title|Path))/i.test(pickerInterop),
     'Installed native-picker raw census must enumerate bounded aggregate-only independent categories',
+  );
+  invariant(
+    /AndCondition\]::new\([\s\S]*?AutomationIdProperty[\s\S]*?'1148'[\s\S]*?ControlTypeProperty[\s\S]*?ControlType\]::Edit/.test(writableEditor)
+      && writableEditor.includes('$controls.Count -eq 1')
+      && writableEditor.includes('Test-NativePickerWritableEditorSelection')
+      && writableEditor.includes('-MatchCount $controls.Count')
+      && writableEditor.includes('-IsEnabled $isEnabled')
+      && writableEditor.includes('-IsOffscreen $isOffscreen')
+      && writableEditor.includes('-HasValuePattern $hasValuePattern')
+      && writableEditor.includes('-IsReadOnly $isReadOnly')
+      && !writableEditor.includes('FindFirst(')
+      && !writableEditor.includes('[0].FindAll('),
+    'Installed native-picker editor selection must require one exact enabled on-screen writable filename Edit',
   );
   invariant(
     pickerInterop.includes('public sealed class NativeCandidateScan')
@@ -2101,7 +2147,8 @@ function assertInstalledSmokeScript(script) {
       && pickerFunction.includes('$dialogHandle = $candidateHandle')
       && pickerFunction.includes("'dialog-automation-timeout'")
       && pickerFunction.includes("if ($failureCode -ceq 'dialog-timeout')")
-      && /Get-NativePickerPinnedCandidateState[\s\S]*?\$valuePattern\.SetValue\(\$MediaPath\)/.test(pickerFunction)
+      && /\$mutationEditor = Get-NativePickerWritableEditor[\s\S]*?\$mutationCandidate = Get-NativePickerPinnedCandidateState[\s\S]*?if \(\$mutationCandidate\.ExactMatchCount -gt 1\)[\s\S]*?elseif \(\$mutationCandidate\.EnumerationIncomplete[\s\S]*?elseif \(-not \$mutationCandidate\.Valid\)[\s\S]*?else \{\s*\$editorMutationCompleteScanObserved = \$true\s*\$mutationEditor\.ValuePattern\.SetValue\(\$MediaPath\)/.test(pickerFunction)
+      && /\.ValuePattern\.SetValue\(\$MediaPath\)[\s\S]*?\$mutationEditor = \$null[\s\S]*?\$readbackCandidate = Get-NativePickerPinnedCandidateState[\s\S]*?\$readbackEditor = Get-NativePickerWritableEditor[\s\S]*?\.ValuePattern\.Current\.Value/.test(pickerFunction)
       && /Get-NativePickerPinnedCandidateState[\s\S]*?\$invokePattern\.Invoke\(\)/.test(pickerFunction)
       && pickerFunction.includes('-ExpectedCandidateHandle $dialogHandle')
       && dismissPicker.includes('$pinnedCandidateHandle = $ExpectedCandidateHandle')
@@ -2109,7 +2156,8 @@ function assertInstalledSmokeScript(script) {
       && /Get-NativePickerPinnedCandidateState[\s\S]*?PostCloseMessage\(/.test(dismissPicker)
       && pickerFunction.includes('$editorCandidateCompleteScanObserved')
       && pickerFunction.includes('$editorMutationCompleteScanObserved')
-      && pickerFunction.includes('$editorWritable -and -not $editorMutationCompleteScanObserved')
+      && pickerFunction.includes('$editorReadbackCompleteScanObserved')
+      && /\$editorWritable\s*`?\s*-and \(-not \$editorMutationCompleteScanObserved\s*`?\s*-or -not \$editorReadbackCompleteScanObserved\)/.test(pickerFunction)
       && pickerFunction.includes('$buttonCandidateCompleteScanObserved')
       && pickerFunction.includes('$dismissalCandidateCompleteScanObserved')
       && /IsNormalizedWindow\(\$dialogHandle\)[\s\S]*?'dismissal-changed'/.test(pickerFunction)
