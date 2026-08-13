@@ -35,6 +35,17 @@ try {
     -EvidencePath $evidencePath `
     -AllowedRoot $testRoot
   Initialize-NativePickerEvidence
+  foreach ($inspectorPhase in @(
+      'tab-activated',
+      'control-ready',
+      'prior-state-validated',
+      'click-issued'
+    )) {
+    Set-NativePickerEvidence `
+      -Stage 'waiting-dialog' `
+      -Outcome 'running' `
+      -Metrics @{ inspectorPhase = $inspectorPhase }
+  }
   Set-NativePickerEvidence `
     -Stage 'waiting-dialog' `
     -Outcome 'running' `
@@ -63,6 +74,13 @@ try {
       editorMatches = 1
       editorWritable = $true
       valueRetained = $true
+    }
+  Set-NativePickerEvidence `
+    -Stage 'dialog-dismissed' `
+    -Outcome 'running' `
+    -Metrics @{
+      dismissAttempts = 1
+      dialogDismissed = $true
     }
   Set-NativePickerEvidence `
     -Stage 'dialog-dismissed' `
@@ -170,9 +188,15 @@ try {
   if ($installedErrors.Count -ne 0) {
     throw 'Native picker diagnostic regression could not parse the installed smoke'
   }
+  $installedFunctionSources = @{}
   foreach ($functionName in @(
       'Get-DiagnosticBaselineSnapshot',
-      'Get-NativePickerDiagnosticOutcome'
+      'Get-NativePickerDiagnosticOutcome',
+      'Get-NativePickerInspectorPhase',
+      'Get-NativePickerPreclickFailureCode',
+      'Get-InstalledLocalMediaInspectorStderrState',
+      'Wait-NativePickerClickIssued',
+      'Inspect-InstalledLocalMediaFlow'
     )) {
     $definitions = @($installedAst.FindAll({
           param($node)
@@ -182,7 +206,257 @@ try {
     if ($definitions.Count -ne 1) {
       throw 'Native picker diagnostic regression found an invalid function boundary'
     }
+    $installedFunctionSources[$functionName] = $definitions[0].Extent.Text
     Invoke-Expression $definitions[0].Extent.Text
+  }
+  $phaseRoot = Join-Path $testRoot 'ordered-phases'
+  [void][IO.Directory]::CreateDirectory($phaseRoot)
+  $orderedPhases = @(
+    'starting',
+    'connected',
+    'tab-activated',
+    'control-ready',
+    'prior-state-validated',
+    'click-issued'
+  )
+  foreach ($phaseName in $orderedPhases) {
+    $phasePath = Join-Path $phaseRoot "osg-installed-native-picker-$phaseName.json"
+    [IO.File]::WriteAllText(
+      $phasePath,
+      (@{ schemaVersion = 1; stage = $phaseName } | ConvertTo-Json -Compress),
+      [Text.UTF8Encoding]::new($false)
+    )
+    if ((Get-NativePickerInspectorPhase -Root $phaseRoot) -cne $phaseName) {
+      throw 'Native picker phase regression did not preserve the ordered activation boundary'
+    }
+  }
+  $expectedFailureCodes = [ordered]@{
+    'not-started' = 'inspector-startup-exited'
+    'starting' = 'inspector-startup-exited'
+    'connected' = 'inspector-tab-activation-exited'
+    'tab-activated' = 'inspector-control-readiness-exited'
+    'control-ready' = 'inspector-prior-state-exited'
+    'prior-state-validated' = 'inspector-picker-click-exited'
+  }
+  foreach ($failureBoundary in $expectedFailureCodes.GetEnumerator()) {
+    if ((Get-NativePickerPreclickFailureCode -Phase $failureBoundary.Key) `
+        -cne $failureBoundary.Value) {
+      throw 'Native picker phase regression lost a fixed pre-click failure category'
+    }
+  }
+
+  $nonPrefixRoot = Join-Path $testRoot 'non-prefix-phases'
+  [void][IO.Directory]::CreateDirectory($nonPrefixRoot)
+  [IO.File]::WriteAllText(
+    (Join-Path $nonPrefixRoot 'osg-installed-native-picker-connected.json'),
+    '{"schemaVersion":1,"stage":"connected"}',
+    [Text.UTF8Encoding]::new($false)
+  )
+  $nonPrefixRejected = $false
+  try {
+    [void](Get-NativePickerInspectorPhase -Root $nonPrefixRoot)
+  } catch {
+    $nonPrefixRejected = $true
+  }
+  if (-not $nonPrefixRejected) {
+    throw 'Native picker phase regression accepted a non-prefix activation boundary'
+  }
+
+  $hostilePhaseRoot = Join-Path $testRoot 'hostile-phase'
+  [void][IO.Directory]::CreateDirectory($hostilePhaseRoot)
+  [IO.File]::WriteAllText(
+    (Join-Path $hostilePhaseRoot 'osg-installed-native-picker-starting.json'),
+    ('x' * 129),
+    [Text.UTF8Encoding]::new($false)
+  )
+  $oversizedPhaseRejected = $false
+  try {
+    [void](Get-NativePickerInspectorPhase -Root $hostilePhaseRoot)
+  } catch {
+    $oversizedPhaseRejected = $true
+  }
+  if (-not $oversizedPhaseRejected) {
+    throw 'Native picker phase regression accepted oversized phase evidence'
+  }
+
+  $stderrPath = Join-Path $testRoot 'inspector.stderr'
+  [IO.File]::WriteAllText(
+    $stderrPath,
+    "failure`nC:\Users\runner\secret.mp4`nhttps://localhost/file?token=secret",
+    [Text.UTF8Encoding]::new($false)
+  )
+  $hostileStderrState = Get-InstalledLocalMediaInspectorStderrState -Path $stderrPath
+  $fixedFailureCode = Get-NativePickerPreclickFailureCode -Phase 'connected'
+  if ($hostileStderrState -cne 'nonempty' `
+      -or $fixedFailureCode -cne 'inspector-tab-activation-exited' `
+      -or $fixedFailureCode -match '(?i)(?:https?://|file://|localhost|127\.0\.0\.1|token|[A-Za-z]:[\\/])') {
+    throw 'Native picker stderr regression surfaced hostile multiline path, URL, or token content'
+  }
+  [IO.File]::WriteAllText(
+    $stderrPath,
+    ('x' * 16385),
+    [Text.UTF8Encoding]::new($false)
+  )
+  if ((Get-InstalledLocalMediaInspectorStderrState -Path $stderrPath) -cne 'invalid') {
+    throw 'Native picker stderr regression accepted oversized inspector output'
+  }
+  [IO.File]::WriteAllText(
+    $stderrPath,
+    "failure`nC:\Users\runner\secret.mp4`nhttps://localhost/file?token=secret",
+    [Text.UTF8Encoding]::new($false)
+  )
+
+  $primaryPhaseRoot = Join-Path $testRoot 'primary-precedence-phases'
+  [void][IO.Directory]::CreateDirectory($primaryPhaseRoot)
+  foreach ($phaseName in @('starting', 'connected')) {
+    [IO.File]::WriteAllText(
+      (Join-Path $primaryPhaseRoot "osg-installed-native-picker-$phaseName.json"),
+      (@{ schemaVersion = 1; stage = $phaseName } | ConvertTo-Json -Compress),
+      [Text.UTF8Encoding]::new($false)
+    )
+  }
+  $primaryFailure = & {
+    param($Sources, $Root, $ErrorPath, $ApplicationProcessId)
+
+    Invoke-Expression $Sources['Get-NativePickerInspectorPhase']
+    Invoke-Expression $Sources['Get-NativePickerPreclickFailureCode']
+    Invoke-Expression $Sources['Get-InstalledLocalMediaInspectorStderrState']
+    Invoke-Expression $Sources['Wait-NativePickerClickIssued']
+    function Set-NativePickerEvidence {
+      param($Stage, $Outcome, $FailureCode, $Metrics)
+      if ($Outcome -ceq 'failed') {
+        throw 'secondary evidence write failure'
+      }
+    }
+    $inspector = [pscustomobject]@{ HasExited = $true; ExitCode = 1 }
+    $inspector | Add-Member -MemberType ScriptMethod -Name Refresh -Value {}
+    $inspector | Add-Member -MemberType ScriptMethod -Name WaitForExit -Value { param($milliseconds) $true }
+    try {
+      Wait-NativePickerClickIssued `
+        -Inspector $inspector `
+        -ApplicationProcessId $ApplicationProcessId `
+        -PhaseRoot $Root `
+        -StderrPath $ErrorPath
+    } catch {
+      $_.Exception.Message
+    }
+  } $installedFunctionSources $primaryPhaseRoot $stderrPath $PID
+  if ($primaryFailure -cne 'Installed local-media inspector exited at a bounded pre-click phase (inspector-tab-activation-exited)') {
+    throw 'Native picker stderr regression replaced the primary fixed pre-click failure'
+  }
+
+  $localMediaFunction = $installedFunctionSources['Inspect-InstalledLocalMediaFlow']
+  if ($localMediaFunction -match 'Get-Content\s+-LiteralPath\s+\$stderr' `
+      -or $localMediaFunction -match '\$errors\s+-join' `
+      -or $localMediaFunction -notmatch 'Get-InstalledLocalMediaInspectorStderrState' `
+      -or $localMediaFunction -notmatch 'Installed local-media inspection failed after the native picker click') {
+    throw 'Native picker stderr regression reintroduced arbitrary inspector output disclosure'
+  }
+
+  $postDialogRoot = Join-Path $testRoot 'post-dialog-primary-precedence'
+  [void][IO.Directory]::CreateDirectory($postDialogRoot)
+  $postDialogMediaPath = Join-Path $postDialogRoot 'fixture.mp4'
+  [IO.File]::WriteAllBytes($postDialogMediaPath, [byte[]]@(0))
+  $priorRunnerTemp = $env:RUNNER_TEMP
+  $script:postDialogRegressionState = [ordered]@{
+    failedAttempts = 0
+    succeededAttempts = 0
+    runningDialogDismissed = $false
+  }
+  try {
+    $env:RUNNER_TEMP = $postDialogRoot
+    $postDialogFailure = & {
+      param($InspectSource, $MediaPath)
+
+      Invoke-Expression $InspectSource
+      function Get-Process {
+        param($Id, $ErrorAction)
+        $application = [pscustomobject]@{
+          MainWindowHandle = [IntPtr]::new(1)
+          Responding = $true
+        }
+        $application | Add-Member -MemberType ScriptMethod -Name Refresh -Value {}
+        $application
+      }
+      function Get-DiagnosticBaselineSnapshot {
+        param($LogPath)
+        [pscustomobject]@{ Sha256 = ('a' * 64); Length = 1 }
+      }
+      function Start-Process {
+        param(
+          $FilePath,
+          $ArgumentList,
+          $RedirectStandardOutput,
+          $RedirectStandardError,
+          [switch]$PassThru
+        )
+        [IO.File]::WriteAllText($RedirectStandardOutput, '', [Text.UTF8Encoding]::new($false))
+        [IO.File]::WriteAllText($RedirectStandardError, 'fixed node failure', [Text.UTF8Encoding]::new($false))
+        $inspector = [pscustomobject]@{ HasExited = $true; ExitCode = 1 }
+        $inspector | Add-Member -MemberType ScriptMethod -Name Refresh -Value {}
+        $inspector | Add-Member `
+          -MemberType ScriptMethod `
+          -Name WaitForExit `
+          -Value {
+            param($milliseconds)
+            if ($null -ne $milliseconds) { $true }
+          }
+        $inspector
+      }
+      function Initialize-NativePickerEvidence {}
+      function Wait-NativePickerClickIssued {
+        param($Inspector, $ApplicationProcessId, $PhaseRoot, $StderrPath)
+      }
+      function Complete-NativeMediaPicker {
+        param(
+          $ProcessId,
+          $OwnerHandle,
+          $MediaPath,
+          $LogPath,
+          $DiagnosticBaselineSha256,
+          $DiagnosticBaselineLength,
+          $AppInstanceId
+        )
+        $script:postDialogRegressionState.runningDialogDismissed = $true
+        [pscustomobject]@{ DismissAttempts = 2; DialogDismissed = $true }
+      }
+      function Get-InstalledLocalMediaInspectorStderrState {
+        param($Path)
+        'nonempty'
+      }
+      function Set-NativePickerEvidence {
+        param($Stage, $Outcome, $FailureCode, $Metrics)
+        if ($Outcome -ceq 'failed') {
+          $script:postDialogRegressionState.failedAttempts += 1
+          throw 'secondary corrective evidence failure'
+        }
+        if ($Outcome -ceq 'succeeded') {
+          $script:postDialogRegressionState.succeededAttempts += 1
+        }
+      }
+      try {
+        Inspect-InstalledLocalMediaFlow `
+          -Port 43123 `
+          -ProcessId $PID `
+          -MediaPath $MediaPath `
+          -LogPath (Join-Path $env:RUNNER_TEMP 'osg.log') `
+          -AppInstanceId '019ff572-2132-7ba1-9e9c-5a29894963bf' `
+          -PriorAssetId '019ff572-2132-7ba1-9e9c-5a29894963be'
+      } catch {
+        $_
+      }
+    } $installedFunctionSources['Inspect-InstalledLocalMediaFlow'] $postDialogMediaPath
+  } finally {
+    $env:RUNNER_TEMP = $priorRunnerTemp
+  }
+  if ($postDialogFailure -isnot [System.Management.Automation.ErrorRecord] `
+      -or $postDialogFailure.Exception.Message `
+        -cne 'Installed local-media inspection failed after the native picker click' `
+      -or $postDialogFailure.Exception.Message -ceq 'secondary corrective evidence failure' `
+      -or -not $script:postDialogRegressionState.runningDialogDismissed `
+      -or $script:postDialogRegressionState.failedAttempts -ne 1 `
+      -or $script:postDialogRegressionState.succeededAttempts -ne 0) {
+    throw 'Native picker post-dialog regression replaced the primary ErrorRecord or retained succeeded evidence'
   }
   $diagnosticLogLimitBytes = 4 * 1024 * 1024
   $diagnosticEntrySlackBytes = 64 * 1024
@@ -265,6 +539,12 @@ try {
     missingDestinationRestored = $recoveryResults['restore-missing-destination']
     ancestorReparseRejected = $ancestorReparseRejected
     diagnosticSnapshotIsolated = $true
+    orderedActivationPhases = $true
+    fixedPreclickCategories = $true
+    hostileStderrRedacted = $true
+    primaryFailurePreserved = $true
+    postDialogFailurePreserved = $true
+    failedRunNeverSucceeded = $true
     outsidePathRejected = $outsideRejected
     scratchClean = $true
   } | ConvertTo-Json -Compress

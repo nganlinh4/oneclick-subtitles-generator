@@ -43,8 +43,10 @@ const TAURI_NSIS_BOOTSTRAP_SHA256 =
   '930bef57b7bccd22ba36ce8a045eabdcb92b74eaeeaa0273cbb45e2a7471d41b';
 const INSTALLED_NATIVE_TOOLS_INSPECTOR_SHA256 =
   '3167ddbddd723a1b6bf0200d0f7061f2c545c067de971c77d5c5cef58b22965b';
+const INSTALLED_LOCAL_MEDIA_INSPECTOR_SHA256 =
+  '982ba56278e51a590f8cbb7c26f59ccc1046eb16a71c8cd12fefe66f27fc6ad9';
 const INSTALLED_WINDOWS_SMOKE_SHA256 =
-  'a2f748a338d28e9106089f492bc2e7d935d829ef7adac71efb6cd24a45bebae2';
+  'db1fa4723532e316db89ee50a689f7cad2e45504aec5516b0ebfa4815150964c';
 const DISTRIBUTABLE_FONT_EXTENSION = /\.(?:eot|otf|ttf|woff2?)$/i;
 
 const ACTION_PINS = Object.freeze({
@@ -1184,6 +1186,8 @@ function assertNativePickerEvidenceScripts(evidenceScript, regressionScript) {
       && evidenceWriter.includes("'processDialogMatches'")
       && evidenceWriter.includes("'processNamedMatches'")
       && evidenceWriter.includes("'ownedDialogMatches'")
+      && evidenceWriter.includes("'tab-activated'")
+      && evidenceWriter.includes("'prior-state-validated'")
       && evidenceWriter.includes("'click-issued'")
       && !/(?:\$MediaPath|\$ProcessId|\$OwnerHandle|\.Exception)/.test(evidenceWriter)
       && /schemaVersion\s*=\s*1/.test(evidenceInitializer)
@@ -1208,6 +1212,15 @@ function assertNativePickerEvidenceScripts(evidenceScript, regressionScript) {
       && regressionScript.includes('accepted a reparse ancestor')
       && regressionScript.includes('accepted a non-child destination')
       && regressionScript.includes('accepted a swapped post-verification path')
+      && regressionScript.includes('did not preserve the ordered activation boundary')
+      && regressionScript.includes('lost a fixed pre-click failure category')
+      && regressionScript.includes('accepted a non-prefix activation boundary')
+      && regressionScript.includes('accepted oversized phase evidence')
+      && regressionScript.includes('surfaced hostile multiline path, URL, or token content')
+      && regressionScript.includes('accepted oversized inspector output')
+      && regressionScript.includes('replaced the primary fixed pre-click failure')
+      && regressionScript.includes('reintroduced arbitrary inspector output disclosure')
+      && regressionScript.includes('replaced the primary ErrorRecord or retained succeeded evidence')
       && regressionScript.includes('$script:diagnosticRereadAttempts -ne 0')
       && regressionScript.includes('diagnosticSnapshotIsolated = $true')
       && regressionScript.includes('[IO.FileAttributes]::ReparsePoint')
@@ -1239,7 +1252,8 @@ function assertInstalledLocalMediaInspector(script, inputMethodsSource) {
     'fs.unlinkSync(temporaryPath)',
   ].map((fragment) => writer.indexOf(fragment));
   invariant(
-    writer.includes("['starting', 'connected', 'control-ready', 'click-issued']")
+    writer.includes("'tab-activated'")
+      && writer.includes("'prior-state-validated'")
       && writer.includes('fs.openSync(temporaryPath, \'wx\')')
       && writer.includes('fs.fsyncSync(descriptor)')
       && writer.includes('fs.linkSync(temporaryPath, phasePath)')
@@ -1261,17 +1275,25 @@ function assertInstalledLocalMediaInspector(script, inputMethodsSource) {
   const discoveryIndex = run.indexOf('discoverTarget(options.port)');
   const connectedIndex = run.indexOf("writePickerPhase(options.phaseDirectory, 'connected')");
   const tabActivationIndex = run.indexOf(
-    'const tabActivation = await evaluate(client, OPEN_PICKER_EXPRESSION)',
+    'const tabActivation = await waitForPickerTabActivation(',
+  );
+  const tabActivatedIndex = run.indexOf(
+    "writePickerPhase(options.phaseDirectory, 'tab-activated')",
   );
   const controlReadyIndex = run.indexOf('evaluate(client, PICKER_CONTROL_READY_EXPRESSION)');
   const controlIndex = run.indexOf("writePickerPhase(options.phaseDirectory, 'control-ready')");
   const priorStateIndex = run.indexOf('assertPriorMediaState(');
+  const priorValidatedIndex = run.indexOf(
+    "writePickerPhase(options.phaseDirectory, 'prior-state-validated')",
+  );
   const clickIndex = run.indexOf('evaluate(client, CLICK_PICKER_EXPRESSION)');
   const issuedIndex = run.indexOf("writePickerPhase(options.phaseDirectory, 'click-issued')");
   const phaseCalls = [
     "writePickerPhase(options.phaseDirectory, 'starting')",
     "writePickerPhase(options.phaseDirectory, 'connected')",
+    "writePickerPhase(options.phaseDirectory, 'tab-activated')",
     "writePickerPhase(options.phaseDirectory, 'control-ready')",
+    "writePickerPhase(options.phaseDirectory, 'prior-state-validated')",
     "writePickerPhase(options.phaseDirectory, 'click-issued')",
   ];
   invariant(
@@ -1284,17 +1306,19 @@ function assertInstalledLocalMediaInspector(script, inputMethodsSource) {
       && startingIndex < discoveryIndex
       && discoveryIndex < connectedIndex
       && connectedIndex < tabActivationIndex
-      && tabActivationIndex < controlReadyIndex
+      && tabActivationIndex < tabActivatedIndex
+      && tabActivatedIndex < controlReadyIndex
       && controlReadyIndex < controlIndex
       && controlIndex < priorStateIndex
-      && priorStateIndex < clickIndex
+      && priorStateIndex < priorValidatedIndex
+      && priorValidatedIndex < clickIndex
       && clickIndex < issuedIndex
       && run.includes('await evaluate(client, PRIOR_MEDIA_STATE_EXPRESSION)')
       && /assertPriorMediaState\([\s\S]*?options\.priorAssetId,\s*tabActivation,\s*\)/.test(run)
       && run.includes('assertLocalMediaState(value, options.expectedFileName, options.priorAssetId)')
       && run.includes('assertLocalMediaResult(result, options.expectedFileName, options.priorAssetId)')
       && phaseCalls.every((fragment) => run.split(fragment).length === 2)
-      && (run.match(/writePickerPhase\(options\.phaseDirectory,/g) || []).length === 4,
+      && (run.match(/writePickerPhase\(options\.phaseDirectory,/g) || []).length === 6,
     'Installed local-media inspector must bind the prior native asset and handshake exact bounded phases around the successful picker click',
   );
   const openPickerStart = script.indexOf('export const OPEN_PICKER_EXPRESSION = `');
@@ -1382,6 +1406,24 @@ function assertInstalledLocalMediaInspector(script, inputMethodsSource) {
       && resultGuard.includes('value.assetId !== priorAssetId')
       && resultGuard.includes('value.session.media.id !== priorAssetId'),
     'Installed local-media inspector must reject the stale prior URL asset before accepting native selection',
+  );
+  const activationWaitStart = script.indexOf('export async function waitForPickerTabActivation(');
+  const activationWaitEnd = script.indexOf('\n}', activationWaitStart) + 2;
+  const activationWait = activationWaitStart >= 0 && activationWaitEnd > activationWaitStart
+    ? script.slice(activationWaitStart, activationWaitEnd)
+    : '';
+  invariant(
+    activationWait.includes('return waitForValue(')
+      && activationWait.includes("value === 'already-active' || value === 'activated'")
+      && activationWait.includes('timeoutMs: PICKER_TAB_ACTIVATION_TIMEOUT_MS')
+      && run.includes('() => evaluate(client, OPEN_PICKER_EXPRESSION)')
+      && run.indexOf('() => evaluate(client, OPEN_PICKER_EXPRESSION)') < tabActivatedIndex,
+    'Installed local-media inspector must boundedly retry only invalid pre-activation observations',
+  );
+  invariant(
+    crypto.createHash('sha256').update(script.replace(/\r\n/g, '\n'), 'utf8').digest('hex')
+      === INSTALLED_LOCAL_MEDIA_INSPECTOR_SHA256,
+    'Installed local-media inspector must equal the reviewed executable source',
   );
 }
 
@@ -1546,7 +1588,14 @@ function assertInstalledSmokeScript(script) {
     "$nativePickerEvidencePath = Join-Path $runnerTempRoot 'osg-installed-native-picker-evidence.json'",
     '$nativePickerEvidenceBackupPath = "$nativePickerEvidencePath.bak"',
     "'--phase-directory', $env:RUNNER_TEMP",
-    "-FailureCode 'inspector-preclick-exited'",
+    'function Get-NativePickerPreclickFailureCode',
+    'function Get-InstalledLocalMediaInspectorStderrState',
+    "'inspector-tab-activation-exited'",
+    "'inspector-control-readiness-exited'",
+    "'inspector-prior-state-exited'",
+    "'inspector-picker-click-exited'",
+    "'inspector-stderr-invalid'",
+    "'postclick-validation-failed'",
     "-FailureCode 'inspector-preclick-timeout'",
     "-FailureCode 'inspector-phase-invalid'",
     "'media-picker.requested'",
@@ -1807,7 +1856,10 @@ function assertInstalledSmokeScript(script) {
       && pickerFunction.includes('$invokePattern.Invoke()')
       && pickerFunction.includes('$remainingDialogs.Count -eq 0')
       && pickerFunction.includes("-Stage 'dialog-dismissed'")
-      && pickerFunction.includes("-Outcome 'succeeded'")
+      && pickerFunction.includes("-Outcome 'running'")
+      && !pickerFunction.includes("-Outcome 'succeeded'")
+      && pickerFunction.includes('DismissAttempts = [Math]::Min($dismissAttempts, 1000)')
+      && pickerFunction.includes('DialogDismissed = $dialogDismissed')
       && pickerFunction.includes("-Stage 'failed'")
       && /catch\s*\{[\s\S]*?Set-NativePickerEvidence[\s\S]*?\bthrow\s*\r?\n\s*\}/.test(pickerFunction),
     'Installed native-picker automation must retry settled unique controls, invoke without focus, prove dismissal, and preserve its primary exception',
@@ -1837,6 +1889,8 @@ function assertInstalledSmokeScript(script) {
   invariant(
     /^\s{8}\$nonPrefix = \$true\s*$/m.test(pickerPhaseFunction)
       && /^\s{6}throw 'Installed local-media picker phases were not contiguous'\s*$/m.test(pickerPhaseFunction)
+      && pickerPhaseFunction.includes("'tab-activated'")
+      && pickerPhaseFunction.includes("'prior-state-validated'")
       && pickerPhaseFunction.includes('$phase.schemaVersion -isnot [int]')
       && pickerPhaseFunction.includes('$phase.schemaVersion -isnot [long]')
       && pickerPhaseFunction.includes('$phase.stage -isnot [string]')
@@ -1870,11 +1924,57 @@ function assertInstalledSmokeScript(script) {
         < localMediaFunction.indexOf('$inspection = Start-Process')
       && localMediaFunction.indexOf('Wait-NativePickerClickIssued')
         < localMediaFunction.indexOf('Complete-NativeMediaPicker')
+      && localMediaFunction.includes('$pickerCompletion = Complete-NativeMediaPicker')
+      && localMediaFunction.includes('-StderrPath $stderr')
+      && localMediaFunction.includes('Get-InstalledLocalMediaInspectorStderrState -Path $stderr')
+      && localMediaFunction.includes('Installed local-media inspection failed after the native picker click')
+      && !/Get-Content\s+-LiteralPath\s+\$stderr/.test(localMediaFunction)
+      && !/\$errors\s+-join/.test(localMediaFunction)
       && localMediaFunction.includes("$pickerDiagnosticOutcome -cne 'selected'")
       && localMediaFunction.includes('$phaseScratchPaths')
       && localMediaFunction.includes('$inspectionSucceeded -and $phaseCleanupFailed')
+      && localMediaFunction.includes('$dialogCompleted = $false')
+      && localMediaFunction.includes('$dialogCompleted = $true')
+      && localMediaFunction.includes("-FailureCode 'postclick-validation-failed'")
+      && (localMediaFunction.match(/-FailureCode 'postclick-validation-failed'/g) || []).length === 2
+      && localMediaFunction.includes('Corrective evidence failure must never replace the original post-click ErrorRecord.')
+      && localMediaFunction.includes('Corrective evidence failure must never replace the phase-cleanup ErrorRecord.')
+      && localMediaFunction.indexOf("-Outcome 'succeeded'")
+        > localMediaFunction.lastIndexOf('} finally {')
+      && localMediaFunction.indexOf("-Outcome 'succeeded'")
+        < localMediaFunction.lastIndexOf('$result')
+      && localMediaFunction.includes('dismissAttempts = $pickerCompletion.DismissAttempts')
+      && localMediaFunction.includes('dialogDismissed = $pickerCompletion.DialogDismissed')
       && /finally\s*\{\s*try\s*\{[\s\S]*?Stop-Process[\s\S]*?\}\s*catch\s*\{/.test(localMediaFunction),
-    'Installed local-media inspector must bind the prior asset, handshake before UIA, bind exact diagnostics and ownership, and preserve primary failures',
+    'Installed local-media inspector must bind the prior asset, delay success through cleanup, bind exact diagnostics and ownership, and preserve primary failures',
+  );
+  const pickerWaitStart = script.indexOf('function Wait-NativePickerClickIssued {');
+  const pickerWaitEnd = script.indexOf('\nfunction ', pickerWaitStart + 1);
+  const pickerWait = pickerWaitStart >= 0 && pickerWaitEnd > pickerWaitStart
+    ? script.slice(pickerWaitStart, pickerWaitEnd)
+    : '';
+  const stderrStateStart = script.indexOf('function Get-InstalledLocalMediaInspectorStderrState {');
+  const stderrStateEnd = script.indexOf('\nfunction ', stderrStateStart + 1);
+  const stderrState = stderrStateStart >= 0 && stderrStateEnd > stderrStateStart
+    ? script.slice(stderrStateStart, stderrStateEnd)
+    : '';
+  invariant(
+    pickerWait.includes("if ($phase -ceq 'click-issued')")
+      && pickerWait.indexOf("if ($phase -ceq 'click-issued')")
+        < pickerWait.indexOf('      return')
+      && !pickerWait.includes('.AddSeconds(30)')
+      && pickerWait.includes('Get-NativePickerPreclickFailureCode -Phase $phase')
+      && pickerWait.includes("'inspector-stderr-invalid'")
+      && pickerWait.includes('-FailureCode $failureCode')
+      && pickerWait.includes('[void]$Inspector.WaitForExit(5000)')
+      && !pickerWait.includes('Get-Content')
+      && !pickerWait.includes('$_.Exception')
+      && stderrState.includes('$item.Length -gt 16384')
+      && stderrState.includes('[IO.FileAttributes]::ReparsePoint')
+      && stderrState.includes("return 'invalid'")
+      && stderrState.includes("return 'empty'")
+      && stderrState.includes("'nonempty'"),
+    'Installed local-media pre-click failures must retain only fixed phase categories and reject hostile stderr state',
   );
   const diagnosticSnapshotStart = script.indexOf('function Get-DiagnosticBaselineSnapshot {');
   const diagnosticSnapshotEnd = script.indexOf('\nfunction ', diagnosticSnapshotStart + 1);

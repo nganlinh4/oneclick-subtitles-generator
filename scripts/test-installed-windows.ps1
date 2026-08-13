@@ -582,7 +582,14 @@ function Get-NativeMediaPickerDialogs {
 function Get-NativePickerInspectorPhase {
   param([Parameter(Mandatory = $true)][string]$Root)
 
-  $stages = @('starting', 'connected', 'control-ready', 'click-issued')
+  $stages = @(
+    'starting',
+    'connected',
+    'tab-activated',
+    'control-ready',
+    'prior-state-validated',
+    'click-issued'
+  )
   $present = $null
   for ($snapshotAttempt = 0; $snapshotAttempt -lt 5; $snapshotAttempt += 1) {
     $present = @(
@@ -636,6 +643,51 @@ function Get-NativePickerInspectorPhase {
     $highest = $stage
   }
   $highest
+}
+
+function Get-NativePickerPreclickFailureCode {
+  param(
+    [Parameter(Mandatory = $true)]
+    [ValidateSet(
+      'not-started',
+      'starting',
+      'connected',
+      'tab-activated',
+      'control-ready',
+      'prior-state-validated'
+    )]
+    [string]$Phase
+  )
+
+  switch -CaseSensitive ($Phase) {
+    'not-started' { 'inspector-startup-exited' }
+    'starting' { 'inspector-startup-exited' }
+    'connected' { 'inspector-tab-activation-exited' }
+    'tab-activated' { 'inspector-control-readiness-exited' }
+    'control-ready' { 'inspector-prior-state-exited' }
+    'prior-state-validated' { 'inspector-picker-click-exited' }
+  }
+}
+
+function Get-InstalledLocalMediaInspectorStderrState {
+  param(
+    [Parameter(Mandatory = $true)][string]$Path
+  )
+
+  try {
+    $item = Get-Item -LiteralPath $Path -Force -ErrorAction Stop
+    if ($item.PSIsContainer `
+        -or ($item.Attributes -band [IO.FileAttributes]::ReparsePoint) `
+        -or $item.Length -gt 16384) {
+      return 'invalid'
+    }
+    if ($item.Length -eq 0) {
+      return 'empty'
+    }
+    'nonempty'
+  } catch {
+    'invalid'
+  }
 }
 
 function Get-DiagnosticBaselineSnapshot {
@@ -1069,7 +1121,8 @@ function Wait-NativePickerClickIssued {
   param(
     [Parameter(Mandatory = $true)]$Inspector,
     [Parameter(Mandatory = $true)][int]$ApplicationProcessId,
-    [Parameter(Mandatory = $true)][string]$PhaseRoot
+    [Parameter(Mandatory = $true)][string]$PhaseRoot,
+    [Parameter(Mandatory = $true)][string]$StderrPath
   )
 
   $deadline = (Get-Date).AddMinutes(2)
@@ -1104,13 +1157,20 @@ function Wait-NativePickerClickIssued {
     }
     $Inspector.Refresh()
     if ($Inspector.HasExited) {
+      [void]$Inspector.WaitForExit(5000)
+      $stderrState = Get-InstalledLocalMediaInspectorStderrState -Path $StderrPath
+      $failureCode = if ($stderrState -ceq 'invalid') {
+        'inspector-stderr-invalid'
+      } else {
+        Get-NativePickerPreclickFailureCode -Phase $phase
+      }
       try {
         Set-NativePickerEvidence `
           -Stage 'failed' `
           -Outcome 'failed' `
-          -FailureCode 'inspector-preclick-exited'
+          -FailureCode $failureCode
       } catch {}
-      throw 'Installed local-media inspector exited before issuing the native picker click'
+      throw "Installed local-media inspector exited at a bounded pre-click phase ($failureCode)"
     }
     Start-Sleep -Milliseconds 100
   } while ((Get-Date) -lt $deadline)
@@ -1436,11 +1496,15 @@ function Complete-NativeMediaPicker {
     }
     Set-NativePickerEvidence `
       -Stage 'dialog-dismissed' `
-      -Outcome 'succeeded' `
+      -Outcome 'running' `
       -Metrics @{
         dismissAttempts = [Math]::Min($dismissAttempts, 1000)
         dialogDismissed = $dialogDismissed
       }
+    [pscustomobject]@{
+      DismissAttempts = [Math]::Min($dismissAttempts, 1000)
+      DialogDismissed = $dialogDismissed
+    }
   } catch {
     if ($failureCode -in @('dialog-timeout', 'owner-mismatch')) {
       $diagnosticFailure = Get-NativePickerDiagnosticOutcomeSafely `
@@ -1516,7 +1580,14 @@ function Inspect-InstalledLocalMediaFlow {
   $stdout = Join-Path $env:RUNNER_TEMP 'osg-installed-local-media-flow.stdout'
   $stderr = Join-Path $env:RUNNER_TEMP 'osg-installed-local-media-flow.stderr'
   $phasePaths = @(
-    @('starting', 'connected', 'control-ready', 'click-issued') |
+    @(
+      'starting',
+      'connected',
+      'tab-activated',
+      'control-ready',
+      'prior-state-validated',
+      'click-issued'
+    ) |
       ForEach-Object { Join-Path $env:RUNNER_TEMP "osg-installed-native-picker-$_.json" }
   )
   $phaseScratchPaths = @($phasePaths | ForEach-Object { "$_.tmp" })
@@ -1551,12 +1622,16 @@ function Inspect-InstalledLocalMediaFlow {
     -RedirectStandardError $stderr `
     -PassThru
   $inspectionSucceeded = $false
+  $dialogCompleted = $false
+  $pickerCompletion = $null
+  $result = $null
   try {
     Wait-NativePickerClickIssued `
       -Inspector $inspection `
       -ApplicationProcessId $ProcessId `
-      -PhaseRoot $env:RUNNER_TEMP
-    Complete-NativeMediaPicker `
+      -PhaseRoot $env:RUNNER_TEMP `
+      -StderrPath $stderr
+    $pickerCompletion = Complete-NativeMediaPicker `
       -ProcessId $ProcessId `
       -OwnerHandle $ownerHandle `
       -MediaPath $MediaPath `
@@ -1564,6 +1639,16 @@ function Inspect-InstalledLocalMediaFlow {
       -DiagnosticBaselineSha256 $diagnosticBaseline.Sha256 `
       -DiagnosticBaselineLength $diagnosticBaseline.Length `
       -AppInstanceId $AppInstanceId
+    $dialogCompleted = $true
+    if ((@($pickerCompletion.PSObject.Properties.Name | Sort-Object) -join ',') `
+        -cne 'DialogDismissed,DismissAttempts' `
+        -or $pickerCompletion.DismissAttempts -isnot [int] `
+        -or $pickerCompletion.DismissAttempts -lt 1 `
+        -or $pickerCompletion.DismissAttempts -gt 1000 `
+        -or $pickerCompletion.DialogDismissed -isnot [bool] `
+        -or -not $pickerCompletion.DialogDismissed) {
+      throw 'Installed native picker completion returned invalid bounded evidence'
+    }
     if (-not $inspection.WaitForExit(120000)) {
       Stop-Process -Id $inspection.Id -ErrorAction SilentlyContinue
       throw 'Installed local-media flow did not finish within two minutes'
@@ -1571,11 +1656,14 @@ function Inspect-InstalledLocalMediaFlow {
     # Flush redirected stdout/stderr after the bounded wait observes process termination.
     $inspection.WaitForExit()
     $output = @(Get-Content -LiteralPath $stdout)
-    $errors = @(Get-Content -LiteralPath $stderr)
-    if ($inspection.ExitCode -ne 0) {
-      throw "Installed local-media inspection failed: $($errors -join ' ')"
+    $stderrState = Get-InstalledLocalMediaInspectorStderrState -Path $stderr
+    if ($stderrState -ceq 'invalid') {
+      throw 'Installed local-media inspector stderr was not regular and bounded'
     }
-    if ($output.Count -ne 1 -or $errors.Count -ne 0) {
+    if ($inspection.ExitCode -ne 0) {
+      throw 'Installed local-media inspection failed after the native picker click'
+    }
+    if ($output.Count -ne 1 -or $stderrState -cne 'empty') {
       throw 'Installed local-media inspection returned an unexpected output shape'
     }
     if (-not (Test-Path -LiteralPath $screenshot -PathType Leaf)) {
@@ -1594,7 +1682,18 @@ function Inspect-InstalledLocalMediaFlow {
       throw 'Installed local-media inspection returned the wrong fixture digest'
     }
     $inspectionSucceeded = $true
-    $result
+  } catch {
+    if ($dialogCompleted) {
+      try {
+        Set-NativePickerEvidence `
+          -Stage 'failed' `
+          -Outcome 'failed' `
+          -FailureCode 'postclick-validation-failed'
+      } catch {
+        # Corrective evidence failure must never replace the original post-click ErrorRecord.
+      }
+    }
+    throw
   } finally {
     try {
       $inspection.Refresh()
@@ -1622,9 +1721,25 @@ function Inspect-InstalledLocalMediaFlow {
       $phaseCleanupFailed = $true
     }
     if ($inspectionSucceeded -and $phaseCleanupFailed) {
+      try {
+        Set-NativePickerEvidence `
+          -Stage 'failed' `
+          -Outcome 'failed' `
+          -FailureCode 'postclick-validation-failed'
+      } catch {
+        # Corrective evidence failure must never replace the phase-cleanup ErrorRecord.
+      }
       throw 'Installed local-media picker phase cleanup failed'
     }
   }
+  Set-NativePickerEvidence `
+    -Stage 'dialog-dismissed' `
+    -Outcome 'succeeded' `
+    -Metrics @{
+      dismissAttempts = $pickerCompletion.DismissAttempts
+      dialogDismissed = $pickerCompletion.DialogDismissed
+    }
+  $result
 }
 
 function Inspect-InstalledMediaPipeline {

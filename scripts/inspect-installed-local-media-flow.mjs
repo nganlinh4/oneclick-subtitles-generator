@@ -13,6 +13,7 @@ import {
 } from './inspect-installed-media-flow.mjs';
 
 const DEFAULT_TIMEOUT_MS = 2 * 60 * 1_000;
+const PICKER_TAB_ACTIVATION_TIMEOUT_MS = 30_000;
 const EXPECTED_FIXTURE_BYTES = 366_888;
 const UUID_V7 = /^[0-9a-f]{8}-[0-9a-f]{4}-7[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 const CANONICAL_UUID_V7 = /^[0-9a-f]{8}-[0-9a-f]{4}-7[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/;
@@ -70,7 +71,14 @@ export function parseArguments(argv, environment = process.env) {
 }
 
 export function writePickerPhase(phaseDirectory, stage) {
-  invariant(['starting', 'connected', 'control-ready', 'click-issued'].includes(stage),
+  invariant([
+    'starting',
+    'connected',
+    'tab-activated',
+    'control-ready',
+    'prior-state-validated',
+    'click-issued',
+  ].includes(stage),
     'Installed local-media picker phase is invalid');
   const phasePath = path.join(phaseDirectory, `osg-installed-native-picker-${stage}.json`);
   const temporaryPath = `${phasePath}.tmp`;
@@ -218,6 +226,14 @@ export async function waitForValue(read, accept, {
     await delay();
   } while (now() < deadline);
   throw new Error('Installed local-media flow timed out before reaching the reviewed state');
+}
+
+export async function waitForPickerTabActivation(read, options = {}) {
+  return waitForValue(
+    read,
+    (value) => value === 'already-active' || value === 'activated',
+    { timeoutMs: PICKER_TAB_ACTIVATION_TIMEOUT_MS, ...options },
+  );
 }
 
 const evaluate = async (client, expression) => {
@@ -372,9 +388,13 @@ async function runInstalledLocalMediaFlow(options) {
     await client.send('Runtime.enable');
     await client.send('Page.enable');
     writePickerPhase(options.phaseDirectory, 'connected');
-    const tabActivation = await evaluate(client, OPEN_PICKER_EXPRESSION);
-    invariant(tabActivation === 'already-active' || tabActivation === 'activated',
-      'Installed local-media flow could not activate the Upload File tab');
+    // Closing Settings can briefly leave the reviewed input subtree absent. Retry only that
+    // null/invalid observation; OPEN_PICKER_EXPRESSION returns success in the same evaluation
+    // that clicks an inactive tab, so a successful activation is never clicked a second time.
+    const tabActivation = await waitForPickerTabActivation(
+      () => evaluate(client, OPEN_PICKER_EXPRESSION),
+    );
+    writePickerPhase(options.phaseDirectory, 'tab-activated');
     await waitForValue(
       () => evaluate(client, PICKER_CONTROL_READY_EXPRESSION),
       (value) => value === true,
@@ -386,6 +406,7 @@ async function runInstalledLocalMediaFlow(options) {
       options.priorAssetId,
       tabActivation,
     );
+    writePickerPhase(options.phaseDirectory, 'prior-state-validated');
     invariant(await evaluate(client, CLICK_PICKER_EXPRESSION) === true,
       'Installed local-media flow could not open the native picker');
     writePickerPhase(options.phaseDirectory, 'click-issued');

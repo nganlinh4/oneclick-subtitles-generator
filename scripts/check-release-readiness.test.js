@@ -207,12 +207,17 @@ test('installed Windows smoke proves persistence, media, tools, logs, relaunch, 
       '    $postHotToolBaseline = Get-DiagnosticBaselineSnapshot -LogPath $logPath',
       '    }\n    $postHotToolBaseline = Get-DiagnosticBaselineSnapshot -LogPath $logPath',
     );
+  const commentedPreclickCategory = INSTALLED_SMOKE_SCRIPT.replace(
+    '        Get-NativePickerPreclickFailureCode -Phase $phase',
+    '        # Get-NativePickerPreclickFailureCode -Phase $phase',
+  );
   for (const unreviewedExecutableSource of [
     INSTALLED_SMOKE_SCRIPT.slice(0, lifecycleFunctionStart)
       + lineCommentedLifecycle
       + INSTALLED_SMOKE_SCRIPT.slice(lifecycleFunctionEnd),
     shadowedLifecycle,
     deadHotLifecycle,
+    commentedPreclickCategory,
   ]) {
     assert.notEqual(unreviewedExecutableSource, INSTALLED_SMOKE_SCRIPT);
     assert.throws(
@@ -527,6 +532,20 @@ test('installed Windows smoke proves persistence, media, tools, logs, relaunch, 
     INSTALLED_SMOKE_SCRIPT.replace('$phase.stage -isnot [string]', '$false'),
     INSTALLED_SMOKE_SCRIPT.replace('$phase.schemaVersion -ne 1', '$false'),
     INSTALLED_SMOKE_SCRIPT.replace('$phase.stage -cne $stage', '$false'),
+    INSTALLED_SMOKE_SCRIPT.replace("'tab-activated',", ''),
+    INSTALLED_SMOKE_SCRIPT.replace('$item.Length -gt 16384', '$false'),
+    INSTALLED_SMOKE_SCRIPT.replace(
+      'Get-InstalledLocalMediaInspectorStderrState -Path $StderrPath',
+      'Get-Content -LiteralPath $StderrPath',
+    ),
+    INSTALLED_SMOKE_SCRIPT.replace(
+      "'connected' { 'inspector-tab-activation-exited' }",
+      "'connected' { 'inspector-startup-exited' }",
+    ),
+    INSTALLED_SMOKE_SCRIPT.replace(
+      "if ($phase -ceq 'click-issued')",
+      "if ($phase -ceq 'prior-state-validated')",
+    ),
     INSTALLED_SMOKE_SCRIPT.replace(
       '$_.appInstanceId -ceq $AppInstanceId',
       '$true',
@@ -550,7 +569,31 @@ test('installed Windows smoke proves persistence, media, tools, logs, relaunch, 
   ]) {
     assert.throws(
       () => assertInstalledSmokeScript(weakenedPickerProof),
-      /(?:native-picker automation|native-picker evidence|native-picker diagnostics|native-tool events|missing lifecycle proof)/,
+      /(?:native-picker automation|native-picker evidence|native-picker diagnostics|native-tool events|local-media pre-click failures|reviewed executable source|missing lifecycle proof)/,
+    );
+  }
+  for (const prematureOrUncorrectedSuccess of [
+    INSTALLED_SMOKE_SCRIPT.replace(
+      "    Set-NativePickerEvidence `\n      -Stage 'dialog-dismissed' `\n      -Outcome 'running' `",
+      "    Set-NativePickerEvidence `\n      -Stage 'dialog-dismissed' `\n      -Outcome 'succeeded' `",
+    ),
+    INSTALLED_SMOKE_SCRIPT.replace(
+      "      dismissAttempts = $pickerCompletion.DismissAttempts",
+      '      dismissAttempts = 0',
+    ),
+    INSTALLED_SMOKE_SCRIPT.replace(
+      '        # Corrective evidence failure must never replace the original post-click ErrorRecord.',
+      '        throw',
+    ),
+    INSTALLED_SMOKE_SCRIPT.replace(
+      "          -FailureCode 'postclick-validation-failed'",
+      "          -FailureCode 'unexpected'",
+    ),
+  ]) {
+    assert.notEqual(prematureOrUncorrectedSuccess, INSTALLED_SMOKE_SCRIPT);
+    assert.throws(
+      () => assertInstalledSmokeScript(prematureOrUncorrectedSuccess),
+      /(?:delay success through cleanup|native-picker automation|missing lifecycle proof|reviewed executable source)/,
     );
   }
   assert.throws(
@@ -720,6 +763,19 @@ test('installed local-media picker handshake publishes atomic create-once ordere
     "    writePickerPhase(options.phaseDirectory, 'control-ready');\n"
       + "    writePickerPhase(options.phaseDirectory, 'starting');",
   );
+  const commentedActivationWait = INSTALLED_LOCAL_MEDIA_INSPECTOR.replace(
+    '      () => evaluate(client, OPEN_PICKER_EXPRESSION),',
+    '      // () => evaluate(client, OPEN_PICKER_EXPRESSION),',
+  );
+  const deadActivationWait = INSTALLED_LOCAL_MEDIA_INSPECTOR
+    .replace(
+      'export async function waitForPickerTabActivation(read, options = {}) {',
+      'if (false) {\nexport async function waitForPickerTabActivation(read, options = {}) {',
+    )
+    .replace(
+      '\n\nconst evaluate = async (client, expression) => {',
+      '\n}\n\nconst evaluate = async (client, expression) => {',
+    );
   for (const weakened of [
     INSTALLED_LOCAL_MEDIA_INSPECTOR.replace('fs.linkSync(temporaryPath, phasePath)', 'fs.renameSync(temporaryPath, phasePath)'),
     INSTALLED_LOCAL_MEDIA_INSPECTOR.replace('fs.fsyncSync(descriptor)', '// omitted durable flush'),
@@ -795,6 +851,17 @@ test('installed local-media picker handshake publishes atomic create-once ordere
     assert.throws(
       () => assertInstalledLocalMediaInspector(weakened, INPUT_METHODS_SOURCE),
       /Installed local-media picker phases|Installed local-media inspector must (?:bind|reject|preserve)/,
+    );
+  }
+  for (const unreviewedExecutableSource of [
+    `${INSTALLED_LOCAL_MEDIA_INSPECTOR}\n// unreviewed executable-source drift\n`,
+    commentedActivationWait,
+    deadActivationWait,
+  ]) {
+    assert.notEqual(unreviewedExecutableSource, INSTALLED_LOCAL_MEDIA_INSPECTOR);
+    assert.throws(
+      () => assertInstalledLocalMediaInspector(unreviewedExecutableSource, INPUT_METHODS_SOURCE),
+      /reviewed executable source/,
     );
   }
   const misplacedSemanticSelector = INPUT_METHODS_SOURCE

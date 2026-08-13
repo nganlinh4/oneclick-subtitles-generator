@@ -13,6 +13,7 @@ import {
   assertLocalMediaResult,
   assertPriorMediaState,
   parseArguments,
+  waitForPickerTabActivation,
   waitForValue,
   writePickerPhase,
 } from './inspect-installed-local-media-flow.mjs';
@@ -186,7 +187,14 @@ test('parses only a bounded name and CI-owned screenshot path', () => {
 test('writes each bounded picker handshake phase exactly once inside RUNNER_TEMP', () => {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), 'osg-local-media-phases-'));
   try {
-    for (const stage of ['starting', 'connected', 'control-ready', 'click-issued']) {
+    for (const stage of [
+      'starting',
+      'connected',
+      'tab-activated',
+      'control-ready',
+      'prior-state-validated',
+      'click-issued',
+    ]) {
       writePickerPhase(root, stage);
       assert.deepEqual(
         JSON.parse(fs.readFileSync(path.join(
@@ -281,6 +289,52 @@ test('does not re-click an active Upload File tab and activates it only when nec
   assert.equal(inactive.click(), true);
   assert.equal(inactive.buttons[1].clicks, 1);
   assert.equal(inactive.picker.clicks, 1);
+});
+
+test('boundedly retries only transient invalid tab activation without a repeated click', async () => {
+  const inactive = pickerExpressionHarness({ activeIndices: [0] });
+  let reads = 0;
+  const activation = await waitForPickerTabActivation(
+    async () => {
+      reads += 1;
+      return reads < 3 ? null : inactive.open();
+    },
+    { now: () => reads * 10, timeoutMs: 100, delay: async () => {} },
+  );
+  assert.equal(activation, 'activated');
+  assert.equal(reads, 3);
+  assert.equal(inactive.buttons[1].clicks, 1);
+
+  const alreadyActive = pickerExpressionHarness();
+  assert.equal(await waitForPickerTabActivation(
+    async () => alreadyActive.open(),
+    { now: () => 0, timeoutMs: 100, delay: async () => {} },
+  ), 'already-active');
+  assert.equal(alreadyActive.buttons[1].clicks, 0);
+
+  const absent = pickerExpressionHarness({ duplicateContainer: true });
+  let ticks = 0;
+  await assert.rejects(() => waitForPickerTabActivation(
+    async () => absent.open(),
+    { now: () => ++ticks * 10, timeoutMs: 15, delay: async () => {} },
+  ), /timed out/);
+  assert.equal(absent.buttons[1].clicks, 0);
+});
+
+test('tab activation evaluation exceptions remain fail-fast and redacted', async () => {
+  const hostile = `evaluation failed C:\\Users\\runner\\secret.mp4 ${playbackUrl}`;
+  let reads = 0;
+  const failure = await waitForPickerTabActivation(async () => {
+    reads += 1;
+    throw new Error(hostile);
+  }, { now: () => 0, timeoutMs: 100, delay: async () => {} }).catch((error) => error);
+  assert.equal(reads, 1);
+  assert.match(failure.message, /Installed local-media probe failed|evaluation failed/);
+  for (const forbidden of [
+    'C:\\Users', 'a'.repeat(64), 'localhost', '127.0.0.1', 'token', playbackUrl,
+  ]) {
+    assert.equal(failure.message.toLowerCase().includes(forbidden.toLowerCase()), false, forbidden);
+  }
 });
 
 test('fails closed on ambiguous tab state, incomplete controls, and prior-asset drift', () => {

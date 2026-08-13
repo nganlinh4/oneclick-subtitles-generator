@@ -282,7 +282,15 @@ function Set-NativePickerEvidence {
   foreach ($metric in $Metrics.GetEnumerator()) {
     $validInspectorPhase = $metric.Key -ceq 'inspectorPhase' `
       -and $metric.Value -is [string] `
-      -and $metric.Value -in @('not-started', 'starting', 'connected', 'control-ready', 'click-issued')
+      -and $metric.Value -in @(
+        'not-started',
+        'starting',
+        'connected',
+        'tab-activated',
+        'control-ready',
+        'prior-state-validated',
+        'click-issued'
+      )
     if ($metric.Key -notin $allowedMetrics `
         -or ($metric.Key -ceq 'inspectorPhase' -and -not $validInspectorPhase) `
         -or ($metric.Key -cne 'inspectorPhase' `
