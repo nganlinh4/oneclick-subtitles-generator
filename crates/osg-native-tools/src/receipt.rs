@@ -164,6 +164,7 @@ fn capture_identity(root: &Path, delivery: &ToolDelivery) -> Result<InstallIdent
     })
 }
 
+#[cfg_attr(not(windows), allow(clippy::unnecessary_wraps))]
 fn file_identity(path: &Path, metadata: &fs::Metadata) -> Result<FileIdentity> {
     #[cfg(unix)]
     {
