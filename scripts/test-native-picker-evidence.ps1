@@ -56,6 +56,17 @@ try {
       processDialogMatches = 2
       processNamedMatches = 1
       ownedDialogMatches = 1
+      rawProcessWindowMatches = 4
+      rawProcessVisibleMatches = 3
+      rawProcessClassMatches = 2
+      rawProcessNameMatches = 1
+      rawProcessExactMatches = 1
+      rawProcessOwnerMatches = 1
+      rawProcessOwnedVisibleMatches = 1
+      rawDesktopExactMatches = 2
+      rawDesktopOwnerMatches = 1
+      rawDesktopOwnedVisibleMatches = 1
+      rawCensusIncomplete = $true
     }
   $invalidInspectorPhaseRejected = $false
   try {
@@ -65,6 +76,33 @@ try {
       -Metrics @{ inspectorPhase = $true }
   } catch {
     $invalidInspectorPhaseRejected = $true
+  }
+  $invalidRawCountRejected = $false
+  try {
+    Set-NativePickerEvidence `
+      -Stage 'waiting-dialog' `
+      -Outcome 'running' `
+      -Metrics @{ rawProcessWindowMatches = 1001 }
+  } catch {
+    $invalidRawCountRejected = $true
+  }
+  $invalidRawIncompleteRejected = $false
+  try {
+    Set-NativePickerEvidence `
+      -Stage 'waiting-dialog' `
+      -Outcome 'running' `
+      -Metrics @{ rawCensusIncomplete = 1 }
+  } catch {
+    $invalidRawIncompleteRejected = $true
+  }
+  $forbiddenRawMetricRejected = $false
+  try {
+    Set-NativePickerEvidence `
+      -Stage 'waiting-dialog' `
+      -Outcome 'running' `
+      -Metrics @{ rawWindowTitle = 1 }
+  } catch {
+    $forbiddenRawMetricRejected = $true
   }
   Set-NativePickerEvidence `
     -Stage 'value-confirmed' `
@@ -105,6 +143,20 @@ try {
       -or $payload.processNamedMatches -ne 1 `
       -or $payload.ownedDialogMatches -ne 1 `
       -or -not $invalidInspectorPhaseRejected `
+      -or $payload.rawProcessWindowMatches -ne 4 `
+      -or $payload.rawProcessVisibleMatches -ne 3 `
+      -or $payload.rawProcessClassMatches -ne 2 `
+      -or $payload.rawProcessNameMatches -ne 1 `
+      -or $payload.rawProcessExactMatches -ne 1 `
+      -or $payload.rawProcessOwnerMatches -ne 1 `
+      -or $payload.rawProcessOwnedVisibleMatches -ne 1 `
+      -or $payload.rawDesktopExactMatches -ne 2 `
+      -or $payload.rawDesktopOwnerMatches -ne 1 `
+      -or $payload.rawDesktopOwnedVisibleMatches -ne 1 `
+      -or -not $payload.rawCensusIncomplete `
+      -or -not $invalidRawCountRejected `
+      -or -not $invalidRawIncompleteRejected `
+      -or -not $forbiddenRawMetricRejected `
       -or $payload.editorAttempts -ne 3 `
       -or $payload.dismissAttempts -ne 1 `
       -or -not $payload.dialogDismissed) {
@@ -190,12 +242,19 @@ try {
   }
   $installedFunctionSources = @{}
   foreach ($functionName in @(
+      'Initialize-NativePickerInterop',
+      'New-NativePickerRawCensusMaxima',
+      'Update-NativePickerRawCensusMaxima',
+      'Add-NativePickerRawCensusMetrics',
+      'Get-NativeMediaPickerDialogs',
       'Get-DiagnosticBaselineSnapshot',
       'Get-NativePickerDiagnosticOutcome',
       'Get-NativePickerInspectorPhase',
       'Get-NativePickerPreclickFailureCode',
       'Get-InstalledLocalMediaInspectorStderrState',
       'Wait-NativePickerClickIssued',
+      'Dismiss-NativeMediaPicker',
+      'Complete-NativeMediaPicker',
       'Inspect-InstalledLocalMediaFlow'
     )) {
     $definitions = @($installedAst.FindAll({
@@ -208,6 +267,110 @@ try {
     }
     $installedFunctionSources[$functionName] = $definitions[0].Extent.Text
     Invoke-Expression $definitions[0].Extent.Text
+  }
+  Initialize-NativePickerInterop
+  $rawCensusType = [OsgNativePickerWindow+RawCensus]
+  $rawCensusPropertyNames = @(
+    'RawCensusIncomplete',
+    'RawDesktopExactMatches',
+    'RawDesktopOwnedVisibleMatches',
+    'RawDesktopOwnerMatches',
+    'RawProcessClassMatches',
+    'RawProcessExactMatches',
+    'RawProcessNameMatches',
+    'RawProcessOwnedVisibleMatches',
+    'RawProcessOwnerMatches',
+    'RawProcessVisibleMatches',
+    'RawProcessWindowMatches'
+  )
+  $liveRawCensus = [OsgNativePickerWindow]::GetRawCensus($PID, [IntPtr]::new(1))
+  if ((@($liveRawCensus.PSObject.Properties.Name | Sort-Object) -join ',') `
+      -cne (($rawCensusPropertyNames | Sort-Object) -join ',') `
+      -or $liveRawCensus.RawCensusIncomplete -isnot [bool]) {
+    throw 'Native picker raw census regression exposed an invalid aggregate-only schema'
+  }
+  foreach ($name in @($rawCensusPropertyNames | Where-Object { $_ -cne 'RawCensusIncomplete' })) {
+    if ($liveRawCensus.$name -isnot [int] `
+        -or $liveRawCensus.$name -lt 0 `
+        -or $liveRawCensus.$name -gt 512) {
+      throw 'Native picker raw census regression exceeded its per-poll count cap'
+    }
+  }
+
+  $accumulatorFlags = [Reflection.BindingFlags]::NonPublic `
+    -bor [Reflection.BindingFlags]::Static
+  $accumulateRawCensus = [OsgNativePickerWindow].GetMethod(
+    'AccumulateRawCensusWindow',
+    $accumulatorFlags
+  )
+  if ($null -eq $accumulateRawCensus) {
+    throw 'Native picker raw census regression could not exercise its production accumulator'
+  }
+  $tupleCensus = [Activator]::CreateInstance($rawCensusType)
+  foreach ($tuple in @(
+      @($true, $true, $false, $false, $true),
+      @($true, $false, $false, $true, $false),
+      @($false, $false, $true, $true, $false),
+      @($false, $true, $false, $false, $true),
+      @($true, $true, $true, $true, $true)
+    )) {
+    [void]$accumulateRawCensus.Invoke(
+      $null,
+      @($tupleCensus) + @($tuple | ForEach-Object { [bool]$_ })
+    )
+  }
+  if ($tupleCensus.RawProcessWindowMatches -ne 3 `
+      -or $tupleCensus.RawProcessVisibleMatches -ne 2 `
+      -or $tupleCensus.RawProcessClassMatches -ne 1 `
+      -or $tupleCensus.RawProcessNameMatches -ne 2 `
+      -or $tupleCensus.RawProcessExactMatches -ne 1 `
+      -or $tupleCensus.RawProcessOwnerMatches -ne 2 `
+      -or $tupleCensus.RawProcessOwnedVisibleMatches -ne 2 `
+      -or $tupleCensus.RawDesktopExactMatches -ne 2 `
+      -or $tupleCensus.RawDesktopOwnerMatches -ne 3 `
+      -or $tupleCensus.RawDesktopOwnedVisibleMatches -ne 3) {
+    throw 'Native picker raw census regression merged independent process, identity, owner, or visibility buckets'
+  }
+
+  $rawCensusMaxima = New-NativePickerRawCensusMaxima
+  $firstRawSnapshot = [pscustomobject](New-NativePickerRawCensusMaxima)
+  $firstRawSnapshot.rawProcessWindowMatches = 7
+  $firstRawSnapshot.rawProcessNameMatches = 4
+  $firstRawSnapshot.rawDesktopExactMatches = 3
+  Update-NativePickerRawCensusMaxima -Maxima $rawCensusMaxima -Snapshot $firstRawSnapshot
+  $lowerRawSnapshot = [pscustomobject](New-NativePickerRawCensusMaxima)
+  $lowerRawSnapshot.rawProcessWindowMatches = 2
+  $lowerRawSnapshot.rawProcessNameMatches = 1
+  $lowerRawSnapshot.rawDesktopExactMatches = 1
+  Update-NativePickerRawCensusMaxima -Maxima $rawCensusMaxima -Snapshot $lowerRawSnapshot
+  $oversizedRawSnapshot = [pscustomobject](New-NativePickerRawCensusMaxima)
+  $oversizedRawSnapshot.rawProcessOwnerMatches = 1001
+  Update-NativePickerRawCensusMaxima -Maxima $rawCensusMaxima -Snapshot $oversizedRawSnapshot
+  $rawMetrics = @{}
+  Add-NativePickerRawCensusMetrics -Metrics $rawMetrics -Maxima $rawCensusMaxima
+  if ($rawMetrics.rawProcessWindowMatches -ne 7 `
+      -or $rawMetrics.rawProcessNameMatches -ne 4 `
+      -or $rawMetrics.rawDesktopExactMatches -ne 3 `
+      -or $rawMetrics.rawProcessOwnerMatches -ne 1000 `
+      -or -not $rawMetrics.rawCensusIncomplete `
+      -or $rawMetrics.Count -ne 11) {
+    throw 'Native picker raw census regression lost bounded maximum aggregation'
+  }
+
+  $completePickerSource = $installedFunctionSources['Complete-NativeMediaPicker']
+  $dismissPickerSource = $installedFunctionSources['Dismiss-NativeMediaPicker']
+  if ($completePickerSource -match '(?i)(?:if|elseif|until|while)\s*\([^\r\n]*(?:rawCensus|rawProcess|rawDesktop)' `
+      -or $dismissPickerSource -match '(?i)(?:if|elseif|until|while)\s*\([^\r\n]*(?:rawCensus|rawProcess|rawDesktop)' `
+      -or $completePickerSource -notmatch '\$dialogs\.Count -eq 1 -and \$ownedDialogs\.Count -eq 1' `
+      -or $dismissPickerSource -notmatch '\$exact\.Count -ne 1 -or \$owned\.Count -ne 1') {
+    throw 'Native picker raw census regression allowed diagnostics to control UIA authority'
+  }
+  if (([regex]::Matches(
+        $completePickerSource,
+        'catch\s*\{\s*\$rawCensusMaxima\.rawCensusIncomplete = \$true\s*throw\s*\}'
+      )).Count -ne 2 `
+      -or $completePickerSource -notmatch '\}\s*else\s*\{\s*\$rawCensusMaxima\.rawCensusIncomplete = \$true\s*\}\s*Add-NativePickerRawCensusMetrics -Metrics \$failureMetrics') {
+    throw 'Native picker raw census regression misreported a dropped or missing snapshot as complete'
   }
   $phaseRoot = Join-Path $testRoot 'ordered-phases'
   [void][IO.Directory]::CreateDirectory($phaseRoot)
@@ -477,7 +640,8 @@ try {
     $swapped = @(
       '{"appInstanceId":"019ff572-2132-7ba1-9e9c-5a29894963be","event":"swapped","timestampMs":"2"}',
       '{"appInstanceId":"019ff572-2132-7ba1-9e9c-5a29894963bf","event":"media-picker.requested","timestampMs":"3"}',
-      '{"appInstanceId":"019ff572-2132-7ba1-9e9c-5a29894963bf","event":"media-picker.returned","outcome":"selected","timestampMs":"4"}'
+      '{"appInstanceId":"019ff572-2132-7ba1-9e9c-5a29894963bf","event":"media-picker.worker-started","timestampMs":"4"}',
+      '{"appInstanceId":"019ff572-2132-7ba1-9e9c-5a29894963bf","event":"media-picker.returned","outcome":"selected","timestampMs":"5"}'
     ) -join "`n"
     [IO.File]::WriteAllText($LogPath, $swapped + "`n", [Text.UTF8Encoding]::new($false))
     @(Get-Content -LiteralPath $LogPath | ForEach-Object { $_ | ConvertFrom-Json })
@@ -495,7 +659,8 @@ try {
   [IO.File]::AppendAllText(
     $diagnosticPath,
     '{"appInstanceId":"019ff572-2132-7ba1-9e9c-5a29894963bf","event":"media-picker.requested","timestampMs":"3"}' + "`n" `
-      + '{"appInstanceId":"019ff572-2132-7ba1-9e9c-5a29894963bf","event":"media-picker.returned","outcome":"selected","timestampMs":"4"}' + "`n",
+      + '{"appInstanceId":"019ff572-2132-7ba1-9e9c-5a29894963bf","event":"media-picker.worker-started","timestampMs":"4"}' + "`n" `
+      + '{"appInstanceId":"019ff572-2132-7ba1-9e9c-5a29894963bf","event":"media-picker.returned","outcome":"selected","timestampMs":"5"}' + "`n",
     [Text.UTF8Encoding]::new($false)
   )
   $selectedOutcome = Get-NativePickerDiagnosticOutcome `
@@ -505,6 +670,77 @@ try {
     -AppInstanceId $diagnosticAppInstanceId
   if ($selectedOutcome -cne 'selected' -or $script:diagnosticRereadAttempts -ne 0) {
     throw 'Native picker diagnostic regression rejected one immutable selected snapshot'
+  }
+  [IO.File]::WriteAllText(
+    $diagnosticPath,
+    $baselineLine + "`n" `
+      + '{"appInstanceId":"019ff572-2132-7ba1-9e9c-5a29894963bf","event":"media-picker.requested","timestampMs":"3"}' + "`n",
+    [Text.UTF8Encoding]::new($false)
+  )
+  $workerDispatchOutcome = Get-NativePickerDiagnosticOutcome `
+    -LogPath $diagnosticPath `
+    -BaselineSha256 $diagnosticBaseline.Sha256 `
+    -BaselineLength $diagnosticBaseline.Length `
+    -AppInstanceId $diagnosticAppInstanceId
+  if ($workerDispatchOutcome -cne 'blocking-pool-dispatch-timeout') {
+    throw 'Native picker diagnostic regression merged command and blocking-pool dispatch stalls'
+  }
+  [IO.File]::AppendAllText(
+    $diagnosticPath,
+    '{"appInstanceId":"019ff572-2132-7ba1-9e9c-5a29894963bf","event":"media-picker.worker-started","timestampMs":"4"}' + "`n",
+    [Text.UTF8Encoding]::new($false)
+  )
+  $dialogTimeoutOutcome = Get-NativePickerDiagnosticOutcome `
+    -LogPath $diagnosticPath `
+    -BaselineSha256 $diagnosticBaseline.Sha256 `
+    -BaselineLength $diagnosticBaseline.Length `
+    -AppInstanceId $diagnosticAppInstanceId
+  if ($dialogTimeoutOutcome -cne 'dialog-timeout') {
+    throw 'Native picker diagnostic regression rejected a started blocking dialog stall'
+  }
+  [IO.File]::AppendAllText(
+    $diagnosticPath,
+    '{"appInstanceId":"019ff572-2132-7ba1-9e9c-5a29894963bf","event":"media-picker.worker-failed","timestampMs":"5"}' + "`n",
+    [Text.UTF8Encoding]::new($false)
+  )
+  $workerFailedOutcome = Get-NativePickerDiagnosticOutcome `
+    -LogPath $diagnosticPath `
+    -BaselineSha256 $diagnosticBaseline.Sha256 `
+    -BaselineLength $diagnosticBaseline.Length `
+    -AppInstanceId $diagnosticAppInstanceId
+  if ($workerFailedOutcome -cne 'worker-failed') {
+    throw 'Native picker diagnostic regression rejected an exact path-free worker failure'
+  }
+  [IO.File]::WriteAllText(
+    $diagnosticPath,
+    $baselineLine + "`n" `
+      + '{"appInstanceId":"019ff572-2132-7ba1-9e9c-5a29894963bf","event":"media-picker.requested","timestampMs":"3"}' + "`n" `
+      + '{"appInstanceId":"019ff572-2132-7ba1-9e9c-5a29894963bf","event":"media-picker.worker-started","timestampMs":"4"}' + "`n" `
+      + '{"appInstanceId":"019ff572-2132-7ba1-9e9c-5a29894963bf","event":"media-picker.returned","outcome":"none","timestampMs":"5"}' + "`n",
+    [Text.UTF8Encoding]::new($false)
+  )
+  $noneOutcome = Get-NativePickerDiagnosticOutcome `
+    -LogPath $diagnosticPath `
+    -BaselineSha256 $diagnosticBaseline.Sha256 `
+    -BaselineLength $diagnosticBaseline.Length `
+    -AppInstanceId $diagnosticAppInstanceId
+  if ($noneOutcome -cne 'backend-returned-none') {
+    throw 'Native picker diagnostic regression rejected an exact none transaction'
+  }
+  [IO.File]::WriteAllText(
+    $diagnosticPath,
+    $baselineLine + "`n" `
+      + '{"appInstanceId":"019ff572-2132-7ba1-9e9c-5a29894963bf","event":"media-picker.requested","timestampMs":"3"}' + "`n" `
+      + '{"appInstanceId":"019ff572-2132-7ba1-9e9c-5a29894963bf","event":"media-picker.worker-started","path":"private","timestampMs":"4"}' + "`n",
+    [Text.UTF8Encoding]::new($false)
+  )
+  $hostileWorkerOutcome = Get-NativePickerDiagnosticOutcome `
+    -LogPath $diagnosticPath `
+    -BaselineSha256 $diagnosticBaseline.Sha256 `
+    -BaselineLength $diagnosticBaseline.Length `
+    -AppInstanceId $diagnosticAppInstanceId
+  if ($hostileWorkerOutcome -cne 'diagnostic-ambiguous') {
+    throw 'Native picker diagnostic regression accepted a path-bearing worker event'
   }
 
   $junctionTarget = Join-Path $testRoot 'junction-target'
@@ -539,6 +775,11 @@ try {
     missingDestinationRestored = $recoveryResults['restore-missing-destination']
     ancestorReparseRejected = $ancestorReparseRejected
     diagnosticSnapshotIsolated = $true
+    pickerWorkerBoundarySplit = $true
+    rawCensusSchemaRedacted = $true
+    rawCensusBucketsIndependent = $true
+    rawCensusMaximaBounded = $true
+    rawCensusDiagnosticOnly = $true
     orderedActivationPhases = $true
     fixedPreclickCategories = $true
     hostileStderrRedacted = $true

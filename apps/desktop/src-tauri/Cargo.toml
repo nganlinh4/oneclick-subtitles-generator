@@ -45,6 +45,7 @@ futures-util = "0.3.33"
 fs2 = "=0.4.3"
 secrecy = "0.10.3"
 same-file = "=1.0.6"
+rfd = { version = "=0.16.0", default-features = false }
 tauri = { version = "2.11.5", features = [] }
 tauri-plugin-dialog = "2.7.2"
 tauri-plugin-opener = "=2.5.4"

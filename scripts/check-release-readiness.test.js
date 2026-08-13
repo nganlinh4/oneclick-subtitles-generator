@@ -111,7 +111,8 @@ function createTauriProductionBuildFixture() {
   writeFile(
     root,
     'apps/desktop/src-tauri/Cargo.toml',
-    '[features]\ndefault = []\nproduction = ["tauri/custom-protocol"]\n',
+    '[features]\ndefault = []\nproduction = ["tauri/custom-protocol"]\n'
+      + '[dependencies]\nrfd = { version = "=0.16.0", default-features = false }\n',
   );
   writeFile(
     root,
@@ -125,11 +126,18 @@ function createTauriProductionBuildFixture() {
     'apps/desktop/src-tauri/src/commands.rs',
     'use tauri::WebviewWindow;\n'
       + 'async fn select_media(window: WebviewWindow) {\n'
-      + '  let dialog = app.dialog().file().set_parent(&window).set_title("Choose video or audio");\n'
+      + '  let dialog = rfd::FileDialog::new().set_parent(&window).set_title("Choose video or audio")\n'
+      + '    .add_filter("Video and audio", &extensions);\n'
       + '  diagnostics::record("media-picker.requested", &[]);\n'
-      + '  let selected = dialog.blocking_pick_file();\n'
+      + '  let Ok(selected) = tauri::async_runtime::spawn_blocking(move || {\n'
+      + '    diagnostics::record("media-picker.worker-started", &[]);\n'
+      + '    dialog.pick_file()\n'
+      + '  }).await else {\n'
+      + '    diagnostics::record("media-picker.worker-failed", &[]);\n'
+      + '    return;\n'
+      + '  };\n'
       + '  diagnostics::record("media-picker.returned", &[("outcome", media_picker_outcome(selected.as_ref()))]);\n'
-      + '  let Some(selected) = selected else { return; };\n'
+      + '  let Some(path) = selected else { return; };\n'
       + '}\n',
   );
   return root;
@@ -526,6 +534,73 @@ test('installed Windows smoke proves persistence, media, tools, logs, relaunch, 
       '$OwnerHandle',
     ),
     INSTALLED_SMOKE_SCRIPT.replace('$processNamedWindows += $window', '# omitted category'),
+    INSTALLED_SMOKE_SCRIPT.replace('EnumWindows(callback, IntPtr.Zero)', 'true'),
+    INSTALLED_SMOKE_SCRIPT.replace(
+      'private const int MaximumEnumeratedWindows = 512',
+      'private const int MaximumEnumeratedWindows = 1024',
+    ),
+    INSTALLED_SMOKE_SCRIPT.replace(
+      '[Math]::Max([int]$Maxima[$name], [int]$value)',
+      '[int]$value',
+    ),
+    INSTALLED_SMOKE_SCRIPT.replace(
+      'if (classMatches && nameMatches) {',
+      'if (ownerMatches && classMatches && nameMatches) {',
+    ),
+    INSTALLED_SMOKE_SCRIPT.replace(
+      'if (sameProcess || classMatches) {',
+      'if (classMatches) {',
+    ),
+    INSTALLED_SMOKE_SCRIPT.replace(
+      '$dialogs.Count -eq 1 -and $ownedDialogs.Count -eq 1',
+      '$snapshot.RawProcessExactMatches -eq 1',
+    ),
+    INSTALLED_SMOKE_SCRIPT.replace(
+      'Update-NativePickerRawCensusMaxima -Maxima $rawCensusMaxima -Snapshot $snapshot',
+      '# omitted raw census update',
+    ),
+    INSTALLED_SMOKE_SCRIPT.replace(
+      'Add-NativePickerRawCensusMetrics -Metrics $failureMetrics -Maxima $rawCensusMaxima',
+      '# omitted failed raw census evidence',
+    ),
+    INSTALLED_SMOKE_SCRIPT.replace(
+      '      } else {\n'
+        + '        $rawCensusMaxima.rawCensusIncomplete = $true\n'
+        + '      }\n'
+        + '      Add-NativePickerRawCensusMetrics -Metrics $failureMetrics',
+      '      } else {\n'
+        + '        # missing cleanup census misreported as complete\n'
+        + '      }\n'
+        + '      Add-NativePickerRawCensusMetrics -Metrics $failureMetrics',
+    ),
+    INSTALLED_SMOKE_SCRIPT.replace(
+      '      } catch {\n'
+        + '        $rawCensusMaxima.rawCensusIncomplete = $true\n'
+        + '        throw\n'
+        + '      }\n'
+        + '      Update-NativePickerRawCensusMaxima',
+      '      } catch {\n'
+        + '        throw\n'
+        + '      }\n'
+        + '      Update-NativePickerRawCensusMaxima',
+    ),
+    INSTALLED_SMOKE_SCRIPT.replace(
+      '    Update-NativePickerRawCensusMaxima -Maxima $rawCensusMaxima -Snapshot $snapshot\n'
+        + '    $exact = @($snapshot.Exact)',
+      '    # omitted cleanup raw census update\n'
+        + '    $exact = @($snapshot.Exact)',
+    ),
+    INSTALLED_SMOKE_SCRIPT.replace(
+      '    if ($exact.Count -ne 1 -or $owned.Count -ne 1) {',
+      '    if ($snapshot.RawProcessOwnerMatches -ne 1) {',
+    ),
+    INSTALLED_SMOKE_SCRIPT.replaceAll('RawDesktopExactMatches', 'RawProcessExactMatches'),
+    INSTALLED_SMOKE_SCRIPT.replaceAll('RawCensusIncomplete', 'RawCensusComplete'),
+    INSTALLED_SMOKE_SCRIPT.replace(
+      'public int RawProcessWindowMatches { get; internal set; }',
+      'public int RawProcessWindowMatches { get; internal set; }\n'
+        + '    public int RawWindowTitle { get; internal set; }',
+    ),
     INSTALLED_SMOKE_SCRIPT.replace('$snapshotAttempt -lt 5', '$snapshotAttempt -lt 1'),
     INSTALLED_SMOKE_SCRIPT.replace('$nonPrefix = $true', '$nonPrefix = $false'),
     INSTALLED_SMOKE_SCRIPT.replace('$phase.schemaVersion -isnot [int]', '$false'),
@@ -569,7 +644,7 @@ test('installed Windows smoke proves persistence, media, tools, logs, relaunch, 
   ]) {
     assert.throws(
       () => assertInstalledSmokeScript(weakenedPickerProof),
-      /(?:native-picker automation|native-picker evidence|native-picker diagnostics|native-tool events|local-media pre-click failures|reviewed executable source|missing lifecycle proof)/,
+      /(?:native-picker automation|native-picker evidence|native-picker diagnostics|native-picker raw census|native-tool events|local-media pre-click failures|reviewed executable source|missing lifecycle proof)/,
     );
   }
   for (const prematureOrUncorrectedSuccess of [
@@ -715,6 +790,25 @@ test('native-picker evidence uses bounded backups and real multi-stage replaceme
     /payload must remain bounded/,
   );
 
+  for (const weakenedRawSchema of [
+    NATIVE_PICKER_EVIDENCE_SCRIPT.replace("    'rawProcessWindowMatches',\n", ''),
+    NATIVE_PICKER_EVIDENCE_SCRIPT.replace('    rawProcessWindowMatches = 0\n', ''),
+    NATIVE_PICKER_EVIDENCE_SCRIPT.replace('$metric.Value -le 1000', '$metric.Value -le 10000'),
+    NATIVE_PICKER_EVIDENCE_SCRIPT.replace(
+      "    'rawCensusIncomplete',",
+      "    'rawWindowTitle',",
+    ),
+  ]) {
+    assert.notEqual(weakenedRawSchema, NATIVE_PICKER_EVIDENCE_SCRIPT);
+    assert.throws(
+      () => assertNativePickerEvidenceScripts(
+        weakenedRawSchema,
+        NATIVE_PICKER_EVIDENCE_REGRESSION,
+      ),
+      /(?:raw census schema|payload must remain bounded)/,
+    );
+  }
+
   for (const weakenedRegression of [
     NATIVE_PICKER_EVIDENCE_REGRESSION.replaceAll(
       'Set-NativePickerEvidence',
@@ -734,6 +828,26 @@ test('native-picker evidence uses bounded backups and real multi-stage replaceme
     ),
     NATIVE_PICKER_EVIDENCE_REGRESSION.replace(
       "    throw 'Native picker evidence regression accepted a reparse ancestor'",
+      '    Write-Output decoy',
+    ),
+    NATIVE_PICKER_EVIDENCE_REGRESSION.replace(
+      "    throw 'Native picker diagnostic regression merged command and blocking-pool dispatch stalls'",
+      '    Write-Output decoy',
+    ),
+    NATIVE_PICKER_EVIDENCE_REGRESSION.replace(
+      '    pickerWorkerBoundarySplit = $true',
+      '    pickerWorkerBoundarySplit = $false',
+    ),
+    NATIVE_PICKER_EVIDENCE_REGRESSION.replace(
+      '    rawCensusBucketsIndependent = $true',
+      '    rawCensusBucketsIndependent = $false',
+    ),
+    NATIVE_PICKER_EVIDENCE_REGRESSION.replace(
+      "    throw 'Native picker raw census regression lost bounded maximum aggregation'",
+      '    Write-Output decoy',
+    ),
+    NATIVE_PICKER_EVIDENCE_REGRESSION.replace(
+      "    throw 'Native picker raw census regression allowed diagnostics to control UIA authority'",
       '    Write-Output decoy',
     ),
   ]) {
@@ -2217,15 +2331,27 @@ test('Tauri production build contract embeds the frontend instead of retaining t
   assert.doesNotThrow(() => assertTauriProductionBuildContract(root));
 });
 
-test('Tauri production build contract rejects dev-server releases and unowned or unlogged native pickers', (context) => {
-  const fixtures = Array.from({ length: 6 }, createTauriProductionBuildFixture);
+test('Tauri production build contract rejects dev-server releases and weakened native picker boundaries', (context) => {
+  const fixtures = Array.from({ length: 11 }, createTauriProductionBuildFixture);
   context.after(() => {
     for (const root of fixtures) {
       fs.rmSync(root, { force: true, recursive: true });
     }
   });
 
-  const [rootScript, desktopScript, cargoFeature, mainGuard, unownedPicker, unloggedPicker] = fixtures;
+  const [
+    rootScript,
+    desktopScript,
+    cargoFeature,
+    rfdPin,
+    mainGuard,
+    unownedPicker,
+    unloggedPicker,
+    unpooledPicker,
+    unstartedWorker,
+    pluginBridge,
+    unloggedWorkerFailure,
+  ] = fixtures;
   const rootPackage = JSON.parse(fs.readFileSync(path.join(rootScript, 'package.json'), 'utf8'));
   rootPackage.scripts['tauri:build'] = 'npm --prefix apps/desktop run tauri -- build';
   writeFile(rootScript, 'package.json', JSON.stringify(rootPackage));
@@ -2254,6 +2380,15 @@ test('Tauri production build contract rejects dev-server releases and unowned or
     /must enable only tauri\/custom-protocol/,
   );
 
+  const unpinnedCargo = fs.readFileSync(
+    path.join(rfdPin, 'apps/desktop/src-tauri/Cargo.toml'), 'utf8',
+  ).replace('version = "=0.16.0"', 'version = "0.16.0"');
+  writeFile(rfdPin, 'apps/desktop/src-tauri/Cargo.toml', unpinnedCargo);
+  assert.throws(
+    () => assertTauriProductionBuildContract(rfdPin),
+    /must pin its direct rfd dependency/,
+  );
+
   writeFile(mainGuard, 'apps/desktop/src-tauri/src/main.rs', 'fn main() {}\n');
   assert.throws(
     () => assertTauriProductionBuildContract(mainGuard),
@@ -2270,7 +2405,7 @@ test('Tauri production build contract rejects dev-server releases and unowned or
   );
   assert.throws(
     () => assertTauriProductionBuildContract(unownedPicker),
-    /must parent the picker and record path-free/,
+    /must run its parented picker on the blocking pool/,
   );
 
   const unloggedSource = fs.readFileSync(
@@ -2279,7 +2414,47 @@ test('Tauri production build contract rejects dev-server releases and unowned or
   writeFile(unloggedPicker, 'apps/desktop/src-tauri/src/commands.rs', unloggedSource);
   assert.throws(
     () => assertTauriProductionBuildContract(unloggedPicker),
-    /must parent the picker and record path-free/,
+    /must run its parented picker on the blocking pool/,
+  );
+
+  const unpooledSource = fs.readFileSync(
+    path.join(unpooledPicker, 'apps/desktop/src-tauri/src/commands.rs'), 'utf8',
+  ).replace('tauri::async_runtime::spawn_blocking', 'tauri::async_runtime::spawn');
+  writeFile(unpooledPicker, 'apps/desktop/src-tauri/src/commands.rs', unpooledSource);
+  assert.throws(
+    () => assertTauriProductionBuildContract(unpooledPicker),
+    /must run its parented picker on the blocking pool/,
+  );
+
+  const unstartedSource = fs.readFileSync(
+    path.join(unstartedWorker, 'apps/desktop/src-tauri/src/commands.rs'), 'utf8',
+  ).replace('    diagnostics::record("media-picker.worker-started", &[]);\n', '');
+  writeFile(unstartedWorker, 'apps/desktop/src-tauri/src/commands.rs', unstartedSource);
+  assert.throws(
+    () => assertTauriProductionBuildContract(unstartedWorker),
+    /must run its parented picker on the blocking pool/,
+  );
+
+  const pluginBridgeSource = fs.readFileSync(
+    path.join(pluginBridge, 'apps/desktop/src-tauri/src/commands.rs'), 'utf8',
+  ).replace('dialog.pick_file()', 'dialog.blocking_pick_file()');
+  writeFile(pluginBridge, 'apps/desktop/src-tauri/src/commands.rs', pluginBridgeSource);
+  assert.throws(
+    () => assertTauriProductionBuildContract(pluginBridge),
+    /must run its parented picker on the blocking pool/,
+  );
+
+  const unloggedFailureSource = fs.readFileSync(
+    path.join(unloggedWorkerFailure, 'apps/desktop/src-tauri/src/commands.rs'), 'utf8',
+  ).replace('    diagnostics::record("media-picker.worker-failed", &[]);\n', '');
+  writeFile(
+    unloggedWorkerFailure,
+    'apps/desktop/src-tauri/src/commands.rs',
+    unloggedFailureSource,
+  );
+  assert.throws(
+    () => assertTauriProductionBuildContract(unloggedWorkerFailure),
+    /must run its parented picker on the blocking pool/,
   );
 });
 

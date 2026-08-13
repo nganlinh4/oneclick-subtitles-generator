@@ -46,7 +46,7 @@ const INSTALLED_NATIVE_TOOLS_INSPECTOR_SHA256 =
 const INSTALLED_LOCAL_MEDIA_INSPECTOR_SHA256 =
   'e53207922c58e449705282a11da2975bdeaf2754d1f204a504fcca424d16df61';
 const INSTALLED_WINDOWS_SMOKE_SHA256 =
-  'db1fa4723532e316db89ee50a689f7cad2e45504aec5516b0ebfa4815150964c';
+  '527a8ad31ca6cb01660741be8b0c21aa9b95e766ea8f5d32744ceb674fb51003';
 const DISTRIBUTABLE_FONT_EXTENSION = /\.(?:eot|otf|ttf|woff2?)$/i;
 
 const ACTION_PINS = Object.freeze({
@@ -1124,6 +1124,21 @@ function assertNativePickerEvidenceScripts(evidenceScript, regressionScript) {
   const atomicWriter = functionBody('Write-NativePickerEvidenceAtomically');
   const evidenceWriter = functionBody('Set-NativePickerEvidence');
   const evidenceInitializer = functionBody('Initialize-NativePickerEvidence');
+  const rawMetricNames = [
+    'rawProcessWindowMatches',
+    'rawProcessVisibleMatches',
+    'rawProcessClassMatches',
+    'rawProcessNameMatches',
+    'rawProcessExactMatches',
+    'rawProcessOwnerMatches',
+    'rawProcessOwnedVisibleMatches',
+    'rawDesktopExactMatches',
+    'rawDesktopOwnerMatches',
+    'rawDesktopOwnedVisibleMatches',
+  ];
+  const allowedMetricBlock = (evidenceWriter.match(/\$allowedMetrics = @\(([\s\S]*?)\n  \)/) || [])[1] || '';
+  const rawCountMetricBlock = (evidenceWriter.match(/\$rawCountMetrics = @\(([\s\S]*?)\n  \)/) || [])[1] || '';
+  const quotedMetricNames = (block) => Array.from(block.matchAll(/'([^']+)'/g), (match) => match[1]);
   const replacementCalls = evidenceScript.match(/\[IO\.File\]::Replace\(/g) || [];
   const primaryReplacement = /\[IO\.File\]::Replace\(\s*\$script:nativePickerEvidenceTemporaryPath,\s*\$script:nativePickerEvidencePath,\s*\$script:nativePickerEvidenceBackupPath\s*\)/m;
   const recoveryReplacement = /\[IO\.File\]::Replace\(\s*\$script:nativePickerEvidenceBackupPath,\s*\$script:nativePickerEvidencePath,\s*\$script:nativePickerEvidenceTemporaryPath\s*\)/m;
@@ -1196,6 +1211,18 @@ function assertNativePickerEvidenceScripts(evidenceScript, regressionScript) {
     'Native-picker evidence payload must remain bounded and free of paths, process/window identities, titles, URLs, tokens, and exception text',
   );
   invariant(
+    rawMetricNames.every((name) => quotedMetricNames(allowedMetricBlock).filter((entry) => entry === name).length === 1
+      && new RegExp(`\\b${name}\\s*=\\s*0`).test(evidenceInitializer))
+      && quotedMetricNames(rawCountMetricBlock).join(',') === rawMetricNames.join(',')
+      && quotedMetricNames(allowedMetricBlock).filter((entry) => entry === 'rawCensusIncomplete').length === 1
+      && /rawCensusIncomplete\s*=\s*\$false/.test(evidenceInitializer)
+      && /\$metric\.Value -le 1000\)/.test(evidenceWriter)
+      && evidenceWriter.includes("$metric.Key -cne 'rawCensusIncomplete'")
+      && evidenceWriter.includes('$metric.Value -is [bool]')
+      && !quotedMetricNames(allowedMetricBlock).some((name) => /(?:path|pid|hwnd|handle|title|url|token)/i.test(name)),
+    'Native-picker evidence raw census schema must retain typed bounded aggregate-only metrics',
+  );
+  invariant(
     (regressionScript.match(/\. \(Join-Path \$PSScriptRoot 'native-picker-evidence\.ps1'\)/g) || []).length >= 2
       && (regressionScript.match(/Initialize-NativePickerEvidence/g) || []).length >= 2
       && (regressionScript.match(/Set-NativePickerEvidence/g) || []).length >= 4
@@ -1222,7 +1249,21 @@ function assertNativePickerEvidenceScripts(evidenceScript, regressionScript) {
       && regressionScript.includes('reintroduced arbitrary inspector output disclosure')
       && regressionScript.includes('replaced the primary ErrorRecord or retained succeeded evidence')
       && regressionScript.includes('$script:diagnosticRereadAttempts -ne 0')
+      && regressionScript.includes('merged command and blocking-pool dispatch stalls')
+      && regressionScript.includes('rejected a started blocking dialog stall')
+      && regressionScript.includes('rejected an exact path-free worker failure')
+      && regressionScript.includes('accepted a path-bearing worker event')
       && regressionScript.includes('diagnosticSnapshotIsolated = $true')
+      && regressionScript.includes('pickerWorkerBoundarySplit = $true')
+      && regressionScript.includes('rawCensusSchemaRedacted = $true')
+      && regressionScript.includes('rawCensusBucketsIndependent = $true')
+      && regressionScript.includes('rawCensusMaximaBounded = $true')
+      && regressionScript.includes('rawCensusDiagnosticOnly = $true')
+      && regressionScript.includes('exceeded its per-poll count cap')
+      && regressionScript.includes('merged independent process, identity, owner, or visibility buckets')
+      && regressionScript.includes('lost bounded maximum aggregation')
+      && regressionScript.includes('allowed diagnostics to control UIA authority')
+      && regressionScript.includes('misreported a dropped or missing snapshot as complete')
       && regressionScript.includes('[IO.FileAttributes]::ReparsePoint')
       && regressionScript.includes('[IO.Directory]::Delete($cleanupRoot.FullName, $true)'),
     'Native-picker evidence regression must execute multiple real replacements and hostile bounded-path failures',
@@ -1584,6 +1625,10 @@ function assertInstalledSmokeScript(script) {
     "'--expected-source-name', $ExpectedSourceName",
     "'osg-installed-editor-flow.png'",
     'function Complete-NativeMediaPicker',
+    'function Initialize-NativePickerInterop',
+    'function New-NativePickerRawCensusMaxima',
+    'function Update-NativePickerRawCensusMaxima',
+    'function Add-NativePickerRawCensusMetrics',
     ". (Join-Path $PSScriptRoot 'native-picker-evidence.ps1')",
     '-EvidencePath $nativePickerEvidencePath',
     '-AllowedRoot $runnerTempRoot',
@@ -1608,6 +1653,8 @@ function assertInstalledSmokeScript(script) {
     "-FailureCode 'inspector-preclick-timeout'",
     "-FailureCode 'inspector-phase-invalid'",
     "'media-picker.requested'",
+    "'media-picker.worker-started'",
+    "'media-picker.worker-failed'",
     "'media-picker.returned'",
     "$pickerDiagnosticOutcome -cne 'selected'",
     ".Current.Name -ceq 'Choose video or audio'",
@@ -1616,6 +1663,20 @@ function assertInstalledSmokeScript(script) {
     'ProcessWindows = $processWindows.Count',
     'ProcessDialogClasses = $processDialogClasses.Count',
     'ProcessNamedWindows = $processNamedWindows.Count',
+    '[OsgNativePickerWindow]::GetRawCensus(',
+    'private const int MaximumEnumeratedWindows = 512',
+    'AccumulateRawCensusWindow(',
+    'RawProcessWindowMatches',
+    'RawProcessVisibleMatches',
+    'RawProcessClassMatches',
+    'RawProcessNameMatches',
+    'RawProcessExactMatches',
+    'RawProcessOwnerMatches',
+    'RawProcessOwnedVisibleMatches',
+    'RawDesktopExactMatches',
+    'RawDesktopOwnerMatches',
+    'RawDesktopOwnedVisibleMatches',
+    'RawCensusIncomplete',
     '$snapshotAttempt -lt 5',
     '$snapshotAttempt -eq 4',
     "throw 'Installed local-media picker phases were not contiguous'",
@@ -1854,6 +1915,21 @@ function assertInstalledSmokeScript(script) {
   const pickerFunction = pickerFunctionStart >= 0 && pickerFunctionEnd > pickerFunctionStart
     ? script.slice(pickerFunctionStart, pickerFunctionEnd)
     : '';
+  const pickerInteropStart = script.indexOf('function Initialize-NativePickerInterop {');
+  const pickerInteropEnd = script.indexOf('\nfunction ', pickerInteropStart + 1);
+  const pickerInterop = pickerInteropStart >= 0 && pickerInteropEnd > pickerInteropStart
+    ? script.slice(pickerInteropStart, pickerInteropEnd)
+    : '';
+  const rawMaximaStart = script.indexOf('function Update-NativePickerRawCensusMaxima {');
+  const rawMaximaEnd = script.indexOf('\nfunction ', rawMaximaStart + 1);
+  const rawMaxima = rawMaximaStart >= 0 && rawMaximaEnd > rawMaximaStart
+    ? script.slice(rawMaximaStart, rawMaximaEnd)
+    : '';
+  const dismissPickerStart = script.indexOf('function Dismiss-NativeMediaPicker {');
+  const dismissPickerEnd = script.indexOf('\nfunction ', dismissPickerStart + 1);
+  const dismissPicker = dismissPickerStart >= 0 && dismissPickerEnd > dismissPickerStart
+    ? script.slice(dismissPickerStart, dismissPickerEnd)
+    : '';
   invariant(
     (pickerFunction.match(/\.AddSeconds\(30\)/g) || []).length >= 4
       && pickerFunction.includes('$fileNameControls = @($dialog.FindAll(')
@@ -1870,8 +1946,44 @@ function assertInstalledSmokeScript(script) {
       && pickerFunction.includes('DismissAttempts = [Math]::Min($dismissAttempts, 1000)')
       && pickerFunction.includes('DialogDismissed = $dialogDismissed')
       && pickerFunction.includes("-Stage 'failed'")
-      && /catch\s*\{[\s\S]*?Set-NativePickerEvidence[\s\S]*?\bthrow\s*\r?\n\s*\}/.test(pickerFunction),
+      && /catch\s*\{\s*# Evidence persistence must never replace the original picker exception\.\s*\}\s*throw\s*\}\s*\}\s*$/.test(pickerFunction),
     'Installed native-picker automation must retry settled unique controls, invoke without focus, prove dismissal, and preserve its primary exception',
+  );
+  invariant(
+    pickerInterop.includes('private const int MaximumEnumeratedWindows = 512')
+      && pickerInterop.includes('private static extern bool EnumWindows(')
+      && pickerInterop.includes('private static extern uint GetWindowThreadProcessId(')
+      && pickerInterop.includes('private static extern bool IsWindowVisible(')
+      && pickerInterop.includes('private static extern int GetClassNameW(')
+      && pickerInterop.includes('private static extern int GetWindowTextW(')
+      && pickerInterop.includes('if (enumerated >= MaximumEnumeratedWindows)')
+      && pickerInterop.includes('census.RawCensusIncomplete = true;')
+      && pickerInterop.includes('if (sameProcess || classMatches)')
+      && pickerInterop.includes('if (classLength == 0)')
+      && pickerInterop.includes('if (classMatches && nameMatches)')
+      && pickerInterop.includes('if (ownerMatches)')
+      && /if \(sameProcess\) \{[\s\S]*?if \(classMatches\)[\s\S]*?if \(nameMatches\)[\s\S]*?if \(classMatches && nameMatches\)[\s\S]*?if \(ownerMatches\)/.test(pickerInterop)
+      && /\n    if \(classMatches && nameMatches\) \{[\s\S]*?\n    if \(ownerMatches\) \{/.test(pickerInterop)
+      && !/public\s+(?:string|IntPtr|u?int|long)\s+(?:.*(?:Hwnd|Handle|Pid|ProcessId|Title|Path))/i.test(pickerInterop),
+    'Installed native-picker raw census must enumerate bounded aggregate-only independent categories',
+  );
+  invariant(
+    rawMaxima.includes('[Math]::Min(')
+      && rawMaxima.includes('1000,')
+      && rawMaxima.includes('[Math]::Max([int]$Maxima[$name], [int]$value)')
+      && rawMaxima.includes('$Maxima.rawCensusIncomplete = $true')
+      && rawMaxima.includes('-or [bool]$Snapshot.rawCensusIncomplete')
+      && (pickerFunction.match(/Update-NativePickerRawCensusMaxima -Maxima \$rawCensusMaxima -Snapshot \$snapshot/g) || []).length === 2
+      && dismissPicker.includes('Update-NativePickerRawCensusMaxima -Maxima $rawCensusMaxima -Snapshot $snapshot')
+      && pickerFunction.includes('-Snapshot $dismissal.RawCensusMaxima')
+      && /\}\s*else\s*\{\s*\$rawCensusMaxima\.rawCensusIncomplete = \$true\s*\}\s*Add-NativePickerRawCensusMetrics -Metrics \$failureMetrics -Maxima \$rawCensusMaxima/.test(pickerFunction)
+      && (pickerFunction.match(/catch\s*\{\s*\$rawCensusMaxima\.rawCensusIncomplete = \$true\s*throw\s*\}/g) || []).length === 2
+      && pickerFunction.includes('Add-NativePickerRawCensusMetrics -Metrics $dialogMetrics -Maxima $rawCensusMaxima')
+      && pickerFunction.includes('Add-NativePickerRawCensusMetrics -Metrics $dismissedMetrics -Maxima $rawCensusMaxima')
+      && pickerFunction.includes('Add-NativePickerRawCensusMetrics -Metrics $failureMetrics -Maxima $rawCensusMaxima')
+      && !/(?:if|elseif|until|while)\s*\([^\r\n]*(?:rawCensus|rawProcess|rawDesktop)/i.test(pickerFunction)
+      && !/(?:if|elseif|until|while)\s*\([^\r\n]*(?:rawCensus|rawProcess|rawDesktop)/i.test(dismissPicker),
+    'Installed native-picker raw census must remain bounded maximum-only diagnostics on every dialog poll',
   );
   const pickerDialogFunctionStart = script.indexOf('function Get-NativeMediaPickerDialogs {');
   const pickerDialogFunctionEnd = script.indexOf('\nfunction ', pickerDialogFunctionStart + 1);
@@ -2010,10 +2122,13 @@ function assertInstalledSmokeScript(script) {
       && diagnosticOutcome.includes("@('appInstanceId', 'event', 'timestampMs')")
       && diagnosticOutcome.includes("@('appInstanceId', 'event', 'outcome', 'timestampMs')")
       && diagnosticOutcome.includes("$pickerEvents[0].event -ceq 'media-picker.requested'")
-      && diagnosticOutcome.includes("$pickerEvents[1].event -ceq 'media-picker.returned'")
+      && diagnosticOutcome.includes("$pickerEvents[1].event -ceq 'media-picker.worker-started'")
+      && diagnosticOutcome.includes("$pickerEvents[2].event -ceq 'media-picker.returned'")
       && diagnosticOutcome.includes("return 'selected'")
       && diagnosticOutcome.includes("return 'backend-returned-none'")
-      && diagnosticOutcome.includes("return 'command-dispatch-timeout'"),
+      && diagnosticOutcome.includes("return 'command-dispatch-timeout'")
+      && diagnosticOutcome.includes("return 'blocking-pool-dispatch-timeout'")
+      && diagnosticOutcome.includes("return 'worker-failed'"),
     'Installed native-picker diagnostics must correlate one immutable exact-instance transaction',
   );
   const thirdLaunchStart = script.indexOf('$third = Start-And-WaitForReadiness');
@@ -3022,6 +3137,12 @@ function assertTauriProductionBuildContract(rootDirectory = REPOSITORY_ROOT) {
     /^\s*production\s*=\s*\[\s*["']tauri\/custom-protocol["']\s*]\s*(?:#.*)?$/m.test(features),
     'Desktop Cargo production feature must enable only tauri/custom-protocol',
   );
+  const dependencies = extractTomlSection(cargoToml, 'dependencies');
+  invariant(
+    /^\s*rfd\s*=\s*\{\s*version\s*=\s*["']=0\.16\.0["']\s*,\s*default-features\s*=\s*false\s*}\s*(?:#.*)?$/m
+      .test(dependencies),
+    'Desktop Cargo must pin its direct rfd dependency to 0.16.0 without default features',
+  );
 
   const mainSource = readText(rootDirectory, `${TAURI_DIRECTORY}/src/main.rs`);
   invariant(
@@ -3040,24 +3161,42 @@ function assertTauriProductionBuildContract(rootDirectory = REPOSITORY_ROOT) {
   const selectMedia = selectMediaStart >= 0 && selectMediaEnd > selectMediaStart
     ? commandsSource.slice(selectMediaStart, selectMediaEnd)
     : '';
-  const fileDialogIndex = selectMedia.indexOf('.file()');
+  const fileDialogIndex = selectMedia.indexOf('rfd::FileDialog::new()');
   const parentIndex = selectMedia.indexOf('.set_parent(&window)', fileDialogIndex);
   const titleIndex = selectMedia.indexOf('.set_title("Choose video or audio")', parentIndex);
+  const filterIndex = selectMedia.indexOf(
+    '.add_filter("Video and audio", &extensions)',
+    titleIndex,
+  );
   const requestedIndex = selectMedia.indexOf('diagnostics::record("media-picker.requested", &[])');
-  const blockingPickerIndex = selectMedia.indexOf('dialog.blocking_pick_file()');
-  const returnedIndex = selectMedia.indexOf('"media-picker.returned"', blockingPickerIndex);
-  const selectedBranchIndex = selectMedia.indexOf('let Some(selected) = selected', returnedIndex);
+  const blockingTaskIndex = selectMedia.indexOf('tauri::async_runtime::spawn_blocking', requestedIndex);
+  const workerStartedIndex = selectMedia.indexOf(
+    'diagnostics::record("media-picker.worker-started", &[])',
+    blockingTaskIndex,
+  );
+  const pickerIndex = selectMedia.indexOf('dialog.pick_file()', workerStartedIndex);
+  const workerFailedIndex = selectMedia.indexOf(
+    'diagnostics::record("media-picker.worker-failed", &[])',
+    pickerIndex,
+  );
+  const returnedIndex = selectMedia.indexOf('"media-picker.returned"', workerFailedIndex);
+  const selectedBranchIndex = selectMedia.indexOf('let Some(path) = selected', returnedIndex);
   invariant(
     /\bwindow\s*:\s*WebviewWindow\b/.test(selectMedia)
       && fileDialogIndex >= 0
       && parentIndex > fileDialogIndex
       && titleIndex > parentIndex
-      && requestedIndex > titleIndex
-      && blockingPickerIndex > requestedIndex
-      && returnedIndex > blockingPickerIndex
+      && filterIndex > titleIndex
+      && requestedIndex > filterIndex
+      && blockingTaskIndex > requestedIndex
+      && workerStartedIndex > blockingTaskIndex
+      && pickerIndex > workerStartedIndex
+      && workerFailedIndex > pickerIndex
+      && returnedIndex > workerFailedIndex
       && selectedBranchIndex > returnedIndex
-      && selectMedia.includes('media_picker_outcome(selected.as_ref())'),
-    'Desktop select_media must parent the picker and record path-free requested/returned outcomes around its blocking backend',
+      && selectMedia.includes('media_picker_outcome(selected.as_ref())')
+      && !selectMedia.includes('blocking_pick_file()'),
+    'Desktop select_media must run its parented picker on the blocking pool and record path-free lifecycle outcomes',
   );
 }
 

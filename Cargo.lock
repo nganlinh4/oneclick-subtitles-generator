@@ -3062,6 +3062,7 @@ dependencies = [
  "osg-providers",
  "osg-render",
  "osg-speech",
+ "rfd",
  "same-file",
  "secrecy",
  "serde",

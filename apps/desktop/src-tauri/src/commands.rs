@@ -18,7 +18,6 @@ use osg_media_server::{MediaServer, RegisteredMedia};
 use serde::Serialize;
 use serde_json::Value;
 use tauri::{AppHandle, Runtime, State, WebviewWindow};
-use tauri_plugin_dialog::DialogExt;
 
 use crate::diagnostics;
 use crate::error::{CommandError, CommandResult};
@@ -484,7 +483,6 @@ pub(crate) fn get_session_snapshot(
 
 #[tauri::command]
 pub(crate) async fn select_media(
-    app: AppHandle,
     window: WebviewWindow,
     state: State<'_, DesktopState>,
 ) -> CommandResult<Option<DesktopSessionSnapshot>> {
@@ -493,14 +491,22 @@ pub(crate) async fn select_media(
         .chain(AUDIO_EXTENSIONS.iter())
         .copied()
         .collect();
-    let dialog = app
-        .dialog()
-        .file()
+    let dialog = rfd::FileDialog::new()
         .set_parent(&window)
         .set_title("Choose video or audio")
         .add_filter("Video and audio", &extensions);
     diagnostics::record("media-picker.requested", &[]);
-    let selected = dialog.blocking_pick_file();
+    let Ok(selected) = tauri::async_runtime::spawn_blocking(move || {
+        diagnostics::record("media-picker.worker-started", &[]);
+        dialog.pick_file()
+    })
+    .await
+    else {
+        diagnostics::record("media-picker.worker-failed", &[]);
+        return Err(CommandError::internal(
+            "the media picker task stopped unexpectedly",
+        ));
+    };
     diagnostics::record(
         "media-picker.returned",
         &[(
@@ -508,12 +514,9 @@ pub(crate) async fn select_media(
             media_picker_outcome(selected.as_ref()).to_owned(),
         )],
     );
-    let Some(selected) = selected else {
+    let Some(path) = selected else {
         return Ok(None);
     };
-    let path = selected
-        .into_path()
-        .map_err(|error| CommandError::invalid_path(error.to_string()))?;
     Ok(Some(import_media_path(&state, path).await?))
 }
 

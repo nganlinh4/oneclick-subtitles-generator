@@ -500,15 +500,215 @@ function Initialize-NativePickerInterop {
     Add-Type -TypeDefinition @'
 using System;
 using System.Runtime.InteropServices;
+using System.Text;
 
 public static class OsgNativePickerWindow {
+  private const int MaximumEnumeratedWindows = 512;
+  private const uint OwnerWindowCommand = 4;
+
+  private delegate bool EnumWindowsCallback(IntPtr window, IntPtr state);
+
+  public sealed class RawCensus {
+    public int RawProcessWindowMatches { get; internal set; }
+    public int RawProcessVisibleMatches { get; internal set; }
+    public int RawProcessClassMatches { get; internal set; }
+    public int RawProcessNameMatches { get; internal set; }
+    public int RawProcessExactMatches { get; internal set; }
+    public int RawProcessOwnerMatches { get; internal set; }
+    public int RawProcessOwnedVisibleMatches { get; internal set; }
+    public int RawDesktopExactMatches { get; internal set; }
+    public int RawDesktopOwnerMatches { get; internal set; }
+    public int RawDesktopOwnedVisibleMatches { get; internal set; }
+    public bool RawCensusIncomplete { get; internal set; }
+  }
+
+  [DllImport("user32.dll", SetLastError = true)]
+  [return: MarshalAs(UnmanagedType.Bool)]
+  private static extern bool EnumWindows(EnumWindowsCallback callback, IntPtr state);
+
+  [DllImport("user32.dll", SetLastError = true)]
+  private static extern uint GetWindowThreadProcessId(IntPtr window, out uint processId);
+
+  [DllImport("user32.dll", SetLastError = true)]
+  [return: MarshalAs(UnmanagedType.Bool)]
+  private static extern bool IsWindowVisible(IntPtr window);
+
+  [DllImport("user32.dll", CharSet = CharSet.Unicode, SetLastError = true)]
+  private static extern int GetClassNameW(IntPtr window, StringBuilder className, int capacity);
+
+  [DllImport("user32.dll", CharSet = CharSet.Unicode, SetLastError = true)]
+  private static extern int GetWindowTextW(IntPtr window, StringBuilder text, int capacity);
+
   [DllImport("user32.dll", SetLastError = true)]
   public static extern IntPtr GetWindow(IntPtr window, uint command);
 
   [DllImport("user32.dll", SetLastError = true)]
   public static extern bool PostMessage(IntPtr window, uint message, IntPtr wParam, IntPtr lParam);
+
+  private static void AccumulateRawCensusWindow(
+    RawCensus census,
+    bool sameProcess,
+    bool visible,
+    bool classMatches,
+    bool nameMatches,
+    bool ownerMatches
+  ) {
+    if (sameProcess) {
+      census.RawProcessWindowMatches += 1;
+      if (visible) {
+        census.RawProcessVisibleMatches += 1;
+      }
+      if (classMatches) {
+        census.RawProcessClassMatches += 1;
+      }
+      if (nameMatches) {
+        census.RawProcessNameMatches += 1;
+      }
+      if (classMatches && nameMatches) {
+        census.RawProcessExactMatches += 1;
+      }
+      if (ownerMatches) {
+        census.RawProcessOwnerMatches += 1;
+        if (visible) {
+          census.RawProcessOwnedVisibleMatches += 1;
+        }
+      }
+    }
+    if (classMatches && nameMatches) {
+      census.RawDesktopExactMatches += 1;
+    }
+    if (ownerMatches) {
+      census.RawDesktopOwnerMatches += 1;
+      if (visible) {
+        census.RawDesktopOwnedVisibleMatches += 1;
+      }
+    }
+  }
+
+  public static RawCensus GetRawCensus(int processId, IntPtr expectedOwner) {
+    var census = new RawCensus();
+    if (processId <= 0 || expectedOwner == IntPtr.Zero) {
+      census.RawCensusIncomplete = true;
+      return census;
+    }
+
+    var enumerated = 0;
+    EnumWindowsCallback callback = (window, state) => {
+      try {
+        enumerated += 1;
+        uint windowProcessId;
+        if (GetWindowThreadProcessId(window, out windowProcessId) == 0) {
+          census.RawCensusIncomplete = true;
+        } else {
+          var sameProcess = windowProcessId == (uint)processId;
+          var visible = IsWindowVisible(window);
+          var ownerMatches = GetWindow(window, OwnerWindowCommand) == expectedOwner;
+
+          var className = new StringBuilder(64);
+          var classLength = GetClassNameW(window, className, className.Capacity);
+          if (classLength == 0) {
+            census.RawCensusIncomplete = true;
+          }
+          var classMatches = classLength > 0
+            && string.Equals(className.ToString(), "#32770", StringComparison.Ordinal);
+          var nameMatches = false;
+          if (sameProcess || classMatches) {
+            var name = new StringBuilder(64);
+            nameMatches = GetWindowTextW(window, name, name.Capacity) > 0
+              && string.Equals(name.ToString(), "Choose video or audio", StringComparison.Ordinal);
+          }
+          AccumulateRawCensusWindow(
+            census,
+            sameProcess,
+            visible,
+            classMatches,
+            nameMatches,
+            ownerMatches
+          );
+        }
+      } catch {
+        census.RawCensusIncomplete = true;
+      }
+
+      if (enumerated >= MaximumEnumeratedWindows) {
+        census.RawCensusIncomplete = true;
+        return false;
+      }
+      return true;
+    };
+    if (!EnumWindows(callback, IntPtr.Zero) && !census.RawCensusIncomplete) {
+      census.RawCensusIncomplete = true;
+    }
+    return census;
+  }
 }
 '@
+  }
+}
+
+function New-NativePickerRawCensusMaxima {
+  @{
+    rawProcessWindowMatches = 0
+    rawProcessVisibleMatches = 0
+    rawProcessClassMatches = 0
+    rawProcessNameMatches = 0
+    rawProcessExactMatches = 0
+    rawProcessOwnerMatches = 0
+    rawProcessOwnedVisibleMatches = 0
+    rawDesktopExactMatches = 0
+    rawDesktopOwnerMatches = 0
+    rawDesktopOwnedVisibleMatches = 0
+    rawCensusIncomplete = $false
+  }
+}
+
+function Update-NativePickerRawCensusMaxima {
+  param(
+    [Parameter(Mandatory = $true)][hashtable]$Maxima,
+    [Parameter(Mandatory = $true)]$Snapshot
+  )
+
+  foreach ($name in @(
+      'rawProcessWindowMatches',
+      'rawProcessVisibleMatches',
+      'rawProcessClassMatches',
+      'rawProcessNameMatches',
+      'rawProcessExactMatches',
+      'rawProcessOwnerMatches',
+      'rawProcessOwnedVisibleMatches',
+      'rawDesktopExactMatches',
+      'rawDesktopOwnerMatches',
+      'rawDesktopOwnedVisibleMatches'
+    )) {
+    $value = $Snapshot.$name
+    if ($value -isnot [int] -or $value -lt 0) {
+      $Maxima.rawCensusIncomplete = $true
+      continue
+    }
+    if ($value -gt 1000) {
+      $Maxima.rawCensusIncomplete = $true
+    }
+    $Maxima[$name] = [Math]::Min(
+      1000,
+      [Math]::Max([int]$Maxima[$name], [int]$value)
+    )
+  }
+  if ($Snapshot.rawCensusIncomplete -isnot [bool]) {
+    $Maxima.rawCensusIncomplete = $true
+  } else {
+    $Maxima.rawCensusIncomplete = [bool]$Maxima.rawCensusIncomplete `
+      -or [bool]$Snapshot.rawCensusIncomplete
+  }
+}
+
+function Add-NativePickerRawCensusMetrics {
+  param(
+    [Parameter(Mandatory = $true)][hashtable]$Metrics,
+    [Parameter(Mandatory = $true)][hashtable]$Maxima
+  )
+
+  foreach ($metric in $Maxima.GetEnumerator()) {
+    $Metrics[$metric.Key] = $metric.Value
   }
 }
 
@@ -517,6 +717,44 @@ function Get-NativeMediaPickerDialogs {
     [Parameter(Mandatory = $true)][int]$ProcessId,
     [Parameter(Mandatory = $true)][long]$OwnerHandle
   )
+
+  $rawCensus = $null
+  try {
+    $candidate = [OsgNativePickerWindow]::GetRawCensus(
+      $ProcessId,
+      [IntPtr]::new($OwnerHandle)
+    )
+    $expectedRawNames = @(
+      'RawCensusIncomplete',
+      'RawDesktopExactMatches',
+      'RawDesktopOwnedVisibleMatches',
+      'RawDesktopOwnerMatches',
+      'RawProcessClassMatches',
+      'RawProcessExactMatches',
+      'RawProcessNameMatches',
+      'RawProcessOwnedVisibleMatches',
+      'RawProcessOwnerMatches',
+      'RawProcessVisibleMatches',
+      'RawProcessWindowMatches'
+    )
+    if ((@($candidate.PSObject.Properties.Name | Sort-Object) -join ',') `
+        -cne (($expectedRawNames | Sort-Object) -join ',') `
+        -or $candidate.RawCensusIncomplete -isnot [bool]) {
+      throw 'Raw native-picker census returned an invalid aggregate schema'
+    }
+    foreach ($name in @($expectedRawNames | Where-Object { $_ -cne 'RawCensusIncomplete' })) {
+      if ($candidate.$name -isnot [int] `
+          -or $candidate.$name -lt 0 `
+          -or $candidate.$name -gt 512) {
+        throw 'Raw native-picker census returned an invalid bounded count'
+      }
+    }
+    $rawCensus = $candidate
+  } catch {
+    $fallback = New-NativePickerRawCensusMaxima
+    $fallback.rawCensusIncomplete = $true
+    $rawCensus = [pscustomobject]$fallback
+  }
 
   $root = [System.Windows.Automation.AutomationElement]::RootElement
   $processCondition = [System.Windows.Automation.PropertyCondition]::new(
@@ -576,6 +814,17 @@ function Get-NativeMediaPickerDialogs {
     ProcessWindows = $processWindows.Count
     ProcessDialogClasses = $processDialogClasses.Count
     ProcessNamedWindows = $processNamedWindows.Count
+    RawProcessWindowMatches = [int]$rawCensus.rawProcessWindowMatches
+    RawProcessVisibleMatches = [int]$rawCensus.rawProcessVisibleMatches
+    RawProcessClassMatches = [int]$rawCensus.rawProcessClassMatches
+    RawProcessNameMatches = [int]$rawCensus.rawProcessNameMatches
+    RawProcessExactMatches = [int]$rawCensus.rawProcessExactMatches
+    RawProcessOwnerMatches = [int]$rawCensus.rawProcessOwnerMatches
+    RawProcessOwnedVisibleMatches = [int]$rawCensus.rawProcessOwnedVisibleMatches
+    RawDesktopExactMatches = [int]$rawCensus.rawDesktopExactMatches
+    RawDesktopOwnerMatches = [int]$rawCensus.rawDesktopOwnerMatches
+    RawDesktopOwnedVisibleMatches = [int]$rawCensus.rawDesktopOwnedVisibleMatches
+    RawCensusIncomplete = [bool]$rawCensus.rawCensusIncomplete
   }
 }
 
@@ -1062,16 +1311,23 @@ function Get-NativePickerDiagnosticOutcome {
       Select-Object -Skip $baselineEvents.Count |
       Where-Object {
         $_.appInstanceId -ceq $AppInstanceId `
-          -and $_.event -in @('media-picker.requested', 'media-picker.returned')
+          -and $_.event -in @(
+            'media-picker.requested',
+            'media-picker.worker-started',
+            'media-picker.worker-failed',
+            'media-picker.returned'
+          )
       }
   )
   $requested = @($pickerEvents | Where-Object event -eq 'media-picker.requested')
+  $workerStarted = @($pickerEvents | Where-Object event -eq 'media-picker.worker-started')
+  $workerFailed = @($pickerEvents | Where-Object event -eq 'media-picker.worker-failed')
   $returned = @($pickerEvents | Where-Object event -eq 'media-picker.returned')
   foreach ($entry in $pickerEvents) {
-    $expectedNames = if ($entry.event -ceq 'media-picker.requested') {
-      @('appInstanceId', 'event', 'timestampMs')
-    } else {
+    $expectedNames = if ($entry.event -ceq 'media-picker.returned') {
       @('appInstanceId', 'event', 'outcome', 'timestampMs')
+    } else {
+      @('appInstanceId', 'event', 'timestampMs')
     }
     if ((@($entry.PSObject.Properties.Name | Sort-Object) -join ',') `
         -cne (($expectedNames | Sort-Object) -join ',') `
@@ -1081,22 +1337,45 @@ function Get-NativePickerDiagnosticOutcome {
   }
   $returnedNone = @($returned | Where-Object outcome -ceq 'none')
   $returnedSelected = @($returned | Where-Object outcome -ceq 'selected')
-  if ($returnedSelected.Count -eq 1 -and $requested.Count -eq 1 -and $returned.Count -eq 1 `
-      -and $pickerEvents.Count -eq 2 `
+  if ($returnedSelected.Count -eq 1 -and $requested.Count -eq 1 `
+      -and $workerStarted.Count -eq 1 -and $workerFailed.Count -eq 0 `
+      -and $returned.Count -eq 1 -and $pickerEvents.Count -eq 3 `
       -and $pickerEvents[0].event -ceq 'media-picker.requested' `
-      -and $pickerEvents[1].event -ceq 'media-picker.returned') {
+      -and $pickerEvents[1].event -ceq 'media-picker.worker-started' `
+      -and $pickerEvents[2].event -ceq 'media-picker.returned') {
     return 'selected'
   }
-  if ($returnedNone.Count -eq 1 -and $requested.Count -eq 1 -and $returned.Count -eq 1 `
-      -and $pickerEvents.Count -eq 2 `
+  if ($returnedNone.Count -eq 1 -and $requested.Count -eq 1 `
+      -and $workerStarted.Count -eq 1 -and $workerFailed.Count -eq 0 `
+      -and $returned.Count -eq 1 -and $pickerEvents.Count -eq 3 `
       -and $pickerEvents[0].event -ceq 'media-picker.requested' `
-      -and $pickerEvents[1].event -ceq 'media-picker.returned') {
+      -and $pickerEvents[1].event -ceq 'media-picker.worker-started' `
+      -and $pickerEvents[2].event -ceq 'media-picker.returned') {
     return 'backend-returned-none'
   }
-  if ($requested.Count -eq 0 -and $returned.Count -eq 0) {
+  if ($requested.Count -eq 1 -and $workerStarted.Count -eq 1 `
+      -and $workerFailed.Count -eq 1 -and $returned.Count -eq 0 `
+      -and $pickerEvents.Count -eq 3 `
+      -and $pickerEvents[0].event -ceq 'media-picker.requested' `
+      -and $pickerEvents[1].event -ceq 'media-picker.worker-started' `
+      -and $pickerEvents[2].event -ceq 'media-picker.worker-failed') {
+    return 'worker-failed'
+  }
+  if ($requested.Count -eq 0 -and $workerStarted.Count -eq 0 `
+      -and $workerFailed.Count -eq 0 -and $returned.Count -eq 0) {
     return 'command-dispatch-timeout'
   }
-  if ($requested.Count -eq 1 -and $returned.Count -eq 0) {
+  if ($requested.Count -eq 1 -and $workerStarted.Count -eq 0 `
+      -and $workerFailed.Count -eq 0 -and $returned.Count -eq 0 `
+      -and $pickerEvents.Count -eq 1 `
+      -and $pickerEvents[0].event -ceq 'media-picker.requested') {
+    return 'blocking-pool-dispatch-timeout'
+  }
+  if ($requested.Count -eq 1 -and $workerStarted.Count -eq 1 `
+      -and $workerFailed.Count -eq 0 -and $returned.Count -eq 0 `
+      -and $pickerEvents.Count -eq 2 `
+      -and $pickerEvents[0].event -ceq 'media-picker.requested' `
+      -and $pickerEvents[1].event -ceq 'media-picker.worker-started') {
     return 'dialog-timeout'
   }
   'diagnostic-ambiguous'
@@ -1193,12 +1472,14 @@ function Dismiss-NativeMediaPicker {
   Initialize-NativePickerInterop
   $attempts = 0
   $dismissed = $false
+  $rawCensusMaxima = New-NativePickerRawCensusMaxima
   $deadline = (Get-Date).AddSeconds(5)
   do {
     $attempts += 1
     $snapshot = Get-NativeMediaPickerDialogs `
       -ProcessId $ProcessId `
       -OwnerHandle $OwnerHandle
+    Update-NativePickerRawCensusMaxima -Maxima $rawCensusMaxima -Snapshot $snapshot
     $exact = @($snapshot.Exact)
     $owned = @($snapshot.Owned)
     if ($exact.Count -eq 0) {
@@ -1249,6 +1530,7 @@ function Dismiss-NativeMediaPicker {
   [pscustomobject]@{
     Attempts = $attempts
     Dismissed = $dismissed
+    RawCensusMaxima = $rawCensusMaxima
   }
 }
 
@@ -1281,6 +1563,7 @@ function Complete-NativeMediaPicker {
   $buttonInvokable = $false
   $dismissAttempts = 0
   $dialogDismissed = $false
+  $rawCensusMaxima = New-NativePickerRawCensusMaxima
   try {
     Initialize-NativePickerInterop
     Set-NativePickerEvidence -Stage 'waiting-dialog' -Outcome 'running'
@@ -1293,9 +1576,15 @@ function Complete-NativeMediaPicker {
         $failureCode = 'application-exited'
         throw 'Installed application exited while opening the native media picker'
       }
-      $snapshot = Get-NativeMediaPickerDialogs `
-        -ProcessId $ProcessId `
-        -OwnerHandle $OwnerHandle
+      try {
+        $snapshot = Get-NativeMediaPickerDialogs `
+          -ProcessId $ProcessId `
+          -OwnerHandle $OwnerHandle
+      } catch {
+        $rawCensusMaxima.rawCensusIncomplete = $true
+        throw
+      }
+      Update-NativePickerRawCensusMaxima -Maxima $rawCensusMaxima -Snapshot $snapshot
       $dialogs = @($snapshot.Exact)
       $ownedDialogs = @($snapshot.Owned)
       $dialogMatches = [Math]::Max($dialogMatches, $dialogs.Count)
@@ -1316,18 +1605,20 @@ function Complete-NativeMediaPicker {
       $failureCode = if ($dialogMatches -eq 1) { 'owner-mismatch' } else { 'dialog-timeout' }
       throw 'Native media picker did not open as an owned dialog within 30 seconds'
     }
+    $dialogMetrics = @{
+      dialogAttempts = [Math]::Min($dialogAttempts, 1000)
+      dialogMatches = $dialogMatches
+      ownerMatched = $ownerMatched
+      processWindowMatches = $processWindowMatches
+      processDialogMatches = $processDialogMatches
+      processNamedMatches = $processNamedMatches
+      ownedDialogMatches = $ownedDialogMatches
+    }
+    Add-NativePickerRawCensusMetrics -Metrics $dialogMetrics -Maxima $rawCensusMaxima
     Set-NativePickerEvidence `
       -Stage 'dialog-discovered' `
       -Outcome 'running' `
-      -Metrics @{
-        dialogAttempts = [Math]::Min($dialogAttempts, 1000)
-        dialogMatches = $dialogMatches
-        ownerMatched = $ownerMatched
-        processWindowMatches = $processWindowMatches
-        processDialogMatches = $processDialogMatches
-        processNamedMatches = $processNamedMatches
-        ownedDialogMatches = $ownedDialogMatches
-      }
+      -Metrics $dialogMetrics
 
     $editorDeadline = (Get-Date).AddSeconds(30)
     do {
@@ -1474,9 +1765,15 @@ function Complete-NativeMediaPicker {
     do {
       $dismissAttempts += 1
       Start-Sleep -Milliseconds 100
-      $snapshot = Get-NativeMediaPickerDialogs `
-        -ProcessId $ProcessId `
-        -OwnerHandle $OwnerHandle
+      try {
+        $snapshot = Get-NativeMediaPickerDialogs `
+          -ProcessId $ProcessId `
+          -OwnerHandle $OwnerHandle
+      } catch {
+        $rawCensusMaxima.rawCensusIncomplete = $true
+        throw
+      }
+      Update-NativePickerRawCensusMaxima -Maxima $rawCensusMaxima -Snapshot $snapshot
       $remainingDialogs = @($snapshot.Exact)
       $remainingOwnedDialogs = @($snapshot.Owned)
       if ($remainingDialogs.Count -gt 1 -or $remainingOwnedDialogs.Count -gt 1) {
@@ -1494,13 +1791,15 @@ function Complete-NativeMediaPicker {
       $failureCode = 'dismissal-timeout'
       throw 'Native media picker did not disappear after confirmation'
     }
+    $dismissedMetrics = @{
+      dismissAttempts = [Math]::Min($dismissAttempts, 1000)
+      dialogDismissed = $dialogDismissed
+    }
+    Add-NativePickerRawCensusMetrics -Metrics $dismissedMetrics -Maxima $rawCensusMaxima
     Set-NativePickerEvidence `
       -Stage 'dialog-dismissed' `
       -Outcome 'running' `
-      -Metrics @{
-        dismissAttempts = [Math]::Min($dismissAttempts, 1000)
-        dialogDismissed = $dialogDismissed
-      }
+      -Metrics $dismissedMetrics
     [pscustomobject]@{
       DismissAttempts = [Math]::Min($dismissAttempts, 1000)
       DialogDismissed = $dialogDismissed
@@ -1514,6 +1813,8 @@ function Complete-NativeMediaPicker {
         -AppInstanceId $AppInstanceId
       if ($diagnosticFailure -in @(
           'command-dispatch-timeout',
+          'blocking-pool-dispatch-timeout',
+          'worker-failed',
           'backend-returned-none',
           'diagnostic-baseline-changed',
           'diagnostic-ambiguous',
@@ -1553,7 +1854,13 @@ function Complete-NativeMediaPicker {
       if ($null -ne $dismissal) {
         $failureMetrics.dismissAttempts = [Math]::Min([int]$dismissal.Attempts, 1000)
         $failureMetrics.dialogDismissed = [bool]$dismissal.Dismissed
+        Update-NativePickerRawCensusMaxima `
+          -Maxima $rawCensusMaxima `
+          -Snapshot $dismissal.RawCensusMaxima
+      } else {
+        $rawCensusMaxima.rawCensusIncomplete = $true
       }
+      Add-NativePickerRawCensusMetrics -Metrics $failureMetrics -Maxima $rawCensusMaxima
       Set-NativePickerEvidence `
         -Stage 'failed' `
         -Outcome 'failed' `

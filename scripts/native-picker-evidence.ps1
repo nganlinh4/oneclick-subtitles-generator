@@ -265,6 +265,17 @@ function Set-NativePickerEvidence {
     'processDialogMatches',
     'processNamedMatches',
     'ownedDialogMatches',
+    'rawProcessWindowMatches',
+    'rawProcessVisibleMatches',
+    'rawProcessClassMatches',
+    'rawProcessNameMatches',
+    'rawProcessExactMatches',
+    'rawProcessOwnerMatches',
+    'rawProcessOwnedVisibleMatches',
+    'rawDesktopExactMatches',
+    'rawDesktopOwnerMatches',
+    'rawDesktopOwnedVisibleMatches',
+    'rawCensusIncomplete',
     'dialogAttempts',
     'dialogMatches',
     'ownerMatched',
@@ -279,6 +290,18 @@ function Set-NativePickerEvidence {
     'dismissAttempts',
     'dialogDismissed'
   )
+  $rawCountMetrics = @(
+    'rawProcessWindowMatches',
+    'rawProcessVisibleMatches',
+    'rawProcessClassMatches',
+    'rawProcessNameMatches',
+    'rawProcessExactMatches',
+    'rawProcessOwnerMatches',
+    'rawProcessOwnedVisibleMatches',
+    'rawDesktopExactMatches',
+    'rawDesktopOwnerMatches',
+    'rawDesktopOwnedVisibleMatches'
+  )
   foreach ($metric in $Metrics.GetEnumerator()) {
     $validInspectorPhase = $metric.Key -ceq 'inspectorPhase' `
       -and $metric.Value -is [string] `
@@ -291,8 +314,16 @@ function Set-NativePickerEvidence {
         'prior-state-validated',
         'click-issued'
       )
+    $validRawCount = $metric.Key -notin $rawCountMetrics `
+      -or ($metric.Value -is [int] `
+        -and $metric.Value -ge 0 `
+        -and $metric.Value -le 1000)
+    $validRawIncomplete = $metric.Key -cne 'rawCensusIncomplete' `
+      -or $metric.Value -is [bool]
     if ($metric.Key -notin $allowedMetrics `
         -or ($metric.Key -ceq 'inspectorPhase' -and -not $validInspectorPhase) `
+        -or -not $validRawCount `
+        -or -not $validRawIncomplete `
         -or ($metric.Key -cne 'inspectorPhase' `
           -and $metric.Value -isnot [bool] `
           -and $metric.Value -isnot [int])) {
@@ -338,6 +369,17 @@ function Initialize-NativePickerEvidence {
     processDialogMatches = 0
     processNamedMatches = 0
     ownedDialogMatches = 0
+    rawProcessWindowMatches = 0
+    rawProcessVisibleMatches = 0
+    rawProcessClassMatches = 0
+    rawProcessNameMatches = 0
+    rawProcessExactMatches = 0
+    rawProcessOwnerMatches = 0
+    rawProcessOwnedVisibleMatches = 0
+    rawDesktopExactMatches = 0
+    rawDesktopOwnerMatches = 0
+    rawDesktopOwnedVisibleMatches = 0
+    rawCensusIncomplete = $false
     dialogAttempts = 0
     dialogMatches = 0
     ownerMatched = $false
