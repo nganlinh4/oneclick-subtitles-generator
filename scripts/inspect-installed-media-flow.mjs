@@ -53,13 +53,14 @@ export function parseArguments(argv, environment = process.env) {
     const value = argv[index + 1];
     invariant(/^--[a-z-]+$/.test(key ?? '') && value !== undefined,
       'Usage: inspect-installed-media-flow.mjs --port PORT --srt PATH --screenshot PATH '
+        + '--media-phase initial|reactivation '
         + '[--prior-asset-id UUID]');
     invariant(!values.has(key), `Duplicate argument: ${key}`);
     values.set(key, value);
   }
-  const requiredKeys = ['--port', '--srt', '--screenshot'];
+  const requiredKeys = ['--port', '--srt', '--screenshot', '--media-phase'];
   const acceptedKeys = new Set([...requiredKeys, '--prior-asset-id']);
-  invariant((values.size === 3 || values.size === 4)
+  invariant((values.size === 4 || values.size === 5)
     && requiredKeys.every((key) => values.has(key))
     && [...values.keys()].every((key) => acceptedKeys.has(key)),
   'Only reviewed installed media-flow arguments are accepted');
@@ -81,7 +82,22 @@ export function parseArguments(argv, environment = process.env) {
   const priorAssetId = values.get('--prior-asset-id') ?? null;
   invariant(priorAssetId === null || UUID_V7.test(priorAssetId),
     'Prior installed media asset identity is invalid');
-  return Object.freeze({ port, srt, screenshot, priorAssetId });
+  const mediaPhase = values.get('--media-phase');
+  mediaPreferencesForPhase(mediaPhase);
+  invariant((mediaPhase === 'initial' && priorAssetId === null)
+    || (mediaPhase === 'reactivation' && priorAssetId !== null),
+  'Installed media-flow phase and prior asset are inconsistent');
+  return Object.freeze({ port, srt, screenshot, priorAssetId, mediaPhase });
+}
+
+export function mediaPreferencesForPhase(mediaPhase) {
+  if (mediaPhase === 'initial') {
+    return Object.freeze({ autoImport: 'true', preferredLanguages: '["en"]' });
+  }
+  if (mediaPhase === 'reactivation') {
+    return Object.freeze({ autoImport: 'false', preferredLanguages: '["en"]' });
+  }
+  throw new Error('Installed media-flow phase is invalid');
 }
 
 const hasExactKeys = (value, keys) => value && typeof value === 'object'
@@ -371,6 +387,16 @@ export async function waitForValue(read, accept, {
   throw new Error(`Installed media flow timed out: ${failureCode}`);
 }
 
+const CONFIGURE_MEDIA_PHASE_EXPRESSION = (preferences) => `
+(() => {
+  localStorage.setItem('auto_import_site_subtitles', ${JSON.stringify(preferences.autoImport)});
+  localStorage.setItem('preferred_subtitle_langs', ${JSON.stringify(preferences.preferredLanguages)});
+  return localStorage.getItem('auto_import_site_subtitles')
+      === ${JSON.stringify(preferences.autoImport)}
+    && localStorage.getItem('preferred_subtitle_langs')
+      === ${JSON.stringify(preferences.preferredLanguages)};
+})()`;
+
 const SET_URL_EXPRESSION = `
 (() => {
   const containers = [...document.querySelectorAll('.input-methods-container')];
@@ -526,7 +552,7 @@ const SRT_CLEARED_EXPRESSION = `
     && !document.body.innerText.includes(${JSON.stringify(SUBTITLE_MARKER)});
 })()`;
 
-const SRT_READY_EXPRESSION = `
+const SRT_READY_EXPRESSION = (preferences) => `
 (() => {
   const containers = [...document.querySelectorAll('.input-methods-container')];
   const groups = [...document.querySelectorAll(
@@ -568,6 +594,10 @@ const SRT_READY_EXPRESSION = `
     && previews.length === 1
     && (previews[0].textContent ?? '').trim() === ${JSON.stringify(MEDIA_URL)}
     && localStorage.getItem('current_video_url') === ${JSON.stringify(MEDIA_URL)}
+    && localStorage.getItem('auto_import_site_subtitles')
+      === ${JSON.stringify(preferences.autoImport)}
+    && localStorage.getItem('preferred_subtitle_langs')
+      === ${JSON.stringify(preferences.preferredLanguages)}
     && uploadButtons.length === 1
     && uploadButtons[0].classList.contains('has-srt-uploaded')
     && !uploadButtons[0].classList.contains('processing')
@@ -585,7 +615,7 @@ const SRT_READY_EXPRESSION = `
     && startButtons[0].dataset.generationMode === 'url-with-srt';
 })()`;
 
-const START_EXPRESSION = `
+const START_EXPRESSION = (preferences) => `
 (() => {
   const containers = [...document.querySelectorAll('.input-methods-container')];
   const buttonContainers = [...document.querySelectorAll('.buttons-container')];
@@ -626,6 +656,10 @@ const START_EXPRESSION = `
       || previews.length !== 1
       || (previews[0].textContent ?? '').trim() !== ${JSON.stringify(MEDIA_URL)}
       || localStorage.getItem('current_video_url') !== ${JSON.stringify(MEDIA_URL)}
+      || localStorage.getItem('auto_import_site_subtitles')
+        !== ${JSON.stringify(preferences.autoImport)}
+      || localStorage.getItem('preferred_subtitle_langs')
+        !== ${JSON.stringify(preferences.preferredLanguages)}
       || uploadButtons.length !== 1
       || !uploadButtons[0].classList.contains('has-srt-uploaded')
       || uploadButtons[0].classList.contains('processing')
@@ -687,6 +721,7 @@ export const MEDIA_RESULT_EXPRESSION = `
 })()`;
 
 async function runInstalledMediaFlow(options) {
+  const mediaPreferences = mediaPreferencesForPhase(options.mediaPhase);
   const target = await discoverTarget(options.port);
   const client = new CdpClient(target.webSocketDebuggerUrl, DEFAULT_TIMEOUT_MS);
   await client.connect();
@@ -704,6 +739,10 @@ async function runInstalledMediaFlow(options) {
       (value) => value === true,
       { timeoutMs: 30_000, failureCode: 'url-tab-timeout' },
     );
+    // This smoke owns a disposable isolated profile. Keep the exact phase preferences in place
+    // through START so the product action reads the reviewed native-adapter cache-key dimension.
+    invariant(await evaluate(client, CONFIGURE_MEDIA_PHASE_EXPRESSION(mediaPreferences)) === true,
+      'Installed media flow could not configure the reviewed phase');
     invariant(await evaluate(client, SET_URL_EXPRESSION) === true,
       'Installed media flow could not enter the reviewed URL');
     await waitForValue(
@@ -733,7 +772,7 @@ async function runInstalledMediaFlow(options) {
       files: [options.srt], nodeId: inputs.nodeIds[0],
     });
     await waitForValue(
-      () => evaluate(client, SRT_READY_EXPRESSION),
+      () => evaluate(client, SRT_READY_EXPRESSION(mediaPreferences)),
       (value) => value === true,
       { timeoutMs: 60_000, failureCode: 'srt-readiness-timeout' },
     );
@@ -749,7 +788,7 @@ async function runInstalledMediaFlow(options) {
       priorAssetId: options.priorAssetId,
       baselineDownloadJobIds,
     };
-    invariant(await evaluate(client, START_EXPRESSION) === true,
+    invariant(await evaluate(client, START_EXPRESSION(mediaPreferences)) === true,
       'Installed media flow could not click the real semi-automatic action');
     await waitForValue(
       () => evaluate(client, MEDIA_RESULT_EXPRESSION),

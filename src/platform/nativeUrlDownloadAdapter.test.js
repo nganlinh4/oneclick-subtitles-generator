@@ -1,5 +1,7 @@
 import { v7 as uuidv7 } from 'uuid';
 
+import { downloadAndPrepareYouTubeVideo } from '../components/app/VideoProcessingHandlers';
+import { createDownloadHandlers } from '../components/app/handlers/downloadHandlers';
 import { createNativeUrlDownloadAdapter } from './nativeUrlDownloadAdapter';
 
 vi.mock('./downloadService', () => ({
@@ -10,6 +12,9 @@ vi.mock('./downloadService', () => ({
 vi.mock('./mediaService', () => ({
   createNativeMediaDescriptor: vi.fn(),
   openMediaAsset: vi.fn(),
+}));
+vi.mock('../components/app/VideoProcessingHandlers', () => ({
+  downloadAndPrepareYouTubeVideo: vi.fn(),
 }));
 
 const flush = () => new Promise((resolve) => { setTimeout(resolve, 0); });
@@ -107,6 +112,100 @@ it('refreshes a completed asset capability without downloading again', async () 
   await expect(harness.adapter.downloadVideo(request)).resolves.toBe(refreshed);
   expect(harness.inspect).toHaveBeenCalledTimes(1);
   expect(harness.start).toHaveBeenCalledTimes(1);
+});
+
+it('starts distinct operations for the reviewed media phases on the same URL', async () => {
+  const inventoryIds = [uuidv7(), uuidv7()];
+  const jobIds = [uuidv7(), uuidv7()];
+  const assetIds = [uuidv7(), uuidv7()];
+  const handlers = [];
+  const inspect = vi.fn().mockImplementation(async () => ({
+    capability: { id: inventoryIds[inspect.mock.calls.length - 1] },
+    inventory: { subtitles: [] },
+  }));
+  const start = vi.fn().mockImplementation(async (_request, nextHandlers) => {
+    const index = handlers.length;
+    handlers.push(nextHandlers);
+    return { id: jobIds[index] };
+  });
+  const openAsset = vi.fn();
+  const adapter = createNativeUrlDownloadAdapter({
+    inspect,
+    start,
+    cancel: vi.fn(),
+    openAsset,
+    describeMedia: (media) => Object.freeze({ assetId: media.asset.id }),
+  });
+  const url = 'https://example.com/reviewed-media';
+  const started = [vi.fn(), vi.fn()];
+
+  const initial = adapter.downloadVideo({
+    url,
+    preferredSubtitleLanguages: ['en'],
+    onStarted: started[0],
+  });
+  await flush();
+  handlers[0].onCompleted({ media: { asset: { id: assetIds[0] } } });
+  await expect(initial).resolves.toEqual({ assetId: assetIds[0] });
+
+  const reactivation = adapter.downloadVideo({
+    url,
+    preferredSubtitleLanguages: [],
+    onStarted: started[1],
+  });
+  await flush();
+  handlers[1].onCompleted({ media: { asset: { id: assetIds[1] } } });
+  await expect(reactivation).resolves.toEqual({ assetId: assetIds[1] });
+
+  expect(inspect).toHaveBeenCalledTimes(2);
+  expect(start).toHaveBeenCalledTimes(2);
+  expect(started[0]).toHaveBeenCalledWith(jobIds[0]);
+  expect(started[1]).toHaveBeenCalledWith(jobIds[1]);
+  expect(new Set(jobIds).size).toBe(2);
+  expect(new Set(assetIds).size).toBe(2);
+  expect(openAsset).not.toHaveBeenCalled();
+});
+
+it('forwards the reviewed same-URL phase preferences through production handlers', async () => {
+  const reviewedUrl = 'https://example.com/reviewed-media';
+  const selectedVideo = Object.freeze({ url: reviewedUrl });
+  const noop = vi.fn();
+  downloadAndPrepareYouTubeVideo.mockReset();
+  downloadAndPrepareYouTubeVideo.mockResolvedValue(undefined);
+  const { startBackgroundVideoProcessing } = createDownloadHandlers({
+    selectedVideo,
+    setStatus: noop,
+    setSubtitlesData: noop,
+    setIsDownloading: noop,
+    setDownloadProgress: noop,
+    setCurrentDownloadId: noop,
+    setIsSrtOnlyMode: noop,
+    setActiveTab: noop,
+    setUploadedFile: noop,
+    setIsUploading: noop,
+    setUploadedFileData: noop,
+    pendingAutoSubtitleRef: { current: null },
+    handleSrtUpload: noop,
+    handleTabChange: noop,
+    t: (_key, fallback) => fallback,
+  });
+
+  localStorage.setItem('auto_import_site_subtitles', 'true');
+  localStorage.setItem('preferred_subtitle_langs', '["en"]');
+  await startBackgroundVideoProcessing(selectedVideo, 'youtube');
+  localStorage.setItem('auto_import_site_subtitles', 'false');
+  localStorage.setItem('preferred_subtitle_langs', '["en"]');
+  await startBackgroundVideoProcessing(selectedVideo, 'youtube');
+
+  expect(downloadAndPrepareYouTubeVideo).toHaveBeenCalledTimes(2);
+  expect(downloadAndPrepareYouTubeVideo.mock.calls[0][0]).toBe(selectedVideo);
+  expect(downloadAndPrepareYouTubeVideo.mock.calls[1][0]).toBe(selectedVideo);
+  expect(downloadAndPrepareYouTubeVideo.mock.calls[0][0].url).toBe(reviewedUrl);
+  expect(downloadAndPrepareYouTubeVideo.mock.calls[1][0].url).toBe(reviewedUrl);
+  expect(downloadAndPrepareYouTubeVideo.mock.calls[0][9].preferredSubtitleLanguages)
+    .toEqual(['en']);
+  expect(downloadAndPrepareYouTubeVideo.mock.calls[1][9].preferredSubtitleLanguages)
+    .toEqual([]);
 });
 
 it('fails closed when the completed playback capability cannot be described', async () => {

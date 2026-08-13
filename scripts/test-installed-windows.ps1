@@ -311,11 +311,24 @@ function Inspect-InstalledMediaFlow {
     [Parameter(Mandatory = $true)][int]$Port,
     [Parameter(Mandatory = $true)][string]$SrtPath,
     [Parameter(Mandatory = $true)][string]$LogPath,
+    [Parameter(Mandatory = $true)][string]$MediaPhase,
     [Parameter(Mandatory = $true)]
     [ValidateSet('osg-installed-media-flow-initial.png', 'osg-installed-media-flow.png')]
     [string]$ScreenshotName,
     [string]$PriorAssetId
   )
+
+  if ($MediaPhase -cnotin @('initial', 'reactivation')) {
+    throw 'Installed media-flow phase is invalid'
+  }
+  if (($MediaPhase -ceq 'initial' `
+        -and (-not [string]::IsNullOrEmpty($PriorAssetId) `
+          -or $ScreenshotName -cne 'osg-installed-media-flow-initial.png')) `
+      -or ($MediaPhase -ceq 'reactivation' `
+        -and ([string]::IsNullOrEmpty($PriorAssetId) `
+          -or $ScreenshotName -cne 'osg-installed-media-flow.png'))) {
+    throw 'Installed media-flow phase routing is inconsistent'
+  }
 
   $screenshot = Join-Path $env:RUNNER_TEMP $ScreenshotName
   if (Test-Path -LiteralPath $screenshot) {
@@ -325,7 +338,8 @@ function Inspect-InstalledMediaFlow {
     'scripts/inspect-installed-media-flow.mjs',
     '--port', [string]$Port,
     '--srt', $SrtPath,
-    '--screenshot', $screenshot
+    '--screenshot', $screenshot,
+    '--media-phase', $MediaPhase
   )
   if (-not [string]::IsNullOrEmpty($PriorAssetId)) {
     if ($PriorAssetId -notmatch '^[0-9a-f]{8}-[0-9a-f]{4}-7[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$') {
@@ -3085,6 +3099,7 @@ OSG installed media smoke
       -Port $third.DebugPort `
       -SrtPath $srtPath `
       -LogPath $logPath `
+      -MediaPhase 'initial' `
       -ScreenshotName 'osg-installed-media-flow-initial.png'
     $initialToolEvents = @(
       Get-DiagnosticEventsAfterBaseline `
@@ -3147,6 +3162,7 @@ OSG installed media smoke
       -Port $third.DebugPort `
       -SrtPath $srtPath `
       -LogPath $logPath `
+      -MediaPhase 'reactivation' `
       -ScreenshotName 'osg-installed-media-flow.png' `
       -PriorAssetId $localMediaFlow.assetId
     if ($initialMediaFlow.assetId -eq $localMediaFlow.assetId `

@@ -11,6 +11,7 @@ import {
   assertMediaFlowResult,
   collectDownloadJobIds,
   hasMediaFlowStarted,
+  mediaPreferencesForPhase,
   parseArguments,
   readPlaybackCapability,
   sanitizeInspectorError,
@@ -108,28 +109,66 @@ test('parses only bounded CI-owned media-flow files', () => {
     fs.writeFileSync(srt, '1\n00:00:00,000 --> 00:00:01,000\nfixture\n');
     assert.deepEqual(parseArguments([
       '--port', '43123', '--srt', srt, '--screenshot', screenshot,
+      '--media-phase', 'initial',
     ], { RUNNER_TEMP: root }), {
-      port: 43123, srt, screenshot, priorAssetId: null,
+      port: 43123, srt, screenshot, priorAssetId: null, mediaPhase: 'initial',
     });
     assert.deepEqual(parseArguments([
       '--port', '43123', '--srt', srt, '--screenshot', screenshot,
+      '--media-phase', 'reactivation',
       '--prior-asset-id', PRIOR_ASSET_ID,
     ], { RUNNER_TEMP: root }), {
       port: 43123, srt, screenshot, priorAssetId: PRIOR_ASSET_ID,
+      mediaPhase: 'reactivation',
     });
     assert.throws(() => parseArguments([
       '--port', '43123', '--srt', srt, '--screenshot', screenshot,
+      '--media-phase', 'reactivation',
       '--prior-asset-id', 'not-a-uuid',
     ], { RUNNER_TEMP: root }), /asset identity is invalid/);
     assert.throws(() => parseArguments([
       '--port', '43123', '--srt', srt, '--screenshot', path.join(root, '..', 'escape.png'),
+      '--media-phase', 'initial',
     ], { RUNNER_TEMP: root }), /Screenshot must stay/);
     assert.throws(() => parseArguments([
-      '--port', '43123', '--srt', srt, '--screenshot', screenshot, '--extra', 'value',
+      '--port', '43123', '--srt', srt, '--screenshot', screenshot,
+      '--media-phase', 'initial', '--extra', 'value',
+    ], { RUNNER_TEMP: root }), /Only reviewed/);
+    assert.throws(() => parseArguments([
+      '--port', '43123', '--srt', srt, '--screenshot', screenshot,
+      '--media-phase', 'https://example.com/arbitrary.mp4',
+    ], { RUNNER_TEMP: root }), /phase is invalid/);
+    assert.throws(() => parseArguments([
+      '--port', '43123', '--srt', srt, '--screenshot', screenshot,
+      '--media-phase', 'reactivation',
+    ], { RUNNER_TEMP: root }), /phase and prior asset are inconsistent/);
+    assert.throws(() => parseArguments([
+      '--port', '43123', '--srt', srt, '--screenshot', screenshot,
+      '--media-phase', 'initial', '--prior-asset-id', PRIOR_ASSET_ID,
+    ], { RUNNER_TEMP: root }), /phase and prior asset are inconsistent/);
+    assert.throws(() => parseArguments([
+      '--port', '43123', '--srt', srt, '--screenshot', screenshot,
+      '--media-url', 'https://example.com/arbitrary.mp4',
     ], { RUNNER_TEMP: root }), /Only reviewed/);
   } finally {
     fs.rmSync(root, { recursive: true, force: true });
   }
+});
+
+test('routes each exact media phase to a distinct reviewed adapter key', () => {
+  assert.deepEqual(mediaPreferencesForPhase('initial'), {
+    autoImport: 'true', preferredLanguages: '["en"]',
+  });
+  assert.deepEqual(mediaPreferencesForPhase('reactivation'), {
+    autoImport: 'false', preferredLanguages: '["en"]',
+  });
+  assert.notEqual(
+    mediaPreferencesForPhase('initial').autoImport,
+    mediaPreferencesForPhase('reactivation').autoImport,
+  );
+  assert.throws(() => mediaPreferencesForPhase('final'), /phase is invalid/);
+  assert.throws(() => mediaPreferencesForPhase('https://example.com/arbitrary.mp4'),
+    /phase is invalid/);
 });
 
 test('accepts the complete native media, subtitle, tool, and job result', () => {
@@ -335,13 +374,14 @@ test('commits the URL before replacing stale SRT state and dispatching the fresh
     'async function runInstalledMediaFlow(options) {',
   ));
   const orderedFragments = [
+    'evaluate(client, CONFIGURE_MEDIA_PHASE_EXPRESSION(mediaPreferences))',
     'evaluate(client, URL_COMMITTED_EXPRESSION)',
     'evaluate(client, RESET_SRT_EXPRESSION)',
     'evaluate(client, SRT_CLEARED_EXPRESSION)',
     "client.send('DOM.setFileInputFiles'",
-    'evaluate(client, SRT_READY_EXPRESSION)',
+    'evaluate(client, SRT_READY_EXPRESSION(mediaPreferences))',
     'const baselineState = await evaluate(client, MEDIA_RESULT_EXPRESSION)',
-    'evaluate(client, START_EXPRESSION)',
+    'evaluate(client, START_EXPRESSION(mediaPreferences))',
   ];
   const indices = orderedFragments.map((fragment) => run.indexOf(fragment));
   assert.equal(indices.every((index) => index >= 0), true);
@@ -356,7 +396,7 @@ test('commits the URL before replacing stale SRT state and dispatching the fresh
   assert.doesNotMatch(
     run.slice(
       run.indexOf("client.send('DOM.setFileInputFiles'"),
-      run.indexOf('evaluate(client, SRT_READY_EXPRESSION)'),
+      run.indexOf('evaluate(client, SRT_READY_EXPRESSION(mediaPreferences))'),
     ),
     /dispatchEvent|\.files(?:\?|\.)/,
   );

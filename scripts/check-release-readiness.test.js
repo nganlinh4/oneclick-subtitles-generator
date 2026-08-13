@@ -73,6 +73,14 @@ const BUTTONS_CONTAINER_SOURCE = fs.readFileSync(
   path.join(__dirname, '..', 'src', 'components', 'app', 'ButtonsContainer.jsx'),
   'utf8',
 );
+const DOWNLOAD_HANDLERS_SOURCE = fs.readFileSync(
+  path.join(__dirname, '..', 'src', 'components', 'app', 'handlers', 'downloadHandlers.js'),
+  'utf8',
+);
+const NATIVE_URL_DOWNLOAD_ADAPTER_SOURCE = fs.readFileSync(
+  path.join(__dirname, '..', 'src', 'platform', 'nativeUrlDownloadAdapter.js'),
+  'utf8',
+);
 const INSTALLED_NATIVE_TOOLS_INSPECTOR = fs.readFileSync(
   path.join(__dirname, 'inspect-installed-native-tools.mjs'),
   'utf8',
@@ -379,7 +387,42 @@ test('installed Windows smoke proves persistence, media, tools, logs, relaunch, 
   ]) {
     assert.throws(
       () => assertInstalledSmokeScript(commentedPriorIdentityGate),
-      /bind the second URL pass to the prior local-media identity/,
+      /bind exact URL phases to screenshots and prior identity/,
+    );
+  }
+  const installedPhaseMutations = [
+    [
+      'same initial phase',
+      INSTALLED_SMOKE_SCRIPT.replace(
+        "      -MediaPhase 'reactivation' `\n      -ScreenshotName 'osg-installed-media-flow.png' `",
+        "      -MediaPhase 'initial' `\n      -ScreenshotName 'osg-installed-media-flow.png' `",
+      ),
+    ],
+    [
+      'inverted initial phase',
+      INSTALLED_SMOKE_SCRIPT.replace(
+        "      -MediaPhase 'initial' `\n      -ScreenshotName 'osg-installed-media-flow-initial.png'",
+        "      -MediaPhase 'reactivation' `\n      -ScreenshotName 'osg-installed-media-flow-initial.png'",
+      ),
+    ],
+    [
+      'arbitrary reactivation phase',
+      INSTALLED_SMOKE_SCRIPT.replace(
+        "      -MediaPhase 'reactivation' `\n      -ScreenshotName 'osg-installed-media-flow.png' `",
+        "      -MediaPhase 'arbitrary' `\n      -ScreenshotName 'osg-installed-media-flow.png' `",
+      ),
+    ],
+    [
+      'missing phase forwarding',
+      INSTALLED_SMOKE_SCRIPT.replace("    '--media-phase', $MediaPhase\n", ''),
+    ],
+  ];
+  for (const [description, mutation] of installedPhaseMutations) {
+    assert.notEqual(mutation, INSTALLED_SMOKE_SCRIPT, description);
+    assert.throws(
+      () => assertInstalledSmokeScript(mutation),
+      /bind exact URL phases|route one initial and one prior-bound reactivation phase/,
+      description,
     );
   }
   for (const weakenedToolProof of [
@@ -1167,6 +1210,8 @@ test('installed URL media flow commits URL and replaces stale SRT before one dow
     INSTALLED_MEDIA_FLOW_INSPECTOR,
     INPUT_METHODS_SOURCE,
     BUTTONS_CONTAINER_SOURCE,
+    DOWNLOAD_HANDLERS_SOURCE,
+    NATIVE_URL_DOWNLOAD_ADAPTER_SOURCE,
   ));
   const replaceWithin = (source, startMarker, endMarker, search, replacement) => {
     const start = source.indexOf(startMarker);
@@ -1327,6 +1372,180 @@ test('installed URL media flow commits URL and replaces stale SRT before one dow
       `media-flow mutation ${index}`,
     );
   }
+  const phaseMutations = [
+    [
+      'same adapter preference in both phases',
+      INSTALLED_MEDIA_FLOW_INSPECTOR.replace(
+        "return Object.freeze({ autoImport: 'false', preferredLanguages: '[\"en\"]' });",
+        "return Object.freeze({ autoImport: 'true', preferredLanguages: '[\"en\"]' });",
+      ),
+    ],
+    [
+      'arbitrary phase accepted',
+      INSTALLED_MEDIA_FLOW_INSPECTOR.replace(
+        "if (mediaPhase === 'reactivation') {",
+        "if (typeof mediaPhase === 'string') {",
+      ),
+    ],
+    [
+      'phase and prior identity decoupled',
+      INSTALLED_MEDIA_FLOW_INSPECTOR.replace(
+        "  invariant((mediaPhase === 'initial' && priorAssetId === null)\n"
+          + "    || (mediaPhase === 'reactivation' && priorAssetId !== null),\n"
+          + "  'Installed media-flow phase and prior asset are inconsistent');\n",
+        '',
+      ),
+    ],
+    [
+      'phase configuration omitted',
+      INSTALLED_MEDIA_FLOW_INSPECTOR.replace(
+        '    invariant(await evaluate(client, CONFIGURE_MEDIA_PHASE_EXPRESSION(mediaPreferences)) === true,\n'
+          + "      'Installed media flow could not configure the reviewed phase');\n",
+        '',
+      ),
+    ],
+  ];
+  for (const [description, mutation] of phaseMutations) {
+    assert.notEqual(mutation, INSTALLED_MEDIA_FLOW_INSPECTOR, description);
+    assert.throws(
+      () => assertInstalledMediaFlowInspector(
+        mutation,
+        INPUT_METHODS_SOURCE,
+        BUTTONS_CONTAINER_SOURCE,
+        DOWNLOAD_HANDLERS_SOURCE,
+        NATIVE_URL_DOWNLOAD_ADAPTER_SOURCE,
+      ),
+      /distinct reviewed adapter preferences|commit URL state/,
+      description,
+    );
+  }
+  const startAutoImportRevalidationRemoved = replaceWithin(
+    INSTALLED_MEDIA_FLOW_INSPECTOR,
+    'const START_EXPRESSION = (preferences) => `',
+    'export const MEDIA_RESULT_EXPRESSION = `',
+    "      || localStorage.getItem('auto_import_site_subtitles')\n"
+      + '        !== ${JSON.stringify(preferences.autoImport)}\n',
+    '',
+  );
+  const startLanguagesRevalidationRemoved = replaceWithin(
+    INSTALLED_MEDIA_FLOW_INSPECTOR,
+    'const START_EXPRESSION = (preferences) => `',
+    'export const MEDIA_RESULT_EXPRESSION = `',
+    "      || localStorage.getItem('preferred_subtitle_langs')\n"
+      + '        !== ${JSON.stringify(preferences.preferredLanguages)}\n',
+    '',
+  );
+  for (const [description, mutation] of [
+    ['START auto-import phase revalidation', startAutoImportRevalidationRemoved],
+    ['START preferred-language phase revalidation', startLanguagesRevalidationRemoved],
+  ]) {
+    assert.notEqual(mutation, INSTALLED_MEDIA_FLOW_INSPECTOR, description);
+    assert.throws(
+      () => assertInstalledMediaFlowInspector(
+        mutation,
+        INPUT_METHODS_SOURCE,
+        BUTTONS_CONTAINER_SOURCE,
+        DOWNLOAD_HANDLERS_SOURCE,
+        NATIVE_URL_DOWNLOAD_ADAPTER_SOURCE,
+      ),
+      /synchronously revalidate URL and fresh SRT state/,
+      description,
+    );
+  }
+  const adapterKeyMutation = NATIVE_URL_DOWNLOAD_ADAPTER_SOURCE.replace(
+    "`${cookieSource}\\u0000${preferredLanguages.join(',')}\\u0000${url}`",
+    "`${cookieSource}\\u0000${url}`",
+  );
+  assert.notEqual(adapterKeyMutation, NATIVE_URL_DOWNLOAD_ADAPTER_SOURCE,
+    'adapter preferred-language key removal');
+  assert.throws(
+    () => assertInstalledMediaFlowInspector(
+      INSTALLED_MEDIA_FLOW_INSPECTOR,
+      INPUT_METHODS_SOURCE,
+      BUTTONS_CONTAINER_SOURCE,
+      DOWNLOAD_HANDLERS_SOURCE,
+      adapterKeyMutation,
+    ),
+    /distinct reviewed native adapter keys/,
+  );
+  const lastMomentPreferenceCollapse = DOWNLOAD_HANDLERS_SOURCE.replace(
+    '        processedFile = await downloadAndPrepareYouTubeVideo(',
+    '        preferredSubtitleLanguages = [];\n\n'
+      + '        processedFile = await downloadAndPrepareYouTubeVideo(',
+  );
+  assert.notEqual(lastMomentPreferenceCollapse, DOWNLOAD_HANDLERS_SOURCE,
+    'last-moment handler preference collapse');
+  assert.throws(
+    () => assertInstalledMediaFlowInspector(
+      INSTALLED_MEDIA_FLOW_INSPECTOR,
+      INPUT_METHODS_SOURCE,
+      BUTTONS_CONTAINER_SOURCE,
+      lastMomentPreferenceCollapse,
+      NATIVE_URL_DOWNLOAD_ADAPTER_SOURCE,
+    ),
+    /distinct reviewed native adapter keys/,
+  );
+  const handlerPreferenceMutation = DOWNLOAD_HANDLERS_SOURCE.replace(
+    "if (localStorage.getItem('auto_import_site_subtitles') !== 'false')",
+    "if (localStorage.getItem('auto_import_site_subtitles') === 'false')",
+  );
+  assert.notEqual(handlerPreferenceMutation, DOWNLOAD_HANDLERS_SOURCE,
+    'handler preference semantics inversion');
+  assert.throws(
+    () => assertInstalledMediaFlowInspector(
+      INSTALLED_MEDIA_FLOW_INSPECTOR,
+      INPUT_METHODS_SOURCE,
+      BUTTONS_CONTAINER_SOURCE,
+      handlerPreferenceMutation,
+      NATIVE_URL_DOWNLOAD_ADAPTER_SOURCE,
+    ),
+    /distinct reviewed native adapter keys/,
+  );
+  const commentedHandlerDecoy = `/*\n${DOWNLOAD_HANDLERS_SOURCE}\n*/\n`
+    + 'export const createDownloadHandlers = () => ({ '
+    + 'startBackgroundVideoProcessing: async () => undefined });\n';
+  const commentedAdapterDecoy = `/*\n${NATIVE_URL_DOWNLOAD_ADAPTER_SOURCE}\n*/\n`
+    + 'export const downloadNativeVideo = async () => null;\n';
+  for (const [description, handlerSource, adapterSource] of [
+    [
+      'commented handler decoy with weakened executable',
+      commentedHandlerDecoy,
+      NATIVE_URL_DOWNLOAD_ADAPTER_SOURCE,
+    ],
+    [
+      'commented adapter decoy with weakened executable',
+      DOWNLOAD_HANDLERS_SOURCE,
+      commentedAdapterDecoy,
+    ],
+  ]) {
+    assert.throws(
+      () => assertInstalledMediaFlowInspector(
+        INSTALLED_MEDIA_FLOW_INSPECTOR,
+        INPUT_METHODS_SOURCE,
+        BUTTONS_CONTAINER_SOURCE,
+        handlerSource,
+        adapterSource,
+      ),
+      /reviewed executable source/,
+      description,
+    );
+  }
+  const queryFixtureMutation = INSTALLED_MEDIA_FLOW_INSPECTOR.replace(
+    "osg-installed-media-smoke-v1-aecf6c8ef3977cd4.mp4';",
+    "osg-installed-media-smoke-v1-aecf6c8ef3977cd4.mp4?osg-installed-flow=reactivation';",
+  );
+  assert.notEqual(queryFixtureMutation, INSTALLED_MEDIA_FLOW_INSPECTOR,
+    'native-rejected fixture query');
+  assert.throws(
+    () => assertInstalledMediaFlowInspector(
+      queryFixtureMutation,
+      INPUT_METHODS_SOURCE,
+      BUTTONS_CONTAINER_SOURCE,
+      DOWNLOAD_HANDLERS_SOURCE,
+      NATIVE_URL_DOWNLOAD_ADAPTER_SOURCE,
+    ),
+    /byte-exact native-approved fixture URL/,
+  );
   const exactSetFileInputCall = [
     "    await client.send('DOM.setFileInputFiles', {",
     '      files: [options.srt], nodeId: inputs.nodeIds[0],',
@@ -1335,7 +1554,7 @@ test('installed URL media flow commits URL and replaces stale SRT before one dow
   ].join('\n');
   const exactSrtReadyWaitStart = [
     '    await waitForValue(',
-    '      () => evaluate(client, SRT_READY_EXPRESSION),',
+    '      () => evaluate(client, SRT_READY_EXPRESSION(mediaPreferences)),',
   ].join('\n');
   const setFileInputThenReady = exactSetFileInputCall + exactSrtReadyWaitStart;
   assert.equal(INSTALLED_MEDIA_FLOW_INSPECTOR.split(setFileInputThenReady).length, 2,
@@ -1381,14 +1600,14 @@ test('installed URL media flow commits URL and replaces stale SRT before one dow
   }
   const startUrlRevalidationRemoved = replaceWithin(
     INSTALLED_MEDIA_FLOW_INSPECTOR,
-    'const START_EXPRESSION = `',
+    'const START_EXPRESSION = (preferences) => `',
     'export const MEDIA_RESULT_EXPRESSION = `',
     "      || localStorage.getItem('current_video_url') !== ${JSON.stringify(MEDIA_URL)}\n",
     '',
   );
   const startSrtRevalidationRemoved = replaceWithin(
     INSTALLED_MEDIA_FLOW_INSPECTOR,
-    'const START_EXPRESSION = `',
+    'const START_EXPRESSION = (preferences) => `',
     'export const MEDIA_RESULT_EXPRESSION = `',
     "      || info.fileName !== 'osg-installed-media-smoke.srt'\n",
     '',
@@ -1444,7 +1663,7 @@ test('installed URL media flow commits URL and replaces stale SRT before one dow
     '',
   ].join('\n');
   const startCall = [
-    '    invariant(await evaluate(client, START_EXPRESSION) === true,',
+    '    invariant(await evaluate(client, START_EXPRESSION(mediaPreferences)) === true,',
     "      'Installed media flow could not click the real semi-automatic action');",
     '',
   ].join('\n');
