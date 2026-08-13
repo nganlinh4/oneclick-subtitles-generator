@@ -1,4 +1,4 @@
-use std::{fmt, str::FromStr};
+use std::{fmt, str::FromStr, sync::Mutex};
 
 use serde::{Deserialize, Deserializer, Serialize};
 use thiserror::Error;
@@ -17,6 +17,64 @@ pub enum IdError {
     NotVersionSeven { entity: &'static str, value: Uuid },
 }
 
+const UUID_V7_TIMESTAMP_MASK: u128 = (1_u128 << 48) - 1;
+const UUID_V7_RAND_A_MASK: u128 = (1_u128 << 12) - 1;
+const UUID_V7_RAND_B_MASK: u128 = (1_u128 << 62) - 1;
+const UUID_V7_VERSION_BITS: u128 = 7_u128 << 76;
+const UUID_RFC4122_VARIANT_BITS: u128 = 0b10_u128 << 62;
+
+static LAST_ISSUED_UUID_V7: Mutex<Option<Uuid>> = Mutex::new(None);
+
+fn process_monotonic_uuid_v7() -> Uuid {
+    let mut last_issued = LAST_ISSUED_UUID_V7
+        .lock()
+        .unwrap_or_else(std::sync::PoisonError::into_inner);
+    let candidate = Uuid::now_v7();
+    let issued = ensure_uuid_v7_after(*last_issued, candidate);
+    *last_issued = Some(issued);
+    issued
+}
+
+fn ensure_uuid_v7_after(previous: Option<Uuid>, candidate: Uuid) -> Uuid {
+    match previous {
+        Some(previous) if candidate <= previous => next_uuid_v7(previous),
+        _ => candidate,
+    }
+}
+
+fn next_uuid_v7(previous: Uuid) -> Uuid {
+    let value = previous.as_u128();
+    let mut timestamp_ms = (value >> 80) & UUID_V7_TIMESTAMP_MASK;
+    let mut rand_a = (value >> 64) & UUID_V7_RAND_A_MASK;
+    let mut rand_b = value & UUID_V7_RAND_B_MASK;
+
+    if rand_b < UUID_V7_RAND_B_MASK {
+        rand_b += 1;
+    } else if rand_a < UUID_V7_RAND_A_MASK {
+        rand_a += 1;
+        rand_b = 0;
+    } else {
+        timestamp_ms = timestamp_ms
+            .checked_add(1)
+            .filter(|timestamp_ms| *timestamp_ms <= UUID_V7_TIMESTAMP_MASK)
+            .expect("process-monotonic UUIDv7 value space exhausted");
+        rand_a = 0;
+        rand_b = 0;
+    }
+
+    uuid_v7_from_parts(timestamp_ms, rand_a, rand_b)
+}
+
+const fn uuid_v7_from_parts(timestamp_ms: u128, rand_a: u128, rand_b: u128) -> Uuid {
+    Uuid::from_u128(
+        (timestamp_ms << 80)
+            | UUID_V7_VERSION_BITS
+            | (rand_a << 64)
+            | UUID_RFC4122_VARIANT_BITS
+            | rand_b,
+    )
+}
+
 macro_rules! domain_id {
     ($name:ident, $entity:literal) => {
         #[doc = concat!("A time-sortable UUIDv7 identifier for a ", $entity, ".")]
@@ -29,7 +87,7 @@ macro_rules! domain_id {
             /// Creates an identifier using the process-monotonic `UUIDv7` generator.
             #[must_use]
             pub fn new() -> Self {
-                Self(Uuid::now_v7())
+                Self(process_monotonic_uuid_v7())
             }
 
             /// Validates and wraps an existing `UUIDv7` value.
@@ -123,11 +181,15 @@ domain_id!(JobId, "job");
 
 #[cfg(test)]
 mod tests {
-    use std::collections::HashSet;
+    use std::{collections::HashSet, sync::Barrier, thread};
 
     use uuid::{Uuid, Variant, Version};
 
-    use super::{AssetId, CueId, IdError, JobId, ProjectId, RevisionId, TrackId};
+    use super::{
+        AssetId, CueId, IdError, JobId, ProjectId, RevisionId, TrackId, UUID_V7_RAND_A_MASK,
+        UUID_V7_RAND_B_MASK, UUID_V7_TIMESTAMP_MASK, ensure_uuid_v7_after, next_uuid_v7,
+        uuid_v7_from_parts,
+    };
 
     #[test]
     fn every_identifier_uses_uuid_v7() {
@@ -144,6 +206,7 @@ mod tests {
             assert_eq!(value.get_version(), Some(Version::SortRand));
             assert_eq!(value.get_variant(), Variant::RFC4122);
         }
+        assert!(values.windows(2).all(|pair| pair[0] < pair[1]));
     }
 
     #[test]
@@ -153,6 +216,107 @@ mod tests {
 
         assert_eq!(unique.len(), ids.len());
         assert!(ids.windows(2).all(|pair| pair[0] < pair[1]));
+    }
+
+    #[test]
+    fn descending_uuid_v7_candidate_advances_from_last_issued_value() {
+        let previous = "018bcfe5-6800-7000-bfff-fff391672cca"
+            .parse::<Uuid>()
+            .expect("valid prior UUIDv7");
+        let regressed = "018bcfe5-6800-7000-8000-0006cd31b7ee"
+            .parse::<Uuid>()
+            .expect("valid regressed UUIDv7");
+
+        assert!(regressed < previous);
+
+        let repaired = ensure_uuid_v7_after(Some(previous), regressed);
+
+        assert_eq!(
+            repaired,
+            "018bcfe5-6800-7000-bfff-fff391672ccb"
+                .parse::<Uuid>()
+                .expect("valid repaired UUIDv7")
+        );
+        assert_eq!(repaired.get_version(), Some(Version::SortRand));
+        assert_eq!(repaired.get_variant(), Variant::RFC4122);
+        assert_eq!(repaired.get_timestamp(), previous.get_timestamp());
+    }
+
+    #[test]
+    fn equal_candidates_advance_and_greater_candidates_pass_through() {
+        let previous = "018bcfe5-6800-7000-bfff-fff391672cca"
+            .parse::<Uuid>()
+            .expect("valid prior UUIDv7");
+        let greater = "018bcfe5-6801-7000-8000-000000000000"
+            .parse::<Uuid>()
+            .expect("valid greater UUIDv7");
+
+        assert_eq!(
+            ensure_uuid_v7_after(Some(previous), previous),
+            next_uuid_v7(previous)
+        );
+        assert_eq!(ensure_uuid_v7_after(Some(previous), greater), greater);
+        assert_eq!(ensure_uuid_v7_after(None, greater), greater);
+    }
+
+    #[test]
+    fn uuid_v7_successor_carries_across_payload_fields() {
+        const TIMESTAMP_MS: u128 = 1_700_000_000_000;
+
+        let rand_b_max = uuid_v7_from_parts(TIMESTAMP_MS, 0x123, UUID_V7_RAND_B_MASK);
+        assert_eq!(
+            next_uuid_v7(rand_b_max),
+            uuid_v7_from_parts(TIMESTAMP_MS, 0x124, 0)
+        );
+
+        let payload_max =
+            uuid_v7_from_parts(TIMESTAMP_MS, UUID_V7_RAND_A_MASK, UUID_V7_RAND_B_MASK);
+        let next_timestamp = next_uuid_v7(payload_max);
+        assert_eq!(next_timestamp, uuid_v7_from_parts(TIMESTAMP_MS + 1, 0, 0));
+        assert_eq!(next_timestamp.get_version(), Some(Version::SortRand));
+        assert_eq!(next_timestamp.get_variant(), Variant::RFC4122);
+    }
+
+    #[test]
+    #[should_panic(expected = "process-monotonic UUIDv7 value space exhausted")]
+    fn total_uuid_v7_space_exhaustion_fails_loudly() {
+        let final_uuid = uuid_v7_from_parts(
+            UUID_V7_TIMESTAMP_MASK,
+            UUID_V7_RAND_A_MASK,
+            UUID_V7_RAND_B_MASK,
+        );
+
+        let _ = next_uuid_v7(final_uuid);
+    }
+
+    #[test]
+    fn concurrent_ids_remain_locally_ordered_and_globally_unique() {
+        const WORKER_COUNT: usize = 8;
+        const IDS_PER_WORKER: usize = 2_048;
+
+        let barrier = Barrier::new(WORKER_COUNT);
+        let ids = thread::scope(|scope| {
+            let mut workers = Vec::with_capacity(WORKER_COUNT);
+            for _ in 0..WORKER_COUNT {
+                let barrier = &barrier;
+                workers.push(scope.spawn(move || {
+                    barrier.wait();
+                    let ids: Vec<ProjectId> =
+                        (0..IDS_PER_WORKER).map(|_| ProjectId::new()).collect();
+                    assert!(ids.windows(2).all(|pair| pair[0] < pair[1]));
+                    ids
+                }));
+            }
+
+            workers
+                .into_iter()
+                .flat_map(|worker| worker.join().expect("ID worker completes"))
+                .collect::<Vec<_>>()
+        });
+        let unique: HashSet<ProjectId> = ids.iter().copied().collect();
+
+        assert_eq!(ids.len(), WORKER_COUNT * IDS_PER_WORKER);
+        assert_eq!(unique.len(), ids.len());
     }
 
     #[test]
