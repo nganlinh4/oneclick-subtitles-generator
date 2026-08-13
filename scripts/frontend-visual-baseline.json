@@ -2,7 +2,7 @@
   "schemaVersion": 5,
   "algorithm": "sha256",
   "normalization": "binary exact; UTF-8 BOM ignored, CRLF/CR normalized to LF, terminal newlines ignored",
-  "baselineRevision": "1cd6f20fcaee04c7d5be98966e0dcaa273f68ce4",
+  "baselineRevision": "c5bc7ae04eb3df2c14bb7997efc7becc8038c532",
   "retiredExactFiles": {
     "public/oauth2callback.html": "c19855fd5a3f19af1eea1c1fed6e7794a342136223dd60dbead2586d4298fd90",
     "src/assets/fonts/GoogleSansFlex.ttf": "eae5ed6ddefbd44ab9693b84454ce46f3f2de0fb4f7cc5b54138c50c5b347d70",
@@ -7720,10 +7720,10 @@
       ]
     },
     "src/components/app/ButtonsContainer.jsx": {
-      "hash": "6d81be4f2ffd2f332750b28a4f1921abc7beab7e0eecc3cc030557ba2f359393",
+      "hash": "83965f14811f550091e12efe387c461ea7cba9a56e5697035a00df8090efbdf1",
       "rootCount": 1,
       "roots": [
-        "9b2f8a7d8fa091eaa7ecaea16b853b0d1dcbe7c667c1dfb2b1a5a7855d0a011c"
+        "473ef173167a6f01178e46c310f94bfec5991163b4633be18bd9fb07e93fdf29"
       ]
     },
     "src/components/app/index.js": {
@@ -8042,10 +8042,10 @@
       ]
     },
     "src/components/InputMethods.js": {
-      "hash": "fd56ec6afa0b572214d29dffd8fa169105e6f733932ec27626a3abbd473452dc",
+      "hash": "60a2c49244c602a01170fb6d029b3d0f5a5fbbdcab5029309941088defc108c5",
       "rootCount": 6,
       "roots": [
-        "2d093af507a0562a093207d4db040602029535001ed26171dcb312127d32d65c",
+        "da5a4d39d3999f3fa8a845a2dcefeaaec6b0c425b4f3fb1bf0367a1fa47b78f2",
         "9754c3da2cab97df8cc35746b8662de83c438451e11eb5fde7c81d339e72c723",
         "d938134ab3dc54a0e27783cd1a3c826f805f28b34dec3e989453a5d542748824",
         "d938134ab3dc54a0e27783cd1a3c826f805f28b34dec3e989453a5d542748824",
