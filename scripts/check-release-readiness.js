@@ -46,7 +46,7 @@ const INSTALLED_NATIVE_TOOLS_INSPECTOR_SHA256 =
 const INSTALLED_LOCAL_MEDIA_INSPECTOR_SHA256 =
   'e53207922c58e449705282a11da2975bdeaf2754d1f204a504fcca424d16df61';
 const INSTALLED_MEDIA_FLOW_INSPECTOR_SHA256 =
-  '55ad3f3c92083c720086307326321a87e560322279b0309fd06078c048b0df74';
+  '06d1141621053ebf435ce70a24bdbd661dbbe0e92d4739298f8f528a721fdf00';
 const INSTALLED_WINDOWS_SMOKE_SHA256 =
   '271f25c131910eac2d5c067b045291ebcb2e88d974fedc252920dcd7f3d7c284';
 const DISTRIBUTABLE_FONT_EXTENSION = /\.(?:eot|otf|ttf|woff2?)$/i;
@@ -1543,7 +1543,6 @@ function assertInstalledMediaFlowInspector(script, inputMethodsSource, buttonsCo
     'evaluate(client, RESET_SRT_EXPRESSION)',
     'evaluate(client, SRT_CLEARED_EXPRESSION)',
     "client.send('DOM.setFileInputFiles'",
-    "inputs[0].dispatchEvent(new Event('change', { bubbles: true }))",
     'evaluate(client, SRT_READY_EXPRESSION)',
     'const baselineState = await evaluate(client, MEDIA_RESULT_EXPRESSION)',
     'const baselineDownloadJobIds = collectDownloadJobIds(baselineState)',
@@ -1643,6 +1642,29 @@ function assertInstalledMediaFlowInspector(script, inputMethodsSource, buttonsCo
       && run.includes('Array.isArray(inputs.nodeIds) && inputs.nodeIds.length === 1')
       && run.includes("failureCode: 'srt-readiness-timeout'"),
     'Installed media-flow inspector must prove a fresh exact SRT callback before enabling one start action',
+  );
+  const exactSrtUploadBoundary = [
+    "    const documentNode = await client.send('DOM.getDocument', { depth: -1, pierce: true });",
+    "    const inputs = await client.send('DOM.querySelectorAll', {",
+    '      nodeId: documentNode.root.nodeId,',
+    '      selector: \'.buttons-container .srt-upload-buttons-group input[type="file"][accept=".srt,.json"]\',',
+    '    });',
+    '    invariant(Array.isArray(inputs.nodeIds) && inputs.nodeIds.length === 1',
+    '      && Number.isInteger(inputs.nodeIds[0]) && inputs.nodeIds[0] > 0,',
+    "    'Installed media flow could not find one exact SRT input');",
+    "    await client.send('DOM.setFileInputFiles', {",
+    '      files: [options.srt], nodeId: inputs.nodeIds[0],',
+    '    });',
+    '    await waitForValue(',
+    '      () => evaluate(client, SRT_READY_EXPRESSION),',
+    '      (value) => value === true,',
+    "      { timeoutMs: 60_000, failureCode: 'srt-readiness-timeout' },",
+    '    );',
+  ].join('\n');
+  invariant(
+    (run.match(/DOM\.setFileInputFiles/g) || []).length === 1
+      && run.split(exactSrtUploadBoundary).length === 2,
+    'Installed media-flow inspector must retain one uninterrupted exact SRT upload transaction',
   );
   invariant(
     (start.match(/buttons\[0\]\.click\(\);/g) || []).length === 1

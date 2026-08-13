@@ -1234,6 +1234,25 @@ test('installed URL media flow commits URL and replaces stale SRT before one dow
       'Array.isArray(inputs.nodeIds) && inputs.nodeIds.length >= 1',
     ),
     INSTALLED_MEDIA_FLOW_INSPECTOR.replace(
+      "    await client.send('DOM.setFileInputFiles', {\n"
+        + '      files: [options.srt], nodeId: inputs.nodeIds[0],\n'
+        + '    });\n',
+      '',
+    ),
+    INSTALLED_MEDIA_FLOW_INSPECTOR.replace(
+      "    await client.send('DOM.setFileInputFiles', {",
+      "    void client.send('DOM.setFileInputFiles', {",
+    ),
+    INSTALLED_MEDIA_FLOW_INSPECTOR.replace(
+      "    await client.send('DOM.setFileInputFiles', {\n"
+        + '      files: [options.srt], nodeId: inputs.nodeIds[0],\n'
+        + '    });\n',
+      "    await client.send('DOM.setFileInputFiles', {\n"
+        + '      files: [options.srt], nodeId: inputs.nodeIds[0],\n'
+        + '    });\n'
+        + "    await evaluate(client, `inputs[0].dispatchEvent(new Event('change'))`);\n",
+    ),
+    INSTALLED_MEDIA_FLOW_INSPECTOR.replace(
       '      || buttons.length !== 1 || !(buttons[0] instanceof HTMLButtonElement)\n'
         + '      || buttons[0].disabled',
       '      || buttons.length < 1 || !(buttons[0] instanceof HTMLButtonElement)\n'
@@ -1306,6 +1325,58 @@ test('installed URL media flow commits URL and replaces stale SRT before one dow
       ),
       /Installed media-flow inspector must/,
       `media-flow mutation ${index}`,
+    );
+  }
+  const exactSetFileInputCall = [
+    "    await client.send('DOM.setFileInputFiles', {",
+    '      files: [options.srt], nodeId: inputs.nodeIds[0],',
+    '    });',
+    '',
+  ].join('\n');
+  const exactSrtReadyWaitStart = [
+    '    await waitForValue(',
+    '      () => evaluate(client, SRT_READY_EXPRESSION),',
+  ].join('\n');
+  const setFileInputThenReady = exactSetFileInputCall + exactSrtReadyWaitStart;
+  assert.equal(INSTALLED_MEDIA_FLOW_INSPECTOR.split(setFileInputThenReady).length, 2,
+    'setFileInputFiles to SRT_READY boundary cardinality');
+  const uploadBoundaryMutations = [
+    [
+      'positive node validity removal',
+      INSTALLED_MEDIA_FLOW_INSPECTOR.replace(
+        '      && Number.isInteger(inputs.nodeIds[0]) && inputs.nodeIds[0] > 0,',
+        '      && true,',
+      ),
+    ],
+    [
+      'manual onchange insertion',
+      INSTALLED_MEDIA_FLOW_INSPECTOR.replace(
+        setFileInputThenReady,
+        exactSetFileInputCall
+          + "    await evaluate(client, `document.querySelector('input')?.onchange?.(new Event('change'))`);\n"
+          + exactSrtReadyWaitStart,
+      ),
+    ],
+    [
+      'out-of-line URL evaluation insertion',
+      INSTALLED_MEDIA_FLOW_INSPECTOR.replace(
+        setFileInputThenReady,
+        exactSetFileInputCall
+          + '    await evaluate(client, SET_URL_EXPRESSION);\n'
+          + exactSrtReadyWaitStart,
+      ),
+    ],
+  ];
+  for (const [description, mutation] of uploadBoundaryMutations) {
+    assert.notEqual(mutation, INSTALLED_MEDIA_FLOW_INSPECTOR, description);
+    assert.throws(
+      () => assertInstalledMediaFlowInspector(
+        mutation,
+        INPUT_METHODS_SOURCE,
+        BUTTONS_CONTAINER_SOURCE,
+      ),
+      /retain one uninterrupted exact SRT upload transaction/,
+      description,
     );
   }
   const startUrlRevalidationRemoved = replaceWithin(

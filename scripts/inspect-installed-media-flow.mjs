@@ -732,16 +732,6 @@ async function runInstalledMediaFlow(options) {
     await client.send('DOM.setFileInputFiles', {
       files: [options.srt], nodeId: inputs.nodeIds[0],
     });
-    invariant(await evaluate(client, `
-      (() => {
-        const inputs = [...document.querySelectorAll(
-          '.buttons-container .srt-upload-buttons-group input[type="file"][accept=".srt,.json"]'
-        )];
-        if (inputs.length !== 1 || !(inputs[0] instanceof HTMLInputElement)
-            || inputs[0].files?.length !== 1) return false;
-        inputs[0].dispatchEvent(new Event('change', { bubbles: true }));
-        return true;
-      })()`) === true, 'Installed media flow could not dispatch the exact SRT input');
     await waitForValue(
       () => evaluate(client, SRT_READY_EXPRESSION),
       (value) => value === true,

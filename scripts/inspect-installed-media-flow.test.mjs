@@ -339,7 +339,6 @@ test('commits the URL before replacing stale SRT state and dispatching the fresh
     'evaluate(client, RESET_SRT_EXPRESSION)',
     'evaluate(client, SRT_CLEARED_EXPRESSION)',
     "client.send('DOM.setFileInputFiles'",
-    "inputs[0].dispatchEvent(new Event('change', { bubbles: true }))",
     'evaluate(client, SRT_READY_EXPRESSION)',
     'const baselineState = await evaluate(client, MEDIA_RESULT_EXPRESSION)',
     'evaluate(client, START_EXPRESSION)',
@@ -349,6 +348,36 @@ test('commits the URL before replacing stale SRT state and dispatching the fresh
   assert.equal(indices.every((index, position) => (
     position === 0 || indices[position - 1] < index
   )), true);
+  assert.equal((run.match(/DOM\.setFileInputFiles/g) || []).length, 1);
+  assert.match(
+    run,
+    /await client\.send\('DOM\.setFileInputFiles', \{\s+files: \[options\.srt\], nodeId: inputs\.nodeIds\[0\],\s+\}\);/,
+  );
+  assert.doesNotMatch(
+    run.slice(
+      run.indexOf("client.send('DOM.setFileInputFiles'"),
+      run.indexOf('evaluate(client, SRT_READY_EXPRESSION)'),
+    ),
+    /dispatchEvent|\.files(?:\?|\.)/,
+  );
+
+  const fileInput = { files: [] };
+  let callbackCount = 0;
+  let freshSrtReady = false;
+  const reactChangeHandler = () => {
+    assert.equal(fileInput.files.length, 1);
+    callbackCount += 1;
+    freshSrtReady = true;
+    fileInput.files = [];
+  };
+  const setFileInputFiles = () => {
+    fileInput.files = [{ name: 'osg-installed-media-smoke.srt' }];
+    reactChangeHandler();
+  };
+  setFileInputFiles();
+  assert.equal(callbackCount, 1);
+  assert.equal(fileInput.files.length, 0);
+  assert.equal(freshSrtReady, true);
 
   const createReactClosureModel = () => {
     let selectedVideo = null;
