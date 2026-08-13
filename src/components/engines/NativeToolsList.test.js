@@ -1,4 +1,4 @@
-import { fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { act, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import {
   getNativeToolsCatalog,
   getNativeToolsStatus,
@@ -73,6 +73,33 @@ const status = (overrides = {}) => ({
   ...overrides,
 });
 
+const renderStatus = (overrides = {}) => ({
+  schemaVersion: 1,
+  id: 'remotion-runtime',
+  label: 'Remotion video renderer',
+  deliveryAvailable: true,
+  installed: false,
+  updateAvailable: false,
+  state: 'missing',
+  version: null,
+  availableVersion: '4.0.507',
+  installedBytes: 0,
+  downloadBytes: 265_442_457,
+  availableInstalledBytes: 624_910_330,
+  operation: null,
+  ...overrides,
+});
+
+const deferred = () => {
+  let resolve;
+  let reject;
+  const promise = new Promise((resolvePromise, rejectPromise) => {
+    resolve = resolvePromise;
+    reject = rejectPromise;
+  });
+  return { promise, reject, resolve };
+};
+
 afterEach(() => vi.clearAllMocks());
 
 beforeEach(() => {
@@ -98,13 +125,20 @@ it('shows source, license, version, and a confirmed native removal action', asyn
     return { id: 'job' };
   });
   const onChanged = vi.fn();
-  render(<NativeToolRow catalog={catalog} status={status()} onChanged={onChanged} />);
+  const { container } = render(
+    <NativeToolRow catalog={catalog} status={status()} onChanged={onChanged} />
+  );
 
+  expect(container.querySelector('[data-native-tool-id="yt-dlp"]')).not.toBeNull();
   expect(screen.getByText(/Official release · GPL-3\.0-or-later · v2026\.07\.04/))
     .toBeInTheDocument();
   expect(screen.getByText('Installed and active · 17 MB disk')).toBeInTheDocument();
-  fireEvent.click(screen.getByRole('button', { name: 'Uninstall' }));
-  fireEvent.click(screen.getByRole('button', { name: 'Uninstall' }));
+  const removeRequest = container.querySelector('[data-tool-action="remove-request"]');
+  expect(removeRequest).not.toBeNull();
+  fireEvent.click(removeRequest);
+  const removeConfirm = container.querySelector('[data-tool-action="remove-confirm"]');
+  expect(removeConfirm).not.toBeNull();
+  fireEvent.click(removeConfirm);
   expect(removeNativeTool).toHaveBeenCalledWith('yt-dlp', expect.any(Object));
   handlers.onCompleted();
   await waitFor(() => expect(onChanged).toHaveBeenCalled());
@@ -179,21 +213,7 @@ it('surfaces a native schema or IPC failure with a compact retry action', async 
 it('exposes the downloadable renderer beside the native tools', async () => {
   getNativeToolsCatalog.mockResolvedValue({ schemaVersion: 1, tools: [catalog] });
   getNativeToolsStatus.mockResolvedValue({ schemaVersion: 1, tools: [status()] });
-  getRenderPackageStatus.mockResolvedValue({
-    schemaVersion: 1,
-    id: 'remotion-runtime',
-    label: 'Remotion video renderer',
-    deliveryAvailable: true,
-    installed: false,
-    updateAvailable: false,
-    state: 'missing',
-    version: null,
-    availableVersion: '4.0.507',
-    installedBytes: 0,
-    downloadBytes: 265_442_457,
-    availableInstalledBytes: 624_910_330,
-    operation: null,
-  });
+  getRenderPackageStatus.mockResolvedValue(renderStatus());
   render(<NativeToolsList />);
   expect(await screen.findByText('Remotion video renderer')).toBeInTheDocument();
   expect(screen.getByText(/Video renderer · Reviewed bundle pool/)).toBeInTheDocument();
@@ -201,4 +221,78 @@ it('exposes the downloadable renderer beside the native tools', async () => {
   expect(screen.getByText('Gemini voice previews')).toBeInTheDocument();
   expect(screen.getByText(/Voice previews · Reviewed bundle pool · Provider terms/))
     .toBeInTheDocument();
+});
+
+it('ignores a stale refresh that resolves after a newer native-tool snapshot', async () => {
+  const firstCatalog = deferred();
+  const firstStatus = deferred();
+  const firstRender = deferred();
+  const firstVoice = deferred();
+  const missingTool = status({
+    installed: false,
+    state: 'missing',
+    version: null,
+    installedBytes: 0,
+    activeRuntime: false,
+  });
+  getNativeToolsCatalog
+    .mockReturnValueOnce(firstCatalog.promise)
+    .mockResolvedValue({ schemaVersion: 1, tools: [catalog] });
+  getNativeToolsStatus
+    .mockReturnValueOnce(firstStatus.promise)
+    .mockResolvedValue({ schemaVersion: 1, tools: [missingTool] });
+  getRenderPackageStatus
+    .mockReturnValueOnce(firstRender.promise)
+    .mockResolvedValue(renderStatus());
+  getVoiceSamplesStatus
+    .mockReturnValueOnce(firstVoice.promise)
+    .mockResolvedValue({
+      id: 'gemini-voice-samples',
+      label: 'Gemini voice previews',
+      deliveryAvailable: true,
+      installed: false,
+      updateAvailable: false,
+      state: 'missing',
+      version: null,
+      availableVersion: '2026.08.11',
+      installedBytes: 0,
+      downloadBytes: 13_520_118,
+      availableInstalledBytes: 16_384_680,
+    });
+
+  const { container } = render(<NativeToolsList />);
+  await waitFor(() => expect(getNativeToolsStatus).toHaveBeenCalledTimes(1));
+  fireEvent.focus(window);
+  await waitFor(() => expect(getNativeToolsStatus).toHaveBeenCalledTimes(2));
+  await waitFor(() => expect(
+    container.querySelector('[data-native-tool-id="yt-dlp"]')
+  ).toHaveClass('engine-card--missing'));
+  expect(container.querySelector(
+    '[data-native-tool-id="yt-dlp"] [data-tool-action="install"]'
+  )).not.toBeNull();
+
+  await act(async () => {
+    firstCatalog.resolve({ schemaVersion: 1, tools: [catalog] });
+    firstStatus.resolve({ schemaVersion: 1, tools: [status()] });
+    firstRender.resolve(renderStatus({ installed: true, state: 'installed' }));
+    firstVoice.resolve({
+      id: 'gemini-voice-samples',
+      label: 'Gemini voice previews',
+      deliveryAvailable: true,
+      installed: true,
+      updateAvailable: false,
+      state: 'installed',
+      version: '2026.08.11',
+      availableVersion: '2026.08.11',
+      installedBytes: 16_384_680,
+      downloadBytes: 13_520_118,
+      availableInstalledBytes: 16_384_680,
+    });
+    await Promise.all([
+      firstCatalog.promise, firstStatus.promise, firstRender.promise, firstVoice.promise,
+    ]);
+  });
+
+  expect(container.querySelector('[data-native-tool-id="yt-dlp"]'))
+    .toHaveClass('engine-card--missing');
 });

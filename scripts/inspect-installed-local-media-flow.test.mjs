@@ -3,9 +3,13 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import test from 'node:test';
+import vm from 'node:vm';
 
 import {
+  CLICK_PICKER_EXPRESSION,
   LOCAL_MEDIA_RESULT_EXPRESSION,
+  OPEN_PICKER_EXPRESSION,
+  PICKER_CONTROL_READY_EXPRESSION,
   assertLocalMediaResult,
   assertPriorMediaState,
   parseArguments,
@@ -20,6 +24,86 @@ const playbackUrl = 'http://127.0.0.1:43123/asset/01111111-2222-4333-8444-555555
   + 'a'.repeat(64);
 const playbackId = '01111111-2222-4333-8444-555555555555';
 const fileName = 'osg-installed-media-smoke-v1-aecf6c8ef3977cd4.mp4';
+const repositoryRoot = path.resolve(import.meta.dirname, '..');
+
+const pickerExpressionHarness = ({
+  activeIndices = [1],
+  includeControl = true,
+  includeInput = true,
+  duplicateContainer = false,
+  duplicateControl = false,
+} = {}) => {
+  class FakeElement {}
+  class FakeButton extends FakeElement {
+    constructor(index) {
+      super();
+      this.active = activeIndices.includes(index);
+      this.clicks = 0;
+      this.classList = {
+        contains: (name) => name === 'tab-btn' || (name === 'active' && this.active),
+      };
+    }
+
+    click() {
+      this.clicks += 1;
+      buttons.forEach((button) => { button.active = false; });
+      this.active = true;
+    }
+  }
+  class FakeInput extends FakeElement {}
+  class FakeDiv extends FakeElement {
+    constructor() {
+      super();
+      this.clicks = 0;
+    }
+
+    querySelector(selector) {
+      if (selector !== ':scope > input.hidden-file-input[type="file"]') return null;
+      return includeInput ? input : null;
+    }
+
+    click() {
+      this.clicks += 1;
+    }
+  }
+  const buttons = [new FakeButton(0), new FakeButton(1)];
+  const tabList = new FakeElement();
+  tabList.children = buttons;
+  buttons.forEach((button) => { button.parentElement = tabList; });
+  const input = new FakeInput();
+  const picker = new FakeDiv();
+  const secondPicker = new FakeDiv();
+  const container = new FakeElement();
+  container.querySelectorAll = (selector) => {
+    if (selector === ':scope > .input-header > .input-tabs > button[data-input-tab="file-upload"]') {
+      return [buttons[1]];
+    }
+    if (selector === ':scope > .tab-content-wrapper div.file-upload-input:not(.loading)') {
+      if (!includeControl) return [];
+      return duplicateControl ? [picker, secondPicker] : [picker];
+    }
+    return [];
+  };
+  const document = {
+    querySelectorAll: (selector) => selector === '.input-methods-container'
+      ? duplicateContainer ? [container, new FakeElement()] : [container]
+      : [],
+  };
+  const context = {
+    document,
+    HTMLElement: FakeElement,
+    HTMLButtonElement: FakeButton,
+    HTMLDivElement: FakeDiv,
+    HTMLInputElement: FakeInput,
+  };
+  return {
+    buttons,
+    picker,
+    click: () => vm.runInNewContext(CLICK_PICKER_EXPRESSION, context),
+    open: () => vm.runInNewContext(OPEN_PICKER_EXPRESSION, context),
+    ready: () => vm.runInNewContext(PICKER_CONTROL_READY_EXPRESSION, context),
+  };
+};
 
 const validResult = () => ({
   assetId,
@@ -156,9 +240,73 @@ test('preserves the primary picker-phase publication failure when cleanup also f
 test('accepts the exact opaque local-media session and decoded fixture', () => {
   assert.equal(assertLocalMediaResult(validResult(), fileName, priorAssetId).video.width, 640);
   assert.deepEqual(
-    assertPriorMediaState({ assetId: priorAssetId, sessionMediaId: priorAssetId }, priorAssetId),
+    assertPriorMediaState(
+      { assetId: priorAssetId, sessionMediaId: priorAssetId },
+      priorAssetId,
+      'already-active',
+    ),
     { assetId: priorAssetId, sessionMediaId: priorAssetId },
   );
+  assert.deepEqual(
+    assertPriorMediaState(
+      { assetId: null, sessionMediaId: priorAssetId },
+      priorAssetId,
+      'activated',
+    ),
+    { assetId: null, sessionMediaId: priorAssetId },
+  );
+});
+
+test('does not re-click an active Upload File tab and activates it only when necessary', () => {
+  const inputMethodsSource = fs.readFileSync(
+    path.join(repositoryRoot, 'src/components/InputMethods.js'), 'utf8',
+  );
+  assert.equal((inputMethodsSource.match(/data-input-tab="file-upload"/g) || []).length, 1);
+  assert.match(
+    inputMethodsSource,
+    /<button\s+className=\{`tab-btn \$\{activeTab === 'file-upload' \? 'active' : ''\}`\}\s+data-input-tab="file-upload"\s+onClick=\{\(\) => setActiveTab\('file-upload'\)\}\s*>/,
+  );
+  const alreadyActive = pickerExpressionHarness();
+  assert.equal(alreadyActive.open(), 'already-active');
+  assert.equal(alreadyActive.buttons[1].clicks, 0);
+  assert.equal(alreadyActive.ready(), true);
+  assert.equal(alreadyActive.click(), true);
+  assert.equal(alreadyActive.buttons[1].clicks, 0);
+  assert.equal(alreadyActive.picker.clicks, 1);
+
+  const inactive = pickerExpressionHarness({ activeIndices: [0] });
+  assert.equal(inactive.open(), 'activated');
+  assert.equal(inactive.buttons[1].clicks, 1);
+  assert.equal(inactive.ready(), true);
+  assert.equal(inactive.click(), true);
+  assert.equal(inactive.buttons[1].clicks, 1);
+  assert.equal(inactive.picker.clicks, 1);
+});
+
+test('fails closed on ambiguous tab state, incomplete controls, and prior-asset drift', () => {
+  for (const activeIndices of [[], [0, 1]]) {
+    const ambiguous = pickerExpressionHarness({ activeIndices });
+    assert.equal(ambiguous.open(), null);
+    assert.equal(ambiguous.buttons[1].clicks, 0);
+    assert.equal(ambiguous.ready(), false);
+  }
+  assert.equal(pickerExpressionHarness({ includeControl: false }).ready(), false);
+  assert.equal(pickerExpressionHarness({ includeInput: false }).ready(), false);
+  assert.equal(pickerExpressionHarness({ duplicateContainer: true }).click(), false);
+  assert.equal(pickerExpressionHarness({ duplicateControl: true }).click(), false);
+
+  for (const [state, activation] of [
+    [{ assetId: null, sessionMediaId: priorAssetId }, 'already-active'],
+    [{ assetId: priorAssetId, sessionMediaId: priorAssetId }, 'activated'],
+    [{ assetId, sessionMediaId: priorAssetId }, 'already-active'],
+    [{ assetId: null, sessionMediaId: assetId }, 'activated'],
+    [{ assetId: priorAssetId, sessionMediaId: priorAssetId }, 'unknown'],
+  ]) {
+    assert.throws(
+      () => assertPriorMediaState(state, priorAssetId, activation),
+      /(?:tab activation is invalid|reviewed prior native asset)/,
+    );
+  }
 });
 
 test('rejects WebView path injection, missing audio, and a stale visible capability', () => {
@@ -183,7 +331,9 @@ test('rejects WebView path injection, missing audio, and a stale visible capabil
     /retained the prior URL asset/,
   );
   assert.throws(
-    () => assertPriorMediaState({ assetId, sessionMediaId: priorAssetId }, priorAssetId),
+    () => assertPriorMediaState(
+      { assetId, sessionMediaId: priorAssetId }, priorAssetId, 'already-active',
+    ),
     /reviewed prior native asset/,
   );
 });

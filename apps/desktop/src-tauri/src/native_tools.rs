@@ -97,6 +97,15 @@ pub(crate) enum NativeToolAction {
     Remove,
 }
 
+impl NativeToolAction {
+    const fn as_str(self) -> &'static str {
+        match self {
+            Self::Install => "install",
+            Self::Remove => "remove",
+        }
+    }
+}
+
 #[derive(Clone, Copy, Debug, Deserialize, Eq, PartialEq, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub(crate) enum NativeToolPhase {
@@ -255,6 +264,14 @@ impl NativeToolRuntime {
         jobs: Arc<JobRegistry<Database>>,
     ) -> Result<Self, NativeToolRuntimeError> {
         let manager = NativeToolManager::new(root, Arc::new(LeaseRuntimeCoordinator))?;
+        Self::with_manager(manager, database, jobs)
+    }
+
+    fn with_manager(
+        manager: NativeToolManager,
+        database: Database,
+        jobs: Arc<JobRegistry<Database>>,
+    ) -> Result<Self, NativeToolRuntimeError> {
         clear_recovered_operations(&database)?;
         apply_pending_removals(&manager, &database)?;
         let active_leases = NativeToolId::ALL
@@ -507,7 +524,9 @@ impl NativeToolRuntime {
             NativeToolAction::Install => self.install(tool, cancellation, &progress),
             NativeToolAction::Remove => self.remove(tool, cancellation, &progress),
         };
-        if progress_failed.load(Ordering::Acquire) {
+        if progress_failed.load(Ordering::Acquire)
+            && !(action == NativeToolAction::Remove && result.is_ok())
+        {
             Err(ExecutionFailure::Internal)
         } else {
             result
@@ -527,18 +546,25 @@ impl NativeToolRuntime {
             .database
             .delete_setting(PENDING_REMOVAL_SCOPE, tool.as_str())
             .map_err(ExecutionFailure::Database)?;
-        if tool == NativeToolId::YtDlp || !self.0.manager.status(tool).installed {
+        let has_active_lease = tool != NativeToolId::YtDlp
+            && self
+                .0
+                .active_leases
+                .read()
+                .map_err(|_| ExecutionFailure::Internal)?
+                .contains_key(&tool);
+        if !has_active_lease {
             self.0
                 .manager
                 .install(tool, cancellation, progress)
                 .map_err(ExecutionFailure::Tool)?;
         }
-        let installed_version = self.0.manager.status(tool).version;
         let lease = self
             .0
             .manager
             .resolve(tool, cancellation)
             .map_err(ExecutionFailure::Tool)?;
+        let installed_version = Some(lease.version().to_owned());
         let previous_lease = self
             .0
             .active_leases
@@ -554,17 +580,7 @@ impl NativeToolRuntime {
         if let Some(activator) = activator
             && activator.refresh(self).is_err()
         {
-            let mut leases = self
-                .0
-                .active_leases
-                .write()
-                .map_err(|_| ExecutionFailure::Internal)?;
-            if let Some(previous_lease) = previous_lease {
-                leases.insert(tool, previous_lease);
-            } else {
-                leases.remove(&tool);
-            }
-            return Err(ExecutionFailure::Internal);
+            return self.restore_lease_after_refresh_failure(tool, previous_lease);
         }
         let active_version = self
             .0
@@ -595,74 +611,105 @@ impl NativeToolRuntime {
         if self.has_active_consumer_jobs()? || !self.consumers_idle(tool)? {
             return Err(ExecutionFailure::Tool(NativeToolError::RuntimeBusy));
         }
-        let was_active = self.deactivate_for_removal(tool)?;
+        let previous_version = self.deactivate_for_removal(tool)?;
         let removal = self
             .0
             .manager
             .remove(tool, cancellation, progress)
             .map_err(ExecutionFailure::Tool);
         match removal {
-            Ok(RemovalOutcome::Missing | RemovalOutcome::Removed) => {
-                self.0
-                    .database
-                    .delete_setting(PENDING_REMOVAL_SCOPE, tool.as_str())
-                    .map_err(ExecutionFailure::Database)?;
-                Ok(OperationOutcome {
-                    restart_required: false,
-                    deferred: false,
-                })
-            }
+            Ok(RemovalOutcome::Missing | RemovalOutcome::Removed) => Ok(OperationOutcome {
+                restart_required: false,
+                deferred: false,
+            }),
             Ok(RemovalOutcome::PreservedModified) => {
-                self.restore_after_failed_removal(tool, was_active)?;
+                let _ = self.restore_after_failed_removal(tool, previous_version.as_deref());
                 Err(ExecutionFailure::Tool(NativeToolError::InvalidInstall))
             }
             Err(error) => {
-                self.restore_after_failed_removal(tool, was_active)?;
+                let _ = self.restore_after_failed_removal(tool, previous_version.as_deref());
                 Err(error)
             }
         }
     }
 
-    fn deactivate_for_removal(&self, tool: NativeToolId) -> Result<bool, ExecutionFailure> {
+    fn deactivate_for_removal(
+        &self,
+        tool: NativeToolId,
+    ) -> Result<Option<String>, ExecutionFailure> {
         let previous = self
             .0
             .active_leases
             .write()
             .map_err(|_| ExecutionFailure::Internal)?
             .remove(&tool);
-        let was_active = previous.is_some();
-        if was_active && self.refresh_consumers().is_err() {
-            self.0
-                .active_leases
-                .write()
-                .map_err(|_| ExecutionFailure::Internal)?
-                .insert(tool, previous.expect("active lease checked above"));
-            return Err(ExecutionFailure::Internal);
+        let previous_version = previous.as_ref().map(|lease| lease.version().to_owned());
+        if previous.is_some() && self.refresh_consumers().is_err() {
+            return self.restore_lease_after_refresh_failure(tool, previous);
         }
         drop(previous);
-        Ok(was_active)
+        Ok(previous_version)
     }
 
     fn restore_after_failed_removal(
         &self,
         tool: NativeToolId,
-        was_active: bool,
+        previous_version: Option<&str>,
     ) -> Result<(), ExecutionFailure> {
-        if !was_active || !self.0.manager.status(tool).installed {
+        let Some(previous_version) = previous_version else {
             return Ok(());
-        }
-        let lease = self
-            .0
-            .manager
-            .resolve(tool, &CancellationToken::default())
-            .map_err(ExecutionFailure::Tool)?;
+        };
+        let lease = match self.0.manager.resolve_version(
+            tool,
+            previous_version,
+            &CancellationToken::default(),
+        ) {
+            Ok(lease) => lease,
+            Err(error) => {
+                self.fail_closed(tool);
+                return Err(ExecutionFailure::Tool(error));
+            }
+        };
         self.0
             .active_leases
             .write()
             .map_err(|_| ExecutionFailure::Internal)?
             .insert(tool, lease);
-        self.refresh_consumers()
-            .map_err(|_| ExecutionFailure::Internal)
+        if self.refresh_consumers().is_ok() {
+            return Ok(());
+        }
+        self.fail_closed(tool);
+        Err(ExecutionFailure::Internal)
+    }
+
+    fn restore_lease_after_refresh_failure<T>(
+        &self,
+        tool: NativeToolId,
+        previous: Option<ToolLease>,
+    ) -> Result<T, ExecutionFailure> {
+        {
+            let mut leases = self
+                .0
+                .active_leases
+                .write()
+                .map_err(|_| ExecutionFailure::Internal)?;
+            if let Some(previous) = previous {
+                leases.insert(tool, previous);
+            } else {
+                leases.remove(&tool);
+            }
+        }
+        if self.refresh_consumers().is_err() {
+            self.fail_closed(tool);
+        }
+        Err(ExecutionFailure::Internal)
+    }
+
+    fn fail_closed(&self, tool: NativeToolId) {
+        if let Ok(mut leases) = self.0.active_leases.write() {
+            leases.remove(&tool);
+        }
+        let _ = self.refresh_consumers();
     }
 
     fn refresh_consumers(&self) -> CommandResult<()> {
@@ -714,16 +761,32 @@ impl NativeToolRuntime {
         on_event: &Channel<NativeToolEvent>,
     ) {
         let Ok(mut operations) = self.0.operations.lock() else {
+            let error = CommandError::internal("the native tool coordinator is unavailable");
+            record_native_tool_terminal(
+                "native-tool.failed",
+                action,
+                job_id,
+                tool,
+                Some(error.code()),
+            );
             let _ = on_event.send(NativeToolEvent::Failed {
                 job: None,
                 tool,
                 action,
-                error: CommandError::internal("the native tool coordinator is unavailable"),
+                error,
             });
             return;
         };
         if !matches!(operations.get(&tool), Some(OperationSlot::Active { record, .. }) if record.job_id == job_id)
         {
+            let error = CommandError::internal("the native tool operation is unavailable");
+            record_native_tool_terminal(
+                "native-tool.failed",
+                action,
+                job_id,
+                tool,
+                Some(error.code()),
+            );
             let _ = on_event.send(NativeToolEvent::Failed {
                 job: self
                     .0
@@ -733,7 +796,7 @@ impl NativeToolRuntime {
                     .map(|ticket| ticket.snapshot().clone()),
                 tool,
                 action,
-                error: CommandError::internal("the native tool operation is unavailable"),
+                error,
             });
             return;
         }
@@ -744,20 +807,15 @@ impl NativeToolRuntime {
             .delete_setting(OPERATION_SCOPE, &job_id.to_string());
         operations.remove(&tool);
         drop(operations);
-        let mut fields = vec![
-            ("job", job_id.to_string()),
-            ("tool", tool.as_str().to_owned()),
-        ];
-        let event_name = match &event {
-            NativeToolEvent::Completed { .. } => "native-tool.completed",
-            NativeToolEvent::Cancelled { .. } => "native-tool.cancelled",
+        let (event_name, failure_code) = match &event {
+            NativeToolEvent::Completed { .. } => ("native-tool.completed", None),
+            NativeToolEvent::Cancelled { .. } => ("native-tool.cancelled", None),
             NativeToolEvent::Failed { error, .. } => {
-                fields.push(("code", error.code().to_owned()));
-                "native-tool.failed"
+                ("native-tool.failed", Some(error.code().to_owned()))
             }
-            NativeToolEvent::Progress { .. } => "native-tool.invalid-terminal",
+            NativeToolEvent::Progress { .. } => ("native-tool.invalid-terminal", None),
         };
-        diagnostics::record(event_name, &fields);
+        record_native_tool_terminal(event_name, action, job_id, tool, failure_code.as_deref());
         let _ = on_event.send(event);
     }
 
@@ -929,6 +987,24 @@ fn map_progress(
     ))
 }
 
+fn record_native_tool_terminal(
+    event: &'static str,
+    action: NativeToolAction,
+    job_id: JobId,
+    tool: NativeToolId,
+    code: Option<&str>,
+) {
+    let mut fields = vec![("action", action.as_str().to_owned())];
+    if let Some(code) = code {
+        fields.push(("code", code.to_owned()));
+    }
+    fields.extend([
+        ("job", job_id.to_string()),
+        ("tool", tool.as_str().to_owned()),
+    ]);
+    diagnostics::record(event, &fields);
+}
+
 const fn phase_rank(action: NativeToolAction, phase: NativeToolPhase) -> u8 {
     match (action, phase) {
         (_, NativeToolPhase::Preparing) => 0,
@@ -991,6 +1067,7 @@ async fn start_operation(
     diagnostics::record(
         "native-tool.started",
         &[
+            ("action", action.as_str().to_owned()),
             ("job", job_id.to_string()),
             ("tool", tool.as_str().to_owned()),
         ],
@@ -1046,11 +1123,14 @@ pub(crate) async fn native_tool_install(
     on_event: Channel<NativeToolEvent>,
 ) -> CommandResult<JobSnapshot> {
     let runtime = runtime.inner().clone();
-    let manager = runtime.0.manager.clone();
-    let status = tauri::async_runtime::spawn_blocking(move || manager.status(tool))
-        .await
-        .map_err(|_| CommandError::internal("the native tool check stopped unexpectedly"))?;
-    if !status.delivery_available {
+    diagnostics::record(
+        "native-tool.requested",
+        &[
+            ("action", NativeToolAction::Install.as_str().to_owned()),
+            ("tool", tool.as_str().to_owned()),
+        ],
+    );
+    if !runtime.0.manager.delivery_available(tool) {
         return Err(NativeToolError::DeliveryUnavailable.into());
     }
     start_operation(runtime, tool, NativeToolAction::Install, on_event).await
@@ -1067,11 +1147,14 @@ pub(crate) async fn native_tool_remove(
     on_event: Channel<NativeToolEvent>,
 ) -> CommandResult<JobSnapshot> {
     let runtime = runtime.inner().clone();
-    let manager = runtime.0.manager.clone();
-    let status = tauri::async_runtime::spawn_blocking(move || manager.status(tool))
-        .await
-        .map_err(|_| CommandError::internal("the native tool check stopped unexpectedly"))?;
-    if !status.delivery_available {
+    diagnostics::record(
+        "native-tool.requested",
+        &[
+            ("action", NativeToolAction::Remove.as_str().to_owned()),
+            ("tool", tool.as_str().to_owned()),
+        ],
+    );
+    if !runtime.0.manager.delivery_available(tool) {
         return Err(NativeToolError::DeliveryUnavailable.into());
     }
     start_operation(runtime, tool, NativeToolAction::Remove, on_event).await
@@ -1134,6 +1217,7 @@ pub(crate) async fn native_tool_cancel(
 #[cfg(test)]
 mod tests {
     use std::sync::Arc;
+    use std::sync::atomic::{AtomicUsize, Ordering};
 
     use osg_application::JobRegistry;
     use osg_domain::{JobKind, JobUpdate};
@@ -1141,9 +1225,46 @@ mod tests {
     use serde_json::json;
 
     use super::{
-        NativeToolAction, NativeToolEvent, NativeToolPhase, NativeToolRuntime, SCHEMA_VERSION,
-        map_progress,
+        ExecutionFailure, NativeToolAction, NativeToolActivator, NativeToolEvent, NativeToolPhase,
+        NativeToolRuntime, SCHEMA_VERSION, map_progress,
     };
+    use crate::error::{CommandError, CommandResult};
+
+    #[derive(Debug)]
+    struct CountingActivator {
+        failures_remaining: AtomicUsize,
+        refreshes: AtomicUsize,
+    }
+
+    impl CountingActivator {
+        fn new(failures: usize) -> Self {
+            Self {
+                failures_remaining: AtomicUsize::new(failures),
+                refreshes: AtomicUsize::new(0),
+            }
+        }
+    }
+
+    impl NativeToolActivator for CountingActivator {
+        fn refresh(&self, _: &NativeToolRuntime) -> CommandResult<()> {
+            self.refreshes.fetch_add(1, Ordering::Relaxed);
+            if self
+                .failures_remaining
+                .fetch_update(Ordering::AcqRel, Ordering::Acquire, |remaining| {
+                    remaining.checked_sub(1)
+                })
+                .is_ok()
+            {
+                Err(CommandError::internal("injected activator failure"))
+            } else {
+                Ok(())
+            }
+        }
+
+        fn consumers_idle(&self, _: NativeToolId) -> CommandResult<bool> {
+            Ok(true)
+        }
+    }
 
     fn runtime_fixture() -> (tempfile::TempDir, NativeToolRuntime) {
         let temporary = tempfile::tempdir().expect("temporary directory");
@@ -1284,5 +1405,36 @@ mod tests {
         drop(media);
         drop(downloader);
         assert!(runtime.0.operations.lock().expect("operations").is_empty());
+    }
+
+    #[test]
+    fn failed_activation_refreshes_restored_state_and_persistent_failure_fails_closed() {
+        let (_temporary, runtime) = runtime_fixture();
+        let recovers = Arc::new(CountingActivator::new(0));
+        runtime
+            .attach_activator(recovers.clone())
+            .expect("activator");
+        let result: Result<(), ExecutionFailure> =
+            runtime.restore_lease_after_refresh_failure(NativeToolId::YtDlp, None);
+        assert!(matches!(result, Err(ExecutionFailure::Internal)));
+        assert_eq!(recovers.refreshes.load(Ordering::Relaxed), 1);
+        assert!(runtime.0.active_leases.read().unwrap().is_empty());
+
+        let (_temporary, runtime) = runtime_fixture();
+        let persistent = Arc::new(CountingActivator::new(2));
+        runtime
+            .attach_activator(persistent.clone())
+            .expect("activator");
+        let result: Result<(), ExecutionFailure> =
+            runtime.restore_lease_after_refresh_failure(NativeToolId::YtDlp, None);
+        assert!(matches!(result, Err(ExecutionFailure::Internal)));
+        assert_eq!(persistent.refreshes.load(Ordering::Relaxed), 2);
+        assert!(runtime.0.active_leases.read().unwrap().is_empty());
+    }
+
+    #[test]
+    fn diagnostic_action_values_are_the_frozen_public_contract() {
+        assert_eq!(NativeToolAction::Install.as_str(), "install");
+        assert_eq!(NativeToolAction::Remove.as_str(), "remove");
     }
 }

@@ -453,6 +453,7 @@ const Header = ({ onSettingsClick }) => {
 
       <button
         className={`settings-button floating-settings ${showFloatingActions ? 'floating-visible' : 'floating-hidden'}`}
+        data-app-action="open-settings"
         onClick={handleSettingsClick}
         aria-label={t('header.settingsAria')}
       >

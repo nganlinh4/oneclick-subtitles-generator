@@ -366,6 +366,133 @@ function Inspect-InstalledMediaFlow {
   $output[0] | ConvertFrom-Json
 }
 
+function Inspect-InstalledNativeTools {
+  param(
+    [Parameter(Mandatory = $true)][int]$Port,
+    [Parameter(Mandatory = $true)][string]$AssetId
+  )
+
+  if ($AssetId -notmatch '^[0-9a-f]{8}-[0-9a-f]{4}-7[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$') {
+    throw 'Installed native-tool asset identity is invalid'
+  }
+  $installingScreenshot = Join-Path $env:RUNNER_TEMP 'osg-installed-tools-parallel-install.png'
+  $installedScreenshot = Join-Path $env:RUNNER_TEMP 'osg-installed-tools-reinstalled.png'
+  $stdout = Join-Path $env:RUNNER_TEMP 'osg-installed-native-tools.stdout'
+  $stderr = Join-Path $env:RUNNER_TEMP 'osg-installed-native-tools.stderr'
+  foreach ($path in @($installingScreenshot, $installedScreenshot, $stdout, $stderr)) {
+    if (Test-Path -LiteralPath $path) {
+      throw 'Installed native-tool flow output path was not clean'
+    }
+  }
+  $arguments = @(
+    'scripts/inspect-installed-native-tools.mjs',
+    '--port', [string]$Port,
+    '--asset-id', $AssetId,
+    '--installing-screenshot', $installingScreenshot,
+    '--installed-screenshot', $installedScreenshot
+  )
+  $inspection = Start-Process `
+    -FilePath 'node' `
+    -ArgumentList $arguments `
+    -RedirectStandardOutput $stdout `
+    -RedirectStandardError $stderr `
+    -PassThru
+  try {
+    if (-not $inspection.WaitForExit(1860000)) {
+      Stop-Process -Id $inspection.Id -ErrorAction SilentlyContinue
+      throw 'Installed native-tool flow did not finish within 31 minutes'
+    }
+    $inspection.WaitForExit()
+    $output = @(Get-Content -LiteralPath $stdout)
+    $errors = @(Get-Content -LiteralPath $stderr)
+    if ($inspection.ExitCode -ne 0) {
+      throw "Installed native-tool flow failed: $($errors -join ' ')"
+    }
+    if ($output.Count -ne 1 -or $errors.Count -ne 0) {
+      throw 'Installed native-tool flow returned an unexpected output shape'
+    }
+    $result = $output[0] | ConvertFrom-Json
+    $resultNames = @($result.PSObject.Properties.Name | Sort-Object)
+    $expectedResultNames = @(
+      'assetId',
+      'downloadVersion',
+      'installJobs',
+      'installedScreenshot',
+      'installedTools',
+      'installingScreenshot',
+      'missingDownloadReason',
+      'missingPipelineErrorCode',
+      'pipeline',
+      'removedToolIds'
+    ) | Sort-Object
+    $removedToolIds = @($result.removedToolIds)
+    $installJobs = @($result.installJobs)
+    $installedTools = @($result.installedTools)
+    if (($resultNames -join ',') -cne ($expectedResultNames -join ',') `
+        -or $result.assetId -cne $AssetId `
+        -or ($removedToolIds -join ',') -cne 'deno,media-tools,yt-dlp' `
+        -or $result.missingDownloadReason -cne 'downloaderUnavailable' `
+        -or $result.missingPipelineErrorCode -cne 'mediaToolsUnavailable' `
+        -or $installJobs.Count -ne 3 `
+        -or @($installJobs | Where-Object { (@($_.PSObject.Properties.Name | Sort-Object) -join ',') -cne 'id,jobId' }).Count -ne 0 `
+        -or (@($installJobs | ForEach-Object id) -join ',') -cne 'deno,media-tools,yt-dlp' `
+        -or @($installJobs | Where-Object { [string]$_.jobId -notmatch '^[0-9a-f]{8}-[0-9a-f]{4}-7[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$' }).Count -ne 0 `
+        -or $installedTools.Count -ne 3 `
+        -or @($installedTools | Where-Object { (@($_.PSObject.Properties.Name | Sort-Object) -join ',') -cne 'id,version' }).Count -ne 0 `
+        -or (@($installedTools | ForEach-Object id) -join ',') -cne 'deno,media-tools,yt-dlp' `
+        -or @($installedTools | Where-Object { [string]$_.version -notmatch '^.{1,128}$' }).Count -ne 0 `
+        -or [string]$result.downloadVersion -notmatch '^.{1,128}$' `
+        -or (@($result.pipeline.PSObject.Properties.Name | Sort-Object) -join ',') -cne 'audioCodec,durationUs,frameRate,height,videoCodec,width' `
+        -or $result.pipeline.audioCodec -cne 'aac' `
+        -or $result.pipeline.durationUs -isnot [ValueType] `
+        -or $result.pipeline.durationUs -is [bool] `
+        -or [double]$result.pipeline.durationUs -ne [Math]::Truncate([double]$result.pipeline.durationUs) `
+        -or [long]$result.pipeline.durationUs -lt 3900000 `
+        -or [long]$result.pipeline.durationUs -gt 4100000 `
+        -or $result.pipeline.frameRate -isnot [ValueType] `
+        -or $result.pipeline.frameRate -is [bool] `
+        -or [double]$result.pipeline.frameRate -lt 23.9 `
+        -or [double]$result.pipeline.frameRate -gt 24.1 `
+        -or $result.pipeline.height -isnot [ValueType] `
+        -or $result.pipeline.height -is [bool] `
+        -or [int]$result.pipeline.height -ne 360 `
+        -or $result.pipeline.videoCodec -cne 'h264' `
+        -or $result.pipeline.width -isnot [ValueType] `
+        -or $result.pipeline.width -is [bool] `
+        -or [int]$result.pipeline.width -ne 640) {
+      throw 'Installed native-tool flow omitted exact remove and hot reinstall proof'
+    }
+    foreach ($screenshotProof in @(
+        @($installingScreenshot, $result.installingScreenshot),
+        @($installedScreenshot, $result.installedScreenshot)
+      )) {
+      $screenshotPath = [string]$screenshotProof[0]
+      $proof = $screenshotProof[1]
+      if (-not (Test-Path -LiteralPath $screenshotPath -PathType Leaf) `
+          -or (@($proof.PSObject.Properties.Name | Sort-Object) -join ',') -cne 'bytes,sha256' `
+          -or [long]$proof.bytes -ne (Get-Item -LiteralPath $screenshotPath).Length `
+          -or [string]$proof.sha256 -notmatch '^[0-9a-f]{64}$' `
+          -or [string]$proof.sha256 -cne (Get-FileHash -LiteralPath $screenshotPath -Algorithm SHA256).Hash.ToLowerInvariant()) {
+        throw 'Installed native-tool screenshot evidence did not match its retained PNG'
+      }
+    }
+    if ([string]$result.installingScreenshot.sha256 -ceq [string]$result.installedScreenshot.sha256) {
+      throw 'Installed native-tool screenshots did not visibly distinguish install from active state'
+    }
+    $result
+  } finally {
+    try {
+      $inspection.Refresh()
+      if (-not $inspection.HasExited) {
+        Stop-Process -Id $inspection.Id -ErrorAction SilentlyContinue
+        [void]$inspection.WaitForExit(5000)
+      }
+    } catch {
+      # Inspector cleanup is best effort and must not replace the primary flow failure.
+    }
+  }
+}
+
 function Initialize-NativePickerInterop {
   Add-Type -AssemblyName UIAutomationClient
   Add-Type -AssemblyName UIAutomationTypes
@@ -567,6 +694,241 @@ function Get-DiagnosticBaselineSnapshot {
     EventCount = $lines.Count
     Length = $prefixLength
     Sha256 = $sha256
+  }
+}
+
+function Get-DiagnosticEventsAfterBaseline {
+  param(
+    [Parameter(Mandatory = $true)][string]$LogPath,
+    [Parameter(Mandatory = $true)][string]$BaselineSha256,
+    [Parameter(Mandatory = $true)][long]$BaselineLength
+  )
+
+  if ($BaselineLength -le 0 `
+      -or $BaselineLength -gt ($diagnosticLogLimitBytes + $diagnosticEntrySlackBytes)) {
+    throw 'Diagnostic suffix baseline length is invalid'
+  }
+  $stream = [IO.FileStream]::new(
+    $LogPath,
+    [IO.FileMode]::Open,
+    [IO.FileAccess]::Read,
+    [IO.FileShare]::ReadWrite
+  )
+  try {
+    $snapshotLength = $stream.Length
+    if ($snapshotLength -lt $BaselineLength `
+        -or $snapshotLength -gt ($diagnosticLogLimitBytes + $diagnosticEntrySlackBytes)) {
+      throw 'Diagnostic suffix snapshot length is invalid'
+    }
+    $snapshotBytes = [byte[]]::new([int]$snapshotLength)
+    $offset = 0
+    while ($offset -lt $snapshotBytes.Length) {
+      $read = $stream.Read($snapshotBytes, $offset, $snapshotBytes.Length - $offset)
+      if ($read -le 0) {
+        throw 'Diagnostic suffix snapshot was truncated during its single read'
+      }
+      $offset += $read
+    }
+  } finally {
+    $stream.Dispose()
+  }
+  $lastLineBreak = $snapshotBytes.Length - 1
+  while ($lastLineBreak -ge 0 -and $snapshotBytes[$lastLineBreak] -ne 10) {
+    $lastLineBreak -= 1
+  }
+  $completeLength = $lastLineBreak + 1
+  if ($completeLength -lt $BaselineLength) {
+    throw 'Diagnostic suffix snapshot lost its reviewed baseline'
+  }
+  $baselineBytes = [byte[]]::new([int]$BaselineLength)
+  [Array]::Copy($snapshotBytes, $baselineBytes, [int]$BaselineLength)
+  $hasher = [Security.Cryptography.SHA256]::Create()
+  try {
+    $actualBaselineSha256 = ([BitConverter]::ToString(
+        $hasher.ComputeHash($baselineBytes)
+      )).Replace('-', '').ToLowerInvariant()
+  } finally {
+    $hasher.Dispose()
+  }
+  if ($actualBaselineSha256 -cne $BaselineSha256) {
+    throw 'Diagnostic suffix snapshot did not retain its immutable prefix'
+  }
+  if ($completeLength -eq $BaselineLength) {
+    return
+  }
+  $suffixLength = $completeLength - [int]$BaselineLength
+  $suffixBytes = [byte[]]::new($suffixLength)
+  [Array]::Copy($snapshotBytes, [int]$BaselineLength, $suffixBytes, 0, $suffixLength)
+  @(
+    [Text.Encoding]::UTF8.GetString($suffixBytes) -split "`r?`n" |
+      Where-Object Length -gt 0 |
+      ForEach-Object { $_ | ConvertFrom-Json }
+  )
+}
+
+function Assert-NativeToolLifecycleDiagnostics {
+  param(
+    [Parameter(Mandatory = $true)][object[]]$Events,
+    [Parameter(Mandatory = $true)][string]$AppInstanceId,
+    [Parameter(Mandatory = $true)][ValidateRange(0, 3)][int]$ExpectedInstalls,
+    [Parameter(Mandatory = $true)][ValidateRange(0, 3)][int]$ExpectedRemovals
+  )
+
+  if ($AppInstanceId -notmatch '^[0-9a-f]{8}-[0-9a-f]{4}-7[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$') {
+    throw 'Native-tool lifecycle diagnostics received an invalid app instance identity'
+  }
+  $lifecycle = @($Events | Where-Object { [string]$_.event -like 'native-tool.*' })
+  $allowedEvents = @(
+    'native-tool.requested',
+    'native-tool.started',
+    'native-tool.completed',
+    'native-tool.cancelled',
+    'native-tool.failed',
+    'native-tool.invalid-terminal'
+  )
+  foreach ($entry in $lifecycle) {
+    $expectedNames = switch ([string]$entry.event) {
+      'native-tool.requested' {
+        @('action', 'appInstanceId', 'event', 'timestampMs', 'tool')
+        break
+      }
+      'native-tool.failed' {
+        @('action', 'appInstanceId', 'code', 'event', 'job', 'timestampMs', 'tool')
+        break
+      }
+      default {
+        @('action', 'appInstanceId', 'event', 'job', 'timestampMs', 'tool')
+      }
+    }
+    if ($entry.event -isnot [string] `
+        -or $entry.action -isnot [string] `
+        -or $entry.tool -isnot [string] `
+        -or $entry.appInstanceId -isnot [string] `
+        -or [string]$entry.event -notin $allowedEvents `
+        -or (@($entry.PSObject.Properties.Name | Sort-Object) -join ',') `
+          -cne (($expectedNames | Sort-Object) -join ',') `
+        -or $entry.appInstanceId -cne $AppInstanceId `
+        -or $entry.timestampMs -isnot [string] `
+        -or $entry.timestampMs -notmatch '^\d{1,20}$' `
+        -or [string]$entry.action -notin @('install', 'remove') `
+        -or [string]$entry.tool -notin @('deno', 'media-tools', 'yt-dlp') `
+        -or ($entry.event -cne 'native-tool.requested' `
+          -and ($entry.job -isnot [string] `
+            -or [string]$entry.job -notmatch '^[0-9a-f]{8}-[0-9a-f]{4}-7[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$')) `
+        -or ($entry.event -ceq 'native-tool.failed' `
+          -and ($entry.code -isnot [string] `
+            -or [string]::IsNullOrEmpty([string]$entry.code) `
+            -or [string]$entry.code -notmatch '^[A-Za-z][A-Za-z0-9]{0,63}$'))) {
+      throw 'Native-tool lifecycle diagnostics returned an invalid or cross-instance schema'
+    }
+  }
+  $terminalFailures = @(
+    $lifecycle | Where-Object event -in @(
+      'native-tool.cancelled',
+      'native-tool.failed',
+      'native-tool.invalid-terminal'
+    )
+  )
+  if ($terminalFailures.Count -ne 0) {
+    throw 'Native-tool lifecycle diagnostics contained a failed or ambiguous terminal'
+  }
+  foreach ($actionExpectation in @(
+      @('install', $ExpectedInstalls),
+      @('remove', $ExpectedRemovals)
+    )) {
+    $action = [string]$actionExpectation[0]
+    $expectedCount = [int]$actionExpectation[1]
+    $requested = @($lifecycle | Where-Object { $_.event -ceq 'native-tool.requested' -and $_.action -ceq $action })
+    $started = @($lifecycle | Where-Object { $_.event -ceq 'native-tool.started' -and $_.action -ceq $action })
+    $completed = @($lifecycle | Where-Object { $_.event -ceq 'native-tool.completed' -and $_.action -ceq $action })
+    $requestedTools = @($requested | ForEach-Object tool | Sort-Object)
+    $startedTools = @($started | ForEach-Object tool | Sort-Object)
+    $completedTools = @($completed | ForEach-Object tool | Sort-Object)
+    $startedJobs = @($started | ForEach-Object job | Sort-Object -Unique)
+    $completedJobs = @($completed | ForEach-Object job | Sort-Object -Unique)
+    $startedPairs = @($started | ForEach-Object { "$($_.tool):$($_.job)" } | Sort-Object)
+    $completedPairs = @($completed | ForEach-Object { "$($_.tool):$($_.job)" } | Sort-Object)
+    $expectedTools = if ($expectedCount -eq 3) { 'deno,media-tools,yt-dlp' } else { '' }
+    if ($requested.Count -ne $expectedCount `
+        -or $started.Count -ne $expectedCount `
+        -or $completed.Count -ne $expectedCount `
+        -or ($requestedTools -join ',') -cne $expectedTools `
+        -or ($startedTools -join ',') -cne $expectedTools `
+        -or ($completedTools -join ',') -cne $expectedTools `
+        -or $startedJobs.Count -ne $expectedCount `
+        -or $completedJobs.Count -ne $expectedCount `
+        -or ($startedJobs -join ',') -cne ($completedJobs -join ',') `
+        -or ($startedPairs -join ',') -cne ($completedPairs -join ',')) {
+      throw "Native-tool lifecycle diagnostics omitted exact $action request, job, or completion proof"
+    }
+    if ($expectedCount -eq 0) {
+      continue
+    }
+    $requestIndices = @()
+    $startIndices = @()
+    $completeIndices = @()
+    for ($index = 0; $index -lt $lifecycle.Count; $index += 1) {
+      if ($lifecycle[$index].action -cne $action) {
+        continue
+      }
+      if ($lifecycle[$index].event -ceq 'native-tool.requested') {
+        $requestIndices += $index
+      } elseif ($lifecycle[$index].event -ceq 'native-tool.started') {
+        $startIndices += $index
+      } elseif ($lifecycle[$index].event -ceq 'native-tool.completed') {
+        $completeIndices += $index
+      }
+    }
+    if (($requestIndices | Measure-Object -Maximum).Maximum `
+          -ge ($completeIndices | Measure-Object -Minimum).Minimum) {
+      throw "Native-tool lifecycle did not request all $action operations before the first terminal"
+    }
+    if ($action -ceq 'install' `
+        -and ($startIndices | Measure-Object -Maximum).Maximum `
+          -ge ($completeIndices | Measure-Object -Minimum).Minimum) {
+      throw 'Native-tool lifecycle did not start all installs in parallel'
+    }
+    foreach ($tool in @('deno', 'media-tools', 'yt-dlp')) {
+      $requestIndex = [Array]::IndexOf($lifecycle, @($requested | Where-Object tool -ceq $tool)[0])
+      $startIndex = [Array]::IndexOf($lifecycle, @($started | Where-Object tool -ceq $tool)[0])
+      $completeIndex = [Array]::IndexOf($lifecycle, @($completed | Where-Object tool -ceq $tool)[0])
+      if ($requestIndex -lt 0 -or $startIndex -le $requestIndex -or $completeIndex -le $startIndex) {
+        throw "Native-tool lifecycle diagnostics were out of order for $action $tool"
+      }
+    }
+  }
+  if ($ExpectedRemovals -eq 3 -and $ExpectedInstalls -eq 3) {
+    $allStartedJobs = @(
+      $lifecycle |
+        Where-Object event -ceq 'native-tool.started' |
+        ForEach-Object job
+    )
+    $allCompletedJobs = @(
+      $lifecycle |
+        Where-Object event -ceq 'native-tool.completed' |
+        ForEach-Object job
+    )
+    if ($allStartedJobs.Count -ne 6 `
+        -or @($allStartedJobs | Sort-Object -Unique).Count -ne 6 `
+        -or $allCompletedJobs.Count -ne 6 `
+        -or @($allCompletedJobs | Sort-Object -Unique).Count -ne 6 `
+        -or (@($allStartedJobs | Sort-Object) -join ',') `
+          -cne (@($allCompletedJobs | Sort-Object) -join ',')) {
+      throw 'Native-tool hot lifecycle reused or mismatched remove and reinstall jobs'
+    }
+    $lastRemoval = -1
+    $firstInstallRequest = [int]::MaxValue
+    for ($index = 0; $index -lt $lifecycle.Count; $index += 1) {
+      if ($lifecycle[$index].action -ceq 'remove') {
+        $lastRemoval = $index
+      } elseif ($lifecycle[$index].action -ceq 'install' `
+          -and $lifecycle[$index].event -ceq 'native-tool.requested') {
+        $firstInstallRequest = [Math]::Min($firstInstallRequest, $index)
+      }
+    }
+    if ($lastRemoval -ge $firstInstallRequest) {
+      throw 'Native-tool reinstalls began before every removal completed'
+    }
   }
 }
 
@@ -1548,6 +1910,7 @@ if ($thirdOwnerHandle -eq 0) {
 }
 try {
   $initialMediaFlow = $null
+  $nativeToolFlow = $null
   $mediaFlow = $null
   $localMediaFlow = $null
   $mediaPipeline = $null
@@ -1563,14 +1926,58 @@ try {
 OSG installed media smoke
 "@
     [IO.File]::WriteAllText($srtPath, $srtFixture, [Text.UTF8Encoding]::new($false))
-    # The first URL pass installs all three managed tools in parallel. Local selection then
-    # proves native FFprobe inspection, and the final URL pass proves that leaving the upload
-    # tab did not strand the real URL workflow.
+    # The first URL pass installs all three managed tools in parallel. The same-process hot
+    # lifecycle then removes and reinstalls them through the real Tools UI before local FFprobe,
+    # pipeline, and final URL flows prove every consumer picked up the fresh runtimes.
+    $initialToolBaseline = Get-DiagnosticBaselineSnapshot -LogPath $logPath
     $initialMediaFlow = Inspect-InstalledMediaFlow `
       -Port $third.DebugPort `
       -SrtPath $srtPath `
       -LogPath $logPath `
       -ScreenshotName 'osg-installed-media-flow-initial.png'
+    $initialToolEvents = @(
+      Get-DiagnosticEventsAfterBaseline `
+        -LogPath $logPath `
+        -BaselineSha256 $initialToolBaseline.Sha256 `
+        -BaselineLength $initialToolBaseline.Length
+    )
+    Assert-NativeToolLifecycleDiagnostics `
+      -Events $initialToolEvents `
+      -AppInstanceId $third.AppInstanceId `
+      -ExpectedInstalls 3 `
+      -ExpectedRemovals 0
+    $nativeToolBaseline = Get-DiagnosticBaselineSnapshot -LogPath $logPath
+    $nativeToolFlow = Inspect-InstalledNativeTools `
+      -Port $third.DebugPort `
+      -AssetId $initialMediaFlow.assetId
+    $nativeToolEvents = @(
+      Get-DiagnosticEventsAfterBaseline `
+        -LogPath $logPath `
+        -BaselineSha256 $nativeToolBaseline.Sha256 `
+        -BaselineLength $nativeToolBaseline.Length
+    )
+    Assert-NativeToolLifecycleDiagnostics `
+      -Events $nativeToolEvents `
+      -AppInstanceId $third.AppInstanceId `
+      -ExpectedInstalls 3 `
+      -ExpectedRemovals 3
+    $uiInstallPairs = @(
+      $nativeToolFlow.installJobs |
+        ForEach-Object { "$($_.id):$($_.jobId)" } |
+        Sort-Object
+    )
+    $diagnosticInstallPairs = @(
+      $nativeToolEvents |
+        Where-Object { $_.event -ceq 'native-tool.started' -and $_.action -ceq 'install' } |
+        ForEach-Object { "$($_.tool):$($_.job)" } |
+        Sort-Object
+    )
+    if ($uiInstallPairs.Count -ne 3 `
+        -or $diagnosticInstallPairs.Count -ne 3 `
+        -or ($uiInstallPairs -join ',') -cne ($diagnosticInstallPairs -join ',')) {
+      throw 'Native-tool UI status jobs did not match exact install diagnostics'
+    }
+    $postHotToolBaseline = Get-DiagnosticBaselineSnapshot -LogPath $logPath
     $localMediaFlow = Inspect-InstalledLocalMediaFlow `
       -Port $third.DebugPort `
       -ProcessId $third.Process.Id `
@@ -1626,68 +2033,18 @@ OSG installed media smoke
         -or $failedDownloads.Count -ne 0) {
       throw 'Installed media-flow diagnostics did not prove URL reactivation after native selection'
     }
-    $startedToolEvents = @($mediaEvents | Where-Object event -eq 'native-tool.started')
-    $completedToolEvents = @($mediaEvents | Where-Object event -eq 'native-tool.completed')
-    $startedTools = @(
-      $startedToolEvents |
-        ForEach-Object tool |
-        Sort-Object -Unique
-    )
-    $completedTools = @(
-      $completedToolEvents |
-        ForEach-Object tool |
-        Sort-Object -Unique
-    )
-    $startedToolJobs = @($startedToolEvents | ForEach-Object job | Sort-Object -Unique)
-    $completedToolJobs = @($completedToolEvents | ForEach-Object job | Sort-Object -Unique)
-    $startedToolPairs = @(
-      $startedToolEvents |
-        ForEach-Object { "$($_.tool):$($_.job)" } |
-        Sort-Object
-    )
-    $completedToolPairs = @(
-      $completedToolEvents |
-        ForEach-Object { "$($_.tool):$($_.job)" } |
-        Sort-Object
-    )
-    $invalidToolJobIds = @(
-      @($startedToolJobs) + @($completedToolJobs) |
-        Where-Object { [string]$_ -notmatch '^[0-9a-f]{8}-[0-9a-f]{4}-7[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$' }
-    )
-    $failedTools = @(
-      $mediaEvents | Where-Object {
-        $_.event -in @(
-          'native-tool.failed',
-          'native-tool.cancelled',
-          'native-tool.invalid-terminal'
-        )
-      }
-    )
-    if ($startedToolEvents.Count -ne 3 `
-        -or $completedToolEvents.Count -ne 3 `
-        -or ($startedTools -join ',') -cne 'deno,media-tools,yt-dlp' `
-        -or ($completedTools -join ',') -cne 'deno,media-tools,yt-dlp' `
-        -or $startedToolJobs.Count -ne 3 `
-        -or $completedToolJobs.Count -ne 3 `
-        -or ($startedToolJobs -join ',') -cne ($completedToolJobs -join ',') `
-        -or ($startedToolPairs -join ',') -cne ($completedToolPairs -join ',') `
-        -or $invalidToolJobIds.Count -ne 0 `
-        -or $failedTools.Count -ne 0) {
-      throw "Installed media-flow did not complete all parallel native tools: $($completedTools -join ',')"
-    }
-    $lastStartedIndex = -1
-    $firstCompletedIndex = [int]::MaxValue
-    for ($index = 0; $index -lt $mediaEvents.Count; $index += 1) {
-      if ($mediaEvents[$index].event -eq 'native-tool.started') {
-        $lastStartedIndex = $index
-      } elseif ($mediaEvents[$index].event -eq 'native-tool.completed') {
-        $firstCompletedIndex = [Math]::Min($firstCompletedIndex, $index)
-      }
-    }
-    if ($lastStartedIndex -ge $firstCompletedIndex) {
-      throw 'Installed media-flow did not start all three native tool downloads in parallel'
-    }
     $editorFlow = Inspect-InstalledEditorFlow -Port $third.DebugPort
+    $postHotToolEvents = @(
+      Get-DiagnosticEventsAfterBaseline `
+        -LogPath $logPath `
+        -BaselineSha256 $postHotToolBaseline.Sha256 `
+        -BaselineLength $postHotToolBaseline.Length
+    )
+    Assert-NativeToolLifecycleDiagnostics `
+      -Events $postHotToolEvents `
+      -AppInstanceId $third.AppInstanceId `
+      -ExpectedInstalls 0 `
+      -ExpectedRemovals 0
   }
   $result = [pscustomobject]@{
     version = $reinstalled.Registry.DisplayVersion
@@ -1702,6 +2059,7 @@ OSG installed media smoke
     relaunchWebView = $second.Inspection
     reinstallWebView = $third.Inspection
     installedInitialMediaFlow = $initialMediaFlow
+    installedNativeTools = $nativeToolFlow
     installedMediaFlow = $mediaFlow
     installedLocalMediaFlow = $localMediaFlow
     installedMediaPipeline = $mediaPipeline

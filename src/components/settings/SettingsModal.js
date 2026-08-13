@@ -264,6 +264,7 @@ const SettingsModal = ({ onClose, onSave, apiKeysSet, setApiKeysSet }) => {
             </button>
             <button
               className={`settings-tab ${activeTab === 'tools' ? 'active' : ''}`}
+              data-settings-tab="tools"
               onClick={() => setActiveTab('tools')}
             >
               <span className="material-symbols-rounded" style={{ fontSize: 20 }}>build</span>
@@ -446,7 +447,7 @@ const SettingsModal = ({ onClose, onSave, apiKeysSet, setApiKeysSet }) => {
           </div>
 
           {/* Tools Tab Content (on-demand engines) */}
-          <div key="settings-tab-tools" className={`settings-tab-content ${activeTab === 'tools' ? 'active' : ''} settings-tab-content-slide-${animationDirection}`}>
+          <div key="settings-tab-tools" data-settings-panel="tools" className={`settings-tab-content ${activeTab === 'tools' ? 'active' : ''} settings-tab-content-slide-${animationDirection}`}>
             <EnginesPanel />
           </div>
 
@@ -481,6 +482,7 @@ const SettingsModal = ({ onClose, onSave, apiKeysSet, setApiKeysSet }) => {
           <div className="settings-footer-right">
             <button
               className="cancel-btn"
+              data-settings-action="close"
               onClick={handleClose}
               title={t('settings.pressEscToClose', 'Press ESC to close')}
             >

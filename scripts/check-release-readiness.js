@@ -41,6 +41,10 @@ const DESKTOP_CLOSE_TAURI_RUNTIME_WRY_CHECKSUM =
   '4e6fac707727b7a2f48e4ded90976324267371073edbb415ffb73bb0458d203f';
 const TAURI_NSIS_BOOTSTRAP_SHA256 =
   '930bef57b7bccd22ba36ce8a045eabdcb92b74eaeeaa0273cbb45e2a7471d41b';
+const INSTALLED_NATIVE_TOOLS_INSPECTOR_SHA256 =
+  '3167ddbddd723a1b6bf0200d0f7061f2c545c067de971c77d5c5cef58b22965b';
+const INSTALLED_WINDOWS_SMOKE_SHA256 =
+  'a2f748a338d28e9106089f492bc2e7d935d829ef7adac71efb6cd24a45bebae2';
 const DISTRIBUTABLE_FONT_EXTENSION = /\.(?:eot|otf|ttf|woff2?)$/i;
 
 const ACTION_PINS = Object.freeze({
@@ -871,6 +875,7 @@ function assertWorkflowCommands(workflow) {
     'scripts/inspect-installed-webview.test.mjs',
     'scripts/inspect-installed-media-flow.test.mjs',
     'scripts/inspect-installed-local-media-flow.test.mjs',
+    'scripts/inspect-installed-native-tools.test.mjs',
     'scripts/inspect-installed-media-pipeline.test.mjs',
     'scripts/inspect-installed-editor-flow.test.mjs',
     'npm run build:frontend',
@@ -887,6 +892,7 @@ function assertWorkflowCommands(workflow) {
   const publishedInstalledSmoke = workflowJobBlock(workflow, 'windows-published-installed-smoke');
   const nsisBootstrapCommand = './scripts/prepare-tauri-nsis.ps1';
   const pickerRegressionCommand = './scripts/test-native-picker-evidence.ps1';
+  const hasExactInstalledTimeout = (job) => /^ {4}timeout-minutes: 180[ \t]*$/m.test(job);
   const windowsPowerShellPickerRegression = '& "$env:SystemRoot\\System32\\WindowsPowerShell\\v1.0\\powershell.exe" -NoLogo -NoProfile -NonInteractive -ExecutionPolicy Bypass -File ./scripts/test-native-picker-evidence.ps1';
   const installedMediaFixtureDownload = 'https://github.com/nganlinh4/oneclick-subtitles-generator/releases/download/osg-runtime-bundles-v1/osg-installed-media-smoke-v1-aecf6c8ef3977cd4.mp4';
   const installedMediaFixtureAssignment = /^ {10}\$url = 'https:\/\/github\.com\/nganlinh4\/oneclick-subtitles-generator\/releases\/download\/osg-runtime-bundles-v1\/osg-installed-media-smoke-v1-aecf6c8ef3977cd4\.mp4'\r?$/m;
@@ -928,6 +934,7 @@ function assertWorkflowCommands(workflow) {
   );
   invariant(
     branchInstalledSmoke.includes("inputs.job == 'installed-smoke'") &&
+      hasExactInstalledTimeout(branchInstalledSmoke) &&
       branchInstalledSmoke.includes('build --features production --no-bundle --ci --target x86_64-pc-windows-msvc -- --locked') &&
       branchInstalledSmoke.includes('bundle --ci --no-sign --target x86_64-pc-windows-msvc --bundles nsis') &&
       branchInstalledSmoke.includes('check-release-artifacts.js --target x86_64-pc-windows-msvc --bundles nsis --allow-unsigned-branch-build') &&
@@ -979,7 +986,7 @@ function assertWorkflowCommands(workflow) {
   );
   invariant(
     publishedInstalledSmoke.includes("inputs.job == 'published-installed-smoke'") &&
-      publishedInstalledSmoke.includes('timeout-minutes: 90') &&
+      hasExactInstalledTimeout(publishedInstalledSmoke) &&
       publishedInstalledSmoke.includes('/releases/download/v${version}') &&
       publishedInstalledSmoke.includes('$asset.sig') &&
       !publishedInstalledSmoke.includes('--allow-unsigned-branch-build') &&
@@ -1209,8 +1216,17 @@ function assertNativePickerEvidenceScripts(evidenceScript, regressionScript) {
   );
 }
 
-function assertInstalledLocalMediaInspector(script) {
+function assertInstalledLocalMediaInspector(script, inputMethodsSource) {
   invariant(typeof script === 'string', 'Installed local-media inspector source is required');
+  invariant(typeof inputMethodsSource === 'string', 'InputMethods source is required');
+  const normalizedInputMethods = inputMethodsSource.replace(/\r\n/g, '\n');
+  invariant(
+    (normalizedInputMethods.match(/data-input-tab="file-upload"/g) || []).length === 1
+      && /<button\s+className=\{`tab-btn \$\{activeTab === 'file-upload' \? 'active' : ''\}`\}\s+data-input-tab="file-upload"\s+onClick=\{\(\) => setActiveTab\('file-upload'\)\}\s*>/.test(
+        normalizedInputMethods,
+      ),
+    'InputMethods must bind the unique picker selector to the real file-upload tab handler',
+  );
   const writerStart = script.indexOf('export function writePickerPhase(');
   const writerEnd = script.indexOf('\n}', writerStart) + 2;
   const writer = writerStart >= 0 && writerEnd > writerStart ? script.slice(writerStart, writerEnd) : '';
@@ -1244,6 +1260,10 @@ function assertInstalledLocalMediaInspector(script) {
   const startingIndex = run.indexOf("writePickerPhase(options.phaseDirectory, 'starting')");
   const discoveryIndex = run.indexOf('discoverTarget(options.port)');
   const connectedIndex = run.indexOf("writePickerPhase(options.phaseDirectory, 'connected')");
+  const tabActivationIndex = run.indexOf(
+    'const tabActivation = await evaluate(client, OPEN_PICKER_EXPRESSION)',
+  );
+  const controlReadyIndex = run.indexOf('evaluate(client, PICKER_CONTROL_READY_EXPRESSION)');
   const controlIndex = run.indexOf("writePickerPhase(options.phaseDirectory, 'control-ready')");
   const priorStateIndex = run.indexOf('assertPriorMediaState(');
   const clickIndex = run.indexOf('evaluate(client, CLICK_PICKER_EXPRESSION)');
@@ -1263,16 +1283,81 @@ function assertInstalledLocalMediaInspector(script) {
       && startingIndex >= 0
       && startingIndex < discoveryIndex
       && discoveryIndex < connectedIndex
-      && connectedIndex < controlIndex
+      && connectedIndex < tabActivationIndex
+      && tabActivationIndex < controlReadyIndex
+      && controlReadyIndex < controlIndex
       && controlIndex < priorStateIndex
       && priorStateIndex < clickIndex
       && clickIndex < issuedIndex
       && run.includes('await evaluate(client, PRIOR_MEDIA_STATE_EXPRESSION)')
+      && /assertPriorMediaState\([\s\S]*?options\.priorAssetId,\s*tabActivation,\s*\)/.test(run)
       && run.includes('assertLocalMediaState(value, options.expectedFileName, options.priorAssetId)')
       && run.includes('assertLocalMediaResult(result, options.expectedFileName, options.priorAssetId)')
       && phaseCalls.every((fragment) => run.split(fragment).length === 2)
       && (run.match(/writePickerPhase\(options\.phaseDirectory,/g) || []).length === 4,
     'Installed local-media inspector must bind the prior native asset and handshake exact bounded phases around the successful picker click',
+  );
+  const openPickerStart = script.indexOf('export const OPEN_PICKER_EXPRESSION = `');
+  const readyPickerStart = script.indexOf(
+    'export const PICKER_CONTROL_READY_EXPRESSION = `',
+    openPickerStart,
+  );
+  const clickPickerStart = script.indexOf('export const CLICK_PICKER_EXPRESSION = `', readyPickerStart);
+  const resultExpressionStart = script.indexOf(
+    'export const LOCAL_MEDIA_RESULT_EXPRESSION = `', clickPickerStart,
+  );
+  const openPicker = openPickerStart >= 0 && readyPickerStart > openPickerStart
+    ? script.slice(openPickerStart, readyPickerStart)
+    : '';
+  const readyPicker = readyPickerStart >= 0 && clickPickerStart > readyPickerStart
+    ? script.slice(readyPickerStart, clickPickerStart)
+    : '';
+  const clickPicker = clickPickerStart >= 0 && resultExpressionStart > clickPickerStart
+    ? script.slice(clickPickerStart, resultExpressionStart)
+    : '';
+  const activeReturnIndex = openPicker.indexOf(
+    "if (uploadTab.classList.contains('active')) return 'already-active';",
+  );
+  const activationClickIndex = openPicker.indexOf('uploadTab.click();');
+  const activatedReturnIndex = openPicker.indexOf("return 'activated';");
+  const countClickCalls = (source) => (
+    source.match(/\.\s*click\s*\(\s*\)\s*;/g) || []
+  ).length;
+  invariant(
+    openPicker.includes("document.querySelectorAll('.input-methods-container')")
+      && openPicker.includes("button[data-input-tab=\"file-upload\"]")
+      && openPicker.includes("tab.classList.contains('tab-btn')")
+      && openPicker.includes('tabs.length < 2 || tabs.length > 3')
+      && openPicker.includes('activeTabs.length !== 1')
+      && activeReturnIndex >= 0
+      && activeReturnIndex < activationClickIndex
+      && activationClickIndex < activatedReturnIndex
+      && openPicker.split('uploadTab.click();').length === 2
+      && countClickCalls(openPicker) === 1
+      && readyPicker.includes("document.querySelectorAll('.input-methods-container')")
+      && readyPicker.includes("button[data-input-tab=\"file-upload\"]")
+      && readyPicker.includes('tabs.length < 2 || tabs.length > 3')
+      && readyPicker.includes("':scope > .tab-content-wrapper div.file-upload-input:not(.loading)'")
+      && readyPicker.includes('pickers.length !== 1')
+      && readyPicker.includes(
+        "picker?.querySelector(':scope > input.hidden-file-input[type=\"file\"]')",
+      )
+      && readyPicker.includes('activeTabs.length === 1')
+      && readyPicker.includes('activeTabs[0] === uploadTab')
+      && readyPicker.includes('picker instanceof HTMLDivElement')
+      && readyPicker.includes('input instanceof HTMLInputElement')
+      && countClickCalls(readyPicker) === 0
+      && clickPicker.includes("document.querySelectorAll('.input-methods-container')")
+      && clickPicker.includes("button[data-input-tab=\"file-upload\"]")
+      && clickPicker.includes("':scope > .tab-content-wrapper div.file-upload-input:not(.loading)'")
+      && clickPicker.includes('activeTabs.length !== 1 || activeTabs[0] !== uploadTab')
+      && clickPicker.includes('pickers.length !== 1 || !(pickers[0] instanceof HTMLDivElement)')
+      && clickPicker.includes('input instanceof HTMLInputElement')
+      && (clickPicker.match(/picker\.click\(\);/g) || []).length === 1
+      && countClickCalls(clickPicker) === 1
+      && clickPicker.indexOf('input instanceof HTMLInputElement') < clickPicker.indexOf('picker.click();')
+      && clickPicker.indexOf('picker.click();') < clickPicker.indexOf('return true;'),
+    'Installed local-media inspector must preserve an active Upload File tab and click its exact ready picker control once',
   );
   const priorGuardStart = script.indexOf('export function assertPriorMediaState(');
   const priorGuardEnd = script.indexOf('\n}', priorGuardStart) + 2;
@@ -1286,7 +1371,13 @@ function assertInstalledLocalMediaInspector(script) {
     : '';
   invariant(
     priorGuard.includes("CANONICAL_UUID_V7.test(priorAssetId ?? '')")
-      && priorGuard.includes('value.assetId === priorAssetId')
+      && priorGuard.includes(
+        "tabActivation === 'already-active' || tabActivation === 'activated'",
+      )
+      && priorGuard.includes(
+        "tabActivation === 'already-active' ? priorAssetId : null",
+      )
+      && priorGuard.includes('value.assetId === expectedRendererAssetId')
       && priorGuard.includes('value.sessionMediaId === priorAssetId')
       && resultGuard.includes('value.assetId !== priorAssetId')
       && resultGuard.includes('value.session.media.id !== priorAssetId'),
@@ -1294,7 +1385,101 @@ function assertInstalledLocalMediaInspector(script) {
   );
 }
 
+function assertInstalledNativeToolsInspector(script) {
+  invariant(typeof script === 'string', 'Installed native-tool inspector source is required');
+  const normalizedScript = script.replace(/\r\n/g, '\n');
+  invariant(
+    crypto.createHash('sha256').update(normalizedScript, 'utf8').digest('hex')
+      === INSTALLED_NATIVE_TOOLS_INSPECTOR_SHA256,
+    'Installed native-tool inspector must equal the reviewed executable source',
+  );
+  const requiredFragments = [
+    "const TOOL_IDS = Object.freeze(['deno', 'media-tools', 'yt-dlp'])",
+    "invariant(values.size === 4",
+    "const runnerTemp = fs.realpathSync(environment.RUNNER_TEMP)",
+    'isInside(installingScreenshot, runnerTemp)',
+    'isInside(installedScreenshot, runnerTemp)',
+    "'[data-app-action=\"open-settings\"]'",
+    "'[data-settings-tab=\"tools\"]'",
+    "'[data-settings-panel=\"tools\"].active'",
+    "'[data-settings-action=\"close\"]'",
+    "'[data-native-tool-id=\"' + id + '\"]'",
+    "data-tool-action=\"remove-confirm\"",
+    "clickToolActionsExpression('remove-request')",
+    "confirmRemovalsExpression",
+    "clickToolActionsExpression('install')",
+    'buttons.forEach((button) => button.click())',
+    'requestAnimationFrame(() => requestAnimationFrame(resolve))',
+    "assertNativeToolsStatus(await evaluate(client, NATIVE_STATUS_EXPRESSION), 'installed')",
+    "await waitForDom(client, 'missing')",
+    "await waitForDom(client, 'installing', 50)",
+    "await waitForDom(client, 'installed')",
+    "window.__TAURI_INTERNALS__?.invoke('native_tools_status')",
+    "invoke('download_status')",
+    "invoke('media_pipeline_inspect'",
+    "value.download.reason === 'downloaderUnavailable'",
+    "value.pipelineErrorCode === 'mediaToolsUnavailable'",
+    'value.pipeline.width === 640',
+    'value.pipeline.height === 360',
+    'Number.isSafeInteger(value.pipeline.durationUs)',
+    'Number.isFinite(value.pipeline.frameRate)',
+    'value.pipeline.frameRate >= 23.9 && value.pipeline.frameRate <= 24.1',
+    "value.pipeline.videoCodec === 'h264'",
+    "value.pipeline.audioCodec === 'aac'",
+    "value.pipeline.compatibilityAction === 'direct'",
+    'tool.activeRuntime === true',
+    'tool.operation === null',
+    'new Set(jobIds).size === TOOL_IDS.length',
+    "job.state === 'running'",
+    'Number.isSafeInteger(job.sequence) && job.sequence >= 1',
+    "fs.writeFileSync(destination, bytes, { flag: 'wx' })",
+    "crypto.createHash('sha256').update(bytes).digest('hex')",
+    "sanitizeInspectorError(error, 'Installed native-tool flow failed')",
+  ];
+  for (const fragment of requiredFragments) {
+    invariant(script.includes(fragment),
+      `Installed native-tool inspector is missing exact UI/runtime proof: ${fragment}`);
+  }
+  invariant(!script.includes('native_tool_install') && !script.includes('native_tool_remove'),
+    'Installed native-tool inspector must mutate tools only through real UI actions');
+  const orderedFragments = [
+    "assertNativeToolsStatus(await evaluate(client, NATIVE_STATUS_EXPRESSION), 'installed')",
+    "clickToolActionsExpression('remove-request')",
+    'confirmRemovalsExpression',
+    "waitForDom(client, 'missing')",
+    'assertRemovedCapabilities(',
+    "clickToolActionsExpression('install')",
+    "waitForDom(client, 'installing', 50)",
+    'captureScreenshot(client, options.installingScreenshot)',
+    'const installed = assertNativeToolsStatus(',
+    'assertActiveCapabilities(',
+    'captureScreenshot(client, options.installedScreenshot)',
+    'evaluate(client, CLOSE_SETTINGS_EXPRESSION)',
+    "document.querySelector('[data-settings-tab=\\\"tools\\\"]') === null",
+  ];
+  const runStart = script.indexOf('async function runInstalledNativeTools(options) {');
+  const run = runStart >= 0 ? script.slice(runStart) : '';
+  const indices = orderedFragments.map((fragment) => run.indexOf(fragment));
+  invariant(indices.every((index) => index >= 0)
+    && indices.every((index, position) => position === 0 || indices[position - 1] < index),
+  'Installed native-tool inspector must prove ordered removal, parallel reinstall, and hot reuse');
+  invariant((run.match(/clickToolActionsExpression\('install'\)/g) || []).length === 1
+    && (run.match(/clickToolActionsExpression\('remove-request'\)/g) || []).length === 1
+    && (run.match(/confirmRemovalsExpression/g) || []).length === 1
+    && (script.match(/buttons\.forEach\(\(button\) => button\.click\(\)\)/g) || []).length === 2,
+  'Installed native-tool inspector must issue each reviewed UI mutation exactly once');
+  invariant(run.indexOf('captureScreenshot(client, options.installedScreenshot)')
+      < run.indexOf('evaluate(client, CLOSE_SETTINGS_EXPRESSION)')
+    && run.indexOf('evaluate(client, CLOSE_SETTINGS_EXPRESSION)')
+      < run.indexOf("document.querySelector('[data-settings-tab=\\\"tools\\\"]') === null")
+    && run.indexOf("document.querySelector('[data-settings-tab=\\\"tools\\\"]') === null")
+      < run.indexOf('return {'),
+  'Installed native-tool inspector must close Settings before handing off to later flows');
+}
+
 function assertInstalledSmokeScript(script) {
+  invariant(!script.includes('<#') && !script.includes('#>'),
+    'Installed Windows smoke must not hide executable proof inside block comments');
   const requiredFragments = [
     "$env:CI -ne 'true'",
     '$installed = Install-Application',
@@ -1310,17 +1495,39 @@ function assertInstalledSmokeScript(script) {
     'scripts/inspect-installed-webview.mjs',
     'scripts/inspect-installed-media-flow.mjs',
     'scripts/inspect-installed-local-media-flow.mjs',
+    'scripts/inspect-installed-native-tools.mjs',
     'scripts/inspect-installed-media-pipeline.mjs',
     'scripts/inspect-installed-editor-flow.mjs',
     '$inspection = Inspect-InstalledWebView',
     '$initialMediaFlow = Inspect-InstalledMediaFlow',
+    '$nativeToolFlow = Inspect-InstalledNativeTools',
     '$mediaFlow = Inspect-InstalledMediaFlow',
     "@('--prior-asset-id', $PriorAssetId)",
     '-PriorAssetId $localMediaFlow.assetId',
     '$localMediaFlow = Inspect-InstalledLocalMediaFlow',
+    '-AssetId $initialMediaFlow.assetId',
     '-PriorAssetId $initialMediaFlow.assetId',
     '$mediaPipeline = Inspect-InstalledMediaPipeline',
     '$editorFlow = Inspect-InstalledEditorFlow',
+    'function Inspect-InstalledNativeTools',
+    'function Get-DiagnosticEventsAfterBaseline',
+    'function Assert-NativeToolLifecycleDiagnostics',
+    "'osg-installed-tools-parallel-install.png'",
+    "'osg-installed-tools-reinstalled.png'",
+    '-ExpectedInstalls 3',
+    '-ExpectedRemovals 0',
+    '-ExpectedRemovals 3',
+    '$uiInstallPairs = @(',
+    '$diagnosticInstallPairs = @(',
+    "Where-Object { $_.event -ceq 'native-tool.started' -and $_.action -ceq 'install' }",
+    "($uiInstallPairs -join ',') -cne ($diagnosticInstallPairs -join ',')",
+    '$postHotToolBaseline = Get-DiagnosticBaselineSnapshot -LogPath $logPath',
+    '$postHotToolEvents = @(',
+    '-ExpectedInstalls 0',
+    '$entry.appInstanceId -cne $AppInstanceId',
+    "[string]$entry.action -notin @('install', 'remove')",
+    '$entry.timestampMs -isnot [string]',
+    "'native-tool.requested'",
     'function Inspect-InstalledMediaPipeline',
     'function Inspect-InstalledEditorFlow',
     "'--expected-source-name', $ExpectedSourceName",
@@ -1366,20 +1573,22 @@ function assertInstalledSmokeScript(script) {
     "-Outcome 'succeeded'",
     'osg-installed-media-flow-initial.png',
     "Where-Object event -eq 'download.completed'",
-    "Where-Object event -eq 'native-tool.completed'",
-    "Where-Object event -eq 'native-tool.started'",
+    "'native-tool.completed'",
+    "'native-tool.started'",
     "'native-tool.failed'",
     "'native-tool.cancelled'",
     "'native-tool.invalid-terminal'",
-    '$failedTools.Count -ne 0',
-    '$lastStartedIndex -ge $firstCompletedIndex',
-    '$startedToolEvents.Count -ne 3',
-    '$completedToolEvents.Count -ne 3',
-    '$startedToolJobs.Count -ne 3',
-    '$completedToolJobs.Count -ne 3',
-    "($startedToolJobs -join ',') -cne ($completedToolJobs -join ',')",
-    "($startedToolPairs -join ',') -cne ($completedToolPairs -join ',')",
-    '$invalidToolJobIds.Count -ne 0',
+    '$terminalFailures.Count -ne 0',
+    '$requested.Count -ne $expectedCount',
+    '$started.Count -ne $expectedCount',
+    '$completed.Count -ne $expectedCount',
+    "($startedJobs -join ',') -cne ($completedJobs -join ',')",
+    "($startedPairs -join ',') -cne ($completedPairs -join ',')",
+    '@($allStartedJobs | Sort-Object -Unique).Count -ne 6',
+    '@($allCompletedJobs | Sort-Object -Unique).Count -ne 6',
+    "(@($allStartedJobs | Sort-Object) -join ',')",
+    "-cne (@($allCompletedJobs | Sort-Object) -join ',')",
+    "throw 'Native-tool lifecycle did not start all installs in parallel'",
     'function Get-DiagnosticEventCount',
     "Get-DiagnosticEventCount -LogPath $LogPath -Name 'app.close_requested'",
     '$Process.MainWindowHandle -eq [IntPtr]::Zero -or -not $Process.Responding',
@@ -1406,6 +1615,7 @@ function assertInstalledSmokeScript(script) {
     '$launchInstanceIds[0] -notmatch',
     '$localMediaFlow.assetId -eq $mediaFlow.assetId',
     'installedInitialMediaFlow = $initialMediaFlow',
+    'installedNativeTools = $nativeToolFlow',
     'installedMediaFlow = $mediaFlow',
     'installedLocalMediaFlow = $localMediaFlow',
     'installedMediaPipeline = $mediaPipeline',
@@ -1452,13 +1662,104 @@ function assertInstalledSmokeScript(script) {
       && /^\s{6}-PriorAssetId \$localMediaFlow\.assetId\s*$/m.test(script),
     'Installed Windows smoke must bind the second URL pass to the prior local-media identity',
   );
+  const nativeToolsFunctionStart = script.indexOf('function Inspect-InstalledNativeTools {');
+  const nativeToolsFunctionEnd = script.indexOf('\nfunction ', nativeToolsFunctionStart + 1);
+  const nativeToolsFunction = nativeToolsFunctionStart >= 0
+    && nativeToolsFunctionEnd > nativeToolsFunctionStart
+    ? script.slice(nativeToolsFunctionStart, nativeToolsFunctionEnd)
+    : '';
+  invariant(
+    nativeToolsFunction.includes("'scripts/inspect-installed-native-tools.mjs'")
+      && nativeToolsFunction.includes("'--asset-id', $AssetId")
+      && nativeToolsFunction.includes("'--installing-screenshot', $installingScreenshot")
+      && nativeToolsFunction.includes("'--installed-screenshot', $installedScreenshot")
+      && nativeToolsFunction.includes('$inspection.WaitForExit(1860000)')
+      && nativeToolsFunction.includes('$inspection.ExitCode -ne 0')
+      && nativeToolsFunction.includes('$output.Count -ne 1 -or $errors.Count -ne 0')
+      && nativeToolsFunction.includes("($resultNames -join ',') -cne ($expectedResultNames -join ',')")
+      && nativeToolsFunction.includes("($removedToolIds -join ',') -cne 'deno,media-tools,yt-dlp'")
+      && nativeToolsFunction.includes("-cne 'id,jobId'")
+      && nativeToolsFunction.includes("(@($installJobs | ForEach-Object id) -join ',') -cne 'deno,media-tools,yt-dlp'")
+      && nativeToolsFunction.includes("-cne 'id,version'")
+      && nativeToolsFunction.includes("(@($installedTools | ForEach-Object id) -join ',') -cne 'deno,media-tools,yt-dlp'")
+      && nativeToolsFunction.includes("-cne 'audioCodec,durationUs,frameRate,height,videoCodec,width'")
+      && nativeToolsFunction.includes('$result.pipeline.durationUs -isnot [ValueType]')
+      && nativeToolsFunction.includes('$result.pipeline.frameRate -isnot [ValueType]')
+      && nativeToolsFunction.includes('$result.pipeline.height -isnot [ValueType]')
+      && nativeToolsFunction.includes('$result.pipeline.width -isnot [ValueType]')
+      && nativeToolsFunction.includes('[double]$result.pipeline.frameRate -lt 23.9')
+      && nativeToolsFunction.includes('[double]$result.pipeline.frameRate -gt 24.1')
+      && nativeToolsFunction.includes("$result.pipeline.videoCodec -cne 'h264'")
+      && nativeToolsFunction.includes("$result.pipeline.audioCodec -cne 'aac'")
+      && nativeToolsFunction.includes("-cne 'bytes,sha256'")
+      && nativeToolsFunction.includes("Get-FileHash -LiteralPath $screenshotPath -Algorithm SHA256")
+      && nativeToolsFunction.includes('$result.installingScreenshot.sha256 -ceq [string]$result.installedScreenshot.sha256')
+      && nativeToolsFunction.includes('$inspection.Refresh()')
+      && nativeToolsFunction.includes('Inspector cleanup is best effort and must not replace the primary flow failure.'),
+    'Installed Windows smoke must retain exact bounded native-tool UI evidence',
+  );
+  const diagnosticSuffixStart = script.indexOf('function Get-DiagnosticEventsAfterBaseline {');
+  const diagnosticSuffixEnd = script.indexOf('\nfunction ', diagnosticSuffixStart + 1);
+  const diagnosticSuffix = diagnosticSuffixStart >= 0 && diagnosticSuffixEnd > diagnosticSuffixStart
+    ? script.slice(diagnosticSuffixStart, diagnosticSuffixEnd)
+    : '';
+  invariant(
+    diagnosticSuffix.includes('[IO.FileStream]::new(')
+      && diagnosticSuffix.includes('[IO.FileShare]::ReadWrite')
+      && diagnosticSuffix.includes('while ($offset -lt $snapshotBytes.Length)')
+      && diagnosticSuffix.includes('$hasher.ComputeHash($baselineBytes)')
+      && diagnosticSuffix.includes('$actualBaselineSha256 -cne $BaselineSha256')
+      && diagnosticSuffix.includes('[Array]::Copy($snapshotBytes, [int]$BaselineLength, $suffixBytes, 0, $suffixLength)')
+      && !diagnosticSuffix.includes('Read-DiagnosticEvents'),
+    'Installed Windows smoke must derive native-tool events from one immutable post-baseline snapshot',
+  );
+  const lifecycleDiagnosticsStart = script.indexOf('function Assert-NativeToolLifecycleDiagnostics {');
+  const lifecycleDiagnosticsEnd = script.indexOf('\nfunction ', lifecycleDiagnosticsStart + 1);
+  const lifecycleDiagnostics = lifecycleDiagnosticsStart >= 0
+    && lifecycleDiagnosticsEnd > lifecycleDiagnosticsStart
+    ? script.slice(lifecycleDiagnosticsStart, lifecycleDiagnosticsEnd)
+    : '';
+  for (const fragment of [
+    "$entry.appInstanceId -cne $AppInstanceId",
+    '$entry.event -isnot [string]',
+    '$entry.action -isnot [string]',
+    '$entry.tool -isnot [string]',
+    '$entry.appInstanceId -isnot [string]',
+    '$entry.job -isnot [string]',
+    '$entry.code -isnot [string]',
+    "[string]$entry.action -notin @('install', 'remove')",
+    "$entry.timestampMs -isnot [string]",
+    "$requested.Count -ne $expectedCount",
+    "$started.Count -ne $expectedCount",
+    "$completed.Count -ne $expectedCount",
+    "($startedJobs -join ',') -cne ($completedJobs -join ',')",
+    "($startedPairs -join ',') -cne ($completedPairs -join ',')",
+    "@($allStartedJobs | Sort-Object -Unique).Count -ne 6",
+    "@($allCompletedJobs | Sort-Object -Unique).Count -ne 6",
+    "($requestIndices | Measure-Object -Maximum).Maximum",
+    "($startIndices | Measure-Object -Maximum).Maximum",
+    "throw 'Native-tool lifecycle did not start all installs in parallel'",
+    "$lastRemoval -ge $firstInstallRequest",
+  ]) {
+    invariant(lifecycleDiagnostics.includes(fragment),
+      `Installed native-tool diagnostic proof is missing exact invariant: ${fragment}`);
+  }
   const orderedInstalledMediaFragments = [
     '$initialMediaFlow = Inspect-InstalledMediaFlow',
+    '$initialToolEvents = @(',
+    '-ExpectedRemovals 0',
+    '$nativeToolFlow = Inspect-InstalledNativeTools',
+    '$nativeToolEvents = @(',
+    '-ExpectedRemovals 3',
+    '$uiInstallPairs = @(',
+    '$diagnosticInstallPairs = @(',
+    "($uiInstallPairs -join ',') -cne ($diagnosticInstallPairs -join ',')",
+    '$postHotToolBaseline = Get-DiagnosticBaselineSnapshot -LogPath $logPath',
     '$localMediaFlow = Inspect-InstalledLocalMediaFlow',
     '$mediaPipeline = Inspect-InstalledMediaPipeline',
     '$mediaFlow = Inspect-InstalledMediaFlow',
-    "throw 'Installed media-flow did not start all three native tool downloads in parallel'",
     '$editorFlow = Inspect-InstalledEditorFlow',
+    '$postHotToolEvents = @(',
   ];
   const orderedInstalledMediaIndices = orderedInstalledMediaFragments
     .map((fragment) => script.indexOf(fragment));
@@ -1467,6 +1768,29 @@ function assertInstalledSmokeScript(script) {
       position === 0 || orderedInstalledMediaIndices[position - 1] < index
     )),
   'Installed Windows smoke is missing lifecycle proof: ordered installed media flow');
+  const postHotToolEventsStart = script.indexOf('$postHotToolEvents = @(');
+  const postHotToolProof = postHotToolEventsStart >= 0
+    ? script.slice(postHotToolEventsStart, postHotToolEventsStart + 900)
+    : '';
+  invariant(
+    postHotToolProof.includes('-BaselineSha256 $postHotToolBaseline.Sha256')
+      && postHotToolProof.includes('-BaselineLength $postHotToolBaseline.Length')
+      && postHotToolProof.includes('-Events $postHotToolEvents')
+      && postHotToolProof.includes('-ExpectedInstalls 0')
+      && postHotToolProof.includes('-ExpectedRemovals 0'),
+    'Installed Windows smoke must prove later consumers did not reinstall hot native tools',
+  );
+  const uiDiagnosticPairGuard = /^ {4}if \(\$uiInstallPairs\.Count -ne 3 `\r?\n^ {8}-or \$diagnosticInstallPairs\.Count -ne 3 `\r?\n^ {8}-or \(\$uiInstallPairs -join ','\) -cne \(\$diagnosticInstallPairs -join ','\)\) \{\r?\n^ {6}throw 'Native-tool UI status jobs did not match exact install diagnostics'\r?\n^ {4}\}$/m;
+  const zeroLaterToolOperations = /^ {4}Assert-NativeToolLifecycleDiagnostics `\r?\n^ {6}-Events \$postHotToolEvents `\r?\n^ {6}-AppInstanceId \$third\.AppInstanceId `\r?\n^ {6}-ExpectedInstalls 0 `\r?\n^ {6}-ExpectedRemovals 0$/m;
+  const initialToolLifecycleCall = /^ {4}Assert-NativeToolLifecycleDiagnostics `\r?\n^ {6}-Events \$initialToolEvents `\r?\n^ {6}-AppInstanceId \$third\.AppInstanceId `\r?\n^ {6}-ExpectedInstalls 3 `\r?\n^ {6}-ExpectedRemovals 0$/m;
+  const hotToolLifecycleCall = /^ {4}Assert-NativeToolLifecycleDiagnostics `\r?\n^ {6}-Events \$nativeToolEvents `\r?\n^ {6}-AppInstanceId \$third\.AppInstanceId `\r?\n^ {6}-ExpectedInstalls 3 `\r?\n^ {6}-ExpectedRemovals 3$/m;
+  invariant(
+    initialToolLifecycleCall.test(script)
+      && hotToolLifecycleCall.test(script)
+      && uiDiagnosticPairGuard.test(script)
+      && zeroLaterToolOperations.test(script),
+    'Installed Windows smoke must execute exact native-tool correlation and hot-reuse guards',
+  );
   const pickerFunctionStart = script.indexOf('function Complete-NativeMediaPicker {');
   const pickerFunctionEnd = script.indexOf('\nfunction ', pickerFunctionStart + 1);
   const pickerFunction = pickerFunctionStart >= 0 && pickerFunctionEnd > pickerFunctionStart
@@ -1595,6 +1919,12 @@ function assertInstalledSmokeScript(script) {
   invariant(
     !/(?:Invoke-WebRequest|Invoke-RestMethod|Start-BitsTransfer)/i.test(script),
     'Installed Windows smoke must validate the branch-built installer without a second download',
+  );
+  const normalizedScript = script.replace(/\r\n/g, '\n');
+  invariant(
+    crypto.createHash('sha256').update(normalizedScript, 'utf8').digest('hex')
+      === INSTALLED_WINDOWS_SMOKE_SHA256,
+    'Installed Windows smoke must equal the reviewed executable source',
   );
 }
 
@@ -2245,6 +2575,10 @@ function assertWorkflow(rootDirectory = REPOSITORY_ROOT) {
   assertInstalledSmokeScript(readText(rootDirectory, 'scripts/test-installed-windows.ps1'));
   assertInstalledLocalMediaInspector(
     readText(rootDirectory, 'scripts/inspect-installed-local-media-flow.mjs'),
+    readText(rootDirectory, 'src/components/InputMethods.js'),
+  );
+  assertInstalledNativeToolsInspector(
+    readText(rootDirectory, 'scripts/inspect-installed-native-tools.mjs'),
   );
   assertNativePickerEvidenceScripts(
     readText(rootDirectory, 'scripts/native-picker-evidence.ps1'),
@@ -3833,6 +4167,7 @@ module.exports = {
   assertNativePickerEvidenceScripts,
   assertInstalledSmokeScript,
   assertInstalledLocalMediaInspector,
+  assertInstalledNativeToolsInspector,
   assertCiUpdaterFixtureHandoffSource,
   assertCiUpdaterFixtureDebugPortSource,
   assertUpdaterFixtureSource,

@@ -100,11 +100,14 @@ export function writePickerPhase(phaseDirectory, stage) {
   }
 }
 
-export function assertPriorMediaState(value, priorAssetId) {
+export function assertPriorMediaState(value, priorAssetId, tabActivation) {
   invariant(CANONICAL_UUID_V7.test(priorAssetId ?? ''),
     'Prior installed local-media asset identity is invalid');
+  invariant(tabActivation === 'already-active' || tabActivation === 'activated',
+    'Installed local-media Upload File tab activation is invalid');
+  const expectedRendererAssetId = tabActivation === 'already-active' ? priorAssetId : null;
   invariant(hasExactKeys(value, ['assetId', 'sessionMediaId'])
-    && value.assetId === priorAssetId
+    && value.assetId === expectedRendererAssetId
     && value.sessionMediaId === priorAssetId,
   'Installed local-media flow did not begin from the reviewed prior native asset');
   return value;
@@ -227,19 +230,82 @@ const evaluate = async (client, expression) => {
   return evaluation.result?.value;
 };
 
-const OPEN_PICKER_EXPRESSION = `
+export const OPEN_PICKER_EXPRESSION = `
 (() => {
-  const tabs = [...document.querySelectorAll('.input-tabs .tab-btn')];
-  const uploadTab = tabs.at(-1);
-  if (!(uploadTab instanceof HTMLButtonElement)) return false;
+  const containers = [...document.querySelectorAll('.input-methods-container')];
+  if (containers.length !== 1 || !(containers[0] instanceof HTMLElement)) return null;
+  const uploadTabs = [...containers[0].querySelectorAll(
+    ':scope > .input-header > .input-tabs > button[data-input-tab="file-upload"]'
+  )];
+  if (uploadTabs.length !== 1 || !(uploadTabs[0] instanceof HTMLButtonElement)) return null;
+  const uploadTab = uploadTabs[0];
+  const tabList = uploadTab.parentElement;
+  if (!(tabList instanceof HTMLElement)) return null;
+  const tabs = [...tabList.children];
+  if (tabs.length < 2 || tabs.length > 3
+      || !tabs.every((tab) => tab instanceof HTMLButtonElement
+        && tab.classList.contains('tab-btn'))) return null;
+  const activeTabs = tabs.filter((tab) => tab.classList.contains('active'));
+  if (activeTabs.length !== 1) return null;
+  if (uploadTab.classList.contains('active')) return 'already-active';
   uploadTab.click();
-  return true;
+  return 'activated';
 })()`;
 
-const CLICK_PICKER_EXPRESSION = `
+export const PICKER_CONTROL_READY_EXPRESSION = `
 (() => {
-  const picker = document.querySelector('.file-upload-input:not(.loading)');
-  if (!(picker instanceof HTMLElement)) return false;
+  const containers = [...document.querySelectorAll('.input-methods-container')];
+  if (containers.length !== 1 || !(containers[0] instanceof HTMLElement)) return false;
+  const container = containers[0];
+  const uploadTabs = [...container.querySelectorAll(
+    ':scope > .input-header > .input-tabs > button[data-input-tab="file-upload"]'
+  )];
+  if (uploadTabs.length !== 1 || !(uploadTabs[0] instanceof HTMLButtonElement)) return false;
+  const uploadTab = uploadTabs[0];
+  const tabList = uploadTab.parentElement;
+  if (!(tabList instanceof HTMLElement)) return false;
+  const tabs = [...tabList.children];
+  if (tabs.length < 2 || tabs.length > 3
+      || !tabs.every((tab) => tab instanceof HTMLButtonElement
+        && tab.classList.contains('tab-btn'))) return false;
+  const activeTabs = tabs.filter((tab) => tab.classList.contains('active'));
+  const pickers = [...container.querySelectorAll(
+    ':scope > .tab-content-wrapper div.file-upload-input:not(.loading)'
+  )];
+  if (pickers.length !== 1) return false;
+  const picker = pickers[0];
+  const input = picker?.querySelector(':scope > input.hidden-file-input[type="file"]');
+  return activeTabs.length === 1
+    && activeTabs[0] === uploadTab
+    && picker instanceof HTMLDivElement
+    && input instanceof HTMLInputElement;
+})()`;
+
+export const CLICK_PICKER_EXPRESSION = `
+(() => {
+  const containers = [...document.querySelectorAll('.input-methods-container')];
+  if (containers.length !== 1 || !(containers[0] instanceof HTMLElement)) return false;
+  const container = containers[0];
+  const uploadTabs = [...container.querySelectorAll(
+    ':scope > .input-header > .input-tabs > button[data-input-tab="file-upload"]'
+  )];
+  if (uploadTabs.length !== 1 || !(uploadTabs[0] instanceof HTMLButtonElement)) return false;
+  const uploadTab = uploadTabs[0];
+  const tabList = uploadTab.parentElement;
+  if (!(tabList instanceof HTMLElement)) return false;
+  const tabs = [...tabList.children];
+  const activeTabs = tabs.filter((tab) => tab.classList.contains('active'));
+  const pickers = [...container.querySelectorAll(
+    ':scope > .tab-content-wrapper div.file-upload-input:not(.loading)'
+  )];
+  if (tabs.length < 2 || tabs.length > 3
+      || !tabs.every((tab) => tab instanceof HTMLButtonElement
+        && tab.classList.contains('tab-btn'))
+      || activeTabs.length !== 1 || activeTabs[0] !== uploadTab
+      || pickers.length !== 1 || !(pickers[0] instanceof HTMLDivElement)) return false;
+  const picker = pickers[0];
+  const input = picker.querySelector(':scope > input.hidden-file-input[type="file"]');
+  if (!(input instanceof HTMLInputElement)) return false;
   picker.click();
   return true;
 })()`;
@@ -306,10 +372,11 @@ async function runInstalledLocalMediaFlow(options) {
     await client.send('Runtime.enable');
     await client.send('Page.enable');
     writePickerPhase(options.phaseDirectory, 'connected');
-    invariant(await evaluate(client, OPEN_PICKER_EXPRESSION) === true,
+    const tabActivation = await evaluate(client, OPEN_PICKER_EXPRESSION);
+    invariant(tabActivation === 'already-active' || tabActivation === 'activated',
       'Installed local-media flow could not activate the Upload File tab');
     await waitForValue(
-      () => evaluate(client, "document.querySelector('.file-upload-input:not(.loading)') !== null"),
+      () => evaluate(client, PICKER_CONTROL_READY_EXPRESSION),
       (value) => value === true,
       { timeoutMs: 30_000 },
     );
@@ -317,6 +384,7 @@ async function runInstalledLocalMediaFlow(options) {
     assertPriorMediaState(
       await evaluate(client, PRIOR_MEDIA_STATE_EXPRESSION),
       options.priorAssetId,
+      tabActivation,
     );
     invariant(await evaluate(client, CLICK_PICKER_EXPRESSION) === true,
       'Installed local-media flow could not open the native picker');

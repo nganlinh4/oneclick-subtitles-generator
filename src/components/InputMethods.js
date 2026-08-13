@@ -192,6 +192,7 @@ const InputMethods = ({ onVideoSelect, apiKeysSet, selectedVideo, setSelectedVid
 
           <button
             className={`tab-btn ${activeTab === 'file-upload' ? 'active' : ''}`}
+            data-input-tab="file-upload"
             onClick={() => setActiveTab('file-upload')}
           >
             <span className="material-symbols-rounded" style={{ fontSize: 18, display: 'inline-block' }}>file_upload</span>

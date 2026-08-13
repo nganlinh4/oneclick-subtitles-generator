@@ -246,13 +246,40 @@ pub(crate) fn collect_regular_files(root: &Path) -> Result<HashSet<String>> {
     Ok(files)
 }
 
-pub(crate) fn remove_exact_tree(root: &Path, allowed_files: &HashSet<String>) -> Result<()> {
-    let actual = collect_regular_files(root)?;
-    if &actual != allowed_files {
+/// Finishes a previously validated managed-tree cleanup without ever deleting
+/// an unexpected file. A prior interrupted cleanup may have removed a subset
+/// of the owned files, but any unowned entry still preserves the entire
+/// remainder for inspection.
+pub(crate) fn remove_owned_tree_subset(
+    root: &Path,
+    allowed_files: &HashSet<String>,
+    ownership_marker: &str,
+) -> Result<()> {
+    let actual = match fs::symlink_metadata(root) {
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => return Ok(()),
+        Ok(_) => collect_regular_files(root)?,
+        Err(_) => return Err(NativeToolError::StoreUnavailable),
+    };
+    if !actual.is_subset(allowed_files)
+        || (!actual.is_empty() && !actual.contains(ownership_marker))
+    {
         return Err(NativeToolError::InvalidInstall);
     }
+    remove_collected_tree(root, actual, ownership_marker)
+}
+
+fn remove_collected_tree(
+    root: &Path,
+    actual: HashSet<String>,
+    ownership_marker: &str,
+) -> Result<()> {
     let mut files = actual.into_iter().collect::<Vec<_>>();
-    files.sort_by_key(|path| std::cmp::Reverse(path.matches('/').count()));
+    files.sort_by_key(|path| {
+        (
+            path == ownership_marker,
+            std::cmp::Reverse(path.matches('/').count()),
+        )
+    });
     for relative in files {
         let path = resolve_owned(root, &relative)?;
         require_regular_file(&path)?;

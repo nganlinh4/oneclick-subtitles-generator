@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import {
   cancelNativeToolJob,
@@ -171,6 +171,7 @@ export const NativeToolRow = ({ catalog, status, onChanged }) => {
           <button
             type="button"
             className="engine-card__cancel"
+            data-tool-action="cancel"
             onClick={() => (
               catalog.id === 'gemini-voice-samples'
                 ? cancelVoiceSamples()
@@ -193,10 +194,10 @@ export const NativeToolRow = ({ catalog, status, onChanged }) => {
       return (
         <div className="engine-card__confirm">
           <span className="engine-card__confirm-text">{t('engines.confirmUninstall', 'Uninstall?')}</span>
-          <button type="button" className="engine-card__icon-btn engine-card__icon-btn--danger" onClick={() => run('remove')} aria-label={t('engines.uninstall', 'Uninstall')}>
+          <button type="button" className="engine-card__icon-btn engine-card__icon-btn--danger" data-tool-action="remove-confirm" onClick={() => run('remove')} aria-label={t('engines.uninstall', 'Uninstall')}>
             <span className="material-symbols-rounded" aria-hidden="true">check</span>
           </button>
-          <button type="button" className="engine-card__icon-btn" onClick={() => setConfirmRemove(false)} aria-label={t('engines.cancel', 'Cancel')}>
+          <button type="button" className="engine-card__icon-btn" data-tool-action="remove-cancel" onClick={() => setConfirmRemove(false)} aria-label={t('engines.cancel', 'Cancel')}>
             <span className="material-symbols-rounded" aria-hidden="true">close</span>
           </button>
         </div>
@@ -207,21 +208,21 @@ export const NativeToolRow = ({ catalog, status, onChanged }) => {
     }
     if (status.state === 'missing' || status.state === 'corrupt') {
       return (
-        <button type="button" className="engine-card__btn" onClick={() => run('install')}>
+        <button type="button" className="engine-card__btn" data-tool-action="install" onClick={() => run('install')}>
           <span className="material-symbols-rounded" aria-hidden="true">{status.state === 'corrupt' ? 'build' : 'download'}</span>
           {status.state === 'corrupt' ? t('engines.repair', 'Repair') : t('engines.download', 'Download')}
         </button>
       );
     }
     return (
-      <button type="button" className="engine-card__icon-btn" onClick={() => setConfirmRemove(true)} title={t('engines.uninstall', 'Uninstall')} aria-label={t('engines.uninstall', 'Uninstall')}>
+      <button type="button" className="engine-card__icon-btn" data-tool-action="remove-request" onClick={() => setConfirmRemove(true)} title={t('engines.uninstall', 'Uninstall')} aria-label={t('engines.uninstall', 'Uninstall')}>
         <span className="material-symbols-rounded" aria-hidden="true">delete</span>
       </button>
     );
   };
 
   return (
-    <div className={`engine-card engine-card--${state}`}>
+    <div className={`engine-card engine-card--${state}`} data-native-tool-id={catalog.id}>
       <div className="engine-card__row">
         <span className="material-symbols-rounded engine-card__icon" aria-hidden="true">
           {status.state === 'installed' ? 'check_circle' : status.state === 'corrupt' ? 'warning' : 'download'}
@@ -243,8 +244,11 @@ const NativeToolsList = () => {
   const [catalog, setCatalog] = useState([]);
   const [status, setStatus] = useState(new Map());
   const [loadState, setLoadState] = useState('checking');
+  const refreshGeneration = useRef(0);
 
   const refresh = useCallback(async () => {
+    const generation = refreshGeneration.current + 1;
+    refreshGeneration.current = generation;
     setLoadState('checking');
     try {
       const [catalogResponse, statusResponse, renderStatus, voiceStatus] = await Promise.all([
@@ -253,6 +257,7 @@ const NativeToolsList = () => {
         getRenderPackageStatus(),
         getVoiceSamplesStatus(),
       ]);
+      if (generation !== refreshGeneration.current) return;
       setCatalog([...catalogResponse.tools, RENDER_CATALOG, VOICE_SAMPLE_CATALOG]);
       setStatus(new Map([
         ...statusResponse.tools.map((tool) => [tool.id, tool]),
@@ -272,7 +277,7 @@ const NativeToolsList = () => {
       ]));
       setLoadState('ready');
     } catch {
-      setLoadState('failed');
+      if (generation === refreshGeneration.current) setLoadState('failed');
     }
   }, []);
 
@@ -280,7 +285,10 @@ const NativeToolsList = () => {
     refresh().catch(() => {});
     const refreshOnFocus = () => refresh().catch(() => {});
     window.addEventListener('focus', refreshOnFocus);
-    return () => window.removeEventListener('focus', refreshOnFocus);
+    return () => {
+      refreshGeneration.current += 1;
+      window.removeEventListener('focus', refreshOnFocus);
+    };
   }, [refresh]);
 
   const installed = useMemo(
