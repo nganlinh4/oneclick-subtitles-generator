@@ -174,6 +174,7 @@ const InputMethods = ({ onVideoSelect, apiKeysSet, selectedVideo, setSelectedVid
         <div className="input-tabs" ref={tabsRef}>
           <button
             className={`tab-btn ${activeTab === 'unified-url' ? 'active' : ''}`}
+            data-input-tab="unified-url"
             onClick={() => setActiveTab('unified-url')}
           >
             <span className="material-symbols-rounded" style={{ fontSize: 18, display: 'inline-block' }}>globe_asia</span>

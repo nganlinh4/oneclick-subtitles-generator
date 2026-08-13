@@ -269,7 +269,122 @@ test('waits for a terminal accepted state and rejects a bounded timeout', async 
     async () => ({ ready: false }),
     (value) => value.ready,
     { now: () => ++ticks * 10, timeoutMs: 15, delay: async () => {} },
-  ), /timed out/);
+  ), /timed out: terminal-state-timeout/);
+  for (const failureCode of [
+    'url-tab-timeout',
+    'url-commit-timeout',
+    'srt-clear-timeout',
+    'srt-readiness-timeout',
+    'download-start-timeout',
+    'terminal-state-timeout',
+  ]) {
+    let categoryTicks = 0;
+    await assert.rejects(() => waitForValue(
+      async () => false,
+      (value) => value === true,
+      {
+        failureCode,
+        now: () => ++categoryTicks * 10,
+        timeoutMs: 15,
+        delay: async () => {},
+      },
+    ), new RegExp(`timed out: ${failureCode}$`));
+  }
+  await assert.rejects(() => waitForValue(
+    async () => false,
+    (value) => value === true,
+    { failureCode: 'private-state-timeout' },
+  ), /timeout category is invalid/);
+});
+
+test('commits the URL before replacing stale SRT state and dispatching the fresh upload', async () => {
+  const inspectorSource = fs.readFileSync(
+    new URL('./inspect-installed-media-flow.mjs', import.meta.url),
+    'utf8',
+  );
+  const inputMethodsSource = fs.readFileSync(
+    new URL('../src/components/InputMethods.js', import.meta.url),
+    'utf8',
+  );
+  const buttonsContainerSource = fs.readFileSync(
+    new URL('../src/components/app/ButtonsContainer.jsx', import.meta.url),
+    'utf8',
+  );
+  assert.equal((inputMethodsSource.match(/data-input-tab="unified-url"/g) || []).length, 1);
+  assert.match(
+    inputMethodsSource,
+    /<button\s+className=\{`tab-btn \$\{activeTab === 'unified-url' \? 'active' : ''\}`\}\s+data-input-tab="unified-url"\s+onClick=\{\(\) => setActiveTab\('unified-url'\)\}\s*>/,
+  );
+  assert.doesNotMatch(inspectorSource, /activeTabs\[0\] === tabs\[0\]/);
+  assert.match(inspectorSource, /activeTabs\[0\] === urlTabs\[0\]/);
+  assert.match(
+    buttonsContainerSource,
+    /const generationMode = isSrtOnlyMode\s*\? 'srt-only'\s*:\s*hasUrlAndSrtOnly \? 'url-with-srt' : 'other';/,
+  );
+  assert.match(
+    buttonsContainerSource,
+    /className=\{`generate-btn semi-auto[\s\S]*?data-generation-mode=\{generationMode\}[\s\S]*?onClick=\{handleGenerateSubtitles\}/,
+  );
+  assert.equal((inspectorSource.match(/dataset\.generationMode/g) || []).length, 2);
+  assert.equal((inspectorSource.match(/:scope \.generate-btn\.semi-auto'/g) || []).length, 2);
+  assert.doesNotMatch(
+    inspectorSource,
+    /\.generate-btn\.semi-auto\[data-generation-mode=/,
+  );
+  const run = inspectorSource.slice(inspectorSource.indexOf(
+    'async function runInstalledMediaFlow(options) {',
+  ));
+  const orderedFragments = [
+    'evaluate(client, URL_COMMITTED_EXPRESSION)',
+    'evaluate(client, RESET_SRT_EXPRESSION)',
+    'evaluate(client, SRT_CLEARED_EXPRESSION)',
+    "client.send('DOM.setFileInputFiles'",
+    "inputs[0].dispatchEvent(new Event('change', { bubbles: true }))",
+    'evaluate(client, SRT_READY_EXPRESSION)',
+    'const baselineState = await evaluate(client, MEDIA_RESULT_EXPRESSION)',
+    'evaluate(client, START_EXPRESSION)',
+  ];
+  const indices = orderedFragments.map((fragment) => run.indexOf(fragment));
+  assert.equal(indices.every((index) => index >= 0), true);
+  assert.equal(indices.every((index, position) => (
+    position === 0 || indices[position - 1] < index
+  )), true);
+
+  const createReactClosureModel = () => {
+    let selectedVideo = null;
+    let pendingVideo = null;
+    let srtOnly = false;
+    let staleSrtBadge = true;
+    let jobs = 0;
+    return {
+      setUrl() { pendingVideo = { url: 'reviewed' }; },
+      commitUrl() { selectedVideo = pendingVideo; },
+      clearSrt() { staleSrtBadge = false; },
+      uploadSrt() {
+        staleSrtBadge = true;
+        srtOnly = selectedVideo === null;
+      },
+      start() {
+        if (!srtOnly && selectedVideo !== null && staleSrtBadge) jobs += 1;
+      },
+      result() { return { jobs, srtOnly, staleSrtBadge }; },
+    };
+  };
+
+  const raced = createReactClosureModel();
+  raced.setUrl();
+  raced.uploadSrt();
+  raced.commitUrl();
+  raced.start();
+  assert.deepEqual(raced.result(), { jobs: 0, srtOnly: true, staleSrtBadge: true });
+
+  const reviewed = createReactClosureModel();
+  reviewed.setUrl();
+  reviewed.commitUrl();
+  reviewed.clearSrt();
+  reviewed.uploadSrt();
+  reviewed.start();
+  assert.deepEqual(reviewed.result(), { jobs: 1, srtOnly: false, staleSrtBadge: true });
 });
 
 test('requires immediate native activity after the real media action', () => {

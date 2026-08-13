@@ -121,6 +121,9 @@ const ButtonsContainer = ({
                           subtitlesData && subtitlesData.length > 0 &&
                           !hasValidDownloadedVideo(uploadedFile) &&
                           !isSrtOnlyMode;
+  const generationMode = isSrtOnlyMode
+    ? 'srt-only'
+    : hasUrlAndSrtOnly ? 'url-with-srt' : 'other';
   // Detect current theme from data-theme attribute (light/dark)
   const isDarkTheme = (typeof document !== 'undefined' && document.documentElement.getAttribute('data-theme') === 'dark');
 
@@ -156,6 +159,7 @@ const ButtonsContainer = ({
           <Tooltip content={t('output.semiAutoTooltip', 'Tiết kiệm request và token vì không bắt buộc phân tích video')}>
             <button
               className={`generate-btn semi-auto ${isGenerating || isDownloading ? 'processing' : ''}`}
+              data-generation-mode={generationMode}
               onClick={handleGenerateSubtitles}
               disabled={isGenerating || isDownloading || isAutoGenerating}
             >

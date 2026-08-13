@@ -45,6 +45,8 @@ const INSTALLED_NATIVE_TOOLS_INSPECTOR_SHA256 =
   '3167ddbddd723a1b6bf0200d0f7061f2c545c067de971c77d5c5cef58b22965b';
 const INSTALLED_LOCAL_MEDIA_INSPECTOR_SHA256 =
   'e53207922c58e449705282a11da2975bdeaf2754d1f204a504fcca424d16df61';
+const INSTALLED_MEDIA_FLOW_INSPECTOR_SHA256 =
+  '55ad3f3c92083c720086307326321a87e560322279b0309fd06078c048b0df74';
 const INSTALLED_WINDOWS_SMOKE_SHA256 =
   '271f25c131910eac2d5c067b045291ebcb2e88d974fedc252920dcd7f3d7c284';
 const DISTRIBUTABLE_FONT_EXTENSION = /\.(?:eot|otf|ttf|woff2?)$/i;
@@ -1508,6 +1510,211 @@ function assertInstalledLocalMediaInspector(script, inputMethodsSource) {
   );
 }
 
+function assertInstalledMediaFlowInspector(script, inputMethodsSource, buttonsContainerSource) {
+  invariant(typeof script === 'string', 'Installed media-flow inspector source is required');
+  invariant(typeof inputMethodsSource === 'string', 'InputMethods source is required');
+  invariant(typeof buttonsContainerSource === 'string', 'ButtonsContainer source is required');
+  const normalizedInputMethods = inputMethodsSource.replace(/\r\n/g, '\n');
+  invariant(
+    (normalizedInputMethods.match(/data-input-tab="unified-url"/g) || []).length === 1
+      && /<button\s+className=\{`tab-btn \$\{activeTab === 'unified-url' \? 'active' : ''\}`\}\s+data-input-tab="unified-url"\s+onClick=\{\(\) => setActiveTab\('unified-url'\)\}\s*>/.test(
+        normalizedInputMethods,
+      ),
+    'InputMethods must bind the unique URL selector to the real unified-url tab handler',
+  );
+  const normalizedButtonsContainer = buttonsContainerSource.replace(/\r\n/g, '\n');
+  invariant(
+    /const generationMode = isSrtOnlyMode\s*\? 'srt-only'\s*:\s*hasUrlAndSrtOnly \? 'url-with-srt' : 'other';/.test(
+      normalizedButtonsContainer,
+    )
+      && /<button\s+className=\{`generate-btn semi-auto \$\{isGenerating \|\| isDownloading \? 'processing' : ''\}`\}\s+data-generation-mode=\{generationMode\}\s+onClick=\{handleGenerateSubtitles\}/.test(
+        normalizedButtonsContainer,
+      ),
+    'ButtonsContainer must expose the exact committed URL-with-SRT generation mode on the real action',
+  );
+  const runStart = script.indexOf('async function runInstalledMediaFlow(options) {');
+  const runEnd = script.indexOf('\n}\n\nif (process.argv[1]', runStart);
+  const run = runStart >= 0 && runEnd > runStart ? script.slice(runStart, runEnd) : '';
+  const orderedFragments = [
+    'evaluate(client, ACTIVATE_URL_TAB_EXPRESSION)',
+    'evaluate(client, URL_CONTROL_READY_EXPRESSION)',
+    'evaluate(client, SET_URL_EXPRESSION)',
+    'evaluate(client, URL_COMMITTED_EXPRESSION)',
+    'evaluate(client, RESET_SRT_EXPRESSION)',
+    'evaluate(client, SRT_CLEARED_EXPRESSION)',
+    "client.send('DOM.setFileInputFiles'",
+    "inputs[0].dispatchEvent(new Event('change', { bubbles: true }))",
+    'evaluate(client, SRT_READY_EXPRESSION)',
+    'const baselineState = await evaluate(client, MEDIA_RESULT_EXPRESSION)',
+    'const baselineDownloadJobIds = collectDownloadJobIds(baselineState)',
+    'baselineState?.session?.media?.id === options.priorAssetId',
+    'evaluate(client, START_EXPRESSION)',
+    "failureCode: 'download-start-timeout'",
+    "failureCode: 'terminal-state-timeout'",
+  ];
+  const orderedIndices = orderedFragments.map((fragment) => run.indexOf(fragment));
+  invariant(
+    run.length > 0
+      && orderedIndices.every((index) => index >= 0)
+      && orderedIndices.every((index, position) => (
+        position === 0 || orderedIndices[position - 1] < index
+      )),
+    'Installed media-flow inspector must commit URL state, replace stale SRT state, and baseline before one real download action',
+  );
+  const exactExpression = (startFragment, endFragment) => {
+    const start = script.indexOf(startFragment);
+    const end = script.indexOf(endFragment, start + startFragment.length);
+    return start >= 0 && end > start ? script.slice(start, end) : '';
+  };
+  const activate = exactExpression(
+    'const ACTIVATE_URL_TAB_EXPRESSION = `',
+    'const URL_CONTROL_READY_EXPRESSION = `',
+  );
+  const commit = exactExpression(
+    'const URL_COMMITTED_EXPRESSION = `',
+    'const RESET_SRT_EXPRESSION = `',
+  );
+  const reset = exactExpression(
+    'const RESET_SRT_EXPRESSION = `',
+    'const SRT_CLEARED_EXPRESSION = `',
+  );
+  const cleared = exactExpression(
+    'const SRT_CLEARED_EXPRESSION = `',
+    'const SRT_READY_EXPRESSION = `',
+  );
+  const ready = exactExpression(
+    'const SRT_READY_EXPRESSION = `',
+    'const START_EXPRESSION = `',
+  );
+  const start = exactExpression(
+    'const START_EXPRESSION = `',
+    'export const MEDIA_RESULT_EXPRESSION = `',
+  );
+  const exactTabBoundary = (source) => (
+    source.includes("document.querySelectorAll('.input-methods-container')")
+      && source.includes("querySelector(':scope > .input-header > .input-tabs')")
+      && source.includes("child instanceof HTMLButtonElement && child.classList.contains('tab-btn')")
+      && source.includes("tabs.filter((tab) => tab.dataset.inputTab === 'unified-url')")
+      && source.includes('tabs.length < 2 || tabs.length > 3')
+      && source.includes('urlTabs.length !== 1')
+      && source.includes('activeTabs.length !== 1')
+  );
+  invariant(
+    exactTabBoundary(activate)
+      && activate.includes("if (activeTabs[0] === urlTabs[0]) return 'already-active';")
+      && (activate.match(/urlTabs\[0\]\.click\(\);/g) || []).length === 1
+      && activate.indexOf("return 'already-active';") < activate.indexOf('urlTabs[0].click();')
+      && !/activeTabs\[0\]\s*===\s*tabs\[0\]/.test(script),
+    'Installed media-flow inspector must activate one exact URL tab without re-clicking an active tab',
+  );
+  invariant(
+    commit.includes("inputs[0].value === ${JSON.stringify(MEDIA_URL)}")
+      && commit.includes("(previews[0].textContent ?? '').trim() === ${JSON.stringify(MEDIA_URL)}")
+      && commit.includes("localStorage.getItem('current_video_url') === ${JSON.stringify(MEDIA_URL)}")
+      && commit.includes('previews.length === 1')
+      && run.includes("{ timeoutMs: 60_000, failureCode: 'url-commit-timeout' }")
+      && run.indexOf('evaluate(client, URL_COMMITTED_EXPRESSION)')
+        < run.indexOf('evaluate(client, RESET_SRT_EXPRESSION)'),
+    'Installed media-flow inspector must observe the committed reviewed URL before any SRT mutation',
+  );
+  invariant(
+    reset.includes("clearButtons.length !== 1 || clearButtons[0].disabled")
+      && (reset.match(/clearButtons\[0\]\.click\(\);/g) || []).length === 1
+      && cleared.includes("!uploadButtons[0].classList.contains('has-srt-uploaded')")
+      && cleared.includes("!uploadButtons[0].classList.contains('processing')")
+      && cleared.includes('clearButtons.length === 0')
+      && cleared.includes("info.hasUploaded === false && info.fileName === '' && info.source === ''")
+      && cleared.includes("!document.body.innerText.includes(${JSON.stringify(SUBTITLE_MARKER)})"),
+    'Installed media-flow inspector must clear and observe absent stale SRT state before re-upload',
+  );
+  invariant(
+    ready.includes("uploadButtons[0].classList.contains('has-srt-uploaded')")
+      && ready.includes("!uploadButtons[0].classList.contains('processing')")
+      && ready.includes('clearButtons.length === 1 && !clearButtons[0].disabled')
+      && ready.includes("info.fileName === 'osg-installed-media-smoke.srt'")
+      && ready.includes("info.source === 'srt'")
+      && ready.includes("document.body.innerText.includes(${JSON.stringify(SUBTITLE_MARKER)})")
+      && ready.includes('startButtons.length === 1')
+      && ready.includes("':scope .generate-btn.semi-auto'")
+      && ready.includes('startButtons[0] instanceof HTMLButtonElement')
+      && ready.includes('!startButtons[0].disabled')
+      && ready.includes("startButtons[0].dataset.generationMode === 'url-with-srt'")
+      && run.includes("selector: '.buttons-container .srt-upload-buttons-group input[type=\"file\"][accept=\".srt,.json\"]'")
+      && run.includes('Array.isArray(inputs.nodeIds) && inputs.nodeIds.length === 1')
+      && run.includes("failureCode: 'srt-readiness-timeout'"),
+    'Installed media-flow inspector must prove a fresh exact SRT callback before enabling one start action',
+  );
+  invariant(
+    (start.match(/buttons\[0\]\.click\(\);/g) || []).length === 1
+      && exactTabBoundary(start)
+      && start.includes('activeTabs[0] !== urlTabs[0]')
+      && start.includes("inputs[0].value !== ${JSON.stringify(MEDIA_URL)}")
+      && start.includes("(previews[0].textContent ?? '').trim() !== ${JSON.stringify(MEDIA_URL)}")
+      && start.includes("localStorage.getItem('current_video_url') !== ${JSON.stringify(MEDIA_URL)}")
+      && start.includes("!uploadButtons[0].classList.contains('has-srt-uploaded')")
+      && start.includes("uploadButtons[0].classList.contains('processing')")
+      && start.includes('clearButtons.length !== 1 || clearButtons[0].disabled')
+      && start.includes("info.fileName !== 'osg-installed-media-smoke.srt'")
+      && start.includes("info.source !== 'srt'")
+      && start.includes("!document.body.innerText.includes(${JSON.stringify(SUBTITLE_MARKER)})")
+      && start.includes('buttons.length !== 1')
+      && start.includes("':scope .generate-btn.semi-auto'")
+      && start.includes('buttons[0].disabled')
+      && start.includes("buttons[0].dataset.generationMode !== 'url-with-srt'")
+      && !script.includes('.generate-btn.semi-auto[data-generation-mode=')
+      && start.indexOf('buttons.length !== 1') < start.indexOf('buttons[0].click();')
+      && run.split('evaluate(client, START_EXPRESSION)').length === 2,
+    'Installed media-flow inspector must synchronously revalidate URL and fresh SRT state before one exact reviewed action',
+  );
+  invariant(
+    script.includes("'url-tab-timeout'")
+      && script.includes("'url-commit-timeout'")
+      && script.includes("'srt-clear-timeout'")
+      && script.includes("'srt-readiness-timeout'")
+      && script.includes("'download-start-timeout'")
+      && script.includes("'terminal-state-timeout'")
+      && script.includes('REVIEWED_TIMEOUT_FAILURE_CODES.includes(failureCode)')
+      && script.includes('throw new Error(`Installed media flow timed out: ${failureCode}`)')
+      && !script.includes('timed out before reaching the reviewed state'),
+    'Installed media-flow inspector must retain one fixed bounded failure category for every wait stage',
+  );
+  const exactWaitCategory = (expression, timeoutMs, failureCode) => {
+    const read = `() => evaluate(client, ${expression}),`;
+    const startIndex = run.indexOf(read);
+    const endIndex = run.indexOf('\n    );', startIndex);
+    if (startIndex < 0 || endIndex <= startIndex) return false;
+    const wait = run.slice(startIndex, endIndex + '\n    );'.length);
+    return wait.includes(`{ timeoutMs: ${timeoutMs}, failureCode: '${failureCode}' }`)
+      && (wait.match(/failureCode:/g) || []).length === 1;
+  };
+  invariant(
+    exactWaitCategory('ACTIVATE_URL_TAB_EXPRESSION', '30_000', 'url-tab-timeout')
+      && exactWaitCategory('URL_CONTROL_READY_EXPRESSION', '30_000', 'url-tab-timeout')
+      && exactWaitCategory('URL_COMMITTED_EXPRESSION', '60_000', 'url-commit-timeout')
+      && exactWaitCategory('RESET_SRT_EXPRESSION', '30_000', 'srt-clear-timeout')
+      && exactWaitCategory('SRT_CLEARED_EXPRESSION', '30_000', 'srt-clear-timeout')
+      && exactWaitCategory('SRT_READY_EXPRESSION', '60_000', 'srt-readiness-timeout')
+      && exactWaitCategory('MEDIA_RESULT_EXPRESSION', '30_000', 'download-start-timeout'),
+    'Installed media-flow inspector must map each bounded wait to its exact fixed failure category',
+  );
+  const terminalWaitStart = run.indexOf('const state = await waitForValue(');
+  const terminalWaitEnd = run.indexOf('\n    );', terminalWaitStart);
+  const terminalWait = terminalWaitStart >= 0 && terminalWaitEnd > terminalWaitStart
+    ? run.slice(terminalWaitStart, terminalWaitEnd + '\n    );'.length)
+    : '';
+  invariant(
+    terminalWait.includes('() => evaluate(client, MEDIA_RESULT_EXPRESSION)')
+      && terminalWait.includes("{ failureCode: 'terminal-state-timeout' }")
+      && (terminalWait.match(/failureCode:/g) || []).length === 1,
+    'Installed media-flow inspector must bind the terminal wait to its exact fixed failure category',
+  );
+  invariant(
+    crypto.createHash('sha256').update(script.replace(/\r\n/g, '\n'), 'utf8').digest('hex')
+      === INSTALLED_MEDIA_FLOW_INSPECTOR_SHA256,
+    'Installed media-flow inspector must equal the reviewed executable source',
+  );
+}
+
 function assertInstalledNativeToolsInspector(script) {
   invariant(typeof script === 'string', 'Installed native-tool inspector source is required');
   const normalizedScript = script.replace(/\r\n/g, '\n');
@@ -2965,6 +3172,11 @@ function assertWorkflow(rootDirectory = REPOSITORY_ROOT) {
   assertInstalledLocalMediaInspector(
     readText(rootDirectory, 'scripts/inspect-installed-local-media-flow.mjs'),
     readText(rootDirectory, 'src/components/InputMethods.js'),
+  );
+  assertInstalledMediaFlowInspector(
+    readText(rootDirectory, 'scripts/inspect-installed-media-flow.mjs'),
+    readText(rootDirectory, 'src/components/InputMethods.js'),
+    readText(rootDirectory, 'src/components/app/ButtonsContainer.jsx'),
   );
   assertInstalledNativeToolsInspector(
     readText(rootDirectory, 'scripts/inspect-installed-native-tools.mjs'),
@@ -4579,6 +4791,7 @@ module.exports = {
   assertDesktopCloseLifecycleSource,
   assertNativePickerEvidenceScripts,
   assertInstalledSmokeScript,
+  assertInstalledMediaFlowInspector,
   assertInstalledLocalMediaInspector,
   assertInstalledNativeToolsInspector,
   assertCiUpdaterFixtureHandoffSource,

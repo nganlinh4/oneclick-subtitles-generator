@@ -24,6 +24,14 @@ const EXPECTED_NATIVE_TOOL_LABELS = Object.freeze({
 });
 const CAPABILITY_READ_TIMEOUT_MS = 30_000;
 const DEFAULT_TIMEOUT_MS = 30 * 60 * 1_000;
+const REVIEWED_TIMEOUT_FAILURE_CODES = Object.freeze([
+  'url-tab-timeout',
+  'url-commit-timeout',
+  'srt-clear-timeout',
+  'srt-readiness-timeout',
+  'download-start-timeout',
+  'terminal-state-timeout',
+]);
 const UUID_V7 = /^[0-9a-f]{8}-[0-9a-f]{4}-7[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 const UUID_V4 = /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 const PLAYBACK_URL = /^http:\/\/127\.0\.0\.1:([0-9]{1,5})\/asset\/([0-9a-f-]{36})\?token=([0-9a-f]{64})$/i;
@@ -346,7 +354,10 @@ export async function waitForValue(read, accept, {
   timeoutMs = DEFAULT_TIMEOUT_MS,
   delay = () => new Promise((resolve) => setTimeout(resolve, 500)),
   now = Date.now,
+  failureCode = 'terminal-state-timeout',
 } = {}) {
+  invariant(REVIEWED_TIMEOUT_FAILURE_CODES.includes(failureCode),
+    'Installed media-flow timeout category is invalid');
   const deadline = now() + timeoutMs;
   do {
     try {
@@ -357,12 +368,28 @@ export async function waitForValue(read, accept, {
     }
     await delay();
   } while (now() < deadline);
-  throw new Error('Installed media flow timed out before reaching the reviewed state');
+  throw new Error(`Installed media flow timed out: ${failureCode}`);
 }
 
 const SET_URL_EXPRESSION = `
 (() => {
-  const input = document.querySelector('.url-field');
+  const containers = [...document.querySelectorAll('.input-methods-container')];
+  if (containers.length !== 1) return false;
+  const container = containers[0];
+  const tabList = container.querySelector(':scope > .input-header > .input-tabs');
+  if (!(tabList instanceof HTMLDivElement)) return false;
+  const tabs = [...tabList.children].filter(
+    (child) => child instanceof HTMLButtonElement && child.classList.contains('tab-btn')
+  );
+  const urlTabs = tabs.filter((tab) => tab.dataset.inputTab === 'unified-url');
+  const activeTabs = tabs.filter((tab) => tab.classList.contains('active'));
+  if (tabs.length < 2 || tabs.length > 3 || urlTabs.length !== 1
+      || activeTabs.length !== 1 || activeTabs[0] !== urlTabs[0]) return false;
+  const inputs = [...container.querySelectorAll(
+    ':scope > .tab-content-wrapper input.url-field'
+  )];
+  if (inputs.length !== 1) return false;
+  const input = inputs[0];
   if (!(input instanceof HTMLInputElement)) return false;
   const setter = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value')?.set;
   if (typeof setter !== 'function') return false;
@@ -374,26 +401,246 @@ const SET_URL_EXPRESSION = `
 
 const ACTIVATE_URL_TAB_EXPRESSION = `
 (() => {
-  const tab = document.querySelector('.input-tabs .tab-btn');
-  if (!(tab instanceof HTMLButtonElement)) return false;
-  tab.click();
-  return true;
+  const containers = [...document.querySelectorAll('.input-methods-container')];
+  if (containers.length !== 1) return null;
+  const tabList = containers[0].querySelector(':scope > .input-header > .input-tabs');
+  if (!(tabList instanceof HTMLDivElement)) return null;
+  const tabs = [...tabList.children].filter(
+    (child) => child instanceof HTMLButtonElement && child.classList.contains('tab-btn')
+  );
+  const urlTabs = tabs.filter((tab) => tab.dataset.inputTab === 'unified-url');
+  const activeTabs = tabs.filter((tab) => tab.classList.contains('active'));
+  if (tabs.length < 2 || tabs.length > 3 || urlTabs.length !== 1
+      || activeTabs.length !== 1) return null;
+  if (activeTabs[0] === urlTabs[0]) return 'already-active';
+  urlTabs[0].click();
+  return 'activated';
 })()`;
 
-const READY_TO_START_EXPRESSION = `
-(() => ({
-  url: document.querySelector('.url-field')?.value ?? null,
-  srtReady: document.querySelector('.srt-upload-button.has-srt-uploaded') !== null,
-  startReady: document.querySelector('.generate-btn.semi-auto:not([disabled])') !== null,
-  mediaUrl: document.querySelector('.selected-video-preview .video-url-value')?.textContent?.trim()
-    ?? null,
-}))()`;
+const URL_CONTROL_READY_EXPRESSION = `
+(() => {
+  const containers = [...document.querySelectorAll('.input-methods-container')];
+  if (containers.length !== 1) return false;
+  const container = containers[0];
+  const tabList = container.querySelector(':scope > .input-header > .input-tabs');
+  if (!(tabList instanceof HTMLDivElement)) return false;
+  const tabs = [...tabList.children].filter(
+    (child) => child instanceof HTMLButtonElement && child.classList.contains('tab-btn')
+  );
+  const urlTabs = tabs.filter((tab) => tab.dataset.inputTab === 'unified-url');
+  const activeTabs = tabs.filter((tab) => tab.classList.contains('active'));
+  const inputs = [...container.querySelectorAll(
+    ':scope > .tab-content-wrapper input.url-field'
+  )];
+  return tabs.length >= 2 && tabs.length <= 3
+    && urlTabs.length === 1
+    && activeTabs.length === 1 && activeTabs[0] === urlTabs[0]
+    && inputs.length === 1 && inputs[0] instanceof HTMLInputElement;
+})()`;
+
+const URL_COMMITTED_EXPRESSION = `
+(() => {
+  const containers = [...document.querySelectorAll('.input-methods-container')];
+  if (containers.length !== 1) return false;
+  const container = containers[0];
+  const tabList = container.querySelector(':scope > .input-header > .input-tabs');
+  if (!(tabList instanceof HTMLDivElement)) return false;
+  const tabs = [...tabList.children].filter(
+    (child) => child instanceof HTMLButtonElement && child.classList.contains('tab-btn')
+  );
+  const urlTabs = tabs.filter((tab) => tab.dataset.inputTab === 'unified-url');
+  const activeTabs = tabs.filter((tab) => tab.classList.contains('active'));
+  const inputs = [...container.querySelectorAll(
+    ':scope > .tab-content-wrapper input.url-field'
+  )];
+  const previews = [...container.querySelectorAll(
+    ':scope > .tab-content-wrapper .selected-video-preview .video-url-value'
+  )];
+  return tabs.length >= 2 && tabs.length <= 3
+    && urlTabs.length === 1
+    && activeTabs.length === 1 && activeTabs[0] === urlTabs[0]
+    && inputs.length === 1 && inputs[0] instanceof HTMLInputElement
+    && inputs[0].value === ${JSON.stringify(MEDIA_URL)}
+    && previews.length === 1
+    && (previews[0].textContent ?? '').trim() === ${JSON.stringify(MEDIA_URL)}
+    && localStorage.getItem('current_video_url') === ${JSON.stringify(MEDIA_URL)};
+})()`;
+
+const RESET_SRT_EXPRESSION = `
+(() => {
+  const groups = [...document.querySelectorAll(
+    '.buttons-container .srt-upload-buttons-group'
+  )];
+  if (groups.length !== 1) return null;
+  const group = groups[0];
+  const uploadContainers = [...group.children].filter(
+    (child) => child instanceof HTMLDivElement
+      && child.classList.contains('srt-upload-button-container')
+  );
+  if (uploadContainers.length !== 1) return null;
+  const uploadButtons = [...uploadContainers[0].children].filter(
+    (child) => child instanceof HTMLButtonElement
+      && child.classList.contains('srt-upload-button')
+  );
+  const inputs = [...uploadContainers[0].children].filter(
+    (child) => child instanceof HTMLInputElement
+      && child.type === 'file' && child.accept === '.srt,.json'
+  );
+  const clearButtons = [...group.children].filter(
+    (child) => child instanceof HTMLButtonElement
+      && child.classList.contains('clear-subtitles-button')
+  );
+  if (uploadButtons.length !== 1 || inputs.length !== 1) return null;
+  if (!uploadButtons[0].classList.contains('has-srt-uploaded')) {
+    return clearButtons.length === 0 ? 'already-clear' : null;
+  }
+  if (clearButtons.length !== 1 || clearButtons[0].disabled) return null;
+  clearButtons[0].click();
+  return 'cleared';
+})()`;
+
+const SRT_CLEARED_EXPRESSION = `
+(() => {
+  const groups = [...document.querySelectorAll(
+    '.buttons-container .srt-upload-buttons-group'
+  )];
+  if (groups.length !== 1) return false;
+  const group = groups[0];
+  const uploadButtons = [...group.querySelectorAll(':scope .srt-upload-button')];
+  const clearButtons = [...group.children].filter(
+    (child) => child instanceof HTMLButtonElement
+      && child.classList.contains('clear-subtitles-button')
+  );
+  let info = null;
+  try { info = JSON.parse(localStorage.getItem('uploaded_srt_info')); } catch {}
+  const storedClear = info === null || (
+    info && typeof info === 'object' && !Array.isArray(info)
+      && Object.keys(info).sort().join(',') === 'fileName,hasUploaded,source'
+      && info.hasUploaded === false && info.fileName === '' && info.source === ''
+  );
+  return uploadButtons.length === 1
+    && !uploadButtons[0].classList.contains('has-srt-uploaded')
+    && !uploadButtons[0].classList.contains('processing')
+    && clearButtons.length === 0
+    && storedClear
+    && !document.body.innerText.includes(${JSON.stringify(SUBTITLE_MARKER)});
+})()`;
+
+const SRT_READY_EXPRESSION = `
+(() => {
+  const containers = [...document.querySelectorAll('.input-methods-container')];
+  const groups = [...document.querySelectorAll(
+    '.buttons-container .srt-upload-buttons-group'
+  )];
+  if (containers.length !== 1 || groups.length !== 1) return false;
+  const container = containers[0];
+  const tabList = container.querySelector(':scope > .input-header > .input-tabs');
+  if (!(tabList instanceof HTMLDivElement)) return false;
+  const tabs = [...tabList.children].filter(
+    (child) => child instanceof HTMLButtonElement && child.classList.contains('tab-btn')
+  );
+  const urlTabs = tabs.filter((tab) => tab.dataset.inputTab === 'unified-url');
+  const activeTabs = tabs.filter((tab) => tab.classList.contains('active'));
+  const inputs = [...container.querySelectorAll(
+    ':scope > .tab-content-wrapper input.url-field'
+  )];
+  const previews = [...container.querySelectorAll(
+    ':scope > .tab-content-wrapper .selected-video-preview .video-url-value'
+  )];
+  const group = groups[0];
+  const uploadButtons = [...group.querySelectorAll(':scope .srt-upload-button')];
+  const clearButtons = [...group.children].filter(
+    (child) => child instanceof HTMLButtonElement
+      && child.classList.contains('clear-subtitles-button')
+  );
+  const buttonContainers = [...document.querySelectorAll('.buttons-container')];
+  if (buttonContainers.length !== 1) return false;
+  const startButtons = [...buttonContainers[0].querySelectorAll(
+    ':scope .generate-btn.semi-auto'
+  )];
+  let info = null;
+  try { info = JSON.parse(localStorage.getItem('uploaded_srt_info')); } catch {}
+  return tabs.length >= 2 && tabs.length <= 3
+    && urlTabs.length === 1
+    && activeTabs.length === 1 && activeTabs[0] === urlTabs[0]
+    && inputs.length === 1 && inputs[0] instanceof HTMLInputElement
+    && inputs[0].value === ${JSON.stringify(MEDIA_URL)}
+    && previews.length === 1
+    && (previews[0].textContent ?? '').trim() === ${JSON.stringify(MEDIA_URL)}
+    && localStorage.getItem('current_video_url') === ${JSON.stringify(MEDIA_URL)}
+    && uploadButtons.length === 1
+    && uploadButtons[0].classList.contains('has-srt-uploaded')
+    && !uploadButtons[0].classList.contains('processing')
+    && !uploadButtons[0].disabled
+    && clearButtons.length === 1 && !clearButtons[0].disabled
+    && info && typeof info === 'object' && !Array.isArray(info)
+    && Object.keys(info).sort().join(',') === 'fileName,hasUploaded,source'
+    && info.hasUploaded === true
+    && info.fileName === 'osg-installed-media-smoke.srt'
+    && info.source === 'srt'
+    && document.body.innerText.includes(${JSON.stringify(SUBTITLE_MARKER)})
+    && startButtons.length === 1
+    && startButtons[0] instanceof HTMLButtonElement
+    && !startButtons[0].disabled
+    && startButtons[0].dataset.generationMode === 'url-with-srt';
+})()`;
 
 const START_EXPRESSION = `
 (() => {
-  const button = document.querySelector('.generate-btn.semi-auto:not([disabled])');
-  if (!(button instanceof HTMLButtonElement)) return false;
-  button.click();
+  const containers = [...document.querySelectorAll('.input-methods-container')];
+  const buttonContainers = [...document.querySelectorAll('.buttons-container')];
+  if (containers.length !== 1 || buttonContainers.length !== 1) return false;
+  const container = containers[0];
+  const tabList = container.querySelector(':scope > .input-header > .input-tabs');
+  if (!(tabList instanceof HTMLDivElement)) return false;
+  const tabs = [...tabList.children].filter(
+    (child) => child instanceof HTMLButtonElement && child.classList.contains('tab-btn')
+  );
+  const urlTabs = tabs.filter((tab) => tab.dataset.inputTab === 'unified-url');
+  const activeTabs = tabs.filter((tab) => tab.classList.contains('active'));
+  const inputs = [...container.querySelectorAll(
+    ':scope > .tab-content-wrapper input.url-field'
+  )];
+  const previews = [...container.querySelectorAll(
+    ':scope > .tab-content-wrapper .selected-video-preview .video-url-value'
+  )];
+  const groups = [...buttonContainers[0].querySelectorAll(
+    ':scope .srt-upload-buttons-group'
+  )];
+  if (groups.length !== 1) return false;
+  const uploadButtons = [...groups[0].querySelectorAll(':scope .srt-upload-button')];
+  const clearButtons = [...groups[0].children].filter(
+    (child) => child instanceof HTMLButtonElement
+      && child.classList.contains('clear-subtitles-button')
+  );
+  const buttons = [...buttonContainers[0].querySelectorAll(
+    ':scope .generate-btn.semi-auto'
+  )];
+  let info = null;
+  try { info = JSON.parse(localStorage.getItem('uploaded_srt_info')); } catch {}
+  if (tabs.length < 2 || tabs.length > 3
+      || urlTabs.length !== 1
+      || activeTabs.length !== 1 || activeTabs[0] !== urlTabs[0]
+      || inputs.length !== 1 || !(inputs[0] instanceof HTMLInputElement)
+      || inputs[0].value !== ${JSON.stringify(MEDIA_URL)}
+      || previews.length !== 1
+      || (previews[0].textContent ?? '').trim() !== ${JSON.stringify(MEDIA_URL)}
+      || localStorage.getItem('current_video_url') !== ${JSON.stringify(MEDIA_URL)}
+      || uploadButtons.length !== 1
+      || !uploadButtons[0].classList.contains('has-srt-uploaded')
+      || uploadButtons[0].classList.contains('processing')
+      || uploadButtons[0].disabled
+      || clearButtons.length !== 1 || clearButtons[0].disabled
+      || !info || typeof info !== 'object' || Array.isArray(info)
+      || Object.keys(info).sort().join(',') !== 'fileName,hasUploaded,source'
+      || info.hasUploaded !== true
+      || info.fileName !== 'osg-installed-media-smoke.srt'
+      || info.source !== 'srt'
+      || !document.body.innerText.includes(${JSON.stringify(SUBTITLE_MARKER)})
+      || buttons.length !== 1 || !(buttons[0] instanceof HTMLButtonElement)
+      || buttons[0].disabled
+      || buttons[0].dataset.generationMode !== 'url-with-srt') return false;
+  buttons[0].click();
   return true;
 })()`;
 
@@ -447,37 +694,58 @@ async function runInstalledMediaFlow(options) {
     await client.send('Runtime.enable');
     await client.send('Page.enable');
     await client.send('DOM.enable');
-    invariant(await evaluate(client, ACTIVATE_URL_TAB_EXPRESSION) === true,
-      'Installed media flow could not activate the URL tab');
     await waitForValue(
-      () => evaluate(client, "document.querySelector('.url-field') !== null"),
+      () => evaluate(client, ACTIVATE_URL_TAB_EXPRESSION),
+      (value) => value === 'already-active' || value === 'activated',
+      { timeoutMs: 30_000, failureCode: 'url-tab-timeout' },
+    );
+    await waitForValue(
+      () => evaluate(client, URL_CONTROL_READY_EXPRESSION),
       (value) => value === true,
-      { timeoutMs: 30_000 },
+      { timeoutMs: 30_000, failureCode: 'url-tab-timeout' },
     );
     invariant(await evaluate(client, SET_URL_EXPRESSION) === true,
       'Installed media flow could not enter the reviewed URL');
-    const documentNode = await client.send('DOM.getDocument', { depth: -1, pierce: true });
-    const input = await client.send('DOM.querySelector', {
-      nodeId: documentNode.root.nodeId,
-      selector: 'input[type="file"][accept=".srt,.json"]',
-    });
-    invariant(Number.isInteger(input.nodeId) && input.nodeId > 0,
-      'Installed media flow could not find the SRT input');
-    await client.send('DOM.setFileInputFiles', { files: [options.srt], nodeId: input.nodeId });
-    await evaluate(client, `
-      (() => {
-        const input = document.querySelector('input[type="file"][accept=".srt,.json"]');
-        if (!(input instanceof HTMLInputElement) || input.files?.length !== 1) return false;
-        input.dispatchEvent(new Event('change', { bubbles: true }));
-        return true;
-      })()`);
     await waitForValue(
-      () => evaluate(client, READY_TO_START_EXPRESSION),
-      (value) => value?.url === MEDIA_URL
-        && value.srtReady === true
-        && value.startReady === true
-        && value.mediaUrl === MEDIA_URL,
-      { timeoutMs: 60_000 },
+      () => evaluate(client, URL_COMMITTED_EXPRESSION),
+      (value) => value === true,
+      { timeoutMs: 60_000, failureCode: 'url-commit-timeout' },
+    );
+    await waitForValue(
+      () => evaluate(client, RESET_SRT_EXPRESSION),
+      (value) => value === 'already-clear' || value === 'cleared',
+      { timeoutMs: 30_000, failureCode: 'srt-clear-timeout' },
+    );
+    await waitForValue(
+      () => evaluate(client, SRT_CLEARED_EXPRESSION),
+      (value) => value === true,
+      { timeoutMs: 30_000, failureCode: 'srt-clear-timeout' },
+    );
+    const documentNode = await client.send('DOM.getDocument', { depth: -1, pierce: true });
+    const inputs = await client.send('DOM.querySelectorAll', {
+      nodeId: documentNode.root.nodeId,
+      selector: '.buttons-container .srt-upload-buttons-group input[type="file"][accept=".srt,.json"]',
+    });
+    invariant(Array.isArray(inputs.nodeIds) && inputs.nodeIds.length === 1
+      && Number.isInteger(inputs.nodeIds[0]) && inputs.nodeIds[0] > 0,
+    'Installed media flow could not find one exact SRT input');
+    await client.send('DOM.setFileInputFiles', {
+      files: [options.srt], nodeId: inputs.nodeIds[0],
+    });
+    invariant(await evaluate(client, `
+      (() => {
+        const inputs = [...document.querySelectorAll(
+          '.buttons-container .srt-upload-buttons-group input[type="file"][accept=".srt,.json"]'
+        )];
+        if (inputs.length !== 1 || !(inputs[0] instanceof HTMLInputElement)
+            || inputs[0].files?.length !== 1) return false;
+        inputs[0].dispatchEvent(new Event('change', { bubbles: true }));
+        return true;
+      })()`) === true, 'Installed media flow could not dispatch the exact SRT input');
+    await waitForValue(
+      () => evaluate(client, SRT_READY_EXPRESSION),
+      (value) => value === true,
+      { timeoutMs: 60_000, failureCode: 'srt-readiness-timeout' },
     );
     const baselineState = await evaluate(client, MEDIA_RESULT_EXPRESSION);
     const baselineDownloadJobIds = collectDownloadJobIds(baselineState);
@@ -496,7 +764,7 @@ async function runInstalledMediaFlow(options) {
     await waitForValue(
       () => evaluate(client, MEDIA_RESULT_EXPRESSION),
       (value) => hasMediaFlowStarted(value, flowGuard),
-      { timeoutMs: 30_000 },
+      { timeoutMs: 30_000, failureCode: 'download-start-timeout' },
     );
     const state = await waitForValue(
       () => evaluate(client, MEDIA_RESULT_EXPRESSION),
@@ -509,6 +777,7 @@ async function runInstalledMediaFlow(options) {
           return false;
         }
       },
+      { failureCode: 'terminal-state-timeout' },
     );
     assertMediaFlowState(state, flowGuard);
     const result = {
