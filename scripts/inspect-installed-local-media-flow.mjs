@@ -257,10 +257,14 @@ export const OPEN_PICKER_EXPRESSION = `
   const uploadTab = uploadTabs[0];
   const tabList = uploadTab.parentElement;
   if (!(tabList instanceof HTMLElement)) return null;
-  const tabs = [...tabList.children];
+  const tabs = [...tabList.querySelectorAll(':scope > button.tab-btn')];
+  const directButtons = [...tabList.children].filter(
+    (child) => child instanceof HTMLButtonElement,
+  );
   if (tabs.length < 2 || tabs.length > 3
-      || !tabs.every((tab) => tab instanceof HTMLButtonElement
-        && tab.classList.contains('tab-btn'))) return null;
+      || !tabs.every((tab) => tab instanceof HTMLButtonElement)
+      || directButtons.length !== tabs.length
+      || !directButtons.every((button) => tabs.includes(button))) return null;
   const activeTabs = tabs.filter((tab) => tab.classList.contains('active'));
   if (activeTabs.length !== 1) return null;
   if (uploadTab.classList.contains('active')) return 'already-active';
@@ -280,10 +284,14 @@ export const PICKER_CONTROL_READY_EXPRESSION = `
   const uploadTab = uploadTabs[0];
   const tabList = uploadTab.parentElement;
   if (!(tabList instanceof HTMLElement)) return false;
-  const tabs = [...tabList.children];
+  const tabs = [...tabList.querySelectorAll(':scope > button.tab-btn')];
+  const directButtons = [...tabList.children].filter(
+    (child) => child instanceof HTMLButtonElement,
+  );
   if (tabs.length < 2 || tabs.length > 3
-      || !tabs.every((tab) => tab instanceof HTMLButtonElement
-        && tab.classList.contains('tab-btn'))) return false;
+      || !tabs.every((tab) => tab instanceof HTMLButtonElement)
+      || directButtons.length !== tabs.length
+      || !directButtons.every((button) => tabs.includes(button))) return false;
   const activeTabs = tabs.filter((tab) => tab.classList.contains('active'));
   const pickers = [...container.querySelectorAll(
     ':scope > .tab-content-wrapper div.file-upload-input:not(.loading)'
@@ -309,14 +317,18 @@ export const CLICK_PICKER_EXPRESSION = `
   const uploadTab = uploadTabs[0];
   const tabList = uploadTab.parentElement;
   if (!(tabList instanceof HTMLElement)) return false;
-  const tabs = [...tabList.children];
+  const tabs = [...tabList.querySelectorAll(':scope > button.tab-btn')];
+  const directButtons = [...tabList.children].filter(
+    (child) => child instanceof HTMLButtonElement,
+  );
   const activeTabs = tabs.filter((tab) => tab.classList.contains('active'));
   const pickers = [...container.querySelectorAll(
     ':scope > .tab-content-wrapper div.file-upload-input:not(.loading)'
   )];
   if (tabs.length < 2 || tabs.length > 3
-      || !tabs.every((tab) => tab instanceof HTMLButtonElement
-        && tab.classList.contains('tab-btn'))
+      || !tabs.every((tab) => tab instanceof HTMLButtonElement)
+      || directButtons.length !== tabs.length
+      || !directButtons.every((button) => tabs.includes(button))
       || activeTabs.length !== 1 || activeTabs[0] !== uploadTab
       || pickers.length !== 1 || !(pickers[0] instanceof HTMLDivElement)) return false;
   const picker = pickers[0];

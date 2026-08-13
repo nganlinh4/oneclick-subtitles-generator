@@ -44,7 +44,7 @@ const TAURI_NSIS_BOOTSTRAP_SHA256 =
 const INSTALLED_NATIVE_TOOLS_INSPECTOR_SHA256 =
   '3167ddbddd723a1b6bf0200d0f7061f2c545c067de971c77d5c5cef58b22965b';
 const INSTALLED_LOCAL_MEDIA_INSPECTOR_SHA256 =
-  '982ba56278e51a590f8cbb7c26f59ccc1046eb16a71c8cd12fefe66f27fc6ad9';
+  'e53207922c58e449705282a11da2975bdeaf2754d1f204a504fcca424d16df61';
 const INSTALLED_WINDOWS_SMOKE_SHA256 =
   'db1fa4723532e316db89ee50a689f7cad2e45504aec5516b0ebfa4815150964c';
 const DISTRIBUTABLE_FONT_EXTENSION = /\.(?:eot|otf|ttf|woff2?)$/i;
@@ -1347,10 +1347,17 @@ function assertInstalledLocalMediaInspector(script, inputMethodsSource) {
   const countClickCalls = (source) => (
     source.match(/\.\s*click\s*\(\s*\)\s*;/g) || []
   ).length;
+  const hasExactDirectTabSet = (source) => (
+    source.includes("tabList.querySelectorAll(':scope > button.tab-btn')")
+      && source.includes('const directButtons = [...tabList.children].filter(')
+      && source.includes('(child) => child instanceof HTMLButtonElement')
+      && source.includes('directButtons.length !== tabs.length')
+      && source.includes('!directButtons.every((button) => tabs.includes(button))')
+  );
   invariant(
     openPicker.includes("document.querySelectorAll('.input-methods-container')")
       && openPicker.includes("button[data-input-tab=\"file-upload\"]")
-      && openPicker.includes("tab.classList.contains('tab-btn')")
+      && hasExactDirectTabSet(openPicker)
       && openPicker.includes('tabs.length < 2 || tabs.length > 3')
       && openPicker.includes('activeTabs.length !== 1')
       && activeReturnIndex >= 0
@@ -1360,6 +1367,7 @@ function assertInstalledLocalMediaInspector(script, inputMethodsSource) {
       && countClickCalls(openPicker) === 1
       && readyPicker.includes("document.querySelectorAll('.input-methods-container')")
       && readyPicker.includes("button[data-input-tab=\"file-upload\"]")
+      && hasExactDirectTabSet(readyPicker)
       && readyPicker.includes('tabs.length < 2 || tabs.length > 3')
       && readyPicker.includes("':scope > .tab-content-wrapper div.file-upload-input:not(.loading)'")
       && readyPicker.includes('pickers.length !== 1')
@@ -1373,6 +1381,7 @@ function assertInstalledLocalMediaInspector(script, inputMethodsSource) {
       && countClickCalls(readyPicker) === 0
       && clickPicker.includes("document.querySelectorAll('.input-methods-container')")
       && clickPicker.includes("button[data-input-tab=\"file-upload\"]")
+      && hasExactDirectTabSet(clickPicker)
       && clickPicker.includes("':scope > .tab-content-wrapper div.file-upload-input:not(.loading)'")
       && clickPicker.includes('activeTabs.length !== 1 || activeTabs[0] !== uploadTab')
       && clickPicker.includes('pickers.length !== 1 || !(pickers[0] instanceof HTMLDivElement)')

@@ -33,15 +33,28 @@ const pickerExpressionHarness = ({
   includeInput = true,
   duplicateContainer = false,
   duplicateControl = false,
+  duplicateSemanticTab = false,
+  extraDirectButton = false,
+  includePillOverlay = true,
+  nestedSemanticOnly = false,
+  tabCount = 2,
 } = {}) => {
-  class FakeElement {}
+  class FakeElement {
+    constructor(classNames = []) {
+      this.children = [];
+      this.classNames = new Set(classNames);
+      this.classList = {
+        contains: (name) => this.classNames.has(name),
+      };
+    }
+  }
   class FakeButton extends FakeElement {
-    constructor(index) {
-      super();
+    constructor(index, classNames = ['tab-btn']) {
+      super(classNames);
       this.active = activeIndices.includes(index);
       this.clicks = 0;
       this.classList = {
-        contains: (name) => name === 'tab-btn' || (name === 'active' && this.active),
+        contains: (name) => this.classNames.has(name) || (name === 'active' && this.active),
       };
     }
 
@@ -53,8 +66,8 @@ const pickerExpressionHarness = ({
   }
   class FakeInput extends FakeElement {}
   class FakeDiv extends FakeElement {
-    constructor() {
-      super();
+    constructor(classNames = []) {
+      super(classNames);
       this.clicks = 0;
     }
 
@@ -67,17 +80,34 @@ const pickerExpressionHarness = ({
       this.clicks += 1;
     }
   }
-  const buttons = [new FakeButton(0), new FakeButton(1)];
+  const buttons = Array.from({ length: tabCount }, (_, index) => new FakeButton(index));
   const tabList = new FakeElement();
-  tabList.children = buttons;
-  buttons.forEach((button) => { button.parentElement = tabList; });
+  const pillOverlay = new FakeDiv(['pill-overlay']);
+  pillOverlay.children = [new FakeDiv(['goo-blob'])];
+  const duplicateSemantic = new FakeButton(2);
+  const decoyDirectButton = new FakeButton(3, ['decoy-button']);
+  const nestedSemantic = new FakeButton(4);
+  pillOverlay.children.push(nestedSemantic);
+  tabList.children = [
+    ...buttons,
+    ...(duplicateSemanticTab ? [duplicateSemantic] : []),
+    ...(extraDirectButton ? [decoyDirectButton] : []),
+    ...(includePillOverlay ? [pillOverlay] : []),
+  ];
+  tabList.querySelectorAll = (selector) => selector === ':scope > button.tab-btn'
+    ? tabList.children.filter((child) => (
+      child instanceof FakeButton && child.classList.contains('tab-btn')
+    ))
+    : [];
+  tabList.children.forEach((child) => { child.parentElement = tabList; });
   const input = new FakeInput();
   const picker = new FakeDiv();
   const secondPicker = new FakeDiv();
   const container = new FakeElement();
   container.querySelectorAll = (selector) => {
     if (selector === ':scope > .input-header > .input-tabs > button[data-input-tab="file-upload"]') {
-      return [buttons[1]];
+      if (nestedSemanticOnly) return [];
+      return duplicateSemanticTab ? [buttons[1], duplicateSemantic] : [buttons[1]];
     }
     if (selector === ':scope > .tab-content-wrapper div.file-upload-input:not(.loading)') {
       if (!includeControl) return [];
@@ -98,7 +128,12 @@ const pickerExpressionHarness = ({
     HTMLInputElement: FakeInput,
   };
   return {
+    allTabButtons: [
+      ...tabList.children.filter((child) => child instanceof FakeButton),
+      nestedSemantic,
+    ],
     buttons,
+    pillOverlay,
     picker,
     click: () => vm.runInNewContext(CLICK_PICKER_EXPRESSION, context),
     open: () => vm.runInNewContext(OPEN_PICKER_EXPRESSION, context),
@@ -274,13 +309,28 @@ test('does not re-click an active Upload File tab and activates it only when nec
     inputMethodsSource,
     /<button\s+className=\{`tab-btn \$\{activeTab === 'file-upload' \? 'active' : ''\}`\}\s+data-input-tab="file-upload"\s+onClick=\{\(\) => setActiveTab\('file-upload'\)\}\s*>/,
   );
+  const pillAnimationSource = fs.readFileSync(
+    path.join(repositoryRoot, 'src/utils/tabPillAnimation.js'), 'utf8',
+  );
+  assert.match(
+    pillAnimationSource,
+    /overlay\.className = 'pill-overlay';[\s\S]*?tabContainer\.appendChild\(overlay\);/,
+  );
   const alreadyActive = pickerExpressionHarness();
+  assert.equal(alreadyActive.pillOverlay.classList.contains('pill-overlay'), true);
   assert.equal(alreadyActive.open(), 'already-active');
   assert.equal(alreadyActive.buttons[1].clicks, 0);
   assert.equal(alreadyActive.ready(), true);
   assert.equal(alreadyActive.click(), true);
   assert.equal(alreadyActive.buttons[1].clicks, 0);
   assert.equal(alreadyActive.picker.clicks, 1);
+
+  const threeTabs = pickerExpressionHarness({ tabCount: 3 });
+  assert.equal(threeTabs.open(), 'already-active');
+  assert.equal(threeTabs.ready(), true);
+  assert.equal(threeTabs.click(), true);
+  assert.deepEqual(threeTabs.buttons.map(({ clicks }) => clicks), [0, 0, 0]);
+  assert.equal(threeTabs.picker.clicks, 1);
 
   const inactive = pickerExpressionHarness({ activeIndices: [0] });
   assert.equal(inactive.open(), 'activated');
@@ -348,6 +398,22 @@ test('fails closed on ambiguous tab state, incomplete controls, and prior-asset 
   assert.equal(pickerExpressionHarness({ includeInput: false }).ready(), false);
   assert.equal(pickerExpressionHarness({ duplicateContainer: true }).click(), false);
   assert.equal(pickerExpressionHarness({ duplicateControl: true }).click(), false);
+  for (const hostile of [
+    pickerExpressionHarness({ activeIndices: [0], extraDirectButton: true }),
+    pickerExpressionHarness({ activeIndices: [0], duplicateSemanticTab: true }),
+    pickerExpressionHarness({ activeIndices: [0], nestedSemanticOnly: true }),
+    pickerExpressionHarness({ activeIndices: [0], tabCount: 4 }),
+  ]) {
+    assert.equal(hostile.open(), null);
+    assert.equal(hostile.ready(), false);
+    assert.equal(hostile.click(), false);
+    assert.equal(hostile.allTabButtons.every(({ clicks }) => clicks === 0), true);
+    assert.equal(hostile.picker.clicks, 0);
+  }
+  const cosmeticOverlayAbsent = pickerExpressionHarness({ includePillOverlay: false });
+  assert.equal(cosmeticOverlayAbsent.open(), 'already-active');
+  assert.equal(cosmeticOverlayAbsent.ready(), true);
+  assert.equal(cosmeticOverlayAbsent.click(), true);
 
   for (const [state, activation] of [
     [{ assetId: null, sessionMediaId: priorAssetId }, 'already-active'],

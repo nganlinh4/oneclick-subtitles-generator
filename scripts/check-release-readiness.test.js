@@ -804,6 +804,18 @@ test('installed local-media picker handshake publishes atomic create-once ordere
       "':scope > .tab-content-wrapper div.file-upload-input:not(.loading)'",
       "'.file-upload-input'",
     ),
+    INSTALLED_LOCAL_MEDIA_INSPECTOR.replaceAll(
+      "tabList.querySelectorAll(':scope > button.tab-btn')",
+      "tabList.querySelectorAll(':scope button.tab-btn')",
+    ),
+    INSTALLED_LOCAL_MEDIA_INSPECTOR.replaceAll(
+      'directButtons.length !== tabs.length',
+      'directButtons.length < tabs.length',
+    ),
+    INSTALLED_LOCAL_MEDIA_INSPECTOR.replaceAll(
+      '!directButtons.every((button) => tabs.includes(button))',
+      'directButtons.some((button) => tabs.includes(button))',
+    ),
     INSTALLED_LOCAL_MEDIA_INSPECTOR.replace(
       '  picker.click();\n  return true;',
       '  return true;',
