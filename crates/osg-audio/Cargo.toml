@@ -20,6 +20,10 @@ symphonia = { version = "=0.5.5", default-features = false, features = [
   "vorbis",
   "wav",
 ] }
+# Opus has no pure-Rust decoder in symphonia, and yt-dlp downloads routinely carry it, so without
+# this an export of a downloaded video fails outright. `bundled` builds libopus from the vendored
+# source cargo already checksums, rather than trusting whatever might be on the machine.
+symphonia-adapter-libopus = { version = "=0.2.9", features = ["bundled"] }
 thiserror = "=2.0.20"
 
 [lints]

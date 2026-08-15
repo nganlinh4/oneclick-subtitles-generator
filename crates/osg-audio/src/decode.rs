@@ -1,7 +1,8 @@
 //! Pure Rust decoding of a source's audio track to interleaved `f32` PCM.
 //!
-//! `symphonia` does the container demuxing and the codec work, so nothing here shells out, links a
-//! codec, or downloads a tool. The decoder is a pull source: each call hands back one packet's
+//! `symphonia` does the container demuxing and almost all of the codec work, so nothing here shells
+//! out or downloads a tool. The one exception is Opus, which symphonia has no decoder for: see
+//! [`codecs`]. The decoder is a pull source: each call hands back one packet's
 //! worth of interleaved frames at the source's own rate and channel count, and the caller decides
 //! what to do about rate and layout.
 //!
@@ -13,8 +14,10 @@ use std::fs::File;
 use std::io::{Cursor, ErrorKind};
 use std::path::Path;
 
+use std::sync::OnceLock;
+
 use symphonia::core::audio::SampleBuffer;
-use symphonia::core::codecs::{CODEC_TYPE_NULL, Decoder, DecoderOptions};
+use symphonia::core::codecs::{CODEC_TYPE_NULL, CodecRegistry, Decoder, DecoderOptions};
 use symphonia::core::errors::Error as SymphoniaError;
 use symphonia::core::formats::{FormatOptions, FormatReader};
 use symphonia::core::io::{MediaSource, MediaSourceStream, MediaSourceStreamOptions};
@@ -23,6 +26,29 @@ use symphonia::core::probe::Hint;
 
 use crate::error::{AccessFailure, AudioError};
 use crate::format::{MAX_SAMPLE_RATE, MIN_SAMPLE_RATE};
+
+/// Every codec this build can decode: symphonia's own, plus Opus.
+///
+/// Opus needs its own line because symphonia has no decoder for it, and Opus is not an exotic case
+/// here — `osg-download` recognises `webm`/`opus` containers, so a video fetched with yt-dlp very
+/// often carries exactly this. Without the adapter, exporting such a video fails at the audio stage
+/// after the user has already waited for the download.
+///
+/// The adapter wraps the reference C libopus (`symphonia-adapter-libopus` is MIT OR Apache-2.0,
+/// `opusic-sys` is BSD-3-Clause; both are redistributable and both need a notice entry). It is
+/// built from vendored source that cargo checksums, so no binary is fetched and no system library
+/// is trusted. A C toolchain is already required by this workspace — `aws-lc-sys`, `ring`,
+/// `zstd-sys`, `libsqlite3-sys` and `blake3` all need one — so this adds a dependency, not a
+/// dependency class.
+fn codecs() -> &'static CodecRegistry {
+    static CODECS: OnceLock<CodecRegistry> = OnceLock::new();
+    CODECS.get_or_init(|| {
+        let mut registry = CodecRegistry::new();
+        symphonia::default::register_enabled_codecs(&mut registry);
+        registry.register_all::<symphonia_adapter_libopus::OpusDecoder>();
+        registry
+    })
+}
 
 /// The most channels a *source* may declare. Wider than the output ceiling so a 7.1 source can be
 /// downmixed rather than refused.
@@ -114,7 +140,7 @@ impl AudioDecoder {
             .find(|track| track.codec_params.codec != CODEC_TYPE_NULL)
             .ok_or(AudioError::NoAudioTrack)?;
         let track_id = track.id;
-        let decoder = symphonia::default::get_codecs()
+        let decoder = codecs()
             .make(&track.codec_params, &DecoderOptions::default())
             .map_err(|_| AudioError::UnsupportedCodec)?;
 

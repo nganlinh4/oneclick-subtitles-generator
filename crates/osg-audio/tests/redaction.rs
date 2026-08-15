@@ -89,8 +89,10 @@ fn a_stream_that_stops_mid_packet_does_not_quote_itself() {
 
 #[test]
 fn an_unsupported_codec_names_neither_the_codec_nor_the_file() {
-    let error = AudioDecoder::open_path(&support::fixture("tone_mono_48k_opus.webm"))
-        .expect_err("opus is not decodable in this build");
+    // Opus decodes now, so the refusal has to be provoked with a container that really does carry a
+    // codec this build has no decoder for, rather than by relying on a gap that has been closed.
+    let error = AudioDecoder::open_bytes(support::adpcm_in_wav())
+        .expect_err("IMA ADPCM is not decodable in this build");
     assert_eq!(error, AudioError::UnsupportedCodec);
     let rendering = format!("{error} / {error:?}");
     assert!(!rendering.contains("tone_mono"), "leaked a file name");

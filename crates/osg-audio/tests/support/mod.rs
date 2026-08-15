@@ -42,6 +42,41 @@ pub(crate) fn wav_f32(sample_rate: u32, channels: u16, samples: &[f32]) -> Vec<u
     riff(sample_rate, channels, 3, 32, &data)
 }
 
+/// A WAV declaring IMA ADPCM, which this build has no decoder for.
+///
+/// Used to prove an unsupported codec is refused cleanly. It has to be a codec that is genuinely
+/// absent rather than one that merely used to be: Opus decodes now, so pointing this at the Opus
+/// fixture would silently stop testing anything.
+pub(crate) fn adpcm_in_wav() -> Vec<u8> {
+    const SAMPLE_RATE: u32 = 8_000;
+    const BLOCK_ALIGN: u16 = 256;
+    // One nibble per sample after a 4-byte per-channel preamble.
+    const SAMPLES_PER_BLOCK: u16 = (BLOCK_ALIGN - 4) * 2 + 1;
+
+    let data = vec![0_u8; usize::from(BLOCK_ALIGN)];
+    let data_len = u32::try_from(data.len()).expect("fixtures are small");
+    let mut wav = Vec::with_capacity(data.len() + 64);
+    wav.extend_from_slice(b"RIFF");
+    wav.extend_from_slice(&(40 + data_len).to_le_bytes());
+    wav.extend_from_slice(b"WAVE");
+    wav.extend_from_slice(b"fmt ");
+    wav.extend_from_slice(&20_u32.to_le_bytes());
+    wav.extend_from_slice(&0x0011_u16.to_le_bytes()); // WAVE_FORMAT_IMA_ADPCM
+    wav.extend_from_slice(&1_u16.to_le_bytes()); // mono
+    wav.extend_from_slice(&SAMPLE_RATE.to_le_bytes());
+    wav.extend_from_slice(
+        &(SAMPLE_RATE * u32::from(BLOCK_ALIGN) / u32::from(SAMPLES_PER_BLOCK)).to_le_bytes(),
+    );
+    wav.extend_from_slice(&BLOCK_ALIGN.to_le_bytes());
+    wav.extend_from_slice(&4_u16.to_le_bytes()); // 4 bits per sample
+    wav.extend_from_slice(&2_u16.to_le_bytes()); // cbSize
+    wav.extend_from_slice(&SAMPLES_PER_BLOCK.to_le_bytes());
+    wav.extend_from_slice(b"data");
+    wav.extend_from_slice(&data_len.to_le_bytes());
+    wav.extend_from_slice(&data);
+    wav
+}
+
 fn to_i16(sample: f32) -> i16 {
     let scaled = f64::from(sample.clamp(-1.0, 1.0)) * 32_767.0;
     #[expect(

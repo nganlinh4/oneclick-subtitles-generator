@@ -121,11 +121,24 @@ fn a_fixture_opens_by_path_with_its_extension_as_a_hint() {
 }
 
 #[test]
-fn opus_in_webm_is_refused_rather_than_silently_dropped() {
-    // symphonia 0.5.5 has no pure Rust Opus decoder. The container parses; the codec does not.
-    let error = AudioDecoder::open_bytes(fixture_bytes("tone_mono_48k_opus.webm"))
-        .expect_err("opus is not decodable in this build");
-    assert_eq!(error, AudioError::UnsupportedCodec);
+fn opus_in_webm_decodes_because_downloaded_video_usually_carries_it() {
+    // symphonia has no Opus decoder of its own, so this only works because the libopus adapter is
+    // registered alongside its codecs. It is not an edge case: osg-download recognises webm/opus,
+    // so a video fetched with yt-dlp very often arrives exactly like this, and failing here would
+    // fail the export after the user had already waited for the download.
+    let mut decoder = AudioDecoder::open_bytes(fixture_bytes("tone_mono_48k_opus.webm"))
+        .expect("opus decodes in this build");
+    assert_eq!(decoder.sample_rate(), 48_000);
+    assert_eq!(decoder.channels(), 1);
+
+    let frames = decode_all(&mut decoder);
+    assert!(!frames.is_empty(), "opus produced no audio");
+    // A decoded tone must actually carry signal; silence would mean the packets were consumed and
+    // thrown away, which is the failure this test exists to rule out.
+    assert!(
+        frames.iter().any(|sample| sample.abs() > 0.05),
+        "opus decoded to silence"
+    );
 }
 
 #[test]
