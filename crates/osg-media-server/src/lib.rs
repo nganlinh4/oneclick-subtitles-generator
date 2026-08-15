@@ -20,6 +20,12 @@ use serde::Serialize;
 use thiserror::Error;
 use uuid::Uuid;
 
+mod frames;
+
+pub use frames::RegisteredFrameSequence;
+
+use frames::FrameRegistry;
+
 const REQUEST_QUEUE_CAPACITY: usize = 64;
 const WORKER_COUNT: usize = 4;
 const MAX_REGISTERED_ASSETS: usize = 256;
@@ -114,6 +120,7 @@ struct ServerContext {
     token: String,
     allowed_origins: HashSet<String>,
     assets: RwLock<HashMap<Uuid, MediaEntry>>,
+    frames: FrameRegistry,
 }
 
 impl std::fmt::Debug for ServerContext {
@@ -272,6 +279,7 @@ impl MediaServer {
             token: format!("{}{}", Uuid::new_v4().simple(), Uuid::new_v4().simple()),
             allowed_origins: validated_origins,
             assets: RwLock::new(HashMap::new()),
+            frames: FrameRegistry::default(),
         });
         let stopping = Arc::new(AtomicBool::new(false));
         let (sender, receiver) = sync_channel(REQUEST_QUEUE_CAPACITY);
@@ -1205,14 +1213,10 @@ struct HttpRequest {
 
 impl std::fmt::Debug for HttpRequest {
     fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        let target_path = self
-            .target
-            .split_once('?')
-            .map_or(self.target.as_str(), |(path, _)| path);
         formatter
             .debug_struct("HttpRequest")
             .field("method", &self.method)
-            .field("target_path", &target_path)
+            .field("target_path", &self.path())
             .field("header_count", &self.headers.len())
             .finish_non_exhaustive()
     }
@@ -1234,6 +1238,13 @@ impl HttpRequest {
 
     fn is_head(&self) -> bool {
         self.method == "HEAD"
+    }
+
+    /// Returns the request target with its query string removed.
+    fn path(&self) -> &str {
+        self.target
+            .split_once('?')
+            .map_or(self.target.as_str(), |(path, _)| path)
     }
 }
 
@@ -1425,6 +1436,9 @@ fn handle_request(
 
     match request.method.as_str() {
         "OPTIONS" => handle_options(stream, request, origin),
+        "GET" | "HEAD" if frames::is_frame_target(request.path()) => {
+            frames::handle_frame_request(context, stream, request, origin, stopping);
+        }
         "GET" | "HEAD" => handle_asset_request(context, stream, request, origin, stopping),
         _ => {
             let mut headers = cors_headers(origin);
@@ -1520,7 +1534,7 @@ fn handle_asset_request(
         );
         return;
     };
-    serve_entry(stream, request, origin, id, &entry, stopping);
+    serve_entry(stream, request, origin, &id.to_string(), &entry, stopping);
 }
 
 struct CloneableEntry {
@@ -1553,11 +1567,25 @@ impl From<&MediaEntry> for CloneableEntry {
     }
 }
 
+impl CloneableEntry {
+    /// Wraps already-validated in-memory bytes so they stream through the shared response path.
+    fn from_memory(mime_type: String, bytes: Arc<[u8]>) -> Option<Self> {
+        let byte_length = u64::try_from(bytes.len())
+            .ok()
+            .filter(|length| *length > 0)?;
+        Some(Self {
+            source: CloneableSource::Image(bytes),
+            mime_type,
+            byte_length,
+        })
+    }
+}
+
 fn serve_entry(
     stream: &mut TcpStream,
     request: &HttpRequest,
     origin: Option<&str>,
-    id: Uuid,
+    entity_tag: &str,
     entry: &CloneableEntry,
     stopping: &AtomicBool,
 ) {
@@ -1604,7 +1632,7 @@ fn serve_entry(
         return;
     };
     let Ok(range) = parse_range(range_header, byte_length) else {
-        let mut headers = common_media_headers(origin, id, entry);
+        let mut headers = common_media_headers(origin, entity_tag, entry);
         headers.push(("Content-Range", format!("bytes */{byte_length}")));
         let _ = respond_empty(stream, 416, "Range Not Satisfiable", &headers);
         return;
@@ -1614,7 +1642,7 @@ fn serve_entry(
         None => (0, byte_length - 1, 200, "OK"),
     };
     let response_length = end - start + 1;
-    let mut headers = common_media_headers(origin, id, entry);
+    let mut headers = common_media_headers(origin, entity_tag, entry);
     if status == 206 {
         headers.push((
             "Content-Range",
@@ -1833,7 +1861,7 @@ type ResponseHeader<'a> = (&'a str, String);
 
 fn common_media_headers<'a>(
     origin: Option<&'a str>,
-    id: Uuid,
+    entity_tag: &str,
     entry: &CloneableEntry,
 ) -> Vec<ResponseHeader<'a>> {
     let mut headers = cors_headers(origin);
@@ -1841,7 +1869,7 @@ fn common_media_headers<'a>(
         ("Content-Type", entry.mime_type.clone()),
         ("Accept-Ranges", "bytes".to_owned()),
         ("Cache-Control", "private, no-store".to_owned()),
-        ("ETag", format!("\"{id}-{:x}\"", entry.byte_length)),
+        ("ETag", format!("\"{entity_tag}-{:x}\"", entry.byte_length)),
         ("X-Content-Type-Options", "nosniff".to_owned()),
         ("Cross-Origin-Resource-Policy", "cross-origin".to_owned()),
     ]);
@@ -1984,7 +2012,7 @@ mod tests {
         (directory, server, media)
     }
 
-    fn request(port: u16, request: &str) -> Vec<u8> {
+    pub(crate) fn request(port: u16, request: &str) -> Vec<u8> {
         let mut stream = TcpStream::connect(("127.0.0.1", port)).expect("connect media server");
         stream
             .set_read_timeout(Some(Duration::from_secs(3)))
@@ -2006,7 +2034,7 @@ mod tests {
         path.split_once('?').expect("token query")
     }
 
-    fn response_body(response: &[u8]) -> &[u8] {
+    pub(crate) fn response_body(response: &[u8]) -> &[u8] {
         let offset = response
             .windows(4)
             .position(|window| window == b"\r\n\r\n")
