@@ -104,7 +104,13 @@ pub fn parse_hex_color(value: &str) -> Result<Rgba, ColorError> {
 /// The alpha byte the shipped renderer appends for a given opacity.
 ///
 /// Reproduced exactly, rounding included: opacity is a 0-100 percentage scaled by 2.55 and rounded
-/// to the nearest integer, so 50 becomes 128 rather than 127.
+/// to the nearest integer. Note which way that lands at half opacity — 2.55 is not representable in
+/// binary floating point, so `50 * 2.55` is 127.49999999999999 and rounds **down to 127**, not up
+/// to 128. Half opacity is a shade more transparent than half.
+///
+/// Do not "correct" this to 128. The rounding is not a defect to fix here; it is the behaviour every
+/// already-saved project was rendered with, and changing it would shift each of their backgrounds by
+/// one alpha level.
 #[must_use]
 pub fn opacity_to_alpha_byte(opacity: f64) -> u8 {
     if !opacity.is_finite() || opacity <= 0.0 {
