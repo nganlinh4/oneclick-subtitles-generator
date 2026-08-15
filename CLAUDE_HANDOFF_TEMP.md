@@ -19,7 +19,7 @@ as integrator and require fresh reviewers on each frozen slice.
 
 ## LIVE STATE — native renderer migration (update this at every context boundary)
 
-Last updated: 2026-08-16, after wave 10. Working tree clean at `a10ad0c7`. 53 commits since the
+Last updated: 2026-08-16, after wave 11. Working tree clean at `20637bac`. 70 commits since the
 preserved safety checkpoint `650805d36837d36f3b4aad025d0e54bac3708d41`, which is untouched. Nothing
 pushed.
 
@@ -27,14 +27,15 @@ pushed.
 
 | Gate | Result |
 | --- | --- |
-| `cargo test --workspace` | **1159 passed, 0 failed** (was 842 when this stretch began) |
+| `cargo test --workspace` | **1266 passed, 0 failed** (was 842 when this stretch began) |
 | `cargo clippy --workspace --all-targets -- -D warnings` | clean |
 | `cargo fmt --check` | clean |
-| `npx vitest run` (whole frontend) | **1878 passed, 0 failed** |
+| `npx vitest run` (whole frontend) | **1897 passed, 0 failed** |
 | `npm run lint` | PASS |
 | `npm run check:i18n` | PASS |
 | `npm run check:tauri-contract` | PASS (125 commands) |
 | `node scripts/check-release-readiness.js` | PASS |
+| `npm run test:render-parity` | PASS |
 
 **The parity property is proven, on real hardware.** `osg-compositor` renders frame 45 on a fresh
 device byte-identically to rendering frames 0..45 in order (Intel Graphics, Vulkan, no test skipped).
@@ -50,7 +51,11 @@ is not yet proven):
 - `crates/osg-decode` — `IMFSourceReader` video decode with frame-exact sampling, **56 tests**. A
   real encode/decode round trip caught two defects: frame indices floored from a quantised sample
   timestamp named frame 1 as frame 0, and a past-the-end request leaked a raw HRESULT.
-- `crates/osg-compositor` — headless wgpu compositor, **72 tests** on a real hardware adapter
+- `crates/osg-export` — turns a validated `RenderRequest` into a finished MP4, **65 tests**
+  including 8 real end-to-end exports through Media Foundation. The one place every parity decision
+  is applied. Trim rebasing is proven at the pixel: a trimmed export at frame i is byte-identical to
+  an untrimmed one at frame i+30.
+- `crates/osg-compositor` — headless wgpu compositor, **109 tests** on a real hardware adapter
   (Intel, Vulkan). Renders real subtitle frames from the scene contract, delegating every
   calculation to `osg-scene`. `unsafe_code = "forbid"`.
 - `crates/osg-encode` — Media Foundation H.264/AAC MP4, **55 tests**, ffprobe-verified.
@@ -86,7 +91,14 @@ without one, or listed there without existing. Auditing my own entries against t
 three that claimed more than the code does — `textAlign` (justify is parsed, not performed),
 `animationType` (nine of ten; typewriter does not cut the run yet) and `gradientEnabled` (both side
 effects are reproduced but nothing paints the gradient, so enabling it today would give invisible
-subtitles). The honest figure is **31 of 70 still pending**, and it drops as work lands.
+subtitles). The honest figure is now **7 of 70 still pending**, down from 36 when this stretch began. Three of
+the seven are blocked on one thing — the compositor accumulates the pen from cell advances instead
+of reading the positions the atlas already emits (`letterSpacing`, `textAlign` justify, and by
+extension the justified case). The other four each need a decision rather than code: `animationType`
+(whether offsets scale with the composition), `lineHeight` (which side owns the multiplier),
+`maxWidth` (a percentage that needs a unit conversion in the bake request), `rtlSupport` (first-strong
+classification is not bidi), and `aspectRatio` (the contract already derives the width from the crop
+ratio and never reads the field).
 
 **Encoding and decoding no longer involve FFmpeg at all.** `osg-encode` drives Media Foundation's
 SinkWriter for H.264/AAC MP4 and `IMFSourceReader` will decode source video, both using codecs
