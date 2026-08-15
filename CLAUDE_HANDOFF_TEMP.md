@@ -108,9 +108,14 @@ decoder for it.
    which is exactly why the bug would stay invisible while being real. Decide whether the encoder
    should write the matrix somewhere the decoder can see it, or whether the convention is accepted.
    `DecoderConfig::with_colorimetry` is the explicit override in the meantime.
-3. **`#rgba` four-digit colours.** `CropSettings::validate` accepts them; `osg_scene::color` does
-   not, so the compositor refuses a canvas colour in that shape rather than writing a second colour
-   parser. Either `osg-scene` grows the shorthand or the editor never emits it. Confirm which.
+3. ~~**`#rgba` four-digit colours.**~~ **RESOLVED.** Measured: all 139 colours across the defaults
+   and the 30 shipped presets are six digits, so the application never emits the shorthand — but the
+   persistence validators accept it, so a hand-edited project can carry one, and refusing an entire
+   export over a colour the schema calls valid is the wrong answer. `osg-scene` now parses it. As a
+   *background* it is refused like `#rrggbbaa`, and that case is worse than it looks: appending the
+   opacity to `#rgba` yields `#rgbaXX`, six digits and perfectly valid, so the shipped renderer draws
+   a completely different colour with no hint of a problem. The compositor may still carry its own
+   refusal from before this landed — check and relax it.
 4. **`canvasBgBlur` is clamped, not refused.** Stored range reaches 1000; applied sigma clamps to 40.
    A user who stored 200 sees the 40 result. Refusing would reject a value the editor legitimately
    persists, so this is deliberate, but it is a silent clamp and should be stated in release notes.
