@@ -842,9 +842,32 @@ package/install and the real Windows EXE smoke workflows were not attempted.
 
 `1,634,156 > 1,550,000`. Not raised. (It was 1,634,462 before the lifecycleOrchestrator split.)
 
-### 3. Updater signing key — unchanged
+### 3. Updater signing key — CORRECTED: it is configured, not disabled
 
-Still disabled pending the production signing public key and secured private key.
+This entry was stale. The updater is **enabled** and trusting a real key. Verified on 2026-08-16:
+
+- `apps/desktop/src-tauri/updater-public-key.txt` holds a structurally valid minisign public key
+  (`10E5C7B3E0078358`), rotated in by commit `c3342f4d`. `has_configured_signing_key()` returns true
+  for it, so `updater_plugin()` passes the real key rather than the empty-string disabled path.
+- No private key material exists anywhere in the repository. CI supplies it as the
+  `TAURI_SIGNING_PRIVATE_KEY` / `TAURI_SIGNING_PRIVATE_KEY_PASSWORD` secrets.
+- The key is **not** the example key published in Tauri's updater documentation. That is now
+  asserted by a test, because the example key is structurally perfect — it passes every validation
+  the code performs — while its private half is public.
+
+What the audit found and fixed: the signed-updater smoke test proved a valid update installs, but
+nothing proved an invalid one is refused, so a silently weakened verification path would have passed
+every gate. `apps/desktop/src-tauri/src/updater.rs` now proves the negative half locally against a
+disposable key (12 tests). Confirmed safe by inspection of `tauri-plugin-updater` 2.10.1: its
+`verify_signature` is called unconditionally on every download, and an empty or malformed public key
+makes `PublicKey::decode` fail, so a broken key configuration fails closed rather than accepting
+unsigned artifacts.
+
+**The only genuinely owner-gated item left** is confirming that the owner controls the private half
+of `10E5C7B3E0078358` and that it is the key stored in the repository secrets. That cannot be
+verified from this machine and must not be guessed at: if the secret does not correspond to the
+embedded public key, every shipped build will reject every update, and no later update can repair it
+because the wrong key is already baked into what users installed.
 
 ### 4. Root licence / notice policy — unchanged
 
