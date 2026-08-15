@@ -175,6 +175,38 @@ Non-Windows targets get an explicit `UnsupportedPlatform` error, not a silent fa
 encoder. The shipped release target is Windows; when another platform is added it gets its own
 audited backend (AVFoundation on macOS) behind the same trait.
 
+### Decoding, which the encoder decision alone does not cover
+
+Removing FFmpeg removes the frame **extractor** as well as the encoder. The shipped path pulled
+source frames out with `ffmpeg.exe`; nothing else in the product can do that. The answer is the same
+technology: `IMFSourceReader` decodes the source video, hardware-accelerated, from the same OS codec
+set that the SinkWriter encodes with. The reference has this working in
+`src/overlay/screen_record/mf_decode.rs`.
+
+The full media path is therefore: **MF SourceReader decodes → wgpu composites → MF SinkWriter
+encodes**, with `symphonia` decoding source audio in pure Rust because the audio mix has to be
+deterministic and bit-reproducible in a way a hardware decoder does not promise.
+
+Three things must be got right, and two of them are lessons the reference paid for already:
+
+- **Seeking is not frame-exact.** `IMFSourceReader` seeks to a keyframe, not to a frame index. An
+  export that trusted the seek would sample the wrong source frame near every cut. Each output frame
+  must be matched to its source frame through the exact rational timeline, decoding forward from the
+  keyframe where necessary. This is the same requirement that makes preview and export agree, so it
+  is not extra work — it is the same sampler.
+- **A decoded frame must keep its `IMFSample` alive.** The reference documents that the DXGI surface
+  allocator reclaims the texture subresource as soon as the sample refcount reaches zero, even while
+  the GPU is still reading from it. A decoded-frame type that drops the sample early produces
+  intermittent corruption that looks like a compositor bug.
+- **`MFShutdown()` must not be called.** The reference makes its shutdown a deliberate no-op, because
+  tearing down the shared MF platform breaks every later use of it in the same process. The OS
+  reclaims everything at exit.
+
+This also explains why the compositor takes a video underlay rather than only drawing subtitles on a
+transparent ground: crop, flip, and the solid/blur canvas backfill are all operations on the decoded
+frame, and doing them in the same GPU pass as the subtitle layer is what keeps one pixel pipeline
+rather than two. Those fields are exactly the ones the parity ledger still lists as pending.
+
 ### Determinism
 
 No RNG anywhere. Every effect is a pure function of source time. Shake and noise take their phase
