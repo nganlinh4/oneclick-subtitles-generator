@@ -2,9 +2,13 @@ import { describe, expect, it } from 'vitest';
 
 import { defaultCustomization } from '../components/subtitleCustomization/defaultCustomization';
 import {
+  DURATION_SOURCE,
   PARITY_DISPOSITIONS,
+  RENDER_OUTPUT_PARITY_LEDGER,
   RENDER_PARITY_LEDGER,
+  allDeliberateChanges,
   deliberatelyChangedFields,
+  pendingOutputParityFields,
   pendingParityFields,
 } from './renderParityLedger';
 
@@ -91,5 +95,79 @@ describe('render parity ledger', () => {
     for (const field of inert) {
       expect(defaultCustomization, `${field} must stay in the schema`).toHaveProperty(field);
     }
+  });
+});
+
+describe('render output parity ledger', () => {
+  it('covers the render and crop settings the native contract actually carries', () => {
+    // 54 subtitle fields plus these 16 are the 70 persisted options the migration was scoped
+    // against. Keeping both halves asserted means neither can drift without a failing test.
+    expect(Object.keys(RENDER_OUTPUT_PARITY_LEDGER)).toHaveLength(16);
+    expect(
+      Object.keys(RENDER_PARITY_LEDGER).length + Object.keys(RENDER_OUTPUT_PARITY_LEDGER).length,
+    ).toBe(70);
+  });
+
+  it('names every render setting the native request normalizes', () => {
+    for (const field of [
+      'resolution', 'frameRate', 'originalAudioVolume', 'narrationVolume', 'trimStart', 'trimEnd',
+    ]) {
+      expect(RENDER_OUTPUT_PARITY_LEDGER, field).toHaveProperty(field);
+    }
+  });
+
+  it('names every crop setting the native request normalizes', () => {
+    for (const field of [
+      'x', 'y', 'width', 'height', 'aspectRatio',
+      'canvasBgMode', 'canvasBgColor', 'canvasBgBlur', 'flipX', 'flipY',
+    ]) {
+      expect(RENDER_OUTPUT_PARITY_LEDGER, field).toHaveProperty(field);
+    }
+  });
+
+  it('gives every output setting a recognised disposition and an honest implementation claim', () => {
+    for (const [field, record] of Object.entries(RENDER_OUTPUT_PARITY_LEDGER)) {
+      expect(PARITY_DISPOSITIONS, `${field} disposition`).toContain(record.disposition);
+      if (record.disposition === 'pending') {
+        expect(record.where, `${field} is pending`).toBeNull();
+      } else {
+        expect(record.where, `${field} must name its implementation`).toBeTruthy();
+      }
+    }
+  });
+
+  it('treats the trim and crop defects as changes a user will see, not as silent repairs', () => {
+    // Both of these alter files a user has already exported once. Fixing them quietly would look
+    // like the migration broke something, so each has to explain itself well enough to write a
+    // release note from.
+    const changes = allDeliberateChanges();
+    const fields = changes.map(change => change.field);
+
+    expect(fields).toContain('trimStart');
+    expect(fields).toContain('x');
+    expect(fields).toContain('backgroundOpacity');
+
+    for (const change of changes) {
+      expect(change.note, `${change.field} must say what changes`).toBeTruthy();
+      expect(change.where, `${change.field} must name its implementation`).toBeTruthy();
+    }
+
+    // The two that move pixels in an already-exported file shout about it; the colour one is
+    // explicitly pixel-identical and only makes a silent failure findable.
+    expect(RENDER_OUTPUT_PARITY_LEDGER.trimStart.note).toContain('VISIBLE CHANGE');
+    expect(RENDER_OUTPUT_PARITY_LEDGER.x.note).toContain('VISIBLE CHANGE');
+    expect(RENDER_PARITY_LEDGER.backgroundOpacity.note).toContain('Unchanged on screen');
+  });
+
+  it('takes the export duration from the timeline rather than from however extraction went', () => {
+    expect(DURATION_SOURCE.native).toBe('the scene timeline frame count');
+    expect(DURATION_SOURCE.shipped).toContain('overriding the computed duration');
+    expect(DURATION_SOURCE.where).toBeTruthy();
+  });
+
+  it('reports the remaining output work honestly', () => {
+    // 16 output settings, of which the timeline covers one and five are deliberate defect fixes.
+    expect(pendingOutputParityFields()).toHaveLength(10);
+    expect(pendingParityFields().length + pendingOutputParityFields().length).toBe(33);
   });
 });

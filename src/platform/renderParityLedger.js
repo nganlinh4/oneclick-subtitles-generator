@@ -133,16 +133,87 @@ export const RENDER_PARITY_LEDGER = Object.freeze({
   ),
 });
 
-/** Fields whose disposition is still `pending`. Must be empty before the migration can be called done. */
-export const pendingParityFields = () => Object.freeze(
-  Object.keys(RENDER_PARITY_LEDGER)
-    .filter(field => RENDER_PARITY_LEDGER[field].disposition === 'pending')
-    .sort(),
+// The other sixteen persisted options: what the export is, rather than what the subtitles look
+// like. Three of the shipped renderer's worst defects live in here, and all three are the kind that
+// a user notices only after waiting for a long export to finish.
+export const RENDER_OUTPUT_PARITY_LEDGER = Object.freeze({
+  // ---- Output format -------------------------------------------------------------------------
+  resolution: pending('Drives the composition size; the scene already validates and refuses odd edges.'),
+  frameRate: native(
+    'crates/osg-scene/src/timeline.rs',
+    'Exact rational time, so 29.97 is 30000/1001 rather than a float that drifts.',
+  ),
+
+  // ---- Audio ---------------------------------------------------------------------------------
+  originalAudioVolume: pending('Integer 0-100 in the shipped contract; osg-audio must mirror that scale.'),
+  narrationVolume: pending('Integer 0-100 in the shipped contract; osg-audio must mirror that scale.'),
+
+  // ---- Trim ----------------------------------------------------------------------------------
+  trimStart: fixed(
+    'crates/osg-scene/src/timeline.rs',
+    'VISIBLE CHANGE, and a bug fix. The shipped renderer trims the video with FFmpeg -ss but passes '
+    + 'cue timestamps absolute and never rebases them, so any trimStart above zero shifts every '
+    + 'subtitle in the exported file by exactly that much. The native renderer rebases cue times '
+    + 'onto the trimmed timeline, so subtitles land where the editor showed them. Anyone who '
+    + 'compensated by hand-editing their timings will see the compensation double.',
+  ),
+  trimEnd: pending('Bounds the frame range. No rebase needed at the end.'),
+
+  // ---- Crop and canvas -----------------------------------------------------------------------
+  x: fixed(
+    'crates/osg-compositor',
+    'VISIBLE CHANGE only where crop was already wrong. Crop is never applied by FFmpeg today: '
+    + 'frames are extracted full size and the crop becomes CSS percentages, while the output '
+    + 'dimensions are derived from the crop ratio. The compositor crops the source region for real, '
+    + 'so the exported framing finally matches the crop UI.',
+  ),
+  y: fixed('crates/osg-compositor', 'See x — the same never-applied crop.'),
+  width: fixed('crates/osg-compositor', 'See x — the same never-applied crop.'),
+  height: fixed('crates/osg-compositor', 'See x — the same never-applied crop.'),
+  aspectRatio: pending('Selects the output dimensions from the crop region.'),
+  canvasBgMode: pending('Solid and blur backfill behind a crop that does not fill the frame.'),
+  canvasBgColor: pending('Solid backfill colour.'),
+  canvasBgBlur: pending('Blur backfill radius; needs a separable blur pass in the compositor.'),
+  flipX: pending('A sampling transform in the compositor, not a post-process.'),
+  flipY: pending('A sampling transform in the compositor, not a post-process.'),
+});
+
+/**
+ * The shipped renderer's duration rule, which is not a persisted field but decides how long every
+ * export is.
+ *
+ * Today the final duration is whatever the actual extracted frame count turned out to be, which
+ * overrides the computed duration. That makes the output length depend on how frame extraction
+ * happened to behave rather than on the timeline the user set. The native renderer takes the
+ * duration from the timeline, so an export is as long as the editor says it is.
+ */
+export const DURATION_SOURCE = Object.freeze({
+  shipped: 'actual extracted frame count, overriding the computed duration',
+  native: 'the scene timeline frame count',
+  where: 'crates/osg-scene/src/timeline.rs',
+});
+
+const fieldsWithDisposition = (ledger, disposition) => Object.freeze(
+  Object.keys(ledger).filter(field => ledger[field].disposition === disposition).sort(),
 );
 
+/** Fields whose disposition is still `pending`. Must be empty before the migration can be called done. */
+export const pendingParityFields = () => fieldsWithDisposition(RENDER_PARITY_LEDGER, 'pending');
+
 /** Fields the native renderer deliberately changes. Each one needs a release note. */
-export const deliberatelyChangedFields = () => Object.freeze(
-  Object.keys(RENDER_PARITY_LEDGER)
-    .filter(field => RENDER_PARITY_LEDGER[field].disposition === 'fixed')
-    .sort(),
-);
+export const deliberatelyChangedFields = () => fieldsWithDisposition(RENDER_PARITY_LEDGER, 'fixed');
+
+/** Output-settings fields still to implement. */
+export const pendingOutputParityFields = () => fieldsWithDisposition(RENDER_OUTPUT_PARITY_LEDGER, 'pending');
+
+/**
+ * Every deliberate behaviour change across both ledgers, for the release notes.
+ *
+ * These are the changes a user can see in a file they already exported once. Shipping them without
+ * saying so would look like the migration broke something.
+ */
+export const allDeliberateChanges = () => Object.freeze([
+  ...deliberatelyChangedFields().map(field => ({ field, ...RENDER_PARITY_LEDGER[field] })),
+  ...fieldsWithDisposition(RENDER_OUTPUT_PARITY_LEDGER, 'fixed')
+    .map(field => ({ field, ...RENDER_OUTPUT_PARITY_LEDGER[field] })),
+]);
