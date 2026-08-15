@@ -21,6 +21,85 @@ impl fmt::Display for Axis {
     }
 }
 
+/// Why a staged atlas, style, run or scene was refused.
+///
+/// Deliberately coarse and `Copy`: it names the field that failed and never the value, so a refusal
+/// can be logged without leaking a user's subtitle text, font choice or colours.
+///
+/// The atlas descriptor's own bounds — version, geometry, cell rectangles, pixel buffer — are
+/// checked by [`osg_scene::glyph::GlyphAtlasDescriptor`] before one can exist, so they are not
+/// repeated here. What remains is what only the compositor can decide: whether the atlas belongs to
+/// this scene, whether its metrics can lay a line out, and whether the staged runs fit it.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Rejection {
+    /// The atlas was baked from a different face than the scene resolved.
+    AtlasFaceMismatch,
+    /// The atlas metrics cannot place a line: the line box or the bake size is not positive.
+    AtlasMetrics,
+    /// The descriptor refuses layout from per-cell advances, so this compositor cannot draw it.
+    ///
+    /// Either shaping crossed cluster boundaries, or the run is right-to-left and the cells are in
+    /// logical rather than visual order. Both would draw the wrong picture rather than fail.
+    AtlasLayoutRefused,
+    /// The font size is not a finite in-range number.
+    StyleFontSize,
+    /// The line spacing multiplier is not a finite in-range number.
+    StyleLineSpacing,
+    /// The text colour could not be resolved.
+    StyleColor,
+    /// The background colour or its opacity could not be resolved.
+    StyleBackground,
+    /// A padding, radius, margin or custom placement value is out of range.
+    StyleGeometry,
+    /// A fade duration is not a finite in-range number.
+    StyleTiming,
+    /// The cue opacity is outside `0.0..=1.0`.
+    StyleOpacity,
+    /// The subtitle position is not one the renderer implements.
+    StylePosition,
+    /// The text alignment is not one the renderer implements.
+    StyleAlign,
+    /// The animation is not one the renderer implements.
+    StyleAnimation,
+    /// The easing is not one of the reviewed curves.
+    StyleEasing,
+    /// The scene and the staged runs disagree on how many cues there are.
+    RunCount,
+    /// A run has no lines, no glyphs at all, or more than the renderer accepts.
+    RunLength,
+    /// A run refers to a glyph cell the atlas does not contain.
+    RunGlyphIndex,
+}
+
+impl fmt::Display for Rejection {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        let message = match self {
+            Self::AtlasFaceMismatch => {
+                "the glyph atlas was not baked from the scene's resolved face"
+            }
+            Self::AtlasMetrics => "the glyph atlas metrics cannot place a line",
+            Self::AtlasLayoutRefused => {
+                "the glyph atlas refuses layout from per-cell advances alone"
+            }
+            Self::StyleFontSize => "the font size is not supported",
+            Self::StyleLineSpacing => "the line spacing is not supported",
+            Self::StyleColor => "the text colour could not be resolved",
+            Self::StyleBackground => "the background colour could not be resolved",
+            Self::StyleGeometry => "a padding, radius, margin or placement value is not supported",
+            Self::StyleTiming => "a fade duration is not supported",
+            Self::StyleOpacity => "the cue opacity is outside 0.0..=1.0",
+            Self::StylePosition => "the subtitle position is not supported",
+            Self::StyleAlign => "the text alignment is not supported",
+            Self::StyleAnimation => "the animation is not supported",
+            Self::StyleEasing => "the easing is not one of the reviewed curves",
+            Self::RunCount => "the scene and its staged runs disagree on the cue count",
+            Self::RunLength => "a staged run is empty or longer than the renderer accepts",
+            Self::RunGlyphIndex => "a staged run refers to a glyph cell the atlas does not contain",
+        };
+        f.write_str(message)
+    }
+}
+
 /// Everything the compositor can refuse to do.
 ///
 /// Every variant fails closed: the compositor never substitutes a degraded result for a failure,
@@ -76,10 +155,32 @@ pub enum CompositorError {
         value: f32,
     },
 
+    /// A staged atlas, style, run or scene could not be drawn as given.
+    #[error("the subtitle scene was refused: {reason}")]
+    UnsupportedSceneInput {
+        /// Which part of the input was refused.
+        reason: Rejection,
+    },
+
+    /// A frame index was requested that the scene's timeline does not contain.
+    #[error("frame {index} is outside the scene timeline of {frame_count} frames")]
+    FrameOutOfRange {
+        /// The requested frame index.
+        index: u32,
+        /// How many frames the timeline actually has.
+        frame_count: u32,
+    },
+
     /// The composed frame could not be copied back to host memory.
     #[error("the composed frame could not be read back from the GPU: {reason}")]
     ReadbackFailed {
         /// The mapping or polling failure reported by the graphics backend.
         reason: String,
     },
+}
+
+impl From<Rejection> for CompositorError {
+    fn from(reason: Rejection) -> Self {
+        Self::UnsupportedSceneInput { reason }
+    }
 }

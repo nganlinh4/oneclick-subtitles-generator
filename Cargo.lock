@@ -3291,6 +3291,7 @@ dependencies = [
 name = "osg-compositor"
 version = "1.0.0"
 dependencies = [
+ "osg-scene",
  "pollster",
  "thiserror 2.0.20",
  "wgpu",

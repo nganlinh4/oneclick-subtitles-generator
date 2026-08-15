@@ -8,6 +8,7 @@ description = "Headless GPU composition foundation for the OSG native renderer"
 license = "MIT"
 
 [dependencies]
+osg-scene = { workspace = true }
 pollster = "=1.0.1"
 thiserror = "=2.0.20"
 wgpu = { version = "=30.0.0", default-features = false, features = [

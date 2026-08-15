@@ -13,9 +13,12 @@ use wgpu::{
 use crate::device::{AdapterProfile, AdapterSelection, GpuContext};
 use crate::error::CompositorError;
 use crate::frame::Frame;
+use crate::geometry::{VERTEX_FLOATS, build_frame_vertices};
+use crate::quad_pipeline::{QuadPipeline, vertex_buffer};
 use crate::readback;
 use crate::scene::{TestScene, UNIFORM_LEN};
 use crate::size::FrameSize;
+use crate::subtitle::SubtitleScene;
 
 /// The offscreen colour format. Unorm rather than sRGB, so shader output reaches the readback
 /// without an encode step that would vary between backends.
@@ -30,6 +33,7 @@ pub struct Compositor {
     gpu: GpuContext,
     pipeline: RenderPipeline,
     uniform_layout: BindGroupLayout,
+    quads: QuadPipeline,
 }
 
 impl Compositor {
@@ -46,10 +50,12 @@ impl Compositor {
     pub fn with_adapters(selection: AdapterSelection) -> Result<Self, CompositorError> {
         let gpu = GpuContext::acquire(selection)?;
         let (pipeline, uniform_layout) = build_pipeline(gpu.device());
+        let quads = QuadPipeline::build(gpu.device(), TARGET_FORMAT);
         Ok(Self {
             gpu,
             pipeline,
             uniform_layout,
+            quads,
         })
     }
 
@@ -59,7 +65,11 @@ impl Compositor {
         self.gpu.profile()
     }
 
-    /// Composes `scene` at `size` and reads the result back as tightly packed RGBA8 bytes.
+    /// Composes the reference [`TestScene`] at `size` and reads it back as tightly packed RGBA8.
+    ///
+    /// This is the pipeline probe, not the renderer: it draws a fixed image that exercises device
+    /// acquisition, the render pass and the row-unpadded readback without needing an atlas or a
+    /// scene contract. [`Compositor::render_scene`] is the path that draws subtitles.
     ///
     /// The result is a pure function of `scene` and `size` on a given adapter: the same arguments
     /// always produce the same bytes.
@@ -85,6 +95,62 @@ impl Compositor {
             }],
         });
 
+        self.compose(size, Color::BLACK, |pass| {
+            pass.set_pipeline(&self.pipeline);
+            pass.set_bind_group(0, &bind_group, &[]);
+            pass.draw(0..3, 0..1);
+        })
+    }
+
+    /// Composes one frame of a subtitle scene and reads it back as tightly packed RGBA8 bytes.
+    ///
+    /// This is the compositor's primary path: the scene contract in, the frame the editor and the
+    /// export both show out. The result is a pure function of `scene` and `frame_index` — the same
+    /// pair always produces the same bytes on a given adapter, whatever was rendered before it, so
+    /// seeking to a frame and playing up to it cannot disagree.
+    ///
+    /// Pixels are premultiplied and the ground is fully transparent, because the subtitle layer is
+    /// an overlay: an area no cue covers is `0,0,0,0` rather than an opaque colour the caller would
+    /// have to key out.
+    ///
+    /// # Errors
+    /// Returns [`CompositorError::FrameOutOfRange`] when the index is not in the scene's timeline,
+    /// and a readback error when the composed frame cannot be copied back.
+    pub fn render_scene(
+        &self,
+        scene: &SubtitleScene,
+        frame_index: u32,
+    ) -> Result<Frame, CompositorError> {
+        let device = self.gpu.device();
+        let queue = self.gpu.queue();
+        let vertices = build_frame_vertices(scene, frame_index)?;
+
+        let bind_group = self.quads.bind_atlas(device, queue, scene.atlas());
+        let buffer = vertex_buffer(device, queue, &vertices);
+        let count = u32::try_from(vertices.len() / VERTEX_FLOATS).unwrap_or(0);
+
+        self.compose(scene.size(), Color::TRANSPARENT, |pass| {
+            let Some(buffer) = buffer.as_ref() else {
+                return;
+            };
+            pass.set_pipeline(self.quads.pipeline());
+            pass.set_bind_group(0, &bind_group, &[]);
+            pass.set_vertex_buffer(0, buffer.slice(..));
+            pass.draw(0..count, 0..1);
+        })
+    }
+
+    /// Allocates the offscreen target, runs one render pass and reads the result back.
+    fn compose<Draw>(
+        &self,
+        size: FrameSize,
+        clear: Color,
+        draw: Draw,
+    ) -> Result<Frame, CompositorError>
+    where
+        Draw: FnOnce(&mut RenderPass<'_>),
+    {
+        let device = self.gpu.device();
         let target = device.create_texture(&TextureDescriptor {
             label: Some("osg-compositor frame"),
             size: readback::frame_extent(size),
@@ -109,7 +175,7 @@ impl Compositor {
                     depth_slice: None,
                     resolve_target: None,
                     ops: Operations {
-                        load: LoadOp::Clear(Color::BLACK),
+                        load: LoadOp::Clear(clear),
                         store: StoreOp::Store,
                     },
                 })],
@@ -118,19 +184,13 @@ impl Compositor {
                 occlusion_query_set: None,
                 multiview_mask: None,
             });
-            self.draw(&mut pass, &bind_group);
+            draw(&mut pass);
         }
         readback::record_copy(&mut encoder, &target, &staging, size);
         self.gpu.queue().submit(Some(encoder.finish()));
 
         let pixels = readback::read_packed(device, &staging, size)?;
         Ok(Frame::new(size, pixels))
-    }
-
-    fn draw(&self, pass: &mut RenderPass<'_>, bind_group: &wgpu::BindGroup) {
-        pass.set_pipeline(&self.pipeline);
-        pass.set_bind_group(0, bind_group, &[]);
-        pass.draw(0..3, 0..1);
     }
 }
 

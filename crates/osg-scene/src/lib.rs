@@ -13,6 +13,7 @@ pub mod animation;
 pub mod color;
 pub mod cues;
 pub mod easing;
+pub mod glyph;
 pub mod layout;
 pub mod scale;
 pub mod scene;
