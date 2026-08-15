@@ -1522,7 +1522,8 @@ const fn media_kind_name(kind: MediaKind) -> &'static str {
 mod tests {
     use osg_application::ProjectSnapshot;
     use osg_domain::{
-        JobId, JobKind, JobSnapshot, MediaAsset, MediaKind, ProjectMetadata, RevisionReason,
+        AssetId, JobId, JobKind, JobSnapshot, MediaAsset, MediaKind, ProjectMetadata,
+        RevisionReason,
     };
     use rusqlite::params;
     use serde_json::Value;
@@ -1550,6 +1551,70 @@ mod tests {
         database
             .compare_and_swap_job(running_sequence, job)
             .expect("persist completed job");
+    }
+
+    /// Reads the durable lifetime-owner fact directly, so ownership assertions never depend on
+    /// the same query the resolution path uses.
+    fn lifetime_owners(database_path: &std::path::Path, media_id: AssetId) -> Vec<Uuid> {
+        let connection =
+            rusqlite::Connection::open(database_path).expect("inspect lifetime owners");
+        let mut statement = connection
+            .prepare("SELECT project_id FROM media_project_owners WHERE media_id = ?1")
+            .expect("lifetime owner statement");
+        statement
+            .query_map([media_id.as_uuid()], |row| row.get::<_, Uuid>(0))
+            .expect("lifetime owner rows")
+            .map(|row| row.expect("lifetime owner row"))
+            .collect()
+    }
+
+    /// Stages media the way an ordinary (non-candidate) import does: a durable managed snapshot
+    /// plus a remembered native location, with no candidate lease at all.
+    fn stage_remembered_import(
+        database: &super::super::Database,
+        path: &std::path::Path,
+        fill: u8,
+    ) -> (MediaAsset, Vec<u8>) {
+        let bytes = vec![fill; 16 * 1024];
+        std::fs::write(path, &bytes).expect("import fixture");
+        let asset = MediaAsset::new(
+            path.file_name()
+                .and_then(std::ffi::OsStr::to_str)
+                .expect("fixture name"),
+            "mp4",
+            u64::try_from(bytes.len()).expect("fixture size"),
+            MediaKind::Video,
+        )
+        .expect("asset");
+        database
+            .remember_media(&asset, path)
+            .expect("ordinary imports are remembered without a candidate lease");
+        (asset, bytes)
+    }
+
+    /// Attaches already staged media through a normal project commit and reports the base and
+    /// attach state versions the frontend would keep.
+    fn attach_media_to_new_project(
+        database: &super::super::Database,
+        name: &str,
+        asset: &MediaAsset,
+    ) -> (ProjectMetadata, u64, u64) {
+        let metadata = ProjectMetadata::new(name).expect("project metadata");
+        let base = database.create_project(&metadata).expect("create project");
+        let attach = ProjectSnapshot::new(
+            metadata.clone(),
+            base.state_version(),
+            vec![asset.clone()],
+            Vec::new(),
+        )
+        .expect("attach snapshot");
+        let attached = database
+            .commit_project(
+                &attach,
+                &RevisionReason::new("attach active media").expect("revision reason"),
+            )
+            .expect("attach active media");
+        (metadata, base.state_version(), attached.state_version)
     }
 
     fn make_test_file_writable(path: &std::path::Path) {
@@ -2752,6 +2817,373 @@ mod tests {
                 .content_hash(),
             published.content_hash()
         );
+    }
+
+    #[test]
+    fn remembered_import_attached_by_a_project_commit_resolves_after_a_restart() {
+        let directory = tempfile::tempdir().expect("temporary directory");
+        let database_path = directory.path().join("osg.sqlite3");
+        let source_path = directory.path().join("import.mp4");
+        let asset;
+        let bytes;
+        let metadata;
+        let attached_version;
+        {
+            let database = super::super::Database::open(&database_path).expect("database");
+            let (staged, staged_bytes) = stage_remembered_import(&database, &source_path, 0x3c);
+            asset = staged;
+            bytes = staged_bytes;
+            let (owner, _, attached) =
+                attach_media_to_new_project(&database, "Subtitle alias owner", &asset);
+            metadata = owner;
+            attached_version = attached;
+            assert!(
+                database
+                    .resolve_project_media_revision(metadata.id(), attached_version, asset.id())
+                    .expect("resolve the attached revision")
+                    .is_some()
+            );
+        }
+
+        let reopened = super::super::Database::open(&database_path).expect("reopen after restart");
+        assert!(
+            reopened
+                .project_media_is_current(metadata.id(), attached_version, asset.id())
+                .expect("ownership survives the restart")
+        );
+        let resolved = reopened
+            .resolve_project_media_revision(metadata.id(), attached_version, asset.id())
+            .expect("resolve the attached revision after restart")
+            .expect("project media after restart");
+        assert_eq!(resolved.asset(), &asset);
+        assert_eq!(
+            std::fs::read(resolved.path()).expect("reopened bytes"),
+            bytes
+        );
+        assert_eq!(
+            lifetime_owners(&database_path, asset.id()),
+            vec![*metadata.id().as_uuid()]
+        );
+    }
+
+    #[test]
+    fn undo_past_the_attach_revision_fails_closed_but_keeps_the_lifetime_owner() {
+        let directory = tempfile::tempdir().expect("temporary directory");
+        let database_path = directory.path().join("osg.sqlite3");
+        let database = super::super::Database::open(&database_path).expect("database");
+        let source_path = directory.path().join("undone.mp4");
+        let (asset, _) = stage_remembered_import(&database, &source_path, 0x2d);
+        let (metadata, _, attached_version) =
+            attach_media_to_new_project(&database, "Undo owner", &asset);
+        assert!(
+            database
+                .project_media_is_current(metadata.id(), attached_version, asset.id())
+                .expect("attached media is current")
+        );
+
+        let restored = database
+            .undo_project(metadata.id(), attached_version)
+            .expect("undo the attach revision")
+            .expect("history target");
+        assert!(restored.media().is_empty());
+
+        for version in [attached_version, restored.state_version()] {
+            assert!(
+                !database
+                    .project_media_is_current(metadata.id(), version, asset.id())
+                    .expect("undone media is current for no revision")
+            );
+            assert!(
+                database
+                    .resolve_project_media_revision(metadata.id(), version, asset.id())
+                    .expect("resolve an undone revision")
+                    .is_none()
+            );
+        }
+        assert!(
+            database
+                .resolve_project_media(asset.id())
+                .expect("resolve undone project media")
+                .is_none()
+        );
+        assert_eq!(
+            lifetime_owners(&database_path, asset.id()),
+            vec![*metadata.id().as_uuid()]
+        );
+    }
+
+    #[test]
+    fn a_stale_project_state_version_never_resolves_attached_media() {
+        let directory = tempfile::tempdir().expect("temporary directory");
+        let database_path = directory.path().join("osg.sqlite3");
+        let database = super::super::Database::open(&database_path).expect("database");
+        let source_path = directory.path().join("versioned.mp4");
+        let (asset, _) = stage_remembered_import(&database, &source_path, 0x5f);
+        let (metadata, base_version, attached_version) =
+            attach_media_to_new_project(&database, "Stale version owner", &asset);
+
+        let renamed = ProjectSnapshot::new(
+            ProjectMetadata::with_id(metadata.id(), "Stale version owner renamed")
+                .expect("renamed metadata"),
+            attached_version,
+            vec![asset.clone()],
+            Vec::new(),
+        )
+        .expect("rename snapshot");
+        let renamed_version = database
+            .commit_project(
+                &renamed,
+                &RevisionReason::new("rename the project").expect("revision reason"),
+            )
+            .expect("rename the project")
+            .state_version;
+        assert!(renamed_version > attached_version);
+
+        for stale_version in [base_version, attached_version] {
+            assert!(
+                !database
+                    .project_media_is_current(metadata.id(), stale_version, asset.id())
+                    .expect("a stale state version is never current")
+            );
+            assert!(
+                database
+                    .resolve_project_media_revision(metadata.id(), stale_version, asset.id())
+                    .expect("resolve a stale state version")
+                    .is_none()
+            );
+        }
+        assert!(
+            database
+                .project_media_is_current(metadata.id(), renamed_version, asset.id())
+                .expect("the current state version is current")
+        );
+        assert!(
+            database
+                .resolve_project_media_revision(metadata.id(), renamed_version, asset.id())
+                .expect("resolve the current state version")
+                .is_some()
+        );
+    }
+
+    #[test]
+    fn a_second_project_cannot_claim_owned_media_across_a_database_reopen() {
+        let directory = tempfile::tempdir().expect("temporary directory");
+        let database_path = directory.path().join("osg.sqlite3");
+        let source_path = directory.path().join("owned.mp4");
+        let asset;
+        let owner_metadata;
+        let attached_version;
+        {
+            let database = super::super::Database::open(&database_path).expect("database");
+            let (staged, _) = stage_remembered_import(&database, &source_path, 0x4d);
+            asset = staged;
+            let (owner, _, attached) = attach_media_to_new_project(&database, "Owner A", &asset);
+            owner_metadata = owner;
+            attached_version = attached;
+        }
+
+        let reopened = super::super::Database::open(&database_path).expect("reopen after restart");
+        let other_metadata = ProjectMetadata::new("Owner B").expect("second project metadata");
+        let other_base = reopened
+            .create_project(&other_metadata)
+            .expect("create owner B");
+        let steal = ProjectSnapshot::new(
+            other_metadata.clone(),
+            other_base.state_version(),
+            vec![asset.clone()],
+            Vec::new(),
+        )
+        .expect("steal snapshot");
+        assert!(matches!(
+            reopened.commit_project(
+                &steal,
+                &RevisionReason::new("steal attached media").expect("revision reason"),
+            ),
+            Err(DatabaseError::CrossProjectIdentifier { project_id, entity })
+                if project_id == other_metadata.id() && entity == "media asset"
+        ));
+
+        let detach = ProjectSnapshot::new(
+            owner_metadata.clone(),
+            attached_version,
+            Vec::new(),
+            Vec::new(),
+        )
+        .expect("detach snapshot");
+        reopened
+            .commit_project(
+                &detach,
+                &RevisionReason::new("detach media").expect("revision reason"),
+            )
+            .expect("detach media");
+        assert!(matches!(
+            reopened.commit_project(
+                &steal,
+                &RevisionReason::new("steal detached media").expect("revision reason"),
+            ),
+            Err(DatabaseError::CrossProjectIdentifier { project_id, entity })
+                if project_id == other_metadata.id() && entity == "media asset"
+        ));
+        assert_eq!(
+            lifetime_owners(&database_path, asset.id()),
+            vec![*owner_metadata.id().as_uuid()]
+        );
+    }
+
+    #[test]
+    fn expired_candidate_cleanup_never_removes_project_owned_media() {
+        let directory = tempfile::tempdir().expect("temporary directory");
+        let database_path = directory.path().join("osg.sqlite3");
+        let database = super::super::Database::open(&database_path).expect("database");
+        let owned_path = directory.path().join("owned.mp4");
+        let owned_bytes = vec![0x11; 12 * 1024];
+        std::fs::write(&owned_path, &owned_bytes).expect("owned fixture");
+        let owned = MediaAsset::new(
+            "owned.mp4",
+            "mp4",
+            u64::try_from(owned_bytes.len()).expect("fixture size"),
+            MediaKind::Video,
+        )
+        .expect("owned asset");
+        database
+            .remember_media_candidate(&owned, &owned_path)
+            .expect("stage owned candidate");
+        let (metadata, _, attached_version) =
+            attach_media_to_new_project(&database, "Expiry owner", &owned);
+        let stray_path = directory.path().join("stray.mp4");
+        let stray_bytes = vec![0x22; 12 * 1024];
+        std::fs::write(&stray_path, &stray_bytes).expect("stray fixture");
+        let stray = MediaAsset::new(
+            "stray.mp4",
+            "mp4",
+            u64::try_from(stray_bytes.len()).expect("fixture size"),
+            MediaKind::Video,
+        )
+        .expect("stray asset");
+        database
+            .remember_media_candidate(&stray, &stray_path)
+            .expect("stage stray candidate");
+        // Force the hostile shape a downgrade or a corrupt writer could leave behind: the
+        // project-owned asset wears an expired candidate lease it never earned.
+        rusqlite::Connection::open(&database_path)
+            .expect("expire both assets")
+            .execute(
+                "UPDATE media_assets
+                 SET metadata_json = json_set(
+                   json_set(metadata_json, '$.osgMediaLifecycle', 'candidate'),
+                   '$.osgMediaCandidateExpiresAtMs', 0
+                 )
+                 WHERE id IN (?1, ?2)",
+                params![owned.id().as_uuid(), stray.id().as_uuid()],
+            )
+            .expect("expire both assets");
+        let downgraded: String = rusqlite::Connection::open(&database_path)
+            .expect("inspect the downgraded lease")
+            .query_row(
+                "SELECT metadata_json FROM media_assets WHERE id = ?1",
+                [owned.id().as_uuid()],
+                |row| row.get(0),
+            )
+            .expect("downgraded metadata");
+        let downgraded: Value =
+            serde_json::from_str(&downgraded).expect("valid downgraded metadata");
+        assert_eq!(downgraded["osgMediaLifecycle"], "candidate");
+        assert_eq!(downgraded["osgMediaCandidateExpiresAtMs"], 0);
+
+        let report = database
+            .reconcile_artifacts()
+            .expect("reconcile expired candidates");
+
+        assert_eq!(report.removed_expired_media_candidates, 1);
+        assert!(
+            database
+                .resolve_media(stray.id())
+                .expect("stray candidate lookup")
+                .is_none()
+        );
+        assert!(
+            database
+                .resolve_media(owned.id())
+                .expect("owned media lookup")
+                .is_some()
+        );
+        assert_eq!(
+            lifetime_owners(&database_path, owned.id()),
+            vec![*metadata.id().as_uuid()]
+        );
+        rusqlite::Connection::open(&database_path)
+            .expect("repair the downgraded lifecycle")
+            .execute(
+                "UPDATE media_assets
+                 SET metadata_json = json_set(metadata_json, '$.osgMediaLifecycle', 'project')
+                 WHERE id = ?1",
+                [owned.id().as_uuid()],
+            )
+            .expect("repair the downgraded lifecycle");
+        assert!(
+            database
+                .resolve_project_media_revision(metadata.id(), attached_version, owned.id())
+                .expect("resolve the surviving project media")
+                .is_some()
+        );
+    }
+
+    #[test]
+    fn project_owned_media_without_bytes_fails_closed_without_naming_a_path() {
+        let directory = tempfile::tempdir().expect("temporary directory");
+        let database_path = directory.path().join("osg.sqlite3");
+        let database = super::super::Database::open(&database_path).expect("database");
+        let source_path = directory.path().join("vanishing.mp4");
+        let (asset, _) = stage_remembered_import(&database, &source_path, 0x0f);
+        let (metadata, _, attached_version) =
+            attach_media_to_new_project(&database, "Vanishing owner", &asset);
+        let snapshot_path = database
+            .resolve_project_media_revision(metadata.id(), attached_version, asset.id())
+            .expect("resolve before the bytes vanish")
+            .expect("project media")
+            .path()
+            .to_owned();
+
+        make_test_file_writable(&snapshot_path);
+        std::fs::remove_file(&snapshot_path).expect("remove the managed snapshot");
+        std::fs::remove_file(&source_path).expect("remove the original import");
+
+        assert!(
+            database
+                .resolve_project_media_revision(metadata.id(), attached_version, asset.id())
+                .expect("revision resolve fails closed")
+                .is_none()
+        );
+        assert!(
+            database
+                .resolve_project_media(asset.id())
+                .expect("owner resolve fails closed")
+                .is_none()
+        );
+        assert!(
+            database
+                .resolve_media(asset.id())
+                .expect("identity resolve fails closed")
+                .is_none()
+        );
+        // Only the bytes are gone: the durable ownership facts must survive untouched.
+        assert!(
+            database
+                .project_media_is_current(metadata.id(), attached_version, asset.id())
+                .expect("ownership is unchanged")
+        );
+        assert_eq!(
+            lifetime_owners(&database_path, asset.id()),
+            vec![*metadata.id().as_uuid()]
+        );
+
+        let error = database
+            .remember_media(&asset, &source_path)
+            .expect_err("a vanished import cannot be remembered again");
+        assert!(matches!(error, DatabaseError::InvalidMediaLocation));
+        let private = directory.path().to_string_lossy().into_owned();
+        assert!(!format!("{error}").contains(&private));
+        assert!(!format!("{error:?}").contains(&private));
     }
 
     #[test]
