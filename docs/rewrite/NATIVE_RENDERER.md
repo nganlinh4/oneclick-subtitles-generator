@@ -367,13 +367,18 @@ and should be corrected rather than delivered.
 
 ## Order of work
 
-1. Freeze the specification: the feature matrix and the golden fixtures generated from current
-   behaviour. Nothing is deleted before this exists.
-2. Scene contract crate: versioned DTO, bounds, deterministic sampler, animation and layout math,
-   golden-tested against the fixtures from step 1.
-3. Atlas baking and staging, with font receipts.
-4. GPU compositor and the frame server behind the existing capability transport.
-5. Preview switched onto the native frames; the three drawing implementations collapse to one.
-6. Encode/mux stage against the reviewed tool contract.
-7. Parity suite across presets, options, resolutions and frame rates.
-8. Removal, in the order above, with the readiness rule landing last.
+Status as of 2026-08-16. Nothing is marked done here without a measured gate behind it.
+
+| # | Step | State |
+| --- | --- | --- |
+| 1 | Freeze the specification: feature matrix and golden fixtures from current behaviour. Nothing is deleted before this exists. | **Done.** Fixtures carry IEEE-754 bit patterns, because JS and `serde_json` disagreed by one ULP. |
+| 2 | Scene contract crate: versioned DTO, bounds, deterministic sampler, animation and layout maths, golden-tested against step 1. | **Done.** `osg-scene`, 105 tests. |
+| 3 | Atlas baking and staging, with font receipts. | **Done.** `glyphAtlas.js` bakes, `fontIdentity.js` resolves or honestly refuses, `glyphAtlasStaging.js` frames it, `osg-scene::glyph` reads it back with bounds parsed from the baker's own source. |
+| 4 | GPU compositor and the frame server behind the existing capability transport. | **Done.** `osg-compositor`, 46 tests on a real adapter; seek equals play proven byte-identical. Frame route serves `<img>` loads. |
+| 5 | Preview switched onto native frames; the three drawing implementations collapse to one. | **In progress.** Native atlas command and preview client landing. |
+| 6 | Encode/mux stage. | **Done for output, pending for input.** `osg-encode` produces H.264/AAC MP4 through Media Foundation, ffprobe-verified. `osg-audio` decodes and mixes. Video decoding via `IMFSourceReader` is designed but not built. |
+| 7 | Parity suite across presets, options, resolutions and frame rates. | **Not started.** Tracked field by field in `src/platform/renderParityLedger.js`; 36 of 70 options still pending. |
+| 8 | Removal, in the order above, with the readiness rule landing last. | **Not started, and correctly blocked** — nothing is removed until step 7 proves the replacement. |
+
+Step 6 turned out to be the step that removed the licensing problem entirely rather than relocating
+it, and step 7 is the one that decides when step 8 may begin.
