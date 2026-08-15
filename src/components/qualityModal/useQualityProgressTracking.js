@@ -9,6 +9,7 @@ import {
   claimMediaCandidate,
   discardMediaCandidate,
 } from '../../platform/mediaService';
+import { activateResolvedMediaProject } from '../../platform/mediaProjectActivation';
 import { getDownloadCookieSource } from '../../platform/downloadCookiePreference';
 import { resolveProjectForCache } from '../../platform/subtitleProjectStore';
 import { generateUrlBasedCacheId } from '../../services/subtitleCache';
@@ -90,21 +91,28 @@ const useQualityProgressTracking = ({
               return;
             }
             const cacheId = await generateUrlBasedCacheId(url);
-            const project = await resolveProjectForCache(cacheId, { create: true });
-            if (!project?.projectId
-                || !Number.isSafeInteger(project.snapshot?.stateVersion)
-                || project.snapshot.stateVersion < 0) {
-              throw new Error('The downloaded media project is unavailable');
-            }
+            const resolved = await resolveProjectForCache(cacheId, { create: true });
             if (cancelPendingRef.current) {
               await discardOnce(event.media);
               settle({ status: 'cancelled' });
               return;
             }
-            const nativeMedia = await claimMediaCandidate(event.media, {
-              expectedStateVersion: project.snapshot.stateVersion,
-              projectId: project.projectId,
-            });
+            // projectService storage operations stay detached, so the exact resolved project is
+            // published here — the claim below requires it to be the active project.
+            const activation = await activateResolvedMediaProject(resolved);
+            if (cancelPendingRef.current) {
+              activation.release();
+              await discardOnce(event.media);
+              settle({ status: 'cancelled' });
+              return;
+            }
+            let nativeMedia;
+            try {
+              nativeMedia = await claimMediaCandidate(event.media, activation.claimOptions);
+            } catch (error) {
+              activation.release();
+              throw error;
+            }
             settle({ status: 'completed', nativeMedia });
           }).catch(async (error) => {
             await discardOnce(event.media).catch(() => undefined);

@@ -15,7 +15,11 @@ vi.mock('@tauri-apps/api/core', () => ({
   Channel: class Channel {},
   invoke: vi.fn(),
 }));
-vi.mock('../../platform/desktopRuntime', () => ({ isDesktopRuntime: () => true }));
+vi.mock('../../platform/desktopRuntime', () => ({
+  isDesktopRuntime: () => true,
+  invokeDesktop: vi.fn(),
+  invokeDesktopRaw: vi.fn(),
+}));
 vi.mock('../../platform/downloadService', () => ({
   cancelDownload: vi.fn(),
   inspectDownloadUrl: vi.fn(),
@@ -30,8 +34,14 @@ vi.mock('../../services/subtitleCache', () => ({
 }));
 vi.mock('../../platform/subtitleProjectStore', () => ({
   resolveProjectForCache: vi.fn(async () => ({
+    cacheId: 'url-cache',
     projectId: '01890f39-7b62-7c4e-8c9a-000000000231',
-    snapshot: { stateVersion: 4 },
+    snapshot: {
+      metadata: { id: '01890f39-7b62-7c4e-8c9a-000000000231', name: 'url-cache' },
+      stateVersion: 4,
+      media: [],
+      tracks: [],
+    },
   })),
 }));
 

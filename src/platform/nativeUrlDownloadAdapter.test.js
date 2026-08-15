@@ -75,7 +75,7 @@ const candidateProject = (projectId = uuidv7(), stateVersion = 7) => ({
   },
 });
 
-const createHarness = () => {
+const createHarness = (overrides = {}) => {
   const inventoryId = uuidv7();
   const jobId = uuidv7();
   const assetId = uuidv7();
@@ -102,8 +102,10 @@ const createHarness = () => {
     discardCandidate,
     resolveCandidateProject,
     recoverDownloader,
+    ...overrides,
   });
   return {
+    ...overrides,
     adapter,
     assetId,
     cancel,
@@ -201,6 +203,156 @@ it('discards a losing candidate exactly once when project claim fails', async ()
 
   await expect(pending).rejects.toMatchObject({ code: 'mediaOpenFailed' });
   expect(harness.discardCandidate).toHaveBeenCalledExactlyOnceWith(harness.assetId);
+});
+
+const publicationSpy = () => {
+  const release = vi.fn(() => true);
+  const activateProject = vi.fn(async (resolved) => Object.freeze({
+    claimOptions: Object.freeze({
+      expectedStateVersion: resolved.snapshot.stateVersion,
+      projectId: resolved.projectId,
+    }),
+    release,
+  }));
+  return { activateProject, release };
+};
+
+it('publishes the exact resolved project before claiming a downloaded candidate', async () => {
+  const { activateProject, release } = publicationSpy();
+  const harness = createHarness({ activateProject });
+  const candidate = mediaCandidate(harness.assetId);
+  const pending = harness.adapter.downloadVideo({
+    url: 'https://example.com/candidate-publication',
+    cookieSource: 'none',
+  });
+  await vi.waitFor(() => expect(harness.start).toHaveBeenCalledTimes(1));
+  harness.getHandlers().onCompleted({ media: candidate, subtitle: null });
+
+  await expect(pending).resolves.toBe(harness.descriptor);
+  expect(harness.resolveCandidateProject).toHaveBeenCalledExactlyOnceWith(
+    'https://example.com/candidate-publication'
+  );
+  expect(activateProject).toHaveBeenCalledExactlyOnceWith(
+    expect.objectContaining({ projectId: expect.any(String) }),
+    { validateOwnership: expect.any(Function) }
+  );
+  expect(harness.describeMedia).toHaveBeenCalledExactlyOnceWith(candidate, {
+    expectedStateVersion: 7,
+    projectId: expect.any(String),
+  });
+  expect(release).not.toHaveBeenCalled();
+});
+
+it('releases the published project when the candidate claim fails', async () => {
+  const { activateProject, release } = publicationSpy();
+  const harness = createHarness({ activateProject });
+  harness.describeMedia.mockRejectedValueOnce(new Error('project version lost'));
+  const pending = harness.adapter.downloadVideo({
+    url: 'https://example.com/candidate-publication-loser',
+    cookieSource: 'none',
+  });
+  await vi.waitFor(() => expect(harness.start).toHaveBeenCalledTimes(1));
+  harness.getHandlers().onCompleted({ media: mediaCandidate(harness.assetId), subtitle: null });
+
+  await expect(pending).rejects.toMatchObject({ code: 'mediaOpenFailed' });
+  expect(release).toHaveBeenCalledOnce();
+  expect(harness.discardCandidate).toHaveBeenCalledExactlyOnceWith(harness.assetId);
+});
+
+it('discards a candidate exactly once when ownership is lost inside the publication', async () => {
+  const ownershipError = Object.assign(new Error('source switched'), {
+    code: 'autoGenerationOwnershipLost',
+  });
+  let current = true;
+  const activateProject = vi.fn(async (_resolved, { validateOwnership }) => {
+    current = false;
+    await validateOwnership();
+    throw new Error('The publication must not survive a lost owner');
+  });
+  const harness = createHarness({ activateProject });
+  const pending = harness.adapter.downloadVideo({
+    url: 'https://example.com/candidate-publication-owner-lost',
+    cookieSource: 'none',
+    validateOwnership: () => {
+      if (!current) throw ownershipError;
+    },
+  });
+  await vi.waitFor(() => expect(harness.start).toHaveBeenCalledTimes(1));
+  harness.getHandlers().onCompleted({ media: mediaCandidate(harness.assetId), subtitle: null });
+
+  await expect(pending).rejects.toMatchObject({ code: 'autoGenerationOwnershipLost' });
+  await vi.waitFor(() => {
+    expect(harness.discardCandidate).toHaveBeenCalledExactlyOnceWith(harness.assetId);
+  });
+  expect(harness.describeMedia).not.toHaveBeenCalled();
+});
+
+it('publishes the cached project again before reopening a completed asset', async () => {
+  const { activateProject, release } = publicationSpy();
+  const harness = createHarness({ activateProject });
+  const request = { url: 'https://example.com/cached-publication', cookieSource: 'none' };
+  const first = harness.adapter.downloadVideo(request);
+  await flush();
+  harness.getHandlers().onCompleted({ media: { asset: { id: harness.assetId } } });
+  await first;
+  await flush();
+
+  activateProject.mockClear();
+  harness.resolveCandidateProject.mockClear();
+  await expect(harness.adapter.downloadVideo(request)).resolves.toBe(harness.descriptor);
+
+  expect(harness.start).toHaveBeenCalledTimes(1);
+  expect(harness.resolveCandidateProject).toHaveBeenCalledExactlyOnceWith(request.url);
+  expect(activateProject).toHaveBeenCalledExactlyOnceWith(
+    expect.objectContaining({ projectId: expect.any(String) }),
+    { validateOwnership: expect.any(Function) }
+  );
+  expect(harness.openAsset).toHaveBeenCalledExactlyOnceWith(harness.assetId);
+  expect(release).not.toHaveBeenCalled();
+});
+
+it('keeps the cached capability when publishing its project fails', async () => {
+  const { activateProject, release } = publicationSpy();
+  const harness = createHarness({ activateProject });
+  const request = { url: 'https://example.com/cached-publication-unavailable', cookieSource: 'none' };
+  const first = harness.adapter.downloadVideo(request);
+  await flush();
+  harness.getHandlers().onCompleted({ media: { asset: { id: harness.assetId } } });
+  await first;
+  await flush();
+
+  activateProject.mockRejectedValueOnce(new Error('the project store is unavailable'));
+  await expect(harness.adapter.downloadVideo(request)).rejects.toMatchObject({
+    code: 'mediaCandidateProjectFailed',
+  });
+  expect(harness.start).toHaveBeenCalledTimes(1);
+  expect(harness.openAsset).not.toHaveBeenCalled();
+  expect(release).not.toHaveBeenCalled();
+
+  // The download was never invalidated, so the next request still reopens it without downloading.
+  await expect(harness.adapter.downloadVideo(request)).resolves.toBe(harness.descriptor);
+  expect(harness.start).toHaveBeenCalledTimes(1);
+  expect(harness.openAsset).toHaveBeenCalledExactlyOnceWith(harness.assetId);
+});
+
+it('releases the published project when a cached reopen genuinely fails', async () => {
+  const { activateProject, release } = publicationSpy();
+  const harness = createHarness({ activateProject });
+  const request = { url: 'https://example.com/cached-publication-failure', cookieSource: 'none' };
+  const first = harness.adapter.downloadVideo(request);
+  await flush();
+  harness.getHandlers().onCompleted({ media: { asset: { id: harness.assetId } } });
+  await first;
+  await flush();
+
+  harness.openAsset.mockRejectedValueOnce(new Error('asset expired'));
+  const redownloaded = harness.adapter.downloadVideo(request);
+  await vi.waitFor(() => expect(harness.start).toHaveBeenCalledTimes(2));
+  harness.getHandlers().onCompleted({ media: { asset: { id: harness.assetId } } });
+
+  await expect(redownloaded).resolves.toBe(harness.descriptor);
+  expect(release).toHaveBeenCalledOnce();
+  expect(harness.openAsset).toHaveBeenCalledTimes(1);
 });
 
 it('discards a completed candidate when its final owner is stale before activation', async () => {
