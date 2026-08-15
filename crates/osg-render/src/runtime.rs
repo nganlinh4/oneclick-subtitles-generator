@@ -637,7 +637,9 @@ mod tests {
                 .expect("managed Windows renderer runtime");
 
         assert!(runtime.status().available);
-        assert!(runtime.bundle_file_count() >= 70);
+        // A floor, not a fingerprint: it only has to reject a stub bundle. The published payload
+        // carries 43 bundle files since the retired voice samples left the composition.
+        assert!(runtime.bundle_file_count() >= 40);
         runtime
             .verify_execution_payload()
             .expect("managed execution payload remains exact");
