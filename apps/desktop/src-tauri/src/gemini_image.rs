@@ -1342,9 +1342,8 @@ fn publish_generated_image_with_pending_count(
                         }
                         return Err(generated_image_in_progress());
                     }
-                    ArtifactState::Failed if attempt == 0 => {
-                        let _ = database.remove_artifact(record.id())?;
-                    }
+                    // Storage recycles a failed row into a fresh staging reservation, so
+                    // a registration that reports an existing record is never failed.
                     ArtifactState::Failed => return Err(generated_image_storage_error()),
                 }
             }
@@ -2481,15 +2480,28 @@ mod tests {
         )
         .expect("retry failed record");
         assert!(created);
-        assert_ne!(retried.record().id(), failed_id);
-        succeed_job(&database, job_id);
-        commit_prepared(&database, &retried);
-        assert!(database.get_artifact(failed_id).unwrap().is_none());
+        // Storage recycles the failed row into a fresh staging reservation instead of
+        // stranding it, so the retry keeps the identifier. What must not survive is the
+        // failed attempt's residue: state, failure code, job binding, metadata, and the
+        // staged bytes all belong to the retry.
+        assert_eq!(retried.record().id(), failed_id);
+        assert_eq!(retried.record().state(), ArtifactState::Pending);
+        assert_eq!(retried.record().failure_code(), None);
+        assert_eq!(retried.record().job_id(), Some(job_id));
         assert_eq!(
-            list_generated_images(&database, project_id)
-                .expect("recovered image")
-                .len(),
-            1
+            retried.record().metadata()[COMMIT_ON_JOB_SUCCESS_METADATA_KEY],
+            json!(true)
+        );
+        assert_eq!(fs::read(retried.path()).expect("staged retry"), bytes);
+
+        succeed_job(&database, job_id);
+        let committed = commit_prepared(&database, &retried);
+        assert_eq!(committed.record().state(), ArtifactState::Ready);
+        assert_eq!(committed.record().failure_code(), None);
+        assert_eq!(fs::read(committed.path()).expect("committed retry"), bytes);
+        assert_eq!(
+            list_generated_images(&database, project_id).expect("recovered image"),
+            vec![descriptor_from_record(committed.record(), project_id).expect("descriptor")]
         );
     }
 

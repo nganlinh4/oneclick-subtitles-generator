@@ -799,8 +799,7 @@ async fn activate_media_asset_with_policy(
     commit_authorized_activated_media(
         &state.editor,
         &state.media_server,
-        &state.database,
-        authorization,
+        (&state.database, authorization),
         sequence,
         id,
         media,
@@ -916,8 +915,8 @@ fn commit_activated_media(
 fn commit_authorized_activated_media(
     editor_state: &std::sync::RwLock<crate::state::EditorSession>,
     media_server: &MediaServer,
-    database: &Database,
-    authorization: ProjectMediaAuthorization,
+    // The database and the revision it authorizes are only meaningful together.
+    authorization: (&Database, ProjectMediaAuthorization),
     sequence: u64,
     asset_id: AssetId,
     media: ImportedMedia,
@@ -926,7 +925,7 @@ fn commit_authorized_activated_media(
     commit_activated_media_with_authorization(
         editor_state,
         media_server,
-        Some((database, authorization)),
+        Some(authorization),
         sequence,
         asset_id,
         media,
@@ -1011,7 +1010,7 @@ fn reopen_media_asset(
             id,
         )?
         .ok_or_else(CommandError::media_unavailable)?;
-    register_resolved_media(media_server, resolved)
+    register_resolved_media(media_server, &resolved)
 }
 
 fn reopen_media_asset_unowned(
@@ -1022,12 +1021,12 @@ fn reopen_media_asset_unowned(
     let resolved = database
         .resolve_media(id)?
         .ok_or_else(CommandError::media_unavailable)?;
-    register_resolved_media(media_server, resolved)
+    register_resolved_media(media_server, &resolved)
 }
 
 fn register_resolved_media(
     media_server: &MediaServer,
-    resolved: osg_infrastructure::storage::ResolvedMedia,
+    resolved: &osg_infrastructure::storage::ResolvedMedia,
 ) -> CommandResult<(ImportedMedia, RegisteredMedia)> {
     let media = ImportedMedia::from_verified_native_asset(
         resolved.asset().clone(),
@@ -1193,8 +1192,7 @@ mod tests {
         let error = commit_authorized_activated_media(
             &editor,
             &media_server,
-            &database,
-            authorization,
+            (&database, authorization),
             sequence,
             asset.id(),
             media,

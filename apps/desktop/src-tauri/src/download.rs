@@ -1208,12 +1208,16 @@ async fn finish_download(
                         })
                         .is_err()
                     {
-                        discard_unclaimed_download_candidate(database, candidate_id).await;
+                        discard_unclaimed_download_candidate(database, job_id, candidate_id).await;
                     }
                 }
                 Err(error) => {
-                    discard_unclaimed_download_candidate(database, candidate_id).await;
-                    let job = background::snapshot(jobs, job_id).await;
+                    // The job has to reach its terminal state before the candidate is released.
+                    // A candidate published under this job stays claimed while the job is still
+                    // queued, running, or cancelling, so discarding first would silently keep the
+                    // downloaded bytes on disk and report a non-terminal job to the WebView.
+                    let job = background::finish_failure(jobs, job_id).await;
+                    discard_unclaimed_download_candidate(database, job_id, candidate_id).await;
                     let _ = channel.send(DownloadJobEvent::Failed { job, error });
                 }
             }
@@ -1239,11 +1243,26 @@ async fn finish_download(
     }
 }
 
-async fn discard_unclaimed_download_candidate(database: Database, candidate_id: AssetId) {
-    let _ = tauri::async_runtime::spawn_blocking(move || {
+/// Releases a downloaded candidate the `WebView` never took ownership of.
+///
+/// Callers must have driven the owning job to a terminal state first: the storage layer keeps a
+/// candidate claimed while its job is still live. A discard that removes nothing therefore means
+/// the downloaded bytes stay on disk until reconciliation reaps them, which is worth recording.
+async fn discard_unclaimed_download_candidate(
+    database: Database,
+    job_id: JobId,
+    candidate_id: AssetId,
+) {
+    let discarded = tauri::async_runtime::spawn_blocking(move || {
         database.discard_media_candidate(candidate_id)
     })
     .await;
+    if !matches!(discarded, Ok(Ok(true))) {
+        diagnostics::record(
+            "download.candidate-retained",
+            &[("job", job_id.to_string())],
+        );
+    }
 }
 
 fn remove_regular_file(path: &Path) {
@@ -1597,9 +1616,15 @@ mod tests {
         let bytes = vec![0x5a; 64 * 1024];
         fs::write(&source, &bytes).expect("downloaded source");
         let job_id = JobId::new();
+        // `finish_download` publishes the candidate while the download job is still running and
+        // only releases it once that job is terminal, so the fixture follows the same lifecycle.
+        let mut job = JobSnapshot::with_id(job_id, JobKind::DownloadMedia);
+        database.create_job(&job).expect("durable job");
+        let queued_sequence = job.sequence();
+        job.start().expect("start download job");
         database
-            .create_job(&JobSnapshot::with_id(job_id, JobKind::DownloadMedia))
-            .expect("durable job");
+            .compare_and_swap_job(queued_sequence, &job)
+            .expect("persist running download");
         let durable = publish_durable_media(
             &database,
             job_id,
@@ -1642,6 +1667,19 @@ mod tests {
         let json = serde_json::to_string(&value).expect("candidate JSON");
         assert!(!json.contains(directory.path().to_string_lossy().as_ref()));
         assert!(!json.to_ascii_lowercase().contains("path"));
+
+        // A candidate still owned by a live download job stays claimed; the WebView only ever sees
+        // one after the job is terminal.
+        assert!(
+            !database
+                .discard_media_candidate(asset.id())
+                .expect("live download candidate stays claimed")
+        );
+        let running_sequence = job.sequence();
+        job.succeed().expect("finish download job");
+        database
+            .compare_and_swap_job(running_sequence, &job)
+            .expect("persist finished download");
 
         assert!(
             database
