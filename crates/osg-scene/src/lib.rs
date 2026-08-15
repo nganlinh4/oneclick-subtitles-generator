@@ -10,6 +10,7 @@
 //! frontend suite. The fixture is generated from the shipped source, never hand-edited.
 
 pub mod animation;
+pub mod color;
 pub mod cues;
 pub mod easing;
 pub mod layout;
