@@ -4,12 +4,33 @@
 //! backfill covers exactly these columns" — so the arithmetic that turns a frame into those answers
 //! lives here once rather than being re-derived per test file.
 
+use std::sync::{Mutex, MutexGuard, PoisonError};
+
 use osg_compositor::{Compositor, CompositorError, CropSpec, Frame, VideoUnderlay};
 
 use super::{HEIGHT, WIDTH, underlay};
 
+/// Serialises adapter acquisition across the test binary's threads.
+///
+/// Creating several wgpu devices at once from one process has faulted inside the graphics driver
+/// here (`STATUS_ACCESS_VIOLATION`, roughly one run in fifteen), and there is no `unsafe` of ours
+/// anywhere in that stack. The product opens exactly one compositor, so this is a shape the test
+/// harness creates and the application never does — the fix belongs here rather than in the crate.
+///
+/// The guard is held only while the device is being created, not for the render, so the suite stays
+/// parallel where parallelism is safe. `osg-export`'s Media Foundation tests take the same measure
+/// for the same reason.
+static ADAPTER: Mutex<()> = Mutex::new(());
+
+fn serialised() -> MutexGuard<'static, ()> {
+    // A poisoned lock means some other test panicked while holding it; the device it was building
+    // is gone either way, so recovering is correct and hiding the panic is not a risk here.
+    ADAPTER.lock().unwrap_or_else(PoisonError::into_inner)
+}
+
 /// Acquire a compositor, or report loudly that nothing was verified.
 pub(crate) fn adapter() -> Option<Compositor> {
+    let _serialised = serialised();
     match Compositor::new() {
         Ok(compositor) => Some(compositor),
         Err(CompositorError::NoAdapter { reason }) => {
