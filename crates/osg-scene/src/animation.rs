@@ -4,8 +4,20 @@
 //! string would have to be parsed back. The values match the shipped renderer exactly, including
 //! the asymmetries it happens to have: `Scale` animates on the way in and the way out while
 //! `Bounce` only animates in, and the slide distances differ between the vertical and horizontal
-//! directions. Pixel offsets are authored against the 1080-high reference and scale with the
-//! composition like every other size.
+//! directions.
+//!
+//! **Unsettled: whether the pixel offsets scale with the composition.** This doc previously
+//! asserted that they are authored against the 1080-high reference and scale "like every other
+//! size", and the compositor duly runs them through the size scaler. The shipped renderer does not:
+//! `getAnimationTransform` emits a raw `translateY(50px)` and that string is applied directly to the
+//! subtitle element, while `getResponsiveScaledValue` is applied only to font size, letter spacing,
+//! radius, padding, shadows, glow and border. So a slide travels a fixed 50px at every resolution
+//! today, and 100 composition pixels at 4K under the native renderer.
+//!
+//! Scaling is arguably the better behaviour — a 50px slide is half as visible at 4K — but it is a
+//! change to how existing projects animate, and it was not decided, it was assumed. `animationType`
+//! is `pending` in the parity ledger; this is one of the things that has to be settled before it
+//! can move. The golden fixture carries no animation samples, so nothing currently catches it.
 
 use crate::cues::CuePhase;
 use crate::easing::apply_subtitle_animation_easing;
