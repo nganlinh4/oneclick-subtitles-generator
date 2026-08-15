@@ -19,26 +19,38 @@ as integrator and require fresh reviewers on each frozen slice.
 
 ## LIVE STATE — native renderer migration (update this at every context boundary)
 
-Last updated: 2026-08-16. Working tree **clean** at `599f3a8f`. 24 commits since the preserved
-safety checkpoint `650805d36837d36f3b4aad025d0e54bac3708d41`, which is untouched. Nothing pushed.
+Last updated: 2026-08-16, after wave 7. Working tree clean at `97de864f`. 32 commits since the
+preserved safety checkpoint `650805d36837d36f3b4aad025d0e54bac3708d41`, which is untouched. Nothing
+pushed.
 
 **Verified gates at this point** (measured, not estimated):
 
 | Gate | Result |
 | --- | --- |
-| `cargo test --workspace` | **842 passed, 0 failed** |
+| `cargo test --workspace` | **842 passed, 0 failed** (before wave 7's +51) |
+| `cargo test -p osg-scene -p osg-compositor` | **146 passed, 0 failed** |
 | `cargo clippy --workspace --all-targets -- -D warnings` | clean |
 | `cargo fmt --check` | clean |
 | `npm run lint` | clean |
-| `npm test` (frontend) | passing, incl. 126 new renderer tests |
+| `npm test` (frontend) | passing, incl. 195 renderer tests |
+
+**The parity property is proven, on real hardware.** `osg-compositor` renders frame 45 on a fresh
+device byte-identically to rendering frames 0..45 in order (Intel Graphics, Vulkan, no test skipped).
+Seeking and playing cannot diverge, so a preview and an export of the same timestamp cannot either.
 
 **What the migration has built so far** (all additive; no Remotion code deleted yet, because parity
 is not yet proven):
 
-- `crates/osg-scene` — deterministic subtitle maths, 79 tests. Exact rational timelines, cue
-  selection, easing, animation transforms, layout, colour, and a versioned `Scene` contract.
-- `crates/osg-compositor` — headless wgpu compositor, 16 tests, verified against a real hardware
-  adapter (Intel, Vulkan). `unsafe_code = "forbid"`.
+- `crates/osg-scene` — deterministic subtitle maths, **105 tests**. Exact rational timelines, cue
+  selection, easing, animation transforms, layout, colour, a versioned `Scene` contract, and the
+  Rust mirror of the glyph atlas descriptor whose bounds are parsed out of the baker's own source so
+  the two sides cannot drift apart without failing to compile.
+- `crates/osg-compositor` — headless wgpu compositor, **41 tests** on a real hardware adapter
+  (Intel, Vulkan). Renders real subtitle frames from the scene contract, delegating every
+  calculation to `osg-scene`. `unsafe_code = "forbid"`.
+- `src/platform/glyphAtlasStaging.js` — frames one bounded atlas per text revision for the native
+  boundary, 18 tests. Worst case measured at 67,402,660 bytes against a 33,554,432 byte budget, so
+  the largest atlas the baker can produce is refused before it becomes an IPC copy.
 - `crates/osg-media-server/src/frames.rs` — frame route serving `<img>` element loads, which is the
   only transport the shipped CSP permits.
 - `src/services/fontIdentity.js` — resolves family+weight to exactly one face and byte source, or an
