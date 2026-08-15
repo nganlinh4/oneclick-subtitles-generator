@@ -3,9 +3,11 @@ members = [
   "apps/desktop/src-tauri",
   "crates/osg-application",
   "crates/osg-asr",
+  "crates/osg-audio",
   "crates/osg-compositor",
   "crates/osg-domain",
   "crates/osg-download",
+  "crates/osg-encode",
   "crates/osg-engine-packages",
   "crates/osg-gemini",
   "crates/osg-infrastructure",
@@ -30,9 +32,11 @@ rust-version = "1.97"
 [workspace.dependencies]
 osg-application = { path = "crates/osg-application" }
 osg-asr = { path = "crates/osg-asr" }
+osg-audio = { path = "crates/osg-audio" }
 osg-compositor = { path = "crates/osg-compositor" }
 osg-domain = { path = "crates/osg-domain" }
 osg-download = { path = "crates/osg-download" }
+osg-encode = { path = "crates/osg-encode" }
 osg-engine-packages = { path = "crates/osg-engine-packages" }
 osg-gemini = { path = "crates/osg-gemini" }
 osg-live-music = { path = "crates/osg-live-music" }

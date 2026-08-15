@@ -1,0 +1,47 @@
+[package]
+name = "osg-encode"
+version.workspace = true
+authors.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+description = "H.264/AAC MP4 encoding for the OSG native renderer over the operating system's own codecs"
+license = "MIT"
+
+[dependencies]
+osg-scene = { workspace = true }
+thiserror.workspace = true
+
+[target.'cfg(windows)'.dependencies]
+windows = { version = "=0.62.2", features = [
+  "Win32_Foundation",
+  "Win32_Media_MediaFoundation",
+  "Win32_System_Com",
+] }
+
+[dev-dependencies]
+tempfile = "=3.27.0"
+
+# Only so a test can assert that our spelled-out Media Foundation enumerants still match the
+# platform bindings'. No test drives the API through this dependency.
+[target.'cfg(windows)'.dev-dependencies]
+windows = { version = "=0.62.2", features = ["Win32_Media_MediaFoundation"] }
+
+# Deliberately NOT `workspace = true`. The workspace forbids `unsafe_code`, and this crate is the
+# single audited exception: Media Foundation is a COM API and cannot be driven from safe Rust. Every
+# other workspace lint is mirrored verbatim, so the exception is exactly one lint wide. The two
+# `restriction` lints at the end are added on top: they make the compiler, rather than review
+# custom, responsible for catching an unsafe block that is undocumented or does more than one thing.
+[lints.rust]
+missing_debug_implementations = "warn"
+unreachable_pub = "warn"
+unsafe_code = "allow"
+unused_lifetimes = "warn"
+
+[lints.clippy]
+all = { level = "warn", priority = -1 }
+pedantic = { level = "warn", priority = -1 }
+missing_errors_doc = "allow"
+missing_panics_doc = "allow"
+module_name_repetitions = "allow"
+multiple_unsafe_ops_per_block = "warn"
+undocumented_unsafe_blocks = "warn"
