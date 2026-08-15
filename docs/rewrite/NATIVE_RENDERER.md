@@ -219,6 +219,30 @@ worker, command, permission or embedded resource, and any FFmpeg build configure
 The two already-published content-addressed assets stay in the pool, inert and unreferenced. They
 are not deleted or overwritten.
 
+### What removal does to the licensing position
+
+`THIRD_PARTY_NOTICES.md` currently lists five open notice items for the owner to resolve before
+distribution. Removing Remotion and encoding through the operating system's codecs closes three of
+them outright and most of a fourth, because the components they concern stop being redistributed:
+
+| Open item | After removal |
+| --- | --- |
+| GPL FFmpeg with x264, x265 and FDK-AAC redistributed with no licence files and no source offer | **Closed.** Nothing FFmpeg-derived is shipped or downloaded. |
+| MPL-2.0 `mediabunny` redistributed in compiled form with no notice or source reference | **Closed.** It only existed inside the render bundle. |
+| Node.js and Chrome for Testing provenance asserted but not pinned by URL and hash | **Closed.** They were the render runtime's hosts. |
+| Components delivered with no licence file, so the named terms are upstream's published text rather than bytes we read | **Mostly closed.** FFmpeg, x264, x265, FDK-AAC, libvpx, the GCC runtimes, MinGW-w64 winpthreads, zlib, the MSVC 2010 runtime, Node.js and Chromium all leave with the render runtime. |
+| ASR and speech runtime entries taken from committed catalogs rather than from delivered bytes | **Still open.** Unrelated to rendering; must be resolved on its own. |
+
+`licenses/DELIVERY-NOTICES.md` is entirely about the managed Remotion runtime and is deleted with
+it. The "Downloadable video render runtime" section of `THIRD_PARTY_NOTICES.md` goes the same way.
+
+This is the single largest reason the migration is worth its cost. The alternative — keeping
+Remotion and making its notices defensible — required writing a source offer for a GPL FFmpeg build
+that also has `--enable-nonfree` set, which no notice can make redistributable.
+
+Two things this does **not** resolve, and neither should be assumed closed by it: the owner's choice
+of root licence and notice policy, and the ASR/speech delivery verification above.
+
 ## Order of work
 
 1. Freeze the specification: the feature matrix and the golden fixtures generated from current
