@@ -119,7 +119,8 @@ The accepted design is therefore **one compositor and one glyph source**:
   overlay so all three advance identically.
 - **Preview transport.** Native frames reach the editor as element loads from the existing loopback
   capability server, which CSP already permits for `<img>`/`<video>`. No new origin, no WASM, no
-  blob workers.
+  blob workers. What exactly those frames contain is settled below, because it decides how far the
+  WYSIWYG guarantee actually reaches.
 - **Encoding is a separate final stage** that cannot change composition pixels, over a reviewed,
   redistributable tool contract whose build configuration and notices are pinned and asserted.
 
@@ -206,6 +207,34 @@ This also explains why the compositor takes a video underlay rather than only dr
 transparent ground: crop, flip, and the solid/blur canvas backfill are all operations on the decoded
 frame, and doing them in the same GPU pass as the subtitle layer is what keeps one pixel pipeline
 rather than two. Those fields are exactly the ones the parity ledger still lists as pending.
+
+### What the preview actually shows, and how far the guarantee reaches
+
+There are two things a preview could send, and the difference is not cosmetic:
+
+1. **The fully composited frame** — decoded video, crop, canvas backfill and the subtitle layer, all
+   blended on the GPU exactly as the export blends them, delivered as one image. This is identical
+   to the exported pixel by construction, because it *is* the exported pixel.
+2. **The subtitle layer alone**, delivered as a transparent image and laid over the HTML `<video>`
+   by the browser. Cheap and responsive, but the final blend is then done by the WebView rather than
+   by our compositor, over a frame the video decoder colour-managed on its own terms.
+
+The second is not a second renderer — the same compositor produces the layer either way — but the
+last step differs, so the result is close rather than exact. Chroma subsampling, the browser's own
+colour management and its straight-alpha blend all land in the gap.
+
+The rule is therefore about *which frame the user is judging*:
+
+- **Paused, scrubbing, or adjusting any style** — the surfaces where a user decides whether the
+  output looks right — must show the fully composited native frame. This is where the guarantee has
+  to hold, and it is also where there is time to render one frame properly.
+- **During continuous playback**, the overlay path is permitted for responsiveness. It must be
+  understood and documented as an approximation, and it must never be the last thing shown: pausing
+  re-renders the exact frame, so what the user finally looks at is always the real one.
+
+Stating it this way keeps the honest property — *the frame you approved is the frame you get* —
+without pretending that thirty composited frames a second through an image element is a sensible
+way to scrub a video.
 
 ### Determinism
 
