@@ -64,7 +64,7 @@ describe('render parity ledger', () => {
     // Deliberately asserts the real current number. This test failing because the count dropped is
     // the migration making progress; update it, do not delete it. It reaches zero at the end.
     const pending = pendingParityFields();
-    expect(pending).toHaveLength(25);
+    expect(pending).toHaveLength(26);
     expect(pending).toContain('strokeEnabled');
     expect(pending).toContain('glowEnabled');
     expect(pending).toContain('borderRadius');
@@ -168,6 +168,6 @@ describe('render output parity ledger', () => {
   it('reports the remaining output work honestly', () => {
     // 16 output settings, of which the timeline covers one and five are deliberate defect fixes.
     expect(pendingOutputParityFields()).toHaveLength(10);
-    expect(pendingParityFields().length + pendingOutputParityFields().length).toBe(35);
+    expect(pendingParityFields().length + pendingOutputParityFields().length).toBe(36);
   });
 });

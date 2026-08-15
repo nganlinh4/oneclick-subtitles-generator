@@ -121,9 +121,12 @@ export const RENDER_PARITY_LEDGER = Object.freeze({
     'Including the window that makes a cue visible before its start and after its end.',
   ),
   fadeOutDuration: native('crates/osg-scene/src/cues.rs'),
-  animationType: native(
-    'crates/osg-scene/src/animation.rs',
-    'All ten, with their asymmetries preserved: scale animates both ways, bounce only in.',
+  animationType: pending(
+    'Nine of the ten are reproduced in crates/osg-scene/src/animation.rs with their asymmetries '
+    + 'preserved — scale animates both ways, bounce only in. The tenth, typewriter, is the one that '
+    + 'is not a transform but a progressive reveal of the text, and the compositor does not cut the '
+    + 'glyph run yet, so it currently draws the whole cue at once. osg-scene already computes the '
+    + 'reveal length; the run has to be trimmed where it is drawn.',
   ),
   animationEasing: native(
     'crates/osg-scene/src/easing.rs',
