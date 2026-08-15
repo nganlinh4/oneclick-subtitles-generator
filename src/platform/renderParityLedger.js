@@ -98,7 +98,13 @@ export const RENDER_PARITY_LEDGER = Object.freeze({
   marginBottom: native('crates/osg-scene/src/layout.rs', 'Fixed 1920x1080 percentage, unlike sizes.'),
   marginLeft: native('crates/osg-scene/src/layout.rs', 'Fixed 1920x1080 percentage, unlike sizes.'),
   marginRight: native('crates/osg-scene/src/layout.rs', 'Fixed 1920x1080 percentage, unlike sizes.'),
-  maxWidth: native('crates/osg-scene/src/layout.rs'),
+  maxWidth: pending(
+    'Persisted, defaulted to 80, exposed in the UI and set by three shipped presets, and applied by '
+    + 'the shipped renderer as a percentage width cap on the subtitle element. Nothing in the native '
+    + 'pipeline consumes it: layout.rs derives the box from margins alone and the compositor sizes '
+    + 'the block to its widest laid-out line. It cannot be honoured before line breaking lands, '
+    + 'which wordWrap is already pending on.',
+  ),
   textAlign: pending(
     "Left, centre and right resolve through the box anchor in crates/osg-scene/src/layout.rs, but "
     + "'justify' is only carried, not performed: justifying needs space distributed across a "

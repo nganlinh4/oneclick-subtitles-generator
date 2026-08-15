@@ -1,3 +1,6 @@
+import fs from 'node:fs';
+import path from 'node:path';
+
 import { describe, expect, it } from 'vitest';
 
 import { defaultCustomization } from '../components/subtitleCustomization/defaultCustomization';
@@ -38,10 +41,28 @@ describe('render parity ledger', () => {
     }
   });
 
-  it('makes an implemented field say where it is implemented', () => {
-    for (const [field, record] of Object.entries(RENDER_PARITY_LEDGER)) {
-      if (record.disposition === 'native' || record.disposition === 'fixed') {
-        expect(record.where, `${field} must name its implementation`).toBeTruthy();
+  it('makes an implemented field name an implementation that actually exists', () => {
+    // Truthiness alone is not enough, and this test used to check only that. A `native` disposition
+    // with any plausible-looking path passed forever, which is how `maxWidth` sat claiming
+    // crates/osg-scene/src/layout.rs while nothing in the native pipeline consumed it at all.
+    //
+    // Resolving the path is the part that can be checked mechanically without being brittle. A
+    // name-match against the field itself cannot be: Rust uses its own vocabulary, so layout.rs
+    // implements marginTop as `Margins { top }` and cues.rs implements fadeInDuration as a fade
+    // window. Whether the named module really honours the field still needs a human, which is why
+    // every disposition change should be read rather than trusted.
+    const repositoryRoot = path.resolve(__dirname, '../..');
+    for (const [ledgerName, ledger] of [
+      ['subtitle', RENDER_PARITY_LEDGER],
+      ['output', RENDER_OUTPUT_PARITY_LEDGER],
+    ]) {
+      for (const [field, record] of Object.entries(ledger)) {
+        if (record.disposition !== 'native' && record.disposition !== 'fixed') continue;
+        expect(record.where, `${ledgerName}.${field} must name its implementation`).toBeTruthy();
+        expect(
+          fs.existsSync(path.resolve(repositoryRoot, record.where)),
+          `${ledgerName}.${field} names ${record.where}, which does not exist`,
+        ).toBe(true);
       }
     }
   });
@@ -64,7 +85,7 @@ describe('render parity ledger', () => {
     // Deliberately asserts the real current number. This test failing because the count dropped is
     // the migration making progress; update it, do not delete it. It reaches zero at the end.
     const pending = pendingParityFields();
-    expect(pending).toHaveLength(26);
+    expect(pending).toHaveLength(27);
     expect(pending).toContain('strokeEnabled');
     expect(pending).toContain('glowEnabled');
     expect(pending).toContain('borderRadius');
@@ -172,6 +193,6 @@ describe('render output parity ledger', () => {
     expect(pendingOutputParityFields()).toEqual([
       'aspectRatio', 'narrationVolume', 'originalAudioVolume', 'resolution', 'trimEnd',
     ]);
-    expect(pendingParityFields().length + pendingOutputParityFields().length).toBe(31);
+    expect(pendingParityFields().length + pendingOutputParityFields().length).toBe(32);
   });
 });
