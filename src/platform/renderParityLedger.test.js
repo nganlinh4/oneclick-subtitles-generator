@@ -85,10 +85,10 @@ describe('render parity ledger', () => {
     // Deliberately asserts the real current number. This test failing because the count dropped is
     // the migration making progress; update it, do not delete it. It reaches zero at the end.
     const pending = pendingParityFields();
-    expect(pending).toHaveLength(27);
+    expect(pending).toHaveLength(26);
     expect(pending).toContain('strokeEnabled');
     expect(pending).toContain('glowEnabled');
-    expect(pending).toContain('borderRadius');
+    expect(pending).toContain('borderWidth');
   });
 
   it('keeps the inert fields inert so saved projects still round-trip', () => {
@@ -189,10 +189,8 @@ describe('render output parity ledger', () => {
   it('reports the remaining output work honestly', () => {
     // 16 output settings: the timeline covers one, five are deliberate defect fixes, and the
     // compositor's video underlay closed the flip and canvas-backfill group.
-    expect(pendingOutputParityFields()).toHaveLength(5);
-    expect(pendingOutputParityFields()).toEqual([
-      'aspectRatio', 'narrationVolume', 'originalAudioVolume', 'resolution', 'trimEnd',
-    ]);
-    expect(pendingParityFields().length + pendingOutputParityFields().length).toBe(32);
+    expect(pendingOutputParityFields()).toHaveLength(3);
+    expect(pendingOutputParityFields()).toEqual(['aspectRatio', 'resolution', 'trimEnd']);
+    expect(pendingParityFields().length + pendingOutputParityFields().length).toBe(29);
   });
 });

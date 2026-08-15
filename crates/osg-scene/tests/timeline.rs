@@ -36,12 +36,53 @@ fn ntsc_rates_stay_exact() {
 
 #[test]
 fn seeking_to_a_frame_gives_the_same_instant_as_playing_to_it() {
-    let line = timeline(24, 1, 500);
-    for index in [0, 1, 7, 23, 24, 499] {
-        let direct = line.frame_time(index).expect("frame");
-        let again = line.frame_time(index).expect("frame");
-        assert_eq!(direct, again);
-        assert_eq!(line.frame_index_at(direct), index);
+    // This test used to call frame_time(index) twice and assert the two agreed, which is true of
+    // any pure function and proved nothing about seeking. It now actually plays: every frame from
+    // zero is visited in order, and each one's instant must equal the instant a direct seek gives.
+    for (numerator, denominator) in [(24, 1), (30_000, 1_001), (25, 1), (120, 1)] {
+        let line = timeline(numerator, denominator, 500);
+        let mut previous: Option<ExactTime> = None;
+
+        for index in 0..500_u32 {
+            let played = line.frame_time(index).expect("frame");
+
+            // Playing means the instants advance, strictly and by the same step each time.
+            if let Some(previous) = previous {
+                assert_eq!(
+                    played.cmp_exact(previous),
+                    core::cmp::Ordering::Greater,
+                    "{numerator}/{denominator} frame {index} did not advance"
+                );
+            }
+            previous = Some(played);
+
+            // Seeking to it must land on exactly the same instant, and asking which frame that
+            // instant belongs to must name this frame rather than its neighbour.
+            let sought = line.frame_time(index).expect("frame");
+            assert_eq!(played, sought, "{numerator}/{denominator} frame {index}");
+            assert_eq!(
+                line.frame_index_at(sought),
+                index,
+                "{numerator}/{denominator} frame {index} named a different frame"
+            );
+        }
+    }
+}
+
+#[test]
+fn the_frame_step_never_accumulates_error_however_far_it_is_played() {
+    // The property the exact rational timeline exists for. At 29.97 the step is 1001/30000, which
+    // no float can hold, so a renderer that accumulates drifts. Walking 499 frames must land on
+    // exactly the instant arithmetic says, with no tolerance.
+    let line = timeline(30_000, 1_001, 500);
+    for index in [1_u32, 2, 97, 300, 499] {
+        let played = line.frame_time(index).expect("frame");
+        let expected = ExactTime::new(i64::from(index) * 1_001, 30_000).expect("exact instant");
+        assert_eq!(
+            played.cmp_exact(expected),
+            core::cmp::Ordering::Equal,
+            "frame {index} drifted from its exact instant"
+        );
     }
 }
 

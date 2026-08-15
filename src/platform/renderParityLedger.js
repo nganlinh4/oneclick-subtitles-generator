@@ -85,7 +85,11 @@ export const RENDER_PARITY_LEDGER = Object.freeze({
   shadowLayers: inert('Validated and persisted end to end, with no render effect and no UI.'),
 
   // ---- Box -----------------------------------------------------------------------------------
-  borderRadius: pending('Rounded-rect background in the compositor.'),
+  borderRadius: native(
+    'crates/osg-compositor',
+    'A signed-distance rounded box in the subtitle shader, carried on SubtitleStyleSpec and drawn, '
+    + 'not merely persisted.',
+  ),
   borderWidth: pending('Background border in the compositor.'),
   borderColor: pending('Background border in the compositor.'),
   borderStyle: pending('Dashed and dotted need a shader pattern, not just a colour.'),
@@ -162,8 +166,15 @@ export const RENDER_OUTPUT_PARITY_LEDGER = Object.freeze({
   ),
 
   // ---- Audio ---------------------------------------------------------------------------------
-  originalAudioVolume: pending('Integer 0-100 in the shipped contract; osg-audio must mirror that scale.'),
-  narrationVolume: pending('Integer 0-100 in the shipped contract; osg-audio must mirror that scale.'),
+  originalAudioVolume: native(
+    'crates/osg-audio',
+    "The shipped 0-100 control divided by 100 into a linear gain, which is exactly what the editor's "
+    + 'own volume prop does. osg-audio mirrors the vocabulary rather than inventing one.',
+  ),
+  narrationVolume: native(
+    'crates/osg-audio',
+    'The same shipped 0-100 scale as the original audio volume.',
+  ),
 
   // ---- Trim ----------------------------------------------------------------------------------
   trimStart: fixed(
