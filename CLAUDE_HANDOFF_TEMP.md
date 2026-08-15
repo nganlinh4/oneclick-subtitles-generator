@@ -19,7 +19,7 @@ as integrator and require fresh reviewers on each frozen slice.
 
 ## LIVE STATE — native renderer migration (update this at every context boundary)
 
-Last updated: 2026-08-16, after wave 9. Working tree clean at `66070978`. 50 commits since the
+Last updated: 2026-08-16, after wave 10. Working tree clean at `a10ad0c7`. 53 commits since the
 preserved safety checkpoint `650805d36837d36f3b4aad025d0e54bac3708d41`, which is untouched. Nothing
 pushed.
 
@@ -27,13 +27,14 @@ pushed.
 
 | Gate | Result |
 | --- | --- |
-| `cargo test --workspace` | **1059 passed, 0 failed** (was 842 before this migration wave) |
+| `cargo test --workspace` | **1159 passed, 0 failed** (was 842 when this stretch began) |
 | `cargo clippy --workspace --all-targets -- -D warnings` | clean |
 | `cargo fmt --check` | clean |
-| `npx vitest run` (whole frontend) | **1855 passed, 0 failed, across 218 files** |
+| `npx vitest run` (whole frontend) | **1878 passed, 0 failed** |
 | `npm run lint` | PASS |
 | `npm run check:i18n` | PASS |
-| `npm run check:tauri-contract` | PASS |
+| `npm run check:tauri-contract` | PASS (125 commands) |
+| `node scripts/check-release-readiness.js` | PASS |
 
 **The parity property is proven, on real hardware.** `osg-compositor` renders frame 45 on a fresh
 device byte-identically to rendering frames 0..45 in order (Intel Graphics, Vulkan, no test skipped).
@@ -46,7 +47,10 @@ is not yet proven):
   selection, easing, animation transforms, layout, colour, a versioned `Scene` contract, and the
   Rust mirror of the glyph atlas descriptor whose bounds are parsed out of the baker's own source so
   the two sides cannot drift apart without failing to compile.
-- `crates/osg-compositor` — headless wgpu compositor, **46 tests** on a real hardware adapter
+- `crates/osg-decode` — `IMFSourceReader` video decode with frame-exact sampling, **56 tests**. A
+  real encode/decode round trip caught two defects: frame indices floored from a quantised sample
+  timestamp named frame 1 as frame 0, and a past-the-end request leaked a raw HRESULT.
+- `crates/osg-compositor` — headless wgpu compositor, **72 tests** on a real hardware adapter
   (Intel, Vulkan). Renders real subtitle frames from the scene contract, delegating every
   calculation to `osg-scene`. `unsafe_code = "forbid"`.
 - `crates/osg-encode` — Media Foundation H.264/AAC MP4, **55 tests**, ffprobe-verified.
@@ -82,7 +86,7 @@ without one, or listed there without existing. Auditing my own entries against t
 three that claimed more than the code does — `textAlign` (justify is parsed, not performed),
 `animationType` (nine of ten; typewriter does not cut the run yet) and `gradientEnabled` (both side
 effects are reproduced but nothing paints the gradient, so enabling it today would give invisible
-subtitles). The honest figure is **36 of 70 still pending**, and it drops as work lands.
+subtitles). The honest figure is **31 of 70 still pending**, and it drops as work lands.
 
 **Encoding and decoding no longer involve FFmpeg at all.** `osg-encode` drives Media Foundation's
 SinkWriter for H.264/AAC MP4 and `IMFSourceReader` will decode source video, both using codecs
@@ -91,11 +95,35 @@ already licensed to the user as part of Windows. Verified with ffprobe rather th
 symphonia plus libopus, because roughly every yt-dlp download carries Opus and symphonia has no
 decoder for it.
 
-**Next steps, in order:** land wave 9's preview boundary, add the video underlay so crop, flip and
-canvas backfill work, switch preview onto native frames, prove exhaustive parity against the shipped
-renderer, only then remove Remotion — keeping `osg-render/src/contract.rs`, which has zero Remotion
-references and is still the typed boundary the frontend speaks — then packaging and installed-EXE
-smoke.
+**Open items carried forward — recorded so they are not lost, none of them blocking today:**
+
+1. **A duplicated function that must never diverge.** `osg_decode::sampling::exact_time_to_100ns` is
+   a verbatim copy of `osg_encode::timing::exact_time_to_100ns`. It is what makes an instant written
+   by the encoder and one read by the decoder the same number; a divergence would be a silent
+   one-frame drift that no existing test would catch. `CancelToken` is duplicated between the same
+   two crates. Both belong in `osg-scene`, re-exported. Do this when neither crate is being edited.
+2. **Media Foundation does not round-trip `MF_MT_YUV_MATRIX`.** Measured: a clip written by
+   `osg-encode` declaring BT.709 reads back with no matrix at all, so the decoder falls to its
+   assumed-by-height convention. Harmless today because that convention lands on BT.709 for 1080p,
+   which is exactly why the bug would stay invisible while being real. Decide whether the encoder
+   should write the matrix somewhere the decoder can see it, or whether the convention is accepted.
+   `DecoderConfig::with_colorimetry` is the explicit override in the meantime.
+3. **`#rgba` four-digit colours.** `CropSettings::validate` accepts them; `osg_scene::color` does
+   not, so the compositor refuses a canvas colour in that shape rather than writing a second colour
+   parser. Either `osg-scene` grows the shorthand or the editor never emits it. Confirm which.
+4. **`canvasBgBlur` is clamped, not refused.** Stored range reaches 1000; applied sigma clamps to 40.
+   A user who stored 200 sees the 40 result. Refusing would reject a value the editor legitimately
+   persists, so this is deliberate, but it is a silent clamp and should be stated in release notes.
+5. **The non-Windows decoder path has never executed.** `tests/unsupported_platform.rs` is
+   `#![cfg(not(windows))]` and reports zero tests here. It needs a non-Windows CI target to be more
+   than an assertion about source text.
+
+**Next steps, in order:** finish the subtitle decoration and text shaping so the parity ledger
+empties, land the export orchestration that converts a validated `RenderRequest` into a scene (the
+one place every parity decision is applied), switch preview onto native frames, prove exhaustive
+parity against the shipped renderer, only then remove Remotion — keeping
+`osg-render/src/contract.rs`, which has zero Remotion references and is still the typed boundary the
+frontend speaks — then packaging and installed-EXE smoke.
 
 ---
 
