@@ -1,0 +1,23 @@
+[package]
+name = "osg-compositor"
+version.workspace = true
+authors.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+description = "Headless GPU composition foundation for the OSG native renderer"
+license = "MIT"
+
+[dependencies]
+pollster = "=1.0.1"
+thiserror = "=2.0.20"
+wgpu = { version = "=30.0.0", default-features = false, features = [
+  "dx12",
+  "gles",
+  "metal",
+  "std",
+  "vulkan",
+  "wgsl",
+] }
+
+[lints]
+workspace = true

@@ -3,6 +3,7 @@ members = [
   "apps/desktop/src-tauri",
   "crates/osg-application",
   "crates/osg-asr",
+  "crates/osg-compositor",
   "crates/osg-domain",
   "crates/osg-download",
   "crates/osg-engine-packages",
@@ -29,6 +30,7 @@ rust-version = "1.97"
 [workspace.dependencies]
 osg-application = { path = "crates/osg-application" }
 osg-asr = { path = "crates/osg-asr" }
+osg-compositor = { path = "crates/osg-compositor" }
 osg-domain = { path = "crates/osg-domain" }
 osg-download = { path = "crates/osg-download" }
 osg-engine-packages = { path = "crates/osg-engine-packages" }
