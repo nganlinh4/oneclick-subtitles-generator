@@ -231,6 +231,13 @@ impl SampleLock<'_> {
         }
         // A buffer that has not been told how much of it is filled still holds its capacity, and a
         // decoded frame fills what it was allocated for.
+        //
+        // Be clear about what this is: an assumption, not a report. When the platform says the
+        // current length is zero we substitute the allocated capacity, which stays inside the
+        // allocation — `Lock` hands back `max_length` as the size it allocated — so this cannot read
+        // out of bounds. What it can read is bytes the decoder did not write, which would surface as
+        // a corrupt frame rather than a crash. The frame-size check downstream still has to pass, so
+        // a buffer too small for the declared geometry is refused either way.
         let filled = if current_length == 0 {
             max_length
         } else {
@@ -258,10 +265,11 @@ impl SampleLock<'_> {
         if self.start.is_null() || self.length == 0 {
             return &[];
         }
-        // SAFETY: `planar`/`linear` established that `start` is non-null and that the platform
-        // reported at least `length` readable bytes behind it. The lock is held for as long as
-        // `self` lives, `self` borrows the sample that owns the memory, and `&self` means no
-        // mutable view of the region exists.
+        // SAFETY: `planar`/`linear` established that `start` is non-null and that `length` bytes
+        // behind it are inside the allocation the platform reported through `Lock` — either its
+        // current length or, when that is zero, the capacity it allocated, which bounds the former.
+        // The lock is held for as long as `self` lives, `self` borrows the sample that owns the
+        // memory, and `&self` means no mutable view of the region exists.
         unsafe { slice::from_raw_parts(self.start, self.length) }
     }
 
