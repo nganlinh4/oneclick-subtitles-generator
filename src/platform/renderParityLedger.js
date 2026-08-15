@@ -195,8 +195,12 @@ export const RENDER_OUTPUT_PARITY_LEDGER = Object.freeze({
   ),
   canvasBgColor: native(
     'crates/osg-compositor',
-    "Resolved through osg-scene's colour parser rather than a second one, which means the four-digit "
-    + '#rgba shorthand the crop validator accepts is refused rather than silently mis-parsed.',
+    "Resolved through osg-scene's colour parser rather than a second one, so the shapes the crop "
+    + 'validator accepts — including the four-digit #rgba shorthand — all parse rather than failing '
+    + 'an entire export over a colour the schema calls valid. OPEN QUESTION for the compositor '
+    + 'owner: a canvas colour carrying alpha leaves the uncovered area translucent, and the encoder '
+    + 'discards alpha, so a translucent non-black backfill would export darker than it previews. '
+    + 'Either force the backfill opaque or refuse alpha on this field specifically.',
   ),
   canvasBgBlur: native(
     'crates/osg-compositor',
