@@ -84,11 +84,19 @@ describe('render parity ledger', () => {
   it('reports the remaining work honestly rather than rounding it down', () => {
     // Deliberately asserts the real current number. This test failing because the count dropped is
     // the migration making progress; update it, do not delete it. It reaches zero at the end.
+    //
+    // The six that remain are not arbitrary. Three are blocked on one thing — the compositor
+    // accumulates the pen from cell advances instead of reading the positions the atlas already
+    // emits — and the other three each need a decision rather than code.
     const pending = pendingParityFields();
-    expect(pending).toHaveLength(26);
-    expect(pending).toContain('strokeEnabled');
-    expect(pending).toContain('glowEnabled');
-    expect(pending).toContain('borderWidth');
+    expect(pending).toEqual([
+      'animationType',
+      'letterSpacing',
+      'lineHeight',
+      'maxWidth',
+      'rtlSupport',
+      'textAlign',
+    ]);
   });
 
   it('keeps the inert fields inert so saved projects still round-trip', () => {
@@ -187,10 +195,9 @@ describe('render output parity ledger', () => {
   });
 
   it('reports the remaining output work honestly', () => {
-    // 16 output settings: the timeline covers one, five are deliberate defect fixes, and the
-    // compositor's video underlay closed the flip and canvas-backfill group.
-    expect(pendingOutputParityFields()).toHaveLength(3);
-    expect(pendingOutputParityFields()).toEqual(['aspectRatio', 'resolution', 'trimEnd']);
-    expect(pendingParityFields().length + pendingOutputParityFields().length).toBe(29);
+    // Only aspectRatio is left, and it needs a decision rather than code: the request contract
+    // already derives the output width from the crop ratio and never reads the field.
+    expect(pendingOutputParityFields()).toEqual(['aspectRatio']);
+    expect(pendingParityFields().length + pendingOutputParityFields().length).toBe(7);
   });
 });

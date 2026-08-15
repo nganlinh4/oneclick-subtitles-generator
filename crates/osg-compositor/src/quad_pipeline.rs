@@ -6,12 +6,11 @@
 //! resized or partially written buffer is the usual way that guarantee quietly stops holding.
 
 use wgpu::{
-    AddressMode, BindGroup, BindGroupDescriptor, BindGroupEntry, BindGroupLayout,
-    BindGroupLayoutDescriptor, BindGroupLayoutEntry, BindingResource, BindingType, BlendState,
-    Buffer, BufferDescriptor, BufferUsages, ColorTargetState, ColorWrites, Device, Extent3d,
-    FilterMode, FragmentState, MipmapFilterMode, MultisampleState, Origin3d,
-    PipelineLayoutDescriptor, PrimitiveState, Queue, RenderPipeline, RenderPipelineDescriptor,
-    Sampler, SamplerBindingType, SamplerDescriptor, ShaderModuleDescriptor, ShaderSource,
+    BindGroup, BindGroupDescriptor, BindGroupEntry, BindGroupLayout, BindGroupLayoutDescriptor,
+    BindGroupLayoutEntry, BindingResource, BindingType, BlendState, Buffer, BufferDescriptor,
+    BufferUsages, ColorTargetState, ColorWrites, Device, Extent3d, FragmentState, MultisampleState,
+    Origin3d, PipelineLayoutDescriptor, PrimitiveState, Queue, RenderPipeline,
+    RenderPipelineDescriptor, Sampler, SamplerBindingType, ShaderModuleDescriptor, ShaderSource,
     ShaderStages, TexelCopyBufferLayout, TexelCopyTextureInfo, TextureAspect, TextureDescriptor,
     TextureDimension, TextureFormat, TextureSampleType, TextureUsages, TextureViewDescriptor,
     TextureViewDimension, VertexAttribute, VertexBufferLayout, VertexFormat, VertexState,
@@ -21,11 +20,21 @@ use wgpu::{
 use osg_scene::glyph::GlyphAtlasDescriptor;
 
 use crate::geometry::VERTEX_STRIDE;
+use crate::glyphs::STROKE_TAPS;
+use crate::pass::linear_clamp_sampler;
+
+/// The subtitle shader with its Rust-owned constants substituted in.
+///
+/// WGSL cannot read a Rust `const`, and a stroke tap count that disagreed between the two languages
+/// would be a silent quality change rather than a build error, so the one value is injected here.
+fn subtitle_shader() -> String {
+    include_str!("shaders/subtitle.wgsl").replace("$STROKE_TAPS", &STROKE_TAPS.to_string())
+}
 
 /// The atlas texture format. The baker stages straight RGBA8 and only the alpha channel is read.
 const ATLAS_FORMAT: TextureFormat = TextureFormat::Rgba8Unorm;
 
-const ATTRIBUTES: [VertexAttribute; 5] = [
+const ATTRIBUTES: [VertexAttribute; 6] = [
     VertexAttribute {
         format: VertexFormat::Float32x2,
         offset: 0,
@@ -47,9 +56,14 @@ const ATTRIBUTES: [VertexAttribute; 5] = [
         shader_location: 3,
     },
     VertexAttribute {
-        format: VertexFormat::Float32x2,
+        format: VertexFormat::Float32x4,
         offset: 48,
         shader_location: 4,
+    },
+    VertexAttribute {
+        format: VertexFormat::Float32x4,
+        offset: 64,
+        shader_location: 5,
     },
 ];
 
@@ -65,7 +79,7 @@ impl QuadPipeline {
     pub(crate) fn build(device: &Device, target_format: TextureFormat) -> Self {
         let shader = device.create_shader_module(ShaderModuleDescriptor {
             label: Some("osg-compositor subtitle quads"),
-            source: ShaderSource::Wgsl(include_str!("shaders/subtitle.wgsl").into()),
+            source: ShaderSource::Wgsl(subtitle_shader().into()),
         });
 
         let layout = device.create_bind_group_layout(&BindGroupLayoutDescriptor {
@@ -130,17 +144,9 @@ impl QuadPipeline {
 
         // Linear filtering, because the atlas is baked once and scaled to whatever resolution the
         // composition asks for. Clamped addressing keeps a cell from bleeding into its neighbour on
-        // the shelf when that scale lands between texels.
-        let sampler = device.create_sampler(&SamplerDescriptor {
-            label: Some("osg-compositor atlas sampler"),
-            address_mode_u: AddressMode::ClampToEdge,
-            address_mode_v: AddressMode::ClampToEdge,
-            address_mode_w: AddressMode::ClampToEdge,
-            mag_filter: FilterMode::Linear,
-            min_filter: FilterMode::Linear,
-            mipmap_filter: MipmapFilterMode::Nearest,
-            ..SamplerDescriptor::default()
-        });
+        // the shelf when that scale lands between texels; a dilating stroke is additionally held to
+        // its own cell rectangle in the shader, where clamping alone would not be enough.
+        let sampler = linear_clamp_sampler(device, "osg-compositor atlas sampler");
 
         Self {
             pipeline,
@@ -215,13 +221,22 @@ impl QuadPipeline {
         );
 
         let view = texture.create_view(&TextureViewDescriptor::default());
+        self.bind_texture(device, &view)
+    }
+
+    /// Binds any texture in the atlas slot.
+    ///
+    /// A blurred decoration mask is drawn by the same pipeline as a glyph — it is a coverage
+    /// texture laid over the frame — so it goes in the same binding rather than growing the layout
+    /// with a slot every other draw would have to fill with a placeholder.
+    pub(crate) fn bind_texture(&self, device: &Device, view: &wgpu::TextureView) -> BindGroup {
         device.create_bind_group(&BindGroupDescriptor {
             label: Some("osg-compositor atlas bind group"),
             layout: &self.layout,
             entries: &[
                 BindGroupEntry {
                     binding: 0,
-                    resource: BindingResource::TextureView(&view),
+                    resource: BindingResource::TextureView(view),
                 },
                 BindGroupEntry {
                     binding: 1,

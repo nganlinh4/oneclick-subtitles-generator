@@ -3440,6 +3440,22 @@ dependencies = [
 ]
 
 [[package]]
+name = "osg-export"
+version = "1.0.0"
+dependencies = [
+ "osg-audio",
+ "osg-compositor",
+ "osg-decode",
+ "osg-domain",
+ "osg-encode",
+ "osg-render",
+ "osg-scene",
+ "serde_json",
+ "tempfile",
+ "thiserror 2.0.20",
+]
+
+[[package]]
 name = "osg-gemini"
 version = "1.0.0"
 dependencies = [

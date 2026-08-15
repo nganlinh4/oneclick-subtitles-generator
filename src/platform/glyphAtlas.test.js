@@ -7,165 +7,30 @@ import {
   GLYPH_ATLAS_ERROR_CODES,
   GLYPH_ATLAS_LIMITS,
   GLYPH_ATLAS_VERSION,
-  GlyphAtlasError,
   bakeGlyphAtlas,
   createCanvas2dMeasurementSurface,
 } from './glyphAtlas';
+import {
+  ACUTE,
+  ARABIC,
+  DEFAULT_FACES,
+  FAMILY_EMOJI,
+  HEBREW,
+  KOREAN,
+  NON_EMOJI,
+  VIETNAMESE,
+  bake,
+  clustersOf,
+  codeOf,
+  createFakeSurface,
+  defineFace,
+} from './glyphAtlasTestFont';
 
 /**
- * jsdom has no real canvas text stack, so every metric below comes from an injected fake font
- * model. What the fake reproduces faithfully — and therefore what these tests actually prove — is
- * the *structure* of browser text measurement: per-code-point face fallback down a CSS family list
- * to a last-resort face, zero-advance combining marks and joiners, inkless whitespace, and face
- * metrics that differ per family. Everything this module derives from that structure (segmentation,
- * bounds, packing, substitution detection, determinism, freezing, hashing) is under test here.
- *
- * What only a real canvas can prove, and is deliberately NOT claimed by this suite: true glyph
- * outlines and ink extents, real kerning and ligatures (so a non-zero `shapingResidualPx`), Arabic
- * contextual joining forms, and which concrete face a given engine substitutes.
+ * What this suite proves and what it cannot: see the doc comment on `glyphAtlasTestFont.js`,
+ * which owns the fake font model every metric below comes from. Line breaking, text transform,
+ * letter spacing and justification are covered separately in `glyphAtlas.shaping.test.js`.
  */
-
-const COMBINING = /\p{M}/u;
-const WHITESPACE = /\s/u;
-const ACUTE = String.fromCodePoint(0x0301);
-/** Zero-width joiners, the zero-width space and the emoji variation selector carry no advance. */
-const ZERO_ADVANCE = new Set([0x200b, 0x200c, 0x200d, 0xfe0f]);
-
-const defineFace = (id, advanceRatio, covers, ascentRatio = 0.8, descentRatio = 0.2) => ({
-  id, advanceRatio, covers, ascentRatio, descentRatio,
-});
-
-const NON_EMOJI = (codePoint) => codePoint < 0x1f000;
-
-/** Distinct advance ratios: three generics an engine would resolve to different metrics. */
-const DEFAULT_FACES = new Map([
-  ['monospace', defineFace('monospace', 0.6, NON_EMOJI)],
-  ['serif', defineFace('serif', 0.55, NON_EMOJI, 0.78, 0.22)],
-  ['sans-serif', defineFace('sans-serif', 0.5, NON_EMOJI, 0.82, 0.18)],
-  ['editor sans', defineFace('editor-sans', 0.52, NON_EMOJI, 0.81, 0.19)],
-  ['latin only', defineFace('latin-only', 0.48, (codePoint) => codePoint < 0x0250)],
-  ['giant', defineFace('giant', 9, NON_EMOJI, 9, 3)],
-]);
-
-/** The face an engine falls back to when nothing in the family list covers a code point. */
-const LAST_RESORT_FACE = defineFace('last-resort', 1, () => true, 0.9, 0.3);
-
-const CSS_FONT = /^(normal|italic|oblique) (\d+) ([\d.]+)px (.+)$/;
-
-const parseCssFont = (cssFont) => {
-  const match = CSS_FONT.exec(cssFont);
-  if (match === null) throw new Error(`fake surface cannot parse font: ${cssFont}`);
-  return {
-    fontSizePx: Number(match[3]),
-    families: match[4].split(',').map((family) => family.trim().replace(/^"|"$/g, '').toLowerCase()),
-  };
-};
-
-const hashOf = (text) => {
-  let hash = 2166136261;
-  for (const character of text) hash = Math.imul(hash ^ character.codePointAt(0), 16777619) >>> 0;
-  return hash >>> 0;
-};
-
-const createFakeSurface = ({ faces = DEFAULT_FACES, isFaceLoaded } = {}) => {
-  /** Per-code-point fallback down the family list, exactly as an engine resolves a run. */
-  const resolve = (families, codePoint) => {
-    for (const family of families) {
-      const face = faces.get(family);
-      if (face !== undefined && face.covers(codePoint)) return face;
-    }
-    return LAST_RESORT_FACE;
-  };
-
-  const firstRegistered = (families) => families
-    .map((family) => faces.get(family))
-    .find((face) => face !== undefined) ?? LAST_RESORT_FACE;
-
-  const shape = (cssFont, text) => {
-    const { fontSizePx, families } = parseCssFont(cssFont);
-    let advance = 0;
-    let inked = false;
-    let metricFace = null;
-    for (const character of text) {
-      const face = resolve(families, character.codePointAt(0));
-      if (metricFace === null) metricFace = face;
-      if (COMBINING.test(character) || ZERO_ADVANCE.has(character.codePointAt(0))) {
-        inked = true;
-        continue;
-      }
-      advance += fontSizePx * face.advanceRatio;
-      if (!WHITESPACE.test(character)) inked = true;
-    }
-    return { fontSizePx, advance, inked, metricFace: metricFace ?? firstRegistered(families) };
-  };
-
-  const measure = (cssFont, text) => {
-    const { fontSizePx, advance, inked, metricFace } = shape(cssFont, text);
-    const inkWidth = inked ? Math.max(advance * 0.92, fontSizePx * 0.25) : 0;
-    return {
-      width: advance,
-      actualBoundingBoxLeft: 0,
-      actualBoundingBoxRight: inkWidth,
-      actualBoundingBoxAscent: inked ? fontSizePx * metricFace.ascentRatio * 0.9 : 0,
-      actualBoundingBoxDescent: inked ? fontSizePx * metricFace.descentRatio * 0.9 : 0,
-      fontBoundingBoxAscent: fontSizePx * metricFace.ascentRatio,
-      fontBoundingBoxDescent: fontSizePx * metricFace.descentRatio,
-    };
-  };
-
-  return {
-    measure,
-    ...(isFaceLoaded === undefined ? {} : { isFaceLoaded }),
-    createTarget(widthPx, heightPx) {
-      const pixels = new Uint8ClampedArray(widthPx * heightPx * 4);
-      return {
-        drawGlyph({ cssFont, text, penXPx, baselineYPx }) {
-          const metrics = measure(cssFont, text);
-          const { metricFace } = shape(cssFont, text);
-          const right = Math.ceil(metrics.actualBoundingBoxRight);
-          const ascent = Math.ceil(metrics.actualBoundingBoxAscent);
-          const descent = Math.ceil(metrics.actualBoundingBoxDescent);
-          const alpha = 32 + (hashOf(`${metricFace.id}:${text}`) % 224);
-          for (let y = baselineYPx - ascent; y < baselineYPx + descent; y += 1) {
-            for (let x = penXPx; x < penXPx + right; x += 1) {
-              if (x < 0 || y < 0 || x >= widthPx || y >= heightPx) continue;
-              const offset = (y * widthPx + x) * 4;
-              pixels[offset] = 255;
-              pixels[offset + 1] = 255;
-              pixels[offset + 2] = 255;
-              pixels[offset + 3] = alpha;
-            }
-          }
-        },
-        readPixels: () => pixels,
-      };
-    },
-  };
-};
-
-const bake = (request, surfaceOptions) => bakeGlyphAtlas(
-  { face: { family: 'Editor Sans' }, fontSizePx: 48, ...request },
-  { surface: createFakeSurface(surfaceOptions) }
-);
-
-const codeOf = (run) => {
-  try {
-    run();
-  } catch (error) {
-    expect(error).toBeInstanceOf(GlyphAtlasError);
-    return error.code;
-  }
-  throw new Error('expected the bake to be rejected');
-};
-
-const clustersOf = (descriptor) => descriptor.glyphs.map((glyph) => glyph.cluster);
-
-// Normalization is pinned explicitly so the fixtures do not depend on how this file was encoded.
-const VIETNAMESE = 'Tiếng Việt'.normalize('NFC');
-const KOREAN = '한국어'.normalize('NFC');
-const ARABIC = 'مرحبا'.normalize('NFC');
-const HEBREW = 'שלום'.normalize('NFC');
-const FAMILY_EMOJI = '👩‍👩‍👧‍👦';
 
 describe('bakeGlyphAtlas descriptor', () => {
   it('returns a versioned, frozen descriptor whose codes are all declared', () => {
@@ -269,13 +134,18 @@ describe('bakeGlyphAtlas determinism', () => {
     expect(bake({ text: 'abc', face: { family: 'Editor Sans', weight: 700 } }).contentHash).not.toBe(base.contentHash);
   });
 
+  // Extended to every module the baker was split across. The split is what keeps `glyphAtlas.js`
+  // inside the 600-line ceiling while it grew a shaping pass, and a determinism rule that only
+  // covered the file the code used to live in would have stopped proving anything.
   it('contains no clock or randomness in its source', () => {
-    const source = readFileSync(resolve(process.cwd(), 'src/platform/glyphAtlas.js'), 'utf8')
-      .replace(/\/\*[\s\S]*?\*\//g, '')
-      .replace(/^\s*\/\/.*$/gm, '');
+    for (const module of ['glyphAtlas', 'glyphAtlasCore', 'glyphAtlasShaping', 'glyphAtlasSurface']) {
+      const source = readFileSync(resolve(process.cwd(), `src/platform/${module}.js`), 'utf8')
+        .replace(/\/\*[\s\S]*?\*\//g, '')
+        .replace(/^\s*\/\/.*$/gm, '');
 
-    for (const forbidden of ['Math.random', 'Date', 'performance.now', 'getRandomValues', 'crypto']) {
-      expect(source).not.toContain(forbidden);
+      for (const forbidden of ['Math.random', 'Date', 'performance.now', 'getRandomValues', 'crypto']) {
+        expect(source, `${module}.js`).not.toContain(forbidden);
+      }
     }
   });
 });

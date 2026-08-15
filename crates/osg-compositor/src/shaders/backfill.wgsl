@@ -1,19 +1,14 @@
-// Building the blurred canvas backfill, in two entry points that share one bind group.
+// Building the canvas backfill: the cover fit the blur is then applied to.
 //
 // `fs_cover` scales the source to cover the output, over-scales and darkens it the way the shipped
-// renderer's backdrop element does, and premultiplies it. `fs_blur` is one axis of a separable
-// Gaussian: two draws with perpendicular strides cost 2r taps per pixel instead of the r^2 an
-// isotropic kernel would, and r is bounded by the crop contract before it ever reaches here.
-//
-// The blur reads with `textureLoad` at clamped integer coordinates. That makes each tap an exact
-// texel with no sampler state in the result, and edge clamping means the backdrop does not darken
-// towards its own border the way a transparent-edged CSS blur does.
+// renderer's backdrop element does, and premultiplies it. Blurring it is not done here — that is
+// shaders/blur.wgsl, the one separable Gaussian the crate has, shared with the subtitle
+// decorations so there is never a second kernel to keep in agreement with this one.
 
 struct Backfill {
-    // fs_cover: cover scale x, cover scale y, flipX, flipY.
-    // fs_blur:  stride x, stride y, kernel half-width, standard deviation.
+    // Cover scale x, cover scale y, flipX, flipY.
     params: vec4<f32>,
-    // fs_cover: brightness multiplier in x. Unused by fs_blur.
+    // Brightness multiplier in x.
     tint: vec4<f32>,
 };
 
@@ -48,23 +43,4 @@ fn fs_cover(input: VertexOutput) -> @location(0) vec4<f32> {
     let centred = (read - vec2<f32>(0.5, 0.5)) * settings.params.xy + vec2<f32>(0.5, 0.5);
     let straight = textureSampleLevel(source_texture, source_sampler, centred, 0.0);
     return vec4<f32>(straight.rgb * straight.a * settings.tint.x, straight.a);
-}
-
-@fragment
-fn fs_blur(input: VertexOutput) -> @location(0) vec4<f32> {
-    let extent = vec2<i32>(textureDimensions(source_texture, 0));
-    let centre = vec2<i32>(floor(input.clip.xy));
-    let stride = vec2<i32>(i32(settings.params.x), i32(settings.params.y));
-    let radius = i32(settings.params.z);
-    let falloff = -0.5 / (settings.params.w * settings.params.w);
-
-    var total = vec4<f32>(0.0, 0.0, 0.0, 0.0);
-    var weight_total = 0.0;
-    for (var offset = -radius; offset <= radius; offset = offset + 1) {
-        let weight = exp(f32(offset * offset) * falloff);
-        let coord = clamp(centre + stride * offset, vec2<i32>(0, 0), extent - vec2<i32>(1, 1));
-        total = total + textureLoad(source_texture, coord, 0) * weight;
-        weight_total = weight_total + weight;
-    }
-    return total / weight_total;
 }

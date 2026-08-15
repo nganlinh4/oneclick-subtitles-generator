@@ -10,10 +10,12 @@ use wgpu::{
     TextureDimension, TextureFormat, TextureUsages, TextureViewDescriptor, VertexState,
 };
 
+use crate::blur::SeparableBlur;
 use crate::device::{AdapterProfile, AdapterSelection, GpuContext};
 use crate::error::CompositorError;
 use crate::frame::Frame;
-use crate::geometry::{VERTEX_FLOATS, build_frame_vertices};
+use crate::masks;
+use crate::plan::{BindSource, build_frame_plan};
 use crate::quad_pipeline::{QuadPipeline, vertex_buffer};
 use crate::readback;
 use crate::scene::{TestScene, UNIFORM_LEN};
@@ -37,6 +39,7 @@ pub struct Compositor {
     uniform_layout: BindGroupLayout,
     quads: QuadPipeline,
     underlay: UnderlayPipeline,
+    blur: SeparableBlur,
 }
 
 impl Compositor {
@@ -55,12 +58,14 @@ impl Compositor {
         let (pipeline, uniform_layout) = build_pipeline(gpu.device());
         let quads = QuadPipeline::build(gpu.device(), TARGET_FORMAT);
         let underlay = UnderlayPipeline::build(gpu.device(), TARGET_FORMAT);
+        let blur = SeparableBlur::build(gpu.device());
         Ok(Self {
             gpu,
             pipeline,
             uniform_layout,
             quads,
             underlay,
+            blur,
         })
     }
 
@@ -156,6 +161,11 @@ impl Compositor {
     }
 
     /// The one subtitle path, with or without a video ground beneath it.
+    ///
+    /// The decoration masks are rendered and blurred before the frame's own pass opens, because a
+    /// render pass cannot read the target it writes. Everything the user then sees — video, box,
+    /// border, shadow, stroke and fill — still lands in that one pass over one target, in the order
+    /// [`crate::plan`] fixed, so nothing between them can reinterpret an alpha channel.
     fn compose_scene(
         &self,
         scene: &SubtitleScene,
@@ -165,13 +175,22 @@ impl Compositor {
         let device = self.gpu.device();
         let queue = self.gpu.queue();
         // Before any allocation, so an out-of-range index costs nothing.
-        let vertices = build_frame_vertices(scene, frame_index)?;
+        let plan = build_frame_plan(scene, frame_index)?;
 
-        let ground =
-            underlay.map(|video| self.underlay.prepare(device, queue, video, scene.size()));
-        let bind_group = self.quads.bind_atlas(device, queue, scene.atlas());
-        let buffer = vertex_buffer(device, queue, &vertices);
-        let count = u32::try_from(vertices.len() / VERTEX_FLOATS).unwrap_or(0);
+        let ground = underlay.map(|video| {
+            self.underlay
+                .prepare(device, queue, &self.blur, video, scene.size())
+        });
+        let atlas = self.quads.bind_atlas(device, queue, scene.atlas());
+        let masks = masks::build(
+            device,
+            queue,
+            (&self.quads, &self.blur),
+            &atlas,
+            plan.masks(),
+            scene.size(),
+        );
+        let buffer = vertex_buffer(device, queue, plan.vertices());
 
         self.compose(scene.size(), Color::TRANSPARENT, |pass| {
             if let Some(ground) = ground.as_ref() {
@@ -183,9 +202,18 @@ impl Compositor {
                 return;
             };
             pass.set_pipeline(self.quads.pipeline());
-            pass.set_bind_group(0, &bind_group, &[]);
             pass.set_vertex_buffer(0, buffer.slice(..));
-            pass.draw(0..count, 0..1);
+            for segment in plan.segments() {
+                let bound = match segment.source {
+                    BindSource::Atlas => Some(&atlas),
+                    BindSource::Mask(index) => masks.get(index),
+                };
+                let Some(bound) = bound else {
+                    continue;
+                };
+                pass.set_bind_group(0, bound, &[]);
+                pass.draw(segment.first..segment.first + segment.count, 0..1);
+            }
         })
     }
 

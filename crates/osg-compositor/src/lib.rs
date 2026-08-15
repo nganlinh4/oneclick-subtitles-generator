@@ -24,6 +24,11 @@
 //! All layout, animation, easing, cue-selection, scaling and colour maths lives in `osg-scene` and
 //! is called from here, never re-derived.
 //!
+//! Everything a subtitle can be decorated with — the glow, the background box, its border, the drop
+//! shadow, the glyph stroke and the gradient fill — is drawn here too, in the order `crate::plan`
+//! fixes and documents. Two of those are blurs, and both go through one bounded separable Gaussian:
+//! there is no second kernel and no `O(radius^2)` path anywhere in the crate.
+//!
 //! A frame may be composed on a transparent ground ([`Compositor::render_scene`]) or over a decoded
 //! video frame ([`Compositor::render_scene_over`]). The underlay carries the crop, the flips and the
 //! canvas backfill, because those are operations on the source frame and doing them in the same pass
@@ -45,12 +50,18 @@
 //! # }
 //! ```
 
+mod blur;
 mod compositor;
 mod crop;
+mod decoration;
 mod device;
 mod error;
 mod frame;
 mod geometry;
+mod glyphs;
+mod masks;
+mod pass;
+mod plan;
 mod quad_pipeline;
 mod readback;
 mod scene;
@@ -65,6 +76,11 @@ pub use compositor::Compositor;
 pub use crop::{
     CANVAS_BACKFILL_BRIGHTNESS, CANVAS_BACKFILL_ZOOM, CanvasBackground, Crop, CropSpec,
     DEFAULT_CANVAS_BLUR, MAX_CANVAS_BLUR_RADIUS, MAX_CANVAS_BLUR_SIGMA,
+};
+pub use decoration::{
+    Border, BorderStyle, FillPaint, Glow, Gradient, MAX_DECORATION_BLUR_RADIUS,
+    MAX_DECORATION_BLUR_SIGMA, Stroke, SubtitleDecoration, SubtitleDecorationSpec, TextShadow,
+    decoration_blur_radius_px, decoration_blur_sigma_px,
 };
 pub use device::{AdapterProfile, AdapterSelection, DeviceKind};
 pub use error::{Axis, CompositorError, Rejection};

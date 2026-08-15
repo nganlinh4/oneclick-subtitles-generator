@@ -17,6 +17,7 @@ use osg_scene::color::{
 use osg_scene::easing::SUBTITLE_ANIMATION_EASINGS;
 use osg_scene::layout::{Margins, SubtitlePosition, TextAlign};
 
+use crate::decoration::{FillPaint, SubtitleDecoration, SubtitleDecorationSpec};
 use crate::error::{CompositorError, Rejection};
 
 /// The largest reference-pixel size any style value may carry.
@@ -52,7 +53,10 @@ pub struct SubtitleStyleSpec {
     pub background_padding_x: f64,
     /// Vertical padding between the text and the background box, in reference pixels.
     pub background_padding_y: f64,
-    /// Background corner radius in reference pixels.
+    /// Corner radius of the **border box** in reference pixels.
+    ///
+    /// CSS `border-radius` names the outer edge, so the padding box inside a border is rounded by
+    /// this less the border width. With no border the two are the same rectangle.
     pub border_radius: f64,
     /// Where the box is anchored: `bottom`, `top`, `center` or `custom`.
     pub position: String,
@@ -76,6 +80,8 @@ pub struct SubtitleStyleSpec {
     pub fade_out: f64,
     /// A flat multiplier on the whole cue, in `0.0..=1.0`.
     pub opacity: f64,
+    /// Stroke, shadow, glow, border and the gradient stops.
+    pub decoration: SubtitleDecorationSpec,
 }
 
 impl Default for SubtitleStyleSpec {
@@ -105,6 +111,7 @@ impl Default for SubtitleStyleSpec {
             fade_in: 0.3,
             fade_out: 0.3,
             opacity: 1.0,
+            decoration: SubtitleDecorationSpec::default(),
         }
     }
 }
@@ -130,6 +137,7 @@ pub struct SubtitleStyle {
     fade_in: f64,
     fade_out: f64,
     opacity: f64,
+    decoration: SubtitleDecoration,
 }
 
 fn bounded(value: f64, low: f64, high: f64) -> bool {
@@ -197,6 +205,7 @@ impl SubtitleStyle {
             fade_in: spec.fade_in,
             fade_out: spec.fade_out,
             opacity: spec.opacity,
+            decoration: SubtitleDecoration::resolve(&spec.decoration, spec.gradient_enabled)?,
         })
     }
 
@@ -333,5 +342,24 @@ impl SubtitleStyle {
     #[must_use]
     pub const fn opacity(&self) -> f64 {
         self.opacity
+    }
+
+    /// The resolved stroke, shadow, glow, border and gradient.
+    #[must_use]
+    pub const fn decoration(&self) -> SubtitleDecoration {
+        self.decoration
+    }
+
+    /// What fills the glyphs.
+    ///
+    /// The gradient wins when it is enabled, which is the whole reason the two must ship together:
+    /// `osg-scene` has already made [`SubtitleStyle::text_color`] transparent by then, so a caller
+    /// that consulted the colour alone would draw nothing.
+    #[must_use]
+    pub const fn fill(&self) -> FillPaint {
+        match self.decoration.gradient_effect() {
+            Some(gradient) => FillPaint::Gradient(gradient),
+            None => FillPaint::Solid(self.text_color),
+        }
     }
 }

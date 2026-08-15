@@ -8,21 +8,54 @@
  * and emits textured quads; it never shapes text. That makes preview and export share identical
  * fonts and identical shaping by construction rather than by a test we have to keep passing.
  *
+ * Shaping includes LINE BREAKING. The WebView owns the font stack and `Intl.Segmenter`, so it is the
+ * only side that can break a line at a word-safe, cluster-safe boundary using real measured
+ * advances. `descriptor.layout` therefore carries the per-line runs the compositor draws, rather
+ * than the compositor guessing where a line ended. `glyphAtlasShaping.js` owns that pass, including
+ * `textTransform`, `letterSpacing`, the wrap width and justification.
+ *
  * Transport is deliberately NOT decided here. Raw frame bytes over IPC are forbidden by the
  * architecture, so `descriptor.pixels` is exposed as a plain RGBA byte view and the caller chooses
  * the staging route. `pixels.buffer` is a plain transferable ArrayBuffer for that purpose. This
  * module never touches IPC and never sees a native path.
  *
- * Determinism: no clocks, no RNG, no `Date`, no `Math.random`. Every field is a pure function of the
- * request and the measurement surface, so a seek is exact and repeatable.
+ * Determinism: no clocks, no RNG, no `Math.random`. Every field is a pure function of the request
+ * and the measurement surface, so a seek is exact and repeatable.
  *
- * Caveat recorded rather than hidden: grapheme segmentation comes from `Intl.Segmenter`, so a host
- * with a different ICU version can cluster new emoji sequences differently. The cluster list feeds
- * `contentHash`, so that surfaces as a different atlas identity instead of silent divergence.
+ * Caveat recorded rather than hidden: grapheme and word segmentation come from `Intl.Segmenter`, so
+ * a host with a different ICU version can cluster new emoji sequences — or find word boundaries in
+ * an unspaced script — differently. Both feed `contentHash`, so that surfaces as a different atlas
+ * identity instead of silent divergence.
  */
+
+import {
+  deepFreeze,
+  fail,
+  fnv1a32,
+  hashText,
+  invalidRequest,
+  isFiniteNumber,
+  round4,
+} from './glyphAtlasCore';
+import {
+  TEXT_ALIGNMENTS,
+  TEXT_TRANSFORMS,
+  applyTextTransform,
+  buildTextLayout,
+} from './glyphAtlasShaping';
+import { readMeasurement, resolveSurface } from './glyphAtlasSurface';
+
+export { GLYPH_ATLAS_ERROR_CODES, GlyphAtlasError } from './glyphAtlasCore';
+export { createCanvas2dMeasurementSurface } from './glyphAtlasSurface';
+export { TEXT_ALIGNMENTS, TEXT_TRANSFORMS } from './glyphAtlasShaping';
 
 export const GLYPH_ATLAS_VERSION = 1;
 
+/**
+ * The bounds this module enforces. `crates/osg-scene/src/glyph/limits.rs` mirrors them and
+ * `crates/osg-scene/tests/glyph.rs` parses these entries straight out of this file, so a rename or a
+ * reformat is a Rust test failure rather than a silent divergence.
+ */
 export const GLYPH_ATLAS_LIMITS = Object.freeze({
   maxTextCodePoints: 4_096,
   maxGlyphCount: 1_024,
@@ -32,35 +65,18 @@ export const GLYPH_ATLAS_LIMITS = Object.freeze({
   maxFontSizePx: 512,
   maxFamilyCharacters: 64,
   maxPaddingPx: 8,
+  // Layout bounds. `maxLayoutLines` and `maxLayoutCells` mirror `MAX_RUN_LINES` and `MAX_RUN_GLYPHS`
+  // in crates/osg-compositor/src/subtitle.rs, so a run this module emits is one the compositor can
+  // stage. They are structural bounds on the payload and are NOT the persisted `maxLines`, which
+  // stays inert.
+  maxLayoutLines: 64,
+  maxLayoutCells: 4_096,
+  // Bounds the wrap arithmetic rather than expressing a design limit: the widest sane wrap width in
+  // atlas space is an 8K composition divided by the smallest bakeable scale, which is far below it.
+  maxLayoutWidthPx: 1_048_576,
+  minLetterSpacingPx: -100,
+  maxLetterSpacingPx: 1_000,
 });
-
-export const GLYPH_ATLAS_ERROR_CODES = Object.freeze([
-  'glyphAtlasInvalidRequest',
-  'glyphAtlasTextTooLong',
-  'glyphAtlasClusterTooLong',
-  'glyphAtlasTooManyGlyphs',
-  'glyphAtlasTooLarge',
-  'glyphAtlasSegmenterUnavailable',
-  'glyphAtlasSurfaceUnavailable',
-  'glyphAtlasMetricsUnavailable',
-  'glyphAtlasFaceUnverifiable',
-  'glyphAtlasFaceUnavailable',
-  'glyphAtlasFaceSubstituted',
-]);
-
-export class GlyphAtlasError extends Error {
-  constructor(code, message) {
-    super(message);
-    this.name = 'GlyphAtlasError';
-    this.code = code;
-  }
-}
-
-const fail = (code, message) => {
-  throw new GlyphAtlasError(code, message);
-};
-
-const invalidRequest = (detail) => fail('glyphAtlasInvalidRequest', `The glyph atlas request is invalid: ${detail}`);
 
 /** Widths tried in order; the first that packs to a height no greater than itself wins. */
 const ATLAS_WIDTH_CANDIDATES = Object.freeze([64, 128, 256, 512, 1_024, 2_048, 4_096]);
@@ -74,13 +90,6 @@ const PROBE_FAMILIES = Object.freeze(['monospace', 'serif', 'sans-serif']);
 const FACE_PROBE_TEXT = 'mmmmmmmmmmlliWQ';
 /** Face-level vertical metrics are string-independent, so a fixed probe also covers empty text. */
 const METRIC_PROBE_TEXT = 'Hxdpg';
-
-/** Every measurement the baker consumes must carry all of these, or the surface is not usable. */
-const MEASUREMENT_FIELDS = Object.freeze([
-  'width', 'actualBoundingBoxLeft', 'actualBoundingBoxRight',
-  'actualBoundingBoxAscent', 'actualBoundingBoxDescent',
-  'fontBoundingBoxAscent', 'fontBoundingBoxDescent',
-]);
 
 const FAMILY_PATTERN = /^[\p{L}\p{N}][\p{L}\p{N} ._-]*$/u;
 const INKED_PATTERN = /[\p{L}\p{N}\p{S}\p{P}\p{M}]/u;
@@ -98,39 +107,6 @@ const RTL_RANGES = Object.freeze([
   [0x10800, 0x10fff],
   [0x1e800, 0x1efff],
 ]);
-
-const round4 = (value) => {
-  const rounded = Math.round(value * 10_000) / 10_000;
-  return rounded === 0 ? 0 : rounded;
-};
-
-const isFiniteNumber = (value) => typeof value === 'number' && Number.isFinite(value);
-
-/**
- * Freezes the metadata tree. Typed arrays are skipped because freezing one throws: `pixels` is
- * therefore the single mutable member, deliberately so, since staging transfers its `.buffer`.
- */
-const deepFreeze = (value) => {
-  if (Array.isArray(value)) {
-    value.forEach(deepFreeze);
-    return Object.freeze(value);
-  }
-  if (value === null || typeof value !== 'object' || ArrayBuffer.isView(value)) return value;
-  Object.values(value).forEach(deepFreeze);
-  return Object.freeze(value);
-};
-
-/** Non-cryptographic identity for cache and revision comparison only. Never a security boundary. */
-const fnv1a32 = (bytes, seed = 0x811c9dc5) => {
-  let hash = seed;
-  for (let index = 0; index < bytes.length; index += 1) {
-    hash ^= bytes[index];
-    hash = Math.imul(hash, 0x01000193) >>> 0;
-  }
-  return hash >>> 0;
-};
-
-const hashText = (text, seed) => fnv1a32(new TextEncoder().encode(text), seed);
 
 // Request validation
 
@@ -164,9 +140,36 @@ const normalizeFace = (face) => {
   return { family, weight, style };
 };
 
+const normalizeShaping = ({ textTransform, letterSpacingPx, maxWidthPx, wordWrap, textAlign }) => {
+  if (!TEXT_TRANSFORMS.includes(textTransform)) {
+    invalidRequest(`textTransform must be one of ${TEXT_TRANSFORMS.join(', ')}`);
+  }
+  if (!TEXT_ALIGNMENTS.includes(textAlign)) {
+    invalidRequest(`textAlign must be one of ${TEXT_ALIGNMENTS.join(', ')}`);
+  }
+  if (typeof wordWrap !== 'boolean') invalidRequest('wordWrap must be a boolean');
+  if (!isFiniteNumber(letterSpacingPx)
+      || letterSpacingPx < GLYPH_ATLAS_LIMITS.minLetterSpacingPx
+      || letterSpacingPx > GLYPH_ATLAS_LIMITS.maxLetterSpacingPx) {
+    invalidRequest(
+      `letterSpacingPx must be within ${GLYPH_ATLAS_LIMITS.minLetterSpacingPx}`
+      + `..${GLYPH_ATLAS_LIMITS.maxLetterSpacingPx}`
+    );
+  }
+  if (maxWidthPx !== null
+      && (!isFiniteNumber(maxWidthPx) || maxWidthPx <= 0 || maxWidthPx > GLYPH_ATLAS_LIMITS.maxLayoutWidthPx)) {
+    invalidRequest(`maxWidthPx must be null or within 0..${GLYPH_ATLAS_LIMITS.maxLayoutWidthPx}`);
+  }
+  return { textTransform, letterSpacingPx, maxWidthPx, wordWrap, textAlign };
+};
+
 const normalizeRequest = (request) => {
   if (request === null || typeof request !== 'object') invalidRequest('request must be an object');
-  const { text, face, fontSizePx, lineHeightPx = null, paddingPx = 1, requireExactFace = true } = request;
+  const {
+    text, face, fontSizePx, lineHeightPx = null, paddingPx = 1, requireExactFace = true,
+    textTransform = 'none', letterSpacingPx = 0, maxWidthPx = null, wordWrap = true,
+    textAlign = 'left',
+  } = request;
 
   if (typeof text !== 'string') invalidRequest('text must be a string');
   if (typeof requireExactFace !== 'boolean') invalidRequest('requireExactFace must be a boolean');
@@ -180,18 +183,23 @@ const normalizeRequest = (request) => {
   if (!Number.isInteger(paddingPx) || paddingPx < 0 || paddingPx > GLYPH_ATLAS_LIMITS.maxPaddingPx) {
     invalidRequest(`paddingPx must be an integer in 0..${GLYPH_ATLAS_LIMITS.maxPaddingPx}`);
   }
+  const shaping = normalizeShaping({ textTransform, letterSpacingPx, maxWidthPx, wordWrap, textAlign });
 
-  if ([...text].length > GLYPH_ATLAS_LIMITS.maxTextCodePoints) {
+  // The transform runs before the length bound because it is what decides the length: uppercasing
+  // can lengthen a string, and the bound belongs to the text that is actually baked.
+  const shaped = applyTextTransform(text, shaping.textTransform);
+  if ([...shaped].length > GLYPH_ATLAS_LIMITS.maxTextCodePoints) {
     fail('glyphAtlasTextTooLong', `The text exceeds ${GLYPH_ATLAS_LIMITS.maxTextCodePoints} code points and is rejected rather than truncated`);
   }
 
   const normalizedFace = normalizeFace(face);
   return {
-    text,
+    text: shaped,
     face: { ...normalizedFace, fontSizePx },
     lineHeightPx,
     paddingPx,
     requireExactFace,
+    ...shaping,
   };
 };
 
@@ -234,91 +242,6 @@ const directionOf = (cluster) => {
     if (isRtlCodePoint(character.codePointAt(0))) return 'rtl';
   }
   return STRONG_LTR_PATTERN.test(cluster) ? 'ltr' : 'neutral';
-};
-
-// Measurement surface
-
-const readMeasurement = (raw, what) => {
-  if (raw === null || typeof raw !== 'object') {
-    fail('glyphAtlasMetricsUnavailable', `The measurement surface returned no metrics for ${what}`);
-  }
-  const metrics = {};
-  for (const field of MEASUREMENT_FIELDS) {
-    const value = raw[field];
-    if (!isFiniteNumber(value)) {
-      fail('glyphAtlasMetricsUnavailable', `The measurement surface omitted ${field} for ${what}`);
-    }
-    metrics[field] = value;
-  }
-  return metrics;
-};
-
-/**
- * Canvas-backed surface used in the real WebView. Deterministic knobs are pinned explicitly:
- * kerning on, no letter or word spacing, and an LTR measurement direction — visual order is carried
- * in the descriptor as data, so the raster itself must not depend on the ambient direction.
- */
-export const createCanvas2dMeasurementSurface = () => {
-  const context = (() => {
-    try {
-      if (typeof document === 'undefined') return null;
-      return document.createElement('canvas').getContext('2d', { willReadFrequently: true }) ?? null;
-    } catch {
-      return null;
-    }
-  })();
-  if (context === null) {
-    fail('glyphAtlasSurfaceUnavailable', 'A 2D canvas context is required to bake a glyph atlas');
-  }
-
-  const pin = (target) => Object.assign(target, {
-    direction: 'ltr', fontKerning: 'normal', letterSpacing: '0px',
-    wordSpacing: '0px', textAlign: 'left', textBaseline: 'alphabetic',
-  });
-
-  return {
-    measure(cssFont, text) {
-      pin(context);
-      context.font = cssFont;
-      return context.measureText(text);
-    },
-    isFaceLoaded(cssFont, text) {
-      try {
-        return document.fonts?.check?.(cssFont, text) ?? null;
-      } catch {
-        return null;
-      }
-    },
-    createTarget(widthPx, heightPx) {
-      const canvas = document.createElement('canvas');
-      canvas.width = widthPx;
-      canvas.height = heightPx;
-      const target = canvas.getContext('2d', { willReadFrequently: true });
-      if (target === null) {
-        fail('glyphAtlasSurfaceUnavailable', 'A 2D canvas context is required to rasterize a glyph atlas');
-      }
-      pin(target);
-      // White coverage on transparent black: the alpha channel is the coverage mask the compositor
-      // multiplies by the scene colour, so colour never bakes into the atlas.
-      target.fillStyle = '#ffffff';
-      return {
-        drawGlyph({ cssFont, text, penXPx, baselineYPx }) {
-          pin(target);
-          target.font = cssFont;
-          target.fillText(text, penXPx, baselineYPx);
-        },
-        readPixels: () => target.getImageData(0, 0, widthPx, heightPx).data,
-      };
-    },
-  };
-};
-
-const resolveSurface = (surface) => {
-  if (surface === undefined || surface === null) return createCanvas2dMeasurementSurface();
-  if (typeof surface.measure !== 'function' || typeof surface.createTarget !== 'function') {
-    invalidRequest('surface must expose measure() and createTarget()');
-  }
-  return surface;
 };
 
 // Face substitution detection
@@ -448,6 +371,16 @@ const measureCell = (measurement, paddingPx) => {
   };
 };
 
+const canonicalizeLayout = (layout) => [
+  `${layout.textTransform}|${layout.letterSpacingPx}|${layout.maxWidthPx ?? 'none'}`,
+  `${layout.wordWrap ? 1 : 0}|${layout.textAlign}|${layout.cellAdvanceLayout}`,
+  `${layout.lineCount}|${layout.widthPx}|${layout.heightPx}`,
+  ...layout.lines.map((line) => [
+    line.glyphs.join('.'), line.penXPx.join('.'), line.advanceWidthPx, line.measuredWidthPx,
+    line.shapingResidualPx, line.baselineYPx, line.justificationPx, line.endsParagraph ? 1 : 0,
+  ].join(',')),
+];
+
 const canonicalize = (descriptor) => {
   const glyphs = descriptor.glyphs.map((glyph) => [
     glyph.cluster, glyph.codePoints.join('.'), glyph.direction, glyph.advanceWidthPx,
@@ -460,23 +393,29 @@ const canonicalize = (descriptor) => {
     `${face.requestedFamily}|${face.weight}|${face.style}|${face.fontSizePx}|${face.substituted ? 1 : 0}`,
     `${metrics.ascentPx}|${metrics.descentPx}|${metrics.lineHeightPx}|${metrics.baselinePx}`,
     `${metrics.runAdvanceWidthPx}|${metrics.shapingResidualPx}|${metrics.baseDirection}`,
+    `${metrics.letterSpacingPx}`,
     `${atlas.widthPx}|${atlas.heightPx}|${atlas.paddingPx}|${atlas.glyphCount}`,
+    ...canonicalizeLayout(descriptor.layout),
     ...glyphs,
   ].join('\n');
 };
 
 /**
- * Bake the glyphs a text run needs into a packed atlas.
+ * Bake the glyphs a text run needs into a packed atlas, and lay that run out into lines.
  *
  * `request` is `{ text, face: { family, weight = 400, style = 'normal' }, fontSizePx,
- * lineHeightPx = null, paddingPx = 1, requireExactFace = true }`; oversize input is rejected, never
- * truncated, and `requireExactFace` makes any substitution a hard failure. `options.surface` injects
- * the measurement surface and defaults to canvas 2D. Returns a frozen, versioned descriptor whose
- * `pixels` is tightly packed RGBA8; its alpha channel is the coverage mask and the caller owns
- * staging it to native code.
+ * lineHeightPx = null, paddingPx = 1, requireExactFace = true, textTransform = 'none',
+ * letterSpacingPx = 0, maxWidthPx = null, wordWrap = true, textAlign = 'left' }`; oversize input is
+ * rejected, never truncated, and `requireExactFace` makes any substitution a hard failure.
+ * `options.surface` injects the measurement surface and defaults to canvas 2D. Returns a frozen,
+ * versioned descriptor whose `pixels` is tightly packed RGBA8 — its alpha channel is the coverage
+ * mask — and whose `layout` is the per-line run the compositor draws. The caller owns staging both.
  */
 export const bakeGlyphAtlas = (request, options = {}) => {
-  const { text, face, lineHeightPx, paddingPx, requireExactFace } = normalizeRequest(request);
+  const {
+    text, face, lineHeightPx, paddingPx, requireExactFace,
+    textTransform, letterSpacingPx, maxWidthPx, wordWrap, textAlign,
+  } = normalizeRequest(request);
   const surface = resolveSurface(options.surface);
   const families = [face.family];
   const cssFont = buildCssFont(face, families);
@@ -555,6 +494,32 @@ export const bakeGlyphAtlas = (request, options = {}) => {
   const advanceByCluster = new Map(measured.map((entry) => [entry.cluster, entry.advanceWidthPx]));
   const clusterAdvanceSum = clusters.reduce((total, cluster) => total + advanceByCluster.get(cluster), 0);
   const runAdvanceWidthPx = round4(readMeasurement(surface.measure(cssFont, text), 'the text run').width);
+  // Non-zero means the engine applied kerning, a ligature or a contextual form across cluster
+  // boundaries, so summing per-cell advances does not reproduce the run. Surfaced instead of
+  // hidden: the compositor must not lay out from cell advances alone when this is non-zero.
+  const shapingResidualPx = round4(runAdvanceWidthPx - clusterAdvanceSum);
+  const baseDirection = glyphs.length === 0
+    ? 'ltr'
+    : (clusters.map(directionOf).find((direction) => direction !== 'neutral') ?? 'ltr');
+  const resolvedLineHeightPx = round4(lineHeightPx ?? ascentPx + descentPx);
+
+  const layout = buildTextLayout({
+    text,
+    clusters,
+    cellIndexOf: new Map(unique.map((cluster, index) => [cluster, index])),
+    advanceOf: advanceByCluster,
+    textTransform,
+    letterSpacingPx,
+    maxWidthPx,
+    wordWrap,
+    textAlign,
+    lineHeightPx: resolvedLineHeightPx,
+    baselinePx: ascentPx,
+    measureLineWidth: (lineText) => readMeasurement(surface.measure(cssFont, lineText), 'a laid-out line').width,
+    runShapingResidualPx: shapingResidualPx,
+    directionNeedsBidi: baseDirection === 'rtl' || glyphs.some((glyph) => glyph.direction === 'rtl'),
+    limits: GLYPH_ATLAS_LIMITS,
+  });
 
   const descriptor = {
     version: GLYPH_ATLAS_VERSION,
@@ -570,16 +535,14 @@ export const bakeGlyphAtlas = (request, options = {}) => {
     metrics: {
       ascentPx,
       descentPx,
-      lineHeightPx: round4(lineHeightPx ?? ascentPx + descentPx),
+      lineHeightPx: resolvedLineHeightPx,
       baselinePx: ascentPx,
       runAdvanceWidthPx,
-      // Non-zero means the engine applied kerning, a ligature or a contextual form across cluster
-      // boundaries, so summing per-cell advances does not reproduce the run. Surfaced instead of
-      // hidden: the compositor must not lay out from cell advances alone when this is non-zero.
-      shapingResidualPx: round4(runAdvanceWidthPx - clusterAdvanceSum),
-      baseDirection: glyphs.length === 0
-        ? 'ltr'
-        : (clusters.map(directionOf).find((direction) => direction !== 'neutral') ?? 'ltr'),
+      shapingResidualPx,
+      baseDirection,
+      // Carried in the metrics so the compositor positions from the spacing the WebView applied
+      // rather than re-deriving it from a style field that was scaled somewhere else.
+      letterSpacingPx: round4(letterSpacingPx),
     },
     atlas: {
       widthPx: atlas.widthPx,
@@ -589,6 +552,7 @@ export const bakeGlyphAtlas = (request, options = {}) => {
       pixelFormat: 'rgba8',
       bytesPerRow: atlas.widthPx * 4,
     },
+    layout,
     glyphs,
   };
 

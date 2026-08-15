@@ -1,0 +1,341 @@
+#![recursion_limit = "256"]
+
+//! The style, crop, font and staged-text half of the conversion.
+//!
+//! Split from `conversion.rs` at a real seam rather than for length: that file pins the shape of
+//! the export — resolution, frame rate, the `trimStart` rebase, `DURATION_SOURCE` and the audio
+//! plan — while this one pins the vocabulary the subtitles are drawn with and the agreement between
+//! the request, the resolved face and what the `WebView` staged.
+//!
+//! None of it needs a GPU, a media file or a platform codec: the conversion is pure.
+
+mod support;
+
+use osg_compositor::{CueRun, MAX_RUN_GLYPHS};
+use osg_encode::{EncodeError, MfStage};
+use osg_export::{ExportError, ExportPlan, StagedText, primary_font_family};
+use osg_scene::glyph::{Direction, GlyphAtlasDescriptor};
+use serde_json::json;
+use support::{
+    FAMILY, INK_CELL, SOURCE_DURATION_US, SOURCE_HEIGHT, SOURCE_WIDTH, WEIGHT, atlas, default_face,
+    default_plan, face, plan, request_json, staged_text, unchecked_atlas,
+};
+
+fn converted(value: serde_json::Value) -> ExportPlan {
+    ExportPlan::convert(&plan(value), &default_face()).expect("the fixture request converts")
+}
+
+fn refusal(value: serde_json::Value) -> ExportError {
+    ExportPlan::convert(&plan(value), &default_face()).expect_err("the request must be refused")
+}
+
+// ---- Style and crop -----------------------------------------------------------------------
+
+#[test]
+fn every_animation_easing_position_and_alignment_converts() {
+    for animation in [
+        "fade",
+        "slide-up",
+        "slide-down",
+        "slide-left",
+        "slide-right",
+        "scale",
+        "bounce",
+        "flip",
+        "rotate",
+        "typewriter",
+    ] {
+        let mut value = request_json();
+        value["customization"]["animationType"] = json!(animation);
+        converted(value);
+    }
+    for easing in [
+        "linear",
+        "ease",
+        "ease-in",
+        "ease-out",
+        "ease-in-out",
+        "cubic-bezier(0.25, 0.46, 0.45, 0.94)",
+        "cubic-bezier(0.68, -0.55, 0.265, 1.55)",
+    ] {
+        let mut value = request_json();
+        value["customization"]["animationEasing"] = json!(easing);
+        let plan = converted(value);
+        assert_eq!(plan.style().easing(), easing);
+    }
+    for position in ["bottom", "top", "center", "custom"] {
+        let mut value = request_json();
+        value["customization"]["position"] = json!(position);
+        converted(value);
+    }
+    for align in ["left", "center", "right", "justify"] {
+        let mut value = request_json();
+        value["customization"]["textAlign"] = json!(align);
+        converted(value);
+    }
+}
+
+#[test]
+fn every_border_style_gradient_type_and_text_transform_survives_the_conversion() {
+    for border in ["none", "solid", "dashed", "dotted", "double"] {
+        let mut value = request_json();
+        value["customization"]["borderStyle"] = json!(border);
+        converted(value);
+    }
+    for gradient in ["linear", "radial"] {
+        let mut value = request_json();
+        value["customization"]["gradientType"] = json!(gradient);
+        converted(value);
+    }
+    for transform in ["none", "uppercase", "lowercase", "capitalize"] {
+        let mut value = request_json();
+        value["customization"]["textTransform"] = json!(transform);
+        converted(value);
+    }
+    for behavior in ["auto", "manual"] {
+        let mut value = request_json();
+        value["customization"]["lineBreakBehavior"] = json!(behavior);
+        converted(value);
+    }
+}
+
+#[test]
+fn both_canvas_modes_and_both_flips_convert() {
+    for mode in ["solid", "blur"] {
+        let mut value = request_json();
+        value["crop"]["canvasBgMode"] = json!(mode);
+        value["crop"]["canvasBgColor"] = json!("#102030");
+        value["crop"]["canvasBgBlur"] = json!(12);
+        converted(value);
+    }
+    let mut value = request_json();
+    value["crop"]["flipX"] = json!(true);
+    value["crop"]["flipY"] = json!(true);
+    let crop = converted(value).crop();
+    assert!(crop.flip_x() && crop.flip_y());
+}
+
+#[test]
+fn a_style_value_outside_what_the_compositor_draws_is_refused_by_name() {
+    // The contract accepts margins from -10000 and custom placements from -1000; the compositor
+    // draws neither. Both refusals are the compositor's own, named, rather than a clamp that would
+    // move the subtitles somewhere the editor never showed.
+    let mut negative_margin = request_json();
+    negative_margin["customization"]["marginBottom"] = json!(-10.0);
+    assert!(matches!(
+        refusal(negative_margin),
+        ExportError::CompositionRejected { .. }
+    ));
+
+    let mut placement = request_json();
+    placement["customization"]["position"] = json!("custom");
+    placement["customization"]["customPositionX"] = json!(-5.0);
+    assert!(matches!(
+        refusal(placement),
+        ExportError::CompositionRejected { .. }
+    ));
+
+    let mut background = request_json();
+    background["customization"]["backgroundColor"] = json!("#11223344");
+    assert!(
+        matches!(refusal(background), ExportError::CompositionRejected { .. }),
+        "a background that already carries alpha is reported, not silently lost"
+    );
+}
+
+// ---- The font -----------------------------------------------------------------------------
+
+#[test]
+fn the_staged_face_must_be_the_face_the_request_named() {
+    assert_eq!(primary_font_family("'Inter', sans-serif"), Some(FAMILY));
+
+    let other = ExportPlan::convert(&default_plan(), &face("Georgia", WEIGHT))
+        .expect_err("a different family must be refused");
+    assert!(matches!(other, ExportError::FontUnavailable));
+
+    let mut generic = request_json();
+    generic["customization"]["fontFamily"] = json!("sans-serif");
+    assert!(matches!(refusal(generic), ExportError::FontUnavailable));
+}
+
+#[test]
+fn a_resolved_weight_that_differs_from_the_request_is_carried_rather_than_refused() {
+    // `fontWeight` is resolved by `fontIdentity`, which may legitimately land on another weight when
+    // the face has no instance for the one that was asked for. The scene carries what was resolved.
+    let plan = ExportPlan::convert(&default_plan(), &face(FAMILY, 400))
+        .expect("a resolved weight travels in the scene face");
+    assert_eq!(plan.scene().face().weight, 400);
+}
+
+// ---- Staging ------------------------------------------------------------------------------
+
+#[test]
+fn the_staged_atlas_must_belong_to_the_scene_and_support_cell_advance_layout() {
+    let plan = converted(request_json());
+
+    let mismatched = StagedText::new(
+        default_face(),
+        atlas("Georgia", WEIGHT),
+        vec![CueRun::single_line(vec![INK_CELL])],
+    );
+    assert!(matches!(
+        plan.compose(mismatched)
+            .expect_err("a foreign atlas is refused"),
+        ExportError::AtlasFaceMismatch
+    ));
+
+    let mut residual = unchecked_atlas(FAMILY, WEIGHT);
+    residual.metrics.shaping_residual_px = 0.5;
+    let refused = StagedText::new(
+        default_face(),
+        GlyphAtlasDescriptor::try_from(residual)
+            .expect("a measured residual is a legal descriptor"),
+        vec![CueRun::single_line(vec![INK_CELL])],
+    );
+    match plan
+        .compose(refused)
+        .expect_err("an atlas whose advances do not sum to the run is refused")
+    {
+        ExportError::AtlasCannotLayOut { refusal } => {
+            assert!(refusal.shaping_crosses_clusters);
+            assert!(!refusal.direction_needs_bidi);
+        }
+        other => panic!("unexpected error: {other}"),
+    }
+
+    let mut rtl = unchecked_atlas(FAMILY, WEIGHT);
+    rtl.metrics.base_direction = Direction::Rtl;
+    rtl.glyphs[1].direction = Direction::Rtl;
+    let refused = StagedText::new(
+        default_face(),
+        GlyphAtlasDescriptor::try_from(rtl).expect("a right-to-left run is a legal descriptor"),
+        vec![CueRun::single_line(vec![INK_CELL])],
+    );
+    match plan
+        .compose(refused)
+        .expect_err("a right-to-left run needs bidi the compositor does not do")
+    {
+        ExportError::AtlasCannotLayOut { refusal } => assert!(refusal.direction_needs_bidi),
+        other => panic!("unexpected error: {other}"),
+    }
+}
+
+#[test]
+fn the_staged_runs_must_match_the_cues_and_the_atlas() {
+    let plan = converted(request_json());
+    plan.compose(staged_text(1)).expect("one run for one cue");
+
+    assert!(matches!(
+        plan.compose(staged_text(2))
+            .expect_err("two runs for one cue is refused"),
+        ExportError::CompositionRejected { .. }
+    ));
+    assert!(matches!(
+        plan.compose(staged_text(0))
+            .expect_err("no runs for one cue is refused"),
+        ExportError::CompositionRejected { .. }
+    ));
+
+    let outside = StagedText::new(
+        default_face(),
+        atlas(FAMILY, WEIGHT),
+        vec![CueRun::single_line(vec![99])],
+    );
+    assert!(matches!(
+        plan.compose(outside)
+            .expect_err("a run pointing outside the atlas is refused"),
+        ExportError::CompositionRejected { .. }
+    ));
+
+    let too_long = StagedText::new(
+        default_face(),
+        atlas(FAMILY, WEIGHT),
+        vec![CueRun::single_line(vec![INK_CELL; MAX_RUN_GLYPHS + 1])],
+    );
+    assert!(matches!(
+        plan.compose(too_long)
+            .expect_err("a run longer than the renderer accepts is refused"),
+        ExportError::CompositionRejected { .. }
+    ));
+}
+
+// ---- Refusals the request itself carries --------------------------------------------------
+
+#[test]
+fn a_request_the_contract_refuses_never_reaches_the_conversion() {
+    let request = support::request(request_json());
+    assert!(
+        request.validate(SOURCE_WIDTH, SOURCE_HEIGHT, 0).is_err(),
+        "a zero-length source has nothing to export"
+    );
+
+    let mut inverted = request_json();
+    inverted["settings"]["trimStartUs"] = json!(5_000_000);
+    inverted["settings"]["trimEndUs"] = json!(4_000_000);
+    assert!(
+        support::request(inverted)
+            .validate(SOURCE_WIDTH, SOURCE_HEIGHT, SOURCE_DURATION_US)
+            .is_err(),
+        "an inverted trim is refused"
+    );
+}
+
+#[test]
+fn a_full_volume_is_reported_as_a_full_volume_rather_than_a_platform_status_code() {
+    for code in [0x8007_0070_u32, 0x8007_0027, 0x8003_0070] {
+        let error = ExportError::from_encode(EncodeError::MediaFoundation {
+            stage: MfStage::WriteSample,
+            code,
+        });
+        assert!(
+            matches!(error, ExportError::OutputVolumeFull),
+            "0x{code:08x} was reported as {error}"
+        );
+    }
+    let other = ExportError::from_encode(EncodeError::MediaFoundation {
+        stage: MfStage::WriteSample,
+        code: 0x8000_4005,
+    });
+    assert!(matches!(other, ExportError::OutputUnwritable { .. }));
+}
+
+#[test]
+fn every_shipped_preset_identity_crosses_the_conversion() {
+    const PRESETS: [&str; 30] = [
+        "default",
+        "modern",
+        "classic",
+        "neon",
+        "minimal",
+        "gaming",
+        "cinematic",
+        "gradient",
+        "retro",
+        "elegant",
+        "cyberpunk",
+        "vintage",
+        "comic",
+        "horror",
+        "luxury",
+        "kawaii",
+        "grunge",
+        "corporate",
+        "anime",
+        "vaporwave",
+        "steampunk",
+        "noir",
+        "pastel",
+        "bold",
+        "sketch",
+        "glitch",
+        "royal",
+        "sunset",
+        "ocean",
+        "forest",
+    ];
+    for preset in PRESETS.into_iter().chain(["custom_1750000000000"]) {
+        let mut value = request_json();
+        value["customization"]["preset"] = json!(preset);
+        converted(value);
+    }
+}

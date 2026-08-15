@@ -13,10 +13,11 @@
 // is the same coincidence the allow above covers.
 #[allow(unused_imports, unused_macros)]
 pub(crate) mod frames;
+pub(crate) mod ink;
 
 use osg_compositor::{
-    Crop, CropSpec, CueRun, SourceFrame, SubtitleScene, SubtitleStyle, SubtitleStyleSpec,
-    VideoUnderlay,
+    Crop, CropSpec, CueRun, SourceFrame, SubtitleDecorationSpec, SubtitleScene, SubtitleStyle,
+    SubtitleStyleSpec, VideoUnderlay,
 };
 use osg_scene::glyph::{
     AtlasFace, AtlasGeometry, AtlasGlyph, AtlasMetrics, Direction, FaceProbe, FaceStyle,
@@ -194,6 +195,55 @@ pub(crate) fn style_spec() -> SubtitleStyleSpec {
 pub(crate) fn style(spec: &SubtitleStyleSpec) -> SubtitleStyle {
     SubtitleStyle::resolve(spec).expect("the fixture style resolves")
 }
+
+/// The render style with a decoration and no background, so every inked pixel came from the glyph
+/// or from the decoration under test.
+pub(crate) fn decorated(decoration: SubtitleDecorationSpec) -> SubtitleStyleSpec {
+    SubtitleStyleSpec {
+        background_opacity: 0.0,
+        decoration,
+        ..style_spec()
+    }
+}
+
+/// The render style with a decoration and a half-opaque background box.
+///
+/// Half-opaque rather than solid on purpose: an opaque box hides every ordering mistake underneath
+/// it, so a test that wants to prove what is above the box needs one that can be seen through.
+pub(crate) fn decorated_over_box(decoration: SubtitleDecorationSpec) -> SubtitleStyleSpec {
+    SubtitleStyleSpec {
+        background_opacity: 50.0,
+        background_color: "#000000".to_owned(),
+        decoration,
+        ..style_spec()
+    }
+}
+
+/// The render style with a decoration and a fully opaque background box.
+///
+/// The opaque box is what makes a paint-order mistake *detectable* rather than merely different:
+/// anything drawn under it is gone, not dimmed, so "the effect is on screen" and "the effect is
+/// above the box" become the same assertion.
+pub(crate) fn decorated_over_opaque_box(decoration: SubtitleDecorationSpec) -> SubtitleStyleSpec {
+    SubtitleStyleSpec {
+        background_opacity: 100.0,
+        background_color: "#000000".to_owned(),
+        decoration,
+        ..style_spec()
+    }
+}
+
+/// The fixture with no inked glyph at all, so a box, a border or a glow is the only thing drawn.
+pub(crate) fn boxed_only(spec: &SubtitleStyleSpec) -> SubtitleScene {
+    staged_with_run(spec, CueRun::single_line(vec![SPACE_CELL]))
+}
+
+/// A half-opaque black box pixel, as the compositor writes it: the background colour at 50%, which
+/// `opacity_to_alpha_byte` rounds *down* to 127.
+pub(crate) const HALF_BLACK: [u8; 4] = [0, 0, 0, 127];
+
+/// A fully opaque black box pixel.
+pub(crate) const OPAQUE_BLACK: [u8; 4] = [0, 0, 0, 255];
 
 /// The whole fixture, staged and checked.
 pub(crate) fn staged(spec: &SubtitleStyleSpec) -> SubtitleScene {

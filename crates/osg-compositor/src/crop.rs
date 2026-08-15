@@ -17,6 +17,7 @@
 
 use osg_scene::color::{Rgba, parse_hex_color};
 
+use crate::blur::gaussian_radius_px;
 use crate::error::{CompositorError, Rejection};
 
 /// The largest absolute crop offset, as a percentage of the source edge.
@@ -243,19 +244,7 @@ impl Crop {
         let CanvasBackground::Blur { sigma_px } = self.background else {
             return 0;
         };
-        // Three standard deviations is where a Gaussian has spent 99.7% of its weight; past that
-        // the extra taps change nothing a pixel can hold.
-        let radius = (sigma_px * 3.0).ceil();
-        if radius <= 0.0 {
-            return 0;
-        }
-        #[expect(
-            clippy::cast_possible_truncation,
-            clippy::cast_sign_loss,
-            reason = "sigma is clamped to MAX_CANVAS_BLUR_SIGMA, so the radius is small and positive"
-        )]
-        let radius = radius as u32;
-        radius.min(MAX_CANVAS_BLUR_RADIUS)
+        gaussian_radius_px(sigma_px, MAX_CANVAS_BLUR_RADIUS)
     }
 }
 

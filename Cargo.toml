@@ -10,6 +10,7 @@ members = [
   "crates/osg-download",
   "crates/osg-encode",
   "crates/osg-engine-packages",
+  "crates/osg-export",
   "crates/osg-gemini",
   "crates/osg-infrastructure",
   "crates/osg-live-music",
@@ -40,6 +41,7 @@ osg-domain = { path = "crates/osg-domain" }
 osg-download = { path = "crates/osg-download" }
 osg-encode = { path = "crates/osg-encode" }
 osg-engine-packages = { path = "crates/osg-engine-packages" }
+osg-export = { path = "crates/osg-export" }
 osg-gemini = { path = "crates/osg-gemini" }
 osg-live-music = { path = "crates/osg-live-music" }
 osg-media = { path = "crates/osg-media" }

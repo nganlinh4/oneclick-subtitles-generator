@@ -63,6 +63,18 @@ pub enum Rejection {
     StyleAnimation,
     /// The easing is not one of the reviewed curves.
     StyleEasing,
+    /// The stroke width is out of range, or its colour could not be resolved.
+    DecorationStroke,
+    /// A text-shadow offset or blur is out of range, or its colour could not be resolved.
+    DecorationShadow,
+    /// The glow intensity is out of range, or its colour could not be resolved.
+    DecorationGlow,
+    /// The border width is out of range, or its colour could not be resolved.
+    DecorationBorder,
+    /// The border style is not one of `none`, `solid`, `dashed`, `dotted` or `double`.
+    DecorationBorderStyle,
+    /// A gradient stop could not be resolved, or the direction is not `<0..=360>deg`.
+    DecorationGradient,
     /// The scene and the staged runs disagree on how many cues there are.
     RunCount,
     /// A run has no lines, no glyphs at all, or more than the renderer accepts.
@@ -102,6 +114,12 @@ impl fmt::Display for Rejection {
             Self::StyleAlign => "the text alignment is not supported",
             Self::StyleAnimation => "the animation is not supported",
             Self::StyleEasing => "the easing is not one of the reviewed curves",
+            Self::DecorationStroke => "the glyph stroke is not supported",
+            Self::DecorationShadow => "the text shadow is not supported",
+            Self::DecorationGlow => "the glow is not supported",
+            Self::DecorationBorder => "the border is not supported",
+            Self::DecorationBorderStyle => "the border style is not supported",
+            Self::DecorationGradient => "the gradient fill is not supported",
             Self::RunCount => "the scene and its staged runs disagree on the cue count",
             Self::RunLength => "a staged run is empty or longer than the renderer accepts",
             Self::RunGlyphIndex => "a staged run refers to a glyph cell the atlas does not contain",

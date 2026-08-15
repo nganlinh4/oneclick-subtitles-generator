@@ -1,53 +1,78 @@
-//! The per-frame plan: scene plus frame index, out come textured quads.
+//! Quad primitives: the vertex layout, the cue transform and the one place a rectangle becomes
+//! six vertices.
 //!
-//! This is the only place the compositor turns a contract into geometry, and it derives nothing it
-//! could ask `osg-scene` for. Cue selection, fade progress, easing, the cue transform, the two
-//! scaling rules, the box anchor and every colour come from that crate; what is added here is
-//! strictly the placement of atlas cells and the corners of the quads.
+//! This module derives nothing it could ask `osg-scene` for. Cue selection, fade progress, easing,
+//! the cue transform, the two scaling rules, the box anchor and every colour come from that crate;
+//! what is added here is strictly the placement of corners and the packing of attributes.
 //!
-//! Determinism: the plan is a pure function of the scene and the frame index. Frame times come from
-//! the exact rational timeline rather than an accumulated float, so frame `n` is the same geometry
-//! whether it was reached by seeking or by playing, and the emitted vertex list has a fixed order.
+//! Determinism: a quad is a pure function of its inputs, the corner order is fixed, and the emitted
+//! vertex list has a fixed order, so the blend order of two overlapping quads is the order they
+//! were planned in rather than whatever the driver chose.
 
-use osg_scene::animation::{CueTransform, cue_transform};
+use osg_scene::animation::CueTransform;
 use osg_scene::color::Rgba;
-use osg_scene::cues::active_cue_at;
-use osg_scene::easing::apply_subtitle_animation_easing;
-use osg_scene::glyph::{AtlasGlyph, GlyphAtlasDescriptor};
-use osg_scene::layout::{SubtitleBox, SubtitlePosition, TextAlign, resolve_subtitle_box};
+use osg_scene::glyph::GlyphAtlasDescriptor;
 use osg_scene::scale::scale_subtitle_style_value;
 
-use crate::error::CompositorError;
+use crate::pass::narrow;
 use crate::style::SubtitleStyle;
-use crate::subtitle::{CueRun, SubtitleScene};
 
-/// How many `f32` one vertex carries: position, uv, colour, rounded-box shape, shape parameters.
-pub(crate) const VERTEX_FLOATS: usize = 14;
+/// How many `f32` one vertex carries: position, uv, colour, shape, parameters, atlas cell.
+pub(crate) const VERTEX_FLOATS: usize = 20;
 
 /// The byte stride of one vertex.
 pub(crate) const VERTEX_STRIDE: u64 = (VERTEX_FLOATS * 4) as u64;
 
-/// A solid rounded box.
-const KIND_BOX: f64 = 0.0;
-/// A textured atlas cell.
-const KIND_GLYPH: f64 = 1.0;
+/// A solid rounded box: the subtitle background, and the shape the glow is cast from.
+pub(crate) const KIND_BOX: f64 = 0.0;
+/// A textured cell, sampled straight: an atlas glyph, or a blurred mask laid over the frame.
+pub(crate) const KIND_GLYPH: f64 = 1.0;
+/// A glyph dilated by the stroke radius.
+pub(crate) const KIND_STROKE: f64 = 2.0;
+/// The ring between the border box and the padding box, patterned by its style.
+pub(crate) const KIND_BORDER: f64 = 3.0;
+/// A blurred box mask with the box itself cut back out of it, which is a CSS outer box shadow.
+pub(crate) const KIND_GLOW: f64 = 4.0;
 
 /// An axis-aligned rectangle before the cue transform is applied.
-#[derive(Debug, Clone, Copy)]
-struct Rect {
-    left: f64,
-    top: f64,
-    width: f64,
-    height: f64,
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub(crate) struct Rect {
+    pub(crate) left: f64,
+    pub(crate) top: f64,
+    pub(crate) width: f64,
+    pub(crate) height: f64,
 }
 
 impl Rect {
-    const ZERO: Self = Self {
-        left: 0.0,
-        top: 0.0,
-        width: 0.0,
-        height: 0.0,
-    };
+    /// The rectangle grown by `margin` on every side.
+    pub(crate) fn grown(self, margin: f64) -> Self {
+        Self {
+            left: self.left - margin,
+            top: self.top - margin,
+            width: margin.mul_add(2.0, self.width),
+            height: margin.mul_add(2.0, self.height),
+        }
+    }
+
+    pub(crate) fn centre(self) -> (f64, f64) {
+        (self.left + self.width / 2.0, self.top + self.height / 2.0)
+    }
+
+    pub(crate) fn half(self) -> (f64, f64) {
+        (self.width / 2.0, self.height / 2.0)
+    }
+
+    /// The four corners in the fixed order the vertex emitter uses.
+    fn corners(self) -> [(f64, f64); 4] {
+        let right = self.left + self.width;
+        let bottom = self.top + self.height;
+        [
+            (self.left, self.top),
+            (right, self.top),
+            (right, bottom),
+            (self.left, bottom),
+        ]
+    }
 }
 
 /// The cue transform as an affine map on composition pixels.
@@ -57,7 +82,7 @@ impl Rect {
 /// squeeze at these angles, and inventing a projection matrix here would be a maths the scene
 /// contract does not define.
 #[derive(Debug, Clone, Copy)]
-struct Placement {
+pub(crate) struct Placement {
     centre_x: f64,
     centre_y: f64,
     scale: f64,
@@ -69,7 +94,11 @@ struct Placement {
 }
 
 impl Placement {
-    fn new(transform: CueTransform, centre: (f64, f64), composition_height: f64) -> Self {
+    pub(crate) fn new(
+        transform: CueTransform,
+        centre: (f64, f64),
+        composition_height: f64,
+    ) -> Self {
         let radians = transform.rotate_degrees.to_radians();
         Self {
             centre_x: centre.0,
@@ -81,6 +110,20 @@ impl Placement {
             // Transform offsets are authored against the 1080-high reference, like every other size.
             offset_x: scale_subtitle_style_value(transform.translate_x, composition_height),
             offset_y: scale_subtitle_style_value(transform.translate_y, composition_height),
+        }
+    }
+
+    /// The transform that moves nothing, for a quad already expressed in composition pixels.
+    pub(crate) const fn identity() -> Self {
+        Self {
+            centre_x: 0.0,
+            centre_y: 0.0,
+            scale: 1.0,
+            flip: 1.0,
+            cosine: 1.0,
+            sine: 0.0,
+            offset_x: 0.0,
+            offset_y: 0.0,
         }
     }
 
@@ -96,19 +139,20 @@ impl Placement {
 
 /// The composition-wide values one frame's geometry is measured in.
 #[derive(Debug, Clone, Copy)]
-struct Metrics {
-    width: f64,
-    height: f64,
-    glyph_scale: f64,
-    line_height: f64,
-    baseline: f64,
-    padding_x: f64,
-    padding_y: f64,
-    radius: f64,
+pub(crate) struct Metrics {
+    pub(crate) width: f64,
+    pub(crate) height: f64,
+    pub(crate) glyph_scale: f64,
+    pub(crate) line_height: f64,
+    pub(crate) baseline: f64,
+    pub(crate) padding_x: f64,
+    pub(crate) padding_y: f64,
+    pub(crate) radius: f64,
+    pub(crate) border_width: f64,
 }
 
 impl Metrics {
-    fn resolve(
+    pub(crate) fn resolve(
         atlas: &GlyphAtlasDescriptor,
         style: &SubtitleStyle,
         width: f64,
@@ -128,222 +172,115 @@ impl Metrics {
             padding_x: scale_subtitle_style_value(style.background_padding_x(), height),
             padding_y: scale_subtitle_style_value(style.background_padding_y(), height),
             radius: scale_subtitle_style_value(style.border_radius(), height),
+            border_width: style.decoration().border_effect().map_or(0.0, |border| {
+                scale_subtitle_style_value(border.width, height)
+            }),
         }
+    }
+
+    /// Scale a reference-pixel style value for this composition.
+    pub(crate) fn scaled(self, value: f64) -> f64 {
+        scale_subtitle_style_value(value, self.height)
     }
 }
 
-/// Build the vertex list for one frame, or an empty list when nothing is visible.
+/// The rounded box a fragment measures itself against, independent of the quad that carries it.
 ///
-/// # Errors
-/// Returns [`CompositorError::FrameOutOfRange`] when the index is not in the scene's timeline.
-pub(crate) fn build_frame_vertices(
-    scene: &SubtitleScene,
-    frame_index: u32,
-) -> Result<Vec<f32>, CompositorError> {
-    let timeline = scene.scene().timeline();
-    let time = timeline
-        .frame_time(frame_index)
-        .map_err(|_| CompositorError::FrameOutOfRange {
-            index: frame_index,
-            frame_count: timeline.frame_count(),
-        })?;
-
-    let style = scene.style();
-    let Some(active) = active_cue_at(scene.timings(), time, style.fade_in(), style.fade_out())
-    else {
-        return Ok(Vec::new());
-    };
-
-    // The fade curve is the easing applied to the selection's own progress, so the easing choice
-    // drives opacity and motion together exactly as the shipped renderer does.
-    let alpha = style.opacity() * apply_subtitle_animation_easing(active.progress, style.easing());
-    let Some(run) = scene.runs().get(active.index) else {
-        return Ok(Vec::new());
-    };
-    if alpha <= 0.0 {
-        // An invisible cue emits nothing at all, so a zero-opacity frame is byte-identical to a
-        // frame with no cue rather than merely close to it.
-        return Ok(Vec::new());
-    }
-
-    let atlas = scene.atlas();
-    let width = f64::from(scene.scene().width());
-    let height = f64::from(scene.scene().height());
-    let metrics = Metrics::resolve(atlas, style, width, height);
-
-    let line_widths = line_widths(atlas, run, metrics.glyph_scale);
-    let text_width = line_widths.iter().copied().fold(0.0_f64, f64::max);
-    let text_height = line_count(run) * metrics.line_height;
-
-    let boxed = resolve_subtitle_box(
-        style.position(),
-        style.margins(),
-        style.custom_x(),
-        style.custom_y(),
-        style.align(),
-        width,
-        height,
-    );
-    let block_left = block_left(&boxed, style.position(), text_width);
-    let box_height = text_height + metrics.padding_y * 2.0;
-    let block_top = boxed.anchor_bias.mul_add(-box_height, boxed.anchor_y);
-
-    let placement = Placement::new(
-        cue_transform(
-            style.animation(),
-            active.phase,
-            active.progress,
-            style.easing(),
-        ),
-        (block_left + text_width / 2.0, block_top + box_height / 2.0),
-        height,
-    );
-
-    let mut vertices = Vec::new();
-    if style.background_visible() {
-        emit(
-            &mut vertices,
-            placement,
-            metrics,
-            Rect {
-                left: block_left - metrics.padding_x,
-                top: block_top,
-                width: text_width + metrics.padding_x * 2.0,
-                height: box_height,
-            },
-            Rect::ZERO,
-            (metrics.radius, KIND_BOX, tint(style.background(), alpha)),
-        );
-    }
-    emit_glyphs(
-        &mut vertices,
-        &GlyphPass {
-            atlas,
-            run,
-            placement,
-            metrics,
-            align: style.align(),
-            colour: tint(style.text_color(), alpha),
-            block_left,
-            block_top,
-        },
-        &line_widths,
-        text_width,
-    );
-    Ok(vertices)
+/// The two are separate because a glow quad is much larger than the box it is the shadow of: it has
+/// to reach three deviations past the border box, while still reporting the border box's own
+/// corners so the shader can cut the box back out of the blur.
+#[derive(Debug, Clone, Copy)]
+pub(crate) struct Shape {
+    pub(crate) centre: (f64, f64),
+    pub(crate) half: (f64, f64),
+    pub(crate) radius: f64,
 }
 
-/// Everything the glyph loop needs, bundled so the loop keeps one argument list.
-struct GlyphPass<'scene> {
-    atlas: &'scene GlyphAtlasDescriptor,
-    run: &'scene CueRun,
-    placement: Placement,
-    metrics: Metrics,
-    align: TextAlign,
-    colour: [f64; 4],
-    block_left: f64,
-    block_top: f64,
-}
+impl Shape {
+    pub(crate) const NONE: Self = Self {
+        centre: (0.0, 0.0),
+        half: (0.0, 0.0),
+        radius: 0.0,
+    };
 
-fn emit_glyphs(
-    vertices: &mut Vec<f32>,
-    pass: &GlyphPass<'_>,
-    line_widths: &[f64],
-    text_width: f64,
-) {
-    let atlas_width = f64::from(pass.atlas.atlas().width_px);
-    let atlas_height = f64::from(pass.atlas.atlas().height_px);
-    // Two ways a run draws nothing at all, and neither is an error: the gradient fill makes the text
-    // colour transparent, and a run of nothing but blanks inks no pixel so the atlas has no texture.
-    // Walking the pen would produce no quad either way, so it is not walked.
-    if pass.colour[3] <= 0.0 || atlas_width <= 0.0 || atlas_height <= 0.0 {
-        return;
-    }
-
-    let mut baseline = pass.block_top + pass.metrics.padding_y + pass.metrics.baseline;
-    for (line, line_width) in pass.run.lines().iter().zip(line_widths) {
-        let mut pen = line_left(pass.align, pass.block_left, text_width, *line_width);
-        for index in line {
-            let Some(cell) = cell_at(pass.atlas, *index) else {
-                continue;
-            };
-            if is_inked(cell) {
-                let scale = pass.metrics.glyph_scale;
-                emit(
-                    vertices,
-                    pass.placement,
-                    pass.metrics,
-                    Rect {
-                        left: f64::from(cell.origin_x_px).mul_add(-scale, pen),
-                        top: f64::from(cell.origin_y_px).mul_add(-scale, baseline),
-                        width: f64::from(cell.width_px) * scale,
-                        height: f64::from(cell.height_px) * scale,
-                    },
-                    Rect {
-                        left: f64::from(cell.x_px) / atlas_width,
-                        top: f64::from(cell.y_px) / atlas_height,
-                        width: f64::from(cell.width_px) / atlas_width,
-                        height: f64::from(cell.height_px) / atlas_height,
-                    },
-                    (0.0, KIND_GLYPH, pass.colour),
-                );
-            }
-            pen += cell.advance_width_px * pass.metrics.glyph_scale;
+    /// The rectangle's own shape, with a corner radius.
+    pub(crate) fn of(rect: Rect, radius: f64) -> Self {
+        Self {
+            centre: rect.centre(),
+            half: rect.half(),
+            radius,
         }
-        baseline += pass.metrics.line_height;
     }
 }
 
-fn cell_at(atlas: &GlyphAtlasDescriptor, index: u32) -> Option<&AtlasGlyph> {
-    usize::try_from(index)
-        .ok()
-        .and_then(|index| atlas.glyphs().get(index))
+/// Where a fragment's texture coordinates come from.
+#[derive(Debug, Clone, Copy)]
+pub(crate) enum UvSource {
+    /// A rectangle in the bound texture's own space.
+    Rect(Rect),
+    /// The fragment's own position in the frame, for a full-frame mask.
+    Screen,
+    /// Nothing is sampled.
+    None,
 }
 
-const fn is_inked(cell: &AtlasGlyph) -> bool {
-    cell.width_px > 0 && cell.height_px > 0
+/// One quad's complete description.
+#[derive(Debug, Clone, Copy)]
+pub(crate) struct Quad {
+    pub(crate) rect: Rect,
+    pub(crate) uv: UvSource,
+    pub(crate) shape: Shape,
+    /// Straight RGBA per corner, in the corner order [`Rect::corners`] produces. Four different
+    /// colours is what makes a linear gradient exact: the ramp is affine over the quad, so
+    /// interpolating the corners reproduces it without a second colour attribute.
+    pub(crate) colours: [[f64; 4]; 4],
+    pub(crate) kind: f64,
+    /// Kind-specific parameters: the stroke's ring radius in texture units, or the border's width
+    /// and style code.
+    pub(crate) aux: (f64, f64),
+    /// The bound cell's texture bounds, so a dilating sample cannot reach its neighbour.
+    pub(crate) cell: [f64; 4],
+}
+
+impl Quad {
+    /// A quad of one flat colour that samples nothing.
+    pub(crate) fn solid(rect: Rect, shape: Shape, kind: f64, colour: [f64; 4]) -> Self {
+        Self {
+            rect,
+            uv: UvSource::None,
+            shape,
+            colours: [colour; 4],
+            kind,
+            aux: (0.0, 0.0),
+            cell: [0.0; 4],
+        }
+    }
 }
 
 /// Two triangles in a fixed corner order, so the primitive order — and therefore the blend order —
 /// is the same on every run.
-fn emit(
-    vertices: &mut Vec<f32>,
-    placement: Placement,
-    metrics: Metrics,
-    rect: Rect,
-    uv: Rect,
-    shape: (f64, f64, [f64; 4]),
-) {
+pub(crate) fn emit(vertices: &mut Vec<f32>, placement: Placement, metrics: Metrics, quad: &Quad) {
     const ORDER: [usize; 6] = [0, 1, 2, 0, 2, 3];
-    let (radius, kind, colour) = shape;
-    let right = rect.left + rect.width;
-    let bottom = rect.top + rect.height;
-    let corners = [
-        placement.apply(rect.left, rect.top),
-        placement.apply(right, rect.top),
-        placement.apply(right, bottom),
-        placement.apply(rect.left, bottom),
-    ];
-    let uvs = [
-        (uv.left, uv.top),
-        (uv.left + uv.width, uv.top),
-        (uv.left + uv.width, uv.top + uv.height),
-        (uv.left, uv.top + uv.height),
-    ];
-    let half_width = rect.width / 2.0;
-    let half_height = rect.height / 2.0;
-    let locals = [
-        (-half_width, -half_height),
-        (half_width, -half_height),
-        (half_width, half_height),
-        (-half_width, half_height),
-    ];
-    let radius = radius.min(half_width).min(half_height).max(0.0);
+    let points = quad.rect.corners();
+    let corners = points.map(|(x, y)| placement.apply(x, y));
+    let uvs = match quad.uv {
+        UvSource::Rect(uv) => uv.corners(),
+        UvSource::Screen => corners.map(|(x, y)| (x / metrics.width, y / metrics.height)),
+        UvSource::None => [(0.0, 0.0); 4],
+    };
+    let locals = points.map(|(x, y)| (x - quad.shape.centre.0, y - quad.shape.centre.1));
+    let radius = quad
+        .shape
+        .radius
+        .min(quad.shape.half.0)
+        .min(quad.shape.half.1)
+        .max(0.0);
 
     for index in ORDER {
         let (x, y) = corners[index];
         let (u, v) = uvs[index];
         let (local_x, local_y) = locals[index];
+        let colour = quad.colours[index];
         let fields = [
             (x / metrics.width).mul_add(2.0, -1.0),
             (y / metrics.height).mul_add(-2.0, 1.0),
@@ -355,57 +292,23 @@ fn emit(
             colour[3],
             local_x,
             local_y,
-            half_width,
-            half_height,
+            quad.shape.half.0,
+            quad.shape.half.1,
             radius,
-            kind,
+            quad.kind,
+            quad.aux.0,
+            quad.aux.1,
+            quad.cell[0],
+            quad.cell[1],
+            quad.cell[2],
+            quad.cell[3],
         ];
         vertices.extend(fields.into_iter().map(narrow));
     }
 }
 
-fn line_widths(atlas: &GlyphAtlasDescriptor, run: &CueRun, glyph_scale: f64) -> Vec<f64> {
-    run.lines()
-        .iter()
-        .map(|line| {
-            line.iter()
-                .filter_map(|index| cell_at(atlas, *index))
-                .map(|cell| cell.advance_width_px * glyph_scale)
-                .sum()
-        })
-        .collect()
-}
-
-fn line_count(run: &CueRun) -> f64 {
-    u32::try_from(run.lines().len()).map_or(0.0, f64::from)
-}
-
-/// Where the text block starts horizontally.
-///
-/// A custom position collapses the box to a point, so the block is centred on it; otherwise the
-/// block is placed inside the resolved box according to the alignment. `Justify` places like `Left`:
-/// the shipped renderer accepts it but has no control for it, and stretching a run whose shaping
-/// this crate does not own would be inventing layout.
-fn block_left(boxed: &SubtitleBox, position: SubtitlePosition, text_width: f64) -> f64 {
-    if position == SubtitlePosition::Custom {
-        return boxed.left - text_width / 2.0;
-    }
-    match boxed.align {
-        TextAlign::Left | TextAlign::Justify => boxed.left,
-        TextAlign::Center => boxed.left + ((boxed.right - boxed.left) - text_width) / 2.0,
-        TextAlign::Right => boxed.right - text_width,
-    }
-}
-
-fn line_left(align: TextAlign, block_left: f64, text_width: f64, line_width: f64) -> f64 {
-    match align {
-        TextAlign::Left | TextAlign::Justify => block_left,
-        TextAlign::Center => block_left + (text_width - line_width) / 2.0,
-        TextAlign::Right => block_left + (text_width - line_width),
-    }
-}
-
-fn tint(colour: Rgba, alpha: f64) -> [f64; 4] {
+/// A colour with the cue's own fade and opacity folded in.
+pub(crate) fn tint(colour: Rgba, alpha: f64) -> [f64; 4] {
     [
         f64::from(colour.red) / 255.0,
         f64::from(colour.green) / 255.0,
@@ -414,10 +317,5 @@ fn tint(colour: Rgba, alpha: f64) -> [f64; 4] {
     ]
 }
 
-#[expect(
-    clippy::cast_possible_truncation,
-    reason = "vertex attributes are f32; the plan is computed in f64 and narrowed once, here"
-)]
-fn narrow(value: f64) -> f32 {
-    value as f32
-}
+/// Opaque white: what a mask is drawn in, before anything tints it.
+pub(crate) const MASK_INK: [f64; 4] = [1.0, 1.0, 1.0, 1.0];

@@ -1,0 +1,25 @@
+[package]
+name = "osg-export"
+version.workspace = true
+authors.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+description = "Turns a validated OSG render request into a finished MP4 through the native pipeline"
+license = "MIT"
+
+[dependencies]
+osg-audio = { path = "../osg-audio" }
+osg-compositor = { path = "../osg-compositor" }
+osg-decode = { path = "../osg-decode" }
+osg-encode = { path = "../osg-encode" }
+osg-render = { path = "../osg-render" }
+osg-scene = { path = "../osg-scene" }
+thiserror = "=2.0.20"
+
+[dev-dependencies]
+osg-domain = { path = "../osg-domain" }
+serde_json = "=1.0.151"
+tempfile = "=3.27.0"
+
+[lints]
+workspace = true
