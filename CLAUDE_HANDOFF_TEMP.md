@@ -95,6 +95,33 @@ already licensed to the user as part of Windows. Verified with ffprobe rather th
 symphonia plus libopus, because roughly every yt-dlp download carries Opus and symphonia has no
 decoder for it.
 
+**Adversarial review — first pass complete (task H).** Four read-only reviewers over the frozen
+crates returned **39 findings: 5 high, 16 medium, 18 low**. Every high was verified by reading the
+code myself before acting; two were fixed, three were verified and deliberately recorded rather than
+patched. The highs:
+
+| Finding | Disposition |
+| --- | --- |
+| Staging bounded glyph origins to non-negative, but `actualBoundingBoxLeft` is positive going *left*, so most real glyphs produce a negative origin. **With a real font the whole atlas is refused and the native preview never shows text.** It survived because the measurement stub returned 0 — the one value that passes. | **FIXED.** The stub now returns a realistic negative bearing, which fails 14 of 18 existing tests against the old bound. |
+| `maxWidth` was marked `native('crates/osg-scene/src/layout.rs')` and is implemented nowhere — the exact failure the ledger exists to prevent. The guard could not catch it: it only asserted `where` was truthy. | **FIXED**, and the guard now resolves the path. Flagged independently by two reviewers. |
+| Animation pixel offsets are scaled by composition height here; the shipped renderer emits a raw 50px at every resolution. A slide travels twice as far at 4K. | **RECORDED.** Scaling is arguably better but changes existing projects and was assumed, not decided. `animationType` is already pending; this must be settled before it moves. |
+| `symphonia`'s AAC decoder writes planes in element order with no remap table, so a 5.1 AAC track is C, L, R, Ls, Rs, LFE while the fold-down assumes WAVE order. | **RECORDED, not patched.** The repair belongs in the decode layer and cannot be verified without a 5.1 AAC fixture this repository lacks. Stereo and mono are unaffected. |
+
+Mediums fixed: `borderRadius` and both volume fields were marked pending while already implemented
+(the ledger can be wrong in both directions); a timeline test asserted `frame_time(i)` equals
+`frame_time(i)`, a tautology whose name claimed it proved seek-equals-play; `margin_fraction` rounded
+through a ×1080/÷1080 round trip that is not the identity in floating point and disagreed with the
+shipped `toFixed(2)` on near-tie values; a decoder SAFETY comment claimed the platform reported a
+length it had reported as zero.
+
+Mediums NOT yet addressed, all recorded with reproduction steps in the reviewers' output at
+`.claude/.../tasks/w1sikh1rd.output`: `span_floor` overflowing i128 in `osg-audio/src/format.rs`; an
+unbounded start offset in `FrameTimeline::new` overflowing `frame_time`; `resample.rs` deriving its
+tap table from platform `f64::sin`/`cos`, which is not guaranteed reproducible across platforms;
+the staging handle cache outliving the native atlas it names; `finalize()` computing duration from
+frames delivered rather than frames configured; `seek_before` falling out of its backoff loop with
+`Ok(())` when every backoff lands past the target.
+
 **Open items carried forward — recorded so they are not lost, none of them blocking today:**
 
 1. **A duplicated function that must never diverge.** `osg_decode::sampling::exact_time_to_100ns` is
