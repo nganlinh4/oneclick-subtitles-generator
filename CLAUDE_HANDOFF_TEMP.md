@@ -119,7 +119,18 @@ decoder for it.
 4. **`canvasBgBlur` is clamped, not refused.** Stored range reaches 1000; applied sigma clamps to 40.
    A user who stored 200 sees the 40 result. Refusing would reject a value the editor legitimately
    persists, so this is deliberate, but it is a silent clamp and should be stated in release notes.
-5. **The non-Windows decoder path has never executed.** `tests/unsupported_platform.rs` is
+5. **Line endings, and why the readiness gate was going to fail for everyone.** `.gitattributes`
+   sets `* text=auto` and does not name `*.rs`, so Rust files are stored LF and checked out CRLF on
+   Windows (`core.autocrlf=true` here). The close-handler invariant sliced `lib.rs` and compared it
+   byte-for-byte, cutting between a `` and its `
+`, so **any fresh Windows clone or CI checkout
+   would have failed the gate**. It only passed here because the working tree happened to hold an LF
+   copy from when the file was written. Fixed by normalising before slicing.
+   Considered and deliberately NOT done: adding `*.rs text eol=lf` alongside the existing `*.mjs`,
+   `*.py` and `*.css` entries. It would match the Rust ecosystem default and stop the constant
+   "LF will be replaced by CRLF" churn, but it rewrites the checkout state of every Rust file in the
+   tree, which is not a change to make in passing. Worth doing deliberately, on its own.
+6. **The non-Windows decoder path has never executed.** `tests/unsupported_platform.rs` is
    `#![cfg(not(windows))]` and reports zero tests here. It needs a non-Windows CI target to be more
    than an assertion about source text.
 
