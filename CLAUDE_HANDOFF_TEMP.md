@@ -31,8 +31,10 @@ pushed.
 | `cargo test -p osg-scene -p osg-compositor` | **146 passed, 0 failed** |
 | `cargo clippy --workspace --all-targets -- -D warnings` | clean |
 | `cargo fmt --check` | clean |
-| `npm run lint` | clean |
-| `npm test` (frontend) | passing, incl. 195 renderer tests |
+| `npx vitest run` (whole frontend) | **1855 passed, 0 failed, across 218 files** |
+| `npm run lint` | PASS |
+| `npm run check:i18n` | PASS |
+| `npm run check:tauri-contract` | PASS |
 
 **The parity property is proven, on real hardware.** `osg-compositor` renders frame 45 on a fresh
 device byte-identically to rendering frames 0..45 in order (Intel Graphics, Vulkan, no test skipped).
@@ -70,9 +72,26 @@ is not yet proven):
 `target/debug/incremental` was 31G of disposable cache and was removed, reclaiming 32G without
 losing any built dependency. Prefer `cargo test -p <crate>` over whole-workspace builds here.
 
-**Next steps, in order:** finish glyph/compositor integration and the atlas staging command, switch
-preview onto native frames, implement export/encoding, prove exhaustive parity against the shipped
-renderer, only then delete Remotion (124 files), then packaging and installed-EXE smoke.
+**Migration completeness is machine-checked, not asserted.** `src/platform/renderParityLedger.js`
+maps all 70 persisted options to a disposition, and its test fails if a field is added to the schema
+without one, or listed there without existing. Auditing my own entries against the crates found
+three that claimed more than the code does — `textAlign` (justify is parsed, not performed),
+`animationType` (nine of ten; typewriter does not cut the run yet) and `gradientEnabled` (both side
+effects are reproduced but nothing paints the gradient, so enabling it today would give invisible
+subtitles). The honest figure is **36 of 70 still pending**, and it drops as work lands.
+
+**Encoding and decoding no longer involve FFmpeg at all.** `osg-encode` drives Media Foundation's
+SinkWriter for H.264/AAC MP4 and `IMFSourceReader` will decode source video, both using codecs
+already licensed to the user as part of Windows. Verified with ffprobe rather than asserted:
+`color_range=pc`, `bt709`, High profile, progressive. `osg-audio` decodes source audio with
+symphonia plus libopus, because roughly every yt-dlp download carries Opus and symphonia has no
+decoder for it.
+
+**Next steps, in order:** land wave 9's preview boundary, add the video underlay so crop, flip and
+canvas backfill work, switch preview onto native frames, prove exhaustive parity against the shipped
+renderer, only then remove Remotion — keeping `osg-render/src/contract.rs`, which has zero Remotion
+references and is still the typed boundary the frontend speaks — then packaging and installed-EXE
+smoke.
 
 ---
 
