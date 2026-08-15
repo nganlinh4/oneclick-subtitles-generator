@@ -136,7 +136,7 @@ pub(crate) fn frames_floor(time: ExactTime, rate: u32) -> Option<u64> {
 ///
 /// Every step is checked. `ExactTime` bounds neither its numerator nor its denominator beyond i64,
 /// so cross-multiplying two of them reaches 2^126 and their difference reaches 2^127 — already at
-/// the edge of i128 — and multiplying that by a sample rate of up to 192_000 passes it. An
+/// the edge of i128 — and multiplying that by a sample rate of up to 192 kHz passes it. An
 /// unchecked version wraps silently in release and reports a plausible but wrong frame count for
 /// the span, which is a wrong audio length rather than a crash.
 pub(crate) fn span_floor(from: ExactTime, to: ExactTime, rate: u32) -> Option<u64> {
