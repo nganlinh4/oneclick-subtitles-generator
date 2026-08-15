@@ -53,6 +53,7 @@ export const REQUIRED_EFFECTIVE_ASYNC_BOUNDARIES = Object.freeze({
     'src/hooks/runAsrGeneration.js': 2,
     'src/hooks/useSubtitles.js': 2,
     'src/hooks/useSubtitlesSegmentRetry.js': 1,
+    'src/hooks/useTranslationState.js': 1,
   }),
 });
 

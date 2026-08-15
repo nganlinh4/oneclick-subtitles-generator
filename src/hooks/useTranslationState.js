@@ -13,7 +13,6 @@ import { getCurrentMediaId } from '../utils/mediaId';
 import { subscribeCurrentCacheId } from '../utils/userSubtitlesStore';
 import { useTranslationBulk } from './useTranslationBulk';
 import { DEFAULT_TRANSLATION_MODEL_ID, migrateGeminiModelId } from '../config/geminiModels';
-import { checkpointBeforeUpdate } from '../services/lifecycleOrchestrator';
 import { CHECKPOINT_SOURCE } from '../events/constants';
 import {
   assertActiveTranslationIdentity,
@@ -38,6 +37,9 @@ import {
 
 // Re-export legacy helpers for consumers that only need display/cache labels.
 export { generateSubtitleHash, getCurrentMediaId };
+
+// Required-effective async boundary: the lifecycle orchestrator must stay out of the entry chunk.
+const loadLifecycleOrchestrator = () => import('../services/lifecycleOrchestrator');
 
 let translationRunSequence = 0;
 const nextRunId = () => {
@@ -663,6 +665,8 @@ export const useTranslationState = (subtitles, onTranslationComplete) => {
         batchSourcePayload: hasMainSubtitles ? batchSourcePayload : null,
       });
       await assertRunOwned(context);
+      const { checkpointBeforeUpdate } = await loadLifecycleOrchestrator();
+      await assertRunOwned(context);
       await checkpointBeforeUpdate({
         source: CHECKPOINT_SOURCE.TRANSLATION_START,
         runId: context.runId,
@@ -917,6 +921,8 @@ export const useTranslationState = (subtitles, onTranslationComplete) => {
     let context = null;
     try {
       context = await captureRunContext(lease);
+      await assertRunOwned(context);
+      const { checkpointBeforeUpdate } = await loadLifecycleOrchestrator();
       await assertRunOwned(context);
       await checkpointBeforeUpdate({
         source: CHECKPOINT_SOURCE.TRANSLATION_START,
