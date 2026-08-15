@@ -133,11 +133,18 @@ pub(crate) fn frames_floor(time: ExactTime, rate: u32) -> Option<u64> {
 }
 
 /// `floor((to - from) * rate)`, or `None` when the span is negative or past the ceiling.
+///
+/// Every step is checked. `ExactTime` bounds neither its numerator nor its denominator beyond i64,
+/// so cross-multiplying two of them reaches 2^126 and their difference reaches 2^127 — already at
+/// the edge of i128 — and multiplying that by a sample rate of up to 192_000 passes it. An
+/// unchecked version wraps silently in release and reports a plausible but wrong frame count for
+/// the span, which is a wrong audio length rather than a crash.
 pub(crate) fn span_floor(from: ExactTime, to: ExactTime, rate: u32) -> Option<u64> {
-    let numerator = (i128::from(to.numerator()) * i128::from(from.denominator())
-        - i128::from(from.numerator()) * i128::from(to.denominator()))
-        * i128::from(rate);
-    let denominator = i128::from(to.denominator()) * i128::from(from.denominator());
+    let numerator = i128::from(to.numerator())
+        .checked_mul(i128::from(from.denominator()))?
+        .checked_sub(i128::from(from.numerator()).checked_mul(i128::from(to.denominator()))?)?
+        .checked_mul(i128::from(rate))?;
+    let denominator = i128::from(to.denominator()).checked_mul(i128::from(from.denominator()))?;
     if denominator <= 0 {
         return None;
     }
@@ -150,6 +157,27 @@ pub(crate) fn span_floor(from: ExactTime, to: ExactTime, rate: u32) -> Option<u6
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn a_span_at_the_extremes_of_exact_time_refuses_instead_of_wrapping() {
+        use osg_scene::timeline::ExactTime;
+
+        // ExactTime bounds neither field beyond i64, so cross-multiplying two of them reaches 2^126
+        // and their difference 2^127 — then multiplying by the sample rate passes what i128 holds.
+        // Unchecked, that wraps in release and yields a plausible but wrong frame count, i.e. an
+        // audio track of the wrong length rather than an error anyone would notice.
+        let from = ExactTime::new(1, i64::MAX).expect("a legal instant");
+        let to = ExactTime::new(i64::MAX, 1).expect("a legal instant");
+        assert_eq!(super::span_floor(from, to, 192_000), None);
+        assert_eq!(super::span_floor(from, to, 8_000), None);
+
+        // The ordinary case still works, so the guard did not simply disable the function.
+        let quarter = ExactTime::new(1, 4).expect("a quarter second");
+        assert_eq!(
+            super::span_floor(ExactTime::ZERO, quarter, 48_000),
+            Some(12_000)
+        );
+    }
+
     use super::{
         AudioError, MAX_CHANNELS, MAX_MIX_DURATION_SECONDS, MAX_SAMPLE_RATE, MIN_SAMPLE_RATE,
         OutputFormat, frames_floor, span_floor,
