@@ -5,6 +5,7 @@ members = [
   "crates/osg-asr",
   "crates/osg-audio",
   "crates/osg-compositor",
+  "crates/osg-decode",
   "crates/osg-domain",
   "crates/osg-download",
   "crates/osg-encode",
@@ -34,6 +35,7 @@ osg-application = { path = "crates/osg-application" }
 osg-asr = { path = "crates/osg-asr" }
 osg-audio = { path = "crates/osg-audio" }
 osg-compositor = { path = "crates/osg-compositor" }
+osg-decode = { path = "crates/osg-decode" }
 osg-domain = { path = "crates/osg-domain" }
 osg-download = { path = "crates/osg-download" }
 osg-encode = { path = "crates/osg-encode" }

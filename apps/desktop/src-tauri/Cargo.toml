@@ -38,6 +38,7 @@ osg-media-server = { path = "../../../crates/osg-media-server" }
 osg-native-tools.workspace = true
 osg-providers.workspace = true
 osg-render.workspace = true
+osg-scene.workspace = true
 osg-speech.workspace = true
 serde.workspace = true
 serde_json.workspace = true

@@ -17,6 +17,7 @@
     "manage-credentials",
     "use-native-providers",
     "import-legacy-data",
+    "stage-glyph-atlas",
     "import-ephemeral-audio",
     "export-media",
     "run-gemini",

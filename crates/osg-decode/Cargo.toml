@@ -1,0 +1,51 @@
+[package]
+name = "osg-decode"
+version.workspace = true
+authors.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+description = "Frame-exact source video decoding for the OSG native renderer over the operating system's own codecs"
+license = "MIT"
+
+[dependencies]
+osg-scene = { workspace = true }
+thiserror.workspace = true
+
+[target.'cfg(windows)'.dependencies]
+windows = { version = "=0.62.2", features = [
+  "Win32_Foundation",
+  "Win32_Media_MediaFoundation",
+  "Win32_System_Com",
+  "Win32_System_Com_StructuredStorage",
+  "Win32_System_Variant",
+] }
+
+[dev-dependencies]
+tempfile = "=3.27.0"
+
+# The round-trip test encodes a synthetic clip with the workspace encoder and decodes it back, so
+# the two Media Foundation halves are proven against each other rather than against a fixture
+# committed by hand. Dev-only: nothing in the decoder's public surface mentions the encoder.
+[target.'cfg(windows)'.dev-dependencies]
+osg-encode = { workspace = true }
+
+# Deliberately NOT `workspace = true`. The workspace forbids `unsafe_code`; `osg-encode` is the
+# existing audited exception and this crate is the second, for the same reason: Media Foundation is
+# a COM API and cannot be driven from safe Rust. The exception is exactly one lint wide — every
+# other workspace lint is mirrored verbatim — and the two `restriction` lints at the end make the
+# compiler, rather than review custom, responsible for catching an unsafe block that is
+# undocumented or does more than one thing.
+[lints.rust]
+missing_debug_implementations = "warn"
+unreachable_pub = "warn"
+unsafe_code = "allow"
+unused_lifetimes = "warn"
+
+[lints.clippy]
+all = { level = "warn", priority = -1 }
+pedantic = { level = "warn", priority = -1 }
+missing_errors_doc = "allow"
+missing_panics_doc = "allow"
+module_name_repetitions = "allow"
+multiple_unsafe_ops_per_block = "warn"
+undocumented_unsafe_blocks = "warn"

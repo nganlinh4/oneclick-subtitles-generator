@@ -9,7 +9,15 @@
 // than a design.
 #![allow(dead_code)]
 
-use osg_compositor::{CueRun, SubtitleScene, SubtitleStyle, SubtitleStyleSpec};
+// The `compositor!` re-export is unused in the targets that do not compose underlay frames, which
+// is the same coincidence the allow above covers.
+#[allow(unused_imports, unused_macros)]
+pub(crate) mod frames;
+
+use osg_compositor::{
+    Crop, CropSpec, CueRun, SourceFrame, SubtitleScene, SubtitleStyle, SubtitleStyleSpec,
+    VideoUnderlay,
+};
 use osg_scene::glyph::{
     AtlasFace, AtlasGeometry, AtlasGlyph, AtlasMetrics, Direction, FaceProbe, FaceStyle,
     GLYPH_ATLAS_VERSION, GlyphAtlasDescriptor, PixelFormat, ProbeFamily, UncheckedGlyphAtlas,
@@ -201,4 +209,49 @@ pub(crate) fn staged_with_run(spec: &SubtitleStyleSpec, run: CueRun) -> Subtitle
         vec![run],
     )
     .expect("the fixture scene, atlas, style and run agree")
+}
+
+/// The edge of the fixture source frame, in source pixels.
+pub(crate) const SOURCE_EDGE: u32 = 64;
+
+/// The four quadrant colours of the fixture source, opaque and mutually unmistakable.
+///
+/// Four different colours rather than one mark, because they are simultaneously the crop target,
+/// the flip witness and the proof that the source is not being sampled upside down: a wrong region
+/// or a wrong sampling transform lands a *different named colour* in the corner under test, which
+/// no rounding tolerance can excuse.
+pub(crate) const SOURCE_TOP_LEFT: [u8; 4] = [255, 0, 0, 255];
+pub(crate) const SOURCE_TOP_RIGHT: [u8; 4] = [0, 255, 0, 255];
+pub(crate) const SOURCE_BOTTOM_LEFT: [u8; 4] = [0, 0, 255, 255];
+pub(crate) const SOURCE_BOTTOM_RIGHT: [u8; 4] = [255, 255, 0, 255];
+
+/// A colour no quadrant uses, so a backfill pixel can never be mistaken for a source pixel.
+pub(crate) const BACKFILL_COLOR: &str = "#ff00ff";
+/// [`BACKFILL_COLOR`] as the compositor writes it: opaque, so premultiplied equals straight.
+pub(crate) const BACKFILL_PIXEL: [u8; 4] = [255, 0, 255, 255];
+
+/// An opaque source frame with one flat colour per quadrant.
+pub(crate) fn quadrant_source() -> SourceFrame {
+    let half = SOURCE_EDGE / 2;
+    let mut pixels = Vec::with_capacity((SOURCE_EDGE * SOURCE_EDGE * 4) as usize);
+    for y in 0..SOURCE_EDGE {
+        for x in 0..SOURCE_EDGE {
+            let colour = match (x < half, y < half) {
+                (true, true) => SOURCE_TOP_LEFT,
+                (false, true) => SOURCE_TOP_RIGHT,
+                (true, false) => SOURCE_BOTTOM_LEFT,
+                (false, false) => SOURCE_BOTTOM_RIGHT,
+            };
+            pixels.extend_from_slice(&colour);
+        }
+    }
+    SourceFrame::new(SOURCE_EDGE, SOURCE_EDGE, pixels).expect("the fixture source frame is valid")
+}
+
+/// The quadrant source under a caller-chosen crop.
+pub(crate) fn underlay(spec: &CropSpec) -> VideoUnderlay {
+    VideoUnderlay::new(
+        quadrant_source(),
+        Crop::resolve(spec).expect("the fixture crop resolves"),
+    )
 }

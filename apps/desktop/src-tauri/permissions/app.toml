@@ -131,6 +131,11 @@ commands.allow = [
 ]
 
 [[permission]]
+identifier = "stage-glyph-atlas"
+description = "Allows the main editor to hand the native compositor one bounded, versioned glyph atlas per text revision and receive an opaque atlas identifier."
+commands.allow = ["glyph_atlas_stage"]
+
+[[permission]]
 identifier = "import-ephemeral-audio"
 description = "Allows the main editor to import and release bounded in-memory audio recordings through opaque media identifiers."
 commands.allow = ["media_blob_import", "media_blob_release"]

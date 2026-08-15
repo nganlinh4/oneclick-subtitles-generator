@@ -164,9 +164,17 @@ Three details are ported deliberately, and two are corrected:
 Two consequences to be honest about:
 
 - **`unsafe` is unavoidable here.** Media Foundation is a COM API. The workspace stays
-  `unsafe_code = "forbid"`; `osg-encode` is the single crate that downgrades it, every block carries
-  a safety comment, and the unsafe surface stays inside the smallest possible wrapper. No other
-  crate gains the allowance.
+  `unsafe_code = "forbid"`; exactly two crates downgrade it — `osg-encode` and `osg-decode`, the two
+  that drive Media Foundation directly. Each narrows the exception to that single lint, mirrors
+  every other workspace lint verbatim, and additionally turns on
+  `clippy::undocumented_unsafe_blocks` and `clippy::multiple_unsafe_ops_per_block`, so the compiler
+  enforces the audit instead of review custom. All unsafe lives under each crate's `src/mf/`
+  directory. No third crate gains the allowance.
+
+  This originally read "`osg-encode` is the single crate", which the decoder made false. That is
+  recorded rather than quietly rewritten, because a second exception is the kind of thing that
+  should be noticed: the decoding decision below structurally implies it, but the count is now two
+  and any third would need its own argument.
 - **Parity is proven at the frame, not at the bitstream.** Hardware encoders differ between vendors
   and driver versions, so an H.264 file is not bit-reproducible. The determinism contract therefore
   binds the compositor's RGBA output, which is what the parity fixtures compare. The encoder is

@@ -166,8 +166,12 @@ describe('render output parity ledger', () => {
   });
 
   it('reports the remaining output work honestly', () => {
-    // 16 output settings, of which the timeline covers one and five are deliberate defect fixes.
-    expect(pendingOutputParityFields()).toHaveLength(10);
-    expect(pendingParityFields().length + pendingOutputParityFields().length).toBe(36);
+    // 16 output settings: the timeline covers one, five are deliberate defect fixes, and the
+    // compositor's video underlay closed the flip and canvas-backfill group.
+    expect(pendingOutputParityFields()).toHaveLength(5);
+    expect(pendingOutputParityFields()).toEqual([
+      'aspectRatio', 'narrationVolume', 'originalAudioVolume', 'resolution', 'trimEnd',
+    ]);
+    expect(pendingParityFields().length + pendingOutputParityFields().length).toBe(31);
   });
 });

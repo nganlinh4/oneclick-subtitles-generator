@@ -55,6 +55,7 @@ const COMMANDS: &[&str] = &[
     "live_music_close",
     "media_blob_import",
     "media_blob_release",
+    "glyph_atlas_stage",
     "media_export_start",
     "subtitle_document_export",
     "subtitle_archive_export",

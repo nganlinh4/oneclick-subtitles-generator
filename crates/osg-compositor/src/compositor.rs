@@ -19,6 +19,8 @@ use crate::readback;
 use crate::scene::{TestScene, UNIFORM_LEN};
 use crate::size::FrameSize;
 use crate::subtitle::SubtitleScene;
+use crate::underlay::VideoUnderlay;
+use crate::underlay_pipeline::UnderlayPipeline;
 
 /// The offscreen colour format. Unorm rather than sRGB, so shader output reaches the readback
 /// without an encode step that would vary between backends.
@@ -34,6 +36,7 @@ pub struct Compositor {
     pipeline: RenderPipeline,
     uniform_layout: BindGroupLayout,
     quads: QuadPipeline,
+    underlay: UnderlayPipeline,
 }
 
 impl Compositor {
@@ -51,11 +54,13 @@ impl Compositor {
         let gpu = GpuContext::acquire(selection)?;
         let (pipeline, uniform_layout) = build_pipeline(gpu.device());
         let quads = QuadPipeline::build(gpu.device(), TARGET_FORMAT);
+        let underlay = UnderlayPipeline::build(gpu.device(), TARGET_FORMAT);
         Ok(Self {
             gpu,
             pipeline,
             uniform_layout,
             quads,
+            underlay,
         })
     }
 
@@ -121,15 +126,59 @@ impl Compositor {
         scene: &SubtitleScene,
         frame_index: u32,
     ) -> Result<Frame, CompositorError> {
+        self.compose_scene(scene, None, frame_index)
+    }
+
+    /// Composes one frame of a subtitle scene over a decoded video frame.
+    ///
+    /// This is the export path and the paused-preview path: crop, flip and the canvas backfill are
+    /// applied to the underlay, and the subtitle layer is blended over the result in the same render
+    /// pass. Doing it in one pass is the point — a separate overlay composite would put a second
+    /// blend, with a second alpha convention, between the preview and the export.
+    ///
+    /// The subtitle layer blends premultiplied (`src + dst * (1 - src.a)`), because that is what
+    /// [`Compositor::render_scene`] emits. A straight-alpha lerp here would fringe every
+    /// antialiased glyph edge against the video behind it.
+    ///
+    /// Determinism is unchanged: the result is a pure function of `scene`, `underlay` and
+    /// `frame_index`, so seeking to a frame and playing up to it still produce the same bytes.
+    ///
+    /// # Errors
+    /// Returns [`CompositorError::FrameOutOfRange`] when the index is not in the scene's timeline,
+    /// and a readback error when the composed frame cannot be copied back.
+    pub fn render_scene_over(
+        &self,
+        scene: &SubtitleScene,
+        underlay: &VideoUnderlay,
+        frame_index: u32,
+    ) -> Result<Frame, CompositorError> {
+        self.compose_scene(scene, Some(underlay), frame_index)
+    }
+
+    /// The one subtitle path, with or without a video ground beneath it.
+    fn compose_scene(
+        &self,
+        scene: &SubtitleScene,
+        underlay: Option<&VideoUnderlay>,
+        frame_index: u32,
+    ) -> Result<Frame, CompositorError> {
         let device = self.gpu.device();
         let queue = self.gpu.queue();
+        // Before any allocation, so an out-of-range index costs nothing.
         let vertices = build_frame_vertices(scene, frame_index)?;
 
+        let ground =
+            underlay.map(|video| self.underlay.prepare(device, queue, video, scene.size()));
         let bind_group = self.quads.bind_atlas(device, queue, scene.atlas());
         let buffer = vertex_buffer(device, queue, &vertices);
         let count = u32::try_from(vertices.len() / VERTEX_FLOATS).unwrap_or(0);
 
         self.compose(scene.size(), Color::TRANSPARENT, |pass| {
+            if let Some(ground) = ground.as_ref() {
+                pass.set_pipeline(self.underlay.pipeline());
+                pass.set_bind_group(0, ground, &[]);
+                pass.draw(0..3, 0..1);
+            }
             let Some(buffer) = buffer.as_ref() else {
                 return;
             };

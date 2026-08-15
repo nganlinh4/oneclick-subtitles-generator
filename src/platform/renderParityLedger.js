@@ -182,11 +182,30 @@ export const RENDER_OUTPUT_PARITY_LEDGER = Object.freeze({
   width: fixed('crates/osg-compositor', 'See x — the same never-applied crop.'),
   height: fixed('crates/osg-compositor', 'See x — the same never-applied crop.'),
   aspectRatio: pending('Selects the output dimensions from the crop region.'),
-  canvasBgMode: pending('Solid and blur backfill behind a crop that does not fill the frame.'),
-  canvasBgColor: pending('Solid backfill colour.'),
-  canvasBgBlur: pending('Blur backfill radius; needs a separable blur pass in the compositor.'),
-  flipX: pending('A sampling transform in the compositor, not a post-process.'),
-  flipY: pending('A sampling transform in the compositor, not a post-process.'),
+  canvasBgMode: native(
+    'crates/osg-compositor',
+    'Solid, blur, and absent meaning transparent, all decided in the same GPU sampling pass as the '
+    + 'crop rather than as a later composite.',
+  ),
+  canvasBgColor: native(
+    'crates/osg-compositor',
+    "Resolved through osg-scene's colour parser rather than a second one, which means the four-digit "
+    + '#rgba shorthand the crop validator accepts is refused rather than silently mis-parsed.',
+  ),
+  canvasBgBlur: native(
+    'crates/osg-compositor',
+    'A bounded separable two-pass Gaussian. The stored range reaches 1000 but the applied sigma '
+    + 'clamps to 40, because beyond that the backdrop is already an unrecognisable wash and the '
+    + 'per-frame cost would grow without limit. A stored 200 renders as 40.',
+  ),
+  flipX: native(
+    'crates/osg-compositor',
+    'A sampling transform, proven byte-identical to a column reversal of the unflipped frame.',
+  ),
+  flipY: native(
+    'crates/osg-compositor',
+    'A sampling transform, proven byte-identical to a row reversal of the unflipped frame.',
+  ),
 });
 
 /**

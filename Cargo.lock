@@ -3332,6 +3332,17 @@ dependencies = [
 ]
 
 [[package]]
+name = "osg-decode"
+version = "1.0.0"
+dependencies = [
+ "osg-encode",
+ "osg-scene",
+ "tempfile",
+ "thiserror 2.0.20",
+ "windows 0.62.2",
+]
+
+[[package]]
 name = "osg-desktop"
 version = "1.0.0"
 dependencies = [

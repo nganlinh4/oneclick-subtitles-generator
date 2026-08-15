@@ -24,6 +24,12 @@
 //! All layout, animation, easing, cue-selection, scaling and colour maths lives in `osg-scene` and
 //! is called from here, never re-derived.
 //!
+//! A frame may be composed on a transparent ground ([`Compositor::render_scene`]) or over a decoded
+//! video frame ([`Compositor::render_scene_over`]). The underlay carries the crop, the flips and the
+//! canvas backfill, because those are operations on the source frame and doing them in the same pass
+//! as the subtitle layer is what keeps one pixel pipeline rather than two. The seam with the decoder
+//! is a plain byte buffer — [`SourceFrame`] — so this crate depends on no decoder.
+//!
 //! The crate contains no `unsafe` code, in line with the workspace's `unsafe_code = "forbid"`.
 //!
 //! ```no_run
@@ -40,6 +46,7 @@
 //! ```
 
 mod compositor;
+mod crop;
 mod device;
 mod error;
 mod frame;
@@ -50,8 +57,15 @@ mod scene;
 mod size;
 mod style;
 mod subtitle;
+mod underlay;
+mod underlay_pipeline;
+mod underlay_resources;
 
 pub use compositor::Compositor;
+pub use crop::{
+    CANVAS_BACKFILL_BRIGHTNESS, CANVAS_BACKFILL_ZOOM, CanvasBackground, Crop, CropSpec,
+    DEFAULT_CANVAS_BLUR, MAX_CANVAS_BLUR_RADIUS, MAX_CANVAS_BLUR_SIGMA,
+};
 pub use device::{AdapterProfile, AdapterSelection, DeviceKind};
 pub use error::{Axis, CompositorError, Rejection};
 pub use frame::Frame;
@@ -59,3 +73,4 @@ pub use scene::TestScene;
 pub use size::{FrameSize, MAX_FRAME_DIMENSION, MAX_FRAME_PIXELS, MIN_FRAME_DIMENSION};
 pub use style::{SubtitleStyle, SubtitleStyleSpec};
 pub use subtitle::{CueRun, MAX_RUN_GLYPHS, MAX_RUN_LINES, SubtitleScene};
+pub use underlay::{SourceFrame, VideoUnderlay};

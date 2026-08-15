@@ -12,6 +12,7 @@ mod error;
 mod external_links;
 mod gemini;
 mod gemini_image;
+mod glyph_atlas;
 mod image_blob;
 mod legacy_import;
 mod live_music;
@@ -64,6 +65,8 @@ use gemini_image::{
     generated_image_delete, generated_image_export, generated_image_list,
     generated_image_playback_release, generated_image_resolve,
 };
+use glyph_atlas::command::glyph_atlas_stage;
+use glyph_atlas::registry::GlyphAtlasStore;
 use image_blob::{
     ImageBlobStore, image_blob_import_playback, image_blob_release, image_reference_export,
     image_reference_playback_release, image_reference_select,
@@ -151,6 +154,7 @@ pub fn run() {
         .manage(NativeMediaDropState::default())
         .manage(LiveMusicRuntime::default())
         .manage(ImageBlobStore::default())
+        .manage(GlyphAtlasStore::new())
         .manage(GeneratedImageRuntime::default())
         .manage(AppUpdateRuntime::default())
         .setup(setup_app)
@@ -225,6 +229,7 @@ pub fn run() {
             live_music_update,
             live_music_control,
             live_music_close,
+            glyph_atlas_stage,
             media_blob_import,
             media_blob_release,
             media_export_start,
