@@ -2946,15 +2946,21 @@ function assertDesktopCloseLifecycleSource(desktop, cargoLock) {
         .test(lockedRuntimePackage),
     `Desktop close lifecycle requires the reviewed tauri-runtime-wry ${DESKTOP_CLOSE_TAURI_RUNTIME_WRY_VERSION} registry package`,
   );
-  const handlerStart = desktop.indexOf('fn handle_application_window_event(');
-  const handlerEnd = desktop.indexOf('\nfn ', handlerStart + 1);
+  // Normalise the whole file before slicing rather than each slice afterwards. On a checkout that
+  // stores this file with CRLF, the slice ends at the next "\nfn " — which is the "\n" half of a
+  // "\r\n" pair — so the cut lands between the "\r" and its "\n". Stripping "\r\n" from the slice
+  // afterwards then leaves a stray "\r" at the end, and the comparison fails against a file that is
+  // in fact byte-for-byte correct. The invariant is unchanged; only its line-ending handling is.
+  const desktopSource = desktop.replace(/\r\n/g, '\n');
+  const handlerStart = desktopSource.indexOf('fn handle_application_window_event(');
+  const handlerEnd = desktopSource.indexOf('\nfn ', handlerStart + 1);
   const handler = handlerStart >= 0 && handlerEnd > handlerStart
-    ? desktop.slice(handlerStart, handlerEnd).replace(/\r\n/g, '\n')
+    ? desktopSource.slice(handlerStart, handlerEnd)
     : '';
-  const classifierStart = desktop.indexOf('fn is_main_window_close_request(');
-  const classifierEnd = desktop.indexOf('\nfn ', classifierStart + 1);
+  const classifierStart = desktopSource.indexOf('fn is_main_window_close_request(');
+  const classifierEnd = desktopSource.indexOf('\nfn ', classifierStart + 1);
   const classifier = classifierStart >= 0 && classifierEnd > classifierStart
-    ? desktop.slice(classifierStart, classifierEnd).replace(/\r\n/g, '\n')
+    ? desktopSource.slice(classifierStart, classifierEnd)
     : '';
   const reviewedHandler = `fn handle_application_window_event(window: &Window, event: &WindowEvent) {
     handle_native_media_drop_event(window, event);
