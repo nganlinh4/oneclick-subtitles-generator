@@ -26,6 +26,36 @@ fn the_three_digit_shorthand_repeats_each_digit() {
 }
 
 #[test]
+fn the_four_digit_shorthand_repeats_each_digit_including_alpha() {
+    // Accepted because every validator in the persistence chain accepts it, so a hand-edited
+    // project can carry one. Nothing in the application emits it.
+    assert_eq!(parse_hex_color("#abcd"), parse_hex_color("#aabbccdd"));
+    assert_eq!(parse_hex_color("#fff0"), parse_hex_color("#ffffff00"));
+    assert_eq!(
+        parse_hex_color("#0f08"),
+        Ok(Rgba {
+            red: 0,
+            green: 255,
+            blue: 0,
+            alpha: 136
+        })
+    );
+}
+
+#[test]
+fn a_four_digit_background_is_refused_rather_than_drawn_as_a_different_colour() {
+    // The shipped renderer appends the opacity to the string, so "#abcd" becomes "#abcd80" — six
+    // digits, perfectly valid, and a completely different colour drawn with no hint of a problem.
+    // That is worse than the ten-digit case, which at least disappears visibly.
+    assert_eq!(
+        resolve_background("#abcd", 50.0),
+        Err(ColorError::AlreadyHasAlpha)
+    );
+    // Still transparent rather than an error when the background is off entirely.
+    assert_eq!(resolve_background("#abcd", 0.0), Ok(Rgba::TRANSPARENT));
+}
+
+#[test]
 fn eight_digit_colours_carry_their_own_alpha() {
     assert_eq!(
         parse_hex_color("#ff800080"),
@@ -51,7 +81,6 @@ fn anything_that_is_not_a_hex_colour_is_refused() {
         "#",
         "#f",
         "#ff",
-        "#ffff",
         "#fffff",
         "#fffffff",
         "#fffffffff",

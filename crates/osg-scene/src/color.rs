@@ -70,21 +70,26 @@ pub fn parse_hex_color(value: &str) -> Result<Rgba, ColorError> {
     let channel =
         |index: usize| -> Option<u8> { u8::from_str_radix(digits.get(index..index + 2)?, 16).ok() };
     match digits.len() {
-        3 => {
-            let mut channels = [0_u8; 3];
+        // `#rgb` and `#rgba`. The four-digit form is accepted because every validator in the
+        // persistence chain accepts it, so a hand-edited or third-party project can carry one, and
+        // refusing it here would fail an entire render over a colour the schema calls valid.
+        // Nothing in the application emits it: all 139 colours across the defaults and the 30
+        // shipped presets are six digits.
+        3 | 4 => {
+            let mut channels = [255_u8; 4];
             for (slot, digit) in channels.iter_mut().zip(digits.bytes()) {
                 let value = char::from(digit)
                     .to_digit(16)
                     .and_then(|value| u8::try_from(value).ok())
                     .ok_or(ColorError::Unrecognised)?;
-                // The shorthand repeats each digit, so #abc is #aabbcc.
+                // The shorthand repeats each digit, so #abc is #aabbcc and #abcd is #aabbccdd.
                 *slot = value * 17;
             }
             Ok(Rgba {
                 red: channels[0],
                 green: channels[1],
                 blue: channels[2],
-                alpha: 255,
+                alpha: channels[3],
             })
         }
         6 | 8 => Ok(Rgba {
@@ -138,7 +143,12 @@ pub fn resolve_background(color: &str, opacity: f64) -> Result<Rgba, ColorError>
         return Ok(Rgba::TRANSPARENT);
     }
     let digits = color.strip_prefix('#').ok_or(ColorError::Unrecognised)?;
-    if digits.len() == 8 {
+    // Both alpha-carrying shapes are refused, and they fail differently in the shipped renderer.
+    // Appending two digits to `#rrggbbaa` yields a ten-digit colour nothing understands, so the
+    // background vanishes. Appending them to `#rgba` yields `#rgbaXX` — six digits, perfectly
+    // valid, and a completely different colour drawn with no hint that anything went wrong. The
+    // second is the worse of the two, which is why neither is silently accepted here.
+    if digits.len() == 8 || digits.len() == 4 {
         return Err(ColorError::AlreadyHasAlpha);
     }
     let parsed = parse_hex_color(color)?;
