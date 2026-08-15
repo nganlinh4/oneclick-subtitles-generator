@@ -3278,6 +3278,14 @@ dependencies = [
 ]
 
 [[package]]
+name = "osg-scene"
+version = "1.0.0"
+dependencies = [
+ "serde",
+ "serde_json",
+]
+
+[[package]]
 name = "osg-speech"
 version = "1.0.0"
 dependencies = [

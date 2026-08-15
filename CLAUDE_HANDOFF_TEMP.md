@@ -25,6 +25,190 @@ pass. Make substantial changes where the root design requires them. Do not keep 
 choose ordinary engineering details: investigate competing designs, select the safest durable
 design, implement it, and prove it with hostile tests.
 
+### SUPERSEDING USER DECISION — remove Remotion completely and replace its technology
+
+This decision was made on 2026-08-16 after the uploaded Remotion archive was found to contain an
+FFmpeg build configured with `--enable-nonfree`, `libfdk-aac`, x264, and x265. It overrides every
+earlier instruction in this file to repair, notice, retain, package, download, or ship the Remotion
+runtime.
+
+**Remotion is no longer part of the product architecture. Remove it completely.** Port the useful
+rendering technique from `C:\WORK\screen-goated-toolbox`, especially its native export pipeline,
+GPU composition, bounded scene DTOs, deterministic timestamp sampling, cancellation/staging, and
+preview/export parity discipline. Do not port unrelated recorder features or blindly copy its
+product state. OSG's visible video-rendering behavior is the feature specification.
+
+This is a technology migration, not a feature reduction:
+
+- Every OSG subtitle style, shipped preset, custom preset, animation, easing, typewriter behavior,
+  fade, slide, bounce, flip, rotate, scale, pulse, shake, stroke, border, multi-shadow, glow,
+  gradient, background, opacity, line-wrap/break, alignment/justify, RTL behavior, transform,
+  position, margins, crop, flip, blur/solid canvas, media/background image, trim, frame rate,
+  resolution, original audio, narration audio, and volume behavior that Remotion implemented must
+  be implemented by the replacement native renderer.
+- Every font family, exact managed font file, fallback chain, weight, size, line height, letter
+  spacing, glyph shaping, Unicode/emoji/RTL behavior, and font-ready boundary must be reproduced.
+  Preview and export may never silently use different font bytes or different shaping/layout
+  engines.
+- Existing UI/schema/presets may change where a cleaner architecture genuinely requires it, but no
+  user-visible capability may disappear without an explicit documented replacement. Migrations
+  must preserve existing saved projects and presets.
+
+#### Non-negotiable WYSIWYG architecture
+
+The editor preview must be identical to the exported video at the same timestamp. Prefer **one
+native Rust/GPU scene renderer** for both surfaces rather than maintaining separate TypeScript and
+Rust visual implementations:
+
+1. The editor produces one strict, versioned, bounded, immutable scene/timeline DTO.
+2. A reusable native Rust renderer owns layout, font shaping/rasterization, animation/easing math,
+   crop/background composition, color conversion, and GPU shaders.
+3. Preview requests frames from that exact renderer/core at editor timestamps (real-time or cached
+   as appropriate); export drives the same core over the output frame timeline.
+4. Encoding/muxing is a separate final stage and cannot change composition pixels. Use only a
+   reviewed, redistributable FFmpeg/tool contract. Never re-host or consume an
+   `--enable-nonfree` binary. Pin and assert the actual build configuration and notices.
+5. If a dual preview/export implementation is unavoidable for a narrow platform reason, it must
+   share generated contracts/math and pass exhaustive golden-frame comparison. It is the fallback,
+   not the default design.
+
+“WYSIWYG” is executable policy, not a visual-review slogan:
+
+- Build an exhaustive feature matrix from the current OSG render DTO, preset catalog, font catalog,
+  effects, and animations before deleting anything.
+- For every shipped preset and every independent option/effect, compare preview and exported frames
+  at start/middle/end and animation transition boundaries across representative 720p/1080p/4K,
+  landscape/portrait/square, and supported frame rates.
+- Use the same source asset, scene revision, font receipts, timestamp rational, color space, alpha
+  rules, and deterministic effect seed for both paths. Shake/noise effects must be seek-safe and
+  deterministic.
+- Require pixel-exact comparisons where the same render target is used. Any unavoidable
+  scale/encoder/color tolerance must be numerically bounded, justified, and tested; it cannot hide
+  layout, timing, font, or effect drift.
+- Add hostile coverage for Unicode, Vietnamese/Korean, RTL, emoji/fallback glyphs, long/multiline
+  text, custom presets, extreme valid crop/margins, overlapping subtitles, high frame rates,
+  cancellation, Stop/restart, stale project/run ownership, device loss, disk full, encoder failure,
+  and export recovery.
+
+#### Toolbox reference points
+
+Use these as architectural references, not vendored black boxes:
+
+- `C:\WORK\screen-goated-toolbox\screen-record\docs\render-parity.md`
+- `C:\WORK\screen-goated-toolbox\screen-record\src\lib\renderer\`
+- `C:\WORK\screen-goated-toolbox\screen-record\src\types\videoExportTypes.ts`
+- `C:\WORK\screen-goated-toolbox\src\overlay\screen_record\native_export\`
+- its composition, overlay-frame/layout, sampling, staging, progress, audio-mix, pipeline, GPU, and
+  golden-fixture tests.
+
+Audit licences/provenance before adapting code or dependencies. Preserve OSG's path-private native
+media/project/capability ownership and Tauri boundary; do not import toolbox-specific global state.
+
+#### Required Remotion deletion
+
+After native parity is proven, remove rather than deprecate the Remotion path:
+
+- delete the `video-renderer` Remotion package/runtime/worker/compositions and all Remotion npm
+  dependencies, configs, build scripts, manifests, tests, visual pins, and package-lock reachability;
+- remove Remotion package catalogs, installers, jobs, commands, permissions, frontend services,
+  engine/tool UI, readiness assertions, managed-delivery checkpoint group, docs, CI, packaging, CSP,
+  and Tauri resources;
+- replace misleading `Remotion*` component/service names with renderer-neutral/native names;
+- remove supported-release references to both uploaded Remotion artifacts. Do not delete or
+  overwrite the already-published content-addressed GitHub assets without separate authorization;
+  they may remain inert/unreferenced in the pool;
+- update third-party notices to describe only the replacement renderer and its actually shipped or
+  directly downloaded dependencies;
+- add a release-readiness rule that rejects any reachable Remotion dependency, runtime catalog,
+  archive URL, worker, command, permission, embedded resource, or `--enable-nonfree` FFmpeg build.
+
+Repository-wide zero-reference searches are necessary but not sufficient: prove the installed EXE
+does not download, install, execute, or mention Remotion, and that a clean machine can preview and
+export offline after only the replacement's legitimate managed prerequisites are installed.
+
+#### Replacement completion gate
+
+Do not call this migration complete until all of the following are green on final frozen bytes:
+
+- real native preview and export for every OSG preset/style/effect/font category;
+- exhaustive preview-versus-export frame parity with recorded artifacts and thresholds;
+- Rust unit/integration/GPU tests plus real Windows exports with audio and narration;
+- performance/resource bounds at long duration, dense subtitles, 4K and supported high FPS;
+- exact cancellation, lifecycle epoch, project/run ownership, cleanup and crash/restart behavior;
+- strict clippy/rustfmt, frontend tests/lint/type checks, Tauri command/ACL, readiness, notices,
+  production transport, managed delivery, normal bundle budget, package/install/launch/smoke;
+- fresh read-only visual, GPU, media, concurrency, licensing, packaging, and installed-EXE reviewers;
+- zero active Remotion references and no redistribution of the uploaded nonfree runtime.
+
+Use multiple implementation/review waves and substantial subagent parallelism. Keep shared Cargo,
+registration, permissions, migrations, readiness, package lock, and handoff edits serialized through
+the main integrator. Do not preserve Remotion merely as a fallback: the final supported product must
+have one native rendering architecture.
+
+### SETTLED IMPLEMENTATION DECISION — continue; do not ask about the Rust text-stack variant
+
+Claude's measured design is accepted. Use **one WebView glyph source feeding one Rust/GPU pixel
+compositor used by both preview and export**:
+
+- The WebView shapes and rasterizes glyphs once using the exact editor font bytes and browser text
+  behavior users see. It supplies bounded, versioned glyph/atlas/layout inputs to native code.
+- Rust owns the single scene/timeline compositor, GPU pipeline, seek-safe effect evaluation, frame
+  production, preview capability, export sequencing, cancellation, and cleanup.
+- Preview loads frames/video from the existing path-private loopback capability using the current
+  CSP-compatible `<img>`/`<video>` boundary. Do not add `blob:`, `wasm-unsafe-eval`, raw frame bytes
+  over IPC, native paths, or an unrestricted local server.
+- Export feeds the same compositor inputs through the same shader/layout/effect path. There must not
+  be a CSS subtitle overlay, render-tab implementation, or exporter implementation independently
+  deciding appearance.
+
+This is the chosen architecture. **Do not stop to ask whether the user prefers a separate Rust text
+stack.** Only revisit it if an executable blocker proves this design cannot meet the security,
+performance, or parity contract; in that case root-cause and implement the strongest alternative
+without requesting an ordinary engineering preference.
+
+The font finding is mandatory work, not a report-only caveat. Inventory all 115 currently selectable
+families and remove every silent fallback. Each selection must resolve to one exact face identity and
+byte source used by both glyph baking and export. Use reviewed/licensed managed font bytes or an
+exact installed-system face contract as appropriate; expose availability honestly, preserve saved
+project identity, and never silently render a different family. Add hostile tests for missing,
+corrupt, substituted, variable-axis, fallback, Unicode, emoji, Vietnamese, Korean, and RTL fonts.
+
+The already-frozen `osg-scene` easing/scaling fixture (including IEEE-754 bit patterns and the
+documented legacy quirks) is useful progress, but it is only step 1. Continue through scene schema,
+glyph pipeline, GPU composition, preview delivery, export/encoding, exhaustive parity, Remotion
+deletion, packaging, and installed smoke without handing control back after each milestone.
+
+### CONTINUOUS EXECUTION ORDER — no repeated status stops
+
+The user explicitly directs Claude to continue autonomously until the completion gate above is met.
+This overrides conversational habits that turn milestones or design observations into blocking
+questions.
+
+- Do not end a turn merely to report progress, ask whether to continue, request approval for a
+  reversible code/design choice, or call the work “multi-session.” Continue in the same logical task.
+- Progress reports are non-blocking checkpoints only. Immediately proceed to the next executable
+  item after reporting them.
+- Use the full available subagent swarm continuously: parallelize bounded implementation and test
+  work, freeze hashes, assign fresh read-only reviewers, integrate centrally, and refill idle slots.
+- At context/compaction boundaries, update this handoff with exact commits, dirty files, gates,
+  blockers, and the next command, then resume from it. Context limits are not a reason to declare the
+  migration incomplete or wait for the user.
+- Make logical local commits after scoped gates and reviews, then continue. Do not push.
+- When a focused or integrated test reveals a real bug, root-fix it even if it predates the renderer
+  work; do not stop at diagnosis or label a reachable release bug “unrelated.”
+- Do not delete the old Remotion implementation before native parity is executable and green, but
+  do not use that ordering rule to defer building parity. Once parity is green, perform the complete
+  deletion immediately and rerun the final matrix.
+- Do not substitute plans, inventories, docs, test fixtures, or mocked probes for a real preview,
+  exported video, packaged app, and installed-EXE smoke.
+
+Claude may stop and ask the user only for a genuinely unavailable production secret, a new
+irreversible external publication/destructive action not already authorized, or a legal ownership
+decision that cannot be eliminated by engineering. Even then, finish every independent task first
+and ask one precise question containing the exact command/artifact/consequence. The current native
+renderer migration, local commits, tests, refactors, deletions after parity, and packaging work do
+not require another user decision.
+
 ### Authority and safety boundaries
 
 - You are authorized to refactor across packages, add migrations/APIs/tests, split oversized
@@ -50,13 +234,18 @@ design, implement it, and prove it with hostile tests.
 - Repository: `C:\WORK\oneclick-subtitles-generator`
 - Branch: `rewrite/tauri-rust`
 - Safety checkpoint: `650805d3`
-- Claude's post-checkpoint implementation is currently **uncommitted**: 18 tracked files modified
-  and 2 new activation files. The exact list and hashes are recorded below.
-- The handoff itself is intentionally modified. Do not delete it until its checklist has been
-  transferred into the final completion report.
-- Independently re-run after Claude's first pass: full Vitest **210 files / 1,576 tests**, ESLint,
-  native lint, i18n, Tauri contract, production-transport, readiness tests, compile-readiness, and
-  `git diff --check` all passed. These are evidence, not a waiver from rerunning after new work.
+- Current committed HEAD when this renderer decision was recorded: `2da3c714`, 13 local commits
+  after the safety checkpoint. Preserve those commits; do not rewrite them.
+- Wave 3/4 work remains dirty in the shared tree, including notices, desktop Rust fixes, readiness,
+  licences, and updater-manifest work. Preserve it and coordinate overlap before renderer edits.
+- The already-uploaded inert Remotion assets are
+  `remotion-runtime-windows-x64-4.0.507-8f2b4bb7f74bca85.zip`
+  (`251,273,880` bytes, SHA-256 `8f2b4bb7f74bca85d412702d308cf2435ca3459913e1fd4403871dbc36605c1c`)
+  and `remotion-runtime-windows-x64-4.0.507-5c59b02cbfab7ede.manifest.json`
+  (`634,117` bytes, SHA-256 `5c59b02cbfab7edeeffe89dd880037f1aee3b175d8a241d67d25480f1e191445`).
+  They must become unreferenced; do not overwrite or delete them without separate authorization.
+- Earlier gate counts below are evidence for their historical bytes, not a waiver from rerunning
+  everything after the native-renderer migration.
 
 ### Definition of “complete”
 
@@ -115,21 +304,17 @@ targets may never be placed in the intentional-warning suppression map. Verify:
 - no new ineffective dynamic-import warning is suppressed merely to pass;
 - desktop production output excludes browser-only providers, raw image/media bytes, secrets,
   development helpers, and unreachable compatibility transports;
-- route/startup behavior, CSP, Remotion, and production-transport tests remain green.
+- route/startup behavior, CSP, the replacement native renderer, and production-transport tests
+  remain green.
 
-#### C. Managed-delivery Remotion artifact — finish all local work, then cross the external boundary explicitly
+#### C. Native Rust/GPU renderer migration and complete Remotion removal — mandatory
 
-Rebuild the deterministic Windows Remotion runtime/archive from the six drifted sources listed
-below. Verify archive contents, size, SHA-256, reproducibility, and actual worker execution before
-publication. Prepare the exact content-addressed filename, manifest patch, upload command, and
-read-back verification. If explicit publication authorization and credentials are available, carry
-out the documented append-only upload and update the checkpoint legitimately. Otherwise stop only
-at the upload call, report the exact artifact/hash/command, and continue D–I. Never use `--write`
-against an unpublished/unread-back artifact.
-
-After publication, run `verify:managed-delivery`, desktop Cargo gates, the production build, package,
-install, launch, and installed smoke workflows. Confirm the packaged app consumes the exact
-published archive rather than a workspace fallback.
+Execute the superseding decision above. The previously uploaded content-addressed Remotion archive
+and manifest are historical inert assets only; they are not an acceptable production delivery.
+Build the OSG-native preview/export renderer, prove exhaustive WYSIWYG parity, remove every supported
+Remotion code/runtime/catalog reference, refresh managed-delivery/readiness legitimately for the new
+architecture, and run the real desktop/package/installed-EXE workflows. Do not attempt to resolve
+the finding with another Remotion notice upload or by documenting the nonfree FFmpeg binary.
 
 #### D. Updater signing — complete the implementation around the secret boundary
 
