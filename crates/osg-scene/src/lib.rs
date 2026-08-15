@@ -14,6 +14,7 @@ pub mod cues;
 pub mod easing;
 pub mod layout;
 pub mod scale;
+pub mod scene;
 pub mod timeline;
 
 pub use easing::{SUBTITLE_ANIMATION_EASINGS, apply_subtitle_animation_easing};

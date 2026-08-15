@@ -8,6 +8,7 @@ description = "Deterministic subtitle scene math shared by the OSG native previe
 license = "MIT"
 
 [dependencies]
+serde = { version = "=1.0.229", features = ["derive"] }
 
 [dev-dependencies]
 serde = { version = "=1.0.229", features = ["derive"] }
