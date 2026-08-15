@@ -274,6 +274,29 @@ and its checkpoint source group, 91 readiness invariants across 7 functions, 12 
 Five `video-renderer/src` modules are Remotion-free and imported by the frontend; they move rather
 than being deleted.
 
+**Correction to "the `osg-render` crate" above, found by reading it rather than assuming.** The
+crate is not uniformly Remotion-bound and must not be deleted wholesale:
+
+| Module | Lines | Remotion references | Disposition |
+| --- | --- | --- | --- |
+| `contract.rs` | 704 | **0** | **Keep and move.** |
+| `engine.rs` | 1583 | 0 by name, but it exists to drive the Remotion worker | Delete. |
+| `protocol.rs` | 274 | 0 by name, but it is the worker's framed stdio protocol | Delete. |
+| `runtime.rs` | 647 | 12 | Delete. |
+| `error.rs` | 39 | 2 | Keep the variants the contract needs, drop the rest. |
+
+`contract.rs` is the validated request the WebView already speaks: `RenderRequest`,
+`RenderSettings`, `SubtitleCustomization` with all 54 fields, `CropSettings` with all 10, and a
+checked enum for every vocabulary the UI can send. It is the typed boundary the frontend was written
+against, and rewriting it alongside a new renderer would risk exactly the silent drift the parity
+ledger exists to catch — for no benefit, since nothing in it mentions the engine that happened to
+consume it.
+
+The native pipeline therefore *converts* a validated `RenderRequest` into an `osg-scene::Scene` plus
+the style, crop and audio inputs. That conversion is the single place every parity decision in the
+ledger is applied, which makes those decisions reviewable in one file instead of scattered through a
+renderer.
+
 A release-readiness rule rejects any reachable Remotion dependency, runtime catalog, archive URL,
 worker, command, permission or embedded resource, and any FFmpeg build configured `--enable-nonfree`.
 
