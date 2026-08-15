@@ -9,6 +9,7 @@
 //! (`tests/fixtures/subtitle-math-golden.json`), asserted from Rust here and from JavaScript in the
 //! frontend suite. The fixture is generated from the shipped source, never hand-edited.
 
+pub mod cues;
 pub mod easing;
 pub mod scale;
 pub mod timeline;
