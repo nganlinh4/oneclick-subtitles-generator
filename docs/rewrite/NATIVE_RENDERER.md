@@ -271,8 +271,22 @@ registration points, 2 permissions, 2 capability entries, 1 bundled resource, th
 and its checkpoint source group, 91 readiness invariants across 7 functions, 12 i18n keys deleted and
 9 reworded, and 128 tests.
 
-Five `video-renderer/src` modules are Remotion-free and imported by the frontend; they move rather
-than being deleted.
+Five `video-renderer/src` modules are Remotion-free. Re-measured on 2026-08-16, only **three** are
+imported by the frontend at all, and two of those three exist only because the WebView is still
+drawing subtitles itself:
+
+| Module | Imported by `src/` | Disposition |
+| --- | --- | --- |
+| `subtitleCustomizationDefaults.ts` | 1 | **Must survive.** It is the schema authority that `defaultCustomization.js` re-exports, and the parity ledger is asserted against it. |
+| `subtitleVisualMath.ts` | 2 | Deletable once step 5 lands. `osg-scene` already reimplements this, tested against bit-exact fixtures generated from it. |
+| `subtitleAnimationEasing.ts` | 2 | Deletable once step 5 lands, for the same reason. |
+| `types.ts` | 0 | Deletable. |
+| `components/SubtitleCustomization.tsx` | 0 | Deletable. The repository-root React frontend has its own controls; this is the renderer package's copy. |
+
+So the removal is cleaner than first planned: one module genuinely moves, two more leave with the
+WebView's drawing path, and two were never reachable from the application at all. This is also the
+concrete form of "the three drawing implementations collapse to one" — the second implementation
+disappears here.
 
 **Correction to "the `osg-render` crate" above, found by reading it rather than assuming.** The
 crate is not uniformly Remotion-bound and must not be deleted wholesale:
