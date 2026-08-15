@@ -1,11 +1,10 @@
-import { useEffect } from 'react';
+import { lazy, Suspense, useEffect } from 'react';
 import { useTranslation } from 'react-i18next';
 import AppLayout from './AppLayout';
 import { useAppState } from './AppState';
 import { useAppHandlers } from './AppHandlers';
 import { useModalHandlers } from './ModalHandlers';
 import { useAppEffects } from './AppEffects';
-import OnboardingBanner from '../OnboardingBanner';
 import OnboardingFooterReveal from '../OnboardingFooterReveal';
 import ToastPanel from '../common/ToastPanel';
 import { startStartupUpdateCheck } from '../../platform/startupUpdateCoordinator';
@@ -23,6 +22,9 @@ import '../../styles/AutoGenerate.css'; // Auto-generate button and flow styles
 import '../../styles/lyrics/save-message.css'; // Audio alignment notification styles
 import '../../styles/OnboardingFooterReveal.css';
 
+// The banner decides for itself whether a first-time visitor needs it, so it stays off the
+// startup path. Its stylesheet above remains eager so the overlay is styled the instant it mounts.
+const OnboardingBanner = lazy(() => import('../OnboardingBanner'));
 
 /**
  * Main App component
@@ -56,7 +58,9 @@ function App() {
   return (
     <>
       {/* Onboarding banner for first-time visitors - rendered at the top level */}
-      <OnboardingBanner />
+      <Suspense fallback={null}>
+        <OnboardingBanner />
+      </Suspense>
 
       {/* This is rendered on top of the app, behind the onboarding overlay */}
       <OnboardingFooterReveal />

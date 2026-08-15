@@ -1,9 +1,8 @@
-import { useEffect, useState } from 'react';
+import { lazy, Suspense, useEffect, useState } from 'react';
 import Header from '../Header';
 import InputMethods from '../InputMethods';
 import OutputContainer from '../OutputContainer';
 import ButtonsContainer from './ButtonsContainer';
-import SettingsModal from '../settings/SettingsModal';
 import VideoAnalysisModal from '../VideoAnalysisModal';
 import TranscriptionRulesEditor from '../TranscriptionRulesEditor';
 import BackgroundImageGenerator from '../BackgroundImageGenerator';
@@ -17,6 +16,10 @@ import { hasValidDownloadedVideo } from '../../utils/videoUtils';
 import { initializeMobileZoom } from '../../utils/mobileZoom';
 import { DEFAULT_GEMINI_MODEL_ID, normalizeMediaModelId } from '../../config/geminiModels';
 import { applyNativeMediaSession } from '../../hooks/useNativeMediaSessionHydration';
+
+// Settings only mount after the Header gear button flips `showSettings`, so keeping the
+// modal off the startup path costs nothing at first paint.
+const SettingsModal = lazy(() => import('../settings/SettingsModal'));
 
 /**
  * Main application layout component
@@ -463,15 +466,17 @@ const AppLayout = ({
       )}
 
       {showSettings && (
-        <SettingsModal
-          onClose={() => setShowSettings(false)}
-          onSave={saveApiKeys}
-          apiKeysSet={apiKeysSet}
-          setApiKeysSet={setApiKeysSet}
-          optimizeVideos={optimizeVideos}
-          optimizedResolution={optimizedResolution}
-          useOptimizedPreview={useOptimizedPreview}
-        />
+        <Suspense fallback={null}>
+          <SettingsModal
+            onClose={() => setShowSettings(false)}
+            onSave={saveApiKeys}
+            apiKeysSet={apiKeysSet}
+            setApiKeysSet={setApiKeysSet}
+            optimizeVideos={optimizeVideos}
+            optimizedResolution={optimizedResolution}
+            useOptimizedPreview={useOptimizedPreview}
+          />
+        </Suspense>
       )}
 
       {/* Video Analysis Modal */}
