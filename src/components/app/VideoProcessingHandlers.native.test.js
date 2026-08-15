@@ -1,6 +1,7 @@
 import { runMediaPipeline } from '../../platform/mediaPipelineService';
 import { createNativeMediaDescriptor } from '../../platform/mediaService';
 import { downloadNativeVideo } from '../../platform/nativeUrlDownloadAdapter';
+import { ensureProjectOwnsNativeMedia } from '../../platform/nativeMediaOwnership';
 import { generateUrlBasedCacheId } from '../../services/subtitleCache';
 import { setCurrentCacheId as setRulesCacheId } from '../../utils/transcriptionRulesStore';
 import { setCurrentCacheId as setSubtitlesCacheId } from '../../utils/userSubtitlesStore';
@@ -21,6 +22,13 @@ vi.mock('../../platform/mediaPipelineService', () => ({ runMediaPipeline: vi.fn(
 vi.mock('../../platform/nativeUrlDownloadAdapter', () => ({ downloadNativeVideo: vi.fn() }));
 vi.mock('../../platform/subtitleProjectStore', () => ({
   resolveProjectForCache: vi.fn(async (cacheId) => ({ projectId: `project:${cacheId}` })),
+}));
+vi.mock('../../platform/nativeMediaOwnership', () => ({
+  ensureProjectOwnsNativeMedia: vi.fn(async ({ cacheId, media }) => ({
+    assetId: media.assetId,
+    cacheId,
+    projectId: `project:${cacheId}`,
+  })),
 }));
 vi.mock('../../services/subtitleCache', () => ({ generateUrlBasedCacheId: vi.fn() }));
 vi.mock('../../utils/transcriptionRulesStore', () => ({ setCurrentCacheId: vi.fn() }));
@@ -139,6 +147,15 @@ it('activates the URL project before publishing downloaded media to React', asyn
   expect(setRulesCacheId.mock.invocationCallOrder[0])
     .toBeLessThan(setUploadedFile.mock.invocationCallOrder[0]);
   expect(setSubtitlesCacheId.mock.invocationCallOrder[0])
+    .toBeLessThan(setUploadedFile.mock.invocationCallOrder[0]);
+
+  // The durable asset-to-project association must land before React ever sees the media, so a
+  // later run can reopen exactly this asset under exactly this alias.
+  expect(ensureProjectOwnsNativeMedia).toHaveBeenCalledExactlyOnceWith({
+    media: source,
+    cacheId: 'reviewed',
+  });
+  expect(ensureProjectOwnsNativeMedia.mock.invocationCallOrder[0])
     .toBeLessThan(setUploadedFile.mock.invocationCallOrder[0]);
 });
 

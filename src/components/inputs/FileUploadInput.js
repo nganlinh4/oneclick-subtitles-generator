@@ -3,6 +3,7 @@ import { useTranslation } from 'react-i18next';
 import { isDesktopRuntime } from '../../platform/desktopRuntime';
 import { nativeMediaDropService, sharedNativeMediaDropService } from '../../platform/mediaDropService';
 import { isPhysicalPointInsideElement } from '../../platform/nativeMediaDropTarget';
+import { ensureProjectOwnsNativeMedia } from '../../platform/nativeMediaOwnership';
 import {
   claimMediaDrop,
   clearMedia,
@@ -102,7 +103,9 @@ const FileUploadInput = ({ uploadedFile, setUploadedFile, setUploadedFileData, o
     }
   }, [isVideoFile]);
 
-  const activateNativeMedia = useCallback((media) => {
+  // `isCurrent` is re-checked after the durable ownership commit, because that await lets a newer
+  // selection supersede this one before the media is published to React.
+  const activateNativeMedia = useCallback(async (media, isCurrent = () => true) => {
     localStorage.removeItem('current_video_url');
     localStorage.removeItem('split_result');
 
@@ -119,6 +122,10 @@ const FileUploadInput = ({ uploadedFile, setUploadedFile, setUploadedFileData, o
     localStorage.setItem('current_file_cache_id', media.assetId);
     setRulesCacheId(media.assetId);
     setSubtitlesCacheId(media.assetId);
+    // A locally imported asset is its own subtitle alias. Binding it to that project durably is
+    // what makes it reopenable after a restart; without it the asset is unowned forever.
+    await ensureProjectOwnsNativeMedia({ media, cacheId: media.assetId });
+    if (!isCurrent()) return;
 
     if (onVideoSelect) onVideoSelect(null);
     if (isSrtOnlyMode && setIsSrtOnlyMode) setIsSrtOnlyMode(false);
@@ -211,7 +218,9 @@ const FileUploadInput = ({ uploadedFile, setUploadedFile, setUploadedFileData, o
       setIsLoading(true);
       claimMediaDrop(event.offerId)
         .then((media) => {
-          if (!cancelled && nativeOperationRef.current === operation) activateNativeMedia(media);
+          const isCurrent = () => !cancelled && nativeOperationRef.current === operation;
+          if (isCurrent()) return activateNativeMedia(media, isCurrent);
+          return undefined;
         })
         .catch((error) => {
           if (!cancelled && nativeOperationRef.current === operation) showNativeDropError(error);
@@ -249,10 +258,12 @@ const FileUploadInput = ({ uploadedFile, setUploadedFile, setUploadedFileData, o
 
     getSelectedMedia()
       .then((media) => {
-        if (!mounted || nativeOperationRef.current !== operation) return;
+        if (!mounted || nativeOperationRef.current !== operation) return undefined;
         if (media) {
-          activateNativeMedia(media);
-          return;
+          return activateNativeMedia(
+            media,
+            () => mounted && nativeOperationRef.current === operation
+          );
         }
         const staleUrl = localStorage.getItem('current_file_url');
         if (isNativeMediaPlaybackUrl(staleUrl)) {
@@ -391,7 +402,8 @@ const FileUploadInput = ({ uploadedFile, setUploadedFile, setUploadedFileData, o
       setIsLoading(true);
       try {
         const media = await selectMedia();
-        if (media && nativeOperationRef.current === operation) activateNativeMedia(media);
+        const isCurrent = () => nativeOperationRef.current === operation;
+        if (media && isCurrent()) await activateNativeMedia(media, isCurrent);
       } catch (error) {
         if (nativeOperationRef.current === operation) {
           const message = error?.message || t('fileUpload.nativeSelectionError', 'Could not open the selected media.');

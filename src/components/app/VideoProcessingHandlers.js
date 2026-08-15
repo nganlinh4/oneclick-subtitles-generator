@@ -6,6 +6,7 @@ import {
   isNativeMediaDescriptor,
 } from '../../platform/mediaService';
 import { generateUrlBasedCacheId } from '../../services/subtitleCache';
+import { ensureProjectOwnsNativeMedia } from '../../platform/nativeMediaOwnership';
 import { resolveProjectForCache } from '../../platform/subtitleProjectStore';
 import { setCurrentCacheId as setRulesCacheId } from '../../utils/transcriptionRulesStore';
 import { setCurrentCacheId as setSubtitlesCacheId } from '../../utils/userSubtitlesStore';
@@ -165,6 +166,10 @@ export const downloadAndPrepareYouTubeVideo = async (
     localStorage.setItem('current_file_url', nativeMedia.playbackUrl);
     localStorage.setItem('current_file_cache_id', nativeMedia.assetId);
     localStorage.setItem('current_file_name', nativeMedia.name);
+    // Remember which project owns this media so a later run can reopen it. The candidate claim has
+    // already committed the same asset, so this verifies and records without a second revision.
+    await ensureProjectOwnsNativeMedia({ media: nativeMedia, cacheId: projectCacheId });
+    assertDownloadOwnership();
 
     if (!ownsPresentation()) throw new AutoGenerationOwnershipError();
     handleTabChange('file-upload', false);

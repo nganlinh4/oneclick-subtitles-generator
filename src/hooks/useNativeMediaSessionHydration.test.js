@@ -6,18 +6,22 @@ import { createNativeMediaDescriptor } from '../platform/mediaService';
 
 const deferred = () => {
   let resolve;
-  const promise = new Promise((resolvePromise) => { resolve = resolvePromise; });
-  return { promise, resolve };
+  let reject;
+  const promise = new Promise((resolvePromise, rejectPromise) => {
+    resolve = resolvePromise;
+    reject = rejectPromise;
+  });
+  return { promise, resolve, reject };
 };
 
 const ASSET_A = '018f47a2-7c20-7f70-8000-000000000001';
 const ASSET_B = '018f47a2-7c20-7f70-8000-000000000002';
+const PROJECT_A = '018f47a2-7c20-7f70-8000-0000000000a1';
+const PROJECT_B = '018f47a2-7c20-7f70-8000-0000000000a2';
+// A URL download's alias is deliberately not its asset ID; that divergence is the whole point.
+const URL_ALIAS = 'site_example_test_clip_mp4';
 
-const mediaDescriptor = ({
-  assetId,
-  playbackId,
-  token,
-}) => createNativeMediaDescriptor({
+const mediaDescriptor = ({ assetId, playbackId, token }) => createNativeMediaDescriptor({
   asset: {
     displayName: 'fixture.mp4',
     extension: 'mp4',
@@ -44,28 +48,62 @@ const MEDIA_B = mediaDescriptor({
   token: 'b'.repeat(64),
 });
 
+const sessionA = () => ({ assetId: ASSET_A, cacheId: URL_ALIAS, projectId: PROJECT_A });
+
+const resolvedProject = (projectId = PROJECT_A, assetId = ASSET_A) => ({
+  cacheId: URL_ALIAS,
+  projectId,
+  snapshot: {
+    metadata: { id: projectId, name: 'Downloaded media' },
+    stateVersion: 3,
+    media: [{ id: assetId, displayName: 'fixture.mp4', extension: 'mp4', sizeBytes: 10, kind: 'video' }],
+    tracks: [],
+  },
+});
+
+// Every dependency stays observable, so an override written as a plain arrow is still a spy.
+const spied = (value) => (
+  typeof value === 'function' && !vi.isMockFunction(value) ? vi.fn(value) : value
+);
+
+const createHarness = (overrides = {}) => {
+  const release = vi.fn(() => true);
+  const state = { session: sessionA(), storedAssetId: ASSET_A };
+  const deps = {
+    read: vi.fn(async () => null),
+    restore: vi.fn(async () => MEDIA_A),
+    readStoredAssetId: vi.fn(() => state.storedAssetId),
+    readSession: vi.fn(() => state.session),
+    resolveOwner: vi.fn(async () => resolvedProject()),
+    activate: vi.fn(async () => Object.freeze({ claimOptions: {}, release })),
+    apply: vi.fn(),
+  };
+  for (const [key, value] of Object.entries(overrides)) deps[key] = spied(value);
+  return { ...deps, release, state, hydrator: createNativeMediaSessionHydrator(deps) };
+};
+
 beforeEach(() => {
   localStorage.clear();
   vi.restoreAllMocks();
 });
 
-it('restores an empty fresh native process and publishes the fresh playback capability', async () => {
-  const apply = vi.fn();
-  const restore = vi.fn().mockResolvedValue(MEDIA_A);
-  const hydrator = createNativeMediaSessionHydrator({
-    read: async () => null,
-    restore,
-    readStoredAssetId: () => ASSET_A,
-    apply,
-  });
+it('publishes the owning project and reopens the remembered asset on a fresh process', async () => {
+  const harness = createHarness();
 
-  await expect(hydrator.hydrate()).resolves.toBe(true);
-  expect(restore).toHaveBeenCalledExactlyOnceWith(ASSET_A);
-  expect(apply).toHaveBeenCalledExactlyOnceWith(MEDIA_A);
-  expect(MEDIA_A.playbackUrl).toContain(MEDIA_A.playbackId);
+  await expect(harness.hydrator.hydrate()).resolves.toBe(true);
+
+  expect(harness.resolveOwner).toHaveBeenCalledExactlyOnceWith(sessionA());
+  expect(harness.activate).toHaveBeenCalledExactlyOnceWith(
+    resolvedProject(),
+    { validateOwnership: expect.any(Function) }
+  );
+  expect(harness.restore).toHaveBeenCalledExactlyOnceWith(ASSET_A);
+  expect(harness.apply).toHaveBeenCalledExactlyOnceWith({ media: MEDIA_A, cacheId: URL_ALIAS });
+  // The reopened project is the app's active project from here on.
+  expect(harness.release).not.toHaveBeenCalled();
 });
 
-it('applies the restored identity to media, subtitle, and transcription-rule caches together', () => {
+it('binds subtitles and rules to the alias, never to the asset ID', () => {
   localStorage.setItem('current_file_url', 'blob:obsolete');
   const revokeObjectUrl = vi.spyOn(URL, 'revokeObjectURL').mockImplementation(() => {});
   const setUploadedFile = vi.fn();
@@ -74,6 +112,7 @@ it('applies the restored identity to media, subtitle, and transcription-rule cac
 
   applyNativeMediaSession({
     media: MEDIA_A,
+    cacheId: URL_ALIAS,
     setUploadedFile,
     setRulesCacheIdImpl,
     setSubtitlesCacheIdImpl,
@@ -81,291 +120,174 @@ it('applies the restored identity to media, subtitle, and transcription-rule cac
 
   expect(revokeObjectUrl).toHaveBeenCalledExactlyOnceWith('blob:obsolete');
   expect(localStorage.getItem('current_file_url')).toBe(MEDIA_A.playbackUrl);
+  // The identity key still holds the asset; only the project alias holds the cache ID.
   expect(localStorage.getItem('current_file_cache_id')).toBe(ASSET_A);
-  expect(setRulesCacheIdImpl).toHaveBeenCalledExactlyOnceWith(ASSET_A);
-  expect(setSubtitlesCacheIdImpl).toHaveBeenCalledExactlyOnceWith(ASSET_A);
+  expect(setRulesCacheIdImpl).toHaveBeenCalledExactlyOnceWith(URL_ALIAS);
+  expect(setSubtitlesCacheIdImpl).toHaveBeenCalledExactlyOnceWith(URL_ALIAS);
   expect(setUploadedFile).toHaveBeenCalledExactlyOnceWith(MEDIA_A);
 });
 
-it('restores only a session read for the unchanged stored media identity', async () => {
-  let storedAssetId = ASSET_A;
-  const pending = deferred();
-  const apply = vi.fn();
-  const hydrator = createNativeMediaSessionHydrator({
-    read: () => pending.promise,
-    readStoredAssetId: () => storedAssetId,
-    apply,
-  });
-
-  const stale = hydrator.hydrate();
-  storedAssetId = ASSET_B;
-  pending.resolve(MEDIA_A);
-  await expect(stale).resolves.toBe(false);
-  expect(apply).not.toHaveBeenCalled();
-
-  const fresh = createNativeMediaSessionHydrator({
-    read: async () => MEDIA_B,
-    readStoredAssetId: () => storedAssetId,
-    apply,
-  });
-  await expect(fresh.hydrate()).resolves.toBe(true);
-  expect(apply).toHaveBeenCalledExactlyOnceWith(MEDIA_B);
+it.each([
+  ['a missing alias', { cacheId: undefined }],
+  ['a blank alias', { cacheId: '' }],
+  ['a forged descriptor', { media: Object.freeze({ ...MEDIA_A, assetId: 'asset-a' }) }],
+])('refuses to apply a session with %s', (_label, overrides) => {
+  expect(() => applyNativeMediaSession({
+    media: MEDIA_A,
+    cacheId: URL_ALIAS,
+    setUploadedFile: vi.fn(),
+    setRulesCacheIdImpl: vi.fn(),
+    setSubtitlesCacheIdImpl: vi.fn(),
+    ...overrides,
+  })).toThrow(TypeError);
 });
 
-it('rejects a forged or unnormalized native media descriptor', async () => {
-  const apply = vi.fn();
-  const forged = Object.freeze({ ...MEDIA_A, assetId: 'asset-a' });
-  const hydrator = createNativeMediaSessionHydrator({
-    read: async () => forged,
-    readStoredAssetId: () => ASSET_A,
-    apply,
-  });
-
-  await expect(hydrator.hydrate()).resolves.toBe(false);
-  expect(apply).not.toHaveBeenCalled();
+it('does nothing without a remembered session', async () => {
+  const harness = createHarness({ readSession: () => null });
+  await expect(harness.hydrator.hydrate()).resolves.toBe(false);
+  expect(harness.read).not.toHaveBeenCalled();
+  expect(harness.restore).not.toHaveBeenCalled();
 });
 
-it('allows only the latest duplicate reconciliation to publish a normalized descriptor', async () => {
-  const first = deferred();
-  const second = deferred();
-  const apply = vi.fn();
-  let readCount = 0;
-  const hydrator = createNativeMediaSessionHydrator({
-    read: () => {
-      readCount += 1;
-      return readCount === 1 ? first.promise : second.promise;
-    },
-    readStoredAssetId: () => ASSET_A,
-    apply,
-  });
+it('is disabled by clearing the media identity, with no teardown of its own', async () => {
+  const harness = createHarness();
+  harness.state.storedAssetId = null;
 
-  const superseded = hydrator.hydrate();
-  const latest = hydrator.hydrate();
-  second.resolve(MEDIA_A);
-  await expect(latest).resolves.toBe(true);
-  first.resolve(MEDIA_A);
-  await expect(superseded).resolves.toBe(false);
-  expect(apply).toHaveBeenCalledExactlyOnceWith(MEDIA_A);
+  await expect(harness.hydrator.hydrate()).resolves.toBe(false);
+  expect(harness.resolveOwner).not.toHaveBeenCalled();
+  expect(harness.restore).not.toHaveBeenCalled();
 });
 
-it('fails closed for missing or invalid persisted identities without applying media', async () => {
-  const apply = vi.fn();
-  const restore = vi.fn();
-  const missing = createNativeMediaSessionHydrator({
-    read: async () => null,
-    restore,
-    readStoredAssetId: () => null,
-    apply,
-  });
-  await expect(missing.hydrate()).resolves.toBe(false);
-  expect(restore).not.toHaveBeenCalled();
+it('adopts media the native process already holds without publishing a project', async () => {
+  const harness = createHarness({ read: async () => MEDIA_A });
 
-  restore.mockRejectedValueOnce(new Error('invalid UUID'));
-  const invalid = createNativeMediaSessionHydrator({
-    read: async () => null,
-    restore,
-    readStoredAssetId: () => 'C:\\private\\clip.mp4',
-    apply,
-  });
-  await expect(invalid.hydrate()).resolves.toBe(false);
-  expect(apply).not.toHaveBeenCalled();
-
-  const unreadable = createNativeMediaSessionHydrator({
-    read: async () => MEDIA_A,
-    readStoredAssetId: () => { throw new Error('storage unavailable'); },
-    apply,
-  });
-  await expect(unreadable.hydrate()).resolves.toBe(false);
-  expect(apply).not.toHaveBeenCalled();
-});
-
-it('does not apply a restore after the persisted cache identity changes concurrently', async () => {
-  let storedAssetId = ASSET_A;
-  const pending = deferred();
-  const apply = vi.fn();
-  const hydrator = createNativeMediaSessionHydrator({
-    read: async () => null,
-    restore: () => pending.promise,
-    readStoredAssetId: () => storedAssetId,
-    apply,
-  });
-
-  const request = hydrator.hydrate();
-  await Promise.resolve();
-  storedAssetId = ASSET_B;
-  pending.resolve(MEDIA_A);
-
-  await expect(request).resolves.toBe(false);
-  expect(apply).not.toHaveBeenCalled();
-});
-
-it('reconciles the authoritative native winner when guarded restoration loses its commit race', async () => {
-  const apply = vi.fn();
-  const restore = vi.fn().mockResolvedValue(null);
-  const read = vi.fn()
-    .mockResolvedValueOnce(null)
-    .mockResolvedValueOnce(MEDIA_B);
-  const hydrator = createNativeMediaSessionHydrator({
-    read,
-    restore,
-    readStoredAssetId: () => ASSET_A,
-    apply,
-  });
-
-  await expect(hydrator.hydrate()).resolves.toBe(true);
-  expect(restore).toHaveBeenCalledExactlyOnceWith(ASSET_A);
-  expect(read).toHaveBeenCalledTimes(2);
-  expect(apply).toHaveBeenCalledExactlyOnceWith(MEDIA_B);
-});
-
-it('reconciles a StrictMode-style disposed restore winner through the replacement hydrator', async () => {
-  let nativeMedia = null;
-  const firstRestore = deferred();
-  const secondRestore = deferred();
-  const firstApply = vi.fn();
-  const secondApply = vi.fn();
-  const read = vi.fn(async () => nativeMedia);
-  const restoreFromFirstMount = vi.fn(() => firstRestore.promise);
-  const restoreFromReplacement = vi.fn(() => secondRestore.promise);
-  const first = createNativeMediaSessionHydrator({
-    read,
-    restore: restoreFromFirstMount,
-    readStoredAssetId: () => ASSET_A,
-    apply: firstApply,
-  });
-  const replacement = createNativeMediaSessionHydrator({
-    read,
-    restore: restoreFromReplacement,
-    readStoredAssetId: () => ASSET_A,
-    apply: secondApply,
-  });
-
-  const staleRequest = first.hydrate();
-  await vi.waitFor(() => expect(restoreFromFirstMount).toHaveBeenCalledExactlyOnceWith(ASSET_A));
-  first.dispose();
-  const replacementRequest = replacement.hydrate();
-  await vi.waitFor(() => expect(restoreFromReplacement).toHaveBeenCalledExactlyOnceWith(ASSET_A));
-  nativeMedia = MEDIA_A;
-  firstRestore.resolve(MEDIA_A);
-  await expect(staleRequest).resolves.toBe(false);
-  secondRestore.resolve(null);
-
-  await expect(replacementRequest).resolves.toBe(true);
-  expect(firstApply).not.toHaveBeenCalled();
-  expect(secondApply).toHaveBeenCalledExactlyOnceWith(MEDIA_A);
+  await expect(harness.hydrator.hydrate()).resolves.toBe(true);
+  expect(harness.activate).not.toHaveBeenCalled();
+  expect(harness.restore).not.toHaveBeenCalled();
+  expect(harness.apply).toHaveBeenCalledExactlyOnceWith({ media: MEDIA_A, cacheId: URL_ALIAS });
 });
 
 it.each([
-  ['empty', async () => null],
-  ['malformed', async () => ({ ...MEDIA_A, playbackUrl: 'file:///private/clip.mp4' })],
-  ['failed', async () => { throw new Error('private authoritative read failure'); }],
-])('fails closed when the authoritative post-conflict read is %s', async (_case, secondRead) => {
-  const apply = vi.fn();
-  const read = vi.fn()
-    .mockResolvedValueOnce(null)
-    .mockImplementationOnce(secondRead);
-  const hydrator = createNativeMediaSessionHydrator({
-    read,
-    restore: async () => null,
-    readStoredAssetId: () => ASSET_A,
-    apply,
-  });
-
-  await expect(hydrator.hydrate()).resolves.toBe(false);
-  expect(read).toHaveBeenCalledTimes(2);
-  expect(apply).not.toHaveBeenCalled();
+  ['different media', async () => MEDIA_B],
+  ['a forged descriptor', async () => Object.freeze({ ...MEDIA_A, playbackUrl: 'file:///clip.mp4' })],
+])('fails closed when the native process already holds %s', async (_label, read) => {
+  const harness = createHarness({ read });
+  await expect(harness.hydrator.hydrate()).resolves.toBe(false);
+  expect(harness.apply).not.toHaveBeenCalled();
 });
 
-it('discards an authoritative post-conflict read when persisted identity changes in flight', async () => {
-  let storedAssetId = ASSET_A;
-  const authoritative = deferred();
-  const apply = vi.fn();
-  const read = vi.fn()
-    .mockResolvedValueOnce(null)
-    .mockImplementationOnce(() => authoritative.promise);
-  const hydrator = createNativeMediaSessionHydrator({
-    read,
-    restore: async () => null,
-    readStoredAssetId: () => storedAssetId,
-    apply,
-  });
+it('never activates when the alias no longer resolves to the remembered project', async () => {
+  const harness = createHarness({ resolveOwner: async () => null });
 
-  const request = hydrator.hydrate();
-  await vi.waitFor(() => expect(read).toHaveBeenCalledTimes(2));
-  storedAssetId = ASSET_B;
-  authoritative.resolve(MEDIA_B);
-
-  await expect(request).resolves.toBe(false);
-  expect(apply).not.toHaveBeenCalled();
+  await expect(harness.hydrator.hydrate()).resolves.toBe(false);
+  expect(harness.activate).not.toHaveBeenCalled();
+  expect(harness.restore).not.toHaveBeenCalled();
+  expect(harness.apply).not.toHaveBeenCalled();
 });
 
-it('fails closed for malformed session DTOs and reopen failures', async () => {
-  const apply = vi.fn();
-  const malformedRead = createNativeMediaSessionHydrator({
-    read: async () => ({ ...MEDIA_A, playbackUrl: 'file:///private/clip.mp4' }),
-    readStoredAssetId: () => ASSET_A,
-    apply,
+it('does not reopen when publishing the owning project fails', async () => {
+  const harness = createHarness({
+    activate: async () => { throw new Error('a newer project won'); },
   });
-  await expect(malformedRead.hydrate()).resolves.toBe(false);
 
-  const malformedRestore = createNativeMediaSessionHydrator({
-    read: async () => null,
-    restore: async () => ({ ...MEDIA_A, assetId: ASSET_B }),
-    readStoredAssetId: () => ASSET_A,
-    apply,
-  });
-  await expect(malformedRestore.hydrate()).resolves.toBe(false);
-
-  const failedRestore = createNativeMediaSessionHydrator({
-    read: async () => null,
-    restore: async () => { throw new Error('private reopen failure'); },
-    readStoredAssetId: () => ASSET_A,
-    apply,
-  });
-  await expect(failedRestore.hydrate()).resolves.toBe(false);
-  expect(apply).not.toHaveBeenCalled();
+  await expect(harness.hydrator.hydrate()).resolves.toBe(false);
+  expect(harness.restore).not.toHaveBeenCalled();
+  expect(harness.apply).not.toHaveBeenCalled();
 });
 
-it('fails closed for a failed, superseded, or disposed reconciliation', async () => {
-  const apply = vi.fn();
-  const failed = createNativeMediaSessionHydrator({
-    read: async () => { throw new Error('private native session detail'); },
-    readStoredAssetId: () => ASSET_A,
-    apply,
-  });
-  await expect(failed.hydrate()).resolves.toBe(false);
+it.each([
+  ['the reopen fails', { restore: async () => { throw new Error('private reopen failure'); } }],
+  ['the reopen loses its only-if-empty race', { restore: async () => null }],
+  ['the reopened descriptor is forged', {
+    restore: async () => Object.freeze({ ...MEDIA_A, playbackUrl: 'file:///private/clip.mp4' }),
+  }],
+  ['the reopened asset is a different one', { restore: async () => MEDIA_B }],
+  ['publication cannot be applied', { apply: () => { throw new Error('render failure'); } }],
+])('withdraws its publication exactly once when %s', async (_label, overrides) => {
+  const harness = createHarness(overrides);
 
-  const firstRestore = deferred();
-  let readCount = 0;
-  const superseded = createNativeMediaSessionHydrator({
-    read: async () => {
-      readCount += 1;
-      return readCount === 1 ? null : MEDIA_B;
-    },
-    restore: () => firstRestore.promise,
-    readStoredAssetId: () => ASSET_A,
-    apply,
-  });
-  const first = superseded.hydrate();
-  await Promise.resolve();
-  const second = superseded.hydrate();
-  await expect(second).resolves.toBe(true);
-  firstRestore.resolve(MEDIA_A);
-  await expect(first).resolves.toBe(false);
-  expect(apply).toHaveBeenCalledExactlyOnceWith(MEDIA_B);
+  await expect(harness.hydrator.hydrate()).resolves.toBe(false);
+  expect(harness.release).toHaveBeenCalledOnce();
+});
 
-  apply.mockClear();
+it.each([
+  ['a different project', () => ({ ...sessionA(), projectId: PROJECT_B })],
+  ['a different alias', () => ({ ...sessionA(), cacheId: 'other-alias' })],
+  ['a different asset', () => ({ ...sessionA(), assetId: ASSET_B })],
+  ['no session at all', () => null],
+])('discards the reopen when the session becomes %s in flight', async (_label, next) => {
   const pending = deferred();
-  const disposed = createNativeMediaSessionHydrator({
-    read: async () => null,
-    restore: () => pending.promise,
-    readStoredAssetId: () => ASSET_A,
-    apply,
-  });
-  const request = disposed.hydrate();
-  await Promise.resolve();
-  disposed.dispose();
+  const harness = createHarness({ restore: () => pending.promise });
+
+  const request = harness.hydrator.hydrate();
+  await vi.waitFor(() => expect(harness.restore).toHaveBeenCalledOnce());
+  harness.state.session = next();
   pending.resolve(MEDIA_A);
+
   await expect(request).resolves.toBe(false);
-  expect(apply).not.toHaveBeenCalled();
+  expect(harness.apply).not.toHaveBeenCalled();
+  expect(harness.release).toHaveBeenCalledOnce();
+});
+
+it('refuses to publish for a session that changed before the project was resolved', async () => {
+  const pending = deferred();
+  const harness = createHarness({ resolveOwner: () => pending.promise });
+
+  const request = harness.hydrator.hydrate();
+  await vi.waitFor(() => expect(harness.resolveOwner).toHaveBeenCalledOnce());
+  harness.state.storedAssetId = ASSET_B;
+  pending.resolve(resolvedProject());
+
+  await expect(request).resolves.toBe(false);
+  expect(harness.activate).not.toHaveBeenCalled();
+});
+
+it('supersedes an in-flight hydration with a later one', async () => {
+  const first = deferred();
+  const harness = createHarness({
+    restore: vi.fn()
+      .mockImplementationOnce(() => first.promise)
+      .mockImplementation(async () => MEDIA_A),
+  });
+
+  const stale = harness.hydrator.hydrate();
+  await vi.waitFor(() => expect(harness.restore).toHaveBeenCalledOnce());
+  const latest = harness.hydrator.hydrate();
+
+  await expect(latest).resolves.toBe(true);
+  first.resolve(MEDIA_A);
+  await expect(stale).resolves.toBe(false);
+  expect(harness.apply).toHaveBeenCalledExactlyOnceWith({ media: MEDIA_A, cacheId: URL_ALIAS });
+});
+
+it('withdraws its publication when the hook is disposed mid-reopen', async () => {
+  const pending = deferred();
+  const harness = createHarness({ restore: () => pending.promise });
+
+  const request = harness.hydrator.hydrate();
+  await vi.waitFor(() => expect(harness.restore).toHaveBeenCalledOnce());
+  harness.hydrator.dispose();
+  pending.resolve(MEDIA_A);
+
+  await expect(request).resolves.toBe(false);
+  expect(harness.apply).not.toHaveBeenCalled();
+  expect(harness.release).toHaveBeenCalledOnce();
+});
+
+it.each([
+  ['the native session read fails', { read: async () => { throw new Error('private detail'); } }],
+  ['storage is unreadable', { readStoredAssetId: () => { throw new Error('storage gone'); } }],
+  ['the session pointer is unreadable', { readSession: () => { throw new Error('storage gone'); } }],
+])('fails closed when %s', async (_label, overrides) => {
+  const harness = createHarness(overrides);
+  await expect(harness.hydrator.hydrate()).resolves.toBe(false);
+  expect(harness.apply).not.toHaveBeenCalled();
+});
+
+it('requires every reviewed dependency', () => {
+  expect(() => createNativeMediaSessionHydrator({ apply: undefined })).toThrow(TypeError);
+  expect(() => createNativeMediaSessionHydrator({
+    apply: vi.fn(),
+    resolveOwner: 'not-a-function',
+  })).toThrow(TypeError);
 });

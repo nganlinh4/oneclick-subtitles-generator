@@ -4,6 +4,9 @@ import { validate as validateUuid, version as uuidVersion } from 'uuid';
 import { resolveActiveNativeMediaAssetId } from './activeNativeMedia';
 import { invokeDesktop, isDesktopRuntime } from './desktopRuntime';
 import { getSelectedMedia, isNativeMediaDescriptor, isNativeMediaPlaybackUrl } from './mediaService';
+import {
+  canonicalAssetFromDescriptor as sharedCanonicalAssetFromDescriptor,
+} from './nativeMediaOwnership';
 import { mutateProject } from './projectService';
 import { resolveProjectForCache } from './subtitleProjectStore';
 
@@ -481,21 +484,14 @@ const secondsToMicros = (value) => {
   return requireInteger(Math.round(seconds * 1_000_000), 0, MAX_RENDER_DURATION_MICROS);
 };
 
+// One shared descriptor-to-asset conversion, re-raised as a render failure so this module keeps
+// its own fixed error surface.
 const canonicalAssetFromDescriptor = (descriptor) => {
-  if (!isNativeMediaDescriptor(descriptor)) throw invalidRequest();
-  const separator = descriptor.name.lastIndexOf('.');
-  if (separator <= 0 || separator === descriptor.name.length - 1) throw invalidRequest();
-  const extension = descriptor.name.slice(separator + 1).toLowerCase();
-  const kind = descriptor.type.startsWith('video/') ? 'video'
-    : descriptor.type.startsWith('audio/') ? 'audio' : null;
-  if (kind === null) throw invalidRequest();
-  return Object.freeze({
-    id: descriptor.assetId,
-    displayName: descriptor.name,
-    extension,
-    sizeBytes: descriptor.size,
-    kind,
-  });
+  try {
+    return sharedCanonicalAssetFromDescriptor(descriptor);
+  } catch {
+    throw invalidRequest();
+  }
 };
 
 const normalizeSourceAsset = (asset, { response = false } = {}) => {
