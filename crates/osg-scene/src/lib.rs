@@ -12,6 +12,7 @@
 pub mod animation;
 pub mod cues;
 pub mod easing;
+pub mod layout;
 pub mod scale;
 pub mod timeline;
 
