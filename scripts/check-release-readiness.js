@@ -20,6 +20,25 @@ const SPEECH_DELIVERY_PATH = 'crates/osg-speech/delivery/speech-packages.deliver
 const RENDER_DELIVERY_PATH = 'video-renderer/delivery/remotion-runtime.delivery.json';
 const LOOPBACK_AUDIT_PATH = 'scripts/production-loopback-audit.json';
 const UPDATER_PUBLIC_KEY_PATH = `${TAURI_DIRECTORY}/updater-public-key.txt`;
+const UPDATER_WINDOWS_INSTALL_MODE = 'passive';
+const UPDATER_DANGEROUS_KEYS = [
+  [
+    'dangerousAcceptInvalidCerts',
+    'Tauri updater must never accept invalid TLS certificates in release packages',
+  ],
+  [
+    'dangerousAcceptInvalidHostnames',
+    'Tauri updater must never accept invalid TLS hostnames in release packages',
+  ],
+];
+const UPDATER_REVIEWED_KEYS = new Set([
+  'endpoints',
+  'pubkey',
+  'windows',
+  'dangerousInsecureTransportProtocol',
+  ...UPDATER_DANGEROUS_KEYS.map(([key]) => key),
+]);
+const UPDATER_REVIEWED_WINDOWS_KEYS = new Set(['installMode', 'installerArgs']);
 const PROMPTDJ_FONT_DIRECTORY = 'promptdj-midi/assets/fonts';
 const EXACT_VERSION = /^\d+\.\d+\.\d+$/;
 const PYTHON_VERSION = '3.12.10';
@@ -3592,6 +3611,39 @@ function assertNoGuestUpdaterPermissions(rootDirectory) {
   }
 }
 
+function assertUpdaterTransportAndInstallMode(updater) {
+  for (const [key, message] of UPDATER_DANGEROUS_KEYS) {
+    invariant(updater[key] !== true, message);
+  }
+  const unreviewedKeys = Object.keys(updater)
+    .filter((key) => !UPDATER_REVIEWED_KEYS.has(key));
+  invariant(
+    unreviewedKeys.length === 0,
+    `Tauri updater declares unreviewed keys: ${unreviewedKeys.join(', ')}`,
+  );
+
+  const windows = updater.windows;
+  invariant(
+    windows && typeof windows === 'object' && !Array.isArray(windows),
+    'Tauri updater must pin its reviewed Windows install behaviour',
+  );
+  const unreviewedWindowsKeys = Object.keys(windows)
+    .filter((key) => !UPDATER_REVIEWED_WINDOWS_KEYS.has(key));
+  invariant(
+    unreviewedWindowsKeys.length === 0,
+    `Tauri updater windows declares unreviewed keys: ${unreviewedWindowsKeys.join(', ')}`,
+  );
+  invariant(
+    windows.installMode === UPDATER_WINDOWS_INSTALL_MODE,
+    `Tauri updater windows.installMode must stay ${UPDATER_WINDOWS_INSTALL_MODE}`,
+  );
+  invariant(
+    windows.installerArgs === undefined
+      || (Array.isArray(windows.installerArgs) && windows.installerArgs.length === 0),
+    'Tauri updater windows.installerArgs must stay empty so no unreviewed installer flag is passed',
+  );
+}
+
 function assertUpdaterReleaseConfiguration(rootDirectory = REPOSITORY_ROOT) {
   const config = readJson(rootDirectory, TAURI_CONFIG_PATH);
   invariant(
@@ -3605,6 +3657,7 @@ function assertUpdaterReleaseConfiguration(rootDirectory = REPOSITORY_ROOT) {
     updater.dangerousInsecureTransportProtocol !== true,
     'Tauri updater must never allow insecure transport in release packages',
   );
+  assertUpdaterTransportAndInstallMode(updater);
   invariant(
     Array.isArray(updater.endpoints) && updater.endpoints.length > 0,
     'Tauri updater must declare at least one HTTPS latest.json endpoint',
@@ -4394,6 +4447,50 @@ function assertManagedRenderRuntimeInstallerV2(rootDirectory, catalog) {
   );
 }
 
+// The reviewed notices asset is identified by name because the catalog schema is closed: the Rust
+// loader rejects unknown source fields, so no explicit role marker can be added to a source.
+const RENDER_NOTICE_ASSET = /(?:^|[-_])notices?(?:[-_][^/]*)?\.(?:json|txt)$/i;
+
+function assertRenderRuntimeComponentLicense(component, componentLabel) {
+  invariant(component && typeof component === 'object' && !Array.isArray(component),
+    `${componentLabel} must be an object`);
+  const license = component.license;
+  invariant(license && typeof license === 'object' && !Array.isArray(license)
+    && typeof license.spdx === 'string' && license.spdx.trim().length > 0,
+  `${componentLabel} must declare an SPDX license expression`);
+  const noticePath = assertSafeManifestPath(license.noticePath,
+    `${componentLabel}.license.noticePath`);
+  invariant(noticePath.startsWith('licenses/'),
+    `${componentLabel}.license.noticePath must install below licenses/`);
+}
+
+// schemaVersion 2 moves the file inventory into the hash-bound delivery manifest, so the reviewed
+// catalog must still state where the third-party notices come from: either an explicit component
+// licence inventory, or a notices asset among the downloaded sources.
+function assertRenderRuntimeLicenseInventoryV2(release, label) {
+  if (release.components !== undefined) {
+    invariant(Array.isArray(release.components) && release.components.length > 0,
+      `${label}.components must be a non-empty licence inventory when declared`);
+    release.components.forEach((component, index) => assertRenderRuntimeComponentLicense(
+      component,
+      `${label}.components[${index}]`,
+    ));
+    return;
+  }
+  const noticeSources = release.sources.filter(
+    (source) => typeof source.asset === 'string' && RENDER_NOTICE_ASSET.test(source.asset),
+  );
+  invariant(
+    noticeSources.length > 0,
+    `${label} must inventory its third-party notices: declare components[].license`
+      + ' (spdx plus noticePath) or ship a reviewed *-notices.json source asset',
+  );
+  for (const source of noticeSources) {
+    invariant(source.kind === 'raw',
+      `${label} third-party notices asset ${source.asset} must be a raw source`);
+  }
+}
+
 function assertRenderRuntimeDeliveryV2(rootDirectory, target, catalog) {
   invariant(catalog.protocolVersion === 1,
     'Remotion delivery catalog must use stdio protocolVersion 1');
@@ -4471,6 +4568,7 @@ function assertRenderRuntimeDeliveryV2(rootDirectory, target, catalog) {
   `${label} must bind its top-level identity to the delivery manifest`);
   invariant(release.sizeBytes === sourceBytes + manifestBytes,
     `${label}.sizeBytes must equal all source and manifest bytes`);
+  assertRenderRuntimeLicenseInventoryV2(release, label);
   assertManagedRenderRuntimeInstallerV2(rootDirectory, catalog);
 }
 

@@ -3109,6 +3109,8 @@ function createUpdaterFixture({
   endpoint = 'https://example.invalid/releases/latest/download/latest.json',
   permission = 'check-for-updates',
   publicKey = null,
+  updaterOverrides = {},
+  windowsOverrides = {},
 } = {}) {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), 'osg-updater-readiness-'));
   const keyBytes = Buffer.concat([Buffer.from('Ed'), Buffer.from(Array.from({ length: 40 }, (_, index) => index + 1))]);
@@ -3123,7 +3125,14 @@ function createUpdaterFixture({
     'apps/desktop/src-tauri/tauri.conf.json',
     JSON.stringify({
       bundle: { createUpdaterArtifacts: true },
-      plugins: { updater: { endpoints: [endpoint], pubkey: '' } },
+      plugins: {
+        updater: {
+          endpoints: [endpoint],
+          pubkey: '',
+          windows: { installMode: 'passive', ...windowsOverrides },
+          ...updaterOverrides,
+        },
+      },
     }),
   );
   writeFile(
@@ -3139,8 +3148,44 @@ test('signed updater release gate requires a real key, HTTPS latest.json, and no
   const placeholderRoot = createUpdaterFixture({ publicKey: 'UNCONFIGURED' });
   const insecureRoot = createUpdaterFixture({ endpoint: 'http://example.invalid/latest.json' });
   const guestRoot = createUpdaterFixture({ permission: 'updater:default' });
+  const transportAndInstallCases = [
+    [
+      createUpdaterFixture({ updaterOverrides: { dangerousInsecureTransportProtocol: true } }),
+      /never allow insecure transport/,
+    ],
+    [
+      createUpdaterFixture({ updaterOverrides: { dangerousAcceptInvalidCerts: true } }),
+      /never accept invalid TLS certificates/,
+    ],
+    [
+      createUpdaterFixture({ updaterOverrides: { dangerousAcceptInvalidHostnames: true } }),
+      /never accept invalid TLS hostnames/,
+    ],
+    [
+      createUpdaterFixture({ updaterOverrides: { proxy: 'http://proxy.invalid' } }),
+      /updater declares unreviewed keys: proxy/,
+    ],
+    [
+      createUpdaterFixture({ windowsOverrides: { installMode: 'quiet' } }),
+      /windows\.installMode must stay passive/,
+    ],
+    [
+      createUpdaterFixture({ windowsOverrides: { installerArgs: ['/SILENT'] } }),
+      /windows\.installerArgs must stay empty/,
+    ],
+    [
+      createUpdaterFixture({ windowsOverrides: { installerHooks: 'hook.ps1' } }),
+      /windows declares unreviewed keys: installerHooks/,
+    ],
+  ];
   context.after(() => {
-    for (const root of [validRoot, placeholderRoot, insecureRoot, guestRoot]) {
+    for (const root of [
+      validRoot,
+      placeholderRoot,
+      insecureRoot,
+      guestRoot,
+      ...transportAndInstallCases.map(([root]) => root),
+    ]) {
       fs.rmSync(root, { force: true, recursive: true });
     }
   });
@@ -3149,6 +3194,20 @@ test('signed updater release gate requires a real key, HTTPS latest.json, and no
   assert.throws(() => assertUpdaterReleaseConfiguration(placeholderRoot), /still a placeholder/);
   assert.throws(() => assertUpdaterReleaseConfiguration(insecureRoot), /must use HTTPS/);
   assert.throws(() => assertUpdaterReleaseConfiguration(guestRoot), /must not grant updater guest permissions/);
+  for (const [root, expected] of transportAndInstallCases) {
+    assert.throws(() => assertUpdaterReleaseConfiguration(root), expected);
+  }
+});
+
+test('signed updater release gate pins the shipped transport and Windows install invariants', () => {
+  const config = JSON.parse(fs.readFileSync(
+    path.join(__dirname, '..', 'apps', 'desktop', 'src-tauri', 'tauri.conf.json'),
+    'utf8',
+  ));
+  const updater = config.plugins.updater;
+  assert.deepEqual(Object.keys(updater).sort(), ['endpoints', 'pubkey', 'windows']);
+  assert.deepEqual(updater.windows, { installMode: 'passive' });
+  assert.doesNotThrow(() => assertUpdaterReleaseConfiguration(path.resolve(__dirname, '..')));
 });
 
 test('Tauri production build contract embeds the frontend instead of retaining the dev URL', (context) => {
@@ -3575,6 +3634,122 @@ test('Remotion delivery requires exact cross-component payload and license inven
     () => assertRenderRuntimeDelivery(root, 'x86_64-pc-windows-msvc'),
     /components must be exactly/,
   );
+});
+
+function createRenderDeliveryV2Fixture(root, { components, includeNotices = false } = {}) {
+  const digest = (contents) => crypto.createHash('sha256').update(contents).digest('hex');
+  const worker = 'reviewed render worker';
+  writeFile(root, 'video-renderer/worker/osg_render_worker.mjs', worker);
+  const pool =
+    'https://github.com/nganlinh4/oneclick-subtitles-generator/releases/download/osg-runtime-bundles-v1';
+  const asset = (prefix, suffix, contents, sizeBytes) => {
+    const sha256 = digest(contents);
+    const name = `${prefix}-${sha256.slice(0, 16)}${suffix}`;
+    return { asset: name, sizeBytes, sha256, urls: [`${pool}/${name}`] };
+  };
+  const zip = {
+    kind: 'zip',
+    ...asset('remotion-runtime-windows-x64-4.0.507', '.zip', 'runtime-zip', 264_797_695),
+  };
+  const notices = {
+    kind: 'raw',
+    ...asset('remotion-runtime-windows-x64-4.0.507-notices', '.json', 'runtime-notices', 3_113),
+  };
+  const manifest = asset(
+    'remotion-runtime-windows-x64-4.0.507',
+    '.manifest.json',
+    'runtime-manifest',
+    644_762,
+  );
+  const sources = includeNotices ? [zip, notices] : [zip];
+  const release = {
+    version: '4.0.507',
+    asset: manifest.asset,
+    sourceUrl: '',
+    sizeBytes: sources.reduce((total, source) => total + source.sizeBytes, manifest.sizeBytes),
+    sha256: manifest.sha256,
+    unpackedSizeBytes: 624_910_330,
+    pythonRelativePath: 'runtime/bin/node.exe',
+    modelRelativePath: null,
+    files: [],
+    sources,
+    manifest,
+  };
+  if (components !== undefined) release.components = components;
+  writeFile(root, 'video-renderer/delivery/remotion-runtime.delivery.json', JSON.stringify({
+    schemaVersion: 2,
+    protocolVersion: 1,
+    remotionVersion: '4.0.507',
+    worker: {
+      sourcePath: 'video-renderer/worker/osg_render_worker.mjs',
+      sizeBytes: Buffer.byteLength(worker),
+      sha256: digest(worker),
+    },
+    commands: {
+      status: 'render_package_status',
+      install: 'render_package_install',
+      remove: 'render_package_remove',
+    },
+    platforms: {
+      'linux-x86_64': { releases: [] },
+      'macos-aarch64': { releases: [] },
+      'macos-x86_64': { releases: [] },
+      'windows-x86_64': { releases: [release] },
+    },
+  }));
+}
+
+test('schemaVersion 2 Remotion delivery must inventory component licences and notices', (context) => {
+  const roots = [];
+  const fixture = (options) => {
+    const root = fs.mkdtempSync(path.join(os.tmpdir(), 'osg-remotion-delivery-v2-'));
+    roots.push(root);
+    createRenderDeliveryV2Fixture(root, options);
+    return root;
+  };
+  context.after(() => {
+    for (const root of roots) fs.rmSync(root, { force: true, recursive: true });
+  });
+  const licensed = (overrides = {}) => ({
+    id: 'remotion',
+    version: '4.0.507',
+    license: { spdx: 'MIT', noticePath: 'licenses/THIRD_PARTY_NOTICES.txt' },
+    ...overrides,
+  });
+  const check = (root) => assertRenderRuntimeDelivery(root, 'x86_64-pc-windows-msvc');
+
+  assert.throws(
+    () => check(fixture()),
+    /must inventory its third-party notices/,
+  );
+  assert.throws(
+    () => check(fixture({ components: [licensed(), licensed({ id: 'node', license: undefined })] })),
+    /components\[1\] must declare an SPDX license expression/,
+  );
+  assert.throws(
+    () => check(fixture({ components: [licensed({ license: { spdx: 'MIT' } })] })),
+    /components\[0\]\.license\.noticePath must be a non-empty path/,
+  );
+  assert.throws(
+    () => check(fixture({
+      components: [licensed({ license: { spdx: 'MIT', noticePath: 'THIRD_PARTY_NOTICES.md' } })],
+    })),
+    /components\[0\]\.license\.noticePath must install below licenses\//,
+  );
+  assert.throws(
+    () => check(fixture({ components: [] })),
+    /components must be a non-empty licence inventory/,
+  );
+
+  // A declared licence inventory clears the notices gate: the fixtures reach the later managed
+  // installer wiring stage, which no temporary root can satisfy.
+  for (const root of [fixture({ includeNotices: true }), fixture({ components: [licensed()] })]) {
+    assert.throws(check.bind(null, root), (error) => {
+      assert.doesNotMatch(error.message, /third-party notices|SPDX license|noticePath/);
+      assert.match(error.message, /apps\/desktop\/src-tauri\/build\.rs/);
+      return true;
+    });
+  }
 });
 
 test('managed ASR and speech delivery requires releases plus real install command wiring', (context) => {
