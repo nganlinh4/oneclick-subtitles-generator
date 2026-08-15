@@ -60,10 +60,17 @@ This is an architecture description, not an independent security audit.
   narrow `style-src`/`font-src` CSP entries. This is the remaining deliberate WebView HTTPS egress;
   replacing it with reviewed local font files would change the visual asset contract and requires
   separate visual approval. Provider/API traffic is not permitted through those directives.
-- The check-only updater command uses a fixed HTTPS `latest.json` endpoint and is gated by strict
-  minisign-compatible public-key format validation. Checks remain unavailable while
-  `apps/desktop/src-tauri/updater-public-key.txt` contains the placeholder value; update
-  installation is not exposed by the current command surface.
+- `app_update_check`, `app_update_install`, and `app_update_cancel` are exposed only behind the
+  `check-for-updates` capability and are user-initiated. They use a fixed HTTPS `latest.json`
+  endpoint and are gated by strict minisign-compatible public-key format validation against the
+  committed production key in `apps/desktop/src-tauri/updater-public-key.txt`. The plugin verifies
+  the package signature before installing, an install is bound to the exact version the preceding
+  check returned, only one install runs at a time, and cancellation is honoured during download.
+  Release notes, versions, download timeouts, and progress events are bounded.
+- The updater has no rollback. The Windows package installs in NSIS passive mode (`/P /R`), which
+  uninstalls then installs and is not transactional; recovery from a half-applied install is a
+  manual reinstall. The configured endpoint currently returns 404 because `releases/latest` still
+  resolves to the legacy Electron release v2.6.1, so no signed release is published yet.
 
 ## Loopback media transport
 
@@ -121,13 +128,27 @@ catalogs deliberately make the related feature unavailable.
   catalog/status DTOs expose neither executable paths nor upstream URLs.
 - The CI GitHub token has read-only repository contents permission, and checkout does not persist
   Git credentials. Manual packaging validation is separately gated from ordinary source
-  compilation; production signing credentials are not configured by this repository.
+  compilation; the production updater signing key is held as CI secrets and is never committed to
+  this repository.
 - The strict runtime-package gate rejects missing tools, empty engine/render catalogs, unmanaged
   loopback endpoints, missing native capabilities, and an unconfigured updater key.
 
-The repository still needs an owner-selected root license and an approved third-party-notice and
-corresponding-source disclosure policy; the release gate requires `THIRD_PARTY_NOTICES.md`. No
-project-wide license should be inferred from individual dependencies or crate metadata.
+The repository carries the selected root MIT license and the `THIRD_PARTY_NOTICES.md` the release
+gate requires. Notice coverage is nevertheless incomplete, and the following are the real open
+items rather than the license choice itself:
+
+- `THIRD_PARTY_NOTICES.md` names none of Chromium/Chrome for Testing, Node.js, x264, x265,
+  fdk-aac, libvpx, the MinGW runtime DLLs, CUDA/NVIDIA, PyTorch, CPython, or the LGPL (edge-tts)
+  and MPL-2.0 dependencies that the render runtime and the delivery catalogs actually ship.
+- The application has no attribution surface; the existing About tab carries no license or notice
+  content, and there is no written corresponding-source offer for the re-hosted GPL binaries.
+- The OSG-re-hosted Remotion runtime archive contains `@remotion/compositor-win32-x64-msvc`, which
+  ships its own `ffmpeg.exe` built `--enable-gpl --enable-libx264 --enable-libx265
+  --enable-libfdk-aac`. FFmpeg classes libfdk_aac as nonfree. Because OSG re-hosts that archive on
+  its own GitHub release, this is redistribution and requires an owner decision. This is a recorded
+  finding, not legal advice.
+
+No project-wide license should be inferred from individual dependencies or crate metadata.
 
 ## Security-sensitive changes
 
