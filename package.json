@@ -31,6 +31,7 @@
     "test:gemini-catalog": "node scripts/verify-gemini-catalog.js",
     "test:frontend-env": "node --test scripts/vite-public-env.test.mjs",
     "test:frozen-css": "node --test scripts/frozen-css-compatibility.test.mjs scripts/check-frozen-css-output.test.mjs",
+    "test:render-parity": "node --test scripts/render-parity-fixture.test.mjs",
     "test:production-transport": "node --test scripts/check-production-transport.test.js scripts/frontend-bundle-boundary.test.mjs scripts/remotion-desktop-boundary.test.mjs",
     "test:asr-worker": "python -I -B scripts/test-asr-worker.py -v",
     "test:speech-worker": "python -I -B crates/osg-speech/tests/python_worker_contract.py -v",

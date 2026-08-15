@@ -1,0 +1,17 @@
+[package]
+name = "osg-scene"
+version.workspace = true
+authors.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+description = "Deterministic subtitle scene math shared by the OSG native preview and export"
+license = "MIT"
+
+[dependencies]
+
+[dev-dependencies]
+serde = { version = "=1.0.229", features = ["derive"] }
+serde_json = "=1.0.151"
+
+[lints]
+workspace = true

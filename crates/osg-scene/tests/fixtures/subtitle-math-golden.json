@@ -1,0 +1,2453 @@
+{
+  "schemaVersion": 1,
+  "generatedFrom": {
+    "easing": "video-renderer/src/subtitleAnimationEasing.ts",
+    "visualMath": "video-renderer/src/subtitleVisualMath.ts"
+  },
+  "note": "Generated from the shipped implementation. Do not hand-edit to make a test pass.",
+  "easings": [
+    "linear",
+    "ease",
+    "ease-in",
+    "ease-out",
+    "ease-in-out",
+    "cubic-bezier(0.25, 0.46, 0.45, 0.94)",
+    "cubic-bezier(0.68, -0.55, 0.265, 1.55)"
+  ],
+  "easingSamples": [
+    {
+      "easing": "linear",
+      "progress": -1,
+      "progressBits": "bff0000000000000",
+      "eased": -1,
+      "easedBits": "bff0000000000000"
+    },
+    {
+      "easing": "linear",
+      "progress": -0.0001,
+      "progressBits": "bf1a36e2eb1c432d",
+      "eased": -0.0001,
+      "easedBits": "bf1a36e2eb1c432d"
+    },
+    {
+      "easing": "linear",
+      "progress": 0,
+      "progressBits": "0000000000000000",
+      "eased": 0,
+      "easedBits": "0000000000000000"
+    },
+    {
+      "easing": "linear",
+      "progress": 0.0001,
+      "progressBits": "3f1a36e2eb1c432d",
+      "eased": 0.0001,
+      "easedBits": "3f1a36e2eb1c432d"
+    },
+    {
+      "easing": "linear",
+      "progress": 0.01,
+      "progressBits": "3f847ae147ae147b",
+      "eased": 0.01,
+      "easedBits": "3f847ae147ae147b"
+    },
+    {
+      "easing": "linear",
+      "progress": 0.1,
+      "progressBits": "3fb999999999999a",
+      "eased": 0.1,
+      "easedBits": "3fb999999999999a"
+    },
+    {
+      "easing": "linear",
+      "progress": 0.25,
+      "progressBits": "3fd0000000000000",
+      "eased": 0.25,
+      "easedBits": "3fd0000000000000"
+    },
+    {
+      "easing": "linear",
+      "progress": 0.3333333333333333,
+      "progressBits": "3fd5555555555555",
+      "eased": 0.3333333333333333,
+      "easedBits": "3fd5555555555555"
+    },
+    {
+      "easing": "linear",
+      "progress": 0.49999999999999994,
+      "progressBits": "3fdfffffffffffff",
+      "eased": 0.49999999999999994,
+      "easedBits": "3fdfffffffffffff"
+    },
+    {
+      "easing": "linear",
+      "progress": 0.5,
+      "progressBits": "3fe0000000000000",
+      "eased": 0.5,
+      "easedBits": "3fe0000000000000"
+    },
+    {
+      "easing": "linear",
+      "progress": 0.5000000000000001,
+      "progressBits": "3fe0000000000001",
+      "eased": 0.5000000000000001,
+      "easedBits": "3fe0000000000001"
+    },
+    {
+      "easing": "linear",
+      "progress": 0.6666666666666666,
+      "progressBits": "3fe5555555555555",
+      "eased": 0.6666666666666666,
+      "easedBits": "3fe5555555555555"
+    },
+    {
+      "easing": "linear",
+      "progress": 0.75,
+      "progressBits": "3fe8000000000000",
+      "eased": 0.75,
+      "easedBits": "3fe8000000000000"
+    },
+    {
+      "easing": "linear",
+      "progress": 0.9,
+      "progressBits": "3feccccccccccccd",
+      "eased": 0.9,
+      "easedBits": "3feccccccccccccd"
+    },
+    {
+      "easing": "linear",
+      "progress": 0.99,
+      "progressBits": "3fefae147ae147ae",
+      "eased": 0.99,
+      "easedBits": "3fefae147ae147ae"
+    },
+    {
+      "easing": "linear",
+      "progress": 0.9999,
+      "progressBits": "3fefff2e48e8a71e",
+      "eased": 0.9999,
+      "easedBits": "3fefff2e48e8a71e"
+    },
+    {
+      "easing": "linear",
+      "progress": 1,
+      "progressBits": "3ff0000000000000",
+      "eased": 1,
+      "easedBits": "3ff0000000000000"
+    },
+    {
+      "easing": "linear",
+      "progress": 1.0001,
+      "progressBits": "3ff00068db8bac71",
+      "eased": 1.0001,
+      "easedBits": "3ff00068db8bac71"
+    },
+    {
+      "easing": "linear",
+      "progress": 2,
+      "progressBits": "4000000000000000",
+      "eased": 2,
+      "easedBits": "4000000000000000"
+    },
+    {
+      "easing": "ease",
+      "progress": -1,
+      "progressBits": "bff0000000000000",
+      "eased": 2,
+      "easedBits": "4000000000000000"
+    },
+    {
+      "easing": "ease",
+      "progress": -0.0001,
+      "progressBits": "bf1a36e2eb1c432d",
+      "eased": 2e-8,
+      "easedBits": "3e55798ee2308c3a"
+    },
+    {
+      "easing": "ease",
+      "progress": 0,
+      "progressBits": "0000000000000000",
+      "eased": 0,
+      "easedBits": "0000000000000000"
+    },
+    {
+      "easing": "ease",
+      "progress": 0.0001,
+      "progressBits": "3f1a36e2eb1c432d",
+      "eased": 2e-8,
+      "easedBits": "3e55798ee2308c3a"
+    },
+    {
+      "easing": "ease",
+      "progress": 0.01,
+      "progressBits": "3f847ae147ae147b",
+      "eased": 0.0002,
+      "easedBits": "3f2a36e2eb1c432d"
+    },
+    {
+      "easing": "ease",
+      "progress": 0.1,
+      "progressBits": "3fb999999999999a",
+      "eased": 0.020000000000000004,
+      "easedBits": "3f947ae147ae147c"
+    },
+    {
+      "easing": "ease",
+      "progress": 0.25,
+      "progressBits": "3fd0000000000000",
+      "eased": 0.125,
+      "easedBits": "3fc0000000000000"
+    },
+    {
+      "easing": "ease",
+      "progress": 0.3333333333333333,
+      "progressBits": "3fd5555555555555",
+      "eased": 0.2222222222222222,
+      "easedBits": "3fcc71c71c71c71c"
+    },
+    {
+      "easing": "ease",
+      "progress": 0.49999999999999994,
+      "progressBits": "3fdfffffffffffff",
+      "eased": 0.4999999999999999,
+      "easedBits": "3fdffffffffffffe"
+    },
+    {
+      "easing": "ease",
+      "progress": 0.5,
+      "progressBits": "3fe0000000000000",
+      "eased": 0.5,
+      "easedBits": "3fe0000000000000"
+    },
+    {
+      "easing": "ease",
+      "progress": 0.5000000000000001,
+      "progressBits": "3fe0000000000001",
+      "eased": 0.5000000000000002,
+      "easedBits": "3fe0000000000002"
+    },
+    {
+      "easing": "ease",
+      "progress": 0.6666666666666666,
+      "progressBits": "3fe5555555555555",
+      "eased": 0.7777777777777777,
+      "easedBits": "3fe8e38e38e38e38"
+    },
+    {
+      "easing": "ease",
+      "progress": 0.75,
+      "progressBits": "3fe8000000000000",
+      "eased": 0.875,
+      "easedBits": "3fec000000000000"
+    },
+    {
+      "easing": "ease",
+      "progress": 0.9,
+      "progressBits": "3feccccccccccccd",
+      "eased": 0.98,
+      "easedBits": "3fef5c28f5c28f5c"
+    },
+    {
+      "easing": "ease",
+      "progress": 0.99,
+      "progressBits": "3fefae147ae147ae",
+      "eased": 0.9998,
+      "easedBits": "3feffe5c91d14e3c"
+    },
+    {
+      "easing": "ease",
+      "progress": 0.9999,
+      "progressBits": "3fefff2e48e8a71e",
+      "eased": 0.99999998,
+      "easedBits": "3feffffff543388f"
+    },
+    {
+      "easing": "ease",
+      "progress": 1,
+      "progressBits": "3ff0000000000000",
+      "eased": 1,
+      "easedBits": "3ff0000000000000"
+    },
+    {
+      "easing": "ease",
+      "progress": 1.0001,
+      "progressBits": "3ff00068db8bac71",
+      "eased": 0.99999998,
+      "easedBits": "3feffffff543388f"
+    },
+    {
+      "easing": "ease",
+      "progress": 2,
+      "progressBits": "4000000000000000",
+      "eased": -1,
+      "easedBits": "bff0000000000000"
+    },
+    {
+      "easing": "ease-in",
+      "progress": -1,
+      "progressBits": "bff0000000000000",
+      "eased": 1,
+      "easedBits": "3ff0000000000000"
+    },
+    {
+      "easing": "ease-in",
+      "progress": -0.0001,
+      "progressBits": "bf1a36e2eb1c432d",
+      "eased": 1e-8,
+      "easedBits": "3e45798ee2308c3a"
+    },
+    {
+      "easing": "ease-in",
+      "progress": 0,
+      "progressBits": "0000000000000000",
+      "eased": 0,
+      "easedBits": "0000000000000000"
+    },
+    {
+      "easing": "ease-in",
+      "progress": 0.0001,
+      "progressBits": "3f1a36e2eb1c432d",
+      "eased": 1e-8,
+      "easedBits": "3e45798ee2308c3a"
+    },
+    {
+      "easing": "ease-in",
+      "progress": 0.01,
+      "progressBits": "3f847ae147ae147b",
+      "eased": 0.0001,
+      "easedBits": "3f1a36e2eb1c432d"
+    },
+    {
+      "easing": "ease-in",
+      "progress": 0.1,
+      "progressBits": "3fb999999999999a",
+      "eased": 0.010000000000000002,
+      "easedBits": "3f847ae147ae147c"
+    },
+    {
+      "easing": "ease-in",
+      "progress": 0.25,
+      "progressBits": "3fd0000000000000",
+      "eased": 0.0625,
+      "easedBits": "3fb0000000000000"
+    },
+    {
+      "easing": "ease-in",
+      "progress": 0.3333333333333333,
+      "progressBits": "3fd5555555555555",
+      "eased": 0.1111111111111111,
+      "easedBits": "3fbc71c71c71c71c"
+    },
+    {
+      "easing": "ease-in",
+      "progress": 0.49999999999999994,
+      "progressBits": "3fdfffffffffffff",
+      "eased": 0.24999999999999994,
+      "easedBits": "3fcffffffffffffe"
+    },
+    {
+      "easing": "ease-in",
+      "progress": 0.5,
+      "progressBits": "3fe0000000000000",
+      "eased": 0.25,
+      "easedBits": "3fd0000000000000"
+    },
+    {
+      "easing": "ease-in",
+      "progress": 0.5000000000000001,
+      "progressBits": "3fe0000000000001",
+      "eased": 0.2500000000000001,
+      "easedBits": "3fd0000000000002"
+    },
+    {
+      "easing": "ease-in",
+      "progress": 0.6666666666666666,
+      "progressBits": "3fe5555555555555",
+      "eased": 0.4444444444444444,
+      "easedBits": "3fdc71c71c71c71c"
+    },
+    {
+      "easing": "ease-in",
+      "progress": 0.75,
+      "progressBits": "3fe8000000000000",
+      "eased": 0.5625,
+      "easedBits": "3fe2000000000000"
+    },
+    {
+      "easing": "ease-in",
+      "progress": 0.9,
+      "progressBits": "3feccccccccccccd",
+      "eased": 0.81,
+      "easedBits": "3fe9eb851eb851ec"
+    },
+    {
+      "easing": "ease-in",
+      "progress": 0.99,
+      "progressBits": "3fefae147ae147ae",
+      "eased": 0.9801,
+      "easedBits": "3fef5cfaacd9e83e"
+    },
+    {
+      "easing": "ease-in",
+      "progress": 0.9999,
+      "progressBits": "3fefff2e48e8a71e",
+      "eased": 0.9998000100000001,
+      "easedBits": "3feffe5c972fb1f5"
+    },
+    {
+      "easing": "ease-in",
+      "progress": 1,
+      "progressBits": "3ff0000000000000",
+      "eased": 1,
+      "easedBits": "3ff0000000000000"
+    },
+    {
+      "easing": "ease-in",
+      "progress": 1.0001,
+      "progressBits": "3ff00068db8bac71",
+      "eased": 1.00020001,
+      "easedBits": "3ff000d1b9c68abe"
+    },
+    {
+      "easing": "ease-in",
+      "progress": 2,
+      "progressBits": "4000000000000000",
+      "eased": 4,
+      "easedBits": "4010000000000000"
+    },
+    {
+      "easing": "ease-out",
+      "progress": -1,
+      "progressBits": "bff0000000000000",
+      "eased": -3,
+      "easedBits": "c008000000000000"
+    },
+    {
+      "easing": "ease-out",
+      "progress": -0.0001,
+      "progressBits": "bf1a36e2eb1c432d",
+      "eased": -0.0002000099999999172,
+      "easedBits": "bf2a3738d157c000"
+    },
+    {
+      "easing": "ease-out",
+      "progress": 0,
+      "progressBits": "0000000000000000",
+      "eased": 0,
+      "easedBits": "0000000000000000"
+    },
+    {
+      "easing": "ease-out",
+      "progress": 0.0001,
+      "progressBits": "3f1a36e2eb1c432d",
+      "eased": 0.00019998999999992773,
+      "easedBits": "3f2a368d04e0b000"
+    },
+    {
+      "easing": "ease-out",
+      "progress": 0.01,
+      "progressBits": "3f847ae147ae147b",
+      "eased": 0.01990000000000003,
+      "easedBits": "3f9460aa64c2f840"
+    },
+    {
+      "easing": "ease-out",
+      "progress": 0.1,
+      "progressBits": "3fb999999999999a",
+      "eased": 0.18999999999999995,
+      "easedBits": "3fc851eb851eb850"
+    },
+    {
+      "easing": "ease-out",
+      "progress": 0.25,
+      "progressBits": "3fd0000000000000",
+      "eased": 0.4375,
+      "easedBits": "3fdc000000000000"
+    },
+    {
+      "easing": "ease-out",
+      "progress": 0.3333333333333333,
+      "progressBits": "3fd5555555555555",
+      "eased": 0.5555555555555555,
+      "easedBits": "3fe1c71c71c71c71"
+    },
+    {
+      "easing": "ease-out",
+      "progress": 0.49999999999999994,
+      "progressBits": "3fdfffffffffffff",
+      "eased": 0.75,
+      "easedBits": "3fe8000000000000"
+    },
+    {
+      "easing": "ease-out",
+      "progress": 0.5,
+      "progressBits": "3fe0000000000000",
+      "eased": 0.75,
+      "easedBits": "3fe8000000000000"
+    },
+    {
+      "easing": "ease-out",
+      "progress": 0.5000000000000001,
+      "progressBits": "3fe0000000000001",
+      "eased": 0.7500000000000001,
+      "easedBits": "3fe8000000000001"
+    },
+    {
+      "easing": "ease-out",
+      "progress": 0.6666666666666666,
+      "progressBits": "3fe5555555555555",
+      "eased": 0.8888888888888888,
+      "easedBits": "3fec71c71c71c71c"
+    },
+    {
+      "easing": "ease-out",
+      "progress": 0.75,
+      "progressBits": "3fe8000000000000",
+      "eased": 0.9375,
+      "easedBits": "3fee000000000000"
+    },
+    {
+      "easing": "ease-out",
+      "progress": 0.9,
+      "progressBits": "3feccccccccccccd",
+      "eased": 0.99,
+      "easedBits": "3fefae147ae147ae"
+    },
+    {
+      "easing": "ease-out",
+      "progress": 0.99,
+      "progressBits": "3fefae147ae147ae",
+      "eased": 0.9999,
+      "easedBits": "3fefff2e48e8a71e"
+    },
+    {
+      "easing": "ease-out",
+      "progress": 0.9999,
+      "progressBits": "3fefff2e48e8a71e",
+      "eased": 0.99999999,
+      "easedBits": "3feffffffaa19c47"
+    },
+    {
+      "easing": "ease-out",
+      "progress": 1,
+      "progressBits": "3ff0000000000000",
+      "eased": 1,
+      "easedBits": "3ff0000000000000"
+    },
+    {
+      "easing": "ease-out",
+      "progress": 1.0001,
+      "progressBits": "3ff00068db8bac71",
+      "eased": 0.99999999,
+      "easedBits": "3feffffffaa19c47"
+    },
+    {
+      "easing": "ease-out",
+      "progress": 2,
+      "progressBits": "4000000000000000",
+      "eased": 0,
+      "easedBits": "0000000000000000"
+    },
+    {
+      "easing": "ease-in-out",
+      "progress": -1,
+      "progressBits": "bff0000000000000",
+      "eased": 2,
+      "easedBits": "4000000000000000"
+    },
+    {
+      "easing": "ease-in-out",
+      "progress": -0.0001,
+      "progressBits": "bf1a36e2eb1c432d",
+      "eased": 2e-8,
+      "easedBits": "3e55798ee2308c3a"
+    },
+    {
+      "easing": "ease-in-out",
+      "progress": 0,
+      "progressBits": "0000000000000000",
+      "eased": 0,
+      "easedBits": "0000000000000000"
+    },
+    {
+      "easing": "ease-in-out",
+      "progress": 0.0001,
+      "progressBits": "3f1a36e2eb1c432d",
+      "eased": 2e-8,
+      "easedBits": "3e55798ee2308c3a"
+    },
+    {
+      "easing": "ease-in-out",
+      "progress": 0.01,
+      "progressBits": "3f847ae147ae147b",
+      "eased": 0.0002,
+      "easedBits": "3f2a36e2eb1c432d"
+    },
+    {
+      "easing": "ease-in-out",
+      "progress": 0.1,
+      "progressBits": "3fb999999999999a",
+      "eased": 0.020000000000000004,
+      "easedBits": "3f947ae147ae147c"
+    },
+    {
+      "easing": "ease-in-out",
+      "progress": 0.25,
+      "progressBits": "3fd0000000000000",
+      "eased": 0.125,
+      "easedBits": "3fc0000000000000"
+    },
+    {
+      "easing": "ease-in-out",
+      "progress": 0.3333333333333333,
+      "progressBits": "3fd5555555555555",
+      "eased": 0.2222222222222222,
+      "easedBits": "3fcc71c71c71c71c"
+    },
+    {
+      "easing": "ease-in-out",
+      "progress": 0.49999999999999994,
+      "progressBits": "3fdfffffffffffff",
+      "eased": 0.4999999999999999,
+      "easedBits": "3fdffffffffffffe"
+    },
+    {
+      "easing": "ease-in-out",
+      "progress": 0.5,
+      "progressBits": "3fe0000000000000",
+      "eased": 0.5,
+      "easedBits": "3fe0000000000000"
+    },
+    {
+      "easing": "ease-in-out",
+      "progress": 0.5000000000000001,
+      "progressBits": "3fe0000000000001",
+      "eased": 0.5000000000000002,
+      "easedBits": "3fe0000000000002"
+    },
+    {
+      "easing": "ease-in-out",
+      "progress": 0.6666666666666666,
+      "progressBits": "3fe5555555555555",
+      "eased": 0.7777777777777777,
+      "easedBits": "3fe8e38e38e38e38"
+    },
+    {
+      "easing": "ease-in-out",
+      "progress": 0.75,
+      "progressBits": "3fe8000000000000",
+      "eased": 0.875,
+      "easedBits": "3fec000000000000"
+    },
+    {
+      "easing": "ease-in-out",
+      "progress": 0.9,
+      "progressBits": "3feccccccccccccd",
+      "eased": 0.98,
+      "easedBits": "3fef5c28f5c28f5c"
+    },
+    {
+      "easing": "ease-in-out",
+      "progress": 0.99,
+      "progressBits": "3fefae147ae147ae",
+      "eased": 0.9998,
+      "easedBits": "3feffe5c91d14e3c"
+    },
+    {
+      "easing": "ease-in-out",
+      "progress": 0.9999,
+      "progressBits": "3fefff2e48e8a71e",
+      "eased": 0.99999998,
+      "easedBits": "3feffffff543388f"
+    },
+    {
+      "easing": "ease-in-out",
+      "progress": 1,
+      "progressBits": "3ff0000000000000",
+      "eased": 1,
+      "easedBits": "3ff0000000000000"
+    },
+    {
+      "easing": "ease-in-out",
+      "progress": 1.0001,
+      "progressBits": "3ff00068db8bac71",
+      "eased": 0.99999998,
+      "easedBits": "3feffffff543388f"
+    },
+    {
+      "easing": "ease-in-out",
+      "progress": 2,
+      "progressBits": "4000000000000000",
+      "eased": -1,
+      "easedBits": "bff0000000000000"
+    },
+    {
+      "easing": "cubic-bezier(0.25, 0.46, 0.45, 0.94)",
+      "progress": -1,
+      "progressBits": "bff0000000000000",
+      "eased": 0,
+      "easedBits": "0000000000000000"
+    },
+    {
+      "easing": "cubic-bezier(0.25, 0.46, 0.45, 0.94)",
+      "progress": -0.0001,
+      "progressBits": "bf1a36e2eb1c432d",
+      "eased": 0,
+      "easedBits": "0000000000000000"
+    },
+    {
+      "easing": "cubic-bezier(0.25, 0.46, 0.45, 0.94)",
+      "progress": 0,
+      "progressBits": "0000000000000000",
+      "eased": 0,
+      "easedBits": "0000000000000000"
+    },
+    {
+      "easing": "cubic-bezier(0.25, 0.46, 0.45, 0.94)",
+      "progress": 0.0001,
+      "progressBits": "3f1a36e2eb1c432d",
+      "eased": 0.00018400597078479426,
+      "easedBits": "3f281e3740ea8b11"
+    },
+    {
+      "easing": "cubic-bezier(0.25, 0.46, 0.45, 0.94)",
+      "progress": 0.01,
+      "progressBits": "3f847ae147ae147b",
+      "eased": 0.01845723331587748,
+      "easedBits": "3f92e673f5dd8708"
+    },
+    {
+      "easing": "cubic-bezier(0.25, 0.46, 0.45, 0.94)",
+      "progress": 0.1,
+      "progressBits": "3fb999999999999a",
+      "eased": 0.18724818200772309,
+      "easedBits": "3fc7f7bf98fab444"
+    },
+    {
+      "easing": "cubic-bezier(0.25, 0.46, 0.45, 0.94)",
+      "progress": 0.25,
+      "progressBits": "3fd0000000000000",
+      "eased": 0.45337621198591027,
+      "easedBits": "3fdd041da8d0e2e2"
+    },
+    {
+      "easing": "cubic-bezier(0.25, 0.46, 0.45, 0.94)",
+      "progress": 0.3333333333333333,
+      "progressBits": "3fd5555555555555",
+      "eased": 0.5789768867201128,
+      "easedBits": "3fe286fa893349fc"
+    },
+    {
+      "easing": "cubic-bezier(0.25, 0.46, 0.45, 0.94)",
+      "progress": 0.49999999999999994,
+      "progressBits": "3fdfffffffffffff",
+      "eased": 0.7713235622461334,
+      "easedBits": "3fe8aeaec04f6754"
+    },
+    {
+      "easing": "cubic-bezier(0.25, 0.46, 0.45, 0.94)",
+      "progress": 0.5,
+      "progressBits": "3fe0000000000000",
+      "eased": 0.7713235622461334,
+      "easedBits": "3fe8aeaec04f6754"
+    },
+    {
+      "easing": "cubic-bezier(0.25, 0.46, 0.45, 0.94)",
+      "progress": 0.5000000000000001,
+      "progressBits": "3fe0000000000001",
+      "eased": 0.7713235622461334,
+      "easedBits": "3fe8aeaec04f6754"
+    },
+    {
+      "easing": "cubic-bezier(0.25, 0.46, 0.45, 0.94)",
+      "progress": 0.6666666666666666,
+      "progressBits": "3fe5555555555555",
+      "eased": 0.894751699791265,
+      "easedBits": "3feca1ce51149ac6"
+    },
+    {
+      "easing": "cubic-bezier(0.25, 0.46, 0.45, 0.94)",
+      "progress": 0.75,
+      "progressBits": "3fe8000000000000",
+      "eased": 0.9360548045451911,
+      "easedBits": "3fedf429349920ea"
+    },
+    {
+      "easing": "cubic-bezier(0.25, 0.46, 0.45, 0.94)",
+      "progress": 0.9,
+      "progressBits": "3feccccccccccccd",
+      "eased": 0.9837433471410792,
+      "easedBits": "3fef7ad353f41cc2"
+    },
+    {
+      "easing": "cubic-bezier(0.25, 0.46, 0.45, 0.94)",
+      "progress": 0.99,
+      "progressBits": "3fefae147ae147ae",
+      "eased": 0.9988583191574512,
+      "easedBits": "3feff6a5b8c3cd12"
+    },
+    {
+      "easing": "cubic-bezier(0.25, 0.46, 0.45, 0.94)",
+      "progress": 0.9999,
+      "progressBits": "3fefff2e48e8a71e",
+      "eased": 0.9999890858599758,
+      "easedBits": "3fefffe91c84045c"
+    },
+    {
+      "easing": "cubic-bezier(0.25, 0.46, 0.45, 0.94)",
+      "progress": 1,
+      "progressBits": "3ff0000000000000",
+      "eased": 1,
+      "easedBits": "3ff0000000000000"
+    },
+    {
+      "easing": "cubic-bezier(0.25, 0.46, 0.45, 0.94)",
+      "progress": 1.0001,
+      "progressBits": "3ff00068db8bac71",
+      "eased": 1,
+      "easedBits": "3ff0000000000000"
+    },
+    {
+      "easing": "cubic-bezier(0.25, 0.46, 0.45, 0.94)",
+      "progress": 2,
+      "progressBits": "4000000000000000",
+      "eased": 1,
+      "easedBits": "3ff0000000000000"
+    },
+    {
+      "easing": "cubic-bezier(0.68, -0.55, 0.265, 1.55)",
+      "progress": -1,
+      "progressBits": "bff0000000000000",
+      "eased": 0,
+      "easedBits": "0000000000000000"
+    },
+    {
+      "easing": "cubic-bezier(0.68, -0.55, 0.265, 1.55)",
+      "progress": -0.0001,
+      "progressBits": "bf1a36e2eb1c432d",
+      "eased": 0,
+      "easedBits": "0000000000000000"
+    },
+    {
+      "easing": "cubic-bezier(0.68, -0.55, 0.265, 1.55)",
+      "progress": 0,
+      "progressBits": "0000000000000000",
+      "eased": 0,
+      "easedBits": "0000000000000000"
+    },
+    {
+      "easing": "cubic-bezier(0.68, -0.55, 0.265, 1.55)",
+      "progress": 0.0001,
+      "progressBits": "3f1a36e2eb1c432d",
+      "eased": -0.00008086963218583844,
+      "easedBits": "bf153311b3b06eca"
+    },
+    {
+      "easing": "cubic-bezier(0.68, -0.55, 0.265, 1.55)",
+      "progress": 0.01,
+      "progressBits": "3f847ae147ae147b",
+      "eased": -0.007959427213967293,
+      "easedBits": "bf804d083ca18cd8"
+    },
+    {
+      "easing": "cubic-bezier(0.68, -0.55, 0.265, 1.55)",
+      "progress": 0.1,
+      "progressBits": "3fb999999999999a",
+      "eased": -0.06629147733391165,
+      "easedBits": "bfb0f87a6f2715c3"
+    },
+    {
+      "easing": "cubic-bezier(0.68, -0.55, 0.265, 1.55)",
+      "progress": 0.25,
+      "progressBits": "3fd0000000000000",
+      "eased": -0.08280710882831395,
+      "easedBits": "bfb532d8c04b3e6d"
+    },
+    {
+      "easing": "cubic-bezier(0.68, -0.55, 0.265, 1.55)",
+      "progress": 0.3333333333333333,
+      "progressBits": "3fd5555555555555",
+      "eased": -0.008501713287277673,
+      "easedBits": "bf816958a43b0943"
+    },
+    {
+      "easing": "cubic-bezier(0.68, -0.55, 0.265, 1.55)",
+      "progress": 0.49999999999999994,
+      "progressBits": "3fdfffffffffffff",
+      "eased": 0.606679897223091,
+      "easedBits": "3fe369ebf5b6d797"
+    },
+    {
+      "easing": "cubic-bezier(0.68, -0.55, 0.265, 1.55)",
+      "progress": 0.5,
+      "progressBits": "3fe0000000000000",
+      "eased": 0.606679897223091,
+      "easedBits": "3fe369ebf5b6d797"
+    },
+    {
+      "easing": "cubic-bezier(0.68, -0.55, 0.265, 1.55)",
+      "progress": 0.5000000000000001,
+      "progressBits": "3fe0000000000001",
+      "eased": 0.606679897223091,
+      "easedBits": "3fe369ebf5b6d797"
+    },
+    {
+      "easing": "cubic-bezier(0.68, -0.55, 0.265, 1.55)",
+      "progress": 0.6666666666666666,
+      "progressBits": "3fe5555555555555",
+      "eased": 1.0434364668590348,
+      "easedBits": "3ff0b1ea6fc9d040"
+    },
+    {
+      "easing": "cubic-bezier(0.68, -0.55, 0.265, 1.55)",
+      "progress": 0.75,
+      "progressBits": "3fe8000000000000",
+      "eased": 1.0891657748134496,
+      "easedBits": "3ff16d39176bf0b5"
+    },
+    {
+      "easing": "cubic-bezier(0.68, -0.55, 0.265, 1.55)",
+      "progress": 0.9,
+      "progressBits": "3feccccccccccccd",
+      "eased": 1.062373195166606,
+      "easedBits": "3ff0ff7b0916339a"
+    },
+    {
+      "easing": "cubic-bezier(0.68, -0.55, 0.265, 1.55)",
+      "progress": 0.99,
+      "progressBits": "3fefae147ae147ae",
+      "eased": 1.0073713334708325,
+      "easedBits": "3ff01e316742f651"
+    },
+    {
+      "easing": "cubic-bezier(0.68, -0.55, 0.265, 1.55)",
+      "progress": 0.9999,
+      "progressBits": "3fefff2e48e8a71e",
+      "eased": 1.00007481888917,
+      "easedBits": "3ff0004e740ae9ea"
+    },
+    {
+      "easing": "cubic-bezier(0.68, -0.55, 0.265, 1.55)",
+      "progress": 1,
+      "progressBits": "3ff0000000000000",
+      "eased": 1,
+      "easedBits": "3ff0000000000000"
+    },
+    {
+      "easing": "cubic-bezier(0.68, -0.55, 0.265, 1.55)",
+      "progress": 1.0001,
+      "progressBits": "3ff00068db8bac71",
+      "eased": 1,
+      "easedBits": "3ff0000000000000"
+    },
+    {
+      "easing": "cubic-bezier(0.68, -0.55, 0.265, 1.55)",
+      "progress": 2,
+      "progressBits": "4000000000000000",
+      "eased": 1,
+      "easedBits": "3ff0000000000000"
+    },
+    {
+      "easing": "unknown-easing",
+      "progress": -1,
+      "progressBits": "bff0000000000000",
+      "eased": -1,
+      "easedBits": "bff0000000000000"
+    },
+    {
+      "easing": "unknown-easing",
+      "progress": -0.0001,
+      "progressBits": "bf1a36e2eb1c432d",
+      "eased": -0.0001,
+      "easedBits": "bf1a36e2eb1c432d"
+    },
+    {
+      "easing": "unknown-easing",
+      "progress": 0,
+      "progressBits": "0000000000000000",
+      "eased": 0,
+      "easedBits": "0000000000000000"
+    },
+    {
+      "easing": "unknown-easing",
+      "progress": 0.0001,
+      "progressBits": "3f1a36e2eb1c432d",
+      "eased": 0.0001,
+      "easedBits": "3f1a36e2eb1c432d"
+    },
+    {
+      "easing": "unknown-easing",
+      "progress": 0.01,
+      "progressBits": "3f847ae147ae147b",
+      "eased": 0.01,
+      "easedBits": "3f847ae147ae147b"
+    },
+    {
+      "easing": "unknown-easing",
+      "progress": 0.1,
+      "progressBits": "3fb999999999999a",
+      "eased": 0.1,
+      "easedBits": "3fb999999999999a"
+    },
+    {
+      "easing": "unknown-easing",
+      "progress": 0.25,
+      "progressBits": "3fd0000000000000",
+      "eased": 0.25,
+      "easedBits": "3fd0000000000000"
+    },
+    {
+      "easing": "unknown-easing",
+      "progress": 0.3333333333333333,
+      "progressBits": "3fd5555555555555",
+      "eased": 0.3333333333333333,
+      "easedBits": "3fd5555555555555"
+    },
+    {
+      "easing": "unknown-easing",
+      "progress": 0.49999999999999994,
+      "progressBits": "3fdfffffffffffff",
+      "eased": 0.49999999999999994,
+      "easedBits": "3fdfffffffffffff"
+    },
+    {
+      "easing": "unknown-easing",
+      "progress": 0.5,
+      "progressBits": "3fe0000000000000",
+      "eased": 0.5,
+      "easedBits": "3fe0000000000000"
+    },
+    {
+      "easing": "unknown-easing",
+      "progress": 0.5000000000000001,
+      "progressBits": "3fe0000000000001",
+      "eased": 0.5000000000000001,
+      "easedBits": "3fe0000000000001"
+    },
+    {
+      "easing": "unknown-easing",
+      "progress": 0.6666666666666666,
+      "progressBits": "3fe5555555555555",
+      "eased": 0.6666666666666666,
+      "easedBits": "3fe5555555555555"
+    },
+    {
+      "easing": "unknown-easing",
+      "progress": 0.75,
+      "progressBits": "3fe8000000000000",
+      "eased": 0.75,
+      "easedBits": "3fe8000000000000"
+    },
+    {
+      "easing": "unknown-easing",
+      "progress": 0.9,
+      "progressBits": "3feccccccccccccd",
+      "eased": 0.9,
+      "easedBits": "3feccccccccccccd"
+    },
+    {
+      "easing": "unknown-easing",
+      "progress": 0.99,
+      "progressBits": "3fefae147ae147ae",
+      "eased": 0.99,
+      "easedBits": "3fefae147ae147ae"
+    },
+    {
+      "easing": "unknown-easing",
+      "progress": 0.9999,
+      "progressBits": "3fefff2e48e8a71e",
+      "eased": 0.9999,
+      "easedBits": "3fefff2e48e8a71e"
+    },
+    {
+      "easing": "unknown-easing",
+      "progress": 1,
+      "progressBits": "3ff0000000000000",
+      "eased": 1,
+      "easedBits": "3ff0000000000000"
+    },
+    {
+      "easing": "unknown-easing",
+      "progress": 1.0001,
+      "progressBits": "3ff00068db8bac71",
+      "eased": 1.0001,
+      "easedBits": "3ff00068db8bac71"
+    },
+    {
+      "easing": "unknown-easing",
+      "progress": 2,
+      "progressBits": "4000000000000000",
+      "eased": 2,
+      "easedBits": "4000000000000000"
+    }
+  ],
+  "scaleSamples": [
+    {
+      "value": 0,
+      "valueBits": "0000000000000000",
+      "compositionHeight": 360,
+      "compositionHeightBits": "4076800000000000",
+      "scaled": 0,
+      "scaledBits": "0000000000000000"
+    },
+    {
+      "value": 0,
+      "valueBits": "0000000000000000",
+      "compositionHeight": 480,
+      "compositionHeightBits": "407e000000000000",
+      "scaled": 0,
+      "scaledBits": "0000000000000000"
+    },
+    {
+      "value": 0,
+      "valueBits": "0000000000000000",
+      "compositionHeight": 720,
+      "compositionHeightBits": "4086800000000000",
+      "scaled": 0,
+      "scaledBits": "0000000000000000"
+    },
+    {
+      "value": 0,
+      "valueBits": "0000000000000000",
+      "compositionHeight": 1080,
+      "compositionHeightBits": "4090e00000000000",
+      "scaled": 0,
+      "scaledBits": "0000000000000000"
+    },
+    {
+      "value": 0,
+      "valueBits": "0000000000000000",
+      "compositionHeight": 1440,
+      "compositionHeightBits": "4096800000000000",
+      "scaled": 0,
+      "scaledBits": "0000000000000000"
+    },
+    {
+      "value": 0,
+      "valueBits": "0000000000000000",
+      "compositionHeight": 2160,
+      "compositionHeightBits": "40a0e00000000000",
+      "scaled": 0,
+      "scaledBits": "0000000000000000"
+    },
+    {
+      "value": 0,
+      "valueBits": "0000000000000000",
+      "compositionHeight": 3840,
+      "compositionHeightBits": "40ae000000000000",
+      "scaled": 0,
+      "scaledBits": "0000000000000000"
+    },
+    {
+      "value": 0,
+      "valueBits": "0000000000000000",
+      "compositionHeight": 1081,
+      "compositionHeightBits": "4090e40000000000",
+      "scaled": 0,
+      "scaledBits": "0000000000000000"
+    },
+    {
+      "value": 0,
+      "valueBits": "0000000000000000",
+      "compositionHeight": 1079,
+      "compositionHeightBits": "4090dc0000000000",
+      "scaled": 0,
+      "scaledBits": "0000000000000000"
+    },
+    {
+      "value": 1,
+      "valueBits": "3ff0000000000000",
+      "compositionHeight": 360,
+      "compositionHeightBits": "4076800000000000",
+      "scaled": 0.33,
+      "scaledBits": "3fd51eb851eb851f"
+    },
+    {
+      "value": 1,
+      "valueBits": "3ff0000000000000",
+      "compositionHeight": 480,
+      "compositionHeightBits": "407e000000000000",
+      "scaled": 0.44,
+      "scaledBits": "3fdc28f5c28f5c29"
+    },
+    {
+      "value": 1,
+      "valueBits": "3ff0000000000000",
+      "compositionHeight": 720,
+      "compositionHeightBits": "4086800000000000",
+      "scaled": 0.67,
+      "scaledBits": "3fe570a3d70a3d71"
+    },
+    {
+      "value": 1,
+      "valueBits": "3ff0000000000000",
+      "compositionHeight": 1080,
+      "compositionHeightBits": "4090e00000000000",
+      "scaled": 1,
+      "scaledBits": "3ff0000000000000"
+    },
+    {
+      "value": 1,
+      "valueBits": "3ff0000000000000",
+      "compositionHeight": 1440,
+      "compositionHeightBits": "4096800000000000",
+      "scaled": 1.33,
+      "scaledBits": "3ff547ae147ae148"
+    },
+    {
+      "value": 1,
+      "valueBits": "3ff0000000000000",
+      "compositionHeight": 2160,
+      "compositionHeightBits": "40a0e00000000000",
+      "scaled": 2,
+      "scaledBits": "4000000000000000"
+    },
+    {
+      "value": 1,
+      "valueBits": "3ff0000000000000",
+      "compositionHeight": 3840,
+      "compositionHeightBits": "40ae000000000000",
+      "scaled": 3.56,
+      "scaledBits": "400c7ae147ae147b"
+    },
+    {
+      "value": 1,
+      "valueBits": "3ff0000000000000",
+      "compositionHeight": 1081,
+      "compositionHeightBits": "4090e40000000000",
+      "scaled": 1,
+      "scaledBits": "3ff0000000000000"
+    },
+    {
+      "value": 1,
+      "valueBits": "3ff0000000000000",
+      "compositionHeight": 1079,
+      "compositionHeightBits": "4090dc0000000000",
+      "scaled": 1,
+      "scaledBits": "3ff0000000000000"
+    },
+    {
+      "value": 8,
+      "valueBits": "4020000000000000",
+      "compositionHeight": 360,
+      "compositionHeightBits": "4076800000000000",
+      "scaled": 2.67,
+      "scaledBits": "40055c28f5c28f5c"
+    },
+    {
+      "value": 8,
+      "valueBits": "4020000000000000",
+      "compositionHeight": 480,
+      "compositionHeightBits": "407e000000000000",
+      "scaled": 3.56,
+      "scaledBits": "400c7ae147ae147b"
+    },
+    {
+      "value": 8,
+      "valueBits": "4020000000000000",
+      "compositionHeight": 720,
+      "compositionHeightBits": "4086800000000000",
+      "scaled": 5.33,
+      "scaledBits": "401551eb851eb852"
+    },
+    {
+      "value": 8,
+      "valueBits": "4020000000000000",
+      "compositionHeight": 1080,
+      "compositionHeightBits": "4090e00000000000",
+      "scaled": 8,
+      "scaledBits": "4020000000000000"
+    },
+    {
+      "value": 8,
+      "valueBits": "4020000000000000",
+      "compositionHeight": 1440,
+      "compositionHeightBits": "4096800000000000",
+      "scaled": 10.67,
+      "scaledBits": "4025570a3d70a3d7"
+    },
+    {
+      "value": 8,
+      "valueBits": "4020000000000000",
+      "compositionHeight": 2160,
+      "compositionHeightBits": "40a0e00000000000",
+      "scaled": 16,
+      "scaledBits": "4030000000000000"
+    },
+    {
+      "value": 8,
+      "valueBits": "4020000000000000",
+      "compositionHeight": 3840,
+      "compositionHeightBits": "40ae000000000000",
+      "scaled": 28.44,
+      "scaledBits": "403c70a3d70a3d71"
+    },
+    {
+      "value": 8,
+      "valueBits": "4020000000000000",
+      "compositionHeight": 1081,
+      "compositionHeightBits": "4090e40000000000",
+      "scaled": 8.01,
+      "scaledBits": "4020051eb851eb85"
+    },
+    {
+      "value": 8,
+      "valueBits": "4020000000000000",
+      "compositionHeight": 1079,
+      "compositionHeightBits": "4090dc0000000000",
+      "scaled": 7.99,
+      "scaledBits": "401ff5c28f5c28f6"
+    },
+    {
+      "value": 12,
+      "valueBits": "4028000000000000",
+      "compositionHeight": 360,
+      "compositionHeightBits": "4076800000000000",
+      "scaled": 4,
+      "scaledBits": "4010000000000000"
+    },
+    {
+      "value": 12,
+      "valueBits": "4028000000000000",
+      "compositionHeight": 480,
+      "compositionHeightBits": "407e000000000000",
+      "scaled": 5.33,
+      "scaledBits": "401551eb851eb852"
+    },
+    {
+      "value": 12,
+      "valueBits": "4028000000000000",
+      "compositionHeight": 720,
+      "compositionHeightBits": "4086800000000000",
+      "scaled": 8,
+      "scaledBits": "4020000000000000"
+    },
+    {
+      "value": 12,
+      "valueBits": "4028000000000000",
+      "compositionHeight": 1080,
+      "compositionHeightBits": "4090e00000000000",
+      "scaled": 12,
+      "scaledBits": "4028000000000000"
+    },
+    {
+      "value": 12,
+      "valueBits": "4028000000000000",
+      "compositionHeight": 1440,
+      "compositionHeightBits": "4096800000000000",
+      "scaled": 16,
+      "scaledBits": "4030000000000000"
+    },
+    {
+      "value": 12,
+      "valueBits": "4028000000000000",
+      "compositionHeight": 2160,
+      "compositionHeightBits": "40a0e00000000000",
+      "scaled": 24,
+      "scaledBits": "4038000000000000"
+    },
+    {
+      "value": 12,
+      "valueBits": "4028000000000000",
+      "compositionHeight": 3840,
+      "compositionHeightBits": "40ae000000000000",
+      "scaled": 42.67,
+      "scaledBits": "404555c28f5c28f6"
+    },
+    {
+      "value": 12,
+      "valueBits": "4028000000000000",
+      "compositionHeight": 1081,
+      "compositionHeightBits": "4090e40000000000",
+      "scaled": 12.01,
+      "scaledBits": "4028051eb851eb85"
+    },
+    {
+      "value": 12,
+      "valueBits": "4028000000000000",
+      "compositionHeight": 1079,
+      "compositionHeightBits": "4090dc0000000000",
+      "scaled": 11.99,
+      "scaledBits": "4027fae147ae147b"
+    },
+    {
+      "value": 16,
+      "valueBits": "4030000000000000",
+      "compositionHeight": 360,
+      "compositionHeightBits": "4076800000000000",
+      "scaled": 5.33,
+      "scaledBits": "401551eb851eb852"
+    },
+    {
+      "value": 16,
+      "valueBits": "4030000000000000",
+      "compositionHeight": 480,
+      "compositionHeightBits": "407e000000000000",
+      "scaled": 7.11,
+      "scaledBits": "401c70a3d70a3d71"
+    },
+    {
+      "value": 16,
+      "valueBits": "4030000000000000",
+      "compositionHeight": 720,
+      "compositionHeightBits": "4086800000000000",
+      "scaled": 10.67,
+      "scaledBits": "4025570a3d70a3d7"
+    },
+    {
+      "value": 16,
+      "valueBits": "4030000000000000",
+      "compositionHeight": 1080,
+      "compositionHeightBits": "4090e00000000000",
+      "scaled": 16,
+      "scaledBits": "4030000000000000"
+    },
+    {
+      "value": 16,
+      "valueBits": "4030000000000000",
+      "compositionHeight": 1440,
+      "compositionHeightBits": "4096800000000000",
+      "scaled": 21.33,
+      "scaledBits": "4035547ae147ae14"
+    },
+    {
+      "value": 16,
+      "valueBits": "4030000000000000",
+      "compositionHeight": 2160,
+      "compositionHeightBits": "40a0e00000000000",
+      "scaled": 32,
+      "scaledBits": "4040000000000000"
+    },
+    {
+      "value": 16,
+      "valueBits": "4030000000000000",
+      "compositionHeight": 3840,
+      "compositionHeightBits": "40ae000000000000",
+      "scaled": 56.89,
+      "scaledBits": "404c71eb851eb852"
+    },
+    {
+      "value": 16,
+      "valueBits": "4030000000000000",
+      "compositionHeight": 1081,
+      "compositionHeightBits": "4090e40000000000",
+      "scaled": 16.01,
+      "scaledBits": "4030028f5c28f5c3"
+    },
+    {
+      "value": 16,
+      "valueBits": "4030000000000000",
+      "compositionHeight": 1079,
+      "compositionHeightBits": "4090dc0000000000",
+      "scaled": 15.99,
+      "scaledBits": "402ffae147ae147b"
+    },
+    {
+      "value": 24,
+      "valueBits": "4038000000000000",
+      "compositionHeight": 360,
+      "compositionHeightBits": "4076800000000000",
+      "scaled": 8,
+      "scaledBits": "4020000000000000"
+    },
+    {
+      "value": 24,
+      "valueBits": "4038000000000000",
+      "compositionHeight": 480,
+      "compositionHeightBits": "407e000000000000",
+      "scaled": 10.67,
+      "scaledBits": "4025570a3d70a3d7"
+    },
+    {
+      "value": 24,
+      "valueBits": "4038000000000000",
+      "compositionHeight": 720,
+      "compositionHeightBits": "4086800000000000",
+      "scaled": 16,
+      "scaledBits": "4030000000000000"
+    },
+    {
+      "value": 24,
+      "valueBits": "4038000000000000",
+      "compositionHeight": 1080,
+      "compositionHeightBits": "4090e00000000000",
+      "scaled": 24,
+      "scaledBits": "4038000000000000"
+    },
+    {
+      "value": 24,
+      "valueBits": "4038000000000000",
+      "compositionHeight": 1440,
+      "compositionHeightBits": "4096800000000000",
+      "scaled": 32,
+      "scaledBits": "4040000000000000"
+    },
+    {
+      "value": 24,
+      "valueBits": "4038000000000000",
+      "compositionHeight": 2160,
+      "compositionHeightBits": "40a0e00000000000",
+      "scaled": 48,
+      "scaledBits": "4048000000000000"
+    },
+    {
+      "value": 24,
+      "valueBits": "4038000000000000",
+      "compositionHeight": 3840,
+      "compositionHeightBits": "40ae000000000000",
+      "scaled": 85.33,
+      "scaledBits": "4055551eb851eb85"
+    },
+    {
+      "value": 24,
+      "valueBits": "4038000000000000",
+      "compositionHeight": 1081,
+      "compositionHeightBits": "4090e40000000000",
+      "scaled": 24.02,
+      "scaledBits": "4038051eb851eb85"
+    },
+    {
+      "value": 24,
+      "valueBits": "4038000000000000",
+      "compositionHeight": 1079,
+      "compositionHeightBits": "4090dc0000000000",
+      "scaled": 23.98,
+      "scaledBits": "4037fae147ae147b"
+    },
+    {
+      "value": 28,
+      "valueBits": "403c000000000000",
+      "compositionHeight": 360,
+      "compositionHeightBits": "4076800000000000",
+      "scaled": 9.33,
+      "scaledBits": "4022a8f5c28f5c29"
+    },
+    {
+      "value": 28,
+      "valueBits": "403c000000000000",
+      "compositionHeight": 480,
+      "compositionHeightBits": "407e000000000000",
+      "scaled": 12.44,
+      "scaledBits": "4028e147ae147ae1"
+    },
+    {
+      "value": 28,
+      "valueBits": "403c000000000000",
+      "compositionHeight": 720,
+      "compositionHeightBits": "4086800000000000",
+      "scaled": 18.67,
+      "scaledBits": "4032ab851eb851ec"
+    },
+    {
+      "value": 28,
+      "valueBits": "403c000000000000",
+      "compositionHeight": 1080,
+      "compositionHeightBits": "4090e00000000000",
+      "scaled": 28,
+      "scaledBits": "403c000000000000"
+    },
+    {
+      "value": 28,
+      "valueBits": "403c000000000000",
+      "compositionHeight": 1440,
+      "compositionHeightBits": "4096800000000000",
+      "scaled": 37.33,
+      "scaledBits": "4042aa3d70a3d70a"
+    },
+    {
+      "value": 28,
+      "valueBits": "403c000000000000",
+      "compositionHeight": 2160,
+      "compositionHeightBits": "40a0e00000000000",
+      "scaled": 56,
+      "scaledBits": "404c000000000000"
+    },
+    {
+      "value": 28,
+      "valueBits": "403c000000000000",
+      "compositionHeight": 3840,
+      "compositionHeightBits": "40ae000000000000",
+      "scaled": 99.56,
+      "scaledBits": "4058e3d70a3d70a4"
+    },
+    {
+      "value": 28,
+      "valueBits": "403c000000000000",
+      "compositionHeight": 1081,
+      "compositionHeightBits": "4090e40000000000",
+      "scaled": 28.03,
+      "scaledBits": "403c07ae147ae148"
+    },
+    {
+      "value": 28,
+      "valueBits": "403c000000000000",
+      "compositionHeight": 1079,
+      "compositionHeightBits": "4090dc0000000000",
+      "scaled": 27.97,
+      "scaledBits": "403bf851eb851eb8"
+    },
+    {
+      "value": 32,
+      "valueBits": "4040000000000000",
+      "compositionHeight": 360,
+      "compositionHeightBits": "4076800000000000",
+      "scaled": 10.67,
+      "scaledBits": "4025570a3d70a3d7"
+    },
+    {
+      "value": 32,
+      "valueBits": "4040000000000000",
+      "compositionHeight": 480,
+      "compositionHeightBits": "407e000000000000",
+      "scaled": 14.22,
+      "scaledBits": "402c70a3d70a3d71"
+    },
+    {
+      "value": 32,
+      "valueBits": "4040000000000000",
+      "compositionHeight": 720,
+      "compositionHeightBits": "4086800000000000",
+      "scaled": 21.33,
+      "scaledBits": "4035547ae147ae14"
+    },
+    {
+      "value": 32,
+      "valueBits": "4040000000000000",
+      "compositionHeight": 1080,
+      "compositionHeightBits": "4090e00000000000",
+      "scaled": 32,
+      "scaledBits": "4040000000000000"
+    },
+    {
+      "value": 32,
+      "valueBits": "4040000000000000",
+      "compositionHeight": 1440,
+      "compositionHeightBits": "4096800000000000",
+      "scaled": 42.67,
+      "scaledBits": "404555c28f5c28f6"
+    },
+    {
+      "value": 32,
+      "valueBits": "4040000000000000",
+      "compositionHeight": 2160,
+      "compositionHeightBits": "40a0e00000000000",
+      "scaled": 64,
+      "scaledBits": "4050000000000000"
+    },
+    {
+      "value": 32,
+      "valueBits": "4040000000000000",
+      "compositionHeight": 3840,
+      "compositionHeightBits": "40ae000000000000",
+      "scaled": 113.78,
+      "scaledBits": "405c71eb851eb852"
+    },
+    {
+      "value": 32,
+      "valueBits": "4040000000000000",
+      "compositionHeight": 1081,
+      "compositionHeightBits": "4090e40000000000",
+      "scaled": 32.03,
+      "scaledBits": "404003d70a3d70a4"
+    },
+    {
+      "value": 32,
+      "valueBits": "4040000000000000",
+      "compositionHeight": 1079,
+      "compositionHeightBits": "4090dc0000000000",
+      "scaled": 31.97,
+      "scaledBits": "403ff851eb851eb8"
+    },
+    {
+      "value": 48,
+      "valueBits": "4048000000000000",
+      "compositionHeight": 360,
+      "compositionHeightBits": "4076800000000000",
+      "scaled": 16,
+      "scaledBits": "4030000000000000"
+    },
+    {
+      "value": 48,
+      "valueBits": "4048000000000000",
+      "compositionHeight": 480,
+      "compositionHeightBits": "407e000000000000",
+      "scaled": 21.33,
+      "scaledBits": "4035547ae147ae14"
+    },
+    {
+      "value": 48,
+      "valueBits": "4048000000000000",
+      "compositionHeight": 720,
+      "compositionHeightBits": "4086800000000000",
+      "scaled": 32,
+      "scaledBits": "4040000000000000"
+    },
+    {
+      "value": 48,
+      "valueBits": "4048000000000000",
+      "compositionHeight": 1080,
+      "compositionHeightBits": "4090e00000000000",
+      "scaled": 48,
+      "scaledBits": "4048000000000000"
+    },
+    {
+      "value": 48,
+      "valueBits": "4048000000000000",
+      "compositionHeight": 1440,
+      "compositionHeightBits": "4096800000000000",
+      "scaled": 64,
+      "scaledBits": "4050000000000000"
+    },
+    {
+      "value": 48,
+      "valueBits": "4048000000000000",
+      "compositionHeight": 2160,
+      "compositionHeightBits": "40a0e00000000000",
+      "scaled": 96,
+      "scaledBits": "4058000000000000"
+    },
+    {
+      "value": 48,
+      "valueBits": "4048000000000000",
+      "compositionHeight": 3840,
+      "compositionHeightBits": "40ae000000000000",
+      "scaled": 170.67,
+      "scaledBits": "40655570a3d70a3d"
+    },
+    {
+      "value": 48,
+      "valueBits": "4048000000000000",
+      "compositionHeight": 1081,
+      "compositionHeightBits": "4090e40000000000",
+      "scaled": 48.04,
+      "scaledBits": "4048051eb851eb85"
+    },
+    {
+      "value": 48,
+      "valueBits": "4048000000000000",
+      "compositionHeight": 1079,
+      "compositionHeightBits": "4090dc0000000000",
+      "scaled": 47.96,
+      "scaledBits": "4047fae147ae147b"
+    },
+    {
+      "value": 64,
+      "valueBits": "4050000000000000",
+      "compositionHeight": 360,
+      "compositionHeightBits": "4076800000000000",
+      "scaled": 21.33,
+      "scaledBits": "4035547ae147ae14"
+    },
+    {
+      "value": 64,
+      "valueBits": "4050000000000000",
+      "compositionHeight": 480,
+      "compositionHeightBits": "407e000000000000",
+      "scaled": 28.44,
+      "scaledBits": "403c70a3d70a3d71"
+    },
+    {
+      "value": 64,
+      "valueBits": "4050000000000000",
+      "compositionHeight": 720,
+      "compositionHeightBits": "4086800000000000",
+      "scaled": 42.67,
+      "scaledBits": "404555c28f5c28f6"
+    },
+    {
+      "value": 64,
+      "valueBits": "4050000000000000",
+      "compositionHeight": 1080,
+      "compositionHeightBits": "4090e00000000000",
+      "scaled": 64,
+      "scaledBits": "4050000000000000"
+    },
+    {
+      "value": 64,
+      "valueBits": "4050000000000000",
+      "compositionHeight": 1440,
+      "compositionHeightBits": "4096800000000000",
+      "scaled": 85.33,
+      "scaledBits": "4055551eb851eb85"
+    },
+    {
+      "value": 64,
+      "valueBits": "4050000000000000",
+      "compositionHeight": 2160,
+      "compositionHeightBits": "40a0e00000000000",
+      "scaled": 128,
+      "scaledBits": "4060000000000000"
+    },
+    {
+      "value": 64,
+      "valueBits": "4050000000000000",
+      "compositionHeight": 3840,
+      "compositionHeightBits": "40ae000000000000",
+      "scaled": 227.56,
+      "scaledBits": "406c71eb851eb852"
+    },
+    {
+      "value": 64,
+      "valueBits": "4050000000000000",
+      "compositionHeight": 1081,
+      "compositionHeightBits": "4090e40000000000",
+      "scaled": 64.06,
+      "scaledBits": "405003d70a3d70a4"
+    },
+    {
+      "value": 64,
+      "valueBits": "4050000000000000",
+      "compositionHeight": 1079,
+      "compositionHeightBits": "4090dc0000000000",
+      "scaled": 63.94,
+      "scaledBits": "404ff851eb851eb8"
+    },
+    {
+      "value": 100,
+      "valueBits": "4059000000000000",
+      "compositionHeight": 360,
+      "compositionHeightBits": "4076800000000000",
+      "scaled": 33.33,
+      "scaledBits": "4040aa3d70a3d70a"
+    },
+    {
+      "value": 100,
+      "valueBits": "4059000000000000",
+      "compositionHeight": 480,
+      "compositionHeightBits": "407e000000000000",
+      "scaled": 44.44,
+      "scaledBits": "40463851eb851eb8"
+    },
+    {
+      "value": 100,
+      "valueBits": "4059000000000000",
+      "compositionHeight": 720,
+      "compositionHeightBits": "4086800000000000",
+      "scaled": 66.67,
+      "scaledBits": "4050aae147ae147b"
+    },
+    {
+      "value": 100,
+      "valueBits": "4059000000000000",
+      "compositionHeight": 1080,
+      "compositionHeightBits": "4090e00000000000",
+      "scaled": 100,
+      "scaledBits": "4059000000000000"
+    },
+    {
+      "value": 100,
+      "valueBits": "4059000000000000",
+      "compositionHeight": 1440,
+      "compositionHeightBits": "4096800000000000",
+      "scaled": 133.33,
+      "scaledBits": "4060aa8f5c28f5c3"
+    },
+    {
+      "value": 100,
+      "valueBits": "4059000000000000",
+      "compositionHeight": 2160,
+      "compositionHeightBits": "40a0e00000000000",
+      "scaled": 200,
+      "scaledBits": "4069000000000000"
+    },
+    {
+      "value": 100,
+      "valueBits": "4059000000000000",
+      "compositionHeight": 3840,
+      "compositionHeightBits": "40ae000000000000",
+      "scaled": 355.56,
+      "scaledBits": "407638f5c28f5c29"
+    },
+    {
+      "value": 100,
+      "valueBits": "4059000000000000",
+      "compositionHeight": 1081,
+      "compositionHeightBits": "4090e40000000000",
+      "scaled": 100.09,
+      "scaledBits": "405905c28f5c28f6"
+    },
+    {
+      "value": 100,
+      "valueBits": "4059000000000000",
+      "compositionHeight": 1079,
+      "compositionHeightBits": "4090dc0000000000",
+      "scaled": 99.91,
+      "scaledBits": "4058fa3d70a3d70a"
+    },
+    {
+      "value": 120,
+      "valueBits": "405e000000000000",
+      "compositionHeight": 360,
+      "compositionHeightBits": "4076800000000000",
+      "scaled": 40,
+      "scaledBits": "4044000000000000"
+    },
+    {
+      "value": 120,
+      "valueBits": "405e000000000000",
+      "compositionHeight": 480,
+      "compositionHeightBits": "407e000000000000",
+      "scaled": 53.33,
+      "scaledBits": "404aaa3d70a3d70a"
+    },
+    {
+      "value": 120,
+      "valueBits": "405e000000000000",
+      "compositionHeight": 720,
+      "compositionHeightBits": "4086800000000000",
+      "scaled": 80,
+      "scaledBits": "4054000000000000"
+    },
+    {
+      "value": 120,
+      "valueBits": "405e000000000000",
+      "compositionHeight": 1080,
+      "compositionHeightBits": "4090e00000000000",
+      "scaled": 120,
+      "scaledBits": "405e000000000000"
+    },
+    {
+      "value": 120,
+      "valueBits": "405e000000000000",
+      "compositionHeight": 1440,
+      "compositionHeightBits": "4096800000000000",
+      "scaled": 160,
+      "scaledBits": "4064000000000000"
+    },
+    {
+      "value": 120,
+      "valueBits": "405e000000000000",
+      "compositionHeight": 2160,
+      "compositionHeightBits": "40a0e00000000000",
+      "scaled": 240,
+      "scaledBits": "406e000000000000"
+    },
+    {
+      "value": 120,
+      "valueBits": "405e000000000000",
+      "compositionHeight": 3840,
+      "compositionHeightBits": "40ae000000000000",
+      "scaled": 426.67,
+      "scaledBits": "407aaab851eb851f"
+    },
+    {
+      "value": 120,
+      "valueBits": "405e000000000000",
+      "compositionHeight": 1081,
+      "compositionHeightBits": "4090e40000000000",
+      "scaled": 120.11,
+      "scaledBits": "405e070a3d70a3d7"
+    },
+    {
+      "value": 120,
+      "valueBits": "405e000000000000",
+      "compositionHeight": 1079,
+      "compositionHeightBits": "4090dc0000000000",
+      "scaled": 119.89,
+      "scaledBits": "405df8f5c28f5c29"
+    },
+    {
+      "value": 0.5,
+      "valueBits": "3fe0000000000000",
+      "compositionHeight": 360,
+      "compositionHeightBits": "4076800000000000",
+      "scaled": 0.17,
+      "scaledBits": "3fc5c28f5c28f5c3"
+    },
+    {
+      "value": 0.5,
+      "valueBits": "3fe0000000000000",
+      "compositionHeight": 480,
+      "compositionHeightBits": "407e000000000000",
+      "scaled": 0.22,
+      "scaledBits": "3fcc28f5c28f5c29"
+    },
+    {
+      "value": 0.5,
+      "valueBits": "3fe0000000000000",
+      "compositionHeight": 720,
+      "compositionHeightBits": "4086800000000000",
+      "scaled": 0.33,
+      "scaledBits": "3fd51eb851eb851f"
+    },
+    {
+      "value": 0.5,
+      "valueBits": "3fe0000000000000",
+      "compositionHeight": 1080,
+      "compositionHeightBits": "4090e00000000000",
+      "scaled": 0.5,
+      "scaledBits": "3fe0000000000000"
+    },
+    {
+      "value": 0.5,
+      "valueBits": "3fe0000000000000",
+      "compositionHeight": 1440,
+      "compositionHeightBits": "4096800000000000",
+      "scaled": 0.67,
+      "scaledBits": "3fe570a3d70a3d71"
+    },
+    {
+      "value": 0.5,
+      "valueBits": "3fe0000000000000",
+      "compositionHeight": 2160,
+      "compositionHeightBits": "40a0e00000000000",
+      "scaled": 1,
+      "scaledBits": "3ff0000000000000"
+    },
+    {
+      "value": 0.5,
+      "valueBits": "3fe0000000000000",
+      "compositionHeight": 3840,
+      "compositionHeightBits": "40ae000000000000",
+      "scaled": 1.78,
+      "scaledBits": "3ffc7ae147ae147b"
+    },
+    {
+      "value": 0.5,
+      "valueBits": "3fe0000000000000",
+      "compositionHeight": 1081,
+      "compositionHeightBits": "4090e40000000000",
+      "scaled": 0.5,
+      "scaledBits": "3fe0000000000000"
+    },
+    {
+      "value": 0.5,
+      "valueBits": "3fe0000000000000",
+      "compositionHeight": 1079,
+      "compositionHeightBits": "4090dc0000000000",
+      "scaled": 0.5,
+      "scaledBits": "3fe0000000000000"
+    },
+    {
+      "value": 1.005,
+      "valueBits": "3ff0147ae147ae14",
+      "compositionHeight": 360,
+      "compositionHeightBits": "4076800000000000",
+      "scaled": 0.33,
+      "scaledBits": "3fd51eb851eb851f"
+    },
+    {
+      "value": 1.005,
+      "valueBits": "3ff0147ae147ae14",
+      "compositionHeight": 480,
+      "compositionHeightBits": "407e000000000000",
+      "scaled": 0.45,
+      "scaledBits": "3fdccccccccccccd"
+    },
+    {
+      "value": 1.005,
+      "valueBits": "3ff0147ae147ae14",
+      "compositionHeight": 720,
+      "compositionHeightBits": "4086800000000000",
+      "scaled": 0.67,
+      "scaledBits": "3fe570a3d70a3d71"
+    },
+    {
+      "value": 1.005,
+      "valueBits": "3ff0147ae147ae14",
+      "compositionHeight": 1080,
+      "compositionHeightBits": "4090e00000000000",
+      "scaled": 1,
+      "scaledBits": "3ff0000000000000"
+    },
+    {
+      "value": 1.005,
+      "valueBits": "3ff0147ae147ae14",
+      "compositionHeight": 1440,
+      "compositionHeightBits": "4096800000000000",
+      "scaled": 1.34,
+      "scaledBits": "3ff570a3d70a3d71"
+    },
+    {
+      "value": 1.005,
+      "valueBits": "3ff0147ae147ae14",
+      "compositionHeight": 2160,
+      "compositionHeightBits": "40a0e00000000000",
+      "scaled": 2.01,
+      "scaledBits": "4000147ae147ae14"
+    },
+    {
+      "value": 1.005,
+      "valueBits": "3ff0147ae147ae14",
+      "compositionHeight": 3840,
+      "compositionHeightBits": "40ae000000000000",
+      "scaled": 3.57,
+      "scaledBits": "400c8f5c28f5c28f"
+    },
+    {
+      "value": 1.005,
+      "valueBits": "3ff0147ae147ae14",
+      "compositionHeight": 1081,
+      "compositionHeightBits": "4090e40000000000",
+      "scaled": 1.01,
+      "scaledBits": "3ff028f5c28f5c29"
+    },
+    {
+      "value": 1.005,
+      "valueBits": "3ff0147ae147ae14",
+      "compositionHeight": 1079,
+      "compositionHeightBits": "4090dc0000000000",
+      "scaled": 1,
+      "scaledBits": "3ff0000000000000"
+    },
+    {
+      "value": 2.675,
+      "valueBits": "4005666666666666",
+      "compositionHeight": 360,
+      "compositionHeightBits": "4076800000000000",
+      "scaled": 0.89,
+      "scaledBits": "3fec7ae147ae147b"
+    },
+    {
+      "value": 2.675,
+      "valueBits": "4005666666666666",
+      "compositionHeight": 480,
+      "compositionHeightBits": "407e000000000000",
+      "scaled": 1.19,
+      "scaledBits": "3ff30a3d70a3d70a"
+    },
+    {
+      "value": 2.675,
+      "valueBits": "4005666666666666",
+      "compositionHeight": 720,
+      "compositionHeightBits": "4086800000000000",
+      "scaled": 1.78,
+      "scaledBits": "3ffc7ae147ae147b"
+    },
+    {
+      "value": 2.675,
+      "valueBits": "4005666666666666",
+      "compositionHeight": 1080,
+      "compositionHeightBits": "4090e00000000000",
+      "scaled": 2.67,
+      "scaledBits": "40055c28f5c28f5c"
+    },
+    {
+      "value": 2.675,
+      "valueBits": "4005666666666666",
+      "compositionHeight": 1440,
+      "compositionHeightBits": "4096800000000000",
+      "scaled": 3.57,
+      "scaledBits": "400c8f5c28f5c28f"
+    },
+    {
+      "value": 2.675,
+      "valueBits": "4005666666666666",
+      "compositionHeight": 2160,
+      "compositionHeightBits": "40a0e00000000000",
+      "scaled": 5.35,
+      "scaledBits": "4015666666666666"
+    },
+    {
+      "value": 2.675,
+      "valueBits": "4005666666666666",
+      "compositionHeight": 3840,
+      "compositionHeightBits": "40ae000000000000",
+      "scaled": 9.51,
+      "scaledBits": "4023051eb851eb85"
+    },
+    {
+      "value": 2.675,
+      "valueBits": "4005666666666666",
+      "compositionHeight": 1081,
+      "compositionHeightBits": "4090e40000000000",
+      "scaled": 2.68,
+      "scaledBits": "400570a3d70a3d71"
+    },
+    {
+      "value": 2.675,
+      "valueBits": "4005666666666666",
+      "compositionHeight": 1079,
+      "compositionHeightBits": "4090dc0000000000",
+      "scaled": 2.67,
+      "scaledBits": "40055c28f5c28f5c"
+    },
+    {
+      "value": 8.125,
+      "valueBits": "4020400000000000",
+      "compositionHeight": 360,
+      "compositionHeightBits": "4076800000000000",
+      "scaled": 2.71,
+      "scaledBits": "4005ae147ae147ae"
+    },
+    {
+      "value": 8.125,
+      "valueBits": "4020400000000000",
+      "compositionHeight": 480,
+      "compositionHeightBits": "407e000000000000",
+      "scaled": 3.61,
+      "scaledBits": "400ce147ae147ae1"
+    },
+    {
+      "value": 8.125,
+      "valueBits": "4020400000000000",
+      "compositionHeight": 720,
+      "compositionHeightBits": "4086800000000000",
+      "scaled": 5.42,
+      "scaledBits": "4015ae147ae147ae"
+    },
+    {
+      "value": 8.125,
+      "valueBits": "4020400000000000",
+      "compositionHeight": 1080,
+      "compositionHeightBits": "4090e00000000000",
+      "scaled": 8.13,
+      "scaledBits": "4020428f5c28f5c3"
+    },
+    {
+      "value": 8.125,
+      "valueBits": "4020400000000000",
+      "compositionHeight": 1440,
+      "compositionHeightBits": "4096800000000000",
+      "scaled": 10.83,
+      "scaledBits": "4025a8f5c28f5c29"
+    },
+    {
+      "value": 8.125,
+      "valueBits": "4020400000000000",
+      "compositionHeight": 2160,
+      "compositionHeightBits": "40a0e00000000000",
+      "scaled": 16.25,
+      "scaledBits": "4030400000000000"
+    },
+    {
+      "value": 8.125,
+      "valueBits": "4020400000000000",
+      "compositionHeight": 3840,
+      "compositionHeightBits": "40ae000000000000",
+      "scaled": 28.89,
+      "scaledBits": "403ce3d70a3d70a4"
+    },
+    {
+      "value": 8.125,
+      "valueBits": "4020400000000000",
+      "compositionHeight": 1081,
+      "compositionHeightBits": "4090e40000000000",
+      "scaled": 8.13,
+      "scaledBits": "4020428f5c28f5c3"
+    },
+    {
+      "value": 8.125,
+      "valueBits": "4020400000000000",
+      "compositionHeight": 1079,
+      "compositionHeightBits": "4090dc0000000000",
+      "scaled": 8.12,
+      "scaledBits": "40203d70a3d70a3d"
+    },
+    {
+      "value": 1.115,
+      "valueBits": "3ff1d70a3d70a3d7",
+      "compositionHeight": 360,
+      "compositionHeightBits": "4076800000000000",
+      "scaled": 0.37,
+      "scaledBits": "3fd7ae147ae147ae"
+    },
+    {
+      "value": 1.115,
+      "valueBits": "3ff1d70a3d70a3d7",
+      "compositionHeight": 480,
+      "compositionHeightBits": "407e000000000000",
+      "scaled": 0.5,
+      "scaledBits": "3fe0000000000000"
+    },
+    {
+      "value": 1.115,
+      "valueBits": "3ff1d70a3d70a3d7",
+      "compositionHeight": 720,
+      "compositionHeightBits": "4086800000000000",
+      "scaled": 0.74,
+      "scaledBits": "3fe7ae147ae147ae"
+    },
+    {
+      "value": 1.115,
+      "valueBits": "3ff1d70a3d70a3d7",
+      "compositionHeight": 1080,
+      "compositionHeightBits": "4090e00000000000",
+      "scaled": 1.11,
+      "scaledBits": "3ff1c28f5c28f5c3"
+    },
+    {
+      "value": 1.115,
+      "valueBits": "3ff1d70a3d70a3d7",
+      "compositionHeight": 1440,
+      "compositionHeightBits": "4096800000000000",
+      "scaled": 1.49,
+      "scaledBits": "3ff7d70a3d70a3d7"
+    },
+    {
+      "value": 1.115,
+      "valueBits": "3ff1d70a3d70a3d7",
+      "compositionHeight": 2160,
+      "compositionHeightBits": "40a0e00000000000",
+      "scaled": 2.23,
+      "scaledBits": "4001d70a3d70a3d7"
+    },
+    {
+      "value": 1.115,
+      "valueBits": "3ff1d70a3d70a3d7",
+      "compositionHeight": 3840,
+      "compositionHeightBits": "40ae000000000000",
+      "scaled": 3.96,
+      "scaledBits": "400fae147ae147ae"
+    },
+    {
+      "value": 1.115,
+      "valueBits": "3ff1d70a3d70a3d7",
+      "compositionHeight": 1081,
+      "compositionHeightBits": "4090e40000000000",
+      "scaled": 1.12,
+      "scaledBits": "3ff1eb851eb851ec"
+    },
+    {
+      "value": 1.115,
+      "valueBits": "3ff1d70a3d70a3d7",
+      "compositionHeight": 1079,
+      "compositionHeightBits": "4090dc0000000000",
+      "scaled": 1.11,
+      "scaledBits": "3ff1c28f5c28f5c3"
+    },
+    {
+      "value": -28,
+      "valueBits": "c03c000000000000",
+      "compositionHeight": 360,
+      "compositionHeightBits": "4076800000000000",
+      "scaled": -9.33,
+      "scaledBits": "c022a8f5c28f5c29"
+    },
+    {
+      "value": -28,
+      "valueBits": "c03c000000000000",
+      "compositionHeight": 480,
+      "compositionHeightBits": "407e000000000000",
+      "scaled": -12.44,
+      "scaledBits": "c028e147ae147ae1"
+    },
+    {
+      "value": -28,
+      "valueBits": "c03c000000000000",
+      "compositionHeight": 720,
+      "compositionHeightBits": "4086800000000000",
+      "scaled": -18.67,
+      "scaledBits": "c032ab851eb851ec"
+    },
+    {
+      "value": -28,
+      "valueBits": "c03c000000000000",
+      "compositionHeight": 1080,
+      "compositionHeightBits": "4090e00000000000",
+      "scaled": -28,
+      "scaledBits": "c03c000000000000"
+    },
+    {
+      "value": -28,
+      "valueBits": "c03c000000000000",
+      "compositionHeight": 1440,
+      "compositionHeightBits": "4096800000000000",
+      "scaled": -37.33,
+      "scaledBits": "c042aa3d70a3d70a"
+    },
+    {
+      "value": -28,
+      "valueBits": "c03c000000000000",
+      "compositionHeight": 2160,
+      "compositionHeightBits": "40a0e00000000000",
+      "scaled": -56,
+      "scaledBits": "c04c000000000000"
+    },
+    {
+      "value": -28,
+      "valueBits": "c03c000000000000",
+      "compositionHeight": 3840,
+      "compositionHeightBits": "40ae000000000000",
+      "scaled": -99.56,
+      "scaledBits": "c058e3d70a3d70a4"
+    },
+    {
+      "value": -28,
+      "valueBits": "c03c000000000000",
+      "compositionHeight": 1081,
+      "compositionHeightBits": "4090e40000000000",
+      "scaled": -28.03,
+      "scaledBits": "c03c07ae147ae148"
+    },
+    {
+      "value": -28,
+      "valueBits": "c03c000000000000",
+      "compositionHeight": 1079,
+      "compositionHeightBits": "4090dc0000000000",
+      "scaled": -27.97,
+      "scaledBits": "c03bf851eb851eb8"
+    },
+    {
+      "value": 1000,
+      "valueBits": "408f400000000000",
+      "compositionHeight": 360,
+      "compositionHeightBits": "4076800000000000",
+      "scaled": 333.33,
+      "scaledBits": "4074d547ae147ae1"
+    },
+    {
+      "value": 1000,
+      "valueBits": "408f400000000000",
+      "compositionHeight": 480,
+      "compositionHeightBits": "407e000000000000",
+      "scaled": 444.44,
+      "scaledBits": "407bc70a3d70a3d7"
+    },
+    {
+      "value": 1000,
+      "valueBits": "408f400000000000",
+      "compositionHeight": 720,
+      "compositionHeightBits": "4086800000000000",
+      "scaled": 666.67,
+      "scaledBits": "4084d55c28f5c28f"
+    },
+    {
+      "value": 1000,
+      "valueBits": "408f400000000000",
+      "compositionHeight": 1080,
+      "compositionHeightBits": "4090e00000000000",
+      "scaled": 1000,
+      "scaledBits": "408f400000000000"
+    },
+    {
+      "value": 1000,
+      "valueBits": "408f400000000000",
+      "compositionHeight": 1440,
+      "compositionHeightBits": "4096800000000000",
+      "scaled": 1333.33,
+      "scaledBits": "4094d551eb851eb8"
+    },
+    {
+      "value": 1000,
+      "valueBits": "408f400000000000",
+      "compositionHeight": 2160,
+      "compositionHeightBits": "40a0e00000000000",
+      "scaled": 2000,
+      "scaledBits": "409f400000000000"
+    },
+    {
+      "value": 1000,
+      "valueBits": "408f400000000000",
+      "compositionHeight": 3840,
+      "compositionHeightBits": "40ae000000000000",
+      "scaled": 3555.56,
+      "scaledBits": "40abc71eb851eb85"
+    },
+    {
+      "value": 1000,
+      "valueBits": "408f400000000000",
+      "compositionHeight": 1081,
+      "compositionHeightBits": "4090e40000000000",
+      "scaled": 1000.93,
+      "scaledBits": "408f4770a3d70a3d"
+    },
+    {
+      "value": 1000,
+      "valueBits": "408f400000000000",
+      "compositionHeight": 1079,
+      "compositionHeightBits": "4090dc0000000000",
+      "scaled": 999.07,
+      "scaledBits": "408f388f5c28f5c3"
+    }
+  ]
+}

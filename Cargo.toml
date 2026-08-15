@@ -15,6 +15,7 @@ members = [
   "crates/osg-native-tools",
   "crates/osg-providers",
   "crates/osg-render",
+  "crates/osg-scene",
   "crates/osg-speech",
 ]
 resolver = "3"
@@ -38,6 +39,7 @@ osg-media-pipeline = { path = "crates/osg-media-pipeline" }
 osg-native-tools = { path = "crates/osg-native-tools" }
 osg-providers = { path = "crates/osg-providers" }
 osg-render = { path = "crates/osg-render" }
+osg-scene = { path = "crates/osg-scene" }
 osg-speech = { path = "crates/osg-speech" }
 serde = { version = "1.0.229", features = ["derive"] }
 serde_json = "1.0"
