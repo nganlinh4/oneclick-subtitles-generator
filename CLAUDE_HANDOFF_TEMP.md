@@ -19,7 +19,7 @@ as integrator and require fresh reviewers on each frozen slice.
 
 ## LIVE STATE — native renderer migration (update this at every context boundary)
 
-Last updated: 2026-08-16, after wave 7. Working tree clean at `97de864f`. 32 commits since the
+Last updated: 2026-08-16, after wave 9. Working tree clean at `66070978`. 50 commits since the
 preserved safety checkpoint `650805d36837d36f3b4aad025d0e54bac3708d41`, which is untouched. Nothing
 pushed.
 
@@ -27,8 +27,7 @@ pushed.
 
 | Gate | Result |
 | --- | --- |
-| `cargo test --workspace` | **842 passed, 0 failed** (before wave 7's +51) |
-| `cargo test -p osg-scene -p osg-compositor` | **146 passed, 0 failed** |
+| `cargo test --workspace` | **1059 passed, 0 failed** (was 842 before this migration wave) |
 | `cargo clippy --workspace --all-targets -- -D warnings` | clean |
 | `cargo fmt --check` | clean |
 | `npx vitest run` (whole frontend) | **1855 passed, 0 failed, across 218 files** |
@@ -47,9 +46,14 @@ is not yet proven):
   selection, easing, animation transforms, layout, colour, a versioned `Scene` contract, and the
   Rust mirror of the glyph atlas descriptor whose bounds are parsed out of the baker's own source so
   the two sides cannot drift apart without failing to compile.
-- `crates/osg-compositor` — headless wgpu compositor, **41 tests** on a real hardware adapter
+- `crates/osg-compositor` — headless wgpu compositor, **46 tests** on a real hardware adapter
   (Intel, Vulkan). Renders real subtitle frames from the scene contract, delegating every
   calculation to `osg-scene`. `unsafe_code = "forbid"`.
+- `crates/osg-encode` — Media Foundation H.264/AAC MP4, **55 tests**, ffprobe-verified.
+- `crates/osg-audio` — symphonia decode, resample and mix, **99 tests**, including Opus.
+- `apps/desktop/src-tauri/src/glyph_atlas.rs` — the native staging boundary, 16 tests, verified by
+  mutation: seven deliberate defects introduced, all seven caught. Not yet reachable from `lib.rs`.
+- `src/platform/nativePreviewFrames.js` — the preview frame client, 23 tests.
 - `src/platform/glyphAtlasStaging.js` — frames one bounded atlas per text revision for the native
   boundary, 18 tests. Worst case measured at 67,402,660 bytes against a 33,554,432 byte budget, so
   the largest atlas the baker can produce is refused before it becomes an IPC copy.
