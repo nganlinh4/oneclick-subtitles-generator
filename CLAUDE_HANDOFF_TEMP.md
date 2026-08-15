@@ -122,7 +122,8 @@ decoder for it.
 5. **Line endings, and why the readiness gate was going to fail for everyone.** `.gitattributes`
    sets `* text=auto` and does not name `*.rs`, so Rust files are stored LF and checked out CRLF on
    Windows (`core.autocrlf=true` here). The close-handler invariant sliced `lib.rs` and compared it
-   byte-for-byte, cutting between a `` and its `
+   byte-for-byte, cutting between a `
+` and its `
 `, so **any fresh Windows clone or CI checkout
    would have failed the gate**. It only passed here because the working tree happened to hold an LF
    copy from when the file was written. Fixed by normalising before slicing.
@@ -130,7 +131,18 @@ decoder for it.
    `*.py` and `*.css` entries. It would match the Rust ecosystem default and stop the constant
    "LF will be replaced by CRLF" churn, but it rewrites the checkout state of every Rust file in the
    tree, which is not a change to make in passing. Worth doing deliberately, on its own.
-6. **The non-Windows decoder path has never executed.** `tests/unsupported_platform.rs` is
+6. **AAC channel order breaks the surround fold-down, and it needs a fixture to fix.**
+   `symphonia`'s AAC decoder writes planes in AAC *element* order (SCE, CPE, CPE, LFE) with no remap
+   table — verified by reading `symphonia-codec-aac-0.5.5/src/aac/mod.rs::decode_ga`, and contrast
+   its Vorbis decoder which does call `map_vorbis_channel`. So a 5.1 AAC track arrives as
+   C, L, R, Ls, Rs, LFE while `osg_audio::channels::fold_surround_to_stereo` assumes WAVE order.
+   Dialogue survives but lands only in the left channel, and LFE is folded in as a surround.
+   Deliberately NOT patched: the repair belongs in the decode layer where the codec is known, and it
+   cannot be verified without a real 5.1 AAC fixture, which this repository lacks and `osg-encode`
+   cannot produce. Guessing at an untestable remap risks breaking correctly-ordered sources. Stereo
+   and mono are unaffected — the fold only runs above two channels — so this does not block a
+   release, but it must not be forgotten. The hazard is documented in full at the function.
+7. **The non-Windows decoder path has never executed.** `tests/unsupported_platform.rs` is
    `#![cfg(not(windows))]` and reports zero tests here. It needs a non-Windows CI target to be more
    than an assertion about source text.
 

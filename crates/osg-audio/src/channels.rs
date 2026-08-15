@@ -97,6 +97,28 @@ const FOLD_GAIN: f32 = std::f32::consts::FRAC_1_SQRT_2;
 ///
 /// The result is divided by the total gain applied to either side, so a fold-down is quieter but
 /// never louder than its source and cannot clip on its own account.
+///
+/// # KNOWN HAZARD, unresolved: this trusts the declared channel order, and AAC does not honour it
+///
+/// The mapping below assumes WAVE/SMPTE order, which is what a container's channel mask declares.
+/// `symphonia`'s AAC decoder does not write planes in that order. Read
+/// `symphonia-codec-aac-0.5.5/src/aac/mod.rs::decode_ga`: it assigns each channel index as the
+/// elements are parsed — SCE, CPE, CPE, LFE for channelConfiguration 6 — with no remap table at
+/// all. Its Vorbis decoder, by contrast, explicitly calls `map_vorbis_channel`, so the omission
+/// looks like an omission rather than a convention.
+///
+/// A 5.1 AAC track therefore arrives as C, L, R, Ls, Rs, LFE. Read through the match below that
+/// makes centre look like front-left, discards the left surround as though it were LFE, and folds
+/// the LFE in as a surround. Dialogue survives — it is index 0 either way — but lands only in the
+/// left channel, and bass is folded into the right. Configuration 3 (C, L, R) is wrong the same way.
+///
+/// This is NOT fixed here, deliberately. The correct repair is to remap AAC element order to
+/// canonical order where the codec is known, in the decode layer rather than this one, and it
+/// cannot be verified without a real 5.1 AAC fixture, which this repository does not have and which
+/// `osg-encode` cannot produce (it writes stereo). Guessing at a remap that cannot be tested risks
+/// breaking the sources that are correctly ordered today. Stereo and mono — every yt-dlp download
+/// and the overwhelming majority of user media — are unaffected, because the fold only runs above
+/// two channels.
 fn fold_surround_to_stereo(input: &[f32]) -> Option<[f32; 2]> {
     let (centre, left_surrounds, right_surrounds) = match input.len() {
         // FL FR FC, and FL FR FC LFE: no surrounds to fold in either case.
