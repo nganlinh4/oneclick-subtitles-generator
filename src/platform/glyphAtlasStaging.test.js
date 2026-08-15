@@ -52,7 +52,12 @@ const measure = (cssFont, text) => {
   const inked = /\S/u.test(text);
   return {
     width,
-    actualBoundingBoxLeft: 0,
+    // Negative, and deliberately so. `actualBoundingBoxLeft` is positive going LEFT from the
+    // alignment point, which the baker pins to the pen, so any glyph whose ink starts right of the
+    // pen reports a negative value here — that is most glyphs in most real fonts. A stub that
+    // returns 0 makes every downstream origin non-negative and hides a bound that rejects
+    // ordinary text.
+    actualBoundingBoxLeft: inked ? -2 : 0,
     actualBoundingBoxRight: inked ? width * 0.9 : 0,
     actualBoundingBoxAscent: inked ? fontSizePx * 0.72 : 0,
     actualBoundingBoxDescent: inked ? fontSizePx * 0.18 : 0,
@@ -258,6 +263,23 @@ describe('staging one baked atlas', () => {
       'substituted', 'widthPx', 'xPx', 'yPx',
     ]);
     expect(metadata.glyphs).toHaveLength(descriptor.atlas.glyphCount);
+  });
+
+  it('stages a glyph whose ink starts right of the pen, which is most real glyphs', async () => {
+    // Regression. `actualBoundingBoxLeft` is positive going LEFT from the alignment point, and the
+    // baker pins textAlign to 'left', so any glyph with a left side bearing wider than the padding
+    // reports a negative originXPx. Validation used to bound origins to non-negative, which
+    // rejected the atlas outright — so the native preview would have failed for ordinary text
+    // while every test passed, because the measurement stub returned 0 for that metric.
+    const descriptor = bake('Preview');
+    const negative = descriptor.glyphs.filter((glyph) => glyph.originXPx < 0);
+    expect(negative.length, 'the fixture must actually exercise a negative origin').toBeGreaterThan(0);
+
+    const handle = await createGlyphAtlasStager().stage(descriptor);
+
+    expect(handle.atlasId).toBeTruthy();
+    const staged = decodeFrame(invokeDesktopRaw.mock.calls[0][1]);
+    expect(staged.metadata.glyphs.some((glyph) => glyph.originXPx < 0)).toBe(true);
   });
 
   it('stages an inkless run as an empty atlas rather than refusing it', async () => {

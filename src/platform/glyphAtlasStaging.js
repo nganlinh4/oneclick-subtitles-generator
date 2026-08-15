@@ -97,6 +97,17 @@ const isRecord = (value) => value !== null && typeof value === 'object' && !Arra
 const isBounded = (value, minimum, maximum) => Number.isInteger(value) && value >= minimum && value <= maximum;
 const isFiniteNumber = (value) => typeof value === 'number' && Number.isFinite(value);
 
+// A glyph origin is signed, so it is bounded by magnitude rather than by range.
+//
+// `actualBoundingBoxLeft` is positive going *left* from the alignment point, and the baker pins
+// textAlign to 'left', so the alignment point is the pen: any glyph whose ink starts to the right
+// of the pen — that is, any glyph with a left side bearing wider than the 1px padding, which is
+// most glyphs in most fonts — produces a negative originXPx. `actualBoundingBoxAscent` is likewise
+// negative for a cluster with no ink above the baseline, such as an underscore.
+//
+// The Rust side already had this right: it models both as i32 and bounds them with `unsigned_abs`.
+const isBoundedMagnitude = (value, maximum) => Number.isInteger(value) && Math.abs(value) <= maximum;
+
 const hasExactKeys = (value, expectedKeys) => {
   if (!isRecord(value)) return false;
   const keys = Object.keys(value).sort();
@@ -185,8 +196,11 @@ const validateGlyph = (glyph, atlas, index) => {
   if (!DIRECTIONS.has(glyph.direction)) invalid(at('direction'));
   if (!isFiniteNumber(glyph.advanceWidthPx) || glyph.advanceWidthPx < 0) invalid(at('advanceWidthPx'));
   if (typeof glyph.substituted !== 'boolean') invalid(at('substituted'));
-  for (const field of ['xPx', 'yPx', 'widthPx', 'heightPx', 'originXPx', 'originYPx']) {
+  for (const field of ['xPx', 'yPx', 'widthPx', 'heightPx']) {
     if (!isBounded(glyph[field], 0, GLYPH_ATLAS_LIMITS.maxAtlasDimensionPx)) invalid(at(field));
+  }
+  for (const field of ['originXPx', 'originYPx']) {
+    if (!isBoundedMagnitude(glyph[field], GLYPH_ATLAS_LIMITS.maxAtlasDimensionPx)) invalid(at(field));
   }
   // A cell that leaves the atlas would make Rust sample outside the uploaded texture.
   if (glyph.xPx + glyph.widthPx > atlas.widthPx || glyph.yPx + glyph.heightPx > atlas.heightPx) {
