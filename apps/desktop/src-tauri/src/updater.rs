@@ -451,10 +451,22 @@ mod tests {
     use base64::{Engine as _, engine::general_purpose::STANDARD};
 
     use super::{
-        AppUpdateEvent, AppUpdateRuntime, MAX_RELEASE_NOTES_UTF16_UNITS, bounded_text,
-        format_published_at, is_bounded_version, is_valid_signing_key,
+        AppUpdateEvent, AppUpdateRuntime, MAX_RELEASE_NOTES_UTF16_UNITS, UPDATE_SIGNING_PUBLIC_KEY,
+        bounded_text, format_published_at, has_configured_signing_key, is_bounded_version,
+        is_valid_signing_key,
     };
     use time::macros::datetime;
+
+    /// The public key printed in Tauri's own updater documentation.
+    ///
+    /// It is a structurally perfect minisign key, which is the entire problem: its private half is
+    /// published alongside it, so anything it verifies can be signed by anyone who has read the
+    /// docs. It is used below both as the positive fixture for structural validation and as the
+    /// thing the shipped key must never be.
+    const PUBLISHED_EXAMPLE_KEY: &str = concat!(
+        "untrusted comment: minisign public key 17620F91860D0F62\n",
+        "RWQf6LRCGA9i53mlYecO4IzT51TGPpvWucNSCh1CBM0QTaLn73Y7GFO3\n",
+    );
 
     #[test]
     fn signing_key_validation_is_strict_and_never_accepts_the_placeholder() {
@@ -464,13 +476,182 @@ mod tests {
         assert!(!is_valid_signing_key(
             &STANDARD.encode("not a minisign key")
         ));
-        let envelope = concat!(
-            "untrusted comment: minisign public key 17620F91860D0F62\n",
-            "RWQf6LRCGA9i53mlYecO4IzT51TGPpvWucNSCh1CBM0QTaLn73Y7GFO3\n",
-        );
-        assert!(is_valid_signing_key(&STANDARD.encode(envelope)));
+        assert!(is_valid_signing_key(
+            &STANDARD.encode(PUBLISHED_EXAMPLE_KEY)
+        ));
         assert!(!is_valid_signing_key(
-            &STANDARD.encode(format!("{envelope}extra\n"))
+            &STANDARD.encode(format!("{PUBLISHED_EXAMPLE_KEY}extra\n"))
+        ));
+    }
+
+    #[test]
+    fn the_shipped_key_is_configured_so_updates_are_actually_verified() {
+        // An unconfigured or malformed key makes `updater_plugin` pass an empty pubkey, and the
+        // plugin's unconditional `verify_signature` then fails to decode it, so every update is
+        // refused. That is the safe direction, but it is silent: the app would simply stop being
+        // updatable and nothing would say why. Assert the shipped state deliberately.
+        assert!(
+            has_configured_signing_key(),
+            "updater-public-key.txt does not contain a usable minisign public key, so the app \
+             cannot install any update"
+        );
+    }
+
+    #[test]
+    fn the_shipped_key_is_not_a_published_example_key() {
+        // Structural validity is not trust. A key copied from documentation or a tutorial passes
+        // every check in `is_valid_signing_key` while letting anyone who has read that page sign an
+        // update this app would install and execute.
+        let shipped = UPDATE_SIGNING_PUBLIC_KEY.trim();
+        let decoded = STANDARD
+            .decode(shipped)
+            .expect("the shipped key must be base64");
+        let envelope = String::from_utf8(decoded).expect("the shipped key must be UTF-8");
+
+        assert_ne!(
+            envelope, PUBLISHED_EXAMPLE_KEY,
+            "the shipped updater key is the one published in Tauri's documentation, whose private \
+             half is public"
+        );
+        assert_ne!(
+            shipped,
+            STANDARD.encode(PUBLISHED_EXAMPLE_KEY),
+            "the shipped updater key is the one published in Tauri's documentation, whose private \
+             half is public"
+        );
+
+        // The key body, not the comment line, is what actually verifies signatures — a renamed
+        // comment above a published key body would still be a published key.
+        let shipped_body = envelope
+            .lines()
+            .nth(1)
+            .expect("a minisign public key has a body line");
+        let example_body = PUBLISHED_EXAMPLE_KEY
+            .lines()
+            .nth(1)
+            .expect("a minisign public key has a body line");
+        assert_ne!(
+            shipped_body, example_body,
+            "the shipped updater key body is a published example key"
+        );
+    }
+
+    /// A disposable key generated only to prove verification actually rejects things.
+    ///
+    /// Its private half was never committed and is not needed again: the signature below is
+    /// checked in, not regenerated. Nothing in the product trusts this key.
+    const THROWAWAY_TEST_KEY: &str = concat!(
+        "untrusted comment: minisign public key: F315DA75492BFAD3\n",
+        "RWTT+itJddoV84JJ57tapwhHxaxQd5w/npk+gUJwsXDgblqMvajULIfC\n",
+    );
+
+    /// `THROWAWAY_TEST_KEY`'s signature over exactly [`SIGNED_PAYLOAD`].
+    const THROWAWAY_TEST_SIGNATURE: &str = concat!(
+        "untrusted comment: signature from tauri secret key\n",
+        "RUTT+itJddoV85kvq9xTWpNXY0nDqIkIWiScXgzwpaDjX7KbPCixXTPj+4tZ5P+a5QphyzUvCuTbmBB9ghz1VpjXr/FutoMrTwU=\n",
+        "trusted comment: timestamp:1786819293\tfile:payload.bin\n",
+        "tW2Y8erUAvQ0L3dWDvdAR+9Q60JhnvBziAWEFxZu2G2PlKxIVW9f7Q9FDGtJAouXsInr3Jzsi/oQ934l3DiUCQ==\n",
+    );
+
+    const SIGNED_PAYLOAD: &[u8] = b"osg-updater-tamper-fixture-v1";
+
+    /// The plugin's own check, reproduced so this test fails if that behaviour ever changes.
+    ///
+    /// `tauri_plugin_updater` calls its private `verify_signature` unconditionally on every
+    /// downloaded artifact. We cannot call it directly, so we exercise the same two primitives it
+    /// uses, in the same order, against the same crate version.
+    fn plugin_style_verify(payload: &[u8], signature: &str, public_key: &str) -> bool {
+        use minisign_verify::{PublicKey, Signature};
+
+        let Ok(key) = PublicKey::decode(public_key) else {
+            return false;
+        };
+        let Ok(signature) = Signature::decode(signature) else {
+            return false;
+        };
+        key.verify(payload, &signature, true).is_ok()
+    }
+
+    #[test]
+    fn an_untampered_artifact_verifies() {
+        // The control. Without this passing, the rejection tests below would prove nothing — they
+        // would pass even if verification rejected everything unconditionally.
+        assert!(plugin_style_verify(
+            SIGNED_PAYLOAD,
+            THROWAWAY_TEST_SIGNATURE,
+            THROWAWAY_TEST_KEY
+        ));
+    }
+
+    #[test]
+    fn a_tampered_artifact_is_refused() {
+        // The case that matters. An attacker who can modify the download but not the signature must
+        // not be able to get code executed, and every single byte must be covered — a signature
+        // over only a prefix or a length would pass the control test above while leaving the tail
+        // of an installer freely rewritable.
+        for index in [0, SIGNED_PAYLOAD.len() / 2, SIGNED_PAYLOAD.len() - 1] {
+            let mut tampered = SIGNED_PAYLOAD.to_vec();
+            tampered[index] ^= 0x01;
+            assert!(
+                !plugin_style_verify(&tampered, THROWAWAY_TEST_SIGNATURE, THROWAWAY_TEST_KEY),
+                "a flipped bit at byte {index} was accepted"
+            );
+        }
+
+        // Truncation and extension are modifications too.
+        assert!(!plugin_style_verify(
+            &SIGNED_PAYLOAD[..SIGNED_PAYLOAD.len() - 1],
+            THROWAWAY_TEST_SIGNATURE,
+            THROWAWAY_TEST_KEY
+        ));
+        assert!(!plugin_style_verify(
+            &[SIGNED_PAYLOAD, b"trailing"].concat(),
+            THROWAWAY_TEST_SIGNATURE,
+            THROWAWAY_TEST_KEY
+        ));
+        assert!(!plugin_style_verify(
+            b"",
+            THROWAWAY_TEST_SIGNATURE,
+            THROWAWAY_TEST_KEY
+        ));
+    }
+
+    #[test]
+    fn a_malformed_or_forged_signature_is_refused() {
+        for signature in [
+            "",
+            "not base64 at all",
+            &STANDARD.encode("untrusted comment: nope\n"),
+            &THROWAWAY_TEST_SIGNATURE.replace("RUTT", "RUTU"),
+        ] {
+            assert!(
+                !plugin_style_verify(SIGNED_PAYLOAD, signature, THROWAWAY_TEST_KEY),
+                "a malformed signature was accepted: {signature:?}"
+            );
+        }
+    }
+
+    #[test]
+    fn a_valid_signature_from_the_wrong_key_is_refused() {
+        // This is what protects users if the signing key is ever rotated or compromised: a
+        // perfectly valid signature made by any other key must still be refused by a build that
+        // trusts only the key baked into it.
+        let shipped = String::from_utf8(
+            STANDARD
+                .decode(UPDATE_SIGNING_PUBLIC_KEY.trim())
+                .expect("the shipped key must be base64"),
+        )
+        .expect("the shipped key must be UTF-8");
+
+        assert!(!plugin_style_verify(
+            SIGNED_PAYLOAD,
+            THROWAWAY_TEST_SIGNATURE,
+            &shipped
+        ));
+        assert!(!plugin_style_verify(
+            SIGNED_PAYLOAD,
+            THROWAWAY_TEST_SIGNATURE,
+            PUBLISHED_EXAMPLE_KEY
         ));
     }
 
