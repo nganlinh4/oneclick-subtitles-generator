@@ -243,6 +243,44 @@ that also has `--enable-nonfree` set, which no notice can make redistributable.
 Two things this does **not** resolve, and neither should be assumed closed by it: the owner's choice
 of root licence and notice policy, and the ASR/speech delivery verification above.
 
+### The 107 unavailable fonts are a delivery gap, not a capability loss
+
+`fontIdentity` reports 107 of the 121 catalog options as unavailable on Windows. That number reads
+like the migration is taking something away, and it is worth being precise about what is actually
+happening: the shipped renderer never drew those families either. It asked for them by CSS name,
+got a substitute, and said nothing. The capability was already absent; only the silence is new.
+
+Sorting the 115 unique families by what could honestly back them:
+
+| Bucket | Count | What it means |
+| --- | --- | --- |
+| Declared Windows system faces | 11 | Real files on a clean Windows install. Already resolving. |
+| Managed and hash-pinned today | 1 | Google Sans Flex, OFL-1.1, three subsets with sizes and SHA-256. |
+| Substituted by the OS | 1 | Helvetica is redirected to Arial by Windows, so it can never be an identity. |
+| Commercial or unclear provenance | 14 | Futura, Gotham, Hiragino Sans, PingFang SC, Arial Unicode MS and nine display faces. Cannot be redistributed without a licence the project does not have. |
+| Open-licence candidates | 88 | Overwhelmingly Google Fonts under OFL-1.1 or Apache-2.0. |
+
+So 88 of the 107 are recoverable through exactly the mechanism that already delivers Google Sans
+Flex: a reviewed, content-addressed managed package with immutable sources, exact sizes and hashes,
+an inventory and notices. Nothing about that is novel here — it is the same discipline, applied to
+more files.
+
+Two things block it, and neither may be worked around:
+
+1. **Publishing font payloads to the delivery pool is an external publication.** It needs explicit
+   authorization at that step, like every other upload.
+2. **Each family's licence must be verified against the delivered bytes**, not assumed from the
+   family name. The bucket above is a starting inventory, not a licence finding. The existing
+   notices already distinguish these two things and this must not blur them.
+
+Until then the honest state is the one the code already reports. What must not happen is the
+failure mode the notices warn about elsewhere: making a font appear available by silently drawing
+something else, which is precisely the behaviour being removed.
+
+One catalog defect found while sorting this: **`Noto Sans Vietnamese` is not a real family.**
+Vietnamese coverage lives in Noto Sans itself, so that option could never have resolved to anything
+and should be corrected rather than delivered.
+
 ## Order of work
 
 1. Freeze the specification: the feature matrix and the golden fixtures generated from current
