@@ -11,6 +11,8 @@
 
 pub mod easing;
 pub mod scale;
+pub mod timeline;
 
 pub use easing::{SUBTITLE_ANIMATION_EASINGS, apply_subtitle_animation_easing};
 pub use scale::scale_subtitle_style_value;
+pub use timeline::{ExactTime, FrameTimeline, TimelineError};
