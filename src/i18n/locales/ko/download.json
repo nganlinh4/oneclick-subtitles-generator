@@ -1,4 +1,6 @@
 {
+  "exportFailed": "문서를 저장할 수 없습니다.",
+  "archiveExportFailed": "자막 압축 파일을 저장할 수 없습니다.",
   "options": "다운로드 및 처리 옵션",
   "subtitleSource": "자막 소스",
   "original": "원본",

@@ -1,4 +1,6 @@
 {
+  "exportFailed": "The document could not be saved.",
+  "archiveExportFailed": "The subtitle archive could not be saved.",
   "options": "Download & Process Options",
   "subtitleSource": "Subtitle Source",
   "original": "Original",

@@ -50,6 +50,7 @@
   "cancel": "취소",
   "cancelTooltip": "번역 과정 취소",
   "cancelled": "번역이 사용자에 의해 취소되었습니다",
+  "partialResult": "{{count}}개 청크가 실패하여 번역이 중단되었습니다. 번역을 다시 시도하여 완료하세요.",
   "allComplete": "모든 번역 완료: {{success}}/{{total}} 파일이 성공적으로 처리되었습니다",
   "includeRules": "컨텍스트 규칙 포함",
   "includeRulesLabel": "번역 요청에 전사 규칙 추가",

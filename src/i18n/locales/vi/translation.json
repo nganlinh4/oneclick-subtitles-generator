@@ -50,6 +50,7 @@
   "cancel": "Hủy",
   "cancelTooltip": "Hủy quá trình dịch",
   "cancelled": "Dịch đã bị hủy bởi người dùng",
+  "partialResult": "Bản dịch đã dừng với {{count}} đoạn bị lỗi. Hãy dịch lại để hoàn tất.",
   "allComplete": "Tất cả bản dịch hoàn thành: {{success}}/{{total}} tệp được xử lý thành công",
   "includeRules": "Bao gồm quy tắc ngữ cảnh",
   "includeRulesLabel": "Thêm quy tắc phiên âm vào các yêu cầu dịch",

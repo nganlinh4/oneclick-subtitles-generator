@@ -220,7 +220,7 @@ const TranslationSection = ({ subtitles, videoTitle, onTranslationComplete }) =>
   const reportExportFailure = useCallback((exportError) => {
     const message = typeof exportError?.message === 'string' && exportError.message.trim()
       ? exportError.message
-      : t('download.exportFailed', 'The subtitle archive could not be saved.');
+      : t('download.archiveExportFailed', 'The subtitle archive could not be saved.');
     try {
       window.addToast?.(message, 'error', 8000);
     } catch {

@@ -1,4 +1,6 @@
 {
+  "exportFailed": "Không thể lưu tài liệu.",
+  "archiveExportFailed": "Không thể lưu tệp nén phụ đề.",
   "options": "Tùy chọn tải xuống & xử lý",
   "subtitleSource": "Nguồn phụ đề",
   "original": "Gốc",

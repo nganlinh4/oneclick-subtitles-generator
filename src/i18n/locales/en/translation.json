@@ -50,6 +50,7 @@
   "cancel": "Cancel",
   "cancelTooltip": "Cancel translation process",
   "cancelled": "Translation cancelled by user",
+  "partialResult": "Translation stopped with {{count}} failed chunks. Retry the translation to complete it.",
   "allComplete": "All translations complete: {{success}}/{{total}} files processed successfully",
   "includeRules": "Include Context Rules",
   "includeRulesLabel": "Append transcription rules to translation requests",
