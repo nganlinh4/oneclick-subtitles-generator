@@ -36,6 +36,7 @@ const ACCEPT_POLL_INTERVAL: Duration = Duration::from_millis(10);
 const HEADER_READ_DEADLINE: Duration = Duration::from_secs(5);
 const READ_POLL_TIMEOUT: Duration = Duration::from_millis(250);
 const WRITE_POLL_TIMEOUT: Duration = Duration::from_millis(250);
+const MAX_CLOSE_DRAIN_BYTES: usize = 64 * 1024;
 const STALLED_WRITE_DEADLINE: Duration = Duration::from_secs(30);
 const OVERLOAD_WRITE_TIMEOUT: Duration = Duration::from_millis(50);
 const IMAGE_LIFETIME: Duration = Duration::from_hours(24);
@@ -1092,7 +1093,7 @@ fn accept_loop(listener: &TcpListener, sender: &SyncSender<TcpStream>, stopping:
                     Err(TrySendError::Full(mut stream)) => {
                         let _ = stream.set_write_timeout(Some(OVERLOAD_WRITE_TIMEOUT));
                         let _ = write_static_busy(&mut stream);
-                        let _ = stream.shutdown(Shutdown::Both);
+                        close_without_reset(&mut stream);
                     }
                     Err(TrySendError::Disconnected(stream)) => {
                         let _ = stream.shutdown(Shutdown::Both);
@@ -1157,8 +1158,34 @@ fn worker_loop(
             }
             Err(RequestReadError::Stopping | RequestReadError::Disconnected) => {}
         }
-        let _ = stream.shutdown(Shutdown::Both);
+        close_without_reset(&mut stream);
     }
+}
+
+/// Closes a served connection without turning the close into a TCP reset.
+///
+/// A rejected request frequently leaves unread bytes in the socket receive buffer: the header
+/// reader stops at [`MAX_HEADER_BYTES`], and a client that already sent more than that never has
+/// the remainder consumed. On Windows, closing a socket that still holds unread received data
+/// emits RST rather than FIN, and the peer's stack then discards its own receive buffer — silently
+/// destroying the response bytes this worker already wrote. Draining first lets the close complete
+/// as an orderly FIN so the error response survives.
+///
+/// The drain is non-blocking, so a stalled peer costs nothing, and bounded by
+/// [`MAX_CLOSE_DRAIN_BYTES`], so a hostile peer cannot pin a worker by streaming forever.
+fn close_without_reset(stream: &mut TcpStream) {
+    if stream.set_nonblocking(true).is_ok() {
+        let mut sink = [0_u8; 4096];
+        let mut drained = 0_usize;
+        while drained < MAX_CLOSE_DRAIN_BYTES {
+            match stream.read(&mut sink) {
+                Ok(0) | Err(_) => break,
+                Ok(read) => drained = drained.saturating_add(read),
+            }
+        }
+        let _ = stream.set_nonblocking(false);
+    }
+    let _ = stream.shutdown(Shutdown::Both);
 }
 
 #[derive(Debug, PartialEq, Eq)]
@@ -1849,17 +1876,16 @@ fn respond_text(
         ("Cache-Control", "no-store".to_owned()),
         ("X-Content-Type-Options", "nosniff".to_owned()),
     ]);
-    write_response_head(
-        stream,
+    let mut response = response_head(
         status,
         reason,
         u64::try_from(body.len()).expect("response body length fits u64"),
         &all_headers,
     )?;
     if !head_only {
-        stream.write_all(body.as_bytes())?;
+        response.push_str(body);
     }
-    Ok(())
+    stream.write_all(response.as_bytes())
 }
 
 fn respond_empty(
@@ -1878,7 +1904,21 @@ fn write_response_head(
     content_length: u64,
     headers: &[ResponseHeader<'_>],
 ) -> io::Result<()> {
-    write!(stream, "HTTP/1.1 {status} {reason}\r\n")?;
+    let head = response_head(status, reason, content_length, headers)?;
+    stream.write_all(head.as_bytes())
+}
+
+/// Renders a validated response head so the caller can emit it as one socket write.
+///
+/// Emitting the head fragment by fragment costs one segment per header and lets a peer keep an
+/// arbitrary truncated prefix when the connection dies mid-head.
+fn response_head(
+    status: u16,
+    reason: &str,
+    content_length: u64,
+    headers: &[ResponseHeader<'_>],
+) -> io::Result<String> {
+    let mut head = format!("HTTP/1.1 {status} {reason}\r\n");
     for (name, value) in headers {
         if !name.bytes().all(is_token_byte) || !valid_response_header_value(value) {
             return Err(io::Error::new(
@@ -1886,12 +1926,15 @@ fn write_response_head(
                 "invalid response header",
             ));
         }
-        write!(stream, "{name}: {value}\r\n")?;
+        head.push_str(name);
+        head.push_str(": ");
+        head.push_str(value);
+        head.push_str("\r\n");
     }
-    write!(
-        stream,
-        "Content-Length: {content_length}\r\nConnection: close\r\n\r\n"
-    )
+    head.push_str("Content-Length: ");
+    head.push_str(&content_length.to_string());
+    head.push_str("\r\nConnection: close\r\n\r\n");
+    Ok(head)
 }
 
 fn valid_configured_origin(origin: &str) -> bool {
