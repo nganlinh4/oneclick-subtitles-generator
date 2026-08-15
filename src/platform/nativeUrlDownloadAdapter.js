@@ -10,7 +10,27 @@ import {
 } from './mediaService';
 import { activateResolvedMediaProject } from './mediaProjectActivation';
 import { recoverNativeDownloaderAfterFailure } from './nativeDownloadPreflight';
-import { DOWNLOAD_COOKIE_SOURCES } from './downloadCookiePreference';
+import {
+  abortedFailure,
+  candidateAssetId,
+  fixedFailure,
+  normalizeCallback,
+  normalizeCookieSource,
+  normalizePreferredLanguages,
+  normalizeUrl,
+  progressPercent,
+  selectSubtitle,
+  snapshotDownloadRequest,
+  snapshotSignal,
+} from './nativeUrlDownloadContract';
+import {
+  assertListenerLive,
+  attachAbortBinding,
+  detachAbortBinding,
+  replayListenerCallback,
+} from './nativeUrlDownloadSubscriber';
+import { createCompletedAssetCache } from './nativeUrlDownloadCache';
+import { createCompletedAssetReopener } from './nativeUrlDownloadReopen';
 import { resolveProjectForCache } from './subtitleProjectStore';
 import { generateUrlBasedCacheId } from '../services/subtitleCache';
 
@@ -18,232 +38,10 @@ const DEFAULT_MEDIA_SELECTION = Object.freeze({
   kind: 'video',
   quality: Object.freeze({ mode: 'best' }),
 });
-const MAX_PREFERRED_SUBTITLE_LANGUAGES = 32;
-const MAX_URL_CHARACTERS = 8_192;
 const MAX_EXECUTION_ATTEMPTS = 2;
-const MAX_COMPLETED_ASSETS = 32;
-const MAX_COMPLETED_ASSET_BYTES = 16 * 1024 * 1024;
-const cookieSources = new Set(DOWNLOAD_COOKIE_SOURCES);
-const requestKeys = Object.freeze([
-  'url',
-  'cookieSource',
-  'onStarted',
-  'onProgress',
-  'onSubtitle',
-  'preferredSubtitleLanguages',
-  'signal',
-  'validateOwnership',
-]);
 
-const utf8ByteLength = (value) => {
-  let bytes = 0;
-  for (const character of value) {
-    const codePoint = character.codePointAt(0);
-    if (codePoint <= 0x7f) bytes += 1;
-    else if (codePoint <= 0x7ff) bytes += 2;
-    else if (codePoint <= 0xffff) bytes += 3;
-    else bytes += 4;
-  }
-  return bytes;
-};
-
-const subtitleByteLength = (subtitle) => {
-  if (subtitle === null) return 0;
-  try {
-    const descriptors = Object.getOwnPropertyDescriptors(subtitle);
-    return ['filename', 'language', 'content'].reduce((total, key) => {
-      const descriptor = descriptors[key];
-      return total + (descriptor && Object.hasOwn(descriptor, 'value')
-        && typeof descriptor.value === 'string'
-        ? utf8ByteLength(descriptor.value)
-        : 0);
-    }, 0);
-  } catch {
-    return MAX_COMPLETED_ASSET_BYTES + 1;
-  }
-};
-
-const progressPercent = (event) => {
-  const basisPoints = event.job.progress.basisPoints;
-  const percent = Math.round(basisPoints / 100);
-  return Math.max(0, Math.min(100, percent));
-};
-
-const fixedFailure = (code = 'nativeDownloadFailed') => {
-  const error = new Error('The native media download could not be completed');
-  error.name = 'NativeUrlDownloadError';
-  error.code = typeof code === 'string' && /^[A-Za-z][A-Za-z0-9]{0,127}$/.test(code)
-    ? code
-    : 'nativeDownloadFailed';
-  return error;
-};
-
-const abortedFailure = () => {
-  const error = new Error('The native media download was cancelled');
-  error.name = 'AbortError';
-  error.code = 'nativeDownloadAborted';
-  return error;
-};
-
-const checkListenerState = (listener) => {
-  if (listener.settled) {
-    throw listener.settlementError ?? abortedFailure();
-  }
-  if (listener.aborted) throw abortedFailure();
-};
-
-const assertListenerLive = async (listener) => {
-  checkListenerState(listener);
-  if (typeof listener.validateOwnership === 'function') {
-    await Promise.resolve(listener.validateOwnership());
-  }
-  checkListenerState(listener);
-};
-
-const replayListenerCallback = async (listener, callbackName, value) => {
-  await assertListenerLive(listener);
-  const callback = listener[callbackName];
-  if (typeof callback === 'function') {
-    try {
-      await Promise.resolve(callback(value));
-    } catch {
-      throw fixedFailure('downloadCallbackFailed');
-    }
-  }
-  await assertListenerLive(listener);
-};
-
-const normalizePreferredLanguages = (languages) => {
-  if (languages === undefined) return Object.freeze([]);
-  let values;
-  try {
-    if (!Array.isArray(languages)) throw fixedFailure('invalidDownloadRequest');
-    const descriptors = Object.getOwnPropertyDescriptors(languages);
-    const length = descriptors.length;
-    if (!length || !Object.hasOwn(length, 'value')
-        || !Number.isSafeInteger(length.value)
-        || length.value < 0 || length.value > MAX_PREFERRED_SUBTITLE_LANGUAGES
-        || Reflect.ownKeys(descriptors).length !== length.value + 1) {
-      throw fixedFailure('invalidDownloadRequest');
-    }
-    values = [];
-    for (let index = 0; index < length.value; index += 1) {
-      const descriptor = descriptors[String(index)];
-      if (!descriptor || !Object.hasOwn(descriptor, 'value') || descriptor.enumerable !== true) {
-        throw fixedFailure('invalidDownloadRequest');
-      }
-      values.push(descriptor.value);
-    }
-  } catch {
-    throw fixedFailure('invalidDownloadRequest');
-  }
-  const normalized = values.map((language) => {
-    if (typeof language !== 'string' || !/^[A-Za-z0-9._-]{1,35}$/.test(language)) {
-      throw fixedFailure('invalidDownloadRequest');
-    }
-    return language.toLowerCase();
-  });
-  return Object.freeze([...new Set(normalized)]);
-};
-
-const snapshotDownloadRequest = (request) => {
-  try {
-    if (request === null || typeof request !== 'object' || Array.isArray(request)) {
-      throw fixedFailure('invalidDownloadRequest');
-    }
-    const prototype = Object.getPrototypeOf(request);
-    if (prototype !== Object.prototype && prototype !== null) {
-      throw fixedFailure('invalidDownloadRequest');
-    }
-    const descriptors = Object.getOwnPropertyDescriptors(request);
-    const keys = Reflect.ownKeys(descriptors);
-    if (keys.some((key) => typeof key !== 'string' || !requestKeys.includes(key))
-        || !Object.hasOwn(descriptors, 'url')
-        || !Object.hasOwn(descriptors, 'cookieSource')) {
-      throw fixedFailure('invalidDownloadRequest');
-    }
-    const snapshot = {};
-    for (const key of keys) {
-      const descriptor = descriptors[key];
-      if (!Object.hasOwn(descriptor, 'value') || descriptor.enumerable !== true) {
-        throw fixedFailure('invalidDownloadRequest');
-      }
-      snapshot[key] = descriptor.value;
-    }
-    return Object.freeze(snapshot);
-  } catch {
-    throw fixedFailure('invalidDownloadRequest');
-  }
-};
-
-const normalizeUrl = (url) => {
-  if (typeof url !== 'string'
-      || url.length === 0
-      || url.length > MAX_URL_CHARACTERS
-      || url.includes('\\')
-      || Array.from(url).some((character) => {
-        const codePoint = character.codePointAt(0);
-        return codePoint <= 31 || codePoint === 127;
-      })) {
-    throw fixedFailure('invalidDownloadRequest');
-  }
-  return url;
-};
-
-const snapshotSignal = (signal) => {
-  if (signal === undefined) return null;
-  try {
-    if (signal === null || (typeof signal !== 'object' && typeof signal !== 'function')) {
-      throw fixedFailure('invalidDownloadRequest');
-    }
-    const add = Reflect.get(signal, 'addEventListener');
-    const remove = Reflect.get(signal, 'removeEventListener');
-    if (typeof add !== 'function' || typeof remove !== 'function') {
-      throw fixedFailure('invalidDownloadRequest');
-    }
-    return Object.freeze({ add, remove, target: signal });
-  } catch {
-    throw fixedFailure('invalidDownloadRequest');
-  }
-};
-
-const normalizeCallback = (callback) => {
-  if (callback !== undefined && typeof callback !== 'function') {
-    throw fixedFailure('invalidDownloadRequest');
-  }
-  return callback;
-};
-
-const normalizeCookieSource = (cookieSource) => {
-  if (typeof cookieSource !== 'string' || !cookieSources.has(cookieSource)) {
-    throw fixedFailure('invalidDownloadRequest');
-  }
-  return cookieSource;
-};
-
-const selectSubtitle = (inventory, preferredLanguages) => {
-  if (preferredLanguages.length === 0 || !Array.isArray(inventory?.subtitles)) return null;
-  for (const preferred of preferredLanguages) {
-    const preferredBase = preferred.split('-')[0];
-    const candidates = inventory.subtitles.filter(({ language }) => {
-      const normalized = language.toLowerCase();
-      return normalized === preferred
-        || normalized.split('-')[0] === preferredBase;
-    });
-    candidates.sort((left, right) => {
-      if (left.source === right.source) return 0;
-      return left.source === 'manual' ? -1 : 1;
-    });
-    if (candidates[0]) {
-      return Object.freeze({
-        language: candidates[0].language,
-        source: candidates[0].source,
-      });
-    }
-  }
-  return null;
-};
-
+// The operation identity: two requests share a download only when their URL, explicit browser
+// source and preferred subtitle languages all match. The separator cannot occur in any of them.
 const operationKey = (url, cookieSource, preferredLanguages) => (
   `${cookieSource}\u0000${preferredLanguages.join(',')}\u0000${url}`
 );
@@ -268,169 +66,20 @@ export const createNativeUrlDownloadAdapter = ({
   recoverDownloader = recoverNativeDownloaderAfterFailure,
 } = {}) => {
   const active = new Map();
-  const completedAssets = new Map();
-  let completedAssetBytes = 0;
-
-  const deleteCompletedAsset = (key) => {
-    const completed = completedAssets.get(key);
-    if (completed === undefined) return;
-    completedAssets.delete(key);
-    completedAssetBytes -= completed.cacheBytes;
-  };
-
-  const rememberCompletedAsset = (key, assetId, subtitle) => {
-    deleteCompletedAsset(key);
-    const cacheBytes = utf8ByteLength(key)
-      + utf8ByteLength(assetId)
-      + subtitleByteLength(subtitle);
-    if (cacheBytes > MAX_COMPLETED_ASSET_BYTES) return;
-    completedAssets.set(key, Object.freeze({ assetId, subtitle, cacheBytes }));
-    completedAssetBytes += cacheBytes;
-    while (completedAssets.size > MAX_COMPLETED_ASSETS
-        || completedAssetBytes > MAX_COMPLETED_ASSET_BYTES) {
-      const oldestKey = completedAssets.keys().next().value;
-      deleteCompletedAsset(oldestKey);
-    }
-  };
-
-  const readCompletedAsset = (key) => {
-    const completed = completedAssets.get(key);
-    if (completed === undefined) return undefined;
-    completedAssets.delete(key);
-    completedAssets.set(key, completed);
-    return completed;
-  };
-
-  const attachAbortBinding = (listener, signalBinding, onAbort) => {
-    if (signalBinding === null) return;
-    try {
-      signalBinding.add.call(signalBinding.target, 'abort', onAbort, { once: true });
-      listener.signalAttached = true;
-      const isAborted = Reflect.get(signalBinding.target, 'aborted');
-      if (typeof isAborted !== 'boolean') throw fixedFailure('invalidDownloadRequest');
-      if (isAborted) onAbort();
-    } catch {
-      if (listener.signalAttached) listener.signalAttached = false;
-      try {
-        signalBinding.remove.call(signalBinding.target, 'abort', onAbort);
-      } catch {
-        // Registration rollback remains authoritative.
-      }
-      throw fixedFailure('invalidDownloadRequest');
-    }
-  };
-
-  /**
-   * Reopen an asset this adapter already downloaded for the same request key. Returns the frozen
-   * native media, or null when the cached capability is gone and the caller must download again.
-   */
-  const reopenCompletedAsset = async (key, url, completed, {
-    onStarted,
-    onProgress,
-    onSubtitle,
-    signalBinding,
-    validateOwnership,
-  }) => {
-    const listener = {
-      aborted: false,
-      handleAbort: null,
-      onProgress,
-      onStarted,
-      onSubtitle,
-      settlementError: null,
-      settled: false,
-      signalAttached: false,
-      signalBinding,
-      validateOwnership,
-    };
-    let resolveAbort;
-    const aborted = new Promise((resolve) => { resolveAbort = resolve; });
-    listener.handleAbort = () => {
-      listener.aborted = true;
-      resolveAbort(null);
-    };
-    attachAbortBinding(listener, signalBinding, listener.handleAbort);
-
-    let media;
-    let opened = false;
-    let activation = null;
-    try {
-      try {
-        await assertListenerLive(listener);
-        // The cached asset is owned by the project this URL resolves to, and the native open
-        // requires that project to be active. A publication failure says nothing about the
-        // capability itself, so it must not evict a download this adapter already paid for.
-        activation = await activateProject(await resolveCandidateProject(url), {
-          validateOwnership: () => assertListenerLive(listener),
-        });
-      } catch {
-        // activateProject withdraws its own publication before it rejects, so only the
-        // subscriber's own abort/ownership loss may replace this fixed failure.
-        await assertListenerLive(listener);
-        throw fixedFailure('mediaCandidateProjectFailed');
-      }
-      try {
-        const opening = Promise.resolve().then(() => openAsset(completed.assetId));
-        if (signalBinding === null) media = await opening;
-        else {
-          const race = await Promise.race([
-            opening.then((value) => Object.freeze({ value })),
-            aborted,
-          ]);
-          if (race === null) throw abortedFailure();
-          media = race.value;
-        }
-        opened = true;
-      } catch {
-        activation.release();
-        activation = null;
-        // Subscriber cancellation/ownership loss during the native open is
-        // local to that subscriber. Only a genuine open failure invalidates the
-        // shared completed-asset capability.
-        await assertListenerLive(listener);
-        deleteCompletedAsset(key);
-      }
-      if (!opened) return null;
-      try {
-        await replayListenerCallback(listener, 'onProgress', 100);
-        if (completed.subtitle !== null) {
-          await replayListenerCallback(listener, 'onSubtitle', completed.subtitle);
-        }
-        await assertListenerLive(listener);
-      } catch (error) {
-        activation.release();
-        throw error;
-      }
-      return Object.freeze({ media });
-    } finally {
-      if (listener.signalAttached) {
-        listener.signalAttached = false;
-        try {
-          signalBinding.remove.call(signalBinding.target, 'abort', listener.handleAbort);
-        } catch {
-          // Cleanup failure cannot replace the cached-open outcome.
-        }
-      }
-    }
-  };
+  const completedAssets = createCompletedAssetCache();
+  const reopenCompletedAsset = createCompletedAssetReopener({
+    activateProject,
+    forgetCompletedAsset: completedAssets.forget,
+    openAsset,
+    resolveCandidateProject,
+  });
 
   const settleListener = (operation, listener, outcome, value) => {
     if (listener.settled) return;
     listener.settled = true;
     listener.settlementError = outcome === 'reject' ? value : null;
     operation.listeners.delete(listener);
-    if (listener.signalAttached) {
-      listener.signalAttached = false;
-      try {
-        listener.signalBinding.remove.call(
-          listener.signalBinding.target,
-          'abort',
-          listener.handleAbort
-        );
-      } catch {
-        // Cleanup failure cannot prevent exact promise settlement.
-      }
-    }
+    detachAbortBinding(listener);
     if (outcome === 'resolve') listener.resolve(value);
     else listener.reject(value);
   };
@@ -500,15 +149,9 @@ export const createNativeUrlDownloadAdapter = ({
           settleListener(operation, listener, 'reject', error);
           return;
         }
+        // An already-aborted signal settles the subscriber synchronously during attachment.
         if (listener.settled) {
-          if (listener.signalAttached) {
-            listener.signalAttached = false;
-            try {
-              signalBinding.remove.call(signalBinding.target, 'abort', listener.handleAbort);
-            } catch {
-              // Settlement is already authoritative.
-            }
-          }
+          detachAbortBinding(listener);
           return;
         }
       }
@@ -580,25 +223,6 @@ export const createNativeUrlDownloadAdapter = ({
       settleOrphan: null,
     };
 
-    const candidateAssetId = (candidate) => {
-      try {
-        const candidateDescriptors = Object.getOwnPropertyDescriptors(candidate);
-        const asset = candidateDescriptors.asset;
-        if (!asset || !Object.hasOwn(asset, 'value')
-            || asset.value === null || typeof asset.value !== 'object') {
-          throw fixedFailure('invalidDownloadResponse');
-        }
-        const assetDescriptors = Object.getOwnPropertyDescriptors(asset.value);
-        const id = assetDescriptors.id;
-        if (!id || !Object.hasOwn(id, 'value') || typeof id.value !== 'string') {
-          throw fixedFailure('invalidDownloadResponse');
-        }
-        return id.value;
-      } catch {
-        throw fixedFailure('invalidDownloadResponse');
-      }
-    };
-
     const discardCandidateOnce = async (candidate) => {
       const assetId = candidateAssetId(candidate);
       if (operation.discardedCandidateIds.has(assetId)) return;
@@ -622,6 +246,55 @@ export const createNativeUrlDownloadAdapter = ({
       const queued = operation.eventChain.then(task);
       operation.eventChain = queued.catch(() => undefined);
       return queued;
+    };
+
+    const claimCompletedCandidate = async (event, settle) => {
+      const candidate = event.media;
+      try {
+        if (!await revalidateListeners(operation, { cancelIfEmpty: true })) {
+          await discardCandidateOnce(candidate);
+          return;
+        }
+        operation.subtitle = event.subtitle ?? null;
+        if (operation.subtitle !== null
+            && !await publishToLiveListeners(operation, 'onSubtitle', operation.subtitle)) {
+          await discardCandidateOnce(candidate);
+          return;
+        }
+        // Resolving creates the durable project on demand, so never resolve for an operation
+        // which has already lost every subscriber.
+        if (!await revalidateListeners(operation, { cancelIfEmpty: true })) {
+          await discardCandidateOnce(candidate);
+          return;
+        }
+        // projectService storage operations stay detached. Publish the exact resolved project
+        // here, revalidating ownership around the publication, because the claim below requires
+        // that project to be active before and after every native step.
+        const activation = await activateProject(
+          await resolveCandidateProject(url),
+          { validateOwnership: assertOperationOwned }
+        );
+        let media;
+        try {
+          media = await claimCandidate(candidate, activation.claimOptions);
+        } catch (error) {
+          activation.release();
+          throw error;
+        }
+        settle({
+          kind: 'completed',
+          media,
+          assetId: candidateAssetId(candidate),
+          subtitle: operation.subtitle,
+        });
+      } catch {
+        try {
+          await discardCandidateOnce(candidate);
+          settle({ kind: 'failed', error: fixedFailure('mediaOpenFailed') });
+        } catch (discardError) {
+          settle({ kind: 'failed', error: discardError });
+        }
+      }
     };
 
     const runAttempt = async () => {
@@ -664,58 +337,7 @@ export const createNativeUrlDownloadAdapter = ({
               : Math.max(operation.percent, next);
             await publishToLiveListeners(operation, 'onProgress', operation.percent);
           }),
-          onCompleted: (event) => enqueueEvent(async () => {
-            const candidate = event.media;
-            try {
-              if (!await revalidateListeners(operation, { cancelIfEmpty: true })) {
-                await discardCandidateOnce(candidate);
-                return;
-              }
-              operation.subtitle = event.subtitle ?? null;
-              if (operation.subtitle !== null
-                  && !await publishToLiveListeners(
-                    operation,
-                    'onSubtitle',
-                    operation.subtitle
-                  )) {
-                await discardCandidateOnce(candidate);
-                return;
-              }
-              // Resolving creates the durable project on demand, so never resolve for an
-              // operation which has already lost every subscriber.
-              if (!await revalidateListeners(operation, { cancelIfEmpty: true })) {
-                await discardCandidateOnce(candidate);
-                return;
-              }
-              // projectService storage operations stay detached. Publish the exact resolved
-              // project here, revalidating ownership around the publication, because the claim
-              // below requires that project to be active before and after every native step.
-              const activation = await activateProject(
-                await resolveCandidateProject(url),
-                { validateOwnership: assertOperationOwned }
-              );
-              let media;
-              try {
-                media = await claimCandidate(candidate, activation.claimOptions);
-              } catch (error) {
-                activation.release();
-                throw error;
-              }
-              settle({
-                kind: 'completed',
-                media,
-                assetId: candidateAssetId(candidate),
-                subtitle: operation.subtitle,
-              });
-            } catch {
-              try {
-                await discardCandidateOnce(candidate);
-                settle({ kind: 'failed', error: fixedFailure('mediaOpenFailed') });
-              } catch (discardError) {
-                settle({ kind: 'failed', error: discardError });
-              }
-            }
-          }),
+          onCompleted: (event) => enqueueEvent(() => claimCompletedCandidate(event, settle)),
           onCancelled: () => enqueueEvent(async () => {
             if (!await revalidateListeners(operation, { cancelIfEmpty: true })) return;
             settle({ kind: 'cancelled' });
@@ -770,7 +392,7 @@ export const createNativeUrlDownloadAdapter = ({
         if (outcome.kind === 'orphaned') return null;
         if (outcome.kind === 'completed') {
           if (!await revalidateListeners(operation, { cancelIfEmpty: true })) return null;
-          rememberCompletedAsset(key, outcome.assetId, outcome.subtitle);
+          completedAssets.remember(key, outcome.assetId, outcome.subtitle);
           return outcome.media;
         }
         if (outcome.kind === 'cancelled') return null;
@@ -817,65 +439,56 @@ export const createNativeUrlDownloadAdapter = ({
 
   const downloadVideo = (request) => {
     const execution = (async () => {
-    const requestSnapshot = snapshotDownloadRequest(request);
-    const {
-      url,
-      cookieSource: requestedCookieSource,
-      onStarted,
-      onProgress,
-      onSubtitle,
-      preferredSubtitleLanguages,
-      signal,
-      validateOwnership,
-    } = requestSnapshot;
-    const normalizedUrl = normalizeUrl(url);
-    const normalizedOnStarted = normalizeCallback(onStarted);
-    const normalizedOnProgress = normalizeCallback(onProgress);
-    const normalizedOnSubtitle = normalizeCallback(onSubtitle);
-    const normalizedOwnership = normalizeCallback(validateOwnership);
-    const signalBinding = snapshotSignal(signal);
-    const cookieSource = normalizeCookieSource(requestedCookieSource);
-    const preferredLanguages = normalizePreferredLanguages(preferredSubtitleLanguages);
-    const key = operationKey(normalizedUrl, cookieSource, preferredLanguages);
-    const completed = readCompletedAsset(key);
-    if (completed) {
-      const reopened = await reopenCompletedAsset(key, normalizedUrl, completed, {
-        onStarted: normalizedOnStarted,
-        onProgress: normalizedOnProgress,
-        onSubtitle: normalizedOnSubtitle,
-        signalBinding,
-        validateOwnership: normalizedOwnership,
-      });
-      if (reopened !== null) return reopened.media;
-    }
+      const requestSnapshot = snapshotDownloadRequest(request);
+      const {
+        url,
+        cookieSource: requestedCookieSource,
+        onStarted,
+        onProgress,
+        onSubtitle,
+        preferredSubtitleLanguages,
+        signal,
+        validateOwnership,
+      } = requestSnapshot;
+      const normalizedUrl = normalizeUrl(url);
+      const callbacks = {
+        onStarted: normalizeCallback(onStarted),
+        onProgress: normalizeCallback(onProgress),
+        onSubtitle: normalizeCallback(onSubtitle),
+        signalBinding: snapshotSignal(signal),
+        validateOwnership: normalizeCallback(validateOwnership),
+      };
+      const cookieSource = normalizeCookieSource(requestedCookieSource);
+      const preferredLanguages = normalizePreferredLanguages(preferredSubtitleLanguages);
+      const key = operationKey(normalizedUrl, cookieSource, preferredLanguages);
 
-    const existing = active.get(key);
-    const reused = existing?.accepting === true;
-    const operation = reused
-      ? existing
-      : createOperation(key, normalizedUrl, cookieSource, preferredLanguages);
-    const subscription = subscribe(operation, {
-      onStarted: normalizedOnStarted,
-      onProgress: normalizedOnProgress,
-      onSubtitle: normalizedOnSubtitle,
-      signalBinding,
-      validateOwnership: normalizedOwnership,
-    });
-    if (subscription.registered && !reused) active.set(key, operation);
-    if (subscription.registered) {
-      try {
-        await assertListenerLive(subscription.listener);
-      } catch (error) {
-        settleListener(operation, subscription.listener, 'reject', error);
+      const completed = completedAssets.read(key);
+      if (completed) {
+        const reopened = await reopenCompletedAsset(key, normalizedUrl, completed, callbacks);
+        if (reopened !== null) return reopened.media;
       }
-    }
-    if (!subscription.registered || subscription.listener.settled) {
-      if (!reused && operation.listeners.size === 0 && active.get(key) === operation) {
-        active.delete(key);
+
+      const existing = active.get(key);
+      const reused = existing?.accepting === true;
+      const operation = reused
+        ? existing
+        : createOperation(key, normalizedUrl, cookieSource, preferredLanguages);
+      const subscription = subscribe(operation, callbacks);
+      if (subscription.registered && !reused) active.set(key, operation);
+      if (subscription.registered) {
+        try {
+          await assertListenerLive(subscription.listener);
+        } catch (error) {
+          settleListener(operation, subscription.listener, 'reject', error);
+        }
       }
-      return subscription.promise;
-    }
-    operation.start();
+      if (!subscription.registered || subscription.listener.settled) {
+        if (!reused && operation.listeners.size === 0 && active.get(key) === operation) {
+          active.delete(key);
+        }
+        return subscription.promise;
+      }
+      operation.start();
       return subscription.promise;
     })();
     execution.catch(() => undefined);
