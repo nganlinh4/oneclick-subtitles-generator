@@ -1,5 +1,6 @@
 {
   "title": "Đầu ra",
+  "success": "Thành công",
   "subtitles": "Phụ đề",
   "noSubtitles": "Chưa có phụ đề được tạo. Tải lên video hoặc tệp âm thanh để bắt đầu.",
   "downloadSRT": "Tải xuống SRT",
@@ -30,7 +31,10 @@
   "videoDownloadComplete": "Tải video hoàn tất! Đang xử lý...",
   "processingVideo": "Đang xử lý. Có thể mất vài phút...",
   "generationSuccess": "Phụ đề đã được tạo thành công!",
+  "noSubtitlesDetected": "Không có phụ đề nào được trả về. Video có thể không có lời nói rõ ràng; nếu không, hãy thử lại hoặc chọn mô hình khác.",
   "subtitlesLoadedFromCache": "Đã tải phụ đề từ bộ nhớ đệm!",
+  "subtitlesCacheLoadFailed": "Phương tiện đã sẵn sàng, nhưng không thể tải phụ đề đã lưu.",
+  "subtitlesCacheSaveFailed": "Phụ đề đã được tạo, nhưng không thể lưu lại.",
   "videoPreview": "Xem trước video với phụ đề",
   "subtitlesPreview": "Xem trước phụ đề",
   "segmentsReady": "Các phần video đã sẵn sàng để xử lý!",
@@ -122,5 +126,6 @@
   "summaryCompleted": "Hoàn tất tóm tắt",
   "usingLegacyFallback": "Đang dùng xử lý cũ. Bật \"Xử lý đơn giản hóa\" trong cài đặt để tăng hiệu suất.",
   "videoAnalysisAborted": "Đã hủy phân tích video",
-  "asrTranscriptionComplete": "Đã phiên âm xong bằng {{engine}}"
+  "asrTranscriptionComplete": "Đã phiên âm xong bằng {{engine}}",
+  "emptyGenerationResult": "Không nhận được kết quả cho yêu cầu đã chọn. Hãy thử lại hoặc chọn mô hình khác."
 }

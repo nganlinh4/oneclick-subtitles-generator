@@ -2,11 +2,16 @@ import { useState, useCallback, useEffect, useRef } from 'react';
 import { callGeminiApi, setProcessingForceStopped } from '../services/geminiService';
 import { generateFileCacheId } from '../utils/cacheUtils';
 import { getVideoDuration } from '../utils/videoProcessor';
-import { EVENTS, subscribe } from '../events/bus';
+import { EVENTS, publishStreamingComplete, subscribe } from '../events/bus';
 import { processGeminiSegment } from '../services/engines/GeminiAdapter';
-import { getGeminiModel } from '../services/configService';
 
-import { saveSubtitlesToCache } from '../services/subtitleCache';
+import {
+    commitDurableSubtitleCheckpoint,
+    isDurableSubtitleCheckpointReceipt,
+    isSuccessfulSubtitleCacheSaveReceipt,
+    requireSuccessfulSubtitleCacheSave,
+    saveSubtitlesToCache
+} from '../services/subtitleCache';
 import { reportKnownGeminiSubtitleError } from '../utils/geminiSubtitleErrors';
 import {
     resolveCacheIdForGeneration,
@@ -17,10 +22,19 @@ import { useQuotaCountdown } from './useQuotaCountdown';
 import { useSubtitlesRetryGeneration } from './useSubtitlesRetryGeneration';
 import { runAsrGeneration } from './runAsrGeneration';
 import { DESCRIPTORS, LOCAL_METHOD_IDS } from '../services/engines/transcriptionEngineRegistry';
-import { isHighIntelligenceModel } from '../config/geminiModels';
 import { createSegmentStreamingHandler, createFullMediaStreamingHandler } from './subtitleStreamingHandlers';
 import { fetchBrowserResource } from '../platform/browserFetch';
 import { useNativeSubtitleHydration } from './useNativeSubtitleHydration';
+import { subtitleCompletionStatus } from './subtitleCompletionStatus';
+import { getEmptySpeechPolicy } from '../services/gemini/promptManagement';
+import { isDesktopRuntime } from '../platform/desktopRuntime';
+import {
+    assertAutoGenerationContextCurrent,
+    assertAutoGenerationContextDurable,
+    createAutoGenerationCompletion,
+    getAutoGenerationCacheCandidate,
+    isAutoGenerationContext
+} from '../utils/autoGenerationOwnership';
 
 // Cache utilities moved to services/subtitleCache
 
@@ -51,6 +65,7 @@ export const useSubtitles = (t) => {
     const [isGenerating, setIsGenerating] = useState(false);
     const [retryingSegments, setRetryingSegments] = useState([]);
     const currentSourceFileRef = useRef(null);
+    const generationPresentationOwnerRef = useRef(null);
 
     const currentRetryFromCacheRef = useRef(null);
 
@@ -67,7 +82,13 @@ export const useSubtitles = (t) => {
             const active = currentRetryFromCacheRef.current;
             if (active && typeof active.start === 'number' && typeof active.end === 'number') {
                 window.dispatchEvent(new CustomEvent(EVENTS.RETRY_SEGMENT_FROM_CACHE_COMPLETE, {
-                    detail: { start: active.start, end: active.end, success: false, error: 'aborted' }
+                    detail: {
+                        start: active.start,
+                        end: active.end,
+                        runId: active.runId,
+                        success: false,
+                        error: 'aborted'
+                    }
                 }));
                 currentRetryFromCacheRef.current = null;
             }
@@ -99,8 +120,51 @@ export const useSubtitles = (t) => {
     const runId = (typeof crypto !== 'undefined' && crypto.randomUUID) ? crypto.randomUUID() : Math.random().toString(36).slice(2, 10);
 
         const { userProvidedSubtitles, segment, fps, mediaResolution, model } = options; // inlineExtraction supported via options.inlineExtraction
+        const autoRunContext = isAutoGenerationContext(options.autoRunContext)
+            ? options.autoRunContext
+            : null;
+        const presentationToken = Object.freeze({ runId });
+        generationPresentationOwnerRef.current = presentationToken;
+        const ownsPresentation = () => (
+            generationPresentationOwnerRef.current === presentationToken
+        );
+        const canPresent = () => {
+            if (!ownsPresentation()) return false;
+            if (!autoRunContext) return true;
+            try {
+                assertAutoGenerationContextCurrent(autoRunContext);
+                return true;
+            } catch {
+                return false;
+            }
+        };
+        const setGenerationStatus = (value) => {
+            if (canPresent()) setStatus(value);
+        };
+        if (autoRunContext) {
+            assertAutoGenerationContextCurrent(autoRunContext);
+            if (input !== autoRunContext.media) {
+                throw new Error('Automatic generation media ownership was lost.');
+            }
+        }
+        const setGenerationSubtitlesData = (value) => {
+            if (!canPresent()) return undefined;
+            if (typeof value === 'function') {
+                return setSubtitlesData((current) => {
+                    if (!canPresent()) return current;
+                    return value(current);
+                });
+            }
+            return setSubtitlesData(value);
+        };
+        const speechOnly = getEmptySpeechPolicy(
+            input?.type?.startsWith('audio/') ? 'audio' : 'video',
+            userProvidedSubtitles,
+            options.promptContext
+        ) === 'provenSilence';
         if (!LOCAL_METHODS.has(options.method) && !apiKeysSet.gemini) {
-            setStatus({ message: t('errors.apiKeyRequired'), type: 'error' });
+            setGenerationStatus({ message: t('errors.apiKeyRequired'), type: 'error' });
+            if (ownsPresentation()) generationPresentationOwnerRef.current = null;
             return false;
         }
 
@@ -108,21 +172,23 @@ export const useSubtitles = (t) => {
         setProcessingForceStopped(false);
 
         setIsGenerating(true);
-        setStatus({ message: t('output.processingVideo'), type: 'loading' });
+        setGenerationStatus({ message: t('output.processingVideo'), type: 'loading' });
 
         // Local ASR engines (Parakeet + the catalog engines) run via their registered runner.
         const localRunner = METHOD_RUNNERS[options.method];
         if (localRunner) {
-            return await localRunner({
+            const localResult = await localRunner({
                 input,
                 options,
                 runId,
                 debugLog,
-                setStatus,
+                setStatus: setGenerationStatus,
                 setIsGenerating,
-                setSubtitlesData,
+                setSubtitlesData: setGenerationSubtitlesData,
                 t
             });
+            if (ownsPresentation()) generationPresentationOwnerRef.current = null;
+            return localResult;
         }
 
         try {
@@ -144,9 +210,15 @@ export const useSubtitles = (t) => {
                 inputType,
                 currentVideoUrl,
                 t,
-                setStatus,
+                setStatus: setGenerationStatus,
                 debugLog
             });
+            if (autoRunContext) {
+                assertAutoGenerationContextCurrent(autoRunContext);
+                if (cacheId !== autoRunContext.cacheId) {
+                    throw new Error('Automatic generation resolved a different subtitle project.');
+                }
+            }
 
             // IMPORTANT: Check cache FIRST and load cached subtitles immediately
             // This ensures the timeline shows cached subtitles right when output container appears
@@ -156,17 +228,53 @@ export const useSubtitles = (t) => {
                 willCheckCache: !!(cacheId && !segment)
             });
 
-            const { cacheHit } = await loadCachedSubtitlesIfAvailable({
-                cacheId,
-                segment,
-                currentVideoUrl,
-                t,
-                setSubtitlesData,
-                setStatus,
-                debugLog
-            });
+            let cacheHit = false;
+            let cachedSubtitles = null;
+            if (autoRunContext && !segment) {
+                await assertAutoGenerationContextDurable(autoRunContext);
+                const candidate = getAutoGenerationCacheCandidate(autoRunContext);
+                cacheHit = candidate.cacheHit;
+                cachedSubtitles = candidate.subtitles;
+                if (!cacheHit) setGenerationSubtitlesData(null);
+            } else {
+                ({ cacheHit, cachedSubtitles } = await loadCachedSubtitlesIfAvailable({
+                    cacheId,
+                    segment,
+                    currentVideoUrl,
+                    t,
+                    setSubtitlesData: setGenerationSubtitlesData,
+                    setStatus: setGenerationStatus,
+                    debugLog
+                }));
+            }
             if (cacheHit) {
-                setIsGenerating(false);
+                if (autoRunContext) {
+                    const saved = await commitDurableSubtitleCheckpoint({
+                        context: autoRunContext,
+                        subtitles: cachedSubtitles,
+                        validateOwnership: assertAutoGenerationContextDurable
+                    });
+                    if (!isDurableSubtitleCheckpointReceipt(saved, autoRunContext)) {
+                        throw new Error('Cached automatic subtitles were not durably saved.');
+                    }
+                    const completion = createAutoGenerationCompletion({
+                        context: autoRunContext,
+                        terminal: 'subtitles',
+                        checkpoint: saved,
+                    });
+                    setGenerationSubtitlesData(cachedSubtitles);
+                    setGenerationStatus({
+                        message: t('output.subtitlesLoadedFromCache', 'Subtitles loaded from cache!'),
+                        type: 'success',
+                        translationKey: 'output.subtitlesLoadedFromCache'
+                    });
+                    return completion;
+                }
+                setGenerationStatus({
+                    message: t('output.subtitlesLoadedFromCache', 'Subtitles loaded from cache!'),
+                    type: 'success',
+                    translationKey: 'output.subtitlesLoadedFromCache'
+                });
                 return true;
             }
 
@@ -214,7 +322,8 @@ export const useSubtitles = (t) => {
                 await checkpointBeforeUpdate({
                     source: 'segment-processing-start',
                     segment,
-                    runId
+                    runId,
+                    ...(options.signal ? { signal: options.signal } : {}),
                 });
 
                 // Process the specific segment with streaming via Gemini adapter
@@ -227,7 +336,7 @@ export const useSubtitles = (t) => {
                 // Get the current subtitles from React state
                 // This ensures we're using the most up-to-date data that's currently displayed
                 await new Promise((resolve) => {
-                    setSubtitlesData(current => {
+                    setGenerationSubtitlesData(current => {
                         currentSubtitles = current || [];
                         debugLog('[Subtitle Generation] Using current React state for merging:', currentSubtitles.length, 'subtitles');
                         resolve();
@@ -249,6 +358,7 @@ export const useSubtitles = (t) => {
                 currentSourceFileRef.current = input;
 
 
+                if (autoRunContext) await assertAutoGenerationContextDurable(autoRunContext);
                 const segmentSubtitles = await processGeminiSegment(
                     input,
                     segment,
@@ -263,11 +373,14 @@ export const useSubtitles = (t) => {
                         maxWordsPerSubtitle: options.maxWordsPerSubtitle,
                         forceInline: options.inlineExtraction === true,
                         runId,
+                        promptContext: options.promptContext,
+                        autoRunContext,
+                        signal: options.signal,
                         t
                     },
                     {
-                        onStatus: setStatus,
-                        onStreamingUpdate: createSegmentStreamingHandler(segment, setSubtitlesData),
+                        onStatus: setGenerationStatus,
+                        onStreamingUpdate: createSegmentStreamingHandler(segment, setGenerationSubtitlesData),
                         t
                     }
                 );
@@ -283,7 +396,7 @@ export const useSubtitles = (t) => {
                     // Get current subtitles from React state (not the stale closure variable)
                     // Use a callback to get the most up-to-date state value
                     await new Promise((resolve) => {
-                        setSubtitlesData(current => {
+                        setGenerationSubtitlesData(current => {
                             const currentSubtitles = current || [];
 
                             debugLog('[DEBUG] Before merge - current subtitles:', {
@@ -324,7 +437,7 @@ export const useSubtitles = (t) => {
                 } else {
                     // No new subtitles from segment - get current state
                     await new Promise((resolve) => {
-                        setSubtitlesData(current => {
+                        setGenerationSubtitlesData(current => {
                             subtitles = current;
                             resolve();
                             return current; // Don't modify state
@@ -358,6 +471,7 @@ export const useSubtitles = (t) => {
                         const { processGeminiSegment } = await import('../services/engines/GeminiAdapter');
                         // Remember source file for retries
                         currentSourceFileRef.current = input;
+                        if (autoRunContext) await assertAutoGenerationContextDurable(autoRunContext);
                         subtitles = await processGeminiSegment(
                             input,
                             segment,
@@ -368,9 +482,12 @@ export const useSubtitles = (t) => {
                                 userProvidedSubtitles,
                                 maxDurationPerRequest: options.maxDurationPerRequest,
                                 autoSplitSubtitles: options.autoSplitSubtitles,
-                                maxWordsPerSubtitle: options.maxWordsPerSubtitle
+                                maxWordsPerSubtitle: options.maxWordsPerSubtitle,
+                                promptContext: options.promptContext,
+                                autoRunContext,
+                                signal: options.signal
                             },
-                            { onStatus: setStatus, t }
+                            { onStatus: setGenerationStatus, t }
                         );
                     } else {
                         // Stream full video/audio unconditionally (feature parity with segment streaming)
@@ -378,6 +495,7 @@ export const useSubtitles = (t) => {
                         const { processGeminiSegment } = await import('../services/engines/GeminiAdapter');
                         // Remember source file for retries
                         currentSourceFileRef.current = input;
+                        if (autoRunContext) await assertAutoGenerationContextDurable(autoRunContext);
                         subtitles = await processGeminiSegment(
                             input,
                             fullSegment,
@@ -390,20 +508,35 @@ export const useSubtitles = (t) => {
                                 autoSplitSubtitles: options.autoSplitSubtitles,
                                 maxWordsPerSubtitle: options.maxWordsPerSubtitle,
                                 forceInline: options.inlineExtraction === true,
-                                runId
+                                runId,
+                                promptContext: options.promptContext,
+                                autoRunContext,
+                                signal: options.signal
                             },
                             {
-                                onStatus: setStatus,
-                                onStreamingUpdate: createFullMediaStreamingHandler(setSubtitlesData, setStatus),
+                                onStatus: setGenerationStatus,
+                                onStreamingUpdate: createFullMediaStreamingHandler(
+                                    setGenerationSubtitlesData,
+                                    setGenerationStatus
+                                ),
                                 t
                             }
                         );
                     }
                 } catch (error) {
                     console.error('Error checking media duration:', error);
+                    if (isDesktopRuntime()) throw error;
                     // Fallback to normal processing (respect inlineExtraction for non-YouTube)
                     const forceInline = options.inlineExtraction === true && inputType !== 'youtube';
-                    subtitles = await callGeminiApi(input, inputType, { userProvidedSubtitles, ...(forceInline ? { forceInline: true } : {}), runId });
+                    if (autoRunContext) await assertAutoGenerationContextDurable(autoRunContext);
+                    subtitles = await callGeminiApi(input, inputType, {
+                        userProvidedSubtitles,
+                        ...(forceInline ? { forceInline: true } : {}),
+                        runId,
+                        promptContext: options.promptContext,
+                        autoRunContext,
+                        signal: options.signal
+                    });
                 }
             } else {
                 // YouTube flow: video is already downloaded and loaded in the app
@@ -435,6 +568,7 @@ export const useSubtitles = (t) => {
                         const { processGeminiSegment } = await import('../services/engines/GeminiAdapter');
                         const duration = await getVideoDuration(ytFile);
                         const fullSegment = { start: 0, end: duration || 0 };
+                        if (autoRunContext) await assertAutoGenerationContextDurable(autoRunContext);
                         subtitles = await processGeminiSegment(
                             ytFile,
                             fullSegment,
@@ -447,88 +581,181 @@ export const useSubtitles = (t) => {
                                 autoSplitSubtitles: options.autoSplitSubtitles,
                                 maxWordsPerSubtitle: options.maxWordsPerSubtitle,
                                 forceInline: true,
-                                runId
+                                runId,
+                                promptContext: options.promptContext,
+                                autoRunContext,
+                                signal: options.signal
                             },
                             {
-                                onStatus: setStatus,
-                                onStreamingUpdate: (streamingSubtitles) => setSubtitlesData(streamingSubtitles),
+                                onStatus: setGenerationStatus,
+                                onStreamingUpdate: (streamingSubtitles) => (
+                                    setGenerationSubtitlesData(streamingSubtitles)
+                                ),
                                 t
                             }
                         );
                     } else {
                         // Fallback: proceed without forcing inline (no re-download)
-                        subtitles = await callGeminiApi(input, inputType, { userProvidedSubtitles, runId });
+                        if (autoRunContext) await assertAutoGenerationContextDurable(autoRunContext);
+                        subtitles = await callGeminiApi(input, inputType, {
+                            userProvidedSubtitles,
+                            runId,
+                            promptContext: options.promptContext,
+                            autoRunContext,
+                            signal: options.signal
+                        });
                     }
                 } else {
                     // Default YouTube path
-                    subtitles = await callGeminiApi(input, inputType, { userProvidedSubtitles, runId });
+                    if (autoRunContext) await assertAutoGenerationContextDurable(autoRunContext);
+                    subtitles = await callGeminiApi(input, inputType, {
+                        userProvidedSubtitles,
+                        runId,
+                        promptContext: options.promptContext,
+                        autoRunContext,
+                        signal: options.signal
+                    });
                 }
             }
 
-            // For segment processing, the final result is already set during streaming
-            // For non-segment processing, trigger save before updating with new results
-            if (segment) {
-                // For segment processing, the final result is already set via progressive merging
-                // No need to call setSubtitlesData again since subtitles = subtitlesData (current state)
+            if (autoRunContext) await assertAutoGenerationContextDurable(autoRunContext);
+            const hasSubtitles = Array.isArray(subtitles) && subtitles.length > 0;
+            const explicitNoSpeech = Array.isArray(subtitles)
+                && subtitles.length === 0
+                && speechOnly;
+            if (!hasSubtitles && !explicitNoSpeech) {
+                setGenerationStatus(subtitleCompletionStatus(subtitles, t, { speechOnly }));
+                return false;
+            }
 
-                // Auto-save after streaming completion to preserve the new results
-                const { autoSaveAfterStreaming } = await import('../services/lifecycleOrchestrator');
-                autoSaveAfterStreaming({ subtitles, segment, delayMs: 500 });
+            let durableSave = null;
+
+            if (segment) {
+                if (!cacheId) throw new Error('The subtitle project could not be resolved.');
+                if (autoRunContext) {
+                    durableSave = await commitDurableSubtitleCheckpoint({
+                        context: autoRunContext,
+                        subtitles,
+                        validateOwnership: assertAutoGenerationContextDurable
+                    });
+                } else {
+                    durableSave = await saveSubtitlesToCache(cacheId, subtitles);
+                    requireSuccessfulSubtitleCacheSave(durableSave);
+                }
             } else {
                 // For non-segment processing, trigger save before updating with new results
-                if (subtitles && subtitles.length > 0) {
+                if (hasSubtitles || explicitNoSpeech) {
                     // First, checkpoint save of current state to preserve any manual edits
                     const { checkpointBeforeUpdate } = await import('../services/lifecycleOrchestrator');
-                    await checkpointBeforeUpdate({ source: 'video-processing-complete', runId });
-                    setSubtitlesData(subtitles);
+                    await checkpointBeforeUpdate({
+                        source: 'video-processing-complete',
+                        runId,
+                        ...(options.signal ? { signal: options.signal } : {}),
+                    });
+                    if (autoRunContext) await assertAutoGenerationContextDurable(autoRunContext);
+                    if (autoRunContext) {
+                        durableSave = await commitDurableSubtitleCheckpoint({
+                            context: autoRunContext,
+                            subtitles,
+                            validateOwnership: assertAutoGenerationContextDurable
+                        });
+                    }
+                    setGenerationSubtitlesData(subtitles);
                 } else {
                     // If no subtitles, just update normally
-                    setSubtitlesData(subtitles);
+                    setGenerationSubtitlesData(subtitles);
                 }
             }
 
-            // Cache the results - but don't cache segment results with the full file cache ID
-            if (cacheId && subtitles && subtitles.length > 0 && !segment) {
-                await saveSubtitlesToCache(cacheId, subtitles);
-            } else if (segment) {
-                debugLog('[Subtitle Generation] Skipping cache save for segment processing - not overwriting full file cache');
+            // Cache full-media results. Segment results were committed immediately above so
+            // generic streaming could not announce success ahead of durability.
+            if (cacheId && Array.isArray(subtitles) && !segment) {
+                if (autoRunContext) {
+                    if (!durableSave) {
+                        durableSave = await commitDurableSubtitleCheckpoint({
+                            context: autoRunContext,
+                            subtitles,
+                            validateOwnership: assertAutoGenerationContextDurable
+                        });
+                    }
+                } else {
+                    durableSave = await saveSubtitlesToCache(cacheId, subtitles);
+                    requireSuccessfulSubtitleCacheSave(durableSave);
+                }
             }
 
-            const currentModel = getGeminiModel();
-            const isUsingStrongModel = isHighIntelligenceModel(currentModel);
-
-            // Show different success message based on model
-            if (isUsingStrongModel && (!subtitles || subtitles.length === 0)) {
-                setStatus({ message: t('output.strongModelSuccess'), type: 'warning' });
-            } else {
-                setStatus({ message: t('output.generationSuccess'), type: 'success' });
+            let completion = null;
+            if (autoRunContext) {
+                if (!isDurableSubtitleCheckpointReceipt(durableSave, autoRunContext)) {
+                    throw new Error('Automatic subtitles were not durably saved.');
+                }
+                completion = createAutoGenerationCompletion({
+                    context: autoRunContext,
+                    terminal: hasSubtitles ? 'subtitles' : 'no-speech',
+                    checkpoint: durableSave,
+                });
+            } else if (!isSuccessfulSubtitleCacheSaveReceipt(durableSave)) {
+                throw new Error('Subtitles were not durably saved.');
             }
+
+            // This owner is the first layer allowed to publish terminal UI. Both the status and
+            // streaming-complete lifecycle happen only after a privately branded native receipt.
+            setGenerationStatus(subtitleCompletionStatus(subtitles, t, { speechOnly }));
+            if (hasSubtitles && canPresent()) {
+                publishStreamingComplete({
+                    subtitles,
+                    segment: segment ?? options.requestedSegment,
+                    runId,
+                });
+            }
+            if (completion) return completion;
             return true;
         } catch (error) {
             console.error('Error generating subtitles:', error);
+            if (error?.code === 'subtitleCacheSaveFailed') {
+                setGenerationStatus({
+                    message: t(
+                        'output.subtitlesCacheSaveFailed',
+                        'Subtitles were generated, but they could not be saved.'
+                    ),
+                    type: 'error'
+                });
+                return false;
+            }
             try {
-                if (!reportKnownGeminiSubtitleError(error, { t, setStatus, startQuotaCountdown })) {
+                if (!reportKnownGeminiSubtitleError(error, {
+                    t,
+                    setStatus: setGenerationStatus,
+                    startQuotaCountdown
+                })) {
                     // Not a recognised error type - parse a structured error payload from Gemini.
                     const errorData = JSON.parse(error.message);
                     if (errorData.type === 'unrecognized_format') {
-                        setStatus({
+                        setGenerationStatus({
                             message: `${errorData.message}\n\nRaw text from Gemini:\n${errorData.rawText}`,
                             type: 'error'
                         });
                     } else {
-                        setStatus({ message: `Error: ${error.message}`, type: 'error' });
+                        setGenerationStatus({ message: `Error: ${error.message}`, type: 'error' });
                     }
                 }
             } catch {
                 // The structured-error JSON.parse above threw (non-JSON message); fall back to a
                 // recognised-error check then a generic message.
-                if (!reportKnownGeminiSubtitleError(error, { t, setStatus, startQuotaCountdown })) {
-                    setStatus({ message: `Error: ${error.message}`, type: 'error' });
+                if (!reportKnownGeminiSubtitleError(error, {
+                    t,
+                    setStatus: setGenerationStatus,
+                    startQuotaCountdown
+                })) {
+                    setGenerationStatus({ message: `Error: ${error.message}`, type: 'error' });
                 }
             }
             return false;
         } finally {
-            setIsGenerating(false);
+            if (ownsPresentation()) {
+                generationPresentationOwnerRef.current = null;
+                setIsGenerating(false);
+            }
         }
     }, [t, startQuotaCountdown, setSubtitlesData]);
 
@@ -548,7 +775,6 @@ export const useSubtitles = (t) => {
     const { retrySegment } = useSubtitlesSegmentRetry({
         t,
         debugLog,
-        subtitlesData,
         setSubtitlesData,
         setStatus,
         setIsGenerating,

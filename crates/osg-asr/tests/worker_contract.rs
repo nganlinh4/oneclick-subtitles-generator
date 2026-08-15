@@ -4,10 +4,11 @@ use osg_asr::{
 };
 use std::path::{Path, PathBuf};
 use std::process::Command;
-use std::sync::{Arc, Mutex, OnceLock};
+use std::sync::{Arc, Mutex, MutexGuard, OnceLock};
 use std::time::{Duration, Instant};
 
 struct Fixture {
+    _serial: MutexGuard<'static, ()>,
     _directory: tempfile::TempDir,
     service: AsrService,
     request: TranscriptionRequest,
@@ -16,6 +17,9 @@ struct Fixture {
 
 impl Fixture {
     fn new(mode: &str) -> Self {
+        let serial = worker_test_lock()
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
         let directory = tempfile::tempdir().unwrap();
         let model = directory.path().join("private-model");
         std::fs::create_dir(&model).unwrap();
@@ -30,12 +34,18 @@ impl Fixture {
             TranscriptionOptions::default(),
         );
         Self {
+            _serial: serial,
             _directory: directory,
             service,
             request,
             audio_path,
         }
     }
+}
+
+fn worker_test_lock() -> &'static Mutex<()> {
+    static LOCK: OnceLock<Mutex<()>> = OnceLock::new();
+    LOCK.get_or_init(|| Mutex::new(()))
 }
 
 #[test]
@@ -113,6 +123,46 @@ fn worker_is_lazy_and_reused_without_fake_model_loading() {
 }
 
 #[test]
+fn explicit_warm_up_loads_and_reuses_the_verified_worker() {
+    let fixture = Fixture::new("valid");
+    let phases = Arc::new(Mutex::new(Vec::new()));
+    let observed = phases.clone();
+    fixture
+        .service
+        .warm_up(
+            &RunControl::new(Duration::from_secs(5))
+                .unwrap()
+                .with_progress(move |progress: &AsrProgress| {
+                    observed.lock().unwrap().push(progress.phase);
+                }),
+        )
+        .unwrap();
+    assert!(fixture.service.is_warm());
+    assert_eq!(*phases.lock().unwrap(), [ProgressPhase::ModelLoading]);
+
+    let transcription_phases = Arc::new(Mutex::new(Vec::new()));
+    let observed = transcription_phases.clone();
+    fixture
+        .service
+        .transcribe(
+            &fixture.request,
+            &RunControl::new(Duration::from_secs(5))
+                .unwrap()
+                .with_progress(move |progress: &AsrProgress| {
+                    observed.lock().unwrap().push(progress.phase);
+                }),
+        )
+        .unwrap();
+    assert_eq!(
+        *transcription_phases.lock().unwrap(),
+        [ProgressPhase::Transcribing, ProgressPhase::Finalizing]
+    );
+
+    fixture.service.shutdown().unwrap();
+    assert!(!fixture.service.is_warm());
+}
+
+#[test]
 fn timeout_and_cancellation_invalidate_the_worker() {
     let fixture = Fixture::new("hang");
     let started = Instant::now();
@@ -126,6 +176,7 @@ fn timeout_and_cancellation_invalidate_the_worker() {
     assert!(matches!(error, AsrError::TimedOut(_)));
     assert!(started.elapsed() < Duration::from_secs(3));
     assert!(!fixture.service.is_warm());
+    drop(fixture);
 
     let fixture = Fixture::new("hang");
     let token = CancellationToken::default();
@@ -144,6 +195,27 @@ fn timeout_and_cancellation_invalidate_the_worker() {
         )
         .unwrap_err();
     assert!(matches!(error, AsrError::Cancelled));
+    assert!(!fixture.service.is_warm());
+}
+
+#[test]
+fn shutdown_interrupts_an_active_transcription_and_reaps_the_worker() {
+    let fixture = Fixture::new("hang");
+    let service = fixture.service.clone();
+    let request = fixture.request.clone();
+    let active = std::thread::spawn(move || {
+        service.transcribe(&request, &RunControl::new(Duration::from_secs(5)).unwrap())
+    });
+    std::thread::sleep(Duration::from_millis(100));
+
+    let started = Instant::now();
+    fixture.service.shutdown().unwrap();
+    assert!(
+        started.elapsed() < Duration::from_secs(3),
+        "shutdown took {:?}",
+        started.elapsed()
+    );
+    assert!(matches!(active.join().unwrap(), Err(AsrError::Cancelled)));
     assert!(!fixture.service.is_warm());
 }
 
@@ -198,6 +270,7 @@ fn unbounded_stderr_is_drained_and_worker_errors_do_not_leak_paths() {
             &RunControl::new(Duration::from_secs(5)).unwrap(),
         )
         .unwrap();
+    drop(fixture);
 
     let fixture = Fixture::new("worker-error");
     let error = fixture

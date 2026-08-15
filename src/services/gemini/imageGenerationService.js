@@ -1,46 +1,19 @@
 /**
- * Client-side Background Image Generation Service (serverless)
+ * Desktop background-image generation service
  * - Generates a prompt from lyrics using Gemini text model
- * - Generates a background image conditioned on prompt + album art using Gemini image model
+ * - Imports album art as a bounded reference and returns a durable native image capability
  */
 
-// Convert Blob to base64 string (without data: prefix) — shared helper.
-import { toBase64 as blobToBase64 } from '../../utils/fileUtils';
 import { getThinkingBudget } from '../../utils/thinkingBudgetUtils';
 import { generateNativeGeminiImage } from '../../platform/nativeGeminiImage';
 import { runNativeGeminiText } from '../../platform/nativeGeminiText';
+import { isDesktopRuntime } from '../../platform/runtimeEnvironment';
 import {
   DEFAULT_BACKGROUND_PROMPT_MODEL_ID,
   DEFAULT_IMAGE_GENERATION_MODEL_ID,
   migrateGeminiModelId,
   normalizeImageGenerationModelId
 } from '../../config/geminiModels';
-
-// Normalize album art input (data URL or remote URL) into { base64, mimeType }
-const prepareAlbumArt = async (albumArtUrl) => {
-  if (albumArtUrl.startsWith('data:')) {
-    const [meta, data] = albumArtUrl.split(',');
-    const mimeType = (meta.split(';')[0] || '').split(':')[1] || 'image/png';
-    return { base64: data || '', mimeType };
-  }
-
-  const image = await new Promise((resolve, reject) => {
-    const element = new Image();
-    element.crossOrigin = 'anonymous';
-    element.onload = () => resolve(element);
-    element.onerror = () => reject(new Error('Unable to load the album art image.'));
-    element.src = albumArtUrl;
-  });
-  const canvas = document.createElement('canvas');
-  const scale = Math.min(1, 1024 / Math.max(image.width, image.height));
-  canvas.width = Math.max(1, Math.round(image.width * scale));
-  canvas.height = Math.max(1, Math.round(image.height * scale));
-  const context = canvas.getContext('2d');
-  if (!context) throw new Error('Unable to prepare the album art image.');
-  context.drawImage(image, 0, 0, canvas.width, canvas.height);
-  const dataUrl = canvas.toDataURL('image/jpeg', 0.92);
-  return { base64: dataUrl.split(',')[1] || '', mimeType: 'image/jpeg' };
-};
 
 const placeholder = (name) => `\${${name}}`;
 const SONG_NAME_PLACEHOLDER = placeholder("songName || 'Unknown Song'");
@@ -84,6 +57,11 @@ export async function generateBackgroundPrompt(lyrics, songName = 'Unknown Song'
   const template = localStorage.getItem('background_prompt_one') || DEFAULT_PROMPT_ONE;
   const content = renderTemplate(template, { lyrics, songName });
 
+  if (!isDesktopRuntime()) {
+    const { generateBrowserBackgroundPrompt } = await import('./imageGenerationBrowserService');
+    return generateBrowserBackgroundPrompt({ content, model });
+  }
+
   const thinking = getThinkingBudget(model);
   const result = await runNativeGeminiText({
     task: 'analyzeSubtitles',
@@ -96,7 +74,7 @@ export async function generateBackgroundPrompt(lyrics, songName = 'Unknown Song'
   return text;
 }
 
-export async function generateBackgroundImage(prompt, albumArtUrl) {
+export async function generateBackgroundImage(prompt, albumArtUrl, { signal } = {}) {
   if (!prompt || !prompt.trim()) throw new Error('Prompt is required');
   if (!albumArtUrl) throw new Error('Album art URL is required');
 
@@ -104,31 +82,28 @@ export async function generateBackgroundImage(prompt, albumArtUrl) {
     localStorage.getItem('background_image_model') || DEFAULT_IMAGE_GENERATION_MODEL_ID
   );
 
-  // Prepare image data without any provider request from the WebView.
-  const { base64: base64Image, mimeType } = await prepareAlbumArt(albumArtUrl);
-
   // Use Prompt Two template to build the final instruction text that references ${prompt}
   const promptTemplate = localStorage.getItem('background_prompt_two') || DEFAULT_PROMPT_TWO;
   const finalPrompt = renderTemplate(promptTemplate, { prompt });
 
-  let binary;
-  try {
-    binary = atob(base64Image);
-  } catch {
-    throw new Error('The album art image data is invalid');
+  if (isDesktopRuntime()) {
+    const generated = await generateNativeGeminiImage({
+      referencePlaybackUrl: albumArtUrl,
+      prompt: finalPrompt,
+      model,
+      signal,
+    });
+    return generated.image;
   }
-  const bytes = new Uint8Array(binary.length);
-  for (let index = 0; index < binary.length; index += 1) {
-    bytes[index] = binary.charCodeAt(index);
-  }
-  const generated = await generateNativeGeminiImage({
-    referenceBlob: new Blob([bytes], { type: mimeType }),
+
+  // Browser compatibility stays in a separate lazy module. The production desktop fold removes
+  // this import and its inline-image/provider implementation from the emitted WebView graph.
+  const { generateBrowserBackgroundImage } = await import('./imageGenerationBrowserService');
+  return generateBrowserBackgroundImage({
     prompt: finalPrompt,
+    albumArtUrl,
     model,
+    signal,
   });
-  return {
-    data: await blobToBase64(new Blob([generated.bytes], { type: generated.mimeType })),
-    mime_type: generated.mimeType,
-  };
 }
 

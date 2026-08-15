@@ -1,23 +1,46 @@
 import { useCallback, useEffect } from 'react';
 import { useTranslation } from 'react-i18next';
 import { EVENTS, publish, subscribe } from '../events/bus';
+import { CHECKPOINT_SOURCE } from '../events/constants';
 import { generateUrlBasedCacheId, saveSubtitlesToCache } from '../services/subtitleCache';
 import { isDesktopRuntime } from '../platform/desktopRuntime';
 import { getCurrentCacheId as getSubtitleContextCacheId } from '../utils/userSubtitlesStore';
 import { flushDurableLyricsHistory } from '../platform/durableLyricsHistory';
+
+const notifySaved = (message) => {
+  try {
+    window.addToast?.(message, 'success', 3000);
+  } catch {
+    // Notification failure cannot reverse an acknowledged subtitle checkpoint.
+  }
+};
 
 /**
  * Encapsulates saving lyrics to cache plus the save-before-update and
  * save-after-streaming event listeners (with cleanup). Closes over the
  * parent's lyrics state and update/save callbacks via params.
  */
-export const useLyricsSave = ({ lyrics, updateSavedLyrics, onSaveSubtitles }) => {
+export const useLyricsSave = ({
+  lyrics,
+  updateSavedLyrics,
+  onSaveSubtitles,
+  listenForLifecycle = true,
+}) => {
   const { t } = useTranslation();
 
   // Function to save current subtitles to cache
-  const handleSave = useCallback(async () => {
+  const handleSave = useCallback(async (options = {}) => {
     try {
       await flushDurableLyricsHistory();
+
+      // A first transcription has no previous subtitle rows to checkpoint. The durable-history
+      // flush above must still complete so an intentional edit-to-empty is preserved, but an
+      // empty initial state must not be sent to the project store as a new subtitle track.
+      if (options?.allowEmptyCheckpoint === true
+          && Array.isArray(lyrics) && lyrics.length === 0) {
+        return true;
+      }
+
       const desktopRuntime = isDesktopRuntime();
       let cacheId = null;
 
@@ -64,7 +87,7 @@ export const useLyricsSave = ({ lyrics, updateSavedLyrics, onSaveSubtitles }) =>
           return false;
         }
 
-        window.addToast(t('output.subtitlesSaved', 'Progress saved successfully'), 'success', 3000);
+        notifySaved(t('output.subtitlesSaved', 'Progress saved successfully'));
         updateSavedLyrics();
         if (onSaveSubtitles) {
           onSaveSubtitles(subtitlesToSave);
@@ -89,7 +112,7 @@ export const useLyricsSave = ({ lyrics, updateSavedLyrics, onSaveSubtitles }) =>
         const result = await saveSubtitlesToCache(cacheId, subtitlesToSave);
         if (result.success) {
           // Show success toast using centralized system
-          window.addToast(t('output.subtitlesSaved', 'Progress saved successfully'), 'success', 3000);
+          notifySaved(t('output.subtitlesSaved', 'Progress saved successfully'));
 
           // Update the saved lyrics state in the editor
           updateSavedLyrics();
@@ -112,7 +135,7 @@ export const useLyricsSave = ({ lyrics, updateSavedLyrics, onSaveSubtitles }) =>
       } else {
         // Frontend-only: simulate success (local state + events only)
         // Show success toast using centralized system
-        window.addToast(t('output.subtitlesSaved', 'Progress saved successfully'), 'success', 3000);
+        notifySaved(t('output.subtitlesSaved', 'Progress saved successfully'));
 
         updateSavedLyrics();
         if (onSaveSubtitles) {
@@ -132,19 +155,26 @@ export const useLyricsSave = ({ lyrics, updateSavedLyrics, onSaveSubtitles }) =>
 
   // Listen for save-before-update events triggered before new video processing results
   useEffect(() => {
+    if (!listenForLifecycle) return undefined;
     const handleSaveBeforeUpdate = (event) => {
 
 
       // Handle both segment processing start and video processing complete
-      const isSegmentStart = event.detail?.source === 'segment-processing-start';
-      const isProcessingComplete = event.detail?.source === 'video-processing-complete';
+      const isSegmentStart = event.detail?.source === CHECKPOINT_SOURCE.SEGMENT_PROCESSING_START;
+      const isProcessingComplete = event.detail?.source === CHECKPOINT_SOURCE.VIDEO_PROCESSING_COMPLETE;
+      const isAutoGenerationStart = event.detail?.source === CHECKPOINT_SOURCE.AUTO_GENERATION_START;
+      const isTranslationStart = event.detail?.source === CHECKPOINT_SOURCE.TRANSLATION_START;
 
-      if (isSegmentStart || isProcessingComplete) {
-        const action = isSegmentStart ? 'segment processing' : 'video processing completion';
+      if (isSegmentStart || isProcessingComplete || isAutoGenerationStart || isTranslationStart) {
+        const action = isSegmentStart
+          ? 'segment processing'
+          : (isAutoGenerationStart
+              ? 'automatic generation'
+              : (isTranslationStart ? 'translation' : 'video processing completion'));
 
 
         // Trigger the save function to checkpoint current edits
-        handleSave().then((success) => {
+        handleSave({ allowEmptyCheckpoint: true }).then((success) => {
           // Dispatch save-complete event to notify that save is done
           publish(EVENTS.SAVE_COMPLETE, {
             source: event.detail?.source,
@@ -170,10 +200,11 @@ export const useLyricsSave = ({ lyrics, updateSavedLyrics, onSaveSubtitles }) =>
     return () => {
   unsubscribe();
     };
-  }, [handleSave, updateSavedLyrics]);
+  }, [handleSave, listenForLifecycle, updateSavedLyrics]);
 
   // Listen for save-after-streaming events triggered after streaming completion
   useEffect(() => {
+    if (!listenForLifecycle) return undefined;
     const handleSaveAfterStreaming = (event) => {
 
 
@@ -197,7 +228,7 @@ export const useLyricsSave = ({ lyrics, updateSavedLyrics, onSaveSubtitles }) =>
     return () => {
   unsubscribe2();
     };
-  }, [handleSave, lyrics, updateSavedLyrics]);
+  }, [handleSave, listenForLifecycle, lyrics, updateSavedLyrics]);
 
   return { handleSave };
 };

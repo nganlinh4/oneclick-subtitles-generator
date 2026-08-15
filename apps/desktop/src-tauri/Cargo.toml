@@ -59,5 +59,8 @@ tokio-util = { version = "=0.7.19", features = ["rt"] }
 uuid.workspace = true
 zip = { version = "=8.6.0", default-features = false, features = ["deflate"] }
 
+[target.'cfg(windows)'.dependencies]
+winapi-util = "=0.1.11"
+
 [lints]
 workspace = true

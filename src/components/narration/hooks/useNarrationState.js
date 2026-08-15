@@ -1,5 +1,17 @@
 import { useState, useEffect, useCallback } from 'react';
 
+export const NARRATION_METHODS = Object.freeze([
+  'f5tts',
+  'chatterbox',
+  'gemini',
+  'edge-tts',
+  'gtts',
+]);
+
+export const normalizeNarrationMethod = (method) => (
+  NARRATION_METHODS.includes(method) ? method : 'gemini'
+);
+
 /**
  * Custom hook for managing narration state
  * @param {Object} initialReferenceAudio - Initial reference audio
@@ -7,14 +19,21 @@ import { useState, useEffect, useCallback } from 'react';
  */
 const useNarrationState = (initialReferenceAudio) => {
   // Narration Method state - load from localStorage or default to Gemini
-  const [narrationMethod, setNarrationMethod] = useState(() => {
-    // Try to load from localStorage
-    const savedMethod = localStorage.getItem('narration_method');
-    return savedMethod || 'gemini'; // Default to Gemini if not set
+  const [narrationMethod, setNarrationMethodState] = useState(() => {
+    try {
+      return normalizeNarrationMethod(localStorage.getItem('narration_method'));
+    } catch {
+      return 'gemini';
+    }
   });
-  const [isGeminiAvailable, setIsGeminiAvailable] = useState(true); // Assume Gemini is available by default
+  const setNarrationMethod = useCallback((method) => {
+    setNarrationMethodState(normalizeNarrationMethod(method));
+  }, []);
+  const [isGeminiAvailable, setIsGeminiAvailable] = useState(false);
   const [isChatterboxAvailable, setIsChatterboxAvailable] = useState(false); // Start as unavailable, will be updated by availability check
-  const [isCheckingAvailability, setIsCheckingAvailability] = useState(false); // Not using loading state
+  const [isEdgeTTSAvailable, setIsEdgeTTSAvailable] = useState(false);
+  const [isGTTSAvailable, setIsGTTSAvailable] = useState(false);
+  const [isCheckingAvailability, setIsCheckingAvailability] = useState(true);
 
   // Gemini-specific settings
   const [selectedVoice, setSelectedVoice] = useState(() => {
@@ -185,6 +204,14 @@ const useNarrationState = (initialReferenceAudio) => {
     };
   });
 
+  useEffect(() => {
+    try {
+      localStorage.setItem('narration_method', narrationMethod);
+    } catch {
+      // The in-memory normalized value remains authoritative when storage is unavailable.
+    }
+  }, [narrationMethod]);
+
   // Save advanced settings to localStorage when they change
   useEffect(() => {
     if (advancedSettings) {
@@ -258,6 +285,10 @@ const useNarrationState = (initialReferenceAudio) => {
     setIsGeminiAvailable,
     isChatterboxAvailable,
     setIsChatterboxAvailable,
+    isEdgeTTSAvailable,
+    setIsEdgeTTSAvailable,
+    isGTTSAvailable,
+    setIsGTTSAvailable,
     isCheckingAvailability,
     setIsCheckingAvailability,
 

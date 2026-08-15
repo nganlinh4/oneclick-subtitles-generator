@@ -1,7 +1,7 @@
 import { useState, useRef, useEffect, useCallback, useMemo } from 'react';
 import { useTranslation } from 'react-i18next';
 import { isDesktopRuntime } from '../../platform/desktopRuntime';
-import { nativeMediaDropService } from '../../platform/mediaDropService';
+import { nativeMediaDropService, sharedNativeMediaDropService } from '../../platform/mediaDropService';
 import { isPhysicalPointInsideElement } from '../../platform/nativeMediaDropTarget';
 import {
   claimMediaDrop,
@@ -15,7 +15,7 @@ import { setCurrentCacheId as setSubtitlesCacheId } from '../../utils/userSubtit
 import LoadingIndicator from '../common/LoadingIndicator';
 import '../../styles/FileUploadInput.css';
 
-const FileUploadInput = ({ uploadedFile, setUploadedFile, onVideoSelect, className, isSrtOnlyMode, setIsSrtOnlyMode, setStatus, subtitlesData, setVideoSegments, setSegmentsStatus }) => {
+const FileUploadInput = ({ uploadedFile, setUploadedFile, setUploadedFileData, onVideoSelect, className, isSrtOnlyMode, setIsSrtOnlyMode, setStatus, subtitlesData, setVideoSegments, setSegmentsStatus }) => {
   const { t } = useTranslation();
   const [fileInfo, setFileInfo] = useState(null);
   const [isDragOver, setIsDragOver] = useState(false);
@@ -122,6 +122,7 @@ const FileUploadInput = ({ uploadedFile, setUploadedFile, onVideoSelect, classNa
 
     if (onVideoSelect) onVideoSelect(null);
     if (isSrtOnlyMode && setIsSrtOnlyMode) setIsSrtOnlyMode(false);
+    if (setUploadedFileData) setUploadedFileData(null);
     setUploadedFile(media);
     displayFileInfo(media);
 
@@ -138,6 +139,7 @@ const FileUploadInput = ({ uploadedFile, setUploadedFile, onVideoSelect, classNa
     setIsSrtOnlyMode,
     setStatus,
     setUploadedFile,
+    setUploadedFileData,
     subtitlesData,
     t,
   ]);
@@ -198,7 +200,8 @@ const FileUploadInput = ({ uploadedFile, setUploadedFile, onVideoSelect, classNa
       if (event.type !== 'drop') return;
       activeDragId = null;
 
-      if (nativeLoadingRef.current || !containsPhysicalPosition(event.position)) {
+      if (!containsPhysicalPosition(event.position)) return;
+      if (nativeLoadingRef.current) {
         nativeMediaDropService.discard(event.offerId).catch(() => {});
         return;
       }
@@ -221,7 +224,7 @@ const FileUploadInput = ({ uploadedFile, setUploadedFile, onVideoSelect, classNa
         });
     };
 
-    nativeMediaDropService.subscribe(handleNativeDropEvent, () => {
+    sharedNativeMediaDropService.subscribe(handleNativeDropEvent, () => {
       if (!cancelled) setIsDragOver(false);
     }).then((registered) => {
       if (cancelled) registered.unsubscribe().catch(() => {});
@@ -340,6 +343,7 @@ const FileUploadInput = ({ uploadedFile, setUploadedFile, onVideoSelect, classNa
         }
 
         // Store the processed file for actual processing
+        if (setUploadedFileData) setUploadedFileData(null);
         setUploadedFile(processedFile);
 
         // If we have subtitles data already (from uploaded SRT), no need to prepare segments
@@ -421,6 +425,7 @@ const FileUploadInput = ({ uploadedFile, setUploadedFile, onVideoSelect, classNa
     if (nativeOperationRef.current !== operation) return;
 
     setFileInfo(null);
+    if (setUploadedFileData) setUploadedFileData(null);
     setUploadedFile(null);
     setRulesCacheId(null);
     setSubtitlesCacheId(null);

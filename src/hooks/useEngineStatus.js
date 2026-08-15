@@ -11,13 +11,16 @@ export const mapNativeAsrEngines = (status) => Object.fromEntries(
     id: engine.id,
     label: engine.label,
     installed: engine.installed,
-    running: engine.ready,
-    state: engine.ready
-      ? 'ready'
-      : engine.installed
-        ? 'installed-stopped'
-        : 'not-installed',
+    running: engine.warm,
+    state: engine.starting
+      ? 'starting'
+      : engine.ready && engine.warm
+        ? 'ready'
+        : engine.installed
+          ? 'installed-stopped'
+          : 'not-installed',
     warm: engine.warm,
+    starting: engine.starting,
     runtime: engine.runtime,
     supportsForcedLanguage: engine.supportsForcedLanguage,
     requiresAligner: engine.requiresAligner,
@@ -35,7 +38,7 @@ export const mapNativeSpeechEngines = (status) => {
       label: binding.label,
       installed: backend.installed,
       running: backend.warm,
-      state: backend.ready
+      state: backend.ready && backend.warm
         ? 'ready'
         : backend.installed
           ? 'installed-stopped'
@@ -48,8 +51,8 @@ export const mapNativeSpeechEngines = (status) => {
 };
 
 /**
- * Unified per-engine availability from the native ASR catalog. Browser-only inspection exposes no
- * installable engines: engine state is privileged desktop state and has no network fallback.
+ * Unified per-engine availability from the native ASR and speech catalogs. Browser-only inspection
+ * exposes no installable engines: engine state is privileged desktop state with no network fallback.
  *
  * Returns { engines, loading, refresh, isReady(id), isInstalled(id) } where each engine is
  * { id, label, port, installed, running, state: 'not-installed'|'installed-stopped'|'ready' }.

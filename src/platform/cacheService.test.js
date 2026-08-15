@@ -127,9 +127,70 @@ it('rejects invalid requests before IPC and malformed or path-shaped native meta
   await expect(service.getCacheInfo()).rejects.toMatchObject({ code: 'invalidCacheResponse' });
 
   invokeCommand.mockResolvedValue(nativeInfo([
-    { category: 'futureCategory', count: 1, sizeBytes: 1 },
+    { category: 'video/../../escape', count: 1, sizeBytes: 1 },
   ]));
   await expect(service.getCacheInfo()).rejects.toBeInstanceOf(CacheServiceError);
+});
+
+it('preserves bounded native cache categories that are newer than the legacy UI catalog', async () => {
+  const waveform = { category: 'waveform', count: 2, sizeBytes: 512 };
+  const invokeCommand = vi.fn()
+    .mockResolvedValueOnce(nativeInfo([waveform]))
+    .mockResolvedValueOnce({
+      category: 'waveform',
+      removedCount: 2,
+      removedSizeBytes: 512,
+      retainedSharedCount: 0,
+      leasedCount: 0,
+      cleanupFailedCount: 0,
+      before: nativeInfo([waveform]),
+      after: nativeInfo([]),
+    });
+  const service = createCacheService({ invokeCommand });
+
+  await expect(service.getCacheInfo()).resolves.toMatchObject({
+    details: {
+      waveform: { count: 2, size: 512, formattedSize: '512 Bytes' },
+      totalCount: 2,
+      totalSize: 512,
+    },
+  });
+  await expect(service.clearCache('waveform')).resolves.toMatchObject({
+    details: {
+      waveform: { count: 2, size: 512, formattedSize: '512 Bytes' },
+    },
+  });
+  expect(invokeCommand).toHaveBeenLastCalledWith('cache_clear', { category: 'waveform' });
+});
+
+it('bounds open native cache categories and accepts only the Rust CacheCategory alphabet', async () => {
+  const invalidNative = createCacheService({
+    invokeCommand: vi.fn().mockResolvedValue(nativeInfo([
+      { category: 'not valid', count: 1, sizeBytes: 1 },
+    ])),
+  });
+  await expect(invalidNative.getCacheInfo()).rejects.toMatchObject({
+    code: 'invalidCacheResponse',
+  });
+
+  const invokeCommand = vi.fn().mockResolvedValue({
+    category: '__proto__',
+    removedCount: 0,
+    removedSizeBytes: 0,
+    retainedSharedCount: 0,
+    leasedCount: 0,
+    cleanupFailedCount: 0,
+    before: nativeInfo([]),
+    after: nativeInfo([]),
+  });
+  const service = createCacheService({ invokeCommand });
+  await expect(service.clearCache('x'.repeat(65))).rejects.toMatchObject({
+    code: 'invalidCacheRequest',
+  });
+  const protoResult = await service.clearCache('__proto__');
+  expect(Object.hasOwn(protoResult.details, '__proto__')).toBe(true);
+  expect(protoResult.details.__proto__).toMatchObject({ count: 0, size: 0 });
+  expect(invokeCommand).toHaveBeenCalledWith('cache_clear', { category: '__proto__' });
 });
 
 it('rejects unsafe numeric responses and impossible before/after growth', async () => {
@@ -177,9 +238,83 @@ it('prunes through the dedicated command and never reflects transport diagnostic
   expect(JSON.stringify(caught)).not.toContain(privatePath);
 });
 
+it('preserves only cache error codes produced by Rust and ignores hostile accessors', async () => {
+  const unknown = createCacheService({
+    invokeCommand: vi.fn().mockRejectedValue({
+      code: 'attackerChosenCode',
+      message: 'C:\\private\\cache',
+    }),
+  });
+  await expect(unknown.getCacheInfo()).rejects.toMatchObject({
+    code: 'cacheCommandFailed',
+    message: 'The cache operation could not be completed',
+  });
+
+  const accessor = {};
+  Object.defineProperty(accessor, 'code', {
+    get() { throw new Error('C:\\private\\getter'); },
+  });
+  const hostile = createCacheService({
+    invokeCommand: vi.fn().mockRejectedValue(accessor),
+  });
+  const caught = await hostile.getCacheInfo().catch((error) => error);
+  expect(caught).toMatchObject({
+    name: 'CacheServiceError',
+    code: 'cacheCommandFailed',
+    message: 'The cache operation could not be completed',
+  });
+  expect(String(caught)).not.toContain('private');
+});
+
 it('matches legacy byte formatting', () => {
   expect(formatCacheBytes(0)).toBe('0 Bytes');
   expect(formatCacheBytes(1024)).toBe('1 KB');
   expect(formatCacheBytes(1536)).toBe('1.5 KB');
   expect(formatCacheBytes(1024 ** 3)).toBe('1 GB');
+});
+
+it('reads cache command codes exactly once and rejects accessor-backed responses', async () => {
+  let codeReads = 0;
+  const commandFailure = {};
+  Object.defineProperty(commandFailure, 'code', {
+    get() {
+      codeReads += 1;
+      return codeReads === 1 ? 'internal' : 'attackerChosenCode';
+    },
+  });
+  const failed = createCacheService({
+    invokeCommand: vi.fn().mockRejectedValue(commandFailure),
+  });
+  await expect(failed.getCacheInfo()).rejects.toMatchObject({ code: 'internal' });
+  expect(codeReads).toBe(1);
+
+  const category = { category: 'videos', sizeBytes: 1 };
+  let countReads = 0;
+  Object.defineProperty(category, 'count', {
+    enumerable: true,
+    get() {
+      countReads += 1;
+      return countReads < 3 ? 1 : 'secret-from-getter';
+    },
+  });
+  const hostileResponse = createCacheService({
+    invokeCommand: vi.fn().mockResolvedValue({
+      categories: [category],
+      totalCount: 1,
+      totalSizeBytes: 1,
+    }),
+  });
+  await expect(hostileResponse.getCacheInfo()).rejects.toMatchObject({
+    code: 'invalidCacheResponse',
+  });
+  expect(countReads).toBe(0);
+});
+
+it('preserves the cleanup-time invalid media location command code', async () => {
+  const service = createCacheService({
+    invokeCommand: vi.fn().mockRejectedValue({ code: 'invalidMediaLocation' }),
+  });
+  await expect(service.getCacheInfo()).rejects.toMatchObject({
+    code: 'invalidMediaLocation',
+  });
 });

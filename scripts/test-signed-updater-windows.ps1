@@ -50,10 +50,12 @@ if ($env:CI -ne 'true' -or $env:GITHUB_ACTIONS -ne 'true' `
     -or $env:OSG_ENABLE_SIGNED_UPDATER_FIXTURE -ne '1') {
   throw 'The signed updater smoke may run only in its isolated GitHub Actions job'
 }
-if ($BaseVersion -notmatch '^\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?$' `
-    -or $UpdatedVersion -notmatch '^\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?$' `
-    -or $BaseVersion -eq $UpdatedVersion) {
-  throw 'Signed updater smoke versions are invalid'
+& node 'scripts/derive-updater-smoke-version.js' `
+  '--assert-contract' `
+  $BaseVersion `
+  $UpdatedVersion
+if ($LASTEXITCODE -ne 0) {
+  throw 'Signed updater smoke version contract is invalid'
 }
 
 $runnerTemp = [IO.Path]::GetFullPath($env:RUNNER_TEMP).TrimEnd('\') + '\'

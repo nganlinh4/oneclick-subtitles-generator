@@ -250,6 +250,7 @@ pub enum TextAlign {
     Left,
     Center,
     Right,
+    Justify,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize, Serialize)]
@@ -268,6 +269,7 @@ pub enum BorderStyle {
     Solid,
     Dashed,
     Dotted,
+    Double,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize, Serialize)]
@@ -594,6 +596,90 @@ mod tests {
         let plan = request.validate(1_920, 1_080, 5_000_000).expect("plan");
         assert_eq!((plan.width, plan.height), (640, 720));
         assert!((plan.crop.width - 50.0).abs() < f64::EPSILON);
+    }
+
+    #[test]
+    fn editor_catalog_variants_round_trip() {
+        let mut value = request_json();
+        value["customization"]["textAlign"] = json!("justify");
+        value["customization"]["borderStyle"] = json!("double");
+        let request: RenderRequest = serde_json::from_value(value).expect("request");
+        assert_eq!(request.customization.text_align, TextAlign::Justify);
+        assert_eq!(request.customization.border_style, BorderStyle::Double);
+        request
+            .validate(1_920, 1_080, 5_000_000)
+            .expect("valid render plan");
+    }
+
+    #[test]
+    fn every_shipped_and_user_preset_identity_crosses_the_native_contract() {
+        const PRESETS: [&str; 30] = [
+            "default",
+            "modern",
+            "classic",
+            "neon",
+            "minimal",
+            "gaming",
+            "cinematic",
+            "gradient",
+            "retro",
+            "elegant",
+            "cyberpunk",
+            "vintage",
+            "comic",
+            "horror",
+            "luxury",
+            "kawaii",
+            "grunge",
+            "corporate",
+            "anime",
+            "vaporwave",
+            "steampunk",
+            "noir",
+            "pastel",
+            "bold",
+            "sketch",
+            "glitch",
+            "royal",
+            "sunset",
+            "ocean",
+            "forest",
+        ];
+        for preset in PRESETS.into_iter().chain(["custom_1750000000000"]) {
+            let mut value = request_json();
+            value["customization"]["preset"] = json!(preset);
+            let request: RenderRequest = serde_json::from_value(value).expect("preset request");
+            assert_eq!(request.customization.preset, preset);
+            request
+                .validate(1_920, 1_080, 5_000_000)
+                .expect("valid preset render plan");
+        }
+    }
+
+    #[test]
+    fn preset_identity_uses_the_exact_utf8_boundary() {
+        for preset in ["x".repeat(128), format!("{}ab", "한".repeat(42))] {
+            let mut value = request_json();
+            value["customization"]["preset"] = json!(preset);
+            let request: RenderRequest = serde_json::from_value(value).expect("preset request");
+            request
+                .validate(1_920, 1_080, 5_000_000)
+                .expect("bounded preset");
+        }
+        for preset in [
+            String::new(),
+            "x".repeat(129),
+            "한".repeat(43),
+            "bad\0preset".to_owned(),
+        ] {
+            let mut value = request_json();
+            value["customization"]["preset"] = json!(preset);
+            let request: RenderRequest = serde_json::from_value(value).expect("preset request");
+            assert!(matches!(
+                request.validate(1_920, 1_080, 5_000_000),
+                Err(RenderError::InvalidRequest)
+            ));
+        }
     }
 
     #[test]

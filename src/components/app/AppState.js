@@ -13,6 +13,7 @@ import {
   subscribeCredentialState,
 } from '../../platform/credentialStateController';
 import { useNativeMediaSessionHydration } from '../../hooks/useNativeMediaSessionHydration';
+import { readDownloadCookiePreference } from '../../platform/downloadCookiePreference';
 
 /**
  * Custom hook for managing application state
@@ -45,7 +46,9 @@ export const useAppState = () => {
   });
   const [optimizedResolution, setOptimizedResolution] = useState(localStorage.getItem('optimized_resolution') || '360p');
   const [useOptimizedPreview, setUseOptimizedPreview] = useState(localStorage.getItem('use_optimized_preview') === 'true');
-  const [useCookiesForDownload, setUseCookiesForDownload] = useState(localStorage.getItem('use_cookies_for_download') === 'true');
+  const [useCookiesForDownload, setUseCookiesForDownload] = useState(
+    () => readDownloadCookiePreference().enabled
+  );
   const [enableYoutubeSearch, setEnableYoutubeSearch] = useState(localStorage.getItem('enable_youtube_search') === 'true'); // Default to false
   const [isDownloading, setIsDownloading] = useState(false);
   const [downloadProgress, setDownloadProgress] = useState(0);

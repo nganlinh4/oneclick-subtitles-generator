@@ -1,5 +1,6 @@
-import { useState } from 'react';
-import { translateSubtitles, getProcessingForceStopped } from '../services/geminiService';
+import { useCallback, useRef, useState } from 'react';
+import { translateSubtitles } from '../services/geminiService';
+import { createTranslationAbortError } from '../utils/translationOwnership';
 
 /**
  * Custom hook that manages bulk (multi-file) translation state and handlers.
@@ -17,13 +18,25 @@ export const useTranslationBulk = ({
   splitDuration,
   setError,
   setTranslationStatus,
-  t
+  t,
+  onBulkSourceMutation = () => {},
 }) => {
   // Bulk translation state
   const [bulkFiles, setBulkFiles] = useState([]);
   const [bulkTranslations, setBulkTranslations] = useState([]);
   const [isBulkTranslating, setIsBulkTranslating] = useState(false);
   const [currentBulkFileIndex, setCurrentBulkFileIndex] = useState(-1);
+  const bulkFilesRef = useRef(bulkFiles);
+  bulkFilesRef.current = bulkFiles;
+  const setOwnedBulkFiles = useCallback((nextValue) => {
+    const nextFiles = typeof nextValue === 'function'
+      ? nextValue(bulkFilesRef.current)
+      : nextValue;
+    onBulkSourceMutation();
+    bulkFilesRef.current = nextFiles;
+    setBulkFiles(nextFiles);
+    setBulkTranslations([]);
+  }, [onBulkSourceMutation]);
 
   /**
    * Handle bulk translation
@@ -34,38 +47,50 @@ export const useTranslationBulk = ({
    * @param {Array} chainItems - Optional chain items for format mode
    * @param {boolean} hasMainSubtitles - Whether there are main subtitles to translate after bulk
    */
-  const handleBulkTranslate = async (languages, delimiter = ' ', useParentheses = false, bracketStyle = null, chainItems = null, hasMainSubtitles = false) => {
+  const handleBulkTranslate = async (languages, delimiter = ' ', useParentheses = false, bracketStyle = null, chainItems = null, hasMainSubtitles = false, ownership = {}) => {
+    const { signal, assertOwned = async () => {} } = ownership;
+    const assertBoundary = async () => {
+      if (signal?.aborted) throw createTranslationAbortError();
+      await assertOwned();
+      if (signal?.aborted) throw createTranslationAbortError();
+    };
+    const publishOwnedState = async (publisher) => {
+      await assertBoundary();
+      publisher();
+      await assertBoundary();
+    };
+    await assertBoundary();
     if (bulkFiles.length === 0) {
-      setError(t('translation.bulk.noFiles', 'No files added for bulk translation'));
-      return;
+      await publishOwnedState(() => {
+        setError(t('translation.bulk.noFiles', 'No files added for bulk translation'));
+      });
+      return { status: 'empty', results: [] };
     }
 
-    setIsBulkTranslating(true);
-    setError('');
-    setBulkTranslations([]);
-    setCurrentBulkFileIndex(0);
+    await publishOwnedState(() => setIsBulkTranslating(true));
+    await publishOwnedState(() => setError(''));
+    await publishOwnedState(() => setBulkTranslations([]));
+    await publishOwnedState(() => setCurrentBulkFileIndex(0));
 
     const results = [];
 
     try {
       // Process each file sequentially
       for (let i = 0; i < bulkFiles.length; i++) {
-        // Check if processing has been force stopped before processing each file
-        if (getProcessingForceStopped()) {
-          console.log('Bulk translation cancelled by user');
-          throw new Error('Bulk translation was cancelled by user');
-        }
+        await assertBoundary();
 
-        setCurrentBulkFileIndex(i);
+        await publishOwnedState(() => setCurrentBulkFileIndex(i));
         const bulkFile = bulkFiles[i];
 
         // Update status - include main file in total count if it exists
         const totalFiles = bulkFiles.length + (hasMainSubtitles ? 1 : 0);
-        setTranslationStatus(t('translation.bulk.processing', 'Processing file {{current}}/{{total}}: {{filename}}', {
-          current: i + 1,
-          total: totalFiles,
-          filename: bulkFile.name
-        }));
+        await publishOwnedState(() => {
+          setTranslationStatus(t(
+            'translation.bulk.processing',
+            'Processing file {{current}}/{{total}}: {{filename}}',
+            { current: i + 1, total: totalFiles, filename: bulkFile.name }
+          ));
+        });
 
         try {
           // Use the same translation settings but skip context rules
@@ -80,8 +105,11 @@ export const useTranslationBulk = ({
             useParentheses,
             bracketStyle,
             chainItems,
-            bulkFile.name // File context for bulk translation
+            bulkFile.name, // File context for bulk translation
+            false,
+            ownership
           );
+          await assertBoundary();
 
           if (result && result.length > 0) {
             results.push({
@@ -100,9 +128,9 @@ export const useTranslationBulk = ({
           console.error(`Error translating file ${bulkFile.name}:`, fileError);
 
           // Check if this was a cancellation error
-          if (fileError.message && fileError.message.includes('aborted')) {
-            console.log('File translation was cancelled, stopping bulk translation');
-            throw new Error('Bulk translation was cancelled by user');
+          if (signal?.aborted || fileError?.name === 'AbortError'
+              || fileError?.code === 'translationAborted') {
+            throw createTranslationAbortError();
           }
 
           results.push({
@@ -112,14 +140,11 @@ export const useTranslationBulk = ({
           });
         }
 
-        // Check if processing has been force stopped after each file
-        if (getProcessingForceStopped()) {
-          console.log('Bulk translation cancelled by user after file completion');
-          throw new Error('Bulk translation was cancelled by user');
-        }
+        await assertBoundary();
       }
 
-      setBulkTranslations(results);
+      await assertBoundary();
+      await publishOwnedState(() => setBulkTranslations(results));
 
       // Calculate total files including main file if it exists
       const totalFiles = results.length + (hasMainSubtitles ? 1 : 0);
@@ -127,32 +152,53 @@ export const useTranslationBulk = ({
 
       if (hasMainSubtitles) {
         // If there's a main file to translate, show intermediate status
-        setTranslationStatus(t('translation.bulk.completeWithMain', 'Bulk files complete: {{success}}/{{bulkTotal}} bulk files processed, main file next ({{current}}/{{total}} total)', {
-          success: successfulBulkFiles,
-          bulkTotal: results.length,
-          current: successfulBulkFiles,
-          total: totalFiles
-        }));
+        await publishOwnedState(() => {
+          setTranslationStatus(t(
+            'translation.bulk.completeWithMain',
+            'Bulk files complete: {{success}}/{{bulkTotal}} bulk files processed, main file next ({{current}}/{{total}} total)',
+            {
+              success: successfulBulkFiles,
+              bulkTotal: results.length,
+              current: successfulBulkFiles,
+              total: totalFiles,
+            }
+          ));
+        });
       } else {
         // If no main file, show final status
-        setTranslationStatus(t('translation.bulk.complete', 'Bulk translation complete: {{success}}/{{total}} files processed successfully', {
-          success: successfulBulkFiles,
-          total: totalFiles
-        }));
+        await publishOwnedState(() => {
+          setTranslationStatus(t(
+            'translation.bulk.complete',
+            'Bulk translation complete: {{success}}/{{total}} files processed successfully',
+            { success: successfulBulkFiles, total: totalFiles }
+          ));
+        });
       }
+      return { status: 'complete', results };
 
     } catch (error) {
       console.error('Bulk translation error:', error);
 
       // Check if this was a cancellation
-      if (error.message && (error.message.includes('cancelled') || error.message.includes('aborted'))) {
-        setTranslationStatus(t('translation.cancelled', 'Translation cancelled by user'));
+      if (signal?.aborted || error?.name === 'AbortError' || error?.code === 'translationAborted') {
+        throw createTranslationAbortError();
       } else {
-        setError(t('translation.bulk.error', 'Error during bulk translation: {{message}}', { message: error.message }));
+        await publishOwnedState(() => {
+          setError(t(
+            'translation.bulk.error',
+            'Error during bulk translation: {{message}}',
+            { message: error.message }
+          ));
+        });
       }
+      return { status: 'failed', results };
     } finally {
-      setIsBulkTranslating(false);
-      setCurrentBulkFileIndex(-1);
+      try {
+        await publishOwnedState(() => setIsBulkTranslating(false));
+        await publishOwnedState(() => setCurrentBulkFileIndex(-1));
+      } catch {
+        // A stale run cannot publish terminal bulk state.
+      }
     }
   };
 
@@ -163,7 +209,7 @@ export const useTranslationBulk = ({
   const handleBulkFileRemoval = (fileId) => {
     // Remove the file from bulk files
     const updatedBulkFiles = bulkFiles.filter(bf => bf.id !== fileId);
-    setBulkFiles(updatedBulkFiles);
+    setOwnedBulkFiles(updatedBulkFiles);
 
     // Remove corresponding translation result if it exists
     const updatedBulkTranslations = bulkTranslations.filter(bt => bt.originalFile.id !== fileId);
@@ -174,13 +220,13 @@ export const useTranslationBulk = ({
    * Handle bulk files removal (remove all) with translation cleanup
    */
   const handleBulkFilesRemovalAll = () => {
-    setBulkFiles([]);
-    setBulkTranslations([]);
+    setOwnedBulkFiles([]);
   };
 
   return {
     bulkFiles,
-    setBulkFiles,
+    bulkFilesRef,
+    setBulkFiles: setOwnedBulkFiles,
     bulkTranslations,
     setBulkTranslations,
     isBulkTranslating,

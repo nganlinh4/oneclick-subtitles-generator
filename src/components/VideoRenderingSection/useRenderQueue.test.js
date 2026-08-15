@@ -1,6 +1,10 @@
 import { act, renderHook, waitFor } from '@testing-library/react';
 
-import { mergeNativeRenderResult, useRenderQueue } from './useRenderQueue';
+import {
+  createRecoveredRenderQueueItem,
+  mergeNativeRenderResult,
+  useRenderQueue,
+} from './useRenderQueue';
 
 const recoveryMocks = vi.hoisted(() => ({
   claim: vi.fn(),
@@ -66,11 +70,16 @@ const succeededResponse = {
       mimeType: 'video/mp4',
       byteLength: 1_024,
     },
+    width: 1_920,
+    height: 1_080,
+    fps: 30,
+    durationInFrames: 300,
+    sourceAssetId: '0198a1d0-3040-7000-8000-000000000004',
+    projectId: '0198a1d0-3040-7000-8000-000000000005',
   },
 };
 
 const hookProps = () => ({
-  isRendering: false,
   setIsRendering: vi.fn(),
   setRenderProgress: vi.fn(),
   setRenderStatus: vi.fn(),
@@ -111,7 +120,22 @@ describe('native render queue hydration', () => {
     expect(hydrated.outputPath).toContain(`/asset/${playbackId}?token=`);
   });
 
-  test('releases a claimed recovered playback capability when its consumer unmounts', async () => {
+  test('builds an exportable queue row for a recovered completed render', () => {
+    const recovered = createRecoveredRenderQueueItem(succeededResponse, () => 123_456);
+
+    expect(recovered).toMatchObject({
+      id: `recovered_${jobId}`,
+      nativeJobId: jobId,
+      status: 'completed',
+      timestamp: 123_456,
+      settings: { resolution: '1080p', frameRate: 30 },
+      outputAssetId: assetId,
+      outputArtifactId: artifactId,
+      outputPlaybackId: playbackId,
+    });
+  });
+
+  test('surfaces a claimed recovered render in the queue and releases it on unmount', async () => {
     recoveryMocks.list.mockReturnValue([{ job: succeededJob, value: succeededResponse }]);
     recoveryMocks.claim.mockReturnValue({ job: succeededJob, value: succeededResponse });
     const props = hookProps();
@@ -121,9 +145,78 @@ describe('native render queue hydration', () => {
       expect(props.setRenderedVideoUrl).toHaveBeenCalledWith(
         succeededResponse.result.playback.playbackUrl,
       );
+      expect(view.result.current.renderQueue).toEqual([
+        expect.objectContaining({
+          nativeJobId: jobId,
+          status: 'completed',
+          outputAssetId: assetId,
+        }),
+      ]);
     });
     view.unmount();
 
+    expect(renderServiceMocks.releasePlayback).toHaveBeenCalledWith(playbackId);
+  });
+
+  test('removing a recovered row releases its playback exactly once', async () => {
+    recoveryMocks.list.mockReturnValue([{ job: succeededJob, value: succeededResponse }]);
+    recoveryMocks.claim.mockReturnValue({ job: succeededJob, value: succeededResponse });
+    const view = renderHook(() => useRenderQueue(hookProps()));
+
+    await waitFor(() => expect(view.result.current.renderQueue).toHaveLength(1));
+    act(() => view.result.current.removeFromQueue(`recovered_${jobId}`));
+    view.unmount();
+
+    expect(renderServiceMocks.releasePlayback).toHaveBeenCalledTimes(1);
+    expect(renderServiceMocks.releasePlayback).toHaveBeenCalledWith(playbackId);
+  });
+
+  test('keeps a recovered queue row playable while a new render starts', async () => {
+    recoveryMocks.list.mockReturnValue([{ job: succeededJob, value: succeededResponse }]);
+    recoveryMocks.claim.mockReturnValue({ job: succeededJob, value: succeededResponse });
+    const props = hookProps();
+    const view = renderHook(
+      ({ currentRenderId }) => useRenderQueue({ ...props, currentRenderId }),
+      { initialProps: { currentRenderId: null } },
+    );
+
+    await waitFor(() => expect(view.result.current.renderQueue).toHaveLength(1));
+    view.rerender({ currentRenderId: '0198a1d0-3040-7000-8000-000000000099' });
+
+    expect(renderServiceMocks.releasePlayback).not.toHaveBeenCalled();
+    expect(view.result.current.renderQueue[0]).toMatchObject({
+      status: 'completed',
+      outputPlaybackId: playbackId,
+    });
+
+    view.unmount();
+    expect(renderServiceMocks.releasePlayback).toHaveBeenCalledTimes(1);
+    expect(renderServiceMocks.releasePlayback).toHaveBeenCalledWith(playbackId);
+  });
+
+  test('releases every completed queue playback exactly once on unmount', async () => {
+    const secondPlaybackId = '2a279fd7-6168-4f99-a053-fd809b556102';
+    const view = renderHook(() => useRenderQueue(hookProps()));
+
+    act(() => view.result.current.setRenderQueue([
+      { id: 'first', status: 'completed', outputPlaybackId: playbackId },
+      { id: 'second', status: 'completed', outputPlaybackId: secondPlaybackId },
+    ]));
+    await waitFor(() => expect(view.result.current.renderQueue).toHaveLength(2));
+    view.unmount();
+
+    expect(renderServiceMocks.releasePlayback).toHaveBeenCalledTimes(2);
+    expect(renderServiceMocks.releasePlayback).toHaveBeenCalledWith(playbackId);
+    expect(renderServiceMocks.releasePlayback).toHaveBeenCalledWith(secondPlaybackId);
+  });
+
+  test('owns a just-completed playback before its queue state can commit', () => {
+    const view = renderHook(() => useRenderQueue(hookProps()));
+
+    act(() => view.result.current.ownQueuePlayback(playbackId));
+    view.unmount();
+
+    expect(renderServiceMocks.releasePlayback).toHaveBeenCalledTimes(1);
     expect(renderServiceMocks.releasePlayback).toHaveBeenCalledWith(playbackId);
   });
 
@@ -144,5 +237,92 @@ describe('native render queue hydration', () => {
     expect(recoveryMocks.claim).not.toHaveBeenCalled();
     expect(recoveryMocks.discard).not.toHaveBeenCalled();
     expect(renderServiceMocks.releasePlayback).not.toHaveBeenCalled();
+  });
+});
+
+describe('native render queue lease', () => {
+  test('admits one same-tick pump and advances pending work with a new generation', async () => {
+    const resolvers = [];
+    const owners = [];
+    const props = hookProps();
+    props.startRenderRef.current = vi.fn((_item, owner) => {
+      owners.push(owner);
+      return new Promise((resolve) => resolvers.push(resolve));
+    });
+    const view = renderHook(() => useRenderQueue(props));
+    act(() => view.result.current.setRenderQueue([
+      { id: 'first', status: 'pending', progress: 0 },
+      { id: 'second', status: 'pending', progress: 0 },
+    ]));
+
+    let admitted;
+    let competing;
+    act(() => {
+      admitted = view.result.current.startNextPendingRender();
+      competing = view.result.current.startNextPendingRender();
+    });
+
+    await expect(competing).resolves.toBe(false);
+    expect(props.startRenderRef.current).toHaveBeenCalledTimes(1);
+    expect(owners[0]).toMatchObject({ queueItemId: 'first', generation: 1 });
+    expect(view.result.current.ownsRenderLease(owners[0])).toBe(true);
+
+    await act(async () => {
+      resolvers[0]();
+      await admitted;
+    });
+    await waitFor(() => expect(props.startRenderRef.current).toHaveBeenCalledTimes(2));
+    expect(owners[1]).toMatchObject({ queueItemId: 'second', generation: 2 });
+    expect(view.result.current.ownsRenderLease(owners[0])).toBe(false);
+    expect(view.result.current.ownsRenderLease(owners[1])).toBe(true);
+
+    await act(async () => {
+      resolvers[1]();
+      await Promise.resolve();
+    });
+    await waitFor(() => expect(view.result.current.currentQueueItem).toBeNull());
+    expect(props.startRenderRef.current).toHaveBeenCalledTimes(2);
+    expect(props.setIsRendering.mock.calls).toEqual([
+      [true],
+      [false],
+      [true],
+      [false],
+    ]);
+  });
+
+  test('contains an unexpected owner failure and pumps the next item exactly once', async () => {
+    let resolveSecond;
+    const owners = [];
+    const props = hookProps();
+    props.startRenderRef.current = vi.fn((item, owner) => {
+      owners.push(owner);
+      if (item.id === 'first') return Promise.reject(new Error('C:\\private\\secret'));
+      return new Promise((resolve) => { resolveSecond = resolve; });
+    });
+    const view = renderHook(() => useRenderQueue(props));
+    act(() => view.result.current.setRenderQueue([
+      { id: 'first', status: 'pending', progress: 0 },
+      { id: 'second', status: 'pending', progress: 0 },
+    ]));
+
+    await act(async () => {
+      await view.result.current.startNextPendingRender();
+    });
+    await waitFor(() => expect(props.startRenderRef.current).toHaveBeenCalledTimes(2));
+    expect(view.result.current.renderQueue.find((item) => item.id === 'first')).toMatchObject({
+      status: 'failed',
+      error: 'Render failed',
+      renderGeneration: 1,
+    });
+    expect(JSON.stringify(view.result.current.renderQueue)).not.toContain('private');
+    expect(view.result.current.ownsRenderLease(owners[0])).toBe(false);
+    expect(view.result.current.ownsRenderLease(owners[1])).toBe(true);
+
+    await act(async () => {
+      resolveSecond();
+      await Promise.resolve();
+    });
+    await waitFor(() => expect(view.result.current.currentQueueItem).toBeNull());
+    expect(props.startRenderRef.current).toHaveBeenCalledTimes(2);
   });
 });

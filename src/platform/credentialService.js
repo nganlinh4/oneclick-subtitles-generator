@@ -13,10 +13,23 @@ export const CREDENTIAL_STATES = Object.freeze(['pending', 'ready', 'unavailable
 export const CREDENTIAL_STORE_STATES = Object.freeze(['available', 'locked', 'unavailable']);
 
 const MAX_CREDENTIAL_BYTES = 16 * 1024;
+const MAX_CREDENTIAL_STATUSES = 1_024;
 const MAX_SAFE_SUFFIX_CHARACTERS = 4;
 const credentialPurposes = new Set(CREDENTIAL_PURPOSES);
 const credentialStates = new Set(CREDENTIAL_STATES);
 const credentialStoreStates = new Set(CREDENTIAL_STORE_STATES);
+const credentialCommandCodes = new Set([
+  'internal',
+  'database',
+  'credentialStoreUnavailable',
+  'credentialStoreLocked',
+  'credentialNotFound',
+  'invalidCredential',
+  'emptyCredential',
+  'credentialVerificationFailed',
+  'credentialStoreFailure',
+  'credentialPurposeExists',
+]);
 const providerByPurpose = Object.freeze({
   geminiApiKey: 'gemini',
   geniusAccessToken: 'genius',
@@ -25,9 +38,57 @@ const providerByPurpose = Object.freeze({
   youtubeOauthToken: 'youtube',
 });
 
-const isRecord = (value) => (
-  value !== null && typeof value === 'object' && !Array.isArray(value)
-);
+const snapshotDataRecord = (value, expectedKeys, failure) => {
+  try {
+    if (value === null || typeof value !== 'object' || Array.isArray(value)) throw failure();
+    const prototype = Object.getPrototypeOf(value);
+    if (prototype !== Object.prototype && prototype !== null) throw failure();
+    const descriptors = Object.getOwnPropertyDescriptors(value);
+    const keys = Reflect.ownKeys(descriptors);
+    if (keys.length !== expectedKeys.length
+        || keys.some((key) => typeof key !== 'string' || !expectedKeys.includes(key))) {
+      throw failure();
+    }
+    const snapshot = {};
+    for (const key of expectedKeys) {
+      const descriptor = descriptors[key];
+      if (!descriptor || !Object.hasOwn(descriptor, 'value') || descriptor.enumerable !== true) {
+        throw failure();
+      }
+      snapshot[key] = descriptor.value;
+    }
+    return Object.freeze(snapshot);
+  } catch {
+    throw failure();
+  }
+};
+
+const snapshotDataArray = (value, maximum, failure) => {
+  try {
+    if (!Array.isArray(value)) throw failure();
+    const descriptors = Object.getOwnPropertyDescriptors(value);
+    const lengthDescriptor = descriptors.length;
+    if (!lengthDescriptor || !Object.hasOwn(lengthDescriptor, 'value')
+        || !Number.isSafeInteger(lengthDescriptor.value) || lengthDescriptor.value < 0
+        || lengthDescriptor.value > maximum) {
+      throw failure();
+    }
+    const length = lengthDescriptor.value;
+    const keys = Reflect.ownKeys(descriptors);
+    if (keys.length !== length + 1) throw failure();
+    const snapshot = [];
+    for (let index = 0; index < length; index += 1) {
+      const descriptor = descriptors[String(index)];
+      if (!descriptor || !Object.hasOwn(descriptor, 'value') || descriptor.enumerable !== true) {
+        throw failure();
+      }
+      snapshot.push(descriptor.value);
+    }
+    return Object.freeze(snapshot);
+  } catch {
+    throw failure();
+  }
+};
 
 const utf8ByteLength = (value) => {
   let bytes = 0;
@@ -69,9 +130,15 @@ const invalidCredentialResponse = () => new CredentialServiceError(
 );
 
 const normalizeCredentialCommandFailure = (error) => {
-  const code = typeof error?.code === 'string' && /^[A-Za-z][A-Za-z0-9]{0,127}$/.test(error.code)
-    ? error.code
-    : 'credentialCommandFailed';
+  let code = 'credentialCommandFailed';
+  try {
+    const candidate = error !== null && (typeof error === 'object' || typeof error === 'function')
+      ? error.code
+      : null;
+    if (credentialCommandCodes.has(candidate)) code = candidate;
+  } catch {
+    // A hostile transport accessor is not authoritative error metadata.
+  }
   // Do not retain the original exception or message. A transport implementation must never be
   // able to reflect its secret-bearing request into a rendered error or diagnostic serializer.
   return new CredentialServiceError(code, 'The credential operation could not be completed');
@@ -89,9 +156,11 @@ const requireCredentialId = (id) => {
 
 const normalizeSafeSuffix = (value) => {
   if (value === null) return null;
+  const characters = typeof value === 'string' ? Array.from(value) : null;
   if (typeof value !== 'string'
-      || Array.from(value).length > MAX_SAFE_SUFFIX_CHARACTERS
-      || Array.from(value).some((character) => {
+      || characters.length === 0
+      || characters.length > MAX_SAFE_SUFFIX_CHARACTERS
+      || characters.some((character) => {
         const codePoint = character.codePointAt(0);
         return codePoint <= 31 || codePoint === 127;
       })) {
@@ -101,59 +170,80 @@ const normalizeSafeSuffix = (value) => {
 };
 
 export const normalizeCredentialStatus = (status) => {
-  if (!isRecord(status)
-      || !isUuidV7(status.id)
-      || !credentialPurposes.has(status.purpose)
-      || status.provider !== providerByPurpose[status.purpose]
-      || !credentialStates.has(status.state)) {
+  const snapshot = snapshotDataRecord(
+    status,
+    ['id', 'purpose', 'provider', 'state', 'last4'],
+    invalidCredentialResponse
+  );
+  if (!isUuidV7(snapshot.id)
+      || !credentialPurposes.has(snapshot.purpose)
+      || snapshot.provider !== providerByPurpose[snapshot.purpose]
+      || !credentialStates.has(snapshot.state)
+      || (snapshot.state === 'ready' && snapshot.last4 === null)
+      || (snapshot.state === 'pending' && snapshot.last4 !== null)) {
     throw invalidCredentialResponse();
   }
 
-  // Copy only the UI-safe Rust response fields. Unknown fields can never smuggle a secret into
-  // application state, error reports, or a later serialization boundary.
+  // Copy the exact UI-safe Rust response fields into application state.
   return Object.freeze({
-    id: status.id,
-    purpose: status.purpose,
-    provider: status.provider,
-    state: status.state,
-    last4: normalizeSafeSuffix(status.last4),
+    id: snapshot.id,
+    purpose: snapshot.purpose,
+    provider: snapshot.provider,
+    state: snapshot.state,
+    last4: normalizeSafeSuffix(snapshot.last4),
   });
 };
 
 export const normalizeCredentialStatusReport = (report) => {
-  if (!isRecord(report)
-      || !credentialStoreStates.has(report.store)
-      || !Array.isArray(report.credentials)) {
+  const snapshot = snapshotDataRecord(
+    report,
+    ['store', 'credentials'],
+    invalidCredentialResponse
+  );
+  const rawCredentials = snapshotDataArray(
+    snapshot.credentials,
+    MAX_CREDENTIAL_STATUSES,
+    invalidCredentialResponse
+  );
+  if (!credentialStoreStates.has(snapshot.store)) {
     throw invalidCredentialResponse();
   }
 
-  const credentials = report.credentials.map(normalizeCredentialStatus);
+  const credentials = rawCredentials.map(normalizeCredentialStatus);
   const ids = new Set();
+  const purposes = new Set();
   for (const credential of credentials) {
-    if (ids.has(credential.id)) throw invalidCredentialResponse();
+    if (ids.has(credential.id)
+        || (credential.purpose !== 'geminiApiKey' && purposes.has(credential.purpose))) {
+      throw invalidCredentialResponse();
+    }
     ids.add(credential.id);
+    purposes.add(credential.purpose);
   }
 
   return Object.freeze({
-    store: report.store,
+    store: snapshot.store,
     credentials: Object.freeze(credentials),
   });
 };
 
 const normalizeSetRequest = (request) => {
-  if (!isRecord(request)
-      || Object.keys(request).some((key) => key !== 'purpose' && key !== 'secret')
-      || typeof request.secret !== 'string') {
+  const snapshot = snapshotDataRecord(
+    request,
+    ['purpose', 'secret'],
+    invalidCredentialRequest
+  );
+  if (typeof snapshot.secret !== 'string') {
     throw invalidCredentialRequest();
   }
 
-  const size = utf8ByteLength(request.secret);
+  const size = utf8ByteLength(snapshot.secret);
   if (size === 0 || size > MAX_CREDENTIAL_BYTES) throw invalidCredentialRequest();
 
-  return {
-    purpose: requirePurpose(request.purpose),
-    secret: request.secret,
-  };
+  return Object.freeze({
+    purpose: requirePurpose(snapshot.purpose),
+    secret: snapshot.secret,
+  });
 };
 
 /**
@@ -163,47 +253,47 @@ const normalizeSetRequest = (request) => {
 export const createCredentialService = ({ invokeCommand = invokeDesktop } = {}) => {
   const setCredential = async (request) => {
     const normalized = normalizeSetRequest(request);
+    let result;
     try {
-      const result = await invokeCommand('credential_set', { request: normalized });
-      return normalizeCredentialStatus(result);
+      result = await invokeCommand('credential_set', { request: normalized });
     } catch (error) {
-      if (error instanceof CredentialServiceError) throw error;
       throw normalizeCredentialCommandFailure(error);
     }
+    return normalizeCredentialStatus(result);
   };
 
   const upsertCredential = async (request) => {
     const normalized = normalizeSetRequest(request);
+    let result;
     try {
-      const result = await invokeCommand('credential_upsert', { request: normalized });
-      return normalizeCredentialStatus(result);
+      result = await invokeCommand('credential_upsert', { request: normalized });
     } catch (error) {
-      if (error instanceof CredentialServiceError) throw error;
       throw normalizeCredentialCommandFailure(error);
     }
+    return normalizeCredentialStatus(result);
   };
 
   const deleteCredential = async (id) => {
     const credentialId = requireCredentialId(id);
+    let deleted;
     try {
-      const deleted = await invokeCommand('credential_delete', { id: credentialId });
-      if (typeof deleted !== 'boolean') throw invalidCredentialResponse();
-      return deleted;
+      deleted = await invokeCommand('credential_delete', { id: credentialId });
     } catch (error) {
-      if (error instanceof CredentialServiceError) throw error;
       throw normalizeCredentialCommandFailure(error);
     }
+    if (typeof deleted !== 'boolean') throw invalidCredentialResponse();
+    return deleted;
   };
 
   const getCredentialStatus = async (purpose = null) => {
     const normalizedPurpose = purpose === null ? null : requirePurpose(purpose);
+    let report;
     try {
-      const report = await invokeCommand('credential_status', { purpose: normalizedPurpose });
-      return normalizeCredentialStatusReport(report);
+      report = await invokeCommand('credential_status', { purpose: normalizedPurpose });
     } catch (error) {
-      if (error instanceof CredentialServiceError) throw error;
       throw normalizeCredentialCommandFailure(error);
     }
+    return normalizeCredentialStatusReport(report);
   };
 
   return Object.freeze({

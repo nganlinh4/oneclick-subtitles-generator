@@ -1,16 +1,19 @@
 import { patchProjectAuxiliary, readProjectAuxiliary } from '../platform/projectAuxiliaryStore';
+import { resolveProjectForCache } from '../platform/subtitleProjectStore';
 import {
   clearTranscriptionRules,
   getTranscriptionRules,
   getTranscriptionRulesSync,
   setCurrentCacheId,
   setTranscriptionRules,
+  setTranscriptionRulesForCache,
 } from './transcriptionRulesStore';
 
 vi.mock('../platform/projectAuxiliaryStore', () => ({
   patchProjectAuxiliary: vi.fn(),
   readProjectAuxiliary: vi.fn(),
 }));
+vi.mock('../platform/subtitleProjectStore', () => ({ resolveProjectForCache: vi.fn() }));
 
 it('hydrates and persists transcription rules through native project auxiliary storage', async () => {
   const persisted = { atmosphere: 'quiet' };
@@ -76,5 +79,44 @@ it('clears media A rules synchronously and ignores its stale direct read after s
   expect(getTranscriptionRulesSync()).toEqual({ media: 'B' });
 
   window.removeEventListener('transcriptionRulesUpdated', onUpdate);
+  setCurrentCacheId(null);
+});
+
+it('rolls back the in-memory rules when native project persistence fails', async () => {
+  setCurrentCacheId(null);
+  readProjectAuxiliary.mockReset();
+  readProjectAuxiliary.mockResolvedValue({ transcriptionRules: { atmosphere: 'saved' } });
+  setCurrentCacheId('rollback-rules');
+  await expect(getTranscriptionRules()).resolves.toEqual({ atmosphere: 'saved' });
+
+  patchProjectAuxiliary.mockRejectedValueOnce(new Error('native write failed'));
+  await expect(setTranscriptionRules({ atmosphere: 'unsaved' }))
+    .rejects.toThrow('native write failed');
+  expect(getTranscriptionRulesSync()).toEqual({ atmosphere: 'saved' });
+  setCurrentCacheId(null);
+});
+
+it('publishes no rules when the cache alias remaps after its scoped native write', async () => {
+  setCurrentCacheId(null);
+  readProjectAuxiliary.mockReset();
+  readProjectAuxiliary.mockResolvedValue({ transcriptionRules: null });
+  setCurrentCacheId('post-write-rules-cache');
+  await Promise.resolve();
+  patchProjectAuxiliary.mockResolvedValueOnce({ transcriptionRules: { atmosphere: 'stale' } });
+  resolveProjectForCache
+    .mockResolvedValueOnce({ projectId: 'project-before' })
+    .mockResolvedValueOnce({ projectId: 'project-after-remap' });
+  const published = vi.fn();
+  window.addEventListener('transcriptionRulesUpdated', published);
+
+  await expect(setTranscriptionRulesForCache(
+    'post-write-rules-cache',
+    { atmosphere: 'stale' },
+    { expectedProjectId: 'project-before' }
+  )).rejects.toMatchObject({ code: 'projectScopeMismatch' });
+
+  expect(getTranscriptionRulesSync()).toBeNull();
+  expect(published).not.toHaveBeenCalled();
+  window.removeEventListener('transcriptionRulesUpdated', published);
   setCurrentCacheId(null);
 });

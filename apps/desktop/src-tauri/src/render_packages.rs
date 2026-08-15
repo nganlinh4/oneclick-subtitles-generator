@@ -214,7 +214,8 @@ impl RenderPackageRuntime {
             ));
         }
         let basis_points = mapped_basis_points.max(current.snapshot().progress().basis_points());
-        let job = if basis_points > current.snapshot().progress().basis_points() {
+        let progress_advanced = basis_points > current.snapshot().progress().basis_points();
+        let job = if progress_advanced {
             self.0
                 .jobs
                 .apply(
@@ -236,7 +237,12 @@ impl RenderPackageRuntime {
         active.total_bytes = progress.total_bytes;
         let operation = RenderPackageOperation::from_active(active, job);
         drop(slot);
-        let _ = channel.send(RenderPackageEvent::Progress { operation });
+        // Job sequence numbers describe durable job mutations, not raw package callbacks.
+        // Coalesce phase-boundary and sub-basis-point callbacks that leave the durable
+        // snapshot unchanged so the WebView never receives two events with one sequence.
+        if progress_advanced {
+            let _ = channel.send(RenderPackageEvent::Progress { operation });
+        }
         Ok(())
     }
 
@@ -555,5 +561,9 @@ mod tests {
             .1
         });
         assert_eq!(values, [5_000, 5_000, 7_500, 9_900]);
+        assert_eq!(
+            values[0], values[1],
+            "equal phase-boundary progress must be coalesced under one job sequence"
+        );
     }
 }

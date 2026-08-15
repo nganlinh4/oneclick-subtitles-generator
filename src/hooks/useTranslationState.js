@@ -1,20 +1,170 @@
-import { useState, useEffect, useRef, useCallback } from 'react';
+import {
+  useCallback,
+  useEffect,
+  useLayoutEffect,
+  useRef,
+  useState,
+} from 'react';
 import { useTranslation } from 'react-i18next';
-import { translateSubtitles, /* abortAllRequests, */ cancelTranslation, setProcessingForceStopped, getProcessingForceStopped } from '../services/geminiService';
+import { translateSubtitles } from '../services/geminiService';
+import { PartialTranslationError } from '../services/gemini/translationChunkProcessor';
 import { generateSubtitleHash } from '../utils/subtitle/subtitleHash';
 import { getCurrentMediaId } from '../utils/mediaId';
-import { useTranslationCaching, saveTranslationsToCache, clearTranslationCache } from './useTranslationCaching';
+import { subscribeCurrentCacheId } from '../utils/userSubtitlesStore';
 import { useTranslationBulk } from './useTranslationBulk';
 import { DEFAULT_TRANSLATION_MODEL_ID, migrateGeminiModelId } from '../config/geminiModels';
+import { checkpointBeforeUpdate } from '../services/lifecycleOrchestrator';
+import { CHECKPOINT_SOURCE } from '../events/constants';
+import {
+  assertActiveTranslationIdentity,
+  assertTranslationPersistenceReceipt,
+  captureTranslationRevision,
+  clearTranslationForIdentity,
+  commitTranslationRevision,
+  getActiveTranslationCacheId,
+  persistTranslationForIdentity,
+  readTranslationForIdentity,
+  resolveTranslationIdentity,
+} from '../platform/translationPersistence';
+import {
+  TRANSLATION_SCHEMA_VERSION,
+  assertTranslationTerminalMatchesSource,
+  canonicalTranslationSourcePayload,
+  createTranslationAbortError,
+  fingerprintTranslationSourcePayload,
+  normalizeLanguageChain,
+  snapshotTranslationSource,
+} from '../utils/translationOwnership';
 
-// Re-export the shared helpers for existing consumers (e.g. translation/index.js).
+// Re-export legacy helpers for consumers that only need display/cache labels.
 export { generateSubtitleHash, getCurrentMediaId };
 
+let translationRunSequence = 0;
+const nextRunId = () => {
+  translationRunSequence = (translationRunSequence + 1) % Number.MAX_SAFE_INTEGER;
+  return `translation-${Date.now().toString(36)}-${translationRunSequence.toString(36)}`;
+};
+
+const safeGetStorage = (key) => {
+  try {
+    return localStorage.getItem(key);
+  } catch {
+    return null;
+  }
+};
+
+const safeSetStorage = (key, value) => {
+  try {
+    localStorage.setItem(key, value);
+  } catch {
+    // Compatibility preferences are best-effort and never own a durable result.
+  }
+};
+
+const boundedIntegerSetting = (key, fallback, maximum) => {
+  const raw = safeGetStorage(key);
+  if (!/^(0|[1-9]\d*)$/.test(raw ?? '')) return fallback;
+  const number = Number(raw);
+  return Number.isSafeInteger(number) && number <= maximum ? number : fallback;
+};
+
+const clearWindowTranslation = () => {
+  if (typeof window === 'undefined') return;
+  try {
+    window.translatedSubtitles = null;
+  } catch {
+    // A compatibility projection must never control durable state.
+  }
+};
+
+const setWindowTranslation = (subtitles) => {
+  if (typeof window === 'undefined') return;
+  try {
+    window.translatedSubtitles = subtitles;
+  } catch {
+    // A compatibility projection must never turn an acknowledged run into failure.
+  }
+};
+
+const dispatchTranslationEvent = (name, detail) => {
+  try {
+    window.dispatchEvent(new CustomEvent(name, { detail }));
+  } catch {
+    // Events are compatibility projections, not persistence acknowledgements.
+  }
+};
+
+const callCompletion = (callback, subtitles) => {
+  try {
+    callback?.(subtitles);
+  } catch {
+    // Downstream notification failure cannot reverse an acknowledged translation.
+  }
+};
+
+const isAbort = (error) => error?.name === 'AbortError'
+  || error?.code === 'translationAborted'
+  || error?.code === 'projectScopeMismatch';
+
+const buildTerminal = ({
+  sourceFingerprint,
+  sourceEntryCount,
+  languageChain,
+  model,
+  status,
+  rows,
+  failures = [],
+}) => ({
+  schemaVersion: TRANSLATION_SCHEMA_VERSION,
+  sourceFingerprint,
+  sourceEntryCount,
+  languageChain,
+  model,
+  status,
+  baseSubtitles: rows,
+  failedChunks: failures,
+});
+
+const languageOptionsFromChain = (chain) => {
+  const languages = chain
+    .filter((item) => item.type === 'language' && !item.isOriginal)
+    .map((item) => item.value.trim())
+    .filter(Boolean);
+  const delimiter = chain.find((item) => item.type === 'delimiter') ?? null;
+  return {
+    languages,
+    delimiter: delimiter?.value ?? ' ',
+    bracketStyle: delimiter?.style ?? null,
+    useParentheses: Boolean(delimiter?.style?.open || delimiter?.style?.close),
+  };
+};
+
+const snapshotBulkTranslationSource = (files) => {
+  const rows = [];
+  files.forEach((file, fileIndex) => {
+    const fileRows = snapshotTranslationSource(file?.subtitles);
+    const fileName = typeof file?.name === 'string' ? file.name : `file-${fileIndex}`;
+    rows.push({
+      id: `bulk-file:${fileIndex}`,
+      start: 0,
+      end: 0,
+      text: fileName,
+    });
+    fileRows.forEach((row) => {
+      rows.push({
+        id: `bulk:${fileIndex}:${row.originalId}`,
+        start: row.start,
+        end: row.end,
+        text: row.text,
+      });
+    });
+  });
+  return snapshotTranslationSource(rows);
+};
+
 /**
- * Custom hook to manage translation state
- * @param {Array} subtitles - Subtitles to translate
- * @param {Function} onTranslationComplete - Callback when translation is complete
- * @returns {Object} - Translation state and handlers
+ * Project-owned translation state. Every async publisher is guarded by the captured project,
+ * source payload, SHA-256 fingerprint, run lease, and translation-only AbortSignal.
  */
 export const useTranslationState = (subtitles, onTranslationComplete) => {
   const { t } = useTranslation();
@@ -23,42 +173,67 @@ export const useTranslationState = (subtitles, onTranslationComplete) => {
   const [error, setError] = useState('');
   const [translationStatus, setTranslationStatus] = useState('');
   const [loadedFromCache, setLoadedFromCache] = useState(false);
-  const [wasManuallyReset, setWasManuallyReset] = useState(false);
+  const [scopeEpoch, setScopeEpoch] = useState(0);
 
-  // Use a translation-specific model selection that's independent from settings
-  const [selectedModel, setSelectedModel] = useState(() => {
-    // Get the model from translation-specific localStorage key or use the global setting as default
-    return migrateGeminiModelId(
-      localStorage.getItem('translation_model') || localStorage.getItem('gemini_model'),
-      DEFAULT_TRANSLATION_MODEL_ID
-    );
-  });
+  const [selectedModel, setSelectedModel] = useState(() => migrateGeminiModelId(
+    safeGetStorage('translation_model') || safeGetStorage('gemini_model'),
+    DEFAULT_TRANSLATION_MODEL_ID
+  ));
   const [customTranslationPrompt, setCustomTranslationPrompt] = useState(
-    localStorage.getItem('custom_prompt_translation') || null
+    () => safeGetStorage('custom_prompt_translation') || null
   );
-  const [splitDuration, setSplitDuration] = useState(() => {
-    // Get the split duration from localStorage or use default (0 = no split)
-    return parseInt(localStorage.getItem('translation_split_duration') || '0');
-  });
-  const [restTime, setRestTime] = useState(() => {
-    // Get the rest time from localStorage or use default (0 = no rest)
-    return parseInt(localStorage.getItem('translation_rest_time') || '0');
-  });
-  const [includeRules, setIncludeRules] = useState(() => {
-    // Get the preference from localStorage, but default to false
-    // It will be updated to true only if rules are available
-    return localStorage.getItem('translation_include_rules') === 'true';
-  });
+  const [splitDuration, setSplitDuration] = useState(
+    () => boundedIntegerSetting('translation_split_duration', 0, 24 * 60)
+  );
+  const [restTime, setRestTime] = useState(
+    () => boundedIntegerSetting('translation_rest_time', 0, 24 * 60 * 60)
+  );
+  const [includeRules, setIncludeRules] = useState(
+    () => safeGetStorage('translation_include_rules') === 'true'
+  );
   const [rulesAvailable, setRulesAvailable] = useState(false);
   const [userProvidedSubtitles, setUserProvidedSubtitles] = useState('');
   const hasUserProvidedSubtitles = userProvidedSubtitles.trim() !== '';
 
-  // Reference to the status message element for scrolling
   const statusRef = useRef(null);
+  const mountedRef = useRef(true);
+  const activeLeaseRef = useRef(null);
+  const hydrationControllerRef = useRef(null);
+  const sourcePayloadRef = useRef('');
+  const sourceRowsRef = useRef(subtitles);
+  const completionRef = useRef(onTranslationComplete);
+  completionRef.current = onTranslationComplete;
+  const abortForBulkSourceMutation = useCallback(() => {
+    if (activeLeaseRef.current?.kind === 'translation') {
+      activeLeaseRef.current.controller.abort(
+        createTranslationAbortError('Translation batch source changed')
+      );
+    }
+  }, []);
 
-  // Bulk translation state and handlers (composed sub-hook)
+  let renderedSourcePayload = '';
+  try {
+    renderedSourcePayload = Array.isArray(subtitles) && subtitles.length > 0
+      ? canonicalTranslationSourcePayload(subtitles)
+      : '';
+  } catch {
+    renderedSourcePayload = '!invalid-translation-source';
+  }
+  sourcePayloadRef.current = renderedSourcePayload;
+  sourceRowsRef.current = subtitles;
+  const renderedCacheId = getActiveTranslationCacheId();
+  const renderedScopeKey = `${renderedCacheId ?? ''}\u0000${renderedSourcePayload}`;
+  const renderedScopeKeyRef = useRef(renderedScopeKey);
+  if (renderedScopeKeyRef.current !== renderedScopeKey) {
+    renderedScopeKeyRef.current = renderedScopeKey;
+    activeLeaseRef.current?.controller.abort(createTranslationAbortError('Translation source changed'));
+    hydrationControllerRef.current?.abort(createTranslationAbortError('Translation source changed'));
+    clearWindowTranslation();
+  }
+
   const {
     bulkFiles,
+    bulkFilesRef: ownedBulkFilesRef,
     setBulkFiles,
     bulkTranslations,
     setBulkTranslations,
@@ -68,352 +243,809 @@ export const useTranslationState = (subtitles, onTranslationComplete) => {
     setCurrentBulkFileIndex,
     handleBulkTranslate,
     handleBulkFileRemoval,
-    handleBulkFilesRemovalAll
+    handleBulkFilesRemovalAll,
   } = useTranslationBulk({
     selectedModel,
     splitDuration,
     setError,
     setTranslationStatus,
-    t
+    t,
+    onBulkSourceMutation: abortForBulkSourceMutation,
   });
+  const fallbackBulkFilesRef = useRef(bulkFiles);
+  const bulkFilesRef = ownedBulkFilesRef ?? fallbackBulkFilesRef;
+  bulkFilesRef.current = bulkFiles;
 
-  // No longer update selectedModel when localStorage changes
-  // This keeps the translation model independent from the settings
-
-  // Listen for translation status updates
-  useEffect(() => {
-    const handleTranslationStatus = (event) => {
-      const { message } = event.detail;
-      setTranslationStatus(message);
-      // Removed auto-scrolling behavior to prevent viewport jumping
-    };
-
-    window.addEventListener('translation-status', handleTranslationStatus);
-    return () => window.removeEventListener('translation-status', handleTranslationStatus);
+  const clearPublishedState = useCallback(() => {
+    clearWindowTranslation();
+    setTranslatedSubtitles(null);
+    setLoadedFromCache(false);
+    callCompletion(completionRef.current, null);
   }, []);
 
-  // Load translations from cache on component mount (composed sub-hook)
-  useTranslationCaching({
-    subtitles,
-    translatedSubtitles,
-    wasManuallyReset,
-    onTranslationComplete,
-    setTranslatedSubtitles,
-    setLoadedFromCache,
-    setTranslationStatus,
-    t
-  });
+  useLayoutEffect(() => {
+    activeLeaseRef.current?.controller.abort(createTranslationAbortError('Translation scope changed'));
+    hydrationControllerRef.current?.abort(createTranslationAbortError('Translation scope changed'));
+    clearPublishedState();
+    setError('');
+    setTranslationStatus('');
+    setIsTranslating(false);
+    setIsBulkTranslating(false);
+    setBulkTranslations([]);
+    setCurrentBulkFileIndex(-1);
+  }, [
+    clearPublishedState,
+    renderedScopeKey,
+    setBulkTranslations,
+    setCurrentBulkFileIndex,
+    setIsBulkTranslating,
+  ]);
 
-  // Check if transcription rules are available
+  useEffect(() => {
+    const unsubscribe = subscribeCurrentCacheId(() => {
+      activeLeaseRef.current?.controller.abort(createTranslationAbortError('Translation project changed'));
+      hydrationControllerRef.current?.abort(createTranslationAbortError('Translation project changed'));
+      clearWindowTranslation();
+      clearPublishedState();
+      setError('');
+      setTranslationStatus('');
+      setIsTranslating(false);
+      setIsBulkTranslating(false);
+      setBulkTranslations([]);
+      setCurrentBulkFileIndex(-1);
+      setScopeEpoch((value) => value + 1);
+    });
+    return unsubscribe;
+  }, [
+    clearPublishedState,
+    setBulkTranslations,
+    setCurrentBulkFileIndex,
+    setIsBulkTranslating,
+  ]);
+
+  useEffect(() => {
+    // StrictMode replays effect cleanup/setup; the replacement setup must regain liveness.
+    mountedRef.current = true;
+    return () => {
+      mountedRef.current = false;
+      activeLeaseRef.current?.controller.abort(createTranslationAbortError('Translation unmounted'));
+      hydrationControllerRef.current?.abort(createTranslationAbortError('Translation unmounted'));
+      clearWindowTranslation();
+      callCompletion(completionRef.current, null);
+    };
+  }, []);
+
+  const assertLeaseSync = useCallback((
+    lease,
+    cacheId,
+    sourcePayload,
+    scope = 'project'
+  ) => {
+    let liveSourcePayload = '!invalid-translation-source';
+    try {
+      if (scope === 'batch') {
+        liveSourcePayload = canonicalTranslationSourcePayload(
+          snapshotBulkTranslationSource(bulkFilesRef.current)
+        );
+      } else {
+        liveSourcePayload = Array.isArray(sourceRowsRef.current) && sourceRowsRef.current.length > 0
+          ? canonicalTranslationSourcePayload(sourceRowsRef.current)
+          : '';
+      }
+    } catch {
+      // The invalid sentinel below fails the exact-payload comparison.
+    }
+    const sourceChanged = liveSourcePayload !== sourcePayload
+      || (scope === 'project' && sourcePayloadRef.current !== sourcePayload);
+    const cacheChanged = scope === 'project' && getActiveTranslationCacheId() !== cacheId;
+    if (!mountedRef.current || activeLeaseRef.current !== lease || lease.controller.signal.aborted
+        || cacheChanged || sourceChanged) {
+      if (sourceChanged || cacheChanged) {
+        clearWindowTranslation();
+        if (mountedRef.current) {
+          clearPublishedState();
+          setBulkTranslations([]);
+        }
+      }
+      lease.controller.abort(createTranslationAbortError('Translation ownership changed'));
+      throw createTranslationAbortError('Translation ownership changed');
+    }
+  }, [bulkFilesRef, clearPublishedState, setBulkTranslations]);
+
+  const assertRunOwned = useCallback(async (context) => {
+    assertLeaseSync(context.lease, context.cacheId, context.sourcePayload, context.scope);
+    if (context.scope === 'batch') return;
+    if (typeof context.batchSourcePayload === 'string') {
+      assertLeaseSync(context.lease, null, context.batchSourcePayload, 'batch');
+    }
+    try {
+      await assertActiveTranslationIdentity(context.identity);
+    } catch (ownershipError) {
+      context.lease.controller.abort(createTranslationAbortError('Translation project changed'));
+      if (ownershipError?.code === 'projectScopeMismatch') {
+        clearWindowTranslation();
+        if (mountedRef.current) {
+          clearPublishedState();
+          setBulkTranslations([]);
+        }
+      }
+      throw ownershipError;
+    }
+    assertLeaseSync(context.lease, context.cacheId, context.sourcePayload, context.scope);
+    if (typeof context.batchSourcePayload === 'string') {
+      assertLeaseSync(context.lease, null, context.batchSourcePayload, 'batch');
+    }
+  }, [assertLeaseSync, clearPublishedState, setBulkTranslations]);
+
+  const captureRunContext = useCallback(async (
+    lease,
+    runSourceRows = sourceRowsRef.current,
+    { scope = 'project', batchSourcePayload = null } = {}
+  ) => {
+    const sourceSubtitles = snapshotTranslationSource(runSourceRows);
+    const fingerprintPayload = canonicalTranslationSourcePayload(sourceSubtitles);
+    if (scope === 'batch') {
+      assertLeaseSync(lease, null, fingerprintPayload, scope);
+      const sourceFingerprint = await fingerprintTranslationSourcePayload(fingerprintPayload);
+      assertLeaseSync(lease, null, fingerprintPayload, scope);
+      return Object.freeze({
+        runId: lease.runId,
+        cacheId: null,
+        projectId: null,
+        sourceFingerprint,
+        sourceSubtitles,
+        signal: lease.controller.signal,
+        identity: null,
+        sourcePayload: fingerprintPayload,
+        scope,
+        batchSourcePayload: null,
+        lease,
+      });
+    }
+    const cacheId = getActiveTranslationCacheId();
+    const activeSourcePayload = sourcePayloadRef.current;
+    const assertCapturedSources = () => {
+      assertLeaseSync(lease, cacheId, activeSourcePayload, scope);
+      if (typeof batchSourcePayload === 'string') {
+        assertLeaseSync(lease, null, batchSourcePayload, 'batch');
+      }
+    };
+    assertCapturedSources();
+    const identity = await resolveTranslationIdentity(cacheId, { create: false });
+    assertCapturedSources();
+    const sourceFingerprint = await fingerprintTranslationSourcePayload(fingerprintPayload);
+    assertCapturedSources();
+    await assertActiveTranslationIdentity(identity);
+    assertCapturedSources();
+    return Object.freeze({
+      runId: lease.runId,
+      cacheId,
+      projectId: identity.projectId,
+      sourceFingerprint,
+      sourceSubtitles,
+      signal: lease.controller.signal,
+      identity,
+      sourcePayload: activeSourcePayload,
+      scope,
+      batchSourcePayload,
+      lease,
+    });
+  }, [assertLeaseSync]);
+
+  const publishComplete = useCallback(async (context, acknowledged, {
+    loaded = false,
+    eventName = 'translation-complete',
+  } = {}) => {
+    const rows = acknowledged.record.baseSubtitles;
+    await assertRunOwned(context);
+    setTranslatedSubtitles(rows);
+    await assertRunOwned(context);
+    setLoadedFromCache(loaded);
+    await assertRunOwned(context);
+    setWindowTranslation(rows);
+    await assertRunOwned(context);
+    callCompletion(completionRef.current, rows);
+    await assertRunOwned(context);
+    dispatchTranslationEvent(eventName, {
+      translatedSubtitles: rows,
+      loadedFromCache: loaded,
+      projectId: context.projectId,
+      sourceFingerprint: context.sourceFingerprint,
+      revision: acknowledged.record.revision,
+    });
+    await assertRunOwned(context);
+  }, [assertRunOwned]);
+
+  // Hydrate only the exact active project/source. Starting another hydration aborts the old one.
+  useEffect(() => {
+    if (!renderedCacheId || !renderedSourcePayload
+        || renderedSourcePayload === '!invalid-translation-source') return undefined;
+    if (activeLeaseRef.current !== null) return undefined;
+    const controller = new AbortController();
+    const lease = Object.freeze({
+      runId: nextRunId(),
+      controller,
+      kind: 'hydration',
+    });
+    activeLeaseRef.current = lease;
+    hydrationControllerRef.current?.abort(createTranslationAbortError('New translation hydration'));
+    hydrationControllerRef.current = controller;
+    clearWindowTranslation();
+    const hydrationScope = { cacheId: renderedCacheId, sourcePayload: renderedSourcePayload };
+    const assertHydration = async (identity = null) => {
+      if (!mountedRef.current || activeLeaseRef.current !== lease || controller.signal.aborted
+          || getActiveTranslationCacheId() !== hydrationScope.cacheId
+          || sourcePayloadRef.current !== hydrationScope.sourcePayload) {
+        throw createTranslationAbortError('Translation hydration ownership changed');
+      }
+      if (identity) await assertActiveTranslationIdentity(identity);
+      if (!mountedRef.current || activeLeaseRef.current !== lease || controller.signal.aborted
+          || getActiveTranslationCacheId() !== hydrationScope.cacheId
+          || sourcePayloadRef.current !== hydrationScope.sourcePayload) {
+        throw createTranslationAbortError('Translation hydration ownership changed');
+      }
+    };
+
+    void (async () => {
+      try {
+        await assertHydration();
+        const identity = await resolveTranslationIdentity(hydrationScope.cacheId, { create: false });
+        await assertHydration(identity);
+        const fingerprint = await fingerprintTranslationSourcePayload(hydrationScope.sourcePayload);
+        await assertHydration(identity);
+        const record = await readTranslationForIdentity(identity);
+        await assertHydration(identity);
+        const hydrationSource = snapshotTranslationSource(sourceRowsRef.current);
+        if (record === null || record.sourceFingerprint !== fingerprint
+            || record.sourceEntryCount !== hydrationSource.length) return;
+        try {
+          assertTranslationTerminalMatchesSource(record, hydrationSource);
+        } catch {
+          return;
+        }
+        const context = Object.freeze({
+          runId: lease.runId,
+          cacheId: identity.cacheId,
+          projectId: identity.projectId,
+          sourceFingerprint: fingerprint,
+          sourceSubtitles: hydrationSource,
+          signal: controller.signal,
+          identity,
+          sourcePayload: hydrationScope.sourcePayload,
+          scope: 'project',
+          batchSourcePayload: null,
+          lease,
+        });
+        if (record.status === 'partial') {
+          await assertRunOwned(context);
+          setTranslationStatus(t(
+            'translation.partialResult',
+            'Translation stopped with {{count}} failed chunks. Retry the translation to complete it.',
+            { count: record.failedChunks.length }
+          ));
+          await assertRunOwned(context);
+          dispatchTranslationEvent('translation-partial', {
+            projectId: identity.projectId,
+            sourceFingerprint: fingerprint,
+            revision: record.revision,
+            failedChunks: record.failedChunks,
+          });
+          await assertRunOwned(context);
+          return;
+        }
+        const acknowledged = { record };
+        await publishComplete(context, acknowledged, { loaded: true });
+        await assertRunOwned(context);
+        setTranslationStatus(t('translation.loadedFromCache', 'Translations loaded from cache'));
+        await assertRunOwned(context);
+      } catch (hydrationError) {
+        if (!isAbort(hydrationError)) {
+          console.error('Error hydrating the active project translation:', hydrationError);
+        }
+      } finally {
+        if (activeLeaseRef.current === lease) activeLeaseRef.current = null;
+      }
+    })();
+    return () => {
+      controller.abort(createTranslationAbortError('Translation hydration changed'));
+      if (activeLeaseRef.current === lease) activeLeaseRef.current = null;
+    };
+  }, [
+    assertRunOwned,
+    publishComplete,
+    renderedCacheId,
+    renderedSourcePayload,
+    scopeEpoch,
+    t,
+  ]);
+
   useEffect(() => {
     const checkRulesAvailability = async () => {
       try {
-        // Dynamically import to preserve the established async feature boundary.
         const { getTranscriptionRulesSync } = await import('../utils/transcriptionRulesStore');
-        const rules = getTranscriptionRulesSync();
-        const hasRules = !!rules;
+        const hasRules = Boolean(getTranscriptionRulesSync());
+        if (!mountedRef.current) return;
         setRulesAvailable(hasRules);
-
-        // If rules are not available, set includeRules to false
         if (!hasRules) {
           setIncludeRules(false);
-          localStorage.setItem('translation_include_rules', 'false');
+          safeSetStorage('translation_include_rules', 'false');
         }
-
-
-      } catch (error) {
-        console.error('Error checking transcription rules availability:', error);
+      } catch {
+        if (!mountedRef.current) return;
         setRulesAvailable(false);
         setIncludeRules(false);
-        localStorage.setItem('translation_include_rules', 'false');
+        safeSetStorage('translation_include_rules', 'false');
       }
     };
-
-    // Initial check
-    checkRulesAvailability();
-
-    // Listen for transcription rules updates
-    const handleRulesUpdate = () => {
-      checkRulesAvailability();
-    };
-
-    // Listen for video analysis completion
-    const handleAnalysisComplete = () => {
-      checkRulesAvailability();
-    };
-
-    // Add event listeners
-    window.addEventListener('transcriptionRulesUpdated', handleRulesUpdate);
-    window.addEventListener('videoAnalysisComplete', handleAnalysisComplete);
-    window.addEventListener('videoAnalysisUserChoice', handleAnalysisComplete);
-
-    // Cleanup event listeners
+    void checkRulesAvailability();
+    const refresh = () => void checkRulesAvailability();
+    window.addEventListener('transcriptionRulesUpdated', refresh);
+    window.addEventListener('videoAnalysisComplete', refresh);
+    window.addEventListener('videoAnalysisUserChoice', refresh);
     return () => {
-      window.removeEventListener('transcriptionRulesUpdated', handleRulesUpdate);
-      window.removeEventListener('videoAnalysisComplete', handleAnalysisComplete);
-      window.removeEventListener('videoAnalysisUserChoice', handleAnalysisComplete);
+      window.removeEventListener('transcriptionRulesUpdated', refresh);
+      window.removeEventListener('videoAnalysisComplete', refresh);
+      window.removeEventListener('videoAnalysisUserChoice', refresh);
     };
   }, []);
 
-  // Load user-provided subtitles
   useEffect(() => {
-    const loadUserProvidedSubtitles = async () => {
+    let current = true;
+    void (async () => {
       try {
-        // Dynamically import to preserve the established async feature boundary.
         const { getUserProvidedSubtitlesSync } = await import('../utils/userSubtitlesStore');
-        const subtitles = getUserProvidedSubtitlesSync();
-        setUserProvidedSubtitles(subtitles || '');
-
-        // If user-provided subtitles are present, set includeRules to false
-        if (subtitles && subtitles.trim() !== '') {
+        if (!current) return;
+        const value = getUserProvidedSubtitlesSync() || '';
+        setUserProvidedSubtitles(value);
+        if (value.trim()) {
           setIncludeRules(false);
-          localStorage.setItem('translation_include_rules', 'false');
+          safeSetStorage('translation_include_rules', 'false');
         }
-
-
-      } catch (error) {
-        console.error('Error loading user-provided subtitles:', error);
-        setUserProvidedSubtitles('');
+      } catch {
+        if (current) setUserProvidedSubtitles('');
       }
-    };
+    })();
+    return () => { current = false; };
+  }, [renderedCacheId]);
 
-    loadUserProvidedSubtitles();
+  const handleModelSelect = useCallback((modelId) => {
+    setSelectedModel(modelId);
+    safeSetStorage('translation_model', modelId);
   }, []);
 
-  /**
-   * Handle model selection for translation only
-   * @param {string} modelId - Selected model ID
-   */
-  const handleModelSelect = (modelId) => {
-    // Update the local state
-    setSelectedModel(modelId);
-    // Save to translation-specific localStorage key to remember the choice
-    // This keeps the translation model independent from the settings
-    localStorage.setItem('translation_model', modelId);
-  };
+  const handleSavePrompt = useCallback((prompt) => {
+    setCustomTranslationPrompt(prompt);
+    safeSetStorage('custom_prompt_translation', prompt);
+  }, []);
 
-  /**
-   * Handle saving custom prompt
-   * @param {string} newPrompt - New custom prompt
-   */
-  const handleSavePrompt = (newPrompt) => {
-    setCustomTranslationPrompt(newPrompt);
-    localStorage.setItem('custom_prompt_translation', newPrompt);
-  };
-
-  /**
-   * Handle translation (includes both main and bulk translation)
-   * @param {Array} languages - Languages to translate to
-   * @param {string|null} delimiter - Delimiter for multi-language translation
-   * @param {boolean} useParentheses - Whether to use parentheses for the second language
-   * @param {Object} bracketStyle - Optional bracket style { open, close }
-   * @param {Array} chainItems - Optional chain items for format mode
-   */
-  const handleTranslate = async (languages, delimiter = ' ', useParentheses = false, bracketStyle = null, chainItems = null) => {
-    // Reset the processing force stopped flag at the start of any new translation
-    setProcessingForceStopped(false);
-
-    // Check if at least one language is entered (unless in format mode with chainItems)
-    if (languages.length === 0 && !chainItems) {
-      setError(t('translation.languageRequired', 'Please enter at least one target language'));
-      return;
+  const handleTranslate = useCallback(async (
+    languages,
+    delimiter = ' ',
+    useParentheses = false,
+    bracketStyle = null,
+    chainItems = null
+  ) => {
+    if (activeLeaseRef.current?.kind === 'hydration') {
+      activeLeaseRef.current.controller.abort(createTranslationAbortError('Translation started'));
+      activeLeaseRef.current = null;
+    } else if (activeLeaseRef.current !== null) {
+      return { status: 'busy' };
     }
+    const controller = new AbortController();
+    const lease = Object.freeze({ runId: nextRunId(), controller, kind: 'translation' });
+    activeLeaseRef.current = lease;
 
-    // Check if we have main subtitles to translate
-    const hasMainSubtitles = subtitles && subtitles.length > 0;
-    const hasBulkFiles = bulkFiles.length > 0;
-
-    if (!hasMainSubtitles && !hasBulkFiles) {
-      setError(t('translation.noSubtitles', 'No subtitles to translate'));
-      return;
-    }
-
-    // If there are bulk files, handle bulk translation first
-    if (hasBulkFiles) {
-      await handleBulkTranslate(languages, delimiter, useParentheses, bracketStyle, chainItems, hasMainSubtitles);
-
-      // Check if bulk translation was cancelled - if so, don't continue with main translation
-      if (getProcessingForceStopped()) {
-        console.log('Bulk translation was cancelled, skipping main translation');
-        return;
-      }
-    }
-
-    // Continue with main translation if there are main subtitles
-    if (!hasMainSubtitles) {
-      return;
-    }
-
-    // Check if processing has been force stopped before starting main translation
-    if (getProcessingForceStopped()) {
-      console.log('Translation was cancelled before main translation could start');
-      return;
-    }
-
-    setError('');
-    setIsTranslating(true);
-
-    // Reset the manual reset flag when starting a new translation
-    setWasManuallyReset(false);
-
+    let context = null;
+    let normalizedChain = null;
     try {
-      // For 2 target languages, we can use both delimiter and brackets
-      // For 3+ languages, we only use delimiter
-      const useBothOptions = languages.length === 2 && useParentheses;
+      if (!Array.isArray(languages)) throw new TypeError('Translation languages must be an array');
+      if (languages.length === 0 && !chainItems) {
+        setError(t('translation.languageRequired', 'Please enter at least one target language'));
+        return { status: 'invalid' };
+      }
+      const hasMainSubtitles = Array.isArray(subtitles) && subtitles.length > 0;
+      const hasBulkFiles = bulkFiles.length > 0;
+      if (!hasMainSubtitles && !hasBulkFiles) {
+        setError(t('translation.noSubtitles', 'No subtitles to translate'));
+        return { status: 'invalid' };
+      }
+      normalizedChain = normalizeLanguageChain(chainItems, {
+        allowEmptyLanguage: true,
+        requireRunnable: true,
+      });
+      const batchSource = hasBulkFiles ? snapshotBulkTranslationSource(bulkFiles) : null;
+      const batchSourcePayload = hasBulkFiles
+        ? canonicalTranslationSourcePayload(batchSource)
+        : null;
+      const runSource = hasMainSubtitles ? sourceRowsRef.current : batchSource;
+      context = await captureRunContext(lease, runSource, {
+        scope: hasMainSubtitles ? 'project' : 'batch',
+        batchSourcePayload: hasMainSubtitles ? batchSourcePayload : null,
+      });
+      await assertRunOwned(context);
+      await checkpointBeforeUpdate({
+        source: CHECKPOINT_SOURCE.TRANSLATION_START,
+        runId: context.runId,
+        signal: context.signal,
+      });
+      await assertRunOwned(context);
 
-      // Pass the selected model, custom prompt, split duration, includeRules, delimiter and parentheses options
+      setError('');
+      await assertRunOwned(context);
+      setTranslationStatus('');
+      await assertRunOwned(context);
+      setIsTranslating(hasMainSubtitles);
+      await assertRunOwned(context);
+      setLoadedFromCache(false);
+      await assertRunOwned(context);
+
+      const ownership = {
+        signal: context.signal,
+        assertOwned: () => assertRunOwned(context),
+        publishStatus: async (message) => {
+          await assertRunOwned(context);
+          setTranslationStatus(message);
+          await assertRunOwned(context);
+        },
+        statusOwner: {
+          runId: context.runId,
+          projectId: context.projectId,
+          sourceFingerprint: context.sourceFingerprint,
+        },
+        restTime,
+      };
+      if (hasBulkFiles) {
+        const bulkOutcome = await handleBulkTranslate(
+          languages,
+          delimiter,
+          useParentheses,
+          bracketStyle,
+          normalizedChain,
+          hasMainSubtitles,
+          ownership
+        );
+        await assertRunOwned(context);
+        if (bulkOutcome?.status === 'failed' && !hasMainSubtitles) return bulkOutcome;
+      }
+      if (!hasMainSubtitles) return { status: 'complete', scope: 'bulk' };
+
       const result = await translateSubtitles(
-        subtitles,
+        context.sourceSubtitles,
         languages.length === 1 ? languages[0] : languages,
         selectedModel,
         customTranslationPrompt,
         splitDuration,
         includeRules,
-        useBothOptions ? delimiter : (useParentheses ? null : delimiter), // Pass delimiter even when using parentheses for 2 languages
+        languages.length === 2 && useParentheses
+          ? delimiter
+          : (useParentheses ? null : delimiter),
         useParentheses,
-        bracketStyle, // Pass the bracket style
-        chainItems, // Pass the chain items for format mode
-        'main' // File context for main translation
+        bracketStyle,
+        normalizedChain,
+        'main',
+        false,
+        ownership
       );
-
-
-      // Check if result is valid
-      if (!result || result.length === 0) {
-        console.error('Translation returned empty result');
-        setError(t('translation.emptyResult', 'Translation returned no results. Please try again or check the console for errors.'));
-        return;
+      await assertRunOwned(context);
+      if (!Array.isArray(result) || result.length === 0) {
+        throw new Error(t('translation.emptyResult', 'Translation returned no results'));
       }
-
-      // Save translations to cache
-      saveTranslationsToCache(subtitles, result);
-
-      setTranslatedSubtitles(result);
-
-      // Update final status if bulk translations were also completed
-      if (bulkTranslations.length > 0) {
-        const successfulBulkFiles = bulkTranslations.filter(r => r.success).length;
-        const totalFiles = bulkTranslations.length + 1; // +1 for main file
-        const totalSuccessful = successfulBulkFiles + 1; // +1 for main file (which just succeeded)
-
-        setTranslationStatus(t('translation.allComplete', 'All translations complete: {{success}}/{{total}} files processed successfully', {
-          success: totalSuccessful,
-          total: totalFiles
-        }));
-      }
-
-      if (onTranslationComplete) {
-        onTranslationComplete(result);
-      }
-
-      // Dispatch a custom event to notify other components that translation is complete
-      window.dispatchEvent(new CustomEvent('translation-complete', {
-        detail: {
-          translatedSubtitles: result,
-          loadedFromCache: false
+      const terminal = buildTerminal({
+        sourceFingerprint: context.sourceFingerprint,
+        sourceEntryCount: context.sourceSubtitles.length,
+        languageChain: normalizedChain,
+        model: selectedModel,
+        status: 'complete',
+        rows: result,
+      });
+      await assertRunOwned(context);
+      assertTranslationTerminalMatchesSource(terminal, context.sourceSubtitles);
+      await assertRunOwned(context);
+      const receipt = await persistTranslationForIdentity(context.identity, terminal);
+      await assertRunOwned(context);
+      const acknowledged = assertTranslationPersistenceReceipt(receipt, context.identity, {
+        sourceFingerprint: context.sourceFingerprint,
+        status: 'complete',
+      });
+      await publishComplete(context, acknowledged);
+      await assertRunOwned(context);
+      setTranslationStatus(t('translation.translationComplete', 'Translation complete'));
+      await assertRunOwned(context);
+      safeSetStorage('translation_split_duration', String(splitDuration));
+      await assertRunOwned(context);
+      return { status: 'complete', receipt };
+    } catch (translationError) {
+      let terminalError = translationError;
+      if (translationError instanceof PartialTranslationError && context && normalizedChain) {
+        try {
+          await assertRunOwned(context);
+          const terminal = buildTerminal({
+            sourceFingerprint: context.sourceFingerprint,
+            sourceEntryCount: context.sourceSubtitles.length,
+            languageChain: normalizedChain,
+            model: selectedModel,
+            status: 'partial',
+            rows: translationError.completedSubtitles,
+            failures: translationError.failedChunks,
+          });
+          assertTranslationTerminalMatchesSource(terminal, context.sourceSubtitles);
+          await assertRunOwned(context);
+          const receipt = await persistTranslationForIdentity(context.identity, terminal);
+          await assertRunOwned(context);
+          const acknowledged = assertTranslationPersistenceReceipt(receipt, context.identity, {
+            sourceFingerprint: context.sourceFingerprint,
+            status: 'partial',
+          });
+          await assertRunOwned(context);
+          clearWindowTranslation();
+          await assertRunOwned(context);
+          setTranslatedSubtitles(null);
+          await assertRunOwned(context);
+          setTranslationStatus(t(
+            'translation.partialResult',
+            'Translation stopped with {{count}} failed chunks. Retry the translation to complete it.',
+            { count: acknowledged.record.failedChunks.length }
+          ));
+          await assertRunOwned(context);
+          dispatchTranslationEvent('translation-partial', {
+            projectId: context.projectId,
+            sourceFingerprint: context.sourceFingerprint,
+            revision: acknowledged.record.revision,
+            failedChunks: acknowledged.record.failedChunks,
+          });
+          await assertRunOwned(context);
+          return { status: 'partial', receipt };
+        } catch (partialPersistenceError) {
+          terminalError = partialPersistenceError;
         }
-      }));
-
-
-      // Save the split duration setting to localStorage
-      localStorage.setItem('translation_split_duration', splitDuration.toString());
-    } catch (err) {
-      console.error('Translation error:', err);
-
-      // Check if this was a cancellation
-      if (err.message && (err.message.includes('cancelled') || err.message.includes('aborted'))) {
-        setTranslationStatus(t('translation.cancelled', 'Translation cancelled by user'));
-      } else {
-        // Use the specific error message if available, otherwise use generic message
-        setError(err.message || t('translation.error', 'Error translating subtitles. Please try again.'));
       }
+      if (isAbort(terminalError) || controller.signal.aborted) {
+        return { status: 'cancelled' };
+      }
+      if (context) {
+        try {
+          await assertRunOwned(context);
+        } catch {
+          return { status: 'cancelled' };
+        }
+      }
+      if (mountedRef.current && activeLeaseRef.current === lease) {
+        setError(terminalError?.message || t(
+          'translation.error',
+          'Error translating subtitles. Please try again.'
+        ));
+        if (context) {
+          try {
+            await assertRunOwned(context);
+          } catch {
+            return { status: 'cancelled' };
+          }
+        }
+      }
+      return { status: 'failed', error: terminalError };
     } finally {
-      setIsTranslating(false);
+      if (activeLeaseRef.current === lease) {
+        activeLeaseRef.current = null;
+        if (mountedRef.current) {
+          setIsTranslating(false);
+          setIsBulkTranslating(false);
+          setCurrentBulkFileIndex(-1);
+        }
+      }
     }
-  };
+  }, [
+    assertRunOwned,
+    bulkFiles,
+    captureRunContext,
+    customTranslationPrompt,
+    handleBulkTranslate,
+    includeRules,
+    publishComplete,
+    restTime,
+    selectedModel,
+    setCurrentBulkFileIndex,
+    setIsBulkTranslating,
+    splitDuration,
+    subtitles,
+    t,
+  ]);
 
-  /**
-   * Handle cancellation of translation
-   */
-  const handleCancelTranslation = () => {
-
-    // Call the cancelTranslation function from the translation service
-    // This will abort all active requests and set the processingForceStopped flag to true
-    // Note: The processingForceStopped flag will be reset to false when starting a new translation
-    // or when resetting the translation
-    /* const aborted = */ cancelTranslation();
-
-    // Update UI state for both main and bulk translation
+  const handleCancelTranslation = useCallback(() => {
+    const lease = activeLeaseRef.current;
+    if (lease) lease.controller.abort(createTranslationAbortError('Translation stopped'));
     setIsTranslating(false);
     setIsBulkTranslating(false);
     setCurrentBulkFileIndex(-1);
     setError(t('translation.cancelled', 'Translation cancelled by user'));
-
-    // Update translation status to show cancellation
     setTranslationStatus(t('translation.cancelled', 'Translation cancelled by user'));
-  };
+    return Boolean(lease);
+  }, [setCurrentBulkFileIndex, setIsBulkTranslating, t]);
 
-  /**
-   * Handle reset of translation
-   */
-  const handleReset = () => {
-    console.log('Manual translation reset initiated');
-
-    setTranslatedSubtitles(null);
-    setError('');
-    setLoadedFromCache(false);
-
-    // Set the manual reset flag to prevent cache loading
-    setWasManuallyReset(true);
-
-    // Reset the processing force stopped flag when resetting translation
-    setProcessingForceStopped(false);
-
-    // Clear the translation cache
-    clearTranslationCache();
-
-    if (onTranslationComplete) {
-      onTranslationComplete(null);
-    }
-
-    // Dispatch a custom event to notify other components that translation has been reset
-    window.dispatchEvent(new CustomEvent('translation-reset', {
-      detail: {
-        translatedSubtitles: null
+  const handleReset = useCallback(async () => {
+    if (activeLeaseRef.current?.kind === 'reset') return { status: 'busy' };
+    activeLeaseRef.current?.controller.abort(createTranslationAbortError('Translation reset'));
+    hydrationControllerRef.current?.abort(createTranslationAbortError('Translation reset'));
+    clearWindowTranslation();
+    const controller = new AbortController();
+    const lease = Object.freeze({ runId: nextRunId(), controller, kind: 'reset' });
+    activeLeaseRef.current = lease;
+    try {
+      const context = await captureRunContext(lease);
+      await assertRunOwned(context);
+      const receipt = await clearTranslationForIdentity(context.identity);
+      await assertRunOwned(context);
+      assertTranslationPersistenceReceipt(receipt, context.identity);
+      await assertRunOwned(context);
+      clearPublishedState();
+      await assertRunOwned(context);
+      setError('');
+      await assertRunOwned(context);
+      setTranslationStatus('');
+      await assertRunOwned(context);
+      dispatchTranslationEvent('translation-reset', {
+        translatedSubtitles: null,
+        projectId: context.projectId,
+      });
+      await assertRunOwned(context);
+      return { status: 'cleared', receipt };
+    } catch (resetError) {
+      if (!isAbort(resetError) && mountedRef.current && activeLeaseRef.current === lease) {
+        setError(resetError?.message || t('translation.error', 'Could not reset translation'));
       }
-    }));
+      return { status: isAbort(resetError) ? 'cancelled' : 'failed', error: resetError };
+    } finally {
+      if (activeLeaseRef.current === lease) activeLeaseRef.current = null;
+    }
+  }, [assertRunOwned, captureRunContext, clearPublishedState, t]);
 
-  };
+  const retryMainTranslation = useCallback(async (segment) => {
+    if (activeLeaseRef.current?.kind === 'hydration') {
+      activeLeaseRef.current.controller.abort(createTranslationAbortError('Translation retry started'));
+      activeLeaseRef.current = null;
+    } else if (activeLeaseRef.current !== null) {
+      return { status: 'busy' };
+    }
+    const requestedIds = Array.isArray(segment?.originalIds)
+      ? [...segment.originalIds]
+      : (segment?.originalId === undefined ? [] : [segment.originalId]);
+    if (requestedIds.length === 0 || new Set(requestedIds).size !== requestedIds.length) {
+      return { status: 'invalid', error: new Error('A retry requires exact original subtitle IDs') };
+    }
+    const controller = new AbortController();
+    const lease = Object.freeze({ runId: nextRunId(), controller, kind: 'retry' });
+    activeLeaseRef.current = lease;
+    let context = null;
+    try {
+      context = await captureRunContext(lease);
+      await assertRunOwned(context);
+      await checkpointBeforeUpdate({
+        source: CHECKPOINT_SOURCE.TRANSLATION_START,
+        runId: context.runId,
+        signal: context.signal,
+      });
+      await assertRunOwned(context);
+      const revision = await captureTranslationRevision(context.identity);
+      await assertRunOwned(context);
+      const record = await readTranslationForIdentity(context.identity);
+      await assertRunOwned(context);
+      if (record?.status !== 'complete' || record.sourceFingerprint !== context.sourceFingerprint
+          || record.revision !== revision.revision) {
+        throw new Error('The durable translation changed before retry');
+      }
+      const sourceById = new Map(context.sourceSubtitles.map((row) => [row.originalId, row]));
+      const retrySource = requestedIds.map((id) => sourceById.get(id));
+      if (retrySource.some((row) => row === undefined)) {
+        throw new Error('The retry subtitle no longer belongs to this source');
+      }
+      const options = languageOptionsFromChain(record.languageChain);
+      if (options.languages.length === 0) {
+        throw new Error('Formatted-only translations do not require provider retry');
+      }
+      const ownership = {
+        signal: context.signal,
+        assertOwned: () => assertRunOwned(context),
+        publishStatus: async (message) => {
+          await assertRunOwned(context);
+          setTranslationStatus(message);
+          await assertRunOwned(context);
+        },
+        statusOwner: {
+          runId: context.runId,
+          projectId: context.projectId,
+          sourceFingerprint: context.sourceFingerprint,
+        },
+        restTime: 0,
+      };
+      const result = await translateSubtitles(
+        retrySource,
+        options.languages.length === 1 ? options.languages[0] : options.languages,
+        record.model,
+        customTranslationPrompt,
+        0,
+        includeRules,
+        options.delimiter,
+        options.useParentheses,
+        options.bracketStyle,
+        record.languageChain,
+        'retry',
+        false,
+        ownership
+      );
+      await assertRunOwned(context);
+      if (!Array.isArray(result) || result.length !== requestedIds.length) {
+        throw new Error('Retry result did not match the captured original IDs');
+      }
+      const replacement = new Map(result.map((row) => [row.originalId, row]));
+      if (replacement.size !== requestedIds.length
+          || requestedIds.some((id) => !replacement.has(id))) {
+        throw new Error('Retry result lost its original subtitle identity');
+      }
+      const rows = record.baseSubtitles.map((row) => replacement.get(row.originalId) ?? row);
+      const terminal = buildTerminal({
+        sourceFingerprint: context.sourceFingerprint,
+        sourceEntryCount: context.sourceSubtitles.length,
+        languageChain: record.languageChain,
+        model: record.model,
+        status: 'complete',
+        rows,
+      });
+      assertTranslationTerminalMatchesSource(terminal, context.sourceSubtitles);
+      await assertRunOwned(context);
+      const receipt = await commitTranslationRevision(context.identity, revision, terminal);
+      await assertRunOwned(context);
+      const acknowledged = assertTranslationPersistenceReceipt(receipt, context.identity, {
+        revision: record.revision + 1,
+        sourceFingerprint: context.sourceFingerprint,
+        status: 'complete',
+      });
+      await publishComplete(context, acknowledged, { eventName: 'translation-updated' });
+      await assertRunOwned(context);
+      setTranslationStatus(t('translation.translationComplete', 'Translation complete'));
+      await assertRunOwned(context);
+      return { status: 'complete', receipt };
+    } catch (retryError) {
+      if (isAbort(retryError) || controller.signal.aborted) return { status: 'cancelled' };
+      if (context) {
+        try {
+          await assertRunOwned(context);
+        } catch {
+          return { status: 'cancelled' };
+        }
+      }
+      if (mountedRef.current && activeLeaseRef.current === lease
+          && getActiveTranslationCacheId() === context?.cacheId
+          && sourcePayloadRef.current === context?.sourcePayload) {
+        setError(retryError?.message || t('translation.error', 'Translation retry failed'));
+        try {
+          await assertRunOwned(context);
+        } catch {
+          return { status: 'cancelled' };
+        }
+      }
+      return { status: 'failed', error: retryError };
+    } finally {
+      if (activeLeaseRef.current === lease) activeLeaseRef.current = null;
+    }
+  }, [
+    assertRunOwned,
+    captureRunContext,
+    customTranslationPrompt,
+    includeRules,
+    publishComplete,
+    t,
+  ]);
 
-  /**
-   * Handle split duration change
-   * @param {number} value - New split duration value
-   */
-  const handleSplitDurationChange = (value) => {
+  const handleSplitDurationChange = useCallback((value) => {
     setSplitDuration(value);
-    localStorage.setItem('translation_split_duration', value.toString());
-  };
-
-  /**
-   * Handle rest time change
-   * @param {number} value - New rest time value in seconds
-   */
-  const handleRestTimeChange = (value) => {
+    safeSetStorage('translation_split_duration', String(value));
+  }, []);
+  const handleRestTimeChange = useCallback((value) => {
     setRestTime(value);
-    localStorage.setItem('translation_rest_time', value.toString());
-  };
-
-  /**
-   * Handle include rules toggle
-   * @param {boolean} value - New include rules value
-   */
-  const handleIncludeRulesChange = (value) => {
+    safeSetStorage('translation_rest_time', String(value));
+  }, []);
+  const handleIncludeRulesChange = useCallback((value) => {
     setIncludeRules(value);
-    localStorage.setItem('translation_include_rules', value.toString());
-  };
-
-  // Function to update translated subtitles (for segment retry)
-  const updateTranslatedSubtitles = useCallback((newTranslatedSubtitles) => {
-    setTranslatedSubtitles(newTranslatedSubtitles);
+    safeSetStorage('translation_include_rules', String(value));
   }, []);
 
   return {
@@ -438,8 +1070,7 @@ export const useTranslationState = (subtitles, onTranslationComplete) => {
     handleSplitDurationChange,
     handleRestTimeChange,
     handleIncludeRulesChange,
-    updateTranslatedSubtitles,
-    // Bulk translation
+    retryMainTranslation,
     bulkFiles,
     setBulkFiles,
     bulkTranslations,
@@ -448,7 +1079,7 @@ export const useTranslationState = (subtitles, onTranslationComplete) => {
     currentBulkFileIndex,
     handleBulkTranslate,
     handleBulkFileRemoval,
-    handleBulkFilesRemovalAll
+    handleBulkFilesRemovalAll,
   };
 };
 

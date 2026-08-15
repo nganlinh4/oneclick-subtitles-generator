@@ -2054,6 +2054,7 @@ mod tests {
     struct MemoryFetcher {
         archive: Vec<u8>,
         interrupt_once: AtomicBool,
+        transient_failures: AtomicUsize,
         offsets: Mutex<Vec<u64>>,
     }
 
@@ -2062,6 +2063,16 @@ mod tests {
             Self {
                 archive,
                 interrupt_once: AtomicBool::new(interrupt_once),
+                transient_failures: AtomicUsize::new(0),
+                offsets: Mutex::new(Vec::new()),
+            }
+        }
+
+        fn with_transient_failures(archive: Vec<u8>, failures: usize) -> Self {
+            Self {
+                archive,
+                interrupt_once: AtomicBool::new(false),
+                transient_failures: AtomicUsize::new(failures),
                 offsets: Mutex::new(Vec::new()),
             }
         }
@@ -2102,6 +2113,19 @@ mod tests {
                 output.sync_all().unwrap();
                 cancellation.cancel();
                 return Err(PackageError::Cancelled);
+            }
+            if self
+                .transient_failures
+                .fetch_update(Ordering::AcqRel, Ordering::Acquire, |value| {
+                    value.checked_sub(1)
+                })
+                .is_ok()
+            {
+                let remaining = self.archive.len() - start;
+                let end = start + (remaining / 2).max(1);
+                output.write_all(&self.archive[start..end]).unwrap();
+                output.sync_all().unwrap();
+                return Err(PackageError::Network);
             }
             output.write_all(&self.archive[start..]).unwrap();
             output.sync_all().unwrap();
@@ -2416,6 +2440,29 @@ mod tests {
         assert_eq!(offsets[0], 0);
         assert!(offsets[1] > 0);
         assert!(offsets[1] < fetcher.archive.len() as u64);
+    }
+
+    #[test]
+    fn transient_network_failures_retry_and_resume_in_one_install() {
+        let temp = tempfile::tempdir().unwrap();
+        let fixture = fixture();
+        let fetcher = Arc::new(MemoryFetcher::with_transient_failures(fixture.archive, 2));
+        let manager = manager(
+            &temp,
+            fixture.catalog,
+            fetcher.clone(),
+            Arc::new(TestCoordinator::default()),
+        );
+
+        manager
+            .install(EngineId::Parakeet, &CancellationToken::default(), &|_| {})
+            .unwrap();
+
+        let offsets = fetcher.offsets();
+        assert_eq!(offsets.len(), 3);
+        assert_eq!(offsets[0], 0);
+        assert!(offsets.windows(2).all(|pair| pair[0] < pair[1]));
+        assert!(offsets[2] < fetcher.archive.len() as u64);
     }
 
     #[test]

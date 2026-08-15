@@ -39,7 +39,9 @@ const GeminiNarrationResults = ({
   onGenerateAllPending,
   hasGenerationError = false,
   subtitleSource,
-  plannedSubtitles
+  plannedSubtitles,
+  isServiceAvailable = false,
+  serviceUnavailableMessage = ''
 }) => {
   const { t } = useTranslation();
   const [currentlyPlaying, setCurrentlyPlaying] = useState(null);
@@ -364,9 +366,13 @@ const GeminiNarrationResults = ({
         {hasPendingNarrations && onGenerateAllPending && (
           <button
             className="pill-button secondary generate-all-pending-button"
-            onClick={onGenerateAllPending}
-            disabled={retryingSubtitleId !== null || !subtitleSource}
-            title={!subtitleSource
+            onClick={() => {
+              if (isServiceAvailable === true) onGenerateAllPending();
+            }}
+            disabled={isServiceAvailable !== true || retryingSubtitleId !== null || !subtitleSource}
+            title={isServiceAvailable !== true
+              ? serviceUnavailableMessage
+              : !subtitleSource
               ? t('narration.noSourceSelectedError', 'Please select a subtitle source (Original or Translated)')
               : t('narration.generateAllPendingTooltip', 'Generate all pending narrations')}
           >
@@ -379,9 +385,13 @@ const GeminiNarrationResults = ({
         {hasFailedNarrations && onRetryFailed && (
           <button
             className="pill-button secondary retry-failed-button"
-            onClick={onRetryFailed}
-            disabled={retryingSubtitleId !== null || !subtitleSource}
-            title={!subtitleSource
+            onClick={() => {
+              if (isServiceAvailable === true) onRetryFailed();
+            }}
+            disabled={isServiceAvailable !== true || retryingSubtitleId !== null || !subtitleSource}
+            title={isServiceAvailable !== true
+              ? serviceUnavailableMessage
+              : !subtitleSource
               ? t('narration.noSourceSelectedError', 'Please select a subtitle source (Original or Translated)')
               : t('narration.retryFailedTooltip', 'Retry all failed narrations')}
           >
@@ -468,7 +478,9 @@ const GeminiNarrationResults = ({
             }}
             itemData={{
               generationResults: displayedResults,
-              onRetry,
+              onRetry: isServiceAvailable === true ? onRetry : undefined,
+              isServiceAvailable,
+              serviceUnavailableMessage,
               retryingSubtitleId,
               currentlyPlaying,
               isPlaying,

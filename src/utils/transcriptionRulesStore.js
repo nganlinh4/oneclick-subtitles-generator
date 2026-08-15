@@ -5,12 +5,34 @@
  */
 
 import { patchProjectAuxiliary, readProjectAuxiliary } from '../platform/projectAuxiliaryStore';
+import { resolveProjectForCache } from '../platform/subtitleProjectStore';
 
 // Store transcription rules globally
 let globalTranscriptionRules = null;
 
 // Current cache ID for the video being processed
 let currentCacheId = null;
+
+const projectMismatch = () => {
+  const error = new Error('The active transcription-rules project changed.');
+  error.name = 'ProjectScopeMismatchError';
+  error.code = 'projectScopeMismatch';
+  return error;
+};
+
+const assertProjectScope = (cacheId) => {
+  if (typeof cacheId !== 'string' || cacheId.length === 0 || currentCacheId !== cacheId) {
+    throw projectMismatch();
+  }
+};
+
+const assertProjectId = async (cacheId, expectedProjectId, create = false) => {
+  const resolved = await resolveProjectForCache(cacheId, { create });
+  if (!resolved?.projectId || (expectedProjectId && resolved.projectId !== expectedProjectId)) {
+    throw projectMismatch();
+  }
+  return resolved;
+};
 
 const publishRules = (rules) => {
   if (typeof window !== 'undefined') {
@@ -74,12 +96,21 @@ export const getCurrentCacheId = () => {
  */
 export const setTranscriptionRules = async (rules) => {
   const requestedCacheId = currentCacheId;
+  const previousRules = globalTranscriptionRules;
   globalTranscriptionRules = rules;
 
-  if (requestedCacheId) {
-    await patchProjectAuxiliary(requestedCacheId, {
-      transcriptionRules: rules ?? null,
-    });
+  try {
+    if (requestedCacheId) {
+      await patchProjectAuxiliary(requestedCacheId, {
+        transcriptionRules: rules ?? null,
+      });
+    }
+  } catch (error) {
+    if (currentCacheId === requestedCacheId) {
+      globalTranscriptionRules = previousRules;
+      publishRules(previousRules);
+    }
+    throw error;
   }
   if (currentCacheId === requestedCacheId) publishRules(rules);
 };
@@ -109,6 +140,44 @@ export const getTranscriptionRules = async () => {
 export const getTranscriptionRulesSync = () => {
   // Project persistence is asynchronous and is hydrated when the cache/project alias changes.
   return globalTranscriptionRules;
+};
+
+/** Read rules for one captured project without switching the global active project. */
+export const getTranscriptionRulesForCache = async (
+  cacheId,
+  { expectedProjectId = null } = {}
+) => {
+  assertProjectScope(cacheId);
+  await assertProjectId(cacheId, expectedProjectId, false);
+  const auxiliary = await readProjectAuxiliary(cacheId, { expectedProjectId });
+  assertProjectScope(cacheId);
+  return auxiliary?.transcriptionRules ?? null;
+};
+
+/** Persist rules only for the still-active captured project. */
+export const setTranscriptionRulesForCache = async (
+  cacheId,
+  rules,
+  { expectedProjectId = null } = {}
+) => {
+  if (typeof expectedProjectId !== 'string' || expectedProjectId.length === 0) {
+    throw projectMismatch();
+  }
+  assertProjectScope(cacheId);
+  await assertProjectId(cacheId, expectedProjectId, true);
+  assertProjectScope(cacheId);
+  const previousRules = globalTranscriptionRules;
+  await patchProjectAuxiliary(
+    cacheId,
+    { transcriptionRules: rules ?? null },
+    { expectedProjectId }
+  );
+  assertProjectScope(cacheId);
+  await assertProjectId(cacheId, expectedProjectId, false);
+  assertProjectScope(cacheId);
+  globalTranscriptionRules = rules ?? null;
+  publishRules(globalTranscriptionRules);
+  return { previousRules, rules: globalTranscriptionRules };
 };
 
 /**

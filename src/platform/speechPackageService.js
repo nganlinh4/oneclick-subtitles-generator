@@ -22,6 +22,30 @@ const phaseSet = new Set([
 const jobStateSet = new Set([
   'queued', 'running', 'cancelling', 'succeeded', 'failed', 'cancelled', 'interrupted',
 ]);
+const nativeFailureCodes = new Set([
+  'internal',
+  'invalidEnginePackageRequest',
+  'packageUnavailable',
+  'packageOperationInProgress',
+  'enginePackageCancelled',
+  'packageNetwork',
+  'packageDownloadInvalid',
+  'packageStorageLimit',
+  'packageInsufficientSpace',
+  'packageIntegrity',
+  'packageInstallInvalid',
+  'engineRuntimeBusy',
+  'packageStorage',
+  'packageCatalogInvalid',
+  'jobAlreadyExists',
+  'jobNotFound',
+  'jobConflict',
+  'invalidJobState',
+  'invalidJob',
+  'jobSequenceLimit',
+  'jobRegistry',
+  'database',
+]);
 const statusKeys = new Set(['schemaVersion', 'packages']);
 const packageKeys = new Set([
   'id', 'label', 'deliveryAvailable', 'installed', 'updateAvailable', 'state',
@@ -108,14 +132,19 @@ const cancelledRequest = () => new SpeechPackageServiceError(
   'speechPackageCancelled',
   'The native speech package operation was cancelled',
 );
-const nativeFailure = () => new SpeechPackageServiceError(
-  'nativeSpeechPackageFailure',
+const nativeFailure = (code = 'nativeSpeechPackageFailure') => new SpeechPackageServiceError(
+  code,
   'The native speech package operation failed',
 );
 
 const redactNativeFailure = (error) => {
-  if (error instanceof SpeechPackageServiceError) return error;
-  return nativeFailure();
+  let code;
+  try {
+    code = error?.code;
+  } catch {
+    return nativeFailure();
+  }
+  return nativeFailure(nativeFailureCodes.has(code) ? code : undefined);
 };
 
 const requireBackend = (backend) => {
@@ -260,14 +289,13 @@ export const normalizeSpeechPackagesStatus = (value) => {
 const normalizeError = (value) => {
   if (!hasExactKeys(value, errorKeys)
       || typeof value.code !== 'string'
-      || !/^[A-Za-z][A-Za-z0-9]{0,127}$/u.test(value.code)
       || typeof value.message !== 'string'
       || !characterCountWithin(value.message, 4_096)
       || containsControl(value.message)) {
     throw invalidResponse();
   }
   return Object.freeze({
-    code: value.code,
+    code: nativeFailureCodes.has(value.code) ? value.code : 'nativeSpeechPackageFailure',
     message: 'The native speech package operation failed',
   });
 };
@@ -384,13 +412,21 @@ export const createNativeSpeechPackageService = ({
     let observedAction = null;
     let eventCount = 0;
 
+    const reportHandlerError = (error) => {
+      if (!handlers.onHandlerError) return;
+      try {
+        Promise.resolve(handlers.onHandlerError(error)).catch(() => undefined);
+      } catch {
+        // Diagnostic callbacks never control the native package operation.
+      }
+    };
     const call = (handler, event) => {
       if (!handler) return;
       try {
         const result = handler(event);
-        if (result?.then) Promise.resolve(result).catch(handlers.onHandlerError || (() => undefined));
+        Promise.resolve(result).catch(reportHandlerError);
       } catch (error) {
-        try { handlers.onHandlerError?.(error); } catch { /* isolated */ }
+        reportHandlerError(error);
       }
     };
     const cancel = () => {

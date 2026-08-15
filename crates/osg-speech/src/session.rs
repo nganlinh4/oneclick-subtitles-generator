@@ -147,7 +147,12 @@ pub(crate) fn wait_for_response(
         }
         let wait = deadline.saturating_duration_since(now).min(POLL_INTERVAL);
         match session.responses.recv_timeout(wait) {
-            Ok(response) => return response,
+            Ok(response) => {
+                if control.is_cancelled() {
+                    return Err(SpeechError::Cancelled);
+                }
+                return response;
+            }
             Err(RecvTimeoutError::Timeout) => {
                 if let Some(status) = session.try_wait().map_err(SpeechError::WorkerIo)? {
                     session.mark_reaped();

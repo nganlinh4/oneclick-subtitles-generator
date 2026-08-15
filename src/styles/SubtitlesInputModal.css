@@ -607,6 +607,14 @@
   height: 36px;
 }
 
+.cancel-button:disabled,
+.save-button:disabled,
+.background-prompt-message:disabled,
+.lyrics-toggle-button:disabled {
+  cursor: not-allowed;
+  opacity: 0.6;
+}
+
 .cancel-button {
   background-color: transparent;
   color: var(--primary-color);

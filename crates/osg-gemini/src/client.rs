@@ -566,6 +566,16 @@ pub(crate) fn validate_generate_request(request: &GenerateRequest) -> Result<()>
             "Gemini supports at most 10 media files per request".to_owned(),
         ));
     }
+    if !request.media.is_empty() && !request.model.accepts_media() {
+        return Err(Error::InvalidRequest(
+            "custom Gemini models are text-only until verified for media input".to_owned(),
+        ));
+    }
+    if request.generation.media_resolution.is_some() && !request.model.accepts_media() {
+        return Err(Error::InvalidRequest(
+            "media resolution is unavailable for a custom text-only Gemini model".to_owned(),
+        ));
+    }
     for media in &request.media {
         if let MediaInput::Uploaded(file) = media
             && file.state() != crate::FileState::Active
@@ -695,5 +705,29 @@ mod tests {
         let key = ApiKey::new("secret").unwrap();
         let remote = Url::parse("http://example.com/").unwrap();
         assert!(GeminiClient::builder(key).api_base(remote).is_err());
+    }
+
+    #[test]
+    fn custom_models_are_accepted_for_text_and_rejected_for_media() {
+        let model = Model::from_api_id("gemini-3.8-flash").expect("valid custom model");
+        let text = GenerateRequest {
+            model,
+            prompt: "translate".to_owned(),
+            system_instruction: None,
+            media: Vec::new(),
+            generation: crate::GenerationConfig::default(),
+        };
+        assert!(validate_generate_request(&text).is_ok());
+
+        let mut media = text.clone();
+        media.media.push(MediaInput::Inline(
+            crate::InlineMedia::new("audio/mpeg", Bytes::from_static(b"audio")).unwrap(),
+        ));
+        assert!(validate_generate_request(&media).is_err());
+
+        let mut resolution = text;
+        resolution.generation.media_resolution =
+            Some(crate::MediaResolution::MediaResolutionMedium);
+        assert!(validate_generate_request(&resolution).is_err());
     }
 }

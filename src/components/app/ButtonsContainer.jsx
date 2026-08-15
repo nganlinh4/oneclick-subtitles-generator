@@ -19,6 +19,7 @@ import { useSrtUploadState } from './utils/srtUploadState';
 const ButtonsContainer = ({
   handleSrtUpload,
   handleGenerateSubtitles,
+  handleProcessWithOptions,
   handleCancelDownload,
   handleUserSubtitlesAdd,
   handleAbortVideoAnalysis,
@@ -43,8 +44,7 @@ const ButtonsContainer = ({
   onGenerateBackground,
   isProcessingSegment = false,
   setIsProcessingSegment = () => {},
-  apiKeysSet,
-  onSegmentSelect
+  apiKeysSet
 }) => {
   // State for Vercel mode detection
   const [isVercelMode] = useState(() => {
@@ -54,29 +54,19 @@ const ButtonsContainer = ({
   // Ref for WavyProgressIndicator animations
   const wavyProgressRef = useRef(null);
 
-  // Refs to track current state for autoflow (to avoid closure issues)
-  const currentStateRef = useRef({
-    uploadedFile: null,
-    uploadedFileData: null,
-    isDownloading: false,
-    downloadProgress: 0
-  });
-
   // Auto-generation orchestration (start/wait/stop flow)
   const {
     isAutoGenerating,
     autoFlowStep,
-    startAutoGenerateFlow
+    autoFlowActiveRef,
+    startAutoGenerateFlow,
+    stopAutoFlow
   } = useAutoGenerateFlow({
     apiKeysSet,
     t,
     handleGenerateSubtitles,
-    subtitlesData,
-    uploadedFile,
-    selectedVideo,
-    isVercelMode,
-    onSegmentSelect,
-    currentStateRef
+    handleProcessWithOptions,
+    isVercelMode
   });
 
   // SRT upload tracking with localStorage persistence
@@ -93,16 +83,6 @@ const ButtonsContainer = ({
     handleSrtUpload,
     handleUserSubtitlesAdd
   });
-
-  // Update current state ref whenever props change
-  useEffect(() => {
-    currentStateRef.current = {
-      uploadedFile,
-      uploadedFileData,
-      isDownloading,
-      downloadProgress
-    };
-  }, [uploadedFile, uploadedFileData, isDownloading, downloadProgress]);
 
   // Handle entrance/disappear animations for WavyProgressIndicator
   useEffect(() => {
@@ -279,7 +259,7 @@ const ButtonsContainer = ({
         uploadedFileData={uploadedFileData}
       />
 
-      {(isGenerating || retryingSegments.length > 0 || isRetrying || isProcessingSegment) && (
+      {(isGenerating || retryingSegments.length > 0 || isRetrying || isProcessingSegment || isAutoGenerating) && (
         <button
           className="force-stop-btn"
           onClick={(e) => {
@@ -293,10 +273,22 @@ const ButtonsContainer = ({
               }
             }, 1000);
 
+            // Automatic generation owns an isolated AbortController spanning its checkpoint,
+            // download, analysis, and Gemini calls. Stopping that run must not cancel a manual
+            // Gemini request, analysis, retry, or download that happens to coexist with it.
+            if (isAutoGenerating || autoFlowActiveRef.current) {
+              stopAutoFlow();
+              return;
+            }
+
             // Abort all ongoing Gemini API requests (including streaming)
             const aborted = abortAllRequests();
             if (aborted) {
               console.log('[ButtonsContainer] Successfully aborted all Gemini requests');
+            }
+
+            if (isDownloading && currentDownloadId) {
+              handleCancelDownload();
             }
 
             // Abort any active video analysis

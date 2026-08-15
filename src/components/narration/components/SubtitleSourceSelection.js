@@ -22,6 +22,7 @@ import { showErrorToast } from '../../../utils/toastUtils';
 import useSubtitleLanguageDetection from '../hooks/useSubtitleLanguageDetection';
 import { isDesktopRuntime } from '../../../platform/desktopRuntime';
 import { getSpeechStatus } from '../../../platform/speechService';
+import { F5_TTS_SUPPORTED_LANGUAGE_CODES } from '../../../platform/nativeNarrationCapabilities';
 import { handleGroupingToggle as handleGroupingToggleHandler } from '../utils/subtitleGroupingHandlers';
 import {
   handleSourceChange as handleSourceChangeHandler,
@@ -38,6 +39,17 @@ import {
 const CHATTERBOX_SUPPORTED_LANGS = [
   'ar','da','de','el','en','es','fi','fr','he','hi','it','ja','ko','ms','nl','no','pl','pt','ru','sv','sw','tr','zh'
 ];
+
+// The managed F5TTS_v1_Base checkpoint is the upstream bilingual English/Chinese model.
+// Keep this separate from Chatterbox's multilingual inventory so language detection cannot
+// silently route an unsupported language to the only installed F5 checkpoint.
+export const F5_V1_BASE_SUPPORTED_LANGS = F5_TTS_SUPPORTED_LANGUAGE_CODES;
+
+export const nativeF5ModelsForStatus = (backend) => (
+  backend?.backend === 'f5Tts' && backend.installed === true
+    ? [{ id: 'f5tts-v1-base', languages: F5_V1_BASE_SUPPORTED_LANGS }]
+    : []
+);
 
 /**
  * Subtitle Source Selection component
@@ -172,9 +184,7 @@ const SubtitleSourceSelection = ({
         if (isDesktopRuntime()) {
           const status = await getSpeechStatus();
           const f5 = status.backends.find((backend) => backend.backend === 'f5Tts');
-          setAvailableModels(f5?.installed
-            ? [{ id: 'f5tts-v1-base', languages: CHATTERBOX_SUPPORTED_LANGS }]
-            : []);
+          setAvailableModels(nativeF5ModelsForStatus(f5));
           return;
         }
         const { models } = await getAvailableModels();

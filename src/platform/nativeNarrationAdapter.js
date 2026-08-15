@@ -122,6 +122,11 @@ const requireFinite = (value, minimum, maximum) => {
   return value;
 };
 
+const requireLifecycleEpoch = (value) => {
+  if (!Number.isSafeInteger(value) || value < 0) throw invalid();
+  return value;
+};
+
 const toMilli = (value, fallback, minimum, maximum) => (
   Math.round(requireFinite(value ?? fallback, minimum, maximum) * 1_000)
 );
@@ -225,6 +230,12 @@ export const createNativeSpeechProfile = (methodInput, rawSettings = {}) => {
   if (Object.keys(settings).some((key) => !settingKeys[backend].has(key))) throw invalid();
   switch (backend) {
     case 'f5Tts': {
+      if (settings.language !== undefined) {
+        const language = typeof settings.language === 'string'
+          ? settings.language.toLowerCase().split('-')[0]
+          : '';
+        if (!['en', 'zh'].includes(language)) throw invalid();
+      }
       const randomSeed = settings.useRandomSeed === true;
       const seed = randomSeed
         ? null
@@ -427,11 +438,12 @@ export const createNativeNarrationAdapter = ({
   const generate = async (rawRequest, rawCallbacks, options) => {
     const requestValue = requireRequestKeys(
       rawRequest,
-      new Set(['method', 'subtitles', 'settings', 'reference']),
-      new Set(['method', 'subtitles'])
+      new Set(['method', 'lifecycleEpoch', 'subtitles', 'settings', 'reference']),
+      new Set(['method', 'lifecycleEpoch', 'subtitles'])
     );
     const {
       method,
+      lifecycleEpoch,
       subtitles,
       settings = {},
       reference = null,
@@ -481,6 +493,7 @@ export const createNativeNarrationAdapter = ({
       referenceArtifactId: usesReference
         ? referenceId(reference)
         : null,
+      lifecycleEpoch,
     });
     const job = await speech.startSpeechJob(request, handlers, options);
     return Object.freeze({
@@ -521,9 +534,10 @@ export const createNativeNarrationAdapter = ({
   };
 
   const convertVoice = async (rawRequest, callbacks, options) => {
-    const { input, targetVoice } = requireRequestKeys(
+    const { input, targetVoice, lifecycleEpoch } = requireRequestKeys(
       rawRequest,
-      new Set(['input', 'targetVoice'])
+      new Set(['input', 'targetVoice', 'lifecycleEpoch']),
+      new Set(['input', 'targetVoice', 'lifecycleEpoch'])
     );
     const normalizedCallbacks = normalizeCallbacks(callbacks);
     const mapConversionResult = (result) => result.status === 'completed'
@@ -546,6 +560,7 @@ export const createNativeNarrationAdapter = ({
     return speech.startVoiceConversionJob({
       inputArtifactId: referenceId(input),
       targetVoiceArtifactId: referenceId(targetVoice),
+      lifecycleEpoch: requireLifecycleEpoch(lifecycleEpoch),
     }, {
       onProgress: (event) => safelyCall(normalizedCallbacks.onProgress, event),
       onSegmentCompleted: (event) => safelyCall(

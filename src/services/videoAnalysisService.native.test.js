@@ -60,6 +60,22 @@ test('analyzes the opaque native media asset without browser Gemini transport or
   getItem.mockRestore();
 });
 
+test('checks captured ownership immediately before and after native analysis', async () => {
+  const validateOwnership = vi.fn(async () => undefined);
+
+  await analyzeVideoWithGemini(
+    { __nativeMedia: true },
+    vi.fn(),
+    { validateOwnership }
+  );
+
+  expect(validateOwnership).toHaveBeenCalledTimes(2);
+  expect(validateOwnership.mock.invocationCallOrder[0])
+    .toBeLessThan(runNativeGeminiMediaAnalysis.mock.invocationCallOrder[0]);
+  expect(validateOwnership.mock.invocationCallOrder[1])
+    .toBeGreaterThan(runNativeGeminiMediaAnalysis.mock.invocationCallOrder[0]);
+});
+
 test('clips only the centered thirty-minute sample before native analysis', async () => {
   inspectMediaPipelineAsset.mockResolvedValue({ durationUs: 3_600_000_000 });
   runMediaPipeline.mockResolvedValue({ media: { asset: { id: CLIP_ID } } });

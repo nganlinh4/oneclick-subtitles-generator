@@ -28,11 +28,22 @@ export const setProcessingForceStopped = (value) => {
  * Create a new request ID and abort controller
  * @returns {Object} - Object containing requestId and signal
  */
-export const createRequestController = () => {
+export const createRequestController = (ownerSignal = null) => {
     const requestId = `request_${Date.now()}_${Math.random().toString(36).substring(2, 9)}`;
     const controller = new AbortController();
+    if (ownerSignal?.aborted) {
+        controller.abort(ownerSignal.reason);
+    } else if (typeof ownerSignal?.addEventListener === 'function') {
+        const abortFromOwner = () => controller.abort(ownerSignal.reason);
+        ownerSignal.addEventListener('abort', abortFromOwner, { once: true });
+        controller.__removeOwnerAbort = () => ownerSignal.removeEventListener('abort', abortFromOwner);
+    }
     activeAbortControllers.set(requestId, controller);
-    return { requestId, signal: controller.signal };
+    return {
+        requestId,
+        signal: controller.signal,
+        abort: (reason) => controller.abort(reason)
+    };
 };
 
 /**
@@ -41,6 +52,7 @@ export const createRequestController = () => {
  */
 export const removeRequestController = (requestId) => {
     if (requestId && activeAbortControllers.has(requestId)) {
+        activeAbortControllers.get(requestId)?.__removeOwnerAbort?.();
         activeAbortControllers.delete(requestId);
     }
 };
@@ -58,6 +70,7 @@ export const abortAllRequests = () => {
 
         // Abort all controllers in the map
         for (const [, controller] of activeAbortControllers.entries()) {
+            controller.__removeOwnerAbort?.();
             controller.abort();
         }
 

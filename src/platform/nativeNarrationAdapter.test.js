@@ -34,6 +34,7 @@ const artifact = {
 describe('legacy-to-native speech settings', () => {
   test('converts F5, Chatterbox, Edge, and gTTS controls without path or process options', () => {
     expect(createNativeSpeechProfile('f5tts', {
+      language: 'en-US',
       speechRate: 1.25,
       nfeStep: 16,
       swayCoef: -0.5,
@@ -47,6 +48,8 @@ describe('legacy-to-native speech settings', () => {
       guidanceMilli: 2_500,
       removeSilence: false,
     });
+    expect(() => createNativeSpeechProfile('f5tts', { language: 'ko' })).toThrow('invalid');
+    expect(() => createNativeSpeechProfile('f5tts', { language: 'unknown' })).toThrow('invalid');
     expect(createNativeSpeechProfile('chatterbox', {
       lang: 'ko',
       exaggeration: 1.2,
@@ -149,6 +152,7 @@ describe('native narration compatibility adapter', () => {
     const adapter = createNativeNarrationAdapter({ speech });
     const started = await adapter.generate({
       method: 'gtts',
+      lifecycleEpoch: 7,
       subtitles: [{
         id: 42,
         text: 'Hello',
@@ -172,6 +176,7 @@ describe('native narration compatibility adapter', () => {
       segments: [{ id: 'segment-1', text: 'Hello' }],
       profile: { backend: 'gtts', language: 'en', domain: 'com', slow: false },
       referenceArtifactId: null,
+      lifecycleEpoch: 7,
     });
     expect(onProgress).toHaveBeenCalledWith(expect.objectContaining({ fraction: 0.5 }));
     expect(onResult).toHaveBeenCalledWith(expect.objectContaining({
@@ -210,6 +215,7 @@ describe('native narration compatibility adapter', () => {
     const adapter = createNativeNarrationAdapter({ speech });
     await adapter.generate({
       method: 'f5tts',
+      lifecycleEpoch: 7,
       subtitles: [{ id: 'a', text: 'Hello' }],
       settings: { referenceText: 'Reference words' },
       reference: { nativeArtifactId: REFERENCE_ID },
@@ -237,6 +243,7 @@ describe('native narration compatibility adapter', () => {
     const adapter = createNativeNarrationAdapter({ speech });
     await expect(adapter.generate({
       method: 'f5tts',
+      lifecycleEpoch: 7,
       subtitles: [{ id: 1, text: 'Hello' }],
       reference: {
         nativeArtifactId: REFERENCE_ID,
@@ -245,12 +252,14 @@ describe('native narration compatibility adapter', () => {
     })).rejects.toThrow('invalid');
     await expect(adapter.generate({
       method: 'gtts',
+      lifecycleEpoch: 7,
       subtitles: [{ id: 1, text: 'Hello' }],
       settings: { lang: 'en' },
       reference: { nativeArtifactId: REFERENCE_ID },
     })).rejects.toThrow('invalid');
     await expect(adapter.generate({
       method: 'f5tts',
+      lifecycleEpoch: 7,
       subtitles: [{ id: 1, text: 'Hello' }],
       reference: {
         nativeArtifactId: REFERENCE_ID,
@@ -385,5 +394,30 @@ describe('native narration compatibility adapter', () => {
     })).resolves.toMatchObject({
       results: [{ subtitle_id: 10, text: 'Two', nativeArtifactId: ARTIFACT_ID }],
     });
+  });
+
+  test('requires and forwards the Chatterbox lifecycle epoch for voice conversion', async () => {
+    const speech = {
+      startVoiceConversionJob: vi.fn(async () => runningJob),
+    };
+    const adapter = createNativeNarrationAdapter({ speech });
+    const request = {
+      input: { nativeArtifactId: ARTIFACT_ID },
+      targetVoice: { nativeArtifactId: REFERENCE_ID },
+      lifecycleEpoch: 14,
+    };
+
+    await expect(adapter.convertVoice(request)).resolves.toEqual(runningJob);
+    expect(speech.startVoiceConversionJob).toHaveBeenCalledWith({
+      inputArtifactId: ARTIFACT_ID,
+      targetVoiceArtifactId: REFERENCE_ID,
+      lifecycleEpoch: 14,
+    }, expect.any(Object), undefined);
+    await expect(adapter.convertVoice({
+      input: request.input,
+      targetVoice: request.targetVoice,
+    })).rejects.toThrow('invalid');
+    await expect(adapter.convertVoice({ ...request, lifecycleEpoch: -1 }))
+      .rejects.toThrow('invalid');
   });
 });

@@ -95,6 +95,13 @@ impl CommandError {
         )
     }
 
+    pub(crate) fn subtitle_export_failed() -> Self {
+        Self::fixed(
+            "subtitleExportFailed",
+            "The subtitle document could not be saved to the selected destination.",
+        )
+    }
+
     pub(crate) fn media_tools_unavailable() -> Self {
         Self {
             code: "mediaToolsUnavailable",
@@ -224,6 +231,7 @@ impl From<DatabaseError> for CommandError {
             | DatabaseError::ArtifactNotFound(_)
             | DatabaseError::ArtifactContentMismatch(_)
             | DatabaseError::ArtifactReuseConflict(_)
+            | DatabaseError::ArtifactPublicationInProgress(_)
             | DatabaseError::InvalidArtifactTransition(_)
             | DatabaseError::ArtifactNotCacheable(_)) => database_artifact_error(error),
             error @ (DatabaseError::InvalidCacheCategory
@@ -343,7 +351,8 @@ fn database_artifact_error(error: &DatabaseError) -> CommandError {
             "artifactConflict",
             "The artifact conflicts with existing ownership or retention metadata.",
         ),
-        DatabaseError::InvalidArtifactTransition(_) => CommandError::fixed(
+        DatabaseError::ArtifactPublicationInProgress(_)
+        | DatabaseError::InvalidArtifactTransition(_) => CommandError::fixed(
             "artifactStateConflict",
             "The artifact cannot perform that operation in its current state.",
         ),

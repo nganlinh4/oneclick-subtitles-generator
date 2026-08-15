@@ -27,8 +27,8 @@
   "progressBytes": "{{done}} / {{total}}",
   "electronManaged": "데스크톱 앱에는 이 엔진들이 포함되어 있습니다. 다운로드는 앱 패키지가 관리합니다.",
   "groups": {
-    "localAi": "로컬 AI 엔진",
-    "localAiDetail": "음성 복제 및 전사",
+    "localAi": "음성 및 전사 엔진",
+    "localAiDetail": "음성 복제, 내레이션 공급자 및 전사",
     "runtime": "런타임 도구",
     "runtimeDetail": "앱에 포함하지 않고 별도로 다운로드"
   },
@@ -52,6 +52,7 @@
   },
   "kind": {
     "voice-cloning": "음성 복제",
+    "speech-provider": "내레이션 공급자",
     "transcription": "전사"
   },
   "state": {

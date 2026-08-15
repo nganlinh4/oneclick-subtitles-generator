@@ -24,6 +24,14 @@ export const PROJECT_SCOPED_SETTING_KEYS = Object.freeze([
   'user_provided_subtitles',
 ]);
 
+// These keys are owned by typed native stores. A same-named legacy localStorage entry contains
+// only a JSON string; copying it through the generic preference sync would replace structured
+// native data and break project/credential restoration on the next launch.
+export const NATIVE_OWNED_SETTING_KEYS = Object.freeze([
+  'gemini.keySelection.v1',
+  'project.subtitleCacheIndex.v1',
+]);
+
 // Runtime handles, capability URLs, generated results, and recomputable caches must not be copied
 // into the durable settings table. In particular, `current_file_url` can contain the private media
 // server's bearer token and Gemini file-cache rows historically included provider metadata.
@@ -49,7 +57,11 @@ export const TRANSIENT_SETTING_KEYS = Object.freeze([
 
 const credentialSettingKeys = new Set(CREDENTIAL_SETTING_KEYS);
 const projectScopedSettingKeys = new Set(PROJECT_SCOPED_SETTING_KEYS);
-const transientSettingKeys = new Set(TRANSIENT_SETTING_KEYS);
+const nativeOwnedSettingKeys = new Set(NATIVE_OWNED_SETTING_KEYS);
+// Keep this byte-for-byte equivalent to Rust's `is_transient_setting_key`: native setting keys
+// are ASCII, then Rust lowercases them and replaces every '-' with '_' before applying rules.
+const normalizeTransientSettingKey = (key) => key.toLowerCase().replace(/-/g, '_');
+const transientSettingKeys = new Set(TRANSIENT_SETTING_KEYS.map(normalizeTransientSettingKey));
 const credentialKeyFragments = Object.freeze([
   'api_key',
   'apikey',
@@ -103,8 +115,48 @@ const credentialKeySuffixes = Object.freeze([
   '_refresh_token',
   '_auth_token',
 ]);
-const transientKeyPattern = /^(?:current_|gemini_file_|oauth_)|(?:_cache|_result|_timestamp|_in_progress)$/i;
+const transientKeyPrefixes = Object.freeze(['current_', 'gemini_file_', 'oauth_']);
+const transientKeySuffixes = Object.freeze([
+  '_cache',
+  '_result',
+  '_timestamp',
+  '_in_progress',
+  '_directory',
+  '_location',
+  '_path',
+  '_uri',
+  '_url',
+]);
 const nativeSettingKeyPattern = /^[A-Za-z0-9._:-]{1,128}$/;
+export const SETTINGS_PERSISTENCE_LIMITS = Object.freeze({
+  maxEntries: 4_096,
+  maxValueJsonBytes: 1024 * 1024,
+  maxBatchBytes: 8 * 1024 * 1024,
+});
+const utf8Encoder = new TextEncoder();
+
+export class SettingsPersistenceLimitError extends Error {
+  constructor(code) {
+    super('Pending settings exceed the desktop persistence limits');
+    this.name = 'SettingsPersistenceLimitError';
+    this.code = code;
+  }
+}
+
+const isWellFormedUtf16 = (value) => {
+  for (let index = 0; index < value.length; index += 1) {
+    const codeUnit = value.charCodeAt(index);
+    if (codeUnit >= 0xD800 && codeUnit <= 0xDBFF) {
+      if (index + 1 >= value.length) return false;
+      const nextCodeUnit = value.charCodeAt(index + 1);
+      if (nextCodeUnit < 0xDC00 || nextCodeUnit > 0xDFFF) return false;
+      index += 1;
+    } else if (codeUnit >= 0xDC00 && codeUnit <= 0xDFFF) {
+      return false;
+    }
+  }
+  return true;
+};
 
 const canonicalizeSettingKey = (key) => key
   .replace(/([A-Z]+)([A-Z][a-z])/g, '$1_$2')
@@ -132,35 +184,93 @@ export const isProjectScopedSettingKey = (key) => (
   typeof key === 'string' && projectScopedSettingKeys.has(key)
 );
 
-export const isTransientSettingKey = (key) => (
+export const isNativeOwnedSettingKey = (key) => (
   typeof key === 'string'
-  && (transientSettingKeys.has(key) || transientKeyPattern.test(key))
+  && (nativeOwnedSettingKeys.has(key) || key.startsWith('project.legacyAux.v1.'))
 );
 
-export const collectPersistableSettings = (storage) => {
-  const settings = {};
+export const isTransientSettingKey = (key) => {
+  if (typeof key !== 'string') {
+    return false;
+  }
+
+  const normalized = normalizeTransientSettingKey(key);
+  return transientSettingKeys.has(normalized)
+    || transientKeyPrefixes.some((prefix) => normalized.startsWith(prefix))
+    || transientKeySuffixes.some((suffix) => normalized.endsWith(suffix));
+};
+
+const isPersistableSettingKey = (key) => (
+  isNativeSettingKey(key)
+  && !isCredentialSettingKey(key)
+  && !isProjectScopedSettingKey(key)
+  && !isNativeOwnedSettingKey(key)
+  && !isTransientSettingKey(key)
+);
+
+export const collectPersistableSettings = (storage, overrides = {}) => {
+  const settings = new Map();
+  let aggregateBytes = 0;
+
+  const addSetting = (key, value, required) => {
+    // JSON.stringify preserves lone UTF-16 surrogates as escape sequences, but Rust strings must
+    // be Unicode scalar values. Reject them locally instead of silently repairing transport data.
+    if (!isWellFormedUtf16(value)) {
+      if (required) throw new SettingsPersistenceLimitError('invalidUnicode');
+      return false;
+    }
+
+    const valueJsonBytes = utf8Encoder.encode(JSON.stringify(value)).byteLength;
+    if (valueJsonBytes > SETTINGS_PERSISTENCE_LIMITS.maxValueJsonBytes) {
+      if (required) throw new SettingsPersistenceLimitError('valueTooLarge');
+      return false;
+    }
+
+    if (settings.size >= SETTINGS_PERSISTENCE_LIMITS.maxEntries) {
+      if (required) throw new SettingsPersistenceLimitError('tooManyEntries');
+      return false;
+    }
+
+    const entryBytes = utf8Encoder.encode(key).byteLength + valueJsonBytes;
+    if (aggregateBytes + entryBytes > SETTINGS_PERSISTENCE_LIMITS.maxBatchBytes) {
+      if (required) throw new SettingsPersistenceLimitError('batchTooLarge');
+      return false;
+    }
+
+    settings.set(key, value);
+    aggregateBytes += entryBytes;
+    return true;
+  };
+
+  // Pending form values are the required write. Validate and reserve their native batch budget
+  // before considering compatibility rows, so old localStorage cannot crowd out a user edit.
+  Object.entries(overrides).forEach(([key, value]) => {
+    if (isPersistableSettingKey(key) && typeof value === 'string') {
+      addSetting(key, value, true);
+    }
+  });
 
   for (let index = 0; index < storage.length; index += 1) {
     const key = storage.key(index);
-    if (!isNativeSettingKey(key)
-        || isCredentialSettingKey(key)
-        || isProjectScopedSettingKey(key)
-        || isTransientSettingKey(key)) {
+    if (!isPersistableSettingKey(key) || settings.has(key)) {
       continue;
     }
 
     try {
-      settings[key] = storage.getItem(key);
+      const value = storage.getItem(key);
+      if (typeof value === 'string') {
+        addSetting(key, value, false);
+      }
     } catch (error) {
       console.error(`Error reading localStorage key ${key}:`, error);
     }
   }
 
-  return settings;
+  return Object.fromEntries(settings);
 };
 
-export const persistDesktopSettings = async (storage) => {
-  const values = collectPersistableSettings(storage);
+export const persistDesktopSettings = async (storage, overrides = {}) => {
+  const values = collectPersistableSettings(storage, overrides);
   await invokeDesktop('settings_set_many', { values });
 
   // Preserve the legacy service's response contract for callers that inspect the result.

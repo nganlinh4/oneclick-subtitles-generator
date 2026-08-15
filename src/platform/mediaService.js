@@ -1,5 +1,9 @@
 import { validate as validateUuid, version as uuidVersion } from 'uuid';
 import { invokeDesktop, invokeDesktopRaw } from './desktopRuntime';
+import {
+  getActiveProjectSnapshot,
+  mutateProject,
+} from './projectService';
 
 const NATIVE_MEDIA_MARKER = '__nativeMedia';
 const MAX_DISPLAY_NAME_CHARACTERS = 512;
@@ -14,6 +18,7 @@ const VIDEO_EXTENSIONS = new Set([
 const SNAPSHOT_KEYS = Object.freeze(['media', 'playback', 'subtitleTrack']);
 const MEDIA_KEYS = Object.freeze(['displayName', 'extension', 'id', 'kind', 'sizeBytes']);
 const PLAYBACK_KEYS = Object.freeze(['byteLength', 'id', 'mimeType', 'playbackUrl']);
+const CONTENT_IDENTITY_KEYS = Object.freeze(['algorithm', 'digest', 'sizeBytes']);
 const DESCRIPTOR_KEYS = Object.freeze([
   NATIVE_MEDIA_MARKER,
   'assetId',
@@ -60,6 +65,31 @@ const hasExactKeys = (value, expectedKeys) => {
   const keys = Object.keys(value).sort();
   return keys.length === expectedKeys.length
     && keys.every((key, index) => key === expectedKeys[index]);
+};
+
+const snapshotExactDataRecord = (value, expectedKeys, failure) => {
+  try {
+    if (value === null || typeof value !== 'object' || Array.isArray(value)) throw failure();
+    const prototype = Object.getPrototypeOf(value);
+    if (prototype !== Object.prototype && prototype !== null) throw failure();
+    const descriptors = Object.getOwnPropertyDescriptors(value);
+    const keys = Reflect.ownKeys(descriptors);
+    if (keys.length !== expectedKeys.length
+        || keys.some((key) => typeof key !== 'string' || !expectedKeys.includes(key))) {
+      throw failure();
+    }
+    const snapshot = {};
+    for (const key of expectedKeys) {
+      const descriptor = descriptors[key];
+      if (!descriptor || !Object.hasOwn(descriptor, 'value') || descriptor.enumerable !== true) {
+        throw failure();
+      }
+      snapshot[key] = descriptor.value;
+    }
+    return Object.freeze(snapshot);
+  } catch {
+    throw failure();
+  }
 };
 
 const isUuidVersion = (value, expectedVersion) => {
@@ -202,6 +232,41 @@ const createDescriptor = (media, playback) => Object.freeze({
   lastModified: 0,
   playbackUrl: playback.playbackUrl,
 });
+
+export const normalizeMediaCandidate = (value) => {
+  const candidate = snapshotExactDataRecord(
+    value,
+    ['asset', 'contentIdentity'],
+    invalidMediaResponse
+  );
+  const assetSnapshot = snapshotExactDataRecord(candidate.asset, MEDIA_KEYS, invalidMediaResponse);
+  const identity = snapshotExactDataRecord(
+    candidate.contentIdentity,
+    CONTENT_IDENTITY_KEYS,
+    invalidMediaResponse
+  );
+  const asset = normalizeMedia(assetSnapshot);
+  if (identity.algorithm !== 'blake3-256'
+      || typeof identity.digest !== 'string'
+      || !/^[0-9a-f]{64}$/.test(identity.digest)
+      || identity.sizeBytes !== asset.sizeBytes) {
+    throw invalidMediaResponse();
+  }
+  return Object.freeze({
+    asset: Object.freeze({
+      displayName: asset.displayName,
+      extension: asset.extension,
+      id: asset.id,
+      kind: asset.kind,
+      sizeBytes: asset.sizeBytes,
+    }),
+    contentIdentity: Object.freeze({
+      algorithm: identity.algorithm,
+      digest: identity.digest,
+      sizeBytes: identity.sizeBytes,
+    }),
+  });
+};
 
 export const createNativeMediaDescriptor = (value) => {
   try {
@@ -348,8 +413,19 @@ export const getSelectedMedia = async () => normalizeSnapshot(
 
 const openMediaAssetWithMode = async (assetId, onlyIfEmpty) => {
   const requestedAssetId = validateAssetId(assetId);
+  const project = getActiveProjectSnapshot();
+  if (!project
+      || !isUuidV7(project.metadata?.id)
+      || !Number.isSafeInteger(project.stateVersion)
+      || project.stateVersion < 0
+      || !Array.isArray(project.media)
+      || !project.media.some((asset) => asset?.id === requestedAssetId)) {
+    throw invalidMediaRequest();
+  }
   const snapshot = await invokeDesktop('open_media_asset', {
     id: requestedAssetId,
+    projectId: project.metadata.id,
+    expectedStateVersion: project.stateVersion,
     onlyIfEmpty,
   });
   if (snapshot === null && onlyIfEmpty) return null;
@@ -362,6 +438,191 @@ const openMediaAssetWithMode = async (assetId, onlyIfEmpty) => {
 export const openMediaAsset = async (assetId) => openMediaAssetWithMode(assetId, false);
 
 export const restoreMediaAsset = async (assetId) => openMediaAssetWithMode(assetId, true);
+
+const normalizeCandidateClaimOptions = (value) => {
+  const options = snapshotExactDataRecord(
+    value,
+    ['expectedStateVersion', 'projectId'],
+    invalidMediaRequest
+  );
+  if (!isUuidV7(options.projectId)
+      || !Number.isSafeInteger(options.expectedStateVersion)
+      || options.expectedStateVersion < 0) {
+    throw invalidMediaRequest();
+  }
+  return options;
+};
+
+const candidateProjectSnapshot = (value, options, asset) => {
+  const project = snapshotExactDataRecord(
+    value,
+    ['metadata', 'stateVersion', 'media', 'tracks'],
+    invalidMediaRequest
+  );
+  const metadata = snapshotExactDataRecord(
+    project.metadata,
+    ['id', 'name'],
+    invalidMediaRequest
+  );
+  if (metadata.id !== options.projectId
+      || project.stateVersion !== options.expectedStateVersion
+      || !Array.isArray(project.media)
+      || !Array.isArray(project.tracks)) {
+    throw invalidMediaRequest();
+  }
+  return Object.freeze({
+    metadata,
+    stateVersion: project.stateVersion,
+    media: Object.freeze([asset]),
+    tracks: project.tracks,
+  });
+};
+
+const committedCandidateSnapshot = (value, options, asset) => {
+  let commit;
+  try {
+    if (value === null || typeof value !== 'object' || Array.isArray(value)) {
+      throw invalidMediaResponse();
+    }
+    const prototype = Object.getPrototypeOf(value);
+    if (prototype !== Object.prototype && prototype !== null) throw invalidMediaResponse();
+    const descriptors = Object.getOwnPropertyDescriptors(value);
+    const keys = Reflect.ownKeys(descriptors);
+    const required = ['revisionId', 'stateVersion', 'snapshot'];
+    if (keys.some((key) => typeof key !== 'string'
+          || ![...required, 'committed'].includes(key))
+        || required.some((key) => !keys.includes(key))) {
+      throw invalidMediaResponse();
+    }
+    commit = {};
+    for (const key of keys) {
+      const descriptor = descriptors[key];
+      if (!Object.hasOwn(descriptor, 'value') || descriptor.enumerable !== true) {
+        throw invalidMediaResponse();
+      }
+      commit[key] = descriptor.value;
+    }
+    commit = Object.freeze(commit);
+  } catch {
+    throw invalidMediaResponse();
+  }
+  if ((Object.hasOwn(commit, 'committed') && commit.committed !== false)
+      || !Number.isSafeInteger(commit.stateVersion)
+      || (commit.stateVersion !== options.expectedStateVersion
+        && commit.stateVersion !== options.expectedStateVersion + 1)) {
+    throw invalidMediaResponse();
+  }
+  const snapshot = snapshotExactDataRecord(
+    commit.snapshot,
+    ['metadata', 'stateVersion', 'media', 'tracks'],
+    invalidMediaResponse
+  );
+  const metadata = snapshotExactDataRecord(
+    snapshot.metadata,
+    ['id', 'name'],
+    invalidMediaResponse
+  );
+  if (metadata.id !== options.projectId
+      || snapshot.stateVersion !== commit.stateVersion
+      || !Array.isArray(snapshot.media)
+      || snapshot.media.length !== 1
+      || !Array.isArray(snapshot.tracks)) {
+    throw invalidMediaResponse();
+  }
+  const committedAsset = snapshotExactDataRecord(snapshot.media[0], MEDIA_KEYS, invalidMediaResponse);
+  if (committedAsset.id !== asset.id
+      || committedAsset.displayName !== asset.displayName
+      || committedAsset.extension !== asset.extension
+      || committedAsset.sizeBytes !== asset.sizeBytes
+      || committedAsset.kind !== asset.kind) {
+    throw invalidMediaResponse();
+  }
+  return commit.stateVersion;
+};
+
+const requireActiveCandidateProject = (value, options, stateVersion, asset = null) => {
+  const project = snapshotExactDataRecord(
+    value,
+    ['metadata', 'stateVersion', 'media', 'tracks'],
+    invalidMediaRequest
+  );
+  const metadata = snapshotExactDataRecord(
+    project.metadata,
+    ['id', 'name'],
+    invalidMediaRequest
+  );
+  if (metadata.id !== options.projectId
+      || project.stateVersion !== stateVersion
+      || !Array.isArray(project.media)
+      || !Array.isArray(project.tracks)) {
+    throw invalidMediaRequest();
+  }
+  if (asset !== null) {
+    if (project.media.length !== 1) throw invalidMediaRequest();
+    const currentAsset = snapshotExactDataRecord(project.media[0], MEDIA_KEYS, invalidMediaRequest);
+    if (currentAsset.id !== asset.id
+        || currentAsset.displayName !== asset.displayName
+        || currentAsset.extension !== asset.extension
+        || currentAsset.sizeBytes !== asset.sizeBytes
+        || currentAsset.kind !== asset.kind) {
+      throw invalidMediaRequest();
+    }
+  }
+  return project;
+};
+
+export const createMediaCandidateLifecycle = ({
+  getActiveSnapshot = getActiveProjectSnapshot,
+  invokeCommand = invokeDesktop,
+  mutate = mutateProject,
+  openAsset = openMediaAsset,
+} = {}) => Object.freeze({
+  claim: async (rawCandidate, rawOptions) => {
+    const candidate = normalizeMediaCandidate(rawCandidate);
+    const options = normalizeCandidateClaimOptions(rawOptions);
+    requireActiveCandidateProject(
+      getActiveSnapshot(),
+      options,
+      options.expectedStateVersion
+    );
+    const commit = await mutate(
+      options.projectId,
+      'Replace project media with downloaded candidate',
+      (project) => candidateProjectSnapshot(project, options, candidate.asset),
+      { retryOnConflict: false }
+    );
+    const committedStateVersion = committedCandidateSnapshot(commit, options, candidate.asset);
+    requireActiveCandidateProject(
+      getActiveSnapshot(),
+      options,
+      committedStateVersion,
+      candidate.asset
+    );
+    const descriptor = await openAsset(candidate.asset.id);
+    requireActiveCandidateProject(
+      getActiveSnapshot(),
+      options,
+      committedStateVersion,
+      candidate.asset
+    );
+    if (!isNativeMediaDescriptor(descriptor) || descriptor.assetId !== candidate.asset.id) {
+      throw invalidMediaResponse();
+    }
+    return descriptor;
+  },
+  discard: async (assetId) => {
+    const discarded = await invokeCommand('discard_media_candidate', {
+      id: validateAssetId(assetId),
+    });
+    if (typeof discarded !== 'boolean') throw invalidMediaResponse();
+    return discarded;
+  },
+});
+
+const mediaCandidateLifecycle = createMediaCandidateLifecycle();
+
+export const claimMediaCandidate = mediaCandidateLifecycle.claim;
+export const discardMediaCandidate = mediaCandidateLifecycle.discard;
 
 export const clearMedia = async () => normalizeSnapshot(
   await invokeDesktop('clear_media', {}),

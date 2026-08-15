@@ -29,5 +29,6 @@
   "processingCancelled": "Processing was cancelled by user",
   "allRequestsAborted": "All requests have been cancelled",
   "parakeetApiError": "Parakeet API error: {{status}} {{errorText}}",
-  "invalidSegmentSelection": "Invalid segment selection"
+  "invalidSegmentSelection": "Invalid segment selection",
+  "videoDownloadExecutionFailed": "The downloader retried but the source still failed. Check your connection, or enable browser cookies if the video requires sign-in."
 }

@@ -62,6 +62,9 @@ beforeEach(() => {
     packages: [
       { id: 'f5-tts', operation: null },
       { id: 'chatterbox', operation: null },
+      { id: 'edge-tts', operation: null },
+      { id: 'gtts', operation: null },
+      { id: 'gemini-tts', operation: null },
     ],
   });
   installEnginePackage.mockResolvedValue({ id: 'asr-job' });
@@ -102,6 +105,13 @@ it('canonicalizes the Parakeet alias and defines distinct F5 package/runtime ide
     packageBackend: 'f5-tts',
     runtimeBackend: 'f5Tts',
   });
+  expect(getManagedEngineBinding('edge-tts')).toEqual({
+    family: 'speech',
+    engineId: 'edge-tts',
+    label: 'Edge TTS',
+    packageBackend: 'edge-tts',
+    runtimeBackend: 'edgeTts',
+  });
 });
 
 it('routes package status, install, removal, and cancellation by engine family', async () => {
@@ -112,41 +122,62 @@ it('routes package status, install, removal, and cancellation by engine family',
     .resolves.toMatchObject({ id: 'parakeet' });
   await expect(getManagedEnginePackageStatus('f5tts'))
     .resolves.toMatchObject({ id: 'f5-tts' });
+  await expect(getManagedEnginePackageStatus('gemini-tts'))
+    .resolves.toMatchObject({ id: 'gemini-tts' });
   await installManagedEnginePackage('parakeet', handlers, options);
   await installManagedEnginePackage('f5tts', handlers, options);
+  await installManagedEnginePackage('edge-tts', handlers, options);
   await removeManagedEnginePackage('qwen3-asr-0.6b', handlers, options);
   await removeManagedEnginePackage('chatterbox', handlers, options);
   await cancelManagedEnginePackageJob('parakeet', 'asr-job');
   await cancelManagedEnginePackageJob('chatterbox', 'speech-job');
 
   expect(getEnginePackagesStatus).toHaveBeenCalledTimes(1);
-  expect(getSpeechPackagesStatus).toHaveBeenCalledTimes(1);
+  expect(getSpeechPackagesStatus).toHaveBeenCalledTimes(2);
   expect(installEnginePackage).toHaveBeenCalledWith('parakeet', handlers, options);
   expect(installSpeechPackage).toHaveBeenCalledWith('f5-tts', handlers, options);
+  expect(installSpeechPackage).toHaveBeenCalledWith('edge-tts', handlers, options);
   expect(removeEnginePackage).toHaveBeenCalledWith('qwen3-asr-0.6b', handlers, options);
   expect(removeSpeechPackage).toHaveBeenCalledWith('chatterbox', handlers, options);
   expect(cancelEnginePackageJob).toHaveBeenCalledWith('asr-job');
   expect(cancelSpeechPackageJob).toHaveBeenCalledWith('speech-job');
 });
 
-it('routes ASR runtime controls natively and uses speech probe/shutdown for speech runtimes', async () => {
+it('routes ASR runtime controls natively', async () => {
   await startManagedEngineRuntime('parakeet');
   await stopManagedEngineRuntime('parakeet');
-  await startManagedEngineRuntime('f5tts');
-  await stopManagedEngineRuntime('f5tts');
-  await startManagedEngineRuntime('chatterbox');
-  await stopManagedEngineRuntime('chatterbox');
 
   expect(startEngineRuntime).toHaveBeenCalledWith('parakeet');
   expect(stopEngineRuntime).toHaveBeenCalledWith('parakeet');
-  expect(probeSpeechBackend).toHaveBeenNthCalledWith(1, 'f5Tts');
-  expect(stopSpeechRuntime).toHaveBeenNthCalledWith(1, 'f5Tts');
-  expect(probeSpeechBackend).toHaveBeenNthCalledWith(2, 'chatterbox');
-  expect(stopSpeechRuntime).toHaveBeenNthCalledWith(2, 'chatterbox');
+});
+
+it.each([
+  ['f5tts', 'f5-tts', 'f5Tts'],
+  ['chatterbox', 'chatterbox', 'chatterbox'],
+  ['edge-tts', 'edge-tts', 'edgeTts'],
+  ['gtts', 'gtts', 'gtts'],
+  ['gemini-tts', 'gemini-tts', 'geminiTts'],
+])('routes the %s Tools package and runtime controls to %s / %s', async (
+  engineId,
+  packageBackend,
+  runtimeBackend,
+) => {
+  const handlers = { onCompleted: vi.fn() };
+  const options = { signal: new AbortController().signal };
+
+  await installManagedEnginePackage(engineId, handlers, options);
+  await removeManagedEnginePackage(engineId, handlers, options);
+  await startManagedEngineRuntime(engineId);
+  await stopManagedEngineRuntime(engineId);
+
+  expect(installSpeechPackage).toHaveBeenCalledWith(packageBackend, handlers, options);
+  expect(removeSpeechPackage).toHaveBeenCalledWith(packageBackend, handlers, options);
+  expect(probeSpeechBackend).toHaveBeenCalledWith(runtimeBackend);
+  expect(stopSpeechRuntime).toHaveBeenCalledWith(runtimeBackend);
 });
 
 it('fails closed for unsupported IDs and incomplete native status without invoking another family', async () => {
-  expect(() => getManagedEngineBinding('edge-tts')).toThrow(ManagedEngineServiceError);
+  expect(() => getManagedEngineBinding('unknown-speech')).toThrow(ManagedEngineServiceError);
   expect(() => installManagedEnginePackage({ id: 'parakeet' })).toThrow(ManagedEngineServiceError);
   getSpeechPackagesStatus.mockResolvedValueOnce({ packages: [] });
   await expect(getManagedEnginePackageStatus('f5tts'))

@@ -6,9 +6,13 @@ import { fetchBrowserResource } from '../platform/browserFetch';
 import { persistRetryResultToCache } from './useSubtitlesCaching';
 import {
   DEFAULT_TRANSCRIPTION_MODEL_ID,
-  isHighIntelligenceModel,
   normalizeMediaModelId
 } from '../config/geminiModels';
+import { subtitleCompletionStatus } from './subtitleCompletionStatus';
+import { getEmptySpeechPolicy } from '../services/gemini/promptManagement';
+import { isDesktopRuntime } from '../platform/desktopRuntime';
+import { processGeminiSegment } from '../services/engines/GeminiAdapter';
+import { createFullMediaStreamingHandler } from './subtitleStreamingHandlers';
 
 /**
  * retryGeneration extracted from useSubtitles.
@@ -29,6 +33,10 @@ export const useSubtitlesRetryGeneration = ({
         const runId = (typeof crypto !== 'undefined' && crypto.randomUUID) ? crypto.randomUUID() : Math.random().toString(36).slice(2, 10);
         // Extract options
         const { userProvidedSubtitles } = options;
+        const speechOnly = getEmptySpeechPolicy(
+            input?.type?.startsWith('audio/') ? 'audio' : 'video',
+            userProvidedSubtitles
+        ) === 'provenSilence';
         if (!apiKeysSet.gemini) {
             setStatus({ message: t('errors.apiKeyRequired'), type: 'error' });
             return false;
@@ -58,10 +66,45 @@ export const useSubtitlesRetryGeneration = ({
                     // Debug log to see the media duration
 
 
-                    // Use the new smart processing function that chooses between simplified and legacy
-                    subtitles = await processMediaFile(input, setStatus, t, { userProvidedSubtitles });
+                    if (isDesktopRuntime()) {
+                        const fullSegment = { start: 0, end: duration };
+                        const fps = options.fps ?? getVideoProcessingFps();
+                        const mediaResolution = options.mediaResolution ?? getMediaResolution();
+                        const model = normalizeMediaModelId(
+                            options.modelId ?? options.model ?? localStorage.getItem('gemini_model'),
+                            DEFAULT_TRANSCRIPTION_MODEL_ID
+                        );
+                        currentSourceFileRef.current = input;
+                        subtitles = await processGeminiSegment(
+                            input,
+                            fullSegment,
+                            {
+                                fps,
+                                mediaResolution,
+                                model,
+                                userProvidedSubtitles,
+                                maxDurationPerRequest: options.maxDurationPerRequest,
+                                autoSplitSubtitles: options.autoSplitSubtitles,
+                                maxWordsPerSubtitle: options.maxWordsPerSubtitle,
+                                forceInline: options.inlineExtraction === true,
+                                runId
+                            },
+                            {
+                                onStatus: setStatus,
+                                onStreamingUpdate: createFullMediaStreamingHandler(
+                                    setSubtitlesData,
+                                    setStatus
+                                ),
+                                t
+                            }
+                        );
+                    } else {
+                        // Preserve the browser workflow for the legacy hosted build.
+                        subtitles = await processMediaFile(input, setStatus, t, { userProvidedSubtitles });
+                    }
                 } catch (error) {
                     console.error('Error checking media duration:', error);
+                    if (isDesktopRuntime()) throw error;
                     // Fallback to normal processing (respect inlineExtraction for non-YouTube)
                     const forceInline = options.inlineExtraction === true && inputType !== 'youtube';
                     subtitles = await callGeminiApi(input, inputType, { userProvidedSubtitles, ...(forceInline ? { forceInline: true } : {}), runId });
@@ -135,24 +178,21 @@ export const useSubtitlesRetryGeneration = ({
             // Cache the new results using unified approach (URL-based vs file-based)
             await persistRetryResultToCache({ input, inputType, subtitles });
 
-            const currentModel = normalizeMediaModelId(
-                localStorage.getItem('gemini_model'),
-                DEFAULT_TRANSCRIPTION_MODEL_ID
-            );
-            const isUsingStrongModel = isHighIntelligenceModel(currentModel);
-
-            // Show different success message based on model
-            if (isUsingStrongModel && (!subtitles || subtitles.length === 0)) {
-                setStatus({ message: t('output.strongModelSuccess'), type: 'warning' });
-            } else {
-                setStatus({ message: t('output.generationSuccess'), type: 'success' });
-            }
+            setStatus(subtitleCompletionStatus(subtitles, t, { speechOnly }));
             return true;
         } catch (error) {
             console.error('Error regenerating subtitles:', error);
 
             // Check for specific Gemini API errors
-            if (error.message && (
+            if (error?.code === 'subtitleCacheSaveFailed') {
+                setStatus({
+                    message: t(
+                        'output.subtitlesCacheSaveFailed',
+                        'Subtitles were generated, but they could not be saved.'
+                    ),
+                    type: 'error'
+                });
+            } else if (error.message && (
                 (error.message.includes('503') && error.message.includes('Service Unavailable')) ||
                 error.message.includes('The model is overloaded')
             )) {

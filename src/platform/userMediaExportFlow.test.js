@@ -25,7 +25,7 @@ test('downloads the selected native format then exports only its opaque asset ID
   const start = vi.fn(async (request, handlers) => {
     handlers.onProgress({
       job: downloadJob(downloadJobId, 5000, 2),
-      progress: { fraction: 0.5 },
+      progress: { fraction: 0.01 },
     });
     handlers.onCompleted({ media: { asset: { id: assetId } } });
     return downloadJob(downloadJobId);
@@ -35,6 +35,7 @@ test('downloads the selected native format then exports only its opaque asset ID
     handlers.onProgress({ job: { progress: { basisPoints: 7500 } } });
     return { status: 'completed' };
   });
+  const discardCandidate = vi.fn().mockResolvedValue(true);
   const onJobStarted = vi.fn();
   const onDownloadProgress = vi.fn();
   const onExportProgress = vi.fn();
@@ -47,7 +48,7 @@ test('downloads the selected native format then exports only its opaque asset ID
     onJobStarted,
     onDownloadProgress,
     onExportProgress,
-  }, { inspect, start, exportAsset })).resolves.toEqual({ status: 'completed' });
+  }, { inspect, start, discardCandidate, exportAsset })).resolves.toEqual({ status: 'completed' });
 
   expect(start).toHaveBeenCalledWith({ inventoryId, media, subtitle: null }, expect.any(Object));
   expect(exportAsset).toHaveBeenCalledWith(assetId, expect.any(Object));
@@ -55,6 +56,7 @@ test('downloads the selected native format then exports only its opaque asset ID
   expect(onJobStarted).toHaveBeenNthCalledWith(2, { id: exportJobId });
   expect(onDownloadProgress).toHaveBeenCalledWith(50);
   expect(onExportProgress).toHaveBeenCalledWith(75);
+  expect(discardCandidate).toHaveBeenCalledExactlyOnceWith(assetId);
 });
 
 test('download cancellation never opens the save dialog', async () => {
@@ -93,4 +95,71 @@ test('native download failures remain sanitized and do not export', async () => 
     message: 'The native media download could not be completed',
   });
   expect(exportAsset).not.toHaveBeenCalled();
+});
+
+test('a pre-registration protocol failure rejects once without an orphan rejection', async () => {
+  const protocol = Object.assign(new Error('fixed protocol failure'), {
+    code: 'invalidDownloadResponse',
+  });
+  const inspect = vi.fn().mockResolvedValue({ capability: { id: uuidv7() } });
+  const start = vi.fn(async (_request, handlers) => {
+    handlers.onProtocolError(protocol);
+    throw protocol;
+  });
+  const exportAsset = vi.fn();
+
+  await expect(downloadUrlToUserDestination({
+    url: 'https://example.com/watch/protocol',
+    cookieSource: 'none',
+    media: { kind: 'video', quality: { mode: 'best' } },
+  }, { inspect, start, exportAsset })).rejects.toBe(protocol);
+  await new Promise((resolve) => { setTimeout(resolve, 0); });
+  expect(exportAsset).not.toHaveBeenCalled();
+});
+
+test('rejects hostile download and export start thenables and discards export-only candidates once', async () => {
+  for (const failurePoint of ['download', 'export']) {
+    const downloadJobId = uuidv7();
+    const assetId = uuidv7();
+    const inspect = vi.fn().mockResolvedValue({ capability: { id: uuidv7() } });
+    const start = vi.fn(async (_request, handlers) => {
+      handlers.onCompleted({ media: { asset: { id: assetId } } });
+      return downloadJob(downloadJobId);
+    });
+    const cancel = vi.fn().mockResolvedValue({ state: 'cancelled' });
+    const exportAsset = vi.fn(async (_id, handlers) => {
+      handlers.onStarted({ id: uuidv7() });
+      return { status: 'completed' };
+    });
+    const discardCandidate = vi.fn().mockResolvedValue(true);
+    let callbackCount = 0;
+    const onJobStarted = () => {
+      callbackCount += 1;
+      if ((failurePoint === 'download' && callbackCount === 1)
+          || (failurePoint === 'export' && callbackCount === 2)) {
+        return {
+          then(_resolve, reject) { reject(new Error('hostile callback')); },
+        };
+      }
+      return undefined;
+    };
+
+    await expect(downloadUrlToUserDestination({
+      url: `https://example.com/${failurePoint}-callback`,
+      cookieSource: 'none',
+      media: { kind: 'video', quality: { mode: 'best' } },
+      onJobStarted,
+    }, {
+      inspect,
+      start,
+      cancel,
+      discardCandidate,
+      exportAsset,
+    })).rejects.toMatchObject({ code: 'downloadCallbackFailed' });
+    expect(discardCandidate).toHaveBeenCalledExactlyOnceWith(assetId);
+    if (failurePoint === 'download') {
+      expect(cancel).toHaveBeenCalledExactlyOnceWith(downloadJobId);
+      expect(exportAsset).not.toHaveBeenCalled();
+    }
+  }
 });

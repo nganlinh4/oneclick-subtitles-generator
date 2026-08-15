@@ -9,7 +9,10 @@ import { UnifiedNarrationSection } from './narration';
 import ParallelProcessingStatus from './ParallelProcessingStatus';
 import { EVENTS, subscribe } from '../events/bus';
 import { hasValidDownloadedVideo } from '../utils/videoUtils';
+import { useLyricsSave } from '../hooks/useLyricsSave';
 // BackgroundImageGenerator moved back to AppLayout
+
+const markSavedOutsideEditor = () => undefined;
 
 const OutputContainer = ({
   status,
@@ -27,7 +30,6 @@ const OutputContainer = ({
   retryingSegments = [],
   timeFormat = 'seconds',
   useOptimizedPreview = false,
-  useCookiesForDownload = true,
   isSrtOnlyMode = false,
   onViewRules,
   userProvidedSubtitles = '',
@@ -78,6 +80,15 @@ const OutputContainer = ({
       setSubtitlesData(savedLyrics);
     }
   };
+
+  // This coordinator must remain mounted even when the output UI has no content yet. A fresh URL
+  // starts automatic generation before LyricsDisplay is stagger-mounted, but its pre-run checkpoint
+  // still has to settle (and remain cancellable) immediately.
+  useLyricsSave({
+    lyrics: editedLyrics ?? subtitlesData ?? [],
+    updateSavedLyrics: markSavedOutsideEditor,
+    onSaveSubtitles: handleSaveSubtitles,
+  });
 
   const [preferLiveDuringProcessing, setPreferLiveDuringProcessing] = useState(false);
 
@@ -331,7 +342,6 @@ const OutputContainer = ({
                 subtitlesArray={editedLyrics || subtitlesData}
                 onVideoUrlReady={setActualVideoUrl}
                 useOptimizedPreview={useOptimizedPreview}
-                useCookiesForDownload={useCookiesForDownload}
                 onReferenceAudioChange={setReferenceAudio}
                 onRenderVideo={onRenderVideo}
               />

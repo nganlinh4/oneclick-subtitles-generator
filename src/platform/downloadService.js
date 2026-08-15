@@ -7,19 +7,9 @@ import {
   ensureNativeDownloadReady,
   recoverNativeDownloaderAfterFailure,
 } from './nativeDownloadPreflight';
+import { DOWNLOAD_COOKIE_SOURCES } from './downloadCookiePreference';
 
-export const DOWNLOAD_COOKIE_SOURCES = Object.freeze([
-  'none',
-  'chrome',
-  'chromium',
-  'edge',
-  'firefox',
-  'brave',
-  'safari',
-  'vivaldi',
-  'opera',
-  'whale',
-]);
+export { DOWNLOAD_COOKIE_SOURCES } from './downloadCookiePreference';
 export const DOWNLOAD_AUDIO_FORMATS = Object.freeze(['mp3', 'm4a', 'flac', 'wav']);
 export const DOWNLOAD_EVENT_TYPES = Object.freeze([
   'progress',
@@ -53,25 +43,81 @@ const unavailableReasons = new Set([
 const jobStates = new Set([
   'queued', 'running', 'cancelling', 'succeeded', 'failed', 'cancelled', 'interrupted',
 ]);
-const playbackPattern = /^http:\/\/127\.0\.0\.1:([0-9]{1,5})\/asset\/([0-9a-f-]{36})\?token=([0-9a-f]{64})$/i;
+const activeJobStates = new Set(['running', 'cancelling']);
+const cancellationResponseStates = new Set([
+  'cancelling', 'succeeded', 'failed', 'cancelled', 'interrupted',
+]);
+const downloadCommandCodes = new Set([
+  'internal',
+  'invalidInput',
+  'mediaToolsUnavailable',
+  'downloaderExecutionFailed',
+  'jobAlreadyExists',
+  'jobNotFound',
+  'jobConflict',
+  'invalidJobState',
+  'jobRegistry',
+  'database',
+]);
 
-const isRecord = (value) => (
-  value !== null && typeof value === 'object' && !Array.isArray(value)
-);
-
-const isPlainRecord = (value) => {
-  if (!isRecord(value)) return false;
-  const prototype = Object.getPrototypeOf(value);
-  return prototype === Object.prototype || prototype === null;
+const snapshotDataRecord = (value, {
+  required,
+  allowed = required,
+  failure,
+}) => {
+  try {
+    if (value === null || typeof value !== 'object' || Array.isArray(value)) throw failure();
+    const prototype = Object.getPrototypeOf(value);
+    if (prototype !== Object.prototype && prototype !== null) throw failure();
+    const descriptors = Object.getOwnPropertyDescriptors(value);
+    const keys = Reflect.ownKeys(descriptors);
+    if (keys.some((key) => typeof key !== 'string' || !allowed.includes(key))
+        || required.some((key) => !keys.includes(key))) {
+      throw failure();
+    }
+    const snapshot = {};
+    for (const key of keys) {
+      const descriptor = descriptors[key];
+      if (!Object.hasOwn(descriptor, 'value') || descriptor.enumerable !== true) throw failure();
+      snapshot[key] = descriptor.value;
+    }
+    return Object.freeze(snapshot);
+  } catch {
+    throw failure();
+  }
 };
 
-const hasExactKeys = (value, expected) => {
-  if (!isRecord(value)) return false;
-  const actual = Object.keys(value).sort();
-  const sortedExpected = [...expected].sort();
-  return actual.length === sortedExpected.length
-    && actual.every((key, index) => key === sortedExpected[index]);
+const snapshotDataArray = (value, maximum, failure) => {
+  try {
+    if (!Array.isArray(value)) throw failure();
+    const descriptors = Object.getOwnPropertyDescriptors(value);
+    const lengthDescriptor = descriptors.length;
+    if (!lengthDescriptor || !Object.hasOwn(lengthDescriptor, 'value')
+        || !Number.isSafeInteger(lengthDescriptor.value)
+        || lengthDescriptor.value < 0 || lengthDescriptor.value > maximum) {
+      throw failure();
+    }
+    const length = lengthDescriptor.value;
+    const keys = Reflect.ownKeys(descriptors);
+    if (keys.length !== length + 1) throw failure();
+    const snapshot = [];
+    for (let index = 0; index < length; index += 1) {
+      const descriptor = descriptors[String(index)];
+      if (!descriptor || !Object.hasOwn(descriptor, 'value') || descriptor.enumerable !== true) {
+        throw failure();
+      }
+      snapshot.push(descriptor.value);
+    }
+    return Object.freeze(snapshot);
+  } catch {
+    throw failure();
+  }
 };
+
+const exactRecord = (value, keys, failure) => snapshotDataRecord(value, {
+  required: keys,
+  failure,
+});
 
 const characterCountWithin = (value, maximum) => {
   if (typeof value !== 'string') return false;
@@ -155,42 +201,56 @@ const runtimeRequired = () => new DownloadServiceError(
 );
 
 const normalizeInvocationFailure = (error) => {
-  if (error instanceof DownloadServiceError) return error;
-  const code = typeof error?.code === 'string' && /^[A-Za-z][A-Za-z0-9]{0,127}$/.test(error.code)
-    ? error.code
-    : 'downloadCommandFailed';
+  let code = 'downloadCommandFailed';
+  try {
+    const candidate = error !== null && (typeof error === 'object' || typeof error === 'function')
+      ? error.code
+      : null;
+    if (downloadCommandCodes.has(candidate)) code = candidate;
+  } catch {
+    // A hostile transport accessor is not authoritative error metadata.
+  }
   return new DownloadServiceError(code, 'The native media download could not be completed');
 };
 
+const triggerNativeDownloaderRecovery = () => {
+  try {
+    Promise.resolve(recoverNativeDownloaderAfterFailure()).catch(() => undefined);
+  } catch {
+    // Automatic recovery is best-effort and cannot create an orphan rejection.
+  }
+};
+
 const normalizeStatus = (value) => {
-  if (!hasExactKeys(value, [
+  const data = exactRecord(value, [
     'available',
     'inspectAvailable',
     'version',
     'reason',
     'maxConcurrentDownloads',
     'inventoryTtlSeconds',
-  ])
-      || typeof value.available !== 'boolean'
-      || typeof value.inspectAvailable !== 'boolean'
-      || (value.version !== null
-        && (typeof value.version !== 'string'
-          || !/^[A-Za-z0-9._-]{1,64}$/.test(value.version)))
-      || (value.reason !== null && !unavailableReasons.has(value.reason))
-      || !isSafeInteger(value.maxConcurrentDownloads, { positive: true })
-      || value.maxConcurrentDownloads > 64
-      || !isSafeInteger(value.inventoryTtlSeconds, { positive: true })
-      || value.inventoryTtlSeconds > 24 * 60 * 60
-      || (value.available && (!value.inspectAvailable || value.reason !== null))
-      || (value.inspectAvailable && value.version === null)
-      || (!value.inspectAvailable && value.version !== null)) {
+  ], invalidResponse);
+  if (typeof data.available !== 'boolean'
+      || typeof data.inspectAvailable !== 'boolean'
+      || (data.version !== null
+        && (typeof data.version !== 'string'
+          || !/^[A-Za-z0-9._-]{1,64}$/.test(data.version)))
+      || (data.reason !== null && !unavailableReasons.has(data.reason))
+      || !isSafeInteger(data.maxConcurrentDownloads, { positive: true })
+      || data.maxConcurrentDownloads > 64
+      || !isSafeInteger(data.inventoryTtlSeconds, { positive: true })
+      || data.inventoryTtlSeconds > 24 * 60 * 60
+      || (data.available && (!data.inspectAvailable || data.reason !== null))
+      || (!data.available && data.reason === null)
+      || (data.inspectAvailable && data.version === null)
+      || (!data.inspectAvailable && data.version !== null)) {
     throw invalidResponse();
   }
-  return Object.freeze({ ...value });
+  return data;
 };
 
 const normalizeVideoFormat = (value) => {
-  if (!hasExactKeys(value, [
+  const data = exactRecord(value, [
     'formatId',
     'container',
     'width',
@@ -200,93 +260,98 @@ const normalizeVideoFormat = (value) => {
     'includesAudio',
     'sizeBytes',
     'bitrateKbps',
-  ])
-      || !isFormatId(value.formatId)
-      || !containers.has(value.container)
-      || !isOptionalSafeInteger(value.width)
-      || !isOptionalSafeInteger(value.height)
-      || !isOptionalSafeInteger(value.fpsMilli)
-      || (value.codec !== null
-        && (typeof value.codec !== 'string' || !/^[A-Za-z0-9._-]{1,32}$/.test(value.codec)))
-      || typeof value.includesAudio !== 'boolean'
-      || !isOptionalSafeInteger(value.sizeBytes)
-      || !isOptionalSafeInteger(value.bitrateKbps)) {
+  ], invalidResponse);
+  if (!isFormatId(data.formatId)
+      || !containers.has(data.container)
+      || !isOptionalSafeInteger(data.width)
+      || !isOptionalSafeInteger(data.height)
+      || !isOptionalSafeInteger(data.fpsMilli)
+      || (data.codec !== null
+        && (typeof data.codec !== 'string' || !/^[A-Za-z0-9._-]{1,32}$/.test(data.codec)))
+      || typeof data.includesAudio !== 'boolean'
+      || !isOptionalSafeInteger(data.sizeBytes)
+      || !isOptionalSafeInteger(data.bitrateKbps)) {
     throw invalidResponse();
   }
-  return Object.freeze({ ...value });
+  return data;
 };
 
 const normalizeAudioFormat = (value) => {
-  if (!hasExactKeys(value, [
+  const data = exactRecord(value, [
     'formatId', 'container', 'codec', 'sizeBytes', 'bitrateKbps',
-  ])
-      || !isFormatId(value.formatId)
-      || !containers.has(value.container)
-      || (value.codec !== null
-        && (typeof value.codec !== 'string' || !/^[A-Za-z0-9._-]{1,32}$/.test(value.codec)))
-      || !isOptionalSafeInteger(value.sizeBytes)
-      || !isOptionalSafeInteger(value.bitrateKbps)) {
+  ], invalidResponse);
+  if (!isFormatId(data.formatId)
+      || !containers.has(data.container)
+      || (data.codec !== null
+        && (typeof data.codec !== 'string' || !/^[A-Za-z0-9._-]{1,32}$/.test(data.codec)))
+      || !isOptionalSafeInteger(data.sizeBytes)
+      || !isOptionalSafeInteger(data.bitrateKbps)) {
     throw invalidResponse();
   }
-  return Object.freeze({ ...value });
+  return data;
 };
 
 const normalizeQuality = (value) => {
-  if (!hasExactKeys(value, ['height', 'hasCombined', 'hasVideoOnly'])
-      || !isSafeInteger(value.height, { positive: true })
-      || value.height > 16_384
-      || typeof value.hasCombined !== 'boolean'
-      || typeof value.hasVideoOnly !== 'boolean'
-      || (!value.hasCombined && !value.hasVideoOnly)) {
+  const data = exactRecord(
+    value,
+    ['height', 'hasCombined', 'hasVideoOnly'],
+    invalidResponse
+  );
+  if (!isSafeInteger(data.height, { positive: true })
+      || data.height > 16_384
+      || typeof data.hasCombined !== 'boolean'
+      || typeof data.hasVideoOnly !== 'boolean'
+      || (!data.hasCombined && !data.hasVideoOnly)) {
     throw invalidResponse();
   }
-  return Object.freeze({ ...value });
+  return data;
 };
 
 const normalizeSubtitleTrack = (value) => {
-  if (!hasExactKeys(value, ['language', 'source', 'formats'])
-      || !isLanguage(value.language)
-      || !subtitleSources.has(value.source)
-      || !Array.isArray(value.formats)
-      || value.formats.length === 0
-      || value.formats.length > 7
-      || value.formats.some((format) => !subtitleFormats.has(format))
-      || new Set(value.formats).size !== value.formats.length) {
+  const data = exactRecord(value, ['language', 'source', 'formats'], invalidResponse);
+  const formats = snapshotDataArray(data.formats, 7, invalidResponse);
+  if (!isLanguage(data.language)
+      || !subtitleSources.has(data.source)
+      || formats.length === 0
+      || formats.some((format) => !subtitleFormats.has(format))
+      || new Set(formats).size !== formats.length) {
     throw invalidResponse();
   }
   return Object.freeze({
-    language: value.language,
-    source: value.source,
-    formats: Object.freeze([...value.formats]),
+    language: data.language,
+    source: data.source,
+    formats,
   });
 };
 
 const normalizeInventory = (value) => {
-  if (!hasExactKeys(value, ['title', 'durationSeconds', 'formats', 'subtitles'])
-      || !isSafeDisplayText(value.title, 120)
-      || !isOptionalSafeInteger(value.durationSeconds)
-      || !hasExactKeys(value.formats, ['video', 'audio', 'qualities'])
-      || !Array.isArray(value.formats.video)
-      || !Array.isArray(value.formats.audio)
-      || !Array.isArray(value.formats.qualities)
-      || value.formats.video.length + value.formats.audio.length > MAX_FORMATS
-      || value.formats.qualities.length > MAX_FORMATS
-      || value.formats.video.length + value.formats.audio.length === 0
-      || !Array.isArray(value.subtitles)
-      || value.subtitles.length > MAX_SUBTITLES) {
+  const data = exactRecord(
+    value,
+    ['title', 'durationSeconds', 'formats', 'subtitles'],
+    invalidResponse
+  );
+  const formatData = exactRecord(data.formats, ['video', 'audio', 'qualities'], invalidResponse);
+  const rawVideo = snapshotDataArray(formatData.video, MAX_FORMATS, invalidResponse);
+  const rawAudio = snapshotDataArray(formatData.audio, MAX_FORMATS, invalidResponse);
+  const rawQualities = snapshotDataArray(formatData.qualities, MAX_FORMATS, invalidResponse);
+  const rawSubtitles = snapshotDataArray(data.subtitles, MAX_SUBTITLES, invalidResponse);
+  if (!isSafeDisplayText(data.title, 120)
+      || !isOptionalSafeInteger(data.durationSeconds)
+      || rawVideo.length + rawAudio.length > MAX_FORMATS
+      || rawVideo.length + rawAudio.length === 0) {
     throw invalidResponse();
   }
-  const video = value.formats.video.map(normalizeVideoFormat);
-  const audio = value.formats.audio.map(normalizeAudioFormat);
-  const formatIds = [...video, ...audio].map((format) => format.formatId);
+  const video = rawVideo.map(normalizeVideoFormat);
+  const audio = rawAudio.map(normalizeAudioFormat);
+  const formatIds = video.concat(audio).map((format) => format.formatId);
   if (new Set(formatIds).size !== formatIds.length) throw invalidResponse();
-  const qualities = value.formats.qualities.map(normalizeQuality);
-  const subtitles = value.subtitles.map(normalizeSubtitleTrack);
+  const qualities = rawQualities.map(normalizeQuality);
+  const subtitles = rawSubtitles.map(normalizeSubtitleTrack);
   const subtitleKeys = subtitles.map((track) => `${track.source}:${track.language}`);
   if (new Set(subtitleKeys).size !== subtitleKeys.length) throw invalidResponse();
   return Object.freeze({
-    title: value.title,
-    durationSeconds: value.durationSeconds,
+    title: data.title,
+    durationSeconds: data.durationSeconds,
     formats: Object.freeze({
       video: Object.freeze(video),
       audio: Object.freeze(audio),
@@ -297,146 +362,158 @@ const normalizeInventory = (value) => {
 };
 
 const normalizeInspection = (value) => {
-  if (!hasExactKeys(value, ['capability', 'inventory'])
-      || !hasExactKeys(value.capability, ['id', 'expiresAtMs'])
-      || !isUuidVersion(value.capability.id, 7)
-      || !isSafeInteger(value.capability.expiresAtMs, { positive: true })) {
+  const data = exactRecord(value, ['capability', 'inventory'], invalidResponse);
+  const capability = exactRecord(data.capability, ['id', 'expiresAtMs'], invalidResponse);
+  if (!isUuidVersion(capability.id, 7)
+      || !isSafeInteger(capability.expiresAtMs, { positive: true })) {
     throw invalidResponse();
   }
   return Object.freeze({
-    capability: Object.freeze({ ...value.capability }),
-    inventory: normalizeInventory(value.inventory),
+    capability,
+    inventory: normalizeInventory(data.inventory),
   });
 };
 
 const normalizeInspectRequest = (request) => {
-  if (!isPlainRecord(request)
-      || !hasExactKeys(request, ['url', 'cookieSource'])
-      || !characterCountWithin(request.url, MAX_URL_CHARACTERS)
-      || request.url.length === 0
-      || request.url.includes('\\')
-      || hasControlCharacter(request.url)
-      || !cookieSources.has(request.cookieSource)) {
+  const data = exactRecord(request, ['url', 'cookieSource'], invalidRequest);
+  if (!characterCountWithin(data.url, MAX_URL_CHARACTERS)
+      || data.url.length === 0
+      || data.url.includes('\\')
+      || hasControlCharacter(data.url)
+      || !cookieSources.has(data.cookieSource)) {
     throw invalidRequest();
   }
-  return Object.freeze({ url: request.url, cookieSource: request.cookieSource });
+  return data;
 };
 
 const normalizeQualityRequest = (quality, kind) => {
-  if (!isPlainRecord(quality) || typeof quality.mode !== 'string') throw invalidRequest();
-  if (quality.mode === 'best' && hasExactKeys(quality, ['mode'])) {
+  const data = snapshotDataRecord(quality, {
+    required: ['mode'],
+    allowed: ['mode', 'height', 'formatId'],
+    failure: invalidRequest,
+  });
+  if (typeof data.mode !== 'string') throw invalidRequest();
+  if (data.mode === 'best' && Object.keys(data).length === 1) {
     return Object.freeze({ mode: 'best' });
   }
   if (kind === 'video'
-      && quality.mode === 'atMost'
-      && hasExactKeys(quality, ['mode', 'height'])
-      && Number.isInteger(quality.height)
-      && quality.height >= 144
-      && quality.height <= 4_320) {
-    return Object.freeze({ mode: 'atMost', height: quality.height });
+      && data.mode === 'atMost'
+      && Object.keys(data).length === 2 && Object.hasOwn(data, 'height')
+      && Number.isInteger(data.height)
+      && data.height >= 144
+      && data.height <= 4_320) {
+    return Object.freeze({ mode: 'atMost', height: data.height });
   }
-  if (quality.mode === 'exact'
-      && hasExactKeys(quality, ['mode', 'formatId'])
-      && isFormatId(quality.formatId)) {
-    return Object.freeze({ mode: 'exact', formatId: quality.formatId });
+  if (data.mode === 'exact'
+      && Object.keys(data).length === 2 && Object.hasOwn(data, 'formatId')
+      && isFormatId(data.formatId)) {
+    return Object.freeze({ mode: 'exact', formatId: data.formatId });
   }
   throw invalidRequest();
 };
 
 const normalizeMediaRequest = (media) => {
-  if (!isPlainRecord(media) || (media.kind !== 'video' && media.kind !== 'audio')) {
+  const data = snapshotDataRecord(media, {
+    required: ['kind', 'quality'],
+    allowed: ['kind', 'quality', 'format'],
+    failure: invalidRequest,
+  });
+  if (data.kind !== 'video' && data.kind !== 'audio') {
     throw invalidRequest();
   }
-  if (media.kind === 'video' && hasExactKeys(media, ['kind', 'quality'])) {
+  if (data.kind === 'video' && Object.keys(data).length === 2) {
     return Object.freeze({
       kind: 'video',
-      quality: normalizeQualityRequest(media.quality, 'video'),
+      quality: normalizeQualityRequest(data.quality, 'video'),
     });
   }
-  if (media.kind === 'audio'
-      && hasExactKeys(media, ['kind', 'quality', 'format'])
-      && audioFormats.has(media.format)) {
+  if (data.kind === 'audio'
+      && Object.keys(data).length === 3 && Object.hasOwn(data, 'format')
+      && audioFormats.has(data.format)) {
     return Object.freeze({
       kind: 'audio',
-      quality: normalizeQualityRequest(media.quality, 'audio'),
-      format: media.format,
+      quality: normalizeQualityRequest(data.quality, 'audio'),
+      format: data.format,
     });
   }
   throw invalidRequest();
 };
 
 const normalizeStartRequest = (request) => {
-  if (!isPlainRecord(request)
-      || !hasExactKeys(request, ['inventoryId', 'media', 'subtitle'])
-      || !isUuidVersion(request.inventoryId, 7)
-      || (request.subtitle !== null
-        && (!hasExactKeys(request.subtitle, ['language', 'source'])
-          || !isLanguage(request.subtitle.language)
-          || !subtitleSources.has(request.subtitle.source)))) {
+  const data = exactRecord(request, ['inventoryId', 'media', 'subtitle'], invalidRequest);
+  const subtitle = data.subtitle === null
+    ? null
+    : exactRecord(data.subtitle, ['language', 'source'], invalidRequest);
+  if (!isUuidVersion(data.inventoryId, 7)
+      || (subtitle !== null
+        && (!isLanguage(subtitle.language) || !subtitleSources.has(subtitle.source)))) {
     throw invalidRequest();
   }
   return Object.freeze({
-    inventoryId: request.inventoryId,
-    media: normalizeMediaRequest(request.media),
-    subtitle: request.subtitle === null ? null : Object.freeze({ ...request.subtitle }),
+    inventoryId: data.inventoryId,
+    media: normalizeMediaRequest(data.media),
+    subtitle,
   });
 };
 
-const normalizeJob = (value) => {
-  if (!hasExactKeys(value, ['id', 'kind', 'state', 'progress', 'sequence'])
-      || !isUuidVersion(value.id, 7)
-      || value.kind !== 'downloadMedia'
-      || !jobStates.has(value.state)
-      || !hasExactKeys(value.progress, ['basisPoints'])
-      || !isSafeInteger(value.progress.basisPoints)
-      || value.progress.basisPoints > 10_000
-      || !isSafeInteger(value.sequence)
-      || (value.state === 'queued'
-        && (value.progress.basisPoints !== 0 || value.sequence !== 0))
-      || (value.state === 'succeeded'
-        && (value.progress.basisPoints !== 10_000 || value.sequence < 2))
-      || (value.state !== 'queued' && value.sequence < 1)) {
+const normalizeJob = (value, expectedKind = 'downloadMedia') => {
+  const data = exactRecord(value, ['id', 'kind', 'state', 'progress', 'sequence'], invalidResponse);
+  const progress = exactRecord(data.progress, ['basisPoints'], invalidResponse);
+  if (!isUuidVersion(data.id, 7)
+      || data.kind !== expectedKind
+      || !jobStates.has(data.state)
+      || !isSafeInteger(progress.basisPoints)
+      || progress.basisPoints > 10_000
+      || !isSafeInteger(data.sequence)
+      || (data.state === 'queued'
+        && (progress.basisPoints !== 0 || data.sequence !== 0))
+      || (data.state === 'succeeded'
+        && (progress.basisPoints !== 10_000 || data.sequence < 2))
+      || (data.state !== 'queued' && data.sequence < 1)) {
     throw invalidResponse();
   }
   return Object.freeze({
-    ...value,
-    progress: Object.freeze({ basisPoints: value.progress.basisPoints }),
+    id: data.id,
+    kind: data.kind,
+    state: data.state,
+    progress: Object.freeze({ basisPoints: progress.basisPoints }),
+    sequence: data.sequence,
   });
 };
 
 const normalizeProgress = (value) => {
-  if (!hasExactKeys(value, [
+  const data = exactRecord(value, [
     'phase',
     'downloadedBytes',
     'totalBytes',
     'bytesPerSecond',
     'etaSeconds',
     'fraction',
-  ])
-      || !progressPhases.has(value.phase)
-      || !isOptionalSafeInteger(value.downloadedBytes)
-      || !isOptionalSafeInteger(value.totalBytes)
-      || !isOptionalSafeInteger(value.bytesPerSecond)
-      || !isOptionalSafeInteger(value.etaSeconds)
-      || (value.fraction !== null
-        && (typeof value.fraction !== 'number'
-          || !Number.isFinite(value.fraction)
-          || value.fraction < 0
-          || value.fraction > 1))) {
+  ], invalidResponse);
+  if (!progressPhases.has(data.phase)
+      || !isOptionalSafeInteger(data.downloadedBytes)
+      || !isOptionalSafeInteger(data.totalBytes)
+      || !isOptionalSafeInteger(data.bytesPerSecond)
+      || !isOptionalSafeInteger(data.etaSeconds)
+      || (data.fraction !== null
+        && (typeof data.fraction !== 'number'
+          || !Number.isFinite(data.fraction)
+          || data.fraction < 0
+          || data.fraction > 1))) {
     throw invalidResponse();
   }
-  return Object.freeze({ ...value });
+  return Object.freeze({
+    phase: data.phase,
+    downloadedBytes: data.downloadedBytes,
+    totalBytes: data.totalBytes,
+    bytesPerSecond: data.bytesPerSecond,
+    etaSeconds: data.etaSeconds,
+    fraction: data.fraction,
+  });
 };
 
 const normalizeSummary = (value) => {
-  const subtitleFields = [
-    value?.subtitleFilename,
-    value?.subtitleBytes,
-    value?.subtitleLanguage,
-  ];
-  const hasNoSubtitle = subtitleFields.every((field) => field === null);
-  const hasCompleteSubtitle = subtitleFields.every((field) => field !== null);
-  if (!hasExactKeys(value, [
+  const data = exactRecord(value, [
     'title',
     'durationSeconds',
     'mediaFilename',
@@ -444,50 +521,74 @@ const normalizeSummary = (value) => {
     'subtitleFilename',
     'subtitleBytes',
     'subtitleLanguage',
-  ])
-      || !isSafeDisplayText(value.title, 120)
-      || !isOptionalSafeInteger(value.durationSeconds)
-      || !isSafeDisplayText(value.mediaFilename, MAX_SAFE_FILENAME_CHARACTERS)
-      || !isSafeInteger(value.mediaBytes, { positive: true })
-      || (value.subtitleFilename !== null
-        && !isSafeDisplayText(value.subtitleFilename, MAX_SAFE_FILENAME_CHARACTERS))
-      || !isOptionalSafeInteger(value.subtitleBytes)
-      || (value.subtitleLanguage !== null && !isLanguage(value.subtitleLanguage))
+  ], invalidResponse);
+  const subtitleFields = [
+    data.subtitleFilename,
+    data.subtitleBytes,
+    data.subtitleLanguage,
+  ];
+  const hasNoSubtitle = subtitleFields.every((field) => field === null);
+  const hasCompleteSubtitle = subtitleFields.every((field) => field !== null);
+  if (!isSafeDisplayText(data.title, 120)
+      || !isOptionalSafeInteger(data.durationSeconds)
+      || !isSafeDisplayText(data.mediaFilename, MAX_SAFE_FILENAME_CHARACTERS)
+      || !isSafeInteger(data.mediaBytes, { positive: true })
+      || (data.subtitleFilename !== null
+        && !isSafeDisplayText(data.subtitleFilename, MAX_SAFE_FILENAME_CHARACTERS))
+      || !isOptionalSafeInteger(data.subtitleBytes)
+      || (data.subtitleLanguage !== null && !isLanguage(data.subtitleLanguage))
       || (!hasNoSubtitle && !hasCompleteSubtitle)) {
     throw invalidResponse();
   }
-  return Object.freeze({ ...value });
+  return Object.freeze({
+    title: data.title,
+    durationSeconds: data.durationSeconds,
+    mediaFilename: data.mediaFilename,
+    mediaBytes: data.mediaBytes,
+    subtitleFilename: data.subtitleFilename,
+    subtitleBytes: data.subtitleBytes,
+    subtitleLanguage: data.subtitleLanguage,
+  });
 };
 
 const normalizeMedia = (value, summary) => {
-  if (!hasExactKeys(value, ['asset', 'playback'])
-      || !hasExactKeys(value.asset, ['id', 'displayName', 'extension', 'sizeBytes', 'kind'])
-      || !isUuidVersion(value.asset.id, 7)
-      || !isSafeDisplayText(value.asset.displayName, MAX_SAFE_FILENAME_CHARACTERS)
-      || typeof value.asset.extension !== 'string'
-      || !/^[a-z0-9]{1,16}$/.test(value.asset.extension)
-      || !mediaKinds.has(value.asset.kind)
-      || value.asset.sizeBytes !== summary.mediaBytes
-      || value.asset.displayName !== summary.mediaFilename
-      || !hasExactKeys(value.playback, ['id', 'playbackUrl', 'mimeType', 'byteLength'])
-      || !isUuidVersion(value.playback.id, 4)
-      || value.playback.byteLength !== value.asset.sizeBytes
-      || typeof value.playback.mimeType !== 'string'
-      || !value.playback.mimeType.startsWith(`${value.asset.kind}/`)) {
-    throw invalidResponse();
-  }
-  const match = typeof value.playback.playbackUrl === 'string'
-    ? playbackPattern.exec(value.playback.playbackUrl)
-    : null;
-  if (!match
-      || Number(match[1]) < 1
-      || Number(match[1]) > 65_535
-      || match[2] !== value.playback.id) {
+  const data = exactRecord(value, ['asset', 'contentIdentity'], invalidResponse);
+  const asset = exactRecord(
+    data.asset,
+    ['id', 'displayName', 'extension', 'sizeBytes', 'kind'],
+    invalidResponse
+  );
+  const contentIdentity = exactRecord(
+    data.contentIdentity,
+    ['algorithm', 'digest', 'sizeBytes'],
+    invalidResponse
+  );
+  if (!isUuidVersion(asset.id, 7)
+      || !isSafeDisplayText(asset.displayName, MAX_SAFE_FILENAME_CHARACTERS)
+      || typeof asset.extension !== 'string'
+      || !/^[a-z0-9]{1,16}$/.test(asset.extension)
+      || !mediaKinds.has(asset.kind)
+      || asset.sizeBytes !== summary.mediaBytes
+      || asset.displayName !== summary.mediaFilename
+      || contentIdentity.algorithm !== 'blake3-256'
+      || typeof contentIdentity.digest !== 'string'
+      || !/^[0-9a-f]{64}$/.test(contentIdentity.digest)
+      || contentIdentity.sizeBytes !== asset.sizeBytes) {
     throw invalidResponse();
   }
   return Object.freeze({
-    asset: Object.freeze({ ...value.asset }),
-    playback: Object.freeze({ ...value.playback }),
+    asset: Object.freeze({
+      id: asset.id,
+      displayName: asset.displayName,
+      extension: asset.extension,
+      sizeBytes: asset.sizeBytes,
+      kind: asset.kind,
+    }),
+    contentIdentity: Object.freeze({
+      algorithm: contentIdentity.algorithm,
+      digest: contentIdentity.digest,
+      sizeBytes: contentIdentity.sizeBytes,
+    }),
   });
 };
 
@@ -496,65 +597,89 @@ const normalizeSubtitle = (value, summary) => {
     if (summary.subtitleFilename !== null) throw invalidResponse();
     return null;
   }
-  if (!hasExactKeys(value, ['filename', 'language', 'content'])
-      || value.filename !== summary.subtitleFilename
-      || value.language !== summary.subtitleLanguage
-      || typeof value.content !== 'string'
-      || utf8ByteLength(value.content) > MAX_SUBTITLE_BYTES) {
-    throw invalidResponse();
-  }
-  return Object.freeze({ ...value });
-};
-
-const normalizeError = (value) => {
-  if (!hasExactKeys(value, ['code', 'message'])
-      || typeof value.code !== 'string'
-      || !/^[A-Za-z][A-Za-z0-9]{0,127}$/.test(value.code)
-      || typeof value.message !== 'string') {
+  const data = exactRecord(value, ['filename', 'language', 'content'], invalidResponse);
+  if (data.filename !== summary.subtitleFilename
+      || data.language !== summary.subtitleLanguage
+      || typeof data.content !== 'string'
+      || utf8ByteLength(data.content) > MAX_SUBTITLE_BYTES) {
     throw invalidResponse();
   }
   return Object.freeze({
-    code: value.code,
+    filename: data.filename,
+    language: data.language,
+    content: data.content,
+  });
+};
+
+const normalizeError = (value) => {
+  const data = exactRecord(value, ['code', 'message'], invalidResponse);
+  const { code, message } = data;
+  if (typeof code !== 'string'
+      || !/^[A-Za-z][A-Za-z0-9]{0,127}$/.test(code)
+      || typeof message !== 'string'
+      || message.length > 2_048) {
+    throw invalidResponse();
+  }
+  return Object.freeze({
+    code: downloadCommandCodes.has(code) ? code : 'downloadCommandFailed',
     message: 'The native media download could not be completed',
   });
 };
 
+const downloadEventKeys = Object.freeze([
+  'event', 'job', 'progress', 'media', 'summary', 'subtitle', 'error',
+]);
+
+const hasSnapshotKeys = (value, expected) => {
+  const keys = Object.keys(value);
+  return keys.length === expected.length && expected.every((key) => Object.hasOwn(value, key));
+};
+
 export const normalizeDownloadEvent = (value) => {
-  if (!isRecord(value) || typeof value.event !== 'string') throw invalidResponse();
-  switch (value.event) {
+  const data = snapshotDataRecord(value, {
+    required: ['event', 'job'],
+    allowed: downloadEventKeys,
+    failure: invalidResponse,
+  });
+  if (typeof data.event !== 'string') throw invalidResponse();
+  switch (data.event) {
     case 'progress':
-      if (!hasExactKeys(value, ['event', 'job', 'progress'])) throw invalidResponse();
-      return Object.freeze({
-        event: 'progress',
-        job: normalizeJob(value.job),
-        progress: normalizeProgress(value.progress),
-      });
+      if (!hasSnapshotKeys(data, ['event', 'job', 'progress'])) throw invalidResponse();
+      {
+        const job = normalizeJob(data.job);
+        if (!activeJobStates.has(job.state)) throw invalidResponse();
+        return Object.freeze({
+          event: 'progress',
+          job,
+          progress: normalizeProgress(data.progress),
+        });
+      }
     case 'completed': {
-      if (!hasExactKeys(value, ['event', 'job', 'media', 'summary', 'subtitle'])) {
+      if (!hasSnapshotKeys(data, ['event', 'job', 'media', 'summary', 'subtitle'])) {
         throw invalidResponse();
       }
-      const job = normalizeJob(value.job);
+      const job = normalizeJob(data.job);
       if (job.state !== 'succeeded') throw invalidResponse();
-      const summary = normalizeSummary(value.summary);
+      const summary = normalizeSummary(data.summary);
       return Object.freeze({
         event: 'completed',
         job,
-        media: normalizeMedia(value.media, summary),
+        media: normalizeMedia(data.media, summary),
         summary,
-        subtitle: normalizeSubtitle(value.subtitle, summary),
+        subtitle: normalizeSubtitle(data.subtitle, summary),
       });
     }
     case 'cancelled': {
-      if (!hasExactKeys(value, ['event', 'job'])) throw invalidResponse();
-      const job = normalizeJob(value.job);
+      if (!hasSnapshotKeys(data, ['event', 'job'])) throw invalidResponse();
+      const job = normalizeJob(data.job);
       if (job.state !== 'cancelled') throw invalidResponse();
       return Object.freeze({ event: 'cancelled', job });
     }
     case 'failed': {
-      if (!hasExactKeys(value, ['event', 'job', 'error'])) throw invalidResponse();
-      const job = value.job === null ? null : normalizeJob(value.job);
+      if (!hasSnapshotKeys(data, ['event', 'job', 'error'])) throw invalidResponse();
+      const job = data.job === null ? null : normalizeJob(data.job);
       if (job !== null && job.state !== 'failed') throw invalidResponse();
-      return Object.freeze({ event: 'failed', job, error: normalizeError(value.error) });
+      return Object.freeze({ event: 'failed', job, error: normalizeError(data.error) });
     }
     default:
       throw invalidResponse();
@@ -564,13 +689,15 @@ export const normalizeDownloadEvent = (value) => {
 const normalizeHandlers = (handlers) => {
   if (handlers === undefined) return Object.freeze({});
   const keys = ['onEvent', 'onProgress', 'onCompleted', 'onCancelled', 'onFailed', 'onProtocolError'];
-  if (!isPlainRecord(handlers) || Object.keys(handlers).some((key) => !keys.includes(key))) {
-    throw invalidRequest();
-  }
-  for (const handler of Object.values(handlers)) {
+  const data = snapshotDataRecord(handlers, {
+    required: [],
+    allowed: keys,
+    failure: invalidRequest,
+  });
+  for (const handler of Object.values(data)) {
     if (handler !== undefined && typeof handler !== 'function') throw invalidRequest();
   }
-  return Object.freeze({ ...handlers });
+  return data;
 };
 
 export const createNativeDownloadService = ({
@@ -582,11 +709,13 @@ export const createNativeDownloadService = ({
 
   const invoke = async (command, args, normalize) => {
     if (!isNativeRuntime()) throw runtimeRequired();
+    let rawValue;
     try {
-      return normalize(await invokeCommand(command, args));
+      rawValue = await invokeCommand(command, args);
     } catch (error) {
       throw normalizeInvocationFailure(error);
     }
+    return normalize(rawValue);
   };
 
   const getStatus = () => invoke('download_status', {}, normalizeStatus);
@@ -597,6 +726,40 @@ export const createNativeDownloadService = ({
     normalizeInspection
   );
 
+  const cancelNativeJob = (jobId) => invoke('download_cancel', { jobId }, (value) => {
+    const snapshot = normalizeJob(value);
+    if (snapshot.id !== jobId || !cancellationResponseStates.has(snapshot.state)) {
+      throw invalidResponse();
+    }
+    return snapshot;
+  });
+
+  const releaseEntry = (entry) => {
+    entry.quarantined = true;
+    if (activeChannels.get(entry.id) === entry) activeChannels.delete(entry.id);
+    try {
+      entry.channel.onmessage = () => undefined;
+    } catch {
+      // The map is still released even if a custom test channel rejects reassignment.
+    }
+  };
+
+  const cancelEntry = (entry) => {
+    if (entry.cancelPromise !== null) return entry.cancelPromise;
+    entry.cancelPromise = cancelNativeJob(entry.id).then((snapshot) => {
+      if (snapshot.state !== 'cancelling') entry.consumeCancelSnapshot(snapshot);
+      return snapshot;
+    });
+    return entry.cancelPromise;
+  };
+
+  const cancelDownload = (jobId) => {
+    if (!isUuidVersion(jobId, 7)) return Promise.reject(invalidRequest());
+    if (!isNativeRuntime()) return Promise.reject(runtimeRequired());
+    const entry = activeChannels.get(jobId);
+    return entry === undefined ? cancelNativeJob(jobId) : cancelEntry(entry);
+  };
+
   const startDownload = async (request, rawHandlers) => {
     if (!isNativeRuntime()) throw runtimeRequired();
     const normalizedRequest = normalizeStartRequest(request);
@@ -604,29 +767,172 @@ export const createNativeDownloadService = ({
     const pending = [];
     let initial = null;
     let terminal = false;
+    let protocolFailed = false;
+    let ownedEntry = null;
+    let ledger = null;
 
     const call = (handler, event) => {
       if (typeof handler !== 'function') return;
       try {
         const returned = handler(event);
-        if (returned && typeof returned.catch === 'function') returned.catch(() => undefined);
+        Promise.resolve(returned).catch(() => undefined);
       } catch {
         // UI handlers cannot break the native Channel protocol.
       }
     };
-    const protocolError = () => call(handlers.onProtocolError, invalidResponse());
+
+    const bindOwned = (identity) => {
+      if (identity === null || !activeJobStates.has(identity.state) && identity.state !== 'queued') {
+        return ownedEntry;
+      }
+      if (ownedEntry === null) {
+        ownedEntry = {
+          id: identity.id,
+          channel,
+          cancelPromise: null,
+          consumeCancelSnapshot,
+          quarantined: false,
+        };
+      }
+      return ownedEntry;
+    };
+
+    const snapshotJobEnvelope = (value) => {
+      try {
+        if (value === null || typeof value !== 'object' || Array.isArray(value)) return null;
+        const prototype = Object.getPrototypeOf(value);
+        if (prototype !== Object.prototype && prototype !== null) return null;
+        const descriptors = Object.getOwnPropertyDescriptors(value);
+        const keys = Reflect.ownKeys(descriptors);
+        const id = descriptors.id;
+        const kind = descriptors.kind;
+        const state = descriptors.state;
+        const identity = !id || !kind || !state
+            || !Object.hasOwn(id, 'value') || !Object.hasOwn(kind, 'value')
+            || !Object.hasOwn(state, 'value')
+            || id.enumerable !== true || kind.enumerable !== true || state.enumerable !== true
+            || !isUuidVersion(id.value, 7)
+            || kind.value !== 'downloadMedia'
+            || !jobStates.has(state.value)
+          ? null
+          : Object.freeze({ id: id.value, state: state.value });
+        const expectedKeys = ['id', 'kind', 'state', 'progress', 'sequence'];
+        const valid = keys.length === expectedKeys.length
+          && keys.every((key) => typeof key === 'string' && expectedKeys.includes(key))
+          && expectedKeys.every((key) => {
+            const descriptor = descriptors[key];
+            return descriptor && Object.hasOwn(descriptor, 'value') && descriptor.enumerable === true;
+          });
+        const snapshot = {};
+        for (const key of expectedKeys) {
+          const descriptor = descriptors[key];
+          if (descriptor && Object.hasOwn(descriptor, 'value') && descriptor.enumerable === true) {
+            snapshot[key] = descriptor.value;
+          }
+        }
+        return Object.freeze({ value: Object.freeze(snapshot), identity, valid });
+      } catch {
+        return null;
+      }
+    };
+
+    const snapshotEventEnvelope = (value) => {
+      try {
+        if (value === null || typeof value !== 'object' || Array.isArray(value)) return null;
+        const prototype = Object.getPrototypeOf(value);
+        if (prototype !== Object.prototype && prototype !== null) return null;
+        const descriptors = Object.getOwnPropertyDescriptors(value);
+        const keys = Reflect.ownKeys(descriptors);
+        let valid = keys.every((key) => typeof key === 'string'
+          && downloadEventKeys.includes(key));
+        const snapshot = {};
+        for (const key of downloadEventKeys) {
+          const descriptor = descriptors[key];
+          if (descriptor === undefined) continue;
+          if (!Object.hasOwn(descriptor, 'value') || descriptor.enumerable !== true) {
+            valid = false;
+            continue;
+          }
+          snapshot[key] = descriptor.value;
+        }
+        const jobEnvelope = Object.hasOwn(snapshot, 'job') && snapshot.job !== null
+          ? snapshotJobEnvelope(snapshot.job)
+          : null;
+        if (jobEnvelope !== null) snapshot.job = jobEnvelope.value;
+        if (Object.hasOwn(snapshot, 'job') && snapshot.job !== null
+            && (jobEnvelope === null || !jobEnvelope.valid)) {
+          valid = false;
+        }
+        return Object.freeze({
+          value: Object.freeze(snapshot),
+          identity: jobEnvelope?.identity ?? null,
+          valid,
+        });
+      } catch {
+        return null;
+      }
+    };
+
+    const requestProtocolCancellation = () => {
+      if (ownedEntry === null) return null;
+      const cancellation = cancelEntry(ownedEntry);
+      cancellation.catch(() => undefined);
+      return cancellation;
+    };
+
+    const awaitProtocolCancellation = async () => {
+      const cancellation = requestProtocolCancellation();
+      if (cancellation !== null) await cancellation.catch(() => null);
+    };
+
+    const protocolError = () => {
+      if (terminal || protocolFailed) return;
+      protocolFailed = true;
+      pending.length = 0;
+      if (ownedEntry !== null) {
+        requestProtocolCancellation();
+        releaseEntry(ownedEntry);
+      }
+      call(handlers.onProtocolError, invalidResponse());
+    };
+
+    const recordEvent = (event) => {
+      if (event.job === null
+          || event.job.sequence < ledger.sequence
+          || event.job.progress.basisPoints < ledger.basisPoints) {
+        throw invalidResponse();
+      }
+      if (event.job.sequence === ledger.sequence) {
+        if (event.job.state !== ledger.state
+            || event.job.progress.basisPoints !== ledger.basisPoints) {
+          throw invalidResponse();
+        }
+        return;
+      }
+      ledger.sequence = event.job.sequence;
+      ledger.state = event.job.state;
+      ledger.basisPoints = event.job.progress.basisPoints;
+    };
+
     const dispatch = (event) => {
+      if (terminal || protocolFailed) return;
       const eventJobId = event.job?.id;
-      if (terminal || (eventJobId !== undefined && eventJobId !== initial.id)) {
+      if (eventJobId === undefined || eventJobId !== initial.id) {
+        protocolError();
+        return;
+      }
+      try {
+        recordEvent(event);
+      } catch {
         protocolError();
         return;
       }
       if (event.event !== 'progress') {
         terminal = true;
-        activeChannels.delete(initial.id);
+        releaseEntry(ownedEntry);
       }
       if (event.event === 'failed' && event.error.code === 'downloaderExecutionFailed') {
-        void recoverNativeDownloaderAfterFailure();
+        triggerNativeDownloaderRecovery();
       }
       call(handlers.onEvent, event);
       if (event.event === 'progress') call(handlers.onProgress, event);
@@ -635,11 +941,42 @@ export const createNativeDownloadService = ({
       if (event.event === 'failed') call(handlers.onFailed, event);
     };
 
+    function consumeCancelSnapshot(jobSnapshot) {
+      if (terminal || protocolFailed || jobSnapshot.state === 'cancelling') return;
+      if (jobSnapshot.state === 'cancelled') {
+        const event = Object.freeze({ event: 'cancelled', job: jobSnapshot });
+        terminal = true;
+        pending.length = 0;
+        const onEvent = handlers.onEvent;
+        const onCancelled = handlers.onCancelled;
+        releaseEntry(ownedEntry);
+        call(onEvent, event);
+        call(onCancelled, event);
+        return;
+      }
+      protocolFailed = true;
+      pending.length = 0;
+      const onProtocolError = handlers.onProtocolError;
+      releaseEntry(ownedEntry);
+      call(onProtocolError, invalidResponse());
+    }
+
     const channel = new ChannelConstructor();
     channel.onmessage = (rawEvent) => {
+      if (terminal || protocolFailed) return;
+      const envelope = snapshotEventEnvelope(rawEvent);
+      const identity = envelope?.identity ?? null;
+      if (identity !== null) {
+        if (ownedEntry === null) bindOwned(identity);
+        else if (ownedEntry.id !== identity.id) {
+          protocolError();
+          return;
+        }
+      }
       let event;
       try {
-        event = normalizeDownloadEvent(rawEvent);
+        if (envelope === null || !envelope.valid) throw invalidResponse();
+        event = normalizeDownloadEvent(envelope.value);
       } catch {
         protocolError();
         return;
@@ -655,34 +992,90 @@ export const createNativeDownloadService = ({
       dispatch(event);
     };
 
-    let snapshot;
+    let rawSnapshot;
     try {
-      snapshot = normalizeJob(await invokeCommand('download_start', {
+      rawSnapshot = await invokeCommand('download_start', {
         request: normalizedRequest,
         onEvent: channel,
-      }));
+      });
     } catch (error) {
       pending.length = 0;
+      terminal = true;
+      if (ownedEntry !== null) {
+        releaseEntry(ownedEntry);
+        await awaitProtocolCancellation();
+      }
       throw normalizeInvocationFailure(error);
     }
+
+    const returnedEnvelope = snapshotJobEnvelope(rawSnapshot);
+    const returnedIdentity = returnedEnvelope?.identity ?? null;
+    if (ownedEntry === null && returnedIdentity !== null) bindOwned(returnedIdentity);
+
+    let snapshot;
+    try {
+      if (returnedEnvelope === null || !returnedEnvelope.valid) throw invalidResponse();
+      snapshot = normalizeJob(returnedEnvelope.value);
+    } catch {
+      pending.length = 0;
+      terminal = true;
+      if (ownedEntry !== null) {
+        releaseEntry(ownedEntry);
+        await awaitProtocolCancellation();
+      }
+      throw invalidResponse();
+    }
+
+    if (ownedEntry !== null && ownedEntry.id !== snapshot.id) {
+      pending.length = 0;
+      terminal = true;
+      releaseEntry(ownedEntry);
+      call(handlers.onProtocolError, invalidResponse());
+      await awaitProtocolCancellation();
+      throw invalidResponse();
+    }
+
     initial = snapshot;
     if (snapshot.state !== 'running') {
       pending.length = 0;
+      terminal = true;
+      if (ownedEntry !== null) {
+        releaseEntry(ownedEntry);
+        await awaitProtocolCancellation();
+      }
       throw invalidResponse();
     }
-    activeChannels.set(snapshot.id, channel);
-    pending.splice(0).forEach(dispatch);
-    if (terminal) activeChannels.delete(snapshot.id);
+    if (protocolFailed) {
+      terminal = true;
+      releaseEntry(ownedEntry);
+      await awaitProtocolCancellation();
+      throw invalidResponse();
+    }
+    if (ownedEntry === null) bindOwned(snapshot);
+    ledger = {
+      sequence: snapshot.sequence,
+      state: snapshot.state,
+      basisPoints: snapshot.progress.basisPoints,
+    };
+    const existingEntry = activeChannels.get(snapshot.id);
+    if (existingEntry !== undefined && existingEntry !== ownedEntry) {
+      terminal = true;
+      releaseEntry(ownedEntry);
+      call(handlers.onProtocolError, invalidResponse());
+      throw invalidResponse();
+    }
+    activeChannels.set(snapshot.id, ownedEntry);
+    for (const event of pending.splice(0)) {
+      dispatch(event);
+      if (protocolFailed) break;
+    }
+    if (protocolFailed) {
+      terminal = true;
+      releaseEntry(ownedEntry);
+      await awaitProtocolCancellation();
+      throw invalidResponse();
+    }
     return snapshot;
-  };
-
-  const cancelDownload = (jobId) => {
-    if (!isUuidVersion(jobId, 7)) return Promise.reject(invalidRequest());
-    return invoke('download_cancel', { jobId }, (value) => {
-      const snapshot = normalizeJob(value);
-      if (snapshot.id !== jobId) throw invalidResponse();
-      return snapshot;
-    });
   };
 
   return Object.freeze({ getStatus, inspectUrl, startDownload, cancelDownload });
@@ -699,7 +1092,7 @@ export const inspectDownloadUrl = async (request, preflightOptions) => {
     return await downloadService.inspectUrl(normalizedRequest);
   } catch (error) {
     if (error?.code === 'downloaderExecutionFailed') {
-      void recoverNativeDownloaderAfterFailure();
+      triggerNativeDownloaderRecovery();
     }
     throw error;
   }

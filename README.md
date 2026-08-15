@@ -165,7 +165,7 @@ and a Rust application core.
 | Providers and music | Native Genius, YouTube metadata/OAuth, provider-image proxying, and Lyria RealTime sessions; secrets stay in the operating-system credential store. |
 | Media and downloads | Typed probe, compatibility, extraction, waveform, download, and cancellation pipelines. Packaged execution still depends on reviewed target tools. |
 | Local ASR | Windows x64 can install and fully remove verified Parakeet, Faster-Whisper Turbo/Large-v3, and Qwen3-ASR 0.6B/1.7B packages on demand. Linux/macOS catalogs remain empty. |
-| Narration | Windows x64 can install and fully remove verified F5-TTS and Chatterbox packages; Edge TTS, gTTS, and Gemini each use a small independently removable provider runtime. F5 weights are identified as `CC-BY-NC-4.0`. |
+| Narration | Windows x64 can install and fully remove verified F5-TTS and Chatterbox packages; Edge TTS, gTTS, and Gemini each use a small independently removable provider runtime. |
 | Rendering | Windows x64 can install and fully remove the verified Node/Chrome-for-Testing/Remotion renderer package without embedding its 625 MB runtime in the installer. |
 | Updating | The updater public key and signed-artifact configuration are present; the private signing key remains outside the repository. |
 
@@ -277,11 +277,11 @@ The other matrix targets are `x86_64-unknown-linux-gnu`, `aarch64-apple-darwin`,
 
 | Runtime | Delivery status |
 | --- | --- |
-| yt-dlp | Reviewed `2026.07.04` direct releases are the offline baseline on four target families. The first user-initiated media action installs the complete required tool batch in parallel with cancellable aggregate progress. If an installed yt-dlp process later fails, the host performs one throttled immutable-release check and hot-activates the newer verified version without `yt-dlp -U` or an application restart. |
+| yt-dlp | Reviewed `2026.07.04` direct releases are the offline baseline on four target families. The first user-initiated media action installs the complete required tool batch in parallel with cancellable aggregate progress. If an installed yt-dlp process later fails, the host performs one throttled check of yt-dlp's recommended official nightly channel and hot-activates a newer verified version without `yt-dlp -U` or an application restart. |
 | Deno | Reviewed `2.9.5` content-addressed direct-upstream releases are catalogued for the four target families. URL inspection installs and activates it automatically on first use; it is never bundled or downloaded at startup. |
 | FFmpeg / ffprobe | Windows x64 downloads the reviewed, hash-pinned Gyan `8.1.2` vendor archive, installs only the two executables plus license/build notice, and activates them in the running application. Linux/macOS remain fail-closed until equivalent deliveries are reviewed. |
 | Parakeet / Faster-Whisper / Qwen3-ASR | Windows x64 has content-addressed runtime/model manifests and external-first model sources with the reviewed bundle pool as fallback. All five install, launch under a held lease, and remove through typed native jobs. |
-| F5-TTS / Chatterbox / Edge TTS / gTTS / Gemini TTS worker | Windows x64 has verified managed runtime/model packages. Every backend is independently downloadable/removable; the three network providers use minimal 11–20 MB downloads rather than the GPU runtime. F5's model license is `CC-BY-NC-4.0`. |
+| F5-TTS / Chatterbox / Edge TTS / gTTS / Gemini TTS worker | Windows x64 has verified managed runtime/model packages. Every backend is independently downloadable/removable; the three network providers use minimal 11–20 MB downloads rather than the GPU runtime. |
 | Gemini voice previews | The exact 30-sample, 13.5 MB content-addressed pack installs automatically on first preview on all four target families, streams through an opaque native media capability, and removes immediately without restarting. No preview WAV is embedded in the frontend. |
 | Remotion runtime | Windows x64 downloads a 265 MB content-addressed bundle-pool archive with exact Node 24.19, Chrome for Testing 149, Remotion 4.0.507, the OSG bundle, reviewed Inter font, and notices; installed size is about 625 MB and is fully removable. |
 | Application updater | The public key is configured and updater artifacts are signed with a private key held outside the repository. |
@@ -293,7 +293,7 @@ API-key help identifies the operating-system credential store. Legacy browser va
 once and scrubbed.
 
 Windows speech delivery includes the reviewed runtime, transitive libraries, models, notices, and
-offline worker proof. The F5TTS v1 base model remains `CC-BY-NC-4.0` and is labeled accordingly.
+offline worker proof. The optional F5TTS v1 base model is `CC-BY-NC-4.0` and must not be used for commercial work.
 Arbitrary model URLs are not launchable; only reviewed content-addressed packages are accepted.
 
 PromptDJ uses the operating-system UI font stack and no longer packages a separate proprietary

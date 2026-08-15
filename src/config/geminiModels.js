@@ -84,6 +84,31 @@ export const CONFIGURABLE_THINKING_MODELS = GEMINI_MODELS.filter(
 );
 
 export const isBuiltInGeminiModel = (id) => GEMINI_MODEL_IDS.includes(id);
+const CUSTOM_GEMINI_MODEL_ID_PATTERN = /^gemini-[a-z0-9](?:[a-z0-9.-]{0,119}[a-z0-9])?$/;
+
+/** Custom IDs are provider model names only, never paths or method-bearing URLs. */
+export const normalizeCustomGeminiModelId = (id) => {
+  const normalized = typeof id === 'string' ? id.trim() : '';
+  return CUSTOM_GEMINI_MODEL_ID_PATTERN.test(normalized)
+    && !isBuiltInGeminiModel(normalized)
+    ? normalized
+    : null;
+};
+
+export const isCustomGeminiModelId = (id) => normalizeCustomGeminiModelId(id) !== null;
+export const normalizeCustomGeminiModels = (models) => {
+  if (!Array.isArray(models)) return [];
+  const seen = new Set();
+  return models.flatMap((model) => {
+    const id = normalizeCustomGeminiModelId(model?.id);
+    if (!id || seen.has(id)) return [];
+    seen.add(id);
+    const name = typeof model.name === 'string' && model.name.trim()
+      ? model.name.trim()
+      : id;
+    return [{ id, name, isCustom: true }];
+  });
+};
 export const normalizeImageGenerationModelId = (id) =>
   IMAGE_GENERATION_MODELS.some((model) => model.id === id)
     ? id
@@ -120,6 +145,20 @@ export const migrateStoredGeminiModels = (storage = null) => {
   };
   const changed = {};
 
+  try {
+    const rawCustomModels = targetStorage.getItem('custom_gemini_models');
+    if (rawCustomModels) {
+      const customModels = JSON.parse(rawCustomModels);
+      const normalized = normalizeCustomGeminiModels(customModels);
+      if (JSON.stringify(normalized) !== JSON.stringify(customModels)) {
+        targetStorage.setItem('custom_gemini_models', JSON.stringify(normalized));
+        changed.custom_gemini_models = normalized;
+      }
+    }
+  } catch (error) {
+    console.warn('Could not migrate saved custom Gemini models:', error);
+  }
+
   Object.entries(migrations).forEach(([key, { fallback, requiresMedia }]) => {
     const current = targetStorage.getItem(key);
     if (!current) return;
@@ -147,6 +186,17 @@ export const migrateStoredGeminiModels = (storage = null) => {
         if (compatible && !(currentId in thinkingValues)) thinkingValues[currentId] = legacyValue;
         delete thinkingValues[legacyId];
         thinkingChanged = true;
+      });
+      catalog.models.forEach((model) => {
+        if (!(model.id in thinkingValues) || !model.thinking) return;
+        const value = thinkingValues[model.id];
+        const compatible = model.thinking.type === 'level'
+          ? model.thinking.options.includes(value)
+          : typeof value === 'number';
+        if (!compatible) {
+          thinkingValues[model.id] = model.thinking.default;
+          thinkingChanged = true;
+        }
       });
       if (thinkingChanged) {
         targetStorage.setItem('thinking_budgets', JSON.stringify(thinkingValues));

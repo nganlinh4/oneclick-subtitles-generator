@@ -4,6 +4,7 @@ import SubtitleSourceSelection from '../components/SubtitleSourceSelection';
 import AdvancedSettingsToggle from '../components/AdvancedSettingsToggle';
 import GenerateButton from '../components/GenerateButton';
 import NarrationResults from '../components/NarrationResults';
+import { getF5TtsLanguageSupport } from '../../../platform/nativeNarrationCapabilities';
 
 const getAudioUrl = () => null;
 
@@ -73,6 +74,21 @@ const F5TTSNarrationSection = ({
   audioRef,
   handleAudioEnded
 }) => {
+  const selectedLanguage = subtitleSource === 'translated'
+    ? translatedLanguage
+    : originalLanguage;
+  const languageSupport = getF5TtsLanguageSupport(selectedLanguage);
+  const languageBlockedReason = languageSupport.supported
+    ? ''
+    : languageSupport.reason === 'unknown'
+      ? t(
+        'narration.f5LanguageRequiredError',
+        'Detect or select the subtitle language before using F5-TTS.'
+      )
+      : t(
+        'narration.f5UnsupportedLanguageError',
+        'F5-TTS supports English and Chinese subtitles only. Choose another narration engine for this language.'
+      );
   return (
     <div className="f5tts-content">
       {/* Audio Controls */}
@@ -182,8 +198,9 @@ const F5TTSNarrationSection = ({
         cancelGeneration={cancelGeneration}
         subtitleSource={subtitleSource}
         isServiceAvailable={isAvailable}
-        serviceUnavailableMessage={t('narration.serviceUnavailableMessage', 'Install or start F5-TTS from Settings > Tools. If it just started, wait about 1 minute for it to become ready.')}
+        serviceUnavailableMessage={t('narration.engineUnavailableMessage', 'This narration engine is not ready. Install or start it in Settings > Voice & transcription engines.')}
         narrationMethod="f5tts"
+        generationBlockedReason={languageBlockedReason}
       />
 
       {/* Results */}
@@ -204,6 +221,10 @@ const F5TTSNarrationSection = ({
           : (subtitleSource === 'translated' && translatedSubtitles && translatedSubtitles.length > 0)
             ? translatedSubtitles
             : (originalSubtitles || subtitles || [])}
+        isServiceAvailable={isAvailable}
+        referenceAudio={referenceAudio}
+        narrationMethod="f5tts"
+        generationBlockedReason={languageBlockedReason}
       />
 
       {/* Hidden audio player for playback */}

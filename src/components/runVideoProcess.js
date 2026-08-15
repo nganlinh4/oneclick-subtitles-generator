@@ -1,6 +1,8 @@
 import { showInfoToast } from '../utils/toastUtils';
 import { buildOutsideContextText, getSelectedPromptText } from './videoProcessingOptionsHelpers';
 import { getEngineType } from '../services/engines/transcriptionEngineRegistry';
+import { isNativeMediaDescriptor } from '../platform/mediaService';
+import { inspectMediaPipelineAsset } from '../platform/mediaPipelineService';
 
 /**
  * Read a video file's duration via a throwaway <video> element, with a 2s cap.
@@ -8,6 +10,15 @@ import { getEngineType } from '../services/engines/transcriptionEngineRegistry';
  */
 const readVideoDuration = (videoFile) => {
     if (!videoFile) return Promise.resolve(0);
+    if (isNativeMediaDescriptor(videoFile)) {
+        return inspectMediaPipelineAsset(videoFile.assetId)
+            .then((inspection) => (
+                Number.isInteger(inspection?.durationUs) && inspection.durationUs > 0
+                    ? inspection.durationUs / 1_000_000
+                    : 0
+            ))
+            .catch(() => 0);
+    }
     return new Promise((resolve) => {
         const video = document.createElement('video');
         video.preload = 'metadata';

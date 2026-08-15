@@ -23,4 +23,6 @@ pub use legacy::{
     LegacyImportItemKind, LegacyImportItemOutcome, LegacyImportItemState, LegacyImportSourceKind,
     LegacyImportState, LegacyImportSummary, MAX_LEGACY_IMPORT_ITEMS,
 };
-pub use media::{PublishedMedia, ResolvedMedia, publish_durable_media};
+pub use media::{
+    PublishedMedia, ResolvedMedia, publish_durable_media, publish_durable_media_candidate,
+};

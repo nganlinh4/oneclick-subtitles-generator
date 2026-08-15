@@ -17,11 +17,54 @@ export const MEDIA_PIPELINE_PHASES = Object.freeze([
 
 const operations = new Set(MEDIA_PIPELINE_OPERATIONS);
 const phases = new Set(MEDIA_PIPELINE_PHASES);
+const phaseRanks = Object.freeze({ probing: 0, processing: 1, publishing: 2 });
 const mediaKinds = new Set(['audio', 'video']);
 const jobStates = new Set([
   'queued', 'running', 'cancelling', 'succeeded', 'failed', 'cancelled', 'interrupted',
 ]);
+const activeJobStates = new Set(['running', 'cancelling']);
+const cancellationResponseStates = new Set([
+  'cancelling', 'succeeded', 'failed', 'cancelled', 'interrupted',
+]);
 const jobKinds = new Set(['processMedia', 'generateWaveform']);
+const mediaPipelineCommandCodes = new Set([
+  'internal',
+  'invalidInput',
+  'invalidPath',
+  'mediaUnavailable',
+  'mediaToolsUnavailable',
+  'invalidMediaLocation',
+  'mediaIdentityConflict',
+  'invalidMediaOperation',
+  'mediaTimeout',
+  'mediaCancelled',
+  'mediaOutputExists',
+  'mediaArtifactMissing',
+  'invalidMediaMetadata',
+  'mediaToolFailure',
+  'mediaMissingAudio',
+  'mediaNotPlayable',
+  'invalidMediaRange',
+  'mediaStagingUnavailable',
+  'mediaRegistryFull',
+  'mediaServer',
+  'jobAlreadyExists',
+  'jobNotFound',
+  'jobConflict',
+  'invalidJobState',
+  'jobRegistry',
+  'database',
+  'artifactStorage',
+  'artifactDataCorrupt',
+  'invalidArtifactRequest',
+  'artifactMetadataTooLarge',
+  'artifactLimit',
+  'artifactNotFound',
+  'artifactContentMismatch',
+  'artifactConflict',
+  'artifactStateConflict',
+  'artifactNotReady',
+]);
 const compatibilityActions = new Set([
   'direct', 'remux', 'transcodeAudio', 'transcodeVideo', 'transcodeAll', 'reject',
 ]);
@@ -44,22 +87,67 @@ const MAX_PENDING_EVENTS = 4_096;
 const PLAYBACK_PATTERN = /^http:\/\/127\.0\.0\.1:([0-9]{1,5})\/asset\/([0-9a-f-]{36})\?token=([0-9a-f]{64})$/i;
 const MEDIA_MIME_PATTERN = /^(audio|video)\/[a-z0-9][a-z0-9!#$&^_.+-]{0,63}$/;
 
-const isRecord = (value) => (
-  value !== null && typeof value === 'object' && !Array.isArray(value)
-);
-
-const isPlainRecord = (value) => {
-  if (!isRecord(value)) return false;
-  const prototype = Object.getPrototypeOf(value);
-  return prototype === Object.prototype || prototype === null;
+const snapshotDataRecord = (value, {
+  required,
+  allowed = required,
+  failure,
+}) => {
+  try {
+    if (value === null || typeof value !== 'object' || Array.isArray(value)) throw failure();
+    const prototype = Object.getPrototypeOf(value);
+    if (prototype !== Object.prototype && prototype !== null) throw failure();
+    const descriptors = Object.getOwnPropertyDescriptors(value);
+    const keys = Reflect.ownKeys(descriptors);
+    if (keys.some((key) => typeof key !== 'string' || !allowed.includes(key))
+        || required.some((key) => !keys.includes(key))) {
+      throw failure();
+    }
+    const snapshot = {};
+    for (const key of keys) {
+      const descriptor = descriptors[key];
+      if (!Object.hasOwn(descriptor, 'value') || descriptor.enumerable !== true) throw failure();
+      snapshot[key] = descriptor.value;
+    }
+    return Object.freeze(snapshot);
+  } catch {
+    throw failure();
+  }
 };
 
-const hasExactKeys = (value, expected) => {
-  if (!isPlainRecord(value)) return false;
-  const actual = Object.keys(value).sort();
-  const sortedExpected = [...expected].sort();
-  return actual.length === sortedExpected.length
-    && actual.every((key, index) => key === sortedExpected[index]);
+const snapshotDataArray = (value, maximum, failure) => {
+  try {
+    if (!Array.isArray(value)) throw failure();
+    const descriptors = Object.getOwnPropertyDescriptors(value);
+    const lengthDescriptor = descriptors.length;
+    if (!lengthDescriptor || !Object.hasOwn(lengthDescriptor, 'value')
+        || !Number.isSafeInteger(lengthDescriptor.value)
+        || lengthDescriptor.value < 0 || lengthDescriptor.value > maximum) {
+      throw failure();
+    }
+    const length = lengthDescriptor.value;
+    if (Reflect.ownKeys(descriptors).length !== length + 1) throw failure();
+    const snapshot = [];
+    for (let index = 0; index < length; index += 1) {
+      const descriptor = descriptors[String(index)];
+      if (!descriptor || !Object.hasOwn(descriptor, 'value') || descriptor.enumerable !== true) {
+        throw failure();
+      }
+      snapshot.push(descriptor.value);
+    }
+    return Object.freeze(snapshot);
+  } catch {
+    throw failure();
+  }
+};
+
+const exactRecord = (value, keys, failure) => snapshotDataRecord(value, {
+  required: keys,
+  failure,
+});
+
+const hasSnapshotKeys = (value, expected) => {
+  const keys = Object.keys(value);
+  return keys.length === expected.length && expected.every((key) => Object.hasOwn(value, key));
 };
 
 const isUuidVersion = (value, expected) => {
@@ -112,10 +200,15 @@ const cancelledOperation = () => {
 };
 
 const normalizeFailure = (error) => {
-  if (error instanceof MediaPipelineServiceError) return error;
-  const code = typeof error?.code === 'string' && /^[A-Za-z][A-Za-z0-9]{0,127}$/.test(error.code)
-    ? error.code
-    : 'mediaPipelineFailed';
+  let code = 'mediaPipelineFailed';
+  try {
+    const candidate = error !== null && (typeof error === 'object' || typeof error === 'function')
+      ? error.code
+      : null;
+    if (mediaPipelineCommandCodes.has(candidate)) code = candidate;
+  } catch {
+    // A hostile transport accessor is not authoritative error metadata.
+  }
   return new MediaPipelineServiceError(code, 'The native media operation could not be completed');
 };
 
@@ -135,52 +228,64 @@ const secondsToMicroseconds = (value) => {
 
 const normalizeRange = (value, { optional = false } = {}) => {
   if (optional && (value === null || value === undefined)) return null;
-  if (!hasExactKeys(value, ['start', 'end'])) throw invalidRequest();
-  const startUs = secondsToMicroseconds(value.start);
-  const endUs = secondsToMicroseconds(value.end);
+  const data = exactRecord(value, ['start', 'end'], invalidRequest);
+  const startUs = secondsToMicroseconds(data.start);
+  const endUs = secondsToMicroseconds(data.end);
   if (endUs <= startUs) throw invalidRequest();
   return Object.freeze({ startUs, endUs });
 };
 
 export const normalizeMediaPipelineRequest = (request) => {
-  if (!isPlainRecord(request) || !operations.has(request.operation)) throw invalidRequest();
-  switch (request.operation) {
+  const data = snapshotDataRecord(request, {
+    required: ['operation', 'assetId'],
+    allowed: ['operation', 'assetId', 'range', 'format', 'pointsPerSecond', 'maxPoints'],
+    failure: invalidRequest,
+  });
+  if (!operations.has(data.operation)) throw invalidRequest();
+  switch (data.operation) {
     case 'preparePlayback':
-      if (!hasExactKeys(request, ['operation', 'assetId'])) throw invalidRequest();
-      return Object.freeze({ operation: request.operation, assetId: requireAssetId(request.assetId) });
+      if (!hasSnapshotKeys(data, ['operation', 'assetId'])) throw invalidRequest();
+      return Object.freeze({ operation: data.operation, assetId: requireAssetId(data.assetId) });
     case 'analysisClip': {
-      if (!hasExactKeys(request, ['operation', 'assetId', 'range'])) throw invalidRequest();
-      const range = normalizeRange(request.range);
-      return Object.freeze({ operation: request.operation, assetId: requireAssetId(request.assetId), ...range });
+      if (!hasSnapshotKeys(data, ['operation', 'assetId', 'range'])) throw invalidRequest();
+      const range = normalizeRange(data.range);
+      return Object.freeze({
+        operation: data.operation,
+        assetId: requireAssetId(data.assetId),
+        startUs: range.startUs,
+        endUs: range.endUs,
+      });
     }
     case 'extractAudio': {
-      if (!hasExactKeys(request, ['operation', 'assetId', 'format', 'range'])
-          || !audioFormats.has(request.format)) {
+      if (!hasSnapshotKeys(data, ['operation', 'assetId', 'format', 'range'])
+          || !audioFormats.has(data.format)) {
         throw invalidRequest();
       }
-      const range = normalizeRange(request.range, { optional: true });
+      const range = normalizeRange(data.range, { optional: true });
       return Object.freeze({
-        operation: request.operation,
-        assetId: requireAssetId(request.assetId),
-        format: request.format,
-        ...(range === null ? { startUs: 0, endUs: null } : range),
+        operation: data.operation,
+        assetId: requireAssetId(data.assetId),
+        format: data.format,
+        startUs: range === null ? 0 : range.startUs,
+        endUs: range === null ? null : range.endUs,
       });
     }
     case 'generateWaveform': {
-      if (!hasExactKeys(request, [
+      if (!hasSnapshotKeys(data, [
         'operation', 'assetId', 'range', 'pointsPerSecond', 'maxPoints',
       ])
-          || !isSafeInteger(request.pointsPerSecond, 1, 400)
-          || !isSafeInteger(request.maxPoints, 1_000, MAX_WAVEFORM_POINTS)) {
+          || !isSafeInteger(data.pointsPerSecond, 1, 400)
+          || !isSafeInteger(data.maxPoints, 1_000, MAX_WAVEFORM_POINTS)) {
         throw invalidRequest();
       }
-      const range = normalizeRange(request.range, { optional: true });
+      const range = normalizeRange(data.range, { optional: true });
       return Object.freeze({
-        operation: request.operation,
-        assetId: requireAssetId(request.assetId),
-        pointsPerSecond: request.pointsPerSecond,
-        maxPoints: request.maxPoints,
-        ...(range === null ? { startUs: 0, endUs: null } : range),
+        operation: data.operation,
+        assetId: requireAssetId(data.assetId),
+        pointsPerSecond: data.pointsPerSecond,
+        maxPoints: data.maxPoints,
+        startUs: range === null ? 0 : range.startUs,
+        endUs: range === null ? null : range.endUs,
       });
     }
     default:
@@ -188,63 +293,87 @@ export const normalizeMediaPipelineRequest = (request) => {
   }
 };
 
-const normalizeJob = (value) => {
-  if (!hasExactKeys(value, ['id', 'kind', 'state', 'progress', 'sequence'])
-      || !isUuidV7(value.id)
-      || !jobKinds.has(value.kind)
-      || !jobStates.has(value.state)
-      || !hasExactKeys(value.progress, ['basisPoints'])
-      || !isSafeInteger(value.progress.basisPoints, 0, 10_000)
-      || !isSafeInteger(value.sequence)) {
+const normalizeJob = (value, expectedKind = null) => {
+  const data = exactRecord(value, ['id', 'kind', 'state', 'progress', 'sequence'], invalidResponse);
+  const progress = exactRecord(data.progress, ['basisPoints'], invalidResponse);
+  if (!isUuidV7(data.id)
+      || !jobKinds.has(data.kind)
+      || (expectedKind !== null && data.kind !== expectedKind)
+      || !jobStates.has(data.state)
+      || !isSafeInteger(progress.basisPoints, 0, 10_000)
+      || !isSafeInteger(data.sequence)
+      || (data.state === 'queued'
+        && (progress.basisPoints !== 0 || data.sequence !== 0))
+      || (data.state === 'succeeded'
+        && (progress.basisPoints !== 10_000 || data.sequence < 2))
+      || (data.state !== 'queued' && data.sequence < 1)) {
     throw invalidResponse();
   }
   return Object.freeze({
-    ...value,
-    progress: Object.freeze({ ...value.progress }),
+    id: data.id,
+    kind: data.kind,
+    state: data.state,
+    progress: Object.freeze({ basisPoints: progress.basisPoints }),
+    sequence: data.sequence,
   });
 };
 
 const normalizeAsset = (value) => {
-  if (!hasExactKeys(value, ['id', 'displayName', 'extension', 'sizeBytes', 'kind'])
-      || !isUuidV7(value.id)
-      || typeof value.displayName !== 'string'
-      || value.displayName.trim() !== value.displayName
-      || value.displayName.length === 0
-      || value.displayName.length > 512
-      || value.displayName.includes('/')
-      || value.displayName.includes('\\')
-      || hasControlCharacter(value.displayName)
-      || typeof value.extension !== 'string'
-      || !/^[a-z0-9]{1,16}$/.test(value.extension)
-      || !value.displayName.toLowerCase().endsWith(`.${value.extension}`)
-      || !isSafeInteger(value.sizeBytes, 1)
-      || !mediaKinds.has(value.kind)) {
+  const data = exactRecord(
+    value,
+    ['id', 'displayName', 'extension', 'sizeBytes', 'kind'],
+    invalidResponse
+  );
+  if (!isUuidV7(data.id)
+      || typeof data.displayName !== 'string'
+      || data.displayName.trim() !== data.displayName
+      || data.displayName.length === 0
+      || data.displayName.length > 512
+      || data.displayName.includes('/')
+      || data.displayName.includes('\\')
+      || hasControlCharacter(data.displayName)
+      || typeof data.extension !== 'string'
+      || !/^[a-z0-9]{1,16}$/.test(data.extension)
+      || !data.displayName.toLowerCase().endsWith(`.${data.extension}`)
+      || !isSafeInteger(data.sizeBytes, 1)
+      || !mediaKinds.has(data.kind)) {
     throw invalidResponse();
   }
-  return Object.freeze({ ...value });
+  return Object.freeze({
+    id: data.id,
+    displayName: data.displayName,
+    extension: data.extension,
+    sizeBytes: data.sizeBytes,
+    kind: data.kind,
+  });
 };
 
 const normalizePlayback = (value, asset) => {
-  const match = typeof value?.playbackUrl === 'string'
-    ? PLAYBACK_PATTERN.exec(value.playbackUrl)
+  const data = exactRecord(value, ['id', 'playbackUrl', 'mimeType', 'byteLength'], invalidResponse);
+  const match = typeof data.playbackUrl === 'string'
+    ? PLAYBACK_PATTERN.exec(data.playbackUrl)
     : null;
   const port = match === null ? 0 : Number(match[1]);
-  if (!hasExactKeys(value, ['id', 'playbackUrl', 'mimeType', 'byteLength'])
-      || !isUuidV4(value.id)
+  if (!isUuidV4(data.id)
       || match === null
       || !isSafeInteger(port, 1, 65_535)
-      || match[2].toLowerCase() !== value.id.toLowerCase()
-      || typeof value.mimeType !== 'string'
-      || !MEDIA_MIME_PATTERN.test(value.mimeType)
-      || !value.mimeType.startsWith(`${asset.kind}/`)
-      || value.byteLength !== asset.sizeBytes) {
+      || match[2].toLowerCase() !== data.id.toLowerCase()
+      || typeof data.mimeType !== 'string'
+      || !MEDIA_MIME_PATTERN.test(data.mimeType)
+      || !data.mimeType.startsWith(`${asset.kind}/`)
+      || data.byteLength !== asset.sizeBytes) {
     throw invalidResponse();
   }
-  return Object.freeze({ ...value });
+  return Object.freeze({
+    id: data.id,
+    playbackUrl: data.playbackUrl,
+    mimeType: data.mimeType,
+    byteLength: data.byteLength,
+  });
 };
 
 const normalizeInspection = (value, expectedAssetId = null) => {
-  if (!hasExactKeys(value, [
+  const data = exactRecord(value, [
     'assetId',
     'durationUs',
     'hasVideo',
@@ -256,38 +385,48 @@ const normalizeInspection = (value, expectedAssetId = null) => {
     'frameRate',
     'compatibilityAction',
     'issues',
-  ])
-      || !isUuidV7(value.assetId)
-      || (expectedAssetId !== null && value.assetId !== expectedAssetId)
-      || (value.durationUs !== null && !isSafeInteger(value.durationUs, 1, MAX_DURATION_US))
-      || typeof value.hasVideo !== 'boolean'
-      || typeof value.hasAudio !== 'boolean'
-      || (!value.hasVideo && !value.hasAudio)
-      || (value.videoCodec !== null
-        && (typeof value.videoCodec !== 'string'
-          || !/^[a-z0-9._+-]{1,32}$/.test(value.videoCodec)))
-      || (value.audioCodec !== null
-        && (typeof value.audioCodec !== 'string'
-          || !/^[a-z0-9._+-]{1,32}$/.test(value.audioCodec)))
-      || (value.width !== null && !isSafeInteger(value.width, 1, 65_535))
-      || (value.height !== null && !isSafeInteger(value.height, 1, 65_535))
-      || (value.frameRate !== null && (!isFiniteNumber(value.frameRate) || value.frameRate <= 0 || value.frameRate > 1_000))
-      || !compatibilityActions.has(value.compatibilityAction)
-      || !Array.isArray(value.issues)
-      || value.issues.length > 32
-      || value.issues.some((issue) => !compatibilityIssues.has(issue))) {
+  ], invalidResponse);
+  const issues = snapshotDataArray(data.issues, 32, invalidResponse);
+  if (!isUuidV7(data.assetId)
+      || (expectedAssetId !== null && data.assetId !== expectedAssetId)
+      || (data.durationUs !== null && !isSafeInteger(data.durationUs, 1, MAX_DURATION_US))
+      || typeof data.hasVideo !== 'boolean'
+      || typeof data.hasAudio !== 'boolean'
+      || (!data.hasVideo && !data.hasAudio)
+      || (data.videoCodec !== null
+        && (typeof data.videoCodec !== 'string'
+          || !/^[a-z0-9._+-]{1,32}$/.test(data.videoCodec)))
+      || (data.audioCodec !== null
+        && (typeof data.audioCodec !== 'string'
+          || !/^[a-z0-9._+-]{1,32}$/.test(data.audioCodec)))
+      || (data.width !== null && !isSafeInteger(data.width, 1, 65_535))
+      || (data.height !== null && !isSafeInteger(data.height, 1, 65_535))
+      || (data.frameRate !== null
+        && (!isFiniteNumber(data.frameRate) || data.frameRate <= 0 || data.frameRate > 1_000))
+      || !compatibilityActions.has(data.compatibilityAction)
+      || issues.some((issue) => !compatibilityIssues.has(issue))) {
     throw invalidResponse();
   }
-  return Object.freeze({ ...value, issues: Object.freeze([...value.issues]) });
+  return Object.freeze({
+    assetId: data.assetId,
+    durationUs: data.durationUs,
+    hasVideo: data.hasVideo,
+    hasAudio: data.hasAudio,
+    videoCodec: data.videoCodec,
+    audioCodec: data.audioCodec,
+    width: data.width,
+    height: data.height,
+    frameRate: data.frameRate,
+    compatibilityAction: data.compatibilityAction,
+    issues,
+  });
 };
 
 const normalizeMediaResult = (value, operation, sourceAssetId) => {
-  if (!hasExactKeys(value, ['kind', 'media', 'inspection'])
-      || value.kind !== 'media'
-      || !hasExactKeys(value.media, ['asset', 'playback'])) {
-    throw invalidResponse();
-  }
-  const asset = normalizeAsset(value.media.asset);
+  const data = exactRecord(value, ['kind', 'media', 'inspection'], invalidResponse);
+  const media = exactRecord(data.media, ['asset', 'playback'], invalidResponse);
+  if (data.kind !== 'media') throw invalidResponse();
+  const asset = normalizeAsset(media.asset);
   if ((operation === 'analysisClip' || operation === 'extractAudio')
       && asset.id === sourceAssetId) {
     throw invalidResponse();
@@ -300,126 +439,173 @@ const normalizeMediaResult = (value, operation, sourceAssetId) => {
     kind: 'media',
     media: Object.freeze({
       asset,
-      playback: normalizePlayback(value.media.playback, asset),
+      playback: normalizePlayback(media.playback, asset),
     }),
-    inspection: normalizeInspection(value.inspection, asset.id),
+    inspection: normalizeInspection(data.inspection, asset.id),
   });
 };
 
 const normalizeWaveform = (value) => {
-  if (!hasExactKeys(value, ['durationUs', 'sourceSampleRateHz', 'levels'])
-      || !isSafeInteger(value.durationUs, 0, MAX_DURATION_US)
-      || !isSafeInteger(value.sourceSampleRateHz, 1, 192_000)
-      || !Array.isArray(value.levels)
-      || value.levels.length === 0
-      || value.levels.length > 16) {
+  const data = exactRecord(value, ['durationUs', 'sourceSampleRateHz', 'levels'], invalidResponse);
+  const rawLevels = snapshotDataArray(data.levels, 16, invalidResponse);
+  if (!isSafeInteger(data.durationUs, 0, MAX_DURATION_US)
+      || !isSafeInteger(data.sourceSampleRateHz, 1, 192_000)
+      || rawLevels.length === 0) {
     throw invalidResponse();
   }
   let totalPoints = 0;
-  const levels = value.levels.map((level) => {
-    if (!hasExactKeys(level, ['pointsPerSecond', 'points'])
-        || !isFiniteNumber(level.pointsPerSecond)
-        || level.pointsPerSecond <= 0
-        || level.pointsPerSecond > 4_000
-        || !Array.isArray(level.points)) {
+  const levels = rawLevels.map((level) => {
+    const levelData = exactRecord(level, ['pointsPerSecond', 'points'], invalidResponse);
+    if (!isFiniteNumber(levelData.pointsPerSecond)
+        || levelData.pointsPerSecond <= 0
+        || levelData.pointsPerSecond > 4_000) {
       throw invalidResponse();
     }
-    totalPoints += level.points.length;
+    const rawPoints = snapshotDataArray(
+      levelData.points,
+      MAX_WAVEFORM_PYRAMID_POINTS - totalPoints,
+      invalidResponse
+    );
+    totalPoints += rawPoints.length;
     if (totalPoints > MAX_WAVEFORM_PYRAMID_POINTS) throw invalidResponse();
-    const points = level.points.map((point) => {
-      if (!hasExactKeys(point, ['minimum', 'maximum', 'rootMeanSquare'])
-          || !isFiniteNumber(point.minimum)
-          || !isFiniteNumber(point.maximum)
-          || !isFiniteNumber(point.rootMeanSquare)
-          || point.minimum < -1
-          || point.maximum > 1
-          || point.minimum > point.maximum
-          || point.rootMeanSquare < 0
-          || point.rootMeanSquare > 1) {
+    const points = rawPoints.map((point) => {
+      const pointData = exactRecord(
+        point,
+        ['minimum', 'maximum', 'rootMeanSquare'],
+        invalidResponse
+      );
+      if (!isFiniteNumber(pointData.minimum)
+          || !isFiniteNumber(pointData.maximum)
+          || !isFiniteNumber(pointData.rootMeanSquare)
+          || pointData.minimum < -1
+          || pointData.maximum > 1
+          || pointData.minimum > pointData.maximum
+          || pointData.rootMeanSquare < 0
+          || pointData.rootMeanSquare > 1) {
         throw invalidResponse();
       }
-      return Object.freeze({ ...point });
+      return Object.freeze({
+        minimum: pointData.minimum,
+        maximum: pointData.maximum,
+        rootMeanSquare: pointData.rootMeanSquare,
+      });
     });
-    return Object.freeze({ pointsPerSecond: level.pointsPerSecond, points: Object.freeze(points) });
+    return Object.freeze({ pointsPerSecond: levelData.pointsPerSecond, points: Object.freeze(points) });
   });
-  return Object.freeze({ ...value, levels: Object.freeze(levels) });
+  return Object.freeze({
+    durationUs: data.durationUs,
+    sourceSampleRateHz: data.sourceSampleRateHz,
+    levels: Object.freeze(levels),
+  });
 };
 
 const normalizeResult = (value, operation, sourceAssetId) => {
-  if (!isPlainRecord(value) || typeof value.kind !== 'string') throw invalidResponse();
-  if (value.kind === 'media') return normalizeMediaResult(value, operation, sourceAssetId);
-  if (value.kind === 'waveform') {
+  const data = snapshotDataRecord(value, {
+    required: ['kind'],
+    allowed: ['kind', 'media', 'inspection', 'assetId', 'waveform'],
+    failure: invalidResponse,
+  });
+  if (data.kind === 'media') return normalizeMediaResult(data, operation, sourceAssetId);
+  if (data.kind === 'waveform') {
     if (operation !== 'generateWaveform'
-        || !hasExactKeys(value, ['kind', 'assetId', 'waveform'])
-        || value.assetId !== sourceAssetId) {
+        || !hasSnapshotKeys(data, ['kind', 'assetId', 'waveform'])
+        || data.assetId !== sourceAssetId) {
       throw invalidResponse();
     }
     return Object.freeze({
       kind: 'waveform',
-      assetId: value.assetId,
-      waveform: normalizeWaveform(value.waveform),
+      assetId: data.assetId,
+      waveform: normalizeWaveform(data.waveform),
     });
   }
   throw invalidResponse();
 };
 
 const normalizeError = (value) => {
-  if (!hasExactKeys(value, ['code', 'message'])
-      || typeof value.code !== 'string'
-      || !/^[A-Za-z][A-Za-z0-9]{0,127}$/.test(value.code)
-      || typeof value.message !== 'string'
-      || value.message.length > 2_048) {
+  const data = exactRecord(value, ['code', 'message'], invalidResponse);
+  const { code, message } = data;
+  if (typeof code !== 'string'
+      || !/^[A-Za-z][A-Za-z0-9]{0,127}$/.test(code)
+      || typeof message !== 'string'
+      || message.length > 2_048) {
     throw invalidResponse();
   }
   return Object.freeze({
-    code: value.code,
+    code: mediaPipelineCommandCodes.has(code) ? code : 'mediaPipelineFailed',
     message: 'The native media operation could not be completed',
   });
 };
 
+const expectedJobKind = (operation) => (
+  operation === 'generateWaveform' ? 'generateWaveform' : 'processMedia'
+);
+
+const mediaPipelineEventKeys = Object.freeze([
+  'event', 'job', 'operation', 'phase', 'fraction', 'result', 'error',
+]);
+
 export const normalizeMediaPipelineEvent = (value, expected = {}) => {
-  if (!isPlainRecord(value) || typeof value.event !== 'string') throw invalidResponse();
-  const operation = value.operation;
+  const expectedData = snapshotDataRecord(expected, {
+    required: [],
+    allowed: ['operation', 'assetId'],
+    failure: invalidResponse,
+  });
+  const data = snapshotDataRecord(value, {
+    required: ['event', 'job', 'operation'],
+    allowed: mediaPipelineEventKeys,
+    failure: invalidResponse,
+  });
+  if (typeof data.event !== 'string') throw invalidResponse();
+  const operation = data.operation;
   if (!operations.has(operation)
-      || (expected.operation !== undefined && operation !== expected.operation)) {
+      || (expectedData.operation !== undefined && operation !== expectedData.operation)) {
     throw invalidResponse();
   }
-  switch (value.event) {
+  const jobKind = expectedJobKind(operation);
+  switch (data.event) {
     case 'progress': {
-      if (!hasExactKeys(value, ['event', 'job', 'operation', 'phase', 'fraction'])
-          || !phases.has(value.phase)
-          || (value.fraction !== null
-            && (!isFiniteNumber(value.fraction) || value.fraction < 0 || value.fraction > 1))) {
+      if (!hasSnapshotKeys(data, ['event', 'job', 'operation', 'phase', 'fraction'])
+          || !phases.has(data.phase)
+          || (data.fraction !== null
+            && (!isFiniteNumber(data.fraction) || data.fraction < 0 || data.fraction > 1))) {
         throw invalidResponse();
       }
-      return Object.freeze({ ...value, job: normalizeJob(value.job) });
+      const job = normalizeJob(data.job, jobKind);
+      if (!activeJobStates.has(job.state)) throw invalidResponse();
+      return Object.freeze({
+        event: 'progress',
+        job,
+        operation,
+        phase: data.phase,
+        fraction: data.fraction,
+      });
     }
     case 'completed': {
-      if (!hasExactKeys(value, ['event', 'job', 'operation', 'result'])
-          || !isUuidV7(expected.assetId)) {
+      if (!hasSnapshotKeys(data, ['event', 'job', 'operation', 'result'])
+          || !isUuidV7(expectedData.assetId)) {
         throw invalidResponse();
       }
-      const job = normalizeJob(value.job);
+      const job = normalizeJob(data.job, jobKind);
       if (job.state !== 'succeeded') throw invalidResponse();
       return Object.freeze({
         event: 'completed',
         job,
         operation,
-        result: normalizeResult(value.result, operation, expected.assetId),
+        result: normalizeResult(data.result, operation, expectedData.assetId),
       });
     }
     case 'cancelled': {
-      if (!hasExactKeys(value, ['event', 'job', 'operation'])) throw invalidResponse();
-      const job = normalizeJob(value.job);
+      if (!hasSnapshotKeys(data, ['event', 'job', 'operation'])) throw invalidResponse();
+      const job = normalizeJob(data.job, jobKind);
       if (job.state !== 'cancelled') throw invalidResponse();
       return Object.freeze({ event: 'cancelled', job, operation });
     }
     case 'failed': {
-      if (!hasExactKeys(value, ['event', 'job', 'operation', 'error'])) throw invalidResponse();
-      const job = value.job === null ? null : normalizeJob(value.job);
+      if (!hasSnapshotKeys(data, ['event', 'job', 'operation', 'error'])) throw invalidResponse();
+      const job = data.job === null ? null : normalizeJob(data.job, jobKind);
       if (job !== null && job.state !== 'failed') throw invalidResponse();
       return Object.freeze({
-        event: 'failed', job, operation, error: normalizeError(value.error),
+        event: 'failed', job, operation, error: normalizeError(data.error),
       });
     }
     default:
@@ -429,32 +615,57 @@ export const normalizeMediaPipelineEvent = (value, expected = {}) => {
 
 const normalizeHandlers = (handlers) => {
   if (handlers === undefined) return Object.freeze({});
-  const allowed = new Set([
+  const allowed = [
     'onEvent', 'onProgress', 'onCompleted', 'onCancelled', 'onFailed', 'onProtocolError',
-  ]);
-  if (!isPlainRecord(handlers) || Object.keys(handlers).some((key) => !allowed.has(key))) {
-    throw invalidRequest();
-  }
-  for (const handler of Object.values(handlers)) {
+  ];
+  const data = snapshotDataRecord(handlers, {
+    required: [],
+    allowed,
+    failure: invalidRequest,
+  });
+  for (const handler of Object.values(data)) {
     if (handler !== undefined && typeof handler !== 'function') throw invalidRequest();
   }
-  return Object.freeze({ ...handlers });
+  return data;
 };
 
 const normalizeRunOptions = (options) => {
   if (options === undefined) return Object.freeze({});
-  if (!isPlainRecord(options)
-      || Object.keys(options).some((key) => key !== 'signal' && key !== 'onProgress')
-      || (options.onProgress !== undefined && typeof options.onProgress !== 'function')) {
+  const data = snapshotDataRecord(options, {
+    required: [],
+    allowed: ['signal', 'onProgress'],
+    failure: invalidRequest,
+  });
+  if (data.onProgress !== undefined && typeof data.onProgress !== 'function') {
     throw invalidRequest();
   }
-  if (options.signal !== undefined
-      && (typeof options.signal?.aborted !== 'boolean'
-        || typeof options.signal?.addEventListener !== 'function'
-        || typeof options.signal?.removeEventListener !== 'function')) {
-    throw invalidRequest();
+  let signal;
+  if (data.signal !== undefined) {
+    try {
+      const rawSignal = data.signal;
+      const addEventListener = rawSignal.addEventListener;
+      const removeEventListener = rawSignal.removeEventListener;
+      if (typeof addEventListener !== 'function' || typeof removeEventListener !== 'function') {
+        throw invalidRequest();
+      }
+      signal = Object.freeze({
+        readAborted: () => {
+          try {
+            const aborted = rawSignal.aborted;
+            if (typeof aborted !== 'boolean') throw invalidRequest();
+            return aborted;
+          } catch {
+            throw invalidRequest();
+          }
+        },
+        addEventListener: (...args) => Reflect.apply(addEventListener, rawSignal, args),
+        removeEventListener: (...args) => Reflect.apply(removeEventListener, rawSignal, args),
+      });
+    } catch {
+      throw invalidRequest();
+    }
   }
-  return Object.freeze({ ...options });
+  return Object.freeze({ signal, onProgress: data.onProgress });
 };
 
 export const createNativeMediaPipelineService = ({
@@ -471,14 +682,53 @@ export const createNativeMediaPipelineService = ({
   const inspect = async (assetId) => {
     requireRuntime();
     const normalizedAssetId = requireAssetId(assetId);
+    let rawValue;
     try {
-      return normalizeInspection(
-        await invokeCommand('media_pipeline_inspect', { assetId: normalizedAssetId }),
-        normalizedAssetId
-      );
+      rawValue = await invokeCommand('media_pipeline_inspect', { assetId: normalizedAssetId });
     } catch (error) {
       throw normalizeFailure(error);
     }
+    return normalizeInspection(rawValue, normalizedAssetId);
+  };
+
+  const releaseEntry = (entry) => {
+    entry.quarantined = true;
+    if (activeChannels.get(entry.id) === entry) activeChannels.delete(entry.id);
+    try {
+      entry.channel.onmessage = () => undefined;
+    } catch {
+      // The active entry is still released for custom channels that reject reassignment.
+    }
+  };
+
+  const cancelNativeJob = async (jobId, jobKind = null) => {
+    let rawValue;
+    try {
+      rawValue = await invokeCommand('media_pipeline_cancel', { jobId });
+    } catch (error) {
+      throw normalizeFailure(error);
+    }
+    const job = normalizeJob(rawValue, jobKind);
+    if (job.id !== jobId || !cancellationResponseStates.has(job.state)) {
+      throw invalidResponse();
+    }
+    return job;
+  };
+
+  const cancelEntry = (entry) => {
+    if (entry.cancelPromise !== null) return entry.cancelPromise;
+    entry.cancelPromise = cancelNativeJob(entry.id, entry.jobKind).then((job) => {
+      if (job.state !== 'cancelling') entry.consumeCancelSnapshot(job);
+      return job;
+    });
+    return entry.cancelPromise;
+  };
+
+  const cancel = async (jobId) => {
+    requireRuntime();
+    if (!isUuidV7(jobId)) throw invalidRequest();
+    const entry = activeChannels.get(jobId);
+    return entry === undefined ? cancelNativeJob(jobId) : cancelEntry(entry);
   };
 
   const start = async (rawRequest, rawHandlers) => {
@@ -488,25 +738,185 @@ export const createNativeMediaPipelineService = ({
     const pending = [];
     let initial = null;
     let terminal = false;
+    let protocolFailed = false;
+    let ownedEntry = null;
+    let ledger = null;
+    const jobKind = expectedJobKind(request.operation);
+    const eventExpectation = Object.freeze({
+      operation: request.operation,
+      assetId: request.assetId,
+    });
 
     const call = (handler, value) => {
       if (typeof handler !== 'function') return;
       try {
         const returned = handler(value);
-        if (returned && typeof returned.catch === 'function') returned.catch(() => undefined);
+        Promise.resolve(returned).catch(() => undefined);
       } catch {
         // UI handlers cannot corrupt the native channel lifecycle.
       }
     };
-    const protocolError = () => call(handlers.onProtocolError, invalidResponse());
+    const bindOwned = (identity) => {
+      if (identity === null || !activeJobStates.has(identity.state) && identity.state !== 'queued') {
+        return ownedEntry;
+      }
+      if (ownedEntry === null) {
+        ownedEntry = {
+          id: identity.id,
+          jobKind,
+          channel,
+          cancelPromise: null,
+          consumeCancelSnapshot,
+          quarantined: false,
+        };
+      }
+      return ownedEntry;
+    };
+
+    const snapshotJobEnvelope = (value) => {
+      try {
+        if (value === null || typeof value !== 'object' || Array.isArray(value)) return null;
+        const prototype = Object.getPrototypeOf(value);
+        if (prototype !== Object.prototype && prototype !== null) return null;
+        const descriptors = Object.getOwnPropertyDescriptors(value);
+        const keys = Reflect.ownKeys(descriptors);
+        const id = descriptors.id;
+        const kind = descriptors.kind;
+        const state = descriptors.state;
+        const identity = !id || !kind || !state
+            || !Object.hasOwn(id, 'value') || !Object.hasOwn(kind, 'value')
+            || !Object.hasOwn(state, 'value')
+            || id.enumerable !== true || kind.enumerable !== true || state.enumerable !== true
+            || !isUuidV7(id.value)
+            || kind.value !== jobKind
+            || !jobStates.has(state.value)
+          ? null
+          : Object.freeze({ id: id.value, state: state.value });
+        const expectedKeys = ['id', 'kind', 'state', 'progress', 'sequence'];
+        const valid = keys.length === expectedKeys.length
+          && keys.every((key) => typeof key === 'string' && expectedKeys.includes(key))
+          && expectedKeys.every((key) => {
+            const descriptor = descriptors[key];
+            return descriptor && Object.hasOwn(descriptor, 'value') && descriptor.enumerable === true;
+          });
+        const snapshot = {};
+        for (const key of expectedKeys) {
+          const descriptor = descriptors[key];
+          if (descriptor && Object.hasOwn(descriptor, 'value') && descriptor.enumerable === true) {
+            snapshot[key] = descriptor.value;
+          }
+        }
+        return Object.freeze({ value: Object.freeze(snapshot), identity, valid });
+      } catch {
+        return null;
+      }
+    };
+
+    const snapshotEventEnvelope = (value) => {
+      try {
+        if (value === null || typeof value !== 'object' || Array.isArray(value)) return null;
+        const prototype = Object.getPrototypeOf(value);
+        if (prototype !== Object.prototype && prototype !== null) return null;
+        const descriptors = Object.getOwnPropertyDescriptors(value);
+        const keys = Reflect.ownKeys(descriptors);
+        let valid = keys.every((key) => typeof key === 'string'
+          && mediaPipelineEventKeys.includes(key));
+        const snapshot = {};
+        for (const key of mediaPipelineEventKeys) {
+          const descriptor = descriptors[key];
+          if (descriptor === undefined) continue;
+          if (!Object.hasOwn(descriptor, 'value') || descriptor.enumerable !== true) {
+            valid = false;
+            continue;
+          }
+          snapshot[key] = descriptor.value;
+        }
+        const jobEnvelope = Object.hasOwn(snapshot, 'job') && snapshot.job !== null
+          ? snapshotJobEnvelope(snapshot.job)
+          : null;
+        if (jobEnvelope !== null) snapshot.job = jobEnvelope.value;
+        if (Object.hasOwn(snapshot, 'job') && snapshot.job !== null
+            && (jobEnvelope === null || !jobEnvelope.valid)) {
+          valid = false;
+        }
+        return Object.freeze({
+          value: Object.freeze(snapshot),
+          identity: jobEnvelope?.identity ?? null,
+          valid,
+        });
+      } catch {
+        return null;
+      }
+    };
+
+    const requestProtocolCancellation = () => {
+      if (ownedEntry === null) return null;
+      const cancellation = cancelEntry(ownedEntry);
+      cancellation.catch(() => undefined);
+      return cancellation;
+    };
+
+    const awaitProtocolCancellation = async () => {
+      const cancellation = requestProtocolCancellation();
+      if (cancellation !== null) await cancellation.catch(() => null);
+    };
+
+    const protocolError = () => {
+      if (terminal || protocolFailed) return;
+      protocolFailed = true;
+      pending.length = 0;
+      if (ownedEntry !== null) {
+        requestProtocolCancellation();
+        releaseEntry(ownedEntry);
+      }
+      call(handlers.onProtocolError, invalidResponse());
+    };
+
+    const recordEvent = (event) => {
+      if (event.job === null
+          || event.job.sequence < ledger.sequence
+          || event.job.progress.basisPoints < ledger.basisPoints) {
+        throw invalidResponse();
+      }
+      if (event.job.sequence === ledger.sequence
+          && (event.job.state !== ledger.state
+            || event.job.progress.basisPoints !== ledger.basisPoints)) {
+        throw invalidResponse();
+      }
+      if (event.event === 'progress') {
+        const rank = phaseRanks[event.phase];
+        if (rank < ledger.phaseRank
+            || (rank === ledger.phaseRank
+              && event.fraction !== null
+              && ledger.fraction !== null
+              && event.fraction < ledger.fraction)) {
+          throw invalidResponse();
+        }
+        ledger.phaseRank = rank;
+        ledger.fraction = event.fraction;
+      }
+      if (event.job.sequence > ledger.sequence) {
+        ledger.sequence = event.job.sequence;
+        ledger.state = event.job.state;
+        ledger.basisPoints = event.job.progress.basisPoints;
+      }
+    };
+
     const dispatch = (event) => {
-      if (terminal || event.job === null || event.job.id !== initial.id) {
+      if (terminal || protocolFailed) return;
+      if (event.job === null || event.job.id !== initial.id) {
+        protocolError();
+        return;
+      }
+      try {
+        recordEvent(event);
+      } catch {
         protocolError();
         return;
       }
       if (event.event !== 'progress') {
         terminal = true;
-        activeChannels.delete(initial.id);
+        releaseEntry(ownedEntry);
       }
       call(handlers.onEvent, event);
       if (event.event === 'progress') call(handlers.onProgress, event);
@@ -515,11 +925,46 @@ export const createNativeMediaPipelineService = ({
       if (event.event === 'failed') call(handlers.onFailed, event);
     };
 
+    function consumeCancelSnapshot(jobSnapshot) {
+      if (terminal || protocolFailed || jobSnapshot.state === 'cancelling') return;
+      if (jobSnapshot.state === 'cancelled') {
+        const event = Object.freeze({
+          event: 'cancelled',
+          job: jobSnapshot,
+          operation: request.operation,
+        });
+        terminal = true;
+        pending.length = 0;
+        const onEvent = handlers.onEvent;
+        const onCancelled = handlers.onCancelled;
+        releaseEntry(ownedEntry);
+        call(onEvent, event);
+        call(onCancelled, event);
+        return;
+      }
+      protocolFailed = true;
+      pending.length = 0;
+      const onProtocolError = handlers.onProtocolError;
+      releaseEntry(ownedEntry);
+      call(onProtocolError, invalidResponse());
+    }
+
     const channel = new ChannelConstructor();
     channel.onmessage = (rawEvent) => {
+      if (terminal || protocolFailed) return;
+      const envelope = snapshotEventEnvelope(rawEvent);
+      const identity = envelope?.identity ?? null;
+      if (identity !== null) {
+        if (ownedEntry === null) bindOwned(identity);
+        else if (ownedEntry.id !== identity.id) {
+          protocolError();
+          return;
+        }
+      }
       let event;
       try {
-        event = normalizeMediaPipelineEvent(rawEvent, request);
+        if (envelope === null || !envelope.valid) throw invalidResponse();
+        event = normalizeMediaPipelineEvent(envelope.value, eventExpectation);
       } catch {
         protocolError();
         return;
@@ -535,38 +980,95 @@ export const createNativeMediaPipelineService = ({
       dispatch(event);
     };
 
+    let rawInitial;
     try {
-      initial = normalizeJob(await invokeCommand('media_pipeline_start', {
+      rawInitial = await invokeCommand('media_pipeline_start', {
         request,
         onEvent: channel,
-      }));
+      });
     } catch (error) {
       pending.length = 0;
+      terminal = true;
+      if (ownedEntry !== null) {
+        releaseEntry(ownedEntry);
+        await awaitProtocolCancellation();
+      }
       throw normalizeFailure(error);
     }
-    if (initial.state !== 'running') throw invalidResponse();
-    activeChannels.set(initial.id, channel);
-    pending.splice(0).forEach(dispatch);
-    if (terminal) activeChannels.delete(initial.id);
-    return initial;
-  };
 
-  const cancel = async (jobId) => {
-    requireRuntime();
-    if (!isUuidV7(jobId)) throw invalidRequest();
+    const returnedEnvelope = snapshotJobEnvelope(rawInitial);
+    const returnedIdentity = returnedEnvelope?.identity ?? null;
+    if (ownedEntry === null && returnedIdentity !== null) bindOwned(returnedIdentity);
+
     try {
-      const job = normalizeJob(await invokeCommand('media_pipeline_cancel', { jobId }));
-      if (job.id !== jobId) throw invalidResponse();
-      return job;
-    } catch (error) {
-      throw normalizeFailure(error);
+      if (returnedEnvelope === null || !returnedEnvelope.valid) throw invalidResponse();
+      initial = normalizeJob(returnedEnvelope.value, jobKind);
+    } catch {
+      pending.length = 0;
+      terminal = true;
+      if (ownedEntry !== null) {
+        releaseEntry(ownedEntry);
+        await awaitProtocolCancellation();
+      }
+      throw invalidResponse();
     }
+
+    if (ownedEntry !== null && ownedEntry.id !== initial.id) {
+      pending.length = 0;
+      terminal = true;
+      releaseEntry(ownedEntry);
+      call(handlers.onProtocolError, invalidResponse());
+      await awaitProtocolCancellation();
+      throw invalidResponse();
+    }
+
+    if (initial.state !== 'running') {
+      pending.length = 0;
+      terminal = true;
+      if (ownedEntry !== null) {
+        releaseEntry(ownedEntry);
+        await awaitProtocolCancellation();
+      }
+      throw invalidResponse();
+    }
+    if (protocolFailed) {
+      terminal = true;
+      releaseEntry(ownedEntry);
+      await awaitProtocolCancellation();
+      throw invalidResponse();
+    }
+    if (ownedEntry === null) bindOwned(initial);
+    ledger = {
+      sequence: initial.sequence,
+      state: initial.state,
+      basisPoints: initial.progress.basisPoints,
+      phaseRank: -1,
+      fraction: null,
+    };
+    const existingEntry = activeChannels.get(initial.id);
+    if (existingEntry !== undefined && existingEntry !== ownedEntry) {
+      terminal = true;
+      releaseEntry(ownedEntry);
+      call(handlers.onProtocolError, invalidResponse());
+      throw invalidResponse();
+    }
+    activeChannels.set(initial.id, ownedEntry);
+    for (const event of pending.splice(0)) {
+      dispatch(event);
+      if (protocolFailed) break;
+    }
+    if (protocolFailed) {
+      terminal = true;
+      releaseEntry(ownedEntry);
+      await awaitProtocolCancellation();
+      throw invalidResponse();
+    }
+    return initial;
   };
 
   const run = async (rawRequest, rawOptions) => {
     const options = normalizeRunOptions(rawOptions);
     const { signal, onProgress } = options;
-    if (signal?.aborted) throw cancelledOperation();
 
     let initial = null;
     let settled = false;
@@ -584,38 +1086,58 @@ export const createNativeMediaPipelineService = ({
       if (initial === null || cancelPromise !== null) return cancelPromise;
       cancelPromise = cancel(initial.id).then((job) => {
         if (job.state === 'cancelled') settle({ error: cancelledOperation() });
+        else if (job.state !== 'cancelling') settle({ error: invalidResponse() });
         return job;
       }).catch((error) => {
-        settle({ error: normalizeFailure(error) });
+        settle({ error });
         return null;
       });
       return cancelPromise;
     };
     const handleAbort = () => {
-      if (!settled) cancelStartedJob();
+      if (settled) return;
+      cancelRequested = true;
+      settle({ error: cancelledOperation() });
+      cancelStartedJob();
     };
 
-    signal?.addEventListener('abort', handleAbort, { once: true });
+    let listenerRegistrationAttempted = false;
     try {
-      initial = await start(rawRequest, {
-        onProgress,
-        onCompleted: (event) => settle({ result: event.result }),
-        onCancelled: () => settle({ error: cancelledOperation() }),
-        onFailed: (event) => settle({
-          error: new MediaPipelineServiceError(event.error.code, event.error.message),
-        }),
-        onProtocolError: (error) => {
-          cancelStartedJob();
-          settle({ error });
-        },
-      });
-      if (cancelRequested || (!settled && signal?.aborted)) cancelStartedJob();
+      if (signal !== undefined) {
+        listenerRegistrationAttempted = true;
+        try {
+          signal.addEventListener('abort', handleAbort, { once: true });
+        } catch {
+          throw invalidRequest();
+        }
+      }
+      if (signal?.readAborted()) throw cancelledOperation();
+      try {
+        initial = await start(rawRequest, {
+          onProgress,
+          onCompleted: (event) => settle({ result: event.result }),
+          onCancelled: () => settle({ error: cancelledOperation() }),
+          onFailed: (event) => settle({
+            error: new MediaPipelineServiceError(event.error.code, event.error.message),
+          }),
+          onProtocolError: (error) => settle({ error }),
+        });
+      } catch (error) {
+        settle({ error });
+      }
+      if (initial !== null && cancelRequested) cancelStartedJob();
       if (cancelRequested && cancelPromise !== null) await cancelPromise;
       const outcome = await terminal;
       if (outcome.error) throw outcome.error;
       return outcome.result;
     } finally {
-      signal?.removeEventListener('abort', handleAbort);
+      if (listenerRegistrationAttempted) {
+        try {
+          signal.removeEventListener('abort', handleAbort);
+        } catch {
+          // A hostile signal cannot replace or leak the native operation outcome.
+        }
+      }
     }
   };
 

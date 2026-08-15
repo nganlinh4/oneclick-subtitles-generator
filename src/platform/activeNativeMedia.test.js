@@ -1,7 +1,10 @@
 import { resolveActiveNativeMediaAssetId } from './activeNativeMedia';
 import { isDesktopRuntime } from './desktopRuntime';
 
-vi.mock('./desktopRuntime', () => ({ isDesktopRuntime: vi.fn() }));
+vi.mock('./desktopRuntime', () => ({
+  invokeDesktop: vi.fn(),
+  isDesktopRuntime: vi.fn(),
+}));
 
 const ASSET_ID = '01890f39-7b62-7c4e-8c9a-000000000101';
 const PLAYBACK_ID = '550e8400-e29b-41d4-a716-446655440000';

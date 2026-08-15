@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef, useCallback } from 'react';
 import { useTranslation } from 'react-i18next';
 import ModelDropdown from './ModelDropdown';
 import PromptEditor from './PromptEditor';
@@ -39,6 +39,7 @@ const DownloadOptionsModal = ({
   const { t } = useTranslation();
   const modalRef = useRef(null);
   const downloadTabsRef = useRef(null);
+  const pendingRef = useRef(false);
 
   // State for selected options
   const [subtitleSource, setSubtitleSource] = useState('original');
@@ -56,6 +57,11 @@ const DownloadOptionsModal = ({
     // Get the split duration from localStorage or use default (0 = no split)
     return parseInt(localStorage.getItem('consolidation_split_duration') || '0');
   });
+  const [isSubmitting, setIsSubmitting] = useState(false);
+
+  const closeWhenIdle = useCallback(() => {
+    if (!pendingRef.current) onClose();
+  }, [onClose]);
 
   // Reset state when modal opens and initialize gooey tabs
   useEffect(() => {
@@ -64,6 +70,7 @@ const DownloadOptionsModal = ({
       setSubtitleSource('original');
       setFileFormat('srt');
       setProcessType(null);
+      setIsSubmitting(pendingRef.current);
       // Initialize pill animation after DOM paints
       setTimeout(() => initTabPillAnimation('.download-tabs'), 30);
     }
@@ -80,7 +87,7 @@ const DownloadOptionsModal = ({
   useEffect(() => {
     const handleClickOutside = (event) => {
       if (modalRef.current && !modalRef.current.contains(event.target)) {
-        onClose();
+        closeWhenIdle();
       }
     };
 
@@ -91,13 +98,13 @@ const DownloadOptionsModal = ({
     return () => {
       document.removeEventListener('mousedown', handleClickOutside);
     };
-  }, [isOpen, onClose]);
+  }, [closeWhenIdle, isOpen]);
 
   // Handle escape key to close modal
   useEffect(() => {
     const handleEscKey = (event) => {
       if (event.key === 'Escape') {
-        onClose();
+        closeWhenIdle();
       }
     };
 
@@ -108,30 +115,62 @@ const DownloadOptionsModal = ({
     return () => {
       document.removeEventListener('keydown', handleEscKey);
     };
-  }, [isOpen, onClose]);
+  }, [closeWhenIdle, isOpen]);
 
   // Handle download button click
-  const handleDownload = () => {
-    onDownload(subtitleSource, fileFormat, {
-      sourceSubtitleName,
-      videoName,
-      targetLanguages
-    });
-    onClose();
+  const settleAction = async (operation) => {
+    if (pendingRef.current) return;
+    pendingRef.current = true;
+    setIsSubmitting(true);
+    setIsPromptEditorOpen(false);
+    try {
+      const result = await operation();
+      if (result?.status === 'saved') onClose();
+    } catch (error) {
+      let message = t('download.exportFailed', 'The document could not be saved.');
+      try {
+        if (typeof error?.message === 'string' && error.message.trim()) message = error.message;
+      } catch {
+        // Preserve the fixed fallback for malformed error objects.
+      }
+      try {
+        window.addToast?.(message, 'error', 8000);
+      } catch (notificationError) {
+        console.error('Could not report document export failure:', notificationError);
+      }
+      return Object.freeze({ status: 'failed' });
+    } finally {
+      pendingRef.current = false;
+      setIsSubmitting(false);
+    }
   };
 
-  // Handle process button click
-  const handleProcess = () => {
-    // Pass the custom prompt if available
-    const customPrompt = customPrompts[processType];
-    // Pass the split duration for consolidation and naming info
-    onProcess(subtitleSource, processType, selectedModel, splitDuration, customPrompt, {
+  const handleDownload = () => settleAction(() => onDownload(
+    subtitleSource,
+    fileFormat,
+    {
       sourceSubtitleName,
       videoName,
       targetLanguages
-    });
-    onClose();
-  };
+    }
+  ));
+
+  // Handle process button click
+  const handleProcess = () => settleAction(() => {
+    const customPrompt = customPrompts[processType];
+    return onProcess(
+      subtitleSource,
+      processType,
+      selectedModel,
+      splitDuration,
+      customPrompt,
+      {
+        sourceSubtitleName,
+        videoName,
+        targetLanguages
+      }
+    );
+  });
 
   // Handle saving custom prompt
   const handleSavePrompt = (newPrompt) => {
@@ -150,7 +189,7 @@ const DownloadOptionsModal = ({
       <div className="download-options-modal" ref={modalRef}>
         <div className="modal-header">
           <h3>{t('download.options', 'Download & Process Options')}</h3>
-          <CloseButton onClick={onClose} variant="modal" size="medium" />
+          <CloseButton onClick={closeWhenIdle} disabled={isSubmitting} variant="modal" size="medium" />
         </div>
 
         <div className="modal-content">
@@ -165,7 +204,7 @@ const DownloadOptionsModal = ({
                   value="original"
                   checked={subtitleSource === 'original'}
                   onChange={() => setSubtitleSource('original')}
-                  disabled={!hasOriginal}
+                  disabled={!hasOriginal || isSubmitting}
                 />
                 <span className={`radio-option-card ${subtitleSource === 'original' ? 'checked' : ''}`}>
                   {t('download.original', 'Original')}
@@ -178,7 +217,7 @@ const DownloadOptionsModal = ({
                   value="translated"
                   checked={subtitleSource === 'translated'}
                   onChange={() => setSubtitleSource('translated')}
-                  disabled={!hasTranslation}
+                  disabled={!hasTranslation || isSubmitting}
                 />
                 <span className={`radio-option-card ${subtitleSource === 'translated' ? 'checked' : ''}`}>
                   {t('download.translated', 'Translated')}
@@ -192,6 +231,7 @@ const DownloadOptionsModal = ({
             <button
               type="button"
               className={`tab-btn ${processType === null ? 'active' : ''}`}
+              disabled={isSubmitting}
               onClick={() => {
                 setFileFormat('srt');
                 setProcessType(null);
@@ -202,6 +242,7 @@ const DownloadOptionsModal = ({
             <button
               type="button"
               className={`tab-btn ${processType !== null ? 'active' : ''}`}
+              disabled={isSubmitting}
               onClick={() => {
                 setFileFormat(null);
                 setProcessType('consolidate');
@@ -225,6 +266,7 @@ const DownloadOptionsModal = ({
                       value="srt"
                       checked={fileFormat === 'srt'}
                       onChange={() => setFileFormat('srt')}
+                      disabled={isSubmitting}
                     />
                     <span className={`radio-option-card ${fileFormat === 'srt' ? 'checked' : ''}`}>SRT</span>
                   </label>
@@ -235,6 +277,7 @@ const DownloadOptionsModal = ({
                       value="json"
                       checked={fileFormat === 'json'}
                       onChange={() => setFileFormat('json')}
+                      disabled={isSubmitting}
                     />
                     <span className={`radio-option-card ${fileFormat === 'json' ? 'checked' : ''}`}>JSON</span>
                   </label>
@@ -245,6 +288,7 @@ const DownloadOptionsModal = ({
                       value="txt"
                       checked={fileFormat === 'txt'}
                       onChange={() => setFileFormat('txt')}
+                      disabled={isSubmitting}
                     />
                     <span className={`radio-option-card ${fileFormat === 'txt' ? 'checked' : ''}`}>
                       {t('download.txtNoTimings', 'TXT (no timings)')}
@@ -264,6 +308,7 @@ const DownloadOptionsModal = ({
                   <button
                     type="button"
                     className={`tab-btn ${processType === 'consolidate' ? 'active' : ''}`}
+                    disabled={isSubmitting}
                     onClick={() => {
                       setProcessType('consolidate');
                       if (isPromptEditorOpen) setIsPromptEditorOpen(false);
@@ -278,6 +323,7 @@ const DownloadOptionsModal = ({
                   <button
                     type="button"
                     className={`tab-btn ${processType === 'summarize' ? 'active' : ''}`}
+                    disabled={isSubmitting}
                     onClick={() => {
                       setProcessType('summarize');
                       if (isPromptEditorOpen) setIsPromptEditorOpen(false);
@@ -305,7 +351,7 @@ const DownloadOptionsModal = ({
                       step={1}
                       orientation="Horizontal"
                       size="XSmall"
-                      state="Enabled"
+                      state={isSubmitting ? 'Disabled' : 'Enabled'}
                       className="split-duration-slider"
                       id="consolidation-split-duration-slider"
                       ariaLabel={t('consolidation.splitDuration', 'Split Duration')}
@@ -325,6 +371,7 @@ const DownloadOptionsModal = ({
                   <h4>{t('download.selectModel', 'Select Model')}</h4>
                   <button
                     className="edit-prompt-button-with-text"
+                    disabled={isSubmitting}
                     onClick={() => setIsPromptEditorOpen(true)}
                     title={t('promptEditor.editPromptTooltip', 'Edit Gemini prompt')}
                   >
@@ -337,6 +384,7 @@ const DownloadOptionsModal = ({
                   selectedModel={selectedModel}
                   buttonClassName="modal-model-dropdown"
                   headerText={t('download.selectModelForProcessing', 'Select model for processing')}
+                  disabled={isSubmitting}
                 />
               </div>
 
@@ -370,18 +418,18 @@ Here are the subtitles:\n\n{subtitlesText}`)
         </div>
 
         <div className="modal-footer">
-          <button className="cancel-button" onClick={onClose}>
+          <button className="cancel-button" onClick={closeWhenIdle} disabled={isSubmitting}>
             {t('common.cancel', 'Cancel')}
           </button>
           {fileFormat && (
-            <button className="action-button download-button" onClick={handleDownload}>
+            <button className="action-button download-button" onClick={handleDownload} disabled={isSubmitting}>
               <span className="material-symbols-rounded" style={{ fontSize: '18px' }}>download</span>
               {t('download.download', 'Download')}
             </button>
           )}
           {/* Process button */}
           {processType && (
-            <button className="action-button process-button" onClick={handleProcess}>
+            <button className="action-button process-button" onClick={handleProcess} disabled={isSubmitting}>
               <span className="material-symbols-rounded" style={{ fontSize: '18px' }}>account_tree</span>
               {t('download.process', 'Process')}
             </button>

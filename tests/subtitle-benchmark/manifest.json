@@ -1,0 +1,256 @@
+{
+  "protocol_version": 1,
+  "scoring_version": "osg-subtitle-metrics-2026-08-13-v2",
+  "models": [
+    "gemini-3.5-flash-lite",
+    "gemini-3.7-flash",
+    "gemini-3.6-flash",
+    "gemini-3.5-flash",
+    "gemini-3.1-flash-lite"
+  ],
+  "prompts": {
+    "transcription": "Transcribe all spoken content in this audio. Include the exact start and end times for each segment of speech.",
+    "timing": "Time all {count} provided subtitles for this audio. Match each numbered subtitle to when it appears in the audio.\n\nRules:\n- Must return exactly {count} entries (one for each numbered subtitle)\n- Each entry must have: index (matching the number in brackets), startTime, endTime, and exact text\n- Use exact text from the numbered list (do not modify, combine, or skip any lines)\n- Use leading zeros in timestamps (00m05s100ms, not 0m5s100ms)\n- Even if lines are similar or repetitive, each gets its own separate entry\n- Index must match the number in brackets\n\nNumbered subtitle list (all {count} must be timed):\n{numbered_lines}",
+    "translation": "Translate the following {count} subtitle texts to {target_language}.\n\nIMPORTANT INSTRUCTIONS:\n1. Translate each line of text separately.\n2. DO NOT add any timestamps, SRT formatting, or other formatting.\n3. DO NOT include any explanations, comments, or additional text in your response.\n4. DO NOT include any SRT entry numbers, timestamps, or formatting in your translations.\n5. MAINTAIN exactly {count} lines in the same order.\n6. Each line in your response should correspond to the same line in the input.\n7. For each subtitle, include BOTH the original text AND its translation to prevent mismatches.\n\nFormat your response as a JSON array with objects containing both original and translated text:\n{json_examples}"
+  },
+  "transcription_cases": [
+    {
+      "id": "transcription-01-clean-short",
+      "difficulty": 1,
+      "fixture": "fixtures/en-clean-short.flac",
+      "mime_type": "audio/flac",
+      "sha256": "8383e6a427bb9ce96058afbdadf31aafd603b6701afff8d0bd7fd38e0252a0df",
+      "duration_ms": 3465,
+      "language": "English",
+      "reference_text": "I WOULD TRY THE NEARER RANGE AND SEE HOW FAR I COULD GO",
+      "expected_speech_start_ms": 610,
+      "expected_speech_end_ms": 3073,
+      "tags": ["clean", "short", "single-speaker"]
+    },
+    {
+      "id": "transcription-02-spoken-digits",
+      "difficulty": 2,
+      "fixture": "fixtures/en-fsdd-2026.flac",
+      "mime_type": "audio/flac",
+      "sha256": "4e2289f1b49c1dd02653c36c0e0e9b040bd493ca3631d15610e7df8ca1e14f47",
+      "duration_ms": 2608,
+      "language": "English",
+      "reference_text": "TWO ZERO TWO SIX",
+      "expected_speech_start_ms": 0,
+      "expected_speech_end_ms": 2351,
+      "tags": ["fsdd", "digits", "three-speakers", "8khz"]
+    },
+    {
+      "id": "transcription-03-vietnamese",
+      "difficulty": 3,
+      "fixture": "fixtures/vi-fleurs-ai.wav",
+      "mime_type": "audio/wav",
+      "sha256": "7a4010a100c152fe15bf10de35b448a5160990cc1edf71a6dee964d744cd294b",
+      "duration_ms": 8460,
+      "language": "Vietnamese",
+      "reference_text": "Nghiên cứu Trí tuệ nhân tạo bao gồm tạo ra những cỗ máy tự động hóa các tác vụ đòi hỏi hành vi thông minh.",
+      "expected_speech_start_ms": 665,
+      "expected_speech_end_ms": 8311,
+      "tags": ["fleurs", "vietnamese", "single-speaker"]
+    },
+    {
+      "id": "transcription-04-video-container",
+      "difficulty": 4,
+      "fixture": "fixtures/vi-fleurs-container.mp4",
+      "mime_type": "video/mp4",
+      "sha256": "96ca49c8cc44b2899c7c24c7d29a6a25b75c30f7f8dd2b3a3d7dd31dcbcfcc96",
+      "duration_ms": 8460,
+      "language": "Vietnamese",
+      "reference_text": "Nghiên cứu Trí tuệ nhân tạo bao gồm tạo ra những cỗ máy tự động hóa các tác vụ đòi hỏi hành vi thông minh.",
+      "expected_speech_start_ms": 665,
+      "expected_speech_end_ms": 8311,
+      "tags": ["fleurs", "vietnamese", "video", "mp4", "aac"]
+    },
+    {
+      "id": "transcription-05-korean-numeric",
+      "difficulty": 5,
+      "fixture": "fixtures/ko-fleurs-numeric.wav",
+      "mime_type": "audio/wav",
+      "sha256": "ae2bd8e242bf31a7573a644105420a4d776101a42160607565e398ffea3dd606",
+      "duration_ms": 16140,
+      "language": "Korean",
+      "reference_text": "108 접시의 Chhappan Bhog(힌두교에서는 신에게 바치는 단것, 과일, 견과류, 요리 등 56가지 다른 먹을거리들)가 Baba Shyam에게 차려졌습니다.",
+      "expected_speech_start_ms": 1144,
+      "expected_speech_end_ms": 13193,
+      "tags": ["fleurs", "korean", "numbers", "foreign-names"]
+    },
+    {
+      "id": "transcription-06-japanese-numeric",
+      "difficulty": 6,
+      "fixture": "fixtures/ja-fleurs-islands.wav",
+      "mime_type": "audio/wav",
+      "sha256": "ba7d6a36c5dcc419b193ae441be35139e53c703356861e0a6262776567b93daf",
+      "duration_ms": 10800,
+      "language": "Japanese",
+      "reference_text": "日本には約7,000の島々があり、その最大は本州列島で、世界で7番目に大きい島とされています。",
+      "expected_speech_start_ms": 81,
+      "expected_speech_end_ms": 10800,
+      "tags": ["fleurs", "japanese", "numbers", "cjk"]
+    },
+    {
+      "id": "transcription-07-compressed",
+      "difficulty": 7,
+      "fixture": "fixtures/en-compressed.mp3",
+      "mime_type": "audio/mpeg",
+      "sha256": "c1d5e132f06a6f0205ac8de196f35a9f91a7bf7fc5c39619318b95b416534b5f",
+      "duration_ms": 4290,
+      "language": "English",
+      "reference_text": "I DON'T THINK HIS GUN WAS LOADED THOUGH BECAUSE WE DID NOT HEAR THE BALL WHISTLE",
+      "expected_speech_start_ms": 248,
+      "expected_speech_end_ms": 3757,
+      "tags": ["mini-librispeech", "lossy", "16kbps"]
+    },
+    {
+      "id": "transcription-08-noisy",
+      "difficulty": 8,
+      "fixture": "fixtures/en-noisy.flac",
+      "mime_type": "audio/flac",
+      "sha256": "0332d4f5849de9b7abe88ae345a9b233f73888630b27e2f5c0199e99c1e51ee5",
+      "duration_ms": 6570,
+      "language": "English",
+      "reference_text": "WHEN THE BUZZER SOUNDED HE PULLED HIS FOIL FROM HIS SECOND'S STARTLED GRASP AND RAN FORWARD",
+      "expected_speech_start_ms": 574,
+      "expected_speech_end_ms": 6291,
+      "tags": ["mini-librispeech", "pink-noise", "robustness"]
+    },
+    {
+      "id": "transcription-09-meeting",
+      "difficulty": 9,
+      "fixture": "fixtures/en-ami-meeting.flac",
+      "mime_type": "audio/flac",
+      "sha256": "37cb02502a3116303c6d7295318a8795899a665da5602ada6d114ac5087dcfc2",
+      "duration_ms": 20400,
+      "language": "English",
+      "reference_text": "HELLO EVERYBODY HI GOOD MORNING UM I'M SARAH THE PROJECT MANAGER AND THIS IS OUR FIRST MEETING SURPRISINGLY ENOUGH OKAY THIS IS OUR AGENDA UM WE WILL DO SOME STUFF GET TO KNOW EACH OTHER A BIT BETTER TO FEEL MORE COMFORTABLE WITH EACH OTHER",
+      "expected_speech_start_ms": 0,
+      "expected_speech_end_ms": 18606,
+      "tags": ["ami", "meeting", "overlap", "far-field-mix"]
+    },
+    {
+      "id": "transcription-10-silence",
+      "difficulty": 10,
+      "fixture": "fixtures/en-silence.flac",
+      "mime_type": "audio/flac",
+      "sha256": "e45a8f3e9f4ca4e86c73f6d67bf359b89ced80571ea6f6f6c28b7124e54c93c4",
+      "duration_ms": 5000,
+      "language": "None",
+      "reference_text": "",
+      "expected_speech_start_ms": null,
+      "expected_speech_end_ms": null,
+      "tags": ["silence", "hallucination"]
+    }
+  ],
+  "timing_cases": [
+    {
+      "id": "timing-01-leading-trailing-silence",
+      "difficulty": 1,
+      "fixture": "fixtures/en-padded.flac",
+      "mime_type": "audio/flac",
+      "sha256": "b605cc1b72f83b1f4aa46206afdf1321522570b546df6d65876ae831afa115ed",
+      "duration_ms": 5715,
+      "lines": [
+        {
+          "index": 0,
+          "text": "I WOULD TRY THE NEARER RANGE AND SEE HOW FAR I COULD GO",
+          "start_ms": 1860,
+          "end_ms": 4323
+        }
+      ]
+    },
+    {
+      "id": "timing-02-two-speaker-gap",
+      "difficulty": 2,
+      "fixture": "fixtures/en-two-speaker.flac",
+      "mime_type": "audio/flac",
+      "sha256": "a8cbabe438bb27884bcc5bc708367b04c2a0dae1f55a34da4ecfa25be30b89f6",
+      "duration_ms": 9370,
+      "lines": [
+        {
+          "index": 0,
+          "text": "I WOULD TRY THE NEARER RANGE AND SEE HOW FAR I COULD GO",
+          "start_ms": 610,
+          "end_ms": 3073
+        },
+        {
+          "index": 1,
+          "text": "MOUNT BREMER IS THE MOST NOTED STRONGHOLD OF THE SHEEP IN THE WHOLE SHASTA REGION",
+          "start_ms": 4680,
+          "end_ms": 8988
+        }
+      ]
+    }
+  ],
+  "translation_cases": [
+    {
+      "id": "translation-01-en-vi-dialogue",
+      "difficulty": 1,
+      "source_language": "English",
+      "target_language": "Vietnamese",
+      "lines": ["The meeting starts at 09:30.", "Please bring the OSG release notes.", "I'll join after the upload finishes.", "See you tomorrow morning."],
+      "references": ["Cuộc họp bắt đầu lúc 09:30.", "Vui lòng mang theo ghi chú phát hành OSG.", "Tôi sẽ tham gia sau khi tải lên hoàn tất.", "Hẹn gặp bạn vào sáng mai."],
+      "required_exact": ["09:30", "OSG"],
+      "forbidden_terms": [],
+      "rubric": ["Preserves all four subtitle lines and their order", "Keeps 09:30 and OSG exact", "Uses natural concise Vietnamese subtitle phrasing"]
+    },
+    {
+      "id": "translation-02-vi-en-register",
+      "difficulty": 2,
+      "source_language": "Vietnamese",
+      "target_language": "English",
+      "lines": ["Phiền bạn kiểm tra lại tệp này giúp mình nhé.", "Đừng xóa bản nháp.", "Mình cần gửi trước cuối ngày hôm nay.", "Cảm ơn bạn nhiều."],
+      "references": ["Could you please check this file again for me?", "Don't delete the draft.", "I need to send it by the end of today.", "Thank you very much."],
+      "required_exact": [],
+      "forbidden_terms": [],
+      "rubric": ["Keeps the polite conversational register", "Preserves the prohibition against deleting the draft", "Preserves the end-of-today deadline"]
+    },
+    {
+      "id": "translation-03-ko-en-speakers",
+      "difficulty": 3,
+      "source_language": "Korean",
+      "target_language": "English",
+      "lines": ["Speaker 1: 아직 준비가 안 됐어요.", "Speaker 2: 괜찮아요, 천천히 하세요.", "Speaker 1: 5분만 더 주세요.", "[문 닫히는 소리]"],
+      "references": ["Speaker 1: I'm not ready yet.", "Speaker 2: It's okay, take your time.", "Speaker 1: Please give me five more minutes.", "[Door closes]"],
+      "required_exact": ["Speaker 1:", "Speaker 2:"],
+      "forbidden_terms": [],
+      "rubric": ["Preserves speaker labels and line boundaries", "Does not invent speaker names or gender", "Renders the sound cue as a concise subtitle cue"]
+    },
+    {
+      "id": "translation-04-ja-vi-ui",
+      "difficulty": 4,
+      "source_language": "Japanese",
+      "target_language": "Vietnamese",
+      "lines": ["注意：更新中は電源を切らないでください。", "［設定］→［同期］を開きます。", "進行状況：75%", "完了したら「再起動」を選択します。"],
+      "references": ["Chú ý: Không tắt nguồn trong khi cập nhật.", "Mở ［Cài đặt］ → ［Đồng bộ］.", "Tiến độ: 75%", "Khi hoàn tất, chọn “Khởi động lại”."],
+      "required_exact": ["→", "75%"],
+      "forbidden_terms": [],
+      "rubric": ["Preserves the warning and UI navigation order", "Keeps the percentage exact", "Uses concise Vietnamese UI terminology"]
+    },
+    {
+      "id": "translation-05-zh-en-negation",
+      "difficulty": 5,
+      "source_language": "Simplified Chinese",
+      "target_language": "English",
+      "lines": ["除非收到书面确认，否则不要发布。", "这不表示用户放弃任何权利。", "请在两个工作日内回复。", "逾期也不得自动删除。"],
+      "references": ["Do not publish unless written confirmation is received.", "This does not mean that the user waives any rights.", "Please reply within two business days.", "It must not be deleted automatically even after the deadline."],
+      "required_exact": [],
+      "forbidden_terms": [],
+      "rubric": ["Does not reverse either prohibition", "Preserves the written-confirmation condition", "Preserves the two-business-day period"]
+    },
+    {
+      "id": "translation-06-fr-en-placeholders",
+      "difficulty": 6,
+      "source_language": "French",
+      "target_language": "English",
+      "lines": ["Conservez ${BUILD_ID} sans modification.", "Restaurez uniquement les fichiers modifiés après 23:40 UTC+9.", "Ne supprimez pas <draft_id>.", "La version cible est v1.0.0-rc.2."],
+      "references": ["Keep ${BUILD_ID} unchanged.", "Restore only files modified after 23:40 UTC+9.", "Do not delete <draft_id>.", "The target version is v1.0.0-rc.2."],
+      "required_exact": ["${BUILD_ID}", "23:40", "UTC+9", "<draft_id>", "v1.0.0-rc.2"],
+      "forbidden_terms": [],
+      "rubric": ["Preserves every placeholder and version byte-for-byte", "Preserves the restore-only scope", "Preserves the deletion prohibition"]
+    }
+  ]
+}

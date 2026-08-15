@@ -6,9 +6,8 @@ use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::{Arc, Mutex, RwLock};
 use std::time::Duration;
 
-use osg_application::ImportedMedia;
 use osg_domain::{
-    JobId, JobKind, JobProgress, JobSnapshot, JobState, JobUpdate, MediaAsset,
+    AssetId, JobId, JobKind, JobProgress, JobSnapshot, JobState, JobUpdate, MediaAsset,
     media_kind_for_extension,
 };
 use osg_download::{
@@ -19,17 +18,17 @@ use osg_download::{
     SubtitleSelection, SubtitleSource, UrlPolicy, VideoHeight, VideoQuality, YtDlpSearch,
 };
 use osg_infrastructure::storage::{
-    ArtifactKind, Database, publish_durable_media as publish_media_artifact,
+    ArtifactKind, ContentHash, Database, publish_durable_media_candidate as publish_media_artifact,
 };
-use osg_media_server::{MediaServer, RegisteredMedia};
 use serde::{Deserialize, Serialize};
 use tauri::{AppHandle, Manager, State, ipc::Channel};
 use uuid::Uuid;
 
 use crate::background;
+use crate::commands::MediaCandidateResponse;
 use crate::diagnostics;
 use crate::error::{CommandError, CommandResult};
-use crate::state::{DesktopSessionSnapshot, DesktopState, LocalMedia};
+use crate::state::DesktopState;
 
 const STATUS_TIMEOUT: Duration = Duration::from_secs(10);
 const INSPECTION_TIMEOUT: Duration = Duration::from_mins(2);
@@ -239,31 +238,6 @@ pub(crate) struct DownloadedSubtitleResponse {
     content: String,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
-#[serde(rename_all = "camelCase")]
-pub(crate) struct DownloadedMediaResponse {
-    asset: MediaAsset,
-    playback: RegisteredMedia,
-}
-
-impl DownloadedMediaResponse {
-    fn from_snapshot(snapshot: DesktopSessionSnapshot) -> CommandResult<Self> {
-        let asset = snapshot
-            .session
-            .media
-            .ok_or_else(|| CommandError::internal("The downloaded media was not imported."))?;
-        let playback = snapshot
-            .playback
-            .ok_or_else(|| CommandError::internal("The downloaded media is unavailable."))?;
-        if playback.byte_length != asset.size_bytes() {
-            return Err(CommandError::internal(
-                "The downloaded media metadata is inconsistent.",
-            ));
-        }
-        Ok(Self { asset, playback })
-    }
-}
-
 #[derive(Debug, Serialize)]
 #[serde(tag = "event", rename_all = "camelCase")]
 pub(crate) enum DownloadJobEvent {
@@ -273,7 +247,7 @@ pub(crate) enum DownloadJobEvent {
     },
     Completed {
         job: JobSnapshot,
-        media: Box<DownloadedMediaResponse>,
+        media: Box<MediaCandidateResponse>,
         summary: DownloadSummary,
         subtitle: Option<DownloadedSubtitleResponse>,
     },
@@ -1062,7 +1036,7 @@ impl NativeDownloadOutput {
 
 struct DurableMedia {
     asset: MediaAsset,
-    path: PathBuf,
+    content_hash: ContentHash,
 }
 
 impl fmt::Debug for DurableMedia {
@@ -1070,7 +1044,7 @@ impl fmt::Debug for DurableMedia {
         formatter
             .debug_struct("DurableMedia")
             .field("asset", &self.asset)
-            .field("path", &"<redacted>")
+            .field("content_hash", &self.content_hash)
             .finish()
     }
 }
@@ -1098,7 +1072,7 @@ fn publish_durable_media(
     .map_err(|_| durable_storage_error())?;
     Ok(DurableMedia {
         asset: published.asset().clone(),
-        path: published.path().to_owned(),
+        content_hash: published.content_hash(),
     })
 }
 
@@ -1120,77 +1094,8 @@ fn downloaded_media_asset(filename: &str, size_bytes: u64) -> CommandResult<Medi
     MediaAsset::new(filename, extension, size_bytes, kind).map_err(|_| durable_storage_error())
 }
 
-struct PreparedDownloadedMedia {
-    media: ImportedMedia,
-    playback: RegisteredMedia,
-    local_media: LocalMedia,
-}
-
-impl fmt::Debug for PreparedDownloadedMedia {
-    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
-        formatter
-            .debug_struct("PreparedDownloadedMedia")
-            .field("asset", self.media.asset())
-            .field("playback", &self.playback)
-            .field("local_media", &self.local_media)
-            .finish()
-    }
-}
-
-fn prepare_durable_download(
-    database: &Database,
-    media_server: &MediaServer,
-    path: &Path,
-    asset: MediaAsset,
-) -> CommandResult<PreparedDownloadedMedia> {
-    let media =
-        ImportedMedia::from_native_asset(asset, path).map_err(|_| durable_storage_error())?;
-    database
-        .remember_media(media.asset(), media.canonical_path())
-        .map_err(|_| durable_storage_error())?;
-    let playback = media_server
-        .register_with_extension(media.canonical_path(), media.asset().extension())
-        .map_err(|_| durable_storage_error())?;
-    let local_media = LocalMedia::new(
-        media.asset().id(),
-        media.canonical_path().to_owned(),
-        media.asset().kind(),
-        media.asset().extension(),
-    );
-    Ok(PreparedDownloadedMedia {
-        media,
-        playback,
-        local_media,
-    })
-}
-
-async fn activate_durable_download(
-    state: &DesktopState,
-    durable: DurableMedia,
-) -> CommandResult<DesktopSessionSnapshot> {
-    let database = state.database.clone();
-    let media_server = state.media_server.clone();
-    let prepared = tauri::async_runtime::spawn_blocking(move || {
-        prepare_durable_download(&database, &media_server, &durable.path, durable.asset)
-    })
-    .await
-    .map_err(|_| {
-        CommandError::internal("the downloaded media import task stopped unexpectedly")
-    })??;
-
-    let Ok(mut editor) = state.editor.write() else {
-        let _ = state.media_server.unregister(prepared.playback.id);
-        return Err(CommandError::internal("the editing session is unavailable"));
-    };
-    let previous = editor.playback.replace(prepared.playback);
-    editor.local_media = Some(prepared.local_media);
-    editor.session.set_media(prepared.media);
-    let snapshot = editor.snapshot();
-    drop(editor);
-    if let Some(previous) = previous {
-        let _ = state.media_server.unregister(previous.id);
-    }
-    Ok(snapshot)
+fn prepare_durable_download_candidate(durable: DurableMedia) -> MediaCandidateResponse {
+    MediaCandidateResponse::new(durable.asset, durable.content_hash)
 }
 
 fn read_downloaded_subtitle(
@@ -1264,11 +1169,18 @@ async fn finish_download(
             }
             let state = app.state::<DesktopState>();
             let database = state.database.clone();
+            let publication_database = database.clone();
             let source_path = output.media_path.clone();
             let size_bytes = output.summary.media_bytes;
             let media_filename = output.summary.media_filename.clone();
             let durable = tauri::async_runtime::spawn_blocking(move || {
-                publish_durable_media(&database, job_id, &source_path, size_bytes, &media_filename)
+                publish_durable_media(
+                    &publication_database,
+                    job_id,
+                    &source_path,
+                    size_bytes,
+                    &media_filename,
+                )
             })
             .await
             .map_err(|_| durable_storage_error())
@@ -1281,37 +1193,28 @@ async fn finish_download(
                     return;
                 }
             };
-            match activate_durable_download(&state, durable).await {
-                Ok(snapshot) => match DownloadedMediaResponse::from_snapshot(snapshot) {
-                    Ok(media) => {
-                        output.cleanup();
-                        match background::apply(jobs, job_id, JobUpdate::Succeed).await {
-                            Ok(job) => {
-                                diagnostics::record(
-                                    "download.completed",
-                                    &[("job", job_id.to_string())],
-                                );
-                                let _ = channel.send(DownloadJobEvent::Completed {
-                                    job,
-                                    media: Box::new(media),
-                                    summary: output.summary,
-                                    subtitle: output.subtitle,
-                                });
-                            }
-                            Err(error) => {
-                                let job = background::snapshot(jobs, job_id).await;
-                                let _ = channel.send(DownloadJobEvent::Failed { job, error });
-                            }
-                        }
+            let media = prepare_durable_download_candidate(durable);
+            let candidate_id = media.asset().id();
+            output.cleanup();
+            match background::apply(jobs, job_id, JobUpdate::Succeed).await {
+                Ok(job) => {
+                    diagnostics::record("download.completed", &[("job", job_id.to_string())]);
+                    if channel
+                        .send(DownloadJobEvent::Completed {
+                            job,
+                            media: Box::new(media),
+                            summary: output.summary,
+                            subtitle: output.subtitle,
+                        })
+                        .is_err()
+                    {
+                        discard_unclaimed_download_candidate(database, candidate_id).await;
                     }
-                    Err(error) => {
-                        output.cleanup();
-                        fail_download(jobs, job_id, error, channel).await;
-                    }
-                },
+                }
                 Err(error) => {
-                    output.cleanup();
-                    fail_download(jobs, job_id, error, channel).await;
+                    discard_unclaimed_download_candidate(database, candidate_id).await;
+                    let job = background::snapshot(jobs, job_id).await;
+                    let _ = channel.send(DownloadJobEvent::Failed { job, error });
                 }
             }
         }
@@ -1334,6 +1237,13 @@ async fn finish_download(
             fail_download(jobs, job_id, error, channel).await;
         }
     }
+}
+
+async fn discard_unclaimed_download_candidate(database: Database, candidate_id: AssetId) {
+    let _ = tauri::async_runtime::spawn_blocking(move || {
+        database.discard_media_candidate(candidate_id)
+    })
+    .await;
 }
 
 fn remove_regular_file(path: &Path) {
@@ -1502,17 +1412,18 @@ mod tests {
     use std::sync::Arc;
     use std::sync::atomic::{AtomicBool, Ordering};
 
+    use osg_application::inspect_media;
     use osg_domain::{JobId, JobKind, JobSnapshot};
     use osg_infrastructure::storage::Database;
-    use osg_media_server::MediaServer;
     use uuid::Uuid;
 
     use super::{
         DownloadError, DownloadInspectRequest, DownloadRuntime, FinalizationRegistry,
         MAX_SUBTITLE_IPC_BYTES, SlotLimiter, download_error_diagnostic, map_download_error,
-        prepare_durable_download, publish_durable_media, read_downloaded_subtitle,
+        prepare_durable_download_candidate, publish_durable_media, read_downloaded_subtitle,
         remove_regular_file, status_response,
     };
+    use crate::state::EditorSession;
 
     #[test]
     fn request_deserialization_rejects_unknown_fields_and_non_v7_capabilities() {
@@ -1659,17 +1570,23 @@ mod tests {
             "download.mp4",
         )
         .expect("durable media");
+        let durable_path = database
+            .resolve_media(durable.asset.id())
+            .expect("resolve durable media")
+            .expect("durable media location")
+            .path()
+            .to_owned();
         fs::remove_file(&source).expect("remove source cache file");
         database
             .clear_cache_with_info(None)
             .expect("clear cache entries");
 
-        assert_eq!(fs::read(&durable.path).expect("durable bytes"), bytes);
+        assert_eq!(fs::read(&durable_path).expect("durable bytes"), bytes);
         assert_eq!(database.cache_info().expect("cache info").total_count, 0);
     }
 
     #[test]
-    fn extensionless_durable_download_reopens_from_trusted_media_metadata() {
+    fn extensionless_durable_download_candidate_is_path_free_and_discard_cleans_artifact() {
         let directory = tempfile::tempdir().expect("temporary directory");
         let database = Database::open_with_artifact_root(
             directory.path().join("db/osg.sqlite3"),
@@ -1691,31 +1608,53 @@ mod tests {
             "download.mp4",
         )
         .expect("durable media");
-        assert!(durable.path.extension().is_none());
+        let durable_path = database
+            .resolve_media(durable.asset.id())
+            .expect("resolve durable media")
+            .expect("durable media location")
+            .path()
+            .to_owned();
+        assert!(durable_path.extension().is_none());
 
-        let media_server = MediaServer::start(std::iter::empty()).expect("media server");
-        let prepared = prepare_durable_download(
-            &database,
-            &media_server,
-            &durable.path,
-            durable.asset.clone(),
-        )
-        .expect("trusted durable import");
-        let asset = prepared.media.asset();
+        let existing_path = directory.path().join("existing.mp4");
+        fs::write(&existing_path, vec![0x33; 16 * 1024]).expect("existing editor media");
+        let mut editor = EditorSession::default();
+        editor
+            .session
+            .set_media(inspect_media(&existing_path).expect("inspect existing media"));
+        let before = editor.snapshot();
+        let candidate = prepare_durable_download_candidate(durable);
+        let asset = candidate.asset();
         assert_eq!(asset.display_name(), "download.mp4");
         assert_eq!(asset.extension(), "mp4");
-        assert_eq!(prepared.playback.mime_type, "video/mp4");
-        assert_eq!(prepared.playback.byte_length, asset.size_bytes());
-        assert_eq!(prepared.local_media.mime_type(), Some("video/mp4"));
+        assert_eq!(editor.snapshot(), before);
         assert_eq!(
             database
                 .resolve_media(asset.id())
                 .expect("resolve remembered media")
                 .expect("remembered media")
                 .path(),
-            durable.path.as_path()
+            durable_path.as_path()
         );
-        assert!(!format!("{prepared:?}").contains(directory.path().to_string_lossy().as_ref()));
+        let value = serde_json::to_value(&candidate).expect("serialize media candidate");
+        assert_eq!(value["contentIdentity"]["algorithm"], "blake3-256");
+        assert!(value.get("playback").is_none());
+        let json = serde_json::to_string(&value).expect("candidate JSON");
+        assert!(!json.contains(directory.path().to_string_lossy().as_ref()));
+        assert!(!json.to_ascii_lowercase().contains("path"));
+
+        assert!(
+            database
+                .discard_media_candidate(asset.id())
+                .expect("discard detached download candidate")
+        );
+        assert!(
+            database
+                .resolve_media(asset.id())
+                .expect("resolve discarded media")
+                .is_none()
+        );
+        assert!(!durable_path.exists());
     }
 
     #[test]

@@ -1,7 +1,11 @@
-import { useState, useEffect, useCallback, useMemo } from 'react';
+import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import { useTranslation } from 'react-i18next';
 import { getName } from 'iso-639-1';
-import { probeSpeechBackend } from '../../../platform/speechService';
+import {
+  getSpeechLifecycleSnapshot,
+  getSpeechVoiceInventory,
+  subscribeSpeechLifecycle,
+} from '../../../platform/speechService';
 import MaterialSwitch from '../../common/MaterialSwitch';
 import CustomDropdown from '../../common/CustomDropdown';
 import LanguageSelectionModal from './LanguageSelectionModal';
@@ -29,54 +33,84 @@ const GTTSControls = ({
   slow,
   setSlow,
   isGenerating,
-  detectedLanguage
+  detectedLanguage,
+  isServiceAvailable = false
 }) => {
   const { t } = useTranslation();
   const [languages, setLanguages] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [inventoryAvailable, setInventoryAvailable] = useState(false);
+  const [lifecycle, setLifecycle] = useState(() => getSpeechLifecycleSnapshot('gtts'));
   const [isLanguageModalOpen, setIsLanguageModalOpen] = useState(false);
+  const languageRequestSequence = useRef(0);
 
-  // Load available languages on component mount
+  useEffect(() => subscribeSpeechLifecycle((snapshot) => {
+    if (snapshot.backend === 'gtts') setLifecycle(snapshot);
+  }), []);
+
+  // Language inventory is requested only for an already-running engine. Tools owns Start/Stop.
   useEffect(() => {
+    const sequence = languageRequestSequence.current + 1;
+    languageRequestSequence.current = sequence;
+    if (!isServiceAvailable
+        || !lifecycle?.enabled
+        || !lifecycle.warm) {
+      setLanguages([]);
+      setInventoryAvailable(false);
+      setLoading(false);
+      return () => { languageRequestSequence.current += 1; };
+    }
     const loadLanguages = async () => {
       try {
         setLoading(true);
-        const probe = await probeSpeechBackend('gtts');
+        const inventory = await getSpeechVoiceInventory('gtts', lifecycle.epoch);
+        if (languageRequestSequence.current !== sequence) return;
+        const currentLifecycle = getSpeechLifecycleSnapshot('gtts');
+        if (!currentLifecycle?.enabled
+            || !currentLifecycle.warm
+            || currentLifecycle.epoch !== inventory.epoch) return;
         const data = {
-          languages: probe.voices.map((voice) => ({
+          languages: inventory.voices.map((voice) => ({
             code: voice.id,
             name: voice.displayName,
           })),
         };
         setLanguages(data.languages || []);
-
-        // Auto-select language based on detected language
-        if (!selectedLanguage && data.languages && data.languages.length > 0) {
-          let languageToSelect = 'en'; // Default to English
-
-          if (detectedLanguage?.languageCode) {
-            // Try to find a language that matches the detected language
-            const matchingLanguage = data.languages.find(lang =>
-              lang.code === detectedLanguage.languageCode
-            );
-
-            if (matchingLanguage) {
-              languageToSelect = matchingLanguage.code;
-            }
-          }
-
-          setSelectedLanguage(languageToSelect);
-        }
+        setInventoryAvailable(data.languages.length > 0);
       } catch (err) {
+        if (languageRequestSequence.current !== sequence) return;
+        setLanguages([]);
+        setInventoryAvailable(false);
         console.error('Error loading gTTS languages:', err);
         window.addToast(t('narration.languageLoadError', 'Error loading languages: Failed to load languages'), 'error');
       } finally {
-        setLoading(false);
+        if (languageRequestSequence.current === sequence) setLoading(false);
       }
     };
 
     loadLanguages();
-  }, [selectedLanguage, setSelectedLanguage, detectedLanguage, t]);
+    return () => {
+      if (languageRequestSequence.current === sequence) languageRequestSequence.current += 1;
+    };
+  }, [isServiceAvailable, lifecycle?.enabled, lifecycle?.epoch, lifecycle?.warm, t]);
+
+  useEffect(() => {
+    if (!isServiceAvailable
+        || !inventoryAvailable
+        || selectedLanguage
+        || languages.length === 0) return;
+    const matchingLanguage = detectedLanguage?.languageCode
+      ? languages.find(({ code }) => code === detectedLanguage.languageCode)
+      : null;
+    setSelectedLanguage((matchingLanguage || languages.find(({ code }) => code === 'en') || languages[0]).code);
+  }, [
+    detectedLanguage,
+    inventoryAvailable,
+    isServiceAvailable,
+    languages,
+    selectedLanguage,
+    setSelectedLanguage,
+  ]);
 
   // Handle TLD change
   const handleTldChange = (e) => {
@@ -167,7 +201,7 @@ const GTTSControls = ({
                 className="model-dropdown-btn narration-model-dropdown-btn"
                 title={t('narration.selectLanguage', 'Select narration voice')}
                 onClick={openLanguageModal}
-                disabled={isGenerating}
+                disabled={isGenerating || !isServiceAvailable || !inventoryAvailable}
               >
                 <span className="model-dropdown-label">{t('narration.voiceLabel', 'Giọng thuyết minh')}:</span>
                 <span className="model-dropdown-selected">
@@ -227,7 +261,7 @@ const GTTSControls = ({
       </div>
 
       {/* Language Selection Modal */}
-      {isLanguageModalOpen && (
+      {isLanguageModalOpen && inventoryAvailable && (
         <LanguageSelectionModal
           isOpen={isLanguageModalOpen}
           onClose={closeLanguageModal}

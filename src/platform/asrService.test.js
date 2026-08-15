@@ -65,6 +65,7 @@ const statusPayload = () => ({
     installed: index < 2,
     ready: index < 2,
     warm: index === 0,
+    starting: false,
   })),
 });
 
@@ -153,6 +154,15 @@ it('strictly validates and canonically orders the five-engine status catalog', (
     requiresAligner: false,
   }));
 
+  const warming = statusPayload();
+  warming.engines[1].starting = true;
+  expect(normalizeAsrStatus(warming).engines[1]).toMatchObject({
+    installed: true,
+    ready: true,
+    warm: false,
+    starting: true,
+  });
+
   const missing = statusPayload();
   missing.engines.pop();
   expect(() => normalizeAsrStatus(missing)).toThrow(AsrServiceError);
@@ -162,6 +172,12 @@ it('strictly validates and canonically orders the five-engine status catalog', (
   const impossibleState = statusPayload();
   impossibleState.engines[4].warm = true;
   expect(() => normalizeAsrStatus(impossibleState)).toThrow(AsrServiceError);
+  const impossibleStartingState = statusPayload();
+  impossibleStartingState.engines[0].starting = true;
+  expect(() => normalizeAsrStatus(impossibleStartingState)).toThrow(AsrServiceError);
+  const malformedStartingState = statusPayload();
+  delete malformedStartingState.engines[0].starting;
+  expect(() => normalizeAsrStatus(malformedStartingState)).toThrow(AsrServiceError);
   const unavailableWorker = statusPayload();
   unavailableWorker.workerAvailable = false;
   expect(() => normalizeAsrStatus(unavailableWorker)).toThrow(AsrServiceError);

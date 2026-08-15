@@ -1,10 +1,11 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 
 import { downloadNativeVideo } from '../../platform/nativeUrlDownloadAdapter';
+import { getDownloadCookieSource } from '../../platform/downloadCookiePreference';
 
 const isYoutubeUrl = (value) => value.includes('youtube.com') || value.includes('youtu.be');
 
-const useVideoSourceLoading = ({ videoSource, t, useCookiesForDownload }) => {
+const useVideoSourceLoading = ({ videoSource, t }) => {
   const [videoUrl, setVideoUrl] = useState('');
   const [optimizedVideoUrl] = useState('');
   const [optimizedVideoInfo] = useState(null);
@@ -39,7 +40,7 @@ const useVideoSourceLoading = ({ videoSource, t, useCookiesForDownload }) => {
     try {
       const media = await downloadNativeVideo({
         url,
-        useCookies: useCookiesForDownload,
+        cookieSource: getDownloadCookieSource(),
         onProgress: (progress) => {
           if (loadGenerationRef.current === generation) setDownloadProgress(progress);
         },
@@ -58,7 +59,7 @@ const useVideoSourceLoading = ({ videoSource, t, useCookiesForDownload }) => {
     } finally {
       if (loadGenerationRef.current === generation) setIsDownloading(false);
     }
-  }, [t, useCookiesForDownload]);
+  }, [t]);
 
   useEffect(() => {
     const generation = loadGenerationRef.current + 1;

@@ -54,6 +54,9 @@ const useUnifiedNarration = ({
     narrationMethod, setNarrationMethod,
     isGeminiAvailable, setIsGeminiAvailable,
     isChatterboxAvailable, setIsChatterboxAvailable,
+    isEdgeTTSAvailable, setIsEdgeTTSAvailable,
+    isGTTSAvailable, setIsGTTSAvailable,
+    isCheckingAvailability, setIsCheckingAvailability,
 
     // Gemini-specific settings
     selectedVoice, setSelectedVoice,
@@ -112,11 +115,14 @@ const useUnifiedNarration = ({
   } = narrationState;
 
   // Use availability check hook
-  useAvailabilityCheck({
+  const { geminiUnavailableReason } = useAvailabilityCheck({
     narrationMethod,
     setIsAvailable,
     setIsGeminiAvailable,
     setIsChatterboxAvailable,
+    setIsEdgeTTSAvailable,
+    setIsGTTSAvailable,
+    setIsCheckingAvailability,
     setError,
     t
   });
@@ -276,16 +282,20 @@ const useUnifiedNarration = ({
     nativeNarrationHandlers
   });
 
-  // Check if all narration services are unavailable
-  // Edge TTS and gTTS are always available, so only show unavailable message if all 5 methods are unavailable
-  const isEdgeTTSAvailable = true; // Edge TTS is always available
-  const isGTTSAvailable = true; // gTTS is always available
-  const allServicesUnavailable = !isAvailable && !isGeminiAvailable && !isChatterboxAvailable && !isEdgeTTSAvailable && !isGTTSAvailable;
+  const allServicesUnavailable = !isCheckingAvailability
+    && !isAvailable
+    && !isGeminiAvailable
+    && !isChatterboxAvailable
+    && !isEdgeTTSAvailable
+    && !isGTTSAvailable;
 
   return {
     // Method state
     narrationMethod, setNarrationMethod,
     isGeminiAvailable, isChatterboxAvailable,
+    isEdgeTTSAvailable, isGTTSAvailable,
+    isCheckingAvailability,
+    geminiUnavailableReason,
     isAvailable,
     allServicesUnavailable,
 

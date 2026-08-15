@@ -3,6 +3,10 @@ import {
   SUBTITLE_CACHE_TRACK_LABEL,
   SUBTITLE_PROJECT_INDEX_KEY,
 } from './subtitleProjectStore';
+import {
+  readLegacySubtitleTrack,
+  replaceLegacySubtitleTrack,
+} from './projectSnapshotAdapter';
 
 vi.mock('./desktopRuntime', () => ({
   invokeDesktop: vi.fn(),
@@ -38,6 +42,12 @@ const existingIndex = () => ({
   activeCacheId: 'cache-id',
   entries: [{ cacheId: 'cache-id', projectId: PROJECT_ID, lastOpenedAt: 100 }],
 });
+
+const snapshotWithRows = (stateVersion, rows) => replaceLegacySubtitleTrack(
+  snapshot(stateVersion),
+  rows,
+  { label: SUBTITLE_CACHE_TRACK_LABEL }
+);
 
 it('creates a project alias once and commits cache rows through the project mutation queue', async () => {
   const invokeCommand = vi.fn(async (command) => {
@@ -83,6 +93,26 @@ it('creates a project alias once and commits cache rows through the project muta
   });
 });
 
+it('refuses to mutate an alias that no longer resolves to the captured project', async () => {
+  const invokeCommand = vi.fn(async (command) => (
+    command === 'setting_get' ? existingIndex() : undefined
+  ));
+  const projects = {
+    loadProject: vi.fn().mockResolvedValue(snapshot()),
+    createProject: vi.fn(),
+    mutateProject: vi.fn(),
+  };
+  const store = createSubtitleProjectStore({ invokeCommand, projects, now: () => 123 });
+
+  await expect(store.saveSubtitles(
+    'cache-id',
+    [{ id: 1, start: 1.25, end: 2.5, text: 'Stale' }],
+    { expectedProjectId: '01890f39-7b62-7c4e-8c9a-000000000999' }
+  )).rejects.toMatchObject({ code: 'projectScopeMismatch' });
+
+  expect(projects.mutateProject).not.toHaveBeenCalled();
+});
+
 it('loads seconds-based rows from an existing canonical cache project', async () => {
   const persistedIndex = {
     schemaVersion: 1,
@@ -104,6 +134,55 @@ it('loads seconds-based rows from an existing canonical cache project', async ()
   ]);
   expect(projects.createProject).not.toHaveBeenCalled();
   expect(projects.loadProject).toHaveBeenCalledWith(PROJECT_ID);
+});
+
+it('rejects an exact-project cache read when its project was deleted before alias repair', async () => {
+  const replacementId = '01890f39-7b62-7c4e-8c9a-000000000204';
+  const replacement = {
+    metadata: { id: replacementId, name: 'cache-id' },
+    stateVersion: 0,
+    media: [],
+    tracks: [],
+  };
+  const invokeCommand = vi.fn(async (command) => (
+    command === 'setting_get' ? existingIndex() : undefined
+  ));
+  const projects = {
+    loadProject: vi.fn().mockResolvedValueOnce(null).mockResolvedValueOnce(null),
+    createProject: vi.fn().mockResolvedValue(replacement),
+    mutateProject: vi.fn(),
+  };
+  const store = createSubtitleProjectStore({ invokeCommand, projects, now: () => 300 });
+
+  await expect(store.loadExactProjectSubtitles('cache-id', PROJECT_ID))
+    .rejects.toMatchObject({ code: 'projectScopeMismatch' });
+  await expect(store.resolveProjectForCache('cache-id', { create: true }))
+    .resolves.toMatchObject({ projectId: replacementId });
+
+  expect(projects.createProject).toHaveBeenCalledTimes(1);
+  expect(projects.loadProject).not.toHaveBeenCalledWith(replacementId);
+});
+
+it('recovers a legacy-sync serialized project index without replacing its project', async () => {
+  const invokeCommand = vi.fn(async (command) => (
+    command === 'setting_get' ? JSON.stringify(existingIndex()) : undefined
+  ));
+  const projects = {
+    loadProject: vi.fn().mockResolvedValue(snapshot(3, [track()])),
+    createProject: vi.fn(),
+    mutateProject: vi.fn(),
+  };
+  const store = createSubtitleProjectStore({ invokeCommand, projects, now: () => 200 });
+
+  await expect(store.loadSubtitles('cache-id')).resolves.toEqual([
+    { id: 1, start: 1.25, end: 2.5, text: 'Stored' },
+  ]);
+  expect(projects.loadProject).toHaveBeenCalledWith(PROJECT_ID);
+  expect(projects.createProject).not.toHaveBeenCalled();
+  expect(invokeCommand).toHaveBeenCalledWith('setting_set', {
+    key: SUBTITLE_PROJECT_INDEX_KEY,
+    value: expect.objectContaining({ activeCacheId: 'cache-id' }),
+  });
 });
 
 it('clears only the cached subtitle track through an optimistic project revision', async () => {
@@ -165,6 +244,109 @@ it('does not create a project during a cache miss', async () => {
   expect(projects.loadProject).not.toHaveBeenCalled();
   expect(projects.createProject).not.toHaveBeenCalled();
   expect(invokeCommand).toHaveBeenCalledTimes(1);
+});
+
+it('atomically replaces only the captured segment while preserving a racing outside edit', async () => {
+  let current = snapshotWithRows(4, [
+    { start: 0, end: 2, text: 'before' },
+    { start: 5, end: 6, text: 'old target' },
+    { start: 9, end: 10, text: 'after' },
+  ]);
+  const invokeCommand = vi.fn(async (command) => (
+    command === 'setting_get' ? existingIndex() : undefined
+  ));
+  const projects = {
+    loadProject: vi.fn(async () => current),
+    createProject: vi.fn(),
+    getProjectTrackHistoryStatus: vi.fn(async () => ({
+      stateVersion: current.stateVersion,
+      historyVersion: 7,
+      undoReason: null,
+      redoReason: null,
+      diverged: current.stateVersion > 4,
+    })),
+    commitProjectTrack: vi.fn(async (request) => {
+      expect(request).toMatchObject({
+        id: PROJECT_ID,
+        expectedHistoryVersion: 7,
+        reason: 'Replace regenerated subtitle segment',
+      });
+      expect(request.beforeTrack.cues[0].text).toBe('concurrent manual edit');
+      current = {
+        ...current,
+        stateVersion: current.stateVersion + 1,
+        tracks: request.afterTrack === null ? [] : [request.afterTrack],
+      };
+      return {
+        snapshot: current,
+        status: {
+          stateVersion: current.stateVersion,
+          historyVersion: 8,
+          diverged: false,
+          canUndo: true,
+          canRedo: false,
+          undoReason: request.reason,
+          redoReason: null,
+        },
+      };
+    }),
+  };
+  const store = createSubtitleProjectStore({ invokeCommand, projects, now: () => 200 });
+  const revision = await store.captureSegmentRevision(
+    'cache-id',
+    { start: 5, end: 8 },
+    { expectedProjectId: PROJECT_ID }
+  );
+
+  current = snapshotWithRows(5, [
+    { start: 0, end: 2, text: 'concurrent manual edit' },
+    { start: 5, end: 6, text: 'old target' },
+    { start: 9, end: 10, text: 'after' },
+  ]);
+  const result = await store.commitSegmentRevision(revision, [
+    { start: 5, end: 7, text: 'replacement' },
+  ], { expectedProjectId: PROJECT_ID });
+
+  expect(Object.isFrozen(revision)).toBe(true);
+  expect(result.rows).toEqual([
+    { id: 1, start: 0, end: 2, text: 'concurrent manual edit' },
+    { id: 2, start: 5, end: 7, text: 'replacement' },
+    { id: 3, start: 9, end: 10, text: 'after' },
+  ]);
+  expect(projects.commitProjectTrack).toHaveBeenCalledTimes(1);
+});
+
+it('rejects an overlapping manual edit instead of overwriting the newer segment', async () => {
+  let current = snapshotWithRows(4, [
+    { start: 5, end: 6, text: 'old target' },
+  ]);
+  const invokeCommand = vi.fn(async (command) => (
+    command === 'setting_get' ? existingIndex() : undefined
+  ));
+  const projects = {
+    loadProject: vi.fn(async () => current),
+    createProject: vi.fn(),
+    getProjectTrackHistoryStatus: vi.fn(async () => ({
+      stateVersion: current.stateVersion,
+      historyVersion: 2,
+      undoReason: null,
+      redoReason: null,
+      diverged: false,
+    })),
+    commitProjectTrack: vi.fn(),
+  };
+  const store = createSubtitleProjectStore({ invokeCommand, projects, now: () => 200 });
+  const revision = await store.captureSegmentRevision('cache-id', { start: 5, end: 8 });
+  current = snapshotWithRows(5, [
+    { start: 5, end: 6, text: 'newer manual target edit' },
+  ]);
+
+  await expect(store.commitSegmentRevision(revision, [
+    { start: 5, end: 7, text: 'stale replacement' },
+  ])).rejects.toMatchObject({ code: 'subtitleSegmentConflict' });
+  expect(projects.commitProjectTrack).not.toHaveBeenCalled();
+  expect(readLegacySubtitleTrack(current, { label: SUBTITLE_CACHE_TRACK_LABEL }))
+    .toEqual([{ id: 1, start: 5, end: 6, text: 'newer manual target edit' }]);
 });
 
 it('repairs an alias whose project was removed before creating a replacement', async () => {

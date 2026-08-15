@@ -1,5 +1,5 @@
 import { Channel } from '@tauri-apps/api/core';
-import { validate as validateUuid, version as uuidVersion } from 'uuid';
+import { validate as validateUuid, v7 as uuidv7, version as uuidVersion } from 'uuid';
 import { invokeDesktop, isDesktopRuntime } from './desktopRuntime';
 
 export const LIVE_MUSIC_MODEL = 'models/lyria-realtime-exp';
@@ -16,6 +16,27 @@ const MAX_PENDING_EVENTS = 64;
 const MAX_NOTICE_CHARACTERS = 2_048;
 const controls = new Set(['play', 'pause', 'stop', 'resetContext']);
 const providerControls = new Set(['PLAY', 'PAUSE', 'STOP', 'RESET_CONTEXT']);
+const commandFailureCodes = new Set([
+  'internal',
+  'invalidInput',
+  'credentialStoreUnavailable',
+  'credentialStoreLocked',
+  'credentialNotFound',
+  'invalidCredential',
+  'credentialPurposeMismatch',
+  'emptyCredential',
+  'credentialVerificationFailed',
+  'credentialStoreFailure',
+  'database',
+]);
+const eventFailureMessages = new Map([
+  ['liveMusicTimedOut', 'The native live music session timed out.'],
+  ['liveMusicProtocolFailed', 'The live music provider returned an invalid response.'],
+  ['invalidLiveMusicPrompts', 'The native live music prompts are invalid.'],
+  ['liveMusicUnavailable', 'The native live music service is unavailable.'],
+  ['liveMusicChannelClosed', 'The native live music output channel closed.'],
+  ['liveMusicCancelled', 'The native live music session was cancelled.'],
+]);
 const requestKeys = new Set(['credentialId', 'weightedPrompts']);
 const handlerKeys = new Set([
   'onEvent',
@@ -77,10 +98,20 @@ const invalidResponse = () => new LiveMusicServiceError(
   'The desktop host returned invalid live music data'
 );
 
-const commandFailed = () => new LiveMusicServiceError(
-  'liveMusicCommandFailed',
+const commandFailed = (code = 'liveMusicCommandFailed') => new LiveMusicServiceError(
+  code,
   'The native live music operation could not be completed'
 );
+
+const redactCommandFailure = (error) => {
+  let code;
+  try {
+    code = error?.code;
+  } catch {
+    code = undefined;
+  }
+  return commandFailed(commandFailureCodes.has(code) ? code : undefined);
+};
 
 const unavailable = () => new LiveMusicServiceError(
   'nativeLiveMusicUnavailable',
@@ -155,13 +186,15 @@ const boundedNotice = (value, maximum = MAX_NOTICE_CHARACTERS) => {
 const normalizePublicError = (value) => {
   if (!isRecord(value)
       || !hasOnlyKeys(value, new Set(['code', 'message']))
-      || typeof value.code !== 'string'
-      || !/^[A-Za-z][A-Za-z0-9]{0,127}$/.test(value.code)) {
+      || Object.keys(value).length !== 2
+      || typeof value.code !== 'string') {
     throw invalidResponse();
   }
+  boundedNotice(value.message);
+  const message = eventFailureMessages.get(value.code);
   return Object.freeze({
-    code: value.code,
-    message: boundedNotice(value.message),
+    code: message === undefined ? 'liveMusicCommandFailed' : value.code,
+    message: message ?? 'The native live music operation could not be completed',
   });
 };
 
@@ -243,12 +276,22 @@ export const createNativeLiveMusicService = ({
   invokeCommand = invokeDesktop,
   ChannelConstructor = Channel,
   isNativeRuntime = isDesktopRuntime,
+  createOperationId = uuidv7,
 } = {}) => {
   let active = null;
 
   const safelyCall = (handlers, name, argument) => {
     const handler = handlers[name];
     if (typeof handler !== 'function') return;
+    if (name === 'onHandlerError') {
+      try {
+        const result = handler(argument);
+        result?.catch?.(() => undefined);
+      } catch {
+        // The diagnostic callback is the end of the presentation error chain.
+      }
+      return;
+    }
     const report = (error) => {
       if (typeof handlers.onHandlerError !== 'function') return;
       try {
@@ -270,6 +313,34 @@ export const createNativeLiveMusicService = ({
     safelyCall(handlers, 'onProtocolError', error);
   };
 
+  const closeOwnerOnce = (owner) => {
+    if (owner.closePromise === null) {
+      owner.closing = true;
+      let invocation;
+      try {
+        invocation = invokeCommand(
+          'live_music_close',
+          { startOperationId: owner.startOperationId },
+        );
+      } catch (error) {
+        invocation = Promise.reject(error);
+      }
+      owner.closePromise = Promise.resolve(invocation).catch((error) => {
+        const failure = redactCommandFailure(error);
+        if (!owner.terminal) {
+          owner.closing = false;
+          owner.closePromise = null;
+        }
+        throw failure;
+      });
+    }
+    return owner.closePromise;
+  };
+
+  const clearOwner = (owner) => {
+    if (active === owner) active = null;
+  };
+
   const startSession = async (request, rawHandlers = {}) => {
     if (!isNativeRuntime()) throw unavailable();
     if (active !== null) throw new LiveMusicServiceError(
@@ -278,15 +349,57 @@ export const createNativeLiveMusicService = ({
     );
     const normalizedRequest = normalizeStartRequest(request);
     const handlers = normalizeHandlers(rawHandlers);
+    const startOperationId = createOperationId();
+    if (!isUuidV7(startOperationId)) throw invalidRequest();
     const pendingEvents = [];
     const pendingAudio = [];
     let pendingAudioBytes = 0;
     let session = null;
     let terminal = false;
+    let protocolFailed = false;
+    let owner = null;
+    let rollbackPromise = null;
+
+    const rollbackStartOnce = () => {
+      if (rollbackPromise === null) {
+        let invocation;
+        try {
+          invocation = invokeCommand('live_music_rollback_start', { startOperationId });
+        } catch (error) {
+          invocation = Promise.reject(error);
+        }
+        rollbackPromise = Promise.resolve(invocation).then((rolledBack) => {
+          if (typeof rolledBack !== 'boolean') throw invalidResponse();
+          return rolledBack;
+        }).catch((error) => {
+          if (error instanceof LiveMusicServiceError) throw error;
+          throw redactCommandFailure(error);
+        });
+      }
+      return rollbackPromise;
+    };
+
+    const terminateForProtocol = (error = invalidResponse()) => {
+      if (terminal || protocolFailed) return;
+      protocolFailed = true;
+      terminal = true;
+      pendingEvents.length = 0;
+      pendingAudio.length = 0;
+      pendingAudioBytes = 0;
+      reportProtocolFailure(handlers, error);
+      if (owner !== null) {
+        owner.terminal = true;
+        clearOwner(owner);
+        void closeOwnerOnce(owner).catch((cleanupError) => {
+          safelyCall(owner.handlers, 'onHandlerError', cleanupError);
+        });
+      }
+    };
 
     const dispatchEvent = (event) => {
-      if (terminal || event.sessionId !== session.id) {
-        reportProtocolFailure(handlers);
+      if (terminal) return;
+      if (event.sessionId !== session.id) {
+        terminateForProtocol();
         return;
       }
       safelyCall(handlers, 'onEvent', event);
@@ -301,15 +414,15 @@ export const createNativeLiveMusicService = ({
       safelyCall(handlers, callback, event);
       if (event.event === 'closed' || event.event === 'failed') {
         terminal = true;
-        active = null;
+        if (owner !== null) {
+          owner.terminal = true;
+          clearOwner(owner);
+        }
       }
     };
 
     const dispatchAudio = (chunk) => {
-      if (terminal) {
-        reportProtocolFailure(handlers);
-        return;
-      }
+      if (terminal) return;
       safelyCall(handlers, 'onAudio', chunk);
     };
 
@@ -319,12 +432,13 @@ export const createNativeLiveMusicService = ({
       try {
         event = normalizeLiveMusicEvent(rawEvent);
       } catch (error) {
-        reportProtocolFailure(handlers, error);
+        terminateForProtocol(error);
         return;
       }
+      if (terminal) return;
       if (session === null) {
         if (pendingEvents.length >= MAX_PENDING_EVENTS) {
-          reportProtocolFailure(handlers);
+          terminateForProtocol();
           return;
         }
         pendingEvents.push(event);
@@ -339,14 +453,14 @@ export const createNativeLiveMusicService = ({
       try {
         chunk = normalizePcmChunk(rawChunk);
       } catch (error) {
-        reportProtocolFailure(handlers, error);
+        terminateForProtocol(error);
         return;
       }
+      if (terminal) return;
       if (session === null) {
         pendingAudioBytes += chunk.byteLength;
         if (pendingAudioBytes > MAX_PENDING_PCM_BYTES) {
-          pendingAudio.length = 0;
-          reportProtocolFailure(handlers);
+          terminateForProtocol();
           return;
         }
         pendingAudio.push(chunk);
@@ -355,34 +469,75 @@ export const createNativeLiveMusicService = ({
       dispatchAudio(chunk);
     };
 
-    let snapshot;
+    let rawSnapshot;
     try {
-      snapshot = normalizeLiveMusicSession(await invokeCommand('live_music_start', {
+      rawSnapshot = await invokeCommand('live_music_start', {
+        startOperationId,
         request: normalizedRequest,
         onEvent: eventChannel,
         onAudio: audioChannel,
-      }));
-    } catch {
+      });
+    } catch (error) {
+      terminal = true;
       pendingEvents.length = 0;
       pendingAudio.length = 0;
-      throw commandFailed();
+      eventChannel.onmessage = () => undefined;
+      audioChannel.onmessage = () => undefined;
+      throw redactCommandFailure(error);
+    }
+    let snapshot;
+    try {
+      snapshot = normalizeLiveMusicSession(rawSnapshot);
+    } catch (error) {
+      terminal = true;
+      pendingEvents.length = 0;
+      pendingAudio.length = 0;
+      pendingAudioBytes = 0;
+      eventChannel.onmessage = () => undefined;
+      audioChannel.onmessage = () => undefined;
+      await rollbackStartOnce().catch((cleanupError) => {
+        safelyCall(handlers, 'onHandlerError', cleanupError);
+      });
+      throw error;
     }
     session = snapshot;
-    active = Object.freeze({ session, eventChannel, audioChannel });
+    owner = {
+      session,
+      startOperationId,
+      eventChannel,
+      audioChannel,
+      handlers,
+      closing: false,
+      terminal: false,
+      closePromise: null,
+    };
+    if (protocolFailed) {
+      await closeOwnerOnce(owner).catch((cleanupError) => {
+        safelyCall(owner.handlers, 'onHandlerError', cleanupError);
+      });
+      throw invalidResponse();
+    }
+    active = owner;
     pendingEvents.splice(0).forEach(dispatchEvent);
     pendingAudio.splice(0).forEach(dispatchAudio);
-    if (terminal) active = null;
+    if (protocolFailed) {
+      await closeOwnerOnce(owner).catch((cleanupError) => {
+        safelyCall(owner.handlers, 'onHandlerError', cleanupError);
+      });
+      throw invalidResponse();
+    }
+    if (terminal) clearOwner(owner);
     return session;
   };
 
   const invokeForSession = async (command, sessionId, extra = {}) => {
     if (!isNativeRuntime()) throw unavailable();
     const id = requireSessionId(sessionId);
-    if (active?.session?.id !== id) throw invalidRequest();
+    if (active?.session?.id !== id || active.terminal || active.closing) throw invalidRequest();
     try {
       return await invokeCommand(command, { sessionId: id, ...extra });
-    } catch {
-      throw commandFailed();
+    } catch (error) {
+      throw redactCommandFailure(error);
     }
   };
 
@@ -398,7 +553,11 @@ export const createNativeLiveMusicService = ({
   };
 
   const closeSession = async (sessionId) => {
-    await invokeForSession('live_music_close', sessionId);
+    if (!isNativeRuntime()) throw unavailable();
+    const id = requireSessionId(sessionId);
+    const owner = active;
+    if (owner?.session?.id !== id || owner.terminal) throw invalidRequest();
+    await closeOwnerOnce(owner);
   };
 
   return Object.freeze({

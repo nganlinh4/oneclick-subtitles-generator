@@ -904,6 +904,19 @@ mod tests {
         .expect("valid snapshot")
     }
 
+    fn stage_media(directory: &TempDir, database: &Database, asset: &MediaAsset) {
+        let path = directory
+            .path()
+            .join(format!("{}.{}", asset.id().as_uuid(), asset.extension()));
+        std::fs::File::create(&path)
+            .expect("create media fixture")
+            .set_len(asset.size_bytes())
+            .expect("size media fixture");
+        database
+            .remember_media_candidate(asset, &path)
+            .expect("stage media fixture");
+    }
+
     fn seeded(database: &Database) -> (ProjectMetadata, SubtitleTrack, ProjectSnapshot) {
         let metadata = ProjectMetadata::new("Editor history").expect("valid project");
         let created = database.create_project(&metadata).expect("create project");
@@ -921,7 +934,7 @@ mod tests {
 
     #[test]
     fn track_undo_crosses_unrelated_revisions_without_reverting_media() {
-        let (_directory, _path, database) = database();
+        let (directory, _path, database) = database();
         let (metadata, initial, _) = seeded(&database);
         let edited = revise(&initial, "B");
         let committed = database
@@ -938,6 +951,7 @@ mod tests {
 
         let media =
             MediaAsset::new("movie.mp4", "mp4", 4_096, MediaKind::Video).expect("valid media");
+        stage_media(&directory, &database, &media);
         let with_media = snapshot_with(&committed.snapshot, vec![media.clone()], &edited);
         database
             .commit_project(&with_media, &reason("Attach media"))
@@ -1036,7 +1050,7 @@ mod tests {
 
     #[test]
     fn branch_after_undo_clears_only_track_redo_and_preserves_latest_media() {
-        let (_directory, path, database) = database();
+        let (directory, path, database) = database();
         let (metadata, initial, _) = seeded(&database);
         let second = revise(&initial, "B");
         let third = revise(&initial, "C");
@@ -1068,6 +1082,7 @@ mod tests {
 
         let media =
             MediaAsset::new("latest.mp4", "mp4", 8_192, MediaKind::Video).expect("valid media");
+        stage_media(&directory, &database, &media);
         let current = database
             .load_project(metadata.id())
             .expect("load project")

@@ -1,5 +1,7 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
 
+import { loadPanelWidth, storeRenderPreference } from './renderPreferences';
+
 /**
  * Resizable preview/customization split-panel logic with localStorage persistence.
  *
@@ -11,10 +13,7 @@ import { useState, useEffect, useRef, useCallback } from 'react';
  * }}
  */
 export const usePanelResize = () => {
-  const [leftPanelWidth, setLeftPanelWidth] = useState(() => {
-    const saved = localStorage.getItem('videoRender_leftPanelWidth');
-    return saved ? parseFloat(saved) : 66.67; // Default 2fr = 66.67%
-  });
+  const [leftPanelWidth, setLeftPanelWidth] = useState(loadPanelWidth);
   const [isResizing, setIsResizing] = useState(false);
   const containerRef = useRef(null);
 
@@ -74,7 +73,7 @@ export const usePanelResize = () => {
   }, [isResizing, handleMouseMove]);
 
   useEffect(() => {
-    localStorage.setItem('videoRender_leftPanelWidth', leftPanelWidth.toString());
+    storeRenderPreference('videoRender_leftPanelWidth', leftPanelWidth);
   }, [leftPanelWidth]);
 
   return {

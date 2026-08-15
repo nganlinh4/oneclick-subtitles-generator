@@ -2,6 +2,8 @@ import { toBase64, fileToBase64 } from './fileUtils';
 import { resolveActiveNativeMediaAssetId } from '../platform/activeNativeMedia';
 import { exportMediaAsset } from '../platform/mediaExportService';
 import { runMediaPipeline } from '../platform/mediaPipelineService';
+import { isDesktopRuntime } from '../platform/runtimeEnvironment';
+import { exportSubtitleDocument } from '../platform/subtitleDocumentExportService';
 
 vi.mock('../platform/activeNativeMedia', () => ({
   resolveActiveNativeMediaAssetId: vi.fn(() => null),
@@ -12,6 +14,13 @@ vi.mock('../platform/mediaPipelineService', () => ({
 vi.mock('../platform/mediaExportService', () => ({
   exportMediaAsset: vi.fn(),
 }));
+vi.mock('../platform/runtimeEnvironment', () => ({
+  isDesktopRuntime: vi.fn(() => false),
+}));
+vi.mock('../platform/subtitleDocumentExportService', () => ({
+  exportSubtitleDocument: vi.fn(),
+}));
+vi.mock('./toastUtils', () => ({ showErrorToast: vi.fn() }));
 
 describe('toBase64', () => {
   test('encodes a Blob to base64 without the data: prefix (round-trip)', async () => {
@@ -33,6 +42,51 @@ describe('toBase64', () => {
 
   test('fileToBase64 is an alias of toBase64', () => {
     expect(fileToBase64).toBe(toBase64);
+  });
+});
+
+describe('subtitle document downloads', () => {
+  beforeEach(() => {
+    isDesktopRuntime.mockReset();
+    isDesktopRuntime.mockReturnValue(true);
+    exportSubtitleDocument.mockReset();
+    exportSubtitleDocument.mockResolvedValue({ status: 'saved' });
+  });
+
+  test('routes SRT, JSON, and TXT through the native save dialog', async () => {
+    const { downloadSRT, downloadJSON, downloadTXT } = await import('./fileUtils');
+    const subtitles = [{ start: 0, end: 1, text: 'Hello' }];
+    const objectUrl = vi.spyOn(URL, 'createObjectURL');
+
+    await expect(downloadSRT(subtitles, 'captions.srt')).resolves.toEqual({ status: 'saved' });
+    await expect(downloadJSON(subtitles, 'captions.json')).resolves.toEqual({ status: 'saved' });
+    await expect(downloadTXT(subtitles, 'captions.txt')).resolves.toEqual({
+      status: 'saved',
+      content: 'Hello',
+    });
+
+    expect(exportSubtitleDocument).toHaveBeenNthCalledWith(1, expect.objectContaining({
+      suggestedName: 'captions.srt', format: 'srt',
+    }));
+    expect(exportSubtitleDocument).toHaveBeenNthCalledWith(2, expect.objectContaining({
+      suggestedName: 'captions.json', format: 'json',
+    }));
+    expect(exportSubtitleDocument).toHaveBeenNthCalledWith(3, expect.objectContaining({
+      suggestedName: 'captions.txt', format: 'txt', content: 'Hello',
+    }));
+    expect(objectUrl).not.toHaveBeenCalled();
+    objectUrl.mockRestore();
+  });
+
+  test('does not invent success when the native dialog is cancelled or fails', async () => {
+    const { downloadSRT } = await import('./fileUtils');
+    const subtitles = [{ start: 0, end: 1, text: 'Hello' }];
+    exportSubtitleDocument.mockResolvedValueOnce({ status: 'cancelled' });
+    await expect(downloadSRT(subtitles, 'captions.srt')).resolves.toEqual({
+      status: 'cancelled',
+    });
+    exportSubtitleDocument.mockRejectedValueOnce(new Error('disk full'));
+    await expect(downloadSRT(subtitles, 'captions.srt')).rejects.toThrow('disk full');
   });
 });
 

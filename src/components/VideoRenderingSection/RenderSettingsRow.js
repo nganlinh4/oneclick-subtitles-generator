@@ -9,6 +9,7 @@ const RenderSettingsRow = ({
   renderSettings,
   setRenderSettings,
   selectedVideoFile,
+  hasSubtitles,
   isRendering,
   currentQueueItem,
   onRender,
@@ -57,7 +58,12 @@ const RenderSettingsRow = ({
         <button
           className="pill-button primary"
           onClick={onRender}
-          disabled={!selectedVideoFile}
+          disabled={!selectedVideoFile || !hasSubtitles}
+          title={!selectedVideoFile
+            ? t('videoRendering.noVideoSelected', 'Please select a video file')
+            : !hasSubtitles
+              ? t('videoRendering.noSubtitlesSelected', 'Add or generate subtitles before rendering.')
+              : t('videoRendering.renderTooltip', 'Render video with subtitles and narration')}
         >
           <span className="material-symbols-rounded">desktop_windows</span>
           {t('videoRendering.render', 'Render')}

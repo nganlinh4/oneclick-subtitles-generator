@@ -16,6 +16,7 @@ import BackgroundMusicSection from '../BackgroundMusicSection';
 import { hasValidDownloadedVideo } from '../../utils/videoUtils';
 import { initializeMobileZoom } from '../../utils/mobileZoom';
 import { DEFAULT_GEMINI_MODEL_ID, normalizeMediaModelId } from '../../config/geminiModels';
+import { applyNativeMediaSession } from '../../hooks/useNativeMediaSessionHydration';
 
 /**
  * Main application layout component
@@ -107,7 +108,6 @@ const AppLayout = ({
     timeFormat,
     showWaveformLongVideos,
     useOptimizedPreview,
-    useCookiesForDownload,
     enableYoutubeSearch,
     optimizeVideos,
     optimizedResolution,
@@ -142,6 +142,15 @@ const AppLayout = ({
     handleUserSubtitlesAdd,
     handleAbortVideoAnalysis
   } = modalHandlers;
+
+  const handleNativeRenderVideoSelected = (media) => {
+    localStorage.removeItem('current_video_url');
+    localStorage.removeItem('split_result');
+    setSelectedVideo(null);
+    appState.setUploadedFileData?.(null);
+    setIsSrtOnlyMode(false);
+    applyNativeMediaSession({ media, setUploadedFile });
+  };
 
   // Use video info hook to track current video and available versions
   const {
@@ -347,6 +356,7 @@ const AppLayout = ({
             setSelectedVideo={setSelectedVideo}
             uploadedFile={uploadedFile}
             setUploadedFile={setUploadedFile}
+            setUploadedFileData={appState.setUploadedFileData}
             apiKeysSet={apiKeysSet}
             isSrtOnlyMode={isSrtOnlyMode}
             setIsSrtOnlyMode={setIsSrtOnlyMode}
@@ -362,6 +372,7 @@ const AppLayout = ({
             <ButtonsContainer
               handleSrtUpload={handleSrtUpload}
               handleGenerateSubtitles={handleGenerateSubtitles}
+              handleProcessWithOptions={handleProcessWithOptions}
               handleCancelDownload={handleCancelDownload}
               handleUserSubtitlesAdd={handleUserSubtitlesAdd}
               handleAbortVideoAnalysis={handleAbortVideoAnalysis}
@@ -387,7 +398,6 @@ const AppLayout = ({
               isProcessingSegment={isProcessingSegment}
               setIsProcessingSegment={appState.setIsProcessingSegment}
               apiKeysSet={apiKeysSet}
-              onSegmentSelect={handleSegmentSelect}
             />
 
             <OutputContainer
@@ -407,7 +417,6 @@ const AppLayout = ({
               timeFormat={timeFormat}
               showWaveformLongVideos={showWaveformLongVideos}
               useOptimizedPreview={useOptimizedPreview}
-              useCookiesForDownload={useCookiesForDownload}
               isSrtOnlyMode={isSrtOnlyMode}
               onViewRules={handleViewRules}
               userProvidedSubtitles={userProvidedSubtitles}
@@ -436,6 +445,7 @@ const AppLayout = ({
             translatedSubtitles={window.translatedSubtitles}
             narrationResults={window.originalNarrations || window.translatedNarrations}
             autoFillData={videoRenderingAutoFill}
+            onNativeVideoSelected={handleNativeRenderVideoSelected}
           />
 
           {/* Background Image Generator - Always visible but collapsed at page start */}

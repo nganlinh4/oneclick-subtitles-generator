@@ -1,4 +1,5 @@
 use std::sync::Arc;
+use std::time::Duration;
 use std::time::Instant;
 
 use futures_util::StreamExt;
@@ -8,6 +9,9 @@ use osg_gemini::{
     ThinkingLevel, TokenUsage, UploadRequest,
 };
 use osg_infrastructure::secrets::{CredentialId, CredentialPurpose};
+use osg_media::{
+    CancellationToken as MediaCancellationToken, MediaInput as NativeMediaInput, RunControl,
+};
 use secrecy::ExposeSecret;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
@@ -22,6 +26,13 @@ use crate::state::{DesktopState, LocalMedia};
 const MAX_RESULT_BYTES: usize = 8 * 1024 * 1024;
 const MAX_PROMPT_CHARS: usize = 1_048_576;
 const MAX_SCHEMA_BYTES: usize = 1_048_576;
+const SPEECH_CHECK_TIMEOUT: Duration = Duration::from_hours(24);
+
+#[derive(Clone, Copy, Debug, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+enum EmptySpeechPolicy {
+    ProvenSilence,
+}
 
 #[derive(Clone, Copy, Debug, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -66,6 +77,7 @@ pub(crate) struct GeminiStartRequest {
     media_resolution: Option<MediaResolution>,
     response_json_schema: Option<Value>,
     media_asset_id: Option<AssetId>,
+    empty_speech_policy: Option<EmptySpeechPolicy>,
 }
 
 impl GeminiStartRequest {
@@ -87,10 +99,18 @@ impl GeminiStartRequest {
         }
         if self
             .max_output_tokens
-            .is_some_and(|limit| limit == 0 || limit > self.model.spec().output_token_limit)
+            .is_some_and(|limit| limit == 0 || limit > self.model.output_token_limit())
         {
             return Err(CommandError::invalid_input(
                 "The Gemini output-token limit is outside the selected model's bounds.",
+            ));
+        }
+        if self
+            .thinking_level
+            .is_some_and(|level| !self.model.supports_thinking_level(level))
+        {
+            return Err(CommandError::invalid_input(
+                "The selected Gemini model does not support that thinking level.",
             ));
         }
         if let Some(schema) = &self.response_json_schema {
@@ -106,6 +126,22 @@ impl GeminiStartRequest {
         if matches!(self.task, GeminiTask::Transcribe) && self.media_asset_id.is_none() {
             return Err(CommandError::invalid_input(
                 "A transcription request must identify its media asset.",
+            ));
+        }
+        if self.model.is_custom()
+            && (matches!(self.task, GeminiTask::Transcribe)
+                || self.media_asset_id.is_some()
+                || self.media_resolution.is_some())
+        {
+            return Err(CommandError::invalid_input(
+                "Custom Gemini models are available only for text processing.",
+            ));
+        }
+        if self.empty_speech_policy.is_some()
+            && (!matches!(self.task, GeminiTask::Transcribe) || self.media_asset_id.is_none())
+        {
+            return Err(CommandError::invalid_input(
+                "The empty-speech policy is only valid for media transcription.",
             ));
         }
         Ok(())
@@ -203,7 +239,7 @@ pub(crate) async fn gemini_start(
     let jobs = Arc::clone(&state.jobs);
     let kind = request.task.job_kind();
     let task_name = request.task.diagnostic_name();
-    let model_name = request.model.api_id();
+    let model_name = request.model.api_id().to_owned();
     let has_media = local_media.is_some();
     let ticket = background::register_running(&jobs, kind).await?;
     let initial = ticket.snapshot().clone();
@@ -214,12 +250,13 @@ pub(crate) async fn gemini_start(
         &[
             ("job", job_id.to_string()),
             ("task", task_name.to_owned()),
-            ("model", model_name.to_owned()),
+            ("model", model_name),
             ("media", if has_media { "yes" } else { "no" }.to_owned()),
         ],
     );
     let cancellation = ticket.cancellation().clone();
     let credentials = state.credentials.clone();
+    let media_engine = state.media_engine();
 
     tauri::async_runtime::spawn(async move {
         let result = run_gemini(
@@ -227,6 +264,7 @@ pub(crate) async fn gemini_start(
             &credentials,
             request,
             local_media,
+            media_engine,
             &cancellation,
             &on_event,
             job_id,
@@ -350,7 +388,8 @@ async fn resolve_media(
 
 #[allow(
     clippy::too_many_arguments,
-    reason = "the bounded provider run needs the durable job, credential, media, cancellation, channel, and timing boundaries"
+    clippy::too_many_lines,
+    reason = "the bounded provider run keeps speech preflight, credential, upload, streaming, cleanup, and durable job boundaries visibly ordered"
 )]
 async fn run_gemini(
     jobs: &background::DesktopJobs,
@@ -359,11 +398,25 @@ async fn run_gemini(
     >,
     request: GeminiStartRequest,
     local_media: Option<LocalMedia>,
+    media_engine: Option<osg_media::MediaEngine>,
     cancellation: &osg_gemini::CancellationToken,
     channel: &Channel<GeminiJobEvent>,
     job_id: JobId,
     started: Instant,
 ) -> CommandResult<GeminiOutput> {
+    if let Some(output) = empty_speech_output(
+        request.empty_speech_policy,
+        local_media.as_ref(),
+        media_engine,
+        cancellation,
+        job_id,
+        started,
+    )
+    .await?
+    {
+        return Ok(output);
+    }
+
     record_gemini_phase(job_id, "credentialResolve", started);
     let credential_id = request.credential_id;
     let credentials = credentials.clone();
@@ -459,6 +512,76 @@ async fn run_gemini(
     operation
 }
 
+async fn empty_speech_output(
+    policy: Option<EmptySpeechPolicy>,
+    local_media: Option<&LocalMedia>,
+    media_engine: Option<osg_media::MediaEngine>,
+    cancellation: &osg_gemini::CancellationToken,
+    job_id: JobId,
+    started: Instant,
+) -> CommandResult<Option<GeminiOutput>> {
+    if policy != Some(EmptySpeechPolicy::ProvenSilence)
+        || !media_proves_empty_speech(local_media, media_engine, cancellation, job_id, started)
+            .await?
+    {
+        return Ok(None);
+    }
+    Ok(Some(GeminiOutput {
+        text: "[]".to_owned(),
+        usage: None,
+    }))
+}
+
+async fn media_proves_empty_speech(
+    local_media: Option<&LocalMedia>,
+    media_engine: Option<osg_media::MediaEngine>,
+    cancellation: &osg_gemini::CancellationToken,
+    job_id: JobId,
+    started: Instant,
+) -> CommandResult<bool> {
+    record_gemini_phase(job_id, "speechCheckStarted", started);
+    let (Some(media), Some(engine)) = (local_media, media_engine) else {
+        record_gemini_phase(job_id, "speechCheckUnavailable", started);
+        return Ok(false);
+    };
+    let path = media.path().to_owned();
+    let media_cancellation = MediaCancellationToken::default();
+    let cancellation_bridge = media_cancellation.clone();
+    let provider_cancellation = cancellation.clone();
+    let watcher = tauri::async_runtime::spawn(async move {
+        provider_cancellation.cancelled().await;
+        cancellation_bridge.cancel();
+    });
+    let speech_check = tauri::async_runtime::spawn_blocking(move || {
+        let input = NativeMediaInput::from_native_selection(path)?;
+        let control = RunControl::new(SPEECH_CHECK_TIMEOUT)?.with_cancellation(media_cancellation);
+        let metadata = engine.probe(&input, &control)?;
+        if metadata.primary_audio().is_none() {
+            return Ok::<_, osg_media::MediaError>(true);
+        }
+        engine.audio_is_exactly_silent(&input, &control)
+    })
+    .await;
+    watcher.abort();
+    if cancellation.is_cancelled() {
+        return Err(osg_gemini::Error::Cancelled.into());
+    }
+    match speech_check {
+        Ok(Ok(true)) => {
+            record_gemini_phase(job_id, "speechAbsent", started);
+            Ok(true)
+        }
+        Ok(Ok(false)) => {
+            record_gemini_phase(job_id, "speechPresent", started);
+            Ok(false)
+        }
+        Ok(Err(_)) | Err(_) => {
+            record_gemini_phase(job_id, "speechCheckUnavailable", started);
+            Ok(false)
+        }
+    }
+}
+
 fn record_gemini_phase(job_id: JobId, phase: &'static str, started: Instant) {
     diagnostics::record(
         "gemini.phase",
@@ -478,7 +601,7 @@ fn elapsed_millis(started: Instant) -> String {
 mod tests {
     use serde_json::json;
 
-    use super::{GeminiJobEvent, GeminiStartRequest, GeminiTask};
+    use super::{EmptySpeechPolicy, GeminiJobEvent, GeminiStartRequest, GeminiTask};
 
     #[test]
     fn tasks_map_to_their_durable_job_kinds() {
@@ -544,6 +667,28 @@ mod tests {
         .expect("optional media ID has a valid wire shape");
         assert!(missing_media.validate().is_err());
 
+        let unsupported_thinking = serde_json::from_value::<GeminiStartRequest>(json!({
+            "credentialId": credential_id,
+            "task": "transcribe",
+            "model": "gemini-3.7-flash",
+            "prompt": "transcribe",
+            "mediaAssetId": osg_domain::AssetId::new(),
+            "thinkingLevel": "MINIMAL"
+        }))
+        .expect("the provider-rejected level has a valid wire shape");
+        assert!(unsupported_thinking.validate().is_err());
+
+        let supported_thinking = serde_json::from_value::<GeminiStartRequest>(json!({
+            "credentialId": credential_id,
+            "task": "transcribe",
+            "model": "gemini-3.7-flash",
+            "prompt": "transcribe",
+            "mediaAssetId": osg_domain::AssetId::new(),
+            "thinkingLevel": "LOW"
+        }))
+        .expect("the verified level has a valid wire shape");
+        assert!(supported_thinking.validate().is_ok());
+
         assert!(
             serde_json::from_value::<GeminiStartRequest>(json!({
                 "credentialId": credential_id,
@@ -551,6 +696,61 @@ mod tests {
                 "model": "gemini-3.5-flash-lite",
                 "prompt": "transcribe",
                 "temperature": 0.7
+            }))
+            .is_err()
+        );
+
+        let speech_only = serde_json::from_value::<GeminiStartRequest>(json!({
+            "credentialId": credential_id,
+            "task": "transcribe",
+            "model": "gemini-3.5-flash-lite",
+            "prompt": "transcribe",
+            "mediaAssetId": osg_domain::AssetId::new(),
+            "emptySpeechPolicy": "provenSilence"
+        }))
+        .expect("the explicit speech-only policy has a valid wire shape");
+        assert_eq!(
+            speech_only.empty_speech_policy,
+            Some(EmptySpeechPolicy::ProvenSilence)
+        );
+        assert!(speech_only.validate().is_ok());
+
+        let non_transcription = serde_json::from_value::<GeminiStartRequest>(json!({
+            "credentialId": credential_id,
+            "task": "translate",
+            "model": "gemini-3.5-flash-lite",
+            "prompt": "translate",
+            "emptySpeechPolicy": "provenSilence"
+        }))
+        .expect("the policy is rejected semantically rather than by shape");
+        assert!(non_transcription.validate().is_err());
+
+        let custom_text = serde_json::from_value::<GeminiStartRequest>(json!({
+            "credentialId": credential_id,
+            "task": "translate",
+            "model": "gemini-3.8-flash",
+            "prompt": "translate"
+        }))
+        .expect("a bounded custom model ID has a valid wire shape");
+        assert!(custom_text.model.is_custom());
+        assert!(custom_text.validate().is_ok());
+
+        let custom_media = serde_json::from_value::<GeminiStartRequest>(json!({
+            "credentialId": credential_id,
+            "task": "transcribe",
+            "model": "gemini-3.8-flash",
+            "prompt": "transcribe",
+            "mediaAssetId": osg_domain::AssetId::new()
+        }))
+        .expect("custom media is rejected semantically");
+        assert!(custom_media.validate().is_err());
+
+        assert!(
+            serde_json::from_value::<GeminiStartRequest>(json!({
+                "credentialId": credential_id,
+                "task": "translate",
+                "model": "models/gemini-3.8-flash",
+                "prompt": "translate"
             }))
             .is_err()
         );

@@ -144,6 +144,7 @@ export const createNativeDownloadPreflight = ({
   readCatalog = getNativeToolsCatalog,
   readStatus = getNativeToolsStatus,
   install = installNativeTool,
+  refreshDownloader = async () => Object.freeze({ updated: false, throttled: false }),
   presentation = defaultPresentation,
   t = i18n.t.bind(i18n),
   installTimeoutMs = DEFAULT_INSTALL_TIMEOUT_MS,
@@ -300,7 +301,12 @@ export const createNativeDownloadPreflight = ({
 
   const ensureInspectionReady = async (readiness, rawOptions) => {
     const options = validateOptions(rawOptions);
-    if (readiness?.inspectAvailable === true) return Object.freeze({ ready: true });
+    if (readiness?.inspectAvailable === true) {
+      // Keep an already healthy installation current before it produces new capabilities.
+      // Refresh failure is non-blocking: the verified active version remains usable offline.
+      await Promise.resolve(refreshDownloader()).catch(() => undefined);
+      return Object.freeze({ ready: true });
+    }
     return ensureRequiredTools(MANAGED_DOWNLOAD_TOOL_IDS, options);
   };
 
@@ -326,8 +332,6 @@ export const createNativeDownloadPreflight = ({
     },
   });
 };
-
-const nativeDownloadPreflight = createNativeDownloadPreflight();
 
 let automaticRecovery = null;
 let lastAutomaticRecovery = Number.NEGATIVE_INFINITY;
@@ -415,7 +419,16 @@ export const recoverNativeDownloaderAfterFailure = async ({
     if (event.restartRequired || event.deferred) {
       throw failure('nativeToolHealthFailed', t('download.nativeTools.healthFailed'));
     }
-    return Object.freeze({ updated: true, throttled: false });
+    const refreshedStatus = await readStatus();
+    const refreshed = refreshedStatus.tools.find((entry) => entry.id === 'yt-dlp');
+    const updated = typeof installed.version === 'string'
+      && typeof refreshed?.version === 'string'
+      && refreshed.version !== installed.version
+      && refreshed.installed === true
+      && refreshed.activeRuntime === true
+      && refreshed.pendingRemoval === false
+      && refreshed.operation === null;
+    return Object.freeze({ updated, throttled: false });
   })().catch((error) => {
     safeCall(presentation.dismiss, TOOL_PROGRESS_TOAST_KEY);
     return Object.freeze({ updated: false, throttled: false, error: error?.code ?? 'failed' });
@@ -430,6 +443,10 @@ export const resetNativeDownloaderRecoveryForTest = () => {
   automaticRecovery = null;
   lastAutomaticRecovery = Number.NEGATIVE_INFINITY;
 };
+
+const nativeDownloadPreflight = createNativeDownloadPreflight({
+  refreshDownloader: recoverNativeDownloaderAfterFailure,
+});
 
 export const ensureNativeDownloadInspectionReady = (
   readiness,

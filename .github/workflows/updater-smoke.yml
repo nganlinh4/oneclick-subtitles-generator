@@ -43,6 +43,11 @@ jobs:
             package-lock.json
             apps/desktop/package-lock.json
 
+      - name: Derive immutable updater smoke versions
+        id: updater_versions
+        shell: pwsh
+        run: node scripts/derive-updater-smoke-version.js --github-output $env:GITHUB_OUTPUT
+
       - name: Use pinned Python
         uses: actions/setup-python@a309ff8b426b58ec0e2a45f0f869d46889d02405 # v6.2.0
         with:
@@ -98,16 +103,18 @@ jobs:
 
       - name: Install base and create durable lifecycle state
         shell: pwsh
+        env:
+          OSG_UPDATER_BASE_VERSION: ${{ steps.updater_versions.outputs.base }}
         run: |
-          $baseVersion = (Get-Content -LiteralPath 'package.json' -Raw | ConvertFrom-Json).version
           ./scripts/test-installed-windows.ps1 `
             -InstallerPath (Join-Path $env:RUNNER_TEMP 'osg-base-installer.exe') `
-            -ExpectedVersion $baseVersion `
+            -ExpectedVersion $env:OSG_UPDATER_BASE_VERSION `
             -ResultPath (Join-Path $env:RUNNER_TEMP 'osg-installed-base.json')
 
       - name: Build signed fixture update
         shell: pwsh
         env:
+          OSG_UPDATER_UPDATED_VERSION: ${{ steps.updater_versions.outputs.updated }}
           TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
           TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
         run: |
@@ -118,7 +125,7 @@ jobs:
           [IO.File]::WriteAllText(
             $overridePath,
             (@{
-              version = '1.0.0-rc.2'
+              version = $env:OSG_UPDATER_UPDATED_VERSION
               build = @{ beforeBuildCommand = '' }
             } | ConvertTo-Json -Depth 3 -Compress),
             [Text.UTF8Encoding]::new($false)
@@ -133,6 +140,8 @@ jobs:
 
       - name: Validate signed updater and create strict HTTPS fixture
         shell: pwsh
+        env:
+          OSG_UPDATER_UPDATED_VERSION: ${{ steps.updater_versions.outputs.updated }}
         run: |
           node scripts/check-release-artifacts.js --target x86_64-pc-windows-msvc --bundles nsis
           $bundle = "target\x86_64-pc-windows-msvc\release\bundle\nsis"
@@ -145,7 +154,7 @@ jobs:
           Copy-Item -LiteralPath $installer[0].FullName -Destination (Join-Path $fixture 'update.exe')
           $signature = (Get-Content -LiteralPath "$($installer[0].FullName).sig" -Raw).Trim()
           $manifest = [ordered]@{
-            version = '1.0.0-rc.2'
+            version = $env:OSG_UPDATER_UPDATED_VERSION
             notes = 'Isolated signed updater lifecycle verification'
             pub_date = [DateTime]::UtcNow.ToString('o')
             platforms = [ordered]@{
@@ -163,13 +172,15 @@ jobs:
 
       - name: Install through the real startup updater and verify relaunch persistence
         shell: pwsh
+        env:
+          OSG_UPDATER_BASE_VERSION: ${{ steps.updater_versions.outputs.base }}
+          OSG_UPDATER_UPDATED_VERSION: ${{ steps.updater_versions.outputs.updated }}
         run: |
-          $baseVersion = (Get-Content -LiteralPath 'package.json' -Raw | ConvertFrom-Json).version
           ./scripts/test-signed-updater-windows.ps1 `
             -InstalledResultPath (Join-Path $env:RUNNER_TEMP 'osg-installed-base.json') `
             -FixtureRoot (Join-Path $env:RUNNER_TEMP 'osg-signed-updater-fixture') `
-            -BaseVersion $baseVersion `
-            -UpdatedVersion '1.0.0-rc.2'
+            -BaseVersion $env:OSG_UPDATER_BASE_VERSION `
+            -UpdatedVersion $env:OSG_UPDATER_UPDATED_VERSION
 
       - name: Upload bounded updater evidence
         if: always()

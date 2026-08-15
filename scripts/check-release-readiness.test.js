@@ -1982,6 +1982,10 @@ test('signed updater smoke is isolated, signed, installed, and persistent', () =
     'workflow_dispatch:',
     'OSG_ENABLE_SIGNED_UPDATER_FIXTURE: "1"',
     'production,ci-updater-fixture',
+    'id: updater_versions',
+    'node scripts/derive-updater-smoke-version.js --github-output $env:GITHUB_OUTPUT',
+    '${{ steps.updater_versions.outputs.base }}',
+    '${{ steps.updater_versions.outputs.updated }}',
     './scripts/prepare-tauri-nsis.ps1',
     './scripts/test-signed-updater-windows.ps1',
     "url = 'https://localhost:38443/update.exe'",
@@ -1998,6 +2002,30 @@ test('signed updater smoke is isolated, signed, installed, and persistent', () =
   assert.throws(() => assertUpdaterSmokeWorkflow(
     `${UPDATER_SMOKE_WORKFLOW}\n# \${{ secrets.UNREVIEWED_SECRET }}\n`,
   ), /two reviewed updater signing secrets/);
+  assert.throws(() => assertUpdaterSmokeWorkflow(
+    UPDATER_SMOKE_WORKFLOW.replace(
+      '  workflow_dispatch:\n  workflow_call:',
+      '  workflow_dispatch:\n    inputs:\n      version:\n        required: true\n  workflow_call:',
+    ),
+  ), /input-free/);
+  assert.throws(() => assertUpdaterSmokeWorkflow(
+    UPDATER_SMOKE_WORKFLOW.replace(
+      'version = $env:OSG_UPDATER_UPDATED_VERSION',
+      "version = '1.0.1'",
+    ),
+  ), /immutable derived versions/);
+  assert.throws(() => assertUpdaterSmokeWorkflow(
+    UPDATER_SMOKE_WORKFLOW.replace(
+      'OSG_UPDATER_UPDATED_VERSION: ${{ steps.updater_versions.outputs.updated }}',
+      'OSG_UPDATER_UPDATED_VERSION: ${{ steps.updater_versions.outputs.base }}',
+    ),
+  ), /immutable derived versions/);
+  assert.throws(() => assertUpdaterSmokeWorkflow(
+    UPDATER_SMOKE_WORKFLOW.replace(
+      'run: node scripts/derive-updater-smoke-version.js --github-output $env:GITHUB_OUTPUT',
+      'run: node scripts/derive-updater-smoke-version.js --github-output $env:GITHUB_ENV',
+    ),
+  ), /(?:missing required boundary|immutable repository version contract)/);
   for (const argument of [
     '-CacheRoot C:\\unreviewed',
     '-ScratchRoot C:\\unreviewed',
@@ -2018,6 +2046,22 @@ test('signed updater smoke is isolated, signed, installed, and persistent', () =
     )),
     /Signed updater smoke/,
     'signed updater must reject an NSIS bootstrap command hidden in a YAML scalar',
+  );
+});
+
+test('package scripts name inspector contracts honestly and exercise updater derivation', () => {
+  const packageManifest = JSON.parse(fs.readFileSync(
+    path.join(__dirname, '..', 'package.json'),
+    'utf8',
+  ));
+  assert.equal(packageManifest.scripts['test:installed-webview'], undefined);
+  assert.match(
+    packageManifest.scripts['test:installed-inspector-contracts'],
+    /^node --test scripts\/inspect-installed-webview\.test\.mjs /,
+  );
+  assert.equal(
+    packageManifest.scripts['test:updater-fixture'],
+    'node --test scripts/derive-updater-smoke-version.test.js scripts/serve-updater-fixture.test.mjs scripts/inspect-installed-updater.test.mjs',
   );
 });
 
@@ -2160,6 +2204,13 @@ test('signed updater runner uses isolated HTTPS, the real toast, NSIS relaunch, 
   assert.doesNotThrow(() => assertSignedUpdaterScript(
     SIGNED_UPDATER_SCRIPT.replace(/\r?\n/g, '\r\n'),
   ));
+  assert.throws(
+    () => assertSignedUpdaterScript(SIGNED_UPDATER_SCRIPT.replace(
+      "  '--assert-contract' `",
+      "  '--unchecked-contract' `",
+    )),
+    /(?:missing lifecycle proof|repository-derived increasing version contract)/,
+  );
   assert.throws(
     () => assertSignedUpdaterScript(SIGNED_UPDATER_SCRIPT.replace(
       "            -and [string]$_.webviewDebug -ceq 'present' `",

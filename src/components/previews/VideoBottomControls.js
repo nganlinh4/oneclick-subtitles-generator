@@ -41,7 +41,7 @@ const VideoBottomControls = ({
   setControlsVisible,
   setIsVideoHovered,
   hideControlsTimeoutRef,
-  videoSource: _videoSource,
+  videoSource,
   fileType
 }) => {
   const wavyProgressRef = useRef(null);
@@ -314,6 +314,7 @@ const VideoBottomControls = ({
           setIsSpeedMenuVisible={setIsSpeedMenuVisible}
           isCompactMode={isCompactMode}
           isAudioFile={isAudioFile}
+          videoSource={videoSource}
         />
 
         {/* Fullscreen button */}

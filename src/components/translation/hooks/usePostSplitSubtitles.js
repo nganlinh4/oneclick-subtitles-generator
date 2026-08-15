@@ -1,66 +1,59 @@
-import { useState, useEffect } from 'react';
-import { autoSplitSubtitles, countWords } from '../../../utils/subtitle/splitUtils';
+import { useMemo, useState, useEffect } from 'react';
+import { autoSplitSubtitle, countWords } from '../../../utils/subtitle/splitUtils';
+
+const readInitialLimit = () => {
+  try {
+    const saved = localStorage.getItem('translation_post_split_max_words');
+    const parsed = /^(0|[1-9]\d*)$/.test(saved ?? '') ? Number(saved) : 31;
+    if (!Number.isFinite(parsed) || parsed === 0) return 31;
+    return Math.min(31, Math.max(1, parsed));
+  } catch {
+    return 31;
+  }
+};
 
 /**
- * Manage the post-split "max words per subtitle" setting and apply it to
- * translated subtitles.
- *
- * Values range 1–30, with 31 meaning "Unlimited". Persists to localStorage.
- *
- * @param {Object} params
- * @param {Array} params.translatedSubtitles - Current translated subtitles
- * @param {Function} params.updateTranslatedSubtitles - Setter for translated subtitles
- * @returns {{ postSplitMaxWords: number, setPostSplitMaxWords: Function }}
+ * Compute a presentation-only post-split view. The durable base translation is never replaced.
  */
-const usePostSplitSubtitles = ({ translatedSubtitles, updateTranslatedSubtitles }) => {
-  // Post-split translated subtitles (1–30 and Unlimited=31). Default: Unlimited
-  const [postSplitMaxWords, setPostSplitMaxWords] = useState(() => {
-    const saved = localStorage.getItem('translation_post_split_max_words');
-    let num = saved ? parseInt(saved, 10) : 31; // Default Unlimited (31)
-    if (!Number.isFinite(num)) num = 31;
-    // Migrate legacy 0 (old Unlimited) to 31
-    if (num === 0) num = 31;
-    // Clamp to [1..31]
-    if (num < 1) num = 1;
-    if (num > 31) num = 31;
-    return num;
-  });
+const usePostSplitSubtitles = ({ translatedSubtitles }) => {
+  const [postSplitMaxWords, setPostSplitMaxWords] = useState(readInitialLimit);
 
-  // Persist post-split setting
   useEffect(() => {
     try {
       localStorage.setItem('translation_post_split_max_words', String(postSplitMaxWords));
     } catch {
-      // Persistence is best-effort in restricted storage contexts.
+      // This display preference is best-effort.
     }
   }, [postSplitMaxWords]);
 
-  // Apply post-split to translated subtitles when needed
-  useEffect(() => {
-    if (!Array.isArray(translatedSubtitles) || translatedSubtitles.length === 0) return;
-
-    const v = Number(postSplitMaxWords);
-    if (!Number.isFinite(v) || v >= 31) return; // Unlimited
-
-    const limit = Math.max(1, v);
-
-    // Only split when any subtitle exceeds the limit
-    const exceeds = translatedSubtitles.some(s => countWords(s?.text || '') > limit);
-    if (!exceeds) return;
-
-    const split = autoSplitSubtitles(translatedSubtitles, limit);
-    updateTranslatedSubtitles(split);
-
-    try {
-      window.dispatchEvent(new CustomEvent('translation-updated', {
-        detail: { translatedSubtitles: split, source: 'post-split' }
-      }));
-    } catch {
-      // Custom events are best-effort in non-browser test environments.
+  const presentedSubtitles = useMemo(() => {
+    if (!Array.isArray(translatedSubtitles) || translatedSubtitles.length === 0) {
+      return translatedSubtitles;
     }
-  }, [translatedSubtitles, postSplitMaxWords, updateTranslatedSubtitles]);
+    const value = Number(postSplitMaxWords);
+    if (!Number.isFinite(value) || value >= 31) return translatedSubtitles;
+    const limit = Math.max(1, value);
+    if (!translatedSubtitles.some((subtitle) => countWords(subtitle?.text || '') > limit)) {
+      return translatedSubtitles;
+    }
+    let presentationOrder = 0;
+    const derived = translatedSubtitles.flatMap((base) => (
+      autoSplitSubtitle(base, limit).map((subtitle, splitIndex) => {
+        presentationOrder += 1;
+        return Object.freeze({
+          ...subtitle,
+          id: `translation-presentation-${presentationOrder}`,
+          originalId: base.originalId,
+          sourceOrder: base.sourceOrder,
+          derivedSplitIndex: splitIndex,
+          derivedFromTranslation: true,
+        });
+      })
+    ));
+    return Object.freeze(derived);
+  }, [postSplitMaxWords, translatedSubtitles]);
 
-  return { postSplitMaxWords, setPostSplitMaxWords };
+  return { postSplitMaxWords, setPostSplitMaxWords, presentedSubtitles };
 };
 
 export default usePostSplitSubtitles;

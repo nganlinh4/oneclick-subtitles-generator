@@ -128,10 +128,12 @@ impl LazySpeechWorker {
             Some(request.text().bytes_len()),
             control,
         )?;
+        reject_if_cancelled(control)?;
         let Reply::Artifact(artifact) = reply else {
             return Err(SpeechError::Protocol("unexpected worker response"));
         };
         emit(control, request.segment_id(), SpeechPhase::Publishing, 0)?;
+        reject_if_cancelled(control)?;
         let result = staged.verify_and_publish(output.final_path(), output.format(), artifact);
         if matches!(
             result,
@@ -140,12 +142,20 @@ impl LazySpeechWorker {
             self.invalidate();
         }
         let result = result?;
+        if control.is_cancelled() {
+            let _ = std::fs::remove_file(result.native_path());
+            return Err(SpeechError::Cancelled);
+        }
         emit(
             control,
             request.segment_id(),
             SpeechPhase::Publishing,
             1_000_000,
         )?;
+        if control.is_cancelled() {
+            let _ = std::fs::remove_file(result.native_path());
+            return Err(SpeechError::Cancelled);
+        }
         Ok(result)
     }
 
@@ -177,6 +187,7 @@ impl LazySpeechWorker {
             output_format: AudioFormat::Wav,
         };
         let reply = self.transact(command, ExpectedReply::Artifact, None, None, control)?;
+        reject_if_cancelled(control)?;
         let Reply::Artifact(artifact) = reply else {
             return Err(SpeechError::Protocol("unexpected worker response"));
         };
@@ -187,7 +198,12 @@ impl LazySpeechWorker {
         ) {
             self.invalidate();
         }
-        result
+        let result = result?;
+        if control.is_cancelled() {
+            let _ = std::fs::remove_file(result.native_path());
+            return Err(SpeechError::Cancelled);
+        }
+        Ok(result)
     }
 
     /// Normalizes a host-selected F5 reference into the exact worker contract.
@@ -222,6 +238,7 @@ impl LazySpeechWorker {
             output_format: AudioFormat::Wav,
         };
         let reply = self.transact(command, ExpectedReply::Artifact, None, None, control)?;
+        reject_if_cancelled(control)?;
         let Reply::Artifact(artifact) = reply else {
             return Err(SpeechError::Protocol("unexpected worker response"));
         };
@@ -232,7 +249,12 @@ impl LazySpeechWorker {
         ) {
             self.invalidate();
         }
-        result
+        let result = result?;
+        if control.is_cancelled() {
+            let _ = std::fs::remove_file(result.native_path());
+            return Err(SpeechError::Cancelled);
+        }
+        Ok(result)
     }
 
     pub fn list_voices(&self, control: &RunControl) -> Result<VoiceInventory> {
@@ -240,6 +262,7 @@ impl LazySpeechWorker {
             backend: self.backend,
         };
         let reply = self.transact(command, ExpectedReply::Voices, None, None, control)?;
+        reject_if_cancelled(control)?;
         let Reply::Voices(voices) = reply else {
             return Err(SpeechError::Protocol("unexpected worker response"));
         };
@@ -551,6 +574,14 @@ fn emit_optional(
     let progress = SpeechProgress::new(segment_id.cloned(), phase, fraction)?;
     control.emit(&progress);
     Ok(())
+}
+
+fn reject_if_cancelled(control: &RunControl) -> Result<()> {
+    if control.is_cancelled() {
+        Err(SpeechError::Cancelled)
+    } else {
+        Ok(())
+    }
 }
 
 fn lock_with_control<'a>(

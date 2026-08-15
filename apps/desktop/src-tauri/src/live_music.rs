@@ -61,6 +61,10 @@ fn invalid_session() -> CommandError {
     CommandError::invalid_input("The live music session is invalid or no longer active.")
 }
 
+fn invalid_start_operation() -> CommandError {
+    CommandError::invalid_input("The live music start operation is invalid.")
+}
+
 fn runtime_busy() -> CommandError {
     CommandError::invalid_input("A live music session is already active.")
 }
@@ -74,6 +78,14 @@ fn require_session_id(id: Uuid) -> CommandResult<Uuid> {
         Ok(id)
     } else {
         Err(invalid_session())
+    }
+}
+
+fn require_start_operation_id(id: Uuid) -> CommandResult<Uuid> {
+    if id.get_version() == Some(Version::SortRand) {
+        Ok(id)
+    } else {
+        Err(invalid_start_operation())
     }
 }
 
@@ -230,6 +242,7 @@ impl LiveMusicPublicError {
 #[derive(Clone)]
 struct ActiveSession {
     id: Uuid,
+    start_operation_id: Uuid,
     commands: mpsc::Sender<ClientCommand>,
     cancellation: CancellationToken,
 }
@@ -266,14 +279,18 @@ impl LiveMusicRuntime {
             .ok_or_else(invalid_session)
     }
 
-    async fn cancellation(&self, id: Uuid) -> CommandResult<CancellationToken> {
-        let id = require_session_id(id)?;
+    async fn rollback_start(&self, start_operation_id: Uuid) -> CommandResult<bool> {
+        let start_operation_id = require_start_operation_id(start_operation_id)?;
         let active = self.inner.active.lock().await;
-        active
+        let Some(cancellation) = active
             .as_ref()
-            .filter(|session| session.id == id)
+            .filter(|session| session.start_operation_id == start_operation_id)
             .map(|session| session.cancellation.clone())
-            .ok_or_else(invalid_session)
+        else {
+            return Ok(false);
+        };
+        cancellation.cancel();
+        Ok(true)
     }
 
     async fn clear_if_current(&self, id: Uuid) {
@@ -292,10 +309,12 @@ impl LiveMusicRuntime {
 pub(crate) async fn live_music_start(
     state: State<'_, DesktopState>,
     runtime: State<'_, LiveMusicRuntime>,
+    start_operation_id: Uuid,
     request: LiveMusicStartRequest,
     on_event: Channel<LiveMusicEvent>,
     on_audio: Channel<InvokeResponseBody>,
 ) -> CommandResult<LiveMusicSessionSnapshot> {
+    let start_operation_id = require_start_operation_id(start_operation_id)?;
     let prompts = native_prompts(request.weighted_prompts)?;
     let mut active = runtime.inner.active.lock().await;
     if active.is_some() {
@@ -315,6 +334,7 @@ pub(crate) async fn live_music_start(
     let cancellation = CancellationToken::new();
     *active = Some(ActiveSession {
         id: session_id,
+        start_operation_id,
         commands: command_tx,
         cancellation: cancellation.clone(),
     });
@@ -378,6 +398,14 @@ pub(crate) async fn live_music_start(
 }
 
 #[tauri::command]
+pub(crate) async fn live_music_rollback_start(
+    runtime: State<'_, LiveMusicRuntime>,
+    start_operation_id: Uuid,
+) -> CommandResult<bool> {
+    runtime.rollback_start(start_operation_id).await
+}
+
+#[tauri::command]
 pub(crate) async fn live_music_update(
     runtime: State<'_, LiveMusicRuntime>,
     session_id: Uuid,
@@ -407,17 +435,23 @@ pub(crate) async fn live_music_control(
 #[tauri::command]
 pub(crate) async fn live_music_close(
     runtime: State<'_, LiveMusicRuntime>,
-    session_id: Uuid,
+    start_operation_id: Uuid,
 ) -> CommandResult<()> {
-    runtime.cancellation(session_id).await?.cancel();
-    Ok(())
+    if runtime.rollback_start(start_operation_id).await? {
+        Ok(())
+    } else {
+        Err(invalid_session())
+    }
 }
 
 #[cfg(test)]
 mod tests {
+    use tokio::sync::mpsc;
+    use tokio_util::sync::CancellationToken;
+
     use super::{
-        LiveMusicEvent, LiveMusicSessionSnapshot, WeightedPromptRequest, native_prompts,
-        require_session_id,
+        ActiveSession, LiveMusicEvent, LiveMusicRuntime, LiveMusicSessionSnapshot,
+        WeightedPromptRequest, native_prompts, require_session_id,
     };
 
     #[test]
@@ -471,5 +505,30 @@ mod tests {
             Some(snapshot.id.to_string().as_str())
         );
         assert!(wire.get("session_id").is_none());
+    }
+
+    #[tokio::test]
+    async fn start_rollback_cancels_only_the_exact_operation_owner() {
+        let runtime = LiveMusicRuntime::default();
+        let owner = uuid::Uuid::now_v7();
+        let unrelated = uuid::Uuid::now_v7();
+        let cancellation = CancellationToken::new();
+        let (commands, _receiver) = mpsc::channel(1);
+        *runtime.inner.active.lock().await = Some(ActiveSession {
+            id: uuid::Uuid::now_v7(),
+            start_operation_id: owner,
+            commands,
+            cancellation: cancellation.clone(),
+        });
+
+        assert!(
+            !runtime
+                .rollback_start(unrelated)
+                .await
+                .expect("unrelated rollback")
+        );
+        assert!(!cancellation.is_cancelled());
+        assert!(runtime.rollback_start(owner).await.expect("owned rollback"));
+        assert!(cancellation.is_cancelled());
     }
 }

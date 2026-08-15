@@ -1,5 +1,6 @@
 import { invokeDesktop } from './desktopRuntime';
 import { resolveProjectForCache } from './subtitleProjectStore';
+import { cloneTranslationRecord } from '../utils/translationOwnership';
 
 export const MAX_PROJECT_AUXILIARY_BYTES = 900 * 1024;
 
@@ -32,20 +33,45 @@ const cloneJson = (value, field) => {
 };
 
 const normalizeValue = (value) => {
-  if (!value || value.schemaVersion !== AUXILIARY_SCHEMA_VERSION) {
+  let descriptors = null;
+  try {
+    descriptors = value && typeof value === 'object' && !Array.isArray(value)
+      && Object.getPrototypeOf(value) === Object.prototype
+      ? Object.getOwnPropertyDescriptors(value)
+      : null;
+  } catch {
+    descriptors = null;
+  }
+  const read = (key) => {
+    const descriptor = descriptors?.[key];
+    return descriptor && Object.prototype.hasOwnProperty.call(descriptor, 'value')
+      ? descriptor.value
+      : undefined;
+  };
+  if (!descriptors || read('schemaVersion') !== AUXILIARY_SCHEMA_VERSION) {
     return {
       schemaVersion: AUXILIARY_SCHEMA_VERSION,
       userSubtitles: null,
       transcriptionRules: null,
+      translation: null,
     };
+  }
+
+  let translation = null;
+  try {
+    const candidate = read('translation');
+    translation = candidate == null ? null : cloneTranslationRecord(candidate);
+  } catch {
+    // An invalid nested record is ignored as a whole; it must never partially hydrate.
   }
 
   return {
     schemaVersion: AUXILIARY_SCHEMA_VERSION,
-    userSubtitles: typeof value.userSubtitles === 'string' ? value.userSubtitles : null,
-    transcriptionRules: value.transcriptionRules == null
+    userSubtitles: typeof read('userSubtitles') === 'string' ? read('userSubtitles') : null,
+    transcriptionRules: read('transcriptionRules') == null
       ? null
-      : cloneJson(value.transcriptionRules, 'transcriptionRules'),
+      : cloneJson(read('transcriptionRules'), 'transcriptionRules'),
+    translation,
   };
 };
 
@@ -65,29 +91,56 @@ export const createProjectAuxiliaryStore = ({
 
   const settingKey = (projectId) => `${AUXILIARY_KEY_PREFIX}${projectId}`;
 
-  const resolve = async (cacheId, create) => {
+  const resolve = async (cacheId, create, expectedProjectId = null) => {
     const project = await resolveProject(cacheId, { create });
+    if (expectedProjectId !== null && project?.projectId !== expectedProjectId) {
+      throw new ProjectAuxiliaryStoreError(
+        'projectScopeMismatch',
+        'The active auxiliary project changed before it could be accessed'
+      );
+    }
     return project == null ? null : {
       ...project,
       key: settingKey(project.projectId),
     };
   };
 
-  const read = (cacheId) => enqueue(async () => {
-    const project = await resolve(cacheId, false);
+  const read = (cacheId, { expectedProjectId = null } = {}) => enqueue(async () => {
+    const project = await resolve(cacheId, false, expectedProjectId);
     if (project === null) return null;
-    return normalizeValue(await invokeCommand('setting_get', { key: project.key }));
+    const value = normalizeValue(await invokeCommand('setting_get', { key: project.key }));
+    // The native read is an async ownership boundary. Re-resolve the alias before exposing it.
+    await resolve(cacheId, false, project.projectId);
+    return value;
   });
 
-  const patch = (cacheId, changes) => enqueue(async () => {
-    if (!changes || typeof changes !== 'object' || Array.isArray(changes)) {
+  const patch = (
+    cacheId,
+    changes,
+    { expectedProjectId = null, expectedTranslationRevision = undefined } = {}
+  ) => enqueue(async () => {
+    let changeDescriptors = null;
+    try {
+      changeDescriptors = changes && typeof changes === 'object' && !Array.isArray(changes)
+        && Object.getPrototypeOf(changes) === Object.prototype
+        ? Object.getOwnPropertyDescriptors(changes)
+        : null;
+    } catch {
+      changeDescriptors = null;
+    }
+    const changeKeys = changeDescriptors ? Reflect.ownKeys(changeDescriptors) : [];
+    if (!changeDescriptors || changeKeys.some((key) => (
+      typeof key !== 'string'
+      || !Object.prototype.hasOwnProperty.call(changeDescriptors[key], 'value')
+    ))) {
       throw new ProjectAuxiliaryStoreError(
         'invalidProjectAuxiliaryData',
-        'Project auxiliary changes must be an object'
+        'Project auxiliary changes must be a plain data object'
       );
     }
-    const unknown = Object.keys(changes).filter((key) => (
-      key !== 'userSubtitles' && key !== 'transcriptionRules'
+    const readChange = (key) => changeDescriptors[key]?.value;
+    const unknown = changeKeys.filter((key) => (
+      key !== 'userSubtitles' && key !== 'transcriptionRules' && key !== 'translation'
     ));
     if (unknown.length > 0) {
       throw new ProjectAuxiliaryStoreError(
@@ -96,12 +149,25 @@ export const createProjectAuxiliaryStore = ({
       );
     }
 
-    const project = await resolve(cacheId, true);
+    // The expected ID is checked inside the same queued operation that chooses
+    // the native settings key. A caller cannot validate one alias and then
+    // accidentally write another project if the alias changes in between.
+    const project = await resolve(cacheId, expectedProjectId === null, expectedProjectId);
     const current = normalizeValue(await invokeCommand('setting_get', { key: project.key }));
+    if (expectedTranslationRevision !== undefined) {
+      const currentRevision = current.translation?.revision ?? null;
+      if (currentRevision !== expectedTranslationRevision) {
+        throw new ProjectAuxiliaryStoreError(
+          'translationRevisionConflict',
+          'The durable translation changed before this revision could be saved',
+          { currentRevision }
+        );
+      }
+    }
     const next = { ...current };
 
-    if (Object.prototype.hasOwnProperty.call(changes, 'userSubtitles')) {
-      const value = changes.userSubtitles;
+    if (Object.prototype.hasOwnProperty.call(changeDescriptors, 'userSubtitles')) {
+      const value = readChange('userSubtitles');
       if (value !== null && typeof value !== 'string') {
         throw new ProjectAuxiliaryStoreError(
           'invalidProjectAuxiliaryData',
@@ -110,14 +176,21 @@ export const createProjectAuxiliaryStore = ({
       }
       next.userSubtitles = value;
     }
-    if (Object.prototype.hasOwnProperty.call(changes, 'transcriptionRules')) {
-      next.transcriptionRules = changes.transcriptionRules == null
+    if (Object.prototype.hasOwnProperty.call(changeDescriptors, 'transcriptionRules')) {
+      next.transcriptionRules = readChange('transcriptionRules') == null
         ? null
-        : cloneJson(changes.transcriptionRules, 'transcriptionRules');
+        : cloneJson(readChange('transcriptionRules'), 'transcriptionRules');
+    }
+    if (Object.prototype.hasOwnProperty.call(changeDescriptors, 'translation')) {
+      next.translation = readChange('translation') == null
+        ? null
+        : cloneTranslationRecord(readChange('translation'));
     }
 
-    if (next.userSubtitles === null && next.transcriptionRules === null) {
+    if (next.userSubtitles === null && next.transcriptionRules === null
+        && next.translation === null) {
       await invokeCommand('setting_delete', { key: project.key });
+      await resolve(cacheId, false, project.projectId);
       return next;
     }
     if (encodedLength(next) > MAX_PROJECT_AUXILIARY_BYTES) {
@@ -127,6 +200,8 @@ export const createProjectAuxiliaryStore = ({
       );
     }
     await invokeCommand('setting_set', { key: project.key, value: next });
+    // A successful setting write is not an acknowledgement for a remapped alias.
+    await resolve(cacheId, false, project.projectId);
     return next;
   });
 

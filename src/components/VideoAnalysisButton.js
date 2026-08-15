@@ -1,8 +1,20 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { useTranslation } from 'react-i18next';
 import TranscriptionRulesEditor from './TranscriptionRulesEditor';
-import { analyzeVideoAndWaitForUserChoice } from '../utils/videoProcessing/analysisUtils';
-import { setTranscriptionRules, getTranscriptionRulesSync, clearTranscriptionRules } from '../utils/transcriptionRulesStore';
+import {
+  analyzeVideoAndWaitForUserChoice,
+  commitVideoAnalysisForContext,
+} from '../utils/videoProcessing/analysisUtils';
+import {
+  getTranscriptionRulesSync,
+  setTranscriptionRulesForCache,
+} from '../utils/transcriptionRulesStore';
+import {
+  assertAutoGenerationContextCurrent,
+  assertAutoGenerationContextDurable,
+  captureActiveMediaRunContext,
+  isAutoGenerationContext,
+} from '../utils/autoGenerationOwnership';
 import LoadingIndicator from './common/LoadingIndicator';
 import { showErrorToast, showWarningToast } from '../utils/toastUtils';
 import { EVENTS } from '../events/constants';
@@ -33,6 +45,21 @@ const VideoAnalysisButton = ({ disabled = false, uploadedFile = null, uploadedFi
   const [showRulesEditor, setShowRulesEditor] = useState(false);
   const [transcriptionRules, setTranscriptionRulesState] = useState(null);
   const [lastVideoIdentifier, setLastVideoIdentifier] = useState(null);
+  const [editorContext, setEditorContext] = useState(null);
+  const analysisControllerRef = useRef(null);
+  const manualEditorControllerRef = useRef(null);
+
+  const publishAnalysisSettled = (context, success) => {
+    if (!isAutoGenerationContext(context)) return;
+    window.dispatchEvent(new CustomEvent(EVENTS.VIDEO_ANALYSIS_SETTLED, {
+      detail: {
+        success,
+        runId: context.runId,
+        cacheId: context.cacheId,
+        projectId: context.projectId,
+      },
+    }));
+  };
 
   // Check for existing transcription rules on mount
   useEffect(() => {
@@ -46,8 +73,16 @@ const VideoAnalysisButton = ({ disabled = false, uploadedFile = null, uploadedFi
 
     // Listen for openRulesEditorWithCountdown event
     const handleOpenRulesEditorWithCountdown = (event) => {
-      const { transcriptionRules, recommendedPresetId, showCountdown } = event.detail;
+      const { context, transcriptionRules, recommendedPresetId, showCountdown } = event.detail;
+      try {
+        assertAutoGenerationContextCurrent(context);
+      } catch {
+        return;
+      }
       if (transcriptionRules) {
+        manualEditorControllerRef.current?.abort();
+        manualEditorControllerRef.current = null;
+        setEditorContext(context);
         setTranscriptionRulesState(transcriptionRules);
         setHasAnalysis(true);
 
@@ -70,6 +105,8 @@ const VideoAnalysisButton = ({ disabled = false, uploadedFile = null, uploadedFi
 
     return () => {
       window.removeEventListener('openRulesEditorWithCountdown', handleOpenRulesEditorWithCountdown);
+      analysisControllerRef.current?.abort();
+      manualEditorControllerRef.current?.abort();
     };
   }, []);
 
@@ -88,34 +125,25 @@ const VideoAnalysisButton = ({ disabled = false, uploadedFile = null, uploadedFi
     if (currentFingerprint !== lastVideoIdentifier) {
       dbg('[VideoAnalysisButton] Video changed from:', lastVideoIdentifier, 'to:', currentFingerprint);
       
-      // Clear everything when video changes or is removed
-      setHasAnalysis(false);
-      setTranscriptionRulesState(null);
+      // The media activation boundary already switched the project-scoped rule
+      // store before publishing this file. Never clear here: doing so would
+      // delete the newly selected video's durable rules rather than the old
+      // video's rules. Hydration events will refresh this local view.
+      const activeRules = getTranscriptionRulesSync();
+      setHasAnalysis(!!activeRules);
+      setTranscriptionRulesState(activeRules);
       setShowRulesEditor(false);
       setIsAnalyzing(false);
+      if (editorContext) publishAnalysisSettled(editorContext, false);
+      manualEditorControllerRef.current?.abort();
+      manualEditorControllerRef.current = null;
+      setEditorContext(null);
       
       // Update the last video identifier
       setLastVideoIdentifier(currentFingerprint);
       
-      // Clear the transcription rules from storage when switching videos or clearing video
-      if (lastVideoIdentifier !== null) {
-        // Clear rules when:
-        // 1. Switching from one video to another
-        // 2. Clearing the video (currentFingerprint is null)
-        clearTranscriptionRules().catch(err => {
-          console.error('[VideoAnalysisButton] Error clearing rules on video change:', err);
-        });
-      } else if (currentFingerprint) {
-        // First video loaded - check if we have rules for it
-        const rules = getTranscriptionRulesSync();
-        if (rules) {
-          dbg('[VideoAnalysisButton] Found existing rules on initial load');
-          setHasAnalysis(true);
-          setTranscriptionRulesState(rules);
-        }
-      }
     }
-  }, [uploadedFile, uploadedFileData, lastVideoIdentifier]);
+  }, [uploadedFile, uploadedFileData, lastVideoIdentifier, editorContext]);
 
   // Listen for transcription rules updates
   useEffect(() => {
@@ -176,6 +204,9 @@ const VideoAnalysisButton = ({ disabled = false, uploadedFile = null, uploadedFi
     sessionStorage.removeItem('current_session_prompt');
     
     setIsAnalyzing(true);
+    const controller = new AbortController();
+    analysisControllerRef.current?.abort();
+    analysisControllerRef.current = controller;
 
     try {
       // Create a status update callback
@@ -184,50 +215,139 @@ const VideoAnalysisButton = ({ disabled = false, uploadedFile = null, uploadedFi
       };
 
       // Perform video analysis
-      const result = await analyzeVideoAndWaitForUserChoice(videoFile, onStatusUpdate, t);
-
-      if (result && result.analysisResult && result.analysisResult.transcriptionRules) {
-        setHasAnalysis(true);
-        setTranscriptionRulesState(result.analysisResult.transcriptionRules);
-      }
-      window.dispatchEvent(new CustomEvent(EVENTS.VIDEO_ANALYSIS_SETTLED, {
-        detail: { success: true },
-      }));
+      const context = await captureActiveMediaRunContext({
+        runId: globalThis.crypto?.randomUUID?.() ?? `analysis-${Date.now()}`,
+        media: videoFile,
+        signal: controller.signal,
+      });
+      const result = await analyzeVideoAndWaitForUserChoice(
+        videoFile,
+        onStatusUpdate,
+        t,
+        { signal: controller.signal, context }
+      );
+      assertAutoGenerationContextCurrent(context);
+      await commitVideoAnalysisForContext({
+        context,
+        analysisResult: result.analysisResult,
+        showCountdown: true,
+      });
     } catch (error) {
       console.error('Error during video analysis:', error);
-      window.dispatchEvent(new CustomEvent(EVENTS.VIDEO_ANALYSIS_SETTLED, {
-        detail: { success: false },
-      }));
-      showErrorToast(t('videoAnalysis.error', 'Video analysis failed: {{message}}', { message: error.message }), 5000);
+      if (error?.name !== 'AbortError') {
+        showErrorToast(t('videoAnalysis.error', 'Video analysis failed: {{message}}', { message: error.message }), 5000);
+      }
     } finally {
+      if (analysisControllerRef.current === controller) analysisControllerRef.current = null;
       setIsAnalyzing(false);
     }
   };
 
-  const handleEditRules = () => {
-    setShowRulesEditor(true);
+  const handleEditRules = async () => {
+    const videoFile = getCurrentVideoFile();
+    if (!videoFile) {
+      showWarningToast(t(
+        'videoAnalysis.noVideoFile',
+        'No video file available for analysis. Please upload or download a video first.'
+      ), 4_000);
+      return false;
+    }
+    const controller = new AbortController();
+    manualEditorControllerRef.current?.abort();
+    manualEditorControllerRef.current = controller;
+    try {
+      const context = await captureActiveMediaRunContext({
+        runId: globalThis.crypto?.randomUUID?.() ?? `rules-${Date.now()}`,
+        media: videoFile,
+        signal: controller.signal,
+      });
+      if (manualEditorControllerRef.current !== controller) return false;
+      await assertAutoGenerationContextDurable(context);
+      setEditorContext(context);
+      setShowRulesEditor(true);
+      return true;
+    } catch (error) {
+      if (error?.name !== 'AbortError') {
+        showErrorToast(t(
+          'videoAnalysis.error',
+          'Video analysis failed: {{message}}',
+          { message: error.message }
+        ), 5_000);
+      }
+      return false;
+    }
   };
 
   const handleSaveRules = async (editedRules) => {
+    await assertAutoGenerationContextDurable(editorContext);
+    await setTranscriptionRulesForCache(editorContext.cacheId, editedRules, {
+      expectedProjectId: editorContext.projectId,
+    });
+    await assertAutoGenerationContextDurable(editorContext);
     setTranscriptionRulesState(editedRules);
-    await setTranscriptionRules(editedRules);
     setHasAnalysis(!!editedRules);
     setShowRulesEditor(false);
+    publishAnalysisSettled(editorContext, true);
+    setEditorContext(null);
+    manualEditorControllerRef.current?.abort();
+    manualEditorControllerRef.current = null;
   };
 
   const handleClearAnalysis = async () => {
-    await clearTranscriptionRules();
-    setHasAnalysis(false);
-    setTranscriptionRulesState(null);
-    // Clear the recommended preset as well
-    sessionStorage.removeItem('current_session_preset_id');
-    sessionStorage.removeItem('last_applied_recommendation');
-    sessionStorage.removeItem('current_session_video_fingerprint');
-    sessionStorage.removeItem('current_session_prompt');
+    const videoFile = getCurrentVideoFile();
+    if (!videoFile) return false;
+    const controller = editorContext ? null : new AbortController();
+    try {
+      const context = editorContext ?? await captureActiveMediaRunContext({
+        runId: globalThis.crypto?.randomUUID?.() ?? `rules-clear-${Date.now()}`,
+        media: videoFile,
+        signal: controller.signal,
+      });
+      await assertAutoGenerationContextDurable(context);
+      await setTranscriptionRulesForCache(context.cacheId, null, {
+        expectedProjectId: context.projectId,
+      });
+      await assertAutoGenerationContextDurable(context);
+      setHasAnalysis(false);
+      setTranscriptionRulesState(null);
+      setShowRulesEditor(false);
+      sessionStorage.removeItem('current_session_preset_id');
+      sessionStorage.removeItem('last_applied_recommendation');
+      sessionStorage.removeItem('current_session_video_fingerprint');
+      sessionStorage.removeItem('current_session_prompt');
+      localStorage.removeItem('video_analysis_result');
+      if (editorContext) publishAnalysisSettled(editorContext, true);
+      setEditorContext(null);
+      manualEditorControllerRef.current?.abort();
+      manualEditorControllerRef.current = null;
+      return true;
+    } catch (error) {
+      if (error?.name !== 'AbortError') {
+        showErrorToast(t(
+          'videoAnalysis.error',
+          'Video analysis failed: {{message}}',
+          { message: error.message }
+        ), 5_000);
+      }
+      return false;
+    } finally {
+      controller?.abort();
+    }
   };
 
   const handleCloseRulesEditor = () => {
     setShowRulesEditor(false);
+    if (editorContext) {
+      try {
+        assertAutoGenerationContextCurrent(editorContext);
+        publishAnalysisSettled(editorContext, true);
+      } catch {
+        publishAnalysisSettled(editorContext, false);
+      }
+    }
+    setEditorContext(null);
+    manualEditorControllerRef.current?.abort();
+    manualEditorControllerRef.current = null;
   };
 
   const handleChangePrompt = (preset) => {

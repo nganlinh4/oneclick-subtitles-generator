@@ -667,8 +667,7 @@ pub(crate) fn validate_dynamic_ytdlp_delivery(delivery: &ToolDelivery) -> Result
         || delivery.size_bytes == 0
         || delivery.size_bytes > MAX_ARTIFACT_BYTES
         || !valid_sha256(&delivery.sha256)
-        || !valid_release_url(
-            delivery.tool,
+        || !valid_dynamic_ytdlp_release_url(
             &delivery.version,
             &delivery.asset,
             &delivery.source_url,
@@ -722,18 +721,37 @@ pub(crate) fn validate_dynamic_ytdlp_delivery(delivery: &ToolDelivery) -> Result
 
 pub(crate) fn valid_ytdlp_version(value: &str) -> bool {
     let pieces = value.split('.').collect::<Vec<_>>();
-    let parsed = pieces
+    let date = pieces
         .iter()
+        .take(3)
         .map(|piece| piece.parse::<u16>().ok())
         .collect::<Vec<_>>();
-    pieces.len() == 3
+    let valid_date = pieces.len() >= 3
         && pieces[0].len() == 4
         && pieces[1].len() == 2
         && pieces[2].len() == 2
-        && parsed.iter().all(Option::is_some)
-        && parsed[0].is_some_and(|year| (2020..=2200).contains(&year))
-        && parsed[1].is_some_and(|month| (1..=12).contains(&month))
-        && parsed[2].is_some_and(|day| (1..=31).contains(&day))
+        && date[0].is_some_and(|year| (2020..=2200).contains(&year))
+        && date[1].is_some_and(|month| (1..=12).contains(&month))
+        && date[2].is_some_and(|day| (1..=31).contains(&day));
+    let valid_channel_suffix = match pieces.as_slice() {
+        [_, _, _] => true,
+        [_, _, _, time] => {
+            time.len() == 6
+                && time.parse::<u32>().is_ok_and(|value| {
+                    value / 10_000 <= 23 && (value / 100) % 100 <= 59 && value % 100 <= 59
+                })
+        }
+        _ => false,
+    };
+    valid_date && date.iter().all(Option::is_some) && valid_channel_suffix
+}
+
+fn valid_dynamic_ytdlp_release_url(version: &str, asset: &str, value: &str) -> bool {
+    ["yt-dlp/yt-dlp", "yt-dlp/yt-dlp-nightly-builds"]
+        .into_iter()
+        .any(|repository| {
+            value == format!("https://github.com/{repository}/releases/download/{version}/{asset}")
+        })
 }
 
 fn valid_date(value: &str) -> bool {

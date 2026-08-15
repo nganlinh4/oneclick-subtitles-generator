@@ -5,6 +5,10 @@ import {
   getCredentialStateSnapshot,
   initializeCredentialState,
 } from "../../../platform/credentialStateController";
+import {
+  readDownloadCookiePreference,
+  writeDownloadCookiePreference,
+} from "../../../platform/downloadCookiePreference";
 
 const NATIVE_SECRET_ALIASES = [
   "gemini_api_key",
@@ -187,10 +191,10 @@ export const createSettingsHandlers = ({
     }
 
     if (useCookiesForDownloadSetting !== undefined) {
-      localStorage.setItem(
-        "use_cookies_for_download",
-        useCookiesForDownloadSetting.toString()
-      );
+      writeDownloadCookiePreference({
+        enabled: useCookiesForDownloadSetting,
+        selectedSource: readDownloadCookiePreference().selectedSource,
+      });
       setUseCookiesForDownload(useCookiesForDownloadSetting);
     }
 

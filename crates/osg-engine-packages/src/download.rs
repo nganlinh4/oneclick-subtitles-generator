@@ -23,6 +23,7 @@ const MAX_REDIRECTS: usize = 5;
 const DOWNLOAD_CHUNK_BYTES: u64 = 64 * 1024 * 1024;
 const DOWNLOAD_REQUEST_TIMEOUT: Duration = Duration::from_secs(30);
 const USER_AGENT_VALUE: &str = "OneClickSubtitlesGenerator/2";
+const MAX_FETCH_ATTEMPTS_PER_URL: usize = 3;
 
 pub(crate) trait ArchiveFetcher: Send + Sync {
     fn fetch(
@@ -320,47 +321,43 @@ pub(crate) fn obtain_asset(
         if index > 0 {
             remove_regular_if_exists(&archive_path)?;
             remove_regular_if_exists(&metadata_path)?;
-            resume_from = 0;
             metadata = None;
         }
-        let fetch_result = fetcher.fetch(
-            asset,
-            url,
-            FetchRequest {
-                target: &archive_path,
-                resume_from,
-                etag: metadata.as_ref().and_then(|value| value.etag.as_deref()),
-                cancellation,
-                progress,
-            },
-        );
-        let result = match fetch_result {
-            Err(PackageError::InvalidResume) if resume_from > 0 => {
-                remove_regular_if_exists(&archive_path)?;
-                fetcher.fetch(
-                    asset,
-                    url,
-                    FetchRequest {
-                        target: &archive_path,
-                        resume_from: 0,
-                        etag: None,
-                        cancellation,
-                        progress,
-                    },
-                )
+        for attempt in 0..MAX_FETCH_ATTEMPTS_PER_URL {
+            cancellation.check()?;
+            resume_from = inspect_partial(&archive_path)?;
+            let result = fetcher.fetch(
+                asset,
+                url,
+                FetchRequest {
+                    target: &archive_path,
+                    resume_from,
+                    etag: metadata.as_ref().and_then(|value| value.etag.as_deref()),
+                    cancellation,
+                    progress,
+                },
+            );
+            match result {
+                Ok(value) => {
+                    etag = value;
+                    last_network_error = None;
+                    break;
+                }
+                Err(PackageError::InvalidResume) if resume_from > 0 => {
+                    remove_regular_if_exists(&archive_path)?;
+                    metadata = None;
+                }
+                Err(PackageError::Network | PackageError::IncompleteDownload) => {
+                    last_network_error = Some(PackageError::Network);
+                }
+                Err(error) => return Err(error),
             }
-            other => other,
-        };
-        match result {
-            Ok(value) => {
-                etag = value;
-                last_network_error = None;
+            if attempt + 1 == MAX_FETCH_ATTEMPTS_PER_URL {
                 break;
             }
-            Err(PackageError::Network | PackageError::IncompleteDownload) => {
-                last_network_error = Some(PackageError::Network);
-            }
-            Err(error) => return Err(error),
+        }
+        if last_network_error.is_none() {
+            break;
         }
     }
     if let Some(error) = last_network_error {

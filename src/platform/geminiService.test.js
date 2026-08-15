@@ -53,6 +53,7 @@ it('normalizes the native request to exact Rust enum values', () => {
   const request = normalizeGeminiStartRequest(nativeRequest({
     thinkingLevel: 'minimal',
     mediaResolution: 'medium',
+    emptySpeechPolicy: 'provenSilence',
     maxOutputTokens: 8192,
     responseJsonSchema: {
       type: 'array',
@@ -63,11 +64,56 @@ it('normalizes the native request to exact Rust enum values', () => {
   expect(request).toEqual(expect.objectContaining({
     thinkingLevel: 'MINIMAL',
     mediaResolution: 'MEDIA_RESOLUTION_MEDIUM',
+    emptySpeechPolicy: 'provenSilence',
     maxOutputTokens: 8192,
   }));
 });
 
-it('allows only the centralized media-capable Gemini model catalog', () => {
+it('only accepts the proven-silence policy for media transcription', () => {
+  expect(() => normalizeGeminiStartRequest(nativeRequest({
+    emptySpeechPolicy: 'assumeSilence',
+  }))).toThrow(GeminiServiceError);
+  expect(() => normalizeGeminiStartRequest(nativeRequest({
+    task: 'translate',
+    emptySpeechPolicy: 'provenSilence',
+  }))).toThrow(GeminiServiceError);
+});
+
+it('allows catalog models for media and validated custom models only for text', () => {
+  const catalogMedia = normalizeGeminiStartRequest(nativeRequest({
+    model: 'gemini-3.7-flash',
+  }));
+  expect(catalogMedia.model).toBe('gemini-3.7-flash');
+
+  const customText = normalizeGeminiStartRequest(nativeRequest({
+    task: 'translate',
+    model: 'gemini-3.8-flash',
+    mediaAssetId: null,
+    prompt: 'Translate this text.',
+    maxOutputTokens: 65_536,
+  }));
+  expect(customText.model).toBe('gemini-3.8-flash');
+
+  expect(() => normalizeGeminiStartRequest(nativeRequest({
+    model: 'gemini-3.8-flash',
+  }))).toThrow(GeminiServiceError);
+  expect(() => normalizeGeminiStartRequest(nativeRequest({
+    task: 'translate',
+    model: 'gemini-3.8-flash',
+    mediaAssetId: uuidv7(),
+  }))).toThrow(GeminiServiceError);
+  expect(() => normalizeGeminiStartRequest(nativeRequest({
+    task: 'analyzeSubtitles',
+    model: 'gemini-3.8-flash',
+    mediaAssetId: null,
+    mediaResolution: 'medium',
+  }))).toThrow(GeminiServiceError);
+  expect(() => normalizeGeminiStartRequest(nativeRequest({
+    task: 'translate',
+    model: 'gemini-3.8-flash',
+    mediaAssetId: null,
+    thinkingLevel: 'low',
+  }))).toThrow(GeminiServiceError);
   expect(() => normalizeGeminiStartRequest(nativeRequest({
     model: 'gemini-2.5-flash-image',
   }))).toThrow(GeminiServiceError);
@@ -77,6 +123,21 @@ it('allows only the centralized media-capable Gemini model catalog', () => {
   expect(() => normalizeGeminiStartRequest(nativeRequest({
     apiKey: 'must-never-be-accepted',
   }))).toThrow(GeminiServiceError);
+});
+
+it('enforces the selected model thinking-level contract before native invocation', () => {
+  expect(normalizeGeminiStartRequest(nativeRequest({
+    model: 'gemini-3.7-flash',
+    thinkingLevel: 'low',
+  })).thinkingLevel).toBe('LOW');
+  expect(() => normalizeGeminiStartRequest(nativeRequest({
+    model: 'gemini-3.7-flash',
+    thinkingLevel: 'minimal',
+  }))).toThrow(GeminiServiceError);
+  expect(normalizeGeminiStartRequest(nativeRequest({
+    model: 'gemini-3.6-flash',
+    thinkingLevel: 'minimal',
+  })).thinkingLevel).toBe('MINIMAL');
 });
 
 it('bounds prompt, output, and schema inputs before invoking native code', () => {

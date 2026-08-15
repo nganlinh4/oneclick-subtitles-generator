@@ -1,9 +1,14 @@
-import { EVENTS } from '../events/constants';
+import { CHECKPOINT_SOURCE, EVENTS } from '../events/constants';
 import { publishSaveAfterStreaming, publishSaveBeforeUpdate, subscribe } from '../events/bus';
 
 // Small lifecycle orchestrator to centralize save checkpoints and streaming completion
 
-const CHECKPOINT_SOURCES = new Set(['segment-processing-start', 'video-processing-complete']);
+const CHECKPOINT_SOURCES = new Set([
+  CHECKPOINT_SOURCE.AUTO_GENERATION_START,
+  CHECKPOINT_SOURCE.SEGMENT_PROCESSING_START,
+  CHECKPOINT_SOURCE.TRANSLATION_START,
+  CHECKPOINT_SOURCE.VIDEO_PROCESSING_COMPLETE,
+]);
 const MAX_CHECKPOINT_TIMEOUT_MS = 60_000;
 const CHECKPOINT_SEQUENCE_MODULUS = 36 ** 6;
 const CHECKPOINT_TIME_MODULUS = 36 ** 10;
@@ -30,7 +35,7 @@ const nextCheckpointId = () => {
 
 /**
  * Wait for the matching successful save-complete event after publishing save-before-update.
- * @param {{ source: 'segment-processing-start'|'video-processing-complete', segment?: {start:number,end:number} }} payload
+ * @param {{ source: 'auto-generation-start'|'segment-processing-start'|'translation-start'|'video-processing-complete', segment?: {start:number,end:number}, signal?: AbortSignal }} payload
  * @param {number} [timeoutMs=CHECKPOINT_TIMEOUT_MS]
  * @returns {Promise<void>}
  */
@@ -42,6 +47,22 @@ export const checkpointBeforeUpdate = (payload, timeoutMs = CHECKPOINT_TIMEOUT_M
       || timeoutMs > MAX_CHECKPOINT_TIMEOUT_MS) {
     throw new TypeError('A valid subtitle checkpoint timeout is required');
   }
+  const signal = payload.signal;
+  if (signal !== undefined && (
+    !signal
+    || typeof signal.aborted !== 'boolean'
+    || typeof signal.addEventListener !== 'function'
+  )) {
+    throw new TypeError('A valid subtitle checkpoint AbortSignal is required');
+  }
+
+  const aborted = () => {
+    const error = new Error('The subtitle checkpoint was cancelled');
+    error.name = 'AbortError';
+    error.code = 'autoGenerationAborted';
+    return error;
+  };
+  if (signal?.aborted) return Promise.reject(aborted());
 
   const checkpointId = nextCheckpointId();
   return new Promise((resolve, reject) => {
@@ -53,8 +74,10 @@ export const checkpointBeforeUpdate = (payload, timeoutMs = CHECKPOINT_TIMEOUT_M
       done = true;
       if (timeout !== null) clearTimeout(timeout);
       unsubscribe?.();
+      signal?.removeEventListener?.('abort', handleAbort);
       callback();
     };
+    const handleAbort = () => finish(() => reject(aborted()));
 
     try {
       unsubscribe = subscribe(EVENTS.SAVE_COMPLETE, (event) => {
@@ -74,8 +97,10 @@ export const checkpointBeforeUpdate = (payload, timeoutMs = CHECKPOINT_TIMEOUT_M
     timeout = setTimeout(() => {
       finish(() => reject(new CheckpointBeforeUpdateError('checkpointSaveTimedOut')));
     }, timeoutMs);
+    signal?.addEventListener?.('abort', handleAbort, { once: true });
     try {
-      publishSaveBeforeUpdate({ ...payload, checkpointId });
+      const { signal: _signal, ...eventPayload } = payload;
+      publishSaveBeforeUpdate({ ...eventPayload, checkpointId });
     } catch {
       finish(() => reject(new CheckpointBeforeUpdateError('checkpointSaveFailed')));
     }

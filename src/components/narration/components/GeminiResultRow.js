@@ -27,6 +27,20 @@ const GeminiResultRow = ({ index, style, data }) => {
   const item = generationResults[index];
   const subtitle_id = item.subtitle_id;
   const text = item.text;
+  const isServiceAvailable = data.isServiceAvailable === true;
+  const retryTitle = isServiceAvailable
+    ? (!data.subtitleSource
+      ? t('narration.noSourceSelectedError', 'Please select a subtitle source (Original or Translated)')
+      : t('narration.retry', 'Retry generation'))
+    : data.serviceUnavailableMessage;
+  const generateTitle = isServiceAvailable
+    ? (!data.subtitleSource
+      ? t('narration.noSourceSelectedError', 'Please select a subtitle source (Original or Translated)')
+      : t('narration.generate', 'Generate this narration'))
+    : data.serviceUnavailableMessage;
+  const retry = () => {
+    if (isServiceAvailable) onRetry?.(subtitle_id);
+  };
 
   return (
     <div
@@ -149,11 +163,9 @@ const GeminiResultRow = ({ index, style, data }) => {
             </button>
             <button
               className={`pill-button secondary ${retryingSubtitleId === subtitle_id ? 'retrying' : ''}`}
-              onClick={() => onRetry(subtitle_id)}
-              title={!data.subtitleSource
-                ? t('narration.noSourceSelectedError', 'Please select a subtitle source (Original or Translated)')
-                : t('narration.retry', 'Retry generation')}
-              disabled={retryingSubtitleId === subtitle_id || !data.subtitleSource || !!data.itemProcessing[subtitle_id]?.inProgress}
+              onClick={retry}
+              title={retryTitle}
+              disabled={!isServiceAvailable || retryingSubtitleId === subtitle_id || !data.subtitleSource || !!data.itemProcessing[subtitle_id]?.inProgress}
             >
               {retryingSubtitleId === subtitle_id ? (
                 <LoadingIndicator
@@ -172,11 +184,9 @@ const GeminiResultRow = ({ index, style, data }) => {
           <>
             <button
               className={`pill-button secondary generate-button ${retryingSubtitleId === subtitle_id ? 'retrying' : ''}`}
-              onClick={() => onRetry(subtitle_id)}
-              title={!data.subtitleSource
-                ? t('narration.noSourceSelectedError', 'Please select a subtitle source (Original or Translated)')
-                : t('narration.generate', 'Generate this narration')}
-              disabled={retryingSubtitleId === subtitle_id || !data.subtitleSource}
+              onClick={retry}
+              title={generateTitle}
+              disabled={!isServiceAvailable || retryingSubtitleId === subtitle_id || !data.subtitleSource}
             >
               {retryingSubtitleId === subtitle_id ? (
                 <LoadingIndicator
@@ -195,11 +205,9 @@ const GeminiResultRow = ({ index, style, data }) => {
           <>
             <button
               className={`pill-button secondary retry-button ${retryingSubtitleId === subtitle_id ? 'retrying' : ''}`}
-              onClick={() => onRetry(subtitle_id)}
-              title={!data.subtitleSource
-                ? t('narration.noSourceSelectedError', 'Please select a subtitle source (Original or Translated)')
-                : t('narration.retry', 'Retry generation')}
-              disabled={retryingSubtitleId === subtitle_id || !data.subtitleSource}
+              onClick={retry}
+              title={retryTitle}
+              disabled={!isServiceAvailable || retryingSubtitleId === subtitle_id || !data.subtitleSource}
             >
               {retryingSubtitleId === subtitle_id ? (
                 <LoadingIndicator

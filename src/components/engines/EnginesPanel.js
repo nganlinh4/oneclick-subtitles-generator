@@ -9,23 +9,35 @@ import { useWaveColors } from '../../utils/waveColors';
 import EngineCard from './EngineCard';
 import NativeToolsList from './NativeToolsList';
 import { ASR_ENGINES } from '../../services/engines/asrEngines';
+import { MANAGED_SPEECH_ENGINE_BINDINGS } from '../../platform/managedEngineCatalog';
 import './engines.css';
 
-// The heavy engines users can install on demand. `base` is always-installed plumbing, not shown.
+// Engines and provider runtimes users can install on demand. `base` is always-installed plumbing,
+// not shown.
 // `name` is a proper noun (never translated); `kind` keys into engines.kind.* for the descriptor.
 // The catalog ASR engines (faster-whisper, qwen3-asr, …) are derived from asrEngines so adding an
 // engine there makes it appear here automatically — no second list to keep in sync.
+const SPEECH_ENGINE_META = Object.freeze({
+  f5tts: Object.freeze({ kind: 'voice-cloning', license: 'CC-BY-NC-4.0' }),
+  chatterbox: Object.freeze({ kind: 'voice-cloning' }),
+  'edge-tts': Object.freeze({ kind: 'speech-provider' }),
+  gtts: Object.freeze({ kind: 'speech-provider' }),
+  'gemini-tts': Object.freeze({ kind: 'speech-provider' }),
+});
+
 const ENGINES = [
-  { id: 'f5tts', name: 'F5-TTS', kind: 'voice-cloning', license: 'CC-BY-NC-4.0' },
-  { id: 'chatterbox', name: 'Chatterbox', kind: 'voice-cloning' },
+  ...MANAGED_SPEECH_ENGINE_BINDINGS.map(({ engineId, label }) => ({
+    id: engineId,
+    name: label,
+    ...SPEECH_ENGINE_META[engineId],
+  })),
   { id: 'parakeet', name: 'Nvidia Parakeet', kind: 'transcription' },
   ...ASR_ENGINES.map((e) => ({ id: e.id, name: e.name, kind: 'transcription' })),
 ];
 
-const PACKAGE_ID_BY_ENGINE = Object.freeze({
-  f5tts: 'f5-tts',
-  chatterbox: 'chatterbox',
-});
+const PACKAGE_ID_BY_ENGINE = Object.freeze(Object.fromEntries(
+  MANAGED_SPEECH_ENGINE_BINDINGS.map(({ engineId, packageBackend }) => [engineId, packageBackend])
+));
 
 export const mapManagedPackageInventory = (
   asrStatus = { engines: [] },
@@ -171,8 +183,8 @@ const EnginesPanel = () => {
         <section className="tools-ledger__group" aria-labelledby="local-ai-tools-heading">
           <div className="tools-ledger__heading">
             <div>
-              <h3 id="local-ai-tools-heading">{t('engines.groups.localAi', 'Local AI engines')}</h3>
-              <span>{t('engines.groups.localAiDetail', 'Voice cloning and transcription')}</span>
+              <h3 id="local-ai-tools-heading">{t('engines.groups.localAi', 'Speech and transcription engines')}</h3>
+              <span>{t('engines.groups.localAiDetail', 'Voice cloning, narration providers, and transcription')}</span>
             </div>
             <span className="tools-ledger__count">
               {t('engines.availableCount', '{{available}} available · {{installed}} installed', {

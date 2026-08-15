@@ -1,4 +1,5 @@
 import { useState, useRef, useEffect, useCallback } from 'react';
+import { normalizeAsrLanguage } from '../services/engines/asrEngines';
 
 /**
  * Generic per-engine ASR options for the processing modal — segmentation (strategy / max chars /
@@ -40,7 +41,7 @@ const loadFor = (engineId, defaultStrategy) => ({
   maxWords: clampInt(readOpt(engineId, 'max_words', '7'), 1, 50, 7),
   preserveSentences: readOpt(engineId, 'preserve_sentences', 'false') === 'true',
   maxDurationPerRequest: clampInt(readOpt(engineId, 'max_duration_per_request', '3'), 1, 10, 3),
-  language: readOpt(engineId, 'language', 'auto'),
+  language: normalizeAsrLanguage(engineId, readOpt(engineId, 'language', 'auto')),
 });
 
 const useAsrOptions = (engineId, { hasLanguagesBadges = false, defaultStrategy = 'sentence' } = {}) => {
@@ -117,7 +118,13 @@ const useAsrOptions = (engineId, { hasLanguagesBadges = false, defaultStrategy =
     maxDurationPerRequest: opts.maxDurationPerRequest,
     setMaxDurationPerRequest: patch('maxDurationPerRequest'),
     language: opts.language,
-    setLanguage: patch('language'),
+    setLanguage: useCallback(
+      (value) => setOpts((current) => ({
+        ...current,
+        language: normalizeAsrLanguage(engineId, value),
+      })),
+      [engineId]
+    ),
   };
 };
 

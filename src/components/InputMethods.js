@@ -8,7 +8,7 @@ import { initTabPillAnimation } from '../utils/tabPillAnimation';
 import '../styles/InputMethods.css';
 import '../styles/components/tab-content-animations.css';
 
-const InputMethods = ({ onVideoSelect, apiKeysSet, selectedVideo, setSelectedVideo, uploadedFile, setUploadedFile, activeTab, setActiveTab, isSrtOnlyMode, setIsSrtOnlyMode, setStatus, subtitlesData, setVideoSegments, setSegmentsStatus, enableYoutubeSearch = true }) => {
+const InputMethods = ({ onVideoSelect, apiKeysSet, selectedVideo, setSelectedVideo, uploadedFile, setUploadedFile, setUploadedFileData, activeTab, setActiveTab, isSrtOnlyMode, setIsSrtOnlyMode, setStatus, subtitlesData, setVideoSegments, setSegmentsStatus, enableYoutubeSearch = true }) => {
   const { t } = useTranslation();
   const tabsRef = useRef(null);
   const containerRef = useRef(null);
@@ -127,6 +127,7 @@ const InputMethods = ({ onVideoSelect, apiKeysSet, selectedVideo, setSelectedVid
               onVideoSelect={onVideoSelect}
               uploadedFile={uploadedFile}
               setUploadedFile={setUploadedFile}
+              setUploadedFileData={setUploadedFileData}
               isSrtOnlyMode={isSrtOnlyMode}
               setIsSrtOnlyMode={setIsSrtOnlyMode}
               setStatus={setStatus}

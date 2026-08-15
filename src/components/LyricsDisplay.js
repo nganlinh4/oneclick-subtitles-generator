@@ -7,23 +7,15 @@ import LyricsHeader from './lyrics/LyricsHeader';
 import { useLyricsEditor } from '../hooks/useLyricsEditor';
 import { useLyricsSave } from '../hooks/useLyricsSave';
 import { useLyricsDrag } from '../hooks/useLyricsDrag';
-import { downloadTXT, downloadSRT, downloadJSON } from '../utils/fileUtils';
+import {
+  downloadJSON,
+  downloadSRT,
+  downloadTXT,
+  downloadTextDocument,
+} from '../utils/fileUtils';
 import { completeDocument, summarizeDocument } from '../services/geminiService';
 import LyricsVirtualizedList from './LyricsVirtualizedList';
 import LyricsDownloadAndOutput from './LyricsDownloadAndOutput';
-
-// Helper function to download files
-const downloadFile = (content, filename, type = 'text/plain') => {
-  const blob = new Blob([content], { type });
-  const url = URL.createObjectURL(blob);
-  const a = document.createElement('a');
-  a.href = url;
-  a.download = filename;
-  document.body.appendChild(a);
-  a.click();
-  document.body.removeChild(a);
-  URL.revokeObjectURL(url);
-};
 
 const LyricsDisplay = ({
   matchedLyrics,
@@ -300,7 +292,7 @@ const LyricsDisplay = ({
   };
 
   // Handle download request from modal
-  const handleDownload = (source, format, namingInfo = {}) => {
+  const handleDownload = async (source, format, namingInfo = {}) => {
     const subtitlesToUse = source === 'translated' ? translatedSubtitles : lyrics;
 
     if (subtitlesToUse && subtitlesToUse.length > 0) {
@@ -308,20 +300,19 @@ const LyricsDisplay = ({
 
       switch (format) {
         case 'srt':
-          downloadSRT(subtitlesToUse, `${baseFilename}.srt`);
-          break;
+          return downloadSRT(subtitlesToUse, `${baseFilename}.srt`);
         case 'json':
-          downloadJSON(subtitlesToUse, `${baseFilename}.json`);
-          break;
+          return downloadJSON(subtitlesToUse, `${baseFilename}.json`);
         case 'txt': {
-          const content = downloadTXT(subtitlesToUse, `${baseFilename}.txt`);
-          setTxtContent(content);
-          break;
+          const result = await downloadTXT(subtitlesToUse, `${baseFilename}.txt`);
+          if (result.status === 'saved') setTxtContent(result.content);
+          return result;
         }
         default:
-          break;
+          throw new TypeError('Unsupported subtitle format');
       }
     }
+    throw new TypeError('Subtitles are required');
   };
 
   // Handle process request from modal
@@ -399,32 +390,43 @@ const LyricsDisplay = ({
 
       // Result is ready for download
 
-      // Show success toast using centralized system
-      window.addToast(
-        processType === 'consolidate'
-          ? t('output.documentCompleted', 'Document completed successfully')
-          : t('output.summaryCompleted', 'Summary completed successfully'),
-        'success',
-        3000
-      );
-
       // Download the processed document
       const baseFilename = generateFilename(source, namingInfo);
       const processTypeSuffix = processType === 'consolidate' ? 'completed' : 'summary';
       const filename = `${baseFilename}_${processTypeSuffix}.txt`;
-      downloadFile(result, filename);
+      const saved = await downloadTextDocument(result, filename);
+      if (saved.status === 'saved') {
+        try {
+          window.addToast?.(
+            processType === 'consolidate'
+              ? t('output.documentCompleted', 'Document completed successfully')
+              : t('output.summaryCompleted', 'Summary completed successfully'),
+            'success',
+            3000
+          );
+        } catch (notificationError) {
+          console.error('Could not report the saved document:', notificationError);
+        }
+      }
+      return saved;
     } catch (error) {
       console.error(`Error ${processType === 'consolidate' ? 'completing' : 'summarizing'} document:`, error);
 
       // Show error status
       setConsolidationStatus(t('consolidation.error', 'Error processing document: {{message}}', { message: error.message }));
+      throw error;
     } finally {
       // Processing is complete
     }
   };
 
   // Save current subtitles to cache + handle save-before-update / save-after-streaming events
-  const { handleSave } = useLyricsSave({ lyrics, updateSavedLyrics, onSaveSubtitles });
+  const { handleSave } = useLyricsSave({
+    lyrics,
+    updateSavedLyrics,
+    onSaveSubtitles,
+    listenForLifecycle: false,
+  });
 
   // Listen for capture-before-merge events to support undo/redo for merging operations
   useEffect(() => {

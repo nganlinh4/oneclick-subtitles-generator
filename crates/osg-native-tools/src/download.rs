@@ -187,7 +187,14 @@ fn trusted_redirect(url: &Url, previous: &[Url]) -> bool {
 fn valid_github_release_path(path: &str) -> bool {
     let segments = path.trim_start_matches('/').split('/').collect::<Vec<_>>();
     match segments.as_slice() {
-        ["yt-dlp", "yt-dlp", "releases", "download", version, asset] => {
+        [
+            "yt-dlp",
+            "yt-dlp" | "yt-dlp-nightly-builds",
+            "releases",
+            "download",
+            version,
+            asset,
+        ] => {
             crate::catalog::valid_ytdlp_version(version)
                 && matches!(*asset, "yt-dlp.exe" | "yt-dlp_linux" | "yt-dlp_macos")
         }
@@ -254,6 +261,7 @@ mod tests {
         for valid in [
             "https://github.com/yt-dlp/yt-dlp/releases/download/2026.08.10/yt-dlp.exe",
             "https://github.com/yt-dlp/yt-dlp/releases/download/2027.01.02/yt-dlp_linux",
+            "https://github.com/yt-dlp/yt-dlp-nightly-builds/releases/download/2026.08.10.235959/yt-dlp.exe",
         ] {
             assert!(trusted_initial_url(&Url::parse(valid).unwrap(), valid));
         }

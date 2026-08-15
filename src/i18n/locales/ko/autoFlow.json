@@ -6,5 +6,6 @@
   "running": "자동 실행 중...",
   "usingExistingAnalysis": "기존 분석 규칙 사용",
   "analysisSkipped": "분석 건너뛰기, 기본 설정으로 계속",
-  "error": "자동 생성 중 오류 발생"
+  "unavailable": "자동 자막 생성을 사용할 수 없습니다.",
+  "error": "자동 자막 생성 실패: {{message}}"
 }

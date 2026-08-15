@@ -1,4 +1,5 @@
 import { inspectDownloadUrl } from '../platform/downloadService';
+import { getDownloadCookieSource } from '../platform/downloadCookiePreference';
 
 const QUALITY_LABELS = Object.freeze({
   2160: '4K',
@@ -37,9 +38,7 @@ export const mapNativeVideoQualities = (inventory) => inventory.formats.qualitie
 
 const inspect = (videoUrl) => inspectDownloadUrl({
   url: videoUrl,
-  cookieSource: localStorage.getItem('use_cookies_for_download') === 'true'
-    ? 'chrome'
-    : 'none',
+  cookieSource: getDownloadCookieSource(),
 });
 
 export const scanVideoQualities = async (videoUrl) => {

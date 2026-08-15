@@ -29,7 +29,13 @@ const TranslationPreview = ({
 
     try {
       // Call the original retry handler
-      await onRetrySegment(segment);
+      const originalIds = Array.from(new Set(
+        translatedSubtitles
+          .slice(segment.startIndex, segment.endIndex + 1)
+          .map((subtitle) => subtitle?.originalId)
+          .filter((id) => id !== undefined)
+      ));
+      await onRetrySegment({ ...segment, originalIds });
     } finally {
       // Remove segment from retrying set
       setRetryingSegments(prev => {
@@ -38,7 +44,7 @@ const TranslationPreview = ({
         return newSet;
       });
     }
-  }, [onRetrySegment]);
+  }, [onRetrySegment, translatedSubtitles]);
 
   // Handler for individual subtitle retry
   const handleRetrySubtitle = React.useCallback(async (subtitleIndex) => {
@@ -52,7 +58,8 @@ const TranslationPreview = ({
         segmentNumber: subtitleRetryId,
         startIndex: subtitleIndex,
         endIndex: subtitleIndex,
-        subtitleCount: 1
+        subtitleCount: 1,
+        originalId: translatedSubtitles[subtitleIndex]?.originalId,
       };
 
       // Call the original retry handler directly (not the wrapped one)
@@ -65,7 +72,7 @@ const TranslationPreview = ({
         return newSet;
       });
     }
-  }, [onRetrySegment]);
+  }, [onRetrySegment, translatedSubtitles]);
 
   if (!translatedSubtitles || translatedSubtitles.length === 0) return null;
 

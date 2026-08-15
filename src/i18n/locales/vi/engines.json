@@ -27,8 +27,8 @@
   "progressBytes": "{{done}} / {{total}}",
   "electronManaged": "Bản desktop đã bao gồm các engine này. Việc tải engine được quản lý bởi gói ứng dụng.",
   "groups": {
-    "localAi": "Engine AI cục bộ",
-    "localAiDetail": "Nhân bản giọng nói và phiên âm",
+    "localAi": "Engine giọng nói và phiên âm",
+    "localAiDetail": "Nhân bản giọng nói, nhà cung cấp thuyết minh và phiên âm",
     "runtime": "Công cụ runtime",
     "runtimeDetail": "Tải riêng, không nhúng trong ứng dụng"
   },
@@ -52,6 +52,7 @@
   },
   "kind": {
     "voice-cloning": "Nhân bản giọng nói",
+    "speech-provider": "Nhà cung cấp thuyết minh",
     "transcription": "Phiên âm"
   },
   "state": {

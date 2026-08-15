@@ -259,29 +259,12 @@ export class RealtimeSubtitleProcessor {
       
       this.currentSubtitles = processedSubtitles;
 
-      this._maybeEmitUpdate({
-        subtitles: processedSubtitles,
-        isStreaming: false,
-        isComplete: true,
-        chunkCount: this.chunkCount,
-        textLength: typeof finalText === 'string' ? finalText.length : 0
-      }, true);
-
-      this.onStatusUpdate({
-        message: this.t ? this.t('processing.processingComplete', 'Processing complete! Generated {{count}} subtitles.', { count: processedSubtitles.length }) : `Processing complete! Generated ${processedSubtitles.length} subtitles.`,
-        type: 'success'
-      });
-
       this.onComplete(processedSubtitles);
       } else {
       // No valid subtitles found
       // Fall back to last valid subtitles if available
       if (this.lastValidSubtitles.length > 0) {
         this.onComplete(this.lastValidSubtitles);
-        this.onStatusUpdate({
-          message: this.t ? this.t('processing.processingComplete', 'Processing complete! Generated {{count}} subtitles.', { count: this.lastValidSubtitles.length }) : `Processing complete! Generated ${this.lastValidSubtitles.length} subtitles.`,
-          type: 'success'
-        });
       } else {
         this.onError(new Error('No valid subtitles found in final response'));
       }
@@ -297,10 +280,6 @@ export class RealtimeSubtitleProcessor {
      
      // Try to salvage any subtitles we've parsed so far
      if (this.lastValidSubtitles.length > 0) {
-       this.onStatusUpdate({
-         message: this.t ? this.t('processing.processingInterrupted', 'Processing interrupted. Saved {{count}} subtitles.', { count: this.lastValidSubtitles.length }) : `Processing interrupted. Saved ${this.lastValidSubtitles.length} subtitles.`,
-         type: 'warning'
-       });
        this.onComplete(this.lastValidSubtitles);
      } else {
        this.onError(error);

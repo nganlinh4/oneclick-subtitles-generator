@@ -21,6 +21,16 @@ const ResultRow = ({ index, style, data }) => {
 
   const result = generationResults[index];
   const subtitle_id = result.subtitle_id;
+  const retryAvailable = data.retryAvailable === true;
+  const retryTitle = retryAvailable
+    ? t('narration.retry', 'Retry generation')
+    : data.retryBlockedReason;
+  const generateTitle = retryAvailable
+    ? t('narration.generate', 'Generate this narration')
+    : data.retryBlockedReason;
+  const retry = () => {
+    if (retryAvailable) onRetry?.(subtitle_id);
+  };
 
   const isTransformed = result.transformations && result.transformations.transformed;
 
@@ -80,9 +90,9 @@ const ResultRow = ({ index, style, data }) => {
             {onRetry && (
               <button
                 className={`pill-button secondary generate-button ${retryingSubtitleId === subtitle_id ? 'retrying' : ''}`}
-                onClick={() => onRetry(subtitle_id)}
-                title={t('narration.generate', 'Generate this narration')}
-                disabled={retryingSubtitleId === subtitle_id}
+                onClick={retry}
+                title={generateTitle}
+                disabled={!retryAvailable || retryingSubtitleId === subtitle_id}
               >
                 {retryingSubtitleId === subtitle_id ? (
                   <LoadingIndicator
@@ -200,9 +210,9 @@ const ResultRow = ({ index, style, data }) => {
             {onRetry && (
               <button
                 className={`pill-button secondary ${retryingSubtitleId === subtitle_id ? 'retrying' : ''}`}
-                onClick={() => onRetry(subtitle_id)}
-                title={t('narration.retry', 'Retry generation')}
-                disabled={retryingSubtitleId === subtitle_id || !!data.itemProcessing[subtitle_id]?.inProgress}
+                onClick={retry}
+                title={retryTitle}
+                disabled={!retryAvailable || retryingSubtitleId === subtitle_id || !!data.itemProcessing[subtitle_id]?.inProgress}
               >
                 {retryingSubtitleId === subtitle_id ? (
                   <LoadingIndicator
@@ -222,9 +232,9 @@ const ResultRow = ({ index, style, data }) => {
             {onRetry && (
               <button
                 className={`pill-button secondary retry-button ${retryingSubtitleId === subtitle_id ? 'retrying' : ''}`}
-                onClick={() => onRetry(subtitle_id)}
-                title={t('narration.retry', 'Retry generation')}
-                disabled={retryingSubtitleId === subtitle_id}
+                onClick={retry}
+                title={retryTitle}
+                disabled={!retryAvailable || retryingSubtitleId === subtitle_id}
               >
                 {retryingSubtitleId === subtitle_id ? (
                   <LoadingIndicator

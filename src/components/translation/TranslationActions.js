@@ -19,6 +19,8 @@ import { parseSrtContent } from '../../utils/srtParser';
  * @param {boolean} props.hasBulkTranslations - Whether there are bulk translation results
  * @param {Function} props.onDownloadAll - Function to download all bulk translations
  * @param {Function} props.onDownloadZip - Function to download bulk translations as ZIP
+ * @param {boolean} props.isExporting - Whether a bulk export owns the save dialog
+ * @param {{current: boolean}} props.exportPendingRef - Synchronous bulk export owner gate
  * @param {number} props.splitDuration - Current split duration for segment calculation
  * @returns {JSX.Element} - Rendered component
  */
@@ -35,27 +37,34 @@ const TranslationActions = ({
   hasBulkTranslations = false,
   onDownloadAll,
   onDownloadZip,
+  isExporting = false,
+  exportPendingRef,
   splitDuration = 0
 }) => {
   const { t } = useTranslation();
   const [isDragOver, setIsDragOver] = useState(false);
   const fileInputRef = useRef(null);
+  const exportOwnsControls = () => isExporting || exportPendingRef?.current === true;
+  const exportControlsDisabled = exportOwnsControls();
+  const controlsAreDisabled = isTranslating || exportControlsDisabled;
 
   // Drop zone functionality
   const handleDragOver = (e) => {
     e.preventDefault();
-    if (!isTranslating) {
+    if (!isTranslating && !exportOwnsControls()) {
       setIsDragOver(true);
     }
   };
 
   const handleDragLeave = (e) => {
     e.preventDefault();
+    if (exportOwnsControls()) return;
     setIsDragOver(false);
   };
 
   const handleDrop = async (e) => {
     e.preventDefault();
+    if (exportOwnsControls()) return;
     setIsDragOver(false);
 
     if (isTranslating) return;
@@ -67,16 +76,24 @@ const TranslationActions = ({
   };
 
   const handleBrowseClick = () => {
-    if (!isTranslating && fileInputRef.current) {
+    if (!isTranslating && !exportOwnsControls() && fileInputRef.current) {
       fileInputRef.current.click();
     }
   };
 
+  const handleBrowseKeyDown = (e) => {
+    if (e.key !== 'Enter' && e.key !== ' ') return;
+    e.preventDefault();
+    handleBrowseClick();
+  };
+
   const handleFileInputChange = async (e) => {
+    if (exportOwnsControls()) return;
     const files = Array.from(e.target.files);
     if (files.length > 0) {
       await addFiles(files);
     }
+    if (exportOwnsControls()) return;
     e.target.value = '';
   };
 
@@ -123,6 +140,7 @@ const TranslationActions = ({
 
   // Add files function
   const addFiles = async (files) => {
+    if (exportOwnsControls()) return;
     const newFiles = [];
     const errors = [];
 
@@ -139,6 +157,7 @@ const TranslationActions = ({
 
       try {
         const parsedFile = await parseFile(file);
+        if (exportOwnsControls()) return;
         newFiles.push(parsedFile);
       } catch (error) {
         errors.push(`${file.name}: ${error.message}`);
@@ -149,9 +168,36 @@ const TranslationActions = ({
       console.warn('Bulk file errors:', errors);
     }
 
-    if (newFiles.length > 0) {
+    if (newFiles.length > 0 && !exportOwnsControls()) {
       onBulkFilesChange([...bulkFiles, ...newFiles]);
     }
+  };
+
+  const changeBulkFilesUnlessExporting = (nextFiles) => {
+    if (!exportOwnsControls()) onBulkFilesChange?.(nextFiles);
+  };
+
+  const removeBulkFileUnlessExporting = (fileId) => {
+    if (exportOwnsControls()) return;
+    if (onBulkFileRemoval) {
+      onBulkFileRemoval(fileId);
+    } else {
+      onBulkFilesChange?.(bulkFiles.filter((bulkFile) => bulkFile.id !== fileId));
+    }
+  };
+
+  const removeAllBulkFilesUnlessExporting = () => {
+    if (exportOwnsControls()) return;
+    if (onBulkFilesRemovalAll) {
+      onBulkFilesRemovalAll();
+    } else {
+      onBulkFilesChange?.([]);
+    }
+  };
+
+  const runUnlessExporting = (operation) => {
+    if (exportOwnsControls()) return { status: 'busy' };
+    return operation?.();
   };
 
   // Gemini effects for translate buttons have been removed to reduce lag
@@ -163,11 +209,15 @@ const TranslationActions = ({
         <div className="bulk-controls-row">
           {/* Functional drop zone */}
           <div
-            className={`bulk-drop-zone ${isDragOver ? 'drag-over' : ''} ${isTranslating ? 'disabled' : ''}`}
+            className={`bulk-drop-zone ${isDragOver && !controlsAreDisabled ? 'drag-over' : ''} ${controlsAreDisabled ? 'disabled' : ''}`}
             onDragOver={handleDragOver}
             onDragLeave={handleDragLeave}
             onDrop={handleDrop}
             onClick={handleBrowseClick}
+            onKeyDown={handleBrowseKeyDown}
+            role="button"
+            tabIndex={controlsAreDisabled ? -1 : 0}
+            aria-disabled={controlsAreDisabled}
           >
             <div className="drop-zone-content">
               <span className="material-symbols-rounded" style={{ fontSize: '18px' }}>docs_add_on</span>
@@ -187,6 +237,7 @@ const TranslationActions = ({
               multiple
               accept=".srt,.json"
               onChange={handleFileInputChange}
+              disabled={controlsAreDisabled}
               style={{ display: 'none' }}
             />
           </div>
@@ -220,8 +271,9 @@ const TranslationActions = ({
                 onClick={(e) => {
                   e.preventDefault();
                   e.stopPropagation();
-                  onCancel();
+                  runUnlessExporting(onCancel);
                 }}
+                disabled={exportControlsDisabled}
                 title={t('translation.cancelTooltip', 'Cancel translation process')}
               >
                 <span className="material-symbols-rounded" style={{ fontSize: '16px' }}>close</span>
@@ -235,11 +287,11 @@ const TranslationActions = ({
                 onClick={(e) => {
                   e.preventDefault();
                   e.stopPropagation();
-                  if (!disabled) {
+                  if (!disabled && !exportOwnsControls()) {
                     onTranslate();
                   }
                 }}
-                disabled={disabled}
+                disabled={disabled || exportControlsDisabled}
               >
                 {isFormatMode ? (
                   <>
@@ -259,7 +311,8 @@ const TranslationActions = ({
                 <div className="bulk-download-buttons">
                   <button
                     className="download-all-button"
-                    onClick={onDownloadAll}
+                    onClick={() => runUnlessExporting(onDownloadAll)}
+                    disabled={exportControlsDisabled}
                     title={t('translation.bulk.downloadAll', 'Download all translated files')}
                   >
                     <span className="material-symbols-rounded" style={{ fontSize: '16px' }}>download</span>
@@ -267,7 +320,8 @@ const TranslationActions = ({
                   </button>
                   <button
                     className="download-zip-button"
-                    onClick={onDownloadZip}
+                    onClick={() => runUnlessExporting(onDownloadZip)}
+                    disabled={exportControlsDisabled}
                     title={t('translation.bulk.downloadZip', 'Download all as ZIP')}
                   >
                     <span className="material-symbols-rounded" style={{ fontSize: '16px' }}>archive</span>
@@ -283,10 +337,10 @@ const TranslationActions = ({
         {/* Files container spans full width */}
         <BulkTranslationPool
           bulkFiles={bulkFiles}
-          onBulkFilesChange={onBulkFilesChange}
-          onBulkFileRemoval={onBulkFileRemoval}
-          onBulkFilesRemovalAll={onBulkFilesRemovalAll}
-          disabled={isTranslating}
+          onBulkFilesChange={changeBulkFilesUnlessExporting}
+          onBulkFileRemoval={removeBulkFileUnlessExporting}
+          onBulkFilesRemovalAll={removeAllBulkFilesUnlessExporting}
+          disabled={controlsAreDisabled}
           splitDuration={splitDuration}
           hideDropZone={true}
         />

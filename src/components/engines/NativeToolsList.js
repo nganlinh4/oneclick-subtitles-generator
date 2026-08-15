@@ -95,8 +95,10 @@ export const NativeToolRow = ({ catalog, status, onChanged }) => {
         try {
           const latest = isVoiceSamples
             ? await getVoiceSamplesStatus()
+            : isRenderer
+              ? await getRenderPackageStatus()
             : await getNativeToolsStatus();
-          const tool = isVoiceSamples
+          const tool = isVoiceSamples || isRenderer
             ? { ...latest, activeRuntime: latest.installed }
             : latest.tools.find(({ id }) => id === catalog.id);
           if (operationReachedExpectedState(tool, action)) {

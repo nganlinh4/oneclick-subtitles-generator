@@ -23,7 +23,10 @@ tokio-util = { version = "0.7.19", features = ["rt"] }
 url = "2.5.8"
 
 [dev-dependencies]
+anyhow = "1.0.104"
+sha2 = "0.10.9"
 tempfile = "3.27.0"
+time.workspace = true
 wiremock = "0.6.5"
 
 [lints]

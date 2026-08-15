@@ -100,10 +100,18 @@ const sanitizeAnalysisResult = (analysisResult) => {
  * @param {Function} onStatusUpdate - Callback for status updates
  * @returns {Promise<Object>} - Analysis results
  */
-export const analyzeVideoWithGemini = async (videoFile, onStatusUpdate) => {
+export const analyzeVideoWithGemini = async (
+  videoFile,
+  onStatusUpdate,
+  { signal: externalSignal, validateOwnership = null } = {}
+) => {
   // Create a new AbortController and store it
-  activeAnalysisController = new AbortController();
-  const signal = activeAnalysisController.signal;
+  const analysisController = new AbortController();
+  activeAnalysisController = analysisController;
+  const signal = analysisController.signal;
+  const abortFromOwner = () => analysisController.abort();
+  if (externalSignal?.aborted) analysisController.abort();
+  else externalSignal?.addEventListener?.('abort', abortFromOwner, { once: true });
   try {
     const nativeRuntime = isDesktopRuntime();
     if (!nativeRuntime) throw new Error('Video analysis requires the desktop runtime');
@@ -208,6 +216,7 @@ Provide your analysis in a structured format that can be used to guide the trans
       analysisAssetId = clip.media.asset.id;
     }
 
+    if (validateOwnership) await validateOwnership();
     const nativeResult = await runNativeGeminiMediaAnalysis({
       assetId: analysisAssetId,
       model: MODEL,
@@ -217,6 +226,7 @@ Provide your analysis in a structured format that can be used to guide the trans
       mediaResolution: 'low',
       signal,
     });
+    if (validateOwnership) await validateOwnership();
     const result = [{ text: nativeResult.text }];
 
     // Extract analysis result from the response
@@ -266,16 +276,20 @@ Provide your analysis in a structured format that can be used to guide the trans
     console.error('Error analyzing video:', error);
 
     // Clear the active controller
-    activeAnalysisController = null;
+    if (activeAnalysisController === analysisController) activeAnalysisController = null;
 
     // Check if this is an abort error
     if (error.name === 'AbortError') {
-      throw new Error('Video analysis was cancelled');
+      const aborted = new Error('Video analysis was cancelled');
+      aborted.name = 'AbortError';
+      aborted.code = 'videoAnalysisAborted';
+      throw aborted;
     }
 
     throw error;
   } finally {
     // Clear the active controller in case of success
-    activeAnalysisController = null;
+    externalSignal?.removeEventListener?.('abort', abortFromOwner);
+    if (activeAnalysisController === analysisController) activeAnalysisController = null;
   }
 };

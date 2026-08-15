@@ -7,13 +7,13 @@ import { createTranslationSchema } from '../../utils/schemaUtils';
 import { getThinkingBudget } from '../../utils/thinkingBudgetUtils';
 import { runNativeGeminiText } from '../../platform/nativeGeminiText';
 import { isDesktopRuntime } from '../../platform/runtimeEnvironment';
-import { createRequestController, removeRequestController, abortAllRequests } from './requestManagement';
 import { formatSubtitles, formatSubtitlesWithChain } from './translationChainFormatter';
 import { translateSubtitlesByChunks } from './translationChunkProcessor';
 import { processTranslationResponse } from './translationResponseParser';
 import { buildTranslationPrompt, buildRetryPrompt } from './translationPromptBuilder';
 import { buildTranslatedSubtitles } from './translationSubtitleBuilder';
 import { DEFAULT_TRANSLATION_MODEL_ID } from '../../config/geminiModels';
+import { createTranslationAbortError } from '../../utils/translationOwnership';
 
 /**
  * Translate subtitles to different language(s) while preserving timing
@@ -31,7 +31,38 @@ import { DEFAULT_TRANSLATION_MODEL_ID } from '../../config/geminiModels';
  * @param {Array} chainItems - Optional chain items for chain-based formatting
  * @returns {Promise<Array>} - Array of translated subtitles
  */
-const translateSubtitles = async (subtitles, targetLanguage, model = DEFAULT_TRANSLATION_MODEL_ID, customPrompt = null, splitDuration = 0, includeRules = false, delimiter = ' ', useParentheses = false, bracketStyle = null, chainItems = null, fileContext = null, preserveOriginalSubtitlesMap = false) => {
+const translateSubtitles = async (subtitles, targetLanguage, model = DEFAULT_TRANSLATION_MODEL_ID, customPrompt = null, splitDuration = 0, includeRules = false, delimiter = ' ', useParentheses = false, bracketStyle = null, chainItems = null, fileContext = null, preserveOriginalSubtitlesMap = false, ownership = {}) => {
+    const localController = ownership.signal ? null : new AbortController();
+    const signal = ownership.signal ?? localController.signal;
+    const assertOwned = typeof ownership.assertOwned === 'function'
+        ? ownership.assertOwned
+        : async () => {};
+    const publishOwnedStatus = typeof ownership.publishStatus === 'function'
+        ? ownership.publishStatus
+        : async () => {};
+    const assertBoundary = async () => {
+        if (signal.aborted) throw createTranslationAbortError();
+        await assertOwned();
+        if (signal.aborted) throw createTranslationAbortError();
+    };
+    const publishStatus = async (message) => {
+        await assertBoundary();
+        await publishOwnedStatus(message);
+        await assertBoundary();
+        try {
+            window.dispatchEvent(new CustomEvent('translation-status', {
+                detail: {
+                    message,
+                    ...(ownership.statusOwner ?? {}),
+                }
+            }));
+        } catch {
+            // Status notifications are compatibility-only and cannot own the run.
+        }
+        await assertBoundary();
+    };
+    await assertBoundary();
+
     // Check if we're in format mode (empty target languages array)
     const isFormatMode = Array.isArray(targetLanguage) && targetLanguage.length === 0;
 
@@ -40,7 +71,12 @@ const translateSubtitles = async (subtitles, targetLanguage, model = DEFAULT_TRA
 
     // Store the target language(s) for reference (except in format mode)
     if (!isFormatMode) {
-        localStorage.setItem('translation_target_language', isMultiLanguage ? JSON.stringify(targetLanguage) : targetLanguage);
+        await assertBoundary();
+        try {
+            localStorage.setItem('translation_target_language', isMultiLanguage ? JSON.stringify(targetLanguage) : targetLanguage);
+        } catch {
+            // Compatibility metadata cannot own the translation run.
+        }
     }
 
     if (!subtitles || subtitles.length === 0) {
@@ -67,7 +103,11 @@ const translateSubtitles = async (subtitles, targetLanguage, model = DEFAULT_TRA
     // it for every top-level browser translation; recursive chunk calls keep the complete map.
     if (!preserveOriginalSubtitlesMap) {
         if (isDesktopRuntime()) {
-            localStorage.removeItem('original_subtitles_map');
+            try {
+                localStorage.removeItem('original_subtitles_map');
+            } catch {
+                // Compatibility metadata cannot own the translation run.
+            }
         } else {
             const originalSubtitlesMap = {};
             subtitles.forEach((sub, index) => {
@@ -81,7 +121,11 @@ const translateSubtitles = async (subtitles, targetLanguage, model = DEFAULT_TRA
                 };
             });
 
-            localStorage.setItem('original_subtitles_map', JSON.stringify(originalSubtitlesMap));
+            try {
+                localStorage.setItem('original_subtitles_map', JSON.stringify(originalSubtitlesMap));
+            } catch {
+                // Compatibility metadata cannot own the translation run.
+            }
         }
     }
 
@@ -92,14 +136,14 @@ const translateSubtitles = async (subtitles, targetLanguage, model = DEFAULT_TRA
         const message = i18n.t('translation.formattingSubtitles', 'Formatting {{count}} subtitles', {
             count: subtitles.length
         });
-        window.dispatchEvent(new CustomEvent('translation-status', {
-            detail: { message }
-        }));
+        await publishStatus(message);
 
         // Format the subtitles with the chain items if provided, otherwise use the specified delimiter and bracket style
-        return chainItems
+        const formatted = chainItems
             ? formatSubtitlesWithChain(subtitles, chainItems)
             : formatSubtitles(subtitles, delimiter, useParentheses, bracketStyle);
+        await assertBoundary();
+        return formatted;
     }
 
     // If splitDuration is specified and not 0, split subtitles into chunks based on duration
@@ -111,12 +155,11 @@ const translateSubtitles = async (subtitles, targetLanguage, model = DEFAULT_TRA
             duration: splitDuration
         });
         const message = fileContext ? `[${fileContext}] ${baseMessage}` : baseMessage;
-        window.dispatchEvent(new CustomEvent('translation-status', {
-            detail: { message }
-        }));
+        await publishStatus(message);
 
-        // Get rest time from localStorage if available
-        const restTime = parseInt(localStorage.getItem('translation_rest_time') || '0');
+        const restTime = Number.isSafeInteger(ownership.restTime) && ownership.restTime >= 0
+            ? ownership.restTime
+            : parseInt(localStorage.getItem('translation_rest_time') || '0');
         const translateChunk = (
             chunkSubtitles,
             chunkTargetLanguage,
@@ -140,9 +183,27 @@ const translateSubtitles = async (subtitles, targetLanguage, model = DEFAULT_TRA
             chunkBracketStyle,
             chunkChainItems,
             fileContext,
-            true
+            true,
+            ownership
         );
-        return await translateSubtitlesByChunks(subtitles, targetLanguage, model, customPrompt, splitDuration, includeRules, delimiter, useParentheses, bracketStyle, chainItems, restTime, fileContext, translateChunk);
+        const translated = await translateSubtitlesByChunks(
+            subtitles,
+            targetLanguage,
+            model,
+            customPrompt,
+            splitDuration,
+            includeRules,
+            delimiter,
+            useParentheses,
+            bracketStyle,
+            chainItems,
+            restTime,
+            fileContext,
+            translateChunk,
+            { signal, assertOwned, publishStatus }
+        );
+        await assertBoundary();
+        return translated;
     }
 
     // Format subtitles as text lines for Gemini (text only, no timestamps, no numbering)
@@ -157,13 +218,11 @@ const translateSubtitles = async (subtitles, targetLanguage, model = DEFAULT_TRA
         includeRules
     });
 
-    // Create a unique ID for this request
-    const { requestId, signal } = createRequestController();
-
     try {
         const responseSchema = createTranslationSchema(isMultiLanguage);
 
         const executeTranslationRequest = async (prompt) => {
+            await assertBoundary();
             const thinking = getThinkingBudget(model);
             const result = await runNativeGeminiText({
                 task: 'translate',
@@ -173,12 +232,15 @@ const translateSubtitles = async (subtitles, targetLanguage, model = DEFAULT_TRA
                 ...(typeof thinking === 'string' ? { thinkingLevel: thinking } : {}),
                 signal,
             });
+            // A provider is allowed to settle despite abort; ownership is authoritative.
+            await assertBoundary();
             return {
                 candidates: [{ content: { parts: [{ text: result.text }] } }],
             };
         };
 
         const data = await executeTranslationRequest(translationPrompt);
+        await assertBoundary();
 
         // Loop-invariant context shared by every response-parsing call
         const parseContext = { isMultiLanguage, useParentheses, delimiter, bracketStyle, chainItems, subtitles };
@@ -207,8 +269,13 @@ const translateSubtitles = async (subtitles, targetLanguage, model = DEFAULT_TRA
                 });
 
                 const retryData = await executeTranslationRequest(retryPrompt);
+                await assertBoundary();
                 translatedTexts = processTranslationResponse(retryData, parseContext);
             } catch (retryError) {
+                if (signal.aborted || retryError?.name === 'AbortError'
+                    || retryError?.code === 'translationAborted') {
+                    throw createTranslationAbortError();
+                }
                 console.error('Translation retry failed:', retryError);
                 break; // Exit the retry loop if the API call fails
             }
@@ -229,29 +296,24 @@ const translateSubtitles = async (subtitles, targetLanguage, model = DEFAULT_TRA
         });
 
 
+        await assertBoundary();
         return translatedSubtitles;
     } catch (error) {
         // Check if this is an AbortError
-        if (error.name === 'AbortError') {
-
-            throw new Error('Translation request was aborted');
+        if (error.name === 'AbortError' || error.code === 'translationAborted') {
+            throw createTranslationAbortError();
         } else {
             console.error('Translation error:', error);
             throw error;
         }
-    } finally {
-        removeRequestController(requestId);
     }
 };
 
-// Function to cancel translation
-const cancelTranslation = () => {
-
-    // Use the abortAllRequests function from requestManagement.js
-    // This will abort all active controllers and set the processingForceStopped flag
-    const aborted = abortAllRequests();
-
-    return aborted;
+// Compatibility export. Translation cancellation is now owned by the hook's run controller.
+const cancelTranslation = (controller = null) => {
+    if (!controller || typeof controller.abort !== 'function') return false;
+    controller.abort(createTranslationAbortError());
+    return true;
 };
 
 // Export the functions

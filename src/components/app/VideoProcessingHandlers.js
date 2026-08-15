@@ -1,9 +1,22 @@
 import { downloadNativeVideo } from '../../platform/nativeUrlDownloadAdapter';
+import { getDownloadCookieSource } from '../../platform/downloadCookiePreference';
 import { runMediaPipeline } from '../../platform/mediaPipelineService';
 import {
   createNativeMediaDescriptor,
   isNativeMediaDescriptor,
 } from '../../platform/mediaService';
+import { generateUrlBasedCacheId } from '../../services/subtitleCache';
+import { resolveProjectForCache } from '../../platform/subtitleProjectStore';
+import { setCurrentCacheId as setRulesCacheId } from '../../utils/transcriptionRulesStore';
+import { setCurrentCacheId as setSubtitlesCacheId } from '../../utils/userSubtitlesStore';
+import {
+  assertAutoGenerationRequestActive,
+  AutoGenerationOwnershipError,
+  isAutoGenerationRequest,
+  sourceIdentityForUrl,
+} from '../../utils/autoGenerationOwnership';
+
+const downloadPresentationOwners = new WeakMap();
 
 export const ensureVideoCompatibility = async (videoFile) => {
   if (!isNativeMediaDescriptor(videoFile)) {
@@ -68,31 +81,76 @@ export const downloadAndPrepareYouTubeVideo = async (
     return undefined;
   }
 
-  setIsDownloading(true);
-  setDownloadProgress(0);
-  setStatus({
+  const presentationToken = Object.freeze({});
+  downloadPresentationOwners.set(setIsDownloading, presentationToken);
+  const ownsPresentation = () => (
+    downloadPresentationOwners.get(setIsDownloading) === presentationToken
+  );
+  const present = (callback) => {
+    if (!ownsPresentation()) return false;
+    callback();
+    return true;
+  };
+
+  present(() => setIsDownloading(true));
+  present(() => setDownloadProgress(0));
+  present(() => setStatus({
     message: t('output.downloadingVideo', 'Downloading video...'),
     type: 'loading',
-  });
+  }));
 
+  const autoRequest = nativeDownloadOptions.autoRequest;
+  const guardedAutoRequest = isAutoGenerationRequest(autoRequest) ? autoRequest : null;
   try {
+    const expectedSourceIdentity = sourceIdentityForUrl(selectedVideo.url);
+    const assertDownloadOwnership = () => {
+      if (!guardedAutoRequest) return;
+      assertAutoGenerationRequestActive(guardedAutoRequest);
+      const activeUrl = localStorage.getItem('current_video_url');
+      if (typeof activeUrl !== 'string' || `url:${activeUrl}` !== expectedSourceIdentity) {
+        throw new AutoGenerationOwnershipError();
+      }
+    };
+    assertDownloadOwnership();
     const nativeMedia = await downloadNativeVideo({
       url: selectedVideo.url,
-      useCookies: localStorage.getItem('use_cookies_for_download') === 'true',
-      onStarted: setCurrentDownloadId,
-      onProgress: setDownloadProgress,
+      cookieSource: getDownloadCookieSource(),
+      ...(guardedAutoRequest ? { signal: guardedAutoRequest.signal } : {}),
+      ...(guardedAutoRequest ? { validateOwnership: assertDownloadOwnership } : {}),
+      onStarted: (jobId) => present(() => setCurrentDownloadId(jobId)),
+      onProgress: (progress) => present(() => setDownloadProgress(progress)),
       preferredSubtitleLanguages: nativeDownloadOptions.preferredSubtitleLanguages,
-      onSubtitle: nativeDownloadOptions.onSubtitle,
+      onSubtitle: (subtitle) => {
+        assertDownloadOwnership();
+        present(() => nativeDownloadOptions.onSubtitle?.(subtitle));
+        assertDownloadOwnership();
+      },
     });
 
     if (nativeMedia === null) {
-      setDownloadProgress(0);
-      setStatus({
+      present(() => setDownloadProgress(0));
+      present(() => setStatus({
         message: t('download.downloadOnly.cancelled', 'Download cancelled'),
         type: 'warning',
-      });
+      }));
       return undefined;
     }
+
+    assertDownloadOwnership();
+    const projectCacheId = await generateUrlBasedCacheId(selectedVideo.url);
+    if (typeof projectCacheId !== 'string' || projectCacheId.length === 0) {
+      throw new Error('The downloaded media could not be bound to a subtitle project.');
+    }
+    // Project identity must switch before React publishes the new media. This
+    // prevents analysis/editor effects from reading or clearing the previous
+    // video's rules during the render that follows setUploadedFile().
+    setRulesCacheId(projectCacheId);
+    setSubtitlesCacheId(projectCacheId);
+    const project = await resolveProjectForCache(projectCacheId, { create: true });
+    if (!project?.projectId) {
+      throw new Error('The downloaded media could not be bound to a durable subtitle project.');
+    }
+    assertDownloadOwnership();
 
     const previousFileUrl = localStorage.getItem('current_file_url');
     if (previousFileUrl?.startsWith('blob:')) {
@@ -108,27 +166,48 @@ export const downloadAndPrepareYouTubeVideo = async (
     localStorage.setItem('current_file_cache_id', nativeMedia.assetId);
     localStorage.setItem('current_file_name', nativeMedia.name);
 
+    if (!ownsPresentation()) throw new AutoGenerationOwnershipError();
     handleTabChange('file-upload', false);
     localStorage.setItem('current_video_url', selectedVideo.url);
-    setUploadedFile(nativeMedia);
-    setIsSrtOnlyMode?.(false);
-    setDownloadProgress(100);
-    setStatus({
+    present(() => setUploadedFile(nativeMedia));
+    present(() => setIsSrtOnlyMode?.(false));
+    present(() => setDownloadProgress(100));
+    present(() => setStatus({
       message: nativeMedia.type.startsWith('audio/')
         ? t('output.audioReady', 'Audio is ready for processing!')
         : t('output.videoReady', 'Video is ready for processing!'),
-      type: 'success',
-    });
+      // An automatic run has only prepared media here. Its first green
+      // terminal belongs to the subtitle owner after an exact-project durable
+      // checkpoint, not to the downloader.
+      type: guardedAutoRequest ? 'loading' : 'success',
+    }));
     return nativeMedia;
   } catch (error) {
+    if (guardedAutoRequest && (
+      guardedAutoRequest.signal.aborted
+      || error instanceof AutoGenerationOwnershipError
+      || error?.name === 'AbortError'
+    )) {
+      throw error;
+    }
+    if (!ownsPresentation()) return undefined;
     setDownloadProgress(0);
+    const detail = error?.code === 'downloaderExecutionFailed'
+      ? t(
+        'errors.videoDownloadExecutionFailed',
+        'The downloader retried but the source still failed. Check your connection, or enable browser cookies if the video requires sign-in.'
+      )
+      : error.message;
     setStatus({
-      message: `${t('errors.videoDownloadFailed', 'Video download failed')}: ${error.message}`,
+      message: `${t('errors.videoDownloadFailed', 'Video download failed')}: ${detail}`,
       type: 'error',
     });
     return undefined;
   } finally {
-    setCurrentDownloadId(null);
-    setIsDownloading(false);
+    if (ownsPresentation()) {
+      downloadPresentationOwners.delete(setIsDownloading);
+      setCurrentDownloadId(null);
+      setIsDownloading(false);
+    }
   }
 };

@@ -1,6 +1,10 @@
 import { useMemo } from 'react';
 import { AbsoluteFill, useCurrentFrame, Audio, Video, useVideoConfig } from 'remotion';
 
+import { applySubtitleAnimationEasing } from '../../video-renderer/src/subtitleAnimationEasing';
+import { scaleSubtitleStyleValue } from '../../video-renderer/src/subtitleVisualMath';
+import { defaultCustomization } from './subtitleCustomization/defaultCustomization';
+
 // Font styles with multilingual support
 const fontStyles = `
 /* Korean fonts */
@@ -47,46 +51,6 @@ const fontStyles = `
 @import url('https://fonts.googleapis.com/css2?family=Fira+Code:wght@300;400;500;600;700&display=swap');
 `;
 
-// Default customization settings
-const defaultCustomization = {
-  fontSize: 48,
-  fontFamily: "'Noto Sans', sans-serif",
-  fontWeight: 'bold',
-  textColor: '#ffffff',
-  textAlign: 'center',
-  lineHeight: 1.2,
-  letterSpacing: 0,
-  textShadowEnabled: true,
-  textShadowColor: '#000000',
-  textShadowOffsetX: 2,
-  textShadowOffsetY: 2,
-  textShadowBlur: 4,
-  glowEnabled: false,
-  glowColor: '#ffffff',
-  glowIntensity: 10,
-  backgroundColor: '#000000',
-  backgroundOpacity: 0,
-  borderWidth: 0,
-  borderStyle: 'solid',
-  borderColor: '#ffffff',
-  borderRadius: 0,
-  position: 'bottom',
-  marginTop: 50,
-  marginBottom: 50,
-  marginLeft: 50,
-  marginRight: 50,
-  customPositionX: 50,
-  customPositionY: 50,
-  maxWidth: 90,
-  wordWrap: true,
-  textTransform: 'none',
-  animationType: 'fade',
-  animationEasing: 'ease-in-out',
-  fadeInDuration: 0.3,
-  fadeOutDuration: 0.3,
-  rtlSupport: false
-};
-
 export const SubtitledVideoComposition = ({
   videoUrl,
   narrationUrl,
@@ -104,11 +68,9 @@ export const SubtitledVideoComposition = ({
 
   // Create a scaling function that uses actual composition dimensions
   const getResponsiveScaledValue = (value) => {
-    const baseHeight = 1080; // Reference height (1080p)
-    const scale = compositionHeight / baseHeight;
     // Preserve fractional pixel values (up to 2 decimal places) so stroke widths can be non-integer
     if (typeof value !== 'number') return value;
-    return Number((value * scale).toFixed(2));
+    return scaleSubtitleStyleValue(value, compositionHeight);
   };
 
   // Get consistent relative position as percentage (based on 1080p reference)
@@ -182,7 +144,7 @@ export const SubtitledVideoComposition = ({
     const easing = customization.animationEasing;
 
     // Apply easing function
-    const easedProgress = applyEasing(progress, easing);
+    const easedProgress = applySubtitleAnimationEasing(progress, easing);
 
     switch (animationType) {
       case 'slide-up':
@@ -269,23 +231,6 @@ export const SubtitledVideoComposition = ({
       case 'fade':
       default:
         return 'none';
-    }
-  };
-
-  // Apply easing functions
-  const applyEasing = (t, easing) => {
-    switch (easing) {
-      case 'ease-in':
-        return t * t;
-      case 'ease-out':
-        return 1 - Math.pow(1 - t, 2);
-      case 'ease-in-out':
-        return t < 0.5 ? 2 * t * t : 1 - Math.pow(-2 * t + 2, 2) / 2;
-      case 'ease':
-        return t < 0.5 ? 2 * t * t : 1 - Math.pow(-2 * t + 2, 2) / 2; // Similar to ease-in-out
-      case 'linear':
-      default:
-        return t;
     }
   };
 

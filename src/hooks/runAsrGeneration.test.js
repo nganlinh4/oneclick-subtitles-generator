@@ -96,8 +96,18 @@ it('preserves successful merge, completion, and auto-save behavior', async () =>
     return true;
   });
   const params = createParams({ setSubtitlesData });
+  const owner = new AbortController();
+  params.options.signal = owner.signal;
 
   await expect(runAsrGeneration(params)).resolves.toBe(true);
+
+  expect(processAsrSegment).toHaveBeenCalledWith(
+    params.engine,
+    params.input,
+    { start: 10, end: 20 },
+    expect.objectContaining({ signal: owner.signal }),
+    expect.any(Object),
+  );
 
   expect(publishStreamingComplete).toHaveBeenCalledWith({
     subtitles: [

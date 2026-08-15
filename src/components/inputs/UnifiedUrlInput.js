@@ -7,6 +7,7 @@ import {
 } from '../../utils/historyUtils';
 import { getVideoDetails, getVideoThumbnail } from '../../platform/desktopYoutubeService';
 import { downloadUrlToUserDestination } from '../../platform/userMediaExportFlow';
+import { getDownloadCookieSource } from '../../platform/downloadCookiePreference';
 import DownloadOnlyModal from '../DownloadOnlyModal';
 import {
   isValidYoutubeUrl,
@@ -247,9 +248,7 @@ const UnifiedUrlInput = ({ setSelectedVideo, selectedVideo, className }) => {
     try {
       await downloadUrlToUserDestination({
         url: selectedVideo.url,
-        cookieSource: localStorage.getItem('use_cookies_for_download') === 'true'
-          ? 'chrome'
-          : 'none',
+        cookieSource: getDownloadCookieSource(),
         media: { kind: 'video', quality: { mode: 'best' } },
         onDownloadProgress: setDouyinDownloadProgress,
         onExportProgress: setDouyinDownloadProgress,

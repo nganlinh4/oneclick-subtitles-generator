@@ -73,6 +73,12 @@ const BulkTranslationPreview = ({
     // and adjust indices to match the original subtitles from that specific file
     const bulkSegment = {
       ...segment,
+      originalIds: Array.from(new Set(
+        selectedTranslation.subtitles
+          .slice(segment.startIndex, segment.endIndex + 1)
+          .map((subtitle) => subtitle?.originalId)
+          .filter((id) => id !== undefined)
+      )),
       fileId: selectedTranslation.id,
       fileName: selectedTranslation.name,
       isFromBulk: true
@@ -107,7 +113,8 @@ const BulkTranslationPreview = ({
       subtitleCount: 1,
       fileId: selectedTranslation.id,
       fileName: selectedTranslation.name,
-      isFromBulk: true
+      isFromBulk: true,
+      originalId: selectedTranslation.subtitles[subtitleIndex]?.originalId,
     };
 
     // Add subtitle to retrying set with file-specific identifier

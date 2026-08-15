@@ -87,6 +87,46 @@ describe('native narration flow ownership', () => {
     await expect(cancelNativeNarrationJob('gemini')).resolves.toBe(false);
   });
 
+  test('owns an early malformed terminal error while the start request rejects', async () => {
+    const protocolError = Object.assign(new Error('Malformed native narration event'), {
+      code: 'invalidSpeechEvent',
+    });
+    const onStarted = vi.fn();
+    nativeNarrationAdapter.generate.mockImplementation(async (_request, handlers) => {
+      handlers.onProtocolError(protocolError);
+      throw new Error('The start response also failed');
+    });
+
+    await expect(runNativeNarrationJob(request(), { onStarted })).rejects.toBe(protocolError);
+    expect(onStarted).not.toHaveBeenCalled();
+    await expect(cancelNativeNarrationJob('gemini')).resolves.toBe(false);
+  });
+
+  test('propagates Stop before the pending start response and never publishes onStarted', async () => {
+    const stopError = Object.assign(new Error('The speech backend was stopped'), {
+      code: 'speechLifecycleStopped',
+    });
+    const onStarted = vi.fn();
+    let handlers;
+    let rejectStart;
+    nativeNarrationAdapter.generate.mockImplementation((_request, callbacks) => {
+      handlers = callbacks;
+      return new Promise((_resolve, reject) => {
+        rejectStart = reject;
+      });
+    });
+
+    const result = runNativeNarrationJob(request(), { onStarted });
+    await Promise.resolve();
+    await Promise.resolve();
+    handlers.onProtocolError(stopError);
+    rejectStart(new Error('The stale start response failed'));
+
+    await expect(result).rejects.toBe(stopError);
+    expect(onStarted).not.toHaveBeenCalled();
+    await expect(cancelNativeNarrationJob('gemini')).resolves.toBe(false);
+  });
+
   test('reconnects an opaque recovered ID against the current in-memory subtitle plan', async () => {
     listRecoveredNativeJobs.mockReturnValue([{ job: { id: JOB_ID } }]);
     nativeNarrationAdapter.restore.mockResolvedValue({

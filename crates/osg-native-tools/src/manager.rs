@@ -5,7 +5,6 @@ use std::path::{Path, PathBuf};
 #[cfg(test)]
 use std::sync::atomic::{AtomicBool, AtomicUsize as TestAtomicUsize, Ordering as AtomicOrdering};
 use std::sync::{Arc, Mutex};
-use std::time::{Duration, Instant};
 
 use serde::Serialize;
 use uuid::Uuid;
@@ -70,7 +69,6 @@ struct ManagerInner {
     fetcher: Arc<dyn FileFetcher>,
     coordinator: Arc<dyn RuntimeCoordinator>,
     ytdlp_releases: Arc<dyn YtDlpReleaseResolver>,
-    ytdlp_update_check: Mutex<YtDlpUpdateCheck>,
     dynamic_ytdlp: Mutex<Vec<ToolDelivery>>,
     verified_installs: Mutex<HashMap<(NativeToolId, String), receipt::InstallIdentity>>,
     #[cfg(test)]
@@ -84,16 +82,9 @@ struct ManagerInner {
     activity: Mutex<ActivityState>,
 }
 
-const YTDLP_UPDATE_CHECK_INTERVAL: Duration = Duration::from_mins(30);
 const RETAINED_DYNAMIC_YTDLP_RELEASES: usize = 2;
 const MAX_VERIFIED_INSTALLS: usize = 128;
 const MAX_TRASH_GC_ENTRIES: usize = 128;
-
-#[derive(Debug, Default)]
-struct YtDlpUpdateCheck {
-    checked_at: Option<Instant>,
-    candidate: Option<ToolDelivery>,
-}
 
 #[derive(Debug, Default)]
 struct ActivityState {
@@ -201,7 +192,6 @@ impl NativeToolManager {
             fetcher,
             coordinator,
             ytdlp_releases,
-            ytdlp_update_check: Mutex::new(YtDlpUpdateCheck::default()),
             dynamic_ytdlp: Mutex::new(dynamic_ytdlp),
             verified_installs: Mutex::new(HashMap::new()),
             #[cfg(test)]
@@ -751,30 +741,15 @@ impl NativeToolManager {
         if tool != NativeToolId::YtDlp {
             return Ok(current);
         }
-        let mut update_check = self
-            .0
-            .ytdlp_update_check
-            .lock()
-            .map_err(|_| NativeToolError::StoreUnavailable)?;
-        if update_check
-            .checked_at
-            .is_some_and(|checked_at| checked_at.elapsed() < YTDLP_UPDATE_CHECK_INTERVAL)
-        {
-            return Ok(update_check
-                .candidate
-                .as_ref()
-                .filter(|candidate| candidate.version > current.version)
-                .cloned()
-                .unwrap_or(current));
-        }
+        // An install request is explicit (including failure recovery), so always ask the
+        // official release resolver. The caller already coalesces and throttles automatic
+        // recovery; a stale process failure must not be hidden behind a status cache.
         let candidate = self
             .0
             .ytdlp_releases
             .latest(self.0.catalog.platform())
             .ok()
             .filter(|latest| latest.version > current.version);
-        update_check.checked_at = Some(Instant::now());
-        update_check.candidate.clone_from(&candidate);
         Ok(candidate.unwrap_or(current))
     }
 
@@ -2218,7 +2193,7 @@ mod tests {
         manager
             .install(NativeToolId::YtDlp, &CancellationToken::default(), &|_| {})
             .unwrap();
-        assert_eq!(resolver.calls.load(Ordering::Relaxed), 1);
+        assert_eq!(resolver.calls.load(Ordering::Relaxed), 2);
         assert_eq!(
             manager.status(NativeToolId::YtDlp).version,
             Some(updated.version.clone())

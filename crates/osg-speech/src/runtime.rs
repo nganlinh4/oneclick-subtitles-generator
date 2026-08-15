@@ -5,17 +5,49 @@ use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::time::Duration;
 
-#[derive(Clone, Debug, Default)]
-pub struct CancellationToken(Arc<AtomicBool>);
+#[derive(Clone, Debug)]
+pub struct CancellationToken {
+    signal: Arc<AtomicBool>,
+    observed: Arc<Vec<Arc<AtomicBool>>>,
+}
+
+impl Default for CancellationToken {
+    fn default() -> Self {
+        Self {
+            signal: Arc::new(AtomicBool::new(false)),
+            observed: Arc::new(Vec::new()),
+        }
+    }
+}
 
 impl CancellationToken {
     pub fn cancel(&self) {
-        self.0.store(true, Ordering::Release);
+        self.signal.store(true, Ordering::Release);
     }
 
     #[must_use]
     pub fn is_cancelled(&self) -> bool {
-        self.0.load(Ordering::Acquire)
+        self.signal.load(Ordering::Acquire)
+            || self
+                .observed
+                .iter()
+                .any(|signal| signal.load(Ordering::Acquire))
+    }
+
+    /// Creates a locally cancellable token that also observes every supplied token. This lets a
+    /// native operation honor both its durable job cancellation and its runtime-lifecycle owner.
+    #[must_use]
+    pub fn linked(tokens: &[Self]) -> Self {
+        let signal = Arc::new(AtomicBool::new(false));
+        let mut observed = Vec::new();
+        for token in tokens {
+            observed.push(Arc::clone(&token.signal));
+            observed.extend(token.observed.iter().cloned());
+        }
+        Self {
+            signal,
+            observed: Arc::new(observed),
+        }
     }
 }
 
@@ -163,6 +195,21 @@ mod tests {
         let second = first.clone();
         second.cancel();
         assert!(first.is_cancelled());
+    }
+
+    #[test]
+    fn linked_cancellation_observes_lifecycle_and_keeps_local_control() {
+        let lifecycle = CancellationToken::default();
+        let linked = CancellationToken::linked(std::slice::from_ref(&lifecycle));
+        let local = linked.clone();
+        assert!(!linked.is_cancelled());
+        lifecycle.cancel();
+        assert!(linked.is_cancelled());
+
+        let independent = CancellationToken::linked(&[]);
+        independent.cancel();
+        assert!(independent.is_cancelled());
+        assert!(local.is_cancelled());
     }
 
     #[test]

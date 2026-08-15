@@ -48,9 +48,9 @@ const INSTALLED_LOCAL_MEDIA_INSPECTOR_SHA256 =
 const INSTALLED_MEDIA_FLOW_INSPECTOR_SHA256 =
   '94fc247fea2048fc98a64d6ca23757544f4ca4602117d16dbd65938404ec7e8c';
 const DOWNLOAD_HANDLERS_SHA256 =
-  '663e00f067e7afdac6c87304869b90f3372e5842f9ce868a780f899f189b01dd';
+  'f38f73d8907d624231cae83542785fe564013eb7800cf0c77cbc1c32f69a2f57';
 const NATIVE_URL_DOWNLOAD_ADAPTER_SHA256 =
-  '6edfe3649bbf8cd91fc3916ead2653560d683759025d139a973fd394aca7ef9f';
+  '5bf575524bc90c0831a7e4d3cdb87911aa1810fb3a90b338cd5448a2d3a35b8e';
 const INSTALLED_WINDOWS_SMOKE_SHA256 =
   '9e71711e58296334be2a2629b1685e5ca6bed4aae9b207434c4b99b9cbee16ab';
 const DISTRIBUTABLE_FONT_EXTENSION = /\.(?:eot|otf|ttf|woff2?)$/i;
@@ -2667,10 +2667,9 @@ function assertInstalledSmokeScript(script) {
 
 function assertUpdaterSmokeWorkflow(workflow) {
   assertPinnedActions(workflow);
-  invariant(/^on:\s*\r?\n\s{2}workflow_dispatch:\s*$/m.test(workflow)
-    && /^\s{2}workflow_call:\s*$/m.test(workflow)
+  invariant(/^on:\s*\r?\n\s{2}workflow_dispatch:\s*\r?\n\s{2}workflow_call:\s*$/m.test(workflow)
     && !/^\s{2}(?:push|pull_request|pull_request_target|schedule):/m.test(workflow),
-  'Signed updater smoke must be explicit workflow_dispatch/workflow_call only');
+  'Signed updater smoke must be input-free explicit workflow_dispatch/workflow_call only');
   invariant(/^permissions:\s*\r?\n\s{2}contents:\s*read\s*$/m.test(workflow)
     && !/^\s{2,}[a-z-]+:\s*write\s*$/m.test(workflow),
   'Signed updater smoke must keep read-only repository permissions');
@@ -2688,7 +2687,9 @@ function assertUpdaterSmokeWorkflow(workflow) {
     'build --features production,ci-updater-fixture --no-bundle --ci --target x86_64-pc-windows-msvc -- --locked',
     './scripts/prepare-tauri-nsis.ps1',
     'bundle --features production,ci-updater-fixture --ci --no-sign --target x86_64-pc-windows-msvc --bundles nsis',
-    "version = '1.0.0-rc.2'",
+    'id: updater_versions',
+    'node scripts/derive-updater-smoke-version.js --github-output $env:GITHUB_OUTPUT',
+    'version = $env:OSG_UPDATER_UPDATED_VERSION',
     "build = @{ beforeBuildCommand = '' }",
     '--features production,ci-updater-fixture',
     'node scripts/check-release-artifacts.js --target x86_64-pc-windows-msvc --bundles nsis',
@@ -2706,6 +2707,35 @@ function assertUpdaterSmokeWorkflow(workflow) {
     invariant(workflow.includes(fragment),
       `Signed updater smoke is missing required boundary: ${fragment}`);
   }
+  const versionDerivationCommand =
+    'node scripts/derive-updater-smoke-version.js --github-output $env:GITHUB_OUTPUT';
+  const versionDerivationRuns = exactWorkflowRunMatches(workflow, versionDerivationCommand);
+  const versionDerivationStep = new RegExp(
+    '^ {6}- name: Derive immutable updater smoke versions[ \\t]*\\r?\\n'
+      + '^ {8}id: updater_versions[ \\t]*\\r?\\n'
+      + '^ {8}shell: pwsh[ \\t]*\\r?\\n'
+      + `^ {8}run: ${escapeRegularExpression(versionDerivationCommand)}[ \\t]*$`,
+    'm',
+  );
+  const baseOutput = '${{ steps.updater_versions.outputs.base }}';
+  const updatedOutput = '${{ steps.updater_versions.outputs.updated }}';
+  invariant(
+    versionDerivationStep.test(workflow)
+      && versionDerivationRuns.length === 1
+      && (workflow.match(/scripts\/derive-updater-smoke-version\.js/g) || []).length === 1,
+    'Signed updater smoke must derive one immutable repository version contract',
+  );
+  invariant(
+    (workflow.split(baseOutput).length - 1) === 2
+      && (workflow.split(updatedOutput).length - 1) === 3
+      && (workflow.match(/^\s{10}OSG_UPDATER_BASE_VERSION:\s*\$\{\{ steps\.updater_versions\.outputs\.base }}\s*$/gm) || []).length === 2
+      && (workflow.match(/^\s{10}OSG_UPDATER_UPDATED_VERSION:\s*\$\{\{ steps\.updater_versions\.outputs\.updated }}\s*$/gm) || []).length === 3
+      && (workflow.match(/^\s+version\s*=\s*\$env:OSG_UPDATER_UPDATED_VERSION\s*$/gm) || []).length === 2
+      && !workflow.includes('$GITHUB_ENV')
+      && !/Get-Content[^\r\n]*package\.json/i.test(workflow)
+      && !/^\s+version\s*=\s*['"]?\d+\.\d+\.\d+/m.test(workflow),
+    'Signed updater smoke must consume only immutable derived versions through step environments',
+  );
   const nsisBootstrapCommand = './scripts/prepare-tauri-nsis.ps1';
   const nsisBootstrapRuns = exactWorkflowRunMatches(workflow, nsisBootstrapCommand);
   const nsisBootstrapStep = new RegExp(
@@ -2953,6 +2983,9 @@ function assertSignedUpdaterScript(script) {
     'signed-updater.finalization-warning step=$Name',
     'signed-updater.identity phase=$Phase webviewDebug=present',
     '$updatedRegistry.DisplayVersion -ne $UpdatedVersion',
+    "& node 'scripts/derive-updater-smoke-version.js' `",
+    "'--assert-contract' `",
+    "throw 'Signed updater smoke version contract is invalid'",
     "'updated-application-relaunched'",
     'Wait-ForApplicationInstance',
     'Wait-ForReadyApplicationWindow',
@@ -3001,6 +3034,11 @@ function assertSignedUpdaterScript(script) {
     invariant(script.includes(fragment),
       `Signed updater runner is missing lifecycle proof: ${fragment}`);
   }
+  invariant(
+    /& node 'scripts\/derive-updater-smoke-version\.js' `\r?\n\s+'--assert-contract' `\r?\n\s+\$BaseVersion `\r?\n\s+\$UpdatedVersion\r?\nif \(\$LASTEXITCODE -ne 0\) \{\r?\n\s+throw 'Signed updater smoke version contract is invalid'\r?\n\}/.test(script)
+      && (script.match(/scripts\/derive-updater-smoke-version\.js/g) || []).length === 1,
+    'Signed updater runner must verify the exact repository-derived increasing version contract',
+  );
   invariant(/foreach\s*\(\$path\s+in\s+@\([\s\S]*?\$closeEvidencePath,[\s\S]*?\$closeEvidenceTemporaryPath[\s\S]*?\)\)\s*\{\s*if\s*\(Test-Path\s+-LiteralPath\s+\$path\)\s*\{\s*throw/.test(script),
     'Signed updater runner must require clean close-evidence paths before writing bounded diagnostics');
   invariant(/\$closeEvidence\s*=\s*\[ordered\]@\{\s*schemaVersion\s*=\s*1\s*updaterRelaunch\s*=\s*\$null\s*verification\s*=\s*\$null\s*\}/.test(script),

@@ -76,12 +76,24 @@ it('maps only real native inventory qualities and prefers combined media', () =>
 
 it('uses one typed native inspection with the selected cookie capability', async () => {
   localStorage.setItem('use_cookies_for_download', 'true');
+  localStorage.setItem('download_cookie_source', 'firefox');
   await expect(scanVideoQualities('https://example.com/watch?v=1')).resolves.toHaveLength(2);
   expect(inspectDownloadUrl).toHaveBeenCalledWith({
     url: 'https://example.com/watch?v=1',
-    cookieSource: 'chrome',
+    cookieSource: 'firefox',
   });
   expect(global.fetch).not.toHaveBeenCalled();
+});
+
+it('keeps legacy enabled installations on Chrome', async () => {
+  localStorage.setItem('use_cookies_for_download', 'true');
+
+  await getVideoInfo('https://example.com/legacy');
+
+  expect(inspectDownloadUrl).toHaveBeenCalledWith({
+    url: 'https://example.com/legacy',
+    cookieSource: 'chrome',
+  });
 });
 
 it('derives native video information from the same validated inventory', async () => {

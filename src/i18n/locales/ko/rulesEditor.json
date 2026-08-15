@@ -1,4 +1,6 @@
 {
+  "saveFailed": "전사 규칙을 저장할 수 없습니다.",
+  "saving": "저장 중...",
   "title": "트랜스크립션 규칙 편집",
   "atmospherePlaceholder": "설정 또는 컨텍스트에 대한 설명...",
   "terminologyDescription": "전문 용어, 고유명사 및 정의 추가",

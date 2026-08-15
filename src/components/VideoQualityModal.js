@@ -6,6 +6,7 @@ import LoadingIndicator from './common/LoadingIndicator';
 import WavyProgressIndicator from './common/WavyProgressIndicator';
 import { detectDarkTheme, getThemeColors } from './qualityModal/themeDetection';
 import useQualityProgressTracking from './qualityModal/useQualityProgressTracking';
+import { readDownloadCookiePreference } from '../platform/downloadCookiePreference';
 
 const VideoQualityModal = ({
   isOpen,
@@ -29,7 +30,7 @@ const VideoQualityModal = ({
 
   // Get current cookie setting as state
   const [useCookiesEnabled, setUseCookiesEnabled] = useState(
-    localStorage.getItem('use_cookies_for_download') === 'true'
+    readDownloadCookiePreference().enabled
   );
 
   // Ref for WavyProgressIndicator animations
@@ -153,16 +154,16 @@ const VideoQualityModal = ({
   useEffect(() => {
     if (isOpen) {
       // Update cookie setting when modal opens
-      setUseCookiesEnabled(localStorage.getItem('use_cookies_for_download') === 'true');
+      setUseCookiesEnabled(readDownloadCookiePreference().enabled);
     }
 
     const handleStorageChange = () => {
-      setUseCookiesEnabled(localStorage.getItem('use_cookies_for_download') === 'true');
+      setUseCookiesEnabled(readDownloadCookiePreference().enabled);
     };
 
     const handleFocus = () => {
       // Update when window regains focus (e.g., after closing settings modal)
-      setUseCookiesEnabled(localStorage.getItem('use_cookies_for_download') === 'true');
+      setUseCookiesEnabled(readDownloadCookiePreference().enabled);
     };
 
     // Listen for storage events (when localStorage changes in other tabs/windows)

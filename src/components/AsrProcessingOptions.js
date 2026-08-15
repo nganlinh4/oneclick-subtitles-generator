@@ -31,16 +31,24 @@ const AsrProcessingOptions = ({
     language,
     setLanguage,
     supportsLanguage = false,
+    supportedLanguageCodes = null,
     selectedSegment,
     disabled,
     engineName,
 }) => {
     const { t } = useTranslation();
 
-    const languageOptions = useMemo(() => ([
-        { value: 'auto', label: t('processing.languageAutoDetect', 'Auto-detect') },
-        ...getLanguageOptions().map(({ code, name }) => ({ value: code, label: name })),
-    ]), [t]);
+    const languageOptions = useMemo(() => {
+        const supported = supportedLanguageCodes === null
+            ? null
+            : new Set(supportedLanguageCodes);
+        return [
+            { value: 'auto', label: t('processing.languageAutoDetect', 'Auto-detect') },
+            ...getLanguageOptions()
+                .filter(({ code }) => supported === null || supported.has(code))
+                .map(({ code, name }) => ({ value: code, label: name })),
+        ];
+    }, [supportedLanguageCodes, t]);
 
     const wordsSlider = (id, ariaLabel) => (
         <SliderWithValue

@@ -27,8 +27,8 @@
   "progressBytes": "{{done}} / {{total}}",
   "electronManaged": "The desktop app includes these engines. Downloads are managed by the app package.",
   "groups": {
-    "localAi": "Local AI engines",
-    "localAiDetail": "Voice cloning and transcription",
+    "localAi": "Speech and transcription engines",
+    "localAiDetail": "Voice cloning, narration providers, and transcription",
     "runtime": "Runtime tools",
     "runtimeDetail": "Downloaded outside the app"
   },
@@ -52,6 +52,7 @@
   },
   "kind": {
     "voice-cloning": "Voice cloning",
+    "speech-provider": "Narration provider",
     "transcription": "Transcription"
   },
   "state": {

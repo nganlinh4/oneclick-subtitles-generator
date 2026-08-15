@@ -5,6 +5,10 @@ import CloseButton from './common/CloseButton';
 import '../styles/DownloadOnlyModal.css';
 import { scanVideoQualities } from '../utils/qualityScanner';
 import { downloadUrlToUserDestination } from '../platform/userMediaExportFlow';
+import {
+  getDownloadCookieSource,
+  readDownloadCookiePreference,
+} from '../platform/downloadCookiePreference';
 
 import { cancelDownloadOnly } from '../utils/downloadOnlyUtils';
 import { showErrorToast } from '../utils/toastUtils';
@@ -30,7 +34,7 @@ const DownloadOnlyModal = ({
 
   // Get current cookie setting as state
   const [useCookiesEnabled, setUseCookiesEnabled] = useState(
-    localStorage.getItem('use_cookies_for_download') === 'true'
+    readDownloadCookiePreference().enabled
   );
 
   // Ref for WavyProgressIndicator animations
@@ -123,16 +127,16 @@ const DownloadOnlyModal = ({
   useEffect(() => {
     if (isOpen) {
       // Update cookie setting when modal opens
-      setUseCookiesEnabled(localStorage.getItem('use_cookies_for_download') === 'true');
+      setUseCookiesEnabled(readDownloadCookiePreference().enabled);
     }
 
     const handleStorageChange = () => {
-      setUseCookiesEnabled(localStorage.getItem('use_cookies_for_download') === 'true');
+      setUseCookiesEnabled(readDownloadCookiePreference().enabled);
     };
 
     const handleFocus = () => {
       // Update when window regains focus (e.g., after closing settings modal)
-      setUseCookiesEnabled(localStorage.getItem('use_cookies_for_download') === 'true');
+      setUseCookiesEnabled(readDownloadCookiePreference().enabled);
     };
 
     // Listen for storage events (when localStorage changes in other tabs/windows)
@@ -184,9 +188,7 @@ const DownloadOnlyModal = ({
         };
       const outcome = await downloadUrlToUserDestination({
         url: videoInfo.url,
-        cookieSource: localStorage.getItem('use_cookies_for_download') === 'true'
-          ? 'chrome'
-          : 'none',
+        cookieSource: getDownloadCookieSource(),
         media,
         onJobStarted: (job) => setDownloadVideoId(job.id),
         onDownloadProgress: setDownloadProgress,

@@ -1,4 +1,15 @@
-import { downloadSRT, downloadJSON, downloadTXT } from '../../../utils/fileUtils';
+import {
+  downloadJSON,
+  downloadSRT,
+  downloadTXT,
+  generateJsonContent,
+  generateSrtContent,
+} from '../../../utils/fileUtils';
+import { isDesktopRuntime } from '../../../platform/runtimeEnvironment';
+import {
+  exportSubtitleArchive,
+  normalizeSubtitleArchiveEntries,
+} from '../../../platform/subtitleDocumentExportService';
 
 /**
  * Generate comprehensive filename based on priority system.
@@ -91,7 +102,7 @@ export const getNamingInfo = (videoTitle, targetLanguages) => {
  * @param {Object} namingInfo - Optional naming info override
  * @param {Object} ctx - { translatedSubtitles, subtitles, videoTitle, targetLanguages, setTxtContent }
  */
-export const handleDownload = (source, format, namingInfo = {}, ctx) => {
+export const handleDownload = async (source, format, namingInfo = {}, ctx) => {
   const { translatedSubtitles, subtitles, videoTitle, targetLanguages, setTxtContent } = ctx;
   const subtitlesToUse = source === 'translated' ? translatedSubtitles : subtitles;
 
@@ -102,27 +113,26 @@ export const handleDownload = (source, format, namingInfo = {}, ctx) => {
 
     switch (format) {
       case 'srt':
-        downloadSRT(subtitlesToUse, `${baseFilename}.srt`);
-        break;
+        return downloadSRT(subtitlesToUse, `${baseFilename}.srt`);
       case 'json':
-        downloadJSON(subtitlesToUse, `${baseFilename}.json`);
-        break;
+        return downloadJSON(subtitlesToUse, `${baseFilename}.json`);
       case 'txt': {
-        const content = downloadTXT(subtitlesToUse, `${baseFilename}.txt`);
-        setTxtContent(content);
-        break;
+        const result = await downloadTXT(subtitlesToUse, `${baseFilename}.txt`);
+        if (result.status === 'saved') setTxtContent(result.content);
+        return result;
       }
       default:
-        break;
+        throw new TypeError('Unsupported subtitle format');
     }
   }
+  throw new TypeError('Subtitles are required');
 };
 
 /**
  * Handle bulk download all (includes main translation + bulk translations).
  * @param {Object} ctx - { translatedSubtitles, bulkTranslations, videoTitle, targetLanguages }
  */
-export const handleBulkDownloadAll = (ctx) => {
+export const handleBulkDownloadAll = async (ctx) => {
   const { translatedSubtitles, bulkTranslations, videoTitle, targetLanguages } = ctx;
   const allDownloads = [];
 
@@ -157,13 +167,49 @@ export const handleBulkDownloadAll = (ctx) => {
   });
 
   // Download all files
-  allDownloads.forEach(download => {
-    if (download.format === 'json') {
-      downloadJSON(download.subtitles, download.filename);
-    } else {
-      downloadSRT(download.subtitles, download.filename);
+  let savedCount = 0;
+  for (const download of allDownloads) {
+    const result = download.format === 'json'
+      ? await downloadJSON(download.subtitles, download.filename)
+      : await downloadSRT(download.subtitles, download.filename);
+    if (result.status !== 'saved') {
+      return Object.freeze({ status: 'cancelled', savedCount, totalCount: allDownloads.length });
     }
-  });
+    savedCount += 1;
+  }
+  return Object.freeze({ status: 'saved', savedCount, totalCount: allDownloads.length });
+};
+
+const buildArchiveEntries = ({
+  translatedSubtitles,
+  bulkTranslations,
+  videoTitle,
+  targetLanguages,
+}) => {
+  const entries = [];
+  if (translatedSubtitles && translatedSubtitles.length > 0) {
+    const namingInfo = getNamingInfo(videoTitle, targetLanguages);
+    const baseFilename = generateFilename('translated', namingInfo, videoTitle);
+    entries.push({
+      suggestedName: `${baseFilename}.srt`,
+      format: 'srt',
+      content: generateSrtContent(translatedSubtitles),
+    });
+  }
+  for (const bulkTranslation of bulkTranslations) {
+    if (!bulkTranslation.success || !bulkTranslation.translatedSubtitles) continue;
+    const originalFile = bulkTranslation.originalFile;
+    const format = originalFile.name.toLowerCase().endsWith('.json') ? 'json' : 'srt';
+    const baseFilename = generateBulkFilename(originalFile.name, targetLanguages);
+    entries.push({
+      suggestedName: `${baseFilename}.${format}`,
+      format,
+      content: format === 'json'
+        ? generateJsonContent(bulkTranslation.translatedSubtitles)
+        : generateSrtContent(bulkTranslation.translatedSubtitles),
+    });
+  }
+  return normalizeSubtitleArchiveEntries(entries);
 };
 
 /**
@@ -173,46 +219,12 @@ export const handleBulkDownloadAll = (ctx) => {
 export const handleBulkDownloadZip = async (ctx) => {
   const { translatedSubtitles, bulkTranslations, videoTitle, targetLanguages } = ctx;
   try {
-    const JSZip = (await import('jszip')).default;
-    const zip = new JSZip();
-
-    // Add main translation if available (always as SRT since it comes from video processing)
-    if (translatedSubtitles && translatedSubtitles.length > 0) {
-      const namingInfo = getNamingInfo(videoTitle, targetLanguages);
-      const baseFilename = generateFilename('translated', namingInfo, videoTitle);
-
-      // Add SRT version only
-      const srtContent = translatedSubtitles.map(subtitle =>
-        `${subtitle.index}\n${subtitle.start} --> ${subtitle.end}\n${subtitle.text}\n`
-      ).join('\n');
-      zip.file(`${baseFilename}.srt`, srtContent);
-    }
-
-    // Add bulk translations (in same format as original files)
-    bulkTranslations.forEach(bulkTranslation => {
-      if (bulkTranslation.success && bulkTranslation.translatedSubtitles) {
-        const originalFile = bulkTranslation.originalFile;
-        const originalFormat = originalFile.name.toLowerCase().endsWith('.json') ? 'json' : 'srt';
-
-        // Generate filename with target languages
-        const baseFilename = generateBulkFilename(originalFile.name, targetLanguages);
-        const filename = `${baseFilename}.${originalFormat}`;
-
-        // Add in original format only
-        if (originalFormat === 'json') {
-          const jsonContent = JSON.stringify(bulkTranslation.translatedSubtitles, null, 2);
-          zip.file(filename, jsonContent);
-        } else {
-          const srtContent = bulkTranslation.translatedSubtitles.map(subtitle =>
-            `${subtitle.index}\n${subtitle.start} --> ${subtitle.end}\n${subtitle.text}\n`
-          ).join('\n');
-          zip.file(filename, srtContent);
-        }
-      }
+    const entries = buildArchiveEntries({
+      translatedSubtitles,
+      bulkTranslations,
+      videoTitle,
+      targetLanguages,
     });
-
-    // Generate ZIP file
-    const zipBlob = await zip.generateAsync({ type: 'blob' });
 
     // Create descriptive ZIP filename
     const timestamp = new Date().toISOString().slice(0, 19).replace(/[:.]/g, '-');
@@ -221,8 +233,17 @@ export const handleBulkDownloadZip = async (ctx) => {
       : '';
     const zipFilename = `translated_subtitles${targetLanguagesSuffix}_${timestamp}.zip`;
 
+    if (isDesktopRuntime()) {
+      return exportSubtitleArchive(entries, zipFilename);
+    }
+
+    const JSZip = (await import('jszip')).default;
+    const zip = new JSZip();
+    for (const entry of entries) zip.file(entry.suggestedName, entry.content);
+    const zipPayload = await zip.generateAsync({ type: 'blob' });
+
     // Create download link
-    const url = URL.createObjectURL(zipBlob);
+    const url = URL.createObjectURL(zipPayload);
     const link = document.createElement('a');
     link.href = url;
     link.download = zipFilename;
@@ -230,10 +251,57 @@ export const handleBulkDownloadZip = async (ctx) => {
     link.click();
     document.body.removeChild(link);
     URL.revokeObjectURL(url);
+    return Object.freeze({ status: 'saved' });
 
   } catch (error) {
     console.error('Error creating ZIP file:', error);
+    if (isDesktopRuntime()) throw error;
     // Fallback to individual downloads
-    handleBulkDownloadAll(ctx);
+    return handleBulkDownloadAll(ctx);
   }
+};
+
+/**
+ * Acquire the synchronous UI lease used by bulk export buttons.
+ * The returned promise always settles, so React event handlers cannot create an
+ * unhandled rejection when a native dialog or write fails.
+ *
+ * @param {Object} options
+ * @param {{current: boolean}} options.pendingRef
+ * @param {(pending: boolean) => void} options.setPending
+ * @param {() => Promise<Object>} options.operation
+ * @param {(error: unknown) => void} [options.onError]
+ * @returns {Promise<Object>}
+ */
+export const runOwnedBulkExport = async ({ pendingRef, setPending, operation, onError }) => {
+  if (pendingRef.current) return Object.freeze({ status: 'busy' });
+  pendingRef.current = true;
+  let result;
+  try {
+    setPending(true);
+    result = await operation();
+  } catch (error) {
+    try {
+      onError?.(error);
+    } catch (notificationError) {
+      try {
+        console.error('Could not report subtitle export failure:', notificationError);
+      } catch {
+        // Reporting must never strand or replace the primary export result.
+      }
+    }
+    result = Object.freeze({ status: 'failed' });
+  } finally {
+    pendingRef.current = false;
+    try {
+      setPending(false);
+    } catch (releaseError) {
+      try {
+        console.error('Could not publish released subtitle export state:', releaseError);
+      } catch {
+        // The synchronous ref is authoritative and has already been released.
+      }
+    }
+  }
+  return result;
 };

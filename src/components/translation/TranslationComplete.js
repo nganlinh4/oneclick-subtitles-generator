@@ -17,6 +17,8 @@ import DownloadOptionsModal from '../DownloadOptionsModal';
  * @param {boolean} props.hasBulkTranslations - Whether there are bulk translation results
  * @param {Function} props.onDownloadAll - Function to download all bulk translations
  * @param {Function} props.onDownloadZip - Function to download bulk translations as ZIP
+ * @param {boolean} props.isExporting - Whether a bulk export owns the save dialog
+ * @param {{current: boolean}} props.exportPendingRef - Synchronous bulk export owner gate
  * @returns {JSX.Element} - Rendered component
  */
 const TranslationComplete = ({
@@ -32,9 +34,17 @@ const TranslationComplete = ({
   targetLanguages = [],
   hasBulkTranslations = false,
   onDownloadAll,
-  onDownloadZip
+  onDownloadZip,
+  isExporting = false,
+  exportPendingRef
 }) => {
   const { t } = useTranslation();
+  const exportOwnsControls = () => isExporting || exportPendingRef?.current === true;
+  const exportControlsDisabled = exportOwnsControls();
+  const runUnlessExporting = (operation) => {
+    if (exportOwnsControls()) return { status: 'busy' };
+    return operation?.();
+  };
 
   return (
     <div className="translation-row action-row translation-complete-row">
@@ -42,7 +52,8 @@ const TranslationComplete = ({
         {/* New Translation button */}
         <button
           className="reset-translation-button"
-          onClick={onReset}
+          onClick={() => runUnlessExporting(onReset)}
+          disabled={exportControlsDisabled}
         >
           {t('translation.newTranslation', 'New Translation')}
         </button>
@@ -52,7 +63,8 @@ const TranslationComplete = ({
           <div className="bulk-download-buttons">
             <button
               className="download-all-button"
-              onClick={onDownloadAll}
+              onClick={() => runUnlessExporting(onDownloadAll)}
+              disabled={exportControlsDisabled}
               title={t('translation.bulk.downloadAll', 'Download all translated files')}
             >
               <span className="material-symbols-rounded" style={{ fontSize: '16px' }}>download</span>
@@ -60,7 +72,8 @@ const TranslationComplete = ({
             </button>
             <button
               className="download-zip-button"
-              onClick={onDownloadZip}
+              onClick={() => runUnlessExporting(onDownloadZip)}
+              disabled={exportControlsDisabled}
               title={t('translation.bulk.downloadZip', 'Download all as ZIP')}
             >
               <span className="material-symbols-rounded" style={{ fontSize: '16px' }}>sync</span>
@@ -71,9 +84,9 @@ const TranslationComplete = ({
 
         <DownloadOptionsModal
           isOpen={isModalOpen}
-          onClose={() => setIsModalOpen(false)}
-          onDownload={onDownload}
-          onProcess={onProcess}
+          onClose={() => runUnlessExporting(() => setIsModalOpen(false))}
+          onDownload={(...args) => runUnlessExporting(() => onDownload?.(...args))}
+          onProcess={(...args) => runUnlessExporting(() => onProcess?.(...args))}
           hasTranslation={hasTranslation}
           hasOriginal={hasOriginal}
           sourceSubtitleName={sourceSubtitleName}

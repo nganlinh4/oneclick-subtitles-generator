@@ -4,6 +4,7 @@
  */
 
 import { patchProjectAuxiliary, readProjectAuxiliary } from '../platform/projectAuxiliaryStore';
+import { resolveProjectForCache } from '../platform/subtitleProjectStore';
 
 // Store user-provided subtitles globally
 let globalUserSubtitles = null;
@@ -11,6 +12,27 @@ let globalUserSubtitles = null;
 // Current cache ID for the video being processed
 let currentCacheId = null;
 const currentCacheIdListeners = new Set();
+
+const projectMismatch = () => {
+  const error = new Error('The active user-subtitle project changed.');
+  error.name = 'ProjectScopeMismatchError';
+  error.code = 'projectScopeMismatch';
+  return error;
+};
+
+const assertProjectScope = (cacheId) => {
+  if (typeof cacheId !== 'string' || cacheId.length === 0 || currentCacheId !== cacheId) {
+    throw projectMismatch();
+  }
+};
+
+const assertProjectId = async (cacheId, expectedProjectId, create = false) => {
+  const resolved = await resolveProjectForCache(cacheId, { create });
+  if (!resolved?.projectId || (expectedProjectId && resolved.projectId !== expectedProjectId)) {
+    throw projectMismatch();
+  }
+  return resolved;
+};
 
 export const subscribeCurrentCacheId = (listener) => {
   if (typeof listener !== 'function') {
@@ -93,12 +115,21 @@ export const getCurrentCacheId = () => {
  */
 export const setUserProvidedSubtitles = async (subtitlesText) => {
   const requestedCacheId = currentCacheId;
+  const previousSubtitles = globalUserSubtitles;
   globalUserSubtitles = subtitlesText;
 
-  if (requestedCacheId) {
-    await patchProjectAuxiliary(requestedCacheId, {
-      userSubtitles: subtitlesText || null,
-    });
+  try {
+    if (requestedCacheId) {
+      await patchProjectAuxiliary(requestedCacheId, {
+        userSubtitles: subtitlesText || null,
+      });
+    }
+  } catch (error) {
+    if (currentCacheId === requestedCacheId) {
+      globalUserSubtitles = previousSubtitles;
+      publishUserSubtitles(previousSubtitles);
+    }
+    throw error;
   }
   if (currentCacheId === requestedCacheId) publishUserSubtitles(subtitlesText);
 };
@@ -129,6 +160,40 @@ export const getUserProvidedSubtitlesSync = () => {
   // Project persistence is asynchronous. setCurrentCacheId hydrates this memory cache and emits an
   // update event; a synchronous read must never fall through to stale WebView storage.
   return globalUserSubtitles ?? '';
+};
+
+export const getUserProvidedSubtitlesForCache = async (
+  cacheId,
+  { expectedProjectId = null } = {}
+) => {
+  assertProjectScope(cacheId);
+  await assertProjectId(cacheId, expectedProjectId, false);
+  const auxiliary = await readProjectAuxiliary(cacheId, { expectedProjectId });
+  assertProjectScope(cacheId);
+  return auxiliary?.userSubtitles ?? '';
+};
+
+export const setUserProvidedSubtitlesForCache = async (
+  cacheId,
+  subtitlesText,
+  { expectedProjectId = null } = {}
+) => {
+  if (typeof expectedProjectId !== 'string' || expectedProjectId.length === 0) {
+    throw projectMismatch();
+  }
+  assertProjectScope(cacheId);
+  await assertProjectId(cacheId, expectedProjectId, true);
+  assertProjectScope(cacheId);
+  await patchProjectAuxiliary(
+    cacheId,
+    { userSubtitles: subtitlesText || null },
+    { expectedProjectId }
+  );
+  assertProjectScope(cacheId);
+  await assertProjectId(cacheId, expectedProjectId, false);
+  assertProjectScope(cacheId);
+  globalUserSubtitles = subtitlesText || null;
+  publishUserSubtitles(globalUserSubtitles);
 };
 
 /**

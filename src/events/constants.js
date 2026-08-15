@@ -30,7 +30,7 @@
 
 /**
  * @typedef {Object} SaveBeforeUpdatePayload
- * @property {('segment-processing-start'|'video-processing-complete')} source
+ * @property {('auto-generation-start'|'segment-processing-start'|'translation-start'|'video-processing-complete')} source
  * @property {Segment} [segment]
  * @property {string} [runId]
  * @property {string} [checkpointId]
@@ -64,3 +64,10 @@ export const EVENTS = {
   PARALLEL_PROCESSING_PROGRESS: 'parallel-processing-progress',
   SEGMENT_STATUS_UPDATE: 'segmentStatusUpdate'
 };
+
+export const CHECKPOINT_SOURCE = Object.freeze({
+  AUTO_GENERATION_START: 'auto-generation-start',
+  SEGMENT_PROCESSING_START: 'segment-processing-start',
+  TRANSLATION_START: 'translation-start',
+  VIDEO_PROCESSING_COMPLETE: 'video-processing-complete',
+});

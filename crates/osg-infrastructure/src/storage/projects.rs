@@ -935,28 +935,16 @@ fn write_normalized(
     let project_id = snapshot.metadata().id();
     let timestamp = now_ms();
 
+    for asset in snapshot.media() {
+        validate_existing_asset(transaction, asset)?;
+    }
+    super::media::promote_project_candidates(transaction, snapshot)?;
+
     transaction.execute(
         "DELETE FROM project_media WHERE project_id = ?1",
         [project_id.as_uuid()],
     )?;
     for (index, asset) in snapshot.media().iter().enumerate() {
-        validate_existing_asset(transaction, asset)?;
-        let size_bytes = i64::try_from(asset.size_bytes()).map_err(|_| {
-            DatabaseError::InvalidProjectSnapshot("media size exceeds the SQLite range".to_owned())
-        })?;
-        transaction.execute(
-            "INSERT OR IGNORE INTO media_assets(
-               id, kind, display_name, extension, size_bytes, metadata_json, created_at_ms
-             ) VALUES (?1, ?2, ?3, ?4, ?5, '{}', ?6)",
-            params![
-                asset.id().as_uuid(),
-                media_kind_name(asset.kind()),
-                asset.display_name(),
-                asset.extension(),
-                size_bytes,
-                timestamp,
-            ],
-        )?;
         let (role, ordinal) = if index == 0 {
             ("primary", 0_i64)
         } else {
@@ -1041,19 +1029,22 @@ fn validate_existing_asset(
             },
         )
         .optional()?;
-    if let Some((kind, display_name, extension, size_bytes)) = existing {
-        let expected_size = i64::try_from(asset.size_bytes()).map_err(|_| {
-            DatabaseError::InvalidProjectSnapshot("media size exceeds the SQLite range".to_owned())
-        })?;
-        if kind != media_kind_name(asset.kind())
-            || display_name != asset.display_name()
-            || extension != asset.extension()
-            || size_bytes != expected_size
-        {
-            return Err(DatabaseError::InvalidProjectSnapshot(
-                "an existing media identifier has different immutable metadata".to_owned(),
-            ));
-        }
+    let Some((kind, display_name, extension, size_bytes)) = existing else {
+        return Err(DatabaseError::InvalidProjectSnapshot(
+            "a project media asset must be staged before it can be attached".to_owned(),
+        ));
+    };
+    let expected_size = i64::try_from(asset.size_bytes()).map_err(|_| {
+        DatabaseError::InvalidProjectSnapshot("media size exceeds the SQLite range".to_owned())
+    })?;
+    if kind != media_kind_name(asset.kind())
+        || display_name != asset.display_name()
+        || extension != asset.extension()
+        || size_bytes != expected_size
+    {
+        return Err(DatabaseError::InvalidProjectSnapshot(
+            "an existing media identifier has different immutable metadata".to_owned(),
+        ));
     }
     Ok(())
 }
@@ -1335,6 +1326,19 @@ mod tests {
         MediaAsset::new("movie.mp4", "mp4", 4_096, MediaKind::Video).expect("valid media")
     }
 
+    fn stage_media(directory: &TempDir, database: &Database, asset: &MediaAsset) {
+        let path = directory
+            .path()
+            .join(format!("{}.{}", asset.id().as_uuid(), asset.extension()));
+        std::fs::File::create(&path)
+            .expect("create media fixture")
+            .set_len(asset.size_bytes())
+            .expect("size media fixture");
+        database
+            .remember_media_candidate(asset, &path)
+            .expect("stage media fixture");
+    }
+
     fn track(label: &str, text: &str) -> SubtitleTrack {
         SubtitleTrack::new(
             label,
@@ -1462,7 +1466,12 @@ mod tests {
         transaction.commit().expect("commit pre-v4 graph");
         connection
             .execute_batch(
-                "DROP TABLE editor_track_navigation;
+                "DROP TRIGGER project_media_requires_lifetime_owner;
+                 DROP TABLE media_project_owners;
+                 DROP INDEX project_media_single_project_idx;
+                 DROP TABLE media_artifact_job_claims;
+                 DROP TABLE media_artifacts;
+                 DROP TABLE editor_track_navigation;
                  DROP TABLE editor_track_revisions;
                  PRAGMA user_version = 3;",
             )
@@ -1494,13 +1503,15 @@ mod tests {
 
     #[test]
     fn commit_atomically_updates_normalized_state_and_the_immutable_snapshot() {
-        let (_directory, path, database) = database();
+        let (directory, path, database) = database();
         let metadata = ProjectMetadata::new("Before").expect("valid project");
         let created = database.create_project(&metadata).expect("create project");
+        let asset = media();
+        stage_media(&directory, &database, &asset);
         let edited = edit(
             &created,
             "After",
-            vec![media()],
+            vec![asset],
             vec![track("English", "Hello")],
         );
 
@@ -1746,7 +1757,7 @@ mod tests {
         let schema_version: u32 = connection
             .pragma_query_value(None, "user_version", |row| row.get(0))
             .expect("read schema version");
-        assert_eq!(schema_version, 5);
+        assert_eq!(schema_version, 8);
         for revision in detached {
             let exists: bool = connection
                 .query_row(
@@ -2041,7 +2052,7 @@ mod tests {
 
     #[test]
     fn failed_normalized_write_rolls_back_every_row_and_the_revision() {
-        let (_directory, path, database) = database();
+        let (directory, path, database) = database();
         let metadata = ProjectMetadata::new("Rollback").expect("valid project");
         let base = database.create_project(&metadata).expect("create project");
         drop(database);
@@ -2055,10 +2066,12 @@ mod tests {
         drop(connection);
 
         let reopened = Database::open(&path).expect("reopen database");
+        let asset = media();
+        stage_media(&directory, &reopened, &asset);
         let edited = edit(
             &base,
             "Must roll back",
-            vec![media()],
+            vec![asset],
             vec![track("English", "Rollback")],
         );
         assert!(
@@ -2084,15 +2097,16 @@ mod tests {
                 |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?, row.get(3)?)),
             )
             .expect("read rollback state");
-        assert_eq!(counts, (1, 0, 0, 0));
+        assert_eq!(counts, (1, 1, 0, 0));
     }
 
     #[test]
     fn media_locations_are_never_serialized_or_deleted_by_project_history() {
-        let (_directory, path, database) = database();
+        let (directory, path, database) = database();
         let metadata = ProjectMetadata::new("Private paths").expect("valid project");
         let base = database.create_project(&metadata).expect("create project");
         let asset = media();
+        stage_media(&directory, &database, &asset);
         let with_media = edit(&base, "Private paths", vec![asset.clone()], Vec::new());
         let media_commit = database
             .commit_project(&with_media, &reason("Attach media"))
@@ -2147,17 +2161,18 @@ mod tests {
                 |row| row.get(0),
             )
             .expect("count media locations");
-        assert_eq!(location_count, 1);
+        assert_eq!(location_count, 2);
     }
 
     #[test]
     fn identifiers_owned_by_another_project_are_rejected_at_every_level() {
-        let (_directory, _path, database) = database();
+        let (directory, _path, database) = database();
         let first = ProjectMetadata::new("First").expect("valid project");
         let second = ProjectMetadata::new("Second").expect("valid project");
         let first_base = database.create_project(&first).expect("create first");
         let second_base = database.create_project(&second).expect("create second");
         let shared_media = media();
+        stage_media(&directory, &database, &shared_media);
         let shared_track = track("Shared", "Shared cue");
         let first_edit = edit(
             &first_base,

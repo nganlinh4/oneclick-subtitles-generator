@@ -3,6 +3,7 @@ import { useTranslation } from 'react-i18next';
 import LoadingIndicator from './common/LoadingIndicator';
 import '../styles/AddSubtitlesButton.css';
 import SubtitlesInputModal from './SubtitlesInputModal';
+import { showErrorToast } from '../utils/toastUtils';
 
 /**
  * Button component for adding pre-written subtitles without timings
@@ -25,24 +26,7 @@ const AddSubtitlesButton = ({
   const [isProcessing, setIsProcessing] = useState(false);
   const [localHasSubtitles, setLocalHasSubtitles] = useState(hasSubtitles);
   const [localSubtitlesText, setLocalSubtitlesText] = useState(subtitlesText);
-  const initialSubtitlesRef = useRef({ hasSubtitles, subtitlesText });
-
-  // Check for existing user-provided subtitles on mount
-  useEffect(() => {
-    const checkExistingSubtitles = () => {
-      const savedSubtitles = localStorage.getItem('user_provided_subtitles');
-      if (savedSubtitles && savedSubtitles.trim() !== '') {
-        setLocalHasSubtitles(true);
-        setLocalSubtitlesText(savedSubtitles);
-        console.log('[AddSubtitlesButton] Found existing user-provided subtitles on page load');
-      } else {
-        setLocalHasSubtitles(initialSubtitlesRef.current.hasSubtitles);
-        setLocalSubtitlesText(initialSubtitlesRef.current.subtitlesText);
-      }
-    };
-
-    checkExistingSubtitles();
-  }, []); // Run only once on mount
+  const operationInFlightRef = useRef(false);
 
   // Update local state when props change
   useEffect(() => {
@@ -60,47 +44,47 @@ const AddSubtitlesButton = ({
     }
   };
 
-  // Add processing animation when subtitles are being saved
-  useEffect(() => {
-    if (isProcessing) {
-      const timer = setTimeout(() => {
-        setIsProcessing(false);
-      }, 500); // Reset after 500ms
-      return () => clearTimeout(timer);
+  const handleSaveSubtitles = async (text) => {
+    if (operationInFlightRef.current) return false;
+    operationInFlightRef.current = true;
+    setIsProcessing(true);
+
+    try {
+      await onSubtitlesAdd(text);
+      setLocalHasSubtitles(text.trim() !== '');
+      setLocalSubtitlesText(text);
+      return true;
+    } finally {
+      operationInFlightRef.current = false;
+      setIsProcessing(false);
     }
-  }, [isProcessing]);
-
-  const handleSaveSubtitles = (text) => {
-    setIsProcessing(true); // Start processing animation
-
-    // Update local state
-    setLocalHasSubtitles(text.trim() !== '');
-    setLocalSubtitlesText(text);
-
-    // Save to localStorage
-    localStorage.setItem('user_provided_subtitles', text);
-
-    onSubtitlesAdd(text);
-    setShowModal(false);
   };
 
   const handleCloseModal = () => {
     setShowModal(false);
   };
 
-  const handleClearSubtitles = (e) => {
+  const handleClearSubtitles = async (e) => {
     e.stopPropagation(); // Prevent button click from triggering
-    setIsProcessing(true); // Start processing animation
+    if (operationInFlightRef.current) return false;
+    operationInFlightRef.current = true;
+    setIsProcessing(true);
 
-    // Update local state
-    setLocalHasSubtitles(false);
-    setLocalSubtitlesText('');
-
-    // Clear from localStorage
-    localStorage.removeItem('user_provided_subtitles');
-
-    onSubtitlesAdd(''); // Clear subtitles by passing empty string
-    setTimeout(() => setIsProcessing(false), 500); // Short animation
+    try {
+      await onSubtitlesAdd('');
+      setLocalHasSubtitles(false);
+      setLocalSubtitlesText('');
+      return true;
+    } catch {
+      showErrorToast(
+        t('subtitlesInput.saveFailed', 'The subtitles could not be saved. Please try again.'),
+        5_000,
+      );
+      return false;
+    } finally {
+      operationInFlightRef.current = false;
+      setIsProcessing(false);
+    }
   };
 
   return (

@@ -35,6 +35,15 @@ fn main() {
         println!("ffmpeg version osg-mock-1.0");
         return;
     }
+    if arguments.iter().any(|argument| argument.contains("astats=")) {
+        eprintln!("[Parsed_astats_0] Overall");
+        if arguments.iter().any(|argument| argument.contains("silent")) {
+            eprintln!("[Parsed_astats_0] Peak level dB: -inf");
+        } else {
+            eprintln!("[Parsed_astats_0] Peak level dB: -12.000000");
+        }
+        return;
+    }
     if let Some(output) = arguments.last()
         && !output.starts_with('-')
     {

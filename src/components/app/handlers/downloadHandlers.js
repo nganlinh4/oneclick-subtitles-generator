@@ -1,8 +1,50 @@
 import { downloadAndPrepareYouTubeVideo } from "../VideoProcessingHandlers";
+import { isNativeMediaDescriptor } from "../../../platform/mediaService";
+import {
+  generateUrlBasedCacheId,
+  getCachedSubtitles,
+} from "../../../services/subtitleCache";
+import {
+  getCurrentCacheId as getRulesCacheId,
+  setCurrentCacheId as setRulesCacheId,
+} from "../../../utils/transcriptionRulesStore";
+import {
+  getCurrentCacheId as getSubtitlesCacheId,
+  setCurrentCacheId as setSubtitlesCacheId,
+} from "../../../utils/userSubtitlesStore";
+import { resolveProjectForCache } from "../../../platform/subtitleProjectStore";
+import { parseSrtContent } from "../../../utils/srtParser";
+import {
+  assertAutoGenerationRequestActive,
+  AutoGenerationOwnershipError,
+  createPreparedAutoMedia,
+  isAutoGenerationCancellation,
+  isAutoGenerationRequest,
+  sourceIdentityForAsset,
+  sourceIdentityForUrl,
+} from "../../../utils/autoGenerationOwnership";
 
 // Gated debug logging (enable in the browser console: localStorage.debug_logs = 'true')
 const DEBUG_LOGS = (typeof window !== 'undefined') && (localStorage.getItem('debug_logs') === 'true');
 const dbg = (...args) => { if (DEBUG_LOGS) console.log(...args); };
+const pendingSubtitleEntries = new WeakMap();
+
+const entriesForPendingRef = (pendingRef) => {
+  let entries = pendingSubtitleEntries.get(pendingRef);
+  if (!entries) {
+    entries = new Map();
+    pendingSubtitleEntries.set(pendingRef, entries);
+  }
+  return entries;
+};
+
+const activateProjectCache = (cacheId) => {
+  if (typeof cacheId !== "string" || cacheId.length === 0) {
+    throw new Error("The prepared media could not be bound to a subtitle project.");
+  }
+  setRulesCacheId(cacheId);
+  setSubtitlesCacheId(cacheId);
+};
 
 /**
  * Create download-related handlers.
@@ -33,9 +75,73 @@ export const createDownloadHandlers = ({
   /**
    * Start background video processing (download/upload)
    */
-  const startBackgroundVideoProcessing = async (input, inputType) => {
+  const startBackgroundVideoProcessing = async (input, inputType, autoRequest = null) => {
+    let ownedPendingToken = null;
+    let ownedPendingEntries = null;
     try {
       let processedFile;
+      let projectCacheId = null;
+      let projectId = null;
+      let preparedSubtitleCandidate = null;
+      const guardedAutoRequest = isAutoGenerationRequest(autoRequest) ? autoRequest : null;
+      const inputIsNativeMedia = inputType !== "youtube" && isNativeMediaDescriptor(input);
+      let expectedAssetId = inputIsNativeMedia ? input.assetId : null;
+      let sourceIdentity = inputType === "youtube"
+        ? sourceIdentityForUrl(input?.url)
+        : (inputIsNativeMedia ? sourceIdentityForAsset(input.assetId) : null);
+      const pendingToken = Object.freeze({
+        runId: guardedAutoRequest?.runId ?? null,
+        sourceIdentity,
+      });
+      const pendingEntries = entriesForPendingRef(pendingAutoSubtitleRef);
+      ownedPendingToken = pendingToken;
+      ownedPendingEntries = pendingEntries;
+      const clearOwnedPendingSubtitle = () => {
+        pendingEntries.delete(pendingToken);
+        if (pendingAutoSubtitleRef.current?.token === pendingToken) {
+          pendingAutoSubtitleRef.current = null;
+        }
+      };
+      const ownershipFailure = () => {
+        if (guardedAutoRequest) return new AutoGenerationOwnershipError();
+        const error = new Error('The active subtitle project changed during media preparation.');
+        error.code = 'projectScopeMismatch';
+        return error;
+      };
+      const assertPreparationOwnership = (expectedProjectId = null) => {
+        if (guardedAutoRequest) {
+          assertAutoGenerationRequestActive(guardedAutoRequest);
+          if (sourceIdentity?.startsWith('url:')) {
+            const currentUrl = localStorage.getItem('current_video_url');
+            if (`url:${currentUrl ?? ''}` !== sourceIdentity) {
+              throw new AutoGenerationOwnershipError();
+            }
+          } else if (sourceIdentity?.startsWith('asset:')) {
+            const currentAssetId = localStorage.getItem('current_file_cache_id');
+            if (`asset:${currentAssetId ?? ''}` !== sourceIdentity) {
+              throw new AutoGenerationOwnershipError();
+            }
+          }
+          if (expectedAssetId !== null
+              && localStorage.getItem('current_file_cache_id') !== expectedAssetId) {
+            throw new AutoGenerationOwnershipError();
+          }
+        }
+        if (expectedProjectId !== null
+            && (projectId !== expectedProjectId
+              || !projectCacheId
+              || getRulesCacheId() !== projectCacheId
+              || getSubtitlesCacheId() !== projectCacheId)) {
+          throw ownershipFailure();
+        }
+      };
+      const assertPreparationProjectOwnership = async (expectedProjectId) => {
+        assertPreparationOwnership(expectedProjectId);
+        const resolved = await resolveProjectForCache(projectCacheId, { create: false });
+        assertPreparationOwnership(expectedProjectId);
+        if (resolved?.projectId !== expectedProjectId) throw ownershipFailure();
+      };
+      assertPreparationOwnership();
 
       if (inputType === "youtube") {
         // Download YouTube video in background
@@ -75,38 +181,61 @@ export const createDownloadHandlers = ({
           t,
           {
             preferredSubtitleLanguages,
+            autoRequest: guardedAutoRequest,
             onSubtitle: (subtitle) => {
-              pendingAutoSubtitleRef.current = {
+              assertPreparationOwnership(projectId);
+              const pending = Object.freeze({
+                token: pendingToken,
+                runId: guardedAutoRequest?.runId ?? null,
+                sourceIdentity,
                 content: subtitle.content,
                 fileName: subtitle.filename || 'site-subtitle.srt',
-              };
+              });
+              pendingEntries.set(pendingToken, pending);
+              pendingAutoSubtitleRef.current = pending;
+              assertPreparationOwnership();
             },
           }
         );
+        expectedAssetId = isNativeMediaDescriptor(processedFile)
+          ? processedFile.assetId
+          : null;
+        assertPreparationOwnership();
 
-        // IMPORTANT: Check for cached subtitles immediately for downloaded videos
-        // Use URL-based caching to find existing cached subtitles (like fvkz_wJ3z-4.json)
-        if (processedFile && processedFile instanceof File) {
+        // Bind the URL alias before analysis or editing can observe project-scoped
+        // rules/subtitles. Native downloads return descriptors rather than Files,
+        // so this must not be hidden behind an instanceof File check.
+        if (processedFile) {
           try {
-            // For downloaded videos, use URL-based cache ID to find existing cached subtitles
             const currentVideoUrl = localStorage.getItem("current_video_url");
             if (currentVideoUrl) {
-              const { generateUrlBasedCacheId, getCachedSubtitles } = await import(
-                "../../../services/subtitleCache"
-              );
               const urlBasedCacheId = await generateUrlBasedCacheId(
                 currentVideoUrl
               );
+              activateProjectCache(urlBasedCacheId);
+              projectCacheId = urlBasedCacheId;
+              const project = await resolveProjectForCache(urlBasedCacheId, { create: true });
+              projectId = project?.projectId ?? null;
+              if (!projectId) throw new Error('The prepared media has no durable subtitle project.');
+              assertPreparationOwnership(projectId);
 
               dbg(
                 "[AppHandlers] Checking for cached subtitles for downloaded video (URL-based):",
                 urlBasedCacheId
               );
 
-              const cachedSubtitles = await getCachedSubtitles(
-                urlBasedCacheId,
-                currentVideoUrl
-              );
+              let cachedSubtitles;
+              try {
+                cachedSubtitles = await getCachedSubtitles(
+                  urlBasedCacheId,
+                  currentVideoUrl,
+                  { expectedProjectId: projectId }
+                );
+              } catch (error) {
+                await assertPreparationProjectOwnership(projectId);
+                throw error;
+              }
+              await assertPreparationProjectOwnership(projectId);
 
               if (
                 cachedSubtitles &&
@@ -117,14 +246,18 @@ export const createDownloadHandlers = ({
                   cachedSubtitles.length,
                   "subtitles"
                 );
-                setSubtitlesData(cachedSubtitles);
-                setStatus({
-                  message: t(
-                    "output.subtitlesLoadedFromCache",
-                    "Subtitles loaded from cache! Select a segment to generate more."
-                  ),
-                  type: "success",
-                });
+                if (guardedAutoRequest) {
+                  preparedSubtitleCandidate = cachedSubtitles;
+                } else {
+                  setSubtitlesData(cachedSubtitles);
+                  setStatus({
+                    message: t(
+                      "output.subtitlesLoadedFromCache",
+                      "Subtitles loaded from cache! Select a segment to generate more."
+                    ),
+                    type: "success",
+                  });
+                }
               } else {
                 dbg(
                   "[AppHandlers] No cached subtitles found for this downloaded video"
@@ -142,16 +275,18 @@ export const createDownloadHandlers = ({
                 });
               }
 
-              // Also generate file-based cache ID for Files API caching (file upload reuse)
-              const { generateFileCacheId } = await import(
-                "../../../utils/cacheUtils"
-              );
-              const fileCacheId = await generateFileCacheId(processedFile);
-              localStorage.setItem("current_file_cache_id", fileCacheId);
-              dbg(
-                "[AppHandlers] Generated file cache ID for Files API caching:",
-                fileCacheId
-              );
+              if (processedFile instanceof File) {
+                // Browser builds still use a file hash for Files API upload reuse.
+                const { generateFileCacheId } = await import(
+                  "../../../utils/cacheUtils"
+                );
+                const fileCacheId = await generateFileCacheId(processedFile);
+                localStorage.setItem("current_file_cache_id", fileCacheId);
+                dbg(
+                  "[AppHandlers] Generated file cache ID for Files API caching:",
+                  fileCacheId
+                );
+              }
             } else {
               console.warn(
                 "[AppHandlers] No current video URL found for downloaded video"
@@ -169,68 +304,92 @@ export const createDownloadHandlers = ({
               });
             }
           } catch (error) {
+            if (isAutoGenerationCancellation(error, guardedAutoRequest?.signal)
+                || error instanceof AutoGenerationOwnershipError) throw error;
             console.error(
               "[AppHandlers] Error checking cached subtitles for downloaded video:",
-              error
+              error?.code || 'subtitleCacheReadFailed'
             );
-            const isAudio = processedFile?.type?.startsWith('audio/');
             setStatus({
-              message: isAudio ? t(
-                "output.audioReady",
-                "Audio ready for segment selection..."
-              ) : t(
-                "output.videoReady",
-                "Video ready for segment selection..."
+              message: t(
+                "output.subtitlesCacheLoadFailed",
+                "Media is ready, but saved subtitles could not be loaded."
               ),
-              type: "info",
+              type: "warning",
             });
           }
         }
       } else {
         // File upload case - prepare the video for the new workflow
         processedFile = input; // uploadedFile
+        const nativeMedia = inputIsNativeMedia;
 
         // Clear any stale YouTube URL reference so Files API uses file-based caching for uploads
         try { localStorage.removeItem("current_video_url"); } catch {
           // Compatibility storage cleanup is best effort.
         }
 
-        // Check if we already have a blob URL for this file
-        let blobUrl = localStorage.getItem("current_file_url");
-        if (!blobUrl || !blobUrl.startsWith("blob:")) {
-          // Create a new blob URL for the video and store it
-          blobUrl = URL.createObjectURL(processedFile);
-          localStorage.setItem("current_file_url", blobUrl);
-          try {
-            if (!window.__videoBlobMap) window.__videoBlobMap = {};
-            window.__videoBlobMap[blobUrl] = processedFile;
-          } catch {
-            // The optional browser-preview blob registry may be unavailable.
+        if (nativeMedia) {
+          // Native media is already owned by the desktop runtime. Preserve its
+          // opaque playback capability instead of treating the descriptor as a
+          // browser File/Blob.
+          localStorage.setItem("current_file_url", processedFile.playbackUrl);
+          localStorage.setItem("current_file_cache_id", processedFile.assetId);
+        } else {
+          // Check if we already have a blob URL for this browser file.
+          let blobUrl = localStorage.getItem("current_file_url");
+          if (!blobUrl || !blobUrl.startsWith("blob:")) {
+            blobUrl = URL.createObjectURL(processedFile);
+            localStorage.setItem("current_file_url", blobUrl);
+            try {
+              if (!window.__videoBlobMap) window.__videoBlobMap = {};
+              window.__videoBlobMap[blobUrl] = processedFile;
+            } catch {
+              // The optional browser-preview blob registry may be unavailable.
+            }
           }
         }
         localStorage.setItem("current_file_name", processedFile.name);
 
-        // Set the uploaded file in the app state so VideoPreview can use it
-        setUploadedFile(processedFile);
-
         // IMPORTANT: Check for cached subtitles immediately for file uploads
         // This ensures the timeline shows cached subtitles right when output container appears
         try {
-          const { generateFileCacheId } = await import(
-            "../../../utils/cacheUtils"
-          );
-          const cacheId = await generateFileCacheId(processedFile);
+          let cacheId = processedFile.assetId;
+          if (!nativeMedia) {
+            const { generateFileCacheId } = await import(
+              "../../../utils/cacheUtils"
+            );
+            cacheId = await generateFileCacheId(processedFile);
+          }
+          activateProjectCache(cacheId);
           localStorage.setItem("current_file_cache_id", cacheId);
+          if (sourceIdentity === null) sourceIdentity = sourceIdentityForAsset(cacheId);
+          projectCacheId = cacheId;
+          const project = await resolveProjectForCache(cacheId, { create: true });
+          projectId = project?.projectId ?? null;
+          if (!projectId) throw new Error('The prepared media has no durable subtitle project.');
+          assertPreparationOwnership(projectId);
+
+          // Publish only after the durable project identity is active.
+          setUploadedFile(processedFile);
 
           dbg(
             "[AppHandlers] Checking for cached subtitles for uploaded file:",
             cacheId
           );
 
-          const { getCachedSubtitles } = await import(
-            "../../../services/subtitleCache"
-          );
-          const cachedSubtitles = await getCachedSubtitles(cacheId);
+          let cachedSubtitles;
+          try {
+            cachedSubtitles = await getCachedSubtitles(
+              cacheId,
+              null,
+              { expectedProjectId: projectId }
+            );
+          } catch (error) {
+            await assertPreparationProjectOwnership(projectId);
+            throw error;
+          }
+          await assertPreparationProjectOwnership(projectId);
 
           if (
             cachedSubtitles &&
@@ -241,14 +400,18 @@ export const createDownloadHandlers = ({
               cachedSubtitles.length,
               "subtitles"
             );
-            setSubtitlesData(cachedSubtitles);
-            setStatus({
-              message: t(
-                "output.subtitlesLoadedFromCache",
-                "Subtitles loaded from cache! Select a segment to generate more."
-              ),
-              type: "success",
-            });
+            if (guardedAutoRequest) {
+              preparedSubtitleCandidate = cachedSubtitles;
+            } else {
+              setSubtitlesData(cachedSubtitles);
+              setStatus({
+                message: t(
+                  "output.subtitlesLoadedFromCache",
+                  "Subtitles loaded from cache! Select a segment to generate more."
+                ),
+                type: "success",
+              });
+            }
           } else {
             dbg(
               "[AppHandlers] No cached subtitles found for this file"
@@ -266,24 +429,29 @@ export const createDownloadHandlers = ({
             });
           }
         } catch (error) {
+          if (isAutoGenerationCancellation(error, guardedAutoRequest?.signal)
+              || error instanceof AutoGenerationOwnershipError) throw error;
           console.error(
             "[AppHandlers] Error checking cached subtitles:",
-            error
+            error?.code || 'subtitleCacheReadFailed'
           );
-          const isAudio = processedFile?.type?.startsWith('audio/');
           setStatus({
-            message: isAudio ? t(
-              "output.audioReady",
-              "Audio ready for segment selection..."
-            ) : t(
-              "output.videoReady",
-              "Video ready for segment selection..."
+            message: t(
+              "output.subtitlesCacheLoadFailed",
+              "Media is ready, but saved subtitles could not be loaded."
             ),
-            type: "info",
+            type: "warning",
           });
         }
       }
 
+      if (!processedFile) {
+        setIsUploading(false);
+        setIsDownloading(false);
+        return null;
+      }
+
+      assertPreparationOwnership(projectId);
       // Store the processed file for later use
       setUploadedFileData(processedFile);
 
@@ -300,23 +468,62 @@ export const createDownloadHandlers = ({
       dbg("[AppHandlers] Video processing complete, ready for segment selection");
       // Apply any pending auto-downloaded subtitles now that video download is complete
       try {
-        if (pendingAutoSubtitleRef.current) {
-          const { content, fileName } = pendingAutoSubtitleRef.current;
-          pendingAutoSubtitleRef.current = null;
-          await handleSrtUpload(content, fileName || 'site-subtitle.srt');
-          // Special notice for auto-downloaded subtitle (not green, with glow/particles)
-          setStatus({
-            message: t('output.autoSubtitleNotice', 'Below are subtitles provided while the video is downloading. If you don’t like them, press Ctrl+A to select all and delete/regenerate'),
-            type: 'warning',
-            duration: 15000
-          });
+        const pendingSubtitle = pendingEntries.get(pendingToken) ?? null;
+        if (pendingSubtitle) {
+          if (pendingSubtitle.runId !== (guardedAutoRequest?.runId ?? null)
+              || pendingSubtitle.sourceIdentity !== sourceIdentity) {
+            throw new AutoGenerationOwnershipError();
+          }
+          const { content, fileName } = pendingSubtitle;
+          clearOwnedPendingSubtitle();
+          assertPreparationOwnership(projectId);
+          if (guardedAutoRequest) {
+            // Keep site subtitles private until the auto owner renews them into
+            // the exact project and receives a durable checkpoint receipt.
+            const parsed = parseSrtContent(content);
+            if (parsed.length > 0) preparedSubtitleCandidate = parsed;
+          } else {
+            await handleSrtUpload(content, fileName || 'site-subtitle.srt');
+            assertPreparationOwnership(projectId);
+            // Special notice for auto-downloaded subtitle (not green, with glow/particles)
+            setStatus({
+              message: t('output.autoSubtitleNotice', 'Below are subtitles provided while the video is downloading. If you don’t like them, press Ctrl+A to select all and delete/regenerate'),
+              type: 'warning',
+              duration: 15000
+            });
+            assertPreparationOwnership(projectId);
+          }
         }
       } catch (e) {
+        if (isAutoGenerationCancellation(e, guardedAutoRequest?.signal)
+            || e instanceof AutoGenerationOwnershipError) throw e;
         console.warn('[AppHandlers] Failed to apply pending auto subtitle:', e);
       }
 
-
+      if (guardedAutoRequest) {
+        if (!projectCacheId || !projectId || !sourceIdentity) {
+          throw new Error('Automatic media preparation did not produce a durable project context.');
+        }
+        await assertPreparationProjectOwnership(projectId);
+        return createPreparedAutoMedia({
+          request: guardedAutoRequest,
+          media: processedFile,
+          cacheId: projectCacheId,
+          projectId,
+          sourceIdentity,
+          cachedSubtitles: preparedSubtitleCandidate,
+        });
+      }
+      return processedFile;
     } catch (error) {
+      ownedPendingEntries?.delete(ownedPendingToken);
+      if (pendingAutoSubtitleRef.current?.token === ownedPendingToken) {
+        pendingAutoSubtitleRef.current = null;
+      }
+      if (isAutoGenerationCancellation(error, autoRequest?.signal)
+          || error instanceof AutoGenerationOwnershipError) {
+        throw error;
+      }
       console.error("Error in background processing:", error);
       setIsUploading(false);
       setIsDownloading(false);
@@ -326,6 +533,7 @@ export const createDownloadHandlers = ({
         }`,
         type: "error",
       });
+      return null;
     }
   };
 

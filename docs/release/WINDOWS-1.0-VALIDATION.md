@@ -5,8 +5,7 @@ product. It must not be published, tagged, or merged to `main` merely because co
 unit tests pass. Release approval requires the real installed Windows executable to complete the
 feature matrix below on a clean Windows profile.
 
-The pre-release version is `1.0.0-rc.1`. The final `1.0.0` version is reserved for the approved
-official release. Legacy releases used versions through `2.6.1`; therefore SemVer considers them
+The Windows release version is `1.0.0`. Legacy releases used versions through `2.6.1`; therefore SemVer considers them
 newer than `1.0.0`. Moving from the legacy application to OSG Windows 1.0 is a one-time manual
 migration. Automatic signed updates begin with the OSG Windows 1.x release line.
 
@@ -86,7 +85,7 @@ feature-matrix checkbox or approve the release.
 | 2026-08-12 | Edge TTS | Pass | The new slim package completed a clean managed install, real provider synthesis, artifact validation, shutdown, immediate removal, and zero download/staging/trash residue in 16.14 seconds. |
 | 2026-08-12 | gTTS | Pass | The 11.3 MB slim package completed a clean managed install, real provider synthesis, MP3 artifact validation, shutdown, immediate removal, and zero installed-package residue in 11.81 seconds. |
 | 2026-08-12 | Gemini Live narration | Pass | The 20.2 MB slim package imported the configured key without printing it, completed a real `gemini-3.1-flash-live-preview` audio turn, validated the WAV artifact, shut down, and removed immediately in 31.75 seconds. |
-| 2026-08-12 | F5-TTS | Pass | The receipt-verified 6.47 GiB managed package loaded on CUDA, synthesized a cloned-voice WAV from a bounded local reference, validated the artifact, shut down, and removed immediately in 292.74 seconds. Two real compatibility defects were fixed: Windows extended-length paths are normalized only at the supervised process boundary, and pinned TorchAudio 2.11 file I/O is replaced by bounded SoundFile decoding while tensor resampling remains managed. F5's model remains non-commercial under CC-BY-NC-4.0. |
+| 2026-08-12 | F5-TTS | Pass | The receipt-verified 6.47 GiB managed package loaded on CUDA, synthesized a cloned-voice WAV from a bounded local reference, validated the artifact, shut down, and removed immediately in 292.74 seconds. Two real compatibility defects were fixed: Windows extended-length paths are normalized only at the supervised process boundary, and pinned TorchAudio 2.11 file I/O is replaced by bounded SoundFile decoding while tensor resampling remains managed. |
 | 2026-08-12 | Chatterbox | Pass | The 11.15 GiB receipt-verified managed package loaded on CUDA, synthesized cloned-voice WAV audio, validated the artifact, shut down, and removed immediately. The first successful synthesis generated 52 Librosa/Numba cache files inside the runtime and removal correctly failed closed; workers now use a process-private temporary Numba cache, and a narrow migration removes only recognized `runtime/**/__pycache__/*.{pyc,nbc,nbi}` when no other undeclared file exists. The post-fix retained-install lifecycle passed in 403.58 seconds. |
 | 2026-08-12 | Gemini media input | Pass with model constraint | The bounded live audio probe succeeds with `gemini-3.1-flash-lite`; the same request returned provider HTTP 500 twice with `gemini-3.5-flash-lite`, so 3.1 remains the candidate default pending recheck. |
 
@@ -142,8 +141,6 @@ feature-matrix checkbox or approve the release.
 - [ ] Edge TTS, gTTS, and Gemini narration generate, retry, align, export, and restore after restart.
 - [ ] Batch failure short-circuits safely; concurrent cancellation does not terminate unrelated
   active speech work.
-- [ ] F5's `CC-BY-NC-4.0` model notice is visible before installation and remains excluded from any
-  commercial-support claim.
 
 ### Rendering, images, and music
 

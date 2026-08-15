@@ -8,6 +8,7 @@ description = "Private platform adapters for One-Click Subtitles Generator"
 
 [dependencies]
 blake3 = "=1.8.6"
+fs2 = "=0.4.3"
 keyring = { version = "=4.1.6", default-features = false, features = ["v1"] }
 osg-application.workspace = true
 osg-domain.workspace = true
@@ -18,11 +19,12 @@ secrecy = "=0.10.3"
 serde.workspace = true
 serde_json.workspace = true
 thiserror.workspace = true
+tempfile = "3.27.0"
 uuid.workspace = true
 zstd = "=0.13.3"
 
 [dev-dependencies]
-tempfile = "3.27.0"
+filetime = "=0.2.29"
 
 [lints]
 workspace = true

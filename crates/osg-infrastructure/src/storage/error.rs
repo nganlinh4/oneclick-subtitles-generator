@@ -19,6 +19,8 @@ pub enum DatabaseError {
     ActorUnavailable,
     #[error("the database actor stopped before replying")]
     ActorResponseDropped,
+    #[error("the application database is already open by another process")]
+    WriterLeaseUnavailable,
     #[error("database integrity check failed: {0}")]
     Integrity(String),
     #[error("SQLite refused WAL journal mode and returned `{0}`")]
@@ -72,6 +74,8 @@ pub enum DatabaseError {
     ArtifactReuseConflict(ArtifactId),
     #[error("artifact {0} cannot make that lifecycle transition")]
     InvalidArtifactTransition(ArtifactId),
+    #[error("artifact {0} is already being published by another owner")]
+    ArtifactPublicationInProgress(ArtifactId),
     #[error("an artifact publication target already exists with different content")]
     ArtifactPublicationCollision,
     #[error("an artifact filesystem entry is missing, a symlink, or not a regular file")]

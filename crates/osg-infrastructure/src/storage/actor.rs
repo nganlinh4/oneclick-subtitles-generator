@@ -1,11 +1,12 @@
-use std::collections::BTreeMap;
-use std::fs;
+use std::collections::{BTreeMap, BTreeSet};
+use std::fs::{self, File, OpenOptions};
 use std::path::{Path, PathBuf};
-use std::sync::Arc;
 use std::sync::mpsc::{Receiver, SyncSender, sync_channel};
+use std::sync::{Arc, LazyLock};
 use std::thread::{self, JoinHandle};
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
+use fs2::FileExt;
 use rusqlite::config::DbConfig;
 use rusqlite::{Connection, OpenFlags, OptionalExtension, params};
 use serde::Serialize;
@@ -22,14 +23,12 @@ use osg_domain::{
 };
 
 use super::error::DatabaseError;
-#[cfg(unix)]
-use super::media::MediaFileIdentity;
 use super::media::{MediaResolutionPlan, ResolvedMedia};
 use super::migrations::migrations;
 use super::{
-    ArtifactDraft, ArtifactFailureCode, ArtifactId, ArtifactRecord, ArtifactRegistration,
-    CacheCategory, CacheClearOutcome, CacheClearResult, CacheInfo, CacheKey, CacheLeaseId,
-    CacheWrite, ContentHash, LeasedArtifact, LegacyImportCandidate, LegacyImportId,
+    ArtifactDraft, ArtifactFailureCode, ArtifactId, ArtifactKind, ArtifactRecord,
+    ArtifactRegistration, CacheCategory, CacheClearOutcome, CacheClearResult, CacheInfo, CacheKey,
+    CacheLeaseId, CacheWrite, ContentHash, LeasedArtifact, LegacyImportCandidate, LegacyImportId,
     LegacyImportItemOutcome, LegacyImportItemState, LegacyImportSourceKind, LegacyImportSummary,
     ReconciliationReport, ResolvedArtifact,
 };
@@ -41,11 +40,36 @@ const MAX_SETTINGS_BATCH_BYTES: usize = 8 * 1024 * 1024;
 const MAX_SETTINGS_BATCH_ENTRIES: usize = 4_096;
 const MAX_SETTING_DELETE_KEYS: usize = 256;
 const APPLICATION_ID: i64 = 0x4f53_4732;
-const SCHEMA_VERSION: u32 = 5;
+const SCHEMA_VERSION: u32 = 8;
 const MINIMUM_SQLITE_VERSION: &str = "3.51.3";
-#[cfg(unix)]
-const MAX_VERIFIED_MEDIA_LOCATIONS: usize = 512;
 const MAX_MEDIA_RESOLUTION_BATCHES: usize = 64;
+const MAX_ARTIFACT_LIST_ITEMS: usize = 4_096;
+static PROCESS_WRITER_LEASES: LazyLock<std::sync::Mutex<BTreeSet<PathBuf>>> =
+    LazyLock::new(|| std::sync::Mutex::new(BTreeSet::new()));
+
+struct WriterLease {
+    file: File,
+    database_path: PathBuf,
+}
+
+impl std::fmt::Debug for WriterLease {
+    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        formatter
+            .debug_struct("WriterLease")
+            .field("file", &"<locked>")
+            .field("database_path", &"<redacted>")
+            .finish()
+    }
+}
+
+impl Drop for WriterLease {
+    fn drop(&mut self) {
+        let _ = FileExt::unlock(&self.file);
+        if let Ok(mut leases) = PROCESS_WRITER_LEASES.lock() {
+            leases.remove(&self.database_path);
+        }
+    }
+}
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -67,75 +91,6 @@ pub struct Database {
 struct ActorInner {
     sender: SyncSender<Request>,
     thread: std::sync::Mutex<Option<JoinHandle<()>>>,
-    #[cfg(unix)]
-    verified_media: std::sync::Mutex<VerifiedMediaCache>,
-}
-
-#[cfg(unix)]
-#[derive(Default)]
-struct VerifiedMediaCache {
-    entries: BTreeMap<(AssetId, Uuid), VerifiedMediaCacheEntry>,
-}
-
-#[cfg(unix)]
-struct VerifiedMediaCacheEntry {
-    identity: MediaFileIdentity,
-    content_hash: ContentHash,
-}
-
-#[cfg(unix)]
-impl std::fmt::Debug for VerifiedMediaCache {
-    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        let entry_count = self.entries.len();
-        formatter
-            .debug_struct("VerifiedMediaCache")
-            .field("entry_count", &entry_count)
-            .finish()
-    }
-}
-
-#[cfg(unix)]
-impl VerifiedMediaCache {
-    fn matches(
-        &self,
-        media_id: AssetId,
-        location_id: Uuid,
-        identity: MediaFileIdentity,
-        content_hash: ContentHash,
-    ) -> bool {
-        self.entries
-            .get(&(media_id, location_id))
-            .is_some_and(|entry| entry.identity == identity && entry.content_hash == content_hash)
-    }
-
-    fn insert(
-        &mut self,
-        media_id: AssetId,
-        location_id: Uuid,
-        identity: MediaFileIdentity,
-        content_hash: ContentHash,
-    ) {
-        if !super::media::media_file_identity_cacheable(identity) {
-            self.entries.remove(&(media_id, location_id));
-            return;
-        }
-        if self.entries.len() >= MAX_VERIFIED_MEDIA_LOCATIONS
-            && !self.entries.contains_key(&(media_id, location_id))
-        {
-            self.entries.pop_first();
-        }
-        self.entries.insert(
-            (media_id, location_id),
-            VerifiedMediaCacheEntry {
-                identity,
-                content_hash,
-            },
-        );
-    }
-
-    fn remove(&mut self, media_id: AssetId, location_id: Uuid) {
-        self.entries.remove(&(media_id, location_id));
-    }
 }
 
 enum Request {
@@ -202,15 +157,38 @@ enum Request {
         id: CredentialId,
         reply: SyncSender<Result<bool, DatabaseError>>,
     },
-    RememberMedia {
+    CommitMediaArtifact {
         asset: MediaAsset,
-        canonical_path: PathBuf,
-        content_hash: ContentHash,
-        reply: SyncSender<Result<Uuid, DatabaseError>>,
+        artifact_id: ArtifactId,
+        job_id: Option<JobId>,
+        candidate: bool,
+        reply: SyncSender<Result<ResolvedArtifact, DatabaseError>>,
+    },
+    RegisterMediaArtifact {
+        draft: ArtifactDraft,
+        media_id: AssetId,
+        job_id: JobId,
+        reply: SyncSender<Result<ArtifactRegistration, DatabaseError>>,
+    },
+    PromoteMediaCandidate {
+        id: AssetId,
+        reply: SyncSender<Result<bool, DatabaseError>>,
+    },
+    DiscardMediaCandidate {
+        id: AssetId,
+        reply: SyncSender<Result<bool, DatabaseError>>,
     },
     ResolveMedia {
         id: AssetId,
+        require_project_owner: bool,
+        project_revision: Option<(ProjectId, u64)>,
         reply: SyncSender<Result<Option<MediaResolutionPlan>, DatabaseError>>,
+    },
+    AuthorizeProjectMedia {
+        project_id: ProjectId,
+        expected_state_version: u64,
+        id: AssetId,
+        reply: SyncSender<Result<bool, DatabaseError>>,
     },
     MarkMediaLocation {
         media_id: AssetId,
@@ -225,6 +203,12 @@ enum Request {
     GetArtifact {
         id: ArtifactId,
         reply: SyncSender<Result<Option<ArtifactRecord>, DatabaseError>>,
+    },
+    ListReadyArtifacts {
+        project_id: ProjectId,
+        kind: ArtifactKind,
+        limit: usize,
+        reply: SyncSender<Result<Vec<ArtifactRecord>, DatabaseError>>,
     },
     MarkArtifactReady {
         id: ArtifactId,
@@ -396,11 +380,16 @@ impl std::fmt::Debug for Request {
             Self::CredentialList { .. } => "CredentialList",
             Self::CredentialGet { .. } => "CredentialGet",
             Self::CredentialDelete { .. } => "CredentialDelete",
-            Self::RememberMedia { .. } => "RememberMedia",
+            Self::CommitMediaArtifact { .. } => "CommitMediaArtifact",
+            Self::RegisterMediaArtifact { .. } => "RegisterMediaArtifact",
+            Self::PromoteMediaCandidate { .. } => "PromoteMediaCandidate",
+            Self::DiscardMediaCandidate { .. } => "DiscardMediaCandidate",
             Self::ResolveMedia { .. } => "ResolveMedia",
+            Self::AuthorizeProjectMedia { .. } => "AuthorizeProjectMedia",
             Self::MarkMediaLocation { .. } => "MarkMediaLocation",
             Self::RegisterArtifact { .. } => "RegisterArtifact",
             Self::GetArtifact { .. } => "GetArtifact",
+            Self::ListReadyArtifacts { .. } => "ListReadyArtifacts",
             Self::MarkArtifactReady { .. } => "MarkArtifactReady",
             Self::MarkArtifactFailed { .. } => "MarkArtifactFailed",
             Self::ResolveArtifact { .. } => "ResolveArtifact",
@@ -475,8 +464,6 @@ impl Database {
             inner: Arc::new(ActorInner {
                 sender,
                 thread: std::sync::Mutex::new(Some(thread)),
-                #[cfg(unix)]
-                verified_media: std::sync::Mutex::new(VerifiedMediaCache::default()),
             }),
         })
     }
@@ -629,153 +616,193 @@ impl Database {
         &self,
         asset: &MediaAsset,
         path: impl AsRef<Path>,
-    ) -> Result<(), DatabaseError> {
+    ) -> Result<ContentHash, DatabaseError> {
+        self.remember_media_with_lifecycle(asset, path.as_ref(), false)
+    }
+
+    pub fn remember_media_candidate(
+        &self,
+        asset: &MediaAsset,
+        path: impl AsRef<Path>,
+    ) -> Result<ContentHash, DatabaseError> {
+        self.remember_media_with_lifecycle(asset, path.as_ref(), true)
+    }
+
+    pub fn commit_media_artifact(
+        &self,
+        asset: &MediaAsset,
+        artifact_id: ArtifactId,
+        job_id: JobId,
+        candidate: bool,
+    ) -> Result<ResolvedArtifact, DatabaseError> {
+        self.request(|reply| Request::CommitMediaArtifact {
+            asset: asset.clone(),
+            artifact_id,
+            job_id: Some(job_id),
+            candidate,
+            reply,
+        })
+    }
+
+    pub(super) fn commit_unclaimed_media_artifact(
+        &self,
+        asset: &MediaAsset,
+        artifact_id: ArtifactId,
+        candidate: bool,
+    ) -> Result<ResolvedArtifact, DatabaseError> {
+        self.request(|reply| Request::CommitMediaArtifact {
+            asset: asset.clone(),
+            artifact_id,
+            job_id: None,
+            candidate,
+            reply,
+        })
+    }
+
+    pub(super) fn register_media_artifact(
+        &self,
+        draft: &ArtifactDraft,
+        media_id: AssetId,
+        job_id: JobId,
+    ) -> Result<ArtifactRegistration, DatabaseError> {
+        self.request(|reply| Request::RegisterMediaArtifact {
+            draft: draft.clone(),
+            media_id,
+            job_id,
+            reply,
+        })
+    }
+
+    fn remember_media_with_lifecycle(
+        &self,
+        asset: &MediaAsset,
+        path: &Path,
+        candidate: bool,
+    ) -> Result<ContentHash, DatabaseError> {
         let canonical_path =
             fs::canonicalize(path).map_err(|_| DatabaseError::InvalidMediaLocation)?;
-        let verified = super::media::digest_media_file(&canonical_path, asset.size_bytes())?;
-        let location_id = self.request(|reply| Request::RememberMedia {
-            asset: asset.clone(),
-            canonical_path,
-            content_hash: verified.content_hash,
-            reply,
-        })?;
-        #[cfg(unix)]
-        self.cache_verified_media(
-            asset.id(),
-            location_id,
-            verified.identity,
-            verified.content_hash,
+        let published = super::media::publish_native_media_snapshot(
+            self,
+            asset.clone(),
+            &canonical_path,
+            candidate,
         )?;
-        #[cfg(not(unix))]
-        let _ = location_id;
-        Ok(())
+        Ok(published.content_hash())
+    }
+
+    pub fn promote_media_candidate(&self, id: AssetId) -> Result<bool, DatabaseError> {
+        self.request(|reply| Request::PromoteMediaCandidate { id, reply })
+    }
+
+    pub fn discard_media_candidate(&self, id: AssetId) -> Result<bool, DatabaseError> {
+        self.request(|reply| Request::DiscardMediaCandidate { id, reply })
     }
 
     pub fn resolve_media(&self, id: AssetId) -> Result<Option<ResolvedMedia>, DatabaseError> {
+        self.resolve_media_with_policy(id, false, None)
+    }
+
+    pub fn resolve_project_media(
+        &self,
+        id: AssetId,
+    ) -> Result<Option<ResolvedMedia>, DatabaseError> {
+        self.resolve_media_with_policy(id, true, None)
+    }
+
+    pub fn resolve_project_media_revision(
+        &self,
+        project_id: ProjectId,
+        expected_state_version: u64,
+        id: AssetId,
+    ) -> Result<Option<ResolvedMedia>, DatabaseError> {
+        self.resolve_media_with_policy(id, true, Some((project_id, expected_state_version)))
+    }
+
+    pub fn project_media_is_current(
+        &self,
+        project_id: ProjectId,
+        expected_state_version: u64,
+        id: AssetId,
+    ) -> Result<bool, DatabaseError> {
+        self.request(|reply| Request::AuthorizeProjectMedia {
+            project_id,
+            expected_state_version,
+            id,
+            reply,
+        })
+    }
+
+    fn resolve_media_with_policy(
+        &self,
+        id: AssetId,
+        require_project_owner: bool,
+        project_revision: Option<(ProjectId, u64)>,
+    ) -> Result<Option<ResolvedMedia>, DatabaseError> {
         for _ in 0..MAX_MEDIA_RESOLUTION_BATCHES {
-            let Some(plan) = self.request(|reply| Request::ResolveMedia { id, reply })? else {
+            let Some(plan) = self.request(|reply| Request::ResolveMedia {
+                id,
+                require_project_owner,
+                project_revision,
+                reply,
+            })?
+            else {
                 return Ok(None);
             };
             let Some(expected_hash) = plan.content_hash else {
                 return Ok(None);
             };
             for candidate in plan.candidates {
-                let verified = if let Some(path) = candidate.path.as_ref() {
-                    #[cfg(unix)]
-                    {
-                        self.verify_media_candidate(
-                            id,
-                            candidate.id,
-                            path,
-                            plan.asset.size_bytes(),
-                            expected_hash,
-                        )?
-                    }
-                    #[cfg(not(unix))]
-                    {
-                        verify_media_candidate(path, plan.asset.size_bytes(), expected_hash)
+                let resolved = if candidate.managed_snapshot {
+                    candidate.path.as_ref().and_then(|path| {
+                        super::media::digest_media_file(path, plan.asset.size_bytes())
+                            .ok()
+                            .filter(|verified| verified.content_hash == expected_hash)
+                            .map(|verified| (path.to_owned(), verified.file))
+                    })
+                } else if let Some(path) = candidate.path.as_ref() {
+                    match super::media::publish_native_media_snapshot(
+                        self,
+                        plan.asset.clone(),
+                        path,
+                        plan.candidate_lifecycle,
+                    ) {
+                        Ok(published) if published.content_hash() == expected_hash => {
+                            super::media::digest_media_file(
+                                published.path(),
+                                plan.asset.size_bytes(),
+                            )
+                            .ok()
+                            .filter(|verified| verified.content_hash == expected_hash)
+                            .map(|verified| (published.path().to_owned(), verified.file))
+                        }
+                        Ok(_) | Err(DatabaseError::InvalidArtifactFile) => None,
+                        Err(error) => return Err(error),
                     }
                 } else {
-                    false
+                    None
                 };
-                self.request(|reply| Request::MarkMediaLocation {
-                    media_id: id,
-                    location_id: candidate.id,
-                    available: verified,
-                    reply,
-                })?;
-                if verified {
-                    // `ResolvedMedia` intentionally remains a private native path for existing
-                    // media consumers. Verification proves the opened file at this instant; a
-                    // mutation after the handle closes and before a consumer reopens the path is
-                    // an inherent TOCTOU window. The same-file check closes the path-replacement
-                    // window during hashing, and observable Unix identity changes invalidate the
-                    // cache. Windows rehashes because stable std by-handle IDs remain unstable.
-                    return Ok(candidate
-                        .path
-                        .map(|path| ResolvedMedia::new(plan.asset.clone(), path)));
+                if let Some(location_id) = candidate.id {
+                    self.request(|reply| Request::MarkMediaLocation {
+                        media_id: id,
+                        location_id,
+                        available: resolved.is_some(),
+                        reply,
+                    })?;
                 }
-                #[cfg(unix)]
-                self.remove_verified_media(id, candidate.id)?;
+                if let Some((path, file)) = resolved {
+                    return Ok(Some(ResolvedMedia::new(
+                        plan.asset.clone(),
+                        path,
+                        file,
+                        expected_hash,
+                    )));
+                }
             }
             if !plan.has_more_candidates {
                 return Ok(None);
             }
         }
         Err(DatabaseError::InvalidMediaLocation)
-    }
-
-    #[cfg(unix)]
-    fn verify_media_candidate(
-        &self,
-        media_id: AssetId,
-        location_id: Uuid,
-        path: &Path,
-        expected_size: u64,
-        expected_hash: ContentHash,
-    ) -> Result<bool, DatabaseError> {
-        if let Ok(identity) = super::media::inspect_media_file(path, expected_size)
-            && self.matches_verified_media(media_id, location_id, identity, expected_hash)?
-        {
-            return Ok(true);
-        }
-
-        let Ok(file) = super::media::digest_media_file(path, expected_size) else {
-            return Ok(false);
-        };
-        if file.content_hash != expected_hash {
-            return Ok(false);
-        }
-        self.cache_verified_media(media_id, location_id, file.identity, file.content_hash)?;
-        Ok(true)
-    }
-
-    #[cfg(unix)]
-    fn matches_verified_media(
-        &self,
-        media_id: AssetId,
-        location_id: Uuid,
-        identity: MediaFileIdentity,
-        content_hash: ContentHash,
-    ) -> Result<bool, DatabaseError> {
-        let cache = self
-            .inner
-            .verified_media
-            .lock()
-            .map_err(|_| DatabaseError::InvalidMediaLocation)?;
-        Ok(cache.matches(media_id, location_id, identity, content_hash))
-    }
-
-    #[cfg(unix)]
-    fn cache_verified_media(
-        &self,
-        media_id: AssetId,
-        location_id: Uuid,
-        identity: MediaFileIdentity,
-        content_hash: ContentHash,
-    ) -> Result<(), DatabaseError> {
-        let mut cache = self
-            .inner
-            .verified_media
-            .lock()
-            .map_err(|_| DatabaseError::InvalidMediaLocation)?;
-        cache.insert(media_id, location_id, identity, content_hash);
-        Ok(())
-    }
-
-    #[cfg(unix)]
-    fn remove_verified_media(
-        &self,
-        media_id: AssetId,
-        location_id: Uuid,
-    ) -> Result<(), DatabaseError> {
-        let mut cache = self
-            .inner
-            .verified_media
-            .lock()
-            .map_err(|_| DatabaseError::InvalidMediaLocation)?;
-        cache.remove(media_id, location_id);
-        Ok(())
     }
 
     pub fn register_artifact(
@@ -790,6 +817,23 @@ impl Database {
 
     pub fn get_artifact(&self, id: ArtifactId) -> Result<Option<ArtifactRecord>, DatabaseError> {
         self.request(|reply| Request::GetArtifact { id, reply })
+    }
+
+    pub fn list_ready_artifacts(
+        &self,
+        project_id: ProjectId,
+        kind: &ArtifactKind,
+        limit: usize,
+    ) -> Result<Vec<ArtifactRecord>, DatabaseError> {
+        if limit == 0 || limit > MAX_ARTIFACT_LIST_ITEMS {
+            return Err(DatabaseError::InvalidArtifactMetadata);
+        }
+        self.request(|reply| Request::ListReadyArtifacts {
+            project_id,
+            kind: kind.clone(),
+            limit,
+            reply,
+        })
     }
 
     pub fn mark_artifact_ready(&self, id: ArtifactId) -> Result<ArtifactRecord, DatabaseError> {
@@ -1137,12 +1181,6 @@ impl Database {
     }
 }
 
-#[cfg(not(unix))]
-fn verify_media_candidate(path: &Path, expected_size: u64, expected_hash: ContentHash) -> bool {
-    super::media::digest_media_file(path, expected_size)
-        .is_ok_and(|file| file.content_hash == expected_hash)
-}
-
 impl ProjectRepository for Database {
     type Error = DatabaseError;
 
@@ -1205,7 +1243,7 @@ fn run_actor(
     receiver: &Receiver<Request>,
     startup: &SyncSender<Result<(), DatabaseError>>,
 ) {
-    let (mut connection, artifact_root) = match open_connection(path, artifact_root) {
+    let (mut connection, artifact_root, writer_lease) = match open_connection(path, artifact_root) {
         Ok(result) => result,
         Err(error) => {
             let _ = startup.send(Err(error));
@@ -1269,21 +1307,68 @@ fn run_actor(
             Request::CredentialDelete { id, reply } => {
                 let _ = reply.send(credential_delete(&connection, id));
             }
-            Request::RememberMedia {
+            Request::CommitMediaArtifact {
                 asset,
-                canonical_path,
-                content_hash,
+                artifact_id,
+                job_id,
+                candidate,
                 reply,
             } => {
-                let _ = reply.send(super::media::remember(
+                let _ = reply.send(super::media::commit_media_artifact(
                     &mut connection,
+                    &artifact_root,
                     &asset,
-                    &canonical_path,
-                    content_hash,
+                    artifact_id,
+                    job_id,
+                    candidate,
                 ));
             }
-            Request::ResolveMedia { id, reply } => {
-                let _ = reply.send(super::media::resolution_plan(&connection, id));
+            Request::RegisterMediaArtifact {
+                draft,
+                media_id,
+                job_id,
+                reply,
+            } => {
+                let _ = reply.send(super::artifacts::register_media(
+                    &mut connection,
+                    &artifact_root,
+                    &draft,
+                    media_id,
+                    job_id,
+                ));
+            }
+            Request::PromoteMediaCandidate { id, reply } => {
+                let _ = reply.send(super::media::promote_candidate(&mut connection, id));
+            }
+            Request::DiscardMediaCandidate { id, reply } => {
+                let _ = reply.send(discard_media_candidate(&mut connection, &artifact_root, id));
+            }
+            Request::ResolveMedia {
+                id,
+                require_project_owner,
+                project_revision,
+                reply,
+            } => {
+                let _ = reply.send(super::media::resolution_plan(
+                    &connection,
+                    &artifact_root,
+                    id,
+                    require_project_owner,
+                    project_revision,
+                ));
+            }
+            Request::AuthorizeProjectMedia {
+                project_id,
+                expected_state_version,
+                id,
+                reply,
+            } => {
+                let _ = reply.send(super::media::project_media_is_current(
+                    &connection,
+                    project_id,
+                    expected_state_version,
+                    id,
+                ));
             }
             Request::MarkMediaLocation {
                 media_id,
@@ -1300,13 +1385,26 @@ fn run_actor(
             }
             Request::RegisterArtifact { draft, reply } => {
                 let _ = reply.send(super::artifacts::register(
-                    &connection,
+                    &mut connection,
                     &artifact_root,
                     &draft,
                 ));
             }
             Request::GetArtifact { id, reply } => {
                 let _ = reply.send(super::artifacts::get(&connection, id));
+            }
+            Request::ListReadyArtifacts {
+                project_id,
+                kind,
+                limit,
+                reply,
+            } => {
+                let _ = reply.send(super::artifacts::list_ready_for_project(
+                    &connection,
+                    project_id,
+                    &kind,
+                    limit,
+                ));
             }
             Request::MarkArtifactReady { id, reply } => {
                 let _ = reply.send(super::artifacts::ready(&connection, &artifact_root, id));
@@ -1548,13 +1646,47 @@ fn run_actor(
         }
     }
     let _ = mark_clean_shutdown(&connection);
+    drop(connection);
+    drop(writer_lease);
+}
+
+fn discard_media_candidate(
+    connection: &mut Connection,
+    artifact_root: &super::artifacts::ArtifactRoot,
+    media_id: AssetId,
+) -> Result<bool, DatabaseError> {
+    let transaction = connection.transaction()?;
+    let Some(artifact_ids) =
+        super::media::discard_candidate_in_transaction(&transaction, media_id)?
+    else {
+        transaction.commit()?;
+        return Ok(false);
+    };
+    let mut removals = Vec::new();
+    for artifact_id in artifact_ids {
+        if !super::media::artifact_has_persistent_owner(&transaction, artifact_id)?
+            && let Some(removal) =
+                super::artifacts::remove_transactional(&transaction, artifact_root, artifact_id)?
+        {
+            removals.push(removal);
+        }
+    }
+    transaction.commit()?;
+    for removal in removals {
+        removal.finalize();
+    }
+    Ok(true)
 }
 
 fn open_connection(
     path: &Path,
     artifact_root: &Path,
-) -> Result<(Connection, super::artifacts::ArtifactRoot), DatabaseError> {
+) -> Result<(Connection, super::artifacts::ArtifactRoot, WriterLease), DatabaseError> {
     let path = canonical_database_path(path)?;
+    // Recovery is intentionally destructive to stale in-flight jobs and pending artifacts.  The
+    // lease therefore has to be acquired before SQLite is opened or any startup migration,
+    // interruption, or reconciliation can run.
+    let writer_lease = acquire_writer_lease(&path)?;
     let mut connection = Connection::open_with_flags(
         &path,
         OpenFlags::SQLITE_OPEN_READ_WRITE
@@ -1613,7 +1745,73 @@ fn open_connection(
         ));
     }
     drop(foreign_key_check);
-    Ok((connection, artifact_root))
+    Ok((connection, artifact_root, writer_lease))
+}
+
+fn acquire_writer_lease(database_path: &Path) -> Result<WriterLease, DatabaseError> {
+    {
+        let mut leases = PROCESS_WRITER_LEASES
+            .lock()
+            .map_err(|_| DatabaseError::WriterLeaseUnavailable)?;
+        if !leases.insert(database_path.to_owned()) {
+            return Err(DatabaseError::WriterLeaseUnavailable);
+        }
+    }
+    match acquire_writer_lease_file(database_path) {
+        Ok(file) => Ok(WriterLease {
+            file,
+            database_path: database_path.to_owned(),
+        }),
+        Err(error) => {
+            if let Ok(mut leases) = PROCESS_WRITER_LEASES.lock() {
+                leases.remove(database_path);
+            }
+            Err(error)
+        }
+    }
+}
+
+fn acquire_writer_lease_file(database_path: &Path) -> Result<File, DatabaseError> {
+    let file_name = database_path
+        .file_name()
+        .and_then(|name| name.to_str())
+        .ok_or_else(|| {
+            DatabaseError::Io(std::io::Error::new(
+                std::io::ErrorKind::InvalidInput,
+                "database file path is invalid",
+            ))
+        })?;
+    let lease_path = database_path.with_file_name(format!(".{file_name}.writer.lock"));
+    let mut options = OpenOptions::new();
+    options.read(true).write(true).create(true);
+    #[cfg(windows)]
+    {
+        use std::os::windows::fs::OpenOptionsExt as _;
+
+        // Windows file locks can be reacquired by another handle in surprising same-process and
+        // inherited-handle cases.  Denying every share mode makes ownership an open-handle
+        // invariant as well as a byte-range lock invariant.
+        options.share_mode(0);
+    }
+    let lease = options.open(&lease_path).map_err(|error| {
+        #[cfg(windows)]
+        if matches!(error.raw_os_error(), Some(32 | 33)) {
+            return DatabaseError::WriterLeaseUnavailable;
+        }
+        DatabaseError::Io(error)
+    })?;
+    let metadata = fs::symlink_metadata(&lease_path)?;
+    if !metadata.is_file() || metadata.file_type().is_symlink() {
+        return Err(DatabaseError::WriterLeaseUnavailable);
+    }
+    FileExt::try_lock_exclusive(&lease).map_err(|error| {
+        if error.kind() == std::io::ErrorKind::WouldBlock {
+            DatabaseError::WriterLeaseUnavailable
+        } else {
+            DatabaseError::Io(error)
+        }
+    })?;
+    Ok(lease)
 }
 
 fn canonical_database_path(path: &Path) -> Result<PathBuf, DatabaseError> {
@@ -2143,60 +2341,32 @@ pub(super) fn now_ms() -> i64 {
 #[cfg(test)]
 mod tests {
     use std::collections::BTreeMap;
+    use std::env;
     use std::fs;
+    use std::process::Command;
     use std::sync::mpsc::sync_channel;
 
+    use osg_domain::{JobKind, JobSnapshot, JobState};
     use rusqlite::params;
     use serde_json::json;
     use tempfile::TempDir;
     use uuid::Uuid;
 
-    #[cfg(unix)]
-    use super::VerifiedMediaCache;
-    use super::{APPLICATION_ID, Database, Request};
+    use super::{APPLICATION_ID, Database, Request, SCHEMA_VERSION};
     use crate::secrets::{CredentialId, CredentialPurpose, CredentialState};
     use crate::storage::{
         ArtifactDraft, ArtifactId, ArtifactKind, ArtifactRegistration, CacheCategory, CacheKey,
         CacheWrite, ContentHash, DatabaseError,
     };
 
+    const WRITER_LEASE_PROBE_PATH: &str = "OSG_WRITER_LEASE_PROBE_PATH";
+    const WRITER_LEASE_PROBE_EXPECTATION: &str = "OSG_WRITER_LEASE_PROBE_EXPECTATION";
+
     fn database() -> (TempDir, Database) {
         let directory = TempDir::new().expect("temporary directory");
         let database = Database::open(directory.path().join("db/osg.sqlite3"))
             .expect("open migrated database");
         (directory, database)
-    }
-
-    #[cfg(unix)]
-    #[test]
-    fn verified_media_cache_is_bounded_and_evicts_the_smallest_key_deterministically() {
-        let directory = TempDir::new().expect("temporary directory");
-        let path = directory.path().join("fixture.mp4");
-        fs::write(&path, b"media").expect("media fixture");
-        let canonical = fs::canonicalize(path).expect("canonical media");
-        let identity =
-            super::super::media::inspect_media_file(&canonical, 5).expect("inspect media identity");
-        assert!(super::super::media::media_file_identity_cacheable(identity));
-        let media_id = osg_domain::AssetId::new();
-        let mut cache = VerifiedMediaCache::default();
-        let expected_hash = ContentHash::digest(b"media");
-
-        for value in 1..=super::MAX_VERIFIED_MEDIA_LOCATIONS as u128 {
-            cache.insert(media_id, Uuid::from_u128(value), identity, expected_hash);
-        }
-        let first = Uuid::from_u128(1);
-        let newest = Uuid::from_u128(super::MAX_VERIFIED_MEDIA_LOCATIONS as u128 + 1);
-        cache.insert(media_id, newest, identity, expected_hash);
-
-        assert_eq!(cache.entries.len(), super::MAX_VERIFIED_MEDIA_LOCATIONS);
-        assert!(!cache.matches(media_id, first, identity, expected_hash));
-        assert!(cache.matches(media_id, newest, identity, expected_hash));
-        assert!(!cache.matches(
-            media_id,
-            newest,
-            identity,
-            ContentHash::digest(b"different")
-        ));
     }
 
     fn publish_durable_artifact(database: &Database, bytes: &[u8]) -> ArtifactId {
@@ -2225,7 +2395,7 @@ mod tests {
 
         let health = database.health().expect("database health");
 
-        assert_eq!(health.schema_version, 5);
+        assert_eq!(health.schema_version, SCHEMA_VERSION);
         assert_eq!(health.application_id, APPLICATION_ID);
         assert!(health.sqlite_version.starts_with("3."));
         assert_eq!(health.journal_mode.to_ascii_lowercase(), "wal");
@@ -2291,7 +2461,7 @@ mod tests {
         let database = Database::open(&path).expect("upgrade v1 database");
         assert_eq!(
             database.health().expect("database health").schema_version,
-            5
+            SCHEMA_VERSION
         );
         let clients = database
             .credential_list(Some(CredentialPurpose::YouTubeOauthClient))
@@ -2343,6 +2513,113 @@ mod tests {
     }
 
     #[test]
+    fn writer_lease_prevents_a_second_startup_from_interrupting_live_work() {
+        let directory = TempDir::new().expect("temporary directory");
+        let path = directory.path().join("db/osg.sqlite3");
+        let first = Database::open(&path).expect("first writer");
+        let mut running = JobSnapshot::new(JobKind::DownloadMedia);
+        first.create_job(&running).expect("create job");
+        let sequence = running.sequence();
+        running.start().expect("start job");
+        first
+            .compare_and_swap_job(sequence, &running)
+            .expect("persist running job");
+
+        assert!(matches!(
+            Database::open(&path),
+            Err(DatabaseError::WriterLeaseUnavailable)
+        ));
+        assert_eq!(
+            first
+                .get_job(running.id())
+                .expect("read live job")
+                .expect("live job exists")
+                .state(),
+            JobState::Running
+        );
+
+        drop(first);
+        let recovered = Database::open(&path).expect("writer after lease release");
+        assert_eq!(
+            recovered
+                .get_job(running.id())
+                .expect("read recovered job")
+                .expect("recovered job exists")
+                .state(),
+            JobState::Interrupted
+        );
+    }
+
+    #[test]
+    fn writer_lease_probe_child() {
+        let Some(path) = env::var_os(WRITER_LEASE_PROBE_PATH) else {
+            return;
+        };
+        let expectation = env::var(WRITER_LEASE_PROBE_EXPECTATION).expect("probe expectation");
+        let result = Database::open(path);
+        match expectation.as_str() {
+            "contended" => assert!(matches!(result, Err(DatabaseError::WriterLeaseUnavailable))),
+            "available" => assert!(result.is_ok()),
+            _ => panic!("unexpected writer lease probe expectation"),
+        }
+    }
+
+    #[test]
+    fn writer_lease_is_enforced_across_processes_before_recovery() {
+        let directory = TempDir::new().expect("temporary directory");
+        let path = directory.path().join("db/osg.sqlite3");
+        let database = Database::open(&path).expect("first writer");
+        let mut running = JobSnapshot::new(JobKind::DownloadMedia);
+        database.create_job(&running).expect("create job");
+        let sequence = running.sequence();
+        running.start().expect("start job");
+        database
+            .compare_and_swap_job(sequence, &running)
+            .expect("persist running job");
+
+        run_writer_lease_probe(&path, "contended");
+        assert_eq!(
+            database
+                .get_job(running.id())
+                .expect("read live job")
+                .expect("live job exists")
+                .state(),
+            JobState::Running
+        );
+        drop(database);
+
+        run_writer_lease_probe(&path, "available");
+        let recovered = Database::open(&path).expect("inspect child recovery");
+        assert_eq!(
+            recovered
+                .get_job(running.id())
+                .expect("read recovered job")
+                .expect("recovered job exists")
+                .state(),
+            JobState::Interrupted
+        );
+    }
+
+    fn run_writer_lease_probe(path: &std::path::Path, expectation: &str) {
+        let output = Command::new(env::current_exe().expect("current test executable"))
+            .args([
+                "--exact",
+                "storage::actor::tests::writer_lease_probe_child",
+                "--nocapture",
+            ])
+            .env(WRITER_LEASE_PROBE_PATH, path)
+            .env(WRITER_LEASE_PROBE_EXPECTATION, expectation)
+            .output()
+            .expect("run writer lease probe process");
+        assert!(
+            output.status.success(),
+            "writer lease probe failed: stdout={} stderr={}",
+            String::from_utf8_lossy(&output.stdout),
+            String::from_utf8_lossy(&output.stderr)
+        );
+    }
+
+    #[test]
     fn refuses_a_database_owned_by_another_application() {
         let directory = TempDir::new().expect("temporary directory");
         let path = directory.path().join("foreign.sqlite3");
@@ -2372,7 +2649,7 @@ mod tests {
             Database::open(path),
             Err(DatabaseError::FutureSchema {
                 found: 99,
-                supported: 5
+                supported: SCHEMA_VERSION
             })
         ));
     }

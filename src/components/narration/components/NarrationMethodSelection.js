@@ -20,16 +20,28 @@ const NarrationMethodSelection = ({
   narrationMethod,
   setNarrationMethod,
   isGenerating,
-  isF5Available = true,
-  isChatterboxAvailable = true,
-  isGeminiAvailable = true,
-  isEdgeTTSAvailable = true,
-  isGTTSAvailable = true
+  isF5Available = false,
+  isChatterboxAvailable = false,
+  isGeminiAvailable = false,
+  isEdgeTTSAvailable = false,
+  isGTTSAvailable = false,
+  geminiUnavailableMessage
 }) => {
   const { t } = useTranslation();
+  const unavailableTitle = t(
+    'narration.engineUnavailableMessage',
+    'This narration engine is not ready. Install or start it in Settings > Voice & transcription engines.'
+  );
+  const availableMethods = {
+    f5tts: isF5Available,
+    chatterbox: isChatterboxAvailable,
+    gemini: isGeminiAvailable,
+    'edge-tts': isEdgeTTSAvailable,
+    gtts: isGTTSAvailable,
+  };
 
   const handleMethodChange = (method) => {
-    if (!isGenerating) {
+    if (!isGenerating && availableMethods[method] === true) {
       setNarrationMethod(method);
       // Save to localStorage for persistence
       localStorage.setItem('narration_method', method);
@@ -64,7 +76,7 @@ const NarrationMethodSelection = ({
                 </span>
                 {t('narration.f5ttsMethod', 'F5-TTS')}
                 {!isF5Available && (
-                  <HelpIcon className="method-help-icon" title={t('narration.f5ttsUnavailable', '(Unavailable - install in Settings > Tools)')} />
+                  <HelpIcon className="method-help-icon" title={unavailableTitle} />
                 )}
               </label>
             </div>
@@ -87,7 +99,7 @@ const NarrationMethodSelection = ({
                 </span>
                 {t('narration.chatterboxMethod', 'Chatterbox')}
                 {!isChatterboxAvailable && (
-                  <HelpIcon className="method-help-icon" title={t('narration.chatterboxUnavailable', '(Unavailable - install in Settings > Tools)')} />
+                  <HelpIcon className="method-help-icon" title={unavailableTitle} />
                 )}
               </label>
             </div>
@@ -110,7 +122,7 @@ const NarrationMethodSelection = ({
                 </span>
                 {t('narration.geminiMethod', 'Gemini Live API')}
                 {!isGeminiAvailable && (
-                  <HelpIcon className="method-help-icon" title={t('narration.geminiUnavailable', '(Unavailable - Check API key in settings)')} />
+                  <HelpIcon className="method-help-icon" title={geminiUnavailableMessage || unavailableTitle} />
                 )}
               </label>
             </div>
@@ -132,7 +144,7 @@ const NarrationMethodSelection = ({
                 </span>
                 {t('narration.edgeTTSMethod', 'Edge TTS')}
                 {!isEdgeTTSAvailable && (
-                  <HelpIcon className="method-help-icon" title={t('narration.edgeTTSUnavailable', '(Unavailable)')} />
+                  <HelpIcon className="method-help-icon" title={unavailableTitle} />
                 )}
               </label>
             </div>
@@ -155,7 +167,7 @@ const NarrationMethodSelection = ({
                 </span>
                 {t('narration.gttsMethod', 'gTTS')}
                 {!isGTTSAvailable && (
-                  <HelpIcon className="method-help-icon" title={t('narration.gttsUnavailable', '(Unavailable)')} />
+                  <HelpIcon className="method-help-icon" title={unavailableTitle} />
                 )}
               </label>
             </div>

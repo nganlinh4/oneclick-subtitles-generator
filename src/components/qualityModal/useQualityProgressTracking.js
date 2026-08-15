@@ -5,7 +5,13 @@ import {
   inspectDownloadUrl,
   startDownload,
 } from '../../platform/downloadService';
-import { openMediaAsset } from '../../platform/mediaService';
+import {
+  claimMediaCandidate,
+  discardMediaCandidate,
+} from '../../platform/mediaService';
+import { getDownloadCookieSource } from '../../platform/downloadCookiePreference';
+import { resolveProjectForCache } from '../../platform/subtitleProjectStore';
+import { generateUrlBasedCacheId } from '../../services/subtitleCache';
 
 export const selectNativeQuality = (inventory, quality) => {
   const height = Number.parseInt(String(quality), 10);
@@ -41,57 +47,96 @@ const useQualityProgressTracking = ({
 
   const startQualityDownloadWithId = async (quality, url, videoId) => {
     cancelPendingRef.current = false;
-    const cookieSource = localStorage.getItem('use_cookies_for_download') === 'true'
-      ? 'chrome'
-      : 'none';
+    const cookieSource = getDownloadCookieSource();
     const inspection = await inspectDownloadUrl({ url, cookieSource });
     if (cancelPendingRef.current) return { success: false, cancelled: true };
 
+    let settled = false;
     let resolveTerminal;
-    let rejectTerminal;
-    const terminal = new Promise((resolve, reject) => {
+    const terminal = new Promise((resolve) => {
       resolveTerminal = resolve;
-      rejectTerminal = reject;
     });
-    const initial = await startDownload({
-      inventoryId: inspection.capability.id,
-      media: {
-        kind: 'video',
-        quality: selectNativeQuality(inspection.inventory, quality),
-      },
-      subtitle: null,
-    }, {
-      onProgress: (event) => {
-        const percent = event.progress.fraction === null
-          ? Math.round(event.job.progress.basisPoints / 100)
-          : Math.round(event.progress.fraction * 100);
-        setDownloadProgress(Math.max(0, Math.min(100, percent)));
-      },
-      onCompleted: (event) => openMediaAsset(event.media.asset.id)
-        .then(resolveTerminal, rejectTerminal),
-      onCancelled: () => resolveTerminal(null),
-      onFailed: (event) => {
-        const error = new Error('The native media download could not be completed');
-        error.code = event.error.code;
-        rejectTerminal(error);
-      },
-      onProtocolError: (error) => {
-        cancelPendingRef.current = true;
-        if (jobIdRef.current) cancelDownload(jobIdRef.current).catch(() => undefined);
-        rejectTerminal(error);
-      },
-    });
-
-    jobIdRef.current = initial.id;
-    if (cancelPendingRef.current) await cancelDownload(initial.id).catch(() => undefined);
-
-    let nativeMedia;
+    const settle = (outcome) => {
+      if (settled) return;
+      settled = true;
+      resolveTerminal(outcome);
+    };
+    const discardedCandidates = new Set();
+    const discardOnce = async (candidate) => {
+      const assetId = candidate?.asset?.id;
+      if (typeof assetId !== 'string' || discardedCandidates.has(assetId)) return;
+      discardedCandidates.add(assetId);
+      await discardMediaCandidate(assetId);
+    };
+    let initial = null;
     try {
-      nativeMedia = await terminal;
+      initial = await startDownload({
+        inventoryId: inspection.capability.id,
+        media: {
+          kind: 'video',
+          quality: selectNativeQuality(inspection.inventory, quality),
+        },
+        subtitle: null,
+      }, {
+        onProgress: (event) => {
+          const percent = Math.round(event.job.progress.basisPoints / 100);
+          setDownloadProgress(Math.max(0, Math.min(100, percent)));
+        },
+        onCompleted: (event) => {
+          Promise.resolve().then(async () => {
+            if (cancelPendingRef.current) {
+              await discardOnce(event.media);
+              settle({ status: 'cancelled' });
+              return;
+            }
+            const cacheId = await generateUrlBasedCacheId(url);
+            const project = await resolveProjectForCache(cacheId, { create: true });
+            if (!project?.projectId
+                || !Number.isSafeInteger(project.snapshot?.stateVersion)
+                || project.snapshot.stateVersion < 0) {
+              throw new Error('The downloaded media project is unavailable');
+            }
+            if (cancelPendingRef.current) {
+              await discardOnce(event.media);
+              settle({ status: 'cancelled' });
+              return;
+            }
+            const nativeMedia = await claimMediaCandidate(event.media, {
+              expectedStateVersion: project.snapshot.stateVersion,
+              projectId: project.projectId,
+            });
+            settle({ status: 'completed', nativeMedia });
+          }).catch(async (error) => {
+            await discardOnce(event.media).catch(() => undefined);
+            settle({ status: 'failed', error });
+          });
+        },
+        onCancelled: () => settle({ status: 'cancelled' }),
+        onFailed: (event) => {
+          const error = new Error('The native media download could not be completed');
+          error.code = event.error.code;
+          settle({ status: 'failed', error });
+        },
+        onProtocolError: (error) => settle({ status: 'failed', error }),
+      });
+    } catch (error) {
+      settle({ status: 'failed', error });
+    }
+
+    if (initial !== null) {
+      jobIdRef.current = initial.id;
+      if (cancelPendingRef.current) await cancelDownload(initial.id).catch(() => undefined);
+    }
+
+    let outcome;
+    try {
+      outcome = await terminal;
     } finally {
       jobIdRef.current = null;
     }
-    if (nativeMedia === null) return { success: false, cancelled: true };
+    if (outcome.status === 'failed') throw outcome.error;
+    if (outcome.status === 'cancelled') return { success: false, cancelled: true };
+    const { nativeMedia } = outcome;
 
     setDownloadProgress(100);
     setIsRedownloading(false);

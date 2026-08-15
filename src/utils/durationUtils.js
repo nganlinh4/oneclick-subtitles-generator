@@ -2,6 +2,9 @@
  * Utility functions for handling media (video and audio) durations
  */
 
+import { inspectMediaPipelineAsset } from '../platform/mediaPipelineService';
+import { isNativeMediaDescriptor } from '../platform/mediaService';
+
 /**
  * Get the segment duration in minutes from localStorage
  * @returns {number} - Segment duration in minutes
@@ -26,7 +29,15 @@ export const getMaxSegmentDurationSeconds = () => getSegmentDurationMinutes() * 
  * @param {File} mediaFile - The media file (video or audio)
  * @returns {Promise<number>} - The duration in seconds
  */
-export const getVideoDuration = (mediaFile) => {
+export const getVideoDuration = async (mediaFile) => {
+    if (isNativeMediaDescriptor(mediaFile)) {
+        const inspection = await inspectMediaPipelineAsset(mediaFile.assetId);
+        if (!Number.isSafeInteger(inspection?.durationUs) || inspection.durationUs <= 0) {
+            throw new Error('The native media duration is unavailable.');
+        }
+        return inspection.durationUs / 1_000_000;
+    }
+
     return new Promise((resolve) => {
         if (!mediaFile) {
             console.error('No media file provided to getVideoDuration');

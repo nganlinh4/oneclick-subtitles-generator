@@ -44,6 +44,7 @@ const createHarness = () => {
     assetId,
     model: 'gemini-3.5-flash-lite',
     prompt: 'Transcribe this video.',
+    emptySpeechPolicy: 'provenSilence',
     responseJsonSchema: { type: 'array' },
     thinkingLevel: 'minimal',
     mediaResolution: 'medium',
@@ -64,15 +65,19 @@ const createHarness = () => {
 it('uses only opaque credential/media IDs and returns the typed completed result', async () => {
   const harness = createHarness();
   const onStarted = vi.fn();
-  const operation = harness.runner.run({ ...harness.request, onStarted });
+  const onChunk = vi.fn();
+  const operation = harness.runner.run({ ...harness.request, onStarted, onChunk });
   await flush();
 
   expect(harness.start).toHaveBeenCalledWith(expect.objectContaining({
     credentialId: harness.credentialId,
     mediaAssetId: harness.assetId,
     task: 'transcribe',
+    emptySpeechPolicy: 'provenSilence',
   }), expect.any(Object));
   expect(onStarted).toHaveBeenCalledWith(harness.jobId);
+  harness.getHandlers().onChunk({ text: '[{"text":"hel' });
+  harness.getHandlers().onChunk({ text: 'lo"}]' });
   harness.getHandlers().onCompleted({
     job: { id: harness.jobId, state: 'succeeded' },
     text: '[{"text":"hello"}]',
@@ -83,6 +88,45 @@ it('uses only opaque credential/media IDs and returns the typed completed result
     text: '[{"text":"hello"}]',
     usage: null,
   });
+  expect(onChunk.mock.calls).toEqual([["[{\"text\":\"hel"], ['lo"}]']]);
+});
+
+it('never rotates credentials after exposing part of an attempt', async () => {
+  const firstCredential = uuidv7();
+  const secondCredential = uuidv7();
+  const handlers = [];
+  const start = vi.fn(async (_request, nextHandlers) => {
+    handlers.push(nextHandlers);
+    return { id: uuidv7() };
+  });
+  const rotateCredential = vi.fn().mockResolvedValue(undefined);
+  const runner = createNativeGeminiTranscription({
+    prepareCredentials: vi.fn().mockResolvedValue(undefined),
+    getCredentialId: vi.fn()
+      .mockResolvedValueOnce(firstCredential)
+      .mockResolvedValueOnce(secondCredential),
+    getCredentialSnapshot: vi.fn(() => ({
+      gemini: { availableCredentialIds: [firstCredential, secondCredential] },
+    })),
+    rotateCredential,
+    start,
+    cancel: vi.fn().mockResolvedValue(undefined),
+  });
+  const onChunk = vi.fn();
+  const operation = runner.run({
+    assetId: uuidv7(),
+    model: 'gemini-3.5-flash-lite',
+    prompt: 'Transcribe this video.',
+    onChunk,
+  });
+  await flush();
+  handlers[0].onChunk({ text: '[{"text":"partial"}' });
+  handlers[0].onFailed({ error: { code: 'geminiRateLimited' } });
+
+  await expect(operation).rejects.toMatchObject({ code: 'geminiRateLimited' });
+  expect(onChunk).toHaveBeenCalledOnce();
+  expect(start).toHaveBeenCalledOnce();
+  expect(rotateCredential).not.toHaveBeenCalled();
 });
 
 it('cancels a malformed Channel and exposes no transport diagnostics', async () => {

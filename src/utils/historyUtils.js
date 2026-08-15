@@ -1,233 +1,234 @@
 /**
- * Utility functions for managing URL and search history
+ * Bounded browser compatibility history. Provider images are native process-scoped capabilities;
+ * history persists only stable source metadata and rehydrates images when they are displayed.
  */
 
-// Constants for localStorage keys
+import { extractDouyinVideoId, extractYoutubeVideoId, isValidUrl } from './mediaUrl';
+
 const YOUTUBE_URL_HISTORY_KEY = 'youtube_url_history';
 const YOUTUBE_SEARCH_HISTORY_KEY = 'youtube_search_history';
+const DOUYIN_URL_HISTORY_KEY = 'douyin_url_history';
 const ALL_SITES_URL_HISTORY_KEY = 'all_sites_url_history';
 const MAX_HISTORY_ITEMS = 10;
+const MAX_HISTORY_JSON_CHARACTERS = 256 * 1024;
+const MAX_URL_CHARACTERS = 8_192;
+const MAX_ID_CHARACTERS = 8_192;
+const MAX_TITLE_CHARACTERS = 1_000;
+const MAX_QUERY_CHARACTERS = 500;
+const SAFE_ID = /^[A-Za-z0-9_-]+$/;
 
-/**
- * Add a YouTube URL to history
- * @param {Object} videoData - Video data object with id, url, title, and thumbnail
- */
-export const addYoutubeUrlToHistory = (videoData) => {
-  if (!videoData || !videoData.url || !videoData.id) return;
+const isRecord = (value) => value !== null && typeof value === 'object' && !Array.isArray(value);
+const isTimestamp = (value) => Number.isSafeInteger(value) && value >= 0;
+const boundedText = (value, maximum, { minimum = 1 } = {}) => {
+  if (typeof value !== 'string') return null;
+  const trimmed = value.trim();
+  const length = Array.from(trimmed).length;
+  if (length < minimum || length > maximum) return null;
+  return trimmed;
+};
 
+const sanitizeYoutubeItem = (value) => {
+  if (!isRecord(value)) return null;
+  const id = boundedText(value.id, 11);
+  const url = boundedText(value.url, MAX_URL_CHARACTERS);
+  const title = boundedText(value.title, MAX_TITLE_CHARACTERS);
+  if (id === null || url === null || title === null || !isTimestamp(value.timestamp)
+      || extractYoutubeVideoId(url) !== id) return null;
+  return { id, url, title, thumbnail: '', timestamp: value.timestamp };
+};
+
+const sanitizeAllSitesItem = (value) => {
+  if (!isRecord(value)) return null;
+  const id = boundedText(value.id, MAX_ID_CHARACTERS);
+  const url = boundedText(value.url, MAX_URL_CHARACTERS);
+  const title = boundedText(value.title, MAX_TITLE_CHARACTERS);
+  if (id === null || !SAFE_ID.test(id) || url === null || !isValidUrl(url)
+      || title === null || !isTimestamp(value.timestamp)) return null;
+  return { id, url, title, thumbnail: '', timestamp: value.timestamp };
+};
+
+const sanitizeDouyinItem = (value) => {
+  if (!isRecord(value)) return null;
+  const id = boundedText(value.id, MAX_ID_CHARACTERS);
+  const url = boundedText(value.url, MAX_URL_CHARACTERS);
+  const title = boundedText(value.title, MAX_TITLE_CHARACTERS);
+  if (id === null || url === null || title === null || !isTimestamp(value.timestamp)
+      || extractDouyinVideoId(url) !== id) return null;
+  return { id, url, title, thumbnail: '', timestamp: value.timestamp };
+};
+
+const sanitizeSearchItem = (value) => {
+  if (!isRecord(value)) return null;
+  const query = boundedText(value.query, MAX_QUERY_CHARACTERS, { minimum: 3 });
+  if (query === null || !isTimestamp(value.timestamp)) return null;
+  return { query, timestamp: value.timestamp };
+};
+
+const readBoundedHistory = (key, sanitize, identity) => {
   try {
-    // Get existing history
-    const historyJson = localStorage.getItem(YOUTUBE_URL_HISTORY_KEY);
-    let history = historyJson ? JSON.parse(historyJson) : [];
-
-    // Check if this URL is already in history
-    const existingIndex = history.findIndex(item => item.id === videoData.id);
-
-    // If it exists, remove it (we'll add it to the top)
-    if (existingIndex !== -1) {
-      history.splice(existingIndex, 1);
+    const serialized = localStorage.getItem(key);
+    if (serialized === null) return [];
+    if (serialized.length > MAX_HISTORY_JSON_CHARACTERS) {
+      localStorage.removeItem(key);
+      return [];
+    }
+    const parsed = JSON.parse(serialized);
+    if (!Array.isArray(parsed)) {
+      localStorage.removeItem(key);
+      return [];
     }
 
-    // Add the new item to the beginning
-    history.unshift({
-      id: videoData.id,
-      url: videoData.url,
-      title: videoData.title || 'YouTube Video',
-      // Provider-image capabilities are process-scoped bearer URLs and must never be persisted.
-      thumbnail: '',
-      timestamp: Date.now()
-    });
-
-    // Limit history size
-    if (history.length > MAX_HISTORY_ITEMS) {
-      history = history.slice(0, MAX_HISTORY_ITEMS);
+    const seen = new Set();
+    const sanitized = [];
+    for (const candidate of parsed) {
+      const item = sanitize(candidate);
+      if (item === null) continue;
+      const itemIdentity = identity(item);
+      if (seen.has(itemIdentity)) continue;
+      seen.add(itemIdentity);
+      sanitized.push(item);
+      if (sanitized.length === MAX_HISTORY_ITEMS) break;
     }
 
-    // Save back to localStorage
-    localStorage.setItem(YOUTUBE_URL_HISTORY_KEY, JSON.stringify(history));
+    if (JSON.stringify(parsed) !== JSON.stringify(sanitized)) {
+      localStorage.setItem(key, JSON.stringify(sanitized));
+    }
+    return sanitized;
+  } catch (error) {
+    console.error(`Error retrieving bounded history ${key}:`, error);
+    return [];
+  }
+};
+
+const writeHistory = (key, history) => {
+  localStorage.setItem(key, JSON.stringify(history.slice(0, MAX_HISTORY_ITEMS)));
+};
+
+const upsertHistoryItem = (history, item, identity) => [
+  item,
+  ...history.filter((candidate) => identity(candidate) !== identity(item)),
+].slice(0, MAX_HISTORY_ITEMS);
+
+export const getYoutubeUrlHistory = () => readBoundedHistory(
+  YOUTUBE_URL_HISTORY_KEY,
+  sanitizeYoutubeItem,
+  (item) => item.id,
+);
+
+export const addYoutubeUrlToHistory = (videoData) => {
+  const item = sanitizeYoutubeItem({
+    id: videoData?.id,
+    url: videoData?.url,
+    title: videoData?.title || 'YouTube Video',
+    timestamp: Date.now(),
+  });
+  if (item === null) return;
+  try {
+    writeHistory(YOUTUBE_URL_HISTORY_KEY, upsertHistoryItem(
+      getYoutubeUrlHistory(),
+      item,
+      (candidate) => candidate.id,
+    ));
   } catch (error) {
     console.error('Error saving YouTube URL history:', error);
   }
 };
 
-/**
- * Get YouTube URL history
- * @returns {Array} Array of history items
- */
-export const getYoutubeUrlHistory = () => {
-  try {
-    const historyJson = localStorage.getItem(YOUTUBE_URL_HISTORY_KEY);
-    const parsed = historyJson ? JSON.parse(historyJson) : [];
-    if (!Array.isArray(parsed)) return [];
-    const sanitized = parsed.slice(0, MAX_HISTORY_ITEMS).map((item) => ({
-      ...item,
-      // Migrate both old provider URLs and expired loopback capability URLs out of storage.
-      thumbnail: '',
-    }));
-    if (JSON.stringify(parsed) !== JSON.stringify(sanitized)) {
-      localStorage.setItem(YOUTUBE_URL_HISTORY_KEY, JSON.stringify(sanitized));
-    }
-    return sanitized;
-  } catch (error) {
-    console.error('Error retrieving YouTube URL history:', error);
-    return [];
-  }
-};
-
-/**
- * Clear YouTube URL history
- */
 export const clearYoutubeUrlHistory = () => {
   localStorage.removeItem(YOUTUBE_URL_HISTORY_KEY);
 };
 
-/**
- * Add a search query to history
- * @param {string} query - Search query
- */
+export const getSearchQueryHistory = () => readBoundedHistory(
+  YOUTUBE_SEARCH_HISTORY_KEY,
+  sanitizeSearchItem,
+  (item) => item.query.toLocaleLowerCase('en-US'),
+);
+
 export const addSearchQueryToHistory = (query) => {
-  if (!query || query.trim().length < 3) return;
-
+  const item = sanitizeSearchItem({ query, timestamp: Date.now() });
+  if (item === null) return;
   try {
-    // Get existing history
-    const historyJson = localStorage.getItem(YOUTUBE_SEARCH_HISTORY_KEY);
-    let history = historyJson ? JSON.parse(historyJson) : [];
-
-    // Normalize the query
-    const normalizedQuery = query.trim();
-
-    // Check if this query is already in history
-    const existingIndex = history.findIndex(item =>
-      item.query.toLowerCase() === normalizedQuery.toLowerCase()
-    );
-
-    // If it exists, remove it (we'll add it to the top)
-    if (existingIndex !== -1) {
-      history.splice(existingIndex, 1);
-    }
-
-    // Add the new item to the beginning
-    history.unshift({
-      query: normalizedQuery,
-      timestamp: Date.now()
-    });
-
-    // Limit history size
-    if (history.length > MAX_HISTORY_ITEMS) {
-      history = history.slice(0, MAX_HISTORY_ITEMS);
-    }
-
-    // Save back to localStorage
-    localStorage.setItem(YOUTUBE_SEARCH_HISTORY_KEY, JSON.stringify(history));
+    writeHistory(YOUTUBE_SEARCH_HISTORY_KEY, upsertHistoryItem(
+      getSearchQueryHistory(),
+      item,
+      (candidate) => candidate.query.toLocaleLowerCase('en-US'),
+    ));
   } catch (error) {
     console.error('Error saving search query history:', error);
   }
 };
 
-/**
- * Get search query history
- * @returns {Array} Array of history items
- */
-export const getSearchQueryHistory = () => {
-  try {
-    const historyJson = localStorage.getItem(YOUTUBE_SEARCH_HISTORY_KEY);
-    return historyJson ? JSON.parse(historyJson) : [];
-  } catch (error) {
-    console.error('Error retrieving search query history:', error);
-    return [];
-  }
-};
-
-/**
- * Clear search query history
- */
 export const clearSearchQueryHistory = () => {
   localStorage.removeItem(YOUTUBE_SEARCH_HISTORY_KEY);
 };
 
-/**
- * Format a timestamp to a readable date
- * @param {number} timestamp - Timestamp in milliseconds
- * @returns {string} Formatted date string
- */
-export const formatTimestamp = (timestamp) => {
-  const date = new Date(timestamp);
-  const now = new Date();
+export const getDouyinUrlHistory = () => readBoundedHistory(
+  DOUYIN_URL_HISTORY_KEY,
+  sanitizeDouyinItem,
+  (item) => item.id,
+);
 
-  // If it's today, show time
-  if (date.toDateString() === now.toDateString()) {
-    return date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+export const addDouyinUrlToHistory = (videoData) => {
+  const item = sanitizeDouyinItem({
+    id: videoData?.id,
+    url: videoData?.url,
+    title: videoData?.title || 'Douyin Video',
+    timestamp: Date.now(),
+  });
+  if (item === null) return;
+  try {
+    writeHistory(DOUYIN_URL_HISTORY_KEY, upsertHistoryItem(
+      getDouyinUrlHistory(),
+      item,
+      (candidate) => candidate.id,
+    ));
+  } catch (error) {
+    console.error('Error saving Douyin URL history:', error);
   }
-
-  // If it's yesterday, show "Yesterday"
-  const yesterday = new Date(now);
-  yesterday.setDate(yesterday.getDate() - 1);
-  if (date.toDateString() === yesterday.toDateString()) {
-    return 'Yesterday';
-  }
-
-  // Otherwise show date
-  return date.toLocaleDateString();
 };
 
-/**
- * Add an All Sites URL to history
- * @param {Object} videoData - Video data object with id, url, title
- */
+export const clearDouyinUrlHistory = () => {
+  localStorage.removeItem(DOUYIN_URL_HISTORY_KEY);
+};
+
+export const getAllSitesUrlHistory = () => readBoundedHistory(
+  ALL_SITES_URL_HISTORY_KEY,
+  sanitizeAllSitesItem,
+  (item) => item.id,
+);
+
 export const addAllSitesUrlToHistory = (videoData) => {
-  if (!videoData || !videoData.url || !videoData.id) return;
-
+  const item = sanitizeAllSitesItem({
+    id: videoData?.id,
+    url: videoData?.url,
+    title: videoData?.title || 'Video',
+    timestamp: Date.now(),
+  });
+  if (item === null) return;
   try {
-    // Get existing history
-    const historyJson = localStorage.getItem(ALL_SITES_URL_HISTORY_KEY);
-    let history = historyJson ? JSON.parse(historyJson) : [];
-
-    // Check if this URL is already in history
-    const existingIndex = history.findIndex(item => item.id === videoData.id);
-
-    // If it exists, remove it (we'll add it to the top)
-    if (existingIndex !== -1) {
-      history.splice(existingIndex, 1);
-    }
-
-    // Add the new item to the beginning
-    history.unshift({
-      id: videoData.id,
-      url: videoData.url,
-      title: videoData.title || 'Video',
-      thumbnail: videoData.thumbnail || '',
-      timestamp: Date.now()
-    });
-
-    // Limit history size
-    if (history.length > MAX_HISTORY_ITEMS) {
-      history = history.slice(0, MAX_HISTORY_ITEMS);
-    }
-
-    // Save back to localStorage
-    localStorage.setItem(ALL_SITES_URL_HISTORY_KEY, JSON.stringify(history));
+    writeHistory(ALL_SITES_URL_HISTORY_KEY, upsertHistoryItem(
+      getAllSitesUrlHistory(),
+      item,
+      (candidate) => candidate.id,
+    ));
   } catch (error) {
     console.error('Error saving All Sites URL history:', error);
   }
 };
 
-/**
- * Get All Sites URL history
- * @returns {Array} Array of history items
- */
-export const getAllSitesUrlHistory = () => {
-  try {
-    const historyJson = localStorage.getItem(ALL_SITES_URL_HISTORY_KEY);
-    return historyJson ? JSON.parse(historyJson) : [];
-  } catch (error) {
-    console.error('Error retrieving All Sites URL history:', error);
-    return [];
-  }
-};
-
-/**
- * Clear All Sites URL history
- */
 export const clearAllSitesUrlHistory = () => {
   localStorage.removeItem(ALL_SITES_URL_HISTORY_KEY);
+};
+
+export const formatTimestamp = (timestamp) => {
+  if (!isTimestamp(timestamp)) return '';
+  const date = new Date(timestamp);
+  const now = new Date();
+  if (date.toDateString() === now.toDateString()) {
+    return date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+  }
+  const yesterday = new Date(now);
+  yesterday.setDate(yesterday.getDate() - 1);
+  if (date.toDateString() === yesterday.toDateString()) return 'Yesterday';
+  return date.toLocaleDateString();
 };

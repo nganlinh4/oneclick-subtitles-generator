@@ -4,7 +4,7 @@ Backend-only Gemini media transport for the Tauri rewrite. The API key, local
 path, raw bytes, upload-session URL, and provider file URI are never serializable
 frontend DTOs.
 
-## Frozen model policy (verified 2026-08-10)
+## Frozen model policy (verified 2026-08-14)
 
 The OSG-owned allowlist is reviewed against the official stable, daily-use REST
 endpoints and applies the strict rule that every exposed model must accept audio
@@ -14,6 +14,7 @@ model officially supports **both** audio and video input and text output:
 | API model | Toolbox role | Official evidence |
 | --- | --- | --- |
 | `gemini-3.5-flash-lite` | high-volume text extraction and opt-in media compatibility testing | <https://ai.google.dev/gemini-api/docs/models/gemini-3.5-flash-lite> |
+| `gemini-3.7-flash` | newest strong multimodal model; `LOW` is its lowest supported thinking level | <https://ai.google.dev/api/models> |
 | `gemini-3.6-flash` | strongest current multimodal analysis | <https://ai.google.dev/gemini-api/docs/models/gemini-3.6-flash> |
 | `gemini-3.5-flash` | stable strong fallback | <https://ai.google.dev/gemini-api/docs/models/gemini-3.5-flash> |
 | `gemini-3.1-flash-lite` | stable low-cost compatibility fallback | <https://ai.google.dev/gemini-api/docs/models/gemini-3.1-flash-lite> |
@@ -41,6 +42,8 @@ provider API IDs above, avoiding alias drift.
   a `CancellationToken`.
 - Current Gemini 3 sampling fields deprecated by Google (`temperature`, `top_p`,
   `top_k`) are absent from the typed request API.
+- Thinking levels are validated per model before upload. In particular,
+  `gemini-3.7-flash` accepts `LOW`, `MEDIUM`, and `HIGH`, but not `MINIMAL`.
 
 Primary protocol references:
 

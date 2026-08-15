@@ -1,4 +1,5 @@
 import { Channel } from '@tauri-apps/api/core';
+import { validate as validateUuid, v7 as uuidv7, version as uuidVersion } from 'uuid';
 import { invokeDesktop, isDesktopRuntime } from './desktopRuntime';
 
 const VOICES = new Set([
@@ -10,7 +11,43 @@ const VOICES = new Set([
 ]);
 const STATES = new Set(['unavailable', 'missing', 'installed', 'update-available', 'corrupt']);
 const PHASES = new Set(['preparing', 'downloading', 'verifying', 'extracting', 'publishing', 'removing']);
+const NATIVE_FAILURE_CODES = new Set([
+  'invalidEnginePackageRequest',
+  'packageUnavailable',
+  'packageOperationInProgress',
+  'packageNetwork',
+  'packageDownloadInvalid',
+  'packageStorageLimit',
+  'packageInsufficientSpace',
+  'packageIntegrity',
+  'packageInstallInvalid',
+  'engineRuntimeBusy',
+  'packageStorage',
+  'packageCatalogInvalid',
+  'invalidPath',
+  'mediaRegistryFull',
+  'mediaServer',
+]);
 const PLAYBACK_URL = /^http:\/\/127\.0\.0\.1:(\d{1,5})\/asset\/([0-9a-f-]{36})\?token=([0-9a-f]{64})$/;
+const UUID_V4 = /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/;
+
+const isCanonicalUuidV4 = (value) => {
+  if (typeof value !== 'string' || !UUID_V4.test(value) || !validateUuid(value)) return false;
+  try {
+    return uuidVersion(value) === 4;
+  } catch {
+    return false;
+  }
+};
+
+const isUuidV7 = (value) => {
+  if (typeof value !== 'string' || !validateUuid(value)) return false;
+  try {
+    return uuidVersion(value) === 7;
+  } catch {
+    return false;
+  }
+};
 
 export class VoiceSampleServiceError extends Error {
   constructor(code, message) {
@@ -31,7 +68,8 @@ const exactKeys = (value, keys) => value !== null
   && Object.keys(value).sort().join('\0') === [...keys].sort().join('\0');
 
 export const normalizeVoiceSampleProgress = (value) => {
-  if (!exactKeys(value, ['phase', 'bytesDone', 'totalBytes', 'basisPoints'])
+  if (!exactKeys(value, ['operationId', 'phase', 'bytesDone', 'totalBytes', 'basisPoints'])
+      || !isUuidV7(value.operationId)
       || !PHASES.has(value.phase)
       || !Number.isSafeInteger(value.bytesDone) || value.bytesDone < 0
       || !Number.isSafeInteger(value.totalBytes) || value.totalBytes < 0
@@ -43,7 +81,7 @@ export const normalizeVoiceSampleProgress = (value) => {
 
 export const normalizeVoiceSamplePlayback = (value) => {
   if (!exactKeys(value, ['id', 'playbackUrl', 'mimeType', 'byteLength'])
-      || typeof value.id !== 'string'
+      || !isCanonicalUuidV4(value.id)
       || typeof value.playbackUrl !== 'string'
       || value.mimeType !== 'audio/wav'
       || !Number.isSafeInteger(value.byteLength) || value.byteLength < 44) throw invalid();
@@ -72,72 +110,138 @@ export const normalizeVoiceSampleStatus = (value) => {
   return Object.freeze({ ...value });
 };
 
-const redact = () => new VoiceSampleServiceError(
-  'voiceSampleUnavailable',
-  'The managed voice preview is unavailable.',
-);
+const redact = (error) => {
+  let code;
+  try {
+    code = error?.code;
+  } catch {
+    code = undefined;
+  }
+  if (code === 'enginePackageCancelled') {
+    return new VoiceSampleServiceError(
+      'voiceSampleCancelled',
+      'Voice sample installation cancelled.',
+    );
+  }
+  return new VoiceSampleServiceError(
+    NATIVE_FAILURE_CODES.has(code) ? code : 'voiceSampleUnavailable',
+    'The managed voice preview is unavailable.',
+  );
+};
 
 export const createVoiceSampleService = ({
   invokeCommand = invokeDesktop,
   ChannelConstructor = Channel,
   nativeRuntime = isDesktopRuntime,
+  createOperationId = uuidv7,
 } = {}) => {
+  const activeOperationIds = [];
   const requireDesktop = () => {
     if (!nativeRuntime()) throw redact();
   };
   const withProgress = async (command, args, normalize, handlers = {}) => {
     requireDesktop();
+    const operationId = createOperationId();
+    if (!isUuidV7(operationId) || activeOperationIds.includes(operationId)) throw invalid();
     const channel = new ChannelConstructor();
+    activeOperationIds.push(operationId);
     let failed = false;
+    let settled = false;
     let lastBasisPoints = -1;
-    channel.onmessage = (raw) => {
-      if (failed) return;
+    let cancellationPromise = null;
+    const safelyCall = (handler, value) => {
+      if (typeof handler !== 'function') return;
       try {
-        const progress = normalizeVoiceSampleProgress(raw);
-        if (progress.basisPoints < lastBasisPoints) throw invalid();
-        lastBasisPoints = progress.basisPoints;
-        handlers.onProgress?.(progress);
+        const result = handler(value);
+        result?.catch?.(() => undefined);
       } catch {
-        failed = true;
-        handlers.onProtocolError?.(invalid());
+        // Presentation callbacks never control the native package operation.
       }
     };
-    let raw;
-    try {
-      raw = await invokeCommand(command, { ...args, onEvent: channel });
-    } catch (error) {
-      if (error?.code === 'enginePackageCancelled') {
-        throw new VoiceSampleServiceError(
-          'voiceSampleCancelled',
-          'Voice sample installation cancelled.',
-        );
+    const cancelOnce = () => {
+      if (cancellationPromise === null) {
+        try {
+          cancellationPromise = Promise.resolve(invokeCommand(
+            'voice_samples_cancel',
+            { operationId },
+          ))
+            .catch(() => undefined);
+        } catch {
+          cancellationPromise = Promise.resolve();
+        }
       }
-      throw redact();
+      return cancellationPromise;
+    };
+    const failProtocol = () => {
+      if (failed || settled) return;
+      failed = true;
+      safelyCall(handlers.onProtocolError, invalid());
+      void cancelOnce();
+    };
+    const settle = () => {
+      settled = true;
+      channel.onmessage = () => undefined;
+    };
+    channel.onmessage = (raw) => {
+      if (failed || settled) return;
+      let progress;
+      try {
+        progress = normalizeVoiceSampleProgress(raw);
+        if (progress.operationId !== operationId) throw invalid();
+        if (progress.basisPoints < lastBasisPoints) throw invalid();
+        lastBasisPoints = progress.basisPoints;
+      } catch {
+        failProtocol();
+        return;
+      }
+      safelyCall(handlers.onProgress, progress);
+    };
+    try {
+      let raw;
+      try {
+        raw = await invokeCommand(command, { ...args, operationId, onEvent: channel });
+      } catch (error) {
+        if (failed) {
+          await cancelOnce();
+          throw invalid();
+        }
+        throw redact(error);
+      }
+      if (failed) {
+        await cancelOnce();
+        throw invalid();
+      }
+      return normalize(raw);
+    } finally {
+      settle();
+      const index = activeOperationIds.indexOf(operationId);
+      if (index >= 0) activeOperationIds.splice(index, 1);
     }
-    if (failed) throw invalid();
-    return normalize(raw);
   };
 
   return Object.freeze({
     cancel: async () => {
       requireDesktop();
+      const operationId = activeOperationIds[0];
+      if (operationId === undefined) return false;
+      let cancelled;
       try {
-        const cancelled = await invokeCommand('voice_samples_cancel', {});
-        if (typeof cancelled !== 'boolean') throw invalid();
-        return cancelled;
+        cancelled = await invokeCommand('voice_samples_cancel', { operationId });
       } catch (error) {
-        if (error instanceof VoiceSampleServiceError) throw error;
-        throw redact();
+        throw redact(error);
       }
+      if (typeof cancelled !== 'boolean') throw invalid();
+      return cancelled;
     },
     status: async () => {
       requireDesktop();
+      let status;
       try {
-        return normalizeVoiceSampleStatus(await invokeCommand('voice_samples_status', {}));
+        status = await invokeCommand('voice_samples_status', {});
       } catch (error) {
-        if (error instanceof VoiceSampleServiceError) throw error;
-        throw redact();
+        throw redact(error);
       }
+      return normalizeVoiceSampleStatus(status);
     },
     resolve: (voiceId, handlers) => {
       const voice = typeof voiceId === 'string' ? voiceId.toLowerCase() : '';

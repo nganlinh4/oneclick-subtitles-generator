@@ -46,9 +46,9 @@ afterEach(() => vi.clearAllMocks());
 it('does not expose a fake download action for an unpublished package', () => {
   render(
     <EngineCard
-      id="f5tts"
-      name="F5-TTS"
-      kind="voice-cloning"
+      id="gemini-tts"
+      name="Gemini Live TTS"
+      kind="speech-provider"
       status={{
         package: {
           state: 'unavailable',
@@ -138,4 +138,118 @@ it('recovers a durable removal as a cancellable busy row', () => {
   expect(screen.getByText('Uninstalling…')).toBeInTheDocument();
   fireEvent.click(screen.getByRole('button', { name: 'Cancel' }));
   expect(cancel).toHaveBeenCalledWith('durable-job-id');
+});
+
+it('gives optional narration providers the same install and repair recovery path', () => {
+  const install = vi.fn();
+  useEngineInstall.mockReturnValue(hookState({ install }));
+  const { rerender } = render(
+    <EngineCard
+      id="edge-tts"
+      name="Edge TTS"
+      kind="speech-provider"
+      status={{
+        running: false,
+        package: {
+          state: 'missing',
+          installed: false,
+          version: null,
+          availableVersion: '2026.08.12',
+          installedBytes: 0,
+          downloadBytes: 11_000_000,
+          availableInstalledBytes: 34_000_000,
+          operation: null,
+        },
+      }}
+    />
+  );
+
+  fireEvent.click(screen.getByRole('button', { name: 'Download' }));
+  expect(install).toHaveBeenCalledTimes(1);
+
+  rerender(
+    <EngineCard
+      id="edge-tts"
+      name="Edge TTS"
+      kind="speech-provider"
+      status={{
+        running: false,
+        package: {
+          state: 'corrupt',
+          installed: false,
+          version: null,
+          availableVersion: '2026.08.12',
+          installedBytes: 0,
+          downloadBytes: 11_000_000,
+          availableInstalledBytes: 34_000_000,
+          operation: null,
+        },
+      }}
+    />
+  );
+
+  fireEvent.click(screen.getByRole('button', { name: 'Repair' }));
+  expect(install).toHaveBeenCalledTimes(2);
+});
+
+it('keeps a provider install cancellable while its durable native job is running', () => {
+  const cancel = vi.fn();
+  useEngineInstall.mockReturnValue(hookState({ cancel }));
+  render(
+    <EngineCard
+      id="gtts"
+      name="gTTS"
+      kind="speech-provider"
+      status={{
+        running: false,
+        package: {
+          state: 'missing',
+          installed: false,
+          installedBytes: 0,
+          downloadBytes: 10,
+          availableInstalledBytes: 20,
+          operation: {
+            action: 'install',
+            phase: 'downloading',
+            basisPoints: 2_500,
+            bytesDone: 2,
+            totalBytes: 10,
+            job: { id: 'provider-install-job' },
+          },
+        },
+      }}
+    />
+  );
+
+  fireEvent.click(screen.getByRole('button', { name: 'Cancel' }));
+  expect(cancel).toHaveBeenCalledWith('provider-install-job');
+});
+
+it('recovers a native ASR warm-up as stoppable instead of exposing a second Start action', () => {
+  const stop = vi.fn().mockResolvedValue(undefined);
+  useEngineInstall.mockReturnValue(hookState({ stop }));
+  render(
+    <EngineCard
+      id="qwen3-asr-1.7b"
+      name="Qwen3 ASR 1.7B"
+      kind="transcription"
+      status={{
+        running: false,
+        starting: true,
+        package: {
+          state: 'installed',
+          installed: true,
+          installedBytes: 10,
+          downloadBytes: 10,
+          availableInstalledBytes: 10,
+          operation: null,
+        },
+      }}
+    />
+  );
+
+  expect(screen.getByText('Starting…')).toBeInTheDocument();
+  expect(screen.queryByRole('button', { name: 'Start' })).not.toBeInTheDocument();
+  fireEvent.click(screen.getByRole('button', { name: 'Stop' }));
+  expect(stop).toHaveBeenCalledTimes(1);
 });

@@ -20,6 +20,14 @@ pub(crate) struct EditorSession {
     pub(crate) session: Session,
     pub(crate) playback: Option<RegisteredMedia>,
     pub(crate) local_media: Option<LocalMedia>,
+    pub(crate) media_intent: u64,
+    pub(crate) pending_media_activation: Option<PendingMediaActivation>,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) struct PendingMediaActivation {
+    pub(crate) sequence: u64,
+    pub(crate) asset_id: AssetId,
 }
 
 impl EditorSession {

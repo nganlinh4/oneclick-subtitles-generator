@@ -26,31 +26,29 @@ export const extractFrame = async () => {
     ctx.drawImage(videoElement, 0, 0, canvas.width, canvas.height);
 
     // Convert canvas to blob
-    canvas.toBlob((blob) => {
+    canvas.toBlob(async (blob) => {
       if (blob) {
-        // Create download link
-        const url = URL.createObjectURL(blob);
-        const link = document.createElement("a");
-        link.href = url;
+        try {
+          // Generate filename with timestamp
+          const currentTime = Math.floor(videoElement.currentTime);
+          const minutes = Math.floor(currentTime / 60);
+          const seconds = currentTime % 60;
+          const timestamp = `${minutes}m${seconds}s`;
 
-        // Generate filename with timestamp
-        const currentTime = Math.floor(videoElement.currentTime);
-        const minutes = Math.floor(currentTime / 60);
-        const seconds = currentTime % 60;
-        const timestamp = `${minutes}m${seconds}s`;
-
-        link.download = `frame_${timestamp}.png`;
-        document.body.appendChild(link);
-        link.click();
-        document.body.removeChild(link);
-        URL.revokeObjectURL(url);
-
-        console.log("Frame extracted successfully");
+          await exportGeneratedBlob(blob, `frame_${timestamp}.png`);
+          console.log("Frame extracted successfully");
+        } catch (error) {
+          console.error("Error exporting frame:", error);
+          showErrorToast(error?.message || "The frame could not be saved.", 8000);
+        }
       } else {
         console.error("Failed to create blob from canvas");
       }
     }, "image/png");
   } catch (error) {
     console.error("Error extracting frame:", error);
+    showErrorToast(error?.message || "The frame could not be saved.", 8000);
   }
 };
+import { exportGeneratedBlob } from "../../platform/generatedFileExportService";
+import { showErrorToast } from "../../utils/toastUtils";

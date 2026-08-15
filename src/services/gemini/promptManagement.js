@@ -90,6 +90,13 @@ CRITICAL RULES:
 // Default transcription prompt that will be used if no custom prompt is set
 export const DEFAULT_TRANSCRIPTION_PROMPT = PROMPT_PRESETS[0].prompt;
 
+const SPEECH_ONLY_PRESET_IDS = new Set([
+    'general',
+    'focus-lyrics',
+    'translate-directly',
+    'diarize-speakers',
+]);
+
 // Function declarations first
 const getUserPromptPresetsImpl = () => {
     try {
@@ -110,25 +117,37 @@ const saveUserPromptPresetsImpl = (presets) => {
 };
 
 const getTranscriptionPromptImpl = (contentType, userProvidedSubtitles = null, options = {}) => {
+    const promptContext = options?.promptContext ?? null;
     // Check if a specific preset was selected in the Video Processing Options Modal
-    const selectedPresetId = localStorage.getItem('video_processing_prompt_preset');
+    const selectedPresetId = promptContext
+        ? promptContext.presetId
+        : localStorage.getItem('video_processing_prompt_preset');
     
     // Get the transcription rules if available and enabled (using sync version)
-    const useTranscriptionRules = localStorage.getItem('video_processing_use_transcription_rules') !== 'false';
-    const transcriptionRules = useTranscriptionRules ? getTranscriptionRulesSync() : null;
+    const useTranscriptionRules = promptContext
+        ? promptContext.useTranscriptionRules === true
+        : localStorage.getItem('video_processing_use_transcription_rules') !== 'false';
+    const transcriptionRules = useTranscriptionRules
+        ? (promptContext ? promptContext.transcriptionRules : getTranscriptionRulesSync())
+        : null;
 
     // Determine the base prompt based on the selected preset
     let basePrompt;
-    
+
     if (selectedPresetId && selectedPresetId !== 'settings') {
         // A specific preset was selected - use its prompt
-        const preset = PROMPT_PRESETS.find(p => p.id === selectedPresetId);
+        const preset = PROMPT_PRESETS.find(p => p.id === selectedPresetId)
+            || (promptContext?.userPromptPresets ?? getUserPromptPresetsImpl()).find(
+                p => p?.id === selectedPresetId && typeof p.prompt === 'string'
+            );
         if (preset) {
             basePrompt = preset.prompt.replace('{contentType}', contentType);
-            
+
             // Handle translate-directly preset with custom language
             if (selectedPresetId === 'translate-directly') {
-                const customLanguage = localStorage.getItem('video_processing_custom_language');
+                const customLanguage = promptContext
+                    ? promptContext.customLanguage
+                    : localStorage.getItem('video_processing_custom_language');
                 if (customLanguage && customLanguage.trim()) {
                     basePrompt = basePrompt.replace(/TARGET_LANGUAGE/g, customLanguage.trim());
                 }
@@ -139,7 +158,9 @@ const getTranscriptionPromptImpl = (contentType, userProvidedSubtitles = null, o
         }
     } else {
         // Use the prompt from settings (either 'settings' was selected or no preset specified)
-        const settingsPrompt = localStorage.getItem('transcription_prompt');
+        const settingsPrompt = promptContext
+            ? promptContext.settingsPrompt
+            : localStorage.getItem('transcription_prompt');
         if (settingsPrompt && settingsPrompt.trim() !== '') {
             basePrompt = settingsPrompt.replace('{contentType}', contentType);
         } else {
@@ -208,8 +229,12 @@ Numbered subtitle list:\n${numberedSubtitles}`;
 
             // Append outside-range context if the modal requested it (persisted in localStorage)
             try {
-                const useOutside = localStorage.getItem('video_processing_use_outside_context') === 'true';
-                const ocText = localStorage.getItem('video_processing_outside_context_text');
+                const useOutside = promptContext
+                    ? promptContext.useOutsideResultsContext === true
+                    : localStorage.getItem('video_processing_use_outside_context') === 'true';
+                const ocText = promptContext
+                    ? promptContext.outsideContextText
+                    : localStorage.getItem('video_processing_outside_context_text');
                 if (useOutside && ocText && ocText.trim()) {
                     simplifiedPrompt += `\n\nContextual subtitles outside the selected range (for consistency):${ocText}`;
                 }
@@ -235,8 +260,12 @@ Numbered subtitle list (all ${subtitleCount} must be timed):\n${numberedSubtitle
 
             // Append outside-range context in full-video path as well
             try {
-                const useOutside = localStorage.getItem('video_processing_use_outside_context') === 'true';
-                const ocText = localStorage.getItem('video_processing_outside_context_text');
+                const useOutside = promptContext
+                    ? promptContext.useOutsideResultsContext === true
+                    : localStorage.getItem('video_processing_use_outside_context') === 'true';
+                const ocText = promptContext
+                    ? promptContext.outsideContextText
+                    : localStorage.getItem('video_processing_outside_context_text');
                 if (useOutside && ocText && ocText.trim()) {
                     simplifiedPrompt += `\n\nContextual subtitles outside the selected range (for consistency):${ocText}`;
                 }
@@ -269,7 +298,7 @@ Numbered subtitle list (all ${subtitleCount} must be timed):\n${numberedSubtitle
         // Add speaker identification if available
         if (transcriptionRules.speakerIdentification && transcriptionRules.speakerIdentification.length > 0) {
             // Check if we're using the diarize-speakers preset
-            const currentPreset = localStorage.getItem('video_processing_prompt_preset');
+            const currentPreset = selectedPresetId;
             if (currentPreset === 'diarize-speakers') {
                 rulesText += '\n- Speaker Identification (IMPORTANT - Use these names instead of generic "Speaker X" labels):\n';
                 transcriptionRules.speakerIdentification.forEach(speaker => {
@@ -323,6 +352,31 @@ Numbered subtitle list (all ${subtitleCount} must be timed):\n${numberedSubtitle
 
     // Return the base prompt if no rules are available
     return basePrompt;
+};
+
+const getEmptySpeechPolicyImpl = (contentType, userProvidedSubtitles = null, promptContext = null) => {
+    if (userProvidedSubtitles?.trim()) return undefined;
+
+    const selectedPresetId = promptContext
+        ? promptContext.presetId
+        : localStorage.getItem('video_processing_prompt_preset');
+    if (selectedPresetId && selectedPresetId !== 'settings') {
+        return SPEECH_ONLY_PRESET_IDS.has(selectedPresetId) ? 'provenSilence' : undefined;
+    }
+
+    const settingsPrompt = promptContext
+        ? promptContext.settingsPrompt
+        : localStorage.getItem('transcription_prompt');
+    if (!settingsPrompt?.trim()) return 'provenSilence';
+
+    const normalizedSettingsPrompt = settingsPrompt.trim();
+    const matchesExactSpeechPrompt = PROMPT_PRESETS
+        .filter(({ id }) => SPEECH_ONLY_PRESET_IDS.has(id))
+        .some(({ prompt }) => (
+            prompt.trim() === normalizedSettingsPrompt
+            || prompt.replace('{contentType}', contentType).trim() === normalizedSettingsPrompt
+        ));
+    return matchesExactSpeechPrompt ? 'provenSilence' : undefined;
 };
 
 const getDefaultTranslationPromptImpl = (subtitleText, targetLanguage, multiLanguage = false) => {
@@ -458,6 +512,7 @@ Text: ${subtitleText}`;
 export const getUserPromptPresets = getUserPromptPresetsImpl;
 export const saveUserPromptPresets = saveUserPromptPresetsImpl;
 export const getTranscriptionPrompt = getTranscriptionPromptImpl;
+export const getEmptySpeechPolicy = getEmptySpeechPolicyImpl;
 export const getDefaultTranslationPrompt = getDefaultTranslationPromptImpl;
 export const getSimpleTranslationPrompt = getSimpleTranslationPromptImpl;
 export const getDefaultConsolidatePrompt = getDefaultConsolidatePromptImpl;

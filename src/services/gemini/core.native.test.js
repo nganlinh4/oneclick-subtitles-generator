@@ -1,11 +1,16 @@
-import { callGeminiApi } from './core';
+import { callGeminiApi, streamGeminiApiWithFilesApi } from './core';
 import { runNativeGeminiTranscription } from '../../platform/nativeGeminiTranscription';
 import {
   inspectMediaPipelineAsset,
   runMediaPipeline,
 } from '../../platform/mediaPipelineService';
-import { getTranscriptionPrompt } from './promptManagement';
+import { getEmptySpeechPolicy, getTranscriptionPrompt } from './promptManagement';
 import { createRequestController } from './requestManagement';
+
+const ownership = vi.hoisted(() => ({
+  assertCurrent: vi.fn((context) => context),
+  assertDurable: vi.fn(async (context) => context),
+}));
 
 vi.mock('../../platform/mediaService', () => ({ isNativeMediaDescriptor: () => true }));
 vi.mock('../../platform/nativeGeminiMediaAnalysis', () => ({
@@ -30,7 +35,13 @@ vi.mock('../../utils/thinkingBudgetUtils', () => ({
   getThinkingBudget: () => 'minimal',
 }));
 vi.mock('./promptManagement', () => ({
+  getEmptySpeechPolicy: vi.fn(() => 'provenSilence'),
   getTranscriptionPrompt: vi.fn(() => 'Transcribe the selected media.'),
+}));
+vi.mock('../../utils/autoGenerationOwnership', () => ({
+  isAutoGenerationContext: vi.fn((value) => value?.kind === 'auto-generation-context'),
+  assertAutoGenerationContextCurrent: ownership.assertCurrent,
+  assertAutoGenerationContextDurable: ownership.assertDurable,
 }));
 
 beforeEach(() => {
@@ -40,6 +51,9 @@ beforeEach(() => {
     signal: new AbortController().signal,
   });
   getTranscriptionPrompt.mockReturnValue('Transcribe the selected media.');
+  getEmptySpeechPolicy.mockReturnValue('provenSilence');
+  ownership.assertCurrent.mockImplementation((context) => context);
+  ownership.assertDurable.mockImplementation(async (context) => context);
   runNativeGeminiTranscription.mockResolvedValue({
     text: JSON.stringify([{
       startTime: '00m00s000ms',
@@ -76,11 +90,62 @@ it('routes native transcription through opaque media and credential services', a
     assetId: media.assetId,
     model: 'gemini-3.5-flash-lite',
     prompt: 'Transcribe the selected media.',
+    emptySpeechPolicy: 'provenSilence',
     thinkingLevel: 'minimal',
     mediaResolution: 'medium',
   }));
+  expect(getTranscriptionPrompt).toHaveBeenCalledWith('video', undefined, {
+    segmentInfo: {},
+  });
   expect(subtitles).toHaveLength(1);
   expect(subtitles[0]).toMatchObject({ text: 'Hello' });
+});
+
+it('forwards cumulative native stream text and does not synthesize a final chunk', async () => {
+  const media = Object.freeze({
+    assetId: '0198a8d7-dbf7-7ee0-a949-f13427fdd78a',
+    name: 'clip.mp4',
+    type: 'video/mp4',
+  });
+  const first = '[{"startTime":"00m00s000ms","endTime":"00m01s000ms","text":"One"}';
+  const second = ',{"startTime":"00m01s000ms","endTime":"00m02s000ms","text":"Two"}]';
+  runNativeGeminiTranscription.mockImplementationOnce(async ({ onChunk }) => {
+    onChunk(first);
+    onChunk(second);
+    return { text: `${first}${second}`, usage: null };
+  });
+  const onChunk = vi.fn();
+  const onComplete = vi.fn();
+
+  await expect(streamGeminiApiWithFilesApi(
+    media,
+    { modelId: 'gemini-3.5-flash-lite' },
+    onChunk,
+    onComplete,
+  )).resolves.toHaveLength(2);
+
+  expect(onChunk).toHaveBeenNthCalledWith(1, { accumulatedText: first });
+  expect(onChunk).toHaveBeenNthCalledWith(2, { accumulatedText: `${first}${second}` });
+  expect(onChunk).toHaveBeenCalledTimes(2);
+  expect(onComplete).toHaveBeenCalledWith([
+    expect.objectContaining({ text: 'One' }),
+    expect.objectContaining({ text: 'Two' }),
+  ]);
+});
+
+it('does not enable speech-only handling for custom or descriptive intent', async () => {
+  const media = Object.freeze({
+    assetId: '0198a8d7-dbf7-7ee0-a949-f13427fdd78a',
+    name: 'clip.mp4',
+    type: 'video/mp4',
+  });
+  getEmptySpeechPolicy.mockReturnValue(undefined);
+
+  await expect(callGeminiApi(media, 'video')).resolves.toHaveLength(1);
+
+  expect(runNativeGeminiTranscription).toHaveBeenCalledWith(
+    expect.not.objectContaining({ emptySpeechPolicy: expect.anything() })
+  );
 });
 
 it('clips a native segment first and sends only the derived asset to Gemini', async () => {
@@ -158,4 +223,53 @@ it('rejects an invalid native segment before starting either native job', async 
   })).rejects.toThrow('segment range is invalid');
   expect(runMediaPipeline).not.toHaveBeenCalled();
   expect(runNativeGeminiTranscription).not.toHaveBeenCalled();
+});
+
+it('revalidates the captured project immediately before native Gemini registration', async () => {
+  const media = Object.freeze({
+    assetId: '0198a8d7-dbf7-7ee0-a949-f13427fdd78a',
+    name: 'clip.mp4',
+    type: 'video/mp4',
+  });
+  const context = {
+    kind: 'auto-generation-context',
+    runId: 'run-1',
+    media,
+    cacheId: 'cache-1',
+    projectId: 'project-1',
+    assetId: media.assetId,
+    signal: new AbortController().signal,
+  };
+  ownership.assertDurable
+    .mockResolvedValueOnce(context)
+    .mockRejectedValueOnce(new Error('project switched'));
+
+  await expect(callGeminiApi(media, 'video', { autoRunContext: context }))
+    .rejects.toThrow('project switched');
+  expect(runNativeGeminiTranscription).not.toHaveBeenCalled();
+});
+
+it('revalidates ownership after native Gemini before returning any result', async () => {
+  const media = Object.freeze({
+    assetId: '0198a8d7-dbf7-7ee0-a949-f13427fdd78a',
+    name: 'clip.mp4',
+    type: 'video/mp4',
+  });
+  const context = {
+    kind: 'auto-generation-context',
+    runId: 'run-1',
+    media,
+    cacheId: 'cache-1',
+    projectId: 'project-1',
+    assetId: media.assetId,
+    signal: new AbortController().signal,
+  };
+  ownership.assertDurable
+    .mockResolvedValueOnce(context)
+    .mockResolvedValueOnce(context)
+    .mockRejectedValueOnce(new Error('project switched'));
+
+  await expect(callGeminiApi(media, 'video', { autoRunContext: context }))
+    .rejects.toThrow('project switched');
+  expect(runNativeGeminiTranscription).toHaveBeenCalledTimes(1);
 });

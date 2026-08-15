@@ -66,6 +66,7 @@ const asrDescriptor = (e) => ({
   runnerKey: e.id,
   capabilities: { segmentation: true, language: !!e.supportsLanguage, tokenCounting: false },
   availability: (ctx) => !!ctx.engineStatus && ctx.engineStatus.isReady(e.id),
+  supportedLanguageCodes: e.supportedLanguageCodes,
   defaultStrategy: e.defaultStrategy || 'sentence',
 });
 

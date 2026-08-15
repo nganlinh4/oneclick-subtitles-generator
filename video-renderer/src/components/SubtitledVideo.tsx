@@ -1,6 +1,8 @@
 import React, { useMemo, memo, useEffect, useRef, useState } from 'react';
 import { AbsoluteFill, useCurrentFrame, Audio, Video, OffthreadVideo, useVideoConfig, Img, delayRender, continueRender } from 'remotion';
-import { LyricEntry, VideoMetadata } from '../types';
+import { CropSettings, LyricEntry, VideoMetadata } from '../types';
+import { applySubtitleAnimationEasing } from '../subtitleAnimationEasing';
+import { scaleSubtitleStyleValue } from '../subtitleVisualMath';
 import { ThemeProvider } from 'styled-components';
 import { defaultCustomization } from './SubtitleCustomization';
 import { loadFont } from '@remotion/google-fonts/Comfortaa';
@@ -198,9 +200,7 @@ export const SubtitledVideoContent: React.FC<Props> = ({
 
   // Create a scaling function that uses actual composition dimensions
   const getResponsiveScaledValue = (value: number): number => {
-    const baseHeight = 1080; // Reference height (1080p)
-    const scale = compositionHeight / baseHeight;
-    return Math.round(value * scale);
+    return scaleSubtitleStyleValue(value, compositionHeight);
   };
 
   // Memoize expensive calculations to improve performance
@@ -321,12 +321,15 @@ export const SubtitledVideoContent: React.FC<Props> = ({
 
   
     // Compute flip transforms from metadata so server-frame rendering matches frontend preview
-    const flipXScale = (metadata?.cropSettings as any)?.flipX ? -1 : 1;
-    const flipYScale = (metadata?.cropSettings as any)?.flipY ? -1 : 1;
+    const flipXScale = metadata.cropSettings?.flipX ? -1 : 1;
+    const flipYScale = metadata.cropSettings?.flipY ? -1 : 1;
     const videoFlipTransform = `scaleX(${flipXScale}) scaleY(${flipYScale})`;
   
     // Compute adjusted positioning for cropping, taking flips into account.
-    const computeCropPosition = (cs: any, metadataFlag?: any) => {
+    const computeCropPosition = (
+      cs?: CropSettings,
+      metadataFlag?: VideoMetadata & {framesPreCropped?: boolean},
+    ) => {
       if (metadataFlag?.framesPreCropped) return {}; 
       if (!cs) return {};
       const isIdentity = cs.width === 100 && cs.height === 100 && cs.x === 0 && cs.y === 0;
@@ -341,7 +344,7 @@ export const SubtitledVideoContent: React.FC<Props> = ({
         : `${(-(cs.y / cs.height) * 100)}%`;
       return { widthPct, heightPct, leftPct, topPct };
     };
-    const cropPosition = computeCropPosition(metadata?.cropSettings as any, metadata);
+    const cropPosition = computeCropPosition(metadata.cropSettings, metadata);
 
   // Process subtitles based on line threshold
   const processedSubtitles = useMemo(() => {
@@ -392,7 +395,7 @@ export const SubtitledVideoContent: React.FC<Props> = ({
   const getAnimationTransform = (progress: number, isAnimatingIn: boolean, isAnimatingOut: boolean) => {
     const animationType = customization.animationType;
     const easing = customization.animationEasing;
-    const easedProgress = applyEasing(progress, easing);
+    const easedProgress = applySubtitleAnimationEasing(progress, easing);
 
     switch (animationType) {
       case 'slide-up': if (isAnimatingIn) { const t = (1 - easedProgress) * 50; return `translateY(${t}px)`; } else if (isAnimatingOut) { const t = (1 - easedProgress) * -50; return `translateY(${t}px)`; } return 'translateY(0px)';
@@ -407,7 +410,6 @@ export const SubtitledVideoContent: React.FC<Props> = ({
     }
   };
 
-  const applyEasing = (t: number, easing: string) => { switch (easing) { case 'ease-in': return t * t; case 'ease-out': return 1 - Math.pow(1 - t, 2); case 'ease-in-out': case 'ease': return t < 0.5 ? 2 * t * t : 1 - Math.pow(-2 * t + 2, 2) / 2; default: return t; } };
   const getTypewriterText = (text: string, progress: number, isAnimatingIn: boolean) => { if (customization.animationType !== 'typewriter' || !isAnimatingIn) { return text; } const targetLength = Math.floor(text.length * progress); return text.substring(0, targetLength); };
 
   return (

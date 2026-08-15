@@ -42,8 +42,8 @@ export const runNativeNarrationJob = async (request, callbacks = {}, options) =>
   let settle;
   let terminal = false;
   let jobId = null;
-  const completed = new Promise((resolve, reject) => {
-    settle = { resolve, reject };
+  const completed = new Promise((resolve) => {
+    settle = resolve;
   });
   const finish = (outcome) => {
     if (terminal) return;
@@ -52,7 +52,7 @@ export const runNativeNarrationJob = async (request, callbacks = {}, options) =>
       activeJobs.delete(request.method);
       forgetNativeJobId(jobId);
     }
-    settle.resolve(outcome);
+    settle(Object.freeze({ status: 'fulfilled', outcome }));
   };
   const fail = (error) => {
     if (terminal) return;
@@ -61,7 +61,13 @@ export const runNativeNarrationJob = async (request, callbacks = {}, options) =>
       activeJobs.delete(request.method);
       forgetNativeJobId(jobId);
     }
-    settle.reject(error);
+    settle(Object.freeze({ status: 'rejected', error }));
+  };
+
+  const awaitTerminal = async () => {
+    const settlement = await completed;
+    if (settlement.status === 'rejected') throw settlement.error;
+    return settlement.outcome;
   };
 
   let started;
@@ -97,6 +103,9 @@ export const runNativeNarrationJob = async (request, callbacks = {}, options) =>
       fail(error);
     },
     }, options);
+  } catch (error) {
+    if (terminal) return awaitTerminal();
+    throw error;
   } finally {
     startingJobs -= 1;
   }
@@ -105,12 +114,12 @@ export const runNativeNarrationJob = async (request, callbacks = {}, options) =>
   if (!terminal) {
     activeJobs.set(request.method, jobId);
     rememberNativeJobId(jobId);
+    safelyCall(callbacks.onStarted, Object.freeze({
+      ...started,
+      initialResults: hydrateNativeNarrationResults(started.initialResults),
+    }));
   }
-  safelyCall(callbacks.onStarted, Object.freeze({
-    ...started,
-    initialResults: hydrateNativeNarrationResults(started.initialResults),
-  }));
-  const outcome = await completed;
+  const outcome = await awaitTerminal();
   return Object.freeze({ ...outcome, jobId });
 };
 

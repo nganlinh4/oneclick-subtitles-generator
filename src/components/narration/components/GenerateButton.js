@@ -1,4 +1,5 @@
 import { useTranslation } from 'react-i18next';
+import { getNativeNarrationArtifactId } from '../../../platform/nativeNarrationCapabilities';
 
 /**
  * Generate Button component
@@ -24,16 +25,27 @@ const GenerateButton = ({
   downloadAlignedAudio,
   cancelGeneration,
   subtitleSource,
-  isServiceAvailable = true,
+  isServiceAvailable = false,
   serviceUnavailableMessage = '',
-  narrationMethod = null
+  narrationMethod = null,
+  generationBlockedReason = ''
 }) => {
   const { t } = useTranslation();
 
-  // Chatterbox REQUIRES a reference voice (F5-TTS does not). Gate the button so the user can't click
-  // Generate without one and hit a confusing error toast — give a clear tooltip instead.
-  const hasReferenceAudio = !!(referenceAudio && (referenceAudio.filepath || referenceAudio.url));
-  const chatterboxNeedsReference = narrationMethod === 'chatterbox' && !hasReferenceAudio;
+  const requiresReference = narrationMethod === 'f5tts' || narrationMethod === 'chatterbox';
+  const referenceMissing = requiresReference
+    && !getNativeNarrationArtifactId(referenceAudio);
+  const referenceMissingMessage = t(
+    'narration.noReferenceAudioError',
+    'Please upload or record reference audio first'
+  );
+  const generationUnavailable = isServiceAvailable !== true
+    || referenceMissing
+    || !!generationBlockedReason
+    || !subtitleSource;
+  const generate = () => {
+    if (!generationUnavailable) handleGenerateNarration();
+  };
 
   return (
     <div className="narration-row generate-button-row">
@@ -67,13 +79,14 @@ const GenerateButton = ({
           ) : (
             <button
               className="pill-button primary"
-              onClick={handleGenerateNarration}
-              disabled={(referenceAudio !== null && !referenceAudio) || !subtitleSource || !isServiceAvailable || chatterboxNeedsReference}
+              onClick={generate}
+              disabled={generationUnavailable}
               title={
                 !isServiceAvailable ? serviceUnavailableMessage :
-                chatterboxNeedsReference ? t('narration.noReferenceAudioError', 'Please upload or record reference audio') :
-                !subtitleSource ? t('narration.noSourceSelectedError', 'Please select a subtitle source (Original or Translated)') :
-                (referenceAudio !== null && !referenceAudio) ? t('narration.noReferenceAudioError', 'Please upload or record reference audio') : ''
+                referenceMissing ? referenceMissingMessage :
+                generationBlockedReason || (!subtitleSource
+                  ? t('narration.noSourceSelectedError', 'Please select a subtitle source (Original or Translated)')
+                  : '')
               }
             >
               <span className="material-symbols-rounded" style={{ fontSize: 24, display: 'inline-block' }}>

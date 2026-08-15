@@ -4,6 +4,7 @@ use std::fs;
 use std::io::{self, BufReader, Read, Seek, SeekFrom, Write};
 use std::ops::Deref;
 use std::path::{Path, PathBuf};
+use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::{Arc, Mutex, RwLock, Weak};
 use std::time::Duration;
 
@@ -30,8 +31,8 @@ use osg_speech::{
     AudioFormat, CancellationToken, ChatterboxSettings, EdgeSettings, F5Settings, GeminiSettings,
     GttsDomain, GttsSettings, LanguageTag, LazySpeechWorker, ModelId, NarrationBatch,
     NarrationClip, NormalizedPoint, NormalizedTrim, ReferencePreparationPlan, RunControl,
-    SecretValue, SegmentId, SpeechBackend, SpeechError, SpeechOutput, SpeechPhase, SpeechProgress,
-    SpeechText, SpeedFactor, SynthesisRequest, SynthesisSettings, TimeMicros,
+    SecretValue, SegmentId, SpeechArtifact, SpeechBackend, SpeechError, SpeechOutput, SpeechPhase,
+    SpeechProgress, SpeechText, SpeedFactor, SynthesisRequest, SynthesisSettings, TimeMicros,
     VoiceConversionRequest, VoiceGender, VoiceId, WorkerProgram, WorkerStatus,
 };
 use secrecy::ExposeSecret;
@@ -72,6 +73,7 @@ const MAX_F5_REFERENCE_MS: u64 = 12_000;
 const MAX_CHATTERBOX_REFERENCE_MS: u64 = 60_000;
 const MANIFEST_SCOPE: &str = "speechJobs";
 const MANIFEST_SCHEMA_VERSION: u32 = 1;
+const MAX_LIFECYCLE_EPOCH: u64 = 9_007_199_254_740_991;
 const CHATTERBOX_LANGUAGES: &[&str] = &[
     "ar", "da", "de", "el", "en", "es", "fi", "fr", "he", "hi", "it", "ja", "ko", "ms", "nl", "no",
     "pl", "pt", "ru", "sv", "sw", "tr", "zh",
@@ -90,7 +92,20 @@ struct SpeechRuntimeInner {
     package_manager: RwLock<Option<SpeechPackageManager>>,
     workers: Mutex<HashMap<SpeechBackendRequest, CachedWorker>>,
     transient_workers: Mutex<HashMap<SpeechBackendRequest, Vec<Weak<ManagedSpeechWorker>>>>,
-    health: Mutex<HashMap<SpeechBackendRequest, bool>>,
+    artifact_publication_gates: Mutex<HashMap<SpeechArtifactPublicationKey, Weak<Mutex<()>>>>,
+    lifecycles: Mutex<HashMap<SpeechBackendRequest, Arc<BackendLifecycleSlot>>>,
+}
+
+#[derive(Clone, PartialEq, Eq, Hash)]
+struct SpeechArtifactPublicationKey {
+    kind: String,
+    content_hash: Vec<u8>,
+}
+
+#[derive(Default)]
+struct BackendLifecycleSlot {
+    commit_gate: Mutex<()>,
+    state: Mutex<BackendLifecycle>,
 }
 
 #[derive(Clone, PartialEq, Eq)]
@@ -103,6 +118,14 @@ struct WorkerPaths {
 struct CachedWorker {
     paths: WorkerPaths,
     worker: Arc<ManagedSpeechWorker>,
+}
+
+#[derive(Clone, Default)]
+struct BackendLifecycle {
+    epoch: u64,
+    enabled: bool,
+    voices: Option<Vec<SpeechVoiceResponse>>,
+    cancellation: CancellationToken,
 }
 
 struct ManagedSpeechWorker {
@@ -130,7 +153,8 @@ impl SpeechRuntime {
             package_manager: RwLock::new(None),
             workers: Mutex::new(HashMap::new()),
             transient_workers: Mutex::new(HashMap::new()),
-            health: Mutex::new(HashMap::new()),
+            artifact_publication_gates: Mutex::new(HashMap::new()),
+            lifecycles: Mutex::new(HashMap::new()),
         }));
         let manager = SpeechPackageManager::new(
             runtime.0.install_root.join("packages-v1"),
@@ -228,22 +252,154 @@ impl SpeechRuntime {
             .ok_or(SpeechError::WorkerNotFound)
     }
 
-    fn worker(
+    fn lifecycle_slot(
         &self,
         backend: SpeechBackendRequest,
-    ) -> Result<Arc<ManagedSpeechWorker>, SpeechError> {
+    ) -> Result<Arc<BackendLifecycleSlot>, SpeechError> {
+        let mut lifecycles = self
+            .0
+            .lifecycles
+            .lock()
+            .map_err(|_| SpeechError::StateUnavailable)?;
+        Ok(Arc::clone(lifecycles.entry(backend).or_insert_with(|| {
+            Arc::new(BackendLifecycleSlot::default())
+        })))
+    }
+
+    fn lifecycle(&self, backend: SpeechBackendRequest) -> Result<BackendLifecycle, SpeechError> {
+        self.lifecycle_slot(backend)?
+            .state
+            .lock()
+            .map_err(|_| SpeechError::StateUnavailable)
+            .map(|lifecycle| lifecycle.clone())
+    }
+
+    fn lifecycle_epoch(&self, backend: SpeechBackendRequest) -> Result<u64, SpeechError> {
+        self.lifecycle(backend).map(|lifecycle| lifecycle.epoch)
+    }
+
+    fn artifact_publication_gate(
+        &self,
+        key: SpeechArtifactPublicationKey,
+    ) -> Result<Arc<Mutex<()>>, SpeechError> {
+        let mut gates = self
+            .0
+            .artifact_publication_gates
+            .lock()
+            .map_err(|_| SpeechError::StateUnavailable)?;
+        gates.retain(|_, gate| gate.strong_count() != 0);
+        if let Some(gate) = gates.get(&key).and_then(Weak::upgrade) {
+            return Ok(gate);
+        }
+        let gate = Arc::new(Mutex::new(()));
+        gates.insert(key, Arc::downgrade(&gate));
+        Ok(gate)
+    }
+
+    fn invalidate_lifecycle(
+        &self,
+        backend: SpeechBackendRequest,
+        expected_epoch: Option<u64>,
+    ) -> Result<u64, SpeechError> {
+        let slot = self.lifecycle_slot(backend)?;
+        let _commit = slot
+            .commit_gate
+            .lock()
+            .map_err(|_| SpeechError::StateUnavailable)?;
+        let mut lifecycle = slot
+            .state
+            .lock()
+            .map_err(|_| SpeechError::StateUnavailable)?;
+        if expected_epoch.is_some_and(|expected| expected != lifecycle.epoch) {
+            return Err(SpeechError::Cancelled);
+        }
+        lifecycle.cancellation.cancel();
+        lifecycle.epoch = lifecycle
+            .epoch
+            .checked_add(1)
+            .filter(|epoch| *epoch <= MAX_LIFECYCLE_EPOCH)
+            .ok_or(SpeechError::StateUnavailable)?;
+        lifecycle.enabled = false;
+        lifecycle.voices = None;
+        lifecycle.cancellation = CancellationToken::default();
+        Ok(lifecycle.epoch)
+    }
+
+    fn require_enabled_lifecycle(
+        &self,
+        backend: SpeechBackendRequest,
+        expected_epoch: u64,
+    ) -> Result<CancellationToken, SpeechError> {
+        let lifecycle = self.lifecycle(backend)?;
+        if lifecycle.epoch != expected_epoch || !lifecycle.enabled {
+            return Err(SpeechError::Cancelled);
+        }
+        Ok(lifecycle.cancellation)
+    }
+
+    fn lifecycle_cancellation(
+        &self,
+        backend: SpeechBackendRequest,
+        expected_epoch: u64,
+    ) -> Result<CancellationToken, SpeechError> {
+        let lifecycle = self.lifecycle(backend)?;
+        if lifecycle.epoch != expected_epoch {
+            return Err(SpeechError::Cancelled);
+        }
+        Ok(lifecycle.cancellation)
+    }
+
+    #[cfg(test)]
+    fn invalidate_replacement_before_shutdown<F>(
+        &self,
+        backend: SpeechBackendRequest,
+        expected_epoch: u64,
+        shutdown: F,
+    ) -> Result<u64, SpeechError>
+    where
+        F: FnOnce(),
+    {
+        let epoch = self.invalidate_lifecycle(backend, Some(expected_epoch))?;
+        shutdown();
+        Ok(epoch)
+    }
+
+    fn worker_for_probe<F>(
+        &self,
+        backend: SpeechBackendRequest,
+        mut expected_epoch: u64,
+        mut publish_epoch: F,
+    ) -> Result<(Arc<ManagedSpeechWorker>, u64), SpeechError>
+    where
+        F: FnMut(u64),
+    {
+        publish_epoch(expected_epoch);
         let resolution = self.resolve_runtime(backend)?;
         let mut workers = self
             .0
             .workers
             .lock()
             .map_err(|_| SpeechError::StateUnavailable)?;
+        let current = self.lifecycle(backend)?;
+        if current.epoch != expected_epoch {
+            return Err(SpeechError::Cancelled);
+        }
         if let Some(cached) = workers.get(&backend)
             && cached.paths == resolution.paths
         {
-            return Ok(Arc::clone(&cached.worker));
+            let worker = Arc::clone(&cached.worker);
+            let epoch = if current.enabled && worker.status() == WorkerStatus::Stopped {
+                let epoch = self.invalidate_lifecycle(backend, Some(expected_epoch))?;
+                publish_epoch(epoch);
+                epoch
+            } else {
+                expected_epoch
+            };
+            return Ok((worker, epoch));
         }
         if let Some(previous) = workers.remove(&backend) {
+            expected_epoch = self.invalidate_lifecycle(backend, Some(expected_epoch))?;
+            publish_epoch(expected_epoch);
             previous.worker.shutdown();
         }
         let paths = resolution.paths;
@@ -267,14 +423,44 @@ impl SpeechRuntime {
                 worker: Arc::clone(&worker),
             },
         );
-        Ok(worker)
+        Ok((worker, expected_epoch))
     }
 
-    fn provider_worker(
+    fn enabled_worker_for_epoch(
         &self,
         backend: SpeechBackendRequest,
+        expected_epoch: u64,
+    ) -> Result<Arc<ManagedSpeechWorker>, SpeechError> {
+        self.require_enabled_lifecycle(backend, expected_epoch)?;
+        let resolution = self.resolve_runtime(backend)?;
+        let worker = self
+            .0
+            .workers
+            .lock()
+            .map_err(|_| SpeechError::StateUnavailable)?
+            .get(&backend)
+            .filter(|cached| cached.paths == resolution.paths)
+            .map(|cached| Arc::clone(&cached.worker))
+            .ok_or(SpeechError::StateUnavailable)?;
+        match worker.status() {
+            WorkerStatus::Stopped => {
+                let _ = self.invalidate_lifecycle(backend, Some(expected_epoch));
+                Err(SpeechError::StateUnavailable)
+            }
+            WorkerStatus::Ready | WorkerStatus::Unavailable => {
+                self.require_enabled_lifecycle(backend, expected_epoch)?;
+                Ok(worker)
+            }
+        }
+    }
+
+    fn provider_worker_for_epoch(
+        &self,
+        backend: SpeechBackendRequest,
+        expected_epoch: u64,
         secret: SecretValue,
     ) -> Result<Arc<ManagedSpeechWorker>, SpeechError> {
+        self.enabled_worker_for_epoch(backend, expected_epoch)?;
         let resolution = self.resolve_runtime(backend)?;
         let paths = resolution.paths;
         let program = if resolution.managed_runtime.is_some() {
@@ -297,70 +483,168 @@ impl SpeechRuntime {
             .map_err(|_| SpeechError::StateUnavailable)?;
         let entries = transient.entry(backend).or_default();
         entries.retain(|entry| entry.strong_count() != 0);
+        self.require_enabled_lifecycle(backend, expected_epoch)?;
         entries.push(Arc::downgrade(&worker));
         Ok(worker)
     }
 
-    fn mark_health(&self, backend: SpeechBackendRequest, healthy: bool) {
-        if let Ok(mut health) = self.0.health.lock() {
-            health.insert(backend, healthy);
+    fn commit_voice_inventory_for_epoch(
+        &self,
+        backend: SpeechBackendRequest,
+        epoch: u64,
+        voices: Vec<SpeechVoiceResponse>,
+    ) -> bool {
+        let Ok(slot) = self.lifecycle_slot(backend) else {
+            return false;
+        };
+        let Ok(_commit) = slot.commit_gate.lock() else {
+            return false;
+        };
+        let Ok(mut lifecycle) = slot.state.lock() else {
+            return false;
+        };
+        if lifecycle.epoch != epoch {
+            return false;
         }
+        lifecycle.enabled = true;
+        lifecycle.voices = Some(voices);
+        true
     }
 
-    fn statuses(&self) -> Vec<SpeechBackendStatus> {
-        let health = self.0.health.lock().ok();
-        let workers = self.0.workers.lock().ok();
-        SpeechBackendRequest::ALL
-            .into_iter()
-            .map(|backend| {
-                let installed = self.resolve_runtime(backend).is_ok();
-                let ready = installed
-                    && health
-                        .as_ref()
-                        .and_then(|health| health.get(&backend).copied())
-                        .unwrap_or(false);
-                let warm = ready
-                    && workers.as_ref().is_some_and(|workers| {
-                        workers
-                            .get(&backend)
-                            .is_some_and(|cached| cached.worker.status() == WorkerStatus::Ready)
-                    });
-                SpeechBackendStatus {
-                    backend,
-                    installed,
-                    ready,
-                    warm,
-                    requires_reference: backend.requires_reference(),
-                    supports_voice_inventory: backend.supports_voice_inventory(),
-                    supports_voice_conversion: backend == SpeechBackendRequest::Chatterbox,
-                    requires_credential: backend == SpeechBackendRequest::GeminiTts,
-                }
-            })
-            .collect()
-    }
-
-    fn shutdown(&self, backend: SpeechBackendRequest) -> CommandResult<()> {
-        let cached = self
+    fn detach_backend_runtime(
+        &self,
+        backend: SpeechBackendRequest,
+        expected_epoch: Option<u64>,
+    ) -> Result<(u64, Vec<Arc<ManagedSpeechWorker>>), SpeechError> {
+        let epoch = self.invalidate_lifecycle(backend, expected_epoch)?;
+        let mut detached = Vec::new();
+        if let Some(cached) = self
             .0
             .workers
             .lock()
-            .map_err(|_| CommandError::internal("The native speech runtime is unavailable."))?
-            .remove(&backend);
-        if let Some(cached) = cached {
-            cached.worker.shutdown();
+            .map_err(|_| SpeechError::StateUnavailable)?
+            .remove(&backend)
+        {
+            detached.push(cached.worker);
         }
         let transient = self
             .0
             .transient_workers
             .lock()
-            .map_err(|_| CommandError::internal("The native speech runtime is unavailable."))?
+            .map_err(|_| SpeechError::StateUnavailable)?
             .remove(&backend)
             .unwrap_or_default();
-        for worker in transient.into_iter().filter_map(|worker| worker.upgrade()) {
+        detached.extend(transient.into_iter().filter_map(|worker| worker.upgrade()));
+        Ok((epoch, detached))
+    }
+
+    fn invalidate_backend_runtime(
+        &self,
+        backend: SpeechBackendRequest,
+        expected_epoch: Option<u64>,
+    ) -> Result<u64, SpeechError> {
+        let (epoch, detached) = self.detach_backend_runtime(backend, expected_epoch)?;
+        for worker in detached {
             worker.shutdown();
         }
-        self.mark_health(backend, false);
+        Ok(epoch)
+    }
+
+    /// Returns only inventory captured by an explicit successful Start/probe. This path never
+    /// resolves, creates, starts, or transacts with a worker. The generation and live worker checks
+    /// make a completed Stop authoritative even when the `WebView` still holds a stale warm snapshot.
+    fn voice_inventory(
+        &self,
+        backend: SpeechBackendRequest,
+        expected_epoch: u64,
+    ) -> Result<SpeechInventoryResponse, SpeechError> {
+        if !backend.supports_voice_inventory() {
+            return Err(SpeechError::InvalidOption(
+                "speech backend does not expose a voice inventory",
+            ));
+        }
+        self.enabled_worker_for_epoch(backend, expected_epoch)?;
+        let lifecycle = self.lifecycle(backend)?;
+        if lifecycle.epoch != expected_epoch || !lifecycle.enabled {
+            return Err(SpeechError::Cancelled);
+        }
+        let voices = lifecycle.voices.ok_or(SpeechError::StateUnavailable)?;
+        self.require_enabled_lifecycle(backend, expected_epoch)?;
+        Ok(SpeechInventoryResponse {
+            backend,
+            epoch: expected_epoch,
+            enabled: true,
+            warm: true,
+            voices,
+        })
+    }
+
+    fn status(&self, backend: SpeechBackendRequest) -> SpeechBackendStatus {
+        let resolution = self.resolve_runtime(backend).ok();
+        let installed = resolution.is_some();
+        let cached = self.0.workers.lock().ok().and_then(|workers| {
+            workers
+                .get(&backend)
+                .map(|cached| (cached.paths.clone(), Arc::clone(&cached.worker)))
+        });
+        let paths_match = resolution.as_ref().is_some_and(|resolution| {
+            cached
+                .as_ref()
+                .is_some_and(|(paths, _)| *paths == resolution.paths)
+        });
+        let worker_status = cached.as_ref().map(|(_, worker)| worker.status());
+        let lifecycle = self.lifecycle(backend).unwrap_or_default();
+        let replacement = cached.is_some() && (!installed || !paths_match);
+        let dead =
+            lifecycle.enabled && (cached.is_none() || worker_status == Some(WorkerStatus::Stopped));
+        let lifecycle = if replacement || dead {
+            let _ = self.invalidate_backend_runtime(backend, Some(lifecycle.epoch));
+            self.lifecycle(backend).unwrap_or_default()
+        } else {
+            lifecycle
+        };
+        let ready = installed && lifecycle.enabled;
+        let warm = ready
+            && paths_match
+            && matches!(
+                worker_status,
+                Some(WorkerStatus::Ready | WorkerStatus::Unavailable)
+            );
+        SpeechBackendStatus {
+            backend,
+            epoch: lifecycle.epoch,
+            enabled: lifecycle.enabled,
+            installed,
+            ready,
+            warm,
+            requires_reference: backend.requires_reference(),
+            supports_voice_inventory: backend.supports_voice_inventory(),
+            supports_voice_conversion: backend == SpeechBackendRequest::Chatterbox,
+            requires_credential: backend == SpeechBackendRequest::GeminiTts,
+        }
+    }
+
+    fn statuses(&self) -> Vec<SpeechBackendStatus> {
+        SpeechBackendRequest::ALL
+            .into_iter()
+            .map(|backend| self.status(backend))
+            .collect()
+    }
+
+    fn shutdown(&self, backend: SpeechBackendRequest) -> CommandResult<()> {
+        self.invalidate_backend_runtime(backend, None)
+            .map_err(|_| CommandError::internal("The native speech runtime is unavailable."))?;
         Ok(())
+    }
+
+    fn begin_shutdown(
+        &self,
+        backend: SpeechBackendRequest,
+    ) -> CommandResult<(SpeechBackendStatus, Vec<Arc<ManagedSpeechWorker>>)> {
+        let (_, detached) = self
+            .detach_backend_runtime(backend, None)
+            .map_err(|_| CommandError::internal("The native speech runtime is unavailable."))?;
+        Ok((self.status(backend), detached))
     }
 
     fn quiesce_package(&self, backend: SpeechPackageId) -> Result<(), PackageError> {
@@ -515,6 +799,8 @@ const fn package_to_speech(backend: SpeechPackageId) -> SpeechBackendRequest {
 )]
 pub(crate) struct SpeechBackendStatus {
     backend: SpeechBackendRequest,
+    epoch: u64,
+    enabled: bool,
     installed: bool,
     ready: bool,
     warm: bool,
@@ -554,6 +840,16 @@ enum SpeechVoiceGenderResponse {
 #[serde(rename_all = "camelCase")]
 pub(crate) struct SpeechProbeResponse {
     status: SpeechBackendStatus,
+    voices: Vec<SpeechVoiceResponse>,
+}
+
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub(crate) struct SpeechInventoryResponse {
+    backend: SpeechBackendRequest,
+    epoch: u64,
+    enabled: bool,
+    warm: bool,
     voices: Vec<SpeechVoiceResponse>,
 }
 
@@ -798,6 +1094,7 @@ pub(crate) struct SpeechStartRequest {
     segments: Vec<SpeechSegmentRequest>,
     profile: SpeechProfileRequest,
     reference_artifact_id: Option<String>,
+    lifecycle_epoch: u64,
 }
 
 impl fmt::Debug for SpeechStartRequest {
@@ -806,6 +1103,7 @@ impl fmt::Debug for SpeechStartRequest {
             .debug_struct("SpeechStartRequest")
             .field("segment_count", &self.segments.len())
             .field("profile", &self.profile)
+            .field("lifecycle_epoch", &self.lifecycle_epoch)
             .field(
                 "reference_artifact_id",
                 &self.reference_artifact_id.as_ref().map(|_| "<opaque>"),
@@ -816,6 +1114,7 @@ impl fmt::Debug for SpeechStartRequest {
 
 struct ValidatedSpeechStart {
     backend: SpeechBackendRequest,
+    lifecycle_epoch: u64,
     requests: Vec<SynthesisRequest>,
     reference: Option<AudioAsset>,
     credential_id: Option<CredentialId>,
@@ -827,6 +1126,11 @@ impl SpeechStartRequest {
             return Err(SpeechError::InvalidInput("invalid narration segment count"));
         }
         let backend = self.profile.backend();
+        if self.lifecycle_epoch > MAX_LIFECYCLE_EPOCH {
+            return Err(SpeechError::InvalidInput(
+                "speech lifecycle epoch is invalid",
+            ));
+        }
         if backend.requires_reference() != reference.is_some() {
             return Err(SpeechError::InvalidInput(
                 "reference capability does not match the speech backend",
@@ -859,6 +1163,7 @@ impl SpeechStartRequest {
         let requests = NarrationBatch::new(requests)?.into_requests();
         Ok(ValidatedSpeechStart {
             backend,
+            lifecycle_epoch: self.lifecycle_epoch,
             requests,
             reference,
             credential_id,
@@ -956,6 +1261,7 @@ impl fmt::Debug for SpeechArtifactEditRequest {
 pub(crate) struct SpeechVoiceConversionStartRequest {
     input_artifact_id: String,
     target_voice_artifact_id: String,
+    lifecycle_epoch: u64,
 }
 
 #[derive(Clone, Deserialize)]
@@ -1052,7 +1358,7 @@ pub(crate) struct SpeechAlignmentResult {
     maximum_shift_micros: u64,
 }
 
-#[derive(Debug, Clone, Copy, Deserialize, Serialize)]
+#[derive(Debug, Clone, Copy, Deserialize, Eq, PartialEq, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub(crate) enum SpeechAlignmentFailureCode {
     Cancelled,
@@ -1071,7 +1377,7 @@ pub(crate) enum SpeechAlignmentPhase {
     Publishing,
 }
 
-#[derive(Debug, Clone, Deserialize, Serialize)]
+#[derive(Debug, Clone, Deserialize, Eq, PartialEq, Serialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 struct SpeechAlignmentManifest {
     schema_version: u32,
@@ -1229,7 +1535,7 @@ fn validate_alignment_start(
     Ok(ValidatedAlignmentStart { clips, stats })
 }
 
-#[derive(Debug, Clone, Copy, Deserialize, Serialize)]
+#[derive(Debug, Clone, Copy, Deserialize, Eq, PartialEq, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub(crate) enum SpeechFailureCode {
     Cancelled,
@@ -1247,7 +1553,7 @@ pub(crate) enum SpeechFailureCode {
     ArtifactStorage,
 }
 
-#[derive(Debug, Clone, Deserialize, Serialize)]
+#[derive(Debug, Clone, Deserialize, Eq, PartialEq, Serialize)]
 #[serde(
     tag = "status",
     rename_all = "camelCase",
@@ -1359,6 +1665,35 @@ pub(crate) fn speech_status(runtime: State<'_, SpeechRuntime>) -> SpeechStatusRe
     }
 }
 
+#[derive(Clone)]
+struct ProbeLifecycleOwnership(Arc<AtomicU64>);
+
+impl ProbeLifecycleOwnership {
+    fn new(epoch: u64) -> Self {
+        Self(Arc::new(AtomicU64::new(epoch)))
+    }
+
+    fn update(&self, epoch: u64) {
+        self.0.store(epoch, Ordering::Release);
+    }
+
+    fn epoch(&self) -> u64 {
+        self.0.load(Ordering::Acquire)
+    }
+}
+
+fn probe_join_result<T, E>(
+    runtime: &SpeechRuntime,
+    backend: SpeechBackendRequest,
+    ownership: &ProbeLifecycleOwnership,
+    result: Result<T, E>,
+) -> CommandResult<T> {
+    result.map_err(|_| {
+        let _ = runtime.invalidate_backend_runtime(backend, Some(ownership.epoch()));
+        CommandError::internal("The speech probe task stopped unexpectedly.")
+    })
+}
+
 #[tauri::command]
 #[allow(
     clippy::needless_pass_by_value,
@@ -1369,24 +1704,31 @@ pub(crate) async fn speech_probe(
     backend: SpeechBackendRequest,
 ) -> CommandResult<SpeechProbeResponse> {
     let runtime = runtime.inner().clone();
+    let epoch = runtime
+        .lifecycle_epoch(backend)
+        .map_err(|error| speech_command_error(&error))?;
+    let ownership = ProbeLifecycleOwnership::new(epoch);
+    let probe_ownership = ownership.clone();
     let probe_runtime = runtime.clone();
     let result = tauri::async_runtime::spawn_blocking(move || {
-        let worker = probe_runtime.worker(backend)?;
-        let control = RunControl::new(PROBE_TIMEOUT)?;
-        worker.list_voices(&control)
+        let (worker, actual_epoch) =
+            probe_runtime.worker_for_probe(backend, epoch, |actual_epoch| {
+                probe_ownership.update(actual_epoch);
+            })?;
+        let lifecycle_cancellation = probe_runtime.lifecycle_cancellation(backend, actual_epoch)?;
+        let control = RunControl::new(PROBE_TIMEOUT)?.with_cancellation(lifecycle_cancellation);
+        match worker.list_voices(&control) {
+            Ok(inventory) => Ok((actual_epoch, inventory)),
+            Err(error) => {
+                let _ = probe_runtime.invalidate_backend_runtime(backend, Some(actual_epoch));
+                Err(error)
+            }
+        }
     })
-    .await
-    .map_err(|_| CommandError::internal("The speech probe task stopped unexpectedly."))?;
+    .await;
+    let result = probe_join_result(&runtime, backend, &ownership, result)?;
     match result {
-        Ok(inventory) => {
-            runtime.mark_health(backend, true);
-            let status = runtime
-                .statuses()
-                .into_iter()
-                .find(|status| status.backend == backend)
-                .ok_or_else(|| {
-                    CommandError::internal("The speech backend status is unavailable.")
-                })?;
+        Ok((actual_epoch, inventory)) => {
             let voices = inventory
                 .voices()
                 .iter()
@@ -1401,13 +1743,18 @@ pub(crate) async fn speech_probe(
                         VoiceGender::Unknown => SpeechVoiceGenderResponse::Unknown,
                     },
                 })
-                .collect();
+                .collect::<Vec<_>>();
+            if !runtime.commit_voice_inventory_for_epoch(backend, actual_epoch, voices.clone()) {
+                return Err(speech_command_error(&SpeechError::Cancelled));
+            }
+            let status = runtime.status(backend);
+            if status.epoch != actual_epoch || !status.enabled || !status.warm {
+                let _ = runtime.invalidate_backend_runtime(backend, Some(actual_epoch));
+                return Err(speech_command_error(&SpeechError::StateUnavailable));
+            }
             Ok(SpeechProbeResponse { status, voices })
         }
-        Err(error) => {
-            runtime.mark_health(backend, false);
-            Err(speech_command_error(&error))
-        }
+        Err(error) => Err(speech_command_error(&error)),
     }
 }
 
@@ -1416,14 +1763,32 @@ pub(crate) async fn speech_probe(
     clippy::needless_pass_by_value,
     reason = "Tauri injects State as an owned command extractor"
 )]
-pub(crate) async fn speech_runtime_stop(
+pub(crate) fn speech_voice_inventory(
     runtime: State<'_, SpeechRuntime>,
     backend: SpeechBackendRequest,
-) -> CommandResult<()> {
-    let runtime = runtime.inner().clone();
-    tauri::async_runtime::spawn_blocking(move || runtime.shutdown(backend))
-        .await
-        .map_err(|_| CommandError::internal("The speech shutdown task stopped unexpectedly."))?
+    epoch: u64,
+) -> CommandResult<SpeechInventoryResponse> {
+    runtime
+        .voice_inventory(backend, epoch)
+        .map_err(|error| speech_command_error(&error))
+}
+
+#[tauri::command]
+#[allow(
+    clippy::needless_pass_by_value,
+    reason = "Tauri injects State as an owned command extractor"
+)]
+pub(crate) fn speech_runtime_stop(
+    runtime: State<'_, SpeechRuntime>,
+    backend: SpeechBackendRequest,
+) -> CommandResult<SpeechBackendStatus> {
+    let (status, detached) = runtime.begin_shutdown(backend)?;
+    tauri::async_runtime::spawn_blocking(move || {
+        for worker in detached {
+            worker.shutdown();
+        }
+    });
+    Ok(status)
 }
 
 #[tauri::command]
@@ -1439,6 +1804,7 @@ pub(crate) async fn speech_reference_select(
     let work = runtime
         .work_directory()
         .map_err(|_| CommandError::internal("The speech work directory is unavailable."))?;
+    let speech_runtime = runtime.inner().clone();
     let database = state.database.clone();
     let media_server = state.media_server.clone();
     tauri::async_runtime::spawn_blocking(move || {
@@ -1449,12 +1815,15 @@ pub(crate) async fn speech_reference_select(
             CommandError::invalid_path("The selected reference audio is unavailable.")
         })?;
         normalize_and_publish_reference(
-            &media_engine,
-            &work,
-            &database,
+            &ReferencePublicationContext {
+                runtime: &speech_runtime,
+                media_engine: &media_engine,
+                work: &work,
+                database: &database,
+                media_server: &media_server,
+            },
             &path,
             request.backend,
-            &media_server,
             "nativeSelection",
         )
         .map(Some)
@@ -1480,6 +1849,7 @@ pub(crate) async fn speech_reference_import(
     let work = runtime
         .work_directory()
         .map_err(|_| CommandError::internal("The speech work directory is unavailable."))?;
+    let speech_runtime = runtime.inner().clone();
     let imported = blob_store
         .resolve(request.asset_id)?
         .ok_or_else(|| CommandError::invalid_input("The imported reference audio expired."))?;
@@ -1487,12 +1857,15 @@ pub(crate) async fn speech_reference_import(
     let media_server = state.media_server.clone();
     tauri::async_runtime::spawn_blocking(move || {
         normalize_and_publish_reference(
-            &media_engine,
-            &work,
-            &database,
+            &ReferencePublicationContext {
+                runtime: &speech_runtime,
+                media_engine: &media_engine,
+                work: &work,
+                database: &database,
+                media_server: &media_server,
+            },
             imported.path(),
             request.backend,
-            &media_server,
             "nativeBinaryImport",
         )
     })
@@ -1528,6 +1901,7 @@ pub(crate) async fn speech_reference_extract(
         .map_err(|_| CommandError::internal("The speech work directory is unavailable."))?;
     let database = state.database.clone();
     let media_server = state.media_server.clone();
+    let speech_runtime = runtime.inner().clone();
     tauri::async_runtime::spawn_blocking(move || {
         let source = MediaInput::from_native_selection(media_path)?;
         let output_path = work.path().join("reference.wav");
@@ -1551,6 +1925,7 @@ pub(crate) async fn speech_reference_extract(
         let asset = AudioAsset::from_native_file(&output_path)
             .map_err(|error| speech_command_error(&error))?;
         let published = publish_durable_artifact(
+            &speech_runtime,
             &database,
             None,
             "speechReference",
@@ -1595,6 +1970,7 @@ pub(crate) async fn speech_artifact_edit(
         .work_directory()
         .map_err(|_| CommandError::internal("The speech work directory is unavailable."))?;
     let database = state.database.clone();
+    let speech_runtime = runtime.inner().clone();
     tauri::async_runtime::spawn_blocking(move || {
         let (audio, media, descriptor) = resolve_alignment_audio(&database, &request.artifact_id)?;
         let duration = descriptor.duration_micros.ok_or_else(|| {
@@ -1641,6 +2017,7 @@ pub(crate) async fn speech_artifact_edit(
             CommandError::internal("The edited narration duration is unavailable.")
         })?;
         let published = publish_durable_artifact(
+            &speech_runtime,
             &database,
             None,
             "narrationOutput",
@@ -1672,33 +2049,51 @@ pub(crate) async fn speech_start(
     request: SpeechStartRequest,
     on_event: Channel<SpeechJobEvent>,
 ) -> CommandResult<JobSnapshot> {
+    let runtime = runtime.inner().clone();
+    let requested_backend = request.profile.backend();
+    let requested_epoch = request.lifecycle_epoch;
+    runtime
+        .require_enabled_lifecycle(requested_backend, requested_epoch)
+        .map_err(|error| speech_command_error(&error))?;
     let reference_id = request.reference_artifact_id.clone();
     let reference_database = state.database.clone();
-    let reference = tauri::async_runtime::spawn_blocking(move || match reference_id.as_deref() {
+    let joined = tauri::async_runtime::spawn_blocking(move || match reference_id.as_deref() {
         Some(id) => resolve_audio_artifact(&reference_database, id, true).map(Some),
         None => Ok(None),
     })
-    .await
-    .map_err(|_| CommandError::internal("The reference lookup task stopped unexpectedly."))??;
+    .await;
+    let reference = command_join_result(
+        &runtime,
+        requested_backend,
+        requested_epoch,
+        joined,
+        "The reference lookup task stopped unexpectedly.",
+    )??;
     let validated = request
         .validate(reference)
         .map_err(|error| speech_command_error(&error))?;
+    let ownership =
+        SpeechLifecycleOwnership::capture(&runtime, validated.backend, validated.lifecycle_epoch)
+            .map_err(|error| speech_command_error(&error))?;
     let jobs = Arc::clone(&state.jobs);
-    let ticket = background::register_running(&jobs, JobKind::SynthesizeNarration).await?;
+    let ticket = register_owned_speech_job_with_hook(&runtime, &ownership, &jobs, || {}).await?;
     let initial = ticket.snapshot().clone();
     let job_id = initial.id();
-    if let Err(error) = initialize_manifest(&state.database, job_id, validated.backend).await {
-        let _ = background::finish_failure(&jobs, job_id).await;
-        return Err(error);
-    }
-    let runtime = runtime.inner().clone();
+    initialize_registered_speech_job_with_hook(
+        &runtime,
+        &ownership,
+        &state.database,
+        &jobs,
+        job_id,
+        || {},
+    )
+    .await?;
     let database = state.database.clone();
     let credentials = state.credentials.clone();
     let cancellation = ticket.cancellation().clone();
 
     tauri::async_runtime::spawn(async move {
-        let speech_cancellation = CancellationToken::default();
-        let cancellation_bridge = speech_cancellation.clone();
+        let cancellation_bridge = ownership.cancellation.clone();
         let cancellation_watch = cancellation.clone();
         let watcher = tauri::async_runtime::spawn(async move {
             cancellation_watch.cancelled().await;
@@ -1712,12 +2107,15 @@ pub(crate) async fn speech_start(
             job_id,
             channel: &on_event,
         };
-        let mut outcome = run_speech_batch(&context, validated, speech_cancellation).await;
+        let mut outcome = run_speech_batch(&context, validated, ownership.clone()).await;
         watcher.abort();
         if cancellation.is_cancelled() {
             outcome = Err(SpeechFailureCode::Cancelled);
         }
-        finish_speech_job(&jobs, &database, job_id, outcome, &on_event).await;
+        finish_speech_job(
+            &runtime, &ownership, &jobs, &database, job_id, outcome, &on_event,
+        )
+        .await;
     });
     Ok(initial)
 }
@@ -1733,32 +2131,55 @@ pub(crate) async fn speech_voice_conversion_start(
     request: SpeechVoiceConversionStartRequest,
     on_event: Channel<SpeechJobEvent>,
 ) -> CommandResult<JobSnapshot> {
+    if request.lifecycle_epoch > MAX_LIFECYCLE_EPOCH {
+        return Err(CommandError::invalid_input(
+            "The speech lifecycle epoch is invalid.",
+        ));
+    }
+    let runtime = runtime.inner().clone();
+    let lifecycle_epoch = request.lifecycle_epoch;
+    runtime
+        .require_enabled_lifecycle(SpeechBackendRequest::Chatterbox, lifecycle_epoch)
+        .map_err(|error| speech_command_error(&error))?;
     let artifact_database = state.database.clone();
-    let (input, target) = tauri::async_runtime::spawn_blocking(move || {
+    let joined = tauri::async_runtime::spawn_blocking(move || {
         let input = resolve_audio_artifact(&artifact_database, &request.input_artifact_id, false)?;
         let target =
             resolve_audio_artifact(&artifact_database, &request.target_voice_artifact_id, true)?;
         Ok::<_, CommandError>((input, target))
     })
-    .await
-    .map_err(|_| CommandError::internal("The speech audio lookup task stopped unexpectedly."))??;
+    .await;
+    let (input, target) = command_join_result(
+        &runtime,
+        SpeechBackendRequest::Chatterbox,
+        lifecycle_epoch,
+        joined,
+        "The speech audio lookup task stopped unexpectedly.",
+    )??;
+    let ownership = SpeechLifecycleOwnership::capture(
+        &runtime,
+        SpeechBackendRequest::Chatterbox,
+        lifecycle_epoch,
+    )
+    .map_err(|error| speech_command_error(&error))?;
     let jobs = Arc::clone(&state.jobs);
-    let ticket = background::register_running(&jobs, JobKind::SynthesizeNarration).await?;
+    let ticket = register_owned_speech_job_with_hook(&runtime, &ownership, &jobs, || {}).await?;
     let initial = ticket.snapshot().clone();
     let job_id = initial.id();
-    if let Err(error) =
-        initialize_manifest(&state.database, job_id, SpeechBackendRequest::Chatterbox).await
-    {
-        let _ = background::finish_failure(&jobs, job_id).await;
-        return Err(error);
-    }
-    let runtime = runtime.inner().clone();
+    initialize_registered_speech_job_with_hook(
+        &runtime,
+        &ownership,
+        &state.database,
+        &jobs,
+        job_id,
+        || {},
+    )
+    .await?;
     let database = state.database.clone();
     let cancellation = ticket.cancellation().clone();
 
     tauri::async_runtime::spawn(async move {
-        let speech_cancellation = CancellationToken::default();
-        let cancellation_bridge = speech_cancellation.clone();
+        let cancellation_bridge = ownership.cancellation.clone();
         let cancellation_watch = cancellation.clone();
         let watcher = tauri::async_runtime::spawn(async move {
             cancellation_watch.cancelled().await;
@@ -1769,7 +2190,7 @@ pub(crate) async fn speech_voice_conversion_start(
             &database,
             input,
             target,
-            speech_cancellation,
+            ownership.clone(),
             job_id,
             &on_event,
         )
@@ -1778,7 +2199,10 @@ pub(crate) async fn speech_voice_conversion_start(
         if cancellation.is_cancelled() {
             result = Err(SpeechFailureCode::Cancelled);
         }
-        finish_speech_job(&jobs, &database, job_id, result, &on_event).await;
+        finish_speech_job(
+            &runtime, &ownership, &jobs, &database, job_id, result, &on_event,
+        )
+        .await;
     });
     Ok(initial)
 }
@@ -2210,83 +2634,359 @@ struct SpeechBatchContext<'a> {
     channel: &'a Channel<SpeechJobEvent>,
 }
 
+#[derive(Clone)]
+struct SpeechLifecycleOwnership {
+    backend: SpeechBackendRequest,
+    lifecycle_epoch: u64,
+    cancellation: CancellationToken,
+}
+
+impl SpeechLifecycleOwnership {
+    fn capture(
+        runtime: &SpeechRuntime,
+        backend: SpeechBackendRequest,
+        lifecycle_epoch: u64,
+    ) -> Result<Self, SpeechError> {
+        let lifecycle_cancellation = runtime.require_enabled_lifecycle(backend, lifecycle_epoch)?;
+        Ok(Self {
+            backend,
+            lifecycle_epoch,
+            cancellation: CancellationToken::linked(&[lifecycle_cancellation]),
+        })
+    }
+
+    fn ensure_current(&self, runtime: &SpeechRuntime) -> Result<(), SpeechFailureCode> {
+        if self.cancellation.is_cancelled() {
+            return Err(SpeechFailureCode::Cancelled);
+        }
+        runtime
+            .require_enabled_lifecycle(self.backend, self.lifecycle_epoch)
+            .map_err(|error| speech_failure(&error).0)?;
+        if self.cancellation.is_cancelled() {
+            return Err(SpeechFailureCode::Cancelled);
+        }
+        Ok(())
+    }
+
+    fn validate_slot(&self, slot: &BackendLifecycleSlot) -> Result<(), SpeechFailureCode> {
+        if self.cancellation.is_cancelled() {
+            return Err(SpeechFailureCode::Cancelled);
+        }
+        let lifecycle = slot
+            .state
+            .lock()
+            .map_err(|_| SpeechFailureCode::WorkerFailed)?;
+        if lifecycle.epoch != self.lifecycle_epoch
+            || !lifecycle.enabled
+            || lifecycle.cancellation.is_cancelled()
+            || self.cancellation.is_cancelled()
+        {
+            return Err(SpeechFailureCode::Cancelled);
+        }
+        Ok(())
+    }
+
+    fn commit_initial_manifest(
+        &self,
+        runtime: &SpeechRuntime,
+        database: &Database,
+        job_id: JobId,
+    ) -> Result<(), SpeechFailureCode> {
+        let slot = runtime
+            .lifecycle_slot(self.backend)
+            .map_err(|error| speech_failure(&error).0)?;
+        let _commit = slot
+            .commit_gate
+            .lock()
+            .map_err(|_| SpeechFailureCode::WorkerFailed)?;
+        self.validate_slot(&slot)?;
+        let manifest = SpeechJobManifest {
+            schema_version: MANIFEST_SCHEMA_VERSION,
+            backend: self.backend,
+            results: Vec::new(),
+        };
+        let value =
+            serde_json::to_value(manifest).map_err(|_| SpeechFailureCode::ArtifactStorage)?;
+        database
+            .put_setting(MANIFEST_SCOPE, &job_id.to_string(), &value)
+            .map_err(|_| SpeechFailureCode::ArtifactStorage)
+    }
+
+    fn commit_manifest_result(
+        &self,
+        runtime: &SpeechRuntime,
+        database: &Database,
+        job_id: JobId,
+        result: StoredSpeechResult,
+    ) -> Result<(), SpeechFailureCode> {
+        let slot = runtime
+            .lifecycle_slot(self.backend)
+            .map_err(|error| speech_failure(&error).0)?;
+        let _commit = slot
+            .commit_gate
+            .lock()
+            .map_err(|_| SpeechFailureCode::WorkerFailed)?;
+        self.validate_slot(&slot)?;
+        append_manifest(database, job_id, self.backend, result)
+            .map_err(|_| SpeechFailureCode::ArtifactStorage)
+    }
+
+    fn commit_job_progress(
+        &self,
+        runtime: &SpeechRuntime,
+        jobs: &background::DesktopJobs,
+        job_id: JobId,
+        progress: JobProgress,
+    ) -> Result<(), SpeechFailureCode> {
+        let slot = runtime
+            .lifecycle_slot(self.backend)
+            .map_err(|error| speech_failure(&error).0)?;
+        let _commit = slot
+            .commit_gate
+            .lock()
+            .map_err(|_| SpeechFailureCode::WorkerFailed)?;
+        self.validate_slot(&slot)?;
+        jobs.apply(job_id, JobUpdate::ReportProgress(progress))
+            .map(|_| ())
+            .map_err(|_| SpeechFailureCode::ArtifactStorage)
+    }
+
+    fn commit_job_success(
+        &self,
+        runtime: &SpeechRuntime,
+        jobs: &background::DesktopJobs,
+        job_id: JobId,
+    ) -> Result<JobSnapshot, SpeechFailureCode> {
+        let slot = runtime
+            .lifecycle_slot(self.backend)
+            .map_err(|error| speech_failure(&error).0)?;
+        let _commit = slot
+            .commit_gate
+            .lock()
+            .map_err(|_| SpeechFailureCode::WorkerFailed)?;
+        self.validate_slot(&slot)?;
+        jobs.apply(job_id, JobUpdate::Succeed)
+            .map(|ticket| ticket.snapshot().clone())
+            .map_err(|_| SpeechFailureCode::ArtifactStorage)
+    }
+}
+
+async fn register_owned_speech_job_with_hook<F>(
+    runtime: &SpeechRuntime,
+    ownership: &SpeechLifecycleOwnership,
+    jobs: &background::DesktopJobs,
+    after_registration: F,
+) -> CommandResult<osg_application::JobTicket>
+where
+    F: FnOnce(),
+{
+    let ticket = background::register_running(jobs, JobKind::SynthesizeNarration).await?;
+    after_registration();
+    if let Err(code) = ownership.ensure_current(runtime) {
+        background::finish_cancellation(jobs, ticket.snapshot().id()).await?;
+        return Err(speech_failure_code_command_error(code));
+    }
+    Ok(ticket)
+}
+
+async fn finish_registered_speech_start(
+    jobs: &background::DesktopJobs,
+    job_id: JobId,
+    code: SpeechFailureCode,
+) -> CommandResult<()> {
+    if code == SpeechFailureCode::Cancelled {
+        background::finish_cancellation(jobs, job_id).await?;
+    } else if background::finish_failure(jobs, job_id).await.is_none() {
+        return Err(CommandError::internal(
+            "The speech startup job could not be finalized.",
+        ));
+    }
+    Ok(())
+}
+
+async fn initialize_registered_speech_job_with_hook<F>(
+    runtime: &SpeechRuntime,
+    ownership: &SpeechLifecycleOwnership,
+    database: &Database,
+    jobs: &background::DesktopJobs,
+    job_id: JobId,
+    before_manifest_put: F,
+) -> CommandResult<()>
+where
+    F: FnOnce() + Send + 'static,
+{
+    let worker_runtime = runtime.clone();
+    let worker_ownership = ownership.clone();
+    let worker_database = database.clone();
+    let backend = ownership.backend;
+    let lifecycle_epoch = ownership.lifecycle_epoch;
+    let joined = tauri::async_runtime::spawn_blocking(move || {
+        initialize_manifest_with_hook(
+            &worker_runtime,
+            &worker_ownership,
+            &worker_database,
+            job_id,
+            before_manifest_put,
+        )
+    })
+    .await;
+    let outcome = worker_join_result(runtime, backend, lifecycle_epoch, joined).unwrap_or_else(Err);
+    if let Err(code) = outcome {
+        finish_registered_speech_start(jobs, job_id, code).await?;
+        return Err(speech_failure_code_command_error(code));
+    }
+    Ok(())
+}
+
+fn initialize_manifest_with_hook<F>(
+    runtime: &SpeechRuntime,
+    ownership: &SpeechLifecycleOwnership,
+    database: &Database,
+    job_id: JobId,
+    before_manifest_put: F,
+) -> Result<(), SpeechFailureCode>
+where
+    F: FnOnce(),
+{
+    before_manifest_put();
+    ownership.commit_initial_manifest(runtime, database, job_id)
+}
+
+fn worker_join_result<T, E>(
+    runtime: &SpeechRuntime,
+    backend: SpeechBackendRequest,
+    lifecycle_epoch: u64,
+    result: Result<T, E>,
+) -> Result<T, SpeechFailureCode> {
+    result.map_err(|_| {
+        let _ = runtime.invalidate_backend_runtime(backend, Some(lifecycle_epoch));
+        SpeechFailureCode::WorkerFailed
+    })
+}
+
+fn command_join_result<T, E>(
+    runtime: &SpeechRuntime,
+    backend: SpeechBackendRequest,
+    lifecycle_epoch: u64,
+    result: Result<T, E>,
+    message: &'static str,
+) -> CommandResult<T> {
+    result.map_err(|_| {
+        let _ = runtime.invalidate_backend_runtime(backend, Some(lifecycle_epoch));
+        CommandError::internal(message)
+    })
+}
+
+async fn resolve_prepared_batch_worker(
+    context: &SpeechBatchContext<'_>,
+    validated: &mut ValidatedSpeechStart,
+    work: &TempDir,
+    cancellation: &CancellationToken,
+) -> Result<Arc<ManagedSpeechWorker>, SpeechFailureCode> {
+    let worker = resolve_batch_worker(
+        context,
+        validated.backend,
+        validated.lifecycle_epoch,
+        validated.credential_id,
+    )
+    .await?;
+    if validated.backend != SpeechBackendRequest::F5Tts {
+        return Ok(worker);
+    }
+    validated.requests = prepare_f5_requests(
+        &worker,
+        work,
+        std::mem::take(&mut validated.requests),
+        validated
+            .reference
+            .take()
+            .ok_or(SpeechFailureCode::ReferenceRejected)?,
+        cancellation.clone(),
+    )
+    .await?;
+    Ok(worker)
+}
+
 async fn run_speech_batch(
     context: &SpeechBatchContext<'_>,
     mut validated: ValidatedSpeechStart,
-    cancellation: CancellationToken,
+    ownership: SpeechLifecycleOwnership,
 ) -> Result<Vec<StoredSpeechResult>, SpeechFailureCode> {
+    ownership.ensure_current(context.runtime)?;
     let work = context
         .runtime
         .work_directory()
         .map_err(|_| SpeechFailureCode::RuntimeUnavailable)?;
-    let worker =
-        match resolve_batch_worker(context, validated.backend, validated.credential_id).await {
-            Ok(worker) => worker,
-            Err(code) => {
-                context.runtime.mark_health(validated.backend, false);
-                return Err(code);
+    let worker = match resolve_prepared_batch_worker(
+        context,
+        &mut validated,
+        &work,
+        &ownership.cancellation,
+    )
+    .await
+    {
+        Ok(worker) => worker,
+        Err(code) => {
+            if failure_marks_backend_unhealthy(code) {
+                let _ = context
+                    .runtime
+                    .invalidate_backend_runtime(validated.backend, Some(validated.lifecycle_epoch));
             }
-        };
-    if validated.backend == SpeechBackendRequest::F5Tts {
-        validated.requests = match prepare_f5_requests(
-            &worker,
-            &work,
-            validated.requests,
-            validated
-                .reference
-                .take()
-                .ok_or(SpeechFailureCode::ReferenceRejected)?,
-            cancellation.clone(),
-        )
-        .await
-        {
-            Ok(requests) => requests,
-            Err(code) => {
-                if failure_marks_backend_unhealthy(code) {
-                    context.runtime.mark_health(validated.backend, false);
-                }
-                return Err(code);
-            }
-        };
-    }
+            return Err(code);
+        }
+    };
 
     let total = validated.requests.len();
     let mut results = Vec::with_capacity(total);
     for (offset, request) in validated.requests.into_iter().enumerate() {
-        if cancellation.is_cancelled() {
-            return Err(SpeechFailureCode::Cancelled);
-        }
+        ownership.ensure_current(context.runtime)?;
         let index = offset + 1;
-        let stored = synthesize_segment(
+        let prepared = synthesize_segment(
             context,
             &work,
             &worker,
             request,
-            cancellation.clone(),
+            ownership.clone(),
             SegmentRun {
                 backend: validated.backend,
+                lifecycle_epoch: validated.lifecycle_epoch,
                 index,
                 total,
             },
         )
         .await?;
-        append_manifest_async(
-            context.database,
-            context.job_id,
-            validated.backend,
-            stored.clone(),
-        )
-        .await?;
-        emit_segment_result(context, &stored, index, total);
+        let (stored, invalidate_backend) = match prepared {
+            PreparedSegmentResult::Completed(stored) => (stored, false),
+            PreparedSegmentResult::Failed {
+                result,
+                invalidate_backend,
+            } => {
+                commit_failed_segment(context, &ownership, result.clone(), index, total).await?;
+                (result, invalidate_backend)
+            }
+        };
         let terminal_failure = match &stored {
             StoredSpeechResult::Failed { code, .. } if batch_terminal_failure(*code) => Some(*code),
             _ => None,
         };
         results.push(stored);
-        report_batch_progress(context.jobs, context.job_id, index, total).await;
         if let Some(code) = terminal_failure {
+            if invalidate_backend {
+                let _ = context
+                    .runtime
+                    .invalidate_backend_runtime(validated.backend, Some(validated.lifecycle_epoch));
+            }
             return Err(code);
         }
+        report_batch_progress(
+            context.runtime,
+            &ownership,
+            context.jobs,
+            context.job_id,
+            index,
+            total,
+        )
+        .await?;
     }
     if results
         .iter()
@@ -2301,35 +3001,49 @@ async fn run_speech_batch(
 #[derive(Clone, Copy)]
 struct SegmentRun {
     backend: SpeechBackendRequest,
+    lifecycle_epoch: u64,
     index: usize,
     total: usize,
+}
+
+enum PreparedSegmentResult {
+    Completed(StoredSpeechResult),
+    Failed {
+        result: StoredSpeechResult,
+        invalidate_backend: bool,
+    },
 }
 
 async fn resolve_batch_worker(
     context: &SpeechBatchContext<'_>,
     backend: SpeechBackendRequest,
+    lifecycle_epoch: u64,
     credential_id: Option<CredentialId>,
 ) -> Result<Arc<ManagedSpeechWorker>, SpeechFailureCode> {
     let Some(credential_id) = credential_id else {
         let runtime = context.runtime.clone();
-        return tauri::async_runtime::spawn_blocking(move || runtime.worker(backend))
-            .await
-            .map_err(|_| SpeechFailureCode::WorkerFailed)?
+        let joined = tauri::async_runtime::spawn_blocking(move || {
+            runtime.enabled_worker_for_epoch(backend, lifecycle_epoch)
+        })
+        .await;
+        return worker_join_result(context.runtime, backend, lifecycle_epoch, joined)?
             .map_err(|error| speech_failure(&error).0);
     };
     let credentials = context.credentials.clone();
-    let secret = tauri::async_runtime::spawn_blocking(move || {
+    let joined = tauri::async_runtime::spawn_blocking(move || {
         credentials.resolve(credential_id, CredentialPurpose::GeminiApiKey)
     })
-    .await
-    .map_err(|_| SpeechFailureCode::AuthenticationFailed)?
-    .map_err(|_| SpeechFailureCode::AuthenticationFailed)?;
+    .await;
+    let secret = worker_join_result(context.runtime, backend, lifecycle_epoch, joined)?
+        .map_err(|_| SpeechFailureCode::AuthenticationFailed)?;
     let secret = SecretValue::new(secret.expose_secret().to_owned())
         .map_err(|_| SpeechFailureCode::AuthenticationFailed)?;
     let runtime = context.runtime.clone();
-    tauri::async_runtime::spawn_blocking(move || runtime.provider_worker(backend, secret))
-        .await
-        .map_err(|_| SpeechFailureCode::WorkerFailed)?
+    let joined = tauri::async_runtime::spawn_blocking(move || {
+        runtime.provider_worker_for_epoch(backend, lifecycle_epoch, secret)
+    })
+    .await;
+    worker_join_result(context.runtime, backend, lifecycle_epoch, joined)?
         .map_err(|error| speech_failure(&error).0)
 }
 
@@ -2383,9 +3097,9 @@ async fn synthesize_segment(
     work: &TempDir,
     worker: &Arc<ManagedSpeechWorker>,
     request: SynthesisRequest,
-    cancellation: CancellationToken,
+    ownership: SpeechLifecycleOwnership,
     run: SegmentRun,
-) -> Result<StoredSpeechResult, SpeechFailureCode> {
+) -> Result<PreparedSegmentResult, SpeechFailureCode> {
     let segment_id = request.segment_id().as_str().to_owned();
     let format = request.output_format();
     let output = SpeechOutput::within_root(
@@ -2401,113 +3115,212 @@ async fn synthesize_segment(
     let job_id = context.job_id;
     let index = run.index;
     let total = run.total;
-    let operation = tauri::async_runtime::spawn_blocking(move || {
+    let progress_runtime = context.runtime.clone();
+    let progress_ownership = ownership.clone();
+    let worker_cancellation = ownership.cancellation.clone();
+    let joined = tauri::async_runtime::spawn_blocking(move || {
         let control = RunControl::new(SPEECH_TIMEOUT)?
-            .with_cancellation(cancellation)
+            .with_cancellation(worker_cancellation)
             .with_progress(move |progress: &SpeechProgress| {
-                let _ = progress_channel.send(SpeechJobEvent::Progress {
-                    job_id,
-                    segment_id: progress
-                        .segment_id()
-                        .map(|value| value.as_str().to_owned())
-                        .or_else(|| Some(progress_segment.clone())),
-                    index,
-                    total,
-                    phase: progress.phase().into(),
-                    fraction_millionths: progress.fraction_millionths(),
-                });
+                if progress_ownership.ensure_current(&progress_runtime).is_ok() {
+                    let _ = progress_channel.send(SpeechJobEvent::Progress {
+                        job_id,
+                        segment_id: progress
+                            .segment_id()
+                            .map(|value| value.as_str().to_owned())
+                            .or_else(|| Some(progress_segment.clone())),
+                        index,
+                        total,
+                        phase: progress.phase().into(),
+                        fraction_millionths: progress.fraction_millionths(),
+                    });
+                }
             });
         synthesize_with_retry(&progress_worker, &request, &output, &control)
     })
-    .await
-    .map_err(|_| SpeechFailureCode::WorkerFailed)?;
+    .await;
+    let operation = worker_join_result(context.runtime, run.backend, run.lifecycle_epoch, joined)?;
     match operation {
         Ok(artifact) => {
-            context.runtime.mark_health(run.backend, true);
+            ownership.ensure_current(context.runtime)?;
             let database = context.database.clone();
-            let published = tauri::async_runtime::spawn_blocking(move || {
+            let runtime = context.runtime.clone();
+            let commit_ownership = ownership.clone();
+            let completion_channel = context.channel.clone();
+            let joined = tauri::async_runtime::spawn_blocking(move || {
                 let metadata = SpeechArtifactMetadata::from_summary(artifact.summary());
-                publish_durable_artifact(
+                commit_completed_speech_source(
+                    &runtime,
+                    &commit_ownership,
                     &database,
-                    Some(job_id),
-                    "narrationOutput",
                     artifact.native_path(),
                     metadata,
+                    job_id,
+                    segment_id,
+                    "narrationOutput",
+                    |result| {
+                        let _ = completion_channel.send(SpeechJobEvent::SegmentCompleted {
+                            job_id,
+                            index,
+                            total,
+                            result: result.clone(),
+                        });
+                    },
                 )
             })
-            .await
-            .map_err(|_| SpeechFailureCode::ArtifactStorage)?
-            .map_err(|_| SpeechFailureCode::ArtifactStorage)?;
-            Ok(StoredSpeechResult::Completed {
-                segment_id,
-                artifact: published.descriptor,
-            })
+            .await;
+            let committed =
+                worker_join_result(context.runtime, run.backend, run.lifecycle_epoch, joined)??;
+            Ok(PreparedSegmentResult::Completed(committed))
         }
         Err(SpeechError::Cancelled) => Err(SpeechFailureCode::Cancelled),
         Err(error) => {
             let (code, retryable) = speech_failure(&error);
-            if failure_marks_backend_unhealthy(code) {
-                context.runtime.mark_health(run.backend, false);
-            }
-            Ok(StoredSpeechResult::Failed {
-                segment_id,
-                code,
-                retryable,
+            Ok(PreparedSegmentResult::Failed {
+                result: StoredSpeechResult::Failed {
+                    segment_id,
+                    code,
+                    retryable,
+                },
+                invalidate_backend: failure_marks_backend_unhealthy(code),
             })
         }
     }
 }
 
-async fn append_manifest_async(
-    database: &Database,
-    job_id: JobId,
-    backend: SpeechBackendRequest,
-    result: StoredSpeechResult,
-) -> Result<(), SpeechFailureCode> {
-    let database = database.clone();
-    tauri::async_runtime::spawn_blocking(move || {
-        append_manifest(&database, job_id, backend, result)
-    })
-    .await
-    .map_err(|_| SpeechFailureCode::ArtifactStorage)?
-    .map_err(|_| SpeechFailureCode::ArtifactStorage)
-}
-
-fn emit_segment_result(
+async fn commit_failed_segment(
     context: &SpeechBatchContext<'_>,
-    result: &StoredSpeechResult,
+    ownership: &SpeechLifecycleOwnership,
+    result: StoredSpeechResult,
     index: usize,
     total: usize,
-) {
-    let event = match result {
-        StoredSpeechResult::Completed { .. } => SpeechJobEvent::SegmentCompleted {
-            job_id: context.job_id,
-            index,
-            total,
-            result: result.clone(),
-        },
-        StoredSpeechResult::Failed { .. } => SpeechJobEvent::SegmentFailed {
-            job_id: context.job_id,
-            index,
-            total,
-            result: result.clone(),
-        },
-    };
-    let _ = context.channel.send(event);
+) -> Result<(), SpeechFailureCode> {
+    let manifest_runtime = context.runtime.clone();
+    let manifest_ownership = ownership.clone();
+    let database = context.database.clone();
+    let channel = context.channel.clone();
+    let job_id = context.job_id;
+    let joined = tauri::async_runtime::spawn_blocking(move || {
+        manifest_ownership
+            .commit_manifest_result(&manifest_runtime, &database, job_id, result.clone())
+            .map(|()| {
+                let _ = channel.send(SpeechJobEvent::SegmentFailed {
+                    job_id,
+                    index,
+                    total,
+                    result,
+                });
+            })
+    })
+    .await;
+    worker_join_result(
+        context.runtime,
+        ownership.backend,
+        ownership.lifecycle_epoch,
+        joined,
+    )?
 }
 
 async fn report_batch_progress(
+    runtime: &SpeechRuntime,
+    ownership: &SpeechLifecycleOwnership,
     jobs: &background::DesktopJobs,
     job_id: JobId,
     completed: usize,
     total: usize,
-) {
+) -> Result<(), SpeechFailureCode> {
     if let Ok(progress) = JobProgress::from_units(
         u64::try_from(completed).unwrap_or(u64::MAX),
         u64::try_from(total).unwrap_or(u64::MAX),
     ) {
-        let _ = background::apply(jobs, job_id, JobUpdate::ReportProgress(progress)).await;
+        let progress_runtime = runtime.clone();
+        let progress_ownership = ownership.clone();
+        let progress_jobs = Arc::clone(jobs);
+        let joined = tauri::async_runtime::spawn_blocking(move || {
+            progress_ownership.commit_job_progress(
+                &progress_runtime,
+                &progress_jobs,
+                job_id,
+                progress,
+            )
+        })
+        .await;
+        worker_join_result(
+            runtime,
+            ownership.backend,
+            ownership.lifecycle_epoch,
+            joined,
+        )??;
     }
+    Ok(())
+}
+
+async fn resolve_voice_conversion_worker(
+    runtime: &SpeechRuntime,
+    lifecycle_epoch: u64,
+) -> Result<Arc<ManagedSpeechWorker>, SpeechFailureCode> {
+    let worker_runtime = runtime.clone();
+    let joined = tauri::async_runtime::spawn_blocking(move || {
+        worker_runtime.enabled_worker_for_epoch(SpeechBackendRequest::Chatterbox, lifecycle_epoch)
+    })
+    .await;
+    let resolved = worker_join_result(
+        runtime,
+        SpeechBackendRequest::Chatterbox,
+        lifecycle_epoch,
+        joined,
+    )?;
+    resolved.map_err(|error| {
+        let code = speech_failure(&error).0;
+        if failure_marks_backend_unhealthy(code) {
+            let _ = runtime.invalidate_backend_runtime(
+                SpeechBackendRequest::Chatterbox,
+                Some(lifecycle_epoch),
+            );
+        }
+        code
+    })
+}
+
+async fn publish_voice_conversion_result(
+    runtime: &SpeechRuntime,
+    ownership: &SpeechLifecycleOwnership,
+    database: &Database,
+    artifact: SpeechArtifact,
+    job_id: JobId,
+    channel: &Channel<SpeechJobEvent>,
+) -> Result<StoredSpeechResult, SpeechFailureCode> {
+    let publication_runtime = runtime.clone();
+    let publication_ownership = ownership.clone();
+    let artifact_database = database.clone();
+    let completion_channel = channel.clone();
+    let joined = tauri::async_runtime::spawn_blocking(move || {
+        commit_completed_speech_source(
+            &publication_runtime,
+            &publication_ownership,
+            &artifact_database,
+            artifact.native_path(),
+            SpeechArtifactMetadata::from_summary(artifact.summary()),
+            job_id,
+            "voice-conversion".to_owned(),
+            "voiceConversion",
+            |result| {
+                let _ = completion_channel.send(SpeechJobEvent::SegmentCompleted {
+                    job_id,
+                    index: 1,
+                    total: 1,
+                    result: result.clone(),
+                });
+            },
+        )
+    })
+    .await;
+    worker_join_result(
+        runtime,
+        ownership.backend,
+        ownership.lifecycle_epoch,
+        joined,
+    )?
 }
 
 async fn run_voice_conversion(
@@ -2515,29 +3328,15 @@ async fn run_voice_conversion(
     database: &Database,
     input: AudioAsset,
     target: AudioAsset,
-    cancellation: CancellationToken,
+    ownership: SpeechLifecycleOwnership,
     job_id: JobId,
     channel: &Channel<SpeechJobEvent>,
 ) -> Result<Vec<StoredSpeechResult>, SpeechFailureCode> {
     let work = runtime
         .work_directory()
         .map_err(|_| SpeechFailureCode::RuntimeUnavailable)?;
-    let worker_runtime = runtime.clone();
-    let worker = match tauri::async_runtime::spawn_blocking(move || {
-        worker_runtime.worker(SpeechBackendRequest::Chatterbox)
-    })
-    .await
-    {
-        Ok(Ok(worker)) => worker,
-        Ok(Err(error)) => {
-            runtime.mark_health(SpeechBackendRequest::Chatterbox, false);
-            return Err(speech_failure(&error).0);
-        }
-        Err(_) => {
-            runtime.mark_health(SpeechBackendRequest::Chatterbox, false);
-            return Err(SpeechFailureCode::WorkerFailed);
-        }
-    };
+    ownership.ensure_current(runtime)?;
+    let worker = resolve_voice_conversion_worker(runtime, ownership.lifecycle_epoch).await?;
     let request = VoiceConversionRequest::new(input, target);
     let output = SpeechOutput::within_root(
         work.path(),
@@ -2547,66 +3346,50 @@ async fn run_voice_conversion(
     )
     .map_err(|error| speech_failure(&error).0)?;
     let progress_channel = channel.clone();
-    let operation = tauri::async_runtime::spawn_blocking(move || {
+    let progress_runtime = runtime.clone();
+    let progress_ownership = ownership.clone();
+    let worker_cancellation = ownership.cancellation.clone();
+    let joined = tauri::async_runtime::spawn_blocking(move || {
         let control = RunControl::new(SPEECH_TIMEOUT)?
-            .with_cancellation(cancellation)
+            .with_cancellation(worker_cancellation)
             .with_progress(move |progress: &SpeechProgress| {
-                let _ = progress_channel.send(SpeechJobEvent::Progress {
-                    job_id,
-                    segment_id: None,
-                    index: 1,
-                    total: 1,
-                    phase: progress.phase().into(),
-                    fraction_millionths: progress.fraction_millionths(),
-                });
+                if progress_ownership.ensure_current(&progress_runtime).is_ok() {
+                    let _ = progress_channel.send(SpeechJobEvent::Progress {
+                        job_id,
+                        segment_id: None,
+                        index: 1,
+                        total: 1,
+                        phase: progress.phase().into(),
+                        fraction_millionths: progress.fraction_millionths(),
+                    });
+                }
             });
         worker.convert_voice(&request, &output, &control)
     })
-    .await
-    .map_err(|_| SpeechFailureCode::WorkerFailed)?;
+    .await;
+    let operation = worker_join_result(
+        runtime,
+        SpeechBackendRequest::Chatterbox,
+        ownership.lifecycle_epoch,
+        joined,
+    )?;
     let artifact = match operation {
-        Ok(artifact) => {
-            runtime.mark_health(SpeechBackendRequest::Chatterbox, true);
-            artifact
-        }
+        Ok(artifact) => artifact,
         Err(error) => {
             let (code, _) = speech_failure(&error);
             if failure_marks_backend_unhealthy(code) {
-                runtime.mark_health(SpeechBackendRequest::Chatterbox, false);
+                let _ = runtime.invalidate_backend_runtime(
+                    SpeechBackendRequest::Chatterbox,
+                    Some(ownership.lifecycle_epoch),
+                );
             }
             return Err(code);
         }
     };
-    let artifact_database = database.clone();
-    let result = tauri::async_runtime::spawn_blocking(move || {
-        let published = publish_durable_artifact(
-            &artifact_database,
-            Some(job_id),
-            "voiceConversion",
-            artifact.native_path(),
-            SpeechArtifactMetadata::from_summary(artifact.summary()),
-        )?;
-        let result = StoredSpeechResult::Completed {
-            segment_id: "voice-conversion".to_owned(),
-            artifact: published.descriptor,
-        };
-        append_manifest(
-            &artifact_database,
-            job_id,
-            SpeechBackendRequest::Chatterbox,
-            result.clone(),
-        )?;
-        Ok::<_, CommandError>(result)
-    })
-    .await
-    .map_err(|_| SpeechFailureCode::ArtifactStorage)?
-    .map_err(|_| SpeechFailureCode::ArtifactStorage)?;
-    let _ = channel.send(SpeechJobEvent::SegmentCompleted {
-        job_id,
-        index: 1,
-        total: 1,
-        result: result.clone(),
-    });
+    ownership.ensure_current(runtime)?;
+    let result =
+        publish_voice_conversion_result(runtime, &ownership, database, artifact, job_id, channel)
+            .await?;
     Ok(vec![result])
 }
 
@@ -2676,6 +3459,7 @@ fn execute_alignment_job(
         channel,
     );
     let published = publish_durable_artifact(
+        runtime,
         database,
         Some(job_id),
         "alignedNarration",
@@ -3013,7 +3797,34 @@ const fn batch_terminal_failure(code: SpeechFailureCode) -> bool {
     )
 }
 
+async fn commit_speech_job_success(
+    runtime: &SpeechRuntime,
+    ownership: &SpeechLifecycleOwnership,
+    jobs: &background::DesktopJobs,
+    job_id: JobId,
+    results: Vec<StoredSpeechResult>,
+    channel: &Channel<SpeechJobEvent>,
+) -> Result<(), SpeechFailureCode> {
+    let backend = ownership.backend;
+    let lifecycle_epoch = ownership.lifecycle_epoch;
+    let success_runtime = runtime.clone();
+    let success_ownership = ownership.clone();
+    let success_jobs = Arc::clone(jobs);
+    let success_channel = channel.clone();
+    let joined = tauri::async_runtime::spawn_blocking(move || {
+        success_ownership
+            .commit_job_success(&success_runtime, &success_jobs, job_id)
+            .map(|job| {
+                let _ = success_channel.send(SpeechJobEvent::Completed { job, results });
+            })
+    })
+    .await;
+    worker_join_result(runtime, backend, lifecycle_epoch, joined)?
+}
+
 async fn finish_speech_job(
+    runtime: &SpeechRuntime,
+    ownership: &SpeechLifecycleOwnership,
     jobs: &background::DesktopJobs,
     database: &Database,
     job_id: JobId,
@@ -3030,15 +3841,26 @@ async fn finish_speech_job(
     .unwrap_or_default();
     match result {
         Ok(results) => {
-            if let Ok(job) = background::apply(jobs, job_id, JobUpdate::Succeed).await {
-                let _ = channel.send(SpeechJobEvent::Completed { job, results });
-            } else {
-                let job = background::snapshot(jobs, job_id).await;
-                let _ = channel.send(SpeechJobEvent::Failed {
-                    job,
-                    results: stored,
-                    code: SpeechFailureCode::ArtifactStorage,
-                });
+            match commit_speech_job_success(runtime, ownership, jobs, job_id, results, channel)
+                .await
+            {
+                Ok(()) => {}
+                Err(SpeechFailureCode::Cancelled) => {
+                    if let Ok(job) = background::finish_cancellation(jobs, job_id).await {
+                        let _ = channel.send(SpeechJobEvent::Cancelled {
+                            job,
+                            results: stored,
+                        });
+                    }
+                }
+                Err(code) => {
+                    let job = background::finish_failure(jobs, job_id).await;
+                    let _ = channel.send(SpeechJobEvent::Failed {
+                        job,
+                        results: stored,
+                        code,
+                    });
+                }
             }
         }
         Err(SpeechFailureCode::Cancelled) => {
@@ -3065,27 +3887,6 @@ async fn finish_speech_job(
             });
         }
     }
-}
-
-async fn initialize_manifest(
-    database: &Database,
-    job_id: JobId,
-    backend: SpeechBackendRequest,
-) -> CommandResult<()> {
-    let database = database.clone();
-    tauri::async_runtime::spawn_blocking(move || {
-        let manifest = SpeechJobManifest {
-            schema_version: MANIFEST_SCHEMA_VERSION,
-            backend,
-            results: Vec::new(),
-        };
-        let value = serde_json::to_value(manifest)
-            .map_err(|_| CommandError::internal("The speech manifest is invalid."))?;
-        database.put_setting(MANIFEST_SCOPE, &job_id.to_string(), &value)?;
-        Ok(())
-    })
-    .await
-    .map_err(|_| CommandError::internal("The speech manifest task stopped unexpectedly."))?
 }
 
 async fn initialize_alignment_manifest(database: &Database, job_id: JobId) -> CommandResult<()> {
@@ -3244,13 +4045,18 @@ fn append_manifest(
     Ok(())
 }
 
+struct ReferencePublicationContext<'a> {
+    runtime: &'a SpeechRuntime,
+    media_engine: &'a osg_media::MediaEngine,
+    work: &'a TempDir,
+    database: &'a Database,
+    media_server: &'a osg_media_server::MediaServer,
+}
+
 fn normalize_and_publish_reference(
-    media_engine: &osg_media::MediaEngine,
-    work: &TempDir,
-    database: &Database,
+    context: &ReferencePublicationContext<'_>,
     source_path: &Path,
     backend: SpeechReferenceBackend,
-    media_server: &osg_media_server::MediaServer,
     source_label: &'static str,
 ) -> CommandResult<SpeechPlayableArtifact> {
     let mut source_file = fs::File::open(source_path)
@@ -3269,7 +4075,7 @@ fn normalize_and_publish_reference(
     let mut staged_source = tempfile::Builder::new()
         .prefix("reference-input-")
         .suffix(".media")
-        .tempfile_in(work.path())
+        .tempfile_in(context.work.path())
         .map_err(|_| CommandError::internal("The reference staging area is unavailable."))?;
     let copied = io::copy(
         &mut (&mut source_file).take(MAX_REFERENCE_BYTES.saturating_add(1)),
@@ -3290,7 +4096,7 @@ fn normalize_and_publish_reference(
     let cancellation = MediaCancellationToken::default();
     let control =
         MediaRunControl::new(REFERENCE_EXTRACTION_TIMEOUT)?.with_cancellation(cancellation);
-    let metadata = media_engine.probe(&source, &control)?;
+    let metadata = context.media_engine.probe(&source, &control)?;
     let duration_micros = metadata
         .duration_us()
         .filter(|duration| {
@@ -3305,8 +4111,8 @@ fn normalize_and_publish_reference(
         ));
     }
 
-    let output_path = work.path().join("reference.wav");
-    let output = MediaOutput::within_root(&output_path, work.path())?;
+    let output_path = context.work.path().join("reference.wav");
+    let output = MediaOutput::within_root(&output_path, context.work.path())?;
     let plan = AudioExtractionPlan::new(
         source,
         output,
@@ -3316,11 +4122,14 @@ fn normalize_and_publish_reference(
         },
         MediaTimeRange::new(0, Some(duration_micros))?,
     )?;
-    media_engine.execute(&MediaOperation::AudioExtraction(plan), &control)?;
+    context
+        .media_engine
+        .execute(&MediaOperation::AudioExtraction(plan), &control)?;
     let normalized =
         AudioAsset::from_native_file(&output_path).map_err(|error| speech_command_error(&error))?;
     let published = publish_durable_artifact(
-        database,
+        context.runtime,
+        context.database,
         None,
         "speechReference",
         &output_path,
@@ -3334,7 +4143,7 @@ fn normalize_and_publish_reference(
     )?;
     drop(normalized);
     let playback = register_speech_playback(
-        media_server,
+        context.media_server,
         &published.path,
         SpeechArtifactFormatResponse::Wav,
     )?;
@@ -3366,14 +4175,25 @@ impl SpeechArtifactMetadata {
 }
 
 struct PublishedSpeechArtifact {
+    id: ArtifactId,
+    created: bool,
     descriptor: SpeechArtifactDescriptor,
     path: PathBuf,
+}
+
+struct PreparedSpeechArtifactPublication {
+    source: BufReader<fs::File>,
+    draft: ArtifactDraft,
+    size_bytes: u64,
+    key: SpeechArtifactPublicationKey,
 }
 
 impl fmt::Debug for PublishedSpeechArtifact {
     fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
         formatter
             .debug_struct("PublishedSpeechArtifact")
+            .field("id", &"<redacted>")
+            .field("created", &self.created)
             .field("descriptor", &self.descriptor)
             .field("path", &"<redacted>")
             .finish()
@@ -3381,12 +4201,27 @@ impl fmt::Debug for PublishedSpeechArtifact {
 }
 
 fn publish_durable_artifact(
+    runtime: &SpeechRuntime,
     database: &Database,
     job_id: Option<JobId>,
     kind: &str,
     source_path: &Path,
     metadata: SpeechArtifactMetadata,
 ) -> CommandResult<PublishedSpeechArtifact> {
+    let prepared = prepare_speech_artifact_publication(job_id, kind, source_path, metadata)?;
+    let gate = runtime
+        .artifact_publication_gate(prepared.key.clone())
+        .map_err(|_| artifact_storage_error())?;
+    let _publication = gate.lock().map_err(|_| artifact_storage_error())?;
+    publish_prepared_speech_artifact(database, prepared)
+}
+
+fn prepare_speech_artifact_publication(
+    job_id: Option<JobId>,
+    kind: &str,
+    source_path: &Path,
+    metadata: SpeechArtifactMetadata,
+) -> CommandResult<PreparedSpeechArtifactPublication> {
     let source_metadata =
         fs::symlink_metadata(source_path).map_err(|_| artifact_storage_error())?;
     let size_bytes = source_metadata.len();
@@ -3422,8 +4257,31 @@ fn publish_durable_artifact(
         Some(job_id) => draft.with_job(job_id),
         None => draft,
     };
-    let id = match database.register_artifact(&draft)? {
-        ArtifactRegistration::Existing(record) => record.id(),
+    Ok(PreparedSpeechArtifactPublication {
+        source,
+        draft,
+        size_bytes,
+        key: SpeechArtifactPublicationKey {
+            kind: kind.to_owned(),
+            content_hash: content_hash.as_bytes().to_vec(),
+        },
+    })
+}
+
+fn publish_prepared_speech_artifact(
+    database: &Database,
+    mut prepared: PreparedSpeechArtifactPublication,
+) -> CommandResult<PublishedSpeechArtifact> {
+    let (id, created) = match database.register_artifact(&prepared.draft)? {
+        ArtifactRegistration::Existing(record) => (record.id(), false),
+        ArtifactRegistration::Pending(record) => {
+            return Err(
+                osg_infrastructure::storage::DatabaseError::ArtifactPublicationInProgress(
+                    record.id(),
+                )
+                .into(),
+            );
+        }
         ArtifactRegistration::Staging(staging) => {
             let id = staging.record().id();
             let publication = (|| -> io::Result<()> {
@@ -3431,8 +4289,8 @@ fn publish_durable_artifact(
                     .write(true)
                     .truncate(true)
                     .open(staging.path())?;
-                let copied = io::copy(&mut source, &mut target)?;
-                if copied != size_bytes {
+                let copied = io::copy(&mut prepared.source, &mut target)?;
+                if copied != prepared.size_bytes {
                     return Err(io::Error::other("speech artifact size changed"));
                 }
                 target.flush()?;
@@ -3442,7 +4300,7 @@ fn publish_durable_artifact(
                 fail_artifact_publication(database, id);
                 return Err(artifact_storage_error());
             }
-            id
+            (id, true)
         }
     };
     let resolved = database
@@ -3450,9 +4308,113 @@ fn publish_durable_artifact(
         .ok_or_else(artifact_storage_error)?;
     let descriptor = descriptor_from_record(resolved.record())?;
     Ok(PublishedSpeechArtifact {
+        id,
+        created,
         descriptor,
         path: resolved.path().to_owned(),
     })
+}
+
+fn rollback_published_speech_artifact(
+    database: &Database,
+    published: &PublishedSpeechArtifact,
+) -> CommandResult<()> {
+    if !published.created {
+        return Ok(());
+    }
+    database
+        .remove_artifact(published.id)?
+        .filter(|record| record.id() == published.id)
+        .map(|_| ())
+        .ok_or_else(artifact_storage_error)
+}
+
+fn rollback_unowned_publication<T>(
+    database: &Database,
+    published: &PublishedSpeechArtifact,
+    code: SpeechFailureCode,
+) -> Result<T, SpeechFailureCode> {
+    rollback_published_speech_artifact(database, published)
+        .map_err(|_| SpeechFailureCode::ArtifactStorage)?;
+    Err(code)
+}
+
+#[allow(clippy::too_many_arguments)]
+fn commit_completed_speech_source<F>(
+    runtime: &SpeechRuntime,
+    ownership: &SpeechLifecycleOwnership,
+    database: &Database,
+    source_path: &Path,
+    metadata: SpeechArtifactMetadata,
+    job_id: JobId,
+    segment_id: String,
+    kind: &'static str,
+    publish_event: F,
+) -> Result<StoredSpeechResult, SpeechFailureCode>
+where
+    F: FnOnce(&StoredSpeechResult),
+{
+    commit_completed_speech_source_with_hook(
+        runtime,
+        ownership,
+        database,
+        source_path,
+        metadata,
+        job_id,
+        segment_id,
+        kind,
+        |_| {},
+        publish_event,
+    )
+}
+
+#[allow(clippy::too_many_arguments)]
+fn commit_completed_speech_source_with_hook<F, E>(
+    runtime: &SpeechRuntime,
+    ownership: &SpeechLifecycleOwnership,
+    database: &Database,
+    source_path: &Path,
+    metadata: SpeechArtifactMetadata,
+    job_id: JobId,
+    segment_id: String,
+    kind: &'static str,
+    after_publish: F,
+    publish_event: E,
+) -> Result<StoredSpeechResult, SpeechFailureCode>
+where
+    F: FnOnce(&PublishedSpeechArtifact),
+    E: FnOnce(&StoredSpeechResult),
+{
+    let prepared = prepare_speech_artifact_publication(Some(job_id), kind, source_path, metadata)
+        .map_err(|_| SpeechFailureCode::ArtifactStorage)?;
+    let publication_gate = runtime
+        .artifact_publication_gate(prepared.key.clone())
+        .map_err(|_| SpeechFailureCode::WorkerFailed)?;
+    let publication = publication_gate
+        .lock()
+        .map_err(|_| SpeechFailureCode::WorkerFailed)?;
+    ownership.ensure_current(runtime)?;
+    let published = publish_prepared_speech_artifact(database, prepared)
+        .map_err(|_| SpeechFailureCode::ArtifactStorage)?;
+    after_publish(&published);
+    if let Err(code) = ownership.ensure_current(runtime) {
+        return rollback_unowned_publication(database, &published, code);
+    }
+    let result = StoredSpeechResult::Completed {
+        segment_id,
+        artifact: published.descriptor.clone(),
+    };
+    match ownership.commit_manifest_result(runtime, database, job_id, result.clone()) {
+        Ok(()) => {
+            drop(publication);
+            publish_event(&result);
+            Ok(result)
+        }
+        Err(SpeechFailureCode::ArtifactStorage) => {
+            rollback_unowned_publication(database, &published, SpeechFailureCode::ArtifactStorage)
+        }
+        Err(code) => rollback_unowned_publication(database, &published, code),
+    }
 }
 
 fn fail_artifact_publication(database: &Database, id: ArtifactId) {
@@ -3668,6 +4630,10 @@ fn speech_failure(error: &SpeechError) -> (SpeechFailureCode, bool) {
 
 fn speech_command_error(error: &SpeechError) -> CommandError {
     let (code, _) = speech_failure(error);
+    speech_failure_code_command_error(code)
+}
+
+fn speech_failure_code_command_error(code: SpeechFailureCode) -> CommandError {
     let message = match code {
         SpeechFailureCode::Cancelled => "The speech operation was cancelled.",
         SpeechFailureCode::InvalidRequest => "The speech request is invalid.",
@@ -3697,6 +4663,853 @@ fn speech_command_error(error: &SpeechError) -> CommandError {
 mod tests {
     use super::*;
 
+    fn standalone_runtime(directory: &TempDir) -> SpeechRuntime {
+        SpeechRuntime::new(
+            directory.path().join("standalone-install"),
+            directory.path().join("standalone-work"),
+            None,
+        )
+        .unwrap()
+    }
+
+    struct SpeechTestFixture {
+        directory: TempDir,
+        runtime: SpeechRuntime,
+        database: Database,
+        jobs: background::DesktopJobs,
+    }
+
+    impl SpeechTestFixture {
+        fn new() -> Self {
+            let directory = tempfile::tempdir().unwrap();
+            let runtime = SpeechRuntime::new(
+                directory.path().join("install"),
+                directory.path().join("work"),
+                None,
+            )
+            .unwrap();
+            let database = Database::open(directory.path().join("osg.sqlite3")).unwrap();
+            let jobs = Arc::new(
+                osg_application::JobRegistry::new(Arc::new(database.clone()), []).unwrap(),
+            );
+            Self {
+                directory,
+                runtime,
+                database,
+                jobs,
+            }
+        }
+
+        fn enable(&self, backend: SpeechBackendRequest) -> SpeechLifecycleOwnership {
+            let epoch = self.runtime.lifecycle_epoch(backend).unwrap();
+            assert!(
+                self.runtime
+                    .commit_voice_inventory_for_epoch(backend, epoch, Vec::new())
+            );
+            SpeechLifecycleOwnership::capture(&self.runtime, backend, epoch).unwrap()
+        }
+
+        fn registered_running_job(&self) -> JobId {
+            let queued = self.jobs.register(JobKind::SynthesizeNarration).unwrap();
+            let job_id = queued.snapshot().id();
+            self.jobs.apply(job_id, JobUpdate::Start).unwrap();
+            job_id
+        }
+
+        fn running_job(&self, backend: SpeechBackendRequest) -> JobId {
+            let job_id = self.registered_running_job();
+            self.database
+                .put_setting(
+                    MANIFEST_SCOPE,
+                    &job_id.to_string(),
+                    &serde_json::to_value(SpeechJobManifest {
+                        schema_version: MANIFEST_SCHEMA_VERSION,
+                        backend,
+                        results: Vec::new(),
+                    })
+                    .unwrap(),
+                )
+                .unwrap();
+            job_id
+        }
+    }
+
+    fn test_artifact_metadata(source: &'static str) -> SpeechArtifactMetadata {
+        SpeechArtifactMetadata {
+            format: SpeechArtifactFormatResponse::Wav,
+            duration_micros: Some(1_000_000),
+            sample_rate_hz: Some(24_000),
+            channels: Some(1),
+            source,
+        }
+    }
+
+    struct BlockedSpeechPublication {
+        artifact: std::sync::mpsc::Receiver<ArtifactId>,
+        release: std::sync::mpsc::Sender<()>,
+        event: std::sync::mpsc::Receiver<()>,
+        handle: std::thread::JoinHandle<Result<StoredSpeechResult, SpeechFailureCode>>,
+    }
+
+    fn spawn_blocked_speech_publication(
+        runtime: SpeechRuntime,
+        ownership: SpeechLifecycleOwnership,
+        database: Database,
+        source: PathBuf,
+        job_id: JobId,
+    ) -> BlockedSpeechPublication {
+        let (artifact_tx, artifact) = std::sync::mpsc::channel();
+        let (release, release_rx) = std::sync::mpsc::channel();
+        let (event_tx, event) = std::sync::mpsc::channel();
+        let handle = std::thread::spawn(move || {
+            commit_completed_speech_source_with_hook(
+                &runtime,
+                &ownership,
+                &database,
+                &source,
+                test_artifact_metadata("crossBackendStopTest"),
+                job_id,
+                "stopped".to_owned(),
+                "narrationOutput",
+                |published| {
+                    artifact_tx.send(published.id).unwrap();
+                    release_rx.recv().unwrap();
+                },
+                |_| event_tx.send(()).unwrap(),
+            )
+        });
+        BlockedSpeechPublication {
+            artifact,
+            release,
+            event,
+            handle,
+        }
+    }
+
+    struct LiveSpeechPublication {
+        attempted: std::sync::mpsc::Receiver<()>,
+        event: std::sync::mpsc::Receiver<()>,
+        handle: std::thread::JoinHandle<Result<StoredSpeechResult, SpeechFailureCode>>,
+    }
+
+    fn spawn_live_speech_publication(
+        runtime: SpeechRuntime,
+        ownership: SpeechLifecycleOwnership,
+        database: Database,
+        source: PathBuf,
+        job_id: JobId,
+    ) -> LiveSpeechPublication {
+        let (attempted_tx, attempted) = std::sync::mpsc::channel();
+        let (event_tx, event) = std::sync::mpsc::channel();
+        let handle = std::thread::spawn(move || {
+            attempted_tx.send(()).unwrap();
+            commit_completed_speech_source(
+                &runtime,
+                &ownership,
+                &database,
+                &source,
+                test_artifact_metadata("crossBackendStopTest"),
+                job_id,
+                "live".to_owned(),
+                "narrationOutput",
+                |_| event_tx.send(()).unwrap(),
+            )
+        });
+        LiveSpeechPublication {
+            attempted,
+            event,
+            handle,
+        }
+    }
+
+    async fn assert_stop_during_registration_is_rejected(
+        fixture: &SpeechTestFixture,
+        backend: SpeechBackendRequest,
+    ) {
+        let ownership = fixture.enable(backend);
+        let stop_runtime = fixture.runtime.clone();
+        let result = register_owned_speech_job_with_hook(
+            &fixture.runtime,
+            &ownership,
+            &fixture.jobs,
+            move || stop_runtime.shutdown(backend).unwrap(),
+        )
+        .await;
+
+        assert_eq!(result.unwrap_err().code(), "internal");
+        let jobs = fixture.jobs.list().unwrap();
+        assert_eq!(jobs.len(), 1);
+        let snapshot = jobs[0].snapshot();
+        assert_eq!(snapshot.state(), JobState::Cancelled);
+        assert!(
+            fixture
+                .database
+                .get_setting(MANIFEST_SCOPE, &snapshot.id().to_string())
+                .unwrap()
+                .is_none()
+        );
+    }
+
+    async fn assert_manifest_precommit_stall_is_backend_isolated(
+        fixture: &SpeechTestFixture,
+        backend: SpeechBackendRequest,
+    ) {
+        let ownership = fixture.enable(backend);
+        let other_backend = SpeechBackendRequest::EdgeTts;
+        let other_ownership = fixture.enable(other_backend);
+        let job_id = fixture.registered_running_job();
+        let (entered_tx, entered_rx) = std::sync::mpsc::channel();
+        let (release_tx, release_rx) = std::sync::mpsc::channel();
+        let init_runtime = fixture.runtime.clone();
+        let reentry_runtime = fixture.runtime.clone();
+        let init_ownership = ownership.clone();
+        let init_database = fixture.database.clone();
+        let init_jobs = Arc::clone(&fixture.jobs);
+        let initializer = tokio::spawn(async move {
+            initialize_registered_speech_job_with_hook(
+                &init_runtime,
+                &init_ownership,
+                &init_database,
+                &init_jobs,
+                job_id,
+                move || {
+                    let _ = reentry_runtime.status(other_backend);
+                    reentry_runtime.shutdown(other_backend).unwrap();
+                    let restarted_epoch = reentry_runtime.lifecycle_epoch(other_backend).unwrap();
+                    assert!(reentry_runtime.commit_voice_inventory_for_epoch(
+                        other_backend,
+                        restarted_epoch,
+                        Vec::new(),
+                    ));
+                    entered_tx.send(()).unwrap();
+                    release_rx.recv().unwrap();
+                },
+            )
+            .await
+        });
+        tokio::task::yield_now().await;
+        entered_rx.recv_timeout(Duration::from_secs(1)).unwrap();
+        assert!(other_ownership.ensure_current(&fixture.runtime).is_err());
+        let restarted_other_epoch = fixture.runtime.lifecycle_epoch(other_backend).unwrap();
+        assert!(
+            SpeechLifecycleOwnership::capture(
+                &fixture.runtime,
+                other_backend,
+                restarted_other_epoch,
+            )
+            .is_ok()
+        );
+        fixture.runtime.shutdown(backend).unwrap();
+        release_tx.send(()).unwrap();
+        assert_eq!(initializer.await.unwrap().unwrap_err().code(), "internal");
+        assert!(
+            fixture
+                .database
+                .get_setting(MANIFEST_SCOPE, &job_id.to_string())
+                .unwrap()
+                .is_none()
+        );
+        assert_eq!(
+            fixture.jobs.get(job_id).unwrap().snapshot().state(),
+            JobState::Cancelled
+        );
+    }
+
+    fn run_async_speech_test(future: impl std::future::Future<Output = ()>) {
+        tokio::runtime::Builder::new_current_thread()
+            .enable_all()
+            .build()
+            .unwrap()
+            .block_on(future);
+    }
+
+    fn insert_cached_test_worker(
+        runtime: &SpeechRuntime,
+        backend: SpeechBackendRequest,
+        marker: &Path,
+    ) {
+        let executable = std::env::current_exe().unwrap();
+        let worker = Arc::new(ManagedSpeechWorker {
+            worker: LazySpeechWorker::new(
+                WorkerProgram::native(&executable).unwrap(),
+                backend.native(),
+            ),
+            managed_runtime: None,
+        });
+        runtime.0.workers.lock().unwrap().insert(
+            backend,
+            CachedWorker {
+                paths: WorkerPaths {
+                    python: executable,
+                    bootstrap: marker.to_owned(),
+                    model: None,
+                },
+                worker,
+            },
+        );
+    }
+
+    #[test]
+    fn runtime_stop_invalidates_in_flight_probe_ownership() {
+        let directory = tempfile::tempdir().unwrap();
+        let runtime = SpeechRuntime::new(
+            directory.path().join("install"),
+            directory.path().join("work"),
+            None,
+        )
+        .unwrap();
+        let backend = SpeechBackendRequest::EdgeTts;
+        let before_stop = runtime.lifecycle_epoch(backend).unwrap();
+        let voices = vec![SpeechVoiceResponse {
+            id: "en-US-Test".to_owned(),
+            display_name: "Test voice".to_owned(),
+            language: "en-US".to_owned(),
+            gender: SpeechVoiceGenderResponse::Neutral,
+        }];
+        assert!(runtime.commit_voice_inventory_for_epoch(backend, before_stop, voices.clone()));
+        let lifecycle_cancellation = runtime
+            .require_enabled_lifecycle(backend, before_stop)
+            .unwrap();
+
+        runtime.shutdown(backend).unwrap();
+
+        let after_stop = runtime.lifecycle_epoch(backend).unwrap();
+        assert_ne!(before_stop, after_stop);
+        assert!(lifecycle_cancellation.is_cancelled());
+        assert!(!runtime.commit_voice_inventory_for_epoch(backend, before_stop, voices));
+        let lifecycle = runtime.lifecycle(backend).unwrap();
+        assert!(!lifecycle.enabled);
+        assert!(lifecycle.voices.is_none());
+        assert!(matches!(
+            runtime.require_enabled_lifecycle(backend, before_stop),
+            Err(SpeechError::Cancelled)
+        ));
+        assert!(
+            runtime
+                .enabled_worker_for_epoch(backend, before_stop)
+                .is_err()
+        );
+        assert!(runtime.0.workers.lock().unwrap().is_empty());
+    }
+
+    #[test]
+    fn replacement_cancels_epoch_before_waiting_for_busy_worker_shutdown() {
+        let directory = tempfile::tempdir().unwrap();
+        let runtime = SpeechRuntime::new(
+            directory.path().join("install"),
+            directory.path().join("work"),
+            None,
+        )
+        .unwrap();
+        let backend = SpeechBackendRequest::EdgeTts;
+        let epoch = runtime.lifecycle_epoch(backend).unwrap();
+        assert!(runtime.commit_voice_inventory_for_epoch(backend, epoch, Vec::new()));
+        let old_cancellation = runtime.require_enabled_lifecycle(backend, epoch).unwrap();
+        let (shutdown_started_tx, shutdown_started_rx) = std::sync::mpsc::channel();
+        let (release_shutdown_tx, release_shutdown_rx) = std::sync::mpsc::channel();
+        let replacement_runtime = runtime.clone();
+        let replacement = std::thread::spawn(move || {
+            replacement_runtime.invalidate_replacement_before_shutdown(backend, epoch, || {
+                shutdown_started_tx.send(()).unwrap();
+                release_shutdown_rx.recv().unwrap();
+            })
+        });
+
+        shutdown_started_rx
+            .recv_timeout(Duration::from_secs(1))
+            .unwrap();
+        assert!(old_cancellation.is_cancelled());
+        let invalidated = runtime.lifecycle(backend).unwrap();
+        assert!(invalidated.epoch > epoch);
+        assert!(!invalidated.enabled);
+        assert!(invalidated.voices.is_none());
+        release_shutdown_tx.send(()).unwrap();
+        assert_eq!(replacement.join().unwrap().unwrap(), invalidated.epoch);
+    }
+
+    #[test]
+    fn delayed_conversion_owner_cannot_cross_stop_and_restart() {
+        let directory = tempfile::tempdir().unwrap();
+        let runtime = SpeechRuntime::new(
+            directory.path().join("install"),
+            directory.path().join("work"),
+            None,
+        )
+        .unwrap();
+        let backend = SpeechBackendRequest::Chatterbox;
+        let original_epoch = runtime.lifecycle_epoch(backend).unwrap();
+        assert!(runtime.commit_voice_inventory_for_epoch(backend, original_epoch, Vec::new()));
+        let captured = runtime
+            .require_enabled_lifecycle(backend, original_epoch)
+            .unwrap();
+
+        runtime.shutdown(backend).unwrap();
+        let restarted_epoch = runtime.lifecycle_epoch(backend).unwrap();
+        assert!(runtime.commit_voice_inventory_for_epoch(backend, restarted_epoch, Vec::new()));
+
+        assert!(captured.is_cancelled());
+        assert_ne!(original_epoch, restarted_epoch);
+        assert!(
+            runtime
+                .require_enabled_lifecycle(backend, original_epoch)
+                .is_err()
+        );
+        assert!(
+            runtime
+                .require_enabled_lifecycle(backend, restarted_epoch)
+                .is_ok()
+        );
+    }
+
+    #[test]
+    fn speech_and_conversion_stop_during_registration_never_return_running() {
+        for backend in [SpeechBackendRequest::Gtts, SpeechBackendRequest::Chatterbox] {
+            let fixture = SpeechTestFixture::new();
+            run_async_speech_test(assert_stop_during_registration_is_rejected(
+                &fixture, backend,
+            ));
+        }
+    }
+
+    #[test]
+    fn manifest_precommit_stalls_allow_cross_backend_reentry_and_stop() {
+        for backend in [SpeechBackendRequest::Gtts, SpeechBackendRequest::Chatterbox] {
+            let fixture = SpeechTestFixture::new();
+            run_async_speech_test(assert_manifest_precommit_stall_is_backend_isolated(
+                &fixture, backend,
+            ));
+        }
+    }
+
+    #[test]
+    fn same_backend_stop_waits_for_the_exact_commit_gate() {
+        let fixture = SpeechTestFixture::new();
+        let backend = SpeechBackendRequest::Gtts;
+        let ownership = fixture.enable(backend);
+        let slot = fixture.runtime.lifecycle_slot(backend).unwrap();
+        let commit = slot.commit_gate.lock().unwrap();
+        let (started_tx, started_rx) = std::sync::mpsc::channel();
+        let (finished_tx, finished_rx) = std::sync::mpsc::channel();
+        let stop_runtime = fixture.runtime.clone();
+        let stopper = std::thread::spawn(move || {
+            started_tx.send(()).unwrap();
+            stop_runtime.shutdown(backend).unwrap();
+            finished_tx.send(()).unwrap();
+        });
+
+        started_rx.recv_timeout(Duration::from_secs(1)).unwrap();
+        assert!(finished_rx.recv_timeout(Duration::from_millis(50)).is_err());
+        assert!(ownership.ensure_current(&fixture.runtime).is_ok());
+        drop(commit);
+        finished_rx.recv_timeout(Duration::from_secs(1)).unwrap();
+        stopper.join().unwrap();
+        assert!(ownership.ensure_current(&fixture.runtime).is_err());
+    }
+
+    #[test]
+    fn stop_after_durable_copy_rolls_back_artifact_and_manifest_before_restart_publication() {
+        let fixture = SpeechTestFixture::new();
+        let runtime = &fixture.runtime;
+        let database = &fixture.database;
+        let jobs = &fixture.jobs;
+        let backend = SpeechBackendRequest::Gtts;
+        let ownership = fixture.enable(backend);
+        let job_id = fixture.running_job(backend);
+        let source = fixture.directory.path().join("completed.wav");
+        fs::write(&source, b"completed worker output").unwrap();
+        let restarted_epoch = std::cell::Cell::new(None);
+        let event_published = std::cell::Cell::new(false);
+
+        let result = commit_completed_speech_source_with_hook(
+            runtime,
+            &ownership,
+            database,
+            &source,
+            test_artifact_metadata("hostileStopTest"),
+            job_id,
+            "one".to_owned(),
+            "narrationOutput",
+            |published| {
+                assert!(published.created);
+                assert!(database.resolve_artifact(published.id).unwrap().is_some());
+                runtime.shutdown(backend).unwrap();
+                let epoch = runtime.lifecycle_epoch(backend).unwrap();
+                assert!(runtime.commit_voice_inventory_for_epoch(backend, epoch, Vec::new()));
+                assert!(database.resolve_artifact(published.id).unwrap().is_some());
+                restarted_epoch.set(Some(epoch));
+            },
+            |_| event_published.set(true),
+        );
+
+        assert!(
+            restarted_epoch.get().is_some(),
+            "the publication hook did not run"
+        );
+        match result {
+            Err(code) => assert_eq!(code, SpeechFailureCode::Cancelled),
+            Ok(_) => panic!("the stale publication unexpectedly committed"),
+        }
+        assert!(!event_published.get());
+        assert!(read_manifest(database, job_id).unwrap().results.is_empty());
+        let fresh = publish_durable_artifact(
+            runtime,
+            database,
+            Some(job_id),
+            "narrationOutput",
+            &source,
+            test_artifact_metadata("hostileStopTest"),
+        )
+        .unwrap();
+        assert!(fresh.created);
+        rollback_published_speech_artifact(database, &fresh).unwrap();
+        let epoch = restarted_epoch.get().unwrap();
+        let restarted = runtime.require_enabled_lifecycle(backend, epoch).unwrap();
+        assert!(!restarted.is_cancelled());
+        assert!(matches!(
+            ownership.commit_job_success(runtime, jobs, job_id),
+            Err(SpeechFailureCode::Cancelled)
+        ));
+        assert_eq!(
+            jobs.get(job_id).unwrap().snapshot().state(),
+            JobState::Running
+        );
+    }
+
+    #[test]
+    fn stopped_backend_rollback_cannot_delete_another_backends_identical_publication() {
+        let fixture = SpeechTestFixture::new();
+        let runtime = &fixture.runtime;
+        let database = &fixture.database;
+        let stopped_backend = SpeechBackendRequest::Gtts;
+        let live_backend = SpeechBackendRequest::EdgeTts;
+        let stopped_ownership = fixture.enable(stopped_backend);
+        let live_ownership = fixture.enable(live_backend);
+        let live_epoch = live_ownership.lifecycle_epoch;
+        let stopped_job = fixture.running_job(stopped_backend);
+        let live_job = fixture.running_job(live_backend);
+        let source = fixture.directory.path().join("identical.wav");
+        fs::write(&source, b"identical cross-backend speech output").unwrap();
+        let blocked = spawn_blocked_speech_publication(
+            runtime.clone(),
+            stopped_ownership,
+            database.clone(),
+            source.clone(),
+            stopped_job,
+        );
+        let stopped_artifact = blocked
+            .artifact
+            .recv_timeout(Duration::from_secs(1))
+            .unwrap();
+        runtime.shutdown(stopped_backend).unwrap();
+
+        let live = spawn_live_speech_publication(
+            runtime.clone(),
+            live_ownership,
+            database.clone(),
+            source,
+            live_job,
+        );
+        live.attempted.recv_timeout(Duration::from_secs(1)).unwrap();
+        assert!(
+            live.event.recv_timeout(Duration::from_millis(50)).is_err(),
+            "the second backend crossed the first publication transaction"
+        );
+
+        blocked.release.send(()).unwrap();
+        assert_eq!(
+            blocked.handle.join().unwrap(),
+            Err(SpeechFailureCode::Cancelled)
+        );
+        assert!(blocked.event.try_recv().is_err());
+        assert!(
+            read_manifest(database, stopped_job)
+                .unwrap()
+                .results
+                .is_empty()
+        );
+        let live_result = live.handle.join().unwrap().unwrap();
+        live.event.recv_timeout(Duration::from_secs(1)).unwrap();
+        let StoredSpeechResult::Completed { artifact, .. } = &live_result else {
+            panic!("the live backend did not publish its artifact");
+        };
+        assert_ne!(artifact.artifact_id, stopped_artifact.to_string());
+        let live_artifact = parse_artifact_id(&artifact.artifact_id).unwrap();
+        assert!(database.resolve_artifact(live_artifact).unwrap().is_some());
+        assert_eq!(
+            read_manifest(database, live_job).unwrap().results,
+            vec![live_result]
+        );
+        assert!(
+            runtime
+                .require_enabled_lifecycle(live_backend, live_epoch)
+                .is_ok()
+        );
+    }
+
+    #[test]
+    fn different_content_publications_do_not_share_a_cross_backend_gate() {
+        let fixture = SpeechTestFixture::new();
+        let stopped_backend = SpeechBackendRequest::Gtts;
+        let live_backend = SpeechBackendRequest::EdgeTts;
+        let stopped_ownership = fixture.enable(stopped_backend);
+        let live_ownership = fixture.enable(live_backend);
+        let stopped_job = fixture.running_job(stopped_backend);
+        let live_job = fixture.running_job(live_backend);
+        let blocked_source = fixture.directory.path().join("blocked.wav");
+        let live_source = fixture.directory.path().join("live.wav");
+        fs::write(&blocked_source, b"blocked speech publication").unwrap();
+        fs::write(&live_source, b"independent speech publication").unwrap();
+        let blocked = spawn_blocked_speech_publication(
+            fixture.runtime.clone(),
+            stopped_ownership,
+            fixture.database.clone(),
+            blocked_source,
+            stopped_job,
+        );
+        blocked
+            .artifact
+            .recv_timeout(Duration::from_secs(1))
+            .unwrap();
+
+        let live = spawn_live_speech_publication(
+            fixture.runtime.clone(),
+            live_ownership,
+            fixture.database.clone(),
+            live_source,
+            live_job,
+        );
+        live.attempted.recv_timeout(Duration::from_secs(1)).unwrap();
+        live.event.recv_timeout(Duration::from_secs(1)).unwrap();
+        let live_result = live.handle.join().unwrap().unwrap();
+        assert_eq!(
+            read_manifest(&fixture.database, live_job).unwrap().results,
+            vec![live_result]
+        );
+
+        fixture.runtime.shutdown(stopped_backend).unwrap();
+        blocked.release.send(()).unwrap();
+        assert_eq!(
+            blocked.handle.join().unwrap(),
+            Err(SpeechFailureCode::Cancelled)
+        );
+        assert!(blocked.event.try_recv().is_err());
+        assert!(
+            read_manifest(&fixture.database, stopped_job)
+                .unwrap()
+                .results
+                .is_empty()
+        );
+    }
+
+    #[test]
+    fn lifecycle_cancellation_is_isolated_by_backend() {
+        let directory = tempfile::tempdir().unwrap();
+        let runtime = SpeechRuntime::new(
+            directory.path().join("install"),
+            directory.path().join("work"),
+            None,
+        )
+        .unwrap();
+        let chatterbox = SpeechBackendRequest::Chatterbox;
+        let edge = SpeechBackendRequest::EdgeTts;
+        let chatterbox_epoch = runtime.lifecycle_epoch(chatterbox).unwrap();
+        let edge_epoch = runtime.lifecycle_epoch(edge).unwrap();
+        assert!(runtime.commit_voice_inventory_for_epoch(chatterbox, chatterbox_epoch, Vec::new()));
+        assert!(runtime.commit_voice_inventory_for_epoch(edge, edge_epoch, Vec::new()));
+        let chatterbox_owner = runtime
+            .require_enabled_lifecycle(chatterbox, chatterbox_epoch)
+            .unwrap();
+        let edge_owner = runtime.require_enabled_lifecycle(edge, edge_epoch).unwrap();
+
+        runtime.shutdown(edge).unwrap();
+
+        assert!(edge_owner.is_cancelled());
+        assert!(!chatterbox_owner.is_cancelled());
+        assert!(
+            runtime
+                .require_enabled_lifecycle(chatterbox, chatterbox_epoch)
+                .is_ok()
+        );
+    }
+
+    #[test]
+    fn worker_join_failure_invalidates_batch_and_conversion_owners() {
+        for backend in [SpeechBackendRequest::Gtts, SpeechBackendRequest::Chatterbox] {
+            let directory = tempfile::tempdir().unwrap();
+            let runtime = SpeechRuntime::new(
+                directory.path().join("install"),
+                directory.path().join("work"),
+                None,
+            )
+            .unwrap();
+            let epoch = runtime.lifecycle_epoch(backend).unwrap();
+            assert!(runtime.commit_voice_inventory_for_epoch(backend, epoch, Vec::new()));
+            let owner = runtime.require_enabled_lifecycle(backend, epoch).unwrap();
+
+            let result = worker_join_result::<(), _>(&runtime, backend, epoch, Err("join failed"));
+
+            assert!(matches!(result, Err(SpeechFailureCode::WorkerFailed)));
+            assert!(owner.is_cancelled());
+            let lifecycle = runtime.lifecycle(backend).unwrap();
+            assert!(lifecycle.epoch > epoch);
+            assert!(!lifecycle.enabled);
+            assert!(lifecycle.voices.is_none());
+        }
+    }
+
+    #[test]
+    fn probe_join_failure_invalidates_the_actual_epoch_but_not_a_restarted_epoch() {
+        let directory = tempfile::tempdir().unwrap();
+        let runtime = SpeechRuntime::new(
+            directory.path().join("install"),
+            directory.path().join("work"),
+            None,
+        )
+        .unwrap();
+        let backend = SpeechBackendRequest::EdgeTts;
+        let other_backend = SpeechBackendRequest::Gtts;
+        let requested_epoch = runtime.lifecycle_epoch(backend).unwrap();
+        let actual_epoch = runtime
+            .invalidate_lifecycle(backend, Some(requested_epoch))
+            .unwrap();
+        assert!(runtime.commit_voice_inventory_for_epoch(backend, actual_epoch, Vec::new()));
+        let actual_owner = runtime
+            .require_enabled_lifecycle(backend, actual_epoch)
+            .unwrap();
+        let other_epoch = runtime.lifecycle_epoch(other_backend).unwrap();
+        assert!(runtime.commit_voice_inventory_for_epoch(other_backend, other_epoch, Vec::new()));
+        let other_owner = runtime
+            .require_enabled_lifecycle(other_backend, other_epoch)
+            .unwrap();
+        insert_cached_test_worker(&runtime, backend, &directory.path().join("actual.py"));
+        let ownership = ProbeLifecycleOwnership::new(requested_epoch);
+        ownership.update(actual_epoch);
+
+        let result = probe_join_result::<(), _>(&runtime, backend, &ownership, Err("join"));
+
+        assert!(result.is_err());
+        assert!(actual_owner.is_cancelled());
+        assert!(!other_owner.is_cancelled());
+        assert!(!runtime.0.workers.lock().unwrap().contains_key(&backend));
+        let invalidated_epoch = runtime.lifecycle_epoch(backend).unwrap();
+        assert!(invalidated_epoch > actual_epoch);
+
+        assert!(runtime.commit_voice_inventory_for_epoch(backend, invalidated_epoch, Vec::new()));
+        let restarted_owner = runtime
+            .require_enabled_lifecycle(backend, invalidated_epoch)
+            .unwrap();
+        insert_cached_test_worker(&runtime, backend, &directory.path().join("restarted.py"));
+        ownership.update(actual_epoch);
+
+        let stale_result =
+            probe_join_result::<(), _>(&runtime, backend, &ownership, Err("stale join"));
+
+        assert!(stale_result.is_err());
+        assert!(!restarted_owner.is_cancelled());
+        assert_eq!(runtime.lifecycle_epoch(backend).unwrap(), invalidated_epoch);
+        assert!(runtime.0.workers.lock().unwrap().contains_key(&backend));
+    }
+
+    #[test]
+    fn voice_inventory_never_creates_or_starts_a_stopped_worker() {
+        let directory = tempfile::tempdir().unwrap();
+        let runtime = SpeechRuntime::new(
+            directory.path().join("install"),
+            directory.path().join("work"),
+            None,
+        )
+        .unwrap();
+        let backend = SpeechBackendRequest::Gtts;
+        let epoch = runtime.lifecycle_epoch(backend).unwrap();
+        assert!(runtime.commit_voice_inventory_for_epoch(
+            backend,
+            epoch,
+            vec![SpeechVoiceResponse {
+                id: "en".to_owned(),
+                display_name: "English".to_owned(),
+                language: "en".to_owned(),
+                gender: SpeechVoiceGenderResponse::Unknown,
+            }],
+        ));
+        assert!(runtime.0.workers.lock().unwrap().is_empty());
+
+        assert!(runtime.voice_inventory(backend, epoch).is_err());
+        assert!(runtime.0.workers.lock().unwrap().is_empty());
+
+        runtime.shutdown(backend).unwrap();
+        assert!(runtime.voice_inventory(backend, epoch).is_err());
+        assert!(runtime.0.workers.lock().unwrap().is_empty());
+    }
+
+    #[test]
+    fn unhealthy_worker_invalidation_advances_epoch_and_drops_inventory() {
+        let directory = tempfile::tempdir().unwrap();
+        let runtime = SpeechRuntime::new(
+            directory.path().join("install"),
+            directory.path().join("work"),
+            None,
+        )
+        .unwrap();
+        let backend = SpeechBackendRequest::Chatterbox;
+        let epoch = runtime.lifecycle_epoch(backend).unwrap();
+        assert!(runtime.commit_voice_inventory_for_epoch(backend, epoch, Vec::new()));
+        let lifecycle_cancellation = runtime.require_enabled_lifecycle(backend, epoch).unwrap();
+
+        let next_epoch = runtime
+            .invalidate_backend_runtime(backend, Some(epoch))
+            .unwrap();
+
+        assert_ne!(epoch, next_epoch);
+        assert!(lifecycle_cancellation.is_cancelled());
+        let lifecycle = runtime.lifecycle(backend).unwrap();
+        assert_eq!(lifecycle.epoch, next_epoch);
+        assert!(!lifecycle.enabled);
+        assert!(lifecycle.voices.is_none());
+    }
+
+    #[test]
+    fn cached_worker_replacement_invalidates_the_owned_epoch() {
+        let directory = tempfile::tempdir().unwrap();
+        let runtime = SpeechRuntime::new(
+            directory.path().join("install"),
+            directory.path().join("work"),
+            None,
+        )
+        .unwrap();
+        let backend = SpeechBackendRequest::F5Tts;
+        let epoch = runtime.lifecycle_epoch(backend).unwrap();
+        assert!(runtime.commit_voice_inventory_for_epoch(backend, epoch, Vec::new()));
+        let lifecycle_cancellation = runtime.require_enabled_lifecycle(backend, epoch).unwrap();
+        let executable = std::env::current_exe().unwrap();
+        let worker = Arc::new(ManagedSpeechWorker {
+            worker: LazySpeechWorker::new(
+                WorkerProgram::native(&executable).unwrap(),
+                backend.native(),
+            ),
+            managed_runtime: None,
+        });
+        runtime.0.workers.lock().unwrap().insert(
+            backend,
+            CachedWorker {
+                paths: WorkerPaths {
+                    python: executable,
+                    bootstrap: directory.path().join("replaced-worker.py"),
+                    model: None,
+                },
+                worker,
+            },
+        );
+
+        let status = runtime.status(backend);
+
+        assert!(status.epoch > epoch);
+        assert!(!status.enabled);
+        assert!(!status.ready);
+        assert!(!status.warm);
+        assert!(lifecycle_cancellation.is_cancelled());
+        assert!(runtime.0.workers.lock().unwrap().is_empty());
+    }
+
     #[test]
     fn request_debug_redacts_text_and_reference_capability() {
         let request = SpeechStartRequest {
@@ -3711,6 +5524,7 @@ mod tests {
                 pitch_hz: 0,
             },
             reference_artifact_id: Some(ArtifactId::new().to_string()),
+            lifecycle_epoch: 7,
         };
         let debug = format!("{request:?}");
         assert!(!debug.contains("private narration"));
@@ -3752,12 +5566,14 @@ mod tests {
     #[test]
     fn speech_export_resolves_opaque_artifacts_and_writes_a_bounded_archive() {
         let directory = tempfile::tempdir().unwrap();
+        let runtime = standalone_runtime(&directory);
         let database = Database::open(directory.path().join("osg.sqlite3")).unwrap();
         let first_path = directory.path().join("first.wav");
         let second_path = directory.path().join("second.wav");
         fs::write(&first_path, b"first narration bytes").unwrap();
         fs::write(&second_path, b"second narration bytes").unwrap();
         let first = publish_durable_artifact(
+            &runtime,
             &database,
             None,
             "narrationOutput",
@@ -3772,6 +5588,7 @@ mod tests {
         )
         .unwrap();
         let second = publish_durable_artifact(
+            &runtime,
             &database,
             None,
             "narrationOutput",
@@ -3848,10 +5665,12 @@ mod tests {
     #[test]
     fn speech_export_writes_a_verified_single_artifact() {
         let directory = tempfile::tempdir().unwrap();
+        let runtime = standalone_runtime(&directory);
         let database = Database::open(directory.path().join("osg.sqlite3")).unwrap();
         let source_path = directory.path().join("source.wav");
         fs::write(&source_path, b"single narration bytes").unwrap();
         let artifact = publish_durable_artifact(
+            &runtime,
             &database,
             None,
             "narrationOutput",
@@ -3994,12 +5813,14 @@ mod tests {
     #[test]
     fn alignment_validation_uses_durable_artifacts_and_bounded_native_timing() {
         let directory = tempfile::tempdir().unwrap();
+        let runtime = standalone_runtime(&directory);
         let database = Database::open(directory.path().join("osg.sqlite3")).unwrap();
         let first_path = directory.path().join("first.wav");
         let second_path = directory.path().join("second.wav");
         std::fs::write(&first_path, b"RIFF-first-WAVEdata").unwrap();
         std::fs::write(&second_path, b"RIFF-second-WAVEdata").unwrap();
         let first = publish_durable_artifact(
+            &runtime,
             &database,
             None,
             "narrationOutput",
@@ -4014,6 +5835,7 @@ mod tests {
         )
         .unwrap();
         let second = publish_durable_artifact(
+            &runtime,
             &database,
             None,
             "narrationOutput",
@@ -4075,6 +5897,7 @@ mod tests {
     #[test]
     fn reference_publication_rechecks_the_size_bound_before_hashing() {
         let directory = tempfile::tempdir().unwrap();
+        let runtime = standalone_runtime(&directory);
         let database = Database::open(directory.path().join("osg.sqlite3")).unwrap();
         let source = directory.path().join("oversized.wav");
         std::fs::File::create(&source)
@@ -4083,6 +5906,7 @@ mod tests {
             .unwrap();
 
         let result = publish_durable_artifact(
+            &runtime,
             &database,
             None,
             "speechReference",
@@ -4101,6 +5925,7 @@ mod tests {
     #[test]
     fn published_speech_artifact_survives_source_removal_and_database_reopen() {
         let directory = tempfile::tempdir().unwrap();
+        let runtime = standalone_runtime(&directory);
         let database_directory = directory.path().join("database");
         std::fs::create_dir_all(&database_directory).unwrap();
         let database_path = database_directory.join("osg.sqlite3");
@@ -4123,6 +5948,7 @@ mod tests {
 
         let database = Database::open(&database_path).unwrap();
         let published = publish_durable_artifact(
+            &runtime,
             &database,
             None,
             "narrationOutput",
@@ -4164,6 +5990,7 @@ mod tests {
     #[test]
     fn aligned_result_manifest_and_playback_survive_database_reopen() {
         let directory = tempfile::tempdir().unwrap();
+        let runtime = standalone_runtime(&directory);
         let database_directory = directory.path().join("database");
         std::fs::create_dir_all(&database_directory).unwrap();
         let database_path = database_directory.join("osg.sqlite3");
@@ -4172,6 +5999,7 @@ mod tests {
         let database = Database::open(&database_path).unwrap();
         let job_id = JobId::new();
         let published = publish_durable_artifact(
+            &runtime,
             &database,
             None,
             "alignedNarration",

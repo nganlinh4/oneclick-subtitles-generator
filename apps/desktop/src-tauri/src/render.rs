@@ -1140,6 +1140,14 @@ fn publish_render(
     .with_job(job_id);
     let artifact_id = match database.register_artifact(&draft)? {
         ArtifactRegistration::Existing(record) => record.id(),
+        ArtifactRegistration::Pending(record) => {
+            return Err(
+                osg_infrastructure::storage::DatabaseError::ArtifactPublicationInProgress(
+                    record.id(),
+                )
+                .into(),
+            );
+        }
         ArtifactRegistration::Staging(staging) => {
             let artifact_id = staging.record().id();
             if let Err(error) = copy_render_artifact(

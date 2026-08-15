@@ -43,6 +43,7 @@ export const runAsrGeneration = async ({
         asrMaxChars: options.asrMaxChars,
         asrMaxWords: options.asrMaxWords,
         asrLanguage: options.asrLanguage,
+        signal: options.signal,
       },
       {
         onStatus: setStatus,

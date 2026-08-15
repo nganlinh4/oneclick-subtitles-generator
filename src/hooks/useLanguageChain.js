@@ -1,4 +1,57 @@
 import { useState, useCallback, useEffect } from 'react';
+import { normalizeLanguageChain } from '../utils/translationOwnership';
+
+const MAX_LANGUAGE_CHAIN_STORAGE_BYTES = 16 * 1024;
+let languageChainIdSequence = 0;
+const nextLanguageChainId = () => {
+  languageChainIdSequence = (languageChainIdSequence + 1) % Number.MAX_SAFE_INTEGER;
+  return `chain-${Date.now().toString(36)}-${languageChainIdSequence.toString(36)}`;
+};
+
+const defaultLanguageChain = (includeOriginal) => {
+  const items = [];
+  if (includeOriginal) {
+    items.push({
+      id: nextLanguageChainId(),
+      type: 'language',
+      value: 'Original',
+      isOriginal: true,
+    });
+  }
+  items.push({
+    id: nextLanguageChainId(),
+    type: 'language',
+    value: '',
+    isOriginal: false,
+  });
+  return normalizeLanguageChain(items, { allowEmptyLanguage: true });
+};
+
+export const loadPersistedLanguageChain = (serialized, includeOriginal = false) => {
+  if (typeof serialized !== 'string' || serialized.length === 0
+      || new TextEncoder().encode(serialized).byteLength > MAX_LANGUAGE_CHAIN_STORAGE_BYTES) {
+    return defaultLanguageChain(includeOriginal);
+  }
+  try {
+    let normalized = normalizeLanguageChain(JSON.parse(serialized), { allowEmptyLanguage: true });
+    if (includeOriginal && !normalized.some((item) => (
+      item.type === 'language' && item.isOriginal
+    ))) {
+      normalized = normalizeLanguageChain([
+        {
+          id: nextLanguageChainId(),
+          type: 'language',
+          value: 'Original',
+          isOriginal: true,
+        },
+        ...normalized,
+      ], { allowEmptyLanguage: true });
+    }
+    return normalized;
+  } catch {
+    return defaultLanguageChain(includeOriginal);
+  }
+};
 
 /**
  * Custom hook to manage the language chain state
@@ -10,53 +63,12 @@ const useLanguageChain = (includeOriginal = false) => {
   // Languages: { id: number, type: 'language', value: string, isOriginal: boolean }
   // Delimiters: { id: number, type: 'delimiter', value: string, style: { open: string, close: string } }
   const [chainItems, setChainItems] = useState(() => {
-    // Try to load saved chain items from localStorage
     try {
       const savedChain = localStorage.getItem('language_chain_items');
-      if (savedChain) {
-        const parsedChain = JSON.parse(savedChain);
-
-
-        // Ensure the chain has at least one item
-        if (parsedChain && Array.isArray(parsedChain) && parsedChain.length > 0) {
-          // Check if we need to add the original language
-          if (includeOriginal && !parsedChain.some(item => item.type === 'language' && item.isOriginal)) {
-            parsedChain.unshift({
-              id: Date.now(),
-              type: 'language',
-              value: 'Original',
-              isOriginal: true
-            });
-          }
-          return parsedChain;
-        }
-      }
-    } catch (error) {
-      console.error('Error loading saved chain from localStorage:', error);
+      return loadPersistedLanguageChain(savedChain, includeOriginal);
+    } catch {
+      return defaultLanguageChain(includeOriginal);
     }
-
-    // If no saved chain or error, create default chain
-    const initialItems = [];
-
-    // Add original language if needed
-    if (includeOriginal) {
-      initialItems.push({
-        id: Date.now(),
-        type: 'language',
-        value: 'Original',
-        isOriginal: true
-      });
-    }
-
-    // Add an empty target language
-    initialItems.push({
-      id: Date.now() + 1,
-      type: 'language',
-      value: '',
-      isOriginal: false
-    });
-
-    return initialItems;
   });
 
   /**
@@ -66,7 +78,7 @@ const useLanguageChain = (includeOriginal = false) => {
     setChainItems(items => {
       // Create a new language item
       const newLanguage = {
-        id: Date.now(),
+        id: nextLanguageChainId(),
         type: 'language',
         value: '',
         isOriginal: false
@@ -75,16 +87,18 @@ const useLanguageChain = (includeOriginal = false) => {
       // If there's more than one item, add a delimiter before the new language
       if (items.length > 0) {
         const newDelimiter = {
-          id: Date.now() - 1,
+          id: nextLanguageChainId(),
           type: 'delimiter',
           value: ' ', // Default to space
           style: { open: '', close: '' }
         };
 
-        return [...items, newDelimiter, newLanguage];
+        return normalizeLanguageChain([...items, newDelimiter, newLanguage], {
+          allowEmptyLanguage: true,
+        });
       }
 
-      return [...items, newLanguage];
+      return normalizeLanguageChain([...items, newLanguage], { allowEmptyLanguage: true });
     });
   }, []);
 
@@ -94,7 +108,7 @@ const useLanguageChain = (includeOriginal = false) => {
    */
   const addDelimiter = useCallback((delimiter) => {
     setChainItems(items => {
-      return [...items, delimiter];
+      return normalizeLanguageChain([...items, delimiter], { allowEmptyLanguage: true });
     });
   }, []);
 
@@ -110,7 +124,7 @@ const useLanguageChain = (includeOriginal = false) => {
 
       // Create a new original language item
       const originalLanguage = {
-        id: Date.now(),
+        id: nextLanguageChainId(),
         type: 'language',
         value: 'Original',
         isOriginal: true
@@ -119,16 +133,18 @@ const useLanguageChain = (includeOriginal = false) => {
       // If there's more than one item, add a delimiter before the original language
       if (items.length > 0) {
         const newDelimiter = {
-          id: Date.now() - 1,
+          id: nextLanguageChainId(),
           type: 'delimiter',
           value: ' ', // Default to space
           style: { open: '', close: '' }
         };
 
-        return [...items, newDelimiter, originalLanguage];
+        return normalizeLanguageChain([...items, newDelimiter, originalLanguage], {
+          allowEmptyLanguage: true,
+        });
       }
 
-      return [...items, originalLanguage];
+      return normalizeLanguageChain([...items, originalLanguage], { allowEmptyLanguage: true });
     });
   }, []);
 
@@ -163,7 +179,7 @@ const useLanguageChain = (includeOriginal = false) => {
         newItems.splice(index, 1);
       }
 
-      return newItems;
+      return normalizeLanguageChain(newItems, { allowEmptyLanguage: true });
     });
   }, []);
 
@@ -173,13 +189,14 @@ const useLanguageChain = (includeOriginal = false) => {
    * @param {string} value - New value
    */
   const updateLanguage = useCallback((id, value) => {
-    setChainItems(items =>
+    setChainItems(items => normalizeLanguageChain(
       items.map(item =>
         item.id === id && item.type === 'language'
           ? { ...item, value }
           : item
-      )
-    );
+      ),
+      { allowEmptyLanguage: true }
+    ));
   }, []);
 
   /**
@@ -189,7 +206,7 @@ const useLanguageChain = (includeOriginal = false) => {
    * @param {Object} style - Optional bracket style { open, close }
    */
   const updateDelimiter = useCallback((id, value, style = null) => {
-    setChainItems(items =>
+    setChainItems(items => normalizeLanguageChain(
       items.map(item => {
         if (item.id === id && item.type === 'delimiter') {
           const updatedItem = { ...item, value };
@@ -199,8 +216,9 @@ const useLanguageChain = (includeOriginal = false) => {
           return updatedItem;
         }
         return item;
-      })
-    );
+      }),
+      { allowEmptyLanguage: true }
+    ));
   }, []);
 
   /**
@@ -213,7 +231,7 @@ const useLanguageChain = (includeOriginal = false) => {
       const newItems = [...items];
       const [movedItem] = newItems.splice(fromIndex, 1);
       newItems.splice(toIndex, 0, movedItem);
-      return newItems;
+      return normalizeLanguageChain(newItems, { allowEmptyLanguage: true });
     });
   }, []);
 
@@ -280,27 +298,7 @@ const useLanguageChain = (includeOriginal = false) => {
 
     // Reset to initial state
     setChainItems(() => {
-      const initialItems = [];
-
-      // Add original language if needed
-      if (includeOriginal) {
-        initialItems.push({
-          id: Date.now(),
-          type: 'language',
-          value: 'Original',
-          isOriginal: true
-        });
-      }
-
-      // Add an empty target language
-      initialItems.push({
-        id: Date.now() + 1,
-        type: 'language',
-        value: '',
-        isOriginal: false
-      });
-
-      return initialItems;
+      return defaultLanguageChain(includeOriginal);
     });
   }, [includeOriginal]);
 
@@ -309,7 +307,8 @@ const useLanguageChain = (includeOriginal = false) => {
     try {
       // Don't save if the chain is empty or only has default items
       if (chainItems.length > 0) {
-        localStorage.setItem('language_chain_items', JSON.stringify(chainItems));
+        const normalized = normalizeLanguageChain(chainItems, { allowEmptyLanguage: true });
+        localStorage.setItem('language_chain_items', JSON.stringify(normalized));
 
       }
     } catch (error) {

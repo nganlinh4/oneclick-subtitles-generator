@@ -1,3 +1,5 @@
+import type { SubtitleAnimationEasing } from './subtitleAnimationEasing';
+
 export interface SubtitleEntry {
   start: number;
   end: number;
@@ -32,6 +34,8 @@ export interface CropSettings {
   canvasBgMode?: 'solid' | 'blur';
   canvasBgColor?: string; // Used when canvasBgMode === 'solid'
   canvasBgBlur?: number; // Blur amount when canvasBgMode === 'blur'
+  flipX?: boolean;
+  flipY?: boolean;
 }
 
 // Subtitle customization interface
@@ -41,7 +45,7 @@ export interface SubtitleCustomization {
   fontFamily: string;
   fontWeight: number;
   textColor: string;
-  textAlign: 'left' | 'center' | 'right';
+  textAlign: 'left' | 'center' | 'right' | 'justify';
   lineHeight: number;
   letterSpacing: number;
   textTransform: 'none' | 'uppercase' | 'lowercase' | 'capitalize';
@@ -52,7 +56,7 @@ export interface SubtitleCustomization {
   borderRadius: number;
   borderWidth: number;
   borderColor: string;
-  borderStyle: 'none' | 'solid' | 'dashed' | 'dotted';
+  borderStyle: 'none' | 'solid' | 'dashed' | 'dotted' | 'double';
 
   // Shadow & Effects
   textShadowEnabled: boolean;
@@ -99,7 +103,7 @@ export interface SubtitleCustomization {
   fadeInDuration: number;
   fadeOutDuration: number;
   animationType: 'fade' | 'slide-up' | 'slide-down' | 'slide-left' | 'slide-right' | 'scale' | 'bounce' | 'flip' | 'rotate' | 'typewriter';
-  animationEasing: 'linear' | 'ease' | 'ease-in' | 'ease-out' | 'ease-in-out';
+  animationEasing: SubtitleAnimationEasing;
 
   // Advanced
   wordWrap: boolean;
@@ -108,7 +112,8 @@ export interface SubtitleCustomization {
   rtlSupport: boolean;
 
   // Preset Styles
-  preset: 'default' | 'modern' | 'classic' | 'neon' | 'minimal' | 'gaming' | 'cinematic' | 'gradient' | 'retro' | 'elegant' | 'custom';
+  // Native validation accepts any non-empty, bounded, control-free preset identity.
+  preset: string;
 }
 
 export interface AudioFiles {

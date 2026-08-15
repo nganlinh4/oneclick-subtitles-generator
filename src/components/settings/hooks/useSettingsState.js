@@ -8,13 +8,15 @@ import {
   DEFAULT_ANALYSIS_MODEL_ID,
   DEFAULT_GEMINI_MODEL_ID,
   getDefaultThinkingBudgets,
-  migrateStoredGeminiModels
+  migrateStoredGeminiModels,
+  normalizeCustomGeminiModels
 } from '../../../config/geminiModels';
 import { validateThinkingBudget } from '../../../utils/thinkingBudgetUtils';
 import {
   cancelYouTubeOAuthNative,
   getYouTubeOAuthStatusNative,
 } from '../../../platform/providerService';
+import { readDownloadCookiePreference } from '../../../platform/downloadCookiePreference';
 
 /**
  * Custom hook owning all SettingsModal settings state: initialization,
@@ -58,6 +60,7 @@ const useSettingsState = () => {
   const [thinkingBudgets, setThinkingBudgets] = useState(getDefaultThinkingBudgets);
   const [transcriptionPrompt, setTranscriptionPrompt] = useState(DEFAULT_TRANSCRIPTION_PROMPT); // Custom transcription prompt
   const [useCookiesForDownload, setUseCookiesForDownload] = useState(false); // Default to not using cookies
+  const [downloadCookieSource, setDownloadCookieSource] = useState('chrome');
   const [enableYoutubeSearch, setEnableYoutubeSearch] = useState(false); // Default to disabling YouTube search
   // New: Auto-import site subtitles (default ON)
   const [autoImportSiteSubtitles, setAutoImportSiteSubtitles] = useState(() => {
@@ -77,7 +80,7 @@ const useSettingsState = () => {
   const [customGeminiModels, setCustomGeminiModels] = useState(() => {
     try {
       const saved = localStorage.getItem('custom_gemini_models');
-      return saved ? JSON.parse(saved) : [];
+      return saved ? normalizeCustomGeminiModels(JSON.parse(saved)) : [];
     } catch {
       return [];
     }
@@ -108,6 +111,7 @@ const useSettingsState = () => {
     useOptimizedPreview: false,
     thinkingBudgets: getDefaultThinkingBudgets(),
     useCookiesForDownload: false,
+    downloadCookieSource: 'chrome',
     enableYoutubeSearch: false,
     favoriteMaxSubtitleLength: 12,
     showFavoriteMaxLength: true,
@@ -143,7 +147,9 @@ const useSettingsState = () => {
       const savedOptimizeVideos = localStorage.getItem('optimize_videos') === 'true'; // Default to false if not set
       const savedOptimizedResolution = localStorage.getItem('optimized_resolution') || '360p';
       const savedUseOptimizedPreview = localStorage.getItem('use_optimized_preview') === 'true'; // Default to false if not set
-      const savedUseCookiesForDownload = localStorage.getItem('use_cookies_for_download') === 'true';
+      const savedCookiePreference = readDownloadCookiePreference();
+      const savedUseCookiesForDownload = savedCookiePreference.enabled;
+      const savedDownloadCookieSource = savedCookiePreference.selectedSource;
       const savedEnableYoutubeSearch = localStorage.getItem('enable_youtube_search') === 'true'; // Default to false
       const savedAutoImportSiteSubtitles = (() => {
         const v = localStorage.getItem('auto_import_site_subtitles');
@@ -156,7 +162,7 @@ const useSettingsState = () => {
       const savedCustomGeminiModels = (() => {
         try {
           const stored = localStorage.getItem('custom_gemini_models');
-          return stored ? JSON.parse(stored) : [];
+          return stored ? normalizeCustomGeminiModels(JSON.parse(stored)) : [];
         } catch (error) {
           console.error('Error parsing custom Gemini models from localStorage:', error);
           return [];
@@ -207,6 +213,7 @@ const useSettingsState = () => {
       setOptimizedResolution(savedOptimizedResolution);
       setUseOptimizedPreview(savedUseOptimizedPreview);
       setUseCookiesForDownload(savedUseCookiesForDownload);
+      setDownloadCookieSource(savedDownloadCookieSource);
       setEnableYoutubeSearch(savedEnableYoutubeSearch);
       setAutoImportSiteSubtitles(savedAutoImportSiteSubtitles);
       setFavoriteMaxSubtitleLength(savedFavoriteMaxSubtitleLength);
@@ -238,6 +245,7 @@ const useSettingsState = () => {
         optimizedResolution: savedOptimizedResolution,
         useOptimizedPreview: savedUseOptimizedPreview,
         useCookiesForDownload: savedUseCookiesForDownload,
+        downloadCookieSource: savedDownloadCookieSource,
         enableYoutubeSearch: savedEnableYoutubeSearch,
         autoImportSiteSubtitles: savedAutoImportSiteSubtitles,
         favoriteMaxSubtitleLength: savedFavoriteMaxSubtitleLength,
@@ -296,6 +304,7 @@ const useSettingsState = () => {
       optimizedResolution !== originalSettings.optimizedResolution ||
       useOptimizedPreview !== originalSettings.useOptimizedPreview ||
       useCookiesForDownload !== originalSettings.useCookiesForDownload ||
+      downloadCookieSource !== originalSettings.downloadCookieSource ||
       enableYoutubeSearch !== originalSettings.enableYoutubeSearch ||
       autoImportSiteSubtitles !== (originalSettings.autoImportSiteSubtitles ?? true) ||
       favoriteMaxSubtitleLength !== originalSettings.favoriteMaxSubtitleLength ||
@@ -307,7 +316,7 @@ const useSettingsState = () => {
   }, [isSettingsLoaded, geminiApiKey, youtubeApiKey, geniusApiKey, segmentDuration, geminiModel, timeFormat, showWaveformLongVideos,
       segmentOffsetCorrection, transcriptionPrompt, useOAuth, youtubeClientId,
       youtubeClientSecret, useVideoAnalysis, videoAnalysisModel, videoAnalysisTimeout, enableGeminiEffects,
-      optimizeVideos, optimizedResolution, useOptimizedPreview, useCookiesForDownload, enableYoutubeSearch, autoImportSiteSubtitles, favoriteMaxSubtitleLength, showFavoriteMaxLength, thinkingBudgets, customGeminiModels, originalSettings]);
+      optimizeVideos, optimizedResolution, useOptimizedPreview, useCookiesForDownload, downloadCookieSource, enableYoutubeSearch, autoImportSiteSubtitles, favoriteMaxSubtitleLength, showFavoriteMaxLength, thinkingBudgets, customGeminiModels, originalSettings]);
 
   return {
     // change/load tracking
@@ -374,6 +383,8 @@ const useSettingsState = () => {
     setTranscriptionPrompt,
     useCookiesForDownload,
     setUseCookiesForDownload,
+    downloadCookieSource,
+    setDownloadCookieSource,
     enableYoutubeSearch,
     setEnableYoutubeSearch,
     autoImportSiteSubtitles,

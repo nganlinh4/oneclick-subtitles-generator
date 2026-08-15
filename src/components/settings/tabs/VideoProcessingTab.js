@@ -10,6 +10,19 @@ import VideoAnalysisCard from './VideoAnalysisCard';
 import ThinkingBudgetCard from './ThinkingBudgetCard';
 import '../../../styles/common/material-switch.css';
 import '../../../styles/settings/customGeminiModels.css';
+import { DOWNLOAD_COOKIE_BROWSER_SOURCES } from '../../../platform/downloadCookiePreference';
+
+const COOKIE_BROWSER_LABELS = Object.freeze({
+  chrome: 'Google Chrome',
+  chromium: 'Chromium',
+  edge: 'Microsoft Edge',
+  firefox: 'Mozilla Firefox',
+  brave: 'Brave',
+  safari: 'Safari',
+  vivaldi: 'Vivaldi',
+  opera: 'Opera',
+  whale: 'Naver Whale',
+});
 
 const VideoProcessingTab = ({
   segmentDuration: _segmentDuration,
@@ -36,6 +49,8 @@ const VideoProcessingTab = ({
   setThinkingBudgets,
   useCookiesForDownload,
   setUseCookiesForDownload,
+  downloadCookieSource,
+  setDownloadCookieSource,
   enableYoutubeSearch,
   setEnableYoutubeSearch,
   autoImportSiteSubtitles,
@@ -275,6 +290,23 @@ const VideoProcessingTab = ({
               <p className="setting-description">
                 {t('settings.useCookiesForDownloadDescription', 'Enable browser cookie authentication to access higher quality videos and bypass login restrictions. Disabling this will make downloads faster but may limit available video qualities and cause failures on restricted content.')}
               </p>
+              {useCookiesForDownload && (
+                <div className="compact-setting download-cookie-browser-setting">
+                  <label>{t('settings.downloadCookieBrowser', 'Cookie browser')}</label>
+                  <p className="setting-description">
+                    {t('settings.downloadCookieBrowserDescription', 'Choose the browser profile that is already signed in to the video site.')}
+                  </p>
+                  <CustomDropdown
+                    value={downloadCookieSource}
+                    onChange={setDownloadCookieSource}
+                    options={DOWNLOAD_COOKIE_BROWSER_SOURCES.map((source) => ({
+                      value: source,
+                      label: COOKIE_BROWSER_LABELS[source],
+                    }))}
+                    placeholder={t('settings.selectCookieBrowser', 'Select browser')}
+                  />
+                </div>
+              )}
             </div>
           </div>
         </div>

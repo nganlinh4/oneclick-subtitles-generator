@@ -3,7 +3,7 @@ use std::fs::{self, OpenOptions};
 use std::io::{BufReader, Read, Write};
 use std::path::{Component, Path, PathBuf};
 
-use osg_domain::{JobId, ProjectId};
+use osg_domain::{AssetId, JobId, ProjectId};
 use rusqlite::{Connection, OptionalExtension, TransactionBehavior, params};
 use serde::Serialize;
 use serde_json::Value;
@@ -22,6 +22,8 @@ const MAX_CACHE_KEY_INPUT_BYTES: usize = 1024 * 1024;
 const MAX_ROOT_ENTRIES: usize = 200_000;
 const MAX_CACHE_LEASE_MS: u64 = 24 * 60 * 60 * 1000;
 const ROOT_IDENTITY_FILE: &str = ".root-identity";
+const COMMIT_ON_JOB_SUCCESS_METADATA_KEY: &str = "commitOnJobSuccess";
+const MEDIA_ARTIFACT_METADATA_KEY: &str = "osgMediaArtifact";
 
 #[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize)]
 #[serde(transparent)]
@@ -454,6 +456,7 @@ impl std::fmt::Debug for ArtifactStaging {
 pub enum ArtifactRegistration {
     Staging(ArtifactStaging),
     Existing(ArtifactRecord),
+    Pending(ArtifactRecord),
 }
 
 impl std::fmt::Debug for ArtifactRegistration {
@@ -461,6 +464,7 @@ impl std::fmt::Debug for ArtifactRegistration {
         match self {
             Self::Staging(staging) => formatter.debug_tuple("Staging").field(staging).finish(),
             Self::Existing(record) => formatter.debug_tuple("Existing").field(record).finish(),
+            Self::Pending(record) => formatter.debug_tuple("Pending").field(record).finish(),
         }
     }
 }
@@ -488,6 +492,43 @@ impl std::fmt::Debug for ResolvedArtifact {
             .debug_struct("ResolvedArtifact")
             .field("record", &self.record)
             .field("path", &"<redacted>")
+            .finish()
+    }
+}
+
+pub(super) struct TransactionalArtifactRemoval {
+    final_path: PathBuf,
+    staging_path: PathBuf,
+    trash_path: PathBuf,
+    moved: bool,
+    finalized: bool,
+}
+
+impl TransactionalArtifactRemoval {
+    pub(super) fn finalize(mut self) {
+        self.finalized = true;
+        let _ = remove_if_regular(&self.staging_path);
+        let _ = remove_if_regular(&self.trash_path);
+    }
+}
+
+impl Drop for TransactionalArtifactRemoval {
+    fn drop(&mut self) {
+        if !self.finalized && self.moved && !self.final_path.exists() {
+            let _ = fs::rename(&self.trash_path, &self.final_path);
+        }
+    }
+}
+
+impl std::fmt::Debug for TransactionalArtifactRemoval {
+    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        formatter
+            .debug_struct("TransactionalArtifactRemoval")
+            .field("final_path", &"<redacted>")
+            .field("staging_path", &"<redacted>")
+            .field("trash_path", &"<redacted>")
+            .field("moved", &self.moved)
+            .field("finalized", &self.finalized)
             .finish()
     }
 }
@@ -623,6 +664,8 @@ pub struct ReconciliationReport {
     pub marked_failed: u64,
     pub removed_orphans: u64,
     pub removed_unreferenced_cache: u64,
+    pub removed_unowned_media: u64,
+    pub removed_expired_media_candidates: u64,
 }
 
 #[derive(Clone)]
@@ -742,9 +785,28 @@ type RawArtifact = (
 );
 
 pub(super) fn register(
-    connection: &Connection,
+    connection: &mut Connection,
     root: &ArtifactRoot,
     draft: &ArtifactDraft,
+) -> Result<ArtifactRegistration, DatabaseError> {
+    register_inner(connection, root, draft, None)
+}
+
+pub(super) fn register_media(
+    connection: &mut Connection,
+    root: &ArtifactRoot,
+    draft: &ArtifactDraft,
+    media_id: AssetId,
+    job_id: JobId,
+) -> Result<ArtifactRegistration, DatabaseError> {
+    register_inner(connection, root, draft, Some((media_id, job_id)))
+}
+
+fn register_inner(
+    connection: &mut Connection,
+    root: &ArtifactRoot,
+    draft: &ArtifactDraft,
+    media_claim: Option<(AssetId, JobId)>,
 ) -> Result<ArtifactRegistration, DatabaseError> {
     root.verify()?;
     validate_size(draft.size_bytes)?;
@@ -755,6 +817,7 @@ pub(super) fn register(
     if metadata_json.len() > MAX_ARTIFACT_METADATA_BYTES {
         return Err(DatabaseError::ArtifactMetadataTooLarge);
     }
+    super::media::validate_media_artifact_draft(&draft.kind, &draft.metadata)?;
     if let Some(existing) = find_by_content(connection, &draft.kind, draft.content_hash)? {
         if existing.size_bytes != draft.size_bytes {
             return Err(DatabaseError::ArtifactContentMismatch(existing.id));
@@ -769,7 +832,38 @@ pub(super) fn register(
         if !reusable {
             return Err(DatabaseError::ArtifactReuseConflict(existing.id));
         }
-        return Ok(ArtifactRegistration::Existing(existing));
+        if !super::media::artifact_metadata_semantically_compatible(
+            &draft.kind,
+            existing.metadata(),
+            &draft.metadata,
+        ) {
+            return Err(DatabaseError::ArtifactReuseConflict(existing.id));
+        }
+        let existing =
+            adopt_compatible_legacy_media_metadata(connection, existing, draft, &metadata_json)?;
+        match existing.state {
+            ArtifactState::Ready => {
+                if let Some((media_id, job_id)) = media_claim {
+                    claim_existing_media_edge(connection, media_id, existing.id, job_id)?;
+                }
+                return Ok(ArtifactRegistration::Existing(existing));
+            }
+            ArtifactState::Pending => return Ok(ArtifactRegistration::Pending(existing)),
+            ArtifactState::Failed => {
+                if draft.retention != existing.retention || draft.project_id != existing.project_id
+                {
+                    return Err(DatabaseError::ArtifactReuseConflict(existing.id));
+                }
+                return reset_failed_for_retry(
+                    connection,
+                    root,
+                    &existing,
+                    draft,
+                    &metadata_json,
+                    media_claim,
+                );
+            }
+        }
     }
     let count: i64 =
         connection.query_row("SELECT COUNT(*) FROM artifacts", [], |row| row.get(0))?;
@@ -809,6 +903,98 @@ pub(super) fn register(
     }))
 }
 
+fn claim_existing_media_edge(
+    connection: &Connection,
+    media_id: AssetId,
+    artifact_id: ArtifactId,
+    job_id: JobId,
+) -> Result<(), DatabaseError> {
+    connection.execute(
+        "INSERT OR IGNORE INTO media_artifact_job_claims(
+           media_id, artifact_id, job_id, created_at_ms
+         )
+         SELECT media_id, artifact_id, ?3, ?4
+         FROM media_artifacts
+         WHERE media_id = ?1 AND artifact_id = ?2",
+        params![
+            media_id.as_uuid(),
+            artifact_id.as_uuid(),
+            job_id.as_uuid(),
+            now_ms(),
+        ],
+    )?;
+    Ok(())
+}
+
+fn adopt_compatible_legacy_media_metadata(
+    connection: &Connection,
+    existing: ArtifactRecord,
+    draft: &ArtifactDraft,
+    metadata_json: &str,
+) -> Result<ArtifactRecord, DatabaseError> {
+    if !super::media::media_artifact_needs_branding(
+        &draft.kind,
+        existing.metadata(),
+        &draft.metadata,
+    ) {
+        return Ok(existing);
+    }
+    let changed = connection.execute(
+        "UPDATE artifacts
+         SET metadata_json = ?1, updated_at_ms = ?2
+         WHERE id = ?3",
+        params![metadata_json, now_ms(), existing.id.as_uuid()],
+    )?;
+    if changed != 1 {
+        return Err(DatabaseError::ArtifactPublicationInProgress(existing.id));
+    }
+    get(connection, existing.id)?.ok_or(DatabaseError::ArtifactNotFound(existing.id))
+}
+
+fn reset_failed_for_retry(
+    connection: &mut Connection,
+    root: &ArtifactRoot,
+    existing: &ArtifactRecord,
+    draft: &ArtifactDraft,
+    metadata_json: &str,
+    media_claim: Option<(AssetId, JobId)>,
+) -> Result<ArtifactRegistration, DatabaseError> {
+    remove_if_regular(&root.child(&staging_name(existing.id))?)?;
+    remove_if_regular(&final_path(root, existing)?)?;
+    let transaction = connection.transaction()?;
+    let changed = transaction.execute(
+        "UPDATE artifacts
+         SET job_id = ?1, state = 'pending', failure_code = NULL,
+             metadata_json = ?2, updated_at_ms = ?3
+         WHERE id = ?4 AND state = 'failed'",
+        params![
+            draft.job_id.map(JobId::into_uuid),
+            metadata_json,
+            now_ms(),
+            existing.id.as_uuid(),
+        ],
+    )?;
+    if changed != 1 {
+        return Err(DatabaseError::ArtifactPublicationInProgress(existing.id));
+    }
+    if let Some((media_id, job_id)) = media_claim {
+        claim_existing_media_edge(&transaction, media_id, existing.id, job_id)?;
+    }
+    transaction.commit()?;
+    let record =
+        get(connection, existing.id)?.ok_or(DatabaseError::ArtifactNotFound(existing.id))?;
+    let path = root.child(&staging_name(existing.id))?;
+    if let Err(error) = OpenOptions::new().write(true).create_new(true).open(&path) {
+        let failure = ArtifactFailureCode::new("stagingCreate")?;
+        let _ = fail(connection, root, existing.id, &failure);
+        return Err(DatabaseError::Io(error));
+    }
+    Ok(ArtifactRegistration::Staging(ArtifactStaging {
+        record,
+        path,
+    }))
+}
+
 pub(super) fn get(
     connection: &Connection,
     id: ArtifactId,
@@ -824,6 +1010,33 @@ pub(super) fn get(
         .optional()?
         .map(decode_artifact)
         .transpose()
+}
+
+pub(super) fn list_ready_for_project(
+    connection: &Connection,
+    project_id: ProjectId,
+    kind: &ArtifactKind,
+    limit: usize,
+) -> Result<Vec<ArtifactRecord>, DatabaseError> {
+    let limit = i64::try_from(limit).map_err(|_| DatabaseError::InvalidArtifactMetadata)?;
+    let mut statement = connection.prepare(
+        "SELECT id, project_id, job_id, kind, relative_path, content_hash, size_bytes,
+                retention, state, failure_code, metadata_json, created_at_ms, updated_at_ms
+         FROM artifacts
+         WHERE project_id = ?1 AND kind = ?2 AND retention = 'durable' AND state = 'ready'
+         ORDER BY created_at_ms DESC, id DESC
+         LIMIT ?3",
+    )?;
+    let rows = statement.query_map(
+        params![project_id.as_uuid(), kind.as_str(), limit],
+        raw_artifact,
+    )?;
+    let mut records = Vec::new();
+    for row in rows {
+        records.push(decode_artifact(row?)?);
+    }
+    records.reverse();
+    Ok(records)
 }
 
 pub(super) fn ready(
@@ -947,6 +1160,47 @@ pub(super) fn remove(
     remove_if_regular(&staging_path)?;
     remove_if_regular(&trash_path)?;
     Ok(Some(record))
+}
+
+pub(super) fn remove_transactional(
+    connection: &Connection,
+    root: &ArtifactRoot,
+    id: ArtifactId,
+) -> Result<Option<TransactionalArtifactRemoval>, DatabaseError> {
+    root.verify()?;
+    let Some(record) = get(connection, id)? else {
+        return Ok(None);
+    };
+    if record.state != ArtifactState::Ready {
+        return Err(DatabaseError::InvalidArtifactTransition(id));
+    }
+    let final_path = final_path(root, &record)?;
+    let staging_path = root.child(&staging_name(id))?;
+    let trash_path = root.child(&trash_name(id))?;
+    let moved = match fs::symlink_metadata(&final_path) {
+        Ok(metadata) => {
+            if !metadata.is_file() || metadata.file_type().is_symlink() || trash_path.exists() {
+                return Err(DatabaseError::InvalidArtifactFile);
+            }
+            fs::rename(&final_path, &trash_path)?;
+            true
+        }
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => false,
+        Err(error) => return Err(error.into()),
+    };
+    if let Err(error) = connection.execute("DELETE FROM artifacts WHERE id = ?1", [id.as_uuid()]) {
+        if moved && !final_path.exists() {
+            let _ = fs::rename(&trash_path, &final_path);
+        }
+        return Err(error.into());
+    }
+    Ok(Some(TransactionalArtifactRemoval {
+        final_path,
+        staging_path,
+        trash_path,
+        moved,
+        finalized: false,
+    }))
 }
 
 pub(super) fn put_cache(connection: &Connection, write: &CacheWrite) -> Result<(), DatabaseError> {
@@ -1255,6 +1509,10 @@ pub(super) fn clear_cache_with_info(
     })
 }
 
+#[allow(
+    clippy::too_many_lines,
+    reason = "startup reconciliation keeps filesystem repair and provisional job-commit recovery in one bounded scan"
+)]
 pub(super) fn reconcile(
     connection: &Connection,
     root: &ArtifactRoot,
@@ -1264,14 +1522,39 @@ pub(super) fn reconcile(
         "DELETE FROM cache_leases WHERE expires_at_ms <= ?1",
         [now_ms()],
     )?;
+    let removed_expired_media_candidates =
+        super::media::cleanup_expired_candidates(connection, now_ms())?;
     let records = list(connection)?;
     if u64::try_from(records.len()).unwrap_or(u64::MAX) > MAX_ARTIFACTS {
         return Err(DatabaseError::ArtifactLimitReached);
     }
-    let mut report = ReconciliationReport::default();
+    let mut report = ReconciliationReport {
+        removed_expired_media_candidates,
+        ..ReconciliationReport::default()
+    };
     let failure = ArtifactFailureCode::new("startupReconciliation")?;
     let mut expected = HashSet::from([ROOT_IDENTITY_FILE.to_owned()]);
     for record in records {
+        super::media::cleanup_failed_artifact_candidates(connection, record.id)?;
+        let media_owned = artifact_has_media_owner(connection, record.id)?;
+        if artifact_requires_successful_job(&record) && !media_owned {
+            match artifact_job_state(connection, &record)?.as_deref() {
+                Some("succeeded") => {}
+                Some("queued" | "running" | "cancelling")
+                    if record.state == ArtifactState::Pending =>
+                {
+                    expected.insert(staging_name(record.id));
+                    if final_path(root, &record)?.is_file() {
+                        expected.insert(record.relative_path.clone());
+                    }
+                    continue;
+                }
+                _ => {
+                    let _ = remove(connection, root, record.id)?;
+                    continue;
+                }
+            }
+        }
         let final_path = final_path(root, &record)?;
         let staging_path = root.child(&staging_name(record.id))?;
         let trash_path = root.child(&trash_name(record.id))?;
@@ -1319,6 +1602,19 @@ pub(super) fn reconcile(
                 let _ = remove_if_regular(&trash_path);
             }
         }
+        let current_is_ready = get(connection, record.id)?
+            .is_some_and(|current| current.state == ArtifactState::Ready);
+        if current_is_ready
+            && artifact_is_media_publication(&record)
+            && !super::media::artifact_has_persistent_owner(connection, record.id)?
+            && !artifact_job_state(connection, &record)?
+                .as_deref()
+                .is_some_and(|state| matches!(state, "queued" | "running" | "cancelling"))
+        {
+            let _ = remove(connection, root, record.id)?;
+            expected.remove(&record.relative_path);
+            report.removed_unowned_media = report.removed_unowned_media.saturating_add(1);
+        }
     }
 
     purge_expired_cache(connection, root)?;
@@ -1362,6 +1658,54 @@ pub(super) fn reconcile(
         }
     }
     Ok(report)
+}
+
+fn artifact_requires_successful_job(record: &ArtifactRecord) -> bool {
+    record
+        .metadata
+        .as_object()
+        .and_then(|metadata| metadata.get(COMMIT_ON_JOB_SUCCESS_METADATA_KEY))
+        .and_then(Value::as_bool)
+        == Some(true)
+}
+
+fn artifact_is_media_publication(record: &ArtifactRecord) -> bool {
+    record
+        .metadata
+        .as_object()
+        .and_then(|metadata| metadata.get(MEDIA_ARTIFACT_METADATA_KEY))
+        .and_then(Value::as_bool)
+        == Some(true)
+}
+
+fn artifact_has_media_owner(
+    connection: &Connection,
+    artifact_id: ArtifactId,
+) -> Result<bool, DatabaseError> {
+    connection
+        .query_row(
+            "SELECT EXISTS(SELECT 1 FROM media_artifacts WHERE artifact_id = ?1)",
+            [artifact_id.as_uuid()],
+            |row| row.get(0),
+        )
+        .map_err(Into::into)
+}
+
+fn artifact_job_state(
+    connection: &Connection,
+    record: &ArtifactRecord,
+) -> Result<Option<String>, DatabaseError> {
+    let Some(job_id) = record.job_id else {
+        return Ok(None);
+    };
+    connection
+        .query_row(
+            "SELECT state FROM jobs WHERE id = ?1",
+            [job_id.into_uuid()],
+            |row| row.get::<_, String>(0),
+        )
+        .optional()
+        .map_err(Into::into)
 }
 
 fn list(connection: &Connection) -> Result<Vec<ArtifactRecord>, DatabaseError> {
@@ -1765,14 +2109,17 @@ mod tests {
     use std::io::Cursor;
     use std::path::{Path, PathBuf};
 
+    use osg_domain::{JobKind, JobSnapshot, ProjectMetadata};
+    use rusqlite::Connection;
     use serde_json::json;
     use tempfile::TempDir;
 
     use super::{
-        ArtifactDraft, ArtifactFailureCode, ArtifactKind, ArtifactRegistration, ArtifactStaging,
-        ArtifactState, CacheCategory, CacheKey, CacheWrite, ContentHash, MAX_ARTIFACT_SIZE_BYTES,
-        MAX_CACHE_KEY_PARTS, ensure_artifact_capacity, ensure_cache_capacity,
-        ensure_cache_lease_capacity, final_name, remove_if_regular, staging_name, trash_name,
+        ArtifactDraft, ArtifactFailureCode, ArtifactKind, ArtifactRecord, ArtifactRegistration,
+        ArtifactRoot, ArtifactStaging, ArtifactState, CacheCategory, CacheKey, CacheWrite,
+        ContentHash, MAX_ARTIFACT_SIZE_BYTES, MAX_CACHE_KEY_PARTS, ensure_artifact_capacity,
+        ensure_cache_capacity, ensure_cache_lease_capacity, final_name, remove_if_regular,
+        remove_transactional, staging_name, trash_name,
     };
     use crate::storage::{Database, DatabaseError};
 
@@ -1837,6 +2184,9 @@ mod tests {
             ArtifactRegistration::Staging(staging) => staging,
             ArtifactRegistration::Existing(record) => {
                 panic!("expected new staging reservation, got {record:?}")
+            }
+            ArtifactRegistration::Pending(record) => {
+                panic!("expected new staging reservation, got pending {record:?}")
             }
         }
     }
@@ -1929,6 +2279,258 @@ mod tests {
     }
 
     #[test]
+    fn pending_dedup_reservation_cannot_be_stolen_and_failed_publication_can_retry() {
+        let fixture = Fixture::new();
+        let bytes = b"retryable publication";
+        let draft = draft("retryableArtifact", bytes);
+        let first = staging(
+            fixture
+                .database()
+                .register_artifact(&draft)
+                .expect("first reservation"),
+        );
+        let id = first.record().id();
+
+        assert!(matches!(
+            fixture.database().register_artifact(&draft),
+            Ok(ArtifactRegistration::Pending(record)) if record.id() == id
+        ));
+        assert_eq!(
+            fixture
+                .database()
+                .get_artifact(id)
+                .expect("pending lookup")
+                .expect("pending record")
+                .state(),
+            ArtifactState::Pending
+        );
+
+        fixture
+            .database()
+            .mark_artifact_failed(
+                id,
+                &ArtifactFailureCode::new("fixtureFailure").expect("failure code"),
+            )
+            .expect("fail publication");
+        let retry = staging(
+            fixture
+                .database()
+                .register_artifact(&draft)
+                .expect("retry failed publication"),
+        );
+        assert_eq!(retry.record().id(), id);
+        assert_eq!(
+            fixture
+                .database()
+                .get_artifact(id)
+                .expect("retry lookup")
+                .expect("preserved retry row")
+                .state(),
+            ArtifactState::Pending
+        );
+        let retry_id = retry.record().id();
+        fs::write(retry.path(), bytes).expect("write retry");
+        let ready = fixture
+            .database()
+            .mark_artifact_ready(retry_id)
+            .expect("publish retry");
+        assert_eq!(ready.state(), ArtifactState::Ready);
+        assert_eq!(
+            fs::read(
+                fixture
+                    .database()
+                    .resolve_artifact(retry_id)
+                    .expect("resolve retry")
+                    .expect("ready retry")
+                    .path()
+            )
+            .expect("read retry"),
+            bytes
+        );
+    }
+
+    #[test]
+    #[allow(
+        clippy::too_many_lines,
+        reason = "the positive adoption and negative poison collision share one exact v5 fixture"
+    )]
+    fn genuine_unmarked_v5_media_is_branded_but_incompatible_collisions_fail_closed() {
+        let fixture = Fixture::new();
+        let kind = ArtifactKind::new("downloadedMedia").expect("kind");
+        let legacy_bytes = b"genuine v5 downloaded media";
+        let legacy = ArtifactDraft::new(
+            kind.clone(),
+            ContentHash::digest(legacy_bytes),
+            u64::try_from(legacy_bytes.len()).expect("fixture size"),
+            json!({"source": "urlDownload", "filename": "legacy.mp4"}),
+        )
+        .expect("legacy draft");
+        let legacy_stage = staging(
+            fixture
+                .database()
+                .register_artifact(&legacy)
+                .expect("register legacy artifact"),
+        );
+        fs::write(legacy_stage.path(), legacy_bytes).expect("write legacy artifact");
+        let legacy_id = legacy_stage.record().id();
+        fixture
+            .database()
+            .mark_artifact_ready(legacy_id)
+            .expect("ready legacy artifact");
+        Connection::open(&fixture.database_path)
+            .expect("open legacy fixture")
+            .execute(
+                "UPDATE artifacts SET metadata_json = ?1 WHERE id = ?2",
+                [
+                    rusqlite::types::Value::Text(
+                        "{ \"filename\" : \"legacy.mp4\", \"source\" : \"urlDownload\" }"
+                            .to_owned(),
+                    ),
+                    rusqlite::types::Value::Blob(legacy_id.as_uuid().as_bytes().to_vec()),
+                ],
+            )
+            .expect("preserve noncanonical v5 JSON formatting");
+        let branded = ArtifactDraft::new(
+            kind.clone(),
+            ContentHash::digest(legacy_bytes),
+            u64::try_from(legacy_bytes.len()).expect("fixture size"),
+            json!({
+                "source": "urlDownload", "filename": "legacy.mp4",
+                "osgMediaArtifact": true, "commitOnJobSuccess": true
+            }),
+        )
+        .expect("branded draft");
+        assert!(matches!(
+            fixture.database().register_artifact(&branded),
+            Ok(ArtifactRegistration::Existing(record)) if record.id() == legacy_id
+        ));
+        let adopted = fixture
+            .database()
+            .get_artifact(legacy_id)
+            .expect("adopted lookup")
+            .expect("adopted artifact");
+        assert_eq!(
+            adopted
+                .metadata()
+                .get("osgMediaArtifact")
+                .and_then(serde_json::Value::as_bool),
+            Some(true)
+        );
+
+        let poisoned_bytes = b"poisoned same-kind collision";
+        let poisoned = ArtifactDraft::new(
+            kind.clone(),
+            ContentHash::digest(poisoned_bytes),
+            u64::try_from(poisoned_bytes.len()).expect("fixture size"),
+            json!({
+                "source": "urlDownload", "filename": "poison.mp4",
+                "unexpectedOwner": "legacy-import"
+            }),
+        )
+        .expect("poisoned legacy draft");
+        let poisoned_stage = staging(
+            fixture
+                .database()
+                .register_artifact(&poisoned)
+                .expect("register poisoned legacy artifact"),
+        );
+        fs::write(poisoned_stage.path(), poisoned_bytes).expect("write poisoned artifact");
+        let poisoned_id = poisoned_stage.record().id();
+        fixture
+            .database()
+            .mark_artifact_ready(poisoned_id)
+            .expect("ready poisoned artifact");
+        let proposed = ArtifactDraft::new(
+            kind,
+            ContentHash::digest(poisoned_bytes),
+            u64::try_from(poisoned_bytes.len()).expect("fixture size"),
+            json!({
+                "source": "urlDownload", "filename": "poison.mp4",
+                "osgMediaArtifact": true
+            }),
+        )
+        .expect("proposed media draft");
+        assert!(matches!(
+            fixture.database().register_artifact(&proposed),
+            Err(DatabaseError::ArtifactReuseConflict(id)) if id == poisoned_id
+        ));
+        let unchanged = fixture
+            .database()
+            .get_artifact(poisoned_id)
+            .expect("poisoned lookup")
+            .expect("poisoned artifact");
+        assert_eq!(unchanged.state(), ArtifactState::Ready);
+        assert!(unchanged.metadata().get("osgMediaArtifact").is_none());
+    }
+
+    #[test]
+    fn ready_artifact_listing_is_bounded_project_scoped_and_restart_durable() {
+        let mut fixture = Fixture::new();
+        let first_project = ProjectMetadata::new("first project").expect("first project");
+        let second_project = ProjectMetadata::new("second project").expect("second project");
+        fixture
+            .database()
+            .create_project(&first_project)
+            .expect("create first project");
+        fixture
+            .database()
+            .create_project(&second_project)
+            .expect("create second project");
+        let kind = ArtifactKind::new("generatedBackgroundImage").expect("kind");
+        let publish_for = |database: &Database, project, bytes: &[u8]| {
+            let draft = ArtifactDraft::new(
+                kind.clone(),
+                ContentHash::digest(bytes),
+                bytes.len() as u64,
+                json!({"mimeType": "image/png"}),
+            )
+            .expect("draft")
+            .with_project(project);
+            publish_draft(database, &draft, bytes)
+        };
+
+        let first = publish_for(fixture.database(), first_project.id(), b"first image");
+        let other = publish_for(fixture.database(), second_project.id(), b"other image");
+        let second = publish_for(fixture.database(), first_project.id(), b"second image");
+
+        let listed = fixture
+            .database()
+            .list_ready_artifacts(first_project.id(), &kind, 256)
+            .expect("list first project");
+        assert_eq!(
+            listed.iter().map(ArtifactRecord::id).collect::<Vec<_>>(),
+            vec![first.record().id(), second.record().id()]
+        );
+        assert!(
+            !listed
+                .iter()
+                .any(|record| record.id() == other.record().id())
+        );
+        assert!(
+            fixture
+                .database()
+                .list_ready_artifacts(first_project.id(), &kind, 0)
+                .is_err()
+        );
+        assert!(
+            fixture
+                .database()
+                .list_ready_artifacts(first_project.id(), &kind, 4_097)
+                .is_err()
+        );
+
+        fixture.reopen();
+        let reopened = fixture
+            .database()
+            .list_ready_artifacts(first_project.id(), &kind, 256)
+            .expect("list after restart");
+        assert_eq!(
+            reopened.iter().map(ArtifactRecord::id).collect::<Vec<_>>(),
+            vec![first.record().id(), second.record().id()]
+        );
+    }
+
+    #[test]
     fn explicit_failure_is_bounded_and_cleans_staging() {
         let fixture = Fixture::new();
         let staging = staging(
@@ -1996,6 +2598,104 @@ mod tests {
     }
 
     #[test]
+    fn startup_commits_provisional_artifacts_only_for_durably_succeeded_jobs() {
+        let mut fixture = Fixture::new();
+        let project = ProjectMetadata::new("provisional image project").expect("project");
+        fixture
+            .database()
+            .create_project(&project)
+            .expect("create project");
+        let kind = ArtifactKind::new("generatedBackgroundImage:restart").expect("kind");
+
+        let register_provisional = |database: &Database, job: &JobSnapshot, bytes: &[u8]| {
+            database.create_job(job).expect("create job");
+            let mut running = job.clone();
+            running.start().expect("start job");
+            database
+                .compare_and_swap_job(job.sequence(), &running)
+                .expect("persist running job");
+            let draft = ArtifactDraft::new(
+                kind.clone(),
+                ContentHash::digest(bytes),
+                bytes.len() as u64,
+                json!({"mimeType": "image/png", "commitOnJobSuccess": true}),
+            )
+            .expect("draft")
+            .with_project(project.id())
+            .with_job(job.id());
+            let staged = staging(database.register_artifact(&draft).expect("register"));
+            fs::write(staged.path(), bytes).expect("write provisional bytes");
+            (running, staged.record().id(), staged.path().to_path_buf())
+        };
+
+        let interrupted = JobSnapshot::new(JobKind::GenerateImage);
+        let (_running, interrupted_artifact, interrupted_path) = register_provisional(
+            fixture.database(),
+            &interrupted,
+            b"provisional interrupted image",
+        );
+        assert!(
+            fixture
+                .database()
+                .resolve_artifact(interrupted_artifact)
+                .unwrap()
+                .is_none()
+        );
+        fixture
+            .database()
+            .reconcile_artifacts()
+            .expect("live reconciliation");
+        assert_eq!(
+            fixture
+                .database()
+                .get_artifact(interrupted_artifact)
+                .unwrap()
+                .expect("running provisional row")
+                .state(),
+            ArtifactState::Pending
+        );
+        assert!(interrupted_path.is_file());
+
+        fixture.reopen();
+        assert!(
+            fixture
+                .database()
+                .get_artifact(interrupted_artifact)
+                .unwrap()
+                .is_none()
+        );
+        assert!(!interrupted_path.exists());
+
+        let completed = JobSnapshot::new(JobKind::GenerateImage);
+        let (mut running, completed_artifact, _completed_path) = register_provisional(
+            fixture.database(),
+            &completed,
+            b"provisional completed image",
+        );
+        let running_sequence = running.sequence();
+        running.succeed().expect("succeed job");
+        fixture
+            .database()
+            .compare_and_swap_job(running_sequence, &running)
+            .expect("persist succeeded job");
+
+        fixture.reopen();
+        let recovered = fixture
+            .database()
+            .get_artifact(completed_artifact)
+            .expect("lookup recovered")
+            .expect("recovered artifact");
+        assert_eq!(recovered.state(), ArtifactState::Ready);
+        assert!(
+            fixture
+                .database()
+                .resolve_artifact(completed_artifact)
+                .unwrap()
+                .is_some()
+        );
+    }
+
+    #[test]
     fn startup_repairs_file_before_wal_commit_and_interrupted_removal_windows() {
         let mut fixture = Fixture::new();
         let bytes = b"crash window";
@@ -2037,6 +2737,113 @@ mod tests {
                 .expect("resolve")
                 .is_some()
         );
+    }
+
+    #[test]
+    fn transactional_removal_restores_the_ready_file_when_the_database_rolls_back() {
+        let fixture = Fixture::new();
+        let resolved = publish(fixture.database(), "downloadMedia", b"rollback media");
+        let artifact_id = resolved.record().id();
+        let final_path = resolved.path().to_owned();
+        let trash_path = fixture.artifact_root.join(trash_name(artifact_id));
+        let root = ArtifactRoot::prepare(&fixture.artifact_root).expect("artifact root");
+        let mut connection = Connection::open(&fixture.database_path).expect("direct connection");
+        connection
+            .pragma_update(None, "foreign_keys", "ON")
+            .expect("foreign keys");
+        let transaction = connection.transaction().expect("removal transaction");
+        let removal = remove_transactional(&transaction, &root, artifact_id)
+            .expect("transactional removal")
+            .expect("removal guard");
+        assert!(!final_path.exists());
+        assert!(trash_path.is_file());
+
+        drop(transaction);
+        drop(removal);
+
+        assert!(final_path.is_file());
+        assert!(!trash_path.exists());
+        assert!(
+            fixture
+                .database()
+                .resolve_artifact(artifact_id)
+                .expect("resolve rolled-back artifact")
+                .is_some()
+        );
+    }
+
+    #[test]
+    fn media_publication_reconciliation_preserves_live_work_and_cleans_commit_gap() {
+        let fixture = Fixture::new();
+        let bytes = b"publication crash window";
+        let mut job = JobSnapshot::new(JobKind::DownloadMedia);
+        fixture.database().create_job(&job).expect("create job");
+        let sequence = job.sequence();
+        job.start().expect("start job");
+        fixture
+            .database()
+            .compare_and_swap_job(sequence, &job)
+            .expect("persist running job");
+        let draft = ArtifactDraft::new(
+            ArtifactKind::new("downloadMedia").expect("kind"),
+            ContentHash::digest(bytes),
+            u64::try_from(bytes.len()).expect("fixture size"),
+            json!({"osgMediaArtifact": true, "commitOnJobSuccess": true}),
+        )
+        .expect("draft")
+        .with_job(job.id());
+        let staged = staging(
+            fixture
+                .database()
+                .register_artifact(&draft)
+                .expect("register publication"),
+        );
+        fs::write(staged.path(), bytes).expect("write staged publication");
+        let artifact_id = staged.record().id();
+        let staging_path = staged.path().to_owned();
+
+        fixture
+            .database()
+            .reconcile_artifacts()
+            .expect("live reconciliation");
+        assert_eq!(
+            fixture
+                .database()
+                .get_artifact(artifact_id)
+                .expect("live artifact")
+                .expect("pending artifact")
+                .state(),
+            ArtifactState::Pending
+        );
+        assert!(staging_path.is_file());
+
+        let sequence = job.sequence();
+        job.succeed().expect("succeed job");
+        fixture
+            .database()
+            .compare_and_swap_job(sequence, &job)
+            .expect("persist succeeded job");
+        let final_path = fixture.artifact_root.join(final_name(
+            staged.record().kind(),
+            staged.record().content_hash(),
+        ));
+        fs::rename(&staging_path, &final_path).expect("simulate file publication before DB commit");
+        let report = fixture
+            .database()
+            .reconcile_artifacts()
+            .expect("reconcile commit gap");
+
+        assert_eq!(report.promoted_pending, 1);
+        assert_eq!(report.removed_unowned_media, 1);
+        assert!(
+            fixture
+                .database()
+                .get_artifact(artifact_id)
+                .expect("cleaned artifact lookup")
+                .is_none()
+        );
+        assert!(!final_path.exists());
+        assert!(!staging_path.exists());
     }
 
     #[test]

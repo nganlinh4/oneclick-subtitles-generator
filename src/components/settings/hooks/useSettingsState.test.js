@@ -69,3 +69,19 @@ it('hydrates authentication only from native OAuth status metadata', async () =>
   expect(result.current.isAuthenticated).toBe(true);
   unmount();
 });
+
+it('hydrates and tracks changes to the selected cookie browser', () => {
+  localStorage.setItem('use_cookies_for_download', 'true');
+  localStorage.setItem('download_cookie_source', 'edge');
+
+  const { result, unmount } = renderSettingsState();
+
+  expect(result.current.useCookiesForDownload).toBe(true);
+  expect(result.current.downloadCookieSource).toBe('edge');
+  expect(result.current.originalSettings.downloadCookieSource).toBe('edge');
+  expect(result.current.hasChanges).toBe(false);
+
+  act(() => result.current.setDownloadCookieSource('firefox'));
+  expect(result.current.hasChanges).toBe(true);
+  unmount();
+});

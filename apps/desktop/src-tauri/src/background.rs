@@ -35,6 +35,22 @@ pub(crate) async fn apply(
         .map_err(Into::into)
 }
 
+pub(crate) async fn apply_if_sequence(
+    jobs: &DesktopJobs,
+    id: JobId,
+    expected_sequence: u64,
+    update: JobUpdate,
+) -> CommandResult<JobSnapshot> {
+    let jobs = Arc::clone(jobs);
+    tauri::async_runtime::spawn_blocking(move || {
+        jobs.apply_if_sequence(id, expected_sequence, update)
+    })
+    .await
+    .map_err(|_| CommandError::internal("the guarded job update task stopped unexpectedly"))?
+    .map(|ticket| ticket.snapshot().clone())
+    .map_err(Into::into)
+}
+
 pub(crate) async fn snapshot(jobs: &DesktopJobs, id: JobId) -> Option<JobSnapshot> {
     let jobs = Arc::clone(jobs);
     tauri::async_runtime::spawn_blocking(move || jobs.get(id))

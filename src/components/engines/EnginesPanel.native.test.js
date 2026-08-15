@@ -13,6 +13,15 @@ vi.mock('../../platform/enginePackageService', () => ({
 vi.mock('../../platform/speechPackageService', () => ({
   getSpeechPackagesStatus: vi.fn(),
 }));
+vi.mock('../../platform/managedEngineCatalog', () => ({
+  MANAGED_SPEECH_ENGINE_BINDINGS: Object.freeze([
+    { engineId: 'f5tts', packageBackend: 'f5-tts' },
+    { engineId: 'chatterbox', packageBackend: 'chatterbox' },
+    { engineId: 'edge-tts', packageBackend: 'edge-tts' },
+    { engineId: 'gtts', packageBackend: 'gtts' },
+    { engineId: 'gemini-tts', packageBackend: 'gemini-tts' },
+  ]),
+}));
 vi.mock('../../utils/waveColors', () => ({
   useWaveColors: vi.fn(),
 }));
@@ -65,13 +74,21 @@ it('merges the ASR and speech package catalogs under the visible engine identifi
   const parakeet = Object.freeze({ id: 'parakeet', deliveryAvailable: false });
   const f5 = Object.freeze({ id: 'f5-tts', deliveryAvailable: false });
   const chatterbox = Object.freeze({ id: 'chatterbox', deliveryAvailable: false });
+  const edge = Object.freeze({ id: 'edge-tts', deliveryAvailable: true });
+  const gtts = Object.freeze({ id: 'gtts', deliveryAvailable: true });
+  const gemini = Object.freeze({ id: 'gemini-tts', deliveryAvailable: true });
 
   const inventory = mapManagedPackageInventory(
     { engines: [parakeet] },
-    { packages: [f5, chatterbox] }
+    { packages: [f5, chatterbox, edge, gtts, gemini] }
   );
 
-  expect([...inventory.keys()]).toEqual(['parakeet', 'f5tts', 'chatterbox']);
+  expect([...inventory.keys()]).toEqual([
+    'parakeet', 'f5tts', 'chatterbox', 'edge-tts', 'gtts', 'gemini-tts',
+  ]);
   expect(inventory.get('f5tts')).toBe(f5);
   expect(inventory.get('chatterbox')).toBe(chatterbox);
+  expect(inventory.get('edge-tts')).toBe(edge);
+  expect(inventory.get('gtts')).toBe(gtts);
+  expect(inventory.get('gemini-tts')).toBe(gemini);
 });

@@ -2,12 +2,12 @@ use std::{env, fs, process::ExitCode};
 
 use osg_gemini::{
     ApiKey, Error, GeminiClient, GenerateRequest, GenerationConfig, InlineMedia, MediaInput, Model,
-    ThinkingLevel,
 };
 use tokio_util::sync::CancellationToken;
 
-const MODELS: [Model; 4] = [
+const MODELS: [Model; 5] = [
     Model::Gemini35FlashLite,
+    Model::Gemini37Flash,
     Model::Gemini36Flash,
     Model::Gemini35Flash,
     Model::Gemini31FlashLite,
@@ -19,6 +19,7 @@ fn selected_model() -> Result<Option<Model>, &'static str> {
     };
     match value.as_str() {
         "gemini-3.5-flash-lite" => Ok(Some(Model::Gemini35FlashLite)),
+        "gemini-3.7-flash" => Ok(Some(Model::Gemini37Flash)),
         "gemini-3.6-flash" => Ok(Some(Model::Gemini36Flash)),
         "gemini-3.5-flash" => Ok(Some(Model::Gemini35Flash)),
         "gemini-3.1-flash-lite" => Ok(Some(Model::Gemini31FlashLite)),
@@ -99,7 +100,12 @@ async fn run() -> Result<(), &'static str> {
                 )],
                 generation: GenerationConfig {
                     max_output_tokens: Some(256),
-                    thinking_level: Some(ThinkingLevel::Minimal),
+                    thinking_level: Some(
+                        model
+                            .spec()
+                            .expect("live-smoke models come from the reviewed catalog")
+                            .toolbox_thinking,
+                    ),
                     ..GenerationConfig::default()
                 },
             };

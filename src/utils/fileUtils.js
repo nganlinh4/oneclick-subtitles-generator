@@ -1,6 +1,44 @@
 import { resolveActiveNativeMediaAssetId } from '../platform/activeNativeMedia';
 import { exportMediaAsset } from '../platform/mediaExportService';
 import { runMediaPipeline } from '../platform/mediaPipelineService';
+import { isDesktopRuntime } from '../platform/runtimeEnvironment';
+import { exportSubtitleDocument } from '../platform/subtitleDocumentExportService';
+import {
+  parseSubtitleTimeSeconds,
+  secondsToSrtTimestamp,
+  serializeJsonSubtitleDocument,
+  serializeSrtDocument,
+  serializeTextSubtitleDocument,
+} from './subtitleDocumentSerializer';
+
+const downloadBrowserDocument = (content, mimeType, filename) => {
+  const blob = new Blob([content], { type: mimeType });
+  const url = URL.createObjectURL(blob);
+  const anchor = document.createElement('a');
+  anchor.href = url;
+  anchor.download = filename;
+  document.body.appendChild(anchor);
+  anchor.click();
+  setTimeout(() => {
+    document.body.removeChild(anchor);
+    URL.revokeObjectURL(url);
+  }, 100);
+  return Object.freeze({ status: 'saved' });
+};
+
+const saveSubtitleDocument = async (content, format, filename, mimeType) => {
+  if (!isDesktopRuntime()) {
+    return downloadBrowserDocument(content, mimeType, filename);
+  }
+  return exportSubtitleDocument({ suggestedName: filename, format, content });
+};
+
+export const downloadTextDocument = async (content, filename = 'document.txt') => {
+  if (typeof content !== 'string') {
+    throw new TypeError('A text document is required');
+  }
+  return saveSubtitleDocument(content, 'txt', filename, 'text/plain;charset=utf-8');
+};
 
 /**
  * Parse time string (00:00:00,000 or 00:00:00.000) to seconds
@@ -8,24 +46,7 @@ import { runMediaPipeline } from '../platform/mediaPipelineService';
  * @returns {number} - Time in seconds
  */
 export const parseTimeString = (timeString) => {
-  if (!timeString) return 0;
-
-  // Handle SRT format (00:00:00,000) or WebVTT format (00:00:00.000)
-  if (timeString.includes(':')) {
-    const [hours, minutes, secondsMs] = timeString.split(':');
-    const [seconds, ms] = secondsMs.includes(',')
-      ? secondsMs.split(',')
-      : secondsMs.split('.');
-
-    return parseInt(hours) * 3600 + parseInt(minutes) * 60 + parseInt(seconds) + parseInt(ms) / 1000;
-  }
-
-  // If it's just a number, return it as is
-  if (!isNaN(parseFloat(timeString))) {
-    return parseFloat(timeString);
-  }
-
-  return 0;
+  return parseSubtitleTimeSeconds(timeString);
 };
 
 /**
@@ -34,12 +55,7 @@ export const parseTimeString = (timeString) => {
  * @returns {string} - Time in SRT format
  */
 export const secondsToSrtTime = (seconds) => {
-  const hours = Math.floor(seconds / 3600);
-  const minutes = Math.floor((seconds % 3600) / 60);
-  const secs = Math.floor(seconds % 60);
-  const milliseconds = Math.floor((seconds % 1) * 1000);
-
-  return `${hours.toString().padStart(2, '0')}:${minutes.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')},${milliseconds.toString().padStart(3, '0')}`;
+  return secondsToSrtTimestamp(seconds);
 };
 
 /**
@@ -48,21 +64,7 @@ export const secondsToSrtTime = (seconds) => {
  * @returns {string} - Cleaned text without SRT formatting
  */
 export const cleanSubtitleText = (text) => {
-  if (!text) return '';
-
-  // Remove any SRT entry numbers at the beginning of lines
-  let cleanedText = text.replace(/^"?\d+\s*$/gm, '');
-
-  // Remove timestamp lines (00:00:00,000 --> 00:00:00,000)
-  cleanedText = cleanedText.replace(/^\d{2}:\d{2}:\d{2},\d{3}\s*-->\s*\d{2}:\d{2}:\d{2},\d{3}\s*$/gm, '');
-
-  // Remove any quotes that might be wrapping the entire text
-  cleanedText = cleanedText.replace(/^"|"$/g, '');
-
-  // Remove any empty lines that might have been created
-  cleanedText = cleanedText.split('\n').filter(line => line.trim()).join('\n');
-
-  return cleanedText.trim();
+  return typeof text === 'string' ? text : '';
 };
 
 /**
@@ -71,48 +73,7 @@ export const cleanSubtitleText = (text) => {
  * @returns {string} - SRT content
  */
 export const generateSrtContent = (subtitles) => {
-  return subtitles.map((subtitle, index) => {
-    // Always convert to proper SRT format (HH:MM:SS,mmm)
-    let startTime, endTime;
-
-    // If we have numeric start/end values, convert them to SRT format
-    if (subtitle.start !== undefined) {
-      startTime = secondsToSrtTime(subtitle.start);
-    }
-    // If we have startTime string, ensure it's in SRT format
-    else if (subtitle.startTime) {
-      // Check if it's already in SRT format
-      if (/^\d{2}:\d{2}:\d{2},\d{3}$/.test(subtitle.startTime)) {
-        startTime = subtitle.startTime;
-      } else {
-        // Try to parse and convert to SRT format
-        const timeInSeconds = parseTimeString(subtitle.startTime);
-        startTime = secondsToSrtTime(timeInSeconds);
-      }
-    } else {
-      startTime = '00:00:00,000';
-    }
-
-    // Same for end time
-    if (subtitle.end !== undefined) {
-      endTime = secondsToSrtTime(subtitle.end);
-    }
-    else if (subtitle.endTime) {
-      if (/^\d{2}:\d{2}:\d{2},\d{3}$/.test(subtitle.endTime)) {
-        endTime = subtitle.endTime;
-      } else {
-        const timeInSeconds = parseTimeString(subtitle.endTime);
-        endTime = secondsToSrtTime(timeInSeconds);
-      }
-    } else {
-      endTime = '00:00:05,000';
-    }
-
-    // Clean the subtitle text to remove any SRT formatting that might be embedded in it
-    const cleanedText = cleanSubtitleText(subtitle.text);
-
-    return `${index + 1}\n${startTime} --> ${endTime}\n${cleanedText}`;
-  }).join('\n\n');
+  return serializeSrtDocument(subtitles);
 };
 
 /**
@@ -120,27 +81,18 @@ export const generateSrtContent = (subtitles) => {
  * @param {Array} subtitles - Array of subtitle objects
  * @param {string} filename - Name of the file to download
  */
-export const downloadSRT = (subtitles, filename) => {
+export const downloadSRT = async (subtitles, filename) => {
   if (!subtitles || subtitles.length === 0) {
-    console.error('No subtitles to download');
-    return;
+    throw new TypeError('Subtitles are required');
   }
 
   const content = generateSrtContent(subtitles);
-  const blob = new Blob([content], { type: 'text/plain;charset=utf-8' });
-  const url = URL.createObjectURL(blob);
-
-  const a = document.createElement('a');
-  a.href = url;
-  a.download = filename || 'subtitles.srt';
-  document.body.appendChild(a);
-  a.click();
-
-  // Clean up
-  setTimeout(() => {
-    document.body.removeChild(a);
-    URL.revokeObjectURL(url);
-  }, 100);
+  return saveSubtitleDocument(
+    content,
+    'srt',
+    filename || 'subtitles.srt',
+    'text/plain;charset=utf-8'
+  );
 };
 
 /**
@@ -149,37 +101,7 @@ export const downloadSRT = (subtitles, filename) => {
  * @returns {string} - JSON content
  */
 export const generateJsonContent = (subtitles) => {
-  // Create a clean version of the subtitles with consistent properties
-  const cleanSubtitles = subtitles.map((subtitle, index) => {
-    // Convert any startTime/endTime strings to numeric values if needed
-    let start = subtitle.start;
-    let end = subtitle.end;
-
-    // If we have startTime/endTime strings but no numeric values, convert them
-    if (subtitle.startTime && start === undefined) {
-      // Parse the SRT time format (00:00:00,000) to seconds
-      const [hours, minutes, secondsMs] = subtitle.startTime.split(':');
-      const [seconds, ms] = secondsMs.split(',');
-      start = parseInt(hours) * 3600 + parseInt(minutes) * 60 + parseInt(seconds) + parseInt(ms) / 1000;
-    }
-
-    if (subtitle.endTime && end === undefined) {
-      const [hours, minutes, secondsMs] = subtitle.endTime.split(':');
-      const [seconds, ms] = secondsMs.split(',');
-      end = parseInt(hours) * 3600 + parseInt(minutes) * 60 + parseInt(seconds) + parseInt(ms) / 1000;
-    }
-
-    return {
-      id: index + 1,
-      start: start,
-      end: end,
-      startTime: subtitle.startTime,
-      endTime: subtitle.endTime,
-      text: subtitle.text
-    };
-  });
-
-  return JSON.stringify(cleanSubtitles, null, 2); // Pretty print with 2 spaces
+  return serializeJsonSubtitleDocument(subtitles);
 };
 
 /**
@@ -187,27 +109,18 @@ export const generateJsonContent = (subtitles) => {
  * @param {Array} subtitles - Array of subtitle objects
  * @param {string} filename - Name of the file to download
  */
-export const downloadJSON = (subtitles, filename) => {
+export const downloadJSON = async (subtitles, filename) => {
   if (!subtitles || subtitles.length === 0) {
-    console.error('No subtitles to download');
-    return;
+    throw new TypeError('Subtitles are required');
   }
 
   const content = generateJsonContent(subtitles);
-  const blob = new Blob([content], { type: 'application/json;charset=utf-8' });
-  const url = URL.createObjectURL(blob);
-
-  const a = document.createElement('a');
-  a.href = url;
-  a.download = filename || 'subtitles.json';
-  document.body.appendChild(a);
-  a.click();
-
-  // Clean up
-  setTimeout(() => {
-    document.body.removeChild(a);
-    URL.revokeObjectURL(url);
-  }, 100);
+  return saveSubtitleDocument(
+    content,
+    'json',
+    filename || 'subtitles.json',
+    'application/json;charset=utf-8'
+  );
 };
 
 /**
@@ -216,7 +129,7 @@ export const downloadJSON = (subtitles, filename) => {
  * @returns {string} - Plain text content
  */
 export const generateTxtContent = (subtitles) => {
-  return subtitles.map(subtitle => subtitle.text).join('\n');
+  return serializeTextSubtitleDocument(subtitles);
 };
 
 /**
@@ -224,30 +137,20 @@ export const generateTxtContent = (subtitles) => {
  * @param {Array} subtitles - Array of subtitle objects
  * @param {string} filename - Name of the file to download
  */
-export const downloadTXT = (subtitles, filename) => {
+export const downloadTXT = async (subtitles, filename) => {
   if (!subtitles || subtitles.length === 0) {
-    console.error('No subtitles to download');
-    return;
+    throw new TypeError('Subtitles are required');
   }
 
   const content = generateTxtContent(subtitles);
-  const blob = new Blob([content], { type: 'text/plain;charset=utf-8' });
-  const url = URL.createObjectURL(blob);
+  const result = await saveSubtitleDocument(
+    content,
+    'txt',
+    filename || 'subtitles.txt',
+    'text/plain;charset=utf-8'
+  );
 
-  const a = document.createElement('a');
-  a.href = url;
-  a.download = filename || 'subtitles.txt';
-  document.body.appendChild(a);
-  a.click();
-
-  // Clean up
-  setTimeout(() => {
-    document.body.removeChild(a);
-    URL.revokeObjectURL(url);
-  }, 100);
-
-  // Return the plain text content for potential further processing
-  return content;
+  return Object.freeze({ ...result, content });
 };
 
 /**

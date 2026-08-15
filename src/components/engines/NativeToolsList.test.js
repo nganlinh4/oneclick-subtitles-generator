@@ -5,7 +5,10 @@ import {
   removeNativeTool,
 } from '../../platform/nativeToolsService';
 import NativeToolsList, { NativeToolRow } from './NativeToolsList';
-import { getRenderPackageStatus } from '../../platform/renderPackageService';
+import {
+  getRenderPackageStatus,
+  installRenderPackage,
+} from '../../platform/renderPackageService';
 import { getVoiceSamplesStatus } from '../../platform/voiceSampleService';
 
 vi.mock('react-i18next', () => ({
@@ -167,6 +170,37 @@ it('trusts verified terminal status after a late channel protocol error', async 
   fireEvent.click(screen.getByRole('button', { name: 'Uninstall' }));
   await handlers.onProtocolError();
 
+  expect(screen.queryByText('The desktop host returned invalid tool progress.'))
+    .not.toBeInTheDocument();
+  expect(onChanged).toHaveBeenCalled();
+});
+
+it('checks renderer status after a late renderer progress protocol error', async () => {
+  let handlers;
+  installRenderPackage.mockImplementation(async (suppliedHandlers) => {
+    handlers = suppliedHandlers;
+    return { id: 'job' };
+  });
+  getRenderPackageStatus.mockResolvedValue(renderStatus({
+    installed: true,
+    state: 'installed',
+    version: '4.0.507',
+    installedBytes: 624_910_330,
+  }));
+  const onChanged = vi.fn();
+  render(
+    <NativeToolRow
+      catalog={{ id: 'remotion-runtime' }}
+      status={renderStatus()}
+      onChanged={onChanged}
+    />
+  );
+
+  fireEvent.click(screen.getByRole('button', { name: 'Download' }));
+  await handlers.onProtocolError();
+
+  expect(getRenderPackageStatus).toHaveBeenCalledOnce();
+  expect(getNativeToolsStatus).not.toHaveBeenCalled();
   expect(screen.queryByText('The desktop host returned invalid tool progress.'))
     .not.toBeInTheDocument();
   expect(onChanged).toHaveBeenCalled();

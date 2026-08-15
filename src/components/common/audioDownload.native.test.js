@@ -58,6 +58,7 @@ test('keeps the browser blob download used by generated background music', async
     createObjectUrl,
     revokeObjectUrl,
     createAnchor: () => anchor,
+    isNativeRuntime: () => false,
   })).resolves.toBe(true);
   expect(fetchAudio).toHaveBeenCalledWith('blob:recording', undefined);
   expect(createObjectUrl).toHaveBeenCalledWith(blob);
@@ -67,4 +68,20 @@ test('keeps the browser blob download used by generated background music', async
   });
   expect(anchor.click).toHaveBeenCalledTimes(1);
   expect(revokeObjectUrl).toHaveBeenCalledWith('blob:download');
+});
+
+test('exports generated background music through the native save dialog', async () => {
+  const blob = new Blob(['RIFF0000WAVEdata'], { type: 'audio/wav' });
+  const fetchAudio = vi.fn(async () => ({ blob: async () => blob }));
+  const exportGenerated = vi.fn(async () => true);
+  const createAnchor = vi.fn();
+
+  await expect(downloadAudioSource('blob:recording', { filename: 'background_music.wav' }, {
+    fetchAudio,
+    exportGenerated,
+    createAnchor,
+    isNativeRuntime: () => true,
+  })).resolves.toBe(true);
+  expect(exportGenerated).toHaveBeenCalledWith(blob, 'background_music.wav');
+  expect(createAnchor).not.toHaveBeenCalled();
 });

@@ -10,6 +10,8 @@
   "lineCount": "??? 자막 라인 입력됨",
   "cancel": "취소",
   "save": "자막 저장",
+  "saving": "저장 중...",
+  "saveFailed": "자막을 저장할 수 없습니다. 다시 시도해 주세요.",
   "addSubtitles": "자막 추가",
   "editSubtitles": "제공된 자막 편집",
   "subtitlesAdded": "자막 추가됨",

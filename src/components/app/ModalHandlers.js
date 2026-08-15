@@ -1,8 +1,19 @@
 import { PROMPT_PRESETS } from '../../services/geminiService';
 import { abortVideoAnalysis } from '../../services/videoAnalysisService';
-import { setTranscriptionRules } from '../../utils/transcriptionRulesStore';
-import { setUserProvidedSubtitles, setCurrentCacheId as setSubtitlesCacheId } from '../../utils/userSubtitlesStore';
-import { setCurrentCacheId as setRulesCacheId } from '../../utils/transcriptionRulesStore';
+import {
+  getCurrentCacheId as getRulesCacheId,
+  setTranscriptionRules,
+  setTranscriptionRulesForCache,
+} from '../../utils/transcriptionRulesStore';
+import {
+  getCurrentCacheId as getSubtitlesCacheId,
+  setUserProvidedSubtitlesForCache,
+} from '../../utils/userSubtitlesStore';
+import { isNativeMediaDescriptor } from '../../platform/mediaService';
+import { generateFileCacheId } from '../../utils/cacheUtils';
+import { resolveProjectForCache } from '../../platform/subtitleProjectStore';
+
+const rulesEditorContexts = new WeakMap();
 
 /**
  * Hook for modal-related handlers
@@ -20,6 +31,11 @@ export const useModalHandlers = (appState) => {
     uploadedFile,
     t = (key, defaultValue) => defaultValue // Provide a default implementation if t is not available
   } = appState;
+  let rulesEditorContextRef = rulesEditorContexts.get(setShowRulesEditor);
+  if (!rulesEditorContextRef) {
+    rulesEditorContextRef = { current: null };
+    rulesEditorContexts.set(setShowRulesEditor, rulesEditorContextRef);
+  }
 
   /**
    * Handle using the recommended preset from video analysis
@@ -122,40 +138,59 @@ export const useModalHandlers = (appState) => {
   /**
    * Handle editing the transcription rules
    */
-  const handleEditRules = (rules) => {
+  const captureRulesEditorContext = async () => {
+    const cacheId = await getCacheIdForCurrentVideo();
+    if (!cacheId
+        || getRulesCacheId() !== cacheId
+        || getSubtitlesCacheId() !== cacheId) {
+      throw new Error('The active subtitle project changed.');
+    }
+    const project = await resolveProjectForCache(cacheId, { create: true });
+    if (!project?.projectId
+        || getRulesCacheId() !== cacheId
+        || getSubtitlesCacheId() !== cacheId) {
+      throw new Error('The active subtitle project changed.');
+    }
+    return Object.freeze({ cacheId, projectId: project.projectId });
+  };
 
-    // First, close the video analysis modal
-    setShowVideoAnalysis(false);
-
-    // Use a small timeout to ensure state updates properly
-    setTimeout(() => {
-      // Then set the rules and open the editor
-      setTranscriptionRulesState(rules);
-      setShowRulesEditor(true);
-
-    }, 50); // Small delay to ensure proper transition
-
-    // Save the current analysis result to state but don't clear localStorage flags
-    // This allows us to reopen the modal when the rules editor is closed
-
+  const handleEditRules = async (rules) => {
+    try {
+      rulesEditorContextRef.current = await captureRulesEditorContext();
+      setShowVideoAnalysis(false);
+      setTimeout(() => {
+        setTranscriptionRulesState(rules);
+        setShowRulesEditor(true);
+      }, 50);
+      return true;
+    } catch {
+      setStatus({
+        message: t('errors.activeProjectChanged', 'The active subtitle project changed.'),
+        type: 'error',
+      });
+      return false;
+    }
   };
 
   /**
    * Handle saving the edited transcription rules
    */
   const handleSaveRules = async (editedRules) => {
-    // Update state
-    setTranscriptionRulesState(editedRules);
-
-    // Set cache ID based on the current video source
-    const cacheId = getCacheIdForCurrentVideo();
-    if (cacheId) {
-      setRulesCacheId(cacheId);
-
+    const context = await (rulesEditorContextRef.current ?? captureRulesEditorContext());
+    if (getRulesCacheId() !== context.cacheId
+        || getSubtitlesCacheId() !== context.cacheId) {
+      throw new Error('The active subtitle project changed.');
     }
-
-    // Save to store (which will handle caching)
-    await setTranscriptionRules(editedRules);
+    await setTranscriptionRulesForCache(context.cacheId, editedRules, {
+      expectedProjectId: context.projectId,
+    });
+    const projectAfterWrite = await resolveProjectForCache(context.cacheId, { create: false });
+    if (getRulesCacheId() !== context.cacheId
+        || getSubtitlesCacheId() !== context.cacheId
+        || projectAfterWrite?.projectId !== context.projectId) {
+      throw new Error('The active subtitle project changed.');
+    }
+    setTranscriptionRulesState(editedRules);
 
     // Update the analysis result with the edited rules
     if (videoAnalysisResult) {
@@ -169,30 +204,47 @@ export const useModalHandlers = (appState) => {
   /**
    * Handle viewing transcription rules
    */
-  const handleViewRules = () => {
-    setShowRulesEditor(true);
+  const handleViewRules = async () => {
+    try {
+      rulesEditorContextRef.current = await captureRulesEditorContext();
+      setShowRulesEditor(true);
+      return true;
+    } catch {
+      setStatus({
+        message: t('errors.activeProjectChanged', 'The active subtitle project changed.'),
+        type: 'error',
+      });
+      return false;
+    }
   };
 
   /**
    * Handle adding or updating user-provided subtitles
    */
   const handleUserSubtitlesAdd = async (subtitlesText) => {
-    // Update state
+    const cacheId = await getCacheIdForCurrentVideo();
+    if (!cacheId) throw new Error('The active subtitle project is unavailable.');
+    if (getSubtitlesCacheId() !== cacheId) throw new Error('The active subtitle project changed.');
+    const project = await resolveProjectForCache(cacheId, { create: true });
+    if (!project?.projectId || getSubtitlesCacheId() !== cacheId) {
+      throw new Error('The active subtitle project changed.');
+    }
+    await setUserProvidedSubtitlesForCache(cacheId, subtitlesText, {
+      expectedProjectId: project.projectId,
+    });
+    const projectAfterWrite = await resolveProjectForCache(cacheId, { create: false });
+    if (getSubtitlesCacheId() !== cacheId
+        || projectAfterWrite?.projectId !== project.projectId) {
+      throw new Error('The active subtitle project changed.');
+    }
     setUserProvidedSubtitlesState(subtitlesText);
 
-    // Set cache ID based on the current video source
-    const cacheId = getCacheIdForCurrentVideo();
-    if (cacheId) {
-      setSubtitlesCacheId(cacheId);
-
-    }
-
-    // Save to store (which will handle caching)
-    await setUserProvidedSubtitles(subtitlesText);
-
-    // Enable using user-provided subtitles
-    setUseUserProvidedSubtitles(true);
-    localStorage.setItem('use_user_provided_subtitles', 'true');
+    // The enablement flag is part of the same persisted result. Clearing the
+    // text must not leave timing-generation enabled with no source lines.
+    const hasProvidedSubtitles = typeof subtitlesText === 'string'
+      && subtitlesText.trim() !== '';
+    setUseUserProvidedSubtitles(hasProvidedSubtitles);
+    localStorage.setItem('use_user_provided_subtitles', String(hasProvidedSubtitles));
 
   };
 
@@ -206,12 +258,14 @@ export const useModalHandlers = (appState) => {
       // Use unified URL-based caching
       const { generateUrlBasedCacheId } = await import('../../services/subtitleCache');
       return await generateUrlBasedCacheId(currentVideoUrl);
-    } else if (uploadedFile) {
-      // For uploaded files, use the file name without extension
-      const fileName = uploadedFile.name;
-      const fileNameWithoutExt = fileName.substring(0, fileName.lastIndexOf('.')) || fileName;
-      return fileNameWithoutExt;
     }
+
+    const storedCacheId = localStorage.getItem('current_file_cache_id');
+    if (typeof storedCacheId === 'string' && storedCacheId.length > 0 && storedCacheId.length <= 8_192) {
+      return storedCacheId;
+    }
+    if (isNativeMediaDescriptor(uploadedFile)) return uploadedFile.assetId;
+    if (uploadedFile instanceof File) return await generateFileCacheId(uploadedFile);
     return null;
   };
 

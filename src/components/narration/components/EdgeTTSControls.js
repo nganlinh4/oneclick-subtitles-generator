@@ -1,6 +1,10 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { useTranslation } from 'react-i18next';
-import { probeSpeechBackend } from '../../../platform/speechService';
+import {
+  getSpeechLifecycleSnapshot,
+  getSpeechVoiceInventory,
+  subscribeSpeechLifecycle,
+} from '../../../platform/speechService';
 import SliderWithValue from '../../common/SliderWithValue';
 import VoiceSelectionModal from './VoiceSelectionModal';
 import '../../../styles/narration/narrationAdvancedSettingsRedesign.css';
@@ -31,21 +35,44 @@ const EdgeTTSControls = ({
   pitch,
   setPitch,
   isGenerating,
-  detectedLanguage
+  detectedLanguage,
+  isServiceAvailable = false
 }) => {
   const { t } = useTranslation();
   const [voices, setVoices] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [inventoryAvailable, setInventoryAvailable] = useState(false);
+  const [lifecycle, setLifecycle] = useState(() => getSpeechLifecycleSnapshot('edgeTts'));
   const [isVoiceModalOpen, setIsVoiceModalOpen] = useState(false);
+  const voiceRequestSequence = useRef(0);
 
-  // Load available voices on component mount
+  useEffect(() => subscribeSpeechLifecycle((snapshot) => {
+    if (snapshot.backend === 'edgeTts') setLifecycle(snapshot);
+  }), []);
+
+  // Voice inventory is requested only for an already-running engine. Tools owns Start/Stop.
   useEffect(() => {
+    const sequence = voiceRequestSequence.current + 1;
+    voiceRequestSequence.current = sequence;
+    if (!isServiceAvailable
+        || !lifecycle?.enabled
+        || !lifecycle.warm) {
+      setVoices([]);
+      setInventoryAvailable(false);
+      setLoading(false);
+      return () => { voiceRequestSequence.current += 1; };
+    }
     const loadVoices = async () => {
       try {
         setLoading(true);
-        const probe = await probeSpeechBackend('edgeTts');
+        const inventory = await getSpeechVoiceInventory('edgeTts', lifecycle.epoch);
+        if (voiceRequestSequence.current !== sequence) return;
+        const currentLifecycle = getSpeechLifecycleSnapshot('edgeTts');
+        if (!currentLifecycle?.enabled
+            || !currentLifecycle.warm
+            || currentLifecycle.epoch !== inventory.epoch) return;
         const data = {
-          voices: probe.voices.map((voice) => ({
+          voices: inventory.voices.map((voice) => ({
             short_name: voice.id,
             display_name: voice.displayName,
             language: voice.language.split('-')[0],
@@ -54,45 +81,41 @@ const EdgeTTSControls = ({
           })),
         };
         setVoices(data.voices || []);
-
-        // Show warning if using cached or fallback voices
-        if (data.warning) {
-          console.warn('[Edge TTS] Voice list warning:', data.warning);
-          if (data.fallback) {
-            window.addToast('Using limited voice list (API unavailable)', 'warning', 5000);
-          } else if (data.cached) {
-            window.addToast('Using cached voice list', 'info', 3000);
-          }
-        }
-
-        // Auto-select voice based on detected language
-        if (!selectedVoice && data.voices && data.voices.length > 0) {
-          let voiceToSelect = data.voices[0].short_name; // Default fallback - use short_name
-
-          if (detectedLanguage?.languageCode) {
-            // Try to find a voice that matches the detected language
-            const matchingVoice = data.voices.find(voice =>
-              voice.language === detectedLanguage.languageCode ||
-              voice.locale.startsWith(detectedLanguage.languageCode + '-')
-            );
-
-            if (matchingVoice) {
-              voiceToSelect = matchingVoice.short_name; // Use short_name for edge-tts compatibility
-            }
-          }
-
-          setSelectedVoice(voiceToSelect);
-        }
+        setInventoryAvailable(data.voices.length > 0);
       } catch (err) {
+        if (voiceRequestSequence.current !== sequence) return;
+        setVoices([]);
+        setInventoryAvailable(false);
         console.error('Error loading Edge TTS voices:', err);
         window.addToast('Failed to load voices', 'error', 5000);
       } finally {
-        setLoading(false);
+        if (voiceRequestSequence.current === sequence) setLoading(false);
       }
     };
 
     loadVoices();
-  }, [selectedVoice, setSelectedVoice, detectedLanguage]);
+    return () => {
+      if (voiceRequestSequence.current === sequence) voiceRequestSequence.current += 1;
+    };
+  }, [isServiceAvailable, lifecycle?.enabled, lifecycle?.epoch, lifecycle?.warm]);
+
+  useEffect(() => {
+    if (!isServiceAvailable || !inventoryAvailable || selectedVoice || voices.length === 0) return;
+    const matchingVoice = detectedLanguage?.languageCode
+      ? voices.find((voice) => (
+        voice.language === detectedLanguage.languageCode
+        || voice.locale.startsWith(`${detectedLanguage.languageCode}-`)
+      ))
+      : null;
+    setSelectedVoice((matchingVoice || voices[0]).short_name);
+  }, [
+    detectedLanguage,
+    inventoryAvailable,
+    isServiceAvailable,
+    selectedVoice,
+    setSelectedVoice,
+    voices,
+  ]);
 
   // Handle voice modal
   const openVoiceModal = () => setIsVoiceModalOpen(true);
@@ -125,7 +148,7 @@ const EdgeTTSControls = ({
                 className="model-dropdown-btn narration-model-dropdown-btn"
                 title={t('narration.selectVoice', 'Select narration voice')}
                 onClick={openVoiceModal}
-                disabled={isGenerating}
+                disabled={isGenerating || !isServiceAvailable || !inventoryAvailable}
               >
                 {/* Badge: show when selected voice language differs from detected language */}
                 {(detectedLanguage?.languageCode && selectedVoiceDetails &&
@@ -227,7 +250,7 @@ const EdgeTTSControls = ({
 
 
       {/* Voice Selection Modal */}
-      {isVoiceModalOpen && (
+      {isVoiceModalOpen && inventoryAvailable && (
         <VoiceSelectionModal
           isOpen={isVoiceModalOpen}
           onClose={closeVoiceModal}

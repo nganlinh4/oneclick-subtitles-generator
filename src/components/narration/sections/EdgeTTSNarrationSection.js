@@ -1,3 +1,4 @@
+import { useTranslation } from 'react-i18next';
 import SubtitleSourceSelection from '../components/SubtitleSourceSelection';
 import EdgeTTSControls from '../components/EdgeTTSControls';
 import GenerateButton from '../components/GenerateButton';
@@ -12,6 +13,7 @@ const getAudioUrl = () => null;
  */
 const EdgeTTSNarrationSection = ({
   narrationMethod,
+  isEdgeTTSAvailable,
   // Subtitle source selection
   subtitleSource,
   setSubtitleSource,
@@ -58,6 +60,7 @@ const EdgeTTSNarrationSection = ({
   audioRef,
   handleAudioEnded
 }) => {
+  const { t } = useTranslation();
   return (
     // Edge TTS UI
     <div className="edge-tts-content">
@@ -102,6 +105,7 @@ const EdgeTTSNarrationSection = ({
         pitch={edgeTTSPitch}
         setPitch={setEdgeTTSPitch}
         isGenerating={isGenerating}
+        isServiceAvailable={isEdgeTTSAvailable}
         detectedLanguage={subtitleSource === 'original' ? originalLanguage : translatedLanguage}
       />
 
@@ -115,8 +119,12 @@ const EdgeTTSNarrationSection = ({
         downloadAllAudio={downloadAllAudio}
         downloadAlignedAudio={downloadAlignedAudio}
         generationResults={generationResults}
-        isServiceAvailable={true}
-        serviceUnavailableMessage=""
+        isServiceAvailable={isEdgeTTSAvailable}
+        serviceUnavailableMessage={t(
+          'narration.engineUnavailableMessage',
+          'This narration engine is not ready. Install or start it in Settings > Voice & transcription engines.'
+        )}
+        narrationMethod="edge-tts"
       />
 
       {/* Edge TTS Results */}
@@ -138,6 +146,8 @@ const EdgeTTSNarrationSection = ({
            : (subtitleSource === 'translated' && translatedSubtitles && translatedSubtitles.length > 0)
              ? translatedSubtitles
              : (originalSubtitles || subtitles || [])}
+         isServiceAvailable={isEdgeTTSAvailable}
+         narrationMethod="edge-tts"
        />
 
       {/* Hidden audio player for playback */}

@@ -141,7 +141,7 @@ const ChatterboxNarrationSection = ({
         downloadAlignedAudio={downloadAlignedAudio}
         generationResults={generationResults}
         isServiceAvailable={isChatterboxAvailable}
-        serviceUnavailableMessage={t('narration.chatterboxUnavailableMessage', 'Chatterbox API is not available. Please start the Chatterbox service.')}
+        serviceUnavailableMessage={t('narration.engineUnavailableMessage', 'This narration engine is not ready. Install or start it in Settings > Voice & transcription engines.')}
         narrationMethod="chatterbox"
       />
 
@@ -164,6 +164,9 @@ const ChatterboxNarrationSection = ({
            : (subtitleSource === 'translated' && translatedSubtitles && translatedSubtitles.length > 0)
              ? translatedSubtitles
              : (originalSubtitles || subtitles || [])}
+         isServiceAvailable={isChatterboxAvailable}
+         referenceAudio={referenceAudio}
+         narrationMethod="chatterbox"
        />
 
       {/* Hidden audio player for playback */}

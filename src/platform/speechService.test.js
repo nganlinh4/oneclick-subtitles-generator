@@ -3,6 +3,7 @@ import {
   MAX_SPEECH_BATCH_BYTES,
   MAX_SPEECH_SEGMENTS,
   createNativeSpeechService,
+  createSpeechLifecycleState,
   normalizeSpeechProfile,
   normalizeSpeechStartRequest,
   normalizeSpeechStatus,
@@ -55,6 +56,8 @@ const playable = () => ({
 
 const backendStatus = (backend, overrides = {}) => ({
   backend,
+  epoch: 0,
+  enabled: false,
   installed: false,
   ready: false,
   warm: false,
@@ -64,6 +67,14 @@ const backendStatus = (backend, overrides = {}) => ({
   requiresCredential: backend === 'geminiTts',
   ...overrides,
 });
+
+const runningLifecycleState = (backend = 'gtts', epoch = 0) => {
+  const lifecycleState = createSpeechLifecycleState();
+  lifecycleState.apply(backendStatus(backend, {
+    epoch, enabled: true, installed: true, ready: true, warm: true,
+  }));
+  return lifecycleState;
+};
 
 const status = () => ({
   backends: [
@@ -114,11 +125,13 @@ describe('native speech request validation', () => {
 
   test('requires an opaque reference only for reference-based engines', () => {
     expect(() => normalizeSpeechStartRequest({
+      lifecycleEpoch: 0,
       segments: [{ id: 'one', text: 'hello' }],
       profile: { backend: 'f5Tts' },
       referenceArtifactId: null,
     })).toThrow('invalid');
     expect(() => normalizeSpeechStartRequest({
+      lifecycleEpoch: 0,
       segments: [{ id: 'one', text: 'hello' }],
       profile: { backend: 'gtts', language: 'en' },
       referenceArtifactId: ARTIFACT_ID,
@@ -127,14 +140,17 @@ describe('native speech request validation', () => {
 
   test('rejects duplicate IDs, controls, oversized Chatterbox text, and unknown options', () => {
     expect(() => normalizeSpeechStartRequest({
+      lifecycleEpoch: 0,
       segments: [{ id: 'same', text: 'a' }, { id: 'same', text: 'b' }],
       profile: { backend: 'gtts', language: 'en' },
     })).toThrow('invalid');
     expect(() => normalizeSpeechStartRequest({
+      lifecycleEpoch: 0,
       segments: [{ id: 'one', text: 'a\u0000b' }],
       profile: { backend: 'gtts', language: 'en' },
     })).toThrow('invalid');
     expect(() => normalizeSpeechStartRequest({
+      lifecycleEpoch: 0,
       segments: [{ id: 'one', text: 'x'.repeat(301) }],
       profile: { backend: 'chatterbox' },
       referenceArtifactId: ARTIFACT_ID,
@@ -153,6 +169,120 @@ describe('native speech response validation', () => {
     const invalid = status();
     invalid.backends[0] = backendStatus('f5Tts', { ready: true });
     expect(() => normalizeSpeechStatus(invalid)).toThrow('invalid');
+  });
+
+  test('reads cached warm inventory through the non-starting native command only', async () => {
+    const lifecycleState = createSpeechLifecycleState();
+    lifecycleState.apply(backendStatus('edgeTts', {
+      epoch: 7, enabled: true, installed: true, ready: true, warm: true,
+    }));
+    const invokeCommand = vi.fn(async (command) => {
+      if (command === 'speech_voice_inventory') {
+        return {
+          backend: 'edgeTts',
+          epoch: 7,
+          enabled: true,
+          warm: true,
+          voices: [{
+            id: 'en-US-AriaNeural',
+            displayName: 'Aria',
+            language: 'en-US',
+            gender: 'female',
+          }],
+        };
+      }
+      throw new Error('unexpected command');
+    });
+    const service = createNativeSpeechService({
+      invokeCommand,
+      ChannelConstructor: FakeChannel,
+      isNativeRuntime: () => true,
+      lifecycleState,
+    });
+
+    await expect(service.getSpeechVoiceInventory('edgeTts', 7)).resolves.toMatchObject({
+      backend: 'edgeTts',
+      epoch: 7,
+      voices: [{ id: 'en-US-AriaNeural' }],
+    });
+    expect(invokeCommand).toHaveBeenCalledExactlyOnceWith(
+      'speech_voice_inventory',
+      { backend: 'edgeTts', epoch: 7 }
+    );
+    expect(invokeCommand).not.toHaveBeenCalledWith('speech_probe', expect.anything());
+    expect(invokeCommand).not.toHaveBeenCalledWith('speech_start', expect.anything());
+    await expect(service.getSpeechVoiceInventory('f5Tts', 7)).rejects.toMatchObject({
+      code: 'invalidSpeechRequest',
+    });
+    expect(invokeCommand).toHaveBeenCalledTimes(1);
+  });
+
+  test('rejects inventory returned for a different backend', async () => {
+    const lifecycleState = createSpeechLifecycleState();
+    lifecycleState.apply(backendStatus('edgeTts', {
+      epoch: 4, enabled: true, installed: true, ready: true, warm: true,
+    }));
+    const service = createNativeSpeechService({
+      invokeCommand: vi.fn(async () => ({
+        backend: 'gtts', epoch: 4, enabled: true, warm: true, voices: [],
+      })),
+      ChannelConstructor: FakeChannel,
+      isNativeRuntime: () => true,
+      lifecycleState,
+    });
+    await expect(service.getSpeechVoiceInventory('edgeTts', 4)).rejects.toMatchObject({
+      code: 'invalidSpeechResponse',
+    });
+  });
+
+  test('rejects late inventory and stale starts after an authoritative Stop epoch', async () => {
+    const lifecycleState = createSpeechLifecycleState();
+    const running = backendStatus('edgeTts', {
+      epoch: 9, enabled: true, installed: true, ready: true, warm: true,
+    });
+    lifecycleState.apply(running);
+    let resolveInventory;
+    const invokeCommand = vi.fn((command) => {
+      if (command === 'speech_voice_inventory') {
+        return new Promise((resolve) => { resolveInventory = resolve; });
+      }
+      if (command === 'speech_runtime_stop') {
+        return Promise.resolve(backendStatus('edgeTts', {
+          epoch: 10, enabled: false, installed: true, ready: false, warm: false,
+        }));
+      }
+      throw new Error('unexpected command');
+    });
+    const service = createNativeSpeechService({
+      invokeCommand,
+      ChannelConstructor: FakeChannel,
+      isNativeRuntime: () => true,
+      lifecycleState,
+    });
+    const lifecycleObserver = vi.fn();
+    lifecycleState.subscribe(lifecycleObserver);
+    const lateInventory = service.getSpeechVoiceInventory('edgeTts', 9);
+
+    await expect(service.stopSpeechRuntime('edgeTts')).resolves.toMatchObject({
+      epoch: 10, enabled: false, warm: false,
+    });
+    expect(lifecycleObserver).toHaveBeenLastCalledWith(expect.objectContaining({
+      backend: 'edgeTts', epoch: 10, enabled: false, warm: false,
+    }));
+    lifecycleState.apply(running);
+    expect(lifecycleState.getSnapshot('edgeTts')).toMatchObject({
+      epoch: 10, enabled: false, warm: false,
+    });
+    resolveInventory({
+      backend: 'edgeTts', epoch: 9, enabled: true, warm: true, voices: [],
+    });
+    await expect(lateInventory).rejects.toMatchObject({ code: 'speechRuntimeStopped' });
+    await expect(service.startSpeechJob({
+      lifecycleEpoch: 9,
+      segments: [{ id: 'one', text: 'hello' }],
+      profile: { backend: 'edgeTts', voice: 'en-US-AriaNeural' },
+    })).rejects.toMatchObject({ code: 'speechRuntimeStopped' });
+    expect(invokeCommand.mock.calls.filter(([command]) => command === 'speech_start')).toHaveLength(0);
   });
 
   test('accepts only scoped loopback playback URLs', async () => {
@@ -266,6 +396,84 @@ describe('native speech response validation', () => {
 });
 
 describe('native speech job lifecycle', () => {
+  test('pins voice conversion to Chatterbox epoch and cancels a late cross-Stop start', async () => {
+    const lifecycleState = createSpeechLifecycleState();
+    lifecycleState.apply(backendStatus('chatterbox', {
+      epoch: 20, enabled: true, installed: true, ready: true, warm: true,
+    }));
+    let resolveStart;
+    const invokeCommand = vi.fn((command) => {
+      if (command === 'speech_voice_conversion_start') {
+        return new Promise((resolve) => { resolveStart = resolve; });
+      }
+      if (command === 'job_cancel') return Promise.resolve(job('cancelling', 2, 0));
+      throw new Error('unexpected command');
+    });
+    const service = createNativeSpeechService({
+      invokeCommand,
+      ChannelConstructor: FakeChannel,
+      isNativeRuntime: () => true,
+      lifecycleState,
+    });
+    const conversion = service.startVoiceConversionJob({
+      inputArtifactId: ARTIFACT_ID,
+      targetVoiceArtifactId: EDITED_ARTIFACT_ID,
+      lifecycleEpoch: 20,
+    });
+    await vi.waitFor(() => expect(resolveStart).toBeTypeOf('function'));
+
+    lifecycleState.apply(backendStatus('chatterbox', {
+      epoch: 21, enabled: false, installed: true, ready: false, warm: false,
+    }));
+    lifecycleState.apply(backendStatus('chatterbox', {
+      epoch: 21, enabled: true, installed: true, ready: true, warm: true,
+    }));
+    resolveStart(job());
+
+    await expect(conversion).rejects.toMatchObject({ code: 'speechRuntimeStopped' });
+    expect(invokeCommand).toHaveBeenCalledWith('speech_voice_conversion_start', {
+      request: {
+        inputArtifactId: ARTIFACT_ID,
+        targetVoiceArtifactId: EDITED_ARTIFACT_ID,
+        lifecycleEpoch: 20,
+      },
+      onEvent: expect.any(FakeChannel),
+    });
+    expect(invokeCommand).toHaveBeenCalledWith('job_cancel', { id: JOB_ID });
+  });
+
+  test('voice conversion fails closed without Chatterbox ownership and ignores other backends', async () => {
+    const lifecycleState = createSpeechLifecycleState();
+    const invokeCommand = vi.fn(async (command) => {
+      if (command === 'speech_voice_conversion_start') return job();
+      throw new Error('unexpected command');
+    });
+    const service = createNativeSpeechService({
+      invokeCommand,
+      ChannelConstructor: FakeChannel,
+      isNativeRuntime: () => true,
+      lifecycleState,
+    });
+    const request = {
+      inputArtifactId: ARTIFACT_ID,
+      targetVoiceArtifactId: EDITED_ARTIFACT_ID,
+      lifecycleEpoch: 4,
+    };
+    await expect(service.startVoiceConversionJob(request)).rejects.toMatchObject({
+      code: 'speechRuntimeStopped',
+    });
+    expect(invokeCommand).not.toHaveBeenCalled();
+
+    lifecycleState.apply(backendStatus('chatterbox', {
+      epoch: 4, enabled: true, installed: true, ready: true, warm: true,
+    }));
+    lifecycleState.apply(backendStatus('edgeTts', {
+      epoch: 8, enabled: false, installed: true, ready: false, warm: false,
+    }));
+    await expect(service.startVoiceConversionJob(request)).resolves.toEqual(job());
+    expect(invokeCommand).toHaveBeenCalledTimes(1);
+  });
+
   test('buffers early events, dispatches typed results, and keeps artifacts opaque', async () => {
     const onResult = vi.fn();
     const onComplete = vi.fn();
@@ -289,8 +497,10 @@ describe('native speech job lifecycle', () => {
       invokeCommand,
       ChannelConstructor: FakeChannel,
       isNativeRuntime: () => true,
+      lifecycleState: runningLifecycleState(),
     });
     await expect(service.startSpeechJob({
+      lifecycleEpoch: 0,
       segments: [{ id: 'one', text: 'private words' }],
       profile: { backend: 'gtts', language: 'en' },
     }, {
@@ -323,8 +533,10 @@ describe('native speech job lifecycle', () => {
       invokeCommand,
       ChannelConstructor: FakeChannel,
       isNativeRuntime: () => true,
+      lifecycleState: runningLifecycleState(),
     });
     await service.startSpeechJob({
+      lifecycleEpoch: 0,
       segments: [{ id: 'one', text: 'hello' }],
       profile: { backend: 'gtts', language: 'en' },
     }, { onProtocolError });
@@ -350,8 +562,10 @@ describe('native speech job lifecycle', () => {
       invokeCommand,
       ChannelConstructor: FakeChannel,
       isNativeRuntime: () => true,
+      lifecycleState: runningLifecycleState(),
     });
     await service.startSpeechJob({
+      lifecycleEpoch: 0,
       segments: [
         { id: 'one', text: 'hello' },
         { id: 'two', text: 'world' },
@@ -382,6 +596,82 @@ describe('native speech job lifecycle', () => {
     expect(invokeCommand).toHaveBeenCalledWith('job_cancel', { id: JOB_ID });
   });
 
+  test('quarantines an old job across Stop and restart without cancelling another backend', async () => {
+    const lifecycleState = runningLifecycleState('gtts', 30);
+    const lifecycleObserver = vi.fn();
+    lifecycleState.subscribe(lifecycleObserver);
+    let channel;
+    const invokeCommand = vi.fn(async (command, args) => {
+      if (command === 'speech_start') {
+        channel = args.onEvent;
+        return job();
+      }
+      if (command === 'job_cancel') return job('cancelling', 2, 0);
+      throw new Error('unexpected command');
+    });
+    const onProgress = vi.fn();
+    const onSegmentCompleted = vi.fn();
+    const onCompleted = vi.fn();
+    const onProtocolError = vi.fn();
+    const service = createNativeSpeechService({
+      invokeCommand,
+      ChannelConstructor: FakeChannel,
+      isNativeRuntime: () => true,
+      lifecycleState,
+    });
+    await service.startSpeechJob({
+      lifecycleEpoch: 30,
+      segments: [{ id: 'one', text: 'hello' }],
+      profile: { backend: 'gtts', language: 'en' },
+    }, {
+      onProgress, onSegmentCompleted, onCompleted, onProtocolError,
+    });
+
+    lifecycleState.apply(backendStatus('edgeTts', {
+      epoch: 8, enabled: false, installed: true, ready: false, warm: false,
+    }));
+    await Promise.resolve();
+    expect(invokeCommand.mock.calls.filter(([command]) => command === 'job_cancel'))
+      .toHaveLength(0);
+
+    lifecycleState.apply(backendStatus('gtts', {
+      epoch: 31, enabled: false, installed: true, ready: false, warm: false,
+    }));
+    lifecycleState.apply(backendStatus('gtts', {
+      epoch: 31, enabled: true, installed: true, ready: true, warm: true,
+    }));
+    channel.onmessage({ event: 'progress', nativePath: 'C:\\stale-output.wav' });
+    channel.onmessage({
+      event: 'segmentCompleted',
+      jobId: JOB_ID,
+      index: 1,
+      total: 1,
+      result: { status: 'completed', segmentId: 'one', artifact: artifact() },
+    });
+    channel.onmessage({
+      event: 'completed',
+      job: job('succeeded', 3, 10_000),
+      results: [{ status: 'completed', segmentId: 'one', artifact: artifact() }],
+    });
+    await Promise.resolve();
+    await Promise.resolve();
+
+    expect(onProtocolError).toHaveBeenCalledExactlyOnceWith(expect.objectContaining({
+      code: 'speechRuntimeStopped',
+    }));
+    expect(onProgress).not.toHaveBeenCalled();
+    expect(onSegmentCompleted).not.toHaveBeenCalled();
+    expect(onCompleted).not.toHaveBeenCalled();
+    expect(invokeCommand.mock.calls.filter(([command]) => command === 'job_cancel'))
+      .toHaveLength(1);
+    expect(lifecycleState.getSnapshot('gtts')).toMatchObject({
+      epoch: 31, enabled: true, warm: true,
+    });
+    expect(lifecycleObserver).toHaveBeenLastCalledWith(expect.objectContaining({
+      backend: 'gtts', epoch: 31, enabled: true,
+    }));
+  });
+
   test('bridges AbortSignal cancellation exactly once', async () => {
     const invokeCommand = vi.fn(async (command) => {
       if (command === 'speech_start') return job();
@@ -392,9 +682,11 @@ describe('native speech job lifecycle', () => {
       invokeCommand,
       ChannelConstructor: FakeChannel,
       isNativeRuntime: () => true,
+      lifecycleState: runningLifecycleState(),
     });
     const controller = new AbortController();
     await service.startSpeechJob({
+      lifecycleEpoch: 0,
       segments: [{ id: 'one', text: 'hello' }],
       profile: { backend: 'gtts', language: 'en' },
     }, undefined, { signal: controller.signal });

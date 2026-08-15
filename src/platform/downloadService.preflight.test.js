@@ -97,7 +97,10 @@ it('validates an inspection before IPC and runs preflight before URL authority c
 
 it('does not start a download when the typed readiness preflight rejects', async () => {
   const blocked = Object.assign(new Error('busy'), { code: 'nativeToolInUse' });
-  mocks.invoke.mockResolvedValueOnce(readiness({ available: false }));
+  mocks.invoke.mockResolvedValueOnce(readiness({
+    available: false,
+    reason: 'mediaToolsUnavailable',
+  }));
   mocks.ensureDownload.mockRejectedValue(blocked);
 
   await expect(startDownload({

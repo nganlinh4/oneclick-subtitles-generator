@@ -7,13 +7,15 @@ rust-version.workspace = true
 description = "Bounded loopback streaming for opaque OSG media assets"
 
 [dependencies]
+blake3 = "=1.8.6"
 mime_guess = "2.0.5"
 serde.workspace = true
+tempfile = "3.27.0"
 thiserror.workspace = true
 uuid.workspace = true
 
 [dev-dependencies]
-tempfile = "3.27.0"
+filetime = "=0.2.29"
 
 [lints]
 workspace = true

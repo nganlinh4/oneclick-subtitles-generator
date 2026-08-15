@@ -42,6 +42,7 @@ commands.allow = [
   "download_inspect",
   "download_start",
   "download_cancel",
+  "discard_media_candidate",
 ]
 
 [[permission]]
@@ -101,14 +102,29 @@ commands.allow = ["gemini_start"]
 
 [[permission]]
 identifier = "generate-images"
-description = "Allows the main editor to import a bounded ephemeral reference image and run native Gemini image generation without exposing credentials or paths."
-commands.allow = ["image_blob_import", "image_blob_release", "gemini_image_start"]
+description = "Allows the main editor to select or transfer a bounded native reference-image capability and create, reopen, export, delete, or clear durable project-owned generated images through opaque identities."
+commands.allow = [
+  "image_blob_import_playback",
+  "image_blob_release",
+  "image_reference_select",
+  "image_reference_playback_release",
+  "image_reference_export",
+  "gemini_image_start",
+  "gemini_image_complete",
+  "generated_image_list",
+  "generated_image_resolve",
+  "generated_image_export",
+  "generated_image_delete",
+  "generated_image_clear",
+  "generated_image_playback_release",
+]
 
 [[permission]]
 identifier = "use-native-live-music"
 description = "Allows the main editor to run one bounded native Lyria RealTime session using an opaque credential reference and raw PCM channels."
 commands.allow = [
   "live_music_start",
+  "live_music_rollback_start",
   "live_music_update",
   "live_music_control",
   "live_music_close",
@@ -121,8 +137,13 @@ commands.allow = ["media_blob_import", "media_blob_release"]
 
 [[permission]]
 identifier = "export-media"
-description = "Allows the main editor to choose a native destination and atomically export an opaque media asset without exposing filesystem paths."
-commands.allow = ["media_export_start"]
+description = "Allows the main editor to choose a native destination and atomically export media assets or subtitle documents without exposing filesystem paths."
+commands.allow = [
+  "media_export_start",
+  "subtitle_document_export",
+  "subtitle_archive_export",
+  "generated_file_export",
+]
 
 [[permission]]
 identifier = "manage-native-tools"
@@ -184,6 +205,7 @@ identifier = "use-native-speech"
 description = "Allows the main editor to inspect supervised speech backends, manage opaque reference audio, run durable narration and voice-conversion jobs, export durable artifacts through native save UI, and resolve scoped playback handles."
 commands.allow = [
   "speech_status",
+  "speech_voice_inventory",
   "speech_probe",
   "speech_runtime_stop",
   "speech_reference_select",

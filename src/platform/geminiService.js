@@ -1,8 +1,9 @@
 import { Channel } from '@tauri-apps/api/core';
 import { validate as validateUuid, version as uuidVersion } from 'uuid';
 import {
-  GEMINI_MODEL_IDS,
   getModelById,
+  isBuiltInGeminiModel,
+  isCustomGeminiModelId,
   modelAcceptsMedia,
 } from '../config/geminiModels';
 import { invokeDesktop, isDesktopRuntime } from './desktopRuntime';
@@ -35,7 +36,7 @@ const MAX_JSON_DEPTH = 64;
 const MAX_JSON_NODES = 250_000;
 
 const geminiTasks = new Set(GEMINI_TASKS);
-const geminiModelIds = new Set(GEMINI_MODEL_IDS);
+const CUSTOM_MODEL_MAX_OUTPUT_TOKENS = 65_536;
 const jobKinds = new Set([
   'importMedia',
   'probeMedia',
@@ -71,6 +72,7 @@ const requestKeys = new Set([
   'mediaResolution',
   'responseJsonSchema',
   'mediaAssetId',
+  'emptySpeechPolicy',
 ]);
 const handlerKeys = new Set([
   'onEvent',
@@ -236,9 +238,11 @@ export const normalizeGeminiStartRequest = (request) => {
     throw invalidRequest();
   }
 
+  const builtInModel = isBuiltInGeminiModel(request.model);
+  const customModel = isCustomGeminiModelId(request.model);
   if (!geminiTasks.has(request.task)
-      || !geminiModelIds.has(request.model)
-      || !modelAcceptsMedia(request.model)) {
+      || (!builtInModel && !customModel)
+      || (builtInModel && !modelAcceptsMedia(request.model))) {
     throw invalidRequest();
   }
 
@@ -254,6 +258,14 @@ export const normalizeGeminiStartRequest = (request) => {
   if (normalized.task === 'transcribe' && normalized.mediaAssetId === null) {
     throw invalidRequest();
   }
+  if (customModel
+      && (normalized.task === 'transcribe'
+        || normalized.mediaAssetId !== null
+        || request.thinkingLevel !== undefined
+        || request.mediaResolution !== undefined
+        || request.emptySpeechPolicy !== undefined)) {
+    throw invalidRequest();
+  }
 
   if (request.systemInstruction !== undefined) {
     normalized.systemInstruction = requireBoundedString(
@@ -262,22 +274,38 @@ export const normalizeGeminiStartRequest = (request) => {
     );
   }
   if (request.maxOutputTokens !== undefined) {
+    const outputTokenLimit = model?.limits.outputTokens ?? CUSTOM_MODEL_MAX_OUTPUT_TOKENS;
     if (!Number.isSafeInteger(request.maxOutputTokens)
         || request.maxOutputTokens < 1
-        || request.maxOutputTokens > model.limits.outputTokens) {
+        || request.maxOutputTokens > outputTokenLimit) {
       throw invalidRequest();
     }
     normalized.maxOutputTokens = request.maxOutputTokens;
   }
   if (request.thinkingLevel !== undefined) {
     const wireValue = thinkingLevelWireValue[request.thinkingLevel];
-    if (wireValue === undefined) throw invalidRequest();
+    const catalogValue = typeof request.thinkingLevel === 'string'
+      ? request.thinkingLevel.toLowerCase()
+      : null;
+    if (wireValue === undefined
+        || (model?.thinking?.type === 'level'
+          && !model.thinking.options.includes(catalogValue))) {
+      throw invalidRequest();
+    }
     normalized.thinkingLevel = wireValue;
   }
   if (request.mediaResolution !== undefined) {
     const wireValue = mediaResolutionWireValue[request.mediaResolution];
     if (wireValue === undefined) throw invalidRequest();
     normalized.mediaResolution = wireValue;
+  }
+  if (request.emptySpeechPolicy !== undefined) {
+    if (request.task !== 'transcribe'
+        || normalized.mediaAssetId === null
+        || request.emptySpeechPolicy !== 'provenSilence') {
+      throw invalidRequest();
+    }
+    normalized.emptySpeechPolicy = request.emptySpeechPolicy;
   }
   if (request.responseJsonSchema !== undefined) {
     normalized.responseJsonSchema = normalizeJsonSchema(request.responseJsonSchema);

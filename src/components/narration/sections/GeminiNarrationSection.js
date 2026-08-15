@@ -10,7 +10,6 @@ import GeminiNarrationResults from '../components/GeminiNarrationResults';
  * @returns {JSX.Element} - Rendered Gemini narration UI
  */
 const GeminiNarrationSection = ({
-  t,
   // Subtitle source selection
   subtitleSource,
   setSubtitleSource,
@@ -41,6 +40,7 @@ const GeminiNarrationSection = ({
   downloadAlignedAudio,
   cancelGeminiGeneration,
   isGeminiAvailable,
+  geminiUnavailableMessage,
   // Results
   retryGeminiNarration,
   retryingSubtitleId,
@@ -103,7 +103,7 @@ const GeminiNarrationSection = ({
         downloadAlignedAudio={downloadAlignedAudio}
         generationResults={generationResults}
         isServiceAvailable={isGeminiAvailable}
-        serviceUnavailableMessage={t('narration.geminiUnavailableMessage', 'Gemini API is not available. Please check your API key in settings.')}
+        serviceUnavailableMessage={geminiUnavailableMessage}
       />
 
       {/* Gemini Results */}
@@ -120,6 +120,8 @@ const GeminiNarrationSection = ({
           : (subtitleSource === 'translated' && translatedSubtitles && translatedSubtitles.length > 0)
             ? translatedSubtitles
             : (originalSubtitles || subtitles || [])}
+        isServiceAvailable={isGeminiAvailable}
+        serviceUnavailableMessage={geminiUnavailableMessage}
       />
 
       {/* No need for a separate audio element here as it's included in the GeminiNarrationResults component */}

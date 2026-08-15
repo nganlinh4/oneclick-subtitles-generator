@@ -1,4 +1,4 @@
-import { EVENTS } from '../events/constants';
+import { CHECKPOINT_SOURCE, EVENTS } from '../events/constants';
 import {
   CHECKPOINT_TIMEOUT_MS,
   CheckpointBeforeUpdateError,
@@ -40,6 +40,62 @@ it('resolves only an exactly successful response for the matching checkpoint', a
     runId: 'run-1',
   }, 100)).resolves.toBeUndefined();
   removeListener();
+});
+
+it('accepts the automatic-generation checkpoint used by the unmocked orchestrator', async () => {
+  const removeListener = respondToCheckpoint((request) => ({
+    source: request.source,
+    checkpointId: request.checkpointId,
+    success: true,
+  }));
+
+  await expect(checkpointBeforeUpdate({
+    source: 'auto-generation-start',
+    runId: 'auto-run-1',
+  }, 100)).resolves.toBeUndefined();
+  removeListener();
+});
+
+it('accepts and aborts the exact translation-start checkpoint', async () => {
+  const controller = new AbortController();
+  const removeListener = respondToCheckpoint((request) => ({
+    source: request.source,
+    checkpointId: request.checkpointId,
+    success: true,
+  }));
+  await expect(checkpointBeforeUpdate({
+    source: CHECKPOINT_SOURCE.TRANSLATION_START,
+    runId: 'translation-run-1',
+    signal: controller.signal,
+  }, 100)).resolves.toBeUndefined();
+  removeListener();
+
+  const stopped = new AbortController();
+  const pending = checkpointBeforeUpdate({
+    source: CHECKPOINT_SOURCE.TRANSLATION_START,
+    runId: 'translation-run-stop',
+    signal: stopped.signal,
+  }, 100);
+  stopped.abort();
+  await expect(pending).rejects.toMatchObject({ name: 'AbortError' });
+});
+
+it('rejects a pending automatic checkpoint immediately when its owning run stops', async () => {
+  vi.useFakeTimers();
+  const controller = new AbortController();
+  const checkpoint = checkpointBeforeUpdate({
+    source: 'auto-generation-start',
+    runId: 'auto-run-stop',
+    signal: controller.signal,
+  });
+
+  controller.abort();
+
+  await expect(checkpoint).rejects.toMatchObject({
+    name: 'AbortError',
+    code: 'autoGenerationAborted',
+  });
+  expect(vi.getTimerCount()).toBe(0);
 });
 
 it.each([false, 'true', 1, undefined])(

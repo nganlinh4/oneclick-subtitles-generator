@@ -127,6 +127,32 @@ fn machine_progress_is_typed_and_bounded() {
 }
 
 #[test]
+fn cancellation_after_complete_but_before_publication_removes_the_output() {
+    let directory = tempfile::tempdir().unwrap();
+    let worker = LazySpeechWorker::new(mock_program(), SpeechBackend::EdgeTts);
+    let cancellation = CancellationToken::default();
+    let cancel_at_publication = cancellation.clone();
+    let control = control().with_cancellation(cancellation).with_progress(
+        move |progress: &SpeechProgress| {
+            if progress.phase() == SpeechPhase::Publishing && progress.fraction_millionths() == 0 {
+                cancel_at_publication.cancel();
+            }
+        },
+    );
+    let destination = output(directory.path(), "cancelled-before-publication");
+
+    let result = worker.synthesize(&edge_request("complete-then-stop"), &destination, &control);
+
+    assert!(matches!(result, Err(SpeechError::Cancelled)));
+    assert!(
+        !directory
+            .path()
+            .join("cancelled-before-publication.mp3")
+            .exists()
+    );
+}
+
+#[test]
 fn output_is_no_clobber_and_errors_are_redacted() {
     let directory = tempfile::tempdir().unwrap();
     let existing = directory.path().join("existing.mp3");

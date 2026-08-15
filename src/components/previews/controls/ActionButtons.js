@@ -1,7 +1,32 @@
 
+import { resolveActiveNativeMediaAssetId } from '../../../platform/activeNativeMedia';
+import { isDesktopRuntime } from '../../../platform/desktopRuntime';
+import { exportMediaAsset } from '../../../platform/mediaExportService';
+import { showErrorToast } from '../../../utils/toastUtils';
+
+export const downloadPreviewMedia = async ({ videoSource, currentSource }) => {
+  if (isDesktopRuntime()) {
+    const assetId = resolveActiveNativeMediaAssetId(videoSource)
+      || resolveActiveNativeMediaAssetId(currentSource);
+    if (assetId === null) {
+      throw new Error('Select the media again before exporting it.');
+    }
+    return exportMediaAsset(assetId);
+  }
+  if (!currentSource) return null;
+  const link = document.createElement('a');
+  link.href = currentSource;
+  link.download = `video_${Date.now()}.mp4`;
+  document.body.appendChild(link);
+  link.click();
+  document.body.removeChild(link);
+  return { status: 'started' };
+};
+
 const ActionButtons = ({
   videoRef,
-  isAudioFile
+  isAudioFile,
+  videoSource,
 }) => {
   return (
     <>
@@ -19,14 +44,13 @@ const ActionButtons = ({
         }}
         onClick={(e) => {
           e.stopPropagation();
-          if (videoRef.current && videoRef.current.src) {
-            const link = document.createElement('a');
-            link.href = videoRef.current.src;
-            link.download = `video_${Date.now()}.mp4`;
-            document.body.appendChild(link);
-            link.click();
-            document.body.removeChild(link);
-          }
+          void downloadPreviewMedia({
+            videoSource,
+            currentSource: videoRef.current?.src,
+          }).catch((error) => {
+            console.error('Preview media export failed:', error);
+            showErrorToast(error?.message || 'The media file could not be exported.', 8000);
+          });
         }}
       >
         <span className="material-symbols-rounded" style={{ color: 'white', fontSize: 18, textShadow: '0 1px 2px rgba(0, 0, 0, 0.8)', display: 'inline-block' }}>

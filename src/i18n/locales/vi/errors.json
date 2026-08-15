@@ -30,6 +30,7 @@
   "allRequestsAborted": "Tất cả các yêu cầu đã bị hủy",
   "parakeetApiError": "Lỗi API Parakeet: {{status}} {{errorText}}",
   "invalidSegmentSelection": "Lựa chọn phân đoạn không hợp lệ",
+  "invalidSegment": "Phân đoạn đã chọn không hợp lệ.",
   "invalidSrtFormat": "Định dạng SRT không hợp lệ hoặc tập tin trống",
   "noValidInput": "Không có tập tin đầu vào hợp lệ. Vui lòng thử lại hoặc dùng video khác.",
   "processingFailed": "Xử lý thất bại",
@@ -40,7 +41,9 @@
   "srtParsingFailed": "Không thể đọc tệp SRT: {{message}}",
   "unexpectedErrorReload": "Giao diện gặp lỗi không mong muốn. Tải lại thường sẽ khắc phục được.",
   "videoDownloadFailed": "Tải video thất bại",
+  "videoDownloadExecutionFailed": "Trình tải xuống đã thử lại nhưng nguồn vẫn thất bại. Hãy kiểm tra kết nối, hoặc bật cookie trình duyệt nếu video yêu cầu đăng nhập.",
   "videoPreparationFailed": "Chuẩn bị video thất bại: {{message}}",
   "videoProcessingFailed": "Xử lý video thất bại: {{message}}",
-  "asrApiError": "Lỗi API {{engine}}: {{status}} {{errorText}}"
+  "asrApiError": "Lỗi API {{engine}}: {{status}} {{errorText}}",
+  "activeProjectChanged": "Dự án phụ đề đang hoạt động đã thay đổi."
 }

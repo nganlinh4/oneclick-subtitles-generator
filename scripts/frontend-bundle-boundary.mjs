@@ -1,4 +1,5 @@
 import { Buffer } from 'node:buffer';
+import { posix } from 'node:path';
 
 export const FRONTEND_ENTRY_CHUNK_MAX_BYTES = 1_550_000;
 export const FRONTEND_INITIAL_JS_MAX_BYTES = 2_750_000;
@@ -18,12 +19,8 @@ export const INTENTIONAL_ASYNC_BOUNDARIES = Object.freeze({
     'src/hooks/useSubtitlesRetryGeneration.js': 1,
     'src/hooks/useSubtitlesSegmentRetry.js': 1,
   }),
-  'src/services/geminiService.js': Object.freeze({
-    'src/utils/videoProcessing/analysisUtils.js': 1,
-  }),
   'src/services/subtitleCache.js': Object.freeze({
     'src/components/app/ModalHandlers.js': 1,
-    'src/components/app/handlers/downloadHandlers.js': 2,
   }),
   'src/utils/cacheUtils.js': Object.freeze({
     'src/components/app/handlers/downloadHandlers.js': 2,
@@ -47,12 +44,73 @@ export const INTENTIONAL_ASYNC_BOUNDARIES = Object.freeze({
   }),
 });
 
-const normalizedPath = (value) => String(value ?? '').replaceAll('\\', '/');
+// These boundaries must remain genuinely asynchronous. Unlike the reviewed
+// ineffective boundaries above, they are never warning-suppressed: any static
+// edge to the target is a build failure that must be fixed at its source.
+export const REQUIRED_EFFECTIVE_ASYNC_BOUNDARIES = Object.freeze({
+  'src/services/lifecycleOrchestrator.js': Object.freeze({
+    'src/components/app/hooks/useAutoGenerateFlow.js': 1,
+    'src/hooks/runAsrGeneration.js': 2,
+    'src/hooks/useSubtitles.js': 2,
+    'src/hooks/useSubtitlesSegmentRetry.js': 1,
+  }),
+});
+
+const canonicalBoundaryTarget = (value) => {
+  if (typeof value !== 'string' || value.length === 0
+      || value.includes('\\') || /[?#]/.test(value)
+      || value.startsWith('/') || /^[A-Za-z]:/.test(value)) {
+    throw new Error(`Async boundary target must be a canonical repository path: ${String(value)}`);
+  }
+  const normalized = posix.normalize(value);
+  const folded = normalized.toLocaleLowerCase('en-US');
+  if (normalized !== value || normalized === '.' || normalized.startsWith('../')
+      || (!folded.startsWith('src/') && !folded.startsWith('node_modules/'))) {
+    throw new Error(`Async boundary target must be a canonical repository path: ${value}`);
+  }
+  return folded;
+};
+
+const normalizedPath = (value) => posix
+  .normalize(String(value ?? '').replaceAll('\\', '/'))
+  .toLocaleLowerCase('en-US');
+
+const pathMatchesBoundaryTarget = (path, target) => (
+  normalizedPath(path).endsWith(`/${canonicalBoundaryTarget(target)}`)
+);
+
+export const assertAsyncBoundarySetsDisjoint = (intentional, requiredEffective) => {
+  const intentionalTargetsToCheck = Object.keys(intentional);
+  const requiredTargetsToCheck = Object.keys(requiredEffective);
+  // Validate every policy key before comparing it. The warning classifier accepts absolute
+  // Unix/Windows module IDs, but the policy itself has one unambiguous repo-relative spelling.
+  intentionalTargetsToCheck.forEach(canonicalBoundaryTarget);
+  requiredTargetsToCheck.forEach(canonicalBoundaryTarget);
+
+  const overlap = intentionalTargetsToCheck.filter((intentionalTarget) => (
+    requiredTargetsToCheck.some((requiredTarget) => (
+      pathMatchesBoundaryTarget(`/${requiredTarget}`, intentionalTarget)
+    ))
+  ));
+  if (overlap.length > 0) {
+    throw new Error(
+      `Required-effective async boundaries cannot be warning-suppressed: ${overlap.sort().join(', ')}`
+    );
+  }
+};
+
+// Fail while loading the build policy, before warning classification can hide
+// a boundary that is required to remain a real split point.
+assertAsyncBoundarySetsDisjoint(
+  INTENTIONAL_ASYNC_BOUNDARIES,
+  REQUIRED_EFFECTIVE_ASYNC_BOUNDARIES
+);
+
 const intentionalTargets = Object.keys(INTENTIONAL_ASYNC_BOUNDARIES);
 
 export const isIntentionalAsyncBoundaryWarning = (log) => (
   log?.code === 'INEFFECTIVE_DYNAMIC_IMPORT'
-  && intentionalTargets.some((target) => normalizedPath(log.id).endsWith(`/${target}`))
+  && intentionalTargets.some((target) => pathMatchesBoundaryTarget(log.id, target))
 );
 
 export const handleFrontendBuildLog = (level, log, handler) => {

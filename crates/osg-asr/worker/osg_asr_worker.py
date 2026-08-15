@@ -15,7 +15,7 @@ import sys
 from pathlib import Path
 from typing import Any
 
-PROTOCOL_VERSION = 1
+PROTOCOL_VERSION = 2
 MAX_REQUEST_BYTES = 64 * 1024
 
 # Preserve a private handle to the original stdout, then redirect file descriptor
@@ -343,6 +343,9 @@ def main() -> None:
         request_id = request.get("requestId")
         if not isinstance(request_id, int) or request_id <= 0 or request.get("protocolVersion") != PROTOCOL_VERSION:
             return
+        operation = request.get("operation")
+        if operation not in {"warm_up", "transcribe"}:
+            return
         sequence = 0
         try:
             if runtime.signature is None:
@@ -351,6 +354,9 @@ def main() -> None:
                 runtime.ensure_loaded(request)
             else:
                 runtime.ensure_loaded(request)
+            if operation == "warm_up":
+                emit(request_id, sequence, "ready", backend=runtime.backend)
+                continue
             emit(request_id, sequence, "phase", phase="transcribing")
             sequence += 1
             transcript, language, words, join_without_spaces = runtime.transcribe(request)

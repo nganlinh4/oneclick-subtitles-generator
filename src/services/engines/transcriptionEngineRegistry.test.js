@@ -40,6 +40,15 @@ describe('transcriptionEngineRegistry', () => {
     );
   });
 
+  test('Qwen advertises only the forced languages accepted by its native worker', () => {
+    const qwen = getEngineDescriptor('qwen3-asr-0.6b');
+    expect(qwen.supportedLanguageCodes).toEqual([
+      'zh', 'en', 'fr', 'de', 'it', 'ja', 'ko', 'pt', 'ru', 'es',
+    ]);
+    expect(qwen.supportedLanguageCodes).not.toContain('vi');
+    expect(getEngineDescriptor('faster-whisper-turbo').supportedLanguageCodes).toBeNull();
+  });
+
   test('buildMethodDescriptors computes availability from engineStatus + isVercelMode', () => {
     const engineStatus = { isReady: (id) => id === 'faster-whisper-turbo' };
     const list = buildMethodDescriptors(engineStatus, { isVercelMode: true });

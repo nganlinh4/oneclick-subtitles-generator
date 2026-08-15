@@ -1,4 +1,5 @@
 import { patchProjectAuxiliary, readProjectAuxiliary } from '../platform/projectAuxiliaryStore';
+import { resolveProjectForCache } from '../platform/subtitleProjectStore';
 import {
   clearUserProvidedSubtitles,
   getCurrentCacheId,
@@ -6,6 +7,7 @@ import {
   getUserProvidedSubtitlesSync,
   setCurrentCacheId,
   setUserProvidedSubtitles,
+  setUserProvidedSubtitlesForCache,
   subscribeCurrentCacheId,
 } from './userSubtitlesStore';
 
@@ -13,6 +15,7 @@ vi.mock('../platform/projectAuxiliaryStore', () => ({
   patchProjectAuxiliary: vi.fn(),
   readProjectAuxiliary: vi.fn(),
 }));
+vi.mock('../platform/subtitleProjectStore', () => ({ resolveProjectForCache: vi.fn() }));
 
 it('hydrates and persists user subtitle text natively without localhost or localStorage', async () => {
   readProjectAuxiliary.mockResolvedValue({ userSubtitles: 'Persisted reference' });
@@ -105,5 +108,43 @@ it('does not cache an old direct read after the cache identity changes', async (
   await newHydration.promise;
   await Promise.resolve();
   expect(getUserProvidedSubtitlesSync()).toBe('Media B reference');
+  setCurrentCacheId(null);
+});
+
+it('rolls back the in-memory subtitle reference when native persistence fails', async () => {
+  readProjectAuxiliary.mockReset();
+  readProjectAuxiliary.mockResolvedValue({ userSubtitles: 'Saved reference' });
+  setCurrentCacheId('rollback-user-subtitles');
+  await expect(getUserProvidedSubtitles()).resolves.toBe('Saved reference');
+
+  patchProjectAuxiliary.mockRejectedValueOnce(new Error('native write failed'));
+  await expect(setUserProvidedSubtitles('Unsaved reference'))
+    .rejects.toThrow('native write failed');
+  expect(getUserProvidedSubtitlesSync()).toBe('Saved reference');
+  setCurrentCacheId(null);
+});
+
+it('publishes no subtitle state when the cache alias remaps after its scoped native write', async () => {
+  setCurrentCacheId(null);
+  readProjectAuxiliary.mockReset();
+  readProjectAuxiliary.mockResolvedValue({ userSubtitles: null });
+  setCurrentCacheId('post-write-user-cache');
+  await Promise.resolve();
+  patchProjectAuxiliary.mockResolvedValueOnce({ userSubtitles: 'Stale reference' });
+  resolveProjectForCache
+    .mockResolvedValueOnce({ projectId: 'project-before' })
+    .mockResolvedValueOnce({ projectId: 'project-after-remap' });
+  const published = vi.fn();
+  window.addEventListener('userProvidedSubtitlesUpdated', published);
+
+  await expect(setUserProvidedSubtitlesForCache(
+    'post-write-user-cache',
+    'Stale reference',
+    { expectedProjectId: 'project-before' }
+  )).rejects.toMatchObject({ code: 'projectScopeMismatch' });
+
+  expect(getUserProvidedSubtitlesSync()).toBe('');
+  expect(published).not.toHaveBeenCalled();
+  window.removeEventListener('userProvidedSubtitlesUpdated', published);
   setCurrentCacheId(null);
 });

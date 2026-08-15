@@ -10,6 +10,37 @@ import ImageGenerationSection from './background/ImageGenerationSection';
 
 import { generateBackgroundPrompt, generateBackgroundImage } from '../services/gemini/imageGenerationService';
 import { saveBackgroundImages, loadBackgroundImages } from '../utils/indexedDBUtils';
+import { isDesktopRuntime } from '../platform/runtimeEnvironment';
+import {
+  getActiveGeneratedImageProjectId,
+  loadNativeGeneratedImages,
+  releaseNativeGeneratedImagePlayback,
+} from '../platform/nativeGeminiImage';
+import { subscribeCurrentCacheId } from '../utils/userSubtitlesStore';
+
+const nativeViewImage = (image, prompt = '') => ({
+  url: image.playback.playbackUrl,
+  timestamp: image.artifact.createdAtMs,
+  prompt,
+  isLoading: false,
+  nativeImage: image,
+});
+
+const browserViewImage = (image, prompt = '') => ({
+  url: `data:${image.mime_type};base64,${image.data}`,
+  timestamp: Date.now(),
+  prompt,
+  isLoading: false,
+});
+
+const releaseNativeImages = async (images) => {
+  const playables = images
+    .map((image) => image?.nativeImage)
+    .filter(Boolean);
+  await Promise.allSettled(
+    playables.map((playable) => releaseNativeGeneratedImagePlayback(playable))
+  );
+};
 
 /**
  * Component for generating background images based on lyrics and album art
@@ -22,7 +53,7 @@ const BackgroundImageGenerator = ({ lyrics, albumArt, songName, isExpanded = fal
   const [customAlbumArt, setCustomAlbumArt] = useState(albumArt || '');
   const [generatedPrompt, setGeneratedPrompt] = useState('');
   const [generatedImage, setGeneratedImage] = useState('');
-  // Initialize generatedImages from IndexedDB if available
+  // Browser builds reopen IndexedDB; desktop builds reopen the active project's native artifacts.
   const [generatedImages, setGeneratedImages] = useState([]);
   const [regularImageCount, setRegularImageCount] = useState(1);
   const [newPromptImageCount, setNewPromptImageCount] = useState(4); // Default to 4 for new prompt
@@ -35,24 +66,90 @@ const BackgroundImageGenerator = ({ lyrics, albumArt, songName, isExpanded = fal
   const [isGenerationInProgress, setIsGenerationInProgress] = useState(false); // Track if generation is in progress
   const [userHasCollapsed, setUserHasCollapsed] = useState(false); // Track if user has manually collapsed
   const [shouldAutoGenerate, setShouldAutoGenerate] = useState(false); // Track if we should auto-generate
+  const [activeProjectGeneration, setActiveProjectGeneration] = useState(0);
 
   // Use a ref to track if the auto-execution effect has already run
   // This helps prevent double execution in React StrictMode
   const autoExecutionRef = useRef(false);
+  const generationRunRef = useRef(0);
+  const generationAbortRef = useRef(null);
+  const nativeImagesRef = useRef([]);
+  const sourceInputsRef = useRef(null);
 
-  // Load generated images from IndexedDB on component mount
+  useEffect(() => subscribeCurrentCacheId(() => {
+    if (isDesktopRuntime()) {
+      generationRunRef.current += 1;
+      generationAbortRef.current?.abort();
+      generationAbortRef.current = null;
+      setActiveProjectGeneration((generation) => generation + 1);
+    }
+  }), []);
+
+  // Native images are reopened from the active durable project. The legacy browser build keeps
+  // its IndexedDB behavior, but capability URLs are never written there.
   useEffect(() => {
+    let disposed = false;
+    const loadGeneration = generationRunRef.current + 1;
+    generationRunRef.current = loadGeneration;
+    generationAbortRef.current?.abort();
+    generationAbortRef.current = null;
+    setIsGeneratingPrompt(false);
+    setIsGeneratingImage(false);
+    setIsGenerationInProgress(false);
+    setPendingImageCount(0);
+
     const loadImages = async () => {
+      let pendingNativeImages = [];
       try {
-        const savedImages = await loadBackgroundImages();
-        setGeneratedImages(savedImages);
-      } catch (error) {
-        console.error('Error loading generated images from IndexedDB:', error);
+        if (!isDesktopRuntime()) {
+          const savedImages = await loadBackgroundImages();
+          if (!disposed && generationRunRef.current === loadGeneration) {
+            setGeneratedImages(savedImages);
+            setGeneratedImage(savedImages.find((image) => image?.url)?.url || '');
+          }
+          return;
+        }
+
+        const previous = nativeImagesRef.current;
+        nativeImagesRef.current = [];
         setGeneratedImages([]);
+        setGeneratedImage('');
+        await releaseNativeImages(previous);
+        const projectId = await getActiveGeneratedImageProjectId();
+        const reopened = await loadNativeGeneratedImages(projectId);
+        pendingNativeImages = reopened.map((image) => nativeViewImage(image));
+        const currentProjectId = await getActiveGeneratedImageProjectId().catch(() => null);
+        if (disposed
+            || generationRunRef.current !== loadGeneration
+            || currentProjectId !== projectId) {
+          await releaseNativeImages(pendingNativeImages);
+          pendingNativeImages = [];
+          return;
+        }
+        const views = pendingNativeImages;
+        pendingNativeImages = [];
+        nativeImagesRef.current = views;
+        setGeneratedImages(views);
+        setGeneratedImage(views[0]?.url || '');
+      } catch (error) {
+        await releaseNativeImages(pendingNativeImages);
+        if (!disposed && error?.code !== 'imageProjectUnavailable' && error?.code !== 'invalidImageProject') {
+          console.error('Error loading generated images:', error);
+        }
       }
     };
 
-    loadImages();
+    void loadImages();
+    return () => {
+      disposed = true;
+    };
+  }, [activeProjectGeneration, albumArt, lyrics, songName]);
+
+  useEffect(() => () => {
+    generationRunRef.current += 1;
+    generationAbortRef.current?.abort();
+    void releaseNativeImages(nativeImagesRef.current);
+    nativeImagesRef.current = [];
   }, []);
 
   // Ref for the Generate with Unique Prompts button
@@ -99,6 +196,18 @@ const BackgroundImageGenerator = ({ lyrics, albumArt, songName, isExpanded = fal
 
     setIsGeneratingImage(true);
     setIsGenerationInProgress(true); // Set generation in progress flag
+    generationAbortRef.current?.abort();
+    const controller = new AbortController();
+    generationAbortRef.current = controller;
+    const run = generationRunRef.current + 1;
+    generationRunRef.current = run;
+
+    if (isDesktopRuntime()) {
+      const previous = nativeImagesRef.current;
+      nativeImagesRef.current = [];
+      await releaseNativeImages(previous);
+    }
+    if (controller.signal.aborted || generationRunRef.current !== run) return null;
 
     // Prepare the grid with placeholders
     setPendingImageCount(imagesToGenerate);
@@ -119,28 +228,42 @@ const BackgroundImageGenerator = ({ lyrics, albumArt, songName, isExpanded = fal
 
       for (let i = 0; i < imagesToGenerate; i++) {
         try {
-          const { mime_type, data } = await generateBackgroundImage(currentPrompt, customAlbumArt);
-          const imageUrl = `data:${mime_type};base64,${data}`;
+          const image = await generateBackgroundImage(currentPrompt, customAlbumArt, {
+            signal: controller.signal,
+          });
+          const nativeRuntime = isDesktopRuntime();
+          if (generationRunRef.current !== run || controller.signal.aborted) {
+            if (nativeRuntime) {
+              await releaseNativeGeneratedImagePlayback(image).catch(() => undefined);
+            }
+            break;
+          }
+          const generated = nativeRuntime
+            ? nativeViewImage(image, currentPrompt)
+            : browserViewImage(image, currentPrompt);
 
           // Update this specific image in the array
           newImages[i] = {
-            url: imageUrl,
-            timestamp: new Date().getTime(),
-            prompt: currentPrompt,
-            isLoading: false
+            ...generated,
           };
+          nativeImagesRef.current = newImages.filter((entry) => entry?.nativeImage);
 
           // Update the state with the progress
           setGeneratedImages([...newImages]);
 
           // Also update the single image view for backward compatibility
           if (i === 0) {
-            setGeneratedImage(imageUrl);
+            setGeneratedImage(generated.url);
           }
 
           // Decrease pending count
           setPendingImageCount(prev => prev - 1);
         } catch (err) {
+          if (controller.signal.aborted
+              || generationRunRef.current !== run
+              || err?.name === 'AbortError') {
+            break;
+          }
           // Show error toast notification
           window.addToast(getFriendlyErrorMessage(t, err?.message || String(err)), 'error', 5000);
           // Mark this image as failed
@@ -159,12 +282,18 @@ const BackgroundImageGenerator = ({ lyrics, albumArt, songName, isExpanded = fal
 
       return newImages.filter(img => img.url !== null);
     } catch (err) {
+      if (controller.signal.aborted || generationRunRef.current !== run || err?.name === 'AbortError') {
+        return null;
+      }
       window.addToast(getFriendlyErrorMessage(t, err?.message || String(err)), 'error', 5000);
       console.error('Error in image generation process:', err);
       return null;
     } finally {
-      setIsGeneratingImage(false);
-      setIsGenerationInProgress(false); // Reset generation in progress flag
+      if (generationRunRef.current === run) {
+        if (generationAbortRef.current === controller) generationAbortRef.current = null;
+        setIsGeneratingImage(false);
+        setIsGenerationInProgress(false); // Reset generation in progress flag
+      }
     }
   };
 
@@ -187,6 +316,7 @@ const BackgroundImageGenerator = ({ lyrics, albumArt, songName, isExpanded = fal
 
   // Save generated images to IndexedDB whenever they change
   useEffect(() => {
+    if (isDesktopRuntime()) return undefined;
     const saveImages = async () => {
       try {
         await saveBackgroundImages(generatedImages);
@@ -196,25 +326,29 @@ const BackgroundImageGenerator = ({ lyrics, albumArt, songName, isExpanded = fal
     };
 
     // Only save if we have images or if we're clearing them (empty array)
-    saveImages();
+    void saveImages();
+    return undefined;
   }, [generatedImages]);
 
   // Update state when lyrics or albumArt props change, but preserve generated images
   useEffect(() => {
-    if (lyrics && albumArt) {
-      // Check if the lyrics and albumArt are different from the current ones
-      const lyricsChanged = lyrics !== customLyrics;
-      const albumArtChanged = albumArt !== customAlbumArt;
-      const songNameChanged = (songName || '') !== customSongName;
+    const previous = sourceInputsRef.current;
+    const next = { lyrics, albumArt, songName: songName || '' };
+    const sourceChanged = previous === null
+      || previous.lyrics !== next.lyrics
+      || previous.albumArt !== next.albumArt
+      || previous.songName !== next.songName;
+    sourceInputsRef.current = next;
+    if (!sourceChanged) return;
 
+    if (lyrics && albumArt) {
       // Update the custom values
       setCustomLyrics(lyrics);
       setCustomAlbumArt(albumArt);
       setCustomSongName(songName || '');
 
       // Only reset generated content if the source content has changed
-      if (lyricsChanged || albumArtChanged || songNameChanged) {
-
+      if (previous !== null) {
         setGeneratedPrompt('');
         setGeneratedImage('');
         // Don't reset generatedImages to preserve them across UI changes
@@ -237,7 +371,7 @@ const BackgroundImageGenerator = ({ lyrics, albumArt, songName, isExpanded = fal
         // setShouldAutoGenerate(true); - removed to prevent auto-generation
       }
     }
-  }, [lyrics, albumArt, songName, onExpandChange, userHasCollapsed, customLyrics, customAlbumArt, customSongName]);
+  }, [lyrics, albumArt, songName, onExpandChange, userHasCollapsed]);
 
   // Effect to handle the shouldAutoGenerate flag (auto-click functionality removed)
   useEffect(() => {
@@ -297,6 +431,18 @@ const BackgroundImageGenerator = ({ lyrics, albumArt, songName, isExpanded = fal
     setIsGeneratingImage(true);
     setIsGenerationInProgress(true); // Set generation in progress flag
     setPendingImageCount(imagesToGenerate);
+    generationAbortRef.current?.abort();
+    const controller = new AbortController();
+    generationAbortRef.current = controller;
+    const run = generationRunRef.current + 1;
+    generationRunRef.current = run;
+
+    if (isDesktopRuntime()) {
+      const previous = nativeImagesRef.current;
+      nativeImagesRef.current = [];
+      await releaseNativeImages(previous);
+    }
+    if (controller.signal.aborted || generationRunRef.current !== run) return;
 
     // Create placeholder array
     const placeholders = Array(imagesToGenerate).fill(null).map((_, index) => ({
@@ -319,6 +465,7 @@ const BackgroundImageGenerator = ({ lyrics, albumArt, songName, isExpanded = fal
 
 
           const uniquePrompt = await generateBackgroundPrompt(customLyrics, customSongName || songName || 'Unknown Song');
+          if (controller.signal.aborted || generationRunRef.current !== run) break;
 
           // Update the prompt in the UI for the latest generated prompt
           setGeneratedPrompt(uniquePrompt);
@@ -334,28 +481,42 @@ const BackgroundImageGenerator = ({ lyrics, albumArt, songName, isExpanded = fal
           // Generate image with the unique prompt
 
 
-          const { mime_type: iMime, data: iData } = await generateBackgroundImage(uniquePrompt, customAlbumArt);
-          const imageUrl = `data:${iMime};base64,${iData}`;
+          const image = await generateBackgroundImage(uniquePrompt, customAlbumArt, {
+            signal: controller.signal,
+          });
+          const nativeRuntime = isDesktopRuntime();
+          if (generationRunRef.current !== run || controller.signal.aborted) {
+            if (nativeRuntime) {
+              await releaseNativeGeneratedImagePlayback(image).catch(() => undefined);
+            }
+            break;
+          }
+          const generated = nativeRuntime
+            ? nativeViewImage(image, uniquePrompt)
+            : browserViewImage(image, uniquePrompt);
 
           // Update this specific image in the array
           newImages[i] = {
-            url: imageUrl,
-            timestamp: new Date().getTime(),
-            prompt: uniquePrompt,
-            isLoading: false
+            ...generated,
           };
+          nativeImagesRef.current = newImages.filter((entry) => entry?.nativeImage);
 
           // Update the state with the progress
           setGeneratedImages([...newImages]);
 
           // Also update the single image view for backward compatibility
           if (i === 0) {
-            setGeneratedImage(imageUrl);
+            setGeneratedImage(generated.url);
           }
 
           // Decrease pending count
           setPendingImageCount(prev => prev - 1);
         } catch (err) {
+          if (controller.signal.aborted
+              || generationRunRef.current !== run
+              || err?.name === 'AbortError') {
+            break;
+          }
           // Show error toast notification
           window.addToast(getFriendlyErrorMessage(t, err?.message || String(err)), 'error', 5000);
           // Mark this image as failed
@@ -372,12 +533,18 @@ const BackgroundImageGenerator = ({ lyrics, albumArt, songName, isExpanded = fal
         }
       }
     } catch (err) {
+      if (controller.signal.aborted || generationRunRef.current !== run || err?.name === 'AbortError') {
+        return;
+      }
       window.addToast(getFriendlyErrorMessage(t, err?.message || String(err)), 'error', 5000);
       console.error('Error in multi-prompt generation process:', err);
     } finally {
-      setIsGeneratingPrompt(false);
-      setIsGeneratingImage(false);
-      setIsGenerationInProgress(false); // Reset generation in progress flag
+      if (generationRunRef.current === run) {
+        if (generationAbortRef.current === controller) generationAbortRef.current = null;
+        setIsGeneratingPrompt(false);
+        setIsGeneratingImage(false);
+        setIsGenerationInProgress(false); // Reset generation in progress flag
+      }
     }
   };
 

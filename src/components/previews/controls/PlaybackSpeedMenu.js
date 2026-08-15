@@ -11,7 +11,8 @@ const PlaybackSpeedMenu = ({
   isSpeedMenuVisible,
   setIsSpeedMenuVisible,
   isCompactMode,
-  isAudioFile
+  isAudioFile,
+  videoSource,
 }) => {
   return (
     <div style={{ position: 'relative', marginRight: '15px' }}
@@ -137,7 +138,11 @@ const PlaybackSpeedMenu = ({
             </span>
           </div>
 
-          <ActionButtons videoRef={videoRef} isAudioFile={isAudioFile} />
+          <ActionButtons
+            videoRef={videoRef}
+            isAudioFile={isAudioFile}
+            videoSource={videoSource}
+          />
         </div>
       </LiquidGlass>
     </div>

@@ -14,6 +14,10 @@
  * method id 'nvidia-parakeet' + route 'parakeet'; it shares the same generic ASR options/flow.)
  */
 
+export const QWEN3_ASR_SUPPORTED_LANGUAGES = Object.freeze([
+  'zh', 'en', 'fr', 'de', 'it', 'ja', 'ko', 'pt', 'ru', 'es',
+]);
+
 export const ASR_ENGINES = [
   {
     id: 'faster-whisper-turbo',
@@ -21,6 +25,7 @@ export const ASR_ENGINES = [
     supportsLanguage: true,
     defaultStrategy: 'sentence',
     route: 'asr/faster-whisper-turbo',
+    supportedLanguageCodes: null,
   },
   {
     id: 'faster-whisper-large-v3',
@@ -28,6 +33,7 @@ export const ASR_ENGINES = [
     supportsLanguage: true,
     defaultStrategy: 'sentence',
     route: 'asr/faster-whisper-large-v3',
+    supportedLanguageCodes: null,
   },
   {
     id: 'qwen3-asr-1.7b',
@@ -35,6 +41,7 @@ export const ASR_ENGINES = [
     supportsLanguage: true,
     defaultStrategy: 'sentence',
     route: 'asr/qwen3-asr-1.7b',
+    supportedLanguageCodes: QWEN3_ASR_SUPPORTED_LANGUAGES,
   },
   {
     id: 'qwen3-asr-0.6b',
@@ -42,9 +49,20 @@ export const ASR_ENGINES = [
     supportsLanguage: true,
     defaultStrategy: 'sentence',
     route: 'asr/qwen3-asr-0.6b',
+    supportedLanguageCodes: QWEN3_ASR_SUPPORTED_LANGUAGES,
   },
 ];
 
 export const ASR_METHOD_IDS = ASR_ENGINES.map((e) => e.id);
 export const isAsrMethod = (method) => ASR_METHOD_IDS.includes(method);
 export const getAsrEngine = (id) => ASR_ENGINES.find((e) => e.id === id) || null;
+
+export const normalizeAsrLanguage = (engineId, value) => {
+  const normalized = typeof value === 'string' ? value.trim().toLowerCase() : 'auto';
+  if (normalized === 'auto') return 'auto';
+  if (engineId === 'nvidia-parakeet' || engineId === 'parakeet') return 'auto';
+  const engine = getAsrEngine(engineId);
+  if (!engine || !/^[a-z]{2}$/.test(normalized)) return 'auto';
+  const supported = engine.supportedLanguageCodes;
+  return supported === null || supported.includes(normalized) ? normalized : 'auto';
+};

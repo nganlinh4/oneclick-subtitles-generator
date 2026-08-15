@@ -8,6 +8,8 @@ import {
   normalizeMediaModelId
 } from '../../../config/geminiModels';
 import { upsertSingletonCredential } from '../../../platform/credentialStateController';
+import { createDownloadCookiePreferenceValues } from '../../../platform/downloadCookiePreference';
+import { persistDesktopSettings } from '../../../platform/settingsService';
 
 const NATIVE_SECRET_ALIASES = Object.freeze([
   'gemini_api_key',
@@ -77,6 +79,7 @@ const useSettingsPersistence = (params) => {
     optimizedResolution,
     useOptimizedPreview,
     useCookiesForDownload,
+    downloadCookieSource,
     enableYoutubeSearch,
     autoImportSiteSubtitles,
     favoriteMaxSubtitleLength,
@@ -110,21 +113,39 @@ const useSettingsPersistence = (params) => {
     NATIVE_SECRET_ALIASES.forEach((key) => localStorage.removeItem(key));
     await submitNativeCredentialDrafts(drafts);
 
-    // Save settings to localStorage
-    localStorage.setItem('segment_duration', segmentDuration.toString());
-    localStorage.setItem('gemini_model', mediaModel);
-    localStorage.setItem('time_format', timeFormat);
-    localStorage.setItem('video_processing_max_words', favoriteMaxSubtitleLength.toString());
-    localStorage.setItem('show_favorite_max_length', showFavoriteMaxLength.toString());
+    const pendingPreferences = Object.freeze({
+      segment_duration: segmentDuration.toString(),
+      gemini_model: mediaModel,
+      time_format: timeFormat,
+      video_processing_max_words: favoriteMaxSubtitleLength.toString(),
+      show_favorite_max_length: showFavoriteMaxLength.toString(),
+      show_waveform_long_videos: showWaveformLongVideos.toString(),
+      segment_offset_correction: segmentOffsetCorrection.toString(),
+      transcription_prompt: transcriptionPrompt,
+      use_youtube_oauth: useOAuth.toString(),
+      use_video_analysis: useVideoAnalysis.toString(),
+      video_analysis_model: analysisModel,
+      video_analysis_timeout: videoAnalysisTimeout,
+      enable_gemini_effects: enableGeminiEffects.toString(),
+      optimize_videos: optimizeVideos.toString(),
+      optimized_resolution: optimizedResolution,
+      use_optimized_preview: useOptimizedPreview.toString(),
+      ...createDownloadCookiePreferenceValues({
+        enabled: useCookiesForDownload,
+        selectedSource: downloadCookieSource,
+      }),
+      enable_youtube_search: enableYoutubeSearch.toString(),
+      auto_import_site_subtitles: autoImportSiteSubtitles.toString(),
+      thinking_budgets: JSON.stringify(thinkingBudgets),
+      custom_gemini_models: JSON.stringify(customGeminiModels),
+    });
 
-    localStorage.setItem('show_waveform_long_videos', showWaveformLongVideos.toString());
-    localStorage.setItem('segment_offset_correction', segmentOffsetCorrection.toString());
-    localStorage.setItem('transcription_prompt', transcriptionPrompt);
-    localStorage.setItem('use_youtube_oauth', useOAuth.toString());
-    localStorage.setItem('use_video_analysis', useVideoAnalysis.toString());
-    localStorage.setItem('video_analysis_model', analysisModel);
-    localStorage.setItem('video_analysis_timeout', videoAnalysisTimeout);
-    localStorage.setItem('enable_gemini_effects', enableGeminiEffects.toString());
+    // Commit the complete filtered preference snapshot to SQLite first. Browser state and all
+    // success presentation remain untouched if the durable write fails.
+    await persistDesktopSettings(localStorage, pendingPreferences);
+    Object.entries(pendingPreferences).forEach(([key, value]) => {
+      localStorage.setItem(key, value);
+    });
 
     // Apply Gemini effects immediately in the same window
     if (enableGeminiEffects) {
@@ -136,15 +157,6 @@ const useSettingsPersistence = (params) => {
     // Trigger listeners (same-document) to apply effects immediately
     window.dispatchEvent(new Event('storage'));
 
-    // Save the user's video optimization preference
-    localStorage.setItem('optimize_videos', optimizeVideos.toString());
-    localStorage.setItem('optimized_resolution', optimizedResolution);
-    localStorage.setItem('use_optimized_preview', useOptimizedPreview.toString());
-    localStorage.setItem('use_cookies_for_download', useCookiesForDownload.toString());
-    localStorage.setItem('enable_youtube_search', enableYoutubeSearch.toString());
-    localStorage.setItem('auto_import_site_subtitles', autoImportSiteSubtitles.toString());
-    localStorage.setItem('thinking_budgets', JSON.stringify(thinkingBudgets));
-    localStorage.setItem('custom_gemini_models', JSON.stringify(customGeminiModels));
     // Notify parent component about API keys, segment duration, model, time format, video optimization settings, and cookie setting
     // Note: optimizeVideos parameter removed since it's always enabled now
     await onSave(
@@ -185,6 +197,7 @@ const useSettingsPersistence = (params) => {
       optimizedResolution,
       useOptimizedPreview,
       useCookiesForDownload,
+      downloadCookieSource,
       enableYoutubeSearch,
       autoImportSiteSubtitles,
       favoriteMaxSubtitleLength,

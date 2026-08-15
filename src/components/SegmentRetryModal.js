@@ -41,7 +41,20 @@ const SegmentRetryModal = ({
   // Subtitle options state
   const [subtitlesOption, setSubtitlesOption] = useState('none');
   const [customSubtitles, setCustomSubtitles] = useState('');
+  const [isPending, setIsPending] = useState(false);
   const textareaRef = useRef(null);
+  const mountedRef = useRef(false);
+  const pendingRef = useRef(false);
+  const requestClose = () => {
+    if (!pendingRef.current) onClose();
+  };
+
+  useEffect(() => {
+    mountedRef.current = true;
+    return () => {
+      mountedRef.current = false;
+    };
+  }, []);
 
   // Model options derived from central config
   const modelOptions = TRANSCRIPTION_MODELS.map(model => ({
@@ -72,8 +85,19 @@ const SegmentRetryModal = ({
       // Reset subtitle options
       setSubtitlesOption('none');
       setCustomSubtitles('');
+      pendingRef.current = false;
+      setIsPending(false);
     }
   }, [isOpen]);
+
+  useEffect(() => {
+    if (!isOpen) return undefined;
+    const handleEscape = (event) => {
+      if (event.key === 'Escape' && !pendingRef.current) onClose();
+    };
+    window.addEventListener('keydown', handleEscape);
+    return () => window.removeEventListener('keydown', handleEscape);
+  }, [isOpen, onClose]);
 
   useEffect(() => {
     if (isOpen && textareaRef.current && subtitlesOption === 'custom' && currentStep === 2) {
@@ -82,14 +106,17 @@ const SegmentRetryModal = ({
   }, [isOpen, subtitlesOption, currentStep]);
 
   const handleModelSelect = (modelId) => {
+    if (pendingRef.current) return;
     setSelectedModel(modelId);
   };
 
   const handleNextStep = () => {
+    if (pendingRef.current) return;
     setCurrentStep(2);
   };
 
   const handleRetry = async () => {
+    if (pendingRef.current) return;
     const options = {
       modelId: selectedModel
     };
@@ -99,60 +126,39 @@ const SegmentRetryModal = ({
       options.userProvidedSubtitles = customSubtitles;
     }
 
-    // Trigger auto-save to prevent state reversion
-    // Find the save button
-    const saveButton = document.querySelector('.lyrics-save-btn');
-    if (saveButton) {
-
-
-      // Create a promise to track when the save is complete
-      const savePromise = new Promise((resolve) => {
-        // Create a one-time event listener for the save completion
-        const handleSaveComplete = () => {
-
-          resolve();
-          // Remove the event listener
-          window.removeEventListener('subtitles-saved', handleSaveComplete);
-        };
-
-        // Listen for a custom event that will be dispatched when save is complete
-        window.addEventListener('subtitles-saved', handleSaveComplete, { once: true });
-
-        // Click the save button to trigger the save
-        saveButton.click();
-
-        // Set a timeout in case the event never fires
-        setTimeout(() => {
-          window.removeEventListener('subtitles-saved', handleSaveComplete);
-          resolve();
-        }, 2000);
-      });
-
-      // Wait for the save to complete before proceeding
-      await savePromise;
-    } else {
-      console.warn('Could not find save button to auto-save before segment retry');
+    pendingRef.current = true;
+    setIsPending(true);
+    let succeeded = false;
+    try {
+      succeeded = await onRetry(segmentIndex, segments, options) === true;
+    } catch {
+      succeeded = false;
     }
-
-    // Close the modal before starting the retry to prevent UI issues
-    onClose();
-
-    // Start the retry process
-    onRetry(segmentIndex, segments, options);
+    if (!mountedRef.current) return;
+    pendingRef.current = false;
+    setIsPending(false);
+    if (succeeded) onClose();
   };
 
   const handleOptionChange = (option) => {
+    if (pendingRef.current) return;
     setSubtitlesOption(option);
   };
 
   const handleCustomSubtitlesChange = (e) => {
+    if (pendingRef.current) return;
     setCustomSubtitles(e.target.value);
   };
 
   if (!isOpen) return null;
 
   return (
-    <div className="segment-retry-modal-overlay" onClick={onClose}>
+    <div
+      className="segment-retry-modal-overlay"
+      onClick={() => {
+        if (!pendingRef.current) onClose();
+      }}
+    >
       <div className="segment-retry-modal" onClick={(e) => e.stopPropagation()}>
         <div className="segment-retry-modal-header">
           <h2>
@@ -165,7 +171,7 @@ const SegmentRetryModal = ({
             <span className="step-divider"></span>
             <span className={`step ${currentStep === 2 ? 'active' : ''}`}>2</span>
           </div>
-          <CloseButton onClick={onClose} variant="modal" size="medium" />
+          <CloseButton onClick={requestClose} variant="modal" size="medium" disabled={isPending} />
         </div>
 
         <div className="segment-retry-modal-content">
@@ -182,6 +188,7 @@ const SegmentRetryModal = ({
                     key={model.id}
                     className={`model-option ${selectedModel === model.id ? 'selected' : ''}`}
                     onClick={() => handleModelSelect(model.id)}
+                    aria-disabled={isPending}
                     style={{
                       '--model-color': model.color,
                       '--model-bg-color': model.bgColor
@@ -194,6 +201,7 @@ const SegmentRetryModal = ({
                         checked={selectedModel === model.id}
                         onChange={() => handleModelSelect(model.id)}
                         id={`model-${model.id}`}
+                        disabled={isPending}
                       />
                       <label htmlFor={`model-${model.id}`}></label>
                     </div>
@@ -227,6 +235,7 @@ const SegmentRetryModal = ({
                       value="none"
                       checked={subtitlesOption === 'none'}
                       onChange={() => handleOptionChange('none')}
+                      disabled={isPending}
                     />
                     <span>{t('segmentRetry.noSubtitles', 'No subtitles (Gemini will transcribe from scratch)')}</span>
                   </label>
@@ -240,6 +249,7 @@ const SegmentRetryModal = ({
                       value="custom"
                       checked={subtitlesOption === 'custom'}
                       onChange={() => handleOptionChange('custom')}
+                      disabled={isPending}
                     />
                     <span>
                       {t('segmentRetry.useCustomSubtitles', 'Use custom subtitles for this segment')}
@@ -255,6 +265,7 @@ const SegmentRetryModal = ({
                       onChange={handleCustomSubtitlesChange}
                       placeholder={t('segmentRetry.customSubtitlesPlaceholder', 'Enter subtitles for this segment...')}
                       rows={5}
+                      disabled={isPending}
                     />
                     <div className="hint">
                       {t('segmentRetry.customSubtitlesHint', 'Enter the text you expect to hear in this segment. Gemini will use EXACTLY these words and focus ONLY on timing them correctly, ignoring all other settings.')}
@@ -267,17 +278,17 @@ const SegmentRetryModal = ({
         </div>
 
         <div className="segment-retry-modal-footer">
-          <button className="cancel-button" onClick={onClose}>
+          <button className="cancel-button" onClick={requestClose} disabled={isPending}>
             {t('segmentRetry.cancel', 'Cancel')}
           </button>
 
           {currentStep === 1 ? (
-            <button className="next-button" onClick={handleNextStep}>
+            <button className="next-button" onClick={handleNextStep} disabled={isPending}>
               {t('segmentRetry.next', 'Next')}
               <span className="material-symbols-rounded next-icon">arrow_forward</span>
             </button>
           ) : (
-            <button className="retry-button" onClick={handleRetry}>
+            <button className="retry-button" onClick={handleRetry} disabled={isPending}>
               <span className="material-symbols-rounded">check</span>
               {t('segmentRetry.retry', 'Retry Segment')}
             </button>

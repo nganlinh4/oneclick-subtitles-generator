@@ -135,19 +135,26 @@ export const createNativeGeminiJobRunner = ({
       if (credentialId === null || attemptedCredentials.has(credentialId)) break;
       attemptedCredentials.add(credentialId);
 
+      let attemptProducedChunk = false;
       try {
         return await runAttempt({
           credentialId,
           request,
           signal,
-          onChunk,
+          onChunk: typeof onChunk === 'function'
+            ? (text) => {
+                attemptProducedChunk = true;
+                onChunk(text);
+              }
+            : undefined,
           onStarted,
           start,
           cancel,
         });
       } catch (error) {
         lastError = error;
-        if (!RETRYABLE_CREDENTIAL_CODES.has(error?.code)
+        if (attemptProducedChunk
+            || !RETRYABLE_CREDENTIAL_CODES.has(error?.code)
             || signal?.aborted
             || attempt + 1 >= maximumAttempts) {
           throw error;

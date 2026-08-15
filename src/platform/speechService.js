@@ -57,6 +57,7 @@ const MAX_JOB_EVENTS = 20_000;
 const MAX_EXPORT_FILE_NAME_CHARACTERS = 128;
 
 const backendSet = new Set(SPEECH_BACKENDS);
+const voiceInventoryBackendSet = new Set(['edgeTts', 'gtts', 'geminiTts']);
 const geminiModelSet = new Set(GEMINI_SPEECH_MODELS);
 const geminiVoiceSet = new Set(GEMINI_SPEECH_VOICES);
 const gttsDomainSet = new Set(GTTS_DOMAINS);
@@ -84,6 +85,41 @@ const resultStatusSet = new Set(['completed', 'failed']);
 const formatSet = new Set(['wav', 'mp3', 'm4a']);
 const genderSet = new Set(['female', 'male', 'neutral', 'unknown']);
 const referenceBackendSet = new Set(['f5Tts', 'chatterbox']);
+
+export const createSpeechLifecycleState = () => {
+  const snapshots = new Map();
+  const listeners = new Set();
+  const apply = (status) => {
+    const current = snapshots.get(status.backend);
+    if (current && (status.epoch < current.epoch
+        || (status.epoch === current.epoch
+          && ((current.enabled && !status.enabled) || (current.warm && !status.warm))))) {
+      return current;
+    }
+    snapshots.set(status.backend, status);
+    for (const listener of [...listeners]) {
+      try { listener(status); } catch { /* lifecycle observers cannot break native ownership */ }
+    }
+    return status;
+  };
+  return Object.freeze({
+    apply,
+    applyCatalog: (status) => status.backends.forEach(apply),
+    getSnapshot: (backend) => snapshots.get(backend) || null,
+    subscribe: (listener) => {
+      if (typeof listener !== 'function') throw new TypeError('listener must be a function');
+      listeners.add(listener);
+      snapshots.forEach((snapshot) => listener(snapshot));
+      return () => listeners.delete(listener);
+    },
+  });
+};
+
+export const speechLifecycleState = createSpeechLifecycleState();
+export const getSpeechLifecycleSnapshot = (backend) => (
+  speechLifecycleState.getSnapshot(backend)
+);
+export const subscribeSpeechLifecycle = (listener) => speechLifecycleState.subscribe(listener);
 
 const isRecord = (value) => (
   value !== null && typeof value === 'object' && !Array.isArray(value)
@@ -176,6 +212,11 @@ const desktopRequired = () => new SpeechServiceError(
 const cancelledRequest = () => new SpeechServiceError(
   'speechCancelled',
   'The native speech request was cancelled'
+);
+
+const runtimeStopped = () => new SpeechServiceError(
+  'speechRuntimeStopped',
+  'The selected speech runtime was stopped or replaced'
 );
 
 const requireInteger = (value, minimum, maximum) => {
@@ -316,7 +357,7 @@ export const normalizeSpeechProfile = (profile) => {
 };
 
 export const normalizeSpeechStartRequest = (request) => {
-  const allowed = new Set(['segments', 'profile', 'referenceArtifactId']);
+  const allowed = new Set(['segments', 'profile', 'referenceArtifactId', 'lifecycleEpoch']);
   if (!hasOnlyKeys(request, allowed) || !Array.isArray(request.segments)) throw invalidRequest();
   if (request.segments.length === 0 || request.segments.length > MAX_SPEECH_SEGMENTS) {
     throw invalidRequest();
@@ -345,7 +386,12 @@ export const normalizeSpeechStartRequest = (request) => {
     ? null
     : requireUuid(request.referenceArtifactId, 7);
   if (requiresReference !== (referenceArtifactId !== null)) throw invalidRequest();
-  return Object.freeze({ segments: Object.freeze(segments), profile, referenceArtifactId });
+  return Object.freeze({
+    segments: Object.freeze(segments),
+    profile,
+    referenceArtifactId,
+    lifecycleEpoch: requireInteger(request.lifecycleEpoch, 0, Number.MAX_SAFE_INTEGER),
+  });
 };
 
 const requireResponseInteger = (value, minimum, maximum) => {
@@ -403,6 +449,8 @@ const normalizeJobSnapshot = (snapshot) => {
 const normalizeBackendStatus = (status) => {
   if (!hasExactKeys(status, [
     'backend',
+    'epoch',
+    'enabled',
     'installed',
     'ready',
     'warm',
@@ -413,7 +461,9 @@ const normalizeBackendStatus = (status) => {
   ]) || !backendSet.has(status.backend)) {
     throw invalidResponse();
   }
+  const epoch = requireResponseInteger(status.epoch, 0, Number.MAX_SAFE_INTEGER);
   for (const key of [
+    'enabled',
     'installed',
     'ready',
     'warm',
@@ -426,16 +476,16 @@ const normalizeBackendStatus = (status) => {
   }
   const expected = {
     requiresReference: status.backend === 'f5Tts' || status.backend === 'chatterbox',
-    supportsVoiceInventory: ['edgeTts', 'gtts', 'geminiTts'].includes(status.backend),
+    supportsVoiceInventory: voiceInventoryBackendSet.has(status.backend),
     supportsVoiceConversion: status.backend === 'chatterbox',
     requiresCredential: status.backend === 'geminiTts',
   };
-  if ((status.ready && !status.installed)
-      || (status.warm && !status.ready)
+  if (status.ready !== (status.installed && status.enabled)
+      || (status.warm && (!status.ready || !status.enabled))
       || Object.entries(expected).some(([key, value]) => status[key] !== value)) {
     throw invalidResponse();
   }
-  return Object.freeze({ ...status });
+  return Object.freeze({ ...status, epoch });
 };
 
 export const normalizeSpeechStatus = (status) => {
@@ -477,29 +527,53 @@ const normalizeVoice = (voice) => {
   });
 };
 
-export const normalizeSpeechProbe = (probe, expectedBackend) => {
-  if (!hasExactKeys(probe, ['status', 'voices'])
-      || !backendSet.has(expectedBackend)
-      || !Array.isArray(probe.voices)
-      || probe.voices.length > MAX_VOICES) {
-    throw invalidResponse();
-  }
-  const status = normalizeBackendStatus(probe.status);
-  if (status.backend !== expectedBackend || !status.ready) throw invalidResponse();
+const normalizeVoiceList = (voices, expectedBackend) => {
+  if (!Array.isArray(voices) || voices.length > MAX_VOICES) throw invalidResponse();
   const ids = new Set();
-  const voices = probe.voices.map((rawVoice) => {
+  const normalized = voices.map((rawVoice) => {
     const voice = normalizeVoice(rawVoice);
     if (ids.has(voice.id)) throw invalidResponse();
     ids.add(voice.id);
     return voice;
   });
-  if (!status.supportsVoiceInventory && voices.length !== 0) throw invalidResponse();
   if (expectedBackend === 'geminiTts'
-      && (voices.length !== GEMINI_SPEECH_VOICES.length
-        || voices.some((voice) => !geminiVoiceSet.has(voice.id)))) {
+      && (normalized.length !== GEMINI_SPEECH_VOICES.length
+        || normalized.some((voice) => !geminiVoiceSet.has(voice.id)))) {
     throw invalidResponse();
   }
-  return Object.freeze({ status, voices: Object.freeze(voices) });
+  return Object.freeze(normalized);
+};
+
+export const normalizeSpeechProbe = (probe, expectedBackend) => {
+  if (!hasExactKeys(probe, ['status', 'voices'])
+      || !backendSet.has(expectedBackend)
+      || !Array.isArray(probe.voices)) {
+    throw invalidResponse();
+  }
+  const status = normalizeBackendStatus(probe.status);
+  if (status.backend !== expectedBackend || !status.enabled || !status.ready || !status.warm) {
+    throw invalidResponse();
+  }
+  const voices = normalizeVoiceList(probe.voices, expectedBackend);
+  if (!status.supportsVoiceInventory && voices.length !== 0) throw invalidResponse();
+  return Object.freeze({ status, voices });
+};
+
+export const normalizeSpeechInventory = (inventory, expectedBackend) => {
+  if (!hasExactKeys(inventory, ['backend', 'epoch', 'enabled', 'warm', 'voices'])
+      || !voiceInventoryBackendSet.has(expectedBackend)
+      || inventory.backend !== expectedBackend
+      || inventory.enabled !== true
+      || inventory.warm !== true) {
+    throw invalidResponse();
+  }
+  return Object.freeze({
+    backend: expectedBackend,
+    epoch: requireResponseInteger(inventory.epoch, 0, Number.MAX_SAFE_INTEGER),
+    enabled: true,
+    warm: true,
+    voices: normalizeVoiceList(inventory.voices, expectedBackend),
+  });
 };
 
 export const normalizeSpeechArtifact = (artifact) => {
@@ -834,12 +908,15 @@ const normalizeArtifactExport = (request) => {
 };
 
 const normalizeVoiceConversionRequest = (request) => {
-  if (!hasExactKeys(request, ['inputArtifactId', 'targetVoiceArtifactId'])) {
+  if (!hasExactKeys(request, [
+    'inputArtifactId', 'targetVoiceArtifactId', 'lifecycleEpoch',
+  ])) {
     throw invalidRequest();
   }
   return Object.freeze({
     inputArtifactId: requireUuid(request.inputArtifactId, 7),
     targetVoiceArtifactId: requireUuid(request.targetVoiceArtifactId, 7),
+    lifecycleEpoch: requireInteger(request.lifecycleEpoch, 0, Number.MAX_SAFE_INTEGER),
   });
 };
 
@@ -852,6 +929,7 @@ export const createNativeSpeechService = ({
   invokeCommand = invokeDesktop,
   ChannelConstructor = Channel,
   isNativeRuntime = isDesktopRuntime,
+  lifecycleState = speechLifecycleState,
 } = {}) => {
   const activeChannels = new Map();
 
@@ -872,6 +950,7 @@ export const createNativeSpeechService = ({
   const startNativeJob = async ({
     command,
     request,
+    ownership,
     expectedSegmentIds,
     handlers: rawHandlers,
     options: rawOptions,
@@ -880,6 +959,14 @@ export const createNativeSpeechService = ({
     const handlers = normalizeHandlers(rawHandlers);
     const { signal } = normalizeStartOptions(rawOptions);
     if (signal?.aborted) throw cancelledRequest();
+    const lifecycleMatches = () => {
+      const current = lifecycleState.getSnapshot(ownership.backend);
+      return current !== null
+        && current.epoch === ownership.epoch
+        && current.enabled
+        && current.warm;
+    };
+    if (!lifecycleMatches()) throw runtimeStopped();
 
     const expectedIds = new Set(expectedSegmentIds);
     const pendingEvents = [];
@@ -892,6 +979,8 @@ export const createNativeSpeechService = ({
     let abortRequested = false;
     let cancellationIssued = false;
     let abortListenerAttached = false;
+    let lifecycleUnsubscribe = null;
+    let ownershipError = null;
 
     const safelyCall = (handler, argument) => {
       if (typeof handler !== 'function') return;
@@ -925,6 +1014,11 @@ export const createNativeSpeechService = ({
     const release = () => {
       if (initial !== null) activeChannels.delete(initial.id);
       removeAbortListener();
+      if (lifecycleUnsubscribe !== null) {
+        const unsubscribe = lifecycleUnsubscribe;
+        lifecycleUnsubscribe = null;
+        unsubscribe();
+      }
     };
 
     const issueCancellation = () => {
@@ -944,6 +1038,15 @@ export const createNativeSpeechService = ({
       release();
     };
 
+    const failOwnership = () => {
+      if (ownershipError !== null || protocolError !== null || terminal) return;
+      ownershipError = runtimeStopped();
+      pendingEvents.length = 0;
+      safelyCall(handlers.onProtocolError, ownershipError);
+      issueCancellation();
+      release();
+    };
+
     function onAbort() {
       abortRequested = true;
       issueCancellation();
@@ -954,7 +1057,11 @@ export const createNativeSpeechService = ({
     };
 
     const dispatch = (event) => {
-      if (terminal || protocolError !== null) return;
+      if (terminal || protocolError !== null || ownershipError !== null) return;
+      if (!lifecycleMatches()) {
+        failOwnership();
+        return;
+      }
       if (eventCount >= MAX_JOB_EVENTS) {
         failProtocol();
         return;
@@ -1008,20 +1115,23 @@ export const createNativeSpeechService = ({
         return;
       }
 
-      if (event.event === 'completed'
-          || event.event === 'cancelled'
-          || event.event === 'failed') {
-        terminal = true;
-        release();
-      }
-
       safelyCall(handlers.onEvent, event);
+      if (!lifecycleMatches()) {
+        failOwnership();
+        return;
+      }
       if (event.event === 'progress') safelyCall(handlers.onProgress, event);
       if (event.event === 'segmentCompleted') safelyCall(handlers.onSegmentCompleted, event);
       if (event.event === 'segmentFailed') safelyCall(handlers.onSegmentFailed, event);
       if (event.event === 'completed') safelyCall(handlers.onCompleted, event);
       if (event.event === 'cancelled') safelyCall(handlers.onCancelled, event);
       if (event.event === 'failed') safelyCall(handlers.onFailed, event);
+      if (event.event === 'completed'
+          || event.event === 'cancelled'
+          || event.event === 'failed') {
+        terminal = true;
+        release();
+      }
     };
 
     let channel;
@@ -1031,6 +1141,15 @@ export const createNativeSpeechService = ({
       throw invalidRequest();
     }
     if (!isRecord(channel)) throw invalidRequest();
+
+    const unsubscribe = lifecycleState.subscribe((status) => {
+      if (status.backend === ownership.backend && !lifecycleMatches()) failOwnership();
+    });
+    lifecycleUnsubscribe = unsubscribe;
+    if (ownershipError !== null) {
+      release();
+      throw ownershipError;
+    }
 
     if (signal) {
       try {
@@ -1042,7 +1161,11 @@ export const createNativeSpeechService = ({
     }
 
     channel.onmessage = (rawEvent) => {
-      if (terminal || protocolError !== null) return;
+      if (terminal || protocolError !== null || ownershipError !== null) return;
+      if (!lifecycleMatches()) {
+        failOwnership();
+        return;
+      }
       let event;
       try {
         event = normalizeSpeechJobEvent(rawEvent);
@@ -1065,6 +1188,12 @@ export const createNativeSpeechService = ({
     try {
       snapshot = normalizeJobSnapshot(await invokeCommand(command, { request, onEvent: channel }));
       initial = snapshot;
+      if (ownershipError !== null || !lifecycleMatches()) {
+        if (ownershipError === null) failOwnership();
+        issueCancellation();
+        release();
+        throw ownershipError;
+      }
       if (snapshot.state !== 'running'
           || snapshot.progress.basisPoints !== 0
           || snapshot.sequence !== 1) {
@@ -1073,10 +1202,15 @@ export const createNativeSpeechService = ({
       }
     } catch (error) {
       pendingEvents.length = 0;
-      removeAbortListener();
-      throw error;
+      release();
+      throw ownershipError || error;
     }
 
+    if (ownershipError !== null) {
+      issueCancellation();
+      release();
+      throw ownershipError;
+    }
     if (protocolError !== null) {
       issueCancellation();
       release();
@@ -1099,20 +1233,50 @@ export const createNativeSpeechService = ({
 
   const getSpeechStatus = async () => {
     requireNativeRuntime();
-    return normalizeSpeechStatus(await invokeCommand('speech_status', {}));
+    const status = normalizeSpeechStatus(await invokeCommand('speech_status', {}));
+    lifecycleState.applyCatalog(status);
+    return status;
   };
 
   const probeSpeechBackend = async (backend) => {
     requireNativeRuntime();
     if (!backendSet.has(backend)) throw invalidRequest();
-    return normalizeSpeechProbe(await invokeCommand('speech_probe', { backend }), backend);
+    const probe = normalizeSpeechProbe(await invokeCommand('speech_probe', { backend }), backend);
+    lifecycleState.apply(probe.status);
+    return probe;
+  };
+
+  const getSpeechVoiceInventory = async (backend, lifecycleEpoch) => {
+    requireNativeRuntime();
+    if (!voiceInventoryBackendSet.has(backend)) throw invalidRequest();
+    const epoch = requireInteger(lifecycleEpoch, 0, Number.MAX_SAFE_INTEGER);
+    const before = lifecycleState.getSnapshot(backend);
+    if (before && (before.epoch !== epoch || !before.enabled || !before.warm)) {
+      throw runtimeStopped();
+    }
+    const inventory = normalizeSpeechInventory(
+      await invokeCommand('speech_voice_inventory', { backend, epoch }),
+      backend
+    );
+    const after = lifecycleState.getSnapshot(backend);
+    if (inventory.epoch !== epoch
+        || (after && (after.epoch !== epoch || !after.enabled || !after.warm))) {
+      throw runtimeStopped();
+    }
+    return inventory;
   };
 
   const stopSpeechRuntime = async (backend) => {
     requireNativeRuntime();
     if (!backendSet.has(backend)) throw invalidRequest();
-    const value = await invokeCommand('speech_runtime_stop', { backend });
-    if (value !== null && value !== undefined) throw invalidResponse();
+    const status = normalizeBackendStatus(
+      await invokeCommand('speech_runtime_stop', { backend })
+    );
+    if (status.backend !== backend || status.enabled || status.ready || status.warm) {
+      throw invalidResponse();
+    }
+    lifecycleState.apply(status);
+    return status;
   };
 
   const selectSpeechReference = async (request) => {
@@ -1142,24 +1306,56 @@ export const createNativeSpeechService = ({
 
   const startSpeechJob = async (request, handlers, options) => {
     const normalized = normalizeSpeechStartRequest(request);
-    return startNativeJob({
+    const before = lifecycleState.getSnapshot(normalized.profile.backend);
+    if (before && (before.epoch !== normalized.lifecycleEpoch
+        || !before.enabled || !before.warm)) {
+      throw runtimeStopped();
+    }
+    const job = await startNativeJob({
       command: 'speech_start',
       request: normalized,
+      ownership: {
+        backend: normalized.profile.backend,
+        epoch: normalized.lifecycleEpoch,
+      },
       expectedSegmentIds: normalized.segments.map(({ id }) => id),
       handlers,
       options,
     });
+    const after = lifecycleState.getSnapshot(normalized.profile.backend);
+    if (after && (after.epoch !== normalized.lifecycleEpoch || !after.enabled || !after.warm)) {
+      cancelSpeechJob(job.id).catch(() => undefined);
+      throw runtimeStopped();
+    }
+    return job;
   };
 
   const startVoiceConversionJob = async (request, handlers, options) => {
     const normalized = normalizeVoiceConversionRequest(request);
-    return startNativeJob({
+    const before = lifecycleState.getSnapshot('chatterbox');
+    if (!before
+        || before.epoch !== normalized.lifecycleEpoch
+        || !before.enabled
+        || !before.warm) {
+      throw runtimeStopped();
+    }
+    const job = await startNativeJob({
       command: 'speech_voice_conversion_start',
       request: normalized,
+      ownership: { backend: 'chatterbox', epoch: normalized.lifecycleEpoch },
       expectedSegmentIds: ['voice-conversion'],
       handlers,
       options,
     });
+    const after = lifecycleState.getSnapshot('chatterbox');
+    if (!after
+        || after.epoch !== normalized.lifecycleEpoch
+        || !after.enabled
+        || !after.warm) {
+      await cancelSpeechJob(job.id).catch(() => undefined);
+      throw runtimeStopped();
+    }
+    return job;
   };
 
   const getSpeechJobResults = async (jobId) => {
@@ -1211,7 +1407,10 @@ export const createNativeSpeechService = ({
 
   return Object.freeze({
     getSpeechStatus,
+    getSpeechLifecycleSnapshot: lifecycleState.getSnapshot,
+    subscribeSpeechLifecycle: lifecycleState.subscribe,
     probeSpeechBackend,
+    getSpeechVoiceInventory,
     stopSpeechRuntime,
     selectSpeechReference,
     importSpeechReference,
@@ -1231,6 +1430,7 @@ const speechService = createNativeSpeechService();
 
 export const getSpeechStatus = speechService.getSpeechStatus;
 export const probeSpeechBackend = speechService.probeSpeechBackend;
+export const getSpeechVoiceInventory = speechService.getSpeechVoiceInventory;
 export const stopSpeechRuntime = speechService.stopSpeechRuntime;
 export const selectSpeechReference = speechService.selectSpeechReference;
 export const importSpeechReference = speechService.importSpeechReference;

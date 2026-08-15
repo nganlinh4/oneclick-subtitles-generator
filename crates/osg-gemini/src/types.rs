@@ -129,11 +129,11 @@ impl GenerationConfig {
     pub(crate) fn validate(&self, model: Model) -> Result<()> {
         if self
             .max_output_tokens
-            .is_some_and(|limit| limit == 0 || limit > model.spec().output_token_limit)
+            .is_some_and(|limit| limit == 0 || limit > model.output_token_limit())
         {
             return Err(Error::InvalidRequest(format!(
                 "max output tokens must be within 1..={}",
-                model.spec().output_token_limit
+                model.output_token_limit()
             )));
         }
         if let Some(schema) = &self.response_json_schema {
@@ -145,6 +145,14 @@ impl GenerationConfig {
                     "response schema exceeds 1 MiB".to_owned(),
                 ));
             }
+        }
+        if self
+            .thinking_level
+            .is_some_and(|level| !model.supports_thinking_level(level))
+        {
+            return Err(Error::InvalidRequest(
+                "thinking level is unsupported by the selected Gemini model".to_owned(),
+            ));
         }
         Ok(())
     }
@@ -562,6 +570,22 @@ mod tests {
         assert!(InlineMedia::new("video/mp4", Bytes::from_static(b"v")).is_ok());
         assert!(InlineMedia::new("image/png", Bytes::from_static(b"i")).is_err());
         assert!(InlineMedia::new("text/plain", Bytes::from_static(b"t")).is_err());
+    }
+
+    #[test]
+    fn generation_validation_enforces_model_specific_thinking_levels() {
+        let rejected = GenerationConfig {
+            thinking_level: Some(ThinkingLevel::Minimal),
+            ..GenerationConfig::default()
+        };
+        assert!(rejected.validate(Model::Gemini37Flash).is_err());
+
+        let accepted = GenerationConfig {
+            thinking_level: Some(ThinkingLevel::Low),
+            ..GenerationConfig::default()
+        };
+        assert!(accepted.validate(Model::Gemini37Flash).is_ok());
+        assert!(rejected.validate(Model::Gemini36Flash).is_ok());
     }
 
     #[test]

@@ -63,6 +63,7 @@ const EngineCard = ({
     || packageOperation?.action === 'update';
   const packageRemoving = packageOperation?.action === 'remove';
   const isInstalling = installing || packageInstalling;
+  const nativeStarting = status?.starting === true;
   const state = managedByElectron
     ? (status?.running ? 'ready' : 'included')
     : !packageStatus
@@ -98,10 +99,10 @@ const EngineCard = ({
     if (status?.running) {
       setStarting(false);
       if (startTimer.current) { clearTimeout(startTimer.current); startTimer.current = null; }
-    } else {
+    } else if (!nativeStarting) {
       setStopping(false);
     }
-  }, [status?.running]);
+  }, [nativeStarting, status?.running]);
   useEffect(() => () => { if (startTimer.current) clearTimeout(startTimer.current); }, []);
 
   const refreshSoon = (ms) => setTimeout(() => onChanged && onChanged(), ms);
@@ -115,7 +116,14 @@ const EngineCard = ({
 
   const handleStop = async () => {
     setStopping(true);
-    try { await stop(); refreshSoon(800); } catch (_) { setStopping(false); }
+    try {
+      await stop();
+      setStarting(false);
+      if (startTimer.current) { clearTimeout(startTimer.current); startTimer.current = null; }
+      refreshSoon(0);
+    } catch (_) {
+      setStopping(false);
+    }
   };
 
   const handleUninstall = async () => {
@@ -205,8 +213,23 @@ const EngineCard = ({
         </div>
       );
     }
-    if (starting && state !== 'ready') return loadingRow('engines.starting', 'Starting…');
     if (stopping && state !== 'installed-stopped') return loadingRow('engines.stopping', 'Stopping…');
+    if ((starting || nativeStarting) && state !== 'ready') {
+      return (
+        <div className="engine-card__installing">
+          {loadingRow('engines.starting', 'Starting…')}
+          <button
+            type="button"
+            className="engine-card__cancel"
+            onClick={handleStop}
+            title={t('engines.stop', 'Stop')}
+            aria-label={t('engines.stop', 'Stop')}
+          >
+            <span className="material-symbols-rounded" aria-hidden="true">stop</span>
+          </button>
+        </div>
+      );
+    }
     if (state === 'installed-stopped') {
       return (
         <>
@@ -256,7 +279,8 @@ const EngineCard = ({
     );
   };
 
-  const busy = isInstalling || confirmUninstall || uninstalling || packageRemoving;
+  const busy = isInstalling || confirmUninstall || uninstalling || packageRemoving
+    || starting || nativeStarting || stopping;
   const installedSize = formatBytes(packageStatus?.installedBytes);
   const downloadSize = formatBytes(packageStatus?.downloadBytes);
   const availableInstalledSize = formatBytes(packageStatus?.availableInstalledBytes);

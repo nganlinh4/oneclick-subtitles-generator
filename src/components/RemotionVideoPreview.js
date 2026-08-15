@@ -4,6 +4,7 @@ import { Player } from '@remotion/player';
 import { SubtitledVideoComposition } from './SubtitledVideoComposition';
 import VideoCropControls from './VideoCropControls';
 import '../styles/VideoPreviewPanel.css';
+import { isNativeMediaDescriptor } from '../platform/mediaService';
 
 const RemotionVideoPreview = React.forwardRef(({
   videoFile,
@@ -84,7 +85,10 @@ const RemotionVideoPreview = React.forwardRef(({
     let objectUrl = null;
 
     try {
-      if (videoFile instanceof File || videoFile instanceof Blob) {
+      if (isNativeMediaDescriptor(videoFile)) {
+        setVideoUrl(videoFile.playbackUrl);
+        setIsVideoFile(videoFile.type.startsWith('video/'));
+      } else if (videoFile instanceof File || videoFile instanceof Blob) {
         objectUrl = URL.createObjectURL(videoFile);
         setVideoUrl(objectUrl);
 
@@ -103,7 +107,9 @@ const RemotionVideoPreview = React.forwardRef(({
         return;
       }
 
-      const urlToUse = objectUrl || (typeof videoFile === 'string' ? videoFile : videoFile.url);
+      const urlToUse = objectUrl || (typeof videoFile === 'string'
+        ? videoFile
+        : (isNativeMediaDescriptor(videoFile) ? videoFile.playbackUrl : videoFile.url));
       if (urlToUse) {
         const tempVideo = document.createElement('video');
         tempVideo.src = urlToUse;
@@ -115,6 +121,7 @@ const RemotionVideoPreview = React.forwardRef(({
           }
 
           const isActualVideo =
+            (isNativeMediaDescriptor(videoFile) && videoFile.type.startsWith('video/')) ||
             (videoFile instanceof File && videoFile.type.startsWith('video/')) ||
             (typeof videoFile === 'string' && videoFile.toLowerCase().includes('.mp4')) ||
             (videoFile && videoFile.isActualVideo) ||

@@ -4,7 +4,8 @@ import '../styles/ModelDropdown.css';
 import {
   DEFAULT_GEMINI_MODEL_ID,
   DOCUMENT_MODELS,
-  TRANSLATION_MODELS
+  TRANSLATION_MODELS,
+  normalizeCustomGeminiModels
 } from '../config/geminiModels';
 
 /**
@@ -37,7 +38,8 @@ const ModelDropdown = ({
   const getCustomModels = () => {
     try {
       const stored = localStorage.getItem('custom_gemini_models');
-      return stored ? JSON.parse(stored) : [];
+      const parsed = stored ? JSON.parse(stored) : [];
+      return normalizeCustomGeminiModels(parsed);
     } catch {
       return [];
     }

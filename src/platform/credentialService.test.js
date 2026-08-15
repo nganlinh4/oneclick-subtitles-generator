@@ -22,7 +22,7 @@ const readyGeminiCredential = (overrides = {}) => ({
 
 it('sends a credential value only to the native set command and returns safe metadata', async () => {
   const secret = 'private-gemini-key';
-  const response = readyGeminiCredential({ secret: 'must-not-cross-back' });
+  const response = readyGeminiCredential();
   const invokeCommand = vi.fn().mockResolvedValue(response);
   const service = createCredentialService({ invokeCommand });
 
@@ -40,6 +40,10 @@ it('sends a credential value only to the native set command and returns safe met
   });
   expect(result).not.toHaveProperty('secret');
   expect(JSON.stringify(result)).not.toContain(secret);
+
+  invokeCommand.mockResolvedValueOnce(readyGeminiCredential({ secret: 'must-not-cross-back' }));
+  await expect(service.setCredential({ purpose: 'geminiApiKey', secret }))
+    .rejects.toMatchObject({ code: 'invalidCredentialResponse' });
 });
 
 it('rejects invalid and oversized secrets without invoking native code', async () => {
@@ -146,4 +150,121 @@ it('never reflects a secret-bearing transport failure into the surfaced error', 
   expect(caught).not.toHaveProperty('cause');
   expect(String(caught)).not.toContain(secret);
   expect(JSON.stringify(caught)).not.toContain(secret);
+});
+
+it('preserves only credential error codes produced by Rust and ignores hostile accessors', async () => {
+  const unknown = createCredentialService({
+    invokeCommand: vi.fn().mockRejectedValue({
+      code: 'attackerChosenCode',
+      message: 'C:\\private\\credential',
+    }),
+  });
+  await expect(unknown.getCredentialStatus()).rejects.toMatchObject({
+    code: 'credentialCommandFailed',
+    message: 'The credential operation could not be completed',
+  });
+
+  const accessor = {};
+  Object.defineProperty(accessor, 'code', {
+    get() { throw new Error('C:\\private\\getter'); },
+  });
+  const hostile = createCredentialService({
+    invokeCommand: vi.fn().mockRejectedValue(accessor),
+  });
+  const caught = await hostile.getCredentialStatus().catch((error) => error);
+  expect(caught).toMatchObject({
+    name: 'CredentialServiceError',
+    code: 'credentialCommandFailed',
+    message: 'The credential operation could not be completed',
+  });
+  expect(String(caught)).not.toContain('private');
+});
+
+it('reads command codes and response fields exactly once', async () => {
+  let codeReads = 0;
+  const commandFailure = {};
+  Object.defineProperty(commandFailure, 'code', {
+    get() {
+      codeReads += 1;
+      return codeReads === 1 ? 'internal' : 'attackerChosenCode';
+    },
+  });
+  const failed = createCredentialService({
+    invokeCommand: vi.fn().mockRejectedValue(commandFailure),
+  });
+  await expect(failed.getCredentialStatus()).rejects.toMatchObject({
+    code: 'internal',
+  });
+  expect(codeReads).toBe(1);
+
+  const status = readyGeminiCredential();
+  let idReads = 0;
+  Object.defineProperty(status, 'id', {
+    enumerable: true,
+    get() {
+      idReads += 1;
+      return idReads === 1 ? uuidv7() : 'secret-from-getter';
+    },
+  });
+  const hostileResponse = createCredentialService({
+    invokeCommand: vi.fn().mockResolvedValue(status),
+  });
+  await expect(hostileResponse.setCredential({
+    purpose: 'geminiApiKey',
+    secret: 'safe-secret',
+  })).rejects.toMatchObject({ code: 'invalidCredentialResponse' });
+  expect(idReads).toBe(0);
+});
+
+it('rejects accessor-backed credential requests before IPC', async () => {
+  const request = { purpose: 'geminiApiKey' };
+  Object.defineProperty(request, 'secret', {
+    enumerable: true,
+    get() { return 'secret-from-getter'; },
+  });
+  const invokeCommand = vi.fn();
+  const service = createCredentialService({ invokeCommand });
+
+  await expect(service.setCredential(request)).rejects.toMatchObject({
+    code: 'invalidCredentialRequest',
+  });
+  expect(invokeCommand).not.toHaveBeenCalled();
+});
+
+it('collapses the in-process-only credential purpose mismatch code', async () => {
+  const service = createCredentialService({
+    invokeCommand: vi.fn().mockRejectedValue({ code: 'credentialPurposeMismatch' }),
+  });
+  await expect(service.getCredentialStatus()).rejects.toMatchObject({
+    code: 'credentialCommandFailed',
+  });
+});
+
+it('enforces native credential suffix, state, and singleton-purpose invariants', () => {
+  expect(() => normalizeCredentialStatus(readyGeminiCredential({ last4: '' })))
+    .toThrow(expect.objectContaining({ code: 'invalidCredentialResponse' }));
+  expect(() => normalizeCredentialStatus(readyGeminiCredential({ last4: null })))
+    .toThrow(expect.objectContaining({ code: 'invalidCredentialResponse' }));
+  expect(() => normalizeCredentialStatus(readyGeminiCredential({
+    state: 'pending',
+    last4: '1234',
+  }))).toThrow(expect.objectContaining({ code: 'invalidCredentialResponse' }));
+  expect(() => normalizeCredentialStatusReport({
+    store: 'available',
+    credentials: [
+      readyGeminiCredential({ purpose: 'youtubeApiKey', provider: 'youtube' }),
+      readyGeminiCredential({ purpose: 'youtubeApiKey', provider: 'youtube' }),
+    ],
+  })).toThrow(expect.objectContaining({ code: 'invalidCredentialResponse' }));
+});
+
+it('accepts the real multi-key Gemini report shape', () => {
+  const credentials = Array.from({ length: 20 }, (_, index) => readyGeminiCredential({
+    last4: String(index).padStart(4, '0'),
+  }));
+
+  expect(normalizeCredentialStatusReport({
+    store: 'available',
+    credentials,
+  })).toEqual({ store: 'available', credentials });
 });

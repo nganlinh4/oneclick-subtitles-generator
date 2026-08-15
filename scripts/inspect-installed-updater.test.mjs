@@ -9,8 +9,8 @@ import {
 } from './inspect-installed-updater.mjs';
 
 const projectId = '018f0e4a-7b3c-7def-8abc-0123456789ab';
-const baseVersion = '1.0.0-rc.1';
-const updatedVersion = '1.0.0-rc.2';
+const baseVersion = '1.0.0';
+const updatedVersion = '1.0.1';
 const persistence = {
   setting: JSON.stringify({
     schemaVersion: 1,
@@ -56,7 +56,15 @@ test('updater inspector accepts only the exact bounded CLI', () => {
   assert.throws(() => parseArguments([
     '--port', '38444', '--mode', 'trigger', '--base-version', baseVersion,
     '--updated-version', baseVersion, '--project-id', projectId, '--screenshot', 'before.png',
-  ]), /versions/);
+  ]), /version/);
+  assert.throws(() => parseArguments([
+    '--port', '38444', '--mode', 'trigger', '--base-version', baseVersion,
+    '--updated-version', '1.0.0-rc.2', '--project-id', projectId, '--screenshot', 'before.png',
+  ]), /greater/);
+  assert.throws(() => parseArguments([
+    '--port', '38444', '--mode', 'trigger', '--base-version', '01.0.0',
+    '--updated-version', updatedVersion, '--project-id', projectId, '--screenshot', 'before.png',
+  ]), /valid semantic version/);
 });
 
 test('updater status requires exact current and offered versions', () => {

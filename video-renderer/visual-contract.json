@@ -2,11 +2,14 @@
   "schemaVersion": 2,
   "normalization": "utf8-lf",
   "files": {
-    "src/components/SubtitledVideo.tsx": "14eca2f193e3a31bd394556254cf437347179070a4c2a1f1d08252617d13d4ea",
-    "src/components/SubtitleCustomization.tsx": "338ee0a404805785fd1d31795df8557e7a239e82116d3582e05d228cdcfac9aa",
+    "src/components/SubtitledVideo.tsx": "769170061e1b68a308533a5952835ad1b23a291f27393b18561e7a48cc9c185c",
+    "src/components/SubtitleCustomization.tsx": "3fbc2e492169151e05830487d9edcf11319d9de4c3d8793fc4ea16ae141b3cee",
     "src/remotion/Composition.tsx": "784953cb0dc36c0a52ccec0de3f294532c0686a2707d94b288850d7c5bbe7a7a",
     "src/remotion/root.tsx": "8520bd9b5250b8775719e76d58abdb6d53cce979722ca3d99356797e60dfb818",
-    "src/types.ts": "32ffc3fee8e71337b590600fa70c4c08ce7e7dc38242bd81581a864b38fb5145"
+    "src/subtitleAnimationEasing.ts": "db232be8b9b766dc35ac414753e31e7e902e35dbd4b8f7adfcd73cae36b199b2",
+    "src/subtitleCustomizationDefaults.ts": "c08165117752ad131ab168d843c00ff09166cfd91e5cddc4fff3dc347143c835",
+    "src/subtitleVisualMath.ts": "20d1cdefa5b37694628674fa7292135706b185d76e7cfdd3da5bdb4ada4d91d7",
+    "src/types.ts": "c4eacdefe24f9662bbe85afe5fb97213fa8b9dbd117f46dd5b7a5d425b7c9527"
   },
   "originalVisualBaseline": {
     "revision": "d600caf22ad91d9835e771883cb81fac577a8824",

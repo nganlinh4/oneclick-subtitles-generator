@@ -3,19 +3,17 @@
  * Pure formatting logic — depends only on i18n and global window events.
  */
 
-import i18n from '../../i18n/i18n';
-
 /**
  * Format subtitles with the specified delimiter and bracket style
  * @param {Array} subtitles - Subtitles to format
  * @param {string} delimiter - Delimiter to use
  * @param {boolean} useParentheses - Whether to use parentheses
  * @param {Object} bracketStyle - Optional bracket style { open, close }
- * @returns {Promise<Array>} - Promise resolving to array of formatted subtitles
+ * @returns {Array} formatted subtitles
  */
 const formatSubtitles = (subtitles, delimiter = ' ', useParentheses = false, bracketStyle = null) => {
     // Create a copy of the subtitles to avoid modifying the original
-    const formattedSubtitles = JSON.parse(JSON.stringify(subtitles));
+    const formattedSubtitles = subtitles.map((subtitle) => ({ ...subtitle }));
 
     // Get bracket style if using parentheses and no custom style was provided
     if (!bracketStyle && useParentheses) {
@@ -41,38 +39,27 @@ const formatSubtitles = (subtitles, delimiter = ' ', useParentheses = false, bra
         }
     }
 
-    // Simulate a delay to show the formatting process
-    return new Promise(resolve => {
-        setTimeout(() => {
-            // Dispatch event to update UI with status
-            const message = i18n.t('translation.formattingComplete', 'Formatting complete');
-            window.dispatchEvent(new CustomEvent('translation-status', {
-                detail: { message, isComplete: true }
-            }));
-
-            resolve(formattedSubtitles);
-        }, 500); // Short delay for UI feedback
-    });
+    return formattedSubtitles;
 };
 
 /**
  * Format subtitles according to the exact chain arrangement
  * @param {Array} subtitles - Subtitles to format
  * @param {Array} chainItems - Chain items defining the format
- * @returns {Promise<Array>} - Promise resolving to array of formatted subtitles
+ * @returns {Array} formatted subtitles
  */
 const formatSubtitlesWithChain = (subtitles, chainItems) => {
 
 
     // Create a copy of the subtitles to avoid modifying the original
-    const formattedSubtitles = JSON.parse(JSON.stringify(subtitles));
+    const formattedSubtitles = subtitles.map((subtitle) => ({ ...subtitle }));
 
     // Find the original language item in the chain
     const originalItem = chainItems.find(item => item.type === 'language' && item.isOriginal);
 
     if (!originalItem) {
         console.warn('No original language found in chain items');
-        return Promise.resolve(formattedSubtitles);
+        return formattedSubtitles;
     }
 
     // Log the subtitles for debugging
@@ -120,18 +107,7 @@ const formatSubtitlesWithChain = (subtitles, chainItems) => {
         subtitle.text = formattedText;
     }
 
-    // Simulate a delay to show the formatting process
-    return new Promise(resolve => {
-        setTimeout(() => {
-            // Dispatch event to update UI with status
-            const message = i18n.t('translation.formattingComplete', 'Formatting complete');
-            window.dispatchEvent(new CustomEvent('translation-status', {
-                detail: { message, isComplete: true }
-            }));
-
-            resolve(formattedSubtitles);
-        }, 500); // Short delay for UI feedback
-    });
+    return formattedSubtitles;
 };
 
 export { formatSubtitles, formatSubtitlesWithChain };

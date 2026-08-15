@@ -9,6 +9,18 @@ describe('Gemini thinking request profiles', () => {
     });
   });
 
+  test('uses Gemini 3.7 low thinking and replaces its stale minimal setting', () => {
+    expect(addThinkingConfig({}, 'gemini-3.7-flash')).toEqual({
+      generationConfig: { thinkingConfig: { thinkingLevel: 'LOW' } }
+    });
+
+    localStorage.setItem('thinking_budgets', JSON.stringify({
+      'gemini-3.7-flash': 'minimal'
+    }));
+    expect(getThinkingBudget('gemini-3.7-flash')).toBe('low');
+    expect(validateThinkingBudget('gemini-3.7-flash', 'minimal')).toBe(false);
+  });
+
   test('migrates retired preview endpoints before choosing thinking controls', () => {
     expect(addThinkingConfig({}, 'gemini-robotics-er-1.6-preview')).toEqual({
       generationConfig: { thinkingConfig: { thinkingLevel: 'MINIMAL' } }

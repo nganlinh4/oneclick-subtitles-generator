@@ -47,6 +47,22 @@ impl ImportedMedia {
             canonical_path,
         })
     }
+
+    /// Rehydrates an asset whose canonical location and open file handle were already verified by
+    /// native storage. This constructor deliberately performs no second path lookup.
+    pub fn from_verified_native_asset(
+        asset: MediaAsset,
+        canonical_path: impl Into<PathBuf>,
+    ) -> Result<Self, ApplicationError> {
+        let canonical_path = canonical_path.into();
+        if !canonical_path.is_absolute() || asset.size_bytes() == 0 {
+            return Err(ApplicationError::InvalidPath);
+        }
+        Ok(Self {
+            asset,
+            canonical_path,
+        })
+    }
 }
 
 pub fn inspect_media(path: &Path) -> Result<ImportedMedia, ApplicationError> {

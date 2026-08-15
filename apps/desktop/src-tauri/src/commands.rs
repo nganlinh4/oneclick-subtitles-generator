@@ -13,7 +13,7 @@ use osg_infrastructure::secrets::{
     CredentialId, CredentialPurpose, CredentialServiceError, CredentialSetRequest,
     CredentialStatus, CredentialStatusReport,
 };
-use osg_infrastructure::storage::{Database, DatabaseError};
+use osg_infrastructure::storage::{ContentHash, Database, DatabaseError};
 use osg_media_server::{MediaServer, RegisteredMedia};
 use serde::Serialize;
 use serde_json::Value;
@@ -486,6 +486,75 @@ pub(crate) async fn select_media(
     window: WebviewWindow,
     state: State<'_, DesktopState>,
 ) -> CommandResult<Option<DesktopSessionSnapshot>> {
+    let Some(path) = pick_media_path(window).await? else {
+        return Ok(None);
+    };
+    Ok(Some(import_media_path(&state, path).await?))
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub(crate) struct MediaContentIdentityResponse {
+    algorithm: &'static str,
+    digest: String,
+    size_bytes: u64,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub(crate) struct MediaCandidateResponse {
+    asset: osg_domain::MediaAsset,
+    content_identity: MediaContentIdentityResponse,
+}
+
+impl MediaCandidateResponse {
+    pub(crate) fn new(asset: osg_domain::MediaAsset, content_hash: ContentHash) -> Self {
+        let digest =
+            content_hash
+                .as_bytes()
+                .iter()
+                .fold(String::with_capacity(64), |mut encoded, byte| {
+                    use std::fmt::Write as _;
+                    write!(encoded, "{byte:02x}").expect("writing to a string cannot fail");
+                    encoded
+                });
+        let size_bytes = asset.size_bytes();
+        Self {
+            asset,
+            content_identity: MediaContentIdentityResponse {
+                algorithm: "blake3-256",
+                digest,
+                size_bytes,
+            },
+        }
+    }
+
+    #[must_use]
+    #[allow(
+        dead_code,
+        reason = "used by native integration tests before the command manifest is updated"
+    )]
+    pub(crate) const fn asset(&self) -> &osg_domain::MediaAsset {
+        &self.asset
+    }
+}
+
+#[tauri::command]
+#[allow(
+    dead_code,
+    reason = "staged candidate picker stays unregistered until frontend activation integration"
+)]
+pub(crate) async fn select_media_candidate(
+    window: WebviewWindow,
+    state: State<'_, DesktopState>,
+) -> CommandResult<Option<MediaCandidateResponse>> {
+    let Some(path) = pick_media_path(window).await? else {
+        return Ok(None);
+    };
+    Ok(Some(stage_media_candidate_path(&state, path).await?))
+}
+
+async fn pick_media_path(window: WebviewWindow) -> CommandResult<Option<std::path::PathBuf>> {
     let extensions: Vec<&str> = VIDEO_EXTENSIONS
         .iter()
         .chain(AUDIO_EXTENSIONS.iter())
@@ -517,7 +586,7 @@ pub(crate) async fn select_media(
     let Some(path) = selected else {
         return Ok(None);
     };
-    Ok(Some(import_media_path(&state, path).await?))
+    Ok(Some(path))
 }
 
 const fn media_picker_outcome<T>(selection: Option<&T>) -> &'static str {
@@ -528,44 +597,117 @@ const fn media_picker_outcome<T>(selection: Option<&T>) -> &'static str {
     }
 }
 
+#[allow(
+    dead_code,
+    reason = "shared only by unregistered candidate picker and drop commands"
+)]
+pub(crate) async fn stage_media_candidate_path(
+    state: &DesktopState,
+    path: std::path::PathBuf,
+) -> CommandResult<MediaCandidateResponse> {
+    let database = state.database.clone();
+    tauri::async_runtime::spawn_blocking(move || prepare_media_candidate(&database, &path))
+        .await
+        .map_err(|_| CommandError::internal("the media candidate task stopped unexpectedly"))?
+}
+
 pub(crate) async fn import_media_path(
     state: &DesktopState,
     path: std::path::PathBuf,
 ) -> CommandResult<DesktopSessionSnapshot> {
-    let media_server = state.media_server.clone();
     let database = state.database.clone();
-    let (media, playback) = tauri::async_runtime::spawn_blocking(move || {
-        let media = inspect_media(&path)?;
-        if media.asset().size_bytes() > MAX_MEDIA_FILE_SIZE_BYTES {
-            return Err(CommandError::media_too_large());
-        }
-        database.remember_media(media.asset(), media.canonical_path())?;
-        let playback = media_server.register(media.canonical_path())?;
-        Ok::<_, CommandError>((media, playback))
+    let media_server = state.media_server.clone();
+    let reopened = tauri::async_runtime::spawn_blocking(move || {
+        prepare_compatibility_media(&database, &media_server, &path)
     })
     .await
     .map_err(|_| CommandError::internal("the media import task stopped unexpectedly"))??;
+    let (media, playback) = reopened;
+    let asset_id = media.asset().id();
+    let sequence = begin_media_activation(&state.editor, asset_id, false)?
+        .ok_or_else(|| CommandError::internal("the media import intent was not created"))?;
+    commit_activated_media(
+        &state.editor,
+        &state.media_server,
+        sequence,
+        asset_id,
+        media,
+        playback,
+    )?
+    .ok_or_else(|| CommandError::internal("the media import was superseded"))
+}
 
-    let Ok(mut editor) = state.editor.write() else {
-        let _ = state.media_server.unregister(playback.id);
-        return Err(CommandError::internal("the editing session is unavailable"));
-    };
-    let previous = editor.playback.replace(playback);
-    editor.local_media = Some(crate::state::LocalMedia::new(
-        media.asset().id(),
-        media.canonical_path().to_owned(),
-        media.asset().kind(),
-        media.asset().extension(),
-    ));
-    editor.session.set_media(media);
-    let snapshot = editor.snapshot();
-    drop(editor);
-    if let Some(previous) = previous
-        && let Err(error) = state.media_server.unregister(previous.id)
-    {
-        eprintln!("could not release the previous opaque media handle: {error}");
+fn prepare_compatibility_media(
+    database: &Database,
+    media_server: &MediaServer,
+    path: &std::path::Path,
+) -> CommandResult<(ImportedMedia, RegisteredMedia)> {
+    let inspected = inspect_media(path)?;
+    if inspected.asset().size_bytes() > MAX_MEDIA_FILE_SIZE_BYTES {
+        return Err(CommandError::media_too_large());
     }
-    Ok(snapshot)
+    let id = inspected.asset().id();
+    database.remember_media(inspected.asset(), inspected.canonical_path())?;
+    reopen_media_asset_unowned(database, media_server, id)
+}
+
+fn prepare_media_candidate(
+    database: &Database,
+    path: &std::path::Path,
+) -> CommandResult<MediaCandidateResponse> {
+    let media = inspect_media(path)?;
+    if media.asset().size_bytes() > MAX_MEDIA_FILE_SIZE_BYTES {
+        return Err(CommandError::media_too_large());
+    }
+    let content_hash = database.remember_media_candidate(media.asset(), media.canonical_path())?;
+    Ok(MediaCandidateResponse::new(
+        media.asset().clone(),
+        content_hash,
+    ))
+}
+
+#[tauri::command]
+#[allow(
+    dead_code,
+    reason = "registered in the following command-manifest integration step"
+)]
+#[allow(
+    clippy::needless_pass_by_value,
+    reason = "Tauri injects State as an owned command extractor"
+)]
+pub(crate) async fn discard_media_candidate(
+    state: State<'_, DesktopState>,
+    id: AssetId,
+) -> CommandResult<bool> {
+    let database = state.database.clone();
+    let discarded = run_database_task("discard media candidate", move || {
+        database.discard_media_candidate(id)
+    })
+    .await?;
+    if discarded {
+        invalidate_pending_media_activation(&state.editor, Some(id))?;
+    }
+    Ok(discarded)
+}
+
+#[tauri::command]
+#[allow(
+    dead_code,
+    reason = "registered in the following command-manifest integration step"
+)]
+#[allow(
+    clippy::needless_pass_by_value,
+    reason = "Tauri injects State as an owned command extractor"
+)]
+pub(crate) async fn promote_media_candidate(
+    state: State<'_, DesktopState>,
+    id: AssetId,
+) -> CommandResult<bool> {
+    let database = state.database.clone();
+    run_database_task("promote media candidate", move || {
+        database.promote_media_candidate(id)
+    })
+    .await
 }
 
 #[tauri::command]
@@ -574,66 +716,270 @@ pub(crate) async fn import_media_path(
     reason = "Tauri injects State as an owned command extractor"
 )]
 pub(crate) fn clear_media(state: State<'_, DesktopState>) -> CommandResult<DesktopSessionSnapshot> {
-    let mut editor = state
-        .editor
+    clear_activated_media(&state.editor, &state.media_server)
+}
+
+fn clear_activated_media(
+    editor_state: &std::sync::RwLock<crate::state::EditorSession>,
+    media_server: &MediaServer,
+) -> CommandResult<DesktopSessionSnapshot> {
+    let mut editor = editor_state
         .write()
         .map_err(|_| CommandError::internal("the editing session is unavailable"))?;
-
-    if let Some(playback) = editor.playback.as_ref() {
-        state.media_server.unregister(playback.id)?;
-    }
-    editor.playback = None;
+    advance_media_intent(&mut editor)?;
+    editor.pending_media_activation = None;
+    let previous = editor.playback.take();
     editor.local_media = None;
     editor.session.clear_media();
-    Ok(editor.snapshot())
+    let snapshot = editor.snapshot();
+    drop(editor);
+    if let Some(previous) = previous {
+        media_server.unregister(previous.id)?;
+    }
+    Ok(snapshot)
+}
+
+#[tauri::command]
+#[allow(
+    dead_code,
+    reason = "the explicit activation entry point is retained for the staged command manifest"
+)]
+#[allow(
+    clippy::needless_pass_by_value,
+    reason = "Tauri injects State as an owned command extractor"
+)]
+pub(crate) async fn activate_media_asset(
+    state: State<'_, DesktopState>,
+    id: AssetId,
+    project_id: ProjectId,
+    expected_state_version: u64,
+) -> CommandResult<Option<DesktopSessionSnapshot>> {
+    activate_media_asset_with_policy(
+        state,
+        id,
+        ProjectMediaAuthorization {
+            project_id,
+            expected_state_version,
+        },
+        false,
+    )
+    .await
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+struct ProjectMediaAuthorization {
+    project_id: ProjectId,
+    expected_state_version: u64,
+}
+
+async fn activate_media_asset_with_policy(
+    state: State<'_, DesktopState>,
+    id: AssetId,
+    authorization: ProjectMediaAuthorization,
+    only_if_empty: bool,
+) -> CommandResult<Option<DesktopSessionSnapshot>> {
+    let Some(sequence) = begin_media_activation(&state.editor, id, only_if_empty)? else {
+        return Ok(None);
+    };
+    let database = state.database.clone();
+    let media_server = state.media_server.clone();
+    let reopened = tauri::async_runtime::spawn_blocking(move || {
+        reopen_media_asset(&database, &media_server, authorization, id)
+    })
+    .await
+    .map_err(|_| CommandError::internal("the media reopen task stopped unexpectedly"));
+    let (media, playback) = match reopened {
+        Ok(Ok(reopened)) => reopened,
+        Ok(Err(error)) | Err(error) => {
+            cancel_media_activation(&state.editor, sequence, id)?;
+            return Err(error);
+        }
+    };
+
+    commit_authorized_activated_media(
+        &state.editor,
+        &state.media_server,
+        &state.database,
+        authorization,
+        sequence,
+        id,
+        media,
+        playback,
+    )
 }
 
 #[tauri::command]
 #[allow(
     clippy::needless_pass_by_value,
-    reason = "Tauri injects State as an owned command extractor"
+    reason = "temporary compatibility alias until the shared Tauri registration is updated"
 )]
 pub(crate) async fn open_media_asset(
     state: State<'_, DesktopState>,
     id: AssetId,
+    project_id: ProjectId,
+    expected_state_version: u64,
     only_if_empty: bool,
 ) -> CommandResult<Option<DesktopSessionSnapshot>> {
-    let database = state.database.clone();
-    let media_server = state.media_server.clone();
-    let (media, playback) = tauri::async_runtime::spawn_blocking(move || {
-        reopen_media_asset(&database, &media_server, id)
-    })
+    activate_media_asset_with_policy(
+        state,
+        id,
+        ProjectMediaAuthorization {
+            project_id,
+            expected_state_version,
+        },
+        only_if_empty,
+    )
     .await
-    .map_err(|_| CommandError::internal("the media reopen task stopped unexpectedly"))??;
+}
 
-    commit_reopened_media(
-        &state.editor,
-        &state.media_server,
+fn advance_media_intent(editor: &mut crate::state::EditorSession) -> CommandResult<u64> {
+    editor.media_intent = editor
+        .media_intent
+        .checked_add(1)
+        .ok_or_else(|| CommandError::internal("the media activation sequence is exhausted"))?;
+    Ok(editor.media_intent)
+}
+
+fn begin_media_activation(
+    editor_state: &std::sync::RwLock<crate::state::EditorSession>,
+    asset_id: AssetId,
+    only_if_empty: bool,
+) -> CommandResult<Option<u64>> {
+    let mut editor = editor_state
+        .write()
+        .map_err(|_| CommandError::internal("the editing session is unavailable"))?;
+    if only_if_empty
+        && (editor.session.media_path().is_some()
+            || editor.playback.is_some()
+            || editor.local_media.is_some()
+            || editor.pending_media_activation.is_some())
+    {
+        return Ok(None);
+    }
+    let sequence = advance_media_intent(&mut editor)?;
+    editor.pending_media_activation =
+        Some(crate::state::PendingMediaActivation { sequence, asset_id });
+    Ok(Some(sequence))
+}
+
+fn cancel_media_activation(
+    editor_state: &std::sync::RwLock<crate::state::EditorSession>,
+    sequence: u64,
+    asset_id: AssetId,
+) -> CommandResult<()> {
+    let mut editor = editor_state
+        .write()
+        .map_err(|_| CommandError::internal("the editing session is unavailable"))?;
+    let expected = crate::state::PendingMediaActivation { sequence, asset_id };
+    if editor.media_intent == sequence && editor.pending_media_activation == Some(expected) {
+        editor.pending_media_activation = None;
+    }
+    Ok(())
+}
+
+fn invalidate_pending_media_activation(
+    editor_state: &std::sync::RwLock<crate::state::EditorSession>,
+    asset_id: Option<AssetId>,
+) -> CommandResult<()> {
+    let mut editor = editor_state
+        .write()
+        .map_err(|_| CommandError::internal("the editing session is unavailable"))?;
+    if editor
+        .pending_media_activation
+        .is_some_and(|pending| asset_id.is_none_or(|id| pending.asset_id == id))
+    {
+        advance_media_intent(&mut editor)?;
+        editor.pending_media_activation = None;
+    }
+    Ok(())
+}
+
+fn commit_activated_media(
+    editor_state: &std::sync::RwLock<crate::state::EditorSession>,
+    media_server: &MediaServer,
+    sequence: u64,
+    asset_id: AssetId,
+    media: ImportedMedia,
+    playback: RegisteredMedia,
+) -> CommandResult<Option<DesktopSessionSnapshot>> {
+    commit_activated_media_with_authorization(
+        editor_state,
+        media_server,
+        None,
+        sequence,
+        asset_id,
         media,
         playback,
-        only_if_empty,
     )
 }
 
-fn commit_reopened_media(
+fn commit_authorized_activated_media(
     editor_state: &std::sync::RwLock<crate::state::EditorSession>,
     media_server: &MediaServer,
+    database: &Database,
+    authorization: ProjectMediaAuthorization,
+    sequence: u64,
+    asset_id: AssetId,
     media: ImportedMedia,
     playback: RegisteredMedia,
-    only_if_empty: bool,
 ) -> CommandResult<Option<DesktopSessionSnapshot>> {
+    commit_activated_media_with_authorization(
+        editor_state,
+        media_server,
+        Some((database, authorization)),
+        sequence,
+        asset_id,
+        media,
+        playback,
+    )
+}
+
+fn commit_activated_media_with_authorization(
+    editor_state: &std::sync::RwLock<crate::state::EditorSession>,
+    media_server: &MediaServer,
+    authorization: Option<(&Database, ProjectMediaAuthorization)>,
+    sequence: u64,
+    asset_id: AssetId,
+    media: ImportedMedia,
+    playback: RegisteredMedia,
+) -> CommandResult<Option<DesktopSessionSnapshot>> {
+    if media.asset().id() != asset_id {
+        let _ = media_server.unregister(playback.id);
+        return Err(CommandError::internal(
+            "the verified media identity did not match the activation intent",
+        ));
+    }
     let Ok(mut editor) = editor_state.write() else {
         let _ = media_server.unregister(playback.id);
         return Err(CommandError::internal("the editing session is unavailable"));
     };
-    if only_if_empty
-        && (editor.session.media_path().is_some()
-            || editor.playback.is_some()
-            || editor.local_media.is_some())
-    {
+    let expected = crate::state::PendingMediaActivation { sequence, asset_id };
+    if editor.media_intent != sequence || editor.pending_media_activation != Some(expected) {
         drop(editor);
-        media_server.unregister(playback.id)?;
+        let _ = media_server.unregister(playback.id);
         return Ok(None);
+    }
+    if let Some((database, authorization)) = authorization {
+        let authorized = database.project_media_is_current(
+            authorization.project_id,
+            authorization.expected_state_version,
+            asset_id,
+        );
+        match authorized {
+            Ok(true) => {}
+            Ok(false) => {
+                editor.pending_media_activation = None;
+                drop(editor);
+                let _ = media_server.unregister(playback.id);
+                return Err(CommandError::media_unavailable());
+            }
+            Err(error) => {
+                editor.pending_media_activation = None;
+                drop(editor);
+                let _ = media_server.unregister(playback.id);
+                return Err(error.into());
+            }
+        }
     }
     let previous = editor.playback.replace(playback);
     editor.local_media = Some(crate::state::LocalMedia::new(
@@ -643,6 +989,7 @@ fn commit_reopened_media(
         media.asset().extension(),
     ));
     editor.session.set_media(media);
+    editor.pending_media_activation = None;
     let snapshot = editor.snapshot();
     drop(editor);
     if let Some(previous) = previous {
@@ -654,14 +1001,48 @@ fn commit_reopened_media(
 fn reopen_media_asset(
     database: &Database,
     media_server: &MediaServer,
+    authorization: ProjectMediaAuthorization,
+    id: AssetId,
+) -> CommandResult<(ImportedMedia, RegisteredMedia)> {
+    let resolved = database
+        .resolve_project_media_revision(
+            authorization.project_id,
+            authorization.expected_state_version,
+            id,
+        )?
+        .ok_or_else(CommandError::media_unavailable)?;
+    register_resolved_media(media_server, resolved)
+}
+
+fn reopen_media_asset_unowned(
+    database: &Database,
+    media_server: &MediaServer,
     id: AssetId,
 ) -> CommandResult<(ImportedMedia, RegisteredMedia)> {
     let resolved = database
         .resolve_media(id)?
         .ok_or_else(CommandError::media_unavailable)?;
-    let media = ImportedMedia::from_native_asset(resolved.asset().clone(), resolved.path())?;
-    let playback =
-        media_server.register_with_extension(media.canonical_path(), media.asset().extension())?;
+    register_resolved_media(media_server, resolved)
+}
+
+fn register_resolved_media(
+    media_server: &MediaServer,
+    resolved: osg_infrastructure::storage::ResolvedMedia,
+) -> CommandResult<(ImportedMedia, RegisteredMedia)> {
+    let media = ImportedMedia::from_verified_native_asset(
+        resolved.asset().clone(),
+        resolved.path().to_owned(),
+    )?;
+    let playback = media_server.register_content_snapshot_with_extension(
+        resolved.verified_file().as_ref(),
+        media.asset().extension(),
+        media.asset().size_bytes(),
+        *resolved.content_hash().as_bytes(),
+    )?;
+    if let Err(error) = resolved.revalidate_verified_file() {
+        let _ = media_server.unregister(playback.id);
+        return Err(error.into());
+    }
     Ok((media, playback))
 }
 
@@ -669,14 +1050,18 @@ fn reopen_media_asset(
 mod tests {
     use std::{fs, sync::RwLock};
 
-    use osg_application::inspect_media;
-    use osg_domain::{AssetId, JobKind, JobSnapshot, MediaAsset, MediaKind};
+    use osg_application::{ProjectSnapshot, inspect_media};
+    use osg_domain::{
+        AssetId, JobKind, JobSnapshot, MediaAsset, MediaKind, ProjectMetadata, RevisionReason,
+    };
     use osg_infrastructure::storage::Database;
     use osg_media_server::MediaServer;
 
     use super::{
-        MAX_EXPOSED_ACTIVE_JOBS, MAX_EXPOSED_TERMINAL_JOBS, bounded_job_list,
-        commit_reopened_media, media_picker_outcome, reopen_media_asset,
+        MAX_EXPOSED_ACTIVE_JOBS, MAX_EXPOSED_TERMINAL_JOBS, ProjectMediaAuthorization,
+        begin_media_activation, bounded_job_list, clear_activated_media, commit_activated_media,
+        commit_authorized_activated_media, invalidate_pending_media_activation,
+        media_picker_outcome, prepare_media_candidate, reopen_media_asset,
     };
     use crate::state::EditorSession;
 
@@ -684,6 +1069,31 @@ mod tests {
     fn media_picker_diagnostic_outcome_is_categorical_and_path_free() {
         assert_eq!(media_picker_outcome(Some(&"private-path")), "selected");
         assert_eq!(media_picker_outcome::<&str>(None), "none");
+    }
+
+    fn attach_media_to_project(
+        database: &Database,
+        asset: &MediaAsset,
+    ) -> ProjectMediaAuthorization {
+        let metadata = ProjectMetadata::new("Media activation fixture").expect("project metadata");
+        let base = database.create_project(&metadata).expect("create project");
+        let snapshot = ProjectSnapshot::new(
+            metadata,
+            base.state_version(),
+            vec![asset.clone()],
+            Vec::new(),
+        )
+        .expect("project snapshot");
+        let commit = database
+            .commit_project(
+                &snapshot,
+                &RevisionReason::new("attach media fixture").expect("revision reason"),
+            )
+            .expect("attach media");
+        ProjectMediaAuthorization {
+            project_id: snapshot.metadata().id(),
+            expected_state_version: commit.state_version,
+        }
     }
 
     #[test]
@@ -703,10 +1113,12 @@ mod tests {
         database
             .remember_media(&asset, &extensionless)
             .expect("remember media");
+        let authorization = attach_media_to_project(&database, &asset);
         let media_server = MediaServer::start(std::iter::empty()).expect("media server");
 
-        let (media, playback) = reopen_media_asset(&database, &media_server, asset.id())
-            .expect("reopen extensionless media");
+        let (media, playback) =
+            reopen_media_asset(&database, &media_server, authorization, asset.id())
+                .expect("reopen extensionless media");
 
         assert_eq!(media.asset(), &asset);
         assert_eq!(playback.mime_type, "video/mp4");
@@ -714,7 +1126,100 @@ mod tests {
     }
 
     #[test]
-    fn guarded_reopen_restores_empty_state_but_never_replaces_a_native_winner() {
+    fn activation_is_project_revision_scoped_and_rechecked_after_handle_verification() {
+        let directory = tempfile::tempdir().expect("temporary directory");
+        let database = Database::open(directory.path().join("database.sqlite3")).expect("database");
+        let media_path = directory.path().join("authorized.mp4");
+        fs::write(&media_path, vec![0x45; 32 * 1024]).expect("media fixture");
+        let imported = inspect_media(&media_path).expect("inspect media");
+        let asset = imported.asset().clone();
+        database
+            .remember_media_candidate(&asset, imported.canonical_path())
+            .expect("stage media");
+
+        let owner = ProjectMetadata::new("Owner project").expect("owner metadata");
+        let base = database.create_project(&owner).expect("create owner");
+        let attach = ProjectSnapshot::new(
+            owner.clone(),
+            base.state_version(),
+            vec![asset.clone()],
+            Vec::new(),
+        )
+        .expect("attach snapshot");
+        let attached = database
+            .commit_project(
+                &attach,
+                &RevisionReason::new("attach media").expect("revision reason"),
+            )
+            .expect("attach media");
+        let authorization = ProjectMediaAuthorization {
+            project_id: owner.id(),
+            expected_state_version: attached.state_version,
+        };
+        let other = ProjectMetadata::new("Other project").expect("other metadata");
+        let other_base = database.create_project(&other).expect("create other");
+        let media_server = MediaServer::start(std::iter::empty()).expect("media server");
+
+        let cross_project = reopen_media_asset(
+            &database,
+            &media_server,
+            ProjectMediaAuthorization {
+                project_id: other.id(),
+                expected_state_version: other_base.state_version(),
+            },
+            asset.id(),
+        )
+        .expect_err("another project cannot authorize this media");
+        assert_eq!(cross_project.code(), "mediaUnavailable");
+
+        let (media, playback) =
+            reopen_media_asset(&database, &media_server, authorization, asset.id())
+                .expect("hash and register authorized media");
+        let playback_id = playback.id;
+        let editor = RwLock::new(EditorSession::default());
+        let sequence = begin_media_activation(&editor, asset.id(), false)
+            .expect("begin activation")
+            .expect("activation intent");
+
+        let detach = ProjectSnapshot::new(owner, attached.state_version, Vec::new(), Vec::new())
+            .expect("detach snapshot");
+        database
+            .commit_project(
+                &detach,
+                &RevisionReason::new("detach before activation commit").expect("revision reason"),
+            )
+            .expect("detach media");
+
+        let error = commit_authorized_activated_media(
+            &editor,
+            &media_server,
+            &database,
+            authorization,
+            sequence,
+            asset.id(),
+            media,
+            playback,
+        )
+        .expect_err("stale revision authorization must fail at final commit");
+        assert_eq!(error.code(), "mediaUnavailable");
+        assert!(
+            editor
+                .read()
+                .expect("editor")
+                .snapshot()
+                .session
+                .media
+                .is_none()
+        );
+        assert!(
+            !media_server
+                .unregister(playback_id)
+                .expect("stale playback was removed")
+        );
+    }
+
+    #[test]
+    fn explicit_activation_replaces_the_previous_native_media() {
         let directory = tempfile::tempdir().expect("temporary directory");
         let first_path = directory.path().join("persisted.mp4");
         let winner_path = directory.path().join("winner.mp4");
@@ -728,10 +1233,20 @@ mod tests {
         let persisted_playback = media_server
             .register(persisted.canonical_path())
             .expect("persisted playback");
-        let restored =
-            commit_reopened_media(&editor, &media_server, persisted, persisted_playback, true)
-                .expect("guarded reopen")
-                .expect("empty state accepts restore");
+        let persisted_playback_id = persisted_playback.id;
+        let persisted_sequence = begin_media_activation(&editor, persisted_id, false)
+            .expect("begin initial activation")
+            .expect("initial activation intent");
+        let restored = commit_activated_media(
+            &editor,
+            &media_server,
+            persisted_sequence,
+            persisted_id,
+            persisted,
+            persisted_playback,
+        )
+        .expect("initial activation")
+        .expect("initial activation won");
         assert_eq!(
             restored.session.media.as_ref().map(MediaAsset::id),
             Some(persisted_id)
@@ -743,25 +1258,24 @@ mod tests {
         let winner_playback = media_server
             .register(winner.canonical_path())
             .expect("winner playback");
-        let selected =
-            commit_reopened_media(&editor, &media_server, winner, winner_playback, false)
-                .expect("force open")
-                .expect("force open is always applied");
+        let winner_sequence = begin_media_activation(&editor, winner_id, false)
+            .expect("begin winner activation")
+            .expect("winner activation intent");
+        let selected = commit_activated_media(
+            &editor,
+            &media_server,
+            winner_sequence,
+            winner_id,
+            winner,
+            winner_playback,
+        )
+        .expect("replacement activation")
+        .expect("replacement activation won");
         assert_eq!(
             selected.session.media.as_ref().map(MediaAsset::id),
             Some(winner_id)
         );
 
-        let stale = inspect_media(&first_path).expect("stale persisted media");
-        let stale_playback = media_server
-            .register(stale.canonical_path())
-            .expect("stale playback");
-        let stale_playback_id = stale_playback.id;
-        assert!(
-            commit_reopened_media(&editor, &media_server, stale, stale_playback, true)
-                .expect("guarded conflict")
-                .is_none()
-        );
         let final_snapshot = editor.read().expect("editor read").snapshot();
         assert_eq!(
             final_snapshot.session.media.as_ref().map(MediaAsset::id),
@@ -769,9 +1283,240 @@ mod tests {
         );
         assert!(
             !media_server
-                .unregister(stale_playback_id)
-                .expect("inspect stale playback cleanup")
+                .unregister(persisted_playback_id)
+                .expect("inspect previous playback cleanup")
         );
+    }
+
+    #[test]
+    fn delayed_restore_cannot_overwrite_a_newer_explicit_activation() {
+        let directory = tempfile::tempdir().expect("temporary directory");
+        let restore_path = directory.path().join("restore.mp4");
+        let winner_path = directory.path().join("winner.mp4");
+        fs::write(&restore_path, vec![0x31; 1024]).expect("restore fixture");
+        fs::write(&winner_path, vec![0x32; 2048]).expect("winner fixture");
+        let media_server = MediaServer::start(std::iter::empty()).expect("media server");
+        let editor = RwLock::new(EditorSession::default());
+
+        let restore = inspect_media(&restore_path).expect("restore media");
+        let restore_id = restore.asset().id();
+        let restore_playback = media_server
+            .register(restore.canonical_path())
+            .expect("restore playback");
+        let restore_playback_id = restore_playback.id;
+        let restore_sequence = begin_media_activation(&editor, restore_id, true)
+            .expect("begin restore")
+            .expect("restore intent");
+
+        let winner = inspect_media(&winner_path).expect("winner media");
+        let winner_id = winner.asset().id();
+        let winner_playback = media_server
+            .register(winner.canonical_path())
+            .expect("winner playback");
+        let winner_sequence = begin_media_activation(&editor, winner_id, false)
+            .expect("begin winner")
+            .expect("winner intent");
+        let winner_snapshot = commit_activated_media(
+            &editor,
+            &media_server,
+            winner_sequence,
+            winner_id,
+            winner,
+            winner_playback,
+        )
+        .expect("commit winner")
+        .expect("winner remains current");
+        assert_eq!(
+            winner_snapshot.session.media.as_ref().map(MediaAsset::id),
+            Some(winner_id)
+        );
+
+        assert!(
+            commit_activated_media(
+                &editor,
+                &media_server,
+                restore_sequence,
+                restore_id,
+                restore,
+                restore_playback,
+            )
+            .expect("finish delayed restore")
+            .is_none()
+        );
+        assert_eq!(
+            editor
+                .read()
+                .expect("editor read")
+                .snapshot()
+                .session
+                .media
+                .as_ref()
+                .map(MediaAsset::id),
+            Some(winner_id)
+        );
+        assert!(
+            !media_server
+                .unregister(restore_playback_id)
+                .expect("stale capability already removed")
+        );
+        assert!(
+            begin_media_activation(&editor, restore_id, true)
+                .expect("attempt occupied restore")
+                .is_none()
+        );
+    }
+
+    #[test]
+    fn clear_advances_the_intent_and_invalidates_in_flight_activation() {
+        let directory = tempfile::tempdir().expect("temporary directory");
+        let active_path = directory.path().join("active.mp4");
+        let pending_path = directory.path().join("pending.mp4");
+        fs::write(&active_path, vec![0x51; 1024]).expect("active fixture");
+        fs::write(&pending_path, vec![0x52; 2048]).expect("pending fixture");
+        let media_server = MediaServer::start(std::iter::empty()).expect("media server");
+        let editor = RwLock::new(EditorSession::default());
+
+        let active = inspect_media(&active_path).expect("active media");
+        let active_id = active.asset().id();
+        let active_playback = media_server
+            .register(active.canonical_path())
+            .expect("active playback");
+        let active_playback_id = active_playback.id;
+        let active_sequence = begin_media_activation(&editor, active_id, false)
+            .expect("begin active")
+            .expect("active intent");
+        commit_activated_media(
+            &editor,
+            &media_server,
+            active_sequence,
+            active_id,
+            active,
+            active_playback,
+        )
+        .expect("commit active")
+        .expect("active wins");
+
+        let pending = inspect_media(&pending_path).expect("pending media");
+        let pending_id = pending.asset().id();
+        let pending_playback = media_server
+            .register(pending.canonical_path())
+            .expect("pending playback");
+        let pending_playback_id = pending_playback.id;
+        let pending_sequence = begin_media_activation(&editor, pending_id, false)
+            .expect("begin pending")
+            .expect("pending intent");
+
+        let cleared = clear_activated_media(&editor, &media_server).expect("clear media");
+        assert!(cleared.session.media.is_none());
+        assert!(cleared.playback.is_none());
+        assert!(
+            !media_server
+                .unregister(active_playback_id)
+                .expect("active capability already removed")
+        );
+        assert!(
+            commit_activated_media(
+                &editor,
+                &media_server,
+                pending_sequence,
+                pending_id,
+                pending,
+                pending_playback,
+            )
+            .expect("finish invalidated activation")
+            .is_none()
+        );
+        assert!(
+            !media_server
+                .unregister(pending_playback_id)
+                .expect("invalidated capability already removed")
+        );
+        let editor = editor.read().expect("editor read");
+        assert!(editor.pending_media_activation.is_none());
+        assert!(editor.snapshot().session.media.is_none());
+    }
+
+    #[test]
+    fn discarding_one_candidate_does_not_cancel_another_assets_intent() {
+        let editor = RwLock::new(EditorSession::default());
+        let discarded = AssetId::new();
+        let winner = AssetId::new();
+        let sequence = begin_media_activation(&editor, winner, false)
+            .expect("begin winner")
+            .expect("winner intent");
+
+        invalidate_pending_media_activation(&editor, Some(discarded))
+            .expect("discard unrelated candidate");
+        {
+            let editor = editor.read().expect("editor read");
+            assert_eq!(editor.media_intent, sequence);
+            assert_eq!(
+                editor
+                    .pending_media_activation
+                    .map(|pending| pending.asset_id),
+                Some(winner)
+            );
+        }
+
+        invalidate_pending_media_activation(&editor, Some(winner)).expect("discard winner");
+        let editor = editor.read().expect("editor read");
+        assert!(editor.media_intent > sequence);
+        assert!(editor.pending_media_activation.is_none());
+    }
+
+    #[test]
+    fn candidate_staging_is_path_free_and_leaves_the_editor_untouched() {
+        let directory = tempfile::tempdir().expect("temporary directory");
+        let database = Database::open(directory.path().join("database.sqlite3")).expect("database");
+        let media_path = directory.path().join("private-recording.mp4");
+        fs::write(&media_path, vec![0x2a; 32 * 1024]).expect("media fixture");
+        let editor = EditorSession::default();
+        let before = editor.snapshot();
+
+        let candidate =
+            prepare_media_candidate(&database, &media_path).expect("prepare media candidate");
+
+        assert_eq!(editor.snapshot(), before);
+        assert!(
+            database
+                .resolve_media(candidate.asset().id())
+                .expect("resolve staged media")
+                .is_some()
+        );
+        let value = serde_json::to_value(&candidate).expect("serialize candidate");
+        let object = value.as_object().expect("candidate object");
+        assert_eq!(
+            object.keys().map(String::as_str).collect::<Vec<_>>(),
+            ["asset", "contentIdentity"]
+        );
+        assert_eq!(value["contentIdentity"]["algorithm"], "blake3-256");
+        assert_eq!(
+            value["contentIdentity"]["digest"]
+                .as_str()
+                .expect("digest")
+                .len(),
+            64
+        );
+        assert_eq!(value["contentIdentity"]["sizeBytes"], 32 * 1024);
+        let json = serde_json::to_string(&value).expect("candidate JSON");
+        assert!(!json.contains(media_path.to_string_lossy().as_ref()));
+        assert!(!json.to_ascii_lowercase().contains("path"));
+        assert!(object.get("playback").is_none());
+        let media_server = MediaServer::start(std::iter::empty()).expect("media server");
+        let metadata = ProjectMetadata::new("Detached candidate").expect("project metadata");
+        let project = database.create_project(&metadata).expect("create project");
+        let authorization = ProjectMediaAuthorization {
+            project_id: metadata.id(),
+            expected_state_version: project.state_version(),
+        };
+        let error = reopen_media_asset(
+            &database,
+            &media_server,
+            authorization,
+            candidate.asset().id(),
+        )
+        .expect_err("detached candidates must not activate");
+        assert_eq!(error.code(), "mediaUnavailable");
     }
 
     #[test]
@@ -780,8 +1525,18 @@ mod tests {
         let database = Database::open(directory.path().join("database.sqlite3")).expect("database");
         let media_server = MediaServer::start(std::iter::empty()).expect("media server");
 
-        let error = reopen_media_asset(&database, &media_server, AssetId::new())
-            .expect_err("unknown media must not reopen");
+        let metadata = ProjectMetadata::new("Missing media").expect("project metadata");
+        let project = database.create_project(&metadata).expect("create project");
+        let error = reopen_media_asset(
+            &database,
+            &media_server,
+            ProjectMediaAuthorization {
+                project_id: metadata.id(),
+                expected_state_version: project.state_version(),
+            },
+            AssetId::new(),
+        )
+        .expect_err("unknown media must not reopen");
 
         assert_eq!(error.code(), "mediaUnavailable");
     }

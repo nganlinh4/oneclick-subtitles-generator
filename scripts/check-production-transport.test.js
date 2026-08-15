@@ -5,6 +5,7 @@ const fs = require('node:fs');
 const os = require('node:os');
 const path = require('node:path');
 const test = require('node:test');
+const { build } = require('esbuild');
 
 const {
   assertProductionTransportBoundary,
@@ -174,6 +175,126 @@ test('current production graph has no raw fetch or XHR bypass', () => {
   const report = assertReachableWebViewTransportBoundary();
   assert.equal(report.violations.length, 0);
   assert.ok(report.moduleCount > 400);
+});
+
+test('emitted desktop Gemini image graph contains only the opaque native reference transfer', async () => {
+  const repositoryRoot = path.resolve(__dirname, '..');
+  const imageService = path.join(
+    repositoryRoot,
+    'src/services/gemini/imageGenerationService.js',
+  );
+  const result = await build({
+    stdin: {
+      contents: "export { generateBackgroundImage } from './src/services/gemini/imageGenerationService.js';",
+      resolveDir: repositoryRoot,
+      sourcefile: 'desktop-image-generation-entry.js',
+    },
+    bundle: true,
+    format: 'esm',
+    platform: 'browser',
+    target: 'es2022',
+    minify: true,
+    treeShaking: true,
+    write: false,
+    plugins: [{
+      name: 'fold-desktop-image-runtime',
+      setup(esbuild) {
+        esbuild.onResolve({ filter: /^\./ }, (args) => {
+          if (path.resolve(args.importer) === imageService) {
+            return { path: args.path, external: true };
+          }
+          return null;
+        });
+        esbuild.onLoad({ filter: /imageGenerationService\.js$/ }, (args) => {
+          if (path.resolve(args.path) !== imageService) return null;
+          const source = fs.readFileSync(args.path, 'utf8');
+          return {
+            contents: source.replace(/\bisDesktopRuntime\s*\(\s*\)/g, 'true'),
+            loader: 'js',
+          };
+        });
+      },
+    }],
+  });
+  const emitted = result.outputFiles.map((file) => file.text).join('\n');
+
+  for (const [label, pattern] of [
+    ['browser album-art preparation', /prepareAlbumArt/i],
+    ['inline image URL', /data:image/i],
+    ['inline encoding marker', /base64/i],
+    ['canvas encoding', /toDataURL/i],
+    ['base64 decoder', /\batob\b/i],
+    ['WebView binary object', /\bBlob\b/],
+    ['browser provider image payload', /inlineData|responseModalities/i],
+  ]) {
+    assert.doesNotMatch(emitted, pattern, `desktop image graph retained ${label}`);
+  }
+
+  const transfer = await build({
+    stdin: {
+      contents: "export { importReferenceImage } from './src/platform/imageService.js';",
+      resolveDir: repositoryRoot,
+      sourcefile: 'desktop-reference-transfer-entry.js',
+    },
+    bundle: true,
+    format: 'esm',
+    platform: 'browser',
+    target: 'es2022',
+    minify: true,
+    treeShaking: true,
+    write: false,
+  });
+  const emittedTransfer = transfer.outputFiles.map((file) => file.text).join('\n');
+  assert.match(emittedTransfer, /image_blob_import_playback/);
+  assert.doesNotMatch(emittedTransfer, /["'`]image_blob_import["'`]/);
+  assert.doesNotMatch(emittedTransfer, /data:image|base64|toDataURL|\batob\b|\bBlob\b/i);
+
+  const featureModules = new Set([
+    path.join(repositoryRoot, 'src/components/background/PromptAndAlbumArtSection.js'),
+    path.join(repositoryRoot, 'src/components/background/ImageGenerationSection.js'),
+  ]);
+  const feature = await build({
+    stdin: {
+      contents: [
+        "export { default as PromptAndAlbumArtSection } from './src/components/background/PromptAndAlbumArtSection.js';",
+        "export { default as ImageGenerationSection } from './src/components/background/ImageGenerationSection.js';",
+      ].join('\n'),
+      resolveDir: repositoryRoot,
+      sourcefile: 'desktop-image-feature-entry.js',
+      loader: 'js',
+    },
+    bundle: true,
+    format: 'esm',
+    platform: 'browser',
+    target: 'es2022',
+    minify: true,
+    treeShaking: true,
+    write: false,
+    plugins: [{
+      name: 'fold-desktop-image-feature-runtime',
+      setup(esbuild) {
+        esbuild.onResolve({ filter: /^\./ }, (args) => {
+          const resolved = path.resolve(path.dirname(args.importer), args.path);
+          if (featureModules.has(resolved) || featureModules.has(`${resolved}.js`)) return null;
+          return { path: args.path, external: true };
+        });
+        esbuild.onLoad({ filter: /(?:PromptAndAlbumArtSection|ImageGenerationSection)\.js$/ }, (args) => {
+          if (!featureModules.has(path.resolve(args.path))) return null;
+          const source = fs.readFileSync(args.path, 'utf8');
+          return {
+            contents: source.replace(/\bisDesktopRuntime\s*\(\s*\)/g, 'true'),
+            loader: 'jsx',
+          };
+        });
+      },
+    }],
+  });
+  const emittedFeature = feature.outputFiles.map((file) => file.text).join('\n');
+  assert.doesNotMatch(
+    emittedFeature,
+    /generatedFileExportService|generated_file_export|data:image|base64|Uint8Array|\bBlob\b|FileReader|readAsDataURL/i,
+  );
+  assert.match(emittedFeature, /exportReferenceImagePlayback|exportNativeGeneratedImage/);
 });
 
 test('rejects provider images from JavaScript, HTML, and CSS artifacts', () => {

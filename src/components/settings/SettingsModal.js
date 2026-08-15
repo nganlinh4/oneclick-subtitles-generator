@@ -54,6 +54,11 @@ const SettingsModal = ({ onClose, onSave, apiKeysSet, setApiKeysSet }) => {
 
   // State for tracking when the modal is closing
   const [isClosing, setIsClosing] = useState(false);
+  const [isSaving, setIsSaving] = useState(false);
+  const saveInFlightRef = useRef(false);
+  const factoryResetInFlightRef = useRef(false);
+  const closeScheduledRef = useRef(false);
+  const closeTimerRef = useRef(null);
 
   // State for tracking tab transitions
   const [previousTab, setPreviousTab] = useState(null);
@@ -122,6 +127,7 @@ const SettingsModal = ({ onClose, onSave, apiKeysSet, setApiKeysSet }) => {
     thinkingBudgets, setThinkingBudgets,
     transcriptionPrompt, setTranscriptionPrompt,
     useCookiesForDownload, setUseCookiesForDownload,
+    downloadCookieSource, setDownloadCookieSource,
     enableYoutubeSearch, setEnableYoutubeSearch,
     autoImportSiteSubtitles, setAutoImportSiteSubtitles,
     favoriteMaxSubtitleLength, setFavoriteMaxSubtitleLength,
@@ -134,16 +140,39 @@ const SettingsModal = ({ onClose, onSave, apiKeysSet, setApiKeysSet }) => {
     localStorage.setItem('settings_last_active_tab', activeTab);
   }, [activeTab]);
 
-  // Function to handle closing with animation
-  const handleClose = useCallback(() => {
+  const scheduleClose = useCallback((allowActiveSave = false) => {
+    if (closeScheduledRef.current
+      || factoryResetInFlightRef.current
+      || (saveInFlightRef.current && !allowActiveSave)) {
+      return false;
+    }
+
+    closeScheduledRef.current = true;
     // Start the closing animation
     setIsClosing(true);
 
     // Wait for the animation to complete before actually closing
-    setTimeout(() => {
+    closeTimerRef.current = setTimeout(() => {
+      closeTimerRef.current = null;
       onClose();
     }, 300); // Match this with the CSS transition duration
+    return true;
   }, [onClose]);
+
+  // User exits fail closed while a durable save is in flight. Only the successful save path is
+  // allowed to schedule the single close that follows persistence.
+  const handleClose = useCallback(() => scheduleClose(false), [scheduleClose]);
+  const handlePersistedSaveClose = useCallback(
+    () => scheduleClose(true),
+    [scheduleClose]
+  );
+
+  useEffect(() => () => {
+    if (closeTimerRef.current !== null) {
+      clearTimeout(closeTimerRef.current);
+      closeTimerRef.current = null;
+    }
+  }, []);
 
   // Add ESC key handler to close the modal
   useEffect(() => {
@@ -164,6 +193,12 @@ const SettingsModal = ({ onClose, onSave, apiKeysSet, setApiKeysSet }) => {
 
   // Handle factory reset
   const handleFactoryReset = async () => {
+    if (saveInFlightRef.current
+      || factoryResetInFlightRef.current
+      || closeScheduledRef.current) {
+      return;
+    }
+
     // Show toast with confirmation button instead of browser popup
     window.addToast(
       t('settings.confirmFactoryReset', 'Are you sure you want to perform a factory reset? This will clear all cache files and browser data. This cannot be undone.'),
@@ -173,6 +208,15 @@ const SettingsModal = ({ onClose, onSave, apiKeysSet, setApiKeysSet }) => {
       {
         text: t('common.confirm', 'Confirm'),
         onClick: async () => {
+          // The confirmation can outlive the toast invocation. Re-check ownership so an older
+          // confirmation cannot race a save or a close that started in the meantime.
+          if (saveInFlightRef.current
+            || factoryResetInFlightRef.current
+            || closeScheduledRef.current) {
+            return;
+          }
+
+          factoryResetInFlightRef.current = true;
           setIsFactoryResetting(true);
 
           try {
@@ -196,6 +240,7 @@ const SettingsModal = ({ onClose, onSave, apiKeysSet, setApiKeysSet }) => {
               'error',
               8000
             );
+            factoryResetInFlightRef.current = false;
             setIsFactoryResetting(false);
           }
         }
@@ -207,8 +252,31 @@ const SettingsModal = ({ onClose, onSave, apiKeysSet, setApiKeysSet }) => {
   const { handleSave } = useSettingsPersistence({
     ...settings,
     onSave,
-    handleClose,
+    handleClose: handlePersistedSaveClose,
   });
+
+  const handleSaveClick = async () => {
+    if (saveInFlightRef.current
+      || factoryResetInFlightRef.current
+      || closeScheduledRef.current) {
+      return;
+    }
+
+    saveInFlightRef.current = true;
+    setIsSaving(true);
+    try {
+      await handleSave();
+    } catch {
+      window.addToast?.(
+        t('settings.saveFailed', 'Settings could not be saved. Please try again.'),
+        'error',
+        8000
+      );
+    } finally {
+      saveInFlightRef.current = false;
+      setIsSaving(false);
+    }
+  };
 
   // Handler for clicking the overlay to close the modal
   const handleOverlayClick = (e) => {
@@ -346,6 +414,7 @@ const SettingsModal = ({ onClose, onSave, apiKeysSet, setApiKeysSet }) => {
 
           <CloseButton
             onClick={handleClose}
+            disabled={isSaving || isFactoryResetting || isClosing}
             variant="settings"
             size="large"
           />
@@ -411,6 +480,8 @@ const SettingsModal = ({ onClose, onSave, apiKeysSet, setApiKeysSet }) => {
               setUseOptimizedPreview={setUseOptimizedPreview}
               useCookiesForDownload={useCookiesForDownload}
               setUseCookiesForDownload={setUseCookiesForDownload}
+              downloadCookieSource={downloadCookieSource}
+              setDownloadCookieSource={setDownloadCookieSource}
               enableYoutubeSearch={enableYoutubeSearch}
               setEnableYoutubeSearch={setEnableYoutubeSearch}
               autoImportSiteSubtitles={autoImportSiteSubtitles}
@@ -466,7 +537,7 @@ const SettingsModal = ({ onClose, onSave, apiKeysSet, setApiKeysSet }) => {
             <button
               className="factory-reset-btn"
               onClick={handleFactoryReset}
-              disabled={isFactoryResetting}
+              disabled={isFactoryResetting || isSaving || isClosing}
               title={t('settings.factoryResetTooltip', 'Reset application to factory settings')}
             >
               {isFactoryResetting ? (
@@ -484,17 +555,18 @@ const SettingsModal = ({ onClose, onSave, apiKeysSet, setApiKeysSet }) => {
               className="cancel-btn"
               data-settings-action="close"
               onClick={handleClose}
+              disabled={isSaving || isFactoryResetting || isClosing}
               title={t('settings.pressEscToClose', 'Press ESC to close')}
             >
               {t('common.cancel', 'Cancel')} <span className="key-hint">(ESC)</span>
             </button>
             <button
               className="save-btn"
-              onClick={handleSave}
-              disabled={!hasChanges}
+              onClick={handleSaveClick}
+              disabled={!hasChanges || isSaving || isFactoryResetting || isClosing}
               title={!hasChanges ? t('settings.noChanges', 'No changes to save') : t('settings.saveChanges', 'Save changes')}
             >
-              {t('common.save', 'Save')}
+              {isSaving ? t('settings.saving', 'Saving...') : t('common.save', 'Save')}
             </button>
           </div>
         </div>

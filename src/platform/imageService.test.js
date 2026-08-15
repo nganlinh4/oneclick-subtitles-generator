@@ -1,56 +1,58 @@
-import { Blob as NodeBlob } from 'buffer';
-
-import { invokeDesktop, invokeDesktopRaw } from './desktopRuntime';
-import { importReferenceImage, releaseReferenceImage } from './imageService';
+import { invokeDesktop } from './desktopRuntime';
+import {
+  exportReferenceImagePlayback,
+  importReferenceImage,
+  releaseReferenceImage,
+  releaseReferenceImagePlayback,
+  selectReferenceImagePlayback,
+} from './imageService';
 
 vi.mock('./desktopRuntime', () => ({
   invokeDesktop: vi.fn(),
-  invokeDesktopRaw: vi.fn(),
 }));
 
 const ASSET_ID = '01890f39-7b62-7c4e-8c9a-000000000201';
-const BrowserBlob = global.Blob;
-
-beforeAll(() => {
-  global.Blob = NodeBlob;
-});
-
-afterAll(() => {
-  global.Blob = BrowserBlob;
-});
+const PROJECT_ID = '01890f39-7b62-7c4e-8c9a-000000000202';
+const PLAYBACK_ID = '4a8672f4-6e8f-4a16-8e4a-36b7d20fdb11';
+const PLAYBACK_URL = `http://127.0.0.1:43210/asset/${PLAYBACK_ID}?token=${'a'.repeat(64)}`;
 
 beforeEach(() => {
   vi.clearAllMocks();
 });
 
-test('imports reference bytes through the raw path and exposes only an opaque ID', async () => {
-  const blob = new Blob(['image'], { type: 'image/png' });
-  invokeDesktopRaw.mockResolvedValue({
+test('imports a native playback capability using only opaque image and project IDs', async () => {
+  invokeDesktop.mockResolvedValue({
     assetId: ASSET_ID,
     mimeType: 'image/png',
-    sizeBytes: blob.size,
+    sizeBytes: 16,
   });
 
-  await expect(importReferenceImage(blob)).resolves.toEqual({
+  await expect(importReferenceImage(PLAYBACK_URL, PROJECT_ID)).resolves.toEqual({
     assetId: ASSET_ID,
     mimeType: 'image/png',
-    sizeBytes: blob.size,
+    sizeBytes: 16,
   });
-  const [command, bytes, headers] = invokeDesktopRaw.mock.calls[0];
-  expect(command).toBe('image_blob_import');
-  expect(bytes.byteLength).toBe(blob.size);
-  expect(headers).toEqual({ 'x-osg-content-type': 'image/png' });
+  expect(invokeDesktop).toHaveBeenCalledWith('image_blob_import_playback', {
+    request: { playbackId: PLAYBACK_ID, projectId: PROJECT_ID },
+  });
+  expect(JSON.stringify(invokeDesktop.mock.calls)).not.toMatch(
+    /(?:token=|playbackUrl|data:image|base64|"bytes")/i
+  );
 });
 
-test('rejects unsupported inputs and mismatched host metadata', async () => {
-  await expect(importReferenceImage(new Blob(['gif'], { type: 'image/gif' })))
+test('rejects non-capability inputs and malformed host metadata', async () => {
+  await expect(importReferenceImage('data:image/png;base64,cG5n', PROJECT_ID))
     .rejects.toMatchObject({ code: 'invalidImageRequest' });
-  invokeDesktopRaw.mockResolvedValue({
+  await expect(importReferenceImage(PLAYBACK_URL, 'not-a-project'))
+    .rejects.toMatchObject({ code: 'invalidImageRequest' });
+  expect(invokeDesktop).not.toHaveBeenCalled();
+
+  invokeDesktop.mockResolvedValue({
     assetId: ASSET_ID,
-    mimeType: 'image/jpeg',
+    mimeType: 'image/gif',
     sizeBytes: 5,
   });
-  await expect(importReferenceImage(new Blob(['image'], { type: 'image/png' })))
+  await expect(importReferenceImage(PLAYBACK_URL, PROJECT_ID))
     .rejects.toMatchObject({ code: 'invalidImageResponse' });
 });
 
@@ -60,4 +62,81 @@ test('releases only a validated opaque image ID', async () => {
   expect(invokeDesktop).toHaveBeenCalledWith('image_blob_release', { assetId: ASSET_ID });
   await expect(releaseReferenceImage('not-an-id'))
     .rejects.toMatchObject({ code: 'invalidImageRequest' });
+});
+
+test('selects and releases a local reference through native playback capabilities only', async () => {
+  invokeDesktop
+    .mockResolvedValueOnce({
+      id: PLAYBACK_ID,
+      playbackUrl: PLAYBACK_URL,
+      mimeType: 'image/png',
+      byteLength: 16,
+    })
+    .mockResolvedValueOnce(true);
+
+  await expect(selectReferenceImagePlayback(PROJECT_ID)).resolves.toEqual({
+    id: PLAYBACK_ID,
+    playbackUrl: PLAYBACK_URL,
+    mimeType: 'image/png',
+    byteLength: 16,
+    projectId: PROJECT_ID,
+  });
+  await expect(releaseReferenceImagePlayback({
+    playbackId: PLAYBACK_ID,
+    projectId: PROJECT_ID,
+  })).resolves.toBe(true);
+  expect(invokeDesktop).toHaveBeenNthCalledWith(1, 'image_reference_select', {
+    request: { projectId: PROJECT_ID },
+  });
+  expect(invokeDesktop).toHaveBeenNthCalledWith(2, 'image_reference_playback_release', {
+    request: { playbackId: PLAYBACK_ID, projectId: PROJECT_ID },
+  });
+});
+
+test('fails closed on malformed local playback selections and release IDs', async () => {
+  invokeDesktop.mockResolvedValue({
+    id: PLAYBACK_ID,
+    playbackUrl: PLAYBACK_URL,
+    mimeType: 'image/gif',
+    byteLength: 16,
+  });
+  await expect(selectReferenceImagePlayback(PROJECT_ID))
+    .rejects.toMatchObject({ code: 'invalidImageResponse' });
+  await expect(releaseReferenceImagePlayback({
+    playbackId: ASSET_ID,
+    projectId: PROJECT_ID,
+  }))
+    .rejects.toMatchObject({ code: 'invalidImageRequest' });
+});
+
+test('exports a reference capability with only its exact project, playback, and safe name', async () => {
+  invokeDesktop.mockResolvedValue(true);
+  await expect(exportReferenceImagePlayback(
+    PLAYBACK_URL,
+    PROJECT_ID,
+    'album-art.png'
+  )).resolves.toBe(true);
+  expect(invokeDesktop).toHaveBeenCalledWith('image_reference_export', {
+    request: {
+      projectId: PROJECT_ID,
+      playbackId: PLAYBACK_ID,
+      suggestedName: 'album-art.png',
+    },
+  });
+  expect(JSON.stringify(invokeDesktop.mock.calls)).not.toMatch(
+    /(?:token=|playbackUrl|data:image|base64|"bytes"|Uint8Array|Blob)/i
+  );
+});
+
+test('rejects hostile reference export metadata before IPC', async () => {
+  for (const [url, projectId, name] of [
+    ['data:image/png;base64,cG5n', PROJECT_ID, 'album-art.png'],
+    [PLAYBACK_URL, 'not-a-project', 'album-art.png'],
+    [PLAYBACK_URL, PROJECT_ID, '../album-art.png'],
+    [PLAYBACK_URL, PROJECT_ID, 'album-art.exe'],
+  ]) {
+    await expect(exportReferenceImagePlayback(url, projectId, name))
+      .rejects.toMatchObject({ code: 'invalidImageRequest' });
+  }
+  expect(invokeDesktop).not.toHaveBeenCalled();
 });

@@ -13,11 +13,16 @@ import { runNativeGeminiTranscription } from '../../platform/nativeGeminiTranscr
 import { createSubtitleSchema } from '../../utils/schemaUtils';
 import { parseGeminiResponse } from '../../utils/subtitle';
 import { getThinkingBudget } from '../../utils/thinkingBudgetUtils';
-import { getTranscriptionPrompt } from './promptManagement';
+import { getEmptySpeechPolicy, getTranscriptionPrompt } from './promptManagement';
 import {
   createRequestController,
   removeRequestController,
 } from './requestManagement';
+import {
+  assertAutoGenerationContextCurrent,
+  assertAutoGenerationContextDurable,
+  isAutoGenerationContext,
+} from '../../utils/autoGenerationOwnership';
 
 const nativeMediaRequired = () => new Error(
   'Select the media again before starting native Gemini transcription.'
@@ -74,12 +79,23 @@ export const callGeminiApi = async (input, _inputType, options = {}) => {
     options.modelId || localStorage.getItem('gemini_model'),
     DEFAULT_TRANSCRIPTION_MODEL_ID
   );
-  const { requestId, signal } = createRequestController();
+  const autoRunContext = isAutoGenerationContext(options.autoRunContext)
+    ? options.autoRunContext
+    : null;
+  if (autoRunContext) await assertAutoGenerationContextDurable(autoRunContext);
+  if (autoRunContext && (
+    autoRunContext.assetId === null
+    || input.assetId !== autoRunContext.assetId
+  )) {
+    throw new Error('Automatic generation received a different native media asset.');
+  }
+  const { requestId, signal, abort } = createRequestController(options.signal);
   try {
     const segmentRange = normalizeNativeSegmentRange(options.segmentInfo);
     let mediaAssetId = input.assetId;
     let mediaKind = input.type?.startsWith('audio/') ? 'audio' : 'video';
     if (segmentRange !== null && !(await coversWholeAsset(input.assetId, segmentRange))) {
+      if (autoRunContext) await assertAutoGenerationContextDurable(autoRunContext);
       const clip = await runMediaPipeline({
         operation: 'analysisClip',
         assetId: input.assetId,
@@ -92,17 +108,43 @@ export const callGeminiApi = async (input, _inputType, options = {}) => {
     const prompt = getTranscriptionPrompt(
       mediaKind,
       options.userProvidedSubtitles,
-      { segmentInfo: {} }
+      {
+        segmentInfo: options.segmentInfo ?? {},
+        promptContext: options.promptContext,
+      }
     );
+    const emptySpeechPolicy = getEmptySpeechPolicy(
+      mediaKind,
+      options.userProvidedSubtitles,
+      options.promptContext
+    );
+    let accumulatedText = '';
+    const handleNativeChunk = typeof options.onChunk === 'function'
+      ? (text) => {
+          try {
+            if (autoRunContext) assertAutoGenerationContextCurrent(autoRunContext);
+            accumulatedText += text;
+            options.onChunk(Object.freeze({ accumulatedText }));
+            if (autoRunContext) assertAutoGenerationContextCurrent(autoRunContext);
+          } catch (error) {
+            abort(error);
+          }
+        }
+      : undefined;
+    if (autoRunContext) await assertAutoGenerationContextDurable(autoRunContext);
     const result = await runNativeGeminiTranscription({
       assetId: mediaAssetId,
       model,
       prompt,
+      ...(emptySpeechPolicy ? { emptySpeechPolicy } : {}),
       responseJsonSchema: createSubtitleSchema(Boolean(options.userProvidedSubtitles?.trim())),
       thinkingLevel: getThinkingBudget(model),
       mediaResolution: normalizeMediaResolution(options.mediaResolution),
       signal,
+      ...(handleNativeChunk ? { onChunk: handleNativeChunk } : {}),
     });
+    if (autoRunContext) await assertAutoGenerationContextDurable(autoRunContext);
+    if (autoRunContext) assertAutoGenerationContextCurrent(autoRunContext);
     return parseGeminiResponse(asLegacyGeminiResponse(result));
   } finally {
     removeRequestController(requestId);
@@ -147,9 +189,11 @@ const streamThroughNativeTranscription = async (
 ) => {
   try {
     onProgress?.({ native: true });
-    const subtitles = await callGeminiApi(input, 'file-upload', options);
-    onChunk?.(JSON.stringify(subtitles));
-    onComplete?.(JSON.stringify(subtitles));
+    const subtitles = await callGeminiApi(input, 'file-upload', {
+      ...options,
+      ...(typeof onChunk === 'function' ? { onChunk } : {}),
+    });
+    onComplete?.(subtitles);
     return subtitles;
   } catch (error) {
     onError?.(error);

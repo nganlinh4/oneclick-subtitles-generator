@@ -131,6 +131,7 @@ struct MediaEntry {
     source: MediaSource,
     mime_type: String,
     byte_length: u64,
+    image_owner: Option<ImageOwnership>,
 }
 
 enum MediaSource {
@@ -143,6 +144,14 @@ enum MediaSource {
         expires_at: Instant,
         last_accessed: Instant,
     },
+}
+
+#[derive(Clone, Copy)]
+struct ImageOwnership {
+    owner: Uuid,
+    committed: bool,
+    active_claims: usize,
+    release_requested: bool,
 }
 
 impl std::fmt::Debug for MediaEntry {
@@ -158,7 +167,76 @@ impl std::fmt::Debug for MediaEntry {
             )
             .field("mime_type", &self.mime_type)
             .field("byte_length", &self.byte_length)
+            .field("image_owner", &self.image_owner.map(|_| "<opaque>"))
             .finish_non_exhaustive()
+    }
+}
+
+/// A signature-checked native image copy with a transactional project-owner claim.
+///
+/// Dropping this value rolls back a newly-created claim unless another same-owner operation has
+/// committed it. Calling [`Self::commit`] makes the owner binding durable for the capability's
+/// remaining registry lifetime.
+pub struct RegisteredImageCopy {
+    mime_type: String,
+    bytes: Vec<u8>,
+    claim: Option<ImageOwnerClaim>,
+}
+
+impl std::fmt::Debug for RegisteredImageCopy {
+    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        formatter
+            .debug_struct("RegisteredImageCopy")
+            .field("mime_type", &self.mime_type)
+            .field("byte_length", &self.bytes.len())
+            .field("owner", &"<opaque>")
+            .finish_non_exhaustive()
+    }
+}
+
+impl RegisteredImageCopy {
+    #[must_use]
+    pub fn mime_type(&self) -> &str {
+        &self.mime_type
+    }
+
+    #[must_use]
+    pub fn bytes(&self) -> &[u8] {
+        &self.bytes
+    }
+
+    pub fn commit(mut self) -> Result<(), MediaServerError> {
+        self.claim
+            .take()
+            .ok_or(MediaServerError::RegistryUnavailable)?
+            .commit()
+    }
+}
+
+struct ImageOwnerClaim {
+    server: MediaServer,
+    id: Uuid,
+    owner: Uuid,
+    active: bool,
+}
+
+impl ImageOwnerClaim {
+    fn commit(mut self) -> Result<(), MediaServerError> {
+        self.server
+            .finish_image_owner_claim(self.id, self.owner, true)?;
+        self.active = false;
+        Ok(())
+    }
+}
+
+impl Drop for ImageOwnerClaim {
+    fn drop(&mut self) {
+        if self.active {
+            let _ = self
+                .server
+                .finish_image_owner_claim(self.id, self.owner, false);
+            self.active = false;
+        }
     }
 }
 
@@ -262,6 +340,99 @@ impl MediaServer {
         self.register_with_mime_type(path, mime_type)
     }
 
+    /// Registers the exact native file handle retained by the storage verifier.
+    ///
+    /// No path is accepted or reopened at this boundary, so a same-path replacement between
+    /// verification and playback cannot change the bytes served by the capability.
+    pub fn register_verified_file_with_extension(
+        &self,
+        file: Arc<File>,
+        extension: &str,
+        expected_length: u64,
+    ) -> Result<RegisteredMedia, MediaServerError> {
+        if extension.is_empty()
+            || extension.len() > 16
+            || !extension.bytes().all(|byte| byte.is_ascii_alphanumeric())
+        {
+            return Err(MediaServerError::InvalidPath);
+        }
+        let mime_type = mime_guess::from_ext(extension)
+            .first_or_octet_stream()
+            .essence_str()
+            .to_owned();
+        self.register_verified_file(file, mime_type, expected_length)
+    }
+
+    /// Copies a previously verified handle into a private anonymous snapshot and checks the
+    /// snapshot's BLAKE3 identity before publishing its capability.  Subsequent in-place writes to
+    /// the caller's file cannot alter full or range responses, including writes racing a request.
+    pub fn register_content_snapshot_with_extension(
+        &self,
+        file: &File,
+        extension: &str,
+        expected_length: u64,
+        expected_content_hash: [u8; 32],
+    ) -> Result<RegisteredMedia, MediaServerError> {
+        if extension.is_empty()
+            || extension.len() > 16
+            || !extension.bytes().all(|byte| byte.is_ascii_alphanumeric())
+        {
+            return Err(MediaServerError::InvalidPath);
+        }
+        let mime_type = mime_guess::from_ext(extension)
+            .first_or_octet_stream()
+            .essence_str()
+            .to_owned();
+        let snapshot = private_content_snapshot(file, expected_length, expected_content_hash)?;
+        self.register_verified_file(Arc::new(snapshot), mime_type, expected_length)
+    }
+
+    pub fn register_verified_file(
+        &self,
+        file: Arc<File>,
+        mime_type: impl Into<String>,
+        expected_length: u64,
+    ) -> Result<RegisteredMedia, MediaServerError> {
+        let mime_type = mime_type.into();
+        if !valid_media_mime_type(&mime_type) || expected_length == 0 {
+            return Err(MediaServerError::InvalidPath);
+        }
+        let metadata = file.metadata().map_err(|_| MediaServerError::InvalidPath)?;
+        if !metadata.is_file() || metadata.len() != expected_length {
+            return Err(MediaServerError::InvalidPath);
+        }
+        let id = Uuid::new_v4();
+        let entry = MediaEntry {
+            source: MediaSource::File {
+                file,
+                modified: metadata.modified().ok(),
+            },
+            mime_type: mime_type.clone(),
+            byte_length: expected_length,
+            image_owner: None,
+        };
+        let mut assets = self
+            .inner
+            .context
+            .assets
+            .write()
+            .map_err(|_| MediaServerError::RegistryUnavailable)?;
+        if assets.len() >= MAX_REGISTERED_ASSETS {
+            return Err(MediaServerError::RegistryFull);
+        }
+        assets.insert(id, entry);
+        drop(assets);
+        Ok(RegisteredMedia {
+            id,
+            playback_url: format!(
+                "http://127.0.0.1:{}/asset/{id}?token={}",
+                self.inner.context.port, self.inner.context.token
+            ),
+            mime_type,
+            byte_length: expected_length,
+        })
+    }
+
     /// Registers media whose durable, content-addressed path intentionally has
     /// no filename extension. The caller must supply MIME metadata derived from
     /// a previously validated native media asset; the value never comes from
@@ -275,6 +446,74 @@ impl MediaServer {
         if !valid_media_mime_type(&mime_type) {
             return Err(MediaServerError::InvalidPath);
         }
+        self.register_file(path, mime_type, false, None, None)
+    }
+
+    /// Registers an extensionless, durable raster-image artifact as a file-backed capability.
+    ///
+    /// The MIME type and the opened file's signature must agree. Image bytes remain in the native
+    /// artifact store instead of being copied into either the `WebView` or the in-memory image pool.
+    pub fn register_image_file(
+        &self,
+        path: &Path,
+        mime_type: impl Into<String>,
+    ) -> Result<RegisteredMedia, MediaServerError> {
+        self.register_file(path, mime_type.into(), true, None, None)
+    }
+
+    /// Registers a bounded file-backed image already owned by one native project.
+    ///
+    /// Size, MIME, and signature validation all use the same opened file handle. The owner is
+    /// stored directly in the capability entry and disappears atomically with eviction/removal.
+    pub fn register_owned_image_file(
+        &self,
+        path: &Path,
+        mime_type: impl Into<String>,
+        owner: Uuid,
+        maximum_bytes: usize,
+    ) -> Result<RegisteredMedia, MediaServerError> {
+        if maximum_bytes == 0 {
+            return Err(MediaServerError::InvalidPath);
+        }
+        self.register_file(
+            path,
+            mime_type.into(),
+            true,
+            Some(maximum_bytes),
+            Some(owner),
+        )
+    }
+
+    fn register_file(
+        &self,
+        path: &Path,
+        mime_type: String,
+        require_image_signature: bool,
+        maximum_bytes: Option<usize>,
+        image_owner: Option<Uuid>,
+    ) -> Result<RegisteredMedia, MediaServerError> {
+        self.register_file_with_observer(
+            path,
+            mime_type,
+            require_image_signature,
+            maximum_bytes,
+            image_owner,
+            |_| {},
+        )
+    }
+
+    fn register_file_with_observer(
+        &self,
+        path: &Path,
+        mime_type: String,
+        require_image_signature: bool,
+        maximum_bytes: Option<usize>,
+        image_owner: Option<Uuid>,
+        after_signature: impl FnOnce(&Path),
+    ) -> Result<RegisteredMedia, MediaServerError> {
+        if image_owner.is_some() && !require_image_signature {
+            return Err(MediaServerError::InvalidPath);
+        }
         let canonical_path = fs::canonicalize(path).map_err(|_| MediaServerError::InvalidPath)?;
         let file = File::open(&canonical_path).map_err(|_| MediaServerError::InvalidPath)?;
         let metadata = file.metadata().map_err(|_| MediaServerError::InvalidPath)?;
@@ -284,14 +523,54 @@ impl MediaServer {
         if metadata.len() == 0 {
             return Err(MediaServerError::EmptyFile);
         }
+        if maximum_bytes.is_some_and(|limit| {
+            usize::try_from(metadata.len()).map_or(true, |length| length > limit)
+        }) {
+            return Err(MediaServerError::InvalidPath);
+        }
+        if require_image_signature {
+            let mut signature = [0_u8; 12];
+            let mut count = 0_usize;
+            while count < signature.len() {
+                let offset = u64::try_from(count).map_err(|_| MediaServerError::InvalidPath)?;
+                let read = positioned_read(&file, &mut signature[count..], offset)
+                    .map_err(|_| MediaServerError::InvalidPath)?;
+                if read == 0 {
+                    break;
+                }
+                count += read;
+            }
+            if canonical_image_mime_type(&mime_type, &signature[..count]).is_none() {
+                return Err(MediaServerError::InvalidPath);
+            }
+        } else if !valid_media_mime_type(&mime_type) {
+            return Err(MediaServerError::InvalidPath);
+        }
+        after_signature(&canonical_path);
+        let final_metadata = file.metadata().map_err(|_| MediaServerError::InvalidPath)?;
+        if !final_metadata.is_file()
+            || final_metadata.len() != metadata.len()
+            || final_metadata.modified().ok() != metadata.modified().ok()
+            || maximum_bytes.is_some_and(|limit| {
+                usize::try_from(final_metadata.len()).map_or(true, |length| length > limit)
+            })
+        {
+            return Err(MediaServerError::InvalidPath);
+        }
         let id = Uuid::new_v4();
         let entry = MediaEntry {
             source: MediaSource::File {
                 file: Arc::new(file),
-                modified: metadata.modified().ok(),
+                modified: final_metadata.modified().ok(),
             },
             mime_type: mime_type.clone(),
-            byte_length: metadata.len(),
+            byte_length: final_metadata.len(),
+            image_owner: image_owner.map(|owner| ImageOwnership {
+                owner,
+                committed: true,
+                active_claims: 0,
+                release_requested: false,
+            }),
         };
         let mut assets = self
             .inner
@@ -312,7 +591,7 @@ impl MediaServer {
                 self.inner.context.port, self.inner.context.token
             ),
             mime_type,
-            byte_length: metadata.len(),
+            byte_length: final_metadata.len(),
         })
     }
 
@@ -401,6 +680,7 @@ impl MediaServer {
                     },
                     mime_type: mime_type.clone(),
                     byte_length,
+                    image_owner: None,
                 },
             );
             registered.push(RegisteredMedia {
@@ -417,16 +697,263 @@ impl MediaServer {
         Ok(registered)
     }
 
-    pub fn unregister(&self, id: Uuid) -> Result<bool, MediaServerError> {
-        Ok(self
+    /// Copies an already-authorized raster-image capability for another native subsystem.
+    ///
+    /// The caller supplies only the opaque registry ID. Provider bytes and file paths never cross
+    /// the `WebView` boundary, while the destination subsystem still gets to apply its own tighter
+    /// size, MIME, signature, lifetime, and ownership rules.
+    pub fn copy_registered_image_for_owner(
+        &self,
+        id: Uuid,
+        owner: Uuid,
+        maximum_bytes: usize,
+    ) -> Result<Option<RegisteredImageCopy>, MediaServerError> {
+        if maximum_bytes == 0 || maximum_bytes > MAX_PROVIDER_IMAGE_REGISTRY_BYTES {
+            return Err(MediaServerError::InvalidPath);
+        }
+        let (entry, claim) = {
+            let mut assets = self
+                .inner
+                .context
+                .assets
+                .write()
+                .map_err(|_| MediaServerError::RegistryUnavailable)?;
+            let now = Instant::now();
+            purge_expired_images(&mut assets, now);
+            let Some(entry) = assets.get_mut(&id) else {
+                return Ok(None);
+            };
+            if !entry.mime_type.starts_with("image/") {
+                return Err(MediaServerError::InvalidPath);
+            }
+            match &mut entry.image_owner {
+                Some(binding) if binding.owner != owner || binding.release_requested => {
+                    return Err(MediaServerError::InvalidPath);
+                }
+                Some(binding) => {
+                    binding.active_claims = binding
+                        .active_claims
+                        .checked_add(1)
+                        .ok_or(MediaServerError::RegistryFull)?;
+                }
+                slot @ None => {
+                    *slot = Some(ImageOwnership {
+                        owner,
+                        committed: false,
+                        active_claims: 1,
+                        release_requested: false,
+                    });
+                }
+            }
+            if let MediaSource::Image { last_accessed, .. } = &mut entry.source {
+                *last_accessed = now;
+            }
+            (
+                CloneableEntry::from(&*entry),
+                ImageOwnerClaim {
+                    server: self.clone(),
+                    id,
+                    owner,
+                    active: true,
+                },
+            )
+        };
+        let expected_length = usize::try_from(entry.byte_length)
+            .ok()
+            .filter(|length| *length > 0 && *length <= maximum_bytes)
+            .ok_or(MediaServerError::InvalidPath)?;
+        let bytes = match &entry.source {
+            CloneableSource::Image(bytes) => {
+                if bytes.len() != expected_length {
+                    return Err(MediaServerError::InvalidPath);
+                }
+                bytes.to_vec()
+            }
+            CloneableSource::File { file, modified } => {
+                copy_registered_file(file, *modified, expected_length)?
+            }
+        };
+        if canonical_image_mime_type(&entry.mime_type, &bytes).is_none() {
+            return Err(MediaServerError::InvalidPath);
+        }
+        Ok(Some(RegisteredImageCopy {
+            mime_type: entry.mime_type,
+            bytes,
+            claim: Some(claim),
+        }))
+    }
+
+    fn finish_image_owner_claim(
+        &self,
+        id: Uuid,
+        owner: Uuid,
+        commit: bool,
+    ) -> Result<(), MediaServerError> {
+        let mut assets = self
             .inner
             .context
             .assets
             .write()
-            .map_err(|_| MediaServerError::RegistryUnavailable)?
-            .remove(&id)
-            .is_some())
+            .map_err(|_| MediaServerError::RegistryUnavailable)?;
+        let entry = assets.get_mut(&id).ok_or(MediaServerError::InvalidPath)?;
+        let remove_entry = {
+            let binding = entry
+                .image_owner
+                .as_mut()
+                .filter(|binding| binding.owner == owner && binding.active_claims > 0)
+                .ok_or(MediaServerError::InvalidPath)?;
+            binding.active_claims -= 1;
+            if commit {
+                binding.committed = true;
+            }
+            binding.active_claims == 0 && binding.release_requested
+        };
+        if remove_entry {
+            assets.remove(&id);
+        } else if entry
+            .image_owner
+            .is_some_and(|binding| binding.active_claims == 0 && !binding.committed)
+        {
+            entry.image_owner = None;
+        }
+        Ok(())
     }
+
+    /// Removes an image capability only when the exact committed project owner matches.
+    pub fn unregister_owned_image(&self, id: Uuid, owner: Uuid) -> Result<bool, MediaServerError> {
+        let mut assets = self
+            .inner
+            .context
+            .assets
+            .write()
+            .map_err(|_| MediaServerError::RegistryUnavailable)?;
+        let Some(entry) = assets.get(&id) else {
+            return Ok(false);
+        };
+        let Some(binding) = entry.image_owner else {
+            return Err(MediaServerError::InvalidPath);
+        };
+        if binding.owner != owner {
+            return Err(MediaServerError::InvalidPath);
+        }
+        if binding.active_claims != 0 {
+            assets
+                .get_mut(&id)
+                .and_then(|entry| entry.image_owner.as_mut())
+                .ok_or(MediaServerError::RegistryUnavailable)?
+                .release_requested = true;
+            return Ok(true);
+        }
+        if !binding.committed {
+            return Err(MediaServerError::InvalidPath);
+        }
+        Ok(assets.remove(&id).is_some())
+    }
+
+    pub fn unregister(&self, id: Uuid) -> Result<bool, MediaServerError> {
+        let mut assets = self
+            .inner
+            .context
+            .assets
+            .write()
+            .map_err(|_| MediaServerError::RegistryUnavailable)?;
+        if assets
+            .get(&id)
+            .is_some_and(|entry| entry.image_owner.is_some())
+        {
+            return Err(MediaServerError::InvalidPath);
+        }
+        Ok(assets.remove(&id).is_some())
+    }
+}
+
+fn copy_registered_file(
+    file: &File,
+    expected_modified: Option<SystemTime>,
+    expected_length: usize,
+) -> Result<Vec<u8>, MediaServerError> {
+    let expected_length_u64 =
+        u64::try_from(expected_length).map_err(|_| MediaServerError::InvalidPath)?;
+    let metadata = file.metadata().map_err(|_| MediaServerError::InvalidPath)?;
+    if !metadata.is_file()
+        || metadata.len() != expected_length_u64
+        || metadata.modified().ok() != expected_modified
+    {
+        return Err(MediaServerError::InvalidPath);
+    }
+    let mut bytes = vec![0_u8; expected_length];
+    let mut offset = 0_usize;
+    while offset < bytes.len() {
+        let offset_u64 = u64::try_from(offset).map_err(|_| MediaServerError::InvalidPath)?;
+        let read = positioned_read(file, &mut bytes[offset..], offset_u64)
+            .map_err(|_| MediaServerError::InvalidPath)?;
+        if read == 0 {
+            return Err(MediaServerError::InvalidPath);
+        }
+        offset = offset
+            .checked_add(read)
+            .ok_or(MediaServerError::InvalidPath)?;
+    }
+    let metadata = file.metadata().map_err(|_| MediaServerError::InvalidPath)?;
+    if metadata.len() != expected_length_u64 || metadata.modified().ok() != expected_modified {
+        return Err(MediaServerError::InvalidPath);
+    }
+    Ok(bytes)
+}
+
+fn private_content_snapshot(
+    source: &File,
+    expected_length: u64,
+    expected_content_hash: [u8; 32],
+) -> Result<File, MediaServerError> {
+    let metadata = source
+        .metadata()
+        .map_err(|_| MediaServerError::InvalidPath)?;
+    if !metadata.is_file() || metadata.len() != expected_length || expected_length == 0 {
+        return Err(MediaServerError::InvalidPath);
+    }
+    let mut snapshot = tempfile::tempfile().map_err(|_| MediaServerError::InvalidPath)?;
+    let mut hasher = blake3::Hasher::new();
+    let mut offset = 0_u64;
+    let mut buffer = vec![0_u8; STREAM_BUFFER_BYTES].into_boxed_slice();
+    while offset < expected_length {
+        let remaining = expected_length - offset;
+        let bounded = usize::try_from(remaining)
+            .ok()
+            .map_or(buffer.len(), |remaining| remaining.min(buffer.len()));
+        let read = positioned_read(source, &mut buffer[..bounded], offset)
+            .map_err(|_| MediaServerError::InvalidPath)?;
+        if read == 0 {
+            return Err(MediaServerError::InvalidPath);
+        }
+        hasher.update(&buffer[..read]);
+        snapshot
+            .write_all(&buffer[..read])
+            .map_err(|_| MediaServerError::InvalidPath)?;
+        offset = offset
+            .checked_add(u64::try_from(read).map_err(|_| MediaServerError::InvalidPath)?)
+            .ok_or(MediaServerError::InvalidPath)?;
+    }
+    let mut extra = [0_u8; 1];
+    if positioned_read(source, &mut extra, expected_length)
+        .map_err(|_| MediaServerError::InvalidPath)?
+        != 0
+        || hasher.finalize().as_bytes() != &expected_content_hash
+    {
+        return Err(MediaServerError::InvalidPath);
+    }
+    snapshot
+        .sync_all()
+        .map_err(|_| MediaServerError::InvalidPath)?;
+    let mut permissions = snapshot
+        .metadata()
+        .map_err(|_| MediaServerError::InvalidPath)?
+        .permissions();
+    permissions.set_readonly(true);
+    snapshot
+        .set_permissions(permissions)
+        .map_err(|_| MediaServerError::InvalidPath)?;
+    Ok(snapshot)
 }
 
 fn valid_media_mime_type(value: &str) -> bool {
@@ -459,9 +986,12 @@ fn canonical_image_mime_type<'a>(value: &'a str, bytes: &[u8]) -> Option<&'a str
 
 fn purge_expired_images(assets: &mut HashMap<Uuid, MediaEntry>, now: Instant) {
     assets.retain(|_, entry| {
+        let claimed = entry
+            .image_owner
+            .is_some_and(|binding| binding.active_claims != 0);
         !matches!(
             &entry.source,
-            MediaSource::Image { expires_at, .. } if *expires_at <= now
+            MediaSource::Image { expires_at, .. } if *expires_at <= now && !claimed
         )
     });
 }
@@ -506,8 +1036,14 @@ fn make_image_capacity(
         let oldest = assets
             .iter()
             .filter_map(|(id, entry)| match &entry.source {
-                MediaSource::Image { last_accessed, .. } => Some((*id, *last_accessed)),
-                MediaSource::File { .. } => None,
+                MediaSource::Image { last_accessed, .. }
+                    if entry
+                        .image_owner
+                        .is_none_or(|binding| binding.active_claims == 0) =>
+                {
+                    Some((*id, *last_accessed))
+                }
+                MediaSource::File { .. } | MediaSource::Image { .. } => None,
             })
             .min_by_key(|(_, last_accessed)| *last_accessed)
             .map(|(id, _)| id)
@@ -1378,9 +1914,10 @@ fn write_static_busy(stream: &mut TcpStream) -> io::Result<()> {
 
 #[cfg(test)]
 mod tests {
-    use std::fs::{self, File};
-    use std::io::{Read, Write};
+    use std::fs::{self, File, OpenOptions};
+    use std::io::{Read, Seek, SeekFrom, Write};
     use std::net::TcpStream;
+    use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
     use std::sync::{Arc, Barrier};
     use std::thread;
     use std::time::{Duration, Instant};
@@ -1532,6 +2069,44 @@ mod tests {
         );
         assert!(String::from_utf8_lossy(&response).starts_with("HTTP/1.1 206"));
         assert_eq!(response_body(&response), b"3456");
+    }
+
+    #[test]
+    fn durable_image_registration_is_file_backed_signature_checked_and_path_private() {
+        let directory = TempDir::new().expect("temporary directory");
+        let path = directory.path().join("private-content-addressed-image");
+        let bytes = b"\x89PNG\r\n\x1a\nopaque image payload";
+        fs::write(&path, bytes).expect("durable image fixture");
+        let server =
+            MediaServer::start(["https://tauri.localhost".to_owned()]).expect("media server");
+        let image = server
+            .register_image_file(&path, "image/png")
+            .expect("register durable image");
+
+        assert_eq!(image.mime_type, "image/png");
+        assert_eq!(image.byte_length, bytes.len() as u64);
+        assert!(!image.playback_url.contains("content-addressed"));
+        assert!(!format!("{image:?}").contains(path.to_string_lossy().as_ref()));
+        let (asset_path, query) = url_parts(&image.playback_url);
+        let response = request(
+            server.port(),
+            &format!(
+                "GET {asset_path}?{query} HTTP/1.1\r\nHost: 127.0.0.1:{}\r\nConnection: close\r\n\r\n",
+                server.port()
+            ),
+        );
+        assert!(String::from_utf8_lossy(&response).starts_with("HTTP/1.1 200"));
+        assert_eq!(response_body(&response), bytes);
+
+        assert!(server.register_image_file(&path, "image/jpeg").is_err());
+        let malformed = directory.path().join("malformed-image");
+        fs::write(&malformed, b"not an image").expect("malformed fixture");
+        assert!(server.register_image_file(&malformed, "image/png").is_err());
+        assert!(
+            server
+                .register_image_file(&path, "image/png\r\nX-Injected: yes")
+                .is_err()
+        );
     }
 
     #[test]
@@ -1740,6 +2315,224 @@ mod tests {
     }
 
     #[test]
+    fn verified_handle_serves_original_bytes_after_path_replacement() {
+        let directory = TempDir::new().expect("temporary directory");
+        let path = directory.path().join("selected.mp4");
+        let moved_path = directory.path().join("selected-original.mp4");
+        fs::write(&path, b"original!!").expect("original fixture");
+        let verified = Arc::new(File::open(&path).expect("open verified handle"));
+        let server = MediaServer::start(std::iter::empty()).expect("media server");
+        let media = server
+            .register_verified_file_with_extension(verified, "mp4", 10)
+            .expect("register verified handle");
+        fs::rename(&path, &moved_path).expect("move original pathname");
+        fs::write(&path, b"hostile!!!").expect("replacement fixture");
+
+        let (asset_path, query) = url_parts(&media.playback_url);
+        let response = request(
+            server.port(),
+            &format!(
+                "GET {asset_path}?{query} HTTP/1.1\r\nHost: 127.0.0.1:{}\r\nConnection: close\r\n\r\n",
+                server.port()
+            ),
+        );
+        assert!(String::from_utf8_lossy(&response).starts_with("HTTP/1.1 200"));
+        assert_eq!(response_body(&response), b"original!!");
+    }
+
+    #[test]
+    fn verified_handle_rejects_same_length_in_place_mutation() {
+        let directory = TempDir::new().expect("temporary directory");
+        let path = directory.path().join("selected.mp4");
+        fs::write(&path, b"original!!").expect("original fixture");
+        let verified = Arc::new(File::open(&path).expect("open verified handle"));
+        let server = MediaServer::start(std::iter::empty()).expect("media server");
+        let media = server
+            .register_verified_file_with_extension(verified, "mp4", 10)
+            .expect("register verified handle");
+        thread::sleep(Duration::from_millis(20));
+        fs::write(&path, b"mutated!!!").expect("mutate selected file");
+
+        let (asset_path, query) = url_parts(&media.playback_url);
+        let response = request(
+            server.port(),
+            &format!(
+                "GET {asset_path}?{query} HTTP/1.1\r\nHost: 127.0.0.1:{}\r\nConnection: close\r\n\r\n",
+                server.port()
+            ),
+        );
+        assert!(String::from_utf8_lossy(&response).starts_with("HTTP/1.1 409"));
+        assert_ne!(response_body(&response), b"mutated!!!");
+    }
+
+    #[test]
+    fn content_snapshot_serves_original_full_and_range_bytes_after_restored_mtime_mutation() {
+        let directory = TempDir::new().expect("temporary directory");
+        let path = directory.path().join("selected.mp4");
+        let original = b"0123456789abcdef";
+        fs::write(&path, original).expect("original fixture");
+        let modified = fs::metadata(&path)
+            .expect("source metadata")
+            .modified()
+            .expect("source mtime");
+        let verified = Arc::new(File::open(&path).expect("open verified handle"));
+        let server = MediaServer::start(std::iter::empty()).expect("media server");
+        let media = server
+            .register_content_snapshot_with_extension(
+                verified.as_ref(),
+                "mp4",
+                u64::try_from(original.len()).expect("fixture size"),
+                *blake3::hash(original).as_bytes(),
+            )
+            .expect("register immutable snapshot");
+
+        fs::write(&path, b"FEDCBA9876543210").expect("same-length in-place mutation");
+        filetime::set_file_mtime(&path, filetime::FileTime::from_system_time(modified))
+            .expect("restore original mtime");
+        let (asset_path, query) = url_parts(&media.playback_url);
+        let full = request(
+            server.port(),
+            &format!(
+                "GET {asset_path}?{query} HTTP/1.1\r\nHost: 127.0.0.1:{}\r\nConnection: close\r\n\r\n",
+                server.port()
+            ),
+        );
+        assert!(String::from_utf8_lossy(&full).starts_with("HTTP/1.1 200"));
+        assert_eq!(response_body(&full), original);
+        let range = request(
+            server.port(),
+            &format!(
+                "GET {asset_path}?{query} HTTP/1.1\r\nHost: localhost:{}\r\nRange: bytes=4-11\r\nConnection: close\r\n\r\n",
+                server.port()
+            ),
+        );
+        assert!(String::from_utf8_lossy(&range).starts_with("HTTP/1.1 206"));
+        assert_eq!(response_body(&range), &original[4..=11]);
+    }
+
+    #[test]
+    fn content_snapshot_rejects_wrong_hash_growth_and_shrinkage() {
+        let directory = TempDir::new().expect("temporary directory");
+        let path = directory.path().join("selected.mp4");
+        let bytes = b"snapshot identity";
+        fs::write(&path, bytes).expect("fixture");
+        let server = MediaServer::start(std::iter::empty()).expect("media server");
+        assert!(matches!(
+            server.register_content_snapshot_with_extension(
+                Arc::new(File::open(&path).expect("wrong-hash handle")).as_ref(),
+                "mp4",
+                u64::try_from(bytes.len()).expect("fixture size"),
+                [0x55; 32],
+            ),
+            Err(MediaServerError::InvalidPath)
+        ));
+        assert!(matches!(
+            server.register_content_snapshot_with_extension(
+                Arc::new(File::open(&path).expect("growth handle")).as_ref(),
+                "mp4",
+                u64::try_from(bytes.len() - 1).expect("short size"),
+                *blake3::hash(&bytes[..bytes.len() - 1]).as_bytes(),
+            ),
+            Err(MediaServerError::InvalidPath)
+        ));
+        assert!(matches!(
+            server.register_content_snapshot_with_extension(
+                Arc::new(File::open(&path).expect("shrink handle")).as_ref(),
+                "mp4",
+                u64::try_from(bytes.len() + 1).expect("long size"),
+                *blake3::hash(bytes).as_bytes(),
+            ),
+            Err(MediaServerError::InvalidPath)
+        ));
+    }
+
+    #[test]
+    #[allow(
+        clippy::too_many_lines,
+        reason = "the concurrent writer verifies registration and subsequent full/range reads"
+    )]
+    fn racing_same_length_writer_can_only_cause_rejection_or_an_exact_snapshot() {
+        let directory = TempDir::new().expect("temporary directory");
+        let path = directory.path().join("racing.mp4");
+        let original = vec![0x31; 8 * 1024 * 1024];
+        fs::write(&path, &original).expect("large fixture");
+        let verified = Arc::new(File::open(&path).expect("verified handle"));
+        let expected_hash = *blake3::hash(&original).as_bytes();
+        let expected_length = u64::try_from(original.len()).expect("fixture size");
+        let barrier = Arc::new(Barrier::new(2));
+        let stop = Arc::new(AtomicBool::new(false));
+        let write_count = Arc::new(AtomicUsize::new(0));
+        let writer_path = path.clone();
+        let writer_barrier = Arc::clone(&barrier);
+        let writer_stop = Arc::clone(&stop);
+        let writer_writes = Arc::clone(&write_count);
+        let writer_thread = thread::spawn(move || {
+            let mut file = OpenOptions::new()
+                .write(true)
+                .open(&writer_path)
+                .expect("open racing writer");
+            let offset = 3_u64 * 1024 * 1024;
+            let hostile = vec![0x58; 256 * 1024];
+            let restored = vec![0x31; hostile.len()];
+            file.seek(SeekFrom::Start(offset))
+                .expect("seek hostile block");
+            file.write_all(&hostile).expect("write hostile block");
+            file.flush().expect("flush hostile block");
+            writer_writes.fetch_add(1, Ordering::SeqCst);
+            writer_barrier.wait();
+            while !writer_stop.load(Ordering::SeqCst) {
+                file.seek(SeekFrom::Start(offset))
+                    .expect("seek restored block");
+                file.write_all(&restored).expect("restore block");
+                file.seek(SeekFrom::Start(offset))
+                    .expect("seek hostile block");
+                file.write_all(&hostile).expect("rewrite hostile block");
+                writer_writes.fetch_add(2, Ordering::SeqCst);
+            }
+            file.seek(SeekFrom::Start(offset))
+                .expect("final restore seek");
+            file.write_all(&restored).expect("final restore");
+            file.flush().expect("final flush");
+        });
+        barrier.wait();
+        let server = MediaServer::start(std::iter::empty()).expect("media server");
+        let registration = server.register_content_snapshot_with_extension(
+            verified.as_ref(),
+            "mp4",
+            expected_length,
+            expected_hash,
+        );
+        stop.store(true, Ordering::SeqCst);
+        writer_thread.join().expect("racing writer");
+        assert!(write_count.load(Ordering::SeqCst) > 0);
+
+        let Ok(media) = registration else {
+            assert!(matches!(registration, Err(MediaServerError::InvalidPath)));
+            return;
+        };
+        let (asset_path, query) = url_parts(&media.playback_url);
+        let full = request(
+            server.port(),
+            &format!(
+                "GET {asset_path}?{query} HTTP/1.1\r\nHost: 127.0.0.1:{}\r\nConnection: close\r\n\r\n",
+                server.port()
+            ),
+        );
+        assert_eq!(response_body(&full), original);
+        let range = request(
+            server.port(),
+            &format!(
+                "GET {asset_path}?{query} HTTP/1.1\r\nHost: 127.0.0.1:{}\r\nRange: bytes=3145728-3407871\r\nConnection: close\r\n\r\n",
+                server.port()
+            ),
+        );
+        assert_eq!(
+            response_body(&range),
+            &original[3 * 1024 * 1024..=3_407_871]
+        );
+    }
+
+    #[test]
     fn oversized_headers_are_rejected_without_growing_unbounded() {
         let (_directory, server, _media) = fixture();
         let oversized = format!(
@@ -1894,6 +2687,276 @@ mod tests {
         assert!(headers.contains("Content-Type: image/png"));
         assert!(headers.contains("X-Content-Type-Options: nosniff"));
         assert_eq!(response_body(&response), b"private");
+    }
+
+    #[test]
+    fn native_image_copy_accepts_only_live_image_ids_and_revalidates_the_signature() {
+        let server = MediaServer::start(std::iter::empty()).expect("start media server");
+        let bytes = b"\x89PNG\r\n\x1a\nprivate-image".to_vec();
+        let image = server
+            .register_image("image/png", bytes.clone())
+            .expect("register image");
+        let owner = Uuid::now_v7();
+
+        let copied = server
+            .copy_registered_image_for_owner(image.id, owner, 1024)
+            .expect("copy registered image")
+            .expect("live image");
+        assert_eq!(copied.mime_type(), "image/png");
+        assert_eq!(copied.bytes(), bytes);
+        copied.commit().expect("commit owner");
+        assert!(
+            server
+                .copy_registered_image_for_owner(image.id, owner, 4)
+                .is_err()
+        );
+        assert!(
+            server
+                .copy_registered_image_for_owner(Uuid::new_v4(), owner, 1024)
+                .expect("unknown image")
+                .is_none()
+        );
+
+        let malformed_id = Uuid::new_v4();
+        server
+            .inner
+            .context
+            .assets
+            .write()
+            .expect("image registry")
+            .insert(
+                malformed_id,
+                super::MediaEntry {
+                    source: super::MediaSource::Image {
+                        bytes: std::sync::Arc::from(b"not an image".as_slice()),
+                        expires_at: Instant::now() + Duration::from_mins(1),
+                        last_accessed: Instant::now(),
+                    },
+                    mime_type: "image/png".to_owned(),
+                    byte_length: 12,
+                    image_owner: None,
+                },
+            );
+        assert!(
+            server
+                .copy_registered_image_for_owner(malformed_id, owner, 1024)
+                .is_err()
+        );
+    }
+
+    #[test]
+    fn native_image_copy_supports_signature_checked_file_capabilities_without_paths() {
+        let directory = TempDir::new().expect("temporary directory");
+        let path = directory.path().join("private-image");
+        let bytes = b"\x89PNG\r\n\x1a\nfile-backed-image";
+        fs::write(&path, bytes).expect("image fixture");
+        let server = MediaServer::start(std::iter::empty()).expect("start media server");
+        let image = server
+            .register_image_file(&path, "image/png")
+            .expect("register image file");
+        let owner = Uuid::now_v7();
+
+        let copied = server
+            .copy_registered_image_for_owner(image.id, owner, 1024)
+            .expect("copy image file")
+            .expect("live image file");
+        assert_eq!(copied.mime_type(), "image/png");
+        assert_eq!(copied.bytes(), bytes);
+        copied.commit().expect("commit owner");
+
+        let media_path = directory.path().join("not-an-image.mp4");
+        fs::write(&media_path, b"video").expect("media fixture");
+        let media = server.register(&media_path).expect("register media");
+        assert!(
+            server
+                .copy_registered_image_for_owner(media.id, owner, 1024)
+                .is_err()
+        );
+    }
+
+    #[test]
+    fn image_owner_claims_are_atomic_reusable_and_rollback_without_unbinding_a_winner() {
+        let server = MediaServer::start(std::iter::empty()).expect("start media server");
+        let bytes = b"\x89PNG\r\n\x1a\nowned-image".to_vec();
+        let image = server
+            .register_image("image/png", bytes.clone())
+            .expect("register image");
+        let owner_a = Uuid::now_v7();
+        let owner_b = Uuid::now_v7();
+
+        assert!(
+            server
+                .copy_registered_image_for_owner(image.id, owner_a, 4)
+                .is_err()
+        );
+        assert!(
+            server
+                .inner
+                .context
+                .assets
+                .read()
+                .expect("registry")
+                .get(&image.id)
+                .expect("image")
+                .image_owner
+                .is_none()
+        );
+
+        let first = server
+            .copy_registered_image_for_owner(image.id, owner_a, 1024)
+            .expect("first claim")
+            .expect("live image");
+        let second = server
+            .copy_registered_image_for_owner(image.id, owner_a, 1024)
+            .expect("same-owner claim")
+            .expect("live image");
+        assert!(
+            server
+                .copy_registered_image_for_owner(image.id, owner_b, 1024)
+                .is_err()
+        );
+        drop(first);
+        second.commit().expect("same-owner winner commits");
+        assert!(
+            server
+                .copy_registered_image_for_owner(image.id, owner_b, 1024)
+                .is_err()
+        );
+        assert!(server.unregister(image.id).is_err());
+        let reuse = server
+            .copy_registered_image_for_owner(image.id, owner_a, 1024)
+            .expect("same-project reuse")
+            .expect("live image");
+        assert_eq!(reuse.bytes(), bytes);
+        assert!(server.unregister_owned_image(image.id, owner_b).is_err());
+        assert!(
+            server
+                .unregister_owned_image(image.id, owner_a)
+                .expect("exact owner schedules release")
+        );
+        assert!(
+            server
+                .copy_registered_image_for_owner(image.id, owner_a, 1024)
+                .is_err()
+        );
+        drop(reuse);
+        assert!(
+            server
+                .copy_registered_image_for_owner(image.id, owner_a, 1024)
+                .expect("released lookup")
+                .is_none()
+        );
+    }
+
+    #[test]
+    fn exact_release_racing_a_pending_first_bind_removes_the_capability_once() {
+        let server = MediaServer::start(std::iter::empty()).expect("start media server");
+        let image = server
+            .register_image("image/png", b"\x89PNG\r\n\x1a\npending".to_vec())
+            .expect("register image");
+        let owner = Uuid::now_v7();
+        let wrong_owner = Uuid::now_v7();
+        let pending = server
+            .copy_registered_image_for_owner(image.id, owner, 1024)
+            .expect("pending first bind")
+            .expect("live image");
+
+        assert!(server.unregister(image.id).is_err());
+        assert!(
+            server
+                .unregister_owned_image(image.id, wrong_owner)
+                .is_err()
+        );
+        assert!(
+            server
+                .unregister_owned_image(image.id, owner)
+                .expect("exact pending release")
+        );
+        assert!(
+            server
+                .copy_registered_image_for_owner(image.id, owner, 1024)
+                .is_err()
+        );
+        drop(pending);
+        assert!(
+            !server
+                .unregister_owned_image(image.id, owner)
+                .expect("release is idempotent after removal")
+        );
+    }
+
+    #[test]
+    fn committed_image_ownership_is_removed_with_lru_eviction() {
+        let server = MediaServer::start(std::iter::empty()).expect("start media server");
+        let owner = Uuid::now_v7();
+        let first = server
+            .register_image("image/png", b"\x89PNG\r\n\x1a\noldest".to_vec())
+            .expect("first image");
+        server
+            .copy_registered_image_for_owner(first.id, owner, 1024)
+            .expect("claim")
+            .expect("first image")
+            .commit()
+            .expect("commit");
+        for index in 0..MAX_REGISTERED_IMAGES {
+            let mut bytes = b"\x89PNG\r\n\x1a\nreplacement".to_vec();
+            bytes.extend_from_slice(&index.to_le_bytes());
+            server
+                .register_image("image/png", bytes)
+                .expect("replacement image");
+        }
+        assert!(
+            server
+                .copy_registered_image_for_owner(first.id, owner, 1024)
+                .expect("evicted lookup")
+                .is_none()
+        );
+    }
+
+    #[test]
+    fn bounded_owned_file_registration_rejects_growth_on_the_same_open_handle_without_a_slot() {
+        let directory = TempDir::new().expect("temporary directory");
+        let path = directory.path().join("cover.png");
+        let bytes = b"\x89PNG\r\n\x1a\nbounded";
+        fs::write(&path, bytes).expect("image fixture");
+        let server = MediaServer::start(std::iter::empty()).expect("start media server");
+        let owner = Uuid::now_v7();
+        let before = server.inner.context.assets.read().expect("registry").len();
+        let result = server.register_file_with_observer(
+            &path,
+            "image/png".to_owned(),
+            true,
+            Some(bytes.len()),
+            Some(owner),
+            |canonical_path| {
+                OpenOptions::new()
+                    .append(true)
+                    .open(canonical_path)
+                    .expect("open growing fixture")
+                    .write_all(b"growth")
+                    .expect("grow fixture");
+            },
+        );
+        assert!(matches!(result, Err(MediaServerError::InvalidPath)));
+        assert_eq!(
+            server.inner.context.assets.read().expect("registry").len(),
+            before
+        );
+        assert!(
+            server
+                .register_owned_image_file(&path, "image/png", owner, bytes.len())
+                .is_err()
+        );
+        let current_length =
+            usize::try_from(fs::metadata(&path).expect("metadata").len()).expect("fixture length");
+        let registered = server
+            .register_owned_image_file(&path, "image/png", owner, current_length)
+            .expect("bounded registration after rejected growth");
+        assert!(
+            server
+                .unregister_owned_image(registered.id, owner)
+                .expect("owned cleanup")
+        );
     }
 
     #[test]

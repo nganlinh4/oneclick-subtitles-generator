@@ -143,3 +143,63 @@ export const createNativeMediaDropService = ({
 };
 
 export const nativeMediaDropService = createNativeMediaDropService();
+
+export const createSharedNativeMediaDropService = (service = nativeMediaDropService) => {
+  const consumers = new Set();
+  let nativeRegistration = null;
+
+  const ensureRegistration = () => {
+    if (nativeRegistration === null) {
+      nativeRegistration = service.subscribe(
+        (event) => {
+          for (const consumer of [...consumers]) {
+            try { consumer.onEvent(event); } catch { /* isolate drop targets */ }
+          }
+        },
+        (error) => {
+          for (const consumer of [...consumers]) {
+            try { consumer.onProtocolError(error); } catch { /* isolate drop targets */ }
+          }
+        }
+      ).catch((error) => {
+        nativeRegistration = null;
+        throw error;
+      });
+    }
+    return nativeRegistration;
+  };
+
+  return Object.freeze({
+    subscribe: async (onEvent, onProtocolError = () => {}) => {
+      if (typeof onEvent !== 'function' || typeof onProtocolError !== 'function') {
+        throw invalidDropRequest();
+      }
+      const consumer = { onEvent, onProtocolError };
+      consumers.add(consumer);
+      let registration;
+      try {
+        registration = await ensureRegistration();
+      } catch (error) {
+        consumers.delete(consumer);
+        throw error;
+      }
+      let active = true;
+      return Object.freeze({
+        id: registration.id,
+        unsubscribe: async () => {
+          if (!active) return;
+          active = false;
+          consumers.delete(consumer);
+          if (consumers.size === 0 && nativeRegistration !== null) {
+            const pending = nativeRegistration;
+            nativeRegistration = null;
+            const current = await pending;
+            await current.unsubscribe();
+          }
+        },
+      });
+    },
+  });
+};
+
+export const sharedNativeMediaDropService = createSharedNativeMediaDropService();

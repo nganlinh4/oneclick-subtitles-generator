@@ -1,3 +1,4 @@
+import { useTranslation } from 'react-i18next';
 import SubtitleSourceSelection from '../components/SubtitleSourceSelection';
 import GTTSControls from '../components/GTTSControls';
 import GenerateButton from '../components/GenerateButton';
@@ -12,6 +13,7 @@ const getAudioUrl = () => null;
  */
 const GTTSNarrationSection = ({
   narrationMethod,
+  isGTTSAvailable,
   // Subtitle source selection
   subtitleSource,
   setSubtitleSource,
@@ -56,6 +58,7 @@ const GTTSNarrationSection = ({
   audioRef,
   handleAudioEnded
 }) => {
+  const { t } = useTranslation();
   return (
     // gTTS UI
     <div className="gtts-content">
@@ -98,6 +101,7 @@ const GTTSNarrationSection = ({
         slow={gttsSlow}
         setSlow={setGttsSlow}
         isGenerating={isGenerating}
+        isServiceAvailable={isGTTSAvailable}
         detectedLanguage={subtitleSource === 'original' ? originalLanguage : translatedLanguage}
       />
 
@@ -111,8 +115,12 @@ const GTTSNarrationSection = ({
         downloadAllAudio={downloadAllAudio}
         downloadAlignedAudio={downloadAlignedAudio}
         generationResults={generationResults}
-        isServiceAvailable={true}
-        serviceUnavailableMessage=""
+        isServiceAvailable={isGTTSAvailable}
+        serviceUnavailableMessage={t(
+          'narration.engineUnavailableMessage',
+          'This narration engine is not ready. Install or start it in Settings > Voice & transcription engines.'
+        )}
+        narrationMethod="gtts"
       />
 
       {/* gTTS Results */}
@@ -134,6 +142,8 @@ const GTTSNarrationSection = ({
            : (subtitleSource === 'translated' && translatedSubtitles && translatedSubtitles.length > 0)
              ? translatedSubtitles
              : (originalSubtitles || subtitles || [])}
+         isServiceAvailable={isGTTSAvailable}
+         narrationMethod="gtts"
        />
 
       {/* Hidden audio player for playback */}

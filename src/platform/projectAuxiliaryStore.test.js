@@ -42,6 +42,7 @@ it('persists raw subtitle input and structured rules without placing them in cue
     schemaVersion: 1,
     userSubtitles: 'untimed\nreference text',
     transcriptionRules: rules,
+    translation: null,
   });
   await expect(store.read('cache-id')).resolves.toEqual(settings.get(SETTING_KEY));
   expect(resolveProject).toHaveBeenCalledWith('cache-id', { create: true });
@@ -60,6 +61,19 @@ it('serializes patches so concurrent field updates cannot overwrite each other',
     userSubtitles: 'reference',
     transcriptionRules: { atmosphere: 'quiet' },
   });
+});
+
+it('checks the captured project inside the queued write that selects the native key', async () => {
+  const { store, invokeCommand, resolveProject } = createHarness();
+
+  await expect(store.patch(
+    'cache-id',
+    { transcriptionRules: { atmosphere: 'stale' } },
+    { expectedProjectId: '01890f39-7b62-7c4e-8c9a-000000000999' }
+  )).rejects.toMatchObject({ code: 'projectScopeMismatch' });
+
+  expect(invokeCommand).not.toHaveBeenCalled();
+  expect(resolveProject).toHaveBeenCalledWith('cache-id', { create: false });
 });
 
 it('deletes the native auxiliary setting after both fields are cleared', async () => {

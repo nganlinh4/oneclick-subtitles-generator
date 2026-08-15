@@ -4,7 +4,7 @@ use serde::{Deserialize, Serialize};
 use std::io::{Read, Write};
 use std::path::PathBuf;
 
-pub(crate) const PROTOCOL_VERSION: u16 = 1;
+pub(crate) const PROTOCOL_VERSION: u16 = 2;
 const MAX_REQUEST_BYTES: usize = 64 * 1024;
 const MAX_RESPONSE_BYTES: usize = 8 * 1024 * 1024;
 
@@ -13,12 +13,23 @@ const MAX_RESPONSE_BYTES: usize = 8 * 1024 * 1024;
 pub(crate) struct WireRequest<'a> {
     protocol_version: u16,
     request_id: u64,
+    operation: WireOperation,
     engine: AsrEngineId,
-    input_path: PathBuf,
-    input_duration_ms: u64,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    input_path: Option<PathBuf>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    input_duration_ms: Option<u64>,
     model_path: PathBuf,
     aligner_path: Option<PathBuf>,
+    #[serde(skip_serializing_if = "Option::is_none")]
     language: Option<&'a str>,
+}
+
+#[derive(Clone, Copy, Debug, Serialize)]
+#[serde(rename_all = "snake_case")]
+enum WireOperation {
+    WarmUp,
+    Transcribe,
 }
 
 impl<'a> WireRequest<'a> {
@@ -31,15 +42,33 @@ impl<'a> WireRequest<'a> {
         Ok(Self {
             protocol_version: PROTOCOL_VERSION,
             request_id,
+            operation: WireOperation::Transcribe,
             engine: assets.engine(),
-            input_path: native_process_path(audio.path())?,
-            input_duration_ms: audio.duration_ms(),
+            input_path: Some(native_process_path(audio.path())?),
+            input_duration_ms: Some(audio.duration_ms()),
             model_path: native_process_path(assets.model_directory())?,
             aligner_path: assets
                 .aligner_directory()
                 .map(native_process_path)
                 .transpose()?,
             language: language.map(LanguageCode::as_str),
+        })
+    }
+
+    pub(crate) fn warm_up(request_id: u64, assets: &'a ModelAssets) -> Result<Self> {
+        Ok(Self {
+            protocol_version: PROTOCOL_VERSION,
+            request_id,
+            operation: WireOperation::WarmUp,
+            engine: assets.engine(),
+            input_path: None,
+            input_duration_ms: None,
+            model_path: native_process_path(assets.model_directory())?,
+            aligner_path: assets
+                .aligner_directory()
+                .map(native_process_path)
+                .transpose()?,
+            language: None,
         })
     }
 }
@@ -68,6 +97,12 @@ pub(crate) enum WireEvent {
         words: Vec<WireWord>,
         join_without_spaces: bool,
     },
+    Ready {
+        protocol_version: u16,
+        request_id: u64,
+        sequence: u16,
+        backend: WireBackend,
+    },
     Error {
         protocol_version: u16,
         request_id: u64,
@@ -85,6 +120,9 @@ impl WireEvent {
             | Self::Complete {
                 protocol_version, ..
             }
+            | Self::Ready {
+                protocol_version, ..
+            }
             | Self::Error {
                 protocol_version, ..
             } => *protocol_version,
@@ -95,6 +133,7 @@ impl WireEvent {
         match self {
             Self::Phase { request_id, .. }
             | Self::Complete { request_id, .. }
+            | Self::Ready { request_id, .. }
             | Self::Error { request_id, .. } => *request_id,
         }
     }
@@ -103,6 +142,7 @@ impl WireEvent {
         match self {
             Self::Phase { sequence, .. }
             | Self::Complete { sequence, .. }
+            | Self::Ready { sequence, .. }
             | Self::Error { sequence, .. } => *sequence,
         }
     }

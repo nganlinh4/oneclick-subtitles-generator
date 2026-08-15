@@ -11,13 +11,14 @@ import {
   discoverTarget,
   waitForInspection,
 } from './inspect-installed-webview.mjs';
+import updaterVersionAuthority from './derive-updater-smoke-version.js';
 
 const MODES = new Set(['trigger', 'verify']);
-const SEMVER = /^(?:0|[1-9]\d*)\.(?:0|[1-9]\d*)\.(?:0|[1-9]\d*)(?:-[0-9A-Za-z.-]+)?$/;
 const UUID_V7 = /^[0-9a-f]{8}-[0-9a-f]{4}-7[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 const SETTING_KEY = 'osg.ciInstalledSmoke.v1';
 const PROJECT_NAME = 'OSG installed lifecycle probe committed';
 const REVISION_REASON = 'OSG installed lifecycle revision';
+const { assertUpdaterVersionPair } = updaterVersionAuthority;
 
 const invariant = (condition, message) => {
   if (!condition) throw new Error(message);
@@ -48,9 +49,7 @@ export function parseArguments(argv) {
   invariant(Number.isInteger(port) && port >= 1024 && port <= 65_535,
     'Updater DevTools port must be unprivileged');
   invariant(MODES.has(mode), 'Updater inspection mode is invalid');
-  invariant(SEMVER.test(baseVersion ?? '') && SEMVER.test(updatedVersion ?? '')
-    && baseVersion !== updatedVersion,
-  'Updater fixture versions are invalid');
+  assertUpdaterVersionPair(baseVersion, updatedVersion);
   invariant(UUID_V7.test(projectId ?? ''), 'Updater fixture project ID must be UUIDv7');
   invariant(typeof screenshot === 'string' && screenshot.length > 0,
     'Updater fixture screenshot path is required');

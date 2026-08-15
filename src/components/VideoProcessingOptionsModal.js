@@ -184,6 +184,7 @@ const VideoProcessingOptionsModal = ({
                                         language={asrLanguage}
                                         setLanguage={setAsrLanguage}
                                         supportsLanguage={!!descriptor.capabilities?.language}
+                                        supportedLanguageCodes={descriptor.supportedLanguageCodes}
                                         selectedSegment={selectedSegment}
                                         disabled={asrPanelDisabled}
                                         engineName={descriptor.labelDefault}

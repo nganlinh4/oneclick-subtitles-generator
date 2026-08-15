@@ -33,6 +33,7 @@ const MAX_TRANSCRIPTION_RANGE_MS: u64 = 24 * 60 * 60 * 1_000;
 const RANGE_DURATION_TOLERANCE_US: u64 = 250_000;
 const MEDIA_TIMEOUT: Duration = Duration::from_hours(24);
 const ASR_TIMEOUT: Duration = Duration::from_hours(24);
+const ASR_START_TIMEOUT: Duration = Duration::from_mins(10);
 
 #[derive(Clone)]
 pub(crate) struct AsrRuntimeManager(Arc<RuntimeManagerInner>);
@@ -44,7 +45,19 @@ struct RuntimeManagerInner {
     work_root: PathBuf,
     resource_root: Option<PathBuf>,
     package_manager: RwLock<Option<EnginePackageManager>>,
-    services: Mutex<HashMap<AsrEngineId, CachedService>>,
+    runtime: Mutex<RuntimeState>,
+}
+
+#[derive(Default)]
+struct RuntimeState {
+    services: HashMap<AsrEngineId, CachedService>,
+    generations: HashMap<AsrEngineId, u64>,
+    starting: HashMap<AsrEngineId, StartingService>,
+}
+
+struct StartingService {
+    generation: u64,
+    service: AsrService,
 }
 
 #[derive(Clone, PartialEq, Eq)]
@@ -84,7 +97,7 @@ impl AsrRuntimeManager {
             work_root,
             resource_root,
             package_manager: RwLock::new(None),
-            services: Mutex::new(HashMap::new()),
+            runtime: Mutex::new(RuntimeState::default()),
         })))
     }
 
@@ -111,51 +124,156 @@ impl AsrRuntimeManager {
 
     fn service(&self, engine: AsrEngineId) -> Result<ManagedAsrService, AsrError> {
         let resolution = self.resolve_runtime(engine)?;
-        let mut services = self
-            .0
-            .services
-            .lock()
-            .map_err(|_| AsrError::Synchronization)?;
-        if let Some(cached) = services.get(&engine)
-            && cached.paths == resolution.paths
-        {
-            return Ok(ManagedAsrService {
-                service: cached.service.clone(),
-                _managed_runtime: cached.managed_runtime.clone(),
-            });
+        let stale = {
+            let mut runtime = self
+                .0
+                .runtime
+                .lock()
+                .map_err(|_| AsrError::Synchronization)?;
+            let valid = runtime
+                .services
+                .get(&engine)
+                .is_some_and(|cached| cached.paths == resolution.paths && cached.service.is_warm());
+            if valid {
+                let cached = runtime
+                    .services
+                    .get(&engine)
+                    .ok_or(AsrError::Synchronization)?;
+                return Ok(ManagedAsrService {
+                    service: cached.service.clone(),
+                    _managed_runtime: cached.managed_runtime.clone(),
+                });
+            }
+            runtime.services.remove(&engine)
+        };
+        if let Some(stale) = stale {
+            let _ = stale.service.shutdown();
         }
-        services.remove(&engine);
+        Err(AsrError::InvalidRuntime)
+    }
+
+    fn create_service(
+        engine: AsrEngineId,
+        resolution: RuntimeResolution,
+    ) -> Result<CachedService, AsrError> {
         let paths = resolution.paths;
         let program = WorkerProgram::python(&paths.python, &paths.worker)?;
         let assets = ModelAssets::new(engine, &paths.model, paths.aligner.as_deref())?;
-        let service = AsrService::new(program, assets);
-        let managed_runtime = resolution.managed_runtime;
-        services.insert(
-            engine,
-            CachedService {
-                paths,
-                service: service.clone(),
-                managed_runtime: managed_runtime.clone(),
-            },
-        );
-        Ok(ManagedAsrService {
-            service,
-            _managed_runtime: managed_runtime,
+        Ok(CachedService {
+            paths,
+            service: AsrService::new(program, assets),
+            managed_runtime: resolution.managed_runtime,
         })
     }
 
     pub(crate) fn start(&self, engine: AsrEngineId) -> Result<(), AsrError> {
-        self.service(engine).map(drop)
+        let resolution = self.resolve_runtime(engine)?;
+        let resolved_paths = resolution.paths.clone();
+        let candidate = Self::create_service(engine, resolution)?;
+        let (generation, previous, superseded_start) =
+            {
+                let mut runtime = self
+                    .0
+                    .runtime
+                    .lock()
+                    .map_err(|_| AsrError::Synchronization)?;
+                if runtime.services.get(&engine).is_some_and(|cached| {
+                    cached.paths == resolved_paths && cached.service.is_warm()
+                }) {
+                    return Ok(());
+                }
+                let generation = runtime
+                    .generations
+                    .entry(engine)
+                    .and_modify(|value| *value = value.wrapping_add(1).max(1))
+                    .or_insert(1);
+                let generation = *generation;
+                let superseded_start = runtime.starting.insert(
+                    engine,
+                    StartingService {
+                        generation,
+                        service: candidate.service.clone(),
+                    },
+                );
+                (
+                    generation,
+                    runtime.services.remove(&engine),
+                    superseded_start,
+                )
+            };
+        if let Some(previous) = previous {
+            let _ = previous.service.shutdown();
+        }
+        if let Some(superseded_start) = superseded_start {
+            let _ = superseded_start.service.shutdown();
+        }
+        if let Err(error) = candidate
+            .service
+            .warm_up(&AsrRunControl::new(ASR_START_TIMEOUT)?)
+        {
+            self.clear_start(engine, generation)?;
+            return Err(error);
+        }
+
+        let mut runtime = self
+            .0
+            .runtime
+            .lock()
+            .map_err(|_| AsrError::Synchronization)?;
+        if runtime.generations.get(&engine).copied() != Some(generation)
+            || runtime
+                .starting
+                .get(&engine)
+                .is_none_or(|starting| starting.generation != generation)
+        {
+            drop(runtime);
+            let _ = candidate.service.shutdown();
+            return Err(AsrError::Cancelled);
+        }
+        runtime.starting.remove(&engine);
+        runtime.services.insert(engine, candidate);
+        Ok(())
+    }
+
+    fn clear_start(&self, engine: AsrEngineId, generation: u64) -> Result<(), AsrError> {
+        let mut runtime = self
+            .0
+            .runtime
+            .lock()
+            .map_err(|_| AsrError::Synchronization)?;
+        if runtime
+            .starting
+            .get(&engine)
+            .is_some_and(|starting| starting.generation == generation)
+        {
+            runtime.starting.remove(&engine);
+        }
+        Ok(())
     }
 
     pub(crate) fn stop(&self, engine: AsrEngineId) -> Result<(), AsrError> {
-        let removed = self
-            .0
-            .services
-            .lock()
-            .map_err(|_| AsrError::Synchronization)?
-            .remove(&engine);
-        drop(removed);
+        let (removed, starting) = {
+            let mut runtime = self
+                .0
+                .runtime
+                .lock()
+                .map_err(|_| AsrError::Synchronization)?;
+            runtime
+                .generations
+                .entry(engine)
+                .and_modify(|value| *value = value.wrapping_add(1).max(1))
+                .or_insert(1);
+            (
+                runtime.services.remove(&engine),
+                runtime.starting.remove(&engine),
+            )
+        };
+        if let Some(removed) = removed {
+            removed.service.shutdown()?;
+        }
+        if let Some(starting) = starting {
+            starting.service.shutdown()?;
+        }
         Ok(())
     }
 
@@ -165,7 +283,7 @@ impl AsrRuntimeManager {
     }
 
     fn status(&self) -> AsrStatus {
-        let services = self.0.services.lock().ok();
+        let runtime = self.0.runtime.lock().ok();
         let worker_available = self.resolve_worker().is_ok();
         let engines = catalog()
             .iter()
@@ -176,17 +294,24 @@ impl AsrRuntimeManager {
                     .ok()
                     .map(|resolved| resolved.paths);
                 let warm = paths.as_ref().is_some_and(|paths| {
-                    services.as_ref().is_some_and(|services| {
-                        services.get(&info.id).is_some_and(|cached| {
+                    runtime.as_ref().is_some_and(|runtime| {
+                        runtime.services.get(&info.id).is_some_and(|cached| {
                             cached.paths == *paths && cached.service.is_warm()
                         })
                     })
                 });
                 AsrEngineStatus {
                     info,
-                    installed: paths.is_some(),
-                    ready: paths.is_some(),
-                    warm,
+                    availability: AsrEngineAvailability {
+                        installed: paths.is_some(),
+                        ready: paths.is_some(),
+                    },
+                    runtime: AsrEngineRuntimeStatus {
+                        warm,
+                        starting: runtime
+                            .as_ref()
+                            .is_some_and(|runtime| runtime.starting.contains_key(&info.id)),
+                    },
                 }
             })
             .collect();
@@ -344,9 +469,22 @@ pub(crate) struct AsrStatus {
 struct AsrEngineStatus {
     #[serde(flatten)]
     info: AsrEngineInfo,
+    #[serde(flatten)]
+    availability: AsrEngineAvailability,
+    #[serde(flatten)]
+    runtime: AsrEngineRuntimeStatus,
+}
+
+#[derive(Debug, Serialize)]
+struct AsrEngineAvailability {
     installed: bool,
     ready: bool,
+}
+
+#[derive(Debug, Serialize)]
+struct AsrEngineRuntimeStatus {
     warm: bool,
+    starting: bool,
 }
 
 #[derive(Clone, Copy, Debug, Deserialize)]
@@ -788,6 +926,9 @@ async fn finish_asr(
     channel_closed: bool,
     channel: &Channel<AsrJobEvent>,
 ) {
+    let runtime_cancelled = result
+        .as_ref()
+        .is_err_and(|error| error.code() == "asrCancelled");
     match result {
         Ok(transcription) if !channel_closed => {
             match background::apply(jobs, job_id, JobUpdate::Succeed).await {
@@ -806,6 +947,7 @@ async fn finish_asr(
         }
         result => {
             let cancelled = channel_closed
+                || runtime_cancelled
                 || background::snapshot(jobs, job_id)
                     .await
                     .is_some_and(|job| matches!(job.state(), JobState::Cancelling));
@@ -897,6 +1039,13 @@ mod tests {
         let status = manager.status();
         assert!(status.worker_available);
         assert_eq!(status.engines.len(), 5);
+        let serialized = serde_json::to_value(&status).expect("serializable ASR status");
+        for engine in serialized["engines"].as_array().expect("engine array") {
+            assert_eq!(engine["installed"], false);
+            assert_eq!(engine["ready"], false);
+            assert_eq!(engine["warm"], false);
+            assert_eq!(engine["starting"], false);
+        }
         let debug = format!("{manager:?}");
         assert!(!debug.contains(&directory.path().display().to_string()));
         assert!(debug.contains("<redacted>"));

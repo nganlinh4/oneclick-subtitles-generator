@@ -1,10 +1,8 @@
-import React, { useState, useEffect, useRef } from 'react';
-import ReactDOM from 'react-dom';
+import { useState, useEffect, useRef } from 'react';
 import { useTranslation } from 'react-i18next';
 import '../styles/Header.css';
 import GeminiHeaderAnimation from './GeminiHeaderAnimation';
 import specialStarIcon from '../assets/specialStar.svg';
-import LoadingIndicator from './common/LoadingIndicator';
 import { detectStartupMode } from '../platform/startupService';
 
 import {
@@ -12,10 +10,6 @@ import {
   startStartupUpdateCheck,
   subscribeDesktopUpdateStatus,
 } from '../platform/startupUpdateCoordinator';
-import {
-  detectVersionChannel,
-  switchVersionChannel,
-} from '../platform/versionChannelService';
 const Header = ({ onSettingsClick }) => {
   const { t } = useTranslation();
   const [showFloatingActions, setShowFloatingActions] = useState(true); // Start as visible
@@ -26,9 +20,7 @@ const Header = ({ onSettingsClick }) => {
   const [updateAvailable, setUpdateAvailable] = useState(false);
 
   const [isVercelMode, setIsVercelMode] = useState(false); // Track if running via npm start (Vercel)
-  const [currentBranch, setCurrentBranch] = useState('main'); // Track current branch
   const [startupModeDetected, setStartupModeDetected] = useState(false); // Track if startup mode detection is complete
-  const [gitBranchDetected, setGitBranchDetected] = useState(false); // Track if git branch detection is complete
 
   // Define the position update function outside useEffect so it can be reused
   const updateFloatingActionsPosition = () => {
@@ -238,24 +230,6 @@ const Header = ({ onSettingsClick }) => {
     detectAndApplyStartupMode();
   }, []);
 
-  // Detect current Git branch
-  useEffect(() => {
-    const detectGitBranch = async () => {
-      try {
-        setCurrentBranch(await detectVersionChannel());
-      } catch (error) {
-        console.error('Failed to detect git branch:', error);
-        // Default to old_version if we can't detect
-        setCurrentBranch('old_version');
-      } finally {
-        // Mark git branch detection as complete regardless of success/failure
-        setGitBranchDetected(true);
-      }
-    };
-
-    detectGitBranch();
-  }, []);
-
   // Handle settings click - increment count and call original handler
   const handleSettingsClick = () => {
     // Increment the settings open count
@@ -282,143 +256,6 @@ const Header = ({ onSettingsClick }) => {
     }, 30 * 60 * 1000);
     return () => { mounted = false; clearInterval(id); unsubscribe(); };
   }, []);
-  // Handle branch switching
-  const handleBranchSwitch = async () => {
-    const targetBranch = currentBranch === 'old_version' ? 'main' : 'old_version';
-    
-    // Show loading state
-    const button = document.querySelector('.branch-switch-button');
-    if (button) {
-      button.disabled = true;
-      button.textContent = t('header.switching');
-    }
-    
-    // Create loading overlay with LoadingIndicator
-    const overlay = document.createElement('div');
-    overlay.className = 'branch-switch-loading-overlay';
-    overlay.style.cssText = `
-      position: fixed;
-      top: 0;
-      left: 0;
-      right: 0;
-      bottom: 0;
-      background: rgba(0, 0, 0, 0.8);
-      display: flex;
-      flex-direction: column;
-      align-items: center;
-      justify-content: center;
-      z-index: 9999;
-    `;
-    
-    // Create container for React component
-    const loadingContainer = document.createElement('div');
-    loadingContainer.id = 'branch-switch-loading';
-    overlay.appendChild(loadingContainer);
-    document.body.appendChild(overlay);
-    
-    // Render LoadingIndicator into the container
-    ReactDOM.render(
-      React.createElement('div', { 
-        style: { 
-          display: 'flex',
-          flexDirection: 'column',
-          alignItems: 'center',
-          gap: '20px'
-        } 
-      },
-        React.createElement('div', {
-          style: {
-            display: 'flex',
-            alignItems: 'center',
-            gap: '15px'
-          }
-        },
-          React.createElement(LoadingIndicator, { 
-            size: 48, 
-            theme: document.documentElement.getAttribute('data-theme') || 'light',
-            showContainer: true 
-          }),
-          React.createElement('div', { 
-            style: { 
-              color: 'white', 
-              fontSize: '1.2rem',
-              fontWeight: '500'
-            } 
-          }, t('header.switchingVersions'))
-        )
-      ),
-      loadingContainer
-    );
-    
-    try {
-      const { response, data } = await switchVersionChannel(targetBranch);
-      
-      if (response.ok && data && data.success) {
-        // Update loading message
-        const messageDiv = loadingContainer.querySelector('div > div:last-child');
-        if (messageDiv) {
-          messageDiv.textContent = t('header.reloadingPage');
-        }
-        
-        // Wait a bit for the cache clearing to complete
-        setTimeout(() => {
-          // Clear localStorage cache related to modules
-          try {
-            Object.keys(localStorage).forEach(key => {
-              if (key.includes('webpack') || key.includes('module') || key.includes('babel')) {
-                localStorage.removeItem(key);
-              }
-            });
-          } catch (e) {
-            console.log('Could not clear module cache from localStorage');
-          }
-          
-          // Force hard reload to clear all caches
-          window.location.reload(true);
-        }, 1500);
-      } else {
-        // Only show error if we actually failed
-        const errorMessage = data?.error || (response.ok ? null : t('header.switchError'));
-        
-        if (errorMessage) {
-          ReactDOM.unmountComponentAtNode(loadingContainer);
-          document.body.removeChild(overlay);
-          alert(errorMessage);
-          
-          // Re-enable button
-          if (button) {
-            button.disabled = false;
-            button.textContent = currentBranch === 'old_version' ? t('header.tryNewVersion') : t('header.oldVersion');
-          }
-        } else {
-          // Success but no success flag? Reload anyway
-          setTimeout(() => {
-            window.location.reload(true);
-          }, 1500);
-        }
-      }
-    } catch (error) {
-      // Check if it's a timeout error
-      if (error.name === 'AbortError') {
-        // Timeout might mean it succeeded but took too long to respond
-        console.log('Request timed out, reloading anyway...');
-        setTimeout(() => {
-          window.location.reload(true);
-        }, 1500);
-      } else {
-        ReactDOM.unmountComponentAtNode(loadingContainer);
-        document.body.removeChild(overlay);
-        console.error('Failed to switch branch:', error);
-        alert(t('header.switchError'));
-        // Re-enable button
-        if (button) {
-          button.disabled = false;
-          button.textContent = currentBranch === 'old_version' ? t('header.tryNewVersion') : t('header.oldVersion');
-        }
-      }
-    }
-  };
-
   return (
     <header className="app-header">
       {/* Gemini constellation animation */}
@@ -437,17 +274,6 @@ const Header = ({ onSettingsClick }) => {
             </span>
           )}
         </h1>
-        {startupModeDetected && gitBranchDetected && (
-          <button
-            className={`branch-switch-button ${isVercelMode ? 'vercel-mode' : ''}`}
-            onClick={handleBranchSwitch}
-            disabled={isVercelMode}
-            aria-label={isVercelMode ? t('header.vercelLimited') : (currentBranch === 'old_version' ? t('header.tryNewVersion') : t('header.oldVersion'))}
-            title={isVercelMode ? t('header.vercelLimited') : (currentBranch === 'old_version' ? t('header.tryNewVersionTooltip') : t('header.oldVersionTooltip'))}
-          >
-            {isVercelMode ? t('header.vercelLimited') : (currentBranch === 'old_version' ? t('header.tryNewVersion') : t('header.oldVersion'))}
-          </button>
-        )}
       </div>
 
 

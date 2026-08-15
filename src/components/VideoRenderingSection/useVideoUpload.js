@@ -1,4 +1,45 @@
 import { useState, useRef, useEffect } from 'react';
+import { isDesktopRuntime } from '../../platform/desktopRuntime';
+import { sharedNativeMediaDropService } from '../../platform/mediaDropService';
+import { isPhysicalPointInsideElement } from '../../platform/nativeMediaDropTarget';
+import {
+  claimMediaDrop,
+  clearMedia,
+  getSelectedMedia,
+  isNativeMediaDescriptor,
+  openMediaAsset,
+  selectMedia,
+} from '../../platform/mediaService';
+
+export const selectNativeRenderVideo = async ({
+  select = selectMedia,
+  getCurrent = getSelectedMedia,
+  restore = openMediaAsset,
+  clear = clearMedia,
+} = {}) => {
+  const previous = await getCurrent();
+  const selected = await select();
+  if (selected === null) return null;
+  if (isNativeMediaDescriptor(selected) && selected.type.startsWith('video/')) return selected;
+
+  if (isNativeMediaDescriptor(previous)) await restore(previous.assetId);
+  else await clear();
+  throw new Error('Select a video file for rendering.');
+};
+
+export const claimNativeRenderVideo = async (offerId, {
+  claim = claimMediaDrop,
+  getCurrent = getSelectedMedia,
+  restore = openMediaAsset,
+  clear = clearMedia,
+} = {}) => {
+  const previous = await getCurrent();
+  const selected = await claim(offerId);
+  if (isNativeMediaDescriptor(selected) && selected.type.startsWith('video/')) return selected;
+  if (isNativeMediaDescriptor(previous)) await restore(previous.assetId);
+  else await clear();
+  throw new Error('Drop a video file for rendering.');
+};
 
 /**
  * Drag-drop handlers + selected-video-file state for the video rendering section.
@@ -14,16 +55,33 @@ import { useState, useRef, useEffect } from 'react';
  *   handleDrop: Function,
  * }}
  */
-export const useVideoUpload = () => {
+export const useVideoUpload = ({ onNativeVideoSelected } = {}) => {
   const [selectedVideoFile, setSelectedVideoFile] = useState(null);
   const [isDragging, setIsDragging] = useState(false);
   const dragCounterRef = useRef(0);
+  const nativeDropZoneRef = useRef(null);
 
   // Handle video file upload
   const handleVideoUpload = async (event) => {
     const file = event.target.files[0];
     if (file) {
       setSelectedVideoFile(file);
+    }
+  };
+
+  const handleBrowseClick = async () => {
+    if (!isDesktopRuntime()) {
+      document.getElementById('video-upload-input')?.click();
+      return;
+    }
+    try {
+      const media = await selectNativeRenderVideo();
+      if (media) {
+        setSelectedVideoFile(media);
+        onNativeVideoSelected?.(media);
+      }
+    } catch (error) {
+      if (window.addToast) window.addToast(error.message, 'error', 8000);
     }
   };
 
@@ -87,15 +145,65 @@ export const useVideoUpload = () => {
     };
   }, []);
 
+  useEffect(() => {
+    if (!isDesktopRuntime()) return undefined;
+    let cancelled = false;
+    let subscription = null;
+    let activeDragId = null;
+    let lastSequence = 0;
+    const inside = (position) => isPhysicalPointInsideElement(position, nativeDropZoneRef.current);
+    const onEvent = (event) => {
+      if (cancelled || event.sequence <= lastSequence) return;
+      lastSequence = event.sequence;
+      if (event.type === 'enter') activeDragId = event.dragId;
+      else if (activeDragId !== null && event.dragId !== activeDragId) return;
+
+      if (event.type === 'enter' || event.type === 'over') {
+        setIsDragging(inside(event.position));
+        return;
+      }
+      setIsDragging(false);
+      if (event.type === 'leave') {
+        activeDragId = null;
+        return;
+      }
+      if (event.type !== 'drop' || !inside(event.position)) return;
+      activeDragId = null;
+      claimNativeRenderVideo(event.offerId)
+        .then((media) => {
+          if (cancelled) return;
+          setSelectedVideoFile(media);
+          onNativeVideoSelected?.(media);
+        })
+        .catch((error) => {
+          if (!cancelled && window.addToast) window.addToast(error.message, 'error', 8000);
+        });
+    };
+    sharedNativeMediaDropService.subscribe(onEvent, () => {
+      if (!cancelled) setIsDragging(false);
+    }).then((registered) => {
+      if (cancelled) registered.unsubscribe().catch(() => {});
+      else subscription = registered;
+    }).catch(() => {
+      if (!cancelled) setIsDragging(false);
+    });
+    return () => {
+      cancelled = true;
+      subscription?.unsubscribe().catch(() => {});
+    };
+  }, [onNativeVideoSelected]);
+
   return {
     isDragging,
     selectedVideoFile,
     setSelectedVideoFile,
     handleVideoUpload,
+    handleBrowseClick,
     handleDragEnter,
     handleDragLeave,
     handleDragOver,
     handleDrop,
+    nativeDropZoneRef,
   };
 };
 

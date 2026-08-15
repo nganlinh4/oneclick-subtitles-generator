@@ -181,7 +181,33 @@ where
         update: JobUpdate,
     ) -> Result<JobTicket, JobRegistryError<S::Error>> {
         let managed = self.lookup(id)?;
-        let result = self.apply_to_managed(id, update, &managed);
+        let result = self.apply_to_managed(id, None, update, &managed);
+        let terminal = managed
+            .state
+            .lock()
+            .map_err(|_| JobRegistryError::Unavailable)?
+            .snapshot
+            .state()
+            .is_terminal();
+        drop(managed);
+        if terminal {
+            self.compact_terminal_residents()?;
+        }
+        result
+    }
+
+    /// Applies an update only while the durable job is still at the sequence the caller observed.
+    ///
+    /// The sequence check and update share the same per-job mutation lock as [`Self::apply`], so a
+    /// cancellation and a result acknowledgement have one deterministic winner.
+    pub fn apply_if_sequence(
+        &self,
+        id: JobId,
+        expected_sequence: u64,
+        update: JobUpdate,
+    ) -> Result<JobTicket, JobRegistryError<S::Error>> {
+        let managed = self.lookup(id)?;
+        let result = self.apply_to_managed(id, Some(expected_sequence), update, &managed);
         let terminal = managed
             .state
             .lock()
@@ -199,6 +225,7 @@ where
     fn apply_to_managed(
         &self,
         id: JobId,
+        caller_expected_sequence: Option<u64>,
         update: JobUpdate,
         managed: &ManagedJob,
     ) -> Result<JobTicket, JobRegistryError<S::Error>> {
@@ -207,6 +234,14 @@ where
             .lock()
             .map_err(|_| JobRegistryError::Unavailable)?;
         let expected_sequence = state.snapshot.sequence();
+        if let Some(caller_expected_sequence) = caller_expected_sequence
+            && caller_expected_sequence != expected_sequence
+        {
+            return Err(JobRegistryError::Conflict {
+                expected_sequence: caller_expected_sequence,
+                actual_sequence: expected_sequence,
+            });
+        }
         let mut candidate = state.snapshot.clone();
         let mutation = candidate.apply(update).map_err(JobRegistryError::Domain)?;
 
@@ -480,6 +515,52 @@ mod tests {
             .expect("cancellation persisted");
         assert_eq!(cancelled.snapshot().state(), JobState::Cancelling);
         assert!(job.cancellation().is_cancelled());
+    }
+
+    #[test]
+    fn sequence_guard_linearizes_cancellation_against_completion() {
+        let store = Arc::new(MemoryStore::default());
+        let registry = JobRegistry::new(store, []).expect("registry");
+        let registered = registry.register(JobKind::GenerateImage).expect("job");
+        let id = registered.snapshot().id();
+        let running = registry.apply(id, JobUpdate::Start).expect("running");
+        let completion_sequence = running.snapshot().sequence();
+
+        let cancelling = registry
+            .apply(id, JobUpdate::RequestCancellation)
+            .expect("cancellation wins");
+        assert_eq!(cancelling.snapshot().state(), JobState::Cancelling);
+        assert!(matches!(
+            registry.apply_if_sequence(id, completion_sequence, JobUpdate::Succeed),
+            Err(JobRegistryError::Conflict {
+                expected_sequence,
+                actual_sequence,
+            }) if expected_sequence == completion_sequence
+                && actual_sequence == cancelling.snapshot().sequence()
+        ));
+        assert_eq!(
+            registry.get(id).expect("unchanged job").snapshot().state(),
+            JobState::Cancelling
+        );
+
+        let second = registry.register(JobKind::GenerateImage).expect("job");
+        let second_id = second.snapshot().id();
+        let second_running = registry
+            .apply(second_id, JobUpdate::Start)
+            .expect("running");
+        let succeeded = registry
+            .apply_if_sequence(
+                second_id,
+                second_running.snapshot().sequence(),
+                JobUpdate::Succeed,
+            )
+            .expect("completion wins");
+        assert_eq!(succeeded.snapshot().state(), JobState::Succeeded);
+        assert!(
+            registry
+                .apply(second_id, JobUpdate::RequestCancellation)
+                .is_err()
+        );
     }
 
     #[test]

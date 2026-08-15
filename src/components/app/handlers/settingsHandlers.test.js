@@ -137,3 +137,16 @@ it('never restores raw-key browser persistence when legacy arguments are supplie
     genius: false,
   });
 });
+
+it('keeps the selected cookie browser when the legacy-shaped callback updates the toggle', async () => {
+  localStorage.setItem('download_cookie_source', 'firefox');
+  const context = createContext();
+
+  await createSettingsHandlers(context).saveApiKeys(
+    '', '', '', 5, 'gemini-2.5-flash', 'hms', undefined, '360p', false, true
+  );
+
+  expect(localStorage.getItem('use_cookies_for_download')).toBe('true');
+  expect(localStorage.getItem('download_cookie_source')).toBe('firefox');
+  expect(context.setUseCookiesForDownload).toHaveBeenCalledWith(true);
+});

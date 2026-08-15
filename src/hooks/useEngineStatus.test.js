@@ -24,6 +24,15 @@ vi.mock('../platform/managedEngineCatalog', () => ({
     Object.freeze({
       engineId: 'chatterbox', label: 'Chatterbox', packageBackend: 'chatterbox', runtimeBackend: 'chatterbox',
     }),
+    Object.freeze({
+      engineId: 'edge-tts', label: 'Edge TTS', packageBackend: 'edge-tts', runtimeBackend: 'edgeTts',
+    }),
+    Object.freeze({
+      engineId: 'gtts', label: 'gTTS', packageBackend: 'gtts', runtimeBackend: 'gtts',
+    }),
+    Object.freeze({
+      engineId: 'gemini-tts', label: 'Gemini Live TTS', packageBackend: 'gemini-tts', runtimeBackend: 'geminiTts',
+    }),
   ]),
 }));
 
@@ -40,6 +49,7 @@ const nativeAsrStatus = {
       installed: true,
       ready: true,
       warm: true,
+      starting: false,
       runtime: 'onnx',
       supportsForcedLanguage: false,
       requiresAligner: false,
@@ -50,6 +60,7 @@ const nativeAsrStatus = {
       installed: true,
       ready: false,
       warm: false,
+      starting: false,
       runtime: 'py_torch',
       supportsForcedLanguage: true,
       requiresAligner: true,
@@ -60,6 +71,7 @@ const nativeAsrStatus = {
       installed: false,
       ready: false,
       warm: false,
+      starting: false,
       runtime: 'py_torch',
       supportsForcedLanguage: true,
       requiresAligner: true,
@@ -83,6 +95,12 @@ const nativeSpeechStatus = {
   backends: [
     speechBackend('f5Tts', { installed: true, ready: true, warm: true }),
     speechBackend('chatterbox', { installed: true }),
+    speechBackend('edgeTts', { supportsVoiceInventory: true }),
+    speechBackend('gtts', { installed: true, ready: true, warm: true, supportsVoiceInventory: true }),
+    speechBackend('geminiTts', {
+      supportsVoiceInventory: true,
+      requiresCredential: true,
+    }),
   ],
   maxSegmentsPerJob: 1000,
   maxBatchTextBytes: 1048576,
@@ -108,6 +126,7 @@ it('maps native ASR readiness to the existing engine-card state contract', () =>
       running: true,
       state: 'ready',
       warm: true,
+      starting: false,
       runtime: 'onnx',
       supportsForcedLanguage: false,
       requiresAligner: false,
@@ -128,6 +147,45 @@ it('maps native ASR readiness to the existing engine-card state contract', () =>
   });
 });
 
+it('treats an installed ready-but-not-warm ASR backend as stopped', () => {
+  const mapped = mapNativeAsrEngines({
+    ...nativeAsrStatus,
+    engines: [{
+      ...nativeAsrStatus.engines[0],
+      installed: true,
+      ready: true,
+      warm: false,
+    }],
+  });
+
+  expect(mapped.parakeet).toMatchObject({
+    installed: true,
+    running: false,
+    state: 'installed-stopped',
+    warm: false,
+    starting: false,
+  });
+});
+
+it('keeps a native ASR warm-up visible as starting instead of stopped', () => {
+  const mapped = mapNativeAsrEngines({
+    ...nativeAsrStatus,
+    engines: [{
+      ...nativeAsrStatus.engines[0],
+      warm: false,
+      starting: true,
+    }],
+  });
+
+  expect(mapped.parakeet).toMatchObject({
+    installed: true,
+    running: false,
+    state: 'starting',
+    warm: false,
+    starting: true,
+  });
+});
+
 it('maps managed speech health and warmth without pretending cold packages are running', () => {
   expect(mapNativeSpeechEngines(nativeSpeechStatus)).toEqual({
     f5tts: expect.objectContaining({
@@ -144,6 +202,46 @@ it('maps managed speech health and warmth without pretending cold packages are r
       state: 'installed-stopped',
       runtime: 'native-speech',
     }),
+    'edge-tts': expect.objectContaining({
+      installed: false,
+      running: false,
+      state: 'not-installed',
+    }),
+    gtts: expect.objectContaining({
+      installed: true,
+      running: true,
+      state: 'ready',
+    }),
+    'gemini-tts': expect.objectContaining({
+      installed: false,
+      running: false,
+      state: 'not-installed',
+    }),
+  });
+});
+
+it('treats every installed ready-but-not-warm speech backend as stopped', () => {
+  const coldReadyStatus = {
+    ...nativeSpeechStatus,
+    backends: nativeSpeechStatus.backends.map((backend) => ({
+      ...backend,
+      installed: true,
+      ready: true,
+      warm: false,
+    })),
+  };
+
+  const engines = mapNativeSpeechEngines(coldReadyStatus);
+  expect(Object.keys(engines)).toEqual([
+    'f5tts', 'chatterbox', 'edge-tts', 'gtts', 'gemini-tts',
+  ]);
+  Object.values(engines).forEach((engine) => {
+    expect(engine).toMatchObject({
+      installed: true,
+      running: false,
+      state: 'installed-stopped',
+      warm: false,
+    });
   });
 });
 
@@ -188,6 +286,12 @@ it('updates a healthy family while retaining the last validated status for a tra
     backends: [
       speechBackend('f5Tts', { installed: true }),
       speechBackend('chatterbox', { installed: true, ready: true, warm: true }),
+      speechBackend('edgeTts', { supportsVoiceInventory: true }),
+      speechBackend('gtts', { supportsVoiceInventory: true }),
+      speechBackend('geminiTts', {
+        supportsVoiceInventory: true,
+        requiresCredential: true,
+      }),
     ],
   });
 

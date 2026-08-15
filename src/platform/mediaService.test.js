@@ -1,13 +1,16 @@
 import { invokeDesktop, invokeDesktopRaw } from './desktopRuntime';
+import { getActiveProjectSnapshot } from './projectService';
 import {
   claimMediaDrop,
   clearMedia,
+  createMediaCandidateLifecycle,
   createNativeMediaDescriptor,
   getSelectedMedia,
   importAudioBlob,
   isNativeAudioBlob,
   isNativeMediaDescriptor,
   isNativeMediaPlaybackUrl,
+  normalizeMediaCandidate,
   openMediaAsset,
   releaseAudioBlob,
   restoreMediaAsset,
@@ -19,11 +22,18 @@ vi.mock('./desktopRuntime', () => ({
   invokeDesktopRaw: vi.fn(),
 }));
 
+vi.mock('./projectService', () => ({
+  activateProjectSnapshot: vi.fn(),
+  getActiveProjectSnapshot: vi.fn(),
+  mutateProject: vi.fn(),
+}));
+
 const ASSET_ID = '01890f39-7b62-7c4e-8c9a-000000000101';
 const PLAYBACK_ID = '550e8400-e29b-41d4-a716-446655440000';
 const TOKEN = 'a'.repeat(64);
 const PLAYBACK_URL = `http://127.0.0.1:49152/asset/${PLAYBACK_ID}?token=${TOKEN}`;
 const OFFER_ID = '9b2c6b54-3a72-44d2-89e8-4979ad45e5f0';
+const PROJECT_ID = '01890f39-7b62-7c4e-8c9a-000000000201';
 
 const validSnapshot = () => ({
   media: {
@@ -48,9 +58,24 @@ const emptySnapshot = () => ({
   playback: null,
 });
 
+const validCandidate = () => ({
+  asset: { ...validSnapshot().media, displayName: 'Example.mp4' },
+  contentIdentity: {
+    algorithm: 'blake3-256',
+    digest: 'b'.repeat(64),
+    sizeBytes: 4096,
+  },
+});
+
 beforeEach(() => {
   invokeDesktop.mockReset();
   invokeDesktopRaw.mockReset();
+  getActiveProjectSnapshot.mockReturnValue({
+    metadata: { id: PROJECT_ID, name: 'Fixture' },
+    stateVersion: 7,
+    media: [validSnapshot().media],
+    tracks: [],
+  });
 });
 
 const createAudioBlob = (bytes, type) => {
@@ -148,12 +173,31 @@ it('opens an opaque asset and rejects invalid IDs before invoking native code', 
   );
   expect(invokeDesktop).toHaveBeenCalledWith('open_media_asset', {
     id: ASSET_ID,
+    projectId: PROJECT_ID,
+    expectedStateVersion: 7,
     onlyIfEmpty: false,
   });
 
   invokeDesktop.mockClear();
   await expect(openMediaAsset(PLAYBACK_ID)).rejects.toMatchObject({
     name: 'MediaServiceError',
+    code: 'invalidMediaRequest',
+  });
+  expect(invokeDesktop).not.toHaveBeenCalled();
+});
+
+it('requires the active project revision to own an asset before activation IPC', async () => {
+  getActiveProjectSnapshot.mockReturnValueOnce(null).mockReturnValueOnce({
+    metadata: { id: PROJECT_ID, name: 'Fixture' },
+    stateVersion: 8,
+    media: [],
+    tracks: [],
+  });
+
+  await expect(openMediaAsset(ASSET_ID)).rejects.toMatchObject({
+    code: 'invalidMediaRequest',
+  });
+  await expect(openMediaAsset(ASSET_ID)).rejects.toMatchObject({
     code: 'invalidMediaRequest',
   });
   expect(invokeDesktop).not.toHaveBeenCalled();
@@ -176,9 +220,15 @@ it('restores an exact opaque asset only while native state is empty', async () =
     code: 'invalidMediaResponse',
   });
   expect(invokeDesktop.mock.calls).toEqual([
-    ['open_media_asset', { id: ASSET_ID, onlyIfEmpty: true }],
-    ['open_media_asset', { id: ASSET_ID, onlyIfEmpty: true }],
-    ['open_media_asset', { id: ASSET_ID, onlyIfEmpty: true }],
+    ['open_media_asset', {
+      id: ASSET_ID, projectId: PROJECT_ID, expectedStateVersion: 7, onlyIfEmpty: true,
+    }],
+    ['open_media_asset', {
+      id: ASSET_ID, projectId: PROJECT_ID, expectedStateVersion: 7, onlyIfEmpty: true,
+    }],
+    ['open_media_asset', {
+      id: ASSET_ID, projectId: PROJECT_ID, expectedStateVersion: 7, onlyIfEmpty: true,
+    }],
   ]);
 
   invokeDesktop.mockClear();
@@ -368,4 +418,226 @@ it.each([
   invokeDesktopRaw.mockResolvedValue(response);
 
   await expect(importAudioBlob(blob)).rejects.toMatchObject({ code: 'invalidMediaResponse' });
+});
+
+it('normalizes the real Rust media candidate envelope without reading hostile accessors', () => {
+  const candidate = normalizeMediaCandidate(validCandidate());
+  expect(candidate).toEqual(validCandidate());
+  expect(Object.isFrozen(candidate)).toBe(true);
+  expect(Object.isFrozen(candidate.asset)).toBe(true);
+  expect(Object.isFrozen(candidate.contentIdentity)).toBe(true);
+
+  let digestReads = 0;
+  const hostile = validCandidate();
+  Object.defineProperty(hostile.contentIdentity, 'digest', {
+    enumerable: true,
+    get() {
+      digestReads += 1;
+      return 'b'.repeat(64);
+    },
+  });
+  expect(() => normalizeMediaCandidate(hostile)).toThrowError(expect.objectContaining({
+    code: 'invalidMediaResponse',
+  }));
+  expect(digestReads).toBe(0);
+});
+
+it('opens playback only after projectService conditionally refreshes the exact active project', async () => {
+  const candidate = validCandidate();
+  const source = {
+    metadata: { id: PROJECT_ID, name: 'Fixture' },
+    stateVersion: 7,
+    media: [validSnapshot().media],
+    tracks: [{ id: 'track' }],
+  };
+  const committed = {
+    metadata: source.metadata,
+    stateVersion: 8,
+    media: [candidate.asset],
+    tracks: source.tracks,
+  };
+  const mutate = vi.fn(async (projectId, reason, mutator, options) => {
+    expect(projectId).toBe(PROJECT_ID);
+    expect(reason).toBe('Replace project media with downloaded candidate');
+    expect(options).toEqual({ retryOnConflict: false });
+    const replacement = mutator(source);
+    expect(replacement.media).toEqual([candidate.asset]);
+    expect(replacement.tracks).toBe(source.tracks);
+    return {
+      revisionId: '01890f39-7b62-7c4e-8c9a-000000000301',
+      stateVersion: 8,
+      snapshot: committed,
+    };
+  });
+  const descriptor = createNativeMediaDescriptor({
+    asset: candidate.asset,
+    playback: validSnapshot().playback,
+  });
+  let active = source;
+  const openAsset = vi.fn().mockResolvedValue(descriptor);
+  const lifecycle = createMediaCandidateLifecycle({
+    getActiveSnapshot: () => active,
+    invokeCommand: vi.fn(),
+    mutate: async (...args) => {
+      const result = await mutate(...args);
+      active = committed;
+      return result;
+    },
+    openAsset,
+  });
+
+  await expect(lifecycle.claim(candidate, {
+    expectedStateVersion: 7,
+    projectId: PROJECT_ID,
+  })).resolves.toBe(descriptor);
+  expect(openAsset).toHaveBeenCalledExactlyOnceWith(candidate.asset.id);
+});
+
+it.each([
+  ['another project', {
+    metadata: { id: '01890f39-7b62-7c4e-8c9a-000000000401', name: 'Project B' },
+    stateVersion: 1,
+    media: [],
+    tracks: [],
+  }],
+  ['a newer same-project version', {
+    metadata: { id: PROJECT_ID, name: 'Fixture' },
+    stateVersion: 20,
+    media: [validSnapshot().media],
+    tracks: [],
+  }],
+])('does not reactivate stale media after %s wins during the project commit', async (_label, winner) => {
+  const candidate = validCandidate();
+  const source = {
+    metadata: { id: PROJECT_ID, name: 'Fixture' },
+    stateVersion: 7,
+    media: [validSnapshot().media],
+    tracks: [],
+  };
+  const committed = {
+    metadata: source.metadata,
+    stateVersion: 8,
+    media: [candidate.asset],
+    tracks: source.tracks,
+  };
+  let finishCommit;
+  const commitGate = new Promise(resolve => { finishCommit = resolve; });
+  let active = source;
+  const mutate = vi.fn(async (_projectId, _reason, mutator) => {
+    expect(mutator(source).media).toEqual([candidate.asset]);
+    await commitGate;
+    return {
+      revisionId: '01890f39-7b62-7c4e-8c9a-000000000301',
+      stateVersion: 8,
+      snapshot: committed,
+    };
+  });
+  const openAsset = vi.fn();
+  const lifecycle = createMediaCandidateLifecycle({
+    getActiveSnapshot: () => active,
+    invokeCommand: vi.fn(),
+    mutate,
+    openAsset,
+  });
+
+  const claim = lifecycle.claim(candidate, {
+    expectedStateVersion: 7,
+    projectId: PROJECT_ID,
+  });
+  await vi.waitFor(() => expect(mutate).toHaveBeenCalledOnce());
+  active = winner;
+  finishCommit();
+
+  await expect(claim).rejects.toMatchObject({ code: 'invalidMediaRequest' });
+  expect(active).toBe(winner);
+  expect(openAsset).not.toHaveBeenCalled();
+});
+
+it('does not return an opened A descriptor after B becomes active during native open', async () => {
+  const candidate = validCandidate();
+  const source = {
+    metadata: { id: PROJECT_ID, name: 'Fixture' },
+    stateVersion: 7,
+    media: [validSnapshot().media],
+    tracks: [],
+  };
+  const committed = {
+    metadata: source.metadata,
+    stateVersion: 8,
+    media: [candidate.asset],
+    tracks: source.tracks,
+  };
+  const projectB = {
+    metadata: { id: '01890f39-7b62-7c4e-8c9a-000000000401', name: 'Project B' },
+    stateVersion: 1,
+    media: [],
+    tracks: [],
+  };
+  let active = source;
+  let finishOpen;
+  const opened = new Promise(resolve => { finishOpen = resolve; });
+  const descriptor = createNativeMediaDescriptor({
+    asset: candidate.asset,
+    playback: validSnapshot().playback,
+  });
+  const openAsset = vi.fn(() => opened);
+  const lifecycle = createMediaCandidateLifecycle({
+    getActiveSnapshot: () => active,
+    invokeCommand: vi.fn(),
+    mutate: async (_projectId, _reason, mutator) => {
+      expect(mutator(source).media).toEqual([candidate.asset]);
+      active = committed;
+      return {
+        revisionId: '01890f39-7b62-7c4e-8c9a-000000000301',
+        stateVersion: 8,
+        snapshot: committed,
+      };
+    },
+    openAsset,
+  });
+
+  const claim = lifecycle.claim(candidate, {
+    expectedStateVersion: 7,
+    projectId: PROJECT_ID,
+  });
+  await vi.waitFor(() => expect(openAsset).toHaveBeenCalledOnce());
+  active = projectB;
+  finishOpen(descriptor);
+
+  await expect(claim).rejects.toMatchObject({ code: 'invalidMediaRequest' });
+  expect(active).toBe(projectB);
+});
+
+it('rejects stale project claims before commit and discards only through the exact candidate ABI', async () => {
+  const candidate = validCandidate();
+  const mutate = vi.fn(async (_projectId, _reason, mutator) => mutator({
+    metadata: { id: PROJECT_ID, name: 'Fixture' },
+    stateVersion: 8,
+    media: [],
+    tracks: [],
+  }));
+  const invokeCommand = vi.fn().mockResolvedValueOnce(true).mockResolvedValueOnce('true');
+  const lifecycle = createMediaCandidateLifecycle({
+    getActiveSnapshot: () => ({
+      metadata: { id: PROJECT_ID, name: 'Fixture' },
+      stateVersion: 7,
+      media: [],
+      tracks: [],
+    }),
+    invokeCommand,
+    mutate,
+    openAsset: vi.fn(),
+  });
+
+  await expect(lifecycle.claim(candidate, {
+    expectedStateVersion: 7,
+    projectId: PROJECT_ID,
+  })).rejects.toMatchObject({ code: 'invalidMediaRequest' });
+  await expect(lifecycle.discard(candidate.asset.id)).resolves.toBe(true);
+  expect(invokeCommand).toHaveBeenNthCalledWith(1, 'discard_media_candidate', {
+    id: candidate.asset.id,
+  });
+  await expect(lifecycle.discard(candidate.asset.id)).rejects.toMatchObject({
+    code: 'invalidMediaResponse',
+  });
 });

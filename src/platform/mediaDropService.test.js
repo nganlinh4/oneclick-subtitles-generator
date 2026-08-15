@@ -1,5 +1,6 @@
 import {
   createNativeMediaDropService,
+  createSharedNativeMediaDropService,
   normalizeNativeMediaDropEvent,
 } from './mediaDropService';
 
@@ -109,4 +110,33 @@ it('discards only a validated opaque offer identifier', async () => {
   await service.discard(OFFER_ID);
 
   expect(invokeCommand).toHaveBeenCalledWith('media_drop_discard', { offerId: OFFER_ID });
+});
+
+it('shares one native subscription across independent drop targets', async () => {
+  let publish;
+  const unsubscribe = vi.fn();
+  const service = {
+    subscribe: vi.fn(async (onEvent) => {
+      publish = onEvent;
+      return { id: SUBSCRIPTION_ID, unsubscribe };
+    }),
+  };
+  const shared = createSharedNativeMediaDropService(service);
+  const first = vi.fn();
+  const second = vi.fn();
+  const firstSubscription = await shared.subscribe(first);
+  const secondSubscription = await shared.subscribe(second);
+
+  expect(service.subscribe).toHaveBeenCalledTimes(1);
+  publish(event('drop', { offerId: OFFER_ID }));
+  expect(first).toHaveBeenCalledTimes(1);
+  expect(second).toHaveBeenCalledTimes(1);
+
+  await firstSubscription.unsubscribe();
+  expect(unsubscribe).not.toHaveBeenCalled();
+  publish(event('over'));
+  expect(first).toHaveBeenCalledTimes(1);
+  expect(second).toHaveBeenCalledTimes(2);
+  await secondSubscription.unsubscribe();
+  expect(unsubscribe).toHaveBeenCalledTimes(1);
 });

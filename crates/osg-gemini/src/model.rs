@@ -1,30 +1,152 @@
-use serde::{Deserialize, Serialize};
+use std::{fmt, str};
 
-/// A stable Gemini REST model verified to accept both audio and video input.
-#[derive(Clone, Copy, Debug, Deserialize, Eq, Hash, PartialEq, Serialize)]
-pub enum Model {
-    #[serde(rename = "gemini-3.5-flash-lite")]
+use serde::{Deserialize, Deserializer, Serialize, Serializer, de};
+
+const MAX_CUSTOM_MODEL_ID_BYTES: usize = 128;
+const CUSTOM_MODEL_OUTPUT_TOKEN_LIMIT: u32 = 65_536;
+
+#[derive(Clone, Copy, Eq, Hash, PartialEq)]
+enum ModelKind {
     Gemini35FlashLite,
-    #[serde(rename = "gemini-3.6-flash")]
+    Gemini37Flash,
     Gemini36Flash,
-    #[serde(rename = "gemini-3.5-flash")]
     Gemini35Flash,
-    #[serde(rename = "gemini-3.1-flash-lite")]
     Gemini31FlashLite,
+    Custom {
+        bytes: [u8; MAX_CUSTOM_MODEL_ID_BYTES],
+        len: u8,
+    },
 }
 
+/// A Gemini REST model identifier. Catalog models may accept media; validated
+/// custom identifiers are deliberately text-only until promoted to the catalog.
+#[derive(Clone, Copy, Eq, Hash, PartialEq)]
+pub struct Model(ModelKind);
+
+impl fmt::Debug for Model {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        formatter
+            .debug_tuple("Model")
+            .field(&self.api_id())
+            .finish()
+    }
+}
+
+#[allow(non_upper_case_globals, reason = "preserve the public enum-like API")]
 impl Model {
+    pub const Gemini35FlashLite: Self = Self(ModelKind::Gemini35FlashLite);
+    pub const Gemini37Flash: Self = Self(ModelKind::Gemini37Flash);
+    pub const Gemini36Flash: Self = Self(ModelKind::Gemini36Flash);
+    pub const Gemini35Flash: Self = Self(ModelKind::Gemini35Flash);
+    pub const Gemini31FlashLite: Self = Self(ModelKind::Gemini31FlashLite);
+
+    /// Parse either one catalog ID or a bounded official-style custom Gemini ID.
+    #[must_use]
+    pub fn from_api_id(value: &str) -> Option<Self> {
+        let built_in = match value {
+            "gemini-3.5-flash-lite" => Some(Self::Gemini35FlashLite),
+            "gemini-3.7-flash" => Some(Self::Gemini37Flash),
+            "gemini-3.6-flash" => Some(Self::Gemini36Flash),
+            "gemini-3.5-flash" => Some(Self::Gemini35Flash),
+            "gemini-3.1-flash-lite" => Some(Self::Gemini31FlashLite),
+            _ => None,
+        };
+        if built_in.is_some() {
+            return built_in;
+        }
+        if !is_valid_custom_model_id(value) {
+            return None;
+        }
+        let mut bytes = [0; MAX_CUSTOM_MODEL_ID_BYTES];
+        bytes[..value.len()].copy_from_slice(value.as_bytes());
+        Some(Self(ModelKind::Custom {
+            bytes,
+            len: u8::try_from(value.len()).ok()?,
+        }))
+    }
+
     /// Provider model ID used in the REST path.
     #[must_use]
-    pub const fn api_id(self) -> &'static str {
-        model_spec(self).api_id
+    pub fn api_id(&self) -> &str {
+        match &self.0 {
+            ModelKind::Gemini35FlashLite => "gemini-3.5-flash-lite",
+            ModelKind::Gemini37Flash => "gemini-3.7-flash",
+            ModelKind::Gemini36Flash => "gemini-3.6-flash",
+            ModelKind::Gemini35Flash => "gemini-3.5-flash",
+            ModelKind::Gemini31FlashLite => "gemini-3.1-flash-lite",
+            ModelKind::Custom { bytes, len } => str::from_utf8(&bytes[..usize::from(*len)])
+                .expect("custom model IDs are constructed from validated ASCII"),
+        }
     }
 
     /// Centralized provider capabilities and lifecycle metadata.
     #[must_use]
-    pub const fn spec(self) -> &'static ModelSpec {
+    pub const fn spec(self) -> Option<&'static ModelSpec> {
         model_spec(self)
     }
+
+    /// Whether this model is verified for audio/video input.
+    #[must_use]
+    pub const fn accepts_media(self) -> bool {
+        self.spec().is_some()
+    }
+
+    /// Whether the provider contract for this model accepts one thinking level.
+    #[must_use]
+    pub const fn supports_thinking_level(self, level: ThinkingLevel) -> bool {
+        match self.spec() {
+            Some(spec) => contains_thinking_level(spec.thinking_levels, level),
+            None => false,
+        }
+    }
+
+    /// Bounded output limit used before contacting the provider.
+    #[must_use]
+    pub const fn output_token_limit(self) -> u32 {
+        match self.spec() {
+            Some(spec) => spec.output_token_limit,
+            None => CUSTOM_MODEL_OUTPUT_TOKEN_LIMIT,
+        }
+    }
+
+    /// Whether the identifier is outside the reviewed media catalog.
+    #[must_use]
+    pub const fn is_custom(self) -> bool {
+        matches!(self.0, ModelKind::Custom { .. })
+    }
+}
+
+impl Serialize for Model {
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: Serializer,
+    {
+        serializer.serialize_str(self.api_id())
+    }
+}
+
+impl<'de> Deserialize<'de> for Model {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: Deserializer<'de>,
+    {
+        let value = String::deserialize(deserializer)?;
+        Self::from_api_id(&value).ok_or_else(|| de::Error::custom("invalid Gemini model ID"))
+    }
+}
+
+fn is_valid_custom_model_id(value: &str) -> bool {
+    if value.len() > MAX_CUSTOM_MODEL_ID_BYTES || !value.starts_with("gemini-") {
+        return false;
+    }
+    let suffix = &value.as_bytes()["gemini-".len()..];
+    let is_alphanumeric = |byte: u8| byte.is_ascii_lowercase() || byte.is_ascii_digit();
+    !suffix.is_empty()
+        && suffix.first().is_some_and(|byte| is_alphanumeric(*byte))
+        && suffix.last().is_some_and(|byte| is_alphanumeric(*byte))
+        && suffix
+            .iter()
+            .all(|byte| is_alphanumeric(*byte) || matches!(byte, b'-' | b'.'))
 }
 
 /// Provider lifecycle. Preview and experimental endpoints are intentionally
@@ -45,6 +167,7 @@ pub enum InputModality {
 
 /// Gemini thinking levels supported by the selected Gemini 3 models.
 #[derive(Clone, Copy, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[repr(u8)]
 #[serde(rename_all = "SCREAMING_SNAKE_CASE")]
 pub enum ThinkingLevel {
     Minimal,
@@ -63,6 +186,7 @@ pub struct ModelSpec {
     pub output_text: bool,
     pub structured_output: bool,
     pub thinking: bool,
+    pub thinking_levels: &'static [ThinkingLevel],
     pub input_token_limit: u32,
     pub output_token_limit: u32,
     pub toolbox_thinking: ThinkingLevel,
@@ -72,6 +196,28 @@ pub struct ModelSpec {
 }
 
 const MEDIA_INPUTS: &[InputModality] = &[InputModality::Audio, InputModality::Video];
+const ALL_THINKING_LEVELS: &[ThinkingLevel] = &[
+    ThinkingLevel::Minimal,
+    ThinkingLevel::Low,
+    ThinkingLevel::Medium,
+    ThinkingLevel::High,
+];
+const GEMINI_37_THINKING_LEVELS: &[ThinkingLevel] = &[
+    ThinkingLevel::Low,
+    ThinkingLevel::Medium,
+    ThinkingLevel::High,
+];
+
+const fn contains_thinking_level(levels: &[ThinkingLevel], target: ThinkingLevel) -> bool {
+    let mut index = 0;
+    while index < levels.len() {
+        if levels[index] as u8 == target as u8 {
+            return true;
+        }
+        index += 1;
+    }
+    false
+}
 
 const MODELS: &[ModelSpec] = &[
     ModelSpec {
@@ -82,12 +228,29 @@ const MODELS: &[ModelSpec] = &[
         output_text: true,
         structured_output: true,
         thinking: true,
+        thinking_levels: ALL_THINKING_LEVELS,
         input_token_limit: 1_048_576,
         output_token_limit: 65_536,
         toolbox_thinking: ThinkingLevel::Minimal,
         toolbox_role: "high-volume text extraction and opt-in media compatibility testing",
         verified_at: "2026-08-10",
         evidence_url: "https://ai.google.dev/gemini-api/docs/models/gemini-3.5-flash-lite",
+    },
+    ModelSpec {
+        model: Model::Gemini37Flash,
+        api_id: "gemini-3.7-flash",
+        lifecycle: Lifecycle::Stable,
+        input_modalities: MEDIA_INPUTS,
+        output_text: true,
+        structured_output: true,
+        thinking: true,
+        thinking_levels: GEMINI_37_THINKING_LEVELS,
+        input_token_limit: 1_048_576,
+        output_token_limit: 65_536,
+        toolbox_thinking: ThinkingLevel::Low,
+        toolbox_role: "newest strong multimodal model for accuracy-sensitive work",
+        verified_at: "2026-08-14",
+        evidence_url: "https://ai.google.dev/gemini-api/docs/models",
     },
     ModelSpec {
         model: Model::Gemini36Flash,
@@ -97,6 +260,7 @@ const MODELS: &[ModelSpec] = &[
         output_text: true,
         structured_output: true,
         thinking: true,
+        thinking_levels: ALL_THINKING_LEVELS,
         input_token_limit: 1_048_576,
         output_token_limit: 65_536,
         toolbox_thinking: ThinkingLevel::Minimal,
@@ -112,6 +276,7 @@ const MODELS: &[ModelSpec] = &[
         output_text: true,
         structured_output: true,
         thinking: true,
+        thinking_levels: ALL_THINKING_LEVELS,
         input_token_limit: 1_048_576,
         output_token_limit: 65_536,
         toolbox_thinking: ThinkingLevel::Minimal,
@@ -127,6 +292,7 @@ const MODELS: &[ModelSpec] = &[
         output_text: true,
         structured_output: true,
         thinking: true,
+        thinking_levels: ALL_THINKING_LEVELS,
         input_token_limit: 1_048_576,
         output_token_limit: 65_536,
         toolbox_thinking: ThinkingLevel::Minimal,
@@ -144,6 +310,7 @@ pub const ACCURATE_MODEL: Model = Model::Gemini36Flash;
 pub const DAILY_USE_CHAIN: &[Model] = &[
     Model::Gemini31FlashLite,
     Model::Gemini36Flash,
+    Model::Gemini37Flash,
     Model::Gemini35FlashLite,
     Model::Gemini35Flash,
 ];
@@ -188,12 +355,14 @@ pub const fn supported_models() -> &'static [ModelSpec] {
 }
 
 #[must_use]
-pub const fn model_spec(model: Model) -> &'static ModelSpec {
-    match model {
-        Model::Gemini35FlashLite => &MODELS[0],
-        Model::Gemini36Flash => &MODELS[1],
-        Model::Gemini35Flash => &MODELS[2],
-        Model::Gemini31FlashLite => &MODELS[3],
+pub const fn model_spec(model: Model) -> Option<&'static ModelSpec> {
+    match model.0 {
+        ModelKind::Gemini35FlashLite => Some(&MODELS[0]),
+        ModelKind::Gemini37Flash => Some(&MODELS[1]),
+        ModelKind::Gemini36Flash => Some(&MODELS[2]),
+        ModelKind::Gemini35Flash => Some(&MODELS[3]),
+        ModelKind::Gemini31FlashLite => Some(&MODELS[4]),
+        ModelKind::Custom { .. } => None,
     }
 }
 
@@ -223,6 +392,50 @@ mod tests {
             serde_json::to_string(&Model::Gemini35FlashLite).unwrap(),
             "\"gemini-3.5-flash-lite\""
         );
+    }
+
+    #[test]
+    fn gemini_37_excludes_only_the_provider_rejected_minimal_level() {
+        assert!(!Model::Gemini37Flash.supports_thinking_level(ThinkingLevel::Minimal));
+        for level in [
+            ThinkingLevel::Low,
+            ThinkingLevel::Medium,
+            ThinkingLevel::High,
+        ] {
+            assert!(Model::Gemini37Flash.supports_thinking_level(level));
+        }
+        assert_eq!(
+            Model::Gemini37Flash.spec().unwrap().toolbox_thinking,
+            ThinkingLevel::Low
+        );
+        assert!(Model::Gemini36Flash.supports_thinking_level(ThinkingLevel::Minimal));
+    }
+
+    #[test]
+    fn custom_models_are_bounded_text_only_wire_values() {
+        let model = Model::from_api_id("gemini-3.8-flash").expect("valid custom model");
+        assert_eq!(model.api_id(), "gemini-3.8-flash");
+        assert!(model.is_custom());
+        assert!(!model.accepts_media());
+        assert_eq!(model.output_token_limit(), 65_536);
+        assert_eq!(
+            serde_json::to_string(&model).unwrap(),
+            "\"gemini-3.8-flash\""
+        );
+        assert_eq!(
+            serde_json::from_str::<Model>("\"gemini-3.8-flash\"").unwrap(),
+            model
+        );
+
+        for invalid in [
+            "models/gemini-3.7-flash",
+            "gemini-3.7-flash:generateContent",
+            "gemini-../flash",
+            "Gemini-3.7-Flash",
+            "gemini-",
+        ] {
+            assert!(Model::from_api_id(invalid).is_none(), "accepted {invalid}");
+        }
     }
 
     #[test]

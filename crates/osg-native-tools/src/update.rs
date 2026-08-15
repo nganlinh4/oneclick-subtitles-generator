@@ -16,8 +16,11 @@ use crate::catalog::{
 use crate::path_security::{ensure_direct_child, require_regular_file};
 use crate::{NativeToolError, Result};
 
-const RELEASE_API: &str = "https://api.github.com/repos/yt-dlp/yt-dlp/releases/latest";
+const RELEASE_REPOSITORY: &str = "yt-dlp/yt-dlp-nightly-builds";
+const RELEASE_API: &str =
+    "https://api.github.com/repos/yt-dlp/yt-dlp-nightly-builds/releases/latest";
 const COMMITS_API: &str = "https://api.github.com/repos/yt-dlp/yt-dlp/commits/";
+const GENERATED_FROM_PREFIX: &str = "Generated from: https://github.com/yt-dlp/yt-dlp/commit/";
 const USER_AGENT_VALUE: &str = "OneClickSubtitlesGenerator/2";
 const MAX_API_BYTES: u64 = 2 * 1024 * 1024;
 const MAX_NOTICE_BYTES: u64 = 4 * 1024 * 1024;
@@ -95,8 +98,8 @@ impl GitHubYtDlpReleaseResolver {
             return Err(NativeToolError::InvalidCatalog);
         }
         let url = format!(
-            "https://github.com/yt-dlp/yt-dlp/releases/download/{}/{name}",
-            release.tag_name
+            "https://github.com/{RELEASE_REPOSITORY}/releases/download/{}/{name}",
+            release.tag_name,
         );
         let sha256 = asset
             .digest
@@ -106,8 +109,17 @@ impl GitHubYtDlpReleaseResolver {
         if asset.browser_download_url != url {
             return Err(NativeToolError::InvalidCatalog);
         }
+        let source_revision = release
+            .body
+            .lines()
+            .next()
+            .and_then(|line| line.strip_prefix(GENERATED_FROM_PREFIX))
+            .filter(|revision| valid_revision(revision))
+            .ok_or(NativeToolError::InvalidCatalog)?;
+        self.verify_commit(source_revision)?;
         Ok(ResolvedAsset {
             version: release.tag_name,
+            source_revision: source_revision.to_string(),
             name,
             url,
             size_bytes: asset.size,
@@ -115,19 +127,14 @@ impl GitHubYtDlpReleaseResolver {
         })
     }
 
-    fn resolve_commit(&self, version: &str) -> Result<String> {
-        let bytes = self.get_bounded(&format!("{COMMITS_API}{version}"), MAX_API_BYTES)?;
+    fn verify_commit(&self, revision: &str) -> Result<()> {
+        let bytes = self.get_bounded(&format!("{COMMITS_API}{revision}"), MAX_API_BYTES)?;
         let commit: GitHubCommit =
             serde_json::from_slice(&bytes).map_err(|_| NativeToolError::Network)?;
-        if commit.sha.len() != 40
-            || !commit
-                .sha
-                .bytes()
-                .all(|byte| byte.is_ascii_digit() || (b'a'..=b'f').contains(&byte))
-        {
+        if commit.sha != revision {
             return Err(NativeToolError::InvalidCatalog);
         }
-        Ok(commit.sha)
+        Ok(())
     }
 
     fn resolve_notices(&self, revision: &str) -> Result<Vec<NoticeFile>> {
@@ -157,8 +164,7 @@ impl GitHubYtDlpReleaseResolver {
 impl YtDlpReleaseResolver for GitHubYtDlpReleaseResolver {
     fn latest(&self, platform: &str) -> Result<ToolDelivery> {
         let asset = self.resolve_release(platform)?;
-        let source_revision = self.resolve_commit(&asset.version)?;
-        let notices = self.resolve_notices(&source_revision)?;
+        let notices = self.resolve_notices(&asset.source_revision)?;
         let install_path = if platform == "windows-x86_64" {
             "bin/yt-dlp.exe"
         } else {
@@ -173,7 +179,7 @@ impl YtDlpReleaseResolver for GitHubYtDlpReleaseResolver {
             tool: crate::NativeToolId::YtDlp,
             platform: platform.to_string(),
             version: asset.version,
-            source_revision,
+            source_revision: asset.source_revision,
             asset: asset.name.to_string(),
             source_url: asset.url,
             format: ArtifactFormat::Raw,
@@ -198,6 +204,7 @@ impl YtDlpReleaseResolver for GitHubYtDlpReleaseResolver {
 #[derive(Debug)]
 struct ResolvedAsset {
     version: String,
+    source_revision: String,
     name: &'static str,
     url: String,
     size_bytes: u64,
@@ -207,6 +214,7 @@ struct ResolvedAsset {
 #[derive(Debug, Deserialize)]
 struct GitHubRelease {
     tag_name: String,
+    body: String,
     draft: bool,
     prerelease: bool,
     immutable: bool,
@@ -366,6 +374,13 @@ fn valid_sha256(value: &str) -> bool {
             .all(|byte| byte.is_ascii_digit() || (b'a'..=b'f').contains(&byte))
 }
 
+fn valid_revision(value: &str) -> bool {
+    value.len() == 40
+        && value
+            .bytes()
+            .all(|byte| byte.is_ascii_digit() || (b'a'..=b'f').contains(&byte))
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -374,6 +389,7 @@ mod tests {
     fn rejects_mutable_duplicate_and_malformed_latest_releases() {
         let release = GitHubRelease {
             tag_name: "2026.08.10".to_string(),
+            body: format!("{GENERATED_FROM_PREFIX}{}", "a".repeat(40)),
             draft: false,
             prerelease: false,
             immutable: false,
@@ -381,9 +397,16 @@ mod tests {
         };
         assert!(!release.immutable);
         assert!(valid_ytdlp_version(&release.tag_name));
-        for invalid in ["latest", "2026.8.10", "2026.13.01", "2026.08.10/nightly"] {
+        for invalid in [
+            "latest",
+            "2026.8.10",
+            "2026.13.01",
+            "2026.08.10/nightly",
+            "2026.08.10.246000",
+        ] {
             assert!(!valid_ytdlp_version(invalid), "{invalid}");
         }
+        assert!(valid_ytdlp_version("2026.08.10.235959"));
     }
 
     #[test]

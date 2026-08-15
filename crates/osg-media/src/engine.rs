@@ -49,6 +49,52 @@ impl MediaEngine {
         })
     }
 
+    /// Fully decodes the primary audio stream and returns true only when
+    /// `FFmpeg` reports an exact zero peak across the complete stream.
+    pub fn audio_is_exactly_silent(
+        &self,
+        input: &MediaInput,
+        control: &RunControl,
+    ) -> Result<bool> {
+        let mut args = vec![
+            OsString::from("-hide_banner"),
+            OsString::from("-nostdin"),
+            OsString::from("-nostats"),
+            OsString::from("-loglevel"),
+            OsString::from("info"),
+            OsString::from("-i"),
+            input.as_path().as_os_str().to_owned(),
+            OsString::from("-map"),
+            OsString::from("0:a:0"),
+        ];
+        args.extend(
+            [
+                "-vn",
+                "-sn",
+                "-dn",
+                "-af",
+                "astats=metadata=0:reset=0:measure_perchannel=none:measure_overall=Peak_level",
+                "-f",
+                "null",
+                "-",
+            ]
+            .map(OsString::from),
+        );
+        let mut request = ProcessRequest::new(self.toolchain.ffmpeg(), args, control);
+        request.stdout_limit = TOOL_VERSION_OUTPUT_LIMIT;
+        let process = run(request)?;
+        if !process.status.success() {
+            drop(process.stderr_tail);
+            return Err(MediaError::ProcessFailed {
+                tool: BinaryKind::Ffmpeg,
+                code: process.status.code(),
+            });
+        }
+        parse_exact_silence(&process.stderr_tail).ok_or(MediaError::InvalidProbe(
+            "ffmpeg audio activity summary is unavailable",
+        ))
+    }
+
     /// Executes a typed operation into a same-directory temporary artifact,
     /// validates the result, then persists it without clobbering a late writer.
     pub fn execute(
@@ -105,6 +151,30 @@ impl MediaEngine {
             output_bytes: metadata.len(),
         })
     }
+}
+
+fn parse_exact_silence(stderr: &[u8]) -> Option<bool> {
+    let output = String::from_utf8_lossy(stderr);
+    let mut overall_prefix = None;
+    for line in output.lines() {
+        let line = line.trim();
+        if let Some(prefix) = line.strip_suffix(" Overall")
+            && prefix.starts_with("[Parsed_astats_")
+            && prefix.ends_with(']')
+        {
+            overall_prefix = Some(prefix.to_owned());
+            continue;
+        }
+        let Some(prefix) = overall_prefix.as_deref() else {
+            continue;
+        };
+        let expected = format!("{prefix} Peak level dB:");
+        let Some(value) = line.strip_prefix(&expected) else {
+            continue;
+        };
+        return Some(value.trim().eq_ignore_ascii_case("-inf"));
+    }
+    None
 }
 
 fn probe_with(
@@ -217,6 +287,70 @@ mod tests {
             ffmpeg: mock_binary(BinaryKind::Ffmpeg),
             ffprobe: mock_binary(BinaryKind::Ffprobe),
         })
+    }
+
+    #[test]
+    fn exact_silence_requires_the_overall_zero_peak_summary() {
+        assert_eq!(
+            parse_exact_silence(
+                b"[Parsed_astats_0] Overall\n[Parsed_astats_0] Peak level dB: -inf\n"
+            ),
+            Some(true)
+        );
+        assert_eq!(
+            parse_exact_silence(
+                b"[Parsed_astats_0] Overall\n[Parsed_astats_0] Peak level dB: -72.500000\n"
+            ),
+            Some(false)
+        );
+    }
+
+    #[test]
+    fn channel_or_truncated_metrics_cannot_prove_silence() {
+        assert_eq!(
+            parse_exact_silence(b"[Parsed_astats_0] Peak level dB: -inf\n"),
+            None
+        );
+        assert_eq!(parse_exact_silence(b"[Parsed_astats_0] Overall\n"), None);
+        assert_eq!(
+            parse_exact_silence(
+                b"media: Overall\nmedia: Peak level dB: -inf\n[Parsed_astats_0] Peak level dB: -inf\n"
+            ),
+            None
+        );
+        assert_eq!(
+            parse_exact_silence(
+                b"[Parsed_astats_0] Overall\n[Parsed_astats_1] Peak level dB: -inf\n"
+            ),
+            None
+        );
+    }
+
+    #[test]
+    fn exact_silence_probe_executes_the_bounded_ffmpeg_contract() {
+        let directory = tempfile::tempdir().unwrap();
+        let silent = directory.path().join("silent.flac");
+        let speech = directory.path().join("speech.flac");
+        std::fs::write(&silent, b"media").unwrap();
+        std::fs::write(&speech, b"media").unwrap();
+        let control = RunControl::new(Duration::from_secs(5)).unwrap();
+
+        assert!(
+            engine()
+                .audio_is_exactly_silent(
+                    &MediaInput::from_native_selection(silent).unwrap(),
+                    &control,
+                )
+                .unwrap()
+        );
+        assert!(
+            !engine()
+                .audio_is_exactly_silent(
+                    &MediaInput::from_native_selection(speech).unwrap(),
+                    &control,
+                )
+                .unwrap()
+        );
     }
 
     #[test]

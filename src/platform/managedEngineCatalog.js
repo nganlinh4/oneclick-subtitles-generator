@@ -11,4 +11,22 @@ export const MANAGED_SPEECH_ENGINE_BINDINGS = Object.freeze([
     packageBackend: 'chatterbox',
     runtimeBackend: 'chatterbox',
   }),
+  Object.freeze({
+    engineId: 'edge-tts',
+    label: 'Edge TTS',
+    packageBackend: 'edge-tts',
+    runtimeBackend: 'edgeTts',
+  }),
+  Object.freeze({
+    engineId: 'gtts',
+    label: 'gTTS',
+    packageBackend: 'gtts',
+    runtimeBackend: 'gtts',
+  }),
+  Object.freeze({
+    engineId: 'gemini-tts',
+    label: 'Gemini Live TTS',
+    packageBackend: 'gemini-tts',
+    runtimeBackend: 'geminiTts',
+  }),
 ]);

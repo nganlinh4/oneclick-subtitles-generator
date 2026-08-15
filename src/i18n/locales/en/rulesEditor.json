@@ -1,4 +1,6 @@
 {
+  "saveFailed": "Transcription rules could not be saved.",
+  "saving": "Saving...",
   "title": "Edit Transcription Rules",
   "atmospherePlaceholder": "Description of the setting or context...",
   "terminologyDescription": "Add specialized terms, proper nouns, and their definitions",

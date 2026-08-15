@@ -7,6 +7,8 @@ import LyricsInputSection from './LyricsInputSection';
 import MaterialSwitch from './common/MaterialSwitch';
 import '../styles/common/material-switch.css';
 import HelpIcon from './common/HelpIcon';
+import LoadingIndicator from './common/LoadingIndicator';
+import { showErrorToast } from '../utils/toastUtils';
 
 
 /**
@@ -26,7 +28,10 @@ const SubtitlesInputModal = ({ initialText = '', onSave, onClose, onGenerateBack
   const [showBackgroundPrompt, setShowBackgroundPrompt] = useState(false);
   const [songName, setSongName] = useState('');
   const [isClosing, setIsClosing] = useState(false);
+  const [isSaving, setIsSaving] = useState(false);
   const [autoEraseBlankLines, setAutoEraseBlankLines] = useState(true);
+  const saveInFlightRef = useRef(false);
+  const closeInFlightRef = useRef(false);
 
 
   // Focus the textarea when the modal opens
@@ -35,11 +40,6 @@ const SubtitlesInputModal = ({ initialText = '', onSave, onClose, onGenerateBack
       textareaRef.current.focus();
     }
   }, []);
-
-  const handleSave = () => {
-    const finalText = autoEraseBlankLines ? removeBlankLines(text) : text;
-    onSave(finalText);
-  };
 
   const handleTextChange = (e) => {
     setText(e.target.value);
@@ -107,6 +107,8 @@ const SubtitlesInputModal = ({ initialText = '', onSave, onClose, onGenerateBack
 
   // Function to handle closing with animation
   const handleClose = () => {
+    if (saveInFlightRef.current || closeInFlightRef.current) return false;
+    closeInFlightRef.current = true;
     // Start the closing animation
     setIsClosing(true);
 
@@ -114,6 +116,32 @@ const SubtitlesInputModal = ({ initialText = '', onSave, onClose, onGenerateBack
     setTimeout(() => {
       onClose();
     }, 150); // Match this with the CSS transition duration
+    return true;
+  };
+
+  const handleSave = async (afterSave = null) => {
+    if (saveInFlightRef.current || closeInFlightRef.current) return false;
+    saveInFlightRef.current = true;
+    setIsSaving(true);
+    const finalText = autoEraseBlankLines ? removeBlankLines(text) : text;
+
+    try {
+      await onSave(finalText);
+      if (typeof afterSave === 'function') {
+        await afterSave(finalText);
+      }
+      saveInFlightRef.current = false;
+      setIsSaving(false);
+      return handleClose();
+    } catch {
+      saveInFlightRef.current = false;
+      setIsSaving(false);
+      showErrorToast(
+        t('subtitlesInput.saveFailed', 'The subtitles could not be saved. Please try again.'),
+        5_000,
+      );
+      return false;
+    }
   };
 
   // Handle keyboard shortcuts
@@ -121,7 +149,7 @@ const SubtitlesInputModal = ({ initialText = '', onSave, onClose, onGenerateBack
     // Ctrl+Enter or Cmd+Enter to save
     if ((e.ctrlKey || e.metaKey) && e.key === 'Enter') {
       e.preventDefault();
-      handleSave();
+      void handleSave();
     }
     // Escape to close
     else if (e.key === 'Escape') {
@@ -137,7 +165,12 @@ const SubtitlesInputModal = ({ initialText = '', onSave, onClose, onGenerateBack
           <div className="header-title-section">
             <h2>{t('subtitlesInput.title', 'Add Your Subtitles')}</h2>
           </div>
-          <CloseButton onClick={handleClose} variant="modal" size="medium" />
+          <CloseButton
+            onClick={handleClose}
+            variant="modal"
+            size="medium"
+            disabled={isSaving || isClosing}
+          />
         </div>
 
         <div className="subtitles-input-modal-content">
@@ -160,6 +193,7 @@ const SubtitlesInputModal = ({ initialText = '', onSave, onClose, onGenerateBack
             <button
               className={`lyrics-toggle-button ${showLyricsInput ? 'active' : ''}`}
               onClick={() => setShowLyricsInput(!showLyricsInput)}
+              disabled={isSaving || isClosing}
               title={t('subtitlesInput.lyricsToggle', 'Toggle lyrics search')}
             >
               <span className="material-symbols-rounded">queue_music</span> {t('subtitlesInput.fetchLyrics', 'Fetch Song Lyrics')}
@@ -173,28 +207,17 @@ const SubtitlesInputModal = ({ initialText = '', onSave, onClose, onGenerateBack
 
 
           {showBackgroundPrompt && albumArt && (
-            <div className="background-prompt-message" onClick={() => {
-
-
-
-
-
-
-              // First save the text
-              onSave(text);
-
-              // Then generate the background
-              if (onGenerateBackground) {
-
-                onGenerateBackground(text, albumArt, songName);
-
-              } else {
-                console.error('onGenerateBackground function is not available');
-              }
-            }}>
+            <button
+              type="button"
+              className="background-prompt-message"
+              disabled={isSaving || isClosing || typeof onGenerateBackground !== 'function'}
+              onClick={() => void handleSave((savedText) => (
+                onGenerateBackground(savedText, albumArt, songName)
+              ))}
+            >
               <span className="material-symbols-rounded">image</span>
               <span>{t('subtitlesInput.generateBackground', 'Do you want to generate background image inspired from this album art and lyrics?')}</span>
-            </div>
+            </button>
           )}
 
           <CustomScrollbarTextarea
@@ -203,6 +226,7 @@ const SubtitlesInputModal = ({ initialText = '', onSave, onClose, onGenerateBack
             onChange={handleTextChange}
             onKeyDown={handleKeyDown}
             onPaste={handlePaste}
+            disabled={isSaving || isClosing}
             placeholder={t('subtitlesInput.placeholder', 'Enter your subtitles here...')}
             rows={8}
             containerClassName="large"
@@ -227,6 +251,7 @@ const SubtitlesInputModal = ({ initialText = '', onSave, onClose, onGenerateBack
                 id="auto-erase-blank-lines"
                 checked={autoEraseBlankLines}
                 onChange={(e) => setAutoEraseBlankLines(e.target.checked)}
+                disabled={isSaving || isClosing}
                 ariaLabel={t('subtitlesInput.autoEraseBlankLines', 'Auto erase blank lines')}
                 icons={true}
               />
@@ -237,11 +262,25 @@ const SubtitlesInputModal = ({ initialText = '', onSave, onClose, onGenerateBack
             </div>
           </div>
           <div className="footer-right">
-            <button className="cancel-button" onClick={handleClose}>
+            <button className="cancel-button" onClick={handleClose} disabled={isSaving || isClosing}>
               {t('subtitlesInput.cancel', 'Cancel')}
             </button>
-            <button className="save-button" onClick={handleSave}>
-              {t('subtitlesInput.save', 'Save Subtitles')}
+            <button
+              className="save-button"
+              onClick={() => void handleSave()}
+              disabled={isSaving || isClosing}
+            >
+              {isSaving ? (
+                <>
+                  <LoadingIndicator
+                    theme="light"
+                    showContainer={false}
+                    size={16}
+                    color="#FFFFFF"
+                  />
+                  {t('subtitlesInput.saving', 'Saving...')}
+                </>
+              ) : t('subtitlesInput.save', 'Save Subtitles')}
             </button>
           </div>
         </div>

@@ -1,4 +1,3 @@
-import { showSuccessToast } from '../toastUtils';
 import { isDesktopRuntime } from '../../platform/desktopRuntime';
 import { isNativeMediaDescriptor } from '../../platform/mediaService';
 
@@ -78,26 +77,6 @@ const mapMediaResolution = (resolution) => {
   return resolutionMap[resolution] || 'MEDIA_RESOLUTION_MEDIUM';
 };
 
-const normalizeNativeSegmentSubtitles = (subtitles, segment) => {
-  if (!Array.isArray(subtitles) || subtitles.length === 0) return [];
-  const duration = segment.end - segment.start;
-  const maximumEnd = Math.max(...subtitles.map((subtitle) => subtitle.end || 0));
-  const normalized = maximumEnd <= duration + 1
-    ? subtitles.map((subtitle) => ({
-        ...subtitle,
-        start: (subtitle.start || 0) + segment.start,
-        end: (subtitle.end || 0) + segment.start,
-      }))
-    : subtitles;
-  return normalized
-    .filter((subtitle) => subtitle.start < segment.end && subtitle.end > segment.start)
-    .map((subtitle) => ({
-      ...subtitle,
-      start: Math.max(subtitle.start, segment.start),
-      end: Math.min(subtitle.end, segment.end),
-    }));
-};
-
 /**
  * Process a specific segment of video using Files API with custom options
  * This is the new segment-based processing function for the improved workflow
@@ -168,36 +147,8 @@ export const processSegmentWithFilesApi = async (file, segment, options, setStat
  * @returns {Promise<Array>} - Final subtitle array
  */
 export const processSegmentWithStreaming = async (file, segment, options, setStatus, onSubtitleUpdate, t) => {
-  if (isDesktopRuntime()) {
-    if (!isNativeMediaDescriptor(file)) {
-      throw new Error('Select the media again before starting native Gemini transcription.');
-    }
-    const { callGeminiApi } = await import('../../services/gemini');
-    const subtitles = await callGeminiApi(file, 'file-upload', {
-      userProvidedSubtitles: options.userProvidedSubtitles,
-      modelId: options.model,
-      mediaResolution: mapMediaResolution(options.mediaResolution),
-      segmentInfo: {
-        start: segment.start,
-        end: segment.end,
-        duration: segment.end - segment.start,
-      },
-      ...(options.runId ? { runId: options.runId } : {}),
-    });
-    const normalized = normalizeNativeSegmentSubtitles(subtitles, segment);
-    if (onSubtitleUpdate) onSubtitleUpdate(normalized, false);
-    const toastMessage = t && typeof t === 'function'
-      ? t('processing.subtitlesGenerated', 'Generated {{count}} subtitles', { count: normalized.length })
-      : `Generated ${normalized.length} subtitles`;
-    showSuccessToast(toastMessage, 5000);
-    window.dispatchEvent(new CustomEvent('streaming-complete', {
-      detail: {
-        subtitles: normalized,
-        segment,
-        runId: options.runId,
-      },
-    }));
-    return normalized;
+  if (isDesktopRuntime() && !isNativeMediaDescriptor(file)) {
+    throw new Error('Select the media again before starting native Gemini transcription.');
   }
 
   return new Promise((resolve, reject) => {
@@ -348,21 +299,6 @@ export const processSegmentWithStreaming = async (file, segment, options, setSta
             dbg(`[ProcessingUtils] Final filter: ${finalSubtitles.length} subtitles to ${filteredFinal.length} for segment ${segmentStart}-${segmentEnd}`);
             }
 
-             // Show success toast with result count
-             const toastMessage = t && typeof t === 'function'
-               ? t('processing.subtitlesGenerated', 'Generated {{count}} subtitles', { count: filteredFinal.length })
-               : `Generated ${filteredFinal.length} subtitles`;
-             showSuccessToast(toastMessage, 5000);
-
-            // Dispatch streaming-complete event for timeline animations
-            window.dispatchEvent(new CustomEvent('streaming-complete', {
-              detail: {
-                subtitles: filteredFinal,
-                segment: segment,
-                runId: options && options.runId ? options.runId : undefined
-              }
-            }));
-
             resolve(filteredFinal);
         },
         onError: (error) => {
@@ -392,6 +328,9 @@ export const processSegmentWithStreaming = async (file, segment, options, setSta
         segmentProcessingDelay: options.segmentProcessingDelay,
         autoSplitSubtitles: autoSplitSubtitles,
         maxWordsPerSubtitle: maxWordsPerSubtitle,
+        promptContext: options.promptContext,
+        autoRunContext: options.autoRunContext,
+        signal: options.signal,
         // propagate translation function and optional correlation id for downstream services
         ...(t ? { t } : {}),
         ...(options && options.runId ? { runId: options.runId } : {})
@@ -431,7 +370,7 @@ export const processSegmentWithStreaming = async (file, segment, options, setSta
       // Start streaming (Files API vs INLINE)
       import('../../services/gemini').then(({ streamGeminiApiWithFilesApi, streamGeminiApiInline }) => {
         const streamFn = useInline ? streamGeminiApiInline : streamGeminiApiWithFilesApi;
-        streamFn(
+        return streamFn(
           file,
           finalApiOptions,
           (chunk) => processor.processChunk(chunk),

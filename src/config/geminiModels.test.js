@@ -6,14 +6,18 @@ import {
   GEMINI_MODELS,
   TRANSLATION_MODELS,
   getDefaultThinkingBudgets,
+  isCustomGeminiModelId,
   migrateGeminiModelId,
   migrateStoredGeminiModels,
   modelAcceptsMedia,
+  normalizeCustomGeminiModelId,
+  normalizeCustomGeminiModels,
   normalizeMediaModelId
 } from './geminiModels';
 
 const EXPECTED_MODELS = [
   'gemini-3.5-flash-lite',
+  'gemini-3.7-flash',
   'gemini-3.6-flash',
   'gemini-3.5-flash',
   'gemini-3.1-flash-lite'
@@ -34,12 +38,13 @@ describe('Gemini model catalog contract', () => {
     });
     expect(Object.fromEntries(GEMINI_MODELS.map((model) => [model.id, model.freeRPD]))).toEqual({
       'gemini-3.5-flash-lite': 500,
+      'gemini-3.7-flash': 20,
       'gemini-3.6-flash': 20,
       'gemini-3.5-flash': 20,
       'gemini-3.1-flash-lite': 500
     });
     expect(GEMINI_MODELS.map((model) => model.profileLabels.en)).toEqual([
-      'GG Good', 'GG Strong', 'GG Strong, slow', 'GG Fast'
+      'GG Good', 'GG Latest', 'GG Strong', 'GG Strong, slow', 'GG Fast'
     ]);
   });
 
@@ -54,6 +59,7 @@ describe('Gemini model catalog contract', () => {
   test('derives exact default thinking values from the catalog', () => {
     expect(getDefaultThinkingBudgets()).toEqual({
       'gemini-3.5-flash-lite': 'minimal',
+      'gemini-3.7-flash': 'low',
       'gemini-3.6-flash': 'minimal',
       'gemini-3.5-flash': 'minimal',
       'gemini-3.1-flash-lite': 'minimal'
@@ -68,15 +74,35 @@ describe('Gemini model catalog contract', () => {
     expect(normalizeMediaModelId('my-private-gemini-endpoint')).toBe(DEFAULT_GEMINI_MODEL_ID);
   });
 
+  test('accepts bounded provider model IDs as text-only custom models', () => {
+    expect(normalizeCustomGeminiModelId('  gemini-3.8-flash  ')).toBe('gemini-3.8-flash');
+    expect(isCustomGeminiModelId('gemini-3.8-flash')).toBe(true);
+    expect(isCustomGeminiModelId('gemini-3.7-flash')).toBe(false);
+    expect(isCustomGeminiModelId('gemini-3.5-flash-lite')).toBe(false);
+    expect(normalizeCustomGeminiModelId('models/gemini-3.8-flash')).toBeNull();
+    expect(normalizeCustomGeminiModelId('gemini-3.8-flash:generateContent')).toBeNull();
+    expect(normalizeCustomGeminiModelId('Gemini-3.8-Flash')).toBeNull();
+    expect(normalizeCustomGeminiModels([
+      { id: 'gemini-3.7-flash', name: 'Promoted duplicate', isCustom: true },
+      { id: ' gemini-3.8-flash ', name: ' Future model ' },
+      { id: 'gemini-3.8-flash', name: 'Duplicate' }
+    ])).toEqual([{ id: 'gemini-3.8-flash', name: 'Future model', isCustom: true }]);
+  });
+
   test('migrates every persisted model selection through one function', () => {
     const values = new Map([
       ['gemini_model', 'gemini-2.5-flash'],
       ['translation_model', 'custom-model'],
       ['video_analysis_model', 'gemini-3.1-flash-lite-preview'],
       ['video_processing_model', 'unverified-custom-model'],
+      ['custom_gemini_models', JSON.stringify([
+        { id: 'gemini-3.7-flash', name: 'Old custom entry', isCustom: true },
+        { id: 'gemini-3.8-flash', name: 'Future model', isCustom: true }
+      ])],
       ['thinking_budgets', JSON.stringify({
         'gemini-3.1-flash-lite-preview': 'high',
-        'gemini-2.5-flash': 2048
+        'gemini-2.5-flash': 2048,
+        'gemini-3.7-flash': 'minimal'
       })]
     ]);
     const storage = {
@@ -85,13 +111,24 @@ describe('Gemini model catalog contract', () => {
     };
 
     expect(migrateStoredGeminiModels(storage)).toEqual({
+      custom_gemini_models: [{
+        id: 'gemini-3.8-flash',
+        name: 'Future model',
+        isCustom: true
+      }],
       gemini_model: 'gemini-3.1-flash-lite',
       video_analysis_model: 'gemini-3.1-flash-lite',
       video_processing_model: 'gemini-3.1-flash-lite'
     });
     expect(values.get('translation_model')).toBe('custom-model');
+    expect(JSON.parse(values.get('custom_gemini_models'))).toEqual([{
+      id: 'gemini-3.8-flash',
+      name: 'Future model',
+      isCustom: true
+    }]);
     expect(JSON.parse(values.get('thinking_budgets'))).toEqual({
-      'gemini-3.1-flash-lite': 'high'
+      'gemini-3.1-flash-lite': 'high',
+      'gemini-3.7-flash': 'low'
     });
   });
 });

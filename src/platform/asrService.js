@@ -465,7 +465,8 @@ export const normalizeAsrStatus = (status) => {
         || containsAnyControl(engine.label)
         || typeof engine.installed !== 'boolean'
         || typeof engine.ready !== 'boolean'
-        || typeof engine.warm !== 'boolean') {
+        || typeof engine.warm !== 'boolean'
+        || typeof engine.starting !== 'boolean') {
       throw invalidResponse();
     }
 
@@ -475,7 +476,8 @@ export const normalizeAsrStatus = (status) => {
         || engine.requiresAligner !== metadata.requiresAligner
         || (engine.ready && !engine.installed)
         || (engine.warm && !engine.ready)
-        || (!status.workerAvailable && (engine.ready || engine.warm))) {
+        || (engine.starting && (!engine.ready || engine.warm))
+        || (!status.workerAvailable && (engine.ready || engine.warm || engine.starting))) {
       throw invalidResponse();
     }
 
@@ -485,6 +487,7 @@ export const normalizeAsrStatus = (status) => {
       installed: engine.installed,
       ready: engine.ready,
       warm: engine.warm,
+      starting: engine.starting,
     }));
   });
 

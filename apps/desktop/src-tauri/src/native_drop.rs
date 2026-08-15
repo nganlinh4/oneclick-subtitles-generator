@@ -10,7 +10,7 @@ use tauri::{DragDropEvent, Manager, State, Webview, Window, WindowEvent, ipc::Ch
 use uuid::Uuid;
 
 use crate::{
-    commands::import_media_path,
+    commands::{MediaCandidateResponse, import_media_path, stage_media_candidate_path},
     error::{CommandError, CommandResult},
     state::{DesktopSessionSnapshot, DesktopState},
 };
@@ -478,8 +478,23 @@ pub(crate) async fn media_drop_claim(
     offer_id: Uuid,
 ) -> CommandResult<DesktopSessionSnapshot> {
     let path = drop_state.redeem_offer(webview.label(), offer_id)?;
-
     import_media_path(&desktop_state, path).await
+}
+
+#[tauri::command]
+#[allow(
+    dead_code,
+    reason = "candidate drop stays unregistered until frontend activation integration"
+)]
+pub(crate) async fn media_drop_claim_candidate(
+    webview: Webview,
+    drop_state: State<'_, NativeMediaDropState>,
+    desktop_state: State<'_, DesktopState>,
+    offer_id: Uuid,
+) -> CommandResult<MediaCandidateResponse> {
+    let path = drop_state.redeem_offer(webview.label(), offer_id)?;
+
+    stage_media_candidate_path(&desktop_state, path).await
 }
 
 #[cfg(test)]

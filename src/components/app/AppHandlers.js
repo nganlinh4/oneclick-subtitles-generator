@@ -147,10 +147,10 @@ export const useAppHandlers = (appState) => {
   /**
    * Handle generating subtitles - New workflow with immediate output container
    */
-  const handleGenerateSubtitles = async () => {
+  const handleGenerateSubtitles = async (autoRequest = null) => {
     if (!validateInput()) {
       setStatus({ message: t("errors.invalidInput"), type: "error" });
-      return;
+      return false;
     }
 
     // If we're in SRT-only mode, just show a message
@@ -162,7 +162,7 @@ export const useAppHandlers = (appState) => {
         ),
         type: "info",
       });
-      return;
+      return false;
     }
 
     // Show output container immediately with uploading status
@@ -192,17 +192,16 @@ export const useAppHandlers = (appState) => {
       setCurrentDownloadId(null);
 
       // Start background download and upload
-      startBackgroundVideoProcessing(selectedVideo, "youtube");
-      return; // Exit early, processing will continue after segment selection
+      return await startBackgroundVideoProcessing(selectedVideo, "youtube", autoRequest);
     } else if (activeTab === "file-upload" && uploadedFile) {
       // Start background upload for file
       setIsUploading(true);
-      startBackgroundVideoProcessing(uploadedFile, "file-upload");
-      return; // Exit early, processing will continue after segment selection
+      return await startBackgroundVideoProcessing(uploadedFile, "file-upload", autoRequest);
     }
 
     // Reset button animation state when generation is complete
     resetGeminiButtonState();
+    return false;
   };
 
   return {

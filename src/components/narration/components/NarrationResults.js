@@ -10,6 +10,7 @@ import { hydrateNarrationResultsForAlignment } from '../../../utils/narrationAli
 import ResultRow from './ResultRow';
 import { downloadAudio as downloadAudioFile, saveAudioToServer } from '../utils/narrationAudioDownload';
 import useNarrationAudioSpeed from '../hooks/useNarrationAudioSpeed';
+import { getNativeNarrationArtifactId } from '../../../platform/nativeNarrationCapabilities';
 
 
 /**
@@ -37,9 +38,33 @@ const NarrationResults = ({
   onGenerateAllPending,
   subtitleSource,
   isGenerating: _isGenerating,
-  plannedSubtitles
+  plannedSubtitles,
+  isServiceAvailable = false,
+  referenceAudio = null,
+  narrationMethod = null,
+  generationBlockedReason = ''
 }) => {
   const { t } = useTranslation();
+  const requiresReference = narrationMethod === 'f5tts' || narrationMethod === 'chatterbox';
+  const referenceMissing = requiresReference
+    && !getNativeNarrationArtifactId(referenceAudio);
+  const retryBlockedReason = isServiceAvailable !== true
+    ? t(
+      'narration.engineUnavailableMessage',
+      'This narration engine is not ready. Install or start it in Settings > Voice & transcription engines.'
+    )
+    : referenceMissing
+      ? t(
+        'narration.noReferenceAudioError',
+        'Please upload or record reference audio first'
+      )
+      : generationBlockedReason || (!subtitleSource
+        ? t(
+          'narration.noSourceSelectedError',
+          'Please select a subtitle source (Original or Translated)'
+        )
+        : '');
+  const retryAvailable = retryBlockedReason === '';
 
   const listRef = useRef(null);
   const rowHeights = useRef({});
@@ -253,9 +278,13 @@ const NarrationResults = ({
         {hasPendingNarrations && onGenerateAllPending && (
           <button
             className="pill-button secondary generate-all-pending-button"
-            onClick={onGenerateAllPending}
-            disabled={retryingSubtitleId !== null}
-            title={t('narration.generateAllPendingTooltip', 'Generate all pending narrations')}
+            onClick={() => {
+              if (retryAvailable) onGenerateAllPending();
+            }}
+            disabled={retryingSubtitleId !== null || !retryAvailable}
+            title={!retryAvailable
+              ? retryBlockedReason
+              : t('narration.generateAllPendingTooltip', 'Generate all pending narrations')}
           >
             <span className="material-symbols-rounded" style={{ fontSize: '20px' }}>build</span>
             {t('narration.generateAllPending', 'Generate All Pending')}
@@ -266,9 +295,13 @@ const NarrationResults = ({
         {hasFailedNarrations && onRetryFailed && (
           <button
             className="pill-button secondary retry-failed-button"
-            onClick={onRetryFailed}
-            disabled={retryingSubtitleId !== null}
-            title={t('narration.retryFailedTooltip', 'Retry all failed narrations')}
+            onClick={() => {
+              if (retryAvailable) onRetryFailed();
+            }}
+            disabled={retryingSubtitleId !== null || !retryAvailable}
+            title={!retryAvailable
+              ? retryBlockedReason
+              : t('narration.retryFailedTooltip', 'Retry all failed narrations')}
           >
             <span className="material-symbols-rounded" style={{ fontSize: '14px' }}>refresh</span>
             {t('narration.retryFailed', 'Retry Failed Narrations')}
@@ -340,6 +373,8 @@ const NarrationResults = ({
             itemData={{
               generationResults: displayedResults,
               onRetry,
+              retryAvailable,
+              retryBlockedReason,
               retryingSubtitleId,
               currentAudio,
               isPlaying,

@@ -1,20 +1,27 @@
-import { inspectDownloadUrl, startDownload } from './downloadService';
+import { cancelDownload, inspectDownloadUrl, startDownload } from './downloadService';
 import { exportMediaAsset } from './mediaExportService';
+import { discardMediaCandidate } from './mediaService';
 
 const downloadPercent = (event) => {
-  const fraction = event.progress.fraction;
-  const percent = fraction === null
-    ? Math.round(event.job.progress.basisPoints / 100)
-    : Math.round(fraction * 100);
+  const percent = Math.round(event.job.progress.basisPoints / 100);
   return Math.max(0, Math.min(100, percent));
 };
 
 const safeCall = (callback, value) => {
   if (typeof callback !== 'function') return;
   try {
-    callback(value);
+    Promise.resolve(callback(value)).catch(() => undefined);
   } catch {
     // Presentation callbacks cannot break the native operation.
+  }
+};
+
+const awaitCallback = async (callback, value) => {
+  if (typeof callback !== 'function') return;
+  try {
+    await Promise.resolve(callback(value));
+  } catch {
+    throw downloadFailure('downloadCallbackFailed');
   }
 };
 
@@ -35,33 +42,82 @@ export const downloadUrlToUserDestination = async ({
 }, {
   inspect = inspectDownloadUrl,
   start = startDownload,
+  cancel = cancelDownload,
+  discardCandidate = discardMediaCandidate,
   exportAsset = exportMediaAsset,
 } = {}) => {
   const inspection = await inspect({ url, cookieSource });
-  let settle;
-  const terminal = new Promise((resolve, reject) => {
-    settle = { resolve, reject };
+  let settled = false;
+  let resolveTerminal;
+  const terminal = new Promise((resolve) => {
+    resolveTerminal = resolve;
   });
-  const initial = await start({
-    inventoryId: inspection.capability.id,
-    media,
-    subtitle: null,
-  }, {
-    onProgress: (event) => safeCall(onDownloadProgress, downloadPercent(event)),
-    onCompleted: (event) => settle.resolve({ status: 'completed', event }),
-    onCancelled: (event) => settle.resolve({ status: 'cancelled', event }),
-    onFailed: (event) => settle.reject(downloadFailure(event.error.code)),
-    onProtocolError: (error) => settle.reject(error),
-  });
-  safeCall(onJobStarted, initial);
+  const settle = (outcome) => {
+    if (settled) return;
+    settled = true;
+    resolveTerminal(outcome);
+  };
+  let initial = null;
+  try {
+    initial = await start({
+      inventoryId: inspection.capability.id,
+      media,
+      subtitle: null,
+    }, {
+      onProgress: (event) => safeCall(onDownloadProgress, downloadPercent(event)),
+      onCompleted: (event) => settle({ status: 'completed', event }),
+      onCancelled: (event) => settle({ status: 'cancelled', event }),
+      onFailed: (event) => settle({
+        status: 'failed',
+        error: downloadFailure(event.error.code),
+      }),
+      onProtocolError: (error) => settle({ status: 'failed', error }),
+    });
+  } catch (error) {
+    settle({ status: 'failed', error });
+  }
+  let startCallbackError = null;
+  if (initial !== null) {
+    try {
+      await awaitCallback(onJobStarted, initial);
+    } catch (error) {
+      startCallbackError = error;
+      await cancel(initial.id).catch(() => undefined);
+    }
+  }
   const downloaded = await terminal;
   if (downloaded.status === 'cancelled') return Object.freeze(downloaded);
+  if (downloaded.status === 'failed') throw downloaded.error;
+  const candidateAssetId = downloaded.event.media.asset.id;
+  if (startCallbackError !== null) {
+    await discardCandidate(candidateAssetId);
+    throw startCallbackError;
+  }
 
-  return exportAsset(downloaded.event.media.asset.id, {
-    onStarted: onJobStarted,
-    onProgress: (event) => safeCall(
-      onExportProgress,
-      Math.round(event.job.progress.basisPoints / 100)
-    ),
-  });
+  let exportStart = Promise.resolve();
+  let exportError = null;
+  let exportResult;
+  try {
+    exportResult = await exportAsset(candidateAssetId, {
+      onStarted: (job) => {
+        exportStart = awaitCallback(onJobStarted, job);
+        exportStart.catch(() => undefined);
+        return exportStart;
+      },
+      onProgress: (event) => safeCall(
+        onExportProgress,
+        Math.round(event.job.progress.basisPoints / 100)
+      ),
+    });
+  } catch (error) {
+    exportError = error;
+  }
+  try {
+    await exportStart;
+  } catch (error) {
+    exportError = error;
+  }
+  await discardCandidate(candidateAssetId);
+  if (exportError !== null) throw exportError;
+  return exportResult;
 };

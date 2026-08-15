@@ -167,51 +167,139 @@ const normalizeTrackHistoryStatus = (status) => {
 
 const isStaleVersionError = (error) => error?.code === STALE_PROJECT_VERSION;
 
+const freezeTree = (value) => {
+  if (value === null || typeof value !== 'object' || Object.isFrozen(value)) return value;
+  Object.values(value).forEach(freezeTree);
+  return Object.freeze(value);
+};
+
 /**
- * Stateful project command bridge. Every operation which can affect the active snapshot shares
- * one promise queue; a rejected operation cannot poison later work.
+ * Durable project command bridge. Storage operations are detached from the active-project
+ * publication channel. Only explicit activation, or an authoritative operation result for the
+ * project which is still active when that result completes, may publish to subscribers.
  */
 export const createProjectService = ({ invokeCommand = invokeDesktop } = {}) => {
   let activeSnapshot = null;
-  let operationTail = Promise.resolve();
+  let activationGeneration = 0;
+  let activationRequestSequence = 0;
+  let pendingActivation = null;
+  let activePublicationVersion = 0;
+  let pendingPublication = null;
+  let publishing = false;
+  const projectTails = new Map();
+  const synchronousMutatorFrames = [];
   const subscribers = new Set();
+  const mutationStep = Symbol('mutationStep');
 
-  const publish = () => {
-    const snapshot = activeSnapshot == null ? null : normalizeProjectSnapshot(activeSnapshot);
-    subscribers.forEach((subscriber) => {
-      try {
-        subscriber(snapshot);
-      } catch (error) {
-        console.error('[projectService] Active-project subscriber failed:', error);
+  const copySnapshot = (snapshot) => (
+    snapshot == null ? null : freezeTree(normalizeProjectSnapshot(snapshot))
+  );
+
+  const publish = (snapshot, version) => {
+    // Coalesce synchronous re-entry to the newest active snapshot. The current publication stops
+    // before another subscriber can observe an event which has already been superseded.
+    pendingPublication = { snapshot, version };
+    if (publishing) return;
+    publishing = true;
+    try {
+      while (pendingPublication !== null) {
+        const publication = pendingPublication;
+        pendingPublication = null;
+        const recipients = Array.from(subscribers);
+        for (const subscriber of recipients) {
+          if (publication.version !== activePublicationVersion) break;
+          if (!subscribers.has(subscriber)) continue;
+          try {
+            subscriber(copySnapshot(publication.snapshot));
+          } catch (error) {
+            console.error('[projectService] Active-project subscriber failed:', error);
+          }
+        }
       }
+    } finally {
+      publishing = false;
+    }
+  };
+
+  const replaceActive = (snapshot) => {
+    const nextSnapshot = copySnapshot(snapshot);
+    const returnSnapshot = copySnapshot(nextSnapshot);
+    activeSnapshot = nextSnapshot;
+    activePublicationVersion += 1;
+    publish(nextSnapshot, activePublicationVersion);
+    // A subscriber may have synchronously activated another project while publishing. This call
+    // still returns the exact snapshot which it was asked to activate/refresh.
+    return returnSnapshot;
+  };
+
+  const refreshActiveProject = (projectId, snapshot, expectedActivationGeneration) => {
+    if (activationGeneration !== expectedActivationGeneration
+        || activeSnapshot?.metadata.id !== projectId) return false;
+    replaceActive(snapshot);
+    return true;
+  };
+
+  const enqueueProject = (projectId, operation) => {
+    const mutatorFrame = synchronousMutatorFrames[synchronousMutatorFrames.length - 1];
+    if (mutatorFrame?.projectId === projectId) {
+      mutatorFrame.reentered = true;
+      try {
+        return Promise.resolve(operation());
+      } catch (error) {
+        return Promise.reject(error);
+      }
+    }
+    const previous = projectTails.get(projectId) ?? Promise.resolve();
+    const result = previous.then(operation, operation);
+    const recovered = result.catch(() => undefined);
+    projectTails.set(projectId, recovered);
+    void recovered.then(() => {
+      if (projectTails.get(projectId) === recovered) projectTails.delete(projectId);
     });
-  };
-
-  const setActive = (snapshot) => {
-    activeSnapshot = snapshot == null ? null : normalizeProjectSnapshot(snapshot);
-    publish();
-    return activeSnapshot == null ? null : normalizeProjectSnapshot(activeSnapshot);
-  };
-
-  const enqueue = (operation) => {
-    const result = operationTail.then(operation, operation);
-    operationTail = result.catch(() => undefined);
     return result;
   };
 
-  const loadDirect = async (id) => {
-    const snapshot = await invokeCommand('project_load', { id: validateProjectId(id) });
-    if (snapshot == null) {
-      if (activeSnapshot?.metadata.id === id) setActive(null);
-      return null;
+  const invokeMutator = (projectId, mutator, snapshot) => {
+    const frame = { projectId, reentered: false };
+    synchronousMutatorFrames.push(frame);
+    try {
+      return { frame, value: mutator(copySnapshot(snapshot)) };
+    } finally {
+      synchronousMutatorFrames.pop();
     }
-    return setActive(snapshot);
   };
 
-  const reloadAfterConflict = async (projectId, cause) => {
+  const readDirect = async (id) => {
+    const projectId = validateProjectId(id);
+    const snapshot = await invokeCommand('project_load', { id: projectId });
+    const normalized = copySnapshot(snapshot);
+    if (normalized !== null && normalized.metadata.id !== projectId) {
+      throw new ProjectServiceError(
+        'invalidProjectLoad',
+        'The desktop host returned a different project than the one requested',
+        { projectId, returnedProjectId: normalized.metadata.id }
+      );
+    }
+    return normalized;
+  };
+
+  const requireProjectDirect = async (id) => {
+    const projectId = validateProjectId(id);
+    const snapshot = await readDirect(projectId);
+    if (snapshot === null) {
+      throw new ProjectServiceError('projectNotFound', 'The project does not exist', { projectId });
+    }
+    return snapshot;
+  };
+
+  const reloadAfterConflict = async (
+    projectId,
+    cause,
+    expectedActivationGeneration
+  ) => {
     let authoritativeSnapshot = null;
     try {
-      authoritativeSnapshot = await loadDirect(projectId);
+      authoritativeSnapshot = await readDirect(projectId);
     } catch (reloadError) {
       throw new ProjectServiceError(
         'projectReloadFailed',
@@ -219,187 +307,349 @@ export const createProjectService = ({ invokeCommand = invokeDesktop } = {}) => 
         { projectId, cause, reloadError }
       );
     }
+    refreshActiveProject(projectId, authoritativeSnapshot, expectedActivationGeneration);
     throw new ProjectConflictError(projectId, authoritativeSnapshot, cause);
   };
 
-  const commitDirect = async (candidate, reason) => {
-    const normalized = normalizeProjectSnapshot(candidate);
-    const previous = activeSnapshot;
-    setActive(normalized);
-
+  const commitDirect = async (candidate, reason, expectedActivationGeneration) => {
+    const normalized = copySnapshot(candidate);
     try {
       const commit = validateCommit(
         await invokeCommand('project_commit', { snapshot: normalized, reason }),
         normalized.stateVersion
       );
-      const committedSnapshot = setActive({
+      const committedSnapshot = copySnapshot({
         ...normalized,
         stateVersion: commit.stateVersion,
       });
-      return { ...commit, snapshot: committedSnapshot };
+      refreshActiveProject(
+        normalized.metadata.id,
+        committedSnapshot,
+        expectedActivationGeneration
+      );
+      return freezeTree({ ...commit, snapshot: committedSnapshot });
     } catch (error) {
       if (isStaleVersionError(error)) {
-        return reloadAfterConflict(normalized.metadata.id, error);
+        return reloadAfterConflict(
+          normalized.metadata.id,
+          error,
+          expectedActivationGeneration
+        );
       }
-      setActive(previous);
       throw error;
     }
   };
 
-  const ensureLoadedDirect = async (id) => {
+  const read = (id) => {
     const projectId = validateProjectId(id);
-    if (activeSnapshot?.metadata.id === projectId) {
-      return normalizeProjectSnapshot(activeSnapshot);
-    }
-    const loaded = await loadDirect(projectId);
-    if (loaded == null) {
-      throw new ProjectServiceError('projectNotFound', 'The project does not exist', { projectId });
-    }
-    return loaded;
+    return readDirect(projectId);
   };
 
-  const create = (name) => {
+  const createDetached = (name) => {
     const projectName = validateProjectName(name);
-    return enqueue(async () => setActive(
+    return Promise.resolve().then(async () => copySnapshot(
       await invokeCommand('project_create', { name: projectName })
     ));
   };
 
-  const load = (id) => enqueue(() => loadDirect(id));
-
-  const reload = (id = activeSnapshot?.metadata.id) => enqueue(() => {
+  const reloadDetached = async (id = activeSnapshot?.metadata.id) => {
     if (id == null) {
       throw new ProjectServiceError('noActiveProject', 'There is no active project to reload');
     }
-    return loadDirect(id);
-  });
+    return readDirect(id);
+  };
 
-  const commit = (snapshot, reason) => {
+  const activateSnapshot = (snapshot) => {
+    const normalized = normalizeProjectSnapshot(snapshot);
+    activationGeneration += 1;
+    activationRequestSequence += 1;
+    pendingActivation = null;
+    return replaceActive(normalized);
+  };
+
+  const activate = (id) => {
+    const projectId = validateProjectId(id);
+    const requestId = activationRequestSequence + 1;
+    activationRequestSequence = requestId;
+    activationGeneration += 1;
+    pendingActivation = { projectId, requestId };
+    return (async () => {
+      try {
+        const snapshot = await readDirect(projectId);
+        // A later explicit activation/deactivation wins even if this load finishes last.
+        if (snapshot !== null
+            && activationRequestSequence === requestId
+            && pendingActivation?.requestId === requestId) {
+          pendingActivation = null;
+          activationGeneration += 1;
+          replaceActive(snapshot);
+        }
+        return snapshot;
+      } finally {
+        if (pendingActivation?.requestId === requestId) pendingActivation = null;
+      }
+    })();
+  };
+
+  const deactivate = (options = {}) => {
+    if (!options || typeof options !== 'object' || Array.isArray(options)) {
+      throw new ProjectServiceError(
+        'invalidProjectDeactivation',
+        'Project deactivation options are invalid'
+      );
+    }
+    const { expectedProjectId } = options;
+    if (expectedProjectId !== undefined) validateProjectId(expectedProjectId);
+    const activeMatches = expectedProjectId === undefined
+      || activeSnapshot?.metadata.id === expectedProjectId;
+    const pendingMatches = expectedProjectId === undefined
+      ? pendingActivation !== null
+      : pendingActivation?.projectId === expectedProjectId;
+    if (expectedProjectId !== undefined && !activeMatches && !pendingMatches) {
+      return false;
+    }
+    activationGeneration += 1;
+    if (pendingMatches) {
+      activationRequestSequence += 1;
+      pendingActivation = null;
+    }
+    if (activeMatches && activeSnapshot !== null) replaceActive(null);
+    return true;
+  };
+
+  const commitDetached = (snapshot, reason) => {
     // Copy at call time so a caller cannot mutate a queued revision by retaining an object alias.
     const candidate = normalizeProjectSnapshot(snapshot);
     const revisionReason = validateReason(reason);
-    return enqueue(() => commitDirect(candidate, revisionReason));
+    const expectedActivationGeneration = activationGeneration;
+    return enqueueProject(candidate.metadata.id, () => commitDirect(
+      candidate,
+      revisionReason,
+      expectedActivationGeneration
+    ));
   };
 
-  const mutate = (projectId, reason, mutator, { retryOnConflict = false } = {}) => {
+  const mutateDetached = (projectId, reason, mutator, { retryOnConflict = false } = {}) => {
     validateProjectId(projectId);
     const revisionReason = validateReason(reason);
+    const expectedActivationGeneration = activationGeneration;
     if (typeof mutator !== 'function') {
       throw new ProjectServiceError('invalidProjectMutation', 'A project mutation function is required');
     }
 
-    return enqueue(async () => {
-      let snapshot = await ensureLoadedDirect(projectId);
-      for (let attempt = 0; attempt < (retryOnConflict ? 2 : 1); attempt += 1) {
-        const candidate = normalizeProjectSnapshot(await mutator(
-          normalizeProjectSnapshot(snapshot)
-        ));
-        if (candidate.metadata.id !== projectId) {
-          throw new ProjectServiceError(
-            'crossProjectMutation',
-            'A project mutation cannot change the project ID'
-          );
-        }
-        if (candidate.stateVersion !== snapshot.stateVersion) {
-          throw new ProjectServiceError(
-            'invalidProjectMutation',
-            'A project mutation cannot change the state version'
-          );
-        }
-        if (JSON.stringify(candidate) === JSON.stringify(snapshot)) {
-          return {
-            revisionId: null,
-            stateVersion: snapshot.stateVersion,
-            snapshot: normalizeProjectSnapshot(snapshot),
-            committed: false,
-          };
-        }
+    const finishCandidate = async (snapshot, rawCandidate, attempt) => {
+      const candidate = normalizeProjectSnapshot(rawCandidate);
+      if (candidate.metadata.id !== projectId) {
+        throw new ProjectServiceError(
+          'crossProjectMutation',
+          'A project mutation cannot change the project ID'
+        );
+      }
+      if (candidate.stateVersion !== snapshot.stateVersion) {
+        throw new ProjectServiceError(
+          'invalidProjectMutation',
+          'A project mutation cannot change the state version'
+        );
+      }
+      if (JSON.stringify(candidate) === JSON.stringify(snapshot)) {
+        // An asynchronous/re-entrant mutator may have allowed a child operation to commit after
+        // this attempt loaded. Re-read instead of publishing or returning the pre-child snapshot.
+        const authoritativeSnapshot = await requireProjectDirect(projectId);
+        refreshActiveProject(
+          projectId,
+          authoritativeSnapshot,
+          expectedActivationGeneration
+        );
+        return freezeTree({
+          revisionId: null,
+          stateVersion: authoritativeSnapshot.stateVersion,
+          snapshot: copySnapshot(authoritativeSnapshot),
+          committed: false,
+        });
+      }
 
-        try {
-          return await commitDirect(candidate, revisionReason);
-        } catch (error) {
-          if (!(error instanceof ProjectConflictError) || !retryOnConflict || attempt > 0) {
-            throw error;
-          }
-          if (error.authoritativeSnapshot == null) {
-            throw new ProjectServiceError('projectNotFound', 'The project no longer exists', {
-              projectId,
-            });
-          }
-          snapshot = error.authoritativeSnapshot;
+      try {
+        return await commitDirect(
+          candidate,
+          revisionReason,
+          expectedActivationGeneration
+        );
+      } catch (error) {
+        if (!(error instanceof ProjectConflictError)
+            || !retryOnConflict || attempt > 0) {
+          throw error;
+        }
+        if (error.authoritativeSnapshot == null) {
+          throw new ProjectServiceError('projectNotFound', 'The project no longer exists', {
+            projectId,
+          });
+        }
+        return {
+          [mutationStep]: 'retry',
+          attempt: attempt + 1,
+          snapshot: error.authoritativeSnapshot,
+        };
+      }
+    };
+
+    const beginAttempt = async (snapshot, attempt) => {
+      const current = snapshot ?? await requireProjectDirect(projectId);
+      const { value } = invokeMutator(projectId, mutator, current);
+      if (value !== null
+          && (typeof value === 'object' || typeof value === 'function')
+          && typeof value.then === 'function') {
+        // Do not hold the per-project FIFO while awaiting arbitrary application code. Child or
+        // external same-project operations can settle; the candidate later commits with CAS.
+        return {
+          [mutationStep]: 'awaitCandidate',
+          attempt,
+          candidate: Promise.resolve(value),
+          snapshot: current,
+        };
+      }
+      return finishCandidate(current, value, attempt);
+    };
+
+    const driveMutation = async (initialStep) => {
+      let step = await initialStep;
+      while (step?.[mutationStep]) {
+        if (step[mutationStep] === 'awaitCandidate') {
+          const { attempt, candidate: pendingCandidate, snapshot } = step;
+          const candidate = await pendingCandidate;
+          step = await enqueueProject(projectId, () => finishCandidate(
+            snapshot,
+            candidate,
+            attempt
+          ));
+        } else {
+          const { attempt, snapshot } = step;
+          step = await enqueueProject(projectId, () => beginAttempt(
+            snapshot,
+            attempt
+          ));
         }
       }
-      throw new ProjectServiceError('projectCommitFailed', 'The project could not be committed');
-    });
+      return step;
+    };
+
+    return driveMutation(enqueueProject(projectId, () => beginAttempt(null, 0)));
   };
 
-  const navigate = (
+  const navigateDetached = (
     command,
     id = activeSnapshot?.metadata.id,
     expectedReason = null
-  ) => enqueue(async () => {
+  ) => {
     if (id == null) {
-      throw new ProjectServiceError('noActiveProject', 'There is no active project');
+      return Promise.reject(
+        new ProjectServiceError('noActiveProject', 'There is no active project')
+      );
     }
-    if (expectedReason !== null) validateReason(expectedReason);
-    const snapshot = await ensureLoadedDirect(id);
-    try {
-      const args = {
-        id: snapshot.metadata.id,
-        expectedVersion: snapshot.stateVersion,
-      };
-      if (expectedReason !== null) args.expectedReason = expectedReason;
-      const result = await invokeCommand(command, args);
-      return result == null ? null : setActive(result);
-    } catch (error) {
-      if (isStaleVersionError(error)) {
-        return reloadAfterConflict(snapshot.metadata.id, error);
+    const projectId = validateProjectId(id);
+    const expectedActivationGeneration = activationGeneration;
+    return enqueueProject(projectId, async () => {
+      if (expectedReason !== null) validateReason(expectedReason);
+      const snapshot = await requireProjectDirect(projectId);
+      try {
+        const args = {
+          id: snapshot.metadata.id,
+          expectedVersion: snapshot.stateVersion,
+        };
+        if (expectedReason !== null) args.expectedReason = expectedReason;
+        const value = await invokeCommand(command, args);
+        if (value === null) {
+          refreshActiveProject(projectId, snapshot, expectedActivationGeneration);
+          return null;
+        }
+        const result = copySnapshot(value);
+        if (result.metadata.id !== snapshot.metadata.id) {
+          throw new ProjectServiceError(
+            'invalidProjectNavigation',
+            'The desktop host returned a project from a different navigation target'
+          );
+        }
+        refreshActiveProject(
+          snapshot.metadata.id,
+          result,
+          expectedActivationGeneration
+        );
+        return result;
+      } catch (error) {
+        if (isStaleVersionError(error)) {
+          return reloadAfterConflict(
+            snapshot.metadata.id,
+            error,
+            expectedActivationGeneration
+          );
+        }
+        throw error;
       }
-      throw error;
-    }
-  });
+    });
+  };
 
-  const historyStatus = (id = activeSnapshot?.metadata.id) => enqueue(async () => {
+  const historyStatusDetached = (id = activeSnapshot?.metadata.id) => {
     if (id == null) {
-      throw new ProjectServiceError('noActiveProject', 'There is no active project');
+      return Promise.reject(
+        new ProjectServiceError('noActiveProject', 'There is no active project')
+      );
     }
-    const snapshot = await ensureLoadedDirect(id);
-    const status = normalizeHistoryStatus(await invokeCommand('project_history_status', {
-      id: snapshot.metadata.id,
-    }));
-    if (status.stateVersion !== snapshot.stateVersion) {
-      return reloadAfterConflict(snapshot.metadata.id, new ProjectServiceError(
-        STALE_PROJECT_VERSION,
-        'The project history changed while it was being inspected'
-      ));
-    }
-    return status;
-  });
+    const projectId = validateProjectId(id);
+    const expectedActivationGeneration = activationGeneration;
+    return enqueueProject(projectId, async () => {
+      const snapshot = await requireProjectDirect(projectId);
+      const status = normalizeHistoryStatus(await invokeCommand('project_history_status', {
+        id: snapshot.metadata.id,
+      }));
+      if (status.stateVersion !== snapshot.stateVersion) {
+        return reloadAfterConflict(
+          snapshot.metadata.id,
+          new ProjectServiceError(
+            STALE_PROJECT_VERSION,
+            'The project history changed while it was being inspected'
+          ),
+          expectedActivationGeneration
+        );
+      }
+      refreshActiveProject(projectId, snapshot, expectedActivationGeneration);
+      return status;
+    });
+  };
 
-  const trackHistoryStatus = (id, selector) => {
+  const trackHistoryStatusDetached = (id, selector) => {
     const projectId = validateProjectId(id);
     const trackSelector = normalizeTrackSelector(selector);
-    return enqueue(async () => {
-      let snapshot = await ensureLoadedDirect(projectId);
+    const expectedActivationGeneration = activationGeneration;
+    return enqueueProject(projectId, async () => {
+      let snapshot = await requireProjectDirect(projectId);
       for (let attempt = 0; attempt < 2; attempt += 1) {
         const status = normalizeTrackHistoryStatus(await invokeCommand(
           'project_track_history_status',
           { id: projectId, selector: trackSelector }
         ));
-        if (status.stateVersion === snapshot.stateVersion) return status;
-        const loaded = await loadDirect(projectId);
+        if (status.stateVersion === snapshot.stateVersion) {
+          refreshActiveProject(projectId, snapshot, expectedActivationGeneration);
+          return status;
+        }
+        const loaded = await readDirect(projectId);
         if (loaded === null) {
           throw new ProjectServiceError('projectNotFound', 'The project does not exist', {
             projectId,
           });
         }
         snapshot = loaded;
-        if (status.stateVersion === snapshot.stateVersion) return status;
+        if (status.stateVersion === snapshot.stateVersion) {
+          refreshActiveProject(projectId, snapshot, expectedActivationGeneration);
+          return status;
+        }
       }
-      return reloadAfterConflict(projectId, new ProjectServiceError(
-        STALE_PROJECT_VERSION,
-        'The project changed while its editor history was being inspected'
-      ));
+      return reloadAfterConflict(
+        projectId,
+        new ProjectServiceError(
+          STALE_PROJECT_VERSION,
+          'The project changed while its editor history was being inspected'
+        ),
+        expectedActivationGeneration
+      );
     });
   };
 
@@ -410,7 +660,7 @@ export const createProjectService = ({ invokeCommand = invokeDesktop } = {}) => 
         'The desktop host returned an invalid project track mutation'
       );
     }
-    const snapshot = normalizeProjectSnapshot(value.snapshot);
+    const snapshot = copySnapshot(value.snapshot);
     const status = normalizeTrackHistoryStatus(value.status);
     if (snapshot.metadata.id !== projectId || status.stateVersion !== snapshot.stateVersion) {
       throw new ProjectServiceError(
@@ -418,13 +668,17 @@ export const createProjectService = ({ invokeCommand = invokeDesktop } = {}) => 
         'The desktop host returned an inconsistent project track mutation'
       );
     }
-    return { snapshot, status };
+    return freezeTree({ snapshot, status });
   };
 
-  const reloadTrackConflict = async (projectId, cause) => {
+  const reloadTrackConflict = async (
+    projectId,
+    cause,
+    expectedActivationGeneration
+  ) => {
     let authoritativeSnapshot = null;
     try {
-      authoritativeSnapshot = await loadDirect(projectId);
+      authoritativeSnapshot = await readDirect(projectId);
     } catch (reloadError) {
       throw new ProjectServiceError(
         'projectReloadFailed',
@@ -432,10 +686,11 @@ export const createProjectService = ({ invokeCommand = invokeDesktop } = {}) => 
         { projectId, cause, reloadError }
       );
     }
+    refreshActiveProject(projectId, authoritativeSnapshot, expectedActivationGeneration);
     throw new ProjectConflictError(projectId, authoritativeSnapshot, cause);
   };
 
-  const commitTrack = ({
+  const commitTrackDetached = ({
     id,
     selector,
     expectedHistoryVersion,
@@ -458,8 +713,9 @@ export const createProjectService = ({ invokeCommand = invokeDesktop } = {}) => 
     const previous = normalizeStandaloneTrack(beforeTrack, projectId);
     const next = normalizeStandaloneTrack(afterTrack, projectId);
     const revisionReason = validateReason(reason);
-    return enqueue(async () => {
-      await ensureLoadedDirect(projectId);
+    const expectedActivationGeneration = activationGeneration;
+    return enqueueProject(projectId, async () => {
+      await requireProjectDirect(projectId);
       try {
         const result = validateTrackMutation(await invokeCommand('project_track_commit', {
           id: projectId,
@@ -469,18 +725,22 @@ export const createProjectService = ({ invokeCommand = invokeDesktop } = {}) => 
           afterTrack: next,
           reason: revisionReason,
         }), projectId);
-        setActive(result.snapshot);
+        refreshActiveProject(
+          projectId,
+          result.snapshot,
+          expectedActivationGeneration
+        );
         return result;
       } catch (error) {
         if (TRACK_HISTORY_CONFLICT_CODES.has(error?.code)) {
-          return reloadTrackConflict(projectId, error);
+          return reloadTrackConflict(projectId, error, expectedActivationGeneration);
         }
         throw error;
       }
     });
   };
 
-  const navigateTrack = (command, {
+  const navigateTrackDetached = (command, {
     id,
     selector,
     expectedHistoryVersion,
@@ -495,8 +755,9 @@ export const createProjectService = ({ invokeCommand = invokeDesktop } = {}) => 
       );
     }
     const reason = validateReason(expectedReason);
-    return enqueue(async () => {
-      await ensureLoadedDirect(projectId);
+    const expectedActivationGeneration = activationGeneration;
+    return enqueueProject(projectId, async () => {
+      const snapshot = await requireProjectDirect(projectId);
       try {
         const value = await invokeCommand(command, {
           id: projectId,
@@ -504,13 +765,20 @@ export const createProjectService = ({ invokeCommand = invokeDesktop } = {}) => 
           expectedHistoryVersion,
           expectedReason: reason,
         });
-        if (value === null) return null;
+        if (value === null) {
+          refreshActiveProject(projectId, snapshot, expectedActivationGeneration);
+          return null;
+        }
         const result = validateTrackMutation(value, projectId);
-        setActive(result.snapshot);
+        refreshActiveProject(
+          projectId,
+          result.snapshot,
+          expectedActivationGeneration
+        );
         return result;
       } catch (error) {
         if (TRACK_HISTORY_CONFLICT_CODES.has(error?.code)) {
-          return reloadTrackConflict(projectId, error);
+          return reloadTrackConflict(projectId, error, expectedActivationGeneration);
         }
         throw error;
       }
@@ -525,28 +793,74 @@ export const createProjectService = ({ invokeCommand = invokeDesktop } = {}) => 
     return () => subscribers.delete(subscriber);
   };
 
+  const undoDetachedTrack = (options) => (
+    navigateTrackDetached('project_track_undo', options)
+  );
+  const redoDetachedTrack = (options) => (
+    navigateTrackDetached('project_track_redo', options)
+  );
+  const undoDetached = (id, expectedReason = null) => (
+    navigateDetached('project_undo', id, expectedReason)
+  );
+  const redoDetached = (id, expectedReason = null) => (
+    navigateDetached('project_redo', id, expectedReason)
+  );
+
   return Object.freeze({
-    createProject: create,
-    loadProject: load,
-    reloadProject: reload,
-    commitProject: commit,
-    mutateProject: mutate,
-    getProjectHistoryStatus: historyStatus,
-    getProjectTrackHistoryStatus: trackHistoryStatus,
-    commitProjectTrack: commitTrack,
-    undoProjectTrack: (options) => navigateTrack('project_track_undo', options),
-    redoProjectTrack: (options) => navigateTrack('project_track_redo', options),
-    undoProject: (id, expectedReason = null) => navigate('project_undo', id, expectedReason),
-    redoProject: (id, expectedReason = null) => navigate('project_redo', id, expectedReason),
-    getActiveProjectSnapshot: () => (
-      activeSnapshot == null ? null : normalizeProjectSnapshot(activeSnapshot)
-    ),
+    readProject: read,
+    createDetachedProject: createDetached,
+    commitDetachedProject: commitDetached,
+    mutateDetachedProject: mutateDetached,
+    getDetachedProjectHistoryStatus: historyStatusDetached,
+    getDetachedProjectTrackHistoryStatus: trackHistoryStatusDetached,
+    commitDetachedProjectTrack: commitTrackDetached,
+    undoDetachedProjectTrack: undoDetachedTrack,
+    redoDetachedProjectTrack: redoDetachedTrack,
+    undoDetachedProject: undoDetached,
+    redoDetachedProject: redoDetached,
+    activateProjectSnapshot: activateSnapshot,
+    activateProject: activate,
+    deactivateProject: deactivate,
+
+    // Compatibility APIs are deliberately detached. Existing storage callers must not acquire
+    // global active-project authority merely by creating, reading, or editing a project.
+    createProject: createDetached,
+    loadProject: read,
+    reloadProject: reloadDetached,
+    commitProject: commitDetached,
+    mutateProject: mutateDetached,
+    getProjectHistoryStatus: historyStatusDetached,
+    getProjectTrackHistoryStatus: trackHistoryStatusDetached,
+    commitProjectTrack: commitTrackDetached,
+    undoProjectTrack: undoDetachedTrack,
+    redoProjectTrack: redoDetachedTrack,
+    undoProject: undoDetached,
+    redoProject: redoDetached,
+    getActiveProjectSnapshot: () => copySnapshot(activeSnapshot),
     subscribe,
   });
 };
 
 const projectService = createProjectService();
 
+export const readProject = projectService.readProject;
+export const createDetachedProject = projectService.createDetachedProject;
+export const commitDetachedProject = projectService.commitDetachedProject;
+export const mutateDetachedProject = projectService.mutateDetachedProject;
+export const getDetachedProjectHistoryStatus = projectService.getDetachedProjectHistoryStatus;
+export const getDetachedProjectTrackHistoryStatus = (
+  projectService.getDetachedProjectTrackHistoryStatus
+);
+export const commitDetachedProjectTrack = projectService.commitDetachedProjectTrack;
+export const undoDetachedProjectTrack = projectService.undoDetachedProjectTrack;
+export const redoDetachedProjectTrack = projectService.redoDetachedProjectTrack;
+export const undoDetachedProject = projectService.undoDetachedProject;
+export const redoDetachedProject = projectService.redoDetachedProject;
+export const activateProjectSnapshot = projectService.activateProjectSnapshot;
+export const activateProject = projectService.activateProject;
+export const deactivateProject = projectService.deactivateProject;
+
+// Backward-compatible names intentionally retain detached storage semantics.
 export const createProject = projectService.createProject;
 export const loadProject = projectService.loadProject;
 export const reloadProject = projectService.reloadProject;

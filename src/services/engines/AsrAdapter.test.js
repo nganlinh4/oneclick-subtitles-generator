@@ -90,6 +90,32 @@ it('global cancellation rejects immediately while forwarding the AbortSignal to 
   expect(abortAllRequests()).toBe(false);
 });
 
+it('an owning run can cancel ASR without aborting unrelated global requests', async () => {
+  const owner = new AbortController();
+  let nativeSignal;
+  startAsrJob.mockImplementation((_request, _handlers, options) => {
+    nativeSignal = options.signal;
+    return Promise.resolve({ id: 'owned-registration' });
+  });
+
+  const pending = processAsrSegment(
+    'parakeet',
+    null,
+    { start: 0, end: 1 },
+    { signal: owner.signal },
+    {}
+  );
+  const cancelled = pending.catch((error) => error);
+  owner.abort();
+
+  await expect(cancelled).resolves.toMatchObject({
+    name: 'AbortError',
+    code: 'asrCancelled',
+  });
+  expect(nativeSignal.aborted).toBe(true);
+  expect(abortAllRequests()).toBe(false);
+});
+
 it('global cancellation during window preparation prevents native job creation', async () => {
   startAsrJob.mockResolvedValue({ id: 'must-not-start' });
 

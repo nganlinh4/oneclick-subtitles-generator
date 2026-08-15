@@ -1,6 +1,16 @@
 import { useState, useEffect, useRef } from 'react';
 import { useTranslation } from 'react-i18next';
-import { defaultCustomization } from './SubtitleCustomizationPanel';
+import {
+  defaultCustomization,
+  parseStoredSubtitleCustomization,
+} from './subtitleCustomization/defaultCustomization';
+import {
+  loadCropSettings,
+  loadNarrationSource,
+  loadRenderSettings,
+  loadSubtitleSource,
+  storeRenderPreference,
+} from './VideoRenderingSection/renderPreferences';
 import QueueManagerPanel from './QueueManagerPanel';
 import '../styles/VideoRenderingSection.css';
 import '../styles/CollapsibleSection.css';
@@ -22,12 +32,18 @@ import {
   buildNativeRenderRequest,
   cancelNativeRender,
   ensureNativeRenderProject,
+  getNativeRenderStatus,
   resolveNativeRenderSource,
   runNativeRender,
 } from '../platform/renderService';
 
 // Gated debug logging (enable in the browser console: localStorage.debug_logs = 'true')
-const DEBUG_LOGS = (typeof window !== 'undefined') && (localStorage.getItem('debug_logs') === 'true');
+let DEBUG_LOGS = false;
+try {
+  DEBUG_LOGS = typeof window !== 'undefined' && localStorage.getItem('debug_logs') === 'true';
+} catch {
+  DEBUG_LOGS = false;
+}
 const dbg = (...args) => { if (DEBUG_LOGS) console.log(...args); };
 
 
@@ -38,7 +54,8 @@ const VideoRenderingSection = ({
   subtitlesData,
   translatedSubtitles,
   narrationResults,
-  autoFillData = null
+  autoFillData = null,
+  onNativeVideoSelected,
 }) => {
   const { t } = useTranslation();
   const [isRendering, setIsRendering] = useState(false);
@@ -48,8 +65,7 @@ const VideoRenderingSection = ({
   const [, setError] = useState('');
   const [currentRenderId, setCurrentRenderId] = useState(null);
   const [abortController, setAbortController] = useState(null);
-  const isRenderingRef = useRef(isRendering);
-  isRenderingRef.current = isRendering;
+  const abortControllerRef = useRef(null);
 
   // Ref for the Remotion video player
   const videoPlayerRef = useRef(null);
@@ -66,36 +82,18 @@ const VideoRenderingSection = ({
     selectedVideoFile,
     setSelectedVideoFile,
     handleVideoUpload,
+    handleBrowseClick,
+    nativeDropZoneRef,
     handleDragEnter,
     handleDragLeave,
     handleDragOver,
     handleDrop,
-  } = useVideoUpload();
+  } = useVideoUpload({ onNativeVideoSelected });
 
   // Form state with localStorage persistence
-  const [selectedSubtitles, setSelectedSubtitles] = useState(() => {
-    return localStorage.getItem('videoRender_selectedSubtitles') || 'original';
-  });
-  const [selectedNarration, setSelectedNarration] = useState(() => {
-    return localStorage.getItem('videoRender_selectedNarration') || 'none';
-  });
-  const [renderSettings, setRenderSettings] = useState(() => {
-    const saved = localStorage.getItem('videoRender_renderSettings');
-    const defaultSettings = {
-      resolution: '1080p',
-      frameRate: 30,
-      videoType: 'Subtitled Video',
-      originalAudioVolume: 100,
-      narrationVolume: 100,
-      trimStart: 0,
-      trimEnd: 0,
-    };
-    if (saved) {
-      const parsed = JSON.parse(saved);
-      return { ...defaultSettings, ...parsed };
-    }
-    return defaultSettings;
-  });
+  const [selectedSubtitles, setSelectedSubtitles] = useState(loadSubtitleSource);
+  const [selectedNarration, setSelectedNarration] = useState(loadNarrationSource);
+  const [renderSettings, setRenderSettings] = useState(loadRenderSettings);
 
   // *** FIX START ***
   // This effect resets the video duration state whenever a new video file is selected.
@@ -119,19 +117,15 @@ const VideoRenderingSection = ({
   // *** FIX END ***
 
   const [subtitleCustomization, setSubtitleCustomization] = useState(() => {
-    const saved = localStorage.getItem('videoRender_subtitleCustomization');
-    return saved ? JSON.parse(saved) : defaultCustomization;
+    try {
+      return parseStoredSubtitleCustomization(
+        localStorage.getItem('videoRender_subtitleCustomization'),
+      );
+    } catch {
+      return parseStoredSubtitleCustomization(null);
+    }
   });
-  const [cropSettings, setCropSettings] = useState(() => {
-    const saved = localStorage.getItem('videoRender_cropSettings');
-    return saved ? JSON.parse(saved) : {
-      x: 0,
-      y: 0,
-      width: 100,
-      height: 100,
-      aspectRatio: null
-    };
-  });
+  const [cropSettings, setCropSettings] = useState(loadCropSettings);
   const [, setNarrationUpdateTrigger] = useState(0);
 
   // Narration availability + aligned-audio resolver + refresh action (extracted hook)
@@ -153,12 +147,12 @@ const VideoRenderingSection = ({
     renderQueue,
     setRenderQueue,
     currentQueueItem,
-    setCurrentQueueItem,
     startNextPendingRender,
+    ownsRenderLease,
+    ownQueuePlayback,
     removeFromQueue,
     clearQueue,
   } = useRenderQueue({
-    isRendering,
     setIsRendering,
     setRenderProgress,
     setRenderStatus,
@@ -209,23 +203,23 @@ const VideoRenderingSection = ({
 
   // Save video rendering settings to localStorage whenever they change
   useEffect(() => {
-    localStorage.setItem('videoRender_selectedSubtitles', selectedSubtitles);
+    storeRenderPreference('videoRender_selectedSubtitles', selectedSubtitles);
   }, [selectedSubtitles]);
 
   useEffect(() => {
-    localStorage.setItem('videoRender_selectedNarration', selectedNarration);
+    storeRenderPreference('videoRender_selectedNarration', selectedNarration);
   }, [selectedNarration]);
 
   useEffect(() => {
-    localStorage.setItem('videoRender_renderSettings', JSON.stringify(renderSettings));
+    storeRenderPreference('videoRender_renderSettings', renderSettings, { json: true });
   }, [renderSettings]);
 
   useEffect(() => {
-    localStorage.setItem('videoRender_subtitleCustomization', JSON.stringify(subtitleCustomization));
+    storeRenderPreference('videoRender_subtitleCustomization', subtitleCustomization, { json: true });
   }, [subtitleCustomization]);
 
   useEffect(() => {
-    localStorage.setItem('videoRender_cropSettings', JSON.stringify(cropSettings));
+    storeRenderPreference('videoRender_cropSettings', cropSettings, { json: true });
   }, [cropSettings]);
 
   // Note: isCollapsed state is not persisted - always starts collapsed like BackgroundImageGenerator
@@ -240,9 +234,29 @@ const VideoRenderingSection = ({
 
   // Simple render function - allows queueing multiple renders
   const handleRender = async () => {
-    let nativeSourceAsset = null;
-    let nativeRenderRequest = null;
+    const lyrics = getCurrentSubtitles();
+    if (!Array.isArray(lyrics) || lyrics.length === 0) {
+      const message = t(
+        'videoRendering.noSubtitlesSelected',
+        'Add or generate subtitles before rendering.',
+      );
+      setError(message);
+      window.addToast?.(message, 'error', 8000);
+      return;
+    }
+
+    let nativeSourceAsset;
+    let nativeRenderRequest;
     try {
+      const runtime = await getNativeRenderStatus();
+      if (!runtime.available) {
+        const error = new Error(t(
+          'videoRendering.rendererNotInstalled',
+          'Install the Remotion video renderer in Settings before rendering.',
+        ));
+        error.code = 'renderRuntimeUnavailable';
+        throw error;
+      }
       nativeSourceAsset = await resolveNativeRenderSource(selectedVideoFile);
       const projectId = await ensureNativeRenderProject(nativeSourceAsset);
       const narrationArtifactId = selectedNarration === 'generated'
@@ -252,15 +266,25 @@ const VideoRenderingSection = ({
         sourceAsset: nativeSourceAsset,
         projectId,
         narrationArtifactId,
-        lyrics: getCurrentSubtitles(),
+        lyrics,
         settings: renderSettings,
         customization: { ...defaultCustomization, ...subtitleCustomization },
         crop: cropSettings,
       });
-    } catch {
-      // The start path reports the existing invalid-video error and keeps the queue contract.
+    } catch (error) {
+      const message = error?.code === 'renderRuntimeUnavailable'
+        ? t(
+          'videoRendering.rendererNotInstalled',
+          'Install the Remotion video renderer in Settings before rendering.',
+        )
+        : error?.message || t(
+          'videoRendering.invalidRenderConfiguration',
+          'Check the selected video, subtitle timings, and render settings.',
+        );
+      setError(message);
+      window.addToast?.(message, 'error', 8000);
+      return;
     }
-    const shouldQueue = isRenderingRef.current;
     // Create queue item for display
     const queueItem = {
       id: `render_${Date.now()}_${Math.random().toString(36).substring(2, 9)}`,
@@ -269,14 +293,14 @@ const VideoRenderingSection = ({
       settings: renderSettings,
       customization: { ...defaultCustomization, ...subtitleCustomization },
       cropSettings: cropSettings,
-      lyrics: getCurrentSubtitles(),
+      lyrics,
       narration: selectedNarration,
       nativeSourceAsset,
       nativeRenderRequest,
-      status: shouldQueue ? 'pending' : 'processing',
+      status: 'pending',
       progress: 0,
       timestamp: Date.now(), // Store as timestamp number, not formatted string
-      startedAt: shouldQueue ? null : Date.now(),
+      startedAt: null,
       completedAt: null,
       outputPath: null,
       error: null
@@ -284,18 +308,15 @@ const VideoRenderingSection = ({
 
     // Always add to queue for display
     setRenderQueue(prev => [queueItem, ...prev]);
-
-    // If not currently rendering, start this one immediately
-    if (!shouldQueue) {
-      setCurrentQueueItem(queueItem);
-      await handleStartRender(queueItem);
-    }
+    void startNextPendingRender();
   };
 
   // Start rendering
-  const handleStartRender = async (queueItem = null) => {
+  const handleStartRender = async (queueItem, renderOwner) => {
+    if (!queueItem || !ownsRenderLease(renderOwner)) return;
     // Create abort controller for this render
     const controller = new AbortController();
+    abortControllerRef.current = controller;
     setAbortController(controller);
 
     try {
@@ -333,8 +354,9 @@ const VideoRenderingSection = ({
         const completed = await runNativeRender(nativeRequest, {
           signal: controller.signal,
           onStarted: (job) => {
+            if (!ownsRenderLease(renderOwner)) return;
             setCurrentRenderId(job.id);
-            const targetQueueItem = queueItem || currentQueueItem;
+            const targetQueueItem = queueItem;
             if (targetQueueItem) {
               setRenderQueue(prev => prev.map(item =>
                 item.id === targetQueueItem.id
@@ -344,9 +366,10 @@ const VideoRenderingSection = ({
             }
           },
           onProgress: (event) => {
+            if (!ownsRenderLease(renderOwner)) return;
             const progressPercent = Math.round(event.fractionMillionths / 10_000);
             setRenderProgress(progressPercent);
-            const targetQueueItem = queueItem || currentQueueItem;
+            const targetQueueItem = queueItem;
             if (targetQueueItem) {
               setRenderQueue(prev => prev.map(item =>
                 item.id === targetQueueItem.id
@@ -362,12 +385,14 @@ const VideoRenderingSection = ({
             }
           },
         });
+        if (!ownsRenderLease(renderOwner)) return;
         const { result } = completed;
         const completedAt = Date.now();
+        ownQueuePlayback(result.playback.id);
         setRenderedVideoUrl(result.playback.playbackUrl);
         setRenderStatus(t('videoRendering.complete', 'Render complete!'));
         setRenderProgress(100);
-        const targetQueueItem = queueItem || currentQueueItem;
+        const targetQueueItem = queueItem;
         if (targetQueueItem) {
           setRenderQueue(prev => prev.map(item =>
             item.id === targetQueueItem.id
@@ -389,6 +414,7 @@ const VideoRenderingSection = ({
       return;
 
     } catch (error) {
+      if (!ownsRenderLease(renderOwner)) return;
       console.error('Render error:', error);
 
       // Check if this was an abort (cancellation)
@@ -397,8 +423,8 @@ const VideoRenderingSection = ({
         setRenderStatus(t('videoRendering.cancelled', 'Render cancelled'));
         setRenderProgress(0);
 
-        // Update queue item as cancelled (use passed queueItem or fallback to currentQueueItem)
-        const targetQueueItem = queueItem || currentQueueItem;
+        // Only this generation may update its queue item.
+        const targetQueueItem = queueItem;
         if (targetQueueItem) {
           setRenderQueue(prev => prev.map(item =>
             item.id === targetQueueItem.id
@@ -410,8 +436,8 @@ const VideoRenderingSection = ({
         setError(error.message);
         setRenderStatus(t('videoRendering.failed', 'Render failed'));
 
-        // Update queue item as failed (use passed queueItem or fallback to currentQueueItem)
-        const targetQueueItem = queueItem || currentQueueItem;
+        // Only this generation may update its queue item.
+        const targetQueueItem = queueItem;
         if (targetQueueItem) {
           setRenderQueue(prev => prev.map(item =>
             item.id === targetQueueItem.id
@@ -421,13 +447,7 @@ const VideoRenderingSection = ({
         }
       }
     } finally {
-      setIsRendering(false);
-      setCurrentRenderId(null);
-      setAbortController(null);
-
-      // Render finished - reset state and start next
-      setCurrentQueueItem(null);
-      setTimeout(() => startNextPendingRender(), 1000);
+      if (abortControllerRef.current === controller) abortControllerRef.current = null;
     }
   };
 
@@ -436,20 +456,17 @@ const VideoRenderingSection = ({
 
   // Cancel rendering
   const handleCancelRender = async () => {
-    // First, abort the fetch request if we have an abort controller
-    if (abortController) {
-      abortController.abort();
-    }
-
     // Update status immediately to show cancellation is in progress
     setRenderStatus(t('videoRendering.cancelling', 'Cancelling render...'));
 
+    // The signal owns cancellation before and after the native job ID arrives.
+    const activeController = abortControllerRef.current || abortController;
+    if (activeController) {
+      activeController.abort();
+      return;
+    }
+
     if (!currentRenderId) {
-      setIsRendering(false);
-      setRenderStatus(t('videoRendering.cancelled', 'Render cancelled'));
-      setAbortController(null);
-      setCurrentQueueItem(null);
-      setTimeout(() => startNextPendingRender(), 1000);
       return;
     }
 
@@ -458,12 +475,6 @@ const VideoRenderingSection = ({
     } catch (error) {
       console.error('Error cancelling render:', error);
       setRenderStatus(t('videoRendering.cancelError', 'Error cancelling render'));
-      // Force cleanup on error
-      setIsRendering(false);
-      setCurrentRenderId(null);
-      setAbortController(null);
-      setCurrentQueueItem(null);
-      setTimeout(() => startNextPendingRender(), 1000);
     }
   };
 
@@ -552,7 +563,10 @@ const VideoRenderingSection = ({
           {/* First row: Video Input, Subtitle Source, and Narration Audio in one line */}
           <InputSelectionRow
             selectedVideoFile={selectedVideoFile}
+            hasSubtitles={getCurrentSubtitles().length > 0}
             handleVideoUpload={handleVideoUpload}
+            handleBrowseClick={handleBrowseClick}
+            nativeDropZoneRef={nativeDropZoneRef}
             subtitlesData={subtitlesData}
             translatedSubtitles={translatedSubtitles}
             selectedSubtitles={selectedSubtitles}

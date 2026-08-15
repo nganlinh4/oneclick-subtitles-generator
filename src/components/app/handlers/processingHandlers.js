@@ -2,6 +2,11 @@ import { resetGeminiButtonState } from "../../../utils/geminiEffects";
 import { downloadAndPrepareYouTubeVideo } from "../VideoProcessingHandlers";
 import { isDesktopRuntime } from "../../../platform/runtimeEnvironment";
 import { clearProjectSubtitles } from "../../../platform/subtitleProjectStore";
+import {
+  assertAutoGenerationContextCurrent,
+  isAutoGenerationCompletion,
+  isAutoGenerationContext,
+} from "../../../utils/autoGenerationOwnership";
 
 // Gated debug logging (enable in the browser console: localStorage.debug_logs = 'true')
 const DEBUG_LOGS = (typeof window !== 'undefined') && (localStorage.getItem('debug_logs') === 'true');
@@ -52,7 +57,11 @@ export const createProcessingHandlers = ({
    * Handle processing with selected options
    */
   const handleProcessWithOptions = async (options) => {
+    const autoRunContext = isAutoGenerationContext(options?.autoRunContext)
+      ? options.autoRunContext
+      : null;
     try {
+      if (autoRunContext) assertAutoGenerationContextCurrent(autoRunContext);
       setShowProcessingModal(false);
 
       // Set processing state to true when starting
@@ -65,21 +74,31 @@ export const createProcessingHandlers = ({
         options.segmentProcessingDelay
       );
 
-      let fileToProcess = uploadedFileData;
-      if (!fileToProcess) {
-        if (options.videoFile) {
-          setUploadedFileData(options.videoFile);
-          fileToProcess = options.videoFile;
-        } else {
-          throw new Error("No uploaded file data available");
-        }
+      // The media returned by preparation owns this run. A stale captured
+      // uploadedFileData value must never override it.
+      let fileToProcess = options.videoFile || uploadedFileData;
+      if (!fileToProcess) throw new Error("No uploaded file data available");
+      if (autoRunContext && fileToProcess !== autoRunContext.media) {
+        throw new Error('Automatic subtitle processing received different media than preparation.');
+      }
+      if (options.videoFile) {
+        if (autoRunContext) assertAutoGenerationContextCurrent(autoRunContext);
+        setUploadedFileData(options.videoFile);
+      }
+
+      if (options.generationScope === 'full-media') {
+        if (autoRunContext) assertAutoGenerationContextCurrent(autoRunContext);
+        localStorage.removeItem('video_processing_outside_context_text');
+        localStorage.setItem('video_processing_use_outside_context', 'false');
       }
 
       // Parakeet processing will be handled by generateSubtitles with method: 'nvidia-parakeet'
 
       // Prepare options for subtitle generation
       const subtitleOptions = {
-        segment: options.segment,
+        segment: options.generationScope === 'full-media' ? undefined : options.segment,
+        requestedSegment: options.segment,
+        generationScope: options.generationScope,
         fps: options.fps,
         mediaResolution: options.mediaResolution,
         model: options.model,
@@ -95,6 +114,9 @@ export const createProcessingHandlers = ({
         asrMaxChars: options.asrMaxChars,
         asrMaxWords: options.asrMaxWords,
         asrLanguage: options.asrLanguage,
+        promptContext: options.promptContext,
+        autoRunContext,
+        signal: autoRunContext?.signal,
       };
 
       dbg("[ProcessWithOptions] Passing to generateSubtitles - segmentProcessingDelay:", subtitleOptions.segmentProcessingDelay);
@@ -110,8 +132,13 @@ export const createProcessingHandlers = ({
       }
 
       // Add user-provided subtitles ONLY when the timing-generation preset is selected
-      if (options.promptPreset === 'timing-generation' && useUserProvidedSubtitles && userProvidedSubtitles) {
-        subtitleOptions.userProvidedSubtitles = userProvidedSubtitles;
+      if (options.promptPreset === 'timing-generation') {
+        const suppliedSubtitles = options.useUserProvidedSubtitles
+          ? options.userProvidedSubtitles
+          : (useUserProvidedSubtitles ? userProvidedSubtitles : null);
+        if (typeof suppliedSubtitles === 'string' && suppliedSubtitles.trim()) {
+          subtitleOptions.userProvidedSubtitles = suppliedSubtitles;
+        }
       }
 
       // Before starting, if parallel requested, inform UI of processing ranges
@@ -130,12 +157,18 @@ export const createProcessingHandlers = ({
           console.warn('[ProcessWithOptions] Could not compute processing ranges:', e);
         }
 
-        await generateSubtitles(
+        if (autoRunContext) assertAutoGenerationContextCurrent(autoRunContext);
+        const generated = await generateSubtitles(
           fileToProcess,
           "file-upload",
           apiKeysSet,
           subtitleOptions
         );
+        if (autoRunContext) {
+          assertAutoGenerationContextCurrent(autoRunContext);
+          return isAutoGenerationCompletion(generated, autoRunContext) ? generated : false;
+        }
+        return generated === true;
       } finally {
         // Clear the session prompt after processing
         sessionStorage.removeItem("current_session_prompt");
@@ -156,6 +189,10 @@ export const createProcessingHandlers = ({
         );
       }
     } catch (error) {
+      if (autoRunContext?.signal?.aborted || error?.name === 'AbortError') {
+        setIsProcessingSegment(false);
+        return false;
+      }
       console.error("Error processing with options:", error);
       setStatus({
         message: `${t("errors.processingFailed", "Processing failed")}: ${
@@ -166,6 +203,7 @@ export const createProcessingHandlers = ({
 
       // Also clear processing state on error
       setIsProcessingSegment(false);
+      return false;
     }
   };
 

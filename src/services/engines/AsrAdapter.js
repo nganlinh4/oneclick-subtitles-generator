@@ -67,7 +67,7 @@ export const processAsrSegment = async (engine, _inputFile, segment, options = {
   const { onStatus, onRanges, onStreamingUpdate, onMergeSegment, t } = hooks;
   const engineId = typeof engine === 'string' ? engine : engine.id;
   const engineName = (typeof engine === 'object' && (engine.name || engine.labelDefault)) || engineId;
-  const { requestId, signal } = createRequestController();
+  const { requestId, signal } = createRequestController(options.signal);
 
   try {
     // Split the segment into sequential windows (same slicer as Parakeet).

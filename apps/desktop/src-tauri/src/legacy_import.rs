@@ -767,13 +767,7 @@ fn publish_artifact(
                     }
                     return Ok(LegacyImportItemOutcome::failed("legacyArtifactUnavailable"));
                 }
-                ArtifactState::Pending => {
-                    if let Ok(ready) = database.mark_artifact_ready(record.id()) {
-                        break ready.id();
-                    }
-                    fail_artifact_publication(database, record.id());
-                    return Ok(LegacyImportItemOutcome::failed("legacyArtifactUnavailable"));
-                }
+                ArtifactState::Pending => unreachable!("pending records have an explicit variant"),
                 ArtifactState::Failed if !retried_failed_record => {
                     let _ = database.remove_artifact(record.id())?;
                     retried_failed_record = true;
@@ -799,6 +793,9 @@ fn publish_artifact(
                     return Ok(LegacyImportItemOutcome::failed("legacyArtifactChanged"));
                 }
                 break artifact_id;
+            }
+            ArtifactRegistration::Pending(record) => {
+                return Err(DatabaseError::ArtifactPublicationInProgress(record.id()));
             }
         }
     };
@@ -1465,6 +1462,63 @@ mod tests {
         .expect("resume failed import");
         assert_eq!(resumed.summary.state, LegacyImportState::Complete);
         assert_eq!(resumed.summary.artifacts.imported, 1);
+    }
+
+    #[test]
+    fn a_pending_legacy_artifact_reservation_cannot_be_published_by_another_import() {
+        let temporary = TempDir::new().expect("temporary directory");
+        let source = temporary.path().join("legacy");
+        let source_path = source.join("videos/source.mp4");
+        fs::create_dir_all(source_path.parent().expect("source parent"))
+            .expect("create source directory");
+        let bytes = b"pending-legacy-video";
+        fs::write(&source_path, bytes).expect("write source artifact");
+        let source_root = SourceRoot::open(&source).expect("open source root");
+        let artifact = PlannedArtifact {
+            source_path,
+            kind: artifact_kind("videos/source.mp4"),
+            extension: "mp4".to_owned(),
+            content_hash: ContentHash::digest(bytes),
+            size_bytes: u64::try_from(bytes.len()).expect("fixture size"),
+        };
+        let database =
+            Database::open(temporary.path().join("native/db/osg.sqlite3")).expect("open database");
+        let draft = ArtifactDraft::new(
+            ArtifactKind::new(artifact.kind).expect("artifact kind"),
+            artifact.content_hash,
+            artifact.size_bytes,
+            json!({
+                "source": "electronRootV1",
+                "extension": artifact.extension.clone(),
+            }),
+        )
+        .expect("artifact draft");
+        let ArtifactRegistration::Staging(staging) = database
+            .register_artifact(&draft)
+            .expect("reserve competing publication")
+        else {
+            panic!("fresh artifact must stage");
+        };
+        let artifact_id = staging.record().id();
+
+        assert!(matches!(
+            publish_artifact(&database, &source_root, &artifact),
+            Err(DatabaseError::ArtifactPublicationInProgress(id)) if id == artifact_id
+        ));
+        assert_eq!(
+            database
+                .get_artifact(artifact_id)
+                .expect("read reservation")
+                .expect("reservation remains")
+                .state(),
+            ArtifactState::Pending
+        );
+        database
+            .mark_artifact_failed(
+                artifact_id,
+                &ArtifactFailureCode::new("testCleanup").expect("failure code"),
+            )
+            .expect("clean up reservation");
     }
 
     #[test]

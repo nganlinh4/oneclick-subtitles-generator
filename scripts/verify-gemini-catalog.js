@@ -17,6 +17,7 @@ const videoFile = videoFileIndex >= 0 ? argumentsList[videoFileIndex + 1] : null
 const mediaModalities = new Set(['audio', 'video']);
 const nativeOrdinaryModels = [
   'gemini-3.5-flash-lite',
+  'gemini-3.7-flash',
   'gemini-3.6-flash',
   'gemini-3.5-flash',
   'gemini-3.1-flash-lite',
@@ -63,6 +64,11 @@ const assertCatalog = () => {
     }
     if (![...mediaModalities].every((modality) => model.modalities.includes(modality))) {
       throw new Error(`${model.id} must accept both audio and video input`);
+    }
+    if (model.thinking?.type === 'level'
+        && (!model.thinking.options.includes(model.thinking.default)
+          || model.thinking.options.some((level) => !['minimal', 'low', 'medium', 'high'].includes(level)))) {
+      throw new Error(`${model.id} has an invalid thinking-level contract`);
     }
   });
   catalog.liveAudioModels.forEach((model) => {

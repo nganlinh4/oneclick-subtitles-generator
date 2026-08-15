@@ -49,8 +49,10 @@ const UnifiedNarrationSection = ({
     // Method state
     narrationMethod, setNarrationMethod,
     isGeminiAvailable, isChatterboxAvailable,
+    isEdgeTTSAvailable, isGTTSAvailable,
     isAvailable,
     allServicesUnavailable,
+    geminiUnavailableReason,
 
     // Gemini settings
     selectedVoice, setSelectedVoice,
@@ -160,8 +162,27 @@ const UnifiedNarrationSection = ({
     sectionRef
   });
 
-  // Since Edge TTS and gTTS are always available, we should never show the unavailable section
-  // This logic is kept for potential future cases where these services might become unavailable
+  const engineUnavailableMessage = t(
+    'narration.engineUnavailableMessage',
+    'This narration engine is not ready. Install or start it in Settings > Voice & transcription engines.'
+  );
+  const geminiCredentialUnavailableMessage = t(
+    'narration.geminiCredentialUnavailableMessage',
+    'Gemini narration needs a usable API key. Add or replace one in Settings > API Keys.'
+  );
+  const geminiUnavailableMessage = geminiUnavailableReason === 'credential'
+    ? geminiCredentialUnavailableMessage
+    : engineUnavailableMessage;
+  const allServicesUnavailableMessage = geminiUnavailableReason === 'credential'
+    ? t(
+      'narration.allServicesUnavailableCredentialMessage',
+      'Gemini narration needs a usable API key in Settings > API Keys. Other narration engines can be installed or started in Settings > Voice & transcription engines.'
+    )
+    : t(
+      'narration.allServicesUnavailableMessage',
+      'All narration engines are unavailable. Install or start one in Settings > Voice & transcription engines.'
+    );
+
   if (allServicesUnavailable) {
     return (
       <div className="narration-section unavailable" ref={sectionRef}>
@@ -178,7 +199,7 @@ const UnifiedNarrationSection = ({
             <span className="material-symbols-rounded" style={{ fontSize: '24px' }}>warning</span>
           </div>
           <div className="message">
-            {t('narration.allServicesUnavailableMessage', "All narration services are unavailable. Install or start F5-TTS or Chatterbox from Settings > Tools. For Gemini, check your API key in settings.")}
+            {allServicesUnavailableMessage}
           </div>
         </div>
       </div>
@@ -202,8 +223,9 @@ const UnifiedNarrationSection = ({
         isF5Available={isAvailable}
         isChatterboxAvailable={isChatterboxAvailable}
         isGeminiAvailable={isGeminiAvailable}
-        isEdgeTTSAvailable={true}
-        isGTTSAvailable={true}
+        geminiUnavailableMessage={geminiUnavailableMessage}
+        isEdgeTTSAvailable={isEdgeTTSAvailable}
+        isGTTSAvailable={isGTTSAvailable}
       />
 
       <div className="narration-content-container" ref={contentRef}>
@@ -320,6 +342,7 @@ const UnifiedNarrationSection = ({
       ) : narrationMethod === 'edge-tts' ? (
         <EdgeTTSNarrationSection
           narrationMethod={narrationMethod}
+          isEdgeTTSAvailable={isEdgeTTSAvailable}
           subtitleSource={subtitleSource}
           setSubtitleSource={setSubtitleSource}
           isGenerating={isGenerating}
@@ -364,6 +387,7 @@ const UnifiedNarrationSection = ({
       ) : narrationMethod === 'gtts' ? (
         <GTTSNarrationSection
           narrationMethod={narrationMethod}
+          isGTTSAvailable={isGTTSAvailable}
           subtitleSource={subtitleSource}
           setSubtitleSource={setSubtitleSource}
           isGenerating={isGenerating}
@@ -403,9 +427,8 @@ const UnifiedNarrationSection = ({
           audioRef={audioRef}
           handleAudioEnded={handleAudioEnded}
         />
-      ) : (
+      ) : narrationMethod === 'gemini' ? (
         <GeminiNarrationSection
-          t={t}
           subtitleSource={subtitleSource}
           setSubtitleSource={setSubtitleSource}
           isGenerating={isGenerating}
@@ -433,13 +456,14 @@ const UnifiedNarrationSection = ({
           downloadAlignedAudio={downloadAlignedAudio}
           cancelGeminiGeneration={cancelGeminiGeneration}
           isGeminiAvailable={isGeminiAvailable}
+          geminiUnavailableMessage={geminiUnavailableMessage}
           retryGeminiNarration={retryGeminiNarration}
           retryingSubtitleId={retryingSubtitleId}
           retryFailedGeminiNarrations={retryFailedGeminiNarrations}
           generateAllPendingGeminiNarrations={generateAllPendingGeminiNarrations}
           error={error}
         />
-      )}
+      ) : null}
       </div>
     </div>
   );

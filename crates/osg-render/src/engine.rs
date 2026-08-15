@@ -1278,7 +1278,10 @@ fn apply_fixed_environment(command: &mut Command, staging: &Path) -> Result<()> 
         .env("TEMP", &temporary)
         .env("NO_PROXY", "*")
         .env("no_proxy", "*");
-    for name in ["SystemRoot", "WINDIR"] {
+    // Chromium resolves a Windows known-folder template containing `%SystemDrive%`.
+    // With an otherwise cleared environment, leaving this variable out makes the
+    // literal template relative to chrome.exe and dirties the verified runtime.
+    for name in ["SystemRoot", "WINDIR", "SystemDrive"] {
         if let Some(value) = std::env::var_os(name) {
             command.env(name, value);
         }
@@ -1428,10 +1431,32 @@ fn is_link_or_reparse(metadata: &Metadata) -> bool {
 
 #[cfg(test)]
 mod tests {
+    #[cfg(windows)]
+    use std::collections::HashMap;
     use std::io::Cursor;
 
     use super::*;
     use crate::protocol::write_json_frame;
+
+    #[cfg(windows)]
+    #[test]
+    fn fixed_environment_preserves_system_drive_for_chromium_known_folders() {
+        let Some(expected) = std::env::var_os("SystemDrive") else {
+            return;
+        };
+        let staging = tempfile::tempdir().expect("staging");
+        let mut command = Command::new("unused.exe");
+        apply_fixed_environment(&mut command, staging.path()).expect("fixed environment");
+        let environment = command
+            .get_envs()
+            .map(|(name, value)| (name.to_owned(), value.map(ToOwned::to_owned)))
+            .collect::<HashMap<_, _>>();
+
+        assert_eq!(
+            environment.get(std::ffi::OsStr::new("SystemDrive")),
+            Some(&Some(expected))
+        );
+    }
 
     #[test]
     fn worker_validator_rejects_progress_regression_and_extra_terminal_messages() {

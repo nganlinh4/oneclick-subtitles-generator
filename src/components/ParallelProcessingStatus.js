@@ -87,7 +87,7 @@ const ParallelProcessingStatus = ({
 
   // Handle retry with custom subtitles
   const handleRetryWithOptions = (segmentIndex, segments, options) => {
-    onRetrySegment(segmentIndex, segments, options);
+    return onRetrySegment(segmentIndex, segments, options);
   };
 
   return (

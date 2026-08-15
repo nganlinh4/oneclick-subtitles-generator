@@ -1,7 +1,8 @@
 import { useState, useRef, useEffect, useCallback } from 'react';
 import { useTranslation } from 'react-i18next';
 import { completeDocument, summarizeDocument } from '../../services/geminiService';
-import useTranslationState, { getCurrentMediaId, generateSubtitleHash } from '../../hooks/useTranslationState';
+import { downloadTextDocument } from '../../utils/fileUtils';
+import useTranslationState from '../../hooks/useTranslationState';
 import useLanguageChain from '../../hooks/useLanguageChain';
 import usePostSplitSubtitles from './hooks/usePostSplitSubtitles';
 import { handleRetrySegment as retrySegment } from './handlers/retryHandlers';
@@ -10,7 +11,8 @@ import {
   getNamingInfo as buildNamingInfo,
   handleDownload as downloadSubtitles,
   handleBulkDownloadAll as bulkDownloadAll,
-  handleBulkDownloadZip as bulkDownloadZip
+  handleBulkDownloadZip as bulkDownloadZip,
+  runOwnedBulkExport
 } from './utils/downloadUtils';
 import TranslationHeader from './TranslationHeader';
 import LanguageChain from './LanguageChain';
@@ -49,6 +51,8 @@ const TranslationSection = ({ subtitles, videoTitle, onTranslationComplete }) =>
   const [isProcessing, setIsProcessing] = useState(false);
   // eslint-disable-next-line no-unused-vars
   const [processedDocument, setProcessedDocument] = useState(null);
+  const [isExporting, setIsExporting] = useState(false);
+  const exportPendingRef = useRef(false);
 
   // Refs for height animation
   const containerRef = useRef(null);
@@ -95,7 +99,7 @@ const TranslationSection = ({ subtitles, videoTitle, onTranslationComplete }) =>
     handleSplitDurationChange,
     handleRestTimeChange,
     handleIncludeRulesChange,
-    updateTranslatedSubtitles,
+    retryMainTranslation,
     // Bulk translation
     bulkFiles,
     setBulkFiles,
@@ -107,10 +111,11 @@ const TranslationSection = ({ subtitles, videoTitle, onTranslationComplete }) =>
   } = useTranslationState(subtitles, onTranslationComplete);
 
   // Post-split translated subtitles (max words per subtitle) state + effects
-  const { postSplitMaxWords, setPostSplitMaxWords } = usePostSplitSubtitles({
-    translatedSubtitles,
-    updateTranslatedSubtitles
-  });
+  const {
+    postSplitMaxWords,
+    setPostSplitMaxWords,
+    presentedSubtitles,
+  } = usePostSplitSubtitles({ translatedSubtitles });
 
   /**
    * Handle retry for a specific segment
@@ -127,12 +132,9 @@ const TranslationSection = ({ subtitles, videoTitle, onTranslationComplete }) =>
     chainItems,
     t,
     getLanguageValues,
-    updateTranslatedSubtitles,
-    setBulkTranslations,
-    onTranslationComplete,
-    getCurrentMediaId,
-    generateSubtitleHash
-  }), [translatedSubtitles, subtitles, t, getLanguageValues, selectedModel, customTranslationPrompt, includeRules, chainItems, updateTranslatedSubtitles, setBulkTranslations, bulkFiles, bulkTranslations, onTranslationComplete]);
+    retryMainTranslation,
+    setBulkTranslations
+  }), [translatedSubtitles, subtitles, t, getLanguageValues, selectedModel, customTranslationPrompt, includeRules, chainItems, retryMainTranslation, setBulkTranslations, bulkFiles, bulkTranslations]);
 
   // Initialize container height on component mount
   useEffect(() => {
@@ -166,6 +168,7 @@ const TranslationSection = ({ subtitles, videoTitle, onTranslationComplete }) =>
 
   // Wrapper for handleTranslate to pass the current languages and delimiter settings
   const handleTranslate = () => {
+    if (isExporting) return;
     // Format mode - only original language in the chain
     const isFormatMode = hasOnlyOriginalLanguage();
 
@@ -204,9 +207,9 @@ const TranslationSection = ({ subtitles, videoTitle, onTranslationComplete }) =>
   const getNamingInfo = () => buildNamingInfo(videoTitle, targetLanguages);
 
   // Handle download request from modal
-  const handleDownload = (source, format, namingInfo = {}) =>
+  const handleDownload = async (source, format, namingInfo = {}) =>
     downloadSubtitles(source, format, namingInfo, {
-      translatedSubtitles,
+      translatedSubtitles: presentedSubtitles,
       subtitles,
       videoTitle,
       targetLanguages,
@@ -214,12 +217,30 @@ const TranslationSection = ({ subtitles, videoTitle, onTranslationComplete }) =>
     });
 
   // Handle bulk download all (includes main translation + bulk translations)
-  const handleBulkDownloadAll = () =>
-    bulkDownloadAll({ translatedSubtitles, bulkTranslations, videoTitle, targetLanguages });
+  const reportExportFailure = useCallback((exportError) => {
+    const message = typeof exportError?.message === 'string' && exportError.message.trim()
+      ? exportError.message
+      : t('download.exportFailed', 'The subtitle archive could not be saved.');
+    try {
+      window.addToast?.(message, 'error', 8000);
+    } catch {
+      // A notification cannot acquire or release the export ownership lease.
+    }
+  }, [t]);
+
+  const runBulkExport = useCallback((operation) => runOwnedBulkExport({
+    pendingRef: exportPendingRef,
+    setPending: setIsExporting,
+    operation,
+    onError: reportExportFailure,
+  }), [reportExportFailure]);
+
+  const handleBulkDownloadAll = () => runBulkExport(() =>
+    bulkDownloadAll({ translatedSubtitles: presentedSubtitles, bulkTranslations, videoTitle, targetLanguages }));
 
   // Handle bulk download as ZIP
-  const handleBulkDownloadZip = () =>
-    bulkDownloadZip({ translatedSubtitles, bulkTranslations, videoTitle, targetLanguages });
+  const handleBulkDownloadZip = () => runBulkExport(() =>
+    bulkDownloadZip({ translatedSubtitles: presentedSubtitles, bulkTranslations, videoTitle, targetLanguages }));
 
   // Handle process request from modal
   const handleProcess = async (source, processType, model, splitDurationParam, customPrompt, namingInfo = {}) => {
@@ -294,15 +315,6 @@ const TranslationSection = ({ subtitles, videoTitle, onTranslationComplete }) =>
 
       setProcessedDocument(result);
 
-      // Show success toast using centralized system
-      window.addToast(
-        processType === 'consolidate'
-          ? t('output.documentCompleted', 'Document completed successfully')
-          : t('output.summaryCompleted', 'Summary completed successfully'),
-        'success',
-        3000
-      );
-
       // Download the processed document
       // Use provided naming info or get it from local state
       const finalNamingInfo = Object.keys(namingInfo).length > 0 ? namingInfo : getNamingInfo();
@@ -310,22 +322,24 @@ const TranslationSection = ({ subtitles, videoTitle, onTranslationComplete }) =>
       const processTypeSuffix = processType === 'consolidate' ? 'completed' : 'summary';
       const filename = `${baseFilename}_${processTypeSuffix}.txt`;
 
-      const blob = new Blob([result], { type: 'text/plain;charset=utf-8' });
-      const url = URL.createObjectURL(blob);
-
-      const a = document.createElement('a');
-      a.href = url;
-      a.download = filename;
-      document.body.appendChild(a);
-      a.click();
-
-      // Clean up
-      setTimeout(() => {
-        document.body.removeChild(a);
-        URL.revokeObjectURL(url);
-      }, 100);
+      const saved = await downloadTextDocument(result, filename);
+      if (saved.status === 'saved') {
+        try {
+          window.addToast?.(
+            processType === 'consolidate'
+              ? t('output.documentCompleted', 'Document completed successfully')
+              : t('output.summaryCompleted', 'Summary completed successfully'),
+            'success',
+            3000
+          );
+        } catch {
+          // Notification failure cannot reverse an acknowledged document save.
+        }
+      }
+      return saved;
     } catch (error) {
       console.error(`Error ${processType === 'consolidate' ? 'completing' : 'summarizing'} document:`, error);
+      throw error;
     } finally {
       setIsProcessing(false);
     }
@@ -358,7 +372,7 @@ const TranslationSection = ({ subtitles, videoTitle, onTranslationComplete }) =>
               onUpdateLanguage={updateLanguage}
               onUpdateDelimiter={updateDelimiter}
               onMoveItem={moveItem}
-              disabled={isTranslating || isBulkTranslating || translatedSubtitles !== null}
+              disabled={isTranslating || isBulkTranslating || isExporting || translatedSubtitles !== null}
               showOriginalOption={true}
             />
           </div>
@@ -367,7 +381,7 @@ const TranslationSection = ({ subtitles, videoTitle, onTranslationComplete }) =>
         {/* If we have translated subtitles, show the complete view */}
         {translatedSubtitles ? (
           <TranslationComplete
-            onReset={handleReset}
+            onReset={() => (isExporting ? { status: 'busy' } : handleReset())}
             isModalOpen={isModalOpen}
             setIsModalOpen={setIsModalOpen}
             onDownload={handleDownload}
@@ -380,6 +394,8 @@ const TranslationSection = ({ subtitles, videoTitle, onTranslationComplete }) =>
             hasBulkTranslations={bulkTranslations.length > 0 && bulkTranslations.some(bt => bt.success)}
             onDownloadAll={handleBulkDownloadAll}
             onDownloadZip={handleBulkDownloadZip}
+            isExporting={isExporting}
+            exportPendingRef={exportPendingRef}
           />
         ) : (
           <>
@@ -390,7 +406,7 @@ const TranslationSection = ({ subtitles, videoTitle, onTranslationComplete }) =>
                 <ModelSelection
                   selectedModel={selectedModel}
                   onModelSelect={handleModelSelect}
-                  disabled={isTranslating || isBulkTranslating}
+                  disabled={isTranslating || isBulkTranslating || isExporting}
                 />
 
                 {/* Split duration slider */}
@@ -398,14 +414,14 @@ const TranslationSection = ({ subtitles, videoTitle, onTranslationComplete }) =>
                   splitDuration={splitDuration}
                   onSplitDurationChange={handleSplitDurationChange}
                   subtitles={subtitles}
-                  disabled={isTranslating || isBulkTranslating}
+                  disabled={isTranslating || isBulkTranslating || isExporting}
                 />
 
                 {/* Rest time slider */}
                 <RestTimeSlider
                   restTime={restTime}
                   onRestTimeChange={handleRestTimeChange}
-                  disabled={isTranslating || isBulkTranslating}
+                  disabled={isTranslating || isBulkTranslating || isExporting}
                 />
 
                 {/* Include rules toggle */}
@@ -414,7 +430,7 @@ const TranslationSection = ({ subtitles, videoTitle, onTranslationComplete }) =>
                   onIncludeRulesChange={handleIncludeRulesChange}
                   rulesAvailable={rulesAvailable}
                   hasUserProvidedSubtitles={hasUserProvidedSubtitles}
-                  disabled={isTranslating || isBulkTranslating}
+                  disabled={isTranslating || isBulkTranslating || isExporting}
                 />
 
                 {/* Max words per subtitle (post-split) - default: Unlimited */}
@@ -432,7 +448,7 @@ const TranslationSection = ({ subtitles, videoTitle, onTranslationComplete }) =>
                         step={1}
                         orientation="Horizontal"
                         size="XSmall"
-                        state={isTranslating || isBulkTranslating ? 'Disabled' : 'Enabled'}
+                        state={isTranslating || isBulkTranslating || isExporting ? 'Disabled' : 'Enabled'}
                         className="post-split-max-words-slider"
                         id="post-split-max-words-slider"
                         ariaLabel={t('processing.maxWordsPerSubtitle', 'Max words per subtitle')}
@@ -459,7 +475,7 @@ const TranslationSection = ({ subtitles, videoTitle, onTranslationComplete }) =>
               isTranslating={isTranslating || isBulkTranslating}
               onTranslate={handleTranslate}
               onCancel={handleCancelTranslation}
-              disabled={!hasOnlyOriginalLanguage() && !hasValidLanguage()}
+              disabled={isExporting || (!hasOnlyOriginalLanguage() && !hasValidLanguage())}
               isFormatMode={hasOnlyOriginalLanguage()}
               bulkFiles={bulkFiles}
               onBulkFilesChange={setBulkFiles}
@@ -468,6 +484,8 @@ const TranslationSection = ({ subtitles, videoTitle, onTranslationComplete }) =>
               hasBulkTranslations={bulkTranslations.length > 0 && bulkTranslations.some(bt => bt.success)}
               onDownloadAll={handleBulkDownloadAll}
               onDownloadZip={handleBulkDownloadZip}
+              isExporting={isExporting}
+              exportPendingRef={exportPendingRef}
               splitDuration={splitDuration}
             />
 
@@ -490,7 +508,7 @@ const TranslationSection = ({ subtitles, videoTitle, onTranslationComplete }) =>
             {/* Translation preview - show for main translation without bulk files */}
             {bulkTranslations.length === 0 && (
               <TranslationPreview
-                translatedSubtitles={translatedSubtitles}
+                translatedSubtitles={presentedSubtitles}
                 targetLanguages={targetLanguages}
                 loadedFromCache={loadedFromCache}
                 splitDuration={splitDuration}
@@ -505,7 +523,7 @@ const TranslationSection = ({ subtitles, videoTitle, onTranslationComplete }) =>
                 targetLanguages={targetLanguages}
                 mainTranslation={{
                   name: getNamingInfo().sourceSubtitleName || getNamingInfo().videoName || 'Main Translation',
-                  subtitles: translatedSubtitles,
+                  subtitles: presentedSubtitles,
                   loadedFromCache: loadedFromCache
                 }}
                 splitDuration={splitDuration}

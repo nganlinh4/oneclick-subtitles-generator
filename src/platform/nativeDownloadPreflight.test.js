@@ -121,10 +121,11 @@ it('is production-reachable only through typed download preflights and has no ne
   expect(downloadSource).toContain('ensureNativeDownloadReady');
 });
 
-it('does nothing when the startup-snapshotted runtime is already ready', async () => {
+it('refreshes a ready downloader once before inspection without repeating tool setup', async () => {
   const readCatalog = vi.fn();
   const readStatus = vi.fn();
-  const preflight = service({ readCatalog, readStatus });
+  const refreshDownloader = vi.fn().mockResolvedValue({ updated: false, throttled: false });
+  const preflight = service({ readCatalog, readStatus, refreshDownloader });
 
   await expect(preflight.ensureInspectionReady({ inspectAvailable: true }))
     .resolves.toEqual({ ready: true });
@@ -132,6 +133,16 @@ it('does nothing when the startup-snapshotted runtime is already ready', async (
     .resolves.toEqual({ ready: true });
   expect(readCatalog).not.toHaveBeenCalled();
   expect(readStatus).not.toHaveBeenCalled();
+  expect(refreshDownloader).toHaveBeenCalledTimes(1);
+});
+
+it('keeps an existing verified downloader usable when its proactive refresh is offline', async () => {
+  const refreshDownloader = vi.fn().mockRejectedValue(new Error('offline'));
+  const preflight = service({ refreshDownloader });
+
+  await expect(preflight.ensureInspectionReady({ inspectAvailable: true }))
+    .resolves.toEqual({ ready: true });
+  expect(refreshDownloader).toHaveBeenCalledTimes(1);
 });
 
 it('automatically installs the required batch in parallel and reports aggregate progress', async () => {
@@ -403,14 +414,28 @@ it('updates an installed yt-dlp after an execution failure without any prompt', 
       installed: true,
       state: 'installed',
       version: '2026.07.04',
+      availableVersion: '2026.08.10',
       installedBytes: 10,
       activeRuntime: true,
     },
   });
+  const updatedStatus = status({
+    'yt-dlp': {
+      installed: true,
+      state: 'installed',
+      version: '2026.08.10.235959',
+      availableVersion: '2026.08.10.235959',
+      installedBytes: 10,
+      activeRuntime: true,
+    },
+  });
+  const readStatus = vi.fn()
+    .mockResolvedValueOnce(installedStatus)
+    .mockResolvedValueOnce(updatedStatus);
 
   await expect(recoverNativeDownloaderAfterFailure({
     readCatalog: vi.fn(async () => catalog()),
-    readStatus: vi.fn(async () => installedStatus),
+    readStatus,
     install,
     presentation: ui,
     t: translate,
@@ -421,12 +446,42 @@ it('updates an installed yt-dlp after an execution failure without any prompt', 
   expect(ui.dismiss).toHaveBeenCalled();
 });
 
+it('checks the live channel but does not report an unchanged verified yt-dlp as updated', async () => {
+  const install = vi.fn(async (tool, handlers) => {
+    const job = runningJob();
+    queueMicrotask(() => handlers.onCompleted(completedEvent(tool, job.id)));
+    return job;
+  });
+  const installedStatus = status({
+    'yt-dlp': {
+      installed: true,
+      state: 'installed',
+      version: '2026.07.04',
+      availableVersion: '2026.07.04',
+      installedBytes: 10,
+      activeRuntime: true,
+    },
+  });
+
+  await expect(recoverNativeDownloaderAfterFailure({
+    readCatalog: vi.fn(async () => catalog()),
+    readStatus: vi.fn(async () => installedStatus),
+    install,
+    presentation: presentation(),
+    t: translate,
+    now: () => 1_500_000,
+  })).resolves.toEqual({ updated: false, throttled: false });
+
+  expect(install).toHaveBeenCalledTimes(1);
+});
+
 it('coalesces and throttles repeated automatic recovery checks', async () => {
   const installedStatus = status({
     'yt-dlp': {
       installed: true,
       state: 'installed',
       version: '2026.07.04',
+      availableVersion: '2026.08.10',
       installedBytes: 10,
       activeRuntime: true,
     },
@@ -438,9 +493,22 @@ it('coalesces and throttles repeated automatic recovery checks', async () => {
     })));
     return job;
   });
+  const updatedStatus = status({
+    'yt-dlp': {
+      installed: true,
+      state: 'installed',
+      version: '2026.08.10.235959',
+      availableVersion: '2026.08.10.235959',
+      installedBytes: 10,
+      activeRuntime: true,
+    },
+  });
+  const readStatus = vi.fn()
+    .mockResolvedValueOnce(installedStatus)
+    .mockResolvedValueOnce(updatedStatus);
   const options = {
     readCatalog: vi.fn(async () => catalog()),
-    readStatus: vi.fn(async () => installedStatus),
+    readStatus,
     install,
     presentation: presentation(),
     t: translate,

@@ -5,6 +5,7 @@ mod cache;
 mod ci_updater_fixture;
 mod commands;
 mod diagnostics;
+mod document_export;
 mod download;
 mod engine_packages;
 mod error;
@@ -40,12 +41,13 @@ use asr::{AsrRuntimeManager, asr_start, asr_status};
 use cache::{cache_clear, cache_info, cache_prune_expired};
 use commands::{
     app_health, clear_media, credential_delete, credential_set, credential_status,
-    credential_upsert, get_session_snapshot, job_cancel, job_get, jobs_list, open_media_asset,
-    project_commit, project_create, project_history_status, project_load, project_redo,
-    project_track_commit, project_track_history_status, project_track_redo, project_track_undo,
-    project_undo, select_media, setting_delete, setting_get, setting_set, settings_clear,
-    settings_set_many,
+    credential_upsert, discard_media_candidate, get_session_snapshot, job_cancel, job_get,
+    jobs_list, open_media_asset, project_commit, project_create, project_history_status,
+    project_load, project_redo, project_track_commit, project_track_history_status,
+    project_track_redo, project_track_undo, project_undo, select_media, setting_delete,
+    setting_get, setting_set, settings_clear, settings_set_many,
 };
+use document_export::{generated_file_export, subtitle_archive_export, subtitle_document_export};
 use download::{
     DownloadRuntime, DownloadRuntimeHandle, download_cancel, download_inspect, download_start,
     download_status,
@@ -57,14 +59,22 @@ use engine_packages::{
 use error::{CommandError, CommandResult};
 use external_links::open_external_link;
 use gemini::gemini_start;
-use gemini_image::gemini_image_start;
-use image_blob::{ImageBlobStore, image_blob_import, image_blob_release};
+use gemini_image::{
+    GeneratedImageRuntime, gemini_image_complete, gemini_image_start, generated_image_clear,
+    generated_image_delete, generated_image_export, generated_image_list,
+    generated_image_playback_release, generated_image_resolve,
+};
+use image_blob::{
+    ImageBlobStore, image_blob_import_playback, image_blob_release, image_reference_export,
+    image_reference_playback_release, image_reference_select,
+};
 use legacy_import::{
     is_project_scoped_setting_key, is_transient_setting_key, legacy_import_select,
     legacy_import_status,
 };
 use live_music::{
-    LiveMusicRuntime, live_music_close, live_music_control, live_music_start, live_music_update,
+    LiveMusicRuntime, live_music_close, live_music_control, live_music_rollback_start,
+    live_music_start, live_music_update,
 };
 use media_blob::{MediaBlobStore, media_blob_import, media_blob_release};
 use media_export::media_export_start;
@@ -102,6 +112,7 @@ use speech::{
     speech_artifact_export, speech_artifact_resolve, speech_job_results, speech_playback_release,
     speech_probe, speech_reference_extract, speech_reference_import, speech_reference_select,
     speech_runtime_stop, speech_start, speech_status, speech_voice_conversion_start,
+    speech_voice_inventory,
 };
 use speech_packages::{
     SpeechPackageRuntime, speech_package_install, speech_package_remove, speech_packages_status,
@@ -140,6 +151,7 @@ pub fn run() {
         .manage(NativeMediaDropState::default())
         .manage(LiveMusicRuntime::default())
         .manage(ImageBlobStore::default())
+        .manage(GeneratedImageRuntime::default())
         .manage(AppUpdateRuntime::default())
         .setup(setup_app)
         .on_page_load(|webview, payload| {
@@ -180,6 +192,7 @@ pub fn run() {
             download_inspect,
             download_start,
             download_cancel,
+            discard_media_candidate,
             project_create,
             project_load,
             project_history_status,
@@ -208,16 +221,30 @@ pub fn run() {
             legacy_import_select,
             legacy_import_status,
             live_music_start,
+            live_music_rollback_start,
             live_music_update,
             live_music_control,
             live_music_close,
             media_blob_import,
             media_blob_release,
             media_export_start,
+            subtitle_document_export,
+            subtitle_archive_export,
+            generated_file_export,
             gemini_start,
-            image_blob_import,
+            image_blob_import_playback,
             image_blob_release,
+            image_reference_select,
+            image_reference_playback_release,
+            image_reference_export,
             gemini_image_start,
+            gemini_image_complete,
+            generated_image_list,
+            generated_image_resolve,
+            generated_image_export,
+            generated_image_delete,
+            generated_image_clear,
+            generated_image_playback_release,
             native_tools_catalog,
             native_tools_status,
             native_tool_install,
@@ -248,6 +275,7 @@ pub fn run() {
             media_drop_discard,
             media_drop_claim,
             speech_status,
+            speech_voice_inventory,
             speech_probe,
             speech_runtime_stop,
             speech_reference_select,
@@ -665,18 +693,24 @@ fn prepare_speech_runtime(
     })
 }
 
+// WebView localStorage is the live preference store. SQLite is a recovery/migration seed for a
+// fresh WebView profile, not permission to overwrite changes made since the previous native sync.
+// The marker remains WebView-only because the `current_` prefix is excluded from native settings.
+const WEBVIEW_SETTINGS_BOOTSTRAP_MARKER: &str = "current_settings_bootstrap_v1";
+
 fn settings_initialization_script(
     settings: &BTreeMap<String, Value>,
 ) -> Result<String, serde_json::Error> {
     let safe_settings: BTreeMap<&str, &Value> = settings
         .iter()
-        .filter(|(key, _)| is_safe_setting_key(key))
+        .filter(|(key, _)| is_webview_bootstrap_setting_key(key))
         .map(|(key, value)| (key.as_str(), value))
         .collect();
     let serialized = serde_json::to_string(&safe_settings)?;
     let string_literal = serde_json::to_string(&serialized)?;
+    let marker_literal = serde_json::to_string(WEBVIEW_SETTINGS_BOOTSTRAP_MARKER)?;
     Ok(format!(
-        "(() => {{ localStorage.removeItem('original_subtitles_map'); const values = JSON.parse({string_literal}); for (const [key, value] of Object.entries(values)) {{ const stored = typeof value === 'string' ? value : JSON.stringify(value); if (stored !== undefined) localStorage.setItem(key, stored); }} }})();"
+        "(() => {{ localStorage.removeItem('original_subtitles_map'); const marker = {marker_literal}; const shouldRestore = localStorage.getItem(marker) !== 'complete'; const values = JSON.parse({string_literal}); if (shouldRestore) {{ for (const [key, value] of Object.entries(values)) {{ const stored = typeof value === 'string' ? value : JSON.stringify(value); if (stored !== undefined && localStorage.getItem(key) === null) localStorage.setItem(key, stored); }} localStorage.setItem(marker, 'complete'); }} }})();"
     ))
 }
 
@@ -710,15 +744,28 @@ fn is_safe_setting_key(key: &str) -> bool {
         || is_secret_setting_key(key))
 }
 
+fn is_native_owned_setting_key(key: &str) -> bool {
+    matches!(
+        key,
+        "gemini.keySelection.v1" | "project.subtitleCacheIndex.v1"
+    ) || key.starts_with("project.legacyAux.v1.")
+}
+
+fn is_webview_bootstrap_setting_key(key: &str) -> bool {
+    is_safe_setting_key(key) && !is_native_owned_setting_key(key)
+}
+
 #[cfg(test)]
 mod tests {
     use std::collections::BTreeMap;
 
+    use osg_infrastructure::storage::Database;
     use serde_json::json;
 
     use super::{
         has_valid_main_window_state, is_main_window_close_request, is_safe_setting_key,
-        media_server_allowed_origins, settings_initialization_script, window_initialization_script,
+        is_webview_bootstrap_setting_key, media_server_allowed_origins,
+        settings_initialization_script, window_initialization_script,
     };
 
     #[test]
@@ -810,9 +857,8 @@ mod tests {
         assert!(!script.contains("osg-managed-ui-font"));
     }
 
-    #[test]
-    fn initialization_script_hydrates_only_non_secret_legacy_settings() {
-        let settings = BTreeMap::from([
+    fn legacy_bootstrap_settings_fixture() -> BTreeMap<String, serde_json::Value> {
+        BTreeMap::from([
             ("theme".to_owned(), json!("dark")),
             ("gemini_api_key".to_owned(), json!("never-injected")),
             ("gemini_max_tokens".to_owned(), json!(8192)),
@@ -870,8 +916,25 @@ mod tests {
                 "original_subtitles_map".to_owned(),
                 json!({ "1": { "text": "stale-project-subtitle-map" } }),
             ),
+            (
+                "gemini.keySelection.v1".to_owned(),
+                json!({ "marker": "native-credential-selection" }),
+            ),
+            (
+                "project.subtitleCacheIndex.v1".to_owned(),
+                json!({ "marker": "native-project-index" }),
+            ),
+            (
+                "project.legacyAux.v1.019ffbea-26d5-7800-8e3b-69de8bff2d7d".to_owned(),
+                json!({ "marker": "native-project-auxiliary" }),
+            ),
             ("invalid key".to_owned(), json!(true)),
-        ]);
+        ])
+    }
+
+    #[test]
+    fn initialization_script_hydrates_only_non_secret_legacy_settings() {
+        let settings = legacy_bootstrap_settings_fixture();
 
         let script = settings_initialization_script(&settings).expect("valid script");
 
@@ -907,13 +970,44 @@ mod tests {
         assert!(script.contains("localStorage.removeItem('original_subtitles_map')"));
         assert_eq!(script.matches("original_subtitles_map").count(), 1);
         assert!(!script.contains("stale-project-subtitle-map"));
+        assert!(!script.contains("gemini.keySelection.v1"));
+        assert!(!script.contains("native-credential-selection"));
+        assert!(!script.contains("project.subtitleCacheIndex.v1"));
+        assert!(!script.contains("native-project-index"));
+        assert!(!script.contains("project.legacyAux.v1."));
+        assert!(!script.contains("native-project-auxiliary"));
         assert!(!script.contains("invalid key"));
+    }
+
+    #[test]
+    fn initialization_script_never_overwrites_a_newer_webview_preference() {
+        let script = settings_initialization_script(&BTreeMap::from([(
+            "theme".to_owned(),
+            json!("stale-native-theme"),
+        )]))
+        .expect("valid script");
+
+        assert!(script.contains("current_settings_bootstrap_v1"));
+        assert!(script.contains("localStorage.getItem(marker) !== 'complete'"));
+        assert!(script.contains("if (shouldRestore)"));
+        assert!(script.contains("localStorage.getItem(key) === null"));
+        assert!(script.contains("localStorage.setItem(marker, 'complete')"));
+        assert_eq!(
+            script.matches("localStorage.setItem(key, stored)").count(),
+            1
+        );
     }
 
     #[test]
     fn safe_key_detection_matches_the_database_boundary() {
         assert!(is_safe_setting_key("subtitle.editor:zoom-v2"));
-        for safe_key in ["gemini_max_tokens", "maxTokens", "tokenCount"] {
+        for safe_key in [
+            "gemini_max_tokens",
+            "maxTokens",
+            "tokenCount",
+            "use_cookies_for_download",
+            "download_cookie_source",
+        ] {
             assert!(is_safe_setting_key(safe_key));
         }
         assert!(!is_safe_setting_key("../../secret"));
@@ -934,7 +1028,48 @@ mod tests {
         assert!(!is_safe_setting_key("gemini_active_key_index"));
         assert!(!is_safe_setting_key("osg.nativeNarrationJob.v1"));
         assert!(!is_safe_setting_key("osg.nativeJobIds.v1"));
+        assert!(!is_safe_setting_key("current_settings_bootstrap_v1"));
         assert!(!is_safe_setting_key("user_provided_subtitles"));
         assert!(!is_safe_setting_key("original_subtitles_map"));
+        for native_owned_key in [
+            "gemini.keySelection.v1",
+            "project.subtitleCacheIndex.v1",
+            "project.legacyAux.v1.019ffbea-26d5-7800-8e3b-69de8bff2d7d",
+        ] {
+            assert!(is_safe_setting_key(native_owned_key));
+            assert!(!is_webview_bootstrap_setting_key(native_owned_key));
+        }
+        assert!(is_webview_bootstrap_setting_key("subtitle.editor:zoom-v2"));
+    }
+
+    #[test]
+    fn saved_preferences_survive_relaunch_and_reach_the_fresh_webview_bootstrap() {
+        let directory = tempfile::tempdir().expect("temporary application data");
+        let database_path = directory.path().join("db/osg.sqlite3");
+        {
+            let database = Database::open(&database_path).expect("open settings database");
+            database
+                .put_settings(
+                    "app",
+                    &BTreeMap::from([
+                        ("theme".to_owned(), json!("dark")),
+                        ("use_cookies_for_download".to_owned(), json!("true")),
+                        ("download_cookie_source".to_owned(), json!("firefox")),
+                    ]),
+                )
+                .expect("save the settings snapshot");
+        }
+
+        let reopened = Database::open(&database_path).expect("reopen settings database");
+        let settings = reopened
+            .list_settings("app")
+            .expect("load settings after relaunch");
+        let script = settings_initialization_script(&settings).expect("fresh bootstrap script");
+
+        assert!(script.contains("use_cookies_for_download"));
+        assert!(script.contains("download_cookie_source"));
+        assert!(script.contains("firefox"));
+        assert!(script.contains("theme"));
+        assert!(script.contains("dark"));
     }
 }

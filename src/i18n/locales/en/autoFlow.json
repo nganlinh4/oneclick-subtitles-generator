@@ -6,5 +6,6 @@
   "running": "Running auto...",
   "usingExistingAnalysis": "Using existing analysis rules",
   "analysisSkipped": "Analysis skipped, continuing with default settings",
-  "error": "Auto-generation encountered an error"
+  "unavailable": "Automatic subtitle generation is unavailable.",
+  "error": "Automatic subtitle generation failed: {{message}}"
 }

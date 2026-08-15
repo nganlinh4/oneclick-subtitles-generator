@@ -138,3 +138,33 @@ test('native cancellation preserves the established translation error contract',
   ], 'Korean', 'gemini-3.5-flash-lite')).rejects.toThrow('Translation request was aborted');
   expect(global.fetch).not.toHaveBeenCalled();
 });
+
+test('an owned signal wins when the native provider settles after ignoring abort', async () => {
+  let resolveProvider;
+  runNativeGeminiText.mockImplementationOnce(() => new Promise((resolve) => {
+    resolveProvider = resolve;
+  }));
+  const controller = new AbortController();
+  const pending = translateSubtitles(
+    [{ id: 1, originalId: 'number:1', sourceOrder: 0, start: 0, end: 1, text: 'One' }],
+    'Korean',
+    'gemini-3.5-flash-lite',
+    null,
+    0,
+    false,
+    ' ',
+    false,
+    null,
+    null,
+    'main',
+    false,
+    { signal: controller.signal, assertOwned: vi.fn(async () => {}) }
+  );
+  await vi.waitFor(() => expect(runNativeGeminiText).toHaveBeenCalledTimes(1));
+  controller.abort();
+  resolveProvider({
+    text: JSON.stringify([{ original: 'One', translated: '하나' }]),
+  });
+
+  await expect(pending).rejects.toMatchObject({ name: 'AbortError', code: 'translationAborted' });
+});

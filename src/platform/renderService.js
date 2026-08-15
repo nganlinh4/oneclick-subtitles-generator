@@ -11,21 +11,86 @@ export const REMOTION_VERSION = '4.0.507';
 export const MAX_RENDER_LYRICS = 100_000;
 
 const MAX_RENDER_DURATION_MICROS = 24 * 60 * 60 * 1_000_000;
+const MAX_TOTAL_LYRIC_BYTES = 8 * 1024 * 1024;
 const MAX_PENDING_EVENTS = 4_096;
 const MAX_POLL_MS = 24 * 60 * 60 * 1_000;
 const JOB_STATES = new Set([
   'queued', 'running', 'cancelling', 'succeeded', 'failed', 'cancelled', 'interrupted',
 ]);
 const ACTIVE_JOB_STATES = new Set(['queued', 'running', 'cancelling']);
+const CANCELLATION_RESPONSE_STATES = new Set([
+  'cancelling', 'succeeded', 'failed', 'cancelled', 'interrupted',
+]);
+const RENDER_UNAVAILABLE_REASONS = new Set([
+  'runtimePayloadUnavailable', 'mediaToolsUnavailable',
+]);
+const RENDER_COMMAND_CODES = new Set([
+  'internal',
+  'invalidInput',
+  'invalidRenderRequest',
+  'mediaUnavailable',
+  'invalidMediaLocation',
+  'mediaIdentityConflict',
+  'mediaToolsUnavailable',
+  'renderRuntimeUnavailable',
+  'renderBusy',
+  'renderPublicationFailed',
+  'renderSourceChanged',
+  'renderNarrationChanged',
+  'renderStagingUnavailable',
+  'renderMediaPreparationFailed',
+  'renderWorkerProtocol',
+  'renderWorkerFailed',
+  'renderCancelled',
+  'renderTimeout',
+  'renderOutputInvalid',
+  'renderIo',
+  'mediaRegistryFull',
+  'mediaServer',
+  'jobAlreadyExists',
+  'jobNotFound',
+  'jobConflict',
+  'invalidJob',
+  'invalidJobState',
+  'jobSequenceLimit',
+  'jobRegistry',
+  'database',
+  'artifactStorage',
+  'artifactDataCorrupt',
+  'invalidArtifactRequest',
+  'artifactMetadataTooLarge',
+  'artifactLimit',
+  'artifactNotFound',
+  'artifactContentMismatch',
+  'artifactConflict',
+  'artifactStateConflict',
+  'artifactNotReady',
+  'projectNotFound',
+  'staleProjectVersion',
+  'invalidProject',
+  'projectTooLarge',
+  'projectDataCorrupt',
+]);
 const RENDER_PHASES = new Set([
   'staging', 'extractingFrames', 'extractingAudio', 'loadingComposition',
   'renderingFrames', 'encoding', 'muxing', 'publishing',
 ]);
+const RENDER_PHASE_ORDER = new Map([
+  'staging', 'extractingFrames', 'extractingAudio', 'loadingComposition',
+  'renderingFrames', 'encoding', 'muxing', 'publishing',
+].map((phase, index) => [phase, index]));
 const RESOLUTIONS = new Set(['360p', '480p', '720p', '1080p', '1440p', '4K', '8K']);
 const FRAME_RATES = new Set([24, 25, 30, 50, 60, 120]);
-const TEXT_ALIGNMENTS = new Set(['left', 'center', 'right']);
+const AUDIO_EXTENSIONS = new Set([
+  'aac', 'ac3', 'aiff', 'amr', 'ape', 'au', 'caf', 'dts', 'flac', 'm4a', 'mka', 'mp3',
+  'oga', 'ogg', 'opus', 'ra', 'wav', 'weba', 'wma',
+]);
+const VIDEO_EXTENSIONS = new Set([
+  '3gp', '3gpp', 'avi', 'flv', 'm4v', 'mkv', 'mov', 'mp4', 'mpeg', 'mpg', 'webm', 'wmv',
+]);
+const TEXT_ALIGNMENTS = new Set(['left', 'center', 'right', 'justify']);
 const TEXT_TRANSFORMS = new Set(['none', 'uppercase', 'lowercase', 'capitalize']);
-const BORDER_STYLES = new Set(['none', 'solid', 'dashed', 'dotted']);
+const BORDER_STYLES = new Set(['none', 'solid', 'dashed', 'dotted', 'double']);
 const GRADIENT_TYPES = new Set(['linear', 'radial']);
 const SUBTITLE_POSITIONS = new Set(['bottom', 'top', 'center', 'custom']);
 const ANIMATION_TYPES = new Set([
@@ -51,24 +116,74 @@ const CUSTOMIZATION_KEYS = Object.freeze([
   'fadeInDuration', 'fadeOutDuration', 'animationType', 'animationEasing', 'wordWrap',
   'maxLines', 'lineBreakBehavior', 'rtlSupport', 'preset',
 ]);
+const CUSTOMIZATION_NUMBER_BOUNDS = Object.freeze({
+  fontSize: [1, 1_000],
+  lineHeight: [0.1, 10],
+  letterSpacing: [-100, 1_000],
+  backgroundOpacity: [0, 100],
+  borderRadius: [0, 1_000],
+  borderWidth: [0, 100],
+  textShadowBlur: [0, 1_000],
+  textShadowOffsetX: [-2_000, 2_000],
+  textShadowOffsetY: [-2_000, 2_000],
+  glowIntensity: [0, 1_000],
+  strokeWidth: [0, 100],
+  pulseSpeed: [0, 100],
+  shakeIntensity: [0, 1_000],
+  customPositionX: [-1_000, 1_000],
+  customPositionY: [-1_000, 1_000],
+  marginBottom: [-10_000, 10_000],
+  marginTop: [-10_000, 10_000],
+  marginLeft: [-10_000, 10_000],
+  marginRight: [-10_000, 10_000],
+  maxWidth: [1, 1_000],
+  fadeInDuration: [0, 60],
+  fadeOutDuration: [0, 60],
+});
+const CUSTOMIZATION_COLOR_KEYS = Object.freeze([
+  'textColor', 'backgroundColor', 'borderColor', 'textShadowColor', 'glowColor',
+  'gradientColorStart', 'gradientColorEnd', 'gradientColorMid', 'strokeColor',
+]);
 
 const isRecord = (value) => (
   value !== null && typeof value === 'object' && !Array.isArray(value)
 );
 
-const isPlainRecord = (value) => {
-  if (!isRecord(value)) return false;
-  const prototype = Object.getPrototypeOf(value);
-  if (prototype !== Object.prototype && prototype !== null) return false;
-  if (Object.getOwnPropertySymbols(value).length !== 0) return false;
-  return Object.values(Object.getOwnPropertyDescriptors(value))
-    .every((descriptor) => descriptor.enumerable && 'value' in descriptor);
+const snapshotPlainRecord = (value) => {
+  try {
+    if (!isRecord(value)) return null;
+    const prototype = Object.getPrototypeOf(value);
+    if (prototype !== Object.prototype && prototype !== null
+        || Object.getOwnPropertySymbols(value).length !== 0) {
+      return null;
+    }
+    const descriptors = Object.getOwnPropertyDescriptors(value);
+    if (Object.values(descriptors).some(
+      (descriptor) => !descriptor.enumerable || !('value' in descriptor)
+    )) {
+      return null;
+    }
+    return Object.freeze(Object.fromEntries(
+      Object.entries(descriptors).map(([key, descriptor]) => [key, descriptor.value])
+    ));
+  } catch {
+    return null;
+  }
+};
+
+const isPlainRecord = (value) => snapshotPlainRecord(value) !== null;
+
+const snapshotExactRecord = (value, keys) => {
+  const snapshot = snapshotPlainRecord(value);
+  if (snapshot === null || Object.keys(snapshot).length !== keys.length
+      || !keys.every((key) => Object.prototype.hasOwnProperty.call(snapshot, key))) {
+    return null;
+  }
+  return snapshot;
 };
 
 const hasExactKeys = (value, keys) => (
-  isPlainRecord(value)
-  && Object.keys(value).length === keys.length
-  && keys.every((key) => Object.prototype.hasOwnProperty.call(value, key))
+  snapshotExactRecord(value, keys) !== null
 );
 
 const hasOnlyKeys = (value, keys) => (
@@ -113,10 +228,168 @@ const cancelled = () => {
   return error;
 };
 
+const internalAbortMonitors = new WeakMap();
+
+const createAbortMonitor = (signal) => {
+  if (signal === null) return null;
+  let initiallyAborted;
+  let addEventListener;
+  let removeEventListener;
+  try {
+    if (!isRecord(signal)) throw invalidRequest();
+    initiallyAborted = signal.aborted;
+    addEventListener = signal.addEventListener;
+    removeEventListener = signal.removeEventListener;
+  } catch {
+    throw invalidRequest();
+  }
+  if (typeof initiallyAborted !== 'boolean'
+      || typeof addEventListener !== 'function'
+      || typeof removeEventListener !== 'function') {
+    throw invalidRequest();
+  }
+
+  let aborted = initiallyAborted;
+  let attached = false;
+  let disposed = false;
+  const listeners = new Set();
+  const notify = () => {
+    if (disposed || aborted) return;
+    aborted = true;
+    for (const listener of [...listeners]) {
+      try {
+        listener();
+      } catch {
+        // An internal cancellation observer cannot break the other owners.
+      }
+    }
+  };
+  const detachUpstream = () => {
+    if (!attached) return;
+    attached = false;
+    try {
+      removeEventListener.call(signal, 'abort', notify);
+    } catch {
+      // A hostile cleanup method cannot escape into terminal delivery.
+    }
+  };
+
+  if (!aborted) {
+    let registrationFailed = false;
+    try {
+      addEventListener.call(signal, 'abort', notify, { once: true });
+      attached = true;
+    } catch {
+      registrationFailed = true;
+      // The method may have attached before throwing, so attempt guarded cleanup.
+      attached = true;
+      detachUpstream();
+      if (!aborted) {
+        disposed = true;
+        throw invalidRequest();
+      }
+    }
+    if (!registrationFailed) {
+      let observedAfterRegistration;
+      try {
+        observedAfterRegistration = signal.aborted;
+      } catch {
+        detachUpstream();
+        disposed = true;
+        throw invalidRequest();
+      }
+      if (typeof observedAfterRegistration !== 'boolean') {
+        detachUpstream();
+        disposed = true;
+        throw invalidRequest();
+      }
+      if (observedAfterRegistration) notify();
+    }
+  }
+
+  return Object.freeze({
+    isAborted: () => aborted,
+    listen: (listener) => {
+      if (typeof listener !== 'function') throw invalidRequest();
+      if (aborted) {
+        try {
+          listener();
+        } catch {
+          // Cancellation remains authoritative.
+        }
+        return () => {};
+      }
+      if (disposed) return () => {};
+      listeners.add(listener);
+      let listening = true;
+      return () => {
+        if (!listening) return;
+        listening = false;
+        listeners.delete(listener);
+      };
+    },
+    dispose: () => {
+      if (disposed) return;
+      disposed = true;
+      listeners.clear();
+      detachUpstream();
+    },
+  });
+};
+
+const dataProperty = (value, key) => {
+  try {
+    if (!isRecord(value)) return null;
+    const descriptor = Object.getOwnPropertyDescriptor(value, key);
+    return descriptor && Object.hasOwn(descriptor, 'value')
+      ? Object.freeze({ value: descriptor.value })
+      : null;
+  } catch {
+    return null;
+  }
+};
+
+const renderFailureMessage = (code) => (
+  code === 'renderRuntimeUnavailable'
+    ? 'Install the Remotion video renderer in Settings before rendering'
+    : code === 'mediaToolsUnavailable'
+      ? 'Install FFmpeg and FFprobe in Settings before rendering'
+      : code === 'renderBusy'
+        ? 'Another video render is already running'
+        : ['invalidRenderRequest', 'invalidInput'].includes(code)
+          ? 'The selected video, subtitles, or render settings are invalid'
+          : ['mediaUnavailable', 'invalidMediaLocation', 'mediaIdentityConflict'].includes(code)
+            ? 'The selected video is no longer available'
+            : code === 'renderSourceChanged'
+              ? 'The source video changed before rendering completed'
+              : code === 'renderNarrationChanged'
+                ? 'The narration audio changed before rendering completed'
+                : code === 'renderPublicationFailed'
+                  ? 'The rendered video could not be saved durably'
+                  : code === 'renderCancelled'
+                    ? 'The native video render was cancelled'
+                    : code === 'renderTimeout'
+                      ? 'The native video render exceeded its safe time limit'
+                      : 'The native video render could not be completed'
+);
+
+const allowedRenderCode = (value, fallback = 'nativeRenderFailed') => {
+  try {
+    const candidate = value?.code;
+    return RENDER_COMMAND_CODES.has(candidate) ? candidate : fallback;
+  } catch {
+    return fallback;
+  }
+};
+
 const normalizeFailure = (value) => {
-  if (value instanceof NativeRenderError) return value;
-  const code = typeof value?.code === 'string' ? value.code : 'nativeRenderFailed';
-  return new NativeRenderError(code, 'The native video render could not be completed');
+  try {
+    if (value instanceof NativeRenderError) return value;
+  } catch {
+    // Hostile transport proxies are never authoritative error metadata.
+  }
+  const code = allowedRenderCode(value);
+  return new NativeRenderError(code, renderFailureMessage(code));
 };
 
 const requireInteger = (value, minimum, maximum, response = false) => {
@@ -145,11 +418,56 @@ const requireEnum = (value, allowed) => {
   return value;
 };
 
-const requireString = (value, maximumBytes = 16_384) => {
-  if (typeof value !== 'string' || value.length === 0
-      || new TextEncoder().encode(value).byteLength > maximumBytes) {
+const isWellFormedUtf16 = (value) => {
+  for (let index = 0; index < value.length; index += 1) {
+    const codeUnit = value.charCodeAt(index);
+    if (codeUnit >= 0xD800 && codeUnit <= 0xDBFF) {
+      if (index + 1 >= value.length) return false;
+      const following = value.charCodeAt(index + 1);
+      if (following < 0xDC00 || following > 0xDFFF) return false;
+      index += 1;
+    } else if (codeUnit >= 0xDC00 && codeUnit <= 0xDFFF) {
+      return false;
+    }
+  }
+  return true;
+};
+
+const hasControlCharacter = (value, allowTextWhitespace = false) => {
+  for (let index = 0; index < value.length; index += 1) {
+    const codeUnit = value.charCodeAt(index);
+    const isControl = codeUnit <= 0x1F || (codeUnit >= 0x7F && codeUnit <= 0x9F);
+    if (isControl && !(allowTextWhitespace && [0x09, 0x0A, 0x0D].includes(codeUnit))) {
+      return true;
+    }
+  }
+  return false;
+};
+
+const utf8ByteLength = (value) => new TextEncoder().encode(value).byteLength;
+
+const requireString = (value, maximumBytes = 16_384, options = {}) => {
+  const { allowTextWhitespace = false } = options;
+  if (typeof value !== 'string' || value.length === 0 || !isWellFormedUtf16(value)
+      || hasControlCharacter(value, allowTextWhitespace)
+      || utf8ByteLength(value) > maximumBytes) {
     throw invalidRequest();
   }
+  return value;
+};
+
+const requireColor = (value) => {
+  if (typeof value !== 'string' || !/^#[0-9a-fA-F]+$/.test(value)
+      || ![4, 5, 7, 9].includes(value.length)) {
+    throw invalidRequest();
+  }
+  return value;
+};
+
+const requireGradientDirection = (value) => {
+  if (typeof value !== 'string' || !/^\d+deg$/.test(value)) throw invalidRequest();
+  const degrees = Number(value.slice(0, -3));
+  if (!Number.isSafeInteger(degrees) || degrees > 360) throw invalidRequest();
   return value;
 };
 
@@ -180,25 +498,38 @@ const canonicalAssetFromDescriptor = (descriptor) => {
   });
 };
 
-const normalizeSourceAsset = (asset) => {
-  if (!hasExactKeys(asset, ['id', 'displayName', 'extension', 'sizeBytes', 'kind'])
-      || !uuidHasVersion(asset.id, 7)
-      || typeof asset.displayName !== 'string'
-      || asset.displayName.length === 0
-      || Array.from(asset.displayName).length > 512
-      || typeof asset.extension !== 'string'
-      || !/^[A-Za-z0-9]{1,16}$/.test(asset.extension)
-      || !Number.isSafeInteger(asset.sizeBytes)
-      || asset.sizeBytes <= 0
-      || !['audio', 'video'].includes(asset.kind)) {
+const normalizeSourceAsset = (asset, { response = false } = {}) => {
+  const snapshot = snapshotExactRecord(
+    asset,
+    ['id', 'displayName', 'extension', 'sizeBytes', 'kind'],
+  );
+  const extension = typeof snapshot?.extension === 'string'
+    ? snapshot.extension.toLowerCase()
+    : null;
+  const expectedKind = VIDEO_EXTENSIONS.has(extension) ? 'video'
+    : AUDIO_EXTENSIONS.has(extension) ? 'audio' : null;
+  if (snapshot === null
+      || !uuidHasVersion(snapshot.id, 7)
+      || typeof snapshot.displayName !== 'string'
+      || snapshot.displayName.length === 0
+      || snapshot.displayName.trim() !== snapshot.displayName
+      || !isWellFormedUtf16(snapshot.displayName)
+      || hasControlCharacter(snapshot.displayName)
+      || Array.from(snapshot.displayName).length > 512
+      || typeof snapshot.extension !== 'string'
+      || !/^[A-Za-z0-9]{1,16}$/.test(snapshot.extension)
+      || (response && snapshot.extension !== extension)
+      || !Number.isSafeInteger(snapshot.sizeBytes)
+      || snapshot.sizeBytes <= 0
+      || snapshot.kind !== expectedKind) {
     throw invalidRequest();
   }
   return Object.freeze({
-    id: asset.id,
-    displayName: asset.displayName,
-    extension: asset.extension.toLowerCase(),
-    sizeBytes: asset.sizeBytes,
-    kind: asset.kind,
+    id: snapshot.id,
+    displayName: snapshot.displayName,
+    extension,
+    sizeBytes: snapshot.sizeBytes,
+    kind: snapshot.kind,
   });
 };
 
@@ -259,56 +590,66 @@ const normalizeLyrics = (lyrics) => {
     throw invalidRequest();
   }
   const ids = new Set();
+  let totalTextBytes = 0;
   return Object.freeze(lyrics.map((lyric, index) => {
-    if (!isRecord(lyric)) throw invalidRequest();
-    const rawId = lyric.id ?? lyric.subtitle_id ?? index;
+    const snapshot = snapshotPlainRecord(lyric);
+    if (snapshot === null) throw invalidRequest();
+    const rawId = snapshot.id ?? snapshot.subtitle_id ?? index;
     const id = `cue-${index}-${String(rawId)}`;
-    if (id.length > 128 || ids.has(id)) throw invalidRequest();
+    if (!isWellFormedUtf16(id) || hasControlCharacter(id)
+        || utf8ByteLength(id) > 128 || ids.has(id)) {
+      throw invalidRequest();
+    }
     ids.add(id);
-    const startUs = secondsToMicros(lyric.start ?? lyric.start_time ?? lyric.startTime);
-    const endUs = secondsToMicros(lyric.end ?? lyric.end_time ?? lyric.endTime);
-    const text = requireString(String(lyric.text ?? ''), 16 * 1024);
+    const startUs = secondsToMicros(snapshot.start ?? snapshot.start_time ?? snapshot.startTime);
+    const endUs = secondsToMicros(snapshot.end ?? snapshot.end_time ?? snapshot.endTime);
+    const text = requireString(String(snapshot.text ?? ''), 16 * 1024, {
+      allowTextWhitespace: true,
+    });
+    totalTextBytes += utf8ByteLength(text);
+    if (totalTextBytes > MAX_TOTAL_LYRIC_BYTES) throw invalidRequest();
     if (startUs >= endUs) throw invalidRequest();
     return Object.freeze({ id, startUs, endUs, text });
   }));
 };
 
 const normalizeSettings = (settings) => {
-  if (!isRecord(settings)) throw invalidRequest();
-  const trimStartUs = secondsToMicros(settings.trimStart ?? 0);
-  const rawTrimEnd = Number(settings.trimEnd);
-  const trimEndUs = Number.isFinite(rawTrimEnd) && rawTrimEnd > (trimStartUs / 1_000_000)
-    ? secondsToMicros(rawTrimEnd)
-    : null;
+  const snapshot = snapshotPlainRecord(settings);
+  if (snapshot === null) throw invalidRequest();
+  const trimStartUs = secondsToMicros(snapshot.trimStart ?? 0);
+  const rawTrimEnd = Number(snapshot.trimEnd ?? 0);
+  if (!Number.isFinite(rawTrimEnd) || rawTrimEnd < 0) throw invalidRequest();
+  const trimEndUs = rawTrimEnd === 0 ? null : secondsToMicros(rawTrimEnd);
+  if (trimEndUs !== null && trimEndUs <= trimStartUs) throw invalidRequest();
   return Object.freeze({
-    resolution: requireEnum(settings.resolution, RESOLUTIONS),
-    frameRate: requireEnum(Number(settings.frameRate), FRAME_RATES),
-    originalAudioVolume: requireInteger(Number(settings.originalAudioVolume), 0, 100),
-    narrationVolume: requireInteger(Number(settings.narrationVolume), 0, 100),
+    resolution: requireEnum(snapshot.resolution, RESOLUTIONS),
+    frameRate: requireEnum(Number(snapshot.frameRate), FRAME_RATES),
+    originalAudioVolume: requireInteger(Number(snapshot.originalAudioVolume), 0, 100),
+    narrationVolume: requireInteger(Number(snapshot.narrationVolume), 0, 100),
     trimStartUs,
     trimEndUs,
   });
 };
 
 const normalizeCustomization = (customization) => {
-  if (!hasExactKeys(customization, CUSTOMIZATION_KEYS)) throw invalidRequest();
-  const normalized = { ...customization };
-  [
-    'fontSize', 'lineHeight', 'letterSpacing', 'backgroundOpacity', 'borderRadius',
-    'borderWidth', 'textShadowBlur', 'textShadowOffsetX', 'textShadowOffsetY',
-    'glowIntensity', 'strokeWidth', 'pulseSpeed', 'shakeIntensity', 'customPositionX',
-    'customPositionY', 'marginBottom', 'marginTop', 'marginLeft', 'marginRight', 'maxWidth',
-    'fadeInDuration', 'fadeOutDuration',
-  ].forEach((key) => requireFinite(normalized[key], -10_000, 10_000));
-  ['fontWeight', 'shadowLayers', 'maxLines'].forEach((key) => {
-    requireInteger(normalized[key], 0, 10_000);
+  const snapshot = snapshotExactRecord(customization, CUSTOMIZATION_KEYS);
+  if (snapshot === null) throw invalidRequest();
+  const normalized = { ...snapshot };
+  Object.entries(CUSTOMIZATION_NUMBER_BOUNDS).forEach(([key, [minimum, maximum]]) => {
+    requireFinite(normalized[key], minimum, maximum);
   });
+  requireInteger(normalized.fontWeight, 100, 900);
+  if (normalized.fontWeight % 100 !== 0) throw invalidRequest();
+  requireInteger(normalized.shadowLayers, 0, 16);
+  requireInteger(normalized.maxLines, 1, 32);
   [
     'textShadowEnabled', 'glowEnabled', 'gradientEnabled', 'strokeEnabled',
     'multiShadowEnabled', 'pulseEnabled', 'shakeEnabled', 'wordWrap', 'rtlSupport',
   ].forEach((key) => requireBoolean(normalized[key]));
   requireString(normalized.fontFamily, 256);
   requireString(normalized.preset, 128);
+  CUSTOMIZATION_COLOR_KEYS.forEach((key) => requireColor(normalized[key]));
+  requireGradientDirection(normalized.gradientDirection);
   requireEnum(normalized.textAlign, TEXT_ALIGNMENTS);
   requireEnum(normalized.textTransform, TEXT_TRANSFORMS);
   requireEnum(normalized.borderStyle, BORDER_STYLES);
@@ -321,23 +662,30 @@ const normalizeCustomization = (customization) => {
 };
 
 const normalizeCrop = (crop) => {
-  if (!isRecord(crop)) throw invalidRequest();
-  const aspectRatio = typeof crop.aspectRatio === 'number' && Number.isFinite(crop.aspectRatio)
-    ? crop.aspectRatio
-    : null;
-  const canvasBgMode = crop.canvasBgMode ?? 'solid';
+  const snapshot = snapshotPlainRecord(crop);
+  if (snapshot === null) throw invalidRequest();
+  const aspectRatio = snapshot.aspectRatio ?? null;
+  if (aspectRatio !== null) requireFinite(aspectRatio, 0.01, 100);
+  const canvasBgMode = snapshot.canvasBgMode ?? 'solid';
   if (!['solid', 'blur'].includes(canvasBgMode)) throw invalidRequest();
+  const canvasBgColor = snapshot.canvasBgColor ?? '#000000';
+  const canvasBgBlur = snapshot.canvasBgBlur ?? 24;
+  const flipX = snapshot.flipX ?? false;
+  const flipY = snapshot.flipY ?? false;
+  requireColor(canvasBgColor);
+  requireBoolean(flipX);
+  requireBoolean(flipY);
   return Object.freeze({
-    x: requireFinite(Number(crop.x ?? 0), -1_000, 1_000),
-    y: requireFinite(Number(crop.y ?? 0), -1_000, 1_000),
-    width: requireFinite(Number(crop.width ?? 100), 0.01, 1_000),
-    height: requireFinite(Number(crop.height ?? 100), 0.01, 1_000),
+    x: requireFinite(snapshot.x ?? 0, -1_000, 1_000),
+    y: requireFinite(snapshot.y ?? 0, -1_000, 1_000),
+    width: requireFinite(snapshot.width ?? 100, 0.01, 1_000),
+    height: requireFinite(snapshot.height ?? 100, 0.01, 1_000),
     aspectRatio,
     canvasBgMode,
-    canvasBgColor: typeof crop.canvasBgColor === 'string' ? crop.canvasBgColor : '#000000',
-    canvasBgBlur: requireFinite(Number(crop.canvasBgBlur ?? 24), 0, 1_000),
-    flipX: Boolean(crop.flipX),
-    flipY: Boolean(crop.flipY),
+    canvasBgColor,
+    canvasBgBlur: requireFinite(canvasBgBlur, 0, 1_000),
+    flipX,
+    flipY,
   });
 };
 
@@ -366,24 +714,27 @@ export const buildNativeRenderRequest = ({
 };
 
 export const normalizeRenderJob = (job) => {
-  if (!hasExactKeys(job, ['id', 'kind', 'state', 'progress', 'sequence'])
-      || !hasExactKeys(job.progress, ['basisPoints'])
-      || !uuidHasVersion(job.id, 7)
-      || job.kind !== 'renderVideo'
-      || !JOB_STATES.has(job.state)) {
+  const snapshot = snapshotExactRecord(job, ['id', 'kind', 'state', 'progress', 'sequence']);
+  const progressSnapshot = snapshot === null
+    ? null
+    : snapshotExactRecord(snapshot.progress, ['basisPoints']);
+  if (snapshot === null || progressSnapshot === null
+      || !uuidHasVersion(snapshot.id, 7)
+      || snapshot.kind !== 'renderVideo'
+      || !JOB_STATES.has(snapshot.state)) {
     throw invalidResponse();
   }
-  const progress = requireInteger(job.progress.basisPoints, 0, 10_000, true);
-  const sequence = requireInteger(job.sequence, 0, Number.MAX_SAFE_INTEGER, true);
-  if ((job.state === 'queued' && (progress !== 0 || sequence !== 0))
-      || (job.state === 'succeeded' && progress !== 10_000)
-      || (!['queued', 'succeeded'].includes(job.state) && sequence < 1)) {
+  const progress = requireInteger(progressSnapshot.basisPoints, 0, 10_000, true);
+  const sequence = requireInteger(snapshot.sequence, 0, Number.MAX_SAFE_INTEGER, true);
+  if ((snapshot.state === 'queued' && (progress !== 0 || sequence !== 0))
+      || (snapshot.state === 'succeeded' && progress !== 10_000)
+      || (!['queued', 'succeeded'].includes(snapshot.state) && sequence < 1)) {
     throw invalidResponse();
   }
   return Object.freeze({
-    id: job.id,
+    id: snapshot.id,
     kind: 'renderVideo',
-    state: job.state,
+    state: snapshot.state,
     progress: Object.freeze({ basisPoints: progress }),
     sequence,
   });
@@ -391,101 +742,158 @@ export const normalizeRenderJob = (job) => {
 
 const normalizeMediaAsset = (asset) => {
   try {
-    return normalizeSourceAsset(asset);
+    return normalizeSourceAsset(asset, { response: true });
   } catch {
     throw invalidResponse();
   }
 };
 
 const normalizePlayback = (playback, asset) => {
-  if (!hasExactKeys(playback, ['id', 'playbackUrl', 'mimeType', 'byteLength'])
-      || !uuidHasVersion(playback.id, 4)
-      || !isNativeMediaPlaybackUrl(playback.playbackUrl, playback.id)
-      || playback.mimeType !== 'video/mp4'
-      || playback.byteLength !== asset.sizeBytes) {
+  const snapshot = snapshotExactRecord(
+    playback,
+    ['id', 'playbackUrl', 'mimeType', 'byteLength'],
+  );
+  if (snapshot === null
+      || !uuidHasVersion(snapshot.id, 4)
+      || !isNativeMediaPlaybackUrl(snapshot.playbackUrl, snapshot.id)
+      || snapshot.mimeType !== 'video/mp4'
+      || snapshot.byteLength !== asset.sizeBytes) {
     throw invalidResponse();
   }
-  return Object.freeze({ ...playback });
+  return snapshot;
 };
 
+const extractPlaybackCapability = (value) => {
+  try {
+    const resultPlayback = dataProperty(value, 'playback');
+    const playback = snapshotExactRecord(
+      resultPlayback?.value,
+      ['id', 'playbackUrl', 'mimeType', 'byteLength'],
+    );
+    if (playback === null || !uuidHasVersion(playback.id, 4)
+        || !isNativeMediaPlaybackUrl(playback.playbackUrl, playback.id)
+        || playback.mimeType !== 'video/mp4'
+        || !Number.isSafeInteger(playback.byteLength)
+        || playback.byteLength <= 0) {
+      return null;
+    }
+    return playback.id;
+  } catch {
+    return null;
+  }
+};
+
+const extractPlaybackOwnership = (value, expectedEvent = null) => {
+  try {
+    const eventName = dataProperty(value, 'event');
+    if (expectedEvent !== null && eventName?.value !== expectedEvent) {
+      return null;
+    }
+    const result = dataProperty(value, 'result');
+    const playbackId = extractPlaybackCapability(result?.value);
+    if (playbackId === null) return null;
+    const jobValue = dataProperty(value, 'job');
+    const job = snapshotPlainRecord(jobValue?.value);
+    const jobId = job !== null && uuidHasVersion(job.id, 7) ? job.id : null;
+    return Object.freeze({ jobId, playbackId });
+  } catch {
+    return null;
+  }
+};
+
+const extractCompletedPlaybackOwnership = (value) => (
+  extractPlaybackOwnership(value, 'completed')
+);
+
 export const normalizeRenderResult = (result) => {
-  if (!hasExactKeys(result, [
+  const snapshot = snapshotExactRecord(result, [
     'artifactId', 'asset', 'sourceAssetId', 'projectId', 'width', 'height', 'fps',
     'durationInFrames', 'playback',
-  ])) {
-    throw invalidResponse();
-  }
-  const asset = normalizeMediaAsset(result.asset);
+  ]);
+  if (snapshot === null) throw invalidResponse();
+  const asset = normalizeMediaAsset(snapshot.asset);
   if (asset.kind !== 'video' || asset.extension !== 'mp4') throw invalidResponse();
   return Object.freeze({
-    artifactId: requireUuid(result.artifactId, 7, true),
+    artifactId: requireUuid(snapshot.artifactId, 7, true),
     asset,
-    sourceAssetId: requireUuid(result.sourceAssetId, 7, true),
-    projectId: requireUuid(result.projectId, 7, true),
-    width: requireInteger(result.width, 2, 15_360, true),
-    height: requireInteger(result.height, 2, 8_640, true),
-    fps: requireInteger(result.fps, 1, 120, true),
-    durationInFrames: requireInteger(result.durationInFrames, 1, 1_000_000, true),
-    playback: normalizePlayback(result.playback, asset),
+    sourceAssetId: requireUuid(snapshot.sourceAssetId, 7, true),
+    projectId: requireUuid(snapshot.projectId, 7, true),
+    width: requireInteger(snapshot.width, 2, 15_360, true),
+    height: requireInteger(snapshot.height, 2, 8_640, true),
+    fps: requireInteger(snapshot.fps, 1, 120, true),
+    durationInFrames: requireInteger(snapshot.durationInFrames, 1, 1_000_000, true),
+    playback: normalizePlayback(snapshot.playback, asset),
   });
 };
 
 export const normalizeRenderResultResponse = (value) => {
-  if (!hasExactKeys(value, ['job', 'result'])) throw invalidResponse();
-  const job = normalizeRenderJob(value.job);
-  const result = value.result === null ? null : normalizeRenderResult(value.result);
+  const snapshot = snapshotExactRecord(value, ['job', 'result']);
+  if (snapshot === null) throw invalidResponse();
+  const job = normalizeRenderJob(snapshot.job);
+  const result = snapshot.result === null ? null : normalizeRenderResult(snapshot.result);
   if (job.state === 'succeeded' ? result === null : result !== null) throw invalidResponse();
   return Object.freeze({ job, result });
 };
 
 const normalizeCommandError = (value) => {
-  if (!hasExactKeys(value, ['code', 'message'])
-      || typeof value.code !== 'string'
-      || typeof value.message !== 'string') {
+  const snapshot = snapshotExactRecord(value, ['code', 'message']);
+  if (snapshot === null || typeof snapshot.code !== 'string'
+      || typeof snapshot.message !== 'string') {
     throw invalidResponse();
   }
-  return Object.freeze({ code: value.code, message: value.message });
+  const code = RENDER_COMMAND_CODES.has(snapshot.code) ? snapshot.code : 'nativeRenderFailed';
+  return Object.freeze({ code, message: renderFailureMessage(code) });
 };
 
 export const normalizeRenderEvent = (value) => {
-  if (!isPlainRecord(value) || typeof value.event !== 'string') throw invalidResponse();
-  if (value.event === 'progress') {
-    if (!hasExactKeys(value, [
+  const eventSnapshot = snapshotPlainRecord(value);
+  const eventName = eventSnapshot?.event;
+  if (typeof eventName !== 'string') throw invalidResponse();
+  if (eventName === 'progress') {
+    const snapshot = snapshotExactRecord(eventSnapshot, [
       'event', 'job', 'phase', 'fractionMillionths', 'renderedFrames', 'encodedFrames',
       'durationInFrames',
-    ]) || !RENDER_PHASES.has(value.phase)) {
+    ]);
+    if (snapshot === null || !RENDER_PHASES.has(snapshot.phase)) {
       throw invalidResponse();
     }
-    const job = normalizeRenderJob(value.job);
+    const job = normalizeRenderJob(snapshot.job);
     if (job.state !== 'running') throw invalidResponse();
-    const durationInFrames = requireInteger(value.durationInFrames, 1, 1_000_000, true);
+    const durationInFrames = requireInteger(snapshot.durationInFrames, 1, 1_000_000, true);
     return Object.freeze({
       event: 'progress',
       job,
-      phase: value.phase,
-      fractionMillionths: requireInteger(value.fractionMillionths, 0, 1_000_000, true),
-      renderedFrames: requireInteger(value.renderedFrames, 0, durationInFrames, true),
-      encodedFrames: requireInteger(value.encodedFrames, 0, durationInFrames, true),
+      phase: snapshot.phase,
+      fractionMillionths: requireInteger(snapshot.fractionMillionths, 0, 1_000_000, true),
+      renderedFrames: requireInteger(snapshot.renderedFrames, 0, durationInFrames, true),
+      encodedFrames: requireInteger(snapshot.encodedFrames, 0, durationInFrames, true),
       durationInFrames,
     });
   }
-  if (value.event === 'completed') {
-    if (!hasExactKeys(value, ['event', 'job', 'result'])) throw invalidResponse();
-    const job = normalizeRenderJob(value.job);
+  if (eventName === 'completed') {
+    const snapshot = snapshotExactRecord(eventSnapshot, ['event', 'job', 'result']);
+    if (snapshot === null) throw invalidResponse();
+    const job = normalizeRenderJob(snapshot.job);
     if (job.state !== 'succeeded') throw invalidResponse();
-    return Object.freeze({ event: 'completed', job, result: normalizeRenderResult(value.result) });
+    return Object.freeze({
+      event: 'completed',
+      job,
+      result: normalizeRenderResult(snapshot.result),
+    });
   }
-  if (value.event === 'cancelled') {
-    if (!hasExactKeys(value, ['event', 'job'])) throw invalidResponse();
-    const job = normalizeRenderJob(value.job);
+  if (eventName === 'cancelled') {
+    const snapshot = snapshotExactRecord(eventSnapshot, ['event', 'job']);
+    if (snapshot === null) throw invalidResponse();
+    const job = normalizeRenderJob(snapshot.job);
     if (job.state !== 'cancelled') throw invalidResponse();
     return Object.freeze({ event: 'cancelled', job });
   }
-  if (value.event === 'failed') {
-    if (!hasExactKeys(value, ['event', 'job', 'error'])) throw invalidResponse();
-    const job = value.job === null ? null : normalizeRenderJob(value.job);
+  if (eventName === 'failed') {
+    const snapshot = snapshotExactRecord(eventSnapshot, ['event', 'job', 'error']);
+    if (snapshot === null) throw invalidResponse();
+    const job = snapshot.job === null ? null : normalizeRenderJob(snapshot.job);
     if (job !== null && !['failed', 'succeeded'].includes(job.state)) throw invalidResponse();
-    return Object.freeze({ event: 'failed', job, error: normalizeCommandError(value.error) });
+    return Object.freeze({ event: 'failed', job, error: normalizeCommandError(snapshot.error) });
   }
   throw invalidResponse();
 };
@@ -495,13 +903,14 @@ const normalizeHandlers = (handlers) => {
   const allowed = new Set([
     'onEvent', 'onProgress', 'onCompleted', 'onCancelled', 'onFailed', 'onProtocolError',
   ]);
-  if (!hasOnlyKeys(handlers, allowed)
-      || Object.values(handlers).some(
+  const snapshot = snapshotPlainRecord(handlers);
+  if (snapshot === null || !hasOnlyKeys(snapshot, allowed)
+      || Object.values(snapshot).some(
         (handler) => handler !== undefined && typeof handler !== 'function'
       )) {
     throw invalidRequest();
   }
-  return Object.freeze({ ...handlers });
+  return snapshot;
 };
 
 const callSafely = (handler, value) => {
@@ -520,6 +929,8 @@ export const createNativeRenderService = ({
   isNativeRuntime = isDesktopRuntime,
 } = {}) => {
   const activeChannels = new Map();
+  const transferredPlaybackIds = new Set();
+  const quarantinedPlaybackIds = new Set();
 
   const requireNative = () => {
     if (!isNativeRuntime()) throw runtimeRequired();
@@ -527,18 +938,24 @@ export const createNativeRenderService = ({
 
   const status = async () => {
     requireNative();
-    const value = await invokeCommand('render_runtime_status', {});
-    if (!hasExactKeys(value, [
-      'available', 'remotionVersion', 'reason', 'maxConcurrentRenders',
-    ]) || typeof value.available !== 'boolean'
-      || value.remotionVersion !== REMOTION_VERSION
-      || (value.reason !== null && typeof value.reason !== 'string')
-      || value.maxConcurrentRenders !== 1
-      || (value.available && value.reason !== null)
-      || (!value.available && value.reason === null)) {
-      throw invalidResponse();
+    try {
+      const value = snapshotExactRecord(
+        await invokeCommand('render_runtime_status', {}),
+        ['available', 'remotionVersion', 'reason', 'maxConcurrentRenders'],
+      );
+      if (value === null
+        || typeof value.available !== 'boolean'
+        || value.remotionVersion !== REMOTION_VERSION
+        || (value.reason !== null && !RENDER_UNAVAILABLE_REASONS.has(value.reason))
+        || value.maxConcurrentRenders !== 1
+        || (value.available && value.reason !== null)
+        || (!value.available && value.reason === null)) {
+        throw invalidResponse();
+      }
+      return Object.freeze({ ...value });
+    } catch (error) {
+      throw normalizeFailure(error);
     }
-    return Object.freeze({ ...value });
   };
 
   const cancel = async (jobId) => {
@@ -546,7 +963,9 @@ export const createNativeRenderService = ({
     const id = requireUuid(jobId, 7);
     try {
       const job = normalizeRenderJob(await invokeCommand('job_cancel', { id }));
-      if (job.id !== id) throw invalidResponse();
+      if (job.id !== id || !CANCELLATION_RESPONSE_STATES.has(job.state)) {
+        throw invalidResponse();
+      }
       return job;
     } catch (error) {
       throw normalizeFailure(error);
@@ -556,97 +975,212 @@ export const createNativeRenderService = ({
   const releasePlayback = async (playbackId) => {
     requireNative();
     const id = requireUuid(playbackId, 4);
-    const released = await invokeCommand('render_playback_release', { playbackId: id });
-    if (typeof released !== 'boolean') throw invalidResponse();
-    return released;
-  };
-
-  const getResult = async (jobId) => {
-    requireNative();
-    const id = requireUuid(jobId, 7);
     try {
-      const response = normalizeRenderResultResponse(
-        await invokeCommand('render_result', { jobId: id })
-      );
-      if (response.job.id !== id) throw invalidResponse();
-      return response;
+      const released = await invokeCommand('render_playback_release', { playbackId: id });
+      if (typeof released !== 'boolean') throw invalidResponse();
+      return released;
     } catch (error) {
       throw normalizeFailure(error);
     }
   };
 
-  const start = async (request, rawHandlers, { signal = null } = {}) => {
+  const quarantinePlayback = async (playbackId) => {
+    if (transferredPlaybackIds.has(playbackId) || quarantinedPlaybackIds.has(playbackId)) {
+      return false;
+    }
+    quarantinedPlaybackIds.add(playbackId);
+    try {
+      await releasePlayback(playbackId);
+      return true;
+    } catch {
+      return false;
+    }
+  };
+
+  const getResult = async (jobId) => {
     requireNative();
-    if (!isPlainRecord(request)) throw invalidRequest();
-    if (signal !== null && (!isRecord(signal)
-      || typeof signal.aborted !== 'boolean'
-      || typeof signal.addEventListener !== 'function'
-      || typeof signal.removeEventListener !== 'function')) {
+    const id = requireUuid(jobId, 7);
+    let rawResponse = null;
+    try {
+      rawResponse = await invokeCommand('render_result', { jobId: id });
+      const response = normalizeRenderResultResponse(
+        rawResponse
+      );
+      if (response.job.id !== id) throw invalidResponse();
+      if (response.result !== null) {
+        const playbackId = response.result.playback.id;
+        if (transferredPlaybackIds.has(playbackId) || quarantinedPlaybackIds.has(playbackId)) {
+          throw invalidResponse();
+        }
+        transferredPlaybackIds.add(playbackId);
+      }
+      return response;
+    } catch (error) {
+      const ownership = extractPlaybackOwnership(rawResponse);
+      if (ownership !== null) await quarantinePlayback(ownership.playbackId);
+      throw normalizeFailure(error);
+    }
+  };
+
+  const start = async (request, rawHandlers, rawOptions = {}) => {
+    requireNative();
+    const ownedRequest = snapshotPlainRecord(request);
+    if (ownedRequest === null
+        || !uuidHasVersion(ownedRequest.sourceAssetId, 7)
+        || !uuidHasVersion(ownedRequest.projectId, 7)) {
       throw invalidRequest();
     }
-    if (signal?.aborted) throw cancelled();
+    const expectedSourceAssetId = ownedRequest.sourceAssetId;
+    const expectedProjectId = ownedRequest.projectId;
+    const options = snapshotPlainRecord(rawOptions);
+    if (options === null || Object.keys(options).some((key) => key !== 'signal')) {
+      throw invalidRequest();
+    }
+    const signal = options.signal ?? null;
     const handlers = normalizeHandlers(rawHandlers);
     const channel = new ChannelConstructor();
     if (!isRecord(channel)) throw invalidRequest();
+    const borrowedAbortMonitor = internalAbortMonitors.get(rawOptions) ?? null;
+    const abortMonitor = borrowedAbortMonitor ?? createAbortMonitor(signal);
+    const ownsAbortMonitor = borrowedAbortMonitor === null;
+    if (abortMonitor?.isAborted()) {
+      if (ownsAbortMonitor) abortMonitor.dispose();
+      throw cancelled();
+    }
     const pending = [];
     let initial = null;
     let lastSequence = null;
     let lastProgress = 0;
     let lastFraction = 0;
+    let lastPhase = -1;
+    let lastRenderedFrames = 0;
+    let lastEncodedFrames = 0;
+    let expectedDurationInFrames = null;
     let terminal = false;
     let protocolFailed = false;
-    let cancellationIssued = false;
+    let protocolCancellation = null;
+    const releasedPlaybacks = new Set();
+    let transferredPlaybackId = null;
+
+    const releaseUntransferredPlayback = (playbackId) => {
+      if (playbackId === transferredPlaybackId) return;
+      if (transferredPlaybackIds.has(playbackId)) return;
+      if (releasedPlaybacks.has(playbackId)) return;
+      releasedPlaybacks.add(playbackId);
+      void quarantinePlayback(playbackId);
+    };
+    const quarantineCompletedPlayback = (value) => {
+      const ownership = extractCompletedPlaybackOwnership(value);
+      if (ownership !== null
+          && (initial === null || ownership.jobId === null || ownership.jobId === initial.id)) {
+        releaseUntransferredPlayback(ownership.playbackId);
+      }
+    };
 
     const issueCancellation = () => {
-      if (cancellationIssued || initial === null || terminal) return;
-      cancellationIssued = true;
-      cancel(initial.id).catch(() => undefined);
+      if (initial === null || protocolCancellation !== null || terminal) {
+        return protocolCancellation;
+      }
+      activeChannels.delete(initial.id);
+      protocolCancellation = cancel(initial.id).catch(() => null);
+      return protocolCancellation;
     };
     const onAbort = () => issueCancellation();
-    if (signal) signal.addEventListener('abort', onAbort, { once: true });
+    let stopListeningForAbort = () => {};
+    let released = false;
     const release = () => {
+      if (released) return;
+      released = true;
       if (initial !== null) activeChannels.delete(initial.id);
-      if (signal) signal.removeEventListener('abort', onAbort);
+      try {
+        stopListeningForAbort();
+      } catch {
+        // The internal observer is best-effort cleanup only.
+      }
+      if (ownsAbortMonitor) abortMonitor?.dispose();
     };
+    stopListeningForAbort = abortMonitor?.listen(onAbort) ?? stopListeningForAbort;
     const protocolError = () => {
       if (protocolFailed) return;
       protocolFailed = true;
+      for (const abandoned of pending.splice(0)) quarantineCompletedPlayback(abandoned);
       issueCancellation();
+      if (initial !== null) release();
       callSafely(handlers.onProtocolError, invalidResponse());
     };
     const dispatch = (event) => {
+      if (protocolFailed) return;
+      const phase = event.event === 'progress' ? RENDER_PHASE_ORDER.get(event.phase) : null;
       if (terminal || event.job === null
           || event.job.id !== initial.id
           || event.job.sequence < lastSequence
           || event.job.progress.basisPoints < lastProgress
           || (event.event !== 'progress' && event.job.sequence <= lastSequence)
-          || (event.event === 'progress' && event.fractionMillionths < lastFraction)) {
+          || (event.event === 'progress' && (event.fractionMillionths < lastFraction
+            || phase < lastPhase
+            || (phase === lastPhase && (event.renderedFrames < lastRenderedFrames
+              || event.encodedFrames < lastEncodedFrames))
+            || (expectedDurationInFrames !== null
+              && event.durationInFrames !== expectedDurationInFrames)))) {
+        quarantineCompletedPlayback(event);
+        protocolError();
+        return;
+      }
+      if (event.event === 'completed'
+          && (event.result.sourceAssetId !== expectedSourceAssetId
+            || event.result.projectId !== expectedProjectId)) {
+        releaseUntransferredPlayback(event.result.playback.id);
         protocolError();
         return;
       }
       lastSequence = event.job.sequence;
       lastProgress = event.job.progress.basisPoints;
-      if (event.event === 'progress') lastFraction = event.fractionMillionths;
-      if (event.event !== 'progress') {
-        terminal = true;
-        release();
+      if (event.event === 'progress') {
+        lastFraction = event.fractionMillionths;
+        lastPhase = phase;
+        lastRenderedFrames = event.renderedFrames;
+        lastEncodedFrames = event.encodedFrames;
+        expectedDurationInFrames ??= event.durationInFrames;
       }
+      const isTerminalEvent = event.event !== 'progress';
+      if (isTerminalEvent) terminal = true;
+      if (event.event === 'completed') {
+        if (typeof handlers.onEvent === 'function' || typeof handlers.onCompleted === 'function') {
+          transferredPlaybackId = event.result.playback.id;
+          transferredPlaybackIds.add(transferredPlaybackId);
+        } else {
+          releaseUntransferredPlayback(event.result.playback.id);
+        }
+      }
+      if (isTerminalEvent) release();
       callSafely(handlers.onEvent, event);
       if (event.event === 'progress') callSafely(handlers.onProgress, event);
       if (event.event === 'completed') callSafely(handlers.onCompleted, event);
       if (event.event === 'cancelled') callSafely(handlers.onCancelled, event);
       if (event.event === 'failed') callSafely(handlers.onFailed, event);
     };
+    const dispatchBuffered = () => {
+      for (const event of pending.splice(0)) {
+        if (protocolFailed || terminal) quarantineCompletedPlayback(event);
+        else dispatch(event);
+      }
+    };
     channel.onmessage = (rawEvent) => {
+      if (protocolFailed || terminal) {
+        quarantineCompletedPlayback(rawEvent);
+        return;
+      }
       let event;
       try {
         event = normalizeRenderEvent(rawEvent);
       } catch {
+        quarantineCompletedPlayback(rawEvent);
         protocolError();
         return;
       }
       if (initial === null) {
         if (pending.length >= MAX_PENDING_EVENTS) {
+          quarantineCompletedPlayback(event);
           protocolError();
         } else {
           pending.push(event);
@@ -656,25 +1190,59 @@ export const createNativeRenderService = ({
       dispatch(event);
     };
 
+    let rawInitial;
     try {
-      initial = normalizeRenderJob(await invokeCommand('render_start', {
-        request,
+      rawInitial = await invokeCommand('render_start', {
+        request: ownedRequest,
         onEvent: channel,
-      }));
+      });
     } catch (error) {
+      if (!protocolFailed && pending.length > 0 && pending[0].job !== null) {
+        initial = pending[0].job;
+        lastSequence = -1;
+        lastProgress = 0;
+        lastFraction = 0;
+        dispatchBuffered();
+        if (!terminal) await issueCancellation();
+      } else {
+        for (const event of pending.splice(0)) quarantineCompletedPlayback(event);
+      }
       release();
       throw normalizeFailure(error);
     }
+    try {
+      initial = normalizeRenderJob(rawInitial);
+    } catch (error) {
+      const snapshot = snapshotPlainRecord(rawInitial)?.id ?? null;
+      if (uuidHasVersion(snapshot, 7)) {
+        initial = Object.freeze({ id: snapshot });
+        await issueCancellation();
+      }
+      for (const event of pending.splice(0)) quarantineCompletedPlayback(event);
+      release();
+      throw error;
+    }
     if (initial.state !== 'running') {
+      if (ACTIVE_JOB_STATES.has(initial.state)) await issueCancellation();
+      for (const event of pending.splice(0)) quarantineCompletedPlayback(event);
       release();
       throw invalidResponse();
     }
     lastSequence = initial.sequence;
     lastProgress = initial.progress.basisPoints;
+    if (protocolFailed || abortMonitor?.isAborted()) {
+      await issueCancellation();
+      for (const event of pending.splice(0)) quarantineCompletedPlayback(event);
+      release();
+      throw protocolFailed ? invalidResponse() : cancelled();
+    }
     activeChannels.set(initial.id, channel);
-    if (signal?.aborted) issueCancellation();
-    pending.splice(0).forEach(dispatch);
-    if (protocolFailed) throw invalidResponse();
+    dispatchBuffered();
+    if (protocolFailed) {
+      await issueCancellation();
+      release();
+      throw invalidResponse();
+    }
     return initial;
   };
 
@@ -689,76 +1257,222 @@ export const getNativeRenderResult = nativeRenderService.getResult;
 export const cancelNativeRender = nativeRenderService.cancel;
 export const releaseNativeRenderPlayback = nativeRenderService.releasePlayback;
 
-export const runNativeRender = async (request, { signal = null, onStarted, onProgress } = {}) => {
-  let settle;
-  const terminal = new Promise((resolve, reject) => {
-    settle = { resolve, reject };
-  });
-  const initial = await startNativeRender(request, {
-    onProgress,
-    onCompleted: (event) => settle.resolve(event),
-    onCancelled: () => settle.reject(cancelled()),
-    onFailed: async (event) => {
-      if (event.job?.state === 'succeeded') {
-        try {
-          const recovered = await getNativeRenderResult(event.job.id);
-          if (recovered.result !== null) {
-            settle.resolve(Object.freeze({
-              event: 'completed',
-              job: recovered.job,
-              result: recovered.result,
-            }));
+const runNativeRenderObserved = async (
+  request,
+  { signal, onStarted, onProgress },
+  service,
+  abortMonitor,
+) => {
+  const ownership = snapshotPlainRecord(request);
+  if (ownership === null
+      || !uuidHasVersion(ownership.sourceAssetId, 7)
+      || !uuidHasVersion(ownership.projectId, 7)) {
+    throw invalidRequest();
+  }
+  const expectedSourceAssetId = ownership.sourceAssetId;
+  const expectedProjectId = ownership.projectId;
+  if (abortMonitor?.isAborted()) throw cancelled();
+  let terminalObserved = false;
+  let terminalOutcome = null;
+  let resolveTerminal;
+  const terminal = new Promise((resolve) => { resolveTerminal = resolve; });
+  const settle = (outcome) => {
+    if (terminalOutcome !== null) return;
+    terminalObserved = true;
+    terminalOutcome = outcome;
+    resolveTerminal(outcome);
+  };
+  let initial;
+  try {
+    initial = await service.start(request, {
+      onProgress,
+      onCompleted: (event) => settle({ result: event }),
+      onCancelled: () => settle({ error: cancelled() }),
+      onFailed: async (event) => {
+        terminalObserved = true;
+        if (event.job?.state === 'succeeded') {
+          if (abortMonitor?.isAborted()) {
+            settle({ error: cancelled() });
             return;
           }
-        } catch {
-          // Fall through to the categorical native failure.
+          try {
+            const recovered = await service.getResult(event.job.id);
+            if (recovered.result !== null) {
+              if (abortMonitor?.isAborted()) {
+                if (typeof service.releasePlayback === 'function') {
+                  try {
+                    await service.releasePlayback(recovered.result.playback.id);
+                  } catch {
+                    // Cancellation owns the result even if capability cleanup is already complete.
+                  }
+                }
+                settle({ error: cancelled() });
+                return;
+              }
+              if (recovered.result.sourceAssetId !== expectedSourceAssetId
+                  || recovered.result.projectId !== expectedProjectId) {
+                if (typeof service.releasePlayback === 'function') {
+                  try {
+                    await service.releasePlayback(recovered.result.playback.id);
+                  } catch {
+                    // The categorical protocol failure still owns this boundary.
+                  }
+                }
+                settle({ error: invalidResponse() });
+                return;
+              }
+              settle({
+                result: Object.freeze({
+                  event: 'completed',
+                  job: recovered.job,
+                  result: recovered.result,
+                }),
+              });
+              return;
+            }
+          } catch {
+            if (abortMonitor?.isAborted()) {
+              settle({ error: cancelled() });
+              return;
+            }
+            // Fall through to the categorical native failure.
+          }
         }
-      }
-      settle.reject(normalizeFailure(event.error));
-    },
-    onProtocolError: (error) => settle.reject(error),
-  }, { signal });
-  callSafely(onStarted, initial);
-  return terminal;
+        settle({ error: normalizeFailure(event.error) });
+      },
+      onProtocolError: (error) => settle({ error }),
+    }, (() => {
+      const startOptions = { signal };
+      if (abortMonitor !== null) internalAbortMonitors.set(startOptions, abortMonitor);
+      return startOptions;
+    })());
+  } catch (error) {
+    if (!terminalObserved) throw normalizeFailure(error);
+    const outcome = terminalOutcome ?? await terminal;
+    if (outcome.error) throw outcome.error;
+    return outcome.result;
+  }
+  if (!terminalObserved) callSafely(onStarted, initial);
+  const outcome = await terminal;
+  if (outcome.error) throw outcome.error;
+  return outcome.result;
 };
 
-const abortableDelay = (milliseconds, signal) => new Promise((resolve, reject) => {
-  if (signal?.aborted) {
+export const runNativeRender = async (
+  request,
+  rawOptions = {},
+  service = nativeRenderService,
+) => {
+  const options = snapshotPlainRecord(rawOptions);
+  const allowed = new Set(['signal', 'onStarted', 'onProgress']);
+  if (options === null || Object.keys(options).some((key) => !allowed.has(key))) {
+    throw invalidRequest();
+  }
+  const signal = options.signal ?? null;
+  const onStarted = options.onStarted;
+  const onProgress = options.onProgress;
+  if ((onStarted !== undefined && typeof onStarted !== 'function')
+      || (onProgress !== undefined && typeof onProgress !== 'function')) {
+    throw invalidRequest();
+  }
+  const abortMonitor = createAbortMonitor(signal);
+  try {
+    return await runNativeRenderObserved(
+      request,
+      { signal, onStarted, onProgress },
+      service,
+      abortMonitor,
+    );
+  } finally {
+    abortMonitor?.dispose();
+  }
+};
+
+const abortableDelay = (milliseconds, abortMonitor) => new Promise((resolve, reject) => {
+  if (abortMonitor?.isAborted()) {
     reject(cancelled());
     return;
   }
   let timer = null;
+  let settled = false;
+  let stopListening = () => {};
   const cleanup = () => {
-    if (signal) signal.removeEventListener('abort', onAbort);
+    try {
+      stopListening();
+    } catch {
+      // The internal observer is best-effort cleanup only.
+    }
   };
   const onAbort = () => {
+    if (settled) return;
+    settled = true;
     if (timer !== null) clearTimeout(timer);
     cleanup();
     reject(cancelled());
   };
   timer = setTimeout(() => {
+    if (settled) return;
+    settled = true;
     cleanup();
     resolve();
   }, milliseconds);
-  if (signal) {
-    signal.addEventListener('abort', onAbort, { once: true });
-  }
+  stopListening = abortMonitor?.listen(onAbort) ?? stopListening;
+  if (settled && timer !== null) clearTimeout(timer);
 });
 
-export const waitForNativeRender = async (jobId, {
-  signal = null,
-  pollIntervalMs = 750,
-  timeoutMs = MAX_POLL_MS,
+const waitForNativeRenderObserved = async (jobId, {
+  pollIntervalMs,
+  timeoutMs,
   onUpdate,
-} = {}) => {
+}, service, abortMonitor) => {
   requireInteger(pollIntervalMs, 100, 10_000);
   requireInteger(timeoutMs, pollIntervalMs, MAX_POLL_MS);
   const startedAt = Date.now();
   while (Date.now() - startedAt <= timeoutMs) {
-    const response = await getNativeRenderResult(jobId);
+    if (abortMonitor?.isAborted()) throw cancelled();
+    const response = await service.getResult(jobId);
+    if (abortMonitor?.isAborted()) {
+      const playbackId = response?.result?.playback?.id;
+      if (uuidHasVersion(playbackId, 4) && typeof service.releasePlayback === 'function') {
+        try {
+          await service.releasePlayback(playbackId);
+        } catch {
+          // Cancellation remains authoritative even if capability cleanup is already complete.
+        }
+      }
+      throw cancelled();
+    }
     callSafely(onUpdate, response);
     if (!ACTIVE_JOB_STATES.has(response.job.state)) return response;
-    await abortableDelay(pollIntervalMs, signal);
+    await abortableDelay(pollIntervalMs, abortMonitor);
   }
   throw new NativeRenderError('renderTimeout', 'The native render status wait timed out');
+};
+
+export const waitForNativeRender = async (
+  jobId,
+  rawOptions = {},
+  service = nativeRenderService,
+) => {
+  const options = snapshotPlainRecord(rawOptions);
+  const allowed = new Set(['signal', 'pollIntervalMs', 'timeoutMs', 'onUpdate']);
+  if (options === null || Object.keys(options).some((key) => !allowed.has(key))) {
+    throw invalidRequest();
+  }
+  const signal = options.signal ?? null;
+  const pollIntervalMs = options.pollIntervalMs === undefined ? 750 : options.pollIntervalMs;
+  const timeoutMs = options.timeoutMs === undefined ? MAX_POLL_MS : options.timeoutMs;
+  const onUpdate = options.onUpdate;
+  if (onUpdate !== undefined && typeof onUpdate !== 'function') throw invalidRequest();
+  const abortMonitor = createAbortMonitor(signal);
+  try {
+    return await waitForNativeRenderObserved(
+      jobId,
+      { pollIntervalMs, timeoutMs, onUpdate },
+      service,
+      abortMonitor,
+    );
+  } finally {
+    abortMonitor?.dispose();
+  }
 };

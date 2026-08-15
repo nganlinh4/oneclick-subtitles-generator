@@ -139,13 +139,17 @@ const buildTranslatedSubtitles = ({ subtitles, translatedTexts, chainItems, targ
         }
 
         return {
-            id: originalSub.id || index + 1,
+            id: originalSub.id ?? originalSub.subtitle_id ?? index + 1,
             start: originalSub.start,
             end: originalSub.end,
             startTime: originalSub.startTime,
             endTime: originalSub.endTime,
             text: finalText,
-            originalId: originalSub.id || index + 1,
+            originalId: originalSub.originalId
+                ?? originalSub.id
+                ?? originalSub.subtitle_id
+                ?? `ordinal:${index}`,
+            sourceOrder: originalSub.sourceOrder ?? index,
             language: Array.isArray(targetLanguage) ? getLanguageCode(targetLanguage[0]) : getLanguageCode(targetLanguage)
         };
     });

@@ -16,6 +16,7 @@ fn main() {
     let mut loaded = false;
     while let Some(request) = read_frame() {
         let request_id = extract_u64(&request, "requestId").unwrap_or(1);
+        let operation = extract_string(&request, "operation").unwrap_or_default();
         let input = extract_string(&request, "inputPath").unwrap_or_default();
         let mode = Path::new(&input)
             .file_stem()
@@ -48,6 +49,12 @@ fn main() {
             sequence += 1;
             loaded = true;
         }
+        if operation == "warm_up" {
+            write_json(&format!(
+                "{{\"protocolVersion\":2,\"requestId\":{request_id},\"sequence\":{sequence},\"event\":\"ready\",\"backend\":\"cpu\"}}"
+            ));
+            continue;
+        }
         write_json(&phase(request_id, sequence, "transcribing"));
         sequence += 1;
 
@@ -69,7 +76,7 @@ fn main() {
             "crash" => std::process::exit(17),
             "worker-error" => {
                 write_json(&format!(
-                    "{{\"protocolVersion\":1,\"requestId\":{request_id},\"sequence\":{sequence},\"event\":\"error\",\"code\":\"inference_failed\"}}"
+                    "{{\"protocolVersion\":2,\"requestId\":{request_id},\"sequence\":{sequence},\"event\":\"error\",\"code\":\"inference_failed\"}}"
                 ));
                 continue;
             }
@@ -89,14 +96,14 @@ fn main() {
             r#"[{"text":"Hello","startSeconds":0.0,"endSeconds":0.4},{"text":"world.","startSeconds":0.5,"endSeconds":1.0},{"text":"Again","startSeconds":1.2,"endSeconds":1.7}]"#
         };
         write_json(&format!(
-            "{{\"protocolVersion\":1,\"requestId\":{request_id},\"sequence\":{sequence},\"event\":\"complete\",\"transcript\":\"Hello world. Again\",\"language\":\"en\",\"backend\":\"cpu\",\"words\":{words},\"joinWithoutSpaces\":false}}"
+            "{{\"protocolVersion\":2,\"requestId\":{request_id},\"sequence\":{sequence},\"event\":\"complete\",\"transcript\":\"Hello world. Again\",\"language\":\"en\",\"backend\":\"cpu\",\"words\":{words},\"joinWithoutSpaces\":false}}"
         ));
     }
 }
 
 fn phase(request_id: u64, sequence: u16, phase: &str) -> String {
     format!(
-        "{{\"protocolVersion\":1,\"requestId\":{request_id},\"sequence\":{sequence},\"event\":\"phase\",\"phase\":\"{phase}\"}}"
+        "{{\"protocolVersion\":2,\"requestId\":{request_id},\"sequence\":{sequence},\"event\":\"phase\",\"phase\":\"{phase}\"}}"
     )
 }
 

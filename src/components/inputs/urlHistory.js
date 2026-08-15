@@ -1,53 +1,14 @@
 // URL history management for the unified URL input.
 import {
   getYoutubeUrlHistory,
+  getDouyinUrlHistory,
+  addDouyinUrlToHistory,
   getAllSitesUrlHistory
 } from '../../utils/historyUtils';
 import { isValidDouyinUrl, extractDouyinVideoId } from './urlValidation';
 import { getVideoThumbnail } from '../../platform/desktopYoutubeService';
 
-// Helper functions for Douyin URL history
-export const getDouyinUrlHistory = () => {
-  try {
-    const history = JSON.parse(localStorage.getItem('douyin_url_history') || '[]');
-    return Array.isArray(history) ? history : [];
-  } catch (error) {
-    console.error('Error parsing Douyin URL history:', error);
-    return [];
-  }
-};
-
-export const addDouyinUrlToHistory = (video) => {
-  try {
-    if (!video || !video.id || !video.url) return;
-
-    const history = getDouyinUrlHistory();
-
-    // Check if this URL is already in history
-    const existingIndex = history.findIndex(item => item.id === video.id);
-
-    // If it exists, remove it (we'll add it to the top)
-    if (existingIndex !== -1) {
-      history.splice(existingIndex, 1);
-    }
-
-    // Add to the beginning of the array
-    history.unshift({
-      id: video.id,
-      url: video.url,
-      title: video.title || 'Douyin Video',
-      timestamp: Date.now()
-    });
-
-    // Keep only the most recent 20 items
-    const trimmedHistory = history.slice(0, 20);
-
-    // Save back to localStorage
-    localStorage.setItem('douyin_url_history', JSON.stringify(trimmedHistory));
-  } catch (error) {
-    console.error('Error saving Douyin URL to history:', error);
-  }
-};
+export { addDouyinUrlToHistory, getDouyinUrlHistory };
 
 // Load combined history from all sources
 export const loadHistory = async (setHistory) => {

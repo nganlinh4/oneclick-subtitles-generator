@@ -6,6 +6,7 @@ import '../styles/TranscriptionRulesEditor.css';
 import { PROMPT_PRESETS, getUserPromptPresets } from '../services/geminiService';
 import useCountdownTimer from './transcriptionRules/useCountdownTimer';
 import PresetSelector from './transcriptionRules/PresetSelector';
+import { showErrorToast } from '../utils/toastUtils';
 import {
   handleArrayItemChange as changeArrayItem,
   addArrayItem as appendArrayItem,
@@ -16,6 +17,9 @@ const TranscriptionRulesEditor = ({ isOpen, onClose, initialRules, onSave, onCan
   const { t } = useTranslation();
   const overlayRef = useRef(null);
   const [isClosing, setIsClosing] = useState(false);
+  const [isSaving, setIsSaving] = useState(false);
+  const saveInFlightRef = useRef(false);
+  const closeInFlightRef = useRef(false);
   const [rules, setRules] = useState(initialRules || {
     atmosphere: '',
     terminology: [],
@@ -59,20 +63,39 @@ const TranscriptionRulesEditor = ({ isOpen, onClose, initialRules, onSave, onCan
   }, [rules, currentPresetId, initialState]);
 
   // Handle save
-  const handleSave = () => {
-    setIsClosing(true);
-    setTimeout(() => {
-      onSave(rules);
+  const handleSave = useCallback(async () => {
+    if (saveInFlightRef.current || closeInFlightRef.current) return false;
+    saveInFlightRef.current = true;
+    setIsSaving(true);
+
+    try {
+      await onSave(rules);
+      setIsClosing(true);
+      await new Promise((resolve) => setTimeout(resolve, 200));
+      saveInFlightRef.current = false;
+      setIsSaving(false);
       onClose('save');
+      return true;
+    } catch (error) {
+      console.error('Transcription rules save failed:', error?.code || 'rulesSaveFailed');
+      saveInFlightRef.current = false;
+      setIsSaving(false);
       setIsClosing(false);
-    }, 200); // Match the transition duration
-  };
+      showErrorToast(
+        t('rulesEditor.saveFailed', 'Transcription rules could not be saved.'),
+        5_000,
+      );
+      return false;
+    }
+  }, [onClose, onSave, rules, t]);
 
   // Countdown for autoflow (state, interval/timeout refs and user-interaction guard)
   const { showCountdown, countdown, handleUserInteraction } = useCountdownTimer(isOpen, handleSave);
 
   // Handle cancel
   const handleCancel = useCallback(() => {
+    if (saveInFlightRef.current || closeInFlightRef.current) return false;
+    closeInFlightRef.current = true;
     setIsClosing(true);
     setTimeout(() => {
       if (onCancel) {
@@ -81,6 +104,7 @@ const TranscriptionRulesEditor = ({ isOpen, onClose, initialRules, onSave, onCan
       onClose('cancel');
       setIsClosing(false);
     }, 200); // Match the transition duration
+    return true;
   }, [onCancel, onClose]);
 
   // Effect to determine the current preset and set initial state - run when modal opens
@@ -137,7 +161,7 @@ const TranscriptionRulesEditor = ({ isOpen, onClose, initialRules, onSave, onCan
   useEffect(() => {
     const overlay = overlayRef.current;
     const handleKeyDown = (event) => {
-      if (event.key === 'Escape' && isOpen) {
+      if (event.key === 'Escape' && isOpen && !saveInFlightRef.current) {
         handleCancel();
       }
     };
@@ -207,10 +231,15 @@ const TranscriptionRulesEditor = ({ isOpen, onClose, initialRules, onSave, onCan
       className={`rules-editor-overlay ${isClosing ? 'closing' : ''}`}
       onClick={handleUserInteraction}
     >
-      <div className={`rules-editor-modal ${showCountdown ? 'with-countdown' : ''} ${isClosing ? 'closing' : ''}`} onClick={(e) => {
+      <div
+        className={`rules-editor-modal ${showCountdown ? 'with-countdown' : ''} ${isClosing ? 'closing' : ''}`}
+        aria-busy={isSaving}
+        inert={isSaving || isClosing ? '' : undefined}
+        onClick={(e) => {
         e.stopPropagation();
         handleUserInteraction();
-      }}>
+        }}
+      >
         {showCountdown && (
           <div className="countdown-banner" onClick={handleUserInteraction}>
             <div className="countdown-content">
@@ -260,7 +289,7 @@ const TranscriptionRulesEditor = ({ isOpen, onClose, initialRules, onSave, onCan
             onChangePrompt={onChangePrompt}
             handleUserInteraction={handleUserInteraction}
           />
-          <CloseButton onClick={handleCancel} variant="modal" size="medium" />
+          <CloseButton onClick={handleCancel} variant="modal" size="medium" disabled={isSaving || isClosing} />
         </div>
 
         <div className="modal-content">
@@ -512,15 +541,17 @@ const TranscriptionRulesEditor = ({ isOpen, onClose, initialRules, onSave, onCan
         </div>
 
         <div className="modal-footer">
-          <button className="cancel-button" onClick={handleCancel}>
+          <button className="cancel-button" onClick={handleCancel} disabled={isSaving || isClosing}>
             {t('common.cancel', 'Cancel')}
           </button>
           <button
             className={`save-button ${!hasChanges && !showCountdown ? 'disabled' : ''} ${showCountdown ? 'autoflow-active' : ''}`}
             onClick={handleSave}
-            disabled={!hasChanges && !showCountdown}
+            disabled={isSaving || isClosing || (!hasChanges && !showCountdown)}
           >
-            {showCountdown
+            {isSaving
+              ? t('rulesEditor.saving', 'Saving...')
+              : showCountdown
               ? t('rulesEditor.saveContinue', 'Save & Continue')
               : t('common.save', 'Save')
             }

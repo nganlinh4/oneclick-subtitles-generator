@@ -3,7 +3,13 @@ import { generateFileCacheId } from '../utils/cacheUtils';
 import { getVideoDuration } from '../utils/videoProcessor';
 import { setCurrentCacheId as setRulesCacheId } from '../utils/transcriptionRulesStore';
 import { setCurrentCacheId as setSubtitlesCacheId } from '../utils/userSubtitlesStore';
-import { generateUrlBasedCacheId, getCachedSubtitles as checkCachedSubtitles, saveSubtitlesToCache } from '../services/subtitleCache';
+import {
+    generateUrlBasedCacheId,
+    getCachedSubtitles as checkCachedSubtitles,
+    requireSuccessfulSubtitleCacheSave,
+    saveSubtitlesToCache
+} from '../services/subtitleCache';
+import { isNativeMediaDescriptor } from '../platform/mediaService';
 
 // Re-export the shared cache helper so callers have a single import surface.
 export { saveSubtitlesToCache };
@@ -52,7 +58,9 @@ export const resolveCacheIdForGeneration = async ({
 
     } else if (inputType === 'file-upload') {
         // For actual file uploads (not downloaded videos), use file-based cache ID
-        cacheId = await generateFileCacheId(input);
+        cacheId = isNativeMediaDescriptor(input)
+            ? input.assetId
+            : await generateFileCacheId(input);
 
         // Store the cache ID in localStorage for later use (e.g., saving edited subtitles)
         localStorage.setItem('current_file_cache_id', cacheId);
@@ -63,7 +71,7 @@ export const resolveCacheIdForGeneration = async ({
 
 
         // Check if this is a video file and get its duration
-        if (input.type.startsWith('video/')) {
+        if (!isNativeMediaDescriptor(input) && input.type.startsWith('video/')) {
             try {
                 const duration = await getVideoDuration(input);
                 const durationMinutes = Math.floor(duration / 60);
@@ -87,10 +95,10 @@ export const resolveCacheIdForGeneration = async ({
 /**
  * Check the cache and, when subtitles are found, load them immediately.
  *
- * Preserves the original control flow: on a cache hit it loads subtitles, sets a
- * success status, and signals an early return; on a miss it clears the timeline
- * for fresh generation. For segment processing the cache check is skipped and
- * existing subtitles are kept.
+ * On a cache hit it loads subtitles and signals an early return; the generation
+ * transaction owns terminal status publication after any required durability
+ * receipt. On a miss it clears the timeline for fresh generation. For segment
+ * processing the cache check is skipped and existing subtitles are kept.
  *
  * @returns {Promise<{cacheHit: boolean}>} cacheHit true means the caller should return true early
  */
@@ -98,9 +106,7 @@ export const loadCachedSubtitlesIfAvailable = async ({
     cacheId,
     segment,
     currentVideoUrl,
-    t,
     setSubtitlesData,
-    setStatus,
     debugLog
 }) => {
     if (cacheId && !segment) {
@@ -114,12 +120,7 @@ export const loadCachedSubtitlesIfAvailable = async ({
         if (cachedSubtitles) {
             debugLog('[Subtitle Generation] Loading cached subtitles immediately for timeline display');
             setSubtitlesData(cachedSubtitles);
-            setStatus({
-                message: t('output.subtitlesLoadedFromCache', 'Subtitles loaded from cache!'),
-                type: 'success',
-                translationKey: 'output.subtitlesLoadedFromCache'
-            });
-            return { cacheHit: true };
+            return { cacheHit: true, cachedSubtitles };
         }
         // If no cached subtitles found, clear the timeline for fresh generation
         debugLog('[Subtitle Generation] No cached subtitles found, clearing timeline for fresh generation');
@@ -133,7 +134,7 @@ export const loadCachedSubtitlesIfAvailable = async ({
         setSubtitlesData(null);
     }
 
-    return { cacheHit: false };
+    return { cacheHit: false, cachedSubtitles: null };
 };
 
 /**
@@ -153,7 +154,7 @@ export const persistRetryResultToCache = async ({ input, inputType, subtitles })
         cacheId = await generateUrlBasedCacheId(urlToUse);
 
         if (cacheId && subtitles && subtitles.length > 0) {
-            await saveSubtitlesToCache(cacheId, subtitles);
+            requireSuccessfulSubtitleCacheSave(await saveSubtitlesToCache(cacheId, subtitles));
         }
 
         // Set cache ID for both stores
@@ -162,11 +163,13 @@ export const persistRetryResultToCache = async ({ input, inputType, subtitles })
 
     } else if (inputType === 'file-upload') {
         // For actual file uploads, use file-based cache ID
-        cacheId = await generateFileCacheId(input);
+        cacheId = isNativeMediaDescriptor(input)
+            ? input.assetId
+            : await generateFileCacheId(input);
         localStorage.setItem('current_file_cache_id', cacheId);
 
         if (cacheId && subtitles && subtitles.length > 0) {
-            await saveSubtitlesToCache(cacheId, subtitles);
+            requireSuccessfulSubtitleCacheSave(await saveSubtitlesToCache(cacheId, subtitles));
         }
 
         // Set cache ID for both stores

@@ -1,4 +1,6 @@
 {
+  "saveFailed": "Không thể lưu quy tắc phiên âm.",
+  "saving": "Đang lưu...",
   "title": "Chỉnh sửa quy tắc phiên âm",
   "atmospherePlaceholder": "Mô tả về bối cảnh hoặc ngữ cảnh...",
   "terminologyDescription": "Thêm thuật ngữ chuyên ngành, tên riêng và định nghĩa của chúng",

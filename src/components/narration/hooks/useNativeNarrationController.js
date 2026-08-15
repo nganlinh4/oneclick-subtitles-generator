@@ -2,6 +2,7 @@ import { useCallback, useEffect, useRef } from 'react';
 
 import {
   GEMINI_SPEECH_MODELS,
+  getSpeechLifecycleSnapshot,
 } from '../../../platform/speechService';
 import {
   getActiveGeminiCredentialId,
@@ -14,6 +15,7 @@ import {
   runNativeNarrationJob,
 } from '../../../platform/nativeNarrationFlow';
 import {
+  getF5TtsLanguageSupport,
   getNativeNarrationArtifactId,
   hydrateNativeNarrationResults,
 } from '../../../platform/nativeNarrationCapabilities';
@@ -29,7 +31,20 @@ const cacheKeyByMethod = Object.freeze({
   gemini: 'gemini_narration_cache',
 });
 
+const backendByMethod = Object.freeze({
+  f5tts: 'f5Tts',
+  chatterbox: 'chatterbox',
+  'edge-tts': 'edgeTts',
+  gtts: 'gtts',
+  gemini: 'geminiTts',
+});
+
 const MAX_CACHE_BYTES = 4 * 1024 * 1024;
+
+const speechRuntimeStopped = () => Object.assign(
+  new Error('The selected speech runtime was stopped or replaced'),
+  { code: 'speechRuntimeStopped' },
+);
 
 const persistNativeResults = (method, results, referenceAudio = null) => {
   const key = cacheKeyByMethod[method];
@@ -97,6 +112,9 @@ const nativeMethodSettings = async (method, state) => {
       return {
         referenceText: state.referenceText || null,
         modelId: state.selectedNarrationModel || 'f5tts-v1-base',
+        language: (state.subtitleSource === 'translated'
+          ? state.translatedLanguage?.languageCode
+          : state.originalLanguage?.languageCode)?.toLowerCase().split('-')[0],
         speechRate: finite(state.advancedSettings?.speechRate, 1.1),
         nfeStep: Math.round(finite(state.advancedSettings?.nfeStep, 32)),
         swayCoef: finite(state.advancedSettings?.swayCoef, -1),
@@ -222,6 +240,22 @@ const useNativeNarrationController = (state) => {
       ));
       return false;
     }
+    const backend = backendByMethod[method];
+    const lifecycle = backend ? getSpeechLifecycleSnapshot(backend) : null;
+    if (!lifecycle?.enabled || !lifecycle.warm) {
+      current.setError(current.t(
+        'narration.engineUnavailableMessage',
+        'This narration engine is not ready. Install or start it in Settings > Voice & transcription engines.'
+      ));
+      return false;
+    }
+    const ownsLifecycle = () => {
+      const latest = getSpeechLifecycleSnapshot(backend);
+      return latest?.epoch === lifecycle.epoch && latest.enabled && latest.warm;
+    };
+    const requireLifecycleOwnership = () => {
+      if (!ownsLifecycle()) throw speechRuntimeStopped();
+    };
     if (!current.subtitleSource) {
       current.setError(current.t(
         'narration.noSourceSelectedError',
@@ -242,6 +276,24 @@ const useNativeNarrationController = (state) => {
       ));
       return false;
     }
+    if (method === 'f5tts') {
+      const language = current.subtitleSource === 'translated'
+        ? current.translatedLanguage
+        : current.originalLanguage;
+      const languageSupport = getF5TtsLanguageSupport(language);
+      if (!languageSupport.supported) {
+        current.setError(languageSupport.reason === 'unknown'
+          ? current.t(
+            'narration.f5LanguageRequiredError',
+            'Detect or select the subtitle language before using F5-TTS.'
+          )
+          : current.t(
+            'narration.f5UnsupportedLanguageError',
+            'F5-TTS supports English and Chinese subtitles only. Choose another narration engine for this language.'
+          ));
+        return false;
+      }
+    }
 
     current.setIsGenerating(true);
     current.setError('');
@@ -258,8 +310,10 @@ const useNativeNarrationController = (state) => {
 
     try {
       const settings = await nativeMethodSettings(method, current);
+      requireLifecycleOwnership();
       const request = {
         method,
+        lifecycleEpoch: lifecycle.epoch,
         subtitles,
         settings,
         reference: needsReference
@@ -267,7 +321,9 @@ const useNativeNarrationController = (state) => {
           : null,
       };
       const updateResult = (result, progress, total) => {
+        if (!ownsLifecycle()) return;
         current.setGenerationResults((previous) => mergeResults(previous, [result]));
+        if (!ownsLifecycle()) return;
         current.setGenerationStatus(current.t(
           'narration.generatingProgressWithId',
           'Generated {{progress}} of {{total}} narrations (ID: {{id}})...',
@@ -276,6 +332,7 @@ const useNativeNarrationController = (state) => {
       };
       const outcome = await runNativeNarrationJob(request, {
         onProgress: ({ current: progress, total }) => {
+          if (!ownsLifecycle()) return;
           current.setGenerationStatus(current.t(
             'narration.generatingNarration',
             'Generating narration {{current}} of {{total}}...',
@@ -284,17 +341,21 @@ const useNativeNarrationController = (state) => {
         },
         onResult: updateResult,
       });
+      requireLifecycleOwnership();
       const finalized = hydrateNarrationResultsForAlignment(outcome.results);
       current.setGenerationResults((previous) => {
+        if (!ownsLifecycle()) return previous;
         const next = finalizeRequestedResults(
           previous,
           finalized,
           subtitles,
           outcome.status === 'cancelled' ? 'cancelled' : 'synthesisFailed',
         );
+        if (!ownsLifecycle()) return previous;
         persistNativeResults(method, next, current.referenceAudio);
         return next;
       });
+      requireLifecycleOwnership();
       current.setGenerationStatus(outcome.status === 'cancelled'
         ? current.t('narration.generationCancelled', 'Narration generation cancelled by user')
         : current.t('narration.generationComplete', 'Narration generation complete'));
@@ -303,6 +364,19 @@ const useNativeNarrationController = (state) => {
       }
       return true;
     } catch (error) {
+      if (error?.code === 'speechRuntimeStopped') {
+        current.setGenerationResults((previous) => finalizeRequestedResults(
+          previous,
+          [],
+          subtitles,
+          'speechRuntimeStopped',
+        ));
+        current.setError(current.t(
+          'narration.engineUnavailableMessage',
+          'This narration engine is not ready. Install or start it in Settings > Voice & transcription engines.'
+        ));
+        return false;
+      }
       const partial = hydrateNarrationResultsForAlignment(error?.results || []);
       current.setGenerationResults((previous) => {
         const next = finalizeRequestedResults(

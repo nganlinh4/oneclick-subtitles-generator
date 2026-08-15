@@ -110,21 +110,42 @@ it('rejects missing, duplicate, contradictory, unbounded, and path-bearing statu
   });
 });
 
-it('redacts failed-event diagnostics instead of retaining native paths', () => {
+it('retains only known failed-event codes and redacts native diagnostics', () => {
   const privatePath = 'C:\\Users\\person\\AppData\\speech-pack';
   const event = normalizeSpeechPackageEvent({
     event: 'failed',
     job: null,
     backend: 'f5-tts',
     action: 'install',
-    error: { code: 'packageFailed', message: `could not open ${privatePath}` },
+    error: { code: 'packageNetwork', message: `could not open ${privatePath}` },
   });
 
   expect(event.error).toEqual({
-    code: 'packageFailed',
+    code: 'packageNetwork',
     message: 'The native speech package operation failed',
   });
   expect(JSON.stringify(event)).not.toContain(privatePath);
+
+  expect(normalizeSpeechPackageEvent({
+    event: 'failed',
+    job: null,
+    backend: 'f5-tts',
+    action: 'install',
+    error: { code: `private${privatePath}`, message: privatePath },
+  }).error).toEqual({
+    code: 'nativeSpeechPackageFailure',
+    message: 'The native speech package operation failed',
+  });
+
+  for (const code of [null, 42, { privatePath }]) {
+    expect(() => normalizeSpeechPackageEvent({
+      event: 'failed',
+      job: null,
+      backend: 'f5-tts',
+      action: 'install',
+      error: { code, message: privatePath },
+    })).toThrow(SpeechPackageServiceError);
+  }
 });
 
 it('uses exact native command shapes and rejects hostile backend input before invocation', async () => {
@@ -166,6 +187,54 @@ it('redacts rejected native errors without retaining cause or private diagnostic
   expect(String(error)).not.toContain(privatePath);
 });
 
+it('preserves known rejected native codes and collapses unknown codes without retaining data', async () => {
+  const privatePath = 'C:\\Users\\person\\private-model.bin';
+  const known = createService({
+    invokeCommand: vi.fn().mockRejectedValue({
+      code: 'packageInsufficientSpace',
+      message: privatePath,
+      cause: { path: privatePath },
+    }),
+  });
+  const knownError = await known.getSpeechPackagesStatus().catch((reason) => reason);
+  expect(knownError).toMatchObject({
+    code: 'packageInsufficientSpace',
+    message: 'The native speech package operation failed',
+  });
+  expect(knownError).not.toHaveProperty('cause');
+  expect(JSON.stringify(knownError)).not.toContain(privatePath);
+
+  const unknown = createService({
+    invokeCommand: vi.fn().mockRejectedValue({ code: 'privateDiagnosticCode', message: privatePath }),
+  });
+  await expect(unknown.getSpeechPackagesStatus()).rejects.toMatchObject({
+    code: 'nativeSpeechPackageFailure',
+    message: 'The native speech package operation failed',
+  });
+
+  const internal = createService({
+    invokeCommand: vi.fn().mockRejectedValue({ code: 'internal', message: privatePath }),
+  });
+  await expect(internal.getSpeechPackagesStatus()).rejects.toMatchObject({
+    code: 'internal',
+    message: 'The native speech package operation failed',
+  });
+});
+
+it('preserves the Rust internal code in failed events without retaining diagnostics', () => {
+  const privatePath = 'C:\\Users\\person\\speech-package';
+  expect(normalizeSpeechPackageEvent({
+    event: 'failed',
+    job: null,
+    backend: 'f5-tts',
+    action: 'install',
+    error: { code: 'internal', message: privatePath },
+  }).error).toEqual({
+    code: 'internal',
+    message: 'The native speech package operation failed',
+  });
+});
+
 it('fails closed and cancels once for malformed path-bearing channel data', async () => {
   const initial = jobSnapshot();
   const cancelling = jobSnapshot({ id: initial.id, state: 'cancelling', sequence: 2 });
@@ -189,6 +258,52 @@ it('fails closed and cancels once for malformed path-bearing channel data', asyn
   expect(invokeCommand.mock.calls.filter(([command]) => command === 'job_cancel'))
     .toHaveLength(1);
   expect(String(onProtocolError.mock.calls[0][0])).not.toContain('C:\\private');
+});
+
+it('swallows synchronous and asynchronous diagnostic callback failures', async () => {
+  const first = jobSnapshot();
+  const second = jobSnapshot();
+  const channels = [];
+  const invokeCommand = vi.fn(async (command, args) => {
+    if (command === 'speech_package_install') {
+      channels.push(args.onEvent);
+      return channels.length === 1 ? first : second;
+    }
+    throw new Error(`unexpected command ${command}`);
+  });
+  const asyncDiagnostic = vi.fn(() => Promise.reject(new Error('diagnostic rejected')));
+  const syncDiagnostic = vi.fn(() => { throw new Error('diagnostic threw'); });
+  const service = createService({ invokeCommand });
+
+  await service.installSpeechPackage('f5-tts', {
+    onProgress: () => Promise.reject(new Error('async presentation failure')),
+    onHandlerError: asyncDiagnostic,
+  });
+  channels[0].emit({
+    event: 'progress',
+    operation: operation({
+      ...first,
+      progress: { basisPoints: 100 },
+      sequence: 2,
+    }, { basisPoints: 100, bytesDone: 1 }),
+  });
+  await vi.waitFor(() => expect(asyncDiagnostic).toHaveBeenCalledTimes(1));
+
+  await service.installSpeechPackage('f5-tts', {
+    onProgress: () => { throw new Error('sync presentation failure'); },
+    onHandlerError: syncDiagnostic,
+  });
+  channels[1].emit({
+    event: 'progress',
+    operation: operation({
+      ...second,
+      progress: { basisPoints: 100 },
+      sequence: 2,
+    }, { basisPoints: 100, bytesDone: 1 }),
+  });
+  expect(syncDiagnostic).toHaveBeenCalledTimes(1);
+  expect(invokeCommand.mock.calls.filter(([command]) => command === 'job_cancel'))
+    .toHaveLength(0);
 });
 
 it('accepts preparing removal progress and rejects cross-action phases', () => {

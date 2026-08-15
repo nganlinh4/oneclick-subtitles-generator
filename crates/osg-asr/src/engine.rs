@@ -172,6 +172,8 @@ struct ServiceInner {
     program: WorkerProgram,
     assets: ModelAssets,
     state: Mutex<WorkerState>,
+    warm: AtomicBool,
+    shutdown_requested: AtomicBool,
 }
 
 #[derive(Debug, Default)]
@@ -187,6 +189,8 @@ impl AsrService {
             program,
             assets,
             state: Mutex::new(WorkerState::default()),
+            warm: AtomicBool::new(false),
+            shutdown_requested: AtomicBool::new(false),
         }))
     }
 
@@ -197,16 +201,70 @@ impl AsrService {
 
     #[must_use]
     pub fn is_warm(&self) -> bool {
-        self.0
-            .state
-            .try_lock()
-            .is_ok_and(|state| state.session.is_some())
+        if !self.0.warm.load(Ordering::Acquire) {
+            return false;
+        }
+        match self.0.state.try_lock() {
+            Ok(mut state) => {
+                let running = state
+                    .session
+                    .as_mut()
+                    .is_some_and(|session| session.try_wait().is_ok_and(|status| status.is_none()));
+                if !running {
+                    invalidate_session(&self.0, &mut state);
+                }
+                running
+            }
+            Err(TryLockError::WouldBlock) => self.0.warm.load(Ordering::Acquire),
+            Err(TryLockError::Poisoned(_)) => false,
+        }
     }
 
     pub fn shutdown(&self) -> Result<()> {
+        self.0.shutdown_requested.store(true, Ordering::Release);
         let mut state = self.0.state.lock().map_err(|_| AsrError::Synchronization)?;
-        invalidate_session(&mut state);
+        invalidate_session(&self.0, &mut state);
         Ok(())
+    }
+
+    /// Starts the private worker and verifies that the selected model can be loaded before the
+    /// desktop UI advertises this engine as ready. A successful warm-up keeps the verified worker
+    /// alive for the next transcription; failures tear the entire process tree down.
+    pub fn warm_up(&self, control: &RunControl) -> Result<()> {
+        let started = Instant::now();
+        self.0.assets.revalidate()?;
+        if self.cancelled(control) {
+            return Err(AsrError::Cancelled);
+        }
+        let mut state = self.lock_cancellable(control, started)?;
+        if state.session.is_some() && self.0.warm.load(Ordering::Acquire) {
+            let running = state
+                .session
+                .as_mut()
+                .is_some_and(|session| session.try_wait().is_ok_and(|status| status.is_none()));
+            if running {
+                return Ok(());
+            }
+            invalidate_session(&self.0, &mut state);
+        }
+        if state.session.is_none() {
+            state.session = Some(WorkerSession::spawn(&self.0.program)?);
+        }
+        state.next_request_id = state.next_request_id.wrapping_add(1).max(1);
+        let request_id = state.next_request_id;
+        let request = WireRequest::warm_up(request_id, &self.0.assets)?;
+        if let Err(error) = state.session.as_mut().unwrap().send(&request) {
+            invalidate_session(&self.0, &mut state);
+            return Err(error);
+        }
+
+        let outcome = self.await_warm_up(&mut state, control, started, request_id);
+        if outcome.is_ok() {
+            self.0.warm.store(true, Ordering::Release);
+        } else {
+            invalidate_session(&self.0, &mut state);
+        }
+        outcome
     }
 
     pub fn transcribe(
@@ -218,13 +276,14 @@ impl AsrService {
         request.options.validate_for(self.engine())?;
         request.audio.revalidate()?;
         self.0.assets.revalidate()?;
-        if control.cancellation.is_cancelled() {
+        if self.cancelled(control) {
             return Err(AsrError::Cancelled);
         }
         let mut state = self.lock_cancellable(control, started)?;
         request.audio.revalidate()?;
         if state.session.is_none() {
             state.session = Some(WorkerSession::spawn(&self.0.program)?);
+            self.0.warm.store(false, Ordering::Release);
         }
         state.next_request_id = state.next_request_id.wrapping_add(1).max(1);
         let request_id = state.next_request_id;
@@ -235,15 +294,83 @@ impl AsrService {
             request.options.language(),
         )?;
         if let Err(error) = state.session.as_mut().unwrap().send(&wire_request) {
-            invalidate_session(&mut state);
+            invalidate_session(&self.0, &mut state);
             return Err(error);
         }
 
         let outcome = self.await_response(&mut state, request, control, started, request_id);
-        if outcome.is_err() {
-            invalidate_session(&mut state);
+        if outcome.is_ok() {
+            self.0.warm.store(true, Ordering::Release);
+        } else {
+            invalidate_session(&self.0, &mut state);
         }
         outcome
+    }
+
+    fn await_warm_up(
+        &self,
+        state: &mut WorkerState,
+        control: &RunControl,
+        started: Instant,
+        request_id: u64,
+    ) -> Result<()> {
+        let mut expected_sequence = 0_u16;
+        let mut model_loading_observed = false;
+        let mut event_count = 0;
+        loop {
+            let session = state.session.as_mut().ok_or(AsrError::Synchronization)?;
+            if session.try_wait()?.is_some() {
+                return Err(AsrError::WorkerFailed("worker process exited"));
+            }
+            match session.receive(POLL_INTERVAL) {
+                SessionPoll::Message(ReaderMessage::Failed(error)) => return Err(error),
+                SessionPoll::Disconnected => {
+                    return Err(AsrError::Protocol("worker response stream closed"));
+                }
+                SessionPoll::Empty => {}
+                SessionPoll::Message(ReaderMessage::Event(event)) => {
+                    event_count += 1;
+                    if event_count > MAX_EVENTS_PER_JOB
+                        || event.version() != PROTOCOL_VERSION
+                        || event.request_id() != request_id
+                        || event.sequence() != expected_sequence
+                    {
+                        return Err(AsrError::Protocol("warm-up event identity or sequence"));
+                    }
+                    expected_sequence = expected_sequence
+                        .checked_add(1)
+                        .ok_or(AsrError::Protocol("event sequence overflow"))?;
+                    match event {
+                        WireEvent::Phase {
+                            phase: WirePhase::ModelLoading,
+                            ..
+                        } if !model_loading_observed => {
+                            model_loading_observed = true;
+                            if let Some(sink) = &control.progress {
+                                sink.on_progress(&AsrProgress {
+                                    phase: ProgressPhase::ModelLoading,
+                                });
+                            }
+                        }
+                        WireEvent::Ready { backend, .. } if model_loading_observed => {
+                            let _ = map_backend(backend);
+                            return Ok(());
+                        }
+                        WireEvent::Error { code, .. } => {
+                            return Err(AsrError::WorkerFailed(code.safe_message()));
+                        }
+                        _ => return Err(AsrError::Protocol("invalid warm-up event")),
+                    }
+                    continue;
+                }
+            }
+            if self.cancelled(control) {
+                return Err(AsrError::Cancelled);
+            }
+            if started.elapsed() >= control.timeout {
+                return Err(AsrError::TimedOut(control.timeout));
+            }
+        }
     }
 
     fn lock_cancellable<'a>(
@@ -257,7 +384,7 @@ impl AsrService {
                 Err(TryLockError::Poisoned(_)) => return Err(AsrError::Synchronization),
                 Err(TryLockError::WouldBlock) => {}
             }
-            if control.cancellation.is_cancelled() {
+            if self.cancelled(control) {
                 return Err(AsrError::Cancelled);
             }
             if started.elapsed() >= control.timeout {
@@ -336,6 +463,9 @@ impl AsrService {
                                 join_without_spaces,
                             );
                         }
+                        WireEvent::Ready { .. } => {
+                            return Err(AsrError::Protocol("unexpected warm-up completion"));
+                        }
                         WireEvent::Error { code, .. } => {
                             return Err(AsrError::WorkerFailed(code.safe_message()));
                         }
@@ -346,13 +476,17 @@ impl AsrService {
 
             // A terminal response already dequeued above wins a race with a
             // cancellation set immediately after inference completed.
-            if control.cancellation.is_cancelled() {
+            if self.cancelled(control) {
                 return Err(AsrError::Cancelled);
             }
             if started.elapsed() >= control.timeout {
                 return Err(AsrError::TimedOut(control.timeout));
             }
         }
+    }
+
+    fn cancelled(&self, control: &RunControl) -> bool {
+        control.cancellation.is_cancelled() || self.0.shutdown_requested.load(Ordering::Acquire)
     }
 }
 
@@ -367,7 +501,8 @@ impl fmt::Debug for AsrService {
     }
 }
 
-fn invalidate_session(state: &mut WorkerState) {
+fn invalidate_session(inner: &ServiceInner, state: &mut WorkerState) {
+    inner.warm.store(false, Ordering::Release);
     if let Some(mut session) = state.session.take() {
         session.terminate();
     }

@@ -12,6 +12,8 @@ import HelpIcon from '../common/HelpIcon';
 const InputSelectionRow = ({
   selectedVideoFile,
   handleVideoUpload,
+  handleBrowseClick,
+  nativeDropZoneRef,
   subtitlesData,
   translatedSubtitles,
   selectedSubtitles,
@@ -31,7 +33,7 @@ const InputSelectionRow = ({
   return (
     <div className="input-selection-row">
       {/* Video Input */}
-      <div className="video-input-compact">
+      <div className="video-input-compact" ref={nativeDropZoneRef}>
         <h4>{t('videoRendering.videoInput', 'Video Input')}</h4>
         {selectedVideoFile ? (
           <div className="selected-video-info">
@@ -50,7 +52,7 @@ const InputSelectionRow = ({
               )}
               <button
                 className="pill-button secondary"
-                onClick={() => document.getElementById('video-upload-input').click()}
+                onClick={handleBrowseClick}
               >
                 {t('videoRendering.changeVideo', 'Change')}
               </button>
@@ -60,7 +62,7 @@ const InputSelectionRow = ({
           <div className="upload-drop-zone">
             <button
               className="pill-button primary"
-              onClick={() => document.getElementById('video-upload-input').click()}
+              onClick={handleBrowseClick}
             >
               {t('videoRendering.selectVideo', 'Select Video File')}
             </button>

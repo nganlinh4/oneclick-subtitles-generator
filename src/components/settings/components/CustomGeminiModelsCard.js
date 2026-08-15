@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import { useTranslation } from 'react-i18next';
+import { normalizeCustomGeminiModelId } from '../../../config/geminiModels';
 import '../../../styles/settings/customGeminiModels.css';
 
 /**
@@ -18,17 +19,21 @@ const CustomGeminiModelsCard = ({ customGeminiModels, setCustomGeminiModels }) =
 
   // Handle adding a new custom model
   const handleAddModel = () => {
-    if (!newModelId.trim()) return;
+    const normalizedId = normalizeCustomGeminiModelId(newModelId);
+    if (!normalizedId) {
+      alert(t('settings.customModels.invalidModelId', 'Enter a Gemini model ID such as gemini-3.8-flash'));
+      return;
+    }
 
     // Check if model ID already exists
-    if (customGeminiModels.some(model => model.id === newModelId.trim())) {
+    if (customGeminiModels.some(model => model.id === normalizedId)) {
       alert(t('settings.customModels.modelExists', 'A model with this ID already exists'));
       return;
     }
 
     const newModel = {
-      id: newModelId.trim(),
-      name: newModelName.trim() || newModelId.trim(),
+      id: normalizedId,
+      name: newModelName.trim() || normalizedId,
       isCustom: true
     };
 
@@ -55,17 +60,21 @@ const CustomGeminiModelsCard = ({ customGeminiModels, setCustomGeminiModels }) =
 
   // Handle updating an existing model
   const handleUpdateModel = () => {
-    if (!newModelId.trim()) return;
+    const normalizedId = normalizeCustomGeminiModelId(newModelId);
+    if (!normalizedId) {
+      alert(t('settings.customModels.invalidModelId', 'Enter a Gemini model ID such as gemini-3.8-flash'));
+      return;
+    }
 
     // Check if new ID conflicts with existing models (excluding the one being edited)
-    if (customGeminiModels.some(model => model.id === newModelId.trim() && model.id !== editingModelId)) {
+    if (customGeminiModels.some(model => model.id === normalizedId && model.id !== editingModelId)) {
       alert(t('settings.customModels.modelExists', 'A model with this ID already exists'));
       return;
     }
 
     const updatedModels = customGeminiModels.map(model => 
       model.id === editingModelId 
-        ? { ...model, id: newModelId.trim(), name: newModelName.trim() || newModelId.trim() }
+        ? { ...model, id: normalizedId, name: newModelName.trim() || normalizedId }
         : model
     );
 
@@ -152,7 +161,7 @@ const CustomGeminiModelsCard = ({ customGeminiModels, setCustomGeminiModels }) =
                   type="text"
                   value={newModelId}
                   onChange={(e) => setNewModelId(e.target.value)}
-                  placeholder={t('settings.customModels.modelIdPlaceholder', 'e.g., gemini-3.6-flash')}
+                  placeholder={t('settings.customModels.modelIdPlaceholder', 'e.g., gemini-3.8-flash')}
                   className="model-input"
                 />
               </div>
