@@ -53,9 +53,12 @@ export const RENDER_PARITY_LEDGER = Object.freeze({
   ),
 
   // ---- Gradient ------------------------------------------------------------------------------
-  gradientEnabled: native(
-    'crates/osg-scene/src/color.rs',
-    'Including the interaction that surprises users: the gradient clips the background box away.',
+  gradientEnabled: pending(
+    'Half-implemented, and the missing half is the visible one. crates/osg-scene/src/color.rs '
+    + 'already reproduces both side effects — the text colour goes transparent and the background '
+    + 'box is clipped away — but nothing paints the gradient through the glyphs yet. Shipping it in '
+    + 'this state would make enabling a gradient produce invisible subtitles, so it must land '
+    + 'together with the gradient fill below, never before it.',
   ),
   gradientColorStart: pending('Needs the gradient fill in the compositor shader.'),
   gradientColorEnd: pending('Needs the gradient fill in the compositor shader.'),
@@ -96,7 +99,12 @@ export const RENDER_PARITY_LEDGER = Object.freeze({
   marginLeft: native('crates/osg-scene/src/layout.rs', 'Fixed 1920x1080 percentage, unlike sizes.'),
   marginRight: native('crates/osg-scene/src/layout.rs', 'Fixed 1920x1080 percentage, unlike sizes.'),
   maxWidth: native('crates/osg-scene/src/layout.rs'),
-  textAlign: native('crates/osg-scene/src/layout.rs', "Including 'justify', which has no UI control."),
+  textAlign: pending(
+    "Left, centre and right resolve through the box anchor in crates/osg-scene/src/layout.rs, but "
+    + "'justify' is only carried, not performed: justifying needs space distributed across a "
+    + 'wrapped line, and line breaking is not implemented yet. Until then it behaves as left, so '
+    + 'this stays pending rather than claiming the whole field.',
+  ),
 
   // ---- Wrapping ------------------------------------------------------------------------------
   wordWrap: pending('Renders today with no UI control; line breaking is not wired yet.'),
