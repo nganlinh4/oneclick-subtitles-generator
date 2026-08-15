@@ -12,7 +12,7 @@
 //! Both are shipped behaviour. Unifying them would move every existing project's subtitles, so the
 //! difference is reproduced and pinned rather than tidied away.
 
-use crate::scale::scale_subtitle_style_value;
+use crate::scale::round_to_two_decimals_like_javascript;
 
 /// The reference the margin percentages are computed against, independent of the real output.
 const REFERENCE_WIDTH: f64 = 1_920.0;
@@ -112,8 +112,13 @@ pub fn margin_fraction(margin: f64, reference: f64) -> f64 {
 }
 
 fn round_two_decimals(value: f64) -> f64 {
-    // The same two-decimal rounding the size path uses, so the two agree on ties.
-    scale_subtitle_style_value(value, REFERENCE_HEIGHT)
+    // Round the percentage directly. Going through `scale_subtitle_style_value(value,
+    // REFERENCE_HEIGHT)` would multiply by 1080 and divide by 1080 first, and that round trip is
+    // not the identity in binary floating point — it nudges precisely the near-tie values this
+    // rounding exists to decide. A margin of 41.31 gives a percentage of 3.8249999999999997, which
+    // the shipped renderer's toFixed(2) makes 3.82 and the round trip makes 3.83. At 4K that is
+    // half a pixel of disagreement, in the one place the comment above promises there is none.
+    round_to_two_decimals_like_javascript(value)
 }
 
 /// Resolve the subtitle box for a composition.

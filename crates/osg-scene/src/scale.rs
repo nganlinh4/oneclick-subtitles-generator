@@ -12,7 +12,15 @@ const EXACT_DIGITS: usize = 25;
 /// Round to two decimals the way `toFixed(2)` does: on the exact value of the double, half away
 /// from zero. Rust's own two-decimal formatting rounds half to even, which disagrees whenever the
 /// exact value lands on a tie — `0.125` becomes `0.13` here and `0.12` there.
-fn round_to_two_decimals_like_javascript(value: f64) -> f64 {
+/// Round to two decimals exactly as JavaScript's `toFixed(2)` does.
+///
+/// Exposed because the margin path needs this rounding on a percentage it has already computed. It
+/// must not reach it by calling [`scale_subtitle_style_value`] with the reference height: that
+/// multiplies by 1080 and divides by 1080, and in binary floating point the round trip is not the
+/// identity. It perturbs exactly the near-tie values a two-decimal rounding is deciding, so a
+/// margin of 41.31 rounds to 3.82 one way and 3.83 the other.
+#[must_use]
+pub fn round_to_two_decimals_like_javascript(value: f64) -> f64 {
     if !value.is_finite() {
         return value;
     }

@@ -201,3 +201,28 @@ fn resolution_is_repeatable() {
         }
     }
 }
+
+#[test]
+fn a_margin_percentage_rounds_the_way_the_shipped_renderer_rounds_it() {
+    // Regression. `round_two_decimals` used to reach its rounding through
+    // `scale_subtitle_style_value(value, REFERENCE_HEIGHT)`, which multiplies by 1080 and divides
+    // by 1080 first. That round trip is not the identity in binary floating point and it nudges
+    // exactly the near-tie values a two-decimal rounding is deciding.
+    //
+    // 41.31 / 1080 * 100 is 3.8249999999999997, which JavaScript's toFixed(2) makes 3.82. The round
+    // trip made it 3.83 — half a pixel at 4K, in the one place the module promises there is none.
+    // Every margin below was measured to disagree between the two routes.
+    for (margin, expected_percentage) in [
+        (41.31_f64, 3.82_f64),
+        (20.682, 1.92),
+        (4.704, 0.44),
+        (73.44, 6.80),
+    ] {
+        let fraction = margin_fraction(margin, 1_080.0);
+        let percentage = fraction * 100.0;
+        assert!(
+            (percentage - expected_percentage).abs() < 5e-9,
+            "margin {margin} gave {percentage}, expected {expected_percentage}"
+        );
+    }
+}
