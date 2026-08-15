@@ -48,9 +48,9 @@ const INSTALLED_LOCAL_MEDIA_INSPECTOR_SHA256 =
 const INSTALLED_MEDIA_FLOW_INSPECTOR_SHA256 =
   '94fc247fea2048fc98a64d6ca23757544f4ca4602117d16dbd65938404ec7e8c';
 const DOWNLOAD_HANDLERS_SHA256 =
-  'f38f73d8907d624231cae83542785fe564013eb7800cf0c77cbc1c32f69a2f57';
+  'd3b5e42b123a386ad44c2454fba0df76f1a86009ab2e70ee3c5d9c9ec20d40a2';
 const NATIVE_URL_DOWNLOAD_ADAPTER_SHA256 =
-  '5bf575524bc90c0831a7e4d3cdb87911aa1810fb3a90b338cd5448a2d3a35b8e';
+  '93cc7498c97d38bcaa2bbea91c5fdfadf67cd1f6f89e1403b7e39e54643523a4';
 const INSTALLED_WINDOWS_SMOKE_SHA256 =
   '9e71711e58296334be2a2629b1685e5ca6bed4aae9b207434c4b99b9cbee16ab';
 const DISTRIBUTABLE_FONT_EXTENSION = /\.(?:eot|otf|ttf|woff2?)$/i;
@@ -1559,7 +1559,10 @@ function assertInstalledMediaFlowInspector(
         '`${cookieSource}\\u0000${preferredLanguages.join(\',\')}\\u0000${url}`',
       )
       && nativeUrlDownloadAdapterSource.includes(
-        'const key = operationKey(url, cookieSource, preferredLanguages);',
+        'const normalizedUrl = normalizeUrl(url);',
+      )
+      && nativeUrlDownloadAdapterSource.includes(
+        'const key = operationKey(normalizedUrl, cookieSource, preferredLanguages);',
       ),
     'Installed media-flow phases must select distinct reviewed native adapter keys',
   );
@@ -2813,9 +2816,16 @@ function assertUpdaterFixtureSource(rootDirectory) {
     && desktop.includes('"app.exit"')
     && desktop.includes('"WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS"'),
   'Desktop updater lifecycle diagnostics must distinguish inherited WebView debugging and native exit phases');
-  invariant(diagnostics.includes('static APP_INSTANCE_ID: OnceLock<String>')
+  // The identity is minted once per initialization and threaded through the only record encoder,
+  // so no diagnostic line can be written without it.
+  invariant(diagnostics.includes('initialized: OnceLock<InitializedDiagnostics>')
+    && diagnostics.includes('fn new_app_instance_id() -> String {')
     && diagnostics.includes('Uuid::now_v7().to_string()')
-    && diagnostics.includes('"appInstanceId"'),
+    && diagnostics.includes('let app_instance_id = new_app_instance_id();')
+    && diagnostics.includes('app_instance_id: &str,')
+    && diagnostics.includes('"appInstanceId".to_owned(),')
+    && diagnostics.includes('Value::String(app_instance_id.to_owned()),')
+    && (diagnostics.match(/fn encode_record\(/g) || []).length === 1,
   'Every desktop diagnostic record must carry one process-scoped UUIDv7 application identity');
   invariant(JSON.stringify(config.plugins?.updater?.endpoints) === JSON.stringify([
     'https://github.com/nganlinh4/oneclick-subtitles-generator/releases/latest/download/latest.json',
@@ -3714,33 +3724,40 @@ function assertTauriProductionBuildContract(rootDirectory = REPOSITORY_ROOT) {
   );
 
   const commandsSource = readText(rootDirectory, `${TAURI_DIRECTORY}/src/commands.rs`);
+  // The picker lives in one shared helper so every entry point inherits the same parented,
+  // blocking-pool, path-free lifecycle. Both the helper and its sole ownership are pinned.
+  const pickerStart = commandsSource.indexOf('async fn pick_media_path(');
+  const pickerEnd = commandsSource.indexOf('\n}', pickerStart);
+  const picker = pickerStart >= 0 && pickerEnd > pickerStart
+    ? commandsSource.slice(pickerStart, pickerEnd)
+    : '';
   const selectMediaStart = commandsSource.indexOf('async fn select_media(');
   const selectMediaEnd = commandsSource.indexOf('\n}', selectMediaStart);
   const selectMedia = selectMediaStart >= 0 && selectMediaEnd > selectMediaStart
     ? commandsSource.slice(selectMediaStart, selectMediaEnd)
     : '';
-  const fileDialogIndex = selectMedia.indexOf('rfd::FileDialog::new()');
-  const parentIndex = selectMedia.indexOf('.set_parent(&window)', fileDialogIndex);
-  const titleIndex = selectMedia.indexOf('.set_title("Choose video or audio")', parentIndex);
-  const filterIndex = selectMedia.indexOf(
+  const fileDialogIndex = picker.indexOf('rfd::FileDialog::new()');
+  const parentIndex = picker.indexOf('.set_parent(&window)', fileDialogIndex);
+  const titleIndex = picker.indexOf('.set_title("Choose video or audio")', parentIndex);
+  const filterIndex = picker.indexOf(
     '.add_filter("Video and audio", &extensions)',
     titleIndex,
   );
-  const requestedIndex = selectMedia.indexOf('diagnostics::record("media-picker.requested", &[])');
-  const blockingTaskIndex = selectMedia.indexOf('tauri::async_runtime::spawn_blocking', requestedIndex);
-  const workerStartedIndex = selectMedia.indexOf(
+  const requestedIndex = picker.indexOf('diagnostics::record("media-picker.requested", &[])');
+  const blockingTaskIndex = picker.indexOf('tauri::async_runtime::spawn_blocking', requestedIndex);
+  const workerStartedIndex = picker.indexOf(
     'diagnostics::record("media-picker.worker-started", &[])',
     blockingTaskIndex,
   );
-  const pickerIndex = selectMedia.indexOf('dialog.pick_file()', workerStartedIndex);
-  const workerFailedIndex = selectMedia.indexOf(
+  const pickerIndex = picker.indexOf('dialog.pick_file()', workerStartedIndex);
+  const workerFailedIndex = picker.indexOf(
     'diagnostics::record("media-picker.worker-failed", &[])',
     pickerIndex,
   );
-  const returnedIndex = selectMedia.indexOf('"media-picker.returned"', workerFailedIndex);
-  const selectedBranchIndex = selectMedia.indexOf('let Some(path) = selected', returnedIndex);
+  const returnedIndex = picker.indexOf('"media-picker.returned"', workerFailedIndex);
+  const selectedBranchIndex = picker.indexOf('let Some(path) = selected', returnedIndex);
   invariant(
-    /\bwindow\s*:\s*WebviewWindow\b/.test(selectMedia)
+    /\bwindow\s*:\s*WebviewWindow\b/.test(picker)
       && fileDialogIndex >= 0
       && parentIndex > fileDialogIndex
       && titleIndex > parentIndex
@@ -3752,8 +3769,10 @@ function assertTauriProductionBuildContract(rootDirectory = REPOSITORY_ROOT) {
       && workerFailedIndex > pickerIndex
       && returnedIndex > workerFailedIndex
       && selectedBranchIndex > returnedIndex
-      && selectMedia.includes('media_picker_outcome(selected.as_ref())')
-      && !selectMedia.includes('blocking_pick_file()'),
+      && picker.includes('media_picker_outcome(selected.as_ref())')
+      && selectMedia.includes('pick_media_path(window).await?')
+      && (commandsSource.match(/rfd::FileDialog::new\(\)/g) || []).length === 1
+      && !commandsSource.includes('blocking_pick_file()'),
     'Desktop select_media must run its parented picker on the blocking pool and record path-free lifecycle outcomes',
   );
 }

@@ -143,6 +143,10 @@ function createTauriProductionBuildFixture() {
     'apps/desktop/src-tauri/src/commands.rs',
     'use tauri::WebviewWindow;\n'
       + 'async fn select_media(window: WebviewWindow) {\n'
+      + '  let Some(path) = pick_media_path(window).await? else { return; };\n'
+      + '}\n'
+      + '\n'
+      + 'async fn pick_media_path(window: WebviewWindow) -> Option<std::path::PathBuf> {\n'
       + '  let dialog = rfd::FileDialog::new().set_parent(&window).set_title("Choose video or audio")\n'
       + '    .add_filter("Video and audio", &extensions);\n'
       + '  diagnostics::record("media-picker.requested", &[]);\n'
@@ -1468,6 +1472,42 @@ test('installed URL media flow commits URL and replaces stale SRT before one dow
     ),
     /distinct reviewed native adapter keys/,
   );
+  for (const [description, adapterMutation] of [
+    [
+      'adapter operation key reverted to the unnormalized request URL',
+      NATIVE_URL_DOWNLOAD_ADAPTER_SOURCE.replace(
+        'const key = operationKey(normalizedUrl, cookieSource, preferredLanguages);',
+        'const key = operationKey(url, cookieSource, preferredLanguages);',
+      ),
+    ],
+    [
+      'adapter operation key dropped the explicit browser source',
+      NATIVE_URL_DOWNLOAD_ADAPTER_SOURCE.replace(
+        'const key = operationKey(normalizedUrl, cookieSource, preferredLanguages);',
+        'const key = operationKey(normalizedUrl, preferredLanguages);',
+      ),
+    ],
+    [
+      'adapter URL normalization weakened to a pass-through',
+      NATIVE_URL_DOWNLOAD_ADAPTER_SOURCE.replace(
+        'const normalizedUrl = normalizeUrl(url);',
+        'const normalizedUrl = url;',
+      ),
+    ],
+  ]) {
+    assert.notEqual(adapterMutation, NATIVE_URL_DOWNLOAD_ADAPTER_SOURCE, description);
+    assert.throws(
+      () => assertInstalledMediaFlowInspector(
+        INSTALLED_MEDIA_FLOW_INSPECTOR,
+        INPUT_METHODS_SOURCE,
+        BUTTONS_CONTAINER_SOURCE,
+        DOWNLOAD_HANDLERS_SOURCE,
+        adapterMutation,
+      ),
+      /distinct reviewed native adapter keys/,
+      description,
+    );
+  }
   const lastMomentPreferenceCollapse = DOWNLOAD_HANDLERS_SOURCE.replace(
     '        processedFile = await downloadAndPrepareYouTubeVideo(',
     '        preferredSubtitleLanguages = [];\n\n'
@@ -3119,7 +3159,7 @@ test('Tauri production build contract embeds the frontend instead of retaining t
 });
 
 test('Tauri production build contract rejects dev-server releases and weakened native picker boundaries', (context) => {
-  const fixtures = Array.from({ length: 11 }, createTauriProductionBuildFixture);
+  const fixtures = Array.from({ length: 13 }, createTauriProductionBuildFixture);
   context.after(() => {
     for (const root of fixtures) {
       fs.rmSync(root, { force: true, recursive: true });
@@ -3138,6 +3178,8 @@ test('Tauri production build contract rejects dev-server releases and weakened n
     unstartedWorker,
     pluginBridge,
     unloggedWorkerFailure,
+    detachedSelectMedia,
+    duplicatePicker,
   ] = fixtures;
   const rootPackage = JSON.parse(fs.readFileSync(path.join(rootScript, 'package.json'), 'utf8'));
   rootPackage.scripts['tauri:build'] = 'npm --prefix apps/desktop run tauri -- build';
@@ -3241,6 +3283,32 @@ test('Tauri production build contract rejects dev-server releases and weakened n
   );
   assert.throws(
     () => assertTauriProductionBuildContract(unloggedWorkerFailure),
+    /must run its parented picker on the blocking pool/,
+  );
+
+  // select_media must keep delegating to the one reviewed picker helper.
+  const detachedOriginal = fs.readFileSync(
+    path.join(detachedSelectMedia, 'apps/desktop/src-tauri/src/commands.rs'), 'utf8',
+  );
+  const detachedSource = detachedOriginal.replace(
+    'pick_media_path(window).await?',
+    'pick_media_path_unparented().await?',
+  );
+  assert.notEqual(detachedSource, detachedOriginal, 'select_media delegation removal');
+  writeFile(detachedSelectMedia, 'apps/desktop/src-tauri/src/commands.rs', detachedSource);
+  assert.throws(
+    () => assertTauriProductionBuildContract(detachedSelectMedia),
+    /must run its parented picker on the blocking pool/,
+  );
+
+  // A second dialog anywhere in commands.rs could bypass the reviewed picker entirely.
+  const duplicateSource = `${fs.readFileSync(
+    path.join(duplicatePicker, 'apps/desktop/src-tauri/src/commands.rs'), 'utf8',
+  )}\nasync fn extra_picker() -> Option<std::path::PathBuf> {\n`
+    + '    rfd::FileDialog::new().pick_file()\n}\n';
+  writeFile(duplicatePicker, 'apps/desktop/src-tauri/src/commands.rs', duplicateSource);
+  assert.throws(
+    () => assertTauriProductionBuildContract(duplicatePicker),
     /must run its parented picker on the blocking pool/,
   );
 });
