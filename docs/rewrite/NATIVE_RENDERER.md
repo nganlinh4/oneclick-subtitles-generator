@@ -126,6 +126,55 @@ The accepted design is therefore **one compositor and one glyph source**:
 This is not the "dual implementation fallback": there is a single compositor and a single shaping
 engine. What is shared across the boundary is the atlas and the contract, not a duplicated renderer.
 
+### Encoding — settled: the operating system's own codecs, not a bundled FFmpeg
+
+The FFmpeg problem that started this migration is solved by not shipping an encoder at all.
+`crates/osg-encode` drives the **Windows Media Foundation `IMFSinkWriter`** to produce H.264 in MP4
+with AAC audio, hardware-accelerated where the machine offers it. The technique is ported from
+`screen-goated-toolbox` (`src/overlay/screen_record/mf_encode.rs`, `mf_audio.rs`), which has been
+running this path in production.
+
+Why this closes the licensing question rather than relocating it: the H.264 and AAC codecs are part
+of Windows, licensed by Microsoft to the user who is running the machine. We redistribute no codec,
+no `--enable-nonfree` binary, no GPL-licensed library, and no downloaded tool. There is nothing left
+to write a notice for, no runtime package to verify, and no delivery catalog entry to keep current.
+The 1% of Remotion's bytes that were `ffmpeg.exe` become 0%.
+
+Three details are ported deliberately, and two are corrected:
+
+- **Ported — full-range colorimetry.** `MF_MT_VIDEO_NOMINAL_RANGE` must be `MFNominalRange_0_255`
+  with BT.709 primaries and matrix, on both the input and output media types. The compositor emits
+  full-range sRGB; declaring studio range silently remaps 0-255 into 16-235. The reference records
+  this as a bug it had to fix, and for us it would break the WYSIWYG requirement outright — the
+  export would be visibly washed out against the preview it is supposed to match.
+- **Ported — bounded keyframe spacing.** A keyframe at least every 60 frames, so scrubbing an
+  exported file in a WebView stays responsive.
+- **Ported — the CPU-BGRA entry point.** `write_frame_cpu` takes exactly what a wgpu readback
+  already produces, so the compositor and the encoder meet at a plain byte buffer with no shared GPU
+  state. The GPU zero-copy path is a later optimization, not a requirement.
+- **Corrected — timestamps must not accumulate a truncated duration.** The reference computes one
+  frame duration as `10_000_000 * den / num` in integer arithmetic and reuses it. At 30000/1001 that
+  truncates 333_666.67 to 333_666, so the audio and video drift apart by about a frame every 50
+  minutes. We already have exact rational time in `osg-scene`, so each frame's presentation
+  timestamp is computed from its own index and rounded once, and no error accumulates.
+- **Corrected — the path never crosses the IPC boundary.** `MFCreateSinkWriterFromURL` needs a real
+  filesystem path. It is constructed and consumed entirely inside Rust from an opaque export ID.
+
+Two consequences to be honest about:
+
+- **`unsafe` is unavoidable here.** Media Foundation is a COM API. The workspace stays
+  `unsafe_code = "forbid"`; `osg-encode` is the single crate that downgrades it, every block carries
+  a safety comment, and the unsafe surface stays inside the smallest possible wrapper. No other
+  crate gains the allowance.
+- **Parity is proven at the frame, not at the bitstream.** Hardware encoders differ between vendors
+  and driver versions, so an H.264 file is not bit-reproducible. The determinism contract therefore
+  binds the compositor's RGBA output, which is what the parity fixtures compare. The encoder is
+  required only to be a faithful, full-range, correctly-timed carrier of those pixels.
+
+Non-Windows targets get an explicit `UnsupportedPlatform` error, not a silent fallback to some other
+encoder. The shipped release target is Windows; when another platform is added it gets its own
+audited backend (AVFoundation on macOS) behind the same trait.
+
 ### Determinism
 
 No RNG anywhere. Every effect is a pure function of source time. Shake and noise take their phase

@@ -17,6 +17,53 @@ as integrator and require fresh reviewers on each frozen slice.
 
 ---
 
+## LIVE STATE — native renderer migration (update this at every context boundary)
+
+Last updated: 2026-08-16. Working tree **clean** at `599f3a8f`. 24 commits since the preserved
+safety checkpoint `650805d36837d36f3b4aad025d0e54bac3708d41`, which is untouched. Nothing pushed.
+
+**Verified gates at this point** (measured, not estimated):
+
+| Gate | Result |
+| --- | --- |
+| `cargo test --workspace` | **842 passed, 0 failed** |
+| `cargo clippy --workspace --all-targets -- -D warnings` | clean |
+| `cargo fmt --check` | clean |
+| `npm run lint` | clean |
+| `npm test` (frontend) | passing, incl. 126 new renderer tests |
+
+**What the migration has built so far** (all additive; no Remotion code deleted yet, because parity
+is not yet proven):
+
+- `crates/osg-scene` — deterministic subtitle maths, 79 tests. Exact rational timelines, cue
+  selection, easing, animation transforms, layout, colour, and a versioned `Scene` contract.
+- `crates/osg-compositor` — headless wgpu compositor, 16 tests, verified against a real hardware
+  adapter (Intel, Vulkan). `unsafe_code = "forbid"`.
+- `crates/osg-media-server/src/frames.rs` — frame route serving `<img>` element loads, which is the
+  only transport the shipped CSP permits.
+- `src/services/fontIdentity.js` — resolves family+weight to exactly one face and byte source, or an
+  honest unavailable. Measured on this Windows machine: 2 managed, 12 system, **107 of 121 families
+  unavailable** — i.e. the shipped renderer was silently substituting for 88% of them.
+- `src/platform/glyphAtlas.js` — grapheme-cluster glyph baking in the WebView, 33 tests.
+- `scripts/render-parity-fixture.test.mjs` — IEEE-754 bit-exact parity fixture shared by both sides.
+
+**Deliberate architectural decisions already settled and implemented** — do not re-litigate:
+
+- One WebView glyph source feeds one Rust/GPU pixel compositor, used by both preview and export.
+- Preview receives frames as `<img>` loads from the loopback capability. No `blob:`, no
+  `wasm-unsafe-eval`, no raw frame bytes over IPC, no unrestricted local server.
+- Parity fixtures carry IEEE-754 bit patterns because JS and `serde_json` disagreed by one ULP.
+
+**Environmental note:** this machine's C: drive filled during the wgpu build (`os error 112`).
+`target/debug/incremental` was 31G of disposable cache and was removed, reclaiming 32G without
+losing any built dependency. Prefer `cargo test -p <crate>` over whole-workspace builds here.
+
+**Next steps, in order:** finish glyph/compositor integration and the atlas staging command, switch
+preview onto native frames, implement export/encoding, prove exhaustive parity against the shipped
+renderer, only then delete Remotion (124 files), then packaging and installed-EXE smoke.
+
+---
+
 ## 0. Mandatory continuation directive (read this first)
 
 The user explicitly wants the remaining work **checked, implemented, reviewed, and driven as far as
