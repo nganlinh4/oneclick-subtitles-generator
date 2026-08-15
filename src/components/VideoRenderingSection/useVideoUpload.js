@@ -11,6 +11,20 @@ import {
   selectMedia,
 } from '../../platform/mediaService';
 
+/**
+ * Undo a non-video native selection. Restoring only succeeds while the previous asset is owned by
+ * the active project, so this stays best effort: a failed rollback must never replace the
+ * actionable message the caller is about to raise.
+ */
+const rollbackNativeSelection = async (previous, restore, clear) => {
+  try {
+    if (isNativeMediaDescriptor(previous)) await restore(previous.assetId);
+    else await clear();
+  } catch {
+    // The native session keeps the rejected selection; the caller's guidance still wins.
+  }
+};
+
 export const selectNativeRenderVideo = async ({
   select = selectMedia,
   getCurrent = getSelectedMedia,
@@ -22,8 +36,7 @@ export const selectNativeRenderVideo = async ({
   if (selected === null) return null;
   if (isNativeMediaDescriptor(selected) && selected.type.startsWith('video/')) return selected;
 
-  if (isNativeMediaDescriptor(previous)) await restore(previous.assetId);
-  else await clear();
+  await rollbackNativeSelection(previous, restore, clear);
   throw new Error('Select a video file for rendering.');
 };
 
@@ -36,8 +49,7 @@ export const claimNativeRenderVideo = async (offerId, {
   const previous = await getCurrent();
   const selected = await claim(offerId);
   if (isNativeMediaDescriptor(selected) && selected.type.startsWith('video/')) return selected;
-  if (isNativeMediaDescriptor(previous)) await restore(previous.assetId);
-  else await clear();
+  await rollbackNativeSelection(previous, restore, clear);
   throw new Error('Drop a video file for rendering.');
 };
 

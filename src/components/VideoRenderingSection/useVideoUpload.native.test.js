@@ -57,6 +57,48 @@ test('leaves the current selection untouched when the picker is cancelled', asyn
   expect(clear).not.toHaveBeenCalled();
 });
 
+test('keeps the actionable message when restoring the previous selection fails', async () => {
+  const restore = vi.fn(async () => { throw new Error('The native media request is invalid'); });
+  const clear = vi.fn();
+
+  await expect(selectNativeRenderVideo({
+    getCurrent: vi.fn(async () => descriptor(PREVIOUS_ID)),
+    select: vi.fn(async () => descriptor(SELECTED_ID, 'audio/mpeg', 'audio.mp3')),
+    restore,
+    clear,
+  })).rejects.toThrow('Select a video file for rendering');
+  expect(restore).toHaveBeenCalledWith(PREVIOUS_ID);
+  expect(clear).not.toHaveBeenCalled();
+});
+
+test('keeps the actionable message when clearing an empty previous selection fails', async () => {
+  const restore = vi.fn();
+  const clear = vi.fn(async () => { throw new Error('invalidMediaResponse'); });
+
+  await expect(selectNativeRenderVideo({
+    getCurrent: vi.fn(async () => null),
+    select: vi.fn(async () => descriptor(SELECTED_ID, 'audio/mpeg', 'audio.mp3')),
+    restore,
+    clear,
+  })).rejects.toThrow('Select a video file for rendering');
+  expect(clear).toHaveBeenCalledOnce();
+  expect(restore).not.toHaveBeenCalled();
+});
+
+test('keeps the actionable drop message when the rollback restore fails', async () => {
+  const restore = vi.fn(async () => { throw new Error('The native media request is invalid'); });
+  const clear = vi.fn();
+
+  await expect(claimNativeRenderVideo('9b2c6b54-3a72-44d2-89e8-4979ad45e5f0', {
+    getCurrent: vi.fn(async () => descriptor(PREVIOUS_ID)),
+    claim: vi.fn(async () => descriptor(SELECTED_ID, 'audio/mpeg', 'audio.mp3')),
+    restore,
+    clear,
+  })).rejects.toThrow('Drop a video file for rendering');
+  expect(restore).toHaveBeenCalledWith(PREVIOUS_ID);
+  expect(clear).not.toHaveBeenCalled();
+});
+
 test('claims an opaque native drop as a renderer video', async () => {
   const selected = descriptor(SELECTED_ID);
   const claim = vi.fn(async () => selected);
