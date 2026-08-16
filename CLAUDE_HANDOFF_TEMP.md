@@ -19,7 +19,7 @@ as integrator and require fresh reviewers on each frozen slice.
 
 ## LIVE STATE — native renderer migration (update this at every context boundary)
 
-Last updated: 2026-08-16, after wave 11. Working tree clean at `20637bac`. 70 commits since the
+Last updated: 2026-08-16, after wave 12. Working tree clean at `6f041cdd`. 81 commits since the
 preserved safety checkpoint `650805d36837d36f3b4aad025d0e54bac3708d41`, which is untouched. Nothing
 pushed.
 
@@ -27,10 +27,10 @@ pushed.
 
 | Gate | Result |
 | --- | --- |
-| `cargo test --workspace` | **1266 passed, 0 failed** (was 842 when this stretch began) |
+| `cargo test --workspace` | **1309 passed, 0 failed** (was 842 when this stretch began) |
 | `cargo clippy --workspace --all-targets -- -D warnings` | clean |
 | `cargo fmt --check` | clean |
-| `npx vitest run` (whole frontend) | **1897 passed, 0 failed** |
+| `npx vitest run` (whole frontend) | **1940 passed, 0 failed** |
 | `npm run lint` | PASS |
 | `npm run check:i18n` | PASS |
 | `npm run check:tauri-contract` | PASS (125 commands) |
@@ -91,14 +91,23 @@ without one, or listed there without existing. Auditing my own entries against t
 three that claimed more than the code does — `textAlign` (justify is parsed, not performed),
 `animationType` (nine of ten; typewriter does not cut the run yet) and `gradientEnabled` (both side
 effects are reproduced but nothing paints the gradient, so enabling it today would give invisible
-subtitles). The honest figure is now **7 of 70 still pending**, down from 36 when this stretch began. Three of
-the seven are blocked on one thing — the compositor accumulates the pen from cell advances instead
-of reading the positions the atlas already emits (`letterSpacing`, `textAlign` justify, and by
-extension the justified case). The other four each need a decision rather than code: `animationType`
-(whether offsets scale with the composition), `lineHeight` (which side owns the multiplier),
-`maxWidth` (a percentage that needs a unit conversion in the bake request), `rtlSupport` (first-strong
-classification is not bidi), and `aspectRatio` (the contract already derives the width from the crop
-ratio and never reads the field).
+subtitles). The honest figure is now **2 of 70 still pending**, down from 36 when this stretch began. The
+authoritative layout closed five at once: the compositor consumes `penXPx` and `baselineYPx` and has
+no pen accumulator, no re-wrap, no re-align and no reorder left to diverge with. `aspectRatio` closed
+by being *proven redundant* — the editor's aspect buttons express themselves by writing the crop
+rectangle, so the ratio is already a property of width and height — which is a stronger result than
+implementing it. `canvasBgColor` closed by settling alpha in the conversion before a frame is
+composed, compositing onto one explicit opaque ground and refusing an alpha-carrying solid by name.
+
+The two survivors are not bookkeeping:
+- **`maxWidth`** — the mechanism works end to end; what is missing is the unit conversion. The
+  persisted value is a percentage of the composition, the baker takes atlas pixels, and the atlas is
+  baked at its own size then scaled. Its caller is the preview surface, which is not wired yet.
+- **`rtlSupport`** — bidi is real (UAX #9 P2/P3, W1-W7, N1/N2, I1/I2, per-line L1/L2, cross-checked
+  against a reference implementation over all 65,536 ordered four-character runs of a mixed pool with
+  zero order mismatches). It is held back because Arabic still cannot draw for a reason that is not
+  bidi: the atlas bakes one isolated cell per grapheme cluster while a real Arabic face shapes
+  contextual forms. Hebrew, Thaana, Samaritan and Mandaic have no cursive joining and do render.
 
 **Encoding and decoding no longer involve FFmpeg at all.** `osg-encode` drives Media Foundation's
 SinkWriter for H.264/AAC MP4 and `IMFSourceReader` will decode source video, both using codecs
