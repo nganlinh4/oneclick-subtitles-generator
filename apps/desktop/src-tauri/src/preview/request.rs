@@ -20,6 +20,31 @@ use uuid::Uuid;
 use super::refusal::PreviewRefusal;
 use super::{MAX_IDENTITY_BYTES, PREVIEW_SCHEMA_VERSION};
 
+/// Which layer of the composition a caller is asking for.
+///
+/// The two are not two renderers — the same compositor draws both, from the same converted plan —
+/// but the *last* blend differs, and that is what the editor is choosing between:
+///
+/// - [`Self::Composited`] is the whole frame as the export writes it, one image, blended on the GPU.
+///   Every surface where a user decides whether the output looks right asks for this one.
+/// - [`Self::Subtitles`] is the subtitle pass alone on a transparent ground, for the `WebView` to lay
+///   over its own `<video>`. Cheap enough for continuous playback, and **approximate**: the browser
+///   performs the final blend, over a frame its own decoder colour-managed, so chroma subsampling,
+///   the browser's colour management and its straight-alpha compositing all land in the gap. It is
+///   never what a user judges, and it must never be the last thing on screen.
+///
+/// Absent from a request, the layer is [`Self::Composited`]: the guaranteed one is the default, and
+/// asking for the approximation has to be deliberate.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Deserialize, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub(crate) enum PreviewLayer {
+    /// The fully composited frame: what the export writes, delivered as one image.
+    #[default]
+    Composited,
+    /// The subtitle pass alone, on a transparent ground, for the `WebView` to blend.
+    Subtitles,
+}
+
 /// One preview frame request, exactly as it arrives.
 #[derive(Debug, Clone, Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
@@ -41,6 +66,10 @@ pub(crate) struct PreviewFrameRequest {
     pub(crate) face: ResolvedFace,
     /// The validated render request the export path is built from.
     pub(crate) render: RenderRequest,
+    /// Which layer to draw. Defaulted rather than required, so every existing caller keeps asking
+    /// for the composited frame without saying so.
+    #[serde(default)]
+    pub(crate) layer: PreviewLayer,
 }
 
 impl PreviewFrameRequest {
@@ -78,9 +107,13 @@ fn is_opaque_identity(value: &str) -> bool {
 
 /// What the `WebView` gets back: an element-loadable URL and the frame's own measurements.
 ///
-/// Exactly the six fields `nativePreviewFrames.js` accepts, in the shape it accepts them. Nothing
+/// Exactly the seven fields `nativePreviewFrames.js` accepts, in the shape it accepts them. Nothing
 /// else may be added without changing that module too, because it matches the response key set
 /// exactly and refuses a response carrying anything more.
+///
+/// The layer is echoed for the same reason the frame index and the dimensions are: a subtitle layer
+/// shown where a composited frame was asked for is a *wrong picture* rather than a failure, and the
+/// only way the caller can refuse one is to be told which layer it actually got.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub(crate) struct PreviewFrameResponse {
@@ -96,4 +129,6 @@ pub(crate) struct PreviewFrameResponse {
     pub(crate) height_px: u32,
     /// The image type, always [`super::PREVIEW_MIME_TYPE`].
     pub(crate) mime_type: String,
+    /// Which layer this image carries, echoed from the request.
+    pub(crate) layer: PreviewLayer,
 }

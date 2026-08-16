@@ -30,6 +30,19 @@
 //! identifier and two credentials. No frame bytes cross the command boundary and no filesystem path
 //! is constructed, stored or returned.
 //!
+//! ## Two layers, one of which is only an approximation
+//!
+//! A request names a [`request::PreviewLayer`]. `composited` is the whole frame as the export
+//! writes it and is what every surface a user judges must ask for; `subtitles` is the pass alone on
+//! a transparent ground, for the `WebView` to lay over its own `<video>` during continuous playback.
+//! The second is cheap and responsive and is **not** exact — the browser performs the final blend,
+//! over a frame its own decoder colour-managed — so it may never be the last thing on screen.
+//!
+//! One thing is deliberately not claimed here: this host draws both layers with
+//! [`osg_compositor::Compositor::render_scene`], because it has no decoded source frame to lay the
+//! pass over, so the composited layer is not yet composited over video. `tests::layers` asserts that
+//! with measured pixels rather than leaving it to be assumed either way.
+//!
 //! ## Premultiplied in, straight out
 //!
 //! [`osg_compositor::Frame`] is premultiplied, because that is what compositing needs. `PNG` alpha

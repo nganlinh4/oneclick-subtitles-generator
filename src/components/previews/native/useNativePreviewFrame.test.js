@@ -1,3 +1,6 @@
+import { readFileSync } from 'node:fs';
+import { resolve } from 'node:path';
+
 import { act, renderHook } from '@testing-library/react';
 import { beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 
@@ -5,7 +8,10 @@ import { invokeDesktop, invokeDesktopRaw } from '../../../platform/desktopRuntim
 import { GLYPH_ATLAS_VERSION } from '../../../platform/glyphAtlas';
 import { createGlyphAtlasStager } from '../../../platform/glyphAtlasStaging';
 import { NATIVE_PREVIEW_SCENE_VERSION } from '../../../platform/nativePreviewFrames';
-import useNativePreviewFrame, { NATIVE_PREVIEW_FRAME_EXPIRED } from './useNativePreviewFrame';
+import useNativePreviewFrame, {
+  NATIVE_PREVIEW_DEVICE_LOST_CODES,
+  NATIVE_PREVIEW_FRAME_EXPIRED,
+} from './useNativePreviewFrame';
 
 /**
  * The native boundary is mocked exactly where `nativePreviewFrames.test.js` mocks it — at
@@ -48,6 +54,30 @@ const PROJECT_B = '019ffbea-40eb-7c3c-b2f3-214ca260a7dd';
 const MEDIA_A = '019ffbea-26d5-7800-8e3b-69de8bff2d7d';
 /** Private content, so no assertion below can be satisfied by echoing the user's own text. */
 const PRIVATE_TEXT = 'Bí mật';
+
+const REPOSITORY_ROOT = resolve(__dirname, '..', '..', '..', '..');
+const REFUSAL_SOURCE = 'apps/desktop/src-tauri/src/preview/refusal.rs';
+
+/**
+ * The device-lost code as the native side actually spells it, read from the native side.
+ *
+ * Not a copy and not a guess: `NATIVE_PREVIEW_DEVICE_LOST_CODES` used to list three plausible
+ * spellings, of which two were invented here, and the one that mattered could have been wrong
+ * without anything failing. A lost device that arrives under an unrecognised code is treated as an
+ * ordinary refusal, so the surface holding URLs into a dead device is never released — which is
+ * exactly the failure a test cannot afford to be relaxed about.
+ */
+const nativeDeviceLostCode = () => {
+  const source = readFileSync(resolve(REPOSITORY_ROOT, REFUSAL_SOURCE), 'utf8');
+  const codes = [...source.matchAll(/Self::DeviceLost\s*=>\s*"([A-Za-z][A-Za-z0-9]{0,127})"/g)]
+    .map(([, code]) => code);
+  if (codes.length !== 1) {
+    throw new Error(`${REFUSAL_SOURCE} must map DeviceLost to exactly one code, found ${codes.length}`);
+  }
+  return codes[0];
+};
+
+const DEVICE_LOST_CODE = nativeDeviceLostCode();
 
 const frameUrl = (index) => (
   `http://127.0.0.1:49152/frame/${SEQUENCE_ID}/${index}?token=${SERVER_TOKEN}&frame_token=${FRAME_TOKEN}`
@@ -117,6 +147,7 @@ const frameResponse = (request) => ({
   frameIndex: request.frameIndex,
   sequenceId: SEQUENCE_ID,
   mimeType: 'image/png',
+  layer: request.layer,
   widthPx: request.scene.widthPx,
   heightPx: request.scene.heightPx,
 });
@@ -360,11 +391,11 @@ describe('refusals are explained rather than shown as an empty frame', () => {
   });
 
   it('releases the surface once when the device is lost and does not reopen it against the same device', async () => {
-    invokeDesktop.mockRejectedValue({ code: 'deviceLost' });
+    invokeDesktop.mockRejectedValue({ code: DEVICE_LOST_CODE });
     const { result, rerender } = mountHook(props({ frameIndex: 1 }));
     await flush();
 
-    expect(result.current.error).toEqual({ code: 'nativePreviewRejected', nativeCode: 'deviceLost' });
+    expect(result.current.error).toEqual({ code: 'nativePreviewRejected', nativeCode: DEVICE_LOST_CODE });
     expect(surfaces).toHaveLength(1);
     expect(surfaces[0].close).toHaveBeenCalledTimes(1);
 
@@ -377,7 +408,7 @@ describe('refusals are explained rather than shown as an empty frame', () => {
   });
 
   it('reopens after a device loss when the binding changes, without being asked to retry', async () => {
-    invokeDesktop.mockRejectedValue({ code: 'deviceLost' });
+    invokeDesktop.mockRejectedValue({ code: DEVICE_LOST_CODE });
     const { rerender } = mountHook(props());
     await flush();
     expect(surfaces).toHaveLength(1);
@@ -388,6 +419,69 @@ describe('refusals are explained rather than shown as an empty frame', () => {
 
     expect(surfaces).toHaveLength(2);
     expect(surfaces[0].close).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe('the layer the surface is asking for', () => {
+  it('asks for the composited frame unless told otherwise, and says which layer came back', async () => {
+    const { result } = mountHook(props({ frameIndex: 0 }));
+    await flush();
+
+    expect(invokeDesktop.mock.calls[0][1].request.layer).toBe('composited');
+    expect(result.current.frame.layer).toBe('composited');
+  });
+
+  it('asks again when playback switches the layer, and never repaints the old one', async () => {
+    const { result, rerender } = mountHook(props({ frameIndex: 12 }));
+    await flush();
+    const composited = result.current.frame;
+
+    // Playback starts: the same instant, the cheaper layer, a second render rather than a reuse.
+    const pending = heldFrames();
+    rerender(props({ frameIndex: 12, layer: 'subtitles' }));
+    await flush();
+
+    expect(pending.map(({ request }) => request.layer)).toEqual(['subtitles']);
+    // The frame already on screen is held while the other layer renders, so the handover has no gap.
+    expect(result.current.status).toBe('pending');
+    expect(result.current.frame).toBe(composited);
+
+    await act(async () => {
+      pending[0].resolve(frameResponse(pending[0].request));
+    });
+    await flush();
+    expect(result.current.frame.layer).toBe('subtitles');
+    expect(result.current.frame.url).toBe(frameUrl(12));
+
+    // Pausing asks for the composited frame at the same instant. It is the layer that was already
+    // drawn for this frame, so it comes back from the cache without a further render.
+    acceptFrames();
+    const rendersSoFar = invokeDesktop.mock.calls.length;
+    rerender(props({ frameIndex: 12, layer: 'composited' }));
+    await flush();
+
+    expect(invokeDesktop).toHaveBeenCalledTimes(rendersSoFar);
+    expect(result.current.frame).toBe(composited);
+    expect(result.current.frame.layer).toBe('composited');
+  });
+});
+
+describe('the device-loss contract with the native side', () => {
+  it('switches on exactly the code `PreviewRefusal::DeviceLost` serialises', () => {
+    expect([...NATIVE_PREVIEW_DEVICE_LOST_CODES]).toEqual([DEVICE_LOST_CODE]);
+  });
+
+  it('treats a code the native side does not use as an ordinary refusal, not a lost device', async () => {
+    // The half that makes the assertion above worth making: recognising *more* codes than the
+    // native side emits is not harmless caution, it is a surface released for a refusal that was
+    // never a device loss. So a plausible-looking spelling has to behave like any other refusal.
+    invokeDesktop.mockRejectedValue({ code: 'deviceLost' });
+    const { result } = mountHook(props());
+    await flush();
+
+    expect(result.current.error).toEqual({ code: 'nativePreviewRejected', nativeCode: 'deviceLost' });
+    expect(surfaces).toHaveLength(1);
+    expect(surfaces[0].close).not.toHaveBeenCalled();
   });
 });
 

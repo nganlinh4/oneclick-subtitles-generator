@@ -197,8 +197,13 @@ const NativeRenderPreview = forwardRef(({
 
   const activeCrop = isCropEnabled ? tempCrop : appliedCrop;
 
+  // Stopped, the panel shows the composited frame — the exported pixel, at the crop being dragged.
+  // Playing, it shows the subtitle layer over the <video>, which is an approximation the browser
+  // finishes and never what a user judges. Before this the panel simply stopped asking, so playback
+  // showed raw video with no subtitles at all.
   const nativePreview = useNativePreview({
-    active: !isPlaying,
+    active: true,
+    playing: isPlaying,
     source: videoFile,
     videoRef,
     sourceKey: source?.url ?? null,
@@ -270,7 +275,7 @@ const NativeRenderPreview = forwardRef(({
 
       <NativeCompositedFrame
         frame={nativePreview.frame}
-        visible={!isPlaying}
+        visible
         onLoadError={nativePreview.onFrameLoadError}
         style={{ borderRadius: '8px' }}
       />

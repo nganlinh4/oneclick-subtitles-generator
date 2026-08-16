@@ -26,7 +26,7 @@ use tempfile::TempDir;
 
 use super::command::StagedAtlases;
 use super::refusal::PreviewRefusal;
-use super::request::PreviewFrameRequest;
+use super::request::{PreviewFrameRequest, PreviewLayer};
 
 /// Serialises the tests that acquire a graphics adapter.
 ///
@@ -300,6 +300,9 @@ impl StagedAtlases for StubAtlases {
 }
 
 /// A preview request for `frame_index`, naming `atlas_id` and carrying `render`.
+///
+/// The layer is left at its default, which is the composited one, so a test that does not mention
+/// layers is asking for exactly what every caller asked for before layers existed.
 #[must_use]
 pub(super) fn preview_request(
     atlas_id: AssetId,
@@ -314,7 +317,34 @@ pub(super) fn preview_request(
         frame_index,
         face: default_face(),
         render: render_request(render),
+        layer: PreviewLayer::default(),
     }
+}
+
+/// The same request as the wire text a `WebView` would send, so serde's own defaulting is exercised.
+///
+/// `layer` is included only when `layer` is `Some`, which is how a test can assert that an omitted
+/// field means the composited frame rather than that some other code path supplied it.
+#[must_use]
+pub(super) fn preview_request_json(
+    atlas_id: AssetId,
+    frame_index: u32,
+    render: &Value,
+    layer: Option<&str>,
+) -> Value {
+    let mut value = json!({
+        "schemaVersion": super::PREVIEW_SCHEMA_VERSION,
+        "sceneRevision": "3f2a91cc-812",
+        "atlasId": atlas_id,
+        "atlasContentHash": "0000abcd",
+        "frameIndex": frame_index,
+        "face": default_face(),
+        "render": render,
+    });
+    if let Some(layer) = layer {
+        value["layer"] = json!(layer);
+    }
+    value
 }
 
 /// A tiny valid `PNG`, for the lease and bounds tests that care about capabilities, not pixels.

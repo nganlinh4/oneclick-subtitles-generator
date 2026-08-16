@@ -55,6 +55,9 @@ pub(crate) trait StagedAtlases {
 /// identifier. It is read here and never appears in a response, in a refusal or in the published
 /// URL.
 ///
+/// The request's [`super::request::PreviewLayer`] chooses what the image carries and is echoed in
+/// the response, so a caller can refuse a layer it did not ask for rather than draw it.
+///
 /// # Errors
 /// Returns [`PreviewRefusal::UnsupportedRequest`] for a request this build does not read or a frame
 /// outside the converted timeline, [`PreviewRefusal::SourceUnreadable`] when the source cannot be
@@ -80,6 +83,7 @@ pub(crate) fn render_preview_frame(
         frame_index,
         face,
         render,
+        layer,
         ..
     } = request;
 
@@ -97,7 +101,7 @@ pub(crate) fn render_preview_frame(
     // result has to lose is exactly the render itself — which is the only slow part.
     let ticket = host.claim(binding)?;
     let frame = host.compose(&composition, frame_index)?;
-    host.publish(server, &ticket, &frame, frame_index)
+    host.publish(server, &ticket, &frame, frame_index, layer)
 }
 
 // The registry adapter and the Tauri entry point.

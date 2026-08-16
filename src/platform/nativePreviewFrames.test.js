@@ -2,8 +2,10 @@ import { invokeDesktop, invokeDesktopRaw } from './desktopRuntime';
 import { GLYPH_ATLAS_VERSION } from './glyphAtlas';
 import { createGlyphAtlasStager } from './glyphAtlasStaging';
 import {
+  NATIVE_PREVIEW_DEFAULT_LAYER,
   NATIVE_PREVIEW_ERROR_CODES,
   NATIVE_PREVIEW_FRAME_COMMAND,
+  NATIVE_PREVIEW_LAYERS,
   NATIVE_PREVIEW_LIMITS,
   NATIVE_PREVIEW_OUTCOMES,
   NATIVE_PREVIEW_SCENE_VERSION,
@@ -129,6 +131,9 @@ const frameResponse = (request, overrides = {}) => ({
   frameIndex: request.frameIndex,
   sequenceId: SEQUENCE_ID,
   mimeType: 'image/png',
+  // Echoed the way `PreviewFrameResponse` echoes it, so a stand-in that returned the other layer
+  // would be caught by the transport rather than by this fixture agreeing with itself.
+  layer: request.layer,
   widthPx: request.scene.widthPx,
   heightPx: request.scene.heightPx,
   ...overrides,
@@ -192,6 +197,7 @@ describe('requesting one native preview frame', () => {
         status: 'ready',
         url: frameUrl(7),
         frameIndex: 7,
+        layer: 'composited',
         widthPx: 1920,
         heightPx: 1080,
         mimeType: 'image/png',
@@ -211,7 +217,7 @@ describe('requesting one native preview frame', () => {
 
     const { request } = invokeDesktop.mock.calls[0][1];
     expect(Object.keys(request).sort()).toEqual([
-      'atlasContentHash', 'atlasId', 'frameIndex', 'scene', 'sceneRevision',
+      'atlasContentHash', 'atlasId', 'frameIndex', 'layer', 'scene', 'sceneRevision',
     ]);
     expect(request.atlasId).toBe(ATLAS_ID);
     expect(request.atlasContentHash).toBe('a1b2c3d4');
@@ -486,6 +492,58 @@ describe('bounds', () => {
   });
 });
 
+describe('choosing which layer to draw', () => {
+  it('asks for the composited frame when the caller says nothing', async () => {
+    const outcome = await createNativePreviewSurface().requestFrame(frameRequest(0));
+
+    expect(invokeDesktop.mock.calls[0][1].request.layer).toBe('composited');
+    expect(outcome.layer).toBe('composited');
+  });
+
+  it('asks for the subtitle layer when told to, and reports which layer came back', async () => {
+    const outcome = await createNativePreviewSurface()
+      .requestFrame({ ...frameRequest(0), layer: 'subtitles' });
+
+    expect(invokeDesktop.mock.calls[0][1].request.layer).toBe('subtitles');
+    expect(outcome.layer).toBe('subtitles');
+    expect(NATIVE_PREVIEW_LAYERS).toContain(outcome.layer);
+  });
+
+  it('keeps the two layers of one instant apart, so a scrub cannot serve the overlay to a paused surface', async () => {
+    const surface = createNativePreviewSurface();
+
+    const playing = await surface.requestFrame({ ...frameRequest(3), layer: 'subtitles' });
+    const paused = await surface.requestFrame({ ...frameRequest(3), layer: 'composited' });
+    const playingAgain = await surface.requestFrame({ ...frameRequest(3), layer: 'subtitles' });
+
+    // Same scene, same frame, two pictures: two renders and two cache entries, and the second ask
+    // for the layer already drawn is the cached one rather than a third render.
+    expect(paused.cacheKey).not.toBe(playing.cacheKey);
+    expect(playingAgain).toBe(playing);
+    expect(invokeDesktop).toHaveBeenCalledTimes(2);
+    expect(invokeDesktop.mock.calls.map(([, args]) => args.request.layer))
+      .toEqual(['subtitles', 'composited']);
+    expect(surface.stats().cachedFrames).toBe(2);
+  });
+
+  it('refuses a layer this build does not draw rather than defaulting it', async () => {
+    const surface = createNativePreviewSurface();
+
+    for (const layer of ['overlay', 'COMPOSITED', '', null, 0]) {
+      const error = await rejectionOf(surface.requestFrame({ ...frameRequest(0), layer }));
+      expect(error.code).toBe('nativePreviewInvalidRequest');
+    }
+    expect(invokeDesktop).not.toHaveBeenCalled();
+  });
+
+  it('states the default in one place, and it is the guaranteed layer', () => {
+    expect(NATIVE_PREVIEW_DEFAULT_LAYER).toBe('composited');
+    expect(NATIVE_PREVIEW_LAYERS).toContain(NATIVE_PREVIEW_DEFAULT_LAYER);
+    expect(prepareNativePreviewRequest(frameRequest(0)).payload.layer)
+      .toBe(NATIVE_PREVIEW_DEFAULT_LAYER);
+  });
+});
+
 describe('refusals', () => {
   it('surfaces a native refusal as a typed error rather than a blank frame', async () => {
     invokeDesktop.mockRejectedValue(Object.assign(
@@ -525,6 +583,11 @@ describe('refusals', () => {
       ['host suffix', { frameUrl: frameUrl(0).replace('127.0.0.1', '127.0.0.1.evil.example') }],
       ['missing credentials', { frameUrl: `http://127.0.0.1:49152/frame/${SEQUENCE_ID}/0` }],
       ['padded index', { frameUrl: frameUrl('00') }],
+      // The composited frame was asked for. A transparent overlay handed back instead is not a
+      // failure anything downstream could notice, so the transport has to notice it here.
+      ['wrong layer', { layer: 'subtitles' }],
+      ['unknown layer', { layer: 'overlay' }],
+      ['missing layer', { layer: undefined }],
       ['extra field', { extra: true }],
     ];
 

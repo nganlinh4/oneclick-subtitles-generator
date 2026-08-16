@@ -240,11 +240,14 @@ const VideoPreview = ({ currentTime, setCurrentTime, setDuration, videoSource, f
   );
 
   // Paused, scrubbing and every style adjustment show the natively composited frame — the surfaces
-  // where the user judges the output. Continuous playback keeps the <video> and the CSS overlay for
-  // responsiveness, and pausing re-renders the exact frame because the frame index is a pure
-  // function of the playhead. See docs/rewrite/NATIVE_RENDERER.md.
+  // where the user judges the output. Continuous playback keeps the <video> and lays the native
+  // SUBTITLE LAYER over it: the same compositor, the cheaper last blend, done by the browser rather
+  // than by us and therefore close rather than exact. The CSS overlay is now only the fallback for a
+  // surface that has no native frame at all. Pausing re-renders the exact composited frame, because
+  // the frame index is a pure function of the playhead. See docs/rewrite/NATIVE_RENDERER.md.
   const nativePreview = useNativePreview({
-    active: !isPlaying,
+    active: true,
+    playing: isPlaying,
     source: videoSource,
     videoRef,
     sourceKey: videoUrl,
@@ -436,14 +439,15 @@ const VideoPreview = ({ currentTime, setCurrentTime, setDuration, videoSource, f
                   t={t}
                 />
 
-                {/* The natively composited frame. When it is on screen it IS the exported pixel.
-                    The CSS overlay is its fallback rather than a layer beneath it, so exactly one
-                    of the two is ever drawn: the compositor's frame while paused, scrubbing or
-                    adjusting a style, and the overlay during continuous playback or while the
-                    compositor is unavailable for this source. */}
+                {/* The native frame. Paused, scrubbing or adjusting a style it is the composited
+                    one, and when it is on screen it IS the exported pixel; during continuous
+                    playback it is the subtitle layer alone, transparent over the <video> beneath.
+                    The CSS overlay is the fallback rather than a layer under either, so it is drawn
+                    only while no native frame has decoded — before the first one arrives, or while
+                    the compositor is unavailable for this source. */}
                 <NativeCompositedFrame
                   frame={nativePreview.frame}
-                  visible={!isPlaying}
+                  visible
                   onLoadError={nativePreview.onFrameLoadError}
                   fallback={(
                     <SubtitleDisplay

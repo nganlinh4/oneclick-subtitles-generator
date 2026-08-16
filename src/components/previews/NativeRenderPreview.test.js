@@ -40,13 +40,14 @@ const dormant = () => ({
   frame: null, status: 'idle', error: null, onFrameLoadError: vi.fn(), releaseSurface: vi.fn(), owned: false,
 });
 
-const showing = () => ({
-  frame: { url: FRAME_URL, cacheKey: 'k', frameIndex: 0 },
+const showing = (layer = 'composited') => ({
+  frame: { url: FRAME_URL, cacheKey: 'k', frameIndex: 0, layer },
   status: 'ready',
   error: null,
   onFrameLoadError: vi.fn(),
   releaseSurface: vi.fn(),
-  owned: true,
+  layer,
+  owned: layer === 'composited',
 });
 
 const subtitles = [{ start: 0, end: 2, text: 'A cue' }];
@@ -126,20 +127,59 @@ describe('with a video selected', () => {
     expect(call.frameRate).toBe(30);
   });
 
-  it('shows the composited frame while stopped and hands the surface back on play', () => {
+  it('shows the composited frame while stopped and asks for the subtitle layer on play', () => {
     vi.mocked(useNativePreview).mockReturnValue(showing());
     const { container, video } = mount();
 
     fireEvent.load(container.querySelector('.native-composited-frame-pending'));
-    expect(container.querySelector('.native-composited-frame').getAttribute('src')).toBe(FRAME_URL);
-    expect(vi.mocked(useNativePreview).mock.calls.at(-1)[0].active).toBe(true);
+    const shown = container.querySelector('.native-composited-frame');
+    expect(shown.getAttribute('src')).toBe(FRAME_URL);
+    expect(shown.getAttribute('data-layer')).toBe('composited');
+    const stopped = vi.mocked(useNativePreview).mock.calls.at(-1)[0];
+    expect(stopped.active).toBe(true);
+    expect(stopped.playing).toBe(false);
 
+    // Playing no longer stops the panel asking. It asks for the cheaper layer, so the <video> keeps
+    // the surface and the subtitles keep being drawn by the compositor that exports them — the panel
+    // used to show raw video with no subtitles at all here.
     fireEvent.play(video);
-    expect(container.querySelector('.native-composited-frame')).toBeNull();
-    expect(vi.mocked(useNativePreview).mock.calls.at(-1)[0].active).toBe(false);
+    const playing = vi.mocked(useNativePreview).mock.calls.at(-1)[0];
+    expect(playing.active).toBe(true);
+    expect(playing.playing).toBe(true);
+    // The frame already decoded stays on screen while the next layer renders: no gap in the handover.
+    expect(container.querySelector('.native-composited-frame')).not.toBeNull();
 
     fireEvent.pause(video);
-    expect(vi.mocked(useNativePreview).mock.calls.at(-1)[0].active).toBe(true);
+    expect(vi.mocked(useNativePreview).mock.calls.at(-1)[0].playing).toBe(false);
+  });
+
+  it('replaces the subtitle layer with the composited frame once playback stops', () => {
+    vi.mocked(useNativePreview).mockReturnValue(showing('subtitles'));
+    const { container, rerender, video } = mount();
+    fireEvent.play(video);
+    fireEvent.load(container.querySelector('.native-composited-frame-pending'));
+    expect(container.querySelector('.native-composited-frame').getAttribute('data-layer')).toBe('subtitles');
+
+    // Pausing asks for the composited frame at the same instant; it takes the surface only once it
+    // has actually decoded, so the approximation is replaced rather than removed.
+    fireEvent.pause(video);
+    vi.mocked(useNativePreview).mockReturnValue({
+      ...showing('composited'),
+      frame: { url: `${FRAME_URL}0`, cacheKey: 'k2', frameIndex: 0, layer: 'composited' },
+    });
+    rerender(
+      <NativeRenderPreview
+        videoFile="C:/media/clip.mp4"
+        subtitles={subtitles}
+        subtitleCustomization={{ fontSize: 50, maxWidth: 80 }}
+        resolution="1080p"
+        frameRate={30}
+      />,
+    );
+    expect(container.querySelector('.native-composited-frame').getAttribute('data-layer')).toBe('subtitles');
+
+    fireEvent.load(container.querySelector('.native-composited-frame-pending'));
+    expect(container.querySelector('.native-composited-frame').getAttribute('data-layer')).toBe('composited');
   });
 
   it('states a native refusal rather than leaving the panel blank', () => {

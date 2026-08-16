@@ -173,6 +173,51 @@ the staging handle cache outliving the native atlas it names; `finalize()` compu
 frames delivered rather than frames configured; `seek_before` falling out of its backoff loop with
 `Ok(())` when every backoff lands past the target.
 
+**THE EXHAUSTIVE PARITY GATE EXISTS AND IS RED. Remotion cannot be deleted yet, and that is the
+gate working.** `crates/osg-export/tests/parity/` renders all 30 shipped presets and all 147
+field-value renders from the frozen matrix — 5,332 compositions in the default run (67s), 152,334 in
+the exhaustive run (891s) — on a real Intel/Vulkan adapter. It proves determinism and seek-equals-play
+across the whole matrix, proves every one of its three per-case checks rejects a deliberate mutation,
+and compares native frames against decoded exported frames under a tolerance measured rather than
+chosen (mean <= 0.5, p99.9 <= 4, max <= 16 levels, alpha exactly 0; a one-pixel shift is rejected 8x
+over, and a zero tolerance is asserted to reject even a faithful round trip so the comparison is
+known to be looking at something).
+
+It found two defects that would have shipped:
+
+1. **Any composition edge over 2048 px PANICS inside wgpu.** The compositor requests
+   `Limits::downlevel_defaults()` (max 2048) while declaring `MAX_FRAME_DIMENSION = 8192` with a doc
+   comment claiming the two match. Measured: 4K aborts on the frame target, 1440p aborts on the
+   decoration mask, 1080p composes. The UI offers 1440p/4K/8K, the contract accepts them, and the
+   release profile is `panic = "abort"` — so a 4K export takes the process down. The same compositor
+   backs the preview.
+2. **`customPositionX`/`customPositionY` outside 0..=100 validate and persist but cannot be
+   exported.** The compositor bounds them to 0..=100; the schema and contract accept -1000..1000 and
+   the shipped renderer draws them. All four margins have the same shape of bug against -10000..10000.
+
+**A read-only adversarial review found the preview cannot work at all**, and that this was invisible
+to every gate. `prepareNativePreviewRequest` sends `{sceneRevision, atlasId, atlasContentHash,
+frameIndex, layer, scene}`; Rust's `PreviewFrameRequest` is `deny_unknown_fields` over
+`{schemaVersion, sceneRevision, atlasId, atlasContentHash, frameIndex, face, render, layer?}`. Three
+required fields are missing and `scene` is unknown, so every request fails deserialization. **This is
+my integration miss** — the preview-command agent specified the change and I did not apply it. Worse,
+the frontend test asserts the JS key set exactly and therefore *freezes the broken contract*, and
+`check-tauri-command-contract.js` compares only command NAMES, never payload shapes. "tauri-contract
+green" currently earns nothing about the boundary working.
+
+Further findings being fixed: the Rust layout validator bounds only finiteness, so a finite 1e308
+advance reaches the GPU as NaN vertex positions while the JS side bounds by magnitude; a claim/retire
+ordering race that can retire a live frame; the typewriter counting the baker's context joiners so
+the reveal runs fast on exactly the scripts contextual cells were added for; a no-cue instant refused
+three different ways though it is documented as legitimate; and `AtlasLayout::text_align` being
+emitted, validated and discarded, so an RTL cue authored `textAlign: 'left'` is drawn against the
+wrong edge.
+
+**One over-claim was mine and is corrected in place.** The `rtlSupport` ledger entry stated as fact
+that bidi was cross-checked against a reference implementation over all 65,536 ordered four-character
+runs. That measurement was really made, but in a scratch script that was deleted, so nothing in this
+repository reproduces it. The entry now says so.
+
 **The visual freeze gate was red before this work started, and is now green — read this before
 trusting the baseline.** `node scripts/check-visual-freeze.js` failed on a stale reviewed-security
 correction for `src/components/engines/EnginesPanel.js`: the file had been refactored into a frozen

@@ -14,7 +14,7 @@ use osg_compositor::{AdapterSelection, Compositor, Frame};
 use super::plan::PreviewComposition;
 use super::publish::{FrameLease, PreviewBinding, PublishedFrames};
 use super::refusal::PreviewRefusal;
-use super::request::PreviewFrameResponse;
+use super::request::{PreviewFrameResponse, PreviewLayer};
 use super::{
     GenerationCounter, MAX_FRAME_BYTES, MAX_RENDERS_IN_FLIGHT, MAX_RETAINED_BYTES,
     MAX_RETAINED_FRAMES, PREVIEW_MIME_TYPE, image,
@@ -149,6 +149,19 @@ impl PreviewHost {
     /// fresh one, every frame rendered on the dead device is retired, and the caller is told the
     /// device was lost rather than being handed a frame from a device that is not the one the rest
     /// of the session used.
+    ///
+    /// # What this draws, and what it does not
+    ///
+    /// [`Compositor::render_scene`] is the subtitle pass on a fully transparent ground: an area no
+    /// cue covers comes back `0,0,0,0`. That is exactly [`PreviewLayer::Subtitles`].
+    ///
+    /// [`PreviewLayer::Composited`] is *defined* as the whole frame — the decoded source, cropped,
+    /// flipped and backfilled, with the pass blended over it by
+    /// [`Compositor::render_scene_over`] — but this host has no decoded source frame to hand it, so
+    /// today both layers are this one call and come back byte-identical. That gap is asserted, with
+    /// measured pixels, by `the_composited_layer_has_no_video_ground_yet`, so it cannot be mistaken
+    /// for the guarantee `docs/rewrite/NATIVE_RENDERER.md` describes. Closing it means giving this
+    /// host a decoder, not changing what [`PreviewLayer::Subtitles`] means.
     pub(crate) fn compose(
         &self,
         composition: &PreviewComposition,
@@ -200,6 +213,7 @@ impl PreviewHost {
         ticket: &PreviewTicket,
         frame: &Frame,
         frame_index: u32,
+        layer: PreviewLayer,
     ) -> Result<PreviewFrameResponse, PreviewRefusal> {
         let encoded = image::encode_png(frame)?;
         let bytes = encoded.len();
@@ -227,6 +241,7 @@ impl PreviewHost {
             width_px: frame.width(),
             height_px: frame.height(),
             mime_type: PREVIEW_MIME_TYPE.to_owned(),
+            layer,
         })
     }
 

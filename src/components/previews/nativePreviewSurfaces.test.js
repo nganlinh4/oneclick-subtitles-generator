@@ -111,7 +111,10 @@ describe('the composited frame element', () => {
     expect(container.querySelector('.native-composited-frame')).toBeNull();
   });
 
-  it('draws nothing at all during continuous playback, when the <video> owns the surface', () => {
+  // `visible` is the surface's own switch, not the playback state: both editor surfaces now keep the
+  // element on screen while playing and change which LAYER the frame carries instead. What is
+  // asserted here is the switch itself, which is what a surface with no native frames at all uses.
+  it('draws nothing at all when the surface is not showing native frames', () => {
     const { container } = render(<NativeCompositedFrame frame={frame} visible={false} />);
     expect(container.querySelectorAll('img')).toHaveLength(0);
     expect(screen.queryByRole('img')).toBeNull();
@@ -134,7 +137,7 @@ describe('the composited frame element', () => {
     expect(container.querySelector('.native-composited-frame')).not.toBeNull();
   });
 
-  it('gives the surface back to the overlay the moment playback starts', () => {
+  it('gives the surface back to the fallback the moment it stops being visible', () => {
     const overlay = <div data-testid="css-overlay" />;
     const { container, rerender } = render(
       <NativeCompositedFrame frame={frame} visible fallback={overlay} />,

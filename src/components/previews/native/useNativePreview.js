@@ -11,16 +11,36 @@
  * composited native frame, because those are the surfaces where a user decides whether the output
  * looks right and where there is time to render one frame properly. Continuous playback does not,
  * and pausing must re-render the exact frame — which falls out of this design rather than needing
- * arranging, because `active` returns to true and the frame index is a pure function of the
- * playhead, so the frame that comes back is the frame at the instant the user stopped on.
+ * arranging, because the frame index is a pure function of the playhead, so the frame that comes
+ * back is the frame at the instant the user stopped on.
+ *
+ * `playing` is therefore a LAYER choice and not an on/off switch. It used to be one — the surface
+ * simply stopped asking for frames during playback and the CSS overlay took the screen back — and
+ * that meant playback was drawn by an implementation that agrees with the export in none of the ways
+ * this migration is about. Now the surface keeps asking, for the cheaper of the two layers:
+ *
+ *   - `playing: false` → `composited`, the exported pixel, the frame a decision is made against;
+ *   - `playing: true`  → `subtitles`, the pass alone on a transparent ground, laid over the `<video>`
+ *     by the browser.
+ *
+ * WHAT THE PLAYING PATH DOES NOT GUARANTEE: the browser performs that last blend, over a frame its
+ * own video decoder colour-managed on its own terms, so chroma subsampling, the browser's colour
+ * management and its straight-alpha compositing all land between our pixels and the screen. It is
+ * close, not exact. It is never the resting state — pausing asks for the composited frame at the
+ * same instant — and the previous frame is held until that one decodes, so the handover is a
+ * replacement rather than a blank.
  */
 
+import { NATIVE_PREVIEW_LAYERS } from '../../../platform/nativePreviewFrames';
 import useNativePreviewFrame from './useNativePreviewFrame';
 import useNativePreviewRequest from './useNativePreviewRequest';
 import { useNativePreviewBinding, useVideoSourceDimensions } from './useNativePreviewSource';
 
+const [COMPOSITED_LAYER, SUBTITLES_LAYER] = NATIVE_PREVIEW_LAYERS;
+
 const useNativePreview = ({
   active,
+  playing = false,
   source,
   videoRef,
   sourceKey = null,
@@ -50,6 +70,7 @@ const useNativePreview = ({
     currentTime,
   });
 
+  const layer = playing ? SUBTITLES_LAYER : COMPOSITED_LAYER;
   const { status, frame, error, onFrameLoadError, releaseSurface } = useNativePreviewFrame({
     active,
     projectId,
@@ -57,6 +78,7 @@ const useNativePreview = ({
     scene,
     atlas,
     frameIndex,
+    layer,
   });
 
   return {
@@ -67,8 +89,14 @@ const useNativePreview = ({
     error: error ?? requestError,
     onFrameLoadError,
     releaseSurface,
-    /** True only when a real composited frame exists and this surface is the one judging output. */
-    owned: active && frame !== null,
+    /** The layer being asked for now, which is not yet the layer `frame` carries while it changes. */
+    layer,
+    /**
+     * True only when the frame on screen is the guaranteed one: a real composited frame, on a
+     * surface that is judging output. The subtitle layer is deliberately not owned — it is an
+     * approximation the browser finishes, so nothing may treat it as the exported pixel.
+     */
+    owned: active && frame !== null && frame.layer === COMPOSITED_LAYER,
   };
 };
 

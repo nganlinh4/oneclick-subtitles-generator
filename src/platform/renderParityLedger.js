@@ -190,8 +190,12 @@ export const RENDER_PARITY_LEDGER = Object.freeze({
   rtlSupport: native(
     'src/platform/glyphAtlasBidi.js',
     'Real bidi, not a heuristic. The baker resolves UAX #9 P2/P3, W1-W7, N1/N2, I1/I2 and per-line '
-    + 'L1/L2 and emits lines in VISUAL order, cross-checked against a reference implementation over '
-    + 'all 65,536 ordered four-character runs of a mixed pool with zero order mismatches. It refuses '
+    + 'L1/L2 and emits lines in VISUAL order. This entry previously stated as fact that the '
+    + 'implementation was cross-checked against a reference over all 65,536 ordered four-character '
+    + 'runs of a mixed pool. That measurement was really made, but in a scratch script that was '
+    + 'deleted, so NOTHING IN THIS REPOSITORY REPRODUCES IT — the committed coverage is the '
+    + 'example-based bidi cases in glyphAtlas.shaping.test.js. Cited as a claim it was an '
+    + 'over-claim, and it is corrected here rather than quietly kept. It refuses '
     + 'what it does not implement — explicit embedding controls, isolates, and mirrored characters '
     + 'in right-to-left content — rather than drawing them wrong. The persisted setting forces the '
     + 'paragraph level; left unset the text decides it. Cursive scripts draw because a cell is baked '

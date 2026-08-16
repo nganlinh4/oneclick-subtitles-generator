@@ -23,6 +23,7 @@ use super::image::{decode_png, encode_png};
 use super::plan::{PreviewComposition, plan_for_source};
 use super::publish::PreviewBinding;
 use super::refusal::PreviewRefusal;
+use super::request::PreviewLayer;
 use super::{
     MAX_RENDERS_IN_FLIGHT, MAX_RETAINED_BYTES, MAX_RETAINED_FRAMES, PREVIEW_MIME_TYPE,
     PREVIEW_SCHEMA_VERSION,
@@ -30,6 +31,9 @@ use super::{
 
 /// Leases, retention bounds and eviction order, which need no adapter and no source.
 mod retention;
+
+/// What each layer actually carries, and what the composited one does not carry yet.
+mod layers;
 
 /// A host that draws on the real adapter with the shipped bounds.
 fn host() -> PreviewHost {
@@ -207,12 +211,13 @@ fn a_frame_rendered_for_a_retired_binding_is_refused_and_released() {
     edited.scene_revision = "revision-two".to_owned();
     let newer = host.claim(edited).expect("the newer binding claims");
     let shown = host
-        .publish(&server, &newer, &frame, 0)
+        .publish(&server, &newer, &frame, 0, PreviewLayer::default())
         .expect("the frame for the newer binding publishes");
     assert_eq!(host.frames().stats().0, 1);
 
     assert_eq!(
-        host.publish(&server, &ticket, &frame, 0).err(),
+        host.publish(&server, &ticket, &frame, 0, PreviewLayer::default())
+            .err(),
         Some(PreviewRefusal::StaleGeneration)
     );
     // Published, then released once, and never retained — and, just as important, the frame the
@@ -447,7 +452,7 @@ fn a_published_response_carries_a_capability_and_never_a_token_the_host_kept() {
     let frame = host.compose(&composition, 0).expect("frame zero composes");
     let ticket = host.claim(binding()).expect("a generation is claimed");
     let response = host
-        .publish(&server, &ticket, &frame, 0)
+        .publish(&server, &ticket, &frame, 0, PreviewLayer::default())
         .expect("the frame publishes");
 
     let host_debug = format!("{host:?}");

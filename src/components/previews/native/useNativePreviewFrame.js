@@ -26,19 +26,27 @@
 
 import { useCallback, useEffect, useRef, useState } from 'react';
 
-import { createNativePreviewSurface } from '../../../platform/nativePreviewFrames';
+import {
+  NATIVE_PREVIEW_DEFAULT_LAYER,
+  createNativePreviewSurface,
+} from '../../../platform/nativePreviewFrames';
 
 /**
- * Native refusal codes that mean the GPU adapter went away rather than that the request was wrong.
+ * The native refusal code that means the GPU adapter went away rather than that the request was
+ * wrong.
  *
  * A lost device invalidates every native frame the surface is holding URLs for, so the answer is to
- * release the surface and start a new generation rather than to retry against a dead one.
+ * release the surface and start a new generation rather than to retry against a dead one. Getting
+ * this string wrong is silent in exactly the worst way: a lost device arrives as an ordinary
+ * refusal, the surface is never released, and every later request renders against a device that is
+ * gone.
+ *
+ * It is therefore not a guess and not a set of plausible spellings. It is `PreviewRefusal::code` in
+ * `apps/desktop/src-tauri/src/preview/refusal.rs`, and the test beside this file reads that file to
+ * prove it — from the other side, `preview::tests::layers` pins the same literal — so the two ends
+ * cannot drift apart without a test failing.
  */
-export const NATIVE_PREVIEW_DEVICE_LOST_CODES = Object.freeze([
-  'deviceLost',
-  'previewDeviceLost',
-  'compositorDeviceLost',
-]);
+export const NATIVE_PREVIEW_DEVICE_LOST_CODES = Object.freeze(['previewDeviceLost']);
 
 const deviceLost = new Set(NATIVE_PREVIEW_DEVICE_LOST_CODES);
 
@@ -74,6 +82,10 @@ const explain = (error) => Object.freeze({
  * caller memoises them, and their identity is what decides whether a new native render is asked for.
  * `active` gates requesting without tearing the surface down, so pausing after a play does not throw
  * away a cache the user is about to scrub through.
+ *
+ * `layer` selects between the composited frame and the subtitle pass alone. Changing it asks for a
+ * new frame rather than reinterpreting the one on screen — they are two different pictures — and the
+ * frame already showing is held until the new one arrives, so the handover has no gap in it.
  */
 const useNativePreviewFrame = ({
   active = true,
@@ -82,6 +94,7 @@ const useNativePreviewFrame = ({
   scene = null,
   atlas = null,
   frameIndex = null,
+  layer = NATIVE_PREVIEW_DEFAULT_LAYER,
 }) => {
   const [state, setState] = useState(IDLE);
   const [surfaceEpoch, setSurfaceEpoch] = useState(0);
@@ -168,7 +181,7 @@ const useNativePreviewFrame = ({
       error: null,
       binding: bindingKey,
     }));
-    surface.requestFrame({ scene, atlas, frameIndex }).then(
+    surface.requestFrame({ scene, atlas, frameIndex, layer }).then(
       (outcome) => {
         // `superseded` and `cancelled` mean a newer frame is already owed to this surface, so they
         // settle without repainting. Only a `ready` outcome reaches the screen.
@@ -187,7 +200,7 @@ const useNativePreviewFrame = ({
     return () => {
       superseded = true;
     };
-  }, [active, bindingKey, surfaceEpoch, lostBinding, retryToken, scene, atlas, frameIndex, isCurrent]);
+  }, [active, bindingKey, surfaceEpoch, lostBinding, retryToken, scene, atlas, frameIndex, layer, isCurrent]);
 
   /**
    * The `<img>` could not load the URL the transport handed over.
