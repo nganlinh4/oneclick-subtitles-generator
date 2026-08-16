@@ -102,6 +102,26 @@ impl PreviewHost {
     /// holding stops resolving as soon as the thing it described stopped being current — rather
     /// than at some later eviction the editor cannot correlate with anything.
     pub(crate) fn claim(&self, binding: PreviewBinding) -> Result<PreviewTicket, PreviewRefusal> {
+        self.claim_interrupted(binding, &|| ())
+    }
+
+    /// [`Self::claim`], with the window between the compare-and-advance and the retire opened.
+    ///
+    /// The compare-and-advance is atomic under the binding lock, but the retire that follows it
+    /// cannot be: [`PublishedFrames::retain`] takes the retention lock and asks its admission
+    /// question under it, and that question takes the binding lock, so a claim holding the binding
+    /// lock across the retire would invert the two orders into a deadlock. The retire is therefore
+    /// ordered against the claim by *generation* instead of by exclusion — see
+    /// [`PublishedFrames::retire_superseded`] — which is order-independent and needs no second lock.
+    ///
+    /// `interrupted` is the preemption point that makes the interleaving reachable on purpose: with
+    /// `MAX_RENDERS_IN_FLIGHT` above one, a second claim can land here in full, and a test drives it
+    /// through this hook rather than racing two threads and hoping to hit the window.
+    pub(crate) fn claim_interrupted(
+        &self,
+        binding: PreviewBinding,
+        interrupted: &dyn Fn(),
+    ) -> Result<PreviewTicket, PreviewRefusal> {
         let mut current = self
             .binding
             .lock()
@@ -114,7 +134,8 @@ impl PreviewHost {
             advanced
         };
         drop(current);
-        self.frames.retire_others(&binding, generation);
+        interrupted();
+        self.frames.retire_superseded(&binding, generation);
         Ok(PreviewTicket {
             binding,
             generation,

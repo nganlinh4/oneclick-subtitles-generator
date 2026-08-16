@@ -37,7 +37,8 @@ pub enum GlyphAtlasError {
     UnsupportedTextLength,
     /// A glyph's source rectangle is not wholly inside the atlas.
     GlyphOutsideAtlas,
-    /// A layout number is not finite, or a line carries a pen position for a cell it does not draw.
+    /// A layout number is not finite, is larger in magnitude than a consumer could scale and still
+    /// place a glyph from, or a line carries a pen position for a cell it does not draw.
     UnsupportedLayout,
     /// The layout carries more lines or more placed cells than is supported.
     UnsupportedLayoutSize,

@@ -13,6 +13,11 @@ use osg_scene::glyph::{
 /// The baker itself, so the mirrored limits are asserted against their source rather than against a
 /// copy of it. Moving the file breaks this test loudly, which is the intent.
 pub(crate) const BAKER: &str = include_str!("../../../../src/platform/glyphAtlas.js");
+/// The staging validator, which is the other side of the layout bounds.
+///
+/// A descriptor this side accepts must be one that side would have accepted, so the bound it
+/// applies is read out of its own source rather than described in a comment here.
+pub(crate) const STAGING: &str = include_str!("../../../../src/platform/glyphAtlasStaging.js");
 
 /// The advance every fixture cell carries, and therefore the pen step of the fixture line.
 pub(crate) const ADVANCE_PX: f64 = 13.2;

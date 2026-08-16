@@ -12,14 +12,14 @@ use wgpu::{
 
 use crate::blur::SeparableBlur;
 use crate::device::{AdapterProfile, AdapterSelection, GpuContext};
-use crate::error::CompositorError;
+use crate::error::{CompositorError, TextureTarget};
 use crate::frame::Frame;
 use crate::masks;
 use crate::plan::{BindSource, build_frame_plan};
 use crate::quad_pipeline::{QuadPipeline, vertex_buffer};
 use crate::readback;
 use crate::scene::{TestScene, UNIFORM_LEN};
-use crate::size::FrameSize;
+use crate::size::{FrameSize, check_device_texture};
 use crate::subtitle::SubtitleScene;
 use crate::underlay::VideoUnderlay;
 use crate::underlay_pipeline::UnderlayPipeline;
@@ -75,6 +75,41 @@ impl Compositor {
         self.gpu.profile()
     }
 
+    /// The longest 2D texture edge this compositor's device will allocate.
+    const fn max_texture_dimension_2d(&self) -> u32 {
+        self.gpu.profile().max_texture_dimension_2d()
+    }
+
+    /// Refuses every texture a frame is about to create that this device cannot allocate.
+    ///
+    /// Called before the first allocation, because `wgpu` validates a texture dimension inside
+    /// `Device::create_texture` by panicking and the release profile aborts. Three sizes reach that
+    /// call: the composition — which also covers every intermediate, since the decoration masks and
+    /// both blur passes are allocated at the composition size — the uploaded source frame, and the
+    /// glyph atlas, whose 4096-pixel ceiling is itself past a downlevel device's 2048.
+    fn check_device(
+        &self,
+        scene: &SubtitleScene,
+        underlay: Option<&VideoUnderlay>,
+    ) -> Result<(), CompositorError> {
+        let max_edge = self.max_texture_dimension_2d();
+        scene.size().check_device(TextureTarget::Frame, max_edge)?;
+        let atlas = scene.atlas().atlas();
+        check_device_texture(
+            TextureTarget::Atlas,
+            atlas.width_px,
+            atlas.height_px,
+            max_edge,
+        )?;
+        if let Some(underlay) = underlay {
+            underlay
+                .source()
+                .size()
+                .check_device(TextureTarget::Source, max_edge)?;
+        }
+        Ok(())
+    }
+
     /// Composes the reference [`TestScene`] at `size` and reads it back as tightly packed RGBA8.
     ///
     /// This is the pipeline probe, not the renderer: it draws a fixed image that exercises device
@@ -83,7 +118,12 @@ impl Compositor {
     ///
     /// The result is a pure function of `scene` and `size` on a given adapter: the same arguments
     /// always produce the same bytes.
+    ///
+    /// # Errors
+    /// Returns [`CompositorError::DeviceTextureLimit`] when the size is past what this device can
+    /// allocate, and a readback error when the composed frame cannot be copied back.
     pub fn render(&self, scene: TestScene, size: FrameSize) -> Result<Frame, CompositorError> {
+        size.check_device(TextureTarget::Frame, self.max_texture_dimension_2d())?;
         let device = self.gpu.device();
 
         let uniforms = device.create_buffer(&BufferDescriptor {
@@ -125,7 +165,8 @@ impl Compositor {
     ///
     /// # Errors
     /// Returns [`CompositorError::FrameOutOfRange`] when the index is not in the scene's timeline,
-    /// and a readback error when the composed frame cannot be copied back.
+    /// [`CompositorError::DeviceTextureLimit`] when the composition or its atlas is past what this
+    /// device can allocate, and a readback error when the composed frame cannot be copied back.
     pub fn render_scene(
         &self,
         scene: &SubtitleScene,
@@ -150,7 +191,9 @@ impl Compositor {
     ///
     /// # Errors
     /// Returns [`CompositorError::FrameOutOfRange`] when the index is not in the scene's timeline,
-    /// and a readback error when the composed frame cannot be copied back.
+    /// [`CompositorError::DeviceTextureLimit`] when the composition, its atlas or the source frame
+    /// is past what this device can allocate, and a readback error when the composed frame cannot
+    /// be copied back.
     pub fn render_scene_over(
         &self,
         scene: &SubtitleScene,
@@ -174,8 +217,10 @@ impl Compositor {
     ) -> Result<Frame, CompositorError> {
         let device = self.gpu.device();
         let queue = self.gpu.queue();
-        // Before any allocation, so an out-of-range index costs nothing.
+        // Both before any allocation, so an out-of-range index and a size this GPU cannot take
+        // cost nothing and, in the second case, abort nothing.
         let plan = build_frame_plan(scene, frame_index)?;
+        self.check_device(scene, underlay)?;
 
         let ground = underlay.map(|video| {
             self.underlay

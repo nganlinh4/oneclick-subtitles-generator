@@ -6,6 +6,8 @@
 //! before it is converted, the request really does carry the path-shaped string that must not come
 //! back, and the lease really did release once before it was asked to release again.
 
+use std::cell::RefCell;
+
 use osg_compositor::AdapterSelection;
 use osg_domain::{AssetId, ProjectId};
 use osg_scene::glyph::{CellAdvanceVerdict, GlyphAtlasDescriptor};
@@ -93,6 +95,53 @@ fn a_valid_request_renders_and_returns_a_url_an_image_element_can_load() {
     let (width, height, _) = decode_png(body(&loaded));
     assert_eq!((width, height), (COMPOSITION_WIDTH, COMPOSITION_HEIGHT));
     assert_eq!(host.frames().stats().0, 1);
+}
+
+#[test]
+fn an_instant_with_no_cue_is_an_ordinary_frame_rather_than_a_refusal() {
+    let _adapter = adapter();
+    let directory = TempDir::new().expect("a temporary directory");
+    let source = source_clip(&directory);
+    let server = media_server();
+    let host = host();
+    let mut atlases = StubAtlases::default();
+    let atlas_id = atlases.stage(default_atlas());
+    // The editor documents `cue: null` as legitimate: between two cues there is nothing to draw,
+    // and the video underlay, the crop and the canvas backfill are all still composed.
+    let mut cue_less = clip_request_json();
+    cue_less["lyrics"] = serde_json::json!([]);
+
+    let empty = render_preview_frame(
+        &host,
+        &server,
+        &atlases,
+        &source,
+        preview_request(atlas_id, 7, cue_less),
+    )
+    .expect("an instant with no cue on screen renders");
+
+    assert_eq!(
+        (empty.width_px, empty.height_px),
+        (COMPOSITION_WIDTH, COMPOSITION_HEIGHT)
+    );
+    let (width, height, _) = decode_png(body(&load(&empty.frame_url)));
+    assert_eq!((width, height), (COMPOSITION_WIDTH, COMPOSITION_HEIGHT));
+
+    // The discriminating half: the same frame of the same request, with its cue, is a different
+    // picture. Without this the assertions above would pass on a frame that drew nothing anywhere.
+    let drawn = render_preview_frame(
+        &host,
+        &server,
+        &atlases,
+        &source,
+        preview_request(atlas_id, 7, clip_request_json()),
+    )
+    .expect("the same frame with its cue renders");
+    assert_ne!(
+        body(&load(&empty.frame_url)),
+        body(&load(&drawn.frame_url)),
+        "the cue-less frame must be the frame without the cue drawn on it",
+    );
 }
 
 #[test]
@@ -225,6 +274,63 @@ fn a_frame_rendered_for_a_retired_binding_is_refused_and_released() {
     assert_eq!(host.frames().release_count(), 1);
     assert_eq!(host.frames().stats().0, 1);
     assert!(String::from_utf8_lossy(&load(&shown.frame_url)).starts_with("HTTP/1.1 200"));
+}
+
+/// The interleaving two renders in flight make reachable: a claim preempted between taking its
+/// generation and retiring what that generation superseded.
+///
+/// Thread A claims, is preempted, and thread B claims, advances, composes and publishes a frame the
+/// editor is now showing. A then resumes and runs its retire — with the *old* generation. It must
+/// not be able to release B's live frame.
+///
+/// Driven through the injected preemption point rather than by two threads and a sleep: B's whole
+/// claim, compose and publish run inside A's window, so the ordering under test is the ordering that
+/// runs, on every machine, every time.
+#[test]
+fn a_claim_that_was_overtaken_cannot_retire_the_frame_that_overtook_it() {
+    let _adapter = adapter();
+    let host = host();
+    let server = media_server();
+    let composition = composition();
+    let frame = host.compose(&composition, 0).expect("frame zero composes");
+
+    let first = binding();
+    let mut second = first.clone();
+    second.scene_revision = "revision-two".to_owned();
+    let overtaking = RefCell::new(None);
+
+    let overtaken = host
+        .claim_interrupted(first, &|| {
+            let newer = host
+                .claim(second.clone())
+                .expect("the overtaking binding claims");
+            *overtaking.borrow_mut() = Some(
+                host.publish(&server, &newer, &frame, 0, PreviewLayer::default())
+                    .expect("the overtaking frame publishes"),
+            );
+        })
+        .expect("the overtaken binding claims");
+
+    let shown = overtaking.into_inner().expect("a published frame");
+    assert!(
+        !host.is_current(&overtaken),
+        "the first claim really was overtaken, or this proves nothing",
+    );
+    assert_eq!(
+        host.frames().stats().0,
+        1,
+        "the overtaken claim's retire released the frame that overtook it",
+    );
+    assert_eq!(host.frames().release_count(), 0);
+    assert!(String::from_utf8_lossy(&load(&shown.frame_url)).starts_with("HTTP/1.1 200"));
+
+    // And the retire still retires: the next claim to move the binding releases that same frame.
+    let mut third = second;
+    third.scene_revision = "revision-three".to_owned();
+    host.claim(third).expect("the third binding claims");
+    assert_eq!(host.frames().stats(), (0, 0));
+    assert_eq!(host.frames().release_count(), 1);
+    assert!(String::from_utf8_lossy(&load(&shown.frame_url)).starts_with("HTTP/1.1 404"));
 }
 
 #[test]

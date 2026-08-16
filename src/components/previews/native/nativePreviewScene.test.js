@@ -1,15 +1,16 @@
 import { describe, expect, it } from 'vitest';
+import { v7 as uuidv7 } from 'uuid';
 
 import { GLYPH_ATLAS_VERSION } from '../../../platform/glyphAtlas';
 import { createFakeSurface, lineTextsOf } from '../../../platform/glyphAtlasTestFont';
-import { NATIVE_PREVIEW_SCENE_VERSION } from '../../../platform/nativePreviewFrames';
 import { defaultCustomization } from '../../subtitleCustomization/defaultCustomization';
 import {
+  PREVIEW_FULL_FRAME_CROP,
   atlasBakeRequest,
   bakePreviewAtlas,
-  buildPreviewScene,
   previewCueList,
   previewFace,
+  previewRenderRequest,
   selectPreviewCue,
 } from './nativePreviewScene';
 
@@ -141,44 +142,64 @@ describe('cue selection reproduces the shipped rule', () => {
   });
 });
 
-describe('the preview scene', () => {
-  const timeline = { fpsNumerator: 30, fpsDenominator: 1, frameCount: 300 };
-
-  it('carries exactly the cue the staged atlas holds a run for', () => {
-    const scene = buildPreviewScene({
-      compositionWidthPx: 1_920,
-      compositionHeightPx: 1_080,
-      timeline,
-      face: FACE,
-      cue: { start: 1.25, end: 2.5, text: 'Preview' },
-    });
-    expect(scene.schemaVersion).toBe(NATIVE_PREVIEW_SCENE_VERSION);
-    expect(scene.cues).toEqual([{
-      text: 'Preview',
-      start: { numerator: 1_250, denominator: 1_000 },
-      end: { numerator: 2_500, denominator: 1_000 },
-    }]);
+describe('the preview render request', () => {
+  const sourceAsset = () => ({
+    id: uuidv7(),
+    displayName: 'source.mp4',
+    extension: 'mp4',
+    sizeBytes: 1_024,
+    kind: 'video',
   });
 
-  it('is a legitimate scene with no cue on screen', () => {
-    const scene = buildPreviewScene({
-      compositionWidthPx: 1_920,
-      compositionHeightPx: 1_080,
-      timeline,
-      face: FACE,
-      cue: null,
-    });
-    expect(scene.cues).toEqual([]);
+  const requestFor = (cue, overrides = {}) => previewRenderRequest({
+    sourceAsset: sourceAsset(),
+    projectId: uuidv7(),
+    cue,
+    customization: customization(),
+    resolution: '1080p',
+    frameRate: 30,
+    ...overrides,
   });
 
-  it('refuses an odd composition edge, which the encoder cannot take', () => {
-    expect(buildPreviewScene({
-      compositionWidthPx: 1_921,
-      compositionHeightPx: 1_080,
-      timeline,
-      face: FACE,
-      cue: null,
-    })).toBeNull();
+  it('is the export request builder, narrowed to the cue the staged atlas holds a run for', () => {
+    const render = requestFor({ start: 1.25, end: 2.5, text: 'Preview' });
+
+    // The export's own shape, not a preview-shaped copy of it: the same seven fields
+    // `buildNativeRenderRequest` produces for a file the user downloads.
+    expect(Object.keys(render).sort()).toEqual([
+      'crop', 'customization', 'lyrics', 'narrationArtifactId', 'projectId', 'settings', 'sourceAssetId',
+    ]);
+    expect(render.lyrics).toEqual([
+      { id: 'cue-0-0', startUs: 1_250_000, endUs: 2_500_000, text: 'Preview' },
+    ]);
+    expect(render.settings).toMatchObject({ resolution: '1080p', frameRate: 30 });
+    expect(render.customization.maxWidth).toBe(80);
+    expect(render.crop).toMatchObject({ width: 100, height: 100, canvasBgColor: '#000000' });
+  });
+
+  it('is a legitimate request with no cue on screen, and carries nothing invented', () => {
+    const render = requestFor(null);
+
+    expect(render.lyrics).toEqual([]);
+    // The builder refuses an empty lyric list, so the request is built through it with a probe cue
+    // that is dropped again. Nothing of that probe may reach the payload.
+    expect(JSON.stringify(render)).not.toContain('probe');
+    expect(render.settings).toEqual(requestFor({ start: 0, end: 1, text: 'Preview' }).settings);
+  });
+
+  it('carries the crop the surface is composing at, canvas ground included', () => {
+    const render = requestFor(null, {
+      crop: { ...PREVIEW_FULL_FRAME_CROP, width: 50, height: 25, canvasBgColor: '#123456' },
+    });
+
+    expect(render.crop).toMatchObject({ width: 50, height: 25, canvasBgColor: '#123456' });
+  });
+
+  it('is dormant rather than approximate when the editor cannot produce a request at all', () => {
+    expect(requestFor(null, { sourceAsset: null })).toBeNull();
+    expect(requestFor(null, { projectId: null })).toBeNull();
+    expect(requestFor(null, { resolution: '5K' })).toBeNull();
+    expect(requestFor(null, { customization: { ...customization(), fontWeight: 450 } })).toBeNull();
   });
 });
 

@@ -2,9 +2,10 @@
  * Everything a native preview frame needs, derived from what the editor already has.
  *
  * The editor holds a customization, a cue list, a source size, a crop and a playhead. The compositor
- * needs a composition size, a resolved face, a staged glyph atlas, a scene and a frame index. This
- * hook is that derivation, and it is deliberately the ONLY one: both preview surfaces call it, so
- * neither can grow a second opinion about how a style becomes a frame.
+ * needs a validated render request, a resolved face, a staged glyph atlas, the composition size the
+ * frame is expected at, and a frame index. This hook is that derivation, and it is deliberately the
+ * ONLY one: both preview surfaces call it, so neither can grow a second opinion about how a style
+ * becomes a frame.
  *
  * DORMANCY IS NOT FAILURE, and the distinction is load-bearing. A face with no verified byte source,
  * a source whose dimensions are not known yet, a session with no desktop runtime — none of these are
@@ -17,7 +18,9 @@
  * EVERY DERIVED VALUE IS KEYED ON CONTENT, not on object identity. The editor hands these surfaces
  * freshly built arrays and objects on most renders — `getCurrentSubtitles()` returns a new array
  * every time it is called — and keying a bake on identity would re-bake and re-upload an atlas on
- * every keystroke elsewhere in the app. Content keys make the atlas revision mean what its name says.
+ * every keystroke elsewhere in the app. Content keys make the atlas revision mean what its name says,
+ * and they are what keeps the request object stable enough for the transport to recognise a frame it
+ * has already drawn.
  */
 
 import { useEffect, useMemo, useRef, useState } from 'react';
@@ -30,11 +33,12 @@ import {
   frameIndexForTime,
 } from './nativePreviewGeometry';
 import {
+  PREVIEW_FULL_FRAME_CROP,
   atlasBakeRequest,
   bakePreviewAtlas,
-  buildPreviewScene,
   previewCueList,
   previewFace,
+  previewRenderRequest,
   selectPreviewCue,
 } from './nativePreviewScene';
 
@@ -64,7 +68,7 @@ const faceInstalledProbe = () => {
   };
 };
 
-const DORMANT = Object.freeze({ scene: null, atlas: null, frameIndex: null, error: null });
+const DORMANT = Object.freeze({ request: null, error: null });
 
 /** The customization fields a bake actually reads, as one comparable key. */
 const styleKeyOf = (customization) => JSON.stringify([
@@ -79,12 +83,13 @@ const styleKeyOf = (customization) => JSON.stringify([
 
 const useNativePreviewRequest = ({
   active = true,
+  sourceAsset = null,
+  projectId = null,
   customization = null,
   subtitles = null,
   resolution = null,
   frameRate = null,
-  cropWidthPercent = 100,
-  cropHeightPercent = 100,
+  crop = PREVIEW_FULL_FRAME_CROP,
   sourceWidthPx = null,
   sourceHeightPx = null,
   durationSeconds = null,
@@ -98,6 +103,10 @@ const useNativePreviewRequest = ({
   const fadeInDuration = customization?.fadeInDuration ?? 0;
   const fadeOutDuration = customization?.fadeOutDuration ?? 0;
   const styleKey = styleKeyOf(customization);
+  // The render request reads every customization field, not only the ones a bake does, so it needs
+  // its own content key. Both surfaces rebuild these objects on most renders.
+  const customizationKey = JSON.stringify(customization);
+  const cropKey = JSON.stringify(crop);
 
   const face = useMemo(() => {
     const platform = detectPlatform();
@@ -111,13 +120,11 @@ const useNativePreviewRequest = ({
   }, [fontFamily, fontWeight]);
 
   const composition = useMemo(
-    () => compositionSize({
-      resolution,
-      sourceWidthPx,
-      sourceHeightPx,
-      crop: { width: cropWidthPercent, height: cropHeightPercent },
-    }),
-    [resolution, sourceWidthPx, sourceHeightPx, cropWidthPercent, cropHeightPercent],
+    () => compositionSize({ resolution, sourceWidthPx, sourceHeightPx, crop }),
+    // `crop` is read only through `cropKey`; depending on the object would rebuild on every render
+    // the surface happens to construct it on.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [resolution, sourceWidthPx, sourceHeightPx, cropKey],
   );
 
   const timeline = useMemo(() => {
@@ -190,30 +197,45 @@ const useNativePreviewRequest = ({
     };
   }, [bake]);
 
-  const scene = useMemo(() => {
-    if (composition === null || timeline === null || face === null) return null;
-    return buildPreviewScene({
-      compositionWidthPx: composition.widthPx,
-      compositionHeightPx: composition.heightPx,
-      timeline,
-      face,
-      cue: stableCue,
-    });
-  }, [composition, timeline, face, stableCue]);
+  const render = useMemo(
+    () => (active
+      ? previewRenderRequest({
+        sourceAsset,
+        projectId,
+        cue: stableCue,
+        customization,
+        resolution,
+        frameRate,
+        crop,
+      })
+      : null),
+    // `customization` and `crop` are read only through their content keys, for the same reason the
+    // bake reads the style through one.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [active, sourceAsset, projectId, stableCue, customizationKey, resolution, frameRate, cropKey],
+  );
 
   const frameIndex = useMemo(
     () => (timeline === null ? null : frameIndexForTime(currentTime, timeline)),
     [timeline, currentTime],
   );
 
-  // The staged atlas and the scene must describe the same revision. A handle left over from the
-  // previous cue paired with this cue's scene would draw the previous cue's run, so a mismatch is
+  // The staged atlas and the request must describe the same revision. A handle left over from the
+  // previous cue paired with this cue's request would draw the previous cue's run, so a mismatch is
   // dormant rather than "close enough".
-  const paired = staged !== null && staged.bake === bake;
-  if (!active || scene === null || !paired) {
+  const atlas = staged !== null && staged.bake === bake ? staged.handle : null;
+
+  const request = useMemo(
+    () => (render === null || face === null || composition === null || atlas === null || frameIndex === null
+      ? null
+      : Object.freeze({ render, face, composition, atlas, frameIndex })),
+    [render, face, composition, atlas, frameIndex],
+  );
+
+  if (!active || request === null) {
     return atlasError === null ? DORMANT : { ...DORMANT, error: atlasError };
   }
-  return { scene, atlas: staged.handle, frameIndex, error: null };
+  return { request, error: null };
 };
 
 export default useNativePreviewRequest;

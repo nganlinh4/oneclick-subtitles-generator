@@ -7,13 +7,17 @@
 
 use osg_scene::glyph::{
     AtlasLine, CellAdvanceLayout, CellAdvanceVerdict, Direction, GlyphAtlasDescriptor,
-    GlyphAtlasError, LayoutRefusal, LayoutTextAlign, MAX_LAYOUT_CELLS, MAX_LAYOUT_LINES,
-    MAX_LAYOUT_WIDTH_PX, MAX_LETTER_SPACING_PX, MIN_LETTER_SPACING_PX, UncheckedGlyphAtlas,
+    GlyphAtlasError, LayoutRefusal, LayoutTextAlign, MAX_LAYOUT_CELLS, MAX_LAYOUT_COORDINATE_PX,
+    MAX_LAYOUT_LINES, MAX_LAYOUT_WIDTH_PX, MAX_LETTER_SPACING_PX, MIN_LETTER_SPACING_PX,
+    UncheckedGlyphAtlas,
 };
 
 use super::support::{
     ADVANCE_PX, BASELINE_PX, LINE_HEIGHT_PX, accept, empty, layout_of, line, refuse, valid,
 };
+
+/// Puts one value into one named layout field, so a bounds table can name what it broke.
+type Bend = fn(&mut UncheckedGlyphAtlas, f64);
 
 /// The layout the fixture ships with: two cells on one line, one advance apart.
 #[test]
@@ -90,6 +94,77 @@ fn a_layout_number_that_cannot_place_a_glyph_is_refused() {
         }),
         GlyphAtlasError::UnsupportedLayout
     );
+}
+
+/// Bounding these by magnitude is what closes the `NaN` path. Finiteness never did.
+///
+/// `osg-compositor` scales every one of them before it places anything: it multiplies each line's
+/// advance by the glyph scale, takes the widest result as the run's text width, and offsets a
+/// centred line by `text_width - line_width`. Hand it the largest finite `f64` and the multiply
+/// leaves the finite numbers, that subtraction becomes `inf - inf`, and every vertex on the line
+/// comes out `NaN` — from a descriptor whose every number passed `is_finite`.
+///
+/// The bound is the one `glyphAtlasStaging.js` applies to the very same fields, so a descriptor
+/// this side accepts is one the staging side would have accepted too.
+#[test]
+fn a_finite_layout_coordinate_past_the_bound_is_refused_before_it_can_scale_to_nan() {
+    // The bound itself is a layout, on both sides of zero: a pen sits left of its own line start
+    // whenever letter spacing tightens, so this is a magnitude and not a range.
+    let at_the_bound = accept(|atlas| {
+        atlas.layout.lines[0].pen_x_px[1] = -MAX_LAYOUT_COORDINATE_PX;
+        atlas.layout.lines[0].advance_width_px = MAX_LAYOUT_COORDINATE_PX;
+        atlas.layout.width_px = MAX_LAYOUT_COORDINATE_PX;
+    });
+    assert_eq!(
+        at_the_bound.layout().width_px.to_bits(),
+        MAX_LAYOUT_COORDINATE_PX.to_bits()
+    );
+
+    // Every number a consumer places a glyph from, fed the largest finite value there is.
+    let signed: [(&str, Bend); 4] = [
+        ("pen_x_px", |atlas, value| {
+            atlas.layout.lines[0].pen_x_px[1] = value;
+        }),
+        ("advance_width_px", |atlas, value| {
+            atlas.layout.lines[0].advance_width_px = value;
+        }),
+        ("shaping_residual_px", |atlas, value| {
+            atlas.layout.lines[0].shaping_residual_px = value;
+        }),
+        ("baseline_y_px", |atlas, value| {
+            atlas.layout.lines[0].baseline_y_px = value;
+        }),
+    ];
+    let unsigned: [(&str, Bend); 4] = [
+        ("measured_width_px", |atlas, value| {
+            atlas.layout.lines[0].measured_width_px = value;
+        }),
+        ("justification_px", |atlas, value| {
+            atlas.layout.text_align = LayoutTextAlign::Justify;
+            atlas.layout.lines[0].justification_px = value;
+        }),
+        ("width_px", |atlas, value| atlas.layout.width_px = value),
+        ("height_px", |atlas, value| atlas.layout.height_px = value),
+    ];
+
+    for (field, bend) in signed.into_iter().chain(unsigned) {
+        for magnitude in [f64::MAX, MAX_LAYOUT_COORDINATE_PX + 1.0] {
+            assert_eq!(
+                refuse(|atlas| bend(atlas, magnitude)),
+                GlyphAtlasError::UnsupportedLayout,
+                "{field} at {magnitude}"
+            );
+        }
+    }
+    // The signed fields are refused just as hard going the other way, rather than only by the sign
+    // checks the widths already carry.
+    for (field, bend) in signed {
+        assert_eq!(
+            refuse(|atlas| bend(atlas, -f64::MAX)),
+            GlyphAtlasError::UnsupportedLayout,
+            "{field} at -f64::MAX"
+        );
+    }
 }
 
 #[test]

@@ -262,14 +262,50 @@ pub(crate) fn atlas(family: &str, weight: u16) -> GlyphAtlasDescriptor {
         .expect("the fixture atlas is a descriptor the baker could have produced")
 }
 
+/// The fixture atlas laid out for one alignment.
+///
+/// The compositor places a run by the **layout's** alignment, so a fixture that staged every style
+/// against a layout baked for `left` would be a fixture the pipeline cannot produce: the editor
+/// sends one `textAlign` and it reaches both sides. [`layout_align`] reproduces that, and a test
+/// that wants the two to disagree — the right-to-left `start` resolution — builds its atlas here by
+/// hand instead.
+pub(crate) fn aligned_atlas(
+    family: &str,
+    weight: u16,
+    align: LayoutTextAlign,
+) -> GlyphAtlasDescriptor {
+    let mut unchecked = unchecked_atlas(family, weight);
+    unchecked.layout.text_align = align;
+    GlyphAtlasDescriptor::try_from(unchecked)
+        .expect("the fixture atlas is a descriptor the baker could have produced")
+}
+
+/// The layout alignment the baker would emit for a style spec, on left-to-right text.
+pub(crate) fn layout_align(spec: &SubtitleStyleSpec) -> LayoutTextAlign {
+    match spec.text_align.as_str() {
+        "center" => LayoutTextAlign::Center,
+        "right" => LayoutTextAlign::Right,
+        "justify" => LayoutTextAlign::Justify,
+        _ => LayoutTextAlign::Left,
+    }
+}
+
 /// A scene with one cue, "A", from 1.0s to 2.0s.
 pub(crate) fn scene(family: &str, weight: u16) -> Scene {
+    scene_at(family, weight, WIDTH, HEIGHT)
+}
+
+/// The same scene at a caller-chosen composition size.
+///
+/// Only the size varies: the cue, the timeline and the face are the fixture's, so a test about
+/// resolution is not also a test about anything else.
+pub(crate) fn scene_at(family: &str, weight: u16, width: u32, height: u32) -> Scene {
     let timeline = FrameTimeline::new(30, 1, FRAME_COUNT, ExactTime::ZERO)
         .expect("30fps for three seconds is a supported timeline");
     Scene::new(
         1,
-        WIDTH,
-        HEIGHT,
+        width,
+        height,
         timeline,
         resolved_face(family, weight),
         vec![SceneCue {
@@ -354,13 +390,30 @@ pub(crate) fn staged(spec: &SubtitleStyleSpec) -> SubtitleScene {
 
 /// The fixture with a caller-chosen run, for the layout paths one glyph cannot reach.
 pub(crate) fn staged_with_run(spec: &SubtitleStyleSpec, run: CueRun) -> SubtitleScene {
+    staged_with_atlas(spec, aligned_atlas(FAMILY, WEIGHT, layout_align(spec)), run)
+}
+
+/// The fixture with a caller-chosen atlas as well, for the tests about the atlas itself.
+pub(crate) fn staged_with_atlas(
+    spec: &SubtitleStyleSpec,
+    atlas: GlyphAtlasDescriptor,
+    run: CueRun,
+) -> SubtitleScene {
+    SubtitleScene::new(scene(FAMILY, WEIGHT), atlas, style(spec), vec![run])
+        .expect("the fixture scene, atlas, style and run agree")
+}
+
+/// The whole fixture, staged at a caller-chosen composition size.
+pub(crate) fn staged_at(spec: &SubtitleStyleSpec, width: u32, height: u32) -> SubtitleScene {
+    let atlas = aligned_atlas(FAMILY, WEIGHT, layout_align(spec));
+    let run = CueRun::from_layout(atlas.layout());
     SubtitleScene::new(
-        scene(FAMILY, WEIGHT),
-        atlas(FAMILY, WEIGHT),
+        scene_at(FAMILY, WEIGHT, width, height),
+        atlas,
         style(spec),
         vec![run],
     )
-    .expect("the fixture scene, atlas, style and run agree")
+    .expect("the fixture scene, atlas, style and run agree at any supported size")
 }
 
 /// The edge of the fixture source frame, in source pixels.

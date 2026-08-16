@@ -220,3 +220,60 @@ pub(crate) fn value_label(value: &Value) -> String {
         other => other.to_string(),
     }
 }
+
+/// Whether the case's own settings explain a cue that drew nothing.
+///
+/// A cue positioned off the frame draws nothing, and that is correct: the shipped renderer emits
+/// `left: -100%` for a `customPositionX` of -100 and puts the box off-screen too. The gate must not
+/// call that a pipeline failure.
+///
+/// It must not accept absence in general either, or it would pass for a renderer that dropped every
+/// cue. So this is asked only when a cue did NOT draw, and it answers from the same resolver the
+/// compositor uses: the absence is explained exactly when the box's own anchor lies outside the
+/// frame. A cue that vanishes while its anchor is inside the frame is still a failure, which is the
+/// case that matters.
+///
+/// Deliberately not a visibility prediction. Predicting visibility needs the run's drawn width in
+/// composition space, which means re-deriving the compositor's glyph scaling here — a second
+/// implementation of the thing under test, and the one mistake this whole migration exists to avoid.
+pub(crate) fn absence_is_explained(case: &Case, composition: (u32, u32)) -> bool {
+    use osg_scene::layout::{Margins, SubtitlePosition, TextAlign, resolve_subtitle_box};
+
+    let number = |key: &str| -> f64 {
+        case.customization
+            .get(key)
+            .and_then(Value::as_f64)
+            .unwrap_or(0.0)
+    };
+    let text = |key: &str| -> &str {
+        case.customization
+            .get(key)
+            .and_then(Value::as_str)
+            .unwrap_or("")
+    };
+
+    let Some(position) = SubtitlePosition::from_wire(text("position")) else {
+        return false;
+    };
+    let align = TextAlign::from_wire(text("textAlign")).unwrap_or(TextAlign::Center);
+    let (width, height) = (f64::from(composition.0), f64::from(composition.1));
+    let subtitle_box = resolve_subtitle_box(
+        position,
+        Margins {
+            bottom: number("marginBottom"),
+            top: number("marginTop"),
+            left: number("marginLeft"),
+            right: number("marginRight"),
+        },
+        number("customPositionX"),
+        number("customPositionY"),
+        align,
+        width,
+        height,
+    );
+
+    subtitle_box.right < 0.0
+        || subtitle_box.left > width
+        || subtitle_box.anchor_y < 0.0
+        || subtitle_box.anchor_y > height
+}

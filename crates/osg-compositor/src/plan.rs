@@ -45,7 +45,7 @@ use crate::geometry::{
 };
 use crate::glyphs::{
     GlyphDraw, GlyphPaint, GlyphPass, GradientLine, block_left, emit_glyphs, line_count,
-    line_widths,
+    line_widths, run_align,
 };
 use crate::style::SubtitleStyle;
 use crate::subtitle::SubtitleScene;
@@ -201,12 +201,16 @@ pub(crate) fn build_frame_plan(
     // opinion about how tall a line is.
     let text_height = line_count(run) * metrics.line_height;
 
+    // Alignment comes from the layout and not from the style, for the reason `run_align` records:
+    // the baker resolved CSS `start` against the paragraph direction, and it is the only side that
+    // knows what that direction was.
+    let align = run_align(atlas);
     let boxed = resolve_subtitle_box(
         style.position(),
         style.margins(),
         style.custom_x(),
         style.custom_y(),
-        style.align(),
+        align,
         width,
         height,
     );
@@ -235,7 +239,7 @@ pub(crate) fn build_frame_plan(
             run,
             placement,
             metrics,
-            align: style.align(),
+            align,
             block_left,
             text_top: layout.text_top,
             text_width,

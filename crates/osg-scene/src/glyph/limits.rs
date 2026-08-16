@@ -36,6 +36,21 @@ pub const MAX_LAYOUT_LINES: usize = 64;
 pub const MAX_LAYOUT_CELLS: usize = 4_096;
 /// The widest wrap width the layout arithmetic accepts, mirroring `maxLayoutWidthPx`.
 pub const MAX_LAYOUT_WIDTH_PX: f64 = 1_048_576.0;
+/// The largest magnitude any laid-out coordinate may carry, mirroring `LAYOUT_COORDINATE_LIMIT`.
+///
+/// The same number as [`MAX_LAYOUT_WIDTH_PX`] and the same number `glyphAtlasStaging.js` derives
+/// from it, so a descriptor this side accepts is one the staging side would have accepted too.
+///
+/// It bounds both axes. The tallest in-bounds run is [`MAX_LAYOUT_LINES`] baselines apart, and a
+/// line box large enough to pass this bound over 64 lines would be 16384px tall — far above the
+/// [`MAX_FONT_SIZE_PX`] face the baker can bake.
+///
+/// **A magnitude, not a range, and not merely `is_finite`.** These coordinates are signed:
+/// tightened letter spacing pulls a pen left of its own line start. And every consumer *scales*
+/// them before it places anything, so a finite but enormous value is not harmless — `f64::MAX`
+/// times a glyph scale above one is infinity, and a centred line then subtracts one infinity from
+/// another and places every glyph on the line at `NaN`.
+pub const MAX_LAYOUT_COORDINATE_PX: f64 = MAX_LAYOUT_WIDTH_PX;
 /// The most negative letter spacing the baker accepts, mirroring `minLetterSpacingPx`.
 ///
 /// Signed on purpose: letter spacing tightens as well as loosens, so it is bounded on both sides

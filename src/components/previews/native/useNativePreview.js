@@ -2,9 +2,10 @@
  * The one entry point a preview surface uses to put a natively composited frame on screen.
  *
  * It composes the four pieces that have to agree — the project/media binding, the decoded source
- * size, the scene and staged atlas, and the transport — so that a surface asks one question ("what
- * should I be showing at this instant?") and gets one answer. Both preview surfaces call this, which
- * is what makes "one compositor, one glyph source" true of the editor and not only of the export.
+ * size, the render request and staged atlas, and the transport — so that a surface asks one question
+ * ("what should I be showing at this instant?") and gets one answer. Both preview surfaces call
+ * this, which is what makes "one compositor, one glyph source" true of the editor and not only of
+ * the export.
  *
  * WHEN THE FRAME OWNS THE SURFACE is the whole of the accepted design's preview rule
  * (`docs/rewrite/NATIVE_RENDERER.md`): paused, scrubbing, and every style adjustment show the fully
@@ -48,22 +49,25 @@ const useNativePreview = ({
   subtitles,
   resolution,
   frameRate,
-  cropWidthPercent = 100,
-  cropHeightPercent = 100,
+  // The whole crop the user set, not only its size: the offset, the canvas ground and the flips are
+  // all pixels the export writes, so a surface that has a crop hands over all of it. Omitted, the
+  // request builder composes the whole frame, which is what a surface with no crop control means.
+  crop,
   durationSeconds = null,
   currentTime = 0,
 }) => {
-  const { projectId, mediaId } = useNativePreviewBinding(source);
+  const { projectId, sourceAsset } = useNativePreviewBinding(source);
   const dimensions = useVideoSourceDimensions(videoRef, sourceKey);
 
-  const { scene, atlas, frameIndex, error: requestError } = useNativePreviewRequest({
+  const { request, error: requestError } = useNativePreviewRequest({
     active,
+    sourceAsset,
+    projectId,
     customization,
     subtitles,
     resolution,
     frameRate,
-    cropWidthPercent,
-    cropHeightPercent,
+    crop,
     sourceWidthPx: dimensions === null ? null : dimensions.widthPx,
     sourceHeightPx: dimensions === null ? null : dimensions.heightPx,
     durationSeconds,
@@ -74,10 +78,8 @@ const useNativePreview = ({
   const { status, frame, error, onFrameLoadError, releaseSurface } = useNativePreviewFrame({
     active,
     projectId,
-    mediaId,
-    scene,
-    atlas,
-    frameIndex,
+    mediaId: sourceAsset === null ? null : sourceAsset.id,
+    request,
     layer,
   });
 

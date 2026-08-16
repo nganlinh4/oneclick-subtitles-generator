@@ -14,13 +14,14 @@
  * discipline that a hand-maintained second renderer keeps breaking and becomes a property of the
  * architecture. See `docs/rewrite/NATIVE_RENDERER.md`.
  *
- * What a request must *be* — the scene bounds, the layer vocabulary, the canonical encoding and the
- * cache key — is `./nativePreviewRequest`, and is re-exported from here so callers see one module.
- * What is left here is the half that has state: dispatching, coalescing, caching and teardown.
+ * What a request must *be* — the field set the native command deserialises, the layer vocabulary,
+ * the canonical encoding and the cache key — is `./nativePreviewRequest`, and is re-exported from
+ * here so callers see one module. What is left here is the half that has state: dispatching,
+ * coalescing, caching and teardown.
  *
  * What this module guarantees:
  *
- *   - **Bounded.** A scene is validated against the same bounds `crates/osg-scene` enforces and
+ *   - **Bounded.** A request is validated against the same bounds the native command applies and
  *     measured before it can become an IPC copy; in-flight requests and the URL cache are both
  *     capped, and the cache evicts least-recently-used so a long scrub cannot grow without limit.
  *   - **Coalesced.** Scrubbing produces one request per mousemove, not one native render per
@@ -31,14 +32,14 @@
  *     the surface dead. A native response that arrives afterwards is dropped: it does not settle a
  *     caller a second time and it does not write to the cache.
  *   - **Honest.** A native refusal — an atlas whose cell advances cannot be trusted, an unavailable
- *     font, a scene the compositor will not draw — arrives as a typed error. It is never a blank
+ *     font, a request the compositor will not draw — arrives as a typed error. It is never a blank
  *     frame that a user would read as an empty subtitle, and it is never silently retried.
  *   - **Leak-free.** Errors carry a code, a field path and measured sizes. Never a native path,
  *     never a credential, never the user's subtitle text, never a native message or stack. Nothing
  *     in this module logs.
  *
- * Determinism: no clocks and no RNG. `sceneRevision` is a pure function of the canonical scene, so
- * the same scene always produces the same cache key, and seeking to a frame twice hits the cache
+ * Determinism: no clocks and no RNG. `sceneRevision` is a pure function of the canonical request, so
+ * the same request always produces the same cache key, and seeking to a frame twice hits the cache
  * instead of re-rendering.
  *
  * One honest limitation: a cached URL addresses a native frame registry that has its own bound and
@@ -53,7 +54,8 @@ import {
   NATIVE_PREVIEW_DEFAULT_LAYER,
   NATIVE_PREVIEW_LAYERS,
   NATIVE_PREVIEW_LIMITS,
-  NATIVE_PREVIEW_SCENE_VERSION,
+  NATIVE_PREVIEW_REQUEST_FIELDS,
+  NATIVE_PREVIEW_SCHEMA_VERSION,
   NativePreviewFrameError,
   failed,
   hasExactKeys,
@@ -69,7 +71,8 @@ export {
   NATIVE_PREVIEW_DEFAULT_LAYER,
   NATIVE_PREVIEW_LAYERS,
   NATIVE_PREVIEW_LIMITS,
-  NATIVE_PREVIEW_SCENE_VERSION,
+  NATIVE_PREVIEW_REQUEST_FIELDS,
+  NATIVE_PREVIEW_SCHEMA_VERSION,
   NativePreviewFrameError,
   prepareNativePreviewRequest,
 };
@@ -79,9 +82,10 @@ export const NATIVE_PREVIEW_FRAME_COMMAND = 'preview_frame_render';
 
 export const NATIVE_PREVIEW_ERROR_CODES = Object.freeze([
   'nativePreviewInvalidRequest',
-  'nativePreviewInvalidScene',
+  'nativePreviewInvalidRender',
+  'nativePreviewInvalidFace',
   'nativePreviewInvalidAtlas',
-  'nativePreviewSceneTooLarge',
+  'nativePreviewRequestTooLarge',
   'nativePreviewSurfaceClosed',
   'nativePreviewUnavailable',
   'nativePreviewRejected',
@@ -95,7 +99,15 @@ export const NATIVE_PREVIEW_OUTCOMES = Object.freeze(['ready', 'superseded', 'ca
 const FRAME_URL_PATTERN = /^http:\/\/127\.0\.0\.1:([0-9]{1,5})\/frame\/([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})\/(0|[1-9][0-9]{0,8})\?token=[0-9a-f]{64}&frame_token=[0-9a-f]{64}$/;
 /** Mirrors the signature-checked image types `osg-media-server` will publish a frame as. */
 const FRAME_MIME_TYPES = new Set(['image/png', 'image/webp']);
-const RESPONSE_KEYS = Object.freeze([
+/**
+ * The exact field set `PreviewFrameResponse` in
+ * `apps/desktop/src-tauri/src/preview/request.rs` serialises, sorted.
+ *
+ * Exported for the same reason the request's field set is: `preview::request::tests` reads this
+ * array out of this file and compares it with what that struct actually serialises, so a field added
+ * or renamed on either side fails a test rather than making every response unreadable at runtime.
+ */
+export const NATIVE_PREVIEW_RESPONSE_FIELDS = Object.freeze([
   'frameIndex', 'frameUrl', 'heightPx', 'layer', 'mimeType', 'sequenceId', 'widthPx',
 ]);
 /** Mirrors the code shape `desktopRuntime` already guarantees for a sanitized bridge error. */
@@ -129,13 +141,14 @@ const fromNativeError = (error) => {
  *
  * The URL is matched against an anchored allowlist rather than parsed, so nothing but a loopback
  * frame capability can ever reach an element, and the frame it addresses is cross-checked against
- * the frame that was asked for. A response whose size disagrees with the scene is refused too: a
- * preview at the wrong size is exactly the silent divergence this transport exists to remove. So is
- * one whose layer disagrees: an approximation shown where the guaranteed frame was asked for is a
- * wrong picture rather than a failure, and nothing downstream could tell.
+ * the frame that was asked for. A response whose size disagrees with the composition the caller
+ * expected is refused too: a preview at the wrong size is exactly the silent divergence this
+ * transport exists to remove. So is one whose layer disagrees: an approximation shown where the
+ * guaranteed frame was asked for is a wrong picture rather than a failure, and nothing downstream
+ * could tell.
  */
-const toOutcome = (payload, cacheKey, response) => {
-  if (!hasExactKeys(response, RESPONSE_KEYS)) throw rejected(null);
+const toOutcome = ({ payload, composition, cacheKey }, response) => {
+  if (!hasExactKeys(response, NATIVE_PREVIEW_RESPONSE_FIELDS)) throw rejected(null);
   const match = typeof response.frameUrl === 'string' ? FRAME_URL_PATTERN.exec(response.frameUrl) : null;
   if (match === null) throw rejected(null);
   const [, portText, sequenceId, indexText] = match;
@@ -148,8 +161,8 @@ const toOutcome = (payload, cacheKey, response) => {
       || String(payload.frameIndex) !== indexText
       || !FRAME_MIME_TYPES.has(response.mimeType)
       || response.layer !== payload.layer
-      || response.widthPx !== payload.scene.widthPx
-      || response.heightPx !== payload.scene.heightPx) {
+      || response.widthPx !== composition.widthPx
+      || response.heightPx !== composition.heightPx) {
     throw rejected(null);
   }
   return Object.freeze({
@@ -262,7 +275,7 @@ export const createNativePreviewSurface = ({
       (response) => {
         let outcome;
         try {
-          outcome = toOutcome(entry.payload, entry.cacheKey, response);
+          outcome = toOutcome(entry, response);
         } catch (error) {
           complete(entry, null, error);
           return;

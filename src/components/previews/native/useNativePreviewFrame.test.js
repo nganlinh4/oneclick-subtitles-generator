@@ -7,7 +7,8 @@ import { beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import { invokeDesktop, invokeDesktopRaw } from '../../../platform/desktopRuntime';
 import { GLYPH_ATLAS_VERSION } from '../../../platform/glyphAtlas';
 import { createGlyphAtlasStager } from '../../../platform/glyphAtlasStaging';
-import { NATIVE_PREVIEW_SCENE_VERSION } from '../../../platform/nativePreviewFrames';
+import { buildNativeRenderRequest } from '../../../platform/renderService';
+import { defaultCustomization } from '../../subtitleCustomization/defaultCustomization';
 import useNativePreviewFrame, {
   NATIVE_PREVIEW_DEVICE_LOST_CODES,
   NATIVE_PREVIEW_FRAME_EXPIRED,
@@ -131,25 +132,56 @@ const atlasDescriptor = () => ({
 
 let atlas;
 
-const seconds = (value) => ({ numerator: value, denominator: 1 });
+const COMPOSITION = Object.freeze({ widthPx: 1_920, heightPx: 1_080 });
+const FACE = Object.freeze({ family: 'Editor Sans', source: 'system:windows|Editor Sans|400|normal', weight: 400 });
 
-const scene = Object.freeze({
-  schemaVersion: NATIVE_PREVIEW_SCENE_VERSION,
-  widthPx: 1920,
-  heightPx: 1080,
-  timeline: { fpsNumerator: 30, fpsDenominator: 1, frameCount: 300, start: seconds(0) },
-  face: { family: 'Editor Sans', source: 'system:windows|Editor Sans|400|normal', weight: 400 },
-  cues: [{ text: PRIVATE_TEXT, start: seconds(0), end: seconds(2) }],
+/** The export's own request builder, narrowed to one cue, exactly as the request hook narrows it. */
+const renderRequest = (overrides = {}) => buildNativeRenderRequest({
+  sourceAsset: {
+    id: MEDIA_A, displayName: 'source.mp4', extension: 'mp4', sizeBytes: 1_024, kind: 'video',
+  },
+  projectId: PROJECT_A,
+  lyrics: [{ id: 'cue-1', start: 0, end: 2, text: PRIVATE_TEXT }],
+  settings: {
+    resolution: '1080p',
+    frameRate: 30,
+    originalAudioVolume: 100,
+    narrationVolume: 0,
+    trimStart: 0,
+    trimEnd: 0,
+  },
+  customization: { ...defaultCustomization },
+  crop: { x: 0, y: 0, width: 100, height: 100, aspectRatio: null },
+  ...overrides,
 });
 
-const frameResponse = (request) => ({
-  frameUrl: frameUrl(request.frameIndex),
-  frameIndex: request.frameIndex,
+let render;
+
+/**
+ * The request for one frame, with a stable identity per frame index.
+ *
+ * Identity is what the hook keys a new native render on, and the production caller memoises it for
+ * exactly that reason, so a fixture that rebuilt it on every render would be testing something the
+ * editor never does.
+ */
+const requests = new Map();
+const requestFor = (frameIndex) => {
+  if (!requests.has(frameIndex)) {
+    requests.set(frameIndex, Object.freeze({
+      render, face: FACE, composition: COMPOSITION, atlas, frameIndex,
+    }));
+  }
+  return requests.get(frameIndex);
+};
+
+const frameResponse = (payload) => ({
+  frameUrl: frameUrl(payload.frameIndex),
+  frameIndex: payload.frameIndex,
   sequenceId: SEQUENCE_ID,
   mimeType: 'image/png',
-  layer: request.layer,
-  widthPx: request.scene.widthPx,
-  heightPx: request.scene.heightPx,
+  layer: payload.layer,
+  widthPx: COMPOSITION.widthPx,
+  heightPx: COMPOSITION.heightPx,
 });
 
 const acceptFrames = () => {
@@ -169,13 +201,11 @@ const flush = () => act(async () => {
   await new Promise((resolve) => { setTimeout(resolve, 0); });
 });
 
-const props = (overrides = {}) => ({
+const props = ({ frameIndex = 0, ...overrides } = {}) => ({
   active: true,
   projectId: PROJECT_A,
   mediaId: MEDIA_A,
-  scene,
-  atlas,
-  frameIndex: 0,
+  request: requestFor(frameIndex),
   ...overrides,
 });
 
@@ -192,6 +222,7 @@ const mountHook = (initialProps) => {
 beforeAll(async () => {
   invokeDesktopRaw.mockResolvedValue({ atlasId: ATLAS_ID, contentHash: 'a1b2c3d4' });
   atlas = await createGlyphAtlasStager().stage(atlasDescriptor());
+  render = renderRequest();
 });
 
 beforeEach(() => {
@@ -381,13 +412,17 @@ describe('refusals are explained rather than shown as an empty frame', () => {
     expect(reported).not.toContain('AppData');
   });
 
-  it('reports a scene the transport refuses before any native call', async () => {
-    const { result } = mountHook(props({ frameIndex: 9_999 }));
+  it('reports a request the transport refuses before any native call', async () => {
+    // Two cues, one staged atlas: there is no run for the second, so nothing native is asked.
+    const cue = { id: 'cue-1', startUs: 0, endUs: 1_000_000, text: 'x' };
+    const { result } = mountHook(props({
+      request: { ...requestFor(0), render: { ...render, lyrics: [cue, { ...cue, id: 'cue-2' }] } },
+    }));
     await flush();
 
     expect(invokeDesktop).not.toHaveBeenCalled();
     expect(result.current.status).toBe('error');
-    expect(result.current.error.code).toBe('nativePreviewInvalidRequest');
+    expect(result.current.error.code).toBe('nativePreviewInvalidRender');
   });
 
   it('releases the surface once when the device is lost and does not reopen it against the same device', async () => {

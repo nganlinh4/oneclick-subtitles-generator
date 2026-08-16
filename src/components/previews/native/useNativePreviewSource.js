@@ -22,9 +22,15 @@ import { useEffect, useState } from 'react';
 import { isDesktopRuntime } from '../../../platform/desktopRuntime';
 import { ensureNativeRenderProject, resolveNativeRenderSource } from '../../../platform/renderService';
 
-const IDLE = Object.freeze({ projectId: null, mediaId: null });
+const IDLE = Object.freeze({ projectId: null, sourceAsset: null });
 
-/** The project and media one preview surface's requests belong to, or nulls while unresolved. */
+/**
+ * The project and source asset one preview surface's requests belong to, or nulls while unresolved.
+ *
+ * The whole asset record rather than its identifier alone, because the render request every frame
+ * carries is built by `buildNativeRenderRequest`, which validates the source it names. Handing the
+ * identifier on and rebuilding the record around it would be a second description of the same asset.
+ */
 export const useNativePreviewBinding = (source) => {
   const [binding, setBinding] = useState(IDLE);
 
@@ -38,7 +44,7 @@ export const useNativePreviewBinding = (source) => {
       try {
         const asset = await resolveNativeRenderSource(source);
         const projectId = await ensureNativeRenderProject(asset);
-        if (!superseded) setBinding({ projectId, mediaId: asset.id });
+        if (!superseded) setBinding({ projectId, sourceAsset: asset });
       } catch {
         // Dormant, not failed. The surface asks for nothing and the editor is unchanged.
         if (!superseded) setBinding(IDLE);

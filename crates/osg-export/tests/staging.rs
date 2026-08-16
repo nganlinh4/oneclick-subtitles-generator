@@ -169,23 +169,38 @@ fn a_translucent_canvas_colour_is_refused_rather_than_encoded_over_black() {
 
 #[test]
 fn a_style_value_outside_what_the_compositor_draws_is_refused_by_name() {
-    // The contract accepts margins from -10000 and custom placements from -1000; the compositor
-    // draws neither. Both refusals are the compositor's own, named, rather than a clamp that would
-    // move the subtitles somewhere the editor never showed.
+    // This test used to assert that a margin of -10 and a custom position of -5 were REFUSED. They
+    // are not, and should never have been: the persisted schema accepts margins from -10000 and
+    // placements from -1000, and the shipped renderer draws them — it emits `left: -5%` and puts the
+    // box there. The compositor's own bounds were narrower than the contract it serves, so a project
+    // a user could create and see could not be exported at all. The parity gate found it by
+    // rendering; the bounds now match the contract, and both values convert.
     let mut negative_margin = request_json();
     negative_margin["customization"]["marginBottom"] = json!(-10.0);
-    assert!(matches!(
-        refusal(negative_margin),
-        ExportError::CompositionRejected { .. }
-    ));
+    converted(negative_margin);
 
     let mut placement = request_json();
     placement["customization"]["position"] = json!("custom");
     placement["customization"]["customPositionX"] = json!(-5.0);
-    assert!(matches!(
-        refusal(placement),
-        ExportError::CompositionRejected { .. }
-    ));
+    converted(placement);
+
+    // There is now no placement or margin the contract accepts that the compositor refuses, and that
+    // is the point: the extremes of the persisted range convert. Anything past them is stopped by
+    // the request validator before conversion is even reached, so a second refusal here would be
+    // unreachable code pretending to be a guard.
+    for extreme in [-1_000.0, 1_000.0] {
+        let mut placement = request_json();
+        placement["customization"]["position"] = json!("custom");
+        placement["customization"]["customPositionX"] = json!(extreme);
+        placement["customization"]["customPositionY"] = json!(extreme);
+        converted(placement);
+    }
+    for extreme in [-10_000.0, 10_000.0] {
+        let mut margins = request_json();
+        margins["customization"]["marginBottom"] = json!(extreme);
+        margins["customization"]["marginTop"] = json!(extreme);
+        converted(margins);
+    }
 
     let mut background = request_json();
     background["customization"]["backgroundColor"] = json!("#11223344");

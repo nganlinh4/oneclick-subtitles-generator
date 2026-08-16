@@ -24,7 +24,7 @@
 //! full weight. Reproducing the inward half would need an erosion of the coverage, which needs a
 //! distance field the atlas does not carry.
 
-use osg_scene::glyph::{AtlasGlyph, GlyphAtlasDescriptor};
+use osg_scene::glyph::{AtlasGlyph, GlyphAtlasDescriptor, LayoutTextAlign};
 use osg_scene::layout::{SubtitleBox, SubtitlePosition, TextAlign};
 
 use crate::geometry::{
@@ -136,6 +136,7 @@ pub(crate) struct GlyphPass<'scene> {
     pub(crate) run: &'scene CueRun,
     pub(crate) placement: Placement,
     pub(crate) metrics: Metrics,
+    /// The layout's alignment, from [`run_align`] — never the style's.
     pub(crate) align: TextAlign,
     pub(crate) block_left: f64,
     pub(crate) text_top: f64,
@@ -270,6 +271,33 @@ pub(crate) fn line_widths(run: &CueRun, glyph_scale: f64) -> Vec<f64> {
 /// How many lines the run occupies.
 pub(crate) fn line_count(run: &CueRun) -> f64 {
     u32::try_from(run.lines().len()).map_or(0.0, f64::from)
+}
+
+/// The alignment a run is placed by: the **layout's**, never the style's.
+///
+/// Both sides start from the same persisted `textAlign`, so on ordinary text the two agree and this
+/// changes nothing. They part on one case, and it is the case only the baker can decide: CSS
+/// `text-align` is resolved against the paragraph's own direction, so `left` on a right-to-left
+/// paragraph means its *leading* edge, which is the right one. `glyphAtlasShaping.js` performs that
+/// resolution — it is the side with the bidi pass — and records the answer in
+/// [`AtlasLayout::text_align`]. Placing by the style instead would draw a right-to-left cue against
+/// the left edge while every pen position in the layout was measured against the right.
+///
+/// So the layout owns alignment outright, and the style's copy is provenance: it is what was asked
+/// for, and it is still validated as a supported name, but it never reaches a pixel. The alternative
+/// — re-resolving `start` semantics here from
+/// [`AtlasMetrics::base_direction`](osg_scene::glyph::AtlasMetrics::base_direction) — would be a
+/// second bidi model in the crate that is forbidden from having a first one, and it would disagree
+/// with the baker exactly when the baker refused to reorder.
+///
+/// [`AtlasLayout::text_align`]: osg_scene::glyph::AtlasLayout::text_align
+pub(crate) const fn run_align(atlas: &GlyphAtlasDescriptor) -> TextAlign {
+    match atlas.layout().text_align {
+        LayoutTextAlign::Left => TextAlign::Left,
+        LayoutTextAlign::Center => TextAlign::Center,
+        LayoutTextAlign::Right => TextAlign::Right,
+        LayoutTextAlign::Justify => TextAlign::Justify,
+    }
 }
 
 /// Where the text block starts horizontally.

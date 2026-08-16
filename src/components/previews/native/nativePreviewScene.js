@@ -1,18 +1,19 @@
 /**
- * The scene, the face and the bake request one native preview frame is composed from.
+ * The render request, the face and the bake request one native preview frame is composed from.
  *
  * Three things travel together for a single frame and they have to agree, so they are built in one
  * place rather than assembled by each surface:
  *
- *   - the SCENE, in the shape `src/platform/nativePreviewFrames.js` validates and Rust deserialises;
+ *   - the RENDER REQUEST, built by `buildNativeRenderRequest` — the export's own builder, not a
+ *     preview-shaped copy of it — and narrowed to the one cue the staged atlas holds a run for;
  *   - the FACE, resolved to exactly one family and one byte source or honestly refused;
  *   - the BAKE REQUEST for `bakeGlyphAtlas`, whose `maxWidthPx` is the ledger conversion in
  *     `nativePreviewGeometry.js`.
  *
  * ONE CUE PER REQUEST, and this is a property of the transport rather than a simplification. A
  * staged atlas carries exactly one `layout` — one laid-out run — while `crates/osg-export` pairs one
- * atlas with one `CueRun` per cue. The preview command takes a single atlas handle, so the scene it
- * accompanies may describe only the run that atlas actually holds. Sending the whole cue list with a
+ * atlas with one `CueRun` per cue. The preview command takes a single atlas handle, so the request
+ * it accompanies may name only the run that atlas actually holds. Sending the whole cue list with a
  * single-run atlas would ask the compositor to draw cues it has no layout for.
  *
  * That costs nothing in fidelity: the shipped selection rule takes the FIRST cue whose fade-widened
@@ -20,12 +21,17 @@
  * is selected here with the same rule `crates/osg-scene/src/cues.rs` uses, fade window included, so
  * the cue the preview bakes is the cue the export would draw.
  *
- * Determinism: no clocks, no RNG. Times become exact rationals in milliseconds rather than floats,
- * so the same timestamp always produces the same scene bytes and therefore the same `sceneRevision`.
+ * NO CUE AT ALL IS A FRAME, NOT A FAILURE. The instants between cues are ordinary frames: the video
+ * underlay, the crop and the canvas backfill are all still composed, and the request simply names no
+ * cue. `PreviewFrameRequest::check` accepts that, and so does everything after it.
+ *
+ * Determinism: no clocks, no RNG. Times become whole microseconds rather than floats, so the same
+ * timestamp always produces the same request bytes and therefore the same `sceneRevision`.
  */
 
 import { bakeGlyphAtlas } from '../../../platform/glyphAtlas';
-import { NATIVE_PREVIEW_LIMITS, NATIVE_PREVIEW_SCENE_VERSION } from '../../../platform/nativePreviewFrames';
+import { NATIVE_PREVIEW_LIMITS } from '../../../platform/nativePreviewFrames';
+import { buildNativeRenderRequest } from '../../../platform/renderService';
 import {
   FONT_WEIGHT_MAXIMUM,
   FONT_WEIGHT_MINIMUM,
@@ -37,8 +43,8 @@ import {
   glyphScaleForComposition,
 } from './nativePreviewGeometry';
 
-/** Times are exact rationals; a millisecond denominator is the finest the editor's inputs carry. */
-const TIME_DENOMINATOR = 1_000;
+/** The grid `secondsToMicros` in `renderService.js` quantises every cue bound onto. */
+const MICROS_PER_SECOND = 1_000_000;
 
 /** The font size the atlas is baked at, clamped into the baker's own bounds. */
 const MIN_ATLAS_FONT_SIZE_PX = 4;
@@ -54,12 +60,6 @@ const withinFaceBudget = (value) => (
   && utf8.encode(value).length <= NATIVE_PREVIEW_LIMITS.maxFaceBytes
   && !/\p{Cc}/u.test(value)
 );
-
-/** Exact rational milliseconds. Negative times are clamped: the scene timeline starts at zero. */
-const exactTime = (seconds) => ({
-  numerator: Math.max(Math.round(seconds * TIME_DENOMINATOR), 0),
-  denominator: TIME_DENOMINATOR,
-});
 
 /**
  * Which cue is on screen at `timeSeconds`.
@@ -83,7 +83,7 @@ export const selectPreviewCue = (cues, timeSeconds, { fadeInDuration = 0, fadeOu
 
 /**
  * The cue list a preview may draw from: finite, non-empty, ordered, and free of cues that collapse
- * to zero length once quantised to the scene's millisecond grid.
+ * to zero length once quantised to the render contract's microsecond grid.
  *
  * Sorting is deliberate rather than incidental. The transport refuses an out-of-order list because
  * first-match selection would silently hide cues in one, and the editor's arrays are not guaranteed
@@ -97,7 +97,7 @@ export const previewCueList = (subtitles) => {
       && isFiniteNumber(cue?.end)
       && typeof cue.text === 'string'
       && cue.text.length > 0
-      && Math.round(cue.end * TIME_DENOMINATOR) > Math.round(Math.max(cue.start, 0) * TIME_DENOMINATOR)
+      && Math.round(cue.end * MICROS_PER_SECOND) > Math.round(Math.max(cue.start, 0) * MICROS_PER_SECOND)
       && utf8.encode(cue.text).length <= NATIVE_PREVIEW_LIMITS.maxCueTextBytes
     ))
     .map((cue) => ({ start: Math.max(cue.start, 0), end: cue.end, text: cue.text }))
@@ -179,29 +179,78 @@ export const atlasBakeRequest = ({ customization, text, compositionWidthPx, comp
 export const bakePreviewAtlas = (bake, options = undefined) => bakeGlyphAtlas(bake.request, options ?? {});
 
 /**
- * The scene one preview frame is rendered from.
+ * The audio and trim a preview composes at, which no preview surface chooses.
+ *
+ * Neither reaches a pixel — a preview frame carries no audio, and both editor surfaces preview the
+ * whole source rather than a trimmed range — so these are the literals
+ * `renderAndExportDesktopPreview` writes its files with rather than a second set to keep in step.
+ */
+const PREVIEW_AUDIO_AND_TRIM = Object.freeze({
+  originalAudioVolume: 100,
+  narrationVolume: 0,
+  trimStart: 0,
+  trimEnd: 0,
+});
+
+/** The whole frame, for a surface that offers no crop. Matches the download handler's own crop. */
+export const PREVIEW_FULL_FRAME_CROP = Object.freeze({
+  x: 0,
+  y: 0,
+  width: 100,
+  height: 100,
+  aspectRatio: null,
+  canvasBgMode: 'solid',
+  canvasBgColor: '#000000',
+  canvasBgBlur: 24,
+  flipX: false,
+  flipY: false,
+});
+
+/**
+ * One cue that exists only so the export's own builder will produce a request, and never leaves this
+ * function.
+ *
+ * `buildNativeRenderRequest` refuses an empty lyric list, because an EXPORT with nothing to draw is
+ * a request nobody meant. A preview frame is not an export: an instant between cues is an ordinary
+ * frame, and the underlay, the crop and the canvas backfill are still composed. So a cue-less
+ * instant is built through the same builder — with the same style, crop, resolution and frame rate,
+ * validated by the same code — and the probe is dropped before the request is returned. Nothing
+ * synthetic reaches the payload, which `nativePreviewScene.test.js` asserts by content.
+ */
+const PROBE_CUE = Object.freeze({ id: 'probe', start: 0, end: 1, text: 'x' });
+
+/**
+ * The render request one preview frame is drawn from: the export's own request, narrowed to the cue
+ * the staged atlas holds a run for.
  *
  * `cue` is the single selected cue, or `null` for an instant with nothing on screen — which is a
- * legitimate frame to render, not an error, because the video underlay and the canvas backfill are
- * still composed.
+ * legitimate frame to render, not an error.
+ *
+ * Returns `null` when the editor's own state cannot produce a request the render contract accepts,
+ * which is dormancy rather than failure: the export would refuse the same state, and a preview that
+ * guessed past it would be previewing something the user cannot get.
  */
-export const buildPreviewScene = ({ compositionWidthPx, compositionHeightPx, timeline, face, cue }) => {
-  if (!Number.isInteger(compositionWidthPx) || !Number.isInteger(compositionHeightPx)) return null;
-  if (compositionWidthPx % 2 !== 0 || compositionHeightPx % 2 !== 0) return null;
-  if (timeline === null || face === null) return null;
-  return Object.freeze({
-    schemaVersion: NATIVE_PREVIEW_SCENE_VERSION,
-    widthPx: compositionWidthPx,
-    heightPx: compositionHeightPx,
-    timeline: {
-      fpsNumerator: timeline.fpsNumerator,
-      fpsDenominator: timeline.fpsDenominator,
-      frameCount: timeline.frameCount,
-      start: { numerator: 0, denominator: 1 },
-    },
-    face: { family: face.family, source: face.source, weight: face.weight },
-    cues: cue === null
-      ? []
-      : [{ text: cue.text, start: exactTime(cue.start), end: exactTime(cue.end) }],
-  });
+export const previewRenderRequest = ({
+  sourceAsset,
+  projectId,
+  cue,
+  customization,
+  resolution,
+  frameRate,
+  crop = PREVIEW_FULL_FRAME_CROP,
+}) => {
+  if (sourceAsset === null || sourceAsset === undefined || typeof projectId !== 'string') return null;
+  try {
+    const built = buildNativeRenderRequest({
+      sourceAsset,
+      projectId,
+      lyrics: [cue ?? PROBE_CUE],
+      settings: { resolution, frameRate, ...PREVIEW_AUDIO_AND_TRIM },
+      customization,
+      crop,
+    });
+    return cue === null ? Object.freeze({ ...built, lyrics: [] }) : built;
+  } catch {
+    return null;
+  }
 };

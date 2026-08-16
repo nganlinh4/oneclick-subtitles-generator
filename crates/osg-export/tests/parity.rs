@@ -418,8 +418,12 @@ impl FieldOutcome {
             };
             let rendered = sweep::render_case(&bench.compositor, &field_case.case, &prepared);
             assert!(
-                rendered.cue_drawn,
-                "{}: the cue never reached the picture",
+                rendered.cue_drawn
+                    || case::absence_is_explained(
+                        &field_case.case,
+                        (prepared.plan.width(), prepared.plan.height())
+                    ),
+                "{}: the cue never reached the picture, and its box is inside the frame",
                 field_case.case.id
             );
             self.tally.add(&rendered);

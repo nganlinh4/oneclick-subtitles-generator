@@ -27,6 +27,19 @@ const MAX_FADE_SECONDS: f64 = 60.0;
 /// The line spacing multiplier range.
 const MIN_LINE_SPACING: f64 = 0.1;
 const MAX_LINE_SPACING: f64 = 10.0;
+/// The largest margin magnitude, in reference pixels.
+///
+/// This is the render contract's own `-10000..=10000`, magnitude and sign both. A negative margin
+/// is not nonsense: the shipped renderer emits it as a CSS percentage and lays the box outside the
+/// composition, which is how a caption is bled off an edge. Refusing it here would make a project
+/// the editor saved, and once drew, impossible to export.
+const MAX_MARGIN_PIXELS: f64 = 10_000.0;
+/// The largest custom-placement magnitude, as a percentage of the composition.
+///
+/// The render contract accepts `-1000..=1000` and the shipped renderer draws it verbatim as
+/// `left: ${customPositionX}%`, so anything inside that range has already been on a user's screen.
+/// A value outside `0..=100` places the cue off-composition, which is exactly what it asks for.
+const MAX_CUSTOM_PLACEMENT_PERCENT: f64 = 1_000.0;
 
 /// The style exactly as the editor stores it: strings and reference-pixel numbers, unvalidated.
 ///
@@ -66,13 +79,19 @@ pub struct SubtitleStyleSpec {
     pub border_radius: f64,
     /// Where the box is anchored: `bottom`, `top`, `center` or `custom`.
     pub position: String,
-    /// Margins in reference pixels.
+    /// Margins in reference pixels, in `-10000..=10000`.
+    ///
+    /// Negative is accepted and drawn: it lays the box outside the composition, which is what the
+    /// shipped renderer does with the negative percentage it emits.
     pub margins: Margins,
-    /// Horizontal placement as a percentage of the composition, used only when `position` is
-    /// `custom`.
+    /// Horizontal placement as a percentage of the composition, in `-1000..=1000`, used only when
+    /// `position` is `custom`.
+    ///
+    /// Outside `0..=100` the cue is placed off-composition, which is what `left: ${custom_x}%`
+    /// does in the shipped renderer.
     pub custom_x: f64,
-    /// Vertical placement as a percentage of the composition, used only when `position` is
-    /// `custom`.
+    /// Vertical placement as a percentage of the composition, in `-1000..=1000`, used only when
+    /// `position` is `custom`.
     pub custom_y: f64,
     /// How lines align inside the box: `left`, `center`, `right` or `justify`.
     pub text_align: String,
@@ -215,6 +234,13 @@ impl SubtitleStyle {
         })
     }
 
+    /// Bounds the geometry three ways, because the three answer to different authorities.
+    ///
+    /// Padding and radius are non-negative sizes: a negative one has no drawing to describe. The
+    /// margins and the custom placement are *offsets*, and their range is the render contract's,
+    /// sign included — see [`MAX_MARGIN_PIXELS`] and [`MAX_CUSTOM_PLACEMENT_PERCENT`]. A bound
+    /// narrower than the contract's would make a persisted project unexportable, which is the one
+    /// failure this crate cannot have.
     fn check_geometry(spec: &SubtitleStyleSpec) -> Result<(), CompositorError> {
         let sizes = [
             spec.background_padding_x,
@@ -233,8 +259,14 @@ impl SubtitleStyle {
             .all(|value| bounded(*value, 0.0, MAX_STYLE_PIXELS))
             && margins
                 .iter()
-                .all(|value| bounded(*value, 0.0, MAX_STYLE_PIXELS))
-            && placements.iter().all(|value| bounded(*value, 0.0, 100.0));
+                .all(|value| bounded(*value, -MAX_MARGIN_PIXELS, MAX_MARGIN_PIXELS))
+            && placements.iter().all(|value| {
+                bounded(
+                    *value,
+                    -MAX_CUSTOM_PLACEMENT_PERCENT,
+                    MAX_CUSTOM_PLACEMENT_PERCENT,
+                )
+            });
         if ok {
             Ok(())
         } else {

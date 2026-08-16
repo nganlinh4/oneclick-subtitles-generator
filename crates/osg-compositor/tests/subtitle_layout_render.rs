@@ -14,11 +14,11 @@ mod common;
 use common::frames::compositor;
 use common::ink::{inked, left_inked_column_in_rows, right_inked_column_in_rows, top_inked_row};
 use common::{
-    BASELINE_PX, FAMILY, HOLD_FRAME, INK_CELL, LINE_HEIGHT_PX, SPACE_CELL, WEIGHT, atlas,
-    baked_line, baked_run, scene, staged_with_run, style, style_spec,
+    BASELINE_PX, FAMILY, HOLD_FRAME, INK_CELL, LINE_HEIGHT_PX, SPACE_CELL, WEIGHT, aligned_atlas,
+    atlas, baked_line, baked_run, staged_with_atlas, staged_with_run, style_spec,
 };
 use osg_compositor::{Compositor, CueLine, CueRun, Frame, SubtitleScene, SubtitleStyleSpec};
-use osg_scene::glyph::{Direction, GlyphAtlasDescriptor};
+use osg_scene::glyph::{Direction, GlyphAtlasDescriptor, LayoutTextAlign};
 
 /// One atlas pixel is this many composition pixels: the fixture bakes at 24px and the style asks
 /// for 144 reference pixels, which is 48 at this composition's height.
@@ -341,19 +341,12 @@ fn a_run_draws_the_cells_in_the_order_given_at_the_positions_given() {
 #[test]
 fn a_right_to_left_run_the_baker_reordered_composes_like_any_other() {
     let compositor = compositor!();
-    let mut unchecked = common::unchecked_atlas(FAMILY, WEIGHT);
-    unchecked.metrics.base_direction = Direction::Rtl;
-    unchecked.glyphs[1].direction = Direction::Rtl;
-    let rtl = GlyphAtlasDescriptor::try_from(unchecked).expect("a valid reordered descriptor");
-
     let run = || CueRun::single_line(baked_line(0, &[INK_CELL]));
-    let right_to_left = SubtitleScene::new(
-        scene(FAMILY, WEIGHT),
-        rtl,
-        style(&layout_spec()),
-        vec![run()],
-    )
-    .expect("a reordered right-to-left run is stageable");
+    let right_to_left = staged_with_atlas(
+        &layout_spec(),
+        right_to_left_atlas(LayoutTextAlign::Left),
+        run(),
+    );
     let left_to_right = staged_with_run(&layout_spec(), run());
 
     assert!(inked(&render(&right_to_left, &compositor, HOLD_FRAME)) > 0);
@@ -361,6 +354,142 @@ fn a_right_to_left_run_the_baker_reordered_composes_like_any_other() {
         render(&right_to_left, &compositor, HOLD_FRAME).pixels(),
         render(&left_to_right, &compositor, HOLD_FRAME).pixels(),
         "direction classifies; the layout places. The same positions must draw the same pixels"
+    );
+}
+
+/// The fixture atlas with a right-to-left run in it, laid out for `align`.
+fn right_to_left_atlas(align: LayoutTextAlign) -> GlyphAtlasDescriptor {
+    let mut unchecked = common::unchecked_atlas(FAMILY, WEIGHT);
+    unchecked.metrics.base_direction = Direction::Rtl;
+    unchecked.glyphs[1].direction = Direction::Rtl;
+    unchecked.layout.text_align = align;
+    GlyphAtlasDescriptor::try_from(unchecked).expect("a valid reordered descriptor")
+}
+
+/// Alignment is the **layout's**, and the style's copy of it no longer reaches a pixel.
+///
+/// Both sides start from the same persisted `textAlign`, so on ordinary text they agree and this is
+/// invisible. Stating it as an authority rather than an agreement is what makes the right-to-left
+/// case below possible at all: one side has to win, and it has to be the side that measured the
+/// pens. The short-over-long run makes every alignment a visibly different picture, so neither
+/// half of this is vacuous.
+#[test]
+fn the_layout_owns_alignment_and_the_style_no_longer_moves_a_run() {
+    let compositor = compositor!();
+    let placed = |laid_out_for: LayoutTextAlign, persisted: &str| {
+        let scene = staged_with_atlas(
+            &SubtitleStyleSpec {
+                text_align: persisted.to_owned(),
+                ..layout_spec()
+            },
+            aligned_atlas(FAMILY, WEIGHT, laid_out_for),
+            baked_run(&[&[INK_CELL], &[INK_CELL, INK_CELL]]),
+        );
+        render(&scene, &compositor, HOLD_FRAME)
+    };
+
+    for persisted in ["left", "center", "right", "justify"] {
+        assert_eq!(
+            placed(LayoutTextAlign::Left, persisted).pixels(),
+            placed(LayoutTextAlign::Left, "left").pixels(),
+            "a run laid out for `left` is drawn at the leading edge, whatever the style persisted"
+        );
+    }
+    assert_ne!(
+        placed(LayoutTextAlign::Right, "left").pixels(),
+        placed(LayoutTextAlign::Left, "left").pixels(),
+        "and a run laid out for `right` is a different picture, so the loop above is not vacuous"
+    );
+}
+
+/// A right-to-left cue authored with `textAlign: 'left'` is drawn where the baker laid it out.
+///
+/// This is CSS `start`, and it is the case the two sides cannot agree on: the leading edge of a
+/// right-to-left paragraph is its RIGHT one, so `glyphAtlasShaping.js` resolves `left` to `right`
+/// before it measures a single pen and records the answer in the layout. The style still says
+/// `left`, because that is what the editor persisted and what the user will see in the editor. Drawn
+/// by the style, the cue would sit against the left edge of a box every pen in it was measured from
+/// the right of.
+#[test]
+fn a_right_to_left_cue_is_placed_by_the_bakers_resolution_not_the_persisted_alignment() {
+    let compositor = compositor!();
+    let run = || baked_run(&[&[INK_CELL], &[INK_CELL, INK_CELL]]);
+    let authored = layout_spec();
+    assert_eq!(authored.text_align, "left", "the cue is authored `left`");
+
+    let resolved = staged_with_atlas(
+        &authored,
+        right_to_left_atlas(LayoutTextAlign::Right),
+        run(),
+    );
+    let against_the_trailing_edge = staged_with_run(
+        &SubtitleStyleSpec {
+            text_align: "right".to_owned(),
+            ..authored.clone()
+        },
+        run(),
+    );
+    let against_the_leading_edge = staged_with_run(&authored, run());
+
+    assert_eq!(
+        render(&resolved, &compositor, HOLD_FRAME).pixels(),
+        render(&against_the_trailing_edge, &compositor, HOLD_FRAME).pixels(),
+        "the baker resolved `left` to `right`, so the cue is drawn against the trailing edge"
+    );
+    assert_ne!(
+        render(&resolved, &compositor, HOLD_FRAME).pixels(),
+        render(&against_the_leading_edge, &compositor, HOLD_FRAME).pixels(),
+        "drawing it by the persisted `left` is a different picture, which is the defect"
+    );
+}
+
+/// The Latin control for the case above: the same authored cue, the same hand-built atlas, but a
+/// left-to-right paragraph, which gives the baker no `start` to resolve. `left` stays `left` and the
+/// cue does not move.
+#[test]
+fn a_left_to_right_cue_authored_left_is_still_drawn_against_the_leading_edge() {
+    let compositor = compositor!();
+    let run = || baked_run(&[&[INK_CELL], &[INK_CELL, INK_CELL]]);
+    let frame = render(
+        &staged_with_atlas(
+            &layout_spec(),
+            aligned_atlas(FAMILY, WEIGHT, LayoutTextAlign::Left),
+            run(),
+        ),
+        &compositor,
+        HOLD_FRAME,
+    );
+
+    let split = top_inked_row(&frame).expect("the first line drew something")
+        + composition_px(LINE_HEIGHT_PX);
+    assert_eq!(
+        left_inked_column_in_rows(&frame, 0..split),
+        left_inked_column_in_rows(&frame, split..frame.height()),
+        "a left-to-right cue authored `left` still starts both its lines at the leading edge"
+    );
+    assert_eq!(
+        frame.pixels(),
+        render(
+            &staged_with_run(&layout_spec(), run()),
+            &compositor,
+            HOLD_FRAME
+        )
+        .pixels(),
+        "and it is the picture the ordinary staging path has always drawn"
+    );
+    assert_ne!(
+        frame.pixels(),
+        render(
+            &staged_with_atlas(
+                &layout_spec(),
+                right_to_left_atlas(LayoutTextAlign::Right),
+                run()
+            ),
+            &compositor,
+            HOLD_FRAME
+        )
+        .pixels(),
+        "only the right-to-left paragraph moves, which is what makes this a control"
     );
 }
 

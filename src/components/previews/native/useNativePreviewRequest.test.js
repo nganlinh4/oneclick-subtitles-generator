@@ -43,6 +43,15 @@ afterAll(() => {
 
 const ATLAS = Object.freeze({ atlasId: 'staged', contentHash: 'a1b2c3d4' });
 
+const SOURCE_ASSET = Object.freeze({
+  id: '019ffbea-26d5-7800-8e3b-69de8bff2d7d',
+  displayName: 'source.mp4',
+  extension: 'mp4',
+  sizeBytes: 1_024,
+  kind: 'video',
+});
+const PROJECT_ID = '019ffbea-40eb-7c3c-b2f3-214ca260a7cc';
+
 const SUBTITLES = Object.freeze([
   { start: 0, end: 2, text: 'First cue' },
   { start: 4, end: 6, text: 'Second cue' },
@@ -61,6 +70,8 @@ const customization = (overrides = {}) => ({
 
 const props = (overrides = {}) => ({
   active: true,
+  sourceAsset: SOURCE_ASSET,
+  projectId: PROJECT_ID,
   customization: customization(),
   subtitles: SUBTITLES,
   resolution: '1080p',
@@ -73,6 +84,7 @@ const props = (overrides = {}) => ({
 });
 
 const lastBakeRequest = () => bakePreviewAtlas.mock.calls.at(-1)[0].request;
+const stagedAtlas = (result) => result.current.request?.atlas ?? null;
 
 beforeEach(() => {
   asWindows();
@@ -84,38 +96,36 @@ beforeEach(() => {
 describe('the request the editor actually issues', () => {
   it('carries the converted wrap width at 1080p and the same one at 4K', async () => {
     const hd = renderHook((hookProps) => useNativePreviewRequest(hookProps), { initialProps: props() });
-    await waitFor(() => expect(hd.result.current.atlas).toBe(ATLAS));
+    await waitFor(() => expect(stagedAtlas(hd.result)).toBe(ATLAS));
     const hdRequest = lastBakeRequest();
 
     const uhd = renderHook(
       (hookProps) => useNativePreviewRequest(hookProps),
       { initialProps: props({ resolution: '4K' }) },
     );
-    await waitFor(() => expect(uhd.result.current.atlas).toBe(ATLAS));
+    await waitFor(() => expect(stagedAtlas(uhd.result)).toBe(ATLAS));
     const uhdRequest = lastBakeRequest();
 
     expect(hdRequest.maxWidthPx).toBe(1_536);
     expect(uhdRequest.maxWidthPx).toBe(1_536);
     // The composition is twice as wide at 4K, and the wrap width in atlas space is unchanged. That
     // is the whole conversion: the atlas is baked once and the compositor scales it.
-    expect(hd.result.current.scene.widthPx).toBe(1_920);
-    expect(uhd.result.current.scene.widthPx).toBe(3_840);
+    expect(hd.result.current.request.composition).toEqual({ widthPx: 1_920, heightPx: 1_080 });
+    expect(uhd.result.current.request.composition).toEqual({ widthPx: 3_840, heightPx: 2_160 });
     expect(uhdRequest.fontSizePx).toBe(hdRequest.fontSizePx);
   });
 
-  it('builds a scene for the cue on screen and a frame index for the playhead', async () => {
+  it('builds a request for the cue on screen and a frame index for the playhead', async () => {
     const { result } = renderHook(
       (hookProps) => useNativePreviewRequest(hookProps),
       { initialProps: props({ currentTime: 5 }) },
     );
-    await waitFor(() => expect(result.current.atlas).toBe(ATLAS));
+    await waitFor(() => expect(stagedAtlas(result)).toBe(ATLAS));
 
-    expect(result.current.scene.cues).toEqual([{
-      text: 'Second cue',
-      start: { numerator: 4_000, denominator: 1_000 },
-      end: { numerator: 6_000, denominator: 1_000 },
+    expect(result.current.request.render.lyrics).toEqual([{
+      id: 'cue-0-0', startUs: 4_000_000, endUs: 6_000_000, text: 'Second cue',
     }]);
-    expect(result.current.frameIndex).toBe(150);
+    expect(result.current.request.frameIndex).toBe(150);
     expect(lastBakeRequest().text).toBe('Second cue');
   });
 
@@ -124,19 +134,20 @@ describe('the request the editor actually issues', () => {
       (hookProps) => useNativePreviewRequest(hookProps),
       { initialProps: props({ currentTime: 3 }) },
     );
-    await waitFor(() => expect(result.current.atlas).toBe(ATLAS));
+    await waitFor(() => expect(stagedAtlas(result)).toBe(ATLAS));
 
-    expect(result.current.scene.cues).toEqual([]);
+    expect(result.current.request.render.lyrics).toEqual([]);
     expect(lastBakeRequest().text).toBe('');
   });
 
-  it('does not re-bake or re-upload while the playhead moves inside one cue', async () => {
+  it('does not re-bake, re-upload or rebuild the request while the playhead moves inside one cue', async () => {
     const { result, rerender } = renderHook(
       (hookProps) => useNativePreviewRequest(hookProps),
       { initialProps: props({ currentTime: 0.5 }) },
     );
-    await waitFor(() => expect(result.current.atlas).toBe(ATLAS));
+    await waitFor(() => expect(stagedAtlas(result)).toBe(ATLAS));
     const bakes = bakePreviewAtlas.mock.calls.length;
+    const render = result.current.request.render;
 
     for (const currentTime of [0.6, 0.7, 0.8, 1.9]) {
       // A fresh array every render, exactly as `getCurrentSubtitles()` hands one over.
@@ -145,7 +156,10 @@ describe('the request the editor actually issues', () => {
 
     expect(bakePreviewAtlas.mock.calls.length).toBe(bakes);
     expect(stageGlyphAtlas).toHaveBeenCalledTimes(1);
-    expect(result.current.frameIndex).toBe(57);
+    // Identity, not just content: the transport keys a new native render on it, so a request rebuilt
+    // on every render would re-request every frame the playhead passes through.
+    expect(result.current.request.render).toBe(render);
+    expect(result.current.request.frameIndex).toBe(57);
   });
 
   it('re-bakes when the style the baker owns changes', async () => {
@@ -153,10 +167,32 @@ describe('the request the editor actually issues', () => {
       (hookProps) => useNativePreviewRequest(hookProps),
       { initialProps: props() },
     );
-    await waitFor(() => expect(result.current.atlas).toBe(ATLAS));
+    await waitFor(() => expect(stagedAtlas(result)).toBe(ATLAS));
 
     rerender(props({ customization: customization({ maxWidth: 50 }) }));
     await waitFor(() => expect(lastBakeRequest().maxWidthPx).toBe(960));
+  });
+
+  it('carries the whole customization and the crop into the export request builder', async () => {
+    const { result } = renderHook(
+      (hookProps) => useNativePreviewRequest(hookProps),
+      {
+        initialProps: props({
+          customization: customization({ textColor: '#ff0000' }),
+          crop: {
+            x: 0, y: 0, width: 50, height: 25, aspectRatio: null,
+            canvasBgMode: 'solid', canvasBgColor: '#123456', canvasBgBlur: 24, flipX: true, flipY: false,
+          },
+        }),
+      },
+    );
+    await waitFor(() => expect(stagedAtlas(result)).toBe(ATLAS));
+
+    const { render, composition } = result.current.request;
+    expect(render.customization.textColor).toBe('#ff0000');
+    expect(render.crop).toMatchObject({ width: 50, height: 25, canvasBgColor: '#123456', flipX: true });
+    // The composition follows the crop, exactly as the conversion derives it.
+    expect(composition).toEqual({ widthPx: 3_840, heightPx: 1_080 });
   });
 });
 
@@ -166,8 +202,19 @@ describe('dormancy and refusal are different states', () => {
       (hookProps) => useNativePreviewRequest(hookProps),
       { initialProps: props({ sourceWidthPx: null, sourceHeightPx: null }) },
     );
-    expect(result.current).toEqual({ scene: null, atlas: null, frameIndex: null, error: null });
+    expect(result.current).toEqual({ request: null, error: null });
     expect(bakePreviewAtlas).not.toHaveBeenCalled();
+  });
+
+  it('is dormant, not failed, before the source asset and project have resolved', async () => {
+    const { result } = renderHook(
+      (hookProps) => useNativePreviewRequest(hookProps),
+      { initialProps: props({ sourceAsset: null, projectId: null }) },
+    );
+    // The atlas is baked and staged all the same — dormancy is a state of the request, not a reason
+    // to leave the text unbaked — but nothing may be asked of the compositor without a binding.
+    await waitFor(() => expect(stageGlyphAtlas).toHaveBeenCalledTimes(1));
+    expect(result.current).toEqual({ request: null, error: null });
   });
 
   it('is dormant when the face has no verified byte source, rather than substituting one', () => {
@@ -175,7 +222,7 @@ describe('dormancy and refusal are different states', () => {
       (hookProps) => useNativePreviewRequest(hookProps),
       { initialProps: props({ customization: customization({ fontFamily: 'Nonexistent Display' }) }) },
     );
-    expect(result.current.scene).toBeNull();
+    expect(result.current.request).toBeNull();
     expect(bakePreviewAtlas).not.toHaveBeenCalled();
   });
 
@@ -184,7 +231,7 @@ describe('dormancy and refusal are different states', () => {
       (hookProps) => useNativePreviewRequest(hookProps),
       { initialProps: props({ active: false }) },
     );
-    expect(result.current.scene).toBeNull();
+    expect(result.current.request).toBeNull();
     expect(bakePreviewAtlas).not.toHaveBeenCalled();
   });
 
@@ -197,7 +244,7 @@ describe('dormancy and refusal are different states', () => {
     const { result } = renderHook((hookProps) => useNativePreviewRequest(hookProps), { initialProps: props() });
 
     await waitFor(() => expect(result.current.error).toEqual({ code: 'glyphAtlasFaceSubstituted' }));
-    expect(result.current.atlas).toBeNull();
+    expect(result.current.request).toBeNull();
   });
 
   it('reports a staging refusal without retrying it', async () => {

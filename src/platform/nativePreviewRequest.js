@@ -6,24 +6,53 @@
  * real rather than a line count — everything here is a pure function of the request, holds no state,
  * touches no bridge and can be run by a caller that has not decided to render anything yet.
  *
- * A scene is the input to a native GPU render, so it is checked here even though the editor produced
- * it: the caller may hand over a reconstructed or persisted one. Bounds are the ones
- * `crates/osg-scene` enforces, deliberately identical values rather than approximations, so an
- * unrenderable scene is refused before a round trip instead of after one.
+ * WHAT CROSSES IS THE EXPORT'S OWN REQUEST. A preview frame is drawn from the same
+ * `RenderRequest` an export is built from, plus the four things one frame needs that a whole export
+ * does not: which frame, which staged atlas, which face the editor resolved, and the revision the
+ * caller believes it is looking at. `crates/osg-export/src/convert/` then makes every style, crop,
+ * trim, resolution and frame-rate decision once, for both surfaces. A preview-shaped scene carrying
+ * a second description of the style would be exactly the divergence this boundary exists to close,
+ * which is why this module validates a render request and never builds one.
+ *
+ * The field set below is the one `PreviewFrameRequest` in
+ * `apps/desktop/src-tauri/src/preview/request.rs` deserialises, and that struct is
+ * `deny_unknown_fields`: one extra, missing or renamed field fails the request before any lifecycle
+ * work runs. Tests on both sides derive the other side's field set from its source rather than
+ * transcribing it, so neither end can move alone.
  *
  * Errors carry a code, a field path and measured sizes. Never a value, never a family the user
  * typed, never a line of subtitle text, never a native path or message. Nothing here logs.
  *
- * Determinism: no clocks and no RNG. The canonical scene is written as explicit literals, so key
- * order — and therefore both the encoded bytes and `sceneRevision` — is fixed.
+ * Determinism: no clocks and no RNG. The payload is written as explicit literals, so key order —
+ * and therefore both the encoded bytes and `sceneRevision` — is fixed.
  */
 
 import { validate as validateUuid, version as uuidVersion } from 'uuid';
 
 import { isStagedGlyphAtlas } from './glyphAtlasStaging';
 
-/** Mirrors `SCENE_SCHEMA_VERSION` in `crates/osg-scene/src/scene.rs`. */
-export const NATIVE_PREVIEW_SCENE_VERSION = 1;
+/** Mirrors `PREVIEW_SCHEMA_VERSION` in `apps/desktop/src-tauri/src/preview.rs`. */
+export const NATIVE_PREVIEW_SCHEMA_VERSION = 1;
+
+/**
+ * The exact field set the native command deserialises, in the order the payload writes them.
+ *
+ * Named here rather than left implicit in the literal below because both ends have to agree on it:
+ * `preview::request::tests` reads this array out of this file and deserialises a request built from
+ * it, so a field added, removed or renamed on either side fails a test instead of failing every
+ * preview frame at runtime. `nativePreviewFrames.test.js` reads `request.rs` for the same reason,
+ * from the other direction.
+ */
+export const NATIVE_PREVIEW_REQUEST_FIELDS = Object.freeze([
+  'schemaVersion',
+  'sceneRevision',
+  'atlasId',
+  'atlasContentHash',
+  'frameIndex',
+  'face',
+  'render',
+  'layer',
+]);
 
 /**
  * Which layer of the composition a request asks for. Mirrors `PreviewLayer` in
@@ -56,21 +85,33 @@ export const NATIVE_PREVIEW_LIMITS = Object.freeze({
   /** Frame URLs retained. Each entry is a short opaque string, so the bound is a count. */
   maxCachedFrames: 64,
   /**
-   * The canonical scene encoding one request may carry. The scene travels whole on every request,
+   * The encoded payload one request may carry. The whole render request travels on every request,
    * which keeps the command contract to a single call; this bound is what stops that from becoming
    * an unbounded IPC copy during a scrub.
    */
-  maxSceneBytes: 4 * 1024 * 1024,
-  // The remaining bounds mirror `crates/osg-scene` so an unrenderable scene is refused here rather
-  // than after a round trip. They are deliberately identical values, not approximations.
-  maxCues: 100_000,
-  maxCueTextBytes: 4_096,
+  maxRequestBytes: 4 * 1024 * 1024,
+  // The remaining bounds mirror the native side so a request that cannot be read is refused here
+  // rather than after a round trip. They are deliberately identical values, not approximations.
+  /** Mirrors `MAX_IDENTITY_BYTES` in `apps/desktop/src-tauri/src/preview.rs`. */
+  maxIdentityBytes: 128,
+  /** Mirrors `MAX_FACE_BYTES` in `crates/osg-scene/src/scene.rs`. */
   maxFaceBytes: 256,
-  minDimensionPx: 16,
-  maxDimensionPx: 7_680,
-  maxFrameCount: 2_700_000,
-  maxFpsNumerator: 120_000,
-  maxFpsDenominator: 1_001,
+  /** Mirrors `MAX_LYRIC_TEXT_BYTES` in `crates/osg-render/src/contract.rs`. */
+  maxCueTextBytes: 16 * 1024,
+  /**
+   * Cues one request may name.
+   *
+   * One staged atlas carries one laid-out run, and the compositor needs one staged run per cue, so
+   * a request may name at most the one cue the atlas actually holds. ZERO is not a failure: an
+   * instant between cues is an ordinary frame, on which the video underlay, the crop and the canvas
+   * backfill are all still composed. `PreviewFrameRequest::check` applies the same bound.
+   */
+  maxLyricsPerRequest: 1,
+  /** Mirrors `MAX_RENDER_FRAMES` in `crates/osg-render/src/contract.rs`, as an index. */
+  maxFrameIndex: 1_000_000 - 1,
+  /** The output edges `crates/osg-export/src/convert/dimensions.rs` accepts. */
+  minDimensionPx: 2,
+  maxDimensionPx: 15_360,
 });
 
 export class NativePreviewFrameError extends Error {
@@ -116,6 +157,19 @@ const utf8 = new TextEncoder();
 const utf8Length = (value) => utf8.encode(value).length;
 const hasControlCharacter = (value) => /\p{Cc}/u.test(value);
 
+/**
+ * A bounded, control-free token the native side only ever compares.
+ *
+ * Mirrors `is_opaque_identity` in `apps/desktop/src-tauri/src/preview/request.rs` exactly, so a
+ * revision or content hash that side would refuse never costs a round trip.
+ */
+const isOpaqueIdentity = (value) => (
+  typeof value === 'string'
+  && value.length > 0
+  && utf8Length(value) <= NATIVE_PREVIEW_LIMITS.maxIdentityBytes
+  && /^[A-Za-z0-9\-_:]+$/.test(value)
+);
+
 /** Non-cryptographic identity for cache and revision comparison only. Never a security boundary. */
 const fnv1a32 = (bytes) => {
   let hash = 0x811c9dc5;
@@ -126,149 +180,119 @@ const fnv1a32 = (bytes) => {
   return hash >>> 0;
 };
 
-const SCENE_KEYS = Object.freeze(['cues', 'face', 'heightPx', 'schemaVersion', 'timeline', 'widthPx']);
-const TIMELINE_KEYS = Object.freeze(['fpsDenominator', 'fpsNumerator', 'frameCount', 'start']);
-const FACE_KEYS = Object.freeze(['family', 'source', 'weight']);
-const CUE_KEYS = Object.freeze(['end', 'start', 'text']);
-const TIME_KEYS = Object.freeze(['denominator', 'numerator']);
-const REQUEST_KEYS = Object.freeze(['atlas', 'frameIndex', 'scene']);
+const REQUEST_KEYS = Object.freeze(['atlas', 'composition', 'face', 'frameIndex', 'render']);
 /** The same request, having named a layer. Optional, so no existing caller has to say `composited`. */
-const REQUEST_KEYS_WITH_LAYER = Object.freeze(['atlas', 'frameIndex', 'layer', 'scene']);
+const REQUEST_KEYS_WITH_LAYER = Object.freeze([...REQUEST_KEYS, 'layer'].sort());
+/** Mirrors `RenderRequest` in `crates/osg-render/src/contract.rs`, which is `deny_unknown_fields`. */
+const RENDER_KEYS = Object.freeze([
+  'crop', 'customization', 'lyrics', 'narrationArtifactId', 'projectId', 'settings', 'sourceAssetId',
+]);
+/** Mirrors `RenderLyric` in the same file. */
+const LYRIC_KEYS = Object.freeze(['endUs', 'id', 'startUs', 'text']);
+const FACE_KEYS = Object.freeze(['family', 'source', 'weight']);
+const COMPOSITION_KEYS = Object.freeze(['heightPx', 'widthPx']);
 
-/** `detail` is a field path. Never a value, never a cue's text, never a family the user typed. */
-const invalidScene = (detail) => failed(
-  'nativePreviewInvalidScene',
-  `The preview scene cannot be rendered: ${detail}`
+// `detail` is a field path in every one of these. Never a value, never a cue's text, never a family
+// the user typed.
+
+const invalidRequest = (detail) => failed(
+  'nativePreviewInvalidRequest',
+  `The preview frame request cannot be drawn: ${detail}`
 );
 
-const validateTime = (time, path) => {
-  if (!hasExactKeys(time, TIME_KEYS)) invalidScene(`${path} is not an exact time`);
-  if (!Number.isSafeInteger(time.numerator) || time.numerator < 0) invalidScene(`${path}.numerator`);
-  if (!Number.isSafeInteger(time.denominator) || time.denominator < 1) invalidScene(`${path}.denominator`);
-};
+const invalidRender = (detail) => failed(
+  'nativePreviewInvalidRender',
+  `The preview render request cannot be drawn: ${detail}`
+);
 
-/** Exact, through `BigInt`, because cross-multiplying two safe integers is not itself safe. */
-const compareExact = (left, right) => {
-  const scaledLeft = BigInt(left.numerator) * BigInt(right.denominator);
-  const scaledRight = BigInt(right.numerator) * BigInt(left.denominator);
-  if (scaledLeft === scaledRight) return 0;
-  return scaledLeft < scaledRight ? -1 : 1;
-};
-
-const validateTimeline = (timeline) => {
-  if (!hasExactKeys(timeline, TIMELINE_KEYS)) invalidScene('timeline is not a frame grid');
-  if (!isBounded(timeline.fpsNumerator, 1, NATIVE_PREVIEW_LIMITS.maxFpsNumerator)) {
-    invalidScene('timeline.fpsNumerator is out of bounds');
-  }
-  if (!isBounded(timeline.fpsDenominator, 1, NATIVE_PREVIEW_LIMITS.maxFpsDenominator)) {
-    invalidScene('timeline.fpsDenominator is out of bounds');
-  }
-  if (!isBounded(timeline.frameCount, 1, NATIVE_PREVIEW_LIMITS.maxFrameCount)) {
-    invalidScene('timeline.frameCount is out of bounds');
-  }
-  validateTime(timeline.start, 'timeline.start');
-};
-
+/**
+ * The face the editor resolved and baked from, checked against the bounds `crates/osg-scene`
+ * enforces so an unusable face is refused before a round trip rather than after one.
+ */
 const validateFace = (face) => {
-  if (!hasExactKeys(face, FACE_KEYS)) invalidScene('face is not a resolved face');
+  const invalid = (detail) => failed(
+    'nativePreviewInvalidFace',
+    `The preview face cannot be drawn: ${detail}`
+  );
+  if (!hasExactKeys(face, FACE_KEYS)) invalid('face is not a resolved face');
   for (const field of ['family', 'source']) {
     const value = face[field];
     if (typeof value !== 'string'
         || value.length === 0
         || utf8Length(value) > NATIVE_PREVIEW_LIMITS.maxFaceBytes
         || hasControlCharacter(value)) {
-      invalidScene(`face.${field} is missing or out of bounds`);
+      invalid(`face.${field} is missing or out of bounds`);
     }
   }
-  // A face that never resolved is the failure the migration exists to stop hiding, so a scene may
+  // A face that never resolved is the failure the migration exists to stop hiding, so a request may
   // not carry a weight the renderer would have to guess at.
   if (!isBounded(face.weight, 100, 900) || face.weight % 100 !== 0) {
-    invalidScene('face.weight is not a resolved weight');
+    invalid('face.weight is not a resolved weight');
   }
-};
-
-const validateCues = (cues) => {
-  if (!Array.isArray(cues) || cues.length > NATIVE_PREVIEW_LIMITS.maxCues) {
-    invalidScene('cues is not a bounded cue list');
-  }
-  let previousStart = null;
-  cues.forEach((cue, index) => {
-    if (!hasExactKeys(cue, CUE_KEYS)) invalidScene(`cues[${index}] is not a cue`);
-    if (typeof cue.text !== 'string'
-        || cue.text.length === 0
-        || utf8Length(cue.text) > NATIVE_PREVIEW_LIMITS.maxCueTextBytes) {
-      invalidScene(`cues[${index}].text is empty or too long`);
-    }
-    validateTime(cue.start, `cues[${index}].start`);
-    validateTime(cue.end, `cues[${index}].end`);
-    if (compareExact(cue.end, cue.start) !== 1) invalidScene(`cues[${index}] does not end after it starts`);
-    // Selection takes the first match, so an out-of-order list silently hides cues.
-    if (previousStart !== null && compareExact(cue.start, previousStart) === -1) {
-      invalidScene(`cues[${index}] starts before the cue before it`);
-    }
-    previousStart = cue.start;
-  });
-};
-
-const validateScene = (scene) => {
-  if (!hasExactKeys(scene, SCENE_KEYS)) invalidScene('scene is not a preview scene');
-  // Version is refused before anything else is read: an unknown scene shape must not be
-  // interpreted at all, not even to report a better message.
-  if (scene.schemaVersion !== NATIVE_PREVIEW_SCENE_VERSION) {
-    failed(
-      'nativePreviewInvalidScene',
-      `This build renders preview scene version ${NATIVE_PREVIEW_SCENE_VERSION} only`
-    );
-  }
-  for (const field of ['widthPx', 'heightPx']) {
-    // Odd dimensions are refused here for the same reason the scene crate refuses them: the
-    // encoder this feeds requires even ones, and finding out at encode time wastes a whole render.
-    if (!isBounded(scene[field], NATIVE_PREVIEW_LIMITS.minDimensionPx, NATIVE_PREVIEW_LIMITS.maxDimensionPx)
-        || scene[field] % 2 !== 0) {
-      invalidScene(`scene.${field} is not a supported composition dimension`);
-    }
-  }
-  validateTimeline(scene.timeline);
-  validateFace(scene.face);
-  validateCues(scene.cues);
-  return scene;
+  return Object.freeze({ family: face.family, source: face.source, weight: face.weight });
 };
 
 /**
- * The exact scene the native command receives. Written as explicit literals so key order — and
- * therefore both the encoded bytes and `sceneRevision` — is deterministic.
+ * The render request, checked for what belongs to THIS boundary and nothing else.
+ *
+ * Deliberately shallow, for the same reason `PreviewFrameRequest::check` is: `buildNativeRenderRequest`
+ * owns the render contract's own bounds and `RenderRequest::validate` re-applies them against the
+ * real source, so re-stating any of them here would create a third vocabulary to keep in step. What
+ * is checked is the shape — a request this module did not receive from that builder cannot reach the
+ * command — and the one bound the preview transport itself imposes: how many cues a single staged
+ * atlas can draw.
  */
-const canonicalizeScene = (scene) => ({
-  schemaVersion: NATIVE_PREVIEW_SCENE_VERSION,
-  widthPx: scene.widthPx,
-  heightPx: scene.heightPx,
-  timeline: {
-    fpsNumerator: scene.timeline.fpsNumerator,
-    fpsDenominator: scene.timeline.fpsDenominator,
-    frameCount: scene.timeline.frameCount,
-    start: { numerator: scene.timeline.start.numerator, denominator: scene.timeline.start.denominator },
-  },
-  face: {
-    family: scene.face.family,
-    source: scene.face.source,
-    weight: scene.face.weight,
-  },
-  cues: scene.cues.map((cue) => ({
-    text: cue.text,
-    start: { numerator: cue.start.numerator, denominator: cue.start.denominator },
-    end: { numerator: cue.end.numerator, denominator: cue.end.denominator },
-  })),
-});
+const validateRender = (render) => {
+  if (!hasExactKeys(render, RENDER_KEYS)) invalidRender('render is not a native render request');
+  const { lyrics } = render;
+  if (!Array.isArray(lyrics) || lyrics.length > NATIVE_PREVIEW_LIMITS.maxLyricsPerRequest) {
+    invalidRender('render.lyrics names more cues than the staged atlas holds runs for');
+  }
+  lyrics.forEach((lyric, index) => {
+    if (!hasExactKeys(lyric, LYRIC_KEYS)) invalidRender(`render.lyrics[${index}] is not a cue`);
+    if (typeof lyric.text !== 'string'
+        || lyric.text.length === 0
+        || utf8Length(lyric.text) > NATIVE_PREVIEW_LIMITS.maxCueTextBytes) {
+      invalidRender(`render.lyrics[${index}].text is empty or too long`);
+    }
+    if (!Number.isSafeInteger(lyric.startUs) || lyric.startUs < 0
+        || !Number.isSafeInteger(lyric.endUs) || lyric.endUs <= lyric.startUs) {
+      invalidRender(`render.lyrics[${index}] does not end after it starts`);
+    }
+  });
+  return render;
+};
+
+/**
+ * The size the caller expects the composed frame to be.
+ *
+ * Not part of the payload: the native side derives the composition from the source it probes, the
+ * resolution and the crop, and there is exactly one place that decision is made. It is carried
+ * beside the payload so the transport can refuse a frame that came back at another size, because a
+ * preview at the wrong size is precisely the silent divergence this boundary exists to remove.
+ */
+const validateComposition = (composition) => {
+  if (!hasExactKeys(composition, COMPOSITION_KEYS)) invalidRequest('composition is not a frame size');
+  for (const field of COMPOSITION_KEYS) {
+    // Odd edges are refused here for the same reason the conversion refuses them: the encoder this
+    // feeds requires even ones, and finding out at encode time wastes a whole render.
+    if (!isBounded(composition[field], NATIVE_PREVIEW_LIMITS.minDimensionPx, NATIVE_PREVIEW_LIMITS.maxDimensionPx)
+        || composition[field] % 2 !== 0) {
+      invalidRequest(`composition.${field} is not a supported composition dimension`);
+    }
+  }
+  return Object.freeze({ widthPx: composition.widthPx, heightPx: composition.heightPx });
+};
 
 /**
  * Validate a request and reduce it to what crosses the boundary, without calling anything native.
  *
- * Exported so a caller can learn what a scene costs — and whether it is renderable at all — before
- * committing to a render. `sceneBytes` is the canonical JSON encoding, which is what IPC carries.
+ * Exported so a caller can learn what a request costs — and whether it is renderable at all — before
+ * committing to a render. `requestBytes` is the canonical JSON encoding, which is what IPC carries.
  */
 export const prepareNativePreviewRequest = (request) => {
   if (!hasExactKeys(request, REQUEST_KEYS) && !hasExactKeys(request, REQUEST_KEYS_WITH_LAYER)) {
-    failed('nativePreviewInvalidRequest', 'A preview frame request needs a scene, an atlas and a frame index');
+    invalidRequest('a request needs a render request, a face, a composition size, an atlas and a frame index');
   }
   // Absent means the composited frame. A layer this build does not draw is refused rather than
   // quietly defaulted: a caller that asked for the cheap path and silently got the expensive one
@@ -276,48 +300,60 @@ export const prepareNativePreviewRequest = (request) => {
   // guarantee was expected.
   const layer = request.layer === undefined ? NATIVE_PREVIEW_DEFAULT_LAYER : request.layer;
   if (!NATIVE_PREVIEW_LAYERS.includes(layer)) {
-    failed('nativePreviewInvalidRequest', 'A preview frame request names a layer this build does not draw');
+    invalidRequest('layer names a layer this build does not draw');
   }
-  // A handle this module did not mint cannot name a native atlas, and a scene rendered without one
+  // A handle this module did not mint cannot name a native atlas, and a request rendered without one
   // would silently draw nothing.
-  if (!isStagedGlyphAtlas(request.atlas)) {
+  if (!isStagedGlyphAtlas(request.atlas) || !isOpaqueIdentity(request.atlas.contentHash)) {
     failed('nativePreviewInvalidAtlas', 'The glyph atlas has not been staged for the native renderer');
   }
-  const scene = validateScene(request.scene);
-  if (!isBounded(request.frameIndex, 0, scene.timeline.frameCount - 1)) {
-    failed('nativePreviewInvalidRequest', 'The frame index is not inside the scene timeline');
+  const face = validateFace(request.face);
+  const render = validateRender(request.render);
+  const composition = validateComposition(request.composition);
+  // The exact bound is the converted timeline's, which is derived natively from the source that is
+  // probed, so the frame count is not known on this side and is deliberately not guessed at. What is
+  // refused here is an index no timeline could have; the native command refuses the rest.
+  if (!isBounded(request.frameIndex, 0, NATIVE_PREVIEW_LIMITS.maxFrameIndex)) {
+    invalidRequest('frameIndex is not one a converted timeline could have');
   }
 
-  const canonicalScene = canonicalizeScene(scene);
-  const encoded = utf8.encode(JSON.stringify(canonicalScene));
-  const measurement = Object.freeze({
-    sceneBytes: encoded.length,
-    budgetBytes: NATIVE_PREVIEW_LIMITS.maxSceneBytes,
+  // The revision names the picture, not the instant: everything the compositor draws from except
+  // which frame of it. Two requests that differ only in `frameIndex` are therefore two frames of one
+  // revision, which is what lets a native frame that finishes after an edit be recognised as stale.
+  const revisionBytes = utf8.encode(JSON.stringify([face, render, composition]));
+  // The byte length joins the hash so two different requests have to collide on both to share a
+  // cache entry, which is the only way a stale frame could reach the screen.
+  const sceneRevision = `${fnv1a32(revisionBytes).toString(16).padStart(8, '0')}-${revisionBytes.length}`;
+  const payload = Object.freeze({
+    schemaVersion: NATIVE_PREVIEW_SCHEMA_VERSION,
+    sceneRevision,
+    atlasId: request.atlas.atlasId,
+    atlasContentHash: request.atlas.contentHash,
+    frameIndex: request.frameIndex,
+    face,
+    render,
+    layer,
   });
-  if (measurement.sceneBytes > NATIVE_PREVIEW_LIMITS.maxSceneBytes) {
+
+  const measurement = Object.freeze({
+    requestBytes: utf8Length(JSON.stringify(payload)),
+    budgetBytes: NATIVE_PREVIEW_LIMITS.maxRequestBytes,
+  });
+  if (measurement.requestBytes > NATIVE_PREVIEW_LIMITS.maxRequestBytes) {
     failed(
-      'nativePreviewSceneTooLarge',
-      'The preview scene exceeds the transport budget and was refused before any native call',
+      'nativePreviewRequestTooLarge',
+      'The preview request exceeds the transport budget and was refused before any native call',
       measurement
     );
   }
 
-  // The byte length joins the hash so two different scenes have to collide on both to share a
-  // cache entry, which is the only way a stale frame could reach the screen.
-  const sceneRevision = `${fnv1a32(encoded).toString(16).padStart(8, '0')}-${measurement.sceneBytes}`;
   return Object.freeze({
     sceneRevision,
     measurement,
+    composition,
     // The layer joins the key because two layers of one instant are two different pictures. Sharing
     // an entry between them is the one way a transparent overlay could end up on a paused surface.
     cacheKey: `${sceneRevision}:${request.atlas.atlasId}:${request.frameIndex}:${layer}`,
-    payload: Object.freeze({
-      sceneRevision,
-      atlasId: request.atlas.atlasId,
-      atlasContentHash: request.atlas.contentHash,
-      frameIndex: request.frameIndex,
-      layer,
-      scene: canonicalScene,
-    }),
+    payload,
   });
 };

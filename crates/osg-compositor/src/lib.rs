@@ -87,7 +87,7 @@ pub use decoration::{
     decoration_blur_radius_px, decoration_blur_sigma_px,
 };
 pub use device::{AdapterProfile, AdapterSelection, DeviceKind};
-pub use error::{Axis, CompositorError, Rejection};
+pub use error::{Axis, CompositorError, Rejection, TextureTarget};
 pub use frame::Frame;
 pub use run::{CueLine, CueRun, MAX_RUN_GLYPHS, MAX_RUN_LINES};
 pub use scene::TestScene;

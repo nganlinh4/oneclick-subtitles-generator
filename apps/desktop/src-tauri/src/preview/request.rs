@@ -86,15 +86,23 @@ impl PreviewFrameRequest {
             return Err(PreviewRefusal::UnsupportedRequest);
         }
         // One staged atlas carries one `AtlasLayout`, and the compositor needs one staged run per
-        // cue, so a request may name exactly as many cues as the atlas can lay out. Refused here,
+        // cue, so a request may name at most as many cues as the atlas can lay out. Refused here,
         // before a source is opened, rather than surfacing later as a run-count rejection whose
         // cause is not obvious.
-        if self.render.lyrics.len() != 1 {
+        //
+        // NONE is not a refusal. An instant between cues is an ordinary frame: the video underlay,
+        // the crop and the canvas backfill are all still composed, and the editor documents
+        // `cue: null` as a legitimate request rather than an error. A cue-less request converts to a
+        // cue-less scene, which is staged with no runs at all.
+        if self.render.lyrics.len() > MAX_REQUEST_LYRICS {
             return Err(PreviewRefusal::UnsupportedRequest);
         }
         Ok(())
     }
 }
+
+/// Cues one request may name, mirroring `NATIVE_PREVIEW_LIMITS.maxLyricsPerRequest`.
+const MAX_REQUEST_LYRICS: usize = 1;
 
 /// A bounded, control-free opaque token: a revision or a content hash this side only compares.
 fn is_opaque_identity(value: &str) -> bool {
@@ -107,9 +115,11 @@ fn is_opaque_identity(value: &str) -> bool {
 
 /// What the `WebView` gets back: an element-loadable URL and the frame's own measurements.
 ///
-/// Exactly the seven fields `nativePreviewFrames.js` accepts, in the shape it accepts them. Nothing
-/// else may be added without changing that module too, because it matches the response key set
-/// exactly and refuses a response carrying anything more.
+/// Exactly the fields `NATIVE_PREVIEW_RESPONSE_FIELDS` in `nativePreviewFrames.js` accepts, in the
+/// shape it accepts them. Nothing else may be added without changing that module too, because it
+/// matches the response key set exactly and refuses a response carrying anything more — which
+/// [`tests::the_response_is_exactly_the_field_set_the_webview_accepts`] reads out of that file
+/// rather than restating here.
 ///
 /// The layer is echoed for the same reason the frame index and the dimensions are: a subtitle layer
 /// shown where a composited frame was asked for is a *wrong picture* rather than a failure, and the
@@ -131,4 +141,192 @@ pub(crate) struct PreviewFrameResponse {
     pub(crate) mime_type: String,
     /// Which layer this image carries, echoed from the request.
     pub(crate) layer: PreviewLayer,
+}
+
+/// The boundary, asserted against the other side of it rather than against a description of it.
+///
+/// Every gate was green while the `WebView` sent a payload this struct could not deserialize at all,
+/// because both sides were checked only against themselves: the frontend test froze the JS key set
+/// and the command-contract check compares command *names*. So these tests read the transport's own
+/// source, build a request out of the field set it actually writes, and put it through serde. A
+/// field added, removed or renamed on either side fails here instead of failing every preview frame
+/// at runtime.
+#[cfg(test)]
+mod tests {
+    use serde_json::{Map, Value, json};
+    use uuid::Uuid;
+
+    use super::super::fixtures::{clip_request_json, default_face, request_json};
+    use super::*;
+
+    /// The module that builds the request, so its field set is read from its own source.
+    const TRANSPORT_REQUEST: &str =
+        include_str!("../../../../../src/platform/nativePreviewRequest.js");
+    /// The module that reads the response, which is the other half of the same boundary.
+    const TRANSPORT_FRAMES: &str =
+        include_str!("../../../../../src/platform/nativePreviewFrames.js");
+
+    /// The entries of a frozen array of string literals in the transport's source.
+    fn webview_list(source: &str, name: &str) -> Vec<String> {
+        let needle = format!("export const {name} = Object.freeze([");
+        let start = source
+            .find(&needle)
+            .unwrap_or_else(|| panic!("the transport must still declare {name}"))
+            + needle.len();
+        let end = start
+            + source[start..]
+                .find(']')
+                .expect("the declaration must be closed");
+        source[start..end]
+            .split(',')
+            .map(|entry| entry.trim().trim_matches('\'').to_owned())
+            .filter(|entry| !entry.is_empty())
+            .collect()
+    }
+
+    /// A whole number the transport declares under `name`, as a constant or as a bound.
+    fn webview_number(source: &str, name: &str) -> u32 {
+        let declared = source
+            .find(name)
+            .unwrap_or_else(|| panic!("the transport must still declare {name}"))
+            + name.len();
+        let rest = &source[declared..];
+        let assigned = rest
+            .find(['=', ':'])
+            .expect("a declaration must assign a value")
+            + 1;
+        let value = &rest[assigned..];
+        value[..value
+            .find([';', ','])
+            .expect("the value must be terminated")]
+            .trim()
+            .replace('_', "")
+            .parse()
+            .expect("a whole number")
+    }
+
+    /// The value the `WebView` puts in each field, so a field it invents fails loudly here.
+    fn wire_value(field: &str, atlas_id: AssetId, render: &Value) -> Value {
+        match field {
+            "schemaVersion" => json!(PREVIEW_SCHEMA_VERSION),
+            "sceneRevision" => json!("3f2a91cc-812"),
+            "atlasId" => json!(atlas_id),
+            "atlasContentHash" => json!("0000abcd"),
+            "frameIndex" => json!(0),
+            "face" => json!(default_face()),
+            "render" => render.clone(),
+            "layer" => json!("composited"),
+            other => panic!("the WebView sends `{other}`, which this build does not read"),
+        }
+    }
+
+    /// The request the `WebView` actually writes, assembled from its own field list.
+    fn webview_request(render: &Value) -> Value {
+        let atlas_id = AssetId::new();
+        let mut object = Map::new();
+        for field in webview_list(TRANSPORT_REQUEST, "NATIVE_PREVIEW_REQUEST_FIELDS") {
+            let value = wire_value(&field, atlas_id, render);
+            object.insert(field, value);
+        }
+        Value::Object(object)
+    }
+
+    #[test]
+    fn the_payload_the_webview_writes_is_exactly_the_request_this_build_reads() {
+        let request: PreviewFrameRequest = serde_json::from_value(webview_request(&request_json()))
+            .expect("the payload the WebView writes must deserialize whole");
+        request
+            .check()
+            .expect("the payload the WebView writes must pass this boundary's own checks");
+        assert_eq!(request.layer, PreviewLayer::Composited);
+        // The two mirrored constants, read from the transport rather than restated here.
+        assert_eq!(
+            webview_number(TRANSPORT_REQUEST, "NATIVE_PREVIEW_SCHEMA_VERSION"),
+            PREVIEW_SCHEMA_VERSION
+        );
+        assert_eq!(
+            webview_number(TRANSPORT_REQUEST, "maxLyricsPerRequest") as usize,
+            MAX_REQUEST_LYRICS
+        );
+        assert_eq!(
+            webview_number(TRANSPORT_REQUEST, "maxIdentityBytes") as usize,
+            MAX_IDENTITY_BYTES
+        );
+    }
+
+    #[test]
+    fn a_payload_missing_or_gaining_one_field_is_refused_whole() {
+        // The discriminating half: the assertions below are worth nothing unless the accepted
+        // payload above really is accepted, and it is — this is the same payload, bent once each way.
+        for field in webview_list(TRANSPORT_REQUEST, "NATIVE_PREVIEW_REQUEST_FIELDS") {
+            let mut value = webview_request(&request_json());
+            value
+                .as_object_mut()
+                .expect("an object")
+                .remove(&field)
+                .expect("the field was present");
+            let accepted = serde_json::from_value::<PreviewFrameRequest>(value).is_ok();
+            // `layer` is the one field that may be absent, and its default is the composited frame.
+            assert_eq!(accepted, field == "layer", "{field}");
+        }
+
+        let mut extra = webview_request(&request_json());
+        extra.as_object_mut().expect("an object").insert(
+            "scene".to_owned(),
+            json!({"widthPx": 1_920, "heightPx": 1_080}),
+        );
+        assert!(
+            serde_json::from_value::<PreviewFrameRequest>(extra).is_err(),
+            "an unknown field must fail deserialization rather than be ignored",
+        );
+    }
+
+    #[test]
+    fn the_response_is_exactly_the_field_set_the_webview_accepts() {
+        let response = PreviewFrameResponse {
+            sequence_id: Uuid::new_v4(),
+            frame_url: "http://127.0.0.1:1/frame".to_owned(),
+            frame_index: 0,
+            width_px: 480,
+            height_px: 360,
+            mime_type: super::super::PREVIEW_MIME_TYPE.to_owned(),
+            layer: PreviewLayer::Subtitles,
+        };
+        let serialized = serde_json::to_value(&response).expect("a response serializes");
+        let mut written: Vec<String> = serialized
+            .as_object()
+            .expect("an object")
+            .keys()
+            .cloned()
+            .collect();
+        written.sort();
+        let mut accepted = webview_list(TRANSPORT_FRAMES, "NATIVE_PREVIEW_RESPONSE_FIELDS");
+        accepted.sort();
+        assert_eq!(written, accepted);
+        // The layer is echoed as the same spelling the `WebView` compares against.
+        assert_eq!(serialized["layer"], json!("subtitles"));
+    }
+
+    #[test]
+    fn an_instant_with_no_cue_is_a_request_and_two_cues_are_not() {
+        let mut cue_less = clip_request_json();
+        cue_less["lyrics"] = json!([]);
+        let request: PreviewFrameRequest =
+            serde_json::from_value(webview_request(&cue_less)).expect("a cue-less payload");
+        assert!(request.render.lyrics.is_empty());
+        assert_eq!(request.check(), Ok(()));
+
+        let mut two = clip_request_json();
+        two["lyrics"] = json!([
+            {"id":"cue-1","startUs":0,"endUs":500_000,"text":"A"},
+            {"id":"cue-2","startUs":500_000,"endUs":1_000_000,"text":"B"},
+        ]);
+        let refused: PreviewFrameRequest =
+            serde_json::from_value(webview_request(&two)).expect("a two-cue payload");
+        assert_eq!(
+            refused.check(),
+            Err(PreviewRefusal::UnsupportedRequest),
+            "one staged atlas holds one run, so two cues cannot both be drawn",
+        );
+    }
 }

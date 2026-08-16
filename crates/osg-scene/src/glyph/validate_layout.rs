@@ -1,9 +1,23 @@
 //! Judging the layout.
 //!
 //! The layout is the one thing the compositor does not re-derive, so it is the one thing that has
-//! to be checked hardest: every number a consumer will place a glyph from is bounded here, every
-//! index is proven to address a cell that exists, and every field the baker derived from another is
-//! re-derived and compared.
+//! to be checked hardest: every number a consumer will place a glyph from is bounded here — by
+//! **magnitude**, at [`MAX_LAYOUT_COORDINATE_PX`], which is the bound `glyphAtlasStaging.js`
+//! applies to the very same fields — every index is proven to address a cell that exists, and every
+//! field the baker derived from another is re-derived and compared.
+//!
+//! Finiteness alone was never the bound. A consumer scales these coordinates before it places
+//! anything: `osg-compositor` multiplies each line's advance by the glyph scale, takes the widest
+//! as the run's text width, and offsets a centred line by `text_width - line_width`. A finite
+//! `f64::MAX` advance scaled by anything above one is infinity, that subtraction is then
+//! `inf - inf`, and every vertex on the line comes out `NaN` — from a descriptor whose every number
+//! passed `is_finite`. Bounding the magnitude closes that path here, where the descriptor is still
+//! refusable, rather than in the consumer that can only draw what it was handed.
+//!
+//! The face metrics a consumer stacks lines by are bounded by the same numbers rather than
+//! separately: a line box is only accepted if the baselines advance by it and the run box is that
+//! many line boxes tall, and both of those are bounded above. A layout with no lines bounds neither,
+//! and places nothing.
 //!
 //! What is deliberately **not** re-derived is [`LayoutRefusal::direction_needs_bidi`]. The baker
 //! clearing it is the claim that it emitted visual order, and this side has no font stack with
@@ -13,14 +27,23 @@
 use super::error::GlyphAtlasError;
 use super::layout::{AtlasLayout, CellAdvanceVerdict, LayoutTextAlign};
 use super::limits::{
-    LAYOUT_TOLERANCE_PX, MAX_LAYOUT_CELLS, MAX_LAYOUT_LINES, MAX_LAYOUT_WIDTH_PX,
-    MAX_LETTER_SPACING_PX, MIN_LETTER_SPACING_PX,
+    LAYOUT_TOLERANCE_PX, MAX_LAYOUT_CELLS, MAX_LAYOUT_COORDINATE_PX, MAX_LAYOUT_LINES,
+    MAX_LAYOUT_WIDTH_PX, MAX_LETTER_SPACING_PX, MIN_LETTER_SPACING_PX,
 };
 use super::wire::AtlasMetrics;
 
 /// Whether a value this side recomputed agrees with the four-decimal one the baker emitted.
 fn agrees(derived: f64, declared: f64) -> bool {
     (derived - declared).abs() <= LAYOUT_TOLERANCE_PX
+}
+
+/// Whether a coordinate is one a consumer can place a glyph from: finite, and small enough that
+/// scaling it cannot leave the finite numbers.
+///
+/// Signed on purpose. A pen sits left of its own line start whenever letter spacing tightens, and
+/// an advance goes with it, so this is a magnitude and never a range.
+fn places_a_glyph(value: f64) -> bool {
+    value.is_finite() && value.abs() <= MAX_LAYOUT_COORDINATE_PX
 }
 
 pub(super) fn validate_layout(
@@ -44,11 +67,12 @@ fn validate_layout_numbers(layout: &AtlasLayout) -> Result<(), GlyphAtlasError> 
     {
         return Err(GlyphAtlasError::UnsupportedLayoutWidth);
     }
-    // The run box a consumer sizes from: neither edge may be non-finite or negative, whatever the
-    // lines below turn out to say.
-    if !layout.width_px.is_finite()
+    // The run box a consumer sizes from: neither edge may be negative, and neither may be a
+    // magnitude a consumer's own scaling would carry out of the finite numbers, whatever the lines
+    // below turn out to say.
+    if !places_a_glyph(layout.width_px)
         || layout.width_px < 0.0
-        || !layout.height_px.is_finite()
+        || !places_a_glyph(layout.height_px)
         || layout.height_px < 0.0
     {
         return Err(GlyphAtlasError::UnsupportedLayout);
@@ -84,19 +108,20 @@ fn validate_lines(
             }
             return Err(GlyphAtlasError::LayoutCellIndex);
         }
-        if line.pen_x_px.iter().any(|pen| !pen.is_finite()) {
+        if line.pen_x_px.iter().any(|pen| !places_a_glyph(*pen)) {
             return Err(GlyphAtlasError::UnsupportedLayout);
         }
-        // The advance is signed — tight letter spacing can pull a line narrower than nothing — so
-        // only a non-finite one is meaningless. The measured width and the justification are
-        // widths, and cannot be negative.
-        if !line.advance_width_px.is_finite()
-            || !line.shaping_residual_px.is_finite()
-            || !line.measured_width_px.is_finite()
+        // Every number on this line is one the compositor scales and places from, so every one of
+        // them is bounded by magnitude. The advance and the residual are signed — tight letter
+        // spacing can pull a line narrower than nothing — while the measured width and the
+        // justification are widths and cannot be negative on top of that.
+        if !places_a_glyph(line.advance_width_px)
+            || !places_a_glyph(line.shaping_residual_px)
+            || !places_a_glyph(line.measured_width_px)
             || line.measured_width_px < 0.0
-            || !line.justification_px.is_finite()
+            || !places_a_glyph(line.justification_px)
             || line.justification_px < 0.0
-            || !line.baseline_y_px.is_finite()
+            || !places_a_glyph(line.baseline_y_px)
         {
             return Err(GlyphAtlasError::UnsupportedLayout);
         }

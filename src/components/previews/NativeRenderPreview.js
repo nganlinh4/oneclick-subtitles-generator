@@ -211,8 +211,7 @@ const NativeRenderPreview = forwardRef(({
     subtitles,
     resolution,
     frameRate,
-    cropWidthPercent: activeCrop.width,
-    cropHeightPercent: activeCrop.height,
+    crop: activeCrop,
     durationSeconds: duration,
     currentTime,
   });

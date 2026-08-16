@@ -14,7 +14,7 @@ use std::path::Path;
 
 use osg_compositor::{CueRun, SubtitleScene};
 use osg_export::{ExportPlan, StagedText, probe_source};
-use osg_render::{RenderPlan, RenderRequest};
+use osg_render::{RenderLyric, RenderPlan, RenderRequest};
 use osg_scene::glyph::GlyphAtlasDescriptor;
 use osg_scene::scene::ResolvedFace;
 
@@ -37,7 +37,41 @@ pub(crate) fn plan_for_source(
     let height = u32::try_from(info.height()).map_err(|_| PreviewRefusal::SourceUnreadable)?;
     let duration_us = u64::try_from(info.duration_100ns() / HUNDRED_NANOS_PER_MICRO)
         .map_err(|_| PreviewRefusal::SourceUnreadable)?;
-    Ok(request.validate(width, height, duration_us)?)
+    validate_cue_or_not(request, width, height, duration_us)
+}
+
+/// Validates a request that may name no cue at all.
+///
+/// [`RenderRequest::validate`] refuses an empty lyric list, because an *export* with nothing to draw
+/// is a request nobody meant. A preview frame is not an export: the instants between cues are
+/// ordinary frames, on which the underlay, the crop and the canvas backfill are all still composed,
+/// and the editor documents that request as legitimate rather than as an error.
+///
+/// Nothing in a plan is derived from the lyric list — the dimensions come from the source aspect,
+/// the crop and the resolution, and the frame count from the trim and the frame rate — so a
+/// cue-less request is validated with one probe cue that is dropped from the plan immediately
+/// afterwards. The plan that results is exactly the one a cue-less request describes, and the export
+/// contract's own bound stays where it is instead of being relaxed for every caller of it.
+fn validate_cue_or_not(
+    mut request: RenderRequest,
+    width: u32,
+    height: u32,
+    duration_us: u64,
+) -> Result<RenderPlan, PreviewRefusal> {
+    let cue_less = request.lyrics.is_empty();
+    if cue_less {
+        request.lyrics.push(RenderLyric {
+            id: "preview-probe".to_owned(),
+            start_us: 0,
+            end_us: 1,
+            text: "x".to_owned(),
+        });
+    }
+    let mut plan = request.validate(width, height, duration_us)?;
+    if cue_less {
+        plan.lyrics.clear();
+    }
+    Ok(plan)
 }
 
 /// The composition a preview frame is drawn from: the export's plan and the export's scene.
@@ -62,7 +96,15 @@ impl PreviewComposition {
         let export = ExportPlan::convert(plan, face)?;
         // One run per cue, copied from the layout the baker emitted. `CueRun::from_layout` is a
         // copy rather than a computation, so no layout is derived on this side of the boundary.
-        let runs = vec![CueRun::from_layout(atlas.layout())];
+        //
+        // A cue-less instant stages no run at all: the scene has no cue for one to belong to, and a
+        // run staged against nothing is refused by the run count the compositor checks. The frame is
+        // still composed — the underlay, the crop and the canvas backfill do not depend on a cue.
+        let runs = if plan.lyrics.is_empty() {
+            Vec::new()
+        } else {
+            vec![CueRun::from_layout(atlas.layout())]
+        };
         let scene = export.compose(StagedText::new(face.clone(), atlas, runs))?;
         Ok(Self {
             plan: export,

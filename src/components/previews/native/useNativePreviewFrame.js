@@ -78,10 +78,11 @@ const explain = (error) => Object.freeze({
 /**
  * Request the natively composited frame for one instant.
  *
- * `scene`, `atlas` and `frameIndex` must be stable across renders that mean the same frame; the
- * caller memoises them, and their identity is what decides whether a new native render is asked for.
- * `active` gates requesting without tearing the surface down, so pausing after a play does not throw
- * away a cache the user is about to scrub through.
+ * `request` is what `useNativePreviewRequest` produced — the render request, the face, the expected
+ * composition size, the staged atlas and the frame index — and must be stable across renders that
+ * mean the same frame; the caller memoises it, and its identity is what decides whether a new native
+ * render is asked for. `active` gates requesting without tearing the surface down, so pausing after a
+ * play does not throw away a cache the user is about to scrub through.
  *
  * `layer` selects between the composited frame and the subtitle pass alone. Changing it asks for a
  * new frame rather than reinterpreting the one on screen — they are two different pictures — and the
@@ -91,9 +92,7 @@ const useNativePreviewFrame = ({
   active = true,
   projectId = null,
   mediaId = null,
-  scene = null,
-  atlas = null,
-  frameIndex = null,
+  request = null,
   layer = NATIVE_PREVIEW_DEFAULT_LAYER,
 }) => {
   const [state, setState] = useState(IDLE);
@@ -170,7 +169,7 @@ const useNativePreviewFrame = ({
 
   useEffect(() => {
     const held = heldRef.current;
-    if (!active || held === null || scene === null || atlas === null || frameIndex === null) {
+    if (!active || held === null || request === null) {
       return undefined;
     }
     const { surface, generation } = held;
@@ -181,7 +180,7 @@ const useNativePreviewFrame = ({
       error: null,
       binding: bindingKey,
     }));
-    surface.requestFrame({ scene, atlas, frameIndex, layer }).then(
+    surface.requestFrame({ ...request, layer }).then(
       (outcome) => {
         // `superseded` and `cancelled` mean a newer frame is already owed to this surface, so they
         // settle without repainting. Only a `ready` outcome reaches the screen.
@@ -200,7 +199,7 @@ const useNativePreviewFrame = ({
     return () => {
       superseded = true;
     };
-  }, [active, bindingKey, surfaceEpoch, lostBinding, retryToken, scene, atlas, frameIndex, layer, isCurrent]);
+  }, [active, bindingKey, surfaceEpoch, lostBinding, retryToken, request, layer, isCurrent]);
 
   /**
    * The `<img>` could not load the URL the transport handed over.

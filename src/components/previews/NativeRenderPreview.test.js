@@ -121,8 +121,8 @@ describe('with a video selected', () => {
     mount({ cropSettings: { x: 0, y: 0, width: 50, height: 25 } });
 
     const call = vi.mocked(useNativePreview).mock.calls.at(-1)[0];
-    expect(call.cropWidthPercent).toBe(50);
-    expect(call.cropHeightPercent).toBe(25);
+    // The whole crop, not only its size: the offset and the flips are pixels the export writes too.
+    expect(call.crop).toMatchObject({ x: 0, y: 0, width: 50, height: 25, flipX: false, flipY: false });
     expect(call.resolution).toBe('1080p');
     expect(call.frameRate).toBe(30);
   });

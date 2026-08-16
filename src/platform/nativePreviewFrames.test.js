@@ -1,24 +1,27 @@
+import { defaultCustomization } from '../components/subtitleCustomization/defaultCustomization';
 import { invokeDesktop, invokeDesktopRaw } from './desktopRuntime';
 import { GLYPH_ATLAS_VERSION } from './glyphAtlas';
 import { createGlyphAtlasStager } from './glyphAtlasStaging';
 import {
-  NATIVE_PREVIEW_DEFAULT_LAYER,
   NATIVE_PREVIEW_ERROR_CODES,
   NATIVE_PREVIEW_FRAME_COMMAND,
   NATIVE_PREVIEW_LAYERS,
   NATIVE_PREVIEW_LIMITS,
   NATIVE_PREVIEW_OUTCOMES,
-  NATIVE_PREVIEW_SCENE_VERSION,
   NativePreviewFrameError,
   createNativePreviewSurface,
   prepareNativePreviewRequest,
 } from './nativePreviewFrames';
+import { buildNativeRenderRequest } from './renderService';
 
 /**
- * The atlas handle under test is minted by the real stager, so this suite proves the transport
- * against the same brand the renderer will actually receive rather than a hand-written stand-in.
- * The atlas *contents* are irrelevant here — this module never reads a pixel — so the descriptor is
- * the smallest one `glyphAtlasStaging` accepts.
+ * Dispatching, coalescing, caching, teardown and the response — the half of the boundary that has
+ * state. What a request must *be*, and the field set that crosses, is `nativePreviewRequest.test.js`.
+ *
+ * The atlas handle under test is minted by the real stager and the render request by the real
+ * builder, so this suite proves the transport against the same objects the renderer will actually
+ * receive rather than hand-written stand-ins. The atlas *contents* are irrelevant here — this module
+ * never reads a pixel — so the descriptor is the smallest one `glyphAtlasStaging` accepts.
  *
  * `importOriginal` keeps `DESKTOP_RUNTIME_UNAVAILABLE` and the error class real, so the
  * runtime-unavailable mapping is asserted against the bridge's own constant, not a copy of it.
@@ -38,6 +41,8 @@ const ATLAS_ID = '018f3a2b-1c4d-7e8f-9a0b-1c2d3e4f0001';
 const SEQUENCE_ID = '3f2504e0-4f89-41d3-9a0c-0305e82c3301';
 const SERVER_TOKEN = 'a'.repeat(64);
 const FRAME_TOKEN = 'b'.repeat(64);
+const SOURCE_ASSET_ID = '019ffbea-26d5-7800-8e3b-69de8bff2d7d';
+const PROJECT_ID = '019ffbea-40eb-7c3c-b2f3-214ca260a7cc';
 
 const frameUrl = (index, sequenceId = SEQUENCE_ID) => (
   `http://127.0.0.1:49152/frame/${sequenceId}/${index}?token=${SERVER_TOKEN}&frame_token=${FRAME_TOKEN}`
@@ -100,42 +105,56 @@ const atlasDescriptor = () => ({
 
 let atlas;
 
-const seconds = (value) => ({ numerator: value, denominator: 1 });
+/** The composition the fixture request converts to, which is what a response must come back at. */
+const COMPOSITION = Object.freeze({ widthPx: 1_920, heightPx: 1_080 });
 
-const scene = (overrides = {}) => ({
-  schemaVersion: NATIVE_PREVIEW_SCENE_VERSION,
-  widthPx: 1920,
-  heightPx: 1080,
-  timeline: {
-    fpsNumerator: 30_000,
-    fpsDenominator: 1_001,
-    frameCount: 300,
-    start: seconds(0),
+const FACE = Object.freeze({ family: 'Editor Sans', source: 'sha256:0f1e2d3c', weight: 400 });
+
+/** The export's own request builder, so what crosses is what an export would be built from. */
+const renderRequest = (overrides = {}) => buildNativeRenderRequest({
+  sourceAsset: {
+    id: SOURCE_ASSET_ID,
+    displayName: 'source.mp4',
+    extension: 'mp4',
+    sizeBytes: 1_024,
+    kind: 'video',
   },
-  face: { family: 'Editor Sans', source: 'sha256:0f1e2d3c', weight: 400 },
-  cues: [
-    { text: 'Preview', start: seconds(0), end: seconds(2) },
-    { text: PRIVATE_TEXT, start: seconds(2), end: seconds(4) },
-  ],
+  projectId: PROJECT_ID,
+  lyrics: [{ id: 'cue-1', start: 0, end: 2, text: PRIVATE_TEXT }],
+  settings: {
+    resolution: '1080p',
+    frameRate: 30,
+    originalAudioVolume: 100,
+    narrationVolume: 0,
+    trimStart: 0,
+    trimEnd: 0,
+  },
+  customization: { ...defaultCustomization },
+  crop: { x: 0, y: 0, width: 100, height: 100, aspectRatio: null },
   ...overrides,
 });
 
+const RENDER = renderRequest();
+
 const frameRequest = (frameIndex, overrides = {}) => ({
-  scene: scene(overrides),
+  render: RENDER,
+  face: FACE,
+  composition: COMPOSITION,
   atlas,
   frameIndex,
+  ...overrides,
 });
 
-const frameResponse = (request, overrides = {}) => ({
-  frameUrl: frameUrl(request.frameIndex),
-  frameIndex: request.frameIndex,
+const frameResponse = (payload, overrides = {}) => ({
+  frameUrl: frameUrl(payload.frameIndex),
+  frameIndex: payload.frameIndex,
   sequenceId: SEQUENCE_ID,
   mimeType: 'image/png',
   // Echoed the way `PreviewFrameResponse` echoes it, so a stand-in that returned the other layer
   // would be caught by the transport rather than by this fixture agreeing with itself.
-  layer: request.layer,
-  widthPx: request.scene.widthPx,
-  heightPx: request.scene.heightPx,
+  layer: payload.layer,
+  widthPx: COMPOSITION.widthPx,
+  heightPx: COMPOSITION.heightPx,
   ...overrides,
 });
 
@@ -147,14 +166,14 @@ const acceptFrames = (overrides = {}) => {
 /** Stands in for a compositor that has not answered yet, so coalescing is observable. */
 const heldFrames = () => {
   const pending = [];
-  invokeDesktop.mockImplementation((_command, args) => new Promise((resolve, reject) => {
-    pending.push({ request: args.request, resolve, reject });
+  invokeDesktop.mockImplementation((_command, args) => new Promise((resolve_, reject) => {
+    pending.push({ request: args.request, resolve: resolve_, reject });
   }));
   return pending;
 };
 
 /** Lets every already-queued microtask run, which is when a settled request reaches its caller. */
-const flush = () => new Promise((resolve) => { setTimeout(resolve, 0); });
+const flush = () => new Promise((resolve_) => { setTimeout(resolve_, 0); });
 
 const observedCodes = new Set();
 
@@ -198,8 +217,8 @@ describe('requesting one native preview frame', () => {
         url: frameUrl(7),
         frameIndex: 7,
         layer: 'composited',
-        widthPx: 1920,
-        heightPx: 1080,
+        widthPx: 1_920,
+        heightPx: 1_080,
         mimeType: 'image/png',
         cacheKey: prepareNativePreviewRequest(frameRequest(7)).cacheKey,
       });
@@ -210,22 +229,6 @@ describe('requesting one native preview frame', () => {
     } finally {
       globalThis.fetch = originalFetch;
     }
-  });
-
-  it('sends the atlas by opaque id and a canonical scene, and nothing else', async () => {
-    await createNativePreviewSurface().requestFrame(frameRequest(0));
-
-    const { request } = invokeDesktop.mock.calls[0][1];
-    expect(Object.keys(request).sort()).toEqual([
-      'atlasContentHash', 'atlasId', 'frameIndex', 'layer', 'scene', 'sceneRevision',
-    ]);
-    expect(request.atlasId).toBe(ATLAS_ID);
-    expect(request.atlasContentHash).toBe('a1b2c3d4');
-    expect(Object.keys(request.scene)).toEqual([
-      'schemaVersion', 'widthPx', 'heightPx', 'timeline', 'face', 'cues',
-    ]);
-    // No atlas bytes cross this boundary: the atlas was staged once, by id, over the other command.
-    expect(JSON.stringify(request)).not.toContain('pixels');
   });
 
   it('reuses a cached frame instead of rendering it twice, and seeks back to it', async () => {
@@ -240,14 +243,22 @@ describe('requesting one native preview frame', () => {
     expect(surface.stats()).toEqual({ cachedFrames: 2, inFlight: 0, waiting: false, closed: false });
   });
 
-  it('renders again for a changed scene at the same frame index', async () => {
+  it('renders again when the picture changes at the same frame index', async () => {
     const surface = createNativePreviewSurface();
 
     const first = await surface.requestFrame(frameRequest(0));
-    const restyled = await surface.requestFrame(frameRequest(0, { widthPx: 1280, heightPx: 720 }));
+    const restyled = await surface.requestFrame(frameRequest(0, {
+      render: renderRequest({ customization: { ...defaultCustomization, fontSize: 64 } }),
+    }));
+    // The composition is the caller's own expectation of what the conversion will derive, so the
+    // frame that comes back has to be that size or it is refused rather than shown.
+    acceptFrames({ widthPx: 1_280, heightPx: 720 });
+    const resized = await surface.requestFrame(
+      frameRequest(0, { composition: { widthPx: 1_280, heightPx: 720 } }),
+    );
 
-    expect(restyled.cacheKey).not.toBe(first.cacheKey);
-    expect(invokeDesktop).toHaveBeenCalledTimes(2);
+    expect(new Set([first.cacheKey, restyled.cacheKey, resized.cacheKey]).size).toBe(3);
+    expect(invokeDesktop).toHaveBeenCalledTimes(3);
   });
 
   it('drops a cached URL the caller could not load, so the next request re-renders', async () => {
@@ -410,85 +421,38 @@ describe('bounds', () => {
     expect(invokeDesktop).toHaveBeenCalledTimes(4);
   });
 
-  it('measures a scene against the transport budget and refuses it before any native call', async () => {
-    const text = 'x'.repeat(NATIVE_PREVIEW_LIMITS.maxCueTextBytes);
-    const cues = Array.from({ length: 1_100 }, (_unused, index) => ({
-      text,
-      start: seconds(index),
-      end: seconds(index + 1),
-    }));
-
-    // Measured, not estimated, and pinned as exact equalities so any change to the canonical scene
-    // encoding has to be re-measured deliberately rather than drifting.
-    const withinBudget = prepareNativePreviewRequest(frameRequest(0));
-    expect(withinBudget.measurement.sceneBytes).toBe(440);
-    expect(withinBudget.measurement.budgetBytes).toBe(NATIVE_PREVIEW_LIMITS.maxSceneBytes);
-
-    const error = await rejectionOf(createNativePreviewSurface().requestFrame(frameRequest(0, { cues })));
-
-    expect(error.code).toBe('nativePreviewSceneTooLarge');
-    expect(error.measurement).toEqual({ sceneBytes: 4_609_227, budgetBytes: 4_194_304 });
-    expect(invokeDesktop).not.toHaveBeenCalled();
-  });
-
-  it('refuses a frame index that is not inside the timeline', async () => {
+  it('refuses before any native call whatever the request module refuses', async () => {
     const surface = createNativePreviewSurface();
-
-    for (const frameIndex of [-1, 300, 1.5, '0', Number.NaN]) {
-      const error = await rejectionOf(surface.requestFrame(frameRequest(frameIndex)));
-      expect(error.code).toBe('nativePreviewInvalidRequest');
-    }
-    expect(invokeDesktop).not.toHaveBeenCalled();
-  });
-
-  it('refuses every scene field the compositor could not render', async () => {
-    const surface = createNativePreviewSurface();
-    const cue = { text: 'x', start: seconds(0), end: seconds(1) };
+    // One case per refusal the preparation can raise, so every declared code is reachable through
+    // the surface itself. Which field produces which code is `nativePreviewRequest.test.js`.
     const cases = [
-      ['schemaVersion', { schemaVersion: NATIVE_PREVIEW_SCENE_VERSION + 1 }],
-      ['widthPx odd', { widthPx: 1921 }],
-      ['widthPx small', { widthPx: NATIVE_PREVIEW_LIMITS.minDimensionPx - 2 }],
-      ['heightPx large', { heightPx: NATIVE_PREVIEW_LIMITS.maxDimensionPx + 2 }],
-      ['fpsNumerator', { timeline: { ...scene().timeline, fpsNumerator: NATIVE_PREVIEW_LIMITS.maxFpsNumerator + 1 } }],
-      ['fpsDenominator', { timeline: { ...scene().timeline, fpsDenominator: NATIVE_PREVIEW_LIMITS.maxFpsDenominator + 1 } }],
-      ['frameCount', { timeline: { ...scene().timeline, frameCount: NATIVE_PREVIEW_LIMITS.maxFrameCount + 1 } }],
-      ['negative start', { timeline: { ...scene().timeline, start: { numerator: -1, denominator: 1 } } }],
-      ['zero denominator', { timeline: { ...scene().timeline, start: { numerator: 0, denominator: 0 } } }],
-      ['face weight', { face: { family: 'Editor Sans', source: 'sha256:0f1e2d3c', weight: 450 } }],
-      ['face family', { face: { family: '', source: 'sha256:0f1e2d3c', weight: 400 } }],
-      ['face source control character', { face: { family: 'Editor Sans', source: 'sha256\u0000', weight: 400 } }],
-      ['face bytes', { face: { family: 'ê'.repeat(NATIVE_PREVIEW_LIMITS.maxFaceBytes), source: 'x', weight: 400 } }],
-      ['cue count', { cues: new Array(NATIVE_PREVIEW_LIMITS.maxCues + 1).fill(cue) }],
-      ['cue text bytes', { cues: [{ ...cue, text: 'x'.repeat(NATIVE_PREVIEW_LIMITS.maxCueTextBytes + 1) }] }],
-      ['empty cue text', { cues: [{ ...cue, text: '' }] }],
-      ['cue ends before it starts', { cues: [{ ...cue, start: seconds(2), end: seconds(1) }] }],
-      ['cue ends when it starts', { cues: [{ ...cue, start: seconds(1), end: seconds(1) }] }],
-      ['unordered cues', { cues: [{ ...cue, start: seconds(5), end: seconds(6) }, cue] }],
-      ['unknown scene field', { extra: true }],
+      ['nativePreviewInvalidRequest', frameRequest(-1)],
+      ['nativePreviewInvalidRender', frameRequest(0, { render: { ...RENDER, lyrics: 'cue' } })],
+      ['nativePreviewInvalidFace', frameRequest(0, { face: { ...FACE, weight: 450 } })],
+      ['nativePreviewInvalidAtlas', frameRequest(0, { atlas: null })],
+      ['nativePreviewRequestTooLarge', frameRequest(0, {
+        render: {
+          ...RENDER,
+          customization: {
+            ...defaultCustomization,
+            fontFamily: 'x'.repeat(NATIVE_PREVIEW_LIMITS.maxRequestBytes),
+          },
+        },
+      })],
     ];
 
-    for (const [label, overrides] of cases) {
-      const error = await rejectionOf(surface.requestFrame(frameRequest(0, overrides)));
-      expect(error.code, label).toBe('nativePreviewInvalidScene');
+    for (const [code, request] of cases) {
+      expect((await rejectionOf(surface.requestFrame(request))).code).toBe(code);
     }
     expect(invokeDesktop).not.toHaveBeenCalled();
   });
 
-  it('refuses a request whose shape or atlas handle this module did not mint', async () => {
-    const surface = createNativePreviewSurface();
+  it('accepts an instant with no cue on screen, which is an ordinary frame', async () => {
+    const outcome = await createNativePreviewSurface()
+      .requestFrame(frameRequest(0, { render: { ...RENDER, lyrics: [] } }));
 
-    for (const request of [
-      { scene: scene(), atlas, frameIndex: 0, extra: true },
-      { scene: scene(), frameIndex: 0 },
-      null,
-    ]) {
-      expect((await rejectionOf(surface.requestFrame(request))).code).toBe('nativePreviewInvalidRequest');
-    }
-    for (const forged of [{ ...atlas }, { atlasId: ATLAS_ID, contentHash: 'a1b2c3d4' }, null]) {
-      const error = await rejectionOf(surface.requestFrame({ scene: scene(), atlas: forged, frameIndex: 0 }));
-      expect(error.code).toBe('nativePreviewInvalidAtlas');
-    }
-    expect(invokeDesktop).not.toHaveBeenCalled();
+    expect(outcome.status).toBe('ready');
+    expect(invokeDesktop.mock.calls[0][1].request.render.lyrics).toEqual([]);
   });
 });
 
@@ -502,7 +466,7 @@ describe('choosing which layer to draw', () => {
 
   it('asks for the subtitle layer when told to, and reports which layer came back', async () => {
     const outcome = await createNativePreviewSurface()
-      .requestFrame({ ...frameRequest(0), layer: 'subtitles' });
+      .requestFrame(frameRequest(0, { layer: 'subtitles' }));
 
     expect(invokeDesktop.mock.calls[0][1].request.layer).toBe('subtitles');
     expect(outcome.layer).toBe('subtitles');
@@ -512,11 +476,11 @@ describe('choosing which layer to draw', () => {
   it('keeps the two layers of one instant apart, so a scrub cannot serve the overlay to a paused surface', async () => {
     const surface = createNativePreviewSurface();
 
-    const playing = await surface.requestFrame({ ...frameRequest(3), layer: 'subtitles' });
-    const paused = await surface.requestFrame({ ...frameRequest(3), layer: 'composited' });
-    const playingAgain = await surface.requestFrame({ ...frameRequest(3), layer: 'subtitles' });
+    const playing = await surface.requestFrame(frameRequest(3, { layer: 'subtitles' }));
+    const paused = await surface.requestFrame(frameRequest(3, { layer: 'composited' }));
+    const playingAgain = await surface.requestFrame(frameRequest(3, { layer: 'subtitles' }));
 
-    // Same scene, same frame, two pictures: two renders and two cache entries, and the second ask
+    // Same request, same frame, two pictures: two renders and two cache entries, and the second ask
     // for the layer already drawn is the cached one rather than a third render.
     expect(paused.cacheKey).not.toBe(playing.cacheKey);
     expect(playingAgain).toBe(playing);
@@ -524,23 +488,6 @@ describe('choosing which layer to draw', () => {
     expect(invokeDesktop.mock.calls.map(([, args]) => args.request.layer))
       .toEqual(['subtitles', 'composited']);
     expect(surface.stats().cachedFrames).toBe(2);
-  });
-
-  it('refuses a layer this build does not draw rather than defaulting it', async () => {
-    const surface = createNativePreviewSurface();
-
-    for (const layer of ['overlay', 'COMPOSITED', '', null, 0]) {
-      const error = await rejectionOf(surface.requestFrame({ ...frameRequest(0), layer }));
-      expect(error.code).toBe('nativePreviewInvalidRequest');
-    }
-    expect(invokeDesktop).not.toHaveBeenCalled();
-  });
-
-  it('states the default in one place, and it is the guaranteed layer', () => {
-    expect(NATIVE_PREVIEW_DEFAULT_LAYER).toBe('composited');
-    expect(NATIVE_PREVIEW_LAYERS).toContain(NATIVE_PREVIEW_DEFAULT_LAYER);
-    expect(prepareNativePreviewRequest(frameRequest(0)).payload.layer)
-      .toBe(NATIVE_PREVIEW_DEFAULT_LAYER);
   });
 });
 
@@ -576,7 +523,7 @@ describe('refusals', () => {
       ['wrong url index', { frameUrl: frameUrl(1) }],
       ['unknown sequence', { sequenceId: '3f2504e0-4f89-41d3-9a0c-0305e82c3302' }],
       ['non v4 sequence', { frameUrl: frameUrl(0, '018f3a2b-1c4d-7e8f-9a0b-1c2d3e4f0001'), sequenceId: '018f3a2b-1c4d-7e8f-9a0b-1c2d3e4f0001' }],
-      ['wrong size', { widthPx: 1280 }],
+      ['wrong size', { widthPx: 1_280 }],
       ['unsupported mime type', { mimeType: 'image/svg+xml' }],
       ['not a loopback frame', { frameUrl: 'https://cdn.example.com/frame/0.png' }],
       ['localhost alias', { frameUrl: frameUrl(0).replace('127.0.0.1', 'localhost') }],
@@ -627,7 +574,9 @@ describe('refusals', () => {
       const errors = [
         await rejectionOf(surface.requestFrame(frameRequest(0))),
         await rejectionOf(surface.requestFrame(frameRequest(0, { face: { family: PRIVATE_TEXT, source: '', weight: 400 } }))),
-        await rejectionOf(surface.requestFrame(frameRequest(0, { cues: [{ text: PRIVATE_TEXT, start: seconds(2), end: seconds(1) }] }))),
+        await rejectionOf(surface.requestFrame(frameRequest(0, {
+          render: { ...RENDER, lyrics: [{ id: 'cue-1', startUs: 2, endUs: 1, text: PRIVATE_TEXT }] },
+        }))),
       ];
 
       for (const error of errors) {

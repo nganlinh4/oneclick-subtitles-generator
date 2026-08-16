@@ -220,16 +220,30 @@ impl PublishedFrames {
         Ok(())
     }
 
-    /// Releases every frame that is not bound to `binding` at `generation`.
+    /// Releases every frame the claim at `generation` superseded: a different binding, or a
+    /// generation this one came after.
     ///
-    /// This is what an edit, a project switch or a device loss does to frames already on the wire.
-    pub(crate) fn retire_others(&self, binding: &PreviewBinding, generation: u64) {
+    /// This is what an edit or a project switch does to frames already on the wire.
+    ///
+    /// **A newer generation is never touched, and that is the ordering rather than an optimisation.**
+    /// The retire cannot be held inside the caller's compare-and-advance — [`Self::retain`] takes
+    /// this lock and asks its admission question under it, and that question takes the binding lock,
+    /// so the two orders would invert — so it is written to be correct whatever order it runs in.
+    /// Without that, a claim preempted between taking its generation and retiring would come back
+    /// after a later claim had already composed and published, and release the live frame of the
+    /// claim that overtook it. `MAX_RENDERS_IN_FLIGHT` is two, so that interleaving is reachable.
+    ///
+    /// A frame of the *same* generation always carries the same binding, because the generation only
+    /// advances where the binding is set; the binding is still compared, so a frame that somehow
+    /// carried another one is released rather than believed.
+    pub(crate) fn retire_superseded(&self, binding: &PreviewBinding, generation: u64) {
         let Ok(mut retention) = self.retention.lock() else {
             return;
         };
-        retention
-            .frames
-            .retain(|frame| frame.generation == generation && &frame.binding == binding);
+        retention.frames.retain(|frame| {
+            frame.generation > generation
+                || (frame.generation == generation && &frame.binding == binding)
+        });
         retention.total_bytes = total_bytes(&retention.frames);
     }
 

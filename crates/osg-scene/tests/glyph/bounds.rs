@@ -3,14 +3,15 @@
 use osg_scene::glyph::{
     AtlasGlyph, CellAdvanceLayout, FaceStyle, GLYPH_ATLAS_VERSION, GlyphAtlasDescriptor,
     GlyphAtlasError, MAX_ATLAS_DIMENSION_PX, MAX_BYTES_PER_ROW, MAX_CLUSTER_CODE_POINTS,
-    MAX_FAMILY_CHARACTERS, MAX_FONT_SIZE_PX, MAX_GLYPH_COUNT, MAX_LAYOUT_CELLS, MAX_LAYOUT_LINES,
-    MAX_LAYOUT_WIDTH_PX, MAX_LETTER_SPACING_PX, MAX_PADDING_PX, MAX_PIXEL_BYTES,
-    MAX_TEXT_CODE_POINTS, MIN_FONT_SIZE_PX, MIN_LETTER_SPACING_PX, UncheckedGlyphAtlas,
+    MAX_FAMILY_CHARACTERS, MAX_FONT_SIZE_PX, MAX_GLYPH_COUNT, MAX_LAYOUT_CELLS,
+    MAX_LAYOUT_COORDINATE_PX, MAX_LAYOUT_LINES, MAX_LAYOUT_WIDTH_PX, MAX_LETTER_SPACING_PX,
+    MAX_PADDING_PX, MAX_PIXEL_BYTES, MAX_TEXT_CODE_POINTS, MIN_FONT_SIZE_PX, MIN_LETTER_SPACING_PX,
+    UncheckedGlyphAtlas,
 };
 
 use super::support::{
-    BAKER, accept, baker_count, baker_limit, baker_number, distinct, empty, glyph, inkless, refuse,
-    valid, with_cells,
+    BAKER, STAGING, accept, baker_count, baker_limit, baker_number, distinct, empty, glyph,
+    inkless, refuse, valid, with_cells,
 };
 
 #[test]
@@ -91,6 +92,16 @@ fn the_mirrored_layout_limits_match_the_baker() {
     assert_eq!(
         baker_number("maxLetterSpacingPx").to_bits(),
         MAX_LETTER_SPACING_PX.to_bits()
+    );
+    // The coordinate bound is the same number on both sides *and* derived the same way, so the two
+    // validators refuse the same magnitudes rather than agreeing by comment.
+    assert_eq!(
+        MAX_LAYOUT_COORDINATE_PX.to_bits(),
+        MAX_LAYOUT_WIDTH_PX.to_bits()
+    );
+    assert!(
+        STAGING.contains("const LAYOUT_COORDINATE_LIMIT = GLYPH_ATLAS_LIMITS.maxLayoutWidthPx;"),
+        "the staging validator must still bound layout coordinates by maxLayoutWidthPx",
     );
 }
 

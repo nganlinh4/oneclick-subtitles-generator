@@ -21,6 +21,34 @@ impl fmt::Display for Axis {
     }
 }
 
+/// Which 2D texture a device's own dimension limit refused.
+///
+/// The three are named separately because the remedy differs: a composition that is too large is a
+/// resolution the user chose, a source frame that is too large is the media they opened, and an
+/// atlas that is too large is a font size the baker was asked for.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[non_exhaustive]
+pub enum TextureTarget {
+    /// The composition target, and every intermediate allocated at the composition size: the
+    /// decoration masks and both passes of the separable blur.
+    Frame,
+    /// The decoded video frame uploaded under the subtitle layer.
+    Source,
+    /// The baked glyph atlas.
+    Atlas,
+}
+
+impl fmt::Display for TextureTarget {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        let name = match self {
+            Self::Frame => "composition",
+            Self::Source => "video source frame",
+            Self::Atlas => "glyph atlas",
+        };
+        f.write_str(name)
+    }
+}
+
 /// Why a staged atlas, style, run or scene was refused.
 ///
 /// Deliberately coarse and `Copy`: it names the field that failed and never the value, so a refusal
@@ -185,6 +213,27 @@ pub enum CompositorError {
         value: u64,
         /// The largest accepted pixel count.
         max: u64,
+    },
+
+    /// The acquired device cannot allocate a texture this composition needs.
+    ///
+    /// Separate from [`CompositorError::DimensionOutOfRange`] because it is a property of the
+    /// machine rather than of the request: the same project renders on an adapter with a larger
+    /// `max_texture_dimension_2d`. It is raised before a single texture exists, because `wgpu`
+    /// validates that dimension inside `Device::create_texture` by panicking — and the release
+    /// profile aborts, which would take the whole process down mid-export.
+    #[error(
+        "this GPU allocates at most {max} pixels per texture edge; the {target} needs {value} on its {axis}"
+    )]
+    DeviceTextureLimit {
+        /// Which texture was refused.
+        target: TextureTarget,
+        /// The axis that exceeded the device limit.
+        axis: Axis,
+        /// The rejected value.
+        value: u32,
+        /// The device's granted `max_texture_dimension_2d`.
+        max: u32,
     },
 
     /// A scene parameter was not a finite value inside its documented range.

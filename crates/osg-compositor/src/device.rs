@@ -5,11 +5,12 @@
 //! [`CompositorError::NoAdapter`] when none exists.
 
 use wgpu::{
-    Backends, Device, DeviceDescriptor, DeviceType, ExperimentalFeatures, Instance,
+    Adapter, Backends, Device, DeviceDescriptor, DeviceType, ExperimentalFeatures, Instance,
     InstanceDescriptor, Limits, MemoryHints, PowerPreference, Queue, RequestAdapterOptions, Trace,
 };
 
 use crate::error::CompositorError;
+use crate::size::MAX_FRAME_DIMENSION;
 
 /// Which adapters the compositor is allowed to consider.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
@@ -71,13 +72,16 @@ impl DeviceKind {
 
 /// What the compositor is running on.
 ///
-/// This is diagnostic detail, not a capability handle: it carries no pointers, no paths and no
-/// driver-private identifiers beyond the names the backend already reports.
+/// This carries no pointers, no paths and no driver-private identifiers beyond the names the
+/// backend already reports. Alongside those names it carries the one capability number the
+/// compositor's own bounds depend on — [`AdapterProfile::max_texture_dimension_2d`] — because a
+/// composition larger than that must be refused rather than attempted.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct AdapterProfile {
     name: String,
     backend: String,
     kind: DeviceKind,
+    max_texture_dimension_2d: u32,
 }
 
 impl AdapterProfile {
@@ -98,6 +102,38 @@ impl AdapterProfile {
     pub const fn kind(&self) -> DeviceKind {
         self.kind
     }
+
+    /// The longest 2D texture edge the acquired device will allocate.
+    ///
+    /// This is the device's granted `max_texture_dimension_2d`, never larger than
+    /// [`crate::MAX_FRAME_DIMENSION`]. A composition, a decoded source frame or a glyph atlas with
+    /// an edge past it is refused with [`CompositorError::DeviceTextureLimit`] before any texture
+    /// is created, because `wgpu` validates that dimension by panicking.
+    #[must_use]
+    pub const fn max_texture_dimension_2d(&self) -> u32 {
+        self.max_texture_dimension_2d
+    }
+}
+
+/// The limits the compositor asks a device for.
+///
+/// [`Limits::downlevel_defaults`] caps `max_texture_dimension_2d` at 2048, which is below 1440p,
+/// 4K and 8K — three of the four output sizes the product offers — and below the 4096-pixel glyph
+/// atlas the baker may hand over. Every *other* limit in that profile is generous enough for this
+/// crate (the widest readback, 8K RGBA8 at a 256-byte row alignment, is 127 MiB against a 256 MiB
+/// `max_buffer_size`), so exactly one limit is raised, and only as far as two facts allow: what
+/// this adapter reports it can do, and what the compositor would ever allocate.
+///
+/// Asking for the adapter's own resolution rather than a fixed number is what keeps an adapter that
+/// genuinely stops at 2048 usable: it still yields a device, and the sizes it cannot take become a
+/// typed refusal instead of a failed device request that would take every size down with it.
+fn required_limits(adapter: &Adapter) -> Limits {
+    let mut limits = Limits::downlevel_defaults();
+    limits.max_texture_dimension_2d = adapter
+        .limits()
+        .max_texture_dimension_2d
+        .min(MAX_FRAME_DIMENSION);
+    limits
 }
 
 /// An acquired device, queue and the profile of the adapter behind them.
@@ -127,16 +163,10 @@ impl GpuContext {
         })?;
 
         let info = adapter.get_info();
-        let profile = AdapterProfile {
-            name: info.name,
-            backend: info.backend.to_string(),
-            kind: DeviceKind::from_wgpu(info.device_type),
-        };
-
         let (device, queue) = pollster::block_on(adapter.request_device(&DeviceDescriptor {
             label: Some("osg-compositor"),
             required_features: wgpu::Features::empty(),
-            required_limits: Limits::downlevel_defaults(),
+            required_limits: required_limits(&adapter),
             experimental_features: ExperimentalFeatures::disabled(),
             memory_hints: MemoryHints::default(),
             trace: Trace::Off,
@@ -144,6 +174,15 @@ impl GpuContext {
         .map_err(|error| CompositorError::DeviceUnavailable {
             reason: error.to_string(),
         })?;
+
+        // The device's own answer, not the adapter's and not what was asked for, because the
+        // granted limit is the one `create_texture` will validate against.
+        let profile = AdapterProfile {
+            name: info.name,
+            backend: info.backend.to_string(),
+            kind: DeviceKind::from_wgpu(info.device_type),
+            max_texture_dimension_2d: device.limits().max_texture_dimension_2d,
+        };
 
         Ok(Self {
             device,

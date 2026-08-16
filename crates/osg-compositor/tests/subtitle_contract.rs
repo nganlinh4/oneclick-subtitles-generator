@@ -260,8 +260,11 @@ fn out_of_range_style_numbers_are_refused() {
             Rejection::StyleTiming,
         ),
         (
+            // Past the render contract's `-1000..=1000`, and only just: 140 used to be refused
+            // here, which made every project the editor saved with a cue placed off-composition
+            // unexportable. `tests/bounds.rs` pins both ends of the accepted range.
             SubtitleStyleSpec {
-                custom_y: 140.0,
+                custom_y: 1_000.1,
                 ..style_spec()
             },
             Rejection::StyleGeometry,
