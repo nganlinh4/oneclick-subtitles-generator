@@ -416,20 +416,20 @@ and should be corrected rather than delivered.
 
 ## Order of work
 
-Status as of 2026-08-16, after wave 11. Nothing is marked done here without a measured gate behind
+Status as of 2026-08-16, after wave 12. Nothing is marked done here without a measured gate behind
 it, and this table is kept synchronised with executable state — if it disagrees with
 `src/platform/renderParityLedger.js` or with a test count, the table is the thing that is wrong.
 
 | # | Step | State |
 | --- | --- | --- |
 | 1 | Freeze the specification: feature matrix and golden fixtures from current behaviour. Nothing is deleted before this exists. | **Done.** Fixtures carry IEEE-754 bit patterns, because JS and `serde_json` disagreed by one ULP. |
-| 2 | Scene contract crate: versioned DTO, bounds, deterministic sampler, animation and layout maths, golden-tested against step 1. | **Done.** `osg-scene`, 109 tests. |
-| 3 | Atlas baking and staging, with font receipts. | **Done.** `glyphAtlas.js` bakes and now shapes, wraps and aligns; `fontIdentity.js` resolves or honestly refuses; `glyphAtlasStaging.js` frames it; `osg-scene::glyph` reads it back with bounds parsed from the baker's own source. |
-| 4 | GPU compositor and the frame server behind the existing capability transport. | **Done.** `osg-compositor`, 109 tests on a real Intel/Vulkan adapter. Video underlay with crop, flip and canvas backfill; stroke, shadow, glow, border, radius and gradient. Seek equals play, proven byte-identical with every effect enabled. |
+| 2 | Scene contract crate: versioned DTO, bounds, deterministic sampler, animation and layout maths, golden-tested against step 1. | **Done.** `osg-scene`, 124 tests, including the mirror and validation of the baker's authoritative `AtlasLayout`. |
+| 3 | Atlas baking and staging, with font receipts. | **Done.** The baker shapes, transforms, wraps, aligns, justifies and reorders to visual order through a real UAX #9 subset cross-checked against a reference implementation. `fontIdentity.js` resolves or honestly refuses, and `fontInventory.js` reports the reconciled catalog. Staging forwards the layout verbatim; `osg-scene::glyph` validates it as strictly as the glyph table. |
+| 4 | GPU compositor and the frame server behind the existing capability transport. | **Done.** `osg-compositor`, 124 tests on a real Intel/Vulkan adapter. It **consumes** the emitted layout — glyph *i* of line *l* at `penXPx[i]`, baseline `baselineYPx` — and has no pen accumulator, no re-wrap, no re-align, no reorder. Video underlay with crop, flip and canvas backfill; stroke, shadow, glow, border, radius, gradient and typewriter. Seek equals play, proven byte-identical with every effect enabled. |
 | 5 | Preview switched onto native frames; the three drawing implementations collapse to one. | **Transport done, editor not yet wired.** The native staging command is registered and reachable, `nativePreviewFrames.js` coalesces and cancels, and the frame route serves `<img>` loads. The production editor still draws its own CSS overlay. This is the next step. |
 | 6 | Encode/mux stage. | **Done, both directions.** `osg-encode` writes H.264/AAC MP4 through Media Foundation, ffprobe-verified full-range BT.709. `osg-decode` reads through `IMFSourceReader` with frame-exact sampling, 58 tests. `osg-audio` decodes, resamples and mixes, 100 tests. No FFmpeg anywhere. |
 | 6b | Export orchestration: a validated request to a finished file. | **Done.** `osg-export`, 65 tests including 8 real end-to-end exports. The single place every parity decision is applied. |
-| 7 | Parity suite across presets, options, resolutions and frame rates. | **Not started.** Field coverage is tracked in `src/platform/renderParityLedger.js` — **7 of 70 options pending** at the time of writing, being closed by the authoritative-layout work. The exhaustive gate itself, across 30 presets and all 70 fields with preview/native/decoded comparison, does not yet exist. |
+| 7 | Parity suite across presets, options, resolutions and frame rates. | **Input frozen, gate not built.** Field coverage is **2 of 70 pending** (`maxWidth`, awaiting its caller; `rtlSupport`, awaiting contextual cell baking). `scripts/generate-parity-matrix.mjs` freezes what the gate must cover — 30 presets, 70 options, 147 field-value renders, 9 texts, 4 output shapes — and `npm run test:parity-matrix` fails if it goes stale. The gate that renders and compares them does not exist yet. |
 | 8 | Removal, in the order above, with the readiness rule landing last. | **Not started, and correctly blocked** — nothing is removed until step 7 proves the replacement. |
 
 Step 6 turned out to be the step that removed the licensing problem entirely rather than relocating
