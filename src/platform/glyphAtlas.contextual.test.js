@@ -4,6 +4,7 @@ import { GLYPH_ATLAS_LIMITS, bakeGlyphAtlas } from './glyphAtlas';
 import { measureGlyphAtlasPayload } from './glyphAtlasStaging';
 import {
   ARABIC,
+  bake,
   ARABIC_REPEATED,
   SHAPED_SIZE_PX,
   cellAlphaOf,
@@ -173,3 +174,28 @@ describe('bakeGlyphAtlas contextual bounds', () => {
   });
 });
 
+
+describe('the persisted right-to-left setting', () => {
+  it('forces the paragraph level instead of leaving it to the text', () => {
+    // Left null the baker resolves the level from the first strong character (UAX #9 P2/P3), which
+    // is right for mixed content and wrong for a caller who has told us the subtitle is RTL. The
+    // discriminating case is text with no strong character at all: nothing in it can imply a level,
+    // so the only way the two runs can differ is if the setting was actually consulted.
+    const neutral = '123 456';
+
+    const resolved = bake({ text: neutral, baseDirection: null });
+    const forced = bake({ text: neutral, baseDirection: 'rtl' });
+
+    expect(resolved.layout.textAlign).toBe('left');
+    expect(forced.layout.textAlign).toBe('right');
+    // The metrics keep reporting the coarse classification, which is provenance and deliberately
+    // not the answer — a caller must read the layout, not this.
+    expect(forced.metrics.baseDirection).toBe(resolved.metrics.baseDirection);
+  });
+
+  it('is refused when it is neither a direction nor absent', () => {
+    for (const value of ['auto', 'RTL', '', 0, true, {}]) {
+      expect(() => bake({ text: 'abc', baseDirection: value })).toThrow(/baseDirection/);
+    }
+  });
+});

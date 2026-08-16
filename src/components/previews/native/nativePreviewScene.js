@@ -140,7 +140,9 @@ export const previewFace = ({ fontFamily, fontWeight, platform, managedPackInsta
  * a subtitle that does not wrap is a visibly different subtitle rather than a near miss.
  */
 export const atlasBakeRequest = ({ customization, text, compositionWidthPx, compositionHeightPx, face }) => {
-  const { fontSize, lineHeight, letterSpacing, textAlign, textTransform, wordWrap, maxWidth } = customization;
+  const {
+    fontSize, lineHeight, letterSpacing, textAlign, textTransform, wordWrap, maxWidth, rtlSupport,
+  } = customization;
   if (!isFiniteNumber(fontSize) || fontSize <= 0) return null;
   const atlasFontSizePx = clamp(fontSize, MIN_ATLAS_FONT_SIZE_PX, MAX_ATLAS_FONT_SIZE_PX);
   const glyphScale = glyphScaleForComposition({ fontSize, compositionHeightPx, atlasFontSizePx });
@@ -162,6 +164,10 @@ export const atlasBakeRequest = ({ customization, text, compositionWidthPx, comp
       wordWrap: wordWrap !== false,
       textAlign,
       textTransform,
+      // The persisted setting forces the paragraph level. Left null, the baker resolves it from the
+      // text itself through UAX #9 P2/P3, which is right for mixed content and wrong for a caller
+      // who has told us the subtitle is right-to-left.
+      baseDirection: rtlSupport === true ? 'rtl' : null,
       requireExactFace: true,
     }),
     glyphScale,

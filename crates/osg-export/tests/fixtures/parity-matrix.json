@@ -2109,7 +2109,7 @@
     },
     {
       "field": "maxWidth",
-      "disposition": "pending",
+      "disposition": "native",
       "default": 80,
       "values": [
         80,
@@ -2162,7 +2162,7 @@
     },
     {
       "field": "rtlSupport",
-      "disposition": "pending",
+      "disposition": "native",
       "default": false,
       "values": [
         false,

@@ -173,7 +173,7 @@ const normalizeRequest = (request) => {
   const {
     text, face, fontSizePx, lineHeightPx = null, paddingPx = 1, requireExactFace = true,
     textTransform = 'none', letterSpacingPx = 0, maxWidthPx = null, wordWrap = true,
-    textAlign = 'left',
+    textAlign = 'left', baseDirection = null,
   } = request;
 
   if (typeof text !== 'string') invalidRequest('text must be a string');
@@ -187,6 +187,11 @@ const normalizeRequest = (request) => {
   }
   if (!Number.isInteger(paddingPx) || paddingPx < 0 || paddingPx > GLYPH_ATLAS_LIMITS.maxPaddingPx) {
     invalidRequest(`paddingPx must be an integer in 0..${GLYPH_ATLAS_LIMITS.maxPaddingPx}`);
+  }
+  // null means resolve the paragraph level from the text itself (UAX #9 P2/P3). A caller that knows
+  // better — the editor's persisted rtlSupport is exactly that — forces it instead.
+  if (baseDirection !== null && baseDirection !== 'ltr' && baseDirection !== 'rtl') {
+    invalidRequest("baseDirection must be null, 'ltr' or 'rtl'");
   }
   const shaping = normalizeShaping({ textTransform, letterSpacingPx, maxWidthPx, wordWrap, textAlign });
 
@@ -205,6 +210,7 @@ const normalizeRequest = (request) => {
     paddingPx,
     requireExactFace,
     ...shaping,
+    baseDirection,
   };
 };
 
@@ -360,7 +366,7 @@ const canonicalize = (descriptor) => {
 export const bakeGlyphAtlas = (request, options = {}) => {
   const {
     text, face, lineHeightPx, paddingPx, requireExactFace,
-    textTransform, letterSpacingPx, maxWidthPx, wordWrap, textAlign,
+    textTransform, letterSpacingPx, maxWidthPx, wordWrap, textAlign, baseDirection,
   } = normalizeRequest(request);
   const surface = resolveSurface(options.surface);
   const families = [face.family];
@@ -488,7 +494,11 @@ export const bakeGlyphAtlas = (request, options = {}) => {
     pixels = raw instanceof Uint8ClampedArray ? raw : new Uint8ClampedArray(raw.buffer, raw.byteOffset, raw.length);
   }
 
-  const baseDirection = glyphs.length === 0
+  // The coarse first-strong classification the descriptor has always reported. It is PROVENANCE
+  // only: the layout resolves the real paragraph level through UAX #9, and the two can legitimately
+  // disagree — a run opening with an Arabic comma is neutral to the algorithm and 'rtl' to a block
+  // test. Where they disagree, the layout is the answer.
+  const metricsBaseDirection = glyphs.length === 0
     ? 'ltr'
     : (clusters.map(directionOf).find((direction) => direction !== 'neutral') ?? 'ltr');
   const resolvedLineHeightPx = round4(lineHeightPx ?? ascentPx + descentPx);
@@ -503,11 +513,12 @@ export const bakeGlyphAtlas = (request, options = {}) => {
     maxWidthPx,
     wordWrap,
     textAlign,
+    baseDirection,
     lineHeightPx: resolvedLineHeightPx,
     baselinePx: ascentPx,
     measureLineWidth: (lineText) => readMeasurement(surface.measure(cssFont, lineText), 'a laid-out line').width,
     runShapingResidualPx: shapingResidualPx,
-    directionNeedsBidi: baseDirection === 'rtl' || glyphs.some((glyph) => glyph.direction === 'rtl'),
+    directionNeedsBidi: metricsBaseDirection === 'rtl' || glyphs.some((glyph) => glyph.direction === 'rtl'),
     limits: GLYPH_ATLAS_LIMITS,
   });
 
@@ -529,7 +540,7 @@ export const bakeGlyphAtlas = (request, options = {}) => {
       baselinePx: ascentPx,
       runAdvanceWidthPx,
       shapingResidualPx,
-      baseDirection,
+      baseDirection: metricsBaseDirection,
       // Carried in the metrics so the compositor positions from the spacing the WebView applied
       // rather than re-deriving it from a style field that was scaled somewhere else.
       letterSpacingPx: round4(letterSpacingPx),

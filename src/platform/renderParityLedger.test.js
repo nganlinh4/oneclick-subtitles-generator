@@ -82,15 +82,13 @@ describe('render parity ledger', () => {
   });
 
   it('reports the remaining work honestly rather than rounding it down', () => {
-    // Deliberately asserts the real current number. This test failing because the count dropped is
-    // the migration making progress; update it, do not delete it. It reaches zero at the end.
+    // Zero. Every one of the 70 persisted options is now reproduced, deliberately corrected, or
+    // deliberately inert — and each of those states is asserted above rather than assumed here.
     //
-    // Both survivors are honest, not bookkeeping. maxWidth's mechanism exists end to end — the
-    // baker wraps, the compositor draws the lines — and what is missing is the unit conversion in
-    // a caller that does not exist yet. rtlSupport has real bidi behind it, cross-checked against a
-    // reference implementation, and is held back because Arabic still cannot draw for a reason that
-    // has nothing to do with bidi: the atlas bakes isolated cells and Arabic is cursive.
-    expect(pendingParityFields()).toEqual(['maxWidth', 'rtlSupport']);
+    // This reaching zero is not the same as the migration being finished. It says every field has an
+    // implementation and a decision behind it; it does not say the exhaustive parity gate has run,
+    // and nothing may be deleted on the strength of this number alone.
+    expect(pendingParityFields()).toEqual([]);
   });
 
   it('keeps the inert fields inert so saved projects still round-trip', () => {
@@ -192,6 +190,6 @@ describe('render output parity ledger', () => {
     // Every output setting is now reproduced. aspectRatio closed by being proven redundant rather
     // than by being consulted, which is a stronger result than implementing it would have been.
     expect(pendingOutputParityFields()).toEqual([]);
-    expect(pendingParityFields().length + pendingOutputParityFields().length).toBe(2);
+    expect(pendingParityFields().length + pendingOutputParityFields().length).toBe(0);
   });
 });

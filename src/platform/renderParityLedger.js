@@ -25,6 +25,11 @@ export const PARITY_DISPOSITIONS = Object.freeze(['native', 'pending', 'inert', 
 const entry = (disposition, where, note) => Object.freeze({ disposition, where, note });
 
 const native = (where, note) => entry('native', where, note);
+// Unused today, and kept deliberately. Every field is now reproduced, corrected or inert, so
+// nothing constructs a pending entry — but `pending` is the vocabulary a field added tomorrow needs,
+// and `pendingParityFields()` is still asserted to be empty. Deleting the constructor would make the
+// next honest "not implemented yet" harder to write than a dishonest "native".
+// eslint-disable-next-line no-unused-vars
 const pending = note => entry('pending', null, note);
 const inert = note => entry('inert', null, note);
 const fixed = (where, note) => entry('fixed', where, note);
@@ -154,14 +159,15 @@ export const RENDER_PARITY_LEDGER = Object.freeze({
   marginBottom: native('crates/osg-scene/src/layout.rs', 'Fixed 1920x1080 percentage, unlike sizes.'),
   marginLeft: native('crates/osg-scene/src/layout.rs', 'Fixed 1920x1080 percentage, unlike sizes.'),
   marginRight: native('crates/osg-scene/src/layout.rs', 'Fixed 1920x1080 percentage, unlike sizes.'),
-  maxWidth: pending(
-    'The baker wraps to a maxWidthPx and the compositor draws the resulting lines, so the mechanism '
-    + 'now exists end to end. What is missing is the unit conversion: the persisted value is a '
-    + 'PERCENTAGE of the composition, while the baker takes atlas pixels, and the atlas is baked at '
-    + 'its own font size and scaled by the compositor. Whoever builds the bake request must compute '
-    + '(maxWidth / 100) * compositionWidth / glyphScale. Passing a composition-space width straight '
-    + 'through would wrap correctly at exactly one resolution and wrongly at every other. That '
-    + 'caller is the preview surface, which is not wired yet.',
+  maxWidth: native(
+    'src/components/previews/native/nativePreviewGeometry.js',
+    'The persisted value is a PERCENTAGE of the composition while the baker takes atlas pixels, and '
+    + 'the atlas is baked once at its own size then scaled — so the bake request computes '
+    + '(maxWidth / 100) * compositionWidth / glyphScale, where glyphScale mirrors the compositor. '
+    + 'Passing a composition-space width straight through would wrap correctly at exactly one '
+    + 'resolution and wrongly at every other: 1080p and 4K both give 1536 atlas pixels where the '
+    + 'naive pass-through gives 3072 at 4K. Proven at the arithmetic, through a real bake where two '
+    + 'resolutions produce byte-identical line breaks, and through the hook the editor mounts.',
   ),
   textAlign: native(
     'src/platform/glyphAtlasShaping.js',
@@ -181,18 +187,19 @@ export const RENDER_PARITY_LEDGER = Object.freeze({
   ),
   maxLines: inert('Validated and persisted end to end, with no render effect and no UI.'),
   lineBreakBehavior: inert('Validated and persisted end to end, with no render effect and no UI.'),
-  rtlSupport: pending(
-    'Bidi is real now, not a heuristic: src/platform/glyphAtlasBidi.js resolves UAX #9 P2/P3, '
-    + 'W1-W7, N1/N2, I1/I2 and per-line L1/L2, emits visual order, and was cross-checked against a '
-    + 'reference implementation over all 65,536 ordered four-character runs of a mixed pool with '
-    + 'zero order mismatches. It refuses what it does not implement — explicit embedding controls, '
-    + 'isolates, and mirrored characters in right-to-left content. Two things still stand between '
-    + 'that and reproduced. The persisted boolean does not yet reach the baker, so it cannot force a '
-    + 'paragraph level. And Arabic still does not draw, for a reason that is not bidi: the atlas '
-    + 'bakes one isolated cell per grapheme cluster while a real Arabic face shapes contextual '
-    + 'initial, medial and final forms, so the measured run does not equal the sum of the cells and '
-    + 'the OTHER refusal flag declines it. Hebrew, Thaana, Samaritan and Mandaic have no cursive '
-    + 'joining and do render.',
+  rtlSupport: native(
+    'src/platform/glyphAtlasBidi.js',
+    'Real bidi, not a heuristic. The baker resolves UAX #9 P2/P3, W1-W7, N1/N2, I1/I2 and per-line '
+    + 'L1/L2 and emits lines in VISUAL order, cross-checked against a reference implementation over '
+    + 'all 65,536 ordered four-character runs of a mixed pool with zero order mismatches. It refuses '
+    + 'what it does not implement — explicit embedding controls, isolates, and mirrored characters '
+    + 'in right-to-left content — rather than drawing them wrong. The persisted setting forces the '
+    + 'paragraph level; left unset the text decides it. Cursive scripts draw because a cell is baked '
+    + "from the contextual form the run gives it, resolved by measurement rather than from a joining "
+    + 'table. LIMIT, recorded rather than hidden: a form is matched on its advance, because an '
+    + 'advance is the only per-candidate signal a measurement surface exposes, so a face whose two '
+    + 'forms share an advance but not an outline can be spelled with the wrong one. No browser API '
+    + 'can detect that; it belongs to the real-font parity run.',
   ),
 
   // ---- Timing and animation ------------------------------------------------------------------
