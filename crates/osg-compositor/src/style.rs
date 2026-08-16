@@ -38,7 +38,13 @@ const MAX_LINE_SPACING: f64 = 10.0;
 pub struct SubtitleStyleSpec {
     /// Font size in reference pixels.
     pub font_size: f64,
-    /// Multiplier applied to the atlas line height.
+    /// The persisted `lineHeight` multiplier.
+    ///
+    /// **Validated and carried, never applied here.** The baker owns line height: it bakes the
+    /// atlas at `fontSizePx * lineHeight` and derives every baseline from that, so the compositor
+    /// reads the baselines and multiplies nothing. It is kept on the style because the staging
+    /// boundary needs it to choose the bake — which also means a change to it invalidates the
+    /// atlas, exactly as a change to the family or the size does.
     pub line_spacing: f64,
     /// Text colour as `#rgb`, `#rrggbb` or `#rrggbbaa`.
     pub text_color: String,
@@ -242,7 +248,9 @@ impl SubtitleStyle {
         self.font_size
     }
 
-    /// The multiplier applied to the atlas line height.
+    /// The persisted `lineHeight` multiplier, for the boundary that bakes the atlas.
+    ///
+    /// The compositor does not apply it; see [`SubtitleStyleSpec::line_spacing`].
     #[must_use]
     pub const fn line_spacing(&self) -> f64 {
         self.line_spacing

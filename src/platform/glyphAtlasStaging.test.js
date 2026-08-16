@@ -88,8 +88,8 @@ const surface = {
   },
 };
 
-const bake = (text) => bakeGlyphAtlas(
-  { text, face: { family: 'Editor Sans' }, fontSizePx: 48 },
+const bake = (text, shaping = {}) => bakeGlyphAtlas(
+  { text, face: { family: 'Editor Sans' }, fontSizePx: 48, ...shaping },
   { surface }
 );
 
@@ -120,12 +120,16 @@ const acceptFrames = () => {
 };
 
 /**
- * Measured from `descriptorAtLimits()` below, not estimated: 67,108,864 pixel bytes, 293,780 bytes
- * of glyph table and a 16-byte header. Pinned as exact equalities so any change to the frame or the
- * metadata shape has to be re-measured deliberately rather than drifting.
+ * Measured from `descriptorAtLimits()` below, not estimated: 67,108,864 pixel bytes, 380,288 bytes
+ * of glyph table plus layout, and a 16-byte header. Pinned as exact equalities so any change to the
+ * frame or the metadata shape has to be re-measured deliberately rather than drifting.
+ *
+ * Forwarding the layout added 86,508 bytes to the worst case — the 64-line, 4096-cell run at every
+ * magnitude bound. Metadata is still 36% of the 1 MiB metadata bound, and the frame is still refused
+ * by the 32 MiB payload budget on its pixels alone, as it was before.
  */
-const WORST_CASE_METADATA_BYTES = 293_780;
-const WORST_CASE_TOTAL_BYTES = 67_402_660;
+const WORST_CASE_METADATA_BYTES = 380_288;
+const WORST_CASE_TOTAL_BYTES = 67_489_168;
 
 const observedCodes = new Set();
 
@@ -141,9 +145,49 @@ const rejectionOf = async (promise) => {
 };
 
 /**
+ * The widest coordinate any layout field may carry, and the widest letter spacing, so the worst case
+ * sits on the magnitude bounds rather than near them. Both are signed: a negative value is one
+ * character longer on the wire as well as the case that must not be refused.
+ */
+const LIMIT_COORDINATE = GLYPH_ATLAS_LIMITS.maxLayoutWidthPx - 0.0001;
+const LIMIT_SPACING = -(GLYPH_ATLAS_LIMITS.maxLetterSpacingPx - 0.0001);
+
+/**
+ * A layout on every bound `glyphAtlasShaping.js` publishes: the maximum 64 lines carrying the
+ * maximum 4096 cells between them, every coordinate at its magnitude bound and every pen negative,
+ * because that is both the widest encoding and the signedness this validation must admit.
+ */
+const layoutAtLimits = (glyphCount) => {
+  const cellsPerLine = GLYPH_ATLAS_LIMITS.maxLayoutCells / GLYPH_ATLAS_LIMITS.maxLayoutLines;
+  return {
+    textTransform: 'capitalize',
+    letterSpacingPx: LIMIT_SPACING,
+    maxWidthPx: GLYPH_ATLAS_LIMITS.maxLayoutWidthPx,
+    wordWrap: true,
+    textAlign: 'justify',
+    lineCount: GLYPH_ATLAS_LIMITS.maxLayoutLines,
+    widthPx: LIMIT_COORDINATE,
+    heightPx: LIMIT_COORDINATE,
+    cellAdvanceLayout: 'refused',
+    refusal: { shapingCrossesClusters: true, directionNeedsBidi: true },
+    lines: Array.from({ length: GLYPH_ATLAS_LIMITS.maxLayoutLines }, (_unused, line) => ({
+      glyphs: Array.from({ length: cellsPerLine }, (_cell, index) => (line * cellsPerLine + index) % glyphCount),
+      penXPx: Array.from({ length: cellsPerLine }, () => -LIMIT_COORDINATE),
+      advanceWidthPx: -LIMIT_COORDINATE,
+      measuredWidthPx: LIMIT_COORDINATE,
+      shapingResidualPx: -LIMIT_COORDINATE,
+      baselineYPx: LIMIT_COORDINATE,
+      justificationPx: LIMIT_COORDINATE,
+      endsParagraph: line === GLYPH_ATLAS_LIMITS.maxLayoutLines - 1,
+    })),
+  };
+};
+
+/**
  * A descriptor sitting on every bound `glyphAtlas.js` publishes: a full 4096x4096 RGBA8 atlas, the
- * maximum 1024 cells, and the maximum 32-code-point cluster per cell built from astral code points
- * so every cluster costs the full 4 UTF-8 bytes per code point.
+ * maximum 1024 cells, the maximum 32-code-point cluster per cell built from astral code points so
+ * every cluster costs the full 4 UTF-8 bytes per code point, and the layout above. Without the
+ * layout the measurement below would no longer be the worst case the wire can carry.
  */
 const descriptorAtLimits = () => {
   const dimension = GLYPH_ATLAS_LIMITS.maxAtlasDimensionPx;
@@ -168,6 +212,7 @@ const descriptorAtLimits = () => {
       runAdvanceWidthPx: 999_999.9999,
       shapingResidualPx: -1_234.5678,
       baseDirection: 'rtl',
+      letterSpacingPx: LIMIT_SPACING,
     },
     atlas: {
       widthPx: dimension,
@@ -177,6 +222,7 @@ const descriptorAtLimits = () => {
       pixelFormat: 'rgba8',
       bytesPerRow: dimension * 4,
     },
+    layout: layoutAtLimits(glyphCount),
     glyphs: Array.from({ length: glyphCount }, (_unused, index) => ({
       cluster: String.fromCodePoint(0x10000 + index).repeat(GLYPH_ATLAS_LIMITS.maxClusterCodePoints),
       direction: 'rtl',
@@ -250,8 +296,10 @@ describe('staging one baked atlas', () => {
     await createGlyphAtlasStager().stage(descriptor);
     const { metadata } = decodeFrame(invokeDesktopRaw.mock.calls[0][1]);
 
+    // `layout` is added deliberately rather than by loosening the assertion: this exact key set is
+    // what stops a path-shaped field ever appearing in the payload.
     expect(Object.keys(metadata).sort()).toEqual([
-      'atlas', 'atlasVersion', 'contentHash', 'face', 'frameVersion', 'glyphs', 'metrics',
+      'atlas', 'atlasVersion', 'contentHash', 'face', 'frameVersion', 'glyphs', 'layout', 'metrics',
     ]);
     // `cssFont` and `probes` are WebView-internal evidence; Rust never shapes text.
     expect(Object.keys(metadata.face).sort()).toEqual([
@@ -261,6 +309,20 @@ describe('staging one baked atlas', () => {
     expect(Object.keys(metadata.glyphs[0]).sort()).toEqual([
       'advanceWidthPx', 'cluster', 'direction', 'heightPx', 'originXPx', 'originYPx',
       'substituted', 'widthPx', 'xPx', 'yPx',
+    ]);
+    // The spacing the WebView actually laid out travels with the metrics, so the compositor never
+    // re-derives it from a style field something else may have scaled.
+    expect(Object.keys(metadata.metrics).sort()).toEqual([
+      'ascentPx', 'baseDirection', 'baselinePx', 'descentPx', 'letterSpacingPx', 'lineHeightPx',
+      'runAdvanceWidthPx', 'shapingResidualPx',
+    ]);
+    expect(Object.keys(metadata.layout).sort()).toEqual([
+      'cellAdvanceLayout', 'heightPx', 'letterSpacingPx', 'lineCount', 'lines', 'maxWidthPx',
+      'refusal', 'textAlign', 'textTransform', 'widthPx', 'wordWrap',
+    ]);
+    expect(Object.keys(metadata.layout.lines[0]).sort()).toEqual([
+      'advanceWidthPx', 'baselineYPx', 'endsParagraph', 'glyphs', 'justificationPx',
+      'measuredWidthPx', 'penXPx', 'shapingResidualPx',
     ]);
     expect(metadata.glyphs).toHaveLength(descriptor.atlas.glyphCount);
   });
@@ -290,6 +352,199 @@ describe('staging one baked atlas', () => {
 
     expect(handle.widthPx).toBe(0);
     expect(decodeFrame(invokeDesktopRaw.mock.calls[0][1]).pixels.length).toBe(0);
+  });
+});
+
+describe('forwarding the authoritative layout', () => {
+  /** Wrapped, justified, spaced and hard-broken: every layout field carries something to lose. */
+  const SHAPED = Object.freeze({
+    maxWidthPx: 300,
+    textAlign: 'justify',
+    letterSpacingPx: 1.5,
+    textTransform: 'uppercase',
+    wordWrap: true,
+  });
+
+  const stagedMetadata = async (descriptor) => {
+    await createGlyphAtlasStager().stage(descriptor);
+    return decodeFrame(invokeDesktopRaw.mock.calls[0][1]).metadata;
+  };
+
+  it('round-trips the whole layout, byte for byte, for a wrapped multi-line run', async () => {
+    const descriptor = bake('Preview the wrapped subtitle line\nsecond paragraph here', SHAPED);
+    expect(descriptor.layout.lineCount, 'the fixture must actually wrap').toBeGreaterThan(2);
+
+    const metadata = await stagedMetadata(descriptor);
+
+    expect(metadata.layout).toEqual(descriptor.layout);
+    // Byte for byte, not merely field for field: the encoded metadata is what Rust parses, so key
+    // order and number formatting have to survive as well as the values.
+    expect(JSON.stringify(metadata.layout)).toBe(JSON.stringify(descriptor.layout));
+    expect(metadata.metrics.letterSpacingPx).toBe(descriptor.metrics.letterSpacingPx);
+  });
+
+  it('carries the visual order the compositor draws in, cell by cell', async () => {
+    const descriptor = bake('Preview the wrapped subtitle line\nsecond paragraph here', SHAPED);
+
+    const metadata = await stagedMetadata(descriptor);
+
+    // Every cell index names a real cell, and reading the lines in order reproduces the baked run
+    // with its hard breaks removed. That is what makes `glyphs` a drawable visual order rather than
+    // an unordered set the compositor would have to re-derive.
+    const drawn = metadata.layout.lines
+      .map((line) => line.glyphs.map((cell) => metadata.glyphs[cell].cluster).join(''))
+      .join('');
+    expect(drawn).toBe('Preview the wrapped subtitle lineSecond paragraph here'.toUpperCase());
+    for (const line of metadata.layout.lines) {
+      expect(line.penXPx).toHaveLength(line.glyphs.length);
+      expect(line.glyphs.every((cell) => cell >= 0 && cell < descriptor.atlas.glyphCount)).toBe(true);
+    }
+  });
+
+  it('stages a tightened run whose spacing and pen positions are negative', async () => {
+    // The regression this file already learned once, in the other axis. Letter spacing tighter than
+    // a cluster's own advance walks the pen backwards, so `penXPx` goes negative for ordinary text.
+    // A non-negative bound would refuse it at the boundary while every other test kept passing.
+    const descriptor = bake('Tight preview', { letterSpacingPx: -30 });
+    expect(descriptor.metrics.letterSpacingPx).toBe(-30);
+    expect(descriptor.layout.letterSpacingPx).toBe(-30);
+    const [line] = descriptor.layout.lines;
+    expect(line.penXPx.filter((pen) => pen < 0).length, 'the fixture must go negative')
+      .toBeGreaterThan(0);
+
+    const handle = await createGlyphAtlasStager().stage(descriptor);
+
+    expect(handle.atlasId).toBe(atlasId(1));
+    const { metadata } = decodeFrame(invokeDesktopRaw.mock.calls[0][1]);
+    expect(metadata.layout.lines[0].penXPx).toEqual(line.penXPx);
+    expect(metadata.metrics.letterSpacingPx).toBe(-30);
+  });
+
+  it('keys deduplication on the content hash, which the layout is part of', async () => {
+    const stager = createGlyphAtlasStager();
+    const text = 'Preview the wrapped subtitle line';
+
+    const wide = await stager.stage(bake(text, { ...SHAPED, maxWidthPx: 900 }));
+    const narrow = await stager.stage(bake(text, { ...SHAPED, maxWidthPx: 200 }));
+    const again = await stager.stage(bake(text, { ...SHAPED, maxWidthPx: 900 }));
+
+    expect(narrow.contentHash).not.toBe(wide.contentHash);
+    expect(again).toBe(wide);
+    expect(invokeDesktopRaw).toHaveBeenCalledTimes(2);
+  });
+});
+
+describe('refusing a layout the compositor could not draw', () => {
+  const withFirstLine = (descriptor, changes) => ({
+    ...descriptor,
+    layout: {
+      ...descriptor.layout,
+      lines: descriptor.layout.lines.map((line, index) => (index === 0 ? { ...line, ...changes } : line)),
+    },
+  });
+
+  const flatLine = (cells) => ({
+    glyphs: Array.from({ length: cells }, () => 0),
+    penXPx: Array.from({ length: cells }, () => 0),
+    advanceWidthPx: 0,
+    measuredWidthPx: 0,
+    shapingResidualPx: 0,
+    baselineYPx: 0,
+    justificationPx: 0,
+    endsParagraph: true,
+  });
+
+  const withLines = (descriptor, lineCount, cellsPerLine) => ({
+    ...descriptor,
+    layout: {
+      ...descriptor.layout,
+      lineCount,
+      lines: Array.from({ length: lineCount }, () => flatLine(cellsPerLine)),
+    },
+  });
+
+  const refusalOf = async (descriptor) => {
+    const error = await rejectionOf(createGlyphAtlasStager().stage(descriptor));
+    expect(error.code).toBe('glyphAtlasStagingInvalidDescriptor');
+    expect(invokeDesktopRaw).not.toHaveBeenCalled();
+    // The refusal names a field path and nothing else: never a cluster, never a path.
+    expect(error.message).not.toContain(PRIVATE_TEXT);
+    expect(error.message).not.toContain('C:\\');
+    return error;
+  };
+
+  it('refuses a line that names a cell the atlas does not carry', async () => {
+    const descriptor = bake(PRIVATE_TEXT);
+    const outOfRange = withFirstLine(descriptor, {
+      glyphs: descriptor.layout.lines[0].glyphs.map(() => descriptor.atlas.glyphCount),
+    });
+
+    const error = await refusalOf(outOfRange);
+
+    expect(error.message).toBe(
+      'The glyph atlas descriptor cannot be staged: layout.lines[0].glyphs names a cell that does not exist'
+    );
+  });
+
+  it('refuses a line whose pen positions do not match its cells one for one', async () => {
+    const descriptor = bake(PRIVATE_TEXT);
+    const short = withFirstLine(descriptor, { penXPx: descriptor.layout.lines[0].penXPx.slice(1) });
+
+    const error = await refusalOf(short);
+
+    expect(error.message).toBe(
+      'The glyph atlas descriptor cannot be staged: layout.lines[0].penXPx disagrees with glyphs in length'
+    );
+  });
+
+  it('refuses a lineCount that disagrees with the lines it counts', async () => {
+    const descriptor = bake(PRIVATE_TEXT);
+
+    const error = await refusalOf({
+      ...descriptor,
+      layout: { ...descriptor.layout, lineCount: descriptor.layout.lineCount + 1 },
+    });
+
+    expect(error.message).toContain('layout.lineCount disagrees with layout.lines');
+  });
+
+  it('refuses more lines than the compositor can stage', async () => {
+    const descriptor = bake(PRIVATE_TEXT);
+
+    const error = await refusalOf(withLines(descriptor, GLYPH_ATLAS_LIMITS.maxLayoutLines + 1, 1));
+
+    expect(error.message).toContain('layout.lines is missing or exceeds the line bound');
+  });
+
+  it('refuses more laid-out cells than the compositor can stage', async () => {
+    const descriptor = bake(PRIVATE_TEXT);
+    const perLine = GLYPH_ATLAS_LIMITS.maxLayoutCells / GLYPH_ATLAS_LIMITS.maxLayoutLines;
+
+    // Every line is in bounds; only their sum is not, which is the bound the baker also enforces.
+    const withinLines = withLines(descriptor, GLYPH_ATLAS_LIMITS.maxLayoutLines, perLine);
+    await createGlyphAtlasStager().stage(withinLines);
+    invokeDesktopRaw.mockClear();
+
+    const error = await refusalOf(withLines(descriptor, GLYPH_ATLAS_LIMITS.maxLayoutLines, perLine + 1));
+
+    expect(error.message).toContain('layout exceeds the laid-out cell bound');
+  });
+
+  it('refuses a layout that is missing outright, so the compositor never guesses one', async () => {
+    const { layout: _dropped, ...withoutLayout } = bake(PRIVATE_TEXT);
+
+    const error = await refusalOf(withoutLayout);
+
+    expect(error.message).toContain('layout is not an object');
+  });
+
+  it('refuses metrics with no letter spacing, which the pen positions depend on', async () => {
+    const descriptor = bake(PRIVATE_TEXT);
+    const { letterSpacingPx: _dropped, ...metrics } = descriptor.metrics;
+
+    const error = await refusalOf({ ...descriptor, metrics });
+
+    expect(error.message).toContain('metrics.letterSpacingPx is not a finite number');
   });
 });
 

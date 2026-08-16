@@ -8,13 +8,18 @@
 // Not every test target uses every builder, and one that did would be a coincidence.
 #![allow(dead_code)]
 
-use osg_compositor::CueRun;
+/// The real-media fixtures, for the suites that drive Media Foundation and a GPU adapter.
+#[cfg(windows)]
+pub(crate) mod media;
+
+use osg_compositor::{CueLine, CueRun};
 use osg_domain::{AssetId, ProjectId};
 use osg_export::StagedText;
 use osg_render::{RenderPlan, RenderRequest};
 use osg_scene::glyph::{
-    AtlasFace, AtlasGeometry, AtlasGlyph, AtlasMetrics, Direction, FaceProbe, FaceStyle,
-    GLYPH_ATLAS_VERSION, GlyphAtlasDescriptor, PixelFormat, ProbeFamily, UncheckedGlyphAtlas,
+    AtlasFace, AtlasGeometry, AtlasGlyph, AtlasLayout, AtlasLine, AtlasMetrics, CellAdvanceVerdict,
+    Direction, FaceProbe, FaceStyle, GLYPH_ATLAS_VERSION, GlyphAtlasDescriptor, LayoutRefusal,
+    LayoutTextAlign, PixelFormat, ProbeFamily, TextTransform, UncheckedGlyphAtlas,
 };
 use osg_scene::scene::ResolvedFace;
 use serde_json::{Value, json};
@@ -137,7 +142,33 @@ pub(crate) fn unchecked_atlas(family: &str, weight: u16) -> UncheckedGlyphAtlas 
             baseline_px: 8.0,
             run_advance_width_px: 10.0,
             shaping_residual_px: 0.0,
+            letter_spacing_px: 0.0,
             base_direction: Direction::Ltr,
+        },
+        layout: AtlasLayout {
+            text_transform: TextTransform::None,
+            letter_spacing_px: 0.0,
+            max_width_px: None,
+            word_wrap: true,
+            text_align: LayoutTextAlign::Center,
+            line_count: 1,
+            width_px: 10.0,
+            height_px: 12.0,
+            cell_advance_layout: CellAdvanceVerdict::Reproduces,
+            refusal: LayoutRefusal {
+                shaping_crosses_clusters: false,
+                direction_needs_bidi: false,
+            },
+            lines: vec![AtlasLine {
+                glyphs: vec![INK_CELL],
+                pen_x_px: vec![0.0],
+                advance_width_px: 10.0,
+                measured_width_px: 10.0,
+                shaping_residual_px: 0.0,
+                baseline_y_px: 8.0,
+                justification_px: 0.0,
+                ends_paragraph: true,
+            }],
         },
         atlas: AtlasGeometry {
             width_px: ATLAS_WIDTH,
@@ -208,14 +239,27 @@ pub(crate) fn atlas(family: &str, weight: u16) -> GlyphAtlasDescriptor {
         .expect("the fixture atlas is one the baker could have produced")
 }
 
+/// The fixture run: the atlas's own layout, copied rather than re-derived.
+#[must_use]
+pub(crate) fn ink_run() -> CueRun {
+    CueRun::from_layout(atlas(FAMILY, WEIGHT).layout())
+}
+
+/// A single-line run over `glyphs`, with a pen per cell, for the tests that break one on purpose.
+#[must_use]
+pub(crate) fn run_of(glyphs: Vec<u32>) -> CueRun {
+    let pens = (0..glyphs.len())
+        .map(|index| f64::from(u32::try_from(index).unwrap_or(u32::MAX)) * 10.0)
+        .collect();
+    CueRun::single_line(CueLine::new(glyphs, pens, 10.0, 8.0))
+}
+
 /// The staged text for `cues` cues, all drawing the inked cell.
 #[must_use]
 pub(crate) fn staged_text(cues: usize) -> StagedText {
     StagedText::new(
         default_face(),
         atlas(FAMILY, WEIGHT),
-        (0..cues)
-            .map(|_| CueRun::single_line(vec![INK_CELL]))
-            .collect(),
+        (0..cues).map(|_| ink_run()).collect(),
     )
 }

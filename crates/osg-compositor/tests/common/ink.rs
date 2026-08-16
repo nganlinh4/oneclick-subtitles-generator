@@ -66,6 +66,28 @@ pub(crate) fn left_inked_column(frame: &Frame) -> Option<u32> {
         .find(|x| (0..frame.height()).any(|y| frame.pixel(*x, y).is_some_and(|pixel| pixel[3] > 0)))
 }
 
+/// The first column carrying coverage within a band of rows, or `None` when the band is empty.
+///
+/// A band rather than the whole frame because a laid-out run's lines are separate objects: asking
+/// where line two starts means asking within line two's rows.
+pub(crate) fn left_inked_column_in_rows(frame: &Frame, rows: core::ops::Range<u32>) -> Option<u32> {
+    (0..frame.width()).find(|x| {
+        rows.clone()
+            .any(|y| frame.pixel(*x, y).is_some_and(|pixel| pixel[3] > 0))
+    })
+}
+
+/// The last column carrying coverage within a band of rows, or `None` when the band is empty.
+pub(crate) fn right_inked_column_in_rows(
+    frame: &Frame,
+    rows: core::ops::Range<u32>,
+) -> Option<u32> {
+    (0..frame.width()).rev().find(|x| {
+        rows.clone()
+            .any(|y| frame.pixel(*x, y).is_some_and(|pixel| pixel[3] > 0))
+    })
+}
+
 /// The coverage-weighted centre of the ink, or `None` for an empty frame.
 pub(crate) fn ink_centre(frame: &Frame) -> Option<(f64, f64)> {
     let mut total = (0.0_f64, 0.0_f64);

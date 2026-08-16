@@ -28,9 +28,19 @@ pub(super) fn metadata_with(
             r#""face":{{"requestedFamily":"{family}","weight":400,"style":"normal","#,
             r#""fontSizePx":48,"substituted":false}},"#,
             r#""metrics":{{"ascentPx":38,"descentPx":10,"lineHeightPx":56,"baselinePx":40,"#,
-            r#""runAdvanceWidthPx":64,"shapingResidualPx":0,"baseDirection":"ltr"}},"#,
+            r#""runAdvanceWidthPx":64,"shapingResidualPx":0,"baseDirection":"ltr","#,
+            r#""letterSpacingPx":0}},"#,
             r#""atlas":{{"widthPx":{width},"heightPx":{height},"paddingPx":1,"#,
             r#""glyphCount":{count},"pixelFormat":"rgba8","bytesPerRow":{stride}}},"#,
+            // The authoritative layout the baker emits. A single line covering every cell, so a
+            // fixture with N glyphs stays internally consistent without the caller describing it.
+            r#""layout":{{"textTransform":"none","letterSpacingPx":0,"maxWidthPx":null,"#,
+            r#""wordWrap":true,"textAlign":"left","lineCount":1,"widthPx":64,"heightPx":56,"#,
+            r#""cellAdvanceLayout":"reproduces","#,
+            r#""refusal":{{"shapingCrossesClusters":false,"directionNeedsBidi":false}},"#,
+            r#""lines":[{{"glyphs":[{line_glyphs}],"penXPx":[{line_pens}],"#,
+            r#""advanceWidthPx":64,"measuredWidthPx":64,"shapingResidualPx":0,"#,
+            r#""baselineYPx":40,"justificationPx":0,"endsParagraph":true}}]}},"#,
             r#""glyphs":[{glyphs}]}}"#
         ),
         family = MARKER_FAMILY,
@@ -38,6 +48,14 @@ pub(super) fn metadata_with(
         height = height_px,
         count = glyph_count,
         stride = width_px * 4,
+        line_glyphs = (0..glyph_count)
+            .map(|index| index.to_string())
+            .collect::<Vec<_>>()
+            .join(","),
+        line_pens = (0..glyph_count)
+            .map(|index| (index * 8).to_string())
+            .collect::<Vec<_>>()
+            .join(","),
         glyphs = glyphs,
     )
 }

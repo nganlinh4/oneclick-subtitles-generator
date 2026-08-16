@@ -5,10 +5,9 @@ import {
   LEGACY_WEB_FONT_ALIASES,
   MANAGED_FONT_PACKAGE,
   MAX_FONT_FAMILY_BYTES,
-  SYSTEM_FACE_DECLARATIONS,
+  OS_FAMILY_SUBSTITUTIONS,
+  PLATFORMS,
   UNAVAILABLE_REASON,
-  classifyFontCatalog,
-  describeFontCatalogAliases,
   fontIdentityKey,
   normalizeFontWeight,
   parseFontFamilyValue,
@@ -31,78 +30,140 @@ const resolve = (overrides = {}) => resolveFontIdentity({
 
 const primaryFamily = (value) => parseFontFamilyValue(value).primary;
 
-describe('catalog facts the identity layer has to cover', () => {
-  it('measures the shipped catalog', () => {
-    const values = new Set(fontOptions.map((option) => option.value));
-    const families = new Set(fontOptions.map((option) => primaryFamily(option.value)));
-    const groups = new Set(fontOptions.map((option) => option.group));
-    expect(fontOptions).toHaveLength(121);
-    expect(values.size).toBe(116);
-    expect(families.size).toBe(115);
-    expect(groups.size).toBe(17);
+describe('every catalog option resolves to exactly one outcome', () => {
+  const outcomeOf = (result) => {
+    if (result.status === 'exact') {
+      expect(result.reason).toBeNull();
+      expect(result.identity).not.toBeNull();
+      return 'exact';
+    }
+    expect(result.status).toBe('unavailable');
+    expect(result.identity).toBeNull();
+    expect(Object.values(UNAVAILABLE_REASON)).toContain(result.reason);
+    return 'unavailable';
+  };
+
+  it('has no third outcome, on any platform, for any option', () => {
+    const seen = new Set();
+    for (const platform of PLATFORMS) {
+      for (const option of fontOptions) {
+        seen.add(outcomeOf(resolve({ fontFamily: option.value, platform })));
+      }
+    }
+    expect([...seen].sort()).toEqual(['exact', 'unavailable']);
   });
 
-  it('surfaces every legacy alias instead of hiding it', () => {
-    const aliases = describeFontCatalogAliases();
-    expect(aliases).toHaveLength(18);
-    expect(aliases).toContainEqual({ declaredFamily: 'Gotham', servedFamily: 'Inter' });
-    expect(aliases).toContainEqual({ declaredFamily: 'Calibri', servedFamily: 'Carlito' });
-    expect(new Set(aliases.map((alias) => alias.declaredFamily)))
-      .toEqual(new Set(Object.keys(LEGACY_WEB_FONT_ALIASES)));
-    // An alias is never a resolution path: it points at a different family, by definition.
-    for (const alias of aliases) expect(alias.servedFamily).not.toBe(alias.declaredFamily);
+  it('backs every exact resolution with one identified byte source', () => {
+    let exact = 0;
+    for (const option of fontOptions) {
+      const result = resolve({ fontFamily: option.value });
+      if (result.status !== 'exact') continue;
+      exact += 1;
+      const { identity } = result;
+      if (identity.source === 'managed') {
+        // Content-addressed: each subset names its own bytes by size and SHA-256.
+        expect(identity.packageId).toBe(MANAGED_FONT_PACKAGE.packageId);
+        expect(identity.bytes.length).toBeGreaterThan(0);
+        for (const file of identity.bytes) expect(file.sha256).toMatch(/^[0-9a-f]{64}$/u);
+      } else {
+        // The byte source is the installed face, and only a probe may say it is there.
+        expect(identity.source).toBe('system');
+        expect(identity.platform).toBe('windows');
+        expect(identity.declaredWeights).toContain(identity.weight);
+      }
+    }
+    expect(exact).toBe(14);
+  });
+
+  it('never resolves to a family other than the one asked for', () => {
+    for (const platform of PLATFORMS) {
+      for (const option of fontOptions) {
+        for (const fontWeight of [100, 400, 700, 900]) {
+          for (const fontStyle of ['normal', 'italic']) {
+            const result = resolve({ fontFamily: option.value, platform, fontWeight, fontStyle });
+            if (result.status !== 'exact') continue;
+            expect(result.identity.family).toBe(primaryFamily(option.value));
+            expect(result.identity.weight).toBe(fontWeight);
+            expect(result.identity.style).toBe(fontStyle);
+          }
+        }
+      }
+    }
   });
 });
 
-describe('classification', () => {
-  it('classifies every entry on the reviewed platform', () => {
-    const report = classifyFontCatalog({ platform: 'windows' });
-    expect(report.total).toBe(121);
-    expect(report.uniqueFamilies).toBe(115);
-    expect(report.counts).toEqual({ managed: 2, system: 12, unavailable: 107 });
-    expect(report.entries.filter((entry) => entry.classification === 'managed')
-      .every((entry) => entry.family === 'Google Sans')).toBe(true);
-  });
-
-  it('never claims a face on a platform whose faces are not reviewed', () => {
-    for (const platform of ['macos', 'linux']) {
-      const report = classifyFontCatalog({ platform });
-      expect(report.counts).toEqual({ managed: 2, system: 0, unavailable: 119 });
-      expect(SYSTEM_FACE_DECLARATIONS[platform].faces).toHaveLength(0);
-      expect(report.entries.find((entry) => entry.family === 'Arial').reason)
-        .toBe(UNAVAILABLE_REASON.platformNotReviewed);
-    }
-  });
-
-  it('marks the OS-substituted family unavailable and names the substitute', () => {
-    const helvetica = classifyFontCatalog({ platform: 'windows' })
-      .entries.filter((entry) => entry.family === 'Helvetica');
-    expect(helvetica).toHaveLength(2);
-    for (const entry of helvetica) {
-      expect(entry.classification).toBe('unavailable');
-      expect(entry.reason).toBe(UNAVAILABLE_REASON.osSubstituted);
-      expect(entry.osSubstitution).toEqual({
-        declaredFamily: 'Helvetica', substitutedFamily: 'Arial',
+describe('no substitution is silent', () => {
+  it('refuses every family the OS would redirect, and never returns the target instead', () => {
+    for (const [declared, substituted] of Object.entries(OS_FAMILY_SUBSTITUTIONS.windows)) {
+      const result = resolve({ fontFamily: `'${declared}', sans-serif` });
+      expect(result.status).toBe('unavailable');
+      expect(result.reason).toBe(UNAVAILABLE_REASON.osSubstituted);
+      expect(result.osSubstitution).toEqual({
+        declaredFamily: declared, substitutedFamily: substituted,
       });
+      expect(result.identity).toBeNull();
+      // Direction check: the target resolves on its own and is not itself marked substituted.
+      expect(resolve({ fontFamily: `'${substituted}', sans-serif` }).osSubstitution).toBeNull();
     }
   });
 
-  it('classifies an alias family by its own bytes, not by what the alias served', () => {
-    const entries = classifyFontCatalog({ platform: 'windows' }).entries;
-    const courier = entries.find((entry) => entry.family === 'Courier New');
-    expect(courier.classification).toBe('system');
-    expect(courier.legacyAlias).toEqual({
-      declaredFamily: 'Courier New', servedFamily: 'Courier Prime',
-    });
-    const gotham = entries.find((entry) => entry.family === 'Gotham');
-    expect(gotham.classification).toBe('unavailable');
-    expect(gotham.legacyAlias).toEqual({ declaredFamily: 'Gotham', servedFamily: 'Inter' });
+  it('never returns the family a legacy alias served in place of the one asked for', () => {
+    for (const [declared, served] of Object.entries(LEGACY_WEB_FONT_ALIASES)) {
+      const result = resolve({ fontFamily: `'${declared}', sans-serif` });
+      expect(result.legacyAlias).toEqual({ declaredFamily: declared, servedFamily: served });
+      if (result.status === 'exact') expect(result.identity.family).toBe(declared);
+      // Direction check: the served family carries no alias of its own, so disclosure is one hop.
+      expect(resolve({ fontFamily: `'${served}', sans-serif` }).legacyAlias).toBeNull();
+    }
   });
 
-  it('counts every entry exactly once', () => {
-    const report = classifyFontCatalog({ platform: 'windows' });
-    const total = Object.values(report.counts).reduce((sum, value) => sum + value, 0);
-    expect(total).toBe(report.entries.length);
+  it('discloses on the way through, so an exact result still says what was substituted', () => {
+    for (const platform of PLATFORMS) {
+      for (const option of fontOptions) {
+        const result = resolve({ fontFamily: option.value, platform });
+        const family = primaryFamily(option.value);
+        const aliased = Object.hasOwn(LEGACY_WEB_FONT_ALIASES, family);
+        expect(result.legacyAlias === null).toBe(!aliased);
+        const redirected = Object.hasOwn(OS_FAMILY_SUBSTITUTIONS[platform], family);
+        expect(result.osSubstitution === null).toBe(!redirected);
+      }
+    }
+  });
+});
+
+describe('errors carry no path', () => {
+  // Anything that looks like a filesystem location, a URL, or a file the module read.
+  const pathLike = /[\\/]|^[A-Za-z]:|\.(?:ttf|otf|woff2?|json|js)\b|https?:|file:/u;
+  const stringsIn = (value) => {
+    if (typeof value === 'string') return [value];
+    if (Array.isArray(value)) return value.flatMap(stringsIn);
+    if (value && typeof value === 'object') return Object.values(value).flatMap(stringsIn);
+    return [];
+  };
+
+  it('never adds a path, URL or file name to a refusal', () => {
+    const echoed = new Set(fontOptions.flatMap((option) => {
+      const parsed = parseFontFamilyValue(option.value);
+      return [parsed.primary, ...parsed.fallbacks];
+    }));
+    for (const platform of PLATFORMS) {
+      for (const option of fontOptions) {
+        const result = resolve({ fontFamily: option.value, platform, isSystemFaceInstalled: null });
+        for (const text of stringsIn(result)) {
+          if (echoed.has(text)) continue; // the caller's own input, returned unchanged
+          expect(text).not.toMatch(pathLike);
+        }
+      }
+    }
+  });
+
+  it('echoes a path-shaped family back and adds nothing to it', () => {
+    const fontFamily = String.raw`'C:\Windows\Fonts\arial.ttf', sans-serif`;
+    const result = resolve({ fontFamily });
+    expect(result.status).toBe('unavailable');
+    expect(result.reason).toBe(UNAVAILABLE_REASON.unknownFamily);
+    const paths = stringsIn(result).filter((text) => pathLike.test(text));
+    expect(paths).toEqual([String.raw`C:\Windows\Fonts\arial.ttf`]);
   });
 });
 

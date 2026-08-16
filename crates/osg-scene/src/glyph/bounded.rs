@@ -11,7 +11,11 @@ use core::marker::PhantomData;
 use serde::de::{Error as _, SeqAccess, Visitor};
 use serde::{Deserialize, Deserializer};
 
-use super::limits::{MAX_CLUSTER_CODE_POINTS, MAX_FACE_PROBES, MAX_GLYPH_COUNT, MAX_PIXEL_BYTES};
+use super::layout::AtlasLine;
+use super::limits::{
+    MAX_CLUSTER_CODE_POINTS, MAX_FACE_PROBES, MAX_GLYPH_COUNT, MAX_LAYOUT_CELLS, MAX_LAYOUT_LINES,
+    MAX_PIXEL_BYTES,
+};
 use super::wire::{AtlasGlyph, FaceProbe};
 
 struct BoundedSeq<T> {
@@ -101,4 +105,24 @@ pub(super) fn deserialize_pixels<'de, D: Deserializer<'de>>(
     deserializer: D,
 ) -> Result<Vec<u8>, D::Error> {
     deserializer.deserialize_byte_buf(BoundedBytes)
+}
+
+pub(super) fn deserialize_lines<'de, D: Deserializer<'de>>(
+    deserializer: D,
+) -> Result<Vec<AtlasLine>, D::Error> {
+    deserializer.deserialize_seq(BoundedSeq::new(MAX_LAYOUT_LINES, "layout lines"))
+}
+
+/// One line's cells. Bounded by the whole run's cell limit rather than a per-line one, because the
+/// baker has no per-line bound: a single unwrapped line may legitimately carry the whole run.
+pub(super) fn deserialize_line_cells<'de, D: Deserializer<'de>>(
+    deserializer: D,
+) -> Result<Vec<u32>, D::Error> {
+    deserializer.deserialize_seq(BoundedSeq::new(MAX_LAYOUT_CELLS, "layout cells"))
+}
+
+pub(super) fn deserialize_pen_positions<'de, D: Deserializer<'de>>(
+    deserializer: D,
+) -> Result<Vec<f64>, D::Error> {
+    deserializer.deserialize_seq(BoundedSeq::new(MAX_LAYOUT_CELLS, "layout pen positions"))
 }

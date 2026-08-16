@@ -15,97 +15,25 @@
 
 mod support;
 
-use std::path::{Path, PathBuf};
-use std::sync::{Mutex, MutexGuard, PoisonError};
+use std::path::PathBuf;
 
 use osg_audio::{AudioDecoder, AudioError};
-use osg_encode::{EncoderConfig, FrameBuffer, PixelLayout, VideoConfig, open_encoder};
 use osg_export::{
-    ExportCancel, ExportError, ExportJob, ExportPlan, ExportProgress, FrameRenderer, ProgressFn,
-    SilentProgress, probe_source, run_export,
+    ExportCancel, ExportError, ExportJob, ExportProgress, ProgressFn, SilentProgress, probe_source,
+    run_export,
 };
-use osg_render::RenderRequest;
-use serde_json::{Value, json};
-use support::{default_face, request_json, staged_text};
+use support::media::{
+    SOURCE_FPS, export, export_request, platform, renderer_for, request_of, source_clip,
+};
+use support::staged_text;
 use tempfile::TempDir;
-
-/// Serialises the tests that drive a graphics adapter and Media Foundation at the same time.
-///
-/// Not decoration and not a workaround for anything in this crate. Run in parallel, several of
-/// these tests each acquire their own `wgpu` device while other threads are opening Media
-/// Foundation source readers and sink writers, and that combination faulted once in five runs
-/// (`STATUS_ACCESS_VIOLATION`) inside the platform layers, with no `unsafe` code of our own
-/// anywhere in the stack. The product exports one file at a time on one thread, so the concurrency
-/// these tests were creating is not a shape it ever has; serialising them keeps the suite a signal
-/// about the exporter rather than about a driver. The observation is recorded here rather than
-/// quietly absorbed, because the next person to add a parallel adapter user needs to know.
-static PLATFORM: Mutex<()> = Mutex::new(());
-
-/// Takes the platform lock, ignoring poisoning so one failing test does not fail the rest.
-fn platform() -> MutexGuard<'static, ()> {
-    PLATFORM.lock().unwrap_or_else(PoisonError::into_inner)
-}
-
-/// The synthetic source clip: small, deterministic, and long enough to trim inside.
-const SOURCE_WIDTH: u32 = 320;
-const SOURCE_HEIGHT: u32 = 240;
-const SOURCE_FPS: u32 = 30;
-const SOURCE_FRAMES: u32 = 90;
 
 /// The composition the exports produce: 360p against a 4:3 source.
 const OUT_WIDTH: u32 = 480;
 const OUT_HEIGHT: u32 = 360;
-
 /// The narration fixture's rate and length.
 const NARRATION_RATE: u32 = 48_000;
 const NARRATION_FRAMES: usize = 3 * 48_000;
-
-/// A deterministic `RGBA8` frame of four flat grey quadrants. No RNG and no clock.
-///
-/// Flat blocks on purpose: they survive compression well enough to be read back as a number, and a
-/// neutral grey isolates the luma range, which is the thing that has to survive the round trip.
-fn synthetic_frame(index: u32) -> Vec<u8> {
-    let ramp = u8::try_from(16 + index * 2).expect("ninety steps of two stay inside a byte");
-    let capacity = (SOURCE_WIDTH * SOURCE_HEIGHT * 4) as usize;
-    let mut pixels = Vec::with_capacity(capacity);
-    for y in 0..SOURCE_HEIGHT {
-        for x in 0..SOURCE_WIDTH {
-            let level = match (x < SOURCE_WIDTH / 2, y < SOURCE_HEIGHT / 2) {
-                (true, true) => ramp,
-                (false, true) => 32,
-                (true, false) => 128,
-                (false, false) => 224,
-            };
-            pixels.extend_from_slice(&[level, level, level, 255]);
-        }
-    }
-    pixels
-}
-
-/// Encodes the synthetic source clip and returns where it landed.
-fn source_clip(directory: &TempDir, name: &str) -> PathBuf {
-    let output = directory.path().join(name);
-    let video = VideoConfig::new(SOURCE_WIDTH, SOURCE_HEIGHT, SOURCE_FPS, 1, SOURCE_FRAMES)
-        .expect("a supported source configuration")
-        .with_bitrate_kbps(8_000)
-        .expect("8 Mbit/s is in range")
-        .with_keyframe_interval(10)
-        .expect("10 frames is in range");
-
-    let mut encoder = open_encoder(&output, EncoderConfig::video_only(video))
-        .expect("Media Foundation must provide an H.264 encoder for these tests to mean anything");
-    for index in 0..SOURCE_FRAMES {
-        let pixels = synthetic_frame(index);
-        let frame = FrameBuffer::new(&pixels, SOURCE_WIDTH, SOURCE_HEIGHT, PixelLayout::Rgba8)
-            .expect("a synthetic frame is the configured size");
-        encoder
-            .write_frame(index, &frame)
-            .expect("the platform accepts a well-formed frame");
-    }
-    encoder.finalize().expect("the source container is closed");
-    assert!(output.is_file(), "the source clip was not written");
-    output
-}
 
 /// A three-second mono 16-bit `PCM` `WAV`, generated from the sample index alone.
 fn narration_clip(directory: &TempDir, name: &str) -> PathBuf {
@@ -135,61 +63,6 @@ fn narration_clip(directory: &TempDir, name: &str) -> PathBuf {
     bytes.extend_from_slice(&samples);
     std::fs::write(&output, &bytes).expect("the narration fixture is written");
     output
-}
-
-/// The fixture request, retargeted at the synthetic clip.
-fn export_request(trim_start_us: u64, trim_end_us: u64) -> Value {
-    let mut value = request_json();
-    value["settings"]["resolution"] = json!("360p");
-    value["settings"]["trimStartUs"] = json!(trim_start_us);
-    value["settings"]["trimEndUs"] = json!(trim_end_us);
-    // No fade window, so a frame is either fully inside a cue's hold or fully outside it. That
-    // removes every knife-edge from the comparisons below without changing what is being compared.
-    value["customization"]["fadeInDuration"] = json!(0);
-    value["customization"]["fadeOutDuration"] = json!(0);
-    // Large enough that the drawn cue covers an unmistakable number of pixels at 360p.
-    value["customization"]["fontSize"] = json!(96);
-    value["lyrics"] = json!([{"id":"cue-1","startUs":1_200_000,"endUs":1_700_000,"text":"A"}]);
-    value
-}
-
-fn request_of(value: Value) -> RenderRequest {
-    serde_json::from_value(value).expect("the export request deserializes")
-}
-
-fn export(
-    source: &Path,
-    output: &Path,
-    narration: Option<&Path>,
-    value: Value,
-) -> Result<osg_export::ExportSummary, ExportError> {
-    run_export(
-        ExportJob {
-            request: request_of(value),
-            source,
-            narration,
-            output,
-            text: staged_text(1),
-            cancel: ExportCancel::new(),
-        },
-        &mut SilentProgress,
-    )
-}
-
-fn renderer_for(source: &Path, value: Value) -> FrameRenderer {
-    let info = probe_source(source).expect("the synthetic clip is readable");
-    let width = u32::try_from(info.width()).expect("a small width");
-    let height = u32::try_from(info.height()).expect("a small height");
-    let duration_us =
-        u64::try_from(info.duration_100ns() / 10).expect("a positive duration in microseconds");
-    let plan = request_of(value)
-        .validate(width, height, duration_us)
-        .expect("the export request validates against the synthetic clip");
-    let plan = ExportPlan::convert(&plan, &default_face()).expect("the request converts");
-    let scene = plan
-        .compose(staged_text(1))
-        .expect("the staged text composes");
-    FrameRenderer::open(&plan, scene, source).expect("a GPU adapter and a readable source")
 }
 
 #[test]

@@ -10,10 +10,10 @@
 mod common;
 
 use common::{
-    FADING_FRAME, HEIGHT, HOLD_FRAME, INK_CELL, SILENT_FRAME, SPACE_CELL, WIDTH, staged,
-    staged_with_run, style_spec,
+    FADING_FRAME, HEIGHT, HOLD_FRAME, INK_CELL, SILENT_FRAME, SPACE_CELL, WIDTH, baked, baked_run,
+    staged, staged_with_run, style_spec,
 };
-use osg_compositor::{Compositor, CompositorError, CueRun, Frame, SubtitleStyleSpec};
+use osg_compositor::{Compositor, CompositorError, Frame, SubtitleStyleSpec};
 
 fn adapter() -> Option<Compositor> {
     match Compositor::new() {
@@ -360,21 +360,21 @@ fn the_fade_window_is_visible_before_the_cue_starts() {
     );
 }
 
-/// The pen and the line box are the compositor's own contribution to layout, and one glyph on one
-/// line exercises neither. A second line must lower the ink, and a blank cell in front of the glyph
-/// must push it right by that cell's advance.
+/// A second line must lower the ink, and a blank cell in front of the glyph must push it right by
+/// the pen the layout gave it. The placement is the layout's; what is under test here is that the
+/// compositor reaches every line and every cell of a run.
 #[test]
-fn the_pen_advances_and_lines_stack() {
+fn every_line_and_every_cell_of_a_run_is_placed() {
     let compositor = compositor!();
-    // Centred alignment would re-centre a wider line and hide the pen advance.
+    // Centred alignment would re-centre a wider line and hide the horizontal offset.
     let spec = SubtitleStyleSpec {
         text_align: "left".to_owned(),
         background_opacity: 0.0,
         ..style_spec()
     };
-    let one_line = staged_with_run(&spec, CueRun::single_line(vec![INK_CELL]));
-    let two_lines = staged_with_run(&spec, CueRun::new(vec![vec![INK_CELL], vec![INK_CELL]]));
-    let indented = staged_with_run(&spec, CueRun::single_line(vec![SPACE_CELL, INK_CELL]));
+    let one_line = staged_with_run(&spec, baked(&[INK_CELL]));
+    let two_lines = staged_with_run(&spec, baked_run(&[&[INK_CELL], &[INK_CELL]]));
+    let indented = staged_with_run(&spec, baked(&[SPACE_CELL, INK_CELL]));
 
     let single = compositor
         .render_scene(&one_line, HOLD_FRAME)

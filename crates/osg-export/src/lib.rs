@@ -32,6 +32,17 @@
 //!   of the scene, the decoder's grid, the encoder configuration and the audio mix. A source that
 //!   ends first is a reported truncation, not a shorter file.
 //!
+//! Two more are settled in the same directory and are not visible changes:
+//!
+//! * **`aspectRatio`.** The output frame is derived once, from the resolution height and the crop
+//!   region, and the persisted `crop.aspectRatio` is deliberately not read — the editor's
+//!   aspect-ratio buttons reshape the crop rectangle instead of writing that field, so the ratio is
+//!   already a property of the rectangle and reading it again would apply it twice.
+//! * **`canvasBgColor`.** An export carries no alpha, so the canvas backfill is opaque before a
+//!   frame is composed: an unset backfill composites onto [`EXPORT_CANVAS_GROUND`], and a colour
+//!   carrying alpha is refused before the source is even opened rather than encoded darker than it
+//!   previewed.
+//!
 //! # Determinism
 //!
 //! The same request produces the same frames. Encoded bytes are not bit-reproducible — hardware
@@ -88,7 +99,7 @@ mod stage;
 pub use cancel::ExportCancel;
 pub use convert::{
     AUDIO_BITRATE_KBPS, AUDIO_CHANNELS, AUDIO_SAMPLE_RATE_HZ, AudioPlan, BACKGROUND_PADDING_X,
-    BACKGROUND_PADDING_Y, ExportPlan, primary_font_family,
+    BACKGROUND_PADDING_Y, EXPORT_CANVAS_GROUND, ExportPlan, primary_font_family,
 };
 pub use error::ExportError;
 pub use frames::FrameRenderer;

@@ -43,7 +43,12 @@
 import { validate as validateUuid, version as uuidVersion } from 'uuid';
 
 import { invokeDesktopRaw } from './desktopRuntime';
-import { GLYPH_ATLAS_LIMITS, GLYPH_ATLAS_VERSION } from './glyphAtlas';
+import {
+  GLYPH_ATLAS_LIMITS,
+  GLYPH_ATLAS_VERSION,
+  TEXT_ALIGNMENTS,
+  TEXT_TRANSFORMS,
+} from './glyphAtlas';
 
 /** Version of the staging frame and of the native command contract, not of the atlas descriptor. */
 export const GLYPH_ATLAS_STAGING_VERSION = 1;
@@ -64,7 +69,7 @@ export const GLYPH_ATLAS_STAGING_LIMITS = Object.freeze({
    * revision. The worst case is measured, not estimated: see `glyphAtlasStaging.test.js`.
    */
   maxPayloadBytes: 32 * 1024 * 1024,
-  /** Metadata is the glyph table only; a megabyte is far above the measured worst case. */
+  /** Metadata is the glyph table and the layout; a megabyte is far above the measured worst case. */
   maxMetadataBytes: 1024 * 1024,
   /** Live atlases the WebView will keep handles for. Each one is a native GPU texture. */
   maxStagedAtlases: 8,
@@ -108,6 +113,9 @@ const isFiniteNumber = (value) => typeof value === 'number' && Number.isFinite(v
 // The Rust side already had this right: it models both as i32 and bounds them with `unsigned_abs`.
 const isBoundedMagnitude = (value, maximum) => Number.isInteger(value) && Math.abs(value) <= maximum;
 
+/** The same rule for a fractional quantity: signed, finite, bounded by magnitude rather than range. */
+const isFiniteMagnitude = (value, maximum) => isFiniteNumber(value) && Math.abs(value) <= maximum;
+
 const hasExactKeys = (value, expectedKeys) => {
   if (!isRecord(value)) return false;
   const keys = Object.keys(value).sort();
@@ -128,6 +136,24 @@ const CONTENT_HASH_PATTERN = /^[0-9a-f]{8}$/;
 const NATIVE_CODE_PATTERN = /^[A-Za-z][A-Za-z0-9]{0,127}$/;
 const DIRECTIONS = new Set(['ltr', 'rtl', 'neutral']);
 const STYLES = new Set(['normal', 'italic', 'oblique']);
+const CELL_ADVANCE_VERDICTS = new Set(['reproduces', 'refused']);
+/** Sorted, because `hasExactKeys` compares against a sorted key list. */
+const REFUSAL_KEYS = Object.freeze(['directionNeedsBidi', 'shapingCrossesClusters']);
+
+/**
+ * One magnitude bound for every layout coordinate, horizontal and vertical.
+ *
+ * `maxLayoutWidthPx` is the baker's own bound on the wrap arithmetic, and it also covers the
+ * vertical axis by construction: the tallest in-bounds run is `maxLayoutLines` baselines apart, and
+ * a line height large enough to exceed this bound over 64 lines is 16384px per line, far above the
+ * 512px maximum face this module can bake.
+ */
+const LAYOUT_COORDINATE_LIMIT = GLYPH_ATLAS_LIMITS.maxLayoutWidthPx;
+/** The widest of the baker's two letter-spacing bounds; the sign is meaning, not an error. */
+const LETTER_SPACING_LIMIT = Math.max(
+  Math.abs(GLYPH_ATLAS_LIMITS.minLetterSpacingPx),
+  GLYPH_ATLAS_LIMITS.maxLetterSpacingPx
+);
 
 /** `detail` is a field path. Never a value, never a cluster, never a family name. */
 const invalid = (detail) => {
@@ -157,8 +183,12 @@ const validateFace = (face) => {
   if (typeof face.substituted !== 'boolean') invalid('face.substituted is not a boolean');
 };
 
+// `letterSpacingPx` is a metric rather than a style field because the WebView already applied it to
+// every cluster advance. Rust positions from the spacing that was actually laid out, never from a
+// style value that some other stage may have scaled.
 const METRIC_FIELDS = Object.freeze([
   'ascentPx', 'descentPx', 'lineHeightPx', 'baselinePx', 'runAdvanceWidthPx', 'shapingResidualPx',
+  'letterSpacingPx',
 ]);
 
 const validateMetrics = (metrics) => {
@@ -208,6 +238,73 @@ const validateGlyph = (glyph, atlas, index) => {
   }
 };
 
+/**
+ * The authoritative layout, validated as strictly as the glyph table because Rust draws from it
+ * without recomputing any of it.
+ *
+ * `lines[].glyphs` is in VISUAL order and `penXPx[i]` is that cell's exact line-relative pen, so the
+ * compositor draws cell `glyphs[i]` at `penXPx[i]` on `baselineYPx` and never accumulates a pen from
+ * advances, re-wraps, re-aligns or reorders. Every question about where a glyph goes was answered on
+ * the WebView side, which is the only side holding the font stack and `Intl.Segmenter`.
+ *
+ * SIGNEDNESS IS THE TRAP, and this file already fell into it once with glyph origins. `penXPx` is
+ * negative whenever tightened letter spacing pulls a line left of its own start, and
+ * `letterSpacingPx` is negative for every tightened run. Both are therefore bounded by MAGNITUDE. A
+ * non-negative range check here would refuse ordinary text at the native boundary.
+ */
+const validateLayoutLine = (line, atlas, index) => {
+  const at = (field) => `layout.lines[${index}].${field}`;
+  if (!isRecord(line)) invalid(`layout.lines[${index}] is not an object`);
+  if (!Array.isArray(line.glyphs)) invalid(at('glyphs'));
+  if (!Array.isArray(line.penXPx) || line.penXPx.length !== line.glyphs.length) {
+    invalid(at('penXPx disagrees with glyphs in length'));
+  }
+  for (const cell of line.glyphs) {
+    // A line that names a cell the atlas does not carry would make Rust draw from nothing.
+    if (!isBounded(cell, 0, atlas.glyphCount - 1)) invalid(at('glyphs names a cell that does not exist'));
+  }
+  for (const pen of line.penXPx) {
+    if (!isFiniteMagnitude(pen, LAYOUT_COORDINATE_LIMIT)) invalid(at('penXPx'));
+  }
+  for (const field of [
+    'advanceWidthPx', 'measuredWidthPx', 'shapingResidualPx', 'baselineYPx', 'justificationPx',
+  ]) {
+    if (!isFiniteMagnitude(line[field], LAYOUT_COORDINATE_LIMIT)) invalid(at(field));
+  }
+  if (typeof line.endsParagraph !== 'boolean') invalid(at('endsParagraph'));
+  return line.glyphs.length;
+};
+
+const validateLayout = (layout, atlas) => {
+  if (!isRecord(layout)) invalid('layout is not an object');
+  if (!TEXT_TRANSFORMS.includes(layout.textTransform)) invalid('layout.textTransform is not a supported transform');
+  if (!TEXT_ALIGNMENTS.includes(layout.textAlign)) invalid('layout.textAlign is not a supported alignment');
+  if (typeof layout.wordWrap !== 'boolean') invalid('layout.wordWrap is not a boolean');
+  if (!isFiniteMagnitude(layout.letterSpacingPx, LETTER_SPACING_LIMIT)) invalid('layout.letterSpacingPx is out of bounds');
+  if (layout.maxWidthPx !== null
+      && (!isFiniteNumber(layout.maxWidthPx)
+        || layout.maxWidthPx <= 0
+        || layout.maxWidthPx > GLYPH_ATLAS_LIMITS.maxLayoutWidthPx)) {
+    invalid('layout.maxWidthPx is out of bounds');
+  }
+  for (const field of ['widthPx', 'heightPx']) {
+    if (!isFiniteMagnitude(layout[field], LAYOUT_COORDINATE_LIMIT)) invalid(`layout.${field} is out of bounds`);
+  }
+  if (!CELL_ADVANCE_VERDICTS.has(layout.cellAdvanceLayout)) invalid('layout.cellAdvanceLayout is not a verdict');
+  if (!hasExactKeys(layout.refusal, REFUSAL_KEYS)
+      || typeof layout.refusal.shapingCrossesClusters !== 'boolean'
+      || typeof layout.refusal.directionNeedsBidi !== 'boolean') {
+    invalid('layout.refusal is not the refusal record');
+  }
+  if (!Array.isArray(layout.lines) || layout.lines.length > GLYPH_ATLAS_LIMITS.maxLayoutLines) {
+    invalid('layout.lines is missing or exceeds the line bound');
+  }
+  if (layout.lineCount !== layout.lines.length) invalid('layout.lineCount disagrees with layout.lines');
+  let cells = 0;
+  layout.lines.forEach((line, index) => { cells += validateLayoutLine(line, atlas, index); });
+  if (cells > GLYPH_ATLAS_LIMITS.maxLayoutCells) invalid('layout exceeds the laid-out cell bound');
+};
+
 const validatePixels = (pixels, atlas) => {
   const expected = atlas.widthPx * atlas.heightPx * 4;
   if (!ArrayBuffer.isView(pixels) || pixels.BYTES_PER_ELEMENT !== 1) invalid('pixels is not a byte view');
@@ -234,6 +331,7 @@ const validateDescriptor = (descriptor) => {
     invalid('glyphs length disagrees with atlas.glyphCount');
   }
   descriptor.glyphs.forEach((glyph, index) => validateGlyph(glyph, atlas, index));
+  validateLayout(descriptor.layout, atlas);
   validatePixels(descriptor.pixels, atlas);
   return descriptor;
 };
@@ -247,6 +345,11 @@ const validateDescriptor = (descriptor) => {
  * Deliberately absent: `face.cssFont` and `face.probes`, which are WebView-internal evidence that
  * Rust has no use for because Rust never shapes text; and `glyph.codePoints`, which is derivable
  * from `cluster` and would be a second encoding of the same identity that could disagree with it.
+ *
+ * Deliberately present in full: `layout`. It is the authoritative answer to where every glyph goes,
+ * and the only alternative to forwarding it is Rust reconstructing a pen from cell advances — a
+ * second layout implementation that agrees with this one at zero letter spacing and one line, and
+ * diverges everywhere else. Every field of it is carried; nothing here summarises or re-derives.
  */
 const buildMetadata = (descriptor) => ({
   frameVersion: GLYPH_ATLAS_STAGING_VERSION,
@@ -267,6 +370,7 @@ const buildMetadata = (descriptor) => ({
     runAdvanceWidthPx: descriptor.metrics.runAdvanceWidthPx,
     shapingResidualPx: descriptor.metrics.shapingResidualPx,
     baseDirection: descriptor.metrics.baseDirection,
+    letterSpacingPx: descriptor.metrics.letterSpacingPx,
   },
   atlas: {
     widthPx: descriptor.atlas.widthPx,
@@ -275,6 +379,31 @@ const buildMetadata = (descriptor) => ({
     glyphCount: descriptor.atlas.glyphCount,
     pixelFormat: descriptor.atlas.pixelFormat,
     bytesPerRow: descriptor.atlas.bytesPerRow,
+  },
+  layout: {
+    textTransform: descriptor.layout.textTransform,
+    letterSpacingPx: descriptor.layout.letterSpacingPx,
+    maxWidthPx: descriptor.layout.maxWidthPx,
+    wordWrap: descriptor.layout.wordWrap,
+    textAlign: descriptor.layout.textAlign,
+    lineCount: descriptor.layout.lineCount,
+    widthPx: descriptor.layout.widthPx,
+    heightPx: descriptor.layout.heightPx,
+    cellAdvanceLayout: descriptor.layout.cellAdvanceLayout,
+    refusal: {
+      shapingCrossesClusters: descriptor.layout.refusal.shapingCrossesClusters,
+      directionNeedsBidi: descriptor.layout.refusal.directionNeedsBidi,
+    },
+    lines: descriptor.layout.lines.map((line) => ({
+      glyphs: [...line.glyphs],
+      penXPx: [...line.penXPx],
+      advanceWidthPx: line.advanceWidthPx,
+      measuredWidthPx: line.measuredWidthPx,
+      shapingResidualPx: line.shapingResidualPx,
+      baselineYPx: line.baselineYPx,
+      justificationPx: line.justificationPx,
+      endsParagraph: line.endsParagraph,
+    })),
   },
   glyphs: descriptor.glyphs.map((glyph) => ({
     cluster: glyph.cluster,

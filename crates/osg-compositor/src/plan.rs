@@ -32,8 +32,8 @@
 //! the emitted vertex list has a fixed order, so seeking to a frame and playing up to it produce
 //! the same bytes.
 
-use osg_scene::animation::cue_transform;
-use osg_scene::cues::active_cue_at;
+use osg_scene::animation::{AnimationType, cue_transform};
+use osg_scene::cues::{CuePhase, active_cue_at};
 use osg_scene::easing::apply_subtitle_animation_easing;
 use osg_scene::layout::resolve_subtitle_box;
 
@@ -49,6 +49,7 @@ use crate::glyphs::{
 };
 use crate::style::SubtitleStyle;
 use crate::subtitle::SubtitleScene;
+use crate::typewriter::revealed_cells;
 
 /// A pixel of slack, so an edge that lands on the quad's own boundary has room to antialias.
 const EDGE_SLACK: f64 = 1.0;
@@ -194,8 +195,10 @@ pub(crate) fn build_frame_plan(
     let height = f64::from(scene.scene().height());
     let metrics = Metrics::resolve(atlas, style, width, height);
 
-    let widths = line_widths(atlas, run, metrics.glyph_scale);
+    let widths = line_widths(run, metrics.glyph_scale);
     let text_width = widths.iter().copied().fold(0.0_f64, f64::max);
+    // The same height the layout emits — its line count times its line box — rather than a second
+    // opinion about how tall a line is.
     let text_height = line_count(run) * metrics.line_height;
 
     let boxed = resolve_subtitle_box(
@@ -237,6 +240,12 @@ pub(crate) fn build_frame_plan(
             text_top: layout.text_top,
             text_width,
             line_widths: &widths,
+            // The shipped renderer types only on the way in, and takes the raw progress rather than
+            // the eased one. Both are reproduced: with no fade-in window there is no fading-in
+            // phase, so typewriter is the no-op it has always been at `fadeInDuration: 0`.
+            revealed: (style.animation() == AnimationType::Typewriter
+                && active.phase == CuePhase::FadingIn)
+                .then(|| revealed_cells(atlas, run, active.progress)),
         },
         boxes: layout,
         outline_px: style

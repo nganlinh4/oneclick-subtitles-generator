@@ -1,13 +1,16 @@
 import { describe, expect, it } from 'vitest';
 
 import { GLYPH_ATLAS_ERROR_CODES, GLYPH_ATLAS_LIMITS, bakeGlyphAtlas } from './glyphAtlas';
+import { buildTextLayout } from './glyphAtlasShaping';
 import {
   ACUTE,
   ADVANCE_PX,
   ARABIC,
   FAMILY_EMOJI,
   HEBREW,
+  KOREAN,
   SHAPED_SIZE_PX,
+  VIETNAMESE,
   clustersOf,
   codeOf,
   createKerningSurface,
@@ -169,26 +172,160 @@ describe('bakeGlyphAtlas shaping inputs', () => {
   });
 });
 
-describe('bakeGlyphAtlas layout honesty', () => {
-  it('still refuses cell-advance layout for a right-to-left run', () => {
-    const arabic = shape({ text: ARABIC });
+/**
+ * Bidi. Every expectation below is written as the VISUAL string — what a reader sees from the left
+ * edge of the line to the right edge — because that is what `lines[].glyphs` now carries. `reversed`
+ * makes that readable in a left-to-right source file: a right-to-left word drawn left to right is
+ * its own reverse.
+ */
+describe('bakeGlyphAtlas bidi', () => {
+  const reversed = (text) => [...text].reverse().join('');
+  const handled = { shapingCrossesClusters: false, directionNeedsBidi: false };
 
-    expect(arabic.metrics.baseDirection).toBe('rtl');
-    expect(arabic.layout.cellAdvanceLayout).toBe('refused');
-    expect(arabic.layout.refusal).toEqual({ shapingCrossesClusters: false, directionNeedsBidi: true });
-
-    // First-strong says this run is left-to-right, and it still needs reordering, so wrapping it
-    // does not make its cell order visual order.
-    const mixed = shape({ text: `ok ${HEBREW}`, maxWidthPx: ADVANCE_PX * 3 });
-    expect(mixed.metrics.baseDirection).toBe('ltr');
-    expect(mixed.layout.lineCount).toBeGreaterThan(1);
-    expect(mixed.layout.refusal.directionNeedsBidi).toBe(true);
-
-    const clean = shape({ text: 'abc' });
-    expect(clean.layout.cellAdvanceLayout).toBe('reproduces');
-    expect(clean.layout.refusal).toEqual({ shapingCrossesClusters: false, directionNeedsBidi: false });
+  it('leaves a run with no right-to-left content in logical order', () => {
+    // The regression guard. Brackets are included deliberately: they are mirrored characters, and
+    // refusing them where nothing is right-to-left would break every ordinary caption.
+    for (const text of ['aa (bb) cc', VIETNAMESE, KOREAN, 'a\nb']) {
+      const descriptor = shape({ text });
+      expect(lineTextsOf(descriptor), text).toEqual(text.split('\n'));
+      expect(descriptor.layout.cellAdvanceLayout, text).toBe('reproduces');
+      expect(descriptor.layout.refusal, text).toEqual(handled);
+      expect(descriptor.layout.textAlign, text).toBe('left');
+    }
+    const spaced = shape({ text: 'aa (bb) cc' });
+    expect(spaced.layout.lines[0].penXPx)
+      .toEqual([...Array(10).keys()].map((position) => position * ADVANCE_PX));
   });
 
+  it('reverses a right-to-left run and now lets the compositor draw it', () => {
+    const arabic = shape({ text: ARABIC });
+
+    // The last letter of the word is drawn first, at pen zero, because it is the leftmost.
+    expect(lineTextsOf(arabic)).toEqual([reversed(ARABIC)]);
+    expect(arabic.layout.lines[0].penXPx).toEqual([0, 26, 52, 78, 104]);
+    expect(arabic.layout.widthPx).toBe(ADVANCE_PX * 5);
+    expect(arabic.layout.cellAdvanceLayout).toBe('reproduces');
+    expect(arabic.layout.refusal).toEqual(handled);
+    // CSS `start`: a right-to-left paragraph defaults to its right edge.
+    expect(arabic.layout.textAlign).toBe('right');
+    expect(shape({ text: ARABIC, textAlign: 'center' }).layout.textAlign).toBe('center');
+
+    expect(lineTextsOf(shape({ text: HEBREW }))).toEqual([reversed(HEBREW)]);
+  });
+
+  it('places an embedded run of the other direction at the right end of it', () => {
+    // A left-to-right paragraph: "ok" first, then the Hebrew block, which reads right to left.
+    expect(lineTextsOf(shape({ text: `ok ${HEBREW}` }))).toEqual([`ok ${reversed(HEBREW)}`]);
+    // A right-to-left paragraph: the Hebrew is first in reading order, so it is drawn last.
+    expect(lineTextsOf(shape({ text: `${HEBREW} ok` }))).toEqual([`ok ${reversed(HEBREW)}`]);
+    expect(shape({ text: `ok ${HEBREW}` }).layout.textAlign).toBe('left');
+    expect(shape({ text: `${HEBREW} ok` }).layout.textAlign).toBe('right');
+
+    // The number belongs to the right-to-left block, so it lands to the LEFT of the Hebrew word,
+    // with its own digits still reading left to right.
+    expect(lineTextsOf(shape({ text: `${HEBREW} 42` }))).toEqual([`42 ${reversed(HEBREW)}`]);
+    expect(lineTextsOf(shape({ text: `ok ${HEBREW} 42` }))).toEqual([`ok 42 ${reversed(HEBREW)}`]);
+  });
+
+  it('separates European from Arabic numerals next to right-to-left text', () => {
+    // After a Hebrew letter the digits stay European, so W5 pulls the percent sign into the number
+    // and it is drawn on the number's right, exactly where it was typed.
+    expect(lineTextsOf(shape({ text: `${HEBREW} 42%` }))).toEqual([`42% ${reversed(HEBREW)}`]);
+    // After an Arabic letter W2 makes the same digits Arabic numbers, which W5 does not attach to,
+    // so the percent sign resolves to the paragraph direction and moves to the number's LEFT.
+    expect(lineTextsOf(shape({ text: `${ARABIC} 42%` }))).toEqual([`%42 ${reversed(ARABIC)}`]);
+    // Arabic-Indic digits are already Arabic numbers, and keep their own order inside a left-to-
+    // right paragraph rather than being reversed with the block around them.
+    expect(lineTextsOf(shape({ text: 'ok ١٢٣' }))).toEqual(['ok ١٢٣']);
+  });
+
+  it('resolves neutral punctuation from the strong runs around it', () => {
+    // Between two right-to-left runs the hyphen goes with them, so it stays between the two words.
+    expect(lineTextsOf(shape({ text: `x ${HEBREW}-${HEBREW} y` })))
+      .toEqual([`x ${reversed(HEBREW)}-${reversed(HEBREW)} y`]);
+    // Between a right-to-left run and a left-to-right one it takes the PARAGRAPH direction, so the
+    // same three characters land on opposite sides of the Latin word in the two paragraphs.
+    expect(lineTextsOf(shape({ text: `${HEBREW} - abc` }))).toEqual([`abc - ${reversed(HEBREW)}`]);
+    expect(lineTextsOf(shape({ text: `ok ${HEBREW} - abc` })))
+      .toEqual([`ok ${reversed(HEBREW)} - abc`]);
+  });
+
+  it('resets a wrapped line trailing space to the paragraph level, so it hangs on the left', () => {
+    const wrapped = shape({ text: `${HEBREW} ab cd`, maxWidthPx: ADVANCE_PX * 7 });
+
+    expect(wrapped.layout.lineCount).toBe(2);
+    // Without L1 the space would keep the Latin run's level and stay stranded between "ab" and the
+    // next word; reset to the paragraph level it joins the right-to-left run and is drawn FIRST.
+    expect(lineTextsOf(wrapped)).toEqual([` ab ${reversed(HEBREW)}`, 'cd']);
+    // Hanging whitespace sits outside the alignment box, which starts at pen zero and is
+    // advanceWidthPx wide — so on a right-to-left line it takes a negative pen.
+    expect(wrapped.layout.lines[0].penXPx).toEqual([-26, 0, 26, 52, 78, 104, 130, 156]);
+    expect(wrapped.layout.lines[0].advanceWidthPx).toBe(ADVANCE_PX * 7);
+    expect(wrapped.layout.lines[1].penXPx).toEqual([0, 26]);
+    expect(wrapped.layout.cellAdvanceLayout).toBe('reproduces');
+  });
+
+  it('refuses the constructs it does not implement instead of ordering them wrongly', () => {
+    const refused = { shapingCrossesClusters: false, directionNeedsBidi: true };
+
+    // Explicit embedding and override controls: X1-X8 are not implemented, in either direction of
+    // text, so a run carrying one keeps logical order and says the order is not reproduced.
+    const embedded = shape({ text: 'abc‫def‬' });
+    expect(embedded.layout.cellAdvanceLayout).toBe('refused');
+    expect(embedded.layout.refusal).toEqual(refused);
+    expect(lineTextsOf(embedded)).toEqual(['abc‫def‬']);
+
+    // Isolates: same reason.
+    expect(shape({ text: `${HEBREW}⁦abc⁩` }).layout.refusal).toEqual(refused);
+
+    // A mirrored character in a run with right-to-left content needs a glyph the atlas never baked,
+    // so the run is refused rather than drawn with the wrong bracket.
+    expect(shape({ text: `(${HEBREW})` }).layout.refusal).toEqual(refused);
+    expect(shape({ text: `${HEBREW} <ok>` }).layout.refusal).toEqual(refused);
+    // The same brackets with nothing right-to-left need no mirroring at all.
+    expect(shape({ text: '(abc)' }).layout.refusal).toEqual(handled);
+  });
+
+  it('takes a forced paragraph direction, which is the seam rtlSupport lands on', () => {
+    const text = 'a b ';
+    const clusters = [...text];
+    const unique = [...new Set(clusters)].sort();
+    const layoutOf = (baseDirection) => buildTextLayout({
+      text,
+      clusters,
+      cellIndexOf: new Map(unique.map((cluster, index) => [cluster, index])),
+      advanceOf: new Map(unique.map((cluster) => [cluster, ADVANCE_PX])),
+      textTransform: 'none',
+      letterSpacingPx: 0,
+      maxWidthPx: null,
+      wordWrap: true,
+      textAlign: 'left',
+      lineHeightPx: 50,
+      baselinePx: 40.5,
+      measureLineWidth: (line) => [...line].length * ADVANCE_PX,
+      runShapingResidualPx: 0,
+      directionNeedsBidi: false,
+      baseDirection,
+      limits: GLYPH_ATLAS_LIMITS,
+    });
+
+    // Nothing in the text is right-to-left, so only the forced paragraph level moves it.
+    const auto = layoutOf(null);
+    expect(auto.lines[0].penXPx).toEqual([0, 26, 52, 78]);
+    expect(auto.textAlign).toBe('left');
+
+    const forced = layoutOf('rtl');
+    // The two Latin letters keep their own order; the trailing space moves to the far left and
+    // hangs, and the default alignment becomes the right edge.
+    expect(forced.lines[0].glyphs.map((cell) => unique[cell]).join('')).toBe(' a b');
+    expect(forced.lines[0].penXPx).toEqual([-26, 0, 26, 52]);
+    expect(forced.lines[0].advanceWidthPx).toBe(ADVANCE_PX * 3);
+    expect(forced.textAlign).toBe('right');
+    expect(forced.cellAdvanceLayout).toBe('reproduces');
+  });
+});
+
+describe('bakeGlyphAtlas layout honesty', () => {
   it('reports a per-line residual when shaping crosses cluster boundaries', () => {
     const surface = createKerningSurface();
     const kerned = bakeGlyphAtlas(

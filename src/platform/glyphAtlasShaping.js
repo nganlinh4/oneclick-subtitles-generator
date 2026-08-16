@@ -26,7 +26,21 @@
  *   False therefore means no soft break at all, not "break differently".
  * - `textAlign` is carried, and only `justify` changes what this module emits. Left, centre and
  *   right are decided by the compositor from the box anchor, which is where the shipped renderer
- *   decided them too.
+ *   decided them too. The one value this module resolves is the default of a right-to-left
+ *   paragraph: `left` becomes `right`, which is what CSS `start` means once the direction is
+ *   right-to-left.
+ * - `baseDirection` forces the paragraph embedding level instead of deriving it from the first
+ *   strong character. It is the seam the persisted `rtlSupport` boolean lands on, because the
+ *   shipped renderer set CSS `direction` from that boolean rather than letting the text decide.
+ *
+ * BIDI. `glyphAtlasBidi.js` resolves the Unicode Bidirectional Algorithm subset this module needs,
+ * and `lines[].glyphs` and `lines[].penXPx` leave here in VISUAL order — left to right as drawn.
+ * Nothing downstream reorders, re-wraps or re-aligns. Line breaking still happens in LOGICAL order,
+ * because a break opportunity is a property of the text and not of the picture; UAX #9 agrees, and
+ * applies its own L1 and L2 per line AFTER breaking, which is exactly what happens here. Everything
+ * a line reports — pen positions, its alignment width, justification — is measured on the reordered
+ * result. A construct the bidi subset refuses keeps logical order and says so, so the compositor
+ * declines to draw it rather than drawing it wrong.
  *
  * WHAT IS DELIBERATELY NOT HERE:
  *
@@ -34,13 +48,12 @@
  *   shipped renderer never applied it, so applying it now would silently truncate text in projects
  *   that already look the way their author left them. This module has no `maxLines` input; the line
  *   cap it does enforce is a structural bound on the payload, not a user setting.
- * - Bidi reordering. Direction is classified first-strong and carried as data. A run that needs
- *   reordering is reported as refusing cell-advance layout, exactly as `osg-scene` refuses it.
  *
  * Determinism: no clocks, no RNG. `Intl.Segmenter` is pinned to one locale so segmentation cannot
  * follow the host UI language, and case mapping uses the locale-independent `toUpperCase`.
  */
 
+import { analyzeRunBidi, visualOrderOfLine } from './glyphAtlasBidi';
 import { fail, round4 } from './glyphAtlasCore';
 
 /** The shipped `textTransform` vocabulary, from `subtitleCustomizationDefaults`. */
@@ -174,9 +187,9 @@ const breakOpportunities = (text, clusters) => {
 /**
  * Break a run into lines and emit what the compositor needs to draw them.
  *
- * Returns the layout. `lines[].glyphs` index the atlas cells in the order they are drawn, and
- * `lines[].penXPx` is the line-relative pen for each of those cells, so letter spacing and
- * justification are already applied and nothing downstream recomputes them.
+ * Returns the layout. `lines[].glyphs` index the atlas cells in the order they are DRAWN, left to
+ * right, and `lines[].penXPx` is the line-relative pen for each of those cells, so bidi reordering,
+ * letter spacing and justification are already applied and nothing downstream recomputes them.
  */
 export const buildTextLayout = ({
   text,
@@ -193,6 +206,7 @@ export const buildTextLayout = ({
   measureLineWidth,
   runShapingResidualPx,
   directionNeedsBidi,
+  baseDirection = null,
   limits,
 }) => {
   const placeable = clusters.filter((cluster) => !isLineSeparator(cluster)).length;
@@ -205,6 +219,12 @@ export const buildTextLayout = ({
   const wrapWidthPx = wordWrap ? maxWidthPx : null;
   const opportunities = clusters.length === 0 ? new Set() : breakOpportunities(text, clusters);
   const advanceAt = (index) => advanceOf.get(clusters[index]) + letterSpacingPx;
+
+  // Resolved once for the whole run, because the run is one paragraph: a hard line break inside a
+  // cue must not flip the cue's direction halfway down. `directionNeedsBidi` is the baker's own
+  // coarse right-to-left signal, and it only ever widens what the bidi subset refuses.
+  const bidi = analyzeRunBidi(clusters, { rtlHint: directionNeedsBidi, baseDirection });
+  const reordering = bidi.refusedConstruct === null && bidi.reorders;
 
   /** Greedy fill, one hard-broken paragraph at a time. */
   const wrapParagraph = (indices) => {
@@ -260,12 +280,30 @@ export const buildTextLayout = ({
       && wrapWidthPx !== null && gaps.size > 0 && wrapWidthPx > contentAdvancePx;
     const justificationPx = justifiable ? round4((wrapWidthPx - contentAdvancePx) / gaps.size) : 0;
 
-    const penXPx = [];
+    // Visual order, or the logical order it collapses to when nothing needs reordering — which is
+    // every Latin run, and is why the common path is byte-identical to the layout before bidi.
+    const order = reordering
+      ? visualOrderOfLine({ indices, analysis: bidi })
+      : indices.map((_, position) => position);
+
+    const drawnPenXPx = new Array(order.length);
     let pen = 0;
-    for (const [position, index] of indices.entries()) {
-      penXPx.push(round4(pen));
-      pen += advanceAt(index) + (gaps.has(position) ? justificationPx : 0);
+    for (const [drawn, position] of order.entries()) {
+      drawnPenXPx[drawn] = pen;
+      pen += advanceAt(indices[position]) + (gaps.has(position) ? justificationPx : 0);
     }
+    // Pen zero is the left edge of the line's alignment box, which is what `advanceWidthPx` measures
+    // and what the compositor anchors. Trailing whitespace hangs outside that box: past the right
+    // edge in a left-to-right line, and — once L1 has reset it to the paragraph level — past the
+    // LEFT edge in a right-to-left one, where it is drawn first and takes a negative pen.
+    let originPx = 0;
+    for (const [drawn, position] of order.entries()) {
+      if (position < contentEnd) {
+        originPx = drawnPenXPx[drawn];
+        break;
+      }
+    }
+    const penXPx = drawnPenXPx.map((value) => round4(value - originPx));
 
     const lineText = indices.map((index) => clusters[index]).join('');
     const measuredWidthPx = lineText.length === 0 ? 0 : round4(measureLineWidth(lineText));
@@ -274,7 +312,7 @@ export const buildTextLayout = ({
       0
     );
     return {
-      glyphs: indices.map((index) => cellIndexOf.get(clusters[index])),
+      glyphs: order.map((position) => cellIndexOf.get(clusters[indices[position]])),
       penXPx,
       // What alignment measures: trailing spaces hang, so they are not part of the line's width.
       advanceWidthPx: round4(contentAdvancePx + justificationPx * gaps.size),
@@ -308,20 +346,26 @@ export const buildTextLayout = ({
 
   const shapingCrossesClusters = runShapingResidualPx !== 0
     || lines.some((line) => line.shapingResidualPx !== 0);
+  // What the run carries that this module cannot turn into visual order — explicit embedding
+  // controls, isolates, or a mirrored character in right-to-left text. Reordering itself is no
+  // longer a reason to refuse.
+  const bidiRefused = bidi.refusedConstruct !== null;
   return {
     textTransform,
     letterSpacingPx: round4(letterSpacingPx),
     maxWidthPx: maxWidthPx === null ? null : round4(maxWidthPx),
     wordWrap,
-    textAlign,
+    // CSS `start`: the default edge of a right-to-left paragraph is its right one. Only the default
+    // is resolved; centre, right and justify are the caller's explicit choice and stay untouched.
+    textAlign: bidi.paragraphLevel === 1 && !bidiRefused && textAlign === 'left' ? 'right' : textAlign,
     lineCount: lines.length,
     widthPx: lines.reduce((widest, line) => Math.max(widest, line.advanceWidthPx), 0),
     heightPx: round4(lines.length * lineHeightPx),
     // The same verdict `GlyphAtlasDescriptor::cell_advance_layout` reaches in Rust, stated here so
     // the two cannot drift. Wrapping does not weaken it: the pen positions are measured advances,
-    // and a run whose shaping crosses clusters or needs bidi is still refused.
-    cellAdvanceLayout: shapingCrossesClusters || directionNeedsBidi ? 'refused' : 'reproduces',
-    refusal: { shapingCrossesClusters, directionNeedsBidi },
+    // and a run whose shaping crosses clusters or whose bidi this module refuses is still refused.
+    cellAdvanceLayout: shapingCrossesClusters || bidiRefused ? 'refused' : 'reproduces',
+    refusal: { shapingCrossesClusters, directionNeedsBidi: bidiRefused },
     lines,
   };
 };

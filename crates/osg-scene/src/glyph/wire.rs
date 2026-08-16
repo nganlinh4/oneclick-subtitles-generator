@@ -9,6 +9,7 @@ use serde::{Deserialize, Serialize};
 use super::bounded::{
     deserialize_code_points, deserialize_glyphs, deserialize_pixels, deserialize_probes,
 };
+use super::layout::AtlasLayout;
 
 /// The generic family one substitution probe was measured against.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
@@ -34,7 +35,12 @@ pub enum FaceStyle {
     Oblique,
 }
 
-/// A first-strong direction classification. Not a bidi resolution: the compositor owns reordering.
+/// A first-strong direction classification, per cell and per run.
+///
+/// Not a bidi resolution, and not the draw order either: the order cells are drawn in is
+/// [`AtlasLine::glyphs`], which the baker emits in visual order.
+///
+/// [`AtlasLine::glyphs`]: super::layout::AtlasLine::glyphs
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "lowercase")]
 pub enum Direction {
@@ -119,6 +125,13 @@ pub struct AtlasMetrics {
     pub shaping_residual_px: f64,
     /// The run's first-strong direction — a classification, not a bidi resolution.
     pub base_direction: Direction,
+    /// The spacing the layout added to every cluster advance, in pixels.
+    ///
+    /// **Signed.** Letter spacing tightens as well as loosens, so this is validated as finite and
+    /// in range like [`Self::shaping_residual_px`], never as non-negative like [`Self::ascent_px`].
+    /// It is carried in the metrics so a consumer positions from the spacing the `WebView` applied
+    /// rather than re-deriving it from a style field that was scaled somewhere else.
+    pub letter_spacing_px: f64,
 }
 
 /// The atlas geometry the pixel buffer is addressed with.
@@ -185,6 +198,10 @@ pub struct UncheckedGlyphAtlas {
     pub metrics: AtlasMetrics,
     /// The atlas geometry.
     pub atlas: AtlasGeometry,
+    /// The authoritative layout: where every cell is drawn, and on which baseline.
+    ///
+    /// A consumer places cells from this and nothing else. See [`super::layout`].
+    pub layout: AtlasLayout,
     /// The rasterized cells, in the baker's strictly increasing cluster order.
     #[serde(deserialize_with = "deserialize_glyphs")]
     pub glyphs: Vec<AtlasGlyph>,

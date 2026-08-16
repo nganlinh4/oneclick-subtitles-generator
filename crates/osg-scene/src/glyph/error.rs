@@ -37,6 +37,20 @@ pub enum GlyphAtlasError {
     UnsupportedTextLength,
     /// A glyph's source rectangle is not wholly inside the atlas.
     GlyphOutsideAtlas,
+    /// A layout number is not finite, or a line carries a pen position for a cell it does not draw.
+    UnsupportedLayout,
+    /// The layout carries more lines or more placed cells than is supported.
+    UnsupportedLayoutSize,
+    /// The layout's wrap width is not a positive finite width this build accepts.
+    UnsupportedLayoutWidth,
+    /// The letter spacing is not a finite value inside the supported range.
+    UnsupportedLetterSpacing,
+    /// A laid-out line draws a cell the atlas does not contain.
+    LayoutCellIndex,
+    /// The layout's line baselines do not strictly descend.
+    UnorderedLayoutBaselines,
+    /// The declared line count disagrees with the layout's lines.
+    LayoutLineCountMismatch,
     /// The declared glyph count disagrees with the glyph list.
     GlyphCountMismatch,
     /// The pixel buffer is not exactly the declared height times the declared row stride.
@@ -64,6 +78,15 @@ impl core::fmt::Display for GlyphAtlasError {
             Self::UnorderedGlyphs => "the glyph atlas cells are not in cluster order",
             Self::UnsupportedTextLength => "the glyph atlas clusters are longer than is supported",
             Self::GlyphOutsideAtlas => "a glyph atlas cell lies outside the atlas",
+            Self::UnsupportedLayout => "a glyph atlas layout value is not supported",
+            Self::UnsupportedLayoutSize => "the glyph atlas layout is larger than is supported",
+            Self::UnsupportedLayoutWidth => "the glyph atlas layout wrap width is not supported",
+            Self::UnsupportedLetterSpacing => "the glyph atlas letter spacing is not supported",
+            Self::LayoutCellIndex => "a glyph atlas layout line draws a cell that does not exist",
+            Self::UnorderedLayoutBaselines => "the glyph atlas layout baselines do not descend",
+            Self::LayoutLineCountMismatch => {
+                "the glyph atlas layout line count disagrees with its lines"
+            }
             Self::GlyphCountMismatch => "the glyph atlas cell count disagrees with its cells",
             Self::PixelBufferMismatch => "the glyph atlas pixel buffer disagrees with its geometry",
             Self::DerivedFieldMismatch => "a derived glyph atlas field disagrees with its source",

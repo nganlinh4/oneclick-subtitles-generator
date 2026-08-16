@@ -16,12 +16,13 @@ pub(crate) mod frames;
 pub(crate) mod ink;
 
 use osg_compositor::{
-    Crop, CropSpec, CueRun, SourceFrame, SubtitleDecorationSpec, SubtitleScene, SubtitleStyle,
-    SubtitleStyleSpec, VideoUnderlay,
+    Crop, CropSpec, CueLine, CueRun, SourceFrame, SubtitleDecorationSpec, SubtitleScene,
+    SubtitleStyle, SubtitleStyleSpec, VideoUnderlay,
 };
 use osg_scene::glyph::{
-    AtlasFace, AtlasGeometry, AtlasGlyph, AtlasMetrics, Direction, FaceProbe, FaceStyle,
-    GLYPH_ATLAS_VERSION, GlyphAtlasDescriptor, PixelFormat, ProbeFamily, UncheckedGlyphAtlas,
+    AtlasFace, AtlasGeometry, AtlasGlyph, AtlasLayout, AtlasLine, AtlasMetrics, CellAdvanceVerdict,
+    Direction, FaceProbe, FaceStyle, GLYPH_ATLAS_VERSION, GlyphAtlasDescriptor, LayoutRefusal,
+    LayoutTextAlign, PixelFormat, ProbeFamily, TextTransform, UncheckedGlyphAtlas,
 };
 use osg_scene::scene::{ResolvedFace, Scene, SceneCue};
 use osg_scene::timeline::{ExactTime, FrameTimeline};
@@ -37,6 +38,13 @@ pub(crate) const BAKE_SIZE: f64 = 24.0;
 pub(crate) const SPACE_CELL: u32 = 0;
 /// The inked cell, an 8x8 opaque block.
 pub(crate) const INK_CELL: u32 = 1;
+
+/// Each fixture cell's advance in atlas pixels, indexed by cell.
+pub(crate) const CELL_ADVANCE_PX: [f64; 2] = [4.0, 10.0];
+/// The fixture face's ascent, and therefore its first baseline, in atlas pixels.
+pub(crate) const BASELINE_PX: f64 = 8.0;
+/// The fixture face's line box in atlas pixels.
+pub(crate) const LINE_HEIGHT_PX: f64 = 12.0;
 
 const ATLAS_WIDTH: u32 = 16;
 const ATLAS_HEIGHT: u32 = 8;
@@ -84,13 +92,14 @@ pub(crate) fn unchecked_atlas(family: &str, weight: u16) -> UncheckedGlyphAtlas 
             ],
         },
         metrics: AtlasMetrics {
-            ascent_px: 8.0,
+            ascent_px: BASELINE_PX,
             descent_px: 2.0,
-            line_height_px: 12.0,
-            baseline_px: 8.0,
+            line_height_px: LINE_HEIGHT_PX,
+            baseline_px: BASELINE_PX,
             run_advance_width_px: 10.0,
             shaping_residual_px: 0.0,
             base_direction: Direction::Ltr,
+            letter_spacing_px: 0.0,
         },
         atlas: AtlasGeometry {
             width_px: ATLAS_WIDTH,
@@ -100,6 +109,8 @@ pub(crate) fn unchecked_atlas(family: &str, weight: u16) -> UncheckedGlyphAtlas 
             pixel_format: PixelFormat::Rgba8,
             bytes_per_row: BYTES_PER_ROW,
         },
+        // The cue's own text, "A", laid out: one line, one cell, at the pen the baker emitted.
+        layout: atlas_layout(vec![atlas_line(0, &[INK_CELL], &[0.0])]),
         // Cluster order is the baker's: strictly increasing by UTF-16 code unit.
         glyphs: vec![
             AtlasGlyph {
@@ -132,6 +143,97 @@ pub(crate) fn unchecked_atlas(family: &str, weight: u16) -> UncheckedGlyphAtlas 
         content_hash: "0000abcd".to_owned(),
         pixels: ink_pixels(),
     }
+}
+
+/// One fixture cell's advance in atlas pixels.
+fn advance_of(cell: u32) -> f64 {
+    usize::try_from(cell)
+        .ok()
+        .and_then(|cell| CELL_ADVANCE_PX.get(cell))
+        .copied()
+        .unwrap_or(0.0)
+}
+
+/// One laid-out line at the pen positions given, on the baseline of line `number`.
+///
+/// The pens are the caller's, never derived from the advances, because the whole point of the
+/// contract is that a pen need not be the accumulation of anything.
+pub(crate) fn atlas_line(number: u32, cells: &[u32], pens: &[f64]) -> AtlasLine {
+    let advance_width_px = cells
+        .iter()
+        .zip(pens)
+        .map(|(cell, pen)| pen + advance_of(*cell))
+        .fold(0.0_f64, f64::max);
+    AtlasLine {
+        glyphs: cells.to_vec(),
+        pen_x_px: pens.to_vec(),
+        advance_width_px,
+        measured_width_px: advance_width_px,
+        shaping_residual_px: 0.0,
+        baseline_y_px: f64::from(number).mul_add(LINE_HEIGHT_PX, BASELINE_PX),
+        justification_px: 0.0,
+        ends_paragraph: true,
+    }
+}
+
+/// The layout around a set of lines, with every derived field re-derived from them.
+pub(crate) fn atlas_layout(lines: Vec<AtlasLine>) -> AtlasLayout {
+    let count = u32::try_from(lines.len()).expect("a line count");
+    AtlasLayout {
+        text_transform: TextTransform::None,
+        letter_spacing_px: 0.0,
+        max_width_px: None,
+        word_wrap: true,
+        text_align: LayoutTextAlign::Left,
+        line_count: count,
+        width_px: lines
+            .iter()
+            .fold(0.0_f64, |widest, line| widest.max(line.advance_width_px)),
+        height_px: f64::from(count) * LINE_HEIGHT_PX,
+        cell_advance_layout: CellAdvanceVerdict::Reproduces,
+        refusal: LayoutRefusal {
+            shaping_crosses_clusters: false,
+            direction_needs_bidi: false,
+        },
+        lines,
+    }
+}
+
+/// The run the baker would emit for these cells at the fixture's own advances.
+///
+/// This accumulation lives in the fixture, standing in for the baker, and nowhere in the crate: the
+/// compositor reads the pens it is given.
+pub(crate) fn baked_line(number: u32, cells: &[u32]) -> CueLine {
+    let mut pens = Vec::with_capacity(cells.len());
+    let mut pen = 0.0_f64;
+    for cell in cells {
+        pens.push(pen);
+        // A cell the atlas does not have advances nothing, so a test can stage an out-of-range
+        // index and get the refusal it is asking about rather than a panic in the fixture.
+        pen += advance_of(*cell);
+    }
+    CueLine::new(
+        cells.to_vec(),
+        pens,
+        pen,
+        f64::from(number).mul_add(LINE_HEIGHT_PX, BASELINE_PX),
+    )
+}
+
+/// A run of baked lines, top to bottom.
+pub(crate) fn baked_run(lines: &[&[u32]]) -> CueRun {
+    CueRun::new(
+        lines
+            .iter()
+            .enumerate()
+            .map(|(number, cells)| baked_line(u32::try_from(number).expect("a line number"), cells))
+            .collect(),
+    )
+}
+
+/// A single-line baked run.
+pub(crate) fn baked(cells: &[u32]) -> CueRun {
+    baked_run(&[cells])
 }
 
 fn probe(family: ProbeFamily, alone: f64, chained: f64) -> FaceProbe {
@@ -235,7 +337,7 @@ pub(crate) fn decorated_over_opaque_box(decoration: SubtitleDecorationSpec) -> S
 
 /// The fixture with no inked glyph at all, so a box, a border or a glow is the only thing drawn.
 pub(crate) fn boxed_only(spec: &SubtitleStyleSpec) -> SubtitleScene {
-    staged_with_run(spec, CueRun::single_line(vec![SPACE_CELL]))
+    staged_with_run(spec, baked(&[SPACE_CELL]))
 }
 
 /// A half-opaque black box pixel, as the compositor writes it: the background colour at 50%, which
@@ -245,9 +347,9 @@ pub(crate) const HALF_BLACK: [u8; 4] = [0, 0, 0, 127];
 /// A fully opaque black box pixel.
 pub(crate) const OPAQUE_BLACK: [u8; 4] = [0, 0, 0, 255];
 
-/// The whole fixture, staged and checked.
+/// The whole fixture, staged and checked, with the run the atlas's own layout emitted.
 pub(crate) fn staged(spec: &SubtitleStyleSpec) -> SubtitleScene {
-    staged_with_run(spec, CueRun::single_line(vec![INK_CELL]))
+    staged_with_run(spec, CueRun::from_layout(atlas(FAMILY, WEIGHT).layout()))
 }
 
 /// The fixture with a caller-chosen run, for the layout paths one glyph cannot reach.

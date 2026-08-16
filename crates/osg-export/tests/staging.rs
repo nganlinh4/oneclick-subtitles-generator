@@ -11,14 +11,14 @@
 
 mod support;
 
-use osg_compositor::{CueRun, MAX_RUN_GLYPHS};
+use osg_compositor::{CanvasBackground, MAX_RUN_GLYPHS};
 use osg_encode::{EncodeError, MfStage};
-use osg_export::{ExportError, ExportPlan, StagedText, primary_font_family};
-use osg_scene::glyph::{Direction, GlyphAtlasDescriptor};
+use osg_export::{EXPORT_CANVAS_GROUND, ExportError, ExportPlan, StagedText, primary_font_family};
+use osg_scene::glyph::{CellAdvanceVerdict, Direction, GlyphAtlasDescriptor};
 use serde_json::json;
 use support::{
     FAMILY, INK_CELL, SOURCE_DURATION_US, SOURCE_HEIGHT, SOURCE_WIDTH, WEIGHT, atlas, default_face,
-    default_plan, face, plan, request_json, staged_text, unchecked_atlas,
+    default_plan, face, ink_run, plan, request_json, run_of, staged_text, unchecked_atlas,
 };
 
 fn converted(value: serde_json::Value) -> ExportPlan {
@@ -116,6 +116,58 @@ fn both_canvas_modes_and_both_flips_convert() {
 }
 
 #[test]
+fn the_canvas_backfill_an_export_composes_onto_is_always_opaque() {
+    // The ledger's open question on `canvasBgColor`, closed in the conversion rather than left to
+    // the encoder. An export carries no alpha, so the backfill is decided here: an unset one gets
+    // the explicit ground, an opaque one is untouched, and a translucent one is refused.
+    let unset = converted(request_json()).crop();
+    let CanvasBackground::Solid(ground) = unset.background() else {
+        panic!("an unset backfill must resolve to the explicit ground");
+    };
+    assert_eq!(
+        (ground.red, ground.green, ground.blue, ground.alpha),
+        (0, 0, 0, 255)
+    );
+    assert_eq!(EXPORT_CANVAS_GROUND, "#000000");
+
+    let mut chosen = request_json();
+    chosen["crop"]["canvasBgMode"] = json!("solid");
+    chosen["crop"]["canvasBgColor"] = json!("#102030");
+    let CanvasBackground::Solid(colour) = converted(chosen).crop().background() else {
+        panic!("a chosen colour stays solid");
+    };
+    assert_eq!(
+        (colour.red, colour.green, colour.blue, colour.alpha),
+        (0x10, 0x20, 0x30, 255),
+        "an opaque colour is carried across untouched"
+    );
+}
+
+#[test]
+fn a_translucent_canvas_colour_is_refused_rather_than_encoded_over_black() {
+    // The colour control the editor offers is `<input type="color">`, which cannot produce alpha at
+    // all, so this can only arrive from a hand-edited or third-party project. Exporting it would
+    // encode the premultiplied colour over black — visibly darker than it previewed — and say
+    // nothing, which is the failure mode this migration exists to remove.
+    for colour in ["#10203040", "#1234", "#00000000"] {
+        let mut value = request_json();
+        value["crop"]["canvasBgMode"] = json!("solid");
+        value["crop"]["canvasBgColor"] = json!(colour);
+        assert!(
+            matches!(refusal(value), ExportError::CanvasBackgroundNotOpaque),
+            "{colour} was not refused"
+        );
+    }
+
+    // A blurred backfill has no colour to be translucent, and is a copy of an opaque source, so it
+    // is unaffected even when a stale colour is still stored beside it.
+    let mut blurred = request_json();
+    blurred["crop"]["canvasBgMode"] = json!("blur");
+    blurred["crop"]["canvasBgColor"] = json!("#10203040");
+    converted(blurred);
+}
+
+#[test]
 fn a_style_value_outside_what_the_compositor_draws_is_refused_by_name() {
     // The contract accepts margins from -10000 and custom placements from -1000; the compositor
     // draws neither. Both refusals are the compositor's own, named, rather than a clamp that would
@@ -173,24 +225,24 @@ fn a_resolved_weight_that_differs_from_the_request_is_carried_rather_than_refuse
 fn the_staged_atlas_must_belong_to_the_scene_and_support_cell_advance_layout() {
     let plan = converted(request_json());
 
-    let mismatched = StagedText::new(
-        default_face(),
-        atlas("Georgia", WEIGHT),
-        vec![CueRun::single_line(vec![INK_CELL])],
-    );
+    let mismatched = StagedText::new(default_face(), atlas("Georgia", WEIGHT), vec![ink_run()]);
     assert!(matches!(
         plan.compose(mismatched)
             .expect_err("a foreign atlas is refused"),
         ExportError::AtlasFaceMismatch
     ));
 
+    // The verdict travels on the wire now, and the descriptor refuses one whose evidence and
+    // conclusion disagree, so a measured residual has to arrive with the refusal it implies.
     let mut residual = unchecked_atlas(FAMILY, WEIGHT);
     residual.metrics.shaping_residual_px = 0.5;
+    residual.layout.refusal.shaping_crosses_clusters = true;
+    residual.layout.cell_advance_layout = CellAdvanceVerdict::Refused;
     let refused = StagedText::new(
         default_face(),
         GlyphAtlasDescriptor::try_from(residual)
             .expect("a measured residual is a legal descriptor"),
-        vec![CueRun::single_line(vec![INK_CELL])],
+        vec![ink_run()],
     );
     match plan
         .compose(refused)
@@ -203,13 +255,18 @@ fn the_staged_atlas_must_belong_to_the_scene_and_support_cell_advance_layout() {
         other => panic!("unexpected error: {other}"),
     }
 
+    // Bidi is the baker's word rather than something this side re-derives from cell directions, so
+    // the refusal is carried explicitly: a right-to-left run whose baker cleared the flag is one it
+    // already reordered into visual order.
     let mut rtl = unchecked_atlas(FAMILY, WEIGHT);
     rtl.metrics.base_direction = Direction::Rtl;
     rtl.glyphs[1].direction = Direction::Rtl;
+    rtl.layout.refusal.direction_needs_bidi = true;
+    rtl.layout.cell_advance_layout = CellAdvanceVerdict::Refused;
     let refused = StagedText::new(
         default_face(),
         GlyphAtlasDescriptor::try_from(rtl).expect("a right-to-left run is a legal descriptor"),
-        vec![CueRun::single_line(vec![INK_CELL])],
+        vec![ink_run()],
     );
     match plan
         .compose(refused)
@@ -239,7 +296,7 @@ fn the_staged_runs_must_match_the_cues_and_the_atlas() {
     let outside = StagedText::new(
         default_face(),
         atlas(FAMILY, WEIGHT),
-        vec![CueRun::single_line(vec![99])],
+        vec![run_of(vec![99])],
     );
     assert!(matches!(
         plan.compose(outside)
@@ -250,7 +307,7 @@ fn the_staged_runs_must_match_the_cues_and_the_atlas() {
     let too_long = StagedText::new(
         default_face(),
         atlas(FAMILY, WEIGHT),
-        vec![CueRun::single_line(vec![INK_CELL; MAX_RUN_GLYPHS + 1])],
+        vec![run_of(vec![INK_CELL; MAX_RUN_GLYPHS + 1])],
     );
     assert!(matches!(
         plan.compose(too_long)

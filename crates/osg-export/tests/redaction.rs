@@ -37,6 +37,8 @@ fn every_error() -> Vec<ExportError> {
                 direction_needs_bidi: false,
             },
         },
+        ExportError::OutputSizeNotFromCrop,
+        ExportError::CanvasBackgroundNotOpaque,
         ExportError::SceneRejected {
             reason: SceneError::UnorderedCues,
         },
@@ -101,6 +103,12 @@ fn every_error_says_something_a_reader_can_act_on() {
     assert!(
         ExportError::OutputVolumeFull.to_string().contains("full"),
         "the full-volume failure does not say so"
+    );
+    assert!(
+        ExportError::CanvasBackgroundNotOpaque
+            .to_string()
+            .contains("opaque"),
+        "the translucent-backfill failure does not say what is wrong with it"
     );
 }
 

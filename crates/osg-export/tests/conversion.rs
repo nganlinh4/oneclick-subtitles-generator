@@ -16,7 +16,7 @@ use osg_export::{AUDIO_CHANNELS, AUDIO_SAMPLE_RATE_HZ, ExportError, ExportPlan};
 use osg_scene::ExactTime;
 use osg_scene::scene::SceneError;
 use serde_json::json;
-use support::{default_face, default_plan, plan, request_json};
+use support::{SOURCE_DURATION_US, default_face, default_plan, plan, request, request_json};
 
 fn converted(value: serde_json::Value) -> ExportPlan {
     ExportPlan::convert(&plan(value), &default_face()).expect("the fixture request converts")
@@ -26,6 +26,41 @@ fn refusal(value: serde_json::Value) -> ExportError {
     ExportPlan::convert(&plan(value), &default_face()).expect_err("the request must be refused")
 }
 
+/// The same conversion against a source of some other shape, because the output frame is derived
+/// from the source aspect and one 16:9 fixture cannot show that.
+fn converted_against(value: serde_json::Value, width: u32, height: u32) -> ExportPlan {
+    let plan = request(value)
+        .validate(width, height, SOURCE_DURATION_US)
+        .expect("the request validates against this source");
+    ExportPlan::convert(&plan, &default_face()).expect("the request converts")
+}
+
+/// A request at `resolution` whose crop region is `crop_width` by `crop_height` percent.
+fn cropped(resolution: &str, crop_width: f64, crop_height: f64) -> serde_json::Value {
+    let mut value = request_json();
+    value["settings"]["resolution"] = json!(resolution);
+    value["crop"]["width"] = json!(crop_width);
+    value["crop"]["height"] = json!(crop_height);
+    value
+}
+
+/// The three ratios `PRESET_ASPECT_RATIOS` offers besides Free, in the editor's own order.
+const PRESET_RATIOS: [f64; 3] = [16.0 / 9.0, 9.0 / 16.0, 1.0];
+
+/// `calculateCropDimensions` from `src/components/VideoCropControls.js`, verbatim.
+///
+/// This is what an aspect-ratio button actually does: it solves for the largest centred rectangle of
+/// the source whose own ratio is the selected one, and writes that rectangle — and only that
+/// rectangle — into the crop.
+fn crop_for_button(source_width: u32, source_height: u32, target: f64) -> (f64, f64) {
+    let source_aspect = f64::from(source_width) / f64::from(source_height);
+    if target > source_aspect {
+        (100.0, (source_aspect / target) * 100.0)
+    } else {
+        ((target / source_aspect) * 100.0, 100.0)
+    }
+}
+
 fn seconds(numerator: i64, denominator: i64) -> ExactTime {
     ExactTime::new(numerator, denominator).expect("an exact time")
 }
@@ -33,39 +68,223 @@ fn seconds(numerator: i64, denominator: i64) -> ExactTime {
 // ---- Output format ------------------------------------------------------------------------
 
 #[test]
-fn every_resolution_drives_the_composition_size() {
-    // The `resolution` field's whole job. The heights are the ladder; the widths come from the
-    // source aspect times the crop ratio, and 480p is the one that lands on an odd number and has
-    // to be rounded up because the encoder cannot take an odd edge.
-    for (resolution, width, height) in [
-        ("360p", 640_u32, 360_u32),
-        ("480p", 854, 480),
-        ("720p", 1_280, 720),
-        ("1080p", 1_920, 1_080),
-        ("1440p", 2_560, 1_440),
-        ("4K", 3_840, 2_160),
-        ("8K", 7_680, 4_320),
+fn the_crop_region_drives_the_output_width_across_the_whole_resolution_ladder() {
+    // The ledger's `aspectRatio` entry, as a table. The heights are the ladder; every width is the
+    // source aspect times the crop region's own ratio. The middle row is a crop that does not fill
+    // the frame, and 480p is where each row lands on an odd number and is rounded up because the
+    // encoder cannot take an odd edge.
+    const LADDER: [&str; 7] = ["360p", "480p", "720p", "1080p", "1440p", "4K", "8K"];
+    for (crop_width, crop_height, sizes) in [
+        (
+            100.0,
+            100.0,
+            [
+                (640_u32, 360_u32),
+                (854, 480),
+                (1_280, 720),
+                (1_920, 1_080),
+                (2_560, 1_440),
+                (3_840, 2_160),
+                (7_680, 4_320),
+            ],
+        ),
+        (
+            50.0,
+            100.0,
+            [
+                (320, 360),
+                (428, 480),
+                (640, 720),
+                (960, 1_080),
+                (1_280, 1_440),
+                (1_920, 2_160),
+                (3_840, 4_320),
+            ],
+        ),
+        (
+            120.0,
+            80.0,
+            [
+                (960, 360),
+                (1_280, 480),
+                (1_920, 720),
+                (2_880, 1_080),
+                (3_840, 1_440),
+                (5_760, 2_160),
+                // 8K would be 11520 wide, past what the scene allocates, and is covered by
+                // `a_composition_wider_than_the_compositor_allocates_is_refused_rather_than_clamped`.
+                (0, 0),
+            ],
+        ),
     ] {
-        let mut value = request_json();
-        value["settings"]["resolution"] = json!(resolution);
-        let plan = converted(value);
+        for (resolution, (width, height)) in LADDER.into_iter().zip(sizes) {
+            if width == 0 {
+                continue;
+            }
+            let plan = converted(cropped(resolution, crop_width, crop_height));
+            assert_eq!(
+                (plan.width(), plan.height()),
+                (width, height),
+                "{resolution} at a {crop_width}x{crop_height} crop composed at {}x{}",
+                plan.width(),
+                plan.height()
+            );
+            // One derivation, everywhere: the scene, the encoder configuration and the plan agree,
+            // so nothing downstream can compose or encode at a size of its own.
+            assert_eq!(
+                (plan.scene().width(), plan.scene().height()),
+                (width, height)
+            );
+            assert_eq!(
+                (plan.video().width(), plan.video().height()),
+                (width, height)
+            );
+            assert_eq!(
+                (
+                    plan.encoder_config(true).video().width(),
+                    plan.encoder_config(true).video().height()
+                ),
+                (width, height)
+            );
+        }
+    }
+}
+
+#[test]
+fn the_output_frame_follows_the_source_shape_as_well_as_the_crop() {
+    // Portrait, square and non-square-pixel-shaped sources all reach the same derivation, so the
+    // width is not quietly assuming a 16:9 fixture.
+    for (source_width, source_height, width) in [
+        (1_080_u32, 1_920_u32, 406_u32),
+        (720, 720, 720),
+        (3_840, 2_160, 1_280),
+        (640, 480, 960),
+        (854, 480, 1_282),
+    ] {
+        let plan = converted_against(request_json(), source_width, source_height);
         assert_eq!(
             (plan.width(), plan.height()),
-            (width, height),
-            "{resolution} composed at {}x{}",
-            plan.width(),
-            plan.height()
-        );
-        // One size, everywhere: the scene, the encoder configuration and the plan agree.
-        assert_eq!(
-            (plan.scene().width(), plan.scene().height()),
-            (width, height)
-        );
-        assert_eq!(
-            (plan.video().width(), plan.video().height()),
-            (width, height)
+            (width, 720),
+            "a {source_width}x{source_height} source at 720p"
         );
     }
+}
+
+#[test]
+fn the_output_width_comes_from_one_derivation_where_the_shipped_preview_had_a_second() {
+    // Not a rounding curiosity: the shipped preview sizes its composition from the same inputs but
+    // associates them differently — `sourceAspect * ((cropWidth / 100) / (cropHeight / 100))` rather
+    // than `sourceAspect * (cropWidth / cropHeight)` — and floating-point multiplication is not
+    // associative. This crop is one where the two forms round apart: the shipped preview composes
+    // 682 and the conversion composes 684, so preview and export already disagreed here. The fix is
+    // one derivation, which is what this asserts; the preview's own sizing function leaves with the
+    // Remotion path it belongs to.
+    let plan = converted(cropped("1080p", 10.01, 28.16));
+    assert_eq!((plan.width(), plan.height()), (684, 1_080));
+
+    let preview_form = {
+        let source_aspect = 1_920.0_f64 / 1_080.0;
+        let width = (1_080.0 * (source_aspect * ((10.01 / 100.0) / (28.16 / 100.0)))).round();
+        #[expect(
+            clippy::cast_possible_truncation,
+            clippy::cast_sign_loss,
+            reason = "a small positive width computed from constants"
+        )]
+        let width = width as u32;
+        if width.is_multiple_of(2) {
+            width
+        } else {
+            width + 1
+        }
+    };
+    assert_eq!(
+        preview_form, 682,
+        "the divergence this test exists for has changed shape"
+    );
+}
+
+#[test]
+fn an_aspect_ratio_button_is_reproduced_by_the_crop_rectangle_it_wrote() {
+    // Why `crop.aspectRatio` is redundant, stated as an assertion rather than as prose. The control
+    // never writes the field: it solves for a rectangle whose own ratio is the selected one and
+    // writes that. So deriving the output from the rectangle already reproduces the button — and it
+    // does so identically from every source shape, which is the whole point of the control.
+    for (source_width, source_height) in [
+        (1_920_u32, 1_080_u32),
+        (1_080, 1_920),
+        (720, 720),
+        (640, 480),
+    ] {
+        for (target, expected) in
+            PRESET_RATIOS
+                .into_iter()
+                .zip([(1_920_u32, 1_080_u32), (608, 1_080), (1_080, 1_080)])
+        {
+            let (crop_width, crop_height) = crop_for_button(source_width, source_height, target);
+            let mut value = cropped("1080p", crop_width, crop_height);
+            // The field the button is named after stays exactly what the editor leaves it: null.
+            value["crop"]["aspectRatio"] = json!(null);
+            let plan = converted_against(value, source_width, source_height);
+            assert_eq!(
+                (plan.width(), plan.height()),
+                expected,
+                "the {target} button on a {source_width}x{source_height} source"
+            );
+            // And the frame it produced really does carry the selected ratio, to within the even
+            // edge the encoder requires.
+            let produced = f64::from(plan.width()) / f64::from(plan.height());
+            assert!(
+                (produced - target).abs() <= 1.0 / f64::from(plan.height()),
+                "the {target} button produced {produced}"
+            );
+        }
+    }
+}
+
+#[test]
+fn the_persisted_aspect_ratio_changes_no_output_dimension_at_all() {
+    // The field is validated, persisted and discarded, and that is correct. Nothing in the editor
+    // ever writes it: the aspect-ratio buttons hold their value in component state that is reset to
+    // null on every entry into crop mode, and every other writer sets it to null. A value can only
+    // arrive from a hand-edited project, where it contradicts the rectangle the user dragged and the
+    // preview drew — this crop is half the frame's width, and consulting a stored 16:9 would compose
+    // 1920x1080 instead of the 960x1080 the rectangle describes.
+    let baseline = converted(cropped("1080p", 50.0, 100.0));
+    assert_eq!((baseline.width(), baseline.height()), (960, 1_080));
+
+    for stored in [16.0 / 9.0, 9.0 / 16.0, 1.0, 0.01, 100.0] {
+        let mut value = cropped("1080p", 50.0, 100.0);
+        value["crop"]["aspectRatio"] = json!(stored);
+        let plan = converted_against(value, 1_920, 1_080);
+        assert_eq!(
+            (plan.width(), plan.height()),
+            (960, 1_080),
+            "a stored aspectRatio of {stored} moved the output frame"
+        );
+    }
+}
+
+#[test]
+fn an_output_size_that_does_not_follow_from_the_crop_is_refused_rather_than_exported() {
+    // The derivation is the conversion's, and the size the request was validated to has to agree
+    // with it. Nothing produces a disagreement today — both sides run the same expression — so this
+    // forges one, which is the only way to prove the guard is load-bearing rather than decorative.
+    let mut wider = plan(request_json());
+    wider.width += 2;
+    assert!(
+        matches!(
+            ExportPlan::convert(&wider, &default_face()),
+            Err(ExportError::OutputSizeNotFromCrop)
+        ),
+        "a width the crop does not imply must be refused"
+    );
+
+    let mut taller = plan(request_json());
+    taller.height += 2;
+    assert!(matches!(
+        ExportPlan::convert(&taller, &default_face()),
+        Err(ExportError::OutputSizeNotFromCrop)
+    ));
 }
 
 #[test]

@@ -27,7 +27,7 @@ use osg_scene::scene::ResolvedFace;
 use osg_scene::{ExactTime, FrameTimeline};
 
 use crate::cancel::ExportCancel;
-use crate::convert::ExportPlan;
+use crate::convert::{ExportPlan, check_canvas_background};
 use crate::error::ExportError;
 use crate::frames::FrameRenderer;
 use crate::media::AudioRuntime;
@@ -155,9 +155,10 @@ pub fn probe_source(source: &Path) -> Result<SourceInfo, ExportError> {
 /// Runs one export to completion.
 ///
 /// # Errors
-/// Returns [`ExportError::Cancelled`] when the job's signal is raised, and otherwise the first
-/// source, request, font, atlas, scene, composition, audio or output refusal. Every one of those
-/// leaves no output file behind.
+/// Returns [`ExportError::CanvasBackgroundNotOpaque`] before anything is opened,
+/// [`ExportError::Cancelled`] when the job's signal is raised, and otherwise the first source,
+/// request, font, atlas, scene, composition, audio or output refusal. Every one of those leaves no
+/// output file behind.
 pub fn run_export(
     job: ExportJob<'_>,
     progress: &mut dyn ProgressSink,
@@ -170,6 +171,10 @@ pub fn run_export(
         text,
         cancel,
     } = job;
+
+    // Before anything is opened: a backfill an exported video cannot carry is refused here rather
+    // than after a source probe, so a request that can never succeed costs no file handle.
+    check_canvas_background(&request.crop)?;
 
     let plan = plan_against_source(request, source, text.face())?;
     let subtitles = plan.compose(text)?;

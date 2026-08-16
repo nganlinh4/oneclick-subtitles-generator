@@ -71,6 +71,26 @@ pub enum ExportError {
         refusal: LayoutRefusal,
     },
 
+    /// The output frame size is not the one the crop region implies.
+    ///
+    /// The size is derived in exactly one place, from the resolution height and the crop region, so
+    /// the preview, the composition and the encoded file cannot be different sizes. If the size the
+    /// request was validated to ever stops agreeing with that derivation, the export refuses rather
+    /// than writing a file framed differently from what the editor showed.
+    #[error("the output frame size does not follow from the crop region")]
+    OutputSizeNotFromCrop,
+
+    /// The canvas backfill colour carries alpha, which an exported video cannot.
+    ///
+    /// The compositor is premultiplied and H.264 has no alpha channel, so a translucent backfill
+    /// would encode as its colour over black — darker than it previewed — with nothing saying so.
+    /// The colour control the editor offers cannot produce alpha at all, so this can only reach the
+    /// export from outside the editor, where quietly darkening it would be the worse answer.
+    #[error(
+        "the canvas background colour must be opaque, because an exported video carries no alpha"
+    )]
+    CanvasBackgroundNotOpaque,
+
     /// The scene contract refused the converted request.
     #[error("the scene was refused: {reason}")]
     SceneRejected {

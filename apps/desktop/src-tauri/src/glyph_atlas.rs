@@ -57,7 +57,7 @@
 
 use std::fmt;
 
-use osg_scene::glyph::{AtlasGeometry, AtlasMetrics, Direction, FaceStyle};
+use osg_scene::glyph::{AtlasGeometry, AtlasLayout, AtlasMetrics, Direction, FaceStyle};
 use serde::Deserialize;
 
 pub(crate) mod command;
@@ -181,6 +181,12 @@ pub(crate) struct UncheckedStagedAtlas {
     metrics: AtlasMetrics,
     /// The atlas geometry.
     atlas: AtlasGeometry,
+    /// The authoritative layout: where every cell is drawn, in visual order.
+    ///
+    /// Reused from `osg-scene` rather than mirrored a second time. It is the only description of
+    /// pen positions, baselines, line boxes, wrapping and visual order that exists — the compositor
+    /// copies it and derives none of its own — so a staged frame without it is not renderable.
+    layout: AtlasLayout,
     /// The rasterized cells, in the baker's strictly increasing cluster order.
     #[serde(deserialize_with = "decode::deserialize_glyphs")]
     glyphs: Vec<StagedGlyph>,

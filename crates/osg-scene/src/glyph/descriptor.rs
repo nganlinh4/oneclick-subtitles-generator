@@ -6,10 +6,9 @@
 use serde::{Deserialize, Serialize, Serializer};
 
 use super::error::GlyphAtlasError;
+use super::layout::{AtlasLayout, CellAdvanceVerdict, LayoutRefusal};
 use super::validate::validate;
-use super::wire::{
-    AtlasFace, AtlasGeometry, AtlasGlyph, AtlasMetrics, Direction, UncheckedGlyphAtlas,
-};
+use super::wire::{AtlasFace, AtlasGeometry, AtlasGlyph, AtlasMetrics, UncheckedGlyphAtlas};
 
 /// A checked glyph atlas descriptor.
 ///
@@ -66,6 +65,16 @@ impl GlyphAtlasDescriptor {
         &self.inner.atlas
     }
 
+    /// The authoritative layout: which cells each line draws, where, and on which baseline.
+    ///
+    /// This is what a consumer places glyphs from. Every index in it addresses a cell this
+    /// descriptor carries, every line has a pen position per cell, and the baselines descend by the
+    /// line box the metrics declare — all checked before this type could exist.
+    #[must_use]
+    pub const fn layout(&self) -> &AtlasLayout {
+        &self.inner.layout
+    }
+
     /// The rasterized cells, in cluster order.
     #[must_use]
     pub fn glyphs(&self) -> &[AtlasGlyph] {
@@ -84,59 +93,41 @@ impl GlyphAtlasDescriptor {
         &self.inner.pixels
     }
 
-    /// Whether the compositor may place cells by accumulating per-cluster advances.
+    /// Whether the emitted layout reproduces what the `WebView` measured.
     ///
-    /// The descriptor records two limits rather than results, and both are easy to walk past: a
-    /// non-zero shaping residual means the advances do not sum to the run, and a right-to-left
-    /// classification is not a reordering. The verdict is `#[must_use]` and is not a `bool`, so
-    /// neither can be dropped or read with the sense inverted by accident.
+    /// The layout records two limits rather than results, and both are easy to walk past: a
+    /// non-zero shaping residual means ink crossed a cluster boundary, and right-to-left text the
+    /// baker could not resolve is not in visual order. The verdict is `#[must_use]` and is not a
+    /// `bool`, so neither can be dropped or read with the sense inverted by accident.
+    ///
+    /// It is the **baker's** verdict, not one re-derived here. Validation has already re-derived
+    /// the half that can be re-derived — the shaping residual — and proven the verdict is exactly
+    /// the disjunction of its own two reasons. The other half cannot be re-derived: only the side
+    /// that shaped the run knows whether the order it emitted is visual, so a right-to-left run
+    /// that says [`CellAdvanceLayout::Reproduces`] is one this side draws in the order given.
     pub fn cell_advance_layout(&self) -> CellAdvanceLayout {
-        // The baker rounds the residual to four decimals and normalises negative zero, so any
-        // value that is not zero is one it measured.
-        let shaping_crosses_clusters = self.inner.metrics.shaping_residual_px != 0.0;
-        let direction_needs_bidi = self.inner.metrics.base_direction == Direction::Rtl
-            || self
-                .inner
-                .glyphs
-                .iter()
-                .any(|glyph| glyph.direction == Direction::Rtl);
-        if shaping_crosses_clusters || direction_needs_bidi {
-            CellAdvanceLayout::Refused(LayoutRefusal {
-                shaping_crosses_clusters,
-                direction_needs_bidi,
-            })
-        } else {
-            CellAdvanceLayout::Reproduces
+        match self.inner.layout.cell_advance_layout {
+            CellAdvanceVerdict::Reproduces => CellAdvanceLayout::Reproduces,
+            CellAdvanceVerdict::Refused => CellAdvanceLayout::Refused(self.inner.layout.refusal),
         }
     }
 }
 
-/// The verdict on laying a run out from per-cell advances alone.
+/// The verdict on drawing a run at the positions the layout emits.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 #[must_use = "the descriptor records limits that layout must respect, not advice it may drop"]
 pub enum CellAdvanceLayout {
-    /// The per-cluster advances sum to the measured run and no cell needs reordering, so
-    /// accumulating advances reproduces what the `WebView` measured.
+    /// The emitted positions are in visual order and reproduce what the `WebView` measured, so a
+    /// consumer draws each cell where the layout puts it and asks nothing further.
     Reproduces,
-    /// Accumulating advances would not reproduce the run; [`LayoutRefusal`] says why.
+    /// They do not; [`LayoutRefusal`] says why.
     Refused(LayoutRefusal),
 }
 
 impl CellAdvanceLayout {
-    /// Whether accumulating per-cluster advances reproduces the run.
+    /// Whether the emitted positions reproduce the run.
     #[must_use]
     pub const fn reproduces(self) -> bool {
         matches!(self, Self::Reproduces)
     }
-}
-
-/// Why accumulating per-cell advances would be wrong. Both reasons can hold at once.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub struct LayoutRefusal {
-    /// Kerning, a ligature or a contextual form moved ink across a cluster boundary, so the
-    /// per-cell advances do not sum to the measured run.
-    pub shaping_crosses_clusters: bool,
-    /// The run carries right-to-left text. The descriptor classifies direction first-strong; it
-    /// does not resolve bidi, so cell order is not visual order.
-    pub direction_needs_bidi: bool,
 }

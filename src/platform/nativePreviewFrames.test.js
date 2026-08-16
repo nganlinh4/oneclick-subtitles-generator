@@ -48,8 +48,33 @@ const atlasDescriptor = () => ({
   metrics: {
     ascentPx: 36, descentPx: 9, lineHeightPx: 48, baselinePx: 36,
     runAdvanceWidthPx: 120, shapingResidualPx: 0, baseDirection: 'ltr',
+    letterSpacingPx: 0,
   },
   atlas: { widthPx: 8, heightPx: 8, paddingPx: 2, glyphCount: 1, pixelFormat: 'rgba8', bytesPerRow: 32 },
+  // The authoritative layout. Staging validates it as strictly as the glyph table, so a fixture
+  // without one is not a descriptor the boundary will accept.
+  layout: {
+    textTransform: 'none',
+    letterSpacingPx: 0,
+    maxWidthPx: null,
+    wordWrap: true,
+    textAlign: 'center',
+    lineCount: 1,
+    widthPx: 6,
+    heightPx: 48,
+    cellAdvanceLayout: 'reproduces',
+    refusal: { shapingCrossesClusters: false, directionNeedsBidi: false },
+    lines: [{
+      glyphs: [0],
+      penXPx: [0],
+      advanceWidthPx: 6,
+      measuredWidthPx: 6,
+      shapingResidualPx: 0,
+      baselineYPx: 36,
+      justificationPx: 0,
+      endsParagraph: true,
+    }],
+  },
   glyphs: [{
     cluster: 'A', direction: 'ltr', advanceWidthPx: 6,
     xPx: 0, yPx: 0, widthPx: 8, heightPx: 8, originXPx: 0, originYPx: 6, substituted: false,

@@ -2,9 +2,10 @@
  * Font identity: every subtitle selection resolves to ONE exact face identity backed by ONE byte
  * source, or to an honest `unavailable`. There is no silent substitute anywhere in this module.
  *
- * Why this exists: the shipped font system lies. `fontOptions.js` offers 121 entries over 115
- * primary families; the legacy Remotion `fontUrlMap` mapped 110 of them, 18 of those to a
- * *different* family than the one named, and 5 families to nothing at all. On top of that the
+ * Why this exists: the shipped font system lies. `fontOptions.js` offers selectable entries over
+ * fewer primary families (`fontInventory.js` counts both, and is the only place those counts are
+ * stated); the legacy Remotion `fontUrlMap` mapped most of them, 18 to a *different* family than
+ * the one named, and several to nothing at all. On top of that the
  * operating system substitutes silently — Windows' `FontSubstitutes` registry maps
  * `Helvetica -> Arial`, so the shipped default (`'Arial', sans-serif`) and the Helvetica entry are
  * indistinguishable on screen. Under the accepted native-renderer architecture the WebView bakes
@@ -173,7 +174,7 @@ export const LEGACY_WEB_FONT_ALIASES = Object.freeze({
 const SHA256_PATTERN = /^[0-9a-f]{64}$/u;
 
 /** Copies rather than mutating, so already-frozen inputs can be embedded in a result. */
-const freezeDeep = (value) => {
+export const freezeDeep = (value) => {
   if (Array.isArray(value)) return Object.freeze(value.map(freezeDeep));
   if (value && typeof value === 'object') {
     const copy = {};
@@ -231,7 +232,7 @@ export const normalizeFontWeight = (weight) => (
 
 const normalizeFontStyle = (style) => (FONT_STYLES.includes(style) ? style : null);
 
-const managedPackageIsWellFormed = (pack) => (
+export const managedPackageIsWellFormed = (pack) => (
   Boolean(pack)
   && typeof pack.family === 'string' && pack.family.length > 0
   && typeof pack.packageId === 'string' && pack.packageId.length > 0
@@ -315,7 +316,12 @@ const buildSystemIdentity = (face, { platform, weight, style, requested }) => fr
   key: fontIdentityKey({ source: FONT_SOURCE_KIND.system, platform, family: face.family, weight, style }),
 });
 
-const disclosures = (family, platform) => ({
+/**
+ * What a caller must be told about a family, in the one direction the tables are written: the key
+ * is what the user asked for, the value is what something else would have served instead. Both are
+ * reported and neither is ever followed.
+ */
+export const describeFontDisclosures = (family, platform) => ({
   legacyAlias: Object.hasOwn(LEGACY_WEB_FONT_ALIASES, family)
     ? { declaredFamily: family, servedFamily: LEGACY_WEB_FONT_ALIASES[family] }
     : null,
@@ -325,7 +331,8 @@ const disclosures = (family, platform) => ({
 });
 
 let catalogFamilyCache = null;
-const catalogPrimaryFamilies = () => {
+/** The distinct primary families the catalog offers. Cached; the catalog is a frozen constant. */
+export const catalogPrimaryFamilies = () => {
   if (catalogFamilyCache === null) {
     const families = new Set();
     for (const option of fontOptions) {
@@ -379,7 +386,9 @@ export const resolveFontIdentity = ({
   const requested = Object.freeze({
     family: parsed.primary, weight, style, fallbacks: parsed.fallbacks,
   });
-  const seen = { ...disclosures(parsed.primary, platform), fallbacksIgnored: parsed.fallbacks };
+  const seen = {
+    ...describeFontDisclosures(parsed.primary, platform), fallbacksIgnored: parsed.fallbacks,
+  };
   const reject = (reason, extra = {}) => unavailable(reason, { requested, ...seen, ...extra });
 
   if (seen.osSubstitution) return reject(UNAVAILABLE_REASON.osSubstituted);
@@ -461,56 +470,6 @@ export const resolveVariableAxisInstance = (identity, { fontSizePx = null } = {}
   }
   return { ok: true, axes: Object.freeze(axes) };
 };
-
-/**
- * Classify every catalog entry for a platform from the reviewed declarations alone. This is the
- * static picture (what a byte source exists for); `resolveFontIdentity` still demands a runtime
- * probe before it will call a system face exact.
- */
-export const classifyFontCatalog = ({ platform, declarations = {} } = {}) => {
-  const managedPackage = declarations.managedPackage ?? MANAGED_FONT_PACKAGE;
-  const systemFaces = declarations.systemFaces ?? SYSTEM_FACE_DECLARATIONS;
-  const declaration = systemFaces[platform] ?? null;
-  const counts = { managed: 0, system: 0, unavailable: 0 };
-  const entries = fontOptions.map((option) => {
-    const parsed = parseFontFamilyValue(option.value);
-    const family = parsed.ok ? parsed.primary : null;
-    const seen = family ? disclosures(family, platform) : { legacyAlias: null, osSubstitution: null };
-    let classification = 'unavailable';
-    let reason = parsed.ok ? UNAVAILABLE_REASON.noDeclaredSource : parsed.reason;
-    if (family && seen.osSubstitution) {
-      reason = UNAVAILABLE_REASON.osSubstituted;
-    } else if (family === managedPackage.family && managedPackageIsWellFormed(managedPackage)) {
-      classification = 'managed';
-      reason = null;
-    } else if (family && declaration?.faces?.some((face) => face.family === family)) {
-      classification = 'system';
-      reason = null;
-    } else if (family && declaration?.reviewed !== true) {
-      reason = UNAVAILABLE_REASON.platformNotReviewed;
-    }
-    counts[classification] += 1;
-    return {
-      value: option.value, label: option.label, group: option.group, family, classification, reason,
-      legacyAlias: seen.legacyAlias, osSubstitution: seen.osSubstitution,
-    };
-  });
-  return freezeDeep({
-    platform,
-    total: entries.length,
-    uniqueFamilies: catalogPrimaryFamilies().size,
-    counts,
-    entries,
-  });
-};
-
-/** Every catalog family the legacy renderer drew as a different family. */
-export const describeFontCatalogAliases = () => freezeDeep(
-  [...catalogPrimaryFamilies()]
-    .filter((family) => Object.hasOwn(LEGACY_WEB_FONT_ALIASES, family))
-    .sort()
-    .map((family) => ({ declaredFamily: family, servedFamily: LEGACY_WEB_FONT_ALIASES[family] })),
-);
 
 /**
  * Re-resolve the identity a project recorded. The saved identity is authoritative: if the current

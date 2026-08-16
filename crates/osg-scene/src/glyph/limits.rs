@@ -27,6 +27,31 @@ pub const MAX_FAMILY_CHARACTERS: usize = 64;
 /// The most padding pixels around a glyph cell, mirroring `maxPaddingPx`.
 pub const MAX_PADDING_PX: u32 = 8;
 
+/// The most lines one laid-out run may carry, mirroring `maxLayoutLines`.
+///
+/// A structural bound on the payload, not the persisted `maxLines` setting — that one is inert on
+/// both sides and stays inert.
+pub const MAX_LAYOUT_LINES: usize = 64;
+/// The most placed cells one laid-out run may carry, mirroring `maxLayoutCells`.
+pub const MAX_LAYOUT_CELLS: usize = 4_096;
+/// The widest wrap width the layout arithmetic accepts, mirroring `maxLayoutWidthPx`.
+pub const MAX_LAYOUT_WIDTH_PX: f64 = 1_048_576.0;
+/// The most negative letter spacing the baker accepts, mirroring `minLetterSpacingPx`.
+///
+/// Signed on purpose: letter spacing tightens as well as loosens, so it is bounded on both sides
+/// rather than checked for non-negativity like a face metric.
+pub const MIN_LETTER_SPACING_PX: f64 = -100.0;
+/// The most positive letter spacing the baker accepts, mirroring `maxLetterSpacingPx`.
+pub const MAX_LETTER_SPACING_PX: f64 = 1_000.0;
+
+/// How far a re-derived layout quantity may sit from the baker's own, in pixels.
+///
+/// The baker rounds every emitted layout number to four decimals, so a value this side recomputes
+/// from other emitted numbers cannot be compared bit for bit: two four-decimal roundings differ by
+/// up to 1e-4 each. A thousandth of an atlas pixel is far below anything that could reach a
+/// composed frame, and far above the rounding.
+pub const LAYOUT_TOLERANCE_PX: f64 = 1e-3;
+
 /// The widest row an in-bounds RGBA8 atlas can need, including alignment padding.
 ///
 /// Derived from [`MAX_ATLAS_DIMENSION_PX`]: a 4096-pixel row is 16384 bytes, which is already a

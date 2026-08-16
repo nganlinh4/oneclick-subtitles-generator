@@ -8,82 +8,20 @@
 //! and that the staged runs index cells the atlas actually has.
 //!
 //! **Why runs are staged rather than derived.** The architecture forbids a Rust text stack: the
-//! `WebView` shapes the text and Rust re-derives layout from that metadata. Segmenting a cue's text
-//! into clusters in Rust would be a second segmenter, and a host whose `Intl.Segmenter` clusters an
-//! emoji sequence differently would then export something the preview never showed. So visual order
-//! is data: a [`CueRun`] is the sequence of atlas cells the `WebView` produced, per line, and the
-//! compositor only places them.
-//!
-//! Not yet wired: [`osg_scene::animation::typewriter_utf16_length`]. The reveal counts UTF-16 code
-//! units of the cue's text, and a staged run carries cell indices rather than code-unit lengths, so
-//! `typewriter` currently renders as the transform-free animation `osg-scene` already says it is.
-//! Adding it needs a per-glyph code-unit count on the run, which is a contract change.
+//! `WebView` shapes the text and lays it out, and Rust draws what it laid out. Segmenting, wrapping
+//! or measuring a cue's text in Rust would be a second layout model, and a host whose
+//! `Intl.Segmenter` clusters an emoji sequence differently would then export something the preview
+//! never showed. So the layout is data: a [`CueRun`] carries the cells the `WebView` placed, their
+//! pen positions and their baselines, and the compositor scales and draws them.
 
 use osg_scene::cues::CueTiming;
 use osg_scene::glyph::GlyphAtlasDescriptor;
 use osg_scene::scene::Scene;
 
 use crate::error::{CompositorError, Rejection};
+use crate::run::CueRun;
 use crate::size::FrameSize;
 use crate::style::SubtitleStyle;
-
-/// The most lines one cue may occupy.
-pub const MAX_RUN_LINES: usize = 64;
-
-/// The most glyph cells one cue may place. Mirrors the baker's `maxTextCodePoints`.
-pub const MAX_RUN_GLYPHS: usize = 4_096;
-
-/// One cue's glyphs in visual order, split into lines.
-///
-/// Each entry indexes [`GlyphAtlasDescriptor::glyphs`]. An empty line is legitimate — it is a blank
-/// line in the cue's text — but a run with no glyphs at all is not.
-#[derive(Debug, Clone, PartialEq, Eq, Default)]
-pub struct CueRun {
-    lines: Vec<Vec<u32>>,
-}
-
-impl CueRun {
-    /// Stage a run from its lines of atlas cell indices.
-    #[must_use]
-    pub const fn new(lines: Vec<Vec<u32>>) -> Self {
-        Self { lines }
-    }
-
-    /// A single-line run.
-    #[must_use]
-    pub fn single_line(glyphs: Vec<u32>) -> Self {
-        Self::new(vec![glyphs])
-    }
-
-    /// The lines, in top-to-bottom order.
-    #[must_use]
-    pub fn lines(&self) -> &[Vec<u32>] {
-        &self.lines
-    }
-
-    fn validate(&self, cell_count: usize) -> Result<(), CompositorError> {
-        if self.lines.is_empty() || self.lines.len() > MAX_RUN_LINES {
-            return Err(Rejection::RunLength.into());
-        }
-        let mut glyphs = 0_usize;
-        for line in &self.lines {
-            glyphs = glyphs.checked_add(line.len()).ok_or(Rejection::RunLength)?;
-            if glyphs > MAX_RUN_GLYPHS {
-                return Err(Rejection::RunLength.into());
-            }
-            for index in line {
-                if usize::try_from(*index).is_ok_and(|index| index < cell_count) {
-                    continue;
-                }
-                return Err(Rejection::RunGlyphIndex.into());
-            }
-        }
-        if glyphs == 0 {
-            return Err(Rejection::RunLength.into());
-        }
-        Ok(())
-    }
-}
 
 /// A scene that is ready to draw: validated, self-consistent, and renderable at any frame index in
 /// its own timeline.
@@ -120,8 +58,10 @@ impl SubtitleScene {
         {
             return Err(Rejection::AtlasFaceMismatch.into());
         }
-        // A `#[must_use]` verdict from the descriptor, honoured rather than logged: the compositor
-        // places cells by accumulating their advances, which is exactly what this refuses.
+        // A `#[must_use]` verdict from the descriptor, honoured rather than logged. It is the
+        // baker's own: a right-to-left run it resolved into visual order says `reproduces` and is
+        // drawn in the order given, and one it could not resolve still says `refused` and is still
+        // refused here rather than drawn backwards.
         if !atlas.cell_advance_layout().reproduces() {
             return Err(Rejection::AtlasLayoutRefused.into());
         }

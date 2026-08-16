@@ -12,6 +12,7 @@ use super::limits::{
     MAX_CLUSTER_CODE_POINTS, MAX_CSS_FONT_BYTES, MAX_FACE_PROBES, MAX_FAMILY_CHARACTERS,
     MAX_FONT_SIZE_PX, MAX_GLYPH_COUNT, MAX_PADDING_PX, MAX_TEXT_CODE_POINTS, MIN_FONT_SIZE_PX,
 };
+use super::validate_layout::validate_layout;
 use super::wire::{
     AtlasFace, AtlasGeometry, AtlasGlyph, AtlasMetrics, Direction, FaceProbe, UncheckedGlyphAtlas,
 };
@@ -26,6 +27,9 @@ pub(super) fn validate(atlas: &UncheckedGlyphAtlas) -> Result<(), GlyphAtlasErro
     validate_metrics(&atlas.metrics)?;
     validate_geometry(&atlas.atlas)?;
     validate_glyphs(&atlas.glyphs, &atlas.atlas)?;
+    // After the cells, because the layout's indices are only meaningful once the cells they index
+    // are known to be a list this build accepts.
+    validate_layout(&atlas.layout, &atlas.metrics, atlas.glyphs.len())?;
     validate_agreements(atlas)
 }
 
@@ -112,10 +116,14 @@ fn validate_metrics(metrics: &AtlasMetrics) -> Result<(), GlyphAtlasError> {
         metrics.baseline_px,
         metrics.run_advance_width_px,
     ];
+    // The residual and the letter spacing are the two signed metrics: one is a difference, the
+    // other tightens as well as loosens, so both are checked for finiteness rather than for sign.
+    // The letter spacing's own range is checked with the rest of the layout it belongs to.
     if non_negative
         .iter()
         .any(|value| !value.is_finite() || *value < 0.0)
         || !metrics.shaping_residual_px.is_finite()
+        || !metrics.letter_spacing_px.is_finite()
     {
         return Err(GlyphAtlasError::UnsupportedMetrics);
     }

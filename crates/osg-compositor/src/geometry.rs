@@ -144,7 +144,6 @@ pub(crate) struct Metrics {
     pub(crate) height: f64,
     pub(crate) glyph_scale: f64,
     pub(crate) line_height: f64,
-    pub(crate) baseline: f64,
     pub(crate) padding_x: f64,
     pub(crate) padding_y: f64,
     pub(crate) radius: f64,
@@ -167,8 +166,11 @@ impl Metrics {
             width,
             height,
             glyph_scale,
-            line_height: atlas.metrics().line_height_px * glyph_scale * style.line_spacing(),
-            baseline: atlas.metrics().baseline_px * glyph_scale,
+            // The atlas line box, scaled and nothing else. The baker owns line height: it derives
+            // every baseline from it, so multiplying by the style's own line spacing here would
+            // apply it twice and put every line after the first in the wrong place. The style
+            // value is what the staging boundary bakes with, not what this crate re-applies.
+            line_height: atlas.metrics().line_height_px * glyph_scale,
             padding_x: scale_subtitle_style_value(style.background_padding_x(), height),
             padding_y: scale_subtitle_style_value(style.background_padding_y(), height),
             radius: scale_subtitle_style_value(style.border_radius(), height),

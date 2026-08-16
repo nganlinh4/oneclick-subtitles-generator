@@ -81,6 +81,9 @@ pub enum Rejection {
     RunLength,
     /// A run refers to a glyph cell the atlas does not contain.
     RunGlyphIndex,
+    /// A run line carries a position that cannot place a glyph: a pen count that does not match the
+    /// cells it draws, a value that is not finite, or a baseline that does not descend.
+    RunGeometry,
     /// A crop offset or extent is not a finite value inside the stored range.
     CropRegion,
     /// The canvas background mode is neither `solid` nor `blur`.
@@ -123,6 +126,7 @@ impl fmt::Display for Rejection {
             Self::RunCount => "the scene and its staged runs disagree on the cue count",
             Self::RunLength => "a staged run is empty or longer than the renderer accepts",
             Self::RunGlyphIndex => "a staged run refers to a glyph cell the atlas does not contain",
+            Self::RunGeometry => "a staged run line cannot place its glyphs",
             Self::CropRegion => "the crop region is not supported",
             Self::CropCanvasMode => "the canvas background mode is not supported",
             Self::CropCanvasColor => "the canvas background colour could not be resolved",

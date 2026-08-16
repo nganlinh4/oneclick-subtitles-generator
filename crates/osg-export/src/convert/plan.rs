@@ -19,6 +19,7 @@ use osg_scene::{ExactTime, FrameTimeline};
 
 use super::audio::{self, AudioPlan};
 use super::crop;
+use super::dimensions::{self, CompositionSize};
 use super::font::primary_font_family;
 use super::style;
 use super::timeline::{self, Timelines};
@@ -51,24 +52,27 @@ impl ExportPlan {
     ///
     /// # Errors
     /// Returns [`ExportError::FontUnavailable`] when `face` is not the face the request's
-    /// `fontFamily` names, and otherwise the first scene, timeline, style, crop, audio or encoder
-    /// refusal. Nothing is clamped or repaired: a request the editor could not have meant is
-    /// refused rather than exported differently.
+    /// `fontFamily` names, [`ExportError::OutputSizeNotFromCrop`] when the size the crop implies is
+    /// not the size the request was validated to, [`ExportError::CanvasBackgroundNotOpaque`] when
+    /// the canvas backfill carries alpha an exported video cannot, and otherwise the first scene,
+    /// timeline, style, crop, audio or encoder refusal. Nothing is clamped or repaired: a request
+    /// the editor could not have meant is refused rather than exported differently.
     pub fn convert(plan: &RenderPlan, face: &ResolvedFace) -> Result<Self, ExportError> {
         check_face(plan, face)?;
+        let CompositionSize { width, height } = dimensions::composition_size(plan)?;
         let Timelines { scene, source } = timeline::build(plan)?;
         let cues = timeline::rebased_cues(plan)?;
         let scene = Scene::new(
             SCENE_SCHEMA_VERSION,
-            plan.width,
-            plan.height,
+            width,
+            height,
             scene,
             face.clone(),
             cues,
         )?;
         let fps = u32::from(plan.settings.frame_rate.value());
-        let video = VideoConfig::new(plan.width, plan.height, fps, 1, plan.duration_frames)?
-            .with_bitrate_kbps(video_bitrate_kbps(plan.width, plan.height, fps))?;
+        let video = VideoConfig::new(width, height, fps, 1, plan.duration_frames)?
+            .with_bitrate_kbps(video_bitrate_kbps(width, height, fps))?;
         Ok(Self {
             scene,
             source_timeline: source,

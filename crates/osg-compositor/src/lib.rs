@@ -14,9 +14,11 @@
 //!   timeline, the plan is a pure function of the scene and the frame index, and every GPU resource
 //!   a frame touches is created and dropped inside that frame. Rendering frame `n` directly and
 //!   rendering it after frames `0..n` produce the same bytes.
-//! - **No text stack.** Shaping happens once, in the `WebView`. This crate places already-rasterized
-//!   cells; it never measures, shapes or segments text, so preview and export cannot diverge on the
-//!   one axis the migration exists to guarantee.
+//! - **No text stack, and no second layout.** Shaping *and layout* happen once, in the `WebView`.
+//!   [`osg_scene::glyph::AtlasLayout`] carries the glyph positions, baselines, line boxes, wrapping
+//!   and visual run order; this crate scales them and draws them. It never measures, shapes,
+//!   segments, wraps, justifies or reorders text, so preview and export cannot diverge on the one
+//!   axis the migration exists to guarantee.
 //! - **Fail-closed.** A missing adapter, an absurd size, an atlas baked from another face or a run
 //!   that points outside the atlas is a typed [`CompositorError`], never a panic and never a
 //!   silently degraded frame.
@@ -64,10 +66,12 @@ mod pass;
 mod plan;
 mod quad_pipeline;
 mod readback;
+mod run;
 mod scene;
 mod size;
 mod style;
 mod subtitle;
+mod typewriter;
 mod underlay;
 mod underlay_pipeline;
 mod underlay_resources;
@@ -85,8 +89,9 @@ pub use decoration::{
 pub use device::{AdapterProfile, AdapterSelection, DeviceKind};
 pub use error::{Axis, CompositorError, Rejection};
 pub use frame::Frame;
+pub use run::{CueLine, CueRun, MAX_RUN_GLYPHS, MAX_RUN_LINES};
 pub use scene::TestScene;
 pub use size::{FrameSize, MAX_FRAME_DIMENSION, MAX_FRAME_PIXELS, MIN_FRAME_DIMENSION};
 pub use style::{SubtitleStyle, SubtitleStyleSpec};
-pub use subtitle::{CueRun, MAX_RUN_GLYPHS, MAX_RUN_LINES, SubtitleScene};
+pub use subtitle::SubtitleScene;
 pub use underlay::{SourceFrame, VideoUnderlay};

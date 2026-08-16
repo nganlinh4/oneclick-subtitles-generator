@@ -4,6 +4,12 @@
 //! the drop shadow is blurred from. Writing it once is the point: three walks would be three
 //! chances for the shadow to land somewhere the glyph does not.
 //!
+//! **The walk reads positions, it does not compute them.** Cell `i` of line `l` is drawn at
+//! `pen_x_px[i]` on `baseline_y_px`, both scaled by the atlas ratio and both emitted by the baker.
+//! There is no pen accumulator here any more: letter spacing, justification and the line box are
+//! already in those numbers, and re-deriving any of them would be a second layout model that agreed
+//! with the first only at zero spacing.
+//!
 //! **The stroke is a dilation, not an outline.** The compositor has coverage, not contours — the
 //! `WebView` bakes rasterized cells and there is no Rust text stack to ask for a glyph path. So a
 //! stroke quad is the cell grown by the stroke radius, and the fragment takes the largest coverage
@@ -24,7 +30,7 @@ use osg_scene::layout::{SubtitleBox, SubtitlePosition, TextAlign};
 use crate::geometry::{
     KIND_GLYPH, KIND_STROKE, Metrics, Placement, Quad, Rect, Shape, UvSource, emit,
 };
-use crate::subtitle::CueRun;
+use crate::run::CueRun;
 
 /// How many ring samples a stroke fragment takes.
 ///
@@ -135,6 +141,11 @@ pub(crate) struct GlyphPass<'scene> {
     pub(crate) text_top: f64,
     pub(crate) text_width: f64,
     pub(crate) line_widths: &'scene [f64],
+    /// How many cells of the run are revealed, in draw order, or `None` for all of them.
+    ///
+    /// Only the typewriter sets it, and it applies to every walk — fill, stroke and shadow mask —
+    /// so a partly typed cue casts a partly typed shadow.
+    pub(crate) revealed: Option<usize>,
 }
 
 /// How one walk paints: the colour, an offset applied before the cue transform, and the radius the
@@ -173,11 +184,23 @@ pub(crate) fn emit_glyphs(vertices: &mut Vec<f32>, pass: &GlyphPass<'_>, draw: &
         (KIND_GLYPH, (0.0, 0.0))
     };
 
-    let mut baseline = pass.text_top + pass.metrics.baseline + draw.offset.1;
+    // Every cell the run places, whether or not it inks anything, so a blank cluster still costs
+    // the typewriter its turn.
+    let mut placed = 0_usize;
     for (line, line_width) in pass.run.lines().iter().zip(pass.line_widths) {
-        let mut pen =
+        // Alignment is where the line box sits inside the subtitle box, and nothing more: the
+        // baker already justified, so the compositor must not.
+        let left =
             line_left(pass.align, pass.block_left, pass.text_width, *line_width) + draw.offset.0;
-        for index in line {
+        let baseline = line.baseline_y_px().mul_add(scale, pass.text_top) + draw.offset.1;
+        for (position, index) in line.glyphs().iter().enumerate() {
+            if pass.revealed.is_some_and(|revealed| placed >= revealed) {
+                return;
+            }
+            placed += 1;
+            // Indexing is safe by construction: a run whose pen list is not as long as its glyph
+            // list is refused by `SubtitleScene::new`, so one cannot reach a frame plan.
+            let pen = line.pen_x_px()[position].mul_add(scale, left);
             let Some(cell) = cell_at(pass.atlas, *index) else {
                 continue;
             };
@@ -219,9 +242,7 @@ pub(crate) fn emit_glyphs(vertices: &mut Vec<f32>, pass: &GlyphPass<'_>, draw: &
                     },
                 );
             }
-            pen += cell.advance_width_px * scale;
         }
-        baseline += pass.metrics.line_height;
     }
 }
 
@@ -236,19 +257,13 @@ const fn is_inked(cell: &AtlasGlyph) -> bool {
 }
 
 /// The advance width of every line, in composition pixels.
-pub(crate) fn line_widths(
-    atlas: &GlyphAtlasDescriptor,
-    run: &CueRun,
-    glyph_scale: f64,
-) -> Vec<f64> {
+///
+/// Scaled from what the baker measured, not summed from the cells: a summed width would ignore
+/// letter spacing and justification and would therefore align a line by a width nobody drew.
+pub(crate) fn line_widths(run: &CueRun, glyph_scale: f64) -> Vec<f64> {
     run.lines()
         .iter()
-        .map(|line| {
-            line.iter()
-                .filter_map(|index| cell_at(atlas, *index))
-                .map(|cell| cell.advance_width_px * glyph_scale)
-                .sum()
-        })
+        .map(|line| line.advance_width_px() * glyph_scale)
         .collect()
 }
 
@@ -260,9 +275,10 @@ pub(crate) fn line_count(run: &CueRun) -> f64 {
 /// Where the text block starts horizontally.
 ///
 /// A custom position collapses the box to a point, so the block is centred on it; otherwise the
-/// block is placed inside the resolved box according to the alignment. `Justify` places like `Left`:
-/// the shipped renderer accepts it but has no control for it, and stretching a run whose shaping
-/// this crate does not own would be inventing layout.
+/// block is placed inside the resolved box according to the alignment. `Justify` places like
+/// `Left`, and that is now exactly right rather than a concession: a justified line's
+/// `advanceWidthPx` already spans the wrap width the baker stretched it to, so placing the line box
+/// at the leading edge puts every stretched gap where the baker put it.
 pub(crate) fn block_left(boxed: &SubtitleBox, position: SubtitlePosition, text_width: f64) -> f64 {
     if position == SubtitlePosition::Custom {
         return boxed.left - text_width / 2.0;
