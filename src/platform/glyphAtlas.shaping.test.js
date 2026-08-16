@@ -11,6 +11,7 @@ import {
   KOREAN,
   SHAPED_SIZE_PX,
   VIETNAMESE,
+  cellFormsOf,
   clustersOf,
   codeOf,
   createKerningSurface,
@@ -19,9 +20,13 @@ import {
 } from './glyphAtlasTestFont';
 
 /**
- * The shaping half of the baker: text transform, line breaking, letter spacing, line height and
- * justification. The fake font model these bake against — and the limits of what it can prove —
- * are documented on `glyphAtlasTestFont.js`.
+ * The shaping half of the baker: text transform, line breaking, letter spacing, line height,
+ * justification and bidi. The fake font model these bake against — and the limits of what it can
+ * prove — are documented on `glyphAtlasTestFont.js`.
+ *
+ * Which text each cell is baked FROM is the other half of shaping, and it lives in
+ * `glyphAtlas.contextual.test.js`: a cursive face gives one cluster four glyphs, so a cell is not
+ * always its cluster.
  */
 
 describe('bakeGlyphAtlas line breaking', () => {
@@ -293,8 +298,8 @@ describe('bakeGlyphAtlas bidi', () => {
     const layoutOf = (baseDirection) => buildTextLayout({
       text,
       clusters,
-      cellIndexOf: new Map(unique.map((cluster, index) => [cluster, index])),
-      advanceOf: new Map(unique.map((cluster) => [cluster, ADVANCE_PX])),
+      cellIndexOf: (position) => unique.indexOf(clusters[position]),
+      advanceOf: () => ADVANCE_PX,
       textTransform: 'none',
       letterSpacingPx: 0,
       maxWidthPx: null,
@@ -333,6 +338,9 @@ describe('bakeGlyphAtlas layout honesty', () => {
       { surface }
     );
 
+    // Kerning moves ink across a boundary without changing any glyph, so no contextual spelling
+    // reproduces it and the isolated cells — and their refusal — are the honest answer.
+    expect(cellFormsOf(kerned)).toEqual([' ', 'a', 'b']);
     expect(lineTextsOf(kerned)).toEqual(['aa ', 'bb']);
     expect(kerned.metrics.shapingResidualPx).toBe(-2);
     expect(kerned.layout.lines.map((line) => line.measuredWidthPx)).toEqual([77, 51.5]);

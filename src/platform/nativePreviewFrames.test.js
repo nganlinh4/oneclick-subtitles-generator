@@ -44,7 +44,21 @@ const frameUrl = (index, sequenceId = SEQUENCE_ID) => (
 const atlasDescriptor = () => ({
   version: GLYPH_ATLAS_VERSION,
   contentHash: 'a1b2c3d4',
-  face: { requestedFamily: 'Editor Sans', weight: 400, style: 'normal', fontSizePx: 48, substituted: false },
+  face: {
+    requestedFamily: 'Editor Sans',
+    weight: 400,
+    style: 'normal',
+    fontSizePx: 48,
+    substituted: false,
+    // The shaping evidence. Staging forwards it so Rust can re-derive the substitution verdict
+    // rather than take the flag on trust, which means a fixture without it is not a real descriptor.
+    cssFont: 'normal 400 48px "Editor Sans"',
+    probes: [
+      { probeFamily: 'serif', aloneWidthPx: 100, chainedWidthPx: 80, participated: true },
+      { probeFamily: 'sans-serif', aloneWidthPx: 90, chainedWidthPx: 80, participated: true },
+      { probeFamily: 'monospace', aloneWidthPx: 80, chainedWidthPx: 80, participated: false },
+    ],
+  },
   metrics: {
     ascentPx: 36, descentPx: 9, lineHeightPx: 48, baselinePx: 36,
     runAdvanceWidthPx: 120, shapingResidualPx: 0, baseDirection: 'ltr',

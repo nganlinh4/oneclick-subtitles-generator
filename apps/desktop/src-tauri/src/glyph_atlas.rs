@@ -35,10 +35,13 @@
 //!
 //! * `glyph.codePoints` is omitted on the wire and re-derived exactly from `cluster` here, because
 //!   a second encoding of the same identity can only ever disagree with the first.
-//! * `face.cssFont` and `face.probes` are omitted and are **not** invented. They are `WebView`-only
-//!   shaping evidence — the proof that the requested face actually participated in the measurement.
-//!   Synthesising them would turn the substitution check into a rubber stamp that always passes, so
-//!   this side simply does not make that claim.
+//! * `face.cssFont` and `face.probes` DO cross, and carrying the baker's real measurements is the
+//!   point. They are the proof that the requested face actually participated in the measurement,
+//!   and with them here the substitution verdict is re-derived rather than taken on trust. They
+//!   were once omitted, on the reasoning that this side should not make a claim it could not
+//!   support — but the answer to that is to forward the evidence, not to drop it. What must never
+//!   happen is synthesising them, which would turn the check into a rubber stamp that always
+//!   passes; a staged frame that omits them is refused, never repaired.
 //!
 //! ## What never crosses back
 //!
@@ -57,8 +60,13 @@
 
 use std::fmt;
 
-use osg_scene::glyph::{AtlasGeometry, AtlasLayout, AtlasMetrics, Direction, FaceStyle};
+use osg_scene::glyph::{
+    AtlasFace, AtlasGeometry, AtlasGlyph, AtlasLayout, AtlasMetrics, Direction, FaceProbe,
+    FaceStyle, GlyphAtlasDescriptor, UncheckedGlyphAtlas,
+};
 use serde::Deserialize;
+
+use self::refusal::StagingRefusal;
 
 pub(crate) mod command;
 mod decode;
@@ -100,11 +108,10 @@ const _: () = assert!(MAX_FRAME_BYTES as u64 <= MAX_STAGED_BYTES);
 
 // The staged frame
 
-/// The face the atlas was baked from, as far as the staged frame reports it.
+/// The face the atlas was baked from, as the staged frame reports it.
 ///
-/// Every field means what the same field means on [`osg_scene::glyph::AtlasFace`]. What is missing
-/// is the point: `cssFont` and `probes` are the `WebView`'s own shaping evidence, they are not on
-/// the wire, and this side does not invent them.
+/// Field for field the same as [`osg_scene::glyph::AtlasFace`]; it exists separately only to keep a
+/// redacting `Debug`, because the requested family is editor content.
 #[derive(Clone, PartialEq, Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub(crate) struct StagedFace {
@@ -112,8 +119,16 @@ pub(crate) struct StagedFace {
     weight: u16,
     style: FaceStyle,
     font_size_px: f64,
+    /// The CSS shorthand the baker measured and drew with. Provenance; this side never interprets it.
+    css_font: String,
     /// Whether any cell fell back to another face. Derived from the cells.
     substituted: bool,
+    /// The generic-family probes proving the requested face took part in the measurement.
+    ///
+    /// These cross the boundary deliberately. Carrying the baker's REAL measurements is what lets
+    /// this side re-derive the substitution verdict instead of taking the flag on trust; inventing
+    /// them would turn that check into a rubber stamp, which is the failure the migration removes.
+    probes: Vec<FaceProbe>,
 }
 
 impl fmt::Debug for StagedFace {
@@ -213,6 +228,55 @@ impl StagedGlyphAtlas {
     /// The baker's identity for this atlas, echoed back so the `WebView` can match its own cache.
     pub(crate) fn content_hash(&self) -> &str {
         &self.metadata.content_hash
+    }
+
+    /// The checked descriptor the compositor draws from.
+    ///
+    /// Built by handing the staged metadata to `osg-scene`'s own validation rather than by
+    /// re-implementing it here. That is the point: the compositor's input is checked by exactly the
+    /// code that defines what a valid atlas is, so this boundary cannot accidentally be more
+    /// permissive than the contract. The only thing added is `codePoints`, which the wire omits
+    /// deliberately and which is re-derived from the cluster it belongs to.
+    pub(crate) fn to_descriptor(&self) -> Result<GlyphAtlasDescriptor, StagingRefusal> {
+        let unchecked = UncheckedGlyphAtlas {
+            version: self.metadata.atlas_version,
+            face: AtlasFace {
+                requested_family: self.metadata.face.requested_family.clone(),
+                weight: self.metadata.face.weight,
+                style: self.metadata.face.style,
+                font_size_px: self.metadata.face.font_size_px,
+                css_font: self.metadata.face.css_font.clone(),
+                substituted: self.metadata.face.substituted,
+                probes: self.metadata.face.probes.clone(),
+            },
+            metrics: self.metadata.metrics,
+            atlas: self.metadata.atlas,
+            layout: self.metadata.layout.clone(),
+            glyphs: self
+                .metadata
+                .glyphs
+                .iter()
+                .map(|glyph| AtlasGlyph {
+                    cluster: glyph.cluster.clone(),
+                    code_points: glyph.cluster.chars().map(u32::from).collect(),
+                    direction: glyph.direction,
+                    advance_width_px: glyph.advance_width_px,
+                    x_px: glyph.x_px,
+                    y_px: glyph.y_px,
+                    width_px: glyph.width_px,
+                    height_px: glyph.height_px,
+                    origin_x_px: glyph.origin_x_px,
+                    origin_y_px: glyph.origin_y_px,
+                    substituted: glyph.substituted,
+                })
+                .collect(),
+            content_hash: self.metadata.content_hash.clone(),
+            pixels: self.pixels.clone(),
+        };
+        // `GlyphAtlasError` names the field it rejected and never a value, which is this boundary's
+        // contract, so it is carried through rather than flattened — the caller who staged a bad
+        // atlas learns which agreement it broke.
+        GlyphAtlasDescriptor::try_from(unchecked).map_err(StagingRefusal::from)
     }
 
     /// The retained cost of this atlas, which the registry bounds.

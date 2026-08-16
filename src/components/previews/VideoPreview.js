@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import LoadingIndicator from '../common/LoadingIndicator';
 import '../../styles/common/material-switch.css';
@@ -18,9 +18,14 @@ import useVideoSourceSwitching from './useVideoSourceSwitching';
 import useVideoSubtitleSync from './useVideoSubtitleSync';
 import useNarrationRefreshEvents from './useNarrationRefreshEvents';
 import useVideoUiSync from './useVideoUiSync';
+import NativeCompositedFrame from './native/NativeCompositedFrame';
+import useNativePreview from './native/useNativePreview';
 import {
+  EDITOR_PREVIEW_FRAME_RATE,
+  EDITOR_PREVIEW_RESOLUTION,
   createDownloadWithSubtitlesHandler,
   createDownloadWithTranslatedSubtitlesHandler,
+  previewCustomizationForNativeRender,
 } from './videoDownloadHandlers';
 // Narration settings now integrated into the translation section
 import '../../styles/VideoPreview.css';
@@ -141,11 +146,10 @@ const VideoPreview = ({ currentTime, setCurrentTime, setDuration, videoSource, f
     setIsMuted,
   });
 
-  // Fullscreen subtitle-overlay + fullscreen change/exit (owns isFullscreen)
+  // Fullscreen change/exit (owns isFullscreen)
   const { isFullscreen, setIsFullscreen, handleFullscreenExit } = useFullscreenSubtitles({
     videoRef,
     videoContainerRef,
-    subtitleSettings,
     setControlsVisible,
     setShowCustomControls,
     setIsVideoHovered,
@@ -226,6 +230,31 @@ const VideoPreview = ({ currentTime, setCurrentTime, setDuration, videoSource, f
     window.addEventListener('request-narration-refresh', onRequest);
     return () => window.removeEventListener('request-narration-refresh', onRequest);
   }, [t]);
+
+  // The 54-field customization the native compositor draws from, mapped by the SAME bridge the
+  // download handler uses. There is deliberately no second mapping: if the preview and the file it
+  // downloads disagreed about a style, the mapping would be the only place they could.
+  const nativeCustomization = useMemo(
+    () => previewCustomizationForNativeRender(subtitleSettings),
+    [subtitleSettings]
+  );
+
+  // Paused, scrubbing and every style adjustment show the natively composited frame — the surfaces
+  // where the user judges the output. Continuous playback keeps the <video> and the CSS overlay for
+  // responsiveness, and pausing re-renders the exact frame because the frame index is a pure
+  // function of the playhead. See docs/rewrite/NATIVE_RENDERER.md.
+  const nativePreview = useNativePreview({
+    active: !isPlaying,
+    source: videoSource,
+    videoRef,
+    sourceKey: videoUrl,
+    customization: nativeCustomization,
+    subtitles: subtitlesArray,
+    resolution: EDITOR_PREVIEW_RESOLUTION,
+    frameRate: EDITOR_PREVIEW_FRAME_RATE,
+    durationSeconds: videoDuration,
+    currentTime: isDragging ? dragTime : currentTime,
+  });
 
   // Handle downloading video with subtitles
   const handleDownloadWithSubtitles = createDownloadWithSubtitlesHandler({
@@ -339,6 +368,17 @@ const VideoPreview = ({ currentTime, setCurrentTime, setDuration, videoSource, f
       <div className="video-container">
         {error && <div className="error">{error}</div>}
 
+        {/* A native refusal is stated, never shown as a blank frame: an empty preview reads as an
+            empty subtitle. The code is a stable identifier and carries no path, no native message
+            and none of the user's text. */}
+        {nativePreview.error && (
+          <div className="error">
+            {t('videoPreview.renderError', 'Error rendering subtitles: {{error}}', {
+              error: nativePreview.error.nativeCode ?? nativePreview.error.code,
+            })}
+          </div>
+        )}
+
         {/* Only show downloading UI if we're actually downloading and have progress > 0 */}
         {isDownloading && downloadProgress > 0 && (
           <div className="video-downloading">
@@ -396,10 +436,21 @@ const VideoPreview = ({ currentTime, setCurrentTime, setDuration, videoSource, f
                   t={t}
                 />
 
-                {/* Custom subtitle display + its styling (extracted to SubtitleDisplay) */}
-                <SubtitleDisplay
-                  currentSubtitleText={currentSubtitleText}
-                  subtitleSettings={subtitleSettings}
+                {/* The natively composited frame. When it is on screen it IS the exported pixel.
+                    The CSS overlay is its fallback rather than a layer beneath it, so exactly one
+                    of the two is ever drawn: the compositor's frame while paused, scrubbing or
+                    adjusting a style, and the overlay during continuous playback or while the
+                    compositor is unavailable for this source. */}
+                <NativeCompositedFrame
+                  frame={nativePreview.frame}
+                  visible={!isPlaying}
+                  onLoadError={nativePreview.onFrameLoadError}
+                  fallback={(
+                    <SubtitleDisplay
+                      currentSubtitleText={currentSubtitleText}
+                      subtitleSettings={subtitleSettings}
+                    />
+                  )}
                 />
 
                 <SeekIndicator showSeekIndicator={showSeekIndicator} seekDirection={seekDirection} />

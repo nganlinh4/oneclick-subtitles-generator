@@ -230,6 +230,46 @@ fn malformed_and_unknown_metadata_is_refused() {
 }
 
 #[test]
+fn a_staged_atlas_becomes_the_checked_descriptor_the_compositor_draws_from() {
+    // The point of forwarding cssFont and the probes. Without them this conversion cannot happen at
+    // all, because osg-scene requires the shaping evidence before it will call an atlas valid — and
+    // synthesising it here would be exactly the rubber stamp the migration removed.
+    let staged = stage(&frame(&metadata(4, 2), &[0_u8; 32])).expect("valid frame");
+    let descriptor = staged
+        .to_descriptor()
+        .expect("the staged atlas is a valid descriptor");
+
+    assert_eq!(descriptor.glyphs().len(), 2);
+    assert_eq!(descriptor.layout().lines.len(), 1);
+    // codePoints is omitted on the wire and re-derived here; a cell must carry its cluster's own.
+    for glyph in descriptor.glyphs() {
+        let expected: Vec<u32> = glyph.cluster.chars().map(u32::from).collect();
+        assert_eq!(glyph.code_points, expected);
+    }
+}
+
+#[test]
+fn a_face_whose_probes_prove_nothing_never_becomes_a_descriptor() {
+    // Every probe agreeing means the requested family changed no measurement, so the atlas is
+    // evidence of nothing. Staging accepts the frame's shape; the descriptor conversion is where
+    // that claim is judged, which is why the conversion is the compositor's only door in.
+    let metadata = metadata(4, 2).replace(
+        r#""probeFamily":"serif","aloneWidthPx":100,"chainedWidthPx":80,"participated":true"#,
+        r#""probeFamily":"serif","aloneWidthPx":80,"chainedWidthPx":80,"participated":false"#,
+    ).replace(
+        r#""probeFamily":"sans-serif","aloneWidthPx":90,"chainedWidthPx":80,"participated":true"#,
+        r#""probeFamily":"sans-serif","aloneWidthPx":80,"chainedWidthPx":80,"participated":false"#,
+    );
+
+    assert_eq!(
+        stage(&frame(&metadata, &[0_u8; 32])),
+        Err(StagingRefusal::Descriptor(
+            GlyphAtlasError::UnsupportedProbes
+        )),
+    );
+}
+
+#[test]
 fn descriptor_agreements_the_wire_cannot_carry_are_re_derived() {
     let cases = [
         (
@@ -269,10 +309,11 @@ fn descriptor_agreements_the_wire_cannot_carry_are_re_derived() {
             GlyphAtlasError::UnorderedGlyphs,
         ),
         (
-            // The face claims a substitution that no cell records.
+            // The face claims a substitution that no cell records. Anchored on the probes that
+            // follow it, so this targets the FACE's flag and never a cell's.
             metadata(4, 2).replace(
-                r#""substituted":false},"metrics""#,
-                r#""substituted":true},"metrics""#,
+                r#""substituted":false,"probes""#,
+                r#""substituted":true,"probes""#,
             ),
             GlyphAtlasError::DerivedFieldMismatch,
         ),

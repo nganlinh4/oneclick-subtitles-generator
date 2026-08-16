@@ -9,10 +9,16 @@
  * packing, substitution detection, line breaking, determinism, freezing, hashing) is testable
  * against it.
  *
+ * It also reproduces CURSIVE JOINING, because the cell model now depends on it: a face may give a
+ * cluster four different forms and four different advances depending on its neighbours, and a joiner
+ * asks for one of those forms in isolation. That is a structural property of every text stack, so
+ * the baker's contextual resolution is testable against it — what stays unprovable here is the shape
+ * of the outline each form actually has.
+ *
  * What only a real canvas can prove, and is deliberately NOT claimed: true glyph outlines and ink
- * extents, real kerning and ligatures, Arabic contextual joining forms, and which concrete face a
- * given engine substitutes. `createKerningSurface` below fakes the one consequence of kerning the
- * descriptor has to report, and does not claim to be kerning.
+ * extents, real kerning and ligatures, which concrete forms a given Arabic face carries, and which
+ * face a given engine substitutes. `createKerningSurface` below fakes the one consequence of kerning
+ * the descriptor has to report, and does not claim to be kerning.
  *
  * This module is imported only by tests. It lives beside them rather than inside one of them so
  * that the baker suite and the shaping suite share a single font model instead of two that could
@@ -22,6 +28,7 @@
 import { expect } from 'vitest';
 
 import { GlyphAtlasError, bakeGlyphAtlas } from './glyphAtlas';
+import { CONTEXT_JOINER } from './glyphAtlasCells';
 
 const COMBINING = /\p{M}/u;
 const WHITESPACE = /\s/u;
@@ -35,6 +42,51 @@ export const defineFace = (id, advanceRatio, covers, ascentRatio = 0.8, descentR
 
 export const NON_EMOJI = (codePoint) => codePoint < 0x1f000;
 
+/**
+ * Cursive joining, in the `ArabicShaping.txt` sense, for the one fake face that has it.
+ *
+ * `D` joins on both sides, `R` accepts a join from the letter before it but cannot join to the one
+ * after it, and `C` — the zero-width joiner — causes a join without drawing anything. Everything
+ * else is non-joining and takes no form at all, which is every other face in this file.
+ */
+const JOIN_DUAL = 'D';
+const JOIN_RIGHT = 'R';
+const JOIN_CAUSING = 'C';
+const ZERO_WIDTH_JOINER = 0x200d;
+
+/** The Arabic letters that cannot join to the letter after them, so a word breaks its stroke. */
+const RIGHT_JOINING = new Set([0x0627, 0x062f, 0x0630, 0x0631, 0x0632, 0x0648]);
+
+/** The blocks the fake cursive face joins in: Arabic through Arabic Extended-A. */
+const cursiveJoining = (codePoint) => {
+  if (codePoint < 0x0600 || codePoint > 0x08ff) return null;
+  return RIGHT_JOINING.has(codePoint) ? JOIN_RIGHT : JOIN_DUAL;
+};
+
+/**
+ * `count` distinct dual-joining clusters, for a fixture that needs many of them.
+ *
+ * Marks and format characters are skipped because neither is a cluster of its own: a mark welds
+ * itself to the letter before it, which would make the fixture shorter than it says it is.
+ */
+export const dualJoining = (count) => {
+  const letters = [];
+  for (let codePoint = 0x0620; letters.length < count && codePoint <= 0x08ff; codePoint += 1) {
+    const character = String.fromCodePoint(codePoint);
+    const standalone = !COMBINING.test(character) && !/[\p{Cf}\p{White_Space}]/u.test(character);
+    if (standalone && !RIGHT_JOINING.has(codePoint)) letters.push(character);
+  }
+  return letters;
+};
+
+/**
+ * Each contextual form's advance, as a fraction of the size. All four differ, which is exactly why
+ * an isolated cell cannot reproduce a joined run: the sum of the isolated advances is not the run.
+ */
+export const CURSIVE_FORM_RATIOS = Object.freeze({
+  isolated: 0.6, initial: 0.5, medial: 0.4, final: 0.55,
+});
+
 /** Distinct advance ratios: three generics an engine would resolve to different metrics. */
 export const DEFAULT_FACES = new Map([
   ['monospace', defineFace('monospace', 0.6, NON_EMOJI)],
@@ -43,6 +95,10 @@ export const DEFAULT_FACES = new Map([
   ['editor sans', defineFace('editor-sans', 0.52, NON_EMOJI, 0.81, 0.19)],
   ['latin only', defineFace('latin-only', 0.48, (codePoint) => codePoint < 0x0250)],
   ['giant', defineFace('giant', 9, NON_EMOJI, 9, 3)],
+  ['cursive arabic', {
+    ...defineFace('cursive-arabic', 0.53, NON_EMOJI, 0.79, 0.21),
+    joining: cursiveJoining,
+  }],
 ]);
 
 /** The face an engine falls back to when nothing in the family list covers a code point. */
@@ -79,22 +135,70 @@ export const createFakeSurface = ({ faces = DEFAULT_FACES, isFaceLoaded } = {}) 
     .map((family) => faces.get(family))
     .find((face) => face !== undefined) ?? LAST_RESORT_FACE;
 
+  /**
+   * The contextual form of every character, or `null` where the face does not join.
+   *
+   * Combining marks are transparent — they neither join nor hide the letter behind them — which is
+   * why the neighbour search walks past them instead of stopping at them.
+   */
+  const cursiveForms = (characters, characterFaces) => {
+    const classes = characters.map((character, index) => (
+      character.codePointAt(0) === ZERO_WIDTH_JOINER
+        ? JOIN_CAUSING
+        : characterFaces[index].joining?.(character.codePointAt(0)) ?? null
+    ));
+    const joinsForward = (joining) => joining === JOIN_DUAL || joining === JOIN_CAUSING;
+    const neighbour = (index, step) => {
+      for (let at = index + step; at >= 0 && at < characters.length; at += step) {
+        if (!COMBINING.test(characters[at])) return classes[at];
+      }
+      return null;
+    };
+    const forms = classes.map((joining, index) => {
+      if (joining === null || joining === JOIN_CAUSING) return null;
+      const left = joinsForward(neighbour(index, -1));
+      const right = joinsForward(joining) && neighbour(index, 1) !== null;
+      if (left && right) return 'medial';
+      if (right) return 'initial';
+      return left ? 'final' : 'isolated';
+    });
+    return { classes, forms };
+  };
+
   const shapeText = (cssFont, text) => {
     const { fontSizePx, families } = parseCssFont(cssFont);
+    const characters = [...text];
+    const characterFaces = characters.map((character) => resolve(families, character.codePointAt(0)));
+    const { classes, forms } = cursiveForms(characters, characterFaces);
+    const joiningAt = (index) => (index >= 0 && index < classes.length ? classes[index] : null);
+
     let advance = 0;
     let inked = false;
-    let metricFace = null;
-    for (const character of text) {
-      const face = resolve(families, character.codePointAt(0));
-      if (metricFace === null) metricFace = face;
-      if (COMBINING.test(character) || ZERO_ADVANCE.has(character.codePointAt(0))) {
+    // What the raster depends on: the drawn glyphs and their forms. A joiner a cursive letter
+    // consumed asked for a form and drew nothing of its own, so it leaves no mark here either; one
+    // between two non-joining characters — an emoji sequence — is content and stays.
+    let signature = '';
+    for (const [index, character] of characters.entries()) {
+      const codePoint = character.codePointAt(0);
+      const consumed = codePoint === ZERO_WIDTH_JOINER
+        && (joiningAt(index - 1) !== null || joiningAt(index + 1) !== null);
+      if (!consumed) signature += character;
+      if (COMBINING.test(character) || ZERO_ADVANCE.has(codePoint)) {
         inked = true;
         continue;
       }
-      advance += fontSizePx * face.advanceRatio;
+      const form = forms[index];
+      advance += fontSizePx * (form === null ? characterFaces[index].advanceRatio : CURSIVE_FORM_RATIOS[form]);
+      signature += form ?? '';
       if (!WHITESPACE.test(character)) inked = true;
     }
-    return { fontSizePx, advance, inked, metricFace: metricFace ?? firstRegistered(families) };
+    return {
+      fontSizePx,
+      advance,
+      inked,
+      signature,
+      metricFace: characterFaces[0] ?? firstRegistered(families),
+    };
   };
 
   const measure = (cssFont, text) => {
@@ -119,11 +223,11 @@ export const createFakeSurface = ({ faces = DEFAULT_FACES, isFaceLoaded } = {}) 
       return {
         drawGlyph({ cssFont, text, penXPx, baselineYPx }) {
           const metrics = measure(cssFont, text);
-          const { metricFace } = shapeText(cssFont, text);
+          const { metricFace, signature } = shapeText(cssFont, text);
           const right = Math.ceil(metrics.actualBoundingBoxRight);
           const ascent = Math.ceil(metrics.actualBoundingBoxAscent);
           const descent = Math.ceil(metrics.actualBoundingBoxDescent);
-          const alpha = 32 + (hashOf(`${metricFace.id}:${text}`) % 224);
+          const alpha = 32 + (hashOf(`${metricFace.id}:${signature}`) % 224);
           for (let y = baselineYPx - ascent; y < baselineYPx + descent; y += 1) {
             for (let x = penXPx; x < penXPx + right; x += 1) {
               if (x < 0 || y < 0 || x >= widthPx || y >= heightPx) continue;
@@ -142,18 +246,62 @@ export const createFakeSurface = ({ faces = DEFAULT_FACES, isFaceLoaded } = {}) 
 };
 
 /**
- * A surface whose runs measure narrower than their cells sum to, which is what kerning, a ligature
- * or a contextual form does. The fake font model cannot produce one, and it is the only condition
- * that makes `shapingResidualPx` non-zero.
+ * A surface whose runs measure narrower than their cells sum to, which is what kerning does.
+ *
+ * Kerning is modelled on the ADVANCING characters only: a zero-advance format character sits
+ * between two glyphs without separating them, so it neither creates a kern pair nor removes one.
+ * That matters beyond realism — a joiner that changed the width here would let the contextual cell
+ * resolver mistake a kern for a contextual form, and this surface exists precisely to be the case
+ * that nothing can spell per cluster.
  */
 export const createKerningSurface = () => {
   const base = createFakeSurface();
+  const advancing = (text) => [...text].filter(
+    (character) => !ZERO_ADVANCE.has(character.codePointAt(0)) && !COMBINING.test(character)
+  ).length;
   return {
     ...base,
     measure: (cssFont, text) => {
       const metrics = base.measure(cssFont, text);
-      return { ...metrics, width: metrics.width - Math.max([...text].length - 1, 0) * 0.5 };
+      return { ...metrics, width: metrics.width - Math.max(advancing(text) - 1, 0) * 0.5 };
     },
+  };
+};
+
+/**
+ * A surface with real ligatures: `ff` and `ffi` measure as ONE narrower glyph, not as the letters
+ * they are spelled with.
+ *
+ * A ligature is the case contextual cells cannot express, and it has to be modelled honestly to
+ * prove that. A joiner is transparent to the substitution here — it neither creates a ligature nor
+ * breaks one — so the resolver measures the same ligature the run has and still finds that no
+ * per-cluster spelling reproduces the position's advance.
+ */
+const LIGATURE_RATIOS = new Map([['ffi', 1.2], ['ff', 0.9]]);
+
+export const createLigatureSurface = () => {
+  const base = createFakeSurface();
+  const ligatureWidth = (cssFont, text) => {
+    const letters = [...text].filter((character) => character.codePointAt(0) !== 0x200d).join('');
+    let width = 0;
+    let position = 0;
+    while (position < letters.length) {
+      const ligature = [...LIGATURE_RATIOS.keys()].find(
+        (candidate) => letters.startsWith(candidate, position)
+      );
+      if (ligature === undefined) {
+        width += base.measure(cssFont, letters[position]).width;
+        position += 1;
+        continue;
+      }
+      width += parseCssFont(cssFont).fontSizePx * LIGATURE_RATIOS.get(ligature);
+      position += ligature.length;
+    }
+    return width;
+  };
+  return {
+    ...base,
+    measure: (cssFont, text) => ({ ...base.measure(cssFont, text), width: ligatureWidth(cssFont, text) }),
   };
 };
 
@@ -176,6 +324,36 @@ export const shape = (request, surfaceOptions) => bake(
   surfaceOptions
 );
 
+/**
+ * A bake against the one face that joins, at the same round size the shaping fixtures use: every
+ * contextual advance is then a whole number — isolated 30, initial 25, medial 20, final 27.5 — so an
+ * expectation about a cursive run can be checked by hand.
+ */
+export const CURSIVE_FAMILY = 'Cursive Arabic';
+
+export const cursive = (request, surfaceOptions) => bakeGlyphAtlas(
+  { face: { family: CURSIVE_FAMILY }, fontSizePx: SHAPED_SIZE_PX, ...request },
+  { surface: createFakeSurface(surfaceOptions) }
+);
+
+/** A cell's text with its context joiners shown as `-`, so a form can be read in an expectation. */
+const readable = (cluster) => cluster.replaceAll(CONTEXT_JOINER, '-');
+
+export const cellFormsOf = (descriptor) => descriptor.glyphs.map((glyph) => readable(glyph.cluster));
+
+/** The cells each laid-out line draws, in visual order, as readable forms. */
+export const lineFormsOf = (descriptor) => descriptor.layout.lines.map(
+  (line) => line.glyphs.map((cell) => readable(descriptor.glyphs[cell].cluster)).join('|')
+);
+
+/** One cell's coverage, sampled at the middle of its ink so two forms can be told apart. */
+export const cellAlphaOf = (descriptor, cell) => {
+  const glyph = descriptor.glyphs[cell];
+  const x = glyph.xPx + Math.floor(glyph.widthPx / 2);
+  const y = glyph.yPx + Math.floor(glyph.heightPx / 2);
+  return descriptor.pixels[(y * descriptor.atlas.widthPx + x) * 4 + 3];
+};
+
 export const codeOf = (run) => {
   try {
     run();
@@ -197,5 +375,7 @@ export const lineTextsOf = (descriptor) => descriptor.layout.lines.map(
 export const VIETNAMESE = 'Tiếng Việt'.normalize('NFC');
 export const KOREAN = '한국어'.normalize('NFC');
 export const ARABIC = 'مرحبا'.normalize('NFC');
+/** One dual-joining letter three times over: initial, medial and final forms of the same cluster. */
+export const ARABIC_REPEATED = 'ببب'.normalize('NFC');
 export const HEBREW = 'שלום'.normalize('NFC');
 export const FAMILY_EMOJI = '👩‍👩‍👧‍👦';

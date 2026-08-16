@@ -37,8 +37,14 @@ osg-media-pipeline.workspace = true
 osg-media-server = { path = "../../../crates/osg-media-server" }
 osg-native-tools.workspace = true
 osg-providers.workspace = true
+osg-compositor.workspace = true
+osg-encode.workspace = true
+osg-export.workspace = true
 osg-render.workspace = true
 osg-scene.workspace = true
+# The preview publishes its frame as a PNG for an <img> load. Already in the tree via the graphics
+# stack; declared here because this crate now uses it directly.
+png = "=0.17.16"
 osg-speech.workspace = true
 serde.workspace = true
 serde_json.workspace = true

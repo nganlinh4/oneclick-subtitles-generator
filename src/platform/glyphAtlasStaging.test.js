@@ -128,8 +128,8 @@ const acceptFrames = () => {
  * magnitude bound. Metadata is still 36% of the 1 MiB metadata bound, and the frame is still refused
  * by the 32 MiB payload budget on its pixels alone, as it was before.
  */
-const WORST_CASE_METADATA_BYTES = 380_288;
-const WORST_CASE_TOTAL_BYTES = 67_489_168;
+const WORST_CASE_METADATA_BYTES = 380_730;
+const WORST_CASE_TOTAL_BYTES = 67_489_610;
 
 const observedCodes = new Set();
 
@@ -203,6 +203,12 @@ const descriptorAtLimits = () => {
       style: 'oblique',
       fontSizePx: GLYPH_ATLAS_LIMITS.maxFontSizePx,
       substituted: true,
+      cssFont: 'W'.repeat(GLYPH_ATLAS_LIMITS.maxFamilyCharacters * 2),
+      probes: [
+        { probeFamily: 'serif', aloneWidthPx: 999_999.9999, chainedWidthPx: 1.0001, participated: true },
+        { probeFamily: 'sans-serif', aloneWidthPx: 999_999.9999, chainedWidthPx: 2.0002, participated: true },
+        { probeFamily: 'monospace', aloneWidthPx: 3.0003, chainedWidthPx: 3.0003, participated: false },
+      ],
     },
     metrics: {
       ascentPx: 409.6001,
@@ -303,7 +309,9 @@ describe('staging one baked atlas', () => {
     ]);
     // `cssFont` and `probes` are WebView-internal evidence; Rust never shapes text.
     expect(Object.keys(metadata.face).sort()).toEqual([
-      'fontSizePx', 'requestedFamily', 'style', 'substituted', 'weight',
+      // cssFont and probes are the shaping evidence Rust re-derives the substitution verdict from.
+      // They are measurements, never paths — that is what the assertion below still guards.
+      'cssFont', 'fontSizePx', 'probes', 'requestedFamily', 'style', 'substituted', 'weight',
     ]);
     // `codePoints` is derivable from `cluster`; a second encoding of one identity can only disagree.
     expect(Object.keys(metadata.glyphs[0]).sort()).toEqual([

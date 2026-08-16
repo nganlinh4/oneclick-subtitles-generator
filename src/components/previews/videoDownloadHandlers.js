@@ -59,6 +59,17 @@ export const normalizePreviewRenderLyrics = (subtitles) => subtitles.map((subtit
   text: String(subtitle?.text ?? ''),
 }));
 
+/**
+ * The output settings the editor preview composes and downloads at.
+ *
+ * The editor has no render-settings UI, so these are the values its download handler has always
+ * used. They are named and exported rather than left inline because the native preview surface has
+ * to compose at exactly the same size and frame grid as the file this handler writes; two literals
+ * that happened to agree would be the next thing to drift.
+ */
+export const EDITOR_PREVIEW_RESOLUTION = '1080p';
+export const EDITOR_PREVIEW_FRAME_RATE = 30;
+
 export const previewCustomizationForNativeRender = (settings = {}) => {
   const position = boundedNumber(settings.position, 90, 0, 100);
   const textAlign = ['left', 'center', 'right'].includes(settings.textAlign)
@@ -124,8 +135,8 @@ export const renderAndExportDesktopPreview = async ({
     projectId: await ensureNativeRenderProject(sourceAsset),
     lyrics: normalizePreviewRenderLyrics(subtitles),
     settings: {
-      resolution: '1080p',
-      frameRate: 30,
+      resolution: EDITOR_PREVIEW_RESOLUTION,
+      frameRate: EDITOR_PREVIEW_FRAME_RATE,
       originalAudioVolume: 100,
       narrationVolume: 0,
       trimStart: 0,

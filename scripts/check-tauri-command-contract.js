@@ -39,16 +39,10 @@ const assertExactSet = (leftLabel, left, rightLabel, right) => {
   }
 };
 
-const INTENTIONALLY_UNWIRED_COMMANDS = new Map([
-  [
-    'glyph_atlas_stage',
-    'The native renderer stages glyph atlases from src/platform/glyphAtlasStaging.js, which no '
-    + 'shipped editor surface imports until the compositor preview replaces the Remotion drawing '
-    + 'path. Registering it now means its 16 native tests run in CI rather than sitting dormant; '
-    + 'this entry must be deleted in the same change that first imports the module from a rendered '
-    + 'component, and the check above fails if it is not.',
-  ],
-]);
+// Empty, and that is the point: the entry that lived here said it must be deleted by the change
+// that first imports the staging module from a rendered component. The native preview does exactly
+// that, and the check above enforced the promise rather than trusting it.
+const INTENTIONALLY_UNWIRED_COMMANDS = new Map();
 
 const sourceExtensions = new Set(['.js', '.jsx', '.mjs', '.cjs']);
 

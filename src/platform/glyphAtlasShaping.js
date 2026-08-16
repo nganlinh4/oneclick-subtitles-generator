@@ -190,6 +190,12 @@ const breakOpportunities = (text, clusters) => {
  * Returns the layout. `lines[].glyphs` index the atlas cells in the order they are DRAWN, left to
  * right, and `lines[].penXPx` is the line-relative pen for each of those cells, so bidi reordering,
  * letter spacing and justification are already applied and nothing downstream recomputes them.
+ *
+ * `advanceOf` and `cellIndexOf` are functions of a cluster's POSITION in the run, not maps from its
+ * text. They have to be: a cursive script gives the same cluster a different form — and so a
+ * different cell and a different advance — at different positions, and the baker resolves that per
+ * position in `glyphAtlasCells.js`. Nothing else about this module depends on which of the two it
+ * is handed.
  */
 export const buildTextLayout = ({
   text,
@@ -218,7 +224,7 @@ export const buildTextLayout = ({
   // different way of choosing one.
   const wrapWidthPx = wordWrap ? maxWidthPx : null;
   const opportunities = clusters.length === 0 ? new Set() : breakOpportunities(text, clusters);
-  const advanceAt = (index) => advanceOf.get(clusters[index]) + letterSpacingPx;
+  const advanceAt = (index) => advanceOf(index) + letterSpacingPx;
 
   // Resolved once for the whole run, because the run is one paragraph: a hard line break inside a
   // cue must not flip the cue's direction halfway down. `directionNeedsBidi` is the baker's own
@@ -307,12 +313,9 @@ export const buildTextLayout = ({
 
     const lineText = indices.map((index) => clusters[index]).join('');
     const measuredWidthPx = lineText.length === 0 ? 0 : round4(measureLineWidth(lineText));
-    const cellAdvancePx = indices.reduce(
-      (total, index) => total + advanceOf.get(clusters[index]),
-      0
-    );
+    const cellAdvancePx = indices.reduce((total, index) => total + advanceOf(index), 0);
     return {
-      glyphs: order.map((position) => cellIndexOf.get(clusters[indices[position]])),
+      glyphs: order.map((position) => cellIndexOf(indices[position])),
       penXPx,
       // What alignment measures: trailing spaces hang, so they are not part of the line's width.
       advanceWidthPx: round4(contentAdvancePx + justificationPx * gaps.size),

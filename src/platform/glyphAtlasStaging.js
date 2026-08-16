@@ -135,6 +135,9 @@ const CONTENT_HASH_PATTERN = /^[0-9a-f]{8}$/;
 /** Mirrors the code shape `desktopRuntime` already guarantees for a sanitized bridge error. */
 const NATIVE_CODE_PATTERN = /^[A-Za-z][A-Za-z0-9]{0,127}$/;
 const DIRECTIONS = new Set(['ltr', 'rtl', 'neutral']);
+/** The generic families the baker probes. Fixed, because the far side re-derives against the count. */
+const FACE_PROBE_COUNT = 3;
+const PROBE_KEYS = ['aloneWidthPx', 'chainedWidthPx', 'participated', 'probeFamily'];
 const STYLES = new Set(['normal', 'italic', 'oblique']);
 const CELL_ADVANCE_VERDICTS = new Set(['reproduces', 'refused']);
 /** Sorted, because `hasExactKeys` compares against a sorted key list. */
@@ -181,6 +184,38 @@ const validateFace = (face) => {
     invalid('face.fontSizePx is out of bounds');
   }
   if (typeof face.substituted !== 'boolean') invalid('face.substituted is not a boolean');
+  // The shaping evidence. It crosses deliberately, and carrying the REAL measurements is the whole
+  // point: Rust re-derives the substitution verdict from them, so a face that silently fell back is
+  // caught on the far side too. Synthesising them would turn that check into a rubber stamp, which
+  // is exactly the failure this migration removes — so they are validated here, never invented.
+  if (typeof face.cssFont !== 'string'
+      || face.cssFont.length === 0
+      || face.cssFont.length > GLYPH_ATLAS_LIMITS.maxFamilyCharacters * 2) {
+    invalid('face.cssFont is missing or out of bounds');
+  }
+  if (!Array.isArray(face.probes) || face.probes.length !== FACE_PROBE_COUNT) {
+    invalid('face.probes is not the expected probe set');
+  }
+  const seen = new Set();
+  for (const [index, probe] of face.probes.entries()) {
+    const at = (field) => `face.probes[${index}].${field}`;
+    if (!hasExactKeys(probe, PROBE_KEYS)) invalid(`face.probes[${index}] has unexpected fields`);
+    if (typeof probe.probeFamily !== 'string' || probe.probeFamily.length === 0) {
+      invalid(at('probeFamily'));
+    }
+    if (seen.has(probe.probeFamily)) invalid(at('probeFamily is repeated'));
+    seen.add(probe.probeFamily);
+    if (!isFiniteNumber(probe.aloneWidthPx) || probe.aloneWidthPx < 0) invalid(at('aloneWidthPx'));
+    if (!isFiniteNumber(probe.chainedWidthPx) || probe.chainedWidthPx < 0) invalid(at('chainedWidthPx'));
+    if (typeof probe.participated !== 'boolean') invalid(at('participated'));
+    // The one agreement the far side cannot re-derive without the widths, so it is checked here too.
+    if (probe.participated !== (probe.aloneWidthPx !== probe.chainedWidthPx)) {
+      invalid(at('participated disagrees with its own measurements'));
+    }
+  }
+  if (!face.probes.some((probe) => probe.participated)) {
+    invalid('face.probes records no participating family, so the face was never verified');
+  }
 };
 
 // `letterSpacingPx` is a metric rather than a style field because the WebView already applied it to
@@ -361,6 +396,13 @@ const buildMetadata = (descriptor) => ({
     style: descriptor.face.style,
     fontSizePx: descriptor.face.fontSizePx,
     substituted: descriptor.face.substituted,
+    cssFont: descriptor.face.cssFont,
+    probes: descriptor.face.probes.map((probe) => ({
+      probeFamily: probe.probeFamily,
+      aloneWidthPx: probe.aloneWidthPx,
+      chainedWidthPx: probe.chainedWidthPx,
+      participated: probe.participated,
+    })),
   },
   metrics: {
     ascentPx: descriptor.metrics.ascentPx,

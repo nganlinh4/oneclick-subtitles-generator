@@ -14,6 +14,13 @@
  * than the compositor guessing where a line ended. `glyphAtlasShaping.js` owns that pass, including
  * `textTransform`, `letterSpacing`, the wrap width and justification.
  *
+ * Shaping also decides WHAT EACH CELL IS. A cluster whose glyph depends on its neighbours — every
+ * cursive script does — cannot be rasterized alone, so `glyphAtlasCells.js` resolves each position's
+ * contextual form and the cell is baked from that form's canonical spelling instead of from the bare
+ * cluster. It is engaged only for a run the isolated cells cannot reproduce, so a script that does
+ * not join bakes byte-for-byte the atlas it always did, and it hands the run back unresolved when no
+ * spelling reproduces it, so a ligature or a kern still refuses rather than drawing the wrong glyph.
+ *
  * Transport is deliberately NOT decided here. Raw frame bytes over IPC are forbidden by the
  * architecture, so `descriptor.pixels` is exposed as a plain RGBA byte view and the caller chooses
  * the staging route. `pixels.buffer` is a plain transferable ArrayBuffer for that purpose. This
@@ -28,6 +35,7 @@
  * identity instead of silent divergence.
  */
 
+import { measureCell, packAtlas, resolveContextualCells } from './glyphAtlasCells';
 import {
   deepFreeze,
   fail,
@@ -77,9 +85,6 @@ export const GLYPH_ATLAS_LIMITS = Object.freeze({
   minLetterSpacingPx: -100,
   maxLetterSpacingPx: 1_000,
 });
-
-/** Widths tried in order; the first that packs to a height no greater than itself wins. */
-const ATLAS_WIDTH_CANDIDATES = Object.freeze([64, 128, 256, 512, 1_024, 2_048, 4_096]);
 
 /**
  * Probe families used to detect face substitution. They must be generic families that every engine
@@ -306,70 +311,7 @@ const probeCluster = (surface, face, families, cluster) => PROBE_FAMILIES.every(
   return round4(aloneWidth) === round4(chainedWidth);
 });
 
-// Packing
-
-const nextPowerOfTwo = (value) => {
-  let size = 1;
-  while (size < value) size *= 2;
-  return size;
-};
-
-/** Deterministic shelf packing in the sorted glyph order. No heuristics, no randomness. */
-const shelfPack = (cells, atlasWidthPx) => {
-  const placements = new Array(cells.length);
-  let shelfYPx = 0;
-  let shelfHeightPx = 0;
-  let penXPx = 0;
-  for (let index = 0; index < cells.length; index += 1) {
-    const cell = cells[index];
-    if (cell.widthPx === 0 || cell.heightPx === 0) {
-      placements[index] = { xPx: 0, yPx: 0 };
-      continue;
-    }
-    if (cell.widthPx > atlasWidthPx) return null;
-    if (penXPx + cell.widthPx > atlasWidthPx) {
-      shelfYPx += shelfHeightPx;
-      shelfHeightPx = 0;
-      penXPx = 0;
-    }
-    placements[index] = { xPx: penXPx, yPx: shelfYPx };
-    penXPx += cell.widthPx;
-    if (cell.heightPx > shelfHeightPx) shelfHeightPx = cell.heightPx;
-  }
-  return { placements, heightPx: nextPowerOfTwo(shelfYPx + shelfHeightPx) };
-};
-
-const packAtlas = (cells) => {
-  const inked = cells.some((cell) => cell.widthPx > 0 && cell.heightPx > 0);
-  if (!inked) return { widthPx: 0, heightPx: 0, placements: cells.map(() => ({ xPx: 0, yPx: 0 })) };
-  for (const widthPx of ATLAS_WIDTH_CANDIDATES) {
-    const packed = shelfPack(cells, widthPx);
-    if (packed !== null && packed.heightPx <= widthPx) {
-      return { widthPx, heightPx: packed.heightPx, placements: packed.placements };
-    }
-  }
-  return fail('glyphAtlasTooLarge', `The glyphs do not fit within a ${GLYPH_ATLAS_LIMITS.maxAtlasDimensionPx}px atlas`);
-};
-
 // Bake
-
-const measureCell = (measurement, paddingPx) => {
-  const left = Math.ceil(measurement.actualBoundingBoxLeft);
-  const right = Math.ceil(measurement.actualBoundingBoxRight);
-  const ascent = Math.ceil(measurement.actualBoundingBoxAscent);
-  const descent = Math.ceil(measurement.actualBoundingBoxDescent);
-  const inkWidthPx = left + right;
-  const inkHeightPx = ascent + descent;
-  if (inkWidthPx <= 0 || inkHeightPx <= 0) {
-    return { widthPx: 0, heightPx: 0, originXPx: 0, originYPx: 0 };
-  }
-  return {
-    widthPx: inkWidthPx + paddingPx * 2,
-    heightPx: inkHeightPx + paddingPx * 2,
-    originXPx: paddingPx + left,
-    originYPx: paddingPx + ascent,
-  };
-};
 
 const canonicalizeLayout = (layout) => [
   `${layout.textTransform}|${layout.letterSpacingPx}|${layout.maxWidthPx ?? 'none'}`,
@@ -410,6 +352,10 @@ const canonicalize = (descriptor) => {
  * `options.surface` injects the measurement surface and defaults to canvas 2D. Returns a frozen,
  * versioned descriptor whose `pixels` is tightly packed RGBA8 — its alpha channel is the coverage
  * mask — and whose `layout` is the per-line run the compositor draws. The caller owns staging both.
+ *
+ * A cell is rasterized from the CONTEXTUAL FORM the run gives its cluster, not always from the bare
+ * cluster: see `glyphAtlasCells.js`. `glyphs[].cluster` therefore carries the text the cell was
+ * baked from, which for a joined form is the cluster plus the zero-width joiners that spell it.
  */
 export const bakeGlyphAtlas = (request, options = {}) => {
   const {
@@ -434,28 +380,79 @@ export const bakeGlyphAtlas = (request, options = {}) => {
   const descentPx = round4(faceMetrics.fontBoundingBoxDescent);
 
   const clusters = segmentClusters(text);
-  const unique = uniqueClusters(clusters);
+  const measureWidth = (value) => round4(readMeasurement(surface.measure(cssFont, value), 'a text run').width);
+  const runAdvanceWidthPx = measureWidth(text);
 
-  const measured = unique.map((cluster) => {
-    const measurement = readMeasurement(surface.measure(cssFont, cluster), 'a glyph cluster');
-    const substituted = INKED_PATTERN.test(cluster) && probeCluster(surface, face, families, cluster);
+  // One cell, from whatever text the run says that cell is: the bare cluster on the isolated path,
+  // the cluster plus its context joiners on the contextual one.
+  const measureCellText = (cellText) => {
+    const measurement = readMeasurement(surface.measure(cssFont, cellText), 'a glyph cluster');
+    const substituted = INKED_PATTERN.test(cellText) && probeCluster(surface, face, families, cellText);
     if (substituted && requireExactFace) {
-      fail('glyphAtlasFaceSubstituted', `The face "${face.family}" does not cover "${cluster}" and the engine substituted another face`);
+      // The message names the face and nothing else: the cluster it failed on is the user's own
+      // subtitle text, which never leaves this module in an error.
+      fail('glyphAtlasFaceSubstituted', `The face "${face.family}" does not cover part of the text and the engine substituted another face`);
     }
     return {
-      cluster,
-      codePoints: [...cluster].map((character) => character.codePointAt(0)),
-      direction: directionOf(cluster),
+      cluster: cellText,
+      codePoints: [...cellText].map((character) => character.codePointAt(0)),
+      direction: directionOf(cellText),
       advanceWidthPx: round4(measurement.width),
       substituted,
       cell: measureCell(measurement, paddingPx),
     };
-  });
+  };
 
-  const atlas = packAtlas(measured.map(({ cell }) => cell));
-  if (atlas.widthPx > GLYPH_ATLAS_LIMITS.maxAtlasDimensionPx || atlas.heightPx > GLYPH_ATLAS_LIMITS.maxAtlasDimensionPx) {
-    fail('glyphAtlasTooLarge', `The atlas exceeds ${GLYPH_ATLAS_LIMITS.maxAtlasDimensionPx}px`);
+  const isolatedCells = uniqueClusters(clusters);
+  const isolatedIndexOf = new Map(isolatedCells.map((cluster, index) => [cluster, index]));
+  const isolatedEntries = isolatedCells.map(measureCellText);
+  const isolatedAdvanceOf = new Map(isolatedEntries.map((entry) => [entry.cluster, entry.advanceWidthPx]));
+  const isolatedResidualPx = round4(
+    runAdvanceWidthPx - clusters.reduce((total, cluster) => total + isolatedAdvanceOf.get(cluster), 0)
+  );
+
+  // Non-zero means the engine applied kerning, a ligature or a contextual form across cluster
+  // boundaries, so summing per-cell advances does not reproduce the run. That is the one condition
+  // under which contextual cells are worth resolving, and resolving them is also what can make the
+  // residual go away: the contextual advances come from the run's own progressive prefixes, so they
+  // sum to the run exactly. A run nothing can spell per cluster comes back `null` and keeps both the
+  // isolated cells and the residual that refuses to lay them out.
+  const resolved = isolatedResidualPx === 0
+    ? null
+    : resolveContextualCells({ clusters, runAdvanceWidthPx, measureWidth, limits: GLYPH_ATLAS_LIMITS });
+
+  const isolatedBake = {
+    measured: isolatedEntries,
+    advanceAt: (index) => isolatedAdvanceOf.get(clusters[index]),
+    cellIndexAt: (index) => isolatedIndexOf.get(clusters[index]),
+    shapingResidualPx: isolatedResidualPx,
+  };
+  const contextualBake = () => {
+    const measured = resolved.cells.map(measureCellText);
+    return {
+      measured,
+      advanceAt: resolved.advanceAt,
+      cellIndexAt: resolved.cellIndexAt,
+      shapingResidualPx: round4(
+        runAdvanceWidthPx - clusters.reduce((total, _cluster, index) => total + resolved.advanceAt(index), 0)
+      ),
+    };
+  };
+
+  // Four cells where there was one is four times the atlas, so a run can resolve and still not fit.
+  // Falling back to the isolated cells then loses the contextual forms, which is a worse picture but
+  // a picture; failing the bake would lose the run entirely for a reason the caller cannot act on.
+  let chosen = null;
+  for (const bake of resolved === null ? [isolatedBake] : [contextualBake(), isolatedBake]) {
+    const packed = packAtlas(bake.measured.map(({ cell }) => cell));
+    if (packed === null) continue;
+    chosen = { ...bake, atlas: packed };
+    break;
   }
+  if (chosen === null) {
+    fail('glyphAtlasTooLarge', `The glyphs do not fit within a ${GLYPH_ATLAS_LIMITS.maxAtlasDimensionPx}px atlas`);
+  }
+  const { measured, advanceAt, cellIndexAt, shapingResidualPx, atlas } = chosen;
 
   const glyphs = measured.map((entry, index) => ({
     cluster: entry.cluster,
@@ -491,13 +488,6 @@ export const bakeGlyphAtlas = (request, options = {}) => {
     pixels = raw instanceof Uint8ClampedArray ? raw : new Uint8ClampedArray(raw.buffer, raw.byteOffset, raw.length);
   }
 
-  const advanceByCluster = new Map(measured.map((entry) => [entry.cluster, entry.advanceWidthPx]));
-  const clusterAdvanceSum = clusters.reduce((total, cluster) => total + advanceByCluster.get(cluster), 0);
-  const runAdvanceWidthPx = round4(readMeasurement(surface.measure(cssFont, text), 'the text run').width);
-  // Non-zero means the engine applied kerning, a ligature or a contextual form across cluster
-  // boundaries, so summing per-cell advances does not reproduce the run. Surfaced instead of
-  // hidden: the compositor must not lay out from cell advances alone when this is non-zero.
-  const shapingResidualPx = round4(runAdvanceWidthPx - clusterAdvanceSum);
   const baseDirection = glyphs.length === 0
     ? 'ltr'
     : (clusters.map(directionOf).find((direction) => direction !== 'neutral') ?? 'ltr');
@@ -506,8 +496,8 @@ export const bakeGlyphAtlas = (request, options = {}) => {
   const layout = buildTextLayout({
     text,
     clusters,
-    cellIndexOf: new Map(unique.map((cluster, index) => [cluster, index])),
-    advanceOf: advanceByCluster,
+    cellIndexOf: cellIndexAt,
+    advanceOf: advanceAt,
     textTransform,
     letterSpacingPx,
     maxWidthPx,

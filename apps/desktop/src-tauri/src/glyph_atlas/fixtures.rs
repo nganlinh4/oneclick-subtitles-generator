@@ -26,7 +26,14 @@ pub(super) fn metadata_with(
         concat!(
             r#"{{"frameVersion":1,"atlasVersion":1,"contentHash":"0a1b2c3d","#,
             r#""face":{{"requestedFamily":"{family}","weight":400,"style":"normal","#,
-            r#""fontSizePx":48,"substituted":false}},"#,
+            r#""fontSizePx":48,"cssFont":"normal 400 48px \"{family}\"","substituted":false,"#,
+            // Real probe shape: the first two discriminate, so the face provably participated.
+            r#""probes":[{{"probeFamily":"serif","aloneWidthPx":100,"chainedWidthPx":80,"#,
+            r#""participated":true}},"#,
+            r#"{{"probeFamily":"sans-serif","aloneWidthPx":90,"chainedWidthPx":80,"#,
+            r#""participated":true}},"#,
+            r#"{{"probeFamily":"monospace","aloneWidthPx":80,"chainedWidthPx":80,"#,
+            r#""participated":false}}]}},"#,
             r#""metrics":{{"ascentPx":38,"descentPx":10,"lineHeightPx":56,"baselinePx":40,"#,
             r#""runAdvanceWidthPx":64,"shapingResidualPx":0,"baseDirection":"ltr","#,
             r#""letterSpacingPx":0}},"#,

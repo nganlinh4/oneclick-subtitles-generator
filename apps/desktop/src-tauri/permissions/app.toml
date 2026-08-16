@@ -136,6 +136,11 @@ description = "Allows the main editor to hand the native compositor one bounded,
 commands.allow = ["glyph_atlas_stage"]
 
 [[permission]]
+identifier = "render-preview-frames"
+description = "Allows the main editor to render one natively composited preview frame at a time and receive an element-loadable capability URL for it, with no frame bytes and no filesystem path crossing the boundary."
+commands.allow = ["preview_frame_render"]
+
+[[permission]]
 identifier = "import-ephemeral-audio"
 description = "Allows the main editor to import and release bounded in-memory audio recordings through opaque media identifiers."
 commands.allow = ["media_blob_import", "media_blob_release"]

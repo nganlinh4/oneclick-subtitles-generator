@@ -72,10 +72,16 @@ pub(super) fn decode_frame(
     if declared != u64::try_from(frame.len() - pixels_at).unwrap_or(u64::MAX) {
         return Err(StagingRefusal::PixelLengthMismatch);
     }
-    Ok(StagedGlyphAtlas {
+    let staged = StagedGlyphAtlas {
         metadata,
         pixels: frame[pixels_at..].to_vec(),
-    })
+    };
+    // Build the checked descriptor here, at the door, rather than at render time. An atlas that
+    // cannot become one is not renderable, and refusing it now means the registry only ever holds
+    // atlases the compositor can actually draw — and that the refusal reaches the caller who staged
+    // it, instead of surfacing later as a mysterious preview failure.
+    staged.to_descriptor()?;
+    Ok(staged)
 }
 
 // Bounded reading

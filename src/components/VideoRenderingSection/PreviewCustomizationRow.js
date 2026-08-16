@@ -1,9 +1,15 @@
-import RemotionVideoPreview from '../RemotionVideoPreview';
+import NativeRenderPreview from '../previews/NativeRenderPreview';
 import SubtitleCustomizationPanel from '../SubtitleCustomizationPanel';
 
 /**
- * Second row: the resizable Remotion preview panel and the subtitle customization
- * panel side by side. Pure component — state, refs, and handlers come from props.
+ * Second row: the resizable preview panel and the subtitle customization panel side by side. Pure
+ * component — state, refs, and handlers come from props.
+ *
+ * The preview is the native compositor's own frame. It was `RemotionVideoPreview`, a second
+ * implementation of the export composition maintained by hand in JavaScript; the render settings
+ * that used to be folded into `subtitleCustomization` are passed as themselves now, because the
+ * native path composes from the resolution and frame rate directly rather than reading them out of a
+ * style object they never belonged in.
  */
 const PreviewCustomizationRow = ({
   containerRef,
@@ -36,16 +42,14 @@ const PreviewCustomizationRow = ({
         style={{ flex: `0 0 ${leftPanelWidth}%` }}
         tabIndex={0}
       >
-        <RemotionVideoPreview
+        <NativeRenderPreview
           ref={videoPlayerRef}
           videoFile={selectedVideoFile}
           subtitles={subtitles}
           narrationAudioUrl={(selectedNarration === 'generated' && isAlignedNarrationAvailable()) ? window.alignedNarrationCache?.url : null}
-          subtitleCustomization={{
-            ...subtitleCustomization,
-            resolution: renderSettings.resolution,
-            frameRate: renderSettings.frameRate
-          }}
+          subtitleCustomization={subtitleCustomization}
+          resolution={renderSettings.resolution}
+          frameRate={renderSettings.frameRate}
           originalAudioVolume={renderSettings.originalAudioVolume}
           narrationVolume={selectedNarration === 'none' ? 0 : renderSettings.narrationVolume}
           cropSettings={cropSettings}

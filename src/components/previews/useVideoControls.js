@@ -161,7 +161,7 @@ const useVideoControls = ({
       }
 
       // Don't handle spacebar if the video rendering section is expanded and focused
-      // This prevents conflicts with the RemotionVideoPreview
+      // This prevents conflicts with the render tab's own preview
       const videoRenderingSection = document.querySelector('.video-rendering-section.expanded');
       const videoPreviewPanel = document.querySelector('.video-preview-panel');
       if (videoRenderingSection && videoPreviewPanel) {
@@ -169,7 +169,7 @@ const useVideoControls = ({
         const isInVideoRenderingArea = event.target.closest('.video-rendering-section') ||
                                       event.target.closest('.video-preview-panel');
         if (isInVideoRenderingArea) {
-          return; // Let the RemotionVideoPreview handle its own spacebar events
+          return; // Let the render tab's preview handle its own spacebar events
         }
       }
 

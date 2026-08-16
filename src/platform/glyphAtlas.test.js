@@ -13,6 +13,7 @@ import {
 import {
   ACUTE,
   ARABIC,
+  ARABIC_REPEATED,
   DEFAULT_FACES,
   FAMILY_EMOJI,
   HEBREW,
@@ -23,6 +24,7 @@ import {
   clustersOf,
   codeOf,
   createFakeSurface,
+  cursive,
   defineFace,
 } from './glyphAtlasTestFont';
 
@@ -100,6 +102,29 @@ describe('bakeGlyphAtlas descriptor', () => {
     expect(descriptor.metrics.runAdvanceWidthPx).toBe(74.88);
     expect(descriptor.metrics.shapingResidualPx).toBe(0);
   });
+
+  /**
+   * The cell list is what `crates/osg-scene/src/glyph/validate.rs` re-derives its ordering rule
+   * against: cells are sorted by UTF-16 code unit and no two are the same text. Contextual cells
+   * keep that true because a form is spelled differently from every other form of its cluster, which
+   * is the whole reason the descriptor's shape did not have to change to carry them.
+   */
+  it('keeps the cells strictly ordered and self-describing, contextual or not', () => {
+    for (const descriptor of [bake({ text: 'Hello world' }), cursive({ text: ARABIC_REPEATED })]) {
+      const clusters = descriptor.glyphs.map((glyph) => glyph.cluster);
+
+      expect(new Set(clusters).size).toBe(clusters.length);
+      for (const [index, cluster] of clusters.entries()) {
+        // `<` on a JavaScript string is a UTF-16 code unit comparison, which is the comparison Rust
+        // makes with `encode_utf16().cmp(...)`, so strictness here is strictness there.
+        if (index > 0) expect(clusters[index - 1] < cluster, cluster).toBe(true);
+        expect(descriptor.glyphs[index].codePoints)
+          .toEqual([...cluster].map((character) => character.codePointAt(0)));
+        expect(descriptor.glyphs[index].codePoints.length)
+          .toBeLessThanOrEqual(GLYPH_ATLAS_LIMITS.maxClusterCodePoints);
+      }
+    }
+  });
 });
 
 describe('bakeGlyphAtlas determinism', () => {
@@ -134,11 +159,39 @@ describe('bakeGlyphAtlas determinism', () => {
     expect(bake({ text: 'abc', face: { family: 'Editor Sans', weight: 700 } }).contentHash).not.toBe(base.contentHash);
   });
 
+  /**
+   * The regression guard for contextual cells, and the reason it is a list of literals.
+   *
+   * Every hash below was produced by the baker BEFORE it could bake a contextual form, so a run
+   * whose clusters do not join has to reach the same atlas byte for byte — same cells, same
+   * packing, same pixels, same layout. A face that joins is the only thing that may change.
+   */
+  it('bakes text that does not join to the same bytes it always did', () => {
+    const golden = [
+      [{ text: 'Hello world' }, 'd386bb0c'],
+      [{ text: 'abc' }, 'bbd2c5ea'],
+      [{ text: 'aa bb cc', fontSizePx: 50, maxWidthPx: 78 }, 'aa4eeaf8'],
+      [{ text: `${VIETNAMESE} ${KOREAN}`, fontSizePx: 42, lineHeightPx: 60, paddingPx: 2 }, '98e5fb2a'],
+      [{ text: 'aa (bb) cc' }, '3245e224'],
+      [{ text: 'a\nb' }, '4f19578c'],
+      [{ text: 'hello world', textTransform: 'capitalize' }, 'e98e286d'],
+      [{ text: 'aa bb cc', maxWidthPx: 200, textAlign: 'justify' }, '972d53ee'],
+      [{ text: ARABIC }, '28224bbd'],
+      [{ text: 'Straße', textTransform: 'uppercase', letterSpacingPx: 3 }, 'a60e4633'],
+    ];
+
+    for (const [request, contentHash] of golden) {
+      expect(bake(request).contentHash, JSON.stringify(request)).toBe(contentHash);
+    }
+  });
+
   // Extended to every module the baker was split across. The split is what keeps `glyphAtlas.js`
-  // inside the 600-line ceiling while it grew a shaping pass, and a determinism rule that only
-  // covered the file the code used to live in would have stopped proving anything.
+  // inside the 600-line ceiling while it grew a shaping pass and a cell resolver, and a determinism
+  // rule that only covered the file the code used to live in would have stopped proving anything.
   it('contains no clock or randomness in its source', () => {
-    for (const module of ['glyphAtlas', 'glyphAtlasCore', 'glyphAtlasShaping', 'glyphAtlasSurface']) {
+    for (const module of [
+      'glyphAtlas', 'glyphAtlasCells', 'glyphAtlasCore', 'glyphAtlasShaping', 'glyphAtlasSurface',
+    ]) {
       const source = readFileSync(resolve(process.cwd(), `src/platform/${module}.js`), 'utf8')
         .replace(/\/\*[\s\S]*?\*\//g, '')
         .replace(/^\s*\/\/.*$/gm, '');

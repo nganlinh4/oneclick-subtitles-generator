@@ -2,8 +2,7 @@ import { useEffect, useState, useCallback } from 'react';
 import { dbg } from './videoPreviewDebug';
 
 /**
- * Owns all fullscreen subtitle-overlay DOM logic for VideoPreview:
- *  - createFullscreenSubtitleContainer (injects #fullscreen-subtitle-overlay)
+ * Owns all fullscreen DOM logic for VideoPreview:
  *  - handleFullscreenChange (resize/style the video to fill the screen, cleanup on exit)
  *  - handleFullscreenExit (used by both the button and the ESC/F key path)
  *
@@ -15,7 +14,6 @@ import { dbg } from './videoPreviewDebug';
 const useFullscreenSubtitles = ({
   videoRef,
   videoContainerRef,
-  subtitleSettings,
   setControlsVisible,
   setShowCustomControls,
   setIsVideoHovered,
@@ -108,50 +106,6 @@ const useFullscreenSubtitles = ({
     const videoElement = videoRef.current;
     if (!videoElement) return;
 
-    // Function to create and inject fullscreen subtitle container
-    const createFullscreenSubtitleContainer = () => {
-      dbg('ðŸŽ¬ SUBTITLE - Creating fullscreen subtitle container');
-
-      // Check if container already exists
-      let container = document.getElementById('fullscreen-subtitle-overlay');
-      if (!container) {
-        dbg('ðŸŽ¬ SUBTITLE - Container does not exist, creating new one');
-        container = document.createElement('div');
-        container.id = 'fullscreen-subtitle-overlay';
-        container.style.position = 'fixed';
-        container.style.left = '0';
-        container.style.right = '0';
-        container.style.bottom = '10%';
-        container.style.width = `${subtitleSettings.boxWidth || '80'}%`;
-        container.style.margin = '0 auto';
-        container.style.textAlign = 'center';
-        container.style.zIndex = '999999'; // Higher than video z-index
-        container.style.pointerEvents = 'none';
-        container.style.backgroundColor = 'rgba(255, 0, 0, 0.3)'; // Debug: red background
-        document.body.appendChild(container);
-        dbg('ðŸŽ¬ SUBTITLE - Container created and added to body');
-      } else {
-        dbg('ðŸŽ¬ SUBTITLE - Container already exists, reusing');
-        // Force update styles in case they were lost
-        container.style.zIndex = '999999';
-        container.style.position = 'fixed';
-        container.style.backgroundColor = 'rgba(255, 0, 0, 0.3)'; // Debug: red background
-      }
-
-      // Debug: Check container position and visibility
-      const rect = container.getBoundingClientRect();
-      dbg('ðŸŽ¬ SUBTITLE - Container position:', {
-        width: rect.width,
-        height: rect.height,
-        x: rect.x,
-        y: rect.y,
-        zIndex: container.style.zIndex,
-        isVisible: rect.width > 0 && rect.height > 0
-      });
-
-      return container;
-    };
-
     // Function to handle fullscreen change events
     const handleFullscreenChange = () => {
       dbg('ðŸŽ¬ FULLSCREEN CHANGE EVENT TRIGGERED');
@@ -204,7 +158,6 @@ const useFullscreenSubtitles = ({
       // If entering fullscreen, create the subtitle container and setup controls
       if (isVideoFullscreen) {
         dbg('ðŸŽ¬ ENTERING FULLSCREEN - Starting video resize process');
-        createFullscreenSubtitleContainer();
         // Add a class to the video element to help with styling
         videoElement.classList.add('fullscreen-video');
 
@@ -328,11 +281,6 @@ const useFullscreenSubtitles = ({
         // If exiting fullscreen, force our manual exit function to ensure proper cleanup
         dbg('ðŸŽ¬ FULLSCREEN CHANGE: Detected exit, calling manual exit function');
 
-        // Remove the subtitle container
-        const subtitleContainer = document.getElementById('fullscreen-subtitle-overlay');
-        if (subtitleContainer) {
-          document.body.removeChild(subtitleContainer);
-        }
         videoElement.classList.remove('fullscreen-video');
 
         // Call our manual exit function to ensure all styles are properly reset
@@ -508,7 +456,6 @@ const useFullscreenSubtitles = ({
   }, [
     videoRef,
     videoContainerRef,
-    subtitleSettings.boxWidth,
     handleFullscreenExit,
     isFullscreen,
     setControlsVisible,
