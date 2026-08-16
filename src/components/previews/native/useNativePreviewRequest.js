@@ -28,9 +28,8 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import { stageGlyphAtlas } from '../../../platform/glyphAtlasStaging';
 import {
   compositionSize,
-  exactFrameRate,
-  frameCountForDuration,
   frameIndexForTime,
+  previewTimeline,
 } from './nativePreviewGeometry';
 import {
   PREVIEW_FULL_FRAME_CROP,
@@ -68,7 +67,7 @@ const faceInstalledProbe = () => {
   };
 };
 
-const DORMANT = Object.freeze({ request: null, error: null });
+const DORMANT = Object.freeze({ request: null, error: null, outsideTrim: false });
 
 /** The customization fields a bake actually reads, as one comparable key. */
 const styleKeyOf = (customization) => JSON.stringify([
@@ -93,6 +92,10 @@ const useNativePreviewRequest = ({
   sourceWidthPx = null,
   sourceHeightPx = null,
   durationSeconds = null,
+  // The render settings' own trim, in seconds, with `trimEnd` of zero meaning "to the end of the
+  // source". Defaulting both to the untrimmed window is what a surface with no trim control means.
+  trimStart = 0,
+  trimEnd = 0,
   currentTime = 0,
 }) => {
   const [staged, setStaged] = useState(null);
@@ -127,15 +130,26 @@ const useNativePreviewRequest = ({
     [resolution, sourceWidthPx, sourceHeightPx, cropKey],
   );
 
-  const timeline = useMemo(() => {
-    const rate = exactFrameRate(frameRate);
-    if (rate === null) return null;
-    const frameCount = frameCountForDuration(durationSeconds, rate);
-    return frameCount === null ? null : Object.freeze({ ...rate, frameCount });
-  }, [frameRate, durationSeconds]);
+  // The TRIMMED timeline, which is the only one the export has. `previewTimeline` mirrors
+  // `RenderRequest::validate` and `convert/timeline.rs`; deriving a frame count from the `<video>`
+  // element's own duration instead would index a composition the export never writes.
+  const timeline = useMemo(
+    () => previewTimeline({
+      frameRate,
+      durationSeconds,
+      trimStartSeconds: trimStart,
+      trimEndSeconds: trimEnd,
+    }),
+    [frameRate, durationSeconds, trimStart, trimEnd],
+  );
 
   // Content-keyed: the cue list is rebuilt from a fresh array on most renders, but the selected cue
   // only changes when the text or its bounds change, which is the only thing a bake depends on.
+  //
+  // Selection stays on the ABSOLUTE playhead against ABSOLUTE cues, and the trim does not enter it:
+  // the conversion rebases the instant and every cue by the same `trimStart`, so the two shifts
+  // cancel and both sides pick the same cue. Subtracting the trim here as well would move the
+  // selection window relative to the cues it is being compared against.
   const cues = useMemo(() => previewCueList(subtitles), [subtitles]);
   const selected = selectPreviewCue(cues, currentTime, { fadeInDuration, fadeOutDuration });
   const cueKey = selected === null ? '' : JSON.stringify([selected.text, selected.start, selected.end]);
@@ -207,18 +221,33 @@ const useNativePreviewRequest = ({
         resolution,
         frameRate,
         crop,
+        trimStart,
+        trimEnd,
       })
       : null),
     // `customization` and `crop` are read only through their content keys, for the same reason the
     // bake reads the style through one.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [active, sourceAsset, projectId, stableCue, customizationKey, resolution, frameRate, cropKey],
+    [
+      active, sourceAsset, projectId, stableCue, customizationKey, resolution, frameRate, cropKey,
+      trimStart, trimEnd,
+    ],
   );
 
   const frameIndex = useMemo(
-    () => (timeline === null ? null : frameIndexForTime(currentTime, timeline)),
+    () => frameIndexForTime(currentTime, timeline),
     [timeline, currentTime],
   );
+
+  /**
+   * The playhead is inside the source and outside what the export composes.
+   *
+   * There is no frame to ask for — clamping to frame 0 or to the last frame would put an exported
+   * pixel on screen at an instant it is not the pixel for — so the request is dormant and the state
+   * is reported rather than hidden, which is what lets a surface take the composited frame off and
+   * show the `<video>` beneath it instead of holding the last frame it happened to decode.
+   */
+  const outsideTrim = active && timeline !== null && frameIndex === null;
 
   // The staged atlas and the request must describe the same revision. A handle left over from the
   // previous cue paired with this cue's request would draw the previous cue's run, so a mismatch is
@@ -233,9 +262,11 @@ const useNativePreviewRequest = ({
   );
 
   if (!active || request === null) {
-    return atlasError === null ? DORMANT : { ...DORMANT, error: atlasError };
+    return atlasError === null && !outsideTrim
+      ? DORMANT
+      : { ...DORMANT, error: atlasError, outsideTrim };
   }
-  return { request, error: null };
+  return { request, error: null, outsideTrim: false };
 };
 
 export default useNativePreviewRequest;

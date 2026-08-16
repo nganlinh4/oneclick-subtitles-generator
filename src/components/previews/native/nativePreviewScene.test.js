@@ -187,6 +187,18 @@ describe('the preview render request', () => {
     expect(render.settings).toEqual(requestFor({ start: 0, end: 1, text: 'Preview' }).settings);
   });
 
+  it('carries the trim window, which decides which frames the composition has at all', () => {
+    // Rust derives frame_count from this window and rebases every cue by trimStart
+    // (crates/osg-export/src/convert/timeline.rs). Pinning it to zero here, which this module used
+    // to do, previewed a different composition from the one the render tab exports.
+    const trimmed = requestFor(null, { trimStart: 2, trimEnd: 8 });
+    expect(trimmed.settings).toMatchObject({ trimStartUs: 2_000_000, trimEndUs: 8_000_000 });
+
+    // Untrimmed by default, which is what a surface with no trim control means. `trimEnd` of zero
+    // is "to the end of the source", so the request carries no end at all.
+    expect(requestFor(null).settings).toMatchObject({ trimStartUs: 0, trimEndUs: null });
+  });
+
   it('carries the crop the surface is composing at, canvas ground included', () => {
     const render = requestFor(null, {
       crop: { ...PREVIEW_FULL_FRAME_CROP, width: 50, height: 25, canvasBgColor: '#123456' },

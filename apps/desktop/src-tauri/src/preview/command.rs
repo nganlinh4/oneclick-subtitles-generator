@@ -25,7 +25,7 @@ use osg_domain::AssetId;
 use osg_media_server::MediaServer;
 use osg_scene::glyph::GlyphAtlasDescriptor;
 
-use super::host::PreviewHost;
+use super::host::{PreviewGround, PreviewHost};
 use super::plan::{PreviewComposition, plan_for_source};
 use super::publish::PreviewBinding;
 use super::refusal::PreviewRefusal;
@@ -61,7 +61,8 @@ pub(crate) trait StagedAtlases {
 /// # Errors
 /// Returns [`PreviewRefusal::UnsupportedRequest`] for a request this build does not read or a frame
 /// outside the converted timeline, [`PreviewRefusal::SourceUnreadable`] when the source cannot be
-/// probed, [`PreviewRefusal::AtlasUnknown`] for an atlas that is not staged,
+/// probed or cannot be decoded at the frame the timeline names,
+/// [`PreviewRefusal::AtlasUnknown`] for an atlas that is not staged,
 /// [`PreviewRefusal::FontUnavailable`] when the staged face is not the one the request asks for,
 /// [`PreviewRefusal::AtlasCannotLayOut`] when the atlas refuses cell-advance layout,
 /// [`PreviewRefusal::SceneRejected`] when the composition is refused, [`PreviewRefusal::Busy`] when
@@ -98,9 +99,10 @@ pub(crate) fn render_preview_frame(
     let composition = PreviewComposition::build(&plan, &face, atlas)?;
 
     // The generation is claimed after the conversion and before the draw, so the window a stale
-    // result has to lose is exactly the render itself — which is the only slow part.
+    // result has to lose is exactly the decode and the render — which are the only slow parts.
     let ticket = host.claim(binding)?;
-    let frame = host.compose(&composition, frame_index)?;
+    let ground = PreviewGround::for_layer(layer, plan.source_asset_id, source);
+    let frame = host.compose(&composition, frame_index, ground)?;
     host.publish(server, &ticket, &frame, frame_index, layer)
 }
 

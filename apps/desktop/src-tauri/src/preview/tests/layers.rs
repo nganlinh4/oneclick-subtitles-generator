@@ -1,16 +1,14 @@
-//! What each layer carries, and what the composited one does not carry yet.
+//! What each layer carries.
 //!
 //! Two of these assert a property of the *subtitle* layer — transparent where nothing is drawn,
 //! straight alpha where something is — and both are worthless without their discriminating
 //! opposite, so each also asserts that the frame really does contain the case it forbids: real ink
 //! at full opacity, and a partly transparent pixel that was premultiplied before it was published.
 //!
-//! The third asserts a gap rather than a guarantee. `docs/rewrite/NATIVE_RENDERER.md` defines the
-//! composited layer as the decoded source, cropped and backfilled, with the subtitle pass blended
-//! over it; this host has no decoder, so it draws both layers with
-//! `osg_compositor::Compositor::render_scene` and the two come back identical. That is measured here
-//! rather than described, because a boundary that *named* two layers while returning one picture
-//! would read, from the outside, exactly like one that returned two.
+//! The third asserts that the two layers are two pictures rather than one name applied twice: the
+//! composited layer's corner is opaque because the decoded source is under it, and the subtitle
+//! layer's is not. What the composited ground actually *contains* — the source's own pixels, its
+//! crop and its flips — is measured in [`super::underlay`].
 
 use osg_domain::AssetId;
 use serde_json::json;
@@ -105,24 +103,22 @@ fn the_subtitle_layer_is_published_straight_alpha_rather_than_premultiplied() {
 }
 
 #[test]
-fn the_composited_layer_has_no_video_ground_yet() {
+fn the_composited_layer_is_the_frame_over_video_and_the_subtitle_layer_is_not() {
     let _adapter = adapter();
-    // DELETE THIS TEST when the host learns to decode a source frame. It asserts the documented
-    // gap in `super::super`: the composited layer is *defined* as the subtitle pass over the
-    // decoded, cropped, backfilled source, and this host draws it with `render_scene`, so it comes
-    // back on a transparent ground and byte-identical to the subtitle layer. Asserting the gap is
-    // what stops "composited" from being read as a guarantee it does not currently earn.
     let composited = published_pixels(PreviewLayer::Composited);
     let subtitles = published_pixels(PreviewLayer::Subtitles);
 
+    // The corner no cue covers: opaque on the composited layer because the video is under it, fully
+    // transparent on the subtitle layer because that is the layer the `WebView` blends itself.
+    assert_eq!(composited[3], 255, "the composited corner shows the video");
     assert_eq!(
-        &composited[..4],
+        &subtitles[..4],
         &[0, 0, 0, 0],
-        "a composited frame over a decoded source would have an opaque corner",
+        "the subtitle layer keeps its transparent ground",
     );
-    assert_eq!(
+    assert_ne!(
         composited, subtitles,
-        "the two layers are one picture until this host has a video ground to lay the pass over",
+        "the two layers are two pictures: one carries the source frame, one does not",
     );
 }
 

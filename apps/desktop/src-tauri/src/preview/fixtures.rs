@@ -373,14 +373,64 @@ pub(super) fn media_server() -> MediaServer {
     MediaServer::start(["https://tauri.localhost".to_owned()]).expect("start the media server")
 }
 
+/// How many frames the synthetic clips carry: three seconds at thirty frames a second.
+pub(super) const SOURCE_FRAMES: u32 = 90;
+
 /// The synthetic source clip the end-to-end test probes and plans against.
 ///
 /// Encoded here rather than checked in, so what the preview plans against is a real container that
 /// Media Foundation produced and can read back, not bytes somebody generated once.
+///
+/// Flat mid-grey: this clip exists to be *planned* against, and a uniform frame keeps the tests that
+/// use it about the boundary rather than about pixels. The test that has to see the video uses
+/// [`quadrant_clip`] instead.
 #[must_use]
 pub(super) fn source_clip(directory: &TempDir) -> PathBuf {
-    let output = directory.path().join("preview-source.mp4");
-    let video = VideoConfig::new(SOURCE_WIDTH, SOURCE_HEIGHT, 30, 1, 90)
+    let pixels = vec![64_u8; (SOURCE_WIDTH * SOURCE_HEIGHT * 4) as usize];
+    encode_clip(directory, "preview-source.mp4", &pixels)
+}
+
+/// The four quadrant colours of [`quadrant_clip`]: top left, top right, bottom left, bottom right.
+///
+/// Deliberately far apart in both luma and chroma, so a lossy H.264 round trip through 4:2:0 chroma
+/// cannot move one close to another and each remains identifiable by nearest match. That is what
+/// makes a missing underlay, a crop and a flip all unmistakable rather than a judgement call.
+pub(super) const QUADRANTS: [[u8; 3]; 4] =
+    [[220, 32, 32], [32, 200, 64], [40, 64, 220], [232, 216, 48]];
+
+/// The indices into [`QUADRANTS`], named so an assertion reads as a picture.
+pub(super) const TOP_LEFT: usize = 0;
+pub(super) const TOP_RIGHT: usize = 1;
+pub(super) const BOTTOM_LEFT: usize = 2;
+
+/// A source clip whose four quadrants are four different colours.
+///
+/// The discriminating fixture: a composited frame that lost its video ground, that ignored the crop
+/// or that ignored a flip all produce a *different quadrant colour* at a sampled point, rather than
+/// a subtle difference someone has to decide about.
+#[must_use]
+pub(super) fn quadrant_clip(directory: &TempDir) -> PathBuf {
+    encode_clip(directory, "preview-quadrants.mp4", &quadrant_pixels())
+}
+
+/// One RGBA8 frame with each quadrant in its own colour.
+fn quadrant_pixels() -> Vec<u8> {
+    let mut pixels = vec![255_u8; (SOURCE_WIDTH * SOURCE_HEIGHT * 4) as usize];
+    for y in 0..SOURCE_HEIGHT {
+        for x in 0..SOURCE_WIDTH {
+            let quadrant =
+                usize::from(y >= SOURCE_HEIGHT / 2) * 2 + usize::from(x >= SOURCE_WIDTH / 2);
+            let start = ((y * SOURCE_WIDTH + x) * 4) as usize;
+            pixels[start..start + 3].copy_from_slice(&QUADRANTS[quadrant]);
+        }
+    }
+    pixels
+}
+
+/// Encodes one still frame [`SOURCE_FRAMES`] times into a real container.
+fn encode_clip(directory: &TempDir, name: &str, pixels: &[u8]) -> PathBuf {
+    let output = directory.path().join(name);
+    let video = VideoConfig::new(SOURCE_WIDTH, SOURCE_HEIGHT, 30, 1, SOURCE_FRAMES)
         .expect("a supported source configuration")
         .with_bitrate_kbps(8_000)
         .expect("8 Mbit/s is in range")
@@ -388,9 +438,8 @@ pub(super) fn source_clip(directory: &TempDir) -> PathBuf {
         .expect("10 frames is in range");
     let mut encoder = open_encoder(&output, EncoderConfig::video_only(video))
         .expect("Media Foundation must provide an H.264 encoder");
-    let pixels = vec![64_u8; (SOURCE_WIDTH * SOURCE_HEIGHT * 4) as usize];
-    for index in 0..90 {
-        let frame = FrameBuffer::new(&pixels, SOURCE_WIDTH, SOURCE_HEIGHT, PixelLayout::Rgba8)
+    for index in 0..SOURCE_FRAMES {
+        let frame = FrameBuffer::new(pixels, SOURCE_WIDTH, SOURCE_HEIGHT, PixelLayout::Rgba8)
             .expect("a synthetic frame is the configured size");
         encoder
             .write_frame(index, &frame)

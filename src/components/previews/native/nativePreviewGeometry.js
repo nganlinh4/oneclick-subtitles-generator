@@ -25,6 +25,9 @@
  *     multiplication is not associative, so the two forms round to different widths for a small
  *     fraction of crop shapes. Replacing the Remotion preview with this module is what removes that
  *     disagreement; a third association would have re-created it.
+ *   - `previewTimeline` mirrors `RenderRequest::validate` in `crates/osg-render/src/contract.rs`
+ *     and `build` in `crates/osg-export/src/convert/timeline.rs`, which between them own the
+ *     TRIMMED timeline every frame index is an index into.
  *
  * Determinism: no clocks, no RNG, no state. Every function is a pure function of its arguments.
  */
@@ -155,29 +158,96 @@ export const exactFrameRate = (frameRate) => {
   return Object.freeze({ fpsNumerator: frameRate, fpsDenominator: 1 });
 };
 
+/** The grid `secondsToMicros` in `renderService.js` quantises every instant in a request onto. */
+const MICROS_PER_SECOND = 1_000_000;
+
+/** A second count as the whole microseconds a render request carries it as, or `null`. */
+const microseconds = (seconds) => (
+  isFiniteNumber(seconds) && seconds >= 0 ? Math.round(seconds * MICROS_PER_SECOND) : null
+);
+
 /**
- * The frame a timestamp lands on, clamped into the timeline.
+ * The composition timeline a preview frame is an index into: the TRIMMED one, which is the only one
+ * the export has.
  *
- * Floor rather than round, because a frame covers the interval that starts at its own presentation
- * time: the frame shown at 1/30s - epsilon is frame 0, not frame 1. Seek must equal play, so this is
- * the only place a preview turns a time into an index.
+ * MIRRORS `RenderRequest::validate` in `crates/osg-render/src/contract.rs` — `trim_end_us` defaults
+ * to the source duration, the window is refused unless `trim_start_us < trim_end_us <=
+ * source_duration_us`, and `duration_frames` is `ceil((trim_end_us - trim_start_us) * fps / 1e6)` —
+ * and `build` in `crates/osg-export/src/convert/timeline.rs`, which offsets that same grid to the
+ * trim point so the scene starts at zero where the source starts at `trimStart`. Those two are the
+ * authority. Nothing here is a second rule, and in particular the frame count is NOT derived from
+ * the `<video>` element's duration: a trimmed project has fewer frames than its source has, and an
+ * index into the wrong one names a different instant than the export writes.
+ *
+ * The window is quantised to microseconds first, because that is the grid the request itself carries
+ * — a trim the preview rounded differently from the request would put the composition's zero in a
+ * different place than the conversion does.
+ *
+ * `trimEndSeconds` of zero means "to the end of the source", exactly as `normalizeSettings` in
+ * `renderService.js` reads it. Returns `null` for a window whose BOUNDS the render contract would
+ * refuse, which is dormancy: the export refuses the same window, so there is no frame to preview.
+ * The contract's `MAX_RENDER_FRAMES` ceiling is deliberately NOT mirrored — nothing on this side
+ * mirrors it, for the export either — so a project past it reaches the compositor and comes back as
+ * a stated refusal rather than as a preview that quietly shows nothing.
+ */
+export const previewTimeline = ({
+  frameRate,
+  durationSeconds,
+  trimStartSeconds = 0,
+  trimEndSeconds = 0,
+}) => {
+  const rate = exactFrameRate(frameRate);
+  const durationUs = microseconds(durationSeconds);
+  const startUs = microseconds(trimStartSeconds);
+  const requestedEndUs = microseconds(trimEndSeconds);
+  if (rate === null || durationUs === null || durationUs < 1) return null;
+  if (startUs === null || requestedEndUs === null) return null;
+  const endUs = requestedEndUs === 0 ? durationUs : requestedEndUs;
+  if (startUs >= endUs || endUs > durationUs) return null;
+  const frameCount = Math.ceil(
+    ((endUs - startUs) * rate.fpsNumerator) / (rate.fpsDenominator * MICROS_PER_SECOND),
+  );
+  if (!Number.isInteger(frameCount) || frameCount < 1) return null;
+  return Object.freeze({
+    ...rate,
+    frameCount,
+    trimStartSeconds: startUs / MICROS_PER_SECOND,
+    trimEndSeconds: endUs / MICROS_PER_SECOND,
+  });
+};
+
+/**
+ * The frame of the trimmed composition a SOURCE timestamp lands on, or `null` when the playhead is
+ * outside the trim window.
+ *
+ * The playhead is a source instant and the composition starts at `trimStart`, so the index is
+ * `floor((t - trimStart) * fps)` — the offset the source grid carries in
+ * `crates/osg-export/src/convert/timeline.rs`, read the other way round. Floor rather than round,
+ * because a frame covers the interval that starts at its own presentation time: the frame shown at
+ * 1/30s - epsilon is frame 0, not frame 1. Seek must equal play, so this is the only place a preview
+ * turns a time into an index.
+ *
+ * NULL RATHER THAN A CLAMP OUTSIDE THE WINDOW. A playhead before the trim point or past the trim end
+ * is an instant the export does not contain, and clamping it to frame 0 or to the last frame would
+ * put a real exported frame on screen at an instant it is not the frame for — the same silent
+ * substitution this migration exists to remove. The caller goes dormant and shows the `<video>`
+ * instead, which is honestly "the source, here, where the output has nothing".
+ *
+ * Inside the window the last frame still covers the closing instant: `frameCount` is a CEILING, so
+ * `trimEnd` itself lands one past the last index whenever the window is an exact number of frames
+ * long. That single clamp is the ceiling read back, not a guess about a frame that does not exist.
  */
 export const frameIndexForTime = (timeSeconds, timeline) => {
   if (!isFiniteNumber(timeSeconds) || timeline === null || timeline === undefined) return null;
-  const { fpsNumerator, fpsDenominator, frameCount } = timeline;
+  const {
+    fpsNumerator, fpsDenominator, frameCount, trimStartSeconds, trimEndSeconds,
+  } = timeline;
   if (!isPositive(fpsNumerator) || !isPositive(fpsDenominator) || !Number.isInteger(frameCount)) {
     return null;
   }
   if (frameCount < 1) return null;
-  const index = Math.floor((Math.max(timeSeconds, 0) * fpsNumerator) / fpsDenominator);
+  if (!isFiniteNumber(trimStartSeconds) || !isFiniteNumber(trimEndSeconds)) return null;
+  if (timeSeconds < trimStartSeconds || timeSeconds > trimEndSeconds) return null;
+  const index = Math.floor(((timeSeconds - trimStartSeconds) * fpsNumerator) / fpsDenominator);
   return Math.min(Math.max(index, 0), frameCount - 1);
-};
-
-/** The number of frames a duration occupies on a frame grid, bounded by the transport's limit. */
-export const frameCountForDuration = (durationSeconds, { fpsNumerator, fpsDenominator }) => {
-  if (!isPositive(durationSeconds) || !isPositive(fpsNumerator) || !isPositive(fpsDenominator)) {
-    return null;
-  }
-  const frames = Math.ceil((durationSeconds * fpsNumerator) / fpsDenominator);
-  return frames >= 1 ? frames : null;
 };

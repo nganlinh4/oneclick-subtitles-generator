@@ -50,6 +50,8 @@ const PreviewCustomizationRow = ({
           subtitleCustomization={subtitleCustomization}
           resolution={renderSettings.resolution}
           frameRate={renderSettings.frameRate}
+          trimStart={renderSettings.trimStart}
+          trimEnd={renderSettings.trimEnd}
           originalAudioVolume={renderSettings.originalAudioVolume}
           narrationVolume={selectedNarration === 'none' ? 0 : renderSettings.narrationVolume}
           cropSettings={cropSettings}

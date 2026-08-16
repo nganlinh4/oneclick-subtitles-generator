@@ -3355,6 +3355,7 @@ dependencies = [
  "osg-application",
  "osg-asr",
  "osg-compositor",
+ "osg-decode",
  "osg-domain",
  "osg-download",
  "osg-encode",

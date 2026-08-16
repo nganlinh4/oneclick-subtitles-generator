@@ -129,6 +129,53 @@ describe('the request the editor actually issues', () => {
     expect(lastBakeRequest().text).toBe('Second cue');
   });
 
+  it('carries the trim and indexes the trimmed composition the export writes', async () => {
+    const { result } = renderHook(
+      (hookProps) => useNativePreviewRequest(hookProps),
+      { initialProps: props({ currentTime: 5, trimStart: 2, trimEnd: 8 }) },
+    );
+    await waitFor(() => expect(stagedAtlas(result)).toBe(ATLAS));
+
+    // The window reaches the conversion, so Rust derives frame_count from it and rebases the cues.
+    expect(result.current.request.render.settings).toMatchObject({
+      trimStartUs: 2_000_000,
+      trimEndUs: 8_000_000,
+    });
+    // floor((5 - 2) * 30). Untrimmed the same playhead is frame 150, which is the frame the export
+    // renders 2 seconds later than the one the user is looking at.
+    expect(result.current.request.frameIndex).toBe(90);
+    expect(result.current.outsideTrim).toBe(false);
+    // The cue is still sent ABSOLUTE. Rebasing it here as well would apply trimStart twice.
+    expect(result.current.request.render.lyrics).toEqual([{
+      id: 'cue-0-0', startUs: 4_000_000, endUs: 6_000_000, text: 'Second cue',
+    }]);
+  });
+
+  it('indexes the same wall-clock instant on the same frame at another rate', async () => {
+    const { result } = renderHook(
+      (hookProps) => useNativePreviewRequest(hookProps),
+      { initialProps: props({ currentTime: 5, trimStart: 2, trimEnd: 8, frameRate: 60 }) },
+    );
+    await waitFor(() => expect(stagedAtlas(result)).toBe(ATLAS));
+
+    expect(result.current.request.frameIndex).toBe(180);
+  });
+
+  it('leaves an untrimmed project exactly where it was', async () => {
+    const { result } = renderHook(
+      (hookProps) => useNativePreviewRequest(hookProps),
+      { initialProps: props({ currentTime: 5 }) },
+    );
+    await waitFor(() => expect(stagedAtlas(result)).toBe(ATLAS));
+
+    expect(result.current.request.frameIndex).toBe(150);
+    expect(result.current.request.render.settings).toMatchObject({
+      trimStartUs: 0,
+      trimEndUs: null,
+    });
+    expect(result.current.outsideTrim).toBe(false);
+  });
+
   it('renders an instant with nothing on screen rather than refusing it', async () => {
     const { result } = renderHook(
       (hookProps) => useNativePreviewRequest(hookProps),
@@ -196,13 +243,67 @@ describe('the request the editor actually issues', () => {
   });
 });
 
+/**
+ * The decision about a playhead the export does not cover.
+ *
+ * The frame index is not clamped to frame 0 or to the last frame, because both of those are real
+ * exported frames and putting one on screen at an instant it is not the frame for is precisely the
+ * silent substitution this migration removes. No request is made, and the state is REPORTED, so the
+ * surface can take the composited frame off rather than hold the last one it decoded.
+ */
+describe('a playhead outside the trim window', () => {
+  const trimmed = (currentTime) => props({ currentTime, trimStart: 2, trimEnd: 8 });
+
+  it('asks for no frame before the trim start', async () => {
+    const { result } = renderHook(
+      (hookProps) => useNativePreviewRequest(hookProps),
+      { initialProps: trimmed(1) },
+    );
+    // The atlas still bakes and stages: dormancy is a state of the request, not of the text.
+    await waitFor(() => expect(stageGlyphAtlas).toHaveBeenCalledTimes(1));
+
+    expect(result.current).toEqual({ request: null, error: null, outsideTrim: true });
+  });
+
+  it('asks for no frame after the trim end', async () => {
+    const { result } = renderHook(
+      (hookProps) => useNativePreviewRequest(hookProps),
+      { initialProps: trimmed(9) },
+    );
+    await waitFor(() => expect(stageGlyphAtlas).toHaveBeenCalledTimes(1));
+
+    expect(result.current).toEqual({ request: null, error: null, outsideTrim: true });
+  });
+
+  it('comes back the moment the playhead re-enters the window', async () => {
+    const { result, rerender } = renderHook(
+      (hookProps) => useNativePreviewRequest(hookProps),
+      { initialProps: trimmed(1) },
+    );
+    await waitFor(() => expect(result.current.outsideTrim).toBe(true));
+
+    rerender(trimmed(2));
+    await waitFor(() => expect(stagedAtlas(result)).toBe(ATLAS));
+    expect(result.current.request.frameIndex).toBe(0);
+    expect(result.current.outsideTrim).toBe(false);
+  });
+
+  it('is not reported on a surface that is not being judged', () => {
+    const { result } = renderHook(
+      (hookProps) => useNativePreviewRequest(hookProps),
+      { initialProps: props({ currentTime: 1, trimStart: 2, trimEnd: 8, active: false }) },
+    );
+    expect(result.current).toEqual({ request: null, error: null, outsideTrim: false });
+  });
+});
+
 describe('dormancy and refusal are different states', () => {
   it('is dormant, not failed, before the source has decoded a size', () => {
     const { result } = renderHook(
       (hookProps) => useNativePreviewRequest(hookProps),
       { initialProps: props({ sourceWidthPx: null, sourceHeightPx: null }) },
     );
-    expect(result.current).toEqual({ request: null, error: null });
+    expect(result.current).toEqual({ request: null, error: null, outsideTrim: false });
     expect(bakePreviewAtlas).not.toHaveBeenCalled();
   });
 
@@ -214,7 +315,7 @@ describe('dormancy and refusal are different states', () => {
     // The atlas is baked and staged all the same — dormancy is a state of the request, not a reason
     // to leave the text unbaked — but nothing may be asked of the compositor without a binding.
     await waitFor(() => expect(stageGlyphAtlas).toHaveBeenCalledTimes(1));
-    expect(result.current).toEqual({ request: null, error: null });
+    expect(result.current).toEqual({ request: null, error: null, outsideTrim: false });
   });
 
   it('is dormant when the face has no verified byte source, rather than substituting one', () => {

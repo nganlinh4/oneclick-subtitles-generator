@@ -127,6 +127,48 @@ describe('with a video selected', () => {
     expect(call.frameRate).toBe(30);
   });
 
+  it('composes the trimmed timeline the render tab is about to export', () => {
+    mount({ trimStart: 2, trimEnd: 8 });
+
+    const call = vi.mocked(useNativePreview).mock.calls.at(-1)[0];
+    expect(call.trimStart).toBe(2);
+    expect(call.trimEnd).toBe(8);
+  });
+
+  it('leaves an untrimmed panel untrimmed', () => {
+    mount();
+
+    const call = vi.mocked(useNativePreview).mock.calls.at(-1)[0];
+    expect(call.trimStart).toBe(0);
+    expect(call.trimEnd).toBe(0);
+  });
+
+  // The export has no frame for an instant outside the trim window, so the panel must not keep
+  // showing the last one it decoded: that would put an exported pixel in front of an instant it is
+  // not the pixel for. The <video> underneath is what is left, which is the honest answer.
+  it('takes the composited frame off when the playhead leaves the trim window', () => {
+    vi.mocked(useNativePreview).mockReturnValue(showing());
+    const { container, rerender } = mount({ trimStart: 2, trimEnd: 8 });
+    fireEvent.load(container.querySelector('.native-composited-frame-pending'));
+    expect(container.querySelector('.native-composited-frame')).not.toBeNull();
+
+    vi.mocked(useNativePreview).mockReturnValue({ ...dormant(), outsideTrim: true });
+    rerender(
+      <NativeRenderPreview
+        videoFile="C:/media/clip.mp4"
+        subtitles={subtitles}
+        subtitleCustomization={{ fontSize: 50, maxWidth: 80 }}
+        resolution="1080p"
+        frameRate={30}
+        trimStart={2}
+        trimEnd={8}
+      />,
+    );
+
+    expect(container.querySelectorAll('img')).toHaveLength(0);
+    expect(container.querySelector('video')).not.toBeNull();
+  });
+
   it('shows the composited frame while stopped and asks for the subtitle layer on play', () => {
     vi.mocked(useNativePreview).mockReturnValue(showing());
     const { container, video } = mount();

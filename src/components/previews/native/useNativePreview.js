@@ -54,12 +54,16 @@ const useNativePreview = ({
   // request builder composes the whole frame, which is what a surface with no crop control means.
   crop,
   durationSeconds = null,
+  // The render settings' trim, which is not a detail of playback: it decides how many frames the
+  // composition has and where its zero is. A surface with no trim control leaves it untrimmed.
+  trimStart = 0,
+  trimEnd = 0,
   currentTime = 0,
 }) => {
   const { projectId, sourceAsset } = useNativePreviewBinding(source);
   const dimensions = useVideoSourceDimensions(videoRef, sourceKey);
 
-  const { request, error: requestError } = useNativePreviewRequest({
+  const { request, error: requestError, outsideTrim } = useNativePreviewRequest({
     active,
     sourceAsset,
     projectId,
@@ -71,6 +75,8 @@ const useNativePreview = ({
     sourceWidthPx: dimensions === null ? null : dimensions.widthPx,
     sourceHeightPx: dimensions === null ? null : dimensions.heightPx,
     durationSeconds,
+    trimStart,
+    trimEnd,
     currentTime,
   });
 
@@ -93,6 +99,15 @@ const useNativePreview = ({
     releaseSurface,
     /** The layer being asked for now, which is not yet the layer `frame` carries while it changes. */
     layer,
+    /**
+     * The playhead is outside the trim window, so the export contains no frame for this instant.
+     *
+     * A surface must take the composited frame OFF here rather than leave the last one it decoded
+     * on screen: holding it would show an exported pixel at an instant it is not the pixel for, and
+     * that is the silent substitution this migration removes. The `<video>` underneath is the honest
+     * answer — the source, at an instant the output does not cover.
+     */
+    outsideTrim,
     /**
      * True only when the frame on screen is the guaranteed one: a real composited frame, on a
      * surface that is judging output. The subtitle layer is deliberately not owned — it is an

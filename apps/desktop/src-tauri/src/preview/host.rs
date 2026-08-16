@@ -6,19 +6,71 @@
 //! is also the moment every frame rendered on it stops being trustworthy.
 
 use std::fmt;
+use std::path::Path;
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::{Mutex, MutexGuard};
 
-use osg_compositor::{AdapterSelection, Compositor, Frame};
+use osg_compositor::{AdapterSelection, Compositor, Frame, VideoUnderlay};
+use osg_decode::DecoderConfig;
+use osg_domain::AssetId;
 
 use super::plan::PreviewComposition;
 use super::publish::{FrameLease, PreviewBinding, PublishedFrames};
 use super::refusal::PreviewRefusal;
 use super::request::{PreviewFrameResponse, PreviewLayer};
+use super::source::SourceDecoders;
 use super::{
     GenerationCounter, MAX_FRAME_BYTES, MAX_RENDERS_IN_FLIGHT, MAX_RETAINED_BYTES,
     MAX_RETAINED_FRAMES, PREVIEW_MIME_TYPE, image,
 };
+
+/// What a frame is composed on.
+///
+/// The two layers a request may ask for are exactly these two grounds, and
+/// [`Self::for_layer`] is the only place that mapping is made — exhaustively, so a third layer is a
+/// compile error here rather than a picture nobody chose.
+#[derive(Clone, Copy)]
+pub(crate) enum PreviewGround<'source> {
+    /// A fully transparent ground: the subtitle pass alone, for the `WebView` to blend over its own
+    /// `<video>` during continuous playback.
+    Transparent,
+    /// The decoded source frame, cropped, flipped and backfilled — the frame the export writes.
+    DecodedSource {
+        /// The media the frame is decoded from, which is also what the held decoder answers for.
+        asset_id: AssetId,
+        /// Where that media is. Used to open the source and never retained, stored or returned.
+        path: &'source Path,
+    },
+}
+
+impl fmt::Debug for PreviewGround<'_> {
+    /// Redacted: the path is the user's filesystem and this boundary never renders one.
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Self::Transparent => formatter.write_str("Transparent"),
+            Self::DecodedSource { asset_id, .. } => formatter
+                .debug_struct("DecodedSource")
+                .field("asset_id", asset_id)
+                .finish_non_exhaustive(),
+        }
+    }
+}
+
+impl<'source> PreviewGround<'source> {
+    /// The ground a layer is defined as.
+    pub(crate) const fn for_layer(
+        layer: PreviewLayer,
+        asset_id: AssetId,
+        path: &'source Path,
+    ) -> Self {
+        match layer {
+            PreviewLayer::Composited => Self::DecodedSource { asset_id, path },
+            // The playback overlay, and it must stay one: giving it a video underlay would make the
+            // `WebView` blend the source frame over its own `<video>` a second time.
+            PreviewLayer::Subtitles => Self::Transparent,
+        }
+    }
+}
 
 /// The generation a render was issued under, and what it was issued for.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -40,6 +92,9 @@ pub(crate) struct PreviewHost {
     /// What the current generation is for. `None` before the first render.
     binding: Mutex<Option<PreviewBinding>>,
     frames: PublishedFrames,
+    /// The one open source decoder, reused across a scrub and reopened only when the media or the
+    /// output timeline changes.
+    decoders: SourceDecoders,
 }
 
 impl fmt::Debug for PreviewHost {
@@ -49,6 +104,7 @@ impl fmt::Debug for PreviewHost {
             .field("generation", &self.generation.current())
             .field("in_flight", &self.in_flight.load(Ordering::Acquire))
             .field("frames", &self.frames)
+            .field("decoders", &self.decoders)
             .finish_non_exhaustive()
     }
 }
@@ -80,6 +136,7 @@ impl PreviewHost {
             generation: GenerationCounter::default(),
             binding: Mutex::new(None),
             frames: PublishedFrames::with_limits(max_frames, max_bytes),
+            decoders: SourceDecoders::default(),
         }
     }
 
@@ -87,6 +144,12 @@ impl PreviewHost {
     #[cfg(test)]
     pub(crate) const fn frames(&self) -> &PublishedFrames {
         &self.frames
+    }
+
+    /// The held decoder, for the assertions about reuse and about what it had to do.
+    #[cfg(test)]
+    pub(crate) const fn decoders(&self) -> &SourceDecoders {
+        &self.decoders
     }
 
     /// The generation in force now.
@@ -162,6 +225,9 @@ impl PreviewHost {
             *binding = None;
         }
         self.frames.retire_all();
+        // The decoder is given up too, so teardown really does release the source file rather than
+        // holding it open for a session that has ended.
+        self.decoders.close();
     }
 
     /// Composes one frame of a composition, bounded by how many renders may already be running.
@@ -171,33 +237,45 @@ impl PreviewHost {
     /// device was lost rather than being handed a frame from a device that is not the one the rest
     /// of the session used.
     ///
-    /// # What this draws, and what it does not
+    /// # What each ground draws
     ///
-    /// [`Compositor::render_scene`] is the subtitle pass on a fully transparent ground: an area no
-    /// cue covers comes back `0,0,0,0`. That is exactly [`PreviewLayer::Subtitles`].
+    /// [`PreviewGround::Transparent`] is [`Compositor::render_scene`]: the subtitle pass on a fully
+    /// transparent ground, so an area no cue covers comes back `0,0,0,0`. That is exactly
+    /// [`PreviewLayer::Subtitles`], and it must stay that way — it is the layer the `WebView` lays
+    /// over its own `<video>`.
     ///
-    /// [`PreviewLayer::Composited`] is *defined* as the whole frame — the decoded source, cropped,
-    /// flipped and backfilled, with the pass blended over it by
-    /// [`Compositor::render_scene_over`] — but this host has no decoded source frame to hand it, so
-    /// today both layers are this one call and come back byte-identical. That gap is asserted, with
-    /// measured pixels, by `the_composited_layer_has_no_video_ground_yet`, so it cannot be mistaken
-    /// for the guarantee `docs/rewrite/NATIVE_RENDERER.md` describes. Closing it means giving this
-    /// host a decoder, not changing what [`PreviewLayer::Subtitles`] means.
+    /// [`PreviewGround::DecodedSource`] is [`Compositor::render_scene_over`]: the source frame the
+    /// converted timeline names for this output frame, with the conversion's crop, flips and canvas
+    /// backfill, and the same pass blended over it in the same GPU pass. That is the frame the
+    /// export writes, which is the whole point of [`PreviewLayer::Composited`] — a user deciding
+    /// whether the output looks right is looking at the output.
+    ///
+    /// The source is decoded **before** the device is taken and the decoder's lock is released
+    /// before the compositor's is acquired, so the two are never held at once and a slow decode does
+    /// not hold the GPU.
     pub(crate) fn compose(
         &self,
         composition: &PreviewComposition,
         frame_index: u32,
+        ground: PreviewGround<'_>,
     ) -> Result<Frame, PreviewRefusal> {
         if frame_index >= composition.frame_count() {
             return Err(PreviewRefusal::UnsupportedRequest);
         }
         let _permit = RenderPermit::claim(&self.in_flight, self.max_in_flight)?;
+        let underlay = self.decode(composition, frame_index, ground)?;
         let mut held = match self.acquire() {
             Ok(held) => held,
             Err(refusal) => return Err(self.after(refusal)),
         };
         let compositor = held.as_ref().ok_or(PreviewRefusal::DeviceLost)?;
-        match compositor.render_scene(composition.scene(), frame_index) {
+        let composed = match underlay.as_ref() {
+            Some(underlay) => {
+                compositor.render_scene_over(composition.scene(), underlay, frame_index)
+            }
+            None => compositor.render_scene(composition.scene(), frame_index),
+        };
+        match composed {
             Ok(frame) => Ok(frame),
             Err(error) => {
                 let refusal = PreviewRefusal::from(error);
@@ -211,6 +289,27 @@ impl PreviewHost {
                 Err(self.after(refusal))
             }
         }
+    }
+
+    /// Decodes the source frame this output frame shows, or nothing for a transparent ground.
+    ///
+    /// The decoder is asked for the **output** frame index, not for a time or a source frame: the
+    /// configuration carries the conversion's own source timeline, so the trim offset and the
+    /// output frame rate are already in the question and `osg-decode` resolves it to an exact
+    /// instant and walks to the sample covering it. A seek is a starting point there, never an
+    /// answer.
+    fn decode(
+        &self,
+        composition: &PreviewComposition,
+        frame_index: u32,
+        ground: PreviewGround<'_>,
+    ) -> Result<Option<VideoUnderlay>, PreviewRefusal> {
+        let PreviewGround::DecodedSource { asset_id, path } = ground else {
+            return Ok(None);
+        };
+        let config = DecoderConfig::new(composition.source_timeline());
+        let decoded = self.decoders.frame(asset_id, path, config, frame_index)?;
+        Ok(Some(decoded.underlay(composition.crop())?))
     }
 
     /// Retires everything when the refusal means the device is gone, and returns it either way.

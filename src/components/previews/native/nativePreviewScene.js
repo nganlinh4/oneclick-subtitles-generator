@@ -179,17 +179,21 @@ export const atlasBakeRequest = ({ customization, text, compositionWidthPx, comp
 export const bakePreviewAtlas = (bake, options = undefined) => bakeGlyphAtlas(bake.request, options ?? {});
 
 /**
- * The audio and trim a preview composes at, which no preview surface chooses.
+ * The audio a preview composes at, which no preview surface chooses.
  *
- * Neither reaches a pixel — a preview frame carries no audio, and both editor surfaces preview the
- * whole source rather than a trimmed range — so these are the literals
+ * Neither volume reaches a pixel — a preview frame carries no audio — so these are the literals
  * `renderAndExportDesktopPreview` writes its files with rather than a second set to keep in step.
+ *
+ * THE TRIM IS NOT HERE, and used to be: it was pinned to zero beside these, on the reasoning that
+ * both editor surfaces preview the whole source. That was true of the surfaces and false of the
+ * frames. The trim decides how many frames the composition HAS and where its zero is — Rust derives
+ * `frame_count` from the trimmed window and rebases every cue by `trimStart`
+ * (`crates/osg-export/src/convert/timeline.rs`) — so a preview that sent zero was previewing a
+ * different composition from the one the render tab was about to export. It is a caller's value now.
  */
-const PREVIEW_AUDIO_AND_TRIM = Object.freeze({
+const PREVIEW_AUDIO = Object.freeze({
   originalAudioVolume: 100,
   narrationVolume: 0,
-  trimStart: 0,
-  trimEnd: 0,
 });
 
 /** The whole frame, for a surface that offers no crop. Matches the download handler's own crop. */
@@ -224,7 +228,13 @@ const PROBE_CUE = Object.freeze({ id: 'probe', start: 0, end: 1, text: 'x' });
  * the staged atlas holds a run for.
  *
  * `cue` is the single selected cue, or `null` for an instant with nothing on screen — which is a
- * legitimate frame to render, not an error.
+ * legitimate frame to render, not an error. Its bounds stay ABSOLUTE: the rebase onto the trimmed
+ * timeline is the conversion's, made once for both surfaces, and rebasing here as well would apply
+ * `trimStart` twice.
+ *
+ * `trimStart` and `trimEnd` are the render settings' own, in seconds, with `trimEnd` of zero meaning
+ * "to the end of the source" as `normalizeSettings` reads it. Their defaults are the untrimmed
+ * window, which is what a surface with no trim control means.
  *
  * Returns `null` when the editor's own state cannot produce a request the render contract accepts,
  * which is dormancy rather than failure: the export would refuse the same state, and a preview that
@@ -238,6 +248,8 @@ export const previewRenderRequest = ({
   resolution,
   frameRate,
   crop = PREVIEW_FULL_FRAME_CROP,
+  trimStart = 0,
+  trimEnd = 0,
 }) => {
   if (sourceAsset === null || sourceAsset === undefined || typeof projectId !== 'string') return null;
   try {
@@ -245,7 +257,9 @@ export const previewRenderRequest = ({
       sourceAsset,
       projectId,
       lyrics: [cue ?? PROBE_CUE],
-      settings: { resolution, frameRate, ...PREVIEW_AUDIO_AND_TRIM },
+      settings: {
+        resolution, frameRate, ...PREVIEW_AUDIO, trimStart, trimEnd,
+      },
       customization,
       crop,
     });

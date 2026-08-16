@@ -75,6 +75,12 @@ const NativeRenderPreview = forwardRef(({
   subtitleCustomization,
   resolution = '1080p',
   frameRate = 30,
+  // The render settings' trim, in seconds, with `trimEnd` of zero meaning "to the end of the
+  // source". The panel previews the composition the render tab is about to export, and that
+  // composition is the TRIMMED one: it has fewer frames than the source, its zero is at `trimStart`,
+  // and every cue is rebased onto it by `crates/osg-export/src/convert/timeline.rs`.
+  trimStart = 0,
+  trimEnd = 0,
   originalAudioVolume = 100,
   narrationVolume = 100,
   onTimeUpdate = null,
@@ -213,6 +219,8 @@ const NativeRenderPreview = forwardRef(({
     frameRate,
     crop: activeCrop,
     durationSeconds: duration,
+    trimStart,
+    trimEnd,
     currentTime,
   });
 
@@ -272,9 +280,12 @@ const NativeRenderPreview = forwardRef(({
         }}
       />
 
+      {/* Outside the trim window the export has no frame for this instant, so the overlay comes off
+          and the <video> shows through. Leaving the last composited frame on would put an exported
+          pixel in front of an instant it is not the pixel for. */}
       <NativeCompositedFrame
         frame={nativePreview.frame}
-        visible
+        visible={!nativePreview.outsideTrim}
         onLoadError={nativePreview.onFrameLoadError}
         style={{ borderRadius: '8px' }}
       />

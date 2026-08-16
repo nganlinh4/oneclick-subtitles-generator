@@ -12,6 +12,7 @@
 use std::fmt;
 
 use osg_compositor::CompositorError;
+use osg_decode::DecodeError;
 use osg_export::ExportError;
 use osg_render::RenderError;
 use osg_scene::glyph::LayoutRefusal;
@@ -143,6 +144,28 @@ impl From<CompositorError> for PreviewRefusal {
 impl From<RenderError> for PreviewRefusal {
     fn from(_: RenderError) -> Self {
         Self::UnsupportedRequest
+    }
+}
+
+impl From<DecodeError> for PreviewRefusal {
+    /// The decoder's failures, split the way the editor has to explain them.
+    ///
+    /// Two of them say the *request* was wrong rather than the source: an index the output timeline
+    /// does not contain, and an instant that cannot be represented. Everything else — a file that
+    /// will not open, a stream that ends before the timeline does, a colour description this build
+    /// will not guess at, a platform with no audited backend — is one thing to a user: the video
+    /// could not be read.
+    ///
+    /// **None of them is a frame.** A source that cannot be decoded must never fall back to the
+    /// subtitle pass on a transparent ground, because that picture is indistinguishable from a video
+    /// that failed to load, and a user judging their output would be judging the wrong image.
+    fn from(error: DecodeError) -> Self {
+        match error {
+            DecodeError::FrameOutOfRange { .. } | DecodeError::TimestampOutOfRange { .. } => {
+                Self::UnsupportedRequest
+            }
+            _ => Self::SourceUnreadable,
+        }
     }
 }
 

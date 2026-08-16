@@ -38,6 +38,10 @@ osg-media-server = { path = "../../../crates/osg-media-server" }
 osg-native-tools.workspace = true
 osg-providers.workspace = true
 osg-compositor.workspace = true
+# The composited preview layer is the export's own frame, so it needs the export's own decoder: the
+# subtitle pass is laid over the source frame the shared timeline names, not over a transparent
+# ground. The seam is a byte buffer, so nothing about Media Foundation reaches this crate.
+osg-decode.workspace = true
 osg-encode.workspace = true
 osg-export.workspace = true
 osg-render.workspace = true

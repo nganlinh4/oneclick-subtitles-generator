@@ -12,9 +12,10 @@
 
 use std::path::Path;
 
-use osg_compositor::{CueRun, SubtitleScene};
+use osg_compositor::{Crop, CueRun, SubtitleScene};
 use osg_export::{ExportPlan, StagedText, probe_source};
 use osg_render::{RenderLyric, RenderPlan, RenderRequest};
+use osg_scene::FrameTimeline;
 use osg_scene::glyph::GlyphAtlasDescriptor;
 use osg_scene::scene::ResolvedFace;
 
@@ -115,6 +116,23 @@ impl PreviewComposition {
     /// The scene the compositor draws.
     pub(crate) const fn scene(&self) -> &SubtitleScene {
         &self.scene
+    }
+
+    /// The grid the **source** is sampled against: the output frame rate, offset by the trim.
+    ///
+    /// The conversion's own, unchanged, and the same value [`osg_export::FrameRenderer`] opens its
+    /// decoder with. That is what makes "the frame the preview decodes for output `n`" and "the
+    /// frame the export decodes for output `n`" the same question rather than two similar ones.
+    pub(crate) const fn source_timeline(&self) -> FrameTimeline {
+        self.plan.source_timeline()
+    }
+
+    /// The crop, flips and canvas backfill the conversion resolved.
+    ///
+    /// Applied to the decoded frame by the compositor in the same pass as the subtitle layer, which
+    /// is why a preview cannot show a differently cropped picture from the export.
+    pub(crate) const fn crop(&self) -> Crop {
+        self.plan.crop()
     }
 
     /// The composition width the conversion derived.

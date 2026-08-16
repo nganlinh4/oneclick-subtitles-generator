@@ -4,9 +4,9 @@ import {
   atlasMaxWidthPx,
   compositionSize,
   exactFrameRate,
-  frameCountForDuration,
   frameIndexForTime,
   glyphScaleForComposition,
+  previewTimeline,
   roundTwoDecimalsLikeJavaScript,
   scaleSubtitleStyleValue,
 } from './nativePreviewGeometry';
@@ -141,20 +141,124 @@ describe('the frame grid', () => {
     expect(exactFrameRate(30)).toEqual({ fpsNumerator: 30, fpsDenominator: 1 });
     expect(exactFrameRate(30.5)).toBeNull();
   });
+});
 
-  it('floors a timestamp onto the frame that covers it and clamps into the timeline', () => {
-    const timeline = { fpsNumerator: 30, fpsDenominator: 1, frameCount: 300 };
-    expect(frameIndexForTime(0, timeline)).toBe(0);
-    expect(frameIndexForTime(1 / 30 - 1e-9, timeline)).toBe(0);
-    expect(frameIndexForTime(1 / 30, timeline)).toBe(1);
-    expect(frameIndexForTime(2, timeline)).toBe(60);
-    expect(frameIndexForTime(-5, timeline)).toBe(0);
-    expect(frameIndexForTime(1_000, timeline)).toBe(299);
+/**
+ * The timeline the preview shares with the export, which is the TRIMMED one.
+ *
+ * `RenderRequest::validate` in `crates/osg-render/src/contract.rs` derives `duration_frames` from
+ * `trim_end_us - trim_start_us`, and `crates/osg-export/src/convert/timeline.rs` offsets the source
+ * grid to `trim_start` while the scene grid starts at zero. A preview that counted frames from the
+ * `<video>` element's duration and indexed from the raw playhead — which is what this file used to
+ * do — asks for a different instant than the export renders for every trimmed project.
+ */
+describe('the trimmed timeline mirrors RenderRequest::validate', () => {
+  /** `duration_frames`, transcribed from contract.rs and computed in whole microseconds. */
+  const exportFrameCount = (trimStart, trimEnd, fps) => Math.ceil(
+    (Math.round((trimEnd - trimStart) * 1e6) * fps) / 1e6,
+  );
+
+  it('counts the frames of the trim window, not of the source', () => {
+    expect(previewTimeline({ frameRate: 30, durationSeconds: 10 }).frameCount).toBe(300);
+    expect(previewTimeline({
+      frameRate: 30, durationSeconds: 10, trimStartSeconds: 2, trimEndSeconds: 8,
+    }).frameCount).toBe(exportFrameCount(2, 8, 30));
+    expect(previewTimeline({
+      frameRate: 30, durationSeconds: 10, trimStartSeconds: 2, trimEndSeconds: 8,
+    }).frameCount).toBe(180);
   });
 
-  it('counts frames for a duration on the exact grid', () => {
-    expect(frameCountForDuration(10, { fpsNumerator: 30, fpsDenominator: 1 })).toBe(300);
-    expect(frameCountForDuration(1, { fpsNumerator: 30_000, fpsDenominator: 1_001 })).toBe(30);
-    expect(frameCountForDuration(0, { fpsNumerator: 30, fpsDenominator: 1 })).toBeNull();
+  it('reads a trimEnd of zero as the end of the source, exactly as normalizeSettings does', () => {
+    const whole = previewTimeline({ frameRate: 25, durationSeconds: 12, trimEndSeconds: 0 });
+    expect(whole).toMatchObject({ frameCount: 300, trimStartSeconds: 0, trimEndSeconds: 12 });
+  });
+
+  it('keeps 29.97 on the exact grid rather than on 30', () => {
+    // 6s at 30000/1001 is 179.82 frames, so the window is 180 frames long and the last one runs
+    // slightly past trimEnd. Rounding the rate to 30 would give the same count here and drift apart
+    // over a longer window, which is exactly what the rational grid exists to prevent.
+    const timeline = previewTimeline({
+      frameRate: 29.97, durationSeconds: 10, trimStartSeconds: 2, trimEndSeconds: 8,
+    });
+    expect(timeline).toMatchObject({ fpsNumerator: 30_000, fpsDenominator: 1_001, frameCount: 180 });
+    expect(previewTimeline({ frameRate: 29.97, durationSeconds: 3_600 }).frameCount).toBe(107_893);
+  });
+
+  it('refuses a window the render contract would refuse, rather than repairing it', () => {
+    const base = { frameRate: 30, durationSeconds: 10 };
+    // trim_start_us >= trim_end_us
+    expect(previewTimeline({ ...base, trimStartSeconds: 8, trimEndSeconds: 8 })).toBeNull();
+    expect(previewTimeline({ ...base, trimStartSeconds: 9, trimEndSeconds: 4 })).toBeNull();
+    // trim_end_us > source_duration_us
+    expect(previewTimeline({ ...base, trimEndSeconds: 11 })).toBeNull();
+    // No source duration yet, and a frame rate the ladder does not offer.
+    expect(previewTimeline({ frameRate: 30, durationSeconds: 0 })).toBeNull();
+    expect(previewTimeline({ frameRate: 30, durationSeconds: null })).toBeNull();
+    expect(previewTimeline({ frameRate: 30.5, durationSeconds: 10 })).toBeNull();
+  });
+});
+
+describe('the frame a playhead lands on', () => {
+  const untrimmed = previewTimeline({ frameRate: 30, durationSeconds: 10 });
+  const trimmed = previewTimeline({
+    frameRate: 30, durationSeconds: 10, trimStartSeconds: 2, trimEndSeconds: 8,
+  });
+
+  it('floors a source timestamp onto the frame that covers it, on an untrimmed project', () => {
+    expect(frameIndexForTime(0, untrimmed)).toBe(0);
+    expect(frameIndexForTime(1 / 30 - 1e-9, untrimmed)).toBe(0);
+    expect(frameIndexForTime(1 / 30, untrimmed)).toBe(1);
+    expect(frameIndexForTime(2, untrimmed)).toBe(60);
+    // The ceiling read back: frame 299 is the one that closes the window, so the closing instant is
+    // its instant. This is the only clamp, and it is inside the timeline rather than outside it.
+    expect(frameIndexForTime(10, untrimmed)).toBe(299);
+  });
+
+  it('indexes the trimmed composition, which is the one the export writes', () => {
+    // The export renders wall-clock t as floor((t - trimStart) * fps): the scene timeline starts at
+    // zero where the source starts at trimStart.
+    const exportIndex = (t, trimStart, fps) => Math.floor((t - trimStart) * fps);
+
+    expect(frameIndexForTime(2, trimmed)).toBe(exportIndex(2, 2, 30));
+    expect(frameIndexForTime(5, trimmed)).toBe(exportIndex(5, 2, 30));
+    expect(frameIndexForTime(5, trimmed)).toBe(90);
+    expect(frameIndexForTime(2.05, trimmed)).toBe(exportIndex(2.05, 2, 30));
+    expect(frameIndexForTime(2.05, trimmed)).toBe(1);
+    // What the trim-blind derivation did: the raw playhead against the raw duration. It names a
+    // frame 60 later than the export's, on a timeline 120 frames longer than the export's.
+    expect(frameIndexForTime(5, untrimmed)).toBe(150);
+  });
+
+  it('keeps the same wall-clock instant on the same frame at 29.97', () => {
+    const rational = previewTimeline({
+      frameRate: 29.97, durationSeconds: 10, trimStartSeconds: 2, trimEndSeconds: 8,
+    });
+    expect(frameIndexForTime(5, rational)).toBe(Math.floor(((5 - 2) * 30_000) / 1_001));
+    expect(frameIndexForTime(5, rational)).toBe(89);
+    expect(frameIndexForTime(8, rational)).toBe(179);
+  });
+
+  /**
+   * The decision this file makes about a playhead the export does not cover.
+   *
+   * `null`, not a clamp. Frame 0 and frame `frameCount - 1` are both real exported frames, so
+   * clamping to one would put an exported pixel on screen at an instant it is not the pixel for,
+   * which looks exactly like a correct preview. The caller goes dormant and shows the `<video>`.
+   */
+  it('has no frame for a playhead outside the trim window, and says so', () => {
+    expect(frameIndexForTime(1.9, trimmed)).toBeNull();
+    expect(frameIndexForTime(0, trimmed)).toBeNull();
+    expect(frameIndexForTime(8.000001, trimmed)).toBeNull();
+    expect(frameIndexForTime(10, trimmed)).toBeNull();
+    // The same rule on an untrimmed project, whose window is the whole source.
+    expect(frameIndexForTime(10.5, untrimmed)).toBeNull();
+    expect(frameIndexForTime(-5, untrimmed)).toBeNull();
+  });
+
+  it('has no frame at all without a timeline to index into', () => {
+    expect(frameIndexForTime(1, null)).toBeNull();
+    expect(frameIndexForTime(Number.NaN, untrimmed)).toBeNull();
+    // A hand-assembled grid carries no window, so it cannot say whether an instant is inside one.
+    expect(frameIndexForTime(1, { fpsNumerator: 30, fpsDenominator: 1, frameCount: 300 })).toBeNull();
   });
 });

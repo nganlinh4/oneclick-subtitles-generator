@@ -245,6 +245,10 @@ const VideoPreview = ({ currentTime, setCurrentTime, setDuration, videoSource, f
   // than by us and therefore close rather than exact. The CSS overlay is now only the fallback for a
   // surface that has no native frame at all. Pausing re-renders the exact composited frame, because
   // the frame index is a pure function of the playhead. See docs/rewrite/NATIVE_RENDERER.md.
+  //
+  // No trim is passed, and that is this surface's answer rather than an omission: the editor's
+  // preview is of the whole source, so its composition is the untrimmed one. The render tab is where
+  // a trim exists, and NativeRenderPreview carries it.
   const nativePreview = useNativePreview({
     active: true,
     playing: isPlaying,
@@ -447,7 +451,7 @@ const VideoPreview = ({ currentTime, setCurrentTime, setDuration, videoSource, f
                     the compositor is unavailable for this source. */}
                 <NativeCompositedFrame
                   frame={nativePreview.frame}
-                  visible
+                  visible={!nativePreview.outsideTrim}
                   onLoadError={nativePreview.onFrameLoadError}
                   fallback={(
                     <SubtitleDisplay

@@ -13,13 +13,15 @@
 //! 1. probing the same source the export would open ([`osg_export::probe_source`]),
 //! 2. validating the same [`osg_render::RenderRequest`] against it,
 //! 3. converting it with [`osg_export::ExportPlan::convert`],
-//! 4. composing the staged text with [`osg_export::ExportPlan::compose`], and
-//! 5. drawing frame `index` of the resulting scene with `osg-compositor`.
+//! 4. composing the staged text with [`osg_export::ExportPlan::compose`],
+//! 5. decoding the source frame that output frame `index` shows, with `osg-decode`, against the
+//!    conversion's own source timeline, and
+//! 6. drawing frame `index` of the resulting scene over it with `osg-compositor`.
 //!
-//! Steps 3 to 5 are exactly what an export runs per frame. If this module ever grows a scene
-//! builder or a style mapper of its own, the divergence the migration exists to remove has been
-//! rebuilt, so [`plan`] deliberately contains no arithmetic beyond the unit conversions
-//! [`osg_export`] does not expose.
+//! Steps 3 to 6 are exactly what an export runs per frame — [`osg_export::FrameRenderer`] is the
+//! same two calls in the same order. If this module ever grows a scene builder or a style mapper of
+//! its own, the divergence the migration exists to remove has been rebuilt, so [`plan`] deliberately
+//! contains no arithmetic beyond the unit conversions [`osg_export`] does not expose.
 //!
 //! ## Direction, and why a URL rather than bytes
 //!
@@ -38,10 +40,17 @@
 //! The second is cheap and responsive and is **not** exact — the browser performs the final blend,
 //! over a frame its own decoder colour-managed — so it may never be the last thing on screen.
 //!
-//! One thing is deliberately not claimed here: this host draws both layers with
-//! [`osg_compositor::Compositor::render_scene`], because it has no decoded source frame to lay the
-//! pass over, so the composited layer is not yet composited over video. `tests::layers` asserts that
-//! with measured pixels rather than leaving it to be assumed either way.
+//! The two are two *grounds*, not two renderers: [`host::PreviewGround`] maps the layer onto either
+//! a transparent ground or the decoded source frame, and the same converted scene is drawn either
+//! way. `tests::underlay` asserts the difference with measured pixels — the video really is under
+//! the composited layer, the crop and the flips really are applied to it, and the subtitle layer
+//! really does keep its transparent ground.
+//!
+//! ## One decoder, kept
+//!
+//! The composited layer needs a decoded frame per request and the editor scrubs, so a decoder is
+//! held rather than opened per frame — see [`source`], which also explains why it lives on a thread
+//! of its own rather than in the host.
 //!
 //! ## Premultiplied in, straight out
 //!
@@ -76,6 +85,7 @@ mod plan;
 mod publish;
 mod refusal;
 mod request;
+mod source;
 
 /// The only preview request shape this build reads, mirroring `NATIVE_PREVIEW_SCENE_VERSION`.
 ///
