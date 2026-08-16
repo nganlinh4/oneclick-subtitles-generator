@@ -227,17 +227,20 @@ pub fn run_export(
 }
 
 /// Validates a request against what the source file really is, then converts it.
+///
+/// The dimensions are the source's **display** size, not its coded one: the editor sizes its
+/// composition from the `<video>` element, which reports the pixel aspect ratio and the rotation
+/// already applied, and an export validated against anything else composes a differently shaped
+/// frame from the one the user approved. See `convert::dimensions`.
 fn plan_against_source(
     request: RenderRequest,
     source: &Path,
     face: &ResolvedFace,
 ) -> Result<ExportPlan, ExportError> {
     let info = probe_source(source)?;
-    let width = u32::try_from(info.width()).map_err(|_| out_of_bounds(SourceBound::Width))?;
-    let height = u32::try_from(info.height()).map_err(|_| out_of_bounds(SourceBound::Height))?;
     let duration_us = u64::try_from(info.duration_100ns() / HUNDRED_NANOS_PER_MICRO)
         .map_err(|_| out_of_bounds(SourceBound::Duration))?;
-    let plan = request.validate(width, height, duration_us)?;
+    let plan = request.validate(info.display_width(), info.display_height(), duration_us)?;
     ExportPlan::convert(&plan, face)
 }
 

@@ -27,8 +27,9 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 
 import { stageGlyphAtlas } from '../../../platform/glyphAtlasStaging';
 import {
+  PREVIEW_PLAYHEAD,
   compositionSize,
-  frameIndexForTime,
+  previewPlayhead,
   previewTimeline,
 } from './nativePreviewGeometry';
 import {
@@ -67,7 +68,12 @@ const faceInstalledProbe = () => {
   };
 };
 
-const DORMANT = Object.freeze({ request: null, error: null, outsideTrim: false });
+const DORMANT = Object.freeze({
+  request: null,
+  error: null,
+  outsideTrim: false,
+  playhead: PREVIEW_PLAYHEAD.unknown,
+});
 
 /** The customization fields a bake actually reads, as one comparable key. */
 const styleKeyOf = (customization) => JSON.stringify([
@@ -181,8 +187,16 @@ const useNativePreviewRequest = ({
     };
   }, []);
 
+  /**
+   * A bounded style the baker will not take, as a code the surface can explain.
+   *
+   * Separate from `atlasError` because it is decided before anything is baked, and reported ahead of
+   * it because it describes the style on screen now rather than the one a previous bake refused.
+   */
+  const bakeRefusal = bake === null ? null : bake.refusal;
+
   useEffect(() => {
-    if (bake === null) return undefined;
+    if (bake === null || bake.request === null) return undefined;
     let superseded = false;
     let descriptor;
     try {
@@ -234,20 +248,31 @@ const useNativePreviewRequest = ({
     ],
   );
 
-  const frameIndex = useMemo(
-    () => frameIndexForTime(currentTime, timeline),
-    [timeline, currentTime],
+  /**
+   * Where the playhead sits, and the frame index only when it sits on one.
+   *
+   * Nothing is clamped into range: frame 0 and the last frame are both real exported frames, and
+   * putting one on screen at an instant it is not the frame for is the silent substitution this
+   * migration removes. The placement is REPORTED rather than reduced to "no frame", so a surface can
+   * distinguish an instant the trim excludes from one the frame count does.
+   */
+  const playhead = useMemo(
+    () => (active ? previewPlayhead(currentTime, timeline) : null),
+    [active, timeline, currentTime],
   );
+  const frameIndex = playhead === null ? null : playhead.frameIndex;
 
   /**
-   * The playhead is inside the source and outside what the export composes.
+   * The export composes no frame for this instant, so the surface must take the composited frame off.
    *
-   * There is no frame to ask for — clamping to frame 0 or to the last frame would put an exported
-   * pixel on screen at an instant it is not the pixel for — so the request is dormant and the state
-   * is reported rather than hidden, which is what lets a surface take the composited frame off and
-   * show the `<video>` beneath it instead of holding the last frame it happened to decode.
+   * Leaving the last one on would show an exported pixel in front of an instant it is not the pixel
+   * for; the `<video>` underneath is the honest answer. `playhead` says which of the three reasons it
+   * is — before the window, after it, or past the last frame the count contains.
    */
-  const outsideTrim = active && timeline !== null && frameIndex === null;
+  const outsideTrim = playhead !== null
+    && timeline !== null
+    && playhead.placement !== PREVIEW_PLAYHEAD.unknown
+    && frameIndex === null;
 
   // The staged atlas and the request must describe the same revision. A handle left over from the
   // previous cue paired with this cue's request would draw the previous cue's run, so a mismatch is
@@ -261,12 +286,22 @@ const useNativePreviewRequest = ({
     [render, face, composition, atlas, frameIndex],
   );
 
+  const placement = playhead === null ? PREVIEW_PLAYHEAD.unknown : playhead.placement;
+  const error = useMemo(
+    () => (bakeRefusal === null ? atlasError : Object.freeze({ code: bakeRefusal })),
+    [bakeRefusal, atlasError],
+  );
+
   if (!active || request === null) {
-    return atlasError === null && !outsideTrim
-      ? DORMANT
-      : { ...DORMANT, error: atlasError, outsideTrim };
+    return error === null && !outsideTrim
+      ? { ...DORMANT, playhead: placement }
+      : {
+        ...DORMANT, error, outsideTrim, playhead: placement,
+      };
   }
-  return { request, error: null, outsideTrim: false };
+  return {
+    request, error: null, outsideTrim: false, playhead: placement,
+  };
 };
 
 export default useNativePreviewRequest;

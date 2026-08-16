@@ -11,8 +11,9 @@
 
 use windows::Win32::Media::MediaFoundation::{
     IMFAttributes, IMFMediaType, IMFSourceReader, MF_MT_DEFAULT_STRIDE, MF_MT_FRAME_RATE,
-    MF_MT_FRAME_SIZE, MF_MT_MAJOR_TYPE, MF_MT_SUBTYPE, MF_MT_VIDEO_NOMINAL_RANGE, MF_MT_YUV_MATRIX,
-    MF_PD_DURATION, MF_READWRITE_ENABLE_HARDWARE_TRANSFORMS, MF_SOURCE_READER_ALL_STREAMS,
+    MF_MT_FRAME_SIZE, MF_MT_MAJOR_TYPE, MF_MT_PIXEL_ASPECT_RATIO, MF_MT_SUBTYPE,
+    MF_MT_VIDEO_NOMINAL_RANGE, MF_MT_VIDEO_ROTATION, MF_MT_YUV_MATRIX, MF_PD_DURATION,
+    MF_READWRITE_ENABLE_HARDWARE_TRANSFORMS, MF_SOURCE_READER_ALL_STREAMS,
     MF_SOURCE_READER_ENABLE_ADVANCED_VIDEO_PROCESSING, MF_SOURCE_READER_FIRST_VIDEO_STREAM,
     MF_SOURCE_READER_MEDIASOURCE, MFCreateAttributes, MFCreateMediaType, MFMediaType_Video,
     MFVideoFormat_NV12,
@@ -158,6 +159,25 @@ pub(crate) fn frame_rate(media_type: &IMFMediaType) -> Option<(u32, u32)> {
 /// Stored as a `UINT32` holding a signed value: negative means the rows run bottom-up.
 pub(crate) fn default_stride(media_type: &IMFMediaType) -> Option<i32> {
     read_u32(media_type, &MF_MT_DEFAULT_STRIDE).map(u32::cast_signed)
+}
+
+/// The pixel aspect ratio a media type declares, as `(numerator, denominator)`.
+///
+/// `MF_MT_PIXEL_ASPECT_RATIO` is packed like every other Media Foundation ratio: the width term in
+/// the high half of a `u64`, the height term in the low half. Absent on most files, which is a
+/// statement that the pixels are square rather than a gap to fill in.
+pub(crate) fn pixel_aspect_ratio(media_type: &IMFMediaType) -> Option<(u32, u32)> {
+    Some(unpack_ratio(read_u64(
+        media_type,
+        &MF_MT_PIXEL_ASPECT_RATIO,
+    )?))
+}
+
+/// The rotation a media type declares, in degrees already applied anticlockwise.
+///
+/// See [`crate::Rotation`] for what the value means and which way it has to be undone.
+pub(crate) fn video_rotation(media_type: &IMFMediaType) -> Option<u32> {
+    read_u32(media_type, &MF_MT_VIDEO_ROTATION)
 }
 
 /// The `MF_MT_VIDEO_NOMINAL_RANGE` and `MF_MT_YUV_MATRIX` values a media type declares.

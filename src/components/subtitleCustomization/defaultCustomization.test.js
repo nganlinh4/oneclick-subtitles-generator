@@ -142,8 +142,16 @@ describe('subtitle customization default authority', () => {
       "import { defaultCustomization } from './subtitleCustomization/defaultCustomization';",
     );
     expect(previewSource).not.toMatch(/const\s+defaultCustomization\s*=/);
+    // The render tab still reads its persisted style through this parser; the read moved out of the
+    // section and into the state module that owns the default merge for both the preview and the
+    // export (`VideoRenderingSection/subtitleCustomizationState.js`).
+    const stateSource = readFileSync(
+      resolve('src/components/VideoRenderingSection/subtitleCustomizationState.js'),
+      'utf8',
+    );
+    expect(stateSource).toContain('parseStoredSubtitleCustomization(');
     const sectionSource = readFileSync(resolve('src/components/VideoRenderingSection.js'), 'utf8');
-    expect(sectionSource).toContain('parseStoredSubtitleCustomization(');
+    expect(sectionSource).toContain('useSubtitleCustomization()');
     expect(sectionSource).not.toContain('JSON.parse(saved)');
   });
 });

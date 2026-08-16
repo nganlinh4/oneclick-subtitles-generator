@@ -8,7 +8,7 @@
 //! GPL library and no downloaded tool is redistributed, so there is nothing here to write a notice
 //! for and no runtime package to keep current.
 //!
-//! # The three things that are easy to get wrong
+//! # The four things that are easy to get wrong
 //!
 //! Each of them is structural here rather than a rule someone has to remember.
 //!
@@ -33,6 +33,13 @@
 //! announces itself. [`colorimetry`] reads the description off the source rather than assuming one,
 //! says out loud where a convention is being applied, and refuses a description it cannot reproduce
 //! faithfully instead of approximating it.
+//!
+//! **A frame's coded size is not the size it is shown at.** An anamorphic clip stores non-square
+//! pixels and a phone clip stores a landscape frame plus a rotation, so `MF_MT_FRAME_SIZE` is the
+//! buffer's shape and not the picture's. [`presentation`] reads both attributes and reports a
+//! display size beside the coded one, and the rotation is applied to the pixels rather than left
+//! for someone downstream to notice. Composing from the coded size is what made the editor and the
+//! export disagree about the frame they were both looking at.
 //!
 //! # What comes out
 //!
@@ -68,7 +75,8 @@
 //! )?;
 //!
 //! let source = decoder.source();
-//! println!("{}x{}", source.width(), source.height());
+//! // The size to compose at. `source.geometry()` is the size the frames below arrive in.
+//! println!("{}x{}", source.display_width(), source.display_height());
 //!
 //! for index in 0..900 {
 //!     let frame = decoder.frame_for_output(index)?;
@@ -86,6 +94,7 @@ pub mod frame;
 pub mod input;
 pub mod limits;
 pub mod planes;
+pub mod presentation;
 pub mod sampling;
 pub mod source;
 
@@ -100,5 +109,6 @@ pub use frame::DecodedFrame;
 pub use input::check_source_path;
 pub use limits::{DecodeLimits, HUNDRED_NANOS_PER_SECOND};
 pub use planes::{FrameGeometry, NvPlanes};
+pub use presentation::{DisplaySize, PixelAspect, Rotation, SourcePresentation};
 pub use sampling::{OutputSampler, SourceGrid, exact_time_to_100ns};
 pub use source::SourceInfo;

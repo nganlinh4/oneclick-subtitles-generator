@@ -139,12 +139,15 @@ fn decoded_frame_at(path: &Path, index: u32, frames: u32, fps: u32) -> Vec<u8> {
 /// The conversion of a case against what the synthetic clip really is.
 pub(crate) fn prepare_against(source: &Path, case: &Case) -> Prepared {
     let info = probe_source(source).expect("the synthetic clip is readable");
-    let width = u32::try_from(info.width()).expect("a small width");
-    let height = u32::try_from(info.height()).expect("a small height");
     let duration_us =
         u64::try_from(info.duration_100ns() / 10).expect("a positive duration in microseconds");
-    case::try_prepare_against(case, width, height, duration_us)
-        .unwrap_or_else(|reason| panic!("{}: {reason}", case.id))
+    case::try_prepare_against(
+        case,
+        info.display_width(),
+        info.display_height(),
+        duration_us,
+    )
+    .unwrap_or_else(|reason| panic!("{}: {reason}", case.id))
 }
 
 /// Runs one export of a case to completion, with the case's own staged text.

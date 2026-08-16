@@ -85,11 +85,16 @@ fn an_export_produces_a_playable_mp4_with_the_frames_and_duration_the_timeline_n
     // written length is the timeline's, not however many frames a decode happened to produce.
     let info = probe_source(&output).expect("the export is a file the platform can decode");
     assert_eq!(
-        (info.width(), info.height()),
+        (info.display_width(), info.display_height()),
+        (OUT_WIDTH, OUT_HEIGHT)
+    );
+    assert_eq!(
+        (info.decoded_width(), info.decoded_height()),
         (
             usize::try_from(OUT_WIDTH).expect("a small width"),
             usize::try_from(OUT_HEIGHT).expect("a small height")
-        )
+        ),
+        "an export writes square pixels and no rotation, so it decodes at the size it displays"
     );
     assert_eq!(info.nominal_frame_count(), 60);
     let one_frame = 10_000_000 / i64::from(SOURCE_FPS);

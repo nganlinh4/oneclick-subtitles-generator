@@ -9,6 +9,15 @@ import { useEffect, useRef, useState } from 'react';
  * image. The frame the user approves is therefore the frame they get, by construction rather than by
  * a test that a second renderer keeps having to pass.
  *
+ * THAT IS TRUE OF THE BYTES AND NOT OF WHAT REACHES THE EYE. The image is a full composition — 1920
+ * wide, or 3840, or 7680 — laid out `objectFit: contain` into a panel a few hundred pixels across,
+ * with no `image-rendering` hint, so the browser resamples every frame down with its own filter
+ * before anything is visible. Hairline strokes, one-pixel shadow offsets and antialiased glyph edges
+ * are therefore judged THROUGH that resampler and can look softer, thinner or differently aliased
+ * here than in the file. Nothing on this side can remove the resample — the panel is smaller than
+ * the composition — so it is stated rather than hidden: the pixel is exact, the picture of it is
+ * scaled, and a judgement about sub-pixel detail belongs to the exported file.
+ *
  * TWO ELEMENTS, ONE VISIBLE, and the reason is that a preview must never flash. An `<img>` whose
  * `src` changes goes blank while the new URL loads, and a blank frame in a subtitle editor reads as
  * "my subtitle disappeared" rather than as "the next frame is coming". So the frame being fetched

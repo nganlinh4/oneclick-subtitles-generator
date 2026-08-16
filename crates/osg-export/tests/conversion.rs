@@ -171,6 +171,30 @@ fn the_output_frame_follows_the_source_shape_as_well_as_the_crop() {
 }
 
 #[test]
+fn the_source_shape_a_request_is_converted_against_is_the_shape_the_source_is_shown_at() {
+    // The two files where the coded shape and the shown shape differ, at the sizes the review
+    // measured them. `plan_against_source` and the preview's `plan_for_source` both validate
+    // against `SourceInfo::display_width`/`display_height` — pixel aspect and rotation applied,
+    // which is what the editor's `<video>` element reports — so the first width of each pair is
+    // what the product now composes and the second is what it composed while it read the coded
+    // size instead.
+    let uncropped_1080p = || cropped("1080p", 100.0, 100.0);
+
+    // An anamorphic clip: 720x480 stored, 854x480 shown.
+    let shown = converted_against(uncropped_1080p(), 854, 480);
+    assert_eq!((shown.width(), shown.height()), (1_922, 1_080));
+    let coded = converted_against(uncropped_1080p(), 720, 480);
+    assert_eq!((coded.width(), coded.height()), (1_620, 1_080));
+
+    // A portrait phone clip: 1920x1080 stored with a quarter turn, 1080x1920 shown. Reading the
+    // coded shape here does not round differently, it composes landscape for a portrait video.
+    let shown = converted_against(uncropped_1080p(), 1_080, 1_920);
+    assert_eq!((shown.width(), shown.height()), (608, 1_080));
+    let coded = converted_against(uncropped_1080p(), 1_920, 1_080);
+    assert_eq!((coded.width(), coded.height()), (1_920, 1_080));
+}
+
+#[test]
 fn the_output_width_comes_from_one_derivation_where_the_shipped_preview_had_a_second() {
     // Not a rounding curiosity: the shipped preview sizes its composition from the same inputs but
     // associates them differently — `sourceAspect * ((cropWidth / 100) / (cropHeight / 100))` rather

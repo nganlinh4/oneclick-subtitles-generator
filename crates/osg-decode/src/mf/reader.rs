@@ -29,10 +29,11 @@ use crate::error::{DecodeError, MfStage, SourceRejection};
 use crate::frame::DecodedFrame;
 use crate::input::check_source_path;
 use crate::limits::HUNDRED_NANOS_PER_SECOND;
-use crate::mf::media_type;
 use crate::mf::platform::{ensure_media_foundation, platform_error, wide_path};
 use crate::mf::sample::SourceSample;
+use crate::mf::{format, media_type};
 use crate::planes::FrameGeometry;
+use crate::presentation::SourcePresentation;
 use crate::sampling::{OutputSampler, SourceGrid, exact_time_to_100ns};
 use crate::source::SourceInfo;
 
@@ -80,8 +81,8 @@ impl fmt::Debug for MediaFoundationDecoder {
         formatter
             .debug_struct("MediaFoundationDecoder")
             .field("open", &self.reader.is_some())
-            .field("width", &self.info.width())
-            .field("height", &self.info.height())
+            .field("width", &self.info.decoded_width())
+            .field("height", &self.info.decoded_height())
             .field("at_end", &self.at_end)
             .field("stats", &self.stats)
             .finish_non_exhaustive()
@@ -119,7 +120,8 @@ impl MediaFoundationDecoder {
         let output = media_type::current_output_type(&reader, stream)?;
         let (width, height) = media_type::frame_size(&output)?;
         config.limits().check_geometry(width, height)?;
-        let geometry = FrameGeometry::new(width, height)?;
+        let coded = FrameGeometry::new(width, height)?;
+        let presentation = format::presentation(&output, &native, coded)?;
 
         let duration_100ns = media_type::duration_100ns(&reader)?;
         config.limits().check_duration(duration_100ns)?;
@@ -131,14 +133,14 @@ impl MediaFoundationDecoder {
 
         let colorimetry = match config.colorimetry() {
             Some(override_value) => override_value,
-            None => resolve_colorimetry(&output, &native, height)?,
+            None => format::colorimetry(&output, &native, height)?,
         };
-        let fallback_stride = resolve_stride(&output, geometry);
+        let fallback_stride = format::stride(&output, coded);
 
         Ok(Self {
             reader: Some(reader),
             stream,
-            info: SourceInfo::new(geometry, grid, duration_100ns, colorimetry),
+            info: SourceInfo::new(presentation, grid, duration_100ns, colorimetry),
             config,
             sampler: config.sampler(),
             fallback_stride,
@@ -246,11 +248,11 @@ impl MediaFoundationDecoder {
         let reader = self.reader()?.clone();
         let output = media_type::current_output_type(&reader, self.stream)?;
         let (width, height) = media_type::frame_size(&output)?;
-        let geometry = FrameGeometry::new(width, height)?;
-        if geometry != self.info.geometry() {
+        let coded = FrameGeometry::new(width, height)?;
+        if coded != self.info.coded_geometry() {
             return Err(DecodeError::SourceGeometryChanged);
         }
-        self.fallback_stride = resolve_stride(&output, geometry);
+        self.fallback_stride = format::stride(&output, coded);
         Ok(())
     }
 
@@ -397,7 +399,7 @@ impl MediaFoundationDecoder {
         }
         self.walk_to(target_100ns)?;
 
-        let geometry = self.info.geometry();
+        let presentation = self.info.presentation();
         let colorimetry = self.info.colorimetry();
         let grid = self.info.grid();
         let stride = self.fallback_stride;
@@ -417,7 +419,7 @@ impl MediaFoundationDecoder {
         {
             return Err(DecodeError::TruncatedStream { decoded });
         }
-        convert(current, geometry, colorimetry, stride, grid)
+        convert(current, presentation, colorimetry, stride, grid)
     }
 }
 
@@ -472,14 +474,14 @@ impl VideoDecoder for MediaFoundationDecoder {
             }
         }
 
-        let geometry = self.info.geometry();
+        let presentation = self.info.presentation();
         let colorimetry = self.info.colorimetry();
         let grid = self.info.grid();
         let stride = self.fallback_stride;
         let current = self.current.as_ref().ok_or(DecodeError::TruncatedStream {
             decoded: self.stats.samples_decoded(),
         })?;
-        convert(current, geometry, colorimetry, stride, grid).map(Some)
+        convert(current, presentation, colorimetry, stride, grid).map(Some)
     }
 
     fn close(&mut self) {
@@ -497,57 +499,23 @@ impl VideoDecoder for MediaFoundationDecoder {
 /// rather than a fight with the borrow checker at each call site.
 fn convert(
     sample: &SourceSample,
-    geometry: FrameGeometry,
+    presentation: SourcePresentation,
     colorimetry: SourceColorimetry,
     fallback_stride: usize,
     grid: SourceGrid,
 ) -> Result<DecodedFrame, DecodeError> {
     let lock = sample.lock(fallback_stride)?;
-    let planes = lock.planes(geometry)?;
-    let pixels = planes.to_rgba8(colorimetry);
+    // The planes are read at the **coded** grid, because that is the buffer the platform filled;
+    // the frame is handed out at the **decoded** grid, because the turn has been applied to it.
+    let planes = lock.planes(presentation.coded())?;
+    let pixels = planes.to_rgba8_rotated(colorimetry, presentation.rotation());
     Ok(DecodedFrame::new(
-        geometry,
+        presentation.decoded(),
         pixels,
         sample.presentation_100ns(),
         sample.duration_100ns(),
         grid.nearest_frame_index_100ns(sample.presentation_100ns()),
     ))
-}
-
-/// Prefers the decoded type's colour description, falling back to the source's own.
-///
-/// The decoded type is asked first because it describes the bytes actually being read; the native
-/// type is asked second because a converter in the middle may have dropped the description without
-/// changing the samples. Only when neither says anything is a convention applied, and
-/// [`SourceColorimetry::assumed_for`] says out loud that that is what it is.
-fn resolve_colorimetry(
-    output: &windows::Win32::Media::MediaFoundation::IMFMediaType,
-    native: &windows::Win32::Media::MediaFoundation::IMFMediaType,
-    height: u32,
-) -> Result<SourceColorimetry, DecodeError> {
-    let (output_range, output_matrix) = media_type::colour_attributes(output);
-    let (native_range, native_matrix) = media_type::colour_attributes(native);
-    SourceColorimetry::from_attributes(
-        output_range.filter(|value| *value != 0).or(native_range),
-        output_matrix.filter(|value| *value != 0).or(native_matrix),
-        height,
-    )
-}
-
-/// The row stride to assume for a buffer that cannot report its own.
-///
-/// A declared stride is used when it is positive; a negative one describes bottom-up rows, which
-/// [`crate::mf::sample`] refuses rather than silently mirroring. With nothing declared, an NV12
-/// row is exactly as wide as the frame.
-fn resolve_stride(
-    output: &windows::Win32::Media::MediaFoundation::IMFMediaType,
-    geometry: FrameGeometry,
-) -> usize {
-    media_type::default_stride(output)
-        .filter(|stride| *stride > 0)
-        .and_then(|stride| usize::try_from(stride).ok())
-        .filter(|stride| *stride >= geometry.width())
-        .unwrap_or_else(|| geometry.width())
 }
 
 /// A source-reader flag as the bit it occupies in the flag word.

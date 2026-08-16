@@ -63,7 +63,9 @@ const useNativePreview = ({
   const { projectId, sourceAsset } = useNativePreviewBinding(source);
   const dimensions = useVideoSourceDimensions(videoRef, sourceKey);
 
-  const { request, error: requestError, outsideTrim } = useNativePreviewRequest({
+  const {
+    request, error: requestError, outsideTrim, playhead,
+  } = useNativePreviewRequest({
     active,
     sourceAsset,
     projectId,
@@ -100,14 +102,24 @@ const useNativePreview = ({
     /** The layer being asked for now, which is not yet the layer `frame` carries while it changes. */
     layer,
     /**
-     * The playhead is outside the trim window, so the export contains no frame for this instant.
+     * The export contains no frame for this instant, so the composited frame comes off.
      *
-     * A surface must take the composited frame OFF here rather than leave the last one it decoded
-     * on screen: holding it would show an exported pixel at an instant it is not the pixel for, and
-     * that is the silent substitution this migration removes. The `<video>` underneath is the honest
-     * answer — the source, at an instant the output does not cover.
+     * A surface must take it OFF here rather than leave the last one it decoded on screen: holding
+     * it would show an exported pixel at an instant it is not the pixel for, and that is the silent
+     * substitution this migration removes. The `<video>` underneath is the honest answer — the
+     * source, at an instant the output does not cover.
      */
     outsideTrim,
+    /**
+     * WHICH instant this is, named rather than inferred: `beforeWindow`, `afterWindow`,
+     * `pastLastFrame`, `inside`, or `unknown` while there is no timeline to place it against.
+     *
+     * `outsideTrim` alone cannot say. The trim window is closed at both ends and the frame count is a
+     * CEILING, so `trimEnd` itself is inside the window and past the last frame the composition has;
+     * calling that "outside the trim" would be reporting the wrong fact. Nothing is clamped to make
+     * the distinction go away — a clamp is what this reports instead of.
+     */
+    playhead,
     /**
      * True only when the frame on screen is the guaranteed one: a real composited frame, on a
      * surface that is judging output. The subtitle layer is deliberately not owned — it is an

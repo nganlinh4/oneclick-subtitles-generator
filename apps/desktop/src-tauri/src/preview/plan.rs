@@ -29,16 +29,24 @@ const HUNDRED_NANOS_PER_MICRO: i64 = 10;
 /// The request cannot be validated against anything else: the output width follows from the source
 /// aspect and the crop region, and the frame count follows from the source duration, so a preview
 /// planned against guessed dimensions would be a different composition from the export.
+///
+/// "What the source really is" is its **display** size — pixel aspect and rotation applied — which
+/// is what the editor's own `<video>` element reports and what `osg-export` validates against.
+/// Taking the coded size here instead would make an anamorphic or a rotated clip preview at a
+/// different shape from the file it exports to.
 pub(crate) fn plan_for_source(
     request: RenderRequest,
     source: &Path,
 ) -> Result<RenderPlan, PreviewRefusal> {
     let info = probe_source(source).map_err(|_| PreviewRefusal::SourceUnreadable)?;
-    let width = u32::try_from(info.width()).map_err(|_| PreviewRefusal::SourceUnreadable)?;
-    let height = u32::try_from(info.height()).map_err(|_| PreviewRefusal::SourceUnreadable)?;
     let duration_us = u64::try_from(info.duration_100ns() / HUNDRED_NANOS_PER_MICRO)
         .map_err(|_| PreviewRefusal::SourceUnreadable)?;
-    validate_cue_or_not(request, width, height, duration_us)
+    validate_cue_or_not(
+        request,
+        info.display_width(),
+        info.display_height(),
+        duration_us,
+    )
 }
 
 /// Validates a request that may name no cue at all.

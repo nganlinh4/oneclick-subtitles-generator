@@ -145,8 +145,20 @@ fn the_source_reports_its_real_dimensions_frame_rate_and_duration() {
     let decoder = decoder_for(&clip);
     let source = decoder.source();
 
-    assert_eq!(source.width(), WIDTH as usize);
-    assert_eq!(source.height(), HEIGHT as usize);
+    // The regression guard for the three sizes: a plain camera-shaped clip declares no pixel
+    // aspect and no rotation, so all three of them are the one number the file was encoded at.
+    assert_eq!(source.coded_geometry().width(), WIDTH as usize);
+    assert_eq!(source.coded_geometry().height(), HEIGHT as usize);
+    assert_eq!(source.decoded_width(), WIDTH as usize);
+    assert_eq!(source.decoded_height(), HEIGHT as usize);
+    assert_eq!(source.display_width(), WIDTH);
+    assert_eq!(source.display_height(), HEIGHT);
+    assert_eq!(source.rotation(), osg_decode::Rotation::None);
+    assert!(
+        source.pixel_aspect().is_square(),
+        "an ordinary clip must not acquire a pixel aspect: {:?}",
+        source.pixel_aspect()
+    );
     assert_eq!(source.fps_numerator(), FPS);
     assert_eq!(source.fps_denominator(), 1);
 
@@ -163,8 +175,8 @@ fn the_source_reports_its_real_dimensions_frame_rate_and_duration() {
 
     println!(
         "source: {}x{} @ {}/{}, {} units, {:?}",
-        source.width(),
-        source.height(),
+        source.display_width(),
+        source.display_height(),
         source.fps_numerator(),
         source.fps_denominator(),
         source.duration_100ns(),

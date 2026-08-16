@@ -106,6 +106,84 @@ describe('the maxWidth conversion, proven through a real bake at two resolutions
     // The compositor will scale a 512px atlas up to the 900px the style asks for.
     expect(request.glyphScale).toBeCloseTo(900 / 512, 12);
   });
+
+  /**
+   * The style box wider than the composition, which the contract accepts and the preview refused.
+   *
+   * `maxWidth` is bounded 1..1000 on both sides of the boundary. The preview imposed its own 100%
+   * ceiling, returned no bake request at all above it, and the hook went dormant — silently, because
+   * dormancy is silent by design. The export rendered the same project.
+   */
+  it('bakes a maxWidth above 100%, which the export renders and the preview used to blank on', () => {
+    const wide = atlasBakeRequest({
+      customization: customization({ maxWidth: 150 }),
+      text: PARAGRAPH,
+      compositionWidthPx: 1_920,
+      compositionHeightPx: 1_080,
+      face: FACE,
+    });
+    expect(wide.refusal).toBeNull();
+    expect(wide.request.maxWidthPx).toBe(2_880);
+    // A wider box is fewer lines from the same paragraph, which is the visible consequence.
+    const narrow = bakePreviewAtlas(atlasBakeRequest({
+      customization: customization(),
+      text: PARAGRAPH,
+      compositionWidthPx: 1_920,
+      compositionHeightPx: 1_080,
+      face: FACE,
+    }), surface());
+    expect(bakePreviewAtlas(wide, surface()).layout.lineCount)
+      .toBeLessThan(narrow.layout.lineCount);
+  });
+
+  it('reports a wrap width the baker will not take instead of going blank without a reason', () => {
+    const refused = atlasBakeRequest({
+      // 1000% of a 15360-wide composition at the smallest bakeable scale is past the baker's layout
+      // bound. The style is inside the contract, so silence would be a subtitle that vanished.
+      customization: customization({ fontSize: 1, maxWidth: 1_000 }),
+      text: 'x',
+      compositionWidthPx: 15_360,
+      compositionHeightPx: 360,
+      face: FACE,
+    });
+    expect(refused).toEqual({ request: null, refusal: 'previewWrapWidthUnsupported' });
+  });
+
+  /**
+   * The atlas font-size clamp, compensated for the second atlas-space quantity as well as the first.
+   *
+   * `glyphScale` divides by the CLAMPED bake size, which is what makes cells, pen positions and the
+   * wrap width right at a font size above 512. The letter spacing went in raw and came back out
+   * multiplied by that same scale.
+   */
+  it('compensates letter spacing for the atlas font-size clamp, as it does the wrap width', () => {
+    const spaced = atlasBakeRequest({
+      customization: customization({ fontSize: 800, letterSpacing: 10 }),
+      text: 'ab',
+      compositionWidthPx: 1_920,
+      compositionHeightPx: 1_080,
+      face: FACE,
+    });
+    expect(spaced.atlasFontSizePx).toBe(512);
+    expect(spaced.glyphScale).toBe(1.5625);
+    // 10 composition pixels through a 1.5625 scale is 6.4 atlas pixels. Raw, it baked 10 and drew
+    // 15.625 — every gap 56.25% wider than the style, with nothing reporting it.
+    expect(spaced.request.letterSpacingPx).toBe(6.4);
+    expect(bakePreviewAtlas(spaced, surface()).metrics.letterSpacingPx).toBe(6.4);
+    expect(10 * spaced.glyphScale).toBe(15.625);
+  });
+
+  it('leaves letter spacing exactly where it was at a size the clamp does not bite at', () => {
+    const spaced = atlasBakeRequest({
+      customization: customization({ fontSize: 50, letterSpacing: 10 }),
+      text: 'ab',
+      compositionWidthPx: 1_920,
+      compositionHeightPx: 1_080,
+      face: FACE,
+    });
+    expect(spaced.glyphScale).toBe(1);
+    expect(spaced.request.letterSpacingPx).toBe(10);
+  });
 });
 
 describe('cue selection reproduces the shipped rule', () => {

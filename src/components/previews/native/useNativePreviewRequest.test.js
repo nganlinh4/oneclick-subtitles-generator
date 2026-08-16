@@ -262,7 +262,9 @@ describe('a playhead outside the trim window', () => {
     // The atlas still bakes and stages: dormancy is a state of the request, not of the text.
     await waitFor(() => expect(stageGlyphAtlas).toHaveBeenCalledTimes(1));
 
-    expect(result.current).toEqual({ request: null, error: null, outsideTrim: true });
+    expect(result.current).toEqual({
+      request: null, error: null, outsideTrim: true, playhead: 'beforeWindow',
+    });
   });
 
   it('asks for no frame after the trim end', async () => {
@@ -272,7 +274,29 @@ describe('a playhead outside the trim window', () => {
     );
     await waitFor(() => expect(stageGlyphAtlas).toHaveBeenCalledTimes(1));
 
-    expect(result.current).toEqual({ request: null, error: null, outsideTrim: true });
+    expect(result.current).toEqual({
+      request: null, error: null, outsideTrim: true, playhead: 'afterWindow',
+    });
+  });
+
+  /**
+   * The instant the clamp used to answer with the last frame.
+   *
+   * `trimEnd` is inside the window and one past the last index whenever the window is a whole number
+   * of frames long, so `Math.min(index, frameCount - 1)` put frame 179 on screen at an instant frame
+   * 179 is not the frame for. The export walks `0..frame_count` and `PreviewHost::compose` refuses
+   * an index at or past the count, so no such frame exists to show.
+   */
+  it('asks for no frame at the closing instant, and reports which state that is', async () => {
+    const { result } = renderHook(
+      (hookProps) => useNativePreviewRequest(hookProps),
+      { initialProps: trimmed(8) },
+    );
+    await waitFor(() => expect(stageGlyphAtlas).toHaveBeenCalledTimes(1));
+
+    expect(result.current).toEqual({
+      request: null, error: null, outsideTrim: true, playhead: 'pastLastFrame',
+    });
   });
 
   it('comes back the moment the playhead re-enters the window', async () => {
@@ -293,7 +317,9 @@ describe('a playhead outside the trim window', () => {
       (hookProps) => useNativePreviewRequest(hookProps),
       { initialProps: props({ currentTime: 1, trimStart: 2, trimEnd: 8, active: false }) },
     );
-    expect(result.current).toEqual({ request: null, error: null, outsideTrim: false });
+    expect(result.current).toEqual({
+      request: null, error: null, outsideTrim: false, playhead: 'unknown',
+    });
   });
 });
 
@@ -303,7 +329,9 @@ describe('dormancy and refusal are different states', () => {
       (hookProps) => useNativePreviewRequest(hookProps),
       { initialProps: props({ sourceWidthPx: null, sourceHeightPx: null }) },
     );
-    expect(result.current).toEqual({ request: null, error: null, outsideTrim: false });
+    expect(result.current).toEqual({
+      request: null, error: null, outsideTrim: false, playhead: 'inside',
+    });
     expect(bakePreviewAtlas).not.toHaveBeenCalled();
   });
 
@@ -315,7 +343,9 @@ describe('dormancy and refusal are different states', () => {
     // The atlas is baked and staged all the same — dormancy is a state of the request, not a reason
     // to leave the text unbaked — but nothing may be asked of the compositor without a binding.
     await waitFor(() => expect(stageGlyphAtlas).toHaveBeenCalledTimes(1));
-    expect(result.current).toEqual({ request: null, error: null, outsideTrim: false });
+    expect(result.current).toEqual({
+      request: null, error: null, outsideTrim: false, playhead: 'inside',
+    });
   });
 
   it('is dormant when the face has no verified byte source, rather than substituting one', () => {
@@ -346,6 +376,47 @@ describe('dormancy and refusal are different states', () => {
 
     await waitFor(() => expect(result.current.error).toEqual({ code: 'glyphAtlasFaceSubstituted' }));
     expect(result.current.request).toBeNull();
+  });
+
+  /**
+   * The two halves of item three, at the hook the editor actually mounts.
+   *
+   * A `maxWidth` above 100 is inside the render contract and the export renders it; the preview
+   * derived no wrap width for it, built no bake request, and returned DORMANT — which is no frame
+   * AND no error, because dormancy is deliberately silent. A surface cannot explain a blank it is
+   * never told about.
+   */
+  it('renders a maxWidth above 100% instead of going blank with nothing to say', async () => {
+    const { result } = renderHook(
+      (hookProps) => useNativePreviewRequest(hookProps),
+      { initialProps: props({ customization: customization({ maxWidth: 150 }) }) },
+    );
+    await waitFor(() => expect(stagedAtlas(result)).toBe(ATLAS));
+
+    expect(result.current.error).toBeNull();
+    expect(lastBakeRequest().maxWidthPx).toBe(2_880);
+  });
+
+  it('reports a wrap width the baker will not take, rather than blanking silently', async () => {
+    const { result } = renderHook(
+      (hookProps) => useNativePreviewRequest(hookProps),
+      {
+        initialProps: props({
+          // A 15360x360 composition at a 1px style: the widest the conversion accepts, at the
+          // smallest bakeable glyph scale, with the widest box the contract allows.
+          resolution: '360p',
+          sourceWidthPx: 15_360,
+          sourceHeightPx: 360,
+          customization: customization({ fontSize: 1, maxWidth: 1_000 }),
+        }),
+      },
+    );
+
+    await waitFor(() => expect(result.current.error).toEqual({ code: 'previewWrapWidthUnsupported' }));
+    expect(result.current.request).toBeNull();
+    // Nothing is baked or staged for a style that cannot be laid out, and nothing is silent either.
+    expect(bakePreviewAtlas).not.toHaveBeenCalled();
+    expect(stageGlyphAtlas).not.toHaveBeenCalled();
   });
 
   it('reports a staging refusal without retrying it', async () => {

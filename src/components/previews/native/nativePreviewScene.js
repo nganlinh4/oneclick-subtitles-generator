@@ -39,7 +39,8 @@ import {
   resolveFontIdentity,
 } from '../../../services/fontIdentity';
 import {
-  atlasMaxWidthPx,
+  atlasLetterSpacingPx,
+  atlasWrapWidth,
   glyphScaleForComposition,
 } from './nativePreviewGeometry';
 
@@ -134,10 +135,17 @@ export const previewFace = ({ fontFamily, fontWeight, platform, managedPackInsta
  *
  * The atlas is baked at the UNSCALED style size — the size the value was authored against — so one
  * bake serves every resolution and the compositor scales it. `glyphScale` therefore relates the
- * atlas to the composition, and `maxWidthPx` is the persisted percentage converted through it.
+ * atlas to the composition, and every quantity the baker takes in atlas pixels is a composition-space
+ * quantity divided by it: the wrap width from the persisted percentage, the letter spacing from the
+ * persisted, height-scaled offset. Neither may be passed straight through, because the compositor
+ * multiplies the layout by that scale on the way back out.
  *
- * Returns `null` when the wrap width cannot be derived, because baking without one wraps nowhere and
- * a subtitle that does not wrap is a visibly different subtitle rather than a near miss.
+ * Returns one of three things, and they are three different states rather than degrees of one:
+ *
+ *   - `null` — no bake can be described from this input, which is the same state the render request
+ *     builder refuses this style in. The surface is dormant and says nothing, correctly.
+ *   - `{ request: null, refusal }` — a bounded style the baker will not take. Reported, never silent.
+ *   - `{ request, refusal: null, glyphScale, atlasFontSizePx }` — the bake.
  */
 export const atlasBakeRequest = ({ customization, text, compositionWidthPx, compositionHeightPx, face }) => {
   const {
@@ -147,20 +155,19 @@ export const atlasBakeRequest = ({ customization, text, compositionWidthPx, comp
   const atlasFontSizePx = clamp(fontSize, MIN_ATLAS_FONT_SIZE_PX, MAX_ATLAS_FONT_SIZE_PX);
   const glyphScale = glyphScaleForComposition({ fontSize, compositionHeightPx, atlasFontSizePx });
   if (glyphScale === null) return null;
-  const maxWidthPx = atlasMaxWidthPx({
-    maxWidthPercent: maxWidth,
-    compositionWidthPx,
-    glyphScale,
-  });
-  if (maxWidthPx === null) return null;
+  const wrap = atlasWrapWidth({ maxWidthPercent: maxWidth, compositionWidthPx, glyphScale });
+  if (wrap.refusal !== null) return Object.freeze({ request: null, refusal: wrap.refusal });
+  if (wrap.widthPx === null) return null;
+  const letterSpacingPx = atlasLetterSpacingPx({ letterSpacing, compositionHeightPx, glyphScale });
+  if (letterSpacingPx === null) return null;
   return Object.freeze({
     request: Object.freeze({
       text,
       face: { family: face.family, weight: face.weight, style: 'normal' },
       fontSizePx: atlasFontSizePx,
       lineHeightPx: isFiniteNumber(lineHeight) && lineHeight > 0 ? lineHeight * atlasFontSizePx : null,
-      letterSpacingPx: isFiniteNumber(letterSpacing) ? letterSpacing : 0,
-      maxWidthPx,
+      letterSpacingPx,
+      maxWidthPx: wrap.widthPx,
       wordWrap: wordWrap !== false,
       textAlign,
       textTransform,
@@ -170,6 +177,7 @@ export const atlasBakeRequest = ({ customization, text, compositionWidthPx, comp
       baseDirection: rtlSupport === true ? 'rtl' : null,
       requireExactFace: true,
     }),
+    refusal: null,
     glyphScale,
     atlasFontSizePx,
   });

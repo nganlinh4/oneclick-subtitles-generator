@@ -143,12 +143,10 @@ pub(crate) fn export(
 /// The conversion of `value` against what the synthetic clip really is.
 pub(crate) fn converted_for(source: &Path, value: Value) -> ExportPlan {
     let info = probe_source(source).expect("the synthetic clip is readable");
-    let width = u32::try_from(info.width()).expect("a small width");
-    let height = u32::try_from(info.height()).expect("a small height");
     let duration_us =
         u64::try_from(info.duration_100ns() / 10).expect("a positive duration in microseconds");
     let plan = request_of(value)
-        .validate(width, height, duration_us)
+        .validate(info.display_width(), info.display_height(), duration_us)
         .expect("the export request validates against the synthetic clip");
     ExportPlan::convert(&plan, &default_face()).expect("the request converts")
 }

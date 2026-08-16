@@ -157,6 +157,21 @@ pub enum DecodeError {
     #[error("the decoded frame layout is not one this decoder can read")]
     UnsupportedFrameLayout,
 
+    /// The source declares a pixel aspect ratio with a zero term.
+    ///
+    /// Not treated as square pixels: an absent ratio is a statement that the pixels are square, and
+    /// a present one that cannot be a ratio is a file describing itself impossibly. Composing from
+    /// it would silently pick one of the two readings.
+    #[error("the source declares a pixel aspect ratio that is not a ratio")]
+    UnsupportedPixelAspect,
+
+    /// The source declares a rotation that is not a quarter turn.
+    ///
+    /// Media Foundation documents only 0, 90, 180 and 270. Anything else would need a resample
+    /// rather than a turn, and ignoring it would hand back a frame lying on its side.
+    #[error("the source declares a rotation that is not a quarter turn")]
+    UnsupportedRotation,
+
     /// The source declares a colour range or matrix this crate will not guess at.
     ///
     /// Deliberately not silently treated as the nearest supported description: every wrong guess

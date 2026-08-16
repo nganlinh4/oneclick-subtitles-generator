@@ -6,7 +6,7 @@
 //! The failure it produces is a picture sheared progressively to one side, and it does not appear
 //! until someone else runs the build.
 
-use osg_decode::{DecodeError, FrameGeometry, NvPlanes, SourceColorimetry};
+use osg_decode::{DecodeError, FrameGeometry, NvPlanes, Rotation, SourceColorimetry};
 
 const WIDTH: u32 = 4;
 const HEIGHT: u32 = 4;
@@ -164,6 +164,70 @@ fn a_stride_narrower_than_the_frame_is_refused() {
     assert_eq!(
         NvPlanes::from_contiguous(&bytes, 3, geometry()).unwrap_err(),
         DecodeError::UnsupportedFrameLayout
+    );
+}
+
+/// A tightly packed NV12 frame of `width` by `height` whose every luma sample is distinct.
+fn distinct_frame(width: usize, height: usize) -> Vec<u8> {
+    let mut bytes = vec![128_u8; width * height * 3 / 2];
+    for row in 0..height {
+        for column in 0..width {
+            bytes[row * width + column] =
+                u8::try_from(row * 16 + column + 1).expect("a small sample");
+        }
+    }
+    bytes
+}
+
+#[test]
+fn a_turn_carries_every_sample_to_where_the_turn_puts_it() {
+    // Asserted against the untuned conversion of the same buffer rather than against a colour
+    // value, so this is a test of the geometry and nothing else. A non-square frame on purpose: a
+    // square one cannot tell a quarter turn from its opposite.
+    let (width, height) = (6_usize, 4_usize);
+    let bytes = distinct_frame(width, height);
+    let geometry = FrameGeometry::new(6, 4).expect("an even frame");
+    let planes = NvPlanes::from_contiguous(&bytes, width, geometry).expect("a valid frame");
+    let upright = planes.to_rgba8(SourceColorimetry::FULL_BT709);
+
+    for rotation in [Rotation::Quarter, Rotation::Half, Rotation::ThreeQuarter] {
+        let turned = planes.to_rgba8_rotated(SourceColorimetry::FULL_BT709, rotation);
+        let destination = rotation.geometry(geometry);
+        assert_eq!(turned.len(), destination.rgba_bytes());
+        assert_eq!(
+            (destination.width(), destination.height()),
+            if rotation.transposes() {
+                (height, width)
+            } else {
+                (width, height)
+            },
+            "{rotation:?} produced the wrong frame shape"
+        );
+
+        for y in 0..height {
+            for x in 0..width {
+                let (moved_x, moved_y) = rotation.place(x, y, width, height);
+                let from = (y * width + x) * 4;
+                let to = (moved_y * destination.width() + moved_x) * 4;
+                assert_eq!(
+                    turned[to..to + 4],
+                    upright[from..from + 4],
+                    "{rotation:?} lost the sample at ({x}, {y})"
+                );
+            }
+        }
+    }
+}
+
+#[test]
+fn no_turn_is_the_same_bytes_as_no_rotation_at_all() {
+    // The fast path and the general path must not be two conversions.
+    let bytes = distinct_frame(6, 4);
+    let geometry = FrameGeometry::new(6, 4).expect("an even frame");
+    let planes = NvPlanes::from_contiguous(&bytes, 6, geometry).expect("a valid frame");
+    assert_eq!(
+        planes.to_rgba8_rotated(SourceColorimetry::STUDIO_BT709, Rotation::None),
+        planes.to_rgba8(SourceColorimetry::STUDIO_BT709)
     );
 }
 

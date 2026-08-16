@@ -1,9 +1,9 @@
 import { useState, useEffect, useRef } from 'react';
 import { useTranslation } from 'react-i18next';
 import {
-  defaultCustomization,
-  parseStoredSubtitleCustomization,
-} from './subtitleCustomization/defaultCustomization';
+  SUBTITLE_CUSTOMIZATION_STORAGE_KEY,
+  useSubtitleCustomization,
+} from './VideoRenderingSection/subtitleCustomizationState';
 import {
   loadCropSettings,
   loadNarrationSource,
@@ -45,7 +45,6 @@ try {
   DEBUG_LOGS = false;
 }
 const dbg = (...args) => { if (DEBUG_LOGS) console.log(...args); };
-
 
 const VideoRenderingSection = ({
   selectedVideo,
@@ -116,15 +115,10 @@ const VideoRenderingSection = ({
   }, [videoDuration]);
   // *** FIX END ***
 
-  const [subtitleCustomization, setSubtitleCustomization] = useState(() => {
-    try {
-      return parseStoredSubtitleCustomization(
-        localStorage.getItem('videoRender_subtitleCustomization'),
-      );
-    } catch {
-      return parseStoredSubtitleCustomization(null);
-    }
-  });
+  // Complete by construction: `subtitleCustomizationState.js` merges the defaults on every write, so
+  // the preview and every render request read one object with every key the contract names. Nothing
+  // here may merge again — a second merge is a second authority.
+  const [subtitleCustomization, setSubtitleCustomization] = useSubtitleCustomization();
   const [cropSettings, setCropSettings] = useState(loadCropSettings);
   const [, setNarrationUpdateTrigger] = useState(0);
 
@@ -215,7 +209,7 @@ const VideoRenderingSection = ({
   }, [renderSettings]);
 
   useEffect(() => {
-    storeRenderPreference('videoRender_subtitleCustomization', subtitleCustomization, { json: true });
+    storeRenderPreference(SUBTITLE_CUSTOMIZATION_STORAGE_KEY, subtitleCustomization, { json: true });
   }, [subtitleCustomization]);
 
   useEffect(() => {
@@ -268,7 +262,7 @@ const VideoRenderingSection = ({
         narrationArtifactId,
         lyrics,
         settings: renderSettings,
-        customization: { ...defaultCustomization, ...subtitleCustomization },
+        customization: subtitleCustomization,
         crop: cropSettings,
       });
     } catch (error) {
@@ -291,7 +285,7 @@ const VideoRenderingSection = ({
       videoFile: selectedVideoFile,
       subtitles: selectedSubtitles,
       settings: renderSettings,
-      customization: { ...defaultCustomization, ...subtitleCustomization },
+      customization: subtitleCustomization,
       cropSettings: cropSettings,
       lyrics,
       narration: selectedNarration,
@@ -344,10 +338,9 @@ const VideoRenderingSection = ({
             : null,
           lyrics: queueItem?.lyrics || getCurrentSubtitles(),
           settings: queueItem?.settings || renderSettings,
-          customization: {
-            ...defaultCustomization,
-            ...(queueItem?.customization || subtitleCustomization),
-          },
+          // A queue item carries the completed style it was queued with; the live state is already
+          // complete too, so neither needs merging here.
+          customization: queueItem?.customization || subtitleCustomization,
           crop: queueItem?.cropSettings || cropSettings,
         });
         setRenderStatus(t('videoRendering.rendering', 'Rendering video...'));

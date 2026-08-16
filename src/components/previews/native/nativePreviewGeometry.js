@@ -29,6 +29,12 @@
  *     and `build` in `crates/osg-export/src/convert/timeline.rs`, which between them own the
  *     TRIMMED timeline every frame index is an index into.
  *
+ * ATLAS SPACE IS COMPENSATED IN ONE DIRECTION, ALWAYS. Everything the baker takes in atlas pixels —
+ * the wrap width and the letter spacing — is a composition-space quantity divided by `glyphScale`,
+ * because the compositor multiplies the whole layout by that same scale. A quantity passed straight
+ * through is correct only while `glyphScale` happens to be the identity, which it is not once the
+ * atlas font size is clamped or the composition is not 1080 high.
+ *
  * Determinism: no clocks, no RNG, no state. Every function is a pure function of its arguments.
  */
 
@@ -100,22 +106,82 @@ export const glyphScaleForComposition = ({ fontSize, compositionHeightPx, atlasF
 };
 
 /**
+ * The code a wrap width the baker will not take is reported under.
+ *
+ * A CODE RATHER THAN A `null`, because the two states are not the same thing. A `null` reaches the
+ * surface as dormancy, and dormancy is deliberately silent — no frame and no explanation — which is
+ * the right answer for "the editor does not know the source size yet" and exactly the wrong one for
+ * "this style is outside what can be baked". A user who moved a slider and got a blank panel with
+ * nothing to read has been told their subtitle disappeared.
+ */
+export const PREVIEW_WRAP_WIDTH_UNSUPPORTED = 'previewWrapWidthUnsupported';
+
+/**
+ * The persisted `maxWidth` percentage bounds. Mirrors `max_width` in
+ * `crates/osg-render/src/contract.rs` and `CUSTOMIZATION_NUMBER_BOUNDS` in `renderService.js`, both
+ * of which accept 1..1000 — a box WIDER than the composition is a legitimate style, and the render
+ * contract that the export is built through takes it.
+ */
+const MIN_MAX_WIDTH_PERCENT = 1;
+const MAX_MAX_WIDTH_PERCENT = 1_000;
+
+const wrapWidth = (widthPx) => Object.freeze({ widthPx, refusal: null });
+const wrapRefusal = (refusal) => Object.freeze({ widthPx: null, refusal });
+/** Neither a width nor a refusal: an input the export refuses too, so there is nothing to preview. */
+const WRAP_WIDTH_DORMANT = Object.freeze({ widthPx: null, refusal: null });
+
+/**
  * The wrap width the baker takes, in atlas pixels, for a persisted `maxWidth` percentage.
  *
  * `(maxWidth / 100) * compositionWidth / glyphScale`, which is the parity ledger's own expression.
  * The division by the glyph scale is the whole point: it converts a composition-space width into the
  * space the atlas was baked in, so the same style wraps at the same place at every resolution.
  *
- * Returns `null` for an input that cannot produce a usable width, or for a width outside the bound
- * `bakeGlyphAtlas` enforces. A caller that gets `null` must decline to build a request rather than
- * bake without a wrap width, because wrapping nowhere is a visibly different subtitle.
+ * THE WHOLE CONTRACT RANGE IS SUPPORTED. This used to refuse anything above 100%, which is neither
+ * the contract's bound nor the shipped renderer's — CSS `max-width: 150%` is a box wider than its
+ * parent, and `normalizeCustomization` accepts 1..1000 — so every project styled past 100 previewed
+ * as a blank panel while the export rendered it.
+ *
+ * Returns `{ widthPx, refusal }`. `widthPx` is the derived width; `refusal` is a code for a width
+ * the baker's own layout bound will not take. Both `null` means the inputs cannot produce a width at
+ * all, which is the same state the render request builder refuses this style in.
  */
-export const atlasMaxWidthPx = ({ maxWidthPercent, compositionWidthPx, glyphScale }) => {
-  if (!isPositive(maxWidthPercent) || maxWidthPercent > 100) return null;
-  if (!isPositive(compositionWidthPx) || !isPositive(glyphScale)) return null;
+export const atlasWrapWidth = ({ maxWidthPercent, compositionWidthPx, glyphScale }) => {
+  if (!isFiniteNumber(maxWidthPercent)
+      || maxWidthPercent < MIN_MAX_WIDTH_PERCENT
+      || maxWidthPercent > MAX_MAX_WIDTH_PERCENT) {
+    return WRAP_WIDTH_DORMANT;
+  }
+  if (!isPositive(compositionWidthPx) || !isPositive(glyphScale)) return WRAP_WIDTH_DORMANT;
   const widthPx = ((maxWidthPercent / 100) * compositionWidthPx) / glyphScale;
-  if (!isPositive(widthPx) || widthPx > GLYPH_ATLAS_LIMITS.maxLayoutWidthPx) return null;
-  return widthPx;
+  if (!isPositive(widthPx)) return WRAP_WIDTH_DORMANT;
+  if (widthPx > GLYPH_ATLAS_LIMITS.maxLayoutWidthPx) return wrapRefusal(PREVIEW_WRAP_WIDTH_UNSUPPORTED);
+  return wrapWidth(widthPx);
+};
+
+/**
+ * The letter spacing the baker takes, in atlas pixels, for a persisted `letterSpacing`.
+ *
+ * The persisted value is authored against a 1080-high composition and scales with the composition
+ * exactly as `fontSize` does — `getResponsiveScaledValue(customization.letterSpacing)` in
+ * `video-renderer/src/components/SubtitledVideo.tsx` — so the composition-space quantity is
+ * `scaleSubtitleStyleValue(letterSpacing, height)`, and the atlas-space one is that divided by the
+ * glyph scale the compositor will multiply the whole layout by.
+ *
+ * THAT DIVISION IS THE POINT, and it used to be missing. The atlas font size is clamped into the
+ * baker's 4..512 bounds while the contract accepts 1..1000, and `glyphScale` divides by the CLAMPED
+ * size — so cells, pen positions and the wrap width are all compensated for the clamp and the raw
+ * letter spacing was not. At a font size of 800 on a 1080p composition the scale is 1.5625, and
+ * every gap between two clusters came out 56% wider than the style asks for.
+ *
+ * Returns `null` when no atlas-space value can be derived, which is the state the render request
+ * builder refuses this style in.
+ */
+export const atlasLetterSpacingPx = ({ letterSpacing, compositionHeightPx, glyphScale }) => {
+  if (!isFiniteNumber(letterSpacing) || !isPositive(compositionHeightPx) || !isPositive(glyphScale)) {
+    return null;
+  }
+  return scaleSubtitleStyleValue(letterSpacing, compositionHeightPx) / glyphScale;
 };
 
 /**
@@ -217,8 +283,31 @@ export const previewTimeline = ({
 };
 
 /**
- * The frame of the trimmed composition a SOURCE timestamp lands on, or `null` when the playhead is
- * outside the trim window.
+ * Where a playhead sits relative to the composition the export writes.
+ *
+ * Named states rather than a boolean, because "outside the trim window" and "past the last frame the
+ * composition has" are different facts and a surface that conflates them is reporting one of them
+ * wrongly. `trimEnd` itself is INSIDE the window and past the last frame whenever the window is an
+ * exact number of frames long, so the two cases are not even nested.
+ */
+export const PREVIEW_PLAYHEAD = Object.freeze({
+  /** On a frame the composition contains. The only state that carries an index. */
+  inside: 'inside',
+  /** Before `trimStart`: the source has this instant, the output does not. */
+  beforeWindow: 'beforeWindow',
+  /** After `trimEnd`: the source has this instant, the output does not. */
+  afterWindow: 'afterWindow',
+  /** Inside the window and past `frameCount - 1`, which the ceiling leaves room for. */
+  pastLastFrame: 'pastLastFrame',
+  /** No timeline to place it against yet. Dormancy, not a placement. */
+  unknown: 'unknown',
+});
+
+const placed = (placement, frameIndex) => Object.freeze({ placement, frameIndex });
+const UNPLACED = placed(PREVIEW_PLAYHEAD.unknown, null);
+
+/**
+ * The frame of the trimmed composition a SOURCE timestamp lands on, and why it lands on none.
  *
  * The playhead is a source instant and the composition starts at `trimStart`, so the index is
  * `floor((t - trimStart) * fps)` — the offset the source grid carries in
@@ -227,27 +316,39 @@ export const previewTimeline = ({
  * 1/30s - epsilon is frame 0, not frame 1. Seek must equal play, so this is the only place a preview
  * turns a time into an index.
  *
- * NULL RATHER THAN A CLAMP OUTSIDE THE WINDOW. A playhead before the trim point or past the trim end
- * is an instant the export does not contain, and clamping it to frame 0 or to the last frame would
- * put a real exported frame on screen at an instant it is not the frame for — the same silent
- * substitution this migration exists to remove. The caller goes dormant and shows the `<video>`
- * instead, which is honestly "the source, here, where the output has nothing".
+ * NOTHING IS CLAMPED. Frame 0 and frame `frameCount - 1` are both real exported frames, so answering
+ * an out-of-range instant with one puts an exported pixel on screen at an instant it is not the
+ * pixel for — which looks exactly like a correct preview and is the silent substitution this
+ * migration exists to remove. This used to end in `Math.min(index, frameCount - 1)`, a clamp the
+ * export has no counterpart for: `run_export` walks `0..plan.frame_count()` and
+ * `PreviewHost::compose` refuses `frame_index >= frame_count` outright.
  *
- * Inside the window the last frame still covers the closing instant: `frameCount` is a CEILING, so
- * `trimEnd` itself lands one past the last index whenever the window is an exact number of frames
- * long. That single clamp is the ceiling read back, not a guess about a frame that does not exist.
+ * The clamp was also not a safety net, because it clamped to the WRONG ceiling. The frame count here
+ * is derived from the `<video>` element's `duration` and the native one from `MF_PD_DURATION`
+ * through `probe_source`; those are two measurements of one file and they disagree on some
+ * containers. When they do, the clamped index still exceeds the native composition — it merely
+ * stopped this side from noticing. Asking only for indices this timeline contains is what this
+ * module can honestly promise; an index the native side does not have then comes back as a stated
+ * refusal rather than as a substituted frame.
  */
-export const frameIndexForTime = (timeSeconds, timeline) => {
-  if (!isFiniteNumber(timeSeconds) || timeline === null || timeline === undefined) return null;
+export const previewPlayhead = (timeSeconds, timeline) => {
+  if (!isFiniteNumber(timeSeconds) || timeline === null || timeline === undefined) return UNPLACED;
   const {
     fpsNumerator, fpsDenominator, frameCount, trimStartSeconds, trimEndSeconds,
   } = timeline;
   if (!isPositive(fpsNumerator) || !isPositive(fpsDenominator) || !Number.isInteger(frameCount)) {
-    return null;
+    return UNPLACED;
   }
-  if (frameCount < 1) return null;
-  if (!isFiniteNumber(trimStartSeconds) || !isFiniteNumber(trimEndSeconds)) return null;
-  if (timeSeconds < trimStartSeconds || timeSeconds > trimEndSeconds) return null;
+  if (frameCount < 1) return UNPLACED;
+  if (!isFiniteNumber(trimStartSeconds) || !isFiniteNumber(trimEndSeconds)) return UNPLACED;
+  if (timeSeconds < trimStartSeconds) return placed(PREVIEW_PLAYHEAD.beforeWindow, null);
+  if (timeSeconds > trimEndSeconds) return placed(PREVIEW_PLAYHEAD.afterWindow, null);
   const index = Math.floor(((timeSeconds - trimStartSeconds) * fpsNumerator) / fpsDenominator);
-  return Math.min(Math.max(index, 0), frameCount - 1);
+  if (index >= frameCount) return placed(PREVIEW_PLAYHEAD.pastLastFrame, null);
+  return placed(PREVIEW_PLAYHEAD.inside, index);
 };
+
+/** The index alone, for a caller that only has to ask for a frame. `null` outside the composition. */
+export const frameIndexForTime = (timeSeconds, timeline) => (
+  previewPlayhead(timeSeconds, timeline).frameIndex
+);

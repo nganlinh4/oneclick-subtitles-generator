@@ -1,10 +1,32 @@
-//! The output frame size, derived once, from the crop region.
+//! The output frame size, derived once, from the source's display shape and the crop region.
 //!
 //! The scene, the compositor and the encoder are all configured from the [`CompositionSize`] this
 //! module returns, so there is one derivation rather than one per consumer. The height is the
 //! resolution ladder's, taken from the validated request unchanged — the ladder lives in the
-//! request contract and is deliberately not copied here. The width is what the crop decides, and is
-//! the whole subject of the parity ledger's `aspectRatio` entry.
+//! request contract and is deliberately not copied here. The width is what the source shape and the
+//! crop decide, and is the whole subject of the parity ledger's `aspectRatio` entry.
+//!
+//! # The source aspect is the *display* aspect
+//!
+//! `plan.source_width` and `plan.source_height` are the size the source is **shown** at — pixel
+//! aspect ratio applied, rotation applied — and not the size it is stored at. That is not a
+//! preference; it is the only reading under which this module agrees with the editor, which sizes
+//! its own composition from the `<video>` element's `videoWidth`/`videoHeight`, and the browser
+//! applies both before it reports them.
+//!
+//! The two readings are the same number for an ordinary file and a visibly different number for the
+//! two kinds of file a user of this application actually has:
+//!
+//! * An anamorphic clip stored 720x480 and shown 854x480 composes **1922** wide at 1080p from its
+//!   display shape and **1620** from its coded shape.
+//! * A portrait phone clip stored 1920x1080 with a quarter-turn and shown 1080x1920 composes
+//!   **608** wide from its display shape and **1920** — landscape, the wrong way round entirely —
+//!   from its coded shape.
+//!
+//! Both numbers are asserted below. `osg-decode` reports the two sizes separately and by name, and
+//! the two callers that validate a request — `osg_export::run::plan_against_source` and the
+//! preview's `plan_for_source` — take the display one, so the preview, the export and the editor
+//! compose one frame rather than three.
 //!
 //! # `crop.aspectRatio` is not read here, and must not be
 //!
@@ -62,13 +84,14 @@ const MAX_OUTPUT_EDGE: f64 = 15_360.0;
 /// The pixel size one export composes, encodes and previews at.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) struct CompositionSize {
-    /// Derived from the source aspect and the crop region.
+    /// Derived from the source's display aspect and the crop region.
     pub(crate) width: u32,
     /// The resolution ladder's height, from the validated request.
     pub(crate) height: u32,
 }
 
-/// Derives the output frame size from the resolution height and the crop region.
+/// Derives the output frame size from the resolution height, the source's display shape and the
+/// crop region.
 ///
 /// # Errors
 /// Returns [`ExportError::UnsupportedRequest`] when the crop implies a width outside the range the
@@ -76,24 +99,45 @@ pub(crate) struct CompositionSize {
 /// implies is not the size the request was validated to.
 pub(crate) fn composition_size(plan: &RenderPlan) -> Result<CompositionSize, ExportError> {
     let height = even(plan.height);
-    let source_aspect = f64::from(plan.source_width) / f64::from(plan.source_height);
-    let effective_aspect = source_aspect * (plan.crop.width / plan.crop.height);
+    let width = composed_width(
+        plan.source_width,
+        plan.source_height,
+        plan.crop.width / plan.crop.height,
+        height,
+    )
+    .ok_or(ExportError::UnsupportedRequest {
+        reason: RenderError::InvalidRequest,
+    })?;
+    if (width, height) != (plan.width, plan.height) {
+        return Err(ExportError::OutputSizeNotFromCrop);
+    }
+    Ok(CompositionSize { width, height })
+}
+
+/// The width a source of this display shape composes at `height`, or `None` outside the range the
+/// request contract accepts.
+///
+/// The associativity is the request contract's, term for term, for the reason the module note gives:
+/// two spellings of the same product round apart on a small fraction of crop shapes, and the size a
+/// request was validated to has to be the size it composes at.
+fn composed_width(
+    source_width: u32,
+    source_height: u32,
+    crop_ratio: f64,
+    height: u32,
+) -> Option<u32> {
+    let source_aspect = f64::from(source_width) / f64::from(source_height);
+    let effective_aspect = source_aspect * crop_ratio;
     let rounded = (f64::from(height) * effective_aspect).round();
     if !(MIN_OUTPUT_EDGE..=MAX_OUTPUT_EDGE).contains(&rounded) {
-        return Err(ExportError::UnsupportedRequest {
-            reason: RenderError::InvalidRequest,
-        });
+        return None;
     }
     #[allow(
         clippy::cast_possible_truncation,
         clippy::cast_sign_loss,
         reason = "the width is finite and range checked on the line above"
     )]
-    let width = even(rounded as u32);
-    if (width, height) != (plan.width, plan.height) {
-        return Err(ExportError::OutputSizeNotFromCrop);
-    }
-    Ok(CompositionSize { width, height })
+    Some(even(rounded as u32))
 }
 
 /// Rounds an edge up to the even number the encoder requires.
@@ -107,7 +151,42 @@ fn even(value: u32) -> u32 {
 
 #[cfg(test)]
 mod tests {
-    use super::even;
+    use super::{composed_width, even};
+
+    /// The whole source, uncropped, which is what an untouched crop region means.
+    const WHOLE: f64 = 1.0;
+
+    #[test]
+    fn an_anamorphic_source_composes_from_the_size_it_is_shown_at() {
+        // 720x480 stored, 854x480 shown. The first number is what the editor composes and the
+        // second is what this module composed before the display size existed.
+        assert_eq!(composed_width(854, 480, WHOLE, 1_080), Some(1_922));
+        assert_eq!(composed_width(720, 480, WHOLE, 1_080), Some(1_620));
+    }
+
+    #[test]
+    fn a_rotated_source_composes_portrait_rather_than_landscape() {
+        // 1920x1080 stored with a quarter turn, 1080x1920 shown. Composing from the coded shape
+        // does not merely round differently — it produces a landscape frame for a portrait video.
+        assert_eq!(composed_width(1_080, 1_920, WHOLE, 1_080), Some(608));
+        assert_eq!(composed_width(1_920, 1_080, WHOLE, 1_080), Some(1_920));
+    }
+
+    #[test]
+    fn a_square_pixel_source_is_unchanged_at_every_rung_of_the_ladder() {
+        // The regression guard: the ordinary file must compose exactly what it always composed.
+        for (height, width) in [(480, 854), (720, 1_280), (1_080, 1_920), (2_160, 3_840)] {
+            assert_eq!(composed_width(1_920, 1_080, WHOLE, height), Some(width));
+        }
+    }
+
+    #[test]
+    fn a_shape_the_contract_will_not_accept_is_refused_rather_than_clamped() {
+        // Far past the widest edge the request contract takes, which a hostile pixel aspect could
+        // otherwise turn into a composition nobody asked for.
+        assert_eq!(composed_width(u32::MAX, 2, WHOLE, 1_080), None);
+        assert_eq!(composed_width(2, u32::MAX, WHOLE, 1_080), None);
+    }
 
     #[test]
     fn an_odd_edge_grows_by_one_and_an_even_one_does_not() {

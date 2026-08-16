@@ -13,6 +13,7 @@ use core::fmt;
 
 use crate::colorimetry::{SourceColorimetry, YuvToRgb};
 use crate::error::DecodeError;
+use crate::presentation::Rotation;
 
 /// The size of one decoded frame, checked against what 4:2:0 chroma can describe.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -59,6 +60,19 @@ impl FrameGeometry {
     #[must_use]
     pub const fn chroma_rows(self) -> usize {
         self.height / 2
+    }
+
+    /// The same frame with its axes swapped, which is what a quarter turn produces.
+    ///
+    /// Infallible, and const, because every invariant [`Self::new`] checked is symmetric in the two
+    /// edges: both stay even and non-zero, and the pixel count — and therefore the addressability of
+    /// the RGBA frame — is unchanged.
+    #[must_use]
+    pub const fn transposed(self) -> Self {
+        Self {
+            width: self.height,
+            height: self.width,
+        }
     }
 
     /// The smallest NV12 buffer that can hold this frame at `stride`.
@@ -229,6 +243,42 @@ impl<'pixels> NvPlanes<'pixels> {
                 rgba[1] = green;
                 rgba[2] = blue;
                 rgba[3] = u8::MAX;
+            }
+        }
+        pixels
+    }
+
+    /// Converts the frame to tightly packed RGBA8, top row first, turned upright.
+    ///
+    /// The turn is applied while the pixels are being written, so a rotated source costs one scatter
+    /// rather than a conversion followed by a copy of the whole frame. [`Rotation::None`] is
+    /// delegated to [`Self::to_rgba8`] unchanged: an ordinary source keeps the row-at-a-time path it
+    /// was measured on and pays nothing at all for rotation support.
+    #[must_use]
+    pub fn to_rgba8_rotated(&self, colorimetry: SourceColorimetry, rotation: Rotation) -> Vec<u8> {
+        if rotation == Rotation::None {
+            return self.to_rgba8(colorimetry);
+        }
+        let convert = YuvToRgb::new(colorimetry);
+        let width = self.geometry.width();
+        let height = self.geometry.height();
+        let destination = rotation.geometry(self.geometry);
+        let row_bytes = destination.width() * 4;
+        // `NvPlanes::new` proved every source row below is present, `FrameGeometry::new` proved this
+        // length is addressable, and `Rotation::place` is a bijection of the frame onto the
+        // transposed one, so every index below is inside both buffers.
+        let mut pixels = vec![0_u8; destination.rgba_bytes()];
+
+        for row in 0..height {
+            let luma = &self.luma[row * self.luma_stride..][..width];
+            let chroma = &self.chroma[(row / 2) * self.chroma_stride..][..width];
+
+            for (column, &luma_sample) in luma.iter().enumerate() {
+                let pair = column & !1;
+                let [red, green, blue] = convert.pixel(luma_sample, chroma[pair], chroma[pair + 1]);
+                let (x, y) = rotation.place(column, row, width, height);
+                let start = y * row_bytes + x * 4;
+                pixels[start..start + 4].copy_from_slice(&[red, green, blue, u8::MAX]);
             }
         }
         pixels

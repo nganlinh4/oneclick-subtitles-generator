@@ -137,6 +137,15 @@ impl CommandError {
         )
     }
 
+    /// One typed refusal from the native export pipeline.
+    ///
+    /// The vocabulary itself lives in `crate::render::refusal`, beside the pipeline that produces
+    /// it, because those codes name export outcomes and nothing else constructs them. Both halves
+    /// are `&'static str`, so a refusal can carry no path, no credential and no subtitle text.
+    pub(crate) fn render_refusal(code: &'static str, message: &'static str) -> Self {
+        Self::fixed(code, message)
+    }
+
     pub(crate) fn channel_closed() -> Self {
         Self {
             code: "channelClosed",
