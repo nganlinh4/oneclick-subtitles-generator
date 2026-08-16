@@ -2,7 +2,7 @@
   "schemaVersion": 5,
   "algorithm": "sha256",
   "normalization": "binary exact; UTF-8 BOM ignored, CRLF/CR normalized to LF, terminal newlines ignored",
-  "baselineRevision": "fa3c408e44ff9cbef9eba93f7df029a14fa0037b",
+  "baselineRevision": "231c6d4be94ca06203123240d4fdef6fed6b3c38",
   "retiredExactFiles": {
     "public/oauth2callback.html": "c19855fd5a3f19af1eea1c1fed6e7794a342136223dd60dbead2586d4298fd90",
     "src/assets/fonts/GoogleSansFlex.ttf": "eae5ed6ddefbd44ab9693b84454ce46f3f2de0fb4f7cc5b54138c50c5b347d70",
@@ -8622,11 +8622,11 @@
       ]
     },
     "src/components/previews/NativeRenderPreview.js": {
-      "hash": "1d04aa0e4c0aa1bb8f14f62e741934f506e00b3e6193a34a2adbba47ef3b73c8",
+      "hash": "d810cff0995eba88df3cbe51e26afa66e7f512153e4b53d811429931b67c49f3",
       "rootCount": 2,
       "roots": [
         "58593648d68a3e71e08e2aa5f85e27c44c4138ffc39eccbb52a8f6d5cb1ff5a4",
-        "65d0ed036e3531cbe02f85d0ae017db01705928ce46b22b0c517c46ca00f6c3b"
+        "a7269a2acc95d40095202f1b9070bdd45c819c03a8c90ac77bb566da9c5bfc81"
       ]
     },
     "src/components/previews/SeekIndicator.js": {
@@ -8680,10 +8680,10 @@
       ]
     },
     "src/components/previews/VideoPreview.js": {
-      "hash": "247b1509073a0decdbd8d4dab958d85688ec5f818616e234534abaf64c2ece22",
+      "hash": "1b79750cb1a022351cc569d65f5c50b4819210f4ef6d39890ab5e5436260e351",
       "rootCount": 1,
       "roots": [
-        "73539a458e81086e282ed394156327d6342e31fc73550d313c81568992d6558d"
+        "a52ef60400e74b9cd717a532a1932ed15a256ba422850274e9db26a35144e8cb"
       ]
     },
     "src/components/previews/VideoTopsideButtons.js": {
@@ -9352,10 +9352,10 @@
       ]
     },
     "src/components/VideoRenderingSection/PreviewCustomizationRow.js": {
-      "hash": "af2271b305a88722a37c3fd20a7a45c3646e78dcb7c9ba93f9e01ae29ffe8095",
+      "hash": "8df94863ee63a0dcce2f71bf039b1844f7bf04a146e0806ec1a1e55689e4004e",
       "rootCount": 1,
       "roots": [
-        "e64dab686baf274157323b0948b51a6236ab2fcd636fe94a60ac04616f49264d"
+        "b5bc0df56d0c5eaf29f56a203d2c3bed9f8897a9b474782a17d286624e5573ba"
       ]
     },
     "src/components/VideoRenderingSection/RenderSettingsRow.js": {
