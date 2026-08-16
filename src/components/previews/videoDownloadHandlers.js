@@ -10,6 +10,7 @@ import {
   resolveNativeRenderSource,
   runNativeRender,
 } from '../../platform/renderService';
+import { stageNativeRenderText } from './native/exportTextStaging';
 
 const boundedNumber = (value, fallback, minimum, maximum) => {
   const numeric = Number(value);
@@ -156,7 +157,12 @@ export const renderAndExportDesktopPreview = async ({
       flipY: false,
     },
   });
+  // The glyphs this file is drawn with. The export composes them natively but never shapes them, so
+  // the atlas and one laid-out run per cue are baked here and travel with the request. A font the
+  // editor cannot resolve refuses by name rather than writing a file in a substitute.
+  const text = await stageNativeRenderText(request, { source: videoUrl || videoSource });
   const completed = await runNativeRender(request, {
+    text,
     onProgress: (event) => onProgress(event.fractionMillionths / 1_000_000),
   });
   try {

@@ -10,6 +10,7 @@ import {
   runNativeRender,
 } from '../../platform/renderService';
 import { downloadVideo, renderSubtitlesToVideo } from '../../utils/videoUtils';
+import { stageNativeRenderText } from './native/exportTextStaging';
 import {
   createDownloadWithSubtitlesHandler,
   normalizePreviewRenderLyrics,
@@ -18,6 +19,7 @@ import {
 } from './videoDownloadHandlers';
 
 vi.mock('../../platform/desktopRuntime', () => ({ isDesktopRuntime: vi.fn() }));
+vi.mock('./native/exportTextStaging', () => ({ stageNativeRenderText: vi.fn() }));
 vi.mock('../../platform/mediaExportService', () => ({ exportMediaAsset: vi.fn() }));
 vi.mock('../../platform/renderService', () => ({
   buildNativeRenderRequest: vi.fn(),
@@ -46,6 +48,7 @@ describe('desktop preview subtitle rendering', () => {
     resolveNativeRenderSource.mockResolvedValue(sourceAsset);
     ensureNativeRenderProject.mockResolvedValue('019ffbea-40eb-7c3c-b2f3-214ca260a7cc');
     buildNativeRenderRequest.mockReturnValue(Object.freeze({ native: true }));
+    stageNativeRenderText.mockResolvedValue(Object.freeze({ schemaVersion: 1, staged: true }));
     runNativeRender.mockImplementation(async (_request, handlers) => {
       handlers.onProgress({ fractionMillionths: 250_000 });
       return {
@@ -142,7 +145,16 @@ describe('desktop preview subtitle rendering', () => {
         backgroundColor: '#000000',
       }),
     }));
-    expect(runNativeRender).toHaveBeenCalledWith({ native: true }, expect.any(Object));
+    // The glyphs travel with the request: an export the WebView did not stage text for is refused
+    // natively rather than drawn with an atlas nobody chose.
+    expect(stageNativeRenderText).toHaveBeenCalledWith(
+      { native: true },
+      { source: 'http://127.0.0.1/native-media' },
+    );
+    expect(runNativeRender).toHaveBeenCalledWith(
+      { native: true },
+      expect.objectContaining({ text: { schemaVersion: 1, staged: true } }),
+    );
     expect(onProgress).toHaveBeenCalledWith(0.25);
     expect(exportMediaAsset).toHaveBeenCalledWith('019ffbea-50eb-7c3c-b2f3-214ca260a7cc');
     expect(releaseNativeRenderPlayback).toHaveBeenCalledWith(

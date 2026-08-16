@@ -24,6 +24,23 @@ use osg_encode::{EncoderConfig, FrameBuffer, PixelLayout, VideoConfig, open_enco
 use osg_scene::{ExactTime, FrameTimeline};
 use tempfile::TempDir;
 
+/// Serialises Media Foundation across this binary's test threads.
+///
+/// Opening several source readers or sink writers at the same moment from one process has faulted
+/// inside the platform layers here, and the product opens one at a time on one thread — so this is
+/// a shape the harness creates and the application never does. `osg-export`'s media support takes
+/// the same measure for the same reason. The guard is held only while the platform object is being
+/// opened, not across the decode, so the suite stays parallel where parallelism is safe.
+static PLATFORM: std::sync::Mutex<()> = std::sync::Mutex::new(());
+
+fn platform() -> std::sync::MutexGuard<'static, ()> {
+    // A poisoned lock means another test panicked while holding it; whatever it was opening is gone
+    // either way, so recovering is correct.
+    PLATFORM
+        .lock()
+        .unwrap_or_else(std::sync::PoisonError::into_inner)
+}
+
 const WIDTH: u32 = 320;
 const HEIGHT: u32 = 240;
 const FPS: u32 = 30;
@@ -106,6 +123,7 @@ fn assert_frame_is(frame: &DecodedFrame, index: u32) {
 
 /// Encodes the synthetic clip and returns where it landed.
 fn encoded_clip(directory: &TempDir, name: &str) -> PathBuf {
+    let _platform = platform();
     let output = directory.path().join(name);
     let video = VideoConfig::new(WIDTH, HEIGHT, FPS, 1, FRAMES)
         .expect("a supported configuration")
@@ -134,6 +152,7 @@ fn output_timeline() -> FrameTimeline {
 }
 
 fn decoder_for(source: &Path) -> Box<dyn VideoDecoder> {
+    let _platform = platform();
     open_decoder(source, DecoderConfig::new(output_timeline()))
         .expect("Media Foundation must decode the clip it just encoded")
 }

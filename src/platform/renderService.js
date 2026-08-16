@@ -10,8 +10,22 @@ import {
 import { mutateProject } from './projectService';
 import { resolveProjectForCache } from './subtitleProjectStore';
 
-export const REMOTION_VERSION = '4.0.507';
 export const MAX_RENDER_LYRICS = 100_000;
+
+/** Mirrors `EXPORT_TEXT_SCHEMA_VERSION` in `apps/desktop/src-tauri/src/render/text.rs`. */
+const EXPORT_TEXT_SCHEMA_VERSION = 1;
+const EXPORT_TEXT_KEYS = Object.freeze([
+  'schemaVersion', 'atlasId', 'atlasContentHash', 'face', 'cues',
+]);
+const EXPORT_CUE_LINE_KEYS = Object.freeze([
+  'glyphs', 'penXPx', 'advanceWidthPx', 'baselineYPx',
+]);
+const EXPORT_FACE_KEYS = Object.freeze(['family', 'source', 'weight']);
+/** Mirrors `MAX_IDENTITY_BYTES` and `is_opaque_identity` in the same file. */
+const OPAQUE_IDENTITY_PATTERN = /^[A-Za-z0-9\-_:]{1,128}$/;
+/** Mirrors `MAX_RUN_LINES` and `MAX_RUN_GLYPHS` in `crates/osg-compositor/src/run.rs`. */
+const MAX_EXPORT_RUN_LINES = 64;
+const MAX_EXPORT_RUN_CELLS = 4_096;
 
 const MAX_RENDER_DURATION_MICROS = 24 * 60 * 60 * 1_000_000;
 const MAX_TOTAL_LYRIC_BYTES = 8 * 1024 * 1024;
@@ -40,6 +54,14 @@ const RENDER_COMMAND_CODES = new Set([
   'renderPublicationFailed',
   'renderSourceChanged',
   'renderNarrationChanged',
+  // The refusals the staged-text boundary added. `apps/desktop/src-tauri/src/render/refusal.rs`
+  // raises each of these for a distinct thing a user can act on differently, so they keep their own
+  // sentences rather than collapsing into the categorical native failure.
+  'renderTextNotStaged',
+  'renderAtlasUnknown',
+  'renderTextMismatched',
+  'renderFontUnavailable',
+  'renderAtlasCannotLayOut',
   'renderStagingUnavailable',
   'renderMediaPreparationFailed',
   'renderWorkerProtocol',
@@ -352,28 +374,43 @@ const dataProperty = (value, key) => {
   }
 };
 
+/**
+ * What a user is told a native render failed for.
+ *
+ * A lookup rather than the nested conditional this was, because the vocabulary grew: the staged-text
+ * boundary added five refusals a user acts on differently, and a twenty-deep ternary is not a place
+ * to add anything. A code with no entry falls through to the categorical sentence, which is what
+ * every code this build has not been taught still gets.
+ *
+ * `renderRuntimeUnavailable` no longer mentions Remotion, because that sentence is no longer true:
+ * `render_runtime_status` reports whether this BUILD has the native pipeline (`cfg!(windows)`), not
+ * whether a payload is installed, and nothing in Settings can change the answer. The code is also
+ * no longer reachable from a render: `render_start` cannot raise it, and the only thing that does
+ * is the frontend's own readiness check.
+ */
+const RENDER_FAILURE_MESSAGES = new Map([
+  ['renderRuntimeUnavailable', 'This build cannot render video on this computer'],
+  ['mediaToolsUnavailable', 'Install FFmpeg and FFprobe in Settings before rendering'],
+  ['renderBusy', 'Another video render is already running'],
+  ['invalidRenderRequest', 'The selected video, subtitles, or render settings are invalid'],
+  ['invalidInput', 'The selected video, subtitles, or render settings are invalid'],
+  ['mediaUnavailable', 'The selected video is no longer available'],
+  ['invalidMediaLocation', 'The selected video is no longer available'],
+  ['mediaIdentityConflict', 'The selected video is no longer available'],
+  ['renderSourceChanged', 'The source video changed before rendering completed'],
+  ['renderNarrationChanged', 'The narration audio changed before rendering completed'],
+  ['renderPublicationFailed', 'The rendered video could not be saved durably'],
+  ['renderCancelled', 'The native video render was cancelled'],
+  ['renderTimeout', 'The native video render exceeded its safe time limit'],
+  ['renderTextNotStaged', 'The subtitles for this render were not prepared for the renderer'],
+  ['renderAtlasUnknown', 'The prepared subtitles for this render expired. Try again'],
+  ['renderTextMismatched', 'The prepared subtitles do not match the subtitles being rendered'],
+  ['renderFontUnavailable', 'The font this render asks for is not the font the subtitles were measured with'],
+  ['renderAtlasCannotLayOut', 'These subtitles are shaped in a way this render cannot place'],
+]);
+
 const renderFailureMessage = (code) => (
-  code === 'renderRuntimeUnavailable'
-    ? 'Install the Remotion video renderer in Settings before rendering'
-    : code === 'mediaToolsUnavailable'
-      ? 'Install FFmpeg and FFprobe in Settings before rendering'
-      : code === 'renderBusy'
-        ? 'Another video render is already running'
-        : ['invalidRenderRequest', 'invalidInput'].includes(code)
-          ? 'The selected video, subtitles, or render settings are invalid'
-          : ['mediaUnavailable', 'invalidMediaLocation', 'mediaIdentityConflict'].includes(code)
-            ? 'The selected video is no longer available'
-            : code === 'renderSourceChanged'
-              ? 'The source video changed before rendering completed'
-              : code === 'renderNarrationChanged'
-                ? 'The narration audio changed before rendering completed'
-                : code === 'renderPublicationFailed'
-                  ? 'The rendered video could not be saved durably'
-                  : code === 'renderCancelled'
-                    ? 'The native video render was cancelled'
-                    : code === 'renderTimeout'
-                      ? 'The native video render exceeded its safe time limit'
-                      : 'The native video render could not be completed'
+  RENDER_FAILURE_MESSAGES.get(code) ?? 'The native video render could not be completed'
 );
 
 const allowedRenderCode = (value, fallback = 'nativeRenderFailed') => {
@@ -709,6 +746,83 @@ export const buildNativeRenderRequest = ({
   });
 };
 
+/**
+ * The staged text `render_start` draws with, checked for what belongs to THIS boundary.
+ *
+ * The architecture forbids a Rust text stack, so an export's glyphs arrive already shaped: one
+ * staged atlas, and one laid-out run per cue in the request's own cue order.
+ * `src/components/previews/native/exportTextStaging.js` produces it and
+ * `apps/desktop/src-tauri/src/render/text.rs` deserialises it.
+ *
+ * Deliberately a SHAPE check and not a second opinion about layout. Whether the runs agree with the
+ * atlas is decided by `osg_compositor::SubtitleScene`, which is the code that defines what a
+ * drawable run is; restating any of it here would be a third vocabulary to keep in step. What is
+ * checked is what this boundary owns: the payload version, the opacity of the identity it carries,
+ * that it describes THESE cues, and the sizes it would otherwise make the far side allocate.
+ *
+ * The payload is copied field by field rather than forwarded, so nothing a caller mutates after
+ * this returns can reach the command.
+ */
+const normalizeExportCueLine = (line) => {
+  const snapshot = snapshotExactRecord(line, EXPORT_CUE_LINE_KEYS);
+  if (snapshot === null
+      || !Array.isArray(snapshot.glyphs)
+      || !Array.isArray(snapshot.penXPx)
+      || snapshot.glyphs.length !== snapshot.penXPx.length) {
+    throw invalidRequest();
+  }
+  const glyphs = snapshot.glyphs.map((cell) => requireInteger(cell, 0, 0xffff_ffff));
+  const penXPx = snapshot.penXPx.map((pen) => requireFinite(pen, -1e12, 1e12));
+  return Object.freeze({
+    glyphs: Object.freeze(glyphs),
+    penXPx: Object.freeze(penXPx),
+    advanceWidthPx: requireFinite(snapshot.advanceWidthPx, -1e12, 1e12),
+    baselineYPx: requireFinite(snapshot.baselineYPx, -1e12, 1e12),
+  });
+};
+
+const normalizeExportCueRun = (run) => {
+  const snapshot = snapshotExactRecord(run, ['lines']);
+  if (snapshot === null
+      || !Array.isArray(snapshot.lines)
+      || snapshot.lines.length === 0
+      || snapshot.lines.length > MAX_EXPORT_RUN_LINES) {
+    throw invalidRequest();
+  }
+  const lines = snapshot.lines.map(normalizeExportCueLine);
+  const cells = lines.reduce((total, line) => total + line.glyphs.length, 0);
+  if (cells > MAX_EXPORT_RUN_CELLS) throw invalidRequest();
+  return Object.freeze({ lines: Object.freeze(lines) });
+};
+
+export const normalizeExportText = (text, request) => {
+  const snapshot = snapshotExactRecord(text, EXPORT_TEXT_KEYS);
+  const face = snapshot === null ? null : snapshotExactRecord(snapshot.face, EXPORT_FACE_KEYS);
+  if (snapshot === null || face === null
+      || snapshot.schemaVersion !== EXPORT_TEXT_SCHEMA_VERSION
+      || !uuidHasVersion(snapshot.atlasId, 7)
+      || typeof snapshot.atlasContentHash !== 'string'
+      || !OPAQUE_IDENTITY_PATTERN.test(snapshot.atlasContentHash)
+      || !Array.isArray(snapshot.cues)
+      || !Array.isArray(request?.lyrics)
+      || snapshot.cues.length !== request.lyrics.length) {
+    throw invalidRequest();
+  }
+  // A face that never resolved is the failure this pipeline exists to stop hiding, so the payload
+  // may not carry a weight or a byte source the renderer would have to guess at.
+  requireString(face.family, 256);
+  requireString(face.source, 256);
+  requireInteger(face.weight, 100, 900);
+  if (face.weight % 100 !== 0) throw invalidRequest();
+  return Object.freeze({
+    schemaVersion: EXPORT_TEXT_SCHEMA_VERSION,
+    atlasId: snapshot.atlasId,
+    atlasContentHash: snapshot.atlasContentHash,
+    face: Object.freeze({ family: face.family, source: face.source, weight: face.weight }),
+    cues: Object.freeze(snapshot.cues.map(normalizeExportCueRun)),
+  });
+};
+
 export const normalizeRenderJob = (job) => {
   const snapshot = snapshotExactRecord(job, ['id', 'kind', 'state', 'progress', 'sequence']);
   const progressSnapshot = snapshot === null
@@ -932,16 +1046,27 @@ export const createNativeRenderService = ({
     if (!isNativeRuntime()) throw runtimeRequired();
   };
 
+  /**
+   * Whether this build can render video natively, and why not when it cannot.
+   *
+   * `remotionVersion` is READ BUT NOT INTERPRETED. It is vestigial on both sides — nothing
+   * `render_runtime_status` reports is about Remotion any more — and this used to compare it
+   * against a frozen constant here, which pinned a dead field: dropping it natively would have
+   * failed every readiness check in the editor. The response is accepted with the field or without
+   * it, so the native side can delete it whenever it likes, and this module has one fewer opinion
+   * about a renderer it no longer talks to.
+   */
   const status = async () => {
     requireNative();
     try {
-      const value = snapshotExactRecord(
-        await invokeCommand('render_runtime_status', {}),
-        ['available', 'remotionVersion', 'reason', 'maxConcurrentRenders'],
-      );
+      const response = await invokeCommand('render_runtime_status', {});
+      const value = snapshotExactRecord(response, ['available', 'reason', 'maxConcurrentRenders'])
+        ?? snapshotExactRecord(
+          response,
+          ['available', 'remotionVersion', 'reason', 'maxConcurrentRenders'],
+        );
       if (value === null
         || typeof value.available !== 'boolean'
-        || value.remotionVersion !== REMOTION_VERSION
         || (value.reason !== null && !RENDER_UNAVAILABLE_REASONS.has(value.reason))
         || value.maxConcurrentRenders !== 1
         || (value.available && value.reason !== null)
@@ -1029,10 +1154,14 @@ export const createNativeRenderService = ({
     const expectedSourceAssetId = ownedRequest.sourceAssetId;
     const expectedProjectId = ownedRequest.projectId;
     const options = snapshotPlainRecord(rawOptions);
-    if (options === null || Object.keys(options).some((key) => key !== 'signal')) {
+    if (options === null
+        || Object.keys(options).some((key) => !['signal', 'text'].includes(key))) {
       throw invalidRequest();
     }
     const signal = options.signal ?? null;
+    const ownedText = options.text === undefined || options.text === null
+      ? null
+      : normalizeExportText(options.text, ownedRequest);
     const handlers = normalizeHandlers(rawHandlers);
     const channel = new ChannelConstructor();
     if (!isRecord(channel)) throw invalidRequest();
@@ -1188,10 +1317,9 @@ export const createNativeRenderService = ({
 
     let rawInitial;
     try {
-      rawInitial = await invokeCommand('render_start', {
-        request: ownedRequest,
-        onEvent: channel,
-      });
+      rawInitial = await invokeCommand('render_start', ownedText === null
+        ? { request: ownedRequest, onEvent: channel }
+        : { request: ownedRequest, text: ownedText, onEvent: channel });
     } catch (error) {
       if (!protocolFailed && pending.length > 0 && pending[0].job !== null) {
         initial = pending[0].job;
@@ -1255,7 +1383,7 @@ export const releaseNativeRenderPlayback = nativeRenderService.releasePlayback;
 
 const runNativeRenderObserved = async (
   request,
-  { signal, onStarted, onProgress },
+  { signal, text, onStarted, onProgress },
   service,
   abortMonitor,
 ) => {
@@ -1338,7 +1466,7 @@ const runNativeRenderObserved = async (
       },
       onProtocolError: (error) => settle({ error }),
     }, (() => {
-      const startOptions = { signal };
+      const startOptions = text === undefined ? { signal } : { signal, text };
       if (abortMonitor !== null) internalAbortMonitors.set(startOptions, abortMonitor);
       return startOptions;
     })());
@@ -1360,11 +1488,12 @@ export const runNativeRender = async (
   service = nativeRenderService,
 ) => {
   const options = snapshotPlainRecord(rawOptions);
-  const allowed = new Set(['signal', 'onStarted', 'onProgress']);
+  const allowed = new Set(['signal', 'text', 'onStarted', 'onProgress']);
   if (options === null || Object.keys(options).some((key) => !allowed.has(key))) {
     throw invalidRequest();
   }
   const signal = options.signal ?? null;
+  const text = options.text;
   const onStarted = options.onStarted;
   const onProgress = options.onProgress;
   if ((onStarted !== undefined && typeof onStarted !== 'function')
@@ -1375,7 +1504,7 @@ export const runNativeRender = async (
   try {
     return await runNativeRenderObserved(
       request,
-      { signal, onStarted, onProgress },
+      { signal, text, onStarted, onProgress },
       service,
       abortMonitor,
     );

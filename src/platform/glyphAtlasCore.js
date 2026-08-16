@@ -29,6 +29,10 @@ export const GLYPH_ATLAS_ERROR_CODES = Object.freeze([
   'glyphAtlasFaceUnverifiable',
   'glyphAtlasFaceUnavailable',
   'glyphAtlasFaceSubstituted',
+  // Cue-set only: one atlas carries one layout verdict and one alignment for every cue it serves,
+  // so a cue that disagrees with the others cannot be staged beside them.
+  'glyphAtlasCueLayoutRefused',
+  'glyphAtlasCueAlignmentConflict',
 ]);
 
 export class GlyphAtlasError extends Error {

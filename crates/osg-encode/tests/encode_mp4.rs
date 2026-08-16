@@ -16,6 +16,23 @@ use osg_encode::{
 };
 use tempfile::TempDir;
 
+/// Serialises Media Foundation across this binary's test threads.
+///
+/// Opening several source readers or sink writers at the same moment from one process has faulted
+/// inside the platform layers here, and the product opens one at a time on one thread — so this is
+/// a shape the harness creates and the application never does. `osg-export`'s media support takes
+/// the same measure for the same reason. The guard is held only while the platform object is being
+/// opened, not across the decode, so the suite stays parallel where parallelism is safe.
+static PLATFORM: std::sync::Mutex<()> = std::sync::Mutex::new(());
+
+fn platform() -> std::sync::MutexGuard<'static, ()> {
+    // A poisoned lock means another test panicked while holding it; whatever it was opening is gone
+    // either way, so recovering is correct.
+    PLATFORM
+        .lock()
+        .unwrap_or_else(std::sync::PoisonError::into_inner)
+}
+
 const WIDTH: u32 = 320;
 const HEIGHT: u32 = 240;
 const FPS: u32 = 30;
@@ -84,6 +101,7 @@ fn assert_looks_like_mp4(path: &Path) {
 
 #[test]
 fn a_synthetic_clip_encodes_to_a_playable_mp4() {
+    let _platform = platform();
     let directory = TempDir::new().expect("a temporary directory");
     let output = output_in(&directory, "video-only.mp4");
 
@@ -133,6 +151,7 @@ fn a_synthetic_clip_encodes_to_a_playable_mp4() {
 
 #[test]
 fn a_synthetic_clip_with_aac_audio_encodes_to_a_playable_mp4() {
+    let _platform = platform();
     let directory = TempDir::new().expect("a temporary directory");
     let output = output_in(&directory, "with-audio.mp4");
 
@@ -183,6 +202,7 @@ fn a_synthetic_clip_with_aac_audio_encodes_to_a_playable_mp4() {
 
 #[test]
 fn frames_out_of_order_are_refused_without_writing_them() {
+    let _platform = platform();
     let directory = TempDir::new().expect("a temporary directory");
     let output = output_in(&directory, "out-of-order.mp4");
     let mut encoder = open_encoder(&output, EncoderConfig::video_only(video_config()))
@@ -209,6 +229,7 @@ fn frames_out_of_order_are_refused_without_writing_them() {
 
 #[test]
 fn a_frame_of_the_wrong_size_is_refused() {
+    let _platform = platform();
     let directory = TempDir::new().expect("a temporary directory");
     let output = output_in(&directory, "wrong-size.mp4");
     let mut encoder = open_encoder(&output, EncoderConfig::video_only(video_config()))
@@ -229,6 +250,7 @@ fn a_frame_of_the_wrong_size_is_refused() {
 
 #[test]
 fn audio_offered_to_a_silent_encode_is_refused() {
+    let _platform = platform();
     let directory = TempDir::new().expect("a temporary directory");
     let output = output_in(&directory, "silent.mp4");
     let mut encoder = open_encoder(&output, EncoderConfig::video_only(video_config()))
@@ -245,6 +267,7 @@ fn audio_offered_to_a_silent_encode_is_refused() {
 
 #[test]
 fn writing_after_finalize_is_refused() {
+    let _platform = platform();
     let directory = TempDir::new().expect("a temporary directory");
     let output = output_in(&directory, "after-finalize.mp4");
     let mut encoder = open_encoder(&output, EncoderConfig::video_only(video_config()))
@@ -271,6 +294,7 @@ fn writing_after_finalize_is_refused() {
 
 #[test]
 fn cancelling_mid_encode_removes_the_partial_file() {
+    let _platform = platform();
     let directory = TempDir::new().expect("a temporary directory");
     let output = output_in(&directory, "cancelled.mp4");
     let mut encoder = open_encoder(&output, EncoderConfig::video_only(video_config()))
@@ -292,6 +316,7 @@ fn cancelling_mid_encode_removes_the_partial_file() {
 
 #[test]
 fn a_token_signalled_from_elsewhere_stops_the_encode() {
+    let _platform = platform();
     let directory = TempDir::new().expect("a temporary directory");
     let output = output_in(&directory, "token-cancelled.mp4");
     let mut encoder = open_encoder(&output, EncoderConfig::video_only(video_config()))
@@ -315,6 +340,7 @@ fn a_token_signalled_from_elsewhere_stops_the_encode() {
 
 #[test]
 fn dropping_without_finalize_removes_the_half_written_file() {
+    let _platform = platform();
     let directory = TempDir::new().expect("a temporary directory");
     let output = output_in(&directory, "dropped.mp4");
     {
@@ -334,6 +360,7 @@ fn dropping_without_finalize_removes_the_half_written_file() {
 
 #[test]
 fn an_existing_file_is_never_clobbered() {
+    let _platform = platform();
     let directory = TempDir::new().expect("a temporary directory");
     let output = output_in(&directory, "existing.mp4");
     fs::write(&output, b"a previous export").expect("the fixture file is written");

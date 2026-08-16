@@ -59,8 +59,12 @@ const spellingsOf = (cluster) => [
   `${CONTEXT_JOINER}${cluster}${CONTEXT_JOINER}`,
 ];
 
-/** Sorted by UTF-16 code unit, which is the order `crates/osg-scene` re-derives cells in. */
-const sortedUnique = (values) => {
+/**
+ * Sorted by UTF-16 code unit, which is the order `crates/osg-scene` re-derives cells in: strictly
+ * increasing, no duplicates. Exported because the union of many runs' cells has to be built the same
+ * way — appending one run's table to another's would violate that contract.
+ */
+export const sortedUnique = (values) => {
   const unique = [...new Set(values)];
   unique.sort((left, right) => (left < right ? -1 : left > right ? 1 : 0));
   return unique;

@@ -36,6 +36,7 @@ import {
   resolveNativeRenderSource,
   runNativeRender,
 } from '../platform/renderService';
+import { stageNativeRenderText } from './previews/native/exportTextStaging';
 
 // Gated debug logging (enable in the browser console: localStorage.debug_logs = 'true')
 let DEBUG_LOGS = false;
@@ -343,8 +344,15 @@ const VideoRenderingSection = ({
           customization: queueItem?.customization || subtitleCustomization,
           crop: queueItem?.cropSettings || cropSettings,
         });
+        // The glyphs the export draws with. Rust composes text but never shapes it, so the atlas
+        // and one laid-out run per cue are baked and staged here, before the job exists. A font
+        // this computer cannot resolve refuses by name instead of rendering in a substitute.
+        const nativeText = await stageNativeRenderText(nativeRequest, {
+          source: queueItem?.videoFile || selectedVideoFile,
+        });
         setRenderStatus(t('videoRendering.rendering', 'Rendering video...'));
         const completed = await runNativeRender(nativeRequest, {
+          text: nativeText,
           signal: controller.signal,
           onStarted: (job) => {
             if (!ownsRenderLease(renderOwner)) return;
