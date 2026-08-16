@@ -33,7 +33,7 @@ bytes. Judged against the repository's own audit standard the compositor scores
 
 The specification is the measured feature matrix, not this document's prose. In summary: **70
 persisted options** (54 subtitle-customization fields, 6 render settings, 10 crop settings), **30
-shipped presets**, unlimited user presets, and a **121-entry font catalog**.
+shipped presets**, unlimited user presets, and a font catalog of **121 options over 115 unique families**.
 
 Behaviours that a naive reimplementation gets wrong, all of which are current shipped behaviour and
 must be reproduced deliberately or fixed deliberately:
@@ -83,7 +83,8 @@ hand and already disagrees in at least 13 measurable ways, including crop `objec
 `cover`) and the canvas-background trigger. **Preview and export already do not match**, so this
 migration is a correctness fix, not only a licensing one.
 
-Font divergence is the worst of it: 115 selectable families, 88 absent from the preview's font
+Font divergence is the worst of it: 115 unique families behind 121 selectable options, 88 absent
+from the preview's font
 imports and silently substituted, while the export's managed pack contractually requires exactly one
 family — Inter — and no font pack exists in this repository at all.
 
@@ -369,7 +370,15 @@ like the migration is taking something away, and it is worth being precise about
 happening: the shipped renderer never drew those families either. It asked for them by CSS name,
 got a substitute, and said nothing. The capability was already absent; only the silence is new.
 
-Sorting the 115 unique families by what could honestly back them:
+**Two figures were circulating and both were quoted as fact — "121 options, 107 unavailable" and
+"115 families, 88 recoverable". They were measuring different denominators.** Both are now computed
+by one function, `reportFontInventory` in `src/services/fontInventory.js`, and asserted by its test.
+Nothing below is transcribed; every number comes from code that runs.
+
+Counted as OPTIONS, which is what the catalog offers a user: **121 options**, 116 distinct values,
+**115 unique families**, 17 groups. On Windows, 14 options resolve and **107 do not**.
+
+Counted as FAMILIES, which is what a delivery package would contain:
 
 | Bucket | Count | What it means |
 | --- | --- | --- |
@@ -377,12 +386,17 @@ Sorting the 115 unique families by what could honestly back them:
 | Managed and hash-pinned today | 1 | Google Sans Flex, OFL-1.1, three subsets with sizes and SHA-256. |
 | Substituted by the OS | 1 | Helvetica is redirected to Arial by Windows, so it can never be an identity. |
 | Commercial or unclear provenance | 14 | Futura, Gotham, Hiragino Sans, PingFang SC, Arial Unicode MS and nine display faces. Cannot be redistributed without a licence the project does not have. |
-| Open-licence candidates | 88 | Overwhelmingly Google Fonts under OFL-1.1 or Apache-2.0. |
+| Open-licence candidates | 87 | Overwhelmingly Google Fonts under OFL-1.1 or Apache-2.0. |
+| Not a real family | 1 | `Noto Sans Vietnamese`. Vietnamese coverage lives in Noto Sans itself, so this option could never have resolved to anything. |
 
-So 88 of the 107 are recoverable through exactly the mechanism that already delivers Google Sans
+11 + 1 + 1 + 14 + 87 + 1 = 115. The earlier "88 recoverable" is explained rather than contradicted:
+it was 87 deliverable candidates plus the family that does not exist.
+
+So **87 families** are recoverable through exactly the mechanism that already delivers Google Sans
 Flex: a reviewed, content-addressed managed package with immutable sources, exact sizes and hashes,
 an inventory and notices. Nothing about that is novel here — it is the same discipline, applied to
-more files.
+more files. Expressed as options, the 107 unavailable ones are 103 unique families, of which 102 are
+unavailable and one is Helvetica, which the OS redirects.
 
 Two things block it, and neither may be worked around:
 
