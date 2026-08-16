@@ -173,8 +173,33 @@ the staging handle cache outliving the native atlas it names; `finalize()` compu
 frames delivered rather than frames configured; `seek_before` falling out of its backoff loop with
 `Ok(())` when every backoff lands past the target.
 
-**THE EXHAUSTIVE PARITY GATE EXISTS AND IS RED. Remotion cannot be deleted yet, and that is the
-gate working.** `crates/osg-export/tests/parity/` renders all 30 shipped presets and all 147
+**THE BIGGEST FINDING OF THE WHOLE MIGRATION, and it came from a read-only review rather than from
+any gate: `osg_export::run_export` HAS NO CALLER IN THE PRODUCT.** `grep -rn "run_export"
+--include=*.rs .` finds callers only inside `crates/osg-export/tests`. The file a user downloads is
+produced by `videoDownloadHandlers.js` -> `render_start` -> `apps/desktop/src-tauri/src/render.rs`,
+whose engine is still `include_bytes!(".../video-renderer/worker/osg_render_worker.mjs")` at
+`REMOTION_VERSION = "4.0.507"`.
+
+So until this is fixed, preview and export share neither a compositor nor a text stack: the preview
+draws with `osg-compositor` from a WebView-baked glyph atlas, the export draws with Remotion in
+headless Chrome from CSS text. **Every parity claim this migration makes is about a pipeline the
+product does not use.** The exhaustive gate being green says the native pipeline is correct, not that
+anything ships through it.
+
+Nothing may be deleted until the product exports through `osg-export`. That is the last structural
+piece, and it is what makes the removal a deletion rather than an amputation.
+
+Five further divergences the same review measured, all real, all being fixed: source dimensions come
+from two sources (the browser's display size against Media Foundation's coded size — `osg-decode`
+honours neither pixel aspect ratio nor rotation, measured to compose 1922 against 1620 on an
+anamorphic clip and 608 against 1920 on a rotated one); the frame count is derived twice and only the
+preview clamps; the atlas font-size clamp is not compensated for letter spacing, so at font size 800
+every letter spacing is 56% too wide; a preview-only `maxWidth <= 100` bound makes the surface go
+blank with no error while the export renders it; and the default merge happens on the export side
+only, so a customization missing one key renders but does not preview.
+
+**THE EXHAUSTIVE PARITY GATE EXISTS AND IS NOW GREEN (17/17).** It was red when first built; every
+defect it found is fixed. That is the gate working.** `crates/osg-export/tests/parity/` renders all 30 shipped presets and all 147
 field-value renders from the frozen matrix — 5,332 compositions in the default run (67s), 152,334 in
 the exhaustive run (891s) — on a real Intel/Vulkan adapter. It proves determinism and seek-equals-play
 across the whole matrix, proves every one of its three per-case checks rejects a deliberate mutation,
