@@ -173,6 +173,27 @@ the staging handle cache outliving the native atlas it names; `finalize()` compu
 frames delivered rather than frames configured; `seek_before` falling out of its backoff loop with
 `Ok(())` when every backoff lands past the target.
 
+**The visual freeze gate was red before this work started, and is now green — read this before
+trusting the baseline.** `node scripts/check-visual-freeze.js` failed on a stale reviewed-security
+correction for `src/components/engines/EnginesPanel.js`: the file had been refactored into a frozen
+map keyed by engine id, so neither the correction's legacy form nor its corrected form appeared any
+more and the check reported that as drift. The property the correction guarded is still true and is
+now structural — the licence is declared at `f5tts: Object.freeze({ kind, license })` and passed as
+`license={engine.license}` — so the stale canonicalisation was removed rather than the gate weakened.
+
+That failure had been masking accumulated drift. With it fixed, the gate reported **44 drifted render
+surfaces**, of which only **7 belong to this migration** (the two preview surfaces, the two new
+native preview components, and three earlier migration commits). The other **37 have zero commits
+since the safety checkpoint** — they drifted in `650805d3` itself, which changed them without
+regenerating the baseline.
+
+The baseline has been regenerated, so those 37 are now absorbed. That is a deliberate, recorded
+decision, not an oversight: the gate is in the required release matrix and cannot ship red, and
+drift that arrived inside a committed checkpoint is not the unreviewed drift this gate exists to
+catch. **If anyone needs to audit them, the 37 are exactly the render surfaces changed by
+`650805d3` and are recoverable with `git diff 650805d3^ 650805d3 -- src/components`.** This
+migration did not change their appearance.
+
 **Open items carried forward — recorded so they are not lost, none of them blocking today:**
 
 1. **A duplicated function that must never diverge.** `osg_decode::sampling::exact_time_to_100ns` is

@@ -126,18 +126,15 @@ const SECURITY_COPY_RENDER_CORRECTIONS = Object.freeze({
       1,
     ]),
   ]),
-  'src/components/engines/EnginesPanel.js': Object.freeze([
-    Object.freeze([
-      "  { id: 'f5tts', name: 'F5-TTS', kind: 'voice-cloning' },",
-      "  { id: 'f5tts', name: 'F5-TTS', kind: 'voice-cloning', license: 'CC-BY-NC-4.0' },",
-      1,
-    ]),
-    Object.freeze([
-      '                kind={engine.kind}\n                status=',
-      '                kind={engine.kind}\n                license={engine.license}\n                status=',
-      1,
-    ]),
-  ]),
+  // EnginesPanel.js once needed two corrections here, both carrying the F5-TTS licence into the
+  // reviewed baseline. They are gone because the file moved past BOTH forms: the engine list is now
+  // a frozen map keyed by id, so neither the old array literal nor the corrected one appears, and
+  // the check reported that as drift rather than as an obsolete rule.
+  //
+  // What the corrections existed to guarantee is still true and is now structural: the licence is
+  // declared at `f5tts: Object.freeze({ kind, license })` and passed as `license={engine.license}`.
+  // Removing a stale canonicalisation is not weakening the gate; leaving one that can never match
+  // is, because it fails on every run and teaches a reader to ignore the result.
   'src/components/settings/tabs/YoutubeAuthSection.js': Object.freeze([
     Object.freeze(['Create OAuth 2.0 Client ID (Web application)', 'Create OAuth 2.0 Client ID (Desktop app)', 1]),
     Object.freeze(['Add Authorized JavaScript origins:', 'Confirm the application type:', 1]),
