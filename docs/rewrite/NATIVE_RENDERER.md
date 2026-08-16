@@ -271,13 +271,26 @@ Parity is executable, not a review slogan.
 
 ## Removal
 
-Remotion is removed, not deprecated. The measured blast radius is 124 files: 46 whole-file deletions,
-5 moves, 73 in-place edits. It includes the `video-renderer` package and its workspace registration,
-2 direct npm dependencies plus 144 lockfile records that become unreachable, the `osg-render` crate,
-`render_catalog.rs`, two Tauri modules, 7 registered commands across their 4 synchronised
-registration points, 2 permissions, 2 capability entries, 1 bundled resource, the delivery catalog
-and its checkpoint source group, 91 readiness invariants across 7 functions, 12 i18n keys deleted and
-9 reworded, and 128 tests.
+Remotion is removed, not deprecated. Re-measured against the tree on 2026-08-16 with
+`git ls-files | xargs grep -ril remotion`, so this is the surface as it stands today rather than the
+earlier estimate:
+
+| Area | Tracked files | Disposition |
+| --- | --- | --- |
+| `video-renderer/` | 26 | Deleted, except the one module that moves (see below). |
+| `crates/osg-render/` | 8 | `contract.rs` survives and moves; `engine.rs`, `protocol.rs`, `runtime.rs` and the crate shell go. |
+| Everything else referencing Remotion | 54 | In-place edits. |
+
+The 54 span the CI workflow, `.gitignore`, five prose documents, `build.rs`, the permission and
+capability files, `render.rs` and `render_packages.rs`, three `osg-engine-packages` modules,
+`osg-media/src/binary.rs`, the managed-delivery checkpoint, `licenses/DELIVERY-NOTICES.md`,
+`package.json` and `vite.config.mjs`, eight scripts (four of which — the runtime archive builder, the
+two manifest generators and the desktop boundary checker — exist only for Remotion and are deleted
+outright), the readiness and command-contract checkers, the visual freeze baseline, nine `src/`
+components including both preview surfaces, four i18n files, and `renderService`/`renderPackageService`.
+
+Two pieces of incidental cruft to sweep at the same time: `src/i18n/locales/ko/videoRendering.json.bak`
+is a tracked backup file, and `electron-logs/` is a build log from the removed Electron stack.
 
 Five `video-renderer/src` modules are Remotion-free. Re-measured on 2026-08-16, only **three** are
 imported by the frontend at all, and two of those three exist only because the WebView is still
