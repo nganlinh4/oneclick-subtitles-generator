@@ -107,6 +107,36 @@ already licensed to the user as part of Windows. Verified with ffprobe rather th
 symphonia plus libopus, because roughly every yt-dlp download carries Opus and symphonia has no
 decoder for it.
 
+**Integrator groundwork for the strengthened scope (done, committed, independent of any wave):**
+
+- **The parity matrix is frozen.** `scripts/generate-parity-matrix.mjs` generates
+  `crates/osg-export/tests/fixtures/parity-matrix.json` from the real modules, and
+  `npm run test:parity-matrix` fails if it goes stale. Measured: **30 presets** (confirmed against
+  `presetOrder`, no drift), **70 persisted options**, **147 field-value renders**, **9 texts**
+  covering Korean, Vietnamese, mixed-RTL, emoji and combining marks, and **4 output shapes**
+  including 4K and 60fps. Writing the guard caught a real gap: ten fields listed their bounds but
+  not their default, which would have left the value every project carries outside the sweep.
+  This is the gate's INPUT, not the gate.
+- **The removal surface is re-measured**, replacing the old 124-file estimate:
+  `video-renderer/` 26 tracked files, `crates/osg-render/` 8 of which `contract.rs` survives, and
+  54 further files carrying references. Four scripts exist only for Remotion and are deleted rather
+  than edited. Recorded in the design document's Removal section.
+- **The preview wiring path is identified end to end.** The editor's simple appearance panel
+  (`subtitleSettings`: boxWidth, position as a percentage, backgroundPadding) shares zero keys with
+  the 54-field render customization — that is the "three implementations" problem in concrete form.
+  The bridge already exists and is tested: `previewCustomizationForNativeRender()` in
+  `src/components/previews/videoDownloadHandlers.js`. The wiring is therefore
+  `subtitleSettings` -> that mapping -> customization -> native scene -> compositor -> `<img>`, and
+  the two surfaces to replace are `previews/SubtitleDisplay.js` (CSS overlay, rendered by
+  `previews/VideoPreview.js`) and `RemotionVideoPreview.js` (rendered by
+  `VideoRenderingSection/PreviewCustomizationRow.js`).
+- **Preview and export must share one conversion.** `nativePreviewFrames.js` currently sends a scene
+  carrying face and cues but no style. If the preview command builds its own style, the divergence
+  is rebuilt. The preview command must go through `osg-export`'s conversion, which is already the
+  single place every parity decision is applied.
+- Disk: 5.4G of stale per-branch target directories (`stream-remotion-fix`, `gemini37-fix`,
+  `subtitle-benchmark`) removed. Packaging will need the headroom.
+
 **Adversarial review — first pass complete (task H).** Four read-only reviewers over the frozen
 crates returned **39 findings: 5 high, 16 medium, 18 low**. Every high was verified by reading the
 code myself before acting; two were fixed, three were verified and deliberately recorded rather than
