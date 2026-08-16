@@ -386,6 +386,103 @@ and ask one precise question containing the exact command/artifact/consequence. 
 renderer migration, local commits, tests, refactors, deletions after parity, and packaging work do
 not require another user decision.
 
+### WAVE 11 INDEPENDENT CODEX CHECK — real implementation, but completion is still mandatory
+
+Codex independently inspected the current repository at `e5d3a1d373542d7297fb7ee371c2af7114bae45e`
+(`71` commits after safety checkpoint `650805d3`, one more than the milestone message because its
+documentation commit is now included). The renderer work is substantial production code, not a
+mock, plan, or weak test façade:
+
+- `osg-export` validates a real `RenderRequest`, decodes through Media Foundation, submits frames to
+  the GPU compositor, mixes audio in Rust, encodes through Media Foundation, and finalizes an MP4.
+- Its Windows integration suite creates actual media, opens the completed MP4, and exercises trim
+  pixel equality, seek/play equivalence, narration, cancellation cleanup, and no-clobber behavior.
+- The new scene, compositor, decode, encode, audio, and export crates exist and are connected. Codex
+  reran their focused Rust suites successfully, including all eight real end-to-end exports.
+- Codex also reran the focused renderer frontend/parity slice successfully. The reported global
+  `1266` Rust and `1897` Vitest counts remain Claude's integrated-run evidence; Codex did not spend
+  another full run merely to duplicate those two totals.
+
+This is an evidence-backed positive review, **not completion authorization**. The following gaps are
+real and must be closed continuously. Do not return them to the user as four “decisions”; they are
+ordinary implementation choices covered by the WYSIWYG requirement.
+
+#### Finish the remaining 7/70 parity entries
+
+Implement and prove all seven currently `pending` entries in `src/platform/renderParityLedger.js`:
+
+1. `lineHeight`: choose one authoritative application point so it is applied exactly once.
+2. `letterSpacing`: stop reconstructing the pen from cell advances; carry and consume the exact
+   shaped pen positions emitted with the atlas.
+3. `maxWidth`: implement bounded deterministic wrapping in the shared layout/scene representation.
+4. `textAlign`: use those same line boxes and positions for left/center/right/justify behavior.
+5. `rtlSupport`: consume WebView-shaped visual positions/runs and prove mixed-direction text; a
+   first-strong direction heuristic is not full bidi support.
+6. `animationType`: implement the remaining typewriter reveal with cluster/pixel-safe behavior and
+   parity at representative intermediate frames.
+7. `aspectRatio`: derive and validate actual output dimensions consistently for preview and export.
+
+Also resolve `canvasBgColor` alpha explicitly. Since the MP4/H.264 target has no alpha channel,
+either composite onto one explicit opaque background according to the product contract or reject an
+unsupported transparent request before work begins. Do not silently rely on encoder behavior.
+
+Use one authoritative layout model carrying glyph positions, baselines, line boxes, wrapping, and
+visual run order. Avoid seven isolated patches that create another set of mutually inconsistent
+implementations. Every transition from `pending` to another ledger state needs executable evidence;
+do not relabel an item `fixed`, `native`, or `inert` merely to make the count reach zero. Re-audit the
+existing documented divergences (stroke inner half, glow clamp, overflow/wrapping, dashed/dotted
+choices) and prove that each is either exact parity or an intentional product correction with a
+migration note and preview/export equality.
+
+#### Wire the native preview into the real editor
+
+Replace the production CSS/editor overlay and render-tab preview with frames from the same native
+scene/compositor used by export. This must be real UI wiring, not a laboratory page:
+
+- use the existing path-private loopback capability through CSP-safe `<img>`/`<video>` loading;
+- bind every preview request/result to exact project, media, scene revision, and renderer generation;
+- abort and release stale frames/capabilities exactly once after edits, project switches, unmount,
+  device loss, or superseding requests;
+- keep scrubbing/seek deterministic and responsive without raw image bytes or native paths over IPC;
+- delete or make unreachable every independent CSS appearance calculation once native preview owns
+  the surface, so preview and export cannot drift again.
+
+#### Run the exhaustive parity gate that authorizes deletion
+
+The removal gate must exercise all 30 shipped presets and all 70 persisted fields, plus representative
+custom presets, Unicode/emoji/Korean/Vietnamese/mixed-RTL text, available and unavailable fonts,
+variable axes, transitions/easings, trim/seek, resolution, FPS, and aspect ratios. Compare preview
+frames, native raw frames, and decoded exported frames with reviewed exact/tolerance rules and retain
+diagnostic artifacts for failures. Include dense subtitles, long duration, 4K, supported high FPS,
+audio/narration, cancellation, project switching, restart, and device-loss recovery.
+
+Reconcile the stale font counts before declaring parity: the current design document mentions `121`
+options/`107` unavailable whereas the earlier milestone reported `115`/`88`. Generate the inventory
+from the actual selectable catalog and exact resolved face bytes. Complete all local font package,
+licensing/notices, catalog, hash, fixture, and read-back work before requesting the one unavoidable
+upload authorization. Never silently substitute a family.
+
+#### Delete Remotion completely after that gate is green
+
+Immediately after exhaustive parity passes, remove the old renderer rather than preserving it as a
+fallback: packages and lock records, worker/runtime downloader, delivery catalogs/manifests, services,
+Tauri commands and permissions, readiness rules, CI/package steps, tests, documentation, and every
+reachable string/import. Prove repository, emitted bundle, packaged resources, installed application,
+and runtime network traces contain no active Remotion path. The already-uploaded content-addressed
+assets remain append-only release history but must be entirely unreferenced by OSG.
+
+Then run the normal unsuppressed production build and full Rust/JS/lint/i18n/contract/readiness matrix,
+build the installer, install it into a clean test location, launch it, and perform an installed-EXE
+preview/export/offline smoke. Compare the installed preview and decoded installed export, not merely
+development binaries. Signing or a final external font upload may be owner-gated; unsigned local
+packaging, installation, and smoke are not.
+
+`docs/rewrite/NATIVE_RENDERER.md` currently contains stale progress claims (for example decode/parity
+rows lag the implemented code and the ledger). Keep it synchronized with executable state. Do not
+issue another milestone-style final response while any item above remains locally actionable. Use
+subagents, local commits, fresh read-only reviews, and automatic continuation until either the entire
+removal gate is green or the sole remaining action genuinely requires a secret/irreversible upload.
+
 ### Authority and safety boundaries
 
 - You are authorized to refactor across packages, add migrations/APIs/tests, split oversized
@@ -411,10 +508,10 @@ not require another user decision.
 - Repository: `C:\WORK\oneclick-subtitles-generator`
 - Branch: `rewrite/tauri-rust`
 - Safety checkpoint: `650805d3`
-- Current committed HEAD when this renderer decision was recorded: `2da3c714`, 13 local commits
+- Current reviewed HEAD after Wave 11: `e5d3a1d373542d7297fb7ee371c2af7114bae45e`, 71 local commits
   after the safety checkpoint. Preserve those commits; do not rewrite them.
-- Wave 3/4 work remains dirty in the shared tree, including notices, desktop Rust fixes, readiness,
-  licences, and updater-manifest work. Preserve it and coordinate overlap before renderer edits.
+- At the start of the Wave 11 Codex check, the repository was clean. The handoff edit itself is the
+  expected later worktree change. Recheck status before integration and preserve any subsequent work.
 - The already-uploaded inert Remotion assets are
   `remotion-runtime-windows-x64-4.0.507-8f2b4bb7f74bca85.zip`
   (`251,273,880` bytes, SHA-256 `8f2b4bb7f74bca85d412702d308cf2435ca3459913e1fd4403871dbc36605c1c`)
