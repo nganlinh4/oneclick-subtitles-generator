@@ -2,7 +2,7 @@
   "schemaVersion": 5,
   "algorithm": "sha256",
   "normalization": "binary exact; UTF-8 BOM ignored, CRLF/CR normalized to LF, terminal newlines ignored",
-  "baselineRevision": "62c1d2010c0eff6206e7e68e7d20fb8ea75dfbe1",
+  "baselineRevision": "fa3c408e44ff9cbef9eba93f7df029a14fa0037b",
   "retiredExactFiles": {
     "public/oauth2callback.html": "c19855fd5a3f19af1eea1c1fed6e7794a342136223dd60dbead2586d4298fd90",
     "src/assets/fonts/GoogleSansFlex.ttf": "eae5ed6ddefbd44ab9693b84454ce46f3f2de0fb4f7cc5b54138c50c5b347d70",
@@ -8615,18 +8615,18 @@
       ]
     },
     "src/components/previews/native/NativeCompositedFrame.js": {
-      "hash": "a24cdb0f88e3952292b0b6924ca1f7029667b4fdf03290aa75df1aff539ad028",
+      "hash": "c70b5c5381574b2fd5d3ccd2d627a4e7b6dc961dea852eb868869d0ddcd12e6f",
       "rootCount": 1,
       "roots": [
-        "60be9bb389af243934faeccad464b3085165afe3a80ac668e51412d0889a34e1"
+        "b9ae16e4dca08e8a7dbd537c6f32ba4178c230e7c8116d6fcda404e6015f3f13"
       ]
     },
     "src/components/previews/NativeRenderPreview.js": {
-      "hash": "8a60cd35c74b3da39311ed7bedb0e9cc86c33695a8929fe93c333a4fe02a0952",
+      "hash": "1d04aa0e4c0aa1bb8f14f62e741934f506e00b3e6193a34a2adbba47ef3b73c8",
       "rootCount": 2,
       "roots": [
         "58593648d68a3e71e08e2aa5f85e27c44c4138ffc39eccbb52a8f6d5cb1ff5a4",
-        "47cab0ecf0eed0895fb84a95daa89bfbbc798f87e145f386c59510c0f39e2342"
+        "65d0ed036e3531cbe02f85d0ae017db01705928ce46b22b0c517c46ca00f6c3b"
       ]
     },
     "src/components/previews/SeekIndicator.js": {
@@ -8680,10 +8680,10 @@
       ]
     },
     "src/components/previews/VideoPreview.js": {
-      "hash": "7457d3f725184b5a825a6a6df0e0ebd2abc8f0ce8deeb5928d1ab238aab6be12",
+      "hash": "247b1509073a0decdbd8d4dab958d85688ec5f818616e234534abaf64c2ece22",
       "rootCount": 1,
       "roots": [
-        "f49acf82d5b9939e86c6650fb4796463d89b2df9c3164a2653d18bb2621c466f"
+        "73539a458e81086e282ed394156327d6342e31fc73550d313c81568992d6558d"
       ]
     },
     "src/components/previews/VideoTopsideButtons.js": {
