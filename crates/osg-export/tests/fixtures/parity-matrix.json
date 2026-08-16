@@ -1798,7 +1798,7 @@
     },
     {
       "field": "animationType",
-      "disposition": "pending",
+      "disposition": "native",
       "default": "fade",
       "values": [
         "fade",
@@ -2030,7 +2030,7 @@
     },
     {
       "field": "letterSpacing",
-      "disposition": "pending",
+      "disposition": "native",
       "default": 0,
       "values": [
         0,
@@ -2048,7 +2048,7 @@
     },
     {
       "field": "lineHeight",
-      "disposition": "pending",
+      "disposition": "native",
       "default": 1.2,
       "values": [
         1.2,
@@ -2222,7 +2222,7 @@
     },
     {
       "field": "textAlign",
-      "disposition": "pending",
+      "disposition": "native",
       "default": "center",
       "values": [
         "center",

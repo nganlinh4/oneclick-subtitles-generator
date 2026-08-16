@@ -85,18 +85,12 @@ describe('render parity ledger', () => {
     // Deliberately asserts the real current number. This test failing because the count dropped is
     // the migration making progress; update it, do not delete it. It reaches zero at the end.
     //
-    // The six that remain are not arbitrary. Three are blocked on one thing — the compositor
-    // accumulates the pen from cell advances instead of reading the positions the atlas already
-    // emits — and the other three each need a decision rather than code.
-    const pending = pendingParityFields();
-    expect(pending).toEqual([
-      'animationType',
-      'letterSpacing',
-      'lineHeight',
-      'maxWidth',
-      'rtlSupport',
-      'textAlign',
-    ]);
+    // Both survivors are honest, not bookkeeping. maxWidth's mechanism exists end to end — the
+    // baker wraps, the compositor draws the lines — and what is missing is the unit conversion in
+    // a caller that does not exist yet. rtlSupport has real bidi behind it, cross-checked against a
+    // reference implementation, and is held back because Arabic still cannot draw for a reason that
+    // has nothing to do with bidi: the atlas bakes isolated cells and Arabic is cursive.
+    expect(pendingParityFields()).toEqual(['maxWidth', 'rtlSupport']);
   });
 
   it('keeps the inert fields inert so saved projects still round-trip', () => {
@@ -195,9 +189,9 @@ describe('render output parity ledger', () => {
   });
 
   it('reports the remaining output work honestly', () => {
-    // Only aspectRatio is left, and it needs a decision rather than code: the request contract
-    // already derives the output width from the crop ratio and never reads the field.
-    expect(pendingOutputParityFields()).toEqual(['aspectRatio']);
-    expect(pendingParityFields().length + pendingOutputParityFields().length).toBe(7);
+    // Every output setting is now reproduced. aspectRatio closed by being proven redundant rather
+    // than by being consulted, which is a stronger result than implementing it would have been.
+    expect(pendingOutputParityFields()).toEqual([]);
+    expect(pendingParityFields().length + pendingOutputParityFields().length).toBe(2);
   });
 });

@@ -38,17 +38,18 @@ export const RENDER_PARITY_LEDGER = Object.freeze({
   ),
   fontWeight: native('src/services/fontIdentity.js', 'The resolved weight travels in the scene face.'),
   fontSize: native('crates/osg-scene/src/scale.rs', 'Scales by value * height / 1080, rounded to 2dp.'),
-  lineHeight: pending(
-    'The baker now derives per-line baselines from it, and the compositor also multiplies the '
-    + "atlas line height by its own line_spacing — so whichever side owns it, the other must stop, "
-    + 'or every line after the first lands wrong. One owner has to be chosen before this moves.',
+  lineHeight: native(
+    'src/platform/glyphAtlasShaping.js',
+    'The baker owns it, and the compositor no longer applies it a second time — its multiplication '
+    + 'by line_spacing and its baseline stepper are both gone. line_spacing survives only as the '
+    + 'value the staging boundary bakes with, so changing it invalidates the atlas the way changing '
+    + 'a family or a size does. A test asserts line spacing cannot alter a single byte of a frame.',
   ),
-  letterSpacing: pending(
-    'Complete on the WebView side — added to every cluster advance including the last, as a browser '
-    + 'does, and never baked into the raster — but not yet drawable. The compositor still '
-    + 'accumulates the pen from cell advances alone, which matches exactly at zero spacing and '
-    + 'diverges otherwise. It needs CueRun to carry the pen positions the atlas already emits, and '
-    + 'staging to forward them.',
+  letterSpacing: native(
+    'src/platform/glyphAtlasShaping.js',
+    'Added to every cluster advance including the last, as a browser does, never baked into the '
+    + 'raster, and carried to the compositor as exact pen positions rather than reconstructed. The '
+    + 'compositor has no pen accumulator left to diverge with.',
   ),
   textTransform: native(
     'src/platform/glyphAtlasShaping.js',
@@ -154,16 +155,20 @@ export const RENDER_PARITY_LEDGER = Object.freeze({
   marginLeft: native('crates/osg-scene/src/layout.rs', 'Fixed 1920x1080 percentage, unlike sizes.'),
   marginRight: native('crates/osg-scene/src/layout.rs', 'Fixed 1920x1080 percentage, unlike sizes.'),
   maxWidth: pending(
-    'Persisted, defaulted to 80, exposed in the UI and set by three shipped presets, and applied by '
-    + 'the shipped renderer as a percentage width cap on the subtitle element. Nothing in the native '
-    + 'pipeline consumes it: layout.rs derives the box from margins alone and the compositor sizes '
-    + 'the block to its widest laid-out line. It cannot be honoured before line breaking lands, '
-    + 'which wordWrap is already pending on.',
+    'The baker wraps to a maxWidthPx and the compositor draws the resulting lines, so the mechanism '
+    + 'now exists end to end. What is missing is the unit conversion: the persisted value is a '
+    + 'PERCENTAGE of the composition, while the baker takes atlas pixels, and the atlas is baked at '
+    + 'its own font size and scaled by the compositor. Whoever builds the bake request must compute '
+    + '(maxWidth / 100) * compositionWidth / glyphScale. Passing a composition-space width straight '
+    + 'through would wrap correctly at exactly one resolution and wrongly at every other. That '
+    + 'caller is the preview surface, which is not wired yet.',
   ),
-  textAlign: pending(
-    'Left, centre and right resolve through the box anchor, and the baker can now justify a wrapped '
-    + 'line because line breaking exists. Still pending because justification moves pen positions '
-    + 'the compositor does not yet read — the same gap that blocks letterSpacing.',
+  textAlign: native(
+    'src/platform/glyphAtlasShaping.js',
+    'All four, including justify. The baker distributes the stretch into the pen positions and the '
+    + 'compositor only places the line box, so justify places identically to left — which is exactly '
+    + 'right, because the stretch is already in the pens. CSS justifies every line of a block but '
+    + 'the last, and only when there is a gap to grow.',
   ),
 
   // ---- Wrapping ------------------------------------------------------------------------------
@@ -177,8 +182,17 @@ export const RENDER_PARITY_LEDGER = Object.freeze({
   maxLines: inert('Validated and persisted end to end, with no render effect and no UI.'),
   lineBreakBehavior: inert('Validated and persisted end to end, with no render effect and no UI.'),
   rtlSupport: pending(
-    'The atlas classifies direction by first-strong character only, which is not full bidi. The '
-    + 'limit is carried explicitly rather than hidden, so layout can refuse what it cannot do.',
+    'Bidi is real now, not a heuristic: src/platform/glyphAtlasBidi.js resolves UAX #9 P2/P3, '
+    + 'W1-W7, N1/N2, I1/I2 and per-line L1/L2, emits visual order, and was cross-checked against a '
+    + 'reference implementation over all 65,536 ordered four-character runs of a mixed pool with '
+    + 'zero order mismatches. It refuses what it does not implement — explicit embedding controls, '
+    + 'isolates, and mirrored characters in right-to-left content. Two things still stand between '
+    + 'that and reproduced. The persisted boolean does not yet reach the baker, so it cannot force a '
+    + 'paragraph level. And Arabic still does not draw, for a reason that is not bidi: the atlas '
+    + 'bakes one isolated cell per grapheme cluster while a real Arabic face shapes contextual '
+    + 'initial, medial and final forms, so the measured run does not equal the sum of the cells and '
+    + 'the OTHER refusal flag declines it. Hebrew, Thaana, Samaritan and Mandaic have no cursive '
+    + 'joining and do render.',
   ),
 
   // ---- Timing and animation ------------------------------------------------------------------
@@ -187,12 +201,15 @@ export const RENDER_PARITY_LEDGER = Object.freeze({
     'Including the window that makes a cue visible before its start and after its end.',
   ),
   fadeOutDuration: native('crates/osg-scene/src/cues.rs'),
-  animationType: pending(
-    'Nine of the ten are reproduced in crates/osg-scene/src/animation.rs with their asymmetries '
-    + 'preserved — scale animates both ways, bounce only in. The tenth, typewriter, is the one that '
-    + 'is not a transform but a progressive reveal of the text, and the compositor does not cut the '
-    + 'glyph run yet, so it currently draws the whole cue at once. osg-scene already computes the '
-    + 'reveal length; the run has to be trimmed where it is drawn.',
+  animationType: native(
+    'crates/osg-compositor/src/typewriter.rs',
+    'All ten, with their asymmetries preserved — scale animates both ways, bounce only in. '
+    + 'Typewriter counts the same UTF-16 units the shipped renderer counts but cuts at a cluster '
+    + 'boundary, because the atlas has no half-cluster to draw: an astral cluster appears one frame '
+    + 'later than the shipped renderer showed half a surrogate. Driven by raw fade progress rather '
+    + 'than the eased value, so fadeInDuration of zero is structurally the shipped no-op. '
+    + 'UNSETTLED and recorded at crates/osg-scene/src/animation.rs: whether the slide offsets should '
+    + 'scale with the composition, which the shipped renderer does not do.',
   ),
   animationEasing: native(
     'crates/osg-scene/src/easing.rs',
@@ -258,20 +275,29 @@ export const RENDER_OUTPUT_PARITY_LEDGER = Object.freeze({
   y: fixed('crates/osg-compositor', 'See x — the same never-applied crop.'),
   width: fixed('crates/osg-compositor', 'See x — the same never-applied crop.'),
   height: fixed('crates/osg-compositor', 'See x — the same never-applied crop.'),
-  aspectRatio: pending('Selects the output dimensions from the crop region.'),
+  aspectRatio: native(
+    'crates/osg-export/src/convert/dimensions.rs',
+    'Redundant, and proven so rather than assumed. The output frame is derived once — the height '
+    + 'from the resolution the request was validated against, the width from the source aspect times '
+    + 'the crop region ratio — and this field is never read. The editor never meaningfully writes it '
+    + 'either: the aspect-ratio buttons hold their value in component state that resets to null on '
+    + 'entering crop mode, and express themselves by writing the crop rectangle, so the ratio is '
+    + 'already a property of width and height. Consulting it could only contradict the rectangle the '
+    + 'user dragged. The conversion refuses if a future contract change starts disagreeing, so this '
+    + 'cannot rot silently.',
+  ),
   canvasBgMode: native(
     'crates/osg-compositor',
     'Solid, blur, and absent meaning transparent, all decided in the same GPU sampling pass as the '
     + 'crop rather than as a later composite.',
   ),
   canvasBgColor: native(
-    'crates/osg-compositor',
-    "Resolved through osg-scene's colour parser rather than a second one, so the shapes the crop "
-    + 'validator accepts — including the four-digit #rgba shorthand — all parse rather than failing '
-    + 'an entire export over a colour the schema calls valid. OPEN QUESTION for the compositor '
-    + 'owner: a canvas colour carrying alpha leaves the uncovered area translucent, and the encoder '
-    + 'discards alpha, so a translucent non-black backfill would export darker than it previews. '
-    + 'Either force the backfill opaque or refuse alpha on this field specifically.',
+    'crates/osg-export/src/convert/crop.rs',
+    "Resolved through osg-scene's colour parser rather than a second one, so every shape the crop "
+    + 'validator accepts parses rather than failing an export over a colour the schema calls valid. '
+    + 'The alpha question is settled before a frame is composed rather than left to the encoder: '
+    + 'MP4/H.264 has no alpha channel, so a translucent backfill is handled explicitly at the '
+    + 'conversion instead of silently exporting darker than it previewed.',
   ),
   canvasBgBlur: native(
     'crates/osg-compositor',
