@@ -384,12 +384,12 @@ fn a_staged_atlas_is_never_formatted_into_a_log() {
     assert!(!format!("{store:?}").contains(MARKER_FAMILY));
 }
 
-/// The byte budget the WebView bakes against is the byte budget this registry will hold.
+/// The byte budget the `WebView` bakes against is the byte budget this registry will hold.
 ///
 /// The baker splits a cue list into pages and refuses a document whose pages would exceed
 /// `maxTotalAtlasBytes`; this registry evicts by least recent use once `MAX_STAGED_BYTES` is passed.
 /// If this side's number were the smaller, an export would stage its own earlier pages out of the
-/// registry while staging its later ones, and `render_start` would then refuse a page the WebView
+/// registry while staging its later ones, and `render_start` would then refuse a page the `WebView`
 /// had every reason to believe was there — a failure neither side could explain.
 ///
 /// Read out of the baker's own source rather than transcribed, for the same reason

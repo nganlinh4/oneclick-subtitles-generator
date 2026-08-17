@@ -29,7 +29,7 @@ use serde_json::{Map, Value};
 
 use super::case::{self, Case, Prepared};
 use super::compare;
-use super::matrix::{OutputEntry, ParityMatrix};
+use super::matrix::{OutputEntry, ParityMatrix, TextEntry};
 
 /// The environment variable that turns the default run into the full cross product.
 pub(crate) const EXHAUSTIVE: &str = "OSG_PARITY_EXHAUSTIVE";
@@ -259,20 +259,46 @@ const COMPANIONS: &[(&str, &[(&str, &str)])] = &[
     ("marginTop", &[("position", "\"top\"")]),
 ];
 
-/// The matrix text a field is swept against.
+/// The two fields that need a **particular** text, and the one they need.
 ///
-/// `mixed-rtl` is the default because it is the one text carrying Latin letters to transform,
-/// Arabic letters to reorder and digits between them, so most fields can express themselves on it.
-/// Two fields need a longer line than it has: a wrap width and a wrap switch cannot show anything
-/// on a text that fits on one line whatever they are set to.
+/// A wrap width and a wrap switch cannot show anything on a line that fits whatever they are set
+/// to, so those two are pinned to the longest text the matrix carries. Every other field takes
+/// whatever the rotation gives it, which is the point: a field swept against one script forever is
+/// a field nobody has seen behave on the other eight.
 const FIELD_TEXTS: &[(&str, &str)] = &[("maxWidth", "dense"), ("wordWrap", "dense")];
 
-/// The text identity a field is swept against.
+/// The text identity a field's **conversion** is judged against.
+///
+/// The plan-and-staging half of the gate renders nothing, so one text per field is enough there and
+/// [`FIELD_SWEEP_TEXT`] is the one that makes most fields express themselves.
 pub(crate) fn text_for(field: &str) -> &'static str {
     FIELD_TEXTS
         .iter()
         .find(|(name, _)| *name == field)
         .map_or(FIELD_SWEEP_TEXT, |(_, text)| *text)
+}
+
+/// The text one **rendered** field-value case is composed against.
+///
+/// The default run used to compose every field value against `mixed-rtl` — two of the matrix's nine
+/// texts in the whole sweep, with the other seven reached only by `OSG_PARITY_EXHAUSTIVE`. That was
+/// a real hole rather than a saving: several of the fields the ledger calls native are decided by
+/// the *script*, not by the value, and a Korean, emoji or combining-mark case was never rendered at
+/// a non-default setting on an ordinary run. So the text rotates by position exactly as the preset
+/// sweep's does, the count of renders is unchanged, and the coverage is asserted rather than
+/// described — see [`assert_field_coverage`].
+fn text_for_value<'matrix>(
+    matrix: &'matrix ParityMatrix,
+    field: &str,
+    position: usize,
+) -> &'matrix TextEntry {
+    FIELD_TEXTS
+        .iter()
+        .find(|(name, _)| *name == field)
+        .map_or_else(
+            || &matrix.texts[position % matrix.texts.len()],
+            |(_, pinned)| matrix.text(pinned),
+        )
 }
 
 /// The defaults with the companions one field needs, and that field at `value`.
@@ -397,7 +423,6 @@ pub(crate) fn field_cases(matrix: &ParityMatrix, shapes: &[OutputEntry]) -> Vec<
     let mut cases = Vec::new();
     let mut position = 0_usize;
     for entry in &matrix.field_matrix {
-        let sweep_text = matrix.text(text_for(&entry.field));
         let baseline = baseline_for(matrix, &entry.field);
         for value in &entry.values {
             let customization = base_for(matrix, &entry.field, value);
@@ -426,9 +451,10 @@ pub(crate) fn field_cases(matrix: &ParityMatrix, shapes: &[OutputEntry]) -> Vec<
                     }
                 }
             } else {
+                let text = text_for_value(matrix, &entry.field, position);
                 push(
-                    sweep_text.id.as_str(),
-                    &sweep_text.text,
+                    text.id.as_str(),
+                    &text.text,
                     &shapes[position % shapes.len()],
                 );
             }

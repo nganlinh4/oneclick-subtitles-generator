@@ -84,7 +84,7 @@ mod underlay_resources;
 pub use compositor::Compositor;
 pub use crop::{
     CANVAS_BACKFILL_BRIGHTNESS, CANVAS_BACKFILL_ZOOM, CanvasBackground, Crop, CropSpec,
-    DEFAULT_CANVAS_BLUR, MAX_CANVAS_BLUR_RADIUS, MAX_CANVAS_BLUR_SIGMA,
+    DEFAULT_CANVAS_BLUR_RADIUS_PX, MAX_CANVAS_BLUR_RADIUS, MAX_CANVAS_BLUR_SIGMA,
 };
 pub use decoration::{
     Border, BorderStyle, FillPaint, Glow, Gradient, MAX_DECORATION_BLUR_RADIUS,

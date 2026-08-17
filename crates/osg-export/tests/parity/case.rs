@@ -5,8 +5,9 @@
 //! the gate on the boundary the product crosses rather than on the contract types behind it.
 
 use osg_compositor::SubtitleScene;
-use osg_export::ExportPlan;
+use osg_export::{ExportPlan, StagedText};
 use osg_render::{RenderRequest, SubtitleCustomization};
+use osg_scene::scene::ResolvedFace;
 use serde_json::{Value, json};
 
 use super::bake::{self, Staged};
@@ -48,6 +49,12 @@ pub(crate) struct Case {
     pub(crate) lyrics: Option<Value>,
     /// A trim window of the case's own, for the long case. [`WINDOW_US`] when absent.
     pub(crate) window_us: Option<u64>,
+    /// Where the window starts in the source, for the trim case. Zero for every other case.
+    ///
+    /// The window is the *length*, so raising this moves the whole window later in the source rather
+    /// than shortening it — which is what makes a trimmed case and an untrimmed one comparable frame
+    /// for frame at the same source instants.
+    pub(crate) trim_start_us: u64,
 }
 
 impl Case {
@@ -67,6 +74,7 @@ impl Case {
             frame_rate,
             lyrics: None,
             window_us: None,
+            trim_start_us: 0,
         }
     }
 
@@ -104,8 +112,8 @@ impl Case {
                 "frameRate": self.frame_rate,
                 "originalAudioVolume": 100,
                 "narrationVolume": 80,
-                "trimStartUs": 0,
-                "trimEndUs": window,
+                "trimStartUs": self.trim_start_us,
+                "trimEndUs": self.trim_start_us + window,
             },
             "customization": self.customization,
             "crop": {"x": 0, "y": 0, "width": 100, "height": 100, "aspectRatio": null},
@@ -194,6 +202,39 @@ pub(crate) fn try_prepare_against(
         scene,
         cues,
     })
+}
+
+/// Converts a case and composes staged text the caller baked, rather than one this module bakes.
+///
+/// The sibling of [`try_prepare_against`] for the cases that stage a whole **document**: the three
+/// calls that get a request to a drawable scene are the same three, and only the text differs. That
+/// matters more than it looks — it is what lets the preview shape and the export shape of the same
+/// document be built through one path, so a difference between the two frames can only come from the
+/// text that was staged.
+///
+/// # Panics
+/// Panics with the case identity and the refusal, because every caller builds its own request.
+pub(crate) fn compose_staged(
+    case: &Case,
+    source: (u32, u32, u64),
+    face: &ResolvedFace,
+    text: StagedText,
+) -> (ExportPlan, SubtitleScene) {
+    let (width, height, duration_us) = source;
+    let refused = |stage: &str, error: &dyn std::fmt::Display| -> ! {
+        panic!("{}: the request does not {stage}: {error}", case.id)
+    };
+    let request: RenderRequest = serde_json::from_value(case.request())
+        .unwrap_or_else(|error| refused("deserialize", &error));
+    let plan = request
+        .validate(width, height, duration_us)
+        .unwrap_or_else(|error| refused("validate", &error));
+    let converted =
+        ExportPlan::convert(&plan, face).unwrap_or_else(|error| refused("convert", &error));
+    let scene = converted
+        .compose(text)
+        .unwrap_or_else(|error| refused("compose", &error));
+    (converted, scene)
 }
 
 /// The same conversion, for a caller whose case cannot legitimately be refused.

@@ -26,7 +26,7 @@ use std::path::{Path, PathBuf};
 use osg_decode::{DecoderConfig, open_decoder};
 use osg_encode::{EncoderConfig, FrameBuffer, PixelLayout, VideoConfig, open_encoder};
 use osg_export::{
-    ExportCancel, ExportError, ExportJob, ExportSummary, FrameRenderer, SilentProgress,
+    ExportCancel, ExportError, ExportJob, ExportSummary, FrameRenderer, SilentProgress, StagedText,
     probe_source, run_export,
 };
 use osg_render::RenderRequest;
@@ -77,21 +77,42 @@ impl RoundTrip {
 /// Panics when the case cannot be converted, when the export fails, or when the finished file
 /// cannot be decoded. Every one of those is a finding rather than a harness problem.
 pub(crate) fn measure(directory: &TempDir, case: &Case, compared: &[u32]) -> RoundTrip {
-    let cues = case.cue_count();
     let source = source_clip(directory, "parity-source.mp4");
-    let output = directory.path().join("parity-export.mp4");
     let prepared = prepare_against(&source, case);
+    let text = prepared.staged.text(case.cue_count());
+    measure_staged(directory, &source, case, &prepared, compared, &text)
+}
 
-    let summary = export_with(&source, &output, None, case, &prepared, cues)
+/// The same, against text the caller staged rather than the one cue's bake this module would.
+///
+/// The multi-page shape has no other way through this gate: a document baked into several atlas
+/// pages is staged by the caller, and every frame of it still has to survive the encoder and come
+/// back inside the same measured tolerance a single-page export does.
+///
+/// One export per directory: the encoder refuses to open over an existing file, which is the
+/// behaviour `hard.rs` relies on, so a caller that wants two round trips wants two directories.
+///
+/// # Panics
+/// Panics when the export fails or the finished file cannot be decoded. Both are findings.
+pub(crate) fn measure_staged(
+    directory: &TempDir,
+    source: &Path,
+    case: &Case,
+    prepared: &Prepared,
+    compared: &[u32],
+    text: &StagedText,
+) -> RoundTrip {
+    let output = directory.path().join("parity-export.mp4");
+    let summary = export_text(source, &output, None, case, text.clone())
         .unwrap_or_else(|error| panic!("{}: the export failed: {error}", case.id));
     let frames = prepared.plan.frame_count();
     assert_eq!(summary.frames(), frames);
 
     let scene = prepared
         .plan
-        .compose(prepared.staged.text(cues))
+        .compose(text.clone())
         .expect("the staged text composes");
-    let mut renderer = FrameRenderer::open(&prepared.plan, scene, &source)
+    let mut renderer = FrameRenderer::open(&prepared.plan, scene, source)
         .expect("a graphics adapter and a readable source");
     let mut pairs = Vec::with_capacity(compared.len());
     for index in compared {
@@ -117,6 +138,11 @@ pub(crate) fn measure(directory: &TempDir, case: &Case, compared: &[u32]) -> Rou
         summary,
         pairs,
     }
+}
+
+/// One frame decoded back out of a finished export, for a caller that ran the export itself.
+pub(crate) fn decoded(path: &Path, index: u32, frames: u32, fps: u32) -> Vec<u8> {
+    decoded_frame_at(path, index, frames, fps)
 }
 
 /// One frame decoded back out of a finished export, at that export's own frame rate.
@@ -161,7 +187,7 @@ pub(crate) fn export(
     export_with(source, output, narration, case, prepared, 1)
 }
 
-/// The same, for a case carrying more than one cue.
+/// The same, for a case carrying more than one cue, all drawing the same run.
 pub(crate) fn export_with(
     source: &Path,
     output: &Path,
@@ -169,6 +195,17 @@ pub(crate) fn export_with(
     case: &Case,
     prepared: &Prepared,
     cues: usize,
+) -> Result<ExportSummary, ExportError> {
+    export_text(source, output, narration, case, prepared.staged.text(cues))
+}
+
+/// The same, against text the caller staged: several pages, a run per cue, or a deliberate fault.
+pub(crate) fn export_text(
+    source: &Path,
+    output: &Path,
+    narration: Option<&Path>,
+    case: &Case,
+    text: StagedText,
 ) -> Result<ExportSummary, ExportError> {
     let request: RenderRequest =
         serde_json::from_value(case.request()).expect("the case request deserializes");
@@ -178,7 +215,7 @@ pub(crate) fn export_with(
             source,
             narration,
             output,
-            text: prepared.staged.text(cues),
+            text,
             cancel: ExportCancel::new(),
         },
         &mut SilentProgress,
@@ -236,13 +273,126 @@ pub(crate) fn shifted_left(pixels: &[u8], width: u32) -> Vec<u8> {
 mod tests {
     use tempfile::TempDir;
 
-    use super::{REVIEWED, measure, shifted_left};
+    use super::{REVIEWED, measure, measure_staged, prepare_against, shifted_left};
     use crate::gate::case::Case;
     use crate::gate::compare::{self, Tolerance};
+    use crate::gate::documents::{self, FRAMES_PER_CUE};
     use crate::gate::{exclusive, matrix, sweep};
+    use crate::support::media::source_clip;
 
     /// The frames compared: one inside the fade-in, one holding, one inside the fade-out.
     const COMPARED: [u32; 3] = [7, 16, 25];
+
+    /// Which cues of the multi-page document are decoded back, chosen to land on different pages.
+    ///
+    /// The first two are early enough to be on the first page and the last is past the point where
+    /// it filled up, so the comparison covers a frame drawn from each page rather than three frames
+    /// drawn from the same one. Which page each cue really landed on is asserted, not assumed.
+    const PAGED_CUES: [usize; 3] = [0, 12, 24];
+
+    #[test]
+    fn a_document_that_needs_several_atlas_pages_survives_the_encoder_and_decodes_back() {
+        // The single-page round trip above proves the codec path. This proves the *paged* path
+        // through the same measured tolerance: a document whose alphabet outgrows one atlas is
+        // exported for real, decoded back, and compared frame for frame against what the compositor
+        // composed — with a frame taken from each page, so a page that was never bound, uploaded or
+        // sampled would show up as a wrong picture rather than as a smaller file.
+        let _lock = exclusive();
+        let directory = TempDir::new().expect("a temporary directory");
+        let loaded = matrix::load();
+        let document = documents::all(&loaded)
+            .into_iter()
+            .find(|entry| entry.expected_pages > 1 && entry.id == "doc=korean-pages")
+            .expect("the paging documents carry a multi-page Korean case");
+        assert_eq!(
+            document.document.page_count(),
+            document.expected_pages,
+            "the Korean document no longer needs more than one atlas page, so this case would be \
+             exporting the single-page shape a second time"
+        );
+
+        let source = source_clip(&directory, "paged-source.mp4");
+        let prepared = prepare_against(&source, &document.case);
+        let text = document.document.staged_text();
+        let compared: Vec<u32> = PAGED_CUES
+            .iter()
+            .map(|cue| document.middle_frame(*cue))
+            .collect();
+        let pages: Vec<usize> = PAGED_CUES
+            .iter()
+            .map(|cue| document.document.page_of(*cue))
+            .collect();
+        assert!(
+            pages.iter().any(|page| *page != pages[0]),
+            "every compared frame is drawn from page {}, so no second page is exercised",
+            pages[0]
+        );
+
+        let round = measure_staged(
+            &directory,
+            &source,
+            &document.case,
+            &prepared,
+            &compared,
+            &text,
+        );
+        println!(
+            "paged round trip: {}x{}, {} frames, {} cues over {} pages ({} cells), {} bytes",
+            round.width,
+            round.height,
+            round.frames,
+            document.document.cues(),
+            document.document.page_count(),
+            document
+                .document
+                .cells_per_page()
+                .iter()
+                .map(usize::to_string)
+                .collect::<Vec<_>>()
+                .join("+"),
+            round.summary.file_bytes(),
+        );
+        assert_eq!(
+            u64::from(round.frames),
+            u64::try_from(document.document.cues()).expect("a bounded cue count") * FRAMES_PER_CUE,
+            "the paged document did not write a frame for every cue slot"
+        );
+
+        for ((index, diff), (cue, page)) in
+            round.diffs().into_iter().zip(PAGED_CUES.iter().zip(&pages))
+        {
+            println!(
+                "  cue {cue} on page {page}, frame {index}: differing {} of {}, mean {:.4}, \
+                 p999 {}, max {}, alpha {}",
+                diff.differing_pixels,
+                diff.total_pixels,
+                diff.mean_channel,
+                diff.p999_channel,
+                diff.max_channel,
+                diff.max_alpha
+            );
+            assert!(
+                REVIEWED.admits(&diff),
+                "{}",
+                compare::report(&document.id, index, &diff, &[], &[])
+            );
+        }
+
+        // The same half that makes the tolerance mean anything on the single-page case: a composed
+        // frame moved one pixel must sit outside it, or the tolerance would admit an atlas page
+        // whose cells were placed one pixel out by the repack.
+        let (index, native, decoded) = round.pairs.first().expect("a compared frame");
+        let shifted = shifted_left(native, round.width);
+        let regression = compare::diff(&shifted, decoded);
+        println!(
+            "  one-pixel shift at frame {index}: mean {:.4}, p999 {}, max {}",
+            regression.mean_channel, regression.p999_channel, regression.max_channel
+        );
+        assert!(
+            !REVIEWED.admits(&regression),
+            "a one-pixel shift of a paged frame is inside the tolerance: {regression:?}"
+        );
+    }
 
     #[test]
     fn a_composed_frame_and_the_same_frame_decoded_back_agree_inside_a_measured_tolerance() {

@@ -5,14 +5,20 @@ use std::sync::{Mutex, MutexGuard, PoisonError};
 pub(crate) mod bake;
 pub(crate) mod case;
 pub(crate) mod compare;
+pub(crate) mod coverage;
+pub(crate) mod documents;
 pub(crate) mod effects;
 #[cfg(windows)]
 pub(crate) mod hard;
 pub(crate) mod matrix;
 pub(crate) mod plans;
+pub(crate) mod preview;
+pub(crate) mod refusals;
 #[cfg(windows)]
 pub(crate) mod roundtrip;
 pub(crate) mod sweep;
+#[cfg(windows)]
+pub(crate) mod trim;
 
 /// Serialises everything in this binary that acquires a graphics adapter or the platform codecs.
 ///

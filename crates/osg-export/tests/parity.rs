@@ -31,11 +31,12 @@
 mod gate;
 mod support;
 
-use std::collections::{BTreeMap, BTreeSet};
+use std::collections::BTreeMap;
 use std::panic::AssertUnwindSafe;
 
 use gate::case::{self, Case};
 use gate::compare;
+use gate::coverage::{assert_field_coverage, assert_preset_coverage};
 use gate::effects;
 use gate::matrix::{self, ParityMatrix};
 use gate::plans::{self, Divergence};
@@ -306,7 +307,7 @@ fn every_shipped_preset_renders() {
     let cases = sweep::preset_cases(&bench.matrix, &bench.shapes);
     // The coverage claim, asserted rather than commented: whatever the selection rule is, this run
     // has to have rendered every preset, every text and every shape the adapter admits.
-    assert_coverage(&bench, &cases);
+    assert_preset_coverage(&bench.matrix, &bench.shapes, &cases);
     let mut refused: Vec<String> = Vec::new();
     let (tally, elapsed) = sweep::timed(|| {
         let mut tally = sweep::Tally::default();
@@ -360,6 +361,10 @@ fn every_field_value_renders_and_changes_the_picture_where_it_can() {
             "the default sweep does not render every field value exactly once"
         );
     }
+    // And the same coverage claim the preset sweep makes. The default run renders each value once,
+    // so the only thing that can make it cover every script is the rotation, and a rotation is
+    // exactly what stops covering something when a count changes.
+    assert_field_coverage(&bench.matrix, &bench.shapes, &cases);
     // Grouped by the comparison each case makes, and one baseline held at a time. Caching every
     // baseline would be simpler and would not survive the exhaustive run: three probe frames of a
     // 1080p composition are 25 MB, and the cross product needs 1_458 baselines, which is 19 GB of
@@ -518,59 +523,4 @@ impl FieldOutcome {
             self.refused.join("\n  ")
         );
     }
-}
-
-/// Asserts a preset selection really covers every preset, every text and every shape.
-///
-/// The selection rule rotates texts and shapes across presets so the default run stays affordable,
-/// and a rotation is exactly the kind of arithmetic that silently stops covering something when the
-/// counts change. This turns the coverage claim into an assertion.
-fn assert_coverage(bench: &Bench, cases: &[Case]) {
-    let mut texts: BTreeSet<&str> = BTreeSet::new();
-    let mut shapes: BTreeSet<(&str, u16)> = BTreeSet::new();
-    let mut presets: BTreeSet<&str> = BTreeSet::new();
-    for case in cases {
-        texts.insert(case.text.as_str());
-        shapes.insert((case.resolution.as_str(), case.frame_rate));
-        presets.insert(
-            case.id
-                .split_whitespace()
-                .next()
-                .unwrap_or_default()
-                .trim_start_matches("preset="),
-        );
-    }
-    let expected_texts: BTreeSet<&str> = bench
-        .matrix
-        .texts
-        .iter()
-        .map(|entry| entry.text.as_str())
-        .collect();
-    let expected_shapes: BTreeSet<(&str, u16)> = bench
-        .shapes
-        .iter()
-        .map(|shape| (shape.resolution.as_str(), shape.frame_rate))
-        .collect();
-    let expected_presets: BTreeSet<&str> = bench
-        .matrix
-        .presets
-        .iter()
-        .map(|entry| entry.id.as_str())
-        .collect();
-    assert_eq!(
-        presets, expected_presets,
-        "a shipped preset was not rendered"
-    );
-    assert_eq!(texts, expected_texts, "a matrix text was not rendered");
-    assert_eq!(
-        shapes, expected_shapes,
-        "a composable output shape was not rendered"
-    );
-    println!(
-        "preset coverage: {} presets, {} texts, {} shapes over {} cases",
-        presets.len(),
-        texts.len(),
-        shapes.len(),
-        cases.len()
-    );
 }

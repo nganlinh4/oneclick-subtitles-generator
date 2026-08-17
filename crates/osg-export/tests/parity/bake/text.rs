@@ -13,7 +13,7 @@
 use osg_render::TextTransform;
 use osg_scene::glyph::Direction;
 
-use super::{ADVANCE_SPREAD, CELL_PX, MIN_ADVANCE_PX};
+use super::{ADVANCE_SPREAD, CELL_PX, MAX_INK_PX, MIN_ADVANCE_PX};
 
 /// The case mapping, applied before segmentation because it decides the cluster count.
 pub(super) fn transform(text: &str, transform: TextTransform) -> String {
@@ -129,10 +129,12 @@ pub(super) fn advance_of(cluster: &str, letter_spacing: f64) -> f64 {
 /// somewhere or a gate could not tell a bold export from a light one, and in the real pipeline it
 /// reaches them through the bake — `src/services/fontIdentity.js` resolves the face and the baker
 /// rasterizes from it. This is the stand-in's version of that.
+/// Bounded by [`MAX_INK_PX`] rather than by the cell square: the cell's box carries a transparent
+/// ring around the ink, so ink as wide as the square would leave no ring to blend against.
 pub(super) fn ink_width(cluster: &str, weight: u16) -> u32 {
     let seed = cluster.chars().next().map_or(0, u32::from);
     let stem = u32::from(weight) / 300;
-    (2 + stem + (seed % (CELL_PX - 6))).min(CELL_PX)
+    (2 + stem + (seed % (CELL_PX - 6))).min(MAX_INK_PX)
 }
 
 pub(super) fn round4(value: f64) -> f64 {

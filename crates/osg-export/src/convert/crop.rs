@@ -118,7 +118,9 @@ pub(crate) const fn canvas_mode_name(mode: CanvasBackgroundMode) -> &'static str
 
 #[cfg(test)]
 mod tests {
-    use osg_compositor::{CanvasBackground, Crop, DEFAULT_CANVAS_BLUR, MAX_CANVAS_BLUR_SIGMA};
+    use osg_compositor::{
+        CanvasBackground, Crop, DEFAULT_CANVAS_BLUR_RADIUS_PX, MAX_CANVAS_BLUR_SIGMA,
+    };
     use osg_render::{CanvasBackgroundMode, CropSettings};
 
     use super::{canvas_mode_name, check_canvas_background, crop_spec, resolve};
@@ -201,10 +203,14 @@ mod tests {
             ..settings()
         })
         .expect("a blurred backfill resolves");
+        // Half the default, not the default: `canvasBgBlur` is a CSS blur RADIUS and the compositor
+        // stores the standard deviation it means, which is what
+        // `fix(compositor): halve the canvas backfill blur` settled. Comparing against the stored
+        // radius here is comparing a sigma with a length.
         assert_eq!(
             blur.background(),
             CanvasBackground::Blur {
-                sigma_px: DEFAULT_CANVAS_BLUR
+                sigma_px: DEFAULT_CANVAS_BLUR_RADIUS_PX / 2.0
             }
         );
 

@@ -21,17 +21,20 @@
 
 use osg_compositor::CueRun;
 use osg_export::{StagedText, primary_font_family};
-use osg_render::{SubtitleCustomization, TextAlign, TextTransform};
+use osg_render::SubtitleCustomization;
 use osg_scene::glyph::{
-    AtlasFace, AtlasGeometry, AtlasGlyph, AtlasLayout, AtlasLine, AtlasMetrics, CellAdvanceVerdict,
-    Direction, FaceProbe, FaceStyle, GLYPH_ATLAS_VERSION, GlyphAtlasDescriptor, LayoutRefusal,
-    LayoutTextAlign, PixelFormat, ProbeFamily, UncheckedGlyphAtlas,
+    AtlasFace, AtlasGeometry, AtlasGlyph, AtlasLayout, AtlasMetrics, Direction, FaceProbe,
+    FaceStyle, GLYPH_ATLAS_VERSION, GlyphAtlasDescriptor, PixelFormat, ProbeFamily,
+    UncheckedGlyphAtlas,
 };
 use osg_scene::scene::ResolvedFace;
 
+mod layout;
+pub(crate) mod paged;
 mod text;
 
-use text::{advance_of, clusters, direction_of, ink_width, round4, transform, utf16_order};
+use layout::{layout, metrics, wrap};
+use text::{advance_of, clusters, direction_of, ink_width, transform, utf16_order};
 
 /// The size the stand-in bakes at. One size for every case, because the compositor scales the atlas
 /// by `fontSize / atlasFontSize`, so a second bake size would only move the same ratio around.
@@ -44,6 +47,19 @@ const DESCENT_PX: f64 = 5.0;
 const CELL_PX: u32 = 16;
 /// How many cells one atlas row carries.
 const CELL_COLUMNS: u32 = 8;
+/// The transparent ring the baker leaves around every cell's ink, inside the cell's own box.
+///
+/// The real baker's default (`paddingPx: 1` in `src/platform/glyphAtlasRequest.js`), and
+/// `measureCell` puts it *inside* `widthPx`/`heightPx` with the origin moved to match, so a cell's
+/// declared box is ink plus ring rather than ink alone. Reproducing that is not cosmetic: the
+/// compositor samples the atlas with a **linear** filter, so a fragment on a cell's own edge blends
+/// the texel just outside it. With a ring, that texel is transparent whatever else the atlas holds,
+/// which is what makes the same cue draw the same pixels from a page it shares with other cues as
+/// from a bake of its own. With no ring it would blend whichever cell happened to be packed next to
+/// it, and the picture would depend on the packing.
+const CELL_PADDING_PX: u32 = 1;
+/// The widest ink one cell can carry, which is its box less the ring on both sides.
+const MAX_INK_PX: u32 = CELL_PX - 2 * CELL_PADDING_PX;
 /// The wrap width `maxWidth: 100` means, in atlas pixels.
 ///
 /// The real wrap width is a percentage of the composition, resolved in
@@ -68,6 +84,16 @@ impl Staged {
     /// The face the conversion is given, which is the one the atlas was baked from.
     pub(crate) const fn face(&self) -> &ResolvedFace {
         &self.face
+    }
+
+    /// The one atlas this bake produced, which is the whole of what a preview stages.
+    pub(crate) const fn atlas(&self) -> &GlyphAtlasDescriptor {
+        &self.atlas
+    }
+
+    /// The run this bake laid out.
+    pub(crate) const fn run(&self) -> &CueRun {
+        &self.run
     }
 
     /// The staged text for a scene carrying `cues` cues, all drawing this run.
@@ -134,10 +160,53 @@ pub(crate) fn bake(text: &str, customization: &SubtitleCustomization) -> Staged 
     let layout = layout(&lines, &cells, customization);
     let metrics = metrics(&cells, &clusters, customization);
 
+    let atlas = descriptor(
+        &family,
+        weight,
+        metrics,
+        layout,
+        cells.iter().map(Cell::to_glyph).collect(),
+        content_hash(&transformed, customization),
+    );
+    let run = CueRun::from_layout(atlas.layout());
+    Staged {
+        face: resolved_face(family, weight),
+        atlas,
+        run,
+    }
+}
+
+/// The face a stand-in bake resolves, which is the one the conversion is checked against.
+fn resolved_face(family: String, weight: u16) -> ResolvedFace {
+    ResolvedFace {
+        family,
+        source: "sha256:0101010101010101010101010101010101010101010101010101010101010101"
+            .to_owned(),
+        weight,
+    }
+}
+
+/// Assembles one descriptor from a cell table, the layout it describes and that run's metrics.
+///
+/// Shared with [`paged`], which hands it a **page's** merged cell table and the remapped layout of
+/// the first cue that page serves — which is exactly the descriptor `src/platform/glyphAtlasPage.js`
+/// emits for a page, down to the choice of whose layout and whose run-scoped metrics it carries.
+///
+/// # Panics
+/// Panics when the descriptor is one the baker could not have produced, which is a bug in this
+/// module rather than a finding about the pipeline.
+fn descriptor(
+    family: &str,
+    weight: u16,
+    metrics: AtlasMetrics,
+    layout: AtlasLayout,
+    glyphs: Vec<AtlasGlyph>,
+    content_hash: String,
+) -> GlyphAtlasDescriptor {
     let unchecked = UncheckedGlyphAtlas {
         version: GLYPH_ATLAS_VERSION,
         face: AtlasFace {
-            requested_family: family.clone(),
+            requested_family: family.to_owned(),
             weight,
             style: FaceStyle::Normal,
             font_size_px: ATLAS_FONT_SIZE_PX,
@@ -146,25 +215,14 @@ pub(crate) fn bake(text: &str, customization: &SubtitleCustomization) -> Staged 
             probes: probes(),
         },
         metrics,
-        atlas: geometry(cells.len()),
+        atlas: geometry(glyphs.len()),
         layout,
-        glyphs: cells.iter().map(Cell::to_glyph).collect(),
-        content_hash: content_hash(&transformed, customization),
-        pixels: pixels(&cells, weight),
+        pixels: pixels(&glyphs, weight),
+        glyphs,
+        content_hash,
     };
-    let atlas = GlyphAtlasDescriptor::try_from(unchecked)
-        .expect("the stand-in bakes a descriptor the baker could have produced");
-    let run = CueRun::from_layout(atlas.layout());
-    Staged {
-        face: ResolvedFace {
-            family,
-            source: "sha256:0101010101010101010101010101010101010101010101010101010101010101"
-                .to_owned(),
-            weight,
-        },
-        atlas,
-        run,
-    }
+    GlyphAtlasDescriptor::try_from(unchecked)
+        .expect("the stand-in bakes a descriptor the baker could have produced")
 }
 
 /// One distinct cluster and the cell baked for it.
@@ -181,6 +239,7 @@ struct Cell {
 impl Cell {
     fn to_glyph(&self) -> AtlasGlyph {
         let inked = self.ink_px > 0;
+        let padding = i32::try_from(CELL_PADDING_PX).unwrap_or(0);
         AtlasGlyph {
             cluster: self.cluster.clone(),
             code_points: self.cluster.chars().map(u32::from).collect(),
@@ -188,12 +247,19 @@ impl Cell {
             advance_width_px: self.advance_px,
             x_px: self.x_px,
             y_px: self.y_px,
-            width_px: if inked { self.ink_px } else { 0 },
+            // The box carries the transparent ring as well as the ink, which is what
+            // `measureCell` emits, and the origin is measured from the box's own corner.
+            width_px: if inked {
+                self.ink_px + 2 * CELL_PADDING_PX
+            } else {
+                0
+            },
             height_px: if inked { CELL_PX } else { 0 },
-            origin_x_px: 0,
-            // The ink sits entirely above the baseline, so the cell's top is `baseline - height`.
+            origin_x_px: if inked { padding } else { 0 },
+            // The ink sits entirely above the baseline, so the baseline is one ring above the
+            // box's bottom edge.
             origin_y_px: if inked {
-                i32::try_from(CELL_PX).unwrap_or(0)
+                i32::try_from(CELL_PX - CELL_PADDING_PX).unwrap_or(0)
             } else {
                 0
             },
@@ -215,245 +281,18 @@ fn distinct_cells(clusters: &[String], letter_spacing: f64, weight: u16) -> Vec<
         .into_iter()
         .enumerate()
         .map(|(index, cluster)| {
-            let slot = u32::try_from(index).expect("a bounded cell count");
+            let (x_px, y_px) = slot(u32::try_from(index).expect("a bounded cell count"));
             let blank = cluster.chars().all(char::is_whitespace);
             Cell {
                 cluster: cluster.to_owned(),
                 advance_px: advance_of(cluster, letter_spacing),
                 direction: direction_of(cluster),
-                x_px: (slot % CELL_COLUMNS) * CELL_PX,
-                y_px: (slot / CELL_COLUMNS) * CELL_PX,
+                x_px,
+                y_px,
                 ink_px: if blank { 0 } else { ink_width(cluster, weight) },
             }
         })
         .collect()
-}
-
-/// One laid-out line, as cluster indices into the run's cluster list.
-#[derive(Debug)]
-struct Line {
-    cells: Vec<usize>,
-    justification_px: f64,
-}
-
-/// The wrap width one customization asks for, in atlas pixels.
-fn wrap_width(customization: &SubtitleCustomization) -> Option<f64> {
-    customization
-        .word_wrap
-        .then(|| round4((customization.max_width / 100.0) * WRAP_REFERENCE_PX).max(1.0))
-}
-
-/// Greedy line breaking at spaces, with trailing spaces trimmed off each line.
-///
-/// A word wider than the wrap width overflows onto its own line rather than being broken, which is
-/// CSS `overflow-wrap: normal` and is what makes the matrix's long-word text a distinct case.
-fn wrap(clusters: &[String], cells: &[Cell], customization: &SubtitleCustomization) -> Vec<Line> {
-    let index_of = |cluster: &str| {
-        cells
-            .binary_search_by(|cell| utf16_order(&cell.cluster, cluster))
-            .expect("every cluster has a cell")
-    };
-    let all: Vec<usize> = clusters.iter().map(|cluster| index_of(cluster)).collect();
-    let Some(max_width) = wrap_width(customization) else {
-        return vec![Line {
-            cells: all,
-            justification_px: 0.0,
-        }];
-    };
-
-    let mut lines: Vec<Vec<usize>> = Vec::new();
-    let mut current: Vec<usize> = Vec::new();
-    let mut width = 0.0_f64;
-    for word in words(&all, cells) {
-        let word_width: f64 = word.iter().map(|index| cells[*index].advance_px).sum();
-        if !current.is_empty() && width + word_width > max_width {
-            lines.push(std::mem::take(&mut current));
-            width = 0.0;
-        }
-        current.extend_from_slice(&word);
-        width += word_width;
-    }
-    if !current.is_empty() || lines.is_empty() {
-        lines.push(current);
-    }
-
-    let justify = customization.text_align == TextAlign::Justify;
-    let last = lines.len().saturating_sub(1);
-    lines
-        .into_iter()
-        .enumerate()
-        .map(|(index, mut cells_of_line)| {
-            trim_trailing_blanks(&mut cells_of_line, cells);
-            let placed = cells_of_line.len();
-            let sum: f64 = cells_of_line
-                .iter()
-                .map(|slot| cells[*slot].advance_px)
-                .sum();
-            let justification_px = if justify && index != last && placed > 1 && sum < max_width {
-                round4((max_width - sum) / (placed_gaps(placed)))
-            } else {
-                0.0
-            };
-            Line {
-                cells: cells_of_line,
-                justification_px,
-            }
-        })
-        .collect()
-}
-
-/// How many interior gaps a line of `placed` cells has, as a divisor that is never zero.
-fn placed_gaps(placed: usize) -> f64 {
-    let gaps = u32::try_from(placed.saturating_sub(1)).unwrap_or(1).max(1);
-    f64::from(gaps)
-}
-
-/// Splits a cluster list into words, each carrying its own trailing blanks.
-fn words(all: &[usize], cells: &[Cell]) -> Vec<Vec<usize>> {
-    let blank = |slot: &usize| cells[*slot].ink_px == 0;
-    let mut words: Vec<Vec<usize>> = Vec::new();
-    let mut current: Vec<usize> = Vec::new();
-    let mut in_blanks = false;
-    for slot in all {
-        if blank(slot) {
-            in_blanks = true;
-        } else if in_blanks {
-            words.push(std::mem::take(&mut current));
-            in_blanks = false;
-        }
-        current.push(*slot);
-    }
-    if !current.is_empty() {
-        words.push(current);
-    }
-    words
-}
-
-fn trim_trailing_blanks(line: &mut Vec<usize>, cells: &[Cell]) {
-    while line.last().is_some_and(|slot| cells[*slot].ink_px == 0) {
-        line.pop();
-    }
-}
-
-/// The line box and where the baseline sits in it, from the persisted line height.
-fn line_box(customization: &SubtitleCustomization) -> (f64, f64) {
-    let line_height_px = round4(ATLAS_FONT_SIZE_PX * customization.line_height);
-    let half_leading = round4((line_height_px - ATLAS_FONT_SIZE_PX) / 2.0);
-    (line_height_px, round4(ASCENT_PX + half_leading))
-}
-
-fn align_of(align: TextAlign) -> LayoutTextAlign {
-    match align {
-        TextAlign::Left => LayoutTextAlign::Left,
-        TextAlign::Center => LayoutTextAlign::Center,
-        TextAlign::Right => LayoutTextAlign::Right,
-        TextAlign::Justify => LayoutTextAlign::Justify,
-    }
-}
-
-/// The base direction the run is laid out in.
-///
-/// `rtlSupport` forces right-to-left whenever the text carries a right-to-left cluster, which is
-/// the switch `src/platform/glyphAtlasBidi.js` owns; otherwise it is the run's first strong
-/// cluster. A run with no strong cluster at all resolves left-to-right, as the baker's does.
-fn base_direction(cells: &[Cell], customization: &SubtitleCustomization) -> Direction {
-    let has_rtl = cells.iter().any(|cell| cell.direction == Direction::Rtl);
-    if customization.rtl_support && has_rtl {
-        return Direction::Rtl;
-    }
-    cells
-        .iter()
-        .find(|cell| cell.direction != Direction::Neutral)
-        .map_or(Direction::Ltr, |cell| cell.direction)
-}
-
-fn layout(lines: &[Line], cells: &[Cell], customization: &SubtitleCustomization) -> AtlasLayout {
-    let (line_height_px, baseline_px) = line_box(customization);
-    let rtl = base_direction(cells, customization) == Direction::Rtl;
-    let mut emitted: Vec<AtlasLine> = Vec::with_capacity(lines.len());
-    for (index, line) in lines.iter().enumerate() {
-        let mut slots = line.cells.clone();
-        if rtl {
-            // The stand-in for UAX #9: the baker's claim is that it emitted visual order, and this
-            // reverses logical order to make that claim observable downstream.
-            slots.reverse();
-        }
-        let mut pen = 0.0_f64;
-        let mut pen_x_px = Vec::with_capacity(slots.len());
-        for (position, slot) in slots.iter().enumerate() {
-            let gaps = u32::try_from(position).unwrap_or(0);
-            pen_x_px.push(round4(f64::from(gaps).mul_add(line.justification_px, pen)));
-            pen += cells[*slot].advance_px;
-        }
-        let advance = round4(
-            f64::from(u32::try_from(slots.len().saturating_sub(1)).unwrap_or(0))
-                .mul_add(line.justification_px, pen),
-        );
-        let steps = u32::try_from(index).unwrap_or(0);
-        emitted.push(AtlasLine {
-            glyphs: slots
-                .iter()
-                .map(|slot| u32::try_from(*slot).expect("a bounded cell index"))
-                .collect(),
-            pen_x_px,
-            advance_width_px: advance,
-            measured_width_px: round4(pen),
-            shaping_residual_px: 0.0,
-            baseline_y_px: round4(f64::from(steps).mul_add(line_height_px, baseline_px)),
-            justification_px: line.justification_px,
-            ends_paragraph: index + 1 == lines.len(),
-        });
-    }
-    let width_px = emitted
-        .iter()
-        .fold(0.0_f64, |widest, line| widest.max(line.advance_width_px));
-    AtlasLayout {
-        text_transform: transform_of(customization.text_transform),
-        letter_spacing_px: customization.letter_spacing,
-        max_width_px: wrap_width(customization),
-        word_wrap: customization.word_wrap,
-        text_align: align_of(customization.text_align),
-        line_count: u32::try_from(emitted.len()).expect("a bounded line count"),
-        width_px,
-        height_px: round4(f64::from(u32::try_from(emitted.len()).unwrap_or(1)) * line_height_px),
-        cell_advance_layout: CellAdvanceVerdict::Reproduces,
-        refusal: LayoutRefusal {
-            shaping_crosses_clusters: false,
-            direction_needs_bidi: false,
-        },
-        lines: emitted,
-    }
-}
-
-const fn transform_of(transform: TextTransform) -> osg_scene::glyph::TextTransform {
-    match transform {
-        TextTransform::None => osg_scene::glyph::TextTransform::None,
-        TextTransform::Uppercase => osg_scene::glyph::TextTransform::Uppercase,
-        TextTransform::Lowercase => osg_scene::glyph::TextTransform::Lowercase,
-        TextTransform::Capitalize => osg_scene::glyph::TextTransform::Capitalize,
-    }
-}
-
-fn metrics(
-    cells: &[Cell],
-    clusters: &[String],
-    customization: &SubtitleCustomization,
-) -> AtlasMetrics {
-    let (line_height_px, baseline_px) = line_box(customization);
-    let run_advance_width_px: f64 = clusters
-        .iter()
-        .map(|cluster| advance_of(cluster, customization.letter_spacing))
-        .sum();
-    AtlasMetrics {
-        ascent_px: ASCENT_PX,
-        descent_px: DESCENT_PX,
-        line_height_px,
-        baseline_px,
-        run_advance_width_px: round4(run_advance_width_px),
-        shaping_residual_px: 0.0,
-        base_direction: base_direction(cells, customization),
-        letter_spacing_px: customization.letter_spacing,
-    }
 }
 
 fn probes() -> Vec<FaceProbe> {
@@ -483,7 +322,7 @@ fn geometry(cell_count: usize) -> AtlasGeometry {
     AtlasGeometry {
         width_px: CELL_COLUMNS * CELL_PX,
         height_px: rows(cell_count) * CELL_PX,
-        padding_px: 0,
+        padding_px: CELL_PADDING_PX,
         glyph_count: u32::try_from(cell_count).expect("a bounded cell count"),
         pixel_format: PixelFormat::Rgba8,
         bytes_per_row: CELL_COLUMNS * CELL_PX * 4,
@@ -491,30 +330,45 @@ fn geometry(cell_count: usize) -> AtlasGeometry {
 }
 
 /// Coverage for every cell: a per-cluster pattern, so two clusters never rasterize alike.
-fn pixels(cells: &[Cell], weight: u16) -> Vec<u8> {
+///
+/// Rasterized from the emitted cells rather than from the `Cell` list, so a page's merged table
+/// rasterizes through exactly this function too. The ink is inset by [`CELL_PADDING_PX`] on every
+/// side of the cell's box, leaving the ring transparent for the reason that constant records.
+fn pixels(glyphs: &[AtlasGlyph], weight: u16) -> Vec<u8> {
     let width = CELL_COLUMNS * CELL_PX;
-    let height = rows(cells.len()) * CELL_PX;
+    let height = rows(glyphs.len()) * CELL_PX;
     let stride = width * 4;
     let mut buffer = vec![0_u8; (height * stride) as usize];
-    for cell in cells {
-        if cell.ink_px == 0 {
+    for glyph in glyphs {
+        let (Some(ink_width), Some(ink_height)) = (
+            glyph.width_px.checked_sub(2 * CELL_PADDING_PX),
+            glyph.height_px.checked_sub(2 * CELL_PADDING_PX),
+        ) else {
             continue;
-        }
-        let seed = cell.cluster.chars().next().map_or(0, u32::from) + u32::from(weight);
-        for row in 0..CELL_PX {
-            for column in 0..cell.ink_px {
+        };
+        let seed = glyph.cluster.chars().next().map_or(0, u32::from) + u32::from(weight);
+        for row in 0..ink_height {
+            for column in 0..ink_width {
                 // Deterministic, cluster-dependent and never fully transparent, so a cell that is
                 // drawn always reaches the frame.
                 let coverage =
                     u8::try_from(128 + ((seed + row * 7 + column * 13) % 128)).unwrap_or(u8::MAX);
-                let x = cell.x_px + column;
-                let y = cell.y_px + row;
+                let x = glyph.x_px + CELL_PADDING_PX + column;
+                let y = glyph.y_px + CELL_PADDING_PX + row;
                 let start = (y * stride + x * 4) as usize;
                 buffer[start..start + 4].copy_from_slice(&[coverage; 4]);
             }
         }
     }
     buffer
+}
+
+/// Where the cell in slot `index` is packed: the same eight-column grid for a run and for a page.
+const fn slot(index: u32) -> (u32, u32) {
+    (
+        (index % CELL_COLUMNS) * CELL_PX,
+        (index / CELL_COLUMNS) * CELL_PX,
+    )
 }
 
 /// The baker's cache key: eight lower-case hexadecimal digits over everything that was baked.

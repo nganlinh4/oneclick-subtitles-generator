@@ -31,9 +31,11 @@ const MAX_STORED_BLUR: f64 = 1_000.0;
 
 /// The blur the shipped renderer falls back to when `canvasBgBlur` is absent, as a CSS blur RADIUS.
 ///
-/// It is a radius and not a standard deviation, which is the whole reason [`CSS_BLUR_TO_SIGMA`]
-/// exists — see the conversion at [`resolve_canvas`].
-pub const DEFAULT_CANVAS_BLUR: f64 = 24.0;
+/// The unit is in the name because leaving it out is what caused the divergence this constant now
+/// documents: a radius sat one line above [`MAX_CANVAS_BLUR_SIGMA`], the two were used
+/// interchangeably, and the backfill rendered at twice the editor's blur. Two tests then compared a
+/// radius against a sigma and passed. See [`CSS_BLUR_TO_SIGMA`] for the conversion.
+pub const DEFAULT_CANVAS_BLUR_RADIUS_PX: f64 = 24.0;
 
 /// A CSS blur radius is twice the Gaussian standard deviation it means.
 ///
@@ -280,7 +282,7 @@ fn resolve_background(spec: &CropSpec) -> Result<CanvasBackground, CompositorErr
             Ok(CanvasBackground::Solid(colour))
         }
         "blur" => {
-            let stored = spec.canvas_bg_blur.unwrap_or(DEFAULT_CANVAS_BLUR);
+            let stored = spec.canvas_bg_blur.unwrap_or(DEFAULT_CANVAS_BLUR_RADIUS_PX);
             if !bounded(stored, 0.0, MAX_STORED_BLUR) {
                 return Err(Rejection::CropCanvasBlur.into());
             }
@@ -295,7 +297,7 @@ fn resolve_background(spec: &CropSpec) -> Result<CanvasBackground, CompositorErr
 #[cfg(test)]
 mod tests {
     use super::{
-        CanvasBackground, Crop, CropSpec, DEFAULT_CANVAS_BLUR, MAX_CANVAS_BLUR_RADIUS,
+        CanvasBackground, Crop, CropSpec, DEFAULT_CANVAS_BLUR_RADIUS_PX, MAX_CANVAS_BLUR_RADIUS,
         MAX_CANVAS_BLUR_SIGMA,
     };
     use crate::error::{CompositorError, Rejection};
@@ -426,7 +428,7 @@ mod tests {
         };
 
         // The default the shipped renderer falls back to: `blur(24px)`, which is sigma 12.
-        assert!((sigma_for(DEFAULT_CANVAS_BLUR) - 12.0).abs() < f64::EPSILON);
+        assert!((sigma_for(DEFAULT_CANVAS_BLUR_RADIUS_PX) - 12.0).abs() < f64::EPSILON);
         assert!((sigma_for(0.0) - 0.0).abs() < f64::EPSILON);
         assert!((sigma_for(1.0) - 0.5).abs() < f64::EPSILON);
         assert!((sigma_for(50.0) - 25.0).abs() < f64::EPSILON);
