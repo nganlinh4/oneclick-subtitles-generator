@@ -2,7 +2,7 @@
   "schemaVersion": 5,
   "algorithm": "sha256",
   "normalization": "binary exact; UTF-8 BOM ignored, CRLF/CR normalized to LF, terminal newlines ignored",
-  "baselineRevision": "231c6d4be94ca06203123240d4fdef6fed6b3c38",
+  "baselineRevision": "7319ab5e4ad4c699c98f61d7d45ae9931a5e257a",
   "retiredExactFiles": {
     "public/oauth2callback.html": "c19855fd5a3f19af1eea1c1fed6e7794a342136223dd60dbead2586d4298fd90",
     "src/assets/fonts/GoogleSansFlex.ttf": "eae5ed6ddefbd44ab9693b84454ce46f3f2de0fb4f7cc5b54138c50c5b347d70",
@@ -163,7 +163,7 @@
     "src/styles/OAuthCallback.css": "64525be09c10d027325a3bdd15c6ea2522a31010619e7f69c14a17c41e37b0ab",
     "src/styles/OnboardingBanner.css": "c133425efc92357e0c9276ab2ef3d34da634a77fa8b1c8c6cd7b128186d3547c",
     "src/styles/OnboardingFooterReveal.css": "905c26c524391b1788f590774a92bad1d4c9f576880abbe8e25a5e7ca26d9a87",
-    "src/styles/OutputContainer.css": "0170ddbde0890be42506762810325bfe9b5f2b383d15c1680d753fd1ba7be756",
+    "src/styles/OutputContainer.css": "bc36eadba7f240cfc2595bff667f24345f1f8ba065e29ea390a0844f53bb4f40",
     "src/styles/ParallelProcessingStatus.css": "e9091a4db39ef26b96a38e1ab206d9cbf264d4287b92d7171346d5406304b4f1",
     "src/styles/ProcessingTextAnimation.css": "5d69880b3cb6d527b84360042198e66860603430b19b2df0abce632fb99b4e5b",
     "src/styles/PromptEditor.css": "c1b424370b8b4b9ce40d0e134044b317ec2c2a95dbd91c84027561e3b9956731",
@@ -223,11 +223,11 @@
     "src/styles/translation/slider.css": "9540758818b343dc83d0e2c4c21b29d3f0ce9503eed401610e92a2c34baedcb4",
     "src/styles/translation/status.css": "3c8ce6b10a4ff4e04e0b4e813a3021cbbd5076c30ae23bac4a865b99ca132714",
     "src/styles/translation/toggle.css": "56d594e4acba4f2f1103fc357ce7a5edb9ea17fabed41bfb4dad0667d5d42fa8",
-    "src/styles/video-player-dark-theme.css": "f7791ea4efe460ab546c1b7d5e298c732b47056d654764cfe64eea36c435ac6c",
+    "src/styles/video-player-dark-theme.css": "1bad18fc8a6ba479f8bd0068aac8b245809afea378ec763d444b9fed58fe0501",
     "src/styles/VideoAnalysisButton.css": "3a0129a7716bd08ab8cd6829a0c3ee84845929fda6a291504c89620dd712e65e",
     "src/styles/VideoAnalysisModal.css": "e18a28dfd3bbdc947b2140bf32ac7119cd54677e0e65fddd9212f2df754ad084",
     "src/styles/VideoCropControls.css": "66acfb873cb964f56dff4f41531446368148c26638391d71fdfd79c247b705eb",
-    "src/styles/VideoPreview.css": "7602c8b69087e1b9b5077288323fa97edd929243cc470b00167a5eaf0166844a",
+    "src/styles/VideoPreview.css": "f4513dc2473a2539cb83cb62a557d08a926200e370fc479d093424c06b3b29fa",
     "src/styles/VideoPreviewPanel.css": "3df808c38ba68ff000b155302cfb7215cc44cfc1bef5662b9db5abfddecfb60e",
     "src/styles/VideoProcessingOptionsModal.css": "75c66b2ee9361b7f88583960b6f63a904791850c8df3c49b2cbaea73e7b0a492",
     "src/styles/VideoQualityModal.css": "50a5d913e1a85ff120420f331fc173fdf927a389148294d7041b8aca419a3c31",
@@ -2252,12 +2252,14 @@
       ]
     },
     "src/i18n/locales/en/videoPreview.json": {
-      "hash": "32a1fb38e2103ede6848936f391131f7690c00dea4f57f7f8cdac4bd4344fd56",
+      "hash": "ef88733278c416db7923b73d4257bfae2f72b8b7468539a31f08218491984da4",
       "keys": [
         "noSubtitlesToRender",
         "noTranslatedSubtitles",
         "renderError",
-        "rendering"
+        "rendering",
+        "retrySubtitlePreview",
+        "subtitlePreviewUnavailable"
       ]
     },
     "src/i18n/locales/en/videoQuality.json": {
@@ -4798,12 +4800,14 @@
       ]
     },
     "src/i18n/locales/ko/videoPreview.json": {
-      "hash": "682e7c165ab945276996ab92c69ad92fec97bc041a990d487ad76cddaa6bb991",
+      "hash": "7445610b9e12a389b8c6daf2cfb4499835aa648a7d771ea70e5030a9d8e076c2",
       "keys": [
         "noSubtitlesToRender",
         "noTranslatedSubtitles",
         "renderError",
-        "rendering"
+        "rendering",
+        "retrySubtitlePreview",
+        "subtitlePreviewUnavailable"
       ]
     },
     "src/i18n/locales/ko/videoQuality.json": {
@@ -7440,12 +7444,14 @@
       ]
     },
     "src/i18n/locales/vi/videoPreview.json": {
-      "hash": "0bee429330b1bb2b30796381808a79f9d5967d1626729915ebb1e7a5816f0272",
+      "hash": "8a832d77f511d611b54d537c8e60d735ef5cf7ff8aa662d54cce9c890f193994",
       "keys": [
         "noSubtitlesToRender",
         "noTranslatedSubtitles",
         "renderError",
-        "rendering"
+        "rendering",
+        "retrySubtitlePreview",
+        "subtitlePreviewUnavailable"
       ]
     },
     "src/i18n/locales/vi/videoQuality.json": {
@@ -8615,10 +8621,17 @@
       ]
     },
     "src/components/previews/native/NativeCompositedFrame.js": {
-      "hash": "c70b5c5381574b2fd5d3ccd2d627a4e7b6dc961dea852eb868869d0ddcd12e6f",
+      "hash": "3b4a21a770a18f8c159d10be8ec46a60c2d6dce922af820d32f3822d055e3f1f",
       "rootCount": 1,
       "roots": [
-        "b9ae16e4dca08e8a7dbd537c6f32ba4178c230e7c8116d6fcda404e6015f3f13"
+        "6f23be1276c7039381c03854e262ba25c287e94b865a2080c7e79a05ce768bff"
+      ]
+    },
+    "src/components/previews/native/NativePreviewUnavailable.js": {
+      "hash": "0ff2f970e4f58b01c76eb96080eb046e66871b5ca4f60681f149718a5ec3cb17",
+      "rootCount": 1,
+      "roots": [
+        "0fd14e6c49fe8eb6598bc83da974d52f61c12125b71c7e2a9243b8333a11b1e7"
       ]
     },
     "src/components/previews/NativeRenderPreview.js": {
@@ -8634,21 +8647,6 @@
       "rootCount": 1,
       "roots": [
         "76d8bb7cd87a0735ac6e4bd94475254c95da8df01eb3242a5eaf85c9d62b8adc"
-      ]
-    },
-    "src/components/previews/SubtitleDisplay.js": {
-      "hash": "67f937607433c19cebfbec2cd4a67b130598daa0075eedcd201e73eb782efd5b",
-      "rootCount": 1,
-      "roots": [
-        "671e452a1456eec51d9c45fec9d9486bf5a7e4136c2631848a5400991c66d1c7"
-      ]
-    },
-    "src/components/previews/SubtitlesPreview.js": {
-      "hash": "6e2432a0e71ff87428a2fffe4d24a32c469f560f145340fa7fecc60e07c0cab7",
-      "rootCount": 2,
-      "roots": [
-        "4ab73a05db0478f2f0f3c8daa062d8b27231db9d36b30fc02ba3fd50123daf65",
-        "497baee720ea6dc1335eed381364ea8759926a2471068b3420a178a64f0822d0"
       ]
     },
     "src/components/previews/VideoBottomControls.js": {
@@ -8680,10 +8678,10 @@
       ]
     },
     "src/components/previews/VideoPreview.js": {
-      "hash": "1b79750cb1a022351cc569d65f5c50b4819210f4ef6d39890ab5e5436260e351",
+      "hash": "313bf3131622b2c908fdd1d64f4a5f2ecd0ac3b575e8d83d965aef2021bc9fc3",
       "rootCount": 1,
       "roots": [
-        "a52ef60400e74b9cd717a532a1932ed15a256ba422850274e9db26a35144e8cb"
+        "fbcc00b8a158cdd9bce0ee660157e03798dc06d69eeafdb9fbf9c586e799bac7"
       ]
     },
     "src/components/previews/VideoTopsideButtons.js": {
