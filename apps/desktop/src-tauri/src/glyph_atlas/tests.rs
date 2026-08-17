@@ -383,3 +383,41 @@ fn a_staged_atlas_is_never_formatted_into_a_log() {
     store.stage(atlas).expect("stage");
     assert!(!format!("{store:?}").contains(MARKER_FAMILY));
 }
+
+/// The byte budget the WebView bakes against is the byte budget this registry will hold.
+///
+/// The baker splits a cue list into pages and refuses a document whose pages would exceed
+/// `maxTotalAtlasBytes`; this registry evicts by least recent use once `MAX_STAGED_BYTES` is passed.
+/// If this side's number were the smaller, an export would stage its own earlier pages out of the
+/// registry while staging its later ones, and `render_start` would then refuse a page the WebView
+/// had every reason to believe was there — a failure neither side could explain.
+///
+/// Read out of the baker's own source rather than transcribed, for the same reason
+/// `crates/osg-scene/tests/glyph/bounds.rs` reads the eleven bounds it mirrors: a number copied into
+/// a second file drifts, and this one drifted into existence precisely because it was new.
+#[test]
+fn the_staging_budget_matches_the_baker_the_pages_come_from() {
+    const BAKER: &str = include_str!("../../../../../src/platform/glyphAtlas.js");
+    const STAGER: &str = include_str!("../../../../../src/platform/glyphAtlasStaging.js");
+
+    let limit = |source: &str, name: &str| -> u64 {
+        let needle = format!("{name}:");
+        let start = source
+            .find(&needle)
+            .unwrap_or_else(|| panic!("{name} must exist"))
+            + needle.len();
+        let rest = &source[start..];
+        let end = rest.find(',').expect("the limit must be terminated");
+        rest[..end]
+            .replace('_', "")
+            .trim()
+            .parse()
+            .expect("a whole-number limit")
+    };
+
+    assert_eq!(limit(BAKER, "maxTotalAtlasBytes"), MAX_STAGED_BYTES);
+    assert_eq!(
+        limit(STAGER, "maxStagedAtlases"),
+        u64::try_from(MAX_STAGED_ATLASES).expect("bound"),
+    );
+}

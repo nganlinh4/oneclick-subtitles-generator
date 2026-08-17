@@ -3,7 +3,7 @@
 use osg_scene::glyph::{
     AtlasGlyph, CellAdvanceLayout, FaceStyle, GLYPH_ATLAS_VERSION, GlyphAtlasDescriptor,
     GlyphAtlasError, MAX_ATLAS_DIMENSION_PX, MAX_BYTES_PER_ROW, MAX_CLUSTER_CODE_POINTS,
-    MAX_FAMILY_CHARACTERS, MAX_FONT_SIZE_PX, MAX_GLYPH_COUNT, MAX_LAYOUT_CELLS,
+    MAX_ATLAS_PAGES, MAX_FAMILY_CHARACTERS, MAX_FONT_SIZE_PX, MAX_GLYPH_COUNT, MAX_LAYOUT_CELLS,
     MAX_LAYOUT_COORDINATE_PX, MAX_LAYOUT_LINES, MAX_LAYOUT_WIDTH_PX, MAX_LETTER_SPACING_PX,
     MAX_PADDING_PX, MAX_PIXEL_BYTES, MAX_TEXT_CODE_POINTS, MIN_FONT_SIZE_PX, MIN_LETTER_SPACING_PX,
     UncheckedGlyphAtlas,
@@ -33,6 +33,16 @@ fn the_mirrored_limits_match_the_baker() {
     assert_eq!(
         baker_count("maxGlyphCount"),
         u64::try_from(MAX_GLYPH_COUNT).expect("bound")
+    );
+    // How many pages a document may need. Together with `maxGlyphCount` above this is what decides
+    // whether a large-character-set document exports at all, and a document past it is refused
+    // rather than drawn with glyphs missing — so the two sides disagreeing would mean the WebView
+    // bakes a page count this side will not accept, which the user would meet as a failed export.
+    // The companion BYTE budget lives in the desktop crate, which owns the registry that holds the
+    // pages, and is pinned there.
+    assert_eq!(
+        baker_count("maxAtlasPages"),
+        u64::try_from(MAX_ATLAS_PAGES).expect("bound")
     );
     assert_eq!(
         baker_count("maxClusterCodePoints"),
