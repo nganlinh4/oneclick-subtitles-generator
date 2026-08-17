@@ -232,9 +232,12 @@ export const RENDER_PARITY_LEDGER = Object.freeze({
   shakeIntensity: inert('Validated and persisted end to end, with no render effect and no UI.'),
 
   // ---- Identity ------------------------------------------------------------------------------
-  preset: native(
-    'src/components/subtitleCustomization',
-    'A label carried with the project. It selects field values rather than rendering anything.',
+  preset: inert(
+    'A label carried with the project. Applying a preset writes the fields it names, and those '
+    + 'fields render; the label itself reaches no renderer and changing it alone changes no pixel. '
+    + 'It was classified `native` on the strength of what applying one does, which is the mistake '
+    + 'this classification exists to prevent — `native` means the gate can prove the field moves '
+    + 'the picture, and this one cannot, because it does not.',
   ),
 });
 
@@ -250,7 +253,12 @@ export const RENDER_OUTPUT_PARITY_LEDGER = Object.freeze({
   ),
   frameRate: native(
     'crates/osg-scene/src/timeline.rs',
-    'Exact rational time, so 29.97 is 30000/1001 rather than a float that drifts.',
+    'The timeline is exact rational time rather than a float that drifts, so frame instants do not '
+    + 'accumulate error however long the export. The persisted field is an integer restricted to '
+    + '24, 25, 30, 50, 60 and 120 by `crates/osg-render/src/contract.rs`, and the conversion builds '
+    + 'the timeline with a denominator of 1 — so every rate this field can select is a whole '
+    + 'number. This entry used to cite 29.97 as 30000/1001, which the timeline can represent and '
+    + 'this field cannot reach; the claim was true of the machinery and false of the setting.',
   ),
 
   // ---- Audio ---------------------------------------------------------------------------------
@@ -311,10 +319,15 @@ export const RENDER_OUTPUT_PARITY_LEDGER = Object.freeze({
     + 'conversion instead of silently exporting darker than it previewed.',
   ),
   canvasBgBlur: native(
-    'crates/osg-compositor',
-    'A bounded separable two-pass Gaussian. The stored range reaches 1000 but the applied sigma '
-    + 'clamps to 40, because beyond that the backdrop is already an unrecognisable wash and the '
-    + 'per-frame cost would grow without limit. A stored 200 renders as 40.',
+    'crates/osg-compositor/src/crop.rs',
+    'A bounded separable two-pass Gaussian. The stored value is a CSS blur RADIUS — the shipped '
+    + 'renderer interpolates it into `blur(${canvasBgBlur}px)` — and CSS defines that as a Gaussian '
+    + 'of HALF the length, so the applied sigma is the stored value halved. This entry previously '
+    + 'described only the clamp, and the compositor applied the stored value as the sigma directly: '
+    + 'the backfill rendered at twice the blur the editor showed, at every value a user can pick. '
+    + 'It was found by an adversarial review rather than by a test, because the only committed blur '
+    + 'assertions were the clamped extreme and zero, which are identical either way. The stored '
+    + 'range reaches 1000 but the sigma clamps to 40, so clamping begins at a stored 80.',
   ),
   flipX: native(
     'crates/osg-compositor',

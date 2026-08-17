@@ -70,6 +70,11 @@ pub(crate) fn inert_probes() -> Vec<(&'static str, Value)> {
         ("lineBreakBehavior", json!("manual")),
         ("maxLines", json!(1)),
         ("multiShadowEnabled", json!(true)),
+        // The label a project carries. Applying a preset writes the fields it names and those
+        // fields render; the label reaches no renderer, so switching it alone must move nothing.
+        // It was classified `native` until an adversarial review pointed out that `native` is a
+        // claim the gate can PROVE by moving the picture, and this one cannot be.
+        ("preset", json!("neon")),
         ("pulseEnabled", json!(true)),
         ("pulseSpeed", json!(4.0)),
         ("shadowLayers", json!(8)),

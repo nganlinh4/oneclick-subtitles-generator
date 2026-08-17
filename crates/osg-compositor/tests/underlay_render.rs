@@ -154,10 +154,15 @@ fn a_blur_backfill_differs_from_a_solid_one_and_is_bounded() {
 
     // Bounded: the stored maximum and the compositor's own ceiling must render the same bytes,
     // which is only true if the radius stopped growing at the ceiling.
+    //
+    // The stored value is a CSS blur RADIUS and the ceiling is a standard DEVIATION, so the stored
+    // value that first reaches the ceiling is twice it. This test used to pass the ceiling itself as
+    // the stored value and pass — which it did only because the compositor was applying the radius
+    // as the sigma, rendering the backfill at twice the blur the editor showed.
     let at_ceiling = compositor
         .render_scene_over(
             &scene,
-            &overhanging(Some("blur"), None, Some(MAX_CANVAS_BLUR_SIGMA)),
+            &overhanging(Some("blur"), None, Some(MAX_CANVAS_BLUR_SIGMA * 2.0)),
             SILENT_FRAME,
         )
         .expect("composition succeeds");

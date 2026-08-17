@@ -2138,7 +2138,7 @@
     },
     {
       "field": "preset",
-      "disposition": "native",
+      "disposition": "inert",
       "default": "default",
       "values": [
         "default"

@@ -29,14 +29,32 @@ const MAX_CROP_EXTENT: f64 = 1_000.0;
 /// The largest blur the editor may store, as a percentage-free pixel radius.
 const MAX_STORED_BLUR: f64 = 1_000.0;
 
-/// The blur the shipped renderer falls back to when `canvasBgBlur` is absent.
+/// The blur the shipped renderer falls back to when `canvasBgBlur` is absent, as a CSS blur RADIUS.
+///
+/// It is a radius and not a standard deviation, which is the whole reason [`CSS_BLUR_TO_SIGMA`]
+/// exists — see the conversion at [`resolve_canvas`].
 pub const DEFAULT_CANVAS_BLUR: f64 = 24.0;
+
+/// A CSS blur radius is twice the Gaussian standard deviation it means.
+///
+/// `filter: blur(<length>)` is defined as `feGaussianBlur` with `stdDeviation = length / 2`, and the
+/// persisted `canvasBgBlur` is that length: the shipped renderer interpolates it straight into
+/// `blur(${canvasBgBlur}px)`. Applying it as a sigma renders the backfill at twice the blur the
+/// editor showed — which is what this compositor did until the divergence was found, at every value
+/// a user can actually pick.
+///
+/// `crates/osg-compositor/src/decoration.rs` carries the same constant for the text shadow and the
+/// glow, which are CSS blur radii for the same reason. It is duplicated rather than shared because
+/// the two modules own different halves of the shipped style and neither should depend on the other
+/// for a definition that belongs to CSS.
+const CSS_BLUR_TO_SIGMA: f64 = 0.5;
 
 /// The largest blur standard deviation the compositor will actually apply, in output pixels.
 ///
-/// The stored field accepts up to 1000, which as a Gaussian would be a 6001-tap kernel per axis for
-/// a backdrop that is already an unrecognisable wash by a fraction of that. The value is clamped
-/// rather than refused, because refusing would reject a setting the editor legitimately stores.
+/// The stored field accepts up to 1000, which even halved into a sigma would be a 3001-tap kernel
+/// per axis for a backdrop that is already an unrecognisable wash by a fraction of that. The value
+/// is clamped rather than refused, because refusing would reject a setting the editor legitimately
+/// stores. Clamping therefore begins at a stored radius of 80.
 pub const MAX_CANVAS_BLUR_SIGMA: f64 = 40.0;
 
 /// The largest kernel half-width, in output pixels. `ceil(3 * MAX_CANVAS_BLUR_SIGMA)`.
@@ -267,7 +285,7 @@ fn resolve_background(spec: &CropSpec) -> Result<CanvasBackground, CompositorErr
                 return Err(Rejection::CropCanvasBlur.into());
             }
             Ok(CanvasBackground::Blur {
-                sigma_px: stored.min(MAX_CANVAS_BLUR_SIGMA),
+                sigma_px: (stored * CSS_BLUR_TO_SIGMA).min(MAX_CANVAS_BLUR_SIGMA),
             })
         }
         _ => Err(Rejection::CropCanvasMode.into()),
@@ -276,7 +294,10 @@ fn resolve_background(spec: &CropSpec) -> Result<CanvasBackground, CompositorErr
 
 #[cfg(test)]
 mod tests {
-    use super::{CanvasBackground, Crop, CropSpec, MAX_CANVAS_BLUR_RADIUS, MAX_CANVAS_BLUR_SIGMA};
+    use super::{
+        CanvasBackground, Crop, CropSpec, DEFAULT_CANVAS_BLUR, MAX_CANVAS_BLUR_RADIUS,
+        MAX_CANVAS_BLUR_SIGMA,
+    };
     use crate::error::{CompositorError, Rejection};
 
     fn refusal(spec: &CropSpec) -> Rejection {
@@ -381,6 +402,38 @@ mod tests {
             }),
             Rejection::CropCanvasColor
         );
+    }
+
+    /// The stored field is a CSS blur RADIUS and the shader wants a standard deviation.
+    ///
+    /// This is pinned at the values a user actually picks, because the bound test below pins only
+    /// the clamped extreme and zero — and both of those are identical whether or not the conversion
+    /// is applied. That is exactly how the compositor came to render this backfill at twice the
+    /// blur the editor showed, across the entire usable range, with a green suite.
+    #[test]
+    fn a_stored_blur_is_a_css_radius_and_becomes_half_of_it() {
+        let sigma_for = |stored: f64| {
+            let crop = Crop::resolve(&CropSpec {
+                canvas_bg_mode: Some("blur".to_owned()),
+                canvas_bg_blur: Some(stored),
+                ..CropSpec::default()
+            })
+            .expect("a stored blur inside the range is accepted");
+            match crop.background() {
+                CanvasBackground::Blur { sigma_px } => sigma_px,
+                other => panic!("expected a blur background, got {other:?}"),
+            }
+        };
+
+        // The default the shipped renderer falls back to: `blur(24px)`, which is sigma 12.
+        assert!((sigma_for(DEFAULT_CANVAS_BLUR) - 12.0).abs() < f64::EPSILON);
+        assert!((sigma_for(0.0) - 0.0).abs() < f64::EPSILON);
+        assert!((sigma_for(1.0) - 0.5).abs() < f64::EPSILON);
+        assert!((sigma_for(50.0) - 25.0).abs() < f64::EPSILON);
+        // The clamp begins at a stored radius of 80, not 40.
+        assert!((sigma_for(79.0) - 39.5).abs() < f64::EPSILON);
+        assert!((sigma_for(80.0) - MAX_CANVAS_BLUR_SIGMA).abs() < f64::EPSILON);
+        assert!((sigma_for(81.0) - MAX_CANVAS_BLUR_SIGMA).abs() < f64::EPSILON);
     }
 
     #[test]

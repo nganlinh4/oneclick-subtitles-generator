@@ -92,9 +92,14 @@ describe('render parity ledger', () => {
   });
 
   it('keeps the inert fields inert so saved projects still round-trip', () => {
-    // These ten are validated and persisted end to end but have never rendered anything. Removing
-    // them would break existing project files; implementing them would change existing projects'
+    // These are validated and persisted end to end but have never rendered anything. Removing them
+    // would break existing project files; implementing them would change existing projects'
     // appearance. Both are decisions, and neither is one to make by accident.
+    //
+    // `preset` joined the list after an adversarial review: it was classified `native` on the
+    // strength of what APPLYING a preset does, when the label itself reaches no renderer. `native`
+    // is the disposition the gate can prove by moving the picture, so a field that cannot move it
+    // does not belong there however real its effect on the fields it writes.
     const inert = Object.keys(RENDER_PARITY_LEDGER)
       .filter(field => RENDER_PARITY_LEDGER[field].disposition === 'inert')
       .sort();
@@ -105,6 +110,7 @@ describe('render parity ledger', () => {
       'lineBreakBehavior',
       'maxLines',
       'multiShadowEnabled',
+      'preset',
       'pulseEnabled',
       'pulseSpeed',
       'shadowLayers',
