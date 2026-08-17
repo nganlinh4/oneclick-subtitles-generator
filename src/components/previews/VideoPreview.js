@@ -7,7 +7,6 @@ import VideoTopsideButtons from './VideoTopsideButtons';
 import { narrationRefreshHandler } from './narrationRefreshHandler';
 import VideoBottomControls from './VideoBottomControls';
 import SeekIndicator from './SeekIndicator';
-import SubtitleDisplay from './SubtitleDisplay';
 import VideoPlayerStyles from './VideoPlayerStyles';
 import VideoPlayerElement from './VideoPlayerElement';
 import useVideoControls from './useVideoControls';
@@ -15,10 +14,11 @@ import useFullscreenSubtitles from './useFullscreenSubtitles';
 import useVideoSeek from './useVideoSeek';
 import useVideoSourceLoading from './useVideoSourceLoading';
 import useVideoSourceSwitching from './useVideoSourceSwitching';
-import useVideoSubtitleSync from './useVideoSubtitleSync';
+import useVideoElementEvents from './useVideoElementEvents';
 import useNarrationRefreshEvents from './useNarrationRefreshEvents';
 import useVideoUiSync from './useVideoUiSync';
 import NativeCompositedFrame from './native/NativeCompositedFrame';
+import NativePreviewUnavailable from './native/NativePreviewUnavailable';
 import useNativePreview from './native/useNativePreview';
 import {
   EDITOR_PREVIEW_FRAME_RATE,
@@ -26,6 +26,7 @@ import {
   createDownloadWithSubtitlesHandler,
   createDownloadWithTranslatedSubtitlesHandler,
   previewCustomizationForNativeRender,
+  translatedSubtitlesForRender,
 } from './videoDownloadHandlers';
 // Narration settings now integrated into the translation section
 import '../../styles/VideoPreview.css';
@@ -85,11 +86,6 @@ const VideoPreview = ({ currentTime, setCurrentTime, setDuration, videoSource, f
 
   // Volume-from-narration-menu sync + compact-mode detection.
   useVideoUiSync({ videoRef, isMuted, setVolume, setIsMuted, setIsCompactMode });
-
-  // State for custom subtitle display
-  const [currentSubtitleText, setCurrentSubtitleText] = useState('');
-
-  // Native track subtitles disabled - using only custom subtitle display
 
   const [subtitleSettings, setSubtitleSettings] = useState(() => {
     // Try to load settings from localStorage
@@ -198,9 +194,9 @@ const VideoPreview = ({ currentTime, setCurrentTime, setDuration, videoSource, f
     setIsPlaying,
   });
 
-  // Native <video> element events: metadata/error/timeupdate (subtitle sync) +
-  // seeking/seeked + play-state ref tracking.
-  useVideoSubtitleSync({
+  // Native <video> element events: metadata/error/timeupdate (the playhead) +
+  // seeking/seeked + play-state ref tracking. It resolves no cue and draws nothing.
+  useVideoElementEvents({
     videoRef,
     videoUrl,
     t,
@@ -208,15 +204,11 @@ const VideoPreview = ({ currentTime, setCurrentTime, setDuration, videoSource, f
     setIsLoaded,
     setDuration,
     setCurrentTime,
-    setCurrentSubtitleText,
     seekLockRef,
     lastTimeUpdateRef,
     lastPlayStateRef,
     isDragging,
     onSeek,
-    subtitlesArray,
-    translatedSubtitles,
-    subtitleSettings,
   });
 
   // Aligned-narration event wiring + audio cleanup on unmount.
@@ -239,12 +231,32 @@ const VideoPreview = ({ currentTime, setCurrentTime, setDuration, videoSource, f
     [subtitleSettings]
   );
 
+  // WHICH cue list the compositor draws, decided the way the download decides it.
+  //
+  // This used to be a real defect rather than a subtlety: the native frame was fed `subtitlesArray`
+  // unconditionally while the CSS overlay picked the translation, so with "show translated
+  // subtitles" on the two layers of the same surface showed different words. Deleting the overlay
+  // without moving the choice here would have silently dropped the translated preview entirely.
+  //
+  // The re-timing is the download handler's, from the download handler's own function: a translation
+  // is composed on the ORIGINAL cue's timing, so the frame the user judges is composed from exactly
+  // the cue list the file would be written from.
+  const previewSubtitles = useMemo(() => {
+    const showTranslated = subtitleSettings.showTranslatedSubtitles
+      && Array.isArray(translatedSubtitles)
+      && translatedSubtitles.length > 0;
+    return showTranslated
+      ? translatedSubtitlesForRender(translatedSubtitles, subtitlesArray)
+      : subtitlesArray;
+  }, [subtitleSettings.showTranslatedSubtitles, translatedSubtitles, subtitlesArray]);
+
   // Paused, scrubbing and every style adjustment show the natively composited frame — the surfaces
   // where the user judges the output. Continuous playback keeps the <video> and lays the native
   // SUBTITLE LAYER over it: the same compositor, the cheaper last blend, done by the browser rather
-  // than by us and therefore close rather than exact. The CSS overlay is now only the fallback for a
-  // surface that has no native frame at all. Pausing re-renders the exact composited frame, because
-  // the frame index is a pure function of the playhead. See docs/rewrite/NATIVE_RENDERER.md.
+  // than by us and therefore close rather than exact. Nothing else on this surface draws a subtitle
+  // at all, so when no native frame is on screen the <video> shows unsubtitled and the surface says
+  // so. Pausing re-renders the exact composited frame, because the frame index is a pure function of
+  // the playhead. See docs/rewrite/NATIVE_RENDERER.md.
   //
   // No trim is passed, and that is this surface's answer rather than an omission: the editor's
   // preview is of the whole source, so its composition is the untrimmed one. The render tab is where
@@ -256,12 +268,30 @@ const VideoPreview = ({ currentTime, setCurrentTime, setDuration, videoSource, f
     videoRef,
     sourceKey: videoUrl,
     customization: nativeCustomization,
-    subtitles: subtitlesArray,
+    subtitles: previewSubtitles,
     resolution: EDITOR_PREVIEW_RESOLUTION,
     frameRate: EDITOR_PREVIEW_FRAME_RATE,
     durationSeconds: videoDuration,
     currentTime: isDragging ? dragTime : currentTime,
   });
+
+  // The compositor asked for nothing, and nothing else here would draw a subtitle if it had.
+  //
+  // Dormancy is not failure — no desktop runtime, no resolved project/media, no decoded source size,
+  // no resolvable font face are all states in which no honest frame exists — but it is not silence
+  // either, now that the CSS overlay is gone: a video with no subtitles on it and no explanation
+  // reads as "my subtitles disappeared". So the surface states it.
+  //
+  // The source's own loading is excluded deliberately. Until the `<video>` can play, the preview has
+  // not started rather than being unavailable, and claiming otherwise would flash a contradiction
+  // over an editor that is about to work. `outsideTrim` is excluded for the opposite reason: there
+  // the bare `<video>` is the deliberate, correct answer, not a missing subtitle.
+  const subtitlePreviewDormant = Boolean(videoUrl)
+    && isLoaded
+    && !isVideoLoading
+    && nativePreview.status === 'idle'
+    && nativePreview.error === null
+    && !nativePreview.outsideTrim;
 
   // Handle downloading video with subtitles
   const handleDownloadWithSubtitles = createDownloadWithSubtitlesHandler({
@@ -376,14 +406,17 @@ const VideoPreview = ({ currentTime, setCurrentTime, setDuration, videoSource, f
         {error && <div className="error">{error}</div>}
 
         {/* A native refusal is stated, never shown as a blank frame: an empty preview reads as an
-            empty subtitle. The code is a stable identifier and carries no path, no native message
-            and none of the user's text. */}
-        {nativePreview.error && (
-          <div className="error">
-            {t('videoPreview.renderError', 'Error rendering subtitles: {{error}}', {
-              error: nativePreview.error.nativeCode ?? nativePreview.error.code,
-            })}
-          </div>
+            empty subtitle. Dormancy is stated in its own words beside it, because "nothing was
+            asked for" and "what was asked for was refused" are different facts and only the second
+            one has a recovery. The retry releases the preview surface, which is what a lost
+            graphics device needs and the only thing that lifts it for this project/media pair. */}
+        {(nativePreview.error !== null || subtitlePreviewDormant) && (
+          <NativePreviewUnavailable
+            code={nativePreview.error === null
+              ? null
+              : nativePreview.error.nativeCode ?? nativePreview.error.code}
+            onRetry={nativePreview.error === null ? null : nativePreview.releaseSurface}
+          />
         )}
 
         {/* Only show downloading UI if we're actually downloading and have progress > 0 */}
@@ -443,22 +476,16 @@ const VideoPreview = ({ currentTime, setCurrentTime, setDuration, videoSource, f
                   t={t}
                 />
 
-                {/* The native frame. Paused, scrubbing or adjusting a style it is the composited
-                    one, and when it is on screen it IS the exported pixel; during continuous
-                    playback it is the subtitle layer alone, transparent over the <video> beneath.
-                    The CSS overlay is the fallback rather than a layer under either, so it is drawn
-                    only while no native frame has decoded — before the first one arrives, or while
-                    the compositor is unavailable for this source. */}
+                {/* The native frame, and the only thing on this surface that draws a subtitle.
+                    Paused, scrubbing or adjusting a style it is the composited one, and when it is
+                    on screen it IS the exported pixel; during continuous playback it is the subtitle
+                    layer alone, transparent over the <video> beneath. There is no second layer under
+                    either: when no native frame has decoded the <video> shows unsubtitled and the
+                    notice above the player says why. */}
                 <NativeCompositedFrame
                   frame={nativePreview.frame}
                   visible={!nativePreview.outsideTrim}
                   onLoadError={nativePreview.onFrameLoadError}
-                  fallback={(
-                    <SubtitleDisplay
-                      currentSubtitleText={currentSubtitleText}
-                      subtitleSettings={subtitleSettings}
-                    />
-                  )}
                 />
 
                 <SeekIndicator showSeekIndicator={showSeekIndicator} seekDirection={seekDirection} />

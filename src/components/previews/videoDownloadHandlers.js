@@ -71,6 +71,44 @@ export const normalizePreviewRenderLyrics = (subtitles) => subtitles.map((subtit
 export const EDITOR_PREVIEW_RESOLUTION = '1080p';
 export const EDITOR_PREVIEW_FRAME_RATE = 30;
 
+/**
+ * The translated cue list as the export composes it: translated text on the ORIGINAL cue's timing.
+ *
+ * A translation carries the text and, when the translator produced one, an `originalId` naming the
+ * cue it came from — but its own timing is frequently absent or in the string form the editor uses
+ * elsewhere. Resolving that is not a detail of downloading; it decides which words are on screen at
+ * which instant, so the preview asks this same function rather than composing the raw translation at
+ * whatever timings it happens to carry. Two answers to that question is how a preview and its export
+ * disagree while both look correct.
+ */
+export const translatedSubtitlesForRender = (translatedSubtitles, subtitlesArray) => (
+  translatedSubtitles.map((sub) => {
+    // A translation that names its original is timed by that original, whatever it carries itself.
+    if (sub.originalId && subtitlesArray) {
+      const originalSub = subtitlesArray.find((s) => s.id === sub.originalId);
+      if (originalSub) {
+        return {
+          id: sub.id,
+          start: originalSub.start,
+          end: originalSub.end,
+          text: sub.text,
+        };
+      }
+    }
+
+    if (sub.start !== undefined && sub.end !== undefined) {
+      return sub;
+    }
+
+    return {
+      id: sub.id,
+      start: typeof sub.startTime === 'string' ? convertTimeStringToSeconds(sub.startTime) : 0,
+      end: typeof sub.endTime === 'string' ? convertTimeStringToSeconds(sub.endTime) : 0,
+      text: sub.text,
+    };
+  })
+);
+
 export const previewCustomizationForNativeRender = (settings = {}) => {
   const position = boundedNumber(settings.position, 90, 0, 100);
   const textAlign = ['left', 'center', 'right'].includes(settings.textAlign)
@@ -255,36 +293,8 @@ export const createDownloadWithTranslatedSubtitlesHandler = ({
   setError('');
 
   try {
-    // Convert translatedSubtitles to the format expected by renderSubtitlesToVideo
-    // Use original subtitle timings when available
-    const formattedSubtitles = translatedSubtitles.map(sub => {
-      // If this subtitle has an originalId, find the corresponding original subtitle
-      if (sub.originalId && subtitlesArray) {
-        const originalSub = subtitlesArray.find(s => s.id === sub.originalId);
-        if (originalSub) {
-          // Use the original subtitle's timing
-          return {
-            id: sub.id,
-            start: originalSub.start,
-            end: originalSub.end,
-            text: sub.text
-          };
-        }
-      }
-
-      // If the subtitle already has start/end properties, use them
-      if (sub.start !== undefined && sub.end !== undefined) {
-        return sub;
-      }
-
-      // Otherwise, convert from startTime/endTime format
-      return {
-        id: sub.id,
-        start: typeof sub.startTime === 'string' ? convertTimeStringToSeconds(sub.startTime) : 0,
-        end: typeof sub.endTime === 'string' ? convertTimeStringToSeconds(sub.endTime) : 0,
-        text: sub.text
-      };
-    });
+    // The same cue list the editor's preview composes, from the same function.
+    const formattedSubtitles = translatedSubtitlesForRender(translatedSubtitles, subtitlesArray);
 
     if (isDesktopRuntime()) {
       await renderAndExportDesktopPreview({

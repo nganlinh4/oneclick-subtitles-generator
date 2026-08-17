@@ -1,5 +1,5 @@
-import { readFileSync, existsSync, statSync } from 'node:fs';
-import { dirname, resolve } from 'node:path';
+import { readFileSync, existsSync, globSync, statSync } from 'node:fs';
+import { dirname, relative, resolve } from 'node:path';
 
 import { fireEvent, render, screen } from '@testing-library/react';
 import { describe, expect, it, vi } from 'vitest';
@@ -26,6 +26,17 @@ const resolveImport = (specifier, fromFile) => {
   return null;
 };
 
+/**
+ * Source with its comments removed, for the guards that search text rather than structure.
+ *
+ * These files explain what they no longer do — naming the deleted `#fullscreen-subtitle` builder and
+ * the `.custom-subtitle` overlay is the point of those comments — and a guard that the explanation
+ * itself trips is a guard the next person deletes rather than fixes.
+ */
+const withoutComments = (source) => source
+  .replace(/\/\*[\s\S]*?\*\//g, '')
+  .replace(/(^|[^:'"`\\])\/\/[^\n]*/g, '$1');
+
 /** Every module statically reachable from `entry`, plus every bare specifier it pulls in. */
 const moduleGraph = (entry) => {
   const files = new Set();
@@ -48,16 +59,32 @@ const moduleGraph = (entry) => {
   return { files: [...files].map((file) => file.replace(/\\/g, '/')), packages };
 };
 
-describe('the second subtitle-drawing implementation is unreachable from the editor', () => {
+describe('no WebView subtitle compositor is reachable from the editor', () => {
   const surfaces = [
     'src/components/previews/VideoPreview.js',
     'src/components/VideoRenderingSection/PreviewCustomizationRow.js',
   ];
 
-  it.each(surfaces)('%s reaches neither Remotion component', (entry) => {
+  /**
+   * Every implementation that has ever drawn a subtitle's APPEARANCE in the WebView.
+   *
+   * `SubtitleDisplay` is deleted rather than merely unimported, because it was the one that could
+   * come back by accident: it was wired in as the composited frame's fallback, so it drew whenever
+   * the compositor did not, and a preview that silently changes renderer is the exact disagreement
+   * with the export this migration removes. The two Remotion modules are still in the tree and only
+   * unreachable, which is why both facts are checked separately below.
+   */
+  const WEBVIEW_SUBTITLE_COMPOSITORS = [
+    '/components/RemotionVideoPreview.js',
+    '/components/SubtitledVideoComposition.js',
+    '/components/previews/SubtitleDisplay.js',
+  ];
+
+  it.each(surfaces)('%s reaches no module that draws a subtitle itself', (entry) => {
     const { files } = moduleGraph(entry);
-    expect(files.some((file) => file.endsWith('/components/RemotionVideoPreview.js'))).toBe(false);
-    expect(files.some((file) => file.endsWith('/components/SubtitledVideoComposition.js'))).toBe(false);
+    for (const compositor of WEBVIEW_SUBTITLE_COMPOSITORS) {
+      expect(files.some((file) => file.endsWith(compositor))).toBe(false);
+    }
   });
 
   it.each(surfaces)('%s pulls in no Remotion package', (entry) => {
@@ -68,6 +95,58 @@ describe('the second subtitle-drawing implementation is unreachable from the edi
   it('leaves both Remotion modules in the tree, because their removal is gated on the parity run', () => {
     expect(existsSync(resolve(ROOT, 'src/components/RemotionVideoPreview.js'))).toBe(true);
     expect(existsSync(resolve(ROOT, 'src/components/SubtitledVideoComposition.js'))).toBe(true);
+  });
+
+  it('has no CSS-overlay module left to import', () => {
+    expect(existsSync(resolve(ROOT, 'src/components/previews/SubtitleDisplay.js'))).toBe(false);
+  });
+
+  /**
+   * The overlay's other half was CSS, and CSS is reachable without an import that a module graph can
+   * see: a class name in JSX, or a global selector like `::cue` that needs no class at all. So the
+   * stylesheets are read directly and required to contain no subtitle appearance of any kind.
+   *
+   * EVERY stylesheet, not the editor's own. Three of the four selectors below were found in files
+   * the video preview does not import — `.video-subtitle` in `OutputContainer.css` and in
+   * `video-player-dark-theme.css`, which `src/index.js` loads globally, and an unscoped `::cue`.
+   * All were dormant, and all would have composed a second subtitle appearance the moment someone
+   * added the class or a `<track>`. Scoping this check to one file is what let them survive.
+   */
+  it('leaves no stylesheet in the product with a subtitle appearance in it', () => {
+    // Matched as whole selectors, not as substrings. `.custom-subtitles` — plural — is the segment
+    // retry modal's textarea container, a form input the user types into, and it is in use. A guard
+    // that trips on it is a guard someone deletes instead of fixing.
+    const banned = [
+      /\.custom-subtitle(?![\w-])/,
+      /#fullscreen-subtitle(?![\w-])/,
+      /\.video-subtitle(?![\w-])/,
+      /::cue/,
+    ];
+    const stylesheets = globSync('src/styles/**/*.css', { cwd: ROOT, absolute: true });
+    expect(stylesheets.length).toBeGreaterThan(10);
+    for (const path of stylesheets) {
+      const declared = withoutComments(readFileSync(path, 'utf8'));
+      for (const selector of banned) {
+        expect(declared, `${relative(ROOT, path)} styles ${selector.source}`).not.toMatch(selector);
+      }
+    }
+  });
+
+  /**
+   * The imperative one left no import and no class behind either — it built a `#fullscreen-subtitle`
+   * div and assigned `subtitleSettings` fields straight onto `element.style` — so what is asserted
+   * is the absence of the act rather than of a module.
+   */
+  it('leaves no preview module writing subtitle style onto a DOM node', () => {
+    const { files } = moduleGraph('src/components/previews/VideoPreview.js');
+    const previewModules = files.filter((file) => file.includes('/components/previews/'));
+    expect(previewModules.length).toBeGreaterThan(0);
+    for (const file of previewModules) {
+      const source = withoutComments(readFileSync(file, 'utf8'));
+      expect(source).not.toMatch(/\bstyle\.(fontFamily|fontSize|fontWeight|textShadow|letterSpacing|textTransform)\b/);
+      expect(source).not.toContain('fullscreen-subtitle');
+      expect(source).not.toContain('custom-subtitle');
+    }
   });
 });
 
@@ -120,33 +199,23 @@ describe('the composited frame element', () => {
     expect(screen.queryByRole('img')).toBeNull();
   });
 
-  it('hands the surface over only once a real frame has decoded, so the overlay never blinks out', () => {
-    const overlay = <div data-testid="css-overlay" />;
-    const { container, rerender } = render(
-      <NativeCompositedFrame frame={null} visible fallback={overlay} />,
-    );
-    expect(screen.getByTestId('css-overlay')).toBeInTheDocument();
+  // This element used to accept a `fallback` — the CSS overlay, drawn whenever no native frame had
+  // decoded. The prop is gone with the overlay: a second implementation that draws whenever the
+  // first cannot is the disagreement with the export the migration removes, so the element now
+  // renders a native frame or nothing at all, and the surface states the unavailability in words.
+  it('renders a native frame or nothing, with no second implementation to hand over to', () => {
+    const { container, rerender } = render(<NativeCompositedFrame frame={null} visible />);
+    expect(container.querySelectorAll('img')).toHaveLength(0);
 
-    // A frame has been RETURNED but not yet decoded. Deciding the handover on the return value
-    // would blank the subtitle for exactly this interval.
-    rerender(<NativeCompositedFrame frame={frame} visible fallback={overlay} />);
-    expect(screen.getByTestId('css-overlay')).toBeInTheDocument();
-
-    fireEvent.load(container.querySelector('.native-composited-frame-pending'));
-    expect(screen.queryByTestId('css-overlay')).toBeNull();
-    expect(container.querySelector('.native-composited-frame')).not.toBeNull();
-  });
-
-  it('gives the surface back to the fallback the moment it stops being visible', () => {
-    const overlay = <div data-testid="css-overlay" />;
-    const { container, rerender } = render(
-      <NativeCompositedFrame frame={frame} visible fallback={overlay} />,
-    );
-    fireEvent.load(container.querySelector('.native-composited-frame-pending'));
-    expect(screen.queryByTestId('css-overlay')).toBeNull();
-
-    rerender(<NativeCompositedFrame frame={frame} visible={false} fallback={overlay} />);
-    expect(screen.getByTestId('css-overlay')).toBeInTheDocument();
+    // A frame has been RETURNED but not yet decoded: still nothing visible, which is why the
+    // handover is decided on decode rather than on the return value.
+    rerender(<NativeCompositedFrame frame={frame} visible />);
     expect(container.querySelector('.native-composited-frame')).toBeNull();
+
+    fireEvent.load(container.querySelector('.native-composited-frame-pending'));
+    expect(container.querySelector('.native-composited-frame')).not.toBeNull();
+
+    rerender(<NativeCompositedFrame frame={frame} visible={false} />);
+    expect(container.querySelectorAll('img')).toHaveLength(0);
   });
 });

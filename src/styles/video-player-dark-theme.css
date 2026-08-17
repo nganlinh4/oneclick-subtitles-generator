@@ -161,37 +161,13 @@ video.video-player:focus:not(:focus-visible) {
 
 /*
  * -----------------------------------------------------------------------------
- * Video Subtitle Styling
+ * Video Subtitle Styling — deliberately none
  * -----------------------------------------------------------------------------
+ * Subtitles are composed by the native renderer and arrive as a drawn frame. This stylesheet is
+ * loaded globally, so a `.video-subtitle` rule here would apply the moment anyone added that class
+ * anywhere — a second subtitle appearance the exported file could not reproduce. The rules that
+ * were here applied to nothing and were removed rather than left dormant.
  */
-.video-subtitle {
-  position: absolute;
-  bottom: 10px; /* Adjust if it overlaps with controls padding */
-  left: 50%;
-  transform: translateX(-50%);
-  width: max-content;
-  max-width: 90%;
-  padding: 0.5rem 1rem;
-  text-align: center;
-  font-size: clamp(1rem, 1.8vw, 1.25rem);
-  border-radius: 8px;
-  transition: background-color 0.3s ease, opacity 0.3s ease, transform 0.3s ease;
-  /* Subtitle text shadow for visibility, as it overlays video directly or transparent controls */
-  text-shadow: 0 1px 3px rgba(0, 0, 0, 0.7), 0 0 5px rgba(0,0,0,0.5);
-  /* Subtitle background is separate from video controls panel */
-  box-shadow: var(--md-elevation-level1); /* Shadow for the subtitle box itself */
-}
-
-[data-theme="light"] .video-subtitle {
-  background-color: rgba(var(--md-inverse-surface-rgb, 0, 0, 0), 0.75);
-  color: var(--md-inverse-on-surface, #ffffff);
-}
-
-[data-theme="dark"] .video-subtitle {
-  background-color: rgba(var(--md-surface-container-highest-rgb, 30, 30, 30), 0.85);
-  color: var(--md-on-surface, #ffffff);
-  /* text-shadow for dark theme can also use the one from the base .video-subtitle rule */
-}
 
 /*
  * -----------------------------------------------------------------------------
@@ -267,20 +243,4 @@ video.video-player:-ms-fullscreen:focus-visible {
   :-webkit-full-screen::backdrop {
     background-color: black !important;
   }
-}
-
-/* Adjust subtitle positioning in fullscreen mode */
-:fullscreen .video-subtitle,
-:-webkit-full-screen .video-subtitle,
-:-moz-full-screen .video-subtitle,
-:-ms-fullscreen .video-subtitle,
-video.video-player:fullscreen ~ .video-subtitle,
-video.video-player:-webkit-full-screen ~ .video-subtitle,
-video.video-player:-moz-full-screen ~ .video-subtitle,
-video.video-player:-ms-fullscreen ~ .video-subtitle {
-  bottom: 60px !important; /* Move up to avoid overlap with fullscreen controls */
-  font-size: clamp(1.2rem, 2.5vw, 1.8rem) !important; /* Larger font for fullscreen */
-  padding: 0.75rem 1.5rem !important; /* Larger padding for fullscreen */
-  max-width: 80% !important; /* Slightly narrower to avoid edges */
-  z-index: 9999 !important; /* Ensure subtitles are visible above all other elements */
 }

@@ -2,5 +2,7 @@
   "noSubtitlesToRender": "Không có phụ đề để hiển thị",
   "noTranslatedSubtitles": "Không có phụ đề đã dịch",
   "renderError": "Lỗi khi hiển thị phụ đề: {{error}}",
-  "rendering": "Đang xử lý video với phụ đề..."
+  "rendering": "Đang xử lý video với phụ đề...",
+  "retrySubtitlePreview": "Thử lại",
+  "subtitlePreviewUnavailable": "Không xem trước được phụ đề. Video bên dưới là video gốc, chưa có phụ đề."
 }

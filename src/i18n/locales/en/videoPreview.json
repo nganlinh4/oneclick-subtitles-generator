@@ -2,5 +2,7 @@
   "noSubtitlesToRender": "No subtitles to render",
   "renderError": "Error rendering subtitles: {{error}}",
   "noTranslatedSubtitles": "No translated subtitles available",
-  "rendering": "Rendering video with subtitles..."
+  "rendering": "Rendering video with subtitles...",
+  "retrySubtitlePreview": "Retry",
+  "subtitlePreviewUnavailable": "Subtitle preview unavailable. The video below is the source, without subtitles."
 }

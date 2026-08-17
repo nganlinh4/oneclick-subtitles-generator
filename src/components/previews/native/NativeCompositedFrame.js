@@ -24,12 +24,13 @@ import { useEffect, useRef, useState } from 'react';
  * loads in a hidden element and only becomes the visible one once it has actually decoded. Scrubbing
  * therefore holds the previous real frame until the next real frame exists.
  *
- * `fallback` is what the surface shows when no native frame has decoded — before the first frame
- * arrives, and whenever the compositor is unavailable for this source. THE HANDOVER IS DECIDED HERE,
- * in one place, on the only fact that matters: whether a real frame is on screen. A caller deciding
- * it from "a frame was returned" would hide the fallback during the milliseconds the image is still
- * decoding, and a subtitle that blinks out on pause is precisely the kind of detail this migration is
- * not allowed to introduce.
+ * THERE IS NO LONGER A FALLBACK, and that removal is the point rather than a simplification. This
+ * element used to accept one — the CSS overlay that drew subtitles from `subtitleSettings` whenever
+ * no native frame had decoded — and a second implementation that draws whenever the first cannot is
+ * exactly the disagreement between preview and export this migration exists to end. When no frame is
+ * on screen the `<video>` beneath shows, unsubtitled, and the surface STATES that the subtitle
+ * preview is unavailable somewhere a cue never sits. Nothing here is allowed to fill the gap with an
+ * approximation of one.
  *
  * TWO LAYERS THROUGH ONE ELEMENT. During continuous playback the frame carries the subtitle layer
  * alone — transparent everywhere no cue covers, so the `<video>` beneath it plays through — and on
@@ -50,7 +51,6 @@ const NativeCompositedFrame = ({
   frame,
   visible,
   onLoadError,
-  fallback = null,
   className = '',
   style = null,
 }) => {
@@ -90,7 +90,6 @@ const NativeCompositedFrame = ({
           }}
         />
       )}
-      {!showing && fallback}
       {loading && (
         <img
           key={nextUrl}
