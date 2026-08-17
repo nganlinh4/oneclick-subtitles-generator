@@ -29,10 +29,14 @@ export const GLYPH_ATLAS_ERROR_CODES = Object.freeze([
   'glyphAtlasFaceUnverifiable',
   'glyphAtlasFaceUnavailable',
   'glyphAtlasFaceSubstituted',
-  // Cue-set only: one atlas carries one layout verdict and one alignment for every cue it serves,
-  // so a cue that disagrees with the others cannot be staged beside them.
+  // Cue-set only: one atlas carries one layout verdict for every cue it serves, so a cue that
+  // cannot be laid out from cells at all cannot be staged beside cues that can.
   'glyphAtlasCueLayoutRefused',
-  'glyphAtlasCueAlignmentConflict',
+  // Cue-set only: the declared paging budget. Neither is a per-cue bound and neither truncates —
+  // a document past them is refused with the bound it broke, because a page silently dropped is a
+  // stretch of subtitles that never appears in the exported file.
+  'glyphAtlasTooManyPages',
+  'glyphAtlasPixelBudget',
 ]);
 
 export class GlyphAtlasError extends Error {

@@ -12,14 +12,14 @@ use wgpu::{
 
 use crate::blur::SeparableBlur;
 use crate::device::{AdapterProfile, AdapterSelection, GpuContext};
-use crate::error::{CompositorError, TextureTarget};
+use crate::error::{CompositorError, Rejection, TextureTarget};
 use crate::frame::Frame;
 use crate::masks;
 use crate::plan::{BindSource, build_frame_plan};
 use crate::quad_pipeline::{QuadPipeline, vertex_buffer};
 use crate::readback;
 use crate::scene::{TestScene, UNIFORM_LEN};
-use crate::size::{FrameSize, check_device_texture};
+use crate::size::FrameSize;
 use crate::subtitle::SubtitleScene;
 use crate::underlay::VideoUnderlay;
 use crate::underlay_pipeline::UnderlayPipeline;
@@ -87,6 +87,10 @@ impl Compositor {
     /// call: the composition — which also covers every intermediate, since the decoration masks and
     /// both blur passes are allocated at the composition size — the uploaded source frame, and the
     /// glyph atlas, whose 4096-pixel ceiling is itself past a downlevel device's 2048.
+    ///
+    /// **Every** atlas page is checked, not the one this frame happens to sample. A document whose
+    /// twentieth page is past the device's limit must be refused before the export starts encoding,
+    /// not at frame 5000 when a cue on that page first becomes visible.
     fn check_device(
         &self,
         scene: &SubtitleScene,
@@ -94,13 +98,7 @@ impl Compositor {
     ) -> Result<(), CompositorError> {
         let max_edge = self.max_texture_dimension_2d();
         scene.size().check_device(TextureTarget::Frame, max_edge)?;
-        let atlas = scene.atlas().atlas();
-        check_device_texture(
-            TextureTarget::Atlas,
-            atlas.width_px,
-            atlas.height_px,
-            max_edge,
-        )?;
+        scene.check_pages_on_device(max_edge)?;
         if let Some(underlay) = underlay {
             underlay
                 .source()
@@ -226,7 +224,13 @@ impl Compositor {
             self.underlay
                 .prepare(device, queue, &self.blur, video, scene.size())
         });
-        let atlas = self.quads.bind_atlas(device, queue, scene.atlas());
+        // One page per frame, so one bind: the page the plan resolved, or the first page when the
+        // plan draws nothing and therefore emits no atlas segment for the binding to be sampled by.
+        // `AtlasPages` refuses an empty page list, so the fallback is total.
+        let Some(page) = scene.bound_page(plan.atlas_page()) else {
+            return Err(Rejection::AtlasPagesEmpty.into());
+        };
+        let atlas = self.quads.bind_atlas(device, queue, page);
         let masks = masks::build(
             device,
             queue,

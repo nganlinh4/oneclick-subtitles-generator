@@ -5,12 +5,13 @@ mod common;
 
 use common::{
     BASELINE_PX, FAMILY, INK_CELL, LINE_HEIGHT_PX, SPACE_CELL, WEIGHT, atlas, baked, baked_line,
-    baked_run, scene, staged, style, style_spec,
+    baked_run, layout_align, scene, second_page, staged, style, style_spec, two_cue_scene,
 };
 use osg_compositor::{
-    CompositorError, CueLine, CueRun, Rejection, SubtitleScene, SubtitleStyle, SubtitleStyleSpec,
+    AtlasPages, CompositorError, CueLine, CueRun, Rejection, SubtitleScene, SubtitleStyle,
+    SubtitleStyleSpec, TextureTarget,
 };
-use osg_scene::glyph::{CellAdvanceVerdict, Direction, GlyphAtlasDescriptor};
+use osg_scene::glyph::{CellAdvanceVerdict, Direction, GlyphAtlasDescriptor, MAX_ATLAS_PAGES};
 
 fn rejection(error: &CompositorError) -> Rejection {
     match error {
@@ -20,7 +21,22 @@ fn rejection(error: &CompositorError) -> Rejection {
 }
 
 fn stage(atlas: GlyphAtlasDescriptor, runs: Vec<CueRun>) -> Result<SubtitleScene, CompositorError> {
-    SubtitleScene::new(scene(FAMILY, WEIGHT), atlas, style(&style_spec()), runs)
+    let cues = scene(FAMILY, WEIGHT).cues().len();
+    SubtitleScene::new(
+        scene(FAMILY, WEIGHT),
+        AtlasPages::single(atlas, cues),
+        style(&style_spec()),
+        runs,
+    )
+}
+
+/// The pages of a two-page fixture, in page order.
+fn two_pages() -> Vec<GlyphAtlasDescriptor> {
+    let align = layout_align(&style_spec());
+    vec![
+        common::aligned_atlas(FAMILY, WEIGHT, align),
+        second_page(FAMILY, WEIGHT, align),
+    ]
 }
 
 #[test]
@@ -174,6 +190,144 @@ fn one_run_per_cue_is_required() {
             stage(atlas(FAMILY, WEIGHT), runs).expect_err("the run list must match the cue list");
         assert_eq!(rejection(&error), Rejection::RunCount);
     }
+}
+
+// ---- Atlas pages ---------------------------------------------------------------------------
+
+/// A document with a large character set is baked into several pages, and a page list that cannot
+/// address every cue is refused before a frame exists rather than at the frame that would draw it.
+#[test]
+fn a_page_list_no_cue_could_draw_from_is_refused() {
+    let cases = [
+        (
+            AtlasPages::new(Vec::new(), vec![0]),
+            Rejection::AtlasPagesEmpty,
+        ),
+        (
+            // One more page than the renderer accepts. The bound exists so a page list cannot grow
+            // without limit before its pixels are ever counted.
+            AtlasPages::new(
+                (0..=MAX_ATLAS_PAGES)
+                    .map(|_| atlas(FAMILY, WEIGHT))
+                    .collect(),
+                vec![0],
+            ),
+            Rejection::AtlasPageCount,
+        ),
+        (
+            AtlasPages::new(two_pages(), vec![0, 2]),
+            Rejection::AtlasPageIndex,
+        ),
+    ];
+    for (refused, expected) in cases {
+        let error = refused.expect_err("a page list no cue could draw from is not a page list");
+        assert_eq!(rejection(&error), expected);
+    }
+
+    // And the page list those refusals are the negatives of: exactly `MAX_ATLAS_PAGES` pages, with
+    // the last one addressed, is accepted.
+    let full: Vec<GlyphAtlasDescriptor> = (0..MAX_ATLAS_PAGES)
+        .map(|_| atlas(FAMILY, WEIGHT))
+        .collect();
+    let last = u32::try_from(MAX_ATLAS_PAGES - 1).expect("a bounded page index");
+    let pages = AtlasPages::new(full, vec![last]).expect("the largest accepted page list");
+    assert_eq!(pages.pages().len(), MAX_ATLAS_PAGES);
+    assert_eq!(pages.page_of_cue(0), Some(MAX_ATLAS_PAGES - 1));
+    assert!(pages.page_of_cue(1).is_none());
+}
+
+/// The page assignment covers the scene's cues, one entry each. A scene and a page list that
+/// disagree on how many cues there are is the same class of mistake as a run count that does not
+/// match, and gets its own refusal so the cause is not guessed at.
+#[test]
+fn a_page_per_cue_is_required() {
+    for page_of_cue in [Vec::new(), vec![0, 1]] {
+        let pages = AtlasPages::new(two_pages(), page_of_cue)
+            .expect("the page indices themselves are in range");
+        let error = SubtitleScene::new(
+            scene(FAMILY, WEIGHT),
+            pages,
+            style(&style_spec()),
+            vec![baked(&[INK_CELL])],
+        )
+        .expect_err("the page assignment must cover exactly this scene's cues");
+        assert_eq!(rejection(&error), Rejection::AtlasPageCueCount);
+    }
+}
+
+/// Every page is checked, not just the first: they are bakes of one face at one size, so a page that
+/// disagrees is a fault rather than a variation.
+#[test]
+fn a_later_page_baked_from_another_face_is_refused() {
+    let pages = AtlasPages::new(
+        vec![atlas(FAMILY, WEIGHT), atlas("Other Face", WEIGHT)],
+        vec![0, 1],
+    )
+    .expect("two pages is a page list the compositor accepts");
+    let error = SubtitleScene::new(
+        two_cue_scene(FAMILY, WEIGHT),
+        pages,
+        style(&style_spec()),
+        vec![baked(&[INK_CELL]), baked(&[INK_CELL])],
+    )
+    .expect_err("a page from another family must not be staged");
+    assert_eq!(rejection(&error), Rejection::AtlasFaceMismatch);
+}
+
+/// A run is checked against **its own** page's cell table. Page one of the fixture is a smaller
+/// texture, and a run validated against page zero's table would be accepted here and would then draw
+/// from cells page one does not have.
+#[test]
+fn a_run_is_checked_against_its_own_page() {
+    let pages = AtlasPages::new(two_pages(), vec![0, 1])
+        .expect("two pages is a page list the compositor accepts");
+    let error = SubtitleScene::new(
+        two_cue_scene(FAMILY, WEIGHT),
+        pages,
+        style(&style_spec()),
+        vec![baked(&[INK_CELL]), baked_run(&[&[INK_CELL, 99]])],
+    )
+    .expect_err("the second cue points at a cell its own page does not have");
+    assert_eq!(rejection(&error), Rejection::RunGlyphIndex);
+}
+
+/// A page past what the device can allocate is refused up front, whichever page it is.
+///
+/// The limit is passed in rather than taken from a real adapter, because no shipped adapter stops
+/// below the atlas ceiling: the only way to prove that the check reaches a page *after* the first is
+/// to name a limit that only the later page exceeds.
+#[test]
+fn a_page_after_the_first_is_checked_against_the_device_limit() {
+    let align = layout_align(&style_spec());
+    // Page zero is the 8-pixel-square second-page fixture; page one is the 16x8 standard one.
+    let pages = AtlasPages::new(
+        vec![
+            second_page(FAMILY, WEIGHT, align),
+            common::aligned_atlas(FAMILY, WEIGHT, align),
+        ],
+        vec![0, 1],
+    )
+    .expect("two pages is a page list the compositor accepts");
+
+    pages
+        .check_device(16)
+        .expect("both pages fit a device that allocates a 16-pixel edge");
+
+    let error = pages
+        .check_device(8)
+        .expect_err("the second page is wider than an 8-pixel edge");
+    assert!(
+        matches!(
+            error,
+            CompositorError::DeviceTextureLimit {
+                target: TextureTarget::Atlas,
+                value: 16,
+                max: 8,
+                ..
+            }
+        ),
+        "the refusal must name the atlas and the page's own edge: {error}"
+    );
 }
 
 /// The shipped renderer concatenates the opacity onto the colour as hex alpha, so an `#rrggbbaa`

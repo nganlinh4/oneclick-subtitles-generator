@@ -114,7 +114,10 @@ impl PreviewComposition {
         } else {
             vec![CueRun::from_layout(atlas.layout())]
         };
-        let scene = export.compose(StagedText::new(face.clone(), atlas, runs))?;
+        // Always one page. A preview request names at most one cue, and one cue is one bake, so the
+        // multi-page shape an export can carry has no preview equivalent — `single` assigns page
+        // zero to whatever cues there are, which is one cue or, at an instant between cues, none.
+        let scene = export.compose(StagedText::single(face.clone(), atlas, runs))?;
         Ok(Self {
             plan: export,
             scene,

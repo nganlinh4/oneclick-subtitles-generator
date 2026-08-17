@@ -1,5 +1,5 @@
 /**
- * The bake itself: one atlas, one or many runs laid out against it.
+ * The bake itself: the atlas pages a cue list needs, and one run laid out against each cue's page.
  *
  * WHY ONE ENGINE FOR BOTH ENTRY POINTS. The preview bakes one cue at a time and the export bakes a
  * whole cue list, and the two must produce the *same* cells for the same text or the export stops
@@ -7,22 +7,23 @@
  * one-element case of it: a call with one text produces a byte-identical descriptor, `contentHash`
  * included, to the one the preview has always received.
  *
- * WHY A CUE LIST IS NOT n ATLASES. `osg_compositor::SubtitleScene` validates every staged run's cell
- * indices against ONE glyph table, and refuses a run count that is not the cue count. n separate
- * atlases cannot be used and cannot be merged natively, so an export of n cues is one atlas whose
- * cell table covers the union of every cue's cells, plus n layouts against that same table.
+ * WHY A CUE LIST IS PAGED RATHER THAN UNIONED INTO ONE ATLAS. `osg_compositor::CueRun` validates its
+ * cell indices against ONE glyph table, and a table is bounded at `maxGlyphCount` cells. A union
+ * over every cue therefore held a document hostage to its own alphabet: Latin never noticed, and
+ * Chinese, Korean or emoji-heavy tracks were refused. So the cue list is split across pages, each
+ * page is a table, and each cue is laid out against the page it landed on. `glyphAtlasPaging.js`
+ * decides the split and `glyphAtlasPage.js` bakes one page.
  *
- * WHAT THE UNION IS OVER. Not characters — FORMS. A cluster's cell depends on the form the run gives
- * it (see `glyphAtlasCells.js`), so `ب` initial in one cue and `ب` medial in another are two cells,
- * and each cue's layout indexes the one its own run resolved. The table is `sortedUnique` over the
- * cell texts, which is the strictly-increasing, duplicate-free order `crates/osg-scene` re-derives;
- * appending one run's cells to another's would violate it.
+ * WHAT A PAGE'S TABLE IS OVER. Not characters — FORMS. A cluster's cell depends on the form the run
+ * gives it (see `glyphAtlasCells.js`), so `ب` initial in one cue and `ب` medial in another are two
+ * cells, and each cue's layout indexes the one its own run resolved. A page's table is `sortedUnique`
+ * over its cues' cell texts, which is the strictly-increasing, duplicate-free order
+ * `crates/osg-scene` re-derives; appending one run's cells to another's would violate it.
  *
- * WHICH RUN THE DESCRIPTOR'S OWN `layout` AND RUN-SCOPED METRICS BELONG TO. The first. The descriptor
- * shape carries exactly one layout and one `runAdvanceWidthPx`, a cue list has n of each, and the
+ * WHICH RUN A PAGE'S OWN `layout` AND RUN-SCOPED METRICS BELONG TO. The first cue that page serves.
+ * A descriptor carries exactly one layout and one `runAdvanceWidthPx`, a page serves n cues, and the
  * first is the only choice that makes a one-cue call identical to what the preview already gets.
- * Every cue's own layout is returned alongside, in `runs`. The cue-set caller is responsible for the
- * agreements that a single carried layout cannot express across n cues — see `bakeGlyphAtlasForCues`.
+ * Every cue's own layout is returned alongside, in `runs`.
  *
  * Determinism: no clocks, no RNG. The cell table is sorted, the packing walks it in that order, and
  * every measurement is a pure function of the text and the face, so the same request bakes the same
@@ -30,8 +31,10 @@
  */
 
 import { measureCell, packAtlas, resolveContextualCells, sortedUnique } from './glyphAtlasCells';
-import { deepFreeze, fail, fnv1a32, hashText, round4 } from './glyphAtlasCore';
+import { deepFreeze, fail, round4 } from './glyphAtlasCore';
 import { FACE_PROBE_TEXT, METRIC_PROBE_TEXT, probeCluster, probeFace } from './glyphAtlasFace';
+import { bakePage } from './glyphAtlasPage';
+import { packRunAlone, partitionRunsIntoPages, tableOverflow } from './glyphAtlasPaging';
 import { buildCssFont, normalizeSharedRequest, normalizeText } from './glyphAtlasRequest';
 import { buildTextLayout } from './glyphAtlasShaping';
 import { readMeasurement, resolveSurface } from './glyphAtlasSurface';
@@ -83,70 +86,25 @@ const segmentClusters = (text, limits) => {
 
 const codePointCount = (text) => [...text].length;
 
-/**
- * Which bound a candidate cell table breaks, or `null` when it breaks none.
- *
- * Both bounds are on the TABLE, not on one run: `crates/osg-scene` enforces the glyph count and the
- * total cluster code points against the descriptor's own cell list, so a cue set whose union
- * overflows either is one no descriptor could carry. Returned rather than raised because the
- * contextual table has a fallback and the isolated one does not.
- */
-const tableOverflow = (cellTexts, limits) => {
-  if (cellTexts.length > limits.maxGlyphCount) return 'glyphAtlasTooManyGlyphs';
-  const codePoints = cellTexts.reduce((total, cellText) => total + codePointCount(cellText), 0);
-  return codePoints > limits.maxTextCodePoints ? 'glyphAtlasTextTooLong' : null;
-};
-
-const OVERFLOW_MESSAGES = Object.freeze({
-  glyphAtlasTooManyGlyphs: (limits) => `More than ${limits.maxGlyphCount} distinct glyph cells are needed`,
-  glyphAtlasTextTooLong: (limits) => `The distinct glyph cells exceed ${limits.maxTextCodePoints} code points and are rejected rather than truncated`,
-});
-
-const canonicalizeLayout = (layout) => [
-  `${layout.textTransform}|${layout.letterSpacingPx}|${layout.maxWidthPx ?? 'none'}`,
-  `${layout.wordWrap ? 1 : 0}|${layout.textAlign}|${layout.cellAdvanceLayout}`,
-  `${layout.lineCount}|${layout.widthPx}|${layout.heightPx}`,
-  ...layout.lines.map((line) => [
-    line.glyphs.join('.'), line.penXPx.join('.'), line.advanceWidthPx, line.measuredWidthPx,
-    line.shapingResidualPx, line.baselineYPx, line.justificationPx, line.endsParagraph ? 1 : 0,
-  ].join(',')),
-];
+const totalCodePoints = (cellTexts) => cellTexts.reduce(
+  (total, cellText) => total + codePointCount(cellText),
+  0,
+);
 
 /**
- * The descriptor's identity, as lines. Every run is folded in, the first through the descriptor's
- * own layout and the rest appended, so two cue sets that share a cell table but not a layout are
- * two different atlases. A one-run bake appends nothing, which is what keeps its hash the hash it
- * has always had.
- */
-const canonicalize = (descriptor, extraRuns) => {
-  const glyphs = descriptor.glyphs.map((glyph) => [
-    glyph.cluster, glyph.codePoints.join('.'), glyph.direction, glyph.advanceWidthPx,
-    glyph.xPx, glyph.yPx, glyph.widthPx, glyph.heightPx,
-    glyph.originXPx, glyph.originYPx, glyph.substituted ? 1 : 0,
-  ].join(','));
-  const { face, metrics, atlas } = descriptor;
-  return [
-    `v${descriptor.version}`,
-    `${face.requestedFamily}|${face.weight}|${face.style}|${face.fontSizePx}|${face.substituted ? 1 : 0}`,
-    `${metrics.ascentPx}|${metrics.descentPx}|${metrics.lineHeightPx}|${metrics.baselinePx}`,
-    `${metrics.runAdvanceWidthPx}|${metrics.shapingResidualPx}|${metrics.baseDirection}`,
-    `${metrics.letterSpacingPx}`,
-    `${atlas.widthPx}|${atlas.heightPx}|${atlas.paddingPx}|${atlas.glyphCount}`,
-    ...canonicalizeLayout(descriptor.layout),
-    ...glyphs,
-    ...extraRuns.flatMap(canonicalizeLayout),
-  ].join('\n');
-};
-
-/**
- * Bake one atlas for `texts` and lay every one of them out against it.
+ * Bake `texts` into as many atlas pages as their alphabet needs, and lay every one of them out.
  *
  * `request` carries everything but the text — the face, the raster geometry and the shaping options
  * — while `limits` and `version` arrive from `glyphAtlas.js`, which is the single home of both.
- * Returns `{ descriptor, runs }`: `runs[i]` is `texts[i]`'s layout, `runs[0]` is the descriptor's own
- * `layout`, and `descriptor.pixels` is tightly packed RGBA8 whose alpha channel is the coverage
- * mask. The caller owns staging both, and owns whatever agreements across runs its own contract
- * needs. `texts` must hold at least one string; the entry points guarantee it.
+ * Returns `{ pages, runs, pageOfCue }`: `pages[p]` is a descriptor whose `pixels` is tightly packed
+ * RGBA8 with the coverage mask in alpha, `runs[i]` is `texts[i]`'s layout indexed into
+ * `pages[pageOfCue[i]]`, and `pages[p].layout` is the layout of the first cue that page serves. The
+ * caller owns staging every page. `texts` must hold at least one string; the entry points guarantee
+ * it.
+ *
+ * A cue list whose alphabet fits one page produces exactly one, and a single text always does — so
+ * the preview's one-cue bake is byte-identical to the page an export of that same cue produces,
+ * which is what makes the export a proof of the preview rather than merely similar to it.
  */
 export const bakeAtlas = ({ texts, request, limits, version }, options = {}) => {
   const {
@@ -204,19 +162,24 @@ export const bakeAtlas = ({ texts, request, limits, version }, options = {}) => 
     runAdvanceWidthPx: measureWidth(text),
   }));
 
-  // The isolated table is the fallback, so its bounds are raised rather than returned: nothing else
-  // is left to try. It is also the smaller of the two tables — a contextual cell is only ever added
-  // beside the cluster it spells — so checking it first refuses an oversize cue set before any of it
-  // is measured.
   // Accumulated into a set rather than flattened first: a long track has millions of cluster
   // positions and only as many distinct cells as its alphabet has.
   const isolatedUnique = new Set();
   for (const run of segmented) {
     for (const cluster of run.clusters) isolatedUnique.add(cluster);
   }
+  // The one whole-document bound, and it is a work bound rather than a capacity one: every distinct
+  // cluster below is measured, at seven measurements each on the contextual path, and a document
+  // with more distinct clusters than every page together could carry cannot be baked whatever the
+  // pages do. Refusing here means that document costs one set walk instead of a few hundred thousand
+  // canvas measurements it was always going to throw away.
+  if (isolatedUnique.size > limits.maxGlyphCount * limits.maxAtlasPages) {
+    fail(
+      'glyphAtlasTooManyPages',
+      `The subtitles use more than ${limits.maxGlyphCount * limits.maxAtlasPages} distinct characters, which is more than ${limits.maxAtlasPages} glyph atlas pages can carry`
+    );
+  }
   const isolatedCells = sortedUnique(isolatedUnique);
-  const isolatedOverflow = tableOverflow(isolatedCells, limits);
-  if (isolatedOverflow !== null) fail(isolatedOverflow, OVERFLOW_MESSAGES[isolatedOverflow](limits));
   const isolatedAdvanceOf = new Map(
     isolatedCells.map((cellText) => [cellText, measureCellText(cellText).advanceWidthPx])
   );
@@ -262,70 +225,47 @@ export const bakeAtlas = ({ texts, request, limits, version }, options = {}) => 
     };
   };
 
-  const buildTable = (planOf) => {
-    const plans = resolvedRuns.map(planOf);
+  const cellsOfPlan = (run, plan) => {
     const unique = new Set();
-    for (const [run, plan] of plans.entries()) {
-      const { clusters } = resolvedRuns[run];
-      for (let position = 0; position < clusters.length; position += 1) unique.add(plan.cellTextAt(position));
+    for (let position = 0; position < run.clusters.length; position += 1) {
+      unique.add(plan.cellTextAt(position));
     }
-    const cellTexts = sortedUnique(unique);
-    if (tableOverflow(cellTexts, limits) !== null) return null;
-    const entries = cellTexts.map(measureCellText);
-    const atlas = packAtlas(entries.map(({ cell }) => cell));
-    if (atlas === null) return null;
-    return { plans, entries, atlas, cellIndexOf: new Map(cellTexts.map((cellText, index) => [cellText, index])) };
+    return sortedUnique(unique);
   };
+  const cellOf = (cellText) => measureCellText(cellText).cell;
 
-  // Four cells where there was one is four times the atlas, so a cue set can resolve and still not
-  // fit. Falling back to the isolated cells then loses the contextual forms, which is a worse picture
-  // but a picture; failing the bake would lose every run for a reason the caller cannot act on.
-  const candidates = resolvedRuns.some((run) => run.resolved !== null)
-    ? [contextualPlan, isolatedPlan]
-    : [isolatedPlan];
-  let chosen = null;
-  for (const planOf of candidates) {
-    chosen = buildTable(planOf);
-    if (chosen !== null) break;
-  }
-  if (chosen === null) {
-    fail('glyphAtlasTooLarge', `The glyphs do not fit within a ${limits.maxAtlasDimensionPx}px atlas`);
-  }
-  const { plans, entries, atlas, cellIndexOf } = chosen;
-
-  const glyphs = entries.map((entry, index) => ({
-    cluster: entry.cluster,
-    codePoints: entry.codePoints,
-    direction: entry.direction,
-    advanceWidthPx: entry.advanceWidthPx,
-    xPx: atlas.placements[index].xPx,
-    yPx: atlas.placements[index].yPx,
-    widthPx: entry.cell.widthPx,
-    heightPx: entry.cell.heightPx,
-    originXPx: entry.cell.originXPx,
-    originYPx: entry.cell.originYPx,
-    substituted: entry.substituted,
-  }));
-
-  let pixels = new Uint8ClampedArray(0);
-  if (atlas.widthPx > 0 && atlas.heightPx > 0) {
-    const target = surface.createTarget(atlas.widthPx, atlas.heightPx);
-    for (const glyph of glyphs) {
-      if (glyph.widthPx === 0 || glyph.heightPx === 0) continue;
-      target.drawGlyph({
-        cssFont,
-        text: glyph.cluster,
-        penXPx: glyph.xPx + glyph.originXPx,
-        baselineYPx: glyph.yPx + glyph.originYPx,
-      });
+  // Four cells where there was one is four times the table, so a run can resolve contextually and
+  // still not fit a page alone. Falling back to its isolated cells then loses the contextual forms,
+  // which is a worse picture but a picture.
+  //
+  // WHY THE FALLBACK IS PER RUN AND NO LONGER PER DOCUMENT. It used to be one decision for every
+  // cue: an oversize cue dragged every other cue down to isolated cells with it, so a track with one
+  // long Arabic line drew the whole document in the wrong glyph forms. It also meant a cue's cells
+  // depended on which cues it happened to be baked beside, which is exactly the preview/export
+  // divergence this pipeline exists to remove — the preview bakes one cue, the export bakes them
+  // all. Deciding per run makes a cue's cells a function of that cue and nothing else.
+  const planned = resolvedRuns.map((run) => {
+    const isolated = isolatedPlan(run);
+    const isolatedCellTexts = cellsOfPlan(run, isolated);
+    if (run.resolved !== null) {
+      const contextual = contextualPlan(run);
+      const cellTexts = cellsOfPlan(run, contextual);
+      const codePoints = totalCodePoints(cellTexts);
+      if (tableOverflow(cellTexts, codePoints, limits) === null) {
+        const packed = packAtlas(cellTexts.map(cellOf));
+        if (packed !== null) return { run, plan: contextual, cellTexts, codePoints, packed };
+      }
     }
-    const raw = target.readPixels();
-    const expected = atlas.widthPx * atlas.heightPx * 4;
-    if (!ArrayBuffer.isView(raw) || raw.length !== expected) {
-      fail('glyphAtlasSurfaceUnavailable', 'The measurement surface returned an atlas of the wrong size');
-    }
-    pixels = raw instanceof Uint8ClampedArray ? raw : new Uint8ClampedArray(raw.buffer, raw.byteOffset, raw.length);
-  }
+    const codePoints = totalCodePoints(isolatedCellTexts);
+    return {
+      run,
+      plan: isolated,
+      cellTexts: isolatedCellTexts,
+      codePoints,
+      // Nothing is left to try, so this refuses rather than returning null.
+      packed: packRunAlone(isolatedCellTexts, codePoints, cellOf, limits),
+    };
+  });
 
   const resolvedLineHeightPx = round4(lineHeightPx ?? ascentPx + descentPx);
 
@@ -338,11 +278,16 @@ export const bakeAtlas = ({ texts, request, limits, version }, options = {}) => 
     ? 'ltr'
     : (run.clusters.map(directionOf).find((direction) => direction !== 'neutral') ?? 'ltr'));
 
-  const layouts = resolvedRuns.map((run, index) => {
-    const plan = plans[index];
-    const cellIndexAt = (position) => cellIndexOf.get(plan.cellTextAt(position));
-    const metricsBaseDirection = baseDirectionOf(run);
-    return buildTextLayout({
+  // Laid out against the run's OWN cell table, before any page exists, because the page a cue lands
+  // on depends on the alignment its layout resolves to. Indices are the only part a page changes,
+  // and `glyphAtlasPage.js` remaps them — geometry, wrapping, pen positions and visual order all
+  // come from advances and never from an index, so the picture does not move.
+  const laid = planned.map((entry) => {
+    const { run, plan, cellTexts } = entry;
+    const localIndexOf = new Map(cellTexts.map((cellText, index) => [cellText, index]));
+    const cellIndexAt = (position) => localIndexOf.get(plan.cellTextAt(position));
+    const baseDirectionOfRun = baseDirectionOf(run);
+    const layout = buildTextLayout({
       text: run.text,
       clusters: run.clusters,
       cellIndexOf: cellIndexAt,
@@ -357,52 +302,55 @@ export const bakeAtlas = ({ texts, request, limits, version }, options = {}) => 
       baselinePx: ascentPx,
       measureLineWidth: (lineText) => readMeasurement(surface.measure(cssFont, lineText), 'a laid-out line').width,
       runShapingResidualPx: plan.shapingResidualPx,
-      directionNeedsBidi: metricsBaseDirection === 'rtl'
-        || run.clusters.some((_cluster, position) => glyphs[cellIndexAt(position)].direction === 'rtl'),
+      directionNeedsBidi: baseDirectionOfRun === 'rtl'
+        || run.clusters.some((_cluster, position) => measureCellText(plan.cellTextAt(position)).direction === 'rtl'),
       limits,
     });
+    return {
+      ...entry,
+      layout,
+      textAlign: layout.textAlign,
+      runAdvanceWidthPx: run.runAdvanceWidthPx,
+      shapingResidualPx: plan.shapingResidualPx,
+      baseDirection: baseDirectionOfRun,
+    };
   });
 
-  const descriptor = {
-    version,
-    face: {
-      requestedFamily: face.family,
-      weight: face.weight,
-      style: face.style,
-      fontSizePx: round4(face.fontSizePx),
-      cssFont,
-      substituted: glyphs.some((glyph) => glyph.substituted),
-      probes: probes.map((probe) => ({ ...probe, participated: probe.aloneWidthPx !== probe.chainedWidthPx })),
-    },
+  const partitioned = partitionRunsIntoPages(laid, cellOf, limits);
+  const shared = {
+    cssFont,
+    face,
     metrics: {
       ascentPx,
       descentPx,
       lineHeightPx: resolvedLineHeightPx,
       baselinePx: ascentPx,
-      runAdvanceWidthPx: resolvedRuns[0].runAdvanceWidthPx,
-      shapingResidualPx: plans[0].shapingResidualPx,
-      baseDirection: baseDirectionOf(resolvedRuns[0]),
       // Carried in the metrics so the compositor positions from the spacing the WebView applied
       // rather than re-deriving it from a style field that was scaled somewhere else.
       letterSpacingPx: round4(letterSpacingPx),
     },
-    atlas: {
-      widthPx: atlas.widthPx,
-      heightPx: atlas.heightPx,
-      paddingPx,
-      glyphCount: glyphs.length,
-      pixelFormat: 'rgba8',
-      bytesPerRow: atlas.widthPx * 4,
-    },
-    layout: layouts[0],
-    glyphs,
+    paddingPx,
+    surface,
+    version,
+    measureCellText,
+    probes: probes.map((probe) => ({ ...probe, participated: probe.aloneWidthPx !== probe.chainedWidthPx })),
   };
 
-  const contentHash = fnv1a32(pixels, hashText(canonicalize(descriptor, layouts.slice(1))))
-    .toString(16)
-    .padStart(8, '0');
+  const pages = [];
+  const runs = new Array(laid.length);
+  const pageOfCue = new Array(laid.length);
+  for (const [index, page] of partitioned.entries()) {
+    const { descriptor, layouts } = bakePage({ page, runs: laid, shared });
+    pages.push(descriptor);
+    page.cues.forEach((cue, position) => {
+      runs[cue] = layouts[position];
+      pageOfCue[cue] = index;
+    });
+  }
+
   return {
-    descriptor: deepFreeze({ ...descriptor, contentHash, pixels }),
-    runs: deepFreeze(layouts),
+    pages: deepFreeze(pages),
+    runs: deepFreeze(runs),
+    pageOfCue: deepFreeze(pageOfCue),
   };
 };

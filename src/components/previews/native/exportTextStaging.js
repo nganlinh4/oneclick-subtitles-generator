@@ -1,5 +1,5 @@
 /**
- * The text one native EXPORT draws with: one glyph atlas, and one laid-out run per cue.
+ * The text one native EXPORT draws with: the glyph atlas pages, and one laid-out run per cue.
  *
  * `render_start` takes a second argument beside the render request, and without it the command
  * refuses with `renderTextNotStaged` rather than drawing anything. This module is what produces it.
@@ -7,11 +7,13 @@
  * `apps/desktop/src-tauri/src/render/text.rs` is the other end of this boundary and
  * `EXPORT_TEXT_SCHEMA_VERSION` below is its `EXPORT_TEXT_SCHEMA_VERSION`.
  *
- * ONE ATLAS FOR EVERY CUE, and this is a property of the compositor rather than an optimisation.
- * `osg_compositor::SubtitleScene::new` refuses when the run count disagrees with the cue count, and
- * validates every run's cell indices against ONE atlas's glyph table. So an export of n cues is one
- * atlas whose cell table covers the union of every cue's clusters plus n layouts against that same
- * table — n separate atlases cannot be used, and cannot be merged on the far side.
+ * ONE PAGE PER FRAME, MANY PAGES PER DOCUMENT. A `GlyphAtlasDescriptor` carries one cell table, and
+ * `osg_compositor::CueRun` indexes exactly one of them — so a cue list whose alphabet overflows a
+ * single table is split across pages, and each cue carries the page it was laid out against. This
+ * costs nothing at draw time: `osg_scene::cues::active_cue_at` selects exactly one cue per frame, so
+ * a frame samples exactly one page. It is what lets a Chinese, Korean or emoji-heavy track export at
+ * all — one table held about a thousand distinct forms, which such a document passes in its first
+ * few minutes.
  *
  * NOTHING HERE DESCRIBES THE STYLE A SECOND TIME. The face is resolved by `previewFace`, the bake
  * request is built by `atlasBakeRequest` and the composition size by `compositionSize` — the same
@@ -38,17 +40,19 @@ import { atlasBakeRequest, previewFace } from './nativePreviewScene';
 const { GLYPH_ATLAS_LIMITS } = glyphAtlas;
 
 /** Mirrors `EXPORT_TEXT_SCHEMA_VERSION` in `apps/desktop/src-tauri/src/render/text.rs`. */
-export const EXPORT_TEXT_SCHEMA_VERSION = 1;
+export const EXPORT_TEXT_SCHEMA_VERSION = 2;
 
 /**
  * The bounds the far side applies, mirrored so an unusable payload is refused before IPC.
  *
  * `maxRunLines` and `maxRunCells` are `MAX_RUN_LINES` and `MAX_RUN_GLYPHS` in
  * `crates/osg-compositor/src/run.rs`, which the baker's own `maxLayoutLines` and `maxLayoutCells`
- * already mirror; they are read from the baker so one rename moves both.
+ * already mirror; they are read from the baker so one rename moves both. `maxPages` is
+ * `MAX_ATLAS_PAGES` in `crates/osg-scene/src/glyph/limits.rs`, mirrored the same way.
  */
 export const EXPORT_TEXT_LIMITS = Object.freeze({
   maxCues: 100_000,
+  maxPages: GLYPH_ATLAS_LIMITS.maxAtlasPages,
   maxRunLines: GLYPH_ATLAS_LIMITS.maxLayoutLines,
   maxRunCells: GLYPH_ATLAS_LIMITS.maxLayoutCells,
 });
@@ -232,15 +236,15 @@ export const measureNativeSourceDimensions = (source) => new Promise((resolve) =
 });
 
 /**
- * Bake ONE atlas whose cell table covers every cue, plus one layout per cue against that table.
+ * Bake the atlas pages a cue list needs, plus one layout per cue against the page it landed on.
  *
  * `bakeGlyphAtlasForCues` is the baker's own cue-list entry point: `bakeGlyphAtlas`'s request with
- * `texts` in place of `text`, returning `{ descriptor, runs }`. For a single text it is the same
- * call `bakeGlyphAtlas` makes, so a one-cue export produces the descriptor the preview staged —
- * which is what lets the content-addressed stager hand back the preview's own handle.
+ * `texts` in place of `text`, returning `{ pages, runs, pageOfCue }`. For a single text it produces
+ * exactly the descriptor `bakeGlyphAtlas` produces, so a one-cue export stages the atlas the preview
+ * staged — which is what lets the content-addressed stager hand back the preview's own handle.
  *
- * A build without that entry point refuses rather than falling back to n atlases the compositor
- * cannot draw from, or to one cue's atlas standing in for the rest.
+ * A build without that entry point refuses rather than falling back to one cue's atlas standing in
+ * for the rest.
  */
 export const bakeCueAtlas = (request, options = {}) => {
   const bake = glyphAtlas.bakeGlyphAtlasForCues;
@@ -248,12 +252,28 @@ export const bakeCueAtlas = (request, options = {}) => {
   return bake(request, options);
 };
 
-/** The descriptor to stage and the per-cue layouts, as the baker hands them over. */
+/**
+ * The pages to stage, the per-cue layouts and each cue's page, as the baker hands them over.
+ *
+ * This checks the bake is COHERENT — every cue has a page, every page index is a real page. Whether
+ * it matches the render request is `buildExportTextRequest`'s question, and keeping the two apart is
+ * what makes a refusal say which side was wrong.
+ */
 const readCueBake = (baked) => {
-  if (!isRecord(baked) || !isRecord(baked.descriptor) || !Array.isArray(baked.runs)) {
+  if (!isRecord(baked)
+      || !Array.isArray(baked.pages)
+      || baked.pages.length === 0
+      || baked.pages.length > EXPORT_TEXT_LIMITS.maxPages
+      || !baked.pages.every(isRecord)
+      || !Array.isArray(baked.runs)
+      || !Array.isArray(baked.pageOfCue)
+      || baked.pageOfCue.length !== baked.runs.length
+      || !baked.pageOfCue.every(
+        (page) => Number.isInteger(page) && page >= 0 && page < baked.pages.length,
+      )) {
     stagingFailed('glyphAtlasCueBakeShape');
   }
-  return { descriptor: baked.descriptor, layouts: baked.runs };
+  return { pages: baked.pages, layouts: baked.runs, pageOfCue: baked.pageOfCue };
 };
 
 /** One laid-out line, reduced to the four fields `ExportCueLine` deserialises. */
@@ -292,30 +312,48 @@ const exportRun = (layout, cellCount) => {
 };
 
 /**
- * The payload `render_start` reads, from a staged atlas and the layouts baked against it.
+ * The payload `render_start` reads, from the staged pages and the layouts baked against them.
  *
  * Exported separately from the staging so the shape can be checked without a canvas, a runtime or a
  * native call. `cueCount` is the render request's own, and a layout count that disagrees with it is
  * refused here: the far side would refuse it too, but not before an IPC round trip.
+ *
+ * Each cue is bounded against ITS OWN page's cell count, which is the whole reason the page travels
+ * with the cue. Checking every cue against page 0 would let a cue on a later page index past its
+ * table and be caught, if at all, by the compositor — with a message that says nothing about which
+ * side produced it.
  */
-export const buildExportTextRequest = ({ handle, face, layouts, cueCount }) => {
-  if (!isRecord(handle) || typeof handle.atlasId !== 'string' || typeof handle.contentHash !== 'string') {
+export const buildExportTextRequest = ({ handles, face, layouts, pageOfCue, cueCount }) => {
+  if (!Array.isArray(handles)
+      || handles.length === 0
+      || handles.length > EXPORT_TEXT_LIMITS.maxPages
+      || !handles.every((handle) => isRecord(handle)
+        && typeof handle.atlasId === 'string'
+        && typeof handle.contentHash === 'string'
+        && Number.isInteger(handle.glyphCount)
+        && handle.glyphCount >= 0)) {
     stagingFailed('glyphAtlasHandle');
   }
   if (!Array.isArray(layouts)
       || layouts.length !== cueCount
       || cueCount === 0
-      || cueCount > EXPORT_TEXT_LIMITS.maxCues) {
+      || cueCount > EXPORT_TEXT_LIMITS.maxCues
+      || !Array.isArray(pageOfCue)
+      || pageOfCue.length !== cueCount
+      || !pageOfCue.every((page) => Number.isInteger(page) && page >= 0 && page < handles.length)) {
     stagingFailed('glyphAtlasLayoutCount');
   }
-  const cellCount = handle.glyphCount;
-  if (!Number.isInteger(cellCount) || cellCount < 0) stagingFailed('glyphAtlasHandle');
   return Object.freeze({
     schemaVersion: EXPORT_TEXT_SCHEMA_VERSION,
-    atlasId: handle.atlasId,
-    atlasContentHash: handle.contentHash,
     face: Object.freeze({ family: face.family, source: face.source, weight: face.weight }),
-    cues: Object.freeze(layouts.map((layout) => exportRun(layout, cellCount))),
+    pages: Object.freeze(handles.map((handle) => Object.freeze({
+      atlasId: handle.atlasId,
+      atlasContentHash: handle.contentHash,
+    }))),
+    cues: Object.freeze(layouts.map((layout, cue) => Object.freeze({
+      page: pageOfCue[cue],
+      ...exportRun(layout, handles[pageOfCue[cue]].glyphCount),
+    }))),
   });
 };
 
@@ -394,8 +432,12 @@ export const stageNativeRenderText = async (request, options = {}) => {
   let staged;
   try {
     const baked = await bakeCues(cueRequest, surface === null ? {} : { surface });
-    const { descriptor, layouts } = readCueBake(baked);
-    staged = { handle: await stage(descriptor), layouts };
+    const { pages, layouts, pageOfCue } = readCueBake(baked);
+    // Sequentially, not concurrently: the staging registry is byte-bounded and evicts by least
+    // recent use, so uploading every page at once could evict a page this same export just staged.
+    const handles = [];
+    for (const page of pages) handles.push(await stage(page));
+    staged = { handles, layouts, pageOfCue };
   } catch (error) {
     if (error instanceof ExportTextError) throw error;
     const code = nestedCode(error);
@@ -411,9 +453,10 @@ export const stageNativeRenderText = async (request, options = {}) => {
   }
 
   return buildExportTextRequest({
-    handle: staged.handle,
+    handles: staged.handles,
     face,
     layouts: staged.layouts,
+    pageOfCue: staged.pageOfCue,
     cueCount: cues.length,
   });
 };

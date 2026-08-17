@@ -1,9 +1,14 @@
 //! The native side of the glyph atlas staging boundary.
 //!
-//! `src/platform/glyphAtlasStaging.js` bakes one atlas per text revision inside the `WebView` and
-//! hands it to native code as a single self-describing binary body. This module is the receiving
+//! `src/platform/glyphAtlasStaging.js` bakes a text revision inside the `WebView` and hands each
+//! baked atlas to native code as a single self-describing binary body. This module is the receiving
 //! end: it decodes that frame, refuses anything the baker could not have produced, and holds the
 //! result in a bounded registry that the compositor later addresses by an opaque identifier.
+//!
+//! One atlas holds a bounded number of distinct cells, so a document with a large character set is
+//! baked into several pages. Each page crosses this boundary on its own and gets its own handle;
+//! nothing here knows they belong together. What binds them into one document is the export payload
+//! in `crate::render::text`, which names the pages and the page each cue was baked into.
 //!
 //! Direction matters here. The content security policy stops the `WebView` from fetching,
 //! streaming, or opening a socket to the loopback capability server, which is why composited frames
@@ -62,7 +67,7 @@ use std::fmt;
 
 use osg_scene::glyph::{
     AtlasFace, AtlasGeometry, AtlasGlyph, AtlasLayout, AtlasMetrics, Direction, FaceProbe,
-    FaceStyle, GlyphAtlasDescriptor, UncheckedGlyphAtlas,
+    FaceStyle, GlyphAtlasDescriptor, MAX_ATLAS_PAGES, UncheckedGlyphAtlas,
 };
 use serde::Deserialize;
 
@@ -93,15 +98,27 @@ const MAX_FRAME_BYTES: usize = 32 * 1024 * 1024;
 const MAX_METADATA_BYTES: usize = 1024 * 1024;
 /// Live atlases the registry retains, mirroring `GLYPH_ATLAS_STAGING_LIMITS.maxStagedAtlases`.
 ///
+/// One export stages up to [`MAX_ATLAS_PAGES`] pages and they must all be resident at once, because
+/// the export resolves every page before it composes its first frame. Eight more is the preview's
+/// headroom: the editor re-bakes as the user types, and evicting an export's own pages to make room
+/// for a preview bake would fail the export that is already running.
+///
 /// The `WebView` bounds its handle cache by the same count, so both sides evict in the same order
 /// and a `WebView` cache miss simply re-stages.
-const MAX_STAGED_ATLASES: usize = 8;
+const MAX_STAGED_ATLASES: usize = MAX_ATLAS_PAGES + 8;
 /// Retained atlas pixel bytes across the whole registry.
 ///
-/// The count bound alone would admit eight frames at the frame budget, so the byte bound is what
-/// actually caps residency. Pixels are the whole of it: the glyph table is bounded by
-/// [`MAX_METADATA_BYTES`] and is negligible beside a texture.
-const MAX_STAGED_BYTES: u64 = 64 * 1024 * 1024;
+/// **This is the declared limit that decides whether a large-character-set document exports.** The
+/// count bound above admits pages; this one admits their pixels, and pixels are the whole of the
+/// cost — the glyph table is bounded by [`MAX_METADATA_BYTES`] and is negligible beside a texture.
+/// A document past this budget is refused with a message that says so; it is never truncated to fit,
+/// because a truncated atlas exports a video with characters silently missing from it.
+///
+/// 256 MiB is eight frames at the [`MAX_FRAME_BYTES`] ceiling, which is what a document of the very
+/// largest pages would need before it is refused. Real pages are far smaller: a 24px bake of 1024
+/// cells is around a megabyte, so an ordinary CJK document's whole page set is a few tens of
+/// megabytes and never approaches this.
+const MAX_STAGED_BYTES: u64 = 256 * 1024 * 1024;
 
 /// One frame always fits the registry, so eviction never has to refuse a well-formed atlas.
 const _: () = assert!(MAX_FRAME_BYTES as u64 <= MAX_STAGED_BYTES);

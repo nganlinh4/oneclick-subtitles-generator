@@ -15,7 +15,9 @@ use common::{
     BASELINE_PX, FAMILY, HOLD_FRAME, INK_CELL, WEIGHT, atlas, baked_line, scene, staged_with_atlas,
     staged_with_run, style, style_spec,
 };
-use osg_compositor::{Compositor, CueLine, CueRun, Frame, SubtitleScene, SubtitleStyleSpec};
+use osg_compositor::{
+    AtlasPages, Compositor, CueLine, CueRun, Frame, SubtitleScene, SubtitleStyleSpec,
+};
 use osg_scene::glyph::{AtlasGlyph, Direction, GlyphAtlasDescriptor};
 
 /// Frames inside the fixture cue's fade-in window, which opens at 0.7s and closes at 1.0s.
@@ -232,7 +234,7 @@ fn an_astral_cluster_appears_only_once_both_of_its_code_units_are_revealed() {
     // Two clusters, four UTF-16 code units.
     let scene = SubtitleScene::new(
         scene(FAMILY, WEIGHT),
-        atlas,
+        AtlasPages::single(atlas, 1),
         style(&typing(0.3)),
         vec![CueRun::single_line(baked_line(0, &[INK_CELL, INK_CELL]))],
     )

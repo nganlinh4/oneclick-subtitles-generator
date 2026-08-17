@@ -3,8 +3,12 @@
 //! The accepted architecture (`docs/rewrite/NATIVE_RENDERER.md`) is a single Rust/GPU pixel pipeline
 //! serving both the editor preview and the export, so there is never a second implementation of the
 //! same maths. This crate is that pipeline. It takes a validated [`osg_scene::scene::Scene`], the
-//! [`osg_scene::glyph::GlyphAtlasDescriptor`] the `WebView` baked, a resolved style and the staged
-//! glyph runs, and composes any frame of that scene into tightly packed RGBA8 bytes.
+//! [`AtlasPages`] the `WebView` baked, a resolved style and the staged glyph runs, and composes any
+//! frame of that scene into tightly packed RGBA8 bytes.
+//!
+//! A document is baked into one atlas page or several — a large character set exhausts one page's
+//! cells — and each cue records the page it was baked into. One cue is visible per frame, so one
+//! page is bound per frame; see [`AtlasPages`].
 //!
 //! Four properties are structural rather than aspirational:
 //!
@@ -62,6 +66,7 @@ mod frame;
 mod geometry;
 mod glyphs;
 mod masks;
+mod pages;
 mod pass;
 mod plan;
 mod quad_pipeline;
@@ -89,6 +94,7 @@ pub use decoration::{
 pub use device::{AdapterProfile, AdapterSelection, DeviceKind};
 pub use error::{Axis, CompositorError, Rejection, TextureTarget};
 pub use frame::Frame;
+pub use pages::AtlasPages;
 pub use run::{CueLine, CueRun, MAX_RUN_GLYPHS, MAX_RUN_LINES};
 pub use scene::TestScene;
 pub use size::{FrameSize, MAX_FRAME_DIMENSION, MAX_FRAME_PIXELS, MIN_FRAME_DIMENSION};

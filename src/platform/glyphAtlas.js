@@ -22,9 +22,12 @@
  * spelling reproduces it, so a ligature or a kern still refuses rather than drawing the wrong glyph.
  *
  * TWO ENTRY POINTS, ONE BAKE. `bakeGlyphAtlas` is the preview's: one text, one atlas, one layout.
- * `bakeGlyphAtlasForCues` is the export's: many texts, ONE atlas, one layout each. They are the same
- * pipeline — `glyphAtlasBake.js` — because an export that did not bake the cells the preview baked
- * would stop being a proof of the preview.
+ * `bakeGlyphAtlasForCues` is the export's: many texts, as many atlas PAGES as their alphabet needs,
+ * and one layout each against the page it landed on. They are the same pipeline —
+ * `glyphAtlasBake.js` — because an export that did not bake the cells the preview baked would stop
+ * being a proof of the preview. A cue's cells are a function of that cue alone, whichever page it
+ * lands on and whichever cues it is baked beside, which is what makes the one-cue and many-cue
+ * entry points comparable at all.
  *
  * Transport is deliberately NOT decided here. Raw frame bytes over IPC are forbidden by the
  * architecture, so `descriptor.pixels` is exposed as a plain RGBA byte view and the caller chooses
@@ -74,6 +77,16 @@ export const GLYPH_ATLAS_LIMITS = Object.freeze({
   maxLayoutWidthPx: 1_048_576,
   minLetterSpacingPx: -100,
   maxLetterSpacingPx: 1_000,
+  // Paging bounds. A cue list whose alphabet overflows one atlas is split across pages rather than
+  // refused, because `osg_scene::cues::active_cue_at` draws exactly one cue per frame and therefore
+  // samples exactly one page. `maxAtlasPages` mirrors `MAX_ATLAS_PAGES` in
+  // crates/osg-scene/src/glyph/limits.rs and `maxTotalAtlasBytes` mirrors `MAX_STAGED_BYTES` in
+  // apps/desktop/src-tauri/src/glyph_atlas.rs, which is what the staging registry will hold
+  // resident. Together they are the DECLARED budget: 32 pages of 1,024 cells carry 32,768 distinct
+  // glyph forms, which covers every script this product ships fonts for, and the byte budget is what
+  // decides whether a large font size at 4K reaches that count before it reaches the memory.
+  maxAtlasPages: 32,
+  maxTotalAtlasBytes: 268_435_456,
 });
 
 /**
@@ -101,24 +114,25 @@ const MAX_CUE_TEXTS = 100_000;
 export const bakeGlyphAtlas = (request, options = {}) => bakeAtlas(
   { texts: [request?.text], request, limits: GLYPH_ATLAS_LIMITS, version: GLYPH_ATLAS_VERSION },
   options
-).descriptor;
+).pages[0];
 
 /**
- * What one cue set has to agree on before it can be drawn from one atlas.
+ * What every cue has to satisfy before it can be drawn at all.
  *
- * These are not extra caution: each one is a place where the native side has exactly one answer for
- * the whole scene and a cue list could otherwise carry n.
+ * Both conditions are places where the native side has exactly one answer and a cue could otherwise
+ * carry another:
  *
  * - A run that places NO cell is refused by `osg_compositor::CueRun::validate`, so an empty or
  *   line-break-only cue text would take the whole export down with a refusal the user cannot read.
- * - `SubtitleScene::new` gates on the ATLAS's `cellAdvanceLayout`, one verdict for every cue. A cue
- *   whose shaping crosses cluster boundaries, or whose bidi the shaper refused, therefore cannot be
- *   carried beside cues that are fine: the alternative to refusing here is drawing that cue wrong.
- * - `osg_compositor`'s `run_align` places every cue by the ATLAS's `layout.textAlign`, because CSS
- *   `start` resolves against the paragraph's own direction and only the shaper can decide it. Cues
- *   that resolve to different alignments — a right-to-left cue beside a left-to-right one, with the
- *   direction left to the text — would be aligned by whichever one came first, which is exactly the
- *   preview/export divergence this pipeline exists to remove.
+ * - `SubtitleScene::new` gates on each ATLAS's `cellAdvanceLayout`. A cue whose shaping crosses
+ *   cluster boundaries, or whose bidi the shaper refused, cannot be drawn from cells at all — so it
+ *   refuses here, by index, rather than being drawn in the wrong order.
+ *
+ * Alignment is NOT in this list any more, and that is the point of paging. `run_align` places every
+ * cue by its ATLAS's `layout.textAlign`, because CSS `start` resolves against the paragraph's own
+ * direction and only the shaper can decide it. One atlas therefore carries one alignment — which
+ * used to mean a document mixing a right-to-left cue with a left-to-right one was refused outright.
+ * Now those cues land on different pages, each aligned as its own direction demands.
  */
 const requireStageableCues = (runs) => {
   runs.forEach((run, index) => {
@@ -128,37 +142,34 @@ const requireStageableCues = (runs) => {
     if (run.cellAdvanceLayout !== 'reproduces') {
       fail(
         'glyphAtlasCueLayoutRefused',
-        `texts[${index}] cannot be laid out from atlas cells, and one refused cue refuses the whole atlas`
-      );
-    }
-    if (run.textAlign !== runs[0].textAlign) {
-      fail(
-        'glyphAtlasCueAlignmentConflict',
-        'The cues resolve to different alignments, and one atlas carries one alignment for all of them'
+        `texts[${index}] cannot be laid out from atlas cells, and a cue that cannot be drawn is refused rather than drawn wrongly`
       );
     }
   });
 };
 
 /**
- * Bake ONE atlas for a whole cue list, and lay every cue out against it.
+ * Bake a whole cue list into as many atlas pages as its alphabet needs.
  *
  * `request` is `bakeGlyphAtlas`'s, with `texts` — one string per cue, in cue order — in place of
- * `text`. Returns `{ descriptor, runs }` where `runs[i]` is `texts[i]`'s layout against
- * `descriptor.glyphs`, and `runs[0]` is `descriptor.layout` itself. `render_start` wants each run
- * projected to `{ lines: [{ glyphs, penXPx, advanceWidthPx, baselineYPx }] }`; every other field a
+ * `text`. Returns `{ pages, runs, pageOfCue }` where `runs[i]` is `texts[i]`'s layout against
+ * `pages[pageOfCue[i]].glyphs`. `render_start` wants each run projected to
+ * `{ lines: [{ glyphs, penXPx, advanceWidthPx, baselineYPx }] }` plus its page; every other field a
  * layout carries is provenance the caller may drop.
  *
- * WHY ONE ATLAS. `osg_compositor::SubtitleScene::new` validates every run's cell indices against one
- * glyph table and refuses a run count that is not the cue count, so n atlases cannot be used and
- * cannot be merged natively.
+ * WHY PAGES RATHER THAN ONE ATLAS. `maxGlyphCount` bounds ONE atlas's cell table, and that bound is
+ * on the ALPHABET — the union of every cue's distinct forms. Latin saturates it at a few dozen cells
+ * however long the track, so one atlas was never a limit there. A large character set is different:
+ * a Chinese film uses a few thousand distinct ideographs and overflowed a single atlas, so the
+ * export refused an ordinary document. Splitting the cue list across pages removes that ceiling
+ * without raising the per-atlas bound the native validators enforce, and it costs nothing at draw
+ * time because `osg_scene::cues::active_cue_at` selects exactly one cue per frame — so a frame
+ * samples exactly one page.
  *
- * WHAT THE BOUND MEANS HERE. `maxGlyphCount` applies to the UNION of every cue's cells, not to one
- * cue, and an oversize union is refused rather than truncated — a truncated table would silently
- * drop glyphs from cues nobody was looking at. The bound is on the ALPHABET, not on the cue count:
- * a track saturates at the number of distinct forms it is written with, so Latin text stops growing
- * the table after its own alphabet however many cues follow, while a script with a large character
- * set reaches 1024 cells in proportion to the distinct characters the track uses.
+ * WHAT IS STILL REFUSED, and refused rather than truncated, because a page silently dropped is a
+ * stretch of subtitles missing from the exported file: a document needing more than `maxAtlasPages`
+ * pages or more than `maxTotalAtlasBytes` of glyph raster. Both are declared budgets with actionable
+ * messages, not incidental ceilings.
  */
 export const bakeGlyphAtlasForCues = (request, options = {}) => {
   if (request === null || typeof request !== 'object') invalidRequest('request must be an object');

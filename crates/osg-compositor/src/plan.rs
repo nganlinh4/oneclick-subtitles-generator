@@ -57,7 +57,11 @@ const EDGE_SLACK: f64 = 1.0;
 /// Which texture a run of quads samples.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) enum BindSource {
-    /// The glyph atlas the `WebView` baked.
+    /// The glyph atlas page the frame resolved, from [`FramePlan::atlas_page`].
+    ///
+    /// One variant rather than one per page, because a frame draws exactly one cue and therefore
+    /// samples exactly one page. Carrying the page here instead would split the frame's quads into
+    /// segments that can never differ.
     Atlas,
     /// A blurred mask this frame built, by index into [`FramePlan::masks`].
     Mask(usize),
@@ -85,6 +89,7 @@ pub(crate) struct FramePlan {
     vertices: Vec<f32>,
     segments: Vec<Segment>,
     masks: Vec<MaskJob>,
+    atlas_page: Option<usize>,
 }
 
 impl FramePlan {
@@ -98,6 +103,14 @@ impl FramePlan {
 
     pub(crate) fn masks(&self) -> &[MaskJob] {
         &self.masks
+    }
+
+    /// The atlas page every [`BindSource::Atlas`] segment of this frame samples.
+    ///
+    /// `None` when the plan draws nothing: no cue is visible, its opacity is zero, or its run is
+    /// missing. Such a plan emits no atlas segment either, so there is no page to resolve.
+    pub(crate) const fn atlas_page(&self) -> Option<usize> {
+        self.atlas_page
     }
 
     fn vertex_count(&self) -> u32 {
@@ -190,7 +203,15 @@ pub(crate) fn build_frame_plan(
         return Ok(FramePlan::default());
     }
 
-    let atlas = scene.atlas();
+    // The page this cue was baked into, and the only one this frame samples. A cue whose page the
+    // scene does not know is unreachable — `SubtitleScene::new` refuses one — so it draws nothing
+    // rather than being drawn from a page that is not its own.
+    let (Some(page), Some(atlas)) = (
+        scene.page_of_cue(active.index),
+        scene.atlas_for(active.index),
+    ) else {
+        return Ok(FramePlan::default());
+    };
     let width = f64::from(scene.scene().width());
     let height = f64::from(scene.scene().height());
     let metrics = Metrics::resolve(atlas, style, width, height);
@@ -261,7 +282,10 @@ pub(crate) fn build_frame_plan(
         alpha,
     };
 
-    let mut plan = FramePlan::default();
+    let mut plan = FramePlan {
+        atlas_page: Some(page),
+        ..FramePlan::default()
+    };
     glow(&mut plan, &cue);
     background(&mut plan, &cue);
     border(&mut plan, &cue);

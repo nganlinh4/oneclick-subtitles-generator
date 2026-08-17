@@ -289,14 +289,26 @@ impl StagedAtlases for EmptyAtlases {
     }
 }
 
-/// The staged-text payload exactly as the `WebView` would write it, with one run per cue.
+/// The staged-text payload exactly as the `WebView` would write it: one page, one run per cue.
 pub(super) fn export_text_json(atlas_id: AssetId, cues: usize) -> Value {
+    export_text_json_pages(&[atlas_id], &vec![0; cues])
+}
+
+/// The same payload for a document baked into several pages, with the page each cue names.
+///
+/// The two are one function because the single-page shape is the multi-page shape with one entry:
+/// a fixture that built them separately could drift, and then the common case would be tested
+/// against a payload the baker never writes.
+pub(super) fn export_text_json_pages(atlas_ids: &[AssetId], page_of_cue: &[u32]) -> Value {
     json!({
         "schemaVersion": EXPORT_TEXT_SCHEMA_VERSION,
-        "atlasId": atlas_id,
-        "atlasContentHash": ATLAS_CONTENT_HASH,
         "face": default_face(),
-        "cues": (0..cues).map(|_| json!({
+        "pages": atlas_ids.iter().map(|atlas_id| json!({
+            "atlasId": atlas_id,
+            "atlasContentHash": ATLAS_CONTENT_HASH,
+        })).collect::<Vec<_>>(),
+        "cues": page_of_cue.iter().map(|page| json!({
+            "page": page,
             "lines": [{
                 "glyphs": [INK_CELL],
                 "penXPx": [0.0],

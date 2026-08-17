@@ -12,16 +12,13 @@ import { stageNativeRenderText } from './exportTextStaging';
 import { atlasBakeRequest, previewFace } from './nativePreviewScene';
 
 /**
- * What this suite proves: an export produces the one atlas and the n runs `render_start` reads, that
- * the runs index the staged table, that the preview's own atlas is reused rather than staged twice,
- * and that a font the editor cannot resolve stops the export by name instead of writing a file in a
- * substitute.
+ * What this suite proves: an export produces the atlas pages and the n runs `render_start` reads,
+ * that every run indexes the page it names, that the preview's own atlas is reused rather than
+ * staged twice, and that a font the editor cannot resolve stops the export by name instead of
+ * writing a file in a substitute.
  *
- * The atlas is baked by the real `bakeGlyphAtlas` against a measurement surface, because staging
- * validates a descriptor field by field and a hand-written stand-in would prove nothing about it.
- * `unionBaker` below stands in for the baker's union entry point, which is landing in the same wave;
- * what it reproduces is the only property the compositor requires — one cell table, and every run's
- * indices inside it.
+ * The atlas is baked by the real baker against a measurement surface, because staging validates a
+ * descriptor field by field and a hand-written stand-in would prove nothing about it.
  */
 
 vi.mock('@tauri-apps/api/core', () => ({
@@ -194,9 +191,9 @@ describe('staging the text an export draws with', () => {
     const text = await stageNativeRenderText(request, stagingOptions());
 
     expect(Object.keys(text)).toEqual([
-      'schemaVersion', 'atlasId', 'atlasContentHash', 'face', 'cues',
+      'schemaVersion', 'face', 'pages', 'cues',
     ]);
-    expect(text.schemaVersion).toBe(1);
+    expect(text.schemaVersion).toBe(2);
     expect(text.face).toEqual({
       family: EXPORT_FAMILY,
       source: expect.stringContaining(EXPORT_FAMILY),
@@ -210,8 +207,11 @@ describe('staging the text an export draws with', () => {
       'glyphs', 'penXPx', 'advanceWidthPx', 'baselineYPx',
     ]);
 
+    // One page here, and its identity is the frame that was uploaded.
+    expect(text.pages).toHaveLength(1);
     const staged = decodeFrame(invokeDesktopRaw.mock.calls[0][1]);
-    expect(staged.contentHash).toBe(text.atlasContentHash);
+    expect(staged.contentHash).toBe(text.pages[0].atlasContentHash);
+    expect(text.cues.map((cue) => cue.page)).toEqual([0, 0, 0]);
     const cellCount = staged.glyphs.length;
     const everyCell = text.cues.flatMap((cue) => cue.lines.flatMap((line) => line.glyphs));
     expect(everyCell.length).toBeGreaterThan(0);
@@ -267,15 +267,46 @@ describe('staging the text an export draws with', () => {
     // Content-addressed: the export baked the identical atlas, so no second upload happened and the
     // handle it sends is the handle the preview minted.
     expect(invokeDesktopRaw).toHaveBeenCalledTimes(1);
-    expect(text.atlasId).toBe(previewHandle.atlasId);
-    expect(text.atlasContentHash).toBe(previewHandle.contentHash);
+    expect(text.pages).toEqual([
+      { atlasId: previewHandle.atlasId, atlasContentHash: previewHandle.contentHash },
+    ]);
   });
 
   test('stages its own atlas when the preview has not staged one for these cues', async () => {
     const request = renderRequest(['never previewed at all']);
     const text = await stageNativeRenderText(request, stagingOptions());
     expect(invokeDesktopRaw).toHaveBeenCalledTimes(1);
-    expect(text.atlasContentHash).toBe(decodeFrame(invokeDesktopRaw.mock.calls[0][1]).contentHash);
+    expect(text.pages[0].atlasContentHash)
+      .toBe(decodeFrame(invokeDesktopRaw.mock.calls[0][1]).contentHash);
+  });
+
+  test('stages every page and sends each cue against the page it was laid out on', async () => {
+    // A left-to-right cue and a right-to-left one resolve to different alignments, and one atlas
+    // carries one alignment — so this document is two pages. It used to be refused outright.
+    const request = renderRequest(['left to right', 'שלום עולם'], { textAlign: 'left' });
+    const text = await stageNativeRenderText(request, stagingOptions());
+
+    expect(text.pages).toHaveLength(2);
+    expect(text.cues.map((cue) => cue.page)).toEqual([0, 1]);
+    // Two uploads, one per page, and the payload's identities are the ones that were uploaded.
+    expect(invokeDesktopRaw).toHaveBeenCalledTimes(2);
+    const uploaded = invokeDesktopRaw.mock.calls.map(([, frame]) => decodeFrame(frame));
+    expect(text.pages.map((page) => page.atlasContentHash))
+      .toEqual(uploaded.map((frame) => frame.contentHash));
+    expect(new Set(text.pages.map((page) => page.atlasId)).size).toBe(2);
+
+    // Each cue's cells are inside ITS page's table. Cue 1 indexes low cell numbers that also exist
+    // on page 0, so checking against page 0 would pass while drawing entirely wrong glyphs.
+    for (const [index, cue] of text.cues.entries()) {
+      const cells = cue.lines.flatMap((line) => line.glyphs);
+      const table = uploaded[cue.page].glyphs;
+      expect(cells.length).toBeGreaterThan(0);
+      expect(cells.every((cell) => cell >= 0 && cell < table.length)).toBe(true);
+      // The clusters those cells name are this cue's own characters — the right-to-left cue is
+      // drawn in visual order, so the SET is what survives reordering.
+      expect(new Set(cells.map((cell) => table[cell].cluster)))
+        .toEqual(new Set(request.lyrics[index].text));
+    }
   });
 
   test('copies the baker positions rather than deriving any', async () => {
@@ -339,10 +370,10 @@ describe('refusals that stop an export before it starts', () => {
     const request = renderRequest(['out of range']);
     await expect(stageNativeRenderText(request, stagingOptions({
       bakeCues: (bakeRequest, options) => {
-        const { descriptor, runs } = bakeGlyphAtlasForCues(bakeRequest, options);
-        const [first] = runs;
+        const baked = bakeGlyphAtlasForCues(bakeRequest, options);
+        const [first] = baked.runs;
         return {
-          descriptor,
+          ...baked,
           runs: [{
             lines: [{ ...first.lines[0], glyphs: first.lines[0].glyphs.map(() => 100_000) }],
           }],
@@ -358,8 +389,8 @@ describe('refusals that stop an export before it starts', () => {
     const request = renderRequest(['first', 'second']);
     await expect(stageNativeRenderText(request, stagingOptions({
       bakeCues: (bakeRequest, options) => {
-        const { descriptor, runs } = bakeGlyphAtlasForCues(bakeRequest, options);
-        return { descriptor, runs: runs.slice(0, 1) };
+        const baked = bakeGlyphAtlasForCues(bakeRequest, options);
+        return { ...baked, runs: baked.runs.slice(0, 1), pageOfCue: baked.pageOfCue.slice(0, 1) };
       },
     }))).rejects.toMatchObject({
       code: 'renderTextStagingFailed',
@@ -368,8 +399,8 @@ describe('refusals that stop an export before it starts', () => {
   });
 
   test('a cue the baker will not stage refuses the whole export, not just that cue', async () => {
-    // One atlas carries one verdict for every cue, so a cue that places no cell cannot travel
-    // beside cues that are fine: the compositor would refuse the run and name no cue.
+    // A cue that places no cell cannot be drawn at all, and no page can rescue it: the compositor
+    // would refuse the run and name no cue.
     const request = renderRequest(['drawable', '\n']);
     await expect(stageNativeRenderText(request, stagingOptions()))
       .rejects.toMatchObject({ code: 'renderTextStagingFailed' });

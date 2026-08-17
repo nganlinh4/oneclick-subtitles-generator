@@ -13,13 +13,17 @@ import { resolveProjectForCache } from './subtitleProjectStore';
 export const MAX_RENDER_LYRICS = 100_000;
 
 /** Mirrors `EXPORT_TEXT_SCHEMA_VERSION` in `apps/desktop/src-tauri/src/render/text.rs`. */
-const EXPORT_TEXT_SCHEMA_VERSION = 1;
+const EXPORT_TEXT_SCHEMA_VERSION = 2;
 const EXPORT_TEXT_KEYS = Object.freeze([
-  'schemaVersion', 'atlasId', 'atlasContentHash', 'face', 'cues',
+  'schemaVersion', 'face', 'pages', 'cues',
 ]);
+const EXPORT_PAGE_KEYS = Object.freeze(['atlasId', 'atlasContentHash']);
+const EXPORT_CUE_RUN_KEYS = Object.freeze(['page', 'lines']);
 const EXPORT_CUE_LINE_KEYS = Object.freeze([
   'glyphs', 'penXPx', 'advanceWidthPx', 'baselineYPx',
 ]);
+/** Mirrors `MAX_ATLAS_PAGES` in `crates/osg-scene/src/glyph/limits.rs`. */
+const MAX_EXPORT_PAGES = 32;
 const EXPORT_FACE_KEYS = Object.freeze(['family', 'source', 'weight']);
 /** Mirrors `MAX_IDENTITY_BYTES` and `is_opaque_identity` in the same file. */
 const OPAQUE_IDENTITY_PATTERN = /^[A-Za-z0-9\-_:]{1,128}$/;
@@ -60,7 +64,15 @@ const RENDER_COMMAND_CODES = new Set([
   'renderTextNotStaged',
   'renderAtlasUnknown',
   'renderTextMismatched',
+  'renderTextPagesMissing',
+  'renderTextTooManyPages',
+  'renderTextPageUnknown',
   'renderFontUnavailable',
+  'renderSourceUnreadable',
+  'renderAudioUnusable',
+  'renderVolumeFull',
+  'renderDeviceLost',
+  'renderSceneRejected',
   'renderAtlasCannotLayOut',
   'renderStagingUnavailable',
   'renderMediaPreparationFailed',
@@ -405,15 +417,33 @@ const RENDER_FAILURE_MESSAGES = new Map([
   ['renderTextNotStaged', 'The subtitles for this render were not prepared for the renderer'],
   ['renderAtlasUnknown', 'The prepared subtitles for this render expired. Try again'],
   ['renderTextMismatched', 'The prepared subtitles do not match the subtitles being rendered'],
+  ['renderTextPagesMissing', 'The subtitles for this render were prepared without any glyphs to draw'],
+  // The one refusal in this list that is a product limit rather than a malformed payload, so it is
+  // the one whose message has to tell the user what to do about it.
+  ['renderTextTooManyPages', 'These subtitles use more distinct characters than one render can hold. Split them into shorter renders'],
+  ['renderTextPageUnknown', 'A subtitle in this render points at glyphs that were not prepared with it'],
   ['renderFontUnavailable', 'The font this render asks for is not the font the subtitles were measured with'],
   ['renderAtlasCannotLayOut', 'These subtitles are shaped in a way this render cannot place'],
+  ['renderSourceUnreadable', 'The source video could not be read all the way through'],
+  ['renderAudioUnusable', 'The audio for this render could not be decoded and mixed'],
+  ['renderVolumeFull', 'There is not enough free space to write the rendered video'],
+  ['renderDeviceLost', 'No usable graphics device is available to render this video'],
+  ['renderSceneRejected', 'This render is not one the native renderer can draw'],
+  ['renderStagingUnavailable', 'The renderer has nowhere to write its working files'],
+  ['renderOutputInvalid', 'The render did not produce the video the timeline describes'],
+  ['renderIo', 'The rendered video could not be written to disk'],
 ]);
 
-const renderFailureMessage = (code) => (
+/**
+ * Exported for the contract guard in `renderService.test.js`, which reads the code vocabulary out of
+ * `apps/desktop/src-tauri/src/render/refusal.rs` and requires every code Rust mints to survive the
+ * transport and to say something specific. Nothing else calls either of these from outside.
+ */
+export const renderFailureMessage = (code) => (
   RENDER_FAILURE_MESSAGES.get(code) ?? 'The native video render could not be completed'
 );
 
-const allowedRenderCode = (value, fallback = 'nativeRenderFailed') => {
+export const allowedRenderCode = (value, fallback = 'nativeRenderFailed') => {
   try {
     const candidate = value?.code;
     return RENDER_COMMAND_CODES.has(candidate) ? candidate : fallback;
@@ -749,8 +779,9 @@ export const buildNativeRenderRequest = ({
 /**
  * The staged text `render_start` draws with, checked for what belongs to THIS boundary.
  *
- * The architecture forbids a Rust text stack, so an export's glyphs arrive already shaped: one
- * staged atlas, and one laid-out run per cue in the request's own cue order.
+ * The architecture forbids a Rust text stack, so an export's glyphs arrive already shaped: the
+ * staged atlas pages, and one laid-out run per cue — carrying its page — in the request's own cue
+ * order.
  * `src/components/previews/native/exportTextStaging.js` produces it and
  * `apps/desktop/src-tauri/src/render/text.rs` deserialises it.
  *
@@ -781,18 +812,35 @@ const normalizeExportCueLine = (line) => {
   });
 };
 
-const normalizeExportCueRun = (run) => {
-  const snapshot = snapshotExactRecord(run, ['lines']);
+const normalizeExportCueRun = (run, pageCount) => {
+  const snapshot = snapshotExactRecord(run, EXPORT_CUE_RUN_KEYS);
   if (snapshot === null
       || !Array.isArray(snapshot.lines)
       || snapshot.lines.length === 0
       || snapshot.lines.length > MAX_EXPORT_RUN_LINES) {
     throw invalidRequest();
   }
+  // A cue names the page its cells index. Whether the indices fit that page's table is
+  // `osg_compositor::SubtitleScene`'s question; whether the page exists at all is this one's.
+  const page = requireInteger(snapshot.page, 0, pageCount - 1);
   const lines = snapshot.lines.map(normalizeExportCueLine);
   const cells = lines.reduce((total, line) => total + line.glyphs.length, 0);
   if (cells > MAX_EXPORT_RUN_CELLS) throw invalidRequest();
-  return Object.freeze({ lines: Object.freeze(lines) });
+  return Object.freeze({ page, lines: Object.freeze(lines) });
+};
+
+const normalizeExportPage = (page) => {
+  const snapshot = snapshotExactRecord(page, EXPORT_PAGE_KEYS);
+  if (snapshot === null
+      || !uuidHasVersion(snapshot.atlasId, 7)
+      || typeof snapshot.atlasContentHash !== 'string'
+      || !OPAQUE_IDENTITY_PATTERN.test(snapshot.atlasContentHash)) {
+    throw invalidRequest();
+  }
+  return Object.freeze({
+    atlasId: snapshot.atlasId,
+    atlasContentHash: snapshot.atlasContentHash,
+  });
 };
 
 export const normalizeExportText = (text, request) => {
@@ -800,9 +848,9 @@ export const normalizeExportText = (text, request) => {
   const face = snapshot === null ? null : snapshotExactRecord(snapshot.face, EXPORT_FACE_KEYS);
   if (snapshot === null || face === null
       || snapshot.schemaVersion !== EXPORT_TEXT_SCHEMA_VERSION
-      || !uuidHasVersion(snapshot.atlasId, 7)
-      || typeof snapshot.atlasContentHash !== 'string'
-      || !OPAQUE_IDENTITY_PATTERN.test(snapshot.atlasContentHash)
+      || !Array.isArray(snapshot.pages)
+      || snapshot.pages.length === 0
+      || snapshot.pages.length > MAX_EXPORT_PAGES
       || !Array.isArray(snapshot.cues)
       || !Array.isArray(request?.lyrics)
       || snapshot.cues.length !== request.lyrics.length) {
@@ -814,12 +862,12 @@ export const normalizeExportText = (text, request) => {
   requireString(face.source, 256);
   requireInteger(face.weight, 100, 900);
   if (face.weight % 100 !== 0) throw invalidRequest();
+  const pages = snapshot.pages.map(normalizeExportPage);
   return Object.freeze({
     schemaVersion: EXPORT_TEXT_SCHEMA_VERSION,
-    atlasId: snapshot.atlasId,
-    atlasContentHash: snapshot.atlasContentHash,
     face: Object.freeze({ family: face.family, source: face.source, weight: face.weight }),
-    cues: Object.freeze(snapshot.cues.map(normalizeExportCueRun)),
+    pages: Object.freeze(pages),
+    cues: Object.freeze(snapshot.cues.map((run) => normalizeExportCueRun(run, pages.length))),
   });
 };
 

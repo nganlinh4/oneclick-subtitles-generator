@@ -10,7 +10,7 @@
 //! The messages are written for a person, name no file and quote no text, so a refusal is safe to
 //! surface verbatim and safe to log.
 //!
-//! Two of these codes are not yet in `RENDER_COMMAND_CODES` in `src/platform/renderService.js`,
+//! Several of these codes are not yet in `RENDER_COMMAND_CODES` in `src/platform/renderService.js`,
 //! which is frozen: that module maps a code it does not know to `nativeRenderFailed` and shows its
 //! generic sentence. The refusal is still typed here and still typed in the diagnostics, so nothing
 //! is lost but the sentence, and the frontend change that teaches it these codes is recorded with
@@ -46,6 +46,35 @@ pub(crate) fn text_mismatched() -> CommandError {
     CommandError::render_refusal(
         "renderTextMismatched",
         "The staged subtitle text does not match the subtitles in this render request.",
+    )
+}
+
+/// The staged text named no glyph atlas page at all, so no cue has anything to draw with.
+pub(crate) fn text_pages_missing() -> CommandError {
+    CommandError::render_refusal(
+        "renderTextPagesMissing",
+        "The subtitle text for this export staged no glyph atlas, so there is nothing to draw with.",
+    )
+}
+
+/// The document needs more atlas pages than this build draws from.
+///
+/// The one refusal here that is a real product limit rather than a malformed payload: a document
+/// with an extraordinary number of distinct characters is refused whole rather than exported with
+/// some of them missing.
+pub(crate) fn text_too_many_pages() -> CommandError {
+    CommandError::render_refusal(
+        "renderTextTooManyPages",
+        "This subtitle text uses more distinct characters than one render can hold. Split it into \
+         shorter renders.",
+    )
+}
+
+/// A cue names an atlas page the staged text did not carry.
+pub(crate) fn text_page_unknown() -> CommandError {
+    CommandError::render_refusal(
+        "renderTextPageUnknown",
+        "A subtitle in this export points at a glyph atlas that was not staged with it.",
     )
 }
 

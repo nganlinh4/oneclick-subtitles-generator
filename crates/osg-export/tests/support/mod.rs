@@ -257,7 +257,7 @@ pub(crate) fn run_of(glyphs: Vec<u32>) -> CueRun {
 /// The staged text for `cues` cues, all drawing the inked cell.
 #[must_use]
 pub(crate) fn staged_text(cues: usize) -> StagedText {
-    StagedText::new(
+    StagedText::single(
         default_face(),
         atlas(FAMILY, WEIGHT),
         (0..cues).map(|_| ink_run()).collect(),

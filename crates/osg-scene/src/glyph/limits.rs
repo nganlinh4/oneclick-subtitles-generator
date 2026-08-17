@@ -11,6 +11,19 @@ pub const GLYPH_ATLAS_VERSION: u32 = 1;
 pub const MAX_TEXT_CODE_POINTS: usize = 4_096;
 /// The most distinct glyph cells one atlas may carry, mirroring `maxGlyphCount`.
 pub const MAX_GLYPH_COUNT: usize = 1_024;
+/// The most atlas pages one document may be baked into.
+///
+/// A page is a whole atlas and therefore holds at most [`MAX_GLYPH_COUNT`] cells, so 32 pages carry
+/// 32,768 distinct glyph forms — well past the largest CJK, Korean or mixed-script subtitle document
+/// anyone writes, and past the point where an emoji-heavy one runs out of distinct clusters rather
+/// than of pages.
+///
+/// This count is **not** the budget that decides whether a document exports. Pages are textures, and
+/// the real ceiling is the staged-byte budget on the native side (`MAX_STAGED_BYTES` in
+/// `apps/desktop/src-tauri/src/glyph_atlas.rs`): thirty-two 4096x4096 pages would be far past it
+/// long before this count was reached. This bound exists so a page list cannot grow without limit
+/// before those bytes are ever counted.
+pub const MAX_ATLAS_PAGES: usize = 32;
 /// The most code points one grapheme cluster may carry, mirroring `maxClusterCodePoints`.
 pub const MAX_CLUSTER_CODE_POINTS: usize = 32;
 /// The largest atlas edge in pixels, mirroring `maxAtlasDimensionPx`.

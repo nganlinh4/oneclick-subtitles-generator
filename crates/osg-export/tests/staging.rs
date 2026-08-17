@@ -14,7 +14,7 @@ mod support;
 use osg_compositor::{CanvasBackground, MAX_RUN_GLYPHS};
 use osg_encode::{EncodeError, MfStage};
 use osg_export::{EXPORT_CANVAS_GROUND, ExportError, ExportPlan, StagedText, primary_font_family};
-use osg_scene::glyph::{CellAdvanceVerdict, Direction, GlyphAtlasDescriptor};
+use osg_scene::glyph::{CellAdvanceVerdict, Direction, GlyphAtlasDescriptor, MAX_ATLAS_PAGES};
 use serde_json::json;
 use support::{
     FAMILY, INK_CELL, SOURCE_DURATION_US, SOURCE_HEIGHT, SOURCE_WIDTH, WEIGHT, atlas, default_face,
@@ -240,7 +240,7 @@ fn a_resolved_weight_that_differs_from_the_request_is_carried_rather_than_refuse
 fn the_staged_atlas_must_belong_to_the_scene_and_support_cell_advance_layout() {
     let plan = converted(request_json());
 
-    let mismatched = StagedText::new(default_face(), atlas("Georgia", WEIGHT), vec![ink_run()]);
+    let mismatched = StagedText::single(default_face(), atlas("Georgia", WEIGHT), vec![ink_run()]);
     assert!(matches!(
         plan.compose(mismatched)
             .expect_err("a foreign atlas is refused"),
@@ -253,7 +253,7 @@ fn the_staged_atlas_must_belong_to_the_scene_and_support_cell_advance_layout() {
     residual.metrics.shaping_residual_px = 0.5;
     residual.layout.refusal.shaping_crosses_clusters = true;
     residual.layout.cell_advance_layout = CellAdvanceVerdict::Refused;
-    let refused = StagedText::new(
+    let refused = StagedText::single(
         default_face(),
         GlyphAtlasDescriptor::try_from(residual)
             .expect("a measured residual is a legal descriptor"),
@@ -278,7 +278,7 @@ fn the_staged_atlas_must_belong_to_the_scene_and_support_cell_advance_layout() {
     rtl.glyphs[1].direction = Direction::Rtl;
     rtl.layout.refusal.direction_needs_bidi = true;
     rtl.layout.cell_advance_layout = CellAdvanceVerdict::Refused;
-    let refused = StagedText::new(
+    let refused = StagedText::single(
         default_face(),
         GlyphAtlasDescriptor::try_from(rtl).expect("a right-to-left run is a legal descriptor"),
         vec![ink_run()],
@@ -308,7 +308,7 @@ fn the_staged_runs_must_match_the_cues_and_the_atlas() {
         ExportError::CompositionRejected { .. }
     ));
 
-    let outside = StagedText::new(
+    let outside = StagedText::single(
         default_face(),
         atlas(FAMILY, WEIGHT),
         vec![run_of(vec![99])],
@@ -319,7 +319,7 @@ fn the_staged_runs_must_match_the_cues_and_the_atlas() {
         ExportError::CompositionRejected { .. }
     ));
 
-    let too_long = StagedText::new(
+    let too_long = StagedText::single(
         default_face(),
         atlas(FAMILY, WEIGHT),
         vec![run_of(vec![INK_CELL; MAX_RUN_GLYPHS + 1])],
@@ -329,6 +329,47 @@ fn the_staged_runs_must_match_the_cues_and_the_atlas() {
             .expect_err("a run longer than the renderer accepts is refused"),
         ExportError::CompositionRejected { .. }
     ));
+}
+
+/// A document whose distinct clusters do not fit one atlas is staged as several pages, and the page
+/// each cue was baked into travels with it.
+#[test]
+fn a_document_staged_as_several_pages_composes_with_each_cue_on_its_own_page() {
+    let plan = converted(request_json());
+
+    let scene = plan
+        .compose(StagedText::new(
+            default_face(),
+            vec![atlas(FAMILY, WEIGHT), atlas(FAMILY, WEIGHT)],
+            vec![1],
+            vec![ink_run()],
+        ))
+        .expect("two pages with the one cue on the second is a document that composes");
+    assert_eq!(scene.pages().len(), 2);
+    assert_eq!(scene.page_of_cue(0), Some(1));
+
+    // And the page lists no document can be: none at all, one cue naming a page that was not
+    // staged, and more pages than the renderer draws from.
+    let refusals = [
+        (Vec::new(), vec![0]),
+        (vec![atlas(FAMILY, WEIGHT)], vec![1]),
+        (
+            (0..=MAX_ATLAS_PAGES)
+                .map(|_| atlas(FAMILY, WEIGHT))
+                .collect(),
+            vec![0],
+        ),
+    ];
+    for (pages, page_of_cue) in refusals {
+        let staged = StagedText::new(default_face(), pages, page_of_cue, vec![ink_run()]);
+        assert!(
+            matches!(
+                plan.compose(staged).expect_err("the page list is refused"),
+                ExportError::CompositionRejected { .. }
+            ),
+            "a page list no cue could draw from is not a document"
+        );
+    }
 }
 
 // ---- Refusals the request itself carries --------------------------------------------------

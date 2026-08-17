@@ -56,8 +56,11 @@ fn an_inkless_run_stages_as_a_zero_by_zero_atlas() {
 fn the_shipped_bounds_are_the_ones_the_webview_stages_against() {
     assert_eq!(MAX_FRAME_BYTES, 33_554_432);
     assert_eq!(MAX_METADATA_BYTES, 1_048_576);
-    assert_eq!(MAX_STAGED_ATLASES, 8);
-    assert_eq!(MAX_STAGED_BYTES, 67_108_864);
+    // One export's whole page set has to stay resident at once, plus the preview's own headroom, so
+    // the count is the page bound and then some. The byte budget is what actually decides whether a
+    // large-character-set document exports.
+    assert_eq!(MAX_STAGED_ATLASES, 40);
+    assert_eq!(MAX_STAGED_BYTES, 268_435_456);
     assert_eq!(FRAME_HEADER_BYTES, 16);
     assert_eq!(GLYPH_ATLAS_STAGING_VERSION, 1);
 }

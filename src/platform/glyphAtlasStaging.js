@@ -71,8 +71,15 @@ export const GLYPH_ATLAS_STAGING_LIMITS = Object.freeze({
   maxPayloadBytes: 32 * 1024 * 1024,
   /** Metadata is the glyph table and the layout; a megabyte is far above the measured worst case. */
   maxMetadataBytes: 1024 * 1024,
-  /** Live atlases the WebView will keep handles for. Each one is a native GPU texture. */
-  maxStagedAtlases: 8,
+  /**
+   * Live atlases the WebView will keep handles for, mirroring `MAX_STAGED_ATLASES` in
+   * `apps/desktop/src-tauri/src/glyph_atlas.rs` so the cache does not forget an atlas the registry
+   * still holds. One export stages one page per `MAX_ATLAS_PAGES`, and all of its pages must be
+   * addressable at once when `render_start` resolves them — a cache smaller than that would simply
+   * re-upload pages the registry already has. The entries are handles, not pixels, so the cost of
+   * the larger bound is a few dozen small records.
+   */
+  maxStagedAtlases: 40,
 });
 
 export const GLYPH_ATLAS_STAGING_ERROR_CODES = Object.freeze([

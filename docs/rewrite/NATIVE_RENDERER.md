@@ -114,7 +114,9 @@ The accepted design is therefore **one compositor and one glyph source**:
   background composition, colour conversion and blending. It serves both surfaces; there is no
   second implementation of any of it.
 - **One glyph source.** The editor WebView rasterizes the selected font into an atlas once per text
-  revision and stages it. Preview and export consume the same atlas bytes.
+  revision and stages it. Preview and export consume the same atlas bytes. An export's atlas is
+  **paged** — see below — because one atlas holds one cell table and a large-character-set document
+  needs more cells than one table carries.
 - **One scene contract.** A strict, versioned, bounded, immutable scene DTO, with the same
   validation on both sides and a single deterministic frame-time sampler shared by video, audio and
   overlay so all three advance identically.
@@ -244,6 +246,50 @@ The rule is therefore about *which frame the user is judging*:
 Stating it this way keeps the honest property — *the frame you approved is the frame you get* —
 without pretending that thirty composited frames a second through an image element is a sensible
 way to scrub a video.
+
+### Atlas paging — what a document is allowed to be
+
+One `GlyphAtlasDescriptor` carries one cell table, bounded at `MAX_GLYPH_COUNT` (1,024) cells, and a
+`CueRun` indexes exactly one table. The bound is on the **alphabet**, not on the cue count: Latin
+saturates at a few dozen cells however long the track, so a single atlas was never a limit there.
+
+A large character set is different. A Chinese film uses a few thousand distinct ideographs, a Korean
+track reaches into the syllable blocks, an emoji-heavy lyric video keeps introducing new sequences.
+Those are ordinary product documents and they overflowed one table, so the export refused them
+outright. That was an *incidental implementation ceiling*, and it is gone.
+
+An export's cue list is now split across **pages**. Each page is exactly the descriptor it always
+was — same shape, same validators, same staging frame, same content hash — and each cue carries the
+page index its cells belong to. Nothing about the draw changed, because
+`osg_scene::cues::active_cue_at` selects **exactly one cue per frame**: a frame samples exactly one
+page, the compositor binds that page, and resident texture memory is one page whatever the document
+is. There is no texture array, no per-vertex page id, and no extra draw call.
+
+Two consequences worth stating, because both were previously refusals:
+
+- **A cue's cells no longer depend on the cues it is baked beside.** The contextual-versus-isolated
+  cell decision used to be one verdict for the whole document, so a single long cursive line dragged
+  every other cue down to isolated forms with it. It is now per cue — which also closes a real
+  preview/export gap, since the preview bakes one cue and the export bakes them all.
+- **A document may mix text directions.** `run_align` reads the alignment from the atlas, because
+  CSS `start` resolves against the paragraph's own direction and only the shaper can decide it. One
+  atlas therefore carries one alignment — so a right-to-left cue and a left-to-right one simply land
+  on different pages instead of the document being refused. Pages are keyed by alignment rather than
+  being contiguous stretches of cues, so a track that alternates direction produces two pages, not
+  one per cue.
+
+What is still refused, and refused rather than truncated, because a page silently dropped would be a
+stretch of subtitles missing from the exported file:
+
+| Bound | Value | Meaning |
+| --- | --- | --- |
+| `maxAtlasPages` | 32 | 32,768 distinct glyph forms — past every script the product ships fonts for |
+| `maxTotalAtlasBytes` | 256 MiB | what the staging registry holds resident; reached first by a large font size at 4K |
+| per-cue | `MAX_GLYPH_COUNT`, atlas dimension | a single cue no page could hold; there is no smaller unit to split into |
+
+These are **declared budgets with actionable messages** — reduce the font size, or the number of
+distinct characters — not accidents of an implementation. A document past them names the bound it
+broke.
 
 ### Determinism
 

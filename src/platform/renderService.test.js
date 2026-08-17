@@ -1,3 +1,6 @@
+import { readFileSync } from 'node:fs';
+import { resolve } from 'node:path';
+
 import { v4 as uuidv4, v7 as uuidv7 } from 'uuid';
 
 import { defaultCustomization } from '../components/subtitleCustomization/defaultCustomization';
@@ -16,10 +19,12 @@ import {
 
 import {
   NativeRenderError,
+  allowedRenderCode,
   buildNativeRenderRequest,
   createNativeRenderService,
   normalizeRenderEvent,
   normalizeRenderResultResponse,
+  renderFailureMessage,
   runNativeRender,
   waitForNativeRender,
 } from './renderService';
@@ -704,11 +709,11 @@ describe('native render contract', () => {
 
 describe('staged export text', () => {
   const exportText = (overrides = {}) => ({
-    schemaVersion: 1,
-    atlasId: uuidv7(),
-    atlasContentHash: 'a1b2c3d4',
+    schemaVersion: 2,
     face: { family: 'Roboto', source: 'system:windows:Roboto:400:normal', weight: 400 },
+    pages: [{ atlasId: uuidv7(), atlasContentHash: 'a1b2c3d4' }],
     cues: [{
+      page: 0,
       lines: [{
         glyphs: [0, 1, 2],
         penXPx: [0, 8.5, 17],
@@ -737,10 +742,17 @@ describe('staged export text', () => {
         { id: 2, start: 1, end: 2, text: 'second' },
       ],
     });
+    // Two cues on two different pages: the second must reach the command naming page 1, because a
+    // page dropped in transit would draw that cue from another page's cells.
     const text = exportText({
+      pages: [
+        { atlasId: uuidv7(), atlasContentHash: 'a1b2c3d4' },
+        { atlasId: uuidv7(), atlasContentHash: 'e5f60718' },
+      ],
       cues: [
-        { lines: [{ glyphs: [0], penXPx: [0], advanceWidthPx: 6, baselineYPx: 19 }] },
+        { page: 0, lines: [{ glyphs: [0], penXPx: [0], advanceWidthPx: 6, baselineYPx: 19 }] },
         {
+          page: 1,
           lines: [
             { glyphs: [1, 2], penXPx: [0, 7], advanceWidthPx: 13, baselineYPx: 19 },
             { glyphs: [3], penXPx: [0], advanceWidthPx: 6, baselineYPx: 43 },
@@ -755,13 +767,13 @@ describe('staged export text', () => {
     const [[, payload]] = invokeCommand.mock.calls;
     expect(Object.keys(payload)).toEqual(['request', 'text', 'onEvent']);
     expect(payload.text).toEqual({
-      schemaVersion: 1,
-      atlasId: text.atlasId,
-      atlasContentHash: 'a1b2c3d4',
+      schemaVersion: 2,
       face: { family: 'Roboto', source: 'system:windows:Roboto:400:normal', weight: 400 },
+      pages: text.pages,
       cues: [
-        { lines: [{ glyphs: [0], penXPx: [0], advanceWidthPx: 6, baselineYPx: 19 }] },
+        { page: 0, lines: [{ glyphs: [0], penXPx: [0], advanceWidthPx: 6, baselineYPx: 19 }] },
         {
+          page: 1,
           lines: [
             { glyphs: [1, 2], penXPx: [0, 7], advanceWidthPx: 13, baselineYPx: 19 },
             { glyphs: [3], penXPx: [0], advanceWidthPx: 6, baselineYPx: 43 },
@@ -800,19 +812,28 @@ describe('staged export text', () => {
     const line = (glyphs, penXPx) => ({
       glyphs, penXPx, advanceWidthPx: 10, baselineYPx: 19,
     });
+    const page = (overrides = {}) => ({ atlasId: uuidv7(), atlasContentHash: 'a1b2c3d4', ...overrides });
     const rejected = [
-      exportText({ schemaVersion: 2 }),
-      exportText({ atlasId: uuidv4() }),
-      exportText({ atlasContentHash: '../../etc/passwd' }),
-      exportText({ atlasContentHash: '' }),
+      exportText({ schemaVersion: 1 }),
+      exportText({ schemaVersion: 3 }),
+      exportText({ pages: [page({ atlasId: uuidv4() })] }),
+      exportText({ pages: [page({ atlasContentHash: '../../etc/passwd' })] }),
+      exportText({ pages: [page({ atlasContentHash: '' })] }),
+      exportText({ pages: [] }),
+      exportText({ pages: Array.from({ length: 33 }, () => page()) }),
+      // A cue naming a page the payload does not carry: the one refusal paging adds, and the one
+      // that would otherwise draw a cue from whatever table happened to be at that index.
+      exportText({ cues: [{ page: 1, lines: [line([0], [0])] }] }),
+      exportText({ cues: [{ page: -1, lines: [line([0], [0])] }] }),
+      exportText({ cues: [{ lines: [line([0], [0])] }] }),
       exportText({ face: { family: 'Roboto', source: 'system:x', weight: 450 } }),
       exportText({ face: { family: 'Roboto', source: 'system:x' } }),
-      exportText({ cues: [{ lines: [] }] }),
-      exportText({ cues: [{ lines: [line([0, 1], [0])] }] }),
-      exportText({ cues: [{ lines: [line([0], [Number.NaN])] }] }),
-      exportText({ cues: [{ lines: [line([-1], [0])] }] }),
-      exportText({ cues: [{ lines: Array.from({ length: 65 }, () => line([0], [0])) }] }),
-      exportText({ cues: [{ lines: [{ ...line([0], [0]), extra: 1 }] }] }),
+      exportText({ cues: [{ page: 0, lines: [] }] }),
+      exportText({ cues: [{ page: 0, lines: [line([0, 1], [0])] }] }),
+      exportText({ cues: [{ page: 0, lines: [line([0], [Number.NaN])] }] }),
+      exportText({ cues: [{ page: 0, lines: [line([-1], [0])] }] }),
+      exportText({ cues: [{ page: 0, lines: Array.from({ length: 65 }, () => line([0], [0])) }] }),
+      exportText({ cues: [{ page: 0, lines: [{ ...line([0], [0]), extra: 1 }] }] }),
     ];
     for (const text of rejected) {
       await expect(service.start(request(), {}, { text }))
@@ -836,7 +857,7 @@ describe('staged export text', () => {
     const text = exportText();
     const running = runNativeRender(renderRequest, { text }, service);
     await vi.waitFor(() => expect(invokeCommand).toHaveBeenCalled());
-    expect(invokeCommand.mock.calls[0][1].text.atlasId).toBe(text.atlasId);
+    expect(invokeCommand.mock.calls[0][1].text.pages).toEqual(text.pages);
     TestChannel.latest.emit({
       event: 'completed',
       job: { ...initial, state: 'succeeded', progress: { basisPoints: 10_000 }, sequence: 2 },
@@ -2289,5 +2310,54 @@ describe('native render lifecycle', () => {
       addCalls: 1,
       removeCalls: 1,
     });
+  });
+});
+
+/**
+ * The refusal vocabulary is a contract with Rust, and nothing was checking it.
+ *
+ * `apps/desktop/src-tauri/src/render/refusal.rs` is the only place a render refusal is minted. When
+ * it gained three codes for atlas paging, this side did not, and `allowedRenderCode` quietly mapped
+ * all three to `nativeRenderFailed` — the generic "could not be completed" sentence. Auditing that
+ * turned up five OLDER codes in the same state, and they are the ones a user most needs: a full
+ * disk, a lost graphics device, an unreadable source, unusable audio, a scene the compositor
+ * refuses. Rust knew exactly what went wrong and the editor said nothing.
+ *
+ * So the vocabulary is read from the Rust source rather than transcribed. A code added there and not
+ * here fails this, which is the only way the two stay in step — a list two files apart drifts by
+ * default, and it did.
+ */
+describe('the render refusal vocabulary matches the one Rust mints', () => {
+  const refusalSource = () => readFileSync(
+    resolve(__dirname, '..', '..', 'apps/desktop/src-tauri/src/render/refusal.rs'),
+    'utf8',
+  );
+
+  const rustCodes = () => {
+    const codes = [...refusalSource().matchAll(/render_refusal\(\s*"([A-Za-z]+)"/g)]
+      .map((match) => match[1]);
+    // A guard whose extraction silently matched nothing would pass forever.
+    expect(codes.length).toBeGreaterThanOrEqual(19);
+    return [...new Set(codes)];
+  };
+
+  test('every code Rust can refuse with survives the transport', () => {
+    for (const code of rustCodes()) {
+      expect(allowedRenderCode({ code }), `${code} is refused by Rust but unknown here`).toBe(code);
+    }
+  });
+
+  test('every code Rust can refuse with says something specific to a person', () => {
+    const generic = renderFailureMessage('somethingNoOneMints');
+    for (const code of rustCodes()) {
+      expect(renderFailureMessage(code), `${code} falls back to the generic sentence`)
+        .not.toBe(generic);
+    }
+  });
+
+  test('a code nobody mints is still refused, so the set is an allowlist and not decoration', () => {
+    expect(allowedRenderCode({ code: 'renderWhateverYouLike' })).toBe('nativeRenderFailed');
+    expect(renderFailureMessage('renderWhateverYouLike'))
+      .toBe('The native video render could not be completed');
   });
 });

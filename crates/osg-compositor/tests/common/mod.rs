@@ -16,8 +16,8 @@ pub(crate) mod frames;
 pub(crate) mod ink;
 
 use osg_compositor::{
-    Crop, CropSpec, CueLine, CueRun, SourceFrame, SubtitleDecorationSpec, SubtitleScene,
-    SubtitleStyle, SubtitleStyleSpec, VideoUnderlay,
+    AtlasPages, Crop, CropSpec, CueLine, CueRun, SourceFrame, SubtitleDecorationSpec,
+    SubtitleScene, SubtitleStyle, SubtitleStyleSpec, VideoUnderlay,
 };
 use osg_scene::glyph::{
     AtlasFace, AtlasGeometry, AtlasGlyph, AtlasLayout, AtlasLine, AtlasMetrics, CellAdvanceVerdict,
@@ -63,6 +63,8 @@ pub(crate) const HOLD_FRAME: u32 = 45;
 pub(crate) const SILENT_FRAME: u32 = 0;
 /// The frame at 0.8s, one third of the way into the fade-in.
 pub(crate) const FADING_FRAME: u32 = 24;
+/// The frame at 2.5s, in the middle of the second cue of [`two_cue_scene`].
+pub(crate) const SECOND_CUE_FRAME: u32 = 75;
 
 pub(crate) fn resolved_face(family: &str, weight: u16) -> ResolvedFace {
     ResolvedFace {
@@ -280,6 +282,55 @@ pub(crate) fn aligned_atlas(
         .expect("the fixture atlas is a descriptor the baker could have produced")
 }
 
+/// A *second* atlas page, with a deliberately different cell table from page zero's.
+///
+/// Page zero is a 16x8 texture whose only inked cell is an 8x8 block in the **right** half. This one
+/// is an 8x8 texture whose only inked cell is a 4x4 block in the **top left**. Both differences earn
+/// their place:
+///
+/// * the cell rectangle differs, so a cue drawn from the wrong page draws a different amount of ink;
+/// * the coverage sits where the other page has none, so a frame that binds one page's texture while
+///   placing the other page's cells samples nothing at all.
+///
+/// Either mistake changes the picture, which is what makes a two-page render test evidence rather
+/// than a shape check. The cell's *advance* is page zero's, so [`baked`] stages the same run for
+/// either page and a difference in the frame can only have come from the cells.
+pub(crate) fn second_page(
+    family: &str,
+    weight: u16,
+    align: LayoutTextAlign,
+) -> GlyphAtlasDescriptor {
+    const EDGE: u32 = 8;
+    const INK: u32 = 4;
+
+    let mut unchecked = unchecked_atlas(family, weight);
+    unchecked.layout.text_align = align;
+    unchecked.atlas = AtlasGeometry {
+        width_px: EDGE,
+        height_px: EDGE,
+        padding_px: 0,
+        glyph_count: 2,
+        pixel_format: PixelFormat::Rgba8,
+        bytes_per_row: EDGE * 4,
+    };
+    let cell = &mut unchecked.glyphs[INK_CELL as usize];
+    cell.x_px = 0;
+    cell.y_px = 0;
+    cell.width_px = INK;
+    cell.height_px = INK;
+    cell.origin_y_px = i32::try_from(INK).expect("a four-pixel origin");
+    let mut pixels = vec![0_u8; (EDGE * EDGE * 4) as usize];
+    for y in 0..INK {
+        for x in 0..INK {
+            let start = ((y * EDGE + x) * 4) as usize;
+            pixels[start..start + 4].copy_from_slice(&[255, 255, 255, 255]);
+        }
+    }
+    unchecked.pixels = pixels;
+    GlyphAtlasDescriptor::try_from(unchecked)
+        .expect("the second fixture page is a descriptor the baker could have produced")
+}
+
 /// The layout alignment the baker would emit for a style spec, on left-to-right text.
 pub(crate) fn layout_align(spec: &SubtitleStyleSpec) -> LayoutTextAlign {
     match spec.text_align.as_str() {
@@ -293,6 +344,40 @@ pub(crate) fn layout_align(spec: &SubtitleStyleSpec) -> LayoutTextAlign {
 /// A scene with one cue, "A", from 1.0s to 2.0s.
 pub(crate) fn scene(family: &str, weight: u16) -> Scene {
     scene_at(family, weight, WIDTH, HEIGHT)
+}
+
+/// A scene whose cues occupy the given whole-second windows, one "A" each.
+///
+/// The windows are the caller's so a test can put a cue where it wants one; everything else is the
+/// fixture's, so a test about which page a cue draws from is not also a test about anything else.
+pub(crate) fn scene_with_cues(family: &str, weight: u16, windows: &[(i64, i64)]) -> Scene {
+    let timeline = FrameTimeline::new(30, 1, FRAME_COUNT, ExactTime::ZERO)
+        .expect("30fps for three seconds is a supported timeline");
+    Scene::new(
+        1,
+        WIDTH,
+        HEIGHT,
+        timeline,
+        resolved_face(family, weight),
+        windows
+            .iter()
+            .map(|(start, end)| SceneCue {
+                text: "A".to_owned(),
+                start: seconds(*start),
+                end: seconds(*end),
+            })
+            .collect(),
+    )
+    .expect("the fixture windows are within every bound")
+}
+
+/// Two cues back to back: 1.0s to 2.0s, then 2.0s to 3.0s.
+///
+/// Adjacent rather than overlapping, because [`osg_scene::cues::active_cue_at`] takes the first
+/// match: overlapping windows would make which cue is drawn a property of the cue order rather than
+/// of the frame, and this fixture exists to make the frame decide.
+pub(crate) fn two_cue_scene(family: &str, weight: u16) -> Scene {
+    scene_with_cues(family, weight, &[(1, 2), (2, 3)])
 }
 
 /// The same scene at a caller-chosen composition size.
@@ -399,8 +484,13 @@ pub(crate) fn staged_with_atlas(
     atlas: GlyphAtlasDescriptor,
     run: CueRun,
 ) -> SubtitleScene {
-    SubtitleScene::new(scene(FAMILY, WEIGHT), atlas, style(spec), vec![run])
-        .expect("the fixture scene, atlas, style and run agree")
+    SubtitleScene::new(
+        scene(FAMILY, WEIGHT),
+        AtlasPages::single(atlas, 1),
+        style(spec),
+        vec![run],
+    )
+    .expect("the fixture scene, atlas, style and run agree")
 }
 
 /// The whole fixture, staged at a caller-chosen composition size.
@@ -409,11 +499,49 @@ pub(crate) fn staged_at(spec: &SubtitleStyleSpec, width: u32, height: u32) -> Su
     let run = CueRun::from_layout(atlas.layout());
     SubtitleScene::new(
         scene_at(FAMILY, WEIGHT, width, height),
-        atlas,
+        AtlasPages::single(atlas, 1),
         style(spec),
         vec![run],
     )
     .expect("the fixture scene, atlas, style and run agree at any supported size")
+}
+
+/// One cue, on its own page, in the window `(start, end)`.
+///
+/// The reference a two-page scene's frames are compared against: what a cue draws when its page is
+/// the only page there is.
+pub(crate) fn staged_one_page(
+    spec: &SubtitleStyleSpec,
+    atlas: GlyphAtlasDescriptor,
+    window: (i64, i64),
+) -> SubtitleScene {
+    SubtitleScene::new(
+        scene_with_cues(FAMILY, WEIGHT, &[window]),
+        AtlasPages::single(atlas, 1),
+        style(spec),
+        vec![baked(&[INK_CELL])],
+    )
+    .expect("the fixture scene, page, style and run agree")
+}
+
+/// Two cues, each on its own page: cue zero on page zero, cue one on page one.
+pub(crate) fn staged_two_pages(spec: &SubtitleStyleSpec) -> SubtitleScene {
+    let align = layout_align(spec);
+    let pages = AtlasPages::new(
+        vec![
+            aligned_atlas(FAMILY, WEIGHT, align),
+            second_page(FAMILY, WEIGHT, align),
+        ],
+        vec![0, 1],
+    )
+    .expect("two pages with one cue each is a page list the compositor accepts");
+    SubtitleScene::new(
+        two_cue_scene(FAMILY, WEIGHT),
+        pages,
+        style(spec),
+        vec![baked(&[INK_CELL]), baked(&[INK_CELL])],
+    )
+    .expect("the two-page fixture scene, pages, style and runs agree")
 }
 
 /// The edge of the fixture source frame, in source pixels.

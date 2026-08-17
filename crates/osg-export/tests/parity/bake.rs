@@ -72,7 +72,7 @@ impl Staged {
 
     /// The staged text for a scene carrying `cues` cues, all drawing this run.
     pub(crate) fn text(&self, cues: usize) -> StagedText {
-        StagedText::new(
+        StagedText::single(
             self.face.clone(),
             self.atlas.clone(),
             (0..cues).map(|_| self.run.clone()).collect(),

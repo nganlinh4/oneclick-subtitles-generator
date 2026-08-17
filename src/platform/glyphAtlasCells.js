@@ -220,11 +220,19 @@ const shelfPack = (cells, atlasWidthPx) => {
  * shelf walks the caller's own sorted cell order. `null` rather than a failure, because the caller
  * has a second cell set to try: a run whose contextual cells overflow the atlas still has its
  * isolated ones, and losing the contextual forms is better than losing the bake.
+ *
+ * `minWidthPx` skips candidates narrower than one the caller already knows is too narrow. Paging
+ * fills a page cell by cell and re-packs on every growth, and a cell set that only ever grows can
+ * never need a NARROWER atlas than it needed before — so carrying the last answer forward turns a
+ * seven-width search into one or two. It is a starting point, never a floor on the result: a set
+ * that has not reached `minWidthPx` yet still packs at whatever width fits, because the caller only
+ * ever passes a width its own previous pack returned.
  */
-export const packAtlas = (cells) => {
+export const packAtlas = (cells, minWidthPx = 0) => {
   const inked = cells.some((cell) => cell.widthPx > 0 && cell.heightPx > 0);
   if (!inked) return { widthPx: 0, heightPx: 0, placements: cells.map(() => ({ xPx: 0, yPx: 0 })) };
   for (const widthPx of ATLAS_WIDTH_CANDIDATES) {
+    if (widthPx < minWidthPx) continue;
     const packed = shelfPack(cells, widthPx);
     if (packed !== null && packed.heightPx <= widthPx) {
       return { widthPx, heightPx: packed.heightPx, placements: packed.placements };

@@ -69,6 +69,14 @@ pub enum Rejection {
     /// Either shaping crossed cluster boundaries, or the run is right-to-left and the cells are in
     /// logical rather than visual order. Both would draw the wrong picture rather than fail.
     AtlasLayoutRefused,
+    /// The staged atlas carries no pages at all, so no cue has anything to draw from.
+    AtlasPagesEmpty,
+    /// The staged atlas carries more pages than the renderer accepts.
+    AtlasPageCount,
+    /// A cue names an atlas page that was not staged.
+    AtlasPageIndex,
+    /// The scene and the staged page assignment disagree on how many cues there are.
+    AtlasPageCueCount,
     /// The font size is not a finite in-range number.
     StyleFontSize,
     /// The line spacing multiplier is not a finite in-range number.
@@ -133,6 +141,14 @@ impl fmt::Display for Rejection {
             Self::AtlasMetrics => "the glyph atlas metrics cannot place a line",
             Self::AtlasLayoutRefused => {
                 "the glyph atlas refuses layout from per-cell advances alone"
+            }
+            Self::AtlasPagesEmpty => "the staged glyph atlas carries no pages",
+            Self::AtlasPageCount => {
+                "the staged glyph atlas carries more pages than the renderer accepts"
+            }
+            Self::AtlasPageIndex => "a cue names a glyph atlas page that was not staged",
+            Self::AtlasPageCueCount => {
+                "the scene and its staged atlas pages disagree on the cue count"
             }
             Self::StyleFontSize => "the font size is not supported",
             Self::StyleLineSpacing => "the line spacing is not supported",
