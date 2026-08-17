@@ -133,14 +133,24 @@ catalogs deliberately make the related feature unavailable.
 - The strict runtime-package gate rejects missing tools, empty engine catalogs, unmanaged loopback
   endpoints, missing native capabilities, and an unconfigured updater key.
 
-The repository carries the selected root MIT license and the `THIRD_PARTY_NOTICES.md` the release
-gate requires. Notice coverage is nevertheless incomplete, and the following are the real open
-items rather than the license choice itself:
+The repository carries the root MIT license and the `THIRD_PARTY_NOTICES.md` the release gate
+requires, and `tauri.conf.json` packages both into the install. The notices name the CUDA, PyTorch,
+CPython, LGPL and MPL-2.0 components the delivery catalogs ship. Open items:
 
-- `THIRD_PARTY_NOTICES.md` names none of the CUDA/NVIDIA, PyTorch, CPython, LGPL (edge-tts) or
-  MPL-2.0 dependencies that the delivery catalogs actually ship.
-- The application has no attribution surface; the existing About tab carries no license or notice
-  content, and there is no written corresponding-source offer for the re-hosted GPL binaries.
+- The application has no in-product attribution surface, so the packaged `LICENSE` and
+  `THIRD_PARTY_NOTICES.md` are the only shipped notices.
+- yt-dlp and Deno come from their upstream publishers. The GPL-3.0-or-later FFmpeg build does not:
+  it is Gyan FFmpeg Builds' Windows package, recorded as a distinct `producer` from the
+  `officialSource` in `native-tools.upstreams.lock.json`. It is downloaded from that vendor rather
+  than re-hosted here.
+- This project DOES re-host, on its own `osg-runtime-bundles-v1` release: the LGPL-3.0-only Edge TTS
+  runtime archive, the five-part ASR runtime (which carries the CUDA redistributables, the CPython
+  build and MPL-2.0 certifi), and the Google Sans Flex `.woff2` bytes. None of those carries a
+  written offer of corresponding source. Licence terms for each are recorded in
+  `THIRD_PARTY_NOTICES.md`; whether an offer is required is the owner's determination.
+- `windows-managed-runtime-notices.json` inventories 17 components while the speech catalog fetches
+  18: `charactr/vocos-mel-24khz` (MIT, already recorded in `speech-upstreams.lock.json`) is absent
+  from the published index. Closing it means republishing that pool asset, not editing a document.
 
 No project-wide license should be inferred from individual dependencies or crate metadata.
 

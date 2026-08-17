@@ -692,6 +692,108 @@ The positive conclusion above comes from direct production-path inspection plus 
 successful real-export verification; Claude's latest `1422`/`2123` aggregate totals remain Claude's
 reported gate evidence and must be rerun after deletion anyway.
 
+### WAVE 19 UPDATE — deletion verified; finish licensing, packaging, installed smoke and closure
+
+Current reviewed repository state is `d38772545b8d4c5a1dff64dbc544a2a98afc2a33`, exactly `102`
+commits after the safety checkpoint. The Remotion deletion claim is supported: a case-insensitive
+repository search now finds the name only in the four deliberate historical records
+(`docs/release/WINDOWS-1.0-VALIDATION.md`, `docs/rewrite/NATIVE_RENDERER.md`, the historical Electron
+log, and this handoff). Production/build/runtime references are gone. Preserve that zero-product-
+reference invariant through the installer and installed-app audit.
+
+The next response must not stop after “licensing and notices landed.” Continue through every item
+below, using implementation and fresh review waves, until the release is locally complete.
+
+#### USER PRIORITY OVERRIDE — keep security/licensing documentation bounded
+
+Do **not** turn items 1–4 below into another large architecture project. The user explicitly prefers
+shipping and executable verification over exhaustive security-document/SBOM/patent work. Where this
+override conflicts with the more expansive wording below, this override wins.
+
+Perform one bounded factual pass only:
+
+- keep the existing root MIT `LICENSE`;
+- remove or correct statements in `SECURITY.md` and `THIRD_PARTY_NOTICES.md` that are demonstrably
+  contradictory or stale after deleting Remotion;
+- ensure components actually bundled or downloaded by the release retain the notices already
+  required by their existing manifests and release gates;
+- state briefly that native export uses Windows Media Foundation and ships no codec implementation,
+  without attempting a jurisdiction-by-jurisdiction patent opinion;
+- run the existing notice/readiness/package checks and fix concrete failures they expose.
+
+Do not build a new general-purpose SBOM framework, exhaustive transitive legal database, elaborate
+About/Licenses UI, patent-analysis project, or new release bureaucracy unless an existing required
+gate or the extracted installer proves a specific missing legal artifact. A simple packaged notice
+file or existing About link is sufficient if already supported. Legal interpretation remains the
+owner's responsibility and should be recorded as one short final caveat, not used to pause engineering.
+
+After this bounded pass, immediately continue with dependency hardening, packaging, installed smoke,
+adversarial review, and final gates. Do not stop to present the documentation edits for approval.
+
+1. **Check the actual package notices using existing machinery.** Inspect the extracted installer and
+   managed catalogs once, compare them with the existing notice file and manifests, and fix only
+   concrete missing/stale entries. Do not invent a new inventory subsystem.
+
+2. **Make the short policy text non-contradictory.** Keep MIT as selected, remove obsolete Remotion
+   language and the stale “outstanding root license” wording, and retain accurate terms for components
+   the application really ships or downloads. Avoid expanding `SECURITY.md` into a legal treatise.
+
+3. **Use one neutral codec statement.** Record that native rendering calls Windows Media Foundation
+   and bundles no H.264/AAC codec implementation. Leave any jurisdiction-specific patent/commercial
+   determination to the owner; do not investigate it further or stop the engineering work for it.
+
+4. **Reuse the existing notice delivery surface.** Ensure the root license and third-party notice file
+   are present in packaged resources and accessible through the simplest existing UI/path. Do not
+   design a new attribution application unless the package gate proves the current surface absent.
+
+5. **Harden the gates rather than merely rebaseline them.** The two CRLF defects proved that a green
+   mutation test can assert nothing. Normalize at explicit read boundaries and make every mutation
+   test assert that its fixture actually changed before expecting rejection. Add LF/CRLF fixtures and
+   run them on Windows. Audit similar `replace`/regex mutation tests repository-wide for no-op
+   mutations. Pin `esbuild` as a direct dependency of the package that owns the four scripts, update
+   the correct lockfiles, and prove `npm ci` in a clean temporary checkout followed by all four
+   scripts. Do not rely on a transitive dependency that happened to survive an old workspace.
+
+6. **Protect the shared worktree from another destructive undo.** Do not use `git checkout`,
+   `git restore`, `git reset`, or whole-file replacement to undo mixed uncommitted work. Before bulk
+   transforms, record status and hashes, use a narrowly reviewed patch, assert intended match counts,
+   run syntax/format checks immediately, and compare the exact diff. Make small checkpoint commits
+   after green scoped gates so recovery never discards another agent's deletion. If a competing edit
+   exists, integrate it rather than reconstructing the file from HEAD.
+
+7. **Perform the complete release build and installed-product proof.** On final candidate bytes run
+   the full Rust workspace tests/clippy/fmt, full frontend tests/lint/i18n/type/visual/parity,
+   production transport/budgets, command/ACL, readiness, managed delivery with remote read-back,
+   license/SBOM, clean npm install, and package-artifact inspectors. Build an unsigned local Windows
+   installer if signing credentials are unavailable; never forge or bypass updater signing. Install
+   it in an isolated clean environment, launch offline, exercise project persistence and relaunch,
+   native preview during play/seek/edit, native export with audio/narration, cancellation/retry,
+   downloaded tools/packages, notice UI, diagnostics/rotation, updater-fixture behavior, uninstall,
+   reinstall and cleanup. Inspect the installed tree, processes and network activity to prove no
+   Remotion runtime/reference/download remains and decode the exported MP4 to compare representative
+   frames and audio against preview expectations.
+
+8. **Close owner-gated edges only at their exact boundary.** Prepare and locally verify any font
+   delivery assets, hashes, manifests, notices, collision behavior and exact upload commands before
+   asking once for irreversible publication authorization. Likewise derive the exact updater public
+   key/configuration expected from the owner's private key without inventing a key. These external
+   boundaries do not block unsigned packaging, installed smoke, review, documentation, or other
+   gates. The final handoff must distinguish completed local work from each exact unavailable secret,
+   upload, signing, or legal approval; vague “owner-gated items” are not sufficient.
+
+9. **Use fresh adversarial reviewers, root-fix findings, and finish.** Assign independent reviewers
+   to notices/licensing, dependency/gate integrity, package contents, installer lifecycle, security,
+   native preview/export, upgrade behavior, and cross-project concurrency. Reviewers must inspect
+   executable artifacts and hostile paths rather than accepting totals. Fix every confirmed issue,
+   rerun impacted and integrated gates, update the validation record and this handoff to exact final
+   commits/hashes/commands, and leave an auditable clean worktree. Do not push. Only after this may
+   tasks C, E, H, I and J be closed and a final response issued.
+
+The reported Wave 19 totals (`1426` Rust, `2147` frontend, readiness `36/36`, command contract `123`)
+are useful milestone evidence, not final release evidence. They must be rerun after licensing/UI/
+packaging changes and again on the exact installer candidate. Continue automatically; do not stop to
+ask about reversible engineering choices or to narrate another milestone.
+
 ### Authority and safety boundaries
 
 - You are authorized to refactor across packages, add migrations/APIs/tests, split oversized
@@ -717,9 +819,9 @@ reported gate evidence and must be rerun after deletion anyway.
 - Repository: `C:\WORK\oneclick-subtitles-generator`
 - Branch: `rewrite/tauri-rust`
 - Safety checkpoint: `650805d3`
-- Current reviewed HEAD after Wave 18: `c5e0d880e6f8539e4c654316437edafe585099d9`, 93 local commits
+- Current reviewed HEAD after Wave 19: `d38772545b8d4c5a1dff64dbc544a2a98afc2a33`, 102 local commits
   after the safety checkpoint. Preserve those commits; do not rewrite them.
-- At the start of the Wave 18 Codex check, the repository was clean. The handoff edit itself is the
+- At the start of the Wave 19 Codex check, the repository was clean. The handoff edit itself is the
   expected later worktree change. Recheck status before integration and preserve any subsequent work.
 - The already-uploaded inert Remotion assets are
   `remotion-runtime-windows-x64-4.0.507-8f2b4bb7f74bca85.zip`

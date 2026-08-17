@@ -5,6 +5,7 @@ authors.workspace = true
 edition.workspace = true
 rust-version.workspace = true
 description = "Private platform adapters for One-Click Subtitles Generator"
+license = "MIT"
 
 [dependencies]
 blake3 = "=1.8.6"

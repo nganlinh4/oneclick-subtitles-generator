@@ -45,73 +45,49 @@ const {
   parseArguments,
 } = require('./check-release-readiness');
 
-/**
- * A source this suite reads in order to MUTATE it, with its line endings normalised.
- *
- * These tests prove the gate by weakening a real source and requiring the gate to reject the
- * weakened copy. Git checks these files out with CRLF on Windows while every search string here is
- * written with `
-`, so on a fresh Windows clone the search matched nothing, `String.replace`
- * returned its input unchanged, and `assert.throws` ran against a fixture that was never weakened.
- * Two tests were red for exactly that reason. A mutation test whose target is missing is not a weak
- * test — it is a test that cannot detect the regression it exists for.
- */
-const readMutableSource = (...segments) => fs
-  .readFileSync(path.join(...segments), 'utf8')
-  .replaceAll(String.fromCharCode(13, 10), String.fromCharCode(10));
+const {
+  CR,
+  CRLF,
+  LF,
+  countOccurrences,
+  normalizeLineEndings,
+  readMutableSource,
+  toCrlf,
+  weaken,
+  weakenAll,
+} = require('./mutation-testing');
 
-const INSTALLED_SMOKE_SCRIPT = fs.readFileSync(
-  path.join(__dirname, 'test-installed-windows.ps1'),
-  'utf8',
+const INSTALLED_SMOKE_SCRIPT = readMutableSource(__dirname, 'test-installed-windows.ps1');
+const NATIVE_PICKER_EVIDENCE_SCRIPT = readMutableSource(__dirname, 'native-picker-evidence.ps1');
+const NATIVE_PICKER_EVIDENCE_REGRESSION = readMutableSource(
+  __dirname, 'test-native-picker-evidence.ps1',
 );
-const NATIVE_PICKER_EVIDENCE_SCRIPT = fs.readFileSync(
-  path.join(__dirname, 'native-picker-evidence.ps1'),
-  'utf8',
+const INSTALLED_LOCAL_MEDIA_INSPECTOR = readMutableSource(
+  __dirname, 'inspect-installed-local-media-flow.mjs',
 );
-const NATIVE_PICKER_EVIDENCE_REGRESSION = fs.readFileSync(
-  path.join(__dirname, 'test-native-picker-evidence.ps1'),
-  'utf8',
+const INSTALLED_MEDIA_FLOW_INSPECTOR = readMutableSource(
+  __dirname, 'inspect-installed-media-flow.mjs',
 );
-const INSTALLED_LOCAL_MEDIA_INSPECTOR = fs.readFileSync(
-  path.join(__dirname, 'inspect-installed-local-media-flow.mjs'),
-  'utf8',
+const INPUT_METHODS_SOURCE = readMutableSource(
+  __dirname, '..', 'src', 'components', 'InputMethods.js',
 );
-const INSTALLED_MEDIA_FLOW_INSPECTOR = fs.readFileSync(
-  path.join(__dirname, 'inspect-installed-media-flow.mjs'),
-  'utf8',
+const BUTTONS_CONTAINER_SOURCE = readMutableSource(
+  __dirname, '..', 'src', 'components', 'app', 'ButtonsContainer.jsx',
 );
-const INPUT_METHODS_SOURCE = fs.readFileSync(
-  path.join(__dirname, '..', 'src', 'components', 'InputMethods.js'),
-  'utf8',
+const DOWNLOAD_HANDLERS_SOURCE = readMutableSource(
+  __dirname, '..', 'src', 'components', 'app', 'handlers', 'downloadHandlers.js',
 );
-const BUTTONS_CONTAINER_SOURCE = fs.readFileSync(
-  path.join(__dirname, '..', 'src', 'components', 'app', 'ButtonsContainer.jsx'),
-  'utf8',
+const NATIVE_URL_DOWNLOAD_ADAPTER_SOURCE = readMutableSource(
+  __dirname, '..', 'src', 'platform', 'nativeUrlDownloadAdapter.js',
 );
-const DOWNLOAD_HANDLERS_SOURCE = fs.readFileSync(
-  path.join(__dirname, '..', 'src', 'components', 'app', 'handlers', 'downloadHandlers.js'),
-  'utf8',
+const INSTALLED_NATIVE_TOOLS_INSPECTOR = readMutableSource(
+  __dirname, 'inspect-installed-native-tools.mjs',
 );
-const NATIVE_URL_DOWNLOAD_ADAPTER_SOURCE = fs.readFileSync(
-  path.join(__dirname, '..', 'src', 'platform', 'nativeUrlDownloadAdapter.js'),
-  'utf8',
+const UPDATER_SMOKE_WORKFLOW = readMutableSource(
+  __dirname, '..', '.github', 'workflows', 'updater-smoke.yml',
 );
-const INSTALLED_NATIVE_TOOLS_INSPECTOR = fs.readFileSync(
-  path.join(__dirname, 'inspect-installed-native-tools.mjs'),
-  'utf8',
-);
-const UPDATER_SMOKE_WORKFLOW = fs.readFileSync(
-  path.join(__dirname, '..', '.github', 'workflows', 'updater-smoke.yml'),
-  'utf8',
-);
-const SIGNED_UPDATER_SCRIPT = fs.readFileSync(
-  path.join(__dirname, 'test-signed-updater-windows.ps1'),
-  'utf8',
-);
-const TAURI_NSIS_BOOTSTRAP_SCRIPT = fs.readFileSync(
-  path.join(__dirname, 'prepare-tauri-nsis.ps1'),
-  'utf8',
-);
+const SIGNED_UPDATER_SCRIPT = readMutableSource(__dirname, 'test-signed-updater-windows.ps1');
+const TAURI_NSIS_BOOTSTRAP_SCRIPT = readMutableSource(__dirname, 'prepare-tauri-nsis.ps1');
 const DESKTOP_SOURCE = readMutableSource(
   __dirname, '..', 'apps', 'desktop', 'src-tauri', 'src', 'lib.rs',
 );
@@ -121,10 +97,7 @@ const CI_UPDATER_ARGUMENT_SOURCE = readMutableSource(
 const UPDATER_SOURCE = readMutableSource(
   __dirname, '..', 'apps', 'desktop', 'src-tauri', 'src', 'updater.rs',
 );
-const CARGO_LOCK_SOURCE = fs.readFileSync(
-  path.join(__dirname, '..', 'Cargo.lock'),
-  'utf8',
-);
+const CARGO_LOCK_SOURCE = readMutableSource(__dirname, '..', 'Cargo.lock');
 
 function createTauriProductionBuildFixture() {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), 'osg-tauri-production-build-'));
@@ -192,9 +165,92 @@ function replaceInWorkflowJob(workflow, jobName, search, replacement) {
     ? workflow.length
     : start + heading.length + nextJobOffset;
   const job = workflow.slice(start, end);
-  assert.ok(job.includes(search), `${jobName} does not contain the requested mutation target`);
-  return workflow.slice(0, start) + job.replace(search, replacement) + workflow.slice(end);
+  return workflow.slice(0, start) + weaken(job, search, replacement) + workflow.slice(end);
 }
+
+// The guard that makes every other mutation in this file mean something. It has to be proven on
+// both line endings, because the platform where it broke is not the platform anyone runs locally.
+test('weakening refuses to hand back an unchanged fixture on either line ending', () => {
+  const lfSource = ['param(', "  [string]$Phase = 'initial'", ')', 'exit 0', ''].join(LF);
+  const crlfSource = toCrlf(lfSource);
+  assert.notEqual(lfSource, crlfSource, 'the two fixtures must genuinely differ');
+  assert.equal(countOccurrences(crlfSource, CR), 4);
+  assert.equal(countOccurrences(lfSource, CR), 0);
+
+  // The original defect, reproduced: an LF search string against CRLF bytes matches nothing.
+  const lfSearch = `param(${LF}  [string]$Phase`;
+  assert.equal(countOccurrences(lfSource, lfSearch), 1);
+  assert.equal(countOccurrences(crlfSource, lfSearch), 0);
+  assert.equal(crlfSource.replace(lfSearch, 'MUTATED'), crlfSource);
+
+  // Defence 1: normalising at the read boundary makes the LF search string match either way.
+  for (const [label, source] of [['LF', lfSource], ['CRLF', crlfSource]]) {
+    const mutated = weaken(normalizeLineEndings(source), lfSearch, 'MUTATED');
+    assert.ok(mutated.includes('MUTATED'), `${label} source must weaken after normalisation`);
+  }
+
+  // Defence 2: without normalising, the same mutation is a loud failure instead of a silent pass.
+  assert.throws(
+    () => weaken(crlfSource, lfSearch, 'MUTATED'),
+    (error) => {
+      assert.match(error.message, /Mutation target is absent/);
+      assert.match(error.message, /still holds 4 CR bytes/);
+      assert.match(error.message, /readMutableSource/);
+      return true;
+    },
+  );
+
+  // A search that is present but whose replacement changes nothing is equally vacuous.
+  assert.throws(
+    () => weaken(lfSource, 'exit 0', 'exit 0'),
+    /Mutation left the source byte-identical/,
+  );
+
+  // Cardinality is checkable where it carries meaning.
+  const repeated = [lfSource, lfSource].join(LF);
+  assert.throws(
+    () => weaken(repeated, 'exit 0', 'exit 1', { expected: 1 }),
+    /occurs 2 times, expected exactly 1/,
+  );
+  assert.doesNotThrow(() => weakenAll(repeated, 'exit 0', 'exit 1', { expected: 2 }));
+
+  // Regular-expression searches are counted and proven the same way.
+  assert.throws(
+    () => weaken(lfSource, /\$Phase\s*=\s*'reactivation'/, 'x'),
+    /Mutation target is absent/,
+  );
+  assert.doesNotThrow(() => weaken(lfSource, /\$Phase\s*=\s*'initial'/, "$Phase = 'x'"));
+});
+
+test('every mutable source is read with normalised line endings', () => {
+  const sources = {
+    INSTALLED_SMOKE_SCRIPT,
+    NATIVE_PICKER_EVIDENCE_SCRIPT,
+    NATIVE_PICKER_EVIDENCE_REGRESSION,
+    INSTALLED_LOCAL_MEDIA_INSPECTOR,
+    INSTALLED_MEDIA_FLOW_INSPECTOR,
+    INPUT_METHODS_SOURCE,
+    BUTTONS_CONTAINER_SOURCE,
+    DOWNLOAD_HANDLERS_SOURCE,
+    NATIVE_URL_DOWNLOAD_ADAPTER_SOURCE,
+    INSTALLED_NATIVE_TOOLS_INSPECTOR,
+    UPDATER_SMOKE_WORKFLOW,
+    SIGNED_UPDATER_SCRIPT,
+    TAURI_NSIS_BOOTSTRAP_SCRIPT,
+    DESKTOP_SOURCE,
+    CI_UPDATER_ARGUMENT_SOURCE,
+    UPDATER_SOURCE,
+    CARGO_LOCK_SOURCE,
+  };
+  for (const [name, source] of Object.entries(sources)) {
+    assert.notEqual(source, '', `${name} must not be empty`);
+    assert.equal(
+      countOccurrences(source, CR),
+      0,
+      `${name} still carries CR bytes, so its LF search strings would match nothing`,
+    );
+  }
+});
 
 test('installed Windows smoke proves persistence, media, tools, logs, relaunch, uninstall, and reinstall', () => {
   assert.doesNotThrow(() => assertInstalledSmokeScript(INSTALLED_SMOKE_SCRIPT));
@@ -225,7 +281,7 @@ test('installed Windows smoke proves persistence, media, tools, logs, relaunch, 
     '}',
     ...lifecycleFunction.split(/\r?\n/).map((line) => `# ${line}`),
   ].join('\n');
-  const shadowedLifecycle = INSTALLED_SMOKE_SCRIPT.replace(
+  const shadowedLifecycle = weaken(INSTALLED_SMOKE_SCRIPT,
     '$third.Process.Refresh()',
     [
       'function Assert-NativeToolLifecycleDiagnostics {',
@@ -239,16 +295,16 @@ test('installed Windows smoke proves persistence, media, tools, logs, relaunch, 
       '$third.Process.Refresh()',
     ].join('\n'),
   );
-  const deadHotLifecycle = INSTALLED_SMOKE_SCRIPT
-    .replace(
+  const deadHotLifecycle = weaken(
+    weaken(
+      INSTALLED_SMOKE_SCRIPT,
       '    $nativeToolBaseline = Get-DiagnosticBaselineSnapshot -LogPath $logPath',
       '    if ($false) {\n    $nativeToolBaseline = Get-DiagnosticBaselineSnapshot -LogPath $logPath',
-    )
-    .replace(
-      '    $postHotToolBaseline = Get-DiagnosticBaselineSnapshot -LogPath $logPath',
-      '    }\n    $postHotToolBaseline = Get-DiagnosticBaselineSnapshot -LogPath $logPath',
-    );
-  const commentedPreclickCategory = INSTALLED_SMOKE_SCRIPT.replace(
+    ),
+    '    $postHotToolBaseline = Get-DiagnosticBaselineSnapshot -LogPath $logPath',
+    '    }\n    $postHotToolBaseline = Get-DiagnosticBaselineSnapshot -LogPath $logPath',
+  );
+  const commentedPreclickCategory = weaken(INSTALLED_SMOKE_SCRIPT,
     '        Get-NativePickerPreclickFailureCode -Phase $phase',
     '        # Get-NativePickerPreclickFailureCode -Phase $phase',
   );
@@ -363,40 +419,40 @@ test('installed Windows smoke proves persistence, media, tools, logs, relaunch, 
     'diagnosticLogRotation = $true',
   ]) {
     assert.throws(
-      () => assertInstalledSmokeScript(INSTALLED_SMOKE_SCRIPT.replaceAll(fragment, 'removed')),
+      () => assertInstalledSmokeScript(weakenAll(INSTALLED_SMOKE_SCRIPT, fragment, 'removed')),
       /Installed Windows smoke is missing lifecycle proof/,
     );
   }
-  const reorderedInstalledMedia = INSTALLED_SMOKE_SCRIPT
-    .replace(
-      '$localMediaFlow = Inspect-InstalledLocalMediaFlow',
-      '$temporaryInstalledMedia = Inspect-InstalledLocalMediaFlow',
-    )
-    .replace(
+  const reorderedInstalledMedia = weaken(
+    weaken(
+      weaken(
+        INSTALLED_SMOKE_SCRIPT,
+        '$localMediaFlow = Inspect-InstalledLocalMediaFlow',
+        '$temporaryInstalledMedia = Inspect-InstalledLocalMediaFlow',
+      ),
       '$mediaPipeline = Inspect-InstalledMediaPipeline',
       '$localMediaFlow = Inspect-InstalledLocalMediaFlow',
-    )
-    .replace(
-      '$temporaryInstalledMedia = Inspect-InstalledLocalMediaFlow',
-      '$mediaPipeline = Inspect-InstalledMediaPipeline',
-    );
+    ),
+    '$temporaryInstalledMedia = Inspect-InstalledLocalMediaFlow',
+    '$mediaPipeline = Inspect-InstalledMediaPipeline',
+  );
   assert.throws(
     () => assertInstalledSmokeScript(reorderedInstalledMedia),
     /ordered installed media flow/,
   );
   assert.throws(
-    () => assertInstalledSmokeScript(INSTALLED_SMOKE_SCRIPT.replace(
+    () => assertInstalledSmokeScript(weaken(INSTALLED_SMOKE_SCRIPT,
       /\$initialMediaFlow\.assetId -eq \$localMediaFlow\.assetId `\r?\n\s*-or /,
       '',
     )),
     /Installed Windows smoke is missing lifecycle proof/,
   );
   for (const commentedPriorIdentityGate of [
-    INSTALLED_SMOKE_SCRIPT.replace(
+    weaken(INSTALLED_SMOKE_SCRIPT,
       "    $arguments += @('--prior-asset-id', $PriorAssetId)",
       "    # $arguments += @('--prior-asset-id', $PriorAssetId)",
     ),
-    INSTALLED_SMOKE_SCRIPT.replace(
+    weaken(INSTALLED_SMOKE_SCRIPT,
       '      -PriorAssetId $localMediaFlow.assetId',
       '      # -PriorAssetId $localMediaFlow.assetId',
     ),
@@ -409,28 +465,28 @@ test('installed Windows smoke proves persistence, media, tools, logs, relaunch, 
   const installedPhaseMutations = [
     [
       'same initial phase',
-      INSTALLED_SMOKE_SCRIPT.replace(
+      weaken(INSTALLED_SMOKE_SCRIPT,
         "      -MediaPhase 'reactivation' `\n      -ScreenshotName 'osg-installed-media-flow.png' `",
         "      -MediaPhase 'initial' `\n      -ScreenshotName 'osg-installed-media-flow.png' `",
       ),
     ],
     [
       'inverted initial phase',
-      INSTALLED_SMOKE_SCRIPT.replace(
+      weaken(INSTALLED_SMOKE_SCRIPT,
         "      -MediaPhase 'initial' `\n      -ScreenshotName 'osg-installed-media-flow-initial.png'",
         "      -MediaPhase 'reactivation' `\n      -ScreenshotName 'osg-installed-media-flow-initial.png'",
       ),
     ],
     [
       'arbitrary reactivation phase',
-      INSTALLED_SMOKE_SCRIPT.replace(
+      weaken(INSTALLED_SMOKE_SCRIPT,
         "      -MediaPhase 'reactivation' `\n      -ScreenshotName 'osg-installed-media-flow.png' `",
         "      -MediaPhase 'arbitrary' `\n      -ScreenshotName 'osg-installed-media-flow.png' `",
       ),
     ],
     [
       'missing phase forwarding',
-      INSTALLED_SMOKE_SCRIPT.replace("    '--media-phase', $MediaPhase\n", ''),
+      weaken(INSTALLED_SMOKE_SCRIPT, "    '--media-phase', $MediaPhase\n", ''),
     ],
   ];
   for (const [description, mutation] of installedPhaseMutations) {
@@ -442,95 +498,95 @@ test('installed Windows smoke proves persistence, media, tools, logs, relaunch, 
     );
   }
   for (const weakenedToolProof of [
-    INSTALLED_SMOKE_SCRIPT.replace(
+    weaken(INSTALLED_SMOKE_SCRIPT,
       '$requested.Count -ne $expectedCount',
       '$requested.Count -lt $expectedCount',
     ),
-    INSTALLED_SMOKE_SCRIPT.replace(
+    weaken(INSTALLED_SMOKE_SCRIPT,
       "($startedJobs -join ',') -cne ($completedJobs -join ',')",
       '$false',
     ),
-    INSTALLED_SMOKE_SCRIPT.replace(
+    weaken(INSTALLED_SMOKE_SCRIPT,
       "($startedPairs -join ',') -cne ($completedPairs -join ',')",
       '$false',
     ),
-    INSTALLED_SMOKE_SCRIPT.replace(
+    weaken(INSTALLED_SMOKE_SCRIPT,
       '$entry.appInstanceId -cne $AppInstanceId',
       '$false',
     ),
-    INSTALLED_SMOKE_SCRIPT.replace(
+    weaken(INSTALLED_SMOKE_SCRIPT,
       '$entry.timestampMs -isnot [string]',
       '$false',
     ),
-    INSTALLED_SMOKE_SCRIPT.replace(
+    weaken(INSTALLED_SMOKE_SCRIPT,
       '$entry.event -isnot [string]',
       '$false',
     ),
-    INSTALLED_SMOKE_SCRIPT.replace(
+    weaken(INSTALLED_SMOKE_SCRIPT,
       '$entry.action -isnot [string]',
       '$false',
     ),
-    INSTALLED_SMOKE_SCRIPT.replace(
+    weaken(INSTALLED_SMOKE_SCRIPT,
       '$entry.tool -isnot [string]',
       '$false',
     ),
-    INSTALLED_SMOKE_SCRIPT.replace(
+    weaken(INSTALLED_SMOKE_SCRIPT,
       '$entry.appInstanceId -isnot [string]',
       '$false',
     ),
-    INSTALLED_SMOKE_SCRIPT.replace(
+    weaken(INSTALLED_SMOKE_SCRIPT,
       '$entry.job -isnot [string]',
       '$false',
     ),
-    INSTALLED_SMOKE_SCRIPT.replace(
+    weaken(INSTALLED_SMOKE_SCRIPT,
       '$entry.code -isnot [string]',
       '$false',
     ),
-    INSTALLED_SMOKE_SCRIPT.replace(
+    weaken(INSTALLED_SMOKE_SCRIPT,
       '@($allStartedJobs | Sort-Object -Unique).Count -ne 6',
       '$false',
     ),
-    INSTALLED_SMOKE_SCRIPT.replace(
+    weaken(INSTALLED_SMOKE_SCRIPT,
       '$result.pipeline.durationUs -isnot [ValueType]',
       '$false',
     ),
-    INSTALLED_SMOKE_SCRIPT.replace(
+    weaken(INSTALLED_SMOKE_SCRIPT,
       '$result.pipeline.frameRate -isnot [ValueType]',
       '$false',
     ),
-    INSTALLED_SMOKE_SCRIPT.replace(
+    weaken(INSTALLED_SMOKE_SCRIPT,
       '$result.pipeline.height -isnot [ValueType]',
       '$false',
     ),
-    INSTALLED_SMOKE_SCRIPT.replace(
+    weaken(INSTALLED_SMOKE_SCRIPT,
       '$result.pipeline.width -isnot [ValueType]',
       '$false',
     ),
-    INSTALLED_SMOKE_SCRIPT.replace(
+    weaken(INSTALLED_SMOKE_SCRIPT,
       '$result.installingScreenshot.sha256 -ceq [string]$result.installedScreenshot.sha256',
       '$false',
     ),
-    INSTALLED_SMOKE_SCRIPT.replace(
+    weaken(INSTALLED_SMOKE_SCRIPT,
       "($uiInstallPairs -join ',') -cne ($diagnosticInstallPairs -join ',')",
       '$false',
     ),
-    INSTALLED_SMOKE_SCRIPT.replace(
+    weaken(INSTALLED_SMOKE_SCRIPT,
       '$uiInstallPairs.Count -ne 3',
       '$false',
     ),
-    INSTALLED_SMOKE_SCRIPT.replace(
+    weaken(INSTALLED_SMOKE_SCRIPT,
       '$diagnosticInstallPairs.Count -ne 3',
       '$false',
     ),
-    INSTALLED_SMOKE_SCRIPT.replace(
+    weaken(INSTALLED_SMOKE_SCRIPT,
       '$postHotToolBaseline = Get-DiagnosticBaselineSnapshot -LogPath $logPath',
       '$postHotToolBaseline = $nativeToolBaseline',
     ),
-    INSTALLED_SMOKE_SCRIPT.replace(
+    weaken(INSTALLED_SMOKE_SCRIPT,
       '      -ExpectedInstalls 0 `',
       '      -ExpectedInstalls 3 `',
     ),
-    INSTALLED_SMOKE_SCRIPT.replace(
+    weaken(INSTALLED_SMOKE_SCRIPT,
       '-ExpectedRemovals 3',
       '-ExpectedRemovals 0',
     ),
@@ -540,19 +596,19 @@ test('installed Windows smoke proves persistence, media, tools, logs, relaunch, 
       /(?:Installed Windows smoke is missing lifecycle proof|Installed Windows smoke must retain exact bounded native-tool UI evidence|Installed native-tool diagnostic proof is missing exact invariant|Installed Windows smoke must execute exact native-tool correlation and hot-reuse guards)/,
     );
   }
-  const commentedPairGuard = INSTALLED_SMOKE_SCRIPT.replace(
+  const commentedPairGuard = weaken(INSTALLED_SMOKE_SCRIPT,
     /(^ {4}if \(\$uiInstallPairs[\s\S]*?^ {4}\}$)/m,
     (block) => block.split(/\r?\n/).map((line) => `# ${line}`).join('\n'),
   );
-  const commentedPostHotCall = INSTALLED_SMOKE_SCRIPT.replace(
+  const commentedPostHotCall = weaken(INSTALLED_SMOKE_SCRIPT,
     /(^ {4}Assert-NativeToolLifecycleDiagnostics `\r?\n^ {6}-Events \$postHotToolEvents `[\s\S]*?^ {6}-ExpectedRemovals 0$)/m,
     (block) => block.split(/\r?\n/).map((line) => `# ${line}`).join('\n'),
   );
-  const commentedInitialToolCall = INSTALLED_SMOKE_SCRIPT.replace(
+  const commentedInitialToolCall = weaken(INSTALLED_SMOKE_SCRIPT,
     /(^ {4}Assert-NativeToolLifecycleDiagnostics `\r?\n^ {6}-Events \$initialToolEvents `[\s\S]*?^ {6}-ExpectedRemovals 0$)/m,
     (block) => block.split(/\r?\n/).map((line) => `# ${line}`).join('\n'),
   );
-  const commentedHotToolCall = INSTALLED_SMOKE_SCRIPT.replace(
+  const commentedHotToolCall = weaken(INSTALLED_SMOKE_SCRIPT,
     /(^ {4}Assert-NativeToolLifecycleDiagnostics `\r?\n^ {6}-Events \$nativeToolEvents `[\s\S]*?^ {6}-ExpectedRemovals 3$)/m,
     (block) => block.split(/\r?\n/).map((line) => `# ${line}`).join('\n'),
   );
@@ -569,11 +625,11 @@ test('installed Windows smoke proves persistence, media, tools, logs, relaunch, 
     );
   }
   for (const weakenedCloseProof of [
-    INSTALLED_SMOKE_SCRIPT.replace(
+    weaken(INSTALLED_SMOKE_SCRIPT,
       "throw 'Installed application exited before the graceful close request'",
       'return',
     ),
-    INSTALLED_SMOKE_SCRIPT.replace(
+    weaken(INSTALLED_SMOKE_SCRIPT,
       '$closeEventsAfter -ne ($closeEventsBefore + 1)',
       '$false',
     ),
@@ -583,7 +639,7 @@ test('installed Windows smoke proves persistence, media, tools, logs, relaunch, 
       /(?:live responsive app|missing lifecycle proof)/,
     );
   }
-  const omittedEditorMutationRescan = INSTALLED_SMOKE_SCRIPT.replace(
+  const omittedEditorMutationRescan = weaken(INSTALLED_SMOKE_SCRIPT,
     '          $mutationCandidate = Get-NativePickerPinnedCandidateState `\n'
       + '              -Element $dialog `\n'
       + '              -CandidateHandle $dialogHandle `\n'
@@ -591,172 +647,171 @@ test('installed Windows smoke proves persistence, media, tools, logs, relaunch, 
       + '              -OwnerHandle $OwnerHandle',
     '          $mutationCandidate = $freshCandidate',
   );
-  assert.notEqual(omittedEditorMutationRescan, INSTALLED_SMOKE_SCRIPT);
   assert.throws(
     () => assertInstalledSmokeScript(omittedEditorMutationRescan),
     /native-picker authority/,
   );
   for (const [weakenedIndex, weakenedPickerProof] of [
-    INSTALLED_SMOKE_SCRIPT.replace('$dialog.FindAll(', '$dialog.FindFirst('),
-    INSTALLED_SMOKE_SCRIPT.replace(
+    weaken(INSTALLED_SMOKE_SCRIPT, '$dialog.FindAll(', '$dialog.FindFirst('),
+    weaken(INSTALLED_SMOKE_SCRIPT,
       '$controls.Count -eq 1',
       '$controls.Count -ge 1',
     ),
-    INSTALLED_SMOKE_SCRIPT.replace(
+    weaken(INSTALLED_SMOKE_SCRIPT,
       'Add-Type -AssemblyName UIAutomationClientSideProviders -ErrorAction Stop',
       '# omitted client-side provider load',
     ),
-    INSTALLED_SMOKE_SCRIPT.replace(
+    weaken(INSTALLED_SMOKE_SCRIPT,
       '[void][System.Windows.Automation.AutomationElement]::RootElement',
       '# omitted UI Automation bootstrap',
     ),
-    INSTALLED_SMOKE_SCRIPT.replace(
+    weaken(INSTALLED_SMOKE_SCRIPT,
       '[void][System.Windows.Automation.AutomationElement]::RootElement',
       '[void][System.Windows.Automation.AutomationElement]::RootElement.Current.Name',
     ),
-    INSTALLED_SMOKE_SCRIPT.replace(
+    weaken(INSTALLED_SMOKE_SCRIPT,
       "@('button', 'combobox', 'edit')",
       "@('button', 'combobox')",
     ),
-    INSTALLED_SMOKE_SCRIPT.replace(
+    weaken(INSTALLED_SMOKE_SCRIPT,
       '$_.ClassName -ceq $providerClassName',
       '$_.ClassName -ieq $providerClassName',
     ),
-    INSTALLED_SMOKE_SCRIPT.replace(
+    weaken(INSTALLED_SMOKE_SCRIPT,
       '$providerEntries.Count -ne 1 `\n        -or $null -eq $providerEntries[0].ClientSideProviderFactoryCallback',
       '$providerEntries.Count -lt 1',
     ),
-    INSTALLED_SMOKE_SCRIPT.replace(
+    weaken(INSTALLED_SMOKE_SCRIPT,
       '[System.Windows.Automation.ClientSideProviderDescription[]]@($providerEntries[0])',
       '[System.Windows.Automation.ClientSideProviderDescription[]]@($providerTable)',
     ),
-    INSTALLED_SMOKE_SCRIPT.replace(
+    weaken(INSTALLED_SMOKE_SCRIPT,
       '[System.Windows.Automation.AndCondition]::new(',
       '[System.Windows.Automation.OrCondition]::new(',
     ),
-    INSTALLED_SMOKE_SCRIPT.replace(
+    weaken(INSTALLED_SMOKE_SCRIPT,
       '[System.Windows.Automation.ControlType]::Edit',
       '[System.Windows.Automation.ControlType]::ComboBox',
     ),
-    INSTALLED_SMOKE_SCRIPT.replace(
+    weaken(INSTALLED_SMOKE_SCRIPT,
       '-IsEnabled $isEnabled',
       '-IsEnabled $true',
     ),
-    INSTALLED_SMOKE_SCRIPT.replace(
+    weaken(INSTALLED_SMOKE_SCRIPT,
       '-IsOffscreen $isOffscreen',
       '-IsOffscreen $false',
     ),
-    INSTALLED_SMOKE_SCRIPT.replace(
+    weaken(INSTALLED_SMOKE_SCRIPT,
       '-HasValuePattern $hasValuePattern',
       '-HasValuePattern $true',
     ),
-    INSTALLED_SMOKE_SCRIPT.replace(
+    weaken(INSTALLED_SMOKE_SCRIPT,
       '-IsReadOnly $isReadOnly',
       '-IsReadOnly $false',
     ),
-    INSTALLED_SMOKE_SCRIPT.replace(
+    weaken(INSTALLED_SMOKE_SCRIPT,
       '            $mutationEditor = $null\n\n            $readbackCandidate = Get-NativePickerPinnedCandidateState',
       '            $readbackCandidate = Get-NativePickerPinnedCandidateState',
     ),
-    INSTALLED_SMOKE_SCRIPT.replace(
+    weaken(INSTALLED_SMOKE_SCRIPT,
       '$readbackEditor = Get-NativePickerWritableEditor -Dialog $dialog',
       '$readbackEditor = $mutationEditor',
     ),
-    INSTALLED_SMOKE_SCRIPT.replace(
+    weaken(INSTALLED_SMOKE_SCRIPT,
       '$openButtons.Count -eq 1',
       '$openButtons.Count -ge 1',
     ),
-    INSTALLED_SMOKE_SCRIPT.replace(
+    weaken(INSTALLED_SMOKE_SCRIPT,
       '$snapshot.NativeExactMatchCount -eq 0 -and $remainingCandidates.Count -eq 0',
       '$remainingCandidates.Count -le 1',
     ),
-    INSTALLED_SMOKE_SCRIPT.replaceAll(
+    weakenAll(INSTALLED_SMOKE_SCRIPT,
       '[OsgNativePickerWindow]::IsNormalizedWindow(',
       '$false -and [OsgNativePickerWindow]::IsNormalizedWindow(',
     ),
-    INSTALLED_SMOKE_SCRIPT.replace(
+    weaken(INSTALLED_SMOKE_SCRIPT,
       'private const int MaximumRetainedCandidates = 2',
       'private const int MaximumRetainedCandidates = 3',
     ),
-    INSTALLED_SMOKE_SCRIPT.replace(
+    weaken(INSTALLED_SMOKE_SCRIPT,
       'return sameProcess && visible && classMatches && nameMatches && ownerMatches;',
       'return sameProcess && visible && classMatches && nameMatches;',
     ),
-    INSTALLED_SMOKE_SCRIPT.replace(
+    weaken(INSTALLED_SMOKE_SCRIPT,
       'return unchecked((long)(uint)window);',
       'return window;',
     ),
-    INSTALLED_SMOKE_SCRIPT.replace(
+    weaken(INSTALLED_SMOKE_SCRIPT,
       'NormalizeNativeWindowHandle(ancestor) != normalizedWindow',
       'ancestor != window',
     ),
-    INSTALLED_SMOKE_SCRIPT.replaceAll('SetLastError(0);', ''),
-    INSTALLED_SMOKE_SCRIPT.replace(
+    weakenAll(INSTALLED_SMOKE_SCRIPT, 'SetLastError(0);', ''),
+    weaken(INSTALLED_SMOKE_SCRIPT,
       'titleLength == 0 && titleError != 0',
       'false',
     ),
-    INSTALLED_SMOKE_SCRIPT.replace(
+    weaken(INSTALLED_SMOKE_SCRIPT,
       'ownerMissing && ownerError != 0',
       'false',
     ),
-    INSTALLED_SMOKE_SCRIPT.replace(
+    weaken(INSTALLED_SMOKE_SCRIPT,
       '  if (-not $scan.Incomplete `\n'
         + '      -and $scan.ExactMatchCount -eq 1 `\n'
         + '      -and @($scan.Candidates).Count -eq 1) {',
       '  if ($scan.ExactMatchCount -ge 1) {',
     ),
-    INSTALLED_SMOKE_SCRIPT.replace(
+    weaken(INSTALLED_SMOKE_SCRIPT,
       '  $rawCensus = $null\n',
       '  $rawCensus = $null\n'
         + '  $root = [System.Windows.Automation.AutomationElement]::RootElement\n'
         + '  [void]$root.FindAll([System.Windows.Automation.TreeScope]::Children, [System.Windows.Automation.Condition]::TrueCondition)\n',
     ),
-    INSTALLED_SMOKE_SCRIPT.replaceAll(
+    weakenAll(INSTALLED_SMOKE_SCRIPT,
       'Get-NativePickerPinnedCandidateState',
       'Test-NativePickerElementCandidate',
     ),
-    INSTALLED_SMOKE_SCRIPT.replaceAll(
+    weakenAll(INSTALLED_SMOKE_SCRIPT,
       '$editorMutationCompleteScanObserved',
       '$editorCandidateCompleteScanObserved',
     ),
-    INSTALLED_SMOKE_SCRIPT.replace(
+    weaken(INSTALLED_SMOKE_SCRIPT,
       '$rawCensus = [pscustomobject]$fallback',
       '$rawCensus = [pscustomobject]$fallback\n    $nativeCandidates = $fallback',
     ),
-    INSTALLED_SMOKE_SCRIPT.replace(
+    weaken(INSTALLED_SMOKE_SCRIPT,
       '    CandidateElements = $candidateElements',
       '    CandidateElements = $candidateElements\n    candidateHandle = 1',
     ),
-    INSTALLED_SMOKE_SCRIPT.replace('EnumWindows(callback, IntPtr.Zero)', 'true'),
-    INSTALLED_SMOKE_SCRIPT.replace(
+    weaken(INSTALLED_SMOKE_SCRIPT, 'EnumWindows(callback, IntPtr.Zero)', 'true'),
+    weaken(INSTALLED_SMOKE_SCRIPT,
       'private const int MaximumEnumeratedWindows = 512',
       'private const int MaximumEnumeratedWindows = 1024',
     ),
-    INSTALLED_SMOKE_SCRIPT.replace(
+    weaken(INSTALLED_SMOKE_SCRIPT,
       '[Math]::Max([int]$Maxima[$name], [int]$value)',
       '[int]$value',
     ),
-    INSTALLED_SMOKE_SCRIPT.replace(
+    weaken(INSTALLED_SMOKE_SCRIPT,
       'if (classMatches && nameMatches) {',
       'if (ownerMatches && classMatches && nameMatches) {',
     ),
-    INSTALLED_SMOKE_SCRIPT.replace(
+    weaken(INSTALLED_SMOKE_SCRIPT,
       'if (sameProcess || classMatches) {',
       'if (classMatches) {',
     ),
-    INSTALLED_SMOKE_SCRIPT.replace(
+    weaken(INSTALLED_SMOKE_SCRIPT,
       '$snapshot.NativeExactMatchCount -eq 1 -and $nativeCandidates.Count -eq 1',
       '$snapshot.RawProcessExactMatches -eq 1',
     ),
-    INSTALLED_SMOKE_SCRIPT.replace(
+    weaken(INSTALLED_SMOKE_SCRIPT,
       'Update-NativePickerRawCensusMaxima -Maxima $rawCensusMaxima -Snapshot $snapshot',
       '# omitted raw census update',
     ),
-    INSTALLED_SMOKE_SCRIPT.replace(
+    weaken(INSTALLED_SMOKE_SCRIPT,
       'Add-NativePickerRawCensusMetrics -Metrics $failureMetrics -Maxima $rawCensusMaxima',
       '# omitted failed raw census evidence',
     ),
-    INSTALLED_SMOKE_SCRIPT.replace(
+    weaken(INSTALLED_SMOKE_SCRIPT,
       '      } else {\n'
         + '        $rawCensusMaxima.rawCensusIncomplete = $true\n'
         + '        $failureMetrics.nativeCandidateScanIncomplete = $true\n'
@@ -767,7 +822,7 @@ test('installed Windows smoke proves persistence, media, tools, logs, relaunch, 
         + '      }\n'
         + '      Add-NativePickerRawCensusMetrics -Metrics $failureMetrics',
     ),
-    INSTALLED_SMOKE_SCRIPT.replace(
+    weaken(INSTALLED_SMOKE_SCRIPT,
       '      } catch {\n'
         + '        $rawCensusMaxima.rawCensusIncomplete = $true\n'
         + '        throw\n'
@@ -778,60 +833,60 @@ test('installed Windows smoke proves persistence, media, tools, logs, relaunch, 
         + '      }\n'
         + '      Update-NativePickerRawCensusMaxima',
     ),
-    INSTALLED_SMOKE_SCRIPT.replace(
+    weaken(INSTALLED_SMOKE_SCRIPT,
       '    Update-NativePickerRawCensusMaxima -Maxima $rawCensusMaxima -Snapshot $snapshot\n'
         + '    $nativeCandidates = @($snapshot.NativeCandidates)',
       '    # omitted cleanup raw census update\n'
         + '    $nativeCandidates = @($snapshot.NativeCandidates)',
     ),
-    INSTALLED_SMOKE_SCRIPT.replace(
+    weaken(INSTALLED_SMOKE_SCRIPT,
       '    if ($snapshot.NativeExactMatchCount -gt 1) {',
       '    if ($snapshot.RawProcessOwnerMatches -gt 1) {',
     ),
-    INSTALLED_SMOKE_SCRIPT.replaceAll('RawDesktopExactMatches', 'RawProcessExactMatches'),
-    INSTALLED_SMOKE_SCRIPT.replaceAll('RawCensusIncomplete', 'RawCensusComplete'),
-    INSTALLED_SMOKE_SCRIPT.replace(
+    weakenAll(INSTALLED_SMOKE_SCRIPT, 'RawDesktopExactMatches', 'RawProcessExactMatches'),
+    weakenAll(INSTALLED_SMOKE_SCRIPT, 'RawCensusIncomplete', 'RawCensusComplete'),
+    weaken(INSTALLED_SMOKE_SCRIPT,
       'public int RawProcessWindowMatches { get; internal set; }',
       'public int RawProcessWindowMatches { get; internal set; }\n'
         + '    public int RawWindowTitle { get; internal set; }',
     ),
-    INSTALLED_SMOKE_SCRIPT.replace('$snapshotAttempt -lt 5', '$snapshotAttempt -lt 1'),
-    INSTALLED_SMOKE_SCRIPT.replace('$nonPrefix = $true', '$nonPrefix = $false'),
-    INSTALLED_SMOKE_SCRIPT.replace('$phase.schemaVersion -isnot [int]', '$false'),
-    INSTALLED_SMOKE_SCRIPT.replace('$phase.stage -isnot [string]', '$false'),
-    INSTALLED_SMOKE_SCRIPT.replace('$phase.schemaVersion -ne 1', '$false'),
-    INSTALLED_SMOKE_SCRIPT.replace('$phase.stage -cne $stage', '$false'),
-    INSTALLED_SMOKE_SCRIPT.replace("'tab-activated',", ''),
-    INSTALLED_SMOKE_SCRIPT.replace('$item.Length -gt 16384', '$false'),
-    INSTALLED_SMOKE_SCRIPT.replace(
+    weaken(INSTALLED_SMOKE_SCRIPT, '$snapshotAttempt -lt 5', '$snapshotAttempt -lt 1'),
+    weaken(INSTALLED_SMOKE_SCRIPT, '$nonPrefix = $true', '$nonPrefix = $false'),
+    weaken(INSTALLED_SMOKE_SCRIPT, '$phase.schemaVersion -isnot [int]', '$false'),
+    weaken(INSTALLED_SMOKE_SCRIPT, '$phase.stage -isnot [string]', '$false'),
+    weaken(INSTALLED_SMOKE_SCRIPT, '$phase.schemaVersion -ne 1', '$false'),
+    weaken(INSTALLED_SMOKE_SCRIPT, '$phase.stage -cne $stage', '$false'),
+    weaken(INSTALLED_SMOKE_SCRIPT, "'tab-activated',", ''),
+    weaken(INSTALLED_SMOKE_SCRIPT, '$item.Length -gt 16384', '$false'),
+    weaken(INSTALLED_SMOKE_SCRIPT,
       'Get-InstalledLocalMediaInspectorStderrState -Path $StderrPath',
       'Get-Content -LiteralPath $StderrPath',
     ),
-    INSTALLED_SMOKE_SCRIPT.replace(
+    weaken(INSTALLED_SMOKE_SCRIPT,
       "'connected' { 'inspector-tab-activation-exited' }",
       "'connected' { 'inspector-startup-exited' }",
     ),
-    INSTALLED_SMOKE_SCRIPT.replace(
+    weaken(INSTALLED_SMOKE_SCRIPT,
       "if ($phase -ceq 'click-issued')",
       "if ($phase -ceq 'prior-state-validated')",
     ),
-    INSTALLED_SMOKE_SCRIPT.replace(
+    weaken(INSTALLED_SMOKE_SCRIPT,
       '$_.appInstanceId -ceq $AppInstanceId',
       '$true',
     ),
-    INSTALLED_SMOKE_SCRIPT.replace(
+    weaken(INSTALLED_SMOKE_SCRIPT,
       'while ($offset -lt $snapshotBytes.Length)',
       'if ($offset -lt $snapshotBytes.Length)',
     ),
-    INSTALLED_SMOKE_SCRIPT.replace(
+    weaken(INSTALLED_SMOKE_SCRIPT,
       '[Text.Encoding]::UTF8.GetString($snapshotBytes)',
       '[Text.Encoding]::UTF8.GetString([IO.File]::ReadAllBytes($LogPath))',
     ),
-    INSTALLED_SMOKE_SCRIPT.replace(
+    weaken(INSTALLED_SMOKE_SCRIPT,
       "$pickerDiagnosticOutcome -cne 'selected'",
       '$false',
     ),
-    INSTALLED_SMOKE_SCRIPT.replace(
+    weaken(INSTALLED_SMOKE_SCRIPT,
       '-PriorAssetId $initialMediaFlow.assetId',
       '-PriorAssetId $third.AppInstanceId',
     ),
@@ -843,19 +898,19 @@ test('installed Windows smoke proves persistence, media, tools, logs, relaunch, 
     );
   }
   for (const prematureOrUncorrectedSuccess of [
-    INSTALLED_SMOKE_SCRIPT.replace(
+    weaken(INSTALLED_SMOKE_SCRIPT,
       "    Set-NativePickerEvidence `\n      -Stage 'dialog-dismissed' `\n      -Outcome 'running' `",
       "    Set-NativePickerEvidence `\n      -Stage 'dialog-dismissed' `\n      -Outcome 'succeeded' `",
     ),
-    INSTALLED_SMOKE_SCRIPT.replace(
+    weaken(INSTALLED_SMOKE_SCRIPT,
       "      dismissAttempts = $pickerCompletion.DismissAttempts",
       '      dismissAttempts = 0',
     ),
-    INSTALLED_SMOKE_SCRIPT.replace(
+    weaken(INSTALLED_SMOKE_SCRIPT,
       '        # Corrective evidence failure must never replace the original post-click ErrorRecord.',
       '        throw',
     ),
-    INSTALLED_SMOKE_SCRIPT.replace(
+    weaken(INSTALLED_SMOKE_SCRIPT,
       "          -FailureCode 'postclick-validation-failed'",
       "          -FailureCode 'unexpected'",
     ),
@@ -867,14 +922,14 @@ test('installed Windows smoke proves persistence, media, tools, logs, relaunch, 
     );
   }
   assert.throws(
-    () => assertInstalledSmokeScript(INSTALLED_SMOKE_SCRIPT.replace(
+    () => assertInstalledSmokeScript(weaken(INSTALLED_SMOKE_SCRIPT,
       '$invokePattern.Invoke()',
       '$openButtons[0].SetFocus()',
     )),
     /(?:non-focus-stealing|native-picker automation|missing lifecycle proof)/,
   );
   assert.throws(
-    () => assertInstalledSmokeScript(INSTALLED_SMOKE_SCRIPT.replace(
+    () => assertInstalledSmokeScript(weaken(INSTALLED_SMOKE_SCRIPT,
       /    throw\r?\n  \}\r?\n\}\r?\n\r?\nfunction Inspect-InstalledLocalMediaFlow/,
       '    return\n  }\n}\n\nfunction Inspect-InstalledLocalMediaFlow',
     )),
@@ -894,63 +949,63 @@ test('native-picker evidence uses bounded backups and real multi-stage replaceme
 
   for (const [weakenedScript, description] of [
     [
-      NATIVE_PICKER_EVIDENCE_SCRIPT.replace(
+      weaken(NATIVE_PICKER_EVIDENCE_SCRIPT,
         /(\[IO\.File\]::Replace\(\s*\$script:nativePickerEvidenceTemporaryPath,\s*\$script:nativePickerEvidencePath,\s*)\$script:nativePickerEvidenceBackupPath/,
         (_match, prefix) => `${prefix}$null`,
       ),
       'null primary replacement backup',
     ],
     [
-      NATIVE_PICKER_EVIDENCE_SCRIPT.replace(
+      weaken(NATIVE_PICKER_EVIDENCE_SCRIPT,
         /(\[IO\.File\]::Replace\(\s*\$script:nativePickerEvidenceTemporaryPath,\s*\$script:nativePickerEvidencePath,\s*)\$script:nativePickerEvidenceBackupPath/,
         (_match, prefix) => `${prefix}''`,
       ),
       'empty primary replacement backup',
     ],
     [
-      NATIVE_PICKER_EVIDENCE_SCRIPT.replace(
+      weaken(NATIVE_PICKER_EVIDENCE_SCRIPT,
         /(\[IO\.File\]::Replace\(\s*\$script:nativePickerEvidenceBackupPath,\s*\$script:nativePickerEvidencePath,\s*)\$script:nativePickerEvidenceTemporaryPath/,
         (_match, prefix) => `${prefix}''`,
       ),
       'empty recovery replacement backup',
     ],
     [
-      NATIVE_PICKER_EVIDENCE_SCRIPT.replace(
+      weaken(NATIVE_PICKER_EVIDENCE_SCRIPT,
         '-not [string]::Equals($parent, $Root, [StringComparison]::OrdinalIgnoreCase)',
         '$false',
       ),
       'removed direct-child comparison',
     ],
     [
-      NATIVE_PICKER_EVIDENCE_SCRIPT.replace(
+      weaken(NATIVE_PICKER_EVIDENCE_SCRIPT,
         '($candidateItem.Attributes -band [IO.FileAttributes]::ReparsePoint) -ne 0',
         '($candidateItem.Attributes -band [IO.FileAttributes]::ReparsePoint) -eq 0',
       ),
       'inverted root reparse rejection',
     ],
     [
-      NATIVE_PICKER_EVIDENCE_SCRIPT.replace(
+      weaken(NATIVE_PICKER_EVIDENCE_SCRIPT,
         '  while (-not [string]::IsNullOrEmpty($candidate)) {',
         '  while ($false) {',
       ),
       'removed root ancestor walk',
     ],
     [
-      NATIVE_PICKER_EVIDENCE_SCRIPT.replace(
+      weaken(NATIVE_PICKER_EVIDENCE_SCRIPT,
         /\[IO\.File\]::Move\(\s*\$script:nativePickerEvidenceBackupPath,\s*\$script:nativePickerEvidencePath\s*\)/,
         '[IO.File]::Move($script:nativePickerEvidenceBackupPath, $script:nativePickerEvidenceTemporaryPath)',
       ),
       'redirected missing-destination restore',
     ],
     [
-      NATIVE_PICKER_EVIDENCE_SCRIPT.replace(
+      weaken(NATIVE_PICKER_EVIDENCE_SCRIPT,
         'Assert-NativePickerEvidenceRegularFile -Item $item',
         'Write-Output $item | Out-Null',
       ),
       'removed bounded scratch-file validation',
     ],
     [
-      NATIVE_PICKER_EVIDENCE_SCRIPT.replaceAll(
+      weakenAll(NATIVE_PICKER_EVIDENCE_SCRIPT,
         '$preserveTemporary = $true',
         '$preserveTemporary = $false',
       ),
@@ -972,11 +1027,10 @@ test('native-picker evidence uses bounded backups and real multi-stage replaceme
     );
   }
 
-  const payloadLeak = NATIVE_PICKER_EVIDENCE_SCRIPT.replace(
+  const payloadLeak = weaken(NATIVE_PICKER_EVIDENCE_SCRIPT,
     '    schemaVersion = 1',
     '    schemaVersion = 1\n    mediaPath = $MediaPath',
   );
-  assert.notEqual(payloadLeak, NATIVE_PICKER_EVIDENCE_SCRIPT);
   assert.throws(
     () => assertNativePickerEvidenceScripts(
       payloadLeak,
@@ -986,10 +1040,10 @@ test('native-picker evidence uses bounded backups and real multi-stage replaceme
   );
 
   for (const weakenedRawSchema of [
-    NATIVE_PICKER_EVIDENCE_SCRIPT.replace("    'rawProcessWindowMatches',\n", ''),
-    NATIVE_PICKER_EVIDENCE_SCRIPT.replace('    rawProcessWindowMatches = 0\n', ''),
-    NATIVE_PICKER_EVIDENCE_SCRIPT.replace('$metric.Value -le 1000', '$metric.Value -le 10000'),
-    NATIVE_PICKER_EVIDENCE_SCRIPT.replace(
+    weaken(NATIVE_PICKER_EVIDENCE_SCRIPT, "    'rawProcessWindowMatches',\n", ''),
+    weaken(NATIVE_PICKER_EVIDENCE_SCRIPT, '    rawProcessWindowMatches = 0\n', ''),
+    weaken(NATIVE_PICKER_EVIDENCE_SCRIPT, '$metric.Value -le 1000', '$metric.Value -le 10000'),
+    weaken(NATIVE_PICKER_EVIDENCE_SCRIPT,
       "    'rawCensusIncomplete',",
       "    'rawWindowTitle',",
     ),
@@ -1005,59 +1059,59 @@ test('native-picker evidence uses bounded backups and real multi-stage replaceme
   }
 
   for (const weakenedRegression of [
-    NATIVE_PICKER_EVIDENCE_REGRESSION.replaceAll(
+    weakenAll(NATIVE_PICKER_EVIDENCE_REGRESSION,
       'Set-NativePickerEvidence',
       'Write-Output',
     ),
-    NATIVE_PICKER_EVIDENCE_REGRESSION.replace(
+    weaken(NATIVE_PICKER_EVIDENCE_REGRESSION,
       '[IO.Directory]::CreateDirectory($hostileBackupPath)',
       '[IO.File]::WriteAllText($hostileBackupPath, "decoy")',
     ),
-    NATIVE_PICKER_EVIDENCE_REGRESSION.replace(
+    weaken(NATIVE_PICKER_EVIDENCE_REGRESSION,
       "    throw 'Native picker evidence regression accepted a non-child destination'",
       '    Write-Output decoy',
     ),
-    NATIVE_PICKER_EVIDENCE_REGRESSION.replace(
+    weaken(NATIVE_PICKER_EVIDENCE_REGRESSION,
       '      throw "Native picker evidence regression did not restore prior bytes for $fault"',
       '      Write-Output decoy',
     ),
-    NATIVE_PICKER_EVIDENCE_REGRESSION.replace(
+    weaken(NATIVE_PICKER_EVIDENCE_REGRESSION,
       "    throw 'Native picker evidence regression accepted a reparse ancestor'",
       '    Write-Output decoy',
     ),
-    NATIVE_PICKER_EVIDENCE_REGRESSION.replace(
+    weaken(NATIVE_PICKER_EVIDENCE_REGRESSION,
       "    throw 'Native picker diagnostic regression merged command and blocking-pool dispatch stalls'",
       '    Write-Output decoy',
     ),
-    NATIVE_PICKER_EVIDENCE_REGRESSION.replace(
+    weaken(NATIVE_PICKER_EVIDENCE_REGRESSION,
       '    pickerWorkerBoundarySplit = $true',
       '    pickerWorkerBoundarySplit = $false',
     ),
-    NATIVE_PICKER_EVIDENCE_REGRESSION.replace(
+    weaken(NATIVE_PICKER_EVIDENCE_REGRESSION,
       '    rawCensusBucketsIndependent = $true',
       '    rawCensusBucketsIndependent = $false',
     ),
-    NATIVE_PICKER_EVIDENCE_REGRESSION.replace(
+    weaken(NATIVE_PICKER_EVIDENCE_REGRESSION,
       '    clientSideProvidersRegistered = $true',
       '    clientSideProvidersRegistered = $false',
     ),
-    NATIVE_PICKER_EVIDENCE_REGRESSION.replace(
+    weaken(NATIVE_PICKER_EVIDENCE_REGRESSION,
       '    filenameEditorSelectorExact = $true',
       '    filenameEditorSelectorExact = $false',
     ),
-    NATIVE_PICKER_EVIDENCE_REGRESSION.replace(
+    weaken(NATIVE_PICKER_EVIDENCE_REGRESSION,
       '    filenameEditorReadbackReacquired = $true',
       '    filenameEditorReadbackReacquired = $false',
     ),
-    NATIVE_PICKER_EVIDENCE_REGRESSION.replace(
+    weaken(NATIVE_PICKER_EVIDENCE_REGRESSION,
       "      throw 'Native picker regression selected an ambiguous, disabled, offscreen, patternless, or read-only filename editor'",
       '      Write-Output decoy',
     ),
-    NATIVE_PICKER_EVIDENCE_REGRESSION.replace(
+    weaken(NATIVE_PICKER_EVIDENCE_REGRESSION,
       "    throw 'Native picker raw census regression lost bounded maximum aggregation'",
       '    Write-Output decoy',
     ),
-    NATIVE_PICKER_EVIDENCE_REGRESSION.replace(
+    weaken(NATIVE_PICKER_EVIDENCE_REGRESSION,
       "    throw 'Native picker raw census regression allowed diagnostics to control UIA authority'",
       '    Write-Output decoy',
     ),
@@ -1080,104 +1134,106 @@ test('installed local-media picker handshake publishes atomic create-once ordere
   ));
   const linkLine = '    fs.linkSync(temporaryPath, phasePath);\n';
   const fsyncLine = '    fs.fsyncSync(descriptor);\n';
-  const linkBeforeFlush = INSTALLED_LOCAL_MEDIA_INSPECTOR
-    .replace(linkLine, '')
-    .replace(fsyncLine, `${linkLine}${fsyncLine}`);
-  const regressiveDuplicate = INSTALLED_LOCAL_MEDIA_INSPECTOR.replace(
+  const linkBeforeFlush = weaken(
+    weaken(INSTALLED_LOCAL_MEDIA_INSPECTOR, linkLine, ''),
+    fsyncLine,
+    `${linkLine}${fsyncLine}`,
+  );
+  const regressiveDuplicate = weaken(INSTALLED_LOCAL_MEDIA_INSPECTOR,
     "    writePickerPhase(options.phaseDirectory, 'control-ready');",
     "    writePickerPhase(options.phaseDirectory, 'control-ready');\n"
       + "    writePickerPhase(options.phaseDirectory, 'starting');",
   );
-  const commentedActivationWait = INSTALLED_LOCAL_MEDIA_INSPECTOR.replace(
+  const commentedActivationWait = weaken(INSTALLED_LOCAL_MEDIA_INSPECTOR,
     '      () => evaluate(client, OPEN_PICKER_EXPRESSION),',
     '      // () => evaluate(client, OPEN_PICKER_EXPRESSION),',
   );
-  const deadActivationWait = INSTALLED_LOCAL_MEDIA_INSPECTOR
-    .replace(
+  const deadActivationWait = weaken(
+    weaken(
+      INSTALLED_LOCAL_MEDIA_INSPECTOR,
       'export async function waitForPickerTabActivation(read, options = {}) {',
       'if (false) {\nexport async function waitForPickerTabActivation(read, options = {}) {',
-    )
-    .replace(
-      '\n\nconst evaluate = async (client, expression) => {',
-      '\n}\n\nconst evaluate = async (client, expression) => {',
-    );
+    ),
+    '\n\nconst evaluate = async (client, expression) => {',
+    '\n}\n\nconst evaluate = async (client, expression) => {',
+  );
   for (const weakened of [
-    INSTALLED_LOCAL_MEDIA_INSPECTOR.replace('fs.linkSync(temporaryPath, phasePath)', 'fs.renameSync(temporaryPath, phasePath)'),
-    INSTALLED_LOCAL_MEDIA_INSPECTOR.replace('fs.fsyncSync(descriptor)', '// omitted durable flush'),
-    INSTALLED_LOCAL_MEDIA_INSPECTOR.replace('throw error;', 'throw new Error("cleanup replaced primary")'),
-    INSTALLED_LOCAL_MEDIA_INSPECTOR.replace(
+    weaken(INSTALLED_LOCAL_MEDIA_INSPECTOR, 'fs.linkSync(temporaryPath, phasePath)', 'fs.renameSync(temporaryPath, phasePath)'),
+    weaken(INSTALLED_LOCAL_MEDIA_INSPECTOR, 'fs.fsyncSync(descriptor)', '// omitted durable flush'),
+    weaken(INSTALLED_LOCAL_MEDIA_INSPECTOR, 'throw error;', 'throw new Error("cleanup replaced primary")'),
+    weaken(INSTALLED_LOCAL_MEDIA_INSPECTOR,
       'JSON.stringify({ schemaVersion: 1, stage })',
       "JSON.stringify({ schemaVersion: 9, stage: 'click-issued' })",
     ),
-    INSTALLED_LOCAL_MEDIA_INSPECTOR.replace(
+    weaken(INSTALLED_LOCAL_MEDIA_INSPECTOR,
       'value.assetId !== priorAssetId',
       'value.assetId === priorAssetId',
     ),
-    INSTALLED_LOCAL_MEDIA_INSPECTOR.replace(
+    weaken(INSTALLED_LOCAL_MEDIA_INSPECTOR,
       "if (uploadTab.classList.contains('active')) return 'already-active';",
       "if (uploadTab.classList.contains('active')) { uploadTab.click(); return 'already-active'; }",
     ),
-    INSTALLED_LOCAL_MEDIA_INSPECTOR.replace(
+    weaken(INSTALLED_LOCAL_MEDIA_INSPECTOR,
       "return 'activated';",
       "return 'already-active';",
     ),
-    INSTALLED_LOCAL_MEDIA_INSPECTOR.replace(
+    weaken(INSTALLED_LOCAL_MEDIA_INSPECTOR,
       'activeTabs[0] === uploadTab',
       'activeTabs[0] !== uploadTab',
     ),
-    INSTALLED_LOCAL_MEDIA_INSPECTOR.replace(
+    weaken(INSTALLED_LOCAL_MEDIA_INSPECTOR,
       "':scope > .tab-content-wrapper div.file-upload-input:not(.loading)'",
       "'.file-upload-input'",
     ),
-    INSTALLED_LOCAL_MEDIA_INSPECTOR.replaceAll(
+    weakenAll(INSTALLED_LOCAL_MEDIA_INSPECTOR,
       "tabList.querySelectorAll(':scope > button.tab-btn')",
       "tabList.querySelectorAll(':scope button.tab-btn')",
     ),
-    INSTALLED_LOCAL_MEDIA_INSPECTOR.replaceAll(
+    weakenAll(INSTALLED_LOCAL_MEDIA_INSPECTOR,
       'directButtons.length !== tabs.length',
       'directButtons.length < tabs.length',
     ),
-    INSTALLED_LOCAL_MEDIA_INSPECTOR.replaceAll(
+    weakenAll(INSTALLED_LOCAL_MEDIA_INSPECTOR,
       '!directButtons.every((button) => tabs.includes(button))',
       'directButtons.some((button) => tabs.includes(button))',
     ),
-    INSTALLED_LOCAL_MEDIA_INSPECTOR.replace(
+    weaken(INSTALLED_LOCAL_MEDIA_INSPECTOR,
       '  picker.click();\n  return true;',
       '  return true;',
     ),
-    INSTALLED_LOCAL_MEDIA_INSPECTOR.replace(
+    weaken(INSTALLED_LOCAL_MEDIA_INSPECTOR,
       '  picker.click();\n  return true;',
       '  picker.click();\n  picker.click();\n  return true;',
     ),
-    INSTALLED_LOCAL_MEDIA_INSPECTOR.replace(
+    weaken(INSTALLED_LOCAL_MEDIA_INSPECTOR,
       '  picker.click();\n  return true;',
       '  uploadTab.click();\n  picker.click();\n  return true;',
     ),
-    INSTALLED_LOCAL_MEDIA_INSPECTOR.replace(
+    weaken(INSTALLED_LOCAL_MEDIA_INSPECTOR,
       '  picker.click();\n  return true;',
       '  document.body.click();\n  picker.click();\n  return true;',
     ),
-    INSTALLED_LOCAL_MEDIA_INSPECTOR.replace(
+    weaken(INSTALLED_LOCAL_MEDIA_INSPECTOR,
       '  const picker = pickers[0];\n  const input = picker?.querySelector(',
       '  const picker = pickers[0];\n  uploadTab.click();\n  const input = picker?.querySelector(',
     ),
-    INSTALLED_LOCAL_MEDIA_INSPECTOR.replace(
+    weaken(INSTALLED_LOCAL_MEDIA_INSPECTOR,
       '  picker.click();\n  return true;',
       '  document.body.click();\n  return true;',
     ),
-    INSTALLED_LOCAL_MEDIA_INSPECTOR.replace(
+    weaken(INSTALLED_LOCAL_MEDIA_INSPECTOR,
       'pickers.length !== 1 || !(pickers[0] instanceof HTMLDivElement)',
       'pickers.length < 1',
     ),
-    INSTALLED_LOCAL_MEDIA_INSPECTOR.replace(
+    weaken(INSTALLED_LOCAL_MEDIA_INSPECTOR,
       "const expectedRendererAssetId = tabActivation === 'already-active' ? priorAssetId : null;",
       'const expectedRendererAssetId = priorAssetId;',
     ),
-    INSTALLED_LOCAL_MEDIA_INSPECTOR.replace(
+    weaken(INSTALLED_LOCAL_MEDIA_INSPECTOR,
       'value.sessionMediaId === priorAssetId',
       'value.sessionMediaId === expectedRendererAssetId',
     ),
-    INSTALLED_LOCAL_MEDIA_INSPECTOR.replace(
+    weaken(INSTALLED_LOCAL_MEDIA_INSPECTOR,
       '      tabActivation,',
       "      'already-active',",
     ),
@@ -1201,15 +1257,20 @@ test('installed local-media picker handshake publishes atomic create-once ordere
       /reviewed executable source/,
     );
   }
-  const misplacedSemanticSelector = INPUT_METHODS_SOURCE
-    .replace('\n            data-input-tab="file-upload"', '')
-    .replace(
-      "onClick={() => setActiveTab('unified-url')}",
-      "data-input-tab=\"file-upload\"\n            onClick={() => setActiveTab('unified-url')}",
-    );
-  assert.notEqual(misplacedSemanticSelector, INPUT_METHODS_SOURCE);
+  // The selector must move, not multiply: weakening asserts it was there exactly once to begin
+  // with, and the count below asserts the move did not leave a second copy behind.
+  const misplacedSemanticSelector = weaken(
+    weaken(
+      INPUT_METHODS_SOURCE,
+      '\n            data-input-tab="file-upload"',
+      '',
+      { expected: 1 },
+    ),
+    "onClick={() => setActiveTab('unified-url')}",
+    "data-input-tab=\"file-upload\"\n            onClick={() => setActiveTab('unified-url')}",
+  );
   assert.equal(
-    (misplacedSemanticSelector.match(/data-input-tab="file-upload"/g) || []).length,
+    countOccurrences(misplacedSemanticSelector, 'data-input-tab="file-upload"'),
     1,
   );
   assert.throws(
@@ -1234,25 +1295,23 @@ test('installed URL media flow commits URL and replaces stale SRT before one dow
     const end = source.indexOf(endMarker, start + startMarker.length);
     assert.ok(start >= 0 && end > start, `missing scoped block ${startMarker}`);
     const block = source.slice(start, end);
-    assert.equal(block.split(search).length, 2, `non-unique scoped mutation ${search}`);
-    const changedBlock = block.replace(search, replacement);
-    assert.notEqual(changedBlock, block, `unchanged scoped mutation ${search}`);
+    const changedBlock = weaken(block, search, replacement, { expected: 1 });
     return source.slice(0, start) + changedBlock + source.slice(end);
   };
   const mutations = [
-    INSTALLED_MEDIA_FLOW_INSPECTOR.replace(
+    weaken(INSTALLED_MEDIA_FLOW_INSPECTOR,
       'evaluate(client, URL_COMMITTED_EXPRESSION)',
       'evaluate(client, URL_CONTROL_READY_EXPRESSION)',
     ),
-    INSTALLED_MEDIA_FLOW_INSPECTOR.replace(
+    weaken(INSTALLED_MEDIA_FLOW_INSPECTOR,
       "(previews[0].textContent ?? '').trim() === ${JSON.stringify(MEDIA_URL)}",
       'previews.length >= 0',
     ),
-    INSTALLED_MEDIA_FLOW_INSPECTOR.replace(
+    weaken(INSTALLED_MEDIA_FLOW_INSPECTOR,
       "localStorage.getItem('current_video_url') === ${JSON.stringify(MEDIA_URL)}",
       'true',
     ),
-    INSTALLED_MEDIA_FLOW_INSPECTOR.replace(
+    weaken(INSTALLED_MEDIA_FLOW_INSPECTOR,
       '      () => evaluate(client, URL_COMMITTED_EXPRESSION),\n'
         + '      (value) => value === true,\n'
         + "      { timeoutMs: 60_000, failureCode: 'url-commit-timeout' },\n"
@@ -1266,45 +1325,45 @@ test('installed URL media flow commits URL and replaces stale SRT before one dow
         + '    await waitForValue(\n'
         + '      () => evaluate(client, URL_COMMITTED_EXPRESSION),',
     ),
-    INSTALLED_MEDIA_FLOW_INSPECTOR.replace(
+    weaken(INSTALLED_MEDIA_FLOW_INSPECTOR,
       '  clearButtons[0].click();\n  return \'cleared\';',
       "  return 'cleared';",
     ),
-    INSTALLED_MEDIA_FLOW_INSPECTOR.replace(
+    weaken(INSTALLED_MEDIA_FLOW_INSPECTOR,
       "    && !uploadButtons[0].classList.contains('has-srt-uploaded')",
       "    && uploadButtons[0].classList.contains('has-srt-uploaded')",
     ),
-    INSTALLED_MEDIA_FLOW_INSPECTOR.replace(
+    weaken(INSTALLED_MEDIA_FLOW_INSPECTOR,
       "    && info.hasUploaded === false && info.fileName === '' && info.source === ''",
       '    && info.hasUploaded === true',
     ),
-    INSTALLED_MEDIA_FLOW_INSPECTOR.replace(
+    weaken(INSTALLED_MEDIA_FLOW_INSPECTOR,
       "    && info.fileName === 'osg-installed-media-smoke.srt'",
       '    && typeof info.fileName === \'string\'',
     ),
-    INSTALLED_MEDIA_FLOW_INSPECTOR.replace(
+    weaken(INSTALLED_MEDIA_FLOW_INSPECTOR,
       "    && info.source === 'srt'",
       '    && typeof info.source === \'string\'',
     ),
-    INSTALLED_MEDIA_FLOW_INSPECTOR.replace(
+    weaken(INSTALLED_MEDIA_FLOW_INSPECTOR,
       "    && document.body.innerText.includes(${JSON.stringify(SUBTITLE_MARKER)})",
       '    && true',
     ),
-    INSTALLED_MEDIA_FLOW_INSPECTOR.replace(
+    weaken(INSTALLED_MEDIA_FLOW_INSPECTOR,
       'Array.isArray(inputs.nodeIds) && inputs.nodeIds.length === 1',
       'Array.isArray(inputs.nodeIds) && inputs.nodeIds.length >= 1',
     ),
-    INSTALLED_MEDIA_FLOW_INSPECTOR.replace(
+    weaken(INSTALLED_MEDIA_FLOW_INSPECTOR,
       "    await client.send('DOM.setFileInputFiles', {\n"
         + '      files: [options.srt], nodeId: inputs.nodeIds[0],\n'
         + '    });\n',
       '',
     ),
-    INSTALLED_MEDIA_FLOW_INSPECTOR.replace(
+    weaken(INSTALLED_MEDIA_FLOW_INSPECTOR,
       "    await client.send('DOM.setFileInputFiles', {",
       "    void client.send('DOM.setFileInputFiles', {",
     ),
-    INSTALLED_MEDIA_FLOW_INSPECTOR.replace(
+    weaken(INSTALLED_MEDIA_FLOW_INSPECTOR,
       "    await client.send('DOM.setFileInputFiles', {\n"
         + '      files: [options.srt], nodeId: inputs.nodeIds[0],\n'
         + '    });\n',
@@ -1313,37 +1372,37 @@ test('installed URL media flow commits URL and replaces stale SRT before one dow
         + '    });\n'
         + "    await evaluate(client, `inputs[0].dispatchEvent(new Event('change'))`);\n",
     ),
-    INSTALLED_MEDIA_FLOW_INSPECTOR.replace(
+    weaken(INSTALLED_MEDIA_FLOW_INSPECTOR,
       '      || buttons.length !== 1 || !(buttons[0] instanceof HTMLButtonElement)\n'
         + '      || buttons[0].disabled',
       '      || buttons.length < 1 || !(buttons[0] instanceof HTMLButtonElement)\n'
         + '      || buttons[0].disabled',
     ),
-    INSTALLED_MEDIA_FLOW_INSPECTOR.replace(
+    weaken(INSTALLED_MEDIA_FLOW_INSPECTOR,
       "    && startButtons[0].dataset.generationMode === 'url-with-srt';",
       '    && true;',
     ),
-    INSTALLED_MEDIA_FLOW_INSPECTOR.replace(
+    weaken(INSTALLED_MEDIA_FLOW_INSPECTOR,
       "      || buttons[0].dataset.generationMode !== 'url-with-srt') return false;",
       ') return false;',
     ),
-    INSTALLED_MEDIA_FLOW_INSPECTOR.replaceAll(
+    weakenAll(INSTALLED_MEDIA_FLOW_INSPECTOR,
       "':scope .generate-btn.semi-auto'",
       "':scope .generate-btn.semi-auto[data-generation-mode=\"url-with-srt\"]'",
     ),
-    INSTALLED_MEDIA_FLOW_INSPECTOR.replace(
+    weaken(INSTALLED_MEDIA_FLOW_INSPECTOR,
       '  buttons[0].click();\n  return true;',
       '  buttons[0].click();\n  buttons[0].click();\n  return true;',
     ),
-    INSTALLED_MEDIA_FLOW_INSPECTOR.replace(
+    weaken(INSTALLED_MEDIA_FLOW_INSPECTOR,
       "{ timeoutMs: 30_000, failureCode: 'download-start-timeout' }",
       "{ timeoutMs: 30_000, failureCode: 'terminal-state-timeout' }",
     ),
-    INSTALLED_MEDIA_FLOW_INSPECTOR.replace(
+    weaken(INSTALLED_MEDIA_FLOW_INSPECTOR,
       "      { failureCode: 'terminal-state-timeout' },",
       "      { failureCode: 'srt-readiness-timeout' },",
     ),
-    INSTALLED_MEDIA_FLOW_INSPECTOR.replace(
+    weaken(INSTALLED_MEDIA_FLOW_INSPECTOR,
       "      { timeoutMs: 30_000, failureCode: 'url-tab-timeout' },\n"
         + '    );\n'
         + '    await waitForValue(\n'
@@ -1353,7 +1412,7 @@ test('installed URL media flow commits URL and replaces stale SRT before one dow
         + '    await waitForValue(\n'
         + '      () => evaluate(client, URL_CONTROL_READY_EXPRESSION),',
     ),
-    INSTALLED_MEDIA_FLOW_INSPECTOR.replace(
+    weaken(INSTALLED_MEDIA_FLOW_INSPECTOR,
       "      { timeoutMs: 30_000, failureCode: 'srt-clear-timeout' },\n"
         + '    );\n'
         + '    await waitForValue(\n'
@@ -1363,15 +1422,15 @@ test('installed URL media flow commits URL and replaces stale SRT before one dow
         + '    await waitForValue(\n'
         + '      () => evaluate(client, SRT_CLEARED_EXPRESSION),',
     ),
-    INSTALLED_MEDIA_FLOW_INSPECTOR.replaceAll(
+    weakenAll(INSTALLED_MEDIA_FLOW_INSPECTOR,
       '.buttons-container .srt-upload-buttons-group input[type="file"][accept=".srt,.json"]',
       '.srt-upload-buttons-group input[type="file"][accept=".srt,.json"]',
     ),
-    INSTALLED_MEDIA_FLOW_INSPECTOR.replace(
+    weaken(INSTALLED_MEDIA_FLOW_INSPECTOR,
       'REVIEWED_TIMEOUT_FAILURE_CODES.includes(failureCode)',
       'typeof failureCode === \'string\'',
     ),
-    INSTALLED_MEDIA_FLOW_INSPECTOR.replace(
+    weaken(INSTALLED_MEDIA_FLOW_INSPECTOR,
       'throw new Error(`Installed media flow timed out: ${failureCode}`)',
       "throw new Error('Installed media flow timed out')",
     ),
@@ -1391,21 +1450,21 @@ test('installed URL media flow commits URL and replaces stale SRT before one dow
   const phaseMutations = [
     [
       'same adapter preference in both phases',
-      INSTALLED_MEDIA_FLOW_INSPECTOR.replace(
+      weaken(INSTALLED_MEDIA_FLOW_INSPECTOR,
         "return Object.freeze({ autoImport: 'false', preferredLanguages: '[\"en\"]' });",
         "return Object.freeze({ autoImport: 'true', preferredLanguages: '[\"en\"]' });",
       ),
     ],
     [
       'arbitrary phase accepted',
-      INSTALLED_MEDIA_FLOW_INSPECTOR.replace(
+      weaken(INSTALLED_MEDIA_FLOW_INSPECTOR,
         "if (mediaPhase === 'reactivation') {",
         "if (typeof mediaPhase === 'string') {",
       ),
     ],
     [
       'phase and prior identity decoupled',
-      INSTALLED_MEDIA_FLOW_INSPECTOR.replace(
+      weaken(INSTALLED_MEDIA_FLOW_INSPECTOR,
         "  invariant((mediaPhase === 'initial' && priorAssetId === null)\n"
           + "    || (mediaPhase === 'reactivation' && priorAssetId !== null),\n"
           + "  'Installed media-flow phase and prior asset are inconsistent');\n",
@@ -1414,7 +1473,7 @@ test('installed URL media flow commits URL and replaces stale SRT before one dow
     ],
     [
       'phase configuration omitted',
-      INSTALLED_MEDIA_FLOW_INSPECTOR.replace(
+      weaken(INSTALLED_MEDIA_FLOW_INSPECTOR,
         '    invariant(await evaluate(client, CONFIGURE_MEDIA_PHASE_EXPRESSION(mediaPreferences)) === true,\n'
           + "      'Installed media flow could not configure the reviewed phase');\n",
         '',
@@ -1468,12 +1527,10 @@ test('installed URL media flow commits URL and replaces stale SRT before one dow
       description,
     );
   }
-  const adapterKeyMutation = NATIVE_URL_DOWNLOAD_ADAPTER_SOURCE.replace(
+  const adapterKeyMutation = weaken(NATIVE_URL_DOWNLOAD_ADAPTER_SOURCE,
     "`${cookieSource}\\u0000${preferredLanguages.join(',')}\\u0000${url}`",
     "`${cookieSource}\\u0000${url}`",
   );
-  assert.notEqual(adapterKeyMutation, NATIVE_URL_DOWNLOAD_ADAPTER_SOURCE,
-    'adapter preferred-language key removal');
   assert.throws(
     () => assertInstalledMediaFlowInspector(
       INSTALLED_MEDIA_FLOW_INSPECTOR,
@@ -1487,21 +1544,21 @@ test('installed URL media flow commits URL and replaces stale SRT before one dow
   for (const [description, adapterMutation] of [
     [
       'adapter operation key reverted to the unnormalized request URL',
-      NATIVE_URL_DOWNLOAD_ADAPTER_SOURCE.replace(
+      weaken(NATIVE_URL_DOWNLOAD_ADAPTER_SOURCE,
         'const key = operationKey(normalizedUrl, cookieSource, preferredLanguages);',
         'const key = operationKey(url, cookieSource, preferredLanguages);',
       ),
     ],
     [
       'adapter operation key dropped the explicit browser source',
-      NATIVE_URL_DOWNLOAD_ADAPTER_SOURCE.replace(
+      weaken(NATIVE_URL_DOWNLOAD_ADAPTER_SOURCE,
         'const key = operationKey(normalizedUrl, cookieSource, preferredLanguages);',
         'const key = operationKey(normalizedUrl, preferredLanguages);',
       ),
     ],
     [
       'adapter URL normalization weakened to a pass-through',
-      NATIVE_URL_DOWNLOAD_ADAPTER_SOURCE.replace(
+      weaken(NATIVE_URL_DOWNLOAD_ADAPTER_SOURCE,
         'const normalizedUrl = normalizeUrl(url);',
         'const normalizedUrl = url;',
       ),
@@ -1520,7 +1577,7 @@ test('installed URL media flow commits URL and replaces stale SRT before one dow
       description,
     );
   }
-  const lastMomentPreferenceCollapse = DOWNLOAD_HANDLERS_SOURCE.replace(
+  const lastMomentPreferenceCollapse = weaken(DOWNLOAD_HANDLERS_SOURCE,
     '        processedFile = await downloadAndPrepareYouTubeVideo(',
     '        preferredSubtitleLanguages = [];\n\n'
       + '        processedFile = await downloadAndPrepareYouTubeVideo(',
@@ -1537,7 +1594,7 @@ test('installed URL media flow commits URL and replaces stale SRT before one dow
     ),
     /distinct reviewed native adapter keys/,
   );
-  const handlerPreferenceMutation = DOWNLOAD_HANDLERS_SOURCE.replace(
+  const handlerPreferenceMutation = weaken(DOWNLOAD_HANDLERS_SOURCE,
     "if (localStorage.getItem('auto_import_site_subtitles') !== 'false')",
     "if (localStorage.getItem('auto_import_site_subtitles') === 'false')",
   );
@@ -1582,7 +1639,7 @@ test('installed URL media flow commits URL and replaces stale SRT before one dow
       description,
     );
   }
-  const queryFixtureMutation = INSTALLED_MEDIA_FLOW_INSPECTOR.replace(
+  const queryFixtureMutation = weaken(INSTALLED_MEDIA_FLOW_INSPECTOR,
     "osg-installed-media-smoke-v1-aecf6c8ef3977cd4.mp4';",
     "osg-installed-media-smoke-v1-aecf6c8ef3977cd4.mp4?osg-installed-flow=reactivation';",
   );
@@ -1614,14 +1671,14 @@ test('installed URL media flow commits URL and replaces stale SRT before one dow
   const uploadBoundaryMutations = [
     [
       'positive node validity removal',
-      INSTALLED_MEDIA_FLOW_INSPECTOR.replace(
+      weaken(INSTALLED_MEDIA_FLOW_INSPECTOR,
         '      && Number.isInteger(inputs.nodeIds[0]) && inputs.nodeIds[0] > 0,',
         '      && true,',
       ),
     ],
     [
       'manual onchange insertion',
-      INSTALLED_MEDIA_FLOW_INSPECTOR.replace(
+      weaken(INSTALLED_MEDIA_FLOW_INSPECTOR,
         setFileInputThenReady,
         exactSetFileInputCall
           + "    await evaluate(client, `document.querySelector('input')?.onchange?.(new Event('change'))`);\n"
@@ -1630,7 +1687,7 @@ test('installed URL media flow commits URL and replaces stale SRT before one dow
     ],
     [
       'out-of-line URL evaluation insertion',
-      INSTALLED_MEDIA_FLOW_INSPECTOR.replace(
+      weaken(INSTALLED_MEDIA_FLOW_INSPECTOR,
         setFileInputThenReady,
         exactSetFileInputCall
           + '    await evaluate(client, SET_URL_EXPRESSION);\n'
@@ -1687,7 +1744,7 @@ test('installed URL media flow commits URL and replaces stale SRT before one dow
     '    );',
     '',
   ].join('\n');
-  const withoutSrtClearedWait = INSTALLED_MEDIA_FLOW_INSPECTOR.replace(srtClearedWait, '');
+  const withoutSrtClearedWait = weaken(INSTALLED_MEDIA_FLOW_INSPECTOR, srtClearedWait, '');
   assert.notEqual(withoutSrtClearedWait, INSTALLED_MEDIA_FLOW_INSPECTOR,
     'SRT_CLEARED wait removal');
   assert.throws(
@@ -1719,15 +1776,12 @@ test('installed URL media flow commits URL and replaces stale SRT before one dow
     "      'Installed media flow could not click the real semi-automatic action');",
     '',
   ].join('\n');
-  assert.equal(INSTALLED_MEDIA_FLOW_INSPECTOR.split(baselineAndPriorBlock).length, 2,
-    'baseline/prior block cardinality');
-  assert.equal(INSTALLED_MEDIA_FLOW_INSPECTOR.split(startCall).length, 2,
-    'start call cardinality');
-  const baselineAfterStart = INSTALLED_MEDIA_FLOW_INSPECTOR
-    .replace(baselineAndPriorBlock, '')
-    .replace(startCall, `${startCall}${baselineAndPriorBlock}`);
-  assert.notEqual(baselineAfterStart, INSTALLED_MEDIA_FLOW_INSPECTOR,
-    'baseline/prior ordering mutation');
+  const baselineAfterStart = weaken(
+    weaken(INSTALLED_MEDIA_FLOW_INSPECTOR, baselineAndPriorBlock, '', { expected: 1 }),
+    startCall,
+    `${startCall}${baselineAndPriorBlock}`,
+    { expected: 1 },
+  );
   assert.throws(
     () => assertInstalledMediaFlowInspector(
       baselineAfterStart,
@@ -1746,7 +1800,7 @@ test('installed URL media flow commits URL and replaces stale SRT before one dow
     '    }',
     '',
   ].join('\n');
-  const withoutPriorGuard = INSTALLED_MEDIA_FLOW_INSPECTOR.replace(priorGuard, '');
+  const withoutPriorGuard = weaken(INSTALLED_MEDIA_FLOW_INSPECTOR, priorGuard, '');
   assert.notEqual(withoutPriorGuard, INSTALLED_MEDIA_FLOW_INSPECTOR, 'prior guard removal');
   assert.throws(
     () => assertInstalledMediaFlowInspector(
@@ -1757,11 +1811,11 @@ test('installed URL media flow commits URL and replaces stale SRT before one dow
     /commit URL state, replace stale SRT state, and baseline before one real download action/,
     'prior guard removal',
   );
-  const missingUrlSelector = INPUT_METHODS_SOURCE.replace(
+  const missingUrlSelector = weaken(INPUT_METHODS_SOURCE,
     '\n            data-input-tab="unified-url"',
     '',
   );
-  const misplacedUrlSelector = missingUrlSelector.replace(
+  const misplacedUrlSelector = weaken(missingUrlSelector,
     'data-input-tab="file-upload"',
     'data-input-tab="file-upload"\n            data-input-tab="unified-url"',
   );
@@ -1777,11 +1831,11 @@ test('installed URL media flow commits URL and replaces stale SRT before one dow
     );
   }
   for (const buttonsMutation of [
-    BUTTONS_CONTAINER_SOURCE.replace(
+    weaken(BUTTONS_CONTAINER_SOURCE,
       "    : hasUrlAndSrtOnly ? 'url-with-srt' : 'other';",
       "    : hasUrlAndSrtOnly ? 'other' : 'url-with-srt';",
     ),
-    BUTTONS_CONTAINER_SOURCE.replace(
+    weaken(BUTTONS_CONTAINER_SOURCE,
       '              data-generation-mode={generationMode}\n',
       '',
     ),
@@ -1801,56 +1855,56 @@ test('installed URL media flow commits URL and replaces stale SRT before one dow
 test('installed native-tool inspector uses exact UI removal and hot reinstall proof', () => {
   assert.doesNotThrow(() => assertInstalledNativeToolsInspector(INSTALLED_NATIVE_TOOLS_INSPECTOR));
   const mutations = [
-    INSTALLED_NATIVE_TOOLS_INSPECTOR.replace(
+    weaken(INSTALLED_NATIVE_TOOLS_INSPECTOR,
       "document.querySelector('[data-app-action=\"open-settings\"]')",
       "document.querySelector('.settings-button')",
     ),
-    INSTALLED_NATIVE_TOOLS_INSPECTOR.replace(
+    weaken(INSTALLED_NATIVE_TOOLS_INSPECTOR,
       "buttons.forEach((button) => button.click());",
       '// removed real UI clicks',
     ),
-    INSTALLED_NATIVE_TOOLS_INSPECTOR.replace(
+    weaken(INSTALLED_NATIVE_TOOLS_INSPECTOR,
       "window.__TAURI_INTERNALS__?.invoke('native_tools_status')",
       "window.__TAURI_INTERNALS__?.invoke('native_tool_remove')",
     ),
-    INSTALLED_NATIVE_TOOLS_INSPECTOR.replace(
+    weaken(INSTALLED_NATIVE_TOOLS_INSPECTOR,
       "value.download.reason === 'downloaderUnavailable'",
       'value.download.reason !== null',
     ),
-    INSTALLED_NATIVE_TOOLS_INSPECTOR.replace(
+    weaken(INSTALLED_NATIVE_TOOLS_INSPECTOR,
       'tool.activeRuntime === true',
       'tool.activeRuntime !== null',
     ),
-    INSTALLED_NATIVE_TOOLS_INSPECTOR.replace(
+    weaken(INSTALLED_NATIVE_TOOLS_INSPECTOR,
       'new Set(jobIds).size === TOOL_IDS.length',
       'jobIds.length === TOOL_IDS.length',
     ),
-    INSTALLED_NATIVE_TOOLS_INSPECTOR.replace(
+    weaken(INSTALLED_NATIVE_TOOLS_INSPECTOR,
       "fs.writeFileSync(destination, bytes, { flag: 'wx' })",
       'fs.writeFileSync(destination, bytes)',
     ),
-    INSTALLED_NATIVE_TOOLS_INSPECTOR.replace(
+    weaken(INSTALLED_NATIVE_TOOLS_INSPECTOR,
       'evaluate(client, CLOSE_SETTINGS_EXPRESSION)',
       'Promise.resolve(true)',
     ),
-    INSTALLED_NATIVE_TOOLS_INSPECTOR.replace(
+    weaken(INSTALLED_NATIVE_TOOLS_INSPECTOR,
       "document.querySelector('[data-settings-tab=\\\"tools\\\"]') === null",
       'true',
     ),
-    INSTALLED_NATIVE_TOOLS_INSPECTOR.replace(
+    weaken(INSTALLED_NATIVE_TOOLS_INSPECTOR,
       'Number.isSafeInteger(value.pipeline.durationUs)',
       'Number.isFinite(Number(value.pipeline.durationUs))',
     ),
-    INSTALLED_NATIVE_TOOLS_INSPECTOR.replace(
+    weaken(INSTALLED_NATIVE_TOOLS_INSPECTOR,
       'Number.isFinite(value.pipeline.frameRate)',
       'value.pipeline.frameRate != null',
     ),
-    INSTALLED_NATIVE_TOOLS_INSPECTOR.replace(
+    weaken(INSTALLED_NATIVE_TOOLS_INSPECTOR,
       "    await waitForDom(client, 'missing');",
       "    await waitForDom(client, 'missing');\n"
         + "    assertClickedActions(await evaluate(client, clickToolActionsExpression('install')), 'install');",
     ),
-    INSTALLED_NATIVE_TOOLS_INSPECTOR.replaceAll(
+    weakenAll(INSTALLED_NATIVE_TOOLS_INSPECTOR,
       '  buttons.forEach((button) => button.click());',
       '  // buttons.forEach((button) => button.click());',
     ),
@@ -1866,16 +1920,14 @@ test('installed native-tool inspector uses exact UI removal and hot reinstall pr
 
 test('Tauri NSIS bootstrap is pinned, bounded, verified, and atomically staged', () => {
   assert.doesNotThrow(() => assertTauriNsisBootstrapScript(TAURI_NSIS_BOOTSTRAP_SCRIPT));
-  assert.doesNotThrow(() => assertTauriNsisBootstrapScript(
-    TAURI_NSIS_BOOTSTRAP_SCRIPT.replace(/\r?\n/g, '\r\n'),
-  ));
+  assert.doesNotThrow(() => assertTauriNsisBootstrapScript(toCrlf(TAURI_NSIS_BOOTSTRAP_SCRIPT)));
   for (const [label, bootstrap, newline] of [
-    ['LF', TAURI_NSIS_BOOTSTRAP_SCRIPT.replace(/\r\n/g, '\n'), '\n'],
-    ['CRLF', TAURI_NSIS_BOOTSTRAP_SCRIPT.replace(/\r?\n/g, '\r\n'), '\r\n'],
+    ['LF', TAURI_NSIS_BOOTSTRAP_SCRIPT, LF],
+    ['CRLF', toCrlf(TAURI_NSIS_BOOTSTRAP_SCRIPT), CRLF],
   ]) {
     const preferenceBoundary = `$ErrorActionPreference = 'Stop'${newline}`;
     for (const earlyTermination of ['return', 'exit 0']) {
-      const weakened = bootstrap.replace(
+      const weakened = weaken(bootstrap,
         preferenceBoundary,
         `${preferenceBoundary}${earlyTermination}${newline}`,
       );
@@ -1896,10 +1948,11 @@ test('Tauri NSIS bootstrap is pinned, bounded, verified, and atomically staged',
     const bodyBoundary = `$repositoryRoot = [IO.Path]::GetFullPath((Join-Path $PSScriptRoot '..'))`;
     const successBoundary =
       "Write-Host 'Prepared the verified Tauri NSIS 3.11 toolchain in the exact Windows user cache.'";
-    const deadMiddleWrapper = bootstrap
-      .replace(bodyBoundary, `function Invoke-DeadBootstrap {${newline}${bodyBoundary}`)
-      .replace(successBoundary, `}${newline}${successBoundary}`);
-    assert.notEqual(deadMiddleWrapper, bootstrap, `${label} dead-wrapper mutation must alter the bootstrap`);
+    const deadMiddleWrapper = weaken(
+      weaken(bootstrap, bodyBoundary, `function Invoke-DeadBootstrap {${newline}${bodyBoundary}`),
+      successBoundary,
+      `}${newline}${successBoundary}`,
+    );
     assert.throws(
       () => assertTauriNsisBootstrapScript(deadMiddleWrapper),
       /exact reviewed executable source/,
@@ -1909,40 +1962,40 @@ test('Tauri NSIS bootstrap is pinned, bounded, verified, and atomically staged',
   const curlResolutionVariants = [
     [
       'PATH-selected first of multiple curl commands',
-      TAURI_NSIS_BOOTSTRAP_SCRIPT.replace(
+      weaken(TAURI_NSIS_BOOTSTRAP_SCRIPT,
         "$curlPath = [IO.Path]::GetFullPath((Join-Path $windowsSystemDirectory 'curl.exe'))",
         "$curlPath = @(Get-Command 'curl.exe' -CommandType Application -All)[0].Source",
       ),
     ],
     [
       'fallback command discovery after a missing system curl',
-      TAURI_NSIS_BOOTSTRAP_SCRIPT.replace(
+      weaken(TAURI_NSIS_BOOTSTRAP_SCRIPT,
         "  throw 'The reviewed Windows system curl executable is missing or not a leaf file'",
         "  $curlPath = (Get-Command 'curl.exe' -CommandType Application).Source",
       ),
     ],
     [
       'non-leaf system curl',
-      TAURI_NSIS_BOOTSTRAP_SCRIPT.replace('-PathType Leaf', '-PathType Any'),
+      weaken(TAURI_NSIS_BOOTSTRAP_SCRIPT, '-PathType Leaf', '-PathType Any'),
     ],
     [
       'unreviewed curl filesystem type',
-      TAURI_NSIS_BOOTSTRAP_SCRIPT.replace('$curlItem -isnot [IO.FileInfo]', '$false'),
+      weaken(TAURI_NSIS_BOOTSTRAP_SCRIPT, '$curlItem -isnot [IO.FileInfo]', '$false'),
     ],
     [
       'reparse-point system curl',
-      TAURI_NSIS_BOOTSTRAP_SCRIPT.replace(
+      weaken(TAURI_NSIS_BOOTSTRAP_SCRIPT,
         '($curlItem.Attributes -band [IO.FileAttributes]::ReparsePoint) -ne 0',
         '$false',
       ),
     ],
     [
       'PATH-order invocation',
-      TAURI_NSIS_BOOTSTRAP_SCRIPT.replace('& $curlPath `', '& curl.exe `'),
+      weaken(TAURI_NSIS_BOOTSTRAP_SCRIPT, '& $curlPath `', '& curl.exe `'),
     ],
     [
       'non-system special folder',
-      TAURI_NSIS_BOOTSTRAP_SCRIPT.replace(
+      weaken(TAURI_NSIS_BOOTSTRAP_SCRIPT,
         '[Environment+SpecialFolder]::System',
         '[Environment+SpecialFolder]::LocalApplicationData',
       ),
@@ -1957,65 +2010,65 @@ test('Tauri NSIS bootstrap is pinned, bounded, verified, and atomically staged',
     );
   }
   const weakenedVariants = [
-    TAURI_NSIS_BOOTSTRAP_SCRIPT.replace(
+    weaken(TAURI_NSIS_BOOTSTRAP_SCRIPT,
       "if ($desktopPackage.devDependencies.'@tauri-apps/cli' -cne '2.11.4') {",
       'if ($false) {',
     ),
-    TAURI_NSIS_BOOTSTRAP_SCRIPT.replace(
+    weaken(TAURI_NSIS_BOOTSTRAP_SCRIPT,
       'https://github.com/tauri-apps/binary-releases/releases/download/nsis-3.11/nsis-3.11.zip',
       'https://evil.example/nsis-3.11.zip',
     ),
-    TAURI_NSIS_BOOTSTRAP_SCRIPT.replace(
+    weaken(TAURI_NSIS_BOOTSTRAP_SCRIPT,
       "    Url = 'https://github.com/tauri-apps/binary-releases/releases/download/nsis-3.11/nsis-3.11.zip'",
       "    Url = 'https://evil.example/nsis-3.11.zip'",
     ) + "\n#    Url = 'https://github.com/tauri-apps/binary-releases/releases/download/nsis-3.11/nsis-3.11.zip'\n",
-    TAURI_NSIS_BOOTSTRAP_SCRIPT.replace(
+    weaken(TAURI_NSIS_BOOTSTRAP_SCRIPT,
       'c7d27f780ddb6cffb4730138cd1591e841f4b7edb155856901cdf5f214394fa1',
       '0'.repeat(64),
     ),
-    TAURI_NSIS_BOOTSTRAP_SCRIPT.replace('Size = 2361546L', 'Size = 1L'),
-    TAURI_NSIS_BOOTSTRAP_SCRIPT.replace("--proto-redir '=https'", "--proto-redir '=all'"),
-    TAURI_NSIS_BOOTSTRAP_SCRIPT.replace(
+    weaken(TAURI_NSIS_BOOTSTRAP_SCRIPT, 'Size = 2361546L', 'Size = 1L'),
+    weaken(TAURI_NSIS_BOOTSTRAP_SCRIPT, "--proto-redir '=https'", "--proto-redir '=all'"),
+    weaken(TAURI_NSIS_BOOTSTRAP_SCRIPT,
       "    --proto-redir '=https' `",
       "    --proto-redir '=all' `",
     ) + "\n#    --proto-redir '=https' `\n",
-    TAURI_NSIS_BOOTSTRAP_SCRIPT.replace('--retry 4', '--retry 0'),
-    TAURI_NSIS_BOOTSTRAP_SCRIPT.replace('--retry-all-errors', '--retry-connrefused'),
-    TAURI_NSIS_BOOTSTRAP_SCRIPT.replace('--retry-max-time 120', '--retry-max-time 1200'),
-    TAURI_NSIS_BOOTSTRAP_SCRIPT.replace('--max-time 180', '--max-time 1800'),
-    TAURI_NSIS_BOOTSTRAP_SCRIPT.replace(
+    weaken(TAURI_NSIS_BOOTSTRAP_SCRIPT, '--retry 4', '--retry 0'),
+    weaken(TAURI_NSIS_BOOTSTRAP_SCRIPT, '--retry-all-errors', '--retry-connrefused'),
+    weaken(TAURI_NSIS_BOOTSTRAP_SCRIPT, '--retry-max-time 120', '--retry-max-time 1200'),
+    weaken(TAURI_NSIS_BOOTSTRAP_SCRIPT, '--max-time 180', '--max-time 1800'),
+    weaken(TAURI_NSIS_BOOTSTRAP_SCRIPT,
       'Assert-PinnedFile -Path $Destination -Artifact $Artifact',
       '# response verification removed',
     ),
-    TAURI_NSIS_BOOTSTRAP_SCRIPT.replace(
+    weaken(TAURI_NSIS_BOOTSTRAP_SCRIPT,
       '  Assert-PinnedFile -Path $Destination -Artifact $Artifact',
       '  return',
     ) + '\n#  Assert-PinnedFile -Path $Destination -Artifact $Artifact\n',
-    TAURI_NSIS_BOOTSTRAP_SCRIPT.replace(
+    weaken(TAURI_NSIS_BOOTSTRAP_SCRIPT,
       '  Assert-PinnedFile -Path $Destination -Artifact $Artifact',
       '  return\n<#\n  Assert-PinnedFile -Path $Destination -Artifact $Artifact\n#>',
     ),
-    TAURI_NSIS_BOOTSTRAP_SCRIPT.replace(
+    weaken(TAURI_NSIS_BOOTSTRAP_SCRIPT,
       "$nsisRoot = Join-Path $CacheRoot 'NSIS'",
       "$nsisRoot = Join-Path $CacheRoot 'unreviewed'",
     ),
-    TAURI_NSIS_BOOTSTRAP_SCRIPT.replace(
+    weaken(TAURI_NSIS_BOOTSTRAP_SCRIPT,
       "$nsisRoot = Join-Path $CacheRoot 'NSIS'",
       "$nsisRoot = Join-Path $CacheRoot 'unreviewed'",
     ) + "\n# $nsisRoot = Join-Path $CacheRoot 'NSIS'\n",
-    TAURI_NSIS_BOOTSTRAP_SCRIPT.replace(
+    weaken(TAURI_NSIS_BOOTSTRAP_SCRIPT,
       "throw 'Refusing to use a non-directory or reparse-point NSIS bootstrap root'",
       'return',
     ),
-    TAURI_NSIS_BOOTSTRAP_SCRIPT.replace(
+    weaken(TAURI_NSIS_BOOTSTRAP_SCRIPT,
       "Copy-Item -LiteralPath $tauriPlugin -Destination (Join-Path $pluginDirectory 'nsis_tauri_utils.dll')",
       '# plugin injection removed',
     ),
-    TAURI_NSIS_BOOTSTRAP_SCRIPT.replace(
+    weaken(TAURI_NSIS_BOOTSTRAP_SCRIPT,
       "  Copy-Item -LiteralPath $tauriPlugin -Destination (Join-Path $pluginDirectory 'nsis_tauri_utils.dll')",
       '  return',
     ) + "\n#  Copy-Item -LiteralPath $tauriPlugin -Destination (Join-Path $pluginDirectory 'nsis_tauri_utils.dll')\n",
-    TAURI_NSIS_BOOTSTRAP_SCRIPT.replace("'Include\\Win\\RestartManager.nsh'", "'Include\\unreviewed.nsh'"),
+    weaken(TAURI_NSIS_BOOTSTRAP_SCRIPT, "'Include\\Win\\RestartManager.nsh'", "'Include\\unreviewed.nsh'"),
     `${TAURI_NSIS_BOOTSTRAP_SCRIPT}\nInvoke-WebRequest https://example.test/fallback.zip\n`,
     `${TAURI_NSIS_BOOTSTRAP_SCRIPT}\n# http://example.test/fallback.zip\n`,
   ];
@@ -2044,36 +2097,36 @@ test('signed updater smoke is isolated, signed, installed, and persistent', () =
     '${{ runner.temp }}/osg-updater-diagnostics.log',
   ]) {
     assert.throws(
-      () => assertUpdaterSmokeWorkflow(UPDATER_SMOKE_WORKFLOW.replace(fragment, 'removed')),
+      () => assertUpdaterSmokeWorkflow(weaken(UPDATER_SMOKE_WORKFLOW, fragment, 'removed')),
       /Signed updater smoke/,
     );
   }
   assert.throws(() => assertUpdaterSmokeWorkflow(
-    UPDATER_SMOKE_WORKFLOW.replace('workflow_dispatch:', 'pull_request_target:'),
+    weaken(UPDATER_SMOKE_WORKFLOW, 'workflow_dispatch:', 'pull_request_target:'),
   ), /workflow_dispatch/);
   assert.throws(() => assertUpdaterSmokeWorkflow(
     `${UPDATER_SMOKE_WORKFLOW}\n# \${{ secrets.UNREVIEWED_SECRET }}\n`,
   ), /two reviewed updater signing secrets/);
   assert.throws(() => assertUpdaterSmokeWorkflow(
-    UPDATER_SMOKE_WORKFLOW.replace(
+    weaken(UPDATER_SMOKE_WORKFLOW,
       '  workflow_dispatch:\n  workflow_call:',
       '  workflow_dispatch:\n    inputs:\n      version:\n        required: true\n  workflow_call:',
     ),
   ), /input-free/);
   assert.throws(() => assertUpdaterSmokeWorkflow(
-    UPDATER_SMOKE_WORKFLOW.replace(
+    weaken(UPDATER_SMOKE_WORKFLOW,
       'version = $env:OSG_UPDATER_UPDATED_VERSION',
       "version = '1.0.1'",
     ),
   ), /immutable derived versions/);
   assert.throws(() => assertUpdaterSmokeWorkflow(
-    UPDATER_SMOKE_WORKFLOW.replace(
+    weaken(UPDATER_SMOKE_WORKFLOW,
       'OSG_UPDATER_UPDATED_VERSION: ${{ steps.updater_versions.outputs.updated }}',
       'OSG_UPDATER_UPDATED_VERSION: ${{ steps.updater_versions.outputs.base }}',
     ),
   ), /immutable derived versions/);
   assert.throws(() => assertUpdaterSmokeWorkflow(
-    UPDATER_SMOKE_WORKFLOW.replace(
+    weaken(UPDATER_SMOKE_WORKFLOW,
       'run: node scripts/derive-updater-smoke-version.js --github-output $env:GITHUB_OUTPUT',
       'run: node scripts/derive-updater-smoke-version.js --github-output $env:GITHUB_ENV',
     ),
@@ -2083,7 +2136,7 @@ test('signed updater smoke is isolated, signed, installed, and persistent', () =
     '-ScratchRoot C:\\unreviewed',
   ]) {
     assert.throws(
-      () => assertUpdaterSmokeWorkflow(UPDATER_SMOKE_WORKFLOW.replace(
+      () => assertUpdaterSmokeWorkflow(weaken(UPDATER_SMOKE_WORKFLOW,
         'run: ./scripts/prepare-tauri-nsis.ps1',
         `run: ./scripts/prepare-tauri-nsis.ps1 ${argument}`,
       )),
@@ -2092,7 +2145,7 @@ test('signed updater smoke is isolated, signed, installed, and persistent', () =
     );
   }
   assert.throws(
-    () => assertUpdaterSmokeWorkflow(UPDATER_SMOKE_WORKFLOW.replace(
+    () => assertUpdaterSmokeWorkflow(weaken(UPDATER_SMOKE_WORKFLOW,
       'run: ./scripts/prepare-tauri-nsis.ps1',
       'run: |\n          Write-Host decoy\n          run: ./scripts/prepare-tauri-nsis.ps1',
     )),
@@ -2130,15 +2183,15 @@ test('updater fixture source remains compile-time isolated from production relea
   ));
   assert.doesNotThrow(() => assertCiUpdaterFixtureHandoffSource(UPDATER_SOURCE));
   for (const weakened of [
-    UPDATER_SOURCE.replace(
+    weaken(UPDATER_SOURCE,
       '#[cfg(feature = "ci-updater-fixture")]\n    let webview_debug =',
       '    let webview_debug =',
     ),
-    UPDATER_SOURCE.replace(
+    weaken(UPDATER_SOURCE,
       'webview_debug || crate::ci_updater_fixture::configuration().enables_webview_debugging()',
       'webview_debug && crate::ci_updater_fixture::configuration().enables_webview_debugging()',
     ),
-    UPDATER_SOURCE.replace(
+    weaken(UPDATER_SOURCE,
       'crate::ci_updater_fixture::configuration().enables_webview_debugging()',
       'false',
     ),
@@ -2149,31 +2202,31 @@ test('updater fixture source remains compile-time isolated from production relea
     );
   }
   for (const [desktop, fixture] of [
-    [DESKTOP_SOURCE.replace(
+    [weaken(DESKTOP_SOURCE,
       '#[cfg(feature = "ci-updater-fixture")]\nmod ci_updater_fixture;',
       'mod ci_updater_fixture;',
     ), CI_UPDATER_ARGUMENT_SOURCE],
-    [DESKTOP_SOURCE, CI_UPDATER_ARGUMENT_SOURCE.replace(
+    [DESKTOP_SOURCE, weaken(CI_UPDATER_ARGUMENT_SOURCE,
       '--osg-ci-updater-debug-port=',
       '--remote-debugging-port=',
     )],
-    [DESKTOP_SOURCE, CI_UPDATER_ARGUMENT_SOURCE.replace(
+    [DESKTOP_SOURCE, weaken(CI_UPDATER_ARGUMENT_SOURCE,
       'if arguments.len() != 1',
       'if arguments.len() > 2',
     )],
-    [DESKTOP_SOURCE, CI_UPDATER_ARGUMENT_SOURCE.replace(
+    [DESKTOP_SOURCE, weaken(CI_UPDATER_ARGUMENT_SOURCE,
       'if debug_port < 1024',
       'if debug_port < 1',
     )],
-    [DESKTOP_SOURCE, CI_UPDATER_ARGUMENT_SOURCE.replace(
+    [DESKTOP_SOURCE, weaken(CI_UPDATER_ARGUMENT_SOURCE,
       '--disable-features=msWebOOUI,msPdfOOUI,msSmartScreenProtection --autoplay-policy=no-user-gesture-required',
       '--disable-features=msWebOOUI,msPdfOOUI,msSmartScreenProtection --enable-features=RemoveRedirectionBitmap --autoplay-policy=no-user-gesture-required',
     )],
-    [DESKTOP_SOURCE, CI_UPDATER_ARGUMENT_SOURCE.replace(
+    [DESKTOP_SOURCE, weaken(CI_UPDATER_ARGUMENT_SOURCE,
       'format!("{WEBVIEW2_DEFAULT_BROWSER_ARGUMENTS} --remote-debugging-port={port}")',
       'format!("{WEBVIEW2_DEFAULT_BROWSER_ARGUMENTS} --unreviewed --remote-debugging-port={port}")',
     )],
-    [DESKTOP_SOURCE.replace(
+    [weaken(DESKTOP_SOURCE,
       'window_builder.additional_browser_args(&arguments)',
       'window_builder',
     ), CI_UPDATER_ARGUMENT_SOURCE],
@@ -2183,7 +2236,7 @@ test('updater fixture source remains compile-time isolated from production relea
       /Updater fixture debug-port/,
     );
   }
-  const driftedWryLock = CARGO_LOCK_SOURCE.replace(
+  const driftedWryLock = weaken(CARGO_LOCK_SOURCE,
     /(\[\[package]]\r?\nname = "wry"\r?\nversion = )"0\.55\.1"/,
     '$1"0.56.0"',
   );
@@ -2198,35 +2251,35 @@ test('updater fixture source remains compile-time isolated from production relea
   );
 
   for (const weakenedDesktop of [
-    DESKTOP_SOURCE.replace(
+    weaken(DESKTOP_SOURCE,
       '        diagnostics::record("app.close_requested", &[]);',
       '        diagnostics::record("app.close_requested", &[]);\n        window.app_handle().exit(0);',
     ),
-    DESKTOP_SOURCE.replace(
+    weaken(DESKTOP_SOURCE,
       'window_label == "main" && close_requested',
       'close_requested',
     ),
-    DESKTOP_SOURCE.replace(
+    weaken(DESKTOP_SOURCE,
       'diagnostics::record("app.close_requested", &[]);',
       'diagnostics::record("app.close_requested", &[]);\n        diagnostics::record("app.close_requested", &[]);',
     ),
-    DESKTOP_SOURCE.replace(
+    weaken(DESKTOP_SOURCE,
       '        diagnostics::record("app.close_requested", &[]);',
       '        diagnostics::record("app.close_requested", &[]);\n        std::process::exit(0);',
     ),
-    DESKTOP_SOURCE.replace(
+    weaken(DESKTOP_SOURCE,
       '        diagnostics::record("app.close_requested", &[]);',
       '        diagnostics::record("app.close_requested", &[]);\n        std::process::abort();',
     ),
-    DESKTOP_SOURCE.replace(
+    weaken(DESKTOP_SOURCE,
       '        diagnostics::record("app.close_requested", &[]);',
       '        diagnostics::record("app.close_requested", &[]);\n        window.close().unwrap();',
     ),
-    DESKTOP_SOURCE.replace(
+    weaken(DESKTOP_SOURCE,
       '        diagnostics::record("app.close_requested", &[]);',
       '        diagnostics::record("app.close_requested", &[]);\n        window.destroy().unwrap();',
     ),
-    DESKTOP_SOURCE.replace(
+    weaken(DESKTOP_SOURCE,
       '        diagnostics::record("app.close_requested", &[]);',
       '        diagnostics::record("app.close_requested", &[]);\n        if let WindowEvent::CloseRequested { api, .. } = event { api.prevent_close(); }',
     ),
@@ -2236,7 +2289,7 @@ test('updater fixture source remains compile-time isolated from production relea
       /Desktop close handler/,
     );
   }
-  const driftedRuntimeLock = CARGO_LOCK_SOURCE.replace(
+  const driftedRuntimeLock = weaken(CARGO_LOCK_SOURCE,
     /(\[\[package]]\r?\nname = "tauri-runtime-wry"\r?\nversion = )"2\.11\.4"/,
     '$1"2.11.5"',
   );
@@ -2253,47 +2306,45 @@ test('updater fixture source remains compile-time isolated from production relea
 
 test('signed updater runner uses isolated HTTPS, the real toast, NSIS relaunch, and durable state', () => {
   assert.doesNotThrow(() => assertSignedUpdaterScript(SIGNED_UPDATER_SCRIPT));
-  assert.doesNotThrow(() => assertSignedUpdaterScript(
-    SIGNED_UPDATER_SCRIPT.replace(/\r?\n/g, '\r\n'),
-  ));
+  assert.doesNotThrow(() => assertSignedUpdaterScript(toCrlf(SIGNED_UPDATER_SCRIPT)));
   assert.throws(
-    () => assertSignedUpdaterScript(SIGNED_UPDATER_SCRIPT.replace(
+    () => assertSignedUpdaterScript(weaken(SIGNED_UPDATER_SCRIPT,
       "  '--assert-contract' `",
       "  '--unchecked-contract' `",
     )),
     /(?:missing lifecycle proof|repository-derived increasing version contract)/,
   );
   assert.throws(
-    () => assertSignedUpdaterScript(SIGNED_UPDATER_SCRIPT.replace(
+    () => assertSignedUpdaterScript(weaken(SIGNED_UPDATER_SCRIPT,
       "            -and [string]$_.webviewDebug -ceq 'present' `",
       "            -and [string]$_.webviewDebug -in @('present', 'absent') `",
     )),
     /confirms the preserved CI debug-port hook/,
   );
   assert.throws(
-    () => assertSignedUpdaterScript(SIGNED_UPDATER_SCRIPT.replace(
+    () => assertSignedUpdaterScript(weaken(SIGNED_UPDATER_SCRIPT,
       "            -and [string]$_.webviewDebug -ceq 'present' `\n",
       '',
     )),
     /confirms the preserved CI debug-port hook/,
   );
   assert.throws(
-    () => assertSignedUpdaterScript(SIGNED_UPDATER_SCRIPT.replace(
+    () => assertSignedUpdaterScript(weaken(SIGNED_UPDATER_SCRIPT,
       "            -and [string]$_.webviewDebug -ceq 'present' `",
       "            -and [string]$_.webviewDebug -ceq 'absent' `",
     )),
     /confirms the preserved CI debug-port hook/,
   );
   for (const weakened of [
-    SIGNED_UPDATER_SCRIPT.replace(
+    weaken(SIGNED_UPDATER_SCRIPT,
       '$Port -lt 1024 -or $Port -gt 65535',
       '$Port -lt 1 -or $Port -gt 65535',
     ),
-    SIGNED_UPDATER_SCRIPT.replace(
+    weaken(SIGNED_UPDATER_SCRIPT,
       '"--osg-ci-updater-debug-port=$Port"',
       '"--remote-debugging-port=$Port"',
     ),
-    SIGNED_UPDATER_SCRIPT.replace(
+    weaken(SIGNED_UPDATER_SCRIPT,
       '-ArgumentList @($debugArgument)',
       '-ArgumentList @("--unreviewed=$debugPort")',
     ),
@@ -2305,56 +2356,56 @@ test('signed updater runner uses isolated HTTPS, the real toast, NSIS relaunch, 
     );
   }
   assert.throws(
-    () => assertSignedUpdaterScript(SIGNED_UPDATER_SCRIPT.replace(
+    () => assertSignedUpdaterScript(weaken(SIGNED_UPDATER_SCRIPT,
       '            -and $_.version -ceq $ExpectedVersion `',
       '            -and $true `',
     )),
     /one new versioned UUIDv7 identity/,
   );
   assert.throws(
-    () => assertSignedUpdaterScript(SIGNED_UPDATER_SCRIPT.replace(
+    () => assertSignedUpdaterScript(weaken(SIGNED_UPDATER_SCRIPT,
       '        $boundedRecord = ConvertTo-BoundedDiagnosticEvidenceRecord -Entry $_',
       '        $boundedRecord = $_',
     )),
     /bounded sanitized lifecycle evidence/,
   );
   assert.throws(
-    () => assertSignedUpdaterScript(SIGNED_UPDATER_SCRIPT.replace(
+    () => assertSignedUpdaterScript(weaken(SIGNED_UPDATER_SCRIPT,
       "        [string]$_.event -like 'app-update.*' `",
       "        ($_.version -eq $UpdatedVersion) -and [string]$_.event -like 'app-update.*' `",
     )),
     /including unknown relaunch candidates/,
   );
   assert.throws(
-    () => assertSignedUpdaterScript(SIGNED_UPDATER_SCRIPT.replace(
+    () => assertSignedUpdaterScript(weaken(SIGNED_UPDATER_SCRIPT,
       'if ([Text.Encoding]::UTF8.GetByteCount($encoded) -gt $script:diagnosticEvidenceByteLimit) {',
       'if ($false) {',
     )),
     /bounded sanitized lifecycle evidence/,
   );
   assert.throws(
-    () => assertSignedUpdaterScript(SIGNED_UPDATER_SCRIPT.replace(
+    () => assertSignedUpdaterScript(weaken(SIGNED_UPDATER_SCRIPT,
       '$updatedProcessPath.Equals($executable, [StringComparison]::OrdinalIgnoreCase)',
       '$true',
     )),
     /exact installed executable path/,
   );
   assert.throws(
-    () => assertSignedUpdaterScript(SIGNED_UPDATER_SCRIPT.replace(
+    () => assertSignedUpdaterScript(weaken(SIGNED_UPDATER_SCRIPT,
       "Invoke-UpdaterFinalizationStep -Name 'diagnostic-evidence' -Action {",
       '& {',
     )),
     /guarded cleanup step/,
   );
   assert.throws(
-    () => assertSignedUpdaterScript(SIGNED_UPDATER_SCRIPT.replace(
+    () => assertSignedUpdaterScript(weaken(SIGNED_UPDATER_SCRIPT,
       "Invoke-UpdaterFinalizationStep -Name 'fixture-server' -Action {",
       '& {',
     )),
     /every guarded cleanup step/,
   );
   assert.throws(
-    () => assertSignedUpdaterScript(SIGNED_UPDATER_SCRIPT.replace(
+    () => assertSignedUpdaterScript(weaken(SIGNED_UPDATER_SCRIPT,
       '    $script:finalizationFailure = $_',
       '    throw $_',
     )),
@@ -2366,10 +2417,17 @@ test('signed updater runner uses isolated HTTPS, the real toast, NSIS relaunch, 
   const finalizationRethrow = SIGNED_UPDATER_SCRIPT.match(
     /if\s*\(\$null\s+-ne\s+\$finalizationFailure\)\s*\{\s*throw\s+\$finalizationFailure\s*}/,
   )[0];
-  const reversedFailures = SIGNED_UPDATER_SCRIPT
-    .replace(primaryRethrow, '__OSG_PRIMARY_RETHROW__')
-    .replace(finalizationRethrow, primaryRethrow)
-    .replace('__OSG_PRIMARY_RETHROW__', finalizationRethrow);
+  const reversedFailures = weaken(
+    weaken(
+      weaken(SIGNED_UPDATER_SCRIPT, primaryRethrow, '__OSG_PRIMARY_RETHROW__', { expected: 1 }),
+      finalizationRethrow,
+      primaryRethrow,
+      { expected: 1 },
+    ),
+    '__OSG_PRIMARY_RETHROW__',
+    finalizationRethrow,
+    { expected: 1 },
+  );
   assert.throws(
     () => assertSignedUpdaterScript(reversedFailures),
     /rethrow the primary failure before any finalization failure/,
@@ -2429,23 +2487,22 @@ test('signed updater runner uses isolated HTTPS, the real toast, NSIS relaunch, 
     'preservedSettingsProjectAndHistory = $true',
   ]) {
     assert.throws(
-      () => assertSignedUpdaterScript(SIGNED_UPDATER_SCRIPT.replaceAll(fragment, 'removed')),
+      () => assertSignedUpdaterScript(weakenAll(SIGNED_UPDATER_SCRIPT, fragment, 'removed')),
       /Signed updater runner/,
     );
   }
-  const delayedQueryHandle = SIGNED_UPDATER_SCRIPT
-    .replace('    $processQueryHandle = $Process.Handle\n', '')
-    .replace(
-      '  $closeAccepted = $Process.CloseMainWindow()\n',
-      '  $closeAccepted = $Process.CloseMainWindow()\n    $processQueryHandle = $Process.Handle\n',
-    );
+  const delayedQueryHandle = weaken(
+    weaken(SIGNED_UPDATER_SCRIPT, '    $processQueryHandle = $Process.Handle\n', ''),
+    '  $closeAccepted = $Process.CloseMainWindow()\n',
+    '  $closeAccepted = $Process.CloseMainWindow()\n    $processQueryHandle = $Process.Handle\n',
+  );
   assert.throws(
     () => assertSignedUpdaterScript(delayedQueryHandle),
     /Signed updater runner/,
     'signed updater must open the rediscovered process query handle before requesting close',
   );
   assert.throws(
-    () => assertSignedUpdaterScript(SIGNED_UPDATER_SCRIPT.replace(
+    () => assertSignedUpdaterScript(weaken(SIGNED_UPDATER_SCRIPT,
       "        -and $pageLoadEvents -ge 1 `\n",
       '',
     )),
@@ -2454,23 +2511,30 @@ test('signed updater runner uses isolated HTTPS, the real toast, NSIS relaunch, 
   const readyPhase = "Write-SmokePhase -Name 'updated-application-ready'";
   const frontendReady = "Write-SmokePhase -Name 'updated-frontend-ready'";
   const gracefulClose = '$updatedClose = Stop-Gracefully';
-  const reorderedClose = SIGNED_UPDATER_SCRIPT
-    .replace(frontendReady, '__OSG_FRONTEND_READY__')
-    .replace(gracefulClose, frontendReady)
-    .replace('__OSG_FRONTEND_READY__', gracefulClose);
+  const reorderedClose = weaken(
+    weaken(
+      weaken(SIGNED_UPDATER_SCRIPT, frontendReady, '__OSG_FRONTEND_READY__', { expected: 1 }),
+      gracefulClose,
+      frontendReady,
+      { expected: 1 },
+    ),
+    '__OSG_FRONTEND_READY__',
+    gracefulClose,
+    { expected: 1 },
+  );
   assert.throws(
     () => assertSignedUpdaterScript(reorderedClose),
     /exact frontend/,
   );
   assert.throws(
-    () => assertSignedUpdaterScript(SIGNED_UPDATER_SCRIPT.replace(
+    () => assertSignedUpdaterScript(weaken(SIGNED_UPDATER_SCRIPT,
       'if (-not $closeAccepted) {',
       'if ($false) {',
     )),
     /separate native close acceptance/,
   );
   assert.throws(
-    () => assertSignedUpdaterScript(SIGNED_UPDATER_SCRIPT.replace(
+    () => assertSignedUpdaterScript(weaken(SIGNED_UPDATER_SCRIPT,
       'if (-not $Process.WaitForExit(30000)) {',
       'if ($false) {',
     )),
@@ -2481,7 +2545,7 @@ test('signed updater runner uses isolated HTTPS, the real toast, NSIS relaunch, 
     /separate native close acceptance/,
   );
   assert.throws(
-    () => assertSignedUpdaterScript(SIGNED_UPDATER_SCRIPT.replace(
+    () => assertSignedUpdaterScript(weaken(SIGNED_UPDATER_SCRIPT,
       '$closeAccepted = $Process.CloseMainWindow()',
       '$processTree = Get-BoundedProcessTreeSnapshot -Process $Process\n  $closeAccepted = $Process.CloseMainWindow()',
     )),
@@ -2618,11 +2682,11 @@ test('accepts only reviewed full-SHA GitHub Action pins', () => {
   assert.doesNotThrow(() => assertPinnedActions(workflow));
   for (const pin of Object.values(ACTION_PINS)) {
     assert.throws(
-      () => assertPinnedActions(workflow.replace(pin, 'v0')),
+      () => assertPinnedActions(weaken(workflow, pin, 'v0')),
       /full commit SHA/,
     );
     assert.throws(
-      () => assertPinnedActions(workflow.replace(pin, '0'.repeat(40))),
+      () => assertPinnedActions(weaken(workflow, pin, '0'.repeat(40))),
       /reviewed pin/,
     );
   }
@@ -2740,7 +2804,7 @@ test('requires all four immutable host/target/package matrix entries', () => {
   const workflow = `      matrix:\n        include:\n${entries}\n\n    steps:\n`;
   assert.doesNotThrow(() => assertWorkflowMatrix(workflow));
   assert.throws(
-    () => assertWorkflowMatrix(workflow.replace('macos-15-intel', 'macos-latest')),
+    () => assertWorkflowMatrix(weaken(workflow, 'macos-15-intel', 'macos-latest')),
     /mutable \*-latest aliases/,
   );
 });
@@ -2796,7 +2860,7 @@ test('workflow is unsigned, read-only, credentialless, and locked', () => {
       workflow,
       jobName,
       uploadStep,
-      uploadStep.replace('if: always()', 'if: success()'),
+      weaken(uploadStep, 'if: always()', 'if: success()'),
     );
     assert.throws(
       () => assertWorkflowCommands(withoutAlwaysUpload),
@@ -2866,18 +2930,18 @@ test('workflow is unsigned, read-only, credentialless, and locked', () => {
     /native-matrix must prepare verified NSIS only for manual Windows packaging/,
   );
   assert.throws(
-    () => assertWorkflowCommands(workflow.replace('contents: read', 'contents: write')),
+    () => assertWorkflowCommands(weaken(workflow, 'contents: read', 'contents: write')),
     /permissions must remain contents: read only/,
   );
   assert.throws(
-    () => assertWorkflowCommands(workflow.replace('persist-credentials: false', 'persist-credentials: true')),
+    () => assertWorkflowCommands(weaken(workflow, 'persist-credentials: false', 'persist-credentials: true')),
     /Every checkout step must disable persisted Git credentials/,
   );
   assert.throws(
     () => assertWorkflowCommands(transformWorkflowJob(
       workflow,
       'native-matrix',
-      (job) => job.replace("if: github.event_name == 'workflow_dispatch'", 'if: always()'),
+      (job) => weaken(job, "if: github.event_name == 'workflow_dispatch'", 'if: always()'),
     )),
     /Unsigned package validation must be manual-only/,
   );
@@ -3026,14 +3090,14 @@ test('workflow is unsigned, read-only, credentialless, and locked', () => {
   const buildLine = '        run: npm run build:frontend\n';
   const frontendBuiltTooLate = transformWorkflowJob(workflow, 'native-matrix', (job) => {
     assert.ok(job.includes(buildLine));
-    return job.replace(buildLine, '') + `\n${buildLine}`;
+    return weaken(job, buildLine, '') + `\n${buildLine}`;
   });
   assert.throws(
     () => assertWorkflowCommands(frontendBuiltTooLate),
     /native-matrix must build frontendDist before compiling the Tauri Rust workspace/,
   );
   assert.throws(
-    () => assertWorkflowCommands(workflow.replace(
+    () => assertWorkflowCommands(weaken(workflow,
       'run: node apps/desktop/node_modules/@tauri-apps/cli/tauri.js build --features production --no-bundle',
       'run: npm --prefix apps/desktop run tauri -- build --no-bundle',
     )),
@@ -3044,14 +3108,14 @@ test('workflow is unsigned, read-only, credentialless, and locked', () => {
     'node scripts/check-frozen-css-output.mjs',
   ]) {
     assert.throws(
-      () => assertWorkflowCommands(workflow.replace(gate, 'gate intentionally removed')),
+      () => assertWorkflowCommands(weaken(workflow, gate, 'gate intentionally removed')),
       /workflow is missing required locked gate/,
     );
   }
   const nativeWithoutFrontendBuild = transformWorkflowJob(
     workflow,
     'native-matrix',
-    (job) => job.replace('npm run build:frontend', 'frontend build intentionally removed'),
+    (job) => weaken(job, 'npm run build:frontend', 'frontend build intentionally removed'),
   );
   assert.throws(
     () => assertWorkflowCommands(nativeWithoutFrontendBuild),
@@ -3277,9 +3341,12 @@ test('Tauri production build contract rejects dev-server releases and weakened n
     /must enable only tauri\/custom-protocol/,
   );
 
-  const unpinnedCargo = fs.readFileSync(
-    path.join(rfdPin, 'apps/desktop/src-tauri/Cargo.toml'), 'utf8',
-  ).replace('version = "=0.16.0"', 'version = "0.16.0"');
+  const unpinnedCargo = weaken(
+    readMutableSource(rfdPin, 'apps/desktop/src-tauri/Cargo.toml'),
+    'version = "=0.16.0"',
+    'version = "0.16.0"',
+    { expected: 1 },
+  );
   writeFile(rfdPin, 'apps/desktop/src-tauri/Cargo.toml', unpinnedCargo);
   assert.throws(
     () => assertTauriProductionBuildContract(rfdPin),
@@ -3305,45 +3372,60 @@ test('Tauri production build contract rejects dev-server releases and weakened n
     /must run its parented picker on the blocking pool/,
   );
 
-  const unloggedSource = fs.readFileSync(
-    path.join(unloggedPicker, 'apps/desktop/src-tauri/src/commands.rs'), 'utf8',
-  ).replace('  diagnostics::record("media-picker.requested", &[]);\n', '');
+  const unloggedSource = weaken(
+    readMutableSource(unloggedPicker, 'apps/desktop/src-tauri/src/commands.rs'),
+    '  diagnostics::record("media-picker.requested", &[]);\n',
+    '',
+    { expected: 1 },
+  );
   writeFile(unloggedPicker, 'apps/desktop/src-tauri/src/commands.rs', unloggedSource);
   assert.throws(
     () => assertTauriProductionBuildContract(unloggedPicker),
     /must run its parented picker on the blocking pool/,
   );
 
-  const unpooledSource = fs.readFileSync(
-    path.join(unpooledPicker, 'apps/desktop/src-tauri/src/commands.rs'), 'utf8',
-  ).replace('tauri::async_runtime::spawn_blocking', 'tauri::async_runtime::spawn');
+  const unpooledSource = weaken(
+    readMutableSource(unpooledPicker, 'apps/desktop/src-tauri/src/commands.rs'),
+    'tauri::async_runtime::spawn_blocking',
+    'tauri::async_runtime::spawn',
+    { expected: 1 },
+  );
   writeFile(unpooledPicker, 'apps/desktop/src-tauri/src/commands.rs', unpooledSource);
   assert.throws(
     () => assertTauriProductionBuildContract(unpooledPicker),
     /must run its parented picker on the blocking pool/,
   );
 
-  const unstartedSource = fs.readFileSync(
-    path.join(unstartedWorker, 'apps/desktop/src-tauri/src/commands.rs'), 'utf8',
-  ).replace('    diagnostics::record("media-picker.worker-started", &[]);\n', '');
+  const unstartedSource = weaken(
+    readMutableSource(unstartedWorker, 'apps/desktop/src-tauri/src/commands.rs'),
+    '    diagnostics::record("media-picker.worker-started", &[]);\n',
+    '',
+    { expected: 1 },
+  );
   writeFile(unstartedWorker, 'apps/desktop/src-tauri/src/commands.rs', unstartedSource);
   assert.throws(
     () => assertTauriProductionBuildContract(unstartedWorker),
     /must run its parented picker on the blocking pool/,
   );
 
-  const pluginBridgeSource = fs.readFileSync(
-    path.join(pluginBridge, 'apps/desktop/src-tauri/src/commands.rs'), 'utf8',
-  ).replace('dialog.pick_file()', 'dialog.blocking_pick_file()');
+  const pluginBridgeSource = weaken(
+    readMutableSource(pluginBridge, 'apps/desktop/src-tauri/src/commands.rs'),
+    'dialog.pick_file()',
+    'dialog.blocking_pick_file()',
+    { expected: 1 },
+  );
   writeFile(pluginBridge, 'apps/desktop/src-tauri/src/commands.rs', pluginBridgeSource);
   assert.throws(
     () => assertTauriProductionBuildContract(pluginBridge),
     /must run its parented picker on the blocking pool/,
   );
 
-  const unloggedFailureSource = fs.readFileSync(
-    path.join(unloggedWorkerFailure, 'apps/desktop/src-tauri/src/commands.rs'), 'utf8',
-  ).replace('    diagnostics::record("media-picker.worker-failed", &[]);\n', '');
+  const unloggedFailureSource = weaken(
+    readMutableSource(unloggedWorkerFailure, 'apps/desktop/src-tauri/src/commands.rs'),
+    '    diagnostics::record("media-picker.worker-failed", &[]);\n',
+    '',
+    { expected: 1 },
+  );
   writeFile(
     unloggedWorkerFailure,
     'apps/desktop/src-tauri/src/commands.rs',
@@ -3355,14 +3437,12 @@ test('Tauri production build contract rejects dev-server releases and weakened n
   );
 
   // select_media must keep delegating to the one reviewed picker helper.
-  const detachedOriginal = fs.readFileSync(
-    path.join(detachedSelectMedia, 'apps/desktop/src-tauri/src/commands.rs'), 'utf8',
-  );
-  const detachedSource = detachedOriginal.replace(
+  const detachedSource = weaken(
+    readMutableSource(detachedSelectMedia, 'apps/desktop/src-tauri/src/commands.rs'),
     'pick_media_path(window).await?',
     'pick_media_path_unparented().await?',
+    { expected: 1 },
   );
-  assert.notEqual(detachedSource, detachedOriginal, 'select_media delegation removal');
   writeFile(detachedSelectMedia, 'apps/desktop/src-tauri/src/commands.rs', detachedSource);
   assert.throws(
     () => assertTauriProductionBuildContract(detachedSelectMedia),

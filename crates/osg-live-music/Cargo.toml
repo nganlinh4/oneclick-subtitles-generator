@@ -5,6 +5,7 @@ authors.workspace = true
 edition.workspace = true
 rust-version.workspace = true
 description = "Bounded backend-only Lyria RealTime WebSocket transport"
+license = "MIT"
 
 [dependencies]
 base64 = "=0.22.1"

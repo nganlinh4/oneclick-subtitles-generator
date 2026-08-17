@@ -14,6 +14,21 @@ const {
   inspectReachableWebViewTransports,
   parseArguments,
 } = require('./check-production-transport');
+const { readMutableSource, weakenAll } = require('./mutation-testing');
+
+// The desktop branch is folded by rewriting `isDesktopRuntime()` to `true` before esbuild sees the
+// module, so tree-shaking drops the browser half and the emitted bundle can be asserted against.
+// `weakenAll` refuses a rewrite that matches nothing, which is belt and braces rather than the
+// load-bearing guard: an un-folded graph retains `FileReader`/`readAsDataURL` from the browser half,
+// so the first `assert.doesNotMatch` below already catches it loudly. Checked by disabling the fold
+// outright — the suite fails, it does not pass vacuously. This suite was also never a CRLF casualty,
+// because the pattern spans no newline. Both facts are written down because the opposite was
+// asserted here first, and an invented justification is how a guard survives past its usefulness.
+const foldDesktopRuntime = (absolutePath) => weakenAll(
+  readMutableSource(absolutePath),
+  /\bisDesktopRuntime\s*\(\s*\)/g,
+  'true',
+);
 
 function withSourceGraph(files, callback) {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), 'osg-production-source-'));
@@ -207,11 +222,7 @@ test('emitted desktop Gemini image graph contains only the opaque native referen
         });
         esbuild.onLoad({ filter: /imageGenerationService\.js$/ }, (args) => {
           if (path.resolve(args.path) !== imageService) return null;
-          const source = fs.readFileSync(args.path, 'utf8');
-          return {
-            contents: source.replace(/\bisDesktopRuntime\s*\(\s*\)/g, 'true'),
-            loader: 'js',
-          };
+          return { contents: foldDesktopRuntime(args.path), loader: 'js' };
         });
       },
     }],
@@ -280,11 +291,7 @@ test('emitted desktop Gemini image graph contains only the opaque native referen
         });
         esbuild.onLoad({ filter: /(?:PromptAndAlbumArtSection|ImageGenerationSection)\.js$/ }, (args) => {
           if (!featureModules.has(path.resolve(args.path))) return null;
-          const source = fs.readFileSync(args.path, 'utf8');
-          return {
-            contents: source.replace(/\bisDesktopRuntime\s*\(\s*\)/g, 'true'),
-            loader: 'jsx',
-          };
+          return { contents: foldDesktopRuntime(args.path), loader: 'jsx' };
         });
       },
     }],

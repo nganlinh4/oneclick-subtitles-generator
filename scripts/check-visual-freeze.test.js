@@ -12,6 +12,7 @@ const {
   isExcludedSource,
   validateManifest,
 } = require('./check-visual-freeze');
+const { weaken } = require('./mutation-testing');
 
 test('canonicalizes the retired remote thumbnail expression to the executable native source', () => {
   const relativePath = 'src/components/inputs/VideoPreviewRenderer.js';
@@ -115,8 +116,13 @@ test('protects Lit markup and CSS while anonymizing event behavior and data iden
     const styles = css\`.panel { color: red; }\`;
     const view = html\`<button class=\${surfaceClass} @click=\${() => invoke('native')}>\${text}</button>\`;
   `;
-  const changedMarkup = after.replace('<button', '<a').replace('</button>', '</a>');
-  const changedStyles = after.replace('color: red', 'color: blue');
+  const changedMarkup = weaken(
+    weaken(after, '<button', '<a', { expected: 1 }),
+    '</button>',
+    '</a>',
+    { expected: 1 },
+  );
+  const changedStyles = weaken(after, 'color: red', 'color: blue', { expected: 1 });
   assert.deepEqual(
     createTaggedTemplateFingerprints(before, 'src/View.ts'),
     createTaggedTemplateFingerprints(after, 'src/View.ts'),

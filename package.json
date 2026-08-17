@@ -37,7 +37,7 @@
     "test:speech-worker": "python -I -B crates/osg-speech/tests/python_worker_contract.py -v",
     "test:python-workers": "npm run test:asr-worker && npm run test:speech-worker",
     "check:i18n": "node scripts/check-i18n.js",
-    "check:dependencies": "npm ls --all && npm --prefix apps/desktop ls --all",
+    "check:dependencies": "node scripts/check-declared-dependencies.js && npm ls --all && npm --prefix apps/desktop ls --all",
     "check:managed-delivery": "python -I -B scripts/check-managed-delivery-contract.py",
     "verify:managed-delivery": "python -I -B scripts/check-managed-delivery-contract.py --remote",
     "test:managed-delivery": "python -I -B scripts/check-managed-delivery-contract.test.py -v && python -I -B scripts/build-provider-speech-runtime.test.py -v",
@@ -86,8 +86,5 @@
     "jsdom": "29.1.1",
     "vite": "8.0.16",
     "vitest": "4.1.10"
-  },
-  "overrides": {
-    "fast-uri": "3.1.5"
   }
 }

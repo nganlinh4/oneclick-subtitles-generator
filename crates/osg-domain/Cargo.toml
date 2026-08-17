@@ -4,6 +4,7 @@ version.workspace = true
 authors.workspace = true
 edition.workspace = true
 rust-version.workspace = true
+license = "MIT"
 
 [dependencies]
 serde.workspace = true

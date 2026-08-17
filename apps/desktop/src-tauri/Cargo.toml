@@ -5,6 +5,7 @@ authors.workspace = true
 edition.workspace = true
 rust-version.workspace = true
 description = "A fast local-first subtitle creation application"
+license = "MIT"
 default-run = "osg-desktop"
 
 [lib]

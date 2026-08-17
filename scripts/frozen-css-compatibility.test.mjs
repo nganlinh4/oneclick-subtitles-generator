@@ -1,5 +1,4 @@
 import assert from 'node:assert/strict';
-import { readFileSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
 import test from 'node:test';
 import { fileURLToPath } from 'node:url';
@@ -15,10 +14,11 @@ import {
   normalizeFrozenCssText,
   sha256Text,
 } from './frozen-css-compatibility.mjs';
+import { readMutableSource, weaken } from './mutation-testing.js';
 
 const repositoryRoot = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const sourcePath = resolve(repositoryRoot, FROZEN_INDEX_CSS_PATH);
-const frozenSource = readFileSync(sourcePath, 'utf8');
+const frozenSource = readMutableSource(sourcePath);
 
 test('hoists exactly the 12 pinned imports before the first qualified rule', () => {
   assert.equal(FROZEN_LATE_IMPORTS.length, 12);
@@ -57,8 +57,7 @@ test('normalizes BOM, line endings, and terminal newlines without changing CSS s
 });
 
 test('fails closed on unrelated frozen source drift', () => {
-  const drifted = frozenSource.replace('--ms-wght: 600;', '--ms-wght: 601;');
-  assert.notEqual(drifted, frozenSource);
+  const drifted = weaken(frozenSource, '--ms-wght: 600;', '--ms-wght: 601;', { expected: 1 });
   assert.throws(
     () => hoistFrozenLateImports(drifted),
     /source integrity mismatch/,
@@ -68,28 +67,47 @@ test('fails closed on unrelated frozen source drift', () => {
 test('fails closed when a pinned late import is missing or duplicated', () => {
   const [{ statement }] = FROZEN_LATE_IMPORTS;
   assert.throws(
-    () => hoistFrozenLateImports(frozenSource.replace(statement, '')),
+    () => hoistFrozenLateImports(weaken(frozenSource, statement, '', { expected: 1 })),
     /expected exactly 13 @import statements; found 12/,
   );
   assert.throws(
-    () => hoistFrozenLateImports(frozenSource.replace(statement, `${statement}\r\n${statement}`)),
+    () => hoistFrozenLateImports(
+      weaken(frozenSource, statement, `${statement}\r\n${statement}`, { expected: 1 }),
+    ),
     /expected exactly 13 @import statements; found 14/,
   );
 });
 
 test('fails closed when pinned imports are reordered, altered, moved, or extended', () => {
   const [first, second] = FROZEN_LATE_IMPORTS;
-  const reordered = frozenSource
-    .replace(first.statement, '__FIRST_IMPORT__')
-    .replace(second.statement, first.statement)
-    .replace('__FIRST_IMPORT__', second.statement);
-  const altered = frozenSource.replace(first.statement, "@import url('./different-fonts.css');");
-  const moved = frozenSource
-    .replace(first.statement, '')
-    .replace(second.statement, `${first.statement}\n${second.statement}`);
-  const extended = frozenSource.replace(
+  const reordered = weaken(
+    weaken(
+      weaken(frozenSource, first.statement, '__FIRST_IMPORT__', { expected: 1 }),
+      second.statement,
+      first.statement,
+      { expected: 1 },
+    ),
+    '__FIRST_IMPORT__',
+    second.statement,
+    { expected: 1 },
+  );
+  const altered = weaken(
+    frozenSource,
+    first.statement,
+    "@import url('./different-fonts.css');",
+    { expected: 1 },
+  );
+  const moved = weaken(
+    weaken(frozenSource, first.statement, '', { expected: 1 }),
+    second.statement,
+    `${first.statement}\n${second.statement}`,
+    { expected: 1 },
+  );
+  const extended = weaken(
+    frozenSource,
     FROZEN_LATE_IMPORTS.at(-1).statement,
     `${FROZEN_LATE_IMPORTS.at(-1).statement}\r\n@import url('./unreviewed.css');`,
+    { expected: 1 },
   );
   for (const candidate of [reordered, altered, moved]) {
     assert.throws(() => hoistFrozenLateImports(candidate), /@import inventory drifted/);

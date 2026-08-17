@@ -5,6 +5,7 @@ authors.workspace = true
 edition.workspace = true
 rust-version.workspace = true
 description = "Bounded loopback streaming for opaque OSG media assets"
+license = "MIT"
 
 [dependencies]
 blake3 = "=1.8.6"

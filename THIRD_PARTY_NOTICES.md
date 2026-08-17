@@ -10,20 +10,30 @@ delivery catalogs below.
 - Tauri and the Rust crates recorded in `Cargo.lock` retain their crate metadata and license files.
 - React, Vite, and the npm packages recorded in `package-lock.json` retain their package license
   metadata.
-- Material Symbols are used under Apache-2.0. The application does not bundle Product Sans.
-- Google Sans Flex v22 is installed on demand from the official Google Fonts distribution under
-  SIL Open Font License 1.1. Exact source bytes, license text, and the content-addressed OSG fallback
-  are recorded in `crates/osg-engine-packages/delivery/ui-fonts.delivery.json`; the legacy embedded
-  TTF is retired and excluded from the application payload.
+- Material Symbols Rounded are used under Apache-2.0 and are not bundled. `index.html` links the
+  `fonts.googleapis.com` stylesheet, so the glyphs are fetched from Google's CDN at runtime.
+- Google Sans Flex v22 is installed on demand under SIL Open Font License 1.1.
+  `crates/osg-engine-packages/delivery/ui-fonts.delivery.json` pins each `.woff2` subset, the OFL
+  text, and the family NOTICE by size and SHA-256. Alongside the `fonts.gstatic.com` originals,
+  this project mirrors those exact `.woff2` bytes on its own GitHub release
+  `osg-runtime-bundles-v1`, so OSG redistributes the font files itself under OFL-1.1. The legacy
+  embedded TTF is retired and excluded from the application payload.
+- The application does not bundle Product Sans.
 
 ### Native media decoding and encoding
 
-The application decodes and encodes media without redistributing any codec binary.
+Native rendering and playback call the H.264 and AAC **encoders**, and the video **decoder**, that
+Windows Media Foundation provides as part of the operating system. This project ships no H.264
+implementation of its own and redistributes no codec binary or FFmpeg build for rendering.
 
-- **Video and AAC audio encoding, and video decoding**, use Windows Media Foundation through the
-  `windows` crate. The H.264 and AAC implementations are part of the operating system and are
-  licensed by Microsoft to the user running the machine. This repository redistributes no codec, no
-  FFmpeg build, and no downloaded media tool.
+It does compile an AAC **decoder** into the application: source audio is decoded by `symphonia`,
+whose `aac` and `isomp4` features are enabled in `crates/osg-audio/Cargo.toml`, and those crates are
+redistributed in compiled form as recorded below. Media Foundation has no AAC decode path here. The
+distinction is stated because a decoder shipped inside the binary and a decoder provided by the
+operating system are not the same redistribution question.
+
+- **Video and AAC audio encoding, and video decoding** go through Windows Media Foundation via the
+  `windows` crate.
 - **Source audio decoding** uses `symphonia` and its sub-crates, pinned in `Cargo.lock` and licensed
   MPL-2.0; see the section below.
 - **Opus audio decoding** uses `symphonia-adapter-libopus` 0.2.9 (MIT OR Apache-2.0), which wraps
@@ -57,8 +67,9 @@ carries its own `LICENSE` file in its published artifact.
 - FFmpeg/ffprobe 8.1.2 Windows essentials build: GPL-3.0-or-later. The reviewed artifact and source
   references are recorded in `crates/osg-native-tools/delivery/native-tools.upstreams.lock.json`.
   FFmpeg source is available from <https://ffmpeg.org/releases/>; the downloaded package includes
-  its license material. This build is separate from, and configured differently to, the FFmpeg
-  binaries used by the native export.
+  its license material. Nothing in the native render or export path uses it: rendering encodes
+  through Media Foundation and needs no FFmpeg installed at all. It is downloaded for the media
+  acquisition and inspection paths only.
 - yt-dlp 2026.07.04 frozen binaries: GPL-3.0-or-later, with upstream license and third-party notices
   pinned by the native-tool catalog.
 - Deno 2.9.5: MIT, with its license and notice asset pinned by the native-tool catalog.
@@ -89,6 +100,8 @@ Important runtime terms include:
 - Edge TTS 7.2.8: **LGPL-3.0-only**, a copyleft license distinct from the permissive licenses
   elsewhere in the speech closure. It is delivered as the `edge_tts-7.2.8-py3-none-any.whl` artifact
   pinned in the provider-runtime lock.
+- gTTS 2.5.4: MIT, and the Google Gen AI Python SDK 2.17.0: Apache-2.0. They are delivered as the
+  separate gTTS and Gemini TTS provider-runtime closures pinned in the provider-runtime lock.
 - certifi 2026.7.22: MPL-2.0, pinned as `certifi-2026.7.22-py3-none-any.whl` and included in the
   Edge TTS provider runtime closure.
 - The remaining provider-runtime wheels are individually license-tagged in the same lock file,
@@ -102,6 +115,8 @@ Important model terms include:
 - Chatterbox code and model files: MIT.
 - F5-TTS code: MIT; the default F5TTS_v1_Base model is CC-BY-NC-4.0 and is not licensed for
   commercial use. It is downloaded directly from the official immutable model revision.
+- Vocos mel-24kHz, the vocoder the F5-TTS backend downloads alongside that model: MIT, pinned as
+  `charactr/vocos-mel-24khz` in `crates/osg-speech/delivery/speech-upstreams.lock.json`.
 
 ## Downloadable voice-preview media
 
@@ -112,9 +127,14 @@ their provider terms and are not relicensed by the repository MIT license.
 
 ## Open notice items
 
-These are recorded observations, not conclusions. They are listed so the owner can resolve them
-before distribution, alongside the outstanding root license and notice-policy decision.
+These are recorded observations, not conclusions. The root license is settled; these are the notice
+gaps left to close before distribution.
 
+- The published notice index
+  `crates/osg-engine-packages/delivery/windows-managed-runtime-notices.json` lists seventeen
+  components and does not yet include the Vocos vocoder named above. Correcting it means
+  republishing that pool asset and refreshing `delivery/managed-delivery.checkpoint.json`, so the
+  entry is recorded here in the meantime.
 - The ASR and speech runtimes were not installed on the machine used to compile these notices, so
   their entries above are taken from the committed delivery catalogs rather than from delivered
   bytes.
