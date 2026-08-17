@@ -33,9 +33,11 @@ use super::text::{EXPORT_TEXT_SCHEMA_VERSION, ExportTextRequest, StagedAtlases};
 ///
 /// `osg-export`'s own end-to-end suite records that several threads each acquiring a `wgpu` device
 /// while Media Foundation is open elsewhere faulted inside the platform layers, with no `unsafe` of
-/// our own anywhere in the stack. The product exports one file at a time on one thread, so that
-/// concurrency is not a shape it ever has. The note is repeated here because these tests share a
-/// binary with hundreds that never touch a GPU.
+/// our own anywhere in the stack. The note is repeated here because these tests share a binary with
+/// hundreds that never touch a GPU.
+///
+/// It used to say the product never has that concurrency. It does — see the correction in
+/// `crates/osg-export/tests/support/media.rs`.
 static PLATFORM: Mutex<()> = Mutex::new(());
 
 pub(super) fn platform() -> MutexGuard<'static, ()> {

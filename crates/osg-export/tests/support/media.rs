@@ -33,13 +33,19 @@ use super::{default_face, request_json, staged_text};
 /// these tests each acquire their own `wgpu` device while other threads are opening Media
 /// Foundation source readers and sink writers, and that combination faulted once in five runs
 /// (`STATUS_ACCESS_VIOLATION`) inside the platform layers, with no `unsafe` code of our own
-/// anywhere in the stack. The product exports one file at a time on one thread, so the concurrency
-/// these tests were creating is not a shape it ever has; serialising them keeps the suite a signal
-/// about the exporter rather than about a driver. The observation is recorded here rather than
+/// anywhere in the stack. Serialising them keeps the suite a signal about the exporter rather than
+/// about a driver. The observation is recorded here rather than
 /// quietly absorbed, because the next person to add a parallel adapter user needs to know.
 ///
 /// One static per test binary, which is all that is needed: `cargo` runs test binaries one after
 /// another, so the only concurrency to guard is inside each one.
+///
+/// This used to add that the product exports one file at a time on one thread, so the concurrency
+/// was a shape only the harness had. That was wrong. `run_export` holds a source reader and a sink
+/// writer live across its whole frame loop, and the preview decodes on its own thread with nothing
+/// serialising it against an export — so scrubbing while exporting really does open several at
+/// once. Whether that faults is unmeasured; this guard is justified by the contention it was
+/// observed to fix, not by a claim about what the product cannot do.
 static PLATFORM: Mutex<()> = Mutex::new(());
 
 /// Takes the platform lock, ignoring poisoning so one failing test does not fail the rest.

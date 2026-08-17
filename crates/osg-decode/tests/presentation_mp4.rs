@@ -28,10 +28,19 @@ use tempfile::TempDir;
 /// Serialises Media Foundation across this binary's test threads.
 ///
 /// Opening several source readers or sink writers at the same moment from one process has faulted
-/// inside the platform layers here, and the product opens one at a time on one thread — so this is
-/// a shape the harness creates and the application never does. `osg-export`'s media support takes
-/// the same measure for the same reason. The guard is held only while the platform object is being
+/// inside the platform layers here. The guard is held only while the platform object is being
 /// opened, not across the decode, so the suite stays parallel where parallelism is safe.
+///
+/// WHAT THIS DOES NOT CLAIM. It used to say the product opens one at a time on one thread, so this
+/// was a shape only the harness created. That was wrong, and it is worth recording rather than
+/// quietly deleting, because it is the kind of comfortable sentence that stops anyone looking:
+/// `osg_export::run_export` holds a source reader AND a sink writer live across its whole frame
+/// loop, and `apps/desktop/src-tauri/src/preview/source.rs` runs a third source reader on its own
+/// thread with nothing serialising it against an export. Scrubbing the preview while a video
+/// exports really does open several at once. Whether that faults is unmeasured — the export suite
+/// exercises a reader and a writer together in every test and has never flaked — so this guard is
+/// justified by the contention it was observed to fix, not by a claim about what the product
+/// cannot do.
 static PLATFORM: std::sync::Mutex<()> = std::sync::Mutex::new(());
 
 fn platform() -> std::sync::MutexGuard<'static, ()> {
