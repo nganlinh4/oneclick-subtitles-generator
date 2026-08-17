@@ -12,7 +12,6 @@ const OTHER_EXECUTABLE_BUDGET_BYTES = 48 * 1024 * 1024;
 const EXPECTED_BOOTSTRAPS = new Set([
   'workers/osg_asr_worker.py',
   'workers/osg_speech_worker.py',
-  'workers/osg_render_worker.mjs',
 ]);
 const FORBIDDEN_PAYLOAD = /(?:^|[/\\])(?:ffmpeg|ffprobe|yt-dlp|deno|node|chrome|chromium)(?:\.exe)?$|\.(?:dll|dylib|so|node|onnx|pt|pth|safetensors|ckpt|gguf)$/i;
 

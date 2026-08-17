@@ -87,9 +87,6 @@ const COMMANDS: &[&str] = &[
     "render_start",
     "render_result",
     "render_playback_release",
-    "render_package_status",
-    "render_package_install",
-    "render_package_remove",
     "asr_status",
     "asr_start",
     "engine_packages_status",
@@ -166,8 +163,6 @@ fn verify_managed_delivery_contract() {
         "scripts/compose-managed-deliveries.py",
         "scripts/build-voice-samples-delivery.py",
         "scripts/build-ui-font-delivery.py",
-        "scripts/generate-remotion-delivery-manifest.mjs",
-        "scripts/generate-remotion-runtime-manifest.mjs",
         "crates/osg-native-tools/delivery/native-tools.delivery.json",
         "crates/osg-native-tools/delivery/native-tools.upstreams.lock.json",
         "crates/osg-engine-packages/delivery/engine-packages.delivery.json",
@@ -177,12 +172,6 @@ fn verify_managed_delivery_contract() {
         "crates/osg-speech/delivery/speech-packages.delivery.json",
         "crates/osg-speech/delivery/provider-runtime-windows.lock.json",
         "crates/osg-speech/delivery/speech-upstreams.lock.json",
-        "video-renderer/delivery/remotion-runtime.delivery.json",
-        "video-renderer/native.tsconfig.json",
-        "video-renderer/package.json",
-        "video-renderer/remotion.config.ts",
-        "video-renderer/scripts/build-native-bundle.mjs",
-        "video-renderer/worker/osg_render_worker.mjs",
     ];
     for relative in watched {
         println!(
@@ -190,7 +179,6 @@ fn verify_managed_delivery_contract() {
             repository.join(relative).display()
         );
     }
-    watch_tree(&repository.join("video-renderer/src"));
 
     let interpreter = if cfg!(windows) { "python" } else { "python3" };
     let result = Command::new(interpreter)
@@ -206,28 +194,5 @@ fn verify_managed_delivery_contract() {
     }
 }
 
-fn watch_tree(root: &Path) {
-    let mut pending = vec![PathBuf::from(root)];
-    while let Some(directory) = pending.pop() {
-        let mut entries = std::fs::read_dir(&directory)
-            .unwrap_or_else(|_| panic!("managed-delivery source tree is missing"))
-            .collect::<Result<Vec<_>, _>>()
-            .unwrap_or_else(|_| panic!("managed-delivery source tree is unreadable"));
-        entries.sort_by_key(std::fs::DirEntry::file_name);
-        for entry in entries {
-            let path = entry.path();
-            let file_type = entry
-                .file_type()
-                .unwrap_or_else(|_| panic!("managed-delivery source entry is unreadable"));
-            if file_type.is_dir() {
-                pending.push(path);
-            } else if file_type.is_file() {
-                println!("cargo:rerun-if-changed={}", path.display());
-            } else {
-                panic!("managed-delivery source tree contains an unsupported entry");
-            }
-        }
-    }
-}
-use std::path::{Path, PathBuf};
+use std::path::Path;
 use std::process::Command;

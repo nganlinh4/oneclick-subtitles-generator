@@ -38,10 +38,10 @@
 //!   `null` every time crop mode is entered, and `handleAspectRatioChange` writes **only**
 //!   `x`/`y`/`width`/`height` (plus the two flip flags) back into the crop. The crop object never
 //!   receives an `aspectRatio` key from the control that is named after it.
-//! * Every other writer sets it to `null` and nothing else: `handleClearCrop` in
-//!   `RemotionVideoPreview.js`, the defaults in `VideoRenderingSection/renderPreferences.js`, and
-//!   `previews/videoDownloadHandlers.js`. `renderService.js` carries whatever it finds straight
-//!   through to the request.
+//! * Every other writer sets it to `null` and nothing else: the defaults in
+//!   `VideoRenderingSection/renderPreferences.js` and `previews/videoDownloadHandlers.js`, plus the
+//!   crop-clearing handler in the deleted browser preview. `renderService.js` carries whatever it
+//!   finds straight through to the request.
 //! * The button expresses itself by *reshaping the rectangle*. `calculateCropDimensions` solves for
 //!   a rectangle whose own ratio is the selected one, so the selected ratio is already a property of
 //!   `width`/`height`. Deriving the output from the rectangle therefore already reproduces the
@@ -58,9 +58,9 @@
 //! expression, associated the same way, so the size a request was validated to and the size this
 //! composes at are the same number rather than two numbers that usually agree.
 //!
-//! That distinction is not theoretical. `getCompositionDimensions` in
-//! `src/components/RemotionVideoPreview.js` sizes the shipped preview from the same inputs but
-//! associates them differently — `sourceAspect * ((cropWidth / 100) / (cropHeight / 100))` — and
+//! That distinction is not theoretical. The deleted browser preview's `getCompositionDimensions`
+//! sized its composition from the same inputs but associated them differently —
+//! `sourceAspect * ((cropWidth / 100) / (cropHeight / 100))` — and
 //! floating-point multiplication is not associative. Over a scan of crop shapes from 10% to 200% in
 //! hundredths, the two forms round to different output widths for a small fraction of them; a 10.01%
 //! by 28.16% crop of a 1920x1080 source at 1080p is one, where the shipped preview composes 682 and

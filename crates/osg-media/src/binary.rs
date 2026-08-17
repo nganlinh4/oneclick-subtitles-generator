@@ -242,18 +242,6 @@ fn bundled_candidates(root: &Path, kind: BinaryKind) -> Vec<PathBuf> {
         root.join("ffmpeg").join("bin").join(name),
     ];
 
-    let remotion = root.join("node_modules").join("@remotion");
-    if let Ok(entries) = std::fs::read_dir(remotion) {
-        for entry in entries.flatten() {
-            if entry
-                .file_name()
-                .to_string_lossy()
-                .starts_with("compositor-")
-            {
-                candidates.push(entry.path().join(name));
-            }
-        }
-    }
     if kind == BinaryKind::Ffmpeg {
         let installer = root.join("node_modules").join("@ffmpeg-installer");
         if let Ok(entries) = std::fs::read_dir(installer) {

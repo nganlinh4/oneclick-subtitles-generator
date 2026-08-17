@@ -394,11 +394,11 @@ const dataProperty = (value, key) => {
  * to add anything. A code with no entry falls through to the categorical sentence, which is what
  * every code this build has not been taught still gets.
  *
- * `renderRuntimeUnavailable` no longer mentions Remotion, because that sentence is no longer true:
- * `render_runtime_status` reports whether this BUILD has the native pipeline (`cfg!(windows)`), not
- * whether a payload is installed, and nothing in Settings can change the answer. The code is also
- * no longer reachable from a render: `render_start` cannot raise it, and the only thing that does
- * is the frontend's own readiness check.
+ * `renderRuntimeUnavailable` no longer names an installable renderer, because that sentence is no
+ * longer true: `render_runtime_status` reports whether this BUILD has the native pipeline
+ * (`cfg!(windows)`), not whether a payload is installed, and nothing in Settings can change the
+ * answer. The code is also no longer reachable from a render: `render_start` cannot raise it, and
+ * the only thing that does is the frontend's own readiness check.
  */
 const RENDER_FAILURE_MESSAGES = new Map([
   ['renderRuntimeUnavailable', 'This build cannot render video on this computer'],
@@ -1097,22 +1097,16 @@ export const createNativeRenderService = ({
   /**
    * Whether this build can render video natively, and why not when it cannot.
    *
-   * `remotionVersion` is READ BUT NOT INTERPRETED. It is vestigial on both sides — nothing
-   * `render_runtime_status` reports is about Remotion any more — and this used to compare it
-   * against a frozen constant here, which pinned a dead field: dropping it natively would have
-   * failed every readiness check in the editor. The response is accepted with the field or without
-   * it, so the native side can delete it whenever it likes, and this module has one fewer opinion
-   * about a renderer it no longer talks to.
+   * The response used to carry a fifth field naming the browser renderer's version, which this
+   * module compared against a frozen constant of its own. That pinned a dead field: the native side
+   * could not drop it without failing every readiness check in the editor. The comparison went
+   * first and the field followed, so the shape is now the three things the answer is actually about.
    */
   const status = async () => {
     requireNative();
     try {
       const response = await invokeCommand('render_runtime_status', {});
-      const value = snapshotExactRecord(response, ['available', 'reason', 'maxConcurrentRenders'])
-        ?? snapshotExactRecord(
-          response,
-          ['available', 'remotionVersion', 'reason', 'maxConcurrentRenders'],
-        );
+      const value = snapshotExactRecord(response, ['available', 'reason', 'maxConcurrentRenders']);
       if (value === null
         || typeof value.available !== 'boolean'
         || (value.reason !== null && !RENDER_UNAVAILABLE_REASONS.has(value.reason))

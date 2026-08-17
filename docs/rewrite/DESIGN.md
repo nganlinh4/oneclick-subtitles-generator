@@ -24,8 +24,7 @@ backend capability outside the UI. Do not invent a replacement screen or tempora
 
 ## Verification
 
-Run the provenance-backed frontend, PromptDJ, and Remotion visual contracts from the repository
-root:
+Run the provenance-backed frontend and PromptDJ visual contracts from the repository root:
 
 ```powershell
 npm run check:visual-freeze

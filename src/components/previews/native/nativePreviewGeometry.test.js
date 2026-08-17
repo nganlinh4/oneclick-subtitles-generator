@@ -197,7 +197,7 @@ describe('composition size mirrors crates/osg-export/src/convert/dimensions.rs',
       .toEqual({ widthPx: 406, heightPx: 720 });
   });
 
-  it('associates the crop ratio the way Rust does, which the Remotion preview did not', () => {
+  it('associates the crop ratio the way Rust does, which the deleted preview did not', () => {
     // dimensions.rs records this exact crop as one where the shipped preview composed 682 and
     // everything downstream composed 684, because floating-point multiplication is not associative.
     const derived = compositionSize({
@@ -206,9 +206,11 @@ describe('composition size mirrors crates/osg-export/src/convert/dimensions.rs',
       sourceHeightPx: 1_080,
       crop: { width: 10.01, height: 28.16 },
     });
-    const remotionAssociation = Math.round(1_080 * ((1_920 / 1_080) * ((10.01 / 100) / (28.16 / 100))));
+    const deletedPreviewAssociation = Math.round(
+      1_080 * ((1_920 / 1_080) * ((10.01 / 100) / (28.16 / 100))),
+    );
     expect(derived.widthPx).toBe(684);
-    expect(remotionAssociation).toBe(682);
+    expect(deletedPreviewAssociation).toBe(682);
   });
 
   it('rounds both edges up to even, because the encoder cannot take an odd one', () => {

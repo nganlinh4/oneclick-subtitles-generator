@@ -6,7 +6,7 @@ import useNativePreview from './native/useNativePreview';
 import NativeRenderPreview from './NativeRenderPreview';
 
 /**
- * The render tab's preview panel, which used to be `@remotion/player` running a second
+ * The render tab's preview panel, which used to be a third-party browser player running a second
  * implementation of the export composition.
  *
  * What matters here is what the rest of the tab depends on: the imperative `seekTo(frame)` the trim
@@ -58,11 +58,11 @@ beforeEach(() => {
 });
 
 describe('with no video selected', () => {
-  it('shows the placeholder and no longer credits a renderer it does not use', () => {
+  it('shows the placeholder and credits no renderer', () => {
     render(<NativeRenderPreview videoFile={null} subtitles={subtitles} subtitleCustomization={{}} />);
 
     expect(screen.getByText('No video selected')).toBeInTheDocument();
-    expect(screen.queryByText(/Remotion/i)).toBeNull();
+    expect(screen.queryByText(/powered by/i)).toBeNull();
   });
 });
 

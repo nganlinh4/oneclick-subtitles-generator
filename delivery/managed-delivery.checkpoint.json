@@ -58,92 +58,6 @@
         }
       ]
     },
-    "remotion": {
-      "sourceSha256": "98d3a55d874097976fe195a0e48c74b2d41d32b89ae364c670eca5721b1a47e7",
-      "deliverySha256": "d11f525be27eda42c0b8281bac681fb3161aaf4a23dfa0b2d17d7ace3be76d3f",
-      "sources": [
-        {
-          "path": "scripts/generate-remotion-delivery-manifest.mjs",
-          "sizeBytes": 2388,
-          "sha256": "5ec76683091d446e6fc5cee6ee3ad13b8298c1013d0f4b20e23e1c83b0c37039"
-        },
-        {
-          "path": "scripts/generate-remotion-runtime-manifest.mjs",
-          "sizeBytes": 2749,
-          "sha256": "5f3b64cf5726181fc0c9f7a47cc962f9e5ac2d1fcc2159fcbc7421d0caef1fd7"
-        },
-        {
-          "path": "video-renderer/native.tsconfig.json",
-          "sizeBytes": 412,
-          "sha256": "bbd87a2fe320138019c7d08696810e747d9412d6f9ec4a509ff0e558e037022f"
-        },
-        {
-          "path": "video-renderer/package.json",
-          "sizeBytes": 918,
-          "sha256": "8aa9205bfc93d000ef3a8346f8938f23b591ecb558f3734ae93119549ce74901"
-        },
-        {
-          "path": "video-renderer/remotion.config.ts",
-          "sizeBytes": 849,
-          "sha256": "e377a0140d38c4a602602ec570f9c19313997dbe65fdb3595c1e335943d0c059"
-        },
-        {
-          "path": "video-renderer/scripts/build-native-bundle.mjs",
-          "sizeBytes": 8615,
-          "sha256": "7b8b01eca5f8ce3c44c67b752b4b683905ec346ad5af3eb3b0b38f16912c8cb7"
-        },
-        {
-          "path": "video-renderer/src/components/SubtitleCustomization.tsx",
-          "sizeBytes": 105,
-          "sha256": "3fbc2e492169151e05830487d9edcf11319d9de4c3d8793fc4ea16ae141b3cee"
-        },
-        {
-          "path": "video-renderer/src/components/SubtitledVideo.tsx",
-          "sizeBytes": 32734,
-          "sha256": "769170061e1b68a308533a5952835ad1b23a291f27393b18561e7a48cc9c185c"
-        },
-        {
-          "path": "video-renderer/src/remotion/Composition.tsx",
-          "sizeBytes": 1338,
-          "sha256": "784953cb0dc36c0a52ccec0de3f294532c0686a2707d94b288850d7c5bbe7a7a"
-        },
-        {
-          "path": "video-renderer/src/remotion/index.ts",
-          "sizeBytes": 374,
-          "sha256": "3894b824c2f47d0def1290d885d53873597c557708f3239043c2c4b3bd03f755"
-        },
-        {
-          "path": "video-renderer/src/remotion/root.tsx",
-          "sizeBytes": 2069,
-          "sha256": "8520bd9b5250b8775719e76d58abdb6d53cce979722ca3d99356797e60dfb818"
-        },
-        {
-          "path": "video-renderer/src/subtitleAnimationEasing.ts",
-          "sizeBytes": 2081,
-          "sha256": "db232be8b9b766dc35ac414753e31e7e902e35dbd4b8f7adfcd73cae36b199b2"
-        },
-        {
-          "path": "video-renderer/src/subtitleCustomizationDefaults.ts",
-          "sizeBytes": 1404,
-          "sha256": "c08165117752ad131ab168d843c00ff09166cfd91e5cddc4fff3dc347143c835"
-        },
-        {
-          "path": "video-renderer/src/subtitleVisualMath.ts",
-          "sizeBytes": 202,
-          "sha256": "20d1cdefa5b37694628674fa7292135706b185d76e7cfdd3da5bdb4ada4d91d7"
-        },
-        {
-          "path": "video-renderer/src/types.ts",
-          "sizeBytes": 4531,
-          "sha256": "c4eacdefe24f9662bbe85afe5fb97213fa8b9dbd117f46dd5b7a5d425b7c9527"
-        },
-        {
-          "path": "video-renderer/worker/osg_render_worker.mjs",
-          "sizeBytes": 10248,
-          "sha256": "3e2c86b00ef2a762f8f83f8306b6523cb020106ea3bd2438129e592a376d97d6"
-        }
-      ]
-    },
     "uiFonts": {
       "sourceSha256": "f7d7f7d4c9b3ee9820ad4542574e2043290bfad76af657910d94b395b8b67d44",
       "deliverySha256": "3a378a13296fea5970e839e2a88d0cd637c812bcd0f8100165ca19c8827ad7a1",
@@ -292,16 +206,6 @@
       "asset": "qwen3-asr-1.7b-windows-x86_64-2026.08.10-26e3de52e4573498.manifest.json",
       "sizeBytes": 13402571,
       "sha256": "26e3de52e4573498992285966f0a64e8fd5340cbb557bc05bef3f9df11b6ba2b"
-    },
-    {
-      "asset": "remotion-runtime-windows-x64-4.0.507-5c59b02cbfab7ede.manifest.json",
-      "sizeBytes": 634117,
-      "sha256": "5c59b02cbfab7edeeffe89dd880037f1aee3b175d8a241d67d25480f1e191445"
-    },
-    {
-      "asset": "remotion-runtime-windows-x64-4.0.507-8f2b4bb7f74bca85.zip",
-      "sizeBytes": 251273880,
-      "sha256": "8f2b4bb7f74bca85d412702d308cf2435ca3459913e1fd4403871dbc36605c1c"
     },
     {
       "asset": "sil-open-font-license-1.1-1d361a8f8e8ce6e6.txt",

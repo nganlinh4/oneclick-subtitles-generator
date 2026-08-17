@@ -35,25 +35,23 @@ const passingBundle = () => ({
     fileName: 'assets/index.js',
     name: 'index',
     code: 'e'.repeat(1_000_000),
-    imports: ['assets/react.js', 'assets/remotion.js', 'assets/vendor.js'],
+    imports: ['assets/react.js', 'assets/vendor.js'],
     isEntry: true,
   }),
   'assets/react.js': chunk({ fileName: 'assets/react.js', name: 'react', code: 'r'.repeat(100_000) }),
-  'assets/remotion.js': chunk({ fileName: 'assets/remotion.js', name: 'remotion', code: 'm'.repeat(200_000) }),
   'assets/vendor.js': chunk({ fileName: 'assets/vendor.js', name: 'vendor', code: 'v'.repeat(200_000) }),
 });
 
 test('bundle budget accepts one bounded entry with deterministic framework chunks', () => {
   assert.deepEqual(auditFrontendBundle(passingBundle()), {
     entryBytes: 1_000_000,
-    initialBytes: 1_500_000,
-    initialChunkCount: 4,
+    initialBytes: 1_300_000,
+    initialChunkCount: 3,
   });
   assert.deepEqual(
     createFrontendCodeSplitting().groups.map(({ name, priority }) => ({ name, priority })),
     [
       { name: 'react', priority: 40 },
-      { name: 'remotion', priority: 30 },
       { name: 'vendor', priority: 20 },
     ]
   );

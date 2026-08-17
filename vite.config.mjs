@@ -9,7 +9,6 @@ import {
   createFrontendCodeSplitting,
   handleFrontendBuildLog,
 } from './scripts/frontend-bundle-boundary.mjs';
-import { createRemotionDesktopBoundaryPlugin } from './scripts/remotion-desktop-boundary.mjs';
 
 const sourceJavaScriptPattern = /[/\\]src[/\\].+\.js$/;
 const allowedPublicEnvironmentKeys = new Set([
@@ -216,7 +215,6 @@ export default defineConfig(({ mode }) => ({
       ? [productionDesktopModules(), foldProductionDesktopBranches()]
       : []),
     reactJsxInJavaScript(),
-    createRemotionDesktopBoundaryPlugin(),
     createFrontendBundleBoundaryPlugin(),
     promptDjAssets(),
   ],

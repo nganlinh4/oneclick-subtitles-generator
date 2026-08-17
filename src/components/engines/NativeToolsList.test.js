@@ -5,11 +5,7 @@ import {
   removeNativeTool,
 } from '../../platform/nativeToolsService';
 import NativeToolsList, { NativeToolRow } from './NativeToolsList';
-import {
-  getRenderPackageStatus,
-  installRenderPackage,
-} from '../../platform/renderPackageService';
-import { getVoiceSamplesStatus } from '../../platform/voiceSampleService';
+import { getVoiceSamplesStatus, installVoiceSamples } from '../../platform/voiceSampleService';
 
 vi.mock('react-i18next', () => ({
   useTranslation: () => ({
@@ -38,12 +34,6 @@ vi.mock('../../platform/nativeToolsService', () => ({
   getNativeToolsStatus: vi.fn(),
   installNativeTool: vi.fn(),
   removeNativeTool: vi.fn(),
-}));
-vi.mock('../../platform/renderPackageService', () => ({
-  cancelRenderPackageJob: vi.fn(),
-  getRenderPackageStatus: vi.fn(),
-  installRenderPackage: vi.fn(),
-  removeRenderPackage: vi.fn(),
 }));
 vi.mock('../../platform/voiceSampleService', () => ({
   cancelVoiceSamples: vi.fn(),
@@ -76,20 +66,18 @@ const status = (overrides = {}) => ({
   ...overrides,
 });
 
-const renderStatus = (overrides = {}) => ({
-  schemaVersion: 1,
-  id: 'remotion-runtime',
-  label: 'Remotion video renderer',
+const voiceSampleStatus = (overrides = {}) => ({
+  id: 'gemini-voice-samples',
+  label: 'Gemini voice previews',
   deliveryAvailable: true,
   installed: false,
   updateAvailable: false,
   state: 'missing',
   version: null,
-  availableVersion: '4.0.507',
+  availableVersion: '2026.08.11',
   installedBytes: 0,
-  downloadBytes: 265_442_457,
-  availableInstalledBytes: 624_910_330,
-  operation: null,
+  downloadBytes: 13_520_118,
+  availableInstalledBytes: 16_384_680,
   ...overrides,
 });
 
@@ -106,19 +94,7 @@ const deferred = () => {
 afterEach(() => vi.clearAllMocks());
 
 beforeEach(() => {
-  getVoiceSamplesStatus.mockResolvedValue({
-    id: 'gemini-voice-samples',
-    label: 'Gemini voice previews',
-    deliveryAvailable: true,
-    installed: false,
-    updateAvailable: false,
-    state: 'missing',
-    version: null,
-    availableVersion: '2026.08.11',
-    installedBytes: 0,
-    downloadBytes: 13_520_118,
-    availableInstalledBytes: 16_384_680,
-  });
+  getVoiceSamplesStatus.mockResolvedValue(voiceSampleStatus());
 });
 
 it('shows source, license, version, and a confirmed native removal action', async () => {
@@ -175,23 +151,23 @@ it('trusts verified terminal status after a late channel protocol error', async 
   expect(onChanged).toHaveBeenCalled();
 });
 
-it('checks renderer status after a late renderer progress protocol error', async () => {
+it('checks pool-package status after a late progress protocol error', async () => {
   let handlers;
-  installRenderPackage.mockImplementation(async (suppliedHandlers) => {
+  installVoiceSamples.mockImplementation(async (suppliedHandlers) => {
     handlers = suppliedHandlers;
     return { id: 'job' };
   });
-  getRenderPackageStatus.mockResolvedValue(renderStatus({
+  getVoiceSamplesStatus.mockResolvedValue(voiceSampleStatus({
     installed: true,
     state: 'installed',
-    version: '4.0.507',
-    installedBytes: 624_910_330,
+    version: '2026.08.11',
+    installedBytes: 16_384_680,
   }));
   const onChanged = vi.fn();
   render(
     <NativeToolRow
-      catalog={{ id: 'remotion-runtime' }}
-      status={renderStatus()}
+      catalog={{ id: 'gemini-voice-samples' }}
+      status={voiceSampleStatus({ pendingRemoval: false, restartRequired: false, operation: null })}
       onChanged={onChanged}
     />
   );
@@ -199,7 +175,7 @@ it('checks renderer status after a late renderer progress protocol error', async
   fireEvent.click(screen.getByRole('button', { name: 'Download' }));
   await handlers.onProtocolError();
 
-  expect(getRenderPackageStatus).toHaveBeenCalledOnce();
+  expect(getVoiceSamplesStatus).toHaveBeenCalledOnce();
   expect(getNativeToolsStatus).not.toHaveBeenCalled();
   expect(screen.queryByText('The desktop host returned invalid tool progress.'))
     .not.toBeInTheDocument();
@@ -244,23 +220,22 @@ it('surfaces a native schema or IPC failure with a compact retry action', async 
   await waitFor(() => expect(getNativeToolsStatus).toHaveBeenCalledTimes(2));
 });
 
-it('exposes the downloadable renderer beside the native tools', async () => {
+// The renderer used to be a fourth card here, installed from the bundle pool. It is gone: the
+// native export needs no downloadable payload, so the pool now carries voice previews alone.
+it('exposes only the voice previews beside the native tools', async () => {
   getNativeToolsCatalog.mockResolvedValue({ schemaVersion: 1, tools: [catalog] });
   getNativeToolsStatus.mockResolvedValue({ schemaVersion: 1, tools: [status()] });
-  getRenderPackageStatus.mockResolvedValue(renderStatus());
   render(<NativeToolsList />);
-  expect(await screen.findByText('Remotion video renderer')).toBeInTheDocument();
-  expect(screen.getByText(/Video renderer · Reviewed bundle pool/)).toBeInTheDocument();
-  expect(screen.getAllByRole('button', { name: 'Download' })).toHaveLength(2);
-  expect(screen.getByText('Gemini voice previews')).toBeInTheDocument();
+  expect(await screen.findByText('Gemini voice previews')).toBeInTheDocument();
   expect(screen.getByText(/Voice previews · Reviewed bundle pool · Provider terms/))
     .toBeInTheDocument();
+  expect(screen.getAllByRole('button', { name: 'Download' })).toHaveLength(1);
+  expect(screen.queryByText(/Video renderer/)).not.toBeInTheDocument();
 });
 
 it('ignores a stale refresh that resolves after a newer native-tool snapshot', async () => {
   const firstCatalog = deferred();
   const firstStatus = deferred();
-  const firstRender = deferred();
   const firstVoice = deferred();
   const missingTool = status({
     installed: false,
@@ -275,24 +250,9 @@ it('ignores a stale refresh that resolves after a newer native-tool snapshot', a
   getNativeToolsStatus
     .mockReturnValueOnce(firstStatus.promise)
     .mockResolvedValue({ schemaVersion: 1, tools: [missingTool] });
-  getRenderPackageStatus
-    .mockReturnValueOnce(firstRender.promise)
-    .mockResolvedValue(renderStatus());
   getVoiceSamplesStatus
     .mockReturnValueOnce(firstVoice.promise)
-    .mockResolvedValue({
-      id: 'gemini-voice-samples',
-      label: 'Gemini voice previews',
-      deliveryAvailable: true,
-      installed: false,
-      updateAvailable: false,
-      state: 'missing',
-      version: null,
-      availableVersion: '2026.08.11',
-      installedBytes: 0,
-      downloadBytes: 13_520_118,
-      availableInstalledBytes: 16_384_680,
-    });
+    .mockResolvedValue(voiceSampleStatus());
 
   const { container } = render(<NativeToolsList />);
   await waitFor(() => expect(getNativeToolsStatus).toHaveBeenCalledTimes(1));
@@ -308,23 +268,13 @@ it('ignores a stale refresh that resolves after a newer native-tool snapshot', a
   await act(async () => {
     firstCatalog.resolve({ schemaVersion: 1, tools: [catalog] });
     firstStatus.resolve({ schemaVersion: 1, tools: [status()] });
-    firstRender.resolve(renderStatus({ installed: true, state: 'installed' }));
-    firstVoice.resolve({
-      id: 'gemini-voice-samples',
-      label: 'Gemini voice previews',
-      deliveryAvailable: true,
+    firstVoice.resolve(voiceSampleStatus({
       installed: true,
-      updateAvailable: false,
       state: 'installed',
       version: '2026.08.11',
-      availableVersion: '2026.08.11',
       installedBytes: 16_384_680,
-      downloadBytes: 13_520_118,
-      availableInstalledBytes: 16_384_680,
-    });
-    await Promise.all([
-      firstCatalog.promise, firstStatus.promise, firstRender.promise, firstVoice.promise,
-    ]);
+    }));
+    await Promise.all([firstCatalog.promise, firstStatus.promise, firstVoice.promise]);
   });
 
   expect(container.querySelector('[data-native-tool-id="yt-dlp"]'))

@@ -60,44 +60,23 @@ const moduleGraph = (entry) => {
 };
 
 describe('no WebView subtitle compositor is reachable from the editor', () => {
-  const surfaces = [
-    'src/components/previews/VideoPreview.js',
-    'src/components/VideoRenderingSection/PreviewCustomizationRow.js',
-  ];
-
   /**
-   * Every implementation that has ever drawn a subtitle's APPEARANCE in the WebView.
+   * The one WebView subtitle compositor that could come back by accident.
    *
-   * `SubtitleDisplay` is deleted rather than merely unimported, because it was the one that could
-   * come back by accident: it was wired in as the composited frame's fallback, so it drew whenever
-   * the compositor did not, and a preview that silently changes renderer is the exact disagreement
-   * with the export this migration removes. The two Remotion modules are still in the tree and only
-   * unreachable, which is why both facts are checked separately below.
+   * Asserted as absence rather than as unreachability: a reachability check against a path that no
+   * longer resolves passes for the wrong reason, and reads as coverage the next person trusts.
+   * `SubtitleDisplay` earns its own guard because it was wired in as the composited frame's
+   * fallback, so it drew whenever the compositor did not, and a preview that silently changes
+   * renderer is the exact disagreement with the export this migration removes.
+   *
+   * The browser renderer's own modules and npm packages used to be listed here too. They are not
+   * any more, and this is not a gap: `assertNoLegacyRendererResidue` in
+   * `scripts/check-release-readiness.js` refuses the token anywhere in `src/`, `crates/`, `apps/`,
+   * `scripts/` or either manifest, which covers a package name, an import, a filename and a
+   * comment alike. Restating the weaker half here would mean spelling the token in `src/` — the one
+   * place that gate exists to keep clean.
    */
-  const WEBVIEW_SUBTITLE_COMPOSITORS = [
-    '/components/RemotionVideoPreview.js',
-    '/components/SubtitledVideoComposition.js',
-    '/components/previews/SubtitleDisplay.js',
-  ];
-
-  it.each(surfaces)('%s reaches no module that draws a subtitle itself', (entry) => {
-    const { files } = moduleGraph(entry);
-    for (const compositor of WEBVIEW_SUBTITLE_COMPOSITORS) {
-      expect(files.some((file) => file.endsWith(compositor))).toBe(false);
-    }
-  });
-
-  it.each(surfaces)('%s pulls in no Remotion package', (entry) => {
-    const { packages } = moduleGraph(entry);
-    expect([...packages].filter((name) => name === 'remotion' || name.startsWith('@remotion/'))).toEqual([]);
-  });
-
-  it('leaves both Remotion modules in the tree, because their removal is gated on the parity run', () => {
-    expect(existsSync(resolve(ROOT, 'src/components/RemotionVideoPreview.js'))).toBe(true);
-    expect(existsSync(resolve(ROOT, 'src/components/SubtitledVideoComposition.js'))).toBe(true);
-  });
-
-  it('has no CSS-overlay module left to import', () => {
+  it('SubtitleDisplay is gone from the tree, not merely unimported', () => {
     expect(existsSync(resolve(ROOT, 'src/components/previews/SubtitleDisplay.js'))).toBe(false);
   });
 

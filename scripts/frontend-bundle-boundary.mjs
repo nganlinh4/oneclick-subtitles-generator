@@ -132,11 +132,6 @@ export const createFrontendCodeSplitting = () => ({
       priority: 40,
     },
     {
-      name: 'remotion',
-      test: /node_modules[\\/](?:@remotion|remotion)[\\/]/,
-      priority: 30,
-    },
-    {
       name: 'vendor',
       test: /node_modules[\\/]/,
       priority: 20,
@@ -166,7 +161,7 @@ export const auditFrontendBundle = (bundle) => {
     pending.push(...chunk.imports);
   }
 
-  const requiredGroups = ['react', 'remotion', 'vendor'];
+  const requiredGroups = ['react', 'vendor'];
   for (const name of requiredGroups) {
     const chunk = chunks.find((candidate) => candidate.name === name);
     if (!chunk) fail(`required ${name} chunk is missing`);

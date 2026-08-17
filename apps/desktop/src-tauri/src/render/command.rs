@@ -20,7 +20,7 @@ use std::sync::Arc;
 use std::time::Instant;
 
 use osg_domain::{JobId, JobKind, JobSnapshot};
-use osg_render::{REMOTION_VERSION, RenderRequest};
+use osg_render::RenderRequest;
 use tauri::{State, ipc::Channel};
 use uuid::Uuid;
 
@@ -56,9 +56,6 @@ const NATIVE_EXPORT_SUPPORTED: bool = cfg!(windows);
 pub(crate) fn render_runtime_status() -> RenderRuntimeStatusResponse {
     RenderRuntimeStatusResponse {
         available: NATIVE_EXPORT_SUPPORTED,
-        // Vestigial: the `WebView` still compares this against its own constant. Nothing this
-        // command reports is about Remotion any more.
-        remotion_version: REMOTION_VERSION,
         reason: (!NATIVE_EXPORT_SUPPORTED).then_some("runtimePayloadUnavailable"),
         max_concurrent_renders: MAX_CONCURRENT_RENDERS,
     }

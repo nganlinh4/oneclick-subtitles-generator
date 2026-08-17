@@ -2,13 +2,11 @@
 //!
 //! # What changed, and what deliberately did not
 //!
-//! The engine under `render_start` is now [`osg_export`], the crate that decodes the source through
-//! the operating system's own codecs, composites each frame with `osg-compositor` — the same
-//! compositor the preview draws with, from the same staged glyph atlas — and encodes and muxes
-//! through Media Foundation. Nothing this command does at run time reaches the managed Remotion
-//! worker, its runtime manifest, its staging or its readiness checks. That code is still in the
-//! tree, still driven by the settings surface in `crate::render_packages`, and deleting it is a
-//! separate step that is much smaller now that nothing depends on it running.
+//! The engine under `render_start` is [`osg_export`], the crate that decodes the source through the
+//! operating system's own codecs, composites each frame with `osg-compositor` — the same compositor
+//! the preview draws with, from the same staged glyph atlas — and encodes and muxes through Media
+//! Foundation. There is no managed worker payload, no runtime manifest and no install-time
+//! readiness state left behind it.
 //!
 //! The command contract did not change. `render_start` takes the same `RenderRequest` and emits the
 //! same `RenderEvent` shapes, because `src/platform/renderService.js` validates every one of them
@@ -38,8 +36,7 @@
 //! * [`manifest`] — the durable record, re-checked against the artifact store on every read.
 //! * [`events`] — the shapes the `WebView` has frozen.
 //! * [`refusal`] — why an export refused, in a vocabulary that carries nothing private.
-//! * [`host`] — the concurrency bound, the staging root, the playback registry, and the managed
-//!   payload machinery that is no longer on this path.
+//! * [`host`] — the concurrency bound, the staging root and the playback registry.
 
 mod command;
 mod events;

@@ -27,7 +27,6 @@ use crate::path_security::{
 };
 use crate::progress::{OperationPhase, OperationProgress, ProgressSink};
 use crate::receipt;
-use crate::render_catalog::{RenderDeliveryCatalog, RenderPackageId, render_catalog};
 use crate::speech_catalog::{SpeechDeliveryCatalog, SpeechPackageId, speech_catalog};
 use crate::ui_font_catalog::{
     UI_FONT_SUBSETS, UiFontDeliveryCatalog, UiFontPackageId, ui_font_catalog,
@@ -48,11 +47,6 @@ pub trait SpeechRuntimeCoordinator: Send + Sync {
     fn quiesce(&self, backend: SpeechPackageId) -> Result<()>;
 }
 
-/// Desktop integration must stop and reap the managed renderer before mutation.
-pub trait RenderRuntimeCoordinator: Send + Sync {
-    fn quiesce(&self, package: RenderPackageId) -> Result<()>;
-}
-
 #[derive(Clone, Debug, Eq, PartialEq, Serialize)]
 #[serde(rename_all = "kebab-case")]
 pub enum PackageState {
@@ -65,7 +59,6 @@ pub enum PackageState {
 
 pub type EnginePackageState = PackageState;
 pub type SpeechPackageState = PackageState;
-pub type RenderPackageState = PackageState;
 pub type AssetPackageState = PackageState;
 pub type UiFontPackageState = PackageState;
 
@@ -87,7 +80,6 @@ pub struct PackageStatus<K> {
 
 pub type EnginePackageStatus = PackageStatus<EngineId>;
 pub type SpeechPackageStatus = PackageStatus<SpeechPackageId>;
-pub type RenderPackageStatus = PackageStatus<RenderPackageId>;
 pub type AssetPackageStatus = PackageStatus<AssetPackageId>;
 pub type UiFontPackageStatus = PackageStatus<UiFontPackageId>;
 
@@ -103,9 +95,6 @@ pub struct EnginePackageManager(ManagedPackageManager<EngineId>);
 
 #[derive(Clone)]
 pub struct SpeechPackageManager(ManagedPackageManager<SpeechPackageId>);
-
-#[derive(Clone)]
-pub struct RenderPackageManager(ManagedPackageManager<RenderPackageId>);
 
 #[derive(Clone)]
 pub struct AssetPackageManager(ManagedPackageManager<AssetPackageId>);
@@ -173,15 +162,6 @@ impl fmt::Debug for SpeechPackageManager {
     fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
         formatter
             .debug_struct("SpeechPackageManager")
-            .field("inner", &self.0)
-            .finish_non_exhaustive()
-    }
-}
-
-impl fmt::Debug for RenderPackageManager {
-    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
-        formatter
-            .debug_struct("RenderPackageManager")
             .field("inner", &self.0)
             .finish_non_exhaustive()
     }
@@ -264,27 +244,6 @@ impl ManagedPackageKey for SpeechPackageId {
 
     fn operation_in_progress(self) -> PackageError {
         PackageError::SpeechOperationInProgress(self)
-    }
-}
-
-impl ManagedPackageKey for RenderPackageId {
-    fn as_str(self) -> &'static str {
-        self.as_str()
-    }
-
-    fn label(self) -> &'static str {
-        render_catalog()
-            .iter()
-            .find(|info| info.id == self)
-            .map_or("Unknown render runtime", |info| info.label)
-    }
-
-    fn requires_aligner(self) -> bool {
-        false
-    }
-
-    fn operation_in_progress(self) -> PackageError {
-        PackageError::RenderOperationInProgress(self)
     }
 }
 
@@ -439,52 +398,6 @@ impl SpeechPackageManager {
         cancellation: &CancellationToken,
     ) -> Result<InstalledSpeechRuntime> {
         self.0.resolve_for_launch(backend, cancellation)
-    }
-}
-
-impl RenderPackageManager {
-    pub fn new(
-        root: impl AsRef<Path>,
-        coordinator: Arc<dyn RenderRuntimeCoordinator>,
-    ) -> Result<Self> {
-        let catalog = RenderDeliveryCatalog::builtin()?;
-        let quiesce = Arc::new(move |package| coordinator.quiesce(package));
-        Ok(Self(ManagedPackageManager::new(
-            root.as_ref(),
-            catalog,
-            quiesce,
-        )?))
-    }
-
-    #[must_use]
-    pub fn status(&self) -> RenderPackageStatus {
-        self.0.status(RenderPackageId::RemotionRuntime)
-    }
-
-    pub fn install(
-        &self,
-        cancellation: &CancellationToken,
-        progress: &dyn ProgressSink,
-    ) -> Result<RenderPackageStatus> {
-        self.0
-            .install(RenderPackageId::RemotionRuntime, cancellation, progress)
-    }
-
-    pub fn remove(
-        &self,
-        cancellation: &CancellationToken,
-        progress: &dyn ProgressSink,
-    ) -> Result<RemovalOutcome> {
-        self.0
-            .remove(RenderPackageId::RemotionRuntime, cancellation, progress)
-    }
-
-    pub fn resolve_for_launch(
-        &self,
-        cancellation: &CancellationToken,
-    ) -> Result<InstalledRenderRuntime> {
-        self.0
-            .resolve_for_launch(RenderPackageId::RemotionRuntime, cancellation)
     }
 }
 
@@ -1673,7 +1586,6 @@ pub struct InstalledPackageRuntime<K: Eq + Hash + 'static> {
 
 pub type InstalledRuntime = InstalledPackageRuntime<EngineId>;
 pub type InstalledSpeechRuntime = InstalledPackageRuntime<SpeechPackageId>;
-pub type InstalledRenderRuntime = InstalledPackageRuntime<RenderPackageId>;
 pub type InstalledAssetRuntime = InstalledPackageRuntime<AssetPackageId>;
 pub type InstalledUiFontRuntime = InstalledPackageRuntime<UiFontPackageId>;
 
@@ -1741,23 +1653,6 @@ impl InstalledPackageRuntime<SpeechPackageId> {
     #[must_use]
     pub fn model(&self) -> Option<&Path> {
         self.model.as_deref()
-    }
-}
-
-impl InstalledPackageRuntime<RenderPackageId> {
-    #[must_use]
-    pub fn version(&self) -> &str {
-        &self.version
-    }
-
-    #[must_use]
-    pub fn package_root(&self) -> &Path {
-        &self.root
-    }
-
-    #[must_use]
-    pub fn node(&self) -> &Path {
-        &self.python
     }
 }
 
@@ -2038,13 +1933,6 @@ mod tests {
 
     impl SpeechRuntimeCoordinator for TestCoordinator {
         fn quiesce(&self, _: SpeechPackageId) -> Result<()> {
-            self.calls.fetch_add(1, Ordering::Relaxed);
-            Ok(())
-        }
-    }
-
-    impl RenderRuntimeCoordinator for TestCoordinator {
-        fn quiesce(&self, _: RenderPackageId) -> Result<()> {
             self.calls.fetch_add(1, Ordering::Relaxed);
             Ok(())
         }
@@ -2881,55 +2769,6 @@ mod tests {
             }
         }
         assert_eq!(coordinator.calls.load(Ordering::Relaxed), 0);
-    }
-
-    #[test]
-    fn builtin_render_catalog_exposes_the_windows_download() {
-        let temp = tempfile::tempdir().unwrap();
-        let coordinator = Arc::new(TestCoordinator::default());
-        let manager = RenderPackageManager::new(temp.path(), coordinator.clone()).unwrap();
-        let status = manager.status();
-        if crate::catalog::current_platform() == "windows-x86_64" {
-            assert_eq!(status.state, RenderPackageState::Missing);
-            assert!(status.delivery_available);
-        } else {
-            assert_eq!(status.state, RenderPackageState::Unavailable);
-            assert!(!status.delivery_available);
-        }
-        assert_eq!(coordinator.calls.load(Ordering::Relaxed), 0);
-    }
-
-    #[test]
-    #[ignore = "downloads and verifies the published Windows Remotion runtime"]
-    fn published_remotion_runtime_installs_launches_and_removes_over_https() {
-        if crate::catalog::current_platform() != "windows-x86_64" {
-            return;
-        }
-        let temp = tempfile::tempdir().unwrap();
-        let coordinator = Arc::new(TestCoordinator::default());
-        let manager = RenderPackageManager::new(temp.path(), coordinator).unwrap();
-        let progress = RecordedProgress::default();
-        let installed = manager
-            .install(&CancellationToken::default(), &progress)
-            .unwrap();
-        assert_eq!(installed.state, RenderPackageState::Installed);
-        let runtime = manager
-            .resolve_for_launch(&CancellationToken::default())
-            .unwrap();
-        assert!(runtime.node().is_file());
-        assert!(
-            runtime
-                .package_root()
-                .join("runtime/remotion-runtime.json")
-                .is_file()
-        );
-        drop(runtime);
-        assert_eq!(
-            manager
-                .remove(&CancellationToken::default(), &progress)
-                .unwrap(),
-            RemovalOutcome::Removed
-        );
     }
 
     #[test]

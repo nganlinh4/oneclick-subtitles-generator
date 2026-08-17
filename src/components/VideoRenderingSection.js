@@ -67,7 +67,7 @@ const VideoRenderingSection = ({
   const [abortController, setAbortController] = useState(null);
   const abortControllerRef = useRef(null);
 
-  // Ref for the Remotion video player
+  // Ref for the native render preview's player surface
   const videoPlayerRef = useRef(null);
 
   // *** FIX START ***
@@ -247,7 +247,7 @@ const VideoRenderingSection = ({
       if (!runtime.available) {
         const error = new Error(t(
           'videoRendering.rendererNotInstalled',
-          'Install the Remotion video renderer in Settings before rendering.',
+          'The video renderer is not ready. Install the native tools in Settings before rendering.',
         ));
         error.code = 'renderRuntimeUnavailable';
         throw error;
@@ -270,7 +270,7 @@ const VideoRenderingSection = ({
       const message = error?.code === 'renderRuntimeUnavailable'
         ? t(
           'videoRendering.rendererNotInstalled',
-          'Install the Remotion video renderer in Settings before rendering.',
+          'The video renderer is not ready. Install the native tools in Settings before rendering.',
         )
         : error?.message || t(
           'videoRendering.invalidRenderConfiguration',

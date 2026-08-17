@@ -144,9 +144,8 @@ feature-matrix checkbox or approve the release.
 
 ### Rendering, images, and music
 
-- [ ] Remotion runtime installs on demand and renders the frozen composition with local fonts,
-  source media, subtitles, narration, progress, cancellation, recovery, preview, and explicit
-  export.
+- [ ] The native export renders the frozen composition with local fonts, source media, subtitles,
+  narration, progress, cancellation, recovery, preview, and explicit export.
 - [ ] Background image generation accepts supported inputs, stores opaque assets, and exports them.
 - [ ] PromptDJ/Lyria starts, updates prompts, streams PCM, stops, closes, and recovers cleanly from
   provider failure.

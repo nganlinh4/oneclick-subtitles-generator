@@ -1,6 +1,6 @@
-import { defaultSubtitleCustomization } from '../../../video-renderer/src/subtitleCustomizationDefaults';
+import { defaultSubtitleCustomization } from '../../shared/subtitle/subtitleCustomizationDefaults';
 
-// This leaf imports only the renderer's pure frozen value, so preset modules can
+// This leaf imports only the shared pure frozen value, so preset modules can
 // still spread it safely while preview and final rendering share one authority.
 export const defaultCustomization = defaultSubtitleCustomization;
 

@@ -97,9 +97,6 @@ jobs:
       - name: Test native Python worker contracts
         run: npm run test:python-workers
 
-      - name: Test the native Remotion worker contract
-        run: npm run test:render-worker
-
       - name: Check the approved frontend visual baseline
         run: npm run check:visual-freeze
 
@@ -114,7 +111,7 @@ jobs:
           npm run verify:managed-delivery
 
       - name: Test release-readiness and artifact gates
-        run: node --test scripts/check-release-readiness.test.js scripts/check-release-artifacts.test.js scripts/check-desktop-payload-size.test.mjs scripts/check-production-transport.test.js scripts/check-tauri-command-contract.test.js scripts/frontend-bundle-boundary.test.mjs scripts/inspect-installed-webview.test.mjs scripts/inspect-installed-media-flow.test.mjs scripts/inspect-installed-local-media-flow.test.mjs scripts/inspect-installed-native-tools.test.mjs scripts/inspect-installed-media-pipeline.test.mjs scripts/inspect-installed-editor-flow.test.mjs scripts/inspect-installed-updater.test.mjs scripts/serve-updater-fixture.test.mjs scripts/remotion-desktop-boundary.test.mjs
+        run: node --test scripts/check-release-readiness.test.js scripts/check-release-artifacts.test.js scripts/check-desktop-payload-size.test.mjs scripts/check-production-transport.test.js scripts/check-tauri-command-contract.test.js scripts/frontend-bundle-boundary.test.mjs scripts/inspect-installed-webview.test.mjs scripts/inspect-installed-media-flow.test.mjs scripts/inspect-installed-local-media-flow.test.mjs scripts/inspect-installed-native-tools.test.mjs scripts/inspect-installed-media-pipeline.test.mjs scripts/inspect-installed-editor-flow.test.mjs scripts/inspect-installed-updater.test.mjs scripts/serve-updater-fixture.test.mjs
 
       - name: Test frozen CSS compatibility gates
         run: node --test scripts/frozen-css-compatibility.test.mjs scripts/check-frozen-css-output.test.mjs

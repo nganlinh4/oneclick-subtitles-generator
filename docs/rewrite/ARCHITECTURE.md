@@ -19,7 +19,7 @@ with trust boundaries in [../../SECURITY.md](../../SECURITY.md).
   release until its target-specific tools, models, notices, updater key, packaging, and runtime
   smoke tests all pass.
 
-Windows x64 now has reviewed on-demand ASR, speech, Remotion, FFmpeg/ffprobe, yt-dlp, and Deno
+Windows x64 now has reviewed on-demand ASR, speech, FFmpeg/ffprobe, yt-dlp, and Deno
 deliveries; none are bundled. External immutable sources are preferred and content-addressed
 bundle-pool assets are used only where an official complete artifact is unavailable. The updater
 public key, root MIT license, and third-party notices are present. macOS/Linux still require

@@ -77,13 +77,13 @@ const NATIVE_PROVIDER_IMAGE_SOURCES = new Set([
 const LEGACY_SELECTED_VIDEO_IMAGE = 'src={`https://img.youtube.com/vi/${selectedVideo.id}/0.jpg`}';
 const NATIVE_SELECTED_VIDEO_IMAGE = 'src={selectedVideo.thumbnail}';
 const SECURITY_COPY_RENDER_CORRECTIONS = Object.freeze({
-  'src/components/engines/NativeToolsList.js': Object.freeze([
-    Object.freeze([
-      "              catalog.id === 'remotion-runtime'\n                ? cancelRenderPackageJob(operation.job.id)",
-      "              catalog.id === 'gemini-voice-samples'\n                ? cancelVoiceSamples()\n                : catalog.id === 'remotion-runtime'\n                ? cancelRenderPackageJob(operation.job.id)",
-      1,
-    ]),
-  ]),
+  // NativeToolsList.js once needed a correction here, canonicalising the baseline's single
+  // renderer-package cancel branch into the two-package form. Both forms are gone: the renderer
+  // is no longer a downloadable package at all, so the row cancels voice previews or a native
+  // tool and neither the baseline snippet nor its correction can appear again. A canonicalisation
+  // that can never match fails on every run and teaches a reader to ignore the result, so it is
+  // removed rather than left behind. The branch itself stays asserted, in
+  // `src/components/engines/NativeToolsList.test.js`.
   'src/components/engines/EngineCard.js': Object.freeze([
     Object.freeze([
       '  kind,\n  status,',
@@ -259,26 +259,16 @@ function assertVisualRuntimePins() {
   const lock = JSON.parse(
     fs.readFileSync(path.join(REPOSITORY_ROOT, 'package-lock.json'), 'utf8'),
   );
-  const renderer = lock.packages?.['video-renderer'];
   const exactPins = [
     [packageManifest.dependencies?.['@material/web'], '2.4.1', 'material-manifest'],
     [lock.packages?.['node_modules/@material/web']?.version, '2.4.1', 'material-lock'],
     [lock.packages?.['node_modules/lit']?.version, '3.3.2', 'lit-lock'],
     [lock.packages?.['node_modules/react']?.version, '18.3.1', 'react-lock'],
     [lock.packages?.['node_modules/react-dom']?.version, '18.3.1', 'react-dom-lock'],
-    [renderer?.dependencies?.react, '18.3.1', 'renderer-react'],
-    [renderer?.dependencies?.['react-dom'], '18.3.1', 'renderer-react-dom'],
-    [renderer?.dependencies?.['styled-components'], '6.5.1', 'renderer-styled-components'],
   ];
   const changed = exactPins.find(([actual, expected]) => actual !== expected);
   if (changed) {
     throw new Error(`visual runtime dependency changed: ${changed[2]}`);
-  }
-  if (
-    lock.packages?.['video-renderer/node_modules/react'] ||
-    lock.packages?.['video-renderer/node_modules/react-dom']
-  ) {
-    throw new Error('visual runtime contains a duplicate renderer React installation');
   }
 }
 

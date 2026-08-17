@@ -159,7 +159,6 @@ fn validate(raw: RawManifest, delivery: &PackageDelivery) -> Result<ValidatedMan
 mod tests {
     use super::*;
     use crate::catalog::{DeliveryCatalog, EngineId};
-    use crate::render_catalog::{RenderDeliveryCatalog, RenderPackageId};
     use crate::speech_catalog::{SpeechDeliveryCatalog, SpeechPackageId};
 
     #[test]
@@ -176,28 +175,6 @@ mod tests {
         for component in SpeechPackageId::ALL {
             validate_release_file(&root, speech.current(&component).unwrap());
         }
-        let render = RenderDeliveryCatalog::builtin().unwrap();
-        if let Some(delivery) = render.current(&RenderPackageId::RemotionRuntime) {
-            validate_release_file(&root, delivery);
-        }
-    }
-
-    #[test]
-    #[ignore = "release-authoring gate; set OSG_REMOTION_MANIFEST"]
-    fn generated_remotion_manifest_matches_the_embedded_catalog() {
-        let path = std::env::var_os("OSG_REMOTION_MANIFEST")
-            .map(std::path::PathBuf::from)
-            .expect("OSG_REMOTION_MANIFEST is required");
-        let render = RenderDeliveryCatalog::builtin().unwrap();
-        let delivery = render
-            .current(&RenderPackageId::RemotionRuntime)
-            .expect("current render delivery");
-        assert_eq!(
-            fs::metadata(&path).unwrap().len(),
-            delivery.manifest.as_ref().unwrap().size_bytes
-        );
-        let parsed = read(&path, delivery).expect("valid render delivery manifest");
-        assert!(!parsed.files.is_empty());
     }
 
     fn validate_release_file(root: &Path, delivery: &PackageDelivery) {

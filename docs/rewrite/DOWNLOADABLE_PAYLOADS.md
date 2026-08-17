@@ -36,7 +36,6 @@ hash mismatch never becomes an implicit update.
 | ASR engines | Split future packages into a shared per-platform runtime bundle plus direct, revision-pinned model files where publishers provide them | Package lease retained by worker | Worker bootstrap only |
 | Local speech engines | Independently removable F5-TTS and Chatterbox packages; direct pinned model files where licensing permits and a checked GPU dependency closure | Package lease retained by worker | Worker bootstrap only |
 | Network speech providers | Separate minimal Edge TTS, gTTS, and Gemini Python runtimes assembled from official CPython and hash-locked PyPI wheels; only the deterministic composite ZIP uses the OSG pool | Package lease retained by worker | Worker bootstrap only |
-| Remotion renderer | Direct official Node and Chrome-for-Testing components, exact npm renderer/binary closure, offline font pack, and an OSG composition bundle | Managed render-runtime lease | Worker bootstrap only |
 | Gemini voice samples | One platform-neutral, content-addressed OSG pool archive containing the exact 30 reviewed WAVs | Installed automatically on first preview; resolved through a tokenized native media capability; immediately removable | Catalog metadata only |
 | Google Sans Flex | Current official Google Fonts webfont in a dedicated managed UI-font package; Google/SIL sources first and the OSG pool only as a byte-identical reviewed fallback | Automatic during desktop bootstrap with bounded system-font fallback | The retired 4.6 MiB TTF is absent; the three WOFF2 subsets total 459 KiB on demand |
 
@@ -55,9 +54,6 @@ system/Noto fallback because Google Sans Flex contains no Korean glyph set.
   checked lock, generate a complete file inventory and notices, then publish a content-addressed OSG
   bundle. Models remain separate so two engines can share the runtime and updates do not redownload
   unchanged weights.
-- Remotion is three layers: official Node, official Chrome for Testing, and the exact OSG
-  renderer/composition/font closure. Each layer gets an independent receipt so updating the project
-  bundle does not redownload Chromium.
 - Installation stages outside the active version, verifies the outer artifact and every selected
   installed file, publishes atomically, and records a receipt. Removal is deferred while a lease is
   live. Cancellation never exposes a partial active version.

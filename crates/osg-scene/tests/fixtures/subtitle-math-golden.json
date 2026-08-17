@@ -1,8 +1,8 @@
 {
   "schemaVersion": 1,
   "generatedFrom": {
-    "easing": "video-renderer/src/subtitleAnimationEasing.ts",
-    "visualMath": "video-renderer/src/subtitleVisualMath.ts"
+    "easing": "src/shared/subtitle/subtitleAnimationEasing.ts",
+    "visualMath": "src/shared/subtitle/subtitleVisualMath.ts"
   },
   "note": "Generated from the shipped implementation. Do not hand-edit to make a test pass.",
   "easings": [

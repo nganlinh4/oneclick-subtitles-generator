@@ -9,7 +9,7 @@
 //! below has to exist or enabling a gradient would render nothing at all.
 //!
 //! **What "reproduce" means here.** The shipped renderer is
-//! `video-renderer/src/components/SubtitledVideo.tsx`, which builds five CSS declarations:
+//! the shipped JavaScript renderer's `SubtitledVideo.tsx`, which built five CSS declarations:
 //!
 //! ```text
 //! textShadow  = `${x}px ${y}px ${blur}px ${textShadowColor}`      when textShadowEnabled

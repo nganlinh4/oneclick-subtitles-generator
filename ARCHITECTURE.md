@@ -52,7 +52,7 @@ three-minute deadline. It is not a persistent application service. See
 | `crates/osg-gemini/`, `crates/osg-live-music/`, `crates/osg-providers/` | Bounded native provider clients. |
 | `crates/osg-media/`, `crates/osg-media-pipeline/`, `crates/osg-media-server/` | Typed FFmpeg/ffprobe plans, media transformations, and scoped playback transport. |
 | `crates/osg-download/` | URL validation and managed yt-dlp downloads. |
-| `crates/osg-render/`, `video-renderer/` | Durable render orchestration and the frozen Remotion composition/worker. |
+| `crates/osg-render/`, `crates/osg-export/` | The validated render contract and the native export pipeline. |
 | `crates/osg-asr/`, `crates/osg-speech/` | Typed local inference contracts and supervised worker protocols. |
 | `crates/osg-engine-packages/`, `crates/osg-native-tools/` | Reviewed, content-addressed optional runtime delivery. |
 | `promptdj-midi/` | Bundled PromptDJ/Lyria control surface, built into the desktop frontend. |
@@ -88,7 +88,7 @@ The Tauri command surface currently covers:
 - Gemini transcription, translation, subtitle analysis, and image generation;
 - Lyria RealTime music sessions, Genius lyrics, YouTube metadata, and YouTube OAuth;
 - media probing, compatibility transforms, audio extraction, waveform generation, and downloads;
-- durable Remotion render jobs and playback handles;
+- durable native video-export jobs and playback handles;
 - local ASR, narration, reference-audio, audio-edit, voice-conversion, and alignment contracts;
 - managed native-tool and engine/package lifecycles, plus the signing-key-gated update-metadata
   check.
@@ -113,7 +113,6 @@ status/removal checks.
 At the current rewrite checkpoint:
 
 - Windows x64 publishes verified on-demand ASR and speech/TTS packages; other target catalogs are empty.
-- Windows x64 publishes a fully inventoried on-demand Remotion runtime; it is not embedded.
 - Windows x64 downloads the exact reviewed FFmpeg/ffprobe `8.1.2` vendor archive on demand. Linux
   and macOS remain withheld pending equivalent reviewed delivery.
 - Reviewed yt-dlp `2026.07.04` and Deno `2.9.5` releases are catalogued for content-addressed,
@@ -156,10 +155,10 @@ the operating-system UI font stack and packages no separate font payload.
 
 ## Visual compatibility
 
-The rewrite deliberately reuses the original JSX, CSS, fonts, assets, locales, workflow order, and
-Remotion composition. Native capability adapters sit behind existing interactions. Repository
-gates compare the frontend, PromptDJ, and render surfaces with baselines derived from the original
-source so an architectural change cannot silently become a redesign.
+The rewrite deliberately reuses the original JSX, CSS, fonts, assets, locales, and workflow order.
+Native capability adapters sit behind existing interactions. Repository gates compare the frontend,
+PromptDJ, and render surfaces with baselines derived from the original source so an architectural
+change cannot silently become a redesign.
 
 See [docs/rewrite/DESIGN.md](docs/rewrite/DESIGN.md) for the visual-freeze policy.
 

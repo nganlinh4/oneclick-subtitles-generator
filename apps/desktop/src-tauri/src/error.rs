@@ -116,13 +116,6 @@ impl CommandError {
         )
     }
 
-    pub(crate) fn render_runtime_unavailable() -> Self {
-        Self::fixed(
-            "renderRuntimeUnavailable",
-            "The verified native Remotion runtime is not installed for this platform.",
-        )
-    }
-
     pub(crate) fn render_busy() -> Self {
         Self::fixed(
             "renderBusy",
@@ -612,46 +605,6 @@ impl From<osg_render::RenderError> for CommandError {
                 "invalidRenderRequest",
                 "The video render request is invalid.",
             ),
-            RenderError::SourceChanged => Self::fixed(
-                "renderSourceChanged",
-                "The source media changed before rendering completed.",
-            ),
-            RenderError::NarrationChanged => Self::fixed(
-                "renderNarrationChanged",
-                "The narration audio changed before rendering completed.",
-            ),
-            RenderError::RuntimeUnavailable => Self::render_runtime_unavailable(),
-            RenderError::StagingUnavailable => Self::fixed(
-                "renderStagingUnavailable",
-                "The native render staging area is unavailable.",
-            ),
-            RenderError::MediaPreparationFailed => Self::fixed(
-                "renderMediaPreparationFailed",
-                "The native media preparation step could not complete.",
-            ),
-            RenderError::InvalidWorkerProtocol => Self::fixed(
-                "renderWorkerProtocol",
-                "The managed render worker returned an invalid response.",
-            ),
-            RenderError::WorkerFailed => Self::fixed(
-                "renderWorkerFailed",
-                "The managed Remotion worker could not complete the render.",
-            ),
-            RenderError::Cancelled => {
-                Self::fixed("renderCancelled", "The video render was cancelled.")
-            }
-            RenderError::TimedOut => Self::fixed(
-                "renderTimeout",
-                "The video render exceeded its safe time limit.",
-            ),
-            RenderError::InvalidOutput => Self::fixed(
-                "renderOutputInvalid",
-                "The managed render worker did not produce a valid MP4 output.",
-            ),
-            RenderError::Io => Self::fixed(
-                "renderIo",
-                "The native video render could not access its managed files.",
-            ),
         }
     }
 }
@@ -740,7 +693,6 @@ impl From<osg_engine_packages::PackageError> for CommandError {
             ),
             PackageError::OperationInProgress(_)
             | PackageError::SpeechOperationInProgress(_)
-            | PackageError::RenderOperationInProgress(_)
             | PackageError::AssetOperationInProgress(_)
             | PackageError::UiFontOperationInProgress(_) => (
                 "packageOperationInProgress",

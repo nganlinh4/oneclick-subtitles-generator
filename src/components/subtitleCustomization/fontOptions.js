@@ -1,7 +1,7 @@
 
 /**
  * Comprehensive font options with multilingual support
- * Based on video-renderer font options with additional fonts
+ * Based on the shipped JavaScript renderer's font options, with additional fonts
  */
 
 export const fontOptions = [

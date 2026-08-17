@@ -10,7 +10,6 @@ export default [
       'node_modules/**',
       'promptdj-midi/**',
       'public/**',
-      'video-renderer/**',
     ],
   },
   js.configs.recommended,

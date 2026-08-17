@@ -341,20 +341,8 @@ fn the_status_is_the_shape_the_webview_freezes() {
 
     let mut keys: Vec<&str> = object.keys().map(String::as_str).collect();
     keys.sort_unstable();
-    assert_eq!(
-        keys,
-        [
-            "available",
-            "maxConcurrentRenders",
-            "reason",
-            "remotionVersion"
-        ],
-    );
+    assert_eq!(keys, ["available", "maxConcurrentRenders", "reason"]);
     assert_eq!(object["maxConcurrentRenders"], json!(1));
-    assert_eq!(
-        object["remotionVersion"],
-        json!(osg_render::REMOTION_VERSION)
-    );
     // `renderService.js` refuses a status that says both, or neither.
     let available = object["available"].as_bool().expect("a flag");
     assert_eq!(available, object["reason"].is_null());

@@ -1,4 +1,4 @@
-use crate::{AssetPackageId, EngineId, RenderPackageId, SpeechPackageId, UiFontPackageId};
+use crate::{AssetPackageId, EngineId, SpeechPackageId, UiFontPackageId};
 
 pub type Result<T> = std::result::Result<T, PackageError>;
 
@@ -13,8 +13,6 @@ pub enum PackageError {
     OperationInProgress(EngineId),
     #[error("another package operation is already active for {0}")]
     SpeechOperationInProgress(SpeechPackageId),
-    #[error("another package operation is already active for {0}")]
-    RenderOperationInProgress(RenderPackageId),
     #[error("another package operation is already active for {0}")]
     AssetOperationInProgress(AssetPackageId),
     #[error("another package operation is already active for {0}")]

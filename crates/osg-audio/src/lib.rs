@@ -18,7 +18,7 @@
 //!   `min={0} max={100} step={1}`, and disables the narration slider when the narration source is
 //!   `none`.
 //! - `src/platform/renderService.js` re-validates both as integers in `0..=100` before a render.
-//! - `video-renderer/src/components/SubtitledVideo.tsx` applies them as a plain linear multiplier —
+//! - the shipped JavaScript renderer applied them as a plain linear multiplier —
 //!   `volume={(metadata.originalAudioVolume ?? 100) / 100}` for the original audio and
 //!   `volume={(metadata.narrationVolume ?? 100) / 100}` for the narration — and renders the
 //!   narration element only when a narration URL exists.

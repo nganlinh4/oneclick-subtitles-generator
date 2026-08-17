@@ -8,12 +8,6 @@ import {
   removeNativeTool,
 } from '../../platform/nativeToolsService';
 import {
-  cancelRenderPackageJob,
-  getRenderPackageStatus,
-  installRenderPackage,
-  removeRenderPackage,
-} from '../../platform/renderPackageService';
-import {
   cancelVoiceSamples,
   getVoiceSamplesStatus,
   installVoiceSamples,
@@ -24,14 +18,7 @@ const TOOL_META = Object.freeze({
   'media-tools': Object.freeze({ kind: 'media', source: 'vendor' }),
   'yt-dlp': Object.freeze({ kind: 'downloader', source: 'official' }),
   deno: Object.freeze({ kind: 'javascript', source: 'official' }),
-  'remotion-runtime': Object.freeze({ kind: 'renderer', source: 'pool' }),
   'gemini-voice-samples': Object.freeze({ kind: 'voicePreviews', source: 'pool' }),
-});
-
-const RENDER_CATALOG = Object.freeze({
-  id: 'remotion-runtime',
-  label: 'Remotion video renderer',
-  license: 'Remotion License + bundled third-party notices',
 });
 
 const VOICE_SAMPLE_CATALOG = Object.freeze({
@@ -74,12 +61,9 @@ export const NativeToolRow = ({ catalog, status, onChanged }) => {
   const run = useCallback((action) => {
     setConfirmRemove(false);
     setError(null);
-    const isRenderer = catalog.id === 'remotion-runtime';
     const isVoiceSamples = catalog.id === 'gemini-voice-samples';
     const command = isVoiceSamples
       ? action === 'remove' ? removeVoiceSamples : installVoiceSamples
-      : isRenderer
-      ? action === 'remove' ? removeRenderPackage : installRenderPackage
       : action === 'remove' ? removeNativeTool : installNativeTool;
     const handlers = {
       onProgress: (event) => setLocalOperation(
@@ -95,10 +79,8 @@ export const NativeToolRow = ({ catalog, status, onChanged }) => {
         try {
           const latest = isVoiceSamples
             ? await getVoiceSamplesStatus()
-            : isRenderer
-              ? await getRenderPackageStatus()
             : await getNativeToolsStatus();
-          const tool = isVoiceSamples || isRenderer
+          const tool = isVoiceSamples
             ? { ...latest, activeRuntime: latest.installed }
             : latest.tools.find(({ id }) => id === catalog.id);
           if (operationReachedExpectedState(tool, action)) {
@@ -112,7 +94,7 @@ export const NativeToolRow = ({ catalog, status, onChanged }) => {
         refresh();
       },
     };
-    const request = isRenderer || isVoiceSamples
+    const request = isVoiceSamples
       ? command(handlers)
       : command(catalog.id, handlers);
     if (isVoiceSamples) request.then(refresh).catch((requestError) => {
@@ -177,8 +159,6 @@ export const NativeToolRow = ({ catalog, status, onChanged }) => {
             onClick={() => (
               catalog.id === 'gemini-voice-samples'
                 ? cancelVoiceSamples()
-                : catalog.id === 'remotion-runtime'
-                ? cancelRenderPackageJob(operation.job.id)
                 : cancelNativeToolJob(operation.job.id)
             ).catch(() => {})}
             title={t('engines.cancel', 'Cancel')}
@@ -253,22 +233,15 @@ const NativeToolsList = () => {
     refreshGeneration.current = generation;
     setLoadState('checking');
     try {
-      const [catalogResponse, statusResponse, renderStatus, voiceStatus] = await Promise.all([
+      const [catalogResponse, statusResponse, voiceStatus] = await Promise.all([
         getNativeToolsCatalog(),
         getNativeToolsStatus(),
-        getRenderPackageStatus(),
         getVoiceSamplesStatus(),
       ]);
       if (generation !== refreshGeneration.current) return;
-      setCatalog([...catalogResponse.tools, RENDER_CATALOG, VOICE_SAMPLE_CATALOG]);
+      setCatalog([...catalogResponse.tools, VOICE_SAMPLE_CATALOG]);
       setStatus(new Map([
         ...statusResponse.tools.map((tool) => [tool.id, tool]),
-        [renderStatus.id, {
-          ...renderStatus,
-          activeRuntime: renderStatus.installed,
-          pendingRemoval: false,
-          restartRequired: false,
-        }],
         [voiceStatus.id, {
           ...voiceStatus,
           activeRuntime: voiceStatus.installed,

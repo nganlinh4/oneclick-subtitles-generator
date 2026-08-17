@@ -121,8 +121,8 @@ catalogs deliberately make the related feature unavailable.
 
 ## Supply chain and release posture
 
-- JavaScript and Rust dependency graphs are locked; Node, npm, Rust, Tauri, and Remotion versions
-  are pinned and checked.
+- JavaScript and Rust dependency graphs are locked; Node, npm, Rust, and Tauri versions are
+  pinned and checked.
 - Managed runtime catalogs require immutable source URLs, exact digests and sizes, inventories,
   and notices. Extraction and installation are content-addressed and fail closed; native-tool
   catalog/status DTOs expose neither executable paths nor upstream URLs.
@@ -130,23 +130,17 @@ catalogs deliberately make the related feature unavailable.
   Git credentials. Manual packaging validation is separately gated from ordinary source
   compilation; the production updater signing key is held as CI secrets and is never committed to
   this repository.
-- The strict runtime-package gate rejects missing tools, empty engine/render catalogs, unmanaged
-  loopback endpoints, missing native capabilities, and an unconfigured updater key.
+- The strict runtime-package gate rejects missing tools, empty engine catalogs, unmanaged loopback
+  endpoints, missing native capabilities, and an unconfigured updater key.
 
 The repository carries the selected root MIT license and the `THIRD_PARTY_NOTICES.md` the release
 gate requires. Notice coverage is nevertheless incomplete, and the following are the real open
 items rather than the license choice itself:
 
-- `THIRD_PARTY_NOTICES.md` names none of Chromium/Chrome for Testing, Node.js, x264, x265,
-  fdk-aac, libvpx, the MinGW runtime DLLs, CUDA/NVIDIA, PyTorch, CPython, or the LGPL (edge-tts)
-  and MPL-2.0 dependencies that the render runtime and the delivery catalogs actually ship.
+- `THIRD_PARTY_NOTICES.md` names none of the CUDA/NVIDIA, PyTorch, CPython, LGPL (edge-tts) or
+  MPL-2.0 dependencies that the delivery catalogs actually ship.
 - The application has no attribution surface; the existing About tab carries no license or notice
   content, and there is no written corresponding-source offer for the re-hosted GPL binaries.
-- The OSG-re-hosted Remotion runtime archive contains `@remotion/compositor-win32-x64-msvc`, which
-  ships its own `ffmpeg.exe` built `--enable-gpl --enable-libx264 --enable-libx265
-  --enable-libfdk-aac`. FFmpeg classes libfdk_aac as nonfree. Because OSG re-hosts that archive on
-  its own GitHub release, this is redistribution and requires an owner decision. This is a recorded
-  finding, not legal advice.
 
 No project-wide license should be inferred from individual dependencies or crate metadata.
 

@@ -14,7 +14,7 @@ const timeLabelStyle = {
 
 /**
  * Trim timeline row: a range slider over the video duration that also seeks the
- * Remotion preview. Pure component — state and the player ref come from props.
+ * preview player. Pure component — state and the player ref come from props.
  */
 const TrimTimelineRow = ({ renderSettings, setRenderSettings, videoDuration, videoPlayerRef }) => {
   const { t } = useTranslation();
@@ -44,7 +44,7 @@ const TrimTimelineRow = ({ renderSettings, setRenderSettings, videoDuration, vid
             const oldStart = renderSettings.trimStart || 0;
             const oldEnd = renderSettings.trimEnd || 0;
 
-            // Seek the Remotion player to the new position
+            // Seek the preview player to the new position
             if (videoPlayerRef.current) {
               const frameRate = renderSettings.frameRate || 30;
               if (start !== oldStart) {

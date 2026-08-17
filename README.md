@@ -166,7 +166,7 @@ and a Rust application core.
 | Media and downloads | Typed probe, compatibility, extraction, waveform, download, and cancellation pipelines. Packaged execution still depends on reviewed target tools. |
 | Local ASR | Windows x64 can install and fully remove verified Parakeet, Faster-Whisper Turbo/Large-v3, and Qwen3-ASR 0.6B/1.7B packages on demand. Linux/macOS catalogs remain empty. |
 | Narration | Windows x64 can install and fully remove verified F5-TTS and Chatterbox packages; Edge TTS, gTTS, and Gemini each use a small independently removable provider runtime. |
-| Rendering | Windows x64 can install and fully remove the verified Node/Chrome-for-Testing/Remotion renderer package without embedding its 625 MB runtime in the installer. |
+| Rendering | Windows x64 exports video natively through the operating system's own codecs and the same compositor the preview draws with. Nothing is downloaded or installed to render. |
 | Updating | The updater public key and signed-artifact configuration are present; the private signing key remains outside the repository. |
 
 The native command surface is not the same as runtime availability. Missing tools and models are
@@ -250,7 +250,6 @@ npm run test:version-consistency
 npm run check:tauri-contract
 npm run check:visual-freeze
 npm run test:visual-contract
-npm run test:render-worker
 npm run build:frontend
 npm run check:frozen-css-output
 npm run check:production-transport
@@ -283,7 +282,6 @@ The other matrix targets are `x86_64-unknown-linux-gnu`, `aarch64-apple-darwin`,
 | Parakeet / Faster-Whisper / Qwen3-ASR | Windows x64 has content-addressed runtime/model manifests and external-first model sources with the reviewed bundle pool as fallback. All five install, launch under a held lease, and remove through typed native jobs. |
 | F5-TTS / Chatterbox / Edge TTS / gTTS / Gemini TTS worker | Windows x64 has verified managed runtime/model packages. Every backend is independently downloadable/removable; the three network providers use minimal 11–20 MB downloads rather than the GPU runtime. |
 | Gemini voice previews | The exact 30-sample, 13.5 MB content-addressed pack installs automatically on first preview on all four target families, streams through an opaque native media capability, and removes immediately without restarting. No preview WAV is embedded in the frontend. |
-| Remotion runtime | Windows x64 downloads a 265 MB content-addressed bundle-pool archive with exact Node 24.19, Chrome for Testing 149, Remotion 4.0.507, the OSG bundle, reviewed Inter font, and notices; installed size is about 625 MB and is fully removable. |
 | Application updater | The public key is configured and updater artifacts are signed with a private key held outside the repository. |
 
 YouTube settings describe the native **Desktop app** OAuth client and its temporary loopback
@@ -339,7 +337,7 @@ through its existing toast panel. Restart OSG afterward to load imported setting
 ## Visual freeze
 
 The rewrite preserves the original JSX, CSS, assets, fonts, themes, locales, responsive behavior,
-workflow order, PromptDJ surface, and Remotion composition. Native work is connected behind those
+workflow order, and PromptDJ surface. Native work is connected behind those
 interactions. Any intentional product-design change needs separate approval and a separately
 reviewed baseline update.
 
@@ -353,7 +351,6 @@ user-facing strings that bypass i18n.
 - [Security and trust model](SECURITY.md)
 - [Visual-freeze policy](docs/rewrite/DESIGN.md)
 - [Desktop host notes](apps/desktop/README.md)
-- [Native render worker](video-renderer/README.md)
 
 ## License
 

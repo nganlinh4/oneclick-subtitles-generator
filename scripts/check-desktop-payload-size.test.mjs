@@ -16,7 +16,6 @@ function fixture() {
     bundle: { resources: {
       '../../asr.py': 'workers/osg_asr_worker.py',
       '../../speech.py': 'workers/osg_speech_worker.py',
-      '../../render.mjs': 'workers/osg_render_worker.mjs',
     } },
   }));
   return root;
@@ -27,7 +26,7 @@ test('accepts a small shell with only protocol bootstrap workers', () => {
   try {
     const report = auditDesktopPayload({ rootDirectory: root });
     assert.equal(report.frontendFileCount, 1);
-    assert.equal(report.resourceDestinations.length, 3);
+    assert.equal(report.resourceDestinations.length, 2);
   } finally {
     fs.rmSync(root, { recursive: true, force: true });
   }

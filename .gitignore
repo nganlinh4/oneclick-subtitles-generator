@@ -169,14 +169,6 @@ lib64/
 
 live-api-web-console/
 
-# Video-renderer specific ignores (keep source code, ignore build artifacts)
-video-renderer/node_modules/
-video-renderer/build/
-video-renderer/dist/
-video-renderer/.cache/
-video-renderer/out/
-video-renderer/.remotion/
-video-renderer/public/video.mp4
 package.json.bak
 .port_processes.json
 server/example-audio/basic_ref_en.wav

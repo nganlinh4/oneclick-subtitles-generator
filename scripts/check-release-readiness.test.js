@@ -45,6 +45,21 @@ const {
   parseArguments,
 } = require('./check-release-readiness');
 
+/**
+ * A source this suite reads in order to MUTATE it, with its line endings normalised.
+ *
+ * These tests prove the gate by weakening a real source and requiring the gate to reject the
+ * weakened copy. Git checks these files out with CRLF on Windows while every search string here is
+ * written with `
+`, so on a fresh Windows clone the search matched nothing, `String.replace`
+ * returned its input unchanged, and `assert.throws` ran against a fixture that was never weakened.
+ * Two tests were red for exactly that reason. A mutation test whose target is missing is not a weak
+ * test — it is a test that cannot detect the regression it exists for.
+ */
+const readMutableSource = (...segments) => fs
+  .readFileSync(path.join(...segments), 'utf8')
+  .replaceAll(String.fromCharCode(13, 10), String.fromCharCode(10));
+
 const INSTALLED_SMOKE_SCRIPT = fs.readFileSync(
   path.join(__dirname, 'test-installed-windows.ps1'),
   'utf8',
@@ -97,17 +112,14 @@ const TAURI_NSIS_BOOTSTRAP_SCRIPT = fs.readFileSync(
   path.join(__dirname, 'prepare-tauri-nsis.ps1'),
   'utf8',
 );
-const DESKTOP_SOURCE = fs.readFileSync(
-  path.join(__dirname, '..', 'apps', 'desktop', 'src-tauri', 'src', 'lib.rs'),
-  'utf8',
+const DESKTOP_SOURCE = readMutableSource(
+  __dirname, '..', 'apps', 'desktop', 'src-tauri', 'src', 'lib.rs',
 );
-const CI_UPDATER_ARGUMENT_SOURCE = fs.readFileSync(
-  path.join(__dirname, '..', 'apps', 'desktop', 'src-tauri', 'src', 'ci_updater_fixture.rs'),
-  'utf8',
+const CI_UPDATER_ARGUMENT_SOURCE = readMutableSource(
+  __dirname, '..', 'apps', 'desktop', 'src-tauri', 'src', 'ci_updater_fixture.rs',
 );
-const UPDATER_SOURCE = fs.readFileSync(
-  path.join(__dirname, '..', 'apps', 'desktop', 'src-tauri', 'src', 'updater.rs'),
-  'utf8',
+const UPDATER_SOURCE = readMutableSource(
+  __dirname, '..', 'apps', 'desktop', 'src-tauri', 'src', 'updater.rs',
 );
 const CARGO_LOCK_SOURCE = fs.readFileSync(
   path.join(__dirname, '..', 'Cargo.lock'),
@@ -2734,10 +2746,7 @@ test('requires all four immutable host/target/package matrix entries', () => {
 });
 
 test('workflow is unsigned, read-only, credentialless, and locked', () => {
-  const workflow = fs.readFileSync(
-    path.resolve(__dirname, '..', '.github/workflows/rewrite-ci.yml'),
-    'utf8',
-  );
+  const workflow = readMutableSource(__dirname, '..', '.github/workflows/rewrite-ci.yml');
   assert.doesNotThrow(() => assertWorkflowCommands(workflow));
   const nativePickerRegressionOnEveryHost = replaceInWorkflowJob(
     workflow,
@@ -3499,9 +3508,11 @@ test('runtime targets report only their honest release blocker groups', () => {
     assert.throws(
       () => checkRuntimePackageReadiness(repositoryRoot, target),
       (error) => {
-        assert.match(error.message, /Runtime package has 3 blocking violation\(s\)/);
+        // Two, not three: the legacy renderer's delivery catalog is gone, so a target that cannot
+        // run the native renderer's tools is blocked by the tool delivery and the engine delivery
+        // only. The token itself is not spelled here — the residue rule scans this directory.
+        assert.match(error.message, /Runtime package has 2 blocking violation\(s\)/);
         assert.match(error.message, /FFmpeg\/ffprobe delivery is unavailable/);
-        assert.match(error.message, /Remotion delivery catalog/);
         assert.match(error.message, /Managed engine delivery/);
         assert.doesNotMatch(error.message, /updater public key is still a placeholder/i);
         assert.doesNotMatch(error.message, /Repository licensing\/notice policy is unresolved/);
@@ -3509,246 +3520,6 @@ test('runtime targets report only their honest release blocker groups', () => {
         return true;
       },
     );
-  }
-});
-
-test('Remotion delivery requires exact cross-component payload and license inventory', (context) => {
-  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'osg-remotion-delivery-'));
-  context.after(() => fs.rmSync(root, { force: true, recursive: true }));
-  const worker = 'reviewed render worker';
-  writeFile(root, 'video-renderer/worker/osg_render_worker.mjs', worker);
-  const digest = (contents) => crypto.createHash('sha256').update(contents).digest('hex');
-  const file = (role, filePath, executable = false) => ({
-    executable,
-    path: filePath,
-    role,
-    sha256: digest(`${role}:${filePath}`),
-    sizeBytes: Buffer.byteLength(`${role}:${filePath}`),
-  });
-  const noticePath = 'licenses/THIRD_PARTY_NOTICES.txt';
-  const source = (id) => `https://downloads.example.test/${id}/1.2.3/${id}-1.2.3.zip`;
-  const catalog = {
-    schemaVersion: 1,
-    protocolVersion: 1,
-    remotionVersion: '4.0.507',
-    worker: {
-      sourcePath: 'video-renderer/worker/osg_render_worker.mjs',
-      sizeBytes: Buffer.byteLength(worker),
-      sha256: digest(worker),
-    },
-    platforms: {
-      'x86_64-pc-windows-msvc': {
-        releases: [{
-          archiveFormat: 'zip',
-          archiveSha256: 'a'.repeat(64),
-          archiveSizeBytes: 100,
-          components: [
-            ['node', '24.19.0'],
-            ['chromium', '140.0.7339'],
-            ['remotion', '4.0.507'],
-            ['remotion-binaries', '4.0.507'],
-            ['font-pack', '1.0.0'],
-          ].map(([id, version]) => ({
-            id,
-            version,
-            sourceUrl: source(id),
-            license: { spdx: 'MIT', noticePath },
-          })),
-          files: [
-            file('node', 'node/node.exe', true),
-            file('browser', 'chromium/chrome.exe', true),
-            file('rendererPackage', 'renderer/package.json'),
-            file('bundleIndex', 'bundle/index.html'),
-            file('binariesMarker', 'binaries/.ready'),
-            file('fontManifest', 'bundle/fonts/fonts.css'),
-            file('notices', noticePath),
-            file('payload', 'renderer/index.js'),
-          ],
-          manifest: {
-            path: 'remotion-runtime.json',
-            sha256: 'b'.repeat(64),
-            sizeBytes: 200,
-          },
-          remotionVersion: '4.0.507',
-          sourceUrl: source('runtime'),
-          target: 'x86_64-pc-windows-msvc',
-          unpackedSizeBytes: 1_000,
-          version: '1.0.0',
-        }],
-      },
-    },
-  };
-  const catalogPath = 'video-renderer/delivery/remotion-runtime.delivery.json';
-  writeFile(root, catalogPath, JSON.stringify(catalog));
-  assert.throws(() =>
-    assertRenderRuntimeDelivery(root, 'x86_64-pc-windows-msvc'),
-    /no packaged render-runtime resource tree\/receipt or managed installer wiring/,
-  );
-
-  const release = catalog.platforms['x86_64-pc-windows-msvc'].releases[0];
-  const resources = {};
-  for (const runtimeFile of release.files) {
-    const sourcePath = `runtime-fixture/${runtimeFile.path}`;
-    writeFile(root, sourcePath, `${runtimeFile.role}:${runtimeFile.path}`);
-    resources[`../../../${sourcePath}`] =
-      `render-runtime/x86_64-pc-windows-msvc/${runtimeFile.path}`;
-  }
-  const manifestContents = `${JSON.stringify({
-    schemaVersion: 1,
-    target: 'x86_64-pc-windows-msvc',
-    remotionVersion: '4.0.507',
-    files: release.files.map(({ role, path: filePath, sizeBytes, sha256 }) => ({
-      role,
-      path: filePath,
-      sizeBytes,
-      sha256,
-    })),
-  })}\n`;
-  const manifestSource = 'runtime-fixture/remotion-runtime.json';
-  writeFile(root, manifestSource, manifestContents);
-  release.manifest.sizeBytes = Buffer.byteLength(manifestContents);
-  release.manifest.sha256 = digest(manifestContents);
-  resources[`../../../${manifestSource}`] =
-    'render-runtime/x86_64-pc-windows-msvc/remotion-runtime.json';
-  writeFile(
-    root,
-    'apps/desktop/src-tauri/tauri.conf.json',
-    JSON.stringify({ bundle: { resources } }),
-  );
-  fs.writeFileSync(path.join(root, catalogPath), JSON.stringify(catalog));
-  assert.doesNotThrow(() =>
-    assertRenderRuntimeDelivery(root, 'x86_64-pc-windows-msvc'),
-  );
-
-  writeFile(root, 'runtime-fixture/renderer/index.js', 'tampered renderer payload');
-  assert.throws(
-    () => assertRenderRuntimeDelivery(root, 'x86_64-pc-windows-msvc'),
-    /no packaged render-runtime resource tree\/receipt or managed installer wiring/,
-  );
-  writeFile(root, 'runtime-fixture/renderer/index.js', 'payload:renderer/index.js');
-  catalog.platforms['x86_64-pc-windows-msvc'].releases[0].components =
-    catalog.platforms['x86_64-pc-windows-msvc'].releases[0].components
-      .filter((component) => component.id !== 'font-pack');
-  fs.writeFileSync(path.join(root, catalogPath), JSON.stringify(catalog));
-  assert.throws(
-    () => assertRenderRuntimeDelivery(root, 'x86_64-pc-windows-msvc'),
-    /components must be exactly/,
-  );
-});
-
-function createRenderDeliveryV2Fixture(root, { components, includeNotices = false } = {}) {
-  const digest = (contents) => crypto.createHash('sha256').update(contents).digest('hex');
-  const worker = 'reviewed render worker';
-  writeFile(root, 'video-renderer/worker/osg_render_worker.mjs', worker);
-  const pool =
-    'https://github.com/nganlinh4/oneclick-subtitles-generator/releases/download/osg-runtime-bundles-v1';
-  const asset = (prefix, suffix, contents, sizeBytes) => {
-    const sha256 = digest(contents);
-    const name = `${prefix}-${sha256.slice(0, 16)}${suffix}`;
-    return { asset: name, sizeBytes, sha256, urls: [`${pool}/${name}`] };
-  };
-  const zip = {
-    kind: 'zip',
-    ...asset('remotion-runtime-windows-x64-4.0.507', '.zip', 'runtime-zip', 264_797_695),
-  };
-  const notices = {
-    kind: 'raw',
-    ...asset('remotion-runtime-windows-x64-4.0.507-notices', '.json', 'runtime-notices', 3_113),
-  };
-  const manifest = asset(
-    'remotion-runtime-windows-x64-4.0.507',
-    '.manifest.json',
-    'runtime-manifest',
-    644_762,
-  );
-  const sources = includeNotices ? [zip, notices] : [zip];
-  const release = {
-    version: '4.0.507',
-    asset: manifest.asset,
-    sourceUrl: '',
-    sizeBytes: sources.reduce((total, source) => total + source.sizeBytes, manifest.sizeBytes),
-    sha256: manifest.sha256,
-    unpackedSizeBytes: 624_910_330,
-    pythonRelativePath: 'runtime/bin/node.exe',
-    modelRelativePath: null,
-    files: [],
-    sources,
-    manifest,
-  };
-  if (components !== undefined) release.components = components;
-  writeFile(root, 'video-renderer/delivery/remotion-runtime.delivery.json', JSON.stringify({
-    schemaVersion: 2,
-    protocolVersion: 1,
-    remotionVersion: '4.0.507',
-    worker: {
-      sourcePath: 'video-renderer/worker/osg_render_worker.mjs',
-      sizeBytes: Buffer.byteLength(worker),
-      sha256: digest(worker),
-    },
-    commands: {
-      status: 'render_package_status',
-      install: 'render_package_install',
-      remove: 'render_package_remove',
-    },
-    platforms: {
-      'linux-x86_64': { releases: [] },
-      'macos-aarch64': { releases: [] },
-      'macos-x86_64': { releases: [] },
-      'windows-x86_64': { releases: [release] },
-    },
-  }));
-}
-
-test('schemaVersion 2 Remotion delivery must inventory component licences and notices', (context) => {
-  const roots = [];
-  const fixture = (options) => {
-    const root = fs.mkdtempSync(path.join(os.tmpdir(), 'osg-remotion-delivery-v2-'));
-    roots.push(root);
-    createRenderDeliveryV2Fixture(root, options);
-    return root;
-  };
-  context.after(() => {
-    for (const root of roots) fs.rmSync(root, { force: true, recursive: true });
-  });
-  const licensed = (overrides = {}) => ({
-    id: 'remotion',
-    version: '4.0.507',
-    license: { spdx: 'MIT', noticePath: 'licenses/THIRD_PARTY_NOTICES.txt' },
-    ...overrides,
-  });
-  const check = (root) => assertRenderRuntimeDelivery(root, 'x86_64-pc-windows-msvc');
-
-  assert.throws(
-    () => check(fixture()),
-    /must inventory its third-party notices/,
-  );
-  assert.throws(
-    () => check(fixture({ components: [licensed(), licensed({ id: 'node', license: undefined })] })),
-    /components\[1\] must declare an SPDX license expression/,
-  );
-  assert.throws(
-    () => check(fixture({ components: [licensed({ license: { spdx: 'MIT' } })] })),
-    /components\[0\]\.license\.noticePath must be a non-empty path/,
-  );
-  assert.throws(
-    () => check(fixture({
-      components: [licensed({ license: { spdx: 'MIT', noticePath: 'THIRD_PARTY_NOTICES.md' } })],
-    })),
-    /components\[0\]\.license\.noticePath must install below licenses\//,
-  );
-  assert.throws(
-    () => check(fixture({ components: [] })),
-    /components must be a non-empty licence inventory/,
-  );
-
-  // A declared licence inventory clears the notices gate: the fixtures reach the later managed
-  // installer wiring stage, which no temporary root can satisfy.
-  for (const root of [fixture({ includeNotices: true }), fixture({ components: [licensed()] })]) {
-    assert.throws(check.bind(null, root), (error) => {
-      assert.doesNotMatch(error.message, /third-party notices|SPDX license|noticePath/);
-      assert.match(error.message, /apps\/desktop\/src-tauri\/build\.rs/);
-      return true;
-    });
   }
 });
 

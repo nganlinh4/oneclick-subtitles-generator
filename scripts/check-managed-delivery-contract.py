@@ -38,7 +38,6 @@ CATALOGS = {
     "nativeTools": Path("crates/osg-native-tools/delivery/native-tools.delivery.json"),
     "asr": Path("crates/osg-engine-packages/delivery/engine-packages.delivery.json"),
     "speech": Path("crates/osg-speech/delivery/speech-packages.delivery.json"),
-    "remotion": Path("video-renderer/delivery/remotion-runtime.delivery.json"),
     "voiceSamples": Path("crates/osg-engine-packages/delivery/voice-samples.delivery.json"),
     "uiFonts": Path("crates/osg-engine-packages/delivery/ui-fonts.delivery.json"),
 }
@@ -55,15 +54,6 @@ SOURCE_GROUPS = {
     ],
     "nativeTools": [
         Path("crates/osg-native-tools/delivery/native-tools.upstreams.lock.json"),
-    ],
-    "remotion": [
-        Path("scripts/generate-remotion-delivery-manifest.mjs"),
-        Path("scripts/generate-remotion-runtime-manifest.mjs"),
-        Path("video-renderer/native.tsconfig.json"),
-        Path("video-renderer/package.json"),
-        Path("video-renderer/remotion.config.ts"),
-        Path("video-renderer/scripts/build-native-bundle.mjs"),
-        Path("video-renderer/worker/osg_render_worker.mjs"),
     ],
     "voiceSamples": [
         Path("scripts/build-voice-samples-delivery.py"),
@@ -392,12 +382,6 @@ def canonical_source_bytes(value: bytes) -> bytes:
 
 def source_files(group: str) -> list[Path]:
     files = list(SOURCE_GROUPS[group])
-    if group == "remotion":
-        files.extend(
-            path.relative_to(ROOT)
-            for path in sorted((ROOT / "video-renderer/src").rglob("*"))
-            if path.is_file() and path.suffix.lower() in {".ts", ".tsx", ".js", ".jsx", ".json"}
-        )
     if not files or len(files) != len(set(files)):
         raise SystemExit(f"invalid managed-delivery source group: {group}")
     return sorted(files, key=lambda path: path.as_posix())
@@ -434,8 +418,6 @@ def delivery_value(group: str, catalogs: dict[str, object]) -> object:
         return {"asr": catalogs["asr"], "speech": catalogs["speech"]}
     if group == "nativeTools":
         return catalogs["nativeTools"]
-    if group == "remotion":
-        return catalogs["remotion"]
     if group == "voiceSamples":
         return catalogs["voiceSamples"]
     if group == "uiFonts":
@@ -465,7 +447,7 @@ def managed_release_assets(catalog: dict) -> list[dict]:
 
 def pool_assets(catalogs: dict[str, object]) -> list[dict[str, object]]:
     by_name: dict[str, dict[str, object]] = {}
-    for name in ("asr", "speech", "remotion", "voiceSamples", "uiFonts"):
+    for name in ("asr", "speech", "voiceSamples", "uiFonts"):
         for asset in managed_release_assets(catalogs[name]):
             urls = asset.get("urls", [])
             if not any(url.startswith(POOL_PREFIX) for url in urls):

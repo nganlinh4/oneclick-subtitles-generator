@@ -102,11 +102,9 @@ export default function useVideoTracking(isEnabled) {
       });
       resizeObserverContainer.observe(containerElement);
 
-	      // Observe wrapper changes (e.g., player wrapper / video wrapper)
-	      const wrapperEl =
-	        containerElement.querySelector('.video-wrapper') ||
-	        containerElement.querySelector('.remotion-player') ||
-	        containerElement.querySelector('[data-remotion-player]');
+	      // Observe wrapper changes. Only the native preview's own wrapper is looked for now; the
+	      // two fallback selectors went with the WebView player that used to emit those classes.
+	      const wrapperEl = containerElement.querySelector('.video-wrapper');
 	      if (wrapperEl) {
 	        resizeObserverWrapper = new ResizeObserver(() => {
 	          if (videoEl) scheduleCompute(containerElement, videoEl);

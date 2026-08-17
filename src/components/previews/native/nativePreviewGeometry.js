@@ -19,11 +19,11 @@
  *     the result is rounded the way `Number.prototype.toFixed(2)` rounds rather than the way Rust
  *     rounds. `toFixed` IS the authority here, so this is the original rather than a reimplementation.
  *   - `compositionSize` mirrors `crates/osg-export/src/convert/dimensions.rs` exactly, INCLUDING
- *     its association. That module records that `getCompositionDimensions` in
- *     `src/components/RemotionVideoPreview.js` associates the same inputs differently
+ *     its association. That module records that the deleted browser preview's
+ *     `getCompositionDimensions` associated the same inputs differently
  *     — `sourceAspect * ((cropWidth / 100) / (cropHeight / 100))` — and that floating-point
  *     multiplication is not associative, so the two forms round to different widths for a small
- *     fraction of crop shapes. Replacing the Remotion preview with this module is what removes that
+ *     fraction of crop shapes. Replacing that preview with this module is what removes the
  *     disagreement; a third association would have re-created it.
  *   - `previewTimeline` mirrors `RenderRequest::validate` in `crates/osg-render/src/contract.rs`
  *     and `build` in `crates/osg-export/src/convert/timeline.rs`, which between them own the
@@ -163,8 +163,8 @@ export const atlasWrapWidth = ({ maxWidthPercent, compositionWidthPx, glyphScale
  * The letter spacing the baker takes, in atlas pixels, for a persisted `letterSpacing`.
  *
  * The persisted value is authored against a 1080-high composition and scales with the composition
- * exactly as `fontSize` does — `getResponsiveScaledValue(customization.letterSpacing)` in
- * `video-renderer/src/components/SubtitledVideo.tsx` — so the composition-space quantity is
+ * exactly as `fontSize` does — `getResponsiveScaledValue(customization.letterSpacing)` in the
+ * deleted browser composition — so the composition-space quantity is
  * `scaleSubtitleStyleValue(letterSpacing, height)`, and the atlas-space one is that divided by the
  * glyph scale the compositor will multiply the whole layout by.
  *

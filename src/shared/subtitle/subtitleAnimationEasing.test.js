@@ -1,12 +1,13 @@
-import { readFileSync } from 'node:fs';
-import { resolve } from 'node:path';
+import { globSync, readFileSync } from 'node:fs';
+import { relative, resolve } from 'node:path';
 
 import {
   applySubtitleAnimationEasing,
   SUBTITLE_ANIMATION_EASINGS,
-} from '../../video-renderer/src/subtitleAnimationEasing';
-import { scaleSubtitleStyleValue } from '../../video-renderer/src/subtitleVisualMath';
+} from './subtitleAnimationEasing';
+import { scaleSubtitleStyleValue } from './subtitleVisualMath';
 
+const ROOT = resolve(__dirname, '..', '..', '..');
 const SMOOTH = 'cubic-bezier(0.25, 0.46, 0.45, 0.94)';
 const BOUNCE = 'cubic-bezier(0.68, -0.55, 0.265, 1.55)';
 
@@ -36,20 +37,28 @@ describe('shared subtitle animation easing', () => {
     expect(applySubtitleAnimationEasing(0.8, BOUNCE)).toBeGreaterThan(1);
   });
 
-  it('is the sole easing authority for preview and native rendering', () => {
-    const preview = readFileSync(
-      resolve('src/components/SubtitledVideoComposition.js'),
-      'utf8',
-    );
-    const renderer = readFileSync(
-      resolve('video-renderer/src/components/SubtitledVideo.tsx'),
-      'utf8',
-    );
-    for (const source of [preview, renderer]) {
-      expect(source).toContain('applySubtitleAnimationEasing(progress, easing)');
-      expect(source).toContain('scaleSubtitleStyleValue(value, compositionHeight)');
-      expect(source).not.toMatch(/const\s+applyEasing\s*=/);
-      expect(source).not.toContain('Math.round(value * scale)');
+  /**
+   * This used to read the two WebView compositors and require both to call THESE functions instead
+   * of a local copy. Both compositors are deleted, so the same statement is now made about what is
+   * left: nothing in the product carries a second easing curve. The curve itself stays locked to
+   * the native renderer by `crates/osg-scene/tests/fixtures/subtitle-math-golden.json`, asserted
+   * from Rust and from `scripts/render-parity-fixture.test.mjs`.
+   *
+   * Scaling is deliberately NOT scanned the same way: `src/components/previews/native/
+   * nativePreviewGeometry.js` mirrors `scaleSubtitleStyleValue` on purpose, because it derives
+   * glyph-atlas geometry rather than a CSS style, and it says so where it defines the mirror. What
+   * is banned is the rounding the old compositors did INSTEAD of that function.
+   */
+  it('is the only easing curve left in the product', () => {
+    const modules = globSync('src/**/*.{js,jsx,ts,tsx}', { cwd: ROOT, absolute: true })
+      .filter((path) => !/[\\/]shared[\\/]subtitle[\\/]subtitleAnimationEasing\./.test(path));
+    expect(modules.length).toBeGreaterThan(100);
+    for (const path of modules) {
+      const source = readFileSync(path, 'utf8');
+      expect(source, `${relative(ROOT, path)} defines a second easing curve`)
+        .not.toMatch(/const\s+applyEasing\s*=/);
+      expect(source, `${relative(ROOT, path)} rounds a scaled style itself`)
+        .not.toContain('Math.round(value * scale)');
     }
   });
 

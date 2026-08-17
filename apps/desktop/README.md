@@ -51,7 +51,7 @@ node scripts/check-release-readiness.js --profile compile
 ```
 
 The target-specific release gate takes a Rust target triple. Windows passes only while its reviewed
-FFmpeg/ffprobe, ASR, speech, Remotion, font, and voice-sample deliveries remain available and match
+FFmpeg/ffprobe, ASR, speech, font, and voice-sample deliveries remain available and match
 the checked catalogs. Other targets remain gated until their target-specific delivery catalogs are
 complete. The updater public key is checked in; release signing still requires the matching private
 key from the repository owner's external secret store:

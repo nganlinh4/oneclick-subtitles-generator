@@ -201,8 +201,8 @@ fn the_output_width_comes_from_one_derivation_where_the_shipped_preview_had_a_se
     // than `sourceAspect * (cropWidth / cropHeight)` — and floating-point multiplication is not
     // associative. This crop is one where the two forms round apart: the shipped preview composes
     // 682 and the conversion composes 684, so preview and export already disagreed here. The fix is
-    // one derivation, which is what this asserts; the preview's own sizing function leaves with the
-    // Remotion path it belongs to.
+    // one derivation, which is what this asserts; that second sizing function left the tree with
+    // the browser preview it belonged to.
     let plan = converted(cropped("1080p", 10.01, 28.16));
     assert_eq!((plan.width(), plan.height()), (684, 1_080));
 

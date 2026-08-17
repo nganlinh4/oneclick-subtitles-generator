@@ -1,9 +1,7 @@
 //! The engine: a validated request and its staged text become a finished `MP4`.
 //!
-//! This is the whole of what `render_start` does at run time. It reaches
-//! [`osg_export::run_export`] — the crate where every parity decision the migration owns is applied
-//! — and nothing here reaches the managed Remotion worker, its runtime manifest, its staging or its
-//! readiness checks. That code is still in the tree; nothing on this path enters it.
+//! This is the whole of what `render_start` does at run time: it reaches
+//! [`osg_export::run_export`], the crate where every parity decision the migration owns is applied.
 //!
 //! Three properties are structural rather than incidental, and each one is why the corresponding
 //! step is written the way it is:

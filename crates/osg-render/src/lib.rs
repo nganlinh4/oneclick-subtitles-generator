@@ -1,17 +1,17 @@
-//! Native Remotion rendering without a WebView-facing HTTP control plane.
+//! The validated, path-free render contract.
 //!
-//! The crate owns a deliberately small boundary: a validated, path-free render
-//! contract enters from the application; trusted native paths enter separately;
-//! one supervised worker produces a staged MP4. Nothing in this crate is a
-//! general process runner or accepts executable arguments from the `WebView`.
+//! The crate owns a deliberately small boundary: a request the `WebView` sends is validated here
+//! against the source it names and becomes a [`RenderPlan`], which is the only shape the export
+//! pipeline in `osg-export` accepts. Nothing in this crate opens a file, spawns a process or
+//! touches a native path, so a contract refusal can never carry one.
+//!
+//! The raised recursion limit is for the contract's own test fixtures, which build one deeply
+//! nested `serde_json::json!` request literal.
 
 #![recursion_limit = "256"]
 
 mod contract;
-mod engine;
 mod error;
-mod protocol;
-mod runtime;
 
 pub use contract::{
     AnimationEasing, AnimationType, BorderStyle, CanvasBackgroundMode, CropSettings, FrameRate,
@@ -19,14 +19,4 @@ pub use contract::{
     RenderSettings, SubtitleCustomization, SubtitlePosition, TextAlign, TextTransform,
     ValidatedLyric,
 };
-pub use engine::{
-    NativeRenderInputs, PreparedRender, RenderCancellationToken, RenderEngine, RenderPhase,
-    RenderProgress, RenderProgressSink, RenderRunControl,
-};
 pub use error::{RenderError, Result};
-pub use protocol::{
-    MAX_PROTOCOL_FRAME_BYTES, PROTOCOL_VERSION, WorkerMessage, WorkerRenderRequest,
-};
-pub use runtime::{
-    REMOTION_VERSION, RenderRuntime, RenderRuntimeManifest, RuntimeFile, RuntimeStatus,
-};

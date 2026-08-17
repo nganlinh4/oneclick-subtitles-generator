@@ -5,8 +5,8 @@ import SubtitleCustomizationPanel from '../SubtitleCustomizationPanel';
  * Second row: the resizable preview panel and the subtitle customization panel side by side. Pure
  * component — state, refs, and handlers come from props.
  *
- * The preview is the native compositor's own frame. It was `RemotionVideoPreview`, a second
- * implementation of the export composition maintained by hand in JavaScript; the render settings
+ * The preview is the native compositor's own frame. It used to be a browser preview running a
+ * second, hand-maintained JavaScript implementation of the export composition; the render settings
  * that used to be folded into `subtitleCustomization` are passed as themselves now, because the
  * native path composes from the resolution and frame rate directly rather than reading them out of a
  * style object they never belonged in.

@@ -604,7 +604,6 @@ describe('native render contract', () => {
         if (command === 'render_runtime_status') {
           return {
             available: false,
-            remotionVersion: '4.0.507',
             reason: 'runtimePayloadUnavailable',
             maxConcurrentRenders: 1,
           };
@@ -612,7 +611,7 @@ describe('native render contract', () => {
         if (command === 'render_start') {
           throw {
             code: 'renderRuntimeUnavailable',
-            message: 'The verified native Remotion runtime is not installed for this platform.',
+            message: 'The native render pipeline is unavailable on this platform.',
           };
         }
         throw new Error('unexpected command');
@@ -632,8 +631,8 @@ describe('native render contract', () => {
     });
   });
 
-  test('reads the runtime status with or without the vestigial Remotion field', async () => {
-    const statusWithout = createNativeRenderService({
+  test('reads the runtime status as exactly the three fields it is about', async () => {
+    const service = createNativeRenderService({
       invokeCommand: vi.fn(async () => ({
         available: true,
         reason: null,
@@ -642,25 +641,26 @@ describe('native render contract', () => {
       ChannelConstructor: TestChannel,
       isNativeRuntime: () => true,
     });
-    await expect(statusWithout.status()).resolves.toEqual({
+    await expect(service.status()).resolves.toEqual({
       available: true,
       reason: null,
       maxConcurrentRenders: 1,
     });
 
-    // A version this module once pinned against a frozen constant is now carried and not read, so
-    // the native side can drop the field without failing every readiness check in the editor.
-    const statusWithStaleVersion = createNativeRenderService({
+    // The renderer version this module once pinned against a frozen constant is gone from both
+    // sides. A response that still carries it is a shape this build does not answer to, so it is
+    // a protocol error rather than a field quietly ignored.
+    const staleShape = createNativeRenderService({
       invokeCommand: vi.fn(async () => ({
         available: true,
-        remotionVersion: '0.0.0-not-a-renderer-any-more',
+        rendererVersion: '0.0.0-not-a-renderer-any-more',
         reason: null,
         maxConcurrentRenders: 1,
       })),
       ChannelConstructor: TestChannel,
       isNativeRuntime: () => true,
     });
-    await expect(statusWithStaleVersion.status()).resolves.toMatchObject({ available: true });
+    await expect(staleShape.status()).rejects.toMatchObject({ code: 'invalidRenderResponse' });
   });
 
   test('collapses hostile and unknown native failures to fixed local metadata', async () => {

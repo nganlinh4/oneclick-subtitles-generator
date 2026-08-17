@@ -17,7 +17,6 @@ const NATIVE_TOOL_AUDIT_PATH =
   'crates/osg-native-tools/delivery/native-tools.upstreams.lock.json';
 const ASR_DELIVERY_PATH = 'crates/osg-engine-packages/delivery/engine-packages.delivery.json';
 const SPEECH_DELIVERY_PATH = 'crates/osg-speech/delivery/speech-packages.delivery.json';
-const RENDER_DELIVERY_PATH = 'video-renderer/delivery/remotion-runtime.delivery.json';
 const LOOPBACK_AUDIT_PATH = 'scripts/production-loopback-audit.json';
 const UPDATER_PUBLIC_KEY_PATH = `${TAURI_DIRECTORY}/updater-public-key.txt`;
 const UPDATER_WINDOWS_INSTALL_MODE = 'passive';
@@ -43,7 +42,6 @@ const PROMPTDJ_FONT_DIRECTORY = 'promptdj-midi/assets/fonts';
 const EXACT_VERSION = /^\d+\.\d+\.\d+$/;
 const PYTHON_VERSION = '3.12.10';
 const REACT_VERSION = '18.3.1';
-const REMOTION_VERSION = '4.0.507';
 const SEVEN_ZIP_PACKAGE = '7zip-bin-full';
 const SEVEN_ZIP_VERSION = '26.2.1';
 const SEVEN_ZIP_RESOLVED =
@@ -307,11 +305,9 @@ function assertPinnedToolchains(rootDirectory = REPOSITORY_ROOT) {
     EXACT_VERSION.test(rootPackage.dependencies && rootPackage.dependencies['@tauri-apps/api']),
     'package.json must pin @tauri-apps/api to an exact version',
   );
-  const rendererPackage = readJson(rootDirectory, 'video-renderer/package.json');
   const promptDjPackage = readJson(rootDirectory, 'promptdj-midi/package.json');
   for (const [relativePath, packageManifest] of [
     ['package.json', rootPackage],
-    ['video-renderer/package.json', rendererPackage],
     ['promptdj-midi/package.json', promptDjPackage],
   ]) {
     invariant(
@@ -448,7 +444,7 @@ function assertLockfiles(rootDirectory = REPOSITORY_ROOT) {
       rootRecord.dependencies['react-dom'] === REACT_VERSION,
     `package-lock.json root record must pin React and React DOM to ${REACT_VERSION}`,
   );
-  for (const workspacePath of ['promptdj-midi', 'video-renderer']) {
+  for (const workspacePath of ['promptdj-midi']) {
     const workspaceRecord = rootLock.packages[workspacePath];
     invariant(
       workspaceRecord && workspaceRecord.dependencies &&
@@ -3510,11 +3506,7 @@ function assertWorkerResources(rootDirectory = REPOSITORY_ROOT, mappings = colle
     );
   }
   const workers = collectEmbeddedWorkers(rootDirectory);
-  const expectedWorkers = new Set([
-    'osg_asr_worker.py',
-    'osg_speech_worker.py',
-    'osg_render_worker.mjs',
-  ]);
+  const expectedWorkers = new Set(['osg_asr_worker.py', 'osg_speech_worker.py']);
   const discoveredWorkers = new Set(workers.map((worker) => worker.name));
   for (const expectedWorker of expectedWorkers) {
     invariant(discoveredWorkers.has(expectedWorker), `Desktop bootstrap must embed ${expectedWorker}`);
@@ -4287,446 +4279,6 @@ function assertDeliveryEntries(platform, collectionName, expectedIds, label, opt
   );
 }
 
-function assertBundledRenderRuntime(rootDirectory, target, release, mappings) {
-  const prefix = `render-runtime/${target}/`;
-  const expected = new Map([
-    [release.manifest.path, release.manifest],
-    ...release.files.map((file) => [file.path, file]),
-  ]);
-  invariant(
-    expected.size === release.files.length + 1,
-    `Remotion delivery ${target} manifest path must not duplicate a runtime file`,
-  );
-  const packagedRuntime = mappings.filter((mapping) => mapping.destination.startsWith(prefix));
-  invariant(
-    packagedRuntime.length === expected.size,
-    `Remotion delivery ${target} must package exactly ${expected.size} reviewed runtime files below ${prefix}`,
-  );
-  for (const [relativePath, inventory] of expected) {
-    const destination = `${prefix}${relativePath}`;
-    const mapping = packagedRuntime.find((candidate) => candidate.destination === destination);
-    invariant(mapping, `Remotion delivery ${target} does not package ${destination}`);
-    invariant(
-      mapping.size === inventory.sizeBytes,
-      `Packaged Remotion runtime size differs from the catalog: ${destination}`,
-    );
-    invariant(
-      sha256File(mapping.sourceAbsolute) === inventory.sha256,
-      `Packaged Remotion runtime hash differs from the catalog: ${destination}`,
-    );
-  }
-
-  const manifestMapping = packagedRuntime.find(
-    (candidate) => candidate.destination === `${prefix}${release.manifest.path}`,
-  );
-  let receipt;
-  try {
-    receipt = JSON.parse(fs.readFileSync(manifestMapping.sourceAbsolute, 'utf8'));
-  } catch {
-    throw new Error(`Packaged Remotion runtime receipt is not valid JSON for ${target}`);
-  }
-  invariant(
-    receipt && typeof receipt === 'object' && !Array.isArray(receipt) &&
-      JSON.stringify(Object.keys(receipt).sort()) ===
-        JSON.stringify(['files', 'remotionVersion', 'schemaVersion', 'target']),
-    `Packaged Remotion runtime receipt has an unsupported schema for ${target}`,
-  );
-  invariant(receipt.schemaVersion === 1, `Packaged Remotion runtime receipt schema is invalid for ${target}`);
-  invariant(receipt.target === target, `Packaged Remotion runtime receipt target does not match ${target}`);
-  invariant(
-    receipt.remotionVersion === REMOTION_VERSION,
-    `Packaged Remotion runtime receipt must pin ${REMOTION_VERSION}`,
-  );
-  invariant(
-    Array.isArray(receipt.files) && receipt.files.length === release.files.length,
-    `Packaged Remotion runtime receipt inventory is incomplete for ${target}`,
-  );
-  const receiptFiles = new Map();
-  for (const entry of receipt.files) {
-    invariant(
-      entry && typeof entry === 'object' && !Array.isArray(entry) &&
-        JSON.stringify(Object.keys(entry).sort()) ===
-          JSON.stringify(['path', 'role', 'sha256', 'sizeBytes']),
-      `Packaged Remotion runtime receipt file schema is invalid for ${target}`,
-    );
-    invariant(!receiptFiles.has(entry.path),
-      `Packaged Remotion runtime receipt repeats ${entry.path}`);
-    receiptFiles.set(entry.path, entry);
-  }
-  for (const file of release.files) {
-    const receiptFile = receiptFiles.get(file.path);
-    invariant(
-      receiptFile &&
-        receiptFile.role === file.role &&
-        receiptFile.sizeBytes === file.sizeBytes &&
-        receiptFile.sha256 === file.sha256,
-      `Packaged Remotion runtime receipt differs from the catalog for ${file.path}`,
-    );
-  }
-}
-
-function assertRustCommandImplementation(rootDirectory, command) {
-  const rustSources = [
-    ...walkFiles(
-      path.join(rootDirectory, TAURI_DIRECTORY, 'src'),
-      (candidate) => candidate.endsWith('.rs'),
-    ),
-    ...walkFiles(
-      path.join(rootDirectory, 'crates/osg-engine-packages/src'),
-      (candidate) => candidate.endsWith('.rs'),
-    ),
-  ];
-  const implementation = new RegExp(
-    `\\b(?:pub(?:\\([^)]*\\))?\\s+)?(?:async\\s+)?fn\\s+${escapeRegularExpression(command)}\\s*\\(`,
-  );
-  invariant(
-    rustSources.some((sourcePath) => implementation.test(fs.readFileSync(sourcePath, 'utf8'))),
-    `Desktop Rust sources do not implement managed-runtime command ${command}`,
-  );
-}
-
-function assertManagedRenderRuntimeInstaller(rootDirectory, catalog) {
-  const commands = catalog.commands;
-  invariant(
-    commands && typeof commands === 'object' && !Array.isArray(commands),
-    'Remotion delivery catalog must declare managed installer commands',
-  );
-  for (const key of ['status', 'install', 'remove', 'cancel']) {
-    const command = commands[key];
-    invariant(typeof command === 'string', `Remotion delivery catalog commands.${key} is missing`);
-    assertCommandWiring(rootDirectory, command);
-    assertRustCommandImplementation(rootDirectory, command);
-  }
-  const rustSources = [
-    ...walkFiles(
-      path.join(rootDirectory, TAURI_DIRECTORY, 'src'),
-      (candidate) => candidate.endsWith('.rs'),
-    ),
-    ...walkFiles(
-      path.join(rootDirectory, 'crates/osg-engine-packages/src'),
-      (candidate) => candidate.endsWith('.rs'),
-    ),
-  ];
-  invariant(
-    rustSources.some((sourcePath) =>
-      /include_(?:str|bytes)!\s*\(\s*["'][^"']*remotion-runtime\.delivery\.json["']\s*\)/
-        .test(fs.readFileSync(sourcePath, 'utf8')),
-    ),
-    'Managed Remotion installer must compile-bind remotion-runtime.delivery.json',
-  );
-}
-
-function assertManagedRenderRuntimeInstallerV2(rootDirectory, catalog) {
-  const expected = {
-    status: 'render_package_status',
-    install: 'render_package_install',
-    remove: 'render_package_remove',
-  };
-  invariant(catalog.commands && typeof catalog.commands === 'object'
-    && !Array.isArray(catalog.commands),
-  'Remotion delivery catalog must declare managed installer commands');
-  invariant(Object.keys(catalog.commands).length === Object.keys(expected).length,
-    'Remotion delivery catalog has unexpected managed installer commands');
-  for (const [key, command] of Object.entries(expected)) {
-    invariant(catalog.commands[key] === command,
-      `Remotion delivery catalog commands.${key} must be ${command}`);
-    assertCommandWiring(rootDirectory, command);
-    assertRustCommandImplementation(rootDirectory, command);
-  }
-  assertCommandWiring(rootDirectory, 'job_cancel');
-  const rustSources = [
-    ...walkFiles(
-      path.join(rootDirectory, TAURI_DIRECTORY, 'src'),
-      (candidate) => candidate.endsWith('.rs'),
-    ),
-    ...walkFiles(
-      path.join(rootDirectory, 'crates/osg-engine-packages/src'),
-      (candidate) => candidate.endsWith('.rs'),
-    ),
-  ];
-  invariant(
-    rustSources.some((sourcePath) =>
-      /include_(?:str|bytes)!\s*\(\s*["'][^"']*remotion-runtime\.delivery\.json["']\s*\)/
-        .test(fs.readFileSync(sourcePath, 'utf8')),
-    ),
-    'Managed Remotion installer must compile-bind remotion-runtime.delivery.json',
-  );
-}
-
-// The reviewed notices asset is identified by name because the catalog schema is closed: the Rust
-// loader rejects unknown source fields, so no explicit role marker can be added to a source.
-const RENDER_NOTICE_ASSET = /(?:^|[-_])notices?(?:[-_][^/]*)?\.(?:json|txt)$/i;
-
-function assertRenderRuntimeComponentLicense(component, componentLabel) {
-  invariant(component && typeof component === 'object' && !Array.isArray(component),
-    `${componentLabel} must be an object`);
-  const license = component.license;
-  invariant(license && typeof license === 'object' && !Array.isArray(license)
-    && typeof license.spdx === 'string' && license.spdx.trim().length > 0,
-  `${componentLabel} must declare an SPDX license expression`);
-  const noticePath = assertSafeManifestPath(license.noticePath,
-    `${componentLabel}.license.noticePath`);
-  invariant(noticePath.startsWith('licenses/'),
-    `${componentLabel}.license.noticePath must install below licenses/`);
-}
-
-// schemaVersion 2 moves the file inventory into the hash-bound delivery manifest, so the reviewed
-// catalog must still state where the third-party notices come from: either an explicit component
-// licence inventory, or a notices asset among the downloaded sources.
-function assertRenderRuntimeLicenseInventoryV2(release, label) {
-  if (release.components !== undefined) {
-    invariant(Array.isArray(release.components) && release.components.length > 0,
-      `${label}.components must be a non-empty licence inventory when declared`);
-    release.components.forEach((component, index) => assertRenderRuntimeComponentLicense(
-      component,
-      `${label}.components[${index}]`,
-    ));
-    return;
-  }
-  const noticeSources = release.sources.filter(
-    (source) => typeof source.asset === 'string' && RENDER_NOTICE_ASSET.test(source.asset),
-  );
-  invariant(
-    noticeSources.length > 0,
-    `${label} must inventory its third-party notices: declare components[].license`
-      + ' (spdx plus noticePath) or ship a reviewed *-notices.json source asset',
-  );
-  for (const source of noticeSources) {
-    invariant(source.kind === 'raw',
-      `${label} third-party notices asset ${source.asset} must be a raw source`);
-  }
-}
-
-function assertRenderRuntimeDeliveryV2(rootDirectory, target, catalog) {
-  invariant(catalog.protocolVersion === 1,
-    'Remotion delivery catalog must use stdio protocolVersion 1');
-  invariant(catalog.remotionVersion === REMOTION_VERSION,
-    `Remotion delivery catalog must pin ${REMOTION_VERSION}`);
-  const worker = catalog.worker;
-  invariant(worker && worker.sourcePath === 'video-renderer/worker/osg_render_worker.mjs',
-    'Remotion delivery catalog must bind the reviewed native render worker');
-  const workerPath = path.join(rootDirectory, worker.sourcePath);
-  invariant(fs.existsSync(workerPath), 'The reviewed native render worker is missing');
-  assertPositiveInteger(worker.sizeBytes, 'Remotion delivery worker.sizeBytes');
-  assertSha256(worker.sha256, 'Remotion delivery worker.sha256');
-  invariant(fs.statSync(workerPath).size === worker.sizeBytes,
-    'Native render worker size does not match the delivery catalog');
-  invariant(sha256File(workerPath) === worker.sha256,
-    'Native render worker hash does not match the delivery catalog');
-
-  const platformKey = ENGINE_PLATFORM_BY_TARGET[target];
-  invariant(platformKey, `Unsupported Remotion delivery target ${target}`);
-  invariant(catalog.platforms && Object.keys(catalog.platforms).length === 4,
-    'Remotion delivery catalog must declare exactly four supported platform records');
-  for (const key of ['linux-x86_64', 'macos-aarch64', 'macos-x86_64', 'windows-x86_64']) {
-    invariant(catalog.platforms[key] && Array.isArray(catalog.platforms[key].releases),
-      `Remotion delivery catalog is missing platform ${key}`);
-  }
-  const releases = catalog.platforms[platformKey].releases;
-  invariant(releases.length === 1,
-    `Remotion delivery catalog ${platformKey} must contain exactly one reviewed runtime release`);
-  const [release] = releases;
-  const label = `Remotion delivery ${platformKey}`;
-  invariant(release.version === REMOTION_VERSION,
-    `${label}.version must be ${REMOTION_VERSION}`);
-  invariant(release.sourceUrl === '', `${label}.sourceUrl must be empty for multi-source delivery`);
-  assertPositiveInteger(release.sizeBytes, `${label}.sizeBytes`);
-  assertPositiveInteger(release.unpackedSizeBytes, `${label}.unpackedSizeBytes`);
-  assertSha256(release.sha256, `${label}.sha256`);
-  invariant(release.pythonRelativePath === 'runtime/bin/node.exe',
-    `${label}.pythonRelativePath must identify the managed Node executable`);
-  invariant(release.modelRelativePath === null, `${label}.modelRelativePath must be null`);
-  invariant(Array.isArray(release.files) && release.files.length === 0,
-    `${label}.files must be supplied only by the hashed delivery manifest`);
-  invariant(Array.isArray(release.sources) && release.sources.length > 0,
-    `${label}.sources must not be empty`);
-
-  const validateAsset = (asset, assetLabel, kindRequired = false) => {
-    invariant(asset && typeof asset === 'object' && !Array.isArray(asset),
-      `${assetLabel} must be an object`);
-    const name = assertSafeManifestPath(asset.asset, `${assetLabel}.asset`);
-    invariant(!name.includes('/'), `${assetLabel}.asset must be one file name`);
-    assertPositiveInteger(asset.sizeBytes, `${assetLabel}.sizeBytes`);
-    assertSha256(asset.sha256, `${assetLabel}.sha256`);
-    invariant(name.toLowerCase().includes(asset.sha256.slice(0, 16)),
-      `${assetLabel}.asset must be content-addressed by its SHA-256`);
-    invariant(Array.isArray(asset.urls) && asset.urls.length > 0,
-      `${assetLabel}.urls must not be empty`);
-    for (const [index, url] of asset.urls.entries()) {
-      assertImmutableSourceUrl(url, `${assetLabel}.urls[${index}]`);
-      const parsed = new URL(url);
-      invariant(parsed.hostname === 'github.com'
-        && parsed.pathname.startsWith('/nganlinh4/oneclick-subtitles-generator/releases/download/osg-runtime-bundles-v1/'),
-      `${assetLabel} must use the reviewed bundle-pool fallback`);
-      invariant(decodeURIComponent(parsed.pathname.split('/').at(-1)) === name,
-        `${assetLabel}.asset must match its source URL`);
-    }
-    if (kindRequired) invariant(['zip', 'raw'].includes(asset.kind),
-      `${assetLabel}.kind must be zip or raw`);
-    return asset.sizeBytes;
-  };
-  const sourceBytes = release.sources.reduce((total, source, index) => (
-    total + validateAsset(source, `${label}.sources[${index}]`, true)
-  ), 0);
-  const manifestBytes = validateAsset(release.manifest, `${label}.manifest`);
-  invariant(release.asset === release.manifest.asset
-    && release.sha256 === release.manifest.sha256,
-  `${label} must bind its top-level identity to the delivery manifest`);
-  invariant(release.sizeBytes === sourceBytes + manifestBytes,
-    `${label}.sizeBytes must equal all source and manifest bytes`);
-  assertRenderRuntimeLicenseInventoryV2(release, label);
-  assertManagedRenderRuntimeInstallerV2(rootDirectory, catalog);
-}
-
-function assertRenderRuntimeDelivery(rootDirectory, target, resourceMappings) {
-  const catalog = readJson(rootDirectory, RENDER_DELIVERY_PATH);
-  if (catalog.schemaVersion === 2) {
-    assertRenderRuntimeDeliveryV2(rootDirectory, target, catalog);
-    return;
-  }
-  invariant(catalog.schemaVersion === 1, 'Remotion delivery catalog must use schemaVersion 1');
-  invariant(catalog.protocolVersion === 1, 'Remotion delivery catalog must use stdio protocolVersion 1');
-  invariant(
-    catalog.remotionVersion === REMOTION_VERSION,
-    `Remotion delivery catalog must pin ${REMOTION_VERSION}`,
-  );
-  const worker = catalog.worker;
-  invariant(worker && worker.sourcePath === 'video-renderer/worker/osg_render_worker.mjs',
-    'Remotion delivery catalog must bind the reviewed native render worker');
-  const workerPath = path.join(rootDirectory, worker.sourcePath);
-  invariant(fs.existsSync(workerPath), 'The reviewed native render worker is missing');
-  invariant(Number.isSafeInteger(worker.sizeBytes) && worker.sizeBytes > 0,
-    'Remotion delivery worker sizeBytes must be positive');
-  invariant(/^[0-9a-f]{64}$/.test(worker.sha256),
-    'Remotion delivery worker sha256 must be a lowercase SHA-256 digest');
-  invariant(fs.statSync(workerPath).size === worker.sizeBytes,
-    'Native render worker size does not match the delivery catalog');
-  invariant(sha256File(workerPath) === worker.sha256,
-    'Native render worker hash does not match the delivery catalog');
-
-  const platform = catalog.platforms && catalog.platforms[target];
-  invariant(platform && Array.isArray(platform.releases),
-    `Remotion delivery catalog is missing target ${target}`);
-  invariant(platform.releases.length > 0,
-    `Remotion delivery catalog ${target} has no reviewed runtime release`);
-  invariant(platform.releases.length === 1,
-    `Remotion delivery catalog ${target} must contain exactly one current runtime release`);
-
-  const requiredRoles = new Set([
-    'node', 'browser', 'rendererPackage', 'bundleIndex', 'binariesMarker',
-    'fontManifest', 'notices',
-  ]);
-  const componentIds = new Set([
-    'node', 'chromium', 'remotion', 'remotion-binaries', 'font-pack',
-  ]);
-  for (const [releaseIndex, release] of platform.releases.entries()) {
-    const label = `Remotion delivery ${target}.releases[${releaseIndex}]`;
-    invariant(release && typeof release === 'object' && !Array.isArray(release),
-      `${label} must be an object`);
-    invariant(release.target === target, `${label}.target must be ${target}`);
-    invariant(release.remotionVersion === REMOTION_VERSION,
-      `${label}.remotionVersion must be ${REMOTION_VERSION}`);
-    invariant(typeof release.version === 'string' && EXACT_VERSION.test(release.version),
-      `${label}.version must be an exact semantic version`);
-    assertImmutableSourceUrl(release.sourceUrl, label);
-    invariant(['zip', 'tar.gz', 'tar.xz'].includes(release.archiveFormat),
-      `${label}.archiveFormat is unsupported`);
-    invariant(Number.isSafeInteger(release.archiveSizeBytes) && release.archiveSizeBytes > 0,
-      `${label}.archiveSizeBytes must be positive`);
-    invariant(/^[0-9a-f]{64}$/i.test(release.archiveSha256),
-      `${label}.archiveSha256 must be a full SHA-256 digest`);
-    invariant(Number.isSafeInteger(release.unpackedSizeBytes) && release.unpackedSizeBytes > 0,
-      `${label}.unpackedSizeBytes must be positive`);
-    invariant(release.manifest && release.manifest.path === 'remotion-runtime.json',
-      `${label}.manifest must inventory remotion-runtime.json`);
-    invariant(Number.isSafeInteger(release.manifest.sizeBytes) && release.manifest.sizeBytes > 0,
-      `${label}.manifest.sizeBytes must be positive`);
-    invariant(/^[0-9a-f]{64}$/i.test(release.manifest.sha256),
-      `${label}.manifest.sha256 must be a full SHA-256 digest`);
-
-    invariant(Array.isArray(release.files) && release.files.length >= requiredRoles.size,
-      `${label}.files must inventory the complete runtime`);
-    const paths = new Set();
-    const singletonRoles = new Set();
-    for (const [fileIndex, file] of release.files.entries()) {
-      const fileLabel = `${label}.files[${fileIndex}]`;
-      const filePath = assertSafeManifestPath(file && file.path, `${fileLabel}.path`);
-      invariant(!paths.has(filePath), `${label} repeats runtime path ${filePath}`);
-      paths.add(filePath);
-      invariant(requiredRoles.has(file.role) || file.role === 'payload',
-        `${fileLabel}.role is unsupported`);
-      if (file.role !== 'payload') {
-        invariant(!singletonRoles.has(file.role), `${label} repeats role ${file.role}`);
-        singletonRoles.add(file.role);
-      }
-      invariant(Number.isSafeInteger(file.sizeBytes) && file.sizeBytes > 0,
-        `${fileLabel}.sizeBytes must be positive`);
-      invariant(/^[0-9a-f]{64}$/i.test(file.sha256),
-        `${fileLabel}.sha256 must be a full SHA-256 digest`);
-      invariant(typeof file.executable === 'boolean', `${fileLabel}.executable must be boolean`);
-      if (file.role === 'node' || file.role === 'browser') {
-        invariant(file.executable, `${fileLabel} must be executable`);
-      }
-    }
-    invariant([...requiredRoles].every((role) => singletonRoles.has(role)),
-      `${label} is missing one or more required runtime roles`);
-    invariant(release.files.some((file) => file.role === 'payload'),
-      `${label} must inventory renderer/browser/font payload files`);
-
-    invariant(Array.isArray(release.components), `${label}.components must be an array`);
-    const observedComponents = new Set(release.components.map((component) => component && component.id));
-    invariant(observedComponents.size === componentIds.size
-      && [...componentIds].every((id) => observedComponents.has(id)),
-    `${label}.components must be exactly: ${[...componentIds].join(', ')}`);
-    for (const component of release.components) {
-      const componentLabel = `${label}.components.${component.id}`;
-      invariant(typeof component.version === 'string' && EXACT_VERSION.test(component.version),
-        `${componentLabel}.version must be exact`);
-      if (component.id === 'remotion' || component.id === 'remotion-binaries') {
-        invariant(component.version === REMOTION_VERSION,
-          `${componentLabel}.version must be ${REMOTION_VERSION}`);
-      }
-      assertImmutableSourceUrl(component.sourceUrl, componentLabel);
-      invariant(component.license && typeof component.license.spdx === 'string'
-        && component.license.spdx.trim().length > 0,
-      `${componentLabel} must declare an SPDX license expression`);
-      const noticePath = assertSafeManifestPath(
-        component.license.noticePath,
-        `${componentLabel}.license.noticePath`,
-      );
-      invariant(paths.has(noticePath),
-        `${componentLabel}.license.noticePath is not in the runtime inventory`);
-    }
-  }
-
-  let mappings = resourceMappings;
-  let mappingError;
-  if (mappings === undefined) {
-    try {
-      mappings = collectResourceMappings(rootDirectory, target);
-    } catch (error) {
-      mappings = [];
-      mappingError = error;
-    }
-  }
-  let bundledError;
-  try {
-    assertBundledRenderRuntime(rootDirectory, target, platform.releases[0], mappings);
-  } catch (error) {
-    bundledError = mappingError || error;
-  }
-  let installerError;
-  try {
-    assertManagedRenderRuntimeInstaller(rootDirectory, catalog);
-  } catch (error) {
-    installerError = error;
-  }
-  invariant(
-    !bundledError || !installerError,
-    `Remotion delivery ${target} has no packaged render-runtime resource tree/receipt or managed installer wiring: bundled=${bundledError?.message || 'passed'}; installer=${installerError?.message || 'passed'}`,
-  );
-}
-
 function assertCommandWiring(rootDirectory, command) {
   invariant(/^[a-z][a-z0-9_]{2,63}$/.test(command), `Managed-runtime command is invalid: ${command}`);
   for (const relativePath of [
@@ -4915,6 +4467,84 @@ function assertNoMissingNativeCapabilities(rootDirectory) {
   );
 }
 
+/**
+ * The deleted browser render path stays deleted. This is the rule that keeps it that way.
+ *
+ * It is deliberately a token scan rather than a dependency or import check: that payload reached a
+ * build through a package name, a delivery-catalog path, a bundle resource, an `include_str!` and a
+ * worker filename, and every one of those is plain text before it is anything else. A dependency
+ * graph would have caught the first and missed the rest.
+ *
+ * The token is assembled from halves so this gate is not its own first offender. That is not
+ * cleverness for its own sake: spelling it here would force `scripts/` onto the allowlist, and an
+ * allowlisted `scripts/` is where the next reintroduction would land unnoticed.
+ *
+ * Only the four history files below may keep the word, and none is reachable from a build: a
+ * handoff record, a superseded design note, a dated validation log, and the captured Electron logs.
+ * They are named rather than merely left outside the scanned roots, so moving one into `src/` or
+ * `scripts/` fails instead of quietly becoming allowed.
+ */
+const LEGACY_RENDERER_ROOTS = ['src', 'crates', 'apps', 'scripts'];
+const LEGACY_RENDERER_MANIFESTS = ['package.json', 'package-lock.json'];
+const LEGACY_RENDERER_ALLOWLIST = new Set([
+  'CLAUDE_HANDOFF_TEMP.md',
+  'docs/rewrite/NATIVE_RENDERER.md',
+  'docs/release/WINDOWS-1.0-VALIDATION.md',
+]);
+const LEGACY_RENDERER_ALLOWED_PREFIX = 'electron-logs/';
+/**
+ * Generated from `src/`, and regenerated by `npm run update:visual-freeze`.
+ *
+ * Excluded because it is a snapshot rather than a source: a token can only reach it by already
+ * being in a scanned root, where this rule catches it first, and its own gate fails on any drift.
+ */
+const LEGACY_RENDERER_GENERATED = new Set(['scripts/frontend-visual-baseline.json']);
+/** Dependency and build caches: not sources, and not something a reviewer can edit. */
+const LEGACY_RENDERER_SKIPPED_DIRECTORIES = new Set(['node_modules', 'target', '__pycache__']);
+const LEGACY_RENDERER_BINARY = new RegExp(
+  '\\.(?:png|jpe?g|gif|webp|avif|ico|icns|mp4|mkv|webm|mp3|wav|m4a|ogg|flac|woff2?|ttf|otf'
+  + '|zip|7z|gz|tar|exe|dll|pdb|so|dylib|bin|onnx|safetensors|pt|pth|pyc|pyo|gguf)$',
+  'i',
+);
+const LEGACY_RENDERER_TOKEN = new RegExp(['re', 'motion'].join(''), 'i');
+
+function isLegacyRendererReferenceAllowed(relativePath) {
+  return LEGACY_RENDERER_ALLOWLIST.has(relativePath)
+    || LEGACY_RENDERER_GENERATED.has(relativePath)
+    || relativePath.startsWith(LEGACY_RENDERER_ALLOWED_PREFIX);
+}
+
+function assertNoLegacyRendererResidue(rootDirectory = REPOSITORY_ROOT) {
+  const candidates = [
+    ...LEGACY_RENDERER_MANIFESTS
+      .map((relativePath) => path.join(rootDirectory, relativePath))
+      .filter((candidate) => fs.existsSync(candidate)),
+    ...LEGACY_RENDERER_ROOTS.flatMap((relativeRoot) => walkFiles(
+      path.join(rootDirectory, relativeRoot),
+      (candidate) => !LEGACY_RENDERER_BINARY.test(candidate),
+      LEGACY_RENDERER_SKIPPED_DIRECTORIES,
+    )),
+  ];
+  const offenders = [];
+  for (const candidate of candidates) {
+    const relativePath = path.relative(rootDirectory, candidate).replaceAll('\\', '/');
+    if (isLegacyRendererReferenceAllowed(relativePath)) {
+      continue;
+    }
+    if (LEGACY_RENDERER_TOKEN.test(fs.readFileSync(candidate, 'utf8'))) {
+      offenders.push(relativePath);
+    }
+  }
+  const displayed = offenders.slice(0, 12);
+  const omitted = offenders.length - displayed.length;
+  invariant(
+    offenders.length === 0,
+    `The deleted browser render path is reachable again from ${offenders.length} file(s): ${
+      displayed.join(', ')}${omitted > 0 ? `, and ${omitted} more` : ''
+    }; the native export owns rendering, so remove the reference rather than re-adding the payload`,
+  );
+}
+
 function checkCompileReadiness(rootDirectory = REPOSITORY_ROOT) {
   const pins = assertPinnedToolchains(rootDirectory);
   assertLockfiles(rootDirectory);
@@ -4923,6 +4553,7 @@ function checkCompileReadiness(rootDirectory = REPOSITORY_ROOT) {
   assertTauriProductionBuildContract(rootDirectory);
   assertNativeToolDelivery(rootDirectory, mappings);
   assertLoopbackAuditManifest(rootDirectory);
+  assertNoLegacyRendererResidue(rootDirectory);
   return { ...pins, resourceCount: mappings.length };
 }
 
@@ -4997,7 +4628,6 @@ function checkRuntimePackageReadiness(rootDirectory, target) {
     () => assertWorkerResources(rootDirectory, mappings),
     () => assertNativeToolDelivery(rootDirectory, mappings),
     () => assertRequiredMediaToolDelivery(rootDirectory, target),
-    () => assertRenderRuntimeDelivery(rootDirectory, target, mappings),
     () => assertManagedEngineDelivery(rootDirectory, target),
     () => assertUpdaterReleaseConfiguration(rootDirectory),
     () => assertRepositoryReleasePolicy(rootDirectory),
@@ -5085,12 +4715,12 @@ module.exports = {
   assertNativeToolDelivery,
   assertRequiredMediaToolDelivery,
   assertRepositoryReleasePolicy,
-  assertRenderRuntimeDelivery,
   assertManagedEngineDelivery,
   assertUpdaterReleaseConfiguration,
   assertTauriProductionBuildContract,
   assertLoopbackAuditManifest,
   assertNoMissingNativeCapabilities,
+  assertNoLegacyRendererResidue,
   assertNoUnmanagedLocalServices,
   assertDesktopCloseLifecycleSource,
   assertNativePickerEvidenceScripts,

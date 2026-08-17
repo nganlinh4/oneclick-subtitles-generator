@@ -23,8 +23,8 @@ const FIXTURE_PATH = join(
 );
 
 const SOURCES = {
-  easing: 'video-renderer/src/subtitleAnimationEasing.ts',
-  visualMath: 'video-renderer/src/subtitleVisualMath.ts',
+  easing: 'src/shared/subtitle/subtitleAnimationEasing.ts',
+  visualMath: 'src/shared/subtitle/subtitleVisualMath.ts',
 };
 
 // Progress samples: the boundaries, the piecewise split, and values chosen to expose rounding.

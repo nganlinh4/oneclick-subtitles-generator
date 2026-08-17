@@ -63,8 +63,7 @@
     "shortDescription": "Create, edit, translate, and render subtitles",
     "resources": {
       "../../../crates/osg-asr/worker/osg_asr_worker.py": "workers/osg_asr_worker.py",
-      "../../../crates/osg-speech/worker/osg_speech_worker.py": "workers/osg_speech_worker.py",
-      "../../../video-renderer/worker/osg_render_worker.mjs": "workers/osg_render_worker.mjs"
+      "../../../crates/osg-speech/worker/osg_speech_worker.py": "workers/osg_speech_worker.py"
     },
     "icon": [
       "icons/32x32.png",

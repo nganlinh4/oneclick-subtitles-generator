@@ -7,7 +7,7 @@
 //! integers in the same range; and the export composition applies them as a plain linear
 //! multiplier, `volume={(metadata.originalAudioVolume ?? 100) / 100}` and
 //! `volume={(metadata.narrationVolume ?? 100) / 100}` in
-//! `video-renderer/src/components/SubtitledVideo.tsx`. Muting is that slider at 0, and a narration
+//! the shipped JavaScript renderer. Muting is that slider at 0, and a narration
 //! source of `none` simply omits the narration track. [`Volume`] is exactly that: percent over a
 //! hundred, applied as a linear gain.
 

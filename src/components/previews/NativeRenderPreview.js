@@ -10,14 +10,14 @@ import useNativePreview from './native/useNativePreview';
 /**
  * The render tab's preview, drawn by the same compositor that writes the file.
  *
- * This replaces `RemotionVideoPreview`, which ran a hand-maintained JavaScript near-duplicate of the
- * export composition inside `@remotion/player`. That duplicate and the export already disagreed in
- * at least thirteen measurable ways — crop `objectFit`, the canvas-background trigger, the composition
+ * This replaces the deleted browser preview, which ran a hand-maintained JavaScript near-duplicate
+ * of the export composition inside a third-party player. That duplicate and the export already
+ * disagreed in at least thirteen measurable ways — crop `objectFit`, the canvas-background trigger, the composition
  * width association, and a font path that fetched Google Fonts and silently substituted whatever came
  * back. None of those can recur here, because nothing in this component draws a subtitle: it shows a
  * `<video>` for playback and, the moment playback stops, the frame `crates/osg-compositor` produced.
  *
- * WHAT IS NOT REPRODUCED, stated rather than approximated: the Remotion Player's own control bar.
+ * WHAT IS NOT REPRODUCED, stated rather than approximated: the old player's own control bar.
  * A browser's `<video controls>` bar is painted inside the video element's stacking context, so an
  * overlay carrying the composited frame necessarily covers it, and an invisible-but-clickable control
  * bar is worse than none. The panel therefore uses this application's own established video

@@ -4,7 +4,7 @@
  *
  * Why this exists: the shipped font system lies. `fontOptions.js` offers selectable entries over
  * fewer primary families (`fontInventory.js` counts both, and is the only place those counts are
- * stated); the legacy Remotion `fontUrlMap` mapped most of them, 18 to a *different* family than
+ * stated); the legacy browser renderer's `fontUrlMap` mapped most of them, 18 to a *different* family than
  * the one named, and several to nothing at all. On top of that the
  * operating system substitutes silently — Windows' `FontSubstitutes` registry maps
  * `Helvetica -> Arial`, so the shipped default (`'Arial', sans-serif`) and the Helvetica entry are
@@ -146,7 +146,7 @@ export const OS_FAMILY_SUBSTITUTIONS = Object.freeze({
 });
 
 /**
- * The legacy Remotion `fontUrlMap` entries whose stylesheet served a *different* family than the
+ * The legacy browser renderer's `fontUrlMap` entries whose stylesheet served a *different* family than the
  * catalog name. Recorded so the UI can disclose what a pre-existing project was actually drawn
  * with. Resolution never follows these.
  */

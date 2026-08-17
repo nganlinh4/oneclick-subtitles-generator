@@ -354,7 +354,7 @@
   }
 }
 
-/* RemotionVideoPreview specific styles - direct children of video-preview-panel */
+/* Preview placeholder styles - direct children of video-preview-panel */
 .video-preview-panel .placeholder-content {
   display: flex;
   flex-direction: column;
@@ -381,21 +381,6 @@
 .video-preview-panel .placeholder-icon svg {
   color: var(--text-secondary);
   transition: color 0.2s ease;
-}
-
-.video-preview-panel .powered-by-remotion {
-  margin-top: 20px;
-  padding-top: 16px;
-  border-top: 1px solid var(--border-color);
-  opacity: 0.7;
-}
-
-.video-preview-panel .powered-by-remotion span {
-  font-size: 0.75rem;
-  color: var(--text-secondary);
-  font-weight: 500;
-  letter-spacing: 0.5px;
-  text-transform: uppercase;
 }
 
 .video-preview-panel .video-preview-info {

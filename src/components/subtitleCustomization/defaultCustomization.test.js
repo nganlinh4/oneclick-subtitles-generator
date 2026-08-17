@@ -1,7 +1,7 @@
 import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 
-import { defaultCustomization as rendererDefaultCustomization } from '../../../video-renderer/src/components/SubtitleCustomization';
+import { defaultCustomization as rendererDefaultCustomization } from '../../shared/subtitle/SubtitleCustomization';
 
 import {
   defaultCustomization,
@@ -133,18 +133,11 @@ describe('subtitle customization default authority', () => {
     },
   );
 
-  it('removes the stale composition-local fallback object', () => {
-    const previewSource = readFileSync(
-      resolve('src/components/SubtitledVideoComposition.js'),
-      'utf8',
-    );
-    expect(previewSource).toContain(
-      "import { defaultCustomization } from './subtitleCustomization/defaultCustomization';",
-    );
-    expect(previewSource).not.toMatch(/const\s+defaultCustomization\s*=/);
-    // The render tab still reads its persisted style through this parser; the read moved out of the
-    // section and into the state module that owns the default merge for both the preview and the
-    // export (`VideoRenderingSection/subtitleCustomizationState.js`).
+  // This also required the WebView composition to import the default rather than declare its own
+  // fallback object. That composition is deleted, so what remains is the surviving half: the render
+  // tab still reads its persisted style through this parser, and the read lives in the state module
+  // that owns the default merge for both the preview and the export.
+  it('reads the persisted style through one parser owned by the state module', () => {
     const stateSource = readFileSync(
       resolve('src/components/VideoRenderingSection/subtitleCustomizationState.js'),
       'utf8',

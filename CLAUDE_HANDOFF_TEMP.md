@@ -613,6 +613,85 @@ issue another milestone-style final response while any item above remains locall
 subagents, local commits, fresh read-only reviews, and automatic continuation until either the entire
 removal gate is green or the sole remaining action genuinely requires a secret/irreversible upload.
 
+### WAVE 18 UPDATE — native export verified in code; now finish removal and release closure
+
+Current reviewed repository state is `c5e0d880e6f8539e4c654316437edafe585099d9`, exactly `93`
+commits after the safety checkpoint. The Wave 18 work is concrete: `render_start` reaches
+`osg-export`, the frontend resolves a face, bakes/stages a multi-cue glyph atlas and supplies the
+native text payload, the ledger has zero entries still labelled `pending`, and the old engine is not
+used as a silent export fallback. This satisfies the earlier seven-entry implementation directive.
+
+It does **not** satisfy the overall migration. A source scan at this checkpoint still finds `87`
+files mentioning Remotion. More importantly, `VideoPreview.js` still describes and renders a CSS
+overlay fallback, while the task tracker still lists real-editor native preview wiring as open. The
+recap phrase “preview now runs natively” must not be treated as proof that the production editor is
+WYSIWYG during every paused, playing, seeking, editing, error, and recovery state.
+
+Proceed continuously in this exact order; do not stop after any numbered item merely to report it:
+
+1. **Remove the union-atlas product ceiling.** The demonstrated capacity of 16 cues containing 64
+   distinct contextual forms each is not an acceptable final document limit for CJK, Arabic, emoji,
+   multilingual lyrics, or long subtitle files. Implement bounded atlas paging/segmentation or an
+   equivalently safe scene representation so every document within the product's declared subtitle
+   bounds exports. Keep contextual forms, UTF-16/cluster mapping, ordering, GPU texture limits,
+   cancellation, staging cleanup, and preview/export identity exact. Add adversarial near-limit and
+   multi-page tests; refusing malformed/over-budget input is correct, but an incidental 1,024-cell
+   implementation ceiling must not reject otherwise supported projects.
+
+2. **Finish the real editor preview.** Remove the independent CSS appearance fallback and any state
+   in which playback silently reverts to WebView subtitle composition. Paused, playing, scrubbing,
+   seek, resize, edit, project switch, device loss, and native refusal must all use the one native
+   renderer or show an explicit typed unavailable state—never a visually different renderer. Prove
+   exact project/media/scene/generation ownership, stale capability release, bounded coalescing, and
+   recovery. Add an executable real `VideoPreview` integration test, not only hook/lab tests.
+
+3. **Re-run the exhaustive authorization gate against the actual editor surface and decoded MP4.**
+   Zero ledger `pending` labels alone is insufficient. Exercise all 30 presets/70 fields, custom and
+   multilingual fonts, atlas pages, transitions, trim/seek, resolution/FPS/aspect ratio, audio,
+   narration, cancellation, restart, and device loss. Preserve failure artifacts and reviewed pixel
+   thresholds. A fresh reviewer must try to falsify parity and must verify that `native`, `fixed`, or
+   `inert` classifications were not used to hide a divergence.
+
+4. **Delete Remotion completely and immediately once item 3 is green.** Execute the surveyor's plan:
+   remove runtime/worker/download/delivery code, packages and lock records, commands/ACL, catalogs,
+   readiness and managed-delivery rules, CI/package steps, tests, docs and emitted resources. Remove
+   references to the two uploaded assets from the product; leave the append-only GitHub assets inert.
+   Require zero reachable/imported/runtime/package references. Historical migration prose may name
+   Remotion only where deliberately retained as history and excluded from product graphs/checks.
+
+5. **Close licensing/notices for the product that remains.** The former nonfree Remotion archive is
+   no longer a release-policy question once it is unreferenced and undistributed. Generate and verify
+   complete licence/notice inventory for the native renderer, Media Foundation use, shaders, fonts,
+   and every packaged third-party component. Do not leave a stale Remotion notice or a gate that
+   still expects its catalog. Finish local font package/catalog/hash/read-back work; ask only once at
+   the exact irreversible upload boundary if an upload is still genuinely required.
+
+6. **Harden upgrade and lifecycle behavior.** The new `metadata.engine = native` rule may reject old
+   successful render artifacts, but it must do so deliberately: reconcile/release stale playback and
+   artifact capabilities, settle persisted jobs predictably, preserve unrelated projects, provide a
+   typed user-facing retry path, and prove restart during the engine transition. Re-audit the Media
+   Foundation/wgpu flake fix across test binaries and processes; a process-local mutex is sufficient
+   only if executable stress evidence proves contention cannot cross those boundaries.
+
+7. **Package, install, launch and smoke the actual application.** Run normal unsuppressed production
+   budgets and every full Rust/JS/lint/i18n/type/visual/provenance/Tauri/readiness/licensing gate after
+   deletion. Build the Windows installer, install into a clean location, launch offline, load a real
+   project, preview it while playing and seeking, export it, decode the result, compare representative
+   frames/audio, cancel/retry once, restart, and verify no Remotion download/process/resource/network
+   activity. Unsigned local packaging and smoke must proceed even if final signing awaits the owner.
+
+8. **Run fresh independent adversarial reviews and close the handoff.** Review renderer security and
+   bounds, UI ownership, deletion reachability, licensing, packaging, upgrade behavior, and the
+   installed executable. Root-fix every confirmed defect, rerun affected and integrated gates, update
+   `NATIVE_RENDERER.md` and this handoff to exact final evidence, make auditable local commits, and do
+   not push. Only then may tasks C/E/H/I/J be marked complete.
+
+The focused Codex verification attempted during this checkpoint exceeded its four-minute command
+window while the real export crate was running, so do not cite that attempt as a pass or failure.
+The positive conclusion above comes from direct production-path inspection plus the previously
+successful real-export verification; Claude's latest `1422`/`2123` aggregate totals remain Claude's
+reported gate evidence and must be rerun after deletion anyway.
+
 ### Authority and safety boundaries
 
 - You are authorized to refactor across packages, add migrations/APIs/tests, split oversized
@@ -638,9 +717,9 @@ removal gate is green or the sole remaining action genuinely requires a secret/i
 - Repository: `C:\WORK\oneclick-subtitles-generator`
 - Branch: `rewrite/tauri-rust`
 - Safety checkpoint: `650805d3`
-- Current reviewed HEAD after Wave 11: `e5d3a1d373542d7297fb7ee371c2af7114bae45e`, 71 local commits
+- Current reviewed HEAD after Wave 18: `c5e0d880e6f8539e4c654316437edafe585099d9`, 93 local commits
   after the safety checkpoint. Preserve those commits; do not rewrite them.
-- At the start of the Wave 11 Codex check, the repository was clean. The handoff edit itself is the
+- At the start of the Wave 18 Codex check, the repository was clean. The handoff edit itself is the
   expected later worktree change. Recheck status before integration and preserve any subsequent work.
 - The already-uploaded inert Remotion assets are
   `remotion-runtime-windows-x64-4.0.507-8f2b4bb7f74bca85.zip`

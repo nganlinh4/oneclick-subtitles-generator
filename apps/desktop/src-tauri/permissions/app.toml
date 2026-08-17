@@ -177,21 +177,12 @@ commands.allow = [
 
 [[permission]]
 identifier = "render-video"
-description = "Allows the main editor to start and reconnect to durable native Remotion renders using only opaque media, project, and speech artifact identifiers."
+description = "Allows the main editor to start and reconnect to durable native GPU renders using only opaque media, project, and speech artifact identifiers."
 commands.allow = [
   "render_runtime_status",
   "render_start",
   "render_result",
   "render_playback_release",
-]
-
-[[permission]]
-identifier = "manage-render-packages"
-description = "Allows the main editor to inspect, install, and remove the reviewed content-addressed Remotion renderer runtime."
-commands.allow = [
-  "render_package_status",
-  "render_package_install",
-  "render_package_remove",
 ]
 
 [[permission]]

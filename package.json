@@ -9,8 +9,7 @@
     "npm": ">=11.17.0 <12"
   },
   "workspaces": [
-    "promptdj-midi",
-    "video-renderer"
+    "promptdj-midi"
   ],
   "scripts": {
     "start": "npm run tauri:dev",
@@ -33,7 +32,7 @@
     "test:frozen-css": "node --test scripts/frozen-css-compatibility.test.mjs scripts/check-frozen-css-output.test.mjs",
     "test:render-parity": "node --test scripts/render-parity-fixture.test.mjs",
     "test:parity-matrix": "node --test scripts/parity-matrix.test.mjs",
-    "test:production-transport": "node --test scripts/check-production-transport.test.js scripts/frontend-bundle-boundary.test.mjs scripts/remotion-desktop-boundary.test.mjs",
+    "test:production-transport": "node --test scripts/check-production-transport.test.js scripts/frontend-bundle-boundary.test.mjs",
     "test:asr-worker": "python -I -B scripts/test-asr-worker.py -v",
     "test:speech-worker": "python -I -B crates/osg-speech/tests/python_worker_contract.py -v",
     "test:python-workers": "npm run test:asr-worker && npm run test:speech-worker",
@@ -48,18 +47,15 @@
     "check:desktop-payload-size": "node scripts/check-desktop-payload-size.mjs",
     "check:production-transport": "node scripts/check-production-transport.js",
     "test:version-consistency": "node --test scripts/check-version-consistency.test.js",
-    "check:visual-freeze": "node scripts/check-visual-freeze.js && npm run --workspace=promptdj-midi check:visual-contract && npm run --workspace=video-renderer check:visual-contract",
+    "check:visual-freeze": "node scripts/check-visual-freeze.js && npm run --workspace=promptdj-midi check:visual-contract",
     "test:visual-contract": "node --test scripts/check-visual-freeze.test.js promptdj-midi/scripts/check-visual-contract.test.mjs",
     "test:desktop-payload-size": "node --test scripts/check-desktop-payload-size.test.mjs",
     "test:installed-inspector-contracts": "node --test scripts/inspect-installed-webview.test.mjs scripts/inspect-installed-media-flow.test.mjs scripts/inspect-installed-local-media-flow.test.mjs scripts/inspect-installed-native-tools.test.mjs scripts/inspect-installed-media-pipeline.test.mjs scripts/inspect-installed-editor-flow.test.mjs",
     "test:updater-fixture": "node --test scripts/derive-updater-smoke-version.test.js scripts/serve-updater-fixture.test.mjs scripts/inspect-installed-updater.test.mjs",
-    "check:render-visual-contract": "npm run --workspace=video-renderer check:visual-contract",
-    "test:render-worker": "npm run --workspace=video-renderer test:worker",
     "update:visual-freeze": "node scripts/check-visual-freeze.js --update --baseline-ref HEAD && npm run --workspace=promptdj-midi update:visual-contract"
   },
   "dependencies": {
     "@material/web": "2.4.1",
-    "@remotion/player": "4.0.507",
     "@tauri-apps/api": "2.11.1",
     "events": "^3.3.0",
     "i18next": "^23.8.0",
@@ -70,7 +66,6 @@
     "react-dom": "18.3.1",
     "react-i18next": "^13.3.0",
     "react-window": "^1.8.11",
-    "remotion": "4.0.507",
     "uuid": "11.1.1"
   },
   "devDependencies": {
@@ -83,6 +78,7 @@
     "@testing-library/jest-dom": "^6.6.3",
     "@testing-library/react": "^16.2.0",
     "7zip-bin-full": "26.2.1",
+    "esbuild": "0.28.1",
     "eslint": "9.39.5",
     "eslint-plugin-react": "7.37.5",
     "eslint-plugin-react-hooks": "7.1.1",
@@ -90,13 +86,6 @@
     "jsdom": "29.1.1",
     "vite": "8.0.16",
     "vitest": "4.1.10"
-  },
-  "resolutions": {
-    "remotion": "4.0.507",
-    "@remotion/bundler": "4.0.507",
-    "@remotion/google-fonts": "4.0.507",
-    "@remotion/player": "4.0.507",
-    "@remotion/renderer": "4.0.507"
   },
   "overrides": {
     "fast-uri": "3.1.5"

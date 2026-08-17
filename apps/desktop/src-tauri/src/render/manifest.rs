@@ -23,9 +23,8 @@ const MANIFEST_SCOPE: &str = "renderJobs";
 const MANIFEST_SCHEMA_VERSION: u32 = 1;
 /// The engine marker written into every rendered artifact's metadata.
 ///
-/// It replaces the Remotion version that used to be recorded here, and it is checked on the way
-/// back out: a rendered artifact this build did not produce is refused rather than handed back, because
-/// its pixels are not the ones the preview now shows.
+/// It is checked on the way back out: a rendered artifact this build did not produce is refused
+/// rather than handed back, because its pixels are not the ones the preview now shows.
 pub(super) const RENDER_ENGINE: &str = "native";
 
 /// What one finished render produced.
