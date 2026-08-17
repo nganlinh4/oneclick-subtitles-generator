@@ -2,7 +2,7 @@
   "schemaVersion": 5,
   "algorithm": "sha256",
   "normalization": "binary exact; UTF-8 BOM ignored, CRLF/CR normalized to LF, terminal newlines ignored",
-  "baselineRevision": "7319ab5e4ad4c699c98f61d7d45ae9931a5e257a",
+  "baselineRevision": "f8ed66a192e29e981177c498a64623b4f0bc9881",
   "retiredExactFiles": {
     "public/oauth2callback.html": "c19855fd5a3f19af1eea1c1fed6e7794a342136223dd60dbead2586d4298fd90",
     "src/assets/fonts/GoogleSansFlex.ttf": "eae5ed6ddefbd44ab9693b84454ce46f3f2de0fb4f7cc5b54138c50c5b347d70",
@@ -228,7 +228,7 @@
     "src/styles/VideoAnalysisModal.css": "e18a28dfd3bbdc947b2140bf32ac7119cd54677e0e65fddd9212f2df754ad084",
     "src/styles/VideoCropControls.css": "66acfb873cb964f56dff4f41531446368148c26638391d71fdfd79c247b705eb",
     "src/styles/VideoPreview.css": "f4513dc2473a2539cb83cb62a557d08a926200e370fc479d093424c06b3b29fa",
-    "src/styles/VideoPreviewPanel.css": "3df808c38ba68ff000b155302cfb7215cc44cfc1bef5662b9db5abfddecfb60e",
+    "src/styles/VideoPreviewPanel.css": "8ac45b3f0d3544c5691074830aad6fe214d7bd3f698053c5aea681d67294ca12",
     "src/styles/VideoProcessingOptionsModal.css": "75c66b2ee9361b7f88583960b6f63a904791850c8df3c49b2cbaea73e7b0a492",
     "src/styles/VideoQualityModal.css": "50a5d913e1a85ff120420f331fc173fdf927a389148294d7041b8aca419a3c31",
     "src/styles/VideoRenderingControls.css": "90945973be9b4d58451c32d2844b92973fa945daeef4236bf987c0cbb13cb15e",
@@ -2300,7 +2300,7 @@
       ]
     },
     "src/i18n/locales/en/videoRendering.json": {
-      "hash": "0f29bf3c2883d1abc095526f0ecfaa7495e6fe25cfb0d137dcd21b5dff1306df",
+      "hash": "57826878788776881be3ad0cbb98daf2c3c70d9313bfab9ff98df365eda0e2c0",
       "keys": [
         "addToQueue",
         "addVideosToQueue",
@@ -2420,7 +2420,6 @@
         "originalSubtitles",
         "pending",
         "position",
-        "poweredByRemotion",
         "preparingNarration",
         "preview",
         "processing",
@@ -4849,7 +4848,7 @@
       ]
     },
     "src/i18n/locales/ko/videoRendering.json": {
-      "hash": "439e6e34e5db2b3eb4392fffa72714d8ff0fbc2d5800bf6587728464e8e57b14",
+      "hash": "4c312cc7e5ab3cc6883b912971f0bc7c4ac1439d77ab7e75dbad7285667013a5",
       "keys": [
         "addToQueue",
         "addVideosToQueue",
@@ -5004,7 +5003,6 @@
         "originalSubtitles",
         "pending",
         "position",
-        "poweredByRemotion",
         "preparingNarration",
         "preview",
         "processing",
@@ -7493,7 +7491,7 @@
       ]
     },
     "src/i18n/locales/vi/videoRendering.json": {
-      "hash": "b79daaf6941c377c04a47ea1146a32db13a1995abfa89ae858e60bd62f8ea7d3",
+      "hash": "1e47ba1273e05a24a67b3fa63d62c74abddbe4278daba98aa97b845ef4bc1847",
       "keys": [
         "addToQueue",
         "addVideosToQueue",
@@ -7648,7 +7646,6 @@
         "originalSubtitles",
         "pending",
         "position",
-        "poweredByRemotion",
         "preparingNarration",
         "preview",
         "processing",
@@ -8731,14 +8728,6 @@
         "8422b765ca146577a76f542bccd37ea6189b8374ec2f90033fd7bbc8eddb7d47"
       ]
     },
-    "src/components/RemotionVideoPreview.js": {
-      "hash": "331e0fbc08922ea486373f1b01f1354953e3d23d410da08a421efea8b06c5d73",
-      "rootCount": 2,
-      "roots": [
-        "fd96a10976c87af97fb5a3a5b6d6cf833e4a09e2f7106db767c1901c39d94812",
-        "ddc7a371d83903a4a71fc2a09cd4eaab9b8914d7953b421e7be8d37adaab9562"
-      ]
-    },
     "src/components/SegmentRetryModal.js": {
       "hash": "b60f9b4603e111f1f10c41d3e5dd9d1b25f15a881d3ecd9b24a2bd375ae3abc2",
       "rootCount": 2,
@@ -9052,13 +9041,6 @@
       "rootCount": 1,
       "roots": [
         "7dc9a428c9933be0c92d893a1b060319d7f3ad69f78ee5c31b88650d3003a1e0"
-      ]
-    },
-    "src/components/SubtitledVideoComposition.js": {
-      "hash": "9ae6a740e35ff5098619c65d0939c4cdec10d2a897bd12c36344b12377d08c48",
-      "rootCount": 1,
-      "roots": [
-        "9b58afe21c35de00089641be877531438d69324bb739ff099333d654abd324d4"
       ]
     },
     "src/components/subtitleSettings/components/FontSettings.js": {
