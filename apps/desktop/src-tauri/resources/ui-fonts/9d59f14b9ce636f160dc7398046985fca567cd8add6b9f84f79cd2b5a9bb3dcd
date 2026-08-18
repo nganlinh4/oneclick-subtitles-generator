@@ -1,0 +1,66 @@
+{
+  "schemaVersion": 1,
+  "component": "google-sans-flex",
+  "platform": "all",
+  "version": "v22-ui4",
+  "pythonRelativePath": "runtime/google-sans-flex.css",
+  "modelRelativePath": null,
+  "alignerRelativePath": null,
+  "unpackedSizeBytes": 465576,
+  "files": [
+    {
+      "path": "runtime/google-sans-flex-vietnamese.woff2",
+      "sizeBytes": 57620,
+      "sha256": "7343aefa9061998bdfea8c1e2aa6943a029218dd78a23e5fde441e832fe66629",
+      "executable": false,
+      "role": "runtime",
+      "sourceIndex": 0,
+      "archivePath": null
+    },
+    {
+      "path": "runtime/google-sans-flex-latin-ext.woff2",
+      "sizeBytes": 131208,
+      "sha256": "0f63b3ae4c60341fc1348749796505e9ab621a3ab690b80f9cdf66dafc1eca19",
+      "executable": false,
+      "role": "runtime",
+      "sourceIndex": 1,
+      "archivePath": null
+    },
+    {
+      "path": "runtime/google-sans-flex-latin.woff2",
+      "sizeBytes": 270324,
+      "sha256": "3215351d7b5587396710ab80bd31994ebbf3a9ee6f8e67b3c29a30d909cec55f",
+      "executable": false,
+      "role": "runtime",
+      "sourceIndex": 2,
+      "archivePath": null
+    },
+    {
+      "path": "runtime/google-sans-flex.css",
+      "sizeBytes": 1239,
+      "sha256": "b7bcc5489391e48d44f4238b5e2eae87ddeb8269073853c904d947a173e33b40",
+      "executable": false,
+      "role": "runtime",
+      "sourceIndex": 3,
+      "archivePath": null
+    },
+    {
+      "path": "licenses/OFL.txt",
+      "sizeBytes": 4599,
+      "sha256": "1d361a8f8e8ce6e68457dcd93fb56e162e6baa3bbb7e7573a290d44399f6b57e",
+      "executable": false,
+      "role": "license",
+      "sourceIndex": 4,
+      "archivePath": null
+    },
+    {
+      "path": "licenses/NOTICE.txt",
+      "sizeBytes": 586,
+      "sha256": "019201394f5f7edd355567b138dddb4fd21d414696ff0582058ec11d2d5963c4",
+      "executable": false,
+      "role": "license",
+      "sourceIndex": 5,
+      "archivePath": null
+    }
+  ]
+}

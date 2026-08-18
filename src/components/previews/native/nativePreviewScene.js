@@ -43,6 +43,7 @@ import {
   atlasWrapWidth,
   glyphScaleForComposition,
 } from './nativePreviewGeometry';
+import { fontCapabilitySnapshot } from '../../../services/fontCapability';
 
 /** The grid `secondsToMicros` in `renderService.js` quantises every cue bound onto. */
 const MICROS_PER_SECOND = 1_000_000;
@@ -113,13 +114,23 @@ export const previewCueList = (subtitles) => {
  * nothing. A surface that cannot resolve a face declines to request a native frame rather than
  * previewing a face the export would not use.
  */
-export const previewFace = ({ fontFamily, fontWeight, platform, managedPackInstalled = false, isSystemFaceInstalled = null }) => {
+export const previewFace = ({
+  fontFamily,
+  fontWeight,
+  platform,
+  // The capability snapshot, not a boolean with a default. `managedPackInstalled` used to default to
+  // `false` here, so every production caller — none of which passed it — silently declared the
+  // managed package absent and the editor's own default font could never resolve. A snapshot has to
+  // be obtained; it cannot be forgotten into a falsy value.
+  capability = fontCapabilitySnapshot(),
+  isSystemFaceInstalled = null,
+}) => {
   const resolution = resolveFontIdentity({
     fontFamily,
     fontWeight,
     fontStyle: 'normal',
     platform,
-    managedPackInstalled,
+    managedPackInstalled: capability.managedPackInstalled,
     isSystemFaceInstalled,
   });
   if (resolution.status !== 'exact') return null;

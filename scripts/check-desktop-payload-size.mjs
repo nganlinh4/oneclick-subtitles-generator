@@ -1,3 +1,4 @@
+import { createHash } from 'node:crypto';
 import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -5,6 +6,8 @@ import { fileURLToPath } from 'node:url';
 const SCRIPT_DIRECTORY = path.dirname(fileURLToPath(import.meta.url));
 const REPOSITORY_ROOT = path.resolve(SCRIPT_DIRECTORY, '..');
 const TAURI_CONFIG = path.join(REPOSITORY_ROOT, 'apps', 'desktop', 'src-tauri', 'tauri.conf.json');
+/** A backslash, built rather than written so no transport can eat the escape. */
+const SEPARATOR = String.fromCharCode(92);
 const LARGE_FILE_BYTES = 256 * 1024;
 const FRONTEND_BUDGET_BYTES = 30 * 1024 * 1024;
 const WINDOWS_EXECUTABLE_BUDGET_BYTES = 16 * 1024 * 1024;
@@ -13,6 +16,16 @@ const EXPECTED_BOOTSTRAPS = new Set([
   'workers/osg_asr_worker.py',
   'workers/osg_speech_worker.py',
 ]);
+/** Text the licences require us to ship beside the code they cover. */
+const EXPECTED_LICENCES = new Set([
+  'licenses/LICENSE',
+  'licenses/THIRD_PARTY_NOTICES.md',
+]);
+/** A managed font resource is named by its own SHA-256; see `auditManagedFontResources`. */
+const UI_FONT_DESTINATION = /^ui-fonts[/]([0-9a-f]{64})$/;
+const UI_FONT_DELIVERY = 'crates/osg-engine-packages/delivery/ui-fonts.delivery.json';
+/** The reviewed managed font payload is small on purpose, and must stay that way. */
+const UI_FONT_BUDGET_BYTES = 768 * 1024;
 const FORBIDDEN_PAYLOAD = /(?:^|[/\\])(?:ffmpeg|ffprobe|yt-dlp|deno|node|chrome|chromium)(?:\.exe)?$|\.(?:dll|dylib|so|node|onnx|pt|pth|safetensors|ckpt|gguf)$/i;
 
 function invariant(condition, message) {
@@ -35,6 +48,50 @@ function filesBelow(directory) {
 
 function portable(root, file) {
   return path.relative(root, file).split(path.sep).join('/');
+}
+
+/**
+ * The shipped managed font bytes are exactly the bytes the delivery catalog pins.
+ *
+ * The font is the default subtitle face, so it is bundled rather than downloaded: a clean offline
+ * installation must be able to draw a subtitle. Bundling also means the payload can now legitimately
+ * carry font bytes, and a name allowlist alone would let any file through under a plausible name. So
+ * each resource is verified the way the delivery system verifies a download — its destination IS its
+ * SHA-256, that digest is recomputed from the file on disk, and the shipped set must equal the
+ * catalog's pinned set exactly, with no extra file and none missing.
+ */
+function auditManagedFontResources(rootDirectory, configDirectory, resources) {
+  const shipped = new Map();
+  for (const [source, rawDestination] of Object.entries(resources)) {
+    const destination = String(rawDestination).split(SEPARATOR).join('/');
+    const match = UI_FONT_DESTINATION.exec(destination);
+    if (match === null) continue;
+    const contents = fs.readFileSync(path.resolve(configDirectory, source));
+    const digest = createHash('sha256').update(contents).digest('hex');
+    invariant(digest === match[1],
+      `Managed font resource is not the bytes its name claims: ${destination} hashes to ${digest}`);
+    shipped.set(digest, contents.length);
+  }
+
+  const catalog = JSON.parse(fs.readFileSync(path.join(rootDirectory, UI_FONT_DELIVERY), 'utf8'));
+  const pinned = new Set();
+  for (const platform of Object.values(catalog.platforms)) {
+    for (const release of platform.releases) {
+      for (const entry of [...release.sources, release.manifest]) pinned.add(entry.sha256);
+    }
+  }
+
+  const missing = [...pinned].filter((digest) => !shipped.has(digest));
+  invariant(missing.length === 0,
+    `The catalog pins managed font bytes the application does not ship: ${missing.join(', ')}`);
+  const extra = [...shipped.keys()].filter((digest) => !pinned.has(digest));
+  invariant(extra.length === 0,
+    `The application ships managed font bytes no catalog pins: ${extra.join(', ')}`);
+
+  const total = [...shipped.values()].reduce((sum, bytes) => sum + bytes, 0);
+  invariant(total <= UI_FONT_BUDGET_BYTES,
+    `Managed font payload exceeds the ${UI_FONT_BUDGET_BYTES}-byte budget: ${total}`);
+  return total;
 }
 
 export function auditDesktopPayload({ rootDirectory = REPOSITORY_ROOT, executablePath = null } = {}) {
@@ -61,14 +118,23 @@ export function auditDesktopPayload({ rootDirectory = REPOSITORY_ROOT, executabl
   const resources = config.bundle?.resources;
   invariant(resources && typeof resources === 'object' && !Array.isArray(resources),
     'Tauri resources must be a source-to-destination mapping');
-  const destinations = Object.values(resources).map((value) => String(value).replaceAll('\\', '/'));
-  invariant(destinations.length === EXPECTED_BOOTSTRAPS.size
-    && destinations.every((destination) => EXPECTED_BOOTSTRAPS.has(destination)),
-  `Tauri must embed only the three protocol bootstrap workers: ${destinations.join(', ')}`);
+  const destinations = Object.values(resources)
+    .map((value) => String(value).split(SEPARATOR).join('/'));
+  const unexpected = destinations.filter((destination) => (
+    !EXPECTED_BOOTSTRAPS.has(destination)
+      && !EXPECTED_LICENCES.has(destination)
+      && !UI_FONT_DESTINATION.test(destination)
+  ));
+  invariant(unexpected.length === 0,
+    `Tauri may embed only reviewed workers, licences and managed font bytes: ${unexpected.join(', ')}`);
+  for (const required of [...EXPECTED_BOOTSTRAPS, ...EXPECTED_LICENCES]) {
+    invariant(destinations.includes(required), `Tauri no longer embeds ${required}`);
+  }
   for (const [source, destination] of Object.entries(resources)) {
     invariant(!FORBIDDEN_PAYLOAD.test(source) && !FORBIDDEN_PAYLOAD.test(destination),
       `Forbidden managed payload is embedded as a Tauri resource: ${destination}`);
   }
+  const uiFontBytes = auditManagedFontResources(rootDirectory, configDirectory, resources);
 
   let executableBytes = null;
   if (executablePath) {
@@ -90,6 +156,7 @@ export function auditDesktopPayload({ rootDirectory = REPOSITORY_ROOT, executabl
     largeFiles: frontendFiles.filter(({ bytes }) => bytes >= LARGE_FILE_BYTES)
       .sort((left, right) => right.bytes - left.bytes || left.path.localeCompare(right.path)),
     resourceDestinations: destinations.sort(),
+    uiFontBytes,
   };
 }
 
@@ -111,7 +178,7 @@ if (process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.me
   try {
     const report = auditDesktopPayload({ executablePath: parseExecutable(process.argv.slice(2)) });
     const executable = report.executableBytes === null ? 'not requested' : `${report.executableBytes} bytes`;
-    console.log(`Desktop payload passed: executable ${executable}; frontend ${report.frontendBytes} bytes across ${report.frontendFileCount} files; ${report.resourceDestinations.length} bootstrap workers.`);
+    console.log(`Desktop payload passed: executable ${executable}; frontend ${report.frontendBytes} bytes across ${report.frontendFileCount} files; ${report.resourceDestinations.length} embedded resources including ${report.uiFontBytes} bytes of verified managed font.`);
     for (const file of report.largeFiles) console.log(`  ${file.bytes}\t${file.path}`);
   } catch (error) {
     console.error(`Desktop payload failed: ${error.message}`);

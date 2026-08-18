@@ -19,7 +19,9 @@ use crate::catalog::{
 use crate::delivery_manifest;
 #[cfg(test)]
 use crate::download::FetchRequest;
-use crate::download::{ArchiveFetcher, HttpArchiveFetcher, obtain, obtain_asset};
+use crate::download::{
+    ArchiveFetcher, BundledArchiveFetcher, HttpArchiveFetcher, obtain, obtain_asset,
+};
 use crate::path_security::{
     acquire_store_lock, cleanup_known_tree, collect_regular_files, ensure_direct_child,
     initialize_store, is_link_or_reparse, require_directory, require_regular_file, require_store,
@@ -449,12 +451,26 @@ impl UiFontPackageManager {
         root: impl AsRef<Path>,
         quiesce: Arc<dyn Fn() -> Result<()> + Send + Sync>,
     ) -> Result<Self> {
+        Self::with_bundled_sources(root, quiesce, None)
+    }
+
+    /// As `new`, but installing from font bytes shipped with the application when they are present.
+    ///
+    /// This is what makes the default subtitle font work on a clean offline install: the same
+    /// catalog, the same digests, no network. `bundle` is a directory of files named by their
+    /// SHA-256; anything else in it is ignored.
+    pub fn with_bundled_sources(
+        root: impl AsRef<Path>,
+        quiesce: Arc<dyn Fn() -> Result<()> + Send + Sync>,
+        bundle: Option<PathBuf>,
+    ) -> Result<Self> {
         let catalog = UiFontDeliveryCatalog::builtin()?;
         let quiesce = Arc::new(move |_| quiesce());
-        Ok(Self(ManagedPackageManager::new(
+        Ok(Self(ManagedPackageManager::with_bundled_sources(
             root.as_ref(),
             catalog,
             quiesce,
+            bundle,
         )?))
     }
 
@@ -496,10 +512,28 @@ where
         catalog: &'static PackageCatalog<K>,
         quiesce: Arc<dyn Fn(K) -> Result<()> + Send + Sync>,
     ) -> Result<Self> {
+        Self::with_bundled_sources(root, catalog, quiesce, None)
+    }
+
+    /// As `new`, but preferring digest-matching bytes shipped in `bundle` over the network.
+    ///
+    /// Only the UI font uses this today, because it is the only package whose absence breaks a
+    /// default rather than an optional feature. The catalog and its digests are identical either
+    /// way; see `BundledArchiveFetcher` for why an on-demand default was the wrong shape.
+    fn with_bundled_sources(
+        root: &Path,
+        catalog: &'static PackageCatalog<K>,
+        quiesce: Arc<dyn Fn(K) -> Result<()> + Send + Sync>,
+        bundle: Option<PathBuf>,
+    ) -> Result<Self> {
         let root = initialize_store(root)?;
         let store_lock = acquire_store_lock(&root)?;
         recover_interrupted_mutations(&root, catalog)?;
-        let fetcher = Arc::new(HttpArchiveFetcher::new()?);
+        let http = Arc::new(HttpArchiveFetcher::new()?);
+        let fetcher: Arc<dyn ArchiveFetcher> = match bundle {
+            Some(directory) => Arc::new(BundledArchiveFetcher::new(directory, http)),
+            None => http,
+        };
         Ok(Self(Arc::new(ManagerInner {
             root,
             _store_lock: store_lock,

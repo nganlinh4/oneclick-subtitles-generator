@@ -1,6 +1,7 @@
 use std::fs;
 use std::io::{Read as _, Write as _};
 use std::path::{Path, PathBuf};
+use std::sync::Arc;
 use std::time::Duration;
 
 use reqwest::blocking::Client;
@@ -544,9 +545,217 @@ fn valid_etag(value: &str) -> bool {
             .all(|byte| byte >= b' ' && byte != 0x7f && byte != b'\r' && byte != b'\n')
 }
 
+/// Serves a delivery asset from bytes shipped inside the application, before any network use.
+///
+/// WHY THIS EXISTS. The managed UI font is the default subtitle font, and it was delivered purely
+/// on demand: first launch downloaded three `.woff2` subsets, the stylesheet, the OFL text and the
+/// family notice. Measured on a fresh profile, that did not finish inside the eight seconds startup
+/// waits for, so the application declared the font unavailable, the default font resolved to
+/// nothing, and the editor's preview stayed dormant for the whole session. Offline, it could never
+/// have worked at all. A default that needs the network is not a default.
+///
+/// WHAT IT DOES NOT CHANGE. The catalog, its pinned sizes and its SHA-256s are untouched, and the
+/// bytes served here are verified against exactly the same digest as a downloaded copy — by the
+/// same `verify_asset` call, plus once here so a damaged bundle degrades to a download instead of
+/// failing the install. Files are addressed by their digest, so a bundled file that is not the file
+/// the catalog pins simply does not match and is not used. This adds an offline source; it does not
+/// add a way to install something unreviewed.
+pub(crate) struct BundledArchiveFetcher {
+    directory: PathBuf,
+    inner: Arc<dyn ArchiveFetcher>,
+}
+
+impl std::fmt::Debug for BundledArchiveFetcher {
+    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        formatter
+            .debug_struct("BundledArchiveFetcher")
+            .field("directory", &"<redacted>")
+            .finish_non_exhaustive()
+    }
+}
+
+impl BundledArchiveFetcher {
+    pub(crate) fn new(directory: PathBuf, inner: Arc<dyn ArchiveFetcher>) -> Self {
+        Self { directory, inner }
+    }
+
+    /// The bundled path for an asset, or `None` when nothing usable is shipped for it.
+    ///
+    /// Content-addressed rather than named after the asset: two catalog entries may share bytes,
+    /// and a filename says nothing about what a file contains.
+    fn candidate(&self, asset: &DeliveryAsset) -> Option<PathBuf> {
+        // A digest is the filename, so anything that is not one cannot select a file. The catalog
+        // loader already rejects a malformed digest; this keeps that guarantee local.
+        if asset.sha256.len() != 64 || !asset.sha256.bytes().all(|byte| byte.is_ascii_hexdigit()) {
+            return None;
+        }
+        let path = self.directory.join(&asset.sha256);
+        let metadata = fs::metadata(&path).ok()?;
+        (metadata.is_file() && metadata.len() == asset.size_bytes).then_some(path)
+    }
+}
+
+impl ArchiveFetcher for BundledArchiveFetcher {
+    fn fetch(
+        &self,
+        asset: &DeliveryAsset,
+        declared_url: &str,
+        request: FetchRequest<'_>,
+    ) -> Result<Option<String>> {
+        // A resumed transfer is a partial network download being continued. There is nothing to
+        // resume for a local file, and appending to one would corrupt it, so it goes to the network.
+        if request.resume_from > 0 {
+            return self.inner.fetch(asset, declared_url, request);
+        }
+        let Some(source) = self.candidate(asset) else {
+            return self.inner.fetch(asset, declared_url, request);
+        };
+        request.cancellation.check()?;
+
+        match hash_file(&source, request.cancellation) {
+            Ok(digest) if digest == asset.sha256 => {}
+            Err(PackageError::Cancelled) => return Err(PackageError::Cancelled),
+            // Present but not what the catalog pins: treat the bundle as absent rather than as a
+            // failure, so a damaged payload costs a download instead of the whole feature.
+            _ => return self.inner.fetch(asset, declared_url, request),
+        }
+
+        fs::copy(&source, request.target).map_err(|_| PackageError::StoreUnavailable)?;
+        request.progress.on_progress(OperationProgress::new(
+            OperationPhase::Downloading,
+            asset.size_bytes,
+            asset.size_bytes,
+        ));
+        // No entity tag: there is no upstream response to revalidate against.
+        Ok(None)
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// An inner fetcher that fails the test if the bundle did not serve the asset.
+    ///
+    /// Asserting "no network was used" by counting calls is what makes the offline claim real; a
+    /// test that merely observes a correct file cannot tell a bundled copy from a download.
+    #[derive(Debug, Default)]
+    struct RefusingFetcher {
+        calls: std::sync::atomic::AtomicUsize,
+    }
+
+    impl ArchiveFetcher for RefusingFetcher {
+        fn fetch(
+            &self,
+            _asset: &DeliveryAsset,
+            _url: &str,
+            _request: FetchRequest<'_>,
+        ) -> Result<Option<String>> {
+            self.calls
+                .fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+            Err(PackageError::Network)
+        }
+    }
+
+    fn bundled_case(contents: &[u8], declared: &[u8]) -> (Result<Option<String>>, Vec<u8>, usize) {
+        let root = tempfile::tempdir().unwrap();
+        let bundle = root.path().join("bundle");
+        fs::create_dir_all(&bundle).unwrap();
+        let digest = {
+            use sha2::Digest as _;
+            let mut hasher = sha2::Sha256::new();
+            hasher.update(declared);
+            format!("{:x}", hasher.finalize())
+        };
+        fs::write(bundle.join(&digest), contents).unwrap();
+
+        let asset = DeliveryAsset {
+            asset: "google-sans-flex.woff2".to_owned(),
+            urls: vec!["https://example.invalid/font.woff2".to_owned()],
+            size_bytes: declared.len() as u64,
+            sha256: digest,
+        };
+        let inner = Arc::new(RefusingFetcher::default());
+        let fetcher = BundledArchiveFetcher::new(bundle, inner.clone());
+        let target = root.path().join("asset.partial");
+        let cancellation = CancellationToken::default();
+        let outcome = fetcher.fetch(
+            &asset,
+            &asset.urls[0].clone(),
+            FetchRequest {
+                target: &target,
+                resume_from: 0,
+                etag: None,
+                cancellation: &cancellation,
+                progress: &|_| {},
+            },
+        );
+        let written = fs::read(&target).unwrap_or_default();
+        (
+            outcome,
+            written,
+            inner.calls.load(std::sync::atomic::Ordering::Relaxed),
+        )
+    }
+
+    #[test]
+    fn a_bundled_asset_is_served_without_touching_the_network() {
+        let bytes = b"the exact bytes the catalog pins";
+        let (outcome, written, network_calls) = bundled_case(bytes, bytes);
+        assert!(outcome.is_ok());
+        assert_eq!(written, bytes);
+        assert_eq!(
+            network_calls, 0,
+            "a bundled asset must not reach the network"
+        );
+    }
+
+    #[test]
+    fn a_bundled_asset_whose_bytes_are_wrong_falls_back_instead_of_failing_the_install() {
+        // Same declared size so only the digest can tell them apart — a length check alone would
+        // accept this file and install a font nobody reviewed.
+        let (outcome, _, network_calls) = bundled_case(b"aaaaaaaaaaaaaaaa", b"bbbbbbbbbbbbbbbb");
+        assert!(matches!(outcome, Err(PackageError::Network)));
+        assert_eq!(
+            network_calls, 1,
+            "a damaged bundle must degrade to a download"
+        );
+    }
+
+    #[test]
+    fn a_bundled_asset_of_the_wrong_length_is_not_used() {
+        let (outcome, _, network_calls) = bundled_case(b"short", b"the declared contents");
+        assert!(matches!(outcome, Err(PackageError::Network)));
+        assert_eq!(network_calls, 1);
+    }
+
+    #[test]
+    fn a_resumed_transfer_always_goes_to_the_network() {
+        let root = tempfile::tempdir().unwrap();
+        let bundle = root.path().join("bundle");
+        fs::create_dir_all(&bundle).unwrap();
+        let asset = DeliveryAsset {
+            asset: "font.woff2".to_owned(),
+            urls: vec!["https://example.invalid/font.woff2".to_owned()],
+            size_bytes: 8,
+            sha256: "0".repeat(64),
+        };
+        let inner = Arc::new(RefusingFetcher::default());
+        let fetcher = BundledArchiveFetcher::new(bundle, inner.clone());
+        let cancellation = CancellationToken::default();
+        let _ = fetcher.fetch(
+            &asset,
+            &asset.urls[0].clone(),
+            FetchRequest {
+                target: &root.path().join("asset.partial"),
+                resume_from: 4,
+                etag: None,
+                cancellation: &cancellation,
+                progress: &|_| {},
+            },
+        );
+        assert_eq!(inner.calls.load(std::sync::atomic::Ordering::Relaxed), 1);
+    }
 
     #[test]
     fn successful_download_cleanup_removes_payload_and_resume_metadata() {

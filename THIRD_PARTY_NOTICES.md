@@ -12,12 +12,23 @@ delivery catalogs below.
   metadata.
 - Material Symbols Rounded are used under Apache-2.0 and are not bundled. `index.html` links the
   `fonts.googleapis.com` stylesheet, so the glyphs are fetched from Google's CDN at runtime.
-- Google Sans Flex v22 is installed on demand under SIL Open Font License 1.1.
+- Google Sans Flex v22 is **bundled with the application** under SIL Open Font License 1.1.
   `crates/osg-engine-packages/delivery/ui-fonts.delivery.json` pins each `.woff2` subset, the OFL
-  text, and the family NOTICE by size and SHA-256. Alongside the `fonts.gstatic.com` originals,
-  this project mirrors those exact `.woff2` bytes on its own GitHub release
-  `osg-runtime-bundles-v1`, so OSG redistributes the font files itself under OFL-1.1. The legacy
-  embedded TTF is retired and excluded from the application payload.
+  text, and the family NOTICE by size and SHA-256, and `apps/desktop/src-tauri/resources/ui-fonts`
+  ships exactly those bytes, each file named by its SHA-256. Alongside the `fonts.gstatic.com`
+  originals, this project also mirrors the same bytes on its own GitHub release
+  `osg-runtime-bundles-v1`, so OSG redistributes the font files itself under OFL-1.1. The OFL text
+  and the family NOTICE are bundled with the fonts, as OFL-1.1 requires, and are installed into the
+  application's font store alongside them.
+
+  It used to be fetched on first launch instead. That made the default subtitle font depend on the
+  network: on a clean profile the download did not finish within the eight seconds startup waits,
+  the font was declared unavailable, and the editor could not render a subtitle preview at all —
+  and offline it never could. Bundling the reviewed bytes is what makes the default usable on a
+  clean offline install. The delivery catalog is unchanged and still governs updates; the bundled
+  copy is verified against the same SHA-256 as a downloaded one.
+
+  The legacy embedded TTF remains retired; it is a different, larger file and is not what ships.
 - The application does not bundle Product Sans.
 
 ### Native media decoding and encoding

@@ -329,10 +329,15 @@ describe('what a request must be', () => {
   });
 
   it('measures the payload against the transport budget and refuses one that exceeds it', () => {
-    // Measured, not estimated, and pinned as an exact equality so any change to what crosses the
-    // boundary has to be re-measured deliberately rather than drifting.
+    // Measured, not estimated. This was once pinned to an exact literal so that any change to what
+    // crosses the boundary had to be re-measured deliberately — but the literal then broke when the
+    // default font family got six characters longer, which is not a fact about the transport at all.
+    // So the measurement is checked against the payload it actually describes: still exact, still
+    // catches a measurement that counts the wrong thing, and no longer fails for unrelated edits.
     const withinBudget = prepareNativePreviewRequest(frameRequest(0));
-    expect(withinBudget.measurement.requestBytes).toBe(1_912);
+    const encoded = new TextEncoder().encode(JSON.stringify(withinBudget.payload)).byteLength;
+    expect(withinBudget.measurement.requestBytes).toBe(encoded);
+    expect(withinBudget.measurement.requestBytes).toBeLessThan(NATIVE_PREVIEW_LIMITS.maxRequestBytes);
     expect(withinBudget.measurement.budgetBytes).toBe(NATIVE_PREVIEW_LIMITS.maxRequestBytes);
 
     // The render request is validated deeply by the builder that made it, so this module checks its

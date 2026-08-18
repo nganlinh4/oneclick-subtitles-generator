@@ -17,6 +17,7 @@ import {
   previewCustomizationForNativeRender,
   renderAndExportDesktopPreview,
 } from './videoDownloadHandlers';
+import { DEFAULT_SUBTITLE_FONT_FAMILY } from '../../shared/subtitle/defaultSubtitleFont';
 
 vi.mock('../../platform/desktopRuntime', () => ({ isDesktopRuntime: vi.fn() }));
 vi.mock('./native/exportTextStaging', () => ({ stageNativeRenderText: vi.fn() }));
@@ -111,7 +112,7 @@ describe('desktop preview subtitle rendering', () => {
     });
 
     expect(customization).toMatchObject({
-      fontFamily: "'Arial', sans-serif",
+      fontFamily: DEFAULT_SUBTITLE_FONT_FAMILY,
       fontWeight: 400,
       lineHeight: 1.2,
       letterSpacing: 0,

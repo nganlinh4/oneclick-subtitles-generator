@@ -1,7 +1,7 @@
 use std::fmt;
 use std::fs;
 use std::io;
-use std::path::Path;
+use std::path::{Path, PathBuf};
 use std::sync::Arc;
 use std::sync::mpsc;
 use std::thread;
@@ -36,13 +36,13 @@ impl fmt::Debug for UiFontRuntime {
 }
 
 impl UiFontRuntime {
-    pub(crate) fn prepare(root: &Path) -> io::Result<Self> {
+    pub(crate) fn prepare(root: &Path, bundle: Option<PathBuf>) -> io::Result<Self> {
         let root = root.to_path_buf();
         let (sender, receiver) = mpsc::sync_channel(1);
         thread::Builder::new()
             .name("osg-ui-font-bootstrap".to_owned())
             .spawn(move || {
-                let _ = sender.send(Self::prepare_blocking(&root).ok());
+                let _ = sender.send(Self::prepare_blocking(&root, bundle.clone()).ok());
             })?;
         match receiver.recv_timeout(BOOTSTRAP_WAIT) {
             Ok(Some(runtime)) => Ok(runtime),
@@ -59,8 +59,14 @@ impl UiFontRuntime {
         }
     }
 
-    fn prepare_blocking(root: &Path) -> Result<Self, Box<dyn std::error::Error>> {
-        let manager = UiFontPackageManager::new(root, Arc::new(|| Ok(())))?;
+    fn prepare_blocking(
+        root: &Path,
+        bundle: Option<PathBuf>,
+    ) -> Result<Self, Box<dyn std::error::Error>> {
+        // Bytes shipped with the application are preferred over the network, so a clean offline
+        // install resolves the default subtitle font instead of timing out with it unavailable.
+        let manager =
+            UiFontPackageManager::with_bundled_sources(root, Arc::new(|| Ok(())), bundle)?;
         let status = manager.status();
         let cancellation = CancellationToken::default();
         if !status.installed || status.update_available {
@@ -139,6 +145,8 @@ fn read_exact(path: &Path, expected: usize) -> io::Result<Vec<u8>> {
 
 #[cfg(test)]
 mod tests {
+    use std::path::Path;
+
     use super::{FONT_SUBSETS, UiFontRuntime, read_bounded};
 
     #[test]
@@ -165,11 +173,62 @@ mod tests {
         assert_eq!(error.kind(), std::io::ErrorKind::InvalidData);
     }
 
+    /// The directory of digest-named font files shipped inside the application.
+    fn shipped_bundle() -> std::path::PathBuf {
+        Path::new(env!("CARGO_MANIFEST_DIR")).join("resources/ui-fonts")
+    }
+
+    /// Every byte the catalog pins is actually in the payload.
+    ///
+    /// This is the test that makes "works offline" a fact rather than a hope. The installation test
+    /// below would still pass on a machine with a network connection if a file were missing from
+    /// the bundle — it would quietly download the absent one — so completeness is asserted against
+    /// the catalog directly, by digest, with no network available to cover a gap.
     #[test]
-    #[ignore = "downloads and verifies the reviewed Google Sans Flex package"]
-    fn live_bootstrap_installs_and_composes_path_free_css() {
+    fn the_shipped_bundle_covers_every_pinned_delivery_source() {
+        let delivery = Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join("../../../crates/osg-engine-packages/delivery/ui-fonts.delivery.json");
+        let catalog: serde_json::Value =
+            serde_json::from_slice(&std::fs::read(&delivery).expect("delivery catalog"))
+                .expect("catalog parses");
+        let bundle = shipped_bundle();
+
+        let mut checked = 0;
+        for (platform, entry) in catalog["platforms"].as_object().expect("platform table") {
+            for release in entry["releases"].as_array().expect("releases") {
+                let sources = release["sources"]
+                    .as_array()
+                    .expect("sources")
+                    .iter()
+                    .chain(std::iter::once(&release["manifest"]));
+                for source in sources {
+                    let digest = source["sha256"].as_str().expect("pinned digest");
+                    let size = source["sizeBytes"].as_u64().expect("pinned size");
+                    let path = bundle.join(digest);
+                    let metadata = std::fs::metadata(&path).unwrap_or_else(|_| {
+                        panic!(
+                            "{platform} pins {} but the application ships no file for {digest}",
+                            source["asset"].as_str().unwrap_or("?")
+                        )
+                    });
+                    assert_eq!(metadata.len(), size, "{digest} is the wrong length");
+                    checked += 1;
+                }
+            }
+        }
+        assert!(checked >= 7, "expected the catalog to pin real sources");
+    }
+
+    /// The bundled bytes really do compose into the stylesheet the `WebView` receives.
+    ///
+    /// This used to be `#[ignore]`d because it downloaded the package, which meant it never ran and
+    /// never protected anything — the font install could break and every gate stayed green. It runs
+    /// by default now: the bytes are in the payload, so it needs no network and takes no time.
+    #[test]
+    fn the_shipped_bundle_installs_and_composes_path_free_css() {
         let directory = tempfile::tempdir().expect("temporary directory");
-        let runtime = UiFontRuntime::prepare(directory.path()).expect("managed font runtime");
+        let runtime = UiFontRuntime::prepare(directory.path(), Some(shipped_bundle()))
+            .expect("the managed font must install from the bytes the application ships");
         assert_eq!(runtime.css().matches("data:font/woff2;base64,").count(), 3);
         assert!(!runtime.css().contains("__OSG_FONT_"));
         assert!(!runtime.css().contains("file://"));

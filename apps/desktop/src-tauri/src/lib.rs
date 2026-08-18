@@ -359,7 +359,13 @@ fn setup_app(app: &mut tauri::App) -> Result<(), Box<dyn std::error::Error>> {
     };
     diagnostics::initialize(&log_dir)?;
     record_application_environment(app);
-    let ui_font_runtime = prepare_ui_font_runtime(&local_data_dir);
+    let ui_font_runtime = prepare_ui_font_runtime(
+        &local_data_dir,
+        app.path()
+            .resource_dir()
+            .ok()
+            .map(|dir| dir.join("ui-fonts")),
+    );
     let database_path = local_data_dir.join("db/osg.sqlite3");
     let database = Database::open(database_path)?;
     let SpeechSetup {
@@ -458,14 +464,27 @@ fn record_application_environment(app: &tauri::App) {
     );
 }
 
-fn prepare_ui_font_runtime(local_data_dir: &std::path::Path) -> Option<UiFontRuntime> {
+fn prepare_ui_font_runtime(
+    local_data_dir: &std::path::Path,
+    bundle: Option<std::path::PathBuf>,
+) -> Option<UiFontRuntime> {
     diagnostics::record("ui-font.prepare", &[]);
-    if let Ok(runtime) = UiFontRuntime::prepare(&local_data_dir.join("ui-fonts/v1")) {
-        diagnostics::record("ui-font.ready", &[]);
-        Some(runtime)
-    } else {
-        diagnostics::record("ui-font.unavailable", &[]);
-        None
+    match UiFontRuntime::prepare(&local_data_dir.join("ui-fonts/v1"), bundle) {
+        Ok(runtime) => {
+            diagnostics::record("ui-font.ready", &[]);
+            Some(runtime)
+        }
+        // The reason used to be discarded, so an installation that timed out and one that failed
+        // outright produced the same silent `ui-font.unavailable` — which is how a startup timeout
+        // went unnoticed while it disabled the default subtitle font on every clean install. The
+        // kind is recorded; the message is not, because it can name a path.
+        Err(error) => {
+            diagnostics::record(
+                "ui-font.unavailable",
+                &[("reason", format!("{:?}", error.kind()))],
+            );
+            None
+        }
     }
 }
 
@@ -758,6 +777,36 @@ fn is_native_owned_setting_key(key: &str) -> bool {
 
 fn is_webview_bootstrap_setting_key(key: &str) -> bool {
     is_safe_setting_key(key) && !is_native_owned_setting_key(key)
+}
+
+/// An isolated data root for the real-binary test harness, or `None` in every shipped build.
+///
+/// Windows resolves the application data directory through `SHGetKnownFolderPath`, which ignores
+/// `%LOCALAPPDATA%` — measured, after an attempt to isolate a test run that way silently used the
+/// real directory instead. So a harness that must not touch a developer's projects needs the
+/// application to accept a root, and there is no way to provide one from outside the process.
+///
+/// This exists ONLY in the `unsigned-local-build` channel. There is no `cfg` in this function that
+/// a release build compiles: `production` does not enable that feature, no workflow builds it, and
+/// `scripts/check-release-readiness.js` asserts both. The path is required to be absolute so a
+/// relative value cannot quietly resolve against whatever directory the harness happened to start
+/// in, and creation failure is fatal rather than a silent fall back to the real root — falling back
+/// is precisely the behaviour that would write test data into someone's live database.
+#[cfg(feature = "unsigned-local-build")]
+fn harness_data_root() -> Option<std::path::PathBuf> {
+    let raw = std::env::var_os("OSG_E2E_DATA_ROOT")?;
+    let root = std::path::PathBuf::from(raw);
+    assert!(
+        root.is_absolute(),
+        "OSG_E2E_DATA_ROOT must be an absolute path"
+    );
+    std::fs::create_dir_all(&root).expect("OSG_E2E_DATA_ROOT must be creatable");
+    Some(root)
+}
+
+#[cfg(not(feature = "unsigned-local-build"))]
+const fn harness_data_root() -> Option<std::path::PathBuf> {
+    None
 }
 
 #[cfg(test)]
@@ -1077,34 +1126,4 @@ mod tests {
         assert!(script.contains("theme"));
         assert!(script.contains("dark"));
     }
-}
-
-/// An isolated data root for the real-binary test harness, or `None` in every shipped build.
-///
-/// Windows resolves the application data directory through `SHGetKnownFolderPath`, which ignores
-/// `%LOCALAPPDATA%` — measured, after an attempt to isolate a test run that way silently used the
-/// real directory instead. So a harness that must not touch a developer's projects needs the
-/// application to accept a root, and there is no way to provide one from outside the process.
-///
-/// This exists ONLY in the `unsigned-local-build` channel. There is no `cfg` in this function that
-/// a release build compiles: `production` does not enable that feature, no workflow builds it, and
-/// `scripts/check-release-readiness.js` asserts both. The path is required to be absolute so a
-/// relative value cannot quietly resolve against whatever directory the harness happened to start
-/// in, and creation failure is fatal rather than a silent fall back to the real root — falling back
-/// is precisely the behaviour that would write test data into someone's live database.
-#[cfg(feature = "unsigned-local-build")]
-fn harness_data_root() -> Option<std::path::PathBuf> {
-    let raw = std::env::var_os("OSG_E2E_DATA_ROOT")?;
-    let root = std::path::PathBuf::from(raw);
-    assert!(
-        root.is_absolute(),
-        "OSG_E2E_DATA_ROOT must be an absolute path"
-    );
-    std::fs::create_dir_all(&root).expect("OSG_E2E_DATA_ROOT must be creatable");
-    Some(root)
-}
-
-#[cfg(not(feature = "unsigned-local-build"))]
-const fn harness_data_root() -> Option<std::path::PathBuf> {
-    None
 }

@@ -49,6 +49,16 @@ export const UNAVAILABLE_REASON = Object.freeze({
   noDeclaredSource: 'no-declared-source',
   managedPackInvalid: 'managed-pack-invalid',
   managedPackUnavailable: 'managed-pack-unavailable',
+  /**
+   * The caller did not say whether the managed package is installed.
+   *
+   * Distinct from `managedPackUnavailable` on purpose. This parameter used to default to `false`,
+   * so a caller that simply forgot it got the same answer as a machine where the package really was
+   * missing — and that is precisely what happened: the entire product shipped with the default font
+   * reported as unavailable because no production caller passed the argument. An omission is a
+   * programming fault and now says so instead of impersonating a capability result.
+   */
+  managedPackUnknown: 'managed-pack-unknown',
   systemFaceUnverified: 'system-face-unverified',
   systemFaceMissing: 'system-face-missing',
   weightNotInFace: 'weight-not-in-face',
@@ -352,7 +362,9 @@ export const catalogPrimaryFamilies = () => {
  * @param {number} request.fontWeight      100..900 in steps of 100
  * @param {'normal'|'italic'} [request.fontStyle]
  * @param {'windows'|'macos'|'linux'} request.platform
- * @param {boolean} [request.managedPackInstalled] managed bytes verified present
+ * @param {boolean} request.managedPackInstalled managed bytes verified present. REQUIRED when the
+ *        family is the managed one: omitting it is reported as `managedPackUnknown`, never as an
+ *        absent package. Obtain it from `fontCapabilitySnapshot()`, never by hand.
  * @param {(face: object) => boolean} [request.isSystemFaceInstalled] runtime probe; absent means
  *        unverified, which is reported as unavailable rather than assumed
  * @param {object} [request.declarations] injectable declaration set (tests, future review waves)
@@ -362,7 +374,7 @@ export const resolveFontIdentity = ({
   fontWeight,
   fontStyle = 'normal',
   platform,
-  managedPackInstalled = false,
+  managedPackInstalled,
   isSystemFaceInstalled = null,
   declarations = {},
 } = {}) => {
@@ -397,6 +409,7 @@ export const resolveFontIdentity = ({
     if (!managedPackageIsWellFormed(managedPackage)) {
       return reject(UNAVAILABLE_REASON.managedPackInvalid);
     }
+    if (managedPackInstalled === undefined) return reject(UNAVAILABLE_REASON.managedPackUnknown);
     if (managedPackInstalled !== true) return reject(UNAVAILABLE_REASON.managedPackUnavailable);
     if (!managedPackage.styles.includes(style)) return reject(UNAVAILABLE_REASON.styleNotInFace);
     const axis = managedAxis(managedPackage, 'wght');

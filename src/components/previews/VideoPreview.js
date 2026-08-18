@@ -33,6 +33,7 @@ import '../../styles/VideoPreview.css';
 import '../../styles/narration/index.css';
 import { SERVER_URL } from '../../config';
 import useVideoSeekControls from '../../hooks/useVideoSeekControls';
+import { DEFAULT_SUBTITLE_FONT_FAMILY } from '../../services/fontCapability';
 
 const VideoPreview = ({ currentTime, setCurrentTime, setDuration, videoSource, fileType, onSeek, translatedSubtitles, subtitlesArray, onVideoUrlReady, onReferenceAudioChange: _onReferenceAudioChange, onRenderVideo }) => {
   const { t } = useTranslation();
@@ -100,7 +101,7 @@ const VideoPreview = ({ currentTime, setCurrentTime, setDuration, videoSource, f
 
     // Default settings if nothing is saved
     return {
-      fontFamily: 'Google Sans, sans-serif',
+      fontFamily: DEFAULT_SUBTITLE_FONT_FAMILY,
       fontSize: '24',
       fontWeight: '500',
       position: '90', // Now a percentage value from 0 (top) to 100 (bottom)

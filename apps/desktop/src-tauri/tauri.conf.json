@@ -32,7 +32,9 @@
       }
     ],
     "security": {
-      "capabilities": ["main"],
+      "capabilities": [
+        "main"
+      ],
       "csp": {
         "default-src": "'self'",
         "connect-src": "'self' ipc: http://ipc.localhost",
@@ -65,7 +67,14 @@
       "../../../crates/osg-asr/worker/osg_asr_worker.py": "workers/osg_asr_worker.py",
       "../../../crates/osg-speech/worker/osg_speech_worker.py": "workers/osg_speech_worker.py",
       "../../../LICENSE": "licenses/LICENSE",
-      "../../../THIRD_PARTY_NOTICES.md": "licenses/THIRD_PARTY_NOTICES.md"
+      "../../../THIRD_PARTY_NOTICES.md": "licenses/THIRD_PARTY_NOTICES.md",
+      "resources/ui-fonts/019201394f5f7edd355567b138dddb4fd21d414696ff0582058ec11d2d5963c4": "ui-fonts/019201394f5f7edd355567b138dddb4fd21d414696ff0582058ec11d2d5963c4",
+      "resources/ui-fonts/0f63b3ae4c60341fc1348749796505e9ab621a3ab690b80f9cdf66dafc1eca19": "ui-fonts/0f63b3ae4c60341fc1348749796505e9ab621a3ab690b80f9cdf66dafc1eca19",
+      "resources/ui-fonts/1d361a8f8e8ce6e68457dcd93fb56e162e6baa3bbb7e7573a290d44399f6b57e": "ui-fonts/1d361a8f8e8ce6e68457dcd93fb56e162e6baa3bbb7e7573a290d44399f6b57e",
+      "resources/ui-fonts/3215351d7b5587396710ab80bd31994ebbf3a9ee6f8e67b3c29a30d909cec55f": "ui-fonts/3215351d7b5587396710ab80bd31994ebbf3a9ee6f8e67b3c29a30d909cec55f",
+      "resources/ui-fonts/7343aefa9061998bdfea8c1e2aa6943a029218dd78a23e5fde441e832fe66629": "ui-fonts/7343aefa9061998bdfea8c1e2aa6943a029218dd78a23e5fde441e832fe66629",
+      "resources/ui-fonts/9d59f14b9ce636f160dc7398046985fca567cd8add6b9f84f79cd2b5a9bb3dcd": "ui-fonts/9d59f14b9ce636f160dc7398046985fca567cd8add6b9f84f79cd2b5a9bb3dcd",
+      "resources/ui-fonts/b7bcc5489391e48d44f4238b5e2eae87ddeb8269073853c904d947a173e33b40": "ui-fonts/b7bcc5489391e48d44f4238b5e2eae87ddeb8269073853c904d947a173e33b40"
     },
     "icon": [
       "icons/32x32.png",

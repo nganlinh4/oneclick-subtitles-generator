@@ -9,13 +9,14 @@ import {
   parseStoredSubtitleCustomization,
 } from './defaultCustomization';
 import { presetOrder, presets } from './presetDefinitions';
+import { DEFAULT_SUBTITLE_FONT_FAMILY } from '../../shared/subtitle/defaultSubtitleFont';
 
 describe('subtitle customization default authority', () => {
   it('shares one frozen value between editor and native renderer', () => {
     expect(defaultCustomization).toBe(rendererDefaultCustomization);
     expect(Object.isFrozen(defaultCustomization)).toBe(true);
     expect(defaultCustomization).toMatchObject({
-      fontFamily: "'Arial', sans-serif",
+      fontFamily: DEFAULT_SUBTITLE_FONT_FAMILY,
       fontWeight: 400,
       backgroundOpacity: 70,
       strokeWidth: 0,
