@@ -389,9 +389,13 @@ function assertLockfiles(rootDirectory = REPOSITORY_ROOT) {
     (candidate) => path.basename(candidate) === 'package-lock.json',
     ignoredLockDirectories,
   ).map((candidate) => path.relative(rootDirectory, candidate).replaceAll('\\', '/')).sort();
+  // `e2e` is a test harness, not part of any shipped artefact: it drives the built binary from
+  // outside and nothing in the bundle resolves against it. It is listed so an unexpected FOURTH
+  // lockfile still fails, which is the point of pinning the set.
   invariant(
     JSON.stringify(npmLocks) === JSON.stringify([
       'apps/desktop/package-lock.json',
+      'e2e/package-lock.json',
       'package-lock.json',
     ]),
     `Repository npm lockfile set is unexpected: ${npmLocks.join(', ')}`,
@@ -2943,8 +2947,12 @@ function assertCiUpdaterFixtureDebugPortSource(desktop, fixtureArguments, cargoL
   }
   invariant(
     desktop.includes('ci_updater_fixture::initialize_from_process_arguments()')
+      // Matched on the builder construction itself rather than on the name it is bound to. The
+      // needle used to be `let app = tauri::Builder::default()`, which no longer occurs anywhere —
+      // the binding is `let builder` — so `indexOf` returned -1 and the ordering check could never
+      // hold. It failed silently behind an earlier invariant instead of reporting a real problem.
       && desktop.indexOf('ci_updater_fixture::initialize_from_process_arguments()')
-        < desktop.indexOf('let app = tauri::Builder::default()')
+        < desktop.indexOf('tauri::Builder::default()')
       && desktop.includes('ci_updater_fixture::configuration().enables_webview_debugging()')
       && /ci_updater_fixture::configuration\(\)\.browser_arguments\(\)/.test(desktop)
       && desktop.includes('window_builder.additional_browser_args(&arguments)'),

@@ -5,19 +5,35 @@ import { existsSync, lstatSync, readFileSync, readdirSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
+/**
+ * The exact stylesheet the product build must produce.
+ *
+ * REPINNED because the build began minifying CSS again, not because the design changed. `esbuild`
+ * had become undeclared and unresolvable, so `cssMinify: 'esbuild'` silently produced an unminified
+ * stylesheet; the previous pin (682_209 bytes, one rule per line) recorded that state. With the
+ * dependency declared again the same sources emit 587_843 minified bytes.
+ *
+ * The design was verified unchanged rather than assumed: all 151 Material custom properties, and
+ * the album-art, floating-scrollbar and liquid-glass surface counts, are identical. Two counters
+ * moved, and both are artefacts of how a minifier rewrites text rather than of what it renders —
+ * `.custom-slider` fell 45 -> 44 and unresolved Material names 47 -> 32 as duplicate selectors and
+ * repeated declarations were merged away. A counter that reads minified output measures the file,
+ * not the appearance, which is why the source-level freeze (`npm run check:visual-freeze`) is the
+ * authority on the design and this file is the authority on the artefact.
+ */
 export const FROZEN_CSS_ARTIFACT = Object.freeze({
-  fileName: 'index-DlaLxCt0.css',
-  sha256: '047f70d18c88f633637a39e9ac7103806190f74d544e6de7dfcf9ccf303ad73e',
-  sizeBytes: 682_209,
+  fileName: 'index-PeXkUFIz.css',
+  sha256: '06e02f8c03e95a2a329615194882f0f02f766e68c07ae17ec6ab6cd80cc2ec7e',
+  sizeBytes: 587_843,
   parity: Object.freeze({
     albumArtCount: 22,
-    customSliderCount: 45,
+    customSliderCount: 44,
     floatingScrollbarCount: 19,
     fontFaceCount: 0,
     googleSansFlexCount: 0,
     liquidGlassCount: 50,
     materialDefinitionCount: 151,
-    materialUnresolvedCount: 47,
+    materialUnresolvedCount: 32,
   }),
 });
 

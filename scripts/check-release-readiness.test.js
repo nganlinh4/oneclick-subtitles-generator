@@ -2766,6 +2766,8 @@ test('lockfiles bind reviewed registry artifacts and exact React workspace parit
   };
   writeFile(root, 'package-lock.json', JSON.stringify(rootLock));
   writeFile(root, 'apps/desktop/package-lock.json', JSON.stringify(desktopLock));
+  // The real-binary test harness has its own manifest, so the pinned set is three.
+  writeFile(root, 'e2e/package-lock.json', JSON.stringify({ lockfileVersion: 3, packages: { '': {} } }));
   writeFile(root, 'Cargo.lock', 'version = 4\n');
   assert.doesNotThrow(() => assertLockfiles(root));
 
