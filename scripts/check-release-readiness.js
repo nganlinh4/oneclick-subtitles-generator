@@ -2810,6 +2810,19 @@ function assertUpdaterFixtureSource(rootDirectory) {
   const config = readJson(rootDirectory, TAURI_CONFIG_PATH);
   invariant(/^ci-updater-fixture\s*=\s*\[\]\s*$/m.test(cargo),
     'Desktop Cargo features must declare the isolated updater fixture');
+  // Devtools exist for the local-test channel, which is how a WebView failure becomes readable
+  // instead of silent. They must be reachable ONLY from that channel: `production` may not enable
+  // them directly or transitively, or a shipped build would carry an inspector.
+  const productionFeature = /^production\s*=\s*\[([^\]]*)\]/m.exec(cargo);
+  invariant(productionFeature !== null, 'Desktop Cargo must declare the production feature');
+  invariant(
+    !productionFeature[1].includes('devtools'),
+    'The production feature may not enable devtools',
+  );
+  invariant(
+    /^unsigned-local-build\s*=\s*\[[^\]]*"tauri\/devtools"[^\]]*\]\s*$/m.test(cargo),
+    'The local-test channel must carry devtools, or a WebView failure has no readable evidence',
+  );
   for (const fragment of [
     'CARGO_FEATURE_CI_UPDATER_FIXTURE',
     'GITHUB_ACTIONS',

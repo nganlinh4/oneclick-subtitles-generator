@@ -21,7 +21,7 @@ ci-updater-fixture = []
 # makes NO update request. It is kept out of releases by the CI build command and by a readiness
 # assertion over that command, and it announces itself in the `app.environment` diagnostic so an
 # installed build can be identified from its own log rather than from what someone remembers.
-unsigned-local-build = ["tauri/custom-protocol"]
+unsigned-local-build = ["tauri/custom-protocol", "tauri/devtools"]
 
 [build-dependencies]
 tauri-build = { version = "2.6.3", features = [] }
