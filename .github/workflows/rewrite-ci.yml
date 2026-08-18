@@ -231,6 +231,11 @@ jobs:
           npm run check:i18n
           npm run test:gemini-catalog
 
+      # Refuses a capability parameter that defaults to unavailable and that only tests supply.
+      # That exact shape shipped a product whose default subtitle font could never resolve.
+      - name: Prove every capability input has a shipping supplier
+        run: npm run check:capability-inputs
+
       - name: Test frontend
         run: npm test
 
