@@ -186,3 +186,6 @@ manual-dist-v2/
 manual-dist/
 dist-new/
 .builder-cache/
+
+# E2E harness dependencies (the lockfile is committed; the tree is not)
+e2e/node_modules/

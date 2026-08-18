@@ -1,0 +1,17 @@
+{
+  "name": "osg-e2e",
+  "private": true,
+  "version": "1.0.0",
+  "description": "Real-binary Windows journeys driven through tauri-driver and the actual WebView.",
+  "type": "module",
+  "scripts": {
+    "test": "wdio run wdio.conf.js"
+  },
+  "devDependencies": {
+    "@wdio/cli": "9.20.0",
+    "@wdio/local-runner": "9.20.0",
+    "@wdio/mocha-framework": "9.20.0",
+    "@wdio/spec-reporter": "9.20.0",
+    "webdriverio": "9.20.0"
+  }
+}
