@@ -17,14 +17,31 @@ export const APPLICATION_BINARY = join(
   'target', 'x86_64-pc-windows-msvc', 'release', 'osg-desktop.exe',
 );
 
-/** A fresh, isolated root for one run. Returned so the caller can also collect evidence from it. */
+/**
+ * A fresh, isolated root for one run, including the WebView2 profile.
+ *
+ * `OSG_E2E_DATA_ROOT` moves the database, cache and logs. It does NOT move WebView2's own profile,
+ * which holds `localStorage` — and that is where this application keeps its recent-videos list and
+ * its subtitle settings. Measured: eight "isolated" runs left no `EBWebView` directory in their
+ * roots, and a run in a supposedly clean root displayed the developer's real recent YouTube videos.
+ * Those runs were reading, and could have written, live user state.
+ *
+ * `WEBVIEW2_USER_DATA_FOLDER` is honoured here: setting it produced a `webview` directory inside the
+ * isolated root while the live profile's modification time did not change.
+ */
 export const createRunRoot = () => {
   const root = mkdtempSync(join(tmpdir(), 'osg-e2e-'));
-  for (const child of ['data', 'cache', 'logs', 'evidence', 'output']) {
+  for (const child of ['data', 'cache', 'logs', 'webview', 'evidence', 'output']) {
     mkdirSync(join(root, child), { recursive: true });
   }
   return root;
 };
+
+/** Everything a run must set so it cannot reach live user state. */
+export const isolationEnvironment = (root) => ({
+  OSG_E2E_DATA_ROOT: root,
+  WEBVIEW2_USER_DATA_FOLDER: join(root, 'webview'),
+});
 
 export const removeRunRoot = (root) => {
   try {

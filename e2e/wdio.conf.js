@@ -11,11 +11,32 @@
 // The server is compiled only under the `e2e-automation` Cargo feature. `cargo tree` reports two
 // wdio crates in that graph and zero in the production graph.
 
-import { existsSync } from 'node:fs';
+import { existsSync, readFileSync } from 'node:fs';
 
-import { APPLICATION_BINARY, createRunRoot, removeRunRoot } from './support/environment.js';
+import {
+  APPLICATION_BINARY, createRunRoot, isolationEnvironment, removeRunRoot,
+} from './support/environment.js';
 
-let runRoot;
+// The run root is created and exported into the environment WHEN THIS CONFIG LOADS, before any
+// hook and before the service spawns the binary.
+//
+// `beforeSession` is too late. Measured: with the isolation assigned there, a run's root contained
+// empty `logs` and `webview` directories — the application had written nothing into it — while the
+// editor displayed the developer's real recent-videos list. The service had already launched the
+// binary with the ambient environment. Every embedded run before this fix was reading live user
+// state while appearing to be isolated, which is the most dangerous shape a test harness can take:
+// it looks clean and it is not.
+//
+// The root is REUSED when one is already in the environment, because this config is loaded once in
+// the launcher process and again in each worker. Creating a root in both produced two per run, and
+// the service spawns the binary from the launcher — so the application wrote its database and log
+// into the launcher's root while the worker saved screenshots into a different one. Diagnosing the
+// first real failure this harness found therefore started with an evidence directory that contained
+// a screenshot, no log, and no indication that the log existed somewhere else entirely.
+const runRoot = process.env.OSG_E2E_DATA_ROOT && existsSync(process.env.OSG_E2E_DATA_ROOT)
+  ? process.env.OSG_E2E_DATA_ROOT
+  : createRunRoot();
+Object.assign(process.env, isolationEnvironment(runRoot));
 
 export const config = {
   runner: 'local',
@@ -37,6 +58,9 @@ export const config = {
   logLevel: 'warn',
 
   onPrepare: () => {
+    if (process.env.OSG_E2E_DATA_ROOT !== runRoot) {
+      throw new Error('the isolation environment was overwritten before the run started');
+    }
     if (!existsSync(APPLICATION_BINARY)) {
       throw new Error(
         `The E2E binary is missing: ${APPLICATION_BINARY}\n`
@@ -44,12 +68,6 @@ export const config = {
         + '--features e2e-automation --no-bundle --target x86_64-pc-windows-msvc',
       );
     }
-  },
-
-  beforeSession: () => {
-    runRoot = createRunRoot();
-    // Read by the application only in the local-test channel; a production build has no such path.
-    process.env.OSG_E2E_DATA_ROOT = runRoot;
   },
 
   afterSession: () => {
