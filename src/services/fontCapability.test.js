@@ -1,10 +1,17 @@
+import { readFileSync } from 'node:fs';
+import { resolve } from 'node:path';
+
 import { afterEach, describe, expect, it } from 'vitest';
 
 import {
   DEFAULT_SUBTITLE_FONT_FAMILY,
   DEFAULT_SUBTITLE_FONT_NAME,
+  FONT_READINESS_EVENT,
+  FONT_READINESS_SCHEMA,
+  FONT_READINESS_STATE,
   MANAGED_PACK_STATE,
   fontCapabilitySnapshot,
+  subscribeToFontReadiness,
 } from './fontCapability';
 import { MANAGED_FONT_PACKAGE, UNAVAILABLE_REASON, resolveFontIdentity } from './fontIdentity';
 import { defaultSubtitleCustomization } from '../shared/subtitle/subtitleCustomizationDefaults';
@@ -25,9 +32,36 @@ import { previewFace } from '../components/previews/native/nativePreviewScene';
  * defines, and call `previewFace` the way the preview hook calls it.
  */
 
+/** A readiness record shaped exactly as native publishes it. */
+const record = (state, extra = {}) => ({
+  schema: FONT_READINESS_SCHEMA,
+  epoch: 1,
+  state,
+  family: 'Google Sans',
+  version: state === FONT_READINESS_STATE.ready ? 'v22-ui4' : null,
+  reason: null,
+  retryable: false,
+  ...extra,
+});
+
+/**
+ * Stage what native published.
+ *
+ * `true`/`false` are accepted as shorthand for the two outcomes so the tests read as statements
+ * about the product rather than about the record shape.
+ */
 const stageBootstrap = (value) => {
-  if (value === undefined) delete globalThis.__OSG_MANAGED_UI_FONT__;
-  else globalThis.__OSG_MANAGED_UI_FONT__ = value;
+  if (value === undefined) {
+    delete globalThis.__OSG_FONT_READINESS__;
+    return;
+  }
+  if (value === true) globalThis.__OSG_FONT_READINESS__ = record(FONT_READINESS_STATE.ready);
+  else if (value === false) {
+    globalThis.__OSG_FONT_READINESS__ = record(FONT_READINESS_STATE.refused, {
+      reason: 'no-usable-source',
+      retryable: true,
+    });
+  } else globalThis.__OSG_FONT_READINESS__ = value;
 };
 
 afterEach(() => stageBootstrap(undefined));
@@ -76,11 +110,42 @@ describe('the capability snapshot distinguishes absent from not-yet-known', () =
     expect(snapshot.pending).toBe(false);
   });
 
-  it('reports installed only for a literal true', () => {
-    for (const value of ['true', 1, {}, []]) {
+  it('reports installed only for a record that says ready', () => {
+    for (const value of ['ready', 1, {}, [], { schema: 1, state: 'ready' }]) {
       stageBootstrap(value);
       expect(fontCapabilitySnapshot(globalThis).managedPackInstalled).toBe(false);
     }
+  });
+
+  it('treats a record from a newer schema as unknown rather than guessing at it', () => {
+    stageBootstrap(record(FONT_READINESS_STATE.ready, { schema: FONT_READINESS_SCHEMA + 1 }));
+    const snapshot = fontCapabilitySnapshot(globalThis);
+    expect(snapshot.managedPack).toBe(MANAGED_PACK_STATE.unknown);
+    expect(snapshot.managedPackInstalled).toBe(false);
+  });
+
+  it('reports repairing as pending, because work is still happening', () => {
+    stageBootstrap(record(FONT_READINESS_STATE.repairing));
+    const snapshot = fontCapabilitySnapshot(globalThis);
+    expect(snapshot.pending).toBe(true);
+    expect(snapshot.readiness).toBe(FONT_READINESS_STATE.repairing);
+    expect(snapshot.managedPack).toBe(MANAGED_PACK_STATE.unknown);
+  });
+
+  it('carries the typed reason and whether a retry is worth offering', () => {
+    stageBootstrap(record(FONT_READINESS_STATE.refused, {
+      reason: 'integrity-failed',
+      retryable: false,
+    }));
+    const snapshot = fontCapabilitySnapshot(globalThis);
+    expect(snapshot.reason).toBe('integrity-failed');
+    expect(snapshot.retryable).toBe(false);
+
+    stageBootstrap(record(FONT_READINESS_STATE.refused, {
+      reason: 'no-usable-source',
+      retryable: true,
+    }));
+    expect(fontCapabilitySnapshot(globalThis).retryable).toBe(true);
   });
 });
 
@@ -139,5 +204,112 @@ describe('omitting the capability is a fault, not an answer', () => {
       managedPackInstalled: false,
     });
     expect(resolved.reason).toBe(UNAVAILABLE_REASON.managedPackUnavailable);
+  });
+});
+
+describe('a repair that lands after startup', () => {
+  /**
+   * The defect this whole mechanism exists for.
+   *
+   * Native waits a bounded time for the font. When that wait expires the installation keeps going
+   * and can finish moments later. The old bootstrap froze a boolean, so the editor could never be
+   * told, and it waited for a preview that would never arrive.
+   */
+  it('turns an unusable font into a usable one within the same session', () => {
+    stageBootstrap(record(FONT_READINESS_STATE.refused, {
+      reason: 'timed-out',
+      retryable: true,
+      epoch: 4,
+    }));
+    expect(resolveAsTheEditorDoes()).toBeNull();
+
+    const seen = [];
+    const stop = subscribeToFontReadiness((snapshot) => seen.push(snapshot), {
+      globalScope: globalThis,
+    });
+
+    globalThis.dispatchEvent(new CustomEvent(FONT_READINESS_EVENT, {
+      detail: record(FONT_READINESS_STATE.ready, { epoch: 5 }),
+    }));
+    stop();
+
+    expect(seen).toHaveLength(1);
+    expect(seen[0].managedPackInstalled).toBe(true);
+    expect(seen[0].epoch).toBe(5);
+    expect(resolveAsTheEditorDoes()).not.toBeNull();
+  });
+
+  it('advances the epoch so a consumer can discard a stale answer', () => {
+    stageBootstrap(record(FONT_READINESS_STATE.resolving, { epoch: 1 }));
+    const seen = [];
+    const stop = subscribeToFontReadiness((snapshot) => seen.push(snapshot.epoch), {
+      globalScope: globalThis,
+    });
+
+    for (const epoch of [2, 3]) {
+      globalThis.dispatchEvent(new CustomEvent(FONT_READINESS_EVENT, {
+        detail: record(FONT_READINESS_STATE.repairing, { epoch }),
+      }));
+    }
+    stop();
+
+    expect(seen).toEqual([2, 3]);
+  });
+
+  it('stops listening once released, so a superseded surface cannot be woken', () => {
+    stageBootstrap(record(FONT_READINESS_STATE.resolving));
+    const seen = [];
+    const stop = subscribeToFontReadiness(() => seen.push(true), { globalScope: globalThis });
+    stop();
+
+    globalThis.dispatchEvent(new CustomEvent(FONT_READINESS_EVENT, {
+      detail: record(FONT_READINESS_STATE.ready),
+    }));
+
+    expect(seen).toHaveLength(0);
+  });
+});
+
+const NEWLINE = String.fromCharCode(10);
+
+describe('the readiness contract matches the native definition', () => {
+  /**
+   * Both sides of an IPC boundary describing the same enum is a contract, and a contract nobody
+   * checks is a comment. The native source is read directly rather than duplicated into a fixture,
+   * so renaming a variant in Rust fails here instead of silently producing a state the frontend
+   * treats as unknown -- which would report the font unavailable for a reason nobody could see.
+   */
+  const nativeSource = readFileSync(
+    resolve(__dirname, '..', '..', 'apps/desktop/src-tauri/src/font_readiness.rs'),
+    'utf8',
+  );
+
+  /** Rust variants under a `kebab-case` rename, as serde will emit them. */
+  const variantsOf = (enumName) => {
+    const body = nativeSource.split(`enum ${enumName} {`)[1]?.split(NEWLINE + '}')[0] ?? '';
+    return body
+      .split(NEWLINE)
+      .map((line) => line.trim())
+      .filter((line) => /^[A-Z][A-Za-z]*,$/.test(line))
+      .map((line) => line.slice(0, -1).replace(/([a-z0-9])([A-Z])/g, '$1-$2').toLowerCase());
+  };
+
+  it('declares exactly the states native can publish', () => {
+    expect(variantsOf('FontState').sort()).toEqual(Object.values(FONT_READINESS_STATE).sort());
+  });
+
+  it('understands every refusal reason native can send', () => {
+    const reasons = variantsOf('FontRefusal');
+    expect(reasons.length).toBeGreaterThan(0);
+    // Each must survive a round trip through the snapshot rather than being dropped as malformed.
+    for (const reason of reasons) {
+      stageBootstrap(record(FONT_READINESS_STATE.refused, { reason }));
+      expect(fontCapabilitySnapshot(globalThis).reason).toBe(reason);
+    }
+  });
+
+  it('agrees with native about the schema version and the event name', () => {
+    expect(nativeSource).toContain(`FONT_READINESS_SCHEMA: u32 = ${FONT_READINESS_SCHEMA}`);
+    expect(nativeSource).toContain(`FONT_READINESS_EVENT: &str = "${FONT_READINESS_EVENT}"`);
   });
 });

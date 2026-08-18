@@ -29,10 +29,9 @@ const observe = () => browser.execute((family) => {
 
   return {
     rootChildren: document.querySelector('#root')?.childElementCount ?? -1,
-    // What native injects. `undefined` means the bootstrap never ran, which is a different failure
-    // from the package being absent, so the raw value is reported rather than a boolean.
-    bootstrapValue: window.__OSG_MANAGED_UI_FONT__,
-    bootstrapType: typeof window.__OSG_MANAGED_UI_FONT__,
+    // The typed record native publishes. Reported verbatim: "the bootstrap never ran" and "the
+    // package is absent" are different failures and must not collapse into one boolean.
+    readiness: window.__OSG_FONT_READINESS__ ?? null,
     fontsStatus: document.fonts?.status ?? 'no-font-face-set',
     faceCheck: document.fonts?.check(`400 16px '${family}'`) ?? null,
     loadedFamilies: [...(document.fonts ?? [])]
@@ -52,20 +51,27 @@ describe('the default subtitle font in the real application', () => {
     await browser.waitUntil(async () => {
       seen = await observe();
       // Fonts load asynchronously; waiting on the face rather than on a timer.
-      return seen.rootChildren > 0 && seen.faceCheck === true;
+      return seen.rootChildren > 0 && seen.faceCheck === true
+        && seen.readiness?.state === 'ready';
     }, {
       timeout: READY_TIMEOUT_MS,
       interval: 500,
-      timeoutMsg: () => `the managed font never became usable. last observation: ${JSON.stringify(seen, null, 2)}`,
+      timeoutMsg: () => 'the managed font never became usable. last observation: '
+        + JSON.stringify(seen, null, 2),
     });
 
     console.log('font observation:\n' + JSON.stringify(seen, null, 2));
 
+    assert.ok(seen.readiness, 'native must publish a readiness record into the WebView');
+    assert.equal(seen.readiness.schema, 1, 'the frontend only understands schema 1');
     assert.equal(
-      seen.bootstrapValue, true,
-      'native must tell the WebView the managed package is installed; this is the value the '
-        + 'frontend now reads and whose absence made the default font unresolvable',
+      seen.readiness.state, 'ready',
+      'native must report the managed package installed and verified; this is the record the '
+        + 'frontend reads and whose absence made the default font unresolvable',
     );
+    assert.ok(seen.readiness.version, 'a ready record names the version it verified');
+    assert.equal(seen.readiness.reason, null, 'a ready record has nothing to refuse');
+    assert.ok(seen.readiness.epoch > 0, 'the initial resolving record must have been superseded');
     assert.equal(seen.faceCheck, true, `'${MANAGED_FAMILY}' must be usable for drawing`);
 
     // The measurement is the part that cannot be faked by a lying flag: if the family were absent,

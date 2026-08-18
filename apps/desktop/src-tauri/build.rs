@@ -1,5 +1,6 @@
 const COMMANDS: &[&str] = &[
     "app_health",
+    "font_readiness_retry",
     "get_session_snapshot",
     "select_media",
     "clear_media",

@@ -4,5 +4,8 @@
   "noTranslatedSubtitles": "No translated subtitles available",
   "rendering": "Rendering video with subtitles...",
   "retrySubtitlePreview": "Retry",
-  "subtitlePreviewUnavailable": "Subtitle preview unavailable. The video below is the source, without subtitles."
+  "subtitlePreviewUnavailable": "Subtitle preview unavailable. The video below is the source, without subtitles.",
+  "subtitleFontPreparing": "Preparing the subtitle font. The preview will appear when it is ready.",
+  "subtitleFontUnavailable": "The subtitle font could not be installed ({{reason}}), so subtitles cannot be drawn.",
+  "retrySubtitleFont": "Install again"
 }

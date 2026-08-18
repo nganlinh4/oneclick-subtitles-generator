@@ -10,6 +10,8 @@ mod download;
 mod engine_packages;
 mod error;
 mod external_links;
+mod font_readiness;
+mod font_repair;
 mod gemini;
 mod gemini_image;
 mod glyph_atlas;
@@ -59,6 +61,8 @@ use engine_packages::{
 };
 use error::{CommandError, CommandResult};
 use external_links::open_external_link;
+use font_readiness::FontReadiness;
+use font_repair::font_readiness_retry;
 use gemini::gemini_start;
 use gemini_image::{
     GeneratedImageRuntime, gemini_image_complete, gemini_image_start, generated_image_clear,
@@ -190,6 +194,7 @@ pub fn run() {
         .on_window_event(handle_application_window_event)
         .invoke_handler(tauri::generate_handler![
             app_health,
+            font_readiness_retry,
             get_session_snapshot,
             select_media,
             clear_media,
@@ -359,13 +364,15 @@ fn setup_app(app: &mut tauri::App) -> Result<(), Box<dyn std::error::Error>> {
     };
     diagnostics::initialize(&log_dir)?;
     record_application_environment(app);
-    let ui_font_runtime = prepare_ui_font_runtime(
-        &local_data_dir,
-        app.path()
-            .resource_dir()
-            .ok()
-            .map(|dir| dir.join("ui-fonts")),
-    );
+    let font_readiness =
+        std::sync::Arc::new(FontReadiness::new(font_readiness::MANAGED_SUBTITLE_FAMILY));
+    let font_bundle = app
+        .path()
+        .resource_dir()
+        .ok()
+        .map(|dir| dir.join("ui-fonts"));
+    let ui_font_runtime =
+        prepare_ui_font_runtime(app, &local_data_dir, font_bundle.clone(), &font_readiness);
     let database_path = local_data_dir.join("db/osg.sqlite3");
     let database = Database::open(database_path)?;
     let SpeechSetup {
@@ -430,10 +437,16 @@ fn setup_app(app: &mut tauri::App) -> Result<(), Box<dyn std::error::Error>> {
         app,
         &settings,
         ui_font_runtime.as_ref().map(UiFontRuntime::css),
+        &font_readiness.snapshot(),
     )?;
     if let Some(runtime) = ui_font_runtime {
         app.manage(runtime);
     }
+    app.manage(font_repair::FontRepairContext::new(
+        local_data_dir.join("ui-fonts/v1"),
+        font_bundle,
+    ));
+    app.manage(font_readiness);
     diagnostics::record("app.ready", &[]);
     Ok(())
 }
@@ -464,34 +477,110 @@ fn record_application_environment(app: &tauri::App) {
     );
 }
 
+/// Begin preparing the managed font and report every outcome through one authority.
+///
+/// Returns the runtime only when preparation finished quickly enough to inject the stylesheet with
+/// the first document. When it did not, preparation continues and `late_font_ready` completes the
+/// job against the live window — which is the case that used to leave the default subtitle font
+/// permanently unavailable for the session.
 fn prepare_ui_font_runtime(
+    app: &tauri::App,
     local_data_dir: &std::path::Path,
     bundle: Option<std::path::PathBuf>,
+    readiness: &std::sync::Arc<FontReadiness>,
 ) -> Option<UiFontRuntime> {
     diagnostics::record("ui-font.prepare", &[]);
-    match UiFontRuntime::prepare(&local_data_dir.join("ui-fonts/v1"), bundle) {
-        Ok(runtime) => {
+    let handle = app.handle().clone();
+    let late_readiness = std::sync::Arc::clone(readiness);
+    let outcome = UiFontRuntime::prepare(
+        &local_data_dir.join("ui-fonts/v1"),
+        bundle,
+        readiness,
+        move |late| late_font_ready(&handle, &late_readiness, late),
+    );
+    match outcome {
+        Ok(prepared) => {
             diagnostics::record("ui-font.ready", &[]);
-            Some(runtime)
+            Some(prepared.runtime)
         }
         // The reason used to be discarded, so an installation that timed out and one that failed
         // outright produced the same silent `ui-font.unavailable` — which is how a startup timeout
         // went unnoticed while it disabled the default subtitle font on every clean install. The
-        // kind is recorded; the message is not, because it can name a path.
-        Err(error) => {
-            diagnostics::record(
-                "ui-font.unavailable",
-                &[("reason", format!("{:?}", error.kind()))],
-            );
+        // typed reason is recorded; no message is, because a delivery message can name a path.
+        Err(reason) => {
+            diagnostics::record("ui-font.deferred", &[("reason", format!("{reason:?}"))]);
             None
         }
     }
+}
+
+/// Finish a preparation that outlived the startup wait, against the window that already exists.
+///
+/// Order matters and is the reason this is not two independent steps: the stylesheet is installed
+/// first, and only then is readiness published. Announcing `Ready` before the faces exist would
+/// invite the editor to resolve a font it cannot draw — the same class of lie the original boolean
+/// told, in the opposite direction.
+pub(crate) fn late_font_ready(
+    handle: &tauri::AppHandle,
+    readiness: &std::sync::Arc<FontReadiness>,
+    outcome: Result<ui_fonts::PreparedUiFont, font_readiness::FontRefusal>,
+) {
+    use tauri::Manager as _;
+
+    let record = match outcome {
+        Ok(prepared) => {
+            let installed = handle
+                .get_webview_window("main")
+                .map(|window| window.eval(ui_font_install_script(prepared.runtime.css()).as_str()));
+            if matches!(installed, Some(Ok(()))) {
+                diagnostics::record("ui-font.ready", &[("late", "true".to_owned())]);
+                // The package lease must outlive the stylesheet the `WebView` is now using, so it
+                // is held by the application exactly as the startup path holds it.
+                handle.manage(prepared.runtime);
+                readiness.mark_ready(prepared.version)
+            } else {
+                // No window, or the injection failed. The bytes are installed and the next launch
+                // will use them, so this session reports a retryable state rather than success.
+                diagnostics::record("ui-font.deferred", &[("reason", "not-injected".to_owned())]);
+                readiness.mark_refused(font_readiness::FontRefusal::StoreUnavailable)
+            }
+        }
+        Err(reason) => {
+            diagnostics::record("ui-font.unavailable", &[("reason", format!("{reason:?}"))]);
+            readiness.mark_refused(reason)
+        }
+    };
+    // Delivered by evaluating a script in the window rather than by a Tauri event, because this
+    // application denies `core:event:listen` to the `WebView` and that restriction is not worth
+    // trading away for a capability notification. The frontend listens for the DOM event this
+    // dispatches, which needs no additional privilege at all.
+    if let (Some(window), Ok(script)) = (
+        handle.get_webview_window("main"),
+        font_readiness_publish_script(&record),
+    ) {
+        let _ = window.eval(&script);
+    }
+}
+
+/// JavaScript that replaces the published readiness record and announces the change.
+///
+/// Assignment first, then the event: a listener that reacts by reading the record must see the new
+/// one, so there is a single source of truth rather than an event payload racing a global.
+fn font_readiness_publish_script(
+    record: &font_readiness::FontReadinessRecord,
+) -> Result<String, serde_json::Error> {
+    let literal = serde_json::to_string(record)?;
+    let event = font_readiness::FONT_READINESS_EVENT;
+    Ok(format!(
+        "(() => {{ const record = {literal}; window.__OSG_FONT_READINESS__ = record; window.dispatchEvent(new CustomEvent('{event}', {{ detail: record }})); }})();"
+    ))
 }
 
 fn build_main_window(
     app: &mut tauri::App,
     settings: &BTreeMap<String, Value>,
     ui_font_css: Option<&str>,
+    readiness: &font_readiness::FontReadinessRecord,
 ) -> Result<(), Box<dyn std::error::Error>> {
     let mut window_config = app
         .config()
@@ -515,7 +604,11 @@ fn build_main_window(
             window_builder
         };
     window_builder
-        .initialization_script(window_initialization_script(settings, ui_font_css)?)
+        .initialization_script(window_initialization_script(
+            settings,
+            ui_font_css,
+            readiness,
+        )?)
         .build()?;
     Ok(())
 }
@@ -738,19 +831,32 @@ fn settings_initialization_script(
     ))
 }
 
+/// JavaScript that installs the managed font stylesheet, idempotently.
+///
+/// Shared by the first-document bootstrap and by a late repair that has to reach a window already
+/// on screen. One implementation on purpose: two would drift, and the difference between them would
+/// be invisible until a font failed to appear in exactly one of the two paths.
+fn ui_font_install_script(css: &str) -> String {
+    let css_literal = serde_json::to_string(css).unwrap_or_else(|_| "\"\"".to_owned());
+    format!(
+        "(() => {{ const css = {css_literal}; const install = () => {{ if (document.getElementById('osg-managed-ui-font')) return true; const target = document.head || document.documentElement; if (!target) return false; const style = document.createElement('style'); style.id = 'osg-managed-ui-font'; style.textContent = css; target.appendChild(style); return true; }}; if (!install()) {{ const retry = () => {{ if (install()) {{ document.removeEventListener('readystatechange', retry); document.removeEventListener('DOMContentLoaded', retry); }} }}; document.addEventListener('readystatechange', retry); document.addEventListener('DOMContentLoaded', retry); }} }})();"
+    )
+}
+
 fn window_initialization_script(
     settings: &BTreeMap<String, Value>,
     ui_font_css: Option<&str>,
+    readiness: &font_readiness::FontReadinessRecord,
 ) -> Result<String, serde_json::Error> {
     let settings_script = settings_initialization_script(settings)?;
-    let Some(css) = ui_font_css else {
-        return Ok(format!(
-            "Object.defineProperty(window, '__OSG_MANAGED_UI_FONT__', {{ value: false }});Object.defineProperty(window, '__OSG_MANAGED_UI_FONT_READY__', {{ value: Promise.resolve(false) }});{settings_script}"
-        ));
-    };
-    let css_literal = serde_json::to_string(css)?;
+    // A mutable property, not a frozen one. Readiness changes: a repair that finishes after startup
+    // publishes a new record, and a value defined with `writable: false` could never carry it. That
+    // is precisely how a font that finished installing seconds late stayed unavailable all session.
+    let record_literal = serde_json::to_string(readiness)?;
+    let readiness_script = format!("window.__OSG_FONT_READINESS__ = {record_literal};");
+    let install_script = ui_font_css.map(ui_font_install_script).unwrap_or_default();
     Ok(format!(
-        "(() => {{ const css = {css_literal}; let finish; const ready = new Promise((resolve) => {{ finish = resolve; }}); const install = () => {{ if (document.getElementById('osg-managed-ui-font')) {{ finish(true); return true; }} const target = document.head || document.documentElement; if (!target) return false; const style = document.createElement('style'); style.id = 'osg-managed-ui-font'; style.textContent = css; target.appendChild(style); finish(true); return true; }}; if (!install()) {{ const retry = () => {{ if (install()) {{ document.removeEventListener('readystatechange', retry); document.removeEventListener('DOMContentLoaded', retry); }} }}; document.addEventListener('readystatechange', retry); document.addEventListener('DOMContentLoaded', retry); }} Object.defineProperty(window, '__OSG_MANAGED_UI_FONT__', {{ value: true }}); Object.defineProperty(window, '__OSG_MANAGED_UI_FONT_READY__', {{ value: ready }}); }})();{settings_script}"
+        "{install_script}{readiness_script}{settings_script}"
     ))
 }
 
@@ -817,8 +923,8 @@ mod tests {
     use serde_json::json;
 
     use super::{
-        has_valid_main_window_state, is_main_window_close_request, is_safe_setting_key,
-        is_webview_bootstrap_setting_key, media_server_allowed_origins,
+        FontReadiness, font_readiness, has_valid_main_window_state, is_main_window_close_request,
+        is_safe_setting_key, is_webview_bootstrap_setting_key, media_server_allowed_origins,
         settings_initialization_script, window_initialization_script,
     };
 
@@ -884,31 +990,78 @@ mod tests {
 
     #[test]
     fn window_initialization_injects_only_in_memory_managed_font_css() {
+        let readiness = FontReadiness::new(font_readiness::MANAGED_SUBTITLE_FAMILY);
+        let record = readiness.mark_ready("v22-ui4".to_owned());
         let script = window_initialization_script(
             &BTreeMap::new(),
             Some("@font-face{font-family:'Google Sans';src:url(data:font/woff2;base64,AA==)}"),
+            &record,
         )
         .expect("valid script");
         assert!(script.contains("osg-managed-ui-font"));
         assert!(script.contains("data:font/woff2;base64,AA=="));
-        assert!(script.contains("__OSG_MANAGED_UI_FONT__"));
-        assert!(script.contains("__OSG_MANAGED_UI_FONT_READY__"));
-        assert!(script.contains("value: true"));
         assert!(script.contains("readystatechange"));
         assert!(script.contains("DOMContentLoaded"));
+        assert!(script.contains(r#""state":"ready""#));
+        assert!(script.contains(r#""version":"v22-ui4""#));
         assert!(!script.contains("(document.head || document.documentElement).appendChild"));
         assert!(!script.contains("file://"));
         assert!(!script.contains("C:\\\\"));
     }
 
+    /// The record must be assignable, because a repair that lands after startup has to replace it.
+    ///
+    /// The previous bootstrap used `Object.defineProperty` with no writable flag, which is exactly
+    /// what made a late-installed font permanently unavailable for the session.
     #[test]
-    fn window_initialization_marks_managed_font_unavailable_without_css() {
-        let script = window_initialization_script(&BTreeMap::new(), None).expect("valid script");
-        assert!(script.contains("__OSG_MANAGED_UI_FONT__"));
-        assert!(script.contains("__OSG_MANAGED_UI_FONT_READY__"));
-        assert!(script.contains("value: false"));
-        assert!(script.contains("Promise.resolve(false)"));
+    fn window_initialization_publishes_a_replaceable_readiness_record() {
+        let readiness = FontReadiness::new(font_readiness::MANAGED_SUBTITLE_FAMILY);
+        let script = window_initialization_script(&BTreeMap::new(), None, &readiness.snapshot())
+            .expect("valid script");
+        assert!(script.contains("window.__OSG_FONT_READINESS__ ="));
+        assert!(!script.contains("defineProperty"));
+        assert!(script.contains(r#""state":"resolving""#));
+        // Nothing has installed, so no stylesheet may be claimed.
         assert!(!script.contains("osg-managed-ui-font"));
+    }
+
+    /// A late repair must be able to replace a record that was already published.
+    ///
+    /// Delivered by evaluating this script rather than by a Tauri event, because the `WebView` is
+    /// denied `core:event:listen`. The assignment must come before the announcement, or a listener
+    /// that reads the record on notification reads the previous one.
+    #[test]
+    fn a_late_readiness_publication_assigns_before_it_announces() {
+        let readiness = FontReadiness::new(font_readiness::MANAGED_SUBTITLE_FAMILY);
+        readiness.mark_refused(font_readiness::FontRefusal::TimedOut);
+        let record = readiness.mark_ready("v22-ui4".to_owned());
+
+        let script = super::font_readiness_publish_script(&record).expect("valid script");
+        let assignment = script
+            .find("window.__OSG_FONT_READINESS__ =")
+            .expect("assigns");
+        let announcement = script.find("dispatchEvent").expect("announces");
+        assert!(
+            assignment < announcement,
+            "the record must be current before it is announced"
+        );
+        assert!(script.contains(font_readiness::FONT_READINESS_EVENT));
+        assert!(script.contains(r#""state":"ready""#));
+        assert!(
+            script.contains(r#""epoch":2"#),
+            "a late record must carry the advanced epoch"
+        );
+    }
+
+    #[test]
+    fn window_initialization_reports_a_refusal_with_its_typed_reason() {
+        let readiness = FontReadiness::new(font_readiness::MANAGED_SUBTITLE_FAMILY);
+        let record = readiness.mark_refused(font_readiness::FontRefusal::NoUsableSource);
+        let script =
+            window_initialization_script(&BTreeMap::new(), None, &record).expect("valid script");
+        assert!(script.contains(r#""state":"refused""#));
+        assert!(script.contains(r#""reason":"no-usable-source""#));
+        assert!(script.contains(r#""retryable":true"#));
     }
 
     fn legacy_bootstrap_settings_fixture() -> BTreeMap<String, serde_json::Value> {

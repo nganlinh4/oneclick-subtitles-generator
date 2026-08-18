@@ -1,4 +1,9 @@
 [[permission]]
+identifier = "repair-managed-font"
+description = "Allows the main editor to retry installing the managed subtitle font after a failure."
+commands.allow = ["font_readiness_retry"]
+
+[[permission]]
 identifier = "read-session"
 description = "Allows the main window to read application health and the current editing session."
 commands.allow = ["app_health", "get_session_snapshot"]

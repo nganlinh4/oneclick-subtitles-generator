@@ -4,5 +4,8 @@
   "renderError": "Lỗi khi hiển thị phụ đề: {{error}}",
   "rendering": "Đang xử lý video với phụ đề...",
   "retrySubtitlePreview": "Thử lại",
-  "subtitlePreviewUnavailable": "Không xem trước được phụ đề. Video bên dưới là video gốc, chưa có phụ đề."
+  "subtitlePreviewUnavailable": "Không xem trước được phụ đề. Video bên dưới là video gốc, chưa có phụ đề.",
+  "subtitleFontPreparing": "Đang chuẩn bị phông chữ phụ đề. Bản xem trước sẽ hiện khi sẵn sàng.",
+  "subtitleFontUnavailable": "Không cài đặt được phông chữ phụ đề ({{reason}}), nên không thể vẽ phụ đề.",
+  "retrySubtitleFont": "Cài đặt lại"
 }
