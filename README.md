@@ -260,6 +260,25 @@ cargo clippy --workspace --all-targets --all-features --locked -- -D warnings
 cargo test --workspace --all-features --locked
 ```
 
+### Real-binary journeys
+
+The gates above run against sources. These run against the shipped application through WebDriver,
+which is the only layer that can observe what a user observes -- it is what found the startup font
+timeout that left every clean installation unable to draw a subtitle while every source-level gate
+stayed green. Windows only, and the E2E-channel binary must be built first:
+
+```bash
+npm run build:frontend
+npm --prefix apps/desktop run tauri -- build --features e2e-automation --no-bundle --target x86_64-pc-windows-msvc
+npm --prefix e2e test
+npm --prefix e2e run test:damaged-font
+```
+
+`npm --prefix e2e test` runs every journey against the built application in an isolated data root.
+`test:damaged-font` stages throwaway copies of that installation with damaged font resources and
+checks the application degrades to a typed, actionable state rather than waiting forever. The
+WebDriver server is compiled only under the `e2e-automation` feature and is absent from production.
+
 `compile` verifies source/repository invariants. The stricter target-specific `runtime-package`
 profile passes for Windows x64. Linux and macOS intentionally fail until equivalent native-tool,
 model, renderer, and real-device proofs are published; bypassing it does not validate those targets.

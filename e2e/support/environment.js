@@ -11,11 +11,21 @@ import { join, resolve } from 'node:path';
 
 export const REPOSITORY_ROOT = resolve(import.meta.dirname, '..', '..');
 
-/** The binary under test. The E2E channel, never a production build. */
-export const APPLICATION_BINARY = join(
-  REPOSITORY_ROOT,
-  'target', 'x86_64-pc-windows-msvc', 'release', 'osg-desktop.exe',
+/** Where the E2E channel binary and its resources are built. */
+export const BUILT_APPLICATION_DIRECTORY = join(
+  REPOSITORY_ROOT, 'target', 'x86_64-pc-windows-msvc', 'release',
 );
+
+/**
+ * The binary under test. The E2E channel, never a production build.
+ *
+ * `OSG_E2E_BINARY` points the harness at a STAGED copy instead. That exists so a journey can damage
+ * what the application ships -- a corrupt font resource, a missing one -- without touching the build
+ * output every other journey depends on. The staged copy is a real installation layout, so the
+ * application resolves its resources exactly as it does in the built one.
+ */
+export const APPLICATION_BINARY = process.env.OSG_E2E_BINARY
+  ?? join(BUILT_APPLICATION_DIRECTORY, 'osg-desktop.exe');
 
 /**
  * A fresh, isolated root for one run, including the WebView2 profile.
