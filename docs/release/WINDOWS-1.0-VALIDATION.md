@@ -14,7 +14,11 @@ migration. Automatic signed updates begin with the OSG Windows 1.x release line.
 - Official product name: **OSG Windows**.
 - Supported release target: Windows x64.
 - Official GitHub tag: `v1.0.0` only after this document is signed off.
-- Signed updater metadata: `releases/latest/download/latest.json`.
+- Signed updater metadata: `releases/latest/download/osg-desktop-updater-v2.json`. The name is
+  deliberately not `latest.json`: `releases/latest` resolves to whatever GitHub marks Latest, and
+  the legacy Electron release publishes a manifest under that name. A dedicated name means the
+  desktop updater can never read the legacy metadata as its own — until a Tauri release is
+  published and marked Latest, the fetch 404s and the check fails closed.
 - Runtime/model/font assets: immutable, content-addressed assets under
   `osg-runtime-bundles-v1`, downloaded on demand and never embedded merely to make a test pass.
 - Linux and macOS are not supported releases because no maintained real-device validation
@@ -165,7 +169,7 @@ feature-matrix checkbox or approve the release.
 
 1. Complete and attach evidence for every applicable Windows checkbox.
 2. Build `1.0.0` from a clean commit using the external updater-signing key.
-3. Validate the installer and `.sig`, generate immutable `latest.json`, and test them from a draft
+3. Validate the installer and `.sig`, generate an immutable `osg-desktop-updater-v2.json`, and test it from a draft
    GitHub release on an isolated Windows runner.
 4. Replace `main` with the reviewed Tauri history only after the draft artifact passes.
 5. Publish one official release titled **OSG Windows 1.0.0** and mark it Latest.

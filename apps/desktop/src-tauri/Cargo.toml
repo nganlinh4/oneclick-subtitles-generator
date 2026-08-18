@@ -16,6 +16,12 @@ crate-type = ["staticlib", "cdylib", "rlib"]
 default = []
 production = ["tauri/custom-protocol"]
 ci-updater-fixture = []
+# An unsigned build for local testing only. It is packaged exactly like a release — it must carry
+# `tauri/custom-protocol` or the binary keeps the development URL — and differs in one respect: it
+# makes NO update request. It is kept out of releases by the CI build command and by a readiness
+# assertion over that command, and it announces itself in the `app.environment` diagnostic so an
+# installed build can be identified from its own log rather than from what someone remembers.
+unsigned-local-build = ["tauri/custom-protocol"]
 
 [build-dependencies]
 tauri-build = { version = "2.6.3", features = [] }

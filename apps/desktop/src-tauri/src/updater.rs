@@ -21,6 +21,53 @@ const UPDATE_DOWNLOAD_TIMEOUT: Duration = Duration::from_mins(30);
 #[cfg(feature = "ci-updater-fixture")]
 const CI_UPDATE_ENDPOINT: &str = "https://localhost:38443/latest.json";
 
+/// What this build is allowed to do about updates, decided before anything touches the network.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum UpdateChannelState {
+    /// An unsigned local-test build. It must make no update request at all.
+    Disabled,
+    /// No usable signing key is compiled in, so nothing could be verified even if it were fetched.
+    Unconfigured,
+    /// The shipped configuration: check, and verify what comes back.
+    Enabled,
+}
+
+impl UpdateChannelState {
+    /// The diagnostic word recorded for a check that never reached the network.
+    ///
+    /// `Enabled` has no word here on purpose — its outcome is decided by what the check returns,
+    /// and giving it one would invite a caller to report an outcome before there is one.
+    const fn quiescent_outcome(self) -> Option<&'static str> {
+        match self {
+            Self::Disabled => Some("disabled"),
+            Self::Unconfigured => Some("unconfigured"),
+            Self::Enabled => None,
+        }
+    }
+
+    /// Whether the caller may open a network connection.
+    const fn may_check(self) -> bool {
+        matches!(self, Self::Enabled)
+    }
+}
+
+/// The channel this binary was compiled as.
+///
+/// The feature is checked BEFORE the key, so a local-test build reports `Disabled` rather than
+/// borrowing `Unconfigured`'s meaning. The two are different facts: one says this build was never
+/// meant to update, the other says a build that was meant to cannot verify what it downloads. A
+/// user reading the second when the first is true would reasonably think something is broken.
+pub(crate) fn update_channel_state() -> UpdateChannelState {
+    if cfg!(feature = "unsigned-local-build") {
+        return UpdateChannelState::Disabled;
+    }
+    if has_configured_signing_key() {
+        UpdateChannelState::Enabled
+    } else {
+        UpdateChannelState::Unconfigured
+    }
+}
+
 #[derive(Default)]
 pub(crate) struct AppUpdateRuntime {
     active: Mutex<Option<ActiveUpdate>>,
@@ -92,12 +139,15 @@ pub(crate) async fn app_update_check<R: Runtime>(
         "app-update.check_started",
         &[("version", current_version.clone())],
     );
-    if !has_configured_signing_key() {
+    // Decided from the compiled channel, before anything opens a socket. An unsigned local-test
+    // build must be silent on the network, not merely unable to verify what it hears back.
+    let channel = update_channel_state();
+    if let Some(outcome) = channel.quiescent_outcome() {
         diagnostics::record(
             "app-update.check_completed",
             &[
                 ("version", current_version.clone()),
-                ("outcome", "unconfigured".to_owned()),
+                ("outcome", outcome.to_owned()),
             ],
         );
         return Ok(AppUpdateStatus {
@@ -106,6 +156,7 @@ pub(crate) async fn app_update_check<R: Runtime>(
             update: None,
         });
     }
+    debug_assert!(channel.may_check());
 
     let update_result: CommandResult<Option<AppUpdateInfo>> = async {
         build_updater(&app, UPDATE_CHECK_TIMEOUT)?
@@ -170,7 +221,10 @@ pub(crate) async fn app_update_install<R: Runtime>(
     expected_version: String,
     on_event: Channel<AppUpdateEvent>,
 ) -> CommandResult<()> {
-    if !has_configured_signing_key() || !is_bounded_version(&expected_version) {
+    // The same channel decision guards the install, not only the check. A build that must not ask
+    // whether an update exists must certainly not download and run one, and refusing here means a
+    // caller that skipped the check cannot reach the installer through a crafted version string.
+    if !update_channel_state().may_check() || !is_bounded_version(&expected_version) {
         return Err(CommandError::updater_unavailable());
     }
     let cancellation = runtime.begin(&expected_version)?;
@@ -452,8 +506,8 @@ mod tests {
 
     use super::{
         AppUpdateEvent, AppUpdateRuntime, MAX_RELEASE_NOTES_UTF16_UNITS, UPDATE_SIGNING_PUBLIC_KEY,
-        bounded_text, format_published_at, has_configured_signing_key, is_bounded_version,
-        is_valid_signing_key,
+        UpdateChannelState, bounded_text, format_published_at, has_configured_signing_key,
+        is_bounded_version, is_valid_signing_key, update_channel_state,
     };
     use time::macros::datetime;
 
@@ -482,6 +536,66 @@ mod tests {
         assert!(!is_valid_signing_key(
             &STANDARD.encode(format!("{PUBLISHED_EXAMPLE_KEY}extra\n"))
         ));
+    }
+
+    /// The three channel states mean three different things and must not be collapsed.
+    ///
+    /// `Disabled` and `Unconfigured` both return `configured: false` to the editor, which is why
+    /// their DIAGNOSTIC words have to differ: one records a build that was never meant to update,
+    /// the other a build that was meant to and cannot verify what it would download. Reporting the
+    /// second when the first is true is how "the updater is broken" gets into a bug report about a
+    /// build that is behaving exactly as designed.
+    #[test]
+    fn the_quiescent_outcomes_are_distinct_and_only_enabled_may_reach_the_network() {
+        assert_eq!(
+            UpdateChannelState::Disabled.quiescent_outcome(),
+            Some("disabled")
+        );
+        assert_eq!(
+            UpdateChannelState::Unconfigured.quiescent_outcome(),
+            Some("unconfigured")
+        );
+        // `Enabled` deliberately has no pre-decided outcome: its result is whatever the check
+        // returns, and a word here would let a caller report one before there is one.
+        assert_eq!(UpdateChannelState::Enabled.quiescent_outcome(), None);
+
+        assert!(UpdateChannelState::Enabled.may_check());
+        assert!(!UpdateChannelState::Disabled.may_check());
+        assert!(!UpdateChannelState::Unconfigured.may_check());
+
+        // Every state either names a quiescent outcome or may check, never both and never neither.
+        for state in [
+            UpdateChannelState::Disabled,
+            UpdateChannelState::Unconfigured,
+            UpdateChannelState::Enabled,
+        ] {
+            assert_eq!(
+                state.quiescent_outcome().is_none(),
+                state.may_check(),
+                "{state:?} must either stop before the network or be allowed onto it"
+            );
+        }
+    }
+
+    /// This build's channel is the one its features say it is.
+    ///
+    /// Written as a cfg fork rather than a single expectation so it is meaningful in BOTH builds:
+    /// an ordinary or production build must be `Enabled` because the shipped key is real, and the
+    /// local-test build must be `Disabled` even though that same key is still compiled in. The
+    /// second half is the load-bearing one — it proves the feature wins over a valid key rather
+    /// than depending on the key being absent, which is the mistake the handoff warns against.
+    #[test]
+    fn the_compiled_channel_matches_this_builds_features() {
+        if cfg!(feature = "unsigned-local-build") {
+            assert_eq!(update_channel_state(), UpdateChannelState::Disabled);
+            assert!(
+                has_configured_signing_key(),
+                "the local-test channel must be disabled by its FEATURE, not by a missing key"
+            );
+        } else {
+            assert_eq!(update_channel_state(), UpdateChannelState::Enabled);
+            assert!(update_channel_state().may_check());
+        }
     }
 
     #[test]

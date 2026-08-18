@@ -1051,6 +1051,14 @@ function assertWorkflowCommands(workflow) {
     !nativeMatrix.includes('run: npm --prefix apps/desktop run tauri -- build'),
     'native-matrix must not compile a release executable through the raw Tauri script',
   );
+  // The local-test channel switches the updater off, which is correct for a build handed to someone
+  // for an afternoon and wrong for one anybody installs. No workflow may build with it: an installed
+  // release that never checks for updates is indistinguishable from one that is already current, so
+  // the mistake would not announce itself.
+  invariant(
+    !workflow.includes('unsigned-local-build'),
+    'No release workflow may build the updater-disabled local-test channel',
+  );
   const nativeBootstrapStep = new RegExp(
     `^ {6}- name: Prepare verified Tauri NSIS toolchain[ \\t]*\\r?\\n`
       + `^ {8}if: github\\.event_name == 'workflow_dispatch' && matrix\\.rust-target == 'x86_64-pc-windows-msvc'[ \\t]*\\r?\\n`
@@ -2842,9 +2850,22 @@ function assertUpdaterFixtureSource(rootDirectory) {
     && diagnostics.includes('Value::String(app_instance_id.to_owned()),')
     && (diagnostics.match(/fn encode_record\(/g) || []).length === 1,
   'Every desktop diagnostic record must carry one process-scoped UUIDv7 application identity');
+  // A DEDICATED manifest name, not `latest.json`, and that is the whole point of pinning it.
+  //
+  // `releases/latest` resolves to whatever GitHub currently marks Latest, which is still the legacy
+  // Electron release. A manifest called `latest.json` there is a file this updater would fetch and
+  // attempt to read as its own — the legacy metadata reinterpreted as current. A name only a Tauri
+  // release ever publishes removes that entirely: while the legacy release is Latest the fetch
+  // 404s and the check fails closed, which is the correct behaviour for a build whose channel has
+  // nothing to offer it.
+  const updaterManifestName = 'osg-desktop-updater-v2.json';
   invariant(JSON.stringify(config.plugins?.updater?.endpoints) === JSON.stringify([
-    'https://github.com/nganlinh4/oneclick-subtitles-generator/releases/latest/download/latest.json',
+    `https://github.com/nganlinh4/oneclick-subtitles-generator/releases/latest/download/${updaterManifestName}`,
   ]), 'Production updater endpoint must remain the official GitHub latest release');
+  invariant(
+    !config.plugins.updater.endpoints.some((endpoint) => endpoint.endsWith('/latest.json')),
+    'Production updater must not read a manifest named latest.json; the legacy release publishes one',
+  );
 }
 
 function assertCiUpdaterFixtureHandoffSource(updater) {
@@ -3682,8 +3703,15 @@ function assertUpdaterReleaseConfiguration(rootDirectory = REPOSITORY_ROOT) {
       `Tauri updater endpoint may not contain credentials: ${rawEndpoint}`);
     invariant(!endpoint.search && !endpoint.hash,
       `Tauri updater endpoint may not contain a query or fragment: ${rawEndpoint}`);
-    invariant(endpoint.pathname.endsWith('/latest.json'),
-      `Tauri updater endpoint must resolve to latest.json: ${rawEndpoint}`);
+    // A JSON manifest, and specifically NOT one called `latest.json`.
+    //
+    // This rule used to require exactly that name, which is what pointed the updater at a file the
+    // legacy Electron release also publishes under `releases/latest`. Requiring a `.json` manifest
+    // keeps the shape guarantee; forbidding that one name keeps the channels apart.
+    invariant(endpoint.pathname.endsWith('.json'),
+      `Tauri updater endpoint must resolve to a JSON manifest: ${rawEndpoint}`);
+    invariant(!endpoint.pathname.endsWith('/latest.json'),
+      `Tauri updater endpoint must not be latest.json, which the legacy release also publishes: ${rawEndpoint}`);
   }
 
   const keyPath = path.join(rootDirectory, UPDATER_PUBLIC_KEY_PATH);
@@ -3764,10 +3792,12 @@ function assertTauriProductionBuildContract(rootDirectory = REPOSITORY_ROOT) {
   );
 
   const mainSource = readText(rootDirectory, `${TAURI_DIRECTORY}/src/main.rs`);
+  // Both packaged channels carry `tauri/custom-protocol`; what must stay refused is a release built
+  // with NEITHER, which keeps the development URL and would ship a binary pointing at localhost.
   invariant(
-    /#\[cfg\(all\(not\(debug_assertions\),\s*not\(feature\s*=\s*["']production["']\)\)\)]\s*compile_error!\s*\(/m
+    /#\[cfg\(all\(\s*not\(debug_assertions\),\s*not\(feature\s*=\s*["']production["']\),\s*not\(feature\s*=\s*["']unsigned-local-build["']\)\s*\)\)]\s*compile_error!\s*\(/m
       .test(mainSource),
-    'Desktop main.rs must reject release builds that omit the production feature',
+    'Desktop main.rs must reject release builds that omit both packaged-channel features',
   );
   invariant(
     mainSource.includes('plain `cargo build --release` retains the development URL'),

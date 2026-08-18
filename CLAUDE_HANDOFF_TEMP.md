@@ -794,6 +794,104 @@ are useful milestone evidence, not final release evidence. They must be rerun af
 packaging changes and again on the exact installer candidate. Continue automatically; do not stop to
 ask about reversible engineering choices or to narrate another milestone.
 
+### WAVE 20 USER PRIORITY — produce a testable EXE now; no more pre-installer stopping
+
+Current reviewed repository state is `58f2da6c4c111d9dfcd2c6640398505c65e0fa67`, exactly `103`
+commits after the safety checkpoint. The repository is clean before this handoff edit and the latest
+commit contains the notice, CRLF mutation-gate, and direct-dependency corrections. The only NSIS/MSI
+files currently present under `target/release/bundle` are dated August 15 and predate the native-only
+renderer/removal commits. They are stale and **must not** be given to the user for testing.
+
+The next concrete deliverable is a fresh locally testable Windows installer. No additional survey,
+licensing essay, broad refactor, reviewer wave, task recap, or milestone response may precede it.
+
+1. Run the normal production frontend build and build a fresh Windows `nsis` bundle from current HEAD.
+   If the normal Tauri configuration requires the unavailable updater private key solely because
+   `createUpdaterArtifacts` is enabled, use an ephemeral command-line/temporary local Tauri config
+   that changes only `bundle.createUpdaterArtifacts` to `false` for this unsigned branch build. Do
+   not commit that override, change the shipped updater public key, weaken readiness, fabricate a
+   signature, or wait for signing credentials. Unsigned local packaging is explicitly supported by
+   the repository's `--allow-unsigned-branch-build` artifact contract.
+
+2. If the build fails, root-fix the failure and retry immediately. Do not stop to tell the user that
+   the build failed while a local fix remains possible. Preserve the shared worktree rules and use
+   small commits after each corrected gate.
+
+3. Validate the newly produced installer with `scripts/check-release-artifacts.js` for
+   `x86_64-pc-windows-msvc`, `nsis`, and the explicit unsigned-branch flag. Assert the file timestamp
+   is after commit `58f2da6c`, its PE/NSIS signature is valid, packaged resources/notices are exact,
+   and extracted contents contain no product Remotion reference/runtime. Record SHA-256 and byte
+   length. Do not confuse the stale August 15 artifact with the new candidate.
+
+4. Launch the freshly built application executable at least once from the built bundle or installed
+   location, capture startup diagnostics, and exercise a minimal native preview plus native export
+   smoke. A GUI interaction that truly requires the user may be deferred only after automated launch
+   and backend smoke are complete; use available Windows UI automation first.
+
+5. Copy or preserve the verified NSIS installer at one stable, clearly named local path such as
+   `artifacts/local-test/one-click-subtitles-generator-native-<short-head>-unsigned-setup.exe` without
+   overwriting unrelated artifacts. Give the user that exact clickable path, SHA-256, byte size,
+   build commit, and the explicit statement that it is unsigned/local-test-only. This is the next
+   allowed user-facing response.
+
+After the user-testable installer exists, continue automatically with the complete isolated
+install/relaunch/export/uninstall smoke, remaining owner-independent gates, and fresh integrated
+adversarial review. Signing, updater publication, font publication, or final legal approval may
+remain separate release boundaries, but none may delay the local test installer.
+
+Expected cadence: on a healthy warm Windows checkout, the first unsigned installer should normally
+be available in roughly 30–90 minutes; fixable packaging defects may extend this to a few hours. Do
+not turn this estimate into a timeout or a reason to ship an unverified binary—continue until the
+artifact is real. If a genuinely external machine/OS failure prevents local packaging after root-
+cause attempts, report the exact failing command/log and still provide a fresh portable executable
+only if its packaged-resource behavior is equivalent and explicitly labelled as a fallback.
+
+### WAVE 21 UPDATE — installer delivered; finish smoke and updater state without another report
+
+The Wave 20 deliverable exists and its bytes were independently rechecked:
+
+- `artifacts/local-test/one-click-subtitles-generator-native-58f2da6c-unsigned-setup.exe`
+- SHA-256 `ece469ed4ad75c0f81891df0fa4b248bf2461f741fd468ca563ef41b08131dbb`
+- `10,595,558` bytes, modified `2026-08-18T01:29:11+09:00`
+- unsigned local-test build from `58f2da6c`
+
+The user can test this installer now. Its startup updater diagnostic is not a renderer/install failure
+and the frontend already keeps startup update failures silent. Nevertheless, “expected error because
+the endpoint serves a legacy release” is not final closure. Do not stop to explain it again; implement
+the correct channel behavior and finish the smoke.
+
+1. **Complete the installed GUI smoke before another user-facing report.** Use an isolated Windows
+   account/runner/sandbox with dedicated app-data roots, not the user's live 17-project database.
+   Install the delivered candidate, launch, create/import a fixture project, exercise the actual
+   editor preview while paused/playing/seeking/editing, export a native MP4 with subtitles and audio,
+   decode and compare representative frames/audio, cancel and retry once, close/relaunch and verify
+   persistence, then uninstall/reinstall and verify cleanup. Use GUI automation where possible. If a
+   reachable defect appears, fix it, rebuild, rehash, and repeat without pausing to report the defect.
+
+2. **Give unsigned local-test builds an explicit updater-disabled state.** They must make no update
+   network request and `app_update_check` must return the existing typed `configured:false` status,
+   with a diagnostic outcome such as `unconfigured`/`disabled`, not `error`. Implement this through a
+   reviewed build channel/feature or generated configuration that is present in the binary and
+   hostile-tested; do not infer trust from the absence of a `.sig`, accept an empty key accidentally,
+   or weaken production signature verification. Rebuild the user-test installer after this change and
+   replace it only with a newly verified, clearly versioned/hash-labelled candidate.
+
+3. **Make the production update channel compatible rather than tolerant of malformed legacy data.**
+   A signed production build must use a dedicated Tauri-v2 manifest endpoint and the configured public
+   key. It must continue to fail closed on malformed, unsigned, wrong-key, replayed, downgraded, or
+   cross-channel responses. Do not reinterpret the legacy Electron manifest as “current” and do not
+   suppress genuine production transport/signature failures. Preparing code, endpoint naming,
+   fixtures and verification is local work; publishing the signed manifest remains owner-gated and
+   must be requested only when it is the exact final action.
+
+4. **Do not turn smoke findings into progress messages.** Root-fix each locally actionable finding,
+   rerun its hostile test and the installed flow, then proceed. The next allowed status response is
+   either: (a) a final installed-smoke report with the corrected installer path/hash and all local
+   tasks complete, or (b) one exact external blocker after every independent task is exhausted.
+
+After the smoke passes, run the final integrated gates/review already required below, commit the
+handoff and fixes locally, leave the worktree clean, and close the remaining tasks. Do not push.
+
 ### Authority and safety boundaries
 
 - You are authorized to refactor across packages, add migrations/APIs/tests, split oversized
@@ -819,9 +917,9 @@ ask about reversible engineering choices or to narrate another milestone.
 - Repository: `C:\WORK\oneclick-subtitles-generator`
 - Branch: `rewrite/tauri-rust`
 - Safety checkpoint: `650805d3`
-- Current reviewed HEAD after Wave 19: `d38772545b8d4c5a1dff64dbc544a2a98afc2a33`, 102 local commits
+- Current reviewed HEAD after Wave 20: `58f2da6c4c111d9dfcd2c6640398505c65e0fa67`, 103 local commits
   after the safety checkpoint. Preserve those commits; do not rewrite them.
-- At the start of the Wave 19 Codex check, the repository was clean. The handoff edit itself is the
+- At the start of the Wave 20 Codex check, the repository was clean. The handoff edit itself is the
   expected later worktree change. Recheck status before integration and preserve any subsequent work.
 - The already-uploaded inert Remotion assets are
   `remotion-runtime-windows-x64-4.0.507-8f2b4bb7f74bca85.zip`

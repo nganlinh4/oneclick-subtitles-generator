@@ -119,7 +119,7 @@ function createTauriProductionBuildFixture() {
   writeFile(
     root,
     'apps/desktop/src-tauri/src/main.rs',
-    '#[cfg(all(not(debug_assertions), not(feature = "production")))]\n'
+    '#[cfg(all(not(debug_assertions), not(feature = "production"), not(feature = "unsigned-local-build")))]\n'
       + 'compile_error!("release executables must be built with `npm run tauri:build`; '
       + 'plain `cargo build --release` retains the development URL");\n',
   );
@@ -3179,7 +3179,7 @@ test('production CSP rejects provider and development network endpoints', () => 
 });
 
 function createUpdaterFixture({
-  endpoint = 'https://example.invalid/releases/latest/download/latest.json',
+  endpoint = 'https://example.invalid/releases/latest/download/osg-desktop-updater-v2.json',
   permission = 'check-for-updates',
   publicKey = null,
   updaterOverrides = {},

@@ -425,6 +425,14 @@ fn record_application_environment(app: &tauri::App) {
                 "webviewDebug",
                 if webview_debug { "present" } else { "absent" }.to_owned(),
             ),
+            // Which update channel this binary was compiled as. Recorded because an installed build
+            // that never checks for updates is indistinguishable from one that is up to date, and
+            // the difference should be readable from the application's own log rather than inferred
+            // from which command someone remembers running.
+            (
+                "updateChannel",
+                format!("{:?}", crate::updater::update_channel_state()).to_lowercase(),
+            ),
         ],
     );
 }
