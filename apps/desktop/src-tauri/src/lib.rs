@@ -141,7 +141,17 @@ pub fn run() {
     #[cfg(feature = "ci-updater-fixture")]
     ci_updater_fixture::initialize_from_process_arguments()
         .unwrap_or_else(|error| panic!("invalid CI updater fixture arguments: {error}"));
-    let app = tauri::Builder::default()
+    let builder = tauri::Builder::default();
+    // The embedded WebDriver server, registered before anything else so a test attaches to the same
+    // application every other plugin then configures. It is what removes the ambiguity the first
+    // harness ran into: with the server inside the binary there is no external driver choosing which
+    // WebView target to bind. Compiled only into the automation channel, which no workflow builds
+    // and which every release artifact is asserted not to contain.
+    #[cfg(feature = "e2e-automation")]
+    let builder = builder
+        .plugin(tauri_plugin_wdio_webdriver::init())
+        .plugin(tauri_plugin_wdio::init());
+    let app = builder
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_opener::init())
         .plugin(updater_plugin())
