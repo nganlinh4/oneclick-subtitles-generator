@@ -334,9 +334,20 @@ fn is_main_window_close_request(window_label: &str, close_requested: bool) -> bo
 }
 
 fn setup_app(app: &mut tauri::App) -> Result<(), Box<dyn std::error::Error>> {
-    let local_data_dir = app.path().app_local_data_dir()?;
-    let cache_dir = app.path().app_cache_dir()?;
-    diagnostics::initialize(&app.path().app_log_dir()?)?;
+    let harness_root = harness_data_root();
+    let local_data_dir = match &harness_root {
+        Some(root) => root.join("data"),
+        None => app.path().app_local_data_dir()?,
+    };
+    let cache_dir = match &harness_root {
+        Some(root) => root.join("cache"),
+        None => app.path().app_cache_dir()?,
+    };
+    let log_dir = match &harness_root {
+        Some(root) => root.join("logs"),
+        None => app.path().app_log_dir()?,
+    };
+    diagnostics::initialize(&log_dir)?;
     record_application_environment(app);
     let ui_font_runtime = prepare_ui_font_runtime(&local_data_dir);
     let database_path = local_data_dir.join("db/osg.sqlite3");
@@ -1056,4 +1067,34 @@ mod tests {
         assert!(script.contains("theme"));
         assert!(script.contains("dark"));
     }
+}
+
+/// An isolated data root for the real-binary test harness, or `None` in every shipped build.
+///
+/// Windows resolves the application data directory through `SHGetKnownFolderPath`, which ignores
+/// `%LOCALAPPDATA%` — measured, after an attempt to isolate a test run that way silently used the
+/// real directory instead. So a harness that must not touch a developer's projects needs the
+/// application to accept a root, and there is no way to provide one from outside the process.
+///
+/// This exists ONLY in the `unsigned-local-build` channel. There is no `cfg` in this function that
+/// a release build compiles: `production` does not enable that feature, no workflow builds it, and
+/// `scripts/check-release-readiness.js` asserts both. The path is required to be absolute so a
+/// relative value cannot quietly resolve against whatever directory the harness happened to start
+/// in, and creation failure is fatal rather than a silent fall back to the real root — falling back
+/// is precisely the behaviour that would write test data into someone's live database.
+#[cfg(feature = "unsigned-local-build")]
+fn harness_data_root() -> Option<std::path::PathBuf> {
+    let raw = std::env::var_os("OSG_E2E_DATA_ROOT")?;
+    let root = std::path::PathBuf::from(raw);
+    assert!(
+        root.is_absolute(),
+        "OSG_E2E_DATA_ROOT must be an absolute path"
+    );
+    std::fs::create_dir_all(&root).expect("OSG_E2E_DATA_ROOT must be creatable");
+    Some(root)
+}
+
+#[cfg(not(feature = "unsigned-local-build"))]
+const fn harness_data_root() -> Option<std::path::PathBuf> {
+    None
 }

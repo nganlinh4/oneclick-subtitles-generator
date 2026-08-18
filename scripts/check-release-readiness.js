@@ -2816,8 +2816,9 @@ function assertUpdaterFixtureSource(rootDirectory) {
   const productionFeature = /^production\s*=\s*\[([^\]]*)\]/m.exec(cargo);
   invariant(productionFeature !== null, 'Desktop Cargo must declare the production feature');
   invariant(
-    !productionFeature[1].includes('devtools'),
-    'The production feature may not enable devtools',
+    !productionFeature[1].includes('devtools')
+      && !productionFeature[1].includes('unsigned-local-build'),
+    'The production feature may not enable devtools or the local-test channel',
   );
   invariant(
     /^unsigned-local-build\s*=\s*\[[^\]]*"tauri\/devtools"[^\]]*\]\s*$/m.test(cargo),
