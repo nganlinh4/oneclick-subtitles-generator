@@ -7,5 +7,6 @@
   "subtitlePreviewUnavailable": "자막 미리보기를 사용할 수 없습니다. 아래 영상은 자막이 없는 원본입니다.",
   "subtitleFontPreparing": "자막 글꼴을 준비하는 중입니다. 준비되면 미리보기가 표시됩니다.",
   "subtitleFontUnavailable": "자막 글꼴을 설치하지 못해({{reason}}) 자막을 그릴 수 없습니다.",
-  "retrySubtitleFont": "다시 설치"
+  "retrySubtitleFont": "다시 설치",
+  "subtitlePreviewEmpty": "아직 자막이 없습니다. 자막을 추가하거나 생성하면 여기 영상에 표시됩니다."
 }

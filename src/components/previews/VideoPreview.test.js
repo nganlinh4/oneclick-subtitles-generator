@@ -344,3 +344,30 @@ describe('the cue list the compositor is given', () => {
     expect(lastPreviewCall().subtitles).toBe(ORIGINALS);
   });
 });
+
+describe('a project that has no subtitles at all', () => {
+  /**
+   * The state the editor is in for every customer between opening a video and adding subtitles, and
+   * the one the surface has the least excuse for getting wrong.
+   *
+   * `subtitlesArray` is genuinely `null` then, not an empty array. A version of this surface read
+   * `.length` from it directly: every existing test passed, because they all supply cues, and the
+   * real application crashed the moment a video was opened — the video element never appeared at
+   * all, which the real-binary journey caught and this suite did not.
+   */
+  it('renders the video and says there are no subtitles yet', () => {
+    const { video, container } = mount({ subtitlesArray: null });
+    expect(video).not.toBeNull();
+
+    finishLoading(video);
+
+    expect(container.querySelector('.native-preview-empty')).not.toBeNull();
+    expect(container.querySelector('.native-preview-unavailable')).toBeNull();
+  });
+
+  it('survives an undefined cue list as well', () => {
+    const { video } = mount({ subtitlesArray: undefined });
+    expect(video).not.toBeNull();
+    finishLoading(video);
+  });
+});

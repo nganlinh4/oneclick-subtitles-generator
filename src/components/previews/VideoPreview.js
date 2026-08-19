@@ -19,6 +19,7 @@ import useNarrationRefreshEvents from './useNarrationRefreshEvents';
 import useVideoUiSync from './useVideoUiSync';
 import NativeCompositedFrame from './native/NativeCompositedFrame';
 import NativePreviewUnavailable from './native/NativePreviewUnavailable';
+import { selectPreviewCue } from './native/nativePreviewScene';
 import useNativePreview from './native/useNativePreview';
 import {
   EDITOR_PREVIEW_FRAME_RATE,
@@ -287,12 +288,62 @@ const VideoPreview = ({ currentTime, setCurrentTime, setDuration, videoSource, f
   // not started rather than being unavailable, and claiming otherwise would flash a contradiction
   // over an editor that is about to work. `outsideTrim` is excluded for the opposite reason: there
   // the bare `<video>` is the deliberate, correct answer, not a missing subtitle.
-  const subtitlePreviewDormant = Boolean(videoUrl)
+  const previewIdle = Boolean(videoUrl)
     && isLoaded
     && !isVideoLoading
     && nativePreview.status === 'idle'
     && nativePreview.error === null
     && !nativePreview.outsideTrim;
+
+  // Three different facts used to arrive here as one sentence claiming the preview was unavailable.
+  //
+  //   * The project has NO CUES AT ALL. Nothing failed; there is nothing to draw yet. That is a
+  //     ready state with an obvious next action, and calling it unavailable teaches a customer to
+  //     ignore the notice that also reports real failures.
+  //   * The project has cues but NONE COVERS THIS INSTANT. The bare source frame is the correct
+  //     picture, exactly as it is between two subtitles in the finished video, so the honest thing
+  //     to show is nothing at all.
+  //   * Something a frame needs is genuinely missing. That is the only one worth a notice.
+  // `previewSubtitles` is null until subtitles exist at all, which is exactly the state this block
+  // was added to describe -- so it is checked rather than assumed to be an array.
+  const previewCues = Array.isArray(previewSubtitles) ? previewSubtitles : [];
+  const previewHasCues = previewCues.length > 0;
+  const cueCoversNow = previewHasCues && selectPreviewCue(
+    previewCues,
+    isDragging ? dragTime : currentTime,
+    {
+      fadeInDuration: nativeCustomization?.fadeInDuration ?? 0,
+      fadeOutDuration: nativeCustomization?.fadeOutDuration ?? 0,
+    },
+  ) !== null;
+
+  // Having no subtitles is a fact about the PROJECT, not about the frame. The compositor happily
+  // publishes a source frame for a cue-less project — correctly, since that is what the finished
+  // video would look like — so gating this on an idle preview meant the customer was told nothing at
+  // all about why their subtitles were not there.
+  const subtitlePreviewEmpty = Boolean(videoUrl) && isLoaded && !isVideoLoading && !previewHasCues;
+  const subtitlePreviewDormant = previewIdle && previewHasCues && cueCoversNow;
+
+  /**
+   * One bounded word for what the subtitle preview is doing, published on the surface itself.
+   *
+   * Not for styling and not for the customer: it is the smallest honest description of which
+   * prerequisite the preview is waiting on, so a failure can name the edge that broke instead of
+   * being narrowed by elimination. It carries no path, no cue text, no identifier — only a state
+   * this file already computes.
+   */
+  const subtitlePreviewState = (() => {
+    if (nativePreview.error !== null) return 'refused';
+    if (!isLoaded || isVideoLoading) return 'source-loading';
+    // Asked before the frame's own status, because "this project has no subtitles" is true whether
+    // or not a source frame has been drawn, and it is the more useful thing to say.
+    if (!previewHasCues) return 'empty';
+    if (nativePreview.status === 'ready') return 'ready';
+    if (nativePreview.status === 'pending') return 'pending';
+    if (nativePreview.outsideTrim) return 'outside-trim';
+    if (!cueCoversNow) return 'between-cues';
+    return 'dormant';
+  })();
 
   // Handle downloading video with subtitles
   const handleDownloadWithSubtitles = createDownloadWithSubtitlesHandler({
@@ -403,7 +454,7 @@ const VideoPreview = ({ currentTime, setCurrentTime, setDuration, videoSource, f
         </div>
       )}
 
-      <div className="video-container">
+      <div className="video-container" data-osg-preview={subtitlePreviewState}>
         {error && <div className="error">{error}</div>}
 
         {/* A native refusal is stated, never shown as a blank frame: an empty preview reads as an
@@ -411,11 +462,12 @@ const VideoPreview = ({ currentTime, setCurrentTime, setDuration, videoSource, f
             asked for" and "what was asked for was refused" are different facts and only the second
             one has a recovery. The retry releases the preview surface, which is what a lost
             graphics device needs and the only thing that lifts it for this project/media pair. */}
-        {(nativePreview.error !== null || subtitlePreviewDormant) && (
+        {(nativePreview.error !== null || subtitlePreviewDormant || subtitlePreviewEmpty) && (
           <NativePreviewUnavailable
             code={nativePreview.error === null
               ? null
               : nativePreview.error.nativeCode ?? nativePreview.error.code}
+            emptyProject={subtitlePreviewEmpty}
             onRetry={nativePreview.error === null ? null : nativePreview.releaseSurface}
           />
         )}

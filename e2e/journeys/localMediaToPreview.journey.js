@@ -24,6 +24,8 @@ const inspect = () => browser.execute(() => {
   const video = document.querySelector('video');
   return {
     errors: text('.error, [role="alert"]'),
+    emptyNotice: text('.native-preview-empty'),
+    previewState: document.querySelector('[data-osg-preview]')?.getAttribute('data-osg-preview') ?? null,
     hasVideoElement: video !== null,
     videoDuration: Number.isFinite(video?.duration) ? video.duration : null,
     videoWidth: video?.videoWidth ?? null,
@@ -49,8 +51,25 @@ describe('a customer opens a local video', () => {
     );
     assert.equal(seen.videoWidth, 640, 'the fixture is 640 wide');
     assert.equal(seen.videoHeight, 360, 'the fixture is 360 tall');
-    // No assertion about the preview surface yet: the project has no subtitles at this point, and
-    // what the product should say with nothing to draw is asserted by its own journey.
+    // With media activated and no cues yet, nothing has failed and there is nothing to draw. The
+    // product must say that plainly rather than reporting its own preview as unavailable, which is
+    // what it used to do — and what teaches a customer to ignore the notice that also reports real
+    // failures.
+    await browser.waitUntil(async () => {
+      seen = await inspect();
+      // The wrong notice must never appear, not even briefly on the way to the right one.
+      assert.deepEqual(
+        seen.previewUnavailable, [],
+        'an empty project must not claim the subtitle preview is unavailable',
+      );
+      return seen.emptyNotice.some((notice) => /no subtitles yet/i.test(notice));
+    }, {
+      timeout: 30_000,
+      interval: 1_000,
+      timeoutMsg: () => 'an empty project never said it has no subtitles yet. last: '
+        + JSON.stringify(seen, null, 2),
+    });
+    assert.deepEqual(seen.errors, [], 'an empty project is not an error');
 
     await importSubtitles();
 

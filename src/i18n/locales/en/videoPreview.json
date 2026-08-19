@@ -7,5 +7,6 @@
   "subtitlePreviewUnavailable": "Subtitle preview unavailable. The video below is the source, without subtitles.",
   "subtitleFontPreparing": "Preparing the subtitle font. The preview will appear when it is ready.",
   "subtitleFontUnavailable": "The subtitle font could not be installed ({{reason}}), so subtitles cannot be drawn.",
-  "retrySubtitleFont": "Install again"
+  "retrySubtitleFont": "Install again",
+  "subtitlePreviewEmpty": "No subtitles yet. Add or generate them and they will appear on the video here."
 }

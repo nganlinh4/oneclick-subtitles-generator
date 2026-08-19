@@ -116,7 +116,8 @@
       ],
       "oracles": [
         "visible DOM",
-        "the composited frame element the compositor publishes"
+        "the composited frame element",
+        "data-osg-preview, the bounded preview-state snapshot"
       ],
       "runsAgainst": "e2e-binary",
       "status": "green",
@@ -129,9 +130,10 @@
       "file": "journeys/localMediaToPreview.journey.js",
       "assertions": [
         "the selected media activates and plays at 640x360 for 6.000s",
+        "a project with no cues says so and never claims the preview is unavailable",
         "the dropped SRT reaches the editor and its cues are readable",
         "a native composited frame is published",
-        "no error surface and no preview-unavailable notice once a frame exists"
+        "no error surface once a frame has been drawn"
       ],
       "lastGreenCommit": "pending-commit"
     },
@@ -281,8 +283,14 @@
         "refusal, and saying otherwise teaches a customer to ignore the one notice that also reports",
         "real failures."
       ],
-      "status": "open",
-      "foundBy": "localMediaToPreview, before subtitles are imported"
+      "status": "fixed",
+      "foundBy": "localMediaToPreview, before subtitles are imported",
+      "fix": [
+        "Emptiness is now a fact about the project rather than about the frame: with media loaded",
+        "and no cues, the surface says there are none yet, with no error treatment and no retry.",
+        "The compositor still publishes the source frame, which is what the finished video would",
+        "look like there. Asserted in the real binary before SRT import."
+      ]
     },
     {
       "finding": "Whether a subtitle can be drawn depends on exact float equality of two measurements.",
