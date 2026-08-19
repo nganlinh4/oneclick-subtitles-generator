@@ -5,8 +5,10 @@
   "description": "Real-binary Windows journeys driven through tauri-driver and the actual WebView.",
   "type": "module",
   "scripts": {
-    "test": "wdio run wdio.conf.js",
-    "test:damaged-font": "node scenarios/damagedFontPayload.mjs"
+    "test": "wdio run wdio.conf.js --spec ./journeys/startup.journey.js --spec ./journeys/defaultFont.journey.js",
+    "test:damaged-font": "node scenarios/damagedFontPayload.mjs",
+    "test:workflows": "wdio run wdio.conf.js --spec ./journeys/urlToPreview.journey.js",
+    "recon": "wdio run wdio.conf.js --spec ./journeys/reconnaissance.journey.js"
   },
   "devDependencies": {
     "@wdio/cli": "9.20.0",

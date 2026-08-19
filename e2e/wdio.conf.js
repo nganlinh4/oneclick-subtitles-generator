@@ -54,7 +54,9 @@ export const config = {
   }],
   reporters: ['spec'],
   framework: 'mocha',
-  mochaOpts: { ui: 'bdd', timeout: 180_000 },
+  // Longer than any single journey's internal waits. When mocha's cap fires first it reports
+  // only "took too long", discarding the observation the journey collected about WHY.
+  mochaOpts: { ui: 'bdd', timeout: 600_000 },
   logLevel: 'warn',
 
   onPrepare: () => {

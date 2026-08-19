@@ -1,0 +1,187 @@
+{
+  "$comment": [
+    "Every user-visible capability, and what actually proves it works.",
+    "",
+    "The distinction this file exists to keep honest: a SHELL journey proves the application starts",
+    "and configures itself; a WORKFLOW journey proves a customer got what they came for. Only the",
+    "second kind counts as a feature being verified. Unit tests and mock-call assertions never do.",
+    "",
+    "status: green (passing), red (written and failing for a recorded product reason), planned.",
+    "A red entry is not a gap in coverage -- it is coverage that has found something."
+  ],
+  "updated": "2026-08-19",
+  "binary": {
+    "e2e": "target/x86_64-pc-windows-msvc/release/osg-desktop.exe built with --features e2e-automation",
+    "installed": "NSIS setup from --features production, exercised by the isolated installed smoke"
+  },
+  "journeys": [
+    {
+      "name": "startup",
+      "kind": "shell",
+      "file": "journeys/startup.journey.js",
+      "capability": "The application launches and renders its editor.",
+      "fixtures": [],
+      "assertions": [
+        "React commits a non-empty root",
+        "no error surface is visible with every optional engine absent"
+      ],
+      "oracles": [
+        "visible DOM"
+      ],
+      "runsAgainst": "e2e-binary",
+      "status": "green",
+      "lastGreenCommit": "84cb65d8"
+    },
+    {
+      "name": "defaultFont",
+      "kind": "shell",
+      "file": "journeys/defaultFont.journey.js",
+      "capability": "The default subtitle font is installed, verified and drawable on a clean profile.",
+      "fixtures": [
+        "seven bundled OFL-1.1 font resources"
+      ],
+      "assertions": [
+        "native publishes a schema-1 readiness record in state ready with a version",
+        "document.fonts can use the family",
+        "the family measures differently from the generic fallback, so it is not substituted"
+      ],
+      "oracles": [
+        "canvas text measurement",
+        "native readiness record"
+      ],
+      "runsAgainst": "e2e-binary",
+      "status": "green",
+      "lastGreenCommit": "84cb65d8"
+    },
+    {
+      "name": "damagedFontPayload",
+      "kind": "shell",
+      "file": "journeys/damagedFontPayload.journey.js",
+      "runner": "scenarios/damagedFontPayload.mjs",
+      "capability": "A damaged shipped font payload degrades to a typed, actionable state.",
+      "fixtures": [
+        "staged installation copies with a corrupt and a missing font resource"
+      ],
+      "assertions": [
+        "the editor still renders",
+        "readiness settles on ready or refused, never waits indefinitely",
+        "a refusal carries a bounded token cause, not a path or a message"
+      ],
+      "oracles": [
+        "native readiness record"
+      ],
+      "runsAgainst": "staged-e2e-binary",
+      "status": "green",
+      "lastGreenCommit": "84cb65d8"
+    },
+    {
+      "name": "urlToPreview",
+      "kind": "workflow",
+      "file": "journeys/urlToPreview.journey.js",
+      "capability": "A customer pastes a video URL and gets playable media with a subtitle preview.",
+      "fixtures": [
+        "fixtures/media/bars-6s-640x360.mp4 (H.264 + AAC, 6.000s, 640x360, 440 Hz tone)",
+        "support/mediaServer.js (loopback HTTP origin with ranges, HEAD, content length)"
+      ],
+      "assertions": [
+        "the downloader actually requested the fixture from the origin",
+        "the activated media is playable and 6 seconds long",
+        "no error surface is visible after activation"
+      ],
+      "oracles": [
+        "origin request log",
+        "HTMLVideoElement duration"
+      ],
+      "runsAgainst": "e2e-binary",
+      "status": "red",
+      "redReason": [
+        "On a clean profile the URL workflow first installs its managed downloader tools on demand:",
+        "choosing a download type surfaces three 'Cancel installation' controls and the fixture origin",
+        "receives zero requests. The download cannot begin until that installation completes, which",
+        "needs the network and is not deterministic, so this journey cannot be green offline until the",
+        "downloader is a resolved prerequisite rather than an on-demand step during the workflow.",
+        "Steps already proven real by this journey: first-run onboarding has TWO stages that each cover",
+        "the working controls, and 'Download Only' opens a modal whose confirm stays disabled until a",
+        "type and quality are chosen."
+      ],
+      "blockedBy": "managed-downloader-availability"
+    },
+    {
+      "name": "localMediaToPreview",
+      "kind": "workflow",
+      "capability": "A customer opens a local video and gets an activated project with a native preview frame.",
+      "fixtures": [
+        "fixtures/media/bars-6s-640x360.mp4"
+      ],
+      "plannedAssertions": [
+        "media activates and the editor shows the source",
+        "a native composited frame is published for a cue",
+        "the durable project row survives relaunch"
+      ],
+      "oracles": [
+        "read-only database query after shutdown",
+        "captured preview frame"
+      ],
+      "runsAgainst": "e2e-binary",
+      "status": "planned",
+      "blockedBy": "e2e-fixture-media-selection",
+      "note": [
+        "Needs the sanctioned fixture action at the native dialog edge: `select_media` is",
+        "`pick_media_path` (an OS dialog WebDriver cannot drive) followed by `import_media_path`.",
+        "Only the dialog is replaced; the import use case must stay identical."
+      ]
+    },
+    {
+      "name": "subtitlesEditSaveRelaunch",
+      "kind": "workflow",
+      "capability": "Subtitles import, edit, history, save and restore across relaunch.",
+      "status": "planned",
+      "oracles": [
+        "read-only database query after shutdown"
+      ]
+    },
+    {
+      "name": "nativeExport",
+      "kind": "workflow",
+      "capability": "Native export produces a correct MP4 matching the preview.",
+      "status": "planned",
+      "oracles": [
+        "independent ffprobe decode: container, codecs, duration, dimensions",
+        "non-black video and non-silent audio",
+        "reference pixels compared against captured preview frames"
+      ]
+    }
+  ],
+  "knownProductFindings": [
+    {
+      "finding": "First-run onboarding covers every working control in two stages.",
+      "detail": [
+        "A full-screen overlay at z-index 100000 refuses dismissal for four seconds, then a footer",
+        "reveal card continues to intercept clicks until 'Let's go' is pressed. Both are intended, but",
+        "any automation or accessibility path that does not know about them sees primary controls",
+        "reporting as visible and enabled while something else receives the click."
+      ],
+      "status": "understood, handled in support/editor.js"
+    },
+    {
+      "finding": "The URL workflow installs its downloader during the customer's first attempt.",
+      "detail": [
+        "Pressing Download Only and choosing a type starts managed tool installation rather than a",
+        "download. Nothing reaches the origin until it finishes. Worth deciding deliberately: a first",
+        "run that needs the network before it can do anything is the same class of problem as the font."
+      ],
+      "status": "open"
+    }
+  ],
+  "fixtures": {
+    "media/bars-6s-640x360.mp4": {
+      "sha256": "0c1d2092ab0d14e99ce8386820c40dcfd9e6bd12f2c73d688bed33ff359afacd",
+      "sizeBytes": 705686,
+      "container": "mp4",
+      "video": "h264 640x360",
+      "audio": "aac mono 48 kHz, 440 Hz tone",
+      "durationSeconds": 6.0,
+      "why": "Committed rather than generated: a journey is deterministic only against exact bytes, and a different ffmpeg would silently change what \"the 6 second fixture\" means."
+    }
+  }
+}
