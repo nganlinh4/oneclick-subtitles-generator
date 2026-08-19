@@ -7,7 +7,7 @@
   "scripts": {
     "test": "wdio run wdio.conf.js --spec ./journeys/startup.journey.js --spec ./journeys/defaultFont.journey.js",
     "test:damaged-font": "node scenarios/damagedFontPayload.mjs",
-    "test:workflows": "wdio run wdio.conf.js --spec ./journeys/urlToPreview.journey.js",
+    "test:workflows": "wdio run wdio.conf.js --spec ./journeys/localMediaToPreview.journey.js --spec ./journeys/editPersistRelaunch.journey.js",
     "recon": "wdio run wdio.conf.js --spec ./journeys/reconnaissance.journey.js"
   },
   "devDependencies": {

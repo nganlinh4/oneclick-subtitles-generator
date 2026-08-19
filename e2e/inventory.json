@@ -154,6 +154,63 @@
         "non-black video and non-silent audio",
         "reference pixels compared against captured preview frames"
       ]
+    },
+    {
+      "name": "editPersistRelaunch",
+      "kind": "workflow",
+      "file": "journeys/editPersistRelaunch.journey.js",
+      "capability": "An edit survives saving, closing the application and reopening it.",
+      "fixtures": [
+        "media/bars-6s-640x360.mp4",
+        "media/cues-ascii-6s.srt"
+      ],
+      "assertions": [
+        "a cue edits through its own double-click editor and commits on blur",
+        "undo takes the edit back and redo restores it",
+        "save writes the edit to the database",
+        "a relaunch restores the same project id, media id and content hash",
+        "the restored project draws a native frame and shows no error"
+      ],
+      "oracles": [
+        "read-only SQLite query of the application database",
+        "visible DOM"
+      ],
+      "runsAgainst": "e2e-binary",
+      "status": "red",
+      "redReason": [
+        "Everything up to and including the relaunch works: the project, media and edited cue are",
+        "durable, and the restored session shows the edited text over the right media. The RESTORED",
+        "preview then refuses with previewAtlasCannotLayOut, recorded detail crossesClusters=true,",
+        "needsBidi=false, stage=composition. It reproduces with plain ASCII cues, so it is not a",
+        "glyph-coverage problem."
+      ],
+      "blockedBy": "restored-atlas-layout-refusal"
+    },
+    {
+      "name": "unicodeCues",
+      "kind": "workflow",
+      "file": "journeys/unicodeCues.journey.js",
+      "capability": "Subtitles containing Vietnamese, Korean and emoji draw, including after reopening.",
+      "fixtures": [
+        "media/bars-6s-640x360.mp4",
+        "media/cues-6s.srt"
+      ],
+      "assertions": [
+        "a native frame is drawn with Unicode cues present",
+        "no refusal is visible",
+        "a reopened project still draws them"
+      ],
+      "oracles": [
+        "visible DOM",
+        "the composited frame element"
+      ],
+      "runsAgainst": "e2e-binary",
+      "status": "red",
+      "redReason": [
+        "Shares the restored-atlas refusal above. Kept separate so glyph coverage and durability are",
+        "reported independently rather than one masking the other."
+      ],
+      "blockedBy": "restored-atlas-layout-refusal"
     }
   ],
   "knownProductFindings": [
@@ -215,6 +272,24 @@
       ],
       "status": "open",
       "foundBy": "localMediaToPreview, before subtitles are imported"
+    },
+    {
+      "finding": "A reopened project refuses to draw its subtitles.",
+      "id": "restored-atlas-layout-refusal",
+      "detail": [
+        "After a relaunch the project restores correctly -- same project, same media identity, edited",
+        "cue present, video playable -- and the compositor then refuses with previewAtlasCannotLayOut.",
+        "The recorded detail is crossesClusters=true, needsBidi=false, stage=composition, meaning the",
+        "sum of per-cluster advances did not equal the shaped run width.",
+        "It reproduces with plain ASCII cues, so it is NOT glyph coverage: an earlier hypothesis that",
+        "the emoji caused it was wrong and is recorded here so it is not repeated.",
+        "The comparison is exact (residual !== 0), and nothing waits for the managed font face before",
+        "measuring, so both a font race at bake time and float drift in restored numeric settings are",
+        "live candidates. Neither is proven yet."
+      ],
+      "status": "open",
+      "foundBy": "editPersistRelaunch, after browser.reloadSession",
+      "diagnostic": "preview.refused with code, stage, crossesClusters and needsBidi in the app log"
     }
   ],
   "fixtures": {
@@ -256,6 +331,11 @@
       "sha256": "d69df9c9f2ef0f931d34c6b6e51460fa13f239e3765c05bd7ab64219b9965b9f",
       "sizeBytes": 196,
       "why": "Three cues inside the 6 second fixture, including Vietnamese, Korean and an emoji, so the glyph path is exercised rather than only ASCII."
+    },
+    "media/cues-ascii-6s.srt": {
+      "sha256": "38c14f8625571a28dd0c79f516cb144bb1f8127a3b1c341063224983a6899084",
+      "sizeBytes": 189,
+      "why": "Plain text, so a journey about durability is not also a journey about glyphs."
     }
   }
 }

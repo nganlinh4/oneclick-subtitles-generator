@@ -200,12 +200,20 @@ pub(crate) fn preview_frame_render(
 /// and the log showed nothing at all. The stage narrows several identically-named refusals to the
 /// one that actually fired. Both values are bounded tokens, never a path or a message.
 fn refused(refusal: PreviewRefusal, stage: &str) -> PreviewRefusal {
-    crate::diagnostics::record(
-        "preview.refused",
-        &[
-            ("code", refusal.code().to_owned()),
-            ("stage", stage.to_owned()),
-        ],
-    );
+    let mut fields = vec![
+        ("code", refusal.code().to_owned()),
+        ("stage", stage.to_owned()),
+    ];
+    // Some refusals carry the distinction that makes them diagnosable. The interface shows only the
+    // code, so without this a layout refusal is indistinguishable from any other layout refusal.
+    if let PreviewRefusal::AtlasCannotLayOut {
+        shaping_crosses_clusters,
+        direction_needs_bidi,
+    } = refusal
+    {
+        fields.push(("crossesClusters", shaping_crosses_clusters.to_string()));
+        fields.push(("needsBidi", direction_needs_bidi.to_string()));
+    }
+    crate::diagnostics::record("preview.refused", &fields);
     refusal
 }

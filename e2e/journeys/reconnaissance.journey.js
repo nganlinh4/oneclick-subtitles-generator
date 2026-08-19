@@ -1,12 +1,14 @@
-// Enumerate what the real editor actually exposes, so journeys target ground truth.
+// Enumerate what the real editor exposes, so journeys target ground truth.
 //
 // Not an assertion of product behaviour and deliberately not part of the default glob: it exists so
 // a customer journey can be written against the controls the application really renders rather than
-// against names guessed from source. Run it with
-// `npx wdio run wdio.conf.js --spec ./journeys/reconnaissance.journey.js` when the UI moves.
+// against names guessed from source. Run it with `npm --prefix e2e run recon` when the UI moves.
+
+import { readFileSync } from 'node:fs';
+import { join } from 'node:path';
 
 import { clickControl, openEditor } from '../support/editor.js';
-import { startMediaServer } from '../support/mediaServer.js';
+import { FIXTURE_ROOT } from '../support/environment.js';
 
 const survey = () => browser.execute(() => {
   const visible = (node) => {
@@ -16,7 +18,7 @@ const survey = () => browser.execute(() => {
   const label = (node) => (
     node.getAttribute('aria-label')
     || node.getAttribute('title')
-    || (node.innerText || '').trim().slice(0, 60)
+    || (node.innerText || '').trim().slice(0, 50)
     || node.getAttribute('placeholder')
     || ''
   );
@@ -26,52 +28,51 @@ const survey = () => browser.execute(() => {
     disabled: node.disabled === true,
   });
 
+  const firstCueRow = document.querySelector('[class*="lyric-item" i], [class*="lyric-row" i], [class*="lyric" i]');
   return {
-    rootChildren: document.querySelector('#root')?.childElementCount ?? -1,
     buttons: [...document.querySelectorAll('button')].filter(visible).map(describe),
-    inputs: [...document.querySelectorAll('input, textarea, select')].filter(visible).map(describe),
-    dialogs: [...document.querySelectorAll('[role="dialog"], [class*="modal" i], [class*="overlay" i]')]
-      .filter(visible).map((node) => (node.getAttribute('class') || '').slice(0, 60)),
-    headings: [...document.querySelectorAll('h1, h2, h3, h4')]
-      .filter(visible).map((node) => (node.innerText || '').trim()).filter(Boolean).slice(0, 20),
-    status: [...document.querySelectorAll('[role="status"], .error, [role="alert"]')]
-      .filter(visible).map((node) => (node.innerText || '').trim()).filter(Boolean).slice(0, 8),
+    inputs: [...document.querySelectorAll('input, textarea, select, [contenteditable="true"]')]
+      .filter(visible).map(describe),
+    // The structure of one cue row, which is what an edit has to drive.
+    firstCueRow: firstCueRow === null ? null : {
+      className: firstCueRow.getAttribute('class'),
+      html: firstCueRow.outerHTML.slice(0, 900),
+    },
   };
 });
 
 const show = (label, value) => console.log(`=== ${label} ===\n${JSON.stringify(value, null, 2)}`);
 
 describe('the editor surface', () => {
-  it('reports the controls reachable at each step of starting a download', async () => {
-    show('onboarding', await openEditor());
-    show('at rest', await survey());
+  it('reports the controls reachable once a project has media and subtitles', async () => {
+    await openEditor();
+    await clickControl('[data-input-tab="file-upload"]');
+    await clickControl('.file-upload-input');
 
-    const origin = await startMediaServer();
-    try {
-      const field = await $('.url-field');
-      await field.waitForDisplayed({ timeout: 30_000 });
-      await field.setValue(origin.urlFor('bars-6s-640x360.mp4'));
-      await browser.pause(1_500);
-      show('after entering a URL', await survey());
+    await browser.waitUntil(
+      async () => (await browser.execute(() => document.querySelector('video') !== null)),
+      { timeout: 120_000, interval: 1_000, timeoutMsg: 'media never activated' },
+    );
 
-      await clickControl('.download-only-btn');
-      await browser.pause(2_000);
-      show('modal opened', await survey());
-
-      // Choose "video", which is what a customer wants when they came for a subtitle preview.
-      const videoOption = await $('input[name="download-type"][value="video"]');
-      if (await videoOption.isExisting()) {
-        await videoOption.click();
-      } else {
-        const first = await $$('input[name="download-type"]');
-        if (first.length > 0) await first[0].click();
+    const subtitles = readFileSync(join(FIXTURE_ROOT, 'cues-6s.srt'), 'utf8');
+    await browser.execute((text, name) => {
+      const target = document.querySelector('.srt-upload-button-container');
+      const file = new File([text], name, { type: 'application/x-subrip' });
+      const transfer = new DataTransfer();
+      transfer.items.add(file);
+      for (const type of ['dragover', 'drop']) {
+        target.dispatchEvent(new DragEvent(type, { bubbles: true, cancelable: true, dataTransfer: transfer }));
       }
-      await browser.pause(15_000);
-      show('after choosing a type', await survey());
-      console.log(`origin requests after type choice: ${origin.requests.length}`);
-      console.log(JSON.stringify(origin.requests.slice(0, 5), null, 2));
-    } finally {
-      await origin.stop();
-    }
+    }, subtitles, 'cues-6s.srt');
+
+    await browser.waitUntil(
+      async () => (await browser.execute(
+        () => (document.body?.innerText || '').includes('First cue for the preview'),
+      )),
+      { timeout: 60_000, interval: 1_000, timeoutMsg: 'subtitles never appeared' },
+    );
+    await browser.pause(3_000);
+
+    show('with media and subtitles', await survey());
   });
 });

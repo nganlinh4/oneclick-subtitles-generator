@@ -56,7 +56,10 @@ export const config = {
   framework: 'mocha',
   // Longer than any single journey's internal waits. When mocha's cap fires first it reports
   // only "took too long", discarding the observation the journey collected about WHY.
-  mochaOpts: { ui: 'bdd', timeout: 600_000 },
+  // A journey that relaunches the application legitimately runs for several minutes: two full
+  // startups, a real import and a real restore. The cap is above that so a genuine failure is
+  // reported by the journey's own diagnostic message rather than as "took too long".
+  mochaOpts: { ui: 'bdd', timeout: 900_000 },
   logLevel: 'warn',
 
   onPrepare: () => {
