@@ -13,7 +13,7 @@ use serde::{Deserialize, Deserializer};
 
 use super::layout::AtlasLine;
 use super::limits::{
-    MAX_CLUSTER_CODE_POINTS, MAX_FACE_PROBES, MAX_GLYPH_COUNT, MAX_LAYOUT_CELLS, MAX_LAYOUT_LINES,
+    MAX_CELL_CODE_POINTS, MAX_FACE_PROBES, MAX_GLYPH_COUNT, MAX_LAYOUT_CELLS, MAX_LAYOUT_LINES,
     MAX_PIXEL_BYTES,
 };
 use super::wire::{AtlasGlyph, FaceProbe};
@@ -89,10 +89,7 @@ pub(super) fn deserialize_probes<'de, D: Deserializer<'de>>(
 pub(super) fn deserialize_code_points<'de, D: Deserializer<'de>>(
     deserializer: D,
 ) -> Result<Vec<u32>, D::Error> {
-    deserializer.deserialize_seq(BoundedSeq::new(
-        MAX_CLUSTER_CODE_POINTS,
-        "cluster code points",
-    ))
+    deserializer.deserialize_seq(BoundedSeq::new(MAX_CELL_CODE_POINTS, "cell code points"))
 }
 
 pub(super) fn deserialize_glyphs<'de, D: Deserializer<'de>>(

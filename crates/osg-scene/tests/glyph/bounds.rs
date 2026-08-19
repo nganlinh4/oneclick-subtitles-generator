@@ -1,12 +1,12 @@
 //! The bounds, the wire shape, and the reads that stop at a limit rather than after it.
 
 use osg_scene::glyph::{
-    AtlasGlyph, CellAdvanceLayout, FaceStyle, GLYPH_ATLAS_VERSION, GlyphAtlasDescriptor,
-    GlyphAtlasError, MAX_ATLAS_DIMENSION_PX, MAX_ATLAS_PAGES, MAX_BYTES_PER_ROW,
-    MAX_CLUSTER_CODE_POINTS, MAX_FAMILY_CHARACTERS, MAX_FONT_SIZE_PX, MAX_GLYPH_COUNT,
-    MAX_LAYOUT_CELLS, MAX_LAYOUT_COORDINATE_PX, MAX_LAYOUT_LINES, MAX_LAYOUT_WIDTH_PX,
-    MAX_LETTER_SPACING_PX, MAX_PADDING_PX, MAX_PIXEL_BYTES, MAX_TEXT_CODE_POINTS, MIN_FONT_SIZE_PX,
-    MIN_LETTER_SPACING_PX, UncheckedGlyphAtlas,
+    AtlasGlyph, CellAdvanceLayout, Direction, FaceStyle, GLYPH_ATLAS_VERSION, GlyphAtlasDescriptor,
+    GlyphAtlasError, MAX_ATLAS_CODE_POINTS, MAX_ATLAS_DIMENSION_PX, MAX_ATLAS_PAGES,
+    MAX_BYTES_PER_ROW, MAX_CELL_CODE_POINTS, MAX_CLUSTER_CODE_POINTS, MAX_FAMILY_CHARACTERS,
+    MAX_FONT_SIZE_PX, MAX_GLYPH_COUNT, MAX_LAYOUT_CELLS, MAX_LAYOUT_COORDINATE_PX,
+    MAX_LAYOUT_LINES, MAX_LAYOUT_WIDTH_PX, MAX_LETTER_SPACING_PX, MAX_PADDING_PX, MAX_PIXEL_BYTES,
+    MAX_TEXT_CODE_POINTS, MIN_FONT_SIZE_PX, MIN_LETTER_SPACING_PX, UncheckedGlyphAtlas,
 };
 
 use super::support::{
@@ -48,6 +48,19 @@ fn the_mirrored_limits_match_the_baker() {
         baker_count("maxClusterCodePoints"),
         u64::try_from(MAX_CLUSTER_CODE_POINTS).expect("bound")
     );
+    // What one cell may carry, and what a page's cells may carry between them. A cell is a whole
+    // shaped line now, so these are the bounds that decide whether a real document's cell table is
+    // accepted — the grapheme bound above no longer reaches the wire.
+    assert_eq!(
+        baker_count("maxCellCodePoints"),
+        u64::try_from(MAX_CELL_CODE_POINTS).expect("bound")
+    );
+    assert_eq!(
+        baker_count("maxAtlasCodePoints"),
+        u64::try_from(MAX_ATLAS_CODE_POINTS).expect("bound")
+    );
+    // A cell is drawn from one run, so it cannot carry more code points than a run may.
+    assert_eq!(MAX_CELL_CODE_POINTS, MAX_TEXT_CODE_POINTS);
     assert_eq!(
         baker_count("maxAtlasDimensionPx"),
         u64::from(MAX_ATLAS_DIMENSION_PX)
@@ -302,42 +315,116 @@ fn the_glyph_count_limit_is_enforced_while_the_descriptor_is_read() {
     assert_eq!(full.glyphs().len(), MAX_GLYPH_COUNT);
 }
 
+/// A cell is a whole shaped LINE, so its bound is a line's length rather than a grapheme's.
 #[test]
-fn the_cluster_code_point_limit_is_enforced() {
-    let long: String = core::iter::repeat_n('\u{0301}', MAX_CLUSTER_CODE_POINTS)
-        .chain(core::iter::once('e'))
-        .collect();
+fn the_cell_code_point_limit_is_enforced() {
+    // Built from one repeated character so the cell sorts before every other fixture cluster and
+    // the ordering rule cannot be what refuses it.
+    let line = |code_points: usize| "A".repeat(code_points);
+
     assert_eq!(
-        refuse(|atlas| atlas.glyphs = vec![AtlasGlyph { ..inkless(&long) }, glyph("b", 8)]),
+        accept(|atlas| with_cells(atlas, vec![inkless(&line(MAX_CELL_CODE_POINTS))])).glyphs()[0]
+            .code_points
+            .len(),
+        MAX_CELL_CODE_POINTS
+    );
+    assert_eq!(
+        refuse(|atlas| with_cells(atlas, vec![inkless(&line(MAX_CELL_CODE_POINTS + 1))])),
         GlyphAtlasError::UnsupportedCluster
     );
 
     let mut atlas = valid();
-    atlas.glyphs = vec![inkless(&long), glyph("b", 8)];
+    with_cells(&mut atlas, vec![inkless(&line(MAX_CELL_CODE_POINTS + 1))]);
     let json = serde_json::to_string(&atlas).expect("oversize wire value");
-    let error = serde_json::from_str::<GlyphAtlasDescriptor>(&json).expect_err("oversize cluster");
-    assert!(error.to_string().contains("more than 32"), "{error}");
+    let error = serde_json::from_str::<GlyphAtlasDescriptor>(&json).expect_err("oversize cell");
+    assert!(error.to_string().contains("more than 4096"), "{error}");
 }
 
+/// What a whole page's cells may carry between them.
+///
+/// This used to come free: cells were graphemes, so their code points could not outnumber one run's.
+/// A cell is a line now and a page carries the distinct lines of many cues, so the total is a bound
+/// of its own — and it is the one a real document meets, because no single line is 4096 characters.
 #[test]
-fn the_text_code_point_limit_is_enforced_across_every_cluster() {
-    // The descriptor carries the run's distinct clusters rather than its text, and their code
-    // points cannot outnumber the run's own, so the run's bound applies to their total.
-    let run = |clusters: usize| {
+fn the_atlas_code_point_limit_is_enforced_across_every_cell() {
+    // Wide enough that the cell COUNT stays well under its own bound, so the refusal below can only
+    // be the code points.
+    let per_cell = 512;
+    let page = |cells: usize| {
         move |atlas: &mut UncheckedGlyphAtlas| {
             with_cells(
                 atlas,
-                (0..clusters)
-                    .map(|index| inkless(&distinct(index).repeat(MAX_CLUSTER_CODE_POINTS)))
+                (0..cells)
+                    .map(|index| inkless(&distinct(index).repeat(per_cell)))
                     .collect(),
             );
         }
     };
-    let exactly = MAX_TEXT_CODE_POINTS / MAX_CLUSTER_CODE_POINTS;
-    assert_eq!(accept(run(exactly)).glyphs().len(), exactly);
+    let exactly = MAX_ATLAS_CODE_POINTS / per_cell;
+    assert!(
+        exactly < MAX_GLYPH_COUNT,
+        "the cell COUNT must not be what refuses this"
+    );
+    assert_eq!(accept(page(exactly)).glyphs().len(), exactly);
     assert_eq!(
-        refuse(run(exactly + 1)),
+        refuse(page(exactly + 1)),
         GlyphAtlasError::UnsupportedTextLength
+    );
+}
+
+/// The same line text may appear twice with a different picture, and the order says which is which.
+///
+/// One line can legitimately be rasterized twice in a document: justified to fill the wrap width in
+/// the middle of a block, and unjustified as the last line of one. Those are different rasters with
+/// different advances, so the ordering key is the triple rather than the text — but it is still
+/// STRICT, so a cell that duplicates another in all three is still refused.
+#[test]
+fn cells_are_ordered_by_text_then_direction_then_advance() {
+    let at = |advance: f64, direction: Direction| AtlasGlyph {
+        advance_width_px: advance,
+        direction,
+        ..inkless("a line")
+    };
+
+    assert_eq!(
+        accept(|atlas| with_cells(
+            atlas,
+            vec![at(10.0, Direction::Ltr), at(20.0, Direction::Ltr)]
+        ))
+        .glyphs()
+        .len(),
+        2
+    );
+    // Left to right sorts before right to left, which is the declaration order of the enum.
+    assert_eq!(
+        accept(|atlas| with_cells(
+            atlas,
+            vec![at(20.0, Direction::Ltr), at(10.0, Direction::Rtl)]
+        ))
+        .glyphs()
+        .len(),
+        2
+    );
+    assert_eq!(
+        refuse(|atlas| with_cells(
+            atlas,
+            vec![at(20.0, Direction::Ltr), at(10.0, Direction::Ltr)]
+        )),
+        GlyphAtlasError::UnorderedGlyphs
+    );
+    assert_eq!(
+        refuse(|atlas| with_cells(
+            atlas,
+            vec![at(10.0, Direction::Ltr), at(10.0, Direction::Ltr)]
+        )),
+        GlyphAtlasError::UnorderedGlyphs
+    );
+    assert_eq!(
+        refuse(|atlas| with_cells(
+            atlas,
+            vec![at(10.0, Direction::Rtl), at(10.0, Direction::Ltr)]
+        )),
+        GlyphAtlasError::UnorderedGlyphs
     );
 }
 

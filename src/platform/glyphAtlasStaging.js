@@ -262,7 +262,7 @@ const validateGlyph = (glyph, atlas, index) => {
   if (!isRecord(glyph)) invalid(`glyphs[${index}] is not an object`);
   if (typeof glyph.cluster !== 'string'
       || glyph.cluster.length === 0
-      || [...glyph.cluster].length > GLYPH_ATLAS_LIMITS.maxClusterCodePoints) {
+      || [...glyph.cluster].length > GLYPH_ATLAS_LIMITS.maxCellCodePoints) {
     invalid(at('cluster'));
   }
   if (!DIRECTIONS.has(glyph.direction)) invalid(at('direction'));

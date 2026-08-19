@@ -201,8 +201,9 @@ describe('staging the text an export draws with', () => {
     });
     expect(text.cues).toHaveLength(request.lyrics.length);
 
-    // Cue order, checked by content: each run places one cell per cluster of its own cue.
-    expect(text.cues.map((cue) => cue.lines[0].glyphs.length)).toEqual([5, 10, 5]);
+    // Cue order, checked by content: a cell is a whole shaped LINE, so each of these one-line cues
+    // places exactly one, and the three cells are the three cue texts.
+    expect(text.cues.map((cue) => cue.lines[0].glyphs.length)).toEqual([1, 1, 1]);
     expect(Object.keys(text.cues[0].lines[0])).toEqual([
       'glyphs', 'penXPx', 'advanceWidthPx', 'baselineYPx',
     ]);
@@ -302,10 +303,11 @@ describe('staging the text an export draws with', () => {
       const table = uploaded[cue.page].glyphs;
       expect(cells.length).toBeGreaterThan(0);
       expect(cells.every((cell) => cell >= 0 && cell < table.length)).toBe(true);
-      // The clusters those cells name are this cue's own characters — the right-to-left cue is
-      // drawn in visual order, so the SET is what survives reordering.
-      expect(new Set(cells.map((cell) => table[cell].cluster)))
-        .toEqual(new Set(request.lyrics[index].text));
+      // The cells those indices name spell this cue's own text. A cell is a whole line, so the
+      // lines read top to bottom ARE the cue — nothing is reordered on this side any more, because
+      // the visual order is inside each line's raster.
+      expect(cells.map((cell) => table[cell].cluster).join('\n'))
+        .toBe(request.lyrics[index].text);
     }
   });
 

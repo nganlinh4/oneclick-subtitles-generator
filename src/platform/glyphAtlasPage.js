@@ -11,7 +11,7 @@
  * before any page exists — because the page a cue lands on depends on the alignment its layout
  * resolves to, and the layout cannot wait for a decision that depends on it. Cell INDICES are the
  * only part of a layout that a page can change, and remapping them is exact: the geometry, the
- * wrapping, the pen positions and the visual order were all decided from advances, never from an
+ * wrapping and the visual order were all decided by the engine that shaped each line, never by an
  * index. So a cue draws the same picture whichever page it lands on, which is what lets the preview
  * bake one cue alone and still be a proof of the export.
  *
@@ -60,17 +60,17 @@ const canonicalize = (descriptor, extraRuns) => {
 /**
  * Rewrite one run's cell indices from its own table into the page's.
  *
- * `localCells[index]` is the cell text the run's layout meant, and the page knows where that text
+ * `localCells[index]` is the cell the run's layout meant, and the page knows where that same cell
  * sits in its own sorted table. A miss is impossible by construction — the page's table is a
  * superset of every run it serves — so it is a fault rather than a condition, and it is raised
- * rather than papered over with a zero, which would draw the wrong glyph silently.
+ * rather than papered over with a zero, which would draw the wrong line silently.
  */
 const remapRun = (layout, localCells, pageIndexOf) => ({
   ...layout,
   lines: layout.lines.map((line) => ({
     ...line,
     glyphs: line.glyphs.map((local) => {
-      const index = pageIndexOf.get(localCells[local]);
+      const index = pageIndexOf.get(localCells[local].key);
       if (index === undefined) {
         fail('glyphAtlasInvalidRequest', 'A laid-out cell is missing from its own atlas page');
       }
@@ -82,20 +82,29 @@ const remapRun = (layout, localCells, pageIndexOf) => ({
 /**
  * Rasterize the page's cells into one tightly packed RGBA8 buffer.
  *
+ * EACH CELL IS DRAWN WITH THE OPTIONS IT WAS MEASURED WITH. Letter spacing, the word spacing that
+ * justifies the line and the paragraph direction that orders it are all part of what the line looks
+ * like, so drawing without them would produce a picture that is not the one whose advance the layout
+ * carries. This is the whole point of the line mask: one call decided the width, and the same call
+ * with the same options decides the pixels.
+ *
  * The alpha channel is the coverage mask the compositor samples. An all-blank page packs to nothing
  * and carries a zero-length buffer rather than a 1x1 placeholder, because the descriptor's geometry
  * already says the atlas is empty and the compositor has its own answer for that.
  */
-const rasterize = (surface, cssFont, glyphs, atlas) => {
+const rasterize = (surface, cssFont, letterSpacingPx, cells, glyphs, atlas) => {
   if (atlas.widthPx === 0 || atlas.heightPx === 0) return new Uint8ClampedArray(0);
   const target = surface.createTarget(atlas.widthPx, atlas.heightPx);
-  for (const glyph of glyphs) {
+  for (const [index, glyph] of glyphs.entries()) {
     if (glyph.widthPx === 0 || glyph.heightPx === 0) continue;
     target.drawGlyph({
       cssFont,
       text: glyph.cluster,
       penXPx: glyph.xPx + glyph.originXPx,
       baselineYPx: glyph.yPx + glyph.originYPx,
+      letterSpacingPx,
+      wordSpacingPx: cells[index].wordSpacingPx,
+      direction: cells[index].direction,
     });
   }
   const raw = target.readPixels();
@@ -111,28 +120,27 @@ const rasterize = (surface, cssFont, glyphs, atlas) => {
 /**
  * Build one page's descriptor and the remapped layouts of the cues it serves.
  *
- * `page` is `{ cellTexts, packed, cues }` from the partition. `runs` holds every cue's local layout
- * and local cell table, indexed as the whole document indexes cues. Returns
- * `{ descriptor, layouts }` where `layouts[i]` belongs to `page.cues[i]`.
+ * `page` is `{ cells, packed, cues }` from the partition. `runs` holds every cue's local layout and
+ * local cell table, indexed as the whole document indexes cues. Returns `{ descriptor, layouts }`
+ * where `layouts[i]` belongs to `page.cues[i]`.
  */
 export const bakePage = ({ page, runs, shared }) => {
-  const { cssFont, face, metrics, paddingPx, surface, version, measureCellText } = shared;
-  const entries = page.cellTexts.map(measureCellText);
-  const pageIndexOf = new Map(page.cellTexts.map((cellText, index) => [cellText, index]));
-  const { packed } = page;
+  const { cssFont, face, metrics, letterSpacingPx, paddingPx, surface, version } = shared;
+  const { cells, packed } = page;
+  const pageIndexOf = new Map(cells.map((cell, index) => [cell.key, index]));
 
-  const glyphs = entries.map((entry, index) => ({
-    cluster: entry.cluster,
-    codePoints: entry.codePoints,
-    direction: entry.direction,
-    advanceWidthPx: entry.advanceWidthPx,
+  const glyphs = cells.map((cell, index) => ({
+    cluster: cell.text,
+    codePoints: cell.codePoints,
+    direction: cell.direction,
+    advanceWidthPx: cell.advanceWidthPx,
     xPx: packed.placements[index].xPx,
     yPx: packed.placements[index].yPx,
-    widthPx: entry.cell.widthPx,
-    heightPx: entry.cell.heightPx,
-    originXPx: entry.cell.originXPx,
-    originYPx: entry.cell.originYPx,
-    substituted: entry.substituted,
+    widthPx: cell.box.widthPx,
+    heightPx: cell.box.heightPx,
+    originXPx: cell.box.originXPx,
+    originYPx: cell.box.originYPx,
+    substituted: cell.substituted,
   }));
 
   const atlas = {
@@ -143,9 +151,9 @@ export const bakePage = ({ page, runs, shared }) => {
     pixelFormat: 'rgba8',
     bytesPerRow: packed.widthPx * 4,
   };
-  const pixels = rasterize(surface, cssFont, glyphs, atlas);
+  const pixels = rasterize(surface, cssFont, letterSpacingPx, cells, glyphs, atlas);
 
-  const layouts = page.cues.map((cue) => remapRun(runs[cue].layout, runs[cue].cellTexts, pageIndexOf));
+  const layouts = page.cues.map((cue) => remapRun(runs[cue].layout, runs[cue].cells, pageIndexOf));
   const first = runs[page.cues[0]];
 
   const descriptor = {

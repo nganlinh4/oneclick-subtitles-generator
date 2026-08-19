@@ -8,9 +8,9 @@ use core::cmp::Ordering;
 
 use super::error::GlyphAtlasError;
 use super::limits::{
-    CONTENT_HASH_DIGITS, GLYPH_ATLAS_VERSION, MAX_ATLAS_DIMENSION_PX, MAX_BYTES_PER_ROW,
-    MAX_CLUSTER_CODE_POINTS, MAX_CSS_FONT_BYTES, MAX_FACE_PROBES, MAX_FAMILY_CHARACTERS,
-    MAX_FONT_SIZE_PX, MAX_GLYPH_COUNT, MAX_PADDING_PX, MAX_TEXT_CODE_POINTS, MIN_FONT_SIZE_PX,
+    CONTENT_HASH_DIGITS, GLYPH_ATLAS_VERSION, MAX_ATLAS_CODE_POINTS, MAX_ATLAS_DIMENSION_PX,
+    MAX_BYTES_PER_ROW, MAX_CELL_CODE_POINTS, MAX_CSS_FONT_BYTES, MAX_FACE_PROBES,
+    MAX_FAMILY_CHARACTERS, MAX_FONT_SIZE_PX, MAX_GLYPH_COUNT, MAX_PADDING_PX, MIN_FONT_SIZE_PX,
 };
 use super::validate_layout::validate_layout;
 use super::wire::{
@@ -161,11 +161,11 @@ fn validate_glyphs(glyphs: &[AtlasGlyph], geometry: &AtlasGeometry) -> Result<()
         return Err(GlyphAtlasError::UnsupportedGlyphCount);
     }
     let mut total_code_points = 0_usize;
-    let mut previous: Option<&str> = None;
+    let mut previous: Option<&AtlasGlyph> = None;
     for glyph in glyphs {
         if glyph.cluster.is_empty()
             || glyph.code_points.is_empty()
-            || glyph.code_points.len() > MAX_CLUSTER_CODE_POINTS
+            || glyph.code_points.len() > MAX_CELL_CODE_POINTS
             || !glyph
                 .cluster
                 .chars()
@@ -183,20 +183,40 @@ fn validate_glyphs(glyphs: &[AtlasGlyph], geometry: &AtlasGeometry) -> Result<()
         {
             return Err(GlyphAtlasError::GlyphOutsideAtlas);
         }
-        // The baker sorts distinct clusters by UTF-16 code unit, which is what makes the same glyph
-        // set pack to the same atlas. Comparing the same way keeps astral clusters in the order the
-        // baker put them, and strictness rejects a duplicated cell.
+        // The baker sorts distinct cells by UTF-16 code unit, then by direction, then by advance,
+        // which is what makes the same cell set pack to the same atlas. Comparing the same way keeps
+        // astral text in the order the baker put it, and strictness rejects a cell that duplicates
+        // another in all three.
+        //
+        // WHY THE KEY IS A TRIPLE AND NOT THE TEXT ALONE. A cell is a whole shaped line, and one
+        // line's text can legitimately appear twice in a document with a different picture each
+        // time: once in a right-to-left paragraph and once in a left-to-right one, or once
+        // justified to fill the wrap width and once as the last line of its block. Those are
+        // different rasters with different advances, so keying on the text alone would force the
+        // atlas to describe one of them as the other — which is exactly the "two measurements of
+        // one line" failure the line mask exists to remove.
         if let Some(previous) = previous
-            && previous.encode_utf16().cmp(glyph.cluster.encode_utf16()) != Ordering::Less
+            && previous
+                .cluster
+                .encode_utf16()
+                .cmp(glyph.cluster.encode_utf16())
+                .then_with(|| previous.direction.cmp(&glyph.direction))
+                .then_with(|| {
+                    previous
+                        .advance_width_px
+                        .to_bits()
+                        .cmp(&glyph.advance_width_px.to_bits())
+                })
+                != Ordering::Less
         {
             return Err(GlyphAtlasError::UnorderedGlyphs);
         }
-        previous = Some(&glyph.cluster);
+        previous = Some(glyph);
         total_code_points += glyph.code_points.len();
     }
-    // The clusters are the run's distinct graphemes, so their code points cannot outnumber the
-    // run's own — which is the bound the baker enforces on the text.
-    if total_code_points > MAX_TEXT_CODE_POINTS {
+    // A page carries the distinct lines of many cues, so this is a bound of its own rather than one
+    // the run's length gives for free.
+    if total_code_points > MAX_ATLAS_CODE_POINTS {
         return Err(GlyphAtlasError::UnsupportedTextLength);
     }
     Ok(())

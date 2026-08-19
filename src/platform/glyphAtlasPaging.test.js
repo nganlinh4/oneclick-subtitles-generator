@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 
 import { GLYPH_ATLAS_LIMITS, GLYPH_ATLAS_VERSION } from './glyphAtlas';
 import { bakeAtlas } from './glyphAtlasBake';
-import { HEBREW, SHAPED_SIZE_PX, clustersOf, codeOf, createFakeSurface } from './glyphAtlasTestFont';
+import { HEBREW, SHAPED_SIZE_PX, cellTextsOf, codeOf, createFakeSurface } from './glyphAtlasTestFont';
 
 /**
  * Where a page closes, and where the document is refused instead.
@@ -13,8 +13,13 @@ import { HEBREW, SHAPED_SIZE_PX, clustersOf, codeOf, createFakeSurface } from '.
  * reads: `glyphAtlas.js` is the only module that supplies the shipped ones, and
  * `glyphAtlas.cues.test.js` exercises the same paths at those values.
  *
- * `maxTextCodePoints` is deliberately left at its shipped value: it bounds a cue's own text as well
- * as a page's cell table, and shrinking it would refuse the fixtures before paging saw them.
+ * `maxAtlasCodePoints` is deliberately left at its shipped value: it bounds a page's cell table,
+ * and shrinking it would refuse the fixtures before the cell count they are about could close a
+ * page.
+ *
+ * EVERY FIXTURE IS COUNTED IN LINES, because a cell is one shaped line. `'a\nb'` is a cue with two
+ * cells; `'ab'` is a cue with one. Written with hard breaks rather than a wrap width so the cell
+ * count is on the page rather than derived from arithmetic this suite is not about.
  */
 
 const baked = (texts, limits = {}, request = {}) => bakeAtlas(
@@ -27,29 +32,36 @@ const baked = (texts, limits = {}, request = {}) => bakeAtlas(
   { surface: createFakeSurface() },
 );
 
-/** Four cells to a page, two pages to a document: small enough to read, large enough to fragment. */
+/** Four lines to a page, two pages to a document: small enough to read, large enough to fragment. */
 const SMALL = Object.freeze({ maxGlyphCount: 4, maxAtlasPages: 2 });
+
+/** A cue of `count` distinct single-character lines, starting at `from`. */
+const lines = (from, count) => Array.from(
+  { length: count },
+  (_unused, index) => String.fromCodePoint(from.codePointAt(0) + index),
+).join('\n');
 
 describe('atlas paging boundaries', () => {
   it('fills a page exactly to the cell bound before opening another', () => {
-    expect(baked(['ab', 'cd'], SMALL).pages).toHaveLength(1);
-    expect(clustersOf(baked(['ab', 'cd'], SMALL).pages[0])).toEqual(['a', 'b', 'c', 'd']);
+    expect(baked([lines('a', 2), lines('c', 2)], SMALL).pages).toHaveLength(1);
+    expect(cellTextsOf(baked([lines('a', 2), lines('c', 2)], SMALL).pages[0]))
+      .toEqual(['a', 'b', 'c', 'd']);
 
-    const spilled = baked(['ab', 'cd', 'ef'], SMALL);
+    const spilled = baked([lines('a', 2), lines('c', 2), lines('e', 2)], SMALL);
     expect(spilled.pages).toHaveLength(2);
-    expect(clustersOf(spilled.pages[0])).toEqual(['a', 'b', 'c', 'd']);
-    expect(clustersOf(spilled.pages[1])).toEqual(['e', 'f']);
+    expect(cellTextsOf(spilled.pages[0])).toEqual(['a', 'b', 'c', 'd']);
+    expect(cellTextsOf(spilled.pages[1])).toEqual(['e', 'f']);
     expect(spilled.pageOfCue).toEqual([0, 0, 1]);
   });
 
   it('keeps a cue whole: a page never holds part of one', () => {
     // Cue 1 needs three cells and only two are left, so it moves entirely rather than splitting —
     // a run indexes ONE table, so half a cue on each page could not be drawn at all.
-    const split = baked(['ab', 'cde'], SMALL);
+    const split = baked([lines('a', 2), lines('c', 3)], SMALL);
 
     expect(split.pages).toHaveLength(2);
-    expect(clustersOf(split.pages[0])).toEqual(['a', 'b']);
-    expect(clustersOf(split.pages[1])).toEqual(['c', 'd', 'e']);
+    expect(cellTextsOf(split.pages[0])).toEqual(['a', 'b']);
+    expect(cellTextsOf(split.pages[1])).toEqual(['c', 'd', 'e']);
     expect(split.pageOfCue).toEqual([0, 1]);
   });
 
@@ -58,11 +70,11 @@ describe('atlas paging boundaries', () => {
     // baking exactly its own cues would produce, so nothing about a page depends on the pages around
     // it. The incremental fill carries a width hint forward, and this is what proves the hint cannot
     // change an answer.
-    const paged = baked(['ab', 'cd', 'ef', 'gh'], SMALL);
+    const paged = baked([lines('a', 2), lines('c', 2), lines('e', 2), lines('g', 2)], SMALL);
     expect(paged.pages).toHaveLength(2);
 
-    const first = baked(['ab', 'cd'], SMALL);
-    const second = baked(['ef', 'gh'], SMALL);
+    const first = baked([lines('a', 2), lines('c', 2)], SMALL);
+    const second = baked([lines('e', 2), lines('g', 2)], SMALL);
     expect(paged.pages[0].contentHash).toBe(first.pages[0].contentHash);
     expect(paged.pages[1].contentHash).toBe(second.pages[0].contentHash);
     expect([...paged.pages[1].pixels]).toEqual([...second.pages[0].pixels]);
@@ -100,36 +112,55 @@ describe('atlas paging boundaries', () => {
     // Three cues that each leave a page part-full: two cells, then three that do not fit beside
     // them, then two that do not fit beside those. The refusal is the whole document, because a page
     // silently dropped would be a stretch of subtitles missing from the exported file.
-    expect(codeOf(() => baked(['ab', 'cde', 'fg'], { ...SMALL, maxAtlasPages: 2 })))
+    const document = [lines('a', 2), lines('c', 3), lines('f', 2)];
+    expect(codeOf(() => baked(document, { ...SMALL, maxAtlasPages: 2 })))
       .toBe('glyphAtlasTooManyPages');
-    expect(baked(['ab', 'cde', 'fg'], { ...SMALL, maxAtlasPages: 3 }).pages).toHaveLength(3);
+    expect(baked(document, { ...SMALL, maxAtlasPages: 3 }).pages).toHaveLength(3);
+  });
+
+  it('bounds a page by the code points of its cells, not only by their count', () => {
+    // Two bounds close a page, and this is the one the cell COUNT cannot see: four short lines fit
+    // a four-cell page, and four longer ones carry more text than the page's budget allows even
+    // though there are still only four of them. Rust enforces the same total on arrival.
+    const short = [lines('a', 2), lines('c', 2)];
+    const long = ['aaaa\nbbbb', 'cccc\ndddd'];
+    const budget = Object.freeze({ ...SMALL, maxAtlasCodePoints: 8 });
+
+    expect(baked(short, budget).pages).toHaveLength(1);
+    expect(baked(long, budget).pages).toHaveLength(2);
+    // The count bound is untouched, so this split can only be the code points.
+    expect(baked(long, budget).pages.every((page) => page.glyphs.length <= 2)).toBe(true);
   });
 
   it('refuses a document whose pages would need more glyph memory than the budget holds', () => {
-    expect(codeOf(() => baked(['ab', 'cd'], { ...SMALL, maxTotalAtlasBytes: 1 })))
+    const onePage = [lines('a', 2), lines('c', 2)];
+    expect(codeOf(() => baked(onePage, { ...SMALL, maxTotalAtlasBytes: 1 })))
       .toBe('glyphAtlasPixelBudget');
     // The budget is on the TOTAL, so a document that fits one page can pass where two would not.
-    const onePageBytes = baked(['ab', 'cd'], SMALL).pages[0];
+    const onePageBytes = baked(onePage, SMALL).pages[0];
     const bytes = onePageBytes.atlas.widthPx * onePageBytes.atlas.heightPx * 4;
-    expect(baked(['ab', 'cd'], { ...SMALL, maxTotalAtlasBytes: bytes }).pages).toHaveLength(1);
-    expect(codeOf(() => baked(['ab', 'cd', 'ef'], { ...SMALL, maxTotalAtlasBytes: bytes })))
+    expect(baked(onePage, { ...SMALL, maxTotalAtlasBytes: bytes }).pages).toHaveLength(1);
+    expect(codeOf(() => baked([...onePage, lines('e', 2)], { ...SMALL, maxTotalAtlasBytes: bytes })))
       .toBe('glyphAtlasPixelBudget');
   });
 
   it('refuses a single cue that no page could hold, naming the bound it broke', () => {
     // Paging has nothing left to try: there is no unit smaller than a cue to split into. This is a
     // genuine over-budget refusal rather than an incidental ceiling, and it says so by code.
-    expect(codeOf(() => baked(['abcde'], SMALL))).toBe('glyphAtlasTooManyGlyphs');
-    expect(codeOf(() => baked(['ok', 'abcde'], SMALL))).toBe('glyphAtlasTooManyGlyphs');
+    expect(codeOf(() => baked([lines('a', 5)], SMALL))).toBe('glyphAtlasTooManyGlyphs');
+    expect(codeOf(() => baked(['ok', lines('a', 5)], SMALL))).toBe('glyphAtlasTooManyGlyphs');
   });
 
-  it('refuses a document with more distinct characters than every page together could carry', () => {
-    // Checked before any measuring, because measuring is the expensive part and this document was
-    // never going to bake. `maxGlyphCount * maxAtlasPages` is the whole capacity there is.
-    expect(codeOf(() => baked(['abcdefghi'], SMALL))).toBe('glyphAtlasTooManyPages');
+  it('refuses a document with more distinct lines than every page together could carry', () => {
+    // Checked as the cells are discovered rather than after the whole document is measured, because
+    // measuring is the expensive part and this document was never going to bake.
+    // `maxGlyphCount * maxAtlasPages` is the whole capacity there is.
+    expect(codeOf(() => baked([lines('a', 9)], SMALL))).toBe('glyphAtlasTooManyPages');
+    expect(codeOf(() => baked(Array.from({ length: 9 }, (_unused, index) => `line ${index}`), SMALL)))
+      .toBe('glyphAtlasTooManyPages');
   });
 
-  it('does not fragment a track whose alphabet stops growing', () => {
+  it('does not fragment a track whose line set stops growing', () => {
     const many = Array.from({ length: 200 }, (_unused, index) => (index % 2 === 0 ? 'ab' : 'ba'));
     const track = baked(many, SMALL);
 
@@ -139,15 +170,16 @@ describe('atlas paging boundaries', () => {
   });
 
   it('lays every cue out against the page it was assigned', () => {
-    const paged = baked(['ab', 'cd', 'ef'], SMALL);
+    const texts = [lines('a', 2), lines('c', 2), lines('e', 2)];
+    const paged = baked(texts, SMALL);
 
     for (const [cue, run] of paged.runs.entries()) {
       const page = paged.pages[paged.pageOfCue[cue]];
       const cells = run.lines.flatMap((line) => line.glyphs);
       expect(cells.every((cell) => Number.isInteger(cell) && cell >= 0 && cell < page.glyphs.length))
         .toBe(true);
-      // The cells a cue indexes spell that cue's own clusters on its own page.
-      expect(cells.map((cell) => page.glyphs[cell].cluster).join('')).toBe(paged.runs === null ? '' : ['ab', 'cd', 'ef'][cue]);
+      // The cells a cue indexes spell that cue's own lines on its own page.
+      expect(cells.map((cell) => page.glyphs[cell].cluster).join('\n')).toBe(texts[cue]);
     }
   });
 });

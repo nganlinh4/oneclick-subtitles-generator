@@ -14,8 +14,10 @@
  *   mapping is not a per-character operation: the sharp s uppercases to two letters, and so does the
  *   fi ligature, so the cluster count, the distinct-glyph set and every advance change with it.
  *   Transforming after shaping would measure text nobody sees.
- * - `letterSpacingPx` is a layout quantity, added to every cluster's advance including the last, the
- *   way a browser applies CSS `letter-spacing`. It is never baked into the raster.
+ * - `letterSpacingPx` is applied by the engine itself, as CSS `letter-spacing`, when the line is
+ *   measured and when it is drawn — so it is part of the raster, and the advance reported already
+ *   carries it. It used to be added to each cluster's advance by this module instead, which was a
+ *   second opinion about a quantity the engine had already applied.
  * - `lineHeightPx` and `baselinePx` place each line's baseline, so the compositor reads a position
  *   rather than recomputing one.
  * - `maxWidthPx` is the wrap width IN ATLAS PIXEL SPACE — the space the atlas was baked in, where
@@ -33,14 +35,12 @@
  *   strong character. It is the seam the persisted `rtlSupport` boolean lands on, because the
  *   shipped renderer set CSS `direction` from that boolean rather than letting the text decide.
  *
- * BIDI. `glyphAtlasBidi.js` resolves the Unicode Bidirectional Algorithm subset this module needs,
- * and `lines[].glyphs` and `lines[].penXPx` leave here in VISUAL order — left to right as drawn.
- * Nothing downstream reorders, re-wraps or re-aligns. Line breaking still happens in LOGICAL order,
- * because a break opportunity is a property of the text and not of the picture; UAX #9 agrees, and
- * applies its own L1 and L2 per line AFTER breaking, which is exactly what happens here. Everything
- * a line reports — pen positions, its alignment width, justification — is measured on the reordered
- * result. A construct the bidi subset refuses keeps logical order and says so, so the compositor
- * declines to draw it rather than drawing it wrong.
+ * BIDI. This module resolves the paragraph level (`glyphAtlasBidi.js`) and nothing else. A line is
+ * rasterized once, as itself, with `direction` set from that level, so the browser's own text engine
+ * applies the whole Bidirectional Algorithm and the visual order is inside the mask. Line breaking
+ * still happens in LOGICAL order, because a break opportunity is a property of the text and not of
+ * the picture — UAX #9 agrees, and applies L1 and L2 per line AFTER breaking, which is exactly the
+ * order things happen in here.
  *
  * WHAT IS DELIBERATELY NOT HERE:
  *
@@ -53,7 +53,7 @@
  * follow the host UI language, and case mapping uses the locale-independent `toUpperCase`.
  */
 
-import { analyzeRunBidi, visualOrderOfLine } from './glyphAtlasBidi';
+import { paragraphLevelOf } from './glyphAtlasBidi';
 import { fail, round4 } from './glyphAtlasCore';
 
 /** The shipped `textTransform` vocabulary, from `subtitleCustomizationDefaults`. */
@@ -183,25 +183,27 @@ const breakOpportunities = (text, clusters) => {
   }
   return opportunities;
 };
-
 /**
- * Break a run into lines and emit what the compositor needs to draw them.
+ * Break a run into lines, and measure each line as the single shaped object it is.
  *
- * Returns the layout. `lines[].glyphs` index the atlas cells in the order they are DRAWN, left to
- * right, and `lines[].penXPx` is the line-relative pen for each of those cells, so bidi reordering,
- * letter spacing and justification are already applied and nothing downstream recomputes them.
+ * Returns the layout. Each line carries the TEXT it draws — `lineText` with its trailing spaces and
+ * `contentText` without them — plus the word spacing that justifies it and the direction that orders
+ * it. The baker rasterizes exactly that text, with exactly those options, and the advance reported
+ * here is the width that same measurement returned. There is no second quantity to agree with.
  *
- * `advanceOf` and `cellIndexOf` are functions of a cluster's POSITION in the run, not maps from its
- * text. They have to be: a cursive script gives the same cluster a different form — and so a
- * different cell and a different advance — at different positions, and the baker resolves that per
- * position in `glyphAtlasCells.js`. Nothing else about this module depends on which of the two it
- * is handed.
+ * `measureLine(text, { wordSpacingPx, direction })` is the authoritative measurement, injected so
+ * this module never touches a font stack. It is the same call the baker uses to produce the raster,
+ * which is what makes the advance and the pixels one operation rather than two.
+ *
+ * WRAPPING IS MEASURED, NOT ACCUMULATED. A candidate line's width used to be the sum of its
+ * clusters' advances, which kerning and ligatures make wrong by up to several pixels — so a line
+ * could be broken one word early or one word late. Each candidate is now measured as itself. The
+ * search is a binary one over the break opportunities, because a line only gets wider as clusters
+ * are added, so a whole paragraph costs a handful of measurements rather than one per cluster.
  */
 export const buildTextLayout = ({
   text,
   clusters,
-  cellIndexOf,
-  advanceOf,
   textTransform,
   letterSpacingPx,
   maxWidthPx,
@@ -209,9 +211,7 @@ export const buildTextLayout = ({
   textAlign,
   lineHeightPx,
   baselinePx,
-  measureLineWidth,
-  runShapingResidualPx,
-  directionNeedsBidi,
+  measureLine,
   baseDirection = null,
   limits,
 }) => {
@@ -224,107 +224,133 @@ export const buildTextLayout = ({
   // different way of choosing one.
   const wrapWidthPx = wordWrap ? maxWidthPx : null;
   const opportunities = clusters.length === 0 ? new Set() : breakOpportunities(text, clusters);
-  const advanceAt = (index) => advanceOf(index) + letterSpacingPx;
 
   // Resolved once for the whole run, because the run is one paragraph: a hard line break inside a
-  // cue must not flip the cue's direction halfway down. `directionNeedsBidi` is the baker's own
-  // coarse right-to-left signal, and it only ever widens what the bidi subset refuses.
-  const bidi = analyzeRunBidi(clusters, { rtlHint: directionNeedsBidi, baseDirection });
-  const reordering = bidi.refusedConstruct === null && bidi.reorders;
+  // cue must not flip the cue's direction halfway down. It selects the direction every line is
+  // measured and drawn under, so the browser's own bidi pass runs at the right embedding level.
+  const paragraphLevel = paragraphLevelOf(clusters, { baseDirection });
+  const direction = paragraphLevel === 1 ? 'rtl' : 'ltr';
+
+  /**
+   * The text a line actually draws: its clusters minus the trailing breaking spaces.
+   *
+   * Trailing whitespace hangs outside the alignment box in CSS, so rasterizing it would put the
+   * line's ink in the wrong place relative to its own advance — off to the left in a right-to-left
+   * line, where the hanging space is drawn first.
+   */
+  const contentClustersOf = (indices) => {
+    let end = indices.length;
+    while (end > 0 && isBreakingSpace(clusters[indices[end - 1]])) end -= 1;
+    // A line of NOTHING BUT whitespace keeps it. Hanging is what CSS does to whitespace at the end
+    // of a line of content, and there is no content here for it to hang after — but the reason it
+    // matters is downstream: `osg_compositor::CueRun::validate` refuses a run that places no cell,
+    // so stripping this line bare would turn a blank subtitle line into a refused export.
+    if (end === 0) return indices.map((index) => clusters[index]);
+    return indices.slice(0, end).map((index) => clusters[index]);
+  };
+  const contentTextOf = (indices) => contentClustersOf(indices).join('');
+
+  const widthOf = (content, wordSpacingPx) => (content.length === 0
+    ? 0
+    : round4(measureLine(content, { wordSpacingPx, direction })));
+
+  /**
+   * The last candidate in an ascending list that still fits, or `null` when none does.
+   *
+   * A binary search, which is exact here for the same reason greedy filling is: a line's width is
+   * monotonic in the clusters added to it.
+   */
+  const lastFitting = (candidates, fits) => {
+    let low = 0;
+    let high = candidates.length - 1;
+    let best = null;
+    while (low <= high) {
+      const middle = (low + high) >> 1;
+      if (fits(candidates[middle])) {
+        best = candidates[middle];
+        low = middle + 1;
+      } else {
+        high = middle - 1;
+      }
+    }
+    return best;
+  };
 
   /** Greedy fill, one hard-broken paragraph at a time. */
   const wrapParagraph = (indices) => {
+    if (wrapWidthPx === null || indices.length === 0) return [indices];
+    const limit = round4(wrapWidthPx);
     const wrapped = [];
     let start = 0;
-    let position = 0;
-    let penXPx = 0;
-    let opportunity = -1;
-    let inked = -1;
-    while (position < indices.length) {
-      const index = indices[position];
-      if (position > start && opportunities.has(index)) opportunity = position;
-      const space = isBreakingSpace(clusters[index]);
-      // A trailing space never forces a break: it hangs past the wrap width, as it does in CSS.
-      // `inked >= start` is also what guarantees progress — it cannot hold until a cluster after
-      // `start` has been placed, so the break below is always strictly ahead of the line start.
-      const overflows = wrapWidthPx !== null && !space && inked >= start
-        && round4(penXPx + advanceAt(index)) > round4(wrapWidthPx);
-      if (overflows) {
-        // A word boundary when there is one; otherwise this cluster, which is the only case where a
-        // word is split at all — a single word wider than the whole line.
-        const breakAt = opportunity > start ? opportunity : position;
-        wrapped.push(indices.slice(start, breakAt));
-        start = breakAt;
-        position = breakAt;
-        penXPx = 0;
-        opportunity = -1;
-        inked = -1;
-        continue;
+    while (start < indices.length) {
+      const fits = (end) => widthOf(contentTextOf(indices.slice(start, end)), 0) <= limit;
+      if (fits(indices.length)) break;
+
+      const points = [];
+      for (let position = start + 1; position < indices.length; position += 1) {
+        if (opportunities.has(indices[position])) points.push(position);
       }
-      if (!space) inked = position;
-      penXPx += advanceAt(index);
-      position += 1;
+      let breakAt = lastFitting(points, fits);
+      if (breakAt === null) {
+        // A single word wider than the whole line, which is the only case where a word is split at
+        // all. Never at `start` itself: that would not advance, and the loop would not terminate.
+        const inside = [];
+        for (let position = start + 1; position < indices.length; position += 1) inside.push(position);
+        breakAt = lastFitting(inside, fits) ?? start + 1;
+      }
+      wrapped.push(indices.slice(start, breakAt));
+      start = breakAt;
     }
     wrapped.push(indices.slice(start));
     return wrapped;
   };
 
+  /**
+   * The word spacing that fills `targetPx`, and the width the line measures at with it applied.
+   *
+   * The sensitivity is MEASURED rather than derived from a space count: which characters an engine
+   * widens for `word-spacing` is a property of that engine, and one measurement at zero and one at a
+   * single pixel give the exact slope for this line without this module having to hold an opinion.
+   * The result is measured again so the advance reported is the advance of the raster that ships,
+   * not the advance that was solved for.
+   */
+  const justifyTo = (content, targetPx) => {
+    const zero = widthOf(content, 0);
+    if (content.length === 0 || zero >= targetPx) return { wordSpacingPx: 0, advanceWidthPx: zero };
+    const perPixel = round4(widthOf(content, 1) - zero);
+    if (perPixel <= 0) return { wordSpacingPx: 0, advanceWidthPx: zero };
+    const wordSpacingPx = round4((targetPx - zero) / perPixel);
+    return { wordSpacingPx, advanceWidthPx: widthOf(content, wordSpacingPx) };
+  };
+
   const buildLine = (indices, lineNumber, endsParagraph) => {
-    let contentEnd = indices.length;
-    while (contentEnd > 0 && isBreakingSpace(clusters[indices[contentEnd - 1]])) contentEnd -= 1;
-
-    const gaps = new Set();
-    for (let position = 1; position < contentEnd; position += 1) {
-      if (isBreakingSpace(clusters[indices[position]])) gaps.add(position);
-    }
-    let contentAdvancePx = 0;
-    for (let position = 0; position < contentEnd; position += 1) {
-      contentAdvancePx += advanceAt(indices[position]);
-    }
-    // CSS justifies every line but the last of its block, and only when there is a gap to grow.
-    const justifiable = textAlign === 'justify' && !endsParagraph
-      && wrapWidthPx !== null && gaps.size > 0 && wrapWidthPx > contentAdvancePx;
-    const justificationPx = justifiable ? round4((wrapWidthPx - contentAdvancePx) / gaps.size) : 0;
-
-    // Visual order, or the logical order it collapses to when nothing needs reordering — which is
-    // every Latin run, and is why the common path is byte-identical to the layout before bidi.
-    const order = reordering
-      ? visualOrderOfLine({ indices, analysis: bidi })
-      : indices.map((_, position) => position);
-
-    const drawnPenXPx = new Array(order.length);
-    let pen = 0;
-    for (const [drawn, position] of order.entries()) {
-      drawnPenXPx[drawn] = pen;
-      pen += advanceAt(indices[position]) + (gaps.has(position) ? justificationPx : 0);
-    }
-    // Pen zero is the left edge of the line's alignment box, which is what `advanceWidthPx` measures
-    // and what the compositor anchors. Trailing whitespace hangs outside that box: past the right
-    // edge in a left-to-right line, and — once L1 has reset it to the paragraph level — past the
-    // LEFT edge in a right-to-left one, where it is drawn first and takes a negative pen.
-    let originPx = 0;
-    for (const [drawn, position] of order.entries()) {
-      if (position < contentEnd) {
-        originPx = drawnPenXPx[drawn];
-        break;
-      }
-    }
-    const penXPx = drawnPenXPx.map((value) => round4(value - originPx));
-
-    const lineText = indices.map((index) => clusters[index]).join('');
-    const measuredWidthPx = lineText.length === 0 ? 0 : round4(measureLineWidth(lineText));
-    const cellAdvancePx = indices.reduce((total, index) => total + advanceOf(index), 0);
+    let lineText = '';
+    for (const index of indices) lineText += clusters[index];
+    const content = contentTextOf(indices);
+    // CSS justifies every line but the last of its block, and only when there is room to grow.
+    const justifiable = textAlign === 'justify' && !endsParagraph && wrapWidthPx !== null;
+    const { wordSpacingPx, advanceWidthPx } = justifiable
+      ? justifyTo(content, round4(wrapWidthPx))
+      : { wordSpacingPx: 0, advanceWidthPx: widthOf(content, 0) };
     return {
-      glyphs: order.map((position) => cellIndexOf(indices[position])),
-      penXPx,
-      // What alignment measures: trailing spaces hang, so they are not part of the line's width.
-      advanceWidthPx: round4(contentAdvancePx + justificationPx * gaps.size),
-      measuredWidthPx,
-      // The same honesty the run-level residual carries, per line: non-zero means the engine moved
-      // ink across a cluster boundary on this line, so these pen positions do not reproduce it.
-      shapingResidualPx: lineText.length === 0 ? 0 : round4(measuredWidthPx - cellAdvancePx),
+      lineText,
+      contentText: content,
+      // The clusters that spell `contentText`, carried so the baker can ask which of them the engine
+      // had to substitute a face for. Substitution is a property of a CHARACTER, not of a line: a
+      // line is mostly covered by the requested face even when one emoji in it is not, so probing
+      // the line as a whole would report the whole thing as covered.
+      contentClusters: contentClustersOf(indices),
+      direction,
+      wordSpacingPx,
+      // What alignment measures, and what the raster is: one number from one measurement of one
+      // text. `measuredWidthPx` is the same number rather than a second opinion about it, and
+      // `shapingResidualPx` is therefore zero by construction rather than by luck. Both stay on the
+      // wire because they are the PROOF the two agree, which a consumer can check.
+      advanceWidthPx,
+      measuredWidthPx: advanceWidthPx,
+      shapingResidualPx: 0,
       baselineYPx: round4(baselinePx + lineNumber * lineHeightPx),
-      justificationPx,
+      justificationPx: wordSpacingPx,
       endsParagraph,
     };
   };
@@ -347,12 +373,6 @@ export const buildTextLayout = ({
     }
   }
 
-  const shapingCrossesClusters = runShapingResidualPx !== 0
-    || lines.some((line) => line.shapingResidualPx !== 0);
-  // What the run carries that this module cannot turn into visual order — explicit embedding
-  // controls, isolates, or a mirrored character in right-to-left text. Reordering itself is no
-  // longer a reason to refuse.
-  const bidiRefused = bidi.refusedConstruct !== null;
   return {
     textTransform,
     letterSpacingPx: round4(letterSpacingPx),
@@ -360,15 +380,16 @@ export const buildTextLayout = ({
     wordWrap,
     // CSS `start`: the default edge of a right-to-left paragraph is its right one. Only the default
     // is resolved; centre, right and justify are the caller's explicit choice and stay untouched.
-    textAlign: bidi.paragraphLevel === 1 && !bidiRefused && textAlign === 'left' ? 'right' : textAlign,
+    textAlign: paragraphLevel === 1 && textAlign === 'left' ? 'right' : textAlign,
     lineCount: lines.length,
     widthPx: lines.reduce((widest, line) => Math.max(widest, line.advanceWidthPx), 0),
     heightPx: round4(lines.length * lineHeightPx),
-    // The same verdict `GlyphAtlasDescriptor::cell_advance_layout` reaches in Rust, stated here so
-    // the two cannot drift. Wrapping does not weaken it: the pen positions are measured advances,
-    // and a run whose shaping crosses clusters or whose bidi this module refuses is still refused.
-    cellAdvanceLayout: shapingCrossesClusters || bidiRefused ? 'refused' : 'reproduces',
-    refusal: { shapingCrossesClusters, directionNeedsBidi: bidiRefused },
+    // The verdict `GlyphAtlasDescriptor::cell_advance_layout` reaches in Rust. The baker cannot
+    // produce anything else any more: a line's advance IS its raster's measurement, so there is no
+    // pair of numbers left to disagree. The field stays on the wire because Rust must still refuse a
+    // descriptor that claims otherwise, whatever produced it.
+    cellAdvanceLayout: 'reproduces',
+    refusal: { shapingCrossesClusters: false, directionNeedsBidi: false },
     lines,
   };
 };

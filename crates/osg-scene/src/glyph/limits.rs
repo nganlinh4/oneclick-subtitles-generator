@@ -6,9 +6,24 @@ pub const GLYPH_ATLAS_VERSION: u32 = 1;
 
 /// The most code points one baked text run may carry, mirroring `maxTextCodePoints`.
 ///
-/// The descriptor does not carry the run's text, only its distinct clusters, so this is enforced
-/// here against the total code points of those clusters — a quantity the run's own length bounds.
+/// The bound on the baker's INPUT. A cell is a whole shaped line drawn from that run, so no cell can
+/// carry more code points than the run it came from — which is why [`MAX_CELL_CODE_POINTS`] is the
+/// same number rather than an independently chosen one.
 pub const MAX_TEXT_CODE_POINTS: usize = 4_096;
+/// The most code points one atlas cell may carry, mirroring `maxCellCodePoints`.
+///
+/// A cell is one shaped line, not one grapheme cluster. The line is rasterized once, as itself, and
+/// the mask, its ink box and its advance all come out of that single operation — so a cell's text is
+/// a line's text and is bounded by the run's own length, not by what fits in one grapheme.
+pub const MAX_CELL_CODE_POINTS: usize = MAX_TEXT_CODE_POINTS;
+/// The most code points one atlas's cells may carry between them, mirroring `maxAtlasCodePoints`.
+///
+/// Cells used to be graphemes, so their code points could not outnumber one run's; a page's total
+/// was therefore bounded by [`MAX_TEXT_CODE_POINTS`] for free. A cell is a line now, and a page
+/// carries the distinct lines of many cues, so the total needs a bound of its own. This one admits
+/// [`MAX_GLYPH_COUNT`] lines of 256 code points each, which is far past any subtitle line anyone
+/// writes, and caps the text one descriptor can make this side hold.
+pub const MAX_ATLAS_CODE_POINTS: usize = 262_144;
 /// The most distinct glyph cells one atlas may carry, mirroring `maxGlyphCount`.
 pub const MAX_GLYPH_COUNT: usize = 1_024;
 /// The most atlas pages one document may be baked into.
@@ -25,6 +40,10 @@ pub const MAX_GLYPH_COUNT: usize = 1_024;
 /// before those bytes are ever counted.
 pub const MAX_ATLAS_PAGES: usize = 32;
 /// The most code points one grapheme cluster may carry, mirroring `maxClusterCodePoints`.
+///
+/// A segmentation bound, not a wire bound: it stops a single grapheme built from an unbounded run of
+/// combining marks from costing the baker unbounded work. Cells are lines and are bounded by
+/// [`MAX_CELL_CODE_POINTS`], so nothing on the wire is measured against this.
 pub const MAX_CLUSTER_CODE_POINTS: usize = 32;
 /// The largest atlas edge in pixels, mirroring `maxAtlasDimensionPx`.
 pub const MAX_ATLAS_DIMENSION_PX: u32 = 4_096;

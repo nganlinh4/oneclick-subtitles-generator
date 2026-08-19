@@ -21,11 +21,14 @@ import {
   NON_EMOJI,
   VIETNAMESE,
   bake,
-  clustersOf,
+  bakeCues,
+  cellTextsOf,
   codeOf,
   createFakeSurface,
+  createKerningSurface,
   cursive,
   defineFace,
+  lineTextsOf,
 } from './glyphAtlasTestFont';
 
 /**
@@ -94,36 +97,89 @@ describe('bakeGlyphAtlas descriptor', () => {
     }
   });
 
-  it('reports the run advance and a shaping residual against the summed cells', () => {
-    const descriptor = bake({ text: 'abc' });
+  /**
+   * The invariant the whole line-mask design exists to establish, asserted where it is cheapest to
+   * read. A line's advance is the width the engine returned for the very text the engine then drew,
+   * so there is no second measurement for it to differ from — under kerning, under a face that
+   * joins, under any shaping at all.
+   */
+  it('reports a zero shaping residual because one measurement produced both', () => {
+    for (const descriptor of [
+      bake({ text: 'abc' }),
+      bakeGlyphAtlas(
+        { text: 'AV Wa To', face: { family: 'Editor Sans' }, fontSizePx: 48 },
+        { surface: createKerningSurface() },
+      ),
+      cursive({ text: ARABIC_REPEATED }),
+    ]) {
+      expect(descriptor.metrics.shapingResidualPx).toBe(0);
+      expect(descriptor.layout.cellAdvanceLayout).toBe('reproduces');
+      expect(descriptor.layout.refusal).toEqual({
+        shapingCrossesClusters: false, directionNeedsBidi: false,
+      });
+      for (const line of descriptor.layout.lines) {
+        expect(line.shapingResidualPx).toBe(0);
+        expect(line.measuredWidthPx).toBe(line.advanceWidthPx);
+      }
+    }
+    expect(bake({ text: 'abc' }).metrics.runAdvanceWidthPx).toBe(74.88);
+  });
 
-    // The fake applies no kerning, so cell advances sum exactly to the run: residual is zero and a
-    // real canvas is what would make it non-zero.
-    expect(descriptor.metrics.runAdvanceWidthPx).toBe(74.88);
-    expect(descriptor.metrics.shapingResidualPx).toBe(0);
+  /**
+   * One cell per line, and the cell IS the line. A line draws it at its own left edge, because the
+   * mask already contains every position inside the line: visual order, letter spacing and
+   * justification were applied by the engine that rasterized it.
+   */
+  it('draws each line as exactly one cell placed at the line origin', () => {
+    const descriptor = bake({ text: 'first line\nsecond line' });
+
+    expect(cellTextsOf(descriptor)).toEqual(['first line', 'second line']);
+    expect(lineTextsOf(descriptor)).toEqual(['first line', 'second line']);
+    for (const line of descriptor.layout.lines) {
+      expect(line.glyphs.length).toBe(1);
+      expect(line.penXPx).toEqual([0]);
+    }
   });
 
   /**
    * The cell list is what `crates/osg-scene/src/glyph/validate.rs` re-derives its ordering rule
-   * against: cells are sorted by UTF-16 code unit and no two are the same text. Contextual cells
-   * keep that true because a form is spelled differently from every other form of its cluster, which
-   * is the whole reason the descriptor's shape did not have to change to carry them.
+   * against: strictly increasing by text, then direction, then advance.
+   *
+   * It is a TRIPLE and not the text alone because one line's text can legitimately appear twice in
+   * a document with a different picture each time — justified to fill the wrap width in the middle
+   * of a block, and unjustified as the last line of one. Keying on the text would force the atlas to
+   * describe one of those as the other.
    */
-  it('keeps the cells strictly ordered and self-describing, contextual or not', () => {
-    for (const descriptor of [bake({ text: 'Hello world' }), cursive({ text: ARABIC_REPEATED })]) {
-      const clusters = descriptor.glyphs.map((glyph) => glyph.cluster);
-
-      expect(new Set(clusters).size).toBe(clusters.length);
-      for (const [index, cluster] of clusters.entries()) {
-        // `<` on a JavaScript string is a UTF-16 code unit comparison, which is the comparison Rust
-        // makes with `encode_utf16().cmp(...)`, so strictness here is strictness there.
-        if (index > 0) expect(clusters[index - 1] < cluster, cluster).toBe(true);
-        expect(descriptor.glyphs[index].codePoints)
-          .toEqual([...cluster].map((character) => character.codePointAt(0)));
-        expect(descriptor.glyphs[index].codePoints.length)
-          .toBeLessThanOrEqual(GLYPH_ATLAS_LIMITS.maxClusterCodePoints);
+  it('keeps the cells strictly ordered by text, direction and advance', () => {
+    const repeated = 'aa bb aa bb';
+    for (const descriptor of [
+      bake({ text: 'Hello world' }),
+      cursive({ text: ARABIC_REPEATED }),
+      bake({ text: repeated, maxWidthPx: 150, textAlign: 'justify' }),
+    ]) {
+      const cells = descriptor.glyphs;
+      for (const [index, glyph] of cells.entries()) {
+        if (index > 0) {
+          const previous = cells[index - 1];
+          // `<` on a JavaScript string is a UTF-16 code unit comparison, which is the comparison
+          // Rust makes with `encode_utf16().cmp(...)`, so strictness here is strictness there.
+          const ordered = previous.cluster < glyph.cluster
+            || (previous.cluster === glyph.cluster
+              && previous.advanceWidthPx < glyph.advanceWidthPx);
+          expect(ordered, `${previous.cluster} then ${glyph.cluster}`).toBe(true);
+        }
+        expect(glyph.codePoints).toEqual([...glyph.cluster].map((character) => character.codePointAt(0)));
+        expect(glyph.codePoints.length).toBeLessThanOrEqual(GLYPH_ATLAS_LIMITS.maxCellCodePoints);
       }
     }
+
+    // The case the triple exists for: the same text at two advances, on one page, in one order.
+    // `aa bb` wraps to two lines; the first is justified out to the wrap width and the last, which
+    // CSS never justifies, keeps its natural one.
+    const justified = bake({ text: repeated, maxWidthPx: 150, textAlign: 'justify' });
+    const sameText = justified.glyphs.filter((glyph) => glyph.cluster === 'aa bb');
+    expect(sameText.length).toBe(2);
+    expect(sameText[0].advanceWidthPx).toBeLessThan(sameText[1].advanceWidthPx);
   });
 });
 
@@ -140,14 +196,19 @@ describe('bakeGlyphAtlas determinism', () => {
     expect(second.pixels).toEqual(first.pixels);
   });
 
-  it('packs the same glyph set identically regardless of the order it appears in', () => {
-    const forward = bake({ text: 'abc abc' });
-    const reversed = bake({ text: 'cba cba' });
+  /**
+   * A cell is a line, so the set that has to pack identically is the set of distinct LINES, and the
+   * order that must not matter is the order the cues carrying them arrive in.
+   */
+  it('packs the same line set identically regardless of the cue order it arrives in', () => {
+    const forward = bakeCues({ texts: ['abc abc', 'one two', 'three'] });
+    const reversed = bakeCues({ texts: ['three', 'one two', 'abc abc'] });
 
-    expect(clustersOf(reversed)).toEqual(clustersOf(forward));
-    expect(reversed.glyphs).toEqual(forward.glyphs);
-    expect(reversed.atlas).toEqual(forward.atlas);
-    expect(reversed.pixels).toEqual(forward.pixels);
+    expect(forward.pages.length).toBe(1);
+    expect(cellTextsOf(reversed.pages[0])).toEqual(cellTextsOf(forward.pages[0]));
+    expect(reversed.pages[0].glyphs).toEqual(forward.pages[0].glyphs);
+    expect(reversed.pages[0].atlas).toEqual(forward.pages[0].atlas);
+    expect(reversed.pages[0].pixels).toEqual(forward.pages[0].pixels);
   });
 
   it('changes the content hash when any input that affects pixels changes', () => {
@@ -160,24 +221,25 @@ describe('bakeGlyphAtlas determinism', () => {
   });
 
   /**
-   * The regression guard for contextual cells, and the reason it is a list of literals.
+   * A change detector over the whole pipeline, and the reason it is a list of literals.
    *
-   * Every hash below was produced by the baker BEFORE it could bake a contextual form, so a run
-   * whose clusters do not join has to reach the same atlas byte for byte — same cells, same
-   * packing, same pixels, same layout. A face that joins is the only thing that may change.
+   * `contentHash` folds the cell table, the packing, the pixels and every layout the page carries,
+   * so any change to any of them moves a hash here. It does not certify that the CURRENT bytes are
+   * right — nothing self-referential could — it certifies that a change to them is deliberate, which
+   * is what stops a refactor from quietly moving a subtitle by a pixel.
    */
-  it('bakes text that does not join to the same bytes it always did', () => {
+  it('bakes each request to the same bytes on every run', () => {
     const golden = [
-      [{ text: 'Hello world' }, 'd386bb0c'],
-      [{ text: 'abc' }, 'bbd2c5ea'],
-      [{ text: 'aa bb cc', fontSizePx: 50, maxWidthPx: 78 }, 'aa4eeaf8'],
-      [{ text: `${VIETNAMESE} ${KOREAN}`, fontSizePx: 42, lineHeightPx: 60, paddingPx: 2 }, '98e5fb2a'],
-      [{ text: 'aa (bb) cc' }, '3245e224'],
-      [{ text: 'a\nb' }, '4f19578c'],
-      [{ text: 'hello world', textTransform: 'capitalize' }, 'e98e286d'],
-      [{ text: 'aa bb cc', maxWidthPx: 200, textAlign: 'justify' }, '972d53ee'],
-      [{ text: ARABIC }, '28224bbd'],
-      [{ text: 'Straße', textTransform: 'uppercase', letterSpacingPx: 3 }, 'a60e4633'],
+      [{ text: 'Hello world' }, 'd29377c4'],
+      [{ text: 'abc' }, '20671431'],
+      [{ text: 'aa bb cc', fontSizePx: 50, maxWidthPx: 78 }, 'd42a8586'],
+      [{ text: `${VIETNAMESE} ${KOREAN}`, fontSizePx: 42, lineHeightPx: 60, paddingPx: 2 }, '8cc593d1'],
+      [{ text: 'aa (bb) cc' }, '3f48d28d'],
+      [{ text: 'a\nb' }, '97992b12'],
+      [{ text: 'hello world', textTransform: 'capitalize' }, '8196ac04'],
+      [{ text: 'aa bb cc', maxWidthPx: 200, textAlign: 'justify' }, 'db32717a'],
+      [{ text: ARABIC }, 'e40ff658'],
+      [{ text: 'Straße', textTransform: 'uppercase', letterSpacingPx: 3 }, 'd9ed6e61'],
     ];
 
     for (const [request, contentHash] of golden) {
@@ -208,16 +270,34 @@ describe('bakeGlyphAtlas bounds', () => {
     const text = 'a'.repeat(GLYPH_ATLAS_LIMITS.maxTextCodePoints + 1);
 
     expect(codeOf(() => bake({ text }))).toBe('glyphAtlasTextTooLong');
-    expect(() => bake({ text: 'a'.repeat(GLYPH_ATLAS_LIMITS.maxTextCodePoints) })).not.toThrow();
+    // A long cue that wraps, which is what a real one is: every line is its own cell and every
+    // cell fits an atlas. The ceiling it meets first is `maxLayoutLines`, not the cell size.
+    expect(() => bake({ text: 'word '.repeat(200).trimEnd(), maxWidthPx: 500 })).not.toThrow();
   });
 
-  it('rejects more distinct glyphs than the atlas may hold', () => {
-    const overLimit = Array.from(
-      { length: GLYPH_ATLAS_LIMITS.maxGlyphCount + 1 },
-      (_unused, index) => String.fromCodePoint(0x4e00 + index)
-    ).join('');
+  /**
+   * A cell is a whole line, so a line wider than the largest atlas is a line that cannot be
+   * rasterized at all. Wrapping is what keeps a real cue below it; `wordWrap: false` is CSS
+   * `nowrap`, which genuinely has no wrap width, so a long enough run of it is refused.
+   *
+   * This is a bound the per-cluster cell did not have, and it is named rather than hidden.
+   */
+  it('rejects a single line too wide for the largest atlas', () => {
+    const long = 'a'.repeat(1_000);
 
-    expect(codeOf(() => bake({ text: overLimit }))).toBe('glyphAtlasTooManyGlyphs');
+    expect(codeOf(() => bake({ text: long, wordWrap: false }))).toBe('glyphAtlasTooLarge');
+    expect(() => bake({ text: long, maxWidthPx: 500 })).not.toThrow();
+  });
+
+  it('rejects more distinct lines than one atlas may hold', () => {
+    const texts = Array.from(
+      { length: GLYPH_ATLAS_LIMITS.maxGlyphCount + 1 },
+      (_unused, index) => `line ${index}`
+    );
+
+    // Each cue is its own line, so this is a paging decision rather than a refusal: the run that
+    // does not fit the open page opens the next one.
+    expect(bakeCues({ texts }).pages.length).toBe(2);
   });
 
   it('rejects a combining-mark bomb inside a single cluster', () => {
@@ -271,56 +351,69 @@ describe('bakeGlyphAtlas bounds', () => {
   });
 });
 
+/**
+ * A cell is a whole shaped line, so what this suite proves is that the LINE survives: the text that
+ * reaches the raster is the text that went in, code point for code point, whatever script it is
+ * written in and however it is normalized. Cluster integrity is still this module's job in one
+ * place — line breaking — and that is asserted directly rather than through a cell table.
+ */
 describe('bakeGlyphAtlas unicode coverage', () => {
-  it('keeps precomposed and decomposed Vietnamese in one cluster each', () => {
+  it('rasterizes each script as one line cell carrying the text verbatim', () => {
+    for (const text of [
+      VIETNAMESE, VIETNAMESE.normalize('NFD'), KOREAN, KOREAN.normalize('NFD'), ARABIC, HEBREW,
+    ]) {
+      const descriptor = bake({ text });
+
+      expect(cellTextsOf(descriptor)).toEqual([text]);
+      expect(descriptor.glyphs[0].codePoints)
+        .toEqual([...text].map((character) => character.codePointAt(0)));
+      expect(lineTextsOf(descriptor)).toEqual([text]);
+    }
+  });
+
+  it('measures a decomposed run the same as its precomposed form', () => {
     const composed = bake({ text: VIETNAMESE });
     const decomposed = bake({ text: VIETNAMESE.normalize('NFD') });
 
-    expect(clustersOf(composed)).toEqual([' ', 'T', 'V', 'g', 'i', 'n', 't', 'ế', 'ệ']);
-    expect(clustersOf(decomposed)).toContain('ế'.normalize('NFD'));
-    expect(decomposed.atlas.glyphCount).toBe(composed.atlas.glyphCount);
     // Combining marks carry no advance, so the decomposed run measures the same width.
     expect(decomposed.metrics.runAdvanceWidthPx).toBe(composed.metrics.runAdvanceWidthPx);
+    expect(decomposed.layout.lines[0].advanceWidthPx).toBe(composed.layout.lines[0].advanceWidthPx);
   });
 
-  it('welds a standalone combining mark to its base', () => {
-    const descriptor = bake({ text: `e${ACUTE}x` });
+  it('never breaks a line inside a grapheme cluster', () => {
+    // Each Latin cluster advances 24.96px, so this width fits two of them and forces a break; the
+    // clusters are two code points each, which is what a naive break would split.
+    const descriptor = bake({ text: `e${ACUTE}x e${ACUTE}x e${ACUTE}x`, maxWidthPx: 80 });
 
-    expect(clustersOf(descriptor)).toEqual([`e${ACUTE}`, 'x']);
-    expect(descriptor.glyphs[0].codePoints).toEqual([0x65, 0x301]);
+    expect(lineTextsOf(descriptor)).toEqual([`e${ACUTE}x`, `e${ACUTE}x`, `e${ACUTE}x`]);
+    for (const text of lineTextsOf(descriptor)) {
+      expect(text.startsWith(ACUTE), 'a line may not begin with a combining mark').toBe(false);
+    }
   });
 
-  it('treats a ZWJ emoji sequence as a single glyph cell', () => {
+  it('treats a ZWJ emoji sequence as one unbreakable unit', () => {
     const descriptor = bake({ text: FAMILY_EMOJI, requireExactFace: false });
 
     expect(descriptor.atlas.glyphCount).toBe(1);
     expect(descriptor.glyphs[0].cluster).toBe(FAMILY_EMOJI);
     expect(descriptor.glyphs[0].codePoints.length).toBe(7);
-    expect(descriptor.glyphs[0].direction).toBe('neutral');
   });
 
-  it('handles Korean syllables and their decomposed jamo', () => {
-    const syllables = bake({ text: KOREAN });
-    const jamo = bake({ text: KOREAN.normalize('NFD') });
-
-    expect(clustersOf(syllables)).toEqual(['국', '어', '한']);
-    expect(syllables.glyphs.every((glyph) => glyph.direction === 'ltr')).toBe(true);
-    expect(jamo.atlas.glyphCount).toBe(3);
-    expect(jamo.glyphs.every((glyph) => glyph.codePoints.length >= 2)).toBe(true);
-  });
-
-  it('marks Arabic and Hebrew clusters right-to-left and carries a base direction', () => {
+  it('takes each cell direction from the paragraph its line belongs to', () => {
     const arabic = bake({ text: ARABIC });
     const hebrew = bake({ text: HEBREW });
     const mixed = bake({ text: `ok ${ARABIC}` });
 
+    // A cell is a whole line and its ink is already in visual order, so `direction` reports which
+    // way the paragraph runs rather than classifying a character. It is the direction the line was
+    // measured and drawn under, which is the only thing a consumer could act on.
     expect(arabic.glyphs.every((glyph) => glyph.direction === 'rtl')).toBe(true);
     expect(arabic.metrics.baseDirection).toBe('rtl');
     expect(hebrew.glyphs.every((glyph) => glyph.direction === 'rtl')).toBe(true);
     expect(hebrew.metrics.baseDirection).toBe('rtl');
-    // First strong character wins, exactly as UAX #9 P2/P3 would resolve it.
+    // First strong character wins, exactly as UAX #9 P2/P3 resolves it.
     expect(mixed.metrics.baseDirection).toBe('ltr');
-    expect(mixed.glyphs.filter((glyph) => glyph.direction === 'rtl').length).toBe(5);
+    expect(mixed.glyphs.every((glyph) => glyph.direction === 'ltr')).toBe(true);
   });
 
   it('bakes an empty atlas for empty text while still verifying the face', () => {
@@ -336,14 +429,19 @@ describe('bakeGlyphAtlas unicode coverage', () => {
     expect(codeOf(() => bake({ text: '', face: { family: 'Missing Face' } }))).toBe('glyphAtlasFaceUnavailable');
   });
 
-  it('keeps whitespace-only text as inkless cells that still carry advance', () => {
+  it('keeps a whitespace-only line as an inkless cell that still stages', () => {
     const descriptor = bake({ text: '  \t\n ' });
 
+    // Trailing whitespace hangs outside the alignment box in CSS, so a line that ENDS in it does not
+    // rasterize it. A line made of nothing else keeps it, because `osg_compositor::CueRun::validate`
+    // refuses a run that places no cell at all — stripping this line bare would turn a blank
+    // subtitle line into a refused export.
     expect(descriptor.atlas).toMatchObject({ widthPx: 0, heightPx: 0 });
     expect(descriptor.pixels.length).toBe(0);
+    expect(cellTextsOf(descriptor)).toEqual([' ', '  \t']);
     expect(descriptor.glyphs.every((glyph) => glyph.widthPx === 0 && glyph.heightPx === 0)).toBe(true);
-    expect(descriptor.glyphs.find((glyph) => glyph.cluster === ' ').advanceWidthPx).toBe(24.96);
     expect(descriptor.glyphs.every((glyph) => glyph.substituted === false)).toBe(true);
+    expect(descriptor.layout.lines.every((line) => line.glyphs.length === 1)).toBe(true);
     expect(descriptor.metrics.baseDirection).toBe('ltr');
   });
 });
@@ -360,14 +458,20 @@ describe('bakeGlyphAtlas face verification', () => {
     expect(codeOf(() => bake({ text: 'hi 😀', face: { family: 'Editor Sans' } }))).toBe('glyphAtlasFaceSubstituted');
   });
 
-  it('records per-glyph substitution instead of failing when it is opted out of', () => {
+  it('records substitution on the line that carries the uncovered character', () => {
     const descriptor = bake({ text: 'Tiếng Việt', face: { family: 'Latin Only' }, requireExactFace: false });
 
+    // Substitution is probed PER GRAPHEME even though the raster is per line. It has to be: a line
+    // of Latin with one uncovered character in it is drawn from the requested face nearly
+    // everywhere, so probing the line as a whole would report the whole thing as covered and the
+    // fallback would go unreported. This is the check that found 88 of 115 families substituted.
     expect(descriptor.face.substituted).toBe(true);
-    const substituted = descriptor.glyphs.filter((glyph) => glyph.substituted).map((glyph) => glyph.cluster);
-    expect(substituted).toEqual(['ế', 'ệ']);
-    expect(descriptor.glyphs.find((glyph) => glyph.cluster === 'T').substituted).toBe(false);
-    expect(descriptor.glyphs.find((glyph) => glyph.cluster === ' ').substituted).toBe(false);
+    expect(cellTextsOf(descriptor)).toEqual(['Tiếng Việt']);
+    expect(descriptor.glyphs[0].substituted).toBe(true);
+
+    const covered = bake({ text: 'Tieng Viet', face: { family: 'Latin Only' } });
+    expect(covered.face.substituted).toBe(false);
+    expect(covered.glyphs[0].substituted).toBe(false);
   });
 
   it('bakes different pixels for a substituted glyph than for a covered one', () => {

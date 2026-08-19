@@ -11,8 +11,7 @@ import {
   KOREAN,
   SHAPED_SIZE_PX,
   VIETNAMESE,
-  cellFormsOf,
-  clustersOf,
+  cellTextsOf,
   codeOf,
   createKerningSurface,
   lineTextsOf,
@@ -24,18 +23,21 @@ import {
  * justification and bidi. The fake font model these bake against — and the limits of what it can
  * prove — are documented on `glyphAtlasTestFont.js`.
  *
- * Which text each cell is baked FROM is the other half of shaping, and it lives in
- * `glyphAtlas.contextual.test.js`: a cursive face gives one cluster four glyphs, so a cell is not
- * always its cluster.
+ * A cell is one shaped LINE, so `lineTextsOf` reports the text each line was rasterized from: its
+ * clusters minus the trailing breaking spaces, which hang outside the alignment box in CSS and are
+ * therefore not part of the mask or its advance.
  */
 
 describe('bakeGlyphAtlas line breaking', () => {
   it('breaks at word boundaries using the measured advances', () => {
     const descriptor = shape({ text: 'aa bb cc', maxWidthPx: ADVANCE_PX * 3 });
 
-    expect(lineTextsOf(descriptor)).toEqual(['aa ', 'bb ', 'cc']);
-    // Trailing spaces hang past the wrap width, so they are not part of a line's width.
+    // Trailing spaces hang past the wrap width, so they are neither rasterized nor measured.
+    expect(lineTextsOf(descriptor)).toEqual(['aa', 'bb', 'cc']);
     expect(descriptor.layout.lines.map((line) => line.advanceWidthPx)).toEqual([52, 52, 52]);
+    // Three lines with the same text, the same direction and the same advance are one cell.
+    expect(cellTextsOf(descriptor)).toEqual(['aa', 'bb', 'cc']);
+    expect(descriptor.layout.lines.map((line) => line.penXPx)).toEqual([[0], [0], [0]]);
     expect(descriptor.layout.widthPx).toBe(52);
     expect(descriptor.layout.lineCount).toBe(3);
     expect(Object.isFrozen(descriptor.layout.lines[0])).toBe(true);
@@ -43,13 +45,13 @@ describe('bakeGlyphAtlas line breaking', () => {
 
   it('leaves a word whole while it fits and splits one only when it cannot', () => {
     expect(lineTextsOf(shape({ text: 'aa bb', maxWidthPx: ADVANCE_PX * 3 })))
-      .toEqual(['aa ', 'bb']);
+      .toEqual(['aa', 'bb']);
     // No break opportunity exists inside a single word, so the only break left is a cluster one.
     expect(lineTextsOf(shape({ text: 'abcdefgh', maxWidthPx: ADVANCE_PX * 3 })))
       .toEqual(['abc', 'def', 'gh']);
     // The long word still starts on a line of its own rather than dragging the short one with it.
     expect(lineTextsOf(shape({ text: 'ab cdefgh', maxWidthPx: ADVANCE_PX * 3 })))
-      .toEqual(['ab ', 'cde', 'fgh']);
+      .toEqual(['ab', 'cde', 'fgh']);
   });
 
   it('never splits a grapheme cluster or an emoji sequence', () => {
@@ -104,10 +106,10 @@ describe('bakeGlyphAtlas shaping inputs', () => {
     const plain = shape({ text: 'straße' });
     const upper = shape({ text: 'straße', textTransform: 'uppercase' });
 
-    expect(clustersOf(plain)).toEqual(['a', 'e', 'r', 's', 't', 'ß']);
+    expect(cellTextsOf(plain)).toEqual(['straße']);
     // The sharp s uppercases to two letters, so the cluster count and the run width both change.
     expect(lineTextsOf(upper)).toEqual(['STRASSE']);
-    expect(clustersOf(upper)).toEqual(['A', 'E', 'R', 'S', 'T']);
+    expect(cellTextsOf(upper)).toEqual(['STRASSE']);
     expect(upper.metrics.runAdvanceWidthPx).toBe(ADVANCE_PX * 7);
     expect(plain.metrics.runAdvanceWidthPx).toBe(ADVANCE_PX * 6);
     expect(upper.layout.textTransform).toBe('uppercase');
@@ -122,27 +124,26 @@ describe('bakeGlyphAtlas shaping inputs', () => {
       .toEqual(['Iphone X']);
   });
 
-  it('carries letterSpacing into the metrics and into every pen position', () => {
+  it('bakes letterSpacing into the line, because the engine applies it', () => {
     const spaced = shape({ text: 'ab', letterSpacingPx: 4 });
+    const plain = shape({ text: 'ab' });
 
     expect(spaced.metrics.letterSpacingPx).toBe(4);
     expect(spaced.layout.letterSpacingPx).toBe(4);
-    // Applied after every cluster including the last, the way a browser applies letter-spacing.
-    expect(spaced.layout.lines[0].penXPx).toEqual([0, 30]);
+    // Applied after every cluster including the last, the way a browser applies letter-spacing, and
+    // the advance reported is the width the engine returned with it already applied.
     expect(spaced.layout.lines[0].advanceWidthPx).toBe(60);
-    // The raster never changes: spacing is layout, so the same two cells are baked either way.
-    expect(spaced.pixels).toEqual(shape({ text: 'ab' }).pixels);
+    expect(plain.layout.lines[0].advanceWidthPx).toBe(ADVANCE_PX * 2);
 
-    const plain = shape({ text: 'abc' });
-    expect(plain.metrics.letterSpacingPx).toBe(0);
-    // With no spacing the pen positions are exactly the advance accumulation the compositor
-    // performs today, so the emitted layout and the shipped loop agree cell for cell.
-    expect(plain.layout.lines[0].penXPx).toEqual([0, ADVANCE_PX, ADVANCE_PX * 2]);
+    // THE RASTER CHANGES, which it did not when a cell was a cluster. Spacing is part of what the
+    // line looks like, so the line is measured and drawn with it; a mask baked without it would be
+    // a picture of different text than the advance describes.
+    expect(spaced.pixels).not.toEqual(plain.pixels);
 
-    // Spacing changes where a line breaks, which is why it has to be applied before wrapping.
+    // Spacing changes where a line breaks, which is why it is applied before wrapping too.
     expect(lineTextsOf(shape({ text: 'aa bb', maxWidthPx: ADVANCE_PX * 5 }))).toEqual(['aa bb']);
     expect(lineTextsOf(shape({ text: 'aa bb', maxWidthPx: ADVANCE_PX * 5, letterSpacingPx: 10 })))
-      .toEqual(['aa ', 'bb']);
+      .toEqual(['aa', 'bb']);
   });
 
   it('carries the line height into every baseline', () => {
@@ -162,11 +163,14 @@ describe('bakeGlyphAtlas shaping inputs', () => {
     const width = ADVANCE_PX * 5 + 30;
     const justified = shape({ text: 'aa bb cc', maxWidthPx: width, textAlign: 'justify' });
 
-    expect(lineTextsOf(justified)).toEqual(['aa bb ', 'cc']);
-    // One interior gap absorbs all 30px of slack, so the line fills the wrap width exactly.
+    expect(lineTextsOf(justified)).toEqual(['aa bb', 'cc']);
+    // The word spacing that fills the wrap width is SOLVED FOR by measurement — one measurement at
+    // zero and one at a single pixel give the exact slope — and then measured again, so the advance
+    // reported is the advance of the raster that ships rather than the one that was solved for.
     expect(justified.layout.lines[0].justificationPx).toBe(30);
     expect(justified.layout.lines[0].advanceWidthPx).toBe(width);
-    expect(justified.layout.lines[0].penXPx).toEqual([0, 26, 52, 108, 134, 160]);
+    // The justified line and the same text unjustified are two rasters, and therefore two cells.
+    expect(cellTextsOf(justified)).toEqual(['aa bb', 'cc']);
     // The last line of a paragraph is never justified, exactly as CSS leaves it.
     expect(justified.layout.lines[1]).toMatchObject({ justificationPx: 0, advanceWidthPx: 52 });
 
@@ -178,128 +182,106 @@ describe('bakeGlyphAtlas shaping inputs', () => {
 });
 
 /**
- * Bidi. Every expectation below is written as the VISUAL string — what a reader sees from the left
- * edge of the line to the right edge — because that is what `lines[].glyphs` now carries. `reversed`
- * makes that readable in a left-to-right source file: a right-to-left word drawn left to right is
- * its own reverse.
+ * Bidi. What this module still decides is the PARAGRAPH LEVEL — which edge a line is anchored to
+ * when the caller asked for CSS `start` — and nothing else.
+ *
+ * WHY THERE ARE NO VISUAL-ORDER EXPECTATIONS HERE ANY MORE. A line is rasterized once, as itself,
+ * with `direction` set from that level, so the browser's own text engine applies the whole
+ * Bidirectional Algorithm and the visual order is inside the mask before this module could have an
+ * opinion about it. The working UAX #9 subset that used to live in `glyphAtlasBidi.js` — weak types,
+ * neutrals, embedding levels, the L1 reset, the L2 reversal — is gone, because a second
+ * implementation of an algorithm the engine already ran could only ever disagree with the picture
+ * actually drawn.
+ *
+ * WHAT THIS SUITE CAN AND CANNOT PROVE. The fake font model has no glyphs to reorder, so it cannot
+ * show that the ink moved; it shows that the level was resolved, carried into the measurement and
+ * carried into the raster. That the INK is ordered correctly is proved on a real font stack by the
+ * `unicodeCues` journey in `e2e/`, which is where mixed-direction text belongs.
  */
 describe('bakeGlyphAtlas bidi', () => {
-  const reversed = (text) => [...text].reverse().join('');
   const handled = { shapingCrossesClusters: false, directionNeedsBidi: false };
 
-  it('leaves a run with no right-to-left content in logical order', () => {
-    // The regression guard. Brackets are included deliberately: they are mirrored characters, and
-    // refusing them where nothing is right-to-left would break every ordinary caption.
-    for (const text of ['aa (bb) cc', VIETNAMESE, KOREAN, 'a\nb']) {
+  it('resolves the paragraph level from the first strong character', () => {
+    for (const [text, direction, align] of [
+      ['aa (bb) cc', 'ltr', 'left'],
+      [VIETNAMESE, 'ltr', 'left'],
+      [KOREAN, 'ltr', 'left'],
+      [ARABIC, 'rtl', 'right'],
+      [HEBREW, 'rtl', 'right'],
+      [`ok ${HEBREW}`, 'ltr', 'left'],
+      [`${HEBREW} ok`, 'rtl', 'right'],
+      // European digits are weak, so a run opening with them takes the direction of whatever strong
+      // character comes next — which is P2 refusing to guess, not this module doing so.
+      [`42 ${HEBREW}`, 'rtl', 'right'],
+      ['42 ok', 'ltr', 'left'],
+      // No strong character at all is left-to-right, which is P3.
+      ['42 %', 'ltr', 'left'],
+    ]) {
       const descriptor = shape({ text });
-      expect(lineTextsOf(descriptor), text).toEqual(text.split('\n'));
-      expect(descriptor.layout.cellAdvanceLayout, text).toBe('reproduces');
+
+      expect(descriptor.metrics.baseDirection, text).toBe(direction);
+      expect(descriptor.layout.textAlign, text).toBe(align);
+      expect(descriptor.glyphs.every((glyph) => glyph.direction === direction), text).toBe(true);
       expect(descriptor.layout.refusal, text).toEqual(handled);
-      expect(descriptor.layout.textAlign, text).toBe('left');
     }
-    const spaced = shape({ text: 'aa (bb) cc' });
-    expect(spaced.layout.lines[0].penXPx)
-      .toEqual([...Array(10).keys()].map((position) => position * ADVANCE_PX));
-  });
-
-  it('reverses a right-to-left run and now lets the compositor draw it', () => {
-    const arabic = shape({ text: ARABIC });
-
-    // The last letter of the word is drawn first, at pen zero, because it is the leftmost.
-    expect(lineTextsOf(arabic)).toEqual([reversed(ARABIC)]);
-    expect(arabic.layout.lines[0].penXPx).toEqual([0, 26, 52, 78, 104]);
-    expect(arabic.layout.widthPx).toBe(ADVANCE_PX * 5);
-    expect(arabic.layout.cellAdvanceLayout).toBe('reproduces');
-    expect(arabic.layout.refusal).toEqual(handled);
-    // CSS `start`: a right-to-left paragraph defaults to its right edge.
-    expect(arabic.layout.textAlign).toBe('right');
+    // Only the CSS `start` default is resolved; an explicit alignment is the caller's own choice.
     expect(shape({ text: ARABIC, textAlign: 'center' }).layout.textAlign).toBe('center');
-
-    expect(lineTextsOf(shape({ text: HEBREW }))).toEqual([reversed(HEBREW)]);
+    expect(shape({ text: ARABIC, textAlign: 'right' }).layout.textAlign).toBe('right');
   });
 
-  it('places an embedded run of the other direction at the right end of it', () => {
-    // A left-to-right paragraph: "ok" first, then the Hebrew block, which reads right to left.
-    expect(lineTextsOf(shape({ text: `ok ${HEBREW}` }))).toEqual([`ok ${reversed(HEBREW)}`]);
-    // A right-to-left paragraph: the Hebrew is first in reading order, so it is drawn last.
-    expect(lineTextsOf(shape({ text: `${HEBREW} ok` }))).toEqual([`ok ${reversed(HEBREW)}`]);
-    expect(shape({ text: `ok ${HEBREW}` }).layout.textAlign).toBe('left');
-    expect(shape({ text: `${HEBREW} ok` }).layout.textAlign).toBe('right');
-
-    // The number belongs to the right-to-left block, so it lands to the LEFT of the Hebrew word,
-    // with its own digits still reading left to right.
-    expect(lineTextsOf(shape({ text: `${HEBREW} 42` }))).toEqual([`42 ${reversed(HEBREW)}`]);
-    expect(lineTextsOf(shape({ text: `ok ${HEBREW} 42` }))).toEqual([`ok 42 ${reversed(HEBREW)}`]);
+  it('skips an isolated run when resolving the level, as P2 requires', () => {
+    // The text between an isolate initiator and its matching pop is, by definition, not allowed to
+    // decide the direction outside it — so the Latin inside the isolate does not make this
+    // paragraph left-to-right, and the Hebrew after it does make it right-to-left.
+    expect(shape({ text: '\u2066abc\u2069 ' + HEBREW }).metrics.baseDirection).toBe('rtl');
+    // An unterminated isolate swallows the rest of the run, which leaves nothing strong: P3.
+    expect(shape({ text: '\u2066' + HEBREW }).metrics.baseDirection).toBe('ltr');
   });
 
-  it('separates European from Arabic numerals next to right-to-left text', () => {
-    // After a Hebrew letter the digits stay European, so W5 pulls the percent sign into the number
-    // and it is drawn on the number's right, exactly where it was typed.
-    expect(lineTextsOf(shape({ text: `${HEBREW} 42%` }))).toEqual([`42% ${reversed(HEBREW)}`]);
-    // After an Arabic letter W2 makes the same digits Arabic numbers, which W5 does not attach to,
-    // so the percent sign resolves to the paragraph direction and moves to the number's LEFT.
-    expect(lineTextsOf(shape({ text: `${ARABIC} 42%` }))).toEqual([`%42 ${reversed(ARABIC)}`]);
-    // Arabic-Indic digits are already Arabic numbers, and keep their own order inside a left-to-
-    // right paragraph rather than being reversed with the block around them.
-    expect(lineTextsOf(shape({ text: 'ok ١٢٣' }))).toEqual(['ok ١٢٣']);
+  it('keeps a line in logical order and hands the ordering to the engine', () => {
+    // The cell's text is what was typed, because the cell is what gets handed to the engine to
+    // shape. What a reader sees is inside the raster.
+    expect(cellTextsOf(shape({ text: HEBREW }))).toEqual([HEBREW]);
+    expect(lineTextsOf(shape({ text: `ok ${HEBREW}` }))).toEqual([`ok ${HEBREW}`]);
+    expect(lineTextsOf(shape({ text: `${HEBREW} 42%` }))).toEqual([`${HEBREW} 42%`]);
+
+    // The direction reaches the raster: the same text under two paragraph levels is two pictures,
+    // so an atlas can never describe one of them as the other.
+    const auto = shape({ text: 'a b' });
+    const forced = shape({ text: 'a b', baseDirection: 'rtl' });
+    expect(forced.metrics.baseDirection).toBe('rtl');
+    expect(forced.glyphs[0].direction).toBe('rtl');
+    expect(forced.pixels).not.toEqual(auto.pixels);
+    expect(forced.contentHash).not.toBe(auto.contentHash);
   });
 
-  it('resolves neutral punctuation from the strong runs around it', () => {
-    // Between two right-to-left runs the hyphen goes with them, so it stays between the two words.
-    expect(lineTextsOf(shape({ text: `x ${HEBREW}-${HEBREW} y` })))
-      .toEqual([`x ${reversed(HEBREW)}-${reversed(HEBREW)} y`]);
-    // Between a right-to-left run and a left-to-right one it takes the PARAGRAPH direction, so the
-    // same three characters land on opposite sides of the Latin word in the two paragraphs.
-    expect(lineTextsOf(shape({ text: `${HEBREW} - abc` }))).toEqual([`abc - ${reversed(HEBREW)}`]);
-    expect(lineTextsOf(shape({ text: `ok ${HEBREW} - abc` })))
-      .toEqual([`ok ${reversed(HEBREW)} - abc`]);
-  });
+  it('no longer refuses the constructs the engine handles inside the mask', () => {
+    // Every one of these used to refuse, and the refusal reached the compositor as "do not draw
+    // this cue". Explicit embedding controls and isolates were never implemented; a MIRRORED
+    // character — an ordinary bracket — was refused anywhere near right-to-left text, which is the
+    // one that broke real captions. The engine implements all of them, so refusing them now would
+    // be refusing text the product draws correctly.
+    for (const text of [
+      'abc\u202bdef\u202c',
+      `${HEBREW}\u2066abc\u2069`,
+      `(${HEBREW})`,
+      `${HEBREW} <ok>`,
+      '(abc)',
+    ]) {
+      const descriptor = shape({ text });
 
-  it('resets a wrapped line trailing space to the paragraph level, so it hangs on the left', () => {
-    const wrapped = shape({ text: `${HEBREW} ab cd`, maxWidthPx: ADVANCE_PX * 7 });
-
-    expect(wrapped.layout.lineCount).toBe(2);
-    // Without L1 the space would keep the Latin run's level and stay stranded between "ab" and the
-    // next word; reset to the paragraph level it joins the right-to-left run and is drawn FIRST.
-    expect(lineTextsOf(wrapped)).toEqual([` ab ${reversed(HEBREW)}`, 'cd']);
-    // Hanging whitespace sits outside the alignment box, which starts at pen zero and is
-    // advanceWidthPx wide — so on a right-to-left line it takes a negative pen.
-    expect(wrapped.layout.lines[0].penXPx).toEqual([-26, 0, 26, 52, 78, 104, 130, 156]);
-    expect(wrapped.layout.lines[0].advanceWidthPx).toBe(ADVANCE_PX * 7);
-    expect(wrapped.layout.lines[1].penXPx).toEqual([0, 26]);
-    expect(wrapped.layout.cellAdvanceLayout).toBe('reproduces');
-  });
-
-  it('refuses the constructs it does not implement instead of ordering them wrongly', () => {
-    const refused = { shapingCrossesClusters: false, directionNeedsBidi: true };
-
-    // Explicit embedding and override controls: X1-X8 are not implemented, in either direction of
-    // text, so a run carrying one keeps logical order and says the order is not reproduced.
-    const embedded = shape({ text: 'abc‫def‬' });
-    expect(embedded.layout.cellAdvanceLayout).toBe('refused');
-    expect(embedded.layout.refusal).toEqual(refused);
-    expect(lineTextsOf(embedded)).toEqual(['abc‫def‬']);
-
-    // Isolates: same reason.
-    expect(shape({ text: `${HEBREW}⁦abc⁩` }).layout.refusal).toEqual(refused);
-
-    // A mirrored character in a run with right-to-left content needs a glyph the atlas never baked,
-    // so the run is refused rather than drawn with the wrong bracket.
-    expect(shape({ text: `(${HEBREW})` }).layout.refusal).toEqual(refused);
-    expect(shape({ text: `${HEBREW} <ok>` }).layout.refusal).toEqual(refused);
-    // The same brackets with nothing right-to-left need no mirroring at all.
-    expect(shape({ text: '(abc)' }).layout.refusal).toEqual(handled);
+      expect(descriptor.layout.refusal, text).toEqual(handled);
+      expect(descriptor.layout.cellAdvanceLayout, text).toBe('reproduces');
+      expect(cellTextsOf(descriptor), text).toEqual([text]);
+    }
   });
 
   it('takes a forced paragraph direction, which is the seam rtlSupport lands on', () => {
     const text = 'a b ';
     const clusters = [...text];
-    const unique = [...new Set(clusters)].sort();
     const layoutOf = (baseDirection) => buildTextLayout({
       text,
       clusters,
-      cellIndexOf: (position) => unique.indexOf(clusters[position]),
-      advanceOf: () => ADVANCE_PX,
       textTransform: 'none',
       letterSpacingPx: 0,
       maxWidthPx: null,
@@ -307,47 +289,47 @@ describe('bakeGlyphAtlas bidi', () => {
       textAlign: 'left',
       lineHeightPx: 50,
       baselinePx: 40.5,
-      measureLineWidth: (line) => [...line].length * ADVANCE_PX,
-      runShapingResidualPx: 0,
-      directionNeedsBidi: false,
+      measureLine: (line) => [...line].length * ADVANCE_PX,
       baseDirection,
       limits: GLYPH_ATLAS_LIMITS,
     });
 
-    // Nothing in the text is right-to-left, so only the forced paragraph level moves it.
+    // Nothing in the text is right-to-left, so only the forced level moves it.
     const auto = layoutOf(null);
-    expect(auto.lines[0].penXPx).toEqual([0, 26, 52, 78]);
     expect(auto.textAlign).toBe('left');
+    expect(auto.lines[0].direction).toBe('ltr');
 
     const forced = layoutOf('rtl');
-    // The two Latin letters keep their own order; the trailing space moves to the far left and
-    // hangs, and the default alignment becomes the right edge.
-    expect(forced.lines[0].glyphs.map((cell) => unique[cell]).join('')).toBe(' a b');
-    expect(forced.lines[0].penXPx).toEqual([-26, 0, 26, 52]);
-    expect(forced.lines[0].advanceWidthPx).toBe(ADVANCE_PX * 3);
     expect(forced.textAlign).toBe('right');
+    expect(forced.lines[0].direction).toBe('rtl');
+    // Trailing whitespace hangs outside the alignment box in either direction, so the content the
+    // raster is made from — and the width it is measured at — are the same three characters.
+    expect(forced.lines[0].contentText).toBe('a b');
+    expect(forced.lines[0].advanceWidthPx).toBe(ADVANCE_PX * 3);
     expect(forced.cellAdvanceLayout).toBe('reproduces');
   });
 });
 
 describe('bakeGlyphAtlas layout honesty', () => {
-  it('reports a per-line residual when shaping crosses cluster boundaries', () => {
-    const surface = createKerningSurface();
+  it('reports no residual under kerning, because the line is measured as itself', () => {
     const kerned = bakeGlyphAtlas(
       { text: 'aa bb', face: { family: 'Editor Sans' }, fontSizePx: SHAPED_SIZE_PX, maxWidthPx: ADVANCE_PX * 3 },
-      { surface }
+      { surface: createKerningSurface() }
     );
 
-    // Kerning moves ink across a boundary without changing any glyph, so no contextual spelling
-    // reproduces it and the isolated cells — and their refusal — are the honest answer.
-    expect(cellFormsOf(kerned)).toEqual([' ', 'a', 'b']);
-    expect(lineTextsOf(kerned)).toEqual(['aa ', 'bb']);
-    expect(kerned.metrics.shapingResidualPx).toBe(-2);
-    expect(kerned.layout.lines.map((line) => line.measuredWidthPx)).toEqual([77, 51.5]);
-    expect(kerned.layout.lines.map((line) => line.shapingResidualPx)).toEqual([-1, -0.5]);
-    // The refusal the Rust descriptor reaches, reached here from the same two facts.
-    expect(kerned.layout.cellAdvanceLayout).toBe('refused');
-    expect(kerned.layout.refusal).toEqual({ shapingCrossesClusters: true, directionNeedsBidi: false });
+    // Kerning moves ink across a cluster boundary. That used to make the sum of the cells disagree
+    // with the run, and the disagreement refused the whole cue — which is how an ordinary edited
+    // subtitle stopped drawing. The line is one cell now, and its advance came from measuring that
+    // very line, so there is no second number for it to differ from.
+    expect(cellTextsOf(kerned)).toEqual(['aa', 'bb']);
+    expect(lineTextsOf(kerned)).toEqual(['aa', 'bb']);
+    expect(kerned.metrics.shapingResidualPx).toBe(0);
+    expect(kerned.layout.lines.map((line) => line.shapingResidualPx)).toEqual([0, 0]);
+    expect(kerned.layout.cellAdvanceLayout).toBe('reproduces');
+    expect(kerned.layout.refusal).toEqual({ shapingCrossesClusters: false, directionNeedsBidi: false });
+    // And the widths reported are the KERNED ones, not the summed ones a per-cluster layout used.
+    expect(kerned.layout.lines.map((line) => line.advanceWidthPx)).toEqual([51.5, 51.5]);
+    expect(kerned.layout.lines.map((line) => line.measuredWidthPx)).toEqual([51.5, 51.5]);
   });
 
   it('records the wrapping inputs it was given', () => {
@@ -390,15 +372,16 @@ describe('bakeGlyphAtlas layout bounds', () => {
       .toBe('glyphAtlasLayoutTooLarge');
   });
 
-  it('caps the total run, which the text bound already implies', () => {
-    // One cluster costs at least one code point, so a run that passes `maxTextCodePoints` cannot
-    // exceed `maxLayoutCells`. The bound is still enforced, and it is still asserted equal, because
-    // it is what `MAX_RUN_GLYPHS` in the compositor mirrors.
+  it('bounds the cells a run may lay out, which is what the compositor mirrors', () => {
     expect(GLYPH_ATLAS_LIMITS.maxLayoutCells).toBe(GLYPH_ATLAS_LIMITS.maxTextCodePoints);
 
-    const full = shape({ text: 'a'.repeat(GLYPH_ATLAS_LIMITS.maxTextCodePoints) });
+    // A cell is a line, so a run's own cells are its LINES and the ceiling it meets first is
+    // `maxLayoutLines`. The cell bound stays mirrored because `MAX_RUN_GLYPHS` in the compositor is
+    // the array it sizes, and a descriptor arriving from anywhere else is not obliged to send one
+    // cell per line.
+    const full = shape({ text: 'a'.repeat(100) });
     expect(full.layout.lines).toHaveLength(1);
-    expect(full.layout.lines[0].glyphs).toHaveLength(GLYPH_ATLAS_LIMITS.maxTextCodePoints);
+    expect(full.layout.lines[0].glyphs).toHaveLength(1);
   });
 
   it('rejects shaping inputs outside their bounds', () => {
@@ -432,9 +415,11 @@ describe('bakeGlyphAtlas layout bounds', () => {
   it('applies the transform before the text bound, because the transform decides the length', () => {
     const half = 'ß'.repeat(GLYPH_ATLAS_LIMITS.maxTextCodePoints / 2 + 1);
 
-    expect(() => shape({ text: half })).not.toThrow();
+    // Wrapped, because a cell is a whole line: an unwrapped run this long would be one texture far
+    // wider than any atlas, which is a different refusal than the one under test.
+    expect(() => shape({ text: half, maxWidthPx: 900 })).not.toThrow();
     // Each sharp s uppercases to two letters, so the same input is over the bound once transformed.
-    expect(codeOf(() => shape({ text: half, textTransform: 'uppercase' })))
+    expect(codeOf(() => shape({ text: half, maxWidthPx: 900, textTransform: 'uppercase' })))
       .toBe('glyphAtlasTextTooLong');
   });
 });

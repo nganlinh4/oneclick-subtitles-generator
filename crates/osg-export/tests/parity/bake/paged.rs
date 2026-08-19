@@ -9,9 +9,9 @@
 //! Two rules are reproduced, because both are load-bearing and neither is obvious:
 //!
 //! * **A page closes on capacity.** Cells accumulate as cues are walked in time order, and the page
-//!   closes when the merged table would pass [`MAX_GLYPH_COUNT`] cells or [`MAX_TEXT_CODE_POINTS`]
-//!   code points. Latin never reaches either; a Korean, CJK or emoji-heavy document reaches the
-//!   first in a few dozen cues, which is why pages exist at all.
+//!   closes when the merged table would pass [`MAX_GLYPH_COUNT`] cells or [`MAX_ATLAS_CODE_POINTS`]
+//!   code points. A cell is one shaped LINE, so an ordinary track reaches the first bound in a few
+//!   hundred cues — which is why pages carry every document rather than only a large-alphabet one.
 //! * **A page carries one resolved alignment.** The compositor aligns a cue by its *atlas's*
 //!   alignment (`run_align` in `osg-compositor`), because CSS `start` resolves against the
 //!   paragraph's own direction and only the shaper knows what that was. So one open page per
@@ -27,8 +27,8 @@ use osg_compositor::CueRun;
 use osg_export::StagedText;
 use osg_render::SubtitleCustomization;
 use osg_scene::glyph::{
-    AtlasGlyph, AtlasLayout, GlyphAtlasDescriptor, LayoutTextAlign, MAX_GLYPH_COUNT,
-    MAX_TEXT_CODE_POINTS,
+    AtlasGlyph, AtlasLayout, Direction, GlyphAtlasDescriptor, LayoutTextAlign,
+    MAX_ATLAS_CODE_POINTS, MAX_GLYPH_COUNT,
 };
 use osg_scene::scene::ResolvedFace;
 
@@ -285,7 +285,7 @@ fn partition(solo: &[Staged]) -> Vec<Page> {
         };
         let merged = merge(&open[position].cells, staged.atlas().glyphs());
         let merged_code_points = code_points(&merged);
-        if merged.len() > MAX_GLYPH_COUNT || merged_code_points > MAX_TEXT_CODE_POINTS {
+        if merged.len() > MAX_GLYPH_COUNT || merged_code_points > MAX_ATLAS_CODE_POINTS {
             // The page is full. It closes as it stands and this cue opens the next one, which is
             // what keeps the split a pure function of the cue order rather than of a repack.
             closed.push(std::mem::replace(
@@ -309,7 +309,7 @@ fn merge(page: &[AtlasGlyph], run: &[AtlasGlyph]) -> Vec<AtlasGlyph> {
     let mut merged = Vec::with_capacity(page.len() + run.len());
     let (mut left, mut right) = (0_usize, 0_usize);
     while left < page.len() && right < run.len() {
-        match utf16_order(&page[left].cluster, &run[right].cluster) {
+        match cell_order(&page[left], &run[right]) {
             std::cmp::Ordering::Equal => {
                 merged.push(page[left].clone());
                 left += 1;
@@ -334,6 +334,27 @@ fn code_points(cells: &[AtlasGlyph]) -> usize {
     cells.iter().map(|cell| cell.code_points.len()).sum()
 }
 
+/// The order a cell table is kept in: text, then direction, then advance.
+///
+/// The same triple `osg_scene::glyph::validate` enforces on arrival. It is not the text alone
+/// because a cell is a whole shaped line, and one line's text can be rasterized twice in a document
+/// with a different picture each time — justified to fill the wrap width in the middle of a block,
+/// and unjustified as the last line of one.
+fn cell_order(left: &AtlasGlyph, right: &AtlasGlyph) -> std::cmp::Ordering {
+    let rank = |direction: Direction| match direction {
+        Direction::Ltr => 0_u8,
+        Direction::Rtl => 1,
+        Direction::Neutral => 2,
+    };
+    utf16_order(&left.cluster, &right.cluster)
+        .then_with(|| rank(left.direction).cmp(&rank(right.direction)))
+        .then_with(|| {
+            left.advance_width_px
+                .to_bits()
+                .cmp(&right.advance_width_px.to_bits())
+        })
+}
+
 /// Assigns every cell of a closed page its position in the page's own grid.
 fn pack(mut cells: Vec<AtlasGlyph>) -> Vec<AtlasGlyph> {
     for (index, cell) in cells.iter_mut().enumerate() {
@@ -347,13 +368,13 @@ fn pack(mut cells: Vec<AtlasGlyph>) -> Vec<AtlasGlyph> {
 /// One cue's layout with its cell indices moved from its own table onto the page's.
 ///
 /// Indices are the only thing that changes. Every pen, baseline, advance, justification and line box
-/// is the cue's own and is carried across untouched, so a page cannot move a glyph — it can only
-/// change which cell the glyph is drawn from, and that cell is the same cluster either way.
+/// is the cue's own and is carried across untouched, so a page cannot move a line — it can only
+/// change which cell the line is drawn from, and that cell is the same raster either way.
 fn remap(layout: &AtlasLayout, local: &[AtlasGlyph], page: &[AtlasGlyph]) -> AtlasLayout {
     let index_of = |cell: u32| -> u32 {
-        let cluster = &local[usize::try_from(cell).expect("a bounded cell index")].cluster;
+        let wanted = &local[usize::try_from(cell).expect("a bounded cell index")];
         let found = page
-            .binary_search_by(|candidate| utf16_order(&candidate.cluster, cluster))
+            .binary_search_by(|candidate| cell_order(candidate, wanted))
             .expect("every cell of a cue is on the page that cue was assigned to");
         u32::try_from(found).expect("a bounded cell index")
     };

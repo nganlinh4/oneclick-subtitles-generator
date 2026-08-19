@@ -60,6 +60,12 @@ export const GLYPH_ATLAS_VERSION = 1;
 export const GLYPH_ATLAS_LIMITS = Object.freeze({
   maxTextCodePoints: 4_096,
   maxGlyphCount: 1_024,
+  // A cell is one shaped LINE, so its text is a line's text and is bounded by the run it came from.
+  // `maxClusterCodePoints` still bounds a single grapheme, but only during segmentation: it stops an
+  // unbounded run of combining marks from costing the baker unbounded work, and nothing on the wire
+  // is measured against it any more.
+  maxCellCodePoints: 4_096,
+  maxAtlasCodePoints: 262_144,
   maxClusterCodePoints: 32,
   maxAtlasDimensionPx: 4_096,
   minFontSizePx: 4,

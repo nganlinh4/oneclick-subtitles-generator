@@ -41,7 +41,7 @@ pub enum FaceStyle {
 /// [`AtlasLine::glyphs`], which the baker emits in visual order.
 ///
 /// [`AtlasLine::glyphs`]: super::layout::AtlasLine::glyphs
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
 #[serde(rename_all = "lowercase")]
 pub enum Direction {
     /// Left to right.

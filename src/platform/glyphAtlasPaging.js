@@ -1,23 +1,20 @@
 /**
  * How a cue list is split across atlas pages.
  *
- * WHY PAGES EXIST. One atlas holds at most `maxGlyphCount` cells, and that bound is on the ALPHABET
- * — the union of every cue's distinct glyph forms. Latin saturates it at a few dozen cells however
- * long the track, so a single atlas was never a limit there. A large character set is different: a
- * Chinese film uses a few thousand distinct ideographs, a Korean track reaches into the syllable
- * blocks, an emoji-heavy lyric video keeps introducing new sequences. Those documents are ordinary
- * product input and they overflowed one atlas, so the export refused them. Pages remove that ceiling
- * without raising the per-atlas bound the native validators enforce.
+ * WHY PAGES EXIST. One atlas holds at most `maxGlyphCount` cells, and a cell is one shaped LINE. So
+ * the bound is on a document's distinct LINES: a few dozen cues share one page comfortably, and a
+ * feature-length track does not. Pages remove that ceiling without raising the per-atlas bound the
+ * native validators enforce. They existed for a large character set when a cell was a character, and
+ * they carry an ordinary track now.
  *
  * WHY PAGING IS CHEAP HERE. `osg_scene::cues::active_cue_at` selects exactly ONE cue per frame, so a
  * frame draws from exactly one page. The compositor binds that page and no other; nothing is
  * resident that the frame does not sample, and nothing about the draw changes because a document
- * has many pages rather than one.
+ * has many pages rather than one. That is also why a per-line cell table is affordable at all: only
+ * one cue's lines are ever on the GPU.
  *
- * WHY THE SPLIT IS BY CUE ORDER. Cues arrive in time order and neighbouring cues share vocabulary,
- * so a greedy walk keeps a page's cells dense and the page count near the minimum. It is also the
- * only order in which the split is stable: re-baking the same track must produce the same pages, or
- * two runs of the same export would disagree.
+ * WHY THE SPLIT IS BY CUE ORDER. It is the only order in which the split is stable: re-baking the
+ * same track must produce the same pages, or two runs of the same export would disagree.
  *
  * WHAT CLOSES A PAGE. The cell count, the cell code points, whether the cells still pack into an
  * atlas, and the resolved text alignment. The last one is not a capacity bound: the compositor
@@ -30,36 +27,24 @@
  * cue order.
  */
 
-import { packAtlas } from './glyphAtlasCells';
+import { cellCodePoints, compareCells, packAtlas } from './glyphAtlasCells';
 import { fail } from './glyphAtlasCore';
-
-const codePointCount = (text) => [...text].length;
 
 /**
  * Merge a run's sorted cells into a page's sorted cells, keeping the order `crates/osg-scene`
- * re-derives: strictly increasing by UTF-16 code unit, no duplicates.
+ * re-derives: strictly increasing by text, then direction, then advance, with no duplicates.
  *
  * A linear merge rather than concat-and-sort, because this runs once per cue that introduces a new
- * cell and the sort would dominate a long track.
+ * cell and the sort would dominate a long track. `right` holds only cells the page does not already
+ * have, so the equal case cannot arise and is not handled.
  */
 const mergeSorted = (left, right) => {
   const merged = [];
   let leftIndex = 0;
   let rightIndex = 0;
   while (leftIndex < left.length && rightIndex < right.length) {
-    const a = left[leftIndex];
-    const b = right[rightIndex];
-    if (a === b) {
-      merged.push(a);
-      leftIndex += 1;
-      rightIndex += 1;
-    } else if (a < b) {
-      merged.push(a);
-      leftIndex += 1;
-    } else {
-      merged.push(b);
-      rightIndex += 1;
-    }
+    if (compareCells(left[leftIndex], right[rightIndex]) < 0) merged.push(left[leftIndex++]);
+    else merged.push(right[rightIndex++]);
   }
   while (leftIndex < left.length) merged.push(left[leftIndex++]);
   while (rightIndex < right.length) merged.push(right[rightIndex++]);
@@ -73,20 +58,20 @@ const mergeSorted = (left, right) => {
  * here is one a descriptor can carry. The pack is checked separately by the caller, which holds the
  * width hint that keeps it cheap.
  */
-export const tableOverflow = (cellTexts, codePoints, limits) => {
-  if (cellTexts.length > limits.maxGlyphCount) return 'glyphAtlasTooManyGlyphs';
-  return codePoints > limits.maxTextCodePoints ? 'glyphAtlasTextTooLong' : null;
+export const tableOverflow = (cells, codePoints, limits) => {
+  if (cells.length > limits.maxGlyphCount) return 'glyphAtlasTooManyGlyphs';
+  return codePoints > limits.maxAtlasCodePoints ? 'glyphAtlasTextTooLong' : null;
 };
 
 const OVERFLOW_MESSAGES = Object.freeze({
-  glyphAtlasTooManyGlyphs: (limits) => `More than ${limits.maxGlyphCount} distinct glyph cells are needed for a single cue`,
-  glyphAtlasTextTooLong: (limits) => `A single cue's distinct glyph cells exceed ${limits.maxTextCodePoints} code points and are rejected rather than truncated`,
+  glyphAtlasTooManyGlyphs: (limits) => `More than ${limits.maxGlyphCount} distinct rasterized lines are needed for a single cue`,
+  glyphAtlasTextTooLong: (limits) => `A single cue's rasterized lines exceed ${limits.maxAtlasCodePoints} code points and are rejected rather than truncated`,
 });
 
 /** A page under construction, and the bookkeeping that keeps adding to it cheap. */
 const openPage = (run, index) => ({
-  cellTexts: run.cellTexts,
-  cellSet: new Set(run.cellTexts),
+  cells: run.cells,
+  cellSet: new Set(run.cells.map((cell) => cell.key)),
   codePoints: run.codePoints,
   textAlign: run.textAlign,
   cues: [index],
@@ -100,18 +85,17 @@ const openPage = (run, index) => ({
 /**
  * Split `runs` into pages, greedily and in cue order.
  *
- * `runs[i]` is `{ cellTexts, codePoints, textAlign, packed }` — the run's own sorted cell table, its
+ * `runs[i]` is `{ cells, codePoints, textAlign, packed }` — the run's own sorted cell table, its
  * code-point total, the alignment its layout resolved to, and the pack of its cells ALONE, which the
- * caller has already proven fits. `cellOf` gives a cell text's ink box. Returns one entry per page:
- * `{ cellTexts, packed, cues }`, where `cues` holds the indices of the cues that page serves, in cue
- * order.
+ * caller has already proven fits. Returns one entry per page: `{ cells, packed, cues }`, where
+ * `cues` holds the indices of the cues that page serves, in cue order.
  *
  * Refuses rather than truncating when the document needs more pages or more atlas bytes than the
  * budget allows. Both refusals are actionable — a smaller font size or fewer distinct characters —
  * and both are budget decisions, not incidental ceilings: the byte budget is what the staging
  * registry will hold resident, and a document past it would be evicted mid-export instead.
  */
-export const partitionRunsIntoPages = (runs, cellOf, limits) => {
+export const partitionRunsIntoPages = (runs, limits) => {
   const pages = [];
   // One page open per resolved alignment, because an alignment is the one reason to split that
   // spare capacity cannot fix. A track that alternates between a right-to-left cue and a
@@ -132,7 +116,7 @@ export const partitionRunsIntoPages = (runs, cellOf, limits) => {
       );
     }
     pages.push(Object.freeze({
-      cellTexts: page.cellTexts,
+      cells: page.cells,
       packed: page.packed,
       cues: page.cues,
     }));
@@ -159,17 +143,17 @@ export const partitionRunsIntoPages = (runs, cellOf, limits) => {
     }
     // The common case for any long track: the alphabet saturated pages ago and this cue adds
     // nothing, so there is no merge to do and no pack to redo.
-    if (run.cellTexts.every((cellText) => current.cellSet.has(cellText))) {
+    if (run.cells.every((cell) => current.cellSet.has(cell.key))) {
       current.cues.push(index);
       continue;
     }
 
-    const fresh = run.cellTexts.filter((cellText) => !current.cellSet.has(cellText));
-    const cellTexts = mergeSorted(current.cellTexts, fresh);
+    const fresh = run.cells.filter((cell) => !current.cellSet.has(cell.key));
+    const cells = mergeSorted(current.cells, fresh);
     const codePoints = current.codePoints
-      + fresh.reduce((total, cellText) => total + codePointCount(cellText), 0);
-    const packed = tableOverflow(cellTexts, codePoints, limits) === null
-      ? packAtlas(cellTexts.map(cellOf), current.widthPx)
+      + fresh.reduce((total, cell) => total + cellCodePoints(cell), 0);
+    const packed = tableOverflow(cells, codePoints, limits) === null
+      ? packAtlas(cells.map((cell) => cell.box), current.widthPx)
       : null;
     if (packed === null) {
       close(current);
@@ -177,8 +161,8 @@ export const partitionRunsIntoPages = (runs, cellOf, limits) => {
       continue;
     }
 
-    current.cellTexts = cellTexts;
-    for (const cellText of fresh) current.cellSet.add(cellText);
+    current.cells = cells;
+    for (const cell of fresh) current.cellSet.add(cell.key);
     current.codePoints = codePoints;
     current.cues.push(index);
     current.widthPx = packed.widthPx;
@@ -195,14 +179,12 @@ export const partitionRunsIntoPages = (runs, cellOf, limits) => {
  * The pack of one run's own cells, or a refusal.
  *
  * A run that does not fit a page ALONE cannot be paged around — there is no smaller unit to split
- * into — so this is where an over-budget cue is refused, naming the bound it broke. The caller has
- * already tried the run's contextual cells and fallen back to its isolated ones, so reaching here
- * means neither table fits.
+ * into — so this is where an over-budget cue is refused, naming the bound it broke.
  */
-export const packRunAlone = (cellTexts, codePoints, cellOf, limits) => {
-  const overflow = tableOverflow(cellTexts, codePoints, limits);
+export const packRunAlone = (cells, codePoints, limits) => {
+  const overflow = tableOverflow(cells, codePoints, limits);
   if (overflow !== null) fail(overflow, OVERFLOW_MESSAGES[overflow](limits));
-  const packed = packAtlas(cellTexts.map(cellOf));
+  const packed = packAtlas(cells.map((cell) => cell.box));
   if (packed === null) {
     fail('glyphAtlasTooLarge', `The glyphs do not fit within a ${limits.maxAtlasDimensionPx}px atlas`);
   }

@@ -9,11 +9,17 @@
  * packing, substitution detection, line breaking, determinism, freezing, hashing) is testable
  * against it.
  *
- * It also reproduces CURSIVE JOINING, because the cell model now depends on it: a face may give a
- * cluster four different forms and four different advances depending on its neighbours, and a joiner
- * asks for one of those forms in isolation. That is a structural property of every text stack, so
- * the baker's contextual resolution is testable against it — what stays unprovable here is the shape
- * of the outline each form actually has.
+ * It also reproduces CURSIVE JOINING: a face may give a cluster four different forms and four
+ * different advances depending on its neighbours, so measuring a whole line is not the same as
+ * measuring its characters and adding up. That is a structural property of every text stack, and it
+ * is what makes a line mask testable here at all — what stays unprovable is the shape of the outline
+ * each form actually has.
+ *
+ * It models `letterSpacing` and `wordSpacing` the way CSS applies them, because the baker measures a
+ * whole line WITH its spacing rather than adding spacing to per-cluster advances afterwards. It does
+ * NOT model `direction`: reordering does not change a line's width, and the fake has no glyphs to
+ * reorder — so a right-to-left expectation here proves the option was carried, not that the ink
+ * moved. Only a real canvas can prove that, which is what the real-binary journeys are for.
  *
  * What only a real canvas can prove, and is deliberately NOT claimed: true glyph outlines and ink
  * extents, real kerning and ligatures, which concrete forms a given Arabic face carries, and which
@@ -27,8 +33,7 @@
 
 import { expect } from 'vitest';
 
-import { GlyphAtlasError, bakeGlyphAtlas } from './glyphAtlas';
-import { CONTEXT_JOINER } from './glyphAtlasCells';
+import { GlyphAtlasError, bakeGlyphAtlas, bakeGlyphAtlasForCues } from './glyphAtlas';
 
 const COMBINING = /\p{M}/u;
 const WHITESPACE = /\s/u;
@@ -121,6 +126,36 @@ const hashOf = (text) => {
   return hash >>> 0;
 };
 
+/**
+ * CSS `word-spacing` applies to word-separator characters, which CSS Text 3 defines as exactly the
+ * space and the no-break space — not the tab, and not the ideographic space.
+ */
+const WORD_SEPARATORS = new Set([0x0020, 0x00a0]);
+
+/**
+ * What `letterSpacingPx` and `wordSpacingPx` add to a run, modelled the way CSS applies them.
+ *
+ * Letter spacing goes after every typographic unit INCLUDING the last, which is what makes a
+ * browser's `measureText` wider than the glyphs alone; combining marks and joiners are not units of
+ * their own, so they are skipped. Word spacing goes on the separators.
+ *
+ * This is here because the baker now measures a whole line WITH its spacing rather than adding
+ * spacing to per-cluster advances afterwards, so a model that ignored the options would report a
+ * width for text nobody draws — and justification, which solves for the spacing that fills a wrap
+ * width, would have nothing to solve against.
+ */
+const spacingWidth = (text, letterSpacingPx, wordSpacingPx) => {
+  let width = 0;
+  for (const character of text) {
+    const codePoint = character.codePointAt(0);
+    if (WORD_SEPARATORS.has(codePoint)) width += wordSpacingPx;
+    if (COMBINING.test(character) || ZERO_ADVANCE.has(codePoint)) continue;
+    width += letterSpacingPx;
+  }
+  return width;
+};
+
+
 export const createFakeSurface = ({ faces = DEFAULT_FACES, isFaceLoaded } = {}) => {
   /** Per-code-point fallback down the family list, exactly as an engine resolves a run. */
   const resolve = (families, codePoint) => {
@@ -201,8 +236,9 @@ export const createFakeSurface = ({ faces = DEFAULT_FACES, isFaceLoaded } = {}) 
     };
   };
 
-  const measure = (cssFont, text) => {
-    const { fontSizePx, advance, inked, metricFace } = shapeText(cssFont, text);
+  const measure = (cssFont, text, { letterSpacingPx = 0, wordSpacingPx = 0 } = {}) => {
+    const { fontSizePx, advance: shapedAdvance, inked, metricFace } = shapeText(cssFont, text);
+    const advance = shapedAdvance + spacingWidth(text, letterSpacingPx, wordSpacingPx);
     const inkWidth = inked ? Math.max(advance * 0.92, fontSizePx * 0.25) : 0;
     return {
       width: advance,
@@ -221,13 +257,18 @@ export const createFakeSurface = ({ faces = DEFAULT_FACES, isFaceLoaded } = {}) 
     createTarget(widthPx, heightPx) {
       const pixels = new Uint8ClampedArray(widthPx * heightPx * 4);
       return {
-        drawGlyph({ cssFont, text, penXPx, baselineYPx }) {
-          const metrics = measure(cssFont, text);
+        drawGlyph({ cssFont, text, penXPx, baselineYPx, ...options }) {
+          const metrics = measure(cssFont, text, options);
           const { metricFace, signature } = shapeText(cssFont, text);
           const right = Math.ceil(metrics.actualBoundingBoxRight);
           const ascent = Math.ceil(metrics.actualBoundingBoxAscent);
           const descent = Math.ceil(metrics.actualBoundingBoxDescent);
-          const alpha = 32 + (hashOf(`${metricFace.id}:${signature}`) % 224);
+          // The options are part of the picture, so they are part of what the raster hashes to. Two
+          // cells that share a text and differ in direction or word spacing must not be the same
+          // pixels, or the atlas could describe one of them as the other and nothing would notice.
+          const drawn = `${metricFace.id}:${options.direction ?? 'ltr'}`
+            + `:${options.letterSpacingPx ?? 0}:${options.wordSpacingPx ?? 0}:${signature}`;
+          const alpha = 32 + (hashOf(drawn) % 224);
           for (let y = baselineYPx - ascent; y < baselineYPx + descent; y += 1) {
             for (let x = penXPx; x < penXPx + right; x += 1) {
               if (x < 0 || y < 0 || x >= widthPx || y >= heightPx) continue;
@@ -310,6 +351,12 @@ export const bake = (request, surfaceOptions) => bakeGlyphAtlas(
   { surface: createFakeSurface(surfaceOptions) }
 );
 
+/** The same face and size as `bake`, over a whole cue list. */
+export const bakeCues = (request, surfaceOptions) => bakeGlyphAtlasForCues(
+  { face: { family: 'Editor Sans' }, fontSizePx: 48, ...request },
+  { surface: createFakeSurface(surfaceOptions) }
+);
+
 /**
  * Shaping fixtures measure in whole numbers on purpose: 'Editor Sans' advances 0.52 of the size, so
  * a 50px bake gives every Latin cluster an advance of exactly 26px, its ascent is 40.5px and its
@@ -336,15 +383,14 @@ export const cursive = (request, surfaceOptions) => bakeGlyphAtlas(
   { surface: createFakeSurface(surfaceOptions) }
 );
 
-/** A cell's text with its context joiners shown as `-`, so a form can be read in an expectation. */
-const readable = (cluster) => cluster.replaceAll(CONTEXT_JOINER, '-');
-
-export const cellFormsOf = (descriptor) => descriptor.glyphs.map((glyph) => readable(glyph.cluster));
-
-/** The cells each laid-out line draws, in visual order, as readable forms. */
-export const lineFormsOf = (descriptor) => descriptor.layout.lines.map(
-  (line) => line.glyphs.map((cell) => readable(descriptor.glyphs[cell].cluster)).join('|')
-);
+/**
+ * The text of each cell in the page's own table order.
+ *
+ * A cell is a whole shaped line, so this is the set of distinct lines the atlas rasterized — not an
+ * alphabet. Two entries can share a text and differ in direction or advance, which is exactly what
+ * the ordering rule allows for.
+ */
+export const cellTextsOf = (descriptor) => descriptor.glyphs.map((glyph) => glyph.cluster);
 
 /** One cell's coverage, sampled at the middle of its ink so two forms can be told apart. */
 export const cellAlphaOf = (descriptor, cell) => {

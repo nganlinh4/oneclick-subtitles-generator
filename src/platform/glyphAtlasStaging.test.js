@@ -396,35 +396,41 @@ describe('forwarding the authoritative layout', () => {
 
     const metadata = await stagedMetadata(descriptor);
 
-    // Every cell index names a real cell, and reading the lines in order reproduces the baked run
-    // with its hard breaks removed. That is what makes `glyphs` a drawable visual order rather than
-    // an unordered set the compositor would have to re-derive.
+    // Every cell index names a real cell, and reading the lines top to bottom reproduces the baked
+    // run. A line's cell is the line's own text with its trailing space stripped — that space hangs
+    // outside the alignment box in CSS and is not part of the raster — so the breaks are what the
+    // join puts back.
     const drawn = metadata.layout.lines
       .map((line) => line.glyphs.map((cell) => metadata.glyphs[cell].cluster).join(''))
-      .join('');
-    expect(drawn).toBe('Preview the wrapped subtitle lineSecond paragraph here'.toUpperCase());
+      .join(' ');
+    expect(drawn).toBe('Preview the wrapped subtitle line second paragraph here'.toUpperCase());
     for (const line of metadata.layout.lines) {
-      expect(line.penXPx).toHaveLength(line.glyphs.length);
+      // One cell per line, at the line origin: everything inside the line is inside the mask.
+      expect(line.glyphs).toHaveLength(1);
+      expect(line.penXPx).toEqual([0]);
       expect(line.glyphs.every((cell) => cell >= 0 && cell < descriptor.atlas.glyphCount)).toBe(true);
     }
   });
 
-  it('stages a tightened run whose spacing and pen positions are negative', async () => {
-    // The regression this file already learned once, in the other axis. Letter spacing tighter than
-    // a cluster's own advance walks the pen backwards, so `penXPx` goes negative for ordinary text.
-    // A non-negative bound would refuse it at the boundary while every other test kept passing.
+  it('stages a tightened run, whose letter spacing is negative', async () => {
+    // The signedness regression this file already learned once. Letter spacing tighter than a
+    // cluster's own advance is ordinary product input, and a non-negative bound would refuse it at
+    // the boundary while every other test kept passing.
+    //
+    // `penXPx` is always zero now — a line's one cell sits at the line origin — but the validator
+    // still bounds it by MAGNITUDE rather than range, because a descriptor is validated on arrival
+    // and nothing obliges the thing that sent it to be this baker.
     const descriptor = bake('Tight preview', { letterSpacingPx: -30 });
     expect(descriptor.metrics.letterSpacingPx).toBe(-30);
     expect(descriptor.layout.letterSpacingPx).toBe(-30);
-    const [line] = descriptor.layout.lines;
-    expect(line.penXPx.filter((pen) => pen < 0).length, 'the fixture must go negative')
-      .toBeGreaterThan(0);
+    // That the tightening reaches the raster is a measurement fact, and this suite's surface is a
+    // transport fixture rather than a font model; `glyphAtlas.shaping.test.js` owns it.
 
     const handle = await createGlyphAtlasStager().stage(descriptor);
 
     expect(handle.atlasId).toBe(atlasId(1));
     const { metadata } = decodeFrame(invokeDesktopRaw.mock.calls[0][1]);
-    expect(metadata.layout.lines[0].penXPx).toEqual(line.penXPx);
+    expect(metadata.layout.lines[0].penXPx).toEqual([0]);
     expect(metadata.metrics.letterSpacingPx).toBe(-30);
   });
 
