@@ -109,25 +109,29 @@
     {
       "name": "localMediaToPreview",
       "kind": "workflow",
-      "capability": "A customer opens a local video and gets an activated project with a native preview frame.",
+      "capability": "A customer opens a local video, adds subtitles, and the editor draws them onto the frame.",
       "fixtures": [
-        "fixtures/media/bars-6s-640x360.mp4"
+        "media/bars-6s-640x360.mp4",
+        "media/cues-6s.srt"
       ],
       "oracles": [
-        "read-only database query after shutdown",
-        "captured preview frame"
+        "visible DOM",
+        "the composited frame element the compositor publishes"
       ],
       "runsAgainst": "e2e-binary",
       "status": "green",
       "note": [
-        "The native dialog is replaced by a staged selection resolved against a declared fixture",
-        "root; everything after it -- import, identity, activation, artifacts -- is the real code."
+        "Only the OS file dialog is replaced, by a selection resolved against a declared fixture",
+        "root. Subtitles arrive through the real drop handler because the chooser input is hidden",
+        "and WebDriver cannot fill an element it cannot see; the same component reads the same",
+        "bytes with the same reader."
       ],
       "file": "journeys/localMediaToPreview.journey.js",
       "assertions": [
-        "media activates and the editor shows the source",
-        "a native composited frame is published for a cue",
-        "the durable project row survives relaunch"
+        "the selected media activates and plays at 640x360 for 6.000s",
+        "the dropped SRT reaches the editor and its cues are readable",
+        "a native composited frame is published",
+        "no error surface and no preview-unavailable notice once a frame exists"
       ],
       "lastGreenCommit": "pending-commit"
     },
@@ -200,6 +204,17 @@
         "candidate is validated before use; the reader adopts the decoder's first negotiated output",
         "instead of refusing it, and still refuses a genuine mid-stream change of the picture."
       ]
+    },
+    {
+      "finding": "A project with no subtitles reports its preview as unavailable.",
+      "detail": [
+        "With media activated and no cues yet, the editor shows \"Subtitle preview unavailable. The video below is the source, without subtitles.\"",
+        "Nothing has failed: there is simply nothing to draw. Having no cue is a ready state, not a",
+        "refusal, and saying otherwise teaches a customer to ignore the one notice that also reports",
+        "real failures."
+      ],
+      "status": "open",
+      "foundBy": "localMediaToPreview, before subtitles are imported"
     }
   ],
   "fixtures": {
@@ -236,6 +251,11 @@
       "sha256": "7817ed3de2b6c3958a0bec3f7a509c0e533ecec33ba4406a0c062b5e477843d7",
       "sizeBytes": 138251,
       "why": "Non-square pixels, so the crop must not disturb the display stretch."
+    },
+    "media/cues-6s.srt": {
+      "sha256": "d69df9c9f2ef0f931d34c6b6e51460fa13f239e3765c05bd7ab64219b9965b9f",
+      "sizeBytes": 196,
+      "why": "Three cues inside the 6 second fixture, including Vietnamese, Korean and an emoji, so the glyph path is exercised rather than only ASCII."
     }
   }
 }
