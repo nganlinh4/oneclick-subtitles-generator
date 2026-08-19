@@ -76,7 +76,9 @@ pub(crate) fn render_preview_frame(
     source: &Path,
     request: PreviewFrameRequest,
 ) -> Result<PreviewFrameResponse, PreviewRefusal> {
-    request.check()?;
+    request
+        .check()
+        .map_err(|refusal| refused(refusal, "request"))?;
     let PreviewFrameRequest {
         scene_revision,
         atlas_id,
@@ -88,22 +90,49 @@ pub(crate) fn render_preview_frame(
         ..
     } = request;
 
-    let atlas = atlases.descriptor(atlas_id, &atlas_content_hash)?;
-    let plan = plan_for_source(render, source)?;
+    let atlas = atlases
+        .descriptor(atlas_id, &atlas_content_hash)
+        .map_err(|refusal| refused(refusal, "atlas"))?;
+    let plan = plan_for_source(render, source).map_err(|refusal| {
+        // A source that cannot be planned is either absent or unreadable, and the two need very
+        // different fixes. Recorded as presence and size only -- never the path itself.
+        let metadata = std::fs::metadata(source);
+        crate::diagnostics::record(
+            "preview.source",
+            &[
+                ("exists", metadata.is_ok().to_string()),
+                (
+                    "bytes",
+                    metadata
+                        .map(|entry| entry.len())
+                        .unwrap_or_default()
+                        .to_string(),
+                ),
+                ("hasExtension", source.extension().is_some().to_string()),
+            ],
+        );
+        refused(refusal, "plan")
+    })?;
     let binding = PreviewBinding {
         project_id: plan.project_id,
         source_asset_id: plan.source_asset_id,
         scene_revision,
         atlas_id,
     };
-    let composition = PreviewComposition::build(&plan, &face, atlas)?;
+    let composition = PreviewComposition::build(&plan, &face, atlas)
+        .map_err(|refusal| refused(refusal, "composition"))?;
 
     // The generation is claimed after the conversion and before the draw, so the window a stale
     // result has to lose is exactly the decode and the render — which are the only slow parts.
-    let ticket = host.claim(binding)?;
+    let ticket = host
+        .claim(binding)
+        .map_err(|refusal| refused(refusal, "claim"))?;
     let ground = PreviewGround::for_layer(layer, plan.source_asset_id, source);
-    let frame = host.compose(&composition, frame_index, ground)?;
+    let frame = host
+        .compose(&composition, frame_index, ground)
+        .map_err(|refusal| refused(refusal, "compose"))?;
     host.publish(server, &ticket, &frame, frame_index, layer)
+        .map_err(|refusal| refused(refusal, "publish"))
 }
 
 // The registry adapter and the Tauri entry point.
@@ -159,7 +188,24 @@ pub(crate) fn preview_frame_render(
     let source = state
         .database
         .resolve_media(request.render.source_asset_id)
-        .map_err(|_| PreviewRefusal::SourceUnreadable)?
-        .ok_or(PreviewRefusal::MediaUnavailable)?;
+        .map_err(|_| refused(PreviewRefusal::SourceUnreadable, "resolve-media"))?
+        .ok_or_else(|| refused(PreviewRefusal::MediaUnavailable, "resolve-media"))?;
     render_preview_frame(&host, &server, &*atlases, source.path(), request)
+}
+
+/// Record a preview refusal before it leaves for the `WebView`.
+///
+/// Refusals used to travel to the interface and nowhere else, so a preview that failed on a
+/// customer's machine left no trace in the application's own diagnostics: the editor showed a code
+/// and the log showed nothing at all. The stage narrows several identically-named refusals to the
+/// one that actually fired. Both values are bounded tokens, never a path or a message.
+fn refused(refusal: PreviewRefusal, stage: &str) -> PreviewRefusal {
+    crate::diagnostics::record(
+        "preview.refused",
+        &[
+            ("code", refusal.code().to_owned()),
+            ("stage", stage.to_owned()),
+        ],
+    );
+    refusal
 }

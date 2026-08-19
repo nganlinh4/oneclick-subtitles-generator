@@ -113,22 +113,27 @@
       "fixtures": [
         "fixtures/media/bars-6s-640x360.mp4"
       ],
-      "plannedAssertions": [
-        "media activates and the editor shows the source",
-        "a native composited frame is published for a cue",
-        "the durable project row survives relaunch"
-      ],
       "oracles": [
         "read-only database query after shutdown",
         "captured preview frame"
       ],
       "runsAgainst": "e2e-binary",
-      "status": "planned",
-      "blockedBy": "e2e-fixture-media-selection",
+      "status": "red",
+      "blockedBy": "padded-source-geometry",
       "note": [
-        "Needs the sanctioned fixture action at the native dialog edge: `select_media` is",
-        "`pick_media_path` (an OS dialog WebDriver cannot drive) followed by `import_media_path`.",
-        "Only the dialog is replaced; the import use case must stay identical."
+        "The native dialog is replaced by a staged selection resolved against a declared fixture",
+        "root; everything after it -- import, identity, activation, artifacts -- is the real code."
+      ],
+      "file": "journeys/localMediaToPreview.journey.js",
+      "assertions": [
+        "media activates and the editor shows the source",
+        "a native composited frame is published for a cue",
+        "the durable project row survives relaunch"
+      ],
+      "redReason": [
+        "Import and activation WORK: the fixture reaches the editor playable at 640x360 with the",
+        "right duration. The native subtitle preview then refuses with previewSourceUnreadable.",
+        "Two causes were found this way, one fixed and one open; see knownProductFindings."
       ]
     },
     {
@@ -171,6 +176,36 @@
         "run that needs the network before it can do anything is the same class of problem as the font."
       ],
       "status": "open"
+    },
+    {
+      "finding": "Canonicalized media paths were unreadable by Media Foundation.",
+      "detail": [
+        "The storage layer canonicalizes every media location when it records it, which on Windows",
+        "returns a verbatim path. MFCreateSourceReaderFromURL reads the leading double backslash as",
+        "a network share and fails with ERROR_BAD_NETPATH (0x80070035), so EVERY locally imported",
+        "file produced a preview that refused as unreadable, and an export that would have failed",
+        "the same way. Measured: the identical bytes probe fine through the plain spelling."
+      ],
+      "status": "fixed",
+      "fix": "osg-decode strips the verbatim prefix for ordinary drive paths in wide_path."
+    },
+    {
+      "finding": "No frame decodes when the source height is not a multiple of 16.",
+      "detail": [
+        "Media Foundation reports the unpadded size at open and the macroblock-aligned size once",
+        "decoding begins -- 640x360 becomes 640x368 -- and the reader refuses any change as a",
+        "mid-stream geometry change. 1080p has the same shape, coding to 1088, so this affects a",
+        "large share of ordinary video. Reproduced in a plain unit test, not only through the app."
+      ],
+      "status": "open",
+      "reproducer": "cargo test -p osg-decode --test padded_source_geometry -- --ignored",
+      "whyNotPatched": [
+        "SourcePresentation derives the display size FROM the coded size, so it cannot express",
+        "'the buffer is 640x368 and the picture inside it is 640x360'. The plane maths reads chroma",
+        "at the coded height, so accepting the padded size without a visible region would produce a",
+        "corrupted image instead of a refusal. It needs a visible rect carried through decode,",
+        "preview and export together."
+      ]
     }
   ],
   "fixtures": {

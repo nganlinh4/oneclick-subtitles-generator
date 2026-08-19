@@ -179,6 +179,12 @@ impl DecoderThread {
             Ok(Err(error)) => {
                 drop(jobs);
                 let _ = thread.join();
+                // Recorded as a bounded token before the type is collapsed into a refusal. Without
+                // this, "the source is unreadable" was the whole of what a failure ever said.
+                crate::diagnostics::record(
+                    "preview.decoder-open-failed",
+                    &[("kind", decode_failure_kind(&error))],
+                );
                 Err(error.into())
             }
             Err(_) => {
@@ -371,4 +377,20 @@ impl SourceDecoders {
         let held = self.open.lock().ok()?;
         held.as_ref().and_then(|open| open.decoder.stats().ok())
     }
+}
+
+/// A bounded token naming why the decoder refused, safe to log.
+fn decode_failure_kind(error: &DecodeError) -> String {
+    match error {
+        DecodeError::SourceUnusable { reason } => format!("source-unusable:{reason:?}"),
+        DecodeError::MediaFoundation { stage, code } => {
+            format!("media-foundation:{stage:?}:{code:#x}")
+        }
+        other => format!("{other:?}")
+            .split_whitespace()
+            .next()
+            .unwrap_or("other")
+            .to_owned(),
+    }
+    .to_lowercase()
 }

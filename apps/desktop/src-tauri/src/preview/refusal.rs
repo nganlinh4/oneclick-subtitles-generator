@@ -160,6 +160,27 @@ impl From<DecodeError> for PreviewRefusal {
     /// subtitle pass on a transparent ground, because that picture is indistinguishable from a video
     /// that failed to load, and a user judging their output would be judging the wrong image.
     fn from(error: DecodeError) -> Self {
+        // The decoder's own reason is recorded before it is collapsed, because every one of the
+        // cases below arrives at the editor as the same sentence and the difference between them is
+        // the whole of what a diagnosis needs.
+        crate::diagnostics::record(
+            "preview.decode-error",
+            &[(
+                "kind",
+                match &error {
+                    DecodeError::SourceUnusable { reason } => format!("source-unusable:{reason:?}"),
+                    DecodeError::MediaFoundation { stage, code } => {
+                        format!("media-foundation:{stage:?}:{code:#x}")
+                    }
+                    other => format!("{other:?}")
+                        .split_whitespace()
+                        .next()
+                        .unwrap_or("other")
+                        .to_owned(),
+                }
+                .to_lowercase(),
+            )],
+        );
         match error {
             DecodeError::FrameOutOfRange { .. } | DecodeError::TimestampOutOfRange { .. } => {
                 Self::UnsupportedRequest

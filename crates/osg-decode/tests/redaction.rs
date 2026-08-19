@@ -24,7 +24,10 @@ fn every_error() -> Vec<DecodeError> {
         DecodeError::UnsupportedFrameRate,
         DecodeError::UnsupportedFrameLayout,
         DecodeError::UnsupportedColorimetry,
-        DecodeError::SourceGeometryChanged,
+        DecodeError::SourceGeometryChanged {
+            opened: osg_decode::FrameGeometry::new(640, 360).expect("geometry"),
+            current: osg_decode::FrameGeometry::new(640, 368).expect("geometry"),
+        },
         DecodeError::Cancelled,
         DecodeError::Closed,
         DecodeError::SampleTooSmall {

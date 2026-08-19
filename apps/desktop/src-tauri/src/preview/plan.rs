@@ -38,7 +38,17 @@ pub(crate) fn plan_for_source(
     request: RenderRequest,
     source: &Path,
 ) -> Result<RenderPlan, PreviewRefusal> {
-    let info = probe_source(source).map_err(|_| PreviewRefusal::SourceUnreadable)?;
+    let info = probe_source(source).map_err(|error| {
+        // The reason was previously discarded here, so "the source cannot be read" was all anyone
+        // ever learned, in the editor and in the log alike. Recorded as a fixed token per variant:
+        // the error's own text can carry a path, and diagnostics correctly redacts anything that
+        // might, which would leave this no more informative than the discard it replaces.
+        crate::diagnostics::record(
+            "preview.probe-failed",
+            &[("kind", probe_failure_kind(&error))],
+        );
+        PreviewRefusal::SourceUnreadable
+    })?;
     let duration_us = u64::try_from(info.duration_100ns() / HUNDRED_NANOS_PER_MICRO)
         .map_err(|_| PreviewRefusal::SourceUnreadable)?;
     validate_cue_or_not(
@@ -164,5 +174,42 @@ impl PreviewComposition {
     /// the exported file are the same instant.
     pub(crate) const fn frame_count(&self) -> u32 {
         self.plan.frame_count()
+    }
+}
+
+/// A bounded token naming why a probe failed, safe to log and to show.
+fn probe_failure_kind(error: &osg_export::ExportError) -> String {
+    use osg_export::ExportError as Failure;
+    match error {
+        // The decoder's own refusal is the useful half: "the source is unreadable" is the question,
+        // not the answer.
+        Failure::SourceUnreadable { reason } => return decode_failure_kind(reason),
+        Failure::AudioUnusable { .. } => "audio-unusable",
+        Failure::UnsupportedRequest { .. } => "unsupported-request",
+        Failure::TimelineRejected { .. } => "timeline-rejected",
+        Failure::SceneRejected { .. } => "scene-rejected",
+        Failure::CompositionRejected { .. } => "composition-rejected",
+        Failure::Cancelled => "cancelled",
+        _ => "other",
+    }
+    .to_owned()
+}
+
+/// A bounded token naming the decoder's refusal.
+fn decode_failure_kind(error: &osg_decode::DecodeError) -> String {
+    use osg_decode::DecodeError as Failure;
+    match error {
+        Failure::SourceUnusable { reason } => format!("source-unusable:{reason:?}").to_lowercase(),
+        Failure::MediaFoundation { stage, code } => {
+            format!("media-foundation:{stage:?}:{code:#x}").to_lowercase()
+        }
+        other => {
+            let mut name = format!("{other:?}");
+            name.truncate(40);
+            name.split_whitespace()
+                .next()
+                .unwrap_or("other")
+                .to_lowercase()
+        }
     }
 }

@@ -219,8 +219,19 @@ pub enum DecodeError {
     ///
     /// The export's output size and crop both derive from the source dimensions, so a mid-stream
     /// change is refused rather than absorbed.
-    #[error("the source changed geometry part-way through the stream")]
-    SourceGeometryChanged,
+    ///
+    /// Both sizes are carried because they are the whole of the diagnosis: a refusal that says only
+    /// "the geometry changed" cannot distinguish a genuinely variable stream from a platform that
+    /// simply reported a padded size once decoding began.
+    #[error(
+        "the source changed geometry from {opened:?} to {current:?} part-way through the stream"
+    )]
+    SourceGeometryChanged {
+        /// What the format said when the source was opened.
+        opened: crate::planes::FrameGeometry,
+        /// What it says now.
+        current: crate::planes::FrameGeometry,
+    },
 
     /// The decoder walked its whole budget without reaching the frame that was asked for.
     #[error("the frame at {target_100ns} could not be reached within the decode budget")]

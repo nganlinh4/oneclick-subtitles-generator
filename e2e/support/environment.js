@@ -11,6 +11,9 @@ import { join, resolve } from 'node:path';
 
 export const REPOSITORY_ROOT = resolve(import.meta.dirname, '..', '..');
 
+/** Reviewed media fixtures a journey may hand to the application. */
+export const FIXTURE_ROOT = join(REPOSITORY_ROOT, 'e2e', 'fixtures', 'media');
+
 /** Where the E2E channel binary and its resources are built. */
 export const BUILT_APPLICATION_DIRECTORY = join(
   REPOSITORY_ROOT, 'target', 'x86_64-pc-windows-msvc', 'release',
@@ -50,6 +53,13 @@ export const createRunRoot = () => {
 /** Everything a run must set so it cannot reach live user state. */
 export const isolationEnvironment = (root) => ({
   OSG_E2E_DATA_ROOT: root,
+  // The only files a staged file-dialog selection may name. The application resolves and re-checks
+  // this itself; declaring it here is what keeps a journey to reviewed fixtures.
+  OSG_E2E_FIXTURE_ROOT: FIXTURE_ROOT,
+  // What the next file-dialog request returns. Read from the process environment, so it is fixed for
+  // a launch; a journey needing a different file runs its own launch.
+  OSG_E2E_MEDIA_SELECTION: process.env.OSG_E2E_MEDIA_SELECTION
+    ?? join(FIXTURE_ROOT, 'bars-6s-640x360.mp4'),
   WEBVIEW2_USER_DATA_FOLDER: join(root, 'webview'),
 });
 

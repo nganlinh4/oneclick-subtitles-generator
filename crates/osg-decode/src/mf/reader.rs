@@ -250,7 +250,10 @@ impl MediaFoundationDecoder {
         let (width, height) = media_type::frame_size(&output)?;
         let coded = FrameGeometry::new(width, height)?;
         if coded != self.info.coded_geometry() {
-            return Err(DecodeError::SourceGeometryChanged);
+            return Err(DecodeError::SourceGeometryChanged {
+                opened: self.info.coded_geometry(),
+                current: coded,
+            });
         }
         self.fallback_stride = format::stride(&output, coded);
         Ok(())

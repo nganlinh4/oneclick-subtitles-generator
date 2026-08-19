@@ -2800,6 +2800,52 @@ function assertUpdaterSmokeWorkflow(workflow) {
     'Signed updater smoke must not upload its signing material or ephemeral certificate');
 }
 
+/**
+ * Every harness seam in the desktop source is compiled out of shipped builds.
+ *
+ * The application deliberately contains a few places where an automated run can replace something a
+ * person would do — an isolated data root, a staged file-dialog selection. Each is guarded by a
+ * test-only Cargo feature, and each is a hole in the product if that guard is ever missing or
+ * removed. The guard is what makes those seams acceptable, so it is checked rather than trusted.
+ *
+ * Textual by necessity: this runs before anything is compiled. It looks backwards from each harness
+ * environment read to the function that contains it and requires a test-only `cfg` on that function
+ * or on the statement itself. A seam written without one fails here instead of shipping.
+ */
+function assertHarnessSeamsAreCompiledOut(rootDirectory = REPOSITORY_ROOT) {
+  const NEWLINE = String.fromCharCode(10);
+  const TEST_ONLY_FEATURES = ['e2e-automation', 'unsigned-local-build', 'ci-updater-fixture'];
+  const HARNESS_ENVIRONMENT = /OSG_E2E_[A-Z_]+/;
+  const sources = walkFiles(
+    path.join(rootDirectory, TAURI_DIRECTORY, 'src'),
+    (candidate) => candidate.endsWith('.rs'),
+    new Set(),
+  );
+  invariant(sources.length > 0, 'Desktop sources are missing');
+
+  let guarded = 0;
+  for (const file of sources) {
+    const lines = readText(rootDirectory, path.relative(rootDirectory, file)).split(NEWLINE);
+    lines.forEach((line, index) => {
+      if (!HARNESS_ENVIRONMENT.test(line) || line.trimStart().startsWith('//')) return;
+      // Look back to the enclosing item and require a test-only cfg above it.
+      const preceding = lines.slice(Math.max(0, index - 25), index).reverse();
+      const guard = preceding.find((candidate) => (
+        candidate.includes('#[cfg(feature') || candidate.includes('#[cfg(all(')
+      ));
+      const isGuarded = guard !== undefined
+        && TEST_ONLY_FEATURES.some((feature) => guard.includes(feature));
+      invariant(
+        isGuarded,
+        `${path.relative(rootDirectory, file).replaceAll(path.sep, '/')}:${index + 1} reads a harness `
+          + 'environment variable without a test-only cfg guard above it',
+      );
+      guarded += 1;
+    });
+  }
+  return guarded;
+}
+
 function assertUpdaterFixtureSource(rootDirectory) {
   const cargo = readText(rootDirectory, `${TAURI_DIRECTORY}/Cargo.toml`);
   const cargoLock = readText(rootDirectory, 'Cargo.lock');
@@ -3441,6 +3487,8 @@ function assertWorkflow(rootDirectory = REPOSITORY_ROOT) {
     readText(rootDirectory, 'scripts/test-native-picker-evidence.ps1'),
   );
   assertUpdaterSmokeWorkflow(readText(rootDirectory, UPDATER_SMOKE_WORKFLOW_PATH));
+  const guardedSeams = assertHarnessSeamsAreCompiledOut(rootDirectory);
+  invariant(guardedSeams > 0, "The harness seam guard found nothing to check");
   assertUpdaterFixtureSource(rootDirectory);
   assertSignedUpdaterScript(readText(rootDirectory, 'scripts/test-signed-updater-windows.ps1'));
 }
