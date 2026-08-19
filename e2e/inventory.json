@@ -178,13 +178,13 @@
       "runsAgainst": "e2e-binary",
       "status": "red",
       "redReason": [
-        "Everything up to and including the relaunch works: the project, media and edited cue are",
-        "durable, and the restored session shows the edited text over the right media. The RESTORED",
-        "preview then refuses with previewAtlasCannotLayOut, recorded detail crossesClusters=true,",
-        "needsBidi=false, stage=composition. It reproduces with plain ASCII cues, so it is not a",
-        "glyph-coverage problem."
+        "Durability itself is proven: one project, one media asset, three cues, five revisions,",
+        "the edited text on record, and a relaunch that restores the same project id, media id",
+        "and content hash with the edit intact.",
+        "What fails is the preview after the edit -- see the restored-atlas-layout-refusal finding,",
+        "which the probe narrowed to the edit itself rather than the relaunch."
       ],
-      "blockedBy": "restored-atlas-layout-refusal"
+      "blockedBy": "cue-edit-atlas-layout-refusal"
     },
     {
       "name": "unicodeCues",
@@ -210,7 +210,18 @@
         "Shares the restored-atlas refusal above. Kept separate so glyph coverage and durability are",
         "reported independently rather than one masking the other."
       ],
-      "blockedBy": "restored-atlas-layout-refusal"
+      "blockedBy": "cue-edit-atlas-layout-refusal"
+    },
+    {
+      "name": "restoreProbe",
+      "kind": "diagnostic",
+      "file": "journeys/restoreProbe.journey.js",
+      "capability": "Not a capability: a diagnostic that narrows the atlas layout refusal.",
+      "status": "external",
+      "note": [
+        "Kept because it is what separated the edit from the relaunch, and what disproved the",
+        "emoji and font-race hypotheses. Outside the default glob."
+      ]
     }
   ],
   "knownProductFindings": [
@@ -274,22 +285,29 @@
       "foundBy": "localMediaToPreview, before subtitles are imported"
     },
     {
-      "finding": "A reopened project refuses to draw its subtitles.",
-      "id": "restored-atlas-layout-refusal",
+      "finding": "Editing a cue can permanently break the subtitle preview.",
+      "id": "cue-edit-atlas-layout-refusal",
       "detail": [
-        "After a relaunch the project restores correctly -- same project, same media identity, edited",
-        "cue present, video playable -- and the compositor then refuses with previewAtlasCannotLayOut.",
-        "The recorded detail is crossesClusters=true, needsBidi=false, stage=composition, meaning the",
-        "sum of per-cluster advances did not equal the shaped run width.",
-        "It reproduces with plain ASCII cues, so it is NOT glyph coverage: an earlier hypothesis that",
-        "the emoji caused it was wrong and is recorded here so it is not repeated.",
-        "The comparison is exact (residual !== 0), and nothing waits for the managed font face before",
-        "measuring, so both a font race at bake time and float drift in restored numeric settings are",
-        "live candidates. Neither is proven yet."
+        "Narrowed by probe: the refusal appears IMMEDIATELY after a cue is edited, in the same",
+        "session, before any relaunch. It then survives the relaunch and a forced re-bake. A run",
+        "that imports the same subtitles and never edits them draws its frame and restores fine,",
+        "so this is neither a restore defect nor a race, and the two earlier hypotheses -- the",
+        "emoji, and a font race at bake time -- were both wrong and are recorded so they are not",
+        "tried again.",
+        "The verdict is decided in glyphAtlasBake/glyphAtlasShaping as",
+        "shapingResidualPx = round4(runAdvanceWidthPx - sum of per-cluster advances), refused when",
+        "that is EXACTLY non-zero. So whether a cue can be drawn depends on the measured width of",
+        "the whole run equalling the sum of its parts to within 0.0001 px. \"First cue for the",
+        "preview\" happens to be exact; \"Edited first cue\" is not.",
+        "What is not yet known is the magnitude of the residual, which decides the fix: noise at",
+        "1e-4 means the comparison needs a sub-pixel tolerance, while a residual near a whole pixel",
+        "means real inter-cluster kerning that per-cell layout genuinely cannot reproduce. The",
+        "refusal that crosses to native carries booleans only, so the number is not recorded yet."
       ],
       "status": "open",
-      "foundBy": "editPersistRelaunch, after browser.reloadSession",
-      "diagnostic": "preview.refused with code, stage, crossesClusters and needsBidi in the app log"
+      "foundBy": "restoreProbe, by editing a cue without relaunching",
+      "diagnostic": "preview.refused with code, stage, crossesClusters and needsBidi in the app log",
+      "nextStep": "Carry the residual magnitude in the staged refusal so it reaches the app log, then choose the tolerance or the layout fix on evidence."
     }
   ],
   "fixtures": {
