@@ -118,8 +118,7 @@
         "captured preview frame"
       ],
       "runsAgainst": "e2e-binary",
-      "status": "red",
-      "blockedBy": "padded-source-geometry",
+      "status": "green",
       "note": [
         "The native dialog is replaced by a staged selection resolved against a declared fixture",
         "root; everything after it -- import, identity, activation, artifacts -- is the real code."
@@ -130,11 +129,7 @@
         "a native composited frame is published for a cue",
         "the durable project row survives relaunch"
       ],
-      "redReason": [
-        "Import and activation WORK: the fixture reaches the editor playable at 640x360 with the",
-        "right duration. The native subtitle preview then refuses with previewSourceUnreadable.",
-        "Two causes were found this way, one fixed and one open; see knownProductFindings."
-      ]
+      "lastGreenCommit": "pending-commit"
     },
     {
       "name": "subtitlesEditSaveRelaunch",
@@ -197,14 +192,13 @@
         "mid-stream geometry change. 1080p has the same shape, coding to 1088, so this affects a",
         "large share of ordinary video. Reproduced in a plain unit test, not only through the app."
       ],
-      "status": "open",
-      "reproducer": "cargo test -p osg-decode --test padded_source_geometry -- --ignored",
-      "whyNotPatched": [
-        "SourcePresentation derives the display size FROM the coded size, so it cannot express",
-        "'the buffer is 640x368 and the picture inside it is 640x360'. The plane maths reads chroma",
-        "at the coded height, so accepting the padded size without a visible region would produce a",
-        "corrupted image instead of a refusal. It needs a visible rect carried through decode,",
-        "preview and export together."
+      "status": "fixed",
+      "reproducer": "cargo test -p osg-decode --test padded_source_geometry",
+      "fix": [
+        "osg-decode now carries the decoded SURFACE and the VISIBLE picture rectangle separately.",
+        "Media Foundation's aperture attributes are read with a documented precedence and each",
+        "candidate is validated before use; the reader adopts the decoder's first negotiated output",
+        "instead of refusing it, and still refuses a genuine mid-stream change of the picture."
       ]
     }
   ],
@@ -217,6 +211,31 @@
       "audio": "aac mono 48 kHz, 440 Hz tone",
       "durationSeconds": 6.0,
       "why": "Committed rather than generated: a journey is deterministic only against exact bytes, and a different ffmpeg would silently change what \"the 6 second fixture\" means."
+    },
+    "media/bands-1s-640x360-redfoot.mp4": {
+      "sha256": "18a24976a5a1cacf4aecc5d950fbc296d6984dae3d0baef8d23b5ff12a3030d0",
+      "sizeBytes": 2678,
+      "why": "Blue for 352 rows then red for eight, so the rows sitting exactly where macroblock padding would be have a colour of their own. A size check cannot tell padding from picture; this can."
+    },
+    "media/bars-1s-1920x1080.mp4": {
+      "sha256": "10034f513a13a9dec1b95be404666491c2ad1ae484ece25d4d4e2f8391002a59",
+      "sizeBytes": 779902,
+      "why": "1080 is not a multiple of sixteen, so it decodes into a 1088-row surface: the padded case at the size most real video is."
+    },
+    "media/bars-1s-640x360-rotated.mp4": {
+      "sha256": "6cd8805691f8fb4a3c471460b9c7e70af0e9b825cd1bf011a06ba3b0d0514635",
+      "sizeBytes": 100593,
+      "why": "Rotation metadata alongside a padded height."
+    },
+    "media/bars-1s-640x480-aligned.mp4": {
+      "sha256": "cf3b9ee6a5419da42e134be369045c004ebc89d8e61e100a7a77f8cf10622a35",
+      "sizeBytes": 120742,
+      "why": "The control. 480 IS a multiple of sixteen, so no crop applies and a regression that crops always shows up here."
+    },
+    "media/bars-1s-720x480-anamorphic.mp4": {
+      "sha256": "7817ed3de2b6c3958a0bec3f7a509c0e533ecec33ba4406a0c062b5e477843d7",
+      "sizeBytes": 138251,
+      "why": "Non-square pixels, so the crop must not disturb the display stretch."
     }
   }
 }

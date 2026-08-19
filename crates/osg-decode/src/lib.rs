@@ -97,6 +97,7 @@ pub mod planes;
 pub mod presentation;
 pub mod sampling;
 pub mod source;
+mod visible;
 
 #[cfg(windows)]
 pub mod mf;
@@ -112,3 +113,4 @@ pub use planes::{FrameGeometry, NvPlanes};
 pub use presentation::{DisplaySize, PixelAspect, Rotation, SourcePresentation};
 pub use sampling::{OutputSampler, SourceGrid, exact_time_to_100ns};
 pub use source::SourceInfo;
+pub use visible::VisibleRegion;

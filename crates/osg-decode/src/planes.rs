@@ -14,6 +14,7 @@ use core::fmt;
 use crate::colorimetry::{SourceColorimetry, YuvToRgb};
 use crate::error::DecodeError;
 use crate::presentation::Rotation;
+use crate::visible::VisibleRegion;
 
 /// The size of one decoded frame, checked against what 4:2:0 chroma can describe.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -224,16 +225,35 @@ impl<'pixels> NvPlanes<'pixels> {
     /// of introducing a gradient across the block boundary that was never in the file.
     #[must_use]
     pub fn to_rgba8(&self, colorimetry: SourceColorimetry) -> Vec<u8> {
+        self.region_to_rgba8(colorimetry, VisibleRegion::whole(self.geometry))
+    }
+
+    /// Converts only the valid picture inside the surface to tightly packed RGBA8.
+    ///
+    /// The surface a decoder fills is often larger than the video: H.264 codes in sixteen-pixel
+    /// macroblocks, so 640x360 arrives in a 640x368 buffer. Those extra rows hold whatever the
+    /// encoder left there, and converting them would put a band of garbage along the edge. The
+    /// planes are still READ at the surface's own geometry, because that is how the platform laid
+    /// them out; only the samples inside `region` are written out.
+    #[must_use]
+    pub fn region_to_rgba8(
+        &self,
+        colorimetry: SourceColorimetry,
+        region: VisibleRegion,
+    ) -> Vec<u8> {
         let convert = YuvToRgb::new(colorimetry);
-        let width = self.geometry.width();
-        let height = self.geometry.height();
-        // `NvPlanes::new` proved every row below is present, and `FrameGeometry::new` proved this
-        // length is addressable, so nothing in the loop can be out of bounds.
-        let mut pixels = vec![0_u8; self.geometry.rgba_bytes()];
+        let width = region.size().width();
+        let height = region.size().height();
+        // `NvPlanes::new` proved every row of the surface is present and `VisibleRegion::new` proved
+        // this rectangle lies inside it, so nothing in the loop can be out of bounds.
+        let mut pixels = vec![0_u8; region.size().rgba_bytes()];
 
         for row in 0..height {
-            let luma = &self.luma[row * self.luma_stride..][..width];
-            let chroma = &self.chroma[(row / 2) * self.chroma_stride..][..width];
+            let source_row = region.y() + row;
+            let luma = &self.luma[source_row * self.luma_stride + region.x()..][..width];
+            // The region's origin is even, so the chroma pairs stay aligned to the luma columns.
+            let chroma =
+                &self.chroma[(source_row / 2) * self.chroma_stride + region.x()..][..width];
             let output = &mut pixels[row * width * 4..][..width * 4];
 
             for (column, (rgba, &luma_sample)) in output.chunks_exact_mut(4).zip(luma).enumerate() {
@@ -256,22 +276,39 @@ impl<'pixels> NvPlanes<'pixels> {
     /// was measured on and pays nothing at all for rotation support.
     #[must_use]
     pub fn to_rgba8_rotated(&self, colorimetry: SourceColorimetry, rotation: Rotation) -> Vec<u8> {
+        self.region_to_rgba8_rotated(colorimetry, rotation, VisibleRegion::whole(self.geometry))
+    }
+
+    /// Converts only the valid picture, turned upright.
+    ///
+    /// The crop is applied before the turn, because the region describes the stored frame's own
+    /// axes; turning first and cropping after would take the rectangle from the wrong edge.
+    #[must_use]
+    pub fn region_to_rgba8_rotated(
+        &self,
+        colorimetry: SourceColorimetry,
+        rotation: Rotation,
+        region: VisibleRegion,
+    ) -> Vec<u8> {
         if rotation == Rotation::None {
-            return self.to_rgba8(colorimetry);
+            return self.region_to_rgba8(colorimetry, region);
         }
         let convert = YuvToRgb::new(colorimetry);
-        let width = self.geometry.width();
-        let height = self.geometry.height();
-        let destination = rotation.geometry(self.geometry);
+        let width = region.size().width();
+        let height = region.size().height();
+        let destination = rotation.geometry(region.size());
         let row_bytes = destination.width() * 4;
-        // `NvPlanes::new` proved every source row below is present, `FrameGeometry::new` proved this
-        // length is addressable, and `Rotation::place` is a bijection of the frame onto the
-        // transposed one, so every index below is inside both buffers.
+        // `NvPlanes::new` proved every source row is present, `VisibleRegion::new` proved this
+        // rectangle lies inside the surface, `FrameGeometry::new` proved this length is addressable,
+        // and `Rotation::place` is a bijection of the region onto the transposed one, so every index
+        // below is inside both buffers.
         let mut pixels = vec![0_u8; destination.rgba_bytes()];
 
         for row in 0..height {
-            let luma = &self.luma[row * self.luma_stride..][..width];
-            let chroma = &self.chroma[(row / 2) * self.chroma_stride..][..width];
+            let source_row = region.y() + row;
+            let luma = &self.luma[source_row * self.luma_stride + region.x()..][..width];
+            let chroma =
+                &self.chroma[(source_row / 2) * self.chroma_stride + region.x()..][..width];
 
             for (column, &luma_sample) in luma.iter().enumerate() {
                 let pair = column & !1;

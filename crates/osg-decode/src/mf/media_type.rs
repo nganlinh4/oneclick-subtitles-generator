@@ -11,12 +11,12 @@
 
 use windows::Win32::Media::MediaFoundation::{
     IMFAttributes, IMFMediaType, IMFSourceReader, MF_MT_DEFAULT_STRIDE, MF_MT_FRAME_RATE,
-    MF_MT_FRAME_SIZE, MF_MT_MAJOR_TYPE, MF_MT_PIXEL_ASPECT_RATIO, MF_MT_SUBTYPE,
-    MF_MT_VIDEO_NOMINAL_RANGE, MF_MT_VIDEO_ROTATION, MF_MT_YUV_MATRIX, MF_PD_DURATION,
-    MF_READWRITE_ENABLE_HARDWARE_TRANSFORMS, MF_SOURCE_READER_ALL_STREAMS,
-    MF_SOURCE_READER_ENABLE_ADVANCED_VIDEO_PROCESSING, MF_SOURCE_READER_FIRST_VIDEO_STREAM,
-    MF_SOURCE_READER_MEDIASOURCE, MFCreateAttributes, MFCreateMediaType, MFMediaType_Video,
-    MFVideoFormat_NV12,
+    MF_MT_FRAME_SIZE, MF_MT_GEOMETRIC_APERTURE, MF_MT_MAJOR_TYPE, MF_MT_MINIMUM_DISPLAY_APERTURE,
+    MF_MT_PIXEL_ASPECT_RATIO, MF_MT_SUBTYPE, MF_MT_VIDEO_NOMINAL_RANGE, MF_MT_VIDEO_ROTATION,
+    MF_MT_YUV_MATRIX, MF_PD_DURATION, MF_READWRITE_ENABLE_HARDWARE_TRANSFORMS,
+    MF_SOURCE_READER_ALL_STREAMS, MF_SOURCE_READER_ENABLE_ADVANCED_VIDEO_PROCESSING,
+    MF_SOURCE_READER_FIRST_VIDEO_STREAM, MF_SOURCE_READER_MEDIASOURCE, MFCreateAttributes,
+    MFCreateMediaType, MFMediaType_Video, MFVideoFormat_NV12,
 };
 use windows::core::GUID;
 
@@ -140,6 +140,90 @@ pub(crate) fn native_type(
 pub(crate) fn frame_size(media_type: &IMFMediaType) -> Result<(u32, u32), DecodeError> {
     let packed = read_u64(media_type, &MF_MT_FRAME_SIZE).ok_or(DecodeError::NoVideoStream)?;
     Ok(unpack_ratio(packed))
+}
+
+/// A rectangle of valid picture inside a decoded surface, in whole pixels.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) struct ApertureRect {
+    pub x: u32,
+    pub y: u32,
+    pub width: u32,
+    pub height: u32,
+}
+
+/// Which aperture attribute a rectangle came from, so precedence is visible in a failure.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum ApertureSource {
+    /// The region documented as containing valid image data.
+    MinimumDisplay,
+    /// The active picture intended for display with the pixel aspect applied.
+    Geometric,
+}
+
+/// The apertures a media type declares, most authoritative first.
+///
+/// Media Foundation describes the valid picture inside a decoded surface with `MFVideoArea`
+/// attributes rather than with the frame size: `MF_MT_MINIMUM_DISPLAY_APERTURE` is documented as the
+/// region containing valid image data, and `MF_MT_GEOMETRIC_APERTURE` as the active picture intended
+/// for display with the pixel aspect ratio applied. A decoder is free to hand back a surface larger
+/// than either -- H.264 codes in sixteen-pixel macroblocks, so a 640x360 stream decodes into a
+/// 640x368 surface -- and reading `MF_MT_FRAME_SIZE` alone cannot tell the picture from the padding.
+///
+/// Returned in preference order rather than as one answer, because the caller also has the native
+/// type to fall back to and is the only place that knows what the whole surface is.
+pub(crate) fn apertures(media_type: &IMFMediaType) -> Vec<(ApertureSource, ApertureRect)> {
+    [
+        (
+            ApertureSource::MinimumDisplay,
+            MF_MT_MINIMUM_DISPLAY_APERTURE,
+        ),
+        (ApertureSource::Geometric, MF_MT_GEOMETRIC_APERTURE),
+    ]
+    .into_iter()
+    .filter_map(|(source, key)| read_video_area(media_type, &key).map(|rect| (source, rect)))
+    .collect()
+}
+
+/// Reads an `MFVideoArea` blob.
+///
+/// The layout is fixed by the platform: an offset pair in 16.16 fixed point, then a signed 32-bit
+/// width and height. The fractional part of an offset is discarded deliberately -- a sub-pixel
+/// origin cannot address a chroma sample, and rounding it away is what every consumer of this
+/// attribute does. A blob shorter than the structure, or one describing a negative extent, is
+/// treated as absent rather than repaired.
+fn read_video_area(media_type: &IMFMediaType, key: &GUID) -> Option<ApertureRect> {
+    const VIDEO_AREA_BYTES: usize = 16;
+    let mut blob = [0_u8; VIDEO_AREA_BYTES];
+    let mut written = 0_u32;
+    // SAFETY: the key and the buffer are live borrows that outlast the call, the buffer length is
+    // passed as its true size, and the written length is inspected rather than assumed.
+    let read = unsafe { media_type.GetBlob(key, &mut blob, Some(&raw mut written)) };
+    if read.is_err() || written as usize != VIDEO_AREA_BYTES {
+        return None;
+    }
+
+    let whole = |offset: usize| {
+        i32::from_le_bytes([
+            blob[offset],
+            blob[offset + 1],
+            blob[offset + 2],
+            blob[offset + 3],
+        ])
+    };
+    // 16.16 fixed point: the whole-pixel part is the high half.
+    let x = whole(0) >> 16;
+    let y = whole(4) >> 16;
+    let width = whole(8);
+    let height = whole(12);
+    if x < 0 || y < 0 || width <= 0 || height <= 0 {
+        return None;
+    }
+    Some(ApertureRect {
+        x: x.cast_unsigned(),
+        y: y.cast_unsigned(),
+        width: width.cast_unsigned(),
+        height: height.cast_unsigned(),
+    })
 }
 
 /// The frame rate a media type declares, as `(numerator, denominator)`.

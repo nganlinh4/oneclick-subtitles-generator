@@ -241,20 +241,37 @@ impl MediaFoundationDecoder {
 
     /// Re-reads the negotiated format after the reader says it changed.
     ///
-    /// A change of geometry is refused rather than absorbed: the export's output size and the crop
-    /// region both derive from the source dimensions, so a source that changes size part-way
-    /// through has invalidated a decision that was already made.
+    /// A decoder announces its real output type when decoding begins, and that type is routinely a
+    /// larger surface than the one advertised before any sample was produced: 640x360 becomes
+    /// 640x368, 1920x1080 becomes 1920x1088. Treating that as a source changing size mid-stream is
+    /// what made ordinary video undecodable — every frame was refused before the first one arrived.
+    ///
+    /// So the two are separated. Before any sample has been decoded, a new surface is the decoder
+    /// settling on its output, and it is adopted along with the picture rectangle inside it. Once
+    /// frames have been produced, a change of the VISIBLE picture is still refused: the export's
+    /// output size and the crop both derive from it, and a source that really changes shape has
+    /// invalidated a decision already made. A surface that grows around an unchanged picture is
+    /// adopted at any time, because nothing a customer sees depends on the padding.
     fn refresh_output_format(&mut self) -> Result<(), DecodeError> {
         let reader = self.reader()?.clone();
         let output = media_type::current_output_type(&reader, self.stream)?;
+        let native = media_type::native_type(&reader, self.stream)?;
         let (width, height) = media_type::frame_size(&output)?;
+        self.config.limits().check_geometry(width, height)?;
         let coded = FrameGeometry::new(width, height)?;
-        if coded != self.info.coded_geometry() {
+        let refreshed = format::presentation(&output, &native, coded)?;
+
+        let established = self.info.presentation();
+        let decoded_any = self.stats.samples_decoded() > 0;
+        let picture_changed = refreshed.visible().size() != established.visible().size();
+        if picture_changed && decoded_any {
             return Err(DecodeError::SourceGeometryChanged {
-                opened: self.info.coded_geometry(),
-                current: coded,
+                opened: established.visible().size(),
+                current: refreshed.visible().size(),
             });
         }
+
+        self.info = self.info.with_presentation(refreshed);
         self.fallback_stride = format::stride(&output, coded);
         Ok(())
     }
@@ -508,10 +525,15 @@ fn convert(
     grid: SourceGrid,
 ) -> Result<DecodedFrame, DecodeError> {
     let lock = sample.lock(fallback_stride)?;
-    // The planes are read at the **coded** grid, because that is the buffer the platform filled;
+    // The planes are read at the **coded** grid, because that is the buffer the platform filled; only
+    // the **visible** rectangle inside it is converted, because the rest is macroblock padding; and
     // the frame is handed out at the **decoded** grid, because the turn has been applied to it.
     let planes = lock.planes(presentation.coded())?;
-    let pixels = planes.to_rgba8_rotated(colorimetry, presentation.rotation());
+    let pixels = planes.region_to_rgba8_rotated(
+        colorimetry,
+        presentation.rotation(),
+        presentation.visible(),
+    );
     Ok(DecodedFrame::new(
         presentation.decoded(),
         pixels,

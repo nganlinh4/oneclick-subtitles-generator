@@ -36,6 +36,7 @@
 //! that states something we cannot reproduce is not a file to guess about.
 
 use crate::planes::FrameGeometry;
+use crate::visible::VisibleRegion;
 
 /// The quarter turn a source has to be given to be shown upright.
 ///
@@ -207,20 +208,50 @@ impl DisplaySize {
 /// The coded frame, plus everything the container says about presenting it.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct SourcePresentation {
+    /// What the platform allocated and filled. Plane maths reads at this geometry.
     coded: FrameGeometry,
+    /// The picture inside that surface. Everything a customer sees derives from this.
+    visible: VisibleRegion,
     rotation: Rotation,
     pixel_aspect: PixelAspect,
 }
 
 impl SourcePresentation {
-    /// A coded frame with a declared rotation and pixel aspect.
+    /// A coded frame with a declared rotation and pixel aspect, all of it visible.
     #[must_use]
     pub const fn new(coded: FrameGeometry, rotation: Rotation, pixel_aspect: PixelAspect) -> Self {
         Self {
             coded,
+            visible: VisibleRegion::whole(coded),
             rotation,
             pixel_aspect,
         }
+    }
+
+    /// A coded surface whose valid picture is only part of it.
+    ///
+    /// The distinction is not decoration: a decoder returns the surface it finds convenient, and for
+    /// most real video that is larger than the picture. Sizing anything a customer sees from the
+    /// surface shows them the encoder's padding.
+    #[must_use]
+    pub const fn with_visible(
+        coded: FrameGeometry,
+        visible: VisibleRegion,
+        rotation: Rotation,
+        pixel_aspect: PixelAspect,
+    ) -> Self {
+        Self {
+            coded,
+            visible,
+            rotation,
+            pixel_aspect,
+        }
+    }
+
+    /// The rectangle of real picture inside the coded surface.
+    #[must_use]
+    pub const fn visible(self) -> VisibleRegion {
+        self.visible
     }
 
     /// A coded frame the container says nothing else about: square pixels, upright.
@@ -235,10 +266,14 @@ impl SourcePresentation {
         self.coded
     }
 
-    /// The grid a decoded frame carries, which is the coded grid with the rotation applied.
+    /// The grid a decoded frame carries: the VISIBLE picture with the rotation applied.
+    ///
+    /// Deliberately not the coded surface. A frame handed out at the surface's size would carry the
+    /// padded rows, and every consumer downstream — preview publication, texture coordinates, export
+    /// sizing — would inherit them.
     #[must_use]
     pub const fn decoded(self) -> FrameGeometry {
-        self.rotation.geometry(self.coded)
+        self.rotation.geometry(self.visible.size())
     }
 
     /// The correcting turn the frames are decoded with.
@@ -262,8 +297,8 @@ impl SourcePresentation {
     #[must_use]
     pub fn display(self) -> DisplaySize {
         let (width, height) = stretched(
-            edge(self.coded.width()),
-            edge(self.coded.height()),
+            edge(self.visible.size().width()),
+            edge(self.visible.size().height()),
             self.pixel_aspect,
         );
         if self.rotation.transposes() {

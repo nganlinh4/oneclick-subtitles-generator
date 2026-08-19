@@ -49,10 +49,24 @@ impl SourceInfo {
         }
     }
 
-    /// The coded grid, the rotation and the pixel aspect, together.
+    /// The coded grid, the visible picture, the rotation and the pixel aspect, together.
     #[must_use]
     pub const fn presentation(self) -> SourcePresentation {
         self.presentation
+    }
+
+    /// The same source with a re-read presentation.
+    ///
+    /// Used when a decoder announces its real output type after decoding begins, which is routine
+    /// and usually means a larger surface around the same picture. Everything else about the source
+    /// — its timeline, duration and colour description — is a property of the file and is carried
+    /// through unchanged.
+    #[must_use]
+    pub(crate) const fn with_presentation(self, presentation: SourcePresentation) -> Self {
+        Self {
+            presentation,
+            ..self
+        }
     }
 
     /// The grid the platform decodes into, before the rotation is applied.

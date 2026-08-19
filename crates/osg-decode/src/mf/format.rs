@@ -18,6 +18,7 @@ use crate::error::DecodeError;
 use crate::mf::media_type;
 use crate::planes::FrameGeometry;
 use crate::presentation::{PixelAspect, Rotation, SourcePresentation};
+use crate::visible::VisibleRegion;
 
 /// Reads what the container says about presenting its coded pixels.
 ///
@@ -39,7 +40,59 @@ pub(crate) fn presentation(
             PixelAspect::new(numerator, denominator).ok_or(DecodeError::UnsupportedPixelAspect)?
         }
     };
-    Ok(SourcePresentation::new(coded, rotation, pixel_aspect))
+    let visible = visible_region(output, native, coded);
+    Ok(SourcePresentation::with_visible(
+        coded,
+        visible,
+        rotation,
+        pixel_aspect,
+    ))
+}
+
+/// Which part of the decoded surface actually holds picture.
+///
+/// A decoder returns the surface it finds convenient. H.264 codes in sixteen-pixel macroblocks, so a
+/// 640x360 stream decodes into 640x368 and 1920x1080 into 1920x1088; the extra rows hold whatever
+/// the encoder left there. `MF_MT_FRAME_SIZE` describes that surface and cannot distinguish the
+/// picture from the padding, so the aperture attributes are asked first.
+///
+/// PRECEDENCE, in order, with the reason each step exists:
+///
+///   1. the output type's apertures — the negotiated frames are the bytes actually arriving, and
+///      `MF_MT_MINIMUM_DISPLAY_APERTURE` is documented as the region containing valid image data;
+///   2. the native type's apertures — a converter in the middle may have dropped an attribute it did
+///      not change;
+///   3. the native type's frame size, when it fits inside the surface — this is the common case for
+///      macroblock padding, where the file says 360 rows and the decoder hands back 368;
+///   4. the whole surface — nothing said otherwise, so nothing is cropped.
+///
+/// Every candidate is validated by [`VisibleRegion::new`] before it is used, so a malformed or
+/// out-of-bounds rectangle falls through to the next step rather than being repaired or trusted.
+fn visible_region(
+    output: &IMFMediaType,
+    native: &IMFMediaType,
+    coded: FrameGeometry,
+) -> VisibleRegion {
+    let declared = media_type::apertures(output)
+        .into_iter()
+        .chain(media_type::apertures(native));
+    for (_, rect) in declared {
+        let Ok(size) = FrameGeometry::new(rect.width, rect.height) else {
+            continue;
+        };
+        if let Ok(region) = VisibleRegion::new(rect.x, rect.y, size, coded) {
+            return region;
+        }
+    }
+
+    if let Ok((width, height)) = media_type::frame_size(native)
+        && let Ok(size) = FrameGeometry::new(width, height)
+        && let Ok(region) = VisibleRegion::new(0, 0, size, coded)
+    {
+        return region;
+    }
+
+    VisibleRegion::whole(coded)
 }
 
 /// The turn the decoder has to apply, after allowing for one the platform may have applied already.
