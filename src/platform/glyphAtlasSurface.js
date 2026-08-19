@@ -40,10 +40,16 @@ export const readMeasurement = (raw, what) => {
  * kerning on, no letter or word spacing, and an LTR measurement direction — visual order is carried
  * in the descriptor as data, so the raster itself must not depend on the ambient direction.
  *
- * Letter spacing stays pinned to zero here even though the baker now honours a letter-spacing
- * request. Spacing is a layout quantity, not a glyph quantity: baking it into the raster would put
- * it in the atlas bytes where no consumer could take it back out, and would make two runs that
- * differ only in spacing two different atlases.
+ * Spacing and direction are pinned by DEFAULT, and a caller may ask for different ones.
+ *
+ * The default is right for a per-cluster cell: spacing is a layout quantity there, not a glyph one,
+ * and baking it into the raster would put it in atlas bytes no consumer could take back out.
+ *
+ * It is wrong for a whole shaped line. When the raster IS the line, the spacing, the word spacing
+ * used to justify it and the paragraph direction that orders it are all part of what the line looks
+ * like, and measuring or drawing without them describes a different line than the one on screen.
+ * The cost is atlas identity — two spacings become two rasters — which is the honest price of the
+ * mask and its advance coming from one operation instead of two that must agree.
  */
 export const createCanvas2dMeasurementSurface = () => {
   const context = (() => {
@@ -58,14 +64,26 @@ export const createCanvas2dMeasurementSurface = () => {
     fail('glyphAtlasSurfaceUnavailable', 'A 2D canvas context is required to bake a glyph atlas');
   }
 
-  const pin = (target) => Object.assign(target, {
-    direction: 'ltr', fontKerning: 'normal', letterSpacing: '0px',
-    wordSpacing: '0px', textAlign: 'left', textBaseline: 'alphabetic',
-  });
+  /**
+   * Put the context in a known state before every call.
+   *
+   * Explicit rather than assumed: a shared context carries whatever the last caller left, and a
+   * measurement taken under someone else's letter spacing is a measurement of a different text.
+   */
+  const pin = (target, { letterSpacingPx = 0, wordSpacingPx = 0, direction = 'ltr' } = {}) => (
+    Object.assign(target, {
+      direction,
+      fontKerning: 'normal',
+      letterSpacing: `${letterSpacingPx}px`,
+      wordSpacing: `${wordSpacingPx}px`,
+      textAlign: 'left',
+      textBaseline: 'alphabetic',
+    })
+  );
 
   return {
-    measure(cssFont, text) {
-      pin(context);
+    measure(cssFont, text, options) {
+      pin(context, options);
       context.font = cssFont;
       return context.measureText(text);
     },
@@ -89,8 +107,8 @@ export const createCanvas2dMeasurementSurface = () => {
       // multiplies by the scene colour, so colour never bakes into the atlas.
       target.fillStyle = '#ffffff';
       return {
-        drawGlyph({ cssFont, text, penXPx, baselineYPx }) {
-          pin(target);
+        drawGlyph({ cssFont, text, penXPx, baselineYPx, ...options }) {
+          pin(target, options);
           target.font = cssFont;
           target.fillText(text, penXPx, baselineYPx);
         },
