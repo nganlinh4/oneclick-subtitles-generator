@@ -11,11 +11,13 @@
 // The server is compiled only under the `e2e-automation` Cargo feature. `cargo tree` reports two
 // wdio crates in that graph and zero in the production graph.
 
-import { existsSync, readFileSync } from 'node:fs';
+import { existsSync, mkdirSync, readFileSync } from 'node:fs';
+import { join } from 'node:path';
 
 import {
-  APPLICATION_BINARY, createRunRoot, isolationEnvironment, removeRunRoot,
+  APPLICATION_BINARY, REAL_MEDIA_CACHE, createRunRoot, isolationEnvironment, removeRunRoot,
 } from './support/environment.js';
+import { cachedRealVideo } from './support/realMedia.js';
 
 // The run root is created and exported into the environment WHEN THIS CONFIG LOADS, before any
 // hook and before the service spawns the binary.
@@ -36,6 +38,28 @@ import {
 const runRoot = process.env.OSG_E2E_DATA_ROOT && existsSync(process.env.OSG_E2E_DATA_ROOT)
   ? process.env.OSG_E2E_DATA_ROOT
   : createRunRoot();
+// The staged dialog answers, decided before the binary is spawned because the application reads
+// them from its own environment at launch.
+//
+// The open dialog returns the real downloaded video when one is cached; the save dialog writes into
+// the same reviewed directory. Neither is set speculatively: a journey that finds no staged
+// selection meets the real dialog, which is what a customer meets, and says so by hanging rather
+// than by silently using something else.
+const cachedVideo = cachedRealVideo();
+if (process.env.OSG_E2E_MEDIA_SELECTION === undefined && cachedVideo !== null) {
+  process.env.OSG_E2E_MEDIA_SELECTION = cachedVideo;
+}
+if (process.env.OSG_E2E_MEDIA_DESTINATION === undefined) {
+  // A directory, not a file: only the application knows what the asset is called or what container
+  // it ended up in, so it names the file inside this and the journey watches for it to appear.
+  //
+  // A FRESH one per run. The application refuses a staged destination that already exists, and a
+  // refusal is silent — it opens the real dialog behind the window and hangs. Re-running the export
+  // journey into a directory that already held its own output would do exactly that.
+  const exports = join(REAL_MEDIA_CACHE, 'exports', `run-${process.pid}`);
+  mkdirSync(exports, { recursive: true });
+  process.env.OSG_E2E_MEDIA_DESTINATION = exports;
+}
 Object.assign(process.env, isolationEnvironment(runRoot));
 
 export const config = {

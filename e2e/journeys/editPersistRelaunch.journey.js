@@ -11,9 +11,9 @@ import { strict as assert } from 'node:assert';
 
 import { durableState } from '../support/database.js';
 import { clickControl, openEditor } from '../support/editor.js';
+import { REAL_VIDEO } from '../support/realMedia.js';
 import {
   FIRST_CUE,
-  MEDIA_DURATION_SECONDS,
   editCueText,
   importSubtitles,
   openProjectWithMedia,
@@ -102,8 +102,8 @@ describe('a customer edits a cue and reopens the application', () => {
 
     console.log(`after relaunch: ${JSON.stringify(seen, null, 2)}`);
     assert.ok(
-      Math.abs(seen.videoDuration - MEDIA_DURATION_SECONDS) < 0.5,
-      'the restored project must carry the same media',
+      Math.abs(seen.videoDuration - REAL_VIDEO.durationSeconds) <= REAL_VIDEO.durationToleranceSeconds,
+      `the restored project must carry the same media, not ${seen.videoDuration}s`,
     );
     assert.deepEqual(seen.errors, [], 'a restored project must not show an error');
 

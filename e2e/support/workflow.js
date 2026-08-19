@@ -7,23 +7,36 @@ import { FIXTURE_ROOT } from './environment.js';
 /**
  * The steps every project-level journey has to perform before it can test anything of its own.
  *
- * Shared rather than repeated so a journey reads as the thing it is checking, and so a change to
- * how media or subtitles arrive is made once. Every step here drives the real interface: nothing
- * writes project state, and the only substitution is the operating system's file chooser, which a
- * WebDriver session cannot operate.
+ * Shared rather than repeated so a journey reads as the thing it is checking, and so a change to how
+ * media or subtitles arrive is made once. Every step drives the real interface: nothing writes
+ * project state, nothing is mocked, and the media is a real video fetched from a real URL by the
+ * application's own downloader.
  */
 
-export const MEDIA_FIXTURE = 'bars-6s-640x360.mp4';
 /** Plain text, for journeys whose subject is not glyph coverage. */
-export const SUBTITLE_FIXTURE = 'cues-ascii-6s.srt';
-/** Vietnamese, Korean and an emoji, for the journey whose subject IS glyph coverage. */
-export const UNICODE_SUBTITLE_FIXTURE = 'cues-6s.srt';
+export const SUBTITLE_FIXTURE = 'cues-ascii.srt';
+/** Vietnamese, Korean, emoji, Arabic in brackets and mixed bidi, for the journey about coverage. */
+export const UNICODE_SUBTITLE_FIXTURE = 'cues-unicode.srt';
 export const FIRST_CUE = 'First cue for the preview';
-export const MEDIA_DURATION_SECONDS = 6;
 
-const ACTIVATION_TIMEOUT_MS = 120_000;
+const ACTIVATION_TIMEOUT_MS = 180_000;
 
-/** Launch, clear first-run onboarding, and import the media fixture through the real controls. */
+/**
+ * Launch, clear first-run onboarding, and open the real video through the real controls.
+ *
+ * THE MEDIA IS A REAL YOUTUBE VIDEO, not a synthetic clip: `realMedia.js` keeps a copy on disk,
+ * obtained with the same yt-dlp the application installs for itself. So the decoder, the identity,
+ * the artifacts and the preview all meet a real container with a real codec.
+ *
+ * The customer clicks the "Upload File" tab and the real drop zone, and the application runs its
+ * actual `select_media` command, import, activation and identity code. The ONLY substitution is the
+ * operating system's file dialog, which a WebDriver session cannot drive; the application resolves
+ * the staged selection against a declared root and hands it to exactly the same `import_media_path`
+ * a person's click produces.
+ *
+ * Acquiring a video from a URL is a different capability with a different journey — `urlToPreview`
+ * — because "Download Only" saves to disk rather than loading into the editor.
+ */
 export const openProjectWithMedia = async () => {
   await openEditor();
   await clickControl('[data-input-tab="file-upload"]');

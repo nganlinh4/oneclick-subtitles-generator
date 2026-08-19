@@ -115,6 +115,49 @@ impl ProgressReporter {
     }
 }
 
+/// The DIRECTORY a harness has staged for the next export, if any.
+///
+/// This replaces the operating system's SAVE dialog and nothing else: the bytes that follow are
+/// written by exactly the same exporter, to a real file, and every check after this point is the
+/// real one. A `WebDriver` session cannot drive a native dialog, and a journey that skipped the
+/// export command entirely would not be testing the export.
+///
+/// A DIRECTORY rather than a file path, because only this side knows what the asset is called or
+/// what container it ended up in. The harness names a reviewed directory; the exporter puts the
+/// asset's own display name inside it, exactly as the dialog would have proposed. That removes the
+/// one thing a harness could not predict, and with it the silent refusal that follows from guessing
+/// it wrong -- a refused staging opens a real dialog behind the window and hangs the run.
+///
+/// Bounded: the value must be an absolute directory inside `OSG_E2E_FIXTURE_ROOT`, and the file it
+/// resolves to must not already exist, so a staged export can never overwrite anything.
+///
+/// Compiled ONLY into the automation channel. `production` does not enable that feature, no workflow
+/// builds it, and the release gates assert its absence from every shipped artefact.
+#[cfg(feature = "e2e-automation")]
+fn harness_export_destination(display_name: &str) -> Option<std::path::PathBuf> {
+    let root = std::path::PathBuf::from(std::env::var_os("OSG_E2E_FIXTURE_ROOT")?);
+    let directory = std::path::PathBuf::from(std::env::var_os("OSG_E2E_MEDIA_DESTINATION")?);
+    let (root, directory) = (root.canonicalize().ok()?, directory.canonicalize().ok()?);
+    if !directory.starts_with(&root) || !directory.is_dir() {
+        diagnostics::record("media-export.harness-rejected", &[]);
+        return None;
+    }
+    // The display name is the application's own, never anything a harness supplied, so it cannot
+    // carry a separator or a parent reference.
+    let destination = directory.join(display_name);
+    if destination.parent() != Some(directory.as_path()) || destination.exists() {
+        diagnostics::record("media-export.harness-rejected", &[]);
+        return None;
+    }
+    diagnostics::record("media-export.harness-selected", &[]);
+    Some(destination)
+}
+
+#[cfg(not(feature = "e2e-automation"))]
+const fn harness_export_destination(_display_name: &str) -> Option<std::path::PathBuf> {
+    None
+}
+
 #[tauri::command]
 #[allow(
     clippy::needless_pass_by_value,
@@ -140,23 +183,28 @@ pub(crate) async fn media_export_start(
         &[("asset", request.asset_id.to_string())],
     );
 
-    let selected = app
-        .dialog()
-        .file()
-        .set_title("Export media")
-        .set_file_name(resolved.asset().display_name())
-        .add_filter("Media", &[resolved.asset().extension()])
-        .blocking_save_file();
-    let Some(selected) = selected else {
-        diagnostics::record(
-            "media-export.dialog-cancelled",
-            &[("asset", request.asset_id.to_string())],
-        );
-        return Ok(None);
-    };
-    let destination = selected
-        .into_path()
-        .map_err(|_| CommandError::media_export_unsafe())?;
+    let destination =
+        if let Some(staged) = harness_export_destination(resolved.asset().display_name()) {
+            staged
+        } else {
+            let selected = app
+                .dialog()
+                .file()
+                .set_title("Export media")
+                .set_file_name(resolved.asset().display_name())
+                .add_filter("Media", &[resolved.asset().extension()])
+                .blocking_save_file();
+            let Some(selected) = selected else {
+                diagnostics::record(
+                    "media-export.dialog-cancelled",
+                    &[("asset", request.asset_id.to_string())],
+                );
+                return Ok(None);
+            };
+            selected
+                .into_path()
+                .map_err(|_| CommandError::media_export_unsafe())?
+        };
 
     let jobs = Arc::clone(&state.jobs);
     let ticket = background::register_running(&jobs, JobKind::ExportMedia).await?;

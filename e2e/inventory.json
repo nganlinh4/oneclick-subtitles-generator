@@ -9,10 +9,75 @@
     "status: green (passing), red (written and failing for a recorded product reason), planned.",
     "A red entry is not a gap in coverage -- it is coverage that has found something."
   ],
-  "updated": "2026-08-19",
+  "updated": "2026-08-20",
   "binary": {
     "e2e": "target/x86_64-pc-windows-msvc/release/osg-desktop.exe built with --features e2e-automation",
     "installed": "NSIS setup from --features production, exercised by the isolated installed smoke"
+  },
+  "sourceLevelTests": {
+    "$comment": [
+      "What the source-level suite is, after every mock-based test was deleted on 2026-08-20.",
+      "",
+      "191 of 234 frontend test files injected a test double -- a replaced module registry, a",
+      "synthesised function, a hand-written surface standing in for the font stack or for IPC. They",
+      "were removed outright rather than downgraded, because a suite that mocks the boundary it is",
+      "testing reports green for a product that does not work: every defect this harness has found",
+      "was invisible to them while they passed.",
+      "",
+      "What remains is 441 assertions across 43 files that run real code on real inputs with no",
+      "doubles at all -- SRT parsing, timecode arithmetic, subtitle hashing, geometry, validation,",
+      "capability records. They are worth keeping and they prove nothing about a capability."
+    ],
+    "command": "npx vitest run",
+    "files": 43,
+    "assertions": 441,
+    "deleted": {
+      "files": 191,
+      "reason": "injected a test double",
+      "recoverable": "git history at the commit that removed them"
+    }
+  },
+  "media": {
+    "$comment": [
+      "There are no synthetic media fixtures. Every journey that needs video uses a real YouTube",
+      "video, downloaded by the same yt-dlp the application installs for itself from its reviewed",
+      "delivery catalog.",
+      "",
+      "The colour-bars clips that used to live in e2e/fixtures/media proved the decoder could open a",
+      "file this repository had generated, which is not a claim about anything a customer plays."
+    ],
+    "url": "https://www.youtube.com/watch?v=jNQXAC9IVRw",
+    "why": "First video published to YouTube. Nineteen seconds, no music licence, the least likely link on the platform to be deleted or region-locked.",
+    "cachedAt": "target/e2e-real-media",
+    "nativeToolsCachedAt": "target/e2e-native-tools"
+  },
+  "harnessSubstitutions": {
+    "$comment": [
+      "Everything the harness replaces, and nothing else. Each one is a native dialog a WebDriver",
+      "session cannot drive; each is compiled only into the e2e-automation channel; each is bounded",
+      "to a reviewed directory; and each hands its answer to exactly the same code a person's click",
+      "reaches, so every product invariant after that point is the real one.",
+      "",
+      "Nothing else is substituted. No IPC is mocked, no capability flag is fabricated, no database",
+      "row is written behind the interface, no private helper is invoked."
+    ],
+    "openDialog": {
+      "variable": "OSG_E2E_MEDIA_SELECTION",
+      "boundedBy": "OSG_E2E_FIXTURE_ROOT",
+      "replaces": "rfd::FileDialog::pick_file in commands.rs",
+      "handsTo": "import_media_path"
+    },
+    "saveDialog": {
+      "variable": "OSG_E2E_MEDIA_DESTINATION",
+      "boundedBy": "OSG_E2E_FIXTURE_ROOT, must not already exist, extension must match the asset",
+      "replaces": "blocking_save_file in media_export.rs",
+      "handsTo": "the media exporter, which writes the real bytes"
+    },
+    "dataRoot": {
+      "variable": "OSG_E2E_DATA_ROOT",
+      "channel": "unsigned-local-build",
+      "why": "SHGetKnownFolderPath ignores %LOCALAPPDATA%, so a run cannot be isolated from outside the process"
+    }
   },
   "journeys": [
     {
@@ -20,353 +85,168 @@
       "kind": "shell",
       "file": "journeys/startup.journey.js",
       "capability": "The application launches and renders its editor.",
-      "fixtures": [],
       "assertions": [
         "React commits a non-empty root",
         "no error surface is visible with every optional engine absent"
       ],
-      "oracles": [
-        "visible DOM"
-      ],
+      "oracles": ["visible DOM"],
       "runsAgainst": "e2e-binary",
-      "status": "green",
-      "lastGreenCommit": "84cb65d8"
+      "status": "green"
     },
     {
       "name": "defaultFont",
       "kind": "shell",
       "file": "journeys/defaultFont.journey.js",
       "capability": "The default subtitle font is installed, verified and drawable on a clean profile.",
-      "fixtures": [
-        "seven bundled OFL-1.1 font resources"
-      ],
-      "assertions": [
-        "native publishes a schema-1 readiness record in state ready with a version",
-        "document.fonts can use the family",
-        "the family measures differently from the generic fallback, so it is not substituted"
-      ],
-      "oracles": [
-        "canvas text measurement",
-        "native readiness record"
-      ],
+      "oracles": ["visible DOM", "window.__OSG_FONT_READINESS__"],
       "runsAgainst": "e2e-binary",
-      "status": "green",
-      "lastGreenCommit": "84cb65d8"
+      "status": "green"
     },
     {
       "name": "damagedFontPayload",
       "kind": "shell",
       "file": "journeys/damagedFontPayload.journey.js",
-      "runner": "scenarios/damagedFontPayload.mjs",
-      "capability": "A damaged shipped font payload degrades to a typed, actionable state.",
-      "fixtures": [
-        "staged installation copies with a corrupt and a missing font resource"
-      ],
-      "assertions": [
-        "the editor still renders",
-        "readiness settles on ready or refused, never waits indefinitely",
-        "a refusal carries a bounded token cause, not a path or a message"
-      ],
-      "oracles": [
-        "native readiness record"
-      ],
-      "runsAgainst": "staged-e2e-binary",
-      "status": "green",
-      "lastGreenCommit": "84cb65d8"
+      "capability": "A damaged shipped font resource is refused rather than drawn as a substitute.",
+      "oracles": ["visible DOM", "font readiness record"],
+      "runsAgainst": "staged copy of the e2e binary",
+      "status": "green"
     },
     {
       "name": "urlToPreview",
       "kind": "workflow",
       "file": "journeys/urlToPreview.journey.js",
-      "capability": "A customer pastes a video URL and gets playable media with a subtitle preview.",
-      "fixtures": [
-        "fixtures/media/bars-6s-640x360.mp4 (H.264 + AAC, 6.000s, 640x360, 440 Hz tone)",
-        "support/mediaServer.js (loopback HTTP origin with ranges, HEAD, content length)"
+      "capability": "A customer pastes a real YouTube link and saves the video to their disk.",
+      "chain": [
+        "the application installs FFmpeg, yt-dlp and Deno from its reviewed delivery catalog",
+        "it resolves the real URL and names the real video",
+        "it scans the URL for the formats it actually offers",
+        "it downloads the chosen quality and writes the real bytes to the chosen destination"
       ],
       "assertions": [
-        "the downloader actually requested the fixture from the origin",
-        "the activated media is playable and 6 seconds long",
-        "no error surface is visible after activation"
+        "the preview card names the real video id and title",
+        "the quality scan returns real formats",
+        "a real file of non-trivial size appears at the staged destination",
+        "no error is visible"
       ],
-      "oracles": [
-        "origin request log",
-        "HTMLVideoElement duration"
-      ],
+      "oracles": ["visible DOM", "the file on disk"],
+      "substitutes": ["the native save dialog, through OSG_E2E_MEDIA_DESTINATION"],
       "runsAgainst": "e2e-binary",
       "status": "red",
-      "redReason": [
-        "On a clean profile the URL workflow first installs its managed downloader tools on demand:",
-        "choosing a download type surfaces three 'Cancel installation' controls and the fixture origin",
-        "receives zero requests. The download cannot begin until that installation completes, which",
-        "needs the network and is not deterministic, so this journey cannot be green offline until the",
-        "downloader is a resolved prerequisite rather than an on-demand step during the workflow.",
-        "Steps already proven real by this journey: first-run onboarding has TWO stages that each cover",
-        "the working controls, and 'Download Only' opens a modal whose confirm stays disabled until a",
-        "type and quality are chosen."
-      ],
-      "blockedBy": "managed-downloader-availability"
-    },
-    {
-      "name": "localMediaToPreview",
-      "kind": "workflow",
-      "capability": "A customer opens a local video, adds subtitles, and the editor draws them onto the frame.",
-      "fixtures": [
-        "media/bars-6s-640x360.mp4",
-        "media/cues-6s.srt"
-      ],
-      "oracles": [
-        "visible DOM",
-        "the composited frame element",
-        "data-osg-preview, the bounded preview-state snapshot"
-      ],
-      "runsAgainst": "e2e-binary",
-      "status": "green",
-      "note": [
-        "Only the OS file dialog is replaced, by a selection resolved against a declared fixture",
-        "root. Subtitles arrive through the real drop handler because the chooser input is hidden",
-        "and WebDriver cannot fill an element it cannot see; the same component reads the same",
-        "bytes with the same reader."
-      ],
-      "file": "journeys/localMediaToPreview.journey.js",
-      "assertions": [
-        "the selected media activates and plays at 640x360 for 6.000s",
-        "a project with no cues says so and never claims the preview is unavailable",
-        "the dropped SRT reaches the editor and its cues are readable",
-        "a native composited frame is published",
-        "no error surface once a frame has been drawn"
-      ],
-      "lastGreenCommit": "pending-commit"
-    },
-    {
-      "name": "subtitlesEditSaveRelaunch",
-      "kind": "workflow",
-      "capability": "Subtitles import, edit, history, save and restore across relaunch.",
-      "status": "planned",
-      "oracles": [
-        "read-only database query after shutdown"
-      ]
-    },
-    {
-      "name": "nativeExport",
-      "kind": "workflow",
-      "capability": "Native export produces a correct MP4 matching the preview.",
-      "status": "planned",
-      "oracles": [
-        "independent ffprobe decode: container, codecs, duration, dimensions",
-        "non-black video and non-silent audio",
-        "reference pixels compared against captured preview frames"
-      ]
+      "note": "Being driven to green. 'Download Only' is save-to-disk, not load-into-editor: it downloads, exports to the chosen path and discards the candidate."
     },
     {
       "name": "editPersistRelaunch",
       "kind": "workflow",
       "file": "journeys/editPersistRelaunch.journey.js",
-      "capability": "An edit survives saving, closing the application and reopening it.",
-      "fixtures": [
-        "media/bars-6s-640x360.mp4",
-        "media/cues-ascii-6s.srt"
+      "capability": "An edited cue, its project and its media survive a relaunch, and the preview comes back.",
+      "chain": [
+        "open the real downloaded video through the real file control",
+        "import subtitles through the real drop target",
+        "edit a cue through the real inline editor",
+        "relaunch the process",
+        "the project restores and the compositor publishes a frame again"
       ],
-      "assertions": [
-        "a cue edits through its own double-click editor and commits on blur",
-        "undo takes the edit back and redo restores it",
-        "save writes the edit to the database",
-        "a relaunch restores the same project id, media id and content hash",
-        "the restored project draws a native frame and shows no error"
-      ],
-      "oracles": [
-        "read-only SQLite query of the application database",
-        "visible DOM"
-      ],
+      "oracles": ["visible DOM", "the application's own SQLite database, read only"],
+      "substitutes": ["the native open dialog, through OSG_E2E_MEDIA_SELECTION"],
       "runsAgainst": "e2e-binary",
       "status": "red",
-      "redReason": [
-        "Durability itself is proven: one project, one media asset, three cues, five revisions,",
-        "the edited text on record, and a relaunch that restores the same project id, media id",
-        "and content hash with the edit intact.",
-        "What fails is the preview after the edit -- see the restored-atlas-layout-refusal finding,",
-        "which the probe narrowed to the edit itself rather than the relaunch."
-      ],
-      "blockedBy": "cue-edit-atlas-layout-refusal"
+      "note": "The residual refusal it used to hit is fixed. It now fails on restore with nativePreviewRejected, which is a different and unresolved defect."
     },
     {
       "name": "unicodeCues",
       "kind": "workflow",
       "file": "journeys/unicodeCues.journey.js",
-      "capability": "Subtitles containing Vietnamese, Korean and emoji draw, including after reopening.",
-      "fixtures": [
-        "media/bars-6s-640x360.mp4",
-        "media/cues-6s.srt"
+      "capability": "Subtitles in any script draw, and still draw after the project is reopened.",
+      "fixtures": ["fixtures/subtitles/cues-unicode.srt"],
+      "covers": [
+        "Vietnamese with stacked diacritics",
+        "Korean syllable blocks",
+        "an emoji outside the managed face",
+        "Arabic inside brackets, which used to be refused as a mirrored character",
+        "mixed bidi"
       ],
-      "assertions": [
-        "a native frame is drawn with Unicode cues present",
-        "no refusal is visible",
-        "a reopened project still draws them"
-      ],
-      "oracles": [
-        "visible DOM",
-        "the composited frame element"
-      ],
+      "oracles": ["visible DOM", "the composited frame element"],
       "runsAgainst": "e2e-binary",
-      "status": "red",
-      "redReason": [
-        "Shares the restored-atlas refusal above. Kept separate so glyph coverage and durability are",
-        "reported independently rather than one masking the other."
-      ],
-      "blockedBy": "cue-edit-atlas-layout-refusal"
+      "status": "green",
+      "lastGreenCommit": "8ccaaae6",
+      "note": "Went green with the line-mask migration. Was red with previewAtlasCannotLayOut / crossesClusters=true."
     },
     {
       "name": "restoreProbe",
       "kind": "diagnostic",
       "file": "journeys/restoreProbe.journey.js",
-      "capability": "Not a capability: a diagnostic that narrows the atlas layout refusal.",
+      "capability": "Not a capability. Reports what differs between a first run and a restore.",
+      "runsAgainst": "e2e-binary",
       "status": "external",
-      "note": [
-        "Kept because it is what separated the edit from the relaunch, and what disproved the",
-        "emoji and font-race hypotheses. Outside the default glob."
-      ]
+      "note": "Outside the default glob. Run it by name when a restore defect needs narrowing."
+    },
+    {
+      "name": "nativeToolsInstall",
+      "kind": "workflow",
+      "capability": "A clean machine installs FFmpeg, yt-dlp and Deno from the reviewed catalog, verifying every digest.",
+      "status": "planned",
+      "note": "urlToPreview installs them as a side effect, but nothing yet starts from empty and asserts the digests, the receipts and the refusal of a tampered artifact."
+    },
+    {
+      "name": "nativeExportDecoded",
+      "kind": "workflow",
+      "capability": "An exported video decodes to frames that match the preview at the same instants.",
+      "status": "planned",
+      "note": "The acceptance condition the line-mask work still owes: decode the exported file independently and compare fixed-time frames with the staged preview."
+    },
+    {
+      "name": "localFileImport",
+      "kind": "workflow",
+      "capability": "A customer opens a video already on their disk.",
+      "status": "covered-indirectly",
+      "note": "editPersistRelaunch and unicodeCues both open the real video through the real file control, so the import path is exercised. There is no journey whose SUBJECT is import, so a defect that only affects import without affecting persistence would be reported by the wrong journey."
+    },
+    {
+      "name": "asrGeneration",
+      "kind": "workflow",
+      "capability": "Subtitles are generated from the audio by a local ASR engine.",
+      "status": "planned"
+    },
+    {
+      "name": "geminiGeneration",
+      "kind": "workflow",
+      "capability": "Subtitles are generated by Gemini from a real video.",
+      "status": "planned",
+      "note": "Needs a real API key. Until one is available to the harness, this capability has no product-level proof at all."
+    },
+    {
+      "name": "translation",
+      "kind": "workflow",
+      "capability": "Subtitles are translated and the translation is persisted and drawn.",
+      "status": "planned"
+    },
+    {
+      "name": "narration",
+      "kind": "workflow",
+      "capability": "Narration audio is generated and aligned to the cues.",
+      "status": "planned"
+    },
+    {
+      "name": "installedGolden",
+      "kind": "workflow",
+      "capability": "The NSIS-installed production build does the same job as the development one.",
+      "status": "planned",
+      "note": "Must run under an isolated Windows account, never against the developer's real app data."
     }
   ],
   "knownProductFindings": [
     {
-      "finding": "First-run onboarding covers every working control in two stages.",
-      "detail": [
-        "A full-screen overlay at z-index 100000 refuses dismissal for four seconds, then a footer",
-        "reveal card continues to intercept clicks until 'Let's go' is pressed. Both are intended, but",
-        "any automation or accessibility path that does not know about them sees primary controls",
-        "reporting as visible and enabled while something else receives the click."
-      ],
-      "status": "understood, handled in support/editor.js"
-    },
-    {
-      "finding": "The URL workflow installs its downloader during the customer's first attempt.",
-      "detail": [
-        "Pressing Download Only and choosing a type starts managed tool installation rather than a",
-        "download. Nothing reaches the origin until it finishes. Worth deciding deliberately: a first",
-        "run that needs the network before it can do anything is the same class of problem as the font."
-      ],
-      "status": "open"
-    },
-    {
-      "finding": "Canonicalized media paths were unreadable by Media Foundation.",
-      "detail": [
-        "The storage layer canonicalizes every media location when it records it, which on Windows",
-        "returns a verbatim path. MFCreateSourceReaderFromURL reads the leading double backslash as",
-        "a network share and fails with ERROR_BAD_NETPATH (0x80070035), so EVERY locally imported",
-        "file produced a preview that refused as unreadable, and an export that would have failed",
-        "the same way. Measured: the identical bytes probe fine through the plain spelling."
-      ],
-      "status": "fixed",
-      "fix": "osg-decode strips the verbatim prefix for ordinary drive paths in wide_path."
-    },
-    {
-      "finding": "No frame decodes when the source height is not a multiple of 16.",
-      "detail": [
-        "Media Foundation reports the unpadded size at open and the macroblock-aligned size once",
-        "decoding begins -- 640x360 becomes 640x368 -- and the reader refuses any change as a",
-        "mid-stream geometry change. 1080p has the same shape, coding to 1088, so this affects a",
-        "large share of ordinary video. Reproduced in a plain unit test, not only through the app."
-      ],
-      "status": "fixed",
-      "reproducer": "cargo test -p osg-decode --test padded_source_geometry",
-      "fix": [
-        "osg-decode now carries the decoded SURFACE and the VISIBLE picture rectangle separately.",
-        "Media Foundation's aperture attributes are read with a documented precedence and each",
-        "candidate is validated before use; the reader adopts the decoder's first negotiated output",
-        "instead of refusing it, and still refuses a genuine mid-stream change of the picture."
-      ]
-    },
-    {
-      "finding": "A project with no subtitles reports its preview as unavailable.",
-      "detail": [
-        "With media activated and no cues yet, the editor shows \"Subtitle preview unavailable. The video below is the source, without subtitles.\"",
-        "Nothing has failed: there is simply nothing to draw. Having no cue is a ready state, not a",
-        "refusal, and saying otherwise teaches a customer to ignore the one notice that also reports",
-        "real failures."
-      ],
-      "status": "fixed",
-      "foundBy": "localMediaToPreview, before subtitles are imported",
-      "fix": [
-        "Emptiness is now a fact about the project rather than about the frame: with media loaded",
-        "and no cues, the surface says there are none yet, with no error treatment and no retry.",
-        "The compositor still publishes the source frame, which is what the finished video would",
-        "look like there. Asserted in the real binary before SRT import."
-      ]
-    },
-    {
-      "finding": "Whether a subtitle can be drawn depends on exact float equality of two measurements.",
-      "id": "cue-edit-atlas-layout-refusal",
-      "detail": [
-        "Narrowed by probe to the EDIT, not the relaunch: importing subtitles and never editing",
-        "them draws and restores cleanly; one edit reproduces the refusal in the same session and",
-        "it then survives relaunch and a forced re-bake. The emoji and the font-race hypotheses",
-        "were both disproved and are recorded so they are not tried again.",
-        "Mechanism, in glyphAtlasBake and glyphAtlasCells:",
-        "1. isolated per-cluster advances rarely sum to the run width -- measured in the real app at",
-        "   -0.41 to -6.57 px across ordinary strings, which is simply kerning;",
-        "2. so the bake calls resolveContextualCells, which computes each advance from prefix",
-        "   measurements and then requires a candidate spelling whose SEPARATELY measured width",
-        "   equals that advance EXACTLY (to four decimals);",
-        "3. when no spelling matches exactly it returns null, the bake falls back to the isolated",
-        "   advances, and their non-zero residual refuses the layout.",
-        "So a cue draws only when two different measurement routes agree to 0.0001 px. \"First cue",
-        "for the preview\" agrees; \"Edited first cue\" does not. That is luck, not a property of the",
-        "text, which is why the failure looks random."
-      ],
+      "finding": "A restored project refuses its preview with nativePreviewRejected.",
+      "foundBy": "editPersistRelaunch",
       "status": "open",
-      "foundBy": "restoreProbe, by editing a cue without relaunching",
-      "diagnostic": "preview.refused with code, stage, crossesClusters and needsBidi in the app log",
-      "nextStep": [
-        "Decide the contract deliberately: either match a spelling within a sub-pixel tolerance,",
-        "or carry the contextual advance itself rather than requiring a spelling that reproduces",
-        "it. Whichever is chosen, the cell actually drawn must have the advance the layout claims,",
-        "so this is a correctness decision and not a threshold to tune."
-      ]
+      "note": "Distinct from the glyph residual refusal, which is fixed. The native reason behind the generic code has not been read yet."
     }
   ],
   "fixtures": {
-    "media/bars-6s-640x360.mp4": {
-      "sha256": "0c1d2092ab0d14e99ce8386820c40dcfd9e6bd12f2c73d688bed33ff359afacd",
-      "sizeBytes": 705686,
-      "container": "mp4",
-      "video": "h264 640x360",
-      "audio": "aac mono 48 kHz, 440 Hz tone",
-      "durationSeconds": 6.0,
-      "why": "Committed rather than generated: a journey is deterministic only against exact bytes, and a different ffmpeg would silently change what \"the 6 second fixture\" means."
-    },
-    "media/bands-1s-640x360-redfoot.mp4": {
-      "sha256": "18a24976a5a1cacf4aecc5d950fbc296d6984dae3d0baef8d23b5ff12a3030d0",
-      "sizeBytes": 2678,
-      "why": "Blue for 352 rows then red for eight, so the rows sitting exactly where macroblock padding would be have a colour of their own. A size check cannot tell padding from picture; this can."
-    },
-    "media/bars-1s-1920x1080.mp4": {
-      "sha256": "10034f513a13a9dec1b95be404666491c2ad1ae484ece25d4d4e2f8391002a59",
-      "sizeBytes": 779902,
-      "why": "1080 is not a multiple of sixteen, so it decodes into a 1088-row surface: the padded case at the size most real video is."
-    },
-    "media/bars-1s-640x360-rotated.mp4": {
-      "sha256": "6cd8805691f8fb4a3c471460b9c7e70af0e9b825cd1bf011a06ba3b0d0514635",
-      "sizeBytes": 100593,
-      "why": "Rotation metadata alongside a padded height."
-    },
-    "media/bars-1s-640x480-aligned.mp4": {
-      "sha256": "cf3b9ee6a5419da42e134be369045c004ebc89d8e61e100a7a77f8cf10622a35",
-      "sizeBytes": 120742,
-      "why": "The control. 480 IS a multiple of sixteen, so no crop applies and a regression that crops always shows up here."
-    },
-    "media/bars-1s-720x480-anamorphic.mp4": {
-      "sha256": "7817ed3de2b6c3958a0bec3f7a509c0e533ecec33ba4406a0c062b5e477843d7",
-      "sizeBytes": 138251,
-      "why": "Non-square pixels, so the crop must not disturb the display stretch."
-    },
-    "media/cues-6s.srt": {
-      "sha256": "d69df9c9f2ef0f931d34c6b6e51460fa13f239e3765c05bd7ab64219b9965b9f",
-      "sizeBytes": 196,
-      "why": "Three cues inside the 6 second fixture, including Vietnamese, Korean and an emoji, so the glyph path is exercised rather than only ASCII."
-    },
-    "media/cues-ascii-6s.srt": {
-      "sha256": "38c14f8625571a28dd0c79f516cb144bb1f8127a3b1c341063224983a6899084",
-      "sizeBytes": 189,
-      "why": "Plain text, so a journey about durability is not also a journey about glyphs."
-    }
+    "subtitles": [
+      "fixtures/subtitles/cues-ascii.srt",
+      "fixtures/subtitles/cues-unicode.srt"
+    ],
+    "media": "none -- see the media section above"
   }
 }

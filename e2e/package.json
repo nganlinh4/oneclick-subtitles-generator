@@ -7,8 +7,10 @@
   "scripts": {
     "test": "wdio run wdio.conf.js --spec ./journeys/startup.journey.js --spec ./journeys/defaultFont.journey.js",
     "test:damaged-font": "node scenarios/damagedFontPayload.mjs",
-    "test:workflows": "wdio run wdio.conf.js --spec ./journeys/localMediaToPreview.journey.js --spec ./journeys/editPersistRelaunch.journey.js",
-    "recon": "wdio run wdio.conf.js --spec ./journeys/reconnaissance.journey.js"
+    "test:workflows": "wdio run wdio.conf.js --spec ./journeys/urlToPreview.journey.js --spec ./journeys/editPersistRelaunch.journey.js --spec ./journeys/unicodeCues.journey.js",
+    "test:download": "wdio run wdio.conf.js --spec ./journeys/urlToPreview.journey.js",
+    "recon": "wdio run wdio.conf.js --spec ./journeys/reconnaissance.journey.js",
+    "probe:restore": "wdio run wdio.conf.js --spec ./journeys/restoreProbe.journey.js"
   },
   "devDependencies": {
     "@wdio/cli": "9.20.0",

@@ -1,121 +1,138 @@
-// The first real customer workflow: a URL becomes a playable video with a subtitle preview.
+// A customer pastes a real YouTube link and saves the video to their disk.
 //
-// Everything before this journey tested that the application starts. This tests that it does its
-// job. It types a URL into the real input, presses the real button, and waits for the product to
-// reach the state a customer came for — media activated and a preview surface that is not dormant.
+// This is the product's real acquisition path, end to end and unsubstituted: the application
+// installs FFmpeg, yt-dlp and Deno for itself from its reviewed delivery catalog, scans the real URL
+// for the formats it actually offers, downloads the one the customer picked, and writes it where
+// they said. No local origin pretending to be a CDN, no fixture MP4, no mocked IPC.
 //
-// Nothing is injected. The URL points at a local HTTP origin serving a real MP4 with ranges and
-// content length, so the actual downloader protocol runs; the application cannot tell it from any
-// other server. No IPC is mocked, no capability flag is fabricated, no database row is written.
+// WHAT "DOWNLOAD ONLY" MEANS, because the first version of this journey got it wrong. It is
+// save-to-disk. It does NOT load the video into the editor — it downloads, exports to the chosen
+// destination, and discards the candidate. So it opens a native save dialog, which is correct: a
+// customer asking for a file on their disk has to say where. The journeys that work ON a video open
+// it afterwards, which is `editPersistRelaunch` and the rest.
+//
+// THE SAVE DIALOG IS STAGED, NOT AVOIDED. `OSG_E2E_MEDIA_DESTINATION` answers it with a path inside
+// the reviewed fixture root, the way `OSG_E2E_MEDIA_SELECTION` answers the open dialog. Both are
+// compiled only into the automation channel. Everything after the dialog — the download, the
+// export, the bytes — is the product's own.
+//
+// WHAT IT CANNOT SEE. The video's real title needs a YouTube Data API credential, which this
+// harness has none of, so the card reads "YouTube Video". That is what an unconfigured install
+// shows and it does not affect the download, which goes through yt-dlp. The journey asserts the
+// resolved video ID instead, which is credential-free and is the thing that decides what is fetched.
+//
+// WHAT IT COSTS. The first run on a machine installs about 110 MB of tools, which is the product's
+// own first-run behaviour; `e2e/support/environment.js` keeps them between runs. The video is
+// nineteen seconds.
 
 import { strict as assert } from 'node:assert';
+import { existsSync, readdirSync, statSync } from 'node:fs';
+import { join } from 'node:path';
 
+import { confirmDownloadOnly } from '../support/download.js';
 import { clickControl, openEditor } from '../support/editor.js';
-import { startMediaServer } from '../support/mediaServer.js';
+import { REAL_VIDEO } from '../support/realMedia.js';
 
-const FIXTURE = 'bars-6s-640x360.mp4';
-const WORKFLOW_TIMEOUT_MS = 240_000;
+// Installing the tools and fetching the video is a real network operation on a first run. Kept
+// BELOW mocha's own cap so this journey's diagnostic is what gets reported, not "took too long".
+const WORKFLOW_TIMEOUT_MS = 600_000;
 
 /** Everything a failure needs to name the exact edge that broke. */
 const inspect = () => browser.execute(() => {
   const text = (selector) => [...document.querySelectorAll(selector)]
     .map((node) => (node.innerText || '').trim()).filter(Boolean).slice(0, 6);
-
-  const video = document.querySelector('video');
   return {
-    rootChildren: document.querySelector('#root')?.childElementCount ?? -1,
-    fontReadiness: window.__OSG_FONT_READINESS__?.state ?? null,
-    // What the user can see, in the words they would see.
     errors: text('.error, [role="alert"]'),
     status: text('[role="status"]'),
     progress: text('[class*="progress" i], [class*="downloading" i]'),
     toasts: text('[class*="toast" i]'),
-    hasVideoElement: video !== null,
-    videoReadyState: video?.readyState ?? null,
-    videoDuration: Number.isFinite(video?.duration) ? video.duration : null,
-    hasNativeFrame: document.querySelector('.native-composited-frame') !== null,
-    previewUnavailable: text('.native-preview-unavailable'),
-    // The editor only exists once media is active; its presence is the activation signal.
-    hasEditor: document.querySelector('[class*="video-preview" i], [class*="lyrics" i]') !== null,
+    modalOpen: document.querySelector('.download-only-modal') !== null,
+    videoTitle: text('.video-title'),
+    videoId: text('.video-id-value'),
+    pageText: (document.body?.innerText || '').slice(0, 400),
   };
 });
 
 const report = (label, seen) => console.log(`--- ${label} ---\n${JSON.stringify(seen, null, 2)}`);
 
-describe('a customer turns a video URL into a subtitle preview', () => {
-  let origin = null;
+describe('a customer saves a real YouTube video to disk', () => {
+  it('installs its tools, scans the real URL, downloads it and writes the file', async () => {
+    const directory = process.env.OSG_E2E_MEDIA_DESTINATION;
+    assert.ok(directory, 'the harness must stage a save directory for this journey');
+    // The application CANONICALIZES this directory before it will honour the staging. A missing one
+    // is refused silently, which opens a real save dialog behind the window and hangs the run.
+    assert.ok(existsSync(directory), `the staged save directory must exist: ${directory}`);
+    const before = new Set(readdirSync(directory));
+    const written = () => readdirSync(directory).filter((name) => !before.has(name));
 
-  before(async () => {
-    origin = await startMediaServer();
-  });
-
-  after(async () => {
-    if (origin !== null) await origin.stop();
-  });
-
-  it('downloads the video, activates it, and shows a preview surface', async () => {
-    // A first-time customer meets the onboarding overlay before anything else, and it covers every
-    // control until dismissed.
     const onboarding = await openEditor();
     console.log(`onboarding cleared: ${JSON.stringify(onboarding)}`);
+    console.log(`real video: ${REAL_VIDEO.url}`);
+    console.log(`staged save directory: ${directory}`);
 
-    const url = origin.urlFor(FIXTURE);
-    console.log(`fixture origin: ${url}`);
-
-    // The real controls, driven the way a person drives them: focus, type, press the button that
-    // does the job. "Download Only" is the pure media path -- it fetches and activates without
-    // involving transcription, which is the next link in the chain rather than this one.
+    // The real control, driven the way a person drives it: focus the field, type the link.
     const field = await $('.url-field');
     await field.waitForDisplayed({ timeout: 30_000 });
-    await field.setValue(url);
+    await field.setValue(REAL_VIDEO.url);
 
-    // "Download Only" opens a modal offering quality and format; the customer then confirms. The
-    // first version of this journey pressed only the first button and waited four minutes for a
-    // download that was never asked for.
-    await clickControl('.download-only-btn');
-    await clickControl('.download-only-modal .confirm-button');
-
+    // Typing a link resolves it: the application fetches the video's identity and shows a preview
+    // card. That the card names the RIGHT video is the first thing worth asserting — a resolution
+    // that silently failed would still let the button below be pressed.
     let seen = await inspect();
-    report('immediately after pressing the button', seen);
+    await browser.waitUntil(async () => {
+      seen = await inspect();
+      return seen.videoId.includes(REAL_VIDEO.id);
+    }, {
+      timeout: 120_000,
+      interval: 2_000,
+      timeoutMsg: () => `the URL never resolved to ${REAL_VIDEO.id}. last: ${JSON.stringify(seen)}`,
+    });
+    report('after the URL resolved', seen);
 
-    // The customer outcome: media is active and the editor is showing it. Progress and job status
-    // are steps along the way, not the thing being asserted.
+    // The TITLE is deliberately not asserted. It comes from the YouTube Data API, which needs an
+    // API key or OAuth this harness does not have, so an unconfigured install shows the placeholder
+    // "YouTube Video" — measured, and correct: the download below uses yt-dlp and needs no
+    // credential at all. Asserting the title here would be asserting that a key is configured.
+    console.log(`title shown without a Data API credential: ${JSON.stringify(seen.videoTitle)}`);
+
+    // "Download Only" opens a modal that scans the real URL for the formats it actually offers. The
+    // customer chooses a type and a quality from that scan, and only then can confirm.
+    await clickControl('.download-only-btn');
+    await confirmDownloadOnly();
+
+    // The customer outcome: the file they asked for is on their disk. Progress and job status are
+    // steps along the way, not the thing being asserted.
     let polls = 0;
     await browser.waitUntil(async () => {
       seen = await inspect();
       polls += 1;
       if (polls % 10 === 0) {
-        console.log(`still waiting after ${polls * 2}s; origin requests: ${origin.requests.length}; `
-          + `visible: ${JSON.stringify({ errors: seen.errors, progress: seen.progress, toasts: seen.toasts })}`);
+        console.log(`still waiting after ${polls * 3}s; visible: `
+          + JSON.stringify({ errors: seen.errors, progress: seen.progress, toasts: seen.toasts }));
       }
-      return seen.hasVideoElement && seen.videoDuration !== null;
+      const fresh = written();
+      return fresh.length > 0 && statSync(join(directory, fresh[0])).size > 0;
     }, {
       timeout: WORKFLOW_TIMEOUT_MS,
-      interval: 2_000,
-      timeoutMsg: () => 'the URL never became playable media. last observation: '
-        + JSON.stringify(seen, null, 2)
-        + `\nserver saw ${origin.requests.length} request(s): `
-        + JSON.stringify(origin.requests.slice(0, 8), null, 2),
+      interval: 3_000,
+      timeoutMsg: () => [
+        'the video was never written to the staged directory.',
+        `directory: ${directory}`,
+        'If nothing arrived and no error is visible, the staging was refused and a REAL save '
+          + 'dialog is open behind the application window.',
+        `last observation: ${JSON.stringify(seen, null, 2)}`,
+      ].join('\n'),
     });
 
-    report('after activation', seen);
+    const [name] = written();
+    const bytes = statSync(join(directory, name)).size;
+    console.log(`wrote ${bytes} bytes to ${name}`);
+    report('after the download finished', seen);
 
-    // The application really did fetch it from the origin, rather than resolving it some other way.
-    assert.ok(
-      origin.requests.length > 0,
-      'the downloader must have contacted the fixture origin; it made no request at all',
-    );
-    assert.ok(
-      origin.requests.some((request) => request.name === FIXTURE),
-      `the downloader must have requested ${FIXTURE}; it asked for `
-        + JSON.stringify(origin.requests.map((request) => request.name)),
-    );
-
-    // Playable, with the duration the fixture actually has.
-    assert.ok(
-      Math.abs(seen.videoDuration - 6) < 0.5,
-      `the activated media must be the 6 second fixture, not ${seen.videoDuration}`,
-    );
-    assert.deepEqual(seen.errors, [], 'no error may be visible after a successful activation');
+    // A real video, not an empty file or an error page saved under an .mp4 name. "Me at the zoo" at
+    // its lowest rung is a few hundred kilobytes; the bound is loose because the exact encode is
+    // yt-dlp's business and changes without notice.
+    assert.ok(bytes > 50_000, `the saved file must be a real video, not ${bytes} bytes`);
+    assert.deepEqual(seen.errors, [], 'no error may be visible after a successful download');
   });
 });
