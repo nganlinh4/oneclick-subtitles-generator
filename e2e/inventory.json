@@ -285,29 +285,34 @@
       "foundBy": "localMediaToPreview, before subtitles are imported"
     },
     {
-      "finding": "Editing a cue can permanently break the subtitle preview.",
+      "finding": "Whether a subtitle can be drawn depends on exact float equality of two measurements.",
       "id": "cue-edit-atlas-layout-refusal",
       "detail": [
-        "Narrowed by probe: the refusal appears IMMEDIATELY after a cue is edited, in the same",
-        "session, before any relaunch. It then survives the relaunch and a forced re-bake. A run",
-        "that imports the same subtitles and never edits them draws its frame and restores fine,",
-        "so this is neither a restore defect nor a race, and the two earlier hypotheses -- the",
-        "emoji, and a font race at bake time -- were both wrong and are recorded so they are not",
-        "tried again.",
-        "The verdict is decided in glyphAtlasBake/glyphAtlasShaping as",
-        "shapingResidualPx = round4(runAdvanceWidthPx - sum of per-cluster advances), refused when",
-        "that is EXACTLY non-zero. So whether a cue can be drawn depends on the measured width of",
-        "the whole run equalling the sum of its parts to within 0.0001 px. \"First cue for the",
-        "preview\" happens to be exact; \"Edited first cue\" is not.",
-        "What is not yet known is the magnitude of the residual, which decides the fix: noise at",
-        "1e-4 means the comparison needs a sub-pixel tolerance, while a residual near a whole pixel",
-        "means real inter-cluster kerning that per-cell layout genuinely cannot reproduce. The",
-        "refusal that crosses to native carries booleans only, so the number is not recorded yet."
+        "Narrowed by probe to the EDIT, not the relaunch: importing subtitles and never editing",
+        "them draws and restores cleanly; one edit reproduces the refusal in the same session and",
+        "it then survives relaunch and a forced re-bake. The emoji and the font-race hypotheses",
+        "were both disproved and are recorded so they are not tried again.",
+        "Mechanism, in glyphAtlasBake and glyphAtlasCells:",
+        "1. isolated per-cluster advances rarely sum to the run width -- measured in the real app at",
+        "   -0.41 to -6.57 px across ordinary strings, which is simply kerning;",
+        "2. so the bake calls resolveContextualCells, which computes each advance from prefix",
+        "   measurements and then requires a candidate spelling whose SEPARATELY measured width",
+        "   equals that advance EXACTLY (to four decimals);",
+        "3. when no spelling matches exactly it returns null, the bake falls back to the isolated",
+        "   advances, and their non-zero residual refuses the layout.",
+        "So a cue draws only when two different measurement routes agree to 0.0001 px. \"First cue",
+        "for the preview\" agrees; \"Edited first cue\" does not. That is luck, not a property of the",
+        "text, which is why the failure looks random."
       ],
       "status": "open",
       "foundBy": "restoreProbe, by editing a cue without relaunching",
       "diagnostic": "preview.refused with code, stage, crossesClusters and needsBidi in the app log",
-      "nextStep": "Carry the residual magnitude in the staged refusal so it reaches the app log, then choose the tolerance or the layout fix on evidence."
+      "nextStep": [
+        "Decide the contract deliberately: either match a spelling within a sub-pixel tolerance,",
+        "or carry the contextual advance itself rather than requiring a spelling that reproduces",
+        "it. Whichever is chosen, the cell actually drawn must have the advance the layout claims,",
+        "so this is a correctness decision and not a threshold to tune."
+      ]
     }
   ],
   "fixtures": {
