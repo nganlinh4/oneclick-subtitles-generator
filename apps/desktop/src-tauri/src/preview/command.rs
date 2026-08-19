@@ -190,7 +190,11 @@ pub(crate) fn preview_frame_render(
         .resolve_media(request.render.source_asset_id)
         .map_err(|_| refused(PreviewRefusal::SourceUnreadable, "resolve-media"))?
         .ok_or_else(|| refused(PreviewRefusal::MediaUnavailable, "resolve-media"))?;
+    // Every refusal from here on is recorded too. Only the two above were, so a preview that failed
+    // anywhere inside the render left the editor showing a code and the log showing nothing — which
+    // is exactly the state a restored project's refusal was found in.
     render_preview_frame(&host, &server, &*atlases, source.path(), request)
+        .map_err(|refusal| refused(refusal, "render"))
 }
 
 /// Record a preview refusal before it leaves for the `WebView`.

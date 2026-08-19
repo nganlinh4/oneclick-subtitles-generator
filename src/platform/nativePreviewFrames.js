@@ -113,7 +113,27 @@ export const NATIVE_PREVIEW_RESPONSE_FIELDS = Object.freeze([
 /** Mirrors the code shape `desktopRuntime` already guarantees for a sanitized bridge error. */
 const NATIVE_CODE_PATTERN = /^[A-Za-z][A-Za-z0-9]{0,127}$/;
 
-const rejected = (error) => {
+/**
+ * Why a response was refused, as a bounded token.
+ *
+ * These name THIS side's checks, not the renderer's. They exist because all of them used to report
+ * `nativePreviewRejected` with no further detail, so a customer — and a journey — could not tell a
+ * malformed response from a frame of the wrong size, and the editor showed a code that named the
+ * transport rather than the disagreement. Every value is a fixed identifier: no path, no size, no
+ * URL and no subtitle text is ever carried.
+ */
+export const NATIVE_PREVIEW_RESPONSE_REFUSALS = Object.freeze([
+  'previewResponseShape',
+  'previewResponseUrl',
+  'previewResponsePort',
+  'previewResponseSequence',
+  'previewResponseFrameIndex',
+  'previewResponseMimeType',
+  'previewResponseLayer',
+  'previewResponseSize',
+]);
+
+const rejected = (error, reason = null) => {
   const failure = new NativePreviewFrameError(
     'nativePreviewRejected',
     'The desktop renderer did not produce the requested preview frame'
@@ -122,6 +142,16 @@ const rejected = (error) => {
   // they are the only fields that could ever carry a path, a process argument or the user's text.
   if (typeof error?.code === 'string' && NATIVE_CODE_PATTERN.test(error.code)) {
     failure.nativeCode = error.code;
+  } else if (reason !== null) {
+    // Enforced rather than trusted: a reason that is not in the declared vocabulary would reach the
+    // interface as an unexplained token, which is the state this whole change exists to end.
+    if (!NATIVE_PREVIEW_RESPONSE_REFUSALS.includes(reason)) {
+      throw new NativePreviewFrameError(
+        'nativePreviewRejected',
+        'A preview response refusal used an undeclared reason'
+      );
+    }
+    failure.nativeCode = reason;
   }
   return failure;
 };
@@ -148,22 +178,35 @@ const fromNativeError = (error) => {
  * could tell.
  */
 const toOutcome = ({ payload, composition, cacheKey }, response) => {
-  if (!hasExactKeys(response, NATIVE_PREVIEW_RESPONSE_FIELDS)) throw rejected(null);
+  if (!hasExactKeys(response, NATIVE_PREVIEW_RESPONSE_FIELDS)) {
+    throw rejected(null, 'previewResponseShape');
+  }
   const match = typeof response.frameUrl === 'string' ? FRAME_URL_PATTERN.exec(response.frameUrl) : null;
-  if (match === null) throw rejected(null);
+  if (match === null) throw rejected(null, 'previewResponseUrl');
   const [, portText, sequenceId, indexText] = match;
   const port = Number(portText);
-  if (!isBounded(port, 1, 65_535)
-      || String(port) !== portText
-      || !isUuidV4(sequenceId)
-      || response.sequenceId !== sequenceId
-      || response.frameIndex !== payload.frameIndex
-      || String(payload.frameIndex) !== indexText
-      || !FRAME_MIME_TYPES.has(response.mimeType)
-      || response.layer !== payload.layer
-      || response.widthPx !== composition.widthPx
-      || response.heightPx !== composition.heightPx) {
-    throw rejected(null);
+  // Each check names itself. They used to be one disjunction reporting one code, which meant a
+  // frame that arrived for the wrong instant was indistinguishable from a malformed port — and the
+  // only thing a customer could report was that the preview "was rejected".
+  if (!isBounded(port, 1, 65_535) || String(port) !== portText) {
+    throw rejected(null, 'previewResponsePort');
+  }
+  if (!isUuidV4(sequenceId) || response.sequenceId !== sequenceId) {
+    throw rejected(null, 'previewResponseSequence');
+  }
+  if (response.frameIndex !== payload.frameIndex || String(payload.frameIndex) !== indexText) {
+    throw rejected(null, 'previewResponseFrameIndex');
+  }
+  if (!FRAME_MIME_TYPES.has(response.mimeType)) {
+    throw rejected(null, 'previewResponseMimeType');
+  }
+  if (response.layer !== payload.layer) {
+    throw rejected(null, 'previewResponseLayer');
+  }
+  // Size last and on its own, because it is the one that fires for a reason the user could act on:
+  // the renderer composed a frame for a different composition than the caller is showing.
+  if (response.widthPx !== composition.widthPx || response.heightPx !== composition.heightPx) {
+    throw rejected(null, 'previewResponseSize');
   }
   return Object.freeze({
     status: 'ready',

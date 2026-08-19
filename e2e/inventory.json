@@ -69,9 +69,10 @@
     },
     "saveDialog": {
       "variable": "OSG_E2E_MEDIA_DESTINATION",
-      "boundedBy": "OSG_E2E_FIXTURE_ROOT, must not already exist, extension must match the asset",
+      "boundedBy": "OSG_E2E_FIXTURE_ROOT; must be an existing directory; the file it resolves to must not already exist",
       "replaces": "blocking_save_file in media_export.rs",
-      "handsTo": "the media exporter, which writes the real bytes"
+      "handsTo": "the media exporter, which writes the real bytes",
+      "note": "A DIRECTORY, not a file path: only the application knows what the asset is called or what container it ended up in. A harness that guessed wrong had its staging refused SILENTLY, which reopens the real dialog behind the window and hangs the run for as long as the timeout allows."
     },
     "dataRoot": {
       "variable": "OSG_E2E_DATA_ROOT",
@@ -89,7 +90,9 @@
         "React commits a non-empty root",
         "no error surface is visible with every optional engine absent"
       ],
-      "oracles": ["visible DOM"],
+      "oracles": [
+        "visible DOM"
+      ],
       "runsAgainst": "e2e-binary",
       "status": "green"
     },
@@ -98,7 +101,10 @@
       "kind": "shell",
       "file": "journeys/defaultFont.journey.js",
       "capability": "The default subtitle font is installed, verified and drawable on a clean profile.",
-      "oracles": ["visible DOM", "window.__OSG_FONT_READINESS__"],
+      "oracles": [
+        "visible DOM",
+        "window.__OSG_FONT_READINESS__"
+      ],
       "runsAgainst": "e2e-binary",
       "status": "green"
     },
@@ -107,7 +113,10 @@
       "kind": "shell",
       "file": "journeys/damagedFontPayload.journey.js",
       "capability": "A damaged shipped font resource is refused rather than drawn as a substitute.",
-      "oracles": ["visible DOM", "font readiness record"],
+      "oracles": [
+        "visible DOM",
+        "font readiness record"
+      ],
       "runsAgainst": "staged copy of the e2e binary",
       "status": "green"
     },
@@ -128,11 +137,17 @@
         "a real file of non-trivial size appears at the staged destination",
         "no error is visible"
       ],
-      "oracles": ["visible DOM", "the file on disk"],
-      "substitutes": ["the native save dialog, through OSG_E2E_MEDIA_DESTINATION"],
+      "oracles": [
+        "visible DOM",
+        "the file on disk"
+      ],
+      "substitutes": [
+        "the native save dialog, through OSG_E2E_MEDIA_DESTINATION"
+      ],
       "runsAgainst": "e2e-binary",
-      "status": "red",
-      "note": "Being driven to green. 'Download Only' is save-to-disk, not load-into-editor: it downloads, exports to the chosen path and discards the candidate."
+      "status": "green",
+      "note": "'Download Only' is save-to-disk, not load-into-editor: it downloads, exports to the chosen path and discards the candidate. Measured green on the real binary: the scan returned 240p/144p and the export wrote 440,628 bytes.",
+      "lastGreenCommit": "5c03e278"
     },
     {
       "name": "editPersistRelaunch",
@@ -146,18 +161,25 @@
         "relaunch the process",
         "the project restores and the compositor publishes a frame again"
       ],
-      "oracles": ["visible DOM", "the application's own SQLite database, read only"],
-      "substitutes": ["the native open dialog, through OSG_E2E_MEDIA_SELECTION"],
+      "oracles": [
+        "visible DOM",
+        "the application's own SQLite database, read only"
+      ],
+      "substitutes": [
+        "the native open dialog, through OSG_E2E_MEDIA_SELECTION"
+      ],
       "runsAgainst": "e2e-binary",
       "status": "red",
-      "note": "The residual refusal it used to hit is fixed. It now fails on restore with nativePreviewRejected, which is a different and unresolved defect."
+      "note": "Red for reasons that keep changing as each is named. The glyph residual refusal is fixed. Then a restored project failed with the generic nativePreviewRejected; naming the response checks narrowed that to previewResponseIdentity and then to the individual field. The most recent run failed earlier still, at the cue edit, which is a different and possibly intermittent problem."
     },
     {
       "name": "unicodeCues",
       "kind": "workflow",
       "file": "journeys/unicodeCues.journey.js",
       "capability": "Subtitles in any script draw, and still draw after the project is reopened.",
-      "fixtures": ["fixtures/subtitles/cues-unicode.srt"],
+      "fixtures": [
+        "fixtures/subtitles/cues-unicode.srt"
+      ],
       "covers": [
         "Vietnamese with stacked diacritics",
         "Korean syllable blocks",
@@ -165,7 +187,10 @@
         "Arabic inside brackets, which used to be refused as a mirrored character",
         "mixed bidi"
       ],
-      "oracles": ["visible DOM", "the composited frame element"],
+      "oracles": [
+        "visible DOM",
+        "the composited frame element"
+      ],
       "runsAgainst": "e2e-binary",
       "status": "green",
       "lastGreenCommit": "8ccaaae6",
@@ -236,10 +261,28 @@
   ],
   "knownProductFindings": [
     {
-      "finding": "A restored project refuses its preview with nativePreviewRejected.",
+      "finding": "A preview response refused by the WebView reported one opaque code for eight different disagreements.",
+      "foundBy": "editPersistRelaunch",
+      "status": "fixed",
+      "note": "Every check in toOutcome now names itself, and the vocabulary is enforced rather than trusted. This is what turned 'nativePreviewRejected' into 'previewResponseIdentity'."
+    },
+    {
+      "finding": "A preview refusal from inside the render left no trace in the application's own log.",
+      "foundBy": "editPersistRelaunch",
+      "status": "fixed",
+      "note": "Only two call sites recorded refusals; the render path did not. Every refusal is recorded now."
+    },
+    {
+      "finding": "A restored project refuses its preview: the response fails the identity check.",
       "foundBy": "editPersistRelaunch",
       "status": "open",
-      "note": "Distinct from the glyph residual refusal, which is fixed. The native reason behind the generic code has not been read yet."
+      "note": "Narrowed to previewResponseIdentity. Splitting that into per-field codes is in place but the next run failed earlier, at the cue edit, so the field has not been named yet."
+    },
+    {
+      "finding": "Editing a cue sometimes does not commit: the edited text never appears.",
+      "foundBy": "editPersistRelaunch",
+      "status": "open",
+      "note": "Seen once, after several runs that got past this step. Intermittent, and not yet separated into a product defect versus a harness interaction."
     }
   ],
   "fixtures": {
