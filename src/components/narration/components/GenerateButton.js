@@ -116,6 +116,7 @@ const GenerateButton = ({
 
             <button
               className="pill-button secondary"
+              data-osg-action="download-aligned-narration"
               onClick={downloadAlignedAudio}
               title={t('narration.downloadAlignedTooltip', 'Tải xuống một tập tin thuyết minh đã sắp xếp')}
               disabled={!generationResults || generationResults.length === 0 || !generationResults.some(r => r.success && (r.audioData || r.filename))}

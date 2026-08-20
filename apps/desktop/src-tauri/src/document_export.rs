@@ -6,8 +6,8 @@ use std::sync::atomic::{AtomicBool, Ordering};
 use serde::Deserialize;
 use tauri::AppHandle;
 use tauri::ipc::{InvokeBody, Request};
-use tauri_plugin_dialog::DialogExt;
 
+use crate::dialog_paths;
 use crate::error::{CommandError, CommandResult};
 use crate::media_export::copy_export;
 
@@ -153,19 +153,16 @@ pub(crate) async fn subtitle_document_export(
 ) -> CommandResult<bool> {
     validate_request(&request)?;
     let _operation_lease = acquire_export_operation()?;
-    let selected = app
-        .dialog()
-        .file()
-        .set_title("Export subtitles")
-        .set_file_name(&request.suggested_name)
-        .add_filter(request.format.label(), &[request.format.extension()])
-        .blocking_save_file();
-    let Some(selected) = selected else {
+    let selected = dialog_paths::save_file(
+        &app,
+        "Export subtitles",
+        &request.suggested_name,
+        request.format.label(),
+        &[request.format.extension()],
+    )?;
+    let Some(destination) = selected else {
         return Ok(false);
     };
-    let destination = selected
-        .into_path()
-        .map_err(|_| CommandError::media_export_unsafe())?;
     if !has_expected_extension(&destination, request.format) {
         return Err(CommandError::invalid_input(
             "The subtitle export file type is invalid.",
@@ -190,19 +187,16 @@ pub(crate) async fn subtitle_archive_export(
     validate_archive_request(&request)?;
 
     let _operation_lease = acquire_export_operation()?;
-    let selected = app
-        .dialog()
-        .file()
-        .set_title("Export subtitle archive")
-        .set_file_name(&request.suggested_name)
-        .add_filter("ZIP subtitle archive", &["zip"])
-        .blocking_save_file();
-    let Some(selected) = selected else {
+    let selected = dialog_paths::save_file(
+        &app,
+        "Export subtitle archive",
+        &request.suggested_name,
+        "ZIP subtitle archive",
+        &["zip"],
+    )?;
+    let Some(destination) = selected else {
         return Ok(false);
     };
-    let destination = selected
-        .into_path()
-        .map_err(|_| CommandError::media_export_unsafe())?;
     if destination
         .extension()
         .and_then(|extension| extension.to_str())
@@ -250,19 +244,16 @@ pub(crate) async fn generated_file_export(
     let bytes = bytes.clone();
 
     let _operation_lease = acquire_export_operation()?;
-    let selected = app
-        .dialog()
-        .file()
-        .set_title("Export generated file")
-        .set_file_name(suggested_name)
-        .add_filter(format.label(), &[format.extension()])
-        .blocking_save_file();
-    let Some(selected) = selected else {
+    let selected = dialog_paths::save_file(
+        &app,
+        "Export generated file",
+        &suggested_name,
+        format.label(),
+        &[format.extension()],
+    )?;
+    let Some(destination) = selected else {
         return Ok(false);
     };
-    let destination = selected
-        .into_path()
-        .map_err(|_| CommandError::media_export_unsafe())?;
     if destination
         .extension()
         .and_then(|extension| extension.to_str())

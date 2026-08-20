@@ -19,8 +19,8 @@ use secrecy::ExposeSecret;
 use serde::Serialize;
 use serde_json::{Value, json};
 use tauri::{AppHandle, Manager, State};
-use tauri_plugin_dialog::DialogExt;
 
+use crate::dialog_paths;
 use crate::error::{CommandError, CommandResult};
 use crate::state::DesktopState;
 
@@ -213,17 +213,13 @@ pub(crate) async fn legacy_import_select(
 ) -> CommandResult<Option<LegacyImportReport>> {
     let guard = ImportGuard::acquire()?;
     let process_lock = acquire_process_import_lock(&app)?;
-    let selected = app
-        .dialog()
-        .file()
-        .set_title("Choose the previous One-Click Subtitles Generator data folder")
-        .blocking_pick_folder();
-    let Some(selected) = selected else {
+    let selected = dialog_paths::pick_folder(
+        &app,
+        "Choose the previous One-Click Subtitles Generator data folder",
+    )?;
+    let Some(path) = selected else {
         return Ok(None);
     };
-    let path = selected
-        .into_path()
-        .map_err(|_| CommandError::legacy_import_invalid())?;
     let database = state.database.clone();
     let credentials = state.credentials.clone();
     tauri::async_runtime::spawn_blocking(move || {

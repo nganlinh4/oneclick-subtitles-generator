@@ -5,6 +5,7 @@ mod cache;
 mod ci_updater_fixture;
 mod commands;
 mod diagnostics;
+mod dialog_paths;
 mod document_export;
 mod download;
 mod engine_packages;

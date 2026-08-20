@@ -24,10 +24,10 @@ use secrecy::ExposeSecret;
 use serde::{Deserialize, Serialize};
 use tauri::ipc::Channel;
 use tauri::{AppHandle, State};
-use tauri_plugin_dialog::DialogExt;
 use uuid::Uuid;
 
 use crate::background;
+use crate::dialog_paths;
 use crate::error::{CommandError, CommandResult};
 use crate::image_blob::ImageBlobStore;
 use crate::media_export::copy_export;
@@ -1019,19 +1019,16 @@ pub(crate) async fn generated_image_export(
         CommandError::internal("The generated-image export lookup stopped unexpectedly.")
     })??;
 
-    let selected = app
-        .dialog()
-        .file()
-        .set_title("Export generated image")
-        .set_file_name(&plan.suggested_name)
-        .add_filter(plan.format.label(), &[plan.format.extension()])
-        .blocking_save_file();
-    let Some(selected) = selected else {
+    let selected = dialog_paths::save_file(
+        &app,
+        "Export generated image",
+        &plan.suggested_name,
+        plan.format.label(),
+        &[plan.format.extension()],
+    )?;
+    let Some(destination) = selected else {
         return Ok(false);
     };
-    let destination = selected
-        .into_path()
-        .map_err(|_| CommandError::media_export_unsafe())?;
     if destination
         .extension()
         .and_then(|extension| extension.to_str())

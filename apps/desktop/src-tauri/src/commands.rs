@@ -20,6 +20,7 @@ use serde_json::Value;
 use tauri::{AppHandle, Runtime, State, WebviewWindow};
 
 use crate::diagnostics;
+use crate::dialog_paths;
 use crate::error::{CommandError, CommandResult};
 use crate::is_safe_setting_key;
 use crate::state::{DesktopSessionSnapshot, DesktopState};
@@ -554,60 +555,20 @@ pub(crate) async fn select_media_candidate(
     Ok(Some(stage_media_candidate_path(&state, path).await?))
 }
 
-/// The file a harness has staged for the next picker request, if any.
-///
-/// This replaces the operating system's file dialog and NOTHING else: whatever it returns goes to
-/// exactly the same `import_media_path` a person's selection goes to, so activation, identity,
-/// artifacts and every product invariant after this point are the real ones. A `WebDriver` session
-/// cannot drive a native dialog, and the alternative -- a fixture that writes media state directly --
-/// would skip the very code a customer journey exists to exercise.
-///
-/// Bounded on purpose: the value must be an absolute path inside `OSG_E2E_FIXTURE_ROOT`, so this is
-/// a choice among reviewed fixtures rather than a way to hand the application any path at all.
-///
-/// Compiled ONLY into the automation channel. `production` does not enable that feature, no workflow
-/// builds it, and the release gates assert its absence from every shipped artefact.
-#[cfg(feature = "e2e-automation")]
-fn harness_media_selection() -> Option<std::path::PathBuf> {
-    let root = std::path::PathBuf::from(std::env::var_os("OSG_E2E_FIXTURE_ROOT")?);
-    let selection = std::path::PathBuf::from(std::env::var_os("OSG_E2E_MEDIA_SELECTION")?);
-    let (root, selection) = (root.canonicalize().ok()?, selection.canonicalize().ok()?);
-    if !selection.starts_with(&root) || !selection.is_file() {
-        diagnostics::record("media-picker.harness-rejected", &[]);
-        return None;
-    }
-    diagnostics::record("media-picker.harness-selected", &[]);
-    Some(selection)
-}
-
 async fn pick_media_path(window: WebviewWindow) -> CommandResult<Option<std::path::PathBuf>> {
-    // Before the dialog, never instead of the import that follows it.
-    #[cfg(feature = "e2e-automation")]
-    if let Some(staged) = harness_media_selection() {
-        return Ok(Some(staged));
-    }
-
     let extensions: Vec<&str> = VIDEO_EXTENSIONS
         .iter()
         .chain(AUDIO_EXTENSIONS.iter())
         .copied()
         .collect();
-    let dialog = rfd::FileDialog::new()
-        .set_parent(&window)
-        .set_title("Choose video or audio")
-        .add_filter("Video and audio", &extensions);
     diagnostics::record("media-picker.requested", &[]);
-    let Ok(selected) = tauri::async_runtime::spawn_blocking(move || {
-        diagnostics::record("media-picker.worker-started", &[]);
-        dialog.pick_file()
-    })
-    .await
-    else {
-        diagnostics::record("media-picker.worker-failed", &[]);
-        return Err(CommandError::internal(
-            "the media picker task stopped unexpectedly",
-        ));
-    };
+    let selected = dialog_paths::pick_file_with_window(
+        window,
+        "Choose video or audio",
+        "Video and audio",
+        &extensions,
+    )
+    .await?;
     diagnostics::record(
         "media-picker.returned",
         &[(

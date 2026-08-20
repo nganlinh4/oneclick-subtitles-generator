@@ -31,6 +31,7 @@ impl CommandError {
         }
     }
 
+    #[cfg(not(feature = "e2e-automation"))]
     pub(crate) fn invalid_path(message: impl Into<String>) -> Self {
         Self {
             code: "invalidPath",

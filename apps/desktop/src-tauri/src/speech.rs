@@ -40,12 +40,12 @@ use osg_speech::{
 use secrecy::ExposeSecret;
 use serde::{Deserialize, Serialize};
 use tauri::{AppHandle, State, ipc::Channel};
-use tauri_plugin_dialog::DialogExt;
 use tempfile::{NamedTempFile, TempDir};
 use uuid::Uuid;
 use zip::write::SimpleFileOptions;
 
 use crate::background;
+use crate::dialog_paths;
 use crate::error::{CommandError, CommandResult};
 use crate::media_blob::MediaBlobStore;
 use crate::media_export::copy_export;
@@ -1440,8 +1440,65 @@ struct AlignmentResultStats {
 }
 
 struct ValidatedAlignmentStart {
+    project_id: ProjectId,
     clips: Vec<AlignmentRenderClip>,
     stats: AlignmentResultStats,
+}
+
+struct ResolvedAlignmentClip {
+    id_key: String,
+    media_input: MediaInput,
+    native_clip: NarrationClip,
+    project_id: ProjectId,
+    bytes: u64,
+}
+
+fn resolve_alignment_request_clip(
+    database: &Database,
+    request: SpeechAlignmentClipRequest,
+) -> CommandResult<ResolvedAlignmentClip> {
+    let id = SegmentId::new(request.id)
+        .map_err(|_| CommandError::invalid_input("The alignment segment identifier is invalid."))?;
+    if request.start_micros > MAX_ALIGNMENT_DURATION_MICROS
+        || request.cue_end_micros > MAX_ALIGNMENT_DURATION_MICROS
+        || request.cue_end_micros < request.start_micros
+    {
+        return Err(CommandError::invalid_input(
+            "The alignment timing is invalid or exceeds four hours.",
+        ));
+    }
+    let (asset, media_input, descriptor, project_id) =
+        resolve_alignment_audio(database, &request.artifact_id)?;
+    let project_id = project_id.ok_or_else(|| {
+        CommandError::invalid_input("Narration alignment requires project-owned audio.")
+    })?;
+    let measured_duration = descriptor.duration_micros.ok_or_else(|| {
+        CommandError::invalid_input("The narration clip has no measured duration.")
+    })?;
+    if measured_duration == 0 || measured_duration > MAX_ALIGNMENT_DURATION_MICROS {
+        return Err(CommandError::invalid_input(
+            "The narration clip duration is invalid or exceeds four hours.",
+        ));
+    }
+    let id_key = id.as_str().to_owned();
+    let native_clip = NarrationClip::new(
+        id,
+        asset,
+        TimeMicros::new(request.start_micros)
+            .map_err(|_| CommandError::invalid_input("The alignment start time is invalid."))?,
+        TimeMicros::new(request.cue_end_micros)
+            .map_err(|_| CommandError::invalid_input("The alignment cue end is invalid."))?,
+        TimeMicros::new(measured_duration)
+            .map_err(|_| CommandError::invalid_input("The narration clip duration is invalid."))?,
+    )
+    .map_err(|_| CommandError::invalid_input("The alignment clip is invalid."))?;
+    Ok(ResolvedAlignmentClip {
+        id_key,
+        media_input,
+        native_clip,
+        project_id,
+        bytes: descriptor.bytes,
+    })
 }
 
 fn validate_alignment_start(
@@ -1457,56 +1514,33 @@ fn validate_alignment_start(
     let mut input_bytes = 0_u64;
     let mut native_clips = Vec::with_capacity(request.clips.len());
     let mut media_inputs = HashMap::with_capacity(request.clips.len());
+    let mut project_id = None;
     for request_clip in request.clips {
-        let id = SegmentId::new(request_clip.id).map_err(|_| {
-            CommandError::invalid_input("The alignment segment identifier is invalid.")
-        })?;
-        if request_clip.start_micros > MAX_ALIGNMENT_DURATION_MICROS
-            || request_clip.cue_end_micros > MAX_ALIGNMENT_DURATION_MICROS
-            || request_clip.cue_end_micros < request_clip.start_micros
-        {
-            return Err(CommandError::invalid_input(
-                "The alignment timing is invalid or exceeds four hours.",
-            ));
-        }
-        let (asset, media_input, descriptor) =
-            resolve_alignment_audio(database, &request_clip.artifact_id)?;
-        let measured_duration = descriptor.duration_micros.ok_or_else(|| {
-            CommandError::invalid_input("The narration clip has no measured duration.")
-        })?;
-        if measured_duration == 0 || measured_duration > MAX_ALIGNMENT_DURATION_MICROS {
-            return Err(CommandError::invalid_input(
-                "The narration clip duration is invalid or exceeds four hours.",
-            ));
+        let resolved = resolve_alignment_request_clip(database, request_clip)?;
+        match project_id {
+            None => project_id = Some(resolved.project_id),
+            Some(owner) if owner == resolved.project_id => {}
+            Some(_) => {
+                return Err(CommandError::invalid_input(
+                    "Narration alignment cannot combine audio from different projects.",
+                ));
+            }
         }
         input_bytes = input_bytes
-            .checked_add(descriptor.bytes)
+            .checked_add(resolved.bytes)
             .filter(|bytes| *bytes <= MAX_ALIGNMENT_INPUT_BYTES)
             .ok_or_else(|| {
                 CommandError::invalid_input("The alignment audio exceeds the safe input limit.")
             })?;
-        let id_key = id.as_str().to_owned();
-        if media_inputs.insert(id_key, media_input).is_some() {
+        if media_inputs
+            .insert(resolved.id_key, resolved.media_input)
+            .is_some()
+        {
             return Err(CommandError::invalid_input(
                 "The alignment contains a duplicate segment identifier.",
             ));
         }
-        native_clips.push(
-            NarrationClip::new(
-                id,
-                asset,
-                TimeMicros::new(request_clip.start_micros).map_err(|_| {
-                    CommandError::invalid_input("The alignment start time is invalid.")
-                })?,
-                TimeMicros::new(request_clip.cue_end_micros).map_err(|_| {
-                    CommandError::invalid_input("The alignment cue end is invalid.")
-                })?,
-                TimeMicros::new(measured_duration).map_err(|_| {
-                    CommandError::invalid_input("The narration clip duration is invalid.")
-                })?,
-            )
-            .map_err(|_| CommandError::invalid_input("The alignment clip is invalid."))?,
-        );
+        native_clips.push(resolved.native_clip);
     }
 
     let plan = AlignmentPlan::build(native_clips, AlignmentPolicy::default())
@@ -1538,7 +1572,13 @@ fn validate_alignment_start(
         rendered_duration_micros: plan.stats().rendered_duration().get(),
         maximum_shift_micros: plan.stats().maximum_shift().get(),
     };
-    Ok(ValidatedAlignmentStart { clips, stats })
+    Ok(ValidatedAlignmentStart {
+        project_id: project_id.ok_or_else(|| {
+            CommandError::invalid_input("Narration alignment requires a durable project.")
+        })?,
+        clips,
+        stats,
+    })
 }
 
 #[derive(Debug, Clone, Copy, Deserialize, Eq, PartialEq, Serialize)]
@@ -1814,12 +1854,9 @@ pub(crate) async fn speech_reference_select(
     let database = state.database.clone();
     let media_server = state.media_server.clone();
     tauri::async_runtime::spawn_blocking(move || {
-        let Some(selected) = app.dialog().file().blocking_pick_file() else {
+        let Some(path) = dialog_paths::pick_file(&app)? else {
             return Ok(None);
         };
-        let path = selected.into_path().map_err(|_| {
-            CommandError::invalid_path("The selected reference audio is unavailable.")
-        })?;
         normalize_and_publish_reference(
             &ReferencePublicationContext {
                 runtime: &speech_runtime,
@@ -1978,7 +2015,8 @@ pub(crate) async fn speech_artifact_edit(
     let database = state.database.clone();
     let speech_runtime = runtime.inner().clone();
     tauri::async_runtime::spawn_blocking(move || {
-        let (audio, media, descriptor) = resolve_alignment_audio(&database, &request.artifact_id)?;
+        let (audio, media, descriptor, _) =
+            resolve_alignment_audio(&database, &request.artifact_id)?;
         let duration = descriptor.duration_micros.ok_or_else(|| {
             CommandError::invalid_input("The narration duration is unavailable for editing.")
         })?;
@@ -2389,19 +2427,16 @@ pub(crate) async fn speech_artifact_export(
                 CommandError::internal("The narration export lookup stopped unexpectedly.")
             })??;
 
-    let selected = app
-        .dialog()
-        .file()
-        .set_title("Export narration audio")
-        .set_file_name(plan.selected_file_name())
-        .add_filter("Narration audio", &[plan.selected_extension()])
-        .blocking_save_file();
-    let Some(selected) = selected else {
+    let selected = dialog_paths::save_file(
+        &app,
+        "Export narration audio",
+        plan.selected_file_name(),
+        "Narration audio",
+        &[plan.selected_extension()],
+    )?;
+    let Some(destination) = selected else {
         return Ok(false);
     };
-    let destination = selected
-        .into_path()
-        .map_err(|_| CommandError::media_export_unsafe())?;
 
     tauri::async_runtime::spawn_blocking(move || export_speech_plan(&plan, &destination))
         .await
@@ -3477,9 +3512,10 @@ fn execute_alignment_job(
         950_000,
         channel,
     );
-    let published = publish_durable_artifact(
+    let published = publish_project_durable_artifact(
         runtime,
         database,
+        validated.project_id,
         Some(job_id),
         "alignedNarration",
         &final_path,
@@ -4227,7 +4263,48 @@ fn publish_durable_artifact(
     source_path: &Path,
     metadata: SpeechArtifactMetadata,
 ) -> CommandResult<PublishedSpeechArtifact> {
-    let prepared = prepare_speech_artifact_publication(None, job_id, kind, source_path, metadata)?;
+    publish_durable_artifact_with_project(
+        runtime,
+        database,
+        None,
+        job_id,
+        kind,
+        source_path,
+        metadata,
+    )
+}
+
+fn publish_project_durable_artifact(
+    runtime: &SpeechRuntime,
+    database: &Database,
+    project_id: ProjectId,
+    job_id: Option<JobId>,
+    kind: &str,
+    source_path: &Path,
+    metadata: SpeechArtifactMetadata,
+) -> CommandResult<PublishedSpeechArtifact> {
+    publish_durable_artifact_with_project(
+        runtime,
+        database,
+        Some(project_id),
+        job_id,
+        kind,
+        source_path,
+        metadata,
+    )
+}
+
+fn publish_durable_artifact_with_project(
+    runtime: &SpeechRuntime,
+    database: &Database,
+    project_id: Option<ProjectId>,
+    job_id: Option<JobId>,
+    kind: &str,
+    source_path: &Path,
+    metadata: SpeechArtifactMetadata,
+) -> CommandResult<PublishedSpeechArtifact> {
+    let prepared =
+        prepare_speech_artifact_publication(project_id, job_id, kind, source_path, metadata)?;
     let gate = runtime
         .artifact_publication_gate(prepared.key.clone())
         .map_err(|_| artifact_storage_error())?;
@@ -4559,7 +4636,12 @@ fn resolve_audio_artifact(
 fn resolve_alignment_audio(
     database: &Database,
     value: &str,
-) -> CommandResult<(AudioAsset, MediaInput, SpeechArtifactDescriptor)> {
+) -> CommandResult<(
+    AudioAsset,
+    MediaInput,
+    SpeechArtifactDescriptor,
+    Option<ProjectId>,
+)> {
     let id = parse_artifact_id(value)?;
     let resolved = database
         .resolve_artifact(id)?
@@ -4591,7 +4673,7 @@ fn resolve_alignment_audio(
         ));
     }
     let media = MediaInput::from_native_selection(resolved.path())?;
-    Ok((asset, media, descriptor))
+    Ok((asset, media, descriptor, resolved.record().project_id()))
 }
 
 fn ensure_speech_artifact_kind(kind: &str, reference_only: bool) -> CommandResult<()> {
@@ -5884,13 +5966,20 @@ mod tests {
         let directory = tempfile::tempdir().unwrap();
         let runtime = standalone_runtime(&directory);
         let database = Database::open(directory.path().join("osg.sqlite3")).unwrap();
+        let project_id = ProjectId::new();
+        database
+            .create_project(
+                &osg_domain::ProjectMetadata::with_id(project_id, "Alignment owner").unwrap(),
+            )
+            .unwrap();
         let first_path = directory.path().join("first.wav");
         let second_path = directory.path().join("second.wav");
         std::fs::write(&first_path, b"RIFF-first-WAVEdata").unwrap();
         std::fs::write(&second_path, b"RIFF-second-WAVEdata").unwrap();
-        let first = publish_durable_artifact(
+        let first = publish_project_durable_artifact(
             &runtime,
             &database,
+            project_id,
             None,
             "narrationOutput",
             &first_path,
@@ -5903,9 +5992,10 @@ mod tests {
             },
         )
         .unwrap();
-        let second = publish_durable_artifact(
+        let second = publish_project_durable_artifact(
             &runtime,
             &database,
+            project_id,
             None,
             "narrationOutput",
             &second_path,
@@ -5918,6 +6008,8 @@ mod tests {
             },
         )
         .unwrap();
+        let first_artifact_id = first.descriptor.artifact_id.clone();
+        let second_artifact_id = second.descriptor.artifact_id.clone();
         std::fs::remove_file(first_path).unwrap();
         std::fs::remove_file(second_path).unwrap();
 
@@ -5927,13 +6019,13 @@ mod tests {
                 clips: vec![
                     SpeechAlignmentClipRequest {
                         id: "first".to_owned(),
-                        artifact_id: first.descriptor.artifact_id,
+                        artifact_id: first_artifact_id,
                         start_micros: 0,
                         cue_end_micros: 1_000_000,
                     },
                     SpeechAlignmentClipRequest {
                         id: "second".to_owned(),
-                        artifact_id: second.descriptor.artifact_id,
+                        artifact_id: second_artifact_id,
                         start_micros: 1_000_000,
                         cue_end_micros: 2_000_000,
                     },
@@ -5941,6 +6033,7 @@ mod tests {
             },
         )
         .unwrap();
+        assert_eq!(validated.project_id, project_id);
         assert_eq!(validated.stats.clip_count, 2);
         assert_eq!(validated.stats.adjusted_count, 1);
         assert_eq!(validated.clips[1].start_micros, 1_800_000);
@@ -5948,6 +6041,93 @@ mod tests {
         assert_eq!(
             format!("{:?}", validated.clips[0].input),
             "MediaInput(<redacted>)"
+        );
+    }
+
+    #[test]
+    fn alignment_validation_rejects_unowned_or_cross_project_audio() {
+        let directory = tempfile::tempdir().unwrap();
+        let runtime = standalone_runtime(&directory);
+        let database = Database::open(directory.path().join("osg.sqlite3")).unwrap();
+        let project_a = ProjectId::new();
+        let project_b = ProjectId::new();
+        for (id, name) in [(project_a, "Project A"), (project_b, "Project B")] {
+            database
+                .create_project(&osg_domain::ProjectMetadata::with_id(id, name).unwrap())
+                .unwrap();
+        }
+        let metadata = || SpeechArtifactMetadata {
+            format: SpeechArtifactFormatResponse::Wav,
+            duration_micros: Some(1_000_000),
+            sample_rate_hz: Some(24_000),
+            channels: Some(1),
+            source: "alignmentOwnershipTest",
+        };
+        let source_a = directory.path().join("a.wav");
+        let source_b = directory.path().join("b.wav");
+        let source_unowned = directory.path().join("unowned.wav");
+        fs::write(&source_a, b"owned by a").unwrap();
+        fs::write(&source_b, b"owned by b").unwrap();
+        fs::write(&source_unowned, b"unowned").unwrap();
+        let artifact_a = publish_project_durable_artifact(
+            &runtime,
+            &database,
+            project_a,
+            None,
+            "narrationOutput",
+            &source_a,
+            metadata(),
+        )
+        .unwrap()
+        .descriptor
+        .artifact_id;
+        let artifact_b = publish_project_durable_artifact(
+            &runtime,
+            &database,
+            project_b,
+            None,
+            "narrationOutput",
+            &source_b,
+            metadata(),
+        )
+        .unwrap()
+        .descriptor
+        .artifact_id;
+        let unowned = publish_durable_artifact(
+            &runtime,
+            &database,
+            None,
+            "narrationOutput",
+            &source_unowned,
+            metadata(),
+        )
+        .unwrap()
+        .descriptor
+        .artifact_id;
+        let clip = |id: &str, artifact_id: String| SpeechAlignmentClipRequest {
+            id: id.to_owned(),
+            artifact_id,
+            start_micros: 0,
+            cue_end_micros: 1_000_000,
+        };
+
+        assert!(
+            validate_alignment_start(
+                &database,
+                SpeechAlignmentStartRequest {
+                    clips: vec![clip("unowned", unowned)],
+                },
+            )
+            .is_err()
+        );
+        assert!(
+            validate_alignment_start(
+                &database,
+                SpeechAlignmentStartRequest {
+                    clips: vec![clip("a", artifact_a), clip("b", artifact_b)],
+                },
+            )
+            .is_err()
         );
     }
 

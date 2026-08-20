@@ -2,13 +2,14 @@
 /* global browser, describe, it, $, document */
 
 import { strict as assert } from 'node:assert';
-import { readFileSync, statSync } from 'node:fs';
+import { existsSync, readFileSync, statSync } from 'node:fs';
 import { join } from 'node:path';
 import process from 'node:process';
 
 import { durableState } from '../support/database.js';
 import { clickControl } from '../support/editor.js';
 import { ensureEngineReady } from '../support/engines.js';
+import { probeMedia } from '../support/nativeMediaOracle.js';
 import { importSubtitles, openProjectWithMedia } from '../support/workflow.js';
 
 const ENGINE = 'gtts';
@@ -22,6 +23,8 @@ const looksLikeMp3 = (bytes) => (
 
 describe('a customer generates narration from subtitles', () => {
   it('installs and starts gTTS, synthesizes every cue, and publishes durable nonempty audio', async () => {
+    const destination = process.env.OSG_E2E_MEDIA_DESTINATION;
+    assert.ok(destination, 'the aligned-audio save destination must be staged');
     await openProjectWithMedia();
     await importSubtitles();
     await ensureEngineReady(ENGINE);
@@ -99,5 +102,47 @@ describe('a customer generates narration from subtitles', () => {
       assert.equal(statSync(path).size, artifact.size_bytes, `artifact size disagrees with SQLite: ${path}`);
       assert.equal(looksLikeMp3(readFileSync(path).subarray(0, 3)), true, `artifact is not MP3 audio: ${path}`);
     }
+
+    const projectIds = new Set(artifacts.map((artifact) => artifact.project_id));
+    assert.equal(projectIds.size, 1, 'all narration outputs must belong to one exact project');
+    const alignedPath = join(destination, 'aligned_narration.m4a');
+    assert.equal(existsSync(alignedPath), false, 'the isolated aligned output already exists');
+    await clickControl('[data-osg-action="download-aligned-narration"]');
+
+    let alignedJob = null;
+    let alignedArtifact = null;
+    await browser.waitUntil(async () => {
+      durable = durableState(process.env.OSG_E2E_DATA_ROOT);
+      alignedJob = durable.jobs.find((job) => job.kind === 'alignNarration') ?? null;
+      alignedArtifact = durable.artifacts.find((artifact) => (
+        artifact.kind === 'alignedNarration' && artifact.state === 'ready'
+      )) ?? null;
+      return alignedJob?.state === 'succeeded'
+        && alignedArtifact !== null
+        && existsSync(alignedPath);
+    }, {
+      timeout: 300_000,
+      interval: 1_000,
+      timeoutMsg: () => `aligned narration did not export: ${JSON.stringify({
+        alignedJob,
+        alignedArtifact,
+      })}`,
+    });
+    assert.equal(
+      alignedArtifact.project_id,
+      [...projectIds][0],
+      'the aligned artifact escaped its narration project',
+    );
+    assert.equal(alignedArtifact.job_id, alignedJob.id, 'the aligned artifact lost its job owner');
+    assert.ok(statSync(alignedPath).size > 1_000, 'the aligned M4A is implausibly small');
+    const probe = probeMedia(alignedPath);
+    const audioStreams = probe.streams.filter((stream) => stream.codec_type === 'audio');
+    assert.equal(audioStreams.length, 1, `aligned output has no single audio stream: ${JSON.stringify(probe)}`);
+    assert.equal(
+      probe.streams.some((stream) => stream.codec_type === 'video'),
+      false,
+      'aligned narration unexpectedly contains video',
+    );
+    assert.ok(Number(probe.format.duration) > 1, 'aligned narration duration is implausibly short');
   });
 });

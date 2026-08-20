@@ -10,9 +10,9 @@ use osg_gemini::{MAX_REFERENCE_IMAGE_BYTES, ReferenceImage};
 use osg_media_server::{MediaServer, RegisteredImageCopy};
 use serde::{Deserialize, Serialize};
 use tauri::{AppHandle, State, WebviewWindow};
-use tauri_plugin_dialog::DialogExt;
 use uuid::Uuid;
 
+use crate::dialog_paths;
 use crate::error::{CommandError, CommandResult};
 use crate::media_export::{ExportCopyError, copy_export};
 use crate::state::DesktopState;
@@ -216,13 +216,13 @@ pub(crate) async fn image_reference_select(
     request: ImageReferenceSelectRequest,
 ) -> CommandResult<Option<osg_media_server::RegisteredMedia>> {
     ensure_reference_project(&state, request.project_id)?;
-    let dialog = rfd::FileDialog::new()
-        .set_parent(&window)
-        .set_title("Choose album art")
-        .add_filter("PNG, JPEG, or WebP image", LOCAL_IMAGE_EXTENSIONS);
-    let selected = tauri::async_runtime::spawn_blocking(move || dialog.pick_file())
-        .await
-        .map_err(|_| CommandError::internal("The image picker task stopped unexpectedly."))?;
+    let selected = dialog_paths::pick_file_with_window(
+        window,
+        "Choose album art",
+        "PNG, JPEG, or WebP image",
+        LOCAL_IMAGE_EXTENSIONS,
+    )
+    .await?;
     let Some(path) = selected else {
         return Ok(None);
     };
@@ -360,19 +360,16 @@ pub(crate) async fn image_reference_export(
     .await
     .map_err(|_| CommandError::internal("The album-art export lookup stopped unexpectedly."))??;
 
-    let selected = app
-        .dialog()
-        .file()
-        .set_title("Export album art")
-        .set_file_name(&plan.suggested_name)
-        .add_filter(plan.format.label(), &[plan.format.extension()])
-        .blocking_save_file();
-    let Some(selected) = selected else {
+    let selected = dialog_paths::save_file(
+        &app,
+        "Export album art",
+        &plan.suggested_name,
+        plan.format.label(),
+        &[plan.format.extension()],
+    )?;
+    let Some(destination) = selected else {
         return Ok(false);
     };
-    let destination = selected
-        .into_path()
-        .map_err(|_| CommandError::media_export_unsafe())?;
     if destination
         .extension()
         .and_then(|extension| extension.to_str())
