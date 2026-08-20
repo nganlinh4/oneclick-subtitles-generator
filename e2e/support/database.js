@@ -1,3 +1,4 @@
+import { Buffer } from 'node:buffer';
 import { existsSync } from 'node:fs';
 import { join } from 'node:path';
 import { DatabaseSync } from 'node:sqlite';
@@ -46,8 +47,23 @@ export const withDatabase = (root, read) => {
  * should fail when a customer's work is lost, not when a column is added.
  */
 export const durableState = (root) => withDatabase(root, (database) => {
-  const all = (sql) => database.prepare(sql).all();
-  const one = (sql) => database.prepare(sql).get();
+  /**
+   * Identifiers are stored as BLOBs, and `node:sqlite` hands them back as byte arrays.
+   *
+   * Two reads of the same row therefore produce two DIFFERENT objects holding the same bytes, so
+   * comparing them with `assert.equal` compares object identity and fails on a project that
+   * restored perfectly -- with a diff printed as two lists of numbers, which names nothing. Read as
+   * hex they compare by value and a failure names the id that differs.
+   */
+  const readable = (row) => Object.fromEntries(Object.entries(row).map(([column, value]) => [
+    column,
+    value instanceof Uint8Array ? Buffer.from(value).toString('hex') : value,
+  ]));
+  const all = (sql) => database.prepare(sql).all().map(readable);
+  const one = (sql) => {
+    const row = database.prepare(sql).get();
+    return row === undefined ? row : readable(row);
+  };
 
   const projects = all('SELECT id, title, state_version FROM projects ORDER BY created_at_ms');
   const media = all(

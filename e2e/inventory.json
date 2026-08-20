@@ -169,8 +169,9 @@
         "the native open dialog, through OSG_E2E_MEDIA_SELECTION"
       ],
       "runsAgainst": "e2e-binary",
-      "status": "red",
-      "note": "Red for reasons that keep changing as each is named. The glyph residual refusal is fixed. Then a restored project failed with the generic nativePreviewRejected; naming the response checks narrowed that to previewResponseIdentity and then to the individual field. The most recent run failed earlier still, at the cue edit, which is a different and possibly intermittent problem."
+      "status": "green",
+      "note": "Went green after three defects it found were fixed: the glyph residual refusal, the conflation of the transport frame index with the scene frame index, and its own oracle comparing BLOB identifiers by object identity.",
+      "lastGreenCommit": "pending"
     },
     {
       "name": "unicodeCues",
@@ -261,10 +262,17 @@
   ],
   "knownProductFindings": [
     {
+      "finding": "The native subtitle preview was refused at every playhead position except the very start.",
+      "foundBy": "editPersistRelaunch",
+      "status": "fixed",
+      "severity": "high",
+      "note": "The response validator required the frame URL's path index to equal the SCENE's frame index. They are different numbers: a preview publishes one image per capability, so the transport index is always 0, which `FrameLease::frame_url` states and does. The two agree only at frame 0, so the preview worked on a freshly opened project sitting at the start and was refused as soon as the timeline moved. It survived because every journey until now looked at the first frame."
+    },
+    {
       "finding": "A preview response refused by the WebView reported one opaque code for eight different disagreements.",
       "foundBy": "editPersistRelaunch",
       "status": "fixed",
-      "note": "Every check in toOutcome now names itself, and the vocabulary is enforced rather than trusted. This is what turned 'nativePreviewRejected' into 'previewResponseIdentity'."
+      "note": "Naming each check is what turned nativePreviewRejected into previewResponseFrameIndex, which named the defect above."
     },
     {
       "finding": "A preview refusal from inside the render left no trace in the application's own log.",
@@ -273,16 +281,10 @@
       "note": "Only two call sites recorded refusals; the render path did not. Every refusal is recorded now."
     },
     {
-      "finding": "A restored project refuses its preview: the response fails the identity check.",
-      "foundBy": "editPersistRelaunch",
-      "status": "open",
-      "note": "Narrowed to previewResponseIdentity. Splitting that into per-field codes is in place but the next run failed earlier, at the cue edit, so the field has not been named yet."
-    },
-    {
       "finding": "Editing a cue sometimes does not commit: the edited text never appears.",
       "foundBy": "editPersistRelaunch",
       "status": "open",
-      "note": "Seen once, after several runs that got past this step. Intermittent, and not yet separated into a product defect versus a harness interaction."
+      "note": "Seen once in eight runs and not since. The helper now reports the editor's value, whether it stayed open and the first rows of the list, so the next occurrence will say which of those three it is."
     }
   ],
   "fixtures": {

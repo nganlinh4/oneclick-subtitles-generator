@@ -124,11 +124,32 @@ export const editCueText = async (existing, replacement) => {
   await editor.setValue(replacement);
   await browser.execute(() => document.querySelector('.lyric-text-input')?.blur());
 
+  // What the editor and the list actually hold. "The edited text never appeared" is true of a
+  // commit that was refused, of a value that never reached the input, and of an editor that stayed
+  // open -- three different problems that need three different fixes.
+  const editorState = () => browser.execute((text) => {
+    const input = document.querySelector('.lyric-text-input');
+    const rows = [...document.querySelectorAll('.lyric-text')]
+      .map((node) => (node.innerText || '').trim()).slice(0, 6);
+    return {
+      editorStillOpen: input !== null,
+      editorValue: input === null ? null : input.value,
+      firstRows: rows,
+      bodyHasReplacement: (document.body?.innerText || '').includes(text),
+    };
+  }, replacement);
+
+  let seen = await editorState();
   await browser.waitUntil(
-    async () => (await browser.execute(
-      (text) => (document.body?.innerText || '').includes(text), replacement,
-    )),
-    { timeout: 30_000, interval: 500, timeoutMsg: 'the edited cue text never appeared' },
+    async () => {
+      seen = await editorState();
+      return seen.bodyHasReplacement;
+    },
+    {
+      timeout: 30_000,
+      interval: 500,
+      timeoutMsg: () => `the edited cue text never appeared. last: ${JSON.stringify(seen)}`,
+    },
   );
 };
 

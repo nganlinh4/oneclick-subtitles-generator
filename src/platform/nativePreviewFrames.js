@@ -194,7 +194,18 @@ const toOutcome = ({ payload, composition, cacheKey }, response) => {
   if (!isUuidV4(sequenceId) || response.sequenceId !== sequenceId) {
     throw rejected(null, 'previewResponseSequence');
   }
-  if (response.frameIndex !== payload.frameIndex || String(payload.frameIndex) !== indexText) {
+  // TWO DIFFERENT INDICES, and conflating them refused every frame but the first.
+  //
+  // `response.frameIndex` is the SCENE's frame -- the instant on the timeline that was asked for.
+  // The number in the frame URL is the TRANSPORT's index within a published sequence, and a preview
+  // publishes exactly one image per capability, so it is always zero. `FrameLease::frame_url` says
+  // so in as many words and calls `frame_url(0)`.
+  //
+  // This used to require the URL's index to equal the scene's. The two agree only when the scene
+  // frame is zero, so a preview worked on a freshly opened project sitting at the start and was
+  // refused the moment the timeline moved -- which is why it survived until a journey restored a
+  // project at a non-zero instant.
+  if (response.frameIndex !== payload.frameIndex || indexText !== '0') {
     throw rejected(null, 'previewResponseFrameIndex');
   }
   if (!FRAME_MIME_TYPES.has(response.mimeType)) {
