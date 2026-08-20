@@ -94,7 +94,8 @@
         "visible DOM"
       ],
       "runsAgainst": "e2e-binary",
-      "status": "green"
+      "status": "green",
+      "lastGreenCommit": "e1f7da00"
     },
     {
       "name": "defaultFont",
@@ -106,7 +107,8 @@
         "window.__OSG_FONT_READINESS__"
       ],
       "runsAgainst": "e2e-binary",
-      "status": "green"
+      "status": "green",
+      "lastGreenCommit": "e1f7da00"
     },
     {
       "name": "damagedFontPayload",
@@ -118,7 +120,8 @@
         "font readiness record"
       ],
       "runsAgainst": "staged copy of the e2e binary",
-      "status": "green"
+      "status": "green",
+      "lastGreenCommit": "e1f7da00"
     },
     {
       "name": "urlToPreview",
@@ -147,7 +150,7 @@
       "runsAgainst": "e2e-binary",
       "status": "green",
       "note": "'Download Only' is save-to-disk, not load-into-editor: it downloads, exports to the chosen path and discards the candidate. Measured green on the real binary: the scan returned 240p/144p and the export wrote 440,628 bytes.",
-      "lastGreenCommit": "5c03e278"
+      "lastGreenCommit": "e1f7da00"
     },
     {
       "name": "editPersistRelaunch",
@@ -171,7 +174,7 @@
       "runsAgainst": "e2e-binary",
       "status": "green",
       "note": "Went green after three defects it found were fixed: the glyph residual refusal, the conflation of the transport frame index with the scene frame index, and its own oracle comparing BLOB identifiers by object identity.",
-      "lastGreenCommit": "f63adc9d"
+      "lastGreenCommit": "e1f7da00"
     },
     {
       "name": "unicodeCues",
@@ -194,7 +197,7 @@
       ],
       "runsAgainst": "e2e-binary",
       "status": "green",
-      "lastGreenCommit": "8ccaaae6",
+      "lastGreenCommit": "e1f7da00",
       "note": "Went green with the line-mask migration. Was red with previewAtlasCannotLayOut / crossesClusters=true."
     },
     {
@@ -302,5 +305,16 @@
       "workedAround": "package.json chains one invocation per spec.",
       "properFix": "A fresh root per spec. The root is created when the config loads because beforeSession is too late -- the service spawns the binary from the launcher, and assigning isolation later let a run read live user state while appearing isolated."
     }
-  ]
+  ],
+  "suiteRun": {
+    "when": "2026-08-20",
+    "commit": "e1f7da00",
+    "how": "one wdio invocation per spec, against the e2e-automation binary and the real video",
+    "result": "6 of 6 green: startup, defaultFont, damagedFontPayload, urlToPreview, editPersistRelaunch, unicodeCues",
+    "durations": {
+      "urlToPreview": "6m24s",
+      "editPersistRelaunch": "7m27s",
+      "unicodeCues": "4m55s"
+    }
+  }
 }
