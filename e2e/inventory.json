@@ -171,7 +171,7 @@
       "runsAgainst": "e2e-binary",
       "status": "green",
       "note": "Went green after three defects it found were fixed: the glyph residual refusal, the conflation of the transport frame index with the scene frame index, and its own oracle comparing BLOB identifiers by object identity.",
-      "lastGreenCommit": "pending"
+      "lastGreenCommit": "f63adc9d"
     },
     {
       "name": "unicodeCues",
