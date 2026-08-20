@@ -139,6 +139,7 @@ struct ActivityState<K> {
     operations: HashSet<K>,
     leases: HashMap<K, usize>,
     verified_versions: HashMap<K, String>,
+    verifying_versions: HashSet<(K, String)>,
 }
 
 impl<K> Default for ActivityState<K> {
@@ -147,6 +148,7 @@ impl<K> Default for ActivityState<K> {
             operations: HashSet::new(),
             leases: HashMap::new(),
             verified_versions: HashMap::new(),
+            verifying_versions: HashSet::new(),
         }
     }
 }
@@ -563,35 +565,50 @@ where
             };
         }
 
+        let (operation_in_progress, verified_version, activity_available) =
+            self.status_activity(component);
+
         let mut first_valid = None;
         let mut installed_bytes = 0_u64;
-        let mut corrupt = false;
+        let mut corrupt = !activity_available;
         let verification = CancellationToken::default();
         for (index, delivery) in releases.iter().enumerate() {
-            let root = self.version_root(delivery);
-            match fs::symlink_metadata(&root) {
-                Ok(_) if self.is_verified(component, delivery) => {
+            if operation_in_progress {
+                if verified_version.as_deref() == Some(delivery.version.as_str()) {
                     if first_valid.is_none() {
                         first_valid = Some((index, delivery));
                     }
                     installed_bytes = installed_bytes.saturating_add(delivery.unpacked_size_bytes);
                 }
-                Ok(_) => match receipt::validate_integrity(&root, delivery, &verification) {
+                continue;
+            }
+            let root = self.version_root(delivery);
+            match fs::symlink_metadata(&root) {
+                Ok(_) if verified_version.as_deref() == Some(delivery.version.as_str()) => {
+                    if first_valid.is_none() {
+                        first_valid = Some((index, delivery));
+                    }
+                    installed_bytes = installed_bytes.saturating_add(delivery.unpacked_size_bytes);
+                }
+                Ok(_) => match self.verify_once(component, delivery, &verification) {
                     Ok(()) => {
-                        self.mark_verified(component, delivery);
                         if first_valid.is_none() {
                             first_valid = Some((index, delivery));
                         }
                         installed_bytes =
                             installed_bytes.saturating_add(delivery.unpacked_size_bytes);
                     }
+                    Err(PackageError::RuntimeBusy) => {}
                     Err(_) => corrupt = true,
                 },
                 Err(error) if error.kind() == std::io::ErrorKind::NotFound => {}
                 Err(_) => corrupt = true,
             }
         }
-        if first_valid.is_none() && self.has_unrecognized_component_state(component) {
+        if !operation_in_progress
+            && first_valid.is_none()
+            && self.has_unrecognized_component_state(component)
+        {
             corrupt = true;
         }
         let current = releases.first().expect("non-empty releases");
@@ -628,6 +645,22 @@ where
             installed_bytes,
             download_bytes: current.size_bytes,
             available_installed_bytes: current.unpacked_size_bytes,
+        }
+    }
+
+    fn status_activity(&self, component: K) -> (bool, Option<String>, bool) {
+        // A mutating operation owns the component's filesystem layout. Publication renames a fully
+        // populated staging tree into `versions/<version>` before its final digest pass completes.
+        // A status probe of that visible target would start another multi-gigabyte verification on
+        // every UI poll. The durable operation record owns progress; status preserves only the last
+        // version already verified in this manager lifetime until the mutation commits.
+        match self.0.activity.lock() {
+            Ok(activity) => (
+                activity.operations.contains(&component),
+                activity.verified_versions.get(&component).cloned(),
+                true,
+            ),
+            Err(_) => (true, None, false),
         }
     }
 
@@ -1073,14 +1106,14 @@ where
                 selected = Some(delivery);
                 break;
             }
-            match receipt::validate_integrity(&self.version_root(delivery), delivery, cancellation)
-            {
+            match self.verify_once(component, delivery, cancellation) {
                 Ok(()) => {
-                    self.mark_verified(component, delivery);
                     selected = Some(delivery);
                     break;
                 }
-                Err(PackageError::Cancelled) => return Err(PackageError::Cancelled),
+                Err(error @ (PackageError::Cancelled | PackageError::RuntimeBusy)) => {
+                    return Err(error);
+                }
                 Err(_) => {}
             }
         }
@@ -1117,6 +1150,54 @@ where
                 .get(&component)
                 .is_some_and(|version| version == &delivery.version)
         })
+    }
+
+    fn verify_once(
+        &self,
+        component: K,
+        delivery: &PackageDelivery,
+        cancellation: &CancellationToken,
+    ) -> Result<()> {
+        // Integrity verification reads the complete published tree. Hold the same runtime lease as
+        // a launched worker so install/remove/adoption can enter their read-only preflight but must
+        // fail before renaming or deleting that tree. The activity mutex below prevents duplicate
+        // readers; the lease prevents a reader-versus-writer race.
+        let _verification_lease = self.acquire_lease(component)?;
+        let key = (component, delivery.version.clone());
+        {
+            let mut activity = self
+                .0
+                .activity
+                .lock()
+                .map_err(|_| PackageError::StoreUnavailable)?;
+            if activity
+                .verified_versions
+                .get(&component)
+                .is_some_and(|version| version == &delivery.version)
+            {
+                return Ok(());
+            }
+            if activity.operations.contains(&component)
+                || !activity.verifying_versions.insert(key.clone())
+            {
+                return Err(PackageError::RuntimeBusy);
+            }
+        }
+
+        let result =
+            receipt::validate_integrity(&self.version_root(delivery), delivery, cancellation);
+        let mut activity = self
+            .0
+            .activity
+            .lock()
+            .map_err(|_| PackageError::StoreUnavailable)?;
+        activity.verifying_versions.remove(&key);
+        if result.is_ok() {
+            activity
+                .verified_versions
+                .insert(component, delivery.version.clone());
+        }
+        result
     }
 
     fn mark_verified(&self, component: K, delivery: &PackageDelivery) {
@@ -2616,6 +2697,122 @@ mod tests {
                 .begin_operation(EngineId::FasterWhisperTurbo)
                 .is_ok()
         );
+    }
+
+    #[test]
+    fn package_status_never_validates_a_first_install_publication_in_progress() {
+        let temp = tempfile::tempdir().unwrap();
+        let fixture = fixture();
+        let manager = manager(
+            &temp,
+            fixture.catalog,
+            Arc::new(MemoryFetcher::new(fixture.archive, false)),
+            Arc::new(TestCoordinator::default()),
+        );
+        manager
+            .install(EngineId::Parakeet, &CancellationToken::default(), &|_| {})
+            .unwrap();
+        let delivery = manager.0.0.catalog.current(&EngineId::Parakeet).unwrap();
+        let target = manager.0.version_root(delivery);
+
+        // Model the publication window: the target is visible, but it has not committed as a
+        // verified version yet. Corrupting a byte makes any accidental integrity scan observable.
+        manager.0.clear_verified(EngineId::Parakeet);
+        fs::write(target.join(MODEL_PATH), b"other").unwrap();
+        let operation = manager.0.begin_operation(EngineId::Parakeet).unwrap();
+
+        let during = manager.status(EngineId::Parakeet);
+        assert_eq!(during.state, EnginePackageState::Missing);
+        assert!(!during.installed);
+        assert!(!manager.0.is_verified(EngineId::Parakeet, delivery));
+
+        drop(operation);
+        assert_eq!(
+            manager.status(EngineId::Parakeet).state,
+            EnginePackageState::Corrupt
+        );
+    }
+
+    #[test]
+    fn package_status_preserves_the_last_verified_version_during_layout_mutation() {
+        let temp = tempfile::tempdir().unwrap();
+        let fixture = fixture();
+        let manager = manager(
+            &temp,
+            fixture.catalog,
+            Arc::new(MemoryFetcher::new(fixture.archive, false)),
+            Arc::new(TestCoordinator::default()),
+        );
+        manager
+            .install(EngineId::Parakeet, &CancellationToken::default(), &|_| {})
+            .unwrap();
+        let delivery = manager.0.0.catalog.current(&EngineId::Parakeet).unwrap();
+        let target = manager.0.version_root(delivery);
+        let held = temp.path().join("held-verified-version");
+        let operation = manager.0.begin_operation(EngineId::Parakeet).unwrap();
+        fs::rename(&target, &held).unwrap();
+
+        let during = manager.status(EngineId::Parakeet);
+        assert_eq!(during.state, EnginePackageState::Installed);
+        assert!(during.installed);
+        assert_eq!(during.version.as_deref(), Some(delivery.version.as_str()));
+
+        fs::rename(&held, &target).unwrap();
+        drop(operation);
+        assert_eq!(
+            manager.status(EngineId::Parakeet).state,
+            EnginePackageState::Installed
+        );
+    }
+
+    #[test]
+    fn cold_integrity_verification_is_single_flight_across_status_and_launch() {
+        let temp = tempfile::tempdir().unwrap();
+        let fixture = fixture();
+        let manager = manager(
+            &temp,
+            fixture.catalog,
+            Arc::new(MemoryFetcher::new(fixture.archive, false)),
+            Arc::new(TestCoordinator::default()),
+        );
+        manager
+            .install(EngineId::Parakeet, &CancellationToken::default(), &|_| {})
+            .unwrap();
+        let delivery = manager.0.0.catalog.current(&EngineId::Parakeet).unwrap();
+        manager.0.clear_verified(EngineId::Parakeet);
+        let key = (EngineId::Parakeet, delivery.version.clone());
+        manager
+            .0
+            .0
+            .activity
+            .lock()
+            .unwrap()
+            .verifying_versions
+            .insert(key.clone());
+
+        let concurrent_status = manager.status(EngineId::Parakeet);
+        assert_eq!(concurrent_status.state, EnginePackageState::Missing);
+        assert_eq!(
+            manager
+                .resolve_for_launch(EngineId::Parakeet, &CancellationToken::default())
+                .err(),
+            Some(PackageError::RuntimeBusy)
+        );
+        assert!(!manager.0.is_verified(EngineId::Parakeet, delivery));
+
+        manager
+            .0
+            .0
+            .activity
+            .lock()
+            .unwrap()
+            .verifying_versions
+            .remove(&key);
+        assert_eq!(
+            manager.status(EngineId::Parakeet).state,
+            EnginePackageState::Installed
+        );
+        assert!(manager.0.is_verified(EngineId::Parakeet, delivery));
     }
 
     #[test]
