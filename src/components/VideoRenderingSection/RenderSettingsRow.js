@@ -57,6 +57,7 @@ const RenderSettingsRow = ({
 
         <button
           className="pill-button primary"
+          data-osg-action="render-video"
           onClick={onRender}
           disabled={!selectedVideoFile || !hasSubtitles}
           title={!selectedVideoFile

@@ -20,7 +20,9 @@ use osg_decode::{
     DecodeError, DecodeLimits, DecodedFrame, DecoderConfig, SourceRejection, VideoDecoder,
     open_decoder,
 };
-use osg_encode::{EncoderConfig, FrameBuffer, PixelLayout, VideoConfig, open_encoder};
+use osg_encode::{
+    AudioBlock, AudioConfig, EncoderConfig, FrameBuffer, PixelLayout, VideoConfig, open_encoder,
+};
 use osg_scene::{ExactTime, FrameTimeline};
 use tempfile::TempDir;
 
@@ -54,6 +56,7 @@ const WIDTH: u32 = 320;
 const HEIGHT: u32 = 240;
 const FPS: u32 = 30;
 const FRAMES: u32 = 30;
+const AUDIO_TAIL_FRAMES: usize = 52_800;
 
 /// How far a decoded grey may sit from the grey that was encoded.
 ///
@@ -151,6 +154,37 @@ fn encoded_clip(directory: &TempDir, name: &str) -> PathBuf {
             .write_frame(index, &frame)
             .expect("the platform accepts a well-formed frame");
     }
+    encoder.finalize().expect("the container is closed");
+    assert!(output.is_file(), "the encoder produced no file");
+    output
+}
+
+/// Encodes one second of video inside a 1.1-second presentation whose audio has a short tail.
+fn encoded_clip_with_audio_tail(directory: &TempDir, name: &str) -> PathBuf {
+    let _platform = platform();
+    let output = directory.path().join(name);
+    let video = VideoConfig::new(WIDTH, HEIGHT, FPS, 1, FRAMES)
+        .expect("a supported configuration")
+        .with_bitrate_kbps(8_000)
+        .expect("8 Mbit/s is in range");
+    let audio = AudioConfig::from_parts(48_000, 2, 128).expect("a supported audio configuration");
+    let mut encoder = open_encoder(&output, EncoderConfig::video_only(video).with_audio(audio))
+        .expect("Media Foundation must provide H.264 and AAC encoders for these tests");
+
+    for index in 0..FRAMES {
+        let pixels = synthetic_frame(index);
+        let frame = FrameBuffer::new(&pixels, WIDTH, HEIGHT, PixelLayout::Rgba8)
+            .expect("a synthetic frame is the configured size");
+        encoder
+            .write_frame(index, &frame)
+            .expect("the platform accepts a well-formed frame");
+    }
+
+    let samples = vec![0.0_f32; AUDIO_TAIL_FRAMES * 2];
+    let block = AudioBlock::new(&samples, audio).expect("the stereo block is aligned");
+    encoder
+        .write_audio(0, &block)
+        .expect("the platform accepts the audio tail");
     encoder.finalize().expect("the container is closed");
     assert!(output.is_file(), "the encoder produced no file");
     output
@@ -458,6 +492,25 @@ fn a_frame_past_the_end_of_the_source_is_reported_as_truncation() {
         "expected a truncation, got {error:?}"
     );
     assert!(!error.to_string().contains("C:"));
+}
+
+#[test]
+fn a_declared_audio_tail_holds_the_last_video_frame() {
+    let directory = TempDir::new().expect("a temporary directory");
+    let clip = encoded_clip_with_audio_tail(&directory, "audio-tail.mp4");
+    let tail_timeline =
+        FrameTimeline::new(FPS, 1, 33, ExactTime::ZERO).expect("a supported timeline");
+    let mut decoder = open_decoder(&clip, DecoderConfig::new(tail_timeline))
+        .expect("the clip opens against its full presentation");
+    assert!(
+        decoder.source().duration_100ns() > 10_000_000,
+        "the audio track must extend the declared presentation"
+    );
+
+    let held = decoder
+        .frame_for_output(31)
+        .expect("the final picture stays visible during the declared audio tail");
+    assert_frame_is(&held, FRAMES - 1);
 }
 
 #[test]

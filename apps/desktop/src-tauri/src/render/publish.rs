@@ -126,17 +126,34 @@ async fn publish_artifact(
 
 /// Commits the manifest, finishes the job, and hands back a playable capability.
 ///
-/// The order is what makes a half-published render impossible: the manifest is written before the
-/// job is finished, and rolled back if finishing it fails, so a `Succeeded` job always has a result
-/// and a job that is not `Succeeded` never has one.
+/// The order is what makes a half-published render impossible: content identity and a usable
+/// playback are established before the manifest is written; the manifest and playback are both
+/// rolled back if finishing the job fails. A `Succeeded` job therefore always has a recoverable
+/// result, and a job that is not `Succeeded` owns neither a manifest nor an unpublished playback.
 async fn commit(publication: &Publication<'_>, manifest: RenderManifestResult) {
     if publication.stopped_by_user().await {
         cancel(publication).await;
         return;
     }
+    let resolved =
+        match manifest::validate_result(publication.database, publication.job_id, &manifest) {
+            Ok(resolved) => resolved,
+            Err(error) => {
+                fail(publication, error).await;
+                return;
+            }
+        };
+    let playback = match publication.runtime.register_playback(&resolved) {
+        Ok(playback) => playback,
+        Err(error) => {
+            fail(publication, error).await;
+            return;
+        }
+    };
     if let Err(error) =
         manifest::store_result(publication.database, publication.job_id, manifest.clone())
     {
+        let _ = publication.runtime.release_playback(playback.id);
         fail(publication, error).await;
         return;
     }
@@ -145,6 +162,7 @@ async fn commit(publication: &Publication<'_>, manifest: RenderManifestResult) {
             Ok(job) => job,
             Err(error) => {
                 let _ = manifest::clear_result(publication.database, publication.job_id);
+                let _ = publication.runtime.release_playback(playback.id);
                 if publication.stopped_by_user().await {
                     cancel(publication).await;
                 } else {
@@ -153,43 +171,18 @@ async fn commit(publication: &Publication<'_>, manifest: RenderManifestResult) {
                 return;
             }
         };
-    let resolved =
-        match manifest::validate_result(publication.database, publication.job_id, &manifest) {
-            Ok(resolved) => resolved,
-            Err(error) => {
-                let _ = publication.channel.send(RenderEvent::Failed {
-                    job: Some(job),
-                    error,
-                });
-                return;
-            }
-        };
-    match publication
-        .runtime
-        .register_playback(&manifest.asset, resolved.path())
-    {
-        Ok(playback) => {
-            diagnostics::record(
-                "render.completed",
-                &[
-                    ("job", publication.job_id.to_string()),
-                    ("elapsedMs", elapsed_millis(publication.started)),
-                    ("durationFrames", manifest.duration_in_frames.to_string()),
-                ],
-            );
-            let _ = publication.channel.send(RenderEvent::Completed {
-                job,
-                result: RenderCompletedResult::new(manifest, playback),
-            });
-        }
-        Err(error) => {
-            record_failure(publication.job_id, &error, publication.started);
-            let _ = publication.channel.send(RenderEvent::Failed {
-                job: Some(job),
-                error,
-            });
-        }
-    }
+    diagnostics::record(
+        "render.completed",
+        &[
+            ("job", publication.job_id.to_string()),
+            ("elapsedMs", elapsed_millis(publication.started)),
+            ("durationFrames", manifest.duration_in_frames.to_string()),
+        ],
+    );
+    let _ = publication.channel.send(RenderEvent::Completed {
+        job,
+        result: RenderCompletedResult::new(manifest, playback),
+    });
 }
 
 impl Publication<'_> {

@@ -1,15 +1,21 @@
 import assert from 'node:assert/strict';
+import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 import test from 'node:test';
 
 import {
   defaultJourneys, isolatedEnvironment, normalizeJourney, parseArguments,
 } from './run-isolated.mjs';
+import { stagedDialogPaths } from './support/environment.js';
+import { cachedRealVideo } from './support/realMedia.js';
 
 test('discovers every product journey while excluding scenario-only diagnostics', () => {
   const names = defaultJourneys().map((path) => path.replaceAll('\\', '/').split('/').at(-1));
   assert.deepEqual(names, [
     'defaultFont.journey.js',
     'editPersistRelaunch.journey.js',
+    'nativeExportDecoded.journey.js',
     'startup.journey.js',
     'unicodeCues.journey.js',
     'urlToPreview.journey.js',
@@ -44,4 +50,29 @@ test('removes every inherited isolation and dialog value without mutating the ca
   const clean = isolatedEnvironment(source);
   assert.deepEqual(clean, { SAFE: 'kept' });
   assert.equal(source.OSG_E2E_DATA_ROOT, 'old-root');
+});
+
+test('stages media input and output inside the disposable run, never the persistent cache', () => {
+  const paths = stagedDialogPaths('C:\\Temp\\osg-e2e-run', 'C:\\repo\\target\\e2e-real-media\\source.mp4');
+  assert.deepEqual(paths, {
+    fixtureRoot: 'C:\\Temp\\osg-e2e-run',
+    mediaSelection: 'C:\\Temp\\osg-e2e-run\\input\\source.mp4',
+    mediaDestination: 'C:\\Temp\\osg-e2e-run\\output',
+  });
+  assert.doesNotMatch(paths.mediaSelection, /e2e-real-media/i);
+  assert.doesNotMatch(paths.mediaDestination, /e2e-real-media/i);
+});
+
+test('real-media discovery cannot select a prior export nested under the input cache', () => {
+  const root = mkdtempSync(join(tmpdir(), 'osg-real-media-cache-'));
+  try {
+    const input = join(root, 'source.mp4');
+    const nested = join(root, 'exports', 'run-old');
+    mkdirSync(nested, { recursive: true });
+    writeFileSync(input, 'source');
+    writeFileSync(join(nested, 'newer-export.mp4'), 'export');
+    assert.equal(cachedRealVideo(root), input);
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
 });

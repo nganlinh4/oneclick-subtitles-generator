@@ -198,7 +198,7 @@ pub(crate) async fn render_result(
         let resolved = result
             .map(|result| {
                 let media = manifest::validate_result(&database, job_id, &result)?;
-                Ok::<_, CommandError>((result, media.path().to_owned()))
+                Ok::<_, CommandError>((result, media))
             })
             .transpose()?;
         Ok::<_, CommandError>((job, resolved))
@@ -207,9 +207,9 @@ pub(crate) async fn render_result(
     .map_err(|_| CommandError::internal("The render result task stopped unexpectedly."))??;
     let result = resolved
         .1
-        .map(|(manifest, path)| {
+        .map(|(manifest, media)| {
             runtime
-                .register_playback(&manifest.asset, &path)
+                .register_playback(&media)
                 .map(|playback| RenderCompletedResult::new(manifest, playback))
         })
         .transpose()?;

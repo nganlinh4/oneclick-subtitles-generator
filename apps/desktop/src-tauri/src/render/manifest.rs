@@ -181,7 +181,7 @@ pub(super) fn validate_result(
         || result.asset.kind() != MediaKind::Video
         || result.asset.extension() != "mp4"
         || media.asset() != &result.asset
-        || !same_file::is_same_file(artifact.path(), media.path()).unwrap_or(false)
+        || artifact.record().content_hash() != media.content_hash()
     {
         return Err(CommandError::internal(
             "The render result manifest is invalid.",
@@ -219,11 +219,18 @@ pub(super) fn validate_result(
 
 #[cfg(test)]
 mod tests {
-    use osg_domain::{AssetId, MediaAsset, MediaKind, ProjectId};
-    use osg_infrastructure::storage::ArtifactId;
+    use osg_domain::{
+        AssetId, JobKind, JobSnapshot, MediaAsset, MediaKind, ProjectId, ProjectMetadata,
+    };
+    use osg_infrastructure::storage::{
+        ArtifactDraft, ArtifactId, ArtifactKind, ArtifactRegistration, ContentHash, Database,
+    };
     use serde_json::json;
 
-    use super::{MANIFEST_SCHEMA_VERSION, RenderManifest};
+    use super::{
+        MANIFEST_SCHEMA_VERSION, RenderManifest, RenderManifestResult, artifact_metadata,
+        validate_result,
+    };
 
     #[test]
     fn manifest_contract_rejects_paths_and_unknown_fields() {
@@ -245,5 +252,75 @@ mod tests {
         });
 
         assert!(serde_json::from_value::<RenderManifest>(value).is_err());
+    }
+
+    #[test]
+    fn a_rendered_artifact_and_its_immutable_media_snapshot_share_identity_not_an_inode() {
+        let directory = tempfile::tempdir().expect("temporary data");
+        let database = Database::open(directory.path().join("db/osg.sqlite3")).expect("database");
+        let project = ProjectMetadata::new("render project").expect("project");
+        database.create_project(&project).expect("create project");
+        let job = JobSnapshot::new(JobKind::RenderVideo);
+        database.create_job(&job).expect("create job");
+        let source_asset_id = AssetId::new();
+        let bytes = b"a finished native render";
+        let asset = MediaAsset::new(
+            "rendered-video.mp4",
+            "mp4",
+            u64::try_from(bytes.len()).expect("small fixture"),
+            MediaKind::Video,
+        )
+        .expect("media asset");
+        let draft = ArtifactDraft::new(
+            ArtifactKind::new("renderedVideo").expect("artifact kind"),
+            ContentHash::digest(bytes),
+            asset.size_bytes(),
+            artifact_metadata(source_asset_id, project.id(), 640, 360, 30, 60),
+        )
+        .expect("artifact draft")
+        .with_project(project.id())
+        .with_job(job.id());
+        let staging = match database
+            .register_artifact(&draft)
+            .expect("register artifact")
+        {
+            ArtifactRegistration::Staging(staging) => staging,
+            other => panic!("unexpected registration: {other:?}"),
+        };
+        std::fs::write(staging.path(), bytes).expect("write staged render");
+        let artifact_id = staging.record().id();
+        database
+            .mark_artifact_ready(artifact_id)
+            .expect("finish artifact");
+        let artifact = database
+            .resolve_artifact(artifact_id)
+            .expect("resolve artifact")
+            .expect("artifact exists");
+        database
+            .remember_media(&asset, artifact.path())
+            .expect("remember immutable media snapshot");
+        let media = database
+            .resolve_media(asset.id())
+            .expect("resolve media")
+            .expect("media exists");
+        assert_ne!(
+            artifact.path(),
+            media.path(),
+            "media publication must keep its own immutable snapshot"
+        );
+
+        let result = RenderManifestResult {
+            artifact_id: artifact_id.to_string(),
+            asset,
+            source_asset_id,
+            project_id: project.id(),
+            width: 640,
+            height: 360,
+            fps: 30,
+            duration_in_frames: 60,
+        };
+        let validated = validate_result(&database, job.id(), &result)
+            .expect("content-identical artifact and snapshot validate");
+        assert_eq!(validated.content_hash(), artifact.record().content_hash());
     }
 }

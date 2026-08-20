@@ -429,9 +429,14 @@ impl MediaFoundationDecoder {
             .current
             .as_ref()
             .ok_or(DecodeError::TruncatedStream { decoded })?;
-        // Past the end of the last frame's interval is past the end of the file. Returning the last
-        // frame instead would make a truncated source look like a complete export.
+        // A container presentation may legitimately outlive its selected video stream because an
+        // audio track has a small encoder-delay tail. Browsers keep the last picture visible for
+        // that tail, and the shared presentation duration above says the source is still live, so
+        // do the same. A source with no declared duration gets no such authority: once its final
+        // sample interval ends, holding it would turn an unknown/truncated stream into a complete
+        // one. Targets at or beyond a positive declared duration were already refused above.
         if self.at_end
+            && duration <= 0
             && target_100ns
                 >= current
                     .presentation_100ns()

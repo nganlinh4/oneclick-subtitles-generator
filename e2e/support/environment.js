@@ -7,7 +7,7 @@
 
 import { mkdtempSync, mkdirSync, rmSync, symlinkSync } from 'node:fs';
 import { tmpdir } from 'node:os';
-import { join, resolve } from 'node:path';
+import { basename, join, resolve } from 'node:path';
 
 export const REPOSITORY_ROOT = resolve(import.meta.dirname, '..', '..');
 
@@ -36,7 +36,8 @@ export const FIXTURE_ROOT = join(REPOSITORY_ROOT, 'e2e', 'fixtures', 'subtitles'
 export const NATIVE_TOOLS_CACHE = join(REPOSITORY_ROOT, 'target', 'e2e-native-tools');
 
 /**
- * Where a real downloaded video is kept between runs, and where a staged save dialog writes.
+ * Where a real downloaded video is kept between runs. This cache is input-only; every journey
+ * copies its selected media into its disposable run root and writes exports elsewhere in that root.
  *
  * Created eagerly, because the application CANONICALIZES this root before it will honour a staged
  * destination — and canonicalizing a directory that does not exist fails, which makes the seam fall
@@ -79,7 +80,7 @@ export const APPLICATION_BINARY = process.env.OSG_E2E_BINARY
  */
 export const createRunRoot = ({ keepNativeTools = true } = {}) => {
   const root = mkdtempSync(join(tmpdir(), 'osg-e2e-'));
-  for (const child of ['data', 'cache', 'logs', 'webview', 'evidence', 'output']) {
+  for (const child of ['data', 'cache', 'logs', 'webview', 'evidence', 'input', 'output']) {
     mkdirSync(join(root, child), { recursive: true });
   }
   if (keepNativeTools) {
@@ -91,12 +92,18 @@ export const createRunRoot = ({ keepNativeTools = true } = {}) => {
   return root;
 };
 
+export const stagedDialogPaths = (root, cachedVideo) => Object.freeze({
+  fixtureRoot: root,
+  mediaSelection: cachedVideo === null ? null : join(root, 'input', basename(cachedVideo)),
+  mediaDestination: join(root, 'output'),
+});
+
 /** Everything a run must set so it cannot reach live user state. */
 export const isolationEnvironment = (root) => ({
   OSG_E2E_DATA_ROOT: root,
   // The only files a staged file-dialog selection may name. The application resolves and re-checks
   // this itself; declaring it here is what keeps a journey to reviewed files.
-  OSG_E2E_FIXTURE_ROOT: process.env.OSG_E2E_FIXTURE_ROOT ?? REAL_MEDIA_CACHE,
+  OSG_E2E_FIXTURE_ROOT: process.env.OSG_E2E_FIXTURE_ROOT ?? root,
   // What the next OPEN dialog returns, and where the next SAVE dialog writes. Both are read from
   // the process environment, so they are fixed for a launch; a journey needing different ones runs
   // its own launch. Both are bounded by the application to the reviewed root above.

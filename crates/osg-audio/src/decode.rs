@@ -16,8 +16,10 @@ use std::path::Path;
 
 use std::sync::OnceLock;
 
-use symphonia::core::audio::SampleBuffer;
-use symphonia::core::codecs::{CODEC_TYPE_NULL, CodecRegistry, Decoder, DecoderOptions};
+use symphonia::core::audio::{Layout, SampleBuffer};
+use symphonia::core::codecs::{
+    CODEC_TYPE_NULL, CODEC_TYPE_OPUS, CodecParameters, CodecRegistry, Decoder, DecoderOptions,
+};
 use symphonia::core::errors::Error as SymphoniaError;
 use symphonia::core::formats::{FormatOptions, FormatReader};
 use symphonia::core::io::{MediaSource, MediaSourceStream, MediaSourceStreamOptions};
@@ -134,14 +136,25 @@ impl AudioDecoder {
             )
             .map_err(|_| AudioError::UnrecognisedContainer)?;
         let format = probed.format;
+        // A movie normally lists its video stream first. `codec != NULL` only means "some media",
+        // not "audio"; selecting by that predicate made the audio decoder hand the first VP9/H.264
+        // track to an audio codec registry and refuse every ordinary video with sound. Symphonia's
+        // demuxers expose a sample rate and/or channel layout for audio tracks, while video tracks
+        // expose neither. Select the audio-bearing track first, then let the codec registry decide
+        // whether this build can decode that audio codec.
         let track = format
             .tracks()
             .iter()
-            .find(|track| track.codec_params.codec != CODEC_TYPE_NULL)
+            .find(|track| {
+                track.codec_params.codec != CODEC_TYPE_NULL
+                    && (track.codec_params.sample_rate.is_some()
+                        || track.codec_params.channels.is_some())
+            })
             .ok_or(AudioError::NoAudioTrack)?;
         let track_id = track.id;
+        let decoder_params = canonical_decoder_parameters(&track.codec_params);
         let decoder = codecs()
-            .make(&track.codec_params, &DecoderOptions::default())
+            .make(&decoder_params, &DecoderOptions::default())
             .map_err(|_| AudioError::UnsupportedCodec)?;
 
         let mut opened = Self {
@@ -268,6 +281,49 @@ impl AudioDecoder {
             return Ok(true);
         }
     }
+}
+
+/// Convert the Opus-in-MP4 `dOps` header exposed by Symphonia into canonical `OpusHead` bytes.
+///
+/// Matroska/WebM stores `OpusHead` directly: version 1 and little-endian multibyte fields. MP4's
+/// `dOps` box stores version 0 and big-endian pre-skip, input rate and gain. Symphonia 0.5.5 prefixes
+/// those `dOps` fields with `OpusHead` but deliberately leaves their representation unchanged; the
+/// libopus adapter then sees version 0 and refuses an otherwise ordinary downloaded MP4. Only the
+/// exact 19-byte, mapping-family-zero form is rewritten here. Longer mapped-channel headers and
+/// malformed values stay untouched and are refused by the decoder rather than guessed at.
+fn canonical_decoder_parameters(parameters: &CodecParameters) -> CodecParameters {
+    let mut canonical = parameters.clone();
+    if parameters.codec != CODEC_TYPE_OPUS {
+        return canonical;
+    }
+    let Some(extra) = parameters.extra_data.as_deref() else {
+        return canonical;
+    };
+    if extra.len() != 19
+        || &extra[..8] != b"OpusHead"
+        || extra[8] != 0
+        || extra[9] == 0
+        || extra[18] != 0
+    {
+        return canonical;
+    }
+
+    let mut head = extra.to_vec();
+    head[8] = 1;
+    head[10..12].reverse();
+    head[12..16].reverse();
+    head[16..18].reverse();
+    canonical.extra_data = Some(head.into_boxed_slice());
+    match extra[9] {
+        1 => {
+            canonical.with_channel_layout(Layout::Mono);
+        }
+        2 => {
+            canonical.with_channel_layout(Layout::Stereo);
+        }
+        _ => return parameters.clone(),
+    }
+    canonical
 }
 
 /// Refuse a packet whose declared frame count would make the sample buffer unbounded.

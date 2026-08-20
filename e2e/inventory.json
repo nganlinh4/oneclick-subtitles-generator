@@ -47,7 +47,7 @@
     ],
     "url": "https://www.youtube.com/watch?v=jNQXAC9IVRw",
     "why": "First video published to YouTube. Nineteen seconds, no music licence, the least likely link on the platform to be deleted or region-locked.",
-    "cachedAt": "target/e2e-real-media",
+    "cachedAt": "target/e2e-real-media (input-only; copied into each disposable run root)",
     "nativeToolsCachedAt": "target/e2e-native-tools"
   },
   "harnessSubstitutions": {
@@ -218,9 +218,17 @@
     {
       "name": "nativeExportDecoded",
       "kind": "workflow",
+      "file": "journeys/nativeExportDecoded.journey.js",
       "capability": "An exported video decodes to frames that match the preview at the same instants.",
-      "status": "planned",
-      "note": "The acceptance condition the line-mask work still owes: decode the exported file independently and compare fixed-time frames with the staged preview."
+      "status": "green",
+      "oracles": [
+        "visible DOM and native render queue",
+        "the saved file on disk",
+        "independent ffprobe stream and duration inspection",
+        "independent FFmpeg decode and SSIM against the native preview frame"
+      ],
+      "note": "Green against the real binary: native decode/composite/encode/mux completed, the saved MP4 contained independently probed video and audio streams with the expected duration, and its decoded frame matched the editor's native preview at SSIM >= 0.95. The journey found and drove four product defects to green: missing subtitle admission, selecting a video track as audio plus malformed MP4 Opus parameters, refusing a valid audio-tail presentation after video EOS, and rejecting every successful publication because the artifact and immutable media snapshot were correctly separate files.",
+      "lastGreenCommit": "pending checkpoint commit"
     },
     {
       "name": "localFileImport",
@@ -263,6 +271,34 @@
     }
   ],
   "knownProductFindings": [
+    {
+      "finding": "Native export was disabled even when imported subtitles were visible.",
+      "foundBy": "nativeExportDecoded",
+      "status": "fixed",
+      "severity": "high",
+      "note": "VideoRenderingSection omitted RenderSettingsRow.hasSubtitles. The real control now receives the actual project state and exposes a bounded admission diagnostic."
+    },
+    {
+      "finding": "The audio decoder selected a video track and could not interpret MP4 Opus dOps channel metadata.",
+      "foundBy": "nativeExportDecoded",
+      "status": "fixed",
+      "severity": "high",
+      "note": "Track selection now requires audio parameters, and exact mapping-family-0 dOps data is canonicalized to OpusHead with the correct layout. The committed H.264/AAC fixture and the real VP9/Opus download both decode."
+    },
+    {
+      "finding": "Videos whose audio presentation slightly outlasted the final video sample were refused as truncated.",
+      "foundBy": "nativeExportDecoded",
+      "status": "fixed",
+      "severity": "high",
+      "note": "At clean video EOS inside a positive declared presentation duration, decode holds the last actual video frame to the declared end. Targets at or beyond the duration and durationless truncation remain refusals."
+    },
+    {
+      "finding": "Every successful native render publication was rejected after the artifact had already succeeded.",
+      "foundBy": "nativeExportDecoded",
+      "status": "fixed",
+      "severity": "critical",
+      "note": "Validation incorrectly required the rendered artifact and its immutable media snapshot to be the same filesystem object. It now verifies content identity, registers the already-verified handle, and commits success only after result creation is usable, with rollback cleanup."
+    },
     {
       "finding": "The native subtitle preview was refused at every playhead position except the very start.",
       "foundBy": "editPersistRelaunch",
@@ -316,7 +352,7 @@
     "when": "2026-08-20",
     "commit": "e1f7da00",
     "how": "one wdio invocation per spec, against the e2e-automation binary and the real video",
-    "result": "6 of 6 green: startup, defaultFont, damagedFontPayload, urlToPreview, editPersistRelaunch, unicodeCues",
+    "result": "7 of 7 green: startup, defaultFont, damagedFontPayload, urlToPreview, editPersistRelaunch, unicodeCues, nativeExportDecoded",
     "durations": {
       "urlToPreview": "6m24s",
       "editPersistRelaunch": "7m27s",

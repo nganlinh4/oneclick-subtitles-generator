@@ -13,6 +13,7 @@
     "test:download": "node run-isolated.mjs journeys/urlToPreview.journey.js",
     "test:persistence": "node run-isolated.mjs journeys/editPersistRelaunch.journey.js",
     "test:unicode": "node run-isolated.mjs journeys/unicodeCues.journey.js",
+    "test:export": "node run-isolated.mjs journeys/nativeExportDecoded.journey.js",
     "stress:persistence": "node run-isolated.mjs --repeat 8 journeys/editPersistRelaunch.journey.js",
     "recon": "wdio run wdio.conf.js --spec ./journeys/reconnaissance.journey.js",
     "probe:restore": "wdio run wdio.conf.js --spec ./journeys/restoreProbe.journey.js"

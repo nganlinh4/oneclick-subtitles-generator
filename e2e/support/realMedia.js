@@ -36,23 +36,17 @@ export const REAL_VIDEO = Object.freeze({
 });
 
 /**
- * The newest real video anywhere in the cache, or `null` when nothing has been downloaded yet.
+ * The newest real video directly in the immutable input cache, or `null` when none exists.
  *
  * Found rather than named, because the application names the file itself — from the title yt-dlp
  * resolved, which is how "Me at the zoo.mp4" appears rather than the video id. A harness that
  * assumed a name would silently stop finding it the day the product improved its naming.
  */
-export const cachedRealVideo = () => {
-  const found = [];
-  const walk = (directory) => {
-    for (const entry of readdirSync(directory, { withFileTypes: true })) {
-      const path = join(directory, entry.name);
-      if (entry.isDirectory()) walk(path);
-      else if (entry.name.toLowerCase().endsWith('.mp4')) found.push(path);
-    }
-  };
-  if (!existsSync(REAL_MEDIA_CACHE)) return null;
-  walk(REAL_MEDIA_CACHE);
+export const cachedRealVideo = (cacheRoot = REAL_MEDIA_CACHE) => {
+  if (!existsSync(cacheRoot)) return null;
+  const found = readdirSync(cacheRoot, { withFileTypes: true })
+    .filter((entry) => entry.isFile() && entry.name.toLowerCase().endsWith('.mp4'))
+    .map((entry) => join(cacheRoot, entry.name));
   if (found.length === 0) return null;
   return found.sort((left, right) => statSync(right).mtimeMs - statSync(left).mtimeMs)[0];
 };

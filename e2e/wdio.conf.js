@@ -11,11 +11,10 @@
 // The server is compiled only under the `e2e-automation` Cargo feature. `cargo tree` reports two
 // wdio crates in that graph and zero in the production graph.
 
-import { existsSync, mkdirSync, readFileSync } from 'node:fs';
-import { join } from 'node:path';
+import { copyFileSync, existsSync } from 'node:fs';
 
 import {
-  APPLICATION_BINARY, REAL_MEDIA_CACHE, createRunRoot, isolationEnvironment, removeRunRoot,
+  APPLICATION_BINARY, createRunRoot, isolationEnvironment, removeRunRoot, stagedDialogPaths,
 } from './support/environment.js';
 import { cachedRealVideo } from './support/realMedia.js';
 
@@ -41,13 +40,17 @@ const runRoot = process.env.OSG_E2E_DATA_ROOT && existsSync(process.env.OSG_E2E_
 // The staged dialog answers, decided before the binary is spawned because the application reads
 // them from its own environment at launch.
 //
-// The open dialog returns the real downloaded video when one is cached; the save dialog writes into
-// the same reviewed directory. Neither is set speculatively: a journey that finds no staged
+// The open dialog returns a private copy of the real downloaded video when one is cached; the save
+// dialog writes into this run's private output directory. The persistent media cache is input-only:
+// allowing outputs beneath it caused the next journey to select its own newest 1440x1080 export as
+// the 192x144 source fixture. Neither answer is set speculatively: a journey that finds no staged
 // selection meets the real dialog, which is what a customer meets, and says so by hanging rather
 // than by silently using something else.
 const cachedVideo = cachedRealVideo();
+const dialogPaths = stagedDialogPaths(runRoot, cachedVideo);
 if (process.env.OSG_E2E_MEDIA_SELECTION === undefined && cachedVideo !== null) {
-  process.env.OSG_E2E_MEDIA_SELECTION = cachedVideo;
+  copyFileSync(cachedVideo, dialogPaths.mediaSelection);
+  process.env.OSG_E2E_MEDIA_SELECTION = dialogPaths.mediaSelection;
 }
 if (process.env.OSG_E2E_MEDIA_DESTINATION === undefined) {
   // A directory, not a file: only the application knows what the asset is called or what container
@@ -56,9 +59,7 @@ if (process.env.OSG_E2E_MEDIA_DESTINATION === undefined) {
   // A FRESH one per run. The application refuses a staged destination that already exists, and a
   // refusal is silent — it opens the real dialog behind the window and hangs. Re-running the export
   // journey into a directory that already held its own output would do exactly that.
-  const exports = join(REAL_MEDIA_CACHE, 'exports', `run-${process.pid}`);
-  mkdirSync(exports, { recursive: true });
-  process.env.OSG_E2E_MEDIA_DESTINATION = exports;
+  process.env.OSG_E2E_MEDIA_DESTINATION = dialogPaths.mediaDestination;
 }
 Object.assign(process.env, isolationEnvironment(runRoot));
 

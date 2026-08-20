@@ -1,0 +1,143 @@
+// A customer renders the project they can see, saves it, and gets a real independently decodable MP4.
+
+import { strict as assert } from 'node:assert';
+import { join } from 'node:path';
+
+import { clickControl } from '../support/editor.js';
+import {
+  compareFrames,
+  extractFrame,
+  listMediaFiles,
+  newestMediaFile,
+  probeMedia,
+  saveNativePreviewFrame,
+} from '../support/nativeMediaOracle.js';
+import { REAL_VIDEO } from '../support/realMedia.js';
+import { importSubtitles, openProjectWithMedia, waitForNativeFrame } from '../support/workflow.js';
+
+const COMPARE_AT_SECONDS = 1;
+
+describe('a customer exports the subtitled video they previewed', () => {
+  it('writes a native MP4 whose decoded frame matches the editor preview', async () => {
+    const destination = process.env.OSG_E2E_MEDIA_DESTINATION;
+    const root = process.env.OSG_E2E_DATA_ROOT;
+    assert.ok(destination, 'the save-dialog destination must be staged');
+    assert.ok(root, 'the application must run in an isolated root');
+
+    await openProjectWithMedia();
+    await importSubtitles();
+    await waitForNativeFrame();
+
+    const oldFrameUrl = await browser.execute(
+      () => document.querySelector('.video-preview .native-composited-frame')?.src ?? null,
+    );
+    await browser.execute((seconds) => {
+      const video = document.querySelector('.video-preview video.video-player');
+      if (video === null) throw new Error('the editor video is missing');
+      video.pause();
+      video.currentTime = seconds;
+    }, COMPARE_AT_SECONDS);
+    await browser.waitUntil(async () => {
+      const current = await browser.execute(
+        () => document.querySelector('.video-preview .native-composited-frame')?.src ?? null,
+      );
+      return current !== null && current !== oldFrameUrl;
+    }, {
+      timeout: 120_000,
+      interval: 1_000,
+      timeoutMsg: 'the editor did not publish the requested comparison frame',
+    });
+    const previewPath = join(root, 'evidence', 'preview-at-1s.png');
+    await saveNativePreviewFrame(previewPath);
+
+    await clickControl('.render-video-toggle');
+    // The current rebuilt binary predates the stable data attribute by one narrow UI edit, so the
+    // icon is retained as a compatibility selector for this red-to-green run. Future binaries use
+    // data-osg-action and both forms identify the same visible control.
+    const renderSelector = '//*[contains(@class,"video-rendering-section") and contains(@class,"expanded")]'
+      + '//button[@data-osg-action="render-video" or .//span[normalize-space(.)="desktop_windows"]]';
+    const renderButton = await $(renderSelector);
+    await renderButton.waitForDisplayed({ timeout: 30_000, timeoutMsg: 'the render controls did not open' });
+    assert.equal(
+      await renderButton.isEnabled(),
+      true,
+      'Render must be enabled when the selected media has imported subtitles',
+    );
+
+    // Opening the rendering section may surface unrelated retained notices (for example an optional
+    // narration engine that is not selected). Clear the visible history before the admission click
+    // so only a refusal CAUSED by Render can satisfy the diagnostic branch below.
+    await browser.execute(() => {
+      for (const close of document.querySelectorAll('.toast-item.live .close-icon')) close.click();
+    });
+    await browser.waitUntil(async () => (await browser.execute(
+      () => document.querySelectorAll('.toast-item.live .toast').length,
+    )) === 0, { timeout: 10_000, interval: 100, timeoutMsg: 'old notices did not dismiss' });
+
+    await clickControl(renderSelector);
+    await browser.pause(5_000);
+    const admission = await browser.execute(() => ({
+        queue: [...document.querySelectorAll('.video-rendering-section .queue-item')]
+          .map((node) => ({
+            className: node.className,
+            text: (node.innerText || '').trim().slice(0, 1_000),
+          })),
+        toasts: [...document.querySelectorAll('.toast-item.live .toast')]
+          .map((node) => (node.innerText || '').trim()).filter(Boolean),
+        alerts: [...document.querySelectorAll('.error, [role="alert"]')]
+          .map((node) => (node.innerText || '').trim()).filter(Boolean).slice(0, 8),
+        admission: document.querySelector('[data-osg-render-admission]')?.getAttribute(
+          'data-osg-render-admission',
+        ) ?? null,
+      }));
+    assert.ok(
+      admission.queue.length > 0 || admission.toasts.length > 0,
+      `Render produced no job and no refusal: ${JSON.stringify(admission)}`,
+    );
+    assert.deepEqual(admission.toasts, [], `Render was refused before admission: ${JSON.stringify(admission)}`);
+
+    const terminal = await $('.video-rendering-section .queue-item.completed, '
+      + '.video-rendering-section .queue-item.failed');
+    await terminal.waitForDisplayed({
+      timeout: 600_000,
+      timeoutMsg: 'the native render job never reached a visible terminal state',
+    });
+    const terminalState = await terminal.getAttribute('class');
+    const terminalText = (await terminal.getText()).slice(0, 2_000);
+    assert.match(
+      terminalState,
+      /(?:^|\s)completed(?:\s|$)/,
+      `the native render did not complete: ${terminalText}`,
+    );
+
+    const before = listMediaFiles(destination);
+    await clickControl('.video-rendering-section .queue-item.completed .download-btn-success');
+    let exported = null;
+    await browser.waitUntil(() => {
+      exported = newestMediaFile(destination, before);
+      return exported !== null;
+    }, {
+      timeout: 120_000,
+      interval: 1_000,
+      timeoutMsg: 'the completed native render was not written to the staged user destination',
+    });
+
+    const probe = probeMedia(exported);
+    const video = probe.streams.find((stream) => stream.codec_type === 'video');
+    const audio = probe.streams.find((stream) => stream.codec_type === 'audio');
+    const duration = Number(probe.format.duration);
+    assert.ok(video, `the exported file has no video stream: ${JSON.stringify(probe)}`);
+    assert.ok(audio, `the exported file has no audio stream: ${JSON.stringify(probe)}`);
+    assert.ok(video.width > 0 && video.height > 0, 'the video stream must have visible dimensions');
+    assert.ok(Number(probe.format.size) > 100_000, 'the exported file is implausibly small');
+    assert.ok(
+      Math.abs(duration - REAL_VIDEO.durationSeconds) <= REAL_VIDEO.durationToleranceSeconds,
+      `the exported duration ${duration}s does not match the ${REAL_VIDEO.durationSeconds}s source`,
+    );
+
+    const exportFramePath = join(root, 'evidence', 'export-at-1s.png');
+    extractFrame(exported, COMPARE_AT_SECONDS, exportFramePath);
+    const ssim = compareFrames(previewPath, exportFramePath);
+    assert.ok(ssim >= 0.95, `preview/export SSIM ${ssim} is below the 0.95 WYSIWYG floor`);
+  });
+});

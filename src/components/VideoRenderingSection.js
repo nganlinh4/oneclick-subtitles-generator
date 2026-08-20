@@ -60,9 +60,10 @@ const VideoRenderingSection = ({
   const { t } = useTranslation();
   const [isRendering, setIsRendering] = useState(false);
   const [, setRenderProgress] = useState(0);
-  const [, setRenderStatus] = useState('');
+  const [renderStatus, setRenderStatus] = useState('');
   const [, setRenderedVideoUrl] = useState('');
-  const [, setError] = useState('');
+  const [error, setError] = useState('');
+  const [renderAdmissionStage, setRenderAdmissionStage] = useState('idle');
   const [currentRenderId, setCurrentRenderId] = useState(null);
   const [abortController, setAbortController] = useState(null);
   const abortControllerRef = useRef(null);
@@ -229,6 +230,9 @@ const VideoRenderingSection = ({
 
   // Simple render function - allows queueing multiple renders
   const handleRender = async () => {
+    setError('');
+    setRenderStatus(t('videoRendering.validating', 'Checking render prerequisites...'));
+    setRenderAdmissionStage('validating');
     const lyrics = getCurrentSubtitles();
     if (!Array.isArray(lyrics) || lyrics.length === 0) {
       const message = t(
@@ -236,6 +240,8 @@ const VideoRenderingSection = ({
         'Add or generate subtitles before rendering.',
       );
       setError(message);
+      setRenderStatus(t('videoRendering.failed', 'Render failed'));
+      setRenderAdmissionStage('refused');
       window.addToast?.(message, 'error', 8000);
       return;
     }
@@ -243,6 +249,7 @@ const VideoRenderingSection = ({
     let nativeSourceAsset;
     let nativeRenderRequest;
     try {
+      setRenderAdmissionStage('runtime');
       const runtime = await getNativeRenderStatus();
       if (!runtime.available) {
         const error = new Error(t(
@@ -252,11 +259,15 @@ const VideoRenderingSection = ({
         error.code = 'renderRuntimeUnavailable';
         throw error;
       }
+      setRenderAdmissionStage('source');
       nativeSourceAsset = await resolveNativeRenderSource(selectedVideoFile);
+      setRenderAdmissionStage('project');
       const projectId = await ensureNativeRenderProject(nativeSourceAsset);
+      setRenderAdmissionStage('narration');
       const narrationArtifactId = selectedNarration === 'generated'
         ? await getNarrationArtifactId(selectedNarration)
         : null;
+      setRenderAdmissionStage('request');
       nativeRenderRequest = buildNativeRenderRequest({
         sourceAsset: nativeSourceAsset,
         projectId,
@@ -277,6 +288,8 @@ const VideoRenderingSection = ({
           'Check the selected video, subtitle timings, and render settings.',
         );
       setError(message);
+      setRenderStatus(t('videoRendering.failed', 'Render failed'));
+      setRenderAdmissionStage('refused');
       window.addToast?.(message, 'error', 8000);
       return;
     }
@@ -303,6 +316,8 @@ const VideoRenderingSection = ({
 
     // Always add to queue for display
     setRenderQueue(prev => [queueItem, ...prev]);
+    setRenderStatus(t('videoRendering.queued', 'Render queued'));
+    setRenderAdmissionStage('queued');
     void startNextPendingRender();
   };
 
@@ -614,13 +629,23 @@ const VideoRenderingSection = ({
             renderSettings={renderSettings}
             setRenderSettings={setRenderSettings}
             selectedVideoFile={selectedVideoFile}
+            hasSubtitles={getCurrentSubtitles().length > 0}
             isRendering={isRendering}
             currentQueueItem={currentQueueItem}
             onRender={handleRender}
             onCancelRender={handleCancelRender}
           />
 
-          {/* Progress and errors are now shown in the queue items instead of here */}
+          {(renderAdmissionStage !== 'idle' || error) && (
+            <div
+              className={`render-admission-status ${error ? 'error' : ''}`}
+              data-osg-render-admission={renderAdmissionStage}
+              role={error ? 'alert' : 'status'}
+              aria-live="polite"
+            >
+              {error || renderStatus}
+            </div>
+          )}
 
           {/* Rendered videos are now accessible through the queue items */}
 

@@ -120,6 +120,30 @@ fn a_fixture_opens_by_path_with_its_extension_as_a_hint() {
     assert!(!decode_all(&mut decoder).is_empty());
 }
 
+fn video_fixture(name: &str) -> std::path::PathBuf {
+    std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+        .join("../osg-decode/tests/fixtures")
+        .join(name)
+}
+
+#[test]
+fn a_movie_selects_its_audio_track_instead_of_its_first_video_track() {
+    // This committed MP4 is ordered exactly like a customer file: H.264 video first, AAC audio
+    // second. Audio-only fixtures cannot catch the bug where "first non-null track" means video.
+    let mut decoder = AudioDecoder::open_path(&video_fixture("bars-1s-1920x1080.mp4"))
+        .expect("the AAC track after the video track opens");
+    assert_eq!(decoder.sample_rate(), 48_000);
+    assert_eq!(decoder.channels(), 1);
+    assert!(!decode_all(&mut decoder).is_empty());
+}
+
+#[test]
+fn a_movie_without_an_audio_track_is_silent_not_an_unsupported_codec() {
+    let error = AudioDecoder::open_path(&video_fixture("bars-1s-640x360-rotated.mp4"))
+        .expect_err("the fixture deliberately carries video only");
+    assert_eq!(error, AudioError::NoAudioTrack);
+}
+
 #[test]
 fn opus_in_webm_decodes_because_downloaded_video_usually_carries_it() {
     // symphonia has no Opus decoder of its own, so this only works because the libopus adapter is

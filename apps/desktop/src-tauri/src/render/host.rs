@@ -10,7 +10,8 @@ use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::{Arc, Mutex};
 
-use osg_domain::{AssetId, MediaAsset};
+use osg_domain::AssetId;
+use osg_infrastructure::storage::ResolvedMedia;
 use osg_media_server::{MediaServer, RegisteredMedia};
 use uuid::Uuid;
 
@@ -66,9 +67,10 @@ impl RenderRuntimeHost {
 
     pub(super) fn register_playback(
         &self,
-        asset: &MediaAsset,
-        path: &Path,
+        media: &ResolvedMedia,
     ) -> CommandResult<RegisteredMedia> {
+        media.revalidate_verified_file()?;
+        let asset = media.asset();
         let mut playbacks =
             self.inner.playbacks.lock().map_err(|_| {
                 CommandError::internal("The render playback registry is unavailable.")
@@ -89,7 +91,11 @@ impl RenderRuntimeHost {
         let playback = self
             .inner
             .media_server
-            .register_with_extension(path, asset.extension())?;
+            .register_verified_file_with_extension(
+                media.verified_file(),
+                asset.extension(),
+                asset.size_bytes(),
+            )?;
         playbacks.order.push_back(asset.id());
         playbacks.by_asset.insert(asset.id(), playback.clone());
         Ok(playback)
