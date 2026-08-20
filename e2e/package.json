@@ -14,6 +14,7 @@
     "test:persistence": "node scenarios/editPersistRelaunch.mjs",
     "test:unicode": "node scenarios/unicodeCues.mjs",
     "test:export": "node run-isolated.mjs journeys/nativeExportDecoded.journey.js",
+    "test:gemini-boundary": "node run-isolated.mjs journeys/geminiCredentialBoundary.journey.js",
     "test:asr": "node run-isolated.mjs journeys/localAsrGeneration.journey.js",
     "test:narration": "node run-isolated.mjs journeys/narrationGeneration.journey.js",
     "test:native-tools": "node scenarios/nativeToolsInstall.mjs",
