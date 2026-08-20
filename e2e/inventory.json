@@ -70,9 +70,9 @@
     "saveDialog": {
       "variable": "OSG_E2E_MEDIA_DESTINATION",
       "boundedBy": "OSG_E2E_FIXTURE_ROOT; must be an existing directory; the file it resolves to must not already exist",
-      "replaces": "blocking_save_file in media_export.rs",
-      "handsTo": "the media exporter, which writes the real bytes",
-      "note": "A DIRECTORY, not a file path: only the application knows what the asset is called or what container it ended up in. A harness that guessed wrong had its staging refused SILENTLY, which reopens the real dialog behind the window and hangs the run for as long as the timeout allows."
+      "replaces": "every native save dialog through dialog_paths.rs",
+      "handsTo": "the requested media, narration, subtitle, archive, or image exporter, which writes the real bytes",
+      "note": "A DIRECTORY, not a file path: only the application knows the proposed file name. In an e2e-automation build, missing, invalid, out-of-root, or occupied staging is a typed refusal. Native picker/save implementations are compiled only outside that feature, so an autonomous journey cannot fall back to File Explorer."
     },
     "dataRoot": {
       "variable": "OSG_E2E_DATA_ROOT",
@@ -229,7 +229,7 @@
         "independent FFmpeg decode and SSIM against the native preview frame"
       ],
       "note": "Green against the real binary: native decode/composite/encode/mux completed, the saved MP4 contained independently probed video and audio streams with the expected duration, and its decoded frame matched the editor's native preview at SSIM >= 0.95. The journey found and drove four product defects to green: missing subtitle admission, selecting a video track as audio plus malformed MP4 Opus parameters, refusing a valid audio-tail presentation after video EOS, and rejecting every successful publication because the artifact and immutable media snapshot were correctly separate files.",
-      "lastGreenCommit": "pending checkpoint commit"
+      "lastGreenCommit": "10018d16"
     },
     {
       "name": "localFileImport",
@@ -258,7 +258,7 @@
       "runsAgainst": "e2e-binary",
       "status": "green",
       "note": "The first real run exposed two production defects that mocks missed: package-status polling launched overlapping full-tree scans during publication, reaching 562 threads and about 11 GiB private memory; and Rust emitted job_id/timeline_offset_ms while JavaScript required jobId/timelineOffsetMs, so the first progress event cancelled every healthy job. Both are fixed and the unchanged journey is green.",
-      "lastGreenCommit": "pending checkpoint commit"
+      "lastGreenCommit": "43831074"
     },
     {
       "name": "geminiGeneration",
@@ -292,14 +292,28 @@
       "runsAgainst": "e2e-binary",
       "status": "green",
       "note": "The first runs found two production defects: unchanged native package progress was replayed with the same durable sequence and cancelled installation, and successful narration artifacts were globally owned with project_id NULL. Both are fixed; the unchanged strict journey is green.",
-      "lastGreenCommit": "pending checkpoint commit"
+      "lastGreenCommit": "b54748ef"
     },
     {
       "name": "narrationAlignment",
       "kind": "workflow",
+      "file": "journeys/narrationGeneration.journey.js",
       "capability": "Generated narration is aligned and mixed against subtitle timing.",
-      "status": "planned",
-      "note": "Generation is proven separately. Alignment/export remains unproven and must not inherit narrationGeneration's green status."
+      "chain": [
+        "use every generated project-owned narration clip as a native alignment input",
+        "align and mix the clips against the persisted cue timing",
+        "publish one aligned artifact owned by the same exact project and successful native job",
+        "export through the automation-safe native save boundary"
+      ],
+      "oracles": [
+        "the application's own SQLite job and artifact ownership, read only",
+        "the saved M4A on disk",
+        "independent ffprobe stream and duration inspection"
+      ],
+      "runsAgainst": "e2e-binary",
+      "status": "green",
+      "note": "The first attempted run exposed a harness safety defect: narration export bypassed the staged media-export destination and opened a real OS dialog. Every native picker/save call is now centralized; automation builds fail closed and compile no native-dialog implementation. The unchanged customer click then generated, aligned, exported, and independently probed one valid M4A without an OS dialog.",
+      "lastGreenCommit": "f20325d4"
     },
     {
       "name": "installedGolden",
@@ -310,6 +324,20 @@
     }
   ],
   "knownProductFindings": [
+    {
+      "finding": "An autonomous narration export opened a real native save dialog when the harness expected staging.",
+      "foundBy": "narrationAlignment",
+      "status": "fixed",
+      "severity": "critical",
+      "note": "Only media_export used the staging helper, and invalid staging fell back to the OS. All picker/save calls now cross one boundary whose automation implementation either returns a validated path inside the disposable fixture root or a typed refusal; the OS implementations are cfg-excluded. A source invariant rejects future bypasses."
+    },
+    {
+      "finding": "Aligned narration publication had no project ownership contract.",
+      "foundBy": "narrationAlignment",
+      "status": "fixed",
+      "severity": "critical",
+      "note": "Alignment now requires every input artifact to be owned by the same existing project and publishes its result under that exact project and native job. Unowned and cross-project clips are rejected before work starts."
+    },
     {
       "finding": "Installing a speech engine cancelled itself when native progress did not advance its durable job sequence.",
       "foundBy": "narration",
