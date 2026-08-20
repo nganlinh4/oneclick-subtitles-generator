@@ -1573,7 +1573,7 @@ function assertInstalledMediaFlowInspector(
     /const generationMode = isSrtOnlyMode\s*\? 'srt-only'\s*:\s*hasUrlAndSrtOnly \? 'url-with-srt' : 'other';/.test(
       normalizedButtonsContainer,
     )
-      && /<button\s+className=\{`generate-btn semi-auto \$\{isGenerating \|\| isDownloading \? 'processing' : ''\}`\}\s+data-generation-mode=\{generationMode\}\s+onClick=\{handleGenerateSubtitles\}/.test(
+      && /<button\s+className=\{`generate-btn semi-auto \$\{isGenerating \|\| isDownloading \? 'processing' : ''\}`\}\s+data-generation-mode=\{generationMode\}\s+data-osg-action="generate-subtitles"\s+onClick=\{handleGenerateSubtitles\}/.test(
         normalizedButtonsContainer,
       ),
     'ButtonsContainer must expose the exact committed URL-with-SRT generation mode on the real action',
@@ -3874,9 +3874,13 @@ function assertTauriProductionBuildContract(rootDirectory = REPOSITORY_ROOT) {
     'Desktop release-build diagnostic must explain the retained development URL',
   );
 
-  const commandsSource = readText(rootDirectory, `${TAURI_DIRECTORY}/src/commands.rs`);
-  // The picker lives in one shared helper so every entry point inherits the same parented,
-  // blocking-pool, path-free lifecycle. Both the helper and its sole ownership are pinned.
+  const commandsSource = readText(rootDirectory, `${TAURI_DIRECTORY}/src/commands.rs`)
+    .replace(/\r\n/g, '\n');
+  const dialogPathsSource = readText(rootDirectory, `${TAURI_DIRECTORY}/src/dialog_paths.rs`)
+    .replace(/\r\n/g, '\n');
+  // Command lifecycle diagnostics stay adjacent to the command, while native UI authority lives in
+  // the one cfg-split dialog boundary. Production must parent and block off-thread; automation must
+  // resolve a bounded staged file and compile no fallback to File Explorer.
   const pickerStart = commandsSource.indexOf('async fn pick_media_path(');
   const pickerEnd = commandsSource.indexOf('\n}', pickerStart);
   const picker = pickerStart >= 0 && pickerEnd > pickerStart
@@ -3887,44 +3891,42 @@ function assertTauriProductionBuildContract(rootDirectory = REPOSITORY_ROOT) {
   const selectMedia = selectMediaStart >= 0 && selectMediaEnd > selectMediaStart
     ? commandsSource.slice(selectMediaStart, selectMediaEnd)
     : '';
-  const fileDialogIndex = picker.indexOf('rfd::FileDialog::new()');
-  const parentIndex = picker.indexOf('.set_parent(&window)', fileDialogIndex);
-  const titleIndex = picker.indexOf('.set_title("Choose video or audio")', parentIndex);
-  const filterIndex = picker.indexOf(
-    '.add_filter("Video and audio", &extensions)',
-    titleIndex,
-  );
   const requestedIndex = picker.indexOf('diagnostics::record("media-picker.requested", &[])');
-  const blockingTaskIndex = picker.indexOf('tauri::async_runtime::spawn_blocking', requestedIndex);
-  const workerStartedIndex = picker.indexOf(
-    'diagnostics::record("media-picker.worker-started", &[])',
-    blockingTaskIndex,
-  );
-  const pickerIndex = picker.indexOf('dialog.pick_file()', workerStartedIndex);
-  const workerFailedIndex = picker.indexOf(
-    'diagnostics::record("media-picker.worker-failed", &[])',
-    pickerIndex,
-  );
-  const returnedIndex = picker.indexOf('"media-picker.returned"', workerFailedIndex);
+  const delegatedIndex = picker.indexOf('dialog_paths::pick_file_with_window(', requestedIndex);
+  const awaitedIndex = picker.indexOf('.await?', delegatedIndex);
+  const returnedIndex = picker.indexOf('"media-picker.returned"', awaitedIndex);
   const selectedBranchIndex = picker.indexOf('let Some(path) = selected', returnedIndex);
+  const productionPicker = dialogPathsSource.slice(
+    dialogPathsSource.indexOf('#[cfg(not(feature = "e2e-automation"))]\npub(crate) async fn pick_file_with_window('),
+    dialogPathsSource.indexOf('\n#[cfg(feature = "e2e-automation")]\npub(crate) fn pick_file('),
+  );
+  const automationPicker = dialogPathsSource.slice(
+    dialogPathsSource.indexOf('#[cfg(feature = "e2e-automation")]\n#[allow('),
+    dialogPathsSource.indexOf('\n#[cfg(not(feature = "e2e-automation"))]\npub(crate) async fn pick_file_with_window('),
+  );
   invariant(
     /\bwindow\s*:\s*WebviewWindow\b/.test(picker)
-      && fileDialogIndex >= 0
-      && parentIndex > fileDialogIndex
-      && titleIndex > parentIndex
-      && filterIndex > titleIndex
-      && requestedIndex > filterIndex
-      && blockingTaskIndex > requestedIndex
-      && workerStartedIndex > blockingTaskIndex
-      && pickerIndex > workerStartedIndex
-      && workerFailedIndex > pickerIndex
-      && returnedIndex > workerFailedIndex
+      && requestedIndex >= 0
+      && delegatedIndex > requestedIndex
+      && picker.includes('"Choose video or audio"')
+      && picker.includes('"Video and audio"')
+      && picker.includes('&extensions')
+      && awaitedIndex > delegatedIndex
+      && returnedIndex > awaitedIndex
       && selectedBranchIndex > returnedIndex
       && picker.includes('media_picker_outcome(selected.as_ref())')
       && selectMedia.includes('pick_media_path(window).await?')
-      && (commandsSource.match(/rfd::FileDialog::new\(\)/g) || []).length === 1
+      && productionPicker.includes('rfd::FileDialog::new()')
+      && productionPicker.includes('.set_parent(&window)')
+      && productionPicker.includes('.set_title(title)')
+      && productionPicker.includes('.add_filter(filter_label, extensions)')
+      && productionPicker.includes('tauri::async_runtime::spawn_blocking')
+      && productionPicker.includes('dialog.pick_file()')
+      && automationPicker.includes('staged_media_selection().map(Some)')
+      && (dialogPathsSource.match(/rfd::FileDialog::new\(\)/g) || []).length === 1
+      && !commandsSource.includes('rfd::FileDialog')
       && !commandsSource.includes('blocking_pick_file()'),
-    'Desktop select_media must run its parented picker on the blocking pool and record path-free lifecycle outcomes',
+    'Desktop select_media must run its parented picker on the blocking pool through the centralized cfg-isolated boundary and record path-free lifecycle outcomes',
   );
 }
 

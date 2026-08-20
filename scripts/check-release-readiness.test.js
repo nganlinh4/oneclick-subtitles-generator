@@ -132,19 +132,36 @@ function createTauriProductionBuildFixture() {
       + '}\n'
       + '\n'
       + 'async fn pick_media_path(window: WebviewWindow) -> Option<std::path::PathBuf> {\n'
-      + '  let dialog = rfd::FileDialog::new().set_parent(&window).set_title("Choose video or audio")\n'
-      + '    .add_filter("Video and audio", &extensions);\n'
       + '  diagnostics::record("media-picker.requested", &[]);\n'
-      + '  let Ok(selected) = tauri::async_runtime::spawn_blocking(move || {\n'
-      + '    diagnostics::record("media-picker.worker-started", &[]);\n'
-      + '    dialog.pick_file()\n'
-      + '  }).await else {\n'
-      + '    diagnostics::record("media-picker.worker-failed", &[]);\n'
-      + '    return;\n'
-      + '  };\n'
+      + '  let selected = dialog_paths::pick_file_with_window(\n'
+      + '    window, "Choose video or audio", "Video and audio", &extensions,\n'
+      + '  ).await?;\n'
       + '  diagnostics::record("media-picker.returned", &[("outcome", media_picker_outcome(selected.as_ref()))]);\n'
       + '  let Some(path) = selected else { return; };\n'
       + '}\n',
+  );
+  writeFile(
+    root,
+    'apps/desktop/src-tauri/src/dialog_paths.rs',
+    '#[cfg(feature = "e2e-automation")]\n'
+      + '#[allow(clippy::unused_async)]\n'
+      + 'pub(crate) async fn pick_file_with_window(\n'
+      + '  _window: WebviewWindow, _title: &str, _filter_label: &str, _extensions: &[&str],\n'
+      + ') -> CommandResult<Option<PathBuf>> {\n'
+      + '  staged_media_selection().map(Some)\n'
+      + '}\n'
+      + '#[cfg(not(feature = "e2e-automation"))]\n'
+      + 'pub(crate) async fn pick_file_with_window(\n'
+      + '  window: WebviewWindow, title: &str, filter_label: &str, extensions: &[&str],\n'
+      + ') -> CommandResult<Option<PathBuf>> {\n'
+      + '  let dialog = rfd::FileDialog::new()\n'
+      + '    .set_parent(&window)\n'
+      + '    .set_title(title)\n'
+      + '    .add_filter(filter_label, extensions);\n'
+      + '  tauri::async_runtime::spawn_blocking(move || dialog.pick_file()).await\n'
+      + '}\n'
+      + '#[cfg(feature = "e2e-automation")]\n'
+      + 'pub(crate) fn pick_file() {}\n',
   );
   return root;
 }
@@ -1839,6 +1856,10 @@ test('installed URL media flow commits URL and replaces stale SRT before one dow
       '              data-generation-mode={generationMode}\n',
       '',
     ),
+    weaken(BUTTONS_CONTAINER_SOURCE,
+      '              data-osg-action="generate-subtitles"\n',
+      '',
+    ),
   ]) {
     assert.notEqual(buttonsMutation, BUTTONS_CONTAINER_SOURCE);
     assert.throws(
@@ -3387,36 +3408,36 @@ test('Tauri production build contract rejects dev-server releases and weakened n
   );
 
   const unpooledSource = weaken(
-    readMutableSource(unpooledPicker, 'apps/desktop/src-tauri/src/commands.rs'),
+    readMutableSource(unpooledPicker, 'apps/desktop/src-tauri/src/dialog_paths.rs'),
     'tauri::async_runtime::spawn_blocking',
     'tauri::async_runtime::spawn',
     { expected: 1 },
   );
-  writeFile(unpooledPicker, 'apps/desktop/src-tauri/src/commands.rs', unpooledSource);
+  writeFile(unpooledPicker, 'apps/desktop/src-tauri/src/dialog_paths.rs', unpooledSource);
   assert.throws(
     () => assertTauriProductionBuildContract(unpooledPicker),
     /must run its parented picker on the blocking pool/,
   );
 
   const unstartedSource = weaken(
-    readMutableSource(unstartedWorker, 'apps/desktop/src-tauri/src/commands.rs'),
-    '    diagnostics::record("media-picker.worker-started", &[]);\n',
-    '',
+    readMutableSource(unstartedWorker, 'apps/desktop/src-tauri/src/dialog_paths.rs'),
+    '  staged_media_selection().map(Some)\n',
+    '  Ok(None)\n',
     { expected: 1 },
   );
-  writeFile(unstartedWorker, 'apps/desktop/src-tauri/src/commands.rs', unstartedSource);
+  writeFile(unstartedWorker, 'apps/desktop/src-tauri/src/dialog_paths.rs', unstartedSource);
   assert.throws(
     () => assertTauriProductionBuildContract(unstartedWorker),
     /must run its parented picker on the blocking pool/,
   );
 
   const pluginBridgeSource = weaken(
-    readMutableSource(pluginBridge, 'apps/desktop/src-tauri/src/commands.rs'),
+    readMutableSource(pluginBridge, 'apps/desktop/src-tauri/src/dialog_paths.rs'),
     'dialog.pick_file()',
     'dialog.blocking_pick_file()',
     { expected: 1 },
   );
-  writeFile(pluginBridge, 'apps/desktop/src-tauri/src/commands.rs', pluginBridgeSource);
+  writeFile(pluginBridge, 'apps/desktop/src-tauri/src/dialog_paths.rs', pluginBridgeSource);
   assert.throws(
     () => assertTauriProductionBuildContract(pluginBridge),
     /must run its parented picker on the blocking pool/,
@@ -3424,7 +3445,7 @@ test('Tauri production build contract rejects dev-server releases and weakened n
 
   const unloggedFailureSource = weaken(
     readMutableSource(unloggedWorkerFailure, 'apps/desktop/src-tauri/src/commands.rs'),
-    '    diagnostics::record("media-picker.worker-failed", &[]);\n',
+    '  diagnostics::record("media-picker.returned", &[("outcome", media_picker_outcome(selected.as_ref()))]);\n',
     '',
     { expected: 1 },
   );
