@@ -140,6 +140,7 @@ const ButtonsContainer = ({
             <button
               className={`generate-btn semi-auto ${isGenerating || isDownloading ? 'processing' : ''}`}
               data-generation-mode={generationMode}
+              data-osg-action="generate-subtitles"
               onClick={handleGenerateSubtitles}
               disabled={isGenerating || isDownloading || isAutoGenerating}
             >

@@ -36,6 +36,16 @@ export const FIXTURE_ROOT = join(REPOSITORY_ROOT, 'e2e', 'fixtures', 'subtitles'
 export const NATIVE_TOOLS_CACHE = join(REPOSITORY_ROOT, 'target', 'e2e-native-tools');
 
 /**
+ * Heavy local AI packages retained between isolated journeys.
+ *
+ * Faster-Whisper Turbo is a 4.56 GiB download and 6.73 GiB installed. Re-downloading it for every
+ * clean database would test bandwidth rather than the customer workflow. The package store is
+ * junctioned into an otherwise disposable root, exactly like a customer keeps an installed engine
+ * while opening and closing projects. `nativeEngineInstall` owns the from-empty proof.
+ */
+export const ENGINE_PACKAGES_CACHE = join(REPOSITORY_ROOT, 'target', 'e2e-engine-packages');
+
+/**
  * Where a real downloaded video is kept between runs. This cache is input-only; every journey
  * copies its selected media into its disposable run root and writes exports elsewhere in that root.
  *
@@ -51,6 +61,10 @@ mkdirSync(REAL_MEDIA_CACHE, { recursive: true });
 export const BUILT_APPLICATION_DIRECTORY = join(
   REPOSITORY_ROOT, 'target', 'x86_64-pc-windows-msvc', 'release',
 );
+
+// A from-empty managed ASR install downloads and verifies 4.56 GiB before inference begins. The
+// journey owns tighter per-step timeouts; this outer Mocha cap must not kill that valid operation.
+export const JOURNEY_TIMEOUT_MS = 3 * 60 * 60 * 1_000;
 
 /**
  * The binary under test. The E2E channel, never a production build.
@@ -78,7 +92,7 @@ export const APPLICATION_BINARY = process.env.OSG_E2E_BINARY
  * `keepNativeTools` junctions the persistent tool directory in. Everything else about the root stays
  * disposable: the database, the projects, the caches and the logs are all new every run.
  */
-export const createRunRoot = ({ keepNativeTools = true } = {}) => {
+export const createRunRoot = ({ keepNativeTools = true, keepEnginePackages = true } = {}) => {
   const root = mkdtempSync(join(tmpdir(), 'osg-e2e-'));
   for (const child of ['data', 'cache', 'logs', 'webview', 'evidence', 'input', 'output']) {
     mkdirSync(join(root, child), { recursive: true });
@@ -88,6 +102,10 @@ export const createRunRoot = ({ keepNativeTools = true } = {}) => {
     // A junction rather than a copy: the application writes its install receipts here, and they have
     // to survive the run that wrote them for the next run to see the tools as installed.
     symlinkSync(NATIVE_TOOLS_CACHE, join(root, 'data', 'native-tools'), 'junction');
+  }
+  if (keepEnginePackages) {
+    mkdirSync(ENGINE_PACKAGES_CACHE, { recursive: true });
+    symlinkSync(ENGINE_PACKAGES_CACHE, join(root, 'data', 'engine-packages'), 'junction');
   }
   return root;
 };
@@ -123,6 +141,11 @@ export const removeRunRoot = (root) => {
     rmSync(join(root, 'data', 'native-tools'), { recursive: false, force: true });
   } catch {
     // Absent when the run did not junction it in.
+  }
+  try {
+    rmSync(join(root, 'data', 'engine-packages'), { recursive: false, force: true });
+  } catch {
+    // Absent for the one from-empty engine-package scenario.
   }
   try {
     rmSync(root, { recursive: true, force: true });

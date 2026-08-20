@@ -270,6 +270,7 @@ const VideoProcessingOptionsModal = ({
                                 <div className="footer-buttons">
                                     <button
                                         className="process-btn"
+                                        data-osg-action="process-subtitles"
                                         onClick={handleProcess}
                                         disabled={isUploading || (descriptor.capabilities.tokenCounting && !isWithinLimit) || asrPanelDisabled}
                                     >

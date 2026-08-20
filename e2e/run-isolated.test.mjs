@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict';
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { existsSync, lstatSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import test from 'node:test';
@@ -7,7 +7,9 @@ import test from 'node:test';
 import {
   defaultJourneys, isolatedEnvironment, normalizeJourney, parseArguments,
 } from './run-isolated.mjs';
-import { stagedDialogPaths } from './support/environment.js';
+import {
+  ENGINE_PACKAGES_CACHE, JOURNEY_TIMEOUT_MS, createRunRoot, removeRunRoot, stagedDialogPaths,
+} from './support/environment.js';
 import { cachedRealVideo } from './support/realMedia.js';
 
 test('discovers every product journey while excluding scenario-only diagnostics', () => {
@@ -15,6 +17,7 @@ test('discovers every product journey while excluding scenario-only diagnostics'
   assert.deepEqual(names, [
     'defaultFont.journey.js',
     'editPersistRelaunch.journey.js',
+    'localAsrGeneration.journey.js',
     'nativeExportDecoded.journey.js',
     'startup.journey.js',
     'unicodeCues.journey.js',
@@ -75,4 +78,21 @@ test('real-media discovery cannot select a prior export nested under the input c
   } finally {
     rmSync(root, { recursive: true, force: true });
   }
+});
+
+test('isolated roots retain engine packages through a junction without deleting the cache', () => {
+  const root = createRunRoot({ keepNativeTools: false });
+  const junction = join(root, 'data', 'engine-packages');
+  try {
+    assert.equal(lstatSync(junction).isSymbolicLink(), true);
+    assert.equal(existsSync(ENGINE_PACKAGES_CACHE), true);
+  } finally {
+    removeRunRoot(root);
+  }
+  assert.equal(existsSync(root), false);
+  assert.equal(existsSync(ENGINE_PACKAGES_CACHE), true);
+});
+
+test('the outer journey timeout cannot kill a valid multi-gigabyte engine installation', () => {
+  assert.ok(JOURNEY_TIMEOUT_MS >= 2 * 60 * 60 * 1_000);
 });

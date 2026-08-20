@@ -48,7 +48,8 @@
     "url": "https://www.youtube.com/watch?v=jNQXAC9IVRw",
     "why": "First video published to YouTube. Nineteen seconds, no music licence, the least likely link on the platform to be deleted or region-locked.",
     "cachedAt": "target/e2e-real-media (input-only; copied into each disposable run root)",
-    "nativeToolsCachedAt": "target/e2e-native-tools"
+    "nativeToolsCachedAt": "target/e2e-native-tools",
+    "enginePackagesCachedAt": "target/e2e-engine-packages (package bytes only; every journey still has a fresh database, projects, WebView and logs)"
   },
   "harnessSubstitutions": {
     "$comment": [
@@ -240,8 +241,24 @@
     {
       "name": "asrGeneration",
       "kind": "workflow",
+      "file": "journeys/localAsrGeneration.journey.js",
       "capability": "Subtitles are generated from the audio by a local ASR engine.",
-      "status": "planned"
+      "chain": [
+        "open a real downloaded video through the real file control",
+        "verify/install and start Faster-Whisper Turbo from the reviewed managed package",
+        "select the full timeline through the documented Ctrl+A customer shortcut",
+        "extract audio through Media Foundation and transcribe it in the managed Python worker",
+        "publish cues into the editor, draw them through the native compositor, and persist them"
+      ],
+      "oracles": [
+        "visible cue text",
+        "the native composited frame element",
+        "the application's own SQLite jobs, cues and latest project revision, read only"
+      ],
+      "runsAgainst": "e2e-binary",
+      "status": "green",
+      "note": "The first real run exposed two production defects that mocks missed: package-status polling launched overlapping full-tree scans during publication, reaching 562 threads and about 11 GiB private memory; and Rust emitted job_id/timeline_offset_ms while JavaScript required jobId/timelineOffsetMs, so the first progress event cancelled every healthy job. Both are fixed and the unchanged journey is green.",
+      "lastGreenCommit": "pending checkpoint commit"
     },
     {
       "name": "geminiGeneration",
@@ -271,6 +288,20 @@
     }
   ],
   "knownProductFindings": [
+    {
+      "finding": "Every real local-ASR job was cancelled on its first progress event.",
+      "foundBy": "asrGeneration",
+      "status": "fixed",
+      "severity": "critical",
+      "note": "AsrJobEvent camel-cased enum variants but not struct fields. The real Rust Channel sent job_id/timeline_offset_ms; the JavaScript boundary correctly required jobId/timelineOffsetMs and cancelled the malformed channel. The Rust serializer now uses rename_all_fields and pins its exact wire shape in a producer-side test."
+    },
+    {
+      "finding": "Engine package status polling repeatedly verified a multi-gigabyte target while its install was still publishing.",
+      "foundBy": "asrGeneration",
+      "status": "fixed",
+      "severity": "critical",
+      "note": "A real run reached 562 desktop threads, roughly 11 GiB private memory and 55 GiB cumulative reads. Status now defers to the active operation, cold verification is single-flight, and verification holds a runtime lease against concurrent mutation. The next real run stayed near 57 threads and roughly 400 MiB during the same boundary."
+    },
     {
       "finding": "Native export was disabled even when imported subtitles were visible.",
       "foundBy": "nativeExportDecoded",

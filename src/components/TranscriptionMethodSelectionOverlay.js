@@ -133,6 +133,8 @@ const TranscriptionMethodSelectionOverlay = ({ isOpen, onMethodSelect, onClose, 
                          <div
                              key={method.id}
                              className={`method-column ${method.disabled ? 'disabled' : ''}`}
+                             data-transcription-method={method.id}
+                             data-method-available={method.disabled ? 'false' : 'true'}
                              onClick={() => handleMethodClick(method)}
                              style={method.disabled ? { opacity: 0.5, cursor: 'not-allowed' } : {}}
                          >

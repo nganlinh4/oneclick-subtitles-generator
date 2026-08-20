@@ -301,7 +301,11 @@ const EngineCard = ({
   ].filter(Boolean).join(' · ');
 
   return (
-    <div className={`engine-card engine-card--${state}${busy ? ' engine-card--busy' : ''}`}>
+    <div
+      className={`engine-card engine-card--${state}${busy ? ' engine-card--busy' : ''}`}
+      data-engine-id={id}
+      data-engine-state={state}
+    >
       <div className="engine-card__row">
         <span className="material-symbols-rounded engine-card__icon" aria-hidden="true">{STATE_ICON[state] || 'download'}</span>
         <div className="engine-card__info">

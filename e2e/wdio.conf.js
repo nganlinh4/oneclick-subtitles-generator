@@ -14,7 +14,8 @@
 import { copyFileSync, existsSync } from 'node:fs';
 
 import {
-  APPLICATION_BINARY, createRunRoot, isolationEnvironment, removeRunRoot, stagedDialogPaths,
+  APPLICATION_BINARY, JOURNEY_TIMEOUT_MS, createRunRoot, isolationEnvironment, removeRunRoot,
+  stagedDialogPaths,
 } from './support/environment.js';
 import { cachedRealVideo } from './support/realMedia.js';
 
@@ -84,7 +85,7 @@ export const config = {
   // A journey that relaunches the application legitimately runs for several minutes: two full
   // startups, a real import and a real restore. The cap is above that so a genuine failure is
   // reported by the journey's own diagnostic message rather than as "took too long".
-  mochaOpts: { ui: 'bdd', timeout: 900_000 },
+  mochaOpts: { ui: 'bdd', timeout: JOURNEY_TIMEOUT_MS },
   logLevel: 'warn',
 
   onPrepare: () => {

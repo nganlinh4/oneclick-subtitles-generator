@@ -77,6 +77,10 @@ export const durableState = (root) => withDatabase(root, (database) => {
     'SELECT id, project_id, reason, state_version, cue_count FROM project_revisions'
     + ' ORDER BY created_at_ms',
   );
+  const jobs = all(
+    'SELECT id, kind, state, progress_basis_points, created_at_ms, updated_at_ms FROM jobs'
+    + ' ORDER BY created_at_ms',
+  );
   const links = all('SELECT project_id, media_id, role FROM project_media');
 
   return {
@@ -84,16 +88,19 @@ export const durableState = (root) => withDatabase(root, (database) => {
     media,
     cues,
     revisions,
+    jobs,
     links,
     counts: {
       projects: projects.length,
       media: media.length,
       cues: cues.length,
       revisions: revisions.length,
+      jobs: jobs.length,
     },
     latestRevision: one(
       'SELECT id, project_id, reason, state_version, cue_count FROM project_revisions'
       + ' ORDER BY created_at_ms DESC LIMIT 1',
     ) ?? null,
+    latestJob: jobs.at(-1) ?? null,
   };
 });

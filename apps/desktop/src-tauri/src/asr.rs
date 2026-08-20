@@ -647,7 +647,11 @@ impl From<ProgressPhase> for AsrJobPhase {
 }
 
 #[derive(Debug, Serialize)]
-#[serde(tag = "event", rename_all = "camelCase")]
+#[serde(
+    tag = "event",
+    rename_all = "camelCase",
+    rename_all_fields = "camelCase"
+)]
 pub(crate) enum AsrJobEvent {
     Progress {
         job_id: JobId,
@@ -974,13 +978,31 @@ async fn finish_asr(
 mod tests {
     use std::sync::Arc;
 
+    use osg_domain::JobId;
     use osg_engine_packages::RuntimeCoordinator as _;
     use serde_json::json;
 
     use super::{
-        AsrEngineId, AsrRuntimeManager, AsrStartRequest, RequestedRange, WORKER_BYTES,
-        resolve_media_range,
+        AsrEngineId, AsrJobEvent, AsrJobPhase, AsrRuntimeManager, AsrStartRequest, RequestedRange,
+        WORKER_BYTES, resolve_media_range,
     };
+
+    #[test]
+    fn job_event_wire_fields_are_camel_case_at_the_real_rust_boundary() {
+        let job_id = JobId::new();
+        let event = serde_json::to_value(AsrJobEvent::Progress {
+            job_id,
+            phase: AsrJobPhase::PreparingAudio,
+            fraction: None,
+        })
+        .expect("serializable ASR progress event");
+
+        assert_eq!(event["event"], "progress");
+        assert_eq!(event["jobId"], job_id.to_string());
+        assert_eq!(event["phase"], "preparingAudio");
+        assert_eq!(event["fraction"], serde_json::Value::Null);
+        assert!(event.get("job_id").is_none());
+    }
 
     #[test]
     fn request_accepts_the_frozen_ui_aliases_but_rejects_unknown_fields() {
