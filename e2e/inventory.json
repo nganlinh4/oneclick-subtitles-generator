@@ -29,7 +29,7 @@
     ],
     "command": "npx vitest run",
     "files": 233,
-    "assertions": 2164,
+    "assertions": 2173,
     "restored": {
       "files": 190,
       "reason": "behavioral contract and adversarial coverage remains valuable even when a boundary is doubled",
@@ -276,8 +276,30 @@
     {
       "name": "narration",
       "kind": "workflow",
-      "capability": "Narration audio is generated and aligned to the cues.",
-      "status": "planned"
+      "file": "journeys/narrationGeneration.journey.js",
+      "capability": "Narration audio is generated durably for every subtitle cue.",
+      "chain": [
+        "open a real downloaded video and import real subtitle cues",
+        "install and start gTTS through the reviewed speech package",
+        "generate through the customer-facing narration controls",
+        "publish one project-owned durable MP3 artifact for every successful cue"
+      ],
+      "oracles": [
+        "visible per-cue narration result state",
+        "the application's own SQLite jobs and artifact ownership, read only",
+        "nonempty files with MP3 signatures and sizes matching SQLite"
+      ],
+      "runsAgainst": "e2e-binary",
+      "status": "green",
+      "note": "The first runs found two production defects: unchanged native package progress was replayed with the same durable sequence and cancelled installation, and successful narration artifacts were globally owned with project_id NULL. Both are fixed; the unchanged strict journey is green.",
+      "lastGreenCommit": "pending checkpoint commit"
+    },
+    {
+      "name": "narrationAlignment",
+      "kind": "workflow",
+      "capability": "Generated narration is aligned and mixed against subtitle timing.",
+      "status": "planned",
+      "note": "Generation is proven separately. Alignment/export remains unproven and must not inherit narrationGeneration's green status."
     },
     {
       "name": "installedGolden",
@@ -288,6 +310,20 @@
     }
   ],
   "knownProductFindings": [
+    {
+      "finding": "Installing a speech engine cancelled itself when native progress did not advance its durable job sequence.",
+      "foundBy": "narration",
+      "status": "fixed",
+      "severity": "critical",
+      "note": "The speech package producer emitted a channel progress frame even when Job::set_progress returned an unchanged snapshot. The strict JavaScript ledger correctly treated the repeated sequence as replay. Native speech package progress now emits only after the durable sequence advances, matching the ASR package contract."
+    },
+    {
+      "finding": "Every generated narration artifact had project_id NULL.",
+      "foundBy": "narration",
+      "status": "fixed",
+      "severity": "critical",
+      "note": "Narration crossed IPC with only lifecycle and job ownership, so outputs could not be isolated, restored or cleaned by project. The exact subtitle-project alias is now captured before generation, revalidated after asynchronous setup, required as a UUIDv7 at both JavaScript boundaries, checked against SQLite before native job registration, and attached to every narration artifact publication."
+    },
     {
       "finding": "Every real local-ASR job was cancelled on its first progress event.",
       "foundBy": "asrGeneration",

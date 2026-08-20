@@ -357,7 +357,9 @@ export const normalizeSpeechProfile = (profile) => {
 };
 
 export const normalizeSpeechStartRequest = (request) => {
-  const allowed = new Set(['segments', 'profile', 'referenceArtifactId', 'lifecycleEpoch']);
+  const allowed = new Set([
+    'projectId', 'segments', 'profile', 'referenceArtifactId', 'lifecycleEpoch',
+  ]);
   if (!hasOnlyKeys(request, allowed) || !Array.isArray(request.segments)) throw invalidRequest();
   if (request.segments.length === 0 || request.segments.length > MAX_SPEECH_SEGMENTS) {
     throw invalidRequest();
@@ -387,6 +389,7 @@ export const normalizeSpeechStartRequest = (request) => {
     : requireUuid(request.referenceArtifactId, 7);
   if (requiresReference !== (referenceArtifactId !== null)) throw invalidRequest();
   return Object.freeze({
+    projectId: requireUuid(request.projectId, 7),
     segments: Object.freeze(segments),
     profile,
     referenceArtifactId,

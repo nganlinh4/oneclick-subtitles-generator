@@ -14,6 +14,7 @@ import {
   restorePersistedNativeNarration,
   runNativeNarrationJob,
 } from '../../../platform/nativeNarrationFlow';
+import { resolveProjectForCache } from '../../../platform/subtitleProjectStore';
 import {
   getF5TtsLanguageSupport,
   getNativeNarrationArtifactId,
@@ -295,6 +296,24 @@ const useNativeNarrationController = (state) => {
       }
     }
 
+    const cacheId = getCurrentMediaId();
+    let projectId = null;
+    try {
+      projectId = cacheId === null
+        ? null
+        : (await resolveProjectForCache(cacheId))?.projectId ?? null;
+    } catch {
+      projectId = null;
+    }
+    if (!projectId) {
+      current.setError(current.t(
+        'errors.activeProjectChanged',
+        'The active subtitle project changed.',
+      ));
+      return false;
+    }
+    const ownsProjectAlias = () => getCurrentMediaId() === cacheId;
+
     current.setIsGenerating(true);
     current.setError('');
     current.setGenerationStatus(current.t(
@@ -311,8 +330,15 @@ const useNativeNarrationController = (state) => {
     try {
       const settings = await nativeMethodSettings(method, current);
       requireLifecycleOwnership();
+      const latestProject = ownsProjectAlias()
+        ? await resolveProjectForCache(cacheId)
+        : null;
+      if (latestProject?.projectId !== projectId) {
+        throw new Error('The active subtitle project changed.');
+      }
       const request = {
         method,
+        projectId,
         lifecycleEpoch: lifecycle.epoch,
         subtitles,
         settings,
@@ -321,9 +347,9 @@ const useNativeNarrationController = (state) => {
           : null,
       };
       const updateResult = (result, progress, total) => {
-        if (!ownsLifecycle()) return;
+        if (!ownsLifecycle() || !ownsProjectAlias()) return;
         current.setGenerationResults((previous) => mergeResults(previous, [result]));
-        if (!ownsLifecycle()) return;
+        if (!ownsLifecycle() || !ownsProjectAlias()) return;
         current.setGenerationStatus(current.t(
           'narration.generatingProgressWithId',
           'Generated {{progress}} of {{total}} narrations (ID: {{id}})...',

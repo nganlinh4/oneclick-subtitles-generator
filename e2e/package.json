@@ -15,6 +15,7 @@
     "test:unicode": "node run-isolated.mjs journeys/unicodeCues.journey.js",
     "test:export": "node run-isolated.mjs journeys/nativeExportDecoded.journey.js",
     "test:asr": "node run-isolated.mjs journeys/localAsrGeneration.journey.js",
+    "test:narration": "node run-isolated.mjs journeys/narrationGeneration.journey.js",
     "stress:persistence": "node run-isolated.mjs --repeat 8 journeys/editPersistRelaunch.journey.js",
     "recon": "wdio run wdio.conf.js --spec ./journeys/reconnaissance.journey.js",
     "probe:restore": "wdio run wdio.conf.js --spec ./journeys/restoreProbe.journey.js"

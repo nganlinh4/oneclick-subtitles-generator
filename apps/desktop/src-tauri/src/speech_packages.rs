@@ -287,6 +287,7 @@ impl SpeechPackageRuntime {
             ));
         }
         let basis_points = mapped_basis_points.max(current.snapshot().progress().basis_points());
+        let before_sequence = current.snapshot().sequence();
         let job = if basis_points > current.snapshot().progress().basis_points() {
             self.0
                 .jobs
@@ -309,7 +310,13 @@ impl SpeechPackageRuntime {
         record.total_bytes = progress.total_bytes;
         let operation = SpeechPackageOperation::from_record(record, job);
         drop(slot);
-        let _ = on_event.send(SpeechPackageEvent::Progress { operation });
+        // OperationProgress may change phase/byte telemetry without advancing the durable job's
+        // rounded basis points. The WebView ledger is sequenced by JobSnapshot, so emitting that
+        // unchanged snapshot would look exactly like a duplicated/replayed native event and must
+        // not be put on the channel. Status polling still observes the newest phase/byte record.
+        if operation.job.sequence() > before_sequence {
+            let _ = on_event.send(SpeechPackageEvent::Progress { operation });
+        }
         Ok(())
     }
 
@@ -691,13 +698,16 @@ pub(crate) async fn speech_package_remove(
 #[cfg(test)]
 mod tests {
     use std::sync::Arc;
+    use std::sync::atomic::{AtomicUsize, Ordering};
 
     use osg_application::JobRegistry;
+    use osg_domain::{JobKind, JobUpdate};
     use osg_engine_packages::{
         OperationPhase, OperationProgress, SpeechPackageId, SpeechPackageManager,
         SpeechRuntimeCoordinator,
     };
     use osg_infrastructure::storage::Database;
+    use tauri::ipc::Channel;
 
     use super::{
         SCHEMA_VERSION, SpeechPackageAction, SpeechPackagePhase, SpeechPackageRuntime, map_progress,
@@ -793,5 +803,65 @@ mod tests {
             super::phase_rank(SpeechPackageAction::Remove, SpeechPackagePhase::Publishing),
             u8::MAX
         );
+    }
+
+    #[test]
+    fn unchanged_durable_progress_is_not_replayed_on_the_channel() {
+        let (_temporary, runtime) = runtime_fixture();
+        let queued = runtime
+            .0
+            .jobs
+            .register(JobKind::InstallEngine)
+            .expect("job");
+        let running = runtime
+            .0
+            .jobs
+            .apply(queued.snapshot().id(), JobUpdate::Start)
+            .expect("running");
+        let mut reservation = runtime.reserve(SpeechPackageId::Gtts).expect("reserve");
+        runtime
+            .activate(
+                &mut reservation,
+                running.snapshot(),
+                SpeechPackageAction::Install,
+                osg_engine_packages::CancellationToken::default(),
+            )
+            .expect("activate");
+
+        let sent = Arc::new(AtomicUsize::new(0));
+        let sent_from_channel = Arc::clone(&sent);
+        let channel = Channel::new(move |_| {
+            sent_from_channel.fetch_add(1, Ordering::Relaxed);
+            Ok(())
+        });
+        runtime
+            .report_progress(
+                running.snapshot().id(),
+                SpeechPackageAction::Install,
+                OperationProgress {
+                    phase: OperationPhase::Preparing,
+                    basis_points: 0,
+                    bytes_done: 0,
+                    total_bytes: 0,
+                },
+                &channel,
+            )
+            .expect("unchanged preparing progress");
+        assert_eq!(sent.load(Ordering::Relaxed), 0);
+
+        runtime
+            .report_progress(
+                running.snapshot().id(),
+                SpeechPackageAction::Install,
+                OperationProgress {
+                    phase: OperationPhase::Downloading,
+                    basis_points: 100,
+                    bytes_done: 1,
+                    total_bytes: 100,
+                },
+                &channel,
+            )
+            .expect("advanced download progress");
+        assert_eq!(sent.load(Ordering::Relaxed), 1);
     }
 }

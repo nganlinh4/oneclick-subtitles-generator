@@ -18,6 +18,7 @@ vi.mock('@tauri-apps/api/core', () => ({
 const JOB_ID = '018f4c22-f0f1-7c09-a4d5-120d7b6f84a1';
 const ARTIFACT_ID = '018f4c22-f0f1-7c09-a4d5-120d7b6f84a2';
 const EDITED_ARTIFACT_ID = '018f4c22-f0f1-7c09-a4d5-120d7b6f84a3';
+const PROJECT_ID = '018f4c22-f0f1-7c09-a4d5-120d7b6f84a4';
 const PLAYBACK_ID = '550e8400-e29b-41d4-a716-446655440000';
 const TOKEN = 'a'.repeat(64);
 
@@ -125,12 +126,14 @@ describe('native speech request validation', () => {
 
   test('requires an opaque reference only for reference-based engines', () => {
     expect(() => normalizeSpeechStartRequest({
+      projectId: PROJECT_ID,
       lifecycleEpoch: 0,
       segments: [{ id: 'one', text: 'hello' }],
       profile: { backend: 'f5Tts' },
       referenceArtifactId: null,
     })).toThrow('invalid');
     expect(() => normalizeSpeechStartRequest({
+      projectId: PROJECT_ID,
       lifecycleEpoch: 0,
       segments: [{ id: 'one', text: 'hello' }],
       profile: { backend: 'gtts', language: 'en' },
@@ -138,18 +141,33 @@ describe('native speech request validation', () => {
     })).toThrow('invalid');
   });
 
+  test.each([undefined, null, 'not-a-project', PLAYBACK_ID])(
+    'requires a UUIDv7 project capability: %s',
+    (projectId) => {
+      expect(() => normalizeSpeechStartRequest({
+        projectId,
+        lifecycleEpoch: 0,
+        segments: [{ id: 'one', text: 'hello' }],
+        profile: { backend: 'gtts', language: 'en' },
+      })).toThrow('invalid');
+    },
+  );
+
   test('rejects duplicate IDs, controls, oversized Chatterbox text, and unknown options', () => {
     expect(() => normalizeSpeechStartRequest({
+      projectId: PROJECT_ID,
       lifecycleEpoch: 0,
       segments: [{ id: 'same', text: 'a' }, { id: 'same', text: 'b' }],
       profile: { backend: 'gtts', language: 'en' },
     })).toThrow('invalid');
     expect(() => normalizeSpeechStartRequest({
+      projectId: PROJECT_ID,
       lifecycleEpoch: 0,
       segments: [{ id: 'one', text: 'a\u0000b' }],
       profile: { backend: 'gtts', language: 'en' },
     })).toThrow('invalid');
     expect(() => normalizeSpeechStartRequest({
+      projectId: PROJECT_ID,
       lifecycleEpoch: 0,
       segments: [{ id: 'one', text: 'x'.repeat(301) }],
       profile: { backend: 'chatterbox' },
@@ -278,6 +296,7 @@ describe('native speech response validation', () => {
     });
     await expect(lateInventory).rejects.toMatchObject({ code: 'speechRuntimeStopped' });
     await expect(service.startSpeechJob({
+      projectId: PROJECT_ID,
       lifecycleEpoch: 9,
       segments: [{ id: 'one', text: 'hello' }],
       profile: { backend: 'edgeTts', voice: 'en-US-AriaNeural' },
@@ -500,6 +519,7 @@ describe('native speech job lifecycle', () => {
       lifecycleState: runningLifecycleState(),
     });
     await expect(service.startSpeechJob({
+      projectId: PROJECT_ID,
       lifecycleEpoch: 0,
       segments: [{ id: 'one', text: 'private words' }],
       profile: { backend: 'gtts', language: 'en' },
@@ -536,6 +556,7 @@ describe('native speech job lifecycle', () => {
       lifecycleState: runningLifecycleState(),
     });
     await service.startSpeechJob({
+      projectId: PROJECT_ID,
       lifecycleEpoch: 0,
       segments: [{ id: 'one', text: 'hello' }],
       profile: { backend: 'gtts', language: 'en' },
@@ -565,6 +586,7 @@ describe('native speech job lifecycle', () => {
       lifecycleState: runningLifecycleState(),
     });
     await service.startSpeechJob({
+      projectId: PROJECT_ID,
       lifecycleEpoch: 0,
       segments: [
         { id: 'one', text: 'hello' },
@@ -620,6 +642,7 @@ describe('native speech job lifecycle', () => {
       lifecycleState,
     });
     await service.startSpeechJob({
+      projectId: PROJECT_ID,
       lifecycleEpoch: 30,
       segments: [{ id: 'one', text: 'hello' }],
       profile: { backend: 'gtts', language: 'en' },
@@ -686,6 +709,7 @@ describe('native speech job lifecycle', () => {
     });
     const controller = new AbortController();
     await service.startSpeechJob({
+      projectId: PROJECT_ID,
       lifecycleEpoch: 0,
       segments: [{ id: 'one', text: 'hello' }],
       profile: { backend: 'gtts', language: 'en' },

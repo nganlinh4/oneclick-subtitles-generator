@@ -12,6 +12,7 @@ vi.mock('@tauri-apps/api/core', () => ({
 const JOB_ID = '018f4c22-f0f1-7c09-a4d5-120d7b6f84a1';
 const ARTIFACT_ID = '018f4c22-f0f1-7c09-a4d5-120d7b6f84a2';
 const REFERENCE_ID = '018f4c22-f0f1-7c09-a4d5-120d7b6f84a3';
+const PROJECT_ID = '018f4c22-f0f1-7c09-a4d5-120d7b6f84a4';
 const PLAYBACK_ID = '550e8400-e29b-41d4-a716-446655440000';
 
 const runningJob = {
@@ -152,6 +153,7 @@ describe('native narration compatibility adapter', () => {
     const adapter = createNativeNarrationAdapter({ speech });
     const started = await adapter.generate({
       method: 'gtts',
+      projectId: PROJECT_ID,
       lifecycleEpoch: 7,
       subtitles: [{
         id: 42,
@@ -173,6 +175,7 @@ describe('native narration compatibility adapter', () => {
       end: 2.5,
     })]);
     expect(startSpeechJob.mock.calls[0][0]).toEqual({
+      projectId: PROJECT_ID,
       segments: [{ id: 'segment-1', text: 'Hello' }],
       profile: { backend: 'gtts', language: 'en', domain: 'com', slow: false },
       referenceArtifactId: null,
@@ -215,6 +218,7 @@ describe('native narration compatibility adapter', () => {
     const adapter = createNativeNarrationAdapter({ speech });
     await adapter.generate({
       method: 'f5tts',
+      projectId: PROJECT_ID,
       lifecycleEpoch: 7,
       subtitles: [{ id: 'a', text: 'Hello' }],
       settings: { referenceText: 'Reference words' },
@@ -243,6 +247,7 @@ describe('native narration compatibility adapter', () => {
     const adapter = createNativeNarrationAdapter({ speech });
     await expect(adapter.generate({
       method: 'f5tts',
+      projectId: PROJECT_ID,
       lifecycleEpoch: 7,
       subtitles: [{ id: 1, text: 'Hello' }],
       reference: {
@@ -252,6 +257,7 @@ describe('native narration compatibility adapter', () => {
     })).rejects.toThrow('invalid');
     await expect(adapter.generate({
       method: 'gtts',
+      projectId: PROJECT_ID,
       lifecycleEpoch: 7,
       subtitles: [{ id: 1, text: 'Hello' }],
       settings: { lang: 'en' },
@@ -259,6 +265,7 @@ describe('native narration compatibility adapter', () => {
     })).rejects.toThrow('invalid');
     await expect(adapter.generate({
       method: 'f5tts',
+      projectId: PROJECT_ID,
       lifecycleEpoch: 7,
       subtitles: [{ id: 1, text: 'Hello' }],
       reference: {
@@ -271,6 +278,34 @@ describe('native narration compatibility adapter', () => {
     })).rejects.toThrow('invalid');
     expect(speech.startSpeechJob).not.toHaveBeenCalled();
   });
+
+  test.each([undefined, null, 'not-a-project', PLAYBACK_ID])(
+    'rejects a missing or non-UUIDv7 project capability: %s',
+    async (projectId) => {
+      const speech = {
+        startSpeechJob: vi.fn(async () => runningJob),
+        getSpeechStatus: vi.fn(),
+        probeSpeechBackend: vi.fn(),
+        stopSpeechRuntime: vi.fn(),
+        cancelSpeechJob: vi.fn(),
+        selectSpeechReference: vi.fn(),
+        extractSpeechReference: vi.fn(),
+        releaseSpeechPlayback: vi.fn(),
+        resolveSpeechArtifact: vi.fn(),
+        getSpeechJobResults: vi.fn(),
+        startVoiceConversionJob: vi.fn(),
+      };
+      const adapter = createNativeNarrationAdapter({ speech });
+      await expect(adapter.generate({
+        method: 'gtts',
+        projectId,
+        lifecycleEpoch: 7,
+        subtitles: [{ id: 1, text: 'Hello' }],
+        settings: { lang: 'en' },
+      })).rejects.toThrow('invalid');
+      expect(speech.startSpeechJob).not.toHaveBeenCalled();
+    },
+  );
 
   test('resolves playback lazily and releases the opaque registration', async () => {
     const speech = {

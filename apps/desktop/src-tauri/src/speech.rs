@@ -8,7 +8,9 @@ use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::{Arc, Mutex, RwLock, Weak};
 use std::time::Duration;
 
-use osg_domain::{AssetId, JobId, JobKind, JobProgress, JobSnapshot, JobState, JobUpdate};
+use osg_domain::{
+    AssetId, JobId, JobKind, JobProgress, JobSnapshot, JobState, JobUpdate, ProjectId,
+};
 use osg_engine_packages::{
     CancellationToken as PackageCancellationToken, InstalledSpeechRuntime, PackageError,
     SpeechPackageId, SpeechPackageManager, SpeechRuntimeCoordinator,
@@ -1091,6 +1093,7 @@ impl From<GttsDomainRequest> for GttsDomain {
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub(crate) struct SpeechStartRequest {
+    project_id: ProjectId,
     segments: Vec<SpeechSegmentRequest>,
     profile: SpeechProfileRequest,
     reference_artifact_id: Option<String>,
@@ -1101,6 +1104,7 @@ impl fmt::Debug for SpeechStartRequest {
     fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
         formatter
             .debug_struct("SpeechStartRequest")
+            .field("project_id", &"<opaque>")
             .field("segment_count", &self.segments.len())
             .field("profile", &self.profile)
             .field("lifecycle_epoch", &self.lifecycle_epoch)
@@ -1113,6 +1117,7 @@ impl fmt::Debug for SpeechStartRequest {
 }
 
 struct ValidatedSpeechStart {
+    project_id: ProjectId,
     backend: SpeechBackendRequest,
     lifecycle_epoch: u64,
     requests: Vec<SynthesisRequest>,
@@ -1162,6 +1167,7 @@ impl SpeechStartRequest {
         }
         let requests = NarrationBatch::new(requests)?.into_requests();
         Ok(ValidatedSpeechStart {
+            project_id: self.project_id,
             backend,
             lifecycle_epoch: self.lifecycle_epoch,
             requests,
@@ -2056,10 +2062,18 @@ pub(crate) async fn speech_start(
         .require_enabled_lifecycle(requested_backend, requested_epoch)
         .map_err(|error| speech_command_error(&error))?;
     let reference_id = request.reference_artifact_id.clone();
+    let project_id = request.project_id;
     let reference_database = state.database.clone();
-    let joined = tauri::async_runtime::spawn_blocking(move || match reference_id.as_deref() {
-        Some(id) => resolve_audio_artifact(&reference_database, id, true).map(Some),
-        None => Ok(None),
+    let joined = tauri::async_runtime::spawn_blocking(move || {
+        if reference_database.load_project(project_id)?.is_none() {
+            return Err(CommandError::invalid_input(
+                "The narration project no longer exists.",
+            ));
+        }
+        match reference_id.as_deref() {
+            Some(id) => resolve_audio_artifact(&reference_database, id, true).map(Some),
+            None => Ok(None),
+        }
     })
     .await;
     let reference = command_join_result(
@@ -2105,6 +2119,7 @@ pub(crate) async fn speech_start(
             credentials: &credentials,
             jobs: &jobs,
             job_id,
+            project_id: validated.project_id,
             channel: &on_event,
         };
         let mut outcome = run_speech_batch(&context, validated, ownership.clone()).await;
@@ -2631,6 +2646,7 @@ struct SpeechBatchContext<'a> {
     credentials: &'a NativeCredentialService,
     jobs: &'a background::DesktopJobs,
     job_id: JobId,
+    project_id: ProjectId,
     channel: &'a Channel<SpeechJobEvent>,
 }
 
@@ -3147,6 +3163,7 @@ async fn synthesize_segment(
             let runtime = context.runtime.clone();
             let commit_ownership = ownership.clone();
             let completion_channel = context.channel.clone();
+            let project_id = context.project_id;
             let joined = tauri::async_runtime::spawn_blocking(move || {
                 let metadata = SpeechArtifactMetadata::from_summary(artifact.summary());
                 commit_completed_speech_source(
@@ -3155,6 +3172,7 @@ async fn synthesize_segment(
                     &database,
                     artifact.native_path(),
                     metadata,
+                    Some(project_id),
                     job_id,
                     segment_id,
                     "narrationOutput",
@@ -3301,6 +3319,7 @@ async fn publish_voice_conversion_result(
             &artifact_database,
             artifact.native_path(),
             SpeechArtifactMetadata::from_summary(artifact.summary()),
+            None,
             job_id,
             "voice-conversion".to_owned(),
             "voiceConversion",
@@ -4208,7 +4227,7 @@ fn publish_durable_artifact(
     source_path: &Path,
     metadata: SpeechArtifactMetadata,
 ) -> CommandResult<PublishedSpeechArtifact> {
-    let prepared = prepare_speech_artifact_publication(job_id, kind, source_path, metadata)?;
+    let prepared = prepare_speech_artifact_publication(None, job_id, kind, source_path, metadata)?;
     let gate = runtime
         .artifact_publication_gate(prepared.key.clone())
         .map_err(|_| artifact_storage_error())?;
@@ -4217,6 +4236,7 @@ fn publish_durable_artifact(
 }
 
 fn prepare_speech_artifact_publication(
+    project_id: Option<ProjectId>,
     job_id: Option<JobId>,
     kind: &str,
     source_path: &Path,
@@ -4253,6 +4273,10 @@ fn prepare_speech_artifact_publication(
         }),
     )
     .map_err(|_| artifact_storage_error())?;
+    let draft = match project_id {
+        Some(project_id) => draft.with_project(project_id),
+        None => draft,
+    };
     let draft = match job_id {
         Some(job_id) => draft.with_job(job_id),
         None => draft,
@@ -4346,6 +4370,7 @@ fn commit_completed_speech_source<F>(
     database: &Database,
     source_path: &Path,
     metadata: SpeechArtifactMetadata,
+    project_id: Option<ProjectId>,
     job_id: JobId,
     segment_id: String,
     kind: &'static str,
@@ -4360,6 +4385,7 @@ where
         database,
         source_path,
         metadata,
+        project_id,
         job_id,
         segment_id,
         kind,
@@ -4375,6 +4401,7 @@ fn commit_completed_speech_source_with_hook<F, E>(
     database: &Database,
     source_path: &Path,
     metadata: SpeechArtifactMetadata,
+    project_id: Option<ProjectId>,
     job_id: JobId,
     segment_id: String,
     kind: &'static str,
@@ -4385,8 +4412,9 @@ where
     F: FnOnce(&PublishedSpeechArtifact),
     E: FnOnce(&StoredSpeechResult),
 {
-    let prepared = prepare_speech_artifact_publication(Some(job_id), kind, source_path, metadata)
-        .map_err(|_| SpeechFailureCode::ArtifactStorage)?;
+    let prepared =
+        prepare_speech_artifact_publication(project_id, Some(job_id), kind, source_path, metadata)
+            .map_err(|_| SpeechFailureCode::ArtifactStorage)?;
     let publication_gate = runtime
         .artifact_publication_gate(prepared.key.clone())
         .map_err(|_| SpeechFailureCode::WorkerFailed)?;
@@ -4744,6 +4772,43 @@ mod tests {
         }
     }
 
+    #[test]
+    fn completed_narration_artifact_is_bound_to_its_project() {
+        let fixture = SpeechTestFixture::new();
+        let backend = SpeechBackendRequest::Gtts;
+        let ownership = fixture.enable(backend);
+        let job_id = fixture.running_job(backend);
+        let project_id = ProjectId::new();
+        let metadata = osg_domain::ProjectMetadata::with_id(project_id, "Narration owner").unwrap();
+        fixture.database.create_project(&metadata).unwrap();
+        let source = fixture.directory.path().join("project-owned.wav");
+        fs::write(&source, b"project-owned narration").unwrap();
+
+        let result = commit_completed_speech_source(
+            &fixture.runtime,
+            &ownership,
+            &fixture.database,
+            &source,
+            test_artifact_metadata("projectOwnershipTest"),
+            Some(project_id),
+            job_id,
+            "one".to_owned(),
+            "narrationOutput",
+            |_| {},
+        )
+        .unwrap();
+        let StoredSpeechResult::Completed { artifact, .. } = result else {
+            panic!("completed speech was not published");
+        };
+        let artifact_id = parse_artifact_id(&artifact.artifact_id).unwrap();
+        let stored = fixture
+            .database
+            .resolve_artifact(artifact_id)
+            .unwrap()
+            .unwrap();
+        assert_eq!(stored.record().project_id(), Some(project_id));
+    }
+
     struct BlockedSpeechPublication {
         artifact: std::sync::mpsc::Receiver<ArtifactId>,
         release: std::sync::mpsc::Sender<()>,
@@ -4768,6 +4833,7 @@ mod tests {
                 &database,
                 &source,
                 test_artifact_metadata("crossBackendStopTest"),
+                None,
                 job_id,
                 "stopped".to_owned(),
                 "narrationOutput",
@@ -4809,6 +4875,7 @@ mod tests {
                 &database,
                 &source,
                 test_artifact_metadata("crossBackendStopTest"),
+                None,
                 job_id,
                 "live".to_owned(),
                 "narrationOutput",
@@ -5126,6 +5193,7 @@ mod tests {
             database,
             &source,
             test_artifact_metadata("hostileStopTest"),
+            None,
             job_id,
             "one".to_owned(),
             "narrationOutput",
@@ -5513,6 +5581,7 @@ mod tests {
     #[test]
     fn request_debug_redacts_text_and_reference_capability() {
         let request = SpeechStartRequest {
+            project_id: ProjectId::new(),
             segments: vec![SpeechSegmentRequest {
                 id: "one".to_owned(),
                 text: "private narration words".to_owned(),

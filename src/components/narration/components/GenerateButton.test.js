@@ -30,6 +30,8 @@ it('blocks generation for a method whose native runtime is not ready', () => {
   render(<GenerateButton {...props} />);
 
   const generate = screen.getByRole('button', { name: /Generate Narration/u });
+  expect(generate).toHaveAttribute('data-osg-action', 'generate-narration');
+  expect(generate).toHaveAttribute('data-narration-method', 'edge-tts');
   expect(generate).toBeDisabled();
   expect(generate).toHaveAttribute('title', 'Install or start this engine in Settings.');
   fireEvent.click(generate);

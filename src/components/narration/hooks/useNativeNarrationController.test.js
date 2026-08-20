@@ -7,12 +7,18 @@ import useNativeNarrationController from './useNativeNarrationController';
 const speechMocks = vi.hoisted(() => ({
   getSpeechLifecycleSnapshot: vi.fn(),
 }));
+const projectMocks = vi.hoisted(() => ({
+  resolveProjectForCache: vi.fn(),
+}));
 
 vi.mock('../../../platform/desktopRuntime', () => ({ isDesktopRuntime: () => true }));
 vi.mock('../../../platform/nativeNarrationFlow', () => ({
   cancelNativeNarrationJob: vi.fn(),
   restorePersistedNativeNarration: vi.fn(async () => null),
   runNativeNarrationJob: vi.fn(),
+}));
+vi.mock('../../../platform/subtitleProjectStore', () => ({
+  resolveProjectForCache: projectMocks.resolveProjectForCache,
 }));
 vi.mock('../../../platform/credentialStateController', () => ({
   getActiveGeminiCredentialId: () => 'opaque-credential-id',
@@ -26,6 +32,7 @@ vi.mock('./referenceAudioCache', () => ({ getCurrentMediaId: () => 'test-media' 
 
 const ARTIFACT_ID = '018f4c22-f0f1-7c09-a4d5-120d7b6f84a2';
 const REFERENCE_ID = '018f4c22-f0f1-7c09-a4d5-120d7b6f84a3';
+const PROJECT_ID = '018f4c22-f0f1-7c09-a4d5-120d7b6f84a4';
 
 beforeEach(() => {
   vi.clearAllMocks();
@@ -33,6 +40,10 @@ beforeEach(() => {
     epoch: 7,
     enabled: true,
     warm: true,
+  });
+  projectMocks.resolveProjectForCache.mockResolvedValue({
+    cacheId: 'test-media',
+    projectId: PROJECT_ID,
   });
 });
 
@@ -135,6 +146,8 @@ test('routes all five narration engines through the native job contract', async 
   ]);
   expect(runNativeNarrationJob.mock.calls.map(([request]) => request.lifecycleEpoch))
     .toEqual([7, 7, 7, 7, 7]);
+  expect(runNativeNarrationJob.mock.calls.map(([request]) => request.projectId))
+    .toEqual([PROJECT_ID, PROJECT_ID, PROJECT_ID, PROJECT_ID, PROJECT_ID]);
   expect(runNativeNarrationJob.mock.calls[0][0]).toMatchObject({
     reference: { nativeArtifactId: REFERENCE_ID },
     settings: { modelId: 'f5tts-v1-base', language: 'en' },
@@ -154,6 +167,17 @@ test('routes all five narration engines through the native job contract', async 
   ]);
   expect(result.current.isGenerating).toBe(false);
   expect(result.current.error).toBe('');
+});
+
+test('refuses generation before native start when there is no active durable project', async () => {
+  projectMocks.resolveProjectForCache.mockResolvedValue(null);
+  const { result } = renderHook(() => useHarness());
+
+  await act(async () => result.current.controller.handleGTTSNarration());
+
+  expect(runNativeNarrationJob).not.toHaveBeenCalled();
+  expect(result.current.error).toContain('active subtitle project changed');
+  expect(result.current.isGenerating).toBe(false);
 });
 
 test.each([

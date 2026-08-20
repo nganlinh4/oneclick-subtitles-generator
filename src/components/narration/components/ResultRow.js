@@ -64,6 +64,7 @@ const ResultRow = ({ index, style, data }) => {
   const resultItem = (
     <div
       style={style}
+      data-narration-result-state={result.success ? 'succeeded' : result.pending ? 'pending' : 'failed'}
       className={`result-item
         ${result.success ? '' : result.pending ? 'pending' : 'failed'}
         ${currentAudio && currentAudio.id === subtitle_id ? 'playing' : ''}

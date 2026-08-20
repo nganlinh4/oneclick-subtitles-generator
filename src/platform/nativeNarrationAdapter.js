@@ -438,11 +438,12 @@ export const createNativeNarrationAdapter = ({
   const generate = async (rawRequest, rawCallbacks, options) => {
     const requestValue = requireRequestKeys(
       rawRequest,
-      new Set(['method', 'lifecycleEpoch', 'subtitles', 'settings', 'reference']),
-      new Set(['method', 'lifecycleEpoch', 'subtitles'])
+      new Set(['method', 'projectId', 'lifecycleEpoch', 'subtitles', 'settings', 'reference']),
+      new Set(['method', 'projectId', 'lifecycleEpoch', 'subtitles'])
     );
     const {
       method,
+      projectId,
       lifecycleEpoch,
       subtitles,
       settings = {},
@@ -488,6 +489,7 @@ export const createNativeNarrationAdapter = ({
       onProtocolError: (error) => safelyCall(callbacks.onProtocolError, error),
     };
     const request = normalizeSpeechStartRequest({
+      projectId: requireUuid(projectId, 7),
       segments: mappings.map(({ nativeId, text }) => ({ id: nativeId, text })),
       profile,
       referenceArtifactId: usesReference

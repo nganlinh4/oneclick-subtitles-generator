@@ -18,6 +18,7 @@ test('discovers every product journey while excluding scenario-only diagnostics'
     'defaultFont.journey.js',
     'editPersistRelaunch.journey.js',
     'localAsrGeneration.journey.js',
+    'narrationGeneration.journey.js',
     'nativeExportDecoded.journey.js',
     'startup.journey.js',
     'unicodeCues.journey.js',

@@ -79,6 +79,8 @@ const GenerateButton = ({
           ) : (
             <button
               className="pill-button primary"
+              data-osg-action="generate-narration"
+              data-narration-method={narrationMethod || 'unknown'}
               onClick={generate}
               disabled={generationUnavailable}
               title={
