@@ -16,25 +16,24 @@
   },
   "sourceLevelTests": {
     "$comment": [
-      "What the source-level suite is, after every mock-based test was deleted on 2026-08-20.",
+      "What the source-level suite proves after the 2026-08-20 deletion was independently audited and reversed.",
       "",
-      "191 of 234 frontend test files injected a test double -- a replaced module registry, a",
-      "synthesised function, a hand-written surface standing in for the font stack or for IPC. They",
-      "were removed outright rather than downgraded, because a suite that mocks the boundary it is",
-      "testing reports green for a product that does not work: every defect this harness has found",
-      "was invisible to them while they passed.",
+      "A test double is not product-level proof, but that does not make every doubled test worthless.",
+      "The deleted suites contain hostile accessor, malformed-event, cancellation, stale-owner,",
+      "exact-once cleanup, protocol and persistence checks that are difficult and expensive to",
+      "exercise exhaustively through a GUI. They are restored as fast behavioral contract coverage.",
       "",
-      "What remains is 441 assertions across 43 files that run real code on real inputs with no",
-      "doubles at all -- SRT parsing, timecode arithmetic, subtitle hashing, geometry, validation,",
-      "capability records. They are worth keeping and they prove nothing about a capability."
+      "Real-binary journeys remain the authority for whether a customer capability works. Source-level",
+      "tests complement those journeys; they do not replace them. The restored suite is green after",
+      "updating two stale preview fixtures to the real transport-index contract."
     ],
     "command": "npx vitest run",
-    "files": 43,
-    "assertions": 441,
-    "deleted": {
-      "files": 191,
-      "reason": "injected a test double",
-      "recoverable": "git history at the commit that removed them"
+    "files": 233,
+    "assertions": 2164,
+    "restored": {
+      "files": 190,
+      "reason": "behavioral contract and adversarial coverage remains valuable even when a boundary is doubled",
+      "productProof": "none; capability claims require a real-binary journey"
     }
   },
   "media": {

@@ -1,0 +1,524 @@
+import fs from 'fs';
+import path from 'path';
+import { v7 as uuidv7 } from 'uuid';
+
+import {
+  NativeDownloadPreflightError,
+  createNativeDownloadPreflight,
+  recoverNativeDownloaderAfterFailure,
+  resetNativeDownloaderRecoveryForTest,
+} from './nativeDownloadPreflight';
+
+vi.mock('@tauri-apps/api/core', () => ({
+  Channel: class MockChannel {},
+  invoke: vi.fn(),
+  isTauri: vi.fn(() => false),
+}));
+
+const catalog = () => ({
+  schemaVersion: 1,
+  tools: [
+    { id: 'media-tools', label: 'FFmpeg and FFprobe', license: 'GPL-3.0-or-later' },
+    { id: 'yt-dlp', label: 'yt-dlp', license: 'GPL-3.0-or-later' },
+    { id: 'deno', label: 'Deno', license: 'MIT' },
+  ],
+});
+
+const statusEntry = (id, overrides = {}) => ({
+  id,
+  label: id === 'deno' ? 'Deno' : id,
+  deliveryAvailable: true,
+  installed: false,
+  state: 'missing',
+  version: null,
+  availableVersion: id === 'yt-dlp'
+    ? '2026.07.04'
+    : id === 'deno' ? '2.9.5' : '8.1.2',
+  installedBytes: 0,
+  activeRuntime: false,
+  pendingRemoval: false,
+  restartRequired: false,
+  operation: null,
+  ...overrides,
+});
+
+const status = (overrides = {}) => ({
+  schemaVersion: 1,
+  tools: [
+    statusEntry('media-tools', overrides['media-tools']),
+    statusEntry('yt-dlp', overrides['yt-dlp']),
+    statusEntry('deno', overrides.deno),
+  ],
+});
+
+const readyStatus = () => status({
+  'media-tools': {
+    installed: true, state: 'installed', version: '8.1.2', installedBytes: 10,
+    activeRuntime: true,
+  },
+  'yt-dlp': {
+    installed: true, state: 'installed', version: '2026.07.04', installedBytes: 10,
+    activeRuntime: true,
+  },
+  deno: {
+    installed: true, state: 'installed', version: '2.9.5', installedBytes: 10,
+    activeRuntime: true,
+  },
+});
+
+const runningJob = () => ({
+  id: uuidv7(),
+  kind: 'installEngine',
+  state: 'running',
+  progress: { basisPoints: 0 },
+  sequence: 1,
+});
+
+const completedEvent = (tool, id, overrides = {}) => ({
+  event: 'completed',
+  job: {
+    id,
+    kind: 'installEngine',
+    state: 'succeeded',
+    progress: { basisPoints: 10_000 },
+    sequence: 2,
+  },
+  tool,
+  action: 'install',
+  restartRequired: false,
+  deferred: false,
+  ...overrides,
+});
+
+const presentation = () => ({
+  notify: vi.fn(),
+  dismiss: vi.fn(),
+});
+
+const translate = (key, values = {}) => [key, values.tools, values.tool, values.percent]
+  .filter((value) => value !== undefined)
+  .join('|');
+
+const service = (overrides = {}) => createNativeDownloadPreflight({
+  readCatalog: vi.fn(async () => catalog()),
+  readStatus: vi.fn(async () => status()),
+  install: vi.fn(),
+  presentation: presentation(),
+  t: translate,
+  ...overrides,
+});
+
+beforeEach(() => resetNativeDownloaderRecoveryForTest());
+
+it('is production-reachable only through typed download preflights and has no network or storage authority', () => {
+  const source = fs.readFileSync(path.join(__dirname, 'nativeDownloadPreflight.js'), 'utf8');
+  const downloadSource = fs.readFileSync(path.join(__dirname, 'downloadService.js'), 'utf8');
+  expect(source).not.toMatch(/\bfetch\s*\(/);
+  expect(source).not.toMatch(/localStorage\s*\./);
+  expect(source).not.toMatch(/https?:\/\//i);
+  expect(source).not.toMatch(/window\.confirm|presentation\.confirm|nativeToolConsentDeclined/);
+  expect(downloadSource).toContain('ensureNativeDownloadInspectionReady');
+  expect(downloadSource).toContain('ensureNativeDownloadReady');
+});
+
+it('refreshes a ready downloader once before inspection without repeating tool setup', async () => {
+  const readCatalog = vi.fn();
+  const readStatus = vi.fn();
+  const refreshDownloader = vi.fn().mockResolvedValue({ updated: false, throttled: false });
+  const preflight = service({ readCatalog, readStatus, refreshDownloader });
+
+  await expect(preflight.ensureInspectionReady({ inspectAvailable: true }))
+    .resolves.toEqual({ ready: true });
+  await expect(preflight.ensureDownloadReady({ available: true }))
+    .resolves.toEqual({ ready: true });
+  expect(readCatalog).not.toHaveBeenCalled();
+  expect(readStatus).not.toHaveBeenCalled();
+  expect(refreshDownloader).toHaveBeenCalledTimes(1);
+});
+
+it('keeps an existing verified downloader usable when its proactive refresh is offline', async () => {
+  const refreshDownloader = vi.fn().mockRejectedValue(new Error('offline'));
+  const preflight = service({ refreshDownloader });
+
+  await expect(preflight.ensureInspectionReady({ inspectAvailable: true }))
+    .resolves.toEqual({ ready: true });
+  expect(refreshDownloader).toHaveBeenCalledTimes(1);
+});
+
+it('automatically installs the required batch in parallel and reports aggregate progress', async () => {
+  const ui = presentation();
+  const started = [];
+  const progress = [];
+  const install = vi.fn(async (tool, handlers) => {
+    const job = runningJob();
+    queueMicrotask(() => {
+      handlers.onProgress({ operation: { basisPoints: 5_000 } });
+      handlers.onCompleted(completedEvent(tool, job.id));
+    });
+    return job;
+  });
+  const preflight = service({
+    install,
+    presentation: ui,
+    readStatus: vi.fn()
+      .mockResolvedValueOnce(status())
+      .mockResolvedValue(readyStatus()),
+  });
+
+  await expect(preflight.ensureInspectionReady(
+    { inspectAvailable: false },
+    {
+      onJobStarted: (job) => started.push(job.id),
+      onProgress: (percent) => progress.push(percent),
+    }
+  )).resolves.toEqual({ ready: true });
+
+  expect(install.mock.calls.map(([tool]) => tool)).toEqual(['media-tools', 'yt-dlp', 'deno']);
+  expect(started).toHaveLength(3);
+  expect(progress[0]).toBe(0);
+  expect(progress.at(-1)).toBe(100);
+  expect(progress.every((value, index) => index === 0 || value >= progress[index - 1])).toBe(true);
+  expect(ui.notify).toHaveBeenCalledWith(expect.objectContaining({
+    type: 'info',
+    button: expect.objectContaining({ text: 'download.nativeTools.cancel' }),
+  }));
+  expect(new Set(ui.notify.mock.calls.map(([notice]) => notice.key))).toEqual(new Set([
+    'native-download-tool-preflight:media-tools',
+    'native-download-tool-preflight:yt-dlp',
+    'native-download-tool-preflight:deno',
+  ]));
+  expect(ui.notify.mock.calls.map(([notice]) => notice.message)).toEqual(expect.arrayContaining([
+    expect.stringContaining('FFmpeg and FFprobe|0'),
+    expect.stringContaining('yt-dlp|0'),
+    expect.stringContaining('Deno|0'),
+  ]));
+  expect(ui.dismiss).toHaveBeenCalled();
+});
+
+it('never asks for approval before starting the verified on-demand install', async () => {
+  const confirm = vi.fn(() => {
+    throw new Error('approval must not be consulted');
+  });
+  const ui = { ...presentation(), confirm };
+  const install = vi.fn(async (tool, handlers) => {
+    const job = runningJob();
+    queueMicrotask(() => handlers.onCompleted(completedEvent(tool, job.id)));
+    return job;
+  });
+  const preflight = service({
+    install,
+    presentation: ui,
+    readStatus: vi.fn()
+      .mockResolvedValueOnce(status())
+      .mockResolvedValue(readyStatus()),
+  });
+
+  await expect(preflight.ensureInspectionReady({ inspectAvailable: false }))
+    .resolves.toEqual({ ready: true });
+  expect(confirm).not.toHaveBeenCalled();
+  expect(install).toHaveBeenCalledTimes(3);
+  expect(ui.dismiss).toHaveBeenCalled();
+});
+
+it('the existing keyed-toast cancel action aborts the active native job', async () => {
+  const ui = presentation();
+  const install = vi.fn((tool, handlers, { signal }) => {
+    const job = runningJob();
+    signal.addEventListener('abort', () => handlers.onCancelled({
+      event: 'cancelled', tool, action: 'install', job,
+    }), { once: true });
+    return Promise.resolve(job);
+  });
+  const preflight = service({ install, presentation: ui });
+  const pending = preflight.ensureInspectionReady({ inspectAvailable: false });
+
+  await vi.waitFor(() => expect(ui.notify).toHaveBeenCalledWith(expect.objectContaining({
+    button: expect.objectContaining({ onClick: expect.any(Function) }),
+  })));
+  const progressToast = ui.notify.mock.calls
+    .map(([notice]) => notice)
+    .find((notice) => typeof notice.button?.onClick === 'function');
+  progressToast.button.onClick();
+
+  await expect(pending).rejects.toMatchObject({ code: 'nativeToolCancelled' });
+  expect(install.mock.calls[0][2].signal.aborted).toBe(true);
+});
+
+it('fails closed and cancels native work when the Channel never returns a terminal event', async () => {
+  const install = vi.fn(async () => runningJob());
+  const preflight = service({ install, installTimeoutMs: 5 });
+
+  await expect(preflight.ensureInspectionReady({ inspectAvailable: false }))
+    .rejects.toMatchObject({ code: 'nativeToolInstallFailed' });
+  expect(install.mock.calls[0][2].signal.aborted).toBe(true);
+});
+
+it('deduplicates concurrent user actions and exposes programmatic cancellation', async () => {
+  const ui = presentation();
+  const install = vi.fn((tool, handlers, { signal }) => {
+    const job = runningJob();
+    signal.addEventListener('abort', () => handlers.onCancelled({}), { once: true });
+    return Promise.resolve(job);
+  });
+  const preflight = service({ install, presentation: ui });
+  const first = preflight.ensureInspectionReady({ inspectAvailable: false });
+  const second = preflight.ensureInspectionReady({ inspectAvailable: false });
+
+  await vi.waitFor(() => expect(install).toHaveBeenCalledTimes(3));
+  expect(preflight.cancelActive()).toBe(true);
+  await expect(first).rejects.toMatchObject({ code: 'nativeToolCancelled' });
+  await expect(second).rejects.toMatchObject({ code: 'nativeToolCancelled' });
+  expect(preflight.cancelActive()).toBe(false);
+});
+
+it('fails closed for pending removal, corrupt, busy, and unavailable runtime states', async () => {
+  const cases = [
+    {
+      overrides: {
+        'media-tools': {
+          state: 'installed', installed: true, version: '8.1.2', installedBytes: 10,
+          activeRuntime: true,
+        },
+        'yt-dlp': {
+          state: 'installed', installed: true, version: '2026.07.04', installedBytes: 10,
+          activeRuntime: true,
+        },
+        deno: {
+          state: 'installed', installed: true, version: '2.9.5', installedBytes: 10,
+          restartRequired: true, pendingRemoval: true,
+        },
+      },
+      code: 'nativeToolHealthFailed',
+    },
+    { overrides: { deno: { state: 'corrupt' } }, code: 'nativeToolCorrupt' },
+    { overrides: { deno: { operation: { job: {} } } }, code: 'nativeToolBusy' },
+    { overrides: { deno: { deliveryAvailable: false, state: 'unavailable' } }, code: 'nativeToolUnavailable' },
+  ];
+
+  for (const fixture of cases) {
+    const preflight = service({ readStatus: vi.fn(async () => status(fixture.overrides)) });
+    await expect(preflight.ensureInspectionReady({ inspectAvailable: false }))
+      .rejects.toMatchObject({ code: fixture.code });
+  }
+});
+
+it('repairs installed but inactive tools and activates them without a restart', async () => {
+  const install = vi.fn(async (tool, handlers) => {
+    const job = runningJob();
+    queueMicrotask(() => handlers.onCompleted(completedEvent(tool, job.id)));
+    return job;
+  });
+  const preflight = service({
+    install,
+    readStatus: vi.fn()
+      .mockResolvedValueOnce(status({
+        'media-tools': readyStatus().tools[0],
+        'yt-dlp': {
+          state: 'installed', installed: true, version: '2026.07.04', installedBytes: 10,
+          activeRuntime: false, restartRequired: true,
+        },
+        deno: {
+          state: 'installed', installed: true, version: '2.9.5', installedBytes: 10,
+          activeRuntime: false, restartRequired: true,
+        },
+      }))
+      .mockResolvedValue(readyStatus()),
+  });
+
+  await expect(preflight.ensureInspectionReady({ inspectAvailable: false }))
+    .resolves.toEqual({ ready: true });
+  expect(install).toHaveBeenCalledTimes(2);
+  expect(install.mock.calls.map(([tool]) => tool).sort()).toEqual(['deno', 'yt-dlp']);
+});
+
+it('reports a platform without media-tool delivery without starting an install', async () => {
+  const ui = presentation();
+  const install = vi.fn();
+  const preflight = service({
+    install,
+    presentation: ui,
+    readStatus: vi.fn(async () => status({
+      'media-tools': { deliveryAvailable: false, state: 'unavailable' },
+    })),
+  });
+
+  await expect(preflight.ensureDownloadReady({
+    available: false,
+    inspectAvailable: true,
+    reason: 'mediaToolsUnavailable',
+  })).rejects.toMatchObject({ code: 'nativeToolUnavailable' });
+  expect(install).not.toHaveBeenCalled();
+  expect(ui.notify).toHaveBeenCalledWith(expect.objectContaining({ type: 'error' }));
+});
+
+it('offers the reviewed media-tool download only when the current platform catalog provides it', async () => {
+  const ui = presentation();
+  const install = vi.fn(async (tool, handlers) => {
+    const job = runningJob();
+    queueMicrotask(() => handlers.onCompleted(completedEvent(tool, job.id)));
+    return job;
+  });
+  const preflight = service({
+    install,
+    presentation: ui,
+    readStatus: vi.fn()
+      .mockResolvedValueOnce(status({
+        'media-tools': {
+          deliveryAvailable: true,
+          state: 'missing',
+          availableVersion: '8.1.2',
+        },
+        'yt-dlp': readyStatus().tools[1],
+        deno: readyStatus().tools[2],
+      }))
+      .mockResolvedValue(readyStatus()),
+  });
+
+  await expect(preflight.ensureDownloadReady({
+    available: false,
+    inspectAvailable: true,
+    reason: 'mediaToolsUnavailable',
+  })).resolves.toEqual({ ready: true });
+  expect(install).toHaveBeenCalledWith('media-tools', expect.any(Object), expect.any(Object));
+});
+
+it('rejects invalid options and a hostile completion that still requires restart', async () => {
+  const preflight = service();
+  await expect(preflight.ensureInspectionReady({ inspectAvailable: false }, { extra: true }))
+    .rejects.toBeInstanceOf(NativeDownloadPreflightError);
+
+  const install = vi.fn(async (tool, handlers) => {
+    const job = runningJob();
+    queueMicrotask(() => handlers.onCompleted(completedEvent(tool, job.id, {
+      restartRequired: true,
+    })));
+    return job;
+  });
+  const hostile = service({ install });
+  await expect(hostile.ensureInspectionReady({ inspectAvailable: false }))
+    .rejects.toMatchObject({ code: 'nativeToolInstallFailed' });
+});
+
+it('updates an installed yt-dlp after an execution failure without any prompt', async () => {
+  const ui = presentation();
+  const install = vi.fn(async (tool, handlers) => {
+    const job = runningJob();
+    queueMicrotask(() => {
+      handlers.onProgress({ operation: { basisPoints: 5_000 } });
+      handlers.onCompleted(completedEvent(tool, job.id));
+    });
+    return job;
+  });
+  const installedStatus = status({
+    'yt-dlp': {
+      installed: true,
+      state: 'installed',
+      version: '2026.07.04',
+      availableVersion: '2026.08.10',
+      installedBytes: 10,
+      activeRuntime: true,
+    },
+  });
+  const updatedStatus = status({
+    'yt-dlp': {
+      installed: true,
+      state: 'installed',
+      version: '2026.08.10.235959',
+      availableVersion: '2026.08.10.235959',
+      installedBytes: 10,
+      activeRuntime: true,
+    },
+  });
+  const readStatus = vi.fn()
+    .mockResolvedValueOnce(installedStatus)
+    .mockResolvedValueOnce(updatedStatus);
+
+  await expect(recoverNativeDownloaderAfterFailure({
+    readCatalog: vi.fn(async () => catalog()),
+    readStatus,
+    install,
+    presentation: ui,
+    t: translate,
+    now: () => 1_000_000,
+  })).resolves.toEqual({ updated: true, throttled: false });
+
+  expect(install).toHaveBeenCalledWith('yt-dlp', expect.any(Object), expect.any(Object));
+  expect(ui.dismiss).toHaveBeenCalled();
+});
+
+it('checks the live channel but does not report an unchanged verified yt-dlp as updated', async () => {
+  const install = vi.fn(async (tool, handlers) => {
+    const job = runningJob();
+    queueMicrotask(() => handlers.onCompleted(completedEvent(tool, job.id)));
+    return job;
+  });
+  const installedStatus = status({
+    'yt-dlp': {
+      installed: true,
+      state: 'installed',
+      version: '2026.07.04',
+      availableVersion: '2026.07.04',
+      installedBytes: 10,
+      activeRuntime: true,
+    },
+  });
+
+  await expect(recoverNativeDownloaderAfterFailure({
+    readCatalog: vi.fn(async () => catalog()),
+    readStatus: vi.fn(async () => installedStatus),
+    install,
+    presentation: presentation(),
+    t: translate,
+    now: () => 1_500_000,
+  })).resolves.toEqual({ updated: false, throttled: false });
+
+  expect(install).toHaveBeenCalledTimes(1);
+});
+
+it('coalesces and throttles repeated automatic recovery checks', async () => {
+  const installedStatus = status({
+    'yt-dlp': {
+      installed: true,
+      state: 'installed',
+      version: '2026.07.04',
+      availableVersion: '2026.08.10',
+      installedBytes: 10,
+      activeRuntime: true,
+    },
+  });
+  const install = vi.fn(async (tool, handlers) => {
+    const job = runningJob();
+    queueMicrotask(() => handlers.onCompleted(completedEvent(tool, job.id, {
+      restartRequired: false,
+    })));
+    return job;
+  });
+  const updatedStatus = status({
+    'yt-dlp': {
+      installed: true,
+      state: 'installed',
+      version: '2026.08.10.235959',
+      availableVersion: '2026.08.10.235959',
+      installedBytes: 10,
+      activeRuntime: true,
+    },
+  });
+  const readStatus = vi.fn()
+    .mockResolvedValueOnce(installedStatus)
+    .mockResolvedValueOnce(updatedStatus);
+  const options = {
+    readCatalog: vi.fn(async () => catalog()),
+    readStatus,
+    install,
+    presentation: presentation(),
+    t: translate,
+    now: () => 2_000_000,
+  };
+  const first = recoverNativeDownloaderAfterFailure(options);
+  const second = recoverNativeDownloaderAfterFailure(options);
+  await expect(first).resolves.toEqual({ updated: true, throttled: false });
+  await expect(second).resolves.toEqual({ updated: true, throttled: false });
+  await expect(recoverNativeDownloaderAfterFailure(options))
+    .resolves.toEqual({ updated: false, throttled: true });
+  expect(install).toHaveBeenCalledTimes(1);
+});
