@@ -13,6 +13,7 @@ const CONFIG = join(E2E_ROOT, 'wdio.conf.js');
 const NON_DEFAULT_JOURNEYS = new Set([
   'damagedFontPayload.journey.js',
   'editPersistRelaunch.journey.js',
+  'nativeToolsInstall.journey.js',
   'reconnaissance.journey.js',
   'translationPersistence.journey.js',
   'unicodeCues.journey.js',

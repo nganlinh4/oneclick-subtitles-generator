@@ -203,9 +203,16 @@
     {
       "name": "nativeToolsInstall",
       "kind": "workflow",
+      "file": "journeys/nativeToolsInstall.journey.js",
       "capability": "A clean machine installs FFmpeg, yt-dlp and Deno from the reviewed catalog, verifying every digest.",
-      "status": "planned",
-      "note": "urlToPreview installs them as a side effect, but nothing yet starts from empty and asserts the digests, the receipts and the refusal of a tampered artifact."
+      "oracles": [
+        "the real Settings > Tools controls and row states",
+        "the native status boundary in a fresh desktop process",
+        "an independent filesystem walk, exact receipt comparison, size check and SHA-256 of every installed executable and notice"
+      ],
+      "runsAgainst": "e2e-binary",
+      "status": "green",
+      "note": "Starts without the persistent E2E tools junction, installs all three tools through customer controls, and verifies every installed byte against the static catalog or immutable dynamic yt-dlp delivery record. The coordinator then changes one byte of yt-dlp without changing its size, launches a new desktop process, requires a fail-closed corrupt/quarantined state, uses the visible Repair control, and revalidates the complete tree."
     },
     {
       "name": "nativeExportDecoded",
