@@ -5,7 +5,10 @@
 // developer's real projects — 17 of them on the machine this was written on. The root is passed
 // through OSG_E2E_DATA_ROOT, which exists only in the `unsigned-local-build` channel.
 
-import { mkdtempSync, mkdirSync, rmSync, symlinkSync } from 'node:fs';
+import { Buffer } from 'node:buffer';
+import {
+  mkdtempSync, mkdirSync, readFileSync, rmSync, symlinkSync,
+} from 'node:fs';
 import { tmpdir } from 'node:os';
 import { basename, join, resolve } from 'node:path';
 
@@ -76,6 +79,30 @@ export const JOURNEY_TIMEOUT_MS = 3 * 60 * 60 * 1_000;
  */
 export const APPLICATION_BINARY = process.env.OSG_E2E_BINARY
   ?? join(BUILT_APPLICATION_DIRECTORY, 'osg-desktop.exe');
+
+// Compiled into dialog_paths.rs only when `e2e-automation` is enabled. Checking this before WDIO
+// launches the executable prevents a production build at the same Cargo output path from silently
+// restoring native picker/save dialogs. That mix-up is especially hazardous because an unattended
+// dialog can sit behind the application indefinitely and make the machine appear stuck.
+export const AUTOMATION_DIALOG_GUARD = Buffer.from(
+  'The automation build refused an unstaged native file dialog.',
+  'utf8',
+);
+
+export const assertAutomationDialogGuard = (binary) => {
+  let bytes;
+  try {
+    bytes = readFileSync(binary);
+  } catch (error) {
+    throw new Error(`The E2E binary is unavailable: ${binary}`, { cause: error });
+  }
+  if (!bytes.includes(AUTOMATION_DIALOG_GUARD)) {
+    throw new Error(
+      `Refusing to launch ${binary}: it does not contain the compile-time automation dialog guard. `
+      + 'Rebuild with --features e2e-automation; a production binary may open File Explorer.',
+    );
+  }
+};
 
 /**
  * A fresh, isolated root for one run, including the WebView2 profile.

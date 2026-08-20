@@ -8,7 +8,8 @@ import {
   defaultJourneys, isolatedEnvironment, normalizeJourney, parseArguments,
 } from './run-isolated.mjs';
 import {
-  ENGINE_PACKAGES_CACHE, JOURNEY_TIMEOUT_MS, createRunRoot, removeRunRoot, stagedDialogPaths,
+  ENGINE_PACKAGES_CACHE, JOURNEY_TIMEOUT_MS, assertAutomationDialogGuard, createRunRoot,
+  removeRunRoot, stagedDialogPaths,
 } from './support/environment.js';
 import { cachedRealVideo } from './support/realMedia.js';
 
@@ -95,4 +96,25 @@ test('isolated roots retain engine packages through a junction without deleting 
 
 test('the outer journey timeout cannot kill a valid multi-gigabyte engine installation', () => {
   assert.ok(JOURNEY_TIMEOUT_MS >= 2 * 60 * 60 * 1_000);
+});
+
+test('refuses a production binary before it can open a native dialog', () => {
+  const root = mkdtempSync(join(tmpdir(), 'osg-e2e-binary-'));
+  try {
+    const production = join(root, 'production.exe');
+    writeFileSync(production, 'ordinary production bytes');
+    assert.throws(
+      () => assertAutomationDialogGuard(production),
+      /does not contain the compile-time automation dialog guard/,
+    );
+
+    const automation = join(root, 'automation.exe');
+    writeFileSync(
+      automation,
+      'prefix The automation build refused an unstaged native file dialog. suffix',
+    );
+    assert.doesNotThrow(() => assertAutomationDialogGuard(automation));
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
 });

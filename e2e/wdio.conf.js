@@ -14,8 +14,8 @@
 import { copyFileSync, existsSync } from 'node:fs';
 
 import {
-  APPLICATION_BINARY, JOURNEY_TIMEOUT_MS, createRunRoot, isolationEnvironment, removeRunRoot,
-  stagedDialogPaths,
+  APPLICATION_BINARY, JOURNEY_TIMEOUT_MS, assertAutomationDialogGuard, createRunRoot,
+  isolationEnvironment, removeRunRoot, stagedDialogPaths,
 } from './support/environment.js';
 import { cachedRealVideo } from './support/realMedia.js';
 
@@ -45,8 +45,9 @@ const runRoot = process.env.OSG_E2E_DATA_ROOT && existsSync(process.env.OSG_E2E_
 // dialog writes into this run's private output directory. The persistent media cache is input-only:
 // allowing outputs beneath it caused the next journey to select its own newest 1440x1080 export as
 // the 192x144 source fixture. Neither answer is set speculatively: a journey that finds no staged
-// selection meets the real dialog, which is what a customer meets, and says so by hanging rather
-// than by silently using something else.
+// selection receives a typed refusal from the automation-only Rust boundary. It can never fall back
+// to the customer dialog implementation because that implementation is not compiled into this
+// channel.
 const cachedVideo = cachedRealVideo();
 const dialogPaths = stagedDialogPaths(runRoot, cachedVideo);
 if (process.env.OSG_E2E_MEDIA_SELECTION === undefined && cachedVideo !== null) {
@@ -58,8 +59,8 @@ if (process.env.OSG_E2E_MEDIA_DESTINATION === undefined) {
   // it ended up in, so it names the file inside this and the journey watches for it to appear.
   //
   // A FRESH one per run. The application refuses a staged destination that already exists, and a
-  // refusal is silent — it opens the real dialog behind the window and hangs. Re-running the export
-  // journey into a directory that already held its own output would do exactly that.
+  // refusal is typed and fail-closed. Re-running into an occupied destination must fail the journey;
+  // it must never open a native dialog.
   process.env.OSG_E2E_MEDIA_DESTINATION = dialogPaths.mediaDestination;
 }
 Object.assign(process.env, isolationEnvironment(runRoot));
@@ -91,13 +92,7 @@ export const config = {
     if (process.env.OSG_E2E_DATA_ROOT !== runRoot) {
       throw new Error('the isolation environment was overwritten before the run started');
     }
-    if (!existsSync(APPLICATION_BINARY)) {
-      throw new Error(
-        `The E2E binary is missing: ${APPLICATION_BINARY}\n`
-        + 'Build it with: npm --prefix apps/desktop run tauri -- build '
-        + '--features e2e-automation --no-bundle --target x86_64-pc-windows-msvc',
-      );
-    }
+    assertAutomationDialogGuard(APPLICATION_BINARY);
   },
 
   // This application has exactly one WebView. Mark its existing WebDriver handle as the explicit
