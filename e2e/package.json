@@ -5,10 +5,13 @@
   "description": "Real-binary Windows journeys driven through tauri-driver and the actual WebView.",
   "type": "module",
   "scripts": {
-    "test": "wdio run wdio.conf.js --spec ./journeys/startup.journey.js --spec ./journeys/defaultFont.journey.js",
+    "$comment": "ONE SPEC PER INVOCATION. Every journey starts from a first run, and the run root is created when wdio.conf.js loads -- once per invocation, not once per spec. Passing several --spec flags to one invocation makes spec two open a database spec one already filled, so the application restores that project and the first-run controls never appear. Measured: unicodeCues and urlToPreview both pass alone and both fail together, on '.url-field still not displayed' and 'the selected media never became playable'.",
+    "test": "wdio run wdio.conf.js --spec ./journeys/startup.journey.js && wdio run wdio.conf.js --spec ./journeys/defaultFont.journey.js",
     "test:damaged-font": "node scenarios/damagedFontPayload.mjs",
-    "test:workflows": "wdio run wdio.conf.js --spec ./journeys/urlToPreview.journey.js --spec ./journeys/editPersistRelaunch.journey.js --spec ./journeys/unicodeCues.journey.js",
+    "test:workflows": "wdio run wdio.conf.js --spec ./journeys/urlToPreview.journey.js && wdio run wdio.conf.js --spec ./journeys/editPersistRelaunch.journey.js && wdio run wdio.conf.js --spec ./journeys/unicodeCues.journey.js",
     "test:download": "wdio run wdio.conf.js --spec ./journeys/urlToPreview.journey.js",
+    "test:persistence": "wdio run wdio.conf.js --spec ./journeys/editPersistRelaunch.journey.js",
+    "test:unicode": "wdio run wdio.conf.js --spec ./journeys/unicodeCues.journey.js",
     "recon": "wdio run wdio.conf.js --spec ./journeys/reconnaissance.journey.js",
     "probe:restore": "wdio run wdio.conf.js --spec ./journeys/restoreProbe.journey.js"
   },

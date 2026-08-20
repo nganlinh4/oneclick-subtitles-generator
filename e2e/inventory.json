@@ -293,5 +293,14 @@
       "fixtures/subtitles/cues-unicode.srt"
     ],
     "media": "none -- see the media section above"
-  }
+  },
+  "harnessLimitations": [
+    {
+      "limitation": "One run root per wdio invocation, not per spec.",
+      "consequence": "Journeys are only independent when run one spec at a time. Several --spec flags in one invocation share a database, so the application restores the previous spec's project and the first-run controls never appear.",
+      "measured": "unicodeCues and urlToPreview each pass alone and both fail together: '.url-field still not displayed' and 'the selected media never became playable'.",
+      "workedAround": "package.json chains one invocation per spec.",
+      "properFix": "A fresh root per spec. The root is created when the config loads because beforeSession is too late -- the service spawns the binary from the launcher, and assigning isolation later let a run read live user state while appearing isolated."
+    }
+  ]
 }
