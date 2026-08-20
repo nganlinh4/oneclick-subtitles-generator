@@ -190,7 +190,9 @@ dist-new/
 # E2E harness dependencies (the lockfile is committed; the tree is not)
 e2e/node_modules/
 
-# Test-fixture media is committed on purpose: a journey is deterministic only if it runs
-# against the exact bytes, and regenerating with a different ffmpeg would silently change
-# what "the 6 second fixture" means.
-!e2e/fixtures/media/*.mp4
+# Decoder geometry fixtures are committed on purpose: each one carries a geometry a decoder gets
+# wrong in a specific way -- macroblock padding, a container-declared rotation, a non-square pixel
+# aspect -- and regenerating with a different ffmpeg would silently change what is being tested.
+# They are inputs to a real decoder, not stand-ins for a video a customer plays; the end-to-end
+# journeys download a real one.
+!crates/osg-decode/tests/fixtures/*.mp4
