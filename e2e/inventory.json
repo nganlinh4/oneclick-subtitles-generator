@@ -28,8 +28,8 @@
       "updating two stale preview fixtures to the real transport-index contract."
     ],
     "command": "npx vitest run",
-    "files": 233,
-    "assertions": 2173,
+    "files": 235,
+    "assertions": 2179,
     "restored": {
       "files": 190,
       "reason": "behavioral contract and adversarial coverage remains valuable even when a boundary is doubled",
@@ -173,8 +173,8 @@
       ],
       "runsAgainst": "e2e-binary",
       "status": "green",
-      "note": "Went green after three defects it found were fixed: the glyph residual refusal, the conflation of the transport frame index with the scene frame index, and its own oracle comparing BLOB identifiers by object identity.",
-      "lastGreenCommit": "e1f7da00"
+      "note": "The seed and verification phases now run in two separate WDIO invocations and therefore two separate desktop processes against one isolated profile. The former reloadSession-based test only replaced WebDriver's session while leaving the application alive and was not relaunch proof.",
+      "lastGreenCommit": "f64443bc"
     },
     {
       "name": "unicodeCues",
@@ -197,17 +197,8 @@
       ],
       "runsAgainst": "e2e-binary",
       "status": "green",
-      "lastGreenCommit": "e1f7da00",
-      "note": "Went green with the line-mask migration. Was red with previewAtlasCannotLayOut / crossesClusters=true."
-    },
-    {
-      "name": "restoreProbe",
-      "kind": "diagnostic",
-      "file": "journeys/restoreProbe.journey.js",
-      "capability": "Not a capability. Reports what differs between a first run and a restore.",
-      "runsAgainst": "e2e-binary",
-      "status": "external",
-      "note": "Outside the default glob. Run it by name when a restore defect needs narrowing."
+      "lastGreenCommit": "f64443bc",
+      "note": "Green across two desktop processes after the line-mask migration and after imported subtitle rows were made durable before the editor could present them as saved. The old same-process test concealed both the relaunch gap and import data loss."
     },
     {
       "name": "nativeToolsInstall",
@@ -271,7 +262,23 @@
       "name": "translation",
       "kind": "workflow",
       "capability": "Subtitles are translated and the translation is persisted and drawn.",
-      "status": "planned"
+      "file": "journeys/translationPersistence.journey.js",
+      "chain": [
+        "open real media and import real subtitle cues",
+        "format the cues through the customer translation controls without a provider credential",
+        "persist the exact project-owned translation revision",
+        "select Translated and publish different native preview pixels",
+        "start a second desktop process and hydrate the same translation and selection"
+      ],
+      "oracles": [
+        "visible translated text and language selection",
+        "the application's own SQLite auxiliary translation record, read only",
+        "native preview pixels before and after a complete process restart, compared independently by FFmpeg SSIM"
+      ],
+      "runsAgainst": "two independent e2e-binary processes sharing one isolated profile",
+      "status": "green",
+      "note": "Format mode proves the complete ownership, persistence, projection and native drawing path without pretending to prove Gemini. Provider-backed translation remains credential-gated under geminiGeneration.",
+      "lastGreenCommit": "f64443bc"
     },
     {
       "name": "narration",
@@ -324,6 +331,20 @@
     }
   ],
   "knownProductFindings": [
+    {
+      "finding": "A freshly imported subtitle file was presented as saved but existed only in React memory.",
+      "foundBy": "unicodeCues",
+      "status": "fixed",
+      "severity": "critical",
+      "note": "The lyrics editor treated every incoming track as its saved baseline, which disabled Save. The import handler did not write the track, so a real process restart lost it. Desktop import now waits for an exact-project checkpoint, with project identity checks before and after the write, before publishing the rows to the editor."
+    },
+    {
+      "finding": "Persistence journeys described a WebDriver session replacement as an application relaunch.",
+      "foundBy": "translation",
+      "status": "harness-fixed",
+      "severity": "critical",
+      "note": "The embedded Tauri service starts the application in onPrepare and stops it in onComplete; browser.reloadSession never restarts that process. Persistence scenarios now run seed and verification as separate WDIO invocations against one isolated profile. The stale helper and diagnostic were deleted."
+    },
     {
       "finding": "An autonomous narration export opened a real native save dialog when the harness expected staging.",
       "foundBy": "narrationAlignment",
@@ -417,7 +438,7 @@
       "finding": "Editing a cue sometimes does not commit: the edited text never appears.",
       "foundBy": "editPersistRelaunch",
       "status": "harness-fixed",
-      "note": "The original occurrence was not reproducible after every fresh and reloaded session explicitly selected the application's sole WebView handle. Before that fix, tauri-service repeatedly attempted an unavailable active-window probe and paused element commands for five seconds. The persistence journey then passed 8/8 isolated relaunch runs with zero focus-discovery warnings; each run verified the saved edit and identifiers in SQLite and again after relaunch."
+      "note": "The original occurrence was not reproducible after the sole WebView handle was explicitly selected. The durability claim is now separately proven by two application processes; active-window recovery is no longer conflated with relaunch coverage."
     }
   ],
   "fixtures": {
@@ -437,21 +458,21 @@
     },
     {
       "limitation": "tauri-service active-window discovery is unavailable in some otherwise healthy embedded sessions.",
-      "consequence": "Without an explicit handle, each element command can wait five seconds even though standard WebDriver is already attached to the rendered editor; a reload creates a new session and loses the old selection.",
-      "measured": "After pinning the sole handle in the config and after every reload, editPersistRelaunch passed 8/8 isolated runs in 137.8 seconds with zero focus-discovery warnings.",
+      "consequence": "Without an explicit handle, each element command can wait five seconds even though standard WebDriver is already attached to the rendered editor.",
+      "measured": "Pinning the sole handle in the config removed the unavailable focus-discovery delay. Cross-process scenarios do not reuse or reload a WebDriver session.",
       "workedAround": "The harness performs a standard switchToWindow on the sole existing handle. It does not navigate, inject application state, mock IPC, or select a different product window.",
-      "properFix": "Implemented in wdio.conf.js and reloadApplicationSession()."
+      "properFix": "Implemented in wdio.conf.js."
     }
   ],
   "suiteRun": {
     "when": "2026-08-20",
-    "commit": "e1f7da00",
-    "how": "one wdio invocation per spec, against the e2e-automation binary and the real video",
-    "result": "7 of 7 green: startup, defaultFont, damagedFontPayload, urlToPreview, editPersistRelaunch, unicodeCues, nativeExportDecoded",
+    "commit": "f64443bc",
+    "how": "targeted persistence audit against the rebuilt e2e binary; each persistence workflow used separate seed and verification application processes",
+    "result": "3 of 3 green across process restarts: edited cue, Unicode import, project-owned formatted translation; full source suite 235 files / 2179 assertions green",
     "durations": {
-      "urlToPreview": "6m24s",
-      "editPersistRelaunch": "7m27s",
-      "unicodeCues": "4m55s"
+      "editPersistRelaunch": "about 1 minute",
+      "unicodeCues": "about 1 minute",
+      "translationPersistence": "about 1 minute"
     }
   }
 }
