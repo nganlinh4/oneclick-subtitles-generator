@@ -239,5 +239,7 @@
   "selectEasing": "Chọn kiểu chuyển động",
   "selectPosition": "Chọn vị trí",
   "selectTransform": "Chọn chuyển đổi",
-  "trimmingTimeline": "Cắt video"
+  "trimmingTimeline": "Cắt video",
+  "validating": "Đang kiểm tra điều kiện kết xuất...",
+  "queued": "Đã xếp hàng kết xuất"
 }

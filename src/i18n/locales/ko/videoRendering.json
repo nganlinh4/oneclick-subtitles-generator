@@ -239,5 +239,7 @@
   "selectEasing": "이징 선택",
   "selectPosition": "위치 선택",
   "selectTransform": "변환 선택",
-  "trimmingTimeline": "비디오 자르기"
+  "trimmingTimeline": "비디오 자르기",
+  "validating": "렌더링 필수 조건을 확인하는 중...",
+  "queued": "렌더링 대기열에 추가됨"
 }
