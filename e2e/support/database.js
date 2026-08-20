@@ -110,3 +110,14 @@ export const durableState = (root) => withDatabase(root, (database) => {
     latestJob: jobs.at(-1) ?? null,
   };
 });
+
+/** The project-owned translation records, decoded independently from the app's JSON reader. */
+export const durableTranslations = (root) => withDatabase(root, (database) => (
+  database.prepare(
+    "SELECT key, value_json FROM app_settings WHERE scope = 'app'"
+      + " AND key LIKE 'project.legacyAux.v1.%' ORDER BY key",
+  ).all().map(({ key, value_json: valueJson }) => {
+    const auxiliary = JSON.parse(valueJson);
+    return { key, translation: auxiliary?.translation ?? null };
+  })
+));

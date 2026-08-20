@@ -12,8 +12,10 @@ const CONFIG = join(E2E_ROOT, 'wdio.conf.js');
 // output is useful only while narrowing a known failure.
 const NON_DEFAULT_JOURNEYS = new Set([
   'damagedFontPayload.journey.js',
+  'editPersistRelaunch.journey.js',
   'reconnaissance.journey.js',
-  'restoreProbe.journey.js',
+  'translationPersistence.journey.js',
+  'unicodeCues.journey.js',
 ]);
 
 const fail = (message) => {

@@ -82,9 +82,8 @@ export const config = {
   framework: 'mocha',
   // Longer than any single journey's internal waits. When mocha's cap fires first it reports
   // only "took too long", discarding the observation the journey collected about WHY.
-  // A journey that relaunches the application legitimately runs for several minutes: two full
-  // startups, a real import and a real restore. The cap is above that so a genuine failure is
-  // reported by the journey's own diagnostic message rather than as "took too long".
+  // Heavy engine-install journeys legitimately run for hours. Cross-process persistence is driven
+  // by scenario runners that launch this configuration twice, never by extending one Mocha test.
   mochaOpts: { ui: 'bdd', timeout: JOURNEY_TIMEOUT_MS },
   logLevel: 'warn',
 

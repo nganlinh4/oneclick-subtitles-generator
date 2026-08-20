@@ -16,12 +16,10 @@ test('discovers every product journey while excluding scenario-only diagnostics'
   const names = defaultJourneys().map((path) => path.replaceAll('\\', '/').split('/').at(-1));
   assert.deepEqual(names, [
     'defaultFont.journey.js',
-    'editPersistRelaunch.journey.js',
     'localAsrGeneration.journey.js',
     'narrationGeneration.journey.js',
     'nativeExportDecoded.journey.js',
     'startup.journey.js',
-    'unicodeCues.journey.js',
     'urlToPreview.journey.js',
   ]);
 });
