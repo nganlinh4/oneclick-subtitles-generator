@@ -4,6 +4,7 @@ import { createSubtitleHandlers } from "./handlers/subtitleHandlers";
 import { createDownloadHandlers } from "./handlers/downloadHandlers";
 import { createProcessingHandlers } from "./handlers/processingHandlers";
 import { createSettingsHandlers } from "./handlers/settingsHandlers";
+import { persistImportedSubtitlesForActiveProject } from "../../utils/importedSubtitlePersistence";
 
 /**
  * Hook for application event handlers
@@ -65,6 +66,7 @@ export const useAppHandlers = (appState) => {
     setIsDownloading,
     setDownloadProgress,
     setIsSrtOnlyMode,
+    persistUploadedSubtitles: persistImportedSubtitlesForActiveProject,
     t,
   });
 

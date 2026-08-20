@@ -19,6 +19,7 @@ export const createSubtitleHandlers = ({
   setIsDownloading,
   setDownloadProgress,
   setIsSrtOnlyMode,
+  persistUploadedSubtitles,
   t,
 }) => {
   /**
@@ -105,6 +106,13 @@ export const createSubtitleHandlers = ({
         hasDownloadedVideo ||
         hasYoutubeVideo ||
         hasUnifiedVideo;
+
+      // The editor treats incoming rows as its saved baseline. On desktop that is truthful only
+      // after the exact active project has acknowledged them; otherwise Save is disabled while the
+      // imported file exists solely in React memory and disappears on the next launch.
+      if (hasAnyVideoSource && typeof persistUploadedSubtitles === 'function') {
+        await persistUploadedSubtitles(parsedSubtitles);
+      }
 
       if (!hasAnyVideoSource) {
         setIsSrtOnlyMode(true);
