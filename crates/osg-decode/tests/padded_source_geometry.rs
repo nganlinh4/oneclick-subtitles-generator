@@ -15,9 +15,22 @@ use std::path::{Path, PathBuf};
 
 use osg_decode::{DecoderConfig, VideoDecoder};
 
+/// The geometry fixtures, owned by the crate whose decoder they exercise.
+///
+/// They used to live under `e2e/fixtures/media`, where they were ALSO being handed to the
+/// application as a stand-in for a downloaded video — which is what made a colour-bars clip look
+/// like proof that the product could play what a customer plays. That use is gone: the journeys
+/// download a real video now.
+///
+/// These files stay, because they are not stand-ins for anything. Each one is a real encode that
+/// carries a geometry a decoder gets wrong in a specific way: a 1080p frame whose surface is
+/// macroblock-padded to 1088 rows, a rotation only the container declares, a non-square pixel
+/// aspect, an already-aligned frame that must not be "corrected", and a padded frame whose bottom
+/// rows must be the picture rather than the encoder's leftovers. None of them can be obtained on
+/// demand from a video-sharing site, and every one of them was a real defect before it was a test.
 fn fixture(name: &str) -> PathBuf {
     PathBuf::from(env!("CARGO_MANIFEST_DIR"))
-        .join("../../e2e/fixtures/media")
+        .join("tests/fixtures")
         .join(name)
 }
 
