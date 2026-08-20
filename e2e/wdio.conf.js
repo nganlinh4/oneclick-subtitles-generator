@@ -99,6 +99,18 @@ export const config = {
     }
   },
 
+  // This application has exactly one WebView. Mark its existing WebDriver handle as the explicit
+  // target once, before a journey issues element commands. Without this, tauri-service performs an
+  // active-window discovery call before every `$`, `$$` and click. Its direct-eval bridge is not
+  // available in a small but repeatable fraction of otherwise healthy embedded sessions, so each
+  // discovery waits five seconds even though ordinary WebDriver commands are already attached to
+  // the rendered editor. An explicit standard WebDriver switch suppresses that irrelevant recovery
+  // path; it does not navigate, inject state, mock IPC or choose a different application window.
+  before: async () => {
+    const handle = await browser.getWindowHandle();
+    await browser.switchToWindow(handle);
+  },
+
   afterSession: () => {
     if (runRoot && !process.env.OSG_E2E_KEEP_ROOT) removeRunRoot(runRoot);
   },

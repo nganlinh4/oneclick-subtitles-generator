@@ -285,8 +285,8 @@
     {
       "finding": "Editing a cue sometimes does not commit: the edited text never appears.",
       "foundBy": "editPersistRelaunch",
-      "status": "open",
-      "note": "Seen once in eight runs and not since. The helper now reports the editor's value, whether it stayed open and the first rows of the list, so the next occurrence will say which of those three it is."
+      "status": "harness-fixed",
+      "note": "The original occurrence was not reproducible after every fresh and reloaded session explicitly selected the application's sole WebView handle. Before that fix, tauri-service repeatedly attempted an unavailable active-window probe and paused element commands for five seconds. The persistence journey then passed 8/8 isolated relaunch runs with zero focus-discovery warnings; each run verified the saved edit and identifiers in SQLite and again after relaunch."
     }
   ],
   "fixtures": {
@@ -303,6 +303,13 @@
       "measured": "unicodeCues and urlToPreview each pass alone and both fail together: '.url-field still not displayed' and 'the selected media never became playable'.",
       "workedAround": "package.json chains one invocation per spec.",
       "properFix": "A fresh root per spec. The root is created when the config loads because beforeSession is too late -- the service spawns the binary from the launcher, and assigning isolation later let a run read live user state while appearing isolated."
+    },
+    {
+      "limitation": "tauri-service active-window discovery is unavailable in some otherwise healthy embedded sessions.",
+      "consequence": "Without an explicit handle, each element command can wait five seconds even though standard WebDriver is already attached to the rendered editor; a reload creates a new session and loses the old selection.",
+      "measured": "After pinning the sole handle in the config and after every reload, editPersistRelaunch passed 8/8 isolated runs in 137.8 seconds with zero focus-discovery warnings.",
+      "workedAround": "The harness performs a standard switchToWindow on the sole existing handle. It does not navigate, inject application state, mock IPC, or select a different product window.",
+      "properFix": "Implemented in wdio.conf.js and reloadApplicationSession()."
     }
   ],
   "suiteRun": {

@@ -16,7 +16,7 @@
 
 import { strict as assert } from 'node:assert';
 
-import { openEditor } from '../support/editor.js';
+import { openEditor, reloadApplicationSession } from '../support/editor.js';
 import {
   UNICODE_SUBTITLE_FIXTURE,
   importSubtitles,
@@ -40,7 +40,7 @@ describe('subtitles with Vietnamese, Korean and emoji', () => {
     );
 
     // Reopening is what rebuilds the atlas from stored cues, which is where the refusal appears.
-    await browser.reloadSession();
+    await reloadApplicationSession();
     await openEditor();
 
     await browser.waitUntil(

@@ -5,7 +5,7 @@
 // whether the managed font was ready when the atlas was baked, and whether the refusal survives a
 // re-bake once everything has settled.
 
-import { openEditor } from '../support/editor.js';
+import { openEditor, reloadApplicationSession } from '../support/editor.js';
 import {
   FIRST_CUE,
   editCueText,
@@ -44,7 +44,7 @@ describe('a restored project', () => {
     await browser.pause(8_000);
     show('after editing a cue, still the same session', await probe());
 
-    await browser.reloadSession();
+    await reloadApplicationSession();
     await openEditor();
 
     await browser.waitUntil(

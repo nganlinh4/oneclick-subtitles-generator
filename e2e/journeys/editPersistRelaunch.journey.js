@@ -10,7 +10,7 @@
 import { strict as assert } from 'node:assert';
 
 import { durableState } from '../support/database.js';
-import { clickControl, openEditor } from '../support/editor.js';
+import { clickControl, openEditor, reloadApplicationSession } from '../support/editor.js';
 import { REAL_VIDEO } from '../support/realMedia.js';
 import {
   FIRST_CUE,
@@ -85,7 +85,7 @@ describe('a customer edits a cue and reopens the application', () => {
     const mediaHash = saved.media[0].content_hash;
 
     // --- relaunch -------------------------------------------------------------------------------
-    await browser.reloadSession();
+    await reloadApplicationSession();
     await openEditor();
 
     let seen = null;

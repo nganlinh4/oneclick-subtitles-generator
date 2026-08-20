@@ -83,6 +83,18 @@ export const openEditor = async () => {
 };
 
 /**
+ * Relaunch the real process against the same isolated profile and re-pin its sole WebView handle.
+ * `reloadSession()` creates a new WebDriver session, so the explicit selection made by the config's
+ * `before` hook belongs to the old session. Repeating that standard switch prevents tauri-service
+ * from spending five seconds per element command on unavailable active-window discovery.
+ */
+export const reloadApplicationSession = async () => {
+  await browser.reloadSession();
+  const handle = await browser.getWindowHandle();
+  await browser.switchToWindow(handle);
+};
+
+/**
  * What actually receives a click at a control's centre.
  *
  * A failure to click is almost never "the button is missing": it is off-screen, or something is
