@@ -2,7 +2,7 @@
   "schemaVersion": 5,
   "algorithm": "sha256",
   "normalization": "binary exact; UTF-8 BOM ignored, CRLF/CR normalized to LF, terminal newlines ignored",
-  "baselineRevision": "f8ed66a192e29e981177c498a64623b4f0bc9881",
+  "baselineRevision": "4c2e4228f63212be6fe8171e3ee3b878289e9cdd",
   "retiredExactFiles": {
     "public/oauth2callback.html": "c19855fd5a3f19af1eea1c1fed6e7794a342136223dd60dbead2586d4298fd90",
     "src/assets/fonts/GoogleSansFlex.ttf": "eae5ed6ddefbd44ab9693b84454ce46f3f2de0fb4f7cc5b54138c50c5b347d70",
@@ -2252,13 +2252,17 @@
       ]
     },
     "src/i18n/locales/en/videoPreview.json": {
-      "hash": "ef88733278c416db7923b73d4257bfae2f72b8b7468539a31f08218491984da4",
+      "hash": "98cd0c9d3375ec75e2a7ed93e2d835008647a7e90bae04e88d807b2c4040fb0b",
       "keys": [
         "noSubtitlesToRender",
         "noTranslatedSubtitles",
         "renderError",
         "rendering",
+        "retrySubtitleFont",
         "retrySubtitlePreview",
+        "subtitleFontPreparing",
+        "subtitleFontUnavailable",
+        "subtitlePreviewEmpty",
         "subtitlePreviewUnavailable"
       ]
     },
@@ -4799,13 +4803,17 @@
       ]
     },
     "src/i18n/locales/ko/videoPreview.json": {
-      "hash": "7445610b9e12a389b8c6daf2cfb4499835aa648a7d771ea70e5030a9d8e076c2",
+      "hash": "618cda367bb356f3a590795b3470f98cdcb686003d138ddd38c4bafe2c26cadc",
       "keys": [
         "noSubtitlesToRender",
         "noTranslatedSubtitles",
         "renderError",
         "rendering",
+        "retrySubtitleFont",
         "retrySubtitlePreview",
+        "subtitleFontPreparing",
+        "subtitleFontUnavailable",
+        "subtitlePreviewEmpty",
         "subtitlePreviewUnavailable"
       ]
     },
@@ -4848,7 +4856,7 @@
       ]
     },
     "src/i18n/locales/ko/videoRendering.json": {
-      "hash": "4c312cc7e5ab3cc6883b912971f0bc7c4ac1439d77ab7e75dbad7285667013a5",
+      "hash": "038b566f6437abc996be66444855d373e1194f52b5c10cdd50ea6a020a0ccda4",
       "keys": [
         "addToQueue",
         "addVideosToQueue",
@@ -5008,6 +5016,7 @@
         "processing",
         "progress",
         "qualityLabel",
+        "queued",
         "ready",
         "readyForDownload",
         "reconnecting",
@@ -5083,6 +5092,7 @@
         "uploadingVideo",
         "uppercase",
         "urlNotSupported",
+        "validating",
         "vertical",
         "videoBitrateLabel",
         "videoCodecLabel",
@@ -7442,13 +7452,17 @@
       ]
     },
     "src/i18n/locales/vi/videoPreview.json": {
-      "hash": "8a832d77f511d611b54d537c8e60d735ef5cf7ff8aa662d54cce9c890f193994",
+      "hash": "efe634a3603dce8be66170db297174d2011087dcd82aa64f8861df3fa38e16ee",
       "keys": [
         "noSubtitlesToRender",
         "noTranslatedSubtitles",
         "renderError",
         "rendering",
+        "retrySubtitleFont",
         "retrySubtitlePreview",
+        "subtitleFontPreparing",
+        "subtitleFontUnavailable",
+        "subtitlePreviewEmpty",
         "subtitlePreviewUnavailable"
       ]
     },
@@ -7491,7 +7505,7 @@
       ]
     },
     "src/i18n/locales/vi/videoRendering.json": {
-      "hash": "1e47ba1273e05a24a67b3fa63d62c74abddbe4278daba98aa97b845ef4bc1847",
+      "hash": "bfc15e1447217face825f519eaf80ac1342cee5399d71ac60e19998edb378e1e",
       "keys": [
         "addToQueue",
         "addVideosToQueue",
@@ -7651,6 +7665,7 @@
         "processing",
         "progress",
         "qualityLabel",
+        "queued",
         "ready",
         "readyForDownload",
         "reconnecting",
@@ -7726,6 +7741,7 @@
         "uploadingVideo",
         "uppercase",
         "urlNotSupported",
+        "validating",
         "vertical",
         "videoBitrateLabel",
         "videoCodecLabel",
@@ -7811,10 +7827,10 @@
       ]
     },
     "src/components/app/ButtonsContainer.jsx": {
-      "hash": "c9c7ac2ccddc6efb6219add5e4e3629a7047c5d42d934870b3ff5fefd6fed03a",
+      "hash": "b824b125f0494f2cf712f56dfb2170edea383515e052536b0b0b1ec97d0a4fef",
       "rootCount": 1,
       "roots": [
-        "2995c52cf479c8152a287b31bd764b072563a560042b4880ad130d6d53851f51"
+        "7fac5e0d8c480460c17c9a1e44c039dc2b1dede4e86d0a27f62638223e060dee"
       ]
     },
     "src/components/app/index.js": {
@@ -8063,7 +8079,7 @@
       ]
     },
     "src/components/engines/EngineCard.js": {
-      "hash": "168adb27e1552370b91222a1e30a785b4ef58034a4b02e0833cc53c10e4ba624",
+      "hash": "47a28e5f12195b7f7e930d4bd8fc82eefb2809795b0b2e4136ae7e9265a24159",
       "rootCount": 15,
       "roots": [
         "81adfe9b9a0b7365ca7e03789c94d143ced05157fa553c17d5bb4c7adbeeccca",
@@ -8075,7 +8091,7 @@
         "d2cc87b4dd1c4c362436235446ce8ecd152b21e71ea8cd7de97d4dc2e13b8af7",
         "5d13e15706bf06e9265df937cd1cd6ed98cb263f1e4d8fd9fc801aac6eba8a4b",
         "f6298aa8ce41ff392fbb4726a8aa193a8a7ad69b5d928bc2857f7260b6b31a04",
-        "144caece0219cfe0e70e0df5f9a99e67b2dd5f0e16cecac7f302f99c2c894c70",
+        "93cae63f3d72d932263713a5ea4139b68096bad1b14fc6e3c4cbe064fc6e8309",
         "3ac9593db1f3ed3291780ade3a0f26ddcb854c3c77c57338c5e1ca1e04f3f878",
         "6e8467b47c19ab9be121aa4613c00ceb38521e7b96a17e0da922cdf2c3310c1e",
         "5c5d87d76d9218db5df1cc8eeac7021cd144c12ee7f4da058113c87ba41ae312",
@@ -8389,10 +8405,10 @@
       ]
     },
     "src/components/narration/components/GenerateButton.js": {
-      "hash": "cb4063fc266d94afc78d11a601b06daa4077d8bc16b042d8b038b0674b1f95d3",
+      "hash": "7a6420dc1109a8725e8a813d557e23cfbe4d462d55c1295664b59d9276fefc60",
       "rootCount": 1,
       "roots": [
-        "ac520aee5d49fa316e938b3dd306e8f32ddc59fa5713c66068ce26abdc4ca852"
+        "222164e2d79a13b60f0f848aa5528a0ec65220252324dfddb1ec22a4b3cde1c0"
       ]
     },
     "src/components/narration/components/GTTSControls.js": {
@@ -8445,10 +8461,10 @@
       ]
     },
     "src/components/narration/components/ResultRow.js": {
-      "hash": "828565a6c5c9ba82e3e9db9199c285ed7bfd1a425ecb3056d1e1b7f1c1134dca",
+      "hash": "dd25a420af0d259aa4240ba68b8e6f3b86538f7a676700e0d4dab934a75bfd79",
       "rootCount": 1,
       "roots": [
-        "902871762632fd6f5b6505e6654a0ee73cf94d907f34c3068f0d6f77bf0fc88b"
+        "bb253a12a361c968db380d4e3476f7d8dbde095661a02264e2ddad7cb80e34fa"
       ]
     },
     "src/components/narration/components/SubtitleGroupingModal.js": {
@@ -8625,10 +8641,13 @@
       ]
     },
     "src/components/previews/native/NativePreviewUnavailable.js": {
-      "hash": "0ff2f970e4f58b01c76eb96080eb046e66871b5ca4f60681f149718a5ec3cb17",
-      "rootCount": 1,
+      "hash": "522b47e2aaac25afb4709ff22bbc7e475215cf0fd624ea5bda55802a5f6d6754",
+      "rootCount": 4,
       "roots": [
-        "0fd14e6c49fe8eb6598bc83da974d52f61c12125b71c7e2a9243b8333a11b1e7"
+        "84b4f86057da25a9927feda46a9dd78fecb979b952851b4f492172f33350a212",
+        "067cf886b8a4601709a9fabd0bd38489d95b9257bc965ffce0af4361cbf58a56",
+        "0fd14e6c49fe8eb6598bc83da974d52f61c12125b71c7e2a9243b8333a11b1e7",
+        "53c6fa5b3f48e170000144ab459398a9cd7cbfff7c5f46ed874d021f2f2fc6f1"
       ]
     },
     "src/components/previews/NativeRenderPreview.js": {
@@ -8675,10 +8694,10 @@
       ]
     },
     "src/components/previews/VideoPreview.js": {
-      "hash": "313bf3131622b2c908fdd1d64f4a5f2ecd0ac3b575e8d83d965aef2021bc9fc3",
+      "hash": "24cb0b0a32f315ac1830fbd01b1032c34e8478ce8105a5eba18404944a70778b",
       "rootCount": 1,
       "roots": [
-        "fbcc00b8a158cdd9bce0ee660157e03798dc06d69eeafdb9fbf9c586e799bac7"
+        "8171c15b5e46f21957399a918e08b40170df3164d9101fcb2bfa89e9feaf116a"
       ]
     },
     "src/components/previews/VideoTopsideButtons.js": {
@@ -9093,10 +9112,10 @@
       ]
     },
     "src/components/TranscriptionMethodSelectionOverlay.js": {
-      "hash": "b463a9fb98e33d9d69056e49af6a38a2ab829c81a431deb79b1502d3cd6ec247",
+      "hash": "74117b0ff3beed70b43bce55ffb9cfcfe35772174d7f8efb1773602d8ed7d3b8",
       "rootCount": 1,
       "roots": [
-        "5437b0fc88a3aef33e2da3b8001b508ab63df386aba6a1cf4b9b4a13a477a906"
+        "4240179e29bd1d2daf68f5aeddfc1264cfe0d0e10670707ef16c06acecc7f4cb"
       ]
     },
     "src/components/transcriptionRules/presetIconMap.js": {
@@ -9304,10 +9323,10 @@
       ]
     },
     "src/components/VideoProcessingOptionsModal.js": {
-      "hash": "e9f56d72aa76d6007cfc9f6bfa080cff1076440baceecbf2800e2f90208d532a",
+      "hash": "f4485da2366421890c1ee54ebdb4358f62e5ed3ad2e6d31cbeb63d56c4c95362",
       "rootCount": 1,
       "roots": [
-        "9fb0156c4642eed339e6f8758dbaaff4fad65972044d77f693a62b0147a0dfe3"
+        "c08d9ce42e850bbc9ec5833bd6951a33a4e3d1ea3525c215e7fc0f747b24445a"
       ]
     },
     "src/components/VideoQualityModal.js": {
@@ -9318,10 +9337,10 @@
       ]
     },
     "src/components/VideoRenderingSection.js": {
-      "hash": "e9e8fe96da28406eb4c855ce0f7d57ab48bab14e0d2c75fb657ad22cade10f7b",
+      "hash": "5052f4219a78f518f63a51dda4cb3707f6c56010e2a854f2d8686b21c1744986",
       "rootCount": 1,
       "roots": [
-        "4918759329eef700bf70d0cee6153720ecb8eef90e43fadb815aacc473cdd642"
+        "1be5653ca8f0b36b4aedc4f0623d719c1316f1be4be3e6268f200eeda7df71a6"
       ]
     },
     "src/components/VideoRenderingSection/InputSelectionRow.js": {
@@ -9339,10 +9358,10 @@
       ]
     },
     "src/components/VideoRenderingSection/RenderSettingsRow.js": {
-      "hash": "abaa9fb63aaf2776c44f2c85d75d38e7474f9c54f996ac89e5f387c90b3e3a6f",
+      "hash": "4fc1102b800321b531f6b67876dd30f3f7047192c6f050825b24ea14f647fa8d",
       "rootCount": 1,
       "roots": [
-        "ac9eda3e222bf4ed68b0b16bb5329c220845fc3ca6fb29b18235a87e02fb118e"
+        "7e37c51865365d00db11eea077e7a4ab1c68bad097ed2c6d4d7dcc36ec9510cd"
       ]
     },
     "src/components/VideoRenderingSection/TrimTimelineRow.js": {
