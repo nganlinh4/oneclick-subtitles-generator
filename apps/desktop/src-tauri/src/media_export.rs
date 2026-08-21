@@ -31,7 +31,11 @@ pub(crate) struct MediaExportRequest {
 }
 
 #[derive(Debug, Serialize)]
-#[serde(tag = "event", rename_all = "camelCase")]
+#[serde(
+    tag = "event",
+    rename_all = "camelCase",
+    rename_all_fields = "camelCase"
+)]
 pub(crate) enum MediaExportEvent {
     Progress {
         job: JobSnapshot,
@@ -597,6 +601,31 @@ mod tests {
     use std::cell::Cell;
 
     use super::*;
+
+    #[test]
+    fn completed_event_uses_the_exact_webview_field_contract() {
+        let mut job = JobSnapshot::new(JobKind::ExportMedia);
+        job.start().expect("start export job");
+        job.succeed().expect("finish export job");
+        let value = serde_json::to_value(MediaExportEvent::Completed {
+            job,
+            bytes_written: 42,
+        })
+        .expect("serialize export completion");
+        let object = value.as_object().expect("event object");
+
+        assert_eq!(
+            object.get("event").and_then(serde_json::Value::as_str),
+            Some("completed")
+        );
+        assert_eq!(
+            object
+                .get("bytesWritten")
+                .and_then(serde_json::Value::as_u64),
+            Some(42)
+        );
+        assert!(!object.contains_key("bytes_written"));
+    }
 
     fn write_bytes(path: &Path, byte: u8, count: usize) {
         fs::write(path, vec![byte; count]).expect("write fixture");

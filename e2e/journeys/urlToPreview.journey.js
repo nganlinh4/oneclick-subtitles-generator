@@ -46,6 +46,7 @@ const inspect = () => browser.execute(() => {
     status: text('[role="status"]'),
     progress: text('[class*="progress" i], [class*="downloading" i]'),
     toasts: text('[class*="toast" i]'),
+    errorToasts: text('.toast-error'),
     modalOpen: document.querySelector('.download-only-modal') !== null,
     videoTitle: text('.video-title'),
     videoId: text('.video-id-value'),
@@ -126,6 +127,11 @@ describe('a customer saves a real YouTube video to disk', () => {
 
     const [name] = written();
     const bytes = statSync(join(directory, name)).size;
+    // Writing bytes is not terminal success. Export can finish and then fail while acknowledging
+    // completion or discarding its detached candidate; that failure is shown as a toast while the
+    // download modal remains open. The old oracle reported that toast but asserted only elements
+    // carrying `.error`/`role=alert`, so this exact customer-visible failure passed green.
+    seen = await inspect();
     console.log(`wrote ${bytes} bytes to ${name}`);
     report('after the download finished', seen);
 
@@ -134,5 +140,7 @@ describe('a customer saves a real YouTube video to disk', () => {
     // yt-dlp's business and changes without notice.
     assert.ok(bytes > 50_000, `the saved file must be a real video, not ${bytes} bytes`);
     assert.deepEqual(seen.errors, [], 'no error may be visible after a successful download');
+    assert.deepEqual(seen.errorToasts, [], 'no failure toast may be visible after a successful download');
+    assert.equal(seen.modalOpen, false, 'the download modal must close after terminal success');
   });
 });
