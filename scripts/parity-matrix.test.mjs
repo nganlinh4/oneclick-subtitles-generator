@@ -11,8 +11,10 @@
 
 import assert from 'node:assert/strict';
 import { execFileSync } from 'node:child_process';
-import { readFileSync } from 'node:fs';
+import { mkdtempSync, readFileSync, rmSync } from 'node:fs';
+import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
+import process from 'node:process';
 import test from 'node:test';
 import { fileURLToPath } from 'node:url';
 
@@ -23,16 +25,22 @@ const committed = () => JSON.parse(readFileSync(FIXTURE_PATH, 'utf8'));
 
 test('the committed matrix is what the generator produces today', () => {
   const before = readFileSync(FIXTURE_PATH, 'utf8');
-  execFileSync(process.execPath, [join(REPOSITORY_ROOT, 'scripts/generate-parity-matrix.mjs')], {
-    cwd: REPOSITORY_ROOT,
-    stdio: 'pipe',
-  });
-  const after = readFileSync(FIXTURE_PATH, 'utf8');
-  assert.equal(
-    after,
-    before,
-    'the parity matrix is stale — regenerate it deliberately and review what changed',
-  );
+  const directory = mkdtempSync(join(tmpdir(), 'osg-parity-check-'));
+  try {
+    const generated = join(directory, 'parity-matrix.json');
+    execFileSync(
+      process.execPath,
+      [join(REPOSITORY_ROOT, 'scripts/generate-parity-matrix.mjs'), '--output', generated],
+      { cwd: REPOSITORY_ROOT, stdio: 'pipe' },
+    );
+    assert.equal(
+      readFileSync(generated, 'utf8'),
+      before,
+      'the parity matrix is stale — regenerate it deliberately and review what changed',
+    );
+  } finally {
+    rmSync(directory, { recursive: true, force: true });
+  }
 });
 
 test('every shipped preset is present and fully merged', () => {

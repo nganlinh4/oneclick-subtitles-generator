@@ -14,7 +14,7 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 WORKER = ROOT / "crates" / "osg-asr" / "worker" / "osg_asr_worker.py"
-PROTOCOL_VERSION = 1
+PROTOCOL_VERSION = 2
 MAX_REQUEST_BYTES = 64 * 1024
 
 
@@ -56,6 +56,29 @@ def run_worker(payload: bytes) -> subprocess.CompletedProcess[bytes]:
 
 
 class AsrWorkerContractTests(unittest.TestCase):
+    def test_protocol_version_matches_worker_and_rust_supervisor(self) -> None:
+        worker_tree = ast.parse(WORKER.read_text(encoding="utf-8"), filename=str(WORKER))
+        worker_versions = [
+            node.value.value
+            for node in worker_tree.body
+            if isinstance(node, ast.Assign)
+            and any(
+                isinstance(target, ast.Name) and target.id == "PROTOCOL_VERSION"
+                for target in node.targets
+            )
+            and isinstance(node.value, ast.Constant)
+            and isinstance(node.value.value, int)
+        ]
+        self.assertEqual(worker_versions, [PROTOCOL_VERSION])
+
+        rust_protocol = (ROOT / "crates" / "osg-asr" / "src" / "protocol.rs").read_text(
+            encoding="utf-8"
+        )
+        self.assertIn(
+            f"pub(crate) const PROTOCOL_VERSION: u16 = {PROTOCOL_VERSION};",
+            rust_protocol,
+        )
+
     def test_worker_source_compiles_with_the_pinned_python(self) -> None:
         source = WORKER.read_text(encoding="utf-8")
         compile(source, str(WORKER), "exec", dont_inherit=True)
@@ -105,6 +128,7 @@ class AsrWorkerContractTests(unittest.TestCase):
             request = {
                 "protocolVersion": PROTOCOL_VERSION,
                 "requestId": 41,
+                "operation": "warm_up",
                 "engine": "faster-whisper-turbo",
                 "modelPath": str(missing_model.resolve()),
             }

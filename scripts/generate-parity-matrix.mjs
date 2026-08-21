@@ -22,11 +22,24 @@
 import { build } from 'esbuild';
 import { mkdtempSync, mkdirSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
-import { dirname, join } from 'node:path';
+import { dirname, join, resolve } from 'node:path';
+import process from 'node:process';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 
 const REPOSITORY_ROOT = dirname(dirname(fileURLToPath(import.meta.url)));
-const FIXTURE_PATH = join(REPOSITORY_ROOT, 'crates/osg-export/tests/fixtures/parity-matrix.json');
+const DEFAULT_FIXTURE_PATH = join(
+  REPOSITORY_ROOT,
+  'crates/osg-export/tests/fixtures/parity-matrix.json',
+);
+
+const outputPath = () => {
+  const arguments_ = process.argv.slice(2);
+  if (arguments_.length === 0) return DEFAULT_FIXTURE_PATH;
+  if (arguments_.length !== 2 || arguments_[0] !== '--output' || !arguments_[1]) {
+    throw new Error('usage: generate-parity-matrix.mjs [--output <path>]');
+  }
+  return resolve(arguments_[1]);
+};
 
 const ENTRY = `
 export { presets, presetOrder } from ${JSON.stringify(
@@ -133,6 +146,7 @@ const bundle = async () => {
 };
 
 const main = async () => {
+  const fixturePath = outputPath();
   const module = await bundle();
   const { presets, presetOrder, defaultCustomization, mergeSubtitleCustomizationDefaults } = module;
   const { RENDER_PARITY_LEDGER, RENDER_OUTPUT_PARITY_LEDGER } = module;
@@ -198,8 +212,8 @@ const main = async () => {
     outputs: OUTPUTS,
   };
 
-  mkdirSync(dirname(FIXTURE_PATH), { recursive: true });
-  writeFileSync(FIXTURE_PATH, `${JSON.stringify(fixture, null, 2)}\n`, 'utf8');
+  mkdirSync(dirname(fixturePath), { recursive: true });
+  writeFileSync(fixturePath, `${JSON.stringify(fixture, null, 2)}\n`, 'utf8');
 
   const { coverage } = fixture;
   process.stdout.write(

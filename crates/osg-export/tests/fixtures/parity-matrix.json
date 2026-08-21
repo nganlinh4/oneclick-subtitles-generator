@@ -14,7 +14,7 @@
       "id": "default",
       "customization": {
         "fontSize": 28,
-        "fontFamily": "'Arial', sans-serif",
+        "fontFamily": "'Google Sans', sans-serif",
         "fontWeight": 400,
         "textColor": "#ffffff",
         "textAlign": "center",
@@ -1921,9 +1921,9 @@
     {
       "field": "fontFamily",
       "disposition": "native",
-      "default": "'Arial', sans-serif",
+      "default": "'Google Sans', sans-serif",
       "values": [
-        "'Arial', sans-serif"
+        "'Google Sans', sans-serif"
       ]
     },
     {
