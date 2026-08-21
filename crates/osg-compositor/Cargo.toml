@@ -12,13 +12,18 @@ osg-scene = { workspace = true }
 pollster = "=1.0.1"
 thiserror = "=2.0.20"
 wgpu = { version = "=30.0.0", default-features = false, features = [
-  "dx12",
-  "gles",
-  "metal",
   "std",
-  "vulkan",
   "wgsl",
 ] }
+
+[target.'cfg(target_os = "windows")'.dependencies]
+wgpu = { version = "=30.0.0", default-features = false, features = ["dx12"] }
+
+[target.'cfg(target_vendor = "apple")'.dependencies]
+wgpu = { version = "=30.0.0", default-features = false, features = ["metal"] }
+
+[target.'cfg(all(unix, not(target_vendor = "apple")))'.dependencies]
+wgpu = { version = "=30.0.0", default-features = false, features = ["gles", "vulkan"] }
 
 [lints]
 workspace = true

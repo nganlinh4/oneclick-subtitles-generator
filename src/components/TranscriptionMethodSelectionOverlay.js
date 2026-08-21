@@ -3,14 +3,14 @@ import ReactDOM from 'react-dom';
 import { useTranslation } from 'react-i18next';
 import { useEngineStatus } from '../hooks/useEngineStatus';
 import CloseButton from './common/CloseButton';
-import newDarkImg from '../assets/transcription-methods/new_dark.png';
-import newLightImg from '../assets/transcription-methods/new_light.png';
-import oldDarkImg from '../assets/transcription-methods/old_dark.png';
-import oldLightImg from '../assets/transcription-methods/old_light.png';
-import parakeetDarkImg from '../assets/transcription-methods/parakeet_dark.png';
-import parakeetLightImg from '../assets/transcription-methods/parakeet_light.png';
-import whisperDarkImg from '../assets/transcription-methods/whisper_dark.png';
-import whisperLightImg from '../assets/transcription-methods/whisper_light.png';
+import newDarkImg from '../assets/transcription-methods/new_dark.webp';
+import newLightImg from '../assets/transcription-methods/new_light.webp';
+import oldDarkImg from '../assets/transcription-methods/old_dark.webp';
+import oldLightImg from '../assets/transcription-methods/old_light.webp';
+import parakeetDarkImg from '../assets/transcription-methods/parakeet_dark.webp';
+import parakeetLightImg from '../assets/transcription-methods/parakeet_light.webp';
+import whisperDarkImg from '../assets/transcription-methods/whisper_dark.webp';
+import whisperLightImg from '../assets/transcription-methods/whisper_light.webp';
 import { ASR_ENGINES } from '../services/engines/asrEngines';
 
 /**

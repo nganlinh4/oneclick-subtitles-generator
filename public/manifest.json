@@ -3,18 +3,18 @@
   "name": "Subtitles Generator with Gemini AI",
   "icons": [
     {
-      "src": "favicon.png",
+      "src": "favicon.webp",
       "sizes": "64x64 32x32 24x24 16x16",
-      "type": "image/png"
+      "type": "image/webp"
     },
     {
-      "src": "favicon.png",
-      "type": "image/png",
+      "src": "favicon.webp",
+      "type": "image/webp",
       "sizes": "192x192"
     },
     {
-      "src": "favicon.png",
-      "type": "image/png",
+      "src": "favicon.webp",
+      "type": "image/webp",
       "sizes": "512x512"
     }
   ],
