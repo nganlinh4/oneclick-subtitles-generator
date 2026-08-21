@@ -127,6 +127,7 @@ use speech_packages::{
 use state::DesktopState;
 use tauri::webview::PageLoadEvent;
 use tauri::{Manager, WebviewWindowBuilder, Window, WindowEvent};
+#[cfg(not(feature = "e2e-automation"))]
 use tauri_plugin_window_state::StateFlags;
 use ui_fonts::UiFontRuntime;
 use updater::{
@@ -159,12 +160,17 @@ pub fn run() {
     let app = builder
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_opener::init())
-        .plugin(updater_plugin())
-        .plugin(
-            tauri_plugin_window_state::Builder::default()
-                .with_state_flags(StateFlags::SIZE | StateFlags::POSITION | StateFlags::MAXIMIZED)
-                .build(),
-        )
+        .plugin(updater_plugin());
+    // The window-state plugin resolves its file through the real Windows config directory rather
+    // than the isolated E2E data root. Letting it run in automation restored the developer's live
+    // maximized-window record and moved an otherwise off-screen run onto the interactive desktop.
+    #[cfg(not(feature = "e2e-automation"))]
+    let app = app.plugin(
+        tauri_plugin_window_state::Builder::default()
+            .with_state_flags(StateFlags::SIZE | StateFlags::POSITION | StateFlags::MAXIMIZED)
+            .build(),
+    );
+    let app = app
         .manage(NativeMediaDropState::default())
         .manage(LiveMusicRuntime::default())
         .manage(ImageBlobStore::default())
@@ -182,6 +188,15 @@ pub fn run() {
             if webview.label() == "main" && matches!(payload.event(), PageLoadEvent::Finished) {
                 diagnostics::record("app.page_load_finished", &[]);
                 let window = webview.window().clone();
+                // Windows recenters a newly-created window whose configured position is entirely
+                // outside every monitor. Moving the already-created surface succeeds and happens
+                // before WebDriver's `before` guard permits a journey to interact.
+                #[cfg(feature = "e2e-automation")]
+                if std::env::var_os("OSG_E2E_OFFSCREEN_WINDOW").is_some_and(|value| value == "1") {
+                    window
+                        .set_position(tauri::PhysicalPosition::new(-10_000, 0))
+                        .expect("the automation window must leave the interactive desktop");
+                }
                 tauri::async_runtime::spawn(async move {
                     tokio::time::sleep(Duration::from_secs(10)).await;
                     if !window.is_visible().unwrap_or(true)
@@ -596,6 +611,11 @@ fn build_main_window(
         // this dynamically-created window becomes ready.
         window_config.maximized = false;
     }
+    #[cfg(feature = "e2e-automation")]
+    apply_automation_window_placement(
+        &mut window_config,
+        std::env::var_os("OSG_E2E_OFFSCREEN_WINDOW").is_some_and(|value| value == "1"),
+    );
     let window_builder = WebviewWindowBuilder::from_config(app, &window_config)?;
     #[cfg(feature = "ci-updater-fixture")]
     let window_builder =
@@ -612,6 +632,27 @@ fn build_main_window(
         )?)
         .build()?;
     Ok(())
+}
+
+/// Keep autonomous GUI journeys away from the interactive desktop without hiding or minimizing
+/// the `WebView`. Windows may throttle a minimized surface, which would invalidate GPU preview and
+/// video evidence; an off-screen, compositor-visible surface keeps those paths real. This call and
+/// its environment input are compiled only into the guarded automation channel.
+#[cfg(any(feature = "e2e-automation", test))]
+fn apply_automation_window_placement(
+    window: &mut tauri::utils::config::WindowConfig,
+    offscreen: bool,
+) {
+    if !offscreen {
+        return;
+    }
+    window.center = false;
+    window.x = Some(-10_000.0);
+    window.y = Some(0.0);
+    window.prevent_overflow = Some(tauri::utils::config::PreventOverflowConfig::Enable(false));
+    window.maximized = false;
+    window.focus = false;
+    window.skip_taskbar = true;
 }
 
 fn attach_media_runtime_activator(
@@ -924,10 +965,34 @@ mod tests {
     use serde_json::json;
 
     use super::{
-        FontReadiness, font_readiness, has_valid_main_window_state, is_main_window_close_request,
-        is_safe_setting_key, is_webview_bootstrap_setting_key, media_server_allowed_origins,
+        FontReadiness, apply_automation_window_placement, font_readiness,
+        has_valid_main_window_state, is_main_window_close_request, is_safe_setting_key,
+        is_webview_bootstrap_setting_key, media_server_allowed_origins,
         settings_initialization_script, window_initialization_script,
     };
+
+    #[test]
+    fn automation_window_stays_renderable_without_entering_the_interactive_desktop() {
+        let mut window = tauri::utils::config::WindowConfig {
+            center: true,
+            maximized: true,
+            focus: true,
+            ..Default::default()
+        };
+
+        apply_automation_window_placement(&mut window, true);
+
+        assert_eq!(window.x, Some(-10_000.0));
+        assert_eq!(window.y, Some(0.0));
+        assert!(!window.center);
+        assert!(!window.maximized);
+        assert!(!window.focus);
+        assert!(window.skip_taskbar);
+        assert_eq!(
+            window.prevent_overflow,
+            Some(tauri::utils::config::PreventOverflowConfig::Enable(false))
+        );
+    }
 
     #[test]
     fn records_only_native_close_requests_for_the_main_window() {

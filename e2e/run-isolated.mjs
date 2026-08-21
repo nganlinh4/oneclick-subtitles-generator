@@ -2,6 +2,8 @@ import { readdirSync, statSync } from 'node:fs';
 import { basename, join, relative, resolve, sep } from 'node:path';
 import { spawnSync } from 'node:child_process';
 
+import { resetWorkflowEvidence, workflowNameForJourney } from './support/workflowEvidence.js';
+
 const E2E_ROOT = import.meta.dirname;
 const JOURNEY_ROOT = join(E2E_ROOT, 'journeys');
 const WDIO = join(E2E_ROOT, 'node_modules', '@wdio', 'cli', 'bin', 'wdio.js');
@@ -72,6 +74,8 @@ export const isolatedEnvironment = (environment) => {
     'OSG_E2E_KEEP_ROOT',
     'OSG_E2E_MEDIA_SELECTION',
     'OSG_E2E_MEDIA_DESTINATION',
+    'OSG_E2E_OFFSCREEN_WINDOW',
+    'OSG_E2E_WORKFLOW',
     'WEBVIEW2_USER_DATA_FOLDER',
   ]) {
     delete clean[key];
@@ -85,13 +89,17 @@ const run = ({ repeat, journeys }) => {
   for (let iteration = 1; iteration <= repeat; iteration += 1) {
     for (const journey of journeys) {
       const label = `${basename(journey)} (${iteration}/${repeat})`;
+      const workflow = workflowNameForJourney(journey);
+      if (iteration === 1) resetWorkflowEvidence(workflow);
       process.stdout.write(`\n=== isolated journey: ${label} ===\n`);
+      const environment = isolatedEnvironment(process.env);
+      environment.OSG_E2E_WORKFLOW = workflow;
       const result = spawnSync(
         process.execPath,
         [WDIO, 'run', CONFIG, '--spec', journey],
         {
           cwd: E2E_ROOT,
-          env: isolatedEnvironment(process.env),
+          env: environment,
           stdio: 'inherit',
           windowsHide: true,
         },

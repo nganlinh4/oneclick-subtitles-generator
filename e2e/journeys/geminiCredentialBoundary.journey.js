@@ -8,6 +8,9 @@ import process from 'node:process';
 import { durableState } from '../support/database.js';
 import { clickControl } from '../support/editor.js';
 import { openProjectWithMedia } from '../support/workflow.js';
+import { captureWorkflowStep } from '../support/workflowEvidence.js';
+
+const WORKFLOW = 'gemini-credential-boundary';
 
 describe('Gemini generation refuses safely without a credential', () => {
   it('returns to idle without starting a provider job or publishing cues', async () => {
@@ -28,6 +31,11 @@ describe('Gemini generation refuses safely without a credential', () => {
     const method = await $('[data-transcription-method="new"]');
     await method.waitForClickable({ timeout: 60_000 });
     assert.equal(await method.getAttribute('data-method-available'), 'true');
+    await captureWorkflowStep({
+      workflow: WORKFLOW,
+      step: '01-method-selection',
+      description: 'Gemini generation is presented as a selectable customer method before submission.',
+    });
     await method.click();
     await clickControl('[data-osg-action="process-subtitles"]');
 
@@ -63,5 +71,11 @@ describe('Gemini generation refuses safely without a credential', () => {
     assert.equal(after.counts.cues, 0, 'missing Gemini credential published subtitle cues');
     const log = readFileSync(join(root, 'logs', 'osg.log'), 'utf8');
     assert.doesNotMatch(log, /"event":"gemini\.(?:started|progress|completed|failed|cancelled)"/);
+    await captureWorkflowStep({
+      workflow: WORKFLOW,
+      step: '02-actionable-refusal',
+      description: 'A missing credential produces a visible refusal and returns controls to idle without side effects.',
+      details: { errorToasts: surface.errorToasts },
+    });
   });
 });

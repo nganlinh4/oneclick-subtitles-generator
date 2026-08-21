@@ -49,6 +49,8 @@ test('removes every inherited isolation and dialog value without mutating the ca
     OSG_E2E_KEEP_ROOT: '1',
     OSG_E2E_MEDIA_SELECTION: 'old-input',
     OSG_E2E_MEDIA_DESTINATION: 'old-output',
+    OSG_E2E_OFFSCREEN_WINDOW: '0',
+    OSG_E2E_WORKFLOW: 'old-workflow',
     WEBVIEW2_USER_DATA_FOLDER: 'old-webview',
   };
   const clean = isolatedEnvironment(source);

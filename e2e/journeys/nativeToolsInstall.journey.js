@@ -7,10 +7,12 @@ import process from 'node:process';
 
 import { clickControl, openEditor } from '../support/editor.js';
 import { verifyNativeToolsInstall } from '../support/nativeToolsOracle.js';
+import { captureWorkflowStep } from '../support/workflowEvidence.js';
 
 const TOOL_IDS = Object.freeze(['media-tools', 'yt-dlp', 'deno']);
 const PHASE = process.env.OSG_E2E_NATIVE_TOOLS_PHASE;
 const TIMEOUT_MS = 45 * 60 * 1_000;
+const WORKFLOW = 'native-tools-install';
 
 const readRows = () => browser.execute((ids) => ids.map((id) => {
   const row = document.querySelector(`[data-native-tool-id="${id}"]`);
@@ -84,21 +86,43 @@ describe('a clean machine installs and repairs every native tool', () => {
     await openTools();
 
     if (PHASE === 'install') {
-      await waitForRows(Object.fromEntries(TOOL_IDS.map((id) => [id, 'missing'])));
+      const missing = await waitForRows(Object.fromEntries(TOOL_IDS.map((id) => [id, 'missing'])));
+      await captureWorkflowStep({
+        workflow: WORKFLOW,
+        step: '01-clean-machine',
+        description: 'A clean profile truthfully presents all required runtime tools as missing and installable.',
+        details: { rows: missing },
+      });
       for (const id of TOOL_IDS) await clickInstall(id);
     } else {
       // Reconciliation may expose the invalid receipt as `corrupt`, or atomically quarantine it
       // before the first UI status and therefore expose `missing`. Both are fail-closed; installed
       // is the one forbidden answer after the external same-size mutation.
-      await waitForRows({
+      const refused = await waitForRows({
         'media-tools': 'installed', 'yt-dlp': ['corrupt', 'missing'], deno: 'installed',
+      });
+      await captureWorkflowStep({
+        workflow: WORKFLOW,
+        step: '03-tamper-refused',
+        description: 'A same-size yt-dlp mutation is visibly refused as corrupt or missing, never trusted.',
+        details: { rows: refused },
       });
       await clickInstall('yt-dlp');
     }
 
-    await waitForRows(Object.fromEntries(TOOL_IDS.map((id) => [id, 'installed'])));
+    const installedRows = await waitForRows(
+      Object.fromEntries(TOOL_IDS.map((id) => [id, 'installed'])),
+    );
     const proof = verifyNativeToolsInstall(root, assertInstalledStatus(await nativeStatus()));
     const name = PHASE === 'install' ? 'native-tools-installed.json' : 'native-tools-repaired.json';
     writeFileSync(join(root, 'evidence', name), `${JSON.stringify(proof, null, 2)}\n`, { flag: 'wx' });
+    await captureWorkflowStep({
+      workflow: WORKFLOW,
+      step: PHASE === 'install' ? '02-tools-installed' : '04-tool-repaired',
+      description: PHASE === 'install'
+        ? 'All three catalog-owned runtime tools are visibly installed and active.'
+        : 'Repair returns the tampered runtime to an installed, active, independently verified state.',
+      details: { rows: installedRows },
+    });
   });
 });

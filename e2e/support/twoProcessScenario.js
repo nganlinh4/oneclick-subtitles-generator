@@ -4,6 +4,7 @@ import process from 'node:process';
 import { fileURLToPath, URL } from 'node:url';
 
 import { createRunRoot, removeRunRoot } from './environment.js';
+import { resetWorkflowEvidence, workflowNameForJourney } from './workflowEvidence.js';
 
 /* global console */
 
@@ -15,13 +16,17 @@ export const runScenarioProcesses = ({
   root,
   phases,
   phaseVariable = 'OSG_E2E_PERSISTENCE_PHASE',
+  resetEvidence = false,
   spec,
 }) => {
+  const workflow = workflowNameForJourney(spec);
+  if (resetEvidence) resetWorkflowEvidence(workflow);
   const runPhase = (phase) => {
     const environment = {
       ...process.env,
       OSG_E2E_DATA_ROOT: root,
       OSG_E2E_KEEP_ROOT: '1',
+      OSG_E2E_WORKFLOW: workflow,
       [phaseVariable]: phase,
     };
     delete environment.OSG_E2E_MEDIA_SELECTION;
@@ -56,6 +61,7 @@ export const runTwoProcessScenario = ({ label, spec }) => {
     label,
     root,
     phases: ['seed', 'verify'],
+    resetEvidence: true,
     spec,
   });
   if (succeeded) removeRunRoot(root);

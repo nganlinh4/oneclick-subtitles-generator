@@ -37,7 +37,7 @@ export const modalState = () => browser.execute(() => {
  * the ladder is fetched is the downloader's business rather than the subject of any journey here.
  * A journey about quality selection would choose a specific one and say so.
  */
-export const confirmDownloadOnly = async () => {
+export const confirmDownloadOnly = async ({ afterScan = async () => {} } = {}) => {
   await clickControl('.download-only-modal input[name="download-type"][value="video"]');
 
   let state = await modalState();
@@ -54,6 +54,7 @@ export const confirmDownloadOnly = async () => {
     throw new Error('the application found no downloadable quality for the URL');
   }
   console.log(`qualities offered: ${JSON.stringify(state.qualities)}`);
+  await afterScan(state);
 
   // The last pill is the lowest rung: the list arrives in descending order of height.
   //

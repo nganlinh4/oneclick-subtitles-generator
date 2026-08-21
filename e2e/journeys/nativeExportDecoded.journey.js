@@ -14,8 +14,10 @@ import {
 } from '../support/nativeMediaOracle.js';
 import { REAL_VIDEO } from '../support/realMedia.js';
 import { importSubtitles, openProjectWithMedia, waitForNativeFrame } from '../support/workflow.js';
+import { captureWorkflowStep, copyWorkflowArtifact } from '../support/workflowEvidence.js';
 
 const COMPARE_AT_SECONDS = 1;
+const WORKFLOW = 'native-export-decoded';
 
 describe('a customer exports the subtitled video they previewed', () => {
   it('writes a native MP4 whose decoded frame matches the editor preview', async () => {
@@ -49,6 +51,18 @@ describe('a customer exports the subtitled video they previewed', () => {
     });
     const previewPath = join(root, 'evidence', 'preview-at-1s.png');
     await saveNativePreviewFrame(previewPath);
+    copyWorkflowArtifact({
+      workflow: WORKFLOW,
+      name: 'native-preview-frame',
+      source: previewPath,
+      description: 'Raw native preview frame at the one-second comparison instant.',
+    });
+    await captureWorkflowStep({
+      workflow: WORKFLOW,
+      step: '01-preview-ready',
+      description: 'The styled subtitle preview is natively composited at the comparison instant.',
+      focusSelector: '.video-preview .video-container',
+    });
 
     await clickControl('.render-video-toggle');
     // The current rebuilt binary predates the stable data attribute by one narrow UI edit, so the
@@ -95,6 +109,13 @@ describe('a customer exports the subtitled video they previewed', () => {
       `Render produced no job and no refusal: ${JSON.stringify(admission)}`,
     );
     assert.deepEqual(admission.toasts, [], `Render was refused before admission: ${JSON.stringify(admission)}`);
+    await captureWorkflowStep({
+      workflow: WORKFLOW,
+      step: '02-render-admitted',
+      description: 'The visible render queue accepted the project without an admission refusal.',
+      details: { admission: admission.admission, queueItems: admission.queue.length },
+      focusSelector: '.video-rendering-section',
+    });
 
     const terminal = await $('.video-rendering-section .queue-item.completed, '
       + '.video-rendering-section .queue-item.failed');
@@ -109,6 +130,13 @@ describe('a customer exports the subtitled video they previewed', () => {
       /(?:^|\s)completed(?:\s|$)/,
       `the native render did not complete: ${terminalText}`,
     );
+    await captureWorkflowStep({
+      workflow: WORKFLOW,
+      step: '03-render-complete',
+      description: 'The native render reached a visible successful terminal state.',
+      details: { terminalText },
+      focusSelector: '.video-rendering-section',
+    });
 
     const before = listMediaFiles(destination);
     await clickControl('.video-rendering-section .queue-item.completed .download-btn-success');
@@ -139,5 +167,23 @@ describe('a customer exports the subtitled video they previewed', () => {
     extractFrame(exported, COMPARE_AT_SECONDS, exportFramePath);
     const ssim = compareFrames(previewPath, exportFramePath);
     assert.ok(ssim >= 0.95, `preview/export SSIM ${ssim} is below the 0.95 WYSIWYG floor`);
+    copyWorkflowArtifact({
+      workflow: WORKFLOW,
+      name: 'exported-video',
+      source: exported,
+      description: 'The native MP4 independently probed and decoded by the workflow.',
+    });
+    copyWorkflowArtifact({
+      workflow: WORKFLOW,
+      name: 'decoded-export-frame',
+      source: exportFramePath,
+      description: 'Independently decoded exported frame at the same one-second instant.',
+    });
+    await captureWorkflowStep({
+      workflow: WORKFLOW,
+      step: '04-export-verified',
+      description: 'The saved MP4 has independently verified video/audio streams and matches the preview.',
+      details: { durationSeconds: duration, ssim, exportedBytes: Number(probe.format.size) },
+    });
   });
 });

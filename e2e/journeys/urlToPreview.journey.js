@@ -32,6 +32,9 @@ import { join } from 'node:path';
 import { confirmDownloadOnly } from '../support/download.js';
 import { clickControl, openEditor } from '../support/editor.js';
 import { REAL_VIDEO } from '../support/realMedia.js';
+import { captureWorkflowStep, copyWorkflowArtifact } from '../support/workflowEvidence.js';
+
+const WORKFLOW = 'url-to-preview';
 
 // Installing the tools and fetching the video is a real network operation on a first run. Kept
 // BELOW mocha's own cap so this journey's diagnostic is what gets reported, not "took too long".
@@ -89,6 +92,12 @@ describe('a customer saves a real YouTube video to disk', () => {
       timeoutMsg: () => `the URL never resolved to ${REAL_VIDEO.id}. last: ${JSON.stringify(seen)}`,
     });
     report('after the URL resolved', seen);
+    await captureWorkflowStep({
+      workflow: WORKFLOW,
+      step: '01-url-resolved',
+      description: 'The pasted real YouTube URL resolved to the intended video before downloading.',
+      details: { videoId: REAL_VIDEO.id },
+    });
 
     // The TITLE is deliberately not asserted. It comes from the YouTube Data API, which needs an
     // API key or OAuth this harness does not have, so an unconfigured install shows the placeholder
@@ -99,7 +108,14 @@ describe('a customer saves a real YouTube video to disk', () => {
     // "Download Only" opens a modal that scans the real URL for the formats it actually offers. The
     // customer chooses a type and a quality from that scan, and only then can confirm.
     await clickControl('.download-only-btn');
-    await confirmDownloadOnly();
+    await confirmDownloadOnly({
+      afterScan: async (state) => captureWorkflowStep({
+        workflow: WORKFLOW,
+        step: '02-quality-selection',
+        description: 'The real yt-dlp scan produced customer-selectable video qualities.',
+        details: { qualities: state.qualities },
+      }),
+    });
 
     // The customer outcome: the file they asked for is on their disk. Progress and job status are
     // steps along the way, not the thing being asserted.
@@ -142,5 +158,17 @@ describe('a customer saves a real YouTube video to disk', () => {
     assert.deepEqual(seen.errors, [], 'no error may be visible after a successful download');
     assert.deepEqual(seen.errorToasts, [], 'no failure toast may be visible after a successful download');
     assert.equal(seen.modalOpen, false, 'the download modal must close after terminal success');
+    copyWorkflowArtifact({
+      workflow: WORKFLOW,
+      name: 'downloaded-video',
+      source: join(directory, name),
+      description: 'The real video bytes saved by the customer-facing Download Only workflow.',
+    });
+    await captureWorkflowStep({
+      workflow: WORKFLOW,
+      step: '03-download-complete',
+      description: 'The save-to-disk workflow completed with no visible error or stranded modal.',
+      details: { fileName: name, bytes },
+    });
   });
 });

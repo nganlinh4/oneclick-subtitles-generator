@@ -16,6 +16,7 @@ try {
     root,
     phases: ['install'],
     phaseVariable: 'OSG_E2E_NATIVE_TOOLS_PHASE',
+    resetEvidence: true,
     spec: './journeys/nativeToolsInstall.journey.js',
   });
   if (!installed) throw new Error('the from-empty install process failed');

@@ -18,6 +18,7 @@ import {
   isolationEnvironment, removeRunRoot, stagedDialogPaths,
 } from './support/environment.js';
 import { cachedRealVideo } from './support/realMedia.js';
+import { captureWorkflowStep } from './support/workflowEvidence.js';
 
 // The run root is created and exported into the environment WHEN THIS CONFIG LOADS, before any
 // hook and before the service spawns the binary.
@@ -105,6 +106,12 @@ export const config = {
   before: async () => {
     const handle = await browser.getWindowHandle();
     await browser.switchToWindow(handle);
+    if (process.env.OSG_E2E_OFFSCREEN_WINDOW === '1') {
+      const rect = await browser.getWindowRect();
+      if (rect.x > -9_000) {
+        throw new Error(`the automation window entered the interactive desktop: ${JSON.stringify(rect)}`);
+      }
+    }
   },
 
   afterSession: () => {
@@ -116,6 +123,16 @@ export const config = {
   afterTest: async function afterTest(test, context, { passed }) {
     if (passed) return;
     const name = test.title.replace(/[^\w-]+/g, '-').slice(0, 80);
+    const workflow = process.env.OSG_E2E_WORKFLOW;
+    if (workflow) {
+      try {
+        await captureWorkflowStep({
+          workflow,
+          step: `failure-${name}`.toLowerCase(),
+          description: `Failure evidence: ${test.title}`,
+        });
+      } catch { /* retain the run-root fallback below */ }
+    }
     try {
       await browser.saveScreenshot(`${runRoot}/evidence/${name}.png`);
     } catch { /* the window may already be gone; the logs below still help */ }

@@ -18,7 +18,7 @@ const engineState = async (id) => browser.execute((engineId) => {
  * Only the persistent package directory is shared between disposable profiles, matching a customer
  * who installs the multi-gigabyte engine once and then creates many projects.
  */
-export const ensureEngineReady = async (id) => {
+export const ensureEngineReady = async (id, { onReady = async () => {} } = {}) => {
   await clickControl('[data-app-action="open-settings"]');
   await clickControl('[data-settings-tab="tools"]');
 
@@ -31,7 +31,10 @@ export const ensureEngineReady = async (id) => {
     last = await engineState(id);
     return last !== null && !['checking', 'status-error'].includes(last.state);
   }, {
-    timeout: 120_000,
+    // A first status probe intentionally verifies every byte of an existing managed package.
+    // The shared Faster Whisper install is about 7.2 GB, so slow disks can legitimately take
+    // several minutes. This remains bounded and the screenshot/log evidence names the state.
+    timeout: 1_200_000,
     interval: 1_000,
     timeoutMsg: () => `${id} package status never settled: ${JSON.stringify(last)}`,
   });
@@ -63,5 +66,6 @@ export const ensureEngineReady = async (id) => {
   if (last.state !== 'ready') {
     throw new Error(`${id} is not runnable: ${JSON.stringify(last)}`);
   }
+  await onReady(last);
   await clickControl('.settings-modal .cancel-btn');
 };

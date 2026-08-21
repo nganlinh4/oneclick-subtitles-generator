@@ -6,13 +6,22 @@ import { durableState } from '../support/database.js';
 import { clickControl } from '../support/editor.js';
 import { ensureEngineReady } from '../support/engines.js';
 import { openProjectWithMedia, waitForNativeFrame } from '../support/workflow.js';
+import { captureWorkflowStep } from '../support/workflowEvidence.js';
 
 const ENGINE = 'faster-whisper-turbo';
+const WORKFLOW = 'local-asr-generation';
 
 describe('a customer generates subtitles with local ASR', () => {
   it('installs and starts the real engine, transcribes real media, persists and draws the cues', async () => {
     await openProjectWithMedia();
-    await ensureEngineReady(ENGINE);
+    await ensureEngineReady(ENGINE, {
+      onReady: async (state) => captureWorkflowStep({
+        workflow: WORKFLOW,
+        step: '01-engine-ready',
+        description: 'The reviewed local ASR engine is visibly installed, running, and ready.',
+        details: state,
+      }),
+    });
 
     await clickControl('[data-osg-action="generate-subtitles"]');
     const timeline = await $('.subtitle-timeline');
@@ -38,6 +47,12 @@ describe('a customer generates subtitles with local ASR', () => {
       timeoutMsg: () => `${ENGINE} never became selectable in the chooser: ${methodAvailable}`,
     });
     await method.click();
+    await captureWorkflowStep({
+      workflow: WORKFLOW,
+      step: '02-range-and-method',
+      description: 'The full timeline range and local transcription method are selected for processing.',
+      focusSelector: '.video-processing-modal',
+    });
 
     await clickControl('[data-osg-action="process-subtitles"]');
     let visibleCues = [];
@@ -75,5 +90,12 @@ describe('a customer generates subtitles with local ASR', () => {
       cue.start_ms >= 0 && cue.end_ms > cue.start_ms && cue.text.trim().length > 0
     )), `ASR persisted invalid cue timing/text: ${JSON.stringify(durable.cues)}`);
     assert.equal(durable.latestRevision?.cue_count, durable.counts.cues);
+    await captureWorkflowStep({
+      workflow: WORKFLOW,
+      step: '03-generated-subtitles',
+      description: 'Local ASR produced substantial visible cues and a native composited subtitle preview.',
+      details: { cueCount: durable.counts.cues, jobState: lastJob?.state },
+      focusSelector: '.lyrics-container-wrapper',
+    });
   });
 });

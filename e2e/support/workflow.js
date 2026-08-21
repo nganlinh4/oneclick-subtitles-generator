@@ -121,8 +121,14 @@ export const editCueText = async (existing, replacement) => {
 
   const editor = await $('.lyric-text-input');
   await editor.waitForDisplayed({ timeout: 30_000, timeoutMsg: 'the cue editor never opened' });
+  await editor.click();
   await editor.setValue(replacement);
-  await browser.execute(() => document.querySelector('.lyric-text-input')?.blur());
+  // Commit through the editor's customer-facing keyboard contract. Calling `HTMLElement.blur()`
+  // from script is not equivalent when WebDriver populated a controlled textarea without making
+  // it the active element: the value changed, but React received no blur and the editor stayed open
+  // forever. Enter is explicitly handled by `LyricItem` and exercises the same submit path a user
+  // reaches.
+  await browser.keys('Enter');
 
   // What the editor and the list actually hold. "The edited text never appeared" is true of a
   // commit that was refused, of a value that never reached the input, and of an editor that stayed
@@ -143,7 +149,7 @@ export const editCueText = async (existing, replacement) => {
   await browser.waitUntil(
     async () => {
       seen = await editorState();
-      return seen.bodyHasReplacement;
+      return seen.bodyHasReplacement && !seen.editorStillOpen;
     },
     {
       timeout: 30_000,

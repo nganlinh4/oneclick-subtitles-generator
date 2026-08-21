@@ -11,8 +11,10 @@ import { clickControl } from '../support/editor.js';
 import { ensureEngineReady } from '../support/engines.js';
 import { probeMedia } from '../support/nativeMediaOracle.js';
 import { importSubtitles, openProjectWithMedia } from '../support/workflow.js';
+import { captureWorkflowStep, copyWorkflowArtifact } from '../support/workflowEvidence.js';
 
 const ENGINE = 'gtts';
+const WORKFLOW = 'narration-generation';
 const TERMINAL_FAILURES = new Set(['failed', 'cancelled', 'interrupted']);
 
 const looksLikeMp3 = (bytes) => (
@@ -27,7 +29,14 @@ describe('a customer generates narration from subtitles', () => {
     assert.ok(destination, 'the aligned-audio save destination must be staged');
     await openProjectWithMedia();
     await importSubtitles();
-    await ensureEngineReady(ENGINE);
+    await ensureEngineReady(ENGINE, {
+      onReady: async (state) => captureWorkflowStep({
+        workflow: WORKFLOW,
+        step: '01-engine-ready',
+        description: 'The reviewed narration engine is visibly installed, running, and ready.',
+        details: state,
+      }),
+    });
 
     await clickControl('label[for="method-gtts"]');
     const generateSelector = '[data-osg-action="generate-narration"][data-narration-method="gtts"]';
@@ -105,6 +114,13 @@ describe('a customer generates narration from subtitles', () => {
 
     const projectIds = new Set(artifacts.map((artifact) => artifact.project_id));
     assert.equal(projectIds.size, 1, 'all narration outputs must belong to one exact project');
+    await captureWorkflowStep({
+      workflow: WORKFLOW,
+      step: '02-cue-audio-complete',
+      description: 'Every subtitle cue has a successful, project-owned narration result.',
+      details: { successfulCues: surface.succeeded, artifactCount: artifacts.length },
+      focusSelector: '.narration-section',
+    });
     const alignedPath = join(destination, 'aligned_narration.m4a');
     assert.equal(existsSync(alignedPath), false, 'the isolated aligned output already exists');
     await clickControl('[data-osg-action="download-aligned-narration"]');
@@ -144,5 +160,18 @@ describe('a customer generates narration from subtitles', () => {
       'aligned narration unexpectedly contains video',
     );
     assert.ok(Number(probe.format.duration) > 1, 'aligned narration duration is implausibly short');
+    copyWorkflowArtifact({
+      workflow: WORKFLOW,
+      name: 'aligned-narration',
+      source: alignedPath,
+      description: 'The independently probed aligned narration file exported by the workflow.',
+    });
+    await captureWorkflowStep({
+      workflow: WORKFLOW,
+      step: '03-aligned-export-complete',
+      description: 'Aligned narration exported successfully with no visible failure state.',
+      details: { durationSeconds: Number(probe.format.duration), bytes: statSync(alignedPath).size },
+      focusSelector: '.narration-section',
+    });
   });
 });

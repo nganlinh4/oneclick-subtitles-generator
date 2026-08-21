@@ -24,9 +24,40 @@ import {
   openProjectWithMedia,
   waitForNativeFrame,
 } from '../support/workflow.js';
+import { captureWorkflowStep } from '../support/workflowEvidence.js';
 
 const PHASE = process.env.OSG_E2E_PERSISTENCE_PHASE;
 const UNICODE_CUE = 'Xin chào và 감사합니다 🎬';
+const WORKFLOW = 'unicode-cues';
+
+const seekAndCapture = async (seconds, step, description) => {
+  const previous = await browser.execute(
+    () => document.querySelector('.video-preview .native-composited-frame')?.src ?? null,
+  );
+  await browser.execute((target) => {
+    const video = document.querySelector('.video-preview video.video-player');
+    if (video === null) throw new Error('the editor video is missing');
+    video.pause();
+    video.currentTime = target;
+  }, seconds);
+  await browser.waitUntil(async () => {
+    const current = await browser.execute(
+      () => document.querySelector('.video-preview .native-composited-frame')?.src ?? null,
+    );
+    return current !== null && current !== previous;
+  }, {
+    timeout: 120_000,
+    interval: 1_000,
+    timeoutMsg: `the preview did not publish the ${seconds}s stress frame`,
+  });
+  await captureWorkflowStep({
+    workflow: WORKFLOW,
+    step,
+    description,
+    details: { playheadSeconds: seconds },
+    focusSelector: '.video-preview .video-container',
+  });
+};
 
 const visibleRefusals = () => browser.execute(() => [
   ...document.querySelectorAll('.error, [role="alert"], .native-preview-unavailable'),
@@ -58,12 +89,27 @@ describe('subtitles with Vietnamese, Korean and emoji', () => {
         await visibleRefusals(), [],
         'a new process must draw the project atlas containing Unicode cues',
       );
+      await seekAndCapture(
+        4,
+        '06-restored-unicode',
+        'A second process restores and draws the Vietnamese, Korean, and emoji cue.',
+      );
       return;
     }
 
     await openProjectWithMedia();
     await importSubtitles(UNICODE_SUBTITLE_FIXTURE);
     await waitForNativeFrame();
+
+    await seekAndCapture(1, '01-latin-start', 'The opening Latin cue draws at a non-zero playhead.');
+    await seekAndCapture(
+      4,
+      '02-vietnamese-korean-emoji',
+      'Vietnamese diacritics, Korean syllables, and an emoji draw in one native frame.',
+    );
+    await seekAndCapture(8, '03-arabic-bidi', 'Arabic text inside brackets draws in native bidi order.');
+    await seekAndCapture(11, '04-hebrew-mixed', 'Hebrew and Latin digits draw together without refusal.');
+    await seekAndCapture(15, '05-end-scrub', 'The final cue draws after scrubbing near the end of the video.');
 
     assert.deepEqual(
       await visibleRefusals(), [],

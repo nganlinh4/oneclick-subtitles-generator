@@ -80,6 +80,14 @@
       "why": "SHGetKnownFolderPath ignores %LOCALAPPDATA%, so a run cannot be isolated from outside the process"
     }
   },
+  "screenshotEvidence": {
+    "root": "target/workflow-evidence/<workflow>/",
+    "index": "Each workflow folder contains ordered PNG checkpoints, README.md for quick browsing, and manifest.json with bounded visible state plus independent oracle details.",
+    "windowMode": "The e2e-automation binary remains full-size and compositor-visible but is placed off-screen, unfocused, and absent from the taskbar. It is never hidden or minimized, so GPU preview and video rendering are not throttled.",
+    "interaction": "Embedded WebDriver protocol only: no SendInput, physical cursor movement, focus stealing, or native picker/save implementation.",
+    "command": "npm --prefix e2e run test:screenshot-workflows",
+    "authority": "Screenshots expose customer-visible truth and aesthetic defects; files, SQLite, logs, hashes, ffprobe, decoded pixels, and second-process restoration remain the independent success oracles."
+  },
   "journeys": [
     {
       "name": "startup",
@@ -347,9 +355,24 @@
     {
       "name": "installedGolden",
       "kind": "workflow",
+      "file": "../scripts/test-installed-windows.ps1",
       "capability": "The NSIS-installed production build does the same job as the development one.",
-      "status": "planned",
-      "note": "Must run under an isolated Windows account, never against the developer's real app data."
+      "chain": [
+        "silently install the exact branch-built NSIS payload on a clean isolated Windows runner",
+        "launch, relaunch, uninstall, reinstall, and prove the profile survives each boundary",
+        "exercise real URL download, native tool lifecycle, native file selection, media activation, SRT import, preview and editor persistence",
+        "retain installed screenshots and bounded machine-readable evidence"
+      ],
+      "oracles": [
+        "the NSIS uninstall registry and installed executable digest",
+        "the installed application's diagnostics and read-only persisted state",
+        "real native picker ownership plus local-media digest",
+        "installed screenshots and process/relaunch observations"
+      ],
+      "runsAgainst": "installed-production-binary",
+      "status": "green",
+      "note": "This deliberately remains an isolated Windows CI workflow. Local screenshot journeys use the guarded off-screen binary because running an installer/uninstaller against the developer account would disturb the live installation and profile.",
+      "lastGreenCommit": "ff111800"
     }
   ],
   "knownProductFindings": [

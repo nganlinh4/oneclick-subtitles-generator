@@ -14,6 +14,7 @@ import process from 'node:process';
 import { durableState } from '../support/database.js';
 import { clickControl, openEditor } from '../support/editor.js';
 import { REAL_VIDEO } from '../support/realMedia.js';
+import { captureWorkflowStep } from '../support/workflowEvidence.js';
 import {
   FIRST_CUE,
   editCueText,
@@ -25,6 +26,7 @@ import {
 
 const EDITED = 'Edited first cue';
 const PHASE = process.env.OSG_E2E_PERSISTENCE_PHASE;
+const WORKFLOW = 'edit-persist-relaunch';
 
 const inspect = () => browser.execute(() => {
   const video = document.querySelector('video');
@@ -78,12 +80,25 @@ describe('a customer edits a cue and reopens the application', () => {
         'the media content identity changed',
       );
       assert.equal(restored.counts.projects, 1, 'startup created a duplicate project');
+      await captureWorkflowStep({
+        workflow: WORKFLOW,
+        step: '03-restored-project',
+        description: 'A second desktop process restored the edited cue, playable media, and native preview.',
+        details: { projectId: restored.projects[0].id, cueCount: restored.counts.cues },
+        focusSelector: '.lyrics-container-wrapper',
+      });
       return;
     }
 
     await openProjectWithMedia();
     await importSubtitles();
     await waitForNativeFrame();
+    await captureWorkflowStep({
+      workflow: WORKFLOW,
+      step: '01-imported-project',
+      description: 'Real local media and imported subtitles are playable and natively composited.',
+      focusSelector: '.video-preview .video-container',
+    });
 
     // --- edit and history -----------------------------------------------------------------------
     await editCueText(FIRST_CUE, EDITED);
@@ -121,6 +136,13 @@ describe('a customer edits a cue and reopens the application', () => {
     assert.equal(saved.counts.media, 1, 'exactly one media asset must be recorded');
     assert.ok(saved.counts.cues >= 3, 'all three imported cues must be recorded');
     assert.ok(saved.latestRevision !== null, 'a saved project must have a revision');
+    await captureWorkflowStep({
+      workflow: WORKFLOW,
+      step: '02-edit-saved',
+      description: 'The edited cue survived undo/redo and reached the durable saved state.',
+      details: { editedText: EDITED, revision: saved.latestRevision.revision },
+      focusSelector: '.lyrics-container-wrapper',
+    });
 
   });
 });

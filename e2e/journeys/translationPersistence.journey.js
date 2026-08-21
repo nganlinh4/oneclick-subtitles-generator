@@ -12,10 +12,12 @@ import { durableTranslations } from '../support/database.js';
 import { clickControl, openEditor } from '../support/editor.js';
 import { compareFrames, saveNativePreviewFrame } from '../support/nativeMediaOracle.js';
 import { importSubtitles, openProjectWithMedia, waitForNativeFrame } from '../support/workflow.js';
+import { captureWorkflowStep, copyWorkflowArtifact } from '../support/workflowEvidence.js';
 
 const PREFIX = 'FMT: ';
 const EXPECTED_FIRST = `${PREFIX}First cue for the preview`;
 const PHASE = process.env.OSG_E2E_PERSISTENCE_PHASE;
+const WORKFLOW = 'translation-persistence';
 
 const seekToFirstCue = async () => {
   const previous = await browser.execute(
@@ -88,6 +90,18 @@ describe('a customer keeps a project-owned formatted translation', () => {
         'the restored translated preview differs from the prior process pixels',
       );
       assert.equal(durableTranslations(root)[0].translation.revision, 1);
+      copyWorkflowArtifact({
+        workflow: WORKFLOW,
+        name: 'restored-translated-frame',
+        source: restoredFrame,
+        description: 'Native translated frame rebuilt by a second desktop process.',
+      });
+      await captureWorkflowStep({
+        workflow: WORKFLOW,
+        step: '04-restored-translation',
+        description: 'A second desktop process restored the translated selection and identical native pixels.',
+        focusSelector: '.video-preview .video-container',
+      });
       return;
     }
 
@@ -97,6 +111,18 @@ describe('a customer keeps a project-owned formatted translation', () => {
 
     const originalFrame = join(root, 'evidence', 'translation-original.png');
     await saveNativePreviewFrame(originalFrame);
+    copyWorkflowArtifact({
+      workflow: WORKFLOW,
+      name: 'original-preview-frame',
+      source: originalFrame,
+      description: 'Original subtitle track before formatting or translation selection.',
+    });
+    await captureWorkflowStep({
+      workflow: WORKFLOW,
+      step: '01-original-track',
+      description: 'The original imported subtitle track is visible and natively composited.',
+      focusSelector: '.video-preview .video-container',
+    });
 
     await clickControl('.add-chain-item-btn.original');
     await clickControl('.delimiter-display');
@@ -124,6 +150,12 @@ describe('a customer keeps a project-owned formatted translation', () => {
     assert.equal(record?.sourceEntryCount, 3, 'the durable translation lost its source cardinality');
     assert.equal(record?.baseSubtitles?.[0]?.text, EXPECTED_FIRST, 'durable text differs from the UI');
     assert.match(record?.sourceFingerprint ?? '', /^[a-f0-9]{64}$/);
+    await captureWorkflowStep({
+      workflow: WORKFLOW,
+      step: '02-translation-created',
+      description: 'The transformed translation is visibly complete before selecting it for preview.',
+      details: { revision: record.revision, sourceEntryCount: record.sourceEntryCount },
+    });
 
     const oldFrameUrl = await browser.execute(
       () => document.querySelector('.video-preview .native-composited-frame')?.src ?? null,
@@ -159,5 +191,18 @@ describe('a customer keeps a project-owned formatted translation', () => {
       readFileSync(originalFrame),
       'selecting translated subtitles did not change the rendered pixels',
     );
+    copyWorkflowArtifact({
+      workflow: WORKFLOW,
+      name: 'translated-preview-frame',
+      source: translatedFrame,
+      description: 'Translated subtitle track selected in the native preview.',
+    });
+    await captureWorkflowStep({
+      workflow: WORKFLOW,
+      step: '03-translated-track',
+      description: 'Selecting Translated changes both the visible track and native preview pixels.',
+      details: previewSelectionState,
+      focusSelector: '.video-preview .video-container',
+    });
   });
 });

@@ -146,6 +146,9 @@ export const stagedDialogPaths = (root, cachedVideo) => Object.freeze({
 /** Everything a run must set so it cannot reach live user state. */
 export const isolationEnvironment = (root) => ({
   OSG_E2E_DATA_ROOT: root,
+  // Full-size and compositor-visible, but outside the interactive desktop. This is consumed only
+  // by the binary's `e2e-automation` graph; production does not compile the reader.
+  OSG_E2E_OFFSCREEN_WINDOW: '1',
   // The only files a staged file-dialog selection may name. The application resolves and re-checks
   // this itself; declaring it here is what keeps a journey to reviewed files.
   OSG_E2E_FIXTURE_ROOT: process.env.OSG_E2E_FIXTURE_ROOT ?? root,
