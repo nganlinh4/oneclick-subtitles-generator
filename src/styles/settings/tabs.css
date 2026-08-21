@@ -227,3 +227,17 @@
 .settings-tab-content.active {
   display: block;
 }
+
+@media (max-width: 1600px) {
+  .settings-tabs {
+    margin: 0 0.75rem;
+    padding-left: 4px;
+    padding-right: 12px;
+  }
+
+  .settings-tab {
+    padding-inline: 0.7rem;
+    margin-inline: 1px;
+    gap: 6px;
+  }
+}

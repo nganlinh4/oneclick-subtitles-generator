@@ -17,6 +17,12 @@
   min-width: 120px; /* Ensure the title can shrink */
 }
 
+@media (max-width: 1600px) {
+  .settings-header {
+    padding-inline: 1.5rem 3.25rem;
+  }
+}
+
 /* Close button styles moved to src/components/common/CloseButton.css */
 
 /* Footer with action buttons */

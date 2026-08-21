@@ -76,3 +76,19 @@ it('fails closed when native cache inspection is unavailable without probing HTT
   expect(window.fetch).not.toHaveBeenCalled();
   consoleError.mockRestore();
 });
+
+it('does not announce an empty cache just because the tab became active', async () => {
+  getCacheInfo.mockResolvedValue({ success: true, details: cacheDetails() });
+
+  render(<CacheTab isActive />);
+
+  await waitFor(() => expect(getCacheInfo).toHaveBeenCalledTimes(1));
+  expect(window.addToast).not.toHaveBeenCalled();
+
+  fireEvent.click(screen.getByTitle('Refresh cache information'));
+  await waitFor(() => expect(window.addToast).toHaveBeenCalledWith(
+    'Cache is empty. No files to clear.',
+    'info',
+    5000
+  ));
+});

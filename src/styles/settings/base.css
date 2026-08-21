@@ -49,6 +49,15 @@
   opacity: 0;
 }
 
+/* On laptop-sized windows, use the available canvas. The previous 80% box
+   hid tabs and reduced six processing cards to a narrow viewport. */
+@media (max-width: 1600px), (max-height: 900px) {
+  .settings-modal {
+    width: calc(100% - 48px);
+    height: calc(100% - 48px);
+  }
+}
+
 /* Loading placeholder for delayed rendering */
 .loading-placeholder {
   display: flex;

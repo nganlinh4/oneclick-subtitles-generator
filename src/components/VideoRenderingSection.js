@@ -528,7 +528,7 @@ const VideoRenderingSection = ({
             fontStyle: 'italic',
             opacity: 0.7
           }}>
-            {t('videoRendering.upcomingFeatures', 'Upcoming features: crop, add text, logo, images, background music, ...')}
+            {t('videoRendering.upcomingFeatures', 'Export subtitles, narration, styling, and effects into a finished video.')}
           </span>
         </div>
         <button

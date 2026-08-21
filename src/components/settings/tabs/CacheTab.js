@@ -159,7 +159,9 @@ const CacheTab = ({ isActive }) => {
 
   // Fetch cache information when component mounts or isActive changes
   useEffect(() => {
-    fetchCacheInfo(isActive);
+    // Entering a settings tab is not a user request to refresh the cache. Keep
+    // the empty-cache toast for the explicit Refresh action only.
+    fetchCacheInfo(false);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isActive]);
 

@@ -574,7 +574,7 @@ const BackgroundImageGenerator = ({ lyrics, albumArt, songName, isExpanded = fal
             fontStyle: 'italic',
             opacity: 0.7
           }}>
-            {t('backgroundGenerator.upcomingFeatures', 'Currently, Google has completely removed 2 native image models from the free tier!')}
+            {t('backgroundGenerator.upcomingFeatures', 'Image model availability depends on your Gemini account and current quota.')}
           </span>
         </div>
         <button

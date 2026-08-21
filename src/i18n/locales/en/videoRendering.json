@@ -153,7 +153,7 @@
   "fps50": "50 FPS (PAL High)",
   "fps60": "60 FPS (Smooth)",
   "fps120": "120 FPS (High Speed)",
-  "upcomingFeatures": "Upcoming features: crop, add text, logo, images, background music, ...",
+  "upcomingFeatures": "Export subtitles, narration, styling, and effects into a finished video.",
   "networkError": "Network error occurred",
   "reconnecting": "Reconnecting to render...",
   "editCrop": "Edit transformations",
