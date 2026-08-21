@@ -35,6 +35,7 @@
     "downloading": "Downloading...",
     "cancelDownload": "Cancel Download",
     "cancelled": "Download cancelled",
+    "completed": "Download complete. The file was saved to the location you selected.",
     "failed": "Media download or export failed. Details were written to the application log."
   },
   "nativeTools": {

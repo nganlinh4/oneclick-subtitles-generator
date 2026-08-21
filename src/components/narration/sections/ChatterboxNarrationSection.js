@@ -141,7 +141,7 @@ const ChatterboxNarrationSection = ({
         downloadAlignedAudio={downloadAlignedAudio}
         generationResults={generationResults}
         isServiceAvailable={isChatterboxAvailable}
-        serviceUnavailableMessage={t('narration.engineUnavailableMessage', 'This narration engine is not ready. Install or start it in Settings > Voice & transcription engines.')}
+        serviceUnavailableMessage={t('narration.engineUnavailableMessage', 'This narration engine is not ready. Install or start it in Settings > Tools.')}
         narrationMethod="chatterbox"
       />
 

@@ -7,11 +7,11 @@
   -webkit-text-wrap: balance;
   
   /* Ensure proper line height for wrapped text */
-  line-height: 1.3;
+  line-height: 1.2;
   
   /* Add some padding adjustments for multi-line text */
-  padding-top: 12px;
-  padding-bottom: 12px;
+  padding-top: 10px;
+  padding-bottom: 10px;
   
   /* Minimum width to encourage wrapping at the right points */
   min-width: 180px;

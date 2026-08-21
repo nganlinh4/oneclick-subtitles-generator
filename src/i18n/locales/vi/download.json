@@ -36,6 +36,7 @@
     "downloading": "Đang tải xuống...",
     "cancelDownload": "Hủy tải xuống",
     "cancelled": "Đã hủy tải xuống",
+    "completed": "Tải xuống hoàn tất. Tệp đã được lưu vào vị trí bạn chọn.",
     "download": "Tải xuống",
     "failed": "Tải xuống hoặc xuất phương tiện thất bại. Chi tiết đã được ghi vào nhật ký ứng dụng."
   },

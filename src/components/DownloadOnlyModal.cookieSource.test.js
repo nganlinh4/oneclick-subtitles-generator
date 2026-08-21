@@ -1,6 +1,7 @@
 import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 
 import { downloadUrlToUserDestination } from '../platform/userMediaExportFlow';
+import { showSuccessToast } from '../utils/toastUtils';
 import DownloadOnlyModal from './DownloadOnlyModal';
 
 vi.mock('../platform/userMediaExportFlow', () => ({
@@ -8,7 +9,7 @@ vi.mock('../platform/userMediaExportFlow', () => ({
 }));
 vi.mock('../utils/qualityScanner', () => ({ scanVideoQualities: vi.fn() }));
 vi.mock('../utils/downloadOnlyUtils', () => ({ cancelDownloadOnly: vi.fn() }));
-vi.mock('../utils/toastUtils', () => ({ showErrorToast: vi.fn() }));
+vi.mock('../utils/toastUtils', () => ({ showErrorToast: vi.fn(), showSuccessToast: vi.fn() }));
 vi.mock('./common/CloseButton', () => ({ default: () => null }));
 vi.mock('./common/LoadingIndicator', () => ({ default: () => null }));
 vi.mock('./common/WavyProgressIndicator', () => ({ default: () => null }));
@@ -40,4 +41,7 @@ it('propagates the selected browser source through Download Only export', async 
       media: { kind: 'audio', quality: { mode: 'best' }, format: 'mp3' },
     })
   ));
+  expect(showSuccessToast).toHaveBeenCalledWith(
+    'Download complete. The file was saved to the location you selected.'
+  );
 });

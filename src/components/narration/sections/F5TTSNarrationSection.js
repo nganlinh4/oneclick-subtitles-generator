@@ -198,7 +198,7 @@ const F5TTSNarrationSection = ({
         cancelGeneration={cancelGeneration}
         subtitleSource={subtitleSource}
         isServiceAvailable={isAvailable}
-        serviceUnavailableMessage={t('narration.engineUnavailableMessage', 'This narration engine is not ready. Install or start it in Settings > Voice & transcription engines.')}
+        serviceUnavailableMessage={t('narration.engineUnavailableMessage', 'This narration engine is not ready. Install or start it in Settings > Tools.')}
         narrationMethod="f5tts"
         generationBlockedReason={languageBlockedReason}
       />

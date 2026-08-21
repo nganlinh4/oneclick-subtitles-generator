@@ -235,7 +235,7 @@ it('accepts only the active ready Gemini credential metadata', () => {
   });
 });
 
-it.each([null, 'unavailable'])('gates a ready Gemini worker when credential state is %s', async (state) => {
+it.each([null, 'unavailable'])('gates a ready Gemini worker without turning passive status into an error when credential state is %s', async (state) => {
   const credentials = credentialSnapshot(state);
   mocks.subscribeCredentialState.mockImplementationOnce((subscriber) => {
     subscriber(credentials);
@@ -254,9 +254,7 @@ it.each([null, 'unavailable'])('gates a ready Gemini worker when credential stat
 
   await waitFor(() => expect(setters.setIsCheckingAvailability).toHaveBeenLastCalledWith(false));
   expect(setters.setIsGeminiAvailable).toHaveBeenLastCalledWith(false);
-  const updateError = setters.setError.mock.lastCall[0];
-  expect(updateError('')).toContain('usable API key');
-  expect(updateError('generation failed')).toBe('generation failed');
+  expect(setters.setError).not.toHaveBeenCalled();
   unmount();
 });
 

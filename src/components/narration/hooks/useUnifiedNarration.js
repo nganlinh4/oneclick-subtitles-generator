@@ -116,15 +116,12 @@ const useUnifiedNarration = ({
 
   // Use availability check hook
   const { geminiUnavailableReason } = useAvailabilityCheck({
-    narrationMethod,
     setIsAvailable,
     setIsGeminiAvailable,
     setIsChatterboxAvailable,
     setIsEdgeTTSAvailable,
     setIsGTTSAvailable,
     setIsCheckingAvailability,
-    setError,
-    t
   });
 
   // Use audio playback hook

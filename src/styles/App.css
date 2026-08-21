@@ -123,7 +123,8 @@
   letter-spacing: 0.5px;
   box-shadow: var(--md-elevation-level2);
   border-radius: var(--md-shape-pill);
-  height: 52px; /* Fixed height for consistency */
+  min-height: 52px;
+  height: auto; /* Long localized labels must grow instead of painting outside the pill. */
   white-space: normal; /* Allow text wrapping */
   text-align: center; /* Center the wrapped text */
 }

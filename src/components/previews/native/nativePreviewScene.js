@@ -186,7 +186,14 @@ export const atlasBakeRequest = ({ customization, text, compositionWidthPx, comp
       // text itself through UAX #9 P2/P3, which is right for mixed content and wrong for a caller
       // who has told us the subtitle is right-to-left.
       baseDirection: rtlSupport === true ? 'rtl' : null,
-      requireExactFace: true,
+      // `previewFace` has already proved that the selected primary face exists and resolves to the
+      // exact byte source the project names. A real subtitle line may still need ordinary CSS
+      // fallback for code points that face does not contain (emoji, CJK, uncommon combining
+      // marks). The baker rasterizes the complete shaped line once and both preview and export use
+      // those same pixels, so rejecting that partial fallback breaks Unicode without buying any
+      // WYSIWYG protection. Keep the low-level baker's strict mode for callers that need it; the
+      // product path deliberately accepts fallback *within* a verified primary face.
+      requireExactFace: false,
     }),
     refusal: null,
     glyphScale,

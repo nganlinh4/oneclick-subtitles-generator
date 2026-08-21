@@ -312,6 +312,19 @@ describe('the face is resolved or honestly absent', () => {
 });
 
 describe('the baked descriptor is the one the staging boundary accepts', () => {
+  it('allows ordinary per-character fallback after the primary face was verified', () => {
+    const request = atlasBakeRequest({
+      customization: customization(),
+      text: 'English, Tiếng Việt, 한국어, 😀',
+      compositionWidthPx: 1_920,
+      compositionHeightPx: 1_080,
+      face: FACE,
+    });
+
+    expect(request.request.requireExactFace).toBe(false);
+    expect(() => bakePreviewAtlas(request, surface())).not.toThrow();
+  });
+
   it('carries the current atlas version and a layout', () => {
     const request = atlasBakeRequest({
       customization: customization(),

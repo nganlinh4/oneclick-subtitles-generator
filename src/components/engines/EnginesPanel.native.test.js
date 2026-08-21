@@ -1,5 +1,10 @@
+import { act, render, screen } from '@testing-library/react';
+import { useEngineStatus } from '../../hooks/useEngineStatus';
+import { getEnginePackagesStatus } from '../../platform/enginePackageService';
 import { removeManagedEnginePackage } from '../../platform/managedEngineService';
-import { mapManagedPackageInventory, removeNativeEnginePackage } from './EnginesPanel';
+import { getSpeechPackagesStatus } from '../../platform/speechPackageService';
+import { useWaveColors } from '../../utils/waveColors';
+import EnginesPanel, { mapManagedPackageInventory, removeNativeEnginePackage } from './EnginesPanel';
 
 vi.mock('../../hooks/useEngineStatus', () => ({
   useEngineStatus: vi.fn(),
@@ -26,12 +31,21 @@ vi.mock('../../utils/waveColors', () => ({
   useWaveColors: vi.fn(),
 }));
 vi.mock('../common/LoadingIndicator', () => ({ default: () => null }));
-vi.mock('./EngineCard', () => ({ default: () => null }));
+vi.mock('./EngineCard', () => ({
+  default: ({ id, packageStatusState }) => (
+    <div data-testid={`engine-${id}`} data-package-status={packageStatusState} />
+  ),
+}));
 vi.mock('./NativeToolsList', () => ({ default: () => null }));
 
 afterEach(() => {
   vi.clearAllMocks();
   delete global.fetch;
+});
+
+beforeEach(() => {
+  useEngineStatus.mockReturnValue({ engines: {}, refresh: vi.fn() });
+  useWaveColors.mockReturnValue({ isDarkTheme: false, waveColor: '#000' });
 });
 
 it('waits for a terminal native removal event without contacting a legacy endpoint', async () => {
@@ -91,4 +105,23 @@ it('merges the ASR and speech package catalogs under the visible engine identifi
   expect(inventory.get('edge-tts')).toBe(edge);
   expect(inventory.get('gtts')).toBe(gtts);
   expect(inventory.get('gemini-tts')).toBe(gemini);
+});
+
+it('publishes speech status without waiting for a slow ASR integrity scan', async () => {
+  let settleAsr;
+  getEnginePackagesStatus.mockReturnValue(new Promise((resolve) => { settleAsr = resolve; }));
+  getSpeechPackagesStatus.mockResolvedValue({
+    packages: [{ id: 'edge-tts', deliveryAvailable: true, installed: true }],
+  });
+
+  render(<EnginesPanel />);
+
+  await act(async () => { await Promise.resolve(); });
+  expect(screen.getByTestId('engine-edge-tts')).toHaveAttribute('data-package-status', 'ready');
+  expect(screen.getByTestId('engine-faster-whisper-turbo'))
+    .toHaveAttribute('data-package-status', 'checking');
+
+  await act(async () => { settleAsr({ engines: [] }); });
+  expect(screen.getByTestId('engine-faster-whisper-turbo'))
+    .toHaveAttribute('data-package-status', 'ready');
 });

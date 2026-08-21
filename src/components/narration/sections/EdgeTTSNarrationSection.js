@@ -122,7 +122,7 @@ const EdgeTTSNarrationSection = ({
         isServiceAvailable={isEdgeTTSAvailable}
         serviceUnavailableMessage={t(
           'narration.engineUnavailableMessage',
-          'This narration engine is not ready. Install or start it in Settings > Voice & transcription engines.'
+          'This narration engine is not ready. Install or start it in Settings > Tools.'
         )}
         narrationMethod="edge-tts"
       />

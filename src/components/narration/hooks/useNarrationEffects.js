@@ -87,7 +87,8 @@ const useNarrationEffects = ({
         duration = 12000;
       }
 
-      showInfoToast(generationStatus, duration);
+      // Progress replaces its predecessor instead of obscuring the editor with one toast per cue.
+      showInfoToast(generationStatus, duration, 'narration-generation-progress');
     }
   }, [generationStatus, isGenerating, retryingSubtitleId]);
 };

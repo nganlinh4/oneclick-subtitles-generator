@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useEngineStatus } from '../../hooks/useEngineStatus';
 import { removeManagedEnginePackage } from '../../platform/managedEngineService';
@@ -76,34 +76,40 @@ const EnginesPanel = () => {
   const [confirmAll, setConfirmAll] = useState(false);
   const [uninstallingAll, setUninstallingAll] = useState(false);
   const [packages, setPackages] = useState(() => new Map());
-  const [packageStatusState, setPackageStatusState] = useState('checking');
-  const [failedPackages, setFailedPackages] = useState(() => new Set());
+  const [packageGroupStates, setPackageGroupStates] = useState(() => ({
+    asr: 'checking',
+    speech: 'checking',
+  }));
+  const packageRefreshGeneration = useRef(0);
 
   const refreshPackages = useCallback(async () => {
-    setPackageStatusState('checking');
-    const [asr, speech] = await Promise.allSettled([
-      getEnginePackagesStatus(),
-      getSpeechPackagesStatus(),
+    const generation = packageRefreshGeneration.current + 1;
+    packageRefreshGeneration.current = generation;
+    setPackageGroupStates({ asr: 'checking', speech: 'checking' });
+
+    const settleGroup = async (group, request, toInventory) => {
+      try {
+        const result = await request();
+        if (packageRefreshGeneration.current !== generation) return;
+        const next = toInventory(result);
+        setPackages((current) => new Map([...current, ...next]));
+        setPackageGroupStates((current) => ({ ...current, [group]: 'ready' }));
+      } catch {
+        if (packageRefreshGeneration.current !== generation) return;
+        setPackageGroupStates((current) => ({ ...current, [group]: 'failed' }));
+      }
+    };
+
+    // The ASR inventory may verify multi-gigabyte model trees. Publish speech-package status as
+    // soon as its own command settles instead of making every card look stuck behind that scan.
+    await Promise.all([
+      settleGroup('asr', getEnginePackagesStatus, (status) => (
+        mapManagedPackageInventory(status, undefined)
+      )),
+      settleGroup('speech', getSpeechPackagesStatus, (status) => (
+        mapManagedPackageInventory(undefined, status)
+      )),
     ]);
-    const failed = new Set();
-    if (asr.status === 'rejected') {
-      ENGINES.filter((engine) => !(engine.id in PACKAGE_ID_BY_ENGINE))
-        .forEach((engine) => failed.add(engine.id));
-    }
-    if (speech.status === 'rejected') {
-      Object.keys(PACKAGE_ID_BY_ENGINE).forEach((engine) => failed.add(engine));
-    }
-    setFailedPackages(failed);
-    if (asr.status === 'rejected' && speech.status === 'rejected') {
-      setPackageStatusState('failed');
-      return;
-    }
-    const next = mapManagedPackageInventory(
-      asr.status === 'fulfilled' ? asr.value : undefined,
-      speech.status === 'fulfilled' ? speech.value : undefined
-    );
-    setPackages((current) => new Map([...current, ...next]));
-    setPackageStatusState('ready');
   }, []);
 
   const refreshAll = useCallback(() => {
@@ -204,7 +210,9 @@ const EnginesPanel = () => {
                 status={{ ...engines[engine.id], package: packages.get(engine.id) }}
                 onChanged={refreshAll}
                 managedByElectron={managedByElectron}
-                packageStatusState={failedPackages.has(engine.id) ? 'failed' : packageStatusState}
+                packageStatusState={packageGroupStates[
+                  engine.id in PACKAGE_ID_BY_ENGINE ? 'speech' : 'asr'
+                ]}
               />
             ))}
           </div>

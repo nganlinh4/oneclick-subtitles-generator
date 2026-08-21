@@ -6,6 +6,7 @@ import {
   getAlignedNarrationArtifactId,
 } from '../../../services/alignedNarrationService';
 import { createSimpleLoadingOverlay } from '../utils/loadingOverlayFactory';
+import { showSuccessToast } from '../../../utils/toastUtils';
 
 const useAlignedDownload = ({ generationResults, t }) => {
   const downloadAlignedAudio = async () => {
@@ -40,6 +41,10 @@ const useAlignedDownload = ({ generationResults, t }) => {
         nativeFormat: 'm4a',
         subtitle_id: 'aligned',
       }, 'aligned_narration.m4a');
+      showSuccessToast(t(
+        'narration.alignedDownloadComplete',
+        'Aligned narration was saved successfully.',
+      ));
     } catch (error) {
       alert(t(
         'narration.alignedDownloadFailed',

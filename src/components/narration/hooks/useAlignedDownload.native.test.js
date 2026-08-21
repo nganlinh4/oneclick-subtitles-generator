@@ -6,6 +6,7 @@ import {
   getAlignedNarrationArtifactId,
 } from '../../../services/alignedNarrationService';
 import useAlignedDownload from './useAlignedDownload';
+import { showSuccessToast } from '../../../utils/toastUtils';
 
 vi.mock('../../../platform/desktopRuntime', () => ({ isDesktopRuntime: () => true }));
 vi.mock('../../../platform/nativeNarrationArtifacts', () => ({
@@ -21,6 +22,7 @@ vi.mock('../utils/loadingOverlayFactory', () => ({
     destroy: vi.fn(),
   }),
 }));
+vi.mock('../../../utils/toastUtils', () => ({ showSuccessToast: vi.fn() }));
 
 const CLIP_ID = '018f4c22-f0f1-7c09-a4d5-120d7b6f84a2';
 const ALIGNED_ID = '018f4c22-f0f1-7c09-a4d5-120d7b6f84a3';
@@ -54,6 +56,7 @@ test('aligned download stays on durable native speech artifacts', async () => {
     nativeFormat: 'm4a',
     subtitle_id: 'aligned',
   }, 'aligned_narration.m4a');
+  expect(showSuccessToast).toHaveBeenCalledWith('Aligned narration was saved successfully.');
   expect(global.fetch).not.toHaveBeenCalled();
   global.fetch = originalFetch;
 });

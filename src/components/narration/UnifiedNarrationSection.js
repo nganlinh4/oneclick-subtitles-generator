@@ -164,7 +164,7 @@ const UnifiedNarrationSection = ({
 
   const engineUnavailableMessage = t(
     'narration.engineUnavailableMessage',
-    'This narration engine is not ready. Install or start it in Settings > Voice & transcription engines.'
+    'This narration engine is not ready. Install or start it in Settings > Tools.'
   );
   const geminiCredentialUnavailableMessage = t(
     'narration.geminiCredentialUnavailableMessage',
@@ -176,11 +176,11 @@ const UnifiedNarrationSection = ({
   const allServicesUnavailableMessage = geminiUnavailableReason === 'credential'
     ? t(
       'narration.allServicesUnavailableCredentialMessage',
-      'Gemini narration needs a usable API key in Settings > API Keys. Other narration engines can be installed or started in Settings > Voice & transcription engines.'
+      'Gemini narration needs a usable API key in Settings > API Keys. Other narration engines can be installed or started in Settings > Tools.'
     )
     : t(
       'narration.allServicesUnavailableMessage',
-      'All narration engines are unavailable. Install or start one in Settings > Voice & transcription engines.'
+      'All narration engines are unavailable. Install or start one in Settings > Tools.'
     );
 
   if (allServicesUnavailable) {

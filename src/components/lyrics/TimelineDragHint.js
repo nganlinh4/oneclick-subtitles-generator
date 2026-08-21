@@ -5,14 +5,14 @@ import { useEffect, useRef, useState } from 'react';
 // until the user has dragged once in the session. Owns its own animation
 // state/RAF loop; the host only supplies whether selection is enabled, whether
 // a drag has happened, and the translator.
-const TimelineDragHint = ({ onSegmentSelect, hasDraggedInSession, t }) => {
+const TimelineDragHint = ({ onSegmentSelect, hasDraggedInSession, hasLyrics, t }) => {
     const [showDragHint, setShowDragHint] = useState(false);
     const dragHintAnimationRef = useRef(null);
     const [dragHintAnimationTime, setDragHintAnimationTime] = useState(0);
 
     // Handle drag hint animation - show when segment selection is enabled but no dragging has been done
     useEffect(() => {
-        if (onSegmentSelect && !hasDraggedInSession) {
+        if (onSegmentSelect && !hasDraggedInSession && !hasLyrics) {
             // Start showing the hint after a short delay
             const showTimer = setTimeout(() => {
                 setShowDragHint(true);
@@ -40,7 +40,7 @@ const TimelineDragHint = ({ onSegmentSelect, hasDraggedInSession, t }) => {
                 cancelAnimationFrame(dragHintAnimationRef.current);
             }
         }
-    }, [onSegmentSelect, hasDraggedInSession]);
+    }, [onSegmentSelect, hasDraggedInSession, hasLyrics]);
 
     // Clean up animation frame on unmount
     useEffect(() => {

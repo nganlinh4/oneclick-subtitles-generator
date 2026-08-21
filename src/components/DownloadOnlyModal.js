@@ -11,7 +11,7 @@ import {
 } from '../platform/downloadCookiePreference';
 
 import { cancelDownloadOnly } from '../utils/downloadOnlyUtils';
-import { showErrorToast } from '../utils/toastUtils';
+import { showErrorToast, showSuccessToast } from '../utils/toastUtils';
 import LoadingIndicator from './common/LoadingIndicator';
 import WavyProgressIndicator from './common/WavyProgressIndicator';
 
@@ -201,6 +201,10 @@ const DownloadOnlyModal = ({
         return;
       }
       onClose();
+      showSuccessToast(t(
+        'download.downloadOnly.completed',
+        'Download complete. The file was saved to the location you selected.'
+      ));
     } catch (error) {
       console.error('Error starting download:', error);
       setIsDownloading(false);

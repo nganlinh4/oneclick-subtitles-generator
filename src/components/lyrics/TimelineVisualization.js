@@ -543,6 +543,7 @@ const TimelineVisualization = ({
             <TimelineDragHint
                 onSegmentSelect={onSegmentSelect}
                 hasDraggedInSession={hasDraggedInSession}
+                hasLyrics={Array.isArray(lyrics) && lyrics.length > 0}
                 t={t}
             />
 

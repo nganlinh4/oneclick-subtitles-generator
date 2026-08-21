@@ -63,7 +63,11 @@ export const showToast = (message, type = 'info', duration = 6000, className = '
 /**
  * Shows an info toast
  */
-export const showInfoToast = (message, duration = 6000) => {
+export const showInfoToast = (message, duration = 6000, key) => {
+  if (key && window.addToast) {
+    window.addToast(message, 'info', duration, key);
+    return;
+  }
   return showToast(message, 'info', duration);
 };
 

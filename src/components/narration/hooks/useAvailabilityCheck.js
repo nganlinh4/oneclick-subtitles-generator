@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useState } from 'react';
 import { isDesktopRuntime } from '../../../platform/desktopRuntime';
 import { nativeNarrationAdapter } from '../../../platform/nativeNarrationAdapter';
 import { subscribeSpeechLifecycle } from '../../../platform/speechService';
@@ -118,22 +118,18 @@ export const getGeminiCredentialAvailability = (snapshot) => {
  * Native probing is mount-scoped; changing the selected method only changes presentation.
  */
 const useAvailabilityCheck = ({
-  narrationMethod,
   setIsAvailable,
   setIsGeminiAvailable,
   setIsChatterboxAvailable,
   setIsEdgeTTSAvailable,
   setIsGTTSAvailable,
   setIsCheckingAvailability,
-  setError,
-  t
 }) => {
   const [nativeAvailability, setNativeAvailability] = useState(
     unavailableNativeNarrationAvailability
   );
   const [nativeChecking, setNativeChecking] = useState(true);
   const [credentialAvailability, setCredentialAvailability] = useState(checkingCredential);
-  const availabilityErrorRef = useRef('');
 
   useEffect(() => {
     let disposed = false;
@@ -229,55 +225,23 @@ const useAvailabilityCheck = ({
     setIsGeminiAvailable(geminiAvailable);
     setIsCheckingAvailability(checking);
 
-    const currentStatus = {
-      f5tts: nativeAvailability.f5Status,
-      chatterbox: nativeAvailability.chatterboxStatus,
-      'edge-tts': nativeAvailability.edgeTtsStatus,
-      gtts: nativeAvailability.gttsStatus,
-    }[narrationMethod];
-    let nextAvailabilityError = '';
-    if (narrationMethod === 'gemini' && !checking) {
-      if (!geminiBackendAvailable) {
-        nextAvailabilityError = t(
-          'narration.engineUnavailableMessage',
-          'This narration engine is not ready. Install or start it in Settings > Voice & transcription engines.'
-        );
-      } else if (!credentialAvailability.available) {
-        nextAvailabilityError = t(
-          'narration.geminiCredentialUnavailableMessage',
-          'Gemini narration needs a usable API key. Add or replace one in Settings > API Keys.'
-        );
-      }
-    } else if (currentStatus && !currentStatus.available) {
-      nextAvailabilityError = t(
-        'narration.engineUnavailableMessage',
-        'This narration engine is not ready. Install or start it in Settings > Voice & transcription engines.'
-      );
-    }
-
-    // Availability polling must not erase generation/runtime errors owned by other hooks.
-    const previousAvailabilityError = availabilityErrorRef.current;
-    availabilityErrorRef.current = nextAvailabilityError;
-    setError((currentError) => (
-      currentError === '' || currentError === previousAvailabilityError
-        ? nextAvailabilityError
-        : currentError
-    ));
+    // Readiness is passive status, not an attempted operation. The render layer already disables
+    // unavailable methods and explains where to install/start them. Writing that status into the
+    // shared action-error channel made `useNarrationEffects` emit a red toast merely because the
+    // editor mounted — commonly while a user was importing subtitles. Only an explicit narration
+    // action may populate that error channel.
   }, [
     checking,
     credentialAvailability.available,
     geminiAvailable,
     geminiBackendAvailable,
-    narrationMethod,
     nativeAvailability,
-    setError,
     setIsAvailable,
     setIsChatterboxAvailable,
     setIsCheckingAvailability,
     setIsEdgeTTSAvailable,
     setIsGTTSAvailable,
     setIsGeminiAvailable,
-    t,
   ]);
 
   return {
