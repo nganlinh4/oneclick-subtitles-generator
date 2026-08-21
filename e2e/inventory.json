@@ -9,7 +9,7 @@
     "status: green (passing), red (written and failing for a recorded product reason), planned.",
     "A red entry is not a gap in coverage -- it is coverage that has found something."
   ],
-  "updated": "2026-08-20",
+  "updated": "2026-08-21",
   "binary": {
     "e2e": "target/x86_64-pc-windows-msvc/release/osg-desktop.exe built with --features e2e-automation",
     "installed": "NSIS setup from --features production, exercised by the isolated installed smoke"
@@ -95,7 +95,7 @@
       ],
       "runsAgainst": "e2e-binary",
       "status": "green",
-      "lastGreenCommit": "e1f7da00"
+      "lastGreenCommit": "c1a5b47d"
     },
     {
       "name": "defaultFont",
@@ -150,7 +150,7 @@
       "runsAgainst": "e2e-binary",
       "status": "green",
       "note": "'Download Only' is save-to-disk, not load-into-editor: it downloads, exports to the chosen path and discards the candidate. Measured green on the real binary: the scan returned 240p/144p and the export wrote 440,628 bytes.",
-      "lastGreenCommit": "e1f7da00"
+      "lastGreenCommit": "c1a5b47d"
     },
     {
       "name": "editPersistRelaunch",
@@ -227,7 +227,7 @@
         "independent FFmpeg decode and SSIM against the native preview frame"
       ],
       "note": "Green against the real binary: native decode/composite/encode/mux completed, the saved MP4 contained independently probed video and audio streams with the expected duration, and its decoded frame matched the editor's native preview at SSIM >= 0.95. The journey found and drove four product defects to green: missing subtitle admission, selecting a video track as audio plus malformed MP4 Opus parameters, refusing a valid audio-tail presentation after video EOS, and rejecting every successful publication because the artifact and immutable media snapshot were correctly separate files.",
-      "lastGreenCommit": "10018d16"
+      "lastGreenCommit": "c1a5b47d"
     },
     {
       "name": "localFileImport",
@@ -256,7 +256,7 @@
       "runsAgainst": "e2e-binary",
       "status": "green",
       "note": "The first real run exposed two production defects that mocks missed: package-status polling launched overlapping full-tree scans during publication, reaching 562 threads and about 11 GiB private memory; and Rust emitted job_id/timeline_offset_ms while JavaScript required jobId/timelineOffsetMs, so the first progress event cancelled every healthy job. Both are fixed and the unchanged journey is green.",
-      "lastGreenCommit": "43831074"
+      "lastGreenCommit": "c1a5b47d"
     },
     {
       "name": "geminiGeneration",
@@ -277,7 +277,8 @@
       ],
       "runsAgainst": "e2e-binary",
       "status": "green",
-      "note": "Drives the real file import, range selection, Gemini method choice and Process control. It proves only safe refusal, not provider success."
+      "note": "Drives the real file import, range selection, Gemini method choice and Process control. It proves only safe refusal, not provider success.",
+      "lastGreenCommit": "c1a5b47d"
     },
     {
       "name": "translation",
@@ -320,7 +321,7 @@
       "runsAgainst": "e2e-binary",
       "status": "green",
       "note": "The first runs found two production defects: unchanged native package progress was replayed with the same durable sequence and cancelled installation, and successful narration artifacts were globally owned with project_id NULL. Both are fixed; the unchanged strict journey is green.",
-      "lastGreenCommit": "b54748ef"
+      "lastGreenCommit": "c1a5b47d"
     },
     {
       "name": "narrationAlignment",
@@ -341,7 +342,7 @@
       "runsAgainst": "e2e-binary",
       "status": "green",
       "note": "The first attempted run exposed a harness safety defect: narration export bypassed the staged media-export destination and opened a real OS dialog. Every native picker/save call is now centralized; automation builds fail closed and compile no native-dialog implementation. The unchanged customer click then generated, aligned, exported, and independently probed one valid M4A without an OS dialog.",
-      "lastGreenCommit": "f20325d4"
+      "lastGreenCommit": "c1a5b47d"
     },
     {
       "name": "installedGolden",
@@ -352,6 +353,13 @@
     }
   ],
   "knownProductFindings": [
+    {
+      "finding": "A successful URL download wrote the requested video and then showed a failure toast while leaving the modal open.",
+      "foundBy": "urlToPreview",
+      "status": "fixed",
+      "severity": "critical",
+      "note": "MediaExportEvent camel-cased its variant name but emitted bytes_written while the strict WebView boundary required bytesWritten. The completion acknowledgement was rejected after the file had already been written. The Rust producer now pins the exact field contract, and the journey re-inspects terminal UI after the file appears so bytes-on-disk cannot hide a visible failure."
+    },
     {
       "finding": "A freshly imported subtitle file was presented as saved but existed only in React memory.",
       "foundBy": "unicodeCues",
@@ -486,10 +494,10 @@
     }
   ],
   "suiteRun": {
-    "when": "2026-08-20",
-    "commit": "f64443bc",
-    "how": "targeted persistence audit against the rebuilt e2e binary; each persistence workflow used separate seed and verification application processes",
-    "result": "3 of 3 green across process restarts: edited cue, Unicode import, project-owned formatted translation; full source suite 235 files / 2179 assertions green",
+    "when": "2026-08-21",
+    "commit": "c1a5b47d",
+    "how": "guarded automation binary with one isolated profile and one desktop process per journey; persistence workflows additionally used separate seed and verification processes",
+    "result": "real URL save, native decoded export, local ASR, narration plus aligned audio export, Gemini credential refusal, edited-cue persistence, Unicode persistence, translation persistence, and native tools green; full Rust workspace and 235 frontend files / 2179 assertions green",
     "durations": {
       "editPersistRelaunch": "about 1 minute",
       "unicodeCues": "about 1 minute",
