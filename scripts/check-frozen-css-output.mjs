@@ -11,7 +11,9 @@ import { fileURLToPath } from 'node:url';
  * REPINNED because the build began minifying CSS again, not because the design changed. `esbuild`
  * had become undeclared and unresolvable, so `cssMinify: 'esbuild'` silently produced an unminified
  * stylesheet; the previous pin (682_209 bytes, one rule per line) recorded that state. With the
- * dependency declared again the same sources emit 587_843 minified bytes.
+ * dependency declared again the same sources emitted 587_843 minified bytes. The current reviewed
+ * pin is 16 bytes larger because long localized action labels now grow their pill instead of
+ * painting outside its fixed height; screenshot workflows cover both URL and local-media forms.
  *
  * The design was verified unchanged rather than assumed: all 151 Material custom properties, and
  * the album-art, floating-scrollbar and liquid-glass surface counts, are identical. Two counters
@@ -22,9 +24,9 @@ import { fileURLToPath } from 'node:url';
  * authority on the design and this file is the authority on the artefact.
  */
 export const FROZEN_CSS_ARTIFACT = Object.freeze({
-  fileName: 'index-PeXkUFIz.css',
-  sha256: '06e02f8c03e95a2a329615194882f0f02f766e68c07ae17ec6ab6cd80cc2ec7e',
-  sizeBytes: 587_843,
+  fileName: 'index-gfYxaAKN.css',
+  sha256: '9794e08b6f67e13e005f8f7ec54b8244047de276663dc9a52e37e853ca98bc5c',
+  sizeBytes: 587_859,
   parity: Object.freeze({
     albumArtCount: 22,
     customSliderCount: 44,
