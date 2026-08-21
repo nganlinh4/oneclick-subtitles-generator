@@ -2,7 +2,7 @@
   "schemaVersion": 5,
   "algorithm": "sha256",
   "normalization": "binary exact; UTF-8 BOM ignored, CRLF/CR normalized to LF, terminal newlines ignored",
-  "baselineRevision": "5850d33b761447fdb444fa811645511b7050abad",
+  "baselineRevision": "09d95c89c69dbdbf10f79f1c47913881f99d9250",
   "retiredExactFiles": {
     "public/oauth2callback.html": "c19855fd5a3f19af1eea1c1fed6e7794a342136223dd60dbead2586d4298fd90",
     "src/assets/fonts/GoogleSansFlex.ttf": "eae5ed6ddefbd44ab9693b84454ce46f3f2de0fb4f7cc5b54138c50c5b347d70",
@@ -169,10 +169,10 @@
     "src/styles/PromptEditor.css": "c1b424370b8b4b9ce40d0e134044b317ec2c2a95dbd91c84027561e3b9956731",
     "src/styles/QueueManagerPanel.css": "4f34afd36d4a8897f58e654c5d6d3878f8041b78b86e67b3c016774d19f466d6",
     "src/styles/SegmentRetryModal.css": "3a267cd10cd0f44242993fc3bb42c8bb6d57583b90fb8236c1e618cf4b69e761",
-    "src/styles/settings/about.css": "9ca8a9e30cb4d9107bdb74e53c2f4c1a7a926bff5f5a4e6b21b9d2167e6dd27f",
+    "src/styles/settings/about.css": "f31204ca5b1b04e5846f6a51e4d85ffcaf7f86610127e6377ea993095a870358",
     "src/styles/settings/api-key.css": "f0193ba1de4ef58deef218814b79b82b6d8d88dc1b2056d4dbcc8add74d0531b",
     "src/styles/settings/appearance.css": "4c4cc096039a1b27b7817206b1d05a3c2eb53de998bbf624608bfe0ad1c5dc59",
-    "src/styles/settings/base.css": "c8b47c929e3af72364f79940de8250ad2df0349ef8678cd4f751a02a1f22a672",
+    "src/styles/settings/base.css": "e7219cdda195abd0de88d4cbf2a626e7a1143236b69dba7f954299e17f680c86",
     "src/styles/settings/buttons.css": "1e8af0ed3924c80c74164b670d178c8daf8732e9584b6324b52f55fef4f33bdb",
     "src/styles/settings/cache.css": "6a07300d5cd01edcdadfb1f425459cc577f479a6a868c6cda54c212e784a279e",
     "src/styles/settings/checkbox-fix.css": "3ce3758335768350a4f93028c3a5aafc22420383a06a10ace364646f8a9596f6",
@@ -180,7 +180,7 @@
     "src/styles/settings/customGeminiModels.css": "a896cb79e654289c83d71dea4fe4aaaec42d78905290d00f67011350c72edc71",
     "src/styles/settings/customModelDialog.css": "04650db06d97fc7ea537d356c7481bf9d9acc6717f79c98cc2c7b413b7e820c5",
     "src/styles/settings/gemini-paused-message.css": "34871043e7fa0dcea2dc9e2f8dc428094e3ed775d5bd658b5a6b5bfba09145e9",
-    "src/styles/settings/header-footer.css": "f3c6adf5fc9244ab7369b10a741941d576ed5a00c98b58bd46b721e0db97be77",
+    "src/styles/settings/header-footer.css": "b7a667d9ff27eefe4d8075b73955072610b797039118bbcbc1e5c1a69bafae0f",
     "src/styles/settings/modelDialog.css": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
     "src/styles/settings/modelManagement.css": "f82a6458facf12375a51d104b57befa3db6a7bed4fe678d10e9d18b242bd5d6a",
     "src/styles/settings/oauth.css": "5631afe809cae622eb32a691953f8fd85a3ae1b29c48bde2650269da9e4f2c85",
@@ -189,7 +189,7 @@
     "src/styles/settings/prompts.css": "e81b7fccc79f9aaa170759cfa36016d913b015ee30528de4d3d63a011384bd96",
     "src/styles/settings/responsive.css": "d06c35fddf1031dbb1e96ba7914510ebaf1ff8099c042a6c44d013484863451d",
     "src/styles/settings/scrollbar-fix.css": "e71c41138bd2bba6f3d10889894605984359c5fd8549533c3ba891562c4b2ea2",
-    "src/styles/settings/tabs.css": "15488f7fdbc078d9ad2a0f42f279603b226ddb37b14f661fde1a167faeeba44a",
+    "src/styles/settings/tabs.css": "ccc0c252301e264c02b3ad51ceca31e011b11e4c2be1176e80da6b10e2ca8f4e",
     "src/styles/settings/translation-language-input.css": "bcad09c7e2b54c63a2db04a42bcd8520b5c1d07bd7d13ee3f9a7e4c9360c3c44",
     "src/styles/settings/video-processing-redesign.css": "ae4da8c87999934ba3b47793d964c540909b4d0e30a1ccf91637c4697b894a3b",
     "src/styles/settings/video-processing.css": "8c24b2a4de4f728a7ac4f7146fc59b4f56beb3600ddd54969e93cac5b2f9ecbe",
@@ -252,7 +252,7 @@
       ]
     },
     "src/i18n/locales/en/backgroundGenerator.json": {
-      "hash": "c8a897ce29e32f545dff379b0a703a5f746934d3ef69e57587c6c66f594bc507",
+      "hash": "f9670157e9a8ca90c260abaaa0b15f88bccd10adf8c9333f4131f19a24534000",
       "keys": [
         "albumArt",
         "clearImages",
@@ -1479,7 +1479,7 @@
       ]
     },
     "src/i18n/locales/en/settings.json": {
-      "hash": "01f8a5eae7568e6fa00e76ce8ff39c22ace793f29e84b284b776bb5829d8d912",
+      "hash": "432346f4840566e5aeebaebc4cd85b4350057258fcb4b81120fb231826fe362c",
       "keys": [
         "about",
         "accessDeniedDescription",
@@ -2304,7 +2304,7 @@
       ]
     },
     "src/i18n/locales/en/videoRendering.json": {
-      "hash": "57826878788776881be3ad0cbb98daf2c3c70d9313bfab9ff98df365eda0e2c0",
+      "hash": "8d876732bf3152ea0a8e065c848b5b702b8abb25561ec15a7555fc62741eb56f",
       "keys": [
         "addToQueue",
         "addVideosToQueue",
@@ -7885,10 +7885,10 @@
       ]
     },
     "src/components/BackgroundImageGenerator.js": {
-      "hash": "b9f197524088563cf3399d511dd873b8119eac0cbc5d3be8e48401f8e8955fec",
+      "hash": "a4710a7232eb5ae6a3b6d11e098707d44774b1fd2f99f0bd5b4e37793dfdf51b",
       "rootCount": 1,
       "roots": [
-        "2cd98176c710257ac7b93250202ecc63135ab57a497b8a4b6b6205f2adb87051"
+        "ff6e81fdf609b2f47896b7a6231f3db5c9d75b89ee94a6d3299b5e55ce6d301c"
       ]
     },
     "src/components/BackgroundMusicSection.jsx": {
@@ -9337,10 +9337,10 @@
       ]
     },
     "src/components/VideoRenderingSection.js": {
-      "hash": "5052f4219a78f518f63a51dda4cb3707f6c56010e2a854f2d8686b21c1744986",
+      "hash": "292099250019f5ee21e65c6d5abb2c3f6f7e44fbf247d59cd5cd2cbf1bf499f5",
       "rootCount": 1,
       "roots": [
-        "1be5653ca8f0b36b4aedc4f0623d719c1316f1be4be3e6268f200eeda7df71a6"
+        "4c78105ef5c076fb181ef0ca92b38d31fa1dbefce1dc4459691c3ae41e5be954"
       ]
     },
     "src/components/VideoRenderingSection/InputSelectionRow.js": {
