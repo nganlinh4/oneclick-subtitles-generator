@@ -2,7 +2,7 @@
   "schemaVersion": 2,
   "algorithm": "sha256",
   "normalization": "shared schema-2 AST; exact text ignores UTF-8 BOM, normalizes CRLF/CR to LF, and ignores terminal newlines",
-  "baselineRevision": "5fd0df6f926e4d793b8b1f356fbb8fd010489a2d",
+  "baselineRevision": "2ae11500b573e4069ffa7ec8aba50be5f42fb0ee",
   "exactFiles": {
     "components/react/LoadingIndicator.css": "d98e5054e73f09a7421af975192829a102aa108ed0888bb7538da27faf50e3b8",
     "components/react/LoadingIndicator/all-shapes.txt": "3036dd3e6cea06f90b51a9d123a1a878ce8fc2ec75da4495f59616e7077a2fe7",
