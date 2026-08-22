@@ -12,9 +12,9 @@
  * actually decoded the file. Until it has, there is no honest composition size and the surface stays
  * dormant instead of guessing 16:9.
  *
- * Nothing here logs, and a failure to resolve is dormancy rather than an error: a session with no
- * desktop runtime, or media that is not a project asset, is a state in which the native compositor
- * simply is not available, not a fault to report at the user.
+ * A browser session with no desktop runtime remains dormant. A selected desktop source that fails
+ * to resolve is returned as a typed binding error; silently collapsing that case to dormancy left
+ * customers with subtitle rows and an unexplained raw-video preview.
  */
 
 import { useEffect, useState } from 'react';
@@ -22,7 +22,7 @@ import { useEffect, useState } from 'react';
 import { isDesktopRuntime } from '../../../platform/desktopRuntime';
 import { ensureNativeRenderProject, resolveNativeRenderSource } from '../../../platform/renderService';
 
-const IDLE = Object.freeze({ projectId: null, sourceAsset: null });
+const IDLE = Object.freeze({ projectId: null, sourceAsset: null, bindingError: null });
 
 /**
  * The project and source asset one preview surface's requests belong to, or nulls while unresolved.
@@ -44,10 +44,20 @@ export const useNativePreviewBinding = (source) => {
       try {
         const asset = await resolveNativeRenderSource(source);
         const projectId = await ensureNativeRenderProject(asset);
-        if (!superseded) setBinding({ projectId, sourceAsset: asset });
-      } catch {
-        // Dormant, not failed. The surface asks for nothing and the editor is unchanged.
-        if (!superseded) setBinding(IDLE);
+        if (!superseded) setBinding({ projectId, sourceAsset: asset, bindingError: null });
+      } catch (error) {
+        // A selected native source that cannot bind is a real refusal, not dormancy. Keeping this
+        // error typed lets the UI report it outside the picture instead of silently showing raw video.
+        if (!superseded) {
+          setBinding({
+            projectId: null,
+            sourceAsset: null,
+            bindingError: {
+              code: error?.code ?? 'previewProjectBindingFailed',
+              nativeCode: error?.nativeCode ?? null,
+            },
+          });
+        }
       }
     })();
     return () => {

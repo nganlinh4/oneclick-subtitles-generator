@@ -60,7 +60,7 @@ const useNativePreview = ({
   trimEnd = 0,
   currentTime = 0,
 }) => {
-  const { projectId, sourceAsset } = useNativePreviewBinding(source);
+  const { projectId, sourceAsset, bindingError } = useNativePreviewBinding(source);
   const dimensions = useVideoSourceDimensions(videoRef, sourceKey);
 
   const {
@@ -96,7 +96,7 @@ const useNativePreview = ({
     status,
     // A transport refusal is the more specific of the two, so it wins; a bake or staging refusal is
     // reported only when the transport had nothing to say.
-    error: error ?? requestError,
+    error: error ?? requestError ?? bindingError,
     onFrameLoadError,
     releaseSurface,
     /** The layer being asked for now, which is not yet the layer `frame` carries while it changes. */

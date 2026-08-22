@@ -45,7 +45,6 @@ function App() {
   // Set up app effects
   useAppEffects({
     ...appState,
-    handleDownloadAndPrepareYouTubeVideo: appHandlers.handleDownloadAndPrepareYouTubeVideo,
     t
   });
 

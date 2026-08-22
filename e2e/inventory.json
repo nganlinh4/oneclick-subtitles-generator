@@ -93,10 +93,10 @@
       "name": "freshInstallVisual",
       "kind": "shell-visual",
       "file": "journeys/freshInstallVisual.journey.js",
-      "capability": "Both first-run screens fill the real application window and present a centred, bounded setup surface.",
+      "capability": "Both first-run screens fill the real application window and preserve the original simple controls layout.",
       "assertions": [
         "welcome and preference overlays cover the viewport",
-        "the preference slate is centred, bounded, titled, and screenshot-backed"
+        "the original theme, language and continue controls remain centred in one row and screenshot-backed"
       ],
       "status": "green"
     },
@@ -181,6 +181,32 @@
       "status": "green",
       "note": "'Download Only' is save-to-disk, not load-into-editor: it downloads, exports to the chosen path and discards the candidate. Measured green on the real binary: the scan returned 240p/144p and the export wrote 440,628 bytes.",
       "lastGreenCommit": "c1a5b47d"
+    },
+    {
+      "name": "urlLocalAsrPreview",
+      "kind": "workflow",
+      "file": "journeys/urlLocalAsrPreview.journey.js",
+      "capability": "A real URL becomes one durable editor project whose acquired subtitles are drawn on the video.",
+      "chain": [
+        "resolve a real YouTube URL",
+        "download it through the generation path rather than Download Only",
+        "activate exactly one durable subtitle project",
+        "use provider captions when supplied, otherwise transcribe with the real managed local ASR engine",
+        "publish cues and a native composited preview frame"
+      ],
+      "assertions": [
+        "the active URL does not change during media preparation",
+        "exactly one subtitle project owns the downloaded media",
+        "durable cues and a native frame are both present",
+        "no inline video error or failure toast is visible"
+      ],
+      "oracles": [
+        "visible DOM and screenshot",
+        "the application's own SQLite database, read only"
+      ],
+      "runsAgainst": "e2e-binary",
+      "status": "green",
+      "note": "The first run reproduced the reported projectScopeMismatch: mounting the file tab reactivated downloaded media as a local upload while the renderer minted another asset-keyed project, leaving cues and media in separate projects. The unchanged real URL path is now green with exactly one project, six durable provider cues, a seek into a real cue, and a screenshot showing that cue in native preview pixels. If a provider supplies no track, the same journey continues through the managed local ASR engine."
     },
     {
       "name": "editPersistRelaunch",

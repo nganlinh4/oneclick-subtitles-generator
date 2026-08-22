@@ -465,27 +465,6 @@
   font-size: 14px;
 }
 
-/* The subtitle preview being unavailable, said plainly. It wears the error treatment on purpose:
-   it must read as a report about the preview and never as the preview itself, so it takes nothing
-   from the user's subtitle settings and sits above the player rather than over it. */
-.native-preview-unavailable {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 12px;
-}
-
-.native-preview-retry {
-  flex: none;
-  border: 1px solid currentColor;
-  border-radius: 999px;
-  background: transparent;
-  color: inherit;
-  font: inherit;
-  padding: 4px 12px;
-  cursor: pointer;
-}
-
 /* Empty state */
 .no-video-message {
   padding: 60px 20px;

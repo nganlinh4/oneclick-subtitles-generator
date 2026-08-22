@@ -13,8 +13,9 @@ import { fileURLToPath } from 'node:url';
  * stylesheet; the previous pin (682_209 bytes, one rule per line) recorded that state. With the
  * dependency declared again the same sources emitted 587_843 minified bytes. The current reviewed
  * pin restores the original copy-free first-run controls, fixes their row alignment, and removes
- * the redundant empty-project sentence from the video surface. Real-binary screenshots cover both
- * surfaces: the three original controls stay on one row and a cue-less video remains unobstructed.
+ * the redundant empty-project sentence from the video surface. The current pin also moves preview
+ * failures out of the picture into the toast channel and restores the native render player's
+ * play/seek/mute/fullscreen controls. Real-binary screenshots cover both preview surfaces.
  *
  * The design was verified unchanged rather than assumed: all 151 Material custom properties, and
  * the album-art, floating-scrollbar and liquid-glass surface counts, are identical. Two counters
@@ -25,9 +26,9 @@ import { fileURLToPath } from 'node:url';
  * authority on the design and this file is the authority on the artefact.
  */
 export const FROZEN_CSS_ARTIFACT = Object.freeze({
-  fileName: 'index-D8zLbWMP.css',
-  sha256: 'd20568791ced64c81174ac9c96f73ec8e2b1f1dde39f9aa60445c9414114e66e',
-  sizeBytes: 588_293,
+  fileName: 'index-DRPbBNQE.css',
+  sha256: '97a6badba4c97b48251d09b4e06876faf86aebbfa9cf88b31e59a974803acc55',
+  sizeBytes: 589_103,
   parity: Object.freeze({
     albumArtCount: 22,
     customSliderCount: 44,

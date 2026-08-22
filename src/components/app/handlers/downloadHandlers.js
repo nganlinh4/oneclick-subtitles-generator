@@ -52,11 +52,9 @@ const activateProjectCache = (cacheId) => {
  *
  * Cross-handler deps passed in as params to keep dependency direction one-way:
  *  - handleSrtUpload (from subtitleHandlers) for applying pending auto subtitles
- *  - handleTabChange (from settingsHandlers) for system-initiated tab changes
  *  - pendingAutoSubtitleRef shared with handleGenerateSubtitles in AppHandlers
  */
 export const createDownloadHandlers = ({
-  selectedVideo,
   setStatus,
   setSubtitlesData,
   setIsDownloading,
@@ -69,7 +67,6 @@ export const createDownloadHandlers = ({
   setUploadedFileData,
   pendingAutoSubtitleRef,
   handleSrtUpload,
-  handleTabChange,
   t,
 }) => {
   /**
@@ -537,31 +534,7 @@ export const createDownloadHandlers = ({
     }
   };
 
-  // Create a wrapper function for downloadAndPrepareYouTubeVideo
-  const handleDownloadAndPrepareYouTubeVideo = async () => {
-    if (!selectedVideo) {
-      console.error("No YouTube video selected");
-      return;
-    }
-
-    // Create a wrapper for system-initiated tab changes
-    const systemTabChange = (tab) => handleTabChange(tab, false);
-
-    await downloadAndPrepareYouTubeVideo(
-      selectedVideo,
-      setIsDownloading,
-      setDownloadProgress,
-      setStatus,
-      setCurrentDownloadId,
-      systemTabChange,
-      setUploadedFile,
-      setIsSrtOnlyMode,
-      t
-    );
-  };
-
   return {
     startBackgroundVideoProcessing,
-    handleDownloadAndPrepareYouTubeVideo,
   };
 };

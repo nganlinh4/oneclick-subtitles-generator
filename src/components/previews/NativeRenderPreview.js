@@ -6,6 +6,7 @@ import VideoCropControls from '../VideoCropControls';
 import '../../styles/VideoPreviewPanel.css';
 import NativeCompositedFrame from './native/NativeCompositedFrame';
 import useNativePreview from './native/useNativePreview';
+import useNativePreviewToast from './native/useNativePreviewToast';
 
 /**
  * The render tab's preview, drawn by the same compositor that writes the file.
@@ -17,14 +18,10 @@ import useNativePreview from './native/useNativePreview';
  * back. None of those can recur here, because nothing in this component draws a subtitle: it shows a
  * `<video>` for playback and, the moment playback stops, the frame `crates/osg-compositor` produced.
  *
- * WHAT IS NOT REPRODUCED, stated rather than approximated: the old player's own control bar.
- * A browser's `<video controls>` bar is painted inside the video element's stacking context, so an
- * overlay carrying the composited frame necessarily covers it, and an invisible-but-clickable control
- * bar is worse than none. The panel therefore uses this application's own established video
- * interaction instead — click the surface or press space to toggle playback, exactly as
- * `previews/VideoPlayerElement.js` does — and the timeline for this same video is the trim row
- * directly beneath the panel. The imperative `seekTo(frame)` that `TrimTimelineRow` drives is
- * preserved unchanged.
+ * The removed player's control bar is reproduced with native WebView controls above the composited
+ * frame: play/pause, seek, time, mute and fullscreen. Using `<video controls>` is not sufficient
+ * because the native frame necessarily covers the video element's own painted control layer.
+ * The imperative `seekTo(frame)` that `TrimTimelineRow` drives is preserved unchanged.
  */
 
 const VIDEO_EXTENSIONS = ['.mp4', '.mov', '.avi', '.mkv', '.webm', '.m4v'];
@@ -68,6 +65,12 @@ const normalizeCrop = (crop) => (crop ? {
   flipY: crop.flipY ?? false,
 } : { ...EMPTY_CROP });
 
+const formatTime = (seconds) => {
+  const safe = Number.isFinite(seconds) && seconds > 0 ? seconds : 0;
+  const minutes = Math.floor(safe / 60);
+  return `${minutes}:${String(Math.floor(safe % 60)).padStart(2, '0')}`;
+};
+
 const NativeRenderPreview = forwardRef(({
   videoFile,
   subtitles,
@@ -92,11 +95,13 @@ const NativeRenderPreview = forwardRef(({
   onCropChange = null,
 }, ref) => {
   const { t } = useTranslation();
+  const surfaceRef = useRef(null);
   const videoRef = useRef(null);
   const narrationRef = useRef(null);
 
   const [source, setSource] = useState(null);
   const [isPlaying, setIsPlaying] = useState(false);
+  const [isMuted, setIsMuted] = useState(false);
   const [currentTime, setCurrentTime] = useState(0);
   const [duration, setDuration] = useState(0);
   const [videoDimensions, setVideoDimensions] = useState(null);
@@ -177,6 +182,29 @@ const NativeRenderPreview = forwardRef(({
     else element.pause();
   }, []);
 
+  const seek = useCallback((time) => {
+    const element = videoRef.current;
+    if (!element) return;
+    const next = Math.min(Math.max(Number(time) || 0, 0), duration || 0);
+    element.currentTime = next;
+    setCurrentTime(next);
+    if (onSeek) onSeek(next);
+  }, [duration, onSeek]);
+
+  const toggleMute = useCallback(() => {
+    const element = videoRef.current;
+    if (!element) return;
+    element.muted = !element.muted;
+    setIsMuted(element.muted);
+  }, []);
+
+  const toggleFullscreen = useCallback(() => {
+    const surface = surfaceRef.current;
+    if (!surface) return;
+    if (document.fullscreenElement) document.exitFullscreen?.();
+    else surface.requestFullscreen?.();
+  }, []);
+
   useImperativeHandle(ref, () => ({
     /** Frames, not seconds: `TrimTimelineRow` speaks the render settings' frame grid. */
     seekTo: (frame) => {
@@ -224,6 +252,13 @@ const NativeRenderPreview = forwardRef(({
     currentTime,
   });
 
+  useNativePreviewToast({
+    error: nativePreview.error,
+    dormant: false,
+    onRetry: nativePreview.error === null ? null : nativePreview.releaseSurface,
+    t,
+  });
+
   const handleApplyCrop = () => {
     setAppliedCrop(tempCrop);
     if (onCropChange) onCropChange(tempCrop);
@@ -250,7 +285,7 @@ const NativeRenderPreview = forwardRef(({
   }
 
   return (
-    <div style={{ position: 'relative', width: '100%', height: '100%' }}>
+    <div ref={surfaceRef} className="native-render-preview" style={{ position: 'relative', width: '100%', height: '100%' }}>
       <video
         ref={videoRef}
         src={source.url}
@@ -292,13 +327,48 @@ const NativeRenderPreview = forwardRef(({
 
       {narrationAudioUrl && <audio ref={narrationRef} src={narrationAudioUrl} preload="auto" />}
 
-      {nativePreview.error && (
-        <div className="error" style={{ position: 'absolute', left: 0, right: 0, bottom: 0, zIndex: 3 }}>
-          {t('videoPreview.renderError', 'Error rendering subtitles: {{error}}', {
-            error: nativePreview.error.nativeCode ?? nativePreview.error.code,
-          })}
-        </div>
-      )}
+      <div className="native-render-controls" onClick={(event) => event.stopPropagation()}>
+        <button
+          type="button"
+          className="native-render-control-button"
+          data-osg-control="play-pause"
+          aria-label={isPlaying ? t('common.pause', 'Pause') : t('common.play', 'Play')}
+          onClick={togglePlayback}
+        >
+          <span className="material-symbols-rounded">{isPlaying ? 'pause' : 'play_arrow'}</span>
+        </button>
+        <span className="native-render-time">{formatTime(currentTime)}</span>
+        <input
+          className="native-render-seek"
+          data-osg-control="seek"
+          type="range"
+          min="0"
+          max={duration || 0}
+          step={frameRate > 0 ? 1 / frameRate : 0.01}
+          value={Math.min(currentTime, duration || 0)}
+          aria-label={t('videoPreview.seek', 'Seek video')}
+          onChange={(event) => seek(event.target.value)}
+        />
+        <span className="native-render-time">{formatTime(duration)}</span>
+        <button
+          type="button"
+          className="native-render-control-button"
+          data-osg-control="mute"
+          aria-label={isMuted ? t('common.unmute', 'Unmute') : t('common.mute', 'Mute')}
+          onClick={toggleMute}
+        >
+          <span className="material-symbols-rounded">{isMuted ? 'volume_off' : 'volume_up'}</span>
+        </button>
+        <button
+          type="button"
+          className="native-render-control-button"
+          data-osg-control="fullscreen"
+          aria-label={t('common.fullscreen', 'Fullscreen')}
+          onClick={toggleFullscreen}
+        >
+          <span className="material-symbols-rounded">fullscreen</span>
+        </button>
+      </div>
 
       {videoDimensions && (
         <VideoCropControls

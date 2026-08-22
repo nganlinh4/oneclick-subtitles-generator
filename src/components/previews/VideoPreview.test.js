@@ -1,4 +1,4 @@
-import { fireEvent, render, screen } from '@testing-library/react';
+import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 import useNativePreview from './native/useNativePreview';
@@ -168,6 +168,8 @@ const lastPreviewCall = () => vi.mocked(useNativePreview).mock.calls.at(-1)[0];
 
 beforeEach(() => {
   localStorage.clear();
+  window.addToast = vi.fn();
+  window.removeToastByKey = vi.fn();
   vi.mocked(useNativePreview).mockReset();
   vi.mocked(useNativePreview).mockReturnValue(dormant());
 });
@@ -257,63 +259,40 @@ describe('the native frame is the only thing that shows a subtitle', () => {
   });
 });
 
-describe('the unavailable state', () => {
-  it('says so when the compositor is dormant, in words that are not a subtitle', () => {
-    const { video } = mount();
-    expect(screen.queryByText(/Subtitle preview unavailable/)).toBeNull();
-
+describe('preview failures stay outside the picture', () => {
+  it('never inserts a dormant-state banner into the video surface', () => {
+    const { video, container } = mount();
     finishLoading(video);
 
-    const notice = screen.getByText(/Subtitle preview unavailable/);
-    expect(notice).toBeInTheDocument();
-    // It reports; it does not illustrate. Nothing about it comes from the user's settings, and it
-    // sits above the player rather than over the frame where a cue sits.
-    expect(notice.closest('.error')).not.toBeNull();
-    expect(notice.closest('.video-wrapper')).toBeNull();
-    for (const value of SENTINEL_VALUES) {
-      expect(notice.closest('.error').outerHTML).not.toContain(value);
-    }
-  });
-
-  it('stays quiet while the source itself is still loading', () => {
-    const { video } = mount();
-    fireEvent.loadedMetadata(video);
-
-    // Metadata but not yet playable: the preview has not started, which is not the same fact as the
-    // compositor being unavailable, and claiming it would flash over an editor that is about to work.
+    expect(container.querySelector('.video-container .error')).toBeNull();
     expect(screen.queryByText(/Subtitle preview unavailable/)).toBeNull();
-
-    fireEvent.canPlay(video);
-    expect(screen.getByText(/Subtitle preview unavailable/)).toBeInTheDocument();
   });
 
-  it('states a refusal by its stable code rather than leaving the surface blank', () => {
+  it('reports a typed refusal through the deduplicated toast channel', async () => {
     vi.mocked(useNativePreview).mockReturnValue(refused('previewSceneRefused'));
-    const { video } = mount();
+    const { video, container } = mount();
     finishLoading(video);
 
-    expect(screen.getByText(/previewSceneRefused/)).toBeInTheDocument();
-    expect(screen.queryByText(/Subtitle preview unavailable/)).toBeNull();
+    expect(container.querySelector('.video-container .error')).toBeNull();
+    await waitFor(() => expect(window.addToast).toHaveBeenCalledWith(
+      expect.stringMatching(/previewSceneRefused/),
+      'error',
+      8000,
+      'native-subtitle-preview',
+      expect.objectContaining({ text: 'Retry' }),
+    ));
   });
 
-  // A lost graphics device is terminal for the (project, media) pair until the surface is released,
-  // so without this the rest of the session shows no composited frame at all.
-  it('offers a retry that releases the surface after a device loss', () => {
+  it('the toast retry releases a terminal preview surface', async () => {
     const preview = refused('previewDeviceLost');
     vi.mocked(useNativePreview).mockReturnValue(preview);
     const { video } = mount();
     finishLoading(video);
 
-    fireEvent.click(screen.getByRole('button', { name: 'Retry' }));
-
+    await waitFor(() => expect(window.addToast).toHaveBeenCalled());
+    const button = window.addToast.mock.calls.at(-1)[4];
+    button.onClick();
     expect(preview.releaseSurface).toHaveBeenCalledTimes(1);
-  });
-
-  it('offers no retry for dormancy, because nothing was refused', () => {
-    const { video } = mount();
-    finishLoading(video);
-
-    expect(screen.queryByRole('button', { name: 'Retry' })).toBeNull();
   });
 });
 

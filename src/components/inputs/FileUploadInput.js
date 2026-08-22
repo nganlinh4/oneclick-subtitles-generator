@@ -3,7 +3,12 @@ import { useTranslation } from 'react-i18next';
 import { isDesktopRuntime } from '../../platform/desktopRuntime';
 import { nativeMediaDropService, sharedNativeMediaDropService } from '../../platform/mediaDropService';
 import { isPhysicalPointInsideElement } from '../../platform/nativeMediaDropTarget';
-import { ensureProjectOwnsNativeMedia } from '../../platform/nativeMediaOwnership';
+import {
+  ensureProjectOwnsNativeMedia,
+  readNativeMediaSession,
+  resolveOwnedNativeMediaProject,
+} from '../../platform/nativeMediaOwnership';
+import { applyNativeMediaSession } from '../../hooks/useNativeMediaSessionHydration';
 import {
   claimMediaDrop,
   clearMedia,
@@ -15,6 +20,29 @@ import { setCurrentCacheId as setRulesCacheId } from '../../utils/transcriptionR
 import { setCurrentCacheId as setSubtitlesCacheId } from '../../utils/userSubtitlesStore';
 import LoadingIndicator from '../common/LoadingIndicator';
 import '../../styles/FileUploadInput.css';
+
+export const reconcileSelectedNativeMedia = async ({
+  media,
+  activateAsLocal,
+  applyOwnedSession,
+  readSession = readNativeMediaSession,
+  resolveOwner = resolveOwnedNativeMediaProject,
+}) => {
+  const session = readSession();
+  if (session === null) {
+    await activateAsLocal(media);
+    return 'local';
+  }
+  if (session.assetId !== media?.assetId) {
+    throw new Error('The selected media does not match its active subtitle project.');
+  }
+  const owner = await resolveOwner(session);
+  if (owner === null) {
+    throw new Error('The selected media subtitle project is no longer available.');
+  }
+  applyOwnedSession(media, session);
+  return 'owned-session';
+};
 
 const FileUploadInput = ({ uploadedFile, setUploadedFile, setUploadedFileData, onVideoSelect, className, isSrtOnlyMode, setIsSrtOnlyMode, setStatus, subtitlesData, setVideoSegments, setSegmentsStatus }) => {
   const { t } = useTranslation();
@@ -260,10 +288,23 @@ const FileUploadInput = ({ uploadedFile, setUploadedFile, setUploadedFileData, o
       .then((media) => {
         if (!mounted || nativeOperationRef.current !== operation) return undefined;
         if (media) {
-          return activateNativeMedia(
+          const isCurrent = () => mounted && nativeOperationRef.current === operation;
+          return reconcileSelectedNativeMedia({
             media,
-            () => mounted && nativeOperationRef.current === operation
-          );
+            activateAsLocal: (selected) => activateNativeMedia(selected, isCurrent),
+            applyOwnedSession: (selected, session) => {
+              if (!isCurrent()) return;
+              applyNativeMediaSession({
+                media: selected,
+                cacheId: session.cacheId,
+                setUploadedFile,
+              });
+              if (onVideoSelect) onVideoSelect(null);
+              if (isSrtOnlyMode && setIsSrtOnlyMode) setIsSrtOnlyMode(false);
+              if (setUploadedFileData) setUploadedFileData(null);
+              displayFileInfo(selected);
+            },
+          });
         }
         const staleUrl = localStorage.getItem('current_file_url');
         if (isNativeMediaPlaybackUrl(staleUrl)) {
@@ -275,7 +316,15 @@ const FileUploadInput = ({ uploadedFile, setUploadedFile, setUploadedFileData, o
       });
 
     return () => { mounted = false; };
-  }, [activateNativeMedia]);
+  }, [
+    activateNativeMedia,
+    displayFileInfo,
+    isSrtOnlyMode,
+    onVideoSelect,
+    setIsSrtOnlyMode,
+    setUploadedFile,
+    setUploadedFileData,
+  ]);
 
   // Update fileInfo when uploadedFile changes (for auto-downloaded files)
   useEffect(() => {

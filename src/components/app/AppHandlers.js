@@ -97,9 +97,8 @@ export const useAppHandlers = (appState) => {
     });
 
   // Download handlers — depend on handleSrtUpload + handleTabChange (one-way).
-  const { startBackgroundVideoProcessing, handleDownloadAndPrepareYouTubeVideo } =
+  const { startBackgroundVideoProcessing } =
     createDownloadHandlers({
-      selectedVideo,
       setStatus,
       setSubtitlesData,
       setIsDownloading,
@@ -112,7 +111,6 @@ export const useAppHandlers = (appState) => {
       setUploadedFileData,
       pendingAutoSubtitleRef,
       handleSrtUpload,
-      handleTabChange,
       t,
     });
 
@@ -214,7 +212,6 @@ export const useAppHandlers = (appState) => {
     handleCancelDownload,
     handleTabChange,
     saveApiKeys,
-    handleDownloadAndPrepareYouTubeVideo,
     // New workflow handlers
     handleSegmentSelect,
     handleProcessWithOptions,

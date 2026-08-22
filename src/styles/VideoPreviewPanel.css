@@ -183,6 +183,66 @@
   transition: width 0.1s ease;
 }
 
+.video-preview-panel .native-render-controls {
+  position: absolute;
+  right: 10px;
+  bottom: 10px;
+  left: 10px;
+  z-index: 12;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 42px;
+  padding: 6px 10px;
+  border: 1px solid rgb(255 255 255 / 18%);
+  border-radius: 10px;
+  background: rgb(15 15 18 / 82%);
+  box-shadow: 0 4px 18px rgb(0 0 0 / 28%);
+  color: #fff;
+  backdrop-filter: blur(10px);
+}
+
+.video-preview-panel .native-render-control-button {
+  display: inline-flex;
+  flex: none;
+  align-items: center;
+  justify-content: center;
+  width: 32px;
+  height: 32px;
+  padding: 0;
+  border: 0;
+  border-radius: 50%;
+  background: transparent;
+  color: inherit;
+  cursor: pointer;
+}
+
+.video-preview-panel .native-render-control-button:hover,
+.video-preview-panel .native-render-control-button:focus-visible {
+  background: rgb(255 255 255 / 14%);
+  outline: none;
+}
+
+.video-preview-panel .native-render-control-button .material-symbols-rounded {
+  font-size: 22px;
+}
+
+.video-preview-panel .native-render-time {
+  flex: none;
+  min-width: 36px;
+  color: rgb(255 255 255 / 90%);
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
+  text-align: center;
+}
+
+.video-preview-panel .native-render-seek {
+  flex: 1;
+  min-width: 48px;
+  accent-color: var(--accent-color);
+  cursor: pointer;
+}
+
 /* Preview Info - Scoped to VideoPreviewPanel */
 .video-preview-panel .preview-info {
   display: grid;

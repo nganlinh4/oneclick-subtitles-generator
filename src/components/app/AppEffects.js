@@ -13,7 +13,6 @@ export const useAppEffects = (props) => {
     setVideoSegments,
     setShowVideoAnalysis,
     setVideoAnalysisResult,
-    setStatus,
     setTheme,
     setShowWaveformLongVideos,
     setTimeFormat,
@@ -22,9 +21,6 @@ export const useAppEffects = (props) => {
     setUseOptimizedPreview,
     subtitlesData,
     status,
-    handleDownloadAndPrepareYouTubeVideo,
-    uploadedFile,
-    t
   } = props;
 
   // Initialize UI effects after component mounts
@@ -273,28 +269,4 @@ export const useAppEffects = (props) => {
     return () => window.removeEventListener('storage', handleStorageChange);
   }, [setTheme, setShowWaveformLongVideos, setTimeFormat, setOptimizeVideos, setOptimizedResolution, setUseOptimizedPreview, setShowVideoAnalysis, setVideoAnalysisResult]);
 
-  // Effect to detect when subtitles are loaded from cache and prepare video for segments
-  useEffect(() => {
-    // Check if subtitles were loaded from cache
-    // Look for both the translation key and common text patterns in different languages
-    const isCacheLoadMessage =
-      (status?.translationKey === 'output.subtitlesLoadedFromCache') ||
-      (status?.message && status.type === 'success' &&
-       (status.message.includes('cache') ||
-        status.message.includes('bộ nhớ đệm') ||
-        status.message.includes('캐시')));
-
-    if (isCacheLoadMessage && subtitlesData) {
-      // For file upload tab - cached subtitles are ready to use
-      if (uploadedFile) {
-        // No need to prepare video segments when using cached subtitles
-        // The new simplified processing workflow doesn't require video splitting
-      }
-      // For YouTube tab, we need to download the video first
-      else if (handleDownloadAndPrepareYouTubeVideo) {
-        // We'll handle YouTube videos in a separate function to avoid making this effect too complex
-        handleDownloadAndPrepareYouTubeVideo();
-      }
-    }
-  }, [status, subtitlesData, uploadedFile, t, handleDownloadAndPrepareYouTubeVideo, setStatus]);
 };

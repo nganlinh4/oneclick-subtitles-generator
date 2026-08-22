@@ -18,9 +18,9 @@ import useVideoElementEvents from './useVideoElementEvents';
 import useNarrationRefreshEvents from './useNarrationRefreshEvents';
 import useVideoUiSync from './useVideoUiSync';
 import NativeCompositedFrame from './native/NativeCompositedFrame';
-import NativePreviewUnavailable from './native/NativePreviewUnavailable';
 import { selectPreviewCue } from './native/nativePreviewScene';
 import useNativePreview from './native/useNativePreview';
+import useNativePreviewToast from './native/useNativePreviewToast';
 import {
   EDITOR_PREVIEW_FRAME_RATE,
   EDITOR_PREVIEW_RESOLUTION,
@@ -319,6 +319,21 @@ const VideoPreview = ({ currentTime, setCurrentTime, setDuration, videoSource, f
 
   const subtitlePreviewDormant = previewIdle && previewHasCues && cueCoversNow;
 
+  useNativePreviewToast({
+    error: nativePreview.error,
+    dormant: subtitlePreviewDormant,
+    onRetry: nativePreview.error === null ? null : nativePreview.releaseSurface,
+    t,
+  });
+
+  useEffect(() => {
+    if (!error) {
+      window.removeToastByKey?.('video-source-error');
+      return;
+    }
+    window.addToast?.(error, 'error', 8000, 'video-source-error');
+  }, [error]);
+
   /**
    * One bounded word for what the subtitle preview is doing, published on the surface itself.
    *
@@ -450,22 +465,6 @@ const VideoPreview = ({ currentTime, setCurrentTime, setDuration, videoSource, f
       )}
 
       <div className="video-container" data-osg-preview={subtitlePreviewState}>
-        {error && <div className="error">{error}</div>}
-
-        {/* A native refusal is stated, never shown as a blank frame: an empty preview reads as an
-            empty subtitle. Dormancy is stated in its own words beside it, because "nothing was
-            asked for" and "what was asked for was refused" are different facts and only the second
-            one has a recovery. The retry releases the preview surface, which is what a lost
-            graphics device needs and the only thing that lifts it for this project/media pair. */}
-        {(nativePreview.error !== null || subtitlePreviewDormant) && (
-          <NativePreviewUnavailable
-            code={nativePreview.error === null
-              ? null
-              : nativePreview.error.nativeCode ?? nativePreview.error.code}
-            onRetry={nativePreview.error === null ? null : nativePreview.releaseSurface}
-          />
-        )}
-
         {/* Only show downloading UI if we're actually downloading and have progress > 0 */}
         {isDownloading && downloadProgress > 0 && (
           <div className="video-downloading">

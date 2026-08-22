@@ -17,6 +17,11 @@
   "recentVideos": "Recent Videos",
   "clearAll": "Clear All",
   "confirm": "Confirm",
+  "play": "Play",
+  "pause": "Pause",
+  "mute": "Mute",
+  "unmute": "Unmute",
+  "fullscreen": "Fullscreen",
   "jumpToCheckpoint": "Jump to last checkpoint (undo multiple steps)",
   "jumpToCheckpointWithShortcut": "Jump to last checkpoint (Ctrl+J)",
   "toast": {

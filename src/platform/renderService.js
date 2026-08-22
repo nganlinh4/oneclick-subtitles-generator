@@ -6,6 +6,8 @@ import { invokeDesktop, isDesktopRuntime } from './desktopRuntime';
 import { getSelectedMedia, isNativeMediaDescriptor, isNativeMediaPlaybackUrl } from './mediaService';
 import {
   canonicalAssetFromDescriptor as sharedCanonicalAssetFromDescriptor,
+  readNativeMediaSession,
+  resolveOwnedNativeMediaProject,
 } from './nativeMediaOwnership';
 import { mutateProject } from './projectService';
 import { resolveProjectForCache } from './subtitleProjectStore';
@@ -622,6 +624,20 @@ export const resolveNativeRenderSource = async (value) => {
 export const ensureNativeRenderProject = async (sourceAsset) => {
   if (!isDesktopRuntime()) throw runtimeRequired();
   const asset = normalizeSourceAsset(sourceAsset);
+  const session = readNativeMediaSession();
+  if (session?.assetId === asset.id) {
+    const owned = await resolveOwnedNativeMediaProject(session);
+    if (owned === null) throw invalidRequest();
+    const existing = owned.snapshot.media.find((candidate) => candidate.id === asset.id);
+    if (!existing
+        || existing.displayName !== asset.displayName
+        || existing.extension !== asset.extension
+        || existing.sizeBytes !== asset.sizeBytes
+        || existing.kind !== asset.kind) {
+      throw invalidRequest();
+    }
+    return owned.projectId;
+  }
   const resolved = await resolveProjectForCache(asset.id, { create: true });
   if (!resolved || !uuidHasVersion(resolved.projectId, 7) || !isPlainRecord(resolved.snapshot)) {
     throw invalidRequest();

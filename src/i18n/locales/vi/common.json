@@ -17,6 +17,11 @@
   "recentVideos": "Video gần đây",
   "clearAll": "Xóa tất cả",
   "confirm": "Xác nhận",
+  "play": "Phát",
+  "pause": "Tạm dừng",
+  "mute": "Tắt tiếng",
+  "unmute": "Bật tiếng",
+  "fullscreen": "Toàn màn hình",
   "jumpToCheckpoint": "Nhảy đến mốc lưu gần nhất (hoàn tác nhiều bước)",
   "jumpToCheckpointWithShortcut": "Nhảy đến mốc lưu gần nhất (Ctrl+J)",
   "toast": {

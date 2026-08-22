@@ -1,5 +1,5 @@
 import { createRef } from 'react';
-import { act, fireEvent, render, screen } from '@testing-library/react';
+import { act, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 import useNativePreview from './native/useNativePreview';
@@ -53,6 +53,8 @@ const showing = (layer = 'composited') => ({
 const subtitles = [{ start: 0, end: 2, text: 'A cue' }];
 
 beforeEach(() => {
+  window.addToast = vi.fn();
+  window.removeToastByKey = vi.fn();
   vi.mocked(useNativePreview).mockReset();
   vi.mocked(useNativePreview).mockReturnValue(dormant());
 });
@@ -104,6 +106,22 @@ describe('with a video selected', () => {
     fireEvent.loadedMetadata(video);
 
     expect(onDurationChange).toHaveBeenCalledWith(12.5);
+  });
+
+  it('provides visible play, seek, mute and fullscreen controls on the native preview', () => {
+    const { video } = mount();
+    Object.defineProperty(video, 'duration', { value: 12, configurable: true });
+    fireEvent.loadedMetadata(video);
+
+    expect(screen.getByRole('button', { name: 'Play' })).toBeInTheDocument();
+    expect(screen.getByRole('slider', { name: 'Seek video' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Mute' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Fullscreen' })).toBeInTheDocument();
+
+    fireEvent.change(screen.getByRole('slider', { name: 'Seek video' }), { target: { value: '6' } });
+    expect(video.currentTime).toBe(6);
+    fireEvent.click(screen.getByRole('button', { name: 'Mute' }));
+    expect(video.muted).toBe(true);
   });
 
   it('keeps seekTo(frame) working, which is the only player API the trim row uses', () => {
@@ -224,13 +242,13 @@ describe('with a video selected', () => {
     expect(container.querySelector('.native-composited-frame').getAttribute('data-layer')).toBe('composited');
   });
 
-  it('states a native refusal rather than leaving the panel blank', () => {
+  it('sends a native refusal to a toast instead of painting it over the video', async () => {
     vi.mocked(useNativePreview).mockReturnValue({
       ...dormant(),
       status: 'error',
       error: { code: 'nativePreviewRejected', nativeCode: 'previewSceneRefused' },
     });
-    render(
+    const { container } = render(
       <NativeRenderPreview
         videoFile="C:/media/clip.mp4"
         subtitles={subtitles}
@@ -238,6 +256,13 @@ describe('with a video selected', () => {
       />,
     );
 
-    expect(screen.getByText(/previewSceneRefused/)).toBeInTheDocument();
+    expect(container.querySelector('.error')).toBeNull();
+    await waitFor(() => expect(window.addToast).toHaveBeenCalledWith(
+      expect.stringMatching(/previewSceneRefused/),
+      'error',
+      8000,
+      'native-subtitle-preview',
+      expect.any(Object),
+    ));
   });
 });

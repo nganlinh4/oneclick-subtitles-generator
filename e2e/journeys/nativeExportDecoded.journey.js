@@ -65,6 +65,28 @@ describe('a customer exports the subtitled video they previewed', () => {
     });
 
     await clickControl('.render-video-toggle');
+    const controls = await $('.video-rendering-section.expanded .native-render-controls');
+    await controls.waitForDisplayed({
+      timeout: 60_000,
+      timeoutMsg: 'the expanded native render preview never published its player controls',
+    });
+    const playerControls = await browser.execute(() => ({
+      play: document.querySelector('.native-render-controls [data-osg-control="play-pause"]') !== null,
+      seek: document.querySelector('.native-render-controls [data-osg-control="seek"]') !== null,
+      mute: document.querySelector('.native-render-controls [data-osg-control="mute"]') !== null,
+      fullscreen: document.querySelector('.native-render-controls [data-osg-control="fullscreen"]') !== null,
+      inlineError: document.querySelector('.video-preview-panel .error') !== null,
+    }));
+    assert.deepEqual(playerControls, {
+      play: true, seek: true, mute: true, fullscreen: true, inlineError: false,
+    }, `the native render preview lost its customer controls: ${JSON.stringify(playerControls)}`);
+    await captureWorkflowStep({
+      workflow: WORKFLOW,
+      step: '02-render-preview-controls',
+      description: 'The native render preview visibly retains play, seek, mute and fullscreen controls.',
+      details: playerControls,
+      focusSelector: '.video-preview-panel',
+    });
     // The current rebuilt binary predates the stable data attribute by one narrow UI edit, so the
     // icon is retained as a compatibility selector for this red-to-green run. Future binaries use
     // data-osg-action and both forms identify the same visible control.
@@ -111,7 +133,7 @@ describe('a customer exports the subtitled video they previewed', () => {
     assert.deepEqual(admission.toasts, [], `Render was refused before admission: ${JSON.stringify(admission)}`);
     await captureWorkflowStep({
       workflow: WORKFLOW,
-      step: '02-render-admitted',
+      step: '03-render-admitted',
       description: 'The visible render queue accepted the project without an admission refusal.',
       details: { admission: admission.admission, queueItems: admission.queue.length },
       focusSelector: '.video-rendering-section',
@@ -132,7 +154,7 @@ describe('a customer exports the subtitled video they previewed', () => {
     );
     await captureWorkflowStep({
       workflow: WORKFLOW,
-      step: '03-render-complete',
+      step: '04-render-complete',
       description: 'The native render reached a visible successful terminal state.',
       details: { terminalText },
       focusSelector: '.video-rendering-section',
@@ -181,7 +203,7 @@ describe('a customer exports the subtitled video they previewed', () => {
     });
     await captureWorkflowStep({
       workflow: WORKFLOW,
-      step: '04-export-verified',
+      step: '05-export-verified',
       description: 'The saved MP4 has independently verified video/audio streams and matches the preview.',
       details: { durationSeconds: duration, ssim, exportedBytes: Number(probe.format.size) },
     });
