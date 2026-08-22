@@ -11,7 +11,7 @@ import process from 'node:process';
 import { durableTranslations } from '../support/database.js';
 import { clickControl, openEditor } from '../support/editor.js';
 import { compareFrames, saveNativePreviewFrame } from '../support/nativeMediaOracle.js';
-import { importSubtitles, openProjectWithMedia, waitForNativeFrame } from '../support/workflow.js';
+import { importSubtitles, openProjectWithMedia } from '../support/workflow.js';
 import { captureWorkflowStep, copyWorkflowArtifact } from '../support/workflowEvidence.js';
 
 const PREFIX = 'FMT: ';
@@ -21,7 +21,8 @@ const WORKFLOW = 'translation-persistence';
 
 const seekToFirstCue = async () => {
   const previous = await browser.execute(
-    () => document.querySelector('.video-preview .native-composited-frame')?.src ?? null,
+    () => document.querySelector('.video-preview [data-osg-preview-engine="canvas-atlas"]')
+      ?.getAttribute('data-osg-frame-revision') ?? null,
   );
   await browser.execute(() => {
     const video = document.querySelector('.video-preview video.video-player');
@@ -31,7 +32,8 @@ const seekToFirstCue = async () => {
   });
   await browser.waitUntil(async () => {
     const current = await browser.execute(
-      () => document.querySelector('.video-preview .native-composited-frame')?.src ?? null,
+      () => document.querySelector('.video-preview [data-osg-preview-engine="canvas-atlas"]')
+        ?.getAttribute('data-osg-frame-revision') ?? null,
     );
     return current !== null && current !== previous;
   }, {
@@ -80,7 +82,6 @@ describe('a customer keeps a project-owned formatted translation', () => {
         interval: 1_000,
         timeoutMsg: 'the new application process did not hydrate the project-owned translation',
       });
-      await waitForNativeFrame(180_000);
       await seekToFirstCue();
       const translatedFrame = join(root, 'evidence', 'translation-selected.png');
       const restoredFrame = join(root, 'evidence', 'translation-restored.png');
@@ -158,14 +159,16 @@ describe('a customer keeps a project-owned formatted translation', () => {
     });
 
     const oldFrameUrl = await browser.execute(
-      () => document.querySelector('.video-preview .native-composited-frame')?.src ?? null,
+      () => document.querySelector('.video-preview [data-osg-preview-engine="canvas-atlas"]')
+        ?.getAttribute('data-osg-frame-revision') ?? null,
     );
     await selectTranslatedPreview();
     let previewSelectionState = null;
     try {
       await browser.waitUntil(async () => {
         previewSelectionState = await browser.execute(() => ({
-          url: document.querySelector('.video-preview .native-composited-frame')?.src ?? null,
+          url: document.querySelector('.video-preview [data-osg-preview-engine="canvas-atlas"]')
+            ?.getAttribute('data-osg-frame-revision') ?? null,
           translated: window.translatedSubtitles?.[0]?.text ?? null,
           language: localStorage.getItem('subtitle_language'),
           selectedLabel: document.querySelector(

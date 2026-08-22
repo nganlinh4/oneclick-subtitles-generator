@@ -4,8 +4,7 @@ import { useTranslation } from 'react-i18next';
 import { isNativeMediaDescriptor } from '../../platform/mediaService';
 import VideoCropControls from '../VideoCropControls';
 import '../../styles/VideoPreviewPanel.css';
-import NativeCompositedFrame from './native/NativeCompositedFrame';
-import useNativePreview from './native/useNativePreview';
+import CanvasVideoPreview from './canvas/CanvasVideoPreview';
 import useNativePreviewToast from './native/useNativePreviewToast';
 
 /**
@@ -20,7 +19,7 @@ import useNativePreviewToast from './native/useNativePreviewToast';
  *
  * The removed player's control bar is reproduced with native WebView controls above the composited
  * frame: play/pause, seek, time, mute and fullscreen. Using `<video controls>` is not sufficient
- * because the native frame necessarily covers the video element's own painted control layer.
+ * because the composition canvas necessarily covers the video element's own painted control layer.
  * The imperative `seekTo(frame)` that `TrimTimelineRow` drives is preserved unchanged.
  */
 
@@ -102,6 +101,7 @@ const NativeRenderPreview = forwardRef(({
   const [source, setSource] = useState(null);
   const [isPlaying, setIsPlaying] = useState(false);
   const [isMuted, setIsMuted] = useState(false);
+  const [canvasPreviewState, setCanvasPreviewState] = useState({ status: 'idle', code: null });
   const [currentTime, setCurrentTime] = useState(0);
   const [duration, setDuration] = useState(0);
   const [videoDimensions, setVideoDimensions] = useState(null);
@@ -231,31 +231,10 @@ const NativeRenderPreview = forwardRef(({
 
   const activeCrop = isCropEnabled ? tempCrop : appliedCrop;
 
-  // Stopped, the panel shows the composited frame — the exported pixel, at the crop being dragged.
-  // Playing, it shows the subtitle layer over the <video>, which is an approximation the browser
-  // finishes and never what a user judges. Before this the panel simply stopped asking, so playback
-  // showed raw video with no subtitles at all.
-  const nativePreview = useNativePreview({
-    active: true,
-    playing: isPlaying,
-    source: videoFile,
-    videoRef,
-    sourceKey: source?.url ?? null,
-    customization: subtitleCustomization,
-    subtitles,
-    resolution,
-    frameRate,
-    crop: activeCrop,
-    durationSeconds: duration,
-    trimStart,
-    trimEnd,
-    currentTime,
-  });
-
   useNativePreviewToast({
-    error: nativePreview.error,
+    error: canvasPreviewState.code === null ? null : { code: canvasPreviewState.code },
     dormant: false,
-    onRetry: nativePreview.error === null ? null : nativePreview.releaseSurface,
+    onRetry: null,
     t,
   });
 
@@ -315,13 +294,18 @@ const NativeRenderPreview = forwardRef(({
         }}
       />
 
-      {/* Outside the trim window the export has no frame for this instant, so the overlay comes off
-          and the <video> shows through. Leaving the last composited frame on would put an exported
-          pixel in front of an instant it is not the pixel for. */}
-      <NativeCompositedFrame
-        frame={nativePreview.frame}
-        visible={!nativePreview.outsideTrim}
-        onLoadError={nativePreview.onFrameLoadError}
+      <CanvasVideoPreview
+        videoRef={videoRef}
+        sourceKey={source?.url ?? null}
+        playing={isPlaying}
+        currentTime={currentTime}
+        customization={subtitleCustomization}
+        subtitles={subtitles}
+        resolution={resolution}
+        crop={activeCrop}
+        trimStart={trimStart}
+        trimEnd={trimEnd}
+        onStateChange={setCanvasPreviewState}
         style={{ borderRadius: '8px' }}
       />
 

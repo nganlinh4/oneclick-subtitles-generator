@@ -106,7 +106,7 @@
       "file": "journeys/geminiOutputPreview.journey.js",
       "capability": "Generated-output-shaped Korean and Latin cues stage and draw while the customer scrubs.",
       "assertions": [
-        "every representative cue publishes a distinct native composited frame",
+        "every representative cue publishes distinct canvas-atlas pixels",
         "an explicitly supplied database can be replayed read-only without persisting private cue text in evidence"
       ],
       "status": "green"
@@ -192,12 +192,12 @@
         "download it through the generation path rather than Download Only",
         "activate exactly one durable subtitle project",
         "use provider captions when supplied, otherwise transcribe with the real managed local ASR engine",
-        "publish cues and a native composited preview frame"
+        "publish cues and a canvas-atlas preview frame"
       ],
       "assertions": [
         "the active URL does not change during media preparation",
         "exactly one subtitle project owns the downloaded media",
-        "durable cues and a native frame are both present",
+        "durable cues and canvas-composited pixels are both present",
         "no inline video error or failure toast is visible"
       ],
       "oracles": [
@@ -249,7 +249,7 @@
       ],
       "oracles": [
         "visible DOM",
-        "the composited frame element"
+        "the persistent composition canvas"
       ],
       "runsAgainst": "e2e-binary",
       "status": "green",
@@ -271,6 +271,21 @@
       "note": "Starts without the persistent E2E tools junction, installs all three tools through customer controls, and verifies every installed byte against the static catalog or immutable dynamic yt-dlp delivery record. The coordinator then changes one byte of yt-dlp without changing its size, launches a new desktop process, requires a fail-closed corrupt/quarantined state, uses the visible Repair control, and revalidates the complete tree."
     },
     {
+      "name": "canvasPlaybackPerformance",
+      "kind": "workflow-performance",
+      "file": "journeys/canvasPlaybackPerformance.journey.js",
+      "capability": "Continuous subtitle playback remains responsive and memory-bounded on real media.",
+      "oracles": [
+        "the real video clock advances at least five seconds during a six-second sample",
+        "the persistent composition canvas publishes substantially more frames than the deleted 10 fps PNG transport",
+        "PerformanceObserver records no blocking task and the JavaScript heap does not grow without bound",
+        "an ordered screenshot and machine-readable sample are retained under target/workflow-evidence"
+      ],
+      "runsAgainst": "e2e-binary",
+      "status": "green",
+      "note": "The rebuilt real binary advanced 6.005 seconds during a 6.046-second sample, published 114 compositor frames and 602 animation frames from the real 15 fps video, rebuilt the static subtitle overlay once, recorded zero long tasks, and ended with 2.68 MB less JavaScript heap than it started with."
+    },
+    {
       "name": "nativeExportDecoded",
       "kind": "workflow",
       "file": "journeys/nativeExportDecoded.journey.js",
@@ -280,9 +295,9 @@
         "visible DOM and native render queue",
         "the saved file on disk",
         "independent ffprobe stream and duration inspection",
-        "independent FFmpeg decode and SSIM against the native preview frame"
+        "independent FFmpeg decode and SSIM against the cropped canvas composition viewport"
       ],
-      "note": "Green against the real binary: native decode/composite/encode/mux completed, the saved MP4 contained independently probed video and audio streams with the expected duration, and its decoded frame matched the editor's native preview at SSIM >= 0.95. The journey found and drove four product defects to green: missing subtitle admission, selecting a video track as audio plus malformed MP4 Opus parameters, refusing a valid audio-tail presentation after video EOS, and rejecting every successful publication because the artifact and immutable media snapshot were correctly separate files.",
+      "note": "Green against the rebuilt real binary: native decode/composite/encode/mux completed, the saved MP4 contained independently probed video and audio streams with the expected duration, and its decoded Neon frame (Arial, border, glow, shadow and background) matched the persistent canvas preview at SSIM 0.973657. The journey found and drove four earlier product defects to green: missing subtitle admission, selecting a video track as audio plus malformed MP4 Opus parameters, refusing a valid audio-tail presentation after video EOS, and rejecting every successful publication because the artifact and immutable media snapshot were correctly separate files.",
       "lastGreenCommit": "c1a5b47d"
     },
     {
@@ -302,11 +317,11 @@
         "verify/install and start Faster-Whisper Turbo from the reviewed managed package",
         "select the full timeline through the documented Ctrl+A customer shortcut",
         "extract audio through Media Foundation and transcribe it in the managed Python worker",
-        "publish cues into the editor, draw them through the native compositor, and persist them"
+        "publish cues into the editor, draw them through the persistent canvas, and persist them"
       ],
       "oracles": [
         "visible cue text",
-        "the native composited frame element",
+        "the persistent composition canvas",
         "the application's own SQLite jobs, cues and latest project revision, read only"
       ],
       "runsAgainst": "e2e-binary",
@@ -345,7 +360,7 @@
         "open real media and import real subtitle cues",
         "format the cues through the customer translation controls without a provider credential",
         "persist the exact project-owned translation revision",
-        "select Translated and publish different native preview pixels",
+        "select Translated and publish different canvas preview pixels",
         "start a second desktop process and hydrate the same translation and selection"
       ],
       "oracles": [

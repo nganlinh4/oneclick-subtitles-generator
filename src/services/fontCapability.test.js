@@ -66,7 +66,7 @@ const stageBootstrap = (value) => {
 
 afterEach(() => stageBootstrap(undefined));
 
-/** Exactly how `useNativePreviewRequest` resolves the face — no extra arguments. */
+/** Exactly how the shipping canvas/export scene resolves the face — no extra arguments. */
 const resolveAsTheEditorDoes = (fontFamily = DEFAULT_SUBTITLE_FONT_FAMILY) => previewFace({
   fontFamily,
   fontWeight: 400,

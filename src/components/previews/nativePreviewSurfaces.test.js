@@ -1,15 +1,11 @@
 import { readFileSync, existsSync, globSync, statSync } from 'node:fs';
 import { dirname, relative, resolve } from 'node:path';
 
-import { fireEvent, render, screen } from '@testing-library/react';
-import { describe, expect, it, vi } from 'vitest';
-
-import NativeCompositedFrame from './native/NativeCompositedFrame';
+import { describe, expect, it } from 'vitest';
 
 /**
  * The editor's two preview surfaces, checked for the two things the migration is actually for: that
- * the second subtitle-drawing implementation is no longer reachable from either of them, and that
- * the element carrying the native frame never shows a blank where a subtitle should be.
+ * the second subtitle-drawing implementation is no longer reachable from either of them.
  */
 
 const ROOT = resolve(__dirname, '..', '..', '..');
@@ -126,75 +122,5 @@ describe('no WebView subtitle compositor is reachable from the editor', () => {
       expect(source).not.toContain('fullscreen-subtitle');
       expect(source).not.toContain('custom-subtitle');
     }
-  });
-});
-
-describe('the composited frame element', () => {
-  const frame = Object.freeze({
-    url: 'http://127.0.0.1:49152/frame/3f2504e0-4f89-41d3-9a0c-0305e82c3301/7?token=a&frame_token=b',
-    cacheKey: 'abcdef01-64:atlas:7',
-    frameIndex: 7,
-  });
-
-  it('shows nothing until the frame has actually decoded, then shows only that frame', () => {
-    const { container } = render(<NativeCompositedFrame frame={frame} visible />);
-    expect(container.querySelector('.native-composited-frame')).toBeNull();
-
-    fireEvent.load(container.querySelector('.native-composited-frame-pending'));
-
-    const shown = container.querySelector('.native-composited-frame');
-    expect(shown.getAttribute('src')).toBe(frame.url);
-    expect(container.querySelector('.native-composited-frame-pending')).toBeNull();
-  });
-
-  it('holds the frame already decoded while the next one loads, so a scrub never blanks', () => {
-    const next = { ...frame, url: `${frame.url}0`, frameIndex: 8 };
-    const { container, rerender } = render(<NativeCompositedFrame frame={frame} visible />);
-    fireEvent.load(container.querySelector('.native-composited-frame-pending'));
-
-    rerender(<NativeCompositedFrame frame={next} visible />);
-    expect(container.querySelector('.native-composited-frame').getAttribute('src')).toBe(frame.url);
-
-    fireEvent.load(container.querySelector('.native-composited-frame-pending'));
-    expect(container.querySelector('.native-composited-frame').getAttribute('src')).toBe(next.url);
-  });
-
-  it('reports a URL the native registry no longer serves instead of leaving a hole', () => {
-    const onLoadError = vi.fn();
-    const { container } = render(<NativeCompositedFrame frame={frame} visible onLoadError={onLoadError} />);
-
-    fireEvent.error(container.querySelector('.native-composited-frame-pending'));
-
-    expect(onLoadError).toHaveBeenCalledTimes(1);
-    expect(container.querySelector('.native-composited-frame')).toBeNull();
-  });
-
-  // `visible` is the surface's own switch, not the playback state: both editor surfaces now keep the
-  // element on screen while playing and change which LAYER the frame carries instead. What is
-  // asserted here is the switch itself, which is what a surface with no native frames at all uses.
-  it('draws nothing at all when the surface is not showing native frames', () => {
-    const { container } = render(<NativeCompositedFrame frame={frame} visible={false} />);
-    expect(container.querySelectorAll('img')).toHaveLength(0);
-    expect(screen.queryByRole('img')).toBeNull();
-  });
-
-  // This element used to accept a `fallback` — the CSS overlay, drawn whenever no native frame had
-  // decoded. The prop is gone with the overlay: a second implementation that draws whenever the
-  // first cannot is the disagreement with the export the migration removes, so the element now
-  // renders a native frame or nothing at all, and the surface states the unavailability in words.
-  it('renders a native frame or nothing, with no second implementation to hand over to', () => {
-    const { container, rerender } = render(<NativeCompositedFrame frame={null} visible />);
-    expect(container.querySelectorAll('img')).toHaveLength(0);
-
-    // A frame has been RETURNED but not yet decoded: still nothing visible, which is why the
-    // handover is decided on decode rather than on the return value.
-    rerender(<NativeCompositedFrame frame={frame} visible />);
-    expect(container.querySelector('.native-composited-frame')).toBeNull();
-
-    fireEvent.load(container.querySelector('.native-composited-frame-pending'));
-    expect(container.querySelector('.native-composited-frame')).not.toBeNull();
-
-    rerender(<NativeCompositedFrame frame={frame} visible={false} />);
-    expect(container.querySelectorAll('img')).toHaveLength(0);
   });
 });

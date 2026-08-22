@@ -16,6 +16,7 @@ import { cachedRealVideo } from './support/realMedia.js';
 test('discovers every product journey while excluding scenario-only diagnostics', () => {
   const names = defaultJourneys().map((path) => path.replaceAll('\\', '/').split('/').at(-1));
   assert.deepEqual(names, [
+    'canvasPlaybackPerformance.journey.js',
     'defaultFont.journey.js',
     'freshInstallVisual.journey.js',
     'geminiCredentialBoundary.journey.js',
@@ -24,6 +25,7 @@ test('discovers every product journey while excluding scenario-only diagnostics'
     'narrationGeneration.journey.js',
     'nativeExportDecoded.journey.js',
     'startup.journey.js',
+    'urlLocalAsrPreview.journey.js',
     'urlToPreview.journey.js',
   ]);
 });

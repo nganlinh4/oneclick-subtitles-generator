@@ -90,45 +90,32 @@ family — Inter — and no font pack exists in this repository at all.
 
 ## Architecture
 
-The binding constraint is not the GPU, it is the content security policy. `connect-src` is
-`'self' ipc: http://ipc.localhost`: it does **not** include `http://127.0.0.1:*`, and `script-src`
-carries neither `'wasm-unsafe-eval'` nor `blob:`. So the WebView cannot `fetch`, stream, or run WASM
-against a native frame source. Only `<img>` and `<video>` element loads may reach the loopback media
-server. The workspace is also `unsafe_code = "forbid"`, which constrains a raw surface approach.
+The decisive constraint is text shaping. A Rust text stack cannot reproduce WebView shaping exactly,
+so the WebView shapes and rasterizes each line once into a bounded atlas. Both preview and export use
+those same pixels and the same strict scene contract.
 
-The reference implementation resolves the equivalent problem in a way that is worth adopting and
-that this repository's own constraints push us towards independently:
+Continuous preview and offline export deliberately use different execution engines because their
+cost models differ:
 
-> **Text is shaped and rasterized once by the WebView into a packed atlas, staged to Rust as a few
-> kilobytes of metadata, and Rust re-derives per-frame layout and animation from that metadata and
-> emits textured quads.** There is no Rust text stack — no cosmic-text, no swash, no harfbuzz.
+- **Preview is a persistent Canvas2D compositor.** It draws the already-decoded `<video>` directly,
+  then draws the exact shaped atlas mask with the scene's crop, background, transform, decoration,
+  easing and typewriter rules. `requestVideoFrameCallback` drives source frames; React never renders
+  per frame. There is no PNG encoder, IPC frame transfer, capability URL, image decode, or frame
+  cache in the playback loop.
+- **Export is Rust + wgpu.** Media Foundation decodes the source, the native compositor applies the
+  same scene maths and atlas pixels, and Media Foundation encodes the finished frame. Export remains
+  independent of the WebView's video decoder and of Canvas2D.
+- **The contract is shared, not guessed twice.** Frozen JavaScript/Rust maths fixtures cover scale,
+  margins and easing. Real-binary journeys capture the canvas at an exact playhead, independently
+  decode the exported MP4 at that playhead, and require high structural similarity.
+- **The glyph source is singular.** The WebView bakes line masks from the shipped font bytes. Preview
+  consumes them directly and export stages the same bounded atlas descriptor. No CSS subtitle layer,
+  browser `fillText` substitute, Rust text shaper, or silent font fallback is allowed.
 
-That is the decisive idea for OSG. A Rust text stack could not reproduce the WebView's shaping, so a
-Rust-shaped export against a WebView preview would diverge on exactly the axis the migration is
-required to guarantee. Baking glyphs in the WebView makes identical font bytes and identical shaping
-a structural property rather than a test we have to keep passing.
-
-The accepted design is therefore **one compositor and one glyph source**:
-
-- **One pixel pipeline.** A native Rust/GPU compositor owns layout, animation math, crop and
-  background composition, colour conversion and blending. It serves both surfaces; there is no
-  second implementation of any of it.
-- **One glyph source.** The editor WebView rasterizes the selected font into an atlas once per text
-  revision and stages it. Preview and export consume the same atlas bytes. An export's atlas is
-  **paged** — see below — because one atlas holds one cell table and a large-character-set document
-  needs more cells than one table carries.
-- **One scene contract.** A strict, versioned, bounded, immutable scene DTO, with the same
-  validation on both sides and a single deterministic frame-time sampler shared by video, audio and
-  overlay so all three advance identically.
-- **Preview transport.** Native frames reach the editor as element loads from the existing loopback
-  capability server, which CSP already permits for `<img>`/`<video>`. No new origin, no WASM, no
-  blob workers. What exactly those frames contain is settled below, because it decides how far the
-  WYSIWYG guarantee actually reaches.
-- **Encoding is a separate final stage** that cannot change composition pixels, over a reviewed,
-  redistributable tool contract whose build configuration and notices are pinned and asserted.
-
-This is not the "dual implementation fallback": there is a single compositor and a single shaping
-engine. What is shared across the boundary is the atlas and the contract, not a duplicated renderer.
+This is the same responsiveness principle used by `screen-goated-toolbox`: the interactive surface
+stays on the WebView's direct video-to-canvas path, while expensive native decoding and encoding are
+reserved for export. WYSIWYG is enforced by shared inputs plus decoded-pixel comparison rather than
+by making playback perform an offline export thirty times per second.
 
 ### Encoding — settled: the operating system's own codecs, not a bundled FFmpeg
 
@@ -221,31 +208,22 @@ rather than two. Those fields are exactly the ones the parity ledger still lists
 
 ### What the preview actually shows, and how far the guarantee reaches
 
-There are two things a preview could send, and the difference is not cosmetic:
+The preview is one persistent canvas containing both video and subtitles. The underlying `<video>`
+remains the browser's decoder and clock but is not a second visible surface. Every draw uses the
+current source frame, composition viewport, and the active cue's shaped atlas line.
 
-1. **The fully composited frame** — decoded video, crop, canvas backfill and the subtitle layer, all
-   blended on the GPU exactly as the export blends them, delivered as one image. This is identical
-   to the exported pixel by construction, because it *is* the exported pixel.
-2. **The subtitle layer alone**, delivered as a transparent image and laid over the HTML `<video>`
-   by the browser. Cheap and responsive, but the final blend is then done by the WebView rather than
-   by our compositor, over a frame the video decoder colour-managed on its own terms.
+The guarantee has two independently checked parts:
 
-The second is not a second renderer — the same compositor produces the layer either way — but the
-last step differs, so the result is close rather than exact. Chroma subsampling, the browser's own
-colour management and its straight-alpha blend all land in the gap.
+- **Responsiveness.** A six-second real-video playback journey requires media time and canvas
+  revisions to advance, reports zero long tasks, and rejects runaway heap growth.
+- **Pixel parity.** A real export journey freezes a cue playhead, saves the exact canvas composition
+  viewport, decodes the MP4 independently with FFmpeg, and compares the two images. Letterbox bars
+  outside the composition are excluded from the oracle because they are editor chrome, not output.
 
-The rule is therefore about *which frame the user is judging*:
-
-- **Paused, scrubbing, or adjusting any style** — the surfaces where a user decides whether the
-  output looks right — must show the fully composited native frame. This is where the guarantee has
-  to hold, and it is also where there is time to render one frame properly.
-- **During continuous playback**, the overlay path is permitted for responsiveness. It must be
-  understood and documented as an approximation, and it must never be the last thing shown: pausing
-  re-renders the exact frame, so what the user finally looks at is always the real one.
-
-Stating it this way keeps the honest property — *the frame you approved is the frame you get* —
-without pretending that thirty composited frames a second through an image element is a sensible
-way to scrub a video.
+The preview never falls back to raw video while claiming success. `empty` means the project has no
+cues; `between-cues` means the playhead is outside every cue; a staging or rendering failure is a
+typed refusal surfaced outside the picture. A healthy cue must increment the canvas frame revision
+and publish its cue index before a workflow can call it ready.
 
 ### Atlas paging — what a document is allowed to be
 
@@ -472,7 +450,7 @@ it, and this table is kept synchronised with executable state — if it disagree
 | 2 | Scene contract crate: versioned DTO, bounds, deterministic sampler, animation and layout maths, golden-tested against step 1. | **Done.** `osg-scene`, 124 tests, including the mirror and validation of the baker's authoritative `AtlasLayout`. |
 | 3 | Atlas baking and staging, with font receipts. | **Done.** The baker shapes, transforms, wraps, aligns, justifies and reorders to visual order through a real UAX #9 subset cross-checked against a reference implementation. `fontIdentity.js` resolves or honestly refuses, and `fontInventory.js` reports the reconciled catalog. Staging forwards the layout verbatim; `osg-scene::glyph` validates it as strictly as the glyph table. |
 | 4 | GPU compositor and the frame server behind the existing capability transport. | **Done.** `osg-compositor`, 124 tests on a real Intel/Vulkan adapter. It **consumes** the emitted layout — glyph *i* of line *l* at `penXPx[i]`, baseline `baselineYPx` — and has no pen accumulator, no re-wrap, no re-align, no reorder. Video underlay with crop, flip and canvas backfill; stroke, shadow, glow, border, radius, gradient and typewriter. Seek equals play, proven byte-identical with every effect enabled. |
-| 5 | Preview switched onto native frames; the three drawing implementations collapse to one. | **Transport done, editor not yet wired.** The native staging command is registered and reachable, `nativePreviewFrames.js` coalesces and cancels, and the frame route serves `<img>` loads. The production editor still draws its own CSS overlay. This is the next step. |
+| 5 | Preview switched to a persistent WebView canvas fed by the live video element and the exact shaped line atlas used by native export. | **Complete.** Continuous playback performs no native frame render, PNG encode, IPC frame transfer, capability-URL load, or React frame loop. Export remains the Rust/GPU compositor; shared atlas pixels, scene maths, and decoded-frame SSIM prove WYSIWYG. |
 | 6 | Encode/mux stage. | **Done, both directions.** `osg-encode` writes H.264/AAC MP4 through Media Foundation, ffprobe-verified full-range BT.709. `osg-decode` reads through `IMFSourceReader` with frame-exact sampling, 58 tests. `osg-audio` decodes, resamples and mixes, 100 tests. No FFmpeg anywhere. |
 | 6b | Export orchestration: a validated request to a finished file. | **Done.** `osg-export`, 65 tests including 8 real end-to-end exports. The single place every parity decision is applied. |
 | 7 | Parity suite across presets, options, resolutions and frame rates. | **Input frozen, gate not built.** Field coverage is **2 of 70 pending** (`maxWidth`, awaiting its caller; `rtlSupport`, awaiting contextual cell baking). `scripts/generate-parity-matrix.mjs` freezes what the gate must cover — 30 presets, 70 options, 147 field-value renders, 9 texts, 4 output shapes — and `npm run test:parity-matrix` fails if it goes stale. The gate that renders and compares them does not exist yet. |

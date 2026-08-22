@@ -102,14 +102,65 @@ export const importSubtitleDocument = async (subtitles, name, expectedCue) => {
   );
 };
 
-/** Wait until the compositor has published a frame, which is the only proof a preview happened. */
-export const waitForNativeFrame = async (timeout = 90_000) => {
-  await browser.waitUntil(
-    async () => (await browser.execute(
-      () => document.querySelector('.native-composited-frame') !== null,
-    )),
-    { timeout, interval: 1_000, timeoutMsg: 'no native composited frame was ever published' },
-  );
+/** Move the real player into a cue before asking the compositor for subtitle pixels. */
+export const seekPreviewTo = async (seconds) => {
+  await browser.execute((target) => {
+    const video = document.querySelector('.video-preview video.video-player');
+    if (video === null) throw new Error('the editor video is missing');
+    video.pause();
+    video.currentTime = target;
+  }, seconds);
+};
+
+/** Wait until the persistent canvas has drawn video plus a ready subtitle cue. */
+export const waitForCanvasSubtitleFrame = async (timeout = 90_000) => {
+  let last = null;
+  try {
+    await browser.waitUntil(
+      async () => {
+        last = await browser.execute(
+      () => {
+        const surface = document.querySelector('.video-preview canvas[data-osg-preview-engine="canvas-atlas"]');
+        const state = document.querySelector('.video-preview [data-osg-preview]')
+          ?.getAttribute('data-osg-preview');
+        const video = document.querySelector('.video-preview video.video-player');
+        return {
+          ready: surface !== null
+            && Number(surface.dataset.osgFrameRevision ?? 0) > 0
+            && state === 'ready',
+          state: state ?? null,
+          canvas: surface === null ? null : {
+            width: surface.width,
+            height: surface.height,
+            clientWidth: surface.clientWidth,
+            clientHeight: surface.clientHeight,
+            revision: surface.dataset.osgFrameRevision ?? null,
+            cue: surface.dataset.osgCueIndex ?? null,
+          },
+          video: video === null ? null : {
+            readyState: video.readyState,
+            networkState: video.networkState,
+            paused: video.paused,
+            currentTime: video.currentTime,
+            duration: video.duration,
+            videoWidth: video.videoWidth,
+            videoHeight: video.videoHeight,
+            currentSrc: video.currentSrc,
+            error: video.error === null ? null : {
+              code: video.error.code,
+              message: video.error.message,
+            },
+          },
+        };
+      },
+        );
+        return last.ready;
+      },
+      { timeout, interval: 250, timeoutMsg: 'the canvas compositor never drew a ready subtitle frame' },
+    );
+  } catch (error) {
+    throw new Error(`${error.message}; last=${JSON.stringify(last)}`, { cause: error });
+  }
 };
 
 /**

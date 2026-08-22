@@ -3553,7 +3553,6 @@ dependencies = [
  "osg-render",
  "osg-scene",
  "osg-speech",
- "png 0.17.16",
  "rfd",
  "same-file",
  "secrecy",

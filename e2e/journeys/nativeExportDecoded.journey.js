@@ -11,9 +11,15 @@ import {
   newestMediaFile,
   probeMedia,
   saveNativePreviewFrame,
+  savePreviewElementFrame,
 } from '../support/nativeMediaOracle.js';
 import { REAL_VIDEO } from '../support/realMedia.js';
-import { importSubtitles, openProjectWithMedia, waitForNativeFrame } from '../support/workflow.js';
+import {
+  importSubtitles,
+  openProjectWithMedia,
+  seekPreviewTo,
+  waitForCanvasSubtitleFrame,
+} from '../support/workflow.js';
 import { captureWorkflowStep, copyWorkflowArtifact } from '../support/workflowEvidence.js';
 
 const COMPARE_AT_SECONDS = 1;
@@ -28,47 +34,89 @@ describe('a customer exports the subtitled video they previewed', () => {
 
     await openProjectWithMedia();
     await importSubtitles();
-    await waitForNativeFrame();
 
-    const oldFrameUrl = await browser.execute(
-      () => document.querySelector('.video-preview .native-composited-frame')?.src ?? null,
+    const oldFrameRevision = await browser.execute(
+      () => document.querySelector('.video-preview [data-osg-preview-engine="canvas-atlas"]')
+        ?.getAttribute('data-osg-frame-revision') ?? null,
     );
-    await browser.execute((seconds) => {
-      const video = document.querySelector('.video-preview video.video-player');
-      if (video === null) throw new Error('the editor video is missing');
-      video.pause();
-      video.currentTime = seconds;
-    }, COMPARE_AT_SECONDS);
-    await browser.waitUntil(async () => {
-      const current = await browser.execute(
-        () => document.querySelector('.video-preview .native-composited-frame')?.src ?? null,
-      );
-      return current !== null && current !== oldFrameUrl;
-    }, {
-      timeout: 120_000,
-      interval: 1_000,
-      timeoutMsg: 'the editor did not publish the requested comparison frame',
-    });
-    const previewPath = join(root, 'evidence', 'preview-at-1s.png');
-    await saveNativePreviewFrame(previewPath);
-    copyWorkflowArtifact({
-      workflow: WORKFLOW,
-      name: 'native-preview-frame',
-      source: previewPath,
-      description: 'Raw native preview frame at the one-second comparison instant.',
-    });
-    await captureWorkflowStep({
-      workflow: WORKFLOW,
-      step: '01-preview-ready',
-      description: 'The styled subtitle preview is natively composited at the comparison instant.',
-      focusSelector: '.video-preview .video-container',
-    });
+    await seekPreviewTo(COMPARE_AT_SECONDS);
+    await waitForCanvasSubtitleFrame(120_000);
+    const cueRevision = await browser.execute(
+      () => document.querySelector('.video-preview [data-osg-preview-engine="canvas-atlas"]')
+        ?.getAttribute('data-osg-frame-revision') ?? null,
+    );
+    assert.notEqual(
+      cueRevision,
+      oldFrameRevision,
+      'the editor did not publish the requested comparison frame',
+    );
 
     await clickControl('.render-video-toggle');
     const controls = await $('.video-rendering-section.expanded .native-render-controls');
     await controls.waitForDisplayed({
       timeout: 60_000,
       timeoutMsg: 'the expanded native render preview never published its player controls',
+    });
+    // Default styling alone would leave border, glow and text shadow unproved. Neon uses the
+    // reviewed Arial face and exercises all three while remaining available on a clean Windows
+    // profile; the same selected style flows into both the editor canvas and native export.
+    const neonPreset = await $('//div[contains(@class,"preset-buttons")]'
+      + '//button[normalize-space(.)="Neon"]');
+    await neonPreset.waitForClickable({ timeout: 30_000 });
+    const renderCanvasBefore = await browser.execute(() => {
+      const canvas = document.querySelector(
+        '.video-preview-panel canvas[data-osg-preview-engine="canvas-atlas"]',
+      );
+      return {
+        revision: canvas?.dataset.osgFrameRevision ?? null,
+        overlayRebuilds: Number(canvas?.dataset.osgOverlayRebuilds ?? 0),
+      };
+    });
+    await neonPreset.click();
+    await browser.execute((seconds) => {
+      const video = document.querySelector('.video-preview-panel video');
+      if (video === null) throw new Error('the render preview video is missing');
+      video.pause();
+      video.currentTime = seconds;
+    }, COMPARE_AT_SECONDS);
+    let styledRevision = null;
+    await browser.waitUntil(async () => {
+      styledRevision = await browser.execute(() => {
+        const canvas = document.querySelector(
+          '.video-preview-panel canvas[data-osg-preview-engine="canvas-atlas"]',
+        );
+        return {
+          revision: canvas?.dataset.osgFrameRevision ?? null,
+          cue: canvas?.dataset.osgCueIndex ?? null,
+          overlayRebuilds: Number(canvas?.dataset.osgOverlayRebuilds ?? 0),
+        };
+      });
+      return styledRevision.revision !== null
+        && styledRevision.revision !== renderCanvasBefore.revision
+        && styledRevision.cue !== ''
+        && styledRevision.overlayRebuilds > renderCanvasBefore.overlayRebuilds;
+    }, {
+      timeout: 120_000,
+      interval: 250,
+      timeoutMsg: () => `the Neon preset never reached preview pixels: ${JSON.stringify(styledRevision)}`,
+    });
+    const previewPath = join(root, 'evidence', 'preview-at-1s.png');
+    await savePreviewElementFrame(
+      previewPath,
+      '.video-preview-panel canvas[data-osg-preview-engine="canvas-atlas"]',
+    );
+    copyWorkflowArtifact({
+      workflow: WORKFLOW,
+      name: 'native-preview-frame',
+      source: previewPath,
+      description: 'Canvas-atlas Neon preview frame at the one-second comparison instant.',
+    });
+    await captureWorkflowStep({
+      workflow: WORKFLOW,
+      step: '01-preview-ready',
+      description: 'The border, glow, shadow, background and glyph atlas are canvas-composited.',
+      details: { preset: 'neon' },
+      focusSelector: '.video-preview .video-container',
     });
     const playerControls = await browser.execute(() => ({
       play: document.querySelector('.native-render-controls [data-osg-control="play-pause"]') !== null,

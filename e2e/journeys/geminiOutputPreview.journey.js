@@ -8,7 +8,6 @@ import {
   importSubtitleDocument,
   importSubtitles,
   openProjectWithMedia,
-  waitForNativeFrame,
 } from '../support/workflow.js';
 import { captureWorkflowStep } from '../support/workflowEvidence.js';
 
@@ -59,8 +58,10 @@ const databaseReplay = () => {
 
 const previewState = () => browser.execute(() => ({
   state: document.querySelector('[data-osg-preview]')?.getAttribute('data-osg-preview') ?? null,
-  frame: document.querySelector('.native-composited-frame')?.getAttribute('src') ?? null,
-  refusals: [...document.querySelectorAll('.error, [role="alert"], .native-preview-unavailable')]
+  code: document.querySelector('[data-osg-preview]')?.getAttribute('data-osg-preview-code') ?? null,
+  frame: document.querySelector('[data-osg-preview-engine="canvas-atlas"]')
+    ?.getAttribute('data-osg-frame-revision') ?? null,
+  refusals: [...document.querySelectorAll('.error, [role="alert"], .native-preview-unavailable, .toast-error')]
     .map((node) => (node.innerText || '').trim()).filter(Boolean).slice(0, 8),
 }));
 
@@ -88,8 +89,6 @@ describe('a Gemini-shaped mixed-script subtitle set', () => {
 
     if (replay === null) await importSubtitles(GEMINI_SHAPE_SUBTITLE_FIXTURE);
     else await importSubtitleDocument(replay.document, 'private-replay.srt', replay.expectedCue);
-    await waitForNativeFrame();
-
     const playheads = replay?.playheads ?? PLAYHEADS;
     for (const [index, seconds] of playheads.entries()) {
       if (replay !== null) console.log(`checking private replay cue ${index + 1} of ${playheads.length}`);
@@ -101,14 +100,18 @@ describe('a Gemini-shaped mixed-script subtitle set', () => {
         video.currentTime = target;
       }, seconds);
       let seen = null;
-      await browser.waitUntil(async () => {
-        seen = await previewState();
-        return seen.state === 'ready' && seen.frame !== null && seen.frame !== before.frame;
-      }, {
-        timeout: replay === null ? 120_000 : 15_000,
-        interval: 500,
-        timeoutMsg: `cue ${index + 1} at ${seconds}s did not stage and draw`,
-      });
+      try {
+        await browser.waitUntil(async () => {
+          seen = await previewState();
+          return seen.state === 'ready' && seen.frame !== null && seen.frame !== before.frame;
+        }, {
+          timeout: 15_000,
+          interval: 500,
+          timeoutMsg: `cue ${index + 1} at ${seconds}s did not stage and draw`,
+        });
+      } catch (error) {
+        throw new Error(`${error.message}; last=${JSON.stringify(seen)}`, { cause: error });
+      }
       assert.deepEqual(seen.refusals, [], `the ${seconds}s cue exposed a preview refusal`);
     }
 

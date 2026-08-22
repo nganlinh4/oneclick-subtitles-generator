@@ -7,7 +7,7 @@ import { durableState } from '../support/database.js';
 import { clickControl, openEditor } from '../support/editor.js';
 import { ensureEngineReady } from '../support/engines.js';
 import { REAL_VIDEO } from '../support/realMedia.js';
-import { waitForNativeFrame } from '../support/workflow.js';
+import { seekPreviewTo, waitForCanvasSubtitleFrame } from '../support/workflow.js';
 import { captureWorkflowStep } from '../support/workflowEvidence.js';
 
 const ENGINE = 'faster-whisper-turbo';
@@ -20,7 +20,8 @@ const visibleState = () => browser.execute(() => ({
   errorToasts: [...document.querySelectorAll('.toast-error')]
     .map((node) => (node.innerText || '').trim()).filter(Boolean),
   cueCount: document.querySelectorAll('.lyric-text').length,
-  frame: document.querySelector('.video-preview .native-composited-frame')?.getAttribute('src') ?? null,
+  frame: document.querySelector('.video-preview [data-osg-preview-engine="canvas-atlas"]')
+    ?.getAttribute('data-osg-frame-revision') ?? null,
   projectCacheId: localStorage.getItem('current_file_cache_id'),
   sourceUrl: localStorage.getItem('current_video_url'),
 }));
@@ -94,18 +95,13 @@ describe('a customer turns a real URL into visible subtitles', () => {
     assert.ok(!lastJob || !['failed', 'cancelled', 'interrupted'].includes(lastJob.state),
       `the URL transcription job failed: ${JSON.stringify(lastJob)}`);
 
-    // Put the real player inside a durable cue. A cue row is parse proof; a native frame at that
-    // cue's midpoint is the independent proof that the subtitle reached the pixels on the video.
+    // Put the real player inside a durable cue. A cue row is parse proof; canvas pixels at that
+    // cue's midpoint independently prove that the subtitle reached the video.
     durable = durableState(process.env.OSG_E2E_DATA_ROOT);
     const firstCue = durable.cues[0];
     assert.ok(firstCue, 'the durable subtitle track is empty');
-    await browser.execute((seconds) => {
-      const video = document.querySelector('.video-preview video.video-player');
-      if (video === null) throw new Error('the downloaded video is missing from the editor');
-      video.pause();
-      video.currentTime = seconds;
-    }, (Number(firstCue.start_ms) + Number(firstCue.end_ms)) / 2_000);
-    await waitForNativeFrame(180_000);
+    await seekPreviewTo((Number(firstCue.start_ms) + Number(firstCue.end_ms)) / 2_000);
+    await waitForCanvasSubtitleFrame(180_000);
     await browser.waitUntil(async () => (await visibleState()).preview === 'ready', {
       timeout: 180_000,
       interval: 1_000,

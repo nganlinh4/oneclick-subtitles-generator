@@ -1,11 +1,10 @@
 /**
- * What a preview surface must know about its source before it may ask for a native frame: which
- * project and which media the request belongs to, and how large the source actually is.
+ * What a preview surface must know before it can build the shared preview/export scene: which
+ * project and media it belongs to, and how large the decoded source actually is.
  *
  * BINDING IS NOT DECORATION. Every request carries the project and the media it was issued for, so
- * a response that arrives after the user switched projects can be recognised as belonging to the
- * previous one and dropped. Without it a slow render started on project A repaints project B's
- * editor with A's frame — silently, and looking exactly like a correct frame.
+ * asynchronous source preparation that finishes after a project switch can be recognised as stale
+ * and dropped. Without it project A can repaint project B with plausible but incorrect pixels.
  *
  * The source size is read from the `<video>` element rather than from the media record, because the
  * composition width is derived from the source aspect and the element is the only thing that has

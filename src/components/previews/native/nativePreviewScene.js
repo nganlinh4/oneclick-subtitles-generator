@@ -1,5 +1,5 @@
 /**
- * The render request, the face and the bake request one native preview frame is composed from.
+ * The render request, face and bake request shared by the canvas preview and native export.
  *
  * Three things travel together for a single frame and they have to agree, so they are built in one
  * place rather than assembled by each surface:
@@ -30,7 +30,6 @@
  */
 
 import { bakeGlyphAtlas } from '../../../platform/glyphAtlas';
-import { NATIVE_PREVIEW_LIMITS } from '../../../platform/nativePreviewFrames';
 import { buildNativeRenderRequest } from '../../../platform/renderService';
 import {
   FONT_WEIGHT_MAXIMUM,
@@ -51,6 +50,11 @@ const MICROS_PER_SECOND = 1_000_000;
 /** The font size the atlas is baked at, clamped into the baker's own bounds. */
 const MIN_ATLAS_FONT_SIZE_PX = 4;
 const MAX_ATLAS_FONT_SIZE_PX = 512;
+// The public render contract's own UTF-8 bounds (`renderService.requireString` and
+// `crates/osg-render/src/contract.rs`). Preview must accept exactly the text export accepts without
+// retaining the deleted frame-transport module merely as a constants container.
+const MAX_FACE_BYTES = 256;
+const MAX_CUE_TEXT_BYTES = 16 * 1024;
 
 const isFiniteNumber = (value) => typeof value === 'number' && Number.isFinite(value);
 const clamp = (value, minimum, maximum) => Math.min(Math.max(value, minimum), maximum);
@@ -59,7 +63,7 @@ const utf8 = new TextEncoder();
 const withinFaceBudget = (value) => (
   typeof value === 'string'
   && value.length > 0
-  && utf8.encode(value).length <= NATIVE_PREVIEW_LIMITS.maxFaceBytes
+  && utf8.encode(value).length <= MAX_FACE_BYTES
   && !/\p{Cc}/u.test(value)
 );
 
@@ -100,7 +104,7 @@ export const previewCueList = (subtitles) => {
       && typeof cue.text === 'string'
       && cue.text.length > 0
       && Math.round(cue.end * MICROS_PER_SECOND) > Math.round(Math.max(cue.start, 0) * MICROS_PER_SECOND)
-      && utf8.encode(cue.text).length <= NATIVE_PREVIEW_LIMITS.maxCueTextBytes
+      && utf8.encode(cue.text).length <= MAX_CUE_TEXT_BYTES
     ))
     .map((cue) => ({ start: Math.max(cue.start, 0), end: cue.end, text: cue.text }))
     .sort((left, right) => left.start - right.start);
@@ -111,7 +115,7 @@ export const previewCueList = (subtitles) => {
  *
  * `null` is not a failure to report at the user: it is the honest state the migration exists to
  * produce, where the shipped renderer asked for a family by CSS name, got a substitute and said
- * nothing. A surface that cannot resolve a face declines to request a native frame rather than
+ * nothing. A surface that cannot resolve a face declines to compose subtitles rather than
  * previewing a face the export would not use.
  */
 export const previewFace = ({
@@ -250,7 +254,7 @@ export const PREVIEW_FULL_FRAME_CROP = Object.freeze({
 const PROBE_CUE = Object.freeze({ id: 'probe', start: 0, end: 1, text: 'x' });
 
 /**
- * The render request one preview frame is drawn from: the export's own request, narrowed to the cue
+ * The render request one canvas frame is drawn from: the export's own request, narrowed to the cue
  * the staged atlas holds a run for.
  *
  * `cue` is the single selected cue, or `null` for an instant with nothing on screen — which is a

@@ -353,7 +353,7 @@ describe('the frame a playhead lands on', () => {
    * THE CLAMP THE EXPORT HAS NO COUNTERPART FOR.
    *
    * This used to end in `Math.min(index, frameCount - 1)`. `run_export` walks
-   * `0..plan.frame_count()` and never clamps, and `PreviewHost::compose` refuses
+   * `0..plan.frame_count()` and never clamps, and the render timeline refuses
    * `frame_index >= composition.frame_count()` outright, so the clamp was the preview inventing an
    * answer for an instant neither of them has one for.
    *

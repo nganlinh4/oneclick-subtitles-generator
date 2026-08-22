@@ -20,8 +20,9 @@ import {
   editCueText,
   importSubtitles,
   openProjectWithMedia,
+  seekPreviewTo,
   showsText,
-  waitForNativeFrame,
+  waitForCanvasSubtitleFrame,
 } from '../support/workflow.js';
 
 const EDITED = 'Edited first cue';
@@ -35,7 +36,8 @@ const inspect = () => browser.execute(() => {
       .map((node) => (node.innerText || '').trim()).filter(Boolean).slice(0, 6),
     hasVideoElement: video !== null,
     videoDuration: Number.isFinite(video?.duration) ? video.duration : null,
-    hasNativeFrame: document.querySelector('.native-composited-frame') !== null,
+    hasNativeFrame: Number(document.querySelector('[data-osg-preview-engine="canvas-atlas"]')
+      ?.getAttribute('data-osg-frame-revision') ?? 0) > 0,
   };
 });
 
@@ -70,7 +72,8 @@ describe('a customer edits a cue and reopens the application', () => {
         `the restored project must carry the same media, not ${seen.videoDuration}s`,
       );
       assert.deepEqual(seen.errors, [], 'a restored project must not show an error');
-      await waitForNativeFrame(120_000);
+      await seekPreviewTo(1);
+      await waitForCanvasSubtitleFrame(120_000);
       const restored = durableState(root);
       assert.equal(restored.projects[0].id, saved.projects[0].id, 'the project identity changed');
       assert.equal(restored.media[0].id, saved.media[0].id, 'the media identity changed');
@@ -92,7 +95,8 @@ describe('a customer edits a cue and reopens the application', () => {
 
     await openProjectWithMedia();
     await importSubtitles();
-    await waitForNativeFrame();
+    await seekPreviewTo(1);
+    await waitForCanvasSubtitleFrame();
     await captureWorkflowStep({
       workflow: WORKFLOW,
       step: '01-imported-project',

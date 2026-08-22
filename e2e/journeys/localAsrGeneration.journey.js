@@ -5,7 +5,11 @@ import { strict as assert } from 'node:assert';
 import { durableState } from '../support/database.js';
 import { clickControl } from '../support/editor.js';
 import { ensureEngineReady } from '../support/engines.js';
-import { openProjectWithMedia, waitForNativeFrame } from '../support/workflow.js';
+import {
+  openProjectWithMedia,
+  seekPreviewTo,
+  waitForCanvasSubtitleFrame,
+} from '../support/workflow.js';
 import { captureWorkflowStep } from '../support/workflowEvidence.js';
 
 const ENGINE = 'faster-whisper-turbo';
@@ -82,14 +86,15 @@ describe('a customer generates subtitles with local ASR', () => {
     if (terminalFailure !== null) {
       throw new Error(`local ASR job terminated before producing cues: ${JSON.stringify(terminalFailure)}`);
     }
-    await waitForNativeFrame(180_000);
-
     const durable = durableState(process.env.OSG_E2E_DATA_ROOT);
     assert.ok(durable.counts.cues > 0, 'ASR cues were visible but not durable');
     assert.ok(durable.cues.every((cue) => (
       cue.start_ms >= 0 && cue.end_ms > cue.start_ms && cue.text.trim().length > 0
     )), `ASR persisted invalid cue timing/text: ${JSON.stringify(durable.cues)}`);
     assert.equal(durable.latestRevision?.cue_count, durable.counts.cues);
+    const firstCue = durable.cues[0];
+    await seekPreviewTo((Number(firstCue.start_ms) + Number(firstCue.end_ms)) / 2_000);
+    await waitForCanvasSubtitleFrame(180_000);
     await captureWorkflowStep({
       workflow: WORKFLOW,
       step: '03-generated-subtitles',

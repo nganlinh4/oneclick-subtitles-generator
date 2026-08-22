@@ -321,7 +321,7 @@ const UNPLACED = placed(PREVIEW_PLAYHEAD.unknown, null);
  * pixel for — which looks exactly like a correct preview and is the silent substitution this
  * migration exists to remove. This used to end in `Math.min(index, frameCount - 1)`, a clamp the
  * export has no counterpart for: `run_export` walks `0..plan.frame_count()` and
- * `PreviewHost::compose` refuses `frame_index >= frame_count` outright.
+ * the render timeline refuses `frame_index >= frame_count` outright.
  *
  * The clamp was also not a safety net, because it clamped to the WRONG ceiling. The frame count here
  * is derived from the `<video>` element's `duration` and the native one from `MF_PD_DURATION`

@@ -24,7 +24,6 @@ mod media_export;
 mod media_pipeline;
 mod native_drop;
 mod native_tools;
-mod preview;
 mod providers;
 mod render;
 mod speech;
@@ -104,8 +103,6 @@ use osg_infrastructure::storage::{Database, is_secret_setting_key};
 use osg_media::{BinarySearch, MediaEngine, ToolchainResolver};
 use osg_media_server::MediaServer;
 use osg_native_tools::{ExecutableRole, NativeToolId};
-use preview::command::preview_frame_render;
-use preview::host::PreviewHost;
 use providers::{
     genius_lyrics, youtube_oauth_authorize, youtube_oauth_cancel, youtube_oauth_clear,
     youtube_oauth_status, youtube_search, youtube_thumbnail, youtube_video_details,
@@ -175,7 +172,6 @@ pub fn run() {
         .manage(LiveMusicRuntime::default())
         .manage(ImageBlobStore::default())
         .manage(GlyphAtlasStore::new())
-        .manage(PreviewHost::default())
         .manage(GeneratedImageRuntime::default())
         .manage(AppUpdateRuntime::default())
         .setup(setup_app)
@@ -261,7 +257,6 @@ pub fn run() {
             live_music_control,
             live_music_close,
             glyph_atlas_stage,
-            preview_frame_render,
             media_blob_import,
             media_blob_release,
             media_export_start,

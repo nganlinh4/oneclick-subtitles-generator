@@ -57,7 +57,6 @@ const COMMANDS: &[&str] = &[
     "media_blob_import",
     "media_blob_release",
     "glyph_atlas_stage",
-    "preview_frame_render",
     "media_export_start",
     "subtitle_document_export",
     "subtitle_archive_export",

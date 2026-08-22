@@ -21,7 +21,6 @@
     "use-native-providers",
     "import-legacy-data",
     "stage-glyph-atlas",
-    "render-preview-frames",
     "import-ephemeral-audio",
     "export-media",
     "run-gemini",

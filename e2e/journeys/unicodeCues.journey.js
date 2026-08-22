@@ -22,7 +22,6 @@ import {
   UNICODE_SUBTITLE_FIXTURE,
   importSubtitles,
   openProjectWithMedia,
-  waitForNativeFrame,
 } from '../support/workflow.js';
 import { captureWorkflowStep } from '../support/workflowEvidence.js';
 
@@ -32,7 +31,8 @@ const WORKFLOW = 'unicode-cues';
 
 const seekAndCapture = async (seconds, step, description) => {
   const previous = await browser.execute(
-    () => document.querySelector('.video-preview .native-composited-frame')?.src ?? null,
+    () => document.querySelector('.video-preview [data-osg-preview-engine="canvas-atlas"]')
+      ?.getAttribute('data-osg-frame-revision') ?? null,
   );
   await browser.execute((target) => {
     const video = document.querySelector('.video-preview video.video-player');
@@ -42,7 +42,8 @@ const seekAndCapture = async (seconds, step, description) => {
   }, seconds);
   await browser.waitUntil(async () => {
     const current = await browser.execute(
-      () => document.querySelector('.video-preview .native-composited-frame')?.src ?? null,
+      () => document.querySelector('.video-preview [data-osg-preview-engine="canvas-atlas"]')
+        ?.getAttribute('data-osg-frame-revision') ?? null,
     );
     return current !== null && current !== previous;
   }, {
@@ -64,7 +65,7 @@ const visibleRefusals = () => browser.execute(() => [
 ].map((node) => (node.innerText || '').trim()).filter(Boolean).slice(0, 6));
 
 describe('subtitles with Vietnamese, Korean and emoji', () => {
-  it('draw a native frame, and still draw one after the project is reopened', async () => {
+  it('draw canvas-atlas pixels, and still draw them after the project is reopened', async () => {
     const root = process.env.OSG_E2E_DATA_ROOT;
     assert.ok(root, 'the harness must have an isolated data root');
     assert.ok(
@@ -84,7 +85,6 @@ describe('subtitles with Vietnamese, Korean and emoji', () => {
         )),
         { timeout: 180_000, interval: 2_000, timeoutMsg: 'the Unicode project never restored' },
       );
-      await waitForNativeFrame(120_000);
       assert.deepEqual(
         await visibleRefusals(), [],
         'a new process must draw the project atlas containing Unicode cues',
@@ -99,13 +99,12 @@ describe('subtitles with Vietnamese, Korean and emoji', () => {
 
     await openProjectWithMedia();
     await importSubtitles(UNICODE_SUBTITLE_FIXTURE);
-    await waitForNativeFrame();
 
     await seekAndCapture(1, '01-latin-start', 'The opening Latin cue draws at a non-zero playhead.');
     await seekAndCapture(
       4,
       '02-vietnamese-korean-emoji',
-      'Vietnamese diacritics, Korean syllables, and an emoji draw in one native frame.',
+      'Vietnamese diacritics, Korean syllables, and an emoji draw in one canvas frame.',
     );
     await seekAndCapture(8, '03-arabic-bidi', 'Arabic text inside brackets draws in native bidi order.');
     await seekAndCapture(11, '04-hebrew-mixed', 'Hebrew and Latin digits draw together without refusal.');
