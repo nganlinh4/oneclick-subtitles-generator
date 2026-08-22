@@ -34,7 +34,7 @@
   animation: onboarding-fade-out 0.5s var(--md-easing-emphasized) forwards;
 }
 
-/* Glassy card container - fullscreen */
+/* Full-window stage. The content itself is a bounded setup slate below. */
 .onboarding-reveal-card {
   width: 100%;
   height: 100%;
@@ -46,7 +46,6 @@
   border: none;
   pointer-events: auto;
   display: flex;
-  flex-direction: column;
   align-items: center;
   justify-content: center;
   animation: onboarding-card-slide-in 0.5s var(--md-easing-emphasized) forwards;
@@ -58,39 +57,92 @@
 .onboarding-reveal-card.dismissing {
   animation: onboarding-card-slide-out 0.5s var(--md-easing-emphasized) forwards;
 }
-.onboarding-reveal-header {
-  /* Remove header since we're centering everything */
-  display: none;
+.onboarding-setup-panel {
+  position: relative;
+  width: min(560px, calc(100vw - 48px));
+  box-sizing: border-box;
+  padding: 38px 40px 34px;
+  overflow: hidden;
+  border: 1px solid color-mix(in srgb, var(--md-outline-variant) 70%, transparent);
+  border-radius: 28px;
+  background:
+    linear-gradient(145deg, rgba(255, 255, 255, 0.08), transparent 52%),
+    color-mix(in srgb, var(--md-surface-container-high) 91%, transparent);
+  box-shadow: 0 28px 80px rgba(0, 0, 0, 0.42), inset 0 1px rgba(255, 255, 255, 0.1);
+  backdrop-filter: blur(24px) saturate(135%);
+  -webkit-backdrop-filter: blur(24px) saturate(135%);
 }
 
-.onboarding-reveal-body {
-  padding: 0;
+/* A small subtitle-timeline accent makes this slate specific to a video-caption editor. */
+.onboarding-setup-panel::before {
+  content: '';
+  position: absolute;
+  inset: 0 0 auto;
+  height: 3px;
+  background: linear-gradient(90deg, var(--md-primary), #ff6da9 48%, #7f9cff);
+}
+
+.onboarding-setup-copy {
+  max-width: 470px;
+}
+
+.onboarding-setup-kicker {
   display: flex;
   align-items: center;
-  justify-content: center;
+  gap: 8px;
+  margin-bottom: 14px;
+  color: var(--md-primary);
+  font-family: var(--font-title);
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
 }
 
-/* Center the controls and Let's go button */
+.onboarding-setup-kicker .material-symbols-rounded {
+  font-size: 18px;
+}
+
+.onboarding-setup-copy h2 {
+  margin: 0;
+  color: var(--md-on-surface);
+  font-family: var(--font-title);
+  font-size: clamp(28px, 4vw, 38px);
+  font-weight: 650;
+  line-height: 1.1;
+  letter-spacing: -0.035em;
+}
+
+.onboarding-setup-copy p {
+  margin: 14px 0 0;
+  max-width: 440px;
+  color: var(--md-on-surface-variant);
+  font-size: 15px;
+  line-height: 1.55;
+}
+
 .onboarding-controls-row {
   display: flex;
   align-items: center;
-  justify-content: center;
-  gap: 48px;
+  justify-content: space-between;
+  gap: 24px;
+  margin-top: 30px;
+  padding-top: 24px;
+  border-top: 1px solid color-mix(in srgb, var(--md-outline-variant) 56%, transparent);
   flex-wrap: wrap;
   position: relative;
   z-index: 2; /* Above the starry canvas to ensure buttons are clickable */
   pointer-events: auto; /* Ensure buttons receive click events */
 }
 
-/* Adjust sizes to align heights */
-.settings-footer-controls.controls-large .theme-toggle {
+.onboarding-reveal-card .settings-footer-controls.controls-large .theme-toggle {
   width: 40px; /* smaller to match language button height */
   height: 40px;
   font-size: 18px;
 }
 
 /* Language button already ~40px tall via LanguageSelector.css; ensure harmony */
-.language-selector-container .language-selector-button {
+.onboarding-reveal-card .language-selector-container .language-selector-button {
   height: 40px;
   border-radius: 9999px;
 }
@@ -136,34 +188,36 @@
   position: relative;
 }
 
-/* Make controls big and comfortable */
-.settings-footer-controls.controls-large.split-layout {
+.onboarding-reveal-card .settings-footer-controls.controls-large.split-layout {
   display: flex;
   align-items: center;
   gap: 12px;
 }
-.settings-footer-controls.controls-large.split-layout .controls-left {
+.onboarding-reveal-card .settings-footer-controls.controls-large.split-layout .controls-left {
   display: flex;
   justify-content: flex-start;
 }
-.settings-footer-controls.controls-large.split-layout .controls-right {
+.onboarding-reveal-card .settings-footer-controls.controls-large.split-layout .controls-right {
   display: flex;
   justify-content: flex-end;
-}
-
-.onboarding-reveal-footer {
-  display: flex;
-  justify-content: center;
-  padding: 12px 20px 20px 20px;
 }
 
 /* Hover and active states for Let's go button */
 .onboarding-controls-row .lets-go-btn:hover {
   transform: translateY(-2px);
   box-shadow: var(--md-elevation-level3);
-  background-color: transparent !important;
-  color: var(--md-primary);
+  background-color: color-mix(in srgb, var(--md-primary) 84%, white);
   text-shadow: none;
+}
+
+.onboarding-reveal-card .settings-footer-controls.controls-large {
+  display: flex;
+  width: auto;
+  margin: 0;
+  align-items: center;
+  flex-direction: row;
+  justify-content: flex-start;
+  gap: 12px;
 }
 
 /* Arrow animation on hover */
@@ -233,12 +287,38 @@
 }
 
 @media (max-width: 600px) {
-  .settings-footer-controls.controls-large.split-layout {
-    grid-template-columns: 1fr;
+  .onboarding-setup-panel {
+    width: calc(100vw - 28px);
+    padding: 30px 24px 26px;
+    border-radius: 22px;
   }
-  .settings-footer-controls.controls-large.split-layout .controls-left,
-  .settings-footer-controls.controls-large.split-layout .controls-right {
+
+  .onboarding-controls-row {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .onboarding-reveal-card .settings-footer-controls.controls-large.split-layout,
+  .onboarding-reveal-card .settings-footer-controls.controls-large.split-layout .controls-left,
+  .onboarding-reveal-card .settings-footer-controls.controls-large.split-layout .controls-right {
     justify-content: center;
+  }
+
+  .onboarding-reveal-card .settings-footer-controls.controls-large {
+    justify-content: center;
+  }
+
+  .onboarding-controls-row .lets-go-btn {
+    width: 100%;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .onboarding-reveal-overlay,
+  .onboarding-reveal-card,
+  .onboarding-reveal-overlay.dismissing,
+  .onboarding-reveal-card.dismissing {
+    animation-duration: 1ms;
   }
 }
 

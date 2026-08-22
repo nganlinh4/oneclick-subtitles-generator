@@ -9,5 +9,8 @@
   "next": "Next",
   "finish": "Finish",
   "letsGo": "Let's go",
+  "preferencesStep": "Workspace setup",
+  "preferencesTitle": "Make the editor yours",
+  "preferencesDescription": "Choose how the editor looks and the language it uses. You can change both later in Settings.",
   "completed": "Setup complete! You can change these settings anytime."
 }

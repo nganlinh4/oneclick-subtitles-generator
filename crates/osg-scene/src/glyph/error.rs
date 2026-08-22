@@ -62,6 +62,39 @@ pub enum GlyphAtlasError {
     UnsupportedContentHash,
 }
 
+impl GlyphAtlasError {
+    /// Stable, value-free code for command responses and diagnostics.
+    pub const fn code(self) -> &'static str {
+        match self {
+            Self::UnsupportedVersion => "glyphAtlasUnsupportedVersion",
+            Self::UnsupportedFace => "glyphAtlasUnsupportedFace",
+            Self::UnsupportedFontSize => "glyphAtlasUnsupportedFontSize",
+            Self::UnsupportedProbes => "glyphAtlasUnsupportedProbes",
+            Self::UnsupportedMetrics => "glyphAtlasUnsupportedMetrics",
+            Self::UnsupportedDirection => "glyphAtlasUnsupportedDirection",
+            Self::UnsupportedAtlasSize => "glyphAtlasUnsupportedAtlasSize",
+            Self::UnsupportedPadding => "glyphAtlasUnsupportedPadding",
+            Self::UnsupportedRowStride => "glyphAtlasUnsupportedRowStride",
+            Self::UnsupportedGlyphCount => "glyphAtlasUnsupportedGlyphCount",
+            Self::UnsupportedCluster => "glyphAtlasUnsupportedCluster",
+            Self::UnorderedGlyphs => "glyphAtlasUnorderedGlyphs",
+            Self::UnsupportedTextLength => "glyphAtlasUnsupportedTextLength",
+            Self::GlyphOutsideAtlas => "glyphAtlasCellOutsideAtlas",
+            Self::UnsupportedLayout => "glyphAtlasUnsupportedLayout",
+            Self::UnsupportedLayoutSize => "glyphAtlasUnsupportedLayoutSize",
+            Self::UnsupportedLayoutWidth => "glyphAtlasUnsupportedLayoutWidth",
+            Self::UnsupportedLetterSpacing => "glyphAtlasUnsupportedLetterSpacing",
+            Self::LayoutCellIndex => "glyphAtlasLayoutCellIndex",
+            Self::UnorderedLayoutBaselines => "glyphAtlasUnorderedLayoutBaselines",
+            Self::LayoutLineCountMismatch => "glyphAtlasLayoutLineCountMismatch",
+            Self::GlyphCountMismatch => "glyphAtlasCellCountMismatch",
+            Self::PixelBufferMismatch => "glyphAtlasPixelBufferMismatch",
+            Self::DerivedFieldMismatch => "glyphAtlasDerivedFieldMismatch",
+            Self::UnsupportedContentHash => "glyphAtlasUnsupportedContentHash",
+        }
+    }
+}
+
 impl core::fmt::Display for GlyphAtlasError {
     fn fmt(&self, formatter: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
         let message = match self {

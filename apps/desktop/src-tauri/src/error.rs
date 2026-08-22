@@ -140,6 +140,14 @@ impl CommandError {
         Self::fixed(code, message)
     }
 
+    /// One value-free refusal from the glyph-atlas staging boundary.
+    pub(crate) fn glyph_atlas_refusal(code: &'static str, message: impl Into<String>) -> Self {
+        Self {
+            code,
+            message: message.into(),
+        }
+    }
+
     pub(crate) fn channel_closed() -> Self {
         Self {
             code: "channelClosed",

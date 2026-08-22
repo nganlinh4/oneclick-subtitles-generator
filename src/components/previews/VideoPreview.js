@@ -317,11 +317,6 @@ const VideoPreview = ({ currentTime, setCurrentTime, setDuration, videoSource, f
     },
   ) !== null;
 
-  // Having no subtitles is a fact about the PROJECT, not about the frame. The compositor happily
-  // publishes a source frame for a cue-less project — correctly, since that is what the finished
-  // video would look like — so gating this on an idle preview meant the customer was told nothing at
-  // all about why their subtitles were not there.
-  const subtitlePreviewEmpty = Boolean(videoUrl) && isLoaded && !isVideoLoading && !previewHasCues;
   const subtitlePreviewDormant = previewIdle && previewHasCues && cueCoversNow;
 
   /**
@@ -462,12 +457,11 @@ const VideoPreview = ({ currentTime, setCurrentTime, setDuration, videoSource, f
             asked for" and "what was asked for was refused" are different facts and only the second
             one has a recovery. The retry releases the preview surface, which is what a lost
             graphics device needs and the only thing that lifts it for this project/media pair. */}
-        {(nativePreview.error !== null || subtitlePreviewDormant || subtitlePreviewEmpty) && (
+        {(nativePreview.error !== null || subtitlePreviewDormant) && (
           <NativePreviewUnavailable
             code={nativePreview.error === null
               ? null
               : nativePreview.error.nativeCode ?? nativePreview.error.code}
-            emptyProject={subtitlePreviewEmpty}
             onRetry={nativePreview.error === null ? null : nativePreview.releaseSurface}
           />
         )}

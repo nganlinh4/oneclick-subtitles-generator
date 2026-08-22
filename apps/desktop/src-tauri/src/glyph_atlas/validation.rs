@@ -8,8 +8,8 @@ use std::cmp::Ordering;
 
 use osg_scene::glyph::{
     AtlasGeometry, AtlasMetrics, CONTENT_HASH_DIGITS, Direction, GLYPH_ATLAS_VERSION,
-    GlyphAtlasError, MAX_ATLAS_DIMENSION_PX, MAX_CLUSTER_CODE_POINTS, MAX_FAMILY_CHARACTERS,
-    MAX_FONT_SIZE_PX, MAX_GLYPH_COUNT, MAX_PADDING_PX, MAX_TEXT_CODE_POINTS, MIN_FONT_SIZE_PX,
+    GlyphAtlasError, MAX_ATLAS_CODE_POINTS, MAX_ATLAS_DIMENSION_PX, MAX_CELL_CODE_POINTS,
+    MAX_FAMILY_CHARACTERS, MAX_FONT_SIZE_PX, MAX_GLYPH_COUNT, MAX_PADDING_PX, MIN_FONT_SIZE_PX,
 };
 
 use super::{StagedFace, StagedGlyph, UncheckedStagedAtlas};
@@ -114,7 +114,7 @@ fn validate_glyphs(
         // itself, so the two identities cannot come apart the way a second encoding could.
         let code_points = glyph.cluster.chars().count();
         if code_points == 0
-            || code_points > MAX_CLUSTER_CODE_POINTS
+            || code_points > MAX_CELL_CODE_POINTS
             || !glyph.advance_width_px.is_finite()
             || glyph.advance_width_px < 0.0
             || glyph.origin_x_px.unsigned_abs() > MAX_ATLAS_DIMENSION_PX
@@ -140,9 +140,9 @@ fn validate_glyphs(
         previous = Some(&glyph.cluster);
         total_code_points += code_points;
     }
-    // The clusters are the run's distinct graphemes, so their code points cannot outnumber the
-    // run's own — which is the bound the baker enforces on the text.
-    if total_code_points > MAX_TEXT_CODE_POINTS {
+    // Cells are whole shaped lines. One page can carry distinct lines from many cues, so its total
+    // has the atlas-page bound rather than the old one-run/grapheme bound.
+    if total_code_points > MAX_ATLAS_CODE_POINTS {
         return Err(GlyphAtlasError::UnsupportedTextLength);
     }
     Ok(())

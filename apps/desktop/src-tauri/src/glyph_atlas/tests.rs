@@ -36,6 +36,29 @@ fn a_valid_frame_stages_and_returns_the_echoed_hash() {
 }
 
 #[test]
+fn a_shaped_line_longer_than_the_old_grapheme_bound_stages() {
+    // Cells are whole shaped lines now. The first generated customer cue that exposed the stale
+    // validator was 34 code points: valid as a line, invalid only under the deleted per-grapheme
+    // model's 32-code-point ceiling.
+    let line = "a".repeat(34);
+    let glyph = format!(
+        concat!(
+            r#"{{"cluster":"{line}","direction":"ltr","advanceWidthPx":64,"#,
+            r#""xPx":0,"yPx":0,"widthPx":2,"heightPx":2,"originXPx":0,"#,
+            r#""originYPx":1,"substituted":false}}"#
+        ),
+        line = line,
+    );
+    let atlas = stage(&frame(&metadata_with(4, 2, 1, &glyph), &[0_u8; 32]))
+        .expect("a valid shaped line stages");
+    let descriptor = atlas
+        .to_descriptor()
+        .expect("the compositor accepts the same line");
+
+    assert_eq!(descriptor.glyphs()[0].cluster, line);
+}
+
+#[test]
 fn an_inkless_run_stages_as_a_zero_by_zero_atlas() {
     let atlas = stage(&frame(&metadata_with(0, 0, 0, ""), &[])).expect("inkless run");
     assert!(atlas.pixels.is_empty());
@@ -349,6 +372,7 @@ fn a_refusal_never_names_a_family_a_cluster_a_path_or_a_byte_count() {
     ];
     for refusal in refusals {
         let command = CommandError::from(refusal);
+        assert_eq!(command.code(), refusal.code());
         let rendered = format!("{refusal} {command:?}");
         assert!(!rendered.contains(MARKER_FAMILY), "{rendered}");
         assert!(!rendered.contains(MARKER_CLUSTER_ONE), "{rendered}");

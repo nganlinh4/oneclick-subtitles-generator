@@ -355,13 +355,14 @@ describe('a project that has no subtitles at all', () => {
    * real application crashed the moment a video was opened — the video element never appeared at
    * all, which the real-binary journey caught and this suite did not.
    */
-  it('renders the video and says there are no subtitles yet', () => {
+  it('renders an unobstructed video and publishes the empty state', () => {
     const { video, container } = mount({ subtitlesArray: null });
     expect(video).not.toBeNull();
 
     finishLoading(video);
 
-    expect(container.querySelector('.native-preview-empty')).not.toBeNull();
+    expect(container.querySelector('[data-osg-preview="empty"]')).not.toBeNull();
+    expect(container.querySelector('.native-preview-empty')).toBeNull();
     expect(container.querySelector('.native-preview-unavailable')).toBeNull();
   });
 

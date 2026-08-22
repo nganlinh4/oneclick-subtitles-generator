@@ -36,6 +36,25 @@ pub(crate) enum StagingRefusal {
     Unavailable,
 }
 
+impl StagingRefusal {
+    /// Stable, value-free code safe to return to the WebView and record in diagnostics.
+    pub(crate) const fn code(self) -> &'static str {
+        match self {
+            Self::UnsupportedMediaType => "glyphAtlasUnsupportedMediaType",
+            Self::UnsupportedBody => "glyphAtlasUnsupportedBody",
+            Self::FrameTooLarge => "glyphAtlasFrameTooLarge",
+            Self::FrameTooShort => "glyphAtlasFrameTooShort",
+            Self::UnsupportedMagic => "glyphAtlasUnsupportedMagic",
+            Self::UnsupportedFrameVersion => "glyphAtlasUnsupportedFrameVersion",
+            Self::UnsupportedMetadataLength => "glyphAtlasUnsupportedMetadataLength",
+            Self::UnsupportedMetadata => "glyphAtlasUnsupportedMetadata",
+            Self::PixelLengthMismatch => "glyphAtlasPixelLengthMismatch",
+            Self::Descriptor(error) => error.code(),
+            Self::Unavailable => "glyphAtlasUnavailable",
+        }
+    }
+}
+
 impl fmt::Display for StagingRefusal {
     fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
         let message = match self {
@@ -69,9 +88,10 @@ impl From<StagingRefusal> for CommandError {
     fn from(refusal: StagingRefusal) -> Self {
         // Every `StagingRefusal` message names a field and never a value, so the whole of it is
         // safe to surface. The `WebView` reduces it to a typed code anyway.
-        match refusal {
-            StagingRefusal::Unavailable => Self::internal("Glyph atlas staging is unavailable."),
-            refusal => Self::invalid_input(format!("The glyph atlas was not staged: {refusal}.")),
-        }
+        let message = match refusal {
+            StagingRefusal::Unavailable => "Glyph atlas staging is unavailable.".to_owned(),
+            refusal => format!("The glyph atlas was not staged: {refusal}."),
+        };
+        Self::glyph_atlas_refusal(refusal.code(), message)
     }
 }

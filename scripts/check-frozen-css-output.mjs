@@ -12,8 +12,9 @@ import { fileURLToPath } from 'node:url';
  * had become undeclared and unresolvable, so `cssMinify: 'esbuild'` silently produced an unminified
  * stylesheet; the previous pin (682_209 bytes, one rule per line) recorded that state. With the
  * dependency declared again the same sources emitted 587_843 minified bytes. The current reviewed
- * pin is 16 bytes larger because long localized action labels now grow their pill instead of
- * painting outside its fixed height; screenshot workflows cover both URL and local-media forms.
+ * pin includes the bounded first-run setup slate and removes the redundant empty-project sentence
+ * from the video surface. Real-binary screenshots cover both surfaces: setup controls stay on one
+ * row and a cue-less video remains unobstructed.
  *
  * The design was verified unchanged rather than assumed: all 151 Material custom properties, and
  * the album-art, floating-scrollbar and liquid-glass surface counts, are identical. Two counters
@@ -24,9 +25,9 @@ import { fileURLToPath } from 'node:url';
  * authority on the design and this file is the authority on the artefact.
  */
 export const FROZEN_CSS_ARTIFACT = Object.freeze({
-  fileName: 'index-gfYxaAKN.css',
-  sha256: '9794e08b6f67e13e005f8f7ec54b8244047de276663dc9a52e37e853ca98bc5c',
-  sizeBytes: 587_859,
+  fileName: 'index-y2F5z4xK.css',
+  sha256: 'eadbce342cc6902a9919eccdeea3725388cfc4a0a12db0dfbce318c8e667c546',
+  sizeBytes: 589_847,
   parity: Object.freeze({
     albumArtCount: 22,
     customSliderCount: 44,

@@ -17,6 +17,8 @@ import { FIXTURE_ROOT } from './environment.js';
 export const SUBTITLE_FIXTURE = 'cues-ascii.srt';
 /** Vietnamese, Korean, emoji, Arabic in brackets and mixed bidi, for the journey about coverage. */
 export const UNICODE_SUBTITLE_FIXTURE = 'cues-unicode.srt';
+/** Mixed Korean and Latin lines with the same shape as a real generated transcript. */
+export const GEMINI_SHAPE_SUBTITLE_FIXTURE = 'cues-gemini-shape.srt';
 export const FIRST_CUE = 'First cue for the preview';
 
 const ACTIVATION_TIMEOUT_MS = 180_000;
@@ -64,6 +66,16 @@ export const openProjectWithMedia = async () => {
  */
 export const importSubtitles = async (fixture = SUBTITLE_FIXTURE) => {
   const subtitles = readFileSync(join(FIXTURE_ROOT, fixture), 'utf8');
+  await importSubtitleDocument(subtitles, fixture, FIRST_CUE);
+};
+
+/**
+ * Drop an in-memory subtitle document through the same real editor boundary as a fixture.
+ *
+ * Kept separate so a diagnostic journey can replay a user's cue strings from a database opened
+ * read-only without copying those strings into the repository or an evidence manifest.
+ */
+export const importSubtitleDocument = async (subtitles, name, expectedCue) => {
   const dropped = await browser.execute((text, name) => {
     const target = document.querySelector('.srt-upload-button-container');
     if (target === null) return 'no drop target';
@@ -78,13 +90,13 @@ export const importSubtitles = async (fixture = SUBTITLE_FIXTURE) => {
       }));
     }
     return 'dropped';
-  }, subtitles, fixture);
+  }, subtitles, name);
 
   if (dropped !== 'dropped') throw new Error(`the subtitle drop target was missing: ${dropped}`);
 
   await browser.waitUntil(
     async () => (await browser.execute(
-      (cue) => (document.body?.innerText || '').includes(cue), FIRST_CUE,
+      (cue) => (document.body?.innerText || '').includes(cue), expectedCue,
     )),
     { timeout: 60_000, interval: 1_000, timeoutMsg: 'the imported subtitles never appeared' },
   );

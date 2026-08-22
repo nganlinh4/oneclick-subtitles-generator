@@ -9,7 +9,7 @@
     "status: green (passing), red (written and failing for a recorded product reason), planned.",
     "A red entry is not a gap in coverage -- it is coverage that has found something."
   ],
-  "updated": "2026-08-21",
+  "updated": "2026-08-22",
   "binary": {
     "e2e": "target/x86_64-pc-windows-msvc/release/osg-desktop.exe built with --features e2e-automation",
     "installed": "NSIS setup from --features production, exercised by the isolated installed smoke"
@@ -89,6 +89,28 @@
     "authority": "Screenshots expose customer-visible truth and aesthetic defects; files, SQLite, logs, hashes, ffprobe, decoded pixels, and second-process restoration remain the independent success oracles."
   },
   "journeys": [
+    {
+      "name": "freshInstallVisual",
+      "kind": "shell-visual",
+      "file": "journeys/freshInstallVisual.journey.js",
+      "capability": "Both first-run screens fill the real application window and present a centred, bounded setup surface.",
+      "assertions": [
+        "welcome and preference overlays cover the viewport",
+        "the preference slate is centred, bounded, titled, and screenshot-backed"
+      ],
+      "status": "green"
+    },
+    {
+      "name": "geminiOutputPreview",
+      "kind": "workflow",
+      "file": "journeys/geminiOutputPreview.journey.js",
+      "capability": "Generated-output-shaped Korean and Latin cues stage and draw while the customer scrubs.",
+      "assertions": [
+        "every representative cue publishes a distinct native composited frame",
+        "an explicitly supplied database can be replayed read-only without persisting private cue text in evidence"
+      ],
+      "status": "green"
+    },
     {
       "name": "startup",
       "kind": "shell",
@@ -487,6 +509,13 @@
       "note": "Only two call sites recorded refusals; the render path did not. Every refusal is recorded now."
     },
     {
+      "finding": "A valid shaped subtitle line longer than 32 code points was rejected by native atlas staging.",
+      "foundBy": "geminiOutputPreview read-only live-database replay",
+      "status": "fixed",
+      "severity": "critical",
+      "note": "The WebView and compositor model cells as whole shaped lines, but the staging validator still applied the deleted grapheme-cluster ceiling. It now mirrors MAX_CELL_CODE_POINTS per line and MAX_ATLAS_CODE_POINTS per page; the real 61-cue replay and a 34-code-point Rust boundary test pin the correction."
+    },
+    {
       "finding": "Editing a cue sometimes does not commit: the edited text never appears.",
       "foundBy": "editPersistRelaunch",
       "status": "harness-fixed",
@@ -496,7 +525,8 @@
   "fixtures": {
     "subtitles": [
       "fixtures/subtitles/cues-ascii.srt",
-      "fixtures/subtitles/cues-unicode.srt"
+      "fixtures/subtitles/cues-unicode.srt",
+      "fixtures/subtitles/cues-gemini-shape.srt"
     ],
     "media": "none -- see the media section above"
   },

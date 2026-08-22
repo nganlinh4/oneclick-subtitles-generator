@@ -28,9 +28,6 @@ import { useFontReadiness } from '../../../services/useFontReadiness';
  *     wait that can never end.
  *   - FONT REFUSED — the font could not be installed. Shows the typed cause and, when native says
  *     retrying could help, a button that asks native to install it again.
- *   - EMPTY (`emptyProject`) — the project has no cues at all. Nothing failed and nothing is missing;
- *     there is simply nothing to draw yet. It carries no `.error` class and no retry, because the
- *     next step belongs to the customer rather than to the application.
  *   - DORMANT (`code === null`) — a frame was needed and never asked for: no desktop runtime, no
  *     resolved project/media, no decoded source size. Nothing was refused, so nothing is retried.
  *   - REFUSED — work was attempted and declined. `code` is a stable identifier carrying no path, no
@@ -38,7 +35,7 @@ import { useFontReadiness } from '../../../services/useFontReadiness';
  *     the ONLY recovery from a lost graphics device: that refusal is terminal for the
  *     (project, media) pair until the surface is released.
  */
-const NativePreviewUnavailable = ({ code = null, emptyProject = false, onRetry = null }) => {
+const NativePreviewUnavailable = ({ code = null, onRetry = null }) => {
   const { t } = useTranslation();
   const font = useFontReadiness();
   const [repairing, setRepairing] = useState(false);
@@ -53,23 +50,6 @@ const NativePreviewUnavailable = ({ code = null, emptyProject = false, onRetry =
       setRepairing(false);
     }
   }, []);
-
-  // A project with no subtitles has nothing to draw, and nothing has failed. Said plainly, without
-  // the error treatment, because a customer who is told a working editor is broken learns to ignore
-  // the notice that also reports real failures. Reported first: with no cues, every other
-  // prerequisite is moot.
-  if (code === null && emptyProject) {
-    return (
-      <div className="native-preview-empty" role="status">
-        <span>
-          {t(
-            'videoPreview.subtitlePreviewEmpty',
-            'No subtitles yet. Add or generate them and they will appear on the video here.',
-          )}
-        </span>
-      </div>
-    );
-  }
 
   // The font is the reason nothing can be drawn, and it is a reason with an owner and an action.
   // Reported ahead of the generic dormancy below, which by construction cannot say why.

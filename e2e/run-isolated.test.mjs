@@ -17,7 +17,9 @@ test('discovers every product journey while excluding scenario-only diagnostics'
   const names = defaultJourneys().map((path) => path.replaceAll('\\', '/').split('/').at(-1));
   assert.deepEqual(names, [
     'defaultFont.journey.js',
+    'freshInstallVisual.journey.js',
     'geminiCredentialBoundary.journey.js',
+    'geminiOutputPreview.journey.js',
     'localAsrGeneration.journey.js',
     'narrationGeneration.journey.js',
     'nativeExportDecoded.journey.js',

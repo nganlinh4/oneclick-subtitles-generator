@@ -55,17 +55,24 @@ const OnboardingFooterReveal = () => {
     <div className={`onboarding-reveal-overlay ${dismissing ? 'dismissing' : ''}`} aria-hidden={false}>
       <OnboardingStarryBackground />
       <div className={`onboarding-reveal-card ${dismissing ? 'dismissing' : ''}`}>
-        <div className="onboarding-reveal-header">{/* empty header keeps layout clean */}</div>
-        <div className="onboarding-reveal-body">
+        <section className="onboarding-setup-panel" aria-labelledby="onboarding-setup-title">
+          <div className="onboarding-setup-copy">
+            <div className="onboarding-setup-kicker">
+              <span className="material-symbols-rounded" aria-hidden="true">subtitles</span>
+              <span>{t('onboarding.preferencesStep')}</span>
+            </div>
+            <h2 id="onboarding-setup-title">{t('onboarding.preferencesTitle')}</h2>
+            <p>{t('onboarding.preferencesDescription')}</p>
+          </div>
           <div className="onboarding-controls-row">
             <SettingsFooterControls size="large" layout="group" isDropup={true} />
-            <button className="lets-go-btn" onClick={handleLetsGo}>
+            <button type="button" className="lets-go-btn" onClick={handleLetsGo}>
               <div className="gemini-icon-container"></div>
               <span className="lets-go-text">{t('onboarding.letsGo')}</span>
               <span className="material-symbols-rounded lets-go-arrow" style={{ fontSize: '20px' }}>arrow_forward</span>
             </button>
           </div>
-        </div>
+        </section>
       </div>
     </div>
   );
