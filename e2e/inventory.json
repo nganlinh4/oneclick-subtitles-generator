@@ -28,8 +28,8 @@
       "updating two stale preview fixtures to the real transport-index contract."
     ],
     "command": "npx vitest run",
-    "files": 235,
-    "assertions": 2179,
+    "files": 238,
+    "assertions": 2177,
     "restored": {
       "files": 190,
       "reason": "behavioral contract and adversarial coverage remains valuable even when a boundary is doubled",
