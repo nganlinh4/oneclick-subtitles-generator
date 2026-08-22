@@ -2,7 +2,7 @@
   "schemaVersion": 5,
   "algorithm": "sha256",
   "normalization": "binary exact; UTF-8 BOM ignored, CRLF/CR normalized to LF, terminal newlines ignored",
-  "baselineRevision": "2ae11500b573e4069ffa7ec8aba50be5f42fb0ee",
+  "baselineRevision": "c377b8c98389528cf48a58e10f2514b2af938cb4",
   "retiredExactFiles": {
     "public/oauth2callback.html": "c19855fd5a3f19af1eea1c1fed6e7794a342136223dd60dbead2586d4298fd90",
     "src/assets/fonts/GoogleSansFlex.ttf": "eae5ed6ddefbd44ab9693b84454ce46f3f2de0fb4f7cc5b54138c50c5b347d70",
@@ -162,7 +162,7 @@
     "src/styles/oauth-callback.css": "ec23bb636da84eeb1fe746d0e7ea58b17c434727bd0350d7a8ac9a7442936fd0",
     "src/styles/OAuthCallback.css": "64525be09c10d027325a3bdd15c6ea2522a31010619e7f69c14a17c41e37b0ab",
     "src/styles/OnboardingBanner.css": "c133425efc92357e0c9276ab2ef3d34da634a77fa8b1c8c6cd7b128186d3547c",
-    "src/styles/OnboardingFooterReveal.css": "e014f3efd0b78c441508ddb09f7854ae4f77cc7bffdbca3d07eb6595053e1a7f",
+    "src/styles/OnboardingFooterReveal.css": "3f28a3ac8c491d199a03f353d3b7f12101fe5a70aae94aeb3427cd7a093aea19",
     "src/styles/OutputContainer.css": "bc36eadba7f240cfc2595bff667f24345f1f8ba065e29ea390a0844f53bb4f40",
     "src/styles/ParallelProcessingStatus.css": "e9091a4db39ef26b96a38e1ab206d9cbf264d4287b92d7171346d5406304b4f1",
     "src/styles/ProcessingTextAnimation.css": "5d69880b3cb6d527b84360042198e66860603430b19b2df0abce632fb99b4e5b",
@@ -1083,7 +1083,7 @@
       ]
     },
     "src/i18n/locales/en/onboarding.json": {
-      "hash": "091c7a4bdfff1be90226ad1876e6b40523f79eecbfdfcc4204e258e8f9005fca",
+      "hash": "3e84188d0d142b9cd8bb79c677b5ad9608d4b0fb78ef1a0da1845eb6867d6ed1",
       "keys": [
         "back",
         "completed",
@@ -1092,9 +1092,6 @@
         "modelSelectionInstruction",
         "modelSelectionSubtitle",
         "next",
-        "preferencesDescription",
-        "preferencesStep",
-        "preferencesTitle",
         "promptSelectionInstruction",
         "promptSelectionSubtitle",
         "selectLanguage",
@@ -3519,7 +3516,7 @@
       ]
     },
     "src/i18n/locales/ko/onboarding.json": {
-      "hash": "2d1bf4045007d877b91f0e35efed6662fda91eda7663ce38803032d5167bdcde",
+      "hash": "d5e28846fef10951c922cac9fc63e4e5f966623cb7a4d8a72a708162b5cb450a",
       "keys": [
         "back",
         "completed",
@@ -3528,9 +3525,6 @@
         "modelSelectionInstruction",
         "modelSelectionSubtitle",
         "next",
-        "preferencesDescription",
-        "preferencesStep",
-        "preferencesTitle",
         "promptSelectionInstruction",
         "promptSelectionSubtitle",
         "selectLanguage",
@@ -6168,7 +6162,7 @@
       ]
     },
     "src/i18n/locales/vi/onboarding.json": {
-      "hash": "1a7eb1d22ef027daf122a28f8216c759e2df81f8750f07e1f7e5f47fe66e8a12",
+      "hash": "079c36006c17178a65a62654a9b1afbdeaa383f3397d735e112bd7ea1b62b78a",
       "keys": [
         "back",
         "completed",
@@ -6177,9 +6171,6 @@
         "modelSelectionInstruction",
         "modelSelectionSubtitle",
         "next",
-        "preferencesDescription",
-        "preferencesStep",
-        "preferencesTitle",
         "promptSelectionInstruction",
         "promptSelectionSubtitle",
         "selectLanguage",
@@ -8600,10 +8591,10 @@
       ]
     },
     "src/components/OnboardingFooterReveal.jsx": {
-      "hash": "9a76253a285c852aec11486d599bd76b8400450d3763f193c40aa209776113bf",
+      "hash": "907b39e61bf6a1e027ff859fad9e57e6dba8253fb9f183265093416a99d2dbe7",
       "rootCount": 1,
       "roots": [
-        "ca92ab9d9524da380e3bec92b4658b1333635966b77a15e8eab475a5034028e0"
+        "bc15a8ddb26d488ab781bbbdb46c7c32fd59e3b9eeea543a97a1ff32b46dd7ff"
       ]
     },
     "src/components/OnboardingStarryBackground.js": {
