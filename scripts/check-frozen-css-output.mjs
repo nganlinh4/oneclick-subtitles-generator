@@ -25,9 +25,9 @@ import { fileURLToPath } from 'node:url';
  * authority on the design and this file is the authority on the artefact.
  */
 export const FROZEN_CSS_ARTIFACT = Object.freeze({
-  fileName: 'index-1UfjNcyC.css',
-  sha256: 'b9cc1f676e2c63485691fdbb8c2b06d8a7a8724744a25694c544bbcf58887c4b',
-  sizeBytes: 588_298,
+  fileName: 'index-D8zLbWMP.css',
+  sha256: 'd20568791ced64c81174ac9c96f73ec8e2b1f1dde39f9aa60445c9414114e66e',
+  sizeBytes: 588_293,
   parity: Object.freeze({
     albumArtCount: 22,
     customSliderCount: 44,
