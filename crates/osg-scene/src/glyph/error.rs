@@ -64,6 +64,7 @@ pub enum GlyphAtlasError {
 
 impl GlyphAtlasError {
     /// Stable, value-free code for command responses and diagnostics.
+    #[must_use]
     pub const fn code(self) -> &'static str {
         match self {
             Self::UnsupportedVersion => "glyphAtlasUnsupportedVersion",

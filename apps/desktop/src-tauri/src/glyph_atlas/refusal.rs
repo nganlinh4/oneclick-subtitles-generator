@@ -37,7 +37,8 @@ pub(crate) enum StagingRefusal {
 }
 
 impl StagingRefusal {
-    /// Stable, value-free code safe to return to the WebView and record in diagnostics.
+    /// Stable, value-free code safe to return to the `WebView` and record in diagnostics.
+    #[must_use]
     pub(crate) const fn code(self) -> &'static str {
         match self {
             Self::UnsupportedMediaType => "glyphAtlasUnsupportedMediaType",
