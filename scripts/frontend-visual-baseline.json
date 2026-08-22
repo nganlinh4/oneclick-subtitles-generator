@@ -2,7 +2,7 @@
   "schemaVersion": 5,
   "algorithm": "sha256",
   "normalization": "binary exact; UTF-8 BOM ignored, CRLF/CR normalized to LF, terminal newlines ignored",
-  "baselineRevision": "8ced27b256a5ee54549173d2586491b150fe52e7",
+  "baselineRevision": "a25b072383a2f2d3688a6ba565d8bb7ccf001213",
   "retiredExactFiles": {
     "public/oauth2callback.html": "c19855fd5a3f19af1eea1c1fed6e7794a342136223dd60dbead2586d4298fd90",
     "src/assets/fonts/GoogleSansFlex.ttf": "eae5ed6ddefbd44ab9693b84454ce46f3f2de0fb4f7cc5b54138c50c5b347d70",
@@ -8636,6 +8636,13 @@
         "4ebdc11b07900ba0ac8a187a70c7f5a30c59dc2debb2ae7061a446405ff9e5a2"
       ]
     },
+    "src/components/previews/canvas/CanvasVideoPreview.js": {
+      "hash": "6d741298243d1834924eb0a7e861ab9942193be99090d8d342409419c65813f6",
+      "rootCount": 1,
+      "roots": [
+        "103b0f2fbcf4e79e825bdaffc2033d4a1e486a2ff5aaad5e366f4cd186e58e89"
+      ]
+    },
     "src/components/previews/controls/ActionButtons.js": {
       "hash": "756e78e463f205e7e783ff92062e7ef5b26b4419c8062ab6ed5691206e1b10d9",
       "rootCount": 1,
@@ -8657,18 +8664,11 @@
         "4c89ebdf921d0851b5c303ceba7227fe26da970501c5b2d0104d31fee7284268"
       ]
     },
-    "src/components/previews/native/NativeCompositedFrame.js": {
-      "hash": "3b4a21a770a18f8c159d10be8ec46a60c2d6dce922af820d32f3822d055e3f1f",
-      "rootCount": 1,
-      "roots": [
-        "6f23be1276c7039381c03854e262ba25c287e94b865a2080c7e79a05ce768bff"
-      ]
-    },
     "src/components/previews/NativeRenderPreview.js": {
-      "hash": "e498383a5c9d1c74bde2cc90dc53c8fe581e53c841bc430faa2b586356bba68f",
+      "hash": "c695368b4c69fae3bec4954d695d6b97d1ad75e46b907d191232a41bbea8a607",
       "rootCount": 2,
       "roots": [
-        "9eb5c69c08a1c135709ee827fce771e51068b9d1435cc1bac3d56a6811e2c053",
+        "4bdb6a49d0302b1cc738815b720850e37b2d9f43337c50a657614499e04c7450",
         "58593648d68a3e71e08e2aa5f85e27c44c4138ffc39eccbb52a8f6d5cb1ff5a4"
       ]
     },
@@ -8708,10 +8708,10 @@
       ]
     },
     "src/components/previews/VideoPreview.js": {
-      "hash": "a5da7e389a81fbc48dfb4deb36ea50e09435c0b764be68299a836681a7874071",
+      "hash": "a408fb68dff5befbd8877def217277490549dcbc7ce01814b4e8656c6738bd8a",
       "rootCount": 1,
       "roots": [
-        "bb82c5d213066c288897df4141d008e8bba254adc462b6d35b9a85ef72945bd6"
+        "5c0160072cb5dfb669549eed2c9dc0bfbb7277e8d1a9262724befd34451a871b"
       ]
     },
     "src/components/previews/VideoTopsideButtons.js": {
