@@ -38,11 +38,12 @@ const geometry = () => browser.execute(() => {
     banner: read('.onboarding-overlay'),
     reveal: read('.onboarding-reveal-overlay'),
     card: read('.onboarding-reveal-card'),
-    panel: read('.onboarding-setup-panel'),
     controls: read('.onboarding-controls-row'),
+    settingsControls: read('.settings-footer-controls'),
+    themeToggle: read('.settings-footer-controls .theme-toggle'),
+    languageButton: read('.settings-footer-controls .custom-dropdown-button'),
     continueButton: read('.lets-go-btn'),
     continueLabel: read('.lets-go-text'),
-    title: document.querySelector('#onboarding-setup-title')?.textContent?.trim() ?? null,
   };
 });
 
@@ -71,28 +72,33 @@ describe('a first-time customer sees intentional full-window onboarding', () => 
     const second = await geometry();
     assertCoversViewport(second.reveal, second.viewport, 'the onboarding controls overlay');
     assertCoversViewport(second.card, second.viewport, 'the onboarding controls card');
-    assert.ok(second.panel, 'the onboarding setup panel is absent');
     assert.ok(second.controls, 'the onboarding controls are absent');
-    assert.ok(second.title?.length > 0, 'the onboarding setup panel has no title');
-    assert.ok(second.panel.width <= 600, `the setup panel is implausibly wide: ${JSON.stringify(second)}`);
+    assert.ok(second.settingsControls, 'the theme and language controls are absent');
+    assert.ok(second.themeToggle, 'the theme control is absent');
+    assert.ok(second.languageButton, 'the language control is absent');
     assert.ok(second.controls.height <= 70, `the setup controls wrapped onto multiple rows: ${JSON.stringify(second)}`);
+    assert.ok(second.settingsControls.height <= 42, `theme and language stacked vertically: ${JSON.stringify(second)}`);
+    assert.ok(
+      Math.abs(second.themeToggle.top - second.languageButton.top) <= 2,
+      `theme and language do not share a row: ${JSON.stringify(second)}`,
+    );
     assert.ok(second.continueLabel?.width >= 40, `the continue label has no painted width: ${JSON.stringify(second)}`);
     assert.equal(second.continueLabel.visibility, 'visible', 'the continue label is hidden');
     assert.equal(second.continueLabel.opacity, '1', 'the continue label is transparent');
-    const controlsCentreX = second.panel.left + second.panel.width / 2;
-    const controlsCentreY = second.panel.top + second.panel.height / 2;
+    const controlsCentreX = second.controls.left + second.controls.width / 2;
+    const controlsCentreY = second.controls.top + second.controls.height / 2;
     assert.ok(
       Math.abs(controlsCentreX - second.viewport.width / 2) <= 2,
-      `the onboarding setup panel is not horizontally centred: ${JSON.stringify(second)}`,
+      `the onboarding controls are not horizontally centred: ${JSON.stringify(second)}`,
     );
     assert.ok(
       Math.abs(controlsCentreY - second.viewport.height / 2) <= 2,
-      `the onboarding setup panel is not vertically centred: ${JSON.stringify(second)}`,
+      `the onboarding controls are not vertically centred: ${JSON.stringify(second)}`,
     );
     await captureWorkflowStep({
       workflow: WORKFLOW,
       step: '02-preferences',
-      description: 'A titled setup slate groups theme, language, and the continue action.',
+      description: 'The original simple theme, language, and continue controls stay centred in one row.',
       details: second,
     });
 
