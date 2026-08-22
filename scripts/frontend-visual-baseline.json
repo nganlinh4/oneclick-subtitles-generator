@@ -2,7 +2,7 @@
   "schemaVersion": 5,
   "algorithm": "sha256",
   "normalization": "binary exact; UTF-8 BOM ignored, CRLF/CR normalized to LF, terminal newlines ignored",
-  "baselineRevision": "c377b8c98389528cf48a58e10f2514b2af938cb4",
+  "baselineRevision": "8ced27b256a5ee54549173d2586491b150fe52e7",
   "retiredExactFiles": {
     "public/oauth2callback.html": "c19855fd5a3f19af1eea1c1fed6e7794a342136223dd60dbead2586d4298fd90",
     "src/assets/fonts/GoogleSansFlex.ttf": "eae5ed6ddefbd44ab9693b84454ce46f3f2de0fb4f7cc5b54138c50c5b347d70",
@@ -227,8 +227,8 @@
     "src/styles/VideoAnalysisButton.css": "3a0129a7716bd08ab8cd6829a0c3ee84845929fda6a291504c89620dd712e65e",
     "src/styles/VideoAnalysisModal.css": "e18a28dfd3bbdc947b2140bf32ac7119cd54677e0e65fddd9212f2df754ad084",
     "src/styles/VideoCropControls.css": "66acfb873cb964f56dff4f41531446368148c26638391d71fdfd79c247b705eb",
-    "src/styles/VideoPreview.css": "f4513dc2473a2539cb83cb62a557d08a926200e370fc479d093424c06b3b29fa",
-    "src/styles/VideoPreviewPanel.css": "8ac45b3f0d3544c5691074830aad6fe214d7bd3f698053c5aea681d67294ca12",
+    "src/styles/VideoPreview.css": "dfdd169731a6f2d82764b2941a523a6b2f9c11658d60c92535e3bd10f371399f",
+    "src/styles/VideoPreviewPanel.css": "4c0259677b0c64d0fc9a0c65e377075502caf79383dd3765658f429d0b3531dd",
     "src/styles/VideoProcessingOptionsModal.css": "75c66b2ee9361b7f88583960b6f63a904791850c8df3c49b2cbaea73e7b0a492",
     "src/styles/VideoQualityModal.css": "50a5d913e1a85ff120420f331fc173fdf927a389148294d7041b8aca419a3c31",
     "src/styles/VideoRenderingControls.css": "90945973be9b4d58451c32d2844b92973fa945daeef4236bf987c0cbb13cb15e",
@@ -323,12 +323,13 @@
       ]
     },
     "src/i18n/locales/en/common.json": {
-      "hash": "f45676a9884bee0b91ee5444693117eb2e28349d8204801797ce59f4ab8bd4cf",
+      "hash": "8b3765400a64d72c4504c5439dc245a1c08176eb924138052912efd7cc6f1d76",
       "keys": [
         "cancel",
         "clearAll",
         "close",
         "confirm",
+        "fullscreen",
         "hideToastHistory",
         "jumpToCheckpoint",
         "jumpToCheckpointWithShortcut",
@@ -341,9 +342,12 @@
         "legacyImport.invalid",
         "legacyImport.selectFolder",
         "legacyImport.tooLarge",
+        "mute",
         "note",
         "off",
         "on",
+        "pause",
+        "play",
         "recentVideos",
         "redo",
         "redoWithShortcut",
@@ -362,7 +366,8 @@
         "toast.warning",
         "toastHistory",
         "undo",
-        "undoWithShortcut"
+        "undoWithShortcut",
+        "unmute"
       ]
     },
     "src/i18n/locales/en/consolidation.json": {
@@ -2254,7 +2259,7 @@
       ]
     },
     "src/i18n/locales/en/videoPreview.json": {
-      "hash": "98cd0c9d3375ec75e2a7ed93e2d835008647a7e90bae04e88d807b2c4040fb0b",
+      "hash": "ce4572bc96a91cf10a74251ed689acd08747045fb90f545b861452968750adff",
       "keys": [
         "noSubtitlesToRender",
         "noTranslatedSubtitles",
@@ -2262,6 +2267,7 @@
         "rendering",
         "retrySubtitleFont",
         "retrySubtitlePreview",
+        "seek",
         "subtitleFontPreparing",
         "subtitleFontUnavailable",
         "subtitlePreviewEmpty",
@@ -2635,7 +2641,7 @@
       ]
     },
     "src/i18n/locales/ko/common.json": {
-      "hash": "4e2c387827213e3ea9c05e738f21e3b1dbe13aca30ccffcdbbf05bea878b7c64",
+      "hash": "3ba4f0cddc61f363dee3ab32a38fd1e0a164fc3868ce3f35ff80476ae1d2453d",
       "keys": [
         "cancel",
         "clearAll",
@@ -2643,6 +2649,7 @@
         "confirm",
         "disabled",
         "done",
+        "fullscreen",
         "hideToastHistory",
         "history",
         "jumpToCheckpoint",
@@ -2656,9 +2663,12 @@
         "legacyImport.invalid",
         "legacyImport.selectFolder",
         "legacyImport.tooLarge",
+        "mute",
         "note",
         "off",
         "on",
+        "pause",
+        "play",
         "recentVideos",
         "redo",
         "redoWithShortcut",
@@ -2685,7 +2695,8 @@
         "toast.warning",
         "toastHistory",
         "undo",
-        "undoWithShortcut"
+        "undoWithShortcut",
+        "unmute"
       ]
     },
     "src/i18n/locales/ko/consolidation.json": {
@@ -4807,7 +4818,7 @@
       ]
     },
     "src/i18n/locales/ko/videoPreview.json": {
-      "hash": "618cda367bb356f3a590795b3470f98cdcb686003d138ddd38c4bafe2c26cadc",
+      "hash": "a87e8f40110d707b52fb3aebb8666bdf320126ccd57e5a3c6ccdf3b9d3f542ea",
       "keys": [
         "noSubtitlesToRender",
         "noTranslatedSubtitles",
@@ -4815,6 +4826,7 @@
         "rendering",
         "retrySubtitleFont",
         "retrySubtitlePreview",
+        "seek",
         "subtitleFontPreparing",
         "subtitleFontUnavailable",
         "subtitlePreviewEmpty",
@@ -5246,7 +5258,7 @@
       ]
     },
     "src/i18n/locales/vi/common.json": {
-      "hash": "0bb9007e51bf85a0ae0063758752cb8b1c4ee121963f91e2cbc699f751351323",
+      "hash": "d562d1a88a75390682a85bf281b1b642a7a8b11267006810eb809f1093e27785",
       "keys": [
         "cancel",
         "clearAll",
@@ -5254,6 +5266,7 @@
         "confirm",
         "disabled",
         "done",
+        "fullscreen",
         "hideToastHistory",
         "history",
         "jumpToCheckpoint",
@@ -5267,9 +5280,12 @@
         "legacyImport.invalid",
         "legacyImport.selectFolder",
         "legacyImport.tooLarge",
+        "mute",
         "note",
         "off",
         "on",
+        "pause",
+        "play",
         "recentVideos",
         "redo",
         "redoWithShortcut",
@@ -5296,7 +5312,8 @@
         "toast.warning",
         "toastHistory",
         "undo",
-        "undoWithShortcut"
+        "undoWithShortcut",
+        "unmute"
       ]
     },
     "src/i18n/locales/vi/consolidation.json": {
@@ -7458,7 +7475,7 @@
       ]
     },
     "src/i18n/locales/vi/videoPreview.json": {
-      "hash": "efe634a3603dce8be66170db297174d2011087dcd82aa64f8861df3fa38e16ee",
+      "hash": "80a9449fcf71e3ad39422b82860b450a11dc5cb000f915272fc101b940084dfc",
       "keys": [
         "noSubtitlesToRender",
         "noTranslatedSubtitles",
@@ -7466,6 +7483,7 @@
         "rendering",
         "retrySubtitleFont",
         "retrySubtitlePreview",
+        "seek",
         "subtitleFontPreparing",
         "subtitleFontUnavailable",
         "subtitlePreviewEmpty",
@@ -8646,21 +8664,12 @@
         "6f23be1276c7039381c03854e262ba25c287e94b865a2080c7e79a05ce768bff"
       ]
     },
-    "src/components/previews/native/NativePreviewUnavailable.js": {
-      "hash": "e3738a29318a0fdcac9a4f0fd13bdab3030a481d0039addcdbccdf8aad780ee8",
-      "rootCount": 3,
-      "roots": [
-        "84b4f86057da25a9927feda46a9dd78fecb979b952851b4f492172f33350a212",
-        "067cf886b8a4601709a9fabd0bd38489d95b9257bc965ffce0af4361cbf58a56",
-        "0fd14e6c49fe8eb6598bc83da974d52f61c12125b71c7e2a9243b8333a11b1e7"
-      ]
-    },
     "src/components/previews/NativeRenderPreview.js": {
-      "hash": "d810cff0995eba88df3cbe51e26afa66e7f512153e4b53d811429931b67c49f3",
+      "hash": "e498383a5c9d1c74bde2cc90dc53c8fe581e53c841bc430faa2b586356bba68f",
       "rootCount": 2,
       "roots": [
-        "58593648d68a3e71e08e2aa5f85e27c44c4138ffc39eccbb52a8f6d5cb1ff5a4",
-        "a7269a2acc95d40095202f1b9070bdd45c819c03a8c90ac77bb566da9c5bfc81"
+        "9eb5c69c08a1c135709ee827fce771e51068b9d1435cc1bac3d56a6811e2c053",
+        "58593648d68a3e71e08e2aa5f85e27c44c4138ffc39eccbb52a8f6d5cb1ff5a4"
       ]
     },
     "src/components/previews/SeekIndicator.js": {
@@ -8699,10 +8708,10 @@
       ]
     },
     "src/components/previews/VideoPreview.js": {
-      "hash": "b8307b02ec905ebdde59181de528863261d3fb764248fd105b4282b1558ab021",
+      "hash": "a5da7e389a81fbc48dfb4deb36ea50e09435c0b764be68299a836681a7874071",
       "rootCount": 1,
       "roots": [
-        "e29a8df962aaa9daa813bbf97cc5725b6b24eaf1e38ebe8daf68e85c4612af14"
+        "bb82c5d213066c288897df4141d008e8bba254adc462b6d35b9a85ef72945bd6"
       ]
     },
     "src/components/previews/VideoTopsideButtons.js": {
