@@ -155,7 +155,9 @@ export const useLyricsSave = ({
 
   // Listen for save-before-update events triggered before new video processing results
   useEffect(() => {
-    if (!listenForLifecycle) return undefined;
+    // Desktop checkpoints flush the durable editor owner directly in lifecycleOrchestrator.
+    // Keeping this listener active there would reintroduce a second writer from stale React state.
+    if (!listenForLifecycle || isDesktopRuntime()) return undefined;
     const handleSaveBeforeUpdate = (event) => {
 
 
@@ -204,7 +206,9 @@ export const useLyricsSave = ({
 
   // Listen for save-after-streaming events triggered after streaming completion
   useEffect(() => {
-    if (!listenForLifecycle) return undefined;
+    // Native generation commits an exact-project receipt before it publishes success. A second
+    // event-driven save is browser compatibility only and must never race that native commit.
+    if (!listenForLifecycle || isDesktopRuntime()) return undefined;
     const handleSaveAfterStreaming = (event) => {
 
 

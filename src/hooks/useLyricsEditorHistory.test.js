@@ -8,6 +8,7 @@ import {
 import { LYRICS_EDITOR_ACTIONS } from '../platform/durableLyricsHistory';
 
 let currentCacheIdListener = null;
+let currentProjectRefreshListener = null;
 
 vi.mock('../utils/userSubtitlesStore', () => ({
   getCurrentCacheId: () => 'cache-id',
@@ -15,6 +16,12 @@ vi.mock('../utils/userSubtitlesStore', () => ({
     currentCacheIdListener = listener;
     return () => {
       if (currentCacheIdListener === listener) currentCacheIdListener = null;
+    };
+  }),
+  subscribeCurrentSubtitleProjectRefresh: vi.fn((listener) => {
+    currentProjectRefreshListener = listener;
+    return () => {
+      if (currentProjectRefreshListener === listener) currentProjectRefreshListener = null;
     };
   }),
 }));
@@ -107,6 +114,25 @@ it('drops volatile work and refreshes the durable cursor when the media cache ch
   expect(result.current.checkpointHistory).toEqual([]);
   expect(controller.refresh).toHaveBeenCalledTimes(2);
 
+  act(() => vi.advanceTimersByTime(500));
+  expect(controller.record).not.toHaveBeenCalled();
+  vi.useRealTimers();
+});
+
+it('drops volatile work when the same cache alias publishes a newer project revision', () => {
+  vi.useFakeTimers();
+  const { result } = renderHook(() => useHarness(rows('A')));
+  act(() => {
+    result.current.commitLyricsMutation(rows('B'), LYRICS_EDITOR_ACTIONS.TEXT);
+    result.current.createCheckpoint();
+  });
+
+  act(() => currentProjectRefreshListener('cache-id'));
+
+  expect(result.current.history).toEqual([]);
+  expect(result.current.redoStack).toEqual([]);
+  expect(result.current.checkpointHistory).toEqual([]);
+  expect(controller.refresh).toHaveBeenCalledTimes(2);
   act(() => vi.advanceTimersByTime(500));
   expect(controller.record).not.toHaveBeenCalled();
   vi.useRealTimers();

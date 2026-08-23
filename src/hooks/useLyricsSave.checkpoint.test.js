@@ -37,7 +37,7 @@ beforeEach(() => {
   window.addToast = vi.fn();
 });
 
-it('echoes the checkpoint identity and resolves after a successful durable save', async () => {
+it('flushes the native durable owner without writing a second React snapshot', async () => {
   const updateSavedLyrics = vi.fn();
   const onSaveSubtitles = vi.fn();
   const { unmount } = renderHook(() => useLyricsSave({
@@ -53,13 +53,13 @@ it('echoes the checkpoint identity and resolves after a successful durable save'
   }, 100)).resolves.toBeUndefined();
 
   expect(mocks.flush).toHaveBeenCalledTimes(1);
-  expect(mocks.save).toHaveBeenCalledWith('cache-id', rows);
-  expect(updateSavedLyrics).toHaveBeenCalledTimes(1);
-  expect(onSaveSubtitles).toHaveBeenCalledWith(rows);
+  expect(mocks.save).not.toHaveBeenCalled();
+  expect(updateSavedLyrics).not.toHaveBeenCalled();
+  expect(onSaveSubtitles).not.toHaveBeenCalled();
   unmount();
 });
 
-it('runs the real auto-generation checkpoint contract through the lyrics save listener', async () => {
+it('runs auto-generation through the direct durable owner, independent of a mounted listener', async () => {
   const updateSavedLyrics = vi.fn();
   const onSaveSubtitles = vi.fn();
   const { unmount } = renderHook(() => useLyricsSave({
@@ -74,13 +74,13 @@ it('runs the real auto-generation checkpoint contract through the lyrics save li
   }, 100)).resolves.toBeUndefined();
 
   expect(mocks.flush).toHaveBeenCalledTimes(1);
-  expect(mocks.save).toHaveBeenCalledWith('cache-id', rows);
-  expect(updateSavedLyrics).toHaveBeenCalledTimes(1);
-  expect(onSaveSubtitles).toHaveBeenCalledWith(rows);
+  expect(mocks.save).not.toHaveBeenCalled();
+  expect(updateSavedLyrics).not.toHaveBeenCalled();
+  expect(onSaveSubtitles).not.toHaveBeenCalled();
   unmount();
 });
 
-it('runs translation-start through the exact save listener and contains toast failure', async () => {
+it('runs translation-start without depending on save UI or toast presentation', async () => {
   window.addToast = vi.fn(() => { throw new Error('toast failed'); });
   const updateSavedLyrics = vi.fn();
   const { unmount } = renderHook(() => useLyricsSave({
@@ -93,12 +93,13 @@ it('runs translation-start through the exact save listener and contains toast fa
     source: 'translation-start',
     runId: 'translation-run-1',
   }, 100)).resolves.toBeUndefined();
-  expect(mocks.save).toHaveBeenCalledWith('cache-id', rows);
-  expect(updateSavedLyrics).toHaveBeenCalledTimes(1);
+  expect(mocks.flush).toHaveBeenCalledTimes(1);
+  expect(mocks.save).not.toHaveBeenCalled();
+  expect(updateSavedLyrics).not.toHaveBeenCalled();
   unmount();
 });
 
-it('keeps exactly one lifecycle listener when the editor also owns its manual save callback', async () => {
+it('ignores every mounted lifecycle listener on desktop and flushes once centrally', async () => {
   const updateSavedLyrics = vi.fn();
   const { unmount } = renderHook(() => {
     useLyricsSave({
@@ -120,7 +121,7 @@ it('keeps exactly one lifecycle listener when the editor also owns its manual sa
   }, 100)).resolves.toBeUndefined();
 
   expect(mocks.flush).toHaveBeenCalledTimes(1);
-  expect(mocks.save).toHaveBeenCalledTimes(1);
+  expect(mocks.save).not.toHaveBeenCalled();
   expect(updateSavedLyrics).not.toHaveBeenCalled();
   unmount();
 });

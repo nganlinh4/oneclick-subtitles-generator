@@ -12,6 +12,7 @@ let globalUserSubtitles = null;
 // Current cache ID for the video being processed
 let currentCacheId = null;
 const currentCacheIdListeners = new Set();
+const currentProjectRefreshListeners = new Set();
 
 const projectMismatch = () => {
   const error = new Error('The active user-subtitle project changed.');
@@ -40,6 +41,33 @@ export const subscribeCurrentCacheId = (listener) => {
   }
   currentCacheIdListeners.add(listener);
   return () => currentCacheIdListeners.delete(listener);
+};
+
+/**
+ * Subscribe to an authoritative revision of the currently bound subtitle project whose cache
+ * alias did not change (for example, replacing a re-downloaded media asset for the same URL).
+ * This is deliberately separate from identity changes: translation/generation ownership must not
+ * be cancelled merely because the same project published a newer snapshot.
+ */
+export const subscribeCurrentSubtitleProjectRefresh = (listener) => {
+  if (typeof listener !== 'function') {
+    throw new TypeError('A current subtitle project refresh listener is required');
+  }
+  currentProjectRefreshListeners.add(listener);
+  return () => currentProjectRefreshListeners.delete(listener);
+};
+
+export const refreshCurrentSubtitleProject = (cacheId) => {
+  if (typeof cacheId !== 'string' || cacheId.length === 0 || cacheId !== currentCacheId) {
+    throw projectMismatch();
+  }
+  currentProjectRefreshListeners.forEach((listener) => {
+    try {
+      listener(cacheId);
+    } catch (error) {
+      console.error('Current subtitle project refresh listener failed:', error);
+    }
+  });
 };
 
 const publishCurrentCacheId = (cacheId, previousCacheId) => {

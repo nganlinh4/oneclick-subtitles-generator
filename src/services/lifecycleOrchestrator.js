@@ -1,5 +1,7 @@
 import { CHECKPOINT_SOURCE, EVENTS } from '../events/constants';
 import { publishSaveAfterStreaming, publishSaveBeforeUpdate, subscribe } from '../events/bus';
+import { isDesktopRuntime } from '../platform/desktopRuntime';
+import { flushDurableLyricsHistory } from '../platform/durableLyricsHistory';
 
 // Small lifecycle orchestrator to centralize save checkpoints and streaming completion
 
@@ -63,6 +65,36 @@ export const checkpointBeforeUpdate = (payload, timeoutMs = CHECKPOINT_TIMEOUT_M
     return error;
   };
   if (signal?.aborted) return Promise.reject(aborted());
+
+  // Desktop subtitle edits are already mirrored by the durable editor-history owner. Flush that
+  // owner directly instead of asking whichever React component happens to be mounted to save a
+  // second, potentially stale copy of `lyrics` through DOM events. The old handshake was both a
+  // second writer and a hidden mount-order dependency: media activation could reconcile the
+  // durable writer, then the lifecycle listener would overwrite it from an older render.
+  if (isDesktopRuntime()) {
+    return new Promise((resolve, reject) => {
+      let done = false;
+      let timeout = null;
+      const finish = (callback) => {
+        if (done) return;
+        done = true;
+        if (timeout !== null) clearTimeout(timeout);
+        signal?.removeEventListener?.('abort', handleAbort);
+        callback();
+      };
+      const handleAbort = () => finish(() => reject(aborted()));
+      timeout = setTimeout(() => {
+        finish(() => reject(new CheckpointBeforeUpdateError('checkpointSaveTimedOut')));
+      }, timeoutMs);
+      signal?.addEventListener?.('abort', handleAbort, { once: true });
+      Promise.resolve()
+        .then(() => flushDurableLyricsHistory())
+        .then(
+          () => finish(resolve),
+          () => finish(() => reject(new CheckpointBeforeUpdateError('checkpointSaveFailed')))
+        );
+    });
+  }
 
   const checkpointId = nextCheckpointId();
   return new Promise((resolve, reject) => {

@@ -5,6 +5,7 @@ import { loadProjectSubtitles } from '../platform/subtitleProjectStore';
 import {
   getCurrentCacheId,
   subscribeCurrentCacheId,
+  subscribeCurrentSubtitleProjectRefresh,
 } from '../utils/userSubtitlesStore';
 
 const UPLOADED_SRT_INFO_KEYS = Object.freeze(['fileName', 'hasUploaded', 'source']);
@@ -173,10 +174,14 @@ export const useNativeSubtitleHydration = ({ setSubtitlesData, revisionRef }) =>
       void hydrator.activate(cacheId, { previousCacheId });
     };
     const unsubscribe = subscribeCurrentCacheId(activate);
+    const unsubscribeRefresh = subscribeCurrentSubtitleProjectRefresh((cacheId) => {
+      activate(cacheId, cacheId);
+    });
     const initialCacheId = getCurrentCacheId();
     activate(initialCacheId, initialCacheId);
     return () => {
       unsubscribe();
+      unsubscribeRefresh();
       hydrator.dispose();
     };
   }, [revisionRef, setSubtitlesData]);

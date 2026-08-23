@@ -9,6 +9,8 @@ import {
   setUserProvidedSubtitles,
   setUserProvidedSubtitlesForCache,
   subscribeCurrentCacheId,
+  refreshCurrentSubtitleProject,
+  subscribeCurrentSubtitleProjectRefresh,
 } from './userSubtitlesStore';
 
 vi.mock('../platform/projectAuxiliaryStore', () => ({
@@ -55,6 +57,24 @@ it('publishes cache identity changes exactly once and supports disposal', () => 
   unsubscribe();
   setCurrentCacheId(null);
   expect(listener).toHaveBeenCalledTimes(1);
+});
+
+it('publishes same-alias project refreshes separately from identity changes', () => {
+  setCurrentCacheId('same-project');
+  const identity = vi.fn();
+  const refresh = vi.fn();
+  const unsubscribeIdentity = subscribeCurrentCacheId(identity);
+  const unsubscribeRefresh = subscribeCurrentSubtitleProjectRefresh(refresh);
+
+  refreshCurrentSubtitleProject('same-project');
+
+  expect(refresh).toHaveBeenCalledExactlyOnceWith('same-project');
+  expect(identity).not.toHaveBeenCalled();
+  expect(() => refreshCurrentSubtitleProject('other-project'))
+    .toThrow(expect.objectContaining({ code: 'projectScopeMismatch' }));
+  unsubscribeIdentity();
+  unsubscribeRefresh();
+  setCurrentCacheId(null);
 });
 
 it('clears media A auxiliary text synchronously while media B hydrates', async () => {

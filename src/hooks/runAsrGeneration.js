@@ -12,7 +12,16 @@ import { processAsrSegment } from '../services/engines/AsrAdapter';
  * @returns {Promise<boolean>} true on success, false on invalid segment selection
  */
 export const runAsrGeneration = async ({
-  engine, input, options, runId, debugLog, setStatus, setIsGenerating, setSubtitlesData, t,
+  engine,
+  input,
+  options,
+  runId,
+  debugLog,
+  setStatus,
+  setIsGenerating,
+  setSubtitlesData,
+  persistSubtitles,
+  t,
 }) => {
   const seg = options.segment;
   const engineName = (engine && (engine.name || engine.labelDefault || engine.id)) || 'ASR';
@@ -30,6 +39,7 @@ export const runAsrGeneration = async ({
         source: 'segment-processing-start',
         segment: seg,
         runId,
+        ...(options.signal ? { signal: options.signal } : {}),
       });
     }
 
@@ -72,18 +82,18 @@ export const runAsrGeneration = async ({
       .filter((s) => (s.start < seg.end && s.end > seg.start))
       .map((s) => ({ ...s, start: Math.max(s.start, seg.start), end: Math.min(s.end, seg.end) }));
 
+    // Streaming rows are presentation only until the exact project accepts the complete result.
+    // Do not announce completion and do not rely on a delayed DOM event: either this awaited write
+    // succeeds, or the generation fails while the already-durable pre-run checkpoint remains safe.
+    if (typeof persistSubtitles !== 'function') {
+      throw new TypeError('Local ASR requires a durable subtitle publisher');
+    }
+    await persistSubtitles(finalSubs);
+
     try {
       publishStreamingComplete({ subtitles: filteredForSeg, segment: seg, runId });
     } catch {
       // Completion listeners are advisory; ASR output remains authoritative.
-    }
-
-    try {
-      const { autoSaveAfterStreaming } = await import('../services/lifecycleOrchestrator');
-      debugLog(`[Run ${runId}] ASR(${engine.id}): streaming complete, triggering auto-save`);
-      autoSaveAfterStreaming({ subtitles: finalSubs, segment: seg, delayMs: 500 });
-    } catch {
-      // Auto-save is best effort and must not invalidate completed transcription.
     }
 
     setStatus({ message: t('output.asrTranscriptionComplete', '{{engine}} transcription complete', { engine: engineName }), type: 'success' });

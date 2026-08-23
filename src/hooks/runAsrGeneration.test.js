@@ -1,7 +1,6 @@
 import { publishStreamingComplete } from '../events/bus';
 import { processAsrSegment } from '../services/engines/AsrAdapter';
 import {
-  autoSaveAfterStreaming,
   checkpointBeforeUpdate,
 } from '../services/lifecycleOrchestrator';
 import { runAsrGeneration } from './runAsrGeneration';
@@ -18,7 +17,6 @@ vi.mock('../services/engines/AsrAdapter', () => ({
 
 vi.mock('../services/lifecycleOrchestrator', () => ({
   checkpointBeforeUpdate: vi.fn(),
-  autoSaveAfterStreaming: vi.fn(),
 }));
 
 vi.mock('../utils/subtitle/subtitleMerger', () => ({
@@ -34,6 +32,7 @@ const createParams = (overrides = {}) => ({
   setStatus: vi.fn(),
   setIsGenerating: vi.fn(),
   setSubtitlesData: vi.fn(),
+  persistSubtitles: vi.fn(async () => undefined),
   t: vi.fn((key, fallback) => fallback || key),
   ...overrides,
 });
@@ -82,7 +81,7 @@ it('returns false for an invalid segment and clears generation state once', asyn
   expect(params.setIsGenerating).toHaveBeenCalledWith(false);
 });
 
-it('preserves successful merge, completion, and auto-save behavior', async () => {
+it('persists the complete merge before publishing completion', async () => {
   let subtitles = [{ start: 0, end: 1, text: 'existing' }];
   const setSubtitlesData = vi.fn((updater) => {
     if (typeof updater === 'function') subtitles = updater(subtitles);
@@ -117,11 +116,26 @@ it('preserves successful merge, completion, and auto-save behavior', async () =>
     segment: { start: 10, end: 20 },
     runId: 'run-1',
   });
-  expect(autoSaveAfterStreaming).toHaveBeenCalledWith({
-    subtitles,
-    segment: { start: 10, end: 20 },
-    delayMs: 500,
-  });
+  expect(params.persistSubtitles).toHaveBeenCalledExactlyOnceWith(subtitles);
+  expect(params.persistSubtitles).toHaveBeenCalledBefore(publishStreamingComplete);
   expect(params.setIsGenerating).toHaveBeenCalledTimes(1);
+  expect(params.setIsGenerating).toHaveBeenCalledWith(false);
+});
+
+it('publishes neither success nor completion when the durable write fails', async () => {
+  const failure = new Error('durable write failed');
+  let subtitles = [{ start: 10, end: 11, text: 'visible but uncommitted' }];
+  const params = createParams({
+    setSubtitlesData: vi.fn((updater) => {
+      if (typeof updater === 'function') subtitles = updater(subtitles);
+      else subtitles = updater;
+    }),
+    persistSubtitles: vi.fn(async () => { throw failure; }),
+  });
+
+  await expect(runAsrGeneration(params)).rejects.toBe(failure);
+
+  expect(publishStreamingComplete).not.toHaveBeenCalled();
+  expect(params.setStatus).not.toHaveBeenCalledWith(expect.objectContaining({ type: 'success' }));
   expect(params.setIsGenerating).toHaveBeenCalledWith(false);
 });

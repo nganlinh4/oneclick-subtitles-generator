@@ -5,7 +5,10 @@ import {
   getCachedSubtitles,
 } from '../../../services/subtitleCache';
 import { setCurrentCacheId as setRulesCacheId } from '../../../utils/transcriptionRulesStore';
-import { setCurrentCacheId as setSubtitlesCacheId } from '../../../utils/userSubtitlesStore';
+import {
+  refreshCurrentSubtitleProject,
+  setCurrentCacheId as setSubtitlesCacheId,
+} from '../../../utils/userSubtitlesStore';
 import { resolveProjectForCache } from '../../../platform/subtitleProjectStore';
 import {
   createAutoGenerationContext,
@@ -41,6 +44,7 @@ vi.mock('../../../utils/userSubtitlesStore', () => ({
     let current = null;
     return {
       getCurrentCacheId: vi.fn(() => current),
+      refreshCurrentSubtitleProject: vi.fn(),
       setCurrentCacheId: vi.fn((cacheId) => { current = cacheId; }),
       subscribeCurrentCacheId: vi.fn(() => () => undefined),
     };
@@ -72,6 +76,9 @@ const buildHandlers = () => {
 
 beforeEach(() => {
   vi.clearAllMocks();
+  setRulesCacheId(null);
+  setSubtitlesCacheId(null);
+  vi.clearAllMocks();
   localStorage.clear();
   resolveProjectForCache.mockImplementation(async (cacheId) => ({
     projectId: `project:${cacheId}`,
@@ -79,6 +86,28 @@ beforeEach(() => {
   getCachedSubtitles.mockResolvedValue(null);
   generateUrlBasedCacheId.mockResolvedValue('site_media_example_test_clip_mp4');
   isNativeMediaDescriptor.mockReturnValue(true);
+});
+
+test('refreshes authoritative subtitle state when a repeated URL keeps the same alias', async () => {
+  const media = {
+    __nativeMedia: true,
+    assetId: '019ffa3a-9a95-7a91-bad8-bd6144abaaeb',
+    name: 'clip.mp4',
+    type: 'video/mp4',
+    playbackUrl: 'http://127.0.0.1:1/asset/mock?token=mock',
+  };
+  downloadAndPrepareYouTubeVideo.mockImplementation(async (selectedVideo) => {
+    localStorage.setItem('current_video_url', selectedVideo.url);
+    return media;
+  });
+  const { handlers } = buildHandlers();
+  const request = { url: 'https://media.example.test/clip.mp4' };
+
+  await handlers.startBackgroundVideoProcessing(request, 'youtube');
+  await handlers.startBackgroundVideoProcessing(request, 'youtube');
+
+  expect(refreshCurrentSubtitleProject)
+    .toHaveBeenCalledExactlyOnceWith('site_media_example_test_clip_mp4');
 });
 
 test('activates the URL project before reading cache or exposing prepared native media', async () => {

@@ -13,7 +13,7 @@ vi.mock('../platform/durableLyricsHistory', () => ({
 }));
 
 vi.mock('../platform/desktopRuntime', () => ({
-  isDesktopRuntime: vi.fn(() => true),
+  isDesktopRuntime: vi.fn(() => false),
 }));
 
 vi.mock('../utils/userSubtitlesStore', () => ({
@@ -25,7 +25,7 @@ vi.mock('../services/subtitleCache', () => ({
   saveSubtitlesToCache: vi.fn(),
 }));
 
-it('fails a keyed checkpoint without persisting rejected optimistic rows', async () => {
+it('keeps the keyed event checkpoint only as a browser fallback', async () => {
   const error = Object.assign(new Error('private native detail'), {
     code: 'historyQueueSaturated',
   });

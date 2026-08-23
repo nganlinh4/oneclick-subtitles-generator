@@ -177,6 +177,47 @@ export const useSubtitles = (t) => {
         // Local ASR engines (Parakeet + the catalog engines) run via their registered runner.
         const localRunner = METHOD_RUNNERS[options.method];
         if (localRunner) {
+            // Local ASR used to bypass project resolution, paint streaming rows, and schedule a
+            // best-effort event save 500 ms later. Resolve its durable owner before inference.
+            const currentVideoUrl = localStorage.getItem('current_video_url');
+            let cacheId;
+            try {
+                cacheId = await resolveCacheIdForGeneration({
+                    input,
+                    inputType,
+                    currentVideoUrl,
+                    t,
+                    setStatus: setGenerationStatus,
+                    debugLog
+                });
+                if (autoRunContext) {
+                    assertAutoGenerationContextCurrent(autoRunContext);
+                    if (cacheId !== autoRunContext.cacheId) {
+                        throw new Error('Automatic generation resolved a different subtitle project.');
+                    }
+                }
+            } catch (error) {
+                setIsGenerating(false);
+                if (ownsPresentation()) generationPresentationOwnerRef.current = null;
+                throw error;
+            }
+            const persistSubtitles = async (rows) => {
+                if (!cacheId) throw new Error('The subtitle project could not be resolved.');
+                if (autoRunContext) {
+                    const receipt = await commitDurableSubtitleCheckpoint({
+                        context: autoRunContext,
+                        subtitles: rows,
+                        validateOwnership: assertAutoGenerationContextDurable
+                    });
+                    if (!isDurableSubtitleCheckpointReceipt(receipt, autoRunContext)) {
+                        throw new Error('Automatic subtitles were not durably saved.');
+                    }
+                    return receipt;
+                }
+                const receipt = await saveSubtitlesToCache(cacheId, rows);
+                requireSuccessfulSubtitleCacheSave(receipt);
+                return receipt;
+            };
             const localResult = await localRunner({
                 input,
                 options,
@@ -185,6 +226,7 @@ export const useSubtitles = (t) => {
                 setStatus: setGenerationStatus,
                 setIsGenerating,
                 setSubtitlesData: setGenerationSubtitlesData,
+                persistSubtitles,
                 t
             });
             if (ownsPresentation()) generationPresentationOwnerRef.current = null;

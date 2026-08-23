@@ -10,6 +10,7 @@ import {
 } from "../../../utils/transcriptionRulesStore";
 import {
   getCurrentCacheId as getSubtitlesCacheId,
+  refreshCurrentSubtitleProject,
   setCurrentCacheId as setSubtitlesCacheId,
 } from "../../../utils/userSubtitlesStore";
 import { resolveProjectForCache } from "../../../platform/subtitleProjectStore";
@@ -42,8 +43,13 @@ const activateProjectCache = (cacheId) => {
   if (typeof cacheId !== "string" || cacheId.length === 0) {
     throw new Error("The prepared media could not be bound to a subtitle project.");
   }
+  const previousCacheId = getSubtitlesCacheId();
   setRulesCacheId(cacheId);
   setSubtitlesCacheId(cacheId);
+  // A repeated download of the same URL owns the same durable subtitle project but advances its
+  // media revision. Identity listeners correctly stay quiet; explicitly refresh subtitle/editor
+  // state from the new authoritative snapshot before cached rows or editing can continue.
+  if (previousCacheId === cacheId) refreshCurrentSubtitleProject(cacheId);
 };
 
 /**

@@ -5,7 +5,10 @@ import {
   registerDurableLyricsHistoryFlusher,
 } from '../platform/durableLyricsHistory';
 import { isDesktopRuntime } from '../platform/desktopRuntime';
-import { subscribeCurrentCacheId } from '../utils/userSubtitlesStore';
+import {
+  subscribeCurrentCacheId,
+  subscribeCurrentSubtitleProjectRefresh,
+} from '../utils/userSubtitlesStore';
 
 const DEBUG_LOGS = (typeof window !== 'undefined')
   && (localStorage.getItem('debug_logs') === 'true');
@@ -279,6 +282,21 @@ export const useLyricsEditorHistory = ({
           void durable.refresh();
         })
       : () => undefined;
+    // A replacement download can advance the same project without changing its URL cache alias.
+    // Reset the optimistic editor boundary and reload that exact project's authoritative rows;
+    // otherwise the next edit can be based on the snapshot from before media activation.
+    const unregisterProjectRefresh = isDesktopRuntime()
+      ? subscribeCurrentSubtitleProjectRefresh((cacheId) => {
+          cancelPendingText();
+          cancelExternalMerge();
+          navigationPendingRef.current = false;
+          viewGenerationRef.current += 1;
+          applyStacks([], []);
+          setCheckpointHistory([]);
+          onCacheIdChange?.(cacheId, cacheId);
+          void durable.refresh();
+        })
+      : () => undefined;
     const unregisterFlusher = registerDurableLyricsHistoryFlusher(async () => {
       await finishPendingText();
       await finishExternalMerge();
@@ -287,6 +305,7 @@ export const useLyricsEditorHistory = ({
     void durable.refresh();
     return () => {
       unregisterCacheId();
+      unregisterProjectRefresh();
       unregisterFlusher();
       finishPendingText();
       finishExternalMerge();

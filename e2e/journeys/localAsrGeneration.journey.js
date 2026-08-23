@@ -60,12 +60,14 @@ describe('a customer generates subtitles with local ASR', () => {
 
     await clickControl('[data-osg-action="process-subtitles"]');
     let visibleCues = [];
+    let durableCues = 0;
     let lastJob = null;
     let terminalFailure = null;
     await browser.waitUntil(async () => {
       visibleCues = await browser.execute(() => [...document.querySelectorAll('.lyric-text')]
         .map((node) => (node.innerText || '').trim()).filter(Boolean));
       const durable = durableState(process.env.OSG_E2E_DATA_ROOT);
+      durableCues = durable.counts.cues;
       lastJob = [...durable.jobs].reverse().find((job) => job.kind === 'transcribe') ?? null;
       if (lastJob !== null && ['failed', 'cancelled', 'interrupted'].includes(lastJob.state)) {
         const surface = await browser.execute(() => ({
@@ -77,11 +79,13 @@ describe('a customer generates subtitles with local ASR', () => {
         terminalFailure = { lastJob, surface };
         return true;
       }
-      return visibleCues.length > 0 && visibleCues.join(' ').length >= 20;
+      return visibleCues.length > 0
+        && visibleCues.join(' ').length >= 20
+        && durableCues > 0;
     }, {
       timeout: 1_800_000,
       interval: 2_000,
-      timeoutMsg: () => `local ASR produced no substantial visible cues: ${JSON.stringify({ visibleCues, lastJob })}`,
+      timeoutMsg: () => `local ASR did not produce durable visible cues: ${JSON.stringify({ visibleCues, durableCues, lastJob })}`,
     });
     if (terminalFailure !== null) {
       throw new Error(`local ASR job terminated before producing cues: ${JSON.stringify(terminalFailure)}`);
