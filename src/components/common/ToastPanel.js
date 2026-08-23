@@ -1,28 +1,76 @@
-import { useState, useEffect, useRef } from 'react';
+import { useCallback, useState, useEffect, useRef } from 'react';
 import { useTranslation } from 'react-i18next';
 import './ToastPanel.css';
 
-// Initialize window.addToast as a no-op to prevent errors before component mounts
+const pendingToasts = [];
+const enqueuePendingToast = (...args) => {
+  pendingToasts.push(args);
+  return true;
+};
+let toastSessionSequence = 0;
+
+// Preserve startup failures until the panel mounts instead of acknowledging and discarding them.
 if (typeof window !== 'undefined' && !window.addToast) {
-  window.addToast = () => {};
+  window.addToast = enqueuePendingToast;
 }
 
 const ToastPanel = () => {
   const { t } = useTranslation();
   const [toasts, setToasts] = useState([]); // Live, active toasts
+  const [toastHistory, setToastHistory] = useState(() => {
+    try {
+      const raw = localStorage.getItem('toast_history_v1');
+      if (!raw) return [];
+      const parsed = JSON.parse(raw);
+      return Array.isArray(parsed) ? parsed : [];
+    } catch {
+      return [];
+    }
+  });
+  const toastsRef = useRef([]);
   const toastIdRef = useRef(0);
+  const toastSessionIdRef = useRef(
+    `${Date.now().toString(36)}-${(++toastSessionSequence).toString(36)}`
+  );
   const [swipingToast, setSwipingToast] = useState(null);
   const [swipeOffset, setSwipeOffset] = useState(0);
   const touchStartX = useRef(0);
   const touchStartY = useRef(0);
-  const [isOnboardingActive, setIsOnboardingActive] = useState(false);
+  const onboardingActiveRef = useRef(false);
+  const removalTimeoutsRef = useRef(new Set());
+
+  const publishToasts = useCallback((update) => {
+    const next = typeof update === 'function' ? update(toastsRef.current) : update;
+    toastsRef.current = next;
+    setToasts(next);
+    return next;
+  }, []);
+
+  const recordToastHistory = useCallback((toast) => {
+    const { timerId: _timerId, button: _button, ...historyToast } = toast;
+    setToastHistory((previous) => [
+      historyToast,
+      ...previous.filter((entry) => entry.id !== historyToast.id),
+    ]);
+  }, []);
+
+  const removeToast = useCallback((id) => {
+    publishToasts((previous) => previous.map((toast) => (
+      toast.id === id ? { ...toast, dismissing: true } : toast
+    )));
+    const timeout = setTimeout(() => {
+      removalTimeoutsRef.current.delete(timeout);
+      publishToasts((previous) => previous.filter((toast) => toast.id !== id));
+    }, 500);
+    removalTimeoutsRef.current.add(timeout);
+  }, [publishToasts]);
 
   // Check if onboarding is active
   useEffect(() => {
     const checkOnboardingStatus = () => {
       const hasVisited = localStorage.getItem('has_visited_site') === 'true';
       const controlsDismissed = localStorage.getItem('onboarding_controls_dismissed') === 'true';
-      setIsOnboardingActive(!(hasVisited && controlsDismissed));
+      onboardingActiveRef.current = !(hasVisited && controlsDismissed);
     };
     checkOnboardingStatus();
     const handleStorageChange = (e) => {
@@ -32,85 +80,91 @@ const ToastPanel = () => {
     };
     window.addEventListener('storage', handleStorageChange);
     const pollInterval = setInterval(() => {
-      if (isOnboardingActive) checkOnboardingStatus();
+      if (onboardingActiveRef.current) checkOnboardingStatus();
     }, 1000);
     return () => {
       window.removeEventListener('storage', handleStorageChange);
       clearInterval(pollInterval);
     };
-  }, [isOnboardingActive]);
+  }, []);
 
   // This effect sets up the global function and event listeners
   useEffect(() => {
+    const removalTimeouts = removalTimeoutsRef.current;
     window.addToast = (message, type = 'info', duration = 6000, key, button) => {
-      if (isOnboardingActive) return;
-      setToasts(prev => {
-        const existingIndex = key ? prev.findIndex(t => t.key === key) : -1;
-        if (existingIndex >= 0) {
-          const updatedToasts = [...prev];
-          const existingToast = updatedToasts[existingIndex];
-          if (existingToast.timerId) clearTimeout(existingToast.timerId);
-          updatedToasts[existingIndex] = {
-            ...existingToast, message, type, duration,
-            button,
-            timerId: setTimeout(() => removeToast(existingToast.id), duration),
-          };
-          return updatedToasts;
-        } else {
-          const id = ++toastIdRef.current;
-          const newToast = {
-            id, message, type, duration, key, button,
-            timestamp: Date.now(),
-            timerId: setTimeout(() => removeToast(id), duration),
-          };
-          return [newToast, ...prev];
-        }
-      });
+      // Onboarding may suppress routine progress noise, but never a failure, warning, or action
+      // the user must see. Dropping those is indistinguishable from a hung clean install.
+      if (onboardingActiveRef.current
+          && type !== 'error'
+          && type !== 'warning'
+          && !button) return false;
+      const previous = toastsRef.current;
+      const existingIndex = key ? previous.findIndex((toast) => toast.key === key) : -1;
+      let published;
+      if (existingIndex >= 0) {
+        const updatedToasts = [...previous];
+        const existingToast = updatedToasts[existingIndex];
+        if (existingToast.timerId) clearTimeout(existingToast.timerId);
+        published = {
+          ...existingToast,
+          message,
+          type,
+          duration,
+          button,
+          timestamp: Date.now(),
+          timerId: setTimeout(() => removeToast(existingToast.id), duration),
+        };
+        updatedToasts[existingIndex] = published;
+        publishToasts(updatedToasts);
+      } else {
+        const id = `${toastSessionIdRef.current}-${(++toastIdRef.current).toString(36)}`;
+        published = {
+          id, message, type, duration, key, button,
+          timestamp: Date.now(),
+          timerId: setTimeout(() => removeToast(id), duration),
+        };
+        publishToasts([published, ...previous]);
+      }
+      recordToastHistory(published);
+      return true;
     };
+    const queued = pendingToasts.splice(0);
+    queued.forEach((args) => window.addToast(...args));
     window.removeToastByKey = (key) => {
-      setToasts(prev => {
-        const toRemove = prev.find(t => t.key === key);
+      publishToasts((previous) => {
+        const toRemove = previous.find((toast) => toast.key === key);
         if (toRemove) {
           if (toRemove.timerId) clearTimeout(toRemove.timerId);
-          return prev.filter(t => t.key !== key);
+          return previous.filter((toast) => toast.key !== key);
         }
-        return prev;
+        return previous;
       });
     };
     const handleAlignedNarrationStatus = (event) => {
       const { status, message } = event.detail;
-      if (status === 'error' && message && !isOnboardingActive) {
+      if (status === 'error' && message) {
         window.addToast(message, 'error', 8000);
       }
     };
     const handleTranslationWarning = (event) => {
       const { message } = event.detail;
-      if (message && !isOnboardingActive) {
+      if (message) {
         window.addToast(message, 'warning', 5000);
       }
     };
     window.addEventListener('aligned-narration-status', handleAlignedNarrationStatus);
     window.addEventListener('translation-warning', handleTranslationWarning);
     return () => {
-      setToasts(prev => {
-        prev.forEach(toast => toast.timerId && clearTimeout(toast.timerId));
-        return [];
-      });
-      delete window.addToast;
+      toastsRef.current.forEach((toast) => toast.timerId && clearTimeout(toast.timerId));
+      removalTimeouts.forEach((timeout) => clearTimeout(timeout));
+      removalTimeouts.clear();
+      toastsRef.current = [];
+      window.addToast = enqueuePendingToast;
       delete window.removeToastByKey;
       window.removeEventListener('aligned-narration-status', handleAlignedNarrationStatus);
       window.removeEventListener('translation-warning', handleTranslationWarning);
     };
-  }, [isOnboardingActive]);
-
-  const removeToast = (id) => {
-    setToasts(prev => prev.map(t =>
-      t.id === id ? { ...t, dismissing: true } : t
-    ));
-    setTimeout(() => {
-      setToasts(prev => prev.filter(t => t.id !== id));
-    }, 500);
-  };
+  }, [publishToasts, recordToastHistory, removeToast]);
   
   const handleTouchStart = (e, toastId) => {
     touchStartX.current = e.touches[0].clientX;
@@ -140,13 +194,6 @@ const ToastPanel = () => {
   };
 
   /* ----------------- New Revamped History Logic ----------------- */
-    const [toastHistory, setToastHistory] = useState(() => {
-      try {
-        const raw = localStorage.getItem('toast_history_v1');
-        return raw ? JSON.parse(raw) : [];
-      } catch (e) { return []; }
-    });
-    
     const [isHistoryVisible] = useState(false);
     const [isHistoryPinned, setIsHistoryPinned] = useState(false);
     const [isHistoryHiding, setIsHistoryHiding] = useState(false); // ADDED: State for closing animation
@@ -161,24 +208,12 @@ const ToastPanel = () => {
     useEffect(() => {
       try {
         const MAX_HISTORY = 200; // Limit stored history
-        const toSave = toastHistory.length > MAX_HISTORY ? toastHistory.slice(-MAX_HISTORY) : toastHistory;
+        const toSave = toastHistory.length > MAX_HISTORY
+          ? toastHistory.slice(0, MAX_HISTORY)
+          : toastHistory;
         localStorage.setItem('toast_history_v1', JSON.stringify(toSave));
       } catch (e) { /* ignore */ }
     }, [toastHistory]);
-    
-    // Add new toasts to history
-    useEffect(() => {
-      const latestToast = toasts[0];
-      if (!latestToast) return;
-    
-      // Add to history only if it's a genuinely new toast
-      if (!toastHistory.some(h => h.id === latestToast.id)) {
-          // We clone the toast but remove the timerId to prevent it from auto-dismissing from history
-          const { timerId: _timerId, ...historyToast } = latestToast;
-          setToastHistory(prev => [historyToast, ...prev]);
-      }
-      // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [toasts]);
     
     // Mouse proximity for floating button (bottom-right)
     useEffect(() => {
@@ -311,7 +346,7 @@ const ToastPanel = () => {
                           {new Date(toast.timestamp).toLocaleString()}
                         </small>
                       )}
-                      {toast.button && (
+                      {!isHistorical && toast.button && (
                         <button
                           className="toast-button"
                           onClick={() => {
