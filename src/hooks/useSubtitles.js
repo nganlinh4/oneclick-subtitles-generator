@@ -89,7 +89,7 @@ export const useSubtitles = (t) => {
 
     const currentRetryFromCacheRef = useRef(null);
 
-    useNativeSubtitleHydration({ setSubtitlesData, revisionRef: subtitlesRevisionRef });
+    useNativeSubtitleHydration({ setSubtitlesData, revisionRef: subtitlesRevisionRef, t });
 
     // Countdown updater for quota exceeded with retry seconds
     const startQuotaCountdown = useQuotaCountdown({ t, setStatus, isGenerating });

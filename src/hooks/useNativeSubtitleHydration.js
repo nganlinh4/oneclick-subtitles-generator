@@ -28,10 +28,11 @@ export const createNativeSubtitleHydrator = ({
   readRevision,
   apply,
   preserveOnMiss = hasExplicitSrtFirstProvenance,
+  onFailure = () => undefined,
 }) => {
   if (typeof load !== 'function' || typeof readCurrentCacheId !== 'function'
       || typeof readRevision !== 'function' || typeof apply !== 'function'
-      || typeof preserveOnMiss !== 'function') {
+      || typeof preserveOnMiss !== 'function' || typeof onFailure !== 'function') {
     throw new TypeError('Native subtitle hydration requires reviewed dependencies');
   }
 
@@ -62,6 +63,15 @@ export const createNativeSubtitleHydrator = ({
     return true;
   };
 
+  const reportCurrentFailure = (cacheId, requestedGeneration, startingRevision) => {
+    if (!isCurrentRequest(cacheId, requestedGeneration, startingRevision)) return;
+    try {
+      onFailure(Object.freeze({ code: 'subtitleHydrationFailed', cacheId }));
+    } catch {
+      // Notification delivery cannot make stale rows authoritative again.
+    }
+  };
+
   const activate = async (cacheId, { previousCacheId } = {}) => {
     generation += 1;
     const requestedGeneration = generation;
@@ -76,13 +86,20 @@ export const createNativeSubtitleHydrator = ({
     try {
       rows = await load(cacheId);
     } catch {
-      return clearPriorMediaOnFailure(
+      const wasCurrent = isCurrentRequest(cacheId, requestedGeneration, startingRevision);
+      clearPriorMediaOnFailure(
         cacheId,
         previousCacheId,
         requestedGeneration,
         startingRevision,
         clearsPriorMedia
       );
+      if (wasCurrent) {
+        try { onFailure(Object.freeze({ code: 'subtitleHydrationFailed', cacheId })); } catch {
+          // Notification delivery cannot make stale rows authoritative again.
+        }
+      }
+      return false;
     }
 
     if (!isCurrentRequest(cacheId, requestedGeneration, startingRevision)) {
@@ -102,13 +119,15 @@ export const createNativeSubtitleHydrator = ({
     }
 
     if (!Array.isArray(rows)) {
-      return clearPriorMediaOnFailure(
+      reportCurrentFailure(cacheId, requestedGeneration, startingRevision);
+      clearPriorMediaOnFailure(
         cacheId,
         previousCacheId,
         requestedGeneration,
         startingRevision,
         clearsPriorMedia
       );
+      return false;
     }
     apply(rows);
     return true;
@@ -123,12 +142,21 @@ export const createNativeSubtitleHydrator = ({
   });
 };
 
-export const useNativeSubtitleHydration = ({ setSubtitlesData, revisionRef }) => {
+export const useNativeSubtitleHydration = ({ setSubtitlesData, revisionRef, t }) => {
   useEffect(() => {
     if (!isDesktopRuntime()) return undefined;
     const hydrator = createNativeSubtitleHydrator({
       readRevision: () => revisionRef.current,
       apply: setSubtitlesData,
+      onFailure: () => window.addToast?.(
+        t(
+          'output.subtitlesCacheLoadFailed',
+          'Media is ready, but saved subtitles could not be loaded.'
+        ),
+        'error',
+        8_000,
+        'subtitle-hydration-failed'
+      ),
     });
     const activate = (cacheId, previousCacheId) => {
       void hydrator.activate(cacheId, { previousCacheId });
@@ -144,5 +172,5 @@ export const useNativeSubtitleHydration = ({ setSubtitlesData, revisionRef }) =>
       unsubscribeRefresh();
       hydrator.dispose();
     };
-  }, [revisionRef, setSubtitlesData]);
+  }, [revisionRef, setSubtitlesData, t]);
 };

@@ -141,6 +141,7 @@ it('requires exact, safe uploaded-SRT provenance for a first association', () =>
 
 it('does not apply a malformed result, failure, or disposed request', async () => {
   const apply = vi.fn();
+  const onFailure = vi.fn();
   let activeCacheId = 'asset';
   let revision = 0;
   const load = vi.fn()
@@ -152,6 +153,7 @@ it('does not apply a malformed result, failure, or disposed request', async () =
     readCurrentCacheId: () => activeCacheId,
     readRevision: () => revision,
     apply,
+    onFailure,
   });
 
   await expect(hydrator.activate(activeCacheId)).resolves.toBe(false);
@@ -160,6 +162,11 @@ it('does not apply a malformed result, failure, or disposed request', async () =
   hydrator.dispose();
   await expect(disposed).resolves.toBe(false);
   expect(apply).not.toHaveBeenCalled();
+  expect(onFailure).toHaveBeenCalledTimes(2);
+  expect(onFailure).toHaveBeenNthCalledWith(1, {
+    code: 'subtitleHydrationFailed',
+    cacheId: 'asset',
+  });
 
   activeCacheId = '';
   revision += 1;
@@ -185,35 +192,48 @@ it.each([
   ['a malformed load', async () => ({ rows: [] })],
 ])('clears media A rows when media B returns %s', async (_label, load) => {
   const apply = vi.fn();
+  const onFailure = vi.fn();
   const hydrator = createNativeSubtitleHydrator({
     load,
     readCurrentCacheId: () => 'asset-b',
     readRevision: () => 0,
     apply,
+    onFailure,
   });
 
   await expect(hydrator.activate('asset-b', { previousCacheId: 'asset-a' }))
-    .resolves.toBe(true);
+    .resolves.toBe(false);
   expect(apply).toHaveBeenCalledExactlyOnceWith(null);
+  expect(onFailure).toHaveBeenCalledExactlyOnceWith({
+    code: 'subtitleHydrationFailed',
+    cacheId: 'asset-b',
+  });
 });
 
 it('does not clear a current timeline for a failed same-media reload', async () => {
   const apply = vi.fn();
+  const onFailure = vi.fn();
   const hydrator = createNativeSubtitleHydrator({
     load: async () => { throw new Error('private project path'); },
     readCurrentCacheId: () => 'asset-a',
     readRevision: () => 0,
     apply,
+    onFailure,
   });
 
   await expect(hydrator.activate('asset-a', { previousCacheId: 'asset-a' }))
     .resolves.toBe(false);
   expect(apply).not.toHaveBeenCalled();
+  expect(onFailure).toHaveBeenCalledExactlyOnceWith({
+    code: 'subtitleHydrationFailed',
+    cacheId: 'asset-a',
+  });
 });
 
 it('ignores a rejected old-media request after the new media has hydrated', async () => {
   const oldMedia = deferred();
   const apply = vi.fn();
+  const onFailure = vi.fn();
   let activeCacheId = 'asset-a';
   const hydrator = createNativeSubtitleHydrator({
     load: (cacheId) => (
@@ -222,6 +242,7 @@ it('ignores a rejected old-media request after the new media has hydrated', asyn
     readCurrentCacheId: () => activeCacheId,
     readRevision: () => 0,
     apply,
+    onFailure,
   });
 
   const stale = hydrator.activate('asset-a', { previousCacheId: 'asset-a' });
@@ -232,4 +253,5 @@ it('ignores a rejected old-media request after the new media has hydrated', asyn
   await expect(stale).resolves.toBe(false);
   expect(apply).toHaveBeenNthCalledWith(1, null);
   expect(apply).toHaveBeenNthCalledWith(2, rows('media B'));
+  expect(onFailure).not.toHaveBeenCalled();
 });
