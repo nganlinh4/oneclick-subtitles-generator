@@ -31,8 +31,21 @@ vi.mock('../platform/narrationAlignmentService', () => ({
     releaseAlignmentPlayback: vi.fn(async () => true),
   },
   normalizeAlignmentRequest: (request) => Object.freeze({
+    projectId: request.projectId,
+    expectedProjectStateVersion: request.expectedProjectStateVersion,
     clips: Object.freeze(request.clips.map((clip) => Object.freeze({ ...clip }))),
   }),
+}));
+
+vi.mock('../platform/durableLyricsCheckpoint', () => ({
+  flushDurableLyricsHistory: vi.fn(async () => undefined),
+}));
+
+vi.mock('../platform/projectService', () => ({
+  getActiveProjectSnapshot: vi.fn(() => ({
+    metadata: { id: '018f4c22-f0f1-7c09-a4d5-120d7b6f84a4' },
+    stateVersion: 7,
+  })),
 }));
 
 vi.mock('../platform/jobRecoveryCoordinator', () => ({
@@ -47,6 +60,7 @@ vi.mock('../platform/jobRecoveryCoordinator', () => ({
 const JOB_ID = '018f4c22-f0f1-7c09-a4d5-120d7b6f84a1';
 const ARTIFACT_ID = '018f4c22-f0f1-7c09-a4d5-120d7b6f84a2';
 const PLAYBACK_ID = '550e8400-e29b-41d4-a716-446655440000';
+const PROJECT_ID = '018f4c22-f0f1-7c09-a4d5-120d7b6f84a4';
 
 const job = (state = 'running') => ({
   id: JOB_ID,
@@ -78,6 +92,8 @@ const generationResults = () => [{
   success: true,
   text: 'private words never cross alignment IPC',
   nativeArtifactId: ARTIFACT_ID,
+  projectId: PROJECT_ID,
+  projectStateVersion: 6,
   start: 0,
   end: 1,
 }];
@@ -143,6 +159,8 @@ describe('aligned narration native branch', () => {
     );
     const request = mockAlignment.startAlignmentJob.mock.calls[0][0];
     expect(request).toEqual({
+      projectId: PROJECT_ID,
+      expectedProjectStateVersion: 7,
       clips: [{
         id: 'segment-1',
         artifactId: ARTIFACT_ID,
@@ -186,6 +204,8 @@ describe('aligned narration native branch', () => {
     mockAlignment.startAlignmentJob.mockClear();
     mockAlignment.getAlignmentResult.mockResolvedValue({
       job: job('succeeded'),
+      projectId: PROJECT_ID,
+      expectedProjectStateVersion: 7,
       result: nativeResult(),
     });
     window.alignedNarrationCache = {
@@ -265,7 +285,12 @@ describe('aligned narration native branch', () => {
     mockAlignment.startAlignmentJob.mockClear();
     mockAlignment.getAlignmentResult
       .mockRejectedValueOnce(new Error('transport closed'))
-      .mockResolvedValueOnce({ job: job('succeeded'), result: nativeResult() });
+      .mockResolvedValueOnce({
+        job: job('succeeded'),
+        projectId: PROJECT_ID,
+        expectedProjectStateVersion: 7,
+        result: nativeResult(),
+      });
 
     await expect(generateAlignedNarration(generationResults(), currentCues())).rejects
       .toMatchObject({ code: 'alignmentRecoveryUnavailable', retryable: true });
@@ -285,7 +310,12 @@ describe('aligned narration native branch', () => {
       return job();
     });
     await generateAlignedNarration(generationResults(), currentCues());
-    mockAlignment.getAlignmentResult.mockResolvedValue({ job: job('running'), result: null });
+    mockAlignment.getAlignmentResult.mockResolvedValue({
+      job: job('running'),
+      projectId: PROJECT_ID,
+      expectedProjectStateVersion: 7,
+      result: null,
+    });
     mockAlignment.waitForAlignmentResult.mockRejectedValue(Object.assign(
       new Error('terminal without artifact'),
       { code: 'alignmentUnavailable' },

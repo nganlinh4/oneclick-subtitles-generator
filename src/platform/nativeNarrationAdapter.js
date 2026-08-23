@@ -308,7 +308,7 @@ export const createNativeSpeechProfile = (methodInput, rawSettings = {}) => {
   }
 };
 
-const resultFromNative = (result, mapping, backend) => {
+const resultFromNative = (result, mapping, backend, authority) => {
   const common = {
     subtitle_id: mapping.subtitleId,
     text: mapping.text,
@@ -318,6 +318,8 @@ const resultFromNative = (result, mapping, backend) => {
     start: mapping.start,
     end: mapping.end,
     method: legacyMethod[backend],
+    projectId: authority.projectId,
+    projectStateVersion: authority.expectedProjectStateVersion,
     filename: result.status === 'completed'
       ? createNativeNarrationToken(result.artifact.artifactId)
       : null,
@@ -519,10 +521,14 @@ export const createNativeNarrationAdapter = ({
     const byNativeId = new Map(mappings.map((mapping) => [mapping.nativeId, mapping]));
     const profile = createNativeSpeechProfile(backend, settings);
     const callbacks = normalizeCallbacks(rawCallbacks);
+    const authority = Object.freeze({
+      projectId: requireUuid(projectId, 7),
+      expectedProjectStateVersion: requireLifecycleEpoch(expectedProjectStateVersion),
+    });
     const mapResult = (result) => {
       const mapping = byNativeId.get(result.segmentId);
       if (mapping === undefined) throw invalid();
-      return resultFromNative(result, mapping, backend);
+      return resultFromNative(result, mapping, backend, authority);
     };
     const handlers = {
       onEvent: (event) => safelyCall(callbacks.onEvent, event),
@@ -552,8 +558,8 @@ export const createNativeNarrationAdapter = ({
       onProtocolError: (error) => safelyCall(callbacks.onProtocolError, error),
     };
     const request = normalizeSpeechStartRequest({
-      projectId: requireUuid(projectId, 7),
-      expectedProjectStateVersion: requireLifecycleEpoch(expectedProjectStateVersion),
+      projectId: authority.projectId,
+      expectedProjectStateVersion: authority.expectedProjectStateVersion,
       segments: mappings.map(({ nativeId, text }) => ({ id: nativeId, text })),
       profile,
       referenceArtifactId: usesReference
@@ -577,6 +583,8 @@ export const createNativeNarrationAdapter = ({
         start: mapping.start,
         end: mapping.end,
         method: legacyMethod[backend],
+        projectId: authority.projectId,
+        projectStateVersion: authority.expectedProjectStateVersion,
       }))),
     });
   };
@@ -605,7 +613,7 @@ export const createNativeNarrationAdapter = ({
     const results = restored.results.map((result) => {
       const mapping = byNativeId.get(result.segmentId);
       if (mapping === undefined) throw invalid();
-      return resultFromNative(result, mapping, backend);
+      return resultFromNative(result, mapping, backend, authority);
     });
     return Object.freeze({
       job: restored.job,
@@ -676,21 +684,40 @@ export const createNativeNarrationAdapter = ({
   const editArtifact = async (rawRequest) => {
     const requestValue = requireRequestKeys(
       rawRequest,
-      new Set(['artifactId', 'normalizedStart', 'normalizedEnd', 'speedFactor']),
-      new Set(['artifactId'])
+      new Set([
+        'artifactId', 'projectId', 'expectedProjectStateVersion',
+        'normalizedStart', 'normalizedEnd', 'speedFactor',
+      ]),
+      new Set(['artifactId', 'projectId', 'expectedProjectStateVersion'])
     );
     const {
       artifactId,
+      projectId,
+      expectedProjectStateVersion,
       normalizedStart = 0,
       normalizedEnd = 1,
       speedFactor = 1,
     } = requestValue;
-    return speech.editSpeechArtifact({
-    artifactId: requireUuid(artifactId, 7),
-    normalizedStart,
-    normalizedEnd,
-    speedFactor,
-  });
+    const authority = Object.freeze({
+      projectId: requireUuid(projectId, 7),
+      expectedProjectStateVersion: requireLifecycleEpoch(expectedProjectStateVersion),
+    });
+    const edited = await speech.editSpeechArtifact({
+      artifactId: requireUuid(artifactId, 7),
+      ...authority,
+      normalizedStart,
+      normalizedEnd,
+      speedFactor,
+    });
+    if (edited.projectId !== authority.projectId
+        || edited.expectedProjectStateVersion !== authority.expectedProjectStateVersion) {
+      throw invalid();
+    }
+    return Object.freeze({
+      ...edited.artifact,
+      projectId: edited.projectId,
+      projectStateVersion: edited.expectedProjectStateVersion,
+    });
   };
 
   return Object.freeze({

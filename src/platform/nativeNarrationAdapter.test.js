@@ -380,7 +380,11 @@ describe('native narration compatibility adapter', () => {
     };
     const speech = {
       importSpeechReference: vi.fn(async () => referencePlayable()),
-      editSpeechArtifact: vi.fn(async () => editedArtifact),
+      editSpeechArtifact: vi.fn(async () => ({
+        projectId: PROJECT_ID,
+        expectedProjectStateVersion: 7,
+        artifact: editedArtifact,
+      })),
       getSpeechStatus: vi.fn(),
       probeSpeechBackend: vi.fn(),
       stopSpeechRuntime: vi.fn(),
@@ -410,12 +414,20 @@ describe('native narration compatibility adapter', () => {
     });
     await expect(adapter.editArtifact({
       artifactId: ARTIFACT_ID,
+      projectId: PROJECT_ID,
+      expectedProjectStateVersion: 7,
       normalizedStart: 0.25,
       normalizedEnd: 0.75,
       speedFactor: 1.5,
-    })).resolves.toEqual(editedArtifact);
+    })).resolves.toEqual({
+      ...editedArtifact,
+      projectId: PROJECT_ID,
+      projectStateVersion: 7,
+    });
     expect(speech.editSpeechArtifact).toHaveBeenCalledWith({
       artifactId: ARTIFACT_ID,
+      projectId: PROJECT_ID,
+      expectedProjectStateVersion: 7,
       normalizedStart: 0.25,
       normalizedEnd: 0.75,
       speedFactor: 1.5,
@@ -430,6 +442,8 @@ describe('native narration compatibility adapter', () => {
     })).rejects.toThrow('invalid');
     await expect(adapter.editArtifact({
       artifactId: ARTIFACT_ID,
+      projectId: PROJECT_ID,
+      expectedProjectStateVersion: 7,
       normalizedStart: 0,
       normalizedEnd: 1,
       speedFactor: 1,

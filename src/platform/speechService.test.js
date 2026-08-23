@@ -361,7 +361,13 @@ describe('native speech response validation', () => {
     const invokeCommand = vi.fn(async (command) => {
       if (command === 'speech_reference_import') return playableReference();
       if (command === 'speech_artifact_edit') {
-        return { ...artifact(), artifactId: EDITED_ARTIFACT_ID, durationMicros: 500_000 };
+        return {
+          projectId: PROJECT_ID,
+          expectedProjectStateVersion: 7,
+          artifact: {
+            ...artifact(), artifactId: EDITED_ARTIFACT_ID, durationMicros: 500_000,
+          },
+        };
       }
       throw new Error('unexpected command');
     });
@@ -391,13 +397,21 @@ describe('native speech response validation', () => {
     });
     await expect(service.editSpeechArtifact({
       artifactId: ARTIFACT_ID,
+      projectId: PROJECT_ID,
+      expectedProjectStateVersion: 7,
       normalizedStart: 0.125,
       normalizedEnd: 0.875,
       speedFactor: 1.5,
-    })).resolves.toMatchObject({ artifactId: EDITED_ARTIFACT_ID });
+    })).resolves.toMatchObject({
+      projectId: PROJECT_ID,
+      expectedProjectStateVersion: 7,
+      artifact: { artifactId: EDITED_ARTIFACT_ID },
+    });
     expect(invokeCommand).toHaveBeenCalledWith('speech_artifact_edit', {
       request: {
         artifactId: ARTIFACT_ID,
+        projectId: PROJECT_ID,
+        expectedProjectStateVersion: 7,
         normalizedStartMillionths: 125_000,
         normalizedEndMillionths: 875_000,
         speedMilli: 1_500,
@@ -413,6 +427,8 @@ describe('native speech response validation', () => {
     })).rejects.toMatchObject({ code: 'invalidSpeechRequest' });
     await expect(service.editSpeechArtifact({
       artifactId: ARTIFACT_ID,
+      projectId: PROJECT_ID,
+      expectedProjectStateVersion: 7,
       normalizedStart: 0,
       normalizedEnd: 1,
       speedFactor: 1,

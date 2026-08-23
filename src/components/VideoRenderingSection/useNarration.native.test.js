@@ -18,11 +18,13 @@ vi.mock('../../services/alignedNarrationService.js', () => ({
 }));
 
 const ARTIFACT_ID = '018f4c22-f0f1-7c09-a4d5-120d7b6f84a2';
+const PROJECT_ID = '018f4c22-f0f1-7c09-a4d5-120d7b6f84a4';
 const nativeResult = {
   subtitle_id: 7,
   success: true,
   nativeArtifactId: ARTIFACT_ID,
   text: 'Current words',
+  projectId: PROJECT_ID,
 };
 const currentCues = [{ id: 7, text: 'Current words', start: 0, end: 1 }];
 

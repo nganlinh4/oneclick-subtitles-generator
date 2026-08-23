@@ -6,6 +6,7 @@ import {
 
 const ARTIFACT_A = '018f4c22-f0f1-7c09-a4d5-120d7b6f84a2';
 const ARTIFACT_B = '018f4c22-f0f1-7c09-a4d5-120d7b6f84a3';
+const PROJECT_ID = '018f4c22-f0f1-7c09-a4d5-120d7b6f84a4';
 
 const cue = (overrides = {}) => ({
   id: 1,
@@ -20,6 +21,7 @@ const result = (overrides = {}) => ({
   text: 'Current words',
   success: true,
   nativeArtifactId: ARTIFACT_A,
+  projectId: PROJECT_ID,
   // A generation result may retain old timing. The current cue is the only timing authority.
   start: 90,
   end: 95,
@@ -33,6 +35,7 @@ describe('strict native narration alignment plan', () => {
     expect(plan.items).toEqual([{
       subtitle_id: '1',
       nativeArtifactId: ARTIFACT_A,
+      projectId: PROJECT_ID,
       start: 2.25,
       end: 3.75,
       text: 'Current words',

@@ -70,7 +70,7 @@ const MAX_ALIGNMENT_INPUT_BYTES: u64 = 4 * 1024 * 1024 * 1024;
 const MAX_ALIGNMENT_DURATION_MICROS: u64 = 4 * 60 * 60 * 1_000_000;
 const ALIGNMENT_TIMEOUT: Duration = Duration::from_hours(2);
 const ALIGNMENT_MANIFEST_SCOPE: &str = "speechAlignmentJobs";
-const ALIGNMENT_MANIFEST_SCHEMA_VERSION: u32 = 1;
+const ALIGNMENT_MANIFEST_SCHEMA_VERSION: u32 = 2;
 const MAX_F5_REFERENCE_MS: u64 = 12_000;
 const MAX_CHATTERBOX_REFERENCE_MS: u64 = 60_000;
 const MANIFEST_SCOPE: &str = "speechJobs";
@@ -1266,6 +1266,8 @@ pub(crate) struct SpeechReferenceClearRequest {
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub(crate) struct SpeechArtifactEditRequest {
     artifact_id: String,
+    project_id: ProjectId,
+    expected_project_state_version: u64,
     normalized_start_millionths: u32,
     normalized_end_millionths: u32,
     speed_milli: u16,
@@ -1300,6 +1302,11 @@ impl fmt::Debug for SpeechArtifactEditRequest {
         formatter
             .debug_struct("SpeechArtifactEditRequest")
             .field("artifact_id", &"<opaque>")
+            .field("project_id", &"<opaque>")
+            .field(
+                "expected_project_state_version",
+                &self.expected_project_state_version,
+            )
             .field(
                 "normalized_start_millionths",
                 &self.normalized_start_millionths,
@@ -1342,6 +1349,8 @@ impl fmt::Debug for SpeechAlignmentClipRequest {
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub(crate) struct SpeechAlignmentStartRequest {
+    project_id: ProjectId,
+    expected_project_state_version: u64,
     clips: Vec<SpeechAlignmentClipRequest>,
 }
 
@@ -1349,6 +1358,11 @@ impl fmt::Debug for SpeechAlignmentStartRequest {
     fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
         formatter
             .debug_struct("SpeechAlignmentStartRequest")
+            .field("project_id", &"<opaque>")
+            .field(
+                "expected_project_state_version",
+                &self.expected_project_state_version,
+            )
             .field("clip_count", &self.clips.len())
             .finish()
     }
@@ -1391,6 +1405,14 @@ pub(crate) struct SpeechArtifactDescriptor {
     duration_micros: Option<u64>,
     sample_rate_hz: Option<u32>,
     channels: Option<u8>,
+}
+
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub(crate) struct SpeechArtifactEditResponse {
+    project_id: ProjectId,
+    expected_project_state_version: u64,
+    artifact: SpeechArtifactDescriptor,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -1443,6 +1465,7 @@ pub(crate) struct SpeechAlignmentResult {
 #[serde(rename_all = "camelCase")]
 pub(crate) enum SpeechAlignmentFailureCode {
     Cancelled,
+    ProjectChanged,
     InvalidRequest,
     RuntimeUnavailable,
     TimedOut,
@@ -1462,6 +1485,8 @@ pub(crate) enum SpeechAlignmentPhase {
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 struct SpeechAlignmentManifest {
     schema_version: u32,
+    project_id: ProjectId,
+    expected_project_state_version: u64,
     result: Option<SpeechAlignmentResult>,
 }
 
@@ -1469,6 +1494,8 @@ struct SpeechAlignmentManifest {
 #[serde(rename_all = "camelCase")]
 pub(crate) struct SpeechAlignmentResultResponse {
     job: JobSnapshot,
+    project_id: ProjectId,
+    expected_project_state_version: u64,
     result: Option<SpeechAlignmentResult>,
 }
 
@@ -1486,6 +1513,8 @@ pub(crate) enum SpeechAlignmentEvent {
     },
     Completed {
         job: JobSnapshot,
+        project_id: ProjectId,
+        expected_project_state_version: u64,
         result: SpeechAlignmentResult,
     },
     Cancelled {
@@ -1516,6 +1545,7 @@ struct AlignmentResultStats {
 
 struct ValidatedAlignmentStart {
     project_id: ProjectId,
+    expected_project_state_version: u64,
     clips: Vec<AlignmentRenderClip>,
     stats: AlignmentResultStats,
 }
@@ -1580,6 +1610,16 @@ fn validate_alignment_start(
     database: &Database,
     request: SpeechAlignmentStartRequest,
 ) -> CommandResult<ValidatedAlignmentStart> {
+    if request.expected_project_state_version > i64::MAX as u64 {
+        return Err(CommandError::invalid_input(
+            "The narration alignment project state version is invalid.",
+        ));
+    }
+    require_reference_project_state(
+        database,
+        request.project_id,
+        request.expected_project_state_version,
+    )?;
     if request.clips.is_empty() || request.clips.len() > MAX_SEGMENTS {
         return Err(CommandError::invalid_input(
             "Alignment requires between one and 1000 narration clips.",
@@ -1647,10 +1687,17 @@ fn validate_alignment_start(
         rendered_duration_micros: plan.stats().rendered_duration().get(),
         maximum_shift_micros: plan.stats().maximum_shift().get(),
     };
+    let resolved_project_id = project_id.ok_or_else(|| {
+        CommandError::invalid_input("Narration alignment requires a durable project.")
+    })?;
+    if resolved_project_id != request.project_id {
+        return Err(CommandError::invalid_input(
+            "Narration alignment audio does not belong to the requested project.",
+        ));
+    }
     Ok(ValidatedAlignmentStart {
-        project_id: project_id.ok_or_else(|| {
-            CommandError::invalid_input("Narration alignment requires a durable project.")
-        })?,
+        project_id: resolved_project_id,
+        expected_project_state_version: request.expected_project_state_version,
         clips,
         stats,
     })
@@ -2191,7 +2238,7 @@ pub(crate) async fn speech_artifact_edit(
     runtime: State<'_, SpeechRuntime>,
     state: State<'_, DesktopState>,
     request: SpeechArtifactEditRequest,
-) -> CommandResult<SpeechArtifactDescriptor> {
+) -> CommandResult<SpeechArtifactEditResponse> {
     let media_engine = state
         .media_engine()
         .ok_or_else(CommandError::media_tools_unavailable)?;
@@ -2201,71 +2248,120 @@ pub(crate) async fn speech_artifact_edit(
     let database = state.database.clone();
     let speech_runtime = runtime.inner().clone();
     tauri::async_runtime::spawn_blocking(move || {
-        let (audio, media, descriptor, _) =
-            resolve_alignment_audio(&database, &request.artifact_id)?;
-        let duration = descriptor.duration_micros.ok_or_else(|| {
-            CommandError::invalid_input("The narration duration is unavailable for editing.")
-        })?;
-        let trim = NormalizedTrim::new(
-            NormalizedPoint::from_millionths(request.normalized_start_millionths)
-                .map_err(|error| speech_command_error(&error))?,
-            NormalizedPoint::from_millionths(request.normalized_end_millionths)
-                .map_err(|error| speech_command_error(&error))?,
-        )
-        .map_err(|error| speech_command_error(&error))?;
-        let speed = SpeedFactor::from_milli(request.speed_milli)
-            .map_err(|error| speech_command_error(&error))?;
-        let speech_plan = SpeechAudioEditPlan::new(
-            audio,
-            TimeMicros::new(duration).map_err(|error| speech_command_error(&error))?,
-            trim,
-            speed,
-        )
-        .map_err(|error| speech_command_error(&error))?;
-        let (start_us, end_us) = match speech_plan.filters().first() {
-            Some(AudioFilter::Trim { start, end }) => (start.get(), end.get()),
-            _ => {
-                return Err(CommandError::internal(
-                    "The narration edit plan is invalid.",
-                ));
-            }
-        };
-        let output_path = work.path().join("edited.wav");
-        let output = MediaOutput::within_root(&output_path, work.path())?;
-        let media_plan =
-            MediaAudioEditPlan::new(media, output, start_us, end_us, speech_plan.speed().milli())?;
-        let control = MediaRunControl::new(NARRATION_EDIT_TIMEOUT)?
-            .with_cancellation(MediaCancellationToken::default());
-        media_engine.execute(&MediaOperation::NarrationAudioEdit(media_plan), &control)?;
-        let edited_input = MediaInput::from_native_selection(&output_path)?;
-        let metadata = media_engine.probe(&edited_input, &control)?;
-        let audio_metadata = metadata
-            .primary_audio()
-            .and_then(|stream| stream.audio.as_ref())
-            .ok_or_else(|| CommandError::internal("The edited narration audio is invalid."))?;
-        let duration_micros = metadata.duration_us().ok_or_else(|| {
-            CommandError::internal("The edited narration duration is unavailable.")
-        })?;
-        let published = publish_durable_artifact(
+        edit_project_speech_artifact(
             &speech_runtime,
             &database,
-            None,
-            "narrationOutput",
-            &output_path,
-            SpeechArtifactMetadata {
-                format: SpeechArtifactFormatResponse::Wav,
-                duration_micros: Some(duration_micros),
-                sample_rate_hz: audio_metadata.sample_rate_hz,
-                channels: audio_metadata
-                    .channels
-                    .and_then(|value| u8::try_from(value).ok()),
-                source: "nativeNarrationEdit",
-            },
-        )?;
-        Ok(published.descriptor)
+            &media_engine,
+            work.path(),
+            &request,
+        )
     })
     .await
     .map_err(|_| CommandError::internal("The narration edit task stopped unexpectedly."))?
+}
+
+fn edit_project_speech_artifact(
+    runtime: &SpeechRuntime,
+    database: &Database,
+    media_engine: &osg_media::MediaEngine,
+    work_root: &Path,
+    request: &SpeechArtifactEditRequest,
+) -> CommandResult<SpeechArtifactEditResponse> {
+    if request.expected_project_state_version > i64::MAX as u64 {
+        return Err(CommandError::invalid_input(
+            "The narration edit project state version is invalid.",
+        ));
+    }
+    require_reference_project_state(
+        database,
+        request.project_id,
+        request.expected_project_state_version,
+    )?;
+    let (audio, media, descriptor, source_project_id) =
+        resolve_alignment_audio(database, &request.artifact_id)?;
+    if source_project_id != Some(request.project_id) {
+        return Err(CommandError::invalid_input(
+            "The narration audio does not belong to the requested project.",
+        ));
+    }
+    let duration = descriptor.duration_micros.ok_or_else(|| {
+        CommandError::invalid_input("The narration duration is unavailable for editing.")
+    })?;
+    let trim = NormalizedTrim::new(
+        NormalizedPoint::from_millionths(request.normalized_start_millionths)
+            .map_err(|error| speech_command_error(&error))?,
+        NormalizedPoint::from_millionths(request.normalized_end_millionths)
+            .map_err(|error| speech_command_error(&error))?,
+    )
+    .map_err(|error| speech_command_error(&error))?;
+    let speed = SpeedFactor::from_milli(request.speed_milli)
+        .map_err(|error| speech_command_error(&error))?;
+    let speech_plan = SpeechAudioEditPlan::new(
+        audio,
+        TimeMicros::new(duration).map_err(|error| speech_command_error(&error))?,
+        trim,
+        speed,
+    )
+    .map_err(|error| speech_command_error(&error))?;
+    let (start_us, end_us) = match speech_plan.filters().first() {
+        Some(AudioFilter::Trim { start, end }) => (start.get(), end.get()),
+        _ => {
+            return Err(CommandError::internal(
+                "The narration edit plan is invalid.",
+            ));
+        }
+    };
+    let output_path = work_root.join("edited.wav");
+    let output = MediaOutput::within_root(&output_path, work_root)?;
+    let media_plan =
+        MediaAudioEditPlan::new(media, output, start_us, end_us, speech_plan.speed().milli())?;
+    let control = MediaRunControl::new(NARRATION_EDIT_TIMEOUT)?
+        .with_cancellation(MediaCancellationToken::default());
+    media_engine.execute(&MediaOperation::NarrationAudioEdit(media_plan), &control)?;
+    let edited_input = MediaInput::from_native_selection(&output_path)?;
+    let metadata = media_engine.probe(&edited_input, &control)?;
+    let audio_metadata = metadata
+        .primary_audio()
+        .and_then(|stream| stream.audio.as_ref())
+        .ok_or_else(|| CommandError::internal("The edited narration audio is invalid."))?;
+    let duration_micros = metadata
+        .duration_us()
+        .ok_or_else(|| CommandError::internal("The edited narration duration is unavailable."))?;
+    require_reference_project_state(
+        database,
+        request.project_id,
+        request.expected_project_state_version,
+    )?;
+    let published = publish_project_durable_artifact(
+        runtime,
+        database,
+        request.project_id,
+        None,
+        "narrationOutput",
+        &output_path,
+        SpeechArtifactMetadata {
+            format: SpeechArtifactFormatResponse::Wav,
+            duration_micros: Some(duration_micros),
+            sample_rate_hz: audio_metadata.sample_rate_hz,
+            channels: audio_metadata
+                .channels
+                .and_then(|value| u8::try_from(value).ok()),
+            source: "nativeNarrationEdit",
+        },
+    )?;
+    if let Err(error) = require_reference_project_state(
+        database,
+        request.project_id,
+        request.expected_project_state_version,
+    ) {
+        rollback_published_speech_artifact(database, &published)?;
+        return Err(error);
+    }
+    Ok(SpeechArtifactEditResponse {
+        project_id: request.project_id,
+        expected_project_state_version: request.expected_project_state_version,
+        artifact: published.descriptor,
+    })
 }
 
 #[tauri::command]
@@ -2486,7 +2582,11 @@ pub(crate) async fn speech_alignment_start(
     let ticket = background::register_running(&jobs, JobKind::AlignNarration).await?;
     let initial = ticket.snapshot().clone();
     let job_id = initial.id();
-    if let Err(error) = initialize_alignment_manifest(&state.database, job_id).await {
+    let authority = SpeechProjectAuthority {
+        project_id: validated.project_id,
+        expected_state_version: validated.expected_project_state_version,
+    };
+    if let Err(error) = initialize_alignment_manifest(&state.database, job_id, authority).await {
         let _ = background::finish_failure(&jobs, job_id).await;
         return Err(error);
     }
@@ -2521,7 +2621,7 @@ pub(crate) async fn speech_alignment_start(
         .await
         .unwrap_or(Err(SpeechAlignmentFailureCode::MediaFailed));
         watcher.abort();
-        finish_alignment_job(&jobs, job_id, outcome, &on_event).await;
+        finish_alignment_job(&jobs, &database, authority, job_id, outcome, &on_event).await;
     });
     Ok(initial)
 }
@@ -2573,6 +2673,8 @@ pub(crate) async fn speech_alignment_result(
         let manifest = read_alignment_manifest(&database, job_id)?;
         Ok(SpeechAlignmentResultResponse {
             job,
+            project_id: manifest.project_id,
+            expected_project_state_version: manifest.expected_project_state_version,
             result: manifest.result,
         })
     })
@@ -3761,6 +3863,11 @@ fn execute_alignment_job(
     cancellation: &MediaCancellationToken,
     channel: &Channel<SpeechAlignmentEvent>,
 ) -> Result<SpeechAlignmentResult, SpeechAlignmentFailureCode> {
+    let authority = SpeechProjectAuthority {
+        project_id: validated.project_id,
+        expected_state_version: validated.expected_project_state_version,
+    };
+    ensure_alignment_project_current(database, authority)?;
     if cancellation.is_cancelled() {
         return Err(SpeechAlignmentFailureCode::Cancelled);
     }
@@ -3783,6 +3890,8 @@ fn execute_alignment_job(
                 started,
                 cancellation,
                 jobs,
+                database,
+                authority,
                 job_id,
                 channel,
             )?,
@@ -3801,6 +3910,8 @@ fn execute_alignment_job(
         started,
         cancellation.clone(),
         jobs,
+        database,
+        authority,
         job_id,
         channel,
     )?;
@@ -3808,6 +3919,7 @@ fn execute_alignment_job(
     if cancellation.is_cancelled() {
         return Err(SpeechAlignmentFailureCode::Cancelled);
     }
+    ensure_alignment_project_current(database, authority)?;
     report_alignment_progress(
         jobs,
         job_id,
@@ -3832,7 +3944,7 @@ fn execute_alignment_job(
     )
     .map_err(|_| SpeechAlignmentFailureCode::ArtifactStorage)?;
     let result = SpeechAlignmentResult {
-        artifact: published.descriptor,
+        artifact: published.descriptor.clone(),
         clip_count: validated.stats.clip_count,
         adjusted_count: validated.stats.adjusted_count,
         requested_duration_micros: validated.stats.requested_duration_micros,
@@ -3840,8 +3952,16 @@ fn execute_alignment_job(
         rendered_duration_micros: validated.stats.rendered_duration_micros,
         maximum_shift_micros: validated.stats.maximum_shift_micros,
     };
-    store_alignment_result(database, job_id, result.clone())
-        .map_err(|_| SpeechAlignmentFailureCode::ArtifactStorage)?;
+    if let Err(code) = ensure_alignment_project_current(database, authority) {
+        rollback_published_speech_artifact(database, &published)
+            .map_err(|_| SpeechAlignmentFailureCode::ArtifactStorage)?;
+        return Err(code);
+    }
+    if let Err(code) = store_alignment_result(database, job_id, authority, result.clone()) {
+        rollback_published_speech_artifact(database, &published)
+            .map_err(|_| SpeechAlignmentFailureCode::ArtifactStorage)?;
+        return Err(code);
+    }
     Ok(result)
 }
 
@@ -3854,11 +3974,14 @@ fn render_alignment_leaves(
     started: std::time::Instant,
     cancellation: &MediaCancellationToken,
     jobs: &background::DesktopJobs,
+    database: &Database,
+    authority: SpeechProjectAuthority,
     job_id: JobId,
     channel: &Channel<SpeechAlignmentEvent>,
 ) -> Result<Vec<AlignmentRenderClip>, SpeechAlignmentFailureCode> {
     let mut leaf_inputs = Vec::with_capacity(clips.len().div_ceil(MAX_NARRATION_MIX_INPUTS));
     for (leaf_index, clips) in clips.chunks(MAX_NARRATION_MIX_INPUTS).enumerate() {
+        ensure_alignment_project_current(database, authority)?;
         if cancellation.is_cancelled() {
             return Err(SpeechAlignmentFailureCode::Cancelled);
         }
@@ -3896,6 +4019,8 @@ fn render_alignment_leaves(
             started,
             cancellation.clone(),
             jobs,
+            database,
+            authority,
             job_id,
             channel,
         )?;
@@ -3923,9 +4048,12 @@ fn execute_alignment_mix(
     started: std::time::Instant,
     cancellation: MediaCancellationToken,
     jobs: &background::DesktopJobs,
+    database: &Database,
+    authority: SpeechProjectAuthority,
     job_id: JobId,
     channel: &Channel<SpeechAlignmentEvent>,
 ) -> Result<(), SpeechAlignmentFailureCode> {
+    ensure_alignment_project_current(database, authority)?;
     if cancellation.is_cancelled() {
         return Err(SpeechAlignmentFailureCode::Cancelled);
     }
@@ -3945,6 +4073,8 @@ fn execute_alignment_mix(
     );
     let progress_jobs = Arc::clone(jobs);
     let progress_channel = channel.clone();
+    let progress_database = database.clone();
+    let progress_cancellation = cancellation.clone();
     let progress = ProgressSink::new(move |progress: FfmpegProgress| {
         let fraction = progress
             .fraction
@@ -3953,12 +4083,15 @@ fn execute_alignment_mix(
             .clamp(0.0, 1.0);
         report_alignment_mix_fraction(
             &progress_jobs,
+            &progress_database,
+            authority,
             job_id,
             completed_steps,
             total_steps,
             fraction,
             &progress_channel,
-        );
+        )
+        .unwrap_or_else(|_| progress_cancellation.cancel());
     });
     let control = MediaRunControl::new(remaining)
         .map_err(|_| SpeechAlignmentFailureCode::MediaFailed)?
@@ -3966,8 +4099,8 @@ fn execute_alignment_mix(
         .with_progress(progress);
     engine
         .execute(&operation, &control)
-        .map(|_| ())
-        .map_err(|error| alignment_media_failure(&error))
+        .map_err(|error| alignment_media_failure(&error))?;
+    ensure_alignment_project_current(database, authority)
 }
 
 fn alignment_m4a_output() -> Result<AudioOutput, SpeechAlignmentFailureCode> {
@@ -4008,19 +4141,46 @@ const fn alignment_media_failure(error: &MediaError) -> SpeechAlignmentFailureCo
     }
 }
 
+fn ensure_alignment_project_current(
+    database: &Database,
+    authority: SpeechProjectAuthority,
+) -> Result<(), SpeechAlignmentFailureCode> {
+    let project = database
+        .load_project(authority.project_id)
+        .map_err(|_| SpeechAlignmentFailureCode::ArtifactStorage)?
+        .ok_or(SpeechAlignmentFailureCode::ProjectChanged)?;
+    if project.state_version() != authority.expected_state_version {
+        return Err(SpeechAlignmentFailureCode::ProjectChanged);
+    }
+    Ok(())
+}
+
+const fn alignment_project_write_failure(error: &DatabaseError) -> SpeechAlignmentFailureCode {
+    match error {
+        DatabaseError::ProjectNotFound(_) | DatabaseError::StaleProjectVersion { .. } => {
+            SpeechAlignmentFailureCode::ProjectChanged
+        }
+        _ => SpeechAlignmentFailureCode::ArtifactStorage,
+    }
+}
+
 #[allow(
     clippy::cast_possible_truncation,
     clippy::cast_sign_loss,
     reason = "the finite alignment fraction is clamped to 0..=1 before conversion"
 )]
+#[allow(clippy::too_many_arguments)]
 fn report_alignment_mix_fraction(
     jobs: &background::DesktopJobs,
+    database: &Database,
+    authority: SpeechProjectAuthority,
     job_id: JobId,
     completed_steps: usize,
     total_steps: usize,
     local_fraction: f64,
     channel: &Channel<SpeechAlignmentEvent>,
-) {
+) -> Result<(), SpeechAlignmentFailureCode> {
+    ensure_alignment_project_current(database, authority)?;
     let local_millionths = (local_fraction * 1_000_000.0).round() as u64;
     let completed_steps = u64::try_from(completed_steps).unwrap_or(u64::MAX);
     let total_steps = u64::try_from(total_steps).unwrap_or(u64::MAX).max(1);
@@ -4039,6 +4199,7 @@ fn report_alignment_mix_fraction(
         millionths,
         channel,
     );
+    Ok(())
 }
 
 fn report_alignment_progress(
@@ -4071,20 +4232,47 @@ fn report_alignment_progress(
 
 async fn finish_alignment_job(
     jobs: &background::DesktopJobs,
+    database: &Database,
+    authority: SpeechProjectAuthority,
     job_id: JobId,
     outcome: Result<SpeechAlignmentResult, SpeechAlignmentFailureCode>,
     channel: &Channel<SpeechAlignmentEvent>,
 ) {
     match outcome {
         Ok(result) => {
-            if let Ok(job) = background::apply(jobs, job_id, JobUpdate::Succeed).await {
-                let _ = channel.send(SpeechAlignmentEvent::Completed { job, result });
-            } else {
-                let job = background::snapshot(jobs, job_id).await;
-                let _ = channel.send(SpeechAlignmentEvent::Failed {
+            let completion_jobs = Arc::clone(jobs);
+            let completion_database = database.clone();
+            let completed = tauri::async_runtime::spawn_blocking(move || {
+                completion_jobs.apply_with_store(
+                    job_id,
+                    JobUpdate::Succeed,
+                    |store, sequence, snapshot| {
+                        store.complete_project_job(
+                            sequence,
+                            snapshot,
+                            authority.project_id,
+                            authority.expected_state_version,
+                        )
+                    },
+                )
+            })
+            .await
+            .ok()
+            .and_then(Result::ok)
+            .map(|ticket| ticket.snapshot().clone());
+            if let Some(job) = completed {
+                let _ = channel.send(SpeechAlignmentEvent::Completed {
                     job,
-                    code: SpeechAlignmentFailureCode::ArtifactStorage,
+                    project_id: authority.project_id,
+                    expected_project_state_version: authority.expected_state_version,
+                    result,
                 });
+            } else {
+                let code = ensure_alignment_project_current(&completion_database, authority)
+                    .err()
+                    .unwrap_or(SpeechAlignmentFailureCode::ArtifactStorage);
+                let job = background::finish_failure(jobs, job_id).await;
+                let _ = channel.send(SpeechAlignmentEvent::Failed { job, code });
             }
         }
         Err(SpeechAlignmentFailureCode::Cancelled) => {
@@ -4248,16 +4436,28 @@ async fn finish_speech_job(
     }
 }
 
-async fn initialize_alignment_manifest(database: &Database, job_id: JobId) -> CommandResult<()> {
+async fn initialize_alignment_manifest(
+    database: &Database,
+    job_id: JobId,
+    authority: SpeechProjectAuthority,
+) -> CommandResult<()> {
     let database = database.clone();
     tauri::async_runtime::spawn_blocking(move || {
         let manifest = SpeechAlignmentManifest {
             schema_version: ALIGNMENT_MANIFEST_SCHEMA_VERSION,
+            project_id: authority.project_id,
+            expected_project_state_version: authority.expected_state_version,
             result: None,
         };
         let value = serde_json::to_value(manifest)
             .map_err(|_| CommandError::internal("The alignment manifest is invalid."))?;
-        database.put_setting(ALIGNMENT_MANIFEST_SCOPE, &job_id.to_string(), &value)?;
+        database.put_project_setting(
+            ALIGNMENT_MANIFEST_SCOPE,
+            &job_id.to_string(),
+            &value,
+            authority.project_id,
+            authority.expected_state_version,
+        )?;
         Ok(())
     })
     .await
@@ -4273,9 +4473,17 @@ fn read_alignment_manifest(
         .ok_or_else(|| CommandError::invalid_input("The alignment result is unavailable."))?;
     let manifest: SpeechAlignmentManifest = serde_json::from_value(value)
         .map_err(|_| CommandError::internal("The stored alignment result is invalid."))?;
-    if manifest.schema_version != ALIGNMENT_MANIFEST_SCHEMA_VERSION {
+    if manifest.schema_version != ALIGNMENT_MANIFEST_SCHEMA_VERSION
+        || manifest.expected_project_state_version > i64::MAX as u64
+    {
         return Err(invalid_alignment_manifest_error());
     }
+    require_reference_project_state(
+        database,
+        manifest.project_id,
+        manifest.expected_project_state_version,
+    )
+    .map_err(|_| invalid_alignment_manifest_error())?;
     if let Some(result) = &manifest.result {
         if result.clip_count == 0
             || result.clip_count > MAX_SEGMENTS
@@ -4298,7 +4506,9 @@ fn read_alignment_manifest(
             .resolve_artifact(id)
             .map_err(|_| invalid_alignment_manifest_error())?
             .ok_or_else(invalid_alignment_manifest_error)?;
-        if resolved.record().kind().as_str() != "alignedNarration" {
+        if resolved.record().kind().as_str() != "alignedNarration"
+            || resolved.record().project_id() != Some(manifest.project_id)
+        {
             return Err(invalid_alignment_manifest_error());
         }
         let descriptor = descriptor_from_record(resolved.record())
@@ -4313,19 +4523,34 @@ fn read_alignment_manifest(
 fn store_alignment_result(
     database: &Database,
     job_id: JobId,
+    authority: SpeechProjectAuthority,
     result: SpeechAlignmentResult,
-) -> CommandResult<()> {
-    let mut manifest = read_alignment_manifest(database, job_id)?;
+) -> Result<(), SpeechAlignmentFailureCode> {
+    ensure_alignment_project_current(database, authority)?;
+    let Ok(mut manifest) = read_alignment_manifest(database, job_id) else {
+        ensure_alignment_project_current(database, authority)?;
+        return Err(SpeechAlignmentFailureCode::ArtifactStorage);
+    };
+    if manifest.project_id != authority.project_id
+        || manifest.expected_project_state_version != authority.expected_state_version
+    {
+        return Err(SpeechAlignmentFailureCode::ArtifactStorage);
+    }
     if manifest.result.is_some() {
-        return Err(CommandError::internal(
-            "The alignment result was already committed.",
-        ));
+        return Err(SpeechAlignmentFailureCode::ArtifactStorage);
     }
     manifest.result = Some(result);
-    let value = serde_json::to_value(manifest)
-        .map_err(|_| CommandError::internal("The alignment manifest is invalid."))?;
-    database.put_setting(ALIGNMENT_MANIFEST_SCOPE, &job_id.to_string(), &value)?;
-    Ok(())
+    let value =
+        serde_json::to_value(manifest).map_err(|_| SpeechAlignmentFailureCode::ArtifactStorage)?;
+    database
+        .put_project_setting(
+            ALIGNMENT_MANIFEST_SCOPE,
+            &job_id.to_string(),
+            &value,
+            authority.project_id,
+            authority.expected_state_version,
+        )
+        .map_err(|error| alignment_project_write_failure(&error))
 }
 
 fn invalid_alignment_manifest_error() -> CommandError {
@@ -4694,6 +4919,7 @@ impl fmt::Debug for PublishedSpeechArtifact {
     }
 }
 
+#[cfg(test)]
 fn publish_durable_artifact(
     runtime: &SpeechRuntime,
     database: &Database,
@@ -5306,6 +5532,23 @@ mod tests {
         }
     }
 
+    fn commit_empty_project_revision(
+        database: &Database,
+        project: &osg_application::ProjectSnapshot,
+        reason: &str,
+    ) {
+        let changed = osg_application::ProjectSnapshot::new(
+            project.metadata().clone(),
+            project.state_version(),
+            Vec::new(),
+            Vec::new(),
+        )
+        .unwrap();
+        database
+            .commit_project(&changed, &osg_domain::RevisionReason::new(reason).unwrap())
+            .unwrap();
+    }
+
     #[test]
     fn completed_narration_artifact_is_bound_to_its_project() {
         let fixture = SpeechTestFixture::new();
@@ -5408,20 +5651,11 @@ mod tests {
             |published| {
                 assert!(published.created);
                 published_id.set(Some(published.id));
-                let changed = osg_application::ProjectSnapshot::new(
-                    metadata.clone(),
-                    project.state_version(),
-                    Vec::new(),
-                    Vec::new(),
-                )
-                .unwrap();
-                fixture
-                    .database
-                    .commit_project(
-                        &changed,
-                        &osg_domain::RevisionReason::new("concurrent narration edit").unwrap(),
-                    )
-                    .unwrap();
+                commit_empty_project_revision(
+                    &fixture.database,
+                    &project,
+                    "concurrent narration edit",
+                );
             },
             |_| panic!("a stale narration result was published"),
         );
@@ -6269,7 +6503,10 @@ mod tests {
     #[test]
     fn alignment_request_debug_redacts_artifact_capabilities() {
         let artifact_id = ArtifactId::new().to_string();
+        let project_id = ProjectId::new();
         let request = SpeechAlignmentStartRequest {
+            project_id,
+            expected_project_state_version: 7,
             clips: vec![SpeechAlignmentClipRequest {
                 id: "segment-1".to_owned(),
                 artifact_id: artifact_id.clone(),
@@ -6280,6 +6517,7 @@ mod tests {
         let clip_debug = format!("{:?}", request.clips[0]);
         assert!(!clip_debug.contains(&artifact_id));
         assert!(!format!("{request:?}").contains(&artifact_id));
+        assert!(!format!("{request:?}").contains(&project_id.to_string()));
     }
 
     #[test]
@@ -6600,6 +6838,8 @@ mod tests {
         let validated = validate_alignment_start(
             &database,
             SpeechAlignmentStartRequest {
+                project_id,
+                expected_project_state_version: 0,
                 clips: vec![
                     SpeechAlignmentClipRequest {
                         id: "first".to_owned(),
@@ -6699,6 +6939,8 @@ mod tests {
             validate_alignment_start(
                 &database,
                 SpeechAlignmentStartRequest {
+                    project_id: project_a,
+                    expected_project_state_version: 0,
                     clips: vec![clip("unowned", unowned)],
                 },
             )
@@ -6708,6 +6950,8 @@ mod tests {
             validate_alignment_start(
                 &database,
                 SpeechAlignmentStartRequest {
+                    project_id: project_a,
+                    expected_project_state_version: 0,
                     clips: vec![clip("a", artifact_a), clip("b", artifact_b)],
                 },
             )
@@ -6830,10 +7074,19 @@ mod tests {
         let source = directory.path().join("aligned.m4a");
         std::fs::write(&source, b"aligned-m4a-fixture").unwrap();
         let database = Database::open(&database_path).unwrap();
+        let project_id = ProjectId::new();
+        database
+            .create_project(&osg_domain::ProjectMetadata::with_id(project_id, "Project").unwrap())
+            .unwrap();
+        let authority = SpeechProjectAuthority {
+            project_id,
+            expected_state_version: 0,
+        };
         let job_id = JobId::new();
-        let published = publish_durable_artifact(
+        let published = publish_project_durable_artifact(
             &runtime,
             &database,
+            project_id,
             None,
             "alignedNarration",
             &source,
@@ -6847,14 +7100,18 @@ mod tests {
         )
         .unwrap();
         database
-            .put_setting(
+            .put_project_setting(
                 ALIGNMENT_MANIFEST_SCOPE,
                 &job_id.to_string(),
                 &serde_json::to_value(SpeechAlignmentManifest {
                     schema_version: ALIGNMENT_MANIFEST_SCHEMA_VERSION,
+                    project_id,
+                    expected_project_state_version: 0,
                     result: None,
                 })
                 .unwrap(),
+                project_id,
+                0,
             )
             .unwrap();
         let expected = SpeechAlignmentResult {
@@ -6866,7 +7123,7 @@ mod tests {
             rendered_duration_micros: 3_250_000,
             maximum_shift_micros: 800_000,
         };
-        store_alignment_result(&database, job_id, expected.clone()).unwrap();
+        store_alignment_result(&database, job_id, authority, expected.clone()).unwrap();
         std::fs::remove_file(source).unwrap();
         drop(database);
 
@@ -6876,6 +7133,21 @@ mod tests {
         let artifact_id = parse_artifact_id(&expected.artifact.artifact_id).unwrap();
         let resolved = reopened.resolve_artifact(artifact_id).unwrap().unwrap();
         assert!(resolved.path().extension().is_none());
+        let project = reopened.load_project(project_id).unwrap().unwrap();
+        let changed = osg_application::ProjectSnapshot::new(
+            project.metadata().clone(),
+            project.state_version(),
+            Vec::new(),
+            Vec::new(),
+        )
+        .unwrap();
+        reopened
+            .commit_project(
+                &changed,
+                &osg_domain::RevisionReason::new("change after alignment").unwrap(),
+            )
+            .unwrap();
+        assert!(read_alignment_manifest(&reopened, job_id).is_err());
         let media_server = osg_media_server::MediaServer::start(std::iter::empty()).unwrap();
         let playback = register_speech_playback(
             &media_server,

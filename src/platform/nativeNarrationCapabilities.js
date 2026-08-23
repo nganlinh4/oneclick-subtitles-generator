@@ -65,6 +65,8 @@ export const attachNativeNarrationArtifact = (result, artifact) => {
     nativeArtifactId: artifactId,
     nativeFormat: artifact.format,
     durationMicros: artifact.durationMicros,
+    projectId: artifact.projectId ?? result.projectId,
+    projectStateVersion: artifact.projectStateVersion ?? result.projectStateVersion,
     filename,
     audioData: null,
   };

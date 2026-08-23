@@ -20,6 +20,7 @@ const phases = new Set(['planning', 'mixing', 'publishing']);
 const phaseOrder = Object.freeze({ planning: 0, mixing: 1, publishing: 2 });
 const failureCodes = new Set([
   'cancelled',
+  'projectChanged',
   'invalidRequest',
   'runtimeUnavailable',
   'timedOut',
@@ -112,7 +113,7 @@ const requireIdentifier = (value) => {
 };
 
 export const normalizeAlignmentRequest = (request) => {
-  if (!hasExactKeys(request, ['clips'])
+  if (!hasExactKeys(request, ['projectId', 'expectedProjectStateVersion', 'clips'])
       || !Array.isArray(request.clips)
       || request.clips.length === 0
       || request.clips.length > MAX_ALIGNMENT_CLIPS) {
@@ -143,7 +144,13 @@ export const normalizeAlignmentRequest = (request) => {
       cueEndMicros,
     });
   });
-  return Object.freeze({ clips: Object.freeze(clips) });
+  return Object.freeze({
+    projectId: requireUuid(request.projectId, 7),
+    expectedProjectStateVersion: requireInteger(
+      request.expectedProjectStateVersion, 0, Number.MAX_SAFE_INTEGER
+    ),
+    clips: Object.freeze(clips),
+  });
 };
 
 export const normalizeAlignmentJob = (job) => {
@@ -242,10 +249,20 @@ const normalizeAlignmentEvent = (event) => {
     });
   }
   if (event.event === 'completed') {
-    if (!hasExactKeys(event, ['event', 'job', 'result'])) throw invalidResponse();
+    if (!hasExactKeys(event, [
+      'event', 'job', 'projectId', 'expectedProjectStateVersion', 'result',
+    ])) throw invalidResponse();
     const job = normalizeAlignmentJob(event.job);
     if (job.state !== 'succeeded') throw invalidResponse();
-    return Object.freeze({ event: 'completed', job, result: normalizeAlignmentResult(event.result) });
+    return Object.freeze({
+      event: 'completed',
+      job,
+      projectId: requireUuid(event.projectId, 7, true),
+      expectedProjectStateVersion: requireInteger(
+        event.expectedProjectStateVersion, 0, Number.MAX_SAFE_INTEGER, true
+      ),
+      result: normalizeAlignmentResult(event.result),
+    });
   }
   if (event.event === 'cancelled') {
     if (!hasExactKeys(event, ['event', 'job'])) throw invalidResponse();
@@ -419,6 +436,12 @@ export const createNativeNarrationAlignmentService = ({
         lastPhase = order;
         lastFraction = event.fractionMillionths;
       } else {
+        if (event.event === 'completed'
+            && (event.projectId !== normalized.projectId
+              || event.expectedProjectStateVersion !== normalized.expectedProjectStateVersion)) {
+          failProtocol();
+          return;
+        }
         terminal = true;
         release();
       }
@@ -493,12 +516,18 @@ export const createNativeNarrationAlignmentService = ({
     requireNative();
     const id = requireUuid(jobId, 7);
     const value = await invokeCommand('speech_alignment_result', { jobId: id });
-    if (!hasExactKeys(value, ['job', 'result'])) throw invalidResponse();
+    if (!hasExactKeys(value, [
+      'job', 'projectId', 'expectedProjectStateVersion', 'result',
+    ])) throw invalidResponse();
     const job = normalizeAlignmentJob(value.job);
+    const projectId = requireUuid(value.projectId, 7, true);
+    const expectedProjectStateVersion = requireInteger(
+      value.expectedProjectStateVersion, 0, Number.MAX_SAFE_INTEGER, true
+    );
     if (job.id !== id) throw invalidResponse();
     const result = value.result === null ? null : normalizeAlignmentResult(value.result);
     if (job.state === 'succeeded' && result === null) throw invalidResponse();
-    return Object.freeze({ job, result });
+    return Object.freeze({ job, projectId, expectedProjectStateVersion, result });
   };
 
   const waitForAlignmentResult = async (jobId, options = {}) => {

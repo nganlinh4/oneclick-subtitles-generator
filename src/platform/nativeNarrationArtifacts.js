@@ -1,4 +1,6 @@
 import { nativeNarrationAdapter } from './nativeNarrationAdapter';
+import { flushDurableLyricsHistory } from './durableLyricsCheckpoint';
+import { getActiveProjectSnapshot } from './projectService';
 import { exportSpeechArtifacts } from './speechService';
 import {
   attachNativeNarrationArtifact,
@@ -85,11 +87,34 @@ export const editNativeNarration = async (result, {
 } = {}) => {
   const artifactId = getNativeNarrationArtifactId(result);
   if (!artifactId) throw new Error('Native narration audio is unavailable');
+  await flushDurableLyricsHistory();
+  const project = getActiveProjectSnapshot();
+  if (!project?.metadata?.id
+      || !Number.isSafeInteger(project.stateVersion)
+      || result?.projectId !== project.metadata.id) {
+    const error = new Error('The narration audio does not belong to the active project');
+    error.code = 'narrationProjectChanged';
+    throw error;
+  }
+  const authority = Object.freeze({
+    projectId: project.metadata.id,
+    expectedProjectStateVersion: project.stateVersion,
+  });
   const artifact = await nativeNarrationAdapter.editArtifact({
     artifactId,
+    ...authority,
     normalizedStart,
     normalizedEnd,
     speedFactor,
   });
+  const latest = getActiveProjectSnapshot();
+  if (latest?.metadata?.id !== authority.projectId
+      || latest.stateVersion !== authority.expectedProjectStateVersion
+      || artifact.projectId !== authority.projectId
+      || artifact.projectStateVersion !== authority.expectedProjectStateVersion) {
+    const error = new Error('The active subtitle project changed during narration editing');
+    error.code = 'narrationProjectChanged';
+    throw error;
+  }
   return attachNativeNarrationArtifact(result, artifact);
 };

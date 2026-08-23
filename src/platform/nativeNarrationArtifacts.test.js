@@ -5,6 +5,7 @@ import {
   editNativeNarration,
 } from './nativeNarrationArtifacts';
 import { exportSpeechArtifacts } from './speechService';
+import { getActiveProjectSnapshot } from './projectService';
 
 vi.mock('./nativeNarrationAdapter', () => ({
   nativeNarrationAdapter: {
@@ -18,8 +19,20 @@ vi.mock('./speechService', () => ({
   exportSpeechArtifacts: vi.fn(),
 }));
 
+vi.mock('./durableLyricsCheckpoint', () => ({
+  flushDurableLyricsHistory: vi.fn(async () => undefined),
+}));
+
+vi.mock('./projectService', () => ({
+  getActiveProjectSnapshot: vi.fn(() => ({
+    metadata: { id: '018f4c22-f0f1-7c09-a4d5-120d7b6f84a4' },
+    stateVersion: 7,
+  })),
+}));
+
 const ARTIFACT_ID = '018f4c22-f0f1-7c09-a4d5-120d7b6f84a2';
 const EDITED_ID = '018f4c22-f0f1-7c09-a4d5-120d7b6f84a3';
+const PROJECT_ID = '018f4c22-f0f1-7c09-a4d5-120d7b6f84a4';
 
 const result = {
   subtitle_id: 7,
@@ -27,6 +40,8 @@ const result = {
   nativeArtifactId: ARTIFACT_ID,
   nativeFormat: 'wav',
   filename: `osg-speech-artifact:${ARTIFACT_ID}`,
+  projectId: PROJECT_ID,
+  projectStateVersion: 6,
 };
 
 describe('native narration artifact lifecycle', () => {
@@ -71,6 +86,8 @@ describe('native narration artifact lifecycle', () => {
       artifactId: EDITED_ID,
       format: 'wav',
       durationMicros: 500_000,
+      projectId: PROJECT_ID,
+      projectStateVersion: 7,
     });
     await expect(editNativeNarration(result, {
       normalizedStart: 0.25,
@@ -83,9 +100,27 @@ describe('native narration artifact lifecycle', () => {
     });
     expect(nativeNarrationAdapter.editArtifact).toHaveBeenCalledWith({
       artifactId: ARTIFACT_ID,
+      projectId: PROJECT_ID,
+      expectedProjectStateVersion: 7,
       normalizedStart: 0.25,
       normalizedEnd: 0.75,
       speedFactor: 1.5,
+    });
+  });
+
+  test('refuses an edited artifact when the project revision changes during publication', async () => {
+    getActiveProjectSnapshot
+      .mockReturnValueOnce({ metadata: { id: PROJECT_ID }, stateVersion: 7 })
+      .mockReturnValueOnce({ metadata: { id: PROJECT_ID }, stateVersion: 8 });
+    nativeNarrationAdapter.editArtifact.mockResolvedValue({
+      artifactId: EDITED_ID,
+      format: 'wav',
+      durationMicros: 500_000,
+      projectId: PROJECT_ID,
+      projectStateVersion: 7,
+    });
+    await expect(editNativeNarration(result)).rejects.toMatchObject({
+      code: 'narrationProjectChanged',
     });
   });
 });

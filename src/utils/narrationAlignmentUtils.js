@@ -152,10 +152,17 @@ export const buildStrictNativeNarrationPlan = (generationResults, currentCues) =
       );
     }
     seenArtifacts.add(nativeArtifactId);
+    if (typeof result.projectId !== 'string' || result.projectId.length === 0) {
+      throw invalid(
+        'narrationProjectUnavailable',
+        `Narration result ${id} has no durable project ownership.`,
+      );
+    }
 
     return Object.freeze({
       subtitle_id: id,
       nativeArtifactId,
+      projectId: result.projectId,
       start: cue.timing.start,
       end: cue.timing.end,
       text: cue.text,
@@ -167,6 +174,12 @@ export const buildStrictNativeNarrationPlan = (generationResults, currentCues) =
   const missing = [...cuesById.keys()].filter((id) => !itemIds.has(id));
   if (missing.length > 0) {
     throw invalid('narrationPlanIncomplete', 'A current subtitle has no native narration artifact.');
+  }
+  if (new Set(items.map((item) => item.projectId)).size !== 1) {
+    throw invalid(
+      'narrationProjectMismatch',
+      'Narration artifacts from different projects cannot share one alignment.',
+    );
   }
 
   const subtitleTimestamps = Object.freeze(Object.fromEntries(items.map((item) => [
@@ -180,6 +193,7 @@ export const buildStrictNativeNarrationPlan = (generationResults, currentCues) =
 export const createNativeNarrationPlanKey = (plan) => JSON.stringify(plan.items.map((item) => ({
   subtitleId: item.subtitle_id,
   artifactId: item.nativeArtifactId,
+  projectId: item.projectId,
   start: item.start,
   end: item.end,
   text: item.text,

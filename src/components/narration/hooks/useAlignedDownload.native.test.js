@@ -26,6 +26,7 @@ vi.mock('../../../utils/toastUtils', () => ({ showSuccessToast: vi.fn() }));
 
 const CLIP_ID = '018f4c22-f0f1-7c09-a4d5-120d7b6f84a2';
 const ALIGNED_ID = '018f4c22-f0f1-7c09-a4d5-120d7b6f84a3';
+const PROJECT_ID = '018f4c22-f0f1-7c09-a4d5-120d7b6f84a4';
 
 test('aligned download stays on durable native speech artifacts', async () => {
   const originalFetch = global.fetch;
@@ -40,6 +41,7 @@ test('aligned download stays on durable native speech artifacts', async () => {
     success: true,
     nativeArtifactId: CLIP_ID,
     filename: `osg-speech-artifact:${CLIP_ID}`,
+    projectId: PROJECT_ID,
   }];
   const { result } = renderHook(() => useAlignedDownload({
     generationResults,

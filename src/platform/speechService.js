@@ -964,7 +964,8 @@ const normalizeReferenceImport = (request) => {
 
 const normalizeArtifactEdit = (request) => {
   if (!hasExactKeys(request, [
-    'artifactId', 'normalizedStart', 'normalizedEnd', 'speedFactor',
+    'artifactId', 'projectId', 'expectedProjectStateVersion',
+    'normalizedStart', 'normalizedEnd', 'speedFactor',
   ])) {
     throw invalidRequest();
   }
@@ -985,6 +986,10 @@ const normalizeArtifactEdit = (request) => {
   }
   return Object.freeze({
     artifactId: requireUuid(request.artifactId, 7),
+    projectId: requireUuid(request.projectId, 7),
+    expectedProjectStateVersion: requireInteger(
+      request.expectedProjectStateVersion, 0, Number.MAX_SAFE_INTEGER
+    ),
     normalizedStartMillionths,
     normalizedEndMillionths,
     speedMilli,
@@ -1584,11 +1589,21 @@ export const createNativeSpeechService = ({
   const editSpeechArtifact = async (request) => {
     requireNativeRuntime();
     const normalized = normalizeArtifactEdit(request);
-    const artifact = normalizeSpeechArtifact(
-      await invokeCommand('speech_artifact_edit', { request: normalized })
-    );
+    const value = await invokeCommand('speech_artifact_edit', { request: normalized });
+    if (!hasExactKeys(value, [
+      'projectId', 'expectedProjectStateVersion', 'artifact',
+    ])
+        || value.projectId !== normalized.projectId
+        || value.expectedProjectStateVersion !== normalized.expectedProjectStateVersion) {
+      throw invalidResponse();
+    }
+    const artifact = normalizeSpeechArtifact(value.artifact);
     if (artifact.artifactId === normalized.artifactId) throw invalidResponse();
-    return artifact;
+    return Object.freeze({
+      projectId: value.projectId,
+      expectedProjectStateVersion: value.expectedProjectStateVersion,
+      artifact,
+    });
   };
 
   const exportSpeechArtifacts = async (request) => {

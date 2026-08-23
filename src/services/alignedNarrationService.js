@@ -1,4 +1,6 @@
 import { isDesktopRuntime } from '../platform/desktopRuntime';
+import { flushDurableLyricsHistory } from '../platform/durableLyricsCheckpoint';
+import { getActiveProjectSnapshot } from '../platform/projectService';
 import {
   nativeNarrationAlignmentService,
   normalizeAlignmentRequest,
@@ -24,6 +26,8 @@ const emptyCache = () => ({
   nativeArtifactId: null,
   nativePlaybackId: null,
   nativeJobId: null,
+  projectId: null,
+  projectStateVersion: null,
   alignmentKey: null,
   timestamp: null,
   subtitleTimestamps: {},
@@ -145,7 +149,9 @@ const secondsToMicros = (value) => {
   return micros;
 };
 
-const buildNativeRequest = (items) => normalizeAlignmentRequest({
+const buildNativeRequest = (items, authority) => normalizeAlignmentRequest({
+  projectId: authority.projectId,
+  expectedProjectStateVersion: authority.expectedProjectStateVersion,
   clips: items.map((item, index) => ({
     id: `segment-${index + 1}`,
     artifactId: item.nativeArtifactId,
@@ -154,10 +160,24 @@ const buildNativeRequest = (items) => normalizeAlignmentRequest({
   })),
 });
 
-const cacheResolvedAlignment = async (result, jobId, subtitleTimestamps, alignmentKey) => {
+const cacheResolvedAlignment = async (
+  result, jobId, subtitleTimestamps, alignmentKey, authority
+) => {
   const playable = await nativeNarrationAlignmentService.resolveAlignmentArtifact(
     result.artifact.artifactId,
   );
+  const latest = getActiveProjectSnapshot();
+  if (latest?.metadata?.id !== authority.projectId
+      || latest.stateVersion !== authority.expectedProjectStateVersion) {
+    await nativeNarrationAlignmentService
+      .releaseAlignmentPlayback(playable.playback.id)
+      .catch(() => undefined);
+    throw alignmentRecoveryError(
+      'alignmentProjectChanged',
+      'The active subtitle project changed while restoring narration alignment',
+      false,
+    );
+  }
   releasePlayback(cache);
   resetAudioElement();
   setCache({
@@ -167,6 +187,8 @@ const cacheResolvedAlignment = async (result, jobId, subtitleTimestamps, alignme
     nativeArtifactId: result.artifact.artifactId,
     nativePlaybackId: playable.playback.id,
     nativeJobId: jobId,
+    projectId: authority.projectId,
+    projectStateVersion: authority.expectedProjectStateVersion,
     alignmentKey,
     timestamp: Date.now(),
     subtitleTimestamps,
@@ -214,7 +236,25 @@ const restoreAlignment = async (request, subtitleTimestamps, alignmentKey) => {
       );
     }
     forgetNativeJobId(jobId);
-    return cacheResolvedAlignment(restored.result, jobId, subtitleTimestamps, alignmentKey);
+    if (restored.projectId !== request.projectId
+        || restored.expectedProjectStateVersion !== request.expectedProjectStateVersion) {
+      clearRecentAlignment();
+      throw alignmentRecoveryError(
+        'invalidAlignmentRecoveryResult',
+        'The previous narration alignment belongs to a different project revision',
+        false,
+      );
+    }
+    return cacheResolvedAlignment(
+      restored.result,
+      jobId,
+      subtitleTimestamps,
+      alignmentKey,
+      Object.freeze({
+        projectId: request.projectId,
+        expectedProjectStateVersion: request.expectedProjectStateVersion,
+      }),
+    );
   } catch (error) {
     if (error?.name === 'AlignmentRecoveryError') throw error;
     if (['alignmentUnavailable', 'alignmentCancelled'].includes(error?.code)) {
@@ -267,7 +307,25 @@ const startAlignment = async (request, onProgress, subtitleTimestamps, alignment
   try {
     const result = await terminal;
     forgetNativeJobId(job.id);
-    return await cacheResolvedAlignment(result, job.id, subtitleTimestamps, alignmentKey);
+    const latest = getActiveProjectSnapshot();
+    if (latest?.metadata?.id !== request.projectId
+        || latest.stateVersion !== request.expectedProjectStateVersion) {
+      throw alignmentRecoveryError(
+        'alignmentProjectChanged',
+        'The active subtitle project changed during narration alignment',
+        false,
+      );
+    }
+    return await cacheResolvedAlignment(
+      result,
+      job.id,
+      subtitleTimestamps,
+      alignmentKey,
+      Object.freeze({
+        projectId: request.projectId,
+        expectedProjectStateVersion: request.expectedProjectStateVersion,
+      }),
+    );
   } catch (error) {
     clearRecentAlignment();
     throw error;
@@ -282,7 +340,21 @@ const prepareAlignedNarrationPreview = async (plan, onProgress = null) => {
     throw new Error('A strict native narration alignment plan is required.');
   }
   onProgress?.({ status: 'generating', message: 'Preparing aligned narration preview...' });
-  const request = buildNativeRequest(plan.items);
+  await flushDurableLyricsHistory();
+  const project = getActiveProjectSnapshot();
+  if (!project?.metadata?.id
+      || !Number.isSafeInteger(project.stateVersion)
+      || plan.items.some((item) => item.projectId !== project.metadata.id)) {
+    throw alignmentRecoveryError(
+      'alignmentProjectChanged',
+      'Narration audio does not belong to the active subtitle project',
+      false,
+    );
+  }
+  const request = buildNativeRequest(plan.items, Object.freeze({
+    projectId: project.metadata.id,
+    expectedProjectStateVersion: project.stateVersion,
+  }));
   const alignmentKey = createNativeNarrationPlanKey(plan);
   const preview = await startAlignment(
     request,

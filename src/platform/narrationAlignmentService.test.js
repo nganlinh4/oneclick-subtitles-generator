@@ -13,6 +13,7 @@ vi.mock('@tauri-apps/api/core', () => ({
 const JOB_ID = '018f4c22-f0f1-7c09-a4d5-120d7b6f84a1';
 const OTHER_JOB_ID = '018f4c22-f0f1-7c09-a4d5-120d7b6f84a3';
 const ARTIFACT_ID = '018f4c22-f0f1-7c09-a4d5-120d7b6f84a2';
+const PROJECT_ID = '018f4c22-f0f1-7c09-a4d5-120d7b6f84a4';
 
 class FakeChannel {
   constructor() {
@@ -46,6 +47,8 @@ const result = () => ({
 });
 
 const request = () => ({
+  projectId: PROJECT_ID,
+  expectedProjectStateVersion: 7,
   clips: [{
     id: 'segment-1',
     artifactId: ARTIFACT_ID,
@@ -89,6 +92,8 @@ describe('native narration alignment lifecycle', () => {
       args.onEvent.onmessage({
         event: 'completed',
         job: job('succeeded', 2, 10_000),
+        projectId: PROJECT_ID,
+        expectedProjectStateVersion: 7,
         result: result(),
       });
       return job();
@@ -154,10 +159,45 @@ describe('native narration alignment lifecycle', () => {
     expect(invokeCommand.mock.calls.filter(([command]) => command === 'job_cancel')).toHaveLength(1);
   });
 
+  test('refuses a completion published for another project revision', async () => {
+    let channel;
+    const onCompleted = vi.fn();
+    const onProtocolError = vi.fn();
+    const invokeCommand = vi.fn(async (command, args) => {
+      if (command === 'speech_alignment_start') {
+        channel = args.onEvent;
+        return job();
+      }
+      if (command === 'job_cancel') return job('cancelling', 2, 0);
+      throw new Error('unexpected command');
+    });
+    const service = createNativeNarrationAlignmentService({
+      invokeCommand,
+      ChannelConstructor: FakeChannel,
+      isNativeRuntime: () => true,
+    });
+    await service.startAlignmentJob(request(), { onCompleted, onProtocolError });
+    channel.onmessage({
+      event: 'completed',
+      job: job('succeeded', 2, 10_000),
+      projectId: PROJECT_ID,
+      expectedProjectStateVersion: 8,
+      result: result(),
+    });
+    await Promise.resolve();
+    expect(onCompleted).not.toHaveBeenCalled();
+    expect(onProtocolError).toHaveBeenCalledTimes(1);
+  });
+
   test('restores a committed artifact without a live channel', async () => {
     const invokeCommand = vi.fn(async (command) => {
       if (command === 'speech_alignment_result') {
-        return { job: job('interrupted', 3, 9_500), result: result() };
+        return {
+          job: job('interrupted', 3, 9_500),
+          projectId: PROJECT_ID,
+          expectedProjectStateVersion: 7,
+          result: result(),
+        };
       }
       throw new Error('unexpected command');
     });
@@ -168,6 +208,8 @@ describe('native narration alignment lifecycle', () => {
     });
     await expect(service.getAlignmentResult(JOB_ID)).resolves.toEqual({
       job: job('interrupted', 3, 9_500),
+      projectId: PROJECT_ID,
+      expectedProjectStateVersion: 7,
       result: normalizeAlignmentResult(result()),
     });
   });
