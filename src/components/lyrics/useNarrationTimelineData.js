@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { isNativeNarrationResult } from '../../platform/nativeNarrationCapabilities';
 import { lyricKey, resolvePlacements } from './narrationLaneActions';
 import { getTimingConflictIds } from './utils/timelineConflicts';
+import { useProjectNarrationState } from '../../platform/projectNarrationState';
 
 // The immutable backup sibling holds a clip's natural (un-edited) duration.
 const backupName = (filename) => {
@@ -10,15 +11,6 @@ const backupName = (filename) => {
   const dir = slash >= 0 ? filename.slice(0, slash) : '';
   const base = slash >= 0 ? filename.slice(slash + 1) : filename;
   return `${dir ? `${dir}/` : ''}backup_${base}`;
-};
-
-// Narration results are mirrored to window by the narration UI; prefer grouped when active.
-const readNarrations = () => {
-  if (typeof window === 'undefined') return [];
-  if (window.useGroupedSubtitles && Array.isArray(window.groupedNarrations) && window.groupedNarrations.length) {
-    return window.groupedNarrations;
-  }
-  return window.originalNarrations || window.translatedNarrations || [];
 };
 
 /**
@@ -72,29 +64,29 @@ const placeSegments = (baseSegments, placementStarts, speed, weight) => {
  * @param {Array} lyrics
  */
 export const useNarrationTimelineData = (lyrics) => {
+  const narrationState = useProjectNarrationState();
+  const narrations = narrationState.resultsBySource[narrationState.activeSource];
   const [durations, setDurations] = useState({});
-  const [tick, setTick] = useState(0); // bumps re-read of window narrations on change events
+  const [speedTick, setSpeedTick] = useState(0);
   const durationsRef = useRef(durations);
   durationsRef.current = durations;
 
   useEffect(() => {
-    const onChange = () => setTick((t) => t + 1);
-    window.addEventListener('narrations-updated', onChange);
+    const onChange = () => setSpeedTick((tick) => tick + 1);
     window.addEventListener('narration-speed-modified', onChange);
     return () => {
-      window.removeEventListener('narrations-updated', onChange);
       window.removeEventListener('narration-speed-modified', onChange);
     };
   }, []);
 
   // Fetch (and cache) clip durations when the set of narration files changes.
   useEffect(() => {
-    const filenames = readNarrations()
+    const filenames = narrations
       .filter((n) => n && n.success && n.filename)
       .map((n) => n.filename);
     if (!filenames.length) return undefined;
     const nativeDurations = {};
-    readNarrations().filter(isNativeNarrationResult).forEach((narration) => {
+    narrations.filter(isNativeNarrationResult).forEach((narration) => {
       const duration = Number(narration.durationMicros) / 1_000_000;
       if (!narration.filename || !Number.isFinite(duration) || duration <= 0) return;
       nativeDurations[narration.filename] = duration;
@@ -105,19 +97,18 @@ export const useNarrationTimelineData = (lyrics) => {
       setDurations((previous) => ({ ...previous, ...nativeDurations }));
     }
     return undefined;
-  }, [tick]);
+  }, [narrations, speedTick]);
 
   const segments = useMemo(() => {
-    // Narration events increment tick specifically to invalidate this derived list.
-    void tick;
-    return buildBaseSegments(lyrics, readNarrations(), durations);
-  }, [lyrics, durations, tick]);
+    void speedTick;
+    return buildBaseSegments(lyrics, narrations, durations);
+  }, [lyrics, narrations, durations, speedTick]);
 
   // Stable: build the placed (draw/hit-test) segments for any placement + speed + per-line weight.
   const getSegmentsFor = useCallback(
     (lyricsArg, placementStarts = null, speed = 1, weight = 0) =>
-      placeSegments(buildBaseSegments(lyricsArg, readNarrations(), durationsRef.current), placementStarts, speed, weight),
-    [],
+      placeSegments(buildBaseSegments(lyricsArg, narrations, durationsRef.current), placementStarts, speed, weight),
+    [narrations],
   );
 
   return { segments, getSegmentsFor };

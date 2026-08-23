@@ -6,6 +6,7 @@ import {
   getNativeNarrationArtifactId,
   isNativeNarrationResult,
 } from '../../../platform/nativeNarrationCapabilities';
+import { requestAlignedNarrationReset } from '../../../platform/alignedNarrationSession';
 
 const getBackupName = (filename) => filename ? `backup_${filename}` : null;
 const seconds = (result) => Number(result?.durationMicros) / 1_000_000;
@@ -20,7 +21,7 @@ const dispatchEdit = (previous, replacement) => {
 };
 
 const resetAlignment = (name, detail) => {
-  window.resetAlignedNarration?.();
+  requestAlignedNarrationReset();
   window.dispatchEvent(new CustomEvent(name, { detail }));
 };
 

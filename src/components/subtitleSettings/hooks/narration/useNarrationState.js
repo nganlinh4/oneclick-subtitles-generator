@@ -22,12 +22,8 @@ const useNarrationState = (originalNarrations = [], translatedNarrations = []) =
 
   // Update internal state when props change
   useEffect(() => {
-    if (originalNarrations && originalNarrations.length > 0) {
-      setInternalOriginalNarrations(originalNarrations);
-    }
-    if (translatedNarrations && translatedNarrations.length > 0) {
-      setInternalTranslatedNarrations(translatedNarrations);
-    }
+    setInternalOriginalNarrations(Array.isArray(originalNarrations) ? originalNarrations : []);
+    setInternalTranslatedNarrations(Array.isArray(translatedNarrations) ? translatedNarrations : []);
   }, [originalNarrations, translatedNarrations]);
 
   // Check if any narrations are available

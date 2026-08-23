@@ -14,6 +14,15 @@ import {
   resetAlignedNarration,
 } from './alignedNarrationService';
 import { buildStrictNativeNarrationPlan } from '../utils/narrationAlignmentUtils';
+import { getAlignedNarrationCacheSnapshot } from '../platform/alignedNarrationSession';
+
+const projectMock = vi.hoisted(() => ({
+  subscriber: null,
+  snapshot: {
+    metadata: { id: '018f4c22-f0f1-7c09-a4d5-120d7b6f84a4' },
+    stateVersion: 7,
+  },
+}));
 
 vi.mock('@tauri-apps/api/core', () => ({
   Channel: class MockTauriChannel {},
@@ -42,10 +51,11 @@ vi.mock('../platform/durableLyricsCheckpoint', () => ({
 }));
 
 vi.mock('../platform/projectService', () => ({
-  getActiveProjectSnapshot: vi.fn(() => ({
-    metadata: { id: '018f4c22-f0f1-7c09-a4d5-120d7b6f84a4' },
-    stateVersion: 7,
-  })),
+  getActiveProjectSnapshot: vi.fn(() => projectMock.snapshot),
+  subscribeToActiveProject: vi.fn((subscriber) => {
+    projectMock.subscriber = subscriber;
+    return () => { projectMock.subscriber = null; };
+  }),
 }));
 
 vi.mock('../platform/jobRecoveryCoordinator', () => ({
@@ -170,7 +180,7 @@ describe('aligned narration native branch', () => {
     });
     expect(JSON.stringify(request)).not.toMatch(/path|filename|audioData|private words/i);
     expect(fetchSpy).not.toHaveBeenCalled();
-    expect(window.alignedNarrationCache).toMatchObject({
+    expect(getAlignedNarrationCacheSnapshot()).toMatchObject({
       mode: 'file',
       nativeArtifactId: ARTIFACT_ID,
       nativePlaybackId: PLAYBACK_ID,
@@ -208,16 +218,27 @@ describe('aligned narration native branch', () => {
       expectedProjectStateVersion: 7,
       result: nativeResult(),
     });
-    window.alignedNarrationCache = {
-      url: null,
-      previewPlan: null,
-      subtitleTimestamps: {},
-    };
-
     await generateAlignedNarration(generationResults(), currentCues());
     expect(mockAlignment.getAlignmentResult).toHaveBeenCalledWith(JOB_ID);
     expect(mockAlignment.startAlignmentJob).not.toHaveBeenCalled();
-    expect(window.alignedNarrationCache.nativeArtifactId).toBe(ARTIFACT_ID);
+    expect(getAlignedNarrationCacheSnapshot().nativeArtifactId).toBe(ARTIFACT_ID);
+  });
+
+  test('releases aligned playback immediately when project revision authority changes', async () => {
+    mockAlignment.startAlignmentJob.mockImplementation(async (_request, handlers) => {
+      queueMicrotask(() => handlers.onCompleted({
+        event: 'completed',
+        job: job('succeeded'),
+        result: nativeResult(),
+      }));
+      return job();
+    });
+    await generateAlignedNarration(generationResults(), currentCues());
+
+    projectMock.subscriber({ metadata: { id: PROJECT_ID }, stateVersion: 8 });
+
+    expect(mockAlignment.releaseAlignmentPlayback).toHaveBeenCalledWith(PLAYBACK_ID);
+    expect(getAlignedNarrationCacheSnapshot().nativeArtifactId).toBeNull();
   });
 
   test('does not read or resurrect a legacy request-bearing alignment payload', async () => {

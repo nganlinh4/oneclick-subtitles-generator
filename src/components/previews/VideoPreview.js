@@ -33,9 +33,11 @@ import '../../styles/narration/index.css';
 import { SERVER_URL } from '../../config';
 import useVideoSeekControls from '../../hooks/useVideoSeekControls';
 import { DEFAULT_SUBTITLE_FONT_FAMILY } from '../../services/fontCapability';
+import { useProjectNarrationState } from '../../platform/projectNarrationState';
 
 const VideoPreview = ({ currentTime, setCurrentTime, setDuration, videoSource, fileType, onSeek, translatedSubtitles, subtitlesArray, onVideoUrlReady, onReferenceAudioChange: _onReferenceAudioChange, onRenderVideo }) => {
   const { t } = useTranslation();
+  const narrationState = useProjectNarrationState();
   const videoRef = useRef(null);
   const videoContainerRef = useRef(null); // Ref for the main video container
   const lastBlobUrlRef = useRef(null);
@@ -245,23 +247,17 @@ const VideoPreview = ({ currentTime, setCurrentTime, setDuration, videoSource, f
   // Narration alignment follows the same subtitle source the preview and export use. Grouped
   // narration is its own explicit cue plan; otherwise translated and original results are never
   // selected merely because one stale global happens to be non-empty.
-  const usesGroupedNarration = window.useGroupedSubtitles === true;
+  const usesGroupedNarration = narrationState.activeSource === 'grouped'
+    && Array.isArray(narrationState.groupedCues)
+    && narrationState.groupedCues.length > 0;
   const usesTranslatedNarration = !usesGroupedNarration
     && subtitleSettings.showTranslatedSubtitles
     && Array.isArray(translatedSubtitles)
     && translatedSubtitles.length > 0;
-  const groupedNarrationCues = Array.isArray(window.groupedSubtitles)
-    ? window.groupedSubtitles
-    : null;
-  const groupedNarrationResults = Array.isArray(window.groupedNarrations)
-    ? window.groupedNarrations
-    : null;
-  const translatedNarrationResults = Array.isArray(window.translatedNarrations)
-    ? window.translatedNarrations
-    : null;
-  const originalNarrationResults = Array.isArray(window.originalNarrations)
-    ? window.originalNarrations
-    : null;
+  const groupedNarrationCues = narrationState.groupedCues;
+  const groupedNarrationResults = narrationState.resultsBySource.grouped;
+  const translatedNarrationResults = narrationState.resultsBySource.translated;
+  const originalNarrationResults = narrationState.resultsBySource.original;
   const narrationCuesForAlignment = useMemo(() => (
     usesGroupedNarration ? (groupedNarrationCues || []) : previewSubtitles
   ), [usesGroupedNarration, groupedNarrationCues, previewSubtitles]);
@@ -403,24 +399,8 @@ const VideoPreview = ({ currentTime, setCurrentTime, setDuration, videoSource, f
           translatedSubtitles={translatedSubtitles}
           targetLanguage={translatedSubtitles && translatedSubtitles.length > 0 && translatedSubtitles[0].language}
           videoRef={videoRef}
-          originalNarrations={window.originalNarrations || (() => {
-            try {
-              const stored = localStorage.getItem('originalNarrations');
-              return stored ? JSON.parse(stored) : [];
-            } catch (e) {
-              console.error('Error parsing originalNarrations from localStorage:', e);
-              return [];
-            }
-          })()}
-          translatedNarrations={window.translatedNarrations || (() => {
-            try {
-              const stored = localStorage.getItem('translatedNarrations');
-              return stored ? JSON.parse(stored) : [];
-            } catch (e) {
-              console.error('Error parsing translatedNarrations from localStorage:', e);
-              return [];
-            }
-          })()}
+          originalNarrations={originalNarrationResults}
+          translatedNarrations={translatedNarrationResults}
           alignedNarrations={narrationResultsForAlignment}
           narrationCues={narrationCuesForAlignment}
           {...(() => {

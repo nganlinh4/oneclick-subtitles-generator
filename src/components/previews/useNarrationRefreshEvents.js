@@ -1,5 +1,6 @@
 import { useEffect } from 'react';
 import { dbg } from './videoPreviewDebug';
+import { requestAlignedNarrationReset } from '../../platform/alignedNarrationSession';
 
 /**
  * Owns the aligned-narration event wiring for the video preview:
@@ -72,23 +73,8 @@ const useNarrationRefreshEvents = ({ isRefreshingNarration, setIsRefreshingNarra
   // Clean up aligned narration resources when component unmounts
   useEffect(() => {
     return () => {
-      // Clean up aligned narration audio
-      if (typeof window.resetAlignedNarration === 'function') {
-        window.resetAlignedNarration();
-      }
-
-      // Also clean up any other audio elements that might be playing
-      if (window.alignedAudioElement) {
-        try {
-          dbg('Cleaning up alignedAudioElement on component unmount');
-          window.alignedAudioElement.pause();
-          window.alignedAudioElement.src = '';
-          window.alignedAudioElement.load();
-          window.alignedAudioElement = null;
-        } catch (e) {
-          console.warn('Error cleaning up window.alignedAudioElement on unmount:', e);
-        }
-      }
+      dbg('Cleaning up aligned narration on component unmount');
+      requestAlignedNarrationReset();
     };
   }, []);
 };

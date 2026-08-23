@@ -16,6 +16,7 @@ import { initializeMobileZoom } from '../../utils/mobileZoom';
 import { DEFAULT_GEMINI_MODEL_ID, normalizeMediaModelId } from '../../config/geminiModels';
 import { applyNativeMediaSession } from '../../hooks/useNativeMediaSessionHydration';
 import { ensureProjectOwnsNativeMedia } from '../../platform/nativeMediaOwnership';
+import { useProjectNarrationState } from '../../platform/projectNarrationState';
 
 // Settings only mount after the Header gear button flips `showSettings`, so keeping the
 // modal off the startup path costs nothing at first paint.
@@ -39,6 +40,7 @@ const AppLayout = ({
   // State for video rendering section
   const [videoRenderingAutoFill, setVideoRenderingAutoFill] = useState(null);
   const [actualVideoUrl, setActualVideoUrl] = useState('');
+  const narrationState = useProjectNarrationState();
 
   // State for video quality modal
   const [showVideoQualityModal, setShowVideoQualityModal] = useState(false);
@@ -451,7 +453,7 @@ const AppLayout = ({
             actualVideoUrl={actualVideoUrl}
             subtitlesData={subtitlesData}
             translatedSubtitles={window.translatedSubtitles}
-            narrationResults={window.originalNarrations || window.translatedNarrations}
+            narrationResults={narrationState.resultsBySource.original}
             autoFillData={videoRenderingAutoFill}
             onNativeVideoSelected={handleNativeRenderVideoSelected}
           />

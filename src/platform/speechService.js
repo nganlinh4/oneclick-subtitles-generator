@@ -1772,13 +1772,17 @@ export const createNativeSpeechService = ({
     return stored;
   };
 
-  const getProjectNarration = async (projectId) => {
+  const getProjectNarration = async (projectId, source) => {
     requireNativeRuntime();
     const id = requireUuid(projectId, 7);
-    const value = await invokeCommand('speech_project_narration_get', { projectId: id });
+    if (!projectNarrationSources.has(source)) throw invalidRequest();
+    const value = await invokeCommand('speech_project_narration_get', {
+      projectId: id,
+      source,
+    });
     if (value === null) return null;
     const stored = normalizeProjectNarrationResponse(value);
-    if (stored.projectId !== id) throw invalidResponse();
+    if (stored.projectId !== id || stored.source !== source) throw invalidResponse();
     return stored;
   };
 

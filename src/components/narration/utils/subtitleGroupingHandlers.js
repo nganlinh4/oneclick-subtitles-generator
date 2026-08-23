@@ -20,11 +20,6 @@ const selectedSource = ({
     : originalSubtitles,
 });
 
-const publishCompatibilityProjection = (enabled, rows) => {
-  window.useGroupedSubtitles = enabled;
-  window.groupedSubtitles = rows;
-};
-
 /**
  * Toggle project-owned narration grouping. Provider output is never visible until the exact
  * project/source record has been persisted, reread, and its native result delivery acknowledged.
@@ -60,7 +55,6 @@ export const handleGroupingToggle = async (checked, {
       }
       setGroupedSubtitles?.(null);
       setUseGroupedSubtitles(false);
-      publishCompatibilityProjection(false, null);
       return true;
     } catch (error) {
       console.error('Could not durably disable subtitle grouping:', error);
@@ -86,7 +80,6 @@ export const handleGroupingToggle = async (checked, {
     if (existing !== null) {
       setGroupedSubtitles?.(existing.groupedSubtitles);
       setUseGroupedSubtitles(true);
-      publishCompatibilityProjection(true, existing.groupedSubtitles);
       return true;
     }
 
@@ -112,7 +105,6 @@ export const handleGroupingToggle = async (checked, {
 
     setGroupedSubtitles?.(record.groupedRows);
     setUseGroupedSubtitles(true);
-    publishCompatibilityProjection(true, record.groupedRows);
     return true;
   } catch (error) {
     // No fallback grouping and no early UI publication: the durable native delivery remains

@@ -546,12 +546,14 @@ describe('native speech response validation', () => {
     };
 
     await expect(service.putProjectNarration(request)).resolves.toEqual(projectNarration());
-    await expect(service.getProjectNarration(PROJECT_ID)).resolves.toEqual(projectNarration());
+    await expect(service.getProjectNarration(PROJECT_ID, 'original'))
+      .resolves.toEqual(projectNarration());
     expect(invokeCommand).toHaveBeenNthCalledWith(1, 'speech_project_narration_put', {
       request,
     });
     expect(invokeCommand).toHaveBeenNthCalledWith(2, 'speech_project_narration_get', {
       projectId: PROJECT_ID,
+      source: 'original',
     });
     expect(JSON.stringify(invokeCommand.mock.calls)).not.toMatch(
       /(?:localStorage|audioData|playbackUrl|[A-Za-z]:[\\/])/u
@@ -606,7 +608,7 @@ describe('native speech response validation', () => {
         { ...projectNarration().results[0], artifact: { ...artifact(), artifactId: EDITED_ARTIFACT_ID } },
       ],
     }));
-    await expect(service.getProjectNarration(PROJECT_ID)).rejects.toMatchObject({
+    await expect(service.getProjectNarration(PROJECT_ID, 'original')).rejects.toMatchObject({
       code: 'invalidSpeechResponse',
     });
   });

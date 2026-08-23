@@ -1,15 +1,20 @@
 import { renderHook, waitFor } from '@testing-library/react';
 
-import { loadProjectNarration } from '../../../platform/projectNarrationStore';
+import { loadProjectNarrations } from '../../../platform/projectNarrationStore';
+import { getCurrentProjectNarrationResults } from '../../../platform/projectNarrationState';
 import useNarrationCache from './useNarrationCache';
 
 const projectMocks = vi.hoisted(() => ({
   getActiveProjectSnapshot: vi.fn(),
-  subscribeToActiveProject: vi.fn(() => () => undefined),
+  subscribers: new Set(),
+  subscribeToActiveProject: vi.fn((subscriber) => {
+    projectMocks.subscribers.add(subscriber);
+    return () => projectMocks.subscribers.delete(subscriber);
+  }),
 }));
 
 vi.mock('../../../platform/projectNarrationStore', () => ({
-  loadProjectNarration: vi.fn(),
+  loadProjectNarrations: vi.fn(),
 }));
 vi.mock('../../../platform/projectService', () => ({
   getActiveProjectSnapshot: projectMocks.getActiveProjectSnapshot,
@@ -37,8 +42,7 @@ const snapshot = (stateVersion) => ({
 const stored = (projectStateVersion) => ({
   projectId: PROJECT_ID,
   projectStateVersion,
-  source: 'original',
-  results: [{
+  resultsBySource: { original: [{
     subtitle_id: 1,
     text: 'restored',
     success: true,
@@ -46,7 +50,7 @@ const stored = (projectStateVersion) => ({
     filename: `osg-speech-artifact:${ARTIFACT_ID}`,
     start: 0,
     end: 1,
-  }],
+  }], translated: [], grouped: [] },
 });
 
 const mount = () => {
@@ -66,28 +70,68 @@ const mount = () => {
 
 beforeEach(() => {
   vi.clearAllMocks();
+  projectMocks.subscribers.clear();
   localStorage.clear();
   projectMocks.getActiveProjectSnapshot.mockReturnValue(snapshot(7));
-  projectMocks.subscribeToActiveProject.mockReturnValue(() => undefined);
 });
 
 test('hydrates only the native narration record for the exact active revision', async () => {
-  loadProjectNarration.mockResolvedValue(stored(7));
+  loadProjectNarrations.mockResolvedValue(stored(7));
   const harness = mount();
 
   await waitFor(() => expect(harness.setGenerationResults).toHaveBeenCalledWith(
-    stored(7).results,
+    stored(7).resultsBySource.original,
   ));
   expect(harness.setGenerationStatus).toHaveBeenCalledWith(
     'Loaded narrations from previous session',
   );
 });
 
+test('hydrates all source buckets while displaying only the selected source', async () => {
+  const all = stored(7);
+  all.resultsBySource.translated = [{
+    ...all.resultsBySource.original[0],
+    subtitle_id: 2,
+    text: 'translated',
+  }];
+  all.resultsBySource.grouped = [{
+    ...all.resultsBySource.original[0],
+    subtitle_id: 'group-1',
+    text: 'grouped',
+  }];
+  loadProjectNarrations.mockResolvedValue(all);
+  const harness = mount();
+
+  await waitFor(() => expect(harness.setGenerationResults).toHaveBeenCalledWith(
+    all.resultsBySource.original,
+  ));
+  expect(getCurrentProjectNarrationResults('translated')).toEqual(
+    all.resultsBySource.translated,
+  );
+  expect(getCurrentProjectNarrationResults('grouped')).toEqual(all.resultsBySource.grouped);
+});
+
+test('clears visible results synchronously when exact project authority advances', async () => {
+  loadProjectNarrations.mockResolvedValueOnce(stored(7));
+  const harness = mount();
+  await waitFor(() => expect(harness.setGenerationResults).toHaveBeenCalledWith(
+    stored(7).resultsBySource.original,
+  ));
+  harness.setGenerationResults.mockClear();
+  loadProjectNarrations.mockResolvedValue(null);
+
+  projectMocks.getActiveProjectSnapshot.mockReturnValue(snapshot(8));
+  projectMocks.subscribers.forEach((subscriber) => subscriber(snapshot(8)));
+
+  expect(harness.setGenerationResults).toHaveBeenCalledWith([]);
+  expect(getCurrentProjectNarrationResults('original')).toEqual([]);
+});
+
 test('discards a late native read after the active project revision advances', async () => {
   let resolveLoad;
-  loadProjectNarration.mockReturnValue(new Promise((resolve) => { resolveLoad = resolve; }));
+  loadProjectNarrations.mockReturnValue(new Promise((resolve) => { resolveLoad = resolve; }));
   const harness = mount();
-  await waitFor(() => expect(loadProjectNarration).toHaveBeenCalledWith(PROJECT_ID));
+  await waitFor(() => expect(loadProjectNarrations).toHaveBeenCalledWith(PROJECT_ID));
 
   projectMocks.getActiveProjectSnapshot.mockReturnValue(snapshot(8));
   resolveLoad(stored(7));
@@ -104,10 +148,10 @@ test('never revives legacy browser narration caches', async () => {
     audioData: 'legacy-base64',
   }));
   const getItem = vi.spyOn(Storage.prototype, 'getItem');
-  loadProjectNarration.mockResolvedValue(null);
+  loadProjectNarrations.mockResolvedValue(null);
   const harness = mount();
 
-  await waitFor(() => expect(loadProjectNarration).toHaveBeenCalled());
+  await waitFor(() => expect(loadProjectNarrations).toHaveBeenCalled());
   expect(getItem).not.toHaveBeenCalled();
   expect(harness.setGenerationResults).not.toHaveBeenCalled();
   getItem.mockRestore();

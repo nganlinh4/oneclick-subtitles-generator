@@ -2,6 +2,7 @@
  * Hook for handling aligned narration events
  */
 import { useEffect } from "react";
+import { requestAlignedNarrationReset } from '../../../../platform/alignedNarrationSession';
 // These imports are used in the commented-out code but not in the active code
 
 /**
@@ -49,9 +50,7 @@ const useAlignedNarrationEvents = ({
         lastRegenerationTimeRef.current = 0;
 
         // Reset the aligned narration cache completely
-        if (typeof window.resetAlignedNarration === "function") {
-          window.resetAlignedNarration();
-        }
+        requestAlignedNarrationReset();
 
         // Regenerate the aligned narration immediately
         regenerateAlignedNarration();

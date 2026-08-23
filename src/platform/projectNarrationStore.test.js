@@ -1,5 +1,9 @@
 import { getProjectNarration, putProjectNarration } from './speechService';
-import { loadProjectNarration, saveProjectNarration } from './projectNarrationStore';
+import {
+  loadProjectNarration,
+  loadProjectNarrations,
+  saveProjectNarration,
+} from './projectNarrationStore';
 
 vi.mock('./speechService', () => ({
   getProjectNarration: vi.fn(),
@@ -111,9 +115,9 @@ test('restores a native record and never invents browser audio state', async () 
     results: [storedResult],
   });
 
-  const loaded = await loadProjectNarration(PROJECT_ID);
+  const loaded = await loadProjectNarration(PROJECT_ID, 'grouped');
 
-  expect(getProjectNarration).toHaveBeenCalledWith(PROJECT_ID);
+  expect(getProjectNarration).toHaveBeenCalledWith(PROJECT_ID, 'grouped');
   expect(loaded).toMatchObject({
     projectId: PROJECT_ID,
     projectStateVersion: 11,
@@ -168,5 +172,26 @@ test('stores an empty native record to clear obsolete successful narration', asy
   expect(putProjectNarration).toHaveBeenCalledWith(expect.objectContaining({ results: [] }));
 
   getProjectNarration.mockResolvedValue(null);
-  await expect(loadProjectNarration(PROJECT_ID)).resolves.toBeNull();
+  await expect(loadProjectNarration(PROJECT_ID, 'original')).resolves.toBeNull();
+});
+
+test('restores every source bucket without letting one overwrite another', async () => {
+  getProjectNarration.mockImplementation(async (_projectId, source) => ({
+    schemaVersion: 1,
+    projectId: PROJECT_ID,
+    projectStateVersion: 13,
+    source,
+    results: [{ ...storedResult, subtitleId: source }],
+  }));
+
+  const loaded = await loadProjectNarrations(PROJECT_ID);
+
+  expect(getProjectNarration.mock.calls).toEqual([
+    [PROJECT_ID, 'original'],
+    [PROJECT_ID, 'translated'],
+    [PROJECT_ID, 'grouped'],
+  ]);
+  expect(loaded.resultsBySource.original[0].subtitle_id).toBe('original');
+  expect(loaded.resultsBySource.translated[0].subtitle_id).toBe('translated');
+  expect(loaded.resultsBySource.grouped[0].subtitle_id).toBe('grouped');
 });

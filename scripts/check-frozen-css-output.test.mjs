@@ -5,7 +5,11 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import test from 'node:test';
 
-import { inspectFrozenCssParity, verifyFrozenCssArtifact } from './check-frozen-css-output.mjs';
+import {
+  inspectFrozenCssParity,
+  verifyFrozenCssArtifact,
+  verifyFrozenCssArtifacts,
+} from './check-frozen-css-output.mjs';
 
 function createFixture(context, contents = 'frozen css') {
   const root = mkdtempSync(join(tmpdir(), 'osg-frozen-css-output-'));
@@ -84,5 +88,33 @@ test('rejects a byte-valid artifact when pre-port CSS surfaces are missing', (co
       parity: { fontFaceCount: 5 },
     }),
     /pre-port CSS surface fontFaceCount drifted; expected 5, found 0/,
+  );
+});
+
+test('pins split base and narration CSS and checks their combined surface inventory', (context) => {
+  const root = mkdtempSync(join(tmpdir(), 'osg-frozen-css-split-'));
+  context.after(() => rmSync(root, { force: true, recursive: true }));
+  const assets = join(root, 'assets');
+  mkdirSync(assets, { recursive: true });
+  const sourceFiles = [
+    ['index-one.css', '.custom-slider{}'],
+    ['narration-two.css', '.custom-slider{}'],
+  ];
+  const expected = {
+    files: sourceFiles.map(([fileName, contents]) => ({
+      fileName,
+      sha256: createHash('sha256').update(contents).digest('hex'),
+      sizeBytes: Buffer.byteLength(contents),
+    })),
+    parity: { customSliderCount: 2 },
+  };
+  sourceFiles.forEach(([fileName, contents]) => writeFileSync(join(assets, fileName), contents));
+  writeFileSync(join(assets, 'SettingsModal-unrelated.css'), 'ignored');
+
+  assert.deepEqual(verifyFrozenCssArtifacts(assets, expected).files, expected.files);
+  writeFileSync(join(assets, 'narration-unreviewed.css'), '.unreviewed{}');
+  assert.throws(
+    () => verifyFrozenCssArtifacts(assets, expected),
+    /frozen CSS artifact set drifted/,
   );
 });

@@ -4,7 +4,8 @@ import {
   getNativeNarrationArtifactId,
 } from './nativeNarrationCapabilities';
 
-const SOURCES = new Set(['original', 'translated', 'grouped']);
+const SOURCE_NAMES = Object.freeze(['original', 'translated', 'grouped']);
+const SOURCES = new Set(SOURCE_NAMES);
 const METHODS = new Set(['f5tts', 'chatterbox', 'edge-tts', 'gtts', 'gemini']);
 
 const timingMicros = (value, field) => {
@@ -90,13 +91,35 @@ export const saveProjectNarration = async ({
   });
 };
 
-export const loadProjectNarration = async (projectId) => {
-  const stored = await getProjectNarration(projectId);
+export const loadProjectNarration = async (projectId, source) => {
+  if (!SOURCES.has(source)) throw new TypeError('A project narration source is required');
+  const stored = await getProjectNarration(projectId, source);
   if (stored === null) return null;
   return Object.freeze({
     projectId: stored.projectId,
     projectStateVersion: stored.projectStateVersion,
     source: stored.source,
     results: Object.freeze(stored.results.map((result) => restoredResult(result, stored))),
+  });
+};
+
+export const loadProjectNarrations = async (projectId) => {
+  const records = await Promise.all(SOURCE_NAMES.map((source) => (
+    loadProjectNarration(projectId, source)
+  )));
+  const present = records.filter(Boolean);
+  if (present.length === 0) return null;
+  const projectStateVersion = present[0].projectStateVersion;
+  if (present.some((record) => (
+    record.projectId !== projectId || record.projectStateVersion !== projectStateVersion
+  ))) {
+    throw new TypeError('Project narration sources disagree on authority');
+  }
+  return Object.freeze({
+    projectId,
+    projectStateVersion,
+    resultsBySource: Object.freeze(Object.fromEntries(SOURCE_NAMES.map((source, index) => (
+      [source, records[index]?.results || Object.freeze([])]
+    )))),
   });
 };

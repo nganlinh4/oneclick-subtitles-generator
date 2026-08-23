@@ -1,5 +1,10 @@
-import { useState } from 'react';
+import { useState, useSyncExternalStore } from 'react';
 
+import { useProjectNarrationState } from '../../platform/projectNarrationState';
+import {
+  getAlignedNarrationCacheSnapshot,
+  subscribeToAlignedNarrationCache,
+} from '../../platform/alignedNarrationSession';
 import {
   buildStrictNativeNarrationPlan,
   createNativeNarrationPlanKey,
@@ -18,27 +23,30 @@ const firstArray = (...candidates) => (
  * translated or grouped subtitles currently selected for export.
  */
 export const resolveCurrentNarrationInputs = ({
+  narrationState,
   narrationResults,
   subtitlesData,
   translatedSubtitles,
   selectedSubtitles,
 }) => {
-  if (window.useGroupedSubtitles === true) {
+  if (narrationState.activeSource === 'grouped'
+      && Array.isArray(narrationState.groupedCues)
+      && narrationState.groupedCues.length > 0) {
     return Object.freeze({
-      results: firstArray(window.groupedNarrations),
-      cues: firstArray(window.groupedSubtitles),
+      results: firstArray(narrationState.resultsBySource.grouped),
+      cues: narrationState.groupedCues,
       source: 'grouped',
     });
   }
   if (selectedSubtitles === 'translated') {
     return Object.freeze({
-      results: firstArray(window.translatedNarrations),
+      results: firstArray(narrationState.resultsBySource.translated),
       cues: firstArray(translatedSubtitles, window.translatedSubtitles),
       source: 'translated',
     });
   }
   return Object.freeze({
-    results: firstArray(window.originalNarrations, narrationResults),
+    results: firstArray(narrationState.resultsBySource.original, narrationResults),
     cues: firstArray(subtitlesData, window.originalSubtitles, window.subtitlesData),
     source: 'original',
   });
@@ -63,8 +71,15 @@ export const useNarration = ({
   selectedSubtitles,
 }) => {
   const [isRefreshingNarration, setIsRefreshingNarration] = useState(false);
+  const narrationState = useProjectNarrationState();
+  const alignedCache = useSyncExternalStore(
+    subscribeToAlignedNarrationCache,
+    getAlignedNarrationCacheSnapshot,
+    getAlignedNarrationCacheSnapshot,
+  );
 
   const currentInputs = () => resolveCurrentNarrationInputs({
+    narrationState,
     narrationResults,
     subtitlesData,
     translatedSubtitles,
@@ -79,17 +94,18 @@ export const useNarration = ({
 
   const isAlignedNarrationAvailable = () => {
     try {
-      const cache = window.alignedNarrationCache;
       const plan = currentPlan();
       return Boolean(
-        cache?.url
-        && cache.nativeArtifactId
-        && cache.alignmentKey === createNativeNarrationPlanKey(plan),
+        alignedCache.url
+        && alignedCache.nativeArtifactId
+        && alignedCache.alignmentKey === createNativeNarrationPlanKey(plan),
       );
     } catch {
       return false;
     }
   };
+
+  const alignedNarrationUrl = isAlignedNarrationAvailable() ? alignedCache.url : null;
 
   const hasNarrationSegments = () => {
     try {
@@ -158,6 +174,7 @@ export const useNarration = ({
   return {
     isRefreshingNarration,
     currentNarrationResults,
+    alignedNarrationUrl,
     isAlignedNarrationAvailable,
     hasNarrationSegments,
     getNarrationAudioUrl,

@@ -6,7 +6,7 @@ import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 /**
- * The exact stylesheet the product build must produce.
+ * The exact base and narration stylesheets the product build must produce.
  *
  * REPINNED because the build began minifying CSS again, not because the design changed. `esbuild`
  * had become undeclared and unresolvable, so `cssMinify: 'esbuild'` silently produced an unminified
@@ -18,20 +18,28 @@ import { fileURLToPath } from 'node:url';
  * play/seek/mute/fullscreen controls. Real-binary screenshots cover both preview surfaces.
  *
  * The design was verified unchanged rather than assumed: all 151 Material custom properties, and
- * the album-art, floating-scrollbar and liquid-glass surface counts, are identical. Two counters
- * moved, and both are artefacts of how a minifier rewrites text rather than of what it renders —
- * `.custom-slider` fell 45 -> 44 and unresolved Material names 47 -> 32 as duplicate selectors and
- * repeated declarations were merged away. A counter that reads minified output measures the file,
- * not the appearance, which is why the source-level freeze (`npm run check:visual-freeze`) is the
- * authority on the design and this file is the authority on the artefact.
+ * the album-art, floating-scrollbar and liquid-glass surface counts, are identical. Narration is a
+ * required initial JavaScript boundary now, so Vite emits its CSS separately instead of letting the
+ * minifier merge it into index.css. The combined `.custom-slider` textual count is therefore 54
+ * rather than 44: duplicate selectors across two files cannot be merged. This contract pins both
+ * files byte-for-byte and evaluates the semantic inventory across their combined contents.
  */
-export const FROZEN_CSS_ARTIFACT = Object.freeze({
-  fileName: 'index-DRPbBNQE.css',
-  sha256: '97a6badba4c97b48251d09b4e06876faf86aebbfa9cf88b31e59a974803acc55',
-  sizeBytes: 589_103,
+export const FROZEN_CSS_ARTIFACTS = Object.freeze({
+  files: Object.freeze([
+    Object.freeze({
+      fileName: 'index-DdKwrqC7.css',
+      sha256: 'a37be7ea79505a6ab1d4b65ebd309c6b4ceda2a52bcc10ea0a0524ad7f118685',
+      sizeBytes: 500_608,
+    }),
+    Object.freeze({
+      fileName: 'narration-OoOluj4s.css',
+      sha256: '64cb0e2c198896e0d373f787130e629ed60a93434065ef06176503e976d48b46',
+      sizeBytes: 109_116,
+    }),
+  ]),
   parity: Object.freeze({
     albumArtCount: 22,
-    customSliderCount: 44,
+    customSliderCount: 54,
     floatingScrollbarCount: 19,
     fontFaceCount: 0,
     googleSansFlexCount: 0,
@@ -40,6 +48,7 @@ export const FROZEN_CSS_ARTIFACT = Object.freeze({
     materialUnresolvedCount: 32,
   }),
 });
+export const FROZEN_CSS_ARTIFACT = FROZEN_CSS_ARTIFACTS.files[0];
 
 function invariant(condition, message) {
   if (!condition) {
@@ -123,8 +132,48 @@ export function verifyFrozenCssArtifact(assetsDirectory, expected = FROZEN_CSS_A
   return Object.freeze({ fileName, sha256: digest, sizeBytes: metadata.size });
 }
 
+export function verifyFrozenCssArtifacts(assetsDirectory, expected = FROZEN_CSS_ARTIFACTS) {
+  invariant(existsSync(assetsDirectory), `asset directory is missing: ${assetsDirectory}`);
+  const directoryMetadata = lstatSync(assetsDirectory);
+  invariant(
+    directoryMetadata.isDirectory() && !directoryMetadata.isSymbolicLink(),
+    `asset path must be a real directory: ${assetsDirectory}`,
+  );
+  invariant(Array.isArray(expected.files) && expected.files.length > 0,
+    'at least one frozen CSS artifact is required');
+
+  const prefixes = expected.files.map(({ fileName }) => fileName.replace(/-[^-]+\.css$/, '-'));
+  const candidates = readdirSync(assetsDirectory, { withFileTypes: true })
+    .filter((entry) => entry.isFile()
+      && prefixes.some((prefix) => entry.name.startsWith(prefix) && entry.name.endsWith('.css')))
+    .map((entry) => entry.name)
+    .sort();
+  const expectedNames = expected.files.map(({ fileName }) => fileName).sort();
+  invariant(
+    JSON.stringify(candidates) === JSON.stringify(expectedNames),
+    `frozen CSS artifact set drifted; expected ${expectedNames.join(', ')}, found ${candidates.join(', ')}`,
+  );
+
+  const contents = [];
+  const files = expected.files.map((file) => {
+    const artifactPath = resolve(assetsDirectory, file.fileName);
+    const metadata = lstatSync(artifactPath);
+    invariant(metadata.isFile() && !metadata.isSymbolicLink(), `${file.fileName} must be a real file`);
+    const bytes = readFileSync(artifactPath);
+    const digest = createHash('sha256').update(bytes).digest('hex');
+    invariant(metadata.size === file.sizeBytes,
+      `${file.fileName} byte size drifted; expected ${file.sizeBytes}, found ${metadata.size}`);
+    invariant(digest === file.sha256,
+      `${file.fileName} SHA-256 drifted; expected ${file.sha256}, found ${digest}`);
+    contents.push(bytes);
+    return Object.freeze({ fileName: file.fileName, sha256: digest, sizeBytes: metadata.size });
+  });
+  if (expected.parity) assertFrozenCssParity(Buffer.concat(contents), expected.parity);
+  return Object.freeze({ files: Object.freeze(files) });
+}
+
 export function assertFrozenCssBuildOutput(rootDirectory = resolve(dirname(fileURLToPath(import.meta.url)), '..')) {
-  return verifyFrozenCssArtifact(resolve(rootDirectory, 'build/assets'));
+  return verifyFrozenCssArtifacts(resolve(rootDirectory, 'build/assets'));
 }
 
 const isMain = process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.url);
@@ -132,7 +181,9 @@ if (isMain) {
   try {
     const result = assertFrozenCssBuildOutput();
     console.log(
-      `Frozen CSS output passed: ${result.fileName}, ${result.sizeBytes} bytes, SHA-256 ${result.sha256}.`,
+      `Frozen CSS output passed: ${result.files.map((file) => (
+        `${file.fileName} (${file.sizeBytes} bytes, SHA-256 ${file.sha256})`
+      )).join('; ')}.`,
     );
   } catch (error) {
     console.error(error.message);

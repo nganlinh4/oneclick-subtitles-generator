@@ -1,4 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
+import { clearCurrentProjectNarrationState } from '../../platform/projectNarrationState';
+import { requestAlignedNarrationReset } from '../../platform/alignedNarrationSession';
 
 const isYoutubeUrl = (value) => value.includes('youtube.com') || value.includes('youtu.be');
 
@@ -39,20 +41,8 @@ const useVideoSourceLoading = ({ videoSource, t }) => {
     setIsDownloading(false);
     setDownloadProgress(0);
 
-    window.originalNarrations = [];
-    window.translatedNarrations = [];
-    window.groupedNarrations = [];
-    window.groupedSubtitles = [];
-    window.useGroupedSubtitles = false;
-    window.resetAlignedNarration?.();
-    localStorage.removeItem('originalNarrations');
-    localStorage.removeItem('translatedNarrations');
-    window.dispatchEvent(new CustomEvent('narrations-updated', {
-      detail: { source: 'original', narrations: [] },
-    }));
-    window.dispatchEvent(new CustomEvent('narrations-updated', {
-      detail: { source: 'translated', narrations: [] },
-    }));
+    clearCurrentProjectNarrationState();
+    requestAlignedNarrationReset();
 
     if (!videoSource) return undefined;
     if (isYoutubeUrl(videoSource)) {

@@ -19,7 +19,7 @@ const PreviewCustomizationRow = ({
   selectedVideoFile,
   subtitles,
   selectedNarration,
-  isAlignedNarrationAvailable,
+  alignedNarrationUrl,
   subtitleCustomization,
   setSubtitleCustomization,
   renderSettings,
@@ -46,7 +46,7 @@ const PreviewCustomizationRow = ({
           ref={videoPlayerRef}
           videoFile={selectedVideoFile}
           subtitles={subtitles}
-          narrationAudioUrl={(selectedNarration === 'generated' && isAlignedNarrationAvailable()) ? window.alignedNarrationCache?.url : null}
+          narrationAudioUrl={selectedNarration === 'generated' ? alignedNarrationUrl : null}
           subtitleCustomization={subtitleCustomization}
           resolution={renderSettings.resolution}
           frameRate={renderSettings.frameRate}

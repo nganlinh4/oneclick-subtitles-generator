@@ -4,6 +4,7 @@ import {
   getNativeNarrationArtifactId,
   isNativeNarrationResult,
 } from '../../../platform/nativeNarrationCapabilities';
+import { requestAlignedNarrationReset } from '../../../platform/alignedNarrationSession';
 
 const getBackupName = (filename) => filename ? `backup_${filename}` : null;
 const durationSeconds = (result) => Number(result?.durationMicros) / 1_000_000;
@@ -91,7 +92,7 @@ const useGeminiAudioSpeed = ({
         await editResult(result, speedValue, itemTrims[result.subtitle_id]);
         setProcessingProgress({ current: index + 1, total: successful.length });
       }
-      window.resetAlignedNarration?.();
+      requestAlignedNarrationReset();
       window.dispatchEvent(new CustomEvent('narration-speed-modified', {
         detail: { speed: speedValue, timestamp: Date.now() },
       }));
@@ -116,7 +117,7 @@ const useGeminiAudioSpeed = ({
         typeof itemSpeeds[id] === 'number' ? itemSpeeds[id] : 1,
         itemTrims[id],
       );
-      window.resetAlignedNarration?.();
+      requestAlignedNarrationReset();
       window.dispatchEvent(new CustomEvent('narration-edit-modified', {
         detail: {
           start: itemTrims[id]?.[0],

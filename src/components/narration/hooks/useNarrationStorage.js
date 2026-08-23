@@ -1,51 +1,10 @@
-import { useEffect } from 'react';
-
 /**
- * Custom hook for storing narration results
- * @param {Object} params - Parameters
- * @param {Array} params.generationResults - Generation results
- * @param {string} params.subtitleSource - Selected subtitle source
- * @returns {void}
+ * Browser storage is intentionally limited to the non-project detected-language preference.
+ * Narration results are project/revision-owned native records and are published through
+ * projectNarrationState; mirroring them to window made stale results survive project switches.
+ * @returns {{loadDetectedLanguage: Function}}
  */
-const useNarrationStorage = ({
-  generationResults,
-  subtitleSource
-}) => {
-  // Store narration results in window object for access by other components
-  useEffect(() => {
-
-
-
-    if (generationResults.length > 0) {
-      // Store full data in window object for immediate access
-      if (subtitleSource === 'original') {
-        // Create a new array to ensure reference changes trigger updates
-        window.originalNarrations = [...generationResults];
-
-        // No longer storing in localStorage to avoid quota issues
-
-      } else {
-        // Create a new array to ensure reference changes trigger updates
-        window.translatedNarrations = [...generationResults];
-
-        // No longer storing in localStorage to avoid quota issues
-
-      }
-
-      // Dispatch a custom event to notify other components
-      const event = new CustomEvent('narrations-updated', {
-        detail: {
-          source: subtitleSource,
-          narrations: generationResults
-        }
-      });
-      window.dispatchEvent(event);
-    }
-
-
-
-  }, [generationResults, subtitleSource]);
-
+const useNarrationStorage = () => {
   // Load previously detected language from localStorage
   const loadDetectedLanguage = () => {
     try {

@@ -14,6 +14,8 @@ import {
   resolvePlacements,
   PER_LINE_WEIGHT_DEFAULT,
 } from './narrationLaneActions';
+import { getAllCurrentProjectNarrationResults } from '../../platform/projectNarrationState';
+import { requestAlignedNarrationReset } from '../../platform/alignedNarrationSession';
 
 const SPEED_MIN = 0.5;
 const SPEED_MAX = 2;
@@ -73,11 +75,7 @@ const NarrationLaneControls = ({
     if (segments.length === 0) return;
     setBusy(true);
     try {
-      const narrationResults = [
-        ...(window.originalNarrations || []),
-        ...(window.translatedNarrations || []),
-        ...(window.groupedNarrations || []),
-      ];
+      const narrationResults = getAllCurrentProjectNarrationResults();
       const byArtifactId = new Map(narrationResults
         .filter(isNativeNarrationResult)
         .map((result) => [getNativeNarrationArtifactId(result), result]));
@@ -94,7 +92,7 @@ const NarrationLaneControls = ({
           detail: { previousArtifactId: artifactId, result: replacement },
         }));
       }
-      if (typeof window.resetAlignedNarration === 'function') window.resetAlignedNarration();
+      requestAlignedNarrationReset();
       window.dispatchEvent(new CustomEvent('narration-speed-modified', { detail: { source: 'timeline-speed', timestamp: Date.now() } }));
       // Regenerate the aligned narration so playback uses the new speeds (same as the refresh button).
       window.dispatchEvent(new CustomEvent('request-narration-refresh', { detail: { source: 'timeline-speed', timestamp: Date.now() } }));

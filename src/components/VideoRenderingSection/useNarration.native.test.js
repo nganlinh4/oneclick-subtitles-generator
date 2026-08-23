@@ -17,6 +17,17 @@ vi.mock('../../services/alignedNarrationService.js', () => ({
   resetAlignedNarration: vi.fn(),
 }));
 
+const narrationState = vi.hoisted(() => ({
+  current: {
+    activeSource: 'original',
+    groupedCues: null,
+    resultsBySource: { original: [], translated: [], grouped: [] },
+  },
+}));
+vi.mock('../../platform/projectNarrationState', () => ({
+  useProjectNarrationState: () => narrationState.current,
+}));
+
 const ARTIFACT_ID = '018f4c22-f0f1-7c09-a4d5-120d7b6f84a2';
 const PROJECT_ID = '018f4c22-f0f1-7c09-a4d5-120d7b6f84a4';
 const nativeResult = {
@@ -42,21 +53,16 @@ describe('render narration native plan ownership', () => {
 
   beforeEach(() => {
     vi.clearAllMocks();
-    window.originalNarrations = [];
-    window.translatedNarrations = [];
-    window.groupedNarrations = [];
-    window.groupedSubtitles = [];
-    window.useGroupedSubtitles = false;
+    narrationState.current = {
+      activeSource: 'original',
+      groupedCues: null,
+      resultsBySource: { original: [], translated: [], grouped: [] },
+    };
     originalFetch = global.fetch;
     global.fetch = vi.fn();
   });
 
   afterEach(() => {
-    delete window.originalNarrations;
-    delete window.translatedNarrations;
-    delete window.groupedNarrations;
-    delete window.groupedSubtitles;
-    delete window.useGroupedSubtitles;
     delete window.alignedNarrationCache;
     global.fetch = originalFetch;
   });
@@ -99,9 +105,16 @@ describe('render narration native plan ownership', () => {
     expect(global.fetch).not.toHaveBeenCalled();
   });
 
-  test('uses the selected translated result set rather than stale original globals', async () => {
-    window.originalNarrations = [{ ...nativeResult, text: 'stale original' }];
-    window.translatedNarrations = [nativeResult];
+  test('uses the selected translated result set rather than a stale original bucket', async () => {
+    narrationState.current = {
+      activeSource: 'translated',
+      groupedCues: null,
+      resultsBySource: {
+        original: [{ ...nativeResult, text: 'stale original' }],
+        translated: [nativeResult],
+        grouped: [],
+      },
+    };
     getAlignedNarrationArtifactIdForPlan.mockReturnValue(ARTIFACT_ID);
     getAlignedNarrationUrlForPlan.mockReturnValue('http://127.0.0.1:43111/asset/current');
     const { result } = renderNarration({

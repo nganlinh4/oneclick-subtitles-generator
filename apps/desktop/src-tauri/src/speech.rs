@@ -1432,6 +1432,20 @@ pub(crate) enum SpeechNarrationSource {
     Grouped,
 }
 
+impl SpeechNarrationSource {
+    const fn storage_key(self) -> &'static str {
+        match self {
+            Self::Original => "original",
+            Self::Translated => "translated",
+            Self::Grouped => "grouped",
+        }
+    }
+}
+
+fn project_narration_storage_key(project_id: ProjectId, source: SpeechNarrationSource) -> String {
+    format!("{project_id}:{}", source.storage_key())
+}
+
 #[derive(Clone, Debug, Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 struct SpeechProjectNarrationResultRequest {
@@ -2619,6 +2633,7 @@ fn put_project_narration(
         }
         results.push(result);
     }
+    let storage_key = project_narration_storage_key(request.project_id, request.source);
     let stored = StoredProjectNarration {
         schema_version: PROJECT_NARRATION_SCHEMA_VERSION,
         project_id: request.project_id,
@@ -2630,7 +2645,7 @@ fn put_project_narration(
         .map_err(|_| CommandError::internal("The project narration record is invalid."))?;
     database.put_project_setting(
         PROJECT_NARRATION_SCOPE,
-        &request.project_id.to_string(),
+        &storage_key,
         &value,
         request.project_id,
         request.expected_project_state_version,
@@ -2641,15 +2656,24 @@ fn put_project_narration(
 fn get_project_narration(
     database: &Database,
     project_id: ProjectId,
+    source: SpeechNarrationSource,
 ) -> CommandResult<Option<SpeechProjectNarrationResponse>> {
     let Some(project) = database.load_project(project_id)? else {
         return Err(CommandError::invalid_input(
             "The subtitle project is unavailable.",
         ));
     };
-    let Some(value) = database.get_setting(PROJECT_NARRATION_SCOPE, &project_id.to_string())?
-    else {
-        return Ok(None);
+    let storage_key = project_narration_storage_key(project_id, source);
+    let (value, legacy) = if let Some(value) =
+        database.get_setting(PROJECT_NARRATION_SCOPE, &storage_key)?
+    {
+        (value, false)
+    } else {
+        let Some(value) = database.get_setting(PROJECT_NARRATION_SCOPE, &project_id.to_string())?
+        else {
+            return Ok(None);
+        };
+        (value, true)
     };
     let stored: StoredProjectNarration = serde_json::from_value(value)
         .map_err(|_| CommandError::internal("The stored project narration is invalid."))?;
@@ -2657,6 +2681,14 @@ fn get_project_narration(
         || stored.project_id != project_id
         || stored.results.len() > MAX_SEGMENTS
     {
+        return Err(CommandError::internal(
+            "The stored project narration is invalid.",
+        ));
+    }
+    if stored.source != source {
+        if legacy {
+            return Ok(None);
+        }
         return Err(CommandError::internal(
             "The stored project narration is invalid.",
         ));
@@ -2690,11 +2722,14 @@ pub(crate) async fn speech_project_narration_put(
 pub(crate) async fn speech_project_narration_get(
     state: State<'_, DesktopState>,
     project_id: ProjectId,
+    source: SpeechNarrationSource,
 ) -> CommandResult<Option<SpeechProjectNarrationResponse>> {
     let database = state.database.clone();
-    tauri::async_runtime::spawn_blocking(move || get_project_narration(&database, project_id))
-        .await
-        .map_err(|_| CommandError::internal("The project narration task stopped unexpectedly."))?
+    tauri::async_runtime::spawn_blocking(move || {
+        get_project_narration(&database, project_id, source)
+    })
+    .await
+    .map_err(|_| CommandError::internal("The project narration task stopped unexpectedly."))?
 }
 
 #[tauri::command]
@@ -5959,18 +5994,38 @@ mod tests {
         assert_eq!(response.project_state_version, project.state_version());
         assert_eq!(response.results.len(), 1);
         assert_eq!(response.results[0].artifact.artifact_id, artifact_id);
+        put_project_narration(
+            &database,
+            SpeechProjectNarrationPutRequest {
+                project_id,
+                expected_project_state_version: project.state_version(),
+                source: SpeechNarrationSource::Translated,
+                results: vec![project_narration_result(2, artifact_id)],
+            },
+        )
+        .unwrap();
         drop(database);
 
         let reopened = Database::open(&database_path).unwrap();
-        let restored = get_project_narration(&reopened, project_id)
-            .unwrap()
-            .unwrap();
+        let restored =
+            get_project_narration(&reopened, project_id, SpeechNarrationSource::Original)
+                .unwrap()
+                .unwrap();
         assert_eq!(restored.source, SpeechNarrationSource::Original);
         assert_eq!(restored.results.len(), 1);
+        let translated =
+            get_project_narration(&reopened, project_id, SpeechNarrationSource::Translated)
+                .unwrap()
+                .unwrap();
+        assert_eq!(translated.results.len(), 1);
+        assert_eq!(
+            translated.results[0].subtitle_id,
+            SpeechNarrationCueId::Number(2)
+        );
         let current = reopened.load_project(project_id).unwrap().unwrap();
         commit_empty_project_revision(&reopened, &current, "invalidate narration");
         assert!(
-            get_project_narration(&reopened, project_id)
+            get_project_narration(&reopened, project_id, SpeechNarrationSource::Original)
                 .unwrap()
                 .is_none()
         );
@@ -6003,7 +6058,10 @@ mod tests {
         .unwrap();
         let before = fixture
             .database
-            .get_setting(PROJECT_NARRATION_SCOPE, &project_a.to_string())
+            .get_setting(
+                PROJECT_NARRATION_SCOPE,
+                &project_narration_storage_key(project_a, SpeechNarrationSource::Original),
+            )
             .unwrap();
 
         assert!(
@@ -6021,7 +6079,10 @@ mod tests {
         assert_eq!(
             fixture
                 .database
-                .get_setting(PROJECT_NARRATION_SCOPE, &project_a.to_string())
+                .get_setting(
+                    PROJECT_NARRATION_SCOPE,
+                    &project_narration_storage_key(project_a, SpeechNarrationSource::Original),
+                )
                 .unwrap(),
             before
         );
@@ -6044,7 +6105,10 @@ mod tests {
         assert_eq!(
             fixture
                 .database
-                .get_setting(PROJECT_NARRATION_SCOPE, &project_a.to_string())
+                .get_setting(
+                    PROJECT_NARRATION_SCOPE,
+                    &project_narration_storage_key(project_a, SpeechNarrationSource::Original),
+                )
                 .unwrap(),
             before
         );
@@ -6065,7 +6129,10 @@ mod tests {
         assert_eq!(
             fixture
                 .database
-                .get_setting(PROJECT_NARRATION_SCOPE, &project_a.to_string())
+                .get_setting(
+                    PROJECT_NARRATION_SCOPE,
+                    &project_narration_storage_key(project_a, SpeechNarrationSource::Original),
+                )
                 .unwrap(),
             before
         );
@@ -6085,7 +6152,7 @@ mod tests {
             .database
             .put_setting(
                 PROJECT_NARRATION_SCOPE,
-                &project_id.to_string(),
+                &project_narration_storage_key(project_id, SpeechNarrationSource::Original),
                 &serde_json::json!({
                     "schemaVersion": PROJECT_NARRATION_SCHEMA_VERSION,
                     "projectId": project_id,
@@ -6104,7 +6171,14 @@ mod tests {
                 }),
             )
             .unwrap();
-        assert!(get_project_narration(&fixture.database, project_id).is_err());
+        assert!(
+            get_project_narration(
+                &fixture.database,
+                project_id,
+                SpeechNarrationSource::Original,
+            )
+            .is_err()
+        );
     }
 
     #[test]

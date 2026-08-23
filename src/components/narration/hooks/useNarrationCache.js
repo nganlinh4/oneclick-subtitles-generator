@@ -10,7 +10,11 @@ import {
   createNativeNarrationToken,
   getNativeNarrationArtifactId,
 } from '../../../platform/nativeNarrationCapabilities';
-import { loadProjectNarration } from '../../../platform/projectNarrationStore';
+import { loadProjectNarrations } from '../../../platform/projectNarrationStore';
+import {
+  adoptProjectNarrationAuthority,
+  publishProjectNarrationResults,
+} from '../../../platform/projectNarrationState';
 
 const useNarrationCache = ({
   generationResults,
@@ -43,18 +47,40 @@ const useNarrationCache = ({
   useEffect(() => {
     let disposed = false;
     let sequence = 0;
+    let authorityKey = null;
     const hydrate = async (snapshot) => {
       const operation = ++sequence;
       const projectId = snapshot?.metadata?.id;
+      const nextAuthorityKey = projectId && Number.isSafeInteger(snapshot?.stateVersion)
+        ? `${projectId}:${snapshot.stateVersion}`
+        : null;
+      const authorityChanged = authorityKey !== null && authorityKey !== nextAuthorityKey;
+      authorityKey = nextAuthorityKey;
+      adoptProjectNarrationAuthority(snapshot);
+      if (authorityChanged) current.current.setGenerationResults([]);
       if (!projectId) return;
       try {
-        const stored = await loadProjectNarration(projectId);
+        const stored = await loadProjectNarrations(projectId);
         const latest = getActiveProjectSnapshot();
         if (disposed || operation !== sequence || stored === null
             || latest?.metadata?.id !== stored.projectId
-            || latest.stateVersion !== stored.projectStateVersion
-            || current.current.generationResults.length > 0) return;
-        current.current.setGenerationResults(stored.results);
+            || latest.stateVersion !== stored.projectStateVersion) return;
+        const selectedSource = current.current.subtitleSource === 'translated'
+          ? 'translated'
+          : 'original';
+        for (const source of ['original', 'translated', 'grouped']) {
+          publishProjectNarrationResults({
+            projectId: stored.projectId,
+            projectStateVersion: stored.projectStateVersion,
+            source,
+            results: stored.resultsBySource[source],
+            activate: source === selectedSource,
+          });
+        }
+        const selectedResults = stored.resultsBySource[selectedSource];
+        if (!authorityChanged && current.current.generationResults.length > 0) return;
+        if (selectedResults.length === 0) return;
+        current.current.setGenerationResults(selectedResults);
         current.current.setGenerationStatus(current.current.t(
           'narration.loadedFromCache',
           'Loaded narrations from previous session',

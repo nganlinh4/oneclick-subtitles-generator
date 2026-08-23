@@ -5,12 +5,11 @@ import SliderWithValue from '../../common/SliderWithValue';
 import '../../../utils/functionalScrollbar';
 import { VariableSizeList as List } from 'react-window';
 import { deriveSubtitleId, idsEqual } from '../../../utils/subtitle/idUtils';
-import { enhanceF5TTSNarrations } from '../../../utils/narrationEnhancer';
-import { hydrateNarrationResultsForAlignment } from '../../../utils/narrationAlignmentUtils';
 import ResultRow from './ResultRow';
-import { downloadAudio as downloadAudioFile, saveAudioToServer } from '../utils/narrationAudioDownload';
+import { downloadAudio as downloadAudioFile } from '../utils/narrationAudioDownload';
 import useNarrationAudioSpeed from '../hooks/useNarrationAudioSpeed';
 import { getNativeNarrationArtifactId } from '../../../platform/nativeNarrationCapabilities';
+import { useProjectNarrationState } from '../../../platform/projectNarrationState';
 
 
 /**
@@ -45,6 +44,7 @@ const NarrationResults = ({
   generationBlockedReason = ''
 }) => {
   const { t } = useTranslation();
+  const narrationState = useProjectNarrationState();
   const requiresReference = narrationMethod === 'f5tts' || narrationMethod === 'chatterbox';
   const referenceMissing = requiresReference
     && !getNativeNarrationArtifactId(referenceAudio);
@@ -92,9 +92,10 @@ const NarrationResults = ({
     if (typeof plannedSubtitles !== 'undefined') {
       return Array.isArray(plannedSubtitles) ? plannedSubtitles : [];
     }
-    // Prefer grouped subtitles when enabled (from global state)
-    if (typeof window !== 'undefined' && window.useGroupedSubtitles && Array.isArray(window.groupedSubtitles) && window.groupedSubtitles.length > 0) {
-      return window.groupedSubtitles;
+    if (narrationState.activeSource === 'grouped'
+        && Array.isArray(narrationState.groupedCues)
+        && narrationState.groupedCues.length > 0) {
+      return narrationState.groupedCues;
     }
     // Otherwise infer from selected source using globals populated elsewhere
     if (subtitleSource === 'translated' && typeof window !== 'undefined' && Array.isArray(window.translatedSubtitles) && window.translatedSubtitles.length > 0) {
@@ -215,55 +216,6 @@ const NarrationResults = ({
       listRef.current.resetAfterIndex(0);
     }
 
-    // Save narrations to file system when they change
-    if (generationResults && generationResults.length > 0) {
-      try {
-        // Process each narration result that has audioData but no filename
-        const savePromises = generationResults
-          .filter(result => result.success && result.audioData && !result.filename)
-          .map(async (result) => {
-            const filename = await saveAudioToServer(result);
-            if (filename) {
-              // Update the result with the filename
-              result.filename = filename;
-              // Remove the audioData to save memory once it's saved to the server
-              delete result.audioData;
-            }
-            return result;
-          });
-
-        // Wait for all save operations to complete
-        Promise.all(savePromises)
-          .then(updatedResults => {
-            if (updatedResults.length > 0) {
-              // Get subtitles from window object for enhancing narrations with timing information
-              const subtitles = window.originalSubtitles || window.subtitlesData || [];
-
-              // Enhance narrations with timing information from subtitles
-              const enhancedResults = enhanceF5TTSNarrations(generationResults, subtitles);
-              const resultsWithFilenames = hydrateNarrationResultsForAlignment(enhancedResults);
-
-              // Update window.originalNarrations with enhanced results for alignment
-              window.originalNarrations = [...resultsWithFilenames];
-
-              // Dispatch an event to notify other components that narrations have been updated
-              const event = new CustomEvent('narrations-updated', {
-                detail: {
-                  source: 'original', // Assuming F5-TTS narrations are for original subtitles
-                  narrations: resultsWithFilenames
-                }
-              });
-              window.dispatchEvent(event);
-            }
-          })
-          .catch(error => {
-            console.error('Error saving F5-TTS narrations to server:', error);
-          });
-
-      } catch (error) {
-        console.error('Error processing F5-TTS narrations for saving:', error);
-      }
-    }
   }, [generationResults]);
 
 

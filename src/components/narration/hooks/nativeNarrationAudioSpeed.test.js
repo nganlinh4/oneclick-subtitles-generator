@@ -36,12 +36,10 @@ describe('native immutable narration speed edits', () => {
     originalFetch = global.fetch;
     global.fetch = vi.fn();
     editNativeNarration.mockResolvedValue(edited);
-    window.resetAlignedNarration = vi.fn();
   });
 
   afterEach(() => {
     global.fetch = originalFetch;
-    delete window.resetAlignedNarration;
   });
 
   test('the shared result hook derives duration metadata and edits one artifact natively', async () => {

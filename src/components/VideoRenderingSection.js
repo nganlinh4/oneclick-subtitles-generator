@@ -149,11 +149,10 @@ const VideoRenderingSection = ({
   // derived value below and the project scene remains untouched until the user moves it.
   // *** FIX END ***
 
-  const [, setNarrationUpdateTrigger] = useState(0);
-
   // Narration availability + aligned-audio resolver + refresh action (extracted hook)
   const {
     isRefreshingNarration,
+    alignedNarrationUrl,
     isAlignedNarrationAvailable,
     hasNarrationSegments,
     getNarrationArtifactId,
@@ -200,17 +199,6 @@ const VideoRenderingSection = ({
   const [isCollapsed, setIsCollapsed] = useState(true); // Always start collapsed
   const [userHasCollapsed, setUserHasCollapsed] = useState(false); // Track if user has manually collapsed
   const [isClickDisabled, setIsClickDisabled] = useState(false); // Disable button for 2 seconds after click
-
-  // Listen for narration updates to trigger re-renders
-  useEffect(() => {
-    const handleNarrationsUpdated = () => {
-      setNarrationUpdateTrigger(prev => prev + 1);
-    };
-
-    window.addEventListener('narrations-updated', handleNarrationsUpdated);
-
-    return () => window.removeEventListener('narrations-updated', handleNarrationsUpdated);
-  }, []);
 
   // Apply incoming autoFillData (expand/scroll + pre-select inputs) — extracted hook
   const { sectionRef } = useAutoFill({
@@ -656,7 +644,7 @@ const VideoRenderingSection = ({
             selectedVideoFile={selectedVideoFile}
             subtitles={getCurrentSubtitles()}
             selectedNarration={selectedNarration}
-            isAlignedNarrationAvailable={isAlignedNarrationAvailable}
+            alignedNarrationUrl={alignedNarrationUrl}
             subtitleCustomization={subtitleCustomization}
             setSubtitleCustomization={setSubtitleCustomization}
             renderSettings={renderSettings}

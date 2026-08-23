@@ -1,6 +1,18 @@
 import { useEffect } from 'react';
 import { enhanceF5TTSNarrations } from '../../../utils/narrationEnhancer';
 import { loadProjectSubtitleGrouping } from '../../../platform/projectSubtitleGroupingStore';
+import { getActiveProjectSnapshot } from '../../../platform/projectService';
+import {
+  publishProjectNarrationGrouping,
+  publishProjectNarrationResults,
+} from '../../../platform/projectNarrationState';
+
+const activeAuthority = () => {
+  const snapshot = getActiveProjectSnapshot();
+  return snapshot?.metadata?.id && Number.isSafeInteger(snapshot.stateVersion)
+    ? { projectId: snapshot.metadata.id, projectStateVersion: snapshot.stateVersion }
+    : null;
+};
 
 /**
  * Custom hook for managing window state objects for narration
@@ -30,40 +42,38 @@ const useWindowStateManager = ({
   setUseGroupedSubtitles,
   groupingIntensity
 }) => {
-  // Update global window objects when generation results change
+  // Publish one project/revision-owned narration projection. Grouped narration is a real third
+  // source, not an alias for whichever original/translated array happened to be populated last.
   useEffect(() => {
-    // Ensure the global window objects have the latest narration results
-    // This is critical for the aligned narration feature to work
-    if (generationResults && generationResults.length > 0) {
-      if (subtitleSource === 'original') {
-        // If this is F5-TTS narration (not Gemini), enhance with timing information
-        if (narrationMethod === 'f5tts') {
-          // Get subtitles for enhancing narrations with timing information
-          const subtitlesForEnhancement = originalSubtitles || subtitles || [];
-
-          // Enhance F5-TTS narrations with timing information from subtitles
-          const enhancedNarrations = enhanceF5TTSNarrations(generationResults, subtitlesForEnhancement);
-          window.originalNarrations = [...enhancedNarrations];
-        } else {
-          // For Gemini narrations, just use as is (they already have timing info)
-          window.originalNarrations = [...generationResults];
-        }
-      } else if (subtitleSource === 'translated') {
-        // For translated narrations, similar enhancement if needed
-        if (narrationMethod === 'f5tts') {
-          // Get subtitles for enhancing narrations with timing information
-          const subtitlesForEnhancement = translatedSubtitles || [];
-
-          // Enhance F5-TTS narrations with timing information from subtitles
-          const enhancedNarrations = enhanceF5TTSNarrations(generationResults, subtitlesForEnhancement);
-          window.translatedNarrations = [...enhancedNarrations];
-        } else {
-          // For Gemini narrations, just use as is
-          window.translatedNarrations = [...generationResults];
-        }
-      }
-    }
-  }, [generationResults, subtitleSource, narrationMethod, originalSubtitles, translatedSubtitles, subtitles]);
+    const authority = activeAuthority();
+    if (authority === null || !Array.isArray(generationResults)) return;
+    const grouped = useGroupedSubtitles === true
+      && Array.isArray(groupedSubtitles)
+      && groupedSubtitles.length > 0;
+    const source = grouped
+      ? 'grouped'
+      : (subtitleSource === 'translated' ? 'translated' : 'original');
+    const cuePlan = grouped
+      ? groupedSubtitles
+      : (source === 'translated' ? translatedSubtitles : originalSubtitles || subtitles || []);
+    const results = narrationMethod === 'f5tts'
+      ? enhanceF5TTSNarrations(generationResults, cuePlan || [])
+      : generationResults;
+    publishProjectNarrationResults({
+      ...authority,
+      source,
+      results,
+    });
+  }, [
+    generationResults,
+    groupedSubtitles,
+    narrationMethod,
+    originalSubtitles,
+    subtitleSource,
+    subtitles,
+    translatedSubtitles,
+    useGroupedSubtitles,
+  ]);
 
   // Hydrate only an exact project/source-owned grouping. The durable store also consumes a pending
   // native delivery left behind by a crash after commit but before acknowledgement.
@@ -75,8 +85,6 @@ const useWindowStateManager = ({
     if (!Array.isArray(sourceSubtitles) || sourceSubtitles.length === 0) {
       setGroupedSubtitles(null);
       setUseGroupedSubtitles(false);
-      window.groupedSubtitles = null;
-      window.useGroupedSubtitles = false;
       return undefined;
     }
     let disposed = false;
@@ -89,20 +97,14 @@ const useWindowStateManager = ({
       if (loaded === null) {
         setGroupedSubtitles(null);
         setUseGroupedSubtitles(false);
-        window.groupedSubtitles = null;
-        window.useGroupedSubtitles = false;
         return;
       }
       setGroupedSubtitles(loaded.groupedSubtitles);
       setUseGroupedSubtitles(true);
-      window.groupedSubtitles = loaded.groupedSubtitles;
-      window.useGroupedSubtitles = true;
     }).catch((error) => {
       if (!disposed) {
         setGroupedSubtitles(null);
         setUseGroupedSubtitles(false);
-        window.groupedSubtitles = null;
-        window.useGroupedSubtitles = false;
         console.error('Could not hydrate project subtitle grouping:', error);
       }
     });
@@ -129,13 +131,17 @@ const useWindowStateManager = ({
     }
   }, [subtitleSource]);
 
-  // Effect to update window variables for subtitle grouping
+  // Publish grouping selection through the same project/revision authority as narration results.
   useEffect(() => {
-    // Make grouped subtitles available to the narration service
-    window.useGroupedSubtitles = useGroupedSubtitles;
-    window.groupedSubtitles = groupedSubtitles;
-
-  }, [useGroupedSubtitles, groupedSubtitles]);
+    const authority = activeAuthority();
+    if (authority === null) return;
+    publishProjectNarrationGrouping({
+      ...authority,
+      enabled: useGroupedSubtitles === true,
+      groupedCues: groupedSubtitles,
+      baseSource: subtitleSource === 'translated' ? 'translated' : 'original',
+    });
+  }, [groupedSubtitles, subtitleSource, useGroupedSubtitles]);
 
   // Clear grouped subtitles when the original timeline is fully cleared
   // This ensures the Narration planned list disappears when user deletes all subtitles via the timeline action
@@ -151,9 +157,6 @@ const useWindowStateManager = ({
             // Reset state
             setGroupedSubtitles(null);
             setUseGroupedSubtitles(false);
-            // Reset globals used by some result components
-            window.groupedSubtitles = null;
-            window.useGroupedSubtitles = false;
             // Also clear global originals that some components use as fallback
             window.originalSubtitles = [];
             window.subtitlesData = [];
@@ -197,24 +200,6 @@ const useWindowStateManager = ({
     };
   }, [subtitleSource, setGroupedSubtitles, setUseGroupedSubtitles]);
 
-  // Reset UI state when switching narration methods, but preserve results for aligned narration
-  useEffect(() => {
-    // IMPORTANT: We intentionally do NOT clear generationResults here
-    // This is to ensure that the aligned narration feature can still access
-    // the narration results when the user clicks the "Refresh Narration" button
-    // in the video player. If we cleared the results, the aligned narration
-    // would fail with "no narration results available" error.
-
-    // Ensure the global window objects have the latest narration results
-    // This is critical for the aligned narration feature to work
-    if (generationResults && generationResults.length > 0) {
-      if (subtitleSource === 'original') {
-        window.originalNarrations = [...generationResults];
-      } else if (subtitleSource === 'translated') {
-        window.translatedNarrations = [...generationResults];
-      }
-    }
-  }, [narrationMethod, generationResults, subtitleSource]);
 };
 
 export default useWindowStateManager;

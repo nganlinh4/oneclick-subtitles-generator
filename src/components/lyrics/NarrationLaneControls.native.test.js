@@ -7,6 +7,15 @@ vi.mock('../../platform/nativeNarrationArtifacts', () => ({
   editNativeNarration: vi.fn(),
 }));
 
+const narrationState = vi.hoisted(() => ({ results: [] }));
+const requestAlignedNarrationReset = vi.hoisted(() => vi.fn());
+vi.mock('../../platform/projectNarrationState', () => ({
+  getAllCurrentProjectNarrationResults: () => narrationState.results,
+}));
+vi.mock('../../platform/alignedNarrationSession', () => ({
+  requestAlignedNarrationReset,
+}));
+
 vi.mock('../common/LiquidGlass', () => ({
   default: ({ children }) => <div>{children}</div>,
 }));
@@ -43,20 +52,13 @@ describe('native narration lane artifact edits', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     window.isTauri = true;
-    window.originalNarrations = [narration];
-    window.translatedNarrations = [];
-    window.groupedNarrations = [];
-    window.resetAlignedNarration = vi.fn();
+    narrationState.results = [narration];
     originalFetch = global.fetch;
     global.fetch = vi.fn();
   });
 
   afterEach(() => {
     delete window.isTauri;
-    delete window.originalNarrations;
-    delete window.translatedNarrations;
-    delete window.groupedNarrations;
-    delete window.resetAlignedNarration;
     global.fetch = originalFetch;
   });
 
@@ -76,7 +78,7 @@ describe('native narration lane artifact edits', () => {
     expect(edited).toHaveBeenCalledWith(expect.objectContaining({
       detail: { previousArtifactId: ARTIFACT_ID, result: replacement },
     }));
-    expect(window.resetAlignedNarration).toHaveBeenCalledTimes(1);
+    expect(requestAlignedNarrationReset).toHaveBeenCalledTimes(1);
     expect(global.fetch).not.toHaveBeenCalled();
     window.removeEventListener('native-narration-artifact-edited', edited);
   });
@@ -98,7 +100,7 @@ describe('native narration lane artifact edits', () => {
     await waitFor(() => expect(screen.getByRole('button', { name: /auto arrange/i })).toBeEnabled());
     expect(edited).not.toHaveBeenCalled();
     expect(refreshed).not.toHaveBeenCalled();
-    expect(window.resetAlignedNarration).not.toHaveBeenCalled();
+    expect(requestAlignedNarrationReset).not.toHaveBeenCalled();
     expect(global.fetch).not.toHaveBeenCalled();
     window.removeEventListener('native-narration-artifact-edited', edited);
     window.removeEventListener('request-narration-refresh', refreshed);

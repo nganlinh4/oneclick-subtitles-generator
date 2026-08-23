@@ -1,6 +1,9 @@
 import { isDesktopRuntime } from '../platform/desktopRuntime';
 import { flushDurableLyricsHistory } from '../platform/durableLyricsCheckpoint';
-import { getActiveProjectSnapshot } from '../platform/projectService';
+import {
+  getActiveProjectSnapshot,
+  subscribeToActiveProject,
+} from '../platform/projectService';
 import {
   nativeNarrationAlignmentService,
   normalizeAlignmentRequest,
@@ -16,22 +19,13 @@ import {
   buildStrictNativeNarrationPlan,
   createNativeNarrationPlanKey,
 } from '../utils/narrationAlignmentUtils';
+import {
+  createEmptyAlignedNarrationCache,
+  publishAlignedNarrationCache,
+  registerAlignedNarrationResetOwner,
+} from '../platform/alignedNarrationSession';
 
-const emptyCache = () => ({
-  blob: null,
-  url: null,
-  filename: null,
-  mode: null,
-  previewPlan: null,
-  nativeArtifactId: null,
-  nativePlaybackId: null,
-  nativeJobId: null,
-  projectId: null,
-  projectStateVersion: null,
-  alignmentKey: null,
-  timestamp: null,
-  subtitleTimestamps: {},
-});
+const emptyCache = createEmptyAlignedNarrationCache;
 
 let cache = emptyCache();
 let audioElement = null;
@@ -47,15 +41,9 @@ const alignmentRecoveryError = (code, message, retryable, cause) => {
   return error;
 };
 
-const syncWindowState = () => {
-  if (typeof window === 'undefined') return;
-  window.alignedNarrationCache = cache;
-  window.alignedAudioElement = audioElement;
-};
-
 const setCache = (next) => {
   cache = next;
-  syncWindowState();
+  publishAlignedNarrationCache(next);
 };
 
 const clearRecentAlignment = () => {
@@ -117,7 +105,6 @@ const resetAudioElement = (clearSource = true) => {
     // Cleanup remains best-effort if WebView audio teardown races navigation.
   }
   audioElement = null;
-  syncWindowState();
 };
 
 const ensureAudioElement = () => {
@@ -134,7 +121,6 @@ const ensureAudioElement = () => {
   }
   audioElement.playbackRate = playbackRate;
   audioElement.volume = volume;
-  syncWindowState();
   return audioElement;
 };
 
@@ -443,8 +429,15 @@ export const getAlignedNarrationArtifactIdForPlan = (plan) => (
   cacheMatchesPlan(plan) ? cache.nativeArtifactId : null
 );
 
+registerAlignedNarrationResetOwner(resetAlignedNarration);
+subscribeToActiveProject((project) => {
+  if (cache.nativePlaybackId
+      && (project?.metadata?.id !== cache.projectId
+        || project.stateVersion !== cache.projectStateVersion)) {
+    resetAlignedNarration();
+  }
+});
 if (typeof window !== 'undefined') {
-  window.resetAlignedNarration = resetAlignedNarration;
   window.addEventListener('subtitle-timing-changed', resetAlignedNarration);
 }
-syncWindowState();
+publishAlignedNarrationCache(cache);

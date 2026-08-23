@@ -45,8 +45,6 @@ const params = () => ({
 });
 
 beforeEach(() => {
-  delete window.groupedSubtitles;
-  delete window.useGroupedSubtitles;
   vi.clearAllMocks();
   loadProjectSubtitleGrouping.mockResolvedValue(null);
   captureProjectSubtitleGrouping.mockResolvedValue({ sourceRows: SOURCE });
@@ -73,8 +71,8 @@ it('publishes state only after durable persistence and delivery acknowledgement'
 
   await expect(handleGroupingToggle(true, input)).resolves.toBe(true);
   expect(order).toEqual(['persist', 'ack', 'publish']);
-  expect(window.groupedSubtitles).toEqual(GROUPED);
-  expect(window.useGroupedSubtitles).toBe(true);
+  expect(input.setGroupedSubtitles).toHaveBeenCalledWith(GROUPED);
+  expect(input.setUseGroupedSubtitles).toHaveBeenCalledWith(true);
 });
 
 it.each([
@@ -86,8 +84,6 @@ it.each([
 
   await expect(handleGroupingToggle(true, input)).resolves.toBe(false);
   expect(input.setGroupedSubtitles).not.toHaveBeenCalled();
-  expect(window.groupedSubtitles).toBeUndefined();
-  expect(window.useGroupedSubtitles).toBeUndefined();
 });
 
 it('reuses a durable crash-recovery record without calling Gemini', async () => {
@@ -99,15 +95,12 @@ it('reuses a durable crash-recovery record without calling Gemini', async () => 
   expect(input.setGroupedSubtitles).toHaveBeenCalledWith(GROUPED);
 });
 
-it('durably clears grouping before disabling its compatibility projection', async () => {
+it('durably clears grouping before disabling the visible project state', async () => {
   const input = params();
   input.groupedSubtitles = GROUPED;
-  window.groupedSubtitles = GROUPED;
-  window.useGroupedSubtitles = true;
 
   await expect(handleGroupingToggle(false, input)).resolves.toBe(true);
   expect(clearProjectSubtitleGrouping).toHaveBeenCalledBefore(input.setGroupedSubtitles);
   expect(input.setGroupedSubtitles).toHaveBeenCalledWith(null);
-  expect(window.groupedSubtitles).toBeNull();
-  expect(window.useGroupedSubtitles).toBe(false);
+  expect(input.setUseGroupedSubtitles).toHaveBeenCalledWith(false);
 });

@@ -17,6 +17,7 @@ import {
 } from '../../../platform/nativeNarrationFlow';
 import { getActiveProjectSnapshot } from '../../../platform/projectService';
 import { saveProjectNarration } from '../../../platform/projectNarrationStore';
+import { requestAlignedNarrationReset } from '../../../platform/alignedNarrationSession';
 import {
   getF5TtsLanguageSupport,
   getNativeNarrationArtifactId,
@@ -464,7 +465,7 @@ const useNativeNarrationController = (state) => {
     if (!subtitle) return false;
     current.setRetryingSubtitleId(subtitleId);
     try {
-      if (typeof window.resetAlignedNarration === 'function') window.resetAlignedNarration();
+      requestAlignedNarrationReset();
       return await run(method, [subtitle], { replace: false });
     } finally {
       current.setRetryingSubtitleId(null);
