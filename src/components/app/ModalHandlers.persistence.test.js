@@ -127,7 +127,6 @@ test('uses the active file project and publishes user subtitles only after persi
 
 test('clears timing-generation enablement only after the empty native write succeeds', async () => {
   localStorage.setItem('current_file_cache_id', CACHE);
-  localStorage.setItem('use_user_provided_subtitles', 'true');
   const state = buildState();
 
   await useModalHandlers(state).handleUserSubtitlesAdd('   ');
@@ -137,12 +136,10 @@ test('clears timing-generation enablement only after the empty native write succ
   });
   expect(state.setUserProvidedSubtitlesState).toHaveBeenCalledWith('   ');
   expect(state.setUseUserProvidedSubtitles).toHaveBeenCalledWith(false);
-  expect(localStorage.getItem('use_user_provided_subtitles')).toBe('false');
 });
 
 test('does not change timing-generation enablement when the native text write fails', async () => {
   localStorage.setItem('current_file_cache_id', CACHE);
-  localStorage.setItem('use_user_provided_subtitles', 'true');
   setUserProvidedSubtitlesForCache.mockRejectedValueOnce(new Error('native write failed'));
   const state = buildState();
 
@@ -151,12 +148,10 @@ test('does not change timing-generation enablement when the native text write fa
 
   expect(state.setUserProvidedSubtitlesState).not.toHaveBeenCalled();
   expect(state.setUseUserProvidedSubtitles).not.toHaveBeenCalled();
-  expect(localStorage.getItem('use_user_provided_subtitles')).toBe('true');
 });
 
 test('does not publish user subtitles or enablement when the alias remaps after writing', async () => {
   localStorage.setItem('current_file_cache_id', CACHE);
-  localStorage.setItem('use_user_provided_subtitles', 'false');
   resolveProjectForCache
     .mockResolvedValueOnce({ cacheId: CACHE, projectId: PROJECT })
     .mockResolvedValueOnce({ cacheId: CACHE, projectId: 'remapped-project' });
@@ -168,5 +163,4 @@ test('does not publish user subtitles or enablement when the alias remaps after 
   expect(setUserProvidedSubtitlesForCache).toHaveBeenCalledTimes(1);
   expect(state.setUserProvidedSubtitlesState).not.toHaveBeenCalled();
   expect(state.setUseUserProvidedSubtitles).not.toHaveBeenCalled();
-  expect(localStorage.getItem('use_user_provided_subtitles')).toBe('false');
 });

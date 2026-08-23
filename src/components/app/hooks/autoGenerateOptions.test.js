@@ -64,7 +64,6 @@ test('carries timing-generation subtitles and the active prompt/rules snapshot',
   const context = { runId: 'run-1' };
   const result = buildAutoGenerateOptions({
     storage: storage({
-      use_user_provided_subtitles: 'true',
       video_processing_prompt_preset: 'describe-video',
       video_processing_use_transcription_rules: 'true',
       transcription_prompt: 'My {contentType} prompt',
@@ -93,6 +92,33 @@ test('carries timing-generation subtitles and the active prompt/rules snapshot',
     transcriptionRules: { atmosphere: 'studio' },
     useOutsideResultsContext: false,
   }));
+});
+
+test('uses only the project-owned subtitle text, regardless of a stale browser flag', () => {
+  const common = {
+    videoFile: { assetId: 'asset-1', type: 'video/mp4' },
+    duration: 12,
+  };
+  const withProjectText = buildAutoGenerateOptions({
+    ...common,
+    storage: storage({ use_user_provided_subtitles: 'false' }),
+    userProvidedSubtitles: 'Durable project line',
+  });
+  const withoutProjectText = buildAutoGenerateOptions({
+    ...common,
+    storage: storage({ use_user_provided_subtitles: 'true' }),
+    userProvidedSubtitles: '',
+  });
+
+  expect(withProjectText).toMatchObject({
+    useUserProvidedSubtitles: true,
+    userProvidedSubtitles: 'Durable project line',
+    promptPreset: 'timing-generation',
+  });
+  expect(withoutProjectText).toMatchObject({
+    useUserProvidedSubtitles: false,
+    userProvidedSubtitles: undefined,
+  });
 });
 
 test('forces hosted audio into one Gemini request and clears stale outside context', () => {

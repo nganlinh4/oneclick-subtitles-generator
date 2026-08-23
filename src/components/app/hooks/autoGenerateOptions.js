@@ -64,8 +64,7 @@ export const buildAutoGenerateOptions = ({
     30,
   ));
   const method = isVercelMode ? 'new' : 'old';
-  const useProvided = readStorage(storage, 'use_user_provided_subtitles') === 'true'
-    && typeof userProvidedSubtitles === 'string'
+  const useProvided = typeof userProvidedSubtitles === 'string'
     && userProvidedSubtitles.trim().length > 0;
   const storedPreset = readStorage(storage, 'video_processing_prompt_preset') || 'settings';
   const promptPreset = useProvided ? 'timing-generation' : storedPreset;

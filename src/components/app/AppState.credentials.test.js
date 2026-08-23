@@ -75,6 +75,7 @@ beforeEach(() => {
     value: () => [],
   });
   subscribeCredentialState.mockImplementation(() => () => undefined);
+  initializeCredentialState.mockResolvedValue({ initialized: false, store: 'unavailable' });
   getCredentialAvailability.mockImplementation((snapshot, { useOAuth } = {}) => {
     const ready = new Set(
       snapshot.store === 'available'
@@ -87,6 +88,29 @@ beforeEach(() => {
       genius: ready.has('geniusAccessToken'),
     };
   });
+});
+
+it('derives timing-generation enablement from the hydrated project text only', async () => {
+  localStorage.setItem('use_user_provided_subtitles', 'true');
+  const view = renderAppState();
+
+  expect(view.result.current.useUserProvidedSubtitles).toBe(false);
+  await act(async () => {
+    window.dispatchEvent(new CustomEvent('userProvidedSubtitlesUpdated', {
+      detail: { subtitlesText: 'Project-owned SRT' },
+    }));
+  });
+  expect(view.result.current.userProvidedSubtitles).toBe('Project-owned SRT');
+  expect(view.result.current.useUserProvidedSubtitles).toBe(true);
+
+  await act(async () => {
+    window.dispatchEvent(new CustomEvent('userProvidedSubtitlesUpdated', {
+      detail: { subtitlesText: '' },
+    }));
+  });
+  expect(view.result.current.userProvidedSubtitles).toBe('');
+  expect(view.result.current.useUserProvidedSubtitles).toBe(false);
+  view.unmount();
 });
 
 it('hydrates native API availability only from safe status metadata', async () => {

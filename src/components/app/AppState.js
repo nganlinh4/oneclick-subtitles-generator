@@ -15,6 +15,10 @@ import {
 import { useNativeMediaSessionHydration } from '../../hooks/useNativeMediaSessionHydration';
 import { readDownloadCookiePreference } from '../../platform/downloadCookiePreference';
 
+const hasProjectSubtitles = (value) => (
+  typeof value === 'string' && value.trim() !== ''
+);
+
 /**
  * Custom hook for managing application state
  */
@@ -80,7 +84,7 @@ export const useAppState = () => {
 
   // Track whether user-provided subtitles are being used
   const [useUserProvidedSubtitles, setUseUserProvidedSubtitles] = useState(() => {
-    return localStorage.getItem('use_user_provided_subtitles') === 'true';
+    return hasProjectSubtitles(getUserProvidedSubtitlesSync());
   });
 
   // Transcription rules state
@@ -95,7 +99,9 @@ export const useAppState = () => {
   // Keep the existing state contract in sync without changing any rendered structure.
   useEffect(() => {
     const handleUserSubtitlesUpdate = (event) => {
-      setUserProvidedSubtitlesState(event.detail?.subtitlesText || '');
+      const subtitlesText = event.detail?.subtitlesText || '';
+      setUserProvidedSubtitlesState(subtitlesText);
+      setUseUserProvidedSubtitles(hasProjectSubtitles(subtitlesText));
     };
     const handleRulesUpdate = (event) => {
       setTranscriptionRulesState(event.detail?.rules ?? null);

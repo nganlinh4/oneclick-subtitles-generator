@@ -128,7 +128,6 @@ export const useModalHandlers = (appState) => {
     const hasProvidedSubtitles = typeof subtitlesText === 'string'
       && subtitlesText.trim() !== '';
     setUseUserProvidedSubtitles(hasProvidedSubtitles);
-    localStorage.setItem('use_user_provided_subtitles', String(hasProvidedSubtitles));
 
   };
 
