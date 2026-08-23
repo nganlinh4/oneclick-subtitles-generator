@@ -1,7 +1,6 @@
 import { resetGeminiButtonState } from "../../../utils/geminiEffects";
 import { downloadAndPrepareYouTubeVideo } from "../VideoProcessingHandlers";
 import { isDesktopRuntime } from "../../../platform/runtimeEnvironment";
-import { clearProjectSubtitles } from "../../../platform/subtitleProjectStore";
 import {
   assertAutoGenerationContextCurrent,
   isAutoGenerationCompletion,
@@ -32,7 +31,6 @@ export const createProcessingHandlers = ({
   retryGeneration,
   isRetrying,
   setStatus,
-  setSubtitlesData,
   setIsDownloading,
   setDownloadProgress,
   setCurrentDownloadId,
@@ -218,7 +216,7 @@ export const createProcessingHandlers = ({
     // Prevent multiple simultaneous retries
     if (isRetrying) {
       dbg("FORCE RETRY: Already retrying, ignoring duplicate call");
-      return;
+      return false;
     }
 
     // Only check for API key - this is the minimum requirement
@@ -228,7 +226,7 @@ export const createProcessingHandlers = ({
         message: t("errors.apiKeyRequired", "Gemini API key is required"),
         type: "error",
       });
-      return;
+      return false;
     }
 
     dbg("FORCE RETRY: Setting retrying state to true");
@@ -256,6 +254,7 @@ export const createProcessingHandlers = ({
             type: 'error',
           });
           setIsRetrying(false);
+          resetGeminiButtonState();
           return false;
         }
       }
@@ -282,6 +281,7 @@ export const createProcessingHandlers = ({
         type: 'error',
       });
       setIsRetrying(false);
+      resetGeminiButtonState();
       return false;
     }
 
@@ -342,23 +342,19 @@ export const createProcessingHandlers = ({
             ),
             type: "error",
           });
-          // Reset retrying state
-          setIsRetrying(false);
-          return;
+          return false;
         }
 
         // FORCE RETRY: Always retry generating subtitles, ignore existing data
         dbg(
           "FORCE RETRY: Forcing subtitle regeneration for downloaded video..."
         );
-        await retryGeneration(input, inputType, apiKeysSet, subtitleOptions);
+        return await retryGeneration(input, inputType, apiKeysSet, subtitleOptions);
       } catch (error) {
         console.error("Error downloading video:", error);
         // Reset downloading state
         setIsDownloading(false);
         setDownloadProgress(0);
-        // Reset retrying state
-        setIsRetrying(false);
         setStatus({
           message: `${t(
             "errors.videoDownloadFailed",
@@ -366,7 +362,10 @@ export const createProcessingHandlers = ({
           )}: ${error.message}`,
           type: "error",
         });
-        return;
+        return false;
+      } finally {
+        setIsRetrying(false);
+        resetGeminiButtonState();
       }
     } else if (activeTab === "file-upload" && uploadedFile) {
       input = uploadedFile;
@@ -391,12 +390,12 @@ export const createProcessingHandlers = ({
             ),
             type: "error",
           });
-          return;
+          return false;
         }
 
         // FORCE RETRY: Always retry generating subtitles, ignore existing data
         dbg("FORCE RETRY: Forcing subtitle regeneration...");
-        await retryGeneration(input, inputType, apiKeysSet, subtitleOptions);
+        return await retryGeneration(input, inputType, apiKeysSet, subtitleOptions);
       } finally {
         // Reset retrying state regardless of success or failure
         setIsRetrying(false);
@@ -408,32 +407,9 @@ export const createProcessingHandlers = ({
       dbg("FORCE RETRY: Using direct retry method");
 
       try {
-        // First, delete any existing subtitle files to force regeneration
-        dbg("FORCE RETRY: Deleting existing subtitle files...");
-        try {
-          if (isDesktopRuntime()) {
-            const capability = activeMediaCapability ?? await resolveActiveNativeMedia();
-            await clearProjectSubtitles(capability.cacheId, {
-              expectedProjectId: capability.projectId,
-            });
-            dbg("FORCE RETRY: Subtitle files deleted successfully");
-          } else {
-            dbg("FORCE RETRY: Native subtitle cleanup is unavailable, continuing...");
-          }
-        } catch (deleteError) {
-          dbg(
-            "FORCE RETRY: Error deleting files, but continuing...",
-            deleteError
-          );
-        }
-
-        // Clear any cached subtitles data and preview section
-        dbg("FORCE RETRY: Clearing all subtitle data and preview...");
-        setSubtitlesData(null);
-        localStorage.removeItem("subtitles_data");
-        localStorage.removeItem("latest_segment_subtitles");
-
-        // Clear status to remove any success messages
+        // Regeneration is a replacement transaction. Keep the acknowledged project track and
+        // preview visible until retryGeneration has generated, validated, and durably saved its
+        // replacement; failure must leave the last good checkpoint intact.
         setStatus({
           message: t("output.retrying", "Retrying subtitle generation..."),
           type: "loading",
@@ -454,9 +430,7 @@ export const createProcessingHandlers = ({
         });
 
         // Call retryGeneration directly - it will handle finding the right input
-        await retryGeneration(input, inputType, apiKeysSet, subtitleOptions);
-
-        dbg("FORCE RETRY: retryGeneration completed");
+        return await retryGeneration(input, inputType, apiKeysSet, subtitleOptions);
       } catch (error) {
         console.error("FORCE RETRY: Error during direct retry:", error);
         setStatus({
@@ -465,6 +439,7 @@ export const createProcessingHandlers = ({
           }`,
           type: "error",
         });
+        return false;
       } finally {
         // Reset retrying state regardless of success or failure
         setIsRetrying(false);

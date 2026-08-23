@@ -124,7 +124,8 @@ test('streams a full native retry and preserves the exact inspected duration', a
     expectedProjectStateVersion: 2,
   }));
   expect(processGeminiSegment.mock.calls[0][3].onStreamingUpdate).toEqual(expect.any(Function));
-  expect(setSubtitlesData).toHaveBeenCalledWith([{ start: 0, end: 1, text: 'partial' }]);
+  expect(setSubtitlesData).not.toHaveBeenCalledWith([{ start: 0, end: 1, text: 'partial' }]);
+  expect(setSubtitlesData).toHaveBeenCalledTimes(1);
   expect(setSubtitlesData).toHaveBeenLastCalledWith([{ start: 0, end: 2, text: 'complete' }]);
   expect(currentSourceFileRef.current).toBe(media);
 });
@@ -160,11 +161,12 @@ test('reports a durable-save failure separately from Gemini generation', async (
   });
   saveSubtitlesToCache.mockResolvedValueOnce({ success: false, error: failure });
   const setStatus = vi.fn();
+  const setSubtitlesData = vi.fn();
   const { result } = renderHook(() => useSubtitlesRetryGeneration({
     t: (_key, fallback) => fallback,
     setStatus,
     setIsGenerating: vi.fn(),
-    setSubtitlesData: vi.fn(),
+    setSubtitlesData,
     currentSourceFileRef: { current: null },
   }));
 
@@ -178,4 +180,5 @@ test('reports a durable-save failure separately from Gemini generation', async (
     message: 'Subtitles were generated, but they could not be saved.',
     type: 'error',
   });
+  expect(setSubtitlesData).not.toHaveBeenCalled();
 });

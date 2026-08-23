@@ -132,7 +132,6 @@ export const useAppHandlers = (appState) => {
       retryGeneration,
       isRetrying,
       setStatus,
-      setSubtitlesData,
       setIsDownloading,
       setDownloadProgress,
       setCurrentDownloadId,

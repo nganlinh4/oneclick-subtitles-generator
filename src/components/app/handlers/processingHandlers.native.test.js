@@ -1,14 +1,11 @@
 import { isDesktopRuntime } from '../../../platform/runtimeEnvironment';
-import { clearProjectSubtitles } from '../../../platform/subtitleProjectStore';
 import { resolveActiveNativeMedia } from '../../../platform/activeNativeMedia';
+import { resetGeminiButtonState } from '../../../utils/geminiEffects';
+import { downloadAndPrepareYouTubeVideo } from '../VideoProcessingHandlers';
 import { createProcessingHandlers } from './processingHandlers';
 
 vi.mock('../../../platform/runtimeEnvironment', () => ({
   isDesktopRuntime: vi.fn(),
-}));
-vi.mock('../../../platform/subtitleProjectStore', () => ({
-  clearProjectSubtitles: vi.fn(),
-  resolveProjectForCache: vi.fn(),
 }));
 vi.mock('../../../platform/activeNativeMedia', () => ({
   resolveActiveNativeMedia: vi.fn(),
@@ -42,10 +39,9 @@ const buildHandlers = (overrides = {}) => {
     userProvidedSubtitles: null,
     useUserProvidedSubtitles: false,
     generateSubtitles: vi.fn(),
-    retryGeneration: vi.fn().mockResolvedValue(undefined),
+    retryGeneration: vi.fn().mockResolvedValue(true),
     isRetrying: false,
     setStatus: vi.fn(),
-    setSubtitlesData: vi.fn(),
     setIsDownloading: vi.fn(),
     setDownloadProgress: vi.fn(),
     setCurrentDownloadId: vi.fn(),
@@ -66,8 +62,9 @@ const buildHandlers = (overrides = {}) => {
 
 beforeEach(() => {
   isDesktopRuntime.mockReset();
-  clearProjectSubtitles.mockReset().mockResolvedValue(true);
   resolveActiveNativeMedia.mockReset();
+  downloadAndPrepareYouTubeVideo.mockReset();
+  resetGeminiButtonState.mockReset();
   global.fetch = vi.fn();
   localStorage.clear();
   delete window.subtitlesData;
@@ -77,7 +74,7 @@ afterAll(() => {
   global.fetch = originalFetch;
 });
 
-test('desktop retry clears the durable project track and never reaches legacy HTTP', async () => {
+test('desktop retry preserves the durable project track until replacement succeeds', async () => {
   isDesktopRuntime.mockReturnValue(true);
   const media = Object.freeze({ __nativeMedia: true, assetId: 'asset-id' });
   resolveActiveNativeMedia.mockResolvedValue({
@@ -85,11 +82,8 @@ test('desktop retry clears the durable project track and never reaches legacy HT
   });
   const { values, handlers } = buildHandlers();
 
-  await handlers.handleRetryGeneration();
+  await expect(handlers.handleRetryGeneration()).resolves.toBe(true);
 
-  expect(clearProjectSubtitles).toHaveBeenCalledWith('cache-id', {
-    expectedProjectId: 'project-id',
-  });
   expect(global.fetch).not.toHaveBeenCalled();
   expect(values.retryGeneration).toHaveBeenCalledWith(
     media,
@@ -97,7 +91,29 @@ test('desktop retry clears the durable project track and never reaches legacy HT
     { gemini: true },
     {}
   );
-  expect(values.setSubtitlesData).toHaveBeenCalledWith(null);
+});
+
+test('successful URL retry publishes its outcome and always releases retry lifecycle state', async () => {
+  isDesktopRuntime.mockReturnValue(true);
+  resolveActiveNativeMedia.mockRejectedValue(new Error('not downloaded yet'));
+  const downloaded = Object.freeze({ __nativeMedia: true, assetId: 'downloaded' });
+  downloadAndPrepareYouTubeVideo.mockResolvedValue(downloaded);
+  const { values, handlers } = buildHandlers({
+    activeTab: 'unified-url',
+    selectedVideo: { url: 'https://example.test/video' },
+  });
+
+  await expect(handlers.handleRetryGeneration()).resolves.toBe(true);
+
+  expect(values.retryGeneration).toHaveBeenCalledWith(
+    downloaded,
+    'file-upload',
+    { gemini: true },
+    {},
+  );
+  expect(values.setIsRetrying).toHaveBeenNthCalledWith(1, true);
+  expect(values.setIsRetrying).toHaveBeenLastCalledWith(false);
+  expect(resetGeminiButtonState).toHaveBeenCalledTimes(1);
 });
 
 test('browser retry never revives the retired localhost deletion request', async () => {
@@ -107,7 +123,6 @@ test('browser retry never revives the retired localhost deletion request', async
 
   await handlers.handleRetryGeneration();
 
-  expect(clearProjectSubtitles).not.toHaveBeenCalled();
   expect(global.fetch).not.toHaveBeenCalled();
 });
 

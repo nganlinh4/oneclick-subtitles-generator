@@ -85,6 +85,24 @@ export const useSubtitlesRetryGeneration = ({
                     nativeMediaCapability = await refreshActiveNativeMedia(nativeMediaCapability);
                 }
             };
+            const browserStreamingHandler = nativeMediaCapability === null
+                ? createFullMediaStreamingHandler(setSubtitlesData, setStatus)
+                : null;
+            const publishStagedStreamingProgress = (streamingSubtitles, isStreaming) => {
+                if (browserStreamingHandler !== null) {
+                    browserStreamingHandler(streamingSubtitles, isStreaming);
+                    return;
+                }
+                // Native retries replace an acknowledged Rust checkpoint. Streaming rows are
+                // uncommitted work and must not replace the visible track before the exact-project
+                // save below succeeds; publish bounded progress only.
+                if (isStreaming && Array.isArray(streamingSubtitles)) {
+                    setStatus({
+                        message: t('output.streamingProgress', 'Streaming...'),
+                        type: 'loading',
+                    });
+                }
+            };
             const cacheId = await resolveCacheIdForGeneration({
                 input,
                 inputType,
@@ -190,10 +208,7 @@ export const useSubtitlesRetryGeneration = ({
                             }),
                             {
                                 onStatus: setStatus,
-                                onStreamingUpdate: createFullMediaStreamingHandler(
-                                    setSubtitlesData,
-                                    setStatus
-                                ),
+                                onStreamingUpdate: publishStagedStreamingProgress,
                                 t
                             }
                         );
@@ -267,7 +282,7 @@ export const useSubtitlesRetryGeneration = ({
                                 forceInline: true,
                                 runId
                             }),
-                            { onStatus: setStatus, onStreamingUpdate: (streamingSubtitles) => setSubtitlesData(streamingSubtitles), t }
+                            { onStatus: setStatus, onStreamingUpdate: publishStagedStreamingProgress, t }
                         );
                     } else {
                         // Fallback: proceed without forcing inline (no re-download)
