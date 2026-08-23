@@ -12,6 +12,7 @@ const mocks = vi.hoisted(() => ({
   assertDurable: vi.fn(),
   refreshActiveMedia: vi.fn(),
   resolveActiveMedia: vi.fn(),
+  activeCacheId: 'cache-1',
   cacheCandidate: { cacheHit: false, subtitles: null },
   emptySpeechPolicy: 'provenSilence',
 }));
@@ -88,10 +89,10 @@ vi.mock('../platform/projectService', async (importOriginal) => ({
   })),
 }));
 vi.mock('../utils/transcriptionRulesStore', () => ({
-  getCurrentCacheId: vi.fn(() => 'cache-1'),
+  getCurrentCacheId: vi.fn(() => mocks.activeCacheId),
 }));
 vi.mock('../utils/userSubtitlesStore', () => ({
-  getCurrentCacheId: vi.fn(() => 'cache-1'),
+  getCurrentCacheId: vi.fn(() => mocks.activeCacheId),
 }));
 vi.mock('../services/lifecycleOrchestrator', () => ({
   checkpointBeforeUpdate: mocks.checkpointBeforeUpdate,
@@ -155,6 +156,7 @@ const optionsFor = (context) => ({
 beforeEach(() => {
   vi.clearAllMocks();
   mocks.emptySpeechPolicy = 'provenSilence';
+  mocks.activeCacheId = 'cache-1';
   mocks.cacheCandidate = { cacheHit: false, subtitles: null };
   mocks.assertCurrent.mockImplementation((context) => {
     if (context.current !== true) throw new Error('ownership lost');
@@ -320,6 +322,49 @@ test('a cached automatic result stays nonterminal until its renewed durable rece
   expect(result.current.subtitlesData).toEqual(rows);
   expect(mocks.publishStreamingComplete).not.toHaveBeenCalled();
   expect(mocks.loadCachedSubtitlesIfAvailable).not.toHaveBeenCalled();
+});
+
+test('an in-flight cache read cannot publish project A rows after project B activates', async () => {
+  const projectBRows = [{ id: 9, start: 0, end: 1, text: 'Project B' }];
+  let releaseCacheRead;
+  mocks.loadCachedSubtitlesIfAvailable.mockReturnValue(new Promise((resolve) => {
+    releaseCacheRead = resolve;
+  }));
+  const { result } = renderHook(() => useSubtitles((_key, fallback) => fallback ?? _key));
+  let terminal;
+
+  await act(async () => {
+    terminal = result.current.generateSubtitles(
+      media,
+      'file-upload',
+      { gemini: true },
+      {
+        method: 'old',
+        model: 'gemini-3.1-flash-lite',
+        fps: 1,
+        mediaResolution: 'low',
+        generationScope: 'full-media',
+      },
+    );
+    await vi.waitFor(() => expect(mocks.loadCachedSubtitlesIfAvailable).toHaveBeenCalled());
+  });
+
+  act(() => {
+    mocks.activeCacheId = 'cache-2';
+    result.current.setSubtitlesData(projectBRows);
+  });
+  await act(async () => {
+    releaseCacheRead({
+      cacheHit: true,
+      cachedSubtitles: [{ id: 1, start: 0, end: 1, text: 'Stale project A' }],
+    });
+    await terminal;
+  });
+
+  await expect(terminal).resolves.toBe(false);
+  expect(result.current.subtitlesData).toEqual(projectBRows);
+  expect(mocks.processGeminiSegment).not.toHaveBeenCalled();
+  expect(mocks.saveSubtitlesToCache).not.toHaveBeenCalled();
 });
 
 test('a rejected cached checkpoint never publishes its private preparation candidate', async () => {

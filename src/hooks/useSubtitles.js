@@ -376,15 +376,19 @@ export const useSubtitles = (t) => {
                 cachedSubtitles = candidate.subtitles;
                 if (!cacheHit) setGenerationSubtitlesData(null);
             } else {
+                await validateDeliveryOwnership(deliveryContext);
                 ({ cacheHit, cachedSubtitles } = await loadCachedSubtitlesIfAvailable({
                     cacheId,
                     segment,
                     currentVideoUrl,
-                    t,
-                    setSubtitlesData: setGenerationSubtitlesData,
-                    setStatus: setGenerationStatus,
                     debugLog
                 }));
+                await validateDeliveryOwnership(deliveryContext);
+                if (cacheHit) {
+                    setGenerationSubtitlesData(cachedSubtitles);
+                } else if (!segment) {
+                    setGenerationSubtitlesData(null);
+                }
             }
             if (cacheHit) {
                 if (autoRunContext) {

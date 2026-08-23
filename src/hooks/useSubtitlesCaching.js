@@ -91,12 +91,11 @@ export const resolveCacheIdForGeneration = async ({
 };
 
 /**
- * Check the cache and, when subtitles are found, load them immediately.
+ * Read a cache candidate without mutating presentation state.
  *
- * On a cache hit it loads subtitles and signals an early return; the generation
- * transaction owns terminal status publication after any required durability
- * receipt. On a miss it clears the timeline for fresh generation. For segment
- * processing the cache check is skipped and existing subtitles are kept.
+ * The generation transaction validates exact project ownership on both sides of this async read,
+ * then owns any hit/miss presentation change. Keeping this helper pure prevents an A-to-B project
+ * switch from publishing A's rows or A's miss into B.
  *
  * @returns {Promise<{cacheHit: boolean}>} cacheHit true means the caller should return true early
  */
@@ -104,7 +103,6 @@ export const loadCachedSubtitlesIfAvailable = async ({
     cacheId,
     segment,
     currentVideoUrl,
-    setSubtitlesData,
     debugLog
 }) => {
     if (cacheId && !segment) {
@@ -116,20 +114,14 @@ export const loadCachedSubtitlesIfAvailable = async ({
         });
 
         if (cachedSubtitles) {
-            debugLog('[Subtitle Generation] Loading cached subtitles immediately for timeline display');
-            setSubtitlesData(cachedSubtitles);
             return { cacheHit: true, cachedSubtitles };
         }
-        // If no cached subtitles found, clear the timeline for fresh generation
-        debugLog('[Subtitle Generation] No cached subtitles found, clearing timeline for fresh generation');
-        setSubtitlesData(null);
+        debugLog('[Subtitle Generation] No cached subtitles found');
     } else if (segment) {
         debugLog('[Subtitle Generation] Skipping cache check for segment processing - generating fresh subtitles');
         // For segment processing, keep existing subtitles (don't clear)
     } else {
-        // No cache ID available, clear timeline for fresh generation
-        debugLog('[Subtitle Generation] No cache ID available, clearing timeline for fresh generation');
-        setSubtitlesData(null);
+        debugLog('[Subtitle Generation] No cache ID available');
     }
 
     return { cacheHit: false, cachedSubtitles: null };
