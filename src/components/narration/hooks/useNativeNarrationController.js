@@ -327,6 +327,22 @@ const useNativeNarrationController = (state) => {
     const requireProjectOwnership = () => {
       if (!ownsProjectAuthority(authority)) throw activeProjectChanged();
     };
+    const publishProjectChanged = () => {
+      const latest = getActiveProjectSnapshot();
+      if (latest?.metadata?.id === authority.projectId) {
+        current.setGenerationResults((previous) => finalizeRequestedResults(
+          previous,
+          [],
+          subtitles,
+          'activeProjectChanged',
+        ));
+        current.setError(current.t(
+          'errors.activeProjectChanged',
+          'The active subtitle project changed.',
+        ));
+      }
+      return false;
+    };
 
     current.setIsGenerating(true);
     current.setGenerationResultSource(source);
@@ -406,20 +422,7 @@ const useNativeNarrationController = (state) => {
           || error?.code === 'activeProjectChanged'
           || error?.code === 'projectChanged'
           || error?.code === 'staleProjectVersion') {
-        const latest = getActiveProjectSnapshot();
-        if (latest?.metadata?.id === authority.projectId) {
-          current.setGenerationResults((previous) => finalizeRequestedResults(
-            previous,
-            [],
-            subtitles,
-            'activeProjectChanged',
-          ));
-          current.setError(current.t(
-            'errors.activeProjectChanged',
-            'The active subtitle project changed.',
-          ));
-        }
-        return false;
+        return publishProjectChanged();
       }
       if (error?.code === 'speechRuntimeStopped') {
         current.setGenerationResults((previous) => finalizeRequestedResults(
@@ -442,8 +445,8 @@ const useNativeNarrationController = (state) => {
           'narrationPersistenceFailed',
         ));
         current.setError(current.t(
-          'narration.generationError',
-          'Error generating narration',
+          'narration.persistenceError',
+          'Narration results could not be saved to this project.',
         ));
         return false;
       }
@@ -454,8 +457,24 @@ const useNativeNarrationController = (state) => {
         subtitles,
         error?.code || 'synthesisFailed',
       );
+      try {
+        await persistNativeResults(method, next, authority, source);
+      } catch {
+        if (!ownsProjectAuthority(authority)) return publishProjectChanged();
+        current.setGenerationResults((previous) => finalizeRequestedResults(
+          previous,
+          [],
+          subtitles,
+          'narrationPersistenceFailed',
+        ));
+        current.setError(current.t(
+          'narration.persistenceError',
+          'Narration results could not be saved to this project.',
+        ));
+        return false;
+      }
+      if (!ownsProjectAuthority(authority)) return publishProjectChanged();
       current.setGenerationResults(next);
-      await persistNativeResults(method, next, authority, source).catch(() => null);
       current.setError(current.t(
         'narration.generationError',
         'Error generating narration',
@@ -534,7 +553,16 @@ const useNativeNarrationController = (state) => {
         'narration.loadedFromCache',
         'Loaded narrations from previous session',
       ));
-    }).catch(() => undefined);
+    }).catch(() => {
+      const latest = stateRef.current;
+      if (disposed
+          || !ownsProjectAuthority(authority)
+          || (latest.generationResults || []).length > 0) return;
+      latest.setError(latest.t(
+        'narration.restoreError',
+        'Saved narration could not be loaded for this project.',
+      ));
+    });
     return () => { disposed = true; };
   }, [native, selectedSubtitlePlan]);
 

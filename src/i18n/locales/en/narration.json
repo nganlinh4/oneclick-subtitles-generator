@@ -80,6 +80,8 @@
   "noSubtitlesError": "No subtitles available for narration",
   "noTranslatedSubtitlesError": "No translated subtitles available. Please translate the subtitles first or select original subtitles.",
   "generationError": "Error generating narration",
+  "persistenceError": "Narration results could not be saved to this project.",
+  "restoreError": "Saved narration could not be loaded for this project.",
   "uploadError": "Error uploading reference audio",
   "f5ttsAudioTooLongError": "Reference audio for F5TTS cannot be longer than 12s",
   "recordingError": "Error saving recorded audio",

@@ -1,7 +1,10 @@
 import { useState } from 'react';
 import { act, renderHook } from '@testing-library/react';
 
-import { runNativeNarrationJob } from '../../../platform/nativeNarrationFlow';
+import {
+  restorePersistedNativeNarration,
+  runNativeNarrationJob,
+} from '../../../platform/nativeNarrationFlow';
 import {
   commitNativeNarrationEdit,
   commitNativeNarrationEdits,
@@ -604,5 +607,103 @@ test('does not claim success when the native narration record cannot be committe
     }),
   ]);
   expect(result.current.generationResults[0]).not.toHaveProperty('nativeArtifactId');
-  expect(result.current.error).toContain('Error generating narration');
+  expect(result.current.error).toContain('could not be saved to this project');
+});
+
+test('does not publish partial narration when its native checkpoint is rejected', async () => {
+  runNativeNarrationJob.mockRejectedValue(Object.assign(new Error('provider stopped'), {
+    code: 'synthesisFailed',
+    results: [originalEditedResult],
+  }));
+  narrationStoreMocks.saveProjectNarration.mockRejectedValue(new Error('sqlite unavailable'));
+  const { result } = renderHook(() => useHarness());
+
+  await act(async () => {
+    await expect(result.current.controller.handleGTTSNarration()).resolves.toBe(false);
+  });
+
+  expect(narrationStoreMocks.saveProjectNarration).toHaveBeenCalledTimes(1);
+  expect(result.current.generationResults).toEqual([
+    expect.objectContaining({
+      subtitle_id: 1,
+      success: false,
+      pending: false,
+      errorCode: 'narrationPersistenceFailed',
+    }),
+  ]);
+  expect(result.current.generationResults[0]).not.toHaveProperty('nativeArtifactId');
+  expect(result.current.error).toContain('could not be saved to this project');
+});
+
+test('terminates partial results when project ownership changes during their checkpoint', async () => {
+  let finishSave;
+  let project = {
+    metadata: { id: PROJECT_ID, name: 'Narration test' },
+    stateVersion: 7,
+    media: [],
+    tracks: [],
+  };
+  projectMocks.getActiveProjectSnapshot.mockImplementation(() => project);
+  runNativeNarrationJob.mockRejectedValue(Object.assign(new Error('provider stopped'), {
+    code: 'synthesisFailed',
+    results: [originalEditedResult],
+  }));
+  narrationStoreMocks.saveProjectNarration.mockImplementation(() => new Promise((resolve) => {
+    finishSave = resolve;
+  }));
+  const { result } = renderHook(() => useHarness());
+
+  let generation;
+  await act(async () => {
+    generation = result.current.controller.handleGTTSNarration();
+    await vi.waitFor(() => expect(finishSave).toBeTypeOf('function'));
+  });
+  project = { ...project, stateVersion: 8 };
+  await act(async () => {
+    finishSave({ projectId: PROJECT_ID, projectStateVersion: 7, results: [] });
+    await expect(generation).resolves.toBe(false);
+  });
+
+  expect(result.current.generationResults).toEqual([
+    expect.objectContaining({
+      subtitle_id: 1,
+      success: false,
+      pending: false,
+      errorCode: 'activeProjectChanged',
+    }),
+  ]);
+  expect(result.current.generationResults[0]).not.toHaveProperty('nativeArtifactId');
+  expect(result.current.error).toContain('active subtitle project changed');
+});
+
+test('reports a current-project narration restore failure instead of presenting an empty cache', async () => {
+  restorePersistedNativeNarration.mockRejectedValueOnce(new Error('sqlite unavailable'));
+  const { result } = renderHook(() => useHarness());
+
+  await vi.waitFor(() => {
+    expect(result.current.error).toContain('Saved narration could not be loaded');
+  });
+  expect(result.current.generationResults).toEqual([]);
+});
+
+test('does not publish a stale narration restore failure into the next project', async () => {
+  let rejectRestore;
+  restorePersistedNativeNarration.mockImplementationOnce(() => new Promise((_resolve, reject) => {
+    rejectRestore = reject;
+  }));
+  const { result } = renderHook(() => useHarness());
+  await vi.waitFor(() => expect(rejectRestore).toBeTypeOf('function'));
+  projectMocks.getActiveProjectSnapshot.mockReturnValue({
+    metadata: { id: '018f4c22-f0f1-7c09-a4d5-120d7b6f84ff', name: 'Next project' },
+    stateVersion: 0,
+    media: [],
+    tracks: [],
+  });
+
+  await act(async () => {
+    rejectRestore(new Error('old project failed'));
+    await Promise.resolve();
+  });
+
+  expect(result.current.error).toBe('');
 });
